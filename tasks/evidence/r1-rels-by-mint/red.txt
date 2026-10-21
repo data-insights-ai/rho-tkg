@@ -1,0 +1,19 @@
+--- FAIL: TestRelsByMint_PlacementOnMintShard (0.01s)
+    rels_by_mint_test.go:130: hot shard 2026-W43 Rels = 0, want 1 (the ref->ref rel on its mint shard)
+--- FAIL: TestRelsByMint_FallbackCounted (0.06s)
+    rels_by_mint_test.go:217: rel minted in a warm window not on that shard
+--- FAIL: TestRelsByMint_AdjacencyReadsEqual (0.26s)
+    rels_by_mint_test.go:361: setup: mintA on the reference shard
+--- FAIL: TestRelsByMint_ColdCloseFreesLegs (0.27s)
+    rels_by_mint_test.go:473: reference shard keeps a leg of the edge after W closed
+--- FAIL: TestRelsByMint_DeleteNoResidue (0.03s)
+    rels_by_mint_test.go:534: repair dropped the mint rel's in/ leg
+--- FAIL: TestRelsByMint_ArchiveRestoreSeesMintRels (0.02s)
+    rels_by_mint_test.go:666: repair grew in/ legs off the mint shard
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.923s
+--- FAIL: TestRelsByMint_AdjacencyAtHonoursDepth (0.01s)
+    rels_by_mint_depth_test.go:96: rel hot = [830419262121280512 830419262279287808], want [830419262279287808]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.016s
+FAIL

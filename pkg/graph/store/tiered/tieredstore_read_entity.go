@@ -587,10 +587,20 @@ func (ts *Store) groupNodeIDsByShard(ids []types.NodeID) ([]nodeShardIDBatch, er
 // --- Adjacency queries ---
 
 func (ts *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	return ts.OutgoingRelationshipsByDepth(nid, typeToken, DepthAll)
+}
+
+// OutgoingRelationshipsByDepth implements store.AdjacencyDepthCapability:
+// OutgoingRelationships with a reference-side node's mint-placed rels
+// (Config.RelsByMint) read from the event shards depth selects.
+func (ts *Store) OutgoingRelationshipsByDepth(nid types.NodeID, typeToken uint16, depth ShardDepth) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	if err := validateDepth(depth); err != nil {
 		return nil, err
 	}
 	// Entity + out/ are co-located in the node's shard. Use the checked
@@ -605,12 +615,27 @@ func (ts *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	if !shard.HasNodeID(nid.SnowflakeID()) {
 		return nil, ErrNodeNotFound
 	}
-	return shard.OutgoingRelationships(nid, typeToken)
+	rels, err := shard.OutgoingRelationships(nid, typeToken)
+	if err != nil || !ts.mintFanOut(shard) {
+		return rels, err
+	}
+	extra, err := ts.mintRels([]types.NodeID{nid}, typeToken, false, depth)
+	if err != nil {
+		return nil, err
+	}
+	return unionRels(rels, extra[nid]), nil
 }
 
 // OutgoingRelationshipsForNodes batches outgoing queries across shards; each
 // owner shard is pinned once so cold shards cannot close mid-query.
 func (ts *Store) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	return ts.OutgoingRelationshipsForNodesByDepth(nodeIDs, typeToken, DepthAll)
+}
+
+// OutgoingRelationshipsForNodesByDepth is OutgoingRelationshipsForNodes with
+// reference-side nodes' mint-placed rels read from the event shards depth
+// selects (OutgoingRelationshipsByDepth).
+func (ts *Store) OutgoingRelationshipsForNodesByDepth(nodeIDs []types.NodeID, typeToken uint16, depth ShardDepth) (map[types.NodeID][]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -621,6 +646,9 @@ func (ts *Store) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken
 		if err := storecontract.ValidateNodeID(id); err != nil {
 			return nil, err
 		}
+	}
+	if err := validateDepth(depth); err != nil {
+		return nil, err
 	}
 
 	queryNodeIDs := nodeIDs
@@ -636,12 +664,16 @@ func (ts *Store) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken
 	}
 
 	result := make(map[types.NodeID][]*types.Relationship, len(queryNodeIDs))
+	var fan []types.NodeID // reference-side nodes: their mint-placed rels join below
 	for _, batch := range batches {
 		store, release, err := batch.checkout()
 		if err != nil {
 			return nil, err
 		}
 		m, err := store.OutgoingRelationshipsForNodes(batch.ids, typeToken)
+		if err == nil && ts.mintFanOut(store) {
+			fan = append(fan, batch.ids...)
+		}
 		release()
 		if err != nil {
 			return nil, err
@@ -649,6 +681,10 @@ func (ts *Store) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken
 		for nid, rels := range m {
 			result[nid] = rels
 		}
+	}
+	result, err = ts.withMintRels(result, fan, typeToken, false, depth)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(result) == 0 {
@@ -661,10 +697,31 @@ func (ts *Store) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken
 // the owning shard's adjacency index without resolving entities. See
 // store.DegreeCapability.
 func (ts *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error) {
+	return ts.adjacencyDegree(nid, typeToken, false, DepthAll)
+}
+
+// OutgoingDegreeByDepth is OutgoingDegree with a reference-side node's
+// mint-placed legs counted on the event shards depth selects.
+func (ts *Store) OutgoingDegreeByDepth(nid types.NodeID, typeToken uint16, depth ShardDepth) (int, error) {
+	return ts.adjacencyDegree(nid, typeToken, false, depth)
+}
+
+// IncomingDegreeByDepth is IncomingDegree with a reference-side node's
+// mint-placed legs counted on the event shards depth selects.
+func (ts *Store) IncomingDegreeByDepth(nid types.NodeID, typeToken uint16, depth ShardDepth) (int, error) {
+	return ts.adjacencyDegree(nid, typeToken, true, depth)
+}
+
+// adjacencyDegree is the body of the degree doors: the owning shard's index
+// count plus, for a reference-side node, its mint-placed legs.
+func (ts *Store) adjacencyDegree(nid types.NodeID, typeToken uint16, incoming bool, depth ShardDepth) (int, error) {
 	if err := ts.checkOpen(); err != nil {
 		return 0, err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return 0, err
+	}
+	if err := validateDepth(depth); err != nil {
 		return 0, err
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
@@ -681,41 +738,40 @@ func (ts *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	if !live {
 		return 0, ErrNodeNotFound
 	}
-	return shard.OutgoingDegree(nid, typeToken)
+	degree := shard.OutgoingDegree
+	if incoming {
+		degree = shard.IncomingDegree
+	}
+	n, err := degree(nid, typeToken)
+	if err != nil || !ts.mintFanOut(shard) {
+		return n, err
+	}
+	m, err := ts.mintDegree(nid, typeToken, incoming, depth)
+	return n + m, err
 }
 
 // IncomingDegree counts a node's incoming relationships (type-filtered) from
-// the owning shard's co-located adjacency index (single-shard lookup). See
-// store.DegreeCapability.
+// the owning shard's co-located adjacency index (single-shard lookup), plus a
+// reference-side node's mint-placed legs. See store.DegreeCapability.
 func (ts *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error) {
-	if err := ts.checkOpen(); err != nil {
-		return 0, err
-	}
-	if err := storecontract.ValidateNodeID(nid); err != nil {
-		return 0, err
-	}
-	move := ts.lockMoveRead() // route and read see the row on one shard
-	defer move.unlock()
-	shard, checkin, err := ts.shardForNodeIDChecked(nid)
-	if err != nil {
-		return 0, err
-	}
-	defer checkin()
-	live, liveErr := nodeRowLive(shard, nid)
-	if liveErr != nil {
-		return 0, liveErr
-	}
-	if !live {
-		return 0, ErrNodeNotFound
-	}
-	return shard.IncomingDegree(nid, typeToken)
+	return ts.adjacencyDegree(nid, typeToken, true, DepthAll)
 }
 
 func (ts *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	return ts.IncomingRelationshipsByDepth(nid, typeToken, DepthAll)
+}
+
+// IncomingRelationshipsByDepth implements store.AdjacencyDepthCapability:
+// IncomingRelationships with a reference-side node's mint-placed rels read
+// from the event shards depth selects.
+func (ts *Store) IncomingRelationshipsByDepth(nid types.NodeID, typeToken uint16, depth ShardDepth) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	if err := validateDepth(depth); err != nil {
 		return nil, err
 	}
 	// Get relIDs from the node's shard inIdx. The owner is checked out so a
@@ -736,10 +792,19 @@ func (ts *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 		return nil, ErrNodeNotFound
 	}
 	relIDs := shard.IncomingRelIDs(nid.SnowflakeID(), typeToken)
+	var mint []*types.Relationship
+	if ts.mintFanOut(shard) {
+		extra, err := ts.mintRels([]types.NodeID{nid}, typeToken, true, depth)
+		if err != nil {
+			checkin()
+			return nil, err
+		}
+		mint = extra[nid]
+	}
 	checkin()
 
 	if len(relIDs) == 0 {
-		return nil, nil
+		return unionRels(nil, mint), nil
 	}
 
 	// Fetch rel entities via the batched resolver so rels on shards aged to cold
@@ -759,17 +824,24 @@ func (ts *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 		}
 	}
 	if len(result) == 0 {
-		return nil, nil
+		return unionRels(nil, mint), nil
 	}
 
 	storepkg.SortRelsByID(result)
-	return result, nil
+	return unionRels(result, mint), nil
 }
 
 // IncomingRelationshipsForNodes batches incoming queries. relIDs come from the
 // node's shard inIdx; entities are resolved cross-shard because the owner may
 // be an older start-node shard, not the relID timestamp shard.
 func (ts *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	return ts.IncomingRelationshipsForNodesByDepth(typedNodeIDs, typeToken, DepthAll)
+}
+
+// IncomingRelationshipsForNodesByDepth is IncomingRelationshipsForNodes with
+// reference-side nodes' mint-placed rels read from the event shards depth
+// selects (IncomingRelationshipsByDepth).
+func (ts *Store) IncomingRelationshipsForNodesByDepth(typedNodeIDs []types.NodeID, typeToken uint16, depth ShardDepth) (map[types.NodeID][]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -781,6 +853,9 @@ func (ts *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 			return nil, err
 		}
 	}
+	if err := validateDepth(depth); err != nil {
+		return nil, err
+	}
 
 	// Phase 1: collect relIDs per node from each node's shard inIdx.
 	type relRef struct {
@@ -788,6 +863,7 @@ func (ts *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		relID  types.RelID
 	}
 	var refs []relRef
+	var fan []types.NodeID // reference-side nodes: their mint-placed rels join below
 	seen := make(map[types.NodeID]struct{}, len(typedNodeIDs))
 	uniqueNodeIDs := make([]types.NodeID, 0, len(typedNodeIDs))
 
@@ -826,11 +902,18 @@ func (ts *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 				refs = append(refs, relRef{nodeID: tnid, relID: types.RelID(rid)})
 			}
 		}
+		if ts.mintFanOut(store) {
+			fan = append(fan, batch.ids...)
+		}
 		release()
 	}
 
 	if len(refs) == 0 {
-		return nil, nil
+		mint, err := ts.withMintRels(nil, fan, typeToken, true, depth)
+		if err != nil || len(mint) == 0 {
+			return nil, err
+		}
+		return mint, nil
 	}
 
 	// Phase 2: fetch rel entities via the batched resolver (see above).
@@ -852,6 +935,10 @@ func (ts *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 	// Sort per-node slices for deterministic output.
 	for nid := range result {
 		storepkg.SortRelsByID(result[nid])
+	}
+	result, err = ts.withMintRels(result, fan, typeToken, true, depth)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(result) == 0 {

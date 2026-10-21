@@ -527,11 +527,18 @@ func (bs *Store) IncomingIndexEntries() []IncomingIndexEntry {
 // OutgoingRelIDs returns relationship IDs from the outIdx for the given node.
 // Returns a sorted slice. Snapshot under RLock.
 func (bs *Store) OutgoingRelIDs(nodeID snowflake.ID) []snowflake.ID {
+	return bs.OutgoingRelIDsOfType(nodeID, 0)
+}
+
+// OutgoingRelIDsOfType is OutgoingRelIDs filtered by type (typeToken 0 = all
+// types), the outgoing mirror of IncomingRelIDs. No node check: a tiered
+// mint shard holds legs of nodes that live elsewhere.
+func (bs *Store) OutgoingRelIDsOfType(nodeID snowflake.ID, typeToken uint16) []snowflake.ID {
 	if bs == nil || bs.dbClosed.Load() {
 		return nil
 	}
 	bs.idxMu.RLock()
-	rids, err := bs.adjacentRelIDsSnapshotLocked(types.NodeID(nodeID), 0, false)
+	rids, err := bs.adjacentRelIDsSnapshotLocked(types.NodeID(nodeID), typeToken, false)
 	bs.idxMu.RUnlock()
 	if err != nil {
 		// See IncomingRelIDs: error-free signature predates the disk arm.

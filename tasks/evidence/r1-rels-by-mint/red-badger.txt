@@ -1,0 +1,8 @@
+--- FAIL: TestCoLocatedLegsSurviveReopen (0.34s)
+    --- FAIL: TestCoLocatedLegsSurviveReopen/clean (0.14s)
+        badgerstore_colocated_reopen_test.go:70: after reopen: out all = [], want [830434844231435264 830434844231435265]
+    --- FAIL: TestCoLocatedLegsSurviveReopen/rebuild (0.20s)
+        badgerstore_colocated_reopen_test.go:70: after reopen: out all = [], want [830434847627641856 830434847627641857]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.357s
+FAIL

@@ -51,11 +51,7 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		rows []*types.Relationship
 		err  error
 	)
-	if incoming {
-		rows, err = c.store.IncomingRelationships(nodeID, tok)
-	} else {
-		rows, err = c.store.OutgoingRelationships(nodeID, tok)
-	}
+	rows, err = c.storeAdjacentRels(nodeID, tok, incoming, opts.Depth)
 	if err != nil {
 		if !errors.Is(err, storepkg.ErrNodeNotFound) {
 			return err

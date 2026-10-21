@@ -173,6 +173,18 @@ type DegreeCapability interface {
 	IncomingDegree(nodeID types.NodeID, typeToken uint16) (int, error)
 }
 
+// AdjacencyDepthCapability is OPTIONAL: the adjacency reads scoped to the
+// shard tiers QueryOpts.Depth names, for a store whose adjacency can lie on
+// tiered shards (tiered.Config.RelsByMint). DepthAll is the plain door.
+// The graph layer uses it for the doors that take QueryOpts
+// (ForEachAdjacentRelAt / ForEachAdjacentEndpointAt) when opts.Depth is not
+// DepthAll; without it Depth does not narrow adjacency.
+type AdjacencyDepthCapability interface {
+	OutgoingRelationshipsByDepth(nodeID types.NodeID, typeToken uint16, depth ShardDepth) ([]*types.Relationship, error)
+	IncomingRelationshipsByDepth(nodeID types.NodeID, typeToken uint16, depth ShardDepth) ([]*types.Relationship, error)
+	ForEachExAdjacentRelIDByDepth(nodeID types.NodeID, incoming bool, depth ShardDepth, fn func(types.RelID) bool) error
+}
+
 // BulkReadCapability is the unfiltered/label-filtered listing surface (export,
 // snapshot, the ByLabel / ByType query shapes).
 type BulkReadCapability interface {
