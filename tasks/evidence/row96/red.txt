@@ -1,0 +1,16 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test [github.com/data-insights-ai/rho-tkg/v4/pkg/graph.test]
+pkg/graph/getorcreate_depth_test.go:103:32: g.Nodes().GetOrCreateByKeyOpts undefined (type *nodes.API has no field or method GetOrCreateByKeyOpts)
+pkg/graph/getorcreate_depth_test.go:109:31: g.Nodes().GetOrCreateByKeyOpts undefined (type *nodes.API has no field or method GetOrCreateByKeyOpts)
+pkg/graph/getorcreate_depth_test.go:115:30: g.Nodes().GetOrCreateByKeyOpts undefined (type *nodes.API has no field or method GetOrCreateByKeyOpts)
+pkg/graph/getorcreate_depth_test.go:128:28: tx.GetOrCreateByKeyOpts undefined (type *graph.GraphTx has no field or method GetOrCreateByKeyOpts)
+pkg/graph/getorcreate_depth_test.go:148:29: g.Nodes().GetOrCreateByKeyOpts undefined (type *nodes.API has no field or method GetOrCreateByKeyOpts)
+pkg/graph/getorcreate_depth_test.go:155:22: tx.GetOrCreateByKeyOpts undefined (type *graph.GraphTx has no field or method GetOrCreateByKeyOpts)
+pkg/graph/getorcreate_depth_test.go:169:32: g.Nodes().GetOrCreateByKeyOpts undefined (type *nodes.API has no field or method GetOrCreateByKeyOpts)
+pkg/graph/getorcreate_depth_test.go:177:30: g.Nodes().GetOrCreateByKeyOpts undefined (type *nodes.API has no field or method GetOrCreateByKeyOpts)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph [build failed]
+FAIL
+--- FAIL: TestGetOrCreateByKeyOpts_DepthBound (0.47s)
+    getorcreate_depth_test.go:111: DepthHot p-warm = (&{830414167894018048 [{pid p-warm}] [] 0x3cdf7a49db90 0x3cdf6edd7500 <nil> 0 2 false false 0}, created=false, <nil>), want a new copy
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.988s
+FAIL
