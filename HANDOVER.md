@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-20, latest release v4.66.3; v4.64.0 never cut, writer parked)
+# HANDOVER — rho-tkg v4 line (2026-10-21, latest release v4.66.3; v4.64.0 never cut, writer parked)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). Latest tag v4.66.3 (2026-10-20, rows 87/88 grow cliff; v4.66.2 row 85 write cost; v4.66.1 2026-10-20; v4.66.0 2026-10-18 Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
@@ -7,23 +7,28 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **No open request from René.** v4.66.3 (rows 87/88, sigma R19 b+c): no cliff past 512 head pieces, head entry survives a
+1. **Open: René's go for minor v4.67.0** (todo decision 6, default go, R2 first): ai-soc now runs rho tiered as its main
+   store (René to ai-soc 2026-10-21: "Tiered storage is not for scaling only. This is the main architecture point").
+   R2 = tiered `Config.SyncWrites` + flush hold under DurableCommit (row 93, small). R1 = rels between reference endpoints
+   placed with entity + both legs on the rel's mint shard, adjacency honours `QueryOpts.Depth`, fallback counter (row 94,
+   ~300 + 450 LOC, todo "R1 sizing"). ai-soc agreed every semantic; no further questions. Build only on René's own word.
+   Done before: v4.66.3 (rows 87/88, sigma R19 b+c): no cliff past 512 head pieces, head entry survives a
    growing bounded end. R19 (a) segment iterator: no-go (row 89, ai-soc BA counts: deep chains are grow). Quadratic grow rows:
    René "1" (row 90) = sigma writes only [old To, new To); rho keeps its per-base split. v4.66.2 (row 85) before it.
    - Next patch candidate (review finding, not essential unless a consumer holds such rows): whole-axis entities patched while
      closed under v4.66.0 keep a stale current row (core/temporal_cascade.go:702-712 matches only PrevHash == current's hash).
    - Review findings NOT taken (wait for René): tests review #5-#10, code review #4-#7, docs #9-#10 rest (details in todo rows 77-82).
    - The `DeleteKeptValidTo` writer (branch `tombstone-writer-v4.63`) stays parked ("not now", René 2026-10-19); needs a rebuild on
-     the v4.66 axis code as minor v4.67.0.
+     the v4.66 axis code as a later minor (v4.67.0 is now the tiered work).
 2. **v5 is PAUSED (René 2026-10-16, row 61).** Work lives on the local branch `v5-takeover` (not pushed; origin/v5 untouched). Do
    not resume without René. Reason: real ai-soc import showed ~92 records/op, 11x v4 disk, ~200 writes/s; options in tasks/todo.md.
    Gap analysis: `docs/v5-gap-to-main.md`. Real-store harness + scale notes: local branches `v5-realstore-harness` (`af75a982`,
    `tasks/evidence/v5-scale/notes.md`) and `wp-37-import-throughput` (`392f88e2`); not pushed.
-3. **Consumers** (no open request from either; answer new requests the same day: ledger row first, then lesson 79's process):
+3. **Consumers** (open: ai-soc R1/R2 above; sigma FYI row 92: ai-soc reopen `ReadHistory` 526 s vs 57 s, rho's readUnderRLock unchanged since v4.66.0, waits for ai-soc; answer new requests the same day: ledger row first, then lesson 79's process):
    - ai-soc: release/v5.0.0 pinned at rho v4.66.0 (v4.66.1 after René's Flux run of v5.0.2; ai-soc 2026-10-20); PIN21 = rho v4.61.0 + sigma v0.11.21 (RAM numbers in row 73 area: VmHWM ~63-65 GB whole BA); earlier PIN18 = rho v4.56.1 + sigma v0.11.11; declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets
      `UntimedValidStart: UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data
      day; `/bars`, `/tkg/asof` = its HTTP read doors.)
-   - sigma-tkgd: v0.11.34 (2026-10-20) on rho v4.66.3, R19 delta write in (a grown Derived version writes one row per cut); needs no new rho API; P24
+   - sigma-tkgd: v0.11.35 (2026-10-21, R20 its own) on rho v4.66.3; v0.11.34 brought the R19 delta write (a grown Derived version writes one row per cut); needs no new rho API; P24
      (marker-aware ValidTo reads) parked with the tombstone writer.
 4. **Open work:** the open table of `tasks/backlog.md` (no requester; backlog 79 = sigma's multi-pin
    timeline, cost only, parked).
@@ -51,6 +56,8 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
   their own scratchpad subfolder; worktrees are removed after merge. Docs check: `go test -count=1 -run 'Docs|Consistency' ./...`.
 
 ## 3. René's open decisions (my default)
+
+- v4.67.0 tiered R2 + R1 for ai-soc: **go, R2 first** (item 1).
 
 - Session scratchpad: emptied 2026-10-20 (row 76, René); Go build cache cleaned. Deletions stay René's call (`rm -rf` is denied to agents).
 - v5 façade waits for Markus; we do not raise it. No posts on GitHub issue #11 (René tells Markus himself).

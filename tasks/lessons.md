@@ -600,7 +600,7 @@ Rule: a release commit updates, in the same commit, the `tasks/todo.md` user-req
 HANDOVER open-request list; every new user or consumer request gets its row before the first action on it (René 2026-10-12:
 "Are you really working towards our originally defined goal?" after request 1 stayed "not built" two releases past its ship).
 Detector: `scripts/check-ledger.sh` (latest tag in the releases table, the todo header and HANDOVER; no request row "open/building/in progress" whose backlog item is Closed). It runs after every merge and before every release commit; a failure blocks the commit.
-Recurrence (2026-10-14/15, René: "Why not always keep todo.md update?"): `sed` one-liners matched nothing (HANDOVER kept "v4.52.0" for six releases), "building" rows were never revisited, Markus's releases were never recorded. The script checks the edits; do not trust them.
+Recurrence (2026-10-14/15, René: "Why not always keep todo.md update?"): `sed` one-liners matched nothing (HANDOVER kept "v4.52.0" for six releases), "building" rows were never revisited, Markus's releases were never recorded. The script checks the edits; do not trust them. 2026-10-21 (René: "Always keep todo.md and handover.md updated MD consolidated"): every consumer message, decision or state change updates todo.md (row, header, decisions) AND HANDOVER (next steps, consumers, decisions) in place in the same commit, not only at releases.
 
 ## 81. Open Work With A Clear Next Step Is Started, Not Offered
 
