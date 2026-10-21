@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`tiered.Config.AdjacencyIndexOnDisk`: an open shard keeps no per-node adjacency maps** (ai-soc R3, row 95). The
+  flag reaches every shard (reference, archive, hot, warm, rotation-created, lazily opened cold) as
+  `badger.Config.AdjacencyIndexOnDisk`, so adjacency reads come from the persisted out/in keys. With the flag a
+  badger open also no longer builds the adjacency maps transiently (open peak) and no longer seeds relationship
+  revisions; a relationship's first replace or delete after open reads its row once. Per-rel RAM maps of an open
+  shard at one rel per endpoint: 566 → 47 B/rel; bytes allocated by the open: 1,028 → ~400 B/rel. Cost: an
+  adjacency read on the hot shard scans its pending writes (10-rel node: 0.6 µs maps, 2.3 µs at 0 pending, 87 µs at
+  10 K, 1.6 ms at 99 K). Default off. Tests: `TestTieredConfig_AdjacencyIndexOnDisk_Propagates`,
+  `TestTieredAdjacencyOnDisk_ReadsEqual`, `TestLoadIndexes_AdjOnDisk_NoTransientMaps`,
+  `TestLoadIndexes_AdjOnDisk_UncleanOpenRepairsDroppedKey`, `TestRelRevs_LazySeed_PrefetchFallsBack`; measurements
+  `BenchmarkR3OpenShardFootprint`, `BenchmarkR3HotAdjacencyReadPending`.
+
 ## [4.66.3] - 2026-10-20
 
 ### Fixed

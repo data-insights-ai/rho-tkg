@@ -167,6 +167,17 @@ func (bs *Store) bumpRelRevLocked(rid types.RelID) {
 	bs.relRevs[rid] = bs.nextRelRev
 }
 
+// seedRelRevAtOpenLocked gives a rel loaded at open a non-zero rev, so its
+// first prefetch after open can reuse the prefetched row. AdjacencyIndexOnDisk
+// skips it (26 B/rel): rev 0 makes every prefetch door re-read under the lock
+// (currentRelForPrefetchLocked, relDeleteInfoRevCurrentLocked), and the rel's
+// first write seeds it.
+func (bs *Store) seedRelRevAtOpenLocked(rid types.RelID) {
+	if !bs.adjOnDisk {
+		bs.bumpRelRevLocked(rid)
+	}
+}
+
 // deleteRelRevLocked mirrors deleteNodeRevLocked; called from deleteRelByInfo.
 func (bs *Store) deleteRelRevLocked(rid types.RelID) {
 	delete(bs.relRevs, rid)
