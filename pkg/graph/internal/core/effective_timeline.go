@@ -814,3 +814,29 @@ func (c *Core) validateEffectiveScanPin(pin types.Instant, scope retentionScope)
 	}
 	return c.checkScanRetentionAt(pin, scope)
 }
+
+// NodeEffectiveTimelines: RED STUB (row 98) — the singular door per pin.
+func (t *TempOps) NodeEffectiveTimelines(id types.NodeID, pins []types.Instant) ([][]temporal.NodeSegment, error) {
+	out := make([][]temporal.NodeSegment, len(pins))
+	for i, p := range pins {
+		s, err := t.NodeEffectiveTimeline(id, p)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = s
+	}
+	return out, nil
+}
+
+// RelEffectiveTimelines: RED STUB (row 98) — the singular door per pin.
+func (t *TempOps) RelEffectiveTimelines(id types.RelID, pins []types.Instant) ([][]temporal.RelSegment, error) {
+	out := make([][]temporal.RelSegment, len(pins))
+	for i, p := range pins {
+		s, err := t.RelEffectiveTimeline(id, p)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = s
+	}
+	return out, nil
+}
