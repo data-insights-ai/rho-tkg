@@ -10,10 +10,11 @@ this order: this file, lessons digest, todo (user requests, releases table), bac
 Critical path first (René 2026-10-21: "for now we should focus on the critical path and write these items for the next step then"):
 only items that block ai-soc on Flux or sigma get built now; the rest is listed under "Next step (deferred)" below.
 
-1. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
+1. **Building v4.69.2 = row 106** (ai-soc Flux blocker: reopen `/tkg/asof` pages time out on tiered; tiered lacks the member-page and member-IDs capabilities + ctx check in the gather).
+2. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
    on ai-soc's profile only.
-2. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
-3. **Watch origin:** `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background (Appendix A). When Markus releases on
+3. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
+4. **Watch origin:** `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background (Appendix A). When Markus releases on
    main: merge origin/main, check his code against our rules (one valid start, Void rows, Elements, format markers, head cache,
    version allocation), fix his CHANGELOG heading if he left entries under [Unreleased].
 
