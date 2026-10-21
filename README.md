@@ -259,7 +259,7 @@ Three tiers: the **reference shard** (long-lived labels named in `RefLabels`), *
 - `RefLabels`, `ShardWindow` (default one week) route nodes and size event shards; `ColdAfter` demotes warm shards to cold, `IdleTimeout` closes idle cold ones, `MaxOpenColdShards` lets a cold shard opened by a read stay open (up to N).
 - `SyncWrites`: power-loss durability on every writable shard; with graph `Config.DurableCommit` a group costs one synced write per touched shard.
 - `RelsByMint`: a rel between two reference endpoints lives on the event shard of its ID's mint instant, so a closing shard frees its edges; a cold mint shard falls back to the reference shard (`Store.RelsByMintFallbacks()`).
-- `AdjacencyIndexOnDisk`: open shards keep no per-node adjacency maps (about 47 instead of 566 B/rel of RAM) at the cost of a pending-write scan per hot-shard adjacency read.
+- `AdjacencyIndexOnDisk`: open shards keep no per-node adjacency maps (rel maps 52 instead of ~570 B/rel of RAM, measured at 22 M rels) at the cost of a pending-write scan per hot-shard adjacency read.
 - `BlockCacheSize` / `IndexCacheSize` (and the other Badger sizes) apply **per open shard**; there is no store-wide budget yet.
 
 `QueryOpts.Depth` bounds a read: `DepthAll` (default) opens cold shards, `DepthWarm` reads hot + warm, `DepthHot` hot only. It covers lookups and, with `RelsByMint`, adjacency (`ForEachAdjacentRelAt`, `ForEachAdjacentEndpointAt`). Details in [`docs/api.md`](docs/api.md) and [`docs/persistence.md`](docs/persistence.md).
