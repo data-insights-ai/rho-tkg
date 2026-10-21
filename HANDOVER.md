@@ -7,12 +7,22 @@ this order: this file, lessons digest, todo (user requests, releases table), bac
 
 ## 1. Next steps (focus René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
+Critical path first (René 2026-10-21: "for now we should focus on the critical path and write these items for the next step then"):
+only items that block ai-soc on Flux or sigma get built now; the rest is listed under "Next step (deferred)" below.
+
 1. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
    on ai-soc's profile only.
 2. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
 3. **Watch origin:** `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background (Appendix A). When Markus releases on
    main: merge origin/main, check his code against our rules (one valid start, Void rows, Elements, format markers, head cache,
    version allocation), fix his CHANGELOG heading if he left entries under [Unreleased].
+
+### Next step (deferred, not critical path)
+
+- Row 102: badger `rangePending` walks the whole pending + flushing buffer per per-entity overlay read (history, disk-mode
+  adjacency) → rollback of n rels costs n × pending (ai-soc Flux: one failed write-back rollback > 2 h; normal pushes 0-0.64 %).
+  Resume on local branch `row102-pending-ranged` (red tests 8fa7a967 + WIP) → patch.
+- Backlog 80-82 (review findings, no requester).
 
 ## 2. State
 
