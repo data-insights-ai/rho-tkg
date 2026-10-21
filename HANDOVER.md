@@ -40,7 +40,6 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
     UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data day; `/bars`,
     `/tkg/asof` = its HTTP read doors.)
   - sigma-tkgd: v0.11.46 (2026-10-21, CI green) on rho v4.69.1: `g.Admin().IsReferenceLabel` at writer, read doors and tkgd startup; TestFoldReadDepthHot race-free (rows 99, 100 accepted)
-    Derived/Session lookups); adopts v4.69.1 when sent, moving its reference-label check into session/writer open (F0b).
   - Notify after gate + tag + push: `sigma-tkgd-c3` and `ai-soc-main-e7` (`ListAgents`, main session only; socket names change
     per session). If neither resolves, put the release note here and tell René in one line.
 - **Housekeeping:** session scratchpad emptied 2026-10-20 (row 76); deletions stay René's call (`rm -rf` is denied to agents).
