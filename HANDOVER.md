@@ -7,7 +7,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **Building minor v4.67.0 = R2 → R1 → R3** (go from René relayed by ai-soc 2026-10-21; tag only on René's own word, todo decision 6): ai-soc now runs rho tiered as its main
+1. **Building minor v4.67.0 = R2 → R1 → R3** (René "go", relayed verbatim by ai-soc 2026-10-21; tag when all three are green): ai-soc now runs rho tiered as its main
    store (René to ai-soc 2026-10-21: "Tiered storage is not for scaling only. This is the main architecture point").
    R2 = tiered `Config.SyncWrites` + flush hold under DurableCommit (row 93, small). R1 = rels between reference endpoints
    placed with entity + both legs on the rel's mint shard, adjacency honours `QueryOpts.Depth`, fallback counter (row 94,
@@ -59,7 +59,6 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 3. René's open decisions (my default)
 
-- v4.67.0 tag: go came relayed by ai-soc; **tag on René's own word** (item 1).
 
 - Session scratchpad: emptied 2026-10-20 (row 76, René); Go build cache cleaned. Deletions stay René's call (`rm -rf` is denied to agents).
 - v5 façade waits for Markus; we do not raise it. No posts on GitHub issue #11 (René tells Markus himself).
