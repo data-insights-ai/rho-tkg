@@ -235,6 +235,64 @@ Test proportionality: graphapply 120 k test LOC for 40.7 k src (709 `Test` funcs
 | Markus v4.57.0 doors R9-1..R9-4 (main) | 327+339+387+381 / ~1,100 | sigma round 9 (`rho-tkg-round9-doors-20261016.md:18-21`); sigma calls none yet | v4 | 11 tests green 1.7 s; reuse existing bound/cut/key/column code; no new numeric rule | keep; `nodeChainOf`/`relChainOf` fold into WP-21 |
 | Consumer use of v5-only temporal concepts (rational, uncertainty, lexicographic, descriptors, calendars, regions) | — | PLAN | — | 0 hits in sigma (219 rho-importing files) and ai-soc (48); only int64 ms valid/tx time (187 / 41 files) and Allen (sigma 18) | v5.0 ships them as-is behind stability tiers; no build before a consumer asks |
 
+## R1 sizing (row 94, Fable 2026-10-21)
+
+Analysis only (code read, nothing run). Paths are `pkg/graph/store/`.
+
+**First cut.** The mint layout IS the same-shard key layout (RelKey + OutKey + InKey in one badger) on a shard that holds
+neither endpoint. Same-shard endpoints reach it through `startShard.PutRelationship(r)` (tiered/tieredstore_write_rel.go:170-174),
+which badger refuses without both node rows; `PutRelationshipCoLocated` (badger/badgerstore_rel.go:19, putRelationship with
+validateEndpoints=false) writes row + out + in in one op batch with no node check, so one call on the mint shard gives entity +
+both legs there today, one ChangeRelPut, no new key format, no new badger write door. `routeRelShard` (tiered/tieredstore_routing.go:145) already finds
+the row (mint shard is its first candidate), so every by-id door (Get, Replace, history, changelog, exadj notes) works unchanged.
+Legs on cold shards free with the badger instance at close (badgerstore.go:354-355 are per instance). Cut: write + reads + 4 guards.
+
+| Area | Change (file:line) | Size |
+|---|---|---|
+| Config | `Config.RelsByMint bool` (tiered/tieredstore.go:29ff, next to PropertyIndexOnDisk :135) + sticky meta marker on the ref shard, adopted at open like ValidAxis (:574) | 30 |
+| Write | putRelationshipLocked :153-174, putRelationshipWithEndpointHashesLocked :254-262/:297-312, putRelationshipsBatch :470ff, restore (:62): `startShard==endShard==refShard && relsByMint` → mint shard = timestampToEventShardEntry(relID) checked out writable; both doors on it; legacy fallback when the mint shard is cold/read-only (caller IDs) | 90 |
+| Adjacency read (ref or archive node) | Outgoing/Incoming/Degree/ForNodes (tiered/tieredstore_read_entity.go:589, 613, 663, 690, 714, 772): node shard result ∪ fan-out over `eventShardSnapshot(DepthWarm)` (routing.go:329 = hot+warm, bounded by ColdAfter; the existing window selection) with `IncomingRelIDs`/`OutgoingRelIDs` (partial.go:468/529, no node check; OutgoingRelIDs needs a type token) and same-shard entity resolve; one helper | 120 |
+| Delete | deleteRelationship :353 and DeleteRelWithHistory (tiered/tieredstore_write_history.go:618): `startShard==endShard` branch delegates to entityShard = mint shard, legs local → correct as is; deleteRelationshipForNodeWithHistory :858 same | 0-10 |
+| Exadj | exAdjShards (tiered/tieredstore_exadj.go:27-55) unions ref/archive/node-mint shard; a deleted mint rel records ex-adj on the REL's shard → add the DepthWarm fan-out; ex-adjacency past the window is gone by design | 20 |
+| Repair | Phase 2 (tiered/tieredstore_repair.go:107-190) looks for in/ on the END node's shard and would re-create it on ref → skip when `hasIncomingEntry(ns.store, …)` holds locally; Phase 1 :54 finds the entity locally, ok | 15 |
+| DeleteNode guard | DeleteNode (tiered/tieredstore_write_node.go:202-230) uses the tiered reads (follows the fan-out); DeleteNodesBatch :585 checks the node's own shard → same helper | 20 |
+| Badger | typed `OutgoingRelIDs(nodeID, typeToken)` (partial.go:529 has no type filter; IncomingRelIDs :468 has) | 15 |
+| Docs | api.md + AGENTS.md "split-write" paragraphs, CHANGELOG | 40 |
+
+Untouched: purge phase 2 (retention_purge.go:97, retention_purge_drop.go:235, rel_retention_purge.go:46: residue is routed to
+endpoint shards where `PurgeRelLegResidue`/`PurgeRelationshipByInfo` are no-ops; phase 1 on the mint shard removes row+legs
+together); fast shard drop; ArchiveNode/RestoreNode (tiered/tieredstore_write_archive.go:31, 122 list rels from the ref shard's
+legs only → mint rels are not moved and stay reachable by probe; the archive node's adjacency needs the read fan-out above);
+history reads/writes and changelog (route by routeRelShard; one record per rel; noteHistoryRowLegs :125 routes by endpoint);
+MigrateFromBadger (writes through PutRelationship); rotation/demotion (a rel never moves, routing.go:111); ListShards Rels
+count (tieredstore_admin.go:52 counts the open store → acceptance "listed under W" holds by placement alone); index fan-out.
+
+**Open questions (recommended answer first).**
+1. Unbounded adjacency read on a ref node: answer from hot+warm (DepthWarm = ColdAfter window) plus the ref shard's legacy legs;
+   edges on cold shards stay reachable by id/key (routeRelShard probes cold) and by history iteration, not by adjacency.
+   Alternative DepthAll opens every cold shard per read and defeats the request. Explicit look-backs = by-id reads, no new door.
+2. Mixed stores: the flag steers WRITES per open (Config), reads fan out whenever a sticky "rels-by-mint ever on" meta marker on
+   the ref shard is set (adopted at open like ValidAxis, never cleared). Old rels on ref stay visible, enabling on an existing
+   store needs no migration, disabling later only stops new placement. Not ValidAxis-style fixed at creation (would force migration).
+3. Deleting a ref node whose rels sit on cold shards: DeleteNode/DeleteNodesBatch check connectivity at DepthAll (opens cold shards
+   once; rare admin op) and refuse with ErrInvalidStoreMutation; DepthWarm would leave dangling rows that by-id reads return.
+4. Caller-supplied rel IDs whose mint shard is cold or read-only: legacy ref placement (the probe finds either); hot fallback when
+   no window covers the mint (timestampToEventShardEntry already does that).
+5. Replica with a different flag: layout diverges, reads stay equal; document, no guard.
+
+**Size.** ~300 LOC non-test (table), ~450 test. Red tests first, in tiered: `TestRelsByMint_PlacementOnMintShard` (ListShards Rels
+W+1, ref +0; breaks: option off, one event-class endpoint → legacy, cold mint → legacy, self-loop); `_AdjacencyReadsEqual`
+(Outgoing/Incoming/Degree/ForNodes equal with and without the option on a mixed store; breaks: type filter, duplicates in
+ForNodes, unknown node, archived node); `_ColdCloseFreesLegs` (demote+close W: ref shard outIdx/inIdx without the edge via
+test_export, by-id read reopens W, adjacency no longer lists it; break: warm W still lists); `_DeleteNoResidue` (both legs gone on
+W, RunRepair writes no in/ on ref; break: crash residue after the first door); `_DeleteRefNodeRefuses` (rels on cold W);
+`_ArchiveRestoreSeesMintRels`; `_ChangelogOneRecord`. Risks: fan-out cost = hot+warm shard count per ref adjacency read (ai-soc
+6 h + 1 h at 1 h windows ≈ 8 shards); Repair Phase 2 regrowing ref legs if the skip is missed; rotation between shard choice and
+write (checkRotation :105 covers the entry, the probe covers the rest); exadj completeness beyond the window.
+
+**Version.** Additive opt-in Config field, default off, same keys, no behaviour change for existing callers → minor v4.67.0
+alone, no deprecation ritual (docs/stability.md:26); the sticky marker is an ordinary meta key, no store marker bump.
+
 ## Release gates (long tests only here)
 
 | Gate | Content | Checks |
