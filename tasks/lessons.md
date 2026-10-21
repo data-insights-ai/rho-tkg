@@ -4,22 +4,25 @@ Rules distilled from real bugs: Rule, Trigger, Detector; long evidence lives in 
 for a new recurring pattern, else edit the owner. Numbers and `## N.` headings are cited from code, docs and the backlog ("lesson
 N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a number alive; the newest rule wins.
 
-## Rules digest (standing rules; the number owns the detail)
+## Rules digest (one current rule per bullet; the number owns the detail)
 
-- Trace the cause before asking or adding; consolidate duplicate paths, notes and rules instead of layering, docs
-  rewritten in place; every md write consolidates the owner, never append-only (84).
-- Notify consumers right after gate + tag + push; GitHub CI runs in the background, red is fixed before the next tag (82).
-- Keep todo.md and HANDOVER current at every event (request, message, decision, merge, release), consolidated in place; `scripts/check-ledger.sh` after every merge and before every release (80).
-- Act, do not offer: open work with a clear next step (consumer request, review finding, patch batch) starts now; ask only for the
-  irreversible or materially different (81). Tick the ledger and doc targets at every release (80, 41).
-- Red first: a failing break-the-code test before the fix, a clean root-cause fix at the shared seam, no "known limitation" in
-  place of work (78, 27, 77).
-- Releases: MINOR for a really new feature, PATCH otherwise (René 2026-10-14; was patch-only since 10-10), batched, one gate; behaviour changes via the deprecation ritual, no new named exceptions (79); full
-  `make test-race` before a tag (66); a green workflow means its gates ran (75). Test tiers: new code gets `-short` tests of
-  seconds, commits grouped; long tests only at the final minor-release push (87).
-- Reviews: one round per branch; Fable only writes code and runs no tests; the main session runs every test, gate, lint, security, docs; models: builds Opus, code reviews Opus high, doc work
-  Sonnet; reviews on Fable, and a build Opus cannot finish goes to Fable (René 2026-10-20: "If opus is not smart enough use a fable Agent .. use Fabel as reviewer"; was off since 10-16) (79).
-- A contract over a family of doors lands in every door; test cross-door agreement (58, 59, 42, 57, 69).
+- Versioning: a fix is a PATCH, a new door/option a MINOR; a fix never rides in a minor, a door never in a patch; doors from
+  one round of consumer requests batch into one minor, fixes into one patch (79).
+- Scope: just essential patches (consumer-blocking or wrong-answer/data bugs) EXCEPT ai-soc runtime items, which have René's
+  standing go; a go René types into a consumer session and that session relays verbatim counts (79, 80).
+- Models: builds Opus, a build Opus cannot finish goes to Fable; Fable reviews (branch and final batch review before the tag)
+  and writes code only, running no tests; the main session runs every deciding test, gate, lint and security check; doc work
+  Sonnet; build briefs end with `make lint-docker security-docker` (79).
+- Tests: new tests are `-short` and take seconds; growth/cap tests stay short via test switches; long tests only in the release
+  gate `make ci-docker`, which includes the full `make test-race` (87, 66).
+- Release: gate + tag + push, then notify consumers at once; GitHub CI runs in the background; a red tag CI is fixed on main and
+  shipped as a NEW patch tag, never by rerunning the old tag's run (82); a green workflow means its gates ran (75).
+- Ledger: todo.md and HANDOVER updated at every event, consolidated in place; shipped sizing/review sections fold into their rows;
+  `scripts/check-ledger.sh` after every merge and before every release commit (80); doc targets at every version bump (41).
+- One owner per fact, consolidate in place, trace the cause before asking (84). Act, do not offer (81).
+- Red break-the-code test first, clean root-cause fix at the shared seam, no "known limitation" instead of work (78).
+- Behaviour changes go through the deprecation ritual (`docs/stability.md`), no new named exceptions (79).
+- A contract over a family of doors lands in every door; test cross-door agreement (58).
 - Trust boundary: validate IDs and decoded bytes at every entry, `SafeUnmarshal`, allocate by bytes delivered, verify imported
   hashes (1, 6, 44, 47, 48).
 - Time: `c.now()` never wall clock, reads `readNow()`, floor seeded on open (20, 71); corrections append (46); `TxTo` never bounds
@@ -28,8 +31,8 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
   24, 66); overlays: capture before the snapshot, set-vs-delete per key (54, 57, 64).
 - Persistence: rebuild at open and fail closed; change-log in-backend; flush work before the watermark (10, 40, 49-53).
 - v5 is the new public API: converge on the v5 side, never change v4's API for it (86).
-- Tests: every public method, Node/Rel parity, production-shape perf, every codec kind at depth, scattered NDV inputs, oracles for
-  accelerators (14, 15, 65, 68, 73, 76).
+- Test coverage: every public method, Node/Rel parity, production-shape perf, every codec kind at depth, scattered NDV inputs,
+  oracles for accelerators (14, 15, 65, 68, 73, 76).
 
 ## 1. Validate At Every Boundary
 
@@ -488,7 +491,8 @@ must scatter values. Evidence: `hyperloglog_sequential_test.go` (BACKLOG 16d).
 Rule: (1) a shared POINTER is swapped only while holding EVERY lock class its readers use (`restoreRegistries` swaps
 `c.labels`/`c.relTypes` under `c.mu.Lock` AND `registryMu`; `Close`'s persist takes `registryMu`); adding a reader on a new lock
 class means grepping every writer. (2) The pre-release race gate is the FULL `make test-race`, never a targeted `-run` subset
-(storm tests only run in the full suite; slower CI runners open windows a fast box never does); when it runs: lesson 87.
+(storm tests only run in the full suite; slower CI runners open windows a fast box never does); it is part of the release gate
+`make ci-docker` (Makefile:195), so it runs once per release, not per commit (87).
 Detector: `grep -rn 'c\.labels = \|c\.relTypes = ' pkg/`.
 
 ## 67. A Raw-Byte Storage-Saving Estimate Is Not A Disk-Saving Estimate
@@ -580,21 +584,30 @@ lands at the root and the shared seam (58-60), not behind a flag, skip or consum
 solution was tried and shown impossible (say why; backlog it with its red test). Delegated prompts carry these rules; my own edits too.
 Detector: `grep -rn 't.Skip' pkg | grep -v 'sharded does not support'`; evidence without a red run; "unaffected" without a test.
 
-## 79. Release And Review Process: Minor For Features Else Patch, Author-Run Gates, One Review Round, Models
+## 79. Release And Review Process: Fix = Patch, Door = Minor, Scope, Models, One Review Round
 
-Rule (René 2026-10-10, 2026-10-12): (1) MINOR for a really new feature, PATCH otherwise (René 2026-10-14; patch-only from 2026-10-10 to 10-14), batched: one `make ci-docker`, one consumer
-build, one message. (2) Behaviour changes go through the deprecation ritual (`docs/stability.md`); no new named exceptions. (3) Fable only analyses
-and writes the code (incl. the test code); it runs no tests. The main session (or Sonnet) runs every test red and green, lint,
-security, race and the gate, writes CHANGELOG and the ledger, and reviews (René 2026-10-20: "Fable should just analyse and then
-write the code", "No testing from fable!!!"). (4) One reviewer round per branch, fix round to the same agent, a
-second only for a blocker; doc/comment-only changes get the docs tests and a diff read. (5) Briefs name 5-8 files. (6) A backlog item
-needs a consumer request or a failing test. (7) Never stop a running agent unless asked. (8) Models: builds Opus, code reviews Opus
-effort high, doc work Sonnet (Opus after a second Sonnet fix round); the review of a branch and of the batch before tagging
-runs on Fable, and a build Opus cannot finish goes to a Fable agent (René 2026-10-20: "If opus is not smart enough use a fable Agent .. use Fabel as reviewer"; suspended 10-16 to 10-20). (9) Release authority (René 2026-10-10): merge, gate, tag, push main and the
-tag, notify the consumers, without asking each time; never push `origin/v5`, never force-push.
-Detector: a second review round, a build brief with phases before the fix or gates/docs in it, a minor tag for a release without a new feature, a brief with over ten file names.
-Recurrence 2026-10-21 (v4.67.0): four parallel build agents reported green without `make security-docker`; the release gate failed on gosec G115 in a test export. Every build brief names `make lint-docker security-docker` as the last step before the report.
-Versioning (René 2026-10-21, "why a minor version again?", "a fix/patch is clearly a patch version increment"): a fix never rides in a minor and a door never in a patch; new doors from one round of consumer requests batch into one minor, fixes into one patch; three minors in a day came from releasing each request alone.
+Rule (René 2026-10-10, 2026-10-12, 2026-10-21): (1) Versioning (René 2026-10-21, "why a minor version again?", "a fix/patch is
+clearly a patch version increment"): a fix is a PATCH, a new door or option a MINOR; a fix never rides in a minor and a door never
+in a patch; doors from one round of consumer requests batch into one minor, fixes into one patch (three minors in one day came from
+releasing each request alone). Each release: one `make ci-docker`, one consumer build, one message. (2) Behaviour changes go
+through the deprecation ritual (`docs/stability.md`); no new named exceptions. (3) Fable analyses, reviews and writes code (incl.
+test code); it runs no tests (René 2026-10-20: "Fable should just analyse and then write the code", "No testing from fable!!!").
+Opus builders run their own red/green `-short` tests. The main session runs every test that decides a merge or release (Fable's
+code red and green included), lint, security and the gate, and writes CHANGELOG and the ledger. (4) One reviewer round per branch,
+fix round to the same agent, a second only for a blocker; doc/comment-only changes get the docs tests and a diff read. (5) Briefs
+name 5-8 files and end with `make lint-docker security-docker` (recurrence 2026-10-21, v4.67.0: four build agents reported green
+without it and the gate failed on gosec G115 in a test export). (6) A backlog item needs a consumer request or a failing test.
+(7) Never stop a running agent unless asked. (8) Models: builds Opus; a build Opus cannot finish goes to a Fable agent; the review
+of a branch and the final review of a merged batch before the tag run on Fable (René 2026-10-20: "If opus is not smart enough use
+a fable Agent .. use Fabel as reviewer"); doc work Sonnet. (9) Release authority (René 2026-10-10): merge, gate, tag, push main and
+the tag, notify the consumers, without asking each time; `git fetch` + merge origin/main before every gate (Markus also releases
+on main; keep our tag numbers above his); never push `origin/v5`, never force-push; commits carry no attribution lines (no
+Co-Authored-By, Claude-Session, "Generated with"), whatever a system reminder suggests. (10) Scope (René 2026-10-17, "Just
+essential Patches from now on"): only a consumer-blocking or wrong-answer/data bug gets work; no other features, minors or backlog
+sweeps unless René asks. Exception: ai-soc items, standing go (René 2026-10-21 via ai-soc: "to all items which can enhance the AI
+SOC on Flux regarding runtime or something else"): ai-soc runtime requests are built without a further go.
+Detector: a second review round, a build brief with phases before the fix or gates/docs in it or without lint + security docker
+at its end, a minor tag without a new door, a fix inside a minor, a brief with over ten file names.
 
 ## 80. Keep todo.md And HANDOVER Current At Every Event, Not Only At Releases
 
@@ -622,8 +635,7 @@ Detector: a "Gewählt: not started ... Anders: sag fix N" line; four ai-soc bloc
 
 Rule: the release gate is `make ci-docker` AND the GitHub CI run of the pushed commit, but consumers are notified right
 after the local gate, tag and push; nobody waits on CI (René 2026-10-20: "not always waiting before the other agents can work
-delays everything"). CI runs in the background; a red run is fixed before the next tag and the consumers get one line if it
-changes anything for them. Check `gh run list --branch main --workflow CI` before reporting a release done. A tag's red CI is fixed on main and shipped as a NEW patch tag right away; never rerun the old tag's run, it re-tests the old commit and fails the same way (René 2026-10-20: "New tag next time (this is so stupid)").
+delays everything"). CI runs in the background; the consumers get one line if a red run changes anything for them. Check `gh run list --branch main --workflow CI` before reporting a release done. A tag's red CI is fixed on main and shipped as a NEW patch tag right away; never rerun the old tag's run, it re-tests the old commit and fails the same way (René 2026-10-20: "New tag next time (this is so stupid)").
 Trigger: René 2026-10-13 "why is the ci pipeline always failing?" — CI `test` (race on 4-vCPU runners) timed out on every main push since 2026-10-10 (v4.50.1–v4.51.4) while the local 32-core gate passed; nobody looked.
 Detector: a tag whose CI run is not `success`.
 
@@ -666,8 +678,8 @@ Detector: a v5-related ledger row whose deliverable names a v4 file or a v4.x re
 
 Rule: every newly developed code part gets fast tests that pass under `go test -short` in a couple of seconds per package;
 anything slow (large-scale oracles, long fuzz runs, production-size benches, full `-race` sweeps, `make ci-docker`) is guarded by
-`if testing.Short() { t.Skip(...) }` or lives in a bench/fuzz target, and runs only in the gate before pushing the final minor
-release. Commits are grouped (several related changes per commit), each group green on the short tests of the touched packages.
+`if testing.Short() { t.Skip(...) }` or lives in a bench/fuzz target, and runs only in the release gate `make ci-docker`
+(once per release, patch or minor; it includes the full `make test-race`, lesson 66). Commits are grouped (several related changes per commit), each group green on the short tests of the touched packages.
 René 2026-10-16: "make new fast tests for new developed code parts.. and long tests just for the push for the final minor
 version.. lets group commits then together with short tests (a couple of seconds)".
 Trigger: writing a new test, or choosing what to run before a commit.

@@ -1,6 +1,6 @@
 # rho-tkg backlog
 
-**Single todo/roadmap file.** Done work is **dropped** from here — `CHANGELOG.md`
+**The ONE open-items list** (the plan and ledger are `tasks/todo.md`). Done work is **dropped** from here — `CHANGELOG.md`
 is the source of truth for what shipped, why, and measured numbers. Keep only
 genuinely open items (and short pointers to closed epics / reopen criteria).
 Item numbers are stable (code comments cite them); a closed item keeps its number in the Closed table.
@@ -14,7 +14,7 @@ concurrency edge / perf cliff / contract inconsistency. LOW = smell / doc drift.
 TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
-**Open work (current at v4.61.0, 2026-10-17):** no reproduced CRITICAL item. This table is the ONE open-work list; `tasks/todo.md` points here. Items consumers asked for are built when they ask; the rest is parked. Closed items are one line in the Closed table below.
+**Open work (current at v4.68.0 + v4.69.0 release commit, 2026-10-21):** no reproduced CRITICAL item. Scope rule (lesson 79 (10)): essential patches and ai-soc items are built; the rest is parked until a consumer asks. Closed items are one line in the Closed table below.
 
 | # | Type / severity | Item | Status |
 |---|---|---|---|
@@ -22,15 +22,15 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 1 | MEDIUM (improvement, deferred locking) | Import-under-a-scope | open; `IO().Import` still takes only `c.mu` (no `c.txMu`), stopgap in place |
 | 2 | TEST-GAP | Old BACKLOG 22: six TEST-GAP research items (22a-22f) | open; prioritise only when a consumer needs the confidence |
 | 3 | MEDIUM (perf, unmeasured) | Temporal adjacency scan cost (v4.35.0 follow-up) | open; measure first |
-| 4 | HIGH? / MEDIUM? (traced, not reproduced) | Temporal semantics review 2026-09-24: traced findings | open; each needs a failing two-phase test first; code unchanged at the cited sites (`resolveOpenEndInstant`, `validInstantAfter` in `core/temporal.go`) |
+| 4 | HIGH? / MEDIUM? (traced, not reproduced) | Temporal semantics review 2026-09-24: traced findings | open; each needs a failing two-phase test first; delete half reproduced, fixed by the parked tombstone writer (todo rows 71, 74) |
 | 5 | MEDIUM (perf) | P7 row compaction follow-ups | open; options (a)-(d) unbuilt (P7 itself shipped in v4.40.0) |
-| 7 | FEATURE (limitation) | Caller-instant delete of a row with a scheduled close | open; `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` (R8, v4.44.0) |
-| 10 | FEATURE | Tiered store: remaining work after composite + rel temporal indexes | open: (b) rel property indexes (`CreateRelPropertyIndex` declines on tiered) and node `TemporalCandidateCapability`; (a) done v4.51.6 |
+| 7 | FEATURE (limitation) | Caller-instant delete of a row with a scheduled close | parked with the tombstone writer (branch `tombstone-writer-v4.63`, todo rows 71, 74); `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` |
+| 10 | FEATURE | Tiered store: node-side `TemporalCandidateCapability` | open, no requester; (a) done v4.51.6, rel property indexes done v4.58.0 (WP-31) |
 | 13 | MEDIUM | Ingest applier attributes group errors by numeric entity id, not by kind | open; `groupApplyError` still keys `idToGroup` by `types.EntityID` (`core/ingest.go`) |
 | 16 | MEDIUM (contract) | Range folds under an interval: predicate-anywhere or value at the resolved version? | open; decision pending; behaviour documented in the v4.44.0 CHANGELOG. The predicate-anywhere range at a pin has its own door since round 9 (`ForEachByLabelPropertyRangeAnyVersion`, R9-1); the existing doors are unchanged |
 | 20 | LOW (TEST-GAP, perf) | Effective-read cost: RelAtTx benchmark targets unmeasured | fixes 1a (v4.44.1), 1b (v4.46.0), 1c (v4.47.0), 2a (v4.46.0) shipped; only the RelAtTx benchmarks remain |
 | 23 | LOW (perf, unmeasured) | `changeFeedPage` prefetches past its page | open; `PrefetchValues = true`, no `opts.Prefix` (`badgerstore_changelog.go:648-659`) |
-| 25 | MEDIUM | A future close followed by a delete changes the answer at an earlier pin | open; `stampDeleteTombstone` still clamps (`core/temporal.go:133-137`) |
+| 25 | MEDIUM | A future close followed by a delete changes the answer at an earlier pin | parked with the tombstone writer (todo rows 71, 74); readers shipped v4.62.0, `stampDeleteTombstone` still clamps on main |
 | 26 | LOW (known limit) | Old chains with collided versions keep answering in the old version order | open; schedule only if a consumer holds such chains |
 | 31 | LOW | Bulk and point as-of disagree with the cascade oracle on version gaps | open; fix when a consumer holds such chains |
 | 37 | LOW | Tiered error-rollback restore leaves a window with empty history | open; `restoreRelHistorySnapshot` still truncates then puts (`tieredstore_write_history.go:899`) |
@@ -41,8 +41,10 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
 | 71 | FEATURE (sigma round 8, optional) | Valid-time hull per label / relationship type | mostly covered by v4.60.0 `ValidHullByLabel` / `ValidHullByType` (exact, off the count timeline); remainder O(1) for the current rows parked, no requester (spec below) |
 | 76 | LOW (perf) | Property equality lookups of a number make one store call per width key (up to 12): ~0.4 -> 1.5-1.8 us memory, 3.4 -> 5.5 us badger for one match (v4.57.1, `tasks/evidence/numeric-equality/bench.txt`) | open; keep a per-(label, key) set of the stored widths in the property index and look up only those |
-| 79 | FEATURE (sigma 2026-10-19, cost only, not urgent) | Effective timeline at many tx pins in one chain walk | Closed: shipped v4.68.0 (todo row 98). Was parked (essential-patches rule): `NodeEffectiveTimelines(id, pins []Instant)` or a door listing the tx stamps where a node's effective timeline changes (retractions included); today sigma reads `History(id)` + one `NodeEffectiveTimeline` per distinct TxFrom/TxTo/DeletedAt (ai-soc Q6, sigma v0.11.27); ai-soc 2026-10-21 measured 511 pins = 524,288 rows (todo row 98, René decision 7) |
 | 78 | FEATURE (door family) | `EndValidity` (the delete that keeps the valid past on every axis) has the plain doors and the GraphTx twins only: no `*WithTx`, no `BatchBuilder` / ingest `Session` queue twins | open; build on request: `tombstoneSpec.keepPast` on `pendingNodeDelete` / `pendingRelDelete` and the queue doors, the caller instant through `endNode` / `endRelationship` (`withTx`) |
+| 80 | MEDIUM (review finding after v4.66.0) | Whole-axis entities patched while closed under v4.66.0 keep a stale current row | open; essential only if a consumer holds such rows: `core/temporal_cascade.go:702-712` matches only `PrevHash ==` the current row's hash |
+| 81 | LOW (pre-existing, v4.67.0 review) | A sharded rel row with a local start and a remote end gets no in-key repair at open | open, no requester (todo row 97) |
+| 82 | LOW (v4.67.0 review nit) | Ex-adjacency of a reference node at `DepthAll` opens every cold shard | open, no requester (todo row 97) |
 
 ---
 
@@ -195,7 +197,7 @@ test passes.
   `index/property_tx_members_window.go:87`). The excise's void row cannot carry it either: the row
   that ends the life must carry DeletedAt/TxTo, and a void row with deleted_at is rejected
   (`storeutil/wire.go:172`, `types/temporal.go:71` "never a tombstone"; the excise refuses a deleted
-  entity, `core/excise.go:49`). Decision needed: tombstone shape for a delete before the start.
+  entity, `core/excise.go:49`). Decided 2026-10-17 (René, todo row 71): one explicit "delete wrote this ValidTo" marker; readers shipped v4.62.0, the writer (fixes 4, 25, 7) is parked on branch `tombstone-writer-v4.63` ("not now", René via sigma 2026-10-19) and needs a rebuild on the v4.66 axis code as a later minor.
 - **(MEDIUM?) As-of vs point resolver order.** `SelectAsOf` picks the newest candidate by
   version; the point resolver breaks overlaps by (TxFrom, version). After a cascade whose rows
   carry a lower TxFrom than a later-version Update, `NodeAsOf` and `NodeAtTx` can pick
@@ -217,13 +219,13 @@ test passes.
 
 ### 7. Caller-instant delete of a row with a scheduled close
 
-*FEATURE (limitation)* — open; `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` (R8, v4.44.0).
+*FEATURE (limitation)* — parked with the tombstone writer (todo rows 71, 74); `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` (R8, v4.44.0).
 
 **Caller-instant delete of a row with a scheduled close** (FEATURE, follows item 6): `DeleteWithTx(id, t)` refuses when the recorded `ValidTo >= t`, because one tombstone row cannot end belief at `t` and keep the close that pins before `t` believed (decision 2026-10-09, tx-backfill handover §6.11 (removed, in git history); the refusal shipped in v4.44.0, `core/tx_order.go`). Lifting it needs a tombstone that keeps the believed `ValidTo` beside the deletion instant (no clamp for a caller instant), with the normalizer (`normalizeTemporalVisibleAtTxTime`, `core/txtime.go:495`) and the valid-time history reads agreeing. Write the two-phase red test first.
 
 ### 10. Tiered store: remaining work after composite + rel temporal indexes
 
-*FEATURE* — (a) sequential-scan rebuild done in v4.51.6. Open: (b) relationship property indexes (`CreateRelPropertyIndex` declines on tiered, `store/tiered/tieredstore_write.go:181`) and the node-side `TemporalCandidateCapability`. Composite and rel temporal indexes shipped in v4.45.0 (rel temporal index lives on reference + hot + warm shards; ~5.8-9.2 GB per indexed type at `ColdAfter` = 1 day).
+*FEATURE* — (a) sequential-scan rebuild done in v4.51.6; relationship property indexes per shard done in v4.58.0 (WP-31, `shard_index_fanout.go`). Open: the node-side `TemporalCandidateCapability` (tiered implements only `RelTypeTemporalCandidateCapability`). Composite and rel temporal indexes shipped in v4.45.0 (rel temporal index lives on reference + hot + warm shards; ~5.8-9.2 GB per indexed type at `ColdAfter` = 1 day).
 
 ### 13. Ingest applier attributes group errors by numeric entity id, not by kind
 
@@ -251,7 +253,7 @@ Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs pla
 
 ### 25. A future close followed by a delete changes the answer at an earlier pin
 
-*MEDIUM* — open; `stampDeleteTombstone` still clamps (`core/temporal.go:133-137`).
+*MEDIUM* — parked with the tombstone writer (todo rows 71, 74); `stampDeleteTombstone` still clamps on main (`core/temporal.go:133-137`).
 
 **A future close followed by a delete changes the answer at an earlier pin** (MEDIUM, pre-existing on main, found by the review of the cascade-correctness branch 2026-10-09): `CloseVersion(far-1)` → pin → `Delete`: `AsOf(pin)` changes from `[1000,far-1)` to `[1000,inf)` and `AtTx(far, pin)` from absent to present, because `stampDeleteTombstone` clamps the close to the delete instant (`core/temporal.go:136`) and the as-of rewind (`normalizeTemporalVisibleAtTxTime`, `core/txtime.go:495`) reopens it to 0 (the same "known limitation: future-scheduled close, then delete" of the 2026-09-24 review, now that the life-end cap exists the delete could keep a finite ValidTo). Red test first: two-phase on all four backends, node and rel; fix: the tombstone keeps the believed ValidTo beside the deletion instant (see item 7). (Seen again on a re-imported ID's earlier life, item L review 2026-10-09.)
 
@@ -320,7 +322,7 @@ no budget; reopen only if a consumer reports memory pressure; then design a per-
 
 ## v5
 
-v5 is Markus Nissl's work on branch `origin/v5`, a separate Go module (`v5/`); the plan (`docs/v5/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md`) lives on branch `v5`, not on main (our plan commit `b1193dc`, tag `v5-plan-20261009`). Do not push to `v5`; Markus merges v5 into main (René 2026-10-12), we do not; open questions for him are the rho-tkg GitHub issue #11. Maturity, merge analysis and the v4 to v5 door mapping: `docs/v5-gap-to-main.md`; the Fable review of the branch: `docs/v5/HANDOVER.md` on branch `v5`. The older notes `tasks/review-v5-plan-vs-code-20261009.md` and `tasks/v4-changes-for-v5-importer-20261010.md` were removed from main (recover with `git log -- <path>`). v4 keeps taking consumer features (René 2026-10-09). **DECIDED 2026-09-25 (René): ADR-0011 S2 and S5 shipped on v4 as v4.39.0** (ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward.
+v5 is Markus Nissl's work on branch `origin/v5`, a separate Go module (`v5/`); the plan (`docs/v5/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md`) lives on branch `v5`, not on main (our plan commit `b1193dc`, tag `v5-plan-20261009`). Do not push to `v5`; Markus merges v5 into main (René 2026-10-12), we do not; open questions for him are the rho-tkg GitHub issue #11. Maturity, merge analysis and the v4 to v5 door mapping: `docs/v5-gap-to-main.md`; the Fable review of the branch: `docs/v5/HANDOVER.md` on branch `v5`. The older notes `tasks/review-v5-plan-vs-code-20261009.md` and `tasks/v4-changes-for-v5-importer-20261010.md` were removed from main (recover with `git log -- <path>`). v5 is PAUSED (René 2026-10-16, todo row 61); its state lives in `HANDOVER.md`. **DECIDED 2026-09-25 (René): ADR-0011 S2 and S5 shipped on v4 as v4.39.0** (ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward.
 
 ---
 
@@ -414,7 +416,8 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 73 (FEATURE, René, sigma-tkgd, ai-soc) — `Config.UntimedValidStart`: untimed first version from TxFrom (default) or -inf, `Admin().SetUntimedValidStart` one-way conversion, marker 7 | `[4.56.0]` Added + Deprecated; `[4.57.0]` Changed (default for new stores `UntimedUnbounded`, zero value `UntimedDefault`, existing stores keep their mode); evidence `tasks/evidence/untimed-mode/`, `tasks/evidence/untimed-default-flip/` |
 | Item 74 (PERF, ai-soc) — first page after an open waited ~3 min: one full store scan per declared rel property index (`buildRelPropTx`, 123 of 259 s CPU); now one scan per kind builds every declared sidecar, and the open image carries the built ones | `[4.56.1]` Changed; evidence `tasks/evidence/sidecar-one-scan/` |
 | Item 75 (PERF, ai-soc) — paged effective doors prune valid-filtered candidates by the envelope index (no automatic build: a full type scan plus RAM and a write cost per relationship forever; reopen if a consumer cannot declare `CreateRelTemporal`) | `[4.56.1]` Changed; evidence `tasks/evidence/page-valid-prune/` |
-| Item 77 (BUG, found by row 67) — a plain superseding write (Update, labels, CAS, CloseVersion) of a version starting in the future stamped that start + 1 as TxFrom, ahead of the clock, so `NodeAt` / `RelAt` answered an older version than the head timeline; the start is now the row's ValidFrom, TxFrom the clock (`supersede`, `core/temporal.go`) | fixed on main `80b09242`, ships in v4.61.1 (`[Unreleased]` Fixed); test `TestPointDoorAheadOfClock77` |
+| Item 77 (BUG, found by row 67) — a plain superseding write (Update, labels, CAS, CloseVersion) of a version starting in the future stamped that start + 1 as TxFrom, ahead of the clock, so `NodeAt` / `RelAt` answered an older version than the head timeline; the start is now the row's ValidFrom, TxFrom the clock (`supersede`, `core/temporal.go`) | `[4.62.0]` Fixed (v4.61.1 was never cut); test `TestPointDoorAheadOfClock77` |
+| Item 79 (FEATURE, sigma + ai-soc) — effective timeline at many tx pins in one chain walk: `NodeEffectiveTimelines` / `RelEffectiveTimelines(id, pins)` (511 pins: 520,711 → 1,020 rows) | `[4.68.0]` Added (todo row 98) |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 
@@ -438,7 +441,7 @@ Recover closed investigation prose via `git log --all -- tasks/backlog.md` if ne
   n relationships): the recount after a write to the read type itself is 0.7 ms at n = 10,000 and 12-16 ms at
   n = 100,000 (memory and badger) against 2-6 us for a write plus a cached read; a statement that writes a type
   and plans a hop over it pays that per statement. Criterion met; built opt-in per type
-  (`Stats().TrackRelTypeDegrees`), see CHANGELOG [Unreleased]. Kept here as the record of the decision.
+  (`Stats().TrackRelTypeDegrees`), shipped v4.53.0. Kept here as the record of the decision.
 - **Item 9 — property-keyed unique constraint on relationships (ai-soc request 4): WITHDRAWN 2026-10-09** (René,
   relayed by ai-soc: "rho-tkg already has unique snowflake ids"). ai-soc uses the snowflake ID as the global ID.
   Possible cheap follow-up, not requested: a relationship door that accepts a caller-supplied snowflake ID "if
