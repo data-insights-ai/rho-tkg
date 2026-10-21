@@ -23,6 +23,11 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
   adjacency) → rollback of n rels costs n × pending (ai-soc Flux: one failed write-back rollback > 2 h; normal pushes 0-0.64 %).
   Resume on local branch `row102-pending-ranged` (red tests 8fa7a967 + WIP) → patch.
 - Backlog 80-82 (review findings, no requester).
+- sigma FYI 2026-10-21 (ai-soc BA RESHEAP, rho-attributed heap 0.53 → 1.13 GB in 24 h): 0.18 GB ristretto Calloc under
+  Session.checkEntities → latestStamps. In code: each opened tiered shard owns its own badger block/index cache (badgerCfg
+  passes BlockCacheSize; 0 = Badger's default, badgerstore_options.go:182), so cache RAM = open shards × per-shard size,
+  bounded by MaxOpenColdShards but never declared as one budget. Next step: one store-wide cache budget or a documented
+  per-shard size (ai-soc sets BlockCacheSize/IndexCacheSize). Not critical path.
 
 ## 2. State
 
