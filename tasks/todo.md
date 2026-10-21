@@ -297,8 +297,7 @@ alone, no deprecation ritual (docs/stability.md:26); the sticky marker is an ord
 
 ## R3 sizing (rows 95-96, Fable 2026-10-21)
 
-Analysis only (code read, nothing run). Paths `pkg/graph/store/badger/` unless noted. Go 1.26 swiss maps at mean load ~0.66: 14 B
-per entry of `map[ID]struct{}`, 26 B of `map[ID]uint64|NodeID|ptr`, 38 B of `map[RelID]inEdge`; a small inner map = 48-B header + one group (80/144/208 B).
+Analysis only (code read, nothing run). Paths `pkg/graph/store/badger/` unless noted. Go 1.26 swiss maps at mean load ~0.66: 14 B per entry of `map[ID]struct{}`, 26 B of `map[ID]uint64|NodeID|ptr`, 38 B of `map[RelID]inEdge`; a small inner map = 48-B header + one group (80/144/208 B).
 
 **1. Bytes per rel (d = rels per endpoint node on the shard).** Tiered sets `DisableOrdinals` (tiered/tieredstore.go:1431);
 `relValidIdx` stays nil (tiered has no `ForEachAdjacentEndpointAt`, rel_validstamp.go:40-47); `relTypeTxMembers` /
@@ -340,8 +339,7 @@ rel_columns.go:53, rel_index.go:191/303, rel.go:594/647, node_batch.go:400, part
 | B2 lazy relRevs | no seeding at open behind the same flag; first Replace/Delete of a rel after open pays one `getRelLocked` (rel.go:553/584 already fall back) | 28 | one extra row read per rel on its first write after open | 10 / 30 |
 | C flat | relIDs via `KeyRel` point read + pending overlay (50 sites), typeIdx via `KeyRelType` prefix scan (12 sites, label_disk.go as template), counts from the persisted counters | ~0 beyond caches: RAM flat in rel count (the acceptance's letter) | existence 1-3 µs (block-cache hit) instead of 50 ns, in EVERY write door; type scan = key scan + sort | 450 / 350 |
 
-Not a per-tier flag: a hot shard becomes warm without reopen (tiered/tieredstore_catalog.go:139 flips `readOnly` only), so
-`adjOnDisk`, fixed at open, must hold for all shards; if the hot-shard overlay cost shows, a `ReleaseAdjacencyMaps` door (flush, drop maps, set adjOnDisk under idxMu, ~40 LOC) switches a shard at demotion. Additive opt-in, default off → minor.
+Not a per-tier flag: a hot shard becomes warm without reopen (tiered/tieredstore_catalog.go:139 flips `readOnly` only), so `adjOnDisk`, fixed at open, must hold for all shards; if the hot-shard overlay cost shows, a `ReleaseAdjacencyMaps` door (flush, drop maps, set adjOnDisk under idxMu, ~40 LOC) switches a shard at demotion. Additive opt-in, default off → minor.
 
 **4. Red tests first** (tiered unless noted): `TestTieredConfig_AdjacencyIndexOnDisk_Propagates` (every shard incl. a
 rotation-created and a lazily opened cold one; break: flag off, cold reopen); `TestTieredAdjacencyOnDisk_ReadsEqual`
@@ -349,8 +347,7 @@ rotation-created and a lazily opened cold one; break: flag off, cold reopen); `T
 rel, deleted rel still pending, self-loop, unknown node); badger `TestLoadIndexes_AdjOnDisk_NoTransientMaps` (open with image:
 MemStats delta < 60 B/rel at 200 k rels; break: unclean open still repairs a dropped key); `TestRelRevs_LazySeed_PrefetchFallsBack`
 (Replace after open reads the row once; break: concurrent property write between prefetch and lock still detected). Risks:
-hot-shard `rangePending` cost under ingest (measure with ai-soc's writer); `RelTypeDegreeCounts` ok=false path on tiered;
-open-time key repair (`kr`) coverage once the maps are no longer built.
+hot-shard `rangePending` cost under ingest (measure with ai-soc's writer); `RelTypeDegreeCounts` ok=false path on tiered; open-time key repair (`kr`) coverage once the maps are no longer built.
 
 **Row 96 (per-shard unique on an event label).** Fit: the machinery is `createUnique` (core/unique_constraints.go:247) with
 a scope switch (:254), the event refusal `rejectTieredEventLabel` (:75-84) and an owner lookup via `nodesByLabelAndProperty`,
