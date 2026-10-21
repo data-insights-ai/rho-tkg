@@ -51,6 +51,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   lives on another shard (as its write path always held them in RAM); new `badger.Store.OutgoingRelIDsOfType`.
   Default off: no change for existing callers. Tests: `TestRelsByMint_*` (tiered, graph),
   `TestCoLocatedLegsSurviveReopen`.
+- **RelsByMint review fixes** (row 97). The store's `DeleteNodeCascade` (replica apply, rollback, import) now
+  deletes a reference node's mint-placed rels on every tier with their row and both legs, as `DeleteNodeWithHistory`
+  does; before, they stayed readable and listed as incoming of the other end. A dirty badger open re-creates the lost
+  in-key of a local rel row with no local endpoint (a mint rel after a split flush), in map and disk mode, and fills
+  both legs of every rebuilt row into this session's maps; a tiered split row (local start, remote end) still gets
+  no in-key. With the option, `AddRelationships` of ref-ref rels on tiered is not all-or-nothing (docs/api.md).
+  `TestRelsByMint_DeleteNodeCascadeNoDangling`, `TestLoadIndexes_MintInKeyRepairedAfterSplitFlush`.
 
 ## [4.66.3] - 2026-10-20
 
