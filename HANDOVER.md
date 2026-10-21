@@ -33,7 +33,7 @@ this order: this file, lessons digest, todo (user requests, releases table), bac
     windowed reads); declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets `UntimedValidStart:
     UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data day; `/bars`,
     `/tkg/asof` = its HTTP read doors.)
-  - sigma-tkgd: v0.11.42 (2026-10-21, F1 its own) on rho v4.68.0 (v0.11.41: plural `NodeEffectiveTimelines`, DepthHot on
+  - sigma-tkgd: v0.11.43 (2026-10-21, F2 its own) on rho v4.68.0; next P1 uses the plural timelines with [prevPin, pin] (v0.11.41: plural `NodeEffectiveTimelines`, DepthHot on
     Derived/Session lookups); adopts v4.69.1 when sent, moving its reference-label check into session/writer open (F0b).
   - Notify after gate + tag + push: `sigma-tkgd-c3` and `ai-soc-main-e7` (`ListAgents`, main session only; socket names change
     per session). If neither resolves, put the release note here and tell René in one line.
