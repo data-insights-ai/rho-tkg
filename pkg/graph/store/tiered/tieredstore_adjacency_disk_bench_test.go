@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"testing"
@@ -180,6 +181,9 @@ func BenchmarkR3OpenShardFootprint(b *testing.B) {
 				if int(rels) != n {
 					b.Fatalf("open event shards hold %.0f rels, want %d", rels, n)
 				}
+				if path := os.Getenv("RHO_R3_HEAPPROF"); path != "" {
+					r3HeapProfile(b, path) // in-use heap of the open shard, per map
+				}
 				heap := float64(int64(m1.HeapAlloc) - int64(m0.HeapAlloc))
 				b.ReportMetric(heap/rels, "heapB/rel")
 				b.ReportMetric(float64(rss1-rss0)/rels, "rssB/rel")
@@ -280,5 +284,17 @@ func BenchmarkR3HotAdjacencyReadPending(b *testing.B) {
 				}
 			})
 		}
+	}
+}
+
+// r3HeapProfile writes the in-use heap profile to path (RHO_R3_HEAPPROF).
+func r3HeapProfile(b *testing.B, path string) {
+	f, err := os.Create(path)
+	if err != nil {
+		b.Fatalf("heap profile: %v", err)
+	}
+	defer f.Close()
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		b.Fatalf("heap profile: %v", err)
 	}
 }
