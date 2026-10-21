@@ -146,7 +146,7 @@ func (bs *Store) appendOpsLoggedRouted(tag storecontract.ChangeTag, payload []by
 func (bs *Store) appendOpsLoggedRoutedRaising(marker uint16, tag storecontract.ChangeTag, payload []byte, token uint64, ops ...writeOp) error {
 	bs.wbMu.Lock()
 	for _, op := range ops {
-		bs.pending[string(op.key)] = op
+		bs.pending.put(string(op.key), op)
 		bs.noteHistoryKey(op)
 		bs.noteValidEndOp(op)
 	}

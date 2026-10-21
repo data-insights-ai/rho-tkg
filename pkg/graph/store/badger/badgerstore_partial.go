@@ -404,26 +404,29 @@ func (bs *Store) deletePendingIncoming(endNodeID, relID snowflake.ID) {
 	bs.wbMu.Lock()
 	defer bs.wbMu.Unlock()
 
-	for k, op := range bs.pending {
+	for k, op := range bs.pending.ops {
 		key := []byte(k)
 		if len(key) != storepkg.SizeAdjacency || key[0] != storepkg.KeyIn || op.opType != writeOpSet {
 			continue
 		}
 		if storepkg.ParseIDFromKey(key, 1) == endNodeID && storepkg.ParseRelIDFromAdjKey(key) == relID {
-			bs.pending[k] = writeOp{opType: writeOpDelete, key: op.key}
+			bs.pending.put(k, writeOp{opType: writeOpDelete, key: op.key})
 		}
 	}
 	// A matching SET parked in `flushing` is mid-commit and cannot be rewritten:
 	// queue an explicit delete into pending, else the repair View scan misses the
 	// not-yet-committed key and the incoming entry orphans.
-	for k, op := range bs.flushing {
+	if bs.flushing == nil {
+		return
+	}
+	for k, op := range bs.flushing.ops {
 		key := []byte(k)
 		if len(key) != storepkg.SizeAdjacency || key[0] != storepkg.KeyIn || op.opType != writeOpSet {
 			continue
 		}
 		if storepkg.ParseIDFromKey(key, 1) == endNodeID && storepkg.ParseRelIDFromAdjKey(key) == relID {
-			if _, has := bs.pending[k]; !has {
-				bs.pending[k] = writeOp{opType: writeOpDelete, key: op.key}
+			if _, has := bs.pending.ops[k]; !has {
+				bs.pending.put(k, writeOp{opType: writeOpDelete, key: op.key})
 			}
 		}
 	}

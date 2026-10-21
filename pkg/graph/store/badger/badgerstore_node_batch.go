@@ -372,26 +372,28 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 	}
 
 	bs.wbMu.Lock()
-	for k := range bs.pending {
+	for k := range bs.pending.ops {
 		key := []byte(k)
 		if relationshipIndexKeyMatchesRelID(key, rawID) {
 			keyCopy := make([]byte, len(key))
 			copy(keyCopy, key)
-			bs.pending[k] = writeOp{opType: writeOpDelete, key: keyCopy}
+			bs.pending.put(k, writeOp{opType: writeOpDelete, key: keyCopy})
 			continue
 		}
 	}
 	// An index key parked in `flushing` is mid-commit (not in `pending`, not yet in
 	// Badger): queue an explicit delete so the flush removes it once it lands, else it
 	// orphans. Second guard for callers passing a precomputed key list.
-	for k, op := range bs.flushing {
-		if op.opType != writeOpSet || !relationshipIndexKeyMatchesRelID([]byte(k), rawID) {
-			continue
-		}
-		if _, has := bs.pending[k]; !has {
-			keyCopy := make([]byte, len(k))
-			copy(keyCopy, k)
-			bs.pending[k] = writeOp{opType: writeOpDelete, key: keyCopy}
+	if bs.flushing != nil {
+		for k, op := range bs.flushing.ops {
+			if op.opType != writeOpSet || !relationshipIndexKeyMatchesRelID([]byte(k), rawID) {
+				continue
+			}
+			if _, has := bs.pending.ops[k]; !has {
+				keyCopy := make([]byte, len(k))
+				copy(keyCopy, k)
+				bs.pending.put(k, writeOp{opType: writeOpDelete, key: keyCopy})
+			}
 		}
 	}
 	bs.wbMu.Unlock()

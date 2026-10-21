@@ -156,7 +156,7 @@ func (bs *Store) persistOpenImageLocked() {
 func (bs *Store) writeOpenImage() error {
 	bs.idxMu.RLock()
 	bs.wbMu.Lock()
-	drained := len(bs.pending) == 0 && len(bs.pendingLog) == 0 && len(bs.flushing) == 0
+	drained := bs.pending.size() == 0 && len(bs.pendingLog) == 0 && bs.flushing.size() == 0
 	bs.wbMu.Unlock()
 	if !drained {
 		// A write raced Close past its final flush: the RAM state holds a row

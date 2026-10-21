@@ -546,14 +546,14 @@ type Store struct {
 	// Write buffer (own mutex, swapped on flush).
 	// Map keyed by string(op.key) for last-write-wins deduplication.
 	wbMu    sync.Mutex
-	pending map[string]writeOp
+	pending *writeBuf
 	// flushing holds the snapshot a concurrent flush() is committing: parked from
 	// pending under wbMu before the WriteBatch commit, cleared after it succeeds (merged
 	// back on failure). In between a row lives only here, so history, adjacency and
 	// label overlay scans must go through rangePending / lookupPending, which read both
 	// maps. Entity point reads survive this window via the resident dirty cache;
 	// overlay scans must use rangePending/lookupPending.
-	flushing map[string]writeOp
+	flushing *writeBuf // nil outside a flush's commit window
 	// pendingScanned counts the buffered entries the overlay readers visited
 	// (rangePending*), guarded by wbMu: the cost probe of the row 102 tests.
 	pendingScanned uint64
@@ -948,7 +948,7 @@ func New(cfg Config) (*Store, error) {
 		relCache:                newRelCache(capacity, cfg.CacheBudgetBytes),
 		resident:                cfg.ResidentCache,
 		heldRows:                heldRowsOf(capacity, cfg.ResidentCache),
-		pending:                 make(map[string]writeOp),
+		pending:                 newWriteBuf(),
 		formatMarker:            formatMarker,
 		propertyIndexes:         make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
 		relPropertyIndexes:      make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex),
@@ -2137,7 +2137,7 @@ func (bs *Store) Clear() (err error) {
 	// with a consumer's pre-Clear watermark.
 	bs.commitGen.Add(1) // read snapshots re-pin after the wipe
 	bs.wbMu.Lock()
-	bs.pending = make(map[string]writeOp)
+	bs.pending = newWriteBuf()
 	bs.pendingLog = nil
 	bs.histNodeEpoch.Add(1)
 	bs.histRelEpoch.Add(1)

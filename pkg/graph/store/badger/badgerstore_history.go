@@ -472,13 +472,36 @@ func (bs *Store) pendingHistoryIDOverlay(prefix byte, after snowflake.ID) (map[s
 func (bs *Store) rangePending(fn func(k string, op writeOp)) {
 	bs.wbMu.Lock()
 	defer bs.wbMu.Unlock()
-	bs.pendingScanned += uint64(len(bs.flushing) + len(bs.pending))
-	for k, op := range bs.flushing {
+	bs.pendingScanned += uint64(bs.flushing.size() + bs.pending.size()) // #nosec G115 -- sizes are non-negative
+	if bs.flushing != nil {
+		for k, op := range bs.flushing.ops {
+			fn(k, op)
+		}
+	}
+	for k, op := range bs.pending.ops {
 		fn(k, op)
 	}
-	for k, op := range bs.pending {
-		fn(k, op)
+}
+
+// rangePendingPrefix is rangePending restricted to the keys starting with
+// prefix, in the same flushing-then-pending order. A prefix of at least
+// writeBucketLen bytes (one entity's keys) costs O(that bucket's keys), not
+// O(buffer) (row 102); a shorter one falls back to the full walk.
+func (bs *Store) rangePendingPrefix(prefix []byte, fn func(k string, op writeOp)) {
+	p := string(prefix)
+	if len(p) < writeBucketLen {
+		bs.rangePending(func(k string, op writeOp) {
+			if strings.HasPrefix(k, p) {
+				fn(k, op)
+			}
+		})
+		return
 	}
+	bs.wbMu.Lock()
+	defer bs.wbMu.Unlock()
+	n := bs.flushing.rangePrefix(p, fn)
+	n += bs.pending.rangePrefix(p, fn)
+	bs.pendingScanned += uint64(n) // #nosec G115 -- a visit count is non-negative
 }
 
 // lookupPending resolves a single buffered key, pending (newer) taking
@@ -486,10 +509,13 @@ func (bs *Store) rangePending(fn func(k string, op writeOp)) {
 func (bs *Store) lookupPending(key string) (writeOp, bool) {
 	bs.wbMu.Lock()
 	defer bs.wbMu.Unlock()
-	if op, ok := bs.pending[key]; ok {
+	if op, ok := bs.pending.ops[key]; ok {
 		return op, true
 	}
-	op, ok := bs.flushing[key]
+	if bs.flushing == nil {
+		return writeOp{}, false
+	}
+	op, ok := bs.flushing.ops[key]
 	return op, ok
 }
 

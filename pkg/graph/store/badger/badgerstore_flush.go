@@ -29,7 +29,7 @@ func (bs *Store) appendOps(ops ...writeOp) {
 func (bs *Store) appendOpsRaising(marker uint16, ops ...writeOp) {
 	bs.wbMu.Lock()
 	for _, op := range ops {
-		bs.pending[string(op.key)] = op
+		bs.pending.put(string(op.key), op)
 		bs.noteHistoryKey(op)
 		bs.noteValidEndOp(op)
 	}
@@ -144,7 +144,7 @@ func (bs *Store) EndGroupCommit() error {
 // pendingLog without backpressure between flush ticks.
 func (bs *Store) pendingLen() int {
 	bs.wbMu.Lock()
-	n := len(bs.pending)
+	n := bs.pending.size()
 	if bs.logEnabled.Load() {
 		n += len(bs.pendingLog)
 	}
@@ -230,13 +230,14 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	nodeDirty := bs.nodeCache.CollectDirty()
 	relDirty := bs.relCache.CollectDirty()
 	bs.wbMu.Lock()
-	ops := bs.pending
-	bs.pending = make(map[string]writeOp)
+	buf := bs.pending
+	ops := buf.ops
+	bs.pending = newWriteBuf()
 	// Park the in-flight snapshot so overlay readers (history / adjacency /
 	// label-index) still see these rows during the commit window — between this
 	// swap and wb.Flush() the rows are no longer in `pending` and not yet visible
 	// in a Badger View. Cleared after a successful commit; merged back on failure.
-	bs.flushing = ops
+	bs.flushing = buf
 	logs := bs.pendingLog
 	bs.pendingLog = nil
 	bs.wbMu.Unlock()
@@ -436,8 +437,8 @@ func (bs *Store) requeueLog(failed []pendingLogRecord) {
 func (bs *Store) requeueOps(failed map[string]writeOp) {
 	bs.wbMu.Lock()
 	for k, op := range failed {
-		if _, exists := bs.pending[k]; !exists {
-			bs.pending[k] = op
+		if _, exists := bs.pending.ops[k]; !exists {
+			bs.pending.put(k, op)
 		}
 	}
 	bs.wbMu.Unlock()
