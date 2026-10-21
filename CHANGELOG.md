@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`NodeEffectiveTimelines(id, pins)` / `RelEffectiveTimelines(id, pins)`: the effective timeline at many
+  transaction-time pins from one walk of the chain** (ai-soc, row 98, backlog 79). On `g.Temporal()`. Index `i` of
+  the result equals `NodeEffectiveTimeline(id, pins[i])`; pins may be unsorted and repeat; empty pins answer an empty
+  result. Every pin is checked before a row is read: one pin above the commit clock, compacted or below a retention
+  watermark refuses the whole call with the singular door's error and no result. History rows read for one entity
+  of 511 versions at 16 / 64 / 511 pins: 1,020 each, against 16,320 / 65,280 / 520,711 through one singular call per
+  pin (badger: 495 / 567 / 1,020 winner reads against 3,856 / 16,192 / 131,325).
+
 ## [4.67.0] - 2026-10-21
 
 ### Added

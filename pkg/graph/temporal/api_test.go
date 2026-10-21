@@ -235,6 +235,7 @@ type temporalOpsSpy struct {
 	lastRelType string
 	lastKey     string
 	lastPin     types.Instant
+	lastPins    []types.Instant // the many-pin timelines (row 98)
 	lastIv      ivCall
 
 	nodeSegs []NodeSegment

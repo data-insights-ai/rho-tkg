@@ -63,6 +63,8 @@ type Ops interface {
 	// Effective timeline: NodeAtTx / RelAtTx for every valid instant at once.
 	NodeEffectiveTimeline(id types.NodeID, pin types.Instant) ([]NodeSegment, error)
 	RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]RelSegment, error)
+	NodeEffectiveTimelines(id types.NodeID, pins []types.Instant) ([][]NodeSegment, error)
+	RelEffectiveTimelines(id types.RelID, pins []types.Instant) ([][]RelSegment, error)
 	ForEachNodeEffectiveByLabel(label string, pin types.Instant, fn func(NodeSegment) bool) error
 	ForEachRelEffectiveByType(typeName string, pin types.Instant, fn func(RelSegment) bool) error
 	ForEachNodeEffective(pin types.Instant, fn func(NodeSegment) bool) error
@@ -583,6 +585,36 @@ func (a *API) RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]RelSegm
 		return nil, err
 	}
 	return ops.RelEffectiveTimeline(id, pin)
+}
+
+// NodeEffectiveTimelines returns NodeEffectiveTimeline(id, pins[i]) at index
+// i for every pin, read from ONE walk of the node's history chain: the
+// history rows read are about versions + segments, not pins × versions
+// (row 98: 511 versions at 511 pins read 524,288 rows through 511 singular
+// calls). The result is aligned with pins: unsorted and repeated pins are
+// allowed, and each answer is the singular door's at that pin (nil for a pin
+// at or below 0 or before the node's creation). Empty pins: an empty result,
+// nothing read. Every pin is checked before a row is read: one pin above the
+// commit clock (ErrTxPinTooNew), below compacted knowledge
+// (ErrHistoryCompacted) or below a retention watermark (ErrRetentionExpired)
+// refuses the whole call with no result. Other errors as
+// NodeEffectiveTimeline. The head-pin cache is neither read nor filled.
+func (a *API) NodeEffectiveTimelines(id types.NodeID, pins []types.Instant) ([][]NodeSegment, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodeEffectiveTimelines(id, pins)
+}
+
+// RelEffectiveTimelines is NodeEffectiveTimelines for relationships
+// (RelEffectiveTimeline at every pin; ErrRelNotFound for an unknown ID).
+func (a *API) RelEffectiveTimelines(id types.RelID, pins []types.Instant) ([][]RelSegment, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelEffectiveTimelines(id, pins)
 }
 
 // ForEachNodeEffectiveByLabel streams the effective timeline at pin of every
