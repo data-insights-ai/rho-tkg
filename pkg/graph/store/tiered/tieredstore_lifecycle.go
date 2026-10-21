@@ -366,7 +366,7 @@ func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 // idleCloseLoop periodically checks cold shards and closes those that have been
 // idle longer than IdleTimeout. Runs every IdleTimeout/2. Stopped via closeCh.
 func (ts *Store) idleCloseLoop() {
-	tick := time.NewTicker(ts.idleTimeout / 2)
+	tick := time.NewTicker(ts.idleTimeoutValue() / 2)
 	defer tick.Stop()
 
 	for {
@@ -390,13 +390,16 @@ func (ts *Store) idleCloseLoop() {
 // close would only free by dropping the data).
 func (ts *Store) coldShardsClosable() bool { return !ts.inMemory }
 
+// idleTimeoutValue returns the cold-shard idle timeout.
+func (ts *Store) idleTimeoutValue() time.Duration { return time.Duration(ts.idleTimeout.Load()) }
+
 // closeIdleShards closes cold shards that have been idle longer than idleTimeout.
 func (ts *Store) closeIdleShards() {
 	if !ts.coldShardsClosable() {
 		return
 	}
 	nowMs := time.Now().UnixMilli()
-	thresholdMs := ts.idleTimeout.Milliseconds()
+	thresholdMs := ts.idleTimeoutValue().Milliseconds()
 
 	ts.mu.RLock()
 	var coldShards []*EventShard

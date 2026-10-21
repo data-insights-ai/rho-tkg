@@ -303,7 +303,9 @@ type Store struct {
 	cacheCap          int
 	flushInt          time.Duration
 	coldAfter         time.Duration
-	idleTimeout       time.Duration
+	// idleTimeout is the cold-shard idle timeout in nanoseconds; atomic because
+	// SetIdleTimeoutForTest writes it while idleCloseLoop reads it (row 100).
+	idleTimeout       atomic.Int64
 	maxOpenColdShards int
 	// openColdShards counts cold shards currently holding a Badger handle. It
 	// is what makes retention hard-bounded without taking a lock: the check-in
@@ -535,7 +537,6 @@ func New(cfg Config) (*Store, error) {
 		cacheCap:              cacheCap,
 		flushInt:              flushInt,
 		coldAfter:             cfg.ColdAfter,
-		idleTimeout:           idleTimeout,
 		maxOpenColdShards:     maxOpenCold,
 		compression:           cfg.Compression,
 		zstdLevel:             cfg.ZSTDCompressionLevel,
@@ -560,6 +561,7 @@ func New(cfg Config) (*Store, error) {
 		nodeCreateLocks:       lockspkg.NewManager(),
 		relCreateLocks:        lockspkg.NewManager(),
 	}
+	ts.idleTimeout.Store(int64(idleTimeout))
 	// Build the store-global change-log allocator BEFORE opening any shard, so it
 	// can be injected via badgerCfg (ChangeLogSeqSource). Each shard folds its
 	// durable watermark into it at open via Observe; after the reference shard
@@ -895,7 +897,7 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	// Start idle-close goroutine for cold shards.
-	if ts.idleTimeout > 0 {
+	if ts.idleTimeoutValue() > 0 {
 		go ts.idleCloseLoop()
 	}
 

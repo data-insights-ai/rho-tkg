@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-21: latest tag v4.69.0 at bb91db77; next patch v4.69.1)
+# HANDOVER — rho-tkg v4 line (2026-10-21: latest tag v4.69.1, row 100 race fix; v4.69.0 row 99 IsReferenceLabel)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file owns state and next steps only. Rules: `tasks/lessons.md` (digest at the top). Requests, ledger, releases,
@@ -7,12 +7,10 @@ this order: this file, lessons digest, todo (user requests, releases table), bac
 
 ## 1. Next steps (focus René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **v4.69.1** (row 100, sigma: `SetIdleTimeoutForTest` race): red `TestSetIdleTimeoutForTest_NoRace` under -race, `idleTimeout`
-   atomic, one patch (René 2026-10-21: "a fix/patch is clearly a patch version increment").
-2. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
+1. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
    on ai-soc's profile only.
-3. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
-4. **Watch origin:** `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background (Appendix A). When Markus releases on
+2. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
+3. **Watch origin:** `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background (Appendix A). When Markus releases on
    main: merge origin/main, check his code against our rules (one valid start, Void rows, Elements, format markers, head cache,
    version allocation), fix his CHANGELOG heading if he left entries under [Unreleased].
 

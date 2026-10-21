@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.69.1] - 2026-10-21
+
+### Fixed
+
+- **tiered: `SetIdleTimeoutForTest` no longer races the idle sweep** (sigma, row 100). The idle timeout is an atomic, so a
+  test that changes it while `idleCloseLoop` runs (any store with `ColdAfter` > 0) is clean under `-race`.
+  `TestSetIdleTimeoutForTest_NoRace` (red under `-race` before: write at test_export.go:62, read at
+  tieredstore_lifecycle.go:369).
+
 ## [4.69.0] - 2026-10-21
 
 ### Added

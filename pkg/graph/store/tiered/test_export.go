@@ -59,7 +59,7 @@ func (ts *Store) ZSTDLevelForTest() int { return ts.zstdLevel }
 
 // SetIdleTimeoutForTest overrides the idle-timeout for cold shards. Tests use
 // this to drive closeIdleShards quickly.
-func (ts *Store) SetIdleTimeoutForTest(d time.Duration) { ts.idleTimeout = d }
+func (ts *Store) SetIdleTimeoutForTest(d time.Duration) { ts.idleTimeout.Store(int64(d)) }
 
 // TempIdxLabelsForTest returns the tracked temporal-index labels under lock.
 // Returns a fresh copy.
