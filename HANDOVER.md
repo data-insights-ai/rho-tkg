@@ -1,13 +1,13 @@
-# HANDOVER — rho-tkg v4 line (2026-10-21, latest release v4.67.0; v4.64.0 never cut, writer parked)
+# HANDOVER — rho-tkg v4 line (2026-10-21, latest release v4.68.0; v4.64.0 never cut, writer parked)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest tag v4.67.0 (2026-10-21, ai-soc tiered rows 93-97); v4.66.3 (2026-10-20, rows 87/88 grow cliff; v4.66.2 row 85 write cost; v4.66.1 2026-10-20; v4.66.0 2026-10-18 Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
+database). Latest tag v4.68.0 (2026-10-21, row 98 multi-pin timelines); v4.67.0 (2026-10-21, ai-soc tiered rows 93-97); v4.66.3 (2026-10-20, rows 87/88 grow cliff; v4.66.2 row 85 write cost; v4.66.1 2026-10-20; v4.66.0 2026-10-18 Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
 releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Read in this order: this file, `tasks/lessons.md`
 (digest at the top), `tasks/todo.md` (user requests, releases table), `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **Building v4.68.0 = row 98** (`NodeEffectiveTimelines(id, pins)` + Rel twin, one chain walk per call; ai-soc restart path, 511 pins = 524 k rows today). Before: v4.67.0 (2026-10-21, René "go" relayed by ai-soc, then "go v4.67.0" here): ai-soc runs rho
+1. **No open request from René.** v4.68.0 = row 98 (`NodeEffectiveTimelines(id, pins)` + Rel twin, one chain walk per call; ai-soc restart path, 511 pins = 524 k rows today). Before: v4.67.0 (2026-10-21, René "go" relayed by ai-soc, then "go v4.67.0" here): ai-soc runs rho
    tiered as its main store (René: "Tiered storage is not for scaling only. This is the main architecture point").
    `SyncWrites` + shared flush hold (row 93), `RelsByMint` (rel + both legs on its mint shard; adjacency honours
    `QueryOpts.Depth`; `RelsByMintFallbacks()`, row 94), `AdjacencyIndexOnDisk` (row 95; 22 M rels: heap 770 → 240 B/rel, rel
