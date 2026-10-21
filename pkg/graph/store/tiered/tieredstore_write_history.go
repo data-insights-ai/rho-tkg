@@ -459,9 +459,12 @@ func (ts *Store) DeleteNodeCascade(nid types.NodeID) error {
 		old = nil
 	}
 
-	// Collect all connected relIDs from this shard's outIdx + inIdx.
-	outRels := shard.OutgoingRelIDs(id)
-	inRels := shard.IncomingRelIDs(id, 0)
+	// Collect all connected relIDs, the mint-placed ones on every tier included
+	// (as DeleteNodeWithHistory does).
+	outRels, inRels, err := ts.connectedRelIDs(shard, nid)
+	if err != nil {
+		return err
+	}
 	relSnapshots, err := ts.snapshotConnectedRelationships(outRels, inRels)
 	if err != nil {
 		return err
@@ -540,16 +543,18 @@ func (ts *Store) DeleteNodeCascade(nid types.NodeID) error {
 // anyway. A routing error is treated as NON-local so the robust per-relationship
 // split-delete path runs instead. Endpoint shards are compared by pointer
 // identity against shard (each *EventShard / refShard is a stable instance).
+// A rel whose entity is on another shard (a mint-placed rel of two reference
+// nodes, Config.RelsByMint) is not local even though both endpoints are.
 func (ts *Store) cascadeNeighborhoodLocalToShard(shard *BadgerStore, relSnapshots map[snowflake.ID]*types.Relationship) bool {
 	onShard := func(nid types.NodeID) bool {
 		s, err := ts.shardForNodeID(nid)
 		return err == nil && s == shard
 	}
-	for _, snap := range relSnapshots {
+	for relID, snap := range relSnapshots {
 		if snap == nil {
 			continue
 		}
-		if !onShard(snap.StartNodeID()) || !onShard(snap.EndNodeID()) {
+		if !onShard(snap.StartNodeID()) || !onShard(snap.EndNodeID()) || !shard.HasRelID(relID) {
 			return false
 		}
 	}

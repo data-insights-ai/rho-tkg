@@ -62,7 +62,7 @@ func (kr *keyRepair) addMissing(txn *badgerv4.Txn, prefix byte, want map[string]
 // addMissingKeys runs the extra passes for the keyspaces with a shortfall.
 // Caller is inside the rebuild's View, after the four key scans.
 func (kr *keyRepair) addMissingKeys(txn *badgerv4.Txn, labels map[types.NodeID]map[uint16]struct{},
-	rels map[types.RelID]RelDeleteInfo, endLocal func(types.NodeID) bool) {
+	rels map[types.RelID]RelDeleteInfo, inKeyHere func(RelDeleteInfo) bool) {
 	if kr.acceptedLabels < kr.expectedLabels {
 		want := make(map[string]struct{})
 		for nid, toks := range labels {
@@ -89,7 +89,7 @@ func (kr *keyRepair) addMissingKeys(txn *badgerv4.Txn, labels map[types.NodeID]m
 	if kr.acceptedIn < kr.expectedIn {
 		want := make(map[string]struct{})
 		for _, info := range rels {
-			if endLocal(types.NodeID(info.EndID)) {
+			if inKeyHere(info) { // a local end, or a co-located rel (tiered mint shard)
 				want[string(storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID))] = struct{}{}
 			}
 		}

@@ -779,3 +779,67 @@ func TestRelsByMint_BatchAndClear(t *testing.T) {
 		t.Fatal("Clear without the option kept the fan-out")
 	}
 }
+
+// TestRelsByMint_DeleteNodeCascadeNoDangling (row 97): store.DeleteNodeCascade
+// of a reference node deletes its mint-placed rels with their row and both
+// legs, as DeleteNodeWithHistory does. Break cases: the rel on a cold (closed)
+// mint shard, both directions (a->b and b->a), a self-loop.
+func TestRelsByMint_DeleteNodeCascadeNoDangling(t *testing.T) {
+	ng, rg := tieredNodeGen(t), tieredRelGen(t)
+	ts := openMintStore(t, mintCfg(t.TempDir(), true))
+	a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
+	b := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
+	w := hotShardName(ts)
+	cold := types.RelID(rg.Generate())
+	putMintRel(t, ts, cold, 1, a, b)
+	rotate(t, ts)
+	demoteToCold(ts, w)
+	if closeColdStores(t, ts) != 1 {
+		t.Fatal("setup: cold mint shard not closed")
+	}
+	hot := hotShardName(ts)
+	out, in, loop := types.RelID(rg.Generate()), types.RelID(rg.Generate()), types.RelID(rg.Generate())
+	putMintRel(t, ts, out, 1, a, b)
+	putMintRel(t, ts, in, 2, b, a)
+	putMintRel(t, ts, loop, 3, a, a)
+
+	if err := ts.DeleteNodeCascade(a); err != nil {
+		t.Fatalf("DeleteNodeCascade(a): %v", err)
+	}
+	if _, err := ts.GetNode(a); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetNode(a) after cascade err = %v, want ErrNodeNotFound", err)
+	}
+	for _, c := range []struct {
+		what string
+		id   types.RelID
+	}{{"cold a->b", cold}, {"hot a->b", out}, {"hot b->a", in}, {"self-loop", loop}} {
+		if rel, err := ts.GetRelationship(c.id); !errors.Is(err, ErrRelNotFound) {
+			t.Errorf("%s: GetRelationship after cascade = %v, %v, want ErrRelNotFound", c.what, rel, err)
+		}
+	}
+	got, err := ts.IncomingRelationships(b, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRelIDs(t, "IncomingRelationships(b)", got)
+	got, err = ts.OutgoingRelationships(b, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRelIDs(t, "OutgoingRelationships(b)", got)
+	hs := eventShardStore(t, ts, hot)
+	if len(hs.OutgoingRelIDs(a.SnowflakeID())) != 0 || len(hs.IncomingRelIDs(a.SnowflakeID(), 0)) != 0 ||
+		len(hs.OutgoingRelIDs(b.SnowflakeID())) != 0 || len(hs.IncomingRelIDs(b.SnowflakeID(), 0)) != 0 {
+		t.Error("hot mint shard keeps a leg of a deleted rel")
+	}
+	if _, err := ts.GetNode(b); err != nil {
+		t.Fatalf("GetNode(b) after cascade of a: %v", err)
+	}
+	res, err := ts.RunRepair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.MissingInEntries != 0 || res.StaleInEntries != 0 || res.OrphanedInEntries != 0 {
+		t.Fatalf("repair after cascade = %+v, want no findings", res)
+	}
+}

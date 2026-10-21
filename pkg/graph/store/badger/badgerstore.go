@@ -1409,7 +1409,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 
 		if img == nil {
 			for _, info := range decodedRelInfo {
-				if _, endLocal := bs.nodeIDs[types.NodeID(info.EndID)]; endLocal {
+				if bs.inKeyHereLocked(info) {
 					kr.expectedIn++
 				}
 			}
@@ -1440,9 +1440,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					continue
 				}
 				// A key backed by the local row is kept whether or not its end
-				// node is local (the outgoing scan's rule); only a local end
-				// counts toward the shortfall check, as expectedIn does.
-				if _, endLocal := bs.nodeIDs[types.NodeID(endID)]; endLocal && img == nil {
+				// node is local (the outgoing scan's rule); it counts toward the
+				// shortfall check where the row wants it, as expectedIn does.
+				if img == nil && bs.inKeyHereLocked(info) {
 					kr.acceptedIn++
 				}
 			} else if hasLocalEntity {
@@ -1460,10 +1460,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		it.Close()
 
 		if img == nil {
-			kr.addMissingKeys(txn, decodedNodeLabels, decodedRelInfo, func(id types.NodeID) bool {
-				_, ok := bs.nodeIDs[id]
-				return ok
-			})
+			kr.addMissingKeys(txn, decodedNodeLabels, decodedRelInfo, bs.inKeyHereLocked)
 		}
 
 		// Load counters from meta keys, or count from live row maps if missing.
@@ -1977,6 +1974,19 @@ func (bs *Store) addNodeIndexesFromRow(nid types.NodeID, labelTokens []uint16) m
 	return labels
 }
 
+// inKeyHereLocked reports whether the in-key of a local rel row lives on this
+// store: its end node is local, or neither endpoint is (a co-located rel: a
+// tiered mint shard, tiered.Config.RelsByMint, or a sharded rel slot). A local
+// start with a remote end is a tiered split write, whose in-key lives on the
+// end node's shard. Caller holds idxMu or is the open.
+func (bs *Store) inKeyHereLocked(info RelDeleteInfo) bool {
+	if _, endLocal := bs.nodeIDs[types.NodeID(info.EndID)]; endLocal {
+		return true
+	}
+	_, startLocal := bs.nodeIDs[types.NodeID(info.StartID)]
+	return !startLocal
+}
+
 func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 	rid := types.RelID(info.ID)
 	relType := info.RelType
@@ -1986,15 +1996,16 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 		return // adjacency answered from the out/in keys (badgerstore_adjacency_disk.go)
 	}
 
-	if _, startLocal := bs.nodeIDs[types.NodeID(info.StartID)]; startLocal {
-		startNID := types.NodeID(info.StartID)
-		if bs.outIdx[startNID] == nil {
-			bs.outIdx[startNID] = make(map[types.RelID]types.NodeID)
-		}
-		bs.outIdx[startNID][rid] = types.NodeID(info.EndID)
+	// The out-key lives with the row, the in-key where inKeyHereLocked says
+	// (the rules addMissingKeys repairs by): legs from the row answer a key
+	// the repair re-creates at this open in this session too.
+	startNID := types.NodeID(info.StartID)
+	if bs.outIdx[startNID] == nil {
+		bs.outIdx[startNID] = make(map[types.RelID]types.NodeID)
 	}
+	bs.outIdx[startNID][rid] = types.NodeID(info.EndID)
 
-	if _, endLocal := bs.nodeIDs[types.NodeID(info.EndID)]; endLocal {
+	if bs.inKeyHereLocked(info) {
 		endNID := types.NodeID(info.EndID)
 		if bs.inIdx[endNID] == nil {
 			bs.inIdx[endNID] = make(map[types.RelID]inEdge)
