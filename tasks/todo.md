@@ -101,7 +101,7 @@ First read `HANDOVER.md` (next steps). This file is the only plan (René 2026-10
 | 91 | GitHub CI 2026-10-20 run 39466977847 (v4.66.3, race core-2): "test timed out after 10m0s"; René: "Short test again !!!", "We can test a growth also with a short test" | in code: cascade_head87_test.go grew 1,200 cuts (1.44M rows per backend, 163 s under race); fix: same path under headPieceCap 128 at 24/72 cuts + a pin of the real caps (>= 1,024 pieces) | ✅ 4 s under -race x3; red on v4.66.2 (caps 512, history reads at cut 3) |
 | 92 | sigma 2026-10-21 (FYI, v0.11.35 on rho v4.66.3, R20 its own): "ai-soc's reopen profile shows ReadHistory, which reads through your readUnderRLock, at 526 s against 57 s for fix5. ai-soc is analysing that on their side and may come to you." | in code: readUnderRLock (locks.go:80) = RLock + closed check + fn, unchanged since v4.66.0; time is in fn or in waiting on c.mu, not the wrapper; rho acts only on ai-soc's profile (rho version, callee under fn) | open: waiting for ai-soc |
 | 93 | ai-soc 2026-10-21 R2 (ai-soc wave4/MEMTIER/rho-request.md; René to ai-soc: "Tiered storage is not for scaling only. This is the main architecture point"): "tiered.Config.SyncWrites passed to every shard's badger config, group-synced under DurableCommit as on badger"; acceptance: durable_flush_test variant with a memtable switch inside the group, rows present after simulated power loss | in code: core.go:840 doc says tiered has no SyncWrites; badgerCfg (tieredstore.go:1399) sets no SyncWrites; tiered implements no MutationFlushHoldCapability (only badger: badgerstore_flush_hold.go). Plan: Config.SyncWrites → writable shards (ref, archive, hot, rotation-created); tiered Hold/Release fan out to every open writable shard and to shards opened during the hold; red test = the badger durable test shape on tiered. New option → minor v4.67.0. Red: `TestTieredSyncWrites` (pkg/graph, next to TestDurableCommitSyncWritesSyncsPerGroup): tiered SyncWrites + DurableCommit, a group over ref + hot shard costs [1,2] syncs per touched shard and 0 pending after return; break cases: no DurableCommit (one sync per mutation), group above the txn size limit (memtable switch, 8 MiB), rollback, shard opened by rotation during a hold starts held, read-only shards never get SyncWrites; crash child `tiered-sync` (long tier) | building (go: René via ai-soc 2026-10-21 "go") |
-| 94 | ai-soc 2026-10-21 R1: "an option (e.g. tiered.Config.RelsByMint) that puts a rel between reference-class endpoints on the event shard of the rel id's mint instant (the legs keep endpoint routing)"; acceptance: Device→Address rel minted in W listed under shard W; reads by id and key equal before/after; a cold shard's rel maps freed on close | in code: entity+out-leg on start shard (tieredstore_write_rel.go:153-167), purge/archive/repair/exadj assume entity with out-leg (retention_purge.go:54, tieredstore_exadj.go); routeRelShard (tieredstore_routing.go:145) already finds a rel on its mint shard. Gap: legs stay on ref → outIdx+inIdx entries per edge (badgerstore.go:354-355) keep ref RAM growing; a third layout (entity apart from both legs) touches purge, archive, repair, exadj, history. Minor, design first ai-soc answer 2026-10-21: "(a) No ... The legs have to move to the mint shard as well, so that a closed cold shard frees everything of its edges"; "(b) A window is enough" (working window 6 h + 1 h lateness, explicit look-backs; long-period facts become @overview Derived facts on the ref shard); "size R1 as the full layout: entity + both legs on the rel's mint shard ... If a smaller first cut exists that still frees the legs, propose it"; R2 plan accepted | sizing by Fable (analysis only, no code, no tests) → section "R1 sizing" below; go 2026-10-21 (René via ai-soc); builds after R2 (shares tiered Config). ai-soc 2026-10-21 on the 4 semantics: all OK; deep read "needs an explicit opt-in that reaches cold edges"; fallback placements "count ... in a metric". Resolved: adjacency over mint rels honours QueryOpts.Depth (store/opts.go:109; DepthAll = 0 = all tiers incl. cold, the existing default; ai-soc passes DepthWarm on windowed reads) instead of a hot+warm-only rule; + fallback counter |
+| 94 | ai-soc 2026-10-21 R1: "an option (e.g. tiered.Config.RelsByMint) that puts a rel between reference-class endpoints on the event shard of the rel id's mint instant (the legs keep endpoint routing)"; acceptance: Device→Address rel minted in W listed under shard W; reads by id and key equal before/after; a cold shard's rel maps freed on close | in code: entity+out-leg on start shard (tieredstore_write_rel.go:153-167), purge/archive/repair/exadj assume entity with out-leg (retention_purge.go:54, tieredstore_exadj.go); routeRelShard (tieredstore_routing.go:145) already finds a rel on its mint shard. Gap: legs stay on ref → outIdx+inIdx entries per edge (badgerstore.go:354-355) keep ref RAM growing; a third layout (entity apart from both legs) touches purge, archive, repair, exadj, history. Minor, design first ai-soc answer 2026-10-21: "(a) No ... The legs have to move to the mint shard as well, so that a closed cold shard frees everything of its edges"; "(b) A window is enough" (working window 6 h + 1 h lateness, explicit look-backs; long-period facts become @overview Derived facts on the ref shard); "size R1 as the full layout: entity + both legs on the rel's mint shard ... If a smaller first cut exists that still frees the legs, propose it"; R2 plan accepted | sizing by Fable (analysis only, no code, no tests) → section "R1 sizing" below; go 2026-10-21 (René via ai-soc, then "go v4.67.0" here); building in parallel with R2 (Opus worktree; red tests from the sizing section + FallbackCounted, Depth cases). ai-soc 2026-10-21 on the 4 semantics: all OK; deep read "needs an explicit opt-in that reaches cold edges"; fallback placements "count ... in a metric". Resolved: adjacency over mint rels honours QueryOpts.Depth (store/opts.go:109; DepthAll = 0 = all tiers incl. cold, the existing default; ai-soc passes DepthWarm on windowed reads) instead of a hot+warm-only rule; + fallback counter |
 | 95 | ai-soc 2026-10-21 R3 (ai-soc wave4/TIERDATA/report.md, BA 12 days 271.7 M rows): "bound the per-relationship RAM maps of an open warm shard (relIDs/relRevs/typeIdx/out/in/relValidIdx; badgerstore.go:337-384, rebuilt at open :1075)"; ESTIMATE ~680 B/rel → ~15 GB per open BA day shard, ~38 GB per BO day; "keep these maps on disk for warm shards (or paged), or bring them measurably below 300 B/rel"; acceptance: "RAM per open shard flat in its rel count beyond a cache size" | sizing by Fable (analysis only) → section "R3 sizing" in this file; in v4.67.0 (René via ai-soc 2026-10-21: "go"; "why cold after one daY? I think more like 3 days? With the new memory item this should not be too ram"); acceptance adds: RAM for hot + 3 warm day shards of BA (21.5 M rels/day mean, 37.9 M peak) and BO (~56 M/day est.), read cost per adjacency/by-id read from a paged warm shard; "if 3 warm days can't be bounded this way, say what can" | sizing, then build |
 | 96 | ai-soc 2026-10-21 design point: per-instance entities (Process 5.9 M/day, 99.6 % one day; File 4.7 M/day; RegValue 342 k/day) are reference-class only for unique keys (core.go:652-662), ref shard grows ~1.9 GB/day disk + est. 1.1-1.6 GB/day RAM; "can a label be event-class with a key that is unique per shard/window (dedupe within the mint window), or do you see another rho-side shape?" | answer with the R3 sizing (ErrUniqueEventLabelUnsupported is a permanent boundary for GLOBAL uniqueness, ADR-0005 §3.5; a per-shard scope is a new UniqueScope) | sizing |
 | 64 | sigma-tkgd 2026-10-16 (Markus, round 10 batch, `tasks/rho-tkg-round10-doors-20261016.md` in sigma): "typed relationship lookup on demand"; "validity hull and a valid-time window on node and relationship reads"; "value classes of an indexed property over every version recorded at a pin"; "count timeline of the current rows"; "typed chunks for the doors that still box" (the CommittedTx question is sigma's, not a door) | shipped in v4.60.0 (Markus released it 2026-10-17 because the branch waited for René's merge; release commit `6d564b6e`, tag `v4.60.0` at `13732e19`): requests 1-6 and the store gaps (twodriver D5) done, two Fable reviews fixed; the round 10 doors read time filters through v4.59.0's presence helpers (row 63); acceptance checklist sigma `tasks/rho-error-patterns-20261016.md` (16 patterns, audit in sigma's round-10 file); excise negative start found by the generator and fixed in the same batch | `TestRound10*`, `TestShardedMixedColumnChunks`, `TestChunkConcatOrdinals`; 31 mutants killed `tasks/evidence/round10/mutants.txt`; `make ci-docker` |
@@ -294,6 +294,79 @@ write (checkRotation :105 covers the entry, the probe covers the rest); exadj co
 
 **Version.** Additive opt-in Config field, default off, same keys, no behaviour change for existing callers → minor v4.67.0
 alone, no deprecation ritual (docs/stability.md:26); the sticky marker is an ordinary meta key, no store marker bump.
+
+## R3 sizing (rows 95-96, Fable 2026-10-21)
+
+Analysis only (code read, nothing run). Paths `pkg/graph/store/badger/` unless noted. Go 1.26 swiss maps at mean load ~0.66: 14 B
+per entry of `map[ID]struct{}`, 26 B of `map[ID]uint64|NodeID|ptr`, 38 B of `map[RelID]inEdge`; a small inner map = 48-B header + one group (80/144/208 B).
+
+**1. Bytes per rel (d = rels per endpoint node on the shard).** Tiered sets `DisableOrdinals` (tiered/tieredstore.go:1431);
+`relValidIdx` stays nil (tiered has no `ForEachAdjacentEndpointAt`, rel_validstamp.go:40-47); `relTypeTxMembers` /
+`relBeliefWatermark` are lazy sidecars (26 B each once a TxPin scan or watermark door builds them); `relCache` is bounded.
+
+| Map (badgerstore.go) | per rel, d=1 | d=2 | hub | dominates? |
+|---|---|---|---|---|
+| relIDs :334 `map[RelID]struct{}` | 14 | 14 | 14 | no |
+| relRevs :335 `map[RelID]uint64`, seeded at open :1316 | 26 | 26 | 26 | no |
+| typeIdx :352 + typeOrder :354 (slice once a type scan ran) | 14-22 | 14-22 | 14-22 | no |
+| outIdx :355 `map[NodeID]map[RelID]NodeID`: 48+144 inner + 26 outer | 218 | 109 | 26 | yes |
+| inIdx :356 `map[NodeID]map[RelID]inEdge`: 48+208 inner + 26 outer | 282 | 141 | 38 | yes |
+| live total (RSS ≈ 1.3-1.5× under GOGC=100) | 554 (720-830) | 304 | 118 | |
+
+680 B is plausible: ai-soc's per-instance endpoints give d≈1-2, and `bench/segment_baseline_test.go` measured 718-723 B/rel
+for plain badger against 301 for `lean` (label/adjacency/property on disk, stats off; backlog.md:55). 15 GB/day = 22.6 M
+rows/day (271.7 M / 12) × 680 B, so the shard holds ~22 M rels, not 3.25 M. The two nested adjacency maps are ~90 % at d=1.
+
+**2. Readers and disk keys.** out/ and in/ legs ARE badger keys (`KeyOut`/`KeyIn`, 27 B, storeutil/keys.go:45) and the disk
+arm already exists: `badger.Config.AdjacencyIndexOnDisk` (:122) → `adjOnDisk`, 21 guarded sites with pending-write overlay
+(adjacency_disk.go:37/117/295, partial.go:78/130/218/282/386/501, rel.go:117/601/656, rel_batch.go:127, rel_query.go:221/263,
+degree_stats.go:34, exadj.go:43, rel_retention_purge.go:330); typed queries use the 11-B prefix, no typeIdx. Every tiered
+adjacency door goes through `adjacentRelIDsSnapshotLocked` (OutgoingRelIDs/IncomingRelIDs partial.go:468/529; tiered
+read_entity.go:738/824, write_history.go:463/733, write_archive.go:76/166, repair.go:199). tiered.Config does NOT pass it:
+`badgerCfg` (tiered/tieredstore.go:1399-1420) forwards PropertyIndexOnDisk and TemporalIndexOnDisk only. relIDs: 50 read sites
+(existence under idxMu in every write door; `HasRelID` partial.go:456 ← routeRelShard tiered/tieredstore_routing.go:233/250);
+`KeyRel` (9 B) could answer it by point read. typeIdx: 12 read sites (rel_scan.go:229, rel_query.go:30/232, member_ids.go:41,
+rel_columns.go:53, rel_index.go:191/303, rel.go:594/647, node_batch.go:400, partial.go:209, badgerstore.go:1608); `KeyRelType`
+(11 B, keys.go:29) could serve it as badgerstore_label_disk.go serves labels. relRevs: 4 readers, all prefetch validation
+(rel.go:543/553/568/584); rev 0 already means "re-read under lock", so the open-time seeding (:1280/:1316) is optional.
+
+**3. Design.** Recommendation: A now, B with it (same flag), C only if 54 B/rel is still too much; D (per-node sorted
+`[]edge` slices, ~200 B/rel at d=1, still O(rels), ~250/200 LOC) is dominated by A.
+
+| Cut | Change | B/rel after | Read cost | LOC code/test |
+|---|---|---|---|---|
+| A tiered pass-through | `tiered.Config.AdjacencyIndexOnDisk` → `badgerCfg` (tieredstore.go:1415), every shard; same `PropertyIndexOnDisk` pattern :126-135 | 54 live (~75 RSS): relIDs 14 + relRevs 26 + typeIdx 14; 22 M rels → 1.2 GB instead of 15 | adjacency: one badger seek + k key steps, ~5-20 µs at d≤10 vs <1 µs from the map; plus `rangePending` scan O(pending ops) per read: ~0 on warm (buffer empty), up to ~1 ms on a hot shard at MaxPendingWrites 100 K; existence (HasRelID, ErrRelExists) unchanged; `RelTypeDegreeStats` falls back to a type pass (api.md:124) | 20 / 80 |
+| B open peak | loadIndexesScan builds outIdx/inIdx anyway and drops them after (:1097-1100 "open peak still includes it", :1393-1396, :1442-1445): skip the inserts when `adjOnDisk && img != nil` (the keys only feed `kr` on a rebuild); keep `relEntityIDs` (14 B/rel, transient) | removes an ~11 GB transient at a 22 M-rel open | none | 15 / 40 |
+| B2 lazy relRevs | no seeding at open behind the same flag; first Replace/Delete of a rel after open pays one `getRelLocked` (rel.go:553/584 already fall back) | 28 | one extra row read per rel on its first write after open | 10 / 30 |
+| C flat | relIDs via `KeyRel` point read + pending overlay (50 sites), typeIdx via `KeyRelType` prefix scan (12 sites, label_disk.go as template), counts from the persisted counters | ~0 beyond caches: RAM flat in rel count (the acceptance's letter) | existence 1-3 µs (block-cache hit) instead of 50 ns, in EVERY write door; type scan = key scan + sort | 450 / 350 |
+
+Not a per-tier flag: a hot shard becomes warm without reopen (tiered/tieredstore_catalog.go:139 flips `readOnly` only), so
+`adjOnDisk`, fixed at open, must hold for all shards; if the hot-shard overlay cost shows, a `ReleaseAdjacencyMaps` door (flush, drop maps, set adjOnDisk under idxMu, ~40 LOC) switches a shard at demotion. Additive opt-in, default off → minor.
+
+**4. Red tests first** (tiered unless noted): `TestTieredConfig_AdjacencyIndexOnDisk_Propagates` (every shard incl. a
+rotation-created and a lazily opened cold one; break: flag off, cold reopen); `TestTieredAdjacencyOnDisk_ReadsEqual`
+(Outgoing/Incoming/Degree/ForNodes/exadj/repair/archive+restore equal on/off on a mixed store; break: typed filter, unflushed
+rel, deleted rel still pending, self-loop, unknown node); badger `TestLoadIndexes_AdjOnDisk_NoTransientMaps` (open with image:
+MemStats delta < 60 B/rel at 200 k rels; break: unclean open still repairs a dropped key); `TestRelRevs_LazySeed_PrefetchFallsBack`
+(Replace after open reads the row once; break: concurrent property write between prefetch and lock still detected). Risks:
+hot-shard `rangePending` cost under ingest (measure with ai-soc's writer); `RelTypeDegreeCounts` ok=false path on tiered;
+open-time key repair (`kr`) coverage once the maps are no longer built.
+
+**Row 96 (per-shard unique on an event label).** Fit: the machinery is `createUnique` (core/unique_constraints.go:247) with
+a scope switch (:254), the event refusal `rejectTieredEventLabel` (:75-84) and an owner lookup via `nodesByLabelAndProperty`,
+which on tiered fans out ref + archive (DepthAll) + `eventShardSnapshot(opts.Depth)` (tiered/tieredstore_read_label.go:216-260);
+property indexes exist on every shard since v4.58.0 (WP-31, shard_index_fanout.go:11-18), so a per-shard check is one shard's
+equality lookup. A `UniqueCurrentPerShard` scope needs: accept event labels for it (:78), a tiered door restricting the owner
+lookup to the shard of the NEW node's ID (`timestampToEventShardEntry`), the same in unique_cascade.go, no UniqueForever (its
+`uniqueOwners` map unique_forever.go:84 is global). ~250 code / 300 test LOC, minor. Semantics: the dedupe window is
+`ShardWindow` (the shard the mint instant lands on), not the working window: 1-h shards under a 6-h window allow the same key
+in 6 shards; a lookup by key returns one entity per minting shard, the reader picks by Depth. The key-hash ID does not work:
+a snowflake has 22 non-time bits (rho-snowflake layout.go:36), `mint ms<<22 | hash22` collides ~0.8 % per ms at 262 keys/ms
+(22.6 M/day), and the collision check IS a lookup by key. Recommendation: no new scope. `GetOrCreateByKey`
+(core/node_getorcreate.go:74-93) already is the per-window dedupe (value stripe held across lookup and create, creates on the
+shard of now); its gap is `QueryOpts{}` = DepthAll (:74), which opens every cold shard per call → add `GetOrCreateByKeyOpts`
+with a Depth-bound lookup (~40 code / 80 test LOC, minor), keep `ErrUniqueEventLabelUnsupported` as the global boundary; the
+per-shard scope stays an option if plain AddNode callers or multi-process writers must be refused.
 
 ## Release gates (long tests only here)
 
