@@ -1361,7 +1361,10 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		it.Close()
 
 		// Scan outgoing adjacency: keyOut(1B) + startID(8B) + relType(2B) + endID(8B) +
-		// relID(8B). Ignore keys without a local relationship entity.
+		// relID(8B). Ignore keys without a local relationship entity. A key with one
+		// is kept whether or not its start node is local, as the write path keeps it:
+		// a tiered mint shard holds rels of nodes that live on the reference shard
+		// (tiered.Config.RelsByMint).
 		it = txn.NewIterator(opts)
 		prefix = []byte{storepkg.KeyOut}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
@@ -1385,9 +1388,6 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				continue
 			} else {
 				kr.acceptedOut++
-			}
-			if _, startLocal := bs.nodeIDs[types.NodeID(startID)]; !startLocal {
-				continue
 			}
 			startNID := types.NodeID(startID)
 			if bs.outIdx[startNID] == nil {
@@ -1429,10 +1429,10 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					kr.drop(key) // only reached on a rebuild: an image's keys agree
 					continue
 				}
-				if _, endLocal := bs.nodeIDs[types.NodeID(endID)]; !endLocal {
-					continue
-				}
-				if img == nil {
+				// A key backed by the local row is kept whether or not its end
+				// node is local (the outgoing scan's rule); only a local end
+				// counts toward the shortfall check, as expectedIn does.
+				if _, endLocal := bs.nodeIDs[types.NodeID(endID)]; endLocal && img == nil {
 					kr.acceptedIn++
 				}
 			} else if hasLocalEntity {

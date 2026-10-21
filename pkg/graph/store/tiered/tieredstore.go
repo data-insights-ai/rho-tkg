@@ -133,6 +133,15 @@ type Config struct {
 	// rebuild. Passed through badgerCfg to EVERY shard (reference, hot, warm,
 	// lazy cold/archive, and rotation-created).
 	PropertyIndexOnDisk bool
+	// RelsByMint places a relationship whose endpoints both live on the
+	// reference shard on the event shard of its ID's mint instant: entity and
+	// both adjacency legs there, so closing that shard when it goes cold frees
+	// them (tieredstore_rels_by_mint.go). A mint shard that is cold falls back
+	// to the reference shard (RelsByMintFallbacks). Steers writes per open; the
+	// first open with it set marks the store, and adjacency reads of reference
+	// and archive nodes then fan out over the event shards (honouring
+	// QueryOpts.Depth) for good. Default off.
+	RelsByMint bool
 	// TemporalIndexOnDisk is the tiered sibling of badger.Config's
 	// TemporalIndexOnDisk: a rebuild-at-open accelerator, NOT a RAM-vs-disk
 	// trade-off — the index stays fully resident in RAM at runtime on every
@@ -370,6 +379,9 @@ type Store struct {
 	// In-memory; CreateVectorIndex rebuilds entries from current node properties.
 	vectorIdxMu   sync.RWMutex
 	vectorIndexes map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex
+
+	// relsByMint: Config.RelsByMint and its sticky marker (tieredstore_rels_by_mint.go).
+	relsByMint relsByMintState
 }
 
 // maxShardOpenParallelism bounds how many event shards are opened at once.
@@ -584,6 +596,10 @@ func New(cfg Config) (*Store, error) {
 		return nil, err
 	}
 	if err := ts.loadShardCommitFloor(); err != nil {
+		_ = refStore.Close() // best-effort cleanup; returning primary error
+		return nil, err
+	}
+	if err := ts.loadRelsByMint(cfg.RelsByMint); err != nil {
 		_ = refStore.Close() // best-effort cleanup; returning primary error
 		return nil, err
 	}
@@ -1207,6 +1223,10 @@ func (ts *Store) Clear() error {
 	ts.relLives.reset() // their meta entries went with the reference shard
 	ts.nodeLives.reset()
 	ts.resetShardCommitFloor()
+	if err := ts.resetRelsByMint(ref); err != nil {
+		refCheckin()
+		return rollbackIndexMetadata(err)
+	}
 	// An empty store has nothing to backfill: keep the next open from walking.
 	if err := ref.MetaSet(historyLivesBackfilledKey, []byte{1}); err != nil {
 		refCheckin()

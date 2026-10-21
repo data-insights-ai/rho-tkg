@@ -652,8 +652,8 @@ func (ts *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	}
 	defer endCheckin()
 
-	if startShard == endShard {
-		// Same shard: fully atomic.
+	if relLegsColocated(entityShard, startShard, endShard) {
+		// Same shard, or placed by mint: fully atomic on the entity shard.
 		return entityShard.DeleteRelWithHistory(types.RelID(id), prevVersion, tombstone)
 	}
 
@@ -729,9 +729,12 @@ func (ts *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 		old = nil
 	}
 
-	// Collect all connected relIDs and validate tombstones before any delete.
-	outRels := shard.OutgoingRelIDs(id)
-	inRels := shard.IncomingRelIDs(id, 0)
+	// Collect all connected relIDs and validate tombstones before any delete,
+	// the mint-placed ones on every tier included.
+	outRels, inRels, err := ts.connectedRelIDs(shard, nid)
+	if err != nil {
+		return err
+	}
 	tombMap, liveRels, err := ts.validateDeleteNodeRelTombstones(nid, outRels, inRels, relTombstones)
 	if err != nil {
 		return err

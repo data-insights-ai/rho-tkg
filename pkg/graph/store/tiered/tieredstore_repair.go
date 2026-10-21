@@ -94,6 +94,18 @@ func (ts *Store) runRepairStores(stores []namedStore) (*RepairResult, error) {
 			if endShard == nil {
 				return nil, fmt.Errorf("repair: shard %q: resolve incoming end node for rel %d: %w", ns.name, entry.RelID, ErrNodeNotFound)
 			}
+			if found && entry.EndID == endID && entry.RelType == rel.TypeToken().Value() {
+				// A rel placed by mint keeps its in/ leg with its entity, on a
+				// shard that holds neither endpoint (a split-written rel's
+				// entity is always on its start node's shard).
+				startShard, err := ts.findNodeInAnyShardStore(rel.StartNodeID().SnowflakeID(), stores)
+				if err != nil {
+					return nil, fmt.Errorf("repair: shard %q: read incoming start node for rel %d: %w", ns.name, entry.RelID, err)
+				}
+				if startShard != nil && startShard != ns.store && endShard != ns.store {
+					continue
+				}
+			}
 			if entry.EndID != endID || entry.RelType != rel.TypeToken().Value() || ns.store != endShard {
 				if err := ns.store.DeleteIncomingByRelID(entry.EndID, entry.RelID); err != nil {
 					return nil, err
@@ -156,7 +168,11 @@ func (ts *Store) runRepairStores(stores []namedStore) (*RepairResult, error) {
 				continue
 			}
 
-			if startShard == endShard {
+			if startShard != ns.store && endShard != ns.store {
+				// Placed by mint: the in/ leg belongs with the entity here,
+				// never on the end node's shard.
+				endShard = ns.store
+			} else if startShard == endShard {
 				continue // same-shard — no split write
 			}
 

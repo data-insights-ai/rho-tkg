@@ -181,6 +181,18 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, mode relCreateMode
 	if !endLive {
 		return ErrNodeNotFound
 	}
+	if mintES, onMint := ts.relMintPlacement(r, startShard, endShard, true); onMint {
+		// Rels by mint: entity + both legs on the mint shard, one batch.
+		mint, err := mintES.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		defer mintES.checkinStore()
+		if err := ts.relCreateCheck(r.ID(), mint, mode); err != nil {
+			return err
+		}
+		return mint.PutRelationshipCoLocated(r)
+	}
 	if err := ts.relCreateCheck(r.ID(), entityShard, mode); err != nil {
 		return err
 	}
@@ -290,6 +302,17 @@ func (ts *Store) putRelationshipWithEndpointHashesLocked(r *types.Relationship) 
 		return "", "", err
 	}
 
+	if mintES, onMint := ts.relMintPlacement(r, startShard, endShard, true); onMint {
+		mint, err := mintES.checkoutStore(ts)
+		if err != nil {
+			return restoreHashes(err)
+		}
+		defer mintES.checkinStore()
+		if err := mint.PutRelationshipCoLocated(r); err != nil {
+			return restoreHashes(err)
+		}
+		return fromHash, toHash, nil
+	}
 	if startShard == endShard {
 		if err := startShard.PutRelationship(r); err != nil {
 			return restoreHashes(err)
@@ -384,8 +407,8 @@ func (ts *Store) deleteRelationship(rid types.RelID, undo bool) error {
 	}
 	defer endCheckin()
 
-	if startShard == endShard {
-		// Same shard: delegate entirely.
+	if relLegsColocated(entityShard, startShard, endShard) {
+		// Same shard, or placed by mint: the entity shard holds both legs.
 		if undo {
 			return entityShard.UndoRelationshipCreate(types.RelID(id))
 		}
@@ -486,7 +509,7 @@ func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreat
 				return ErrNodeNotFound
 			}
 
-			return ts.relCreateCheck(rid, startShard, mode)
+			return ts.relCreateCheck(rid, ts.relCreateOwner(r, startShard, endShard), mode)
 		}(); err != nil {
 			return err
 		}
@@ -516,10 +539,10 @@ func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreat
 			return err
 		}
 
-		if startShard != endShard {
-			// Cross-shard writes run after partitioning through
-			// putRelationshipLocked. Release these classification pins now;
-			// the split-write helper pins endpoints again for the actual write.
+		if startShard != endShard || ts.relsByMintCandidate(startShard, endShard) {
+			// Cross-shard (and rels-by-mint) writes run after partitioning
+			// through putRelationshipLocked. Release these classification
+			// pins now; the helper pins endpoints again for the actual write.
 			startCheckin()
 			endCheckin()
 			continue
@@ -586,7 +609,7 @@ func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreat
 		startCheckin()
 		endCheckin()
 
-		if startShard == endShard {
+		if startShard == endShard && !ts.relsByMintCandidate(startShard, endShard) {
 			continue
 		}
 		if err := ts.putRelationshipLocked(r, relCreateGenerated); err != nil {

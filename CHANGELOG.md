@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`tiered.Config.RelsByMint`: reference-to-reference relationships on their mint shard** (ai-soc R1, row 94).
+  With the option a relationship whose endpoints both live on the reference shard is written, entity and both
+  legs, to the event shard of its ID's mint instant (one batch, one `ChangeRelPut`, the same keys as a same-shard
+  rel), so closing that shard when it goes cold frees its adjacency; before, every such edge kept an out- and an
+  in-entry in the reference shard's RAM indexes for good. A cold mint shard falls back to the reference shard,
+  counted by `Store.RelsByMintFallbacks()`. Adjacency reads of reference and archive nodes unite the node shard's
+  legs with the event shards' once a sticky meta marker is set (the option steers writes per open; no migration)
+  and honour `QueryOpts.Depth` through the new optional `store.AdjacencyDepthCapability`, which
+  `g.Rels().ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` use (with and without a temporal filter,
+  ex-adjacency included): `DepthAll` opens cold shards, `DepthWarm` hot + warm, `DepthHot` hot only. Node deletes
+  check every tier (`DeleteNode` / `DeleteNodesBatch` refuse, `DeleteNodeWithHistory` cascades); delete and
+  `RunRepair` keep a mint rel's legs on its shard (repair no longer drops its in/ leg as stale nor regrows one on
+  the reference shard). Badger now keeps, at open, the adjacency keys of a local relationship row whose endpoint
+  lives on another shard (as its write path always held them in RAM); new `badger.Store.OutgoingRelIDsOfType`.
+  Default off: no change for existing callers. Tests: `TestRelsByMint_*` (tiered, graph),
+  `TestCoLocatedLegsSurviveReopen`.
+
 ## [4.66.3] - 2026-10-20
 
 ### Fixed

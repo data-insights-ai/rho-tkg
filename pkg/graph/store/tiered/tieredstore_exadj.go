@@ -20,11 +20,14 @@ var _ storecontract.ExAdjacencyCapability = (*Store)(nil)
 // endpoint's shard (noteHistoryRowLegs). A node may have left the shard it was
 // on (deleted, archived), so a read unions every shard the node can have
 // lived on: the reference shard, the archive, and the event shard of its
-// mint time.
+// mint time — plus, for a reference-side node of a store with rels by mint,
+// the event shards (ForEachExAdjacentRelIDByDepth).
 
 // exAdjShards returns the shards nid's adjacency can have lived on, pinned;
-// release checks them in.
-func (ts *Store) exAdjShards(nid types.NodeID) (shards []*BadgerStore, release func(), err error) {
+// release checks them in. withEvent=false leaves out the event shard of nid's
+// mint time (a reference-side node's rels by mint: the caller reads the event
+// shards by depth).
+func (ts *Store) exAdjShards(nid types.NodeID, withEvent bool) (shards []*BadgerStore, release func(), err error) {
 	var checkins []func()
 	release = func() {
 		for _, c := range checkins {
@@ -44,6 +47,9 @@ func (ts *Store) exAdjShards(nid types.NodeID) (shards []*BadgerStore, release f
 	if archive != nil {
 		shards = append(shards, archive)
 	}
+	if !withEvent {
+		return shards, release, nil
+	}
 	event, eventCheckin, err := ts.timestampToEventShardEntry(nid.SnowflakeID()).checkoutStoreForRead(ts)
 	if err != nil {
 		return nil, release, err
@@ -52,33 +58,17 @@ func (ts *Store) exAdjShards(nid types.NodeID) (shards []*BadgerStore, release f
 	return shards, release, nil
 }
 
-// ForEachExAdjacentRelID implements store.ExAdjacencyCapability.
+// ForEachExAdjacentRelID implements store.ExAdjacencyCapability: a
+// reference-side node's mint shards of every tier included
+// (ForEachExAdjacentRelIDByDepth).
 func (ts *Store) ForEachExAdjacentRelID(nid types.NodeID, incoming bool, fn func(types.RelID) bool) error {
-	if err := ts.checkOpen(); err != nil {
-		return err
-	}
-	if fn == nil {
-		return errNilIterationCallback()
-	}
-	if err := storecontract.ValidateNodeID(nid); err != nil {
-		return err
-	}
-	ids, err := ts.exAdjRelIDs(nid, incoming)
-	if err != nil {
-		return err
-	}
-	for _, id := range ids {
-		if !fn(id) {
-			return nil
-		}
-	}
-	return nil
+	return ts.ForEachExAdjacentRelIDByDepth(nid, incoming, DepthAll, fn)
 }
 
 // exAdjRelIDs collects nid's ex-adjacency from every shard it can have lived
 // on (the shards are checked in before the caller's callback runs).
-func (ts *Store) exAdjRelIDs(nid types.NodeID, incoming bool) ([]types.RelID, error) {
-	shards, release, err := ts.exAdjShards(nid)
+func (ts *Store) exAdjRelIDs(nid types.NodeID, incoming, withEvent bool) ([]types.RelID, error) {
+	shards, release, err := ts.exAdjShards(nid, withEvent)
 	defer release()
 	if err != nil {
 		return nil, err

@@ -581,8 +581,11 @@ func (ts *Store) DeleteNodesBatch(ids []types.NodeID) error {
 	// deleted.
 	for shard, bucket := range shardBuckets {
 		for _, id := range bucket {
-			rawID := id.SnowflakeID()
-			if len(shard.OutgoingRelIDs(rawID)) != 0 || len(shard.IncomingRelIDs(rawID, 0)) != 0 {
+			out, in, err := ts.connectedRelIDs(shard, id)
+			if err != nil {
+				return err
+			}
+			if len(out) != 0 || len(in) != 0 {
 				return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, id)
 			}
 		}

@@ -474,3 +474,19 @@ func (c *Core) trustedRelVisit(fn func(*types.Relationship) bool) (func(*types.R
 		return fn(row)
 	}, rowErr
 }
+
+// storeAdjacentRels is the store's Outgoing/IncomingRelationships, scoped to
+// the shard tiers depth selects when the store scopes adjacency by depth
+// (store.AdjacencyDepthCapability) and depth is not DepthAll.
+func (c *Core) storeAdjacentRels(nodeID types.NodeID, typeToken uint16, incoming bool, depth storepkg.ShardDepth) ([]*types.Relationship, error) {
+	if byDepth, ok := c.store.(storepkg.AdjacencyDepthCapability); ok && depth != storepkg.DepthAll {
+		if incoming {
+			return byDepth.IncomingRelationshipsByDepth(nodeID, typeToken, depth)
+		}
+		return byDepth.OutgoingRelationshipsByDepth(nodeID, typeToken, depth)
+	}
+	if incoming {
+		return c.store.IncomingRelationships(nodeID, typeToken)
+	}
+	return c.store.OutgoingRelationships(nodeID, typeToken)
+}

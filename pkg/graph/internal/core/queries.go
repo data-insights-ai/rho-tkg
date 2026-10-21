@@ -965,13 +965,7 @@ func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string,
 	if !native {
 		// Fallback: decode the rels, apply the canonical temporal predicate, and
 		// project the OTHER endpoint.
-		var rels []*types.Relationship
-		var err error
-		if incoming {
-			rels, err = r.Incoming(nodeID, typeName)
-		} else {
-			rels, err = r.Outgoing(nodeID, typeName)
-		}
+		rels, err := r.adjacentAtDepth(nodeID, typeName, incoming, opts.Depth)
 		if err != nil {
 			return err
 		}
@@ -1050,13 +1044,7 @@ func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, inco
 	scanner, native := c.store.(relRelScannerAt)
 	if !native {
 		// Fallback: decode via Outgoing/Incoming, apply the canonical filter.
-		var rels []*types.Relationship
-		var err error
-		if incoming {
-			rels, err = r.Incoming(nodeID, typeName)
-		} else {
-			rels, err = r.Outgoing(nodeID, typeName)
-		}
+		rels, err := r.adjacentAtDepth(nodeID, typeName, incoming, opts.Depth)
 		if err != nil {
 			return err
 		}
@@ -1116,6 +1104,12 @@ func (r *RelOps) Outgoing(nodeID types.NodeID, typeName string) ([]*types.Relati
 
 // outgoingRelsLocked is the lock-free body of RelOps.Outgoing.
 func (c *Core) outgoingRelsLocked(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
+	return c.outgoingRelsAtDepthLocked(nodeID, typeName, storepkg.DepthAll)
+}
+
+// outgoingRelsAtDepthLocked is outgoingRelsLocked over the shard tiers depth
+// selects (storeAdjacentRels).
+func (c *Core) outgoingRelsAtDepthLocked(nodeID types.NodeID, typeName string, depth storepkg.ShardDepth) ([]*types.Relationship, error) {
 	var tok uint16
 	if typeName != "" {
 		t, ok := c.lookupRelTypeQueryToken(typeName)
@@ -1129,7 +1123,7 @@ func (c *Core) outgoingRelsLocked(nodeID types.NodeID, typeName string) ([]*type
 			return nil, err
 		}
 	}
-	rels, err := c.store.OutgoingRelationships(nodeID, tok)
+	rels, err := c.storeAdjacentRels(nodeID, tok, false, depth)
 	if err != nil {
 		return nil, err
 	}
@@ -1727,6 +1721,12 @@ func (r *RelOps) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relati
 
 // incomingRelsLocked is the lock-free body of RelOps.Incoming.
 func (c *Core) incomingRelsLocked(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
+	return c.incomingRelsAtDepthLocked(nodeID, typeName, storepkg.DepthAll)
+}
+
+// incomingRelsAtDepthLocked is incomingRelsLocked over the shard tiers depth
+// selects (storeAdjacentRels).
+func (c *Core) incomingRelsAtDepthLocked(nodeID types.NodeID, typeName string, depth storepkg.ShardDepth) ([]*types.Relationship, error) {
 	var tok uint16
 	if typeName != "" {
 		t, ok := c.lookupRelTypeQueryToken(typeName)
@@ -1740,7 +1740,7 @@ func (c *Core) incomingRelsLocked(nodeID types.NodeID, typeName string) ([]*type
 			return nil, err
 		}
 	}
-	rels, err := c.store.IncomingRelationships(nodeID, tok)
+	rels, err := c.storeAdjacentRels(nodeID, tok, true, depth)
 	if err != nil {
 		return nil, err
 	}
@@ -2332,4 +2332,21 @@ func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, d
 		return err
 	}
 	return *rowErr
+}
+
+// adjacentAtDepth is Outgoing/Incoming over the shard tiers depth selects:
+// the fallback arm of the doors that take QueryOpts.
+func (r *RelOps) adjacentAtDepth(nodeID types.NodeID, typeName string, incoming bool, depth storepkg.ShardDepth) ([]*types.Relationship, error) {
+	c := r.c
+	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var err error
+		if incoming {
+			result, err = c.incomingRelsAtDepthLocked(nodeID, typeName, depth)
+		} else {
+			result, err = c.outgoingRelsAtDepthLocked(nodeID, typeName, depth)
+		}
+		return err
+	})
+	return result, err
 }

@@ -879,8 +879,9 @@ func (c *Core) forEachRelAdjacencyCandidateID(seeds []types.NodeID, dirs adjDirs
 }
 
 // forEachRelExAdjacentID visits the seeds' ex-adjacency in dirs from the
-// store's ExAdjacencyCapability (not depth-scoped: a superset under a depth
-// filter). Without it — or before the one-time backfill of a store written
+// store's ExAdjacencyCapability (depth-scoped where the store scopes
+// adjacency by depth, store.AdjacencyDepthCapability; else a superset under a
+// depth filter). Without it — or before the one-time backfill of a store written
 // without it completed (exAdjacencyReady) — it visits every relationship with
 // history instead: sound, O(total relationship history). An ID may repeat.
 func (c *Core) forEachRelExAdjacentID(seeds []types.NodeID, dirs adjDirs, depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
@@ -894,12 +895,20 @@ func (c *Core) forEachRelExAdjacentID(seeds []types.NodeID, dirs adjDirs, depth 
 		}
 		return !stopped
 	}
+	byDepth, scoped := c.store.(storepkg.AdjacencyDepthCapability)
+	scoped = scoped && depth != storepkg.DepthAll
 	for _, seed := range seeds {
 		for _, d := range []adjDirs{adjOut, adjIn} {
 			if dirs&d == 0 {
 				continue
 			}
-			if err := c.exAdj.ForEachExAdjacentRelID(seed, d == adjIn, visit); err != nil || stopped {
+			var err error
+			if scoped {
+				err = byDepth.ForEachExAdjacentRelIDByDepth(seed, d == adjIn, depth, visit)
+			} else {
+				err = c.exAdj.ForEachExAdjacentRelID(seed, d == adjIn, visit)
+			}
+			if err != nil || stopped {
 				return err
 			}
 		}
