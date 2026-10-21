@@ -39,7 +39,7 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
     windowed reads); declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets `UntimedValidStart:
     UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data day; `/bars`,
     `/tkg/asof` = its HTTP read doors.)
-  - sigma-tkgd: v0.11.44 (2026-10-21, Derived write-back fix = the root of ai-soc's failed write-back, batched Session-gate timelines) on rho v4.68.0; v4.69.1 in its next tag (F0b) (v0.11.41: plural `NodeEffectiveTimelines`, DepthHot on
+  - sigma-tkgd: v0.11.46 (2026-10-21, CI green) on rho v4.69.1: `g.Admin().IsReferenceLabel` at writer, read doors and tkgd startup; TestFoldReadDepthHot race-free (rows 99, 100 accepted)
     Derived/Session lookups); adopts v4.69.1 when sent, moving its reference-label check into session/writer open (F0b).
   - Notify after gate + tag + push: `sigma-tkgd-c3` and `ai-soc-main-e7` (`ListAgents`, main session only; socket names change
     per session). If neither resolves, put the release note here and tell René in one line.
