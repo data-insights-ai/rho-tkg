@@ -60,6 +60,8 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 3. René's open decisions (my default)
 
+- Row 98 / backlog 79 multi-pin effective timeline for ai-soc's restart path: **go as v4.68.0** (todo decision 7).
+
 
 - Session scratchpad: emptied 2026-10-20 (row 76, René); Go build cache cleaned. Deletions stay René's call (`rm -rf` is denied to agents).
 - v5 façade waits for Markus; we do not raise it. No posts on GitHub issue #11 (René tells Markus himself).
