@@ -7,7 +7,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **No open request from René.** v4.67.0 (2026-10-21, René "go" relayed by ai-soc, then "go v4.67.0" here): ai-soc runs rho
+1. **Building v4.68.0 = row 98** (`NodeEffectiveTimelines(id, pins)` + Rel twin, one chain walk per call; ai-soc restart path, 511 pins = 524 k rows today). Before: v4.67.0 (2026-10-21, René "go" relayed by ai-soc, then "go v4.67.0" here): ai-soc runs rho
    tiered as its main store (René: "Tiered storage is not for scaling only. This is the main architecture point").
    `SyncWrites` + shared flush hold (row 93), `RelsByMint` (rel + both legs on its mint shard; adjacency honours
    `QueryOpts.Depth`; `RelsByMintFallbacks()`, row 94), `AdjacencyIndexOnDisk` (row 95; 22 M rels: heap 770 → 240 B/rel, rel
@@ -40,6 +40,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
    version allocation), fix his CHANGELOG heading if he left entries under [Unreleased].
 
 ## 2. Standing rules (one line each; the lesson owns the detail)
+- René 2026-10-21 (via ai-soc): go "to all items which can enhance the AI SOC on Flux regarding runtime or something else" — ai-soc runtime requests are built without a further go (minor for a new door).
 
 - **Just essential patches** (René 2026-10-17, row 74): only a consumer-blocking or wrong-answer/data bug gets work; no new features,
   minors or backlog sweeps unless René asks. The tombstone writer stays parked on `tombstone-writer-v4.63` (René via sigma 2026-10-19: "not now"; it no longer
@@ -60,7 +61,6 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 3. René's open decisions (my default)
 
-- Row 98 / backlog 79 multi-pin effective timeline for ai-soc's restart path: **go as v4.68.0** (todo decision 7).
 
 
 - Session scratchpad: emptied 2026-10-20 (row 76, René); Go build cache cleaned. Deletions stay René's call (`rm -rf` is denied to agents).
