@@ -43,6 +43,9 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	if _, err := nilAPI.ValidAxis(); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil ValidAxis = %v, want ErrNilGraph", err)
 	}
+	if ok, err := nilAPI.IsReferenceLabel("Ref"); !errors.Is(err, grapherr.ErrNilGraph) || ok {
+		t.Fatalf("nil IsReferenceLabel = %v, %v, want false, ErrNilGraph", ok, err)
+	}
 	if _, _, err := nilAPI.UntimedValidStart(); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil UntimedValidStart = %v, want ErrNilGraph", err)
 	}
@@ -102,6 +105,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		t.Fatalf("UntimedValidStart through the API: %v %v %v, want the spy's UntimedUnbounded, true", mode, complete, err)
 	}
 
+	if ok, err := api.IsReferenceLabel("Ref"); err != nil || !ok || ops.refLabel != "Ref" {
+		t.Fatalf("IsReferenceLabel through the API: %v %v, spy got %q; want true, nil, \"Ref\"", ok, err, ops.refLabel)
+	}
+
 	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.purgeCalls != 1 || ops.relPurgeCalls != 1 ||
 		ops.resolveExactEraseCalls != 1 || ops.exactEraseCalls != 1 || ops.segmentCalls != 2 {
 		t.Fatalf("unexpected call counts: %+v", ops)
@@ -118,6 +125,12 @@ type adminOpsSpy struct {
 	exactEraseCalls        int
 	segmentCalls           int
 	untimedMode            UntimedValidStart
+	refLabel               string
+}
+
+func (s *adminOpsSpy) IsReferenceLabel(label string) (bool, error) {
+	s.refLabel = label
+	return true, nil
 }
 
 func (s *adminOpsSpy) SetUntimedValidStart(_ context.Context, mode UntimedValidStart) error {

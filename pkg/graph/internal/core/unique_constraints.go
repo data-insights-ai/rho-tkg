@@ -709,3 +709,8 @@ func unchangedConstrainedValue(prev, node *types.Node, labelTok uint16, key stri
 	curKey, _ := node.IndexablePropertyValueKey(key)
 	return curKey == prevKey
 }
+
+// IsReferenceLabel is the row 99 red stub.
+func (a *AdminOps) IsReferenceLabel(label string) (bool, error) {
+	return false, nil
+}

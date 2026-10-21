@@ -98,6 +98,7 @@ type Ops interface {
 	SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) error
 	UntimedValidStart() (mode UntimedValidStart, complete bool, err error)
 	ValidAxis() (types.ValidAxis, error)
+	IsReferenceLabel(label string) (bool, error)
 }
 
 // API is the admin sub-API accessor.
@@ -176,6 +177,22 @@ func (a *API) ValidAxis() (types.ValidAxis, error) {
 		return types.ValidAxis{}, err
 	}
 	return ops.ValidAxis()
+}
+
+// IsReferenceLabel reports whether label is reference-class: whether a read
+// bounded by QueryOpts.Depth (DepthHot, DepthWarm) still sees every node of
+// it. On tiered it is the router's own classifier (the label names in
+// tiered.Config.RefLabels route to the reference shard, every other label,
+// seen or not, is event-class and lives on time shards). On a single-shard
+// store (memory, badger) and on sharded it is true for every label: there is
+// no time shard, so every depth sees every node. ErrEmptyName for a blank
+// label, ErrGraphClosed on a closed graph. See core.AdminOps.
+func (a *API) IsReferenceLabel(label string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.IsReferenceLabel(label)
 }
 
 // DecomposeNodeID extracts time/node/step from a node ID.
