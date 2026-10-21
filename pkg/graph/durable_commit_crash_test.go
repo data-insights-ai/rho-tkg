@@ -82,6 +82,15 @@ func dcOpenStore(backend, dir string, flushInterval time.Duration) (graphpkg.Con
 			return graphpkg.Config{}, err
 		}
 		return graphpkg.Config{Store: ts}, nil
+	case "tiered-sync":
+		// tiered with SyncWrites (backlog 93) and a small memtable, so a group
+		// above Badger's transaction size limit is split ("tx-big").
+		ts, err := tiered.New(tiered.Config{DataDir: dir, RefLabels: []string{"Ref"}, FlushInterval: flushInterval,
+			SyncWrites: true, MemTableSize: 8 << 20})
+		if err != nil {
+			return graphpkg.Config{}, err
+		}
+		return graphpkg.Config{Store: ts}, nil
 	case "sharded":
 		// SnowflakeNodeID 0 mints nodes in slot 0 and relationships in slot 1:
 		// one group touches two slots.
