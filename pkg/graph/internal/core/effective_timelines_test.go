@@ -124,6 +124,127 @@ func TestEffectiveTimelinesManyPins_OneChainWalk(t *testing.T) {
 	t.Run("break cases", effectiveTimelinesBreakCases)
 	t.Run("compacted and retention", effectiveTimelinesCompactedAndRetention)
 	t.Run("cost", effectiveTimelinesCost)
+	t.Run("retraction and eclipsed chain", func(t *testing.T) { ccRun(t, false, effectiveTimelinesChains) })
+	t.Run("whole axis", func(t *testing.T) { ccRunWholeAxis(t, effectiveTimelinesChains) })
+	t.Run("rel type retention", effectiveTimelinesRelTypeRetention)
+}
+
+// ccRunWholeAxis is ccRun on every txbBackend under UntimedWholeAxis (ccRun
+// pins UntimedFromTxFrom).
+func ccRunWholeAxis(t *testing.T, body func(t *testing.T, mk func(t *testing.T) *ccEnt)) {
+	t.Helper()
+	for _, be := range txbBackends(func(c *Config) { c.UntimedValidStart = UntimedWholeAxis }) {
+		for _, rel := range []bool{false, true} {
+			t.Run(be.name+"/"+map[bool]string{false: "node", true: "rel"}[rel], func(t *testing.T) {
+				body(t, func(t *testing.T) *ccEnt {
+					t.Helper()
+					g := be.open(t, false)
+					useTestClock(t, g)
+					return newCCEnt(t, g, rel)
+				})
+			})
+		}
+	}
+}
+
+// retract ends belief in the entity (Retract).
+func (e *ccEnt) retract(id int64) {
+	e.t.Helper()
+	var err error
+	if e.rel {
+		err = e.g.Rels.Retract(e.ctx, types.RelID(id))
+	} else {
+		err = e.g.Nodes.Retract(e.ctx, types.NodeID(id))
+	}
+	if err != nil {
+		e.t.Fatalf("%s retract(%d): %v", e.kind(), id, err)
+	}
+}
+
+// effectiveTimelinesChains: an eclipsed, non-monotonic chain written with
+// SetNodeVersionInterval / SetRelVersionInterval (valid starts out of version
+// order, a later version swallowing earlier ones whole), then retracted; and
+// an untimed create (the start the axis gives it). The plural door answers at
+// every stamp, between stamps and after the retraction what the singular door
+// answers there.
+func effectiveTimelinesChains(t *testing.T, mk func(t *testing.T) *ccEnt) {
+	e := mk(t)
+	id := e.add("F", 1000, nil)
+	var pins []types.Instant
+	for i, iv := range [][2]types.Instant{{1100, 1200}, {1500, 1600}, {1050, 1700}, {1120, 1180}, {900, 1000}, {1000, 1800}, {1300, 1400}} {
+		e.mustCascade(id, iv[0], iv[1], map[string]any{"x": int64(i + 1)})
+		pins = append(pins, e.pin())
+	}
+	live := e.pin()
+	e.retract(id)
+	gone := e.pin()
+	all := append(e.stamps(id), pins...)
+	all = append(all, gone, live, gone)
+	slices.Reverse(all)
+	e.sameAsSingular("eclipsed non-monotonic chain, retracted", id, all)
+	want, _ := e.singleRows(id, []types.Instant{live, gone})
+	if want[0] == "" || want[0] == want[1] {
+		t.Fatalf("retraction not visible to the singular door: before %q, after %q", want[0], want[1])
+	}
+
+	plain := e.addNoVF("U", 0)
+	p0 := e.pin()
+	e.mustUpdate(plain, map[string]any{"x": int64(1)})
+	p1 := e.pin()
+	e.mustCascade(plain, 1100, 1200, map[string]any{"x": int64(2)})
+	p2 := e.pin()
+	e.sameAsSingular("untimed create", plain, []types.Instant{p2, p0, p1, p0})
+}
+
+// effectiveTimelinesRelTypeRetention: a relationship-type retention watermark
+// (no node watermark) refuses the plural door below the relationship's own
+// type watermark, exactly where the singular door refuses, while a
+// relationship of a type purged lower answers at the same pin.
+func effectiveTimelinesRelTypeRetention(t *testing.T) {
+	for _, be := range txbBackends() {
+		t.Run(be.name, func(t *testing.T) {
+			g := be.open(t, false)
+			useTestClock(t, g)
+			e := newCCEnt(t, g, true)
+			purged := e.add("F", 1000, nil)
+			r, err := g.Rels.AddByID(e.ctx, "M", e.start, e.end, map[string]any{"tkg_valid_from": types.Instant(1000), "x": int64(0)})
+			if err != nil {
+				t.Fatalf("AddByID(M): %v", err)
+			}
+			other := int64(r.ID())
+			p0 := e.pin()
+			e.mustCascade(purged, 1100, 1200, map[string]any{"x": int64(1)})
+			e.mustCascade(other, 1100, 1200, map[string]any{"x": int64(1)})
+			low := e.pin()
+			e.mustCascade(purged, 1150, 1300, map[string]any{"x": int64(2)})
+			e.mustCascade(other, 1150, 1300, map[string]any{"x": int64(2)})
+			w := e.pin()
+			tokL, okL := g.relTypes.Lookup(ccType)
+			tokM, okM := g.relTypes.Lookup("M")
+			if !okL || !okM {
+				t.Fatalf("rel type tokens: %v %v", okL, okM)
+			}
+			if err := g.advanceRelRetentionWatermark(tokM, low); err != nil {
+				t.Fatalf("advanceRelRetentionWatermark(M): %v", err)
+			}
+			if err := g.advanceRelRetentionWatermark(tokL, w); err != nil {
+				t.Fatalf("advanceRelRetentionWatermark(L): %v", err)
+			}
+			if _, err := g.Temporal.RelEffectiveTimeline(types.RelID(purged), low); !errors.Is(err, ErrRetentionExpired) {
+				t.Fatalf("singular door below the type watermark: %v, want ErrRetentionExpired", err)
+			}
+			for _, pins := range [][]types.Instant{{w, low}, {low, w}, {w - 1}} {
+				if _, rows, err := e.timelinesRows(purged, pins); !errors.Is(err, ErrRetentionExpired) || rows != 0 {
+					t.Fatalf("pins %v below the type watermark: %v, %d rows read; want ErrRetentionExpired, 0 rows", pins, err, rows)
+				}
+			}
+			e.sameAsSingular("at the type watermark", purged, []types.Instant{w, w})
+			e.sameAsSingular("other type, above its watermark", other, []types.Instant{w, low, w - 1})
+			if _, _, err := e.timelinesRows(other, []types.Instant{p0}); !errors.Is(err, ErrRetentionExpired) {
+				t.Fatalf("other type below its watermark: %v, want ErrRetentionExpired", err)
+			}
+		})
+	}
 }
 
 func effectiveTimelinesCost(t *testing.T) {
