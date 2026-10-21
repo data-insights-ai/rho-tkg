@@ -1,7 +1,7 @@
-# HANDOVER — rho-tkg v4 line (2026-10-21, latest release v4.68.0; v4.64.0 never cut, writer parked)
+# HANDOVER — rho-tkg v4 line (2026-10-21, latest release v4.69.0; v4.64.0 never cut, writer parked)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest tag v4.68.0 (2026-10-21, row 98 multi-pin timelines); v4.67.0 (2026-10-21, ai-soc tiered rows 93-97); v4.66.3 (2026-10-20, rows 87/88 grow cliff; v4.66.2 row 85 write cost; v4.66.1 2026-10-20; v4.66.0 2026-10-18 Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
+database). Latest tag v4.69.0 (2026-10-21, row 99 IsReferenceLabel); v4.68.0 (2026-10-21, row 98 multi-pin timelines); v4.67.0 (2026-10-21, ai-soc tiered rows 93-97); v4.66.3 (2026-10-20, rows 87/88 grow cliff; v4.66.2 row 85 write cost; v4.66.1 2026-10-20; v4.66.0 2026-10-18 Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
 releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Read in this order: this file, `tasks/lessons.md`
 (digest at the top), `tasks/todo.md` (user requests, releases table), `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 
@@ -31,7 +31,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
    - ai-soc: release/v5.0.0 pinned at rho v4.66.0 (v4.66.1 after René's Flux run of v5.0.2; ai-soc 2026-10-20); PIN21 = rho v4.61.0 + sigma v0.11.21 (RAM numbers in row 73 area: VmHWM ~63-65 GB whole BA); earlier PIN18 = rho v4.56.1 + sigma v0.11.11; declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets
      `UntimedValidStart: UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data
      day; `/bars`, `/tkg/asof` = its HTTP read doors.)
-   - sigma-tkgd: v0.11.41 (2026-10-21) on rho v4.68.0: plural NodeEffectiveTimelines in ReadDerivedAt, DepthHot on Derived/Session lookups; asks row 99 (IsReferenceLabel on graph); if ai-soc's history read still grows with marks, the rest is NodeEffectiveTimeline per class = backlog 79 (sigma sends numbers); v0.11.35 R20; v0.11.34 brought the R19 delta write (a grown Derived version writes one row per cut); needs no new rho API; P24
+   - sigma-tkgd: v0.11.41 (2026-10-21) on rho v4.68.0: plural NodeEffectiveTimelines in ReadDerivedAt, DepthHot on Derived/Session lookups; row 99 IsReferenceLabel shipped in v4.69.0 (sigma moves its check into session/writer open, F0b); if ai-soc's history read still grows with marks, the rest is NodeEffectiveTimeline per class = backlog 79 (sigma sends numbers); v0.11.35 R20; v0.11.34 brought the R19 delta write (a grown Derived version writes one row per cut); needs no new rho API; P24
      (marker-aware ValidTo reads) parked with the tombstone writer.
 4. **Open work:** the open table of `tasks/backlog.md` (no requester; backlog 79 = sigma's multi-pin
    timeline, cost only, parked).

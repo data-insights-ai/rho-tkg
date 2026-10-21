@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.69.0] - 2026-10-21
+
 ### Added
 
 - **`g.Admin().IsReferenceLabel(label) (bool, error)`: whether a depth-bounded read sees every node of a label**
