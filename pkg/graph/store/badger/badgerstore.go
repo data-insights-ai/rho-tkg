@@ -554,6 +554,9 @@ type Store struct {
 	// maps. Entity point reads survive this window via the resident dirty cache;
 	// overlay scans must use rangePending/lookupPending.
 	flushing map[string]writeOp
+	// pendingScanned counts the buffered entries the overlay readers visited
+	// (rangePending*), guarded by wbMu: the cost probe of the row 102 tests.
+	pendingScanned uint64
 	// commitGen counts the commits that move buffered rows into Badger (flush,
 	// Clear): a read snapshot re-pins when it moved (badgerstore_read_snapshot.go).
 	// Every path that writes entity rows to Badger outside the write buffer must

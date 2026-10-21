@@ -325,3 +325,11 @@ func SetMaxReadableStoreFormatVersionForTest(v uint16) (restore func()) {
 	maxReadableStoreFormatVersion = v
 	return func() { maxReadableStoreFormatVersion = prev }
 }
+
+// PendingScannedForTest reports how many buffered write ops the overlay readers
+// have visited so far (row 102 cost probe). Not for production use.
+func (bs *Store) PendingScannedForTest() uint64 {
+	bs.wbMu.Lock()
+	defer bs.wbMu.Unlock()
+	return bs.pendingScanned
+}

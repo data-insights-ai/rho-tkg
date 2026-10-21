@@ -472,6 +472,7 @@ func (bs *Store) pendingHistoryIDOverlay(prefix byte, after snowflake.ID) (map[s
 func (bs *Store) rangePending(fn func(k string, op writeOp)) {
 	bs.wbMu.Lock()
 	defer bs.wbMu.Unlock()
+	bs.pendingScanned += uint64(len(bs.flushing) + len(bs.pending))
 	for k, op := range bs.flushing {
 		fn(k, op)
 	}

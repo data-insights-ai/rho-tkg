@@ -238,3 +238,23 @@ func (ts *Store) VectorIndexOptionsForTest(labelToken uint16, propertyKey string
 		EfSearch:       vi.HNSWEfSearch,
 	}, true
 }
+
+// PendingScannedForTest sums the buffered write ops the overlay readers of the
+// reference shard, the archive and every open event shard have visited (row
+// 102 cost probe). Not for production use.
+func (ts *Store) PendingScannedForTest() uint64 {
+	n := ts.refShard.PendingScannedForTest()
+	if a := ts.refArchive.Load(); a != nil {
+		n += a.PendingScannedForTest()
+	}
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	for _, es := range ts.eventShards {
+		es.shardMu.Lock()
+		if es.store != nil {
+			n += es.store.PendingScannedForTest()
+		}
+		es.shardMu.Unlock()
+	}
+	return n
+}
