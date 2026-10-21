@@ -68,7 +68,7 @@ func installDefaultTestLabelRegistry(t *testing.T, ts *Store) (caseTok, userTok,
 
 // newTestGen creates a snowflake generator for testing. Mirrors the production
 // layout (5 node bits, 10 step bits, microsecond precision).
-func newTestGen(t *testing.T, nodeID int64) *snowflake.Node {
+func newTestGen(t testing.TB, nodeID int64) *snowflake.Node {
 	t.Helper()
 	gen, err := snowflake.NewNode(nodeID,
 		snowflake.WithEpoch(snowflakepkg.Epoch),

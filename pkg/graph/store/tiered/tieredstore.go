@@ -141,6 +141,17 @@ type Config struct {
 	// decoding every node. Passed through badgerCfg to EVERY shard (reference,
 	// hot, warm, lazy cold/archive, and rotation-created) for uniformity.
 	TemporalIndexOnDisk bool
+	// AdjacencyIndexOnDisk is the tiered sibling of badger.Config's
+	// AdjacencyIndexOnDisk: every shard answers adjacency reads from its
+	// persisted out/in keys instead of the per-node RAM maps, builds no
+	// transient adjacency maps at open and seeds no rel revisions: the per-rel
+	// maps of an open shard fall from ~570 to ~50 B/rel at one rel per endpoint
+	// (BenchmarkR3OpenShardFootprint). An adjacency read costs one badger seek
+	// plus a scan of the shard's pending writes, and a rel's first write after
+	// open reads its row once. Default false. Passed through badgerCfg to
+	// EVERY shard (reference, hot, warm, lazy cold/archive, and
+	// rotation-created): a hot shard turns warm without a reopen.
+	AdjacencyIndexOnDisk bool
 	// DisablePlannerStats turns OFF the query-planner statistics (presence/NDV/
 	// min-max/type-class counters) on every shard's badger store — see
 	// badger.Config.DisablePlannerStats. Passed through badgerCfg to EVERY shard;
@@ -305,6 +316,7 @@ type Store struct {
 	syncWrites            bool          // Config.SyncWrites: every writable shard opens with badger SyncWrites
 	flushHold             atomic.Bool   // every shard's flush-hold flag (badgerCfg shares it; tieredstore_flush_hold.go)
 	temporalIndexOnDisk   bool          // per-shard rebuild-at-open accelerator; index itself stays RAM-resident on every shard
+	adjacencyIndexOnDisk  bool          // every shard answers adjacency from its out/in keys, no RAM maps
 	closeCh               chan struct{} // signals idle-close goroutine to stop
 	closeOnce             sync.Once
 	lifecycleMu           sync.RWMutex // blocks Close while long sequential store-wide operations release per-shard pins
@@ -525,6 +537,7 @@ func New(cfg Config) (*Store, error) {
 		cacheBudgetBytes:      cfg.CacheBudgetBytes,
 		propertyIndexOnDisk:   cfg.PropertyIndexOnDisk,
 		temporalIndexOnDisk:   cfg.TemporalIndexOnDisk,
+		adjacencyIndexOnDisk:  cfg.AdjacencyIndexOnDisk,
 		disablePlannerStats:   cfg.DisablePlannerStats,
 		historyDeltaEncoding:  cfg.HistoryDeltaEncoding,
 		syncWrites:            cfg.SyncWrites,
@@ -1424,6 +1437,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		EncryptionKeyRotation: ts.encryptionKeyRotation,
 		PropertyIndexOnDisk:   ts.propertyIndexOnDisk,
 		TemporalIndexOnDisk:   ts.temporalIndexOnDisk,
+		AdjacencyIndexOnDisk:  ts.adjacencyIndexOnDisk,
 		DisablePlannerStats:   ts.disablePlannerStats,
 		HistoryDeltaEncoding:  ts.historyDeltaEncoding,
 		ValidAxis:             ts.validAxis.Get(),

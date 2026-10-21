@@ -1,6 +1,8 @@
 package badger
 
 import (
+	"maps"
+	"runtime"
 	"time"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -55,6 +57,51 @@ func RelTemporalIndexBuildsTotalForTest() int64 { return relTemporalBuildsTotal.
 // shard's badger.Config, distinct from proving the persisted keyspace has
 // entries. Not for production use.
 func (bs *Store) PropertyIndexOnDiskForTest() bool { return bs.propIdxOnDisk }
+
+// AdjacencyIndexOnDiskForTest reports whether this shard was opened with
+// Config.AdjacencyIndexOnDisk set, and the entry counts of its outIdx, inIdx
+// and relRevs maps. Exported so tiered tests can assert the tiered
+// pass-through reached a shard and left its adjacency maps empty. Not for
+// production use.
+func (bs *Store) AdjacencyIndexOnDiskForTest() (onDisk bool, outN, inN, revN int) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	return bs.adjOnDisk, len(bs.outIdx), len(bs.inIdx), len(bs.relRevs)
+}
+
+// RelMapBytesForTest returns the live heap bytes the per-rel RAM maps (relIDs,
+// relRevs, typeIdx, outIdx, inIdx) hold, measured as the heap growth of one
+// maps.Clone of each (a clone keeps the source's table layout), so badger's
+// own heap does not enter. It holds idxMu across two GCs; tests and benches
+// only. Not for production use.
+func (bs *Store) RelMapBytesForTest() float64 {
+	var m0, m1 runtime.MemStats
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	runtime.GC()
+	runtime.ReadMemStats(&m0)
+	ids, revs := maps.Clone(bs.relIDs), maps.Clone(bs.relRevs)
+	typ := make(map[uint16]map[types.RelID]struct{}, len(bs.typeIdx))
+	for k, v := range bs.typeIdx {
+		typ[k] = maps.Clone(v)
+	}
+	out := make(map[types.NodeID]map[types.RelID]types.NodeID, len(bs.outIdx))
+	for k, v := range bs.outIdx {
+		out[k] = maps.Clone(v)
+	}
+	in := make(map[types.NodeID]map[types.RelID]inEdge, len(bs.inIdx))
+	for k, v := range bs.inIdx {
+		in[k] = maps.Clone(v)
+	}
+	runtime.GC()
+	runtime.ReadMemStats(&m1)
+	runtime.KeepAlive(ids)
+	runtime.KeepAlive(revs)
+	runtime.KeepAlive(typ)
+	runtime.KeepAlive(out)
+	runtime.KeepAlive(in)
+	return float64(int64(m1.HeapAlloc) - int64(m0.HeapAlloc))
+}
 
 // TemporalIndexOnDiskForTest reports whether this shard was opened with
 // Config.TemporalIndexOnDisk set. Exported so tiered-store tests can assert

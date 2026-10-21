@@ -118,7 +118,9 @@ type Config struct {
 	LabelIndexOnDisk bool
 	// AdjacencyIndexOnDisk is the adjacency sibling of LabelIndexOnDisk: outgoing and
 	// incoming snapshots come from the persisted OutKey/InKey keyspaces; typed queries
-	// use an 11-byte prefix. See badgerstore_adjacency_disk.go.
+	// use an 11-byte prefix. See badgerstore_adjacency_disk.go. The open builds no
+	// adjacency map, not even transiently, and seeds no rel revisions (a rel's
+	// first prefetched write after open re-reads its row under the lock).
 	AdjacencyIndexOnDisk bool
 	// PropertyIndexOnDisk keeps property-index entries in the persisted 0x0A keyspace
 	// (badgerstore_property_disk.go), written with the node row, instead of RAM maps.
@@ -1104,11 +1106,6 @@ func (bs *Store) loadIndexes(img *openImage) error {
 		// badgerstore_label_disk.go). Open peak memory still includes it.
 		bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	}
-	if bs.adjOnDisk {
-		// Same transient-then-drop for the adjacency maps (badgerstore_adjacency_disk.go).
-		bs.outIdx = make(map[types.NodeID]map[types.RelID]types.NodeID)
-		bs.inIdx = make(map[types.NodeID]map[types.RelID]inEdge)
-	}
 	return nil
 }
 
@@ -1287,7 +1284,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				// Clean close: type and adjacency come from their keys below.
 				bs.relIDs[rid] = struct{}{}
 				bs.ords.rel(rid, true)
-				bs.bumpRelRevLocked(rid)
+				bs.seedRelRevAtOpenLocked(rid)
 				continue
 			}
 
@@ -1322,8 +1319,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				continue
 			}
 			bs.relIDs[rid] = struct{}{}
-			bs.ords.rel(rid, true)              // ID order: the open numbers the stored relationships 1..N
-			bs.bumpRelRevLocked(rid)            // seed a non-zero rev so a pre-first-write prefetch doesn't fall back needlessly (mirrors nodeRevs seeding above)
+			bs.ords.rel(rid, true) // ID order: the open numbers the stored relationships 1..N
+			bs.seedRelRevAtOpenLocked(rid)
 			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters (BACKLOG 5B)
 			bs.addRelPropertyStatsCounts(r)     // rebuild rel NDV+min/max counters (BACKLOG 21a)
 			info := relDeleteInfoFromRelationship(r)
@@ -1399,6 +1396,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			if _, startLocal := bs.nodeIDs[types.NodeID(startID)]; !startLocal {
 				continue
 			}
+			if bs.adjOnDisk {
+				continue // disk mode answers from these keys; no RAM map, not even transient
+			}
 			startNID := types.NodeID(startID)
 			if bs.outIdx[startNID] == nil {
 				bs.outIdx[startNID] = make(map[types.RelID]types.NodeID)
@@ -1446,6 +1446,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					kr.acceptedIn++
 				}
 			} else if hasLocalEntity {
+				continue
+			}
+			if bs.adjOnDisk {
 				continue
 			}
 			endNID := types.NodeID(endID)
@@ -1979,6 +1982,9 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 	relType := info.RelType
 
 	bs.addTypeIdxLocked(relType, rid)
+	if bs.adjOnDisk {
+		return // adjacency answered from the out/in keys (badgerstore_adjacency_disk.go)
+	}
 
 	if _, startLocal := bs.nodeIDs[types.NodeID(info.StartID)]; startLocal {
 		startNID := types.NodeID(info.StartID)
