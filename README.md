@@ -211,7 +211,7 @@ runnable example.
 
 | Feature | What it gives you |
 |---|---|
-| Bitemporal queries | Valid-time × transaction-time point/interval queries (`NodeAtTx`, `NodesAsOf`, `NodeAt`, `RelsDuring`, …) and an entity's whole valid-time state at a pin in one call (`NodeEffectiveTimeline`, `ForEachRelEffectiveByType`) |
+| Bitemporal queries | Valid-time × transaction-time point/interval queries (`NodeAtTx`, `NodesAsOf`, `NodeAt`, `RelsDuring`, …) and an entity's whole valid-time state at a pin in one call (`NodeEffectiveTimeline`, `ForEachRelEffectiveByType`); the plural `NodeEffectiveTimelines` / `RelEffectiveTimelines(id, pins)` answer many pins from one chain walk |
 | Append-only version history | Every update/delete keeps prior versions; stored rows are never mutated |
 | Hash-chained integrity | SHA-256 chain per entity; `g.Hash().VerifyNodeChain`/`VerifyRelChain` detect tampering or corruption |
 | Named as-of marks | `TagAsOf`/`ResolveAsOf` give a durable name to a transaction-time pin |
@@ -226,6 +226,7 @@ runnable example.
 | Unique constraints | `g.Constraints().CreateUnique` (current state) and `CreateUniqueForever` (a value is owned by its first holder forever), enforced on every node write door (standalone, tx, batch, ingest, interval rewrites) |
 | Durable commit | `Config.DurableCommit` makes `Tx().Run`, `Batch().Run` (`BatchBuilder.Execute`) and the strong ingest applier return only after the group is on disk (`ErrCommitNotDurable` otherwise) |
 | History compaction & retention | `g.Admin().CompactHistoryNodes`/`CompactHistoryRels` trim old versions behind a verifiable stub; `PurgeExpiredNodes` (gated by `Config.AllowRetentionPurge`) hard-removes the aged-out nodes of a label |
+| Depth-bounded reads | `QueryOpts.Depth` (`DepthAll` default, `DepthWarm`, `DepthHot`) limits a read to the tiers it needs; `GetOrCreateByKeyOpts` is the Depth-bound get-or-create; `g.Admin().IsReferenceLabel(label)` tells whether a bounded read sees every node of a label (always true on single-shard stores) |
 | Event bus | Sync/async hooks on every mutation, for building your own indexes or side effects |
 
 ## Backups
@@ -248,8 +249,22 @@ restored, err := graph.RestoreInto(graph.Config{}, backupDir) // full + every de
 |---|---|---|
 | `memory.Store` | `pkg/graph/store/memory` | Tests, scratch graphs, no persistence needed |
 | `badger.Store` | `pkg/graph/store/badger` | A single embedded on-disk graph, backed by Badger v4 |
-| `tiered.Store` | `pkg/graph/store/tiered` | Time-sharded persistence at scale — hot/warm/cold/archive rotation across many Badger shards |
+| `tiered.Store` | `pkg/graph/store/tiered` | Time-sharded persistence at scale — three tiers (see [Tiered store](#tiered-store)) |
 | `sharded.Store` | `pkg/graph/store/sharded` | EXPERIMENTAL (ADR-0007) — slot-topology persistence: N Badger shards routed by the snowflake node field. See [`docs/architecture.md`](docs/architecture.md) |
+
+### Tiered store
+
+Three tiers: the **reference shard** (long-lived labels named in `RefLabels`), **event shards** by time (hot, warm, cold; every other label), and the **archive** (reference nodes moved out with `g.Tier().Archive`). Main `tiered.Config` fields:
+
+- `RefLabels`, `ShardWindow` (default one week) route nodes and size event shards; `ColdAfter` demotes warm shards to cold, `IdleTimeout` closes idle cold ones, `MaxOpenColdShards` lets a cold shard opened by a read stay open (up to N).
+- `SyncWrites`: power-loss durability on every writable shard; with graph `Config.DurableCommit` a group costs one synced write per touched shard.
+- `RelsByMint`: a rel between two reference endpoints lives on the event shard of its ID's mint instant, so a closing shard frees its edges; a cold mint shard falls back to the reference shard (`Store.RelsByMintFallbacks()`).
+- `AdjacencyIndexOnDisk`: open shards keep no per-node adjacency maps (about 47 instead of 566 B/rel of RAM) at the cost of a pending-write scan per hot-shard adjacency read.
+- `BlockCacheSize` / `IndexCacheSize` (and the other Badger sizes) apply **per open shard**; there is no store-wide budget yet.
+
+`QueryOpts.Depth` bounds a read: `DepthAll` (default) opens cold shards, `DepthWarm` reads hot + warm, `DepthHot` hot only. It covers lookups and, with `RelsByMint`, adjacency (`ForEachAdjacentRelAt`, `ForEachAdjacentEndpointAt`). Details in [`docs/api.md`](docs/api.md) and [`docs/persistence.md`](docs/persistence.md).
+
+Known open item: per-entity overlay reads scan the pending write buffer (`tasks/todo.md` row 102, deferred).
 
 ## Module
 
