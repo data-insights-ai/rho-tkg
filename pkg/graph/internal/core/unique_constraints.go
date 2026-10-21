@@ -710,7 +710,21 @@ func unchangedConstrainedValue(prev, node *types.Node, labelTok uint16, key stri
 	return curKey == prevKey
 }
 
-// IsReferenceLabel is the row 99 red stub.
+// IsReferenceLabel reports whether label is reference-class (row 99): on
+// tiered the router's own classifier, (*tiered.Store).IsReferenceLabel, the
+// one rejectTieredEventLabel asks; on every other store (memory, badger,
+// sharded) true, since a store without time shards answers every depth from
+// every node. ErrGraphClosed on a closed graph, ErrEmptyName for a blank label.
 func (a *AdminOps) IsReferenceLabel(label string) (bool, error) {
-	return false, nil
+	if err := a.c.checkOpen(); err != nil {
+		return false, err
+	}
+	if isBlankName(label) {
+		return false, ErrEmptyName
+	}
+	ts, ok := a.c.store.(*tiered.Store)
+	if !ok {
+		return true, nil
+	}
+	return ts.IsReferenceLabel(label), nil
 }

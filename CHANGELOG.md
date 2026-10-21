@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`g.Admin().IsReferenceLabel(label) (bool, error)`: whether a depth-bounded read sees every node of a label**
+  (sigma, row 99). On tiered it answers the router's own classifier (`tiered.Config.RefLabels`; every other label,
+  seen or not, is event-class), so a consumer holding only a `graph.Graph` can tell whether a `DepthHot` /
+  `DepthWarm` lookup may miss nodes on warm or cold shards. On memory, badger and sharded it is true for every
+  label: there are no time shards, so every depth sees every node. A blank label is refused with `ErrEmptyName`, a
+  closed graph with `ErrGraphClosed`.
+
 ## [4.68.0] - 2026-10-21
 
 ### Added
