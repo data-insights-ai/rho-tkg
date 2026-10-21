@@ -7,13 +7,13 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **Open: René's go for minor v4.67.0** (todo decision 6, default go, R2 first): ai-soc now runs rho tiered as its main
+1. **Building minor v4.67.0 = R2 → R1 → R3** (go from René relayed by ai-soc 2026-10-21; tag only on René's own word, todo decision 6): ai-soc now runs rho tiered as its main
    store (René to ai-soc 2026-10-21: "Tiered storage is not for scaling only. This is the main architecture point").
    R2 = tiered `Config.SyncWrites` + flush hold under DurableCommit (row 93, small). R1 = rels between reference endpoints
    placed with entity + both legs on the rel's mint shard, adjacency honours `QueryOpts.Depth`, fallback counter (row 94,
    ~300 + 450 LOC, todo "R1 sizing"). ai-soc agreed every semantic; no further questions. Build only on René's own word.
    New 2026-10-21 (real BA tier data): R3 bound warm-shard per-rel RAM maps (row 95) and event-class labels with a per-shard
-   unique key (row 96); Fable sizes both (todo "R3 sizing"); ai-soc asks René whether R3 joins v4.67.0.
+   unique key (row 96); Fable sizes both (todo "R3 sizing"); R3 joined v4.67.0 (René: ColdAfter "more like 3 days").
    Done before: v4.66.3 (rows 87/88, sigma R19 b+c): no cliff past 512 head pieces, head entry survives a
    growing bounded end. R19 (a) segment iterator: no-go (row 89, ai-soc BA counts: deep chains are grow). Quadratic grow rows:
    René "1" (row 90) = sigma writes only [old To, new To); rho keeps its per-base split. v4.66.2 (row 85) before it.
@@ -59,7 +59,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 3. René's open decisions (my default)
 
-- v4.67.0 tiered R2 + R1 for ai-soc: **go, R2 first** (item 1).
+- v4.67.0 tag: go came relayed by ai-soc; **tag on René's own word** (item 1).
 
 - Session scratchpad: emptied 2026-10-20 (row 76, René); Go build cache cleaned. Deletions stay René's call (`rm -rf` is denied to agents).
 - v5 façade waits for Markus; we do not raise it. No posts on GitHub issue #11 (René tells Markus himself).
