@@ -1,19 +1,20 @@
-# HANDOVER — rho-tkg v4 line (2026-10-21, latest release v4.66.3; v4.64.0 never cut, writer parked)
+# HANDOVER — rho-tkg v4 line (2026-10-21, latest release v4.67.0; v4.64.0 never cut, writer parked)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest tag v4.66.3 (2026-10-20, rows 87/88 grow cliff; v4.66.2 row 85 write cost; v4.66.1 2026-10-20; v4.66.0 2026-10-18 Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
+database). Latest tag v4.67.0 (2026-10-21, ai-soc tiered rows 93-97); v4.66.3 (2026-10-20, rows 87/88 grow cliff; v4.66.2 row 85 write cost; v4.66.1 2026-10-20; v4.66.0 2026-10-18 Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
 releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Read in this order: this file, `tasks/lessons.md`
 (digest at the top), `tasks/todo.md` (user requests, releases table), `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **v4.67.0: rows 93-96 merged on main (R2, R1, R3 cut A+B+B2, GetOrCreateByKeyOpts); next: Fable batch review, 22 M bench (scratchpad r3/), release gate, tag** (René "go", relayed verbatim by ai-soc 2026-10-21; tag when all three are green): ai-soc now runs rho tiered as its main
-   store (René to ai-soc 2026-10-21: "Tiered storage is not for scaling only. This is the main architecture point").
-   R2 = tiered `Config.SyncWrites` + flush hold under DurableCommit (row 93, small). R1 = rels between reference endpoints
-   placed with entity + both legs on the rel's mint shard, adjacency honours `QueryOpts.Depth`, fallback counter (row 94,
-   ~300 + 450 LOC, todo "R1 sizing"). ai-soc agreed every semantic; no further questions. Build only on René's own word.
-   New 2026-10-21 (real BA tier data): R3 bound warm-shard per-rel RAM maps (row 95) and event-class labels with a per-shard
-   unique key (row 96); Fable sizes both (todo "R3 sizing"); R3 joined v4.67.0 (René: ColdAfter "more like 3 days").
+1. **No open request from René.** v4.67.0 (2026-10-21, René "go" relayed by ai-soc, then "go v4.67.0" here): ai-soc runs rho
+   tiered as its main store (René: "Tiered storage is not for scaling only. This is the main architecture point").
+   `SyncWrites` + shared flush hold (row 93), `RelsByMint` (rel + both legs on its mint shard; adjacency honours
+   `QueryOpts.Depth`; `RelsByMintFallbacks()`, row 94), `AdjacencyIndexOnDisk` (row 95; 22 M rels: heap 770 → 240 B/rel, rel
+   maps 52 B/rel, rest node maps 77 B/node; cut C out), `GetOrCreateByKeyOpts` (row 96), Fable review fixes (row 97).
+   ai-soc pins it with the three flags on and DepthWarm on windowed reads, then measures RSS on its slice gate.
+   Open from it: deep pending on the hot shard has no ai-soc case (no demotion fallback built); a sharded rel row with local
+   start and remote end gets no in-key repair at open (pre-existing).
    Done before: v4.66.3 (rows 87/88, sigma R19 b+c): no cliff past 512 head pieces, head entry survives a
    growing bounded end. R19 (a) segment iterator: no-go (row 89, ai-soc BA counts: deep chains are grow). Quadratic grow rows:
    René "1" (row 90) = sigma writes only [old To, new To); rho keeps its per-base split. v4.66.2 (row 85) before it.

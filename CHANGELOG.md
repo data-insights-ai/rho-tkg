@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.67.0] - 2026-10-21
+
 ### Added
 
 - **`GetOrCreateByKeyOpts`: a get-or-create whose lookup is bounded by `QueryOpts.Depth`** (ai-soc, row 96). On
