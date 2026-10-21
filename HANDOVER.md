@@ -24,6 +24,7 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
   Resume on local branch `row102-pending-ranged` (red tests 8fa7a967 + WIP) → patch.
 - Backlog 80-82 (review findings, no requester).
 - Row 104 (sigma O1-3 P1): door "lowest answered pin" per id (+ plural); verify retention purge vs pins above the watermark first. First item when sigma starts O1-3.
+- Row 105 (sigma O1-3): composite reads at a pin; door exists (`ByLabelAndProperties`); check its temporal path, rel form, valid-time range.
 - sigma FYI 2026-10-21 (ai-soc BA RESHEAP, rho-attributed heap 0.53 → 1.13 GB in 24 h): 0.18 GB ristretto Calloc under
   Session.checkEntities → latestStamps. In code: each opened tiered shard owns its own badger block/index cache (badgerCfg
   passes BlockCacheSize; 0 = Badger's default, badgerstore_options.go:182), so cache RAM = open shards × per-shard size,
