@@ -151,6 +151,10 @@ func (bs *Store) LabelIndexForTest(token uint16) ([]types.NodeID, bool) {
 // ReadOnly disable rule). Tests use this to verify config plumbing.
 func (bs *Store) SyncWritesForTest() bool { return bs.syncWrites }
 
+// FlushHeldForTest reports whether the store's mutation flush hold is on
+// (store.MutationFlushHoldCapability). Not for production use.
+func (bs *Store) FlushHeldForTest() bool { return bs.flushHold.Load() }
+
 // FlushIntervalForTest reports the resolved async-flush interval. Tests use
 // this to verify SyncWrites disables periodic flushes.
 func (bs *Store) FlushIntervalForTest() time.Duration { return bs.flushInt }

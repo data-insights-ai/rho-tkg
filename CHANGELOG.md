@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`tiered.Config.SyncWrites`: power-loss durability on the tiered store** (ai-soc R2, row 93). Every writable shard
+  (reference, archive, hot, warm, lazy cold, rotation-created) opens with Badger `SyncWrites`; read-only opens never
+  do. Under graph `Config.DurableCommit` the tiered store implements `store.MutationFlushHoldCapability`: one hold
+  flag shared by every shard (`badger.Config.SharedFlushHold`), so a shard opened during the hold starts held, and a
+  group costs 1 synced WriteBatch per touched shard instead of one per mutation (10 and 200 ops: 1 sync on ref, 1 on
+  hot; without DurableCommit 201 and 66). `TestTieredSyncWrites` (tx, batch, rollback, no DurableCommit, a group above
+  the txn size limit at an 8 MiB memtable, rotation during a hold, read-only opens); crash cases on the `tiered-sync`
+  backend in the long tier.
+
 ## [4.66.3] - 2026-10-20
 
 ### Fixed

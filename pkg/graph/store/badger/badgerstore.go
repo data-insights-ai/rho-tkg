@@ -237,6 +237,11 @@ type Config struct {
 	// and relationship mutation epochs, so an owner of several stores keeps store-wide
 	// epochs that move on every shard write, open or closed.
 	SharedMutationEpochs *SharedMutationEpochs
+	// SharedFlushHold, when non-nil, is this store's mutation flush-hold flag
+	// (store.MutationFlushHoldCapability), shared with the other stores of an
+	// owner: the tiered store holds every shard with one Store(true), and a
+	// shard opened during the hold starts held. Matters only under SyncWrites.
+	SharedFlushHold *atomic.Bool
 	// DisableOrdinals turns the dense ordinals (store.OrdinalCapability) off:
 	// every row carries 0 and Max*Ordinal return 0. The tiered store sets it
 	// for its shards: a cold shard that closes and reopens would renumber its
@@ -734,8 +739,9 @@ type Store struct {
 
 	// flushHold is set between HoldMutationFlushes and ReleaseMutationFlushes
 	// (store.MutationFlushHoldCapability): flushIfNeeded leaves writes pending up to
-	// holdMaxPending (resolved MaxPendingWrites; 0 = unbounded).
-	flushHold      atomic.Bool
+	// holdMaxPending (resolved MaxPendingWrites; 0 = unbounded). Config.SharedFlushHold
+	// when set, else the store's own.
+	flushHold      *atomic.Bool
 	holdMaxPending int
 
 	// Test seams (nil in production): failNextFlush fails the next WriteBatch commit
@@ -968,6 +974,7 @@ func New(cfg Config) (*Store, error) {
 		onCommitFloor:           cfg.OnCommitFloor,
 		maxPending:              maxPending,
 		holdMaxPending:          holdMaxPending,
+		flushHold:               cfg.SharedFlushHold,
 		flushInt:                flushInt,
 		gcInt:                   gcInt,
 		gcRatio:                 gcRatio,
@@ -978,6 +985,9 @@ func New(cfg Config) (*Store, error) {
 	}
 	// atomic.Bool cannot be set in a composite literal; set it before bs escapes.
 	bs.logEnabled.Store(cfg.ChangeLog && !cfg.ReadOnly)
+	if bs.flushHold == nil {
+		bs.flushHold = new(atomic.Bool)
+	}
 
 	// Resident mode: a cache miss never re-decodes the same entity;
 	// GetNode/GetRel additionally fetch via GetNoPromote.

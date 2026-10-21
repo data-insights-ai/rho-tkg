@@ -160,6 +160,13 @@ type Config struct {
 	// (ADR-0005 §2). Off by default (zero overhead). Surfaces
 	// store.ChangeFeedCapability / ChangeLogStatusCapability / TxChangeLogScope.
 	ChangeLog bool
+	// SyncWrites gives every writable shard (reference, archive, hot, warm,
+	// lazy cold, rotation-created) badger.Config.SyncWrites: each mutation is
+	// flushed and fsynced before it returns (strict power-loss durability).
+	// Read-only opens never get it. Under graph Config.DurableCommit a commit
+	// group's writes are held on every shard and synced at the group's
+	// DurableFlush instead (store.MutationFlushHoldCapability), as on badger.
+	SyncWrites bool
 }
 
 // EventShard wraps a BadgerStore with metadata for an event shard.
@@ -295,6 +302,8 @@ type Store struct {
 	propertyIndexOnDisk   bool          // reference-shard-only scope unchanged; changes RAM vs disk representation
 	disablePlannerStats   bool          // skip planner-stat maintenance on every shard; stat folds decline
 	historyDeltaEncoding  bool          // anchor+delta version-history storage on every shard (ADR-0009/B6)
+	syncWrites            bool          // Config.SyncWrites: every writable shard opens with badger SyncWrites
+	flushHold             atomic.Bool   // every shard's flush-hold flag (badgerCfg shares it; tieredstore_flush_hold.go)
 	temporalIndexOnDisk   bool          // per-shard rebuild-at-open accelerator; index itself stays RAM-resident on every shard
 	closeCh               chan struct{} // signals idle-close goroutine to stop
 	closeOnce             sync.Once
@@ -518,6 +527,7 @@ func New(cfg Config) (*Store, error) {
 		temporalIndexOnDisk:   cfg.TemporalIndexOnDisk,
 		disablePlannerStats:   cfg.DisablePlannerStats,
 		historyDeltaEncoding:  cfg.HistoryDeltaEncoding,
+		syncWrites:            cfg.SyncWrites,
 		closeCh:               make(chan struct{}),
 		hfIdxBuckets:          make(map[uint16]time.Duration),
 		vectorIndexes:         make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
@@ -1417,6 +1427,10 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		DisablePlannerStats:   ts.disablePlannerStats,
 		HistoryDeltaEncoding:  ts.historyDeltaEncoding,
 		ValidAxis:             ts.validAxis.Get(),
+		SyncWrites:            ts.syncWrites && !readOnly,
+		// One hold flag for every shard: a shard opened during a durable
+		// group's hold (rotation, lazy open) starts held.
+		SharedFlushHold: &ts.flushHold,
 	}
 	if !ts.inMemory {
 		cfg.Dir = filepath.Join(ts.dataDir, name)
