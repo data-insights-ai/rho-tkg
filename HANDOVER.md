@@ -46,7 +46,7 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
     windowed reads); declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets `UntimedValidStart:
     UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data day; `/bars`,
     `/tkg/asof` = its HTTP read doors.)
-  - sigma-tkgd: v0.11.51 (2026-10-22, CI green) on rho v4.70.0: P1 uses the plural LowestAnsweredPins for refused reads (one call per cut); RelEffectiveTimelinesByProperties comes with its paging layer (O1-3 step 2/3)
+  - sigma-tkgd: v0.11.54 (2026-10-22, Derived key identity fix) on rho v4.70.0; P1 uses LowestAnsweredPins; RelEffectiveTimelinesByProperties with its paging layer (O1-3 step 2/3)
   - Notify after gate + tag + push: `sigma-tkgd-c3` and `ai-soc-main-e7` (`ListAgents`, main session only; socket names change
     per session). If neither resolves, put the release note here and tell René in one line.
 - **Housekeeping:** session scratchpad emptied 2026-10-20 (row 76); deletions stay René's call (`rm -rf` is denied to agents).
