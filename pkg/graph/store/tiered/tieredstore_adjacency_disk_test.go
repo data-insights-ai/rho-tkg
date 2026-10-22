@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Row 95 cut A (tasks/todo.md "R3 sizing"): tiered.Config.AdjacencyIndexOnDisk
+// Row 95 cut A (`git show f94060df:tasks/todo.md` § "R3 sizing"): tiered.Config.AdjacencyIndexOnDisk
 // reaches every shard's badger.Config, and every tiered adjacency door answers
 // the same with the flag on as off.
 

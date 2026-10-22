@@ -33,7 +33,7 @@ package bench
 // temp dir); RHO_TKG_SEGMENT_BASELINE_REPEAT=N repeats every configuration
 // (badger's resident figure moves with memtable and compaction timing). The
 // measured numbers and their comparison with the analysis are recorded in
-// CHANGELOG (Unreleased) and ADR-0011 §6.
+// docs/CHANGELOG.md [4.37.0] and ADR-0011 §6 (`git show aeb7f8e0^:docs/adr/0011-column-segments.md`).
 
 import (
 	"context"

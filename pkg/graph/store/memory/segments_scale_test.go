@@ -39,7 +39,8 @@ package memory_test
 // text) — file-backed pages are clean and reclaimable, so they are the page
 // cache, not a bound on memory.
 //
-// The numbers are recorded in CHANGELOG (Unreleased) and ADR-0011 §6 (S2, S3).
+// The numbers are recorded in docs/CHANGELOG.md [4.39.0] and ADR-0011 §6 (S2, S3;
+// `git show aeb7f8e0^:docs/adr/0011-column-segments.md`).
 
 import (
 	"bufio"

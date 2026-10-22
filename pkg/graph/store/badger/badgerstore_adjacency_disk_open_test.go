@@ -10,7 +10,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Row 95 cuts B + B2 (tasks/todo.md "R3 sizing"): a shard opened with
+// Row 95 cuts B + B2 (`git show f94060df:tasks/todo.md` § "R3 sizing"): a shard opened with
 // AdjacencyIndexOnDisk builds no transient outIdx/inIdx maps at open (the
 // adjacency lives in the out/in keys) and does not seed relRevs (rev 0
 // already forces the locked re-read in every prefetch door).

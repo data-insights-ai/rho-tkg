@@ -27,7 +27,7 @@ package memory_test
 //	RHO_TKG_P7=790k,3.15M,12.6M RHO_TKG_P7_RUNS=hop-p6,hop-legacy,mix-p6 \
 //	go test -run TestRowStoreP7Scale -v -count=1 -timeout 0 ./pkg/graph/store/memory
 //
-// The numbers are recorded in CHANGELOG (Unreleased).
+// The numbers are recorded in docs/CHANGELOG.md [4.40.0].
 
 import (
 	"context"

@@ -350,7 +350,8 @@ func (c *Core) retractMissingNodeErr(id types.NodeID, err error) error {
 //
 // Returns raw snowflake.ID by design: the slice mixes a node ID with rel IDs
 // for the LockMany locking surface, which uses a single 256-shard pool keyed by
-// snowflake bits regardless of entity kind. See tasks/todo.md, Tier D.
+// snowflake bits regardless of entity kind: a deliberate "Tier D" raw-ID
+// boundary (docs/CHANGELOG.md [3.1.8]).
 func collectDeleteIDs(nodeID snowflake.ID, outRels, inRels []*types.Relationship) []snowflake.ID {
 	if len(outRels) == 0 && len(inRels) == 0 {
 		return []snowflake.ID{nodeID}
@@ -374,8 +375,8 @@ func collectDeleteIDs(nodeID snowflake.ID, outRels, inRels []*types.Relationship
 //
 // Stays on raw snowflake.ID by design: callers pass a heterogeneous slice
 // (node ID + rel IDs) produced by collectDeleteIDs and consumed by LockMany.
-// A typed wrapper would be a lie — the slice is intentionally type-agnostic.
-// See tasks/todo.md, Tier D.
+// A typed wrapper would be a lie — the slice is intentionally type-agnostic
+// (a "Tier D" raw-ID boundary, docs/CHANGELOG.md [3.1.8]).
 func sameIDSet(a, b []snowflake.ID) bool {
 	if len(a) != len(b) {
 		return false

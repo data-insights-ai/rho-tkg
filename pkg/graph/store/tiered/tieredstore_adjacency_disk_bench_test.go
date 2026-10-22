@@ -17,7 +17,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Row 95 measurements for ai-soc (tasks/todo.md "R3 sizing"). Both skip under
+// Row 95 measurements for ai-soc (`git show f94060df:tasks/todo.md` § "R3 sizing"). Both skip under
 // -short. Run with -run '^$' -bench <name> -benchtime=1x.
 //
 // BenchmarkR3OpenShardFootprint: bytes per rel and process RSS after opening

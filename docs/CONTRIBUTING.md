@@ -8,26 +8,8 @@ exposes the local primitives.
 
 ## Session protocol
 
-The standing process rules are the [Rules digest](#rules-digest) below; this section only says when to read what.
-
-- **Session start**: read [HANDOVER.md](../HANDOVER.md) (state, next steps, open decisions), the rules digest,
-  [tasks/todo.md](../tasks/todo.md) (requests, open backlog, releases, plan) and the top of [CHANGELOG.md](CHANGELOG.md) (source of
-  truth for version history) before any work. The newest user message wins over all of them.
-- **Open work with a clear next step is started, not offered** (81); every request gets a `tasks/todo.md` row before the first
-  action, every release ticks the rows, the releases table and the version lines (80, 41).
-- **Before planning**: read the full API of ALL files involved, not snippets around the suspected bug. Challenge the plan: "Does
-  this algorithm deliver what the method name promises?" and "Does it interact with an existing feature that could break it?"
-- **Implementing**: a failing break-the-code test first (run red, evidence under `tasks/evidence/<item>/`), then the clean
-  root-cause fix at the shared seam (78); the testing rules below are hard requirements.
-- **Releasing and reviewing**: 79 (patch vs minor, deprecation ritual per [stability.md](stability.md), gates, review round,
-  models), 82 (release checklist) and 87 (fast tests, batched patches). Commits carry no attribution lines.
-- **After implementation**: update only docs that materially change user-facing behavior, API contracts or architecture; tighten
-  existing text rather than adding long-form notes.
-- **After corrections**: add a lesson only for a new recurring pattern; prefer editing the owning lesson and its digest line. No
-  automatic end-of-session lessons.
-- Code comments tag their originating increment (`BACKLOG 3`, `4b`, `5B`, `B6`, `backlog 38`, …) as archaeology keys matching
-  CHANGELOG's vocabulary. v5 (own module under `v5/`) is paused on the local branch `v5-takeover` (state: HANDOVER); v4 (`main`)
-  keeps shipping fixes.
+Read order: [AGENTS.md](../AGENTS.md). HANDOVER.md holds the state, [tasks/todo.md](../tasks/todo.md) the next steps and open
+decisions; the newest user message wins. Standing rules: the [Rules digest](#rules-digest).
 
 ## Build, test and gates
 
@@ -161,7 +143,7 @@ Run after any change to the subsystem:
 
 ## Documentation hygiene
 
-- Never create a new `.md` file: the set and which file owns what is the table in [README.md § Documentation](../README.md#documentation).
+- Which file owns which fact: [README.md § Documentation](../README.md#documentation).
 - Update [CHANGELOG.md](CHANGELOG.md) and any affected owner file in the same PR as the code, not as a follow-up.
 - CHANGELOG entries go under `[Unreleased]` (create it above the latest release heading) unless told which version.
   **Never bump a version number yourself** — that is the release step (82).
@@ -305,19 +287,24 @@ One current rule per bullet; the number owns the detail.
   one round of consumer requests batch into one minor, fixes into one patch (79).
 - Scope: just essential patches (consumer-blocking or wrong-answer/data bugs) EXCEPT ai-soc runtime items, which have René's
   standing go; a go René types into a consumer session and that session relays verbatim counts (79, 80). Critical path
-  first: build now only what blocks ai-soc on Flux or sigma's O1-3; everything else goes to HANDOVER "Next step (deferred)" (79). sigma requests that serve ai-soc's Flux run (O1-3 = sigma's resident-state work) fall under the ai-soc go.
+  first: build now only what blocks ai-soc on Flux or sigma's O1-3 (sigma's resident-state work, under the ai-soc go); everything
+  else goes to tasks/todo.md § Waiting (79).
 - Models: builds Opus, a build Opus cannot finish goes to Fable; Fable reviews (branch and final batch review before the tag)
   and writes code only, running no tests; the main session runs every deciding test, gate, lint and security check; doc writing
   Sonnet (row 36), a docs-against-code audit Opus (row 109); build briefs end with `make lint-docker security-docker` (79).
-- Tests: new tests are `-short` and take seconds; growth/cap tests stay short via test switches; long tests only in the release
-  gate `make ci-docker`, which includes the full `make test-race` (87, 66).
+- Tests: new tests are `-short` and take seconds (one new test under ~2 s, a package under ~5 s); growth/cap tests lower the cap
+  through a test switch and pin the real constant once; slow tests sit behind `testing.Short()` and run only in the release gate
+  `make ci-docker`, which includes the full `make test-race` (87, 66). A contract change greps every test pinning the old outcome
+  and runs those by name with `-race` before the branch is reported done (87).
 - Release: gate + tag + push, then notify consumers at once; GitHub CI runs in the background; a red tag CI is fixed on main and
   shipped as a NEW patch tag, never by rerunning the old tag's run (82); a green workflow means its gates ran (75). The local
   gate tests the live work tree: no code edit or merge while it runs; a push to main cancels the running main CI (82).
-- Ledger: todo.md and HANDOVER updated at every event, consolidated in place; shipped sizing/review sections fold into their rows;
-  `scripts/check-ledger.sh` after every merge and before every release commit (80); doc targets at every version bump (41).
+- Ledger: every request gets its `tasks/todo.md` line before the first action; todo.md (open work only) and HANDOVER (state)
+  updated in place at every event; `scripts/check-ledger.sh` after every merge and before every release commit (80); doc targets
+  at every version bump (41).
 - One owner per fact, consolidate in place, trace the cause before asking (84). Act, do not offer (81).
-- Red break-the-code test first, clean root-cause fix at the shared seam, no "known limitation" instead of work (78).
+- Red break-the-code test first (one compact test, red output kept under `tasks/evidence/<item>/`), clean root-cause fix at the
+  shared seam, no "known limitation" instead of work; a limit is documented only after the sound fix was shown impossible (78).
 - Behaviour changes go through the deprecation ritual (`docs/stability.md`), no new named exceptions (79).
 - A contract over a family of doors lands in every door; test cross-door agreement (58).
 - Trust boundary: validate IDs and decoded bytes at every entry, `SafeUnmarshal`, allocate by bytes delivered, verify imported
@@ -482,9 +469,7 @@ callers exchanging data with NaN-canonicalizing systems canonicalize at the boun
 Rule: each sub-API package declares its own minimal `Ops` interface and `*core.Core` satisfies each implicitly; when
 collapsing or splitting sub-APIs, shrink each `Ops` to the new shape (old methods may stay on the internal type).
 
-### 27. Don't Ship "Documented Known Limitations" In Place Of Real Fixes
-
-→ merged into 78 (a limit is documented only after the sound fix was tried and shown impossible).
+### 27. (merged into 78)
 
 ### 28. Adjacency Folds Need Only The Seed's Ex-Adjacency
 
@@ -528,9 +513,9 @@ Rule: `QueryOpts.TxAt == 0` means "no TX filter" (VT match across the union of a
 happened in the caller's timeline); kept for pre-bitemporal call sites, NOT "as of now". New bitemporal point queries set
 `TxAt` explicitly.
 
-### 35. Cascade Edit Rewrites History Rows In Place
+### 35. (superseded by 46)
 
-→ superseded by 46 (the cascade is append-only); still true: eclipsed rows use the zero-width sentinel `ValidTo = ValidFrom + 1`, split fragments get versions `maxVersion+1+i`, temporal metadata is not in the content hash.
+Still true: eclipsed rows use the zero-width sentinel `ValidTo = ValidFrom + 1`, split fragments get versions `maxVersion+1+i`, temporal metadata is not in the content hash.
 
 ### 36. Migration-Gated Resolver Heuristics Need A Runtime Flag
 
@@ -780,7 +765,7 @@ Rule: (1) a shared POINTER is swapped only while holding EVERY lock class its re
 `c.labels`/`c.relTypes` under `c.mu.Lock` AND `registryMu`; `Close`'s persist takes `registryMu`); adding a reader on a new lock
 class means grepping every writer. (2) The pre-release race gate is the FULL `make test-race`, never a targeted `-run` subset
 (storm tests only run in the full suite; slower CI runners open windows a fast box never does); it is part of the release gate
-`make ci-docker` (Makefile:195), so it runs once per release, not per commit (87).
+`make ci-docker` (Makefile:196), so it runs once per release, not per commit (87).
 Detector: `grep -rn 'c\.labels = \|c\.relTypes = ' pkg/`.
 
 ### 67. A Raw-Byte Storage-Saving Estimate Is Not A Disk-Saving Estimate
@@ -853,67 +838,34 @@ Rule: the property wire tags only the top-level value, so nested kinds (eight in
 kind at depth 0, 1 and 2 in both container kinds through the real bytes, comparing value AND Go kind (hash bytes for NaN / -0).
 An envelope adds wire depth: apply the property depth limit to the reconstructed value, bound the raw walk by the decode limit.
 
-### 77. A Handover's Test List Is Break-The-Code Only, Written Red First
+### 77. (merged into 78)
 
-→ merged into 78.
+### 78. Red Break-The-Code Test First, Root-Cause Fix — see the rules digest
 
-### 78. A New Item Gets The Clean Root-Cause Solution And A Red Break-The-Code Test First — No Shortcut Is Delivered Quietly
+### 79. Release And Review Process: Fix = Patch, Door = Minor
 
-Rule (René 2026-10-09: "Always clean solutions to new items.. no hacks or shortcuts .. always write a no-happy-path test before the
-code"; absorbs 27 and 77): the test naming the faulty implementation and its breaking input is written and run RED (output kept under
-`tasks/evidence/<item>/`) before the fix; a test that already passes is a labelled guard. One compact red test per item (the key break cases), then the code;
-no mutation runs, probe tests, oversized tables or benchmarks unless the item is about speed or RAM (René 2026-10-13: "I think
-you're testing too much"; absorbs 83). The fix
-lands at the root and the shared seam (58-60), not behind a flag, skip or consumer heuristic; a documented limit only after the sound
-solution was tried and shown impossible (say why; backlog it with its red test). Delegated prompts carry these rules; my own edits too.
-Detector: `grep -rn 't.Skip' pkg | grep -v 'sharded does not support'`; evidence without a red run; "unaffected" without a test.
+Rule (René 2026-10-10, -17, -21):
+1. Versioning: a fix is a PATCH, a new door or option a MINOR; a fix never rides in a minor, a door never in a patch; doors from
+   one round of consumer requests batch into one minor, fixes into one patch. Each release: one `make ci-docker`, one consumer
+   build, one message. Behaviour changes go through the deprecation ritual (`stability.md`); no new named exceptions.
+2. Review: one reviewer round per branch (Fable), fix round to the same agent, a second only for a blocker; Fable runs no tests;
+   the main session runs every test that decides a merge or release, lint, security and the gate. Briefs name 5-8 files and end
+   with `make lint-docker security-docker`. Doc/comment-only changes get the docs tests and a diff read.
+3. Release authority: merge, gate, tag, push main and the tag, notify consumers, without asking; `git fetch` + merge origin/main
+   before every gate (Markus also releases on main; keep our tag numbers above his); never push `origin/v5`, never force-push;
+   commits carry no attribution lines.
+4. Scope ("Just essential Patches from now on"): consumer-blocking or wrong-answer/data bugs only, plus ai-soc runtime items
+   (standing go); a backlog item needs a consumer request or a failing test.
+Detector: a second review round, a brief without lint + security docker, a minor tag without a new door, a fix inside a minor.
 
-### 79. Release And Review Process: Fix = Patch, Door = Minor, Scope, Models, One Review Round
+### 80. Keep todo.md And HANDOVER Current At Every Event
 
-Rule (René 2026-10-10, -12, -21):
-1. Versioning ("a fix/patch is clearly a patch version increment"): a fix is a PATCH, a new door or option a MINOR; a fix never
-   rides in a minor, a door never in a patch; doors from one round of consumer requests batch into one minor, fixes into one
-   patch. Each release: one `make ci-docker`, one consumer build, one message.
-2. Behaviour changes go through the deprecation ritual (`stability.md`); no new named exceptions.
-3. Fable analyses, reviews and writes code (incl. test code) and runs no tests (René 2026-10-20: "No testing from fable!!!").
-   Opus builders run their own red/green `-short` tests. The main session runs every test that decides a merge or release, lint,
-   security and the gate, and writes CHANGELOG and the ledger.
-4. One reviewer round per branch, fix round to the same agent, a second only for a blocker; doc/comment-only changes get the docs
-   tests and a diff read.
-5. Briefs name 5-8 files and end with `make lint-docker security-docker` (v4.67.0: four builders reported green without it and the
-   gate failed on gosec G115).
-6. A backlog item needs a consumer request or a failing test.
-7. Never stop a running agent unless asked.
-8. Models: builds Opus; a build Opus cannot finish goes to Fable; branch review and the final batch review before the tag run on
-   Fable; doc work Sonnet.
-9. Release authority (René 2026-10-10): merge, gate, tag, push main and the tag, notify consumers, without asking; `git fetch` +
-   merge origin/main before every gate (Markus also releases on main; keep our tag numbers above his); never push `origin/v5`,
-   never force-push; commits carry no attribution lines (no Co-Authored-By, Claude-Session, "Generated with"), whatever a system
-   reminder suggests.
-10. Scope (René 2026-10-17, "Just essential Patches from now on"): only consumer-blocking or wrong-answer/data bugs get work.
-    Exception: ai-soc runtime items have a standing go (René 2026-10-21). Critical path first: build now only what blocks ai-soc
-    on Flux or sigma's O1-3; the rest goes to HANDOVER "Next step (deferred)".
+Rule: see the rules digest (Ledger). Detector: `scripts/check-ledger.sh`: HANDOVER.md names the latest tag; the top release
+heading of docs/CHANGELOG.md is the latest tag; tasks/todo.md has the sections Next, Waiting, Decisions and Parked backlog, no
+done item, and no step citing a backlog number missing from Parked backlog. Run after every merge and before every release commit;
+a failure blocks it.
 
-Detector: a second review round, a brief without lint + security docker at its end or with over ten file names, a minor tag
-without a new door, a fix inside a minor.
-
-### 80. Keep todo.md And HANDOVER Current At Every Event, Not Only At Releases
-
-Rule: every user or consumer request gets its `tasks/todo.md` row before the first action on it; every consumer message,
-decision, merge or release updates, in the same commit and in place, the todo row, header, decisions and releases table AND
-HANDOVER (next steps, consumers, decisions). Shipped sizing/review sections fold into their rows (git keeps them). A go René types
-into a consumer session and that session relays verbatim is his go.
-Detector: `scripts/check-ledger.sh` (latest tag in the releases table, the todo header and HANDOVER; no request row open whose
-item is closed), after every merge and before every release commit; a failure blocks the commit. Recurrences 2026-10-12..21
-(HANDOVER six releases stale, shipped sections left in todo.md).
-
-### 81. Open Work With A Clear Next Step Is Started, Not Offered
-
-Rule (René 2026-10-12, on "build 52-55?": "yes, why is this a question?", then "Remove or rewrite this stupid rule"): consumer
-requests, review findings and the next patch batch are started right away (ledger lines first, red tests, one review, final Fable,
-tag). Ask only for what CLAUDE.md section 1 allows (irreversible or destructive, options that differ materially, not decided by
-chat or memory).
-Detector: a "Gewählt: not started ... Anders: sag fix N" line; four ai-soc blockers sat for hours as "waits for René's go".
+### 81. Open Work With A Clear Next Step Is Started, Not Offered — see the rules digest
 
 ### 82. A Release Is Not Green Until GitHub CI Is Green
 
@@ -926,15 +878,13 @@ CI concurrency group cancels a running main run on every push (no run on the tag
 main run. The Go build cache is shared by every session on the machine: `go clean -cache` only when no session builds.
 Release checklist (the one order): (1) merge every branch of the batch, `go test -short` of the touched packages; (2) Fable review
 of the merged batch, fixes merged; (3) `make ci-docker` + consumer build/vet (HANDOVER Appendix B), no code edits meanwhile;
-(4) release commit: CHANGELOG heading, README "Current release", `docs/architecture.md` line 1, todo releases row + header,
-HANDOVER; docs tests + `scripts/check-ledger.sh`; (5) push main, `git tag -a vX.Y.Z`, push the tag; (6) notify sigma-tkgd +
-ai-soc with tag, commit and migration notes; (7) watch the newest main CI run; red → fix on main, new patch tag.
-Origin: 2026-10-13, CI `test` (race on 4-vCPU runners) timed out on every main push v4.50.1–v4.51.4 while the local gate passed.
+(4) release commit: CHANGELOG heading, README "Current release", `docs/architecture.md` line 1, HANDOVER names the tag, the
+shipped rows leave tasks/todo.md; docs tests + `scripts/check-ledger.sh`; (5) push main, `git tag -a vX.Y.Z`, push the tag;
+(6) notify sigma-tkgd + ai-soc with tag, commit and migration notes; (7) watch the newest main CI run; red → fix on main, new
+patch tag.
 Detector: a tag whose CI run is not `success`.
 
-### 83. Test Enough To Prove The Item, Then Build
-
-→ merged into 78.
+### 83. (merged into 78)
 
 ### 84. Trace The Cause, Then Consolidate: No Unreflected Questions, No Layers On Top
 
@@ -942,43 +892,26 @@ Rule (René 2026-10-14, -16, -22; also in ~/CLAUDE.md): before a design question
 current code (file:line, not an old note), look for a strategy that removes it (fix upstream, a standard, an existing mechanism)
 and solve it if one works; ask only the remainder, naming the cause and each rejected strategy in one line.
 Consolidate, don't add: when two code paths, notes or rules do the same job, merge them and delete the rest; duplication is often
-the real bug (2026-10-16: numeric equality had two rules and 4+ widening helpers, and a probe called it "INTENDED, documented").
-Every write into an md file consolidates: merge into the owning entry, update the digest, fix pointers. Never create a new .md
-file: the set and which file owns what is README.md § Documentation (René 2026-10-22: "just create a new md file for
-everything.. this is a mess"); `tasks/evidence/` holds raw outputs only; a removed doc is cited as `git show <hash>:<path>`.
-Agents report in their final message; only `tasks/todo.md` on main plans (v4 + v5).
-Cost claims name their condition and are measured (2026-10-21: "pending ≈ one group" ignored that one DurableCommit group can be
-large; ai-soc's failed write-back rollback ran > 2 h, row 102).
+the real bug (numeric equality had two rules and 4+ widening helpers). Every write into an md file consolidates into the owning
+entry. Never create a new .md file: the set and which file owns what is README.md § Documentation; `tasks/evidence/` holds raw
+outputs only; a removed doc is cited as `git show <hash>:<path>`. Agents report in their final message. Cost claims name their
+condition and are measured.
 Detector: before any verdict "intended / documented" on a disagreement between sibling doors, grep the helpers implementing the
 concept (`func .*(Numeric|Widen|Equal|Key)`); two or more = consolidate (58).
 
 ### 85. Comment Trimming Is Editing, Not A Script
 
-2026-10-14: a second comment pass cut 15,982 → 10,371 lines in 266 files with sentence-boundary scripts run by six Sonnet agents. The Opus check found ~260 passages to restore: sentences cut mid-word with a period added, and dropped `Concurrency:` / `Caller holds` / `Errors:` / `lesson N` / format-marker paragraphs, so exported godoc lost its contract and surviving comments pointed at deleted text. Rule: trim comments by hand, file by file. Never cut inside a sentence. Never drop lock-order, caller-holds, crash-ordering, re-entrancy, error/nil/ownership/concurrency contract or format-compatibility lines. Every comment pass gets an Opus check of the diff for lost invariants before merge. The pass was discarded, not patched.
+Rule: trim comments by hand, file by file, never inside a sentence; never drop lock-order, caller-holds, crash-ordering,
+re-entrancy, error/nil/ownership/concurrency contract, format-compatibility or `lesson N` lines. Every comment pass gets an Opus
+check of the diff for lost invariants before merge (2026-10-14: a scripted pass lost ~260 passages and was discarded).
 
 ### 86. v5 Convergence Happens In v5, Not In v4
 
 Rule: when the goal is "v5 becomes the new public API", do not propose v4 API changes (deprecations, mirror doors, godoc notes)
 to converge on v5; v4 stays as it is for its live consumers, and the path is built on the v5 side (public v5 packages, v4→v5
-door map, compat façade, conformance suite). René 2026-10-16: "no, we do not want this in v4. we want a path for v5 to be the new
-public api".
-Trigger: a recommendation that touches the v4 public API for the sake of v5.
+door map, compat façade, conformance suite). René 2026-10-16: "no, we do not want this in v4".
 Detector: a v5-related ledger row whose deliverable names a v4 file or a v4.x release.
 
-### 87. Fast Tests Per Commit, Long Tests Only Before The Release Push
+### 87. Fast Tests Per Commit, Long Tests Only Before The Release Push — see the rules digest
 
-Rule (René 2026-10-16, -17, -20): every new code part gets fast tests that pass under `go test -short` in a couple of seconds
-per package; anything slow (large oracles, long fuzz, production-size benches, full `-race` sweeps) is behind
-`if testing.Short() { t.Skip(...) }` or in a bench/fuzz target and runs only in the release gate `make ci-docker` (which includes
-the full `make test-race`, 66). Commits are grouped, each group green on the short tests of the touched packages.
-- A growth, cap or scale property is tested short: lower the cap through the test switch and grow past it in tens of steps, pin
-  the real constant with one assertion (a 1,200-cut grow test took 163 s under -race and timed out a CI shard).
-- A fix brief = one small red test, the fix, `-short` of the touched package, built FROM the digest; patches are batched (79).
-- A contract change (a door that now succeeds, a sentinel no longer returned) greps every test pinning the old outcome and runs
-  those by name with `-race` before the branch is reported done (v4.58.0 and v4.62.0: long-tier tests pinning the old outcome
-  broke unseen until the gate).
-Detector: `go test -short` of a touched package over ~5 s, a single new test over ~2 s, or a commit's gate ran the long suite.
-
-### 88. Build Briefs: Analyse, Then Code
-
-→ merged into 79 (3).
+### 88. (merged into 79)
