@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-21: latest tag v4.69.1, row 100 race fix; v4.69.0 row 99 IsReferenceLabel)
+# HANDOVER — rho-tkg v4 line (2026-10-22: latest tag v4.69.2, row 106 tiered as-of pages; v4.69.1 row 100; v4.69.0 row 99)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file owns state and next steps only. Rules: `tasks/lessons.md` (digest at the top). Requests, ledger, releases,
@@ -10,7 +10,7 @@ this order: this file, lessons digest, todo (user requests, releases table), bac
 Critical path first (René 2026-10-21: "for now we should focus on the critical path and write these items for the next step then"):
 only items that block ai-soc on Flux or sigma get built now; the rest is listed under "Next step (deferred)" below.
 
-1. **Building v4.69.2 = row 106** (ai-soc Flux blocker: reopen `/tkg/asof` pages time out on tiered; tiered lacks the member-page and member-IDs capabilities + ctx check in the gather).
+1. **Shipped v4.69.2 = row 106** (ai-soc Flux blocker: tiered as-of pages); ai-soc pins it and reruns the full run.
 2. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
    on ai-soc's profile only.
 3. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
