@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-22: latest tag v4.69.2, row 106 tiered as-of pages; v4.69.1 row 100; v4.69.0 row 99)
+# HANDOVER — rho-tkg v4 line (2026-10-22: latest tag v4.70.0, rows 104-105 sigma O1-3 doors; v4.69.2 row 106; v4.69.1 row 100; v4.69.0 row 99)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file owns state and next steps only. Rules: `tasks/lessons.md` (digest at the top). Requests, ledger, releases,
@@ -11,7 +11,7 @@ Critical path first (René 2026-10-21: "for now we should focus on the critical 
 only items that block ai-soc on Flux or sigma get built now; the rest is listed under "Next step (deferred)" below.
 
 1. **Shipped v4.69.2 = row 106** (ai-soc Flux blocker: tiered as-of pages); ai-soc pins it and reruns the full run.
-2. **Building v4.70.0 = rows 104 (merged) + 105** (sigma O1-3 P1, critical path: `LowestAnsweredPin(id[s])` + retention-purge check); row 105 (rel composite read at a pin over a valid window, sigma shapes in todo) being sized by Fable, then built into the same minor.
+2. **Shipped v4.70.0 = rows 104-105** (sigma O1-3 doors); open from it: René decision §3 item 4 (purge vs retained pins).
 3. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
    on ai-soc's profile only.
 4. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).

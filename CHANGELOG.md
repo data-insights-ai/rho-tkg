@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.70.0] - 2026-10-22
+
 ### Added
 
 - **`NodeLowestAnsweredPin(id)` / `RelLowestAnsweredPin(id)` and the plural `NodesLowestAnsweredPins(ids)` /
