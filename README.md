@@ -25,7 +25,7 @@ It is a **library, not a server**: no main binary, no network protocol, no
 query language. Embed it in a Go process for graph storage, temporal history,
 and integrity guarantees; layer your own query language or API on top.
 
-The v4 API is stable per [docs/stability.md](docs/stability.md); surfaces marked experimental there
+The v4 API is stable per [docs/api.md § Stability and deprecation](docs/api.md#stability-and-deprecation); surfaces marked experimental there
 (Replication Phase-1 helpers such as `Watch`, tiering, the sharded store) may still change in a minor.
 
 ## Install
@@ -185,7 +185,7 @@ func main() {
 
 	// Resume from the last durable checkpoint (0 on first run).
 	// AppliedLSN / SetAppliedLSN (and Watch below) are experimental
-	// (docs/stability.md); ForEachChange is stable.
+	// (docs/api.md, Stability and deprecation); ForEachChange is stable.
 	resumeLSN, _ := g.Replication().AppliedLSN()
 
 	_ = g.Replication().ForEachChange(resumeLSN, func(rec store.ChangeRecord) bool {
@@ -233,17 +233,7 @@ runnable example.
 
 ## Backups
 
-`g.IO().BackupTo(dir)` / `g.IO().BackupDeltaTo(dir, since)` wrap `Export`/`ExportSince` with deterministic, LSN-named files (no new wire format) — no manifest to keep in sync, no wall-clock filenames to fight over:
-
-```go
-base, _ := g.IO().BackupTo(backupDir)          // backupDir/backup-<lsn>-full.tkg
-// ... later, after more mutations ...
-next, _ := g.IO().BackupDeltaTo(backupDir, base) // backupDir/backup-<base>-to-<next>-delta.tkg
-
-restored, err := graph.RestoreInto(graph.Config{}, backupDir) // full + every delta, gaplessly
-```
-
-`RestoreInto` validates the whole chain (full → delta → delta → …) before replaying anything, naming the file that broke it on a gap or a foreign lineage. See [`docs/persistence.md`](docs/persistence.md#backups-one-call-ergonomics) for the full semantics (empty deltas, overwrite refusal, change-log-less backends).
+`g.IO().BackupTo(dir)` writes a full, LSN-named export, `g.IO().BackupDeltaTo(dir, since)` a delta (same wire format as `Export` / `ExportSince`), and `graph.RestoreInto(cfg, dir)` validates the whole chain before replaying it. Naming, chain rules and change-log requirements: [`docs/persistence.md`](docs/persistence.md#backups-one-call-ergonomics).
 
 ## Backends
 
@@ -252,21 +242,11 @@ restored, err := graph.RestoreInto(graph.Config{}, backupDir) // full + every de
 | `memory.Store` | `pkg/graph/store/memory` | Tests, scratch graphs, no persistence needed |
 | `badger.Store` | `pkg/graph/store/badger` | A single embedded on-disk graph, backed by Badger v4 |
 | `tiered.Store` | `pkg/graph/store/tiered` | Time-sharded persistence at scale — three tiers (see [Tiered store](#tiered-store)) |
-| `sharded.Store` | `pkg/graph/store/sharded` | EXPERIMENTAL (ADR-0007) — slot-topology persistence: N Badger shards routed by the snowflake node field. See [`docs/architecture.md`](docs/architecture.md) |
+| `sharded.Store` | `pkg/graph/store/sharded` | EXPERIMENTAL — slot-topology persistence: N Badger shards routed by the snowflake node field. See [`docs/architecture.md`](docs/architecture.md) |
 
 ### Tiered store
 
-Three tiers: the **reference shard** (long-lived labels named in `RefLabels`), **event shards** by time (hot, warm, cold; every other label), and the **archive** (reference nodes moved out with `g.Tier().Archive`). Main `tiered.Config` fields:
-
-- `RefLabels`, `ShardWindow` (default one week) route nodes and size event shards; `ColdAfter` demotes warm shards to cold, `IdleTimeout` closes idle cold ones, `MaxOpenColdShards` lets a cold shard opened by a read stay open (up to N).
-- `SyncWrites`: power-loss durability on every writable shard; with graph `Config.DurableCommit` a group costs one synced write per touched shard.
-- `RelsByMint`: a rel between two reference endpoints lives on the event shard of its ID's mint instant, so a closing shard frees its edges; a cold mint shard falls back to the reference shard (`Store.RelsByMintFallbacks()`).
-- `AdjacencyIndexOnDisk`: open shards keep no per-node adjacency maps (rel maps 52 instead of ~570 B/rel of RAM, measured at 22 M rels) at the cost of a pending-write scan per hot-shard adjacency read.
-- `BlockCacheSize` / `IndexCacheSize` (and the other Badger sizes) apply **per open shard**; there is no store-wide budget yet.
-
-`QueryOpts.Depth` bounds a read: `DepthAll` (default) opens cold shards, `DepthWarm` reads hot + warm, `DepthHot` hot only. It covers lookups and, with `RelsByMint`, adjacency (`ForEachAdjacentRelAt`, `ForEachAdjacentEndpointAt`). Details in [`docs/api.md`](docs/api.md) and [`docs/persistence.md`](docs/persistence.md).
-
-Known open item: per-entity overlay reads scan the pending write buffer (`tasks/todo.md` row 102, deferred).
+Three tiers: a **reference shard** (long-lived labels named in `RefLabels`), **event shards** by time (hot, warm, cold) and an **archive**. `QueryOpts.Depth` (`DepthAll`, `DepthWarm`, `DepthHot`) bounds a read to the tiers it needs. Configuration (`ShardWindow`, `ColdAfter`, `SyncWrites`, `RelsByMint`, `AdjacencyIndexOnDisk`, per-shard cache sizes): [`docs/persistence.md`](docs/persistence.md#tiered-persistence-tieredstore).
 
 ## Module
 
@@ -341,19 +321,17 @@ This list is the complete documentation set; there are no other `.md` files. Put
 | File | Owns |
 |---|---|
 | `README.md` | Overview, install, quickstart, features, backends, this list |
-| [`docs/api.md`](docs/api.md) | API and core types: graph layer, registries, validation limits, temporal queries, transactions, shadow properties |
+| [`docs/api.md`](docs/api.md) | API and core types: every door, `QueryOpts`, temporal queries, transactions, indexes, IO, admin; stability promise and deprecation ritual |
 | [`docs/errors.md`](docs/errors.md) | Every public error sentinel and the doors that return it |
-| [`docs/persistence.md`](docs/persistence.md) | Store interfaces and durability: `badger.Store`, `tiered.Store`, EXPERIMENTAL `sharded.Store` |
-| [`docs/architecture.md`](docs/architecture.md) | Architecture, concurrency, lock order, [design invariants](docs/architecture.md#design-invariants), decision records (ADR-0011) |
-| [`docs/query-planners.md`](docs/query-planners.md) | Planner statistics: cardinality estimates, index usability, staleness |
-| [`docs/SPEC.md`](docs/SPEC.md) | Formal specifications and algorithms |
-| [`docs/stability.md`](docs/stability.md) | Stability promise, deprecation policy, release conventions |
+| [`docs/architecture.md`](docs/architecture.md) | Architecture, IDs, shadow properties, Store interfaces and capabilities (memory, badger, tiered, EXPERIMENTAL sharded), concurrency, lock order, [design invariants](docs/architecture.md#design-invariants), decision records (ADR-0011) |
+| [`docs/persistence.md`](docs/persistence.md) | Storage formats, wire format and key layout, durability, change-log, backups, upgrading a store |
+| [`docs/query-planners.md`](docs/query-planners.md) | Planner statistics (cardinality, HyperLogLog NDV, bounds, timelines), index usability, staleness |
 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Build, test, lint and release gates; benchmarks; development rules and numbered lessons ("lesson N") |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security policy and reporting |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Every release, dated: what shipped and why |
 | `HANDOVER.md` | Current state, next steps, open decisions (for the next session) |
-| `tasks/todo.md` | User requests with proof, open backlog (`backlog N`), releases table, review log |
-| `CLAUDE.md`, `AGENTS.md` | Pointer stubs for Claude Code and Codex; no content |
+| `tasks/todo.md` | Open work only: next steps, waiting triggers, decisions, parked backlog (`backlog N`) |
+| `CLAUDE.md`, `AGENTS.md` | Entry points for Claude Code and Codex: pointers into this list (CLAUDE imports AGENTS) |
 
 Measurement data (`.txt`, `.json`) lives under `tasks/evidence/`, explained by the todo row or changelog entry that cites it.
 Removed files (old lessons, backlog, ADRs, evidence notes) stay readable in git: `git show 6e20157c:<path>`. `TestNoMDFileOutsideTheDocumentation` fails on any `.md` file this table does not name.
@@ -391,7 +369,7 @@ Current release: **v4.70.0** — see [docs/CHANGELOG.md](docs/CHANGELOG.md) for 
 and why; this line is pinned to the changelog's latest entry by
 `TestDocsMetadataMatchesSourceOfTruth` so it cannot go stale silently.
 
-If you are upgrading from v3.x, see `CHANGELOG.md` `[4.0.0]` for the full
+If you are upgrading from v3.x, see `docs/CHANGELOG.md` `[4.0.0]` for the full
 public-API migration recipe (context-first methods, `g.Tier` split from
 `g.Admin`, sub-API accessor methods) and `[4.4.0]` for the module path change
 (`gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4` → `github.com/data-insights-ai/rho-tkg/v4`).

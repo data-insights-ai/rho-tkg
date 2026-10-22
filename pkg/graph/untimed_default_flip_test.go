@@ -2,7 +2,7 @@ package graph_test
 
 // v4.57.0: the default of Config.UntimedValidStart (the zero value,
 // UntimedDefault) is UntimedUnbounded for a NEW store, announced as
-// Deprecated in v4.56.0 (docs/stability.md, default-change rule). An existing
+// Deprecated in v4.56.0 (docs/api.md § Stability and deprecation, default-change rule). An existing
 // store keeps the mode it was written under: its persisted key (v4.56.x
 // writes byte 0 for UntimedFromTxFrom at the first open of an empty store)
 // or, with rows and no key, UntimedFromTxFrom. The explicit values still

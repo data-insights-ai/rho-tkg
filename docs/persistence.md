@@ -17,9 +17,9 @@ Data is serialized using msgpack. Keys use fixed-width binary encoding with sing
 
 On-disk format versioning and the integrity-hash format: see "Format versions and markers" and "Integrity hashes" below; upgrading across releases: "Upgrading a store".
 
-**Wire format v2 — patchable transaction-time slot (current).** In v2 the transaction-time tail (`tf`/`tt` — TxFrom/TxTo) is a FIXED-WIDTH, always-present TRAILING slot: the last two map entries, each a full-width int64 (the 9-byte `0xd3` form msgpack already emits for present int64 values), emitted after every other field. This lets the ingest pipeline (ADR-0006 §4.5) pre-encode a whole row on the producer thread with a ZERO tail and have the single applier patch in its stamped TxFrom/TxTo with a bounded in-place memory write (`storeutil.PatchWireTemporalTail`, marker-validated and fail-closed with `ErrCorruptWire` on a truncated or non-v2 buffer) instead of a second msgpack pass. The equivalence `Patch(PreEncode(E, 0), T) == Encode(E, T)` holds byte-for-byte by construction — the tail is the only difference — and because TxFrom/TxTo are not hashed, a patched buffer still passes `Verify*Chain` and replicates verbatim. DECODE IS VERSION-TRANSPARENT: msgpack map keys are self-describing, so both v1 (omitempty mid-map tail) and v2 (fixed tail) rows decode with no read-side version branch; mixed v1+v2 rows coexist in one directory. Opening an old (v1-marked or unmarked) directory with v2 code reopens it read-write and restamps the marker to 2; subsequent writes are v2. Apply-side CONSUMPTION of the pre-encoded buffer is now WIRED (ADR-0006 §4.5 Scenario B): the optional `store.PreEncodedPutCapability` (`PutNodesBatchPreEncoded`: native memory/badger; sharded routes each row to its slot's badger door) lets the ingest applier hand the store the producer-thread-encoded row with its tail patched, skipping the second msgpack pass. The applier uses a pre-encoded buffer ONLY when it is provably byte-identical to the store's own encode — for a genesis create the sole field that can diverge between prepare and apply is the label tokens (a probe token re-stamped to a different real token, §4.4), so when the finalized tokens differ from the pre-encoded ones (or the patch fails, or the store declines the capability) the applier falls back to encode-at-flush, which is byte-identical by construction. Provenance is by the typed in-process buffer the applier carries, NEVER by sniffing stored bytes: `HasWireTemporalTail` is a debug/validation helper, never a "this stored row is patchable" decision (v1/foreign marker bytes can coincide). The change-log put body stays the UNTOKENIZED encode-at-flush form on both paths, so cross-backend change-feed parity is byte-identical.
+**Wire format v2 — patchable transaction-time slot.** Layout: "Row wire format" below (`fv` 2). The ingest pipeline (since 4.14.0) pre-encodes a row on the producer thread with a zero tail, and the single applier patches the stamped TxFrom/TxTo in place (`storeutil.PatchWireTemporalTail`, marker-validated, fail-closed with `ErrCorruptWire` on a truncated or non-v2 buffer) instead of a second msgpack pass; `Patch(PreEncode(E, 0), T) == Encode(E, T)` holds byte-for-byte. Decode is version-transparent (msgpack keys are self-describing): v1 and v2 rows coexist, and a writable open of a v1-marked or unmarked directory restamps the marker to 2. The optional `store.PreEncodedPutCapability` (`PutNodesBatchPreEncoded`; native memory/badger, sharded routes each row to its slot) receives the patched buffer only when it is provably byte-identical to the store's own encode: the finalized label tokens equal the pre-encoded ones (a probe token re-stamped to another real token diverges) and the patch succeeded; otherwise the applier encodes at flush. Provenance is the typed in-process buffer, never sniffing stored bytes (`HasWireTemporalTail` is a debug helper). The change-log put body stays the untokenized encode-at-flush form on both paths, so feeds are byte-identical across backends.
 
-**Threat model — the transaction-time tail is deliberately OUTSIDE the content hash.** TxFrom/TxTo have never been part of `ComputeNode/RelHash` (the hash keys on labels/type + properties + id + version, not transaction time), so a patched buffer replicates verbatim and passes `Verify*Chain` unchanged — that is exactly what makes the patch sound. The corollary is that the tail's integrity rests on TRANSPORT and STORAGE integrity (the msgpack framing, the Badger WriteBatch, the change-log co-commit), NOT on the entity hash: a bit-flip in the persisted tail is not detected by `Verify*Chain` (it never was — this is unchanged from v1, where TxFrom was also unhashed). `PatchWireTemporalTail` marker-validates the fixed slot before writing (fail-closed with `ErrCorruptWire`) so a MIS-FED in-process buffer is never silently corrupted, but it does not and cannot cryptographically bind the stamped time to the row's content.
+**Threat model — the transaction-time tail is outside the content hash.** TxFrom/TxTo were never part of `ComputeNode/RelHash` (labels/type + properties + id + version), so a patched buffer replicates verbatim and passes `Verify*Chain`. The tail's integrity therefore rests on transport and storage integrity (msgpack framing, the Badger WriteBatch, the change-log co-commit), not on the entity hash: a bit-flip in a persisted tail is not detected by `Verify*Chain`. `PatchWireTemporalTail` marker-validates the slot before writing, so a mis-fed in-process buffer is never silently corrupted, but it cannot bind the stamped time to the row's content.
 
 Write-pressure bound: `badger.Config.MaxPendingWrites` (default 100,000 ops; negative disables; under `SyncWrites` it bounds only the writes a `DurableCommit` group holds, which then flush in steps) bounds the async write buffer. It is a backend-level knob with no `graph.Config` mirror — reach it by constructing the `badger.Store` yourself and passing it as `Config.Store` (the same is true of `badger.Config.FlushInterval` below). Dirty cache entries are never evicted by design, so without the bound a sustained burst faster than `FlushInterval` grows memory without limit; at the bound the writing call flushes synchronously (backpressure), and a failing backpressure flush surfaces its error to the writer with the ops requeued. `Store.PendingWriteCount()` exposes the pressure signal.
 
@@ -38,12 +38,44 @@ The badger backend acknowledges a write when it is applied in memory, not when i
 Atomicity across a crash is per flush, not per logical operation group:
 
 - A flush writes one `WriteBatch` (data + counters + change-log records + LSN watermark). Badger may split a very large `WriteBatch` into several internal transactions, so even one flush is not guaranteed all-or-nothing at that size.
-- A multi-entity `g.Tx()` is **not** crash-atomic in any mode: its rows are flushed by the ordinary async flush or per call under `SyncWrites` (at the commit inside a `DurableCommit` group), so a crash before `Commit` can persist part of it (see `docs/architecture.md`, "Transaction isolation — what v4 actually guarantees"). `DurableCommit` adds durability on return, not atomicity: before the return a crash can keep any subset, and a flush above about 15 % of `MemTableSize` is split by Badger (all-or-nothing on disk is v5; `docs/architecture.md`, "Durable-on-return commit").
+- A multi-entity `g.Tx()` is **not** crash-atomic in any mode: its rows are flushed by the ordinary async flush or per call under `SyncWrites` (at the commit inside a `DurableCommit` group), so a crash before `Commit` can persist part of it (see `docs/architecture.md`, "Transaction isolation — what v4 actually guarantees"). `DurableCommit` adds durability on return, not atomicity: before the return a crash can keep any subset, and a flush above about 15 % of `MemTableSize` is split by Badger (all-or-nothing on disk is v5; "Durable-on-return commit" below).
 - The strong ingest mode (`g.Ingest()`, `Sync`) coalesces a group's flushes (`store.GroupCommitCapability`; the group is flushed before it is acknowledged), the closest v4 has to an atomic multi-entity write; crash atomicity is still not promised (batch size limits and background flushes can split it).
 - `tiered.Store` cross-shard relationship writes are two shard commits; a crash between them leaves residue that `RunRepair` resolves.
 - The commit clock survives a crash (backlog 44): every flush that writes rows also writes the newest transaction stamp of every row the store has written (`0x0F/tx_commit_floor`, first in the same `WriteBatch`; tiered keeps its event and archive shards' floor on the reference shard, written ahead of each shard's batch and fsynced there before a `DurableFlush` fsyncs the rows it covers), and `graph.New` raises the clock to it (`store.CommitFloorCapability`). After a crash, `NowTx()` and new stamps stay above every stored row, also when a write burst ran the clock ahead of the wall; only a `NowTx()` / `AdvanceClock` reservation that wrote no row before the crash can be lost (the Close-time watermark covers those).
 
 Choose `DurableCommit=true` + `SyncWrites=true` (table above) for power-loss durability of commit groups, `SyncWrites=true` alone when every acknowledged standalone write must never be lost; the default trades that window for throughput. The memory store is not durable at all (sealed relationship segments of a `SegmentDir` excepted).
+
+### Durable-on-return commit (`DurableCommit`)
+
+`graph.Config.DurableCommit` (off by default; backlog 11) makes `GraphTx.Commit`, `Tx().Run*`, `Batch.Execute`
+and the strong ingest applier call `store.DurableFlushCapability.DurableFlush` once per group, after the group is
+applied and the graph locks are released (readers and the next writer do not wait for the fsync). Badger's
+`DurableFlush` holds `flushMu` across the normal flush (pending buffer, counters and change-log records in one
+WriteBatch) and a `db.Sync()` of the WAL; the sync runs only when a WriteBatch reached the WAL without an fsync since
+the last one (the `unsynced` flag every flush sets), never under `SyncWrites`. Tiered folds it over the reference
+shard, the open archive and the open event shards (a closed cold shard has nothing pending and is not opened);
+sharded over every slot. A store without stable storage (memory, `BadgerInMemory`, in-memory tiered/sharded) fails
+`New` with `ErrCapabilityNotSupported`.
+
+- After success a crash keeps the whole group; before the return it can keep any subset (a background flush may
+  have written part of it, and Badger splits a buffer above its transaction limit, about 15 % of `MemTableSize`,
+  ≈ 9.6 MB at the 64 MB default, in arbitrary order). A consumer that writes its cut record last and treats rows
+  above the last durable cut as unfinished is safe while that flush fits one Badger transaction.
+- A failed flush returns `ErrCommitNotDurable`: the group is committed in memory and requeued, the next successful
+  flush persists it. `RunWithLSN` still returns the LSN and `Batch.Execute` its result (with a `durable-commit`
+  `BatchError`), so a caller never re-applies a committed group. Standalone mutations and concurrent-mode ingest
+  `Submit` keep the async flush.
+- With `SyncWrites` too, the per-mutation sync is held inside the group (`store.MutationFlushHoldCapability`,
+  badger and tiered): each `GraphTx` mutation, the whole `Batch.Execute` window and a `Rollback` run under the
+  exclusive graph lock with the flush held, and the group's one `DurableFlush` commits the held writes as one
+  Badger-synced WriteBatch (backlog 52: one sync per group instead of one per mutation). A held buffer that reaches
+  `MaxPendingWrites` flushes synced in steps; `Rollback` ends with one durable flush. Side effect: each `GraphTx`
+  mutation takes `c.mu.Lock` instead of the shared lock, so standalone writers, readers and concurrent ingest lanes
+  wait for it (in-memory work only). On tiered one shared hold covers every shard, one opened during the hold
+  included; sharded keeps per-mutation syncs.
+- `DurableFlush` re-checks the closed state under `flushMu`; `Close` sets `closing` before its final flush, so a
+  commit racing `Graph.Close` gets `ErrCommitNotDurable` wrapping `ErrStoreClosed` while `Close`'s own flush writes
+  the group.
 
 Current and history entity reads validate semantic `NodeWire` / `RelWire`
 invariants after MsgPack decode and before constructing `types.Node` or
@@ -107,7 +139,7 @@ Purpose: an older binary must refuse data it cannot read, instead of misdecoding
 | 7 | v4.56.0 on, only for an `UntimedUnbounded` or `UntimedWholeAxis` store | the store's untimed valid-start mode is `UntimedUnbounded` or (round 11, key byte 3) `UntimedWholeAxis`, or a conversion to `UntimedUnbounded` started (backlog 73; an earlier v4.56.0 or later reader refuses byte 3 at open, `ErrCorruptWire`); raised on the shard holding the MetaKV key (badger; tiered reference shard; sharded anchor) in one transaction with the key `untimed_valid_start` (`MetaSetDurableRaising`) | unchanged (an untimed start is an ordinary `ValidFrom`; an `UntimedWholeAxis` row stores literal instants, the open end `math.MaxInt64`) |
 | 8 | read since v4.62.0; written by no release yet | the store holds a delete tombstone that kept its believed `ValidTo` (`DeleteKeptValidTo`, key `dk`; backlogs 4, 7, 25): a close at or after the delete, or the open end of a row starting at or after it | 6 for that tombstone |
 
-One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features keeps its marker (3 or 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: SPEC section 9.1a; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
+One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features keeps its marker (3 or 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: "Row wire format" below; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
 
 ## Integrity hashes
 
@@ -153,6 +185,168 @@ Mode byte 3 (round 11, `UntimedWholeAxis`): the store's rows are on the literal 
 
 Marker 7 (v4.56.0, `Config.UntimedValidStart`): a store created under `UntimedUnbounded`, or converted with `Admin().SetUntimedValidStart(ctx, UntimedUnbounded)` (raised when the conversion starts), is refused by v4.55.3 and earlier. Since v4.57.0 a NEW store under the default (`UntimedDefault`) is an `UntimedUnbounded` store and carries marker 7 from its first open: set `UntimedFromTxFrom` explicitly for a new store that v4.55.3 or earlier must still open. A `UntimedFromTxFrom` store, every store with rows written before the option and every store created under v4.56.x defaults, keeps its marker and stays readable by v4.54.0 and later. Convert only once every reader, replica and importer runs v4.56.0 or later; there is no way back short of a copy made before the conversion.
 
+## Row wire format
+
+Source: `pkg/graph/internal/storeutil/wire.go`.
+
+```go
+type NodeWire struct {
+    FormatVersion uint8          `msgpack:"fv,omitempty"` // per-row format version; absent = 1
+    ID            int64          `msgpack:"id"`
+    PrimaryLabel  int            `msgpack:"pl"`
+    ExtraLabels   []int          `msgpack:"el,omitempty"`
+    Properties    []PropertyWire `msgpack:"p,omitempty"`
+    Version       int            `msgpack:"v"`
+    HasTemporal   bool           `msgpack:"ht,omitempty"`
+    ValidFrom     int64          `msgpack:"vf,omitempty"`
+    ValidTo       int64          `msgpack:"vt,omitempty"`
+    TxFrom        int64          `msgpack:"tf,omitempty"` // written as the fixed trailing slot (fv 2)
+    TxTo          int64          `msgpack:"tt,omitempty"` // written as the fixed trailing slot
+    CreatedAt     int64          `msgpack:"ca,omitempty"`
+    UpdatedAt     int64          `msgpack:"ua,omitempty"`
+    DeletedAt     int64          `msgpack:"da,omitempty"`
+    Retracted          bool   `msgpack:"rx,omitempty"` // retraction tombstone; only with da != 0
+    Void               bool   `msgpack:"vd,omitempty"` // excise void piece
+    DeleteKeptValidTo  bool   `msgpack:"dk,omitempty"` // delete tombstone that kept its ValidTo; only with da != 0
+    CreatedBy          string `msgpack:"cb,omitempty"`
+    UpdatedBy          string `msgpack:"ub,omitempty"`
+    BaseEntityID       int64  `msgpack:"be,omitempty"`
+    Hash               string `msgpack:"h,omitempty"`  // 32 raw bytes on the wire at fv >= 4
+    PrevHash           string `msgpack:"ph,omitempty"`
+    AuthorID           string `msgpack:"aid,omitempty"`
+    Signature          []byte `msgpack:"sig,omitempty"`
+    AuthorizedBy       string `msgpack:"aby,omitempty"`
+    AuthorizationLevel uint8  `msgpack:"al,omitempty"`
+}
+
+type RelWire struct {
+    FormatVersion uint8          `msgpack:"fv,omitempty"`
+    ID            int64          `msgpack:"id"`
+    RelType       int            `msgpack:"rt"`
+    StartID       int64          `msgpack:"s"`
+    EndID         int64          `msgpack:"e"`
+    Properties    []PropertyWire `msgpack:"p,omitempty"`
+    Version       int            `msgpack:"v"`
+    // temporal, rx/vd/dk, provenance and integrity fields as NodeWire, plus:
+    FromNodeHash  string         `msgpack:"fnh,omitempty"` // start-node hash at write time
+    ToNodeHash    string         `msgpack:"tnh,omitempty"` // end-node hash at write time
+}
+
+type PropertyWire struct {
+    Key           string `msgpack:"k,omitempty"`  // empty when KeyToken carries the key
+    KeyToken      uint16 `msgpack:"kt,omitempty"` // property-key token; 0 = raw Key on the wire
+    Value         any    `msgpack:"v"`
+    Type          byte   `msgpack:"t"`            // property type tag (exact Go type on decode)
+    Nil           bool   `msgpack:"n,omitempty"`  // typed nil slice/map marker
+    CustomType    string `msgpack:"ct,omitempty"` // registered custom struct type
+    CustomPointer bool   `msgpack:"cp,omitempty"` // original form was *T
+}
+```
+
+All three types have hand-written `EncodeMsgpack` implementations (`wire_encode.go`, no reflective omitempty
+checks): a new field goes into the custom encoder as well as the struct tag (lesson 39). Nested property values
+whose Go kind msgpack would lose (inside `[]any` / `map[string]any`) are marker-led arrays:
+`["\x00tkg.tv", kind, iso]` for a `TemporalValue`, `["\x00tkg.k", tag, payload]` / `["\x00tkg.k", tag]` for a typed
+scalar/container or typed nil, `["\x00tkg.c", type, pointer, msgpack]` for a registered struct
+(`wire_nested_temporal.go`); they are optional keys, so no `fv` bump.
+
+Row format versions (`fv`; the levels and the store marker: "Format versions and markers" above):
+
+| `fv` | Constant | Meaning |
+|------|----------|---------|
+| 2 | `CurrentWireFormatVersion` | `tf`/`tt` is a fixed-width, always-present trailing slot: the last two map entries, each a full int64 (`0xd3` + 8B), written even without temporal metadata (`wire_temporal_tail.go`). v1 (absent `fv`, omitempty mid-map tail) and v2 decode alike. |
+| 3 | `RetractedWireFormatVersion` | the row carries `rx` (retraction tombstone) |
+| 4 | `BinaryHashWireFormatVersion` | `h`, `ph`, `fnh`, `tnh` as 32 raw bytes (msgpack bin, 34B) instead of 64 hex characters (66B); decoders read both |
+| 5 | `VoidWireFormatVersion` | the row carries `vd` (an excise void piece) |
+| 6 | `KeptValidToWireFormatVersion` | the row carries `dk`; read since v4.62.0, written by no release yet |
+
+A row's `fv` is the max over its features; every decoder (checked, selection-scope partial and its scanner,
+delta-history `Meta`, import, change feed, replica apply) fails closed above 6. Checked validation
+(`ValidateNodeWire` / `ValidateRelWire`) refuses `rx` or `dk` without `da`, `dk` on a close before `da`, and `vd`
+on a row that cannot be a void piece (`checkVoidWire`). Retraction tombstones written by v4.49.1 (`fv=2` plus `rx`)
+still decode as retractions, but a release reading `fv <= 2` skips the key and answers a plain delete; upgrade every
+reader of such data (`tasks/evidence/retraction-fv3/05-old-binary-fails-closed.txt`).
+
+Integer widths: `pl`, `el` elements, `rt` and `v` use `EncodeInt` (smallest form: 0–127 1B, 128–255 2B, 256–65535
+3B, 65536+ 5B, so tokens have uint32 room without migration); `kt` uses `EncodeUint16` (always 3B); IDs (`id`, `s`,
+`e`, `be`) and every instant (`vf`, `vt`, `tf`, `tt`, `ca`, `ua`, `da`) use `EncodeInt64`, always 9B.
+
+## Key layout
+
+Every key starts with a 1-byte prefix (`storeutil/keys.go`, `property_index_key.go`, `temporal_index_key.go`). IDs
+are big-endian int64 (8B) and tokens big-endian uint16 (2B), so byte order is sort order and recent IDs cluster in
+the LSM. `0x0C` and `0x0E` are unused.
+
+| Prefix | Key | Value | Size | Purpose |
+|--------|-----|-------|------|---------|
+| `0x01` `KeyNode` | `<8B nodeID>` | `msgpack(NodeWire)` | 9B | current node row |
+| `0x02` `KeyRel` | `<8B relID>` | `msgpack(RelWire)` | 9B | current relationship row |
+| `0x03` `KeyLabel` | `<2B labelToken>/<8B nodeID>` | empty | 11B | label index |
+| `0x04` `KeyRelType` | `<2B relTypeToken>/<8B relID>` | empty | 11B | type index |
+| `0x05` `KeyOut` | `<8B start>/<2B type>/<8B end>/<8B relID>` | empty | 27B | outgoing adjacency |
+| `0x06` `KeyIn` | `<8B end>/<2B type>/<8B start>/<8B relID>` | empty | 27B | incoming adjacency |
+| `0x07` `KeyHistNode` | `<8B nodeID>/<8B version>` | history row | 17B | node version history |
+| `0x08` `KeyHistRel` | `<8B relID>/<8B version>` | history row | 17B | relationship version history |
+| `0x09` `KeyChangeLog` | `<8B LSN>` | `tag(1B) ‖ msgpack(body)` | 9B | change-log record (`ChangeLog`) |
+| `0x0A` `KeyPropertyIndex` | `<2B propKeyToken>/<payload>/<8B nodeID>` | empty | var | property index (`PropertyIndexOnDisk`) |
+| `0x0B` `KeyTemporalIndex` | `<2B labelToken>/<8B from>/<8B nodeID>` | 8B big-endian TO | 19B | temporal-index rebuild rows (`TemporalIndexOnDisk`) |
+| `0x0D` `KeyExAdj` | `<8B nodeID>/<1B dir>/<8B relID>` | empty | 18B | ex-adjacency (`ExAdjacencyCapability`, backlog 50) |
+| `0x0F` `KeyMeta` | `<name>` | per key (below) | var | metadata |
+
+Prefix scans: all outgoing from X `0x05/<X>/`, of type T `0x05/<X>/<T>/`, all incoming to Y `0x06/<Y>/`; an
+entity's history in version order `0x07/<id>/` (`HistNodePrefix`); the change-log in commit order `0x09`; a node's
+ex-adjacency per direction `0x0D/<node>/<dir>/` (the relationships that named the node in a row its live adjacency
+no longer holds). Fixed-width scans check the exact key length.
+
+Value encodings:
+
+- History (`0x07`/`0x08`): a full row, or with `HistoryDeltaEncoding` a delta led by the 1-byte `'D'` (`0x44`) tag
+  (`wire_history_delta.go`); reads accept both ("History delta encoding").
+- Property index (`0x0A`): `payload` is domain-tagged. Numeric `0x01 | sortKey(8B) | subtypeTag(1B) | rawBits(8B)`
+  (`sortKey` the order-preserving sign-flip of the float64 magnitude, one ordered domain for every numeric width);
+  raw (string / bool / `TemporalValue`) `0x02 | canonical value-key bytes`. The key omits the label, so definitions
+  on two labels over one property key share rows ("Persistent property index").
+- Temporal index (`0x0B`): `from` is sign-bit flipped, so a prefix scan yields (From ASC, ID ASC).
+
+On disk vs RAM: label and adjacency keys (`0x03`–`0x06`) are always written; `LabelIndexOnDisk` /
+`AdjacencyIndexOnDisk` answer reads from them instead of RAM maps. `PropertyIndexOnDisk` moves property-index
+entries into `0x0A`; `TemporalIndexOnDisk` keeps `0x0B` only as a rebuild accelerator (the index stays resident);
+each is backfilled from current rows once, under its build marker. Every other index (vector, relationship
+property, relationship-type temporal, high-frequency, composite) persists only its definition; its contents come
+from the open image after a clean `Close`, else from the rows ("Clean reopen"). RAM sidecars (history presence,
+history stamps, label / rel-type / property tx-membership) have no keys; the property tx-membership sidecars travel
+in the open image ("History rows: versions, lives and RAM sidecars").
+
+Metadata `0x0F/<name>` (`MetaKey(name)`):
+
+| Name | Value |
+|------|-------|
+| `label_tokens`, `reltype_tokens`, `property_keys` | `msgpack([]string)`, index = token value |
+| `wire_format_version` | 2B big-endian store format marker |
+| `history_anchor_interval` | pinned delta anchor interval |
+| `last_lsn` | 8B big-endian change-log watermark (with `ChangeLog`) |
+| `node_count`, `rel_count` | counters, in the same WriteBatch as the rows |
+| `tx_commit_floor` | 8B big-endian newest `TxFrom`/`TxTo`/`DeletedAt` of every row written, first entry of each flush that carries rows; tiered keeps its other shards' floor in the reference shard's `tx_commit_floor_shards` (backlog 44) |
+| `prop_indexes`, `rel_prop_indexes`, `temporal_index_defs`, `reltype_temporal_index_defs`, `high_frequency_index_defs`, `vector_index_defs`, `composite_index_defs` | index definitions |
+| `property_index_on_disk_built`, `temporal_index_on_disk_built_v2` | one-shot build markers (`temporal_index_on_disk_built` is the pre-v4.54.0 marker, deleted by the rebuild) |
+| `tkg_open_image`, `tkg_open_image_c<i>` | open image header and 512 KiB chunks |
+
+Plus the graph layer's `MetaKVCapability` entries under the same encoding (e.g. `schema_version`, `graph_epoch`,
+`tx_instant_floor`, `unique_constraints`, `compacted_through_tx`, `id_slot_lease`, `rel_exadj_built`,
+`untimed_valid_start`, `integrity_hashes`) and persisted column chunks (`ColumnsOnDisk`). There is no
+`next_node_id` / `next_rel_id` key: IDs are stateless snowflakes. The tiered store keeps label and type names in
+`data/meta/registry.msgpack` instead.
+
+## Open sequence
+
+1. Badger `New`: verify or stamp `wire_format_version` and `history_anchor_interval` before any row is decoded;
+   load `property_keys` before the index rebuild (tokenized rows need it); learn the valid axis from the persisted
+   untimed mode; install indexes from a trusted open image or rebuild them from the rows; with `ChangeLog`, reseed
+   the LSN allocator from `last_lsn`.
+2. `graph.New`: validate the config, build the snowflake generators (no counter load, no max-key scan), load the
+   label and rel-type registries from the store, raise the commit clock to `tx_commit_floor`.
+3. Decoded `NodeWire` / `RelWire` rows are complete entities; nothing is injected.
+
 ## Tiered Persistence (`tiered.Store`)
 
 For workloads with distinct reference data (Case, User) and high-volume events (Signal, Alert):
@@ -192,13 +386,15 @@ With `graph.Config.ChangeLog` (or `badger.Config.ChangeLog` / `memory.WithChange
 
 **Atomicity.** The badger backend appends each record (and the `last_lsn` watermark) in the SAME `WriteBatch` as the entity rows and counters, so a record and the mutation it describes commit atomically — there is no committed-but-unlogged window, and on restart the LSN allocator reseeds from `last_lsn` (crash-consistent with the maximum `0x09` key), so LSNs stay strictly monotonic and are never reissued. With the async write buffer, only durably-flushed records are visible to the feed; backpressure counts buffered records so a hot-key workload cannot grow the (uncoalesced) log buffer without bound.
 
-**Record tags** (`store.ChangeTag`, 14 in total — a consumer switching on the tag must cover all of them): `NodePut`/`RelPut` (1/2 — new current state), `NodeDelete`/`RelDelete` (3/4 — a `WithHistory` flag distinguishes a hard cascade from a tombstone-appending delete; node deletes carry the cascaded relationship IDs), `NodeHistoryVersion`/`RelHistoryVersion` (5/6 — explicit-version writes from import, bitemporal-cascade correction, migration, and transaction-rollback restore), `NodeHistoryTruncate`/`RelHistoryTruncate` (7/8), `Meta` (9 — body `MetaBody{Key, Value}`; emitted only for the untimed valid-start mode key `untimed_valid_start` when a store is set to or converted to `UntimedUnbounded`, backlog 73; a replica applies and persists it and fails closed on any other key; a replica before v4.56.0 stops at it with `unknown change tag 9` — upgrade replicas first), `Clear` (10), `ForeignIncoming`/`ForeignIncomingDelete` (11/12 — the ADR-0010 Model-A cross-machine incoming half-edge stub and its cascade removal; a replica MUST route both by the END node's slot, since the rel's own slot is foreign, and both are idempotent), and `RangePurge` (13 — the ADR-0008 R3 retention range purge: ONE logical record naming a PREDICATE, body `RangePurgeBody{label token, boundary, mode}`, which the replica RE-EXECUTES against its own state rather than applying N per-entity deletes), and `RelRangePurge` (14 — the relationship retention purge, backlog 21: body `RelRangePurgeBody{type token, boundary, mode}`, re-executed the same way; a separate tag so a replica that predates it stops at the unknown tag instead of purging nodes of the label sharing the token — upgrade replicas first). Bodies reuse the `NodeWire`/`RelWire` format (so no on-disk wire-format bump) and are read back through `SafeUnmarshal` — a corrupt `0x09` value fails closed with `ErrCorruptWire`, never a process crash.
+**Record tags** (`store.ChangeTag`, 14 in total — a consumer switching on the tag must cover all of them): `NodePut`/`RelPut` (1/2 — new current state), `NodeDelete`/`RelDelete` (3/4 — a `WithHistory` flag distinguishes a hard cascade from a tombstone-appending delete; node deletes carry the cascaded relationship IDs), `NodeHistoryVersion`/`RelHistoryVersion` (5/6 — explicit-version writes from import, bitemporal-cascade correction, migration, and transaction-rollback restore), `NodeHistoryTruncate`/`RelHistoryTruncate` (7/8), `Meta` (9 — body `MetaBody{Key, Value}`; emitted only for the untimed valid-start mode key `untimed_valid_start` when a store is set to or converted to `UntimedUnbounded`, backlog 73; a replica applies and persists it and fails closed on any other key; a replica before v4.56.0 stops at it with `unknown change tag 9` — upgrade replicas first), `Clear` (10), `ForeignIncoming`/`ForeignIncomingDelete` (11/12 — the cross-machine incoming half-edge stub (since 4.18.0) and its cascade removal; a replica MUST route both by the END node's slot, since the rel's own slot is foreign, and both are idempotent), and `RangePurge` (13 — the retention range purge (since 4.18.0): ONE logical record naming a PREDICATE, body `RangePurgeBody{label token, boundary, mode}`, which the replica RE-EXECUTES against its own state rather than applying N per-entity deletes), and `RelRangePurge` (14 — the relationship retention purge, backlog 21: body `RelRangePurgeBody{type token, boundary, mode}`, re-executed the same way; a separate tag so a replica that predates it stops at the unknown tag instead of purging nodes of the label sharing the token — upgrade replicas first). Bodies reuse the `NodeWire`/`RelWire` format (so no on-disk wire-format bump) and are read back through `SafeUnmarshal` — a corrupt `0x09` value fails closed with `ErrCorruptWire`, never a process crash.
 
-**Reading.** `g.Replication().ChangeFeed(afterLSN, limit)` returns committed records in ascending LSN order; `ForEachChange(afterLSN, fn)` streams them OOM-safe with the callback invoked outside store locks; `LastCommittedLSN()` is the watermark a session reads after a write for read-your-writes routing. Only flushed records are in the feed (`store.ChangeFeedCapability`: "a record buffered but not yet flushed is not surfaced"): on badger with `SyncWrites=false` an acknowledged write reaches the feed and `LastCommittedLSN` at the next async flush (`FlushInterval`, default 100 ms), so a replica polling right after the write sees nothing yet and gets it on a later poll; `SyncWrites=true` makes each write visible on return, and tiered flushes before every read. A backend opened without a change-log returns an empty feed (`ChangeLogEnabled()` reports `false`). All four in-tree backends — memory, badger, (since ADR-0005 §2) tiered, and sharded (one store-global LSN allocator over its slots) — implement the capability.
+**Placement and scope.** The record is emitted in-backend (badger, memory, tiered, sharded), never by a `Store` decorator: crash safety needs the record in the data batch, and a decorator would lose native-store trust (architecture.md "Change-log (op-log) is IN-BACKEND and co-committed, never a Store decorator"). Inside a `GraphTx` the records are buffered (`store.TxChangeLogScope`) and get their LSNs at `Commit`, so a rolled-back or uncommitted transaction emits no record and burns no LSN; an unscoped door (standalone doors, the concurrent ingest session, a store without the scope) appends its record eagerly, one per store mutation.
+
+**Reading.** `g.Replication().ChangeFeed(afterLSN, limit)` returns committed records in ascending LSN order; `ForEachChange(afterLSN, fn)` streams them OOM-safe with the callback invoked outside store locks; `LastCommittedLSN()` is the watermark a session reads after a write for read-your-writes routing. Only flushed records are in the feed (`store.ChangeFeedCapability`: "a record buffered but not yet flushed is not surfaced"): on badger with `SyncWrites=false` an acknowledged write reaches the feed and `LastCommittedLSN` at the next async flush (`FlushInterval`, default 100 ms), so a replica polling right after the write sees nothing yet and gets it on a later poll; `SyncWrites=true` makes each write visible on return, and tiered flushes before every read. A backend opened without a change-log returns an empty feed (`ChangeLogEnabled()` reports `false`). All four in-tree backends — memory, badger, (since 4.12.0) tiered, and sharded (one store-global LSN allocator over its slots) — implement the capability.
 
 **Replication model.** The change-log ALONE does not converge a replica from empty: a replica bootstraps from a full export snapshot (which includes the token registry) and then tails the feed from the snapshot's LSN. The memory backend implements the same capability (in-RAM, non-durable) for testing; all backends share one set of record-body builders, so their feeds are byte-identical for property-free entities and decode-equivalent for property-bearing ones (badger tokenizes property keys on the wire while memory keeps key strings).
 
-**Tiered change-log (ADR-0005 §2).** The tiered backend has no single `WriteBatch` — a mutation commits in exactly one shard. It still provides a coherent store-global feed: a store-owned `atomic.Uint64` LSN allocator is injected into every shard (`badger.Config.ChangeLogSeqSource`, nil elsewhere = self-owned counter, so standalone badger is byte-for-byte unchanged), so each shard co-commits its own records + `LastLSNKey` in its own batch while LSNs form ONE total order. Reseed at open reads a single monotonic `changelog_lsn_watermark` key on the always-present reference shard (written after every log-bearing flush via `badger.Config.OnChangeLogFlush`), never opening a cold shard; an unreadable watermark fences the change-log with a sticky error and refuses to hand out LSNs (`RecoverChangeLog` clears it in place). The feed runs a flush-before-read durability barrier (`tiered.Store.Flush()` over every open shard — also satisfying the export `storeFlusher`), captures `W = LastCommittedLSN` right after the barrier, and runs a W-bounded paged k-way merge over every catalog shard (one shard checked out at a time; cold-shard log segments paged read-only) emitting only `LSN <= W`; records allocated during the drain are deferred to the next poll. The barrier and W-bound together eliminate the cross-shard flush-reordering silent-loss (a lower LSN buffered on a slow shard is never skipped by a tail that already passed a higher durable LSN). This unlocks `ExportSince`/`Watermark`/`ImportMerge` and read-replica bootstrap+tail on tiered primaries.
+**Tiered change-log (since 4.12.0).** The tiered backend has no single `WriteBatch` — a mutation commits in exactly one shard. It still provides a coherent store-global feed: a store-owned `atomic.Uint64` LSN allocator is injected into every shard (`badger.Config.ChangeLogSeqSource`, nil elsewhere = self-owned counter, so standalone badger is byte-for-byte unchanged), so each shard co-commits its own records + `LastLSNKey` in its own batch while LSNs form ONE total order. Reseed at open reads a single monotonic `changelog_lsn_watermark` key on the always-present reference shard (written after every log-bearing flush via `badger.Config.OnChangeLogFlush`), never opening a cold shard; an unreadable watermark fences the change-log with a sticky error and refuses to hand out LSNs (`RecoverChangeLog` clears it in place). The feed runs a flush-before-read durability barrier (`tiered.Store.Flush()` over every open shard — also satisfying the export `storeFlusher`), captures `W = LastCommittedLSN` right after the barrier, and runs a W-bounded paged k-way merge over every catalog shard (one shard checked out at a time; cold-shard log segments paged read-only) emitting only `LSN <= W`; records allocated during the drain are deferred to the next poll. The barrier and W-bound together eliminate the cross-shard flush-reordering silent-loss (a lower LSN buffered on a slow shard is never skipped by a tail that already passed a higher durable LSN). This unlocks `ExportSince`/`Watermark`/`ImportMerge` and read-replica bootstrap+tail on tiered primaries.
 
 ## Backups (one-call ergonomics)
 
@@ -307,7 +503,7 @@ With `badger.Config.EncryptionKey` (or the mirrored `graph.Config.EncryptionKey`
 
 ## History delta encoding (opt-in, `HistoryDeltaEncoding`)
 
-With `badger.Config.HistoryDeltaEncoding` (or the mirrored `graph.Config.HistoryDeltaEncoding` / `tiered.Config.HistoryDeltaEncoding`) enabled, version-history rows (`0x07`/`0x08`) are stored as anchor+delta instead of full snapshots (ADR-0009 / B6): a version `V` with `V % HistoryAnchorInterval == 0` is a full ANCHOR and the rest are DELTAS carrying only the properties that changed vs that interval anchor, eliding large unchanged values a full snapshot would re-serialize every version. The CURRENT row (`0x01`/`0x02`) is always full. Off by default while the path soaks; a no-op on the memory backend, which keeps full snapshots as the differential oracle.
+With `badger.Config.HistoryDeltaEncoding` (or the mirrored `graph.Config.HistoryDeltaEncoding` / `tiered.Config.HistoryDeltaEncoding`) enabled, version-history rows (`0x07`/`0x08`) are stored as anchor+delta instead of full snapshots (B6, since 4.17.0): a version `V` with `V % HistoryAnchorInterval == 0` is a full ANCHOR and the rest are DELTAS carrying only the properties that changed vs that interval anchor, eliding large unchanged values a full snapshot would re-serialize every version. The CURRENT row (`0x01`/`0x02`) is always full. Off by default while the path soaks; a no-op on the memory backend, which keeps full snapshots as the differential oracle.
 
 **No migration, and no wire-format bump.** The framing is self-describing — an anchor (and any legacy pre-flag row) is the raw full marshal, a delta is 1-byte `'D'`-tagged — so reads always accept BOTH forms and the flag can be toggled on an existing store. A downgraded delta-unaware binary opens the store but fails closed with `ErrCorruptWire` on a `'D'`-tagged row rather than misreading it.
 

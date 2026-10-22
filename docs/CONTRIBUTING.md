@@ -848,7 +848,7 @@ An envelope adds wire depth: apply the property depth limit to the reconstructed
 Rule (René 2026-10-10, -17, -21):
 1. Versioning: a fix is a PATCH, a new door or option a MINOR; a fix never rides in a minor, a door never in a patch; doors from
    one round of consumer requests batch into one minor, fixes into one patch. Each release: one `make ci-docker`, one consumer
-   build, one message. Behaviour changes go through the deprecation ritual (`stability.md`); no new named exceptions.
+   build, one message. Behaviour changes go through the deprecation ritual (`api.md` § Stability and deprecation); no new named exceptions.
 2. Review: one reviewer round per branch (Fable), fix round to the same agent, a second only for a blocker; Fable runs no tests;
    the main session runs every test that decides a merge or release, lint, security and the gate. Briefs name 5-8 files and end
    with `make lint-docker security-docker`. Doc/comment-only changes get the docs tests and a diff read.

@@ -1,9 +1,7 @@
 # todo — what is next. Shipped = `docs/CHANGELOG.md`; state = `HANDOVER.md`; old ledger (done rows, releases, review log, v5 WP history) = `git show aeb7f8e0:tasks/todo.md`.
 
 ## Next (ordered)
-1. (111) Reanalyse the 15 md files (`git ls-files '*.md'`), then trim: per-file verdict (needed by whom, overlap, facts vs HEAD with file:line). Check: the trimmed `git ls-files '*.md'` + `go test -count=1 -run 'Docs|Consistency|MD' ./...` green.
-2. (112) Repoint the cites of the old todo layout (no request rows, no releases table, "Backlog (open)" is now "Parked backlog"): README.md:355, HANDOVER.md:35, docs/SPEC.md:106, docs/architecture.md:662, docs/CONTRIBUTING.md:14,16-17,902-903,906. Check: `grep -nE 'Backlog \(open\)|releases table|Open requests|requests, open backlog|request row' README.md HANDOVER.md docs/*.md` empty (CHANGELOG excepted) + `scripts/check-ledger.sh` exit 0.
-3. (108) Cold-start test 2 on the finished md set: fresh agent, new questions (not test 1's 12). Check: each gap it finds is fixed in the owning file, docs tests green.
+1. (108) Cold-start test 2 on the finished md set (13 files): fresh agent, new questions (not test 1's 12). Check: each gap it finds is fixed in the owning file, docs tests green.
 
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.
@@ -56,3 +54,7 @@ Numbers are stable (code cites "backlog N"); closed ones are in `docs/CHANGELOG.
 
 ## v5 (paused, row 61; restart needs René)
 Local branch `v5-takeover` (not pushed). Open: WP-16 per-partition allocation + `Graph.Owner`; WP-18 WAL write-EIO fail-stop (Markus F2); WP-22 one byte framing `v5/internal/wire`; WP-28 `Recorded` evidence through dist op log + range-move export; WP-33 Scan streams index pages (65,536-row cap).
+Breaking API-pass candidates for v5 (from docs/architecture.md "Deferred Architectural Decisions" 2026-06-10): split
+`internal/core` into tx/temporal/mutate; rename `pkg/graph/hash`/`io` (stdlib shadowing); one parameterized iteration interface
+instead of the history × deleted × depth × paged capability grid; `tier` stops returning `tiered.*` types and exposing
+`RecoverBackgroundError`; pending/dirty counts in `StoreStats` (today `badger.Store.PendingWriteCount()`).
