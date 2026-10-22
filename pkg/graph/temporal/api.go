@@ -65,6 +65,11 @@ type Ops interface {
 	RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]RelSegment, error)
 	NodeEffectiveTimelines(id types.NodeID, pins []types.Instant) ([][]NodeSegment, error)
 	RelEffectiveTimelines(id types.RelID, pins []types.Instant) ([][]RelSegment, error)
+	// The lowest pin the point reads answer (row 104).
+	NodeLowestAnsweredPin(id types.NodeID) (types.Instant, error)
+	NodesLowestAnsweredPins(ids []types.NodeID) ([]types.Instant, error)
+	RelLowestAnsweredPin(id types.RelID) (types.Instant, error)
+	RelsLowestAnsweredPins(ids []types.RelID) ([]types.Instant, error)
 	ForEachNodeEffectiveByLabel(label string, pin types.Instant, fn func(NodeSegment) bool) error
 	ForEachRelEffectiveByType(typeName string, pin types.Instant, fn func(RelSegment) bool) error
 	ForEachNodeEffective(pin types.Instant, fn func(NodeSegment) bool) error
@@ -615,6 +620,60 @@ func (a *API) RelEffectiveTimelines(id types.RelID, pins []types.Instant) ([][]R
 		return nil, err
 	}
 	return ops.RelEffectiveTimelines(id, pins)
+}
+
+// NodeLowestAnsweredPin returns the lowest transaction pin at which the
+// node's point reads (NodeEffectiveTimeline(s), NodeAsOf, NodeAtTx) answer
+// without ErrHistoryCompacted / ErrRetentionExpired: max(the node's
+// compaction boundary, the highest retention watermark of its labels).
+// Every positive pin at or above it is answered, every pin below it refused;
+// it may lie above the commit clock. 0: every positive pin answers (never
+// compacted, no watermark on its labels). An unknown or retention-purged
+// node has nothing to consult: 0, and the reads answer ErrNodeNotFound at
+// every pin — a purge removes the whole node, also at pins that answered it
+// before. Pins at or below 0 are not covered. Errors: ErrGraphClosed,
+// ErrInvalidStoreMutation (invalid ID).
+func (a *API) NodeLowestAnsweredPin(id types.NodeID) (types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.NodeLowestAnsweredPin(id)
+}
+
+// NodesLowestAnsweredPins is NodeLowestAnsweredPin for every id: a slice
+// aligned with ids (unsorted and repeated ids allowed) under one graph read
+// lock. One invalid id refuses the whole call with no result; empty ids
+// answer an empty result.
+func (a *API) NodesLowestAnsweredPins(ids []types.NodeID) ([]types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodesLowestAnsweredPins(ids)
+}
+
+// RelLowestAnsweredPin is NodeLowestAnsweredPin for a relationship: max(its
+// compaction boundary, its type's retention watermark — unless it was minted
+// at or after every relationship watermark — and the node-family retention
+// maximum, which every relationship point read checks). An unknown or purged
+// relationship minted below the relationship maximum gets that maximum (its
+// type is unknown); at and above it the reads answer ErrRelNotFound.
+func (a *API) RelLowestAnsweredPin(id types.RelID) (types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.RelLowestAnsweredPin(id)
+}
+
+// RelsLowestAnsweredPins is NodesLowestAnsweredPins for relationships.
+func (a *API) RelsLowestAnsweredPins(ids []types.RelID) ([]types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelsLowestAnsweredPins(ids)
 }
 
 // ForEachNodeEffectiveByLabel streams the effective timeline at pin of every
