@@ -11,7 +11,7 @@ Critical path first (René 2026-10-21: "for now we should focus on the critical 
 only items that block ai-soc on Flux or sigma get built now; the rest is listed under "Next step (deferred)" below.
 
 1. **Shipped v4.69.2 = row 106** (ai-soc Flux blocker: tiered as-of pages); ai-soc pins it and reruns the full run.
-2. **Building v4.70.0 = row 104** (sigma O1-3 P1, critical path: `LowestAnsweredPin(id[s])` + retention-purge check); row 105 (rel composite read at a pin over a valid window, sigma shapes in todo) being sized by Fable, then built into the same minor.
+2. **Building v4.70.0 = rows 104 (merged) + 105** (sigma O1-3 P1, critical path: `LowestAnsweredPin(id[s])` + retention-purge check); row 105 (rel composite read at a pin over a valid window, sigma shapes in todo) being sized by Fable, then built into the same minor.
 3. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
    on ai-soc's profile only.
 4. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
@@ -59,6 +59,9 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
    Default: stay untaken until a consumer hits one.
 2. v5 restart (row 61) and the first v5 tag (todo decision 4). Default: paused; alpha at S2 exit once restarted.
 3. Tombstone writer rebuild (above). Default: parked until sigma or ai-soc needs P24.
+4. Retention purge vs retained pins (todo row 104): a purged entity answers not-found at pins it answered before (no tombstone).
+   (a) no rho change, sigma treats not-found for an id it saw before as purged; (b) rho refuses those pins with
+   ErrRetentionExpired (per-entity purge tombstone, behaviour change via the deprecation ritual). Default: (a).
 
 ## Appendix A — origin watch
 
