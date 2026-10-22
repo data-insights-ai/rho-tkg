@@ -85,6 +85,7 @@ type Ops interface {
 	ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, window Window, fn func(RelSegment) bool) error
 	ScanRelEffectiveColumnsAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, window Window, props []string, fn func(*storepkg.RelColumnBatch) bool) error
 	RelsEffectivePage(ctx context.Context, pin Pin, f Filter, after types.RelID, limit int) ([]RelSegment, types.RelID, error)
+	RelEffectiveTimelinesByProperties(ctx context.Context, typeName string, keys []string, tuples [][]any, pin Pin) ([][]RelSegment, error)
 	NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after types.NodeID, limit int) ([]NodeSegment, types.NodeID, error)
 
 	// Cascade / timeline edit: an append-only valid-time correction. props is

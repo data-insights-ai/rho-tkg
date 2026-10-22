@@ -1,0 +1,10 @@
+--- PASS: TestRelEffectiveTimelinesByProperties_MatchesPerTupleTimeline (0.02s)
+--- PASS: TestRelEffectiveTimelinesByProperties_RefusesWithoutIndex (0.13s)
+--- PASS: TestRelEffectiveTimelinesByProperties_PinGates (0.00s)
+--- PASS: TestRelEffectiveTimelinesByProperties_WindowCut (0.03s)
+--- PASS: TestRelEffectiveTimelinesByProperties_BadInput (0.00s)
+--- PASS: TestRelEffectiveTimelinesByProperties_OneFanoutManyTuples (0.31s)
+    effective_timelines_by_test.go:712: keys [estate device]: 20 candidates read (D = 20, r = 5, n = 20000)
+    effective_timelines_by_test.go:712: keys [device estate]: 20 candidates read (D = 20, r = 5, n = 20000)
+--- PASS: TestRelEffectiveTimelinesByProperties_NoWholeTypeScan (0.08s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.597s

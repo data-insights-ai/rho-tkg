@@ -1,0 +1,8 @@
+M1 keys-order driver -> KILLED by NoWholeTypeScan
+M2 no other-key row check -> KILLED by MatchesPerTupleTimeline,PinGates,OneFanoutManyTuples,NoWholeTypeScan
+M3 no ctx per candidate -> KILLED by BadInput
+M4 no window keep -> KILLED by MatchesPerTupleTimeline
+M5 decline as empty -> KILLED by RefusesWithoutIndex
+M6 no pin prune -> KILLED by NoWholeTypeScan
+M7 no type check -> KILLED by MatchesPerTupleTimeline
+M8 gate after read -> KILLED by PinGates
