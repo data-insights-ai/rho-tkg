@@ -1,0 +1,2 @@
+    main_test.go:141: refRE("-o") = true, want false
+    main_test.go:141: refRE("--output=x") = true, want false

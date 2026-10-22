@@ -1,3 +1,2 @@
---- FAIL: TestCommentOnly (0.00s)
-    main_test.go:56: comment-only change: refused "a.go: code changed (not only comments)", want eligible
-FAIL
+    main_test.go:60: comment-only shipped code: plan "short ./pkg/a/", want ""
+    main_test.go:60: comment-only test: plan "race ./pkg/c/ ^(TestC)$", want ""

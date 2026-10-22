@@ -1,0 +1,2 @@
+    main_test.go:60: changed tests by name: plan "race ./pkg/d/", want "race ./pkg/d/ ^(TestD|FuzzD)$"
+    main_test.go:60: new test file: plan "race ./pkg/f/", want "race ./pkg/f/ ^(TestNew)$"

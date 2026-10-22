@@ -1,0 +1,1 @@
+    main_test.go:91: new func, method, const: got "pkg/a/a.go: G, K", want "pkg/a/a.go: G, K, S.N"

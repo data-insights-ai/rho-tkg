@@ -1,0 +1,2 @@
+    main_test.go:91: private helper only: got "pkg/a/priv.go: g", want ""
+    main_test.go:91: new func, method, const: got "pkg/a/a.go: G, K, S.N, helper", want "pkg/a/a.go: G, K, S.N"

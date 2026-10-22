@@ -1,0 +1,25 @@
+Results:
+
+
+[[97;41m/home/renework2023/Work/2026/datainsights/rho-tkg/scripts/commentonly/main.go:114[0m] - G702 (CWE-78): Command injection via taint analysis (Confidence: HIGH, Severity: HIGH)
+    113: func git(args ...string) ([]byte, error) {
+  > 114: 	return exec.Command("git", args...).Output()
+    115: }
+
+Autofix: 
+
+[[30;43m/home/renework2023/Work/2026/datainsights/rho-tkg/scripts/commentonly/main.go:114[0m] - G204 (CWE-78): Subprocess launched with variable (Confidence: HIGH, Severity: MEDIUM)
+    113: func git(args ...string) ([]byte, error) {
+  > 114: 	return exec.Command("git", args...).Output()
+    115: }
+
+Autofix: 
+
+[1;36mSummary:[0m
+  Gosec  : dev
+  Files  : 1
+  Lines  : 217
+  Nosec  : 0
+  Issues : [1;31m2[0m
+
+exit status 1

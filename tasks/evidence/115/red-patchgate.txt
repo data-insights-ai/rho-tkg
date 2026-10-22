@@ -1,0 +1,19 @@
+--- FAIL: TestPlan (0.00s)
+    main_test.go:60: code change: plan "", want "short ./pkg/a/"
+    main_test.go:60: string literal change: plan "", want "short ./pkg/b/"
+    main_test.go:60: changed tests by name: plan "", want "race ./pkg/d/ ^(TestD|FuzzD)$"
+    main_test.go:60: changed helper runs the package: plan "", want "race ./pkg/e/"
+    main_test.go:60: new test file: plan "", want "race ./pkg/f/ ^(TestNew)$"
+    main_test.go:60: dev tool: plan "", want "race ./scripts/t/"
+    main_test.go:60: new shipped file: plan "", want "short ./pkg/h/"
+    main_test.go:60: mixed, sorted, deduplicated: plan "", want "race ./pkg/d/ ^(TestD|FuzzD)$; short ./pkg/a/"
+--- FAIL: TestNewExportedAPI (0.00s)
+    main_test.go:91: new func, method, const: got "", want "pkg/a/a.go: G, K, S.N"
+    main_test.go:91: new file with a type: got "", want "pkg/a/new.go: T"
+--- FAIL: TestParseNameStatus (0.00s)
+    main_test.go:100: got [], want [{77 pkg/a.go} {65 docs/x.md} {82 new.go} {68 gone.go}]
+--- FAIL: TestTestNames (0.00s)
+    main_test.go:116: got "", want TestA,FuzzF,TestB
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/scripts/patchgate	0.007s
+FAIL

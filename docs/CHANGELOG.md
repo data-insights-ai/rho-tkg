@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.70.2] - 2026-10-22
+
+No behaviour change.
+
+### Fixed
+
+- GitHub CI `security` (gosec G204/G702) failed on v4.70.1: the release-gate tool ran `git` with an unchecked ref
+  argument. The base ref is now validated before it reaches `git`.
+
+### Changed
+
+- **`make ci-fast` is the gate for every patch release** (minors keep `make ci-docker`). `scripts/patchgate` (was
+  `scripts/commentonly`) plans it from the batch since the last tag and refuses new exported API (a door is a minor):
+  fmt-check, vet, build, lint, `-short` of the packages whose shipped code changed, `-race -short` of only the changed
+  tests, docs tests, check-ledger; ~30 s for docs, ~1-2 min for a code fix. gosec, govulncheck and the full race suite
+  run in GitHub CI on the push. Documented in `docs/CONTRIBUTING.md` lesson 82.
+
 ## [4.70.1] - 2026-10-22
 
 No behaviour change: documentation, code comments, tests and a fast-track release gate.
