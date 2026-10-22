@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **tiered: paged as-of reads no longer decode whole relationship types** (ai-soc R-DIAG1021b, row 106; a
+  performance fix). `RelsEffectivePage` / `NodesEffectivePage` on tiered read every registered type through
+  `RelationshipsByType` (labels through `NodesByLabel`) on every page, because tiered served neither the paged
+  property membership nor the member IDs; a reopened `/tkg/asof` page timed out at 30 s. Tiered now serves the
+  existing capabilities `store.RelPropertyTxMemberPageCapability` / `NodePropertyTxMemberPageCapability` (each
+  shard's page above the cursor, reference shard, archive and every event shard, merged in ascending ID order, an
+  entity on several shards once; `store.ErrIndexNotFound` unless every shard carries the index, as the other
+  property membership doors) and `store.MemberIDsCapability` (`RelIDsByType` / `NodeIDsByLabel`: every shard's
+  index, IDs only); the core asks the member IDs of a store with tiers only for `DepthAll` reads. A cancelled or
+  timed-out page context now stops the gather between types and between sidecar fetches. Tests
+  `TestTieredRelsEffectivePage_NoWholeTypeScan` (whole-type scans per page 12/16/4/12 before, 0 after),
+  `TestTieredMemberPage_EqualsBadger`, `TestRelsEffectivePage_CtxCancelStopsGather` (40 type reads after a cancel
+  before, at most 2 after).
+
 ## [4.69.1] - 2026-10-21
 
 ### Fixed

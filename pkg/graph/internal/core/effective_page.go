@@ -62,9 +62,13 @@ type pageSource[ID ~int64] struct {
 	prune func(ids []ID) []ID // drops fetched candidates outside the valid filter (nil: none)
 }
 
-// fill refills an empty buffer (c.mu held).
-func (s *pageSource[ID]) fill(n int) error {
+// fill refills an empty buffer (c.mu held); a cancelled ctx stops it before
+// the next fetch.
+func (s *pageSource[ID]) fill(ctx context.Context, n int) error {
 	for len(s.buf) == 0 && !s.done {
+		if err := checkCtx(ctx); err != nil {
+			return err
+		}
 		ids, last, done, err := s.fetch(s.seen, n)
 		if err != nil {
 			return err
@@ -81,14 +85,15 @@ func (s *pageSource[ID]) fill(n int) error {
 }
 
 // mergePage takes up to n candidates in ascending ID order from srcs, each ID
-// once (c.mu held). It returns fewer only when every source is exhausted.
-func mergePage[ID ~int64](srcs []*pageSource[ID], n int) ([]ID, error) {
+// once (c.mu held). It returns fewer only when every source is exhausted; a
+// cancelled ctx stops it at the next fetch.
+func mergePage[ID ~int64](ctx context.Context, srcs []*pageSource[ID], n int) ([]ID, error) {
 	chunk := min(max(n, pageChunkMin), pageChunkMax)
 	out := make([]ID, 0, min(n, chunk))
 	for len(out) < n {
 		best := -1
 		for i, s := range srcs {
-			if err := s.fill(chunk); err != nil {
+			if err := s.fill(ctx, chunk); err != nil {
 				return nil, err
 			}
 			if len(s.buf) > 0 && (best < 0 || s.buf[0] < srcs[best].buf[0]) {
@@ -242,7 +247,10 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 		n := c.relTypes.Len()
 		for i := 1; i <= n; i++ {
 			tok := uint16(i) // #nosec G115 -- bounded by the registry's uint16 token space
-			tokSrcs, err := c.relPageSources(tok, f.Prop, keys, opts, after)
+			if err := checkCtx(ctx); err != nil {
+				return err
+			}
+			tokSrcs, err := c.relPageSources(ctx, tok, f.Prop, keys, opts, after)
 			if err != nil {
 				return err
 			}
@@ -266,7 +274,7 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 		var batch []types.RelID
 		if err := c.readUnderRLock(func() error {
 			var err error
-			batch, err = mergePage(srcs, limit-entities)
+			batch, err = mergePage(ctx, srcs, limit-entities)
 			return err
 		}); err != nil {
 			return nil, 0, err
@@ -293,8 +301,8 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 // relPageSources returns tok's candidate sources at opts (pageQueryOpts), one
 // per equal key from the membership sidecar, else (no index) the type's
 // candidates, pruned by the type's envelope index (c.mu held). No key, no
-// source.
-func (c *Core) relPageSources(tok uint16, key string, keys equalKeys, opts storepkg.QueryOpts, after types.RelID) ([]*pageSource[types.RelID], error) {
+// source. A cancelled ctx stops the first fetch.
+func (c *Core) relPageSources(ctx context.Context, tok uint16, key string, keys equalKeys, opts storepkg.QueryOpts, after types.RelID) ([]*pageSource[types.RelID], error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
@@ -307,7 +315,7 @@ func (c *Core) relPageSources(tok uint16, key string, keys equalKeys, opts store
 				})
 			src.prune = func(ids []types.RelID) []types.RelID { return c.pruneRelTypeCandidates(tok, ids, opts) }
 			// The first fetch tells an indexed type from one without the index.
-			err := src.fill(pageChunkMin)
+			err := src.fill(ctx, pageChunkMin)
 			if errors.Is(err, storepkg.ErrIndexNotFound) {
 				srcs = nil
 				break
@@ -341,7 +349,10 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 		n := c.labels.Len()
 		for i := 1; i <= n; i++ {
 			tok := uint16(i) // #nosec G115 -- bounded by the registry's uint16 token space
-			tokSrcs, err := c.nodePageSources(tok, f.Prop, keys, opts, after)
+			if err := checkCtx(ctx); err != nil {
+				return err
+			}
+			tokSrcs, err := c.nodePageSources(ctx, tok, f.Prop, keys, opts, after)
 			if err != nil {
 				return err
 			}
@@ -365,7 +376,7 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 		var batch []types.NodeID
 		if err := c.readUnderRLock(func() error {
 			var err error
-			batch, err = mergePage(srcs, limit-entities)
+			batch, err = mergePage(ctx, srcs, limit-entities)
 			return err
 		}); err != nil {
 			return nil, 0, err
@@ -390,7 +401,7 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 }
 
 // nodePageSources is relPageSources for a label.
-func (c *Core) nodePageSources(tok uint16, key string, keys equalKeys, opts storepkg.QueryOpts, after types.NodeID) ([]*pageSource[types.NodeID], error) {
+func (c *Core) nodePageSources(ctx context.Context, tok uint16, key string, keys equalKeys, opts storepkg.QueryOpts, after types.NodeID) ([]*pageSource[types.NodeID], error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
@@ -402,7 +413,7 @@ func (c *Core) nodePageSources(tok uint16, key string, keys equalKeys, opts stor
 					return c.nodePropTxPage.ForEachNodePropertyTxMemberAfter(tok, key, vk, after, n, fn)
 				})
 			src.prune = func(ids []types.NodeID) []types.NodeID { return c.pruneNodeLabelCandidates(tok, ids, opts) }
-			err := src.fill(pageChunkMin)
+			err := src.fill(ctx, pageChunkMin)
 			if errors.Is(err, storepkg.ErrIndexNotFound) {
 				srcs = nil
 				break

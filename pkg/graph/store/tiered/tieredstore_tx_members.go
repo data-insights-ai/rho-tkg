@@ -327,23 +327,44 @@ func eachKey[ID comparable](valueKeys []string, one func(*BadgerStore, string, f
 // (cheapest test first: the anchor) and the core takes the history fold —
 // sound while a DDL, a repair or a backfill is in flight.
 func unionPropertyTxMembers[ID comparable](ts *Store, options func(*BadgerStore) (storecontract.PropertyIndexOptions, bool, error), each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
-	if err := ts.checkOpen(); err != nil {
+	if fn == nil {
+		if err := ts.checkOpen(); err != nil {
+			return err
+		}
+		return errNilIterationCallback()
+	}
+	ref, others, err := propertyTxMemberAnswers(ts, options, each)
+	if err != nil {
 		return err
 	}
-	if fn == nil {
-		return errNilIterationCallback()
+	var u txMemberUnion[ID]
+	u.add(ref)
+	for _, ms := range others {
+		u.add(ms)
+	}
+	u.emit(fn)
+	return nil
+}
+
+// propertyTxMemberAnswers returns every shard's sidecar answer (each), the
+// reference shard's first, under the anchor rule of unionPropertyTxMembers:
+// store.ErrIndexNotFound unless the reference shard declares the index and
+// every other shard carries a finished copy with its options.
+func propertyTxMemberAnswers[ID comparable](ts *Store, options func(*BadgerStore) (storecontract.PropertyIndexOptions, bool, error), each func(*BadgerStore, func(ID, types.Instant) bool) error) ([]txMember[ID], [][]txMember[ID], error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, nil, err
 	}
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	_, anchored, err := options(ref)
 	refCheckin()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if !anchored {
-		return storecontract.ErrIndexNotFound
+		return nil, nil, storecontract.ErrIndexNotFound
 	}
 	type answer struct {
 		opts    storecontract.PropertyIndexOptions
@@ -367,23 +388,19 @@ func unionPropertyTxMembers[ID comparable](ts *Store, options func(*BadgerStore)
 		return a, err
 	})
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if !refAnswer.has {
-		return storecontract.ErrIndexNotFound
+		return nil, nil, storecontract.ErrIndexNotFound
 	}
+	lists := make([][]txMember[ID], 0, len(others))
 	for _, a := range others {
 		if !a.has || a.opts != refAnswer.opts {
-			return storecontract.ErrIndexNotFound
+			return nil, nil, storecontract.ErrIndexNotFound
 		}
+		lists = append(lists, a.members)
 	}
-	var u txMemberUnion[ID]
-	u.add(refAnswer.members)
-	for _, a := range others {
-		u.add(a.members)
-	}
-	u.emit(fn)
-	return nil
+	return refAnswer.members, lists, nil
 }
 
 // mergeValidEndCandidates merges per-shard candidates: an entity listed by

@@ -1146,6 +1146,16 @@ func (c *Core) membershipSidecarUsable(depth storepkg.ShardDepth) bool {
 	return depth == storepkg.DepthAll || c.depthHistory == nil
 }
 
+// memberIDsAt returns c.memberIDs where it answers a read at depth, else nil
+// (the read takes the rows). Its lists, like the sidecars, cover the whole
+// store, so on the same terms as membershipSidecarUsable.
+func (c *Core) memberIDsAt(depth storepkg.ShardDepth) storepkg.MemberIDsCapability {
+	if !c.membershipSidecarUsable(depth) {
+		return nil
+	}
+	return c.memberIDs
+}
+
 // forEachRelPropertyCandidateID streams the candidate set of a temporal
 // (relType, key = value) lookup into fn, once per candidate (backlog 8).
 //

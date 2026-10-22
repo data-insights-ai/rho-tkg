@@ -46,7 +46,12 @@ func queryEventShards(shards []*EventShard, fn func(int, *EventShard)) {
 // already filtered upstream" — the upstream filter's result can be stale by
 // the time a worker goroutine gets to it.
 func queryEventShardIndices(shards []*EventShard, indices []int, fn func(int, *EventShard)) {
-	if len(indices) == 0 {
+	switch len(indices) {
+	case 0:
+		return
+	case 1: // one worker: run it inline (no goroutine, channel or wait group)
+		i := indices[0]
+		fn(i, shards[i])
 		return
 	}
 	workerCount := len(indices)

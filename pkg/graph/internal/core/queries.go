@@ -428,14 +428,15 @@ func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*ty
 // nodeLabelCandidateIDsAt is nodeLabelCandidatesAt for callers that resolve
 // every candidate themselves and need no current row: current members come
 // from store.MemberIDsCapability without reading rows (backlog 33), else
-// from the rows. Those stores keep no tiers, so opts.Depth selects nothing.
-// Callers hold c.mu (R or W).
+// from the rows, and so does a depth-scoped read on a tiered store
+// (memberIDsAt). Callers hold c.mu (R or W).
 func (c *Core) nodeLabelCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]types.NodeID, error) {
-	if c.memberIDs == nil {
+	members := c.memberIDsAt(opts.Depth)
+	if members == nil {
 		_, ids, err := c.nodeLabelCandidatesAt(tok, opts)
 		return ids, err
 	}
-	currentIDs, err := c.memberIDs.NodeIDsByLabel(tok)
+	currentIDs, err := members.NodeIDsByLabel(tok)
 	if err != nil {
 		return nil, err
 	}
@@ -592,11 +593,12 @@ func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*type
 
 // relTypeCandidateIDsAt is nodeLabelCandidateIDsAt for a relationship type.
 func (c *Core) relTypeCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]types.RelID, error) {
-	if c.memberIDs == nil {
+	members := c.memberIDsAt(opts.Depth)
+	if members == nil {
 		_, ids, err := c.relTypeCandidatesAt(tok, opts)
 		return ids, err
 	}
-	currentIDs, err := c.memberIDs.RelIDsByType(tok)
+	currentIDs, err := members.RelIDsByType(tok)
 	if err != nil {
 		return nil, err
 	}

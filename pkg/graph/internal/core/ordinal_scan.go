@@ -71,7 +71,8 @@ func (n *NodeOps) ForEachByLabelOrdinals(label string, set []uint64, opts storep
 	if hasTemporalFilter(opts) {
 		return c.forEachNodeOrdinalsAt(label, set, opts, lookup, hasLookup, emit)
 	}
-	if !hasLookup || c.memberIDs == nil {
+	members := c.memberIDsAt(opts.Depth)
+	if !hasLookup || members == nil {
 		scan := opts
 		scan.Limit = 0
 		return n.ForEachByLabel(label, scan, func(nd *types.Node) bool {
@@ -89,7 +90,7 @@ func (n *NodeOps) ForEachByLabelOrdinals(label string, set []uint64, opts storep
 	}); err != nil || !ok {
 		return err
 	}
-	ids, err := c.memberIDs.NodeIDsByLabel(tok)
+	ids, err := members.NodeIDsByLabel(tok)
 	if err != nil {
 		return err
 	}
@@ -219,7 +220,8 @@ func (r *RelOps) ForEachByTypeOrdinals(typeName string, set []uint64, opts store
 	if hasTemporalFilter(opts) {
 		return c.forEachRelOrdinalsAt(typeName, set, opts, lookup, hasLookup, emit)
 	}
-	if !hasLookup || c.memberIDs == nil {
+	members := c.memberIDsAt(opts.Depth)
+	if !hasLookup || members == nil {
 		scan := opts
 		scan.Limit = 0
 		return r.ForEachByType(typeName, scan, func(rl *types.Relationship) bool {
@@ -237,7 +239,7 @@ func (r *RelOps) ForEachByTypeOrdinals(typeName string, set []uint64, opts store
 	}); err != nil || !ok {
 		return err
 	}
-	ids, err := c.memberIDs.RelIDsByType(tok)
+	ids, err := members.RelIDsByType(tok)
 	if err != nil {
 		return err
 	}
