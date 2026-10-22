@@ -235,6 +235,27 @@ Test proportionality: graphapply 120 k test LOC for 40.7 k src (709 `Test` funcs
 | Markus v4.57.0 doors R9-1..R9-4 (main) | 327+339+387+381 / ~1,100 | sigma round 9 (`rho-tkg-round9-doors-20261016.md:18-21`); sigma calls none yet | v4 | 11 tests green 1.7 s; reuse existing bound/cut/key/column code; no new numeric rule | keep; `nodeChainOf`/`relChainOf` fold into WP-21 |
 | Consumer use of v5-only temporal concepts (rational, uncertainty, lexicographic, descriptors, calendars, regions) | — | PLAN | — | 0 hits in sigma (219 rho-importing files) and ai-soc (48); only int64 ms valid/tx time (187 / 41 files) and Allen (sigma 18) | v5.0 ships them as-is behind stability tiers; no build before a consumer asks |
 
+## v4.70.0 review (Fable 2026-10-22)
+
+Scope: caf183a7, f7d9bad3 (row 104), 612a7666, 33783198 (row 105) and merges 499c3eb6, 0fc700d7. Read end to end; no tests run. Blockers 0, should-fix 0, nits 3.
+
+Row 104, gate refactor (behaviour unchanged, checked per gate against the pre-f7d9bad3 bodies):
+- `compaction.go:306-346` checkPointCompaction: outer `pin >= wm` short-circuit kept, floor = min(wm, stub) so `pin < floor` iff `pin < stub`; no-stub and load-error paths identical. wm is loaded twice, but every writer of `compactedThroughTx` holds `c.mu.Lock` (compaction chunks `:692/:816`, reset `admin.go:328`), readers hold RLock: same value.
+- `retention.go:254-293` node gate: refuses iff `pin < graphMax && pin < max(label wm)` = old "any label wm > pin"; empty labels, metaKV nil, 0 wm all answer nil as before.
+- `retention.go:304-324` relNodeFamilyFloor = checkScanRetentionAt(scopeNodes) exactly (anyMax gate, min(anyMax, nodeMax)).
+- `retention_rel.go:210-243` type gate: `pin >= relMax`, `mint >= relMax`, unknown rel (`relMax`, refused since pin < relMax), known (`min(relMax, wm(tok))`) all map to the old branches.
+- Door = gates: every rel point read runs type + compaction + node-family (`effective_timeline.go:442/532/535`, `txtime.go:116/130/133`, `temporal_queries.go:689/692/1443`, `versions_by_ids.go:91-101`, `batched_attx.go:97-103`, `effective_timelines.go:86/200/203`); nodes run compaction + label (`:468/471`, `txtime.go:48/51`, `temporal_queries.go:517/520`). `lowest_answered_pin.go:118-158` takes max over exactly these floors under the same entity lock; monotone since each gate refuses exactly `pin < floor`.
+- nit `retention.go:283-291`: the floor visits every label before deciding, so a metaKV error on a later label now wins over ErrRetentionExpired from an earlier one (old loop returned at the first refusing label). Refusal set unchanged; store-error path only.
+
+Row 105 (`core/effective_timelines_by.go`, `temporal/effective_timelines_by.go`), checked against RelEffectiveTimeline per candidate:
+- Candidates ⊇ answer: sidecar members of the driver value with `firstTx <= pinTx` (`:289`, same prune as forEachRelPropertyCandidateID `temporal.go:1244`), windowed form keyed by the rows' declared ranges (a segment lies inside its row), pruneRelTypeCandidates envelope-sound (memory `:36-40`, tiered keeps ids no open shard covers `shard_index_fanout.go:449-453`); tiered union walks ref, archive and every event shard incl. cold via `checkoutStoreForRead` (`tieredstore_tx_members.go:57-68`).
+- Per row: segment kept whole (`pageValidKeep` = EnvelopeOverlaps), type by `HasTypeTokenRaw`, routed by the row's own driver index key (`:111-118`), remaining keys by `equalKeys.rel(..., false)`: a rel whose value changed answers only the rows carrying each tuple; tuples sharing a driver value fan out via `route`, deduped by `firstOccurrences`; repeated tuples each get the full answer; NaN has no equal keys → no candidates, no route.
+- Gates: `validateEffectiveScanPin(pin, relTypeRetentionScope)` covers scan compaction and the type + node-family watermarks (`retention_rel.go:62-72` has nodes:true), so the per-rel gates inside `relEffectiveTimelineFrom` cannot fire mid-scan; `recordedPin` maps pin ≤ 0 to -1 → no sidecar member, nil per tuple.
+- Driver: keys without exact counts (no index, tiered, mid-build, Elements, on-disk index) sort after exact ones in keys order; `relIndexElements` skips Elements, sidecar `ErrIndexNotFound` falls to the next key, none → ErrIndexNotFound without a type fold. Deleted rels: history rows answer; a fully unknown rel is skipped (`skipUnknown`).
+- Locking/ctx: candidates under one RLock; timelines via `streamEntityTimelines` (RLock per chunk, snapshot closed by defer); `checkCtx` per driver attempt and per candidate; no shared state outside the call.
+- nit `temporal/effective_timelines_by.go:17-18`: "its RelEffectiveTimeline(id, pin.Tx) segments" is not exact for an unknown rel below the rel retention max: the door answers nothing, the oracle ErrRetentionExpired (`relTypeRetentionFloor` unknown → relMax). Scan-door semantic, same as RelsEffectivePage; worth one clause.
+- nit `core/effective_timelines_by.go:240-246`: `seen` dedups by IndexablePropertyValueKey, so tuples {7} and {7.0} count the same posting twice (RelEqualCount already unites forms). Affects driver ranking only.
+
 ## Release gates (long tests only here)
 
 | Gate | Content | Checks |
