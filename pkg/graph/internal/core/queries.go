@@ -1270,11 +1270,11 @@ func (c *Core) incomingRelsForNodesLocked(nodeIDs []types.NodeID, typeName strin
 // OutgoingForNodesAtPin / IncomingForNodesAtPin.
 //
 // Candidates: the live adjacency UNIONED with each seed's ex-adjacency
-// (forEachRelAdjacencyCandidateID; AGENTS.md "Adjacency-at-t fold uses the
-// seed's ex-adjacency"). A relationship deleted after txAt is still visible
-// (delete is a tx-time tombstone, lesson 60); one created after, or deleted
-// before, txAt is not; a backfilled one (AddWithTx) is visible from its
-// backfilled TxFrom.
+// (forEachRelAdjacencyCandidateID; docs/architecture.md "Adjacency-at-t fold
+// uses the seed's ex-adjacency"). A relationship deleted after txAt is still
+// visible (delete is a tx-time tombstone, lesson 60); one created after, or
+// deleted before, txAt is not; a backfilled one (AddWithTx) is visible from
+// its backfilled TxFrom.
 //
 // txAt == 0 delegates to OutgoingForNodes. An unregistered typeName still
 // validates that every node exists and returns (nil, nil). Results are
@@ -1446,8 +1446,8 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 //
 // Candidates: the live adjacency of the CURRENTLY-EXISTING seeds UNIONED with
 // the ex-adjacency of EVERY seed, deleted ones included
-// (forEachRelAdjacencyCandidateID; AGENTS.md "Adjacency-at-t fold uses the
-// seed's ex-adjacency").
+// (forEachRelAdjacencyCandidateID; docs/architecture.md "Adjacency-at-t fold
+// uses the seed's ex-adjacency").
 //
 // SEED TOLERANCE: unlike OutgoingForNodes/AtTx, a seed absent from CURRENT
 // state does NOT error with ErrNodeNotFound. A seed hard-deleted after the

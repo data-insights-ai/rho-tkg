@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Lock protocol of the cascade unique check (tasks/backlog.md item 12): the
+// Lock protocol of the cascade unique check (docs/CHANGELOG.md backlog 12): the
 // cascade holds the value stripe of every constrained value it introduces
 // from the check through its LAST store write, and an open-ended cascade that
 // moves the node off a value also holds the old value's stripe (ADR-0002

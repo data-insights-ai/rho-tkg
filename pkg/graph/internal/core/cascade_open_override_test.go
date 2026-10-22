@@ -16,7 +16,7 @@ import (
 // truncated the new correction's interval. Fixed via own-interval bounds
 // (nodeOwnBounds/relOwnBounds) + the existing newest-belief tiebreak, scoped
 // to the cascade slow path and newCurrent selection only — see temporal.go
-// and temporal_cascade.go. See tasks/backlog.md history / CHANGELOG for the
+// and temporal_cascade.go. See docs/CHANGELOG.md (BACKLOG 4 history) for the
 // full design rationale (two prior fix attempts were reverted before this
 // scoped design).
 

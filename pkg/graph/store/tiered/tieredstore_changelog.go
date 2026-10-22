@@ -351,7 +351,7 @@ func (ts *Store) ForEachChange(afterLSN uint64, fn func(storecontract.ChangeReco
 // regardless of tier), buffering a bounded page per shard, and emits the
 // globally-smallest LSN <= W until all shards are exhausted. It holds at most ONE
 // shard checked out at a time (checkout → page → checkin); only the small
-// per-shard buffers coexist in RAM (CLAUDE.md "Sequential ForEach").
+// per-shard buffers coexist in RAM (docs/architecture.md "Sequential ForEach").
 func (ts *Store) mergeChangeFeed(afterLSN, w uint64, fn func(storecontract.ChangeRecord) bool) error {
 	shards := ts.collectLogShards()
 	// Per-shard cursor state for the paged merge.
@@ -628,7 +628,8 @@ func (ts *Store) forEachOpenShard(fn func(*BadgerStore) error) error {
 // mid-scope.) Before this fix, a rotation-triggering write could self-commit
 // eagerly outside the scope (its own LSN, no divert), which DiscardLogScope could
 // never reach — a rolled-back tx that rotated mid-flight leaked exactly one
-// change-log record. See tasks/lessons.md and CHANGELOG.md BACKLOG 19h.
+// change-log record. See docs/CONTRIBUTING.md Lessons and docs/CHANGELOG.md
+// BACKLOG 19h.
 //
 // Cross-shard record order within one tx follows shard-commit order (reference →
 // archive → event), matching the common create-reference-then-reference-it

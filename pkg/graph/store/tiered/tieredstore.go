@@ -360,22 +360,21 @@ type Store struct {
 
 	// nodeCreateLocks / relCreateLocks (BACKLOG 19q) use the SAME 256-shard
 	// per-ID striping internal/locks.Manager provides for entity-level
-	// serialization elsewhere in this codebase (CLAUDE.md "Entity locks"). INVARIANT: the
-	// lock for entity ID X is held continuously from the start of X's
-	// duplicate-ID check through the completion of X's physical shard write
-	// (never released in between) — this is what closes the cross-shard/
-	// cross-class TOCTOU, since two
-	// concurrent creates for the SAME raw snowflake ID always hash to the
-	// SAME shard index and therefore fully serialize against each other,
-	// while two DIFFERENT IDs (the common case) proceed with no contention
-	// beyond a 1-in-256 chance of sharing a stripe. Two independent Manager
-	// instances (not shared with internal/core's entityLockManager, a
-	// different layer/invariant, and not shared with each other) — nodes and
-	// rels never nest a lock from the other's Manager, so there is no
-	// cross-domain lock-ordering hazard. relCreateLocks ALSO guards
-	// DeleteRelationshipsBatch's rollback path (which re-creates rows via
-	// putRelationshipLocked on failure), for the same reason the old
-	// relCreateMu did.
+	// serialization elsewhere in this codebase (docs/architecture.md "Entity
+	// Lock Manager"). INVARIANT: the lock for entity ID X is held continuously
+	// from the start of X's duplicate-ID check through the completion of X's
+	// physical shard write (never released in between) — this is what closes
+	// the cross-shard/cross-class TOCTOU, since two concurrent creates for the
+	// SAME raw snowflake ID always hash to the SAME shard index and therefore
+	// fully serialize against each other, while two DIFFERENT IDs (the common
+	// case) proceed with no contention beyond a 1-in-256 chance of sharing a
+	// stripe. Two independent Manager instances (not shared with
+	// internal/core's entityLockManager, a different layer/invariant, and not
+	// shared with each other) — nodes and rels never nest a lock from the
+	// other's Manager, so there is no cross-domain lock-ordering hazard.
+	// relCreateLocks ALSO guards DeleteRelationshipsBatch's rollback path
+	// (which re-creates rows via putRelationshipLocked on failure), for the
+	// same reason the old relCreateMu did.
 	nodeCreateLocks *lockspkg.Manager
 	relCreateLocks  *lockspkg.Manager
 
@@ -1041,15 +1040,15 @@ func (ts *Store) Close() error {
 
 		// Wait for any in-flight checkouts to drain before closing event
 		// shard stores. Badger v4 WriteBatch.Flush blocks forever on a
-		// closed DB (CLAUDE.md: closeIdleShards uses the same pattern), so
+		// closed DB (docs/architecture.md "Badger WriteBatch.Flush() blocks
+		// forever on closed DB": closeIdleShards uses the same pattern), so
 		// closing while a long-running RunRepair/VerifyShard still holds a
-		// checkout would deadlock that caller. Bounded spin-wait (BACKLOG
-		// 19n — mirrors the purge protocol's coldShardDrainSpinLimit
-		// instead of spinning forever): Close is rare and the wait is
-		// normally bounded by whatever outermost admin call is in flight,
-		// but a checkin leak elsewhere must not hang Close() forever —
-		// report it and proceed anyway, since Close has no fallback but to
-		// terminate.
+		// checkout would deadlock that caller. Bounded spin-wait (BACKLOG 19n —
+		// mirrors the purge protocol's coldShardDrainSpinLimit instead of
+		// spinning forever): Close is rare and the wait is normally bounded by
+		// whatever outermost admin call is in flight, but a checkin leak
+		// elsewhere must not hang Close() forever — report it and proceed
+		// anyway, since Close has no fallback but to terminate.
 		for _, es := range ts.eventShards {
 			if !drainActiveReqsBounded(es.activeReqs.Load) {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close event shard %s: %w (checkin leak?)", es.name, ErrDrainTimeout))

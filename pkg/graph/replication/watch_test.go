@@ -294,7 +294,8 @@ func TestWatch_CtxCancelBounded(t *testing.T) {
 
 // TestWatch_NoCapability uses a backend that genuinely lacks
 // store.ChangeFeedCapability (tiered.Store holds its shards as named fields,
-// never promoting a per-shard log as the cluster feed — see CLAUDE.md). This
+// never promoting a per-shard log as the cluster feed — see docs/architecture.md
+// "Tiered change-log is a store-global feed"). This
 // is the "capability absent entirely" case; TestWatch_*ChangeLogDisabled below
 // cover the sibling "capability present but its log is off" case, which used
 // to succeed silently with zero records on memory/badger (both always

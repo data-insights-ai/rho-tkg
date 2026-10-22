@@ -10,7 +10,7 @@ import (
 )
 
 // =============================================================================
-// Unique constraints on the cascade doors (tasks/backlog.md item 12).
+// Unique constraints on the cascade doors (docs/CHANGELOG.md backlog 12).
 //
 // SetNodeVersionInterval appends rows built from a props PATCH over the state
 // valid at each instant of [validFrom, validTo) (correctionChain.segments). The

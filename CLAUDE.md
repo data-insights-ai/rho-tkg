@@ -1,14 +1,9 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with
-code in this repository.
+Never create a new .md file: the documentation set and which file owns what is the table in README.md § Documentation.
 
-**`AGENTS.md` is the single canonical guidance file** — architecture, design
-rules, testing rules, the MR review protocol, the roadmap pointer, and every
-per-package/per-file map live there, shared with Codex and any other agent.
-Read `AGENTS.md` first. Nothing in this repository's guidance is Claude-only;
-this file exists only so `claude.ai/code` has its expected entry point.
+rho-tkg (`tkg/v4`) is a pure Go temporal knowledge-graph library. This file exists so Claude Code finds its entry point; nothing in
+this repository's guidance is Claude-only.
 
-Session protocol, corrections, and lessons: same as `AGENTS.md` §"Session
-Protocol" — `tasks/lessons.md` and `CHANGELOG.md` first, one lesson per new
-recurring pattern, no automatic end-of-session lessons.
+Read in this order before any work: `HANDOVER.md` → `docs/CONTRIBUTING.md` (rules, testing, review, numbered lessons) →
+`tasks/todo.md` → the top of `docs/CHANGELOG.md`. Architecture and store contracts: `docs/architecture.md`.

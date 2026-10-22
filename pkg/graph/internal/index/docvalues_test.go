@@ -35,7 +35,8 @@ func collectRows(l *LabelDocValues, keys []string) (ids []types.NodeID, vals [][
 
 // TestDocValues_Int64PrecisionPreserved pins that a value above 2^53 round-trips
 // as an EXACT int64, not a lossy float64 — the column must not silently truncate
-// the way a float64-only store would (CLAUDE.md int64 precision rule).
+// the way a float64-only store would (the int64 column rule, docs/api.md "Columnar
+// reads (DocValues)").
 func TestDocValues_Int64PrecisionPreserved(t *testing.T) {
 	const big = int64(9_000_000_000_000_001) // > 2^53; not representable exactly as float64
 	ids := []types.NodeID{3, 1, 2}

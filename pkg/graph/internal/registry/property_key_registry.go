@@ -28,9 +28,9 @@ import (
 // (overflow returns token 0, encoders fall back to the raw key string), so
 // there is no failed-operation-that-grew-the-registry case to roll back; and
 // (2) property keys are never synced from a replication primary (records
-// carry UNTOKENIZED string keys — see CLAUDE.md's replication notes), so a
-// replica tokenizes them purely locally and has no primary-driven growth to
-// undo either.
+// carry UNTOKENIZED string keys — see docs/architecture.md "Token-registry
+// refetch is append-only"), so a replica tokenizes them purely locally and has
+// no primary-driven growth to undo either.
 type PropertyKeyRegistry struct {
 	initOnce    sync.Once
 	initialized atomic.Bool

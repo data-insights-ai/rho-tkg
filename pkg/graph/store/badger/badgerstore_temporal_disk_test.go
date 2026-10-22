@@ -699,8 +699,8 @@ func TestTemporalIndexOnDisk_ConcurrentMutationAndRead(t *testing.T) {
 // TemporalIndexOnDisk-on reopen (the compact 0x0B prefix-stream rebuild).
 // Skipped under -short (real disk I/O for 100k rows). Deliberately does NOT
 // assert a hard speedup threshold (wall-clock comparisons are noisy on a
-// shared/loaded machine — see bench/README.md's own noise caveats for the
-// same reason) — it asserts CORRECTNESS parity between the two reopens and
+// shared/loaded machine — see docs/CONTRIBUTING.md "Benchmarks" on noise, for
+// the same reason) — it asserts CORRECTNESS parity between the two reopens and
 // logs both durations; the numbers are the point, not a pass/fail gate.
 //
 // Measured locally (Apple Silicon, in-tree): ~1.8x (e.g. 795ms -> 452ms for

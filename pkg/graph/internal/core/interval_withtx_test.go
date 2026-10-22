@@ -16,11 +16,12 @@ import (
 
 // Break-the-code tests for the caller-instant interval corrections
 // (Temporal().SetNodeVersionIntervalWithTx / SetRelVersionIntervalWithTx and
-// their GraphTx, BatchBuilder and ingest Session twins; backlog 34, ledger in
-// tasks/evidence/interval-withtx/notes.md). Every test names the faulty
-// implementation it catches and runs on memory, badger (in-memory), sharded and
-// tiered, node and relationship, through every door. An accepted call appears
-// only as the counterpart inside a test that breaks a faulty implementation.
+// their GraphTx, BatchBuilder and ingest Session twins; backlog 34, ledger:
+// git show 6e20157c:tasks/evidence/interval-withtx/notes.md). Every test
+// names the faulty implementation it catches and runs on memory, badger
+// (in-memory), sharded and tiered, node and relationship, through every door.
+// An accepted call appears only as the counterpart inside a test that breaks a
+// faulty implementation.
 
 // ivQueue is the queue surface BatchBuilder and the ingest Session share.
 type ivQueue interface {

@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Lock protocol of the claim withdrawal (tasks/backlog.md item 29): a door
+// Lock protocol of the claim withdrawal (docs/CHANGELOG.md backlog 29): a door
 // whose store write fails withdraws its UniqueForever claims while it still
 // holds the value stripe. White-box: a door that released the stripe first
 // and withdrew afterwards gives the same end state on an idle machine; only

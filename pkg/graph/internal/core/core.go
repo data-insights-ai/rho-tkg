@@ -348,7 +348,8 @@ type Core struct {
 	asofMu sync.Mutex
 	// valueLocks stripes unique-property-constraint enforcement by
 	// (labelToken, keyToken, canonical value). Lock order: entity -> value ->
-	// idxMu (see internal/locks.ValueManager and CLAUDE.md).
+	// idxMu (see internal/locks.ValueManager and docs/architecture.md
+	// "Lock ordering").
 	valueLocks *locks.ValueManager
 	// uniqueMu guards the in-memory unique-constraint registry (uniqueConstraints).
 	// Read on every constrained write (fast-path gated by hasUniqueConstraints);

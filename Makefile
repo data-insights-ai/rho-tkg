@@ -46,7 +46,8 @@ test-integration:
 bench-types-footprint:
 	go test -v -count=1 -run TestBench ./pkg/types/
 
-# Run the bench/ cross-backend performance suite (see bench/README.md).
+# Run the bench/ cross-backend performance suite
+# (see docs/CONTRIBUTING.md "Benchmarks").
 # Fixed -benchtime keeps a full run fast and reproducible; -count=1 is the
 # quick local/CI signal (bench-check below runs its own fresh comparison
 # pass under the same flags).

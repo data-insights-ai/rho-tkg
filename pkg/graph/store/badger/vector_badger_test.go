@@ -813,7 +813,7 @@ func TestBadgerStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
 // TestBadgerStore_VectorIndex_DefinitionSurvivesRestart: it proves the
 // documented contract (badger persists UseBruteForce/M/EfConstruction/
 // EfSearch, not just Dims/Metric, alongside the vector index definition —
-// see vectorIdxDef and CLAUDE.md "Vector Indexes") by creating the index
+// see vectorIdxDef and docs/architecture.md "Vector indexes") by creating the index
 // through CreateVectorIndexWithOptions with every tunable field set to a
 // non-default, non-zero value, reopening the store, and asserting the
 // SAME options come back via VectorIndexOptionsForTest — not merely that

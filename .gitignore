@@ -39,6 +39,6 @@ cov.out
 coverage.pkg.out
 
 # bench/ suite: per-machine baselines and bench-check scratch output —
-# never committed (see bench/README.md).
+# never committed (see docs/CONTRIBUTING.md "Benchmarks").
 bench/local-*
 coverage.test.log

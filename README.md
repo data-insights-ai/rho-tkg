@@ -1,5 +1,7 @@
 # tkg/v4
 
+> **Documentation rule:** never create a new `.md` file. Every fact goes into one of the files listed in [Documentation](#documentation) below; that list is the complete set.
+
 [![CI](https://github.com/data-insights-ai/rho-tkg/actions/workflows/ci.yml/badge.svg)](https://github.com/data-insights-ai/rho-tkg/actions/workflows/ci.yml)
 
 **Temporal Knowledge Graph v4** is an embeddable, pure-Go **knowledge-graph library** (not a
@@ -334,15 +336,27 @@ leave the stdlib import unaliased.
 
 ## Documentation
 
-- [`docs/api.md`](docs/api.md) — API & Core Types: graph layer, registries, validation limits, temporal queries, transactions, and shadow properties.
-- [`docs/architecture.md`](docs/architecture.md) — Architecture & Concurrency: system boundaries, entity lock manager, multi-phase iteration, and thread safety.
-- [`docs/persistence.md`](docs/persistence.md) — Storage interfaces, `badger.Store`, `tiered.Store`, and EXPERIMENTAL `sharded.Store` slot-topology persistence.
-- [`docs/architecture.md#design-invariants`](docs/architecture.md#design-invariants) — Design invariants: protocol guarantees, referential integrity, defensive copying, store-boundary validation.
-- [`docs/errors.md`](docs/errors.md) — Error sentinels reference: every public sentinel and the doors that return it.
-- [`docs/query-planners.md`](docs/query-planners.md) — Query planner statistics: cardinality estimates, index-usability checks, staleness detection.
-- [`docs/stability.md`](docs/stability.md) — API Stability & Deprecation Policy: v4 stability promise, experimental surfaces, and release conventions.
-- [`bench/README.md`](bench/README.md) — Benchmark suite, regression gate and write-path micro-benchmarks.
-- [`docs/SPEC.md`](docs/SPEC.md) — Formal specifications and algorithms.
+This list is the complete documentation set; there are no other `.md` files. Put a new fact into the file that owns its topic, rewrite in place, and do not add files.
+
+| File | Owns |
+|---|---|
+| `README.md` | Overview, install, quickstart, features, backends, this list |
+| [`docs/api.md`](docs/api.md) | API and core types: graph layer, registries, validation limits, temporal queries, transactions, shadow properties |
+| [`docs/errors.md`](docs/errors.md) | Every public error sentinel and the doors that return it |
+| [`docs/persistence.md`](docs/persistence.md) | Store interfaces and durability: `badger.Store`, `tiered.Store`, EXPERIMENTAL `sharded.Store` |
+| [`docs/architecture.md`](docs/architecture.md) | Architecture, concurrency, lock order, [design invariants](docs/architecture.md#design-invariants), decision records (ADR-0011) |
+| [`docs/query-planners.md`](docs/query-planners.md) | Planner statistics: cardinality estimates, index usability, staleness |
+| [`docs/SPEC.md`](docs/SPEC.md) | Formal specifications and algorithms |
+| [`docs/stability.md`](docs/stability.md) | Stability promise, deprecation policy, release conventions |
+| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Build, test, lint and release gates; benchmarks; development rules and numbered lessons ("lesson N") |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Security policy and reporting |
+| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Every release, dated: what shipped and why |
+| `HANDOVER.md` | Current state, next steps, open decisions (for the next session) |
+| `tasks/todo.md` | User requests with proof, open backlog (`backlog N`), releases table, review log |
+| `CLAUDE.md`, `AGENTS.md` | Pointer stubs for Claude Code and Codex; no content |
+
+Measurement data (`.txt`, `.json`) lives under `tasks/evidence/`, explained by the todo row or changelog entry that cites it.
+Removed files (old lessons, backlog, ADRs, evidence notes) stay readable in git: `git show 6e20157c:<path>`. `TestNoMDFileOutsideTheDocumentation` fails on any `.md` file this table does not name.
 
 ## Tutorials
 
@@ -365,15 +379,15 @@ make check   # pre-commit: vet + build + test
 make test    # unit tests (short mode)
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full build/test/lint workflow,
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the full build/test/lint workflow,
 including the Docker-based `lint`/`security`/`vulncheck` targets.
 
 ## Version history
 
-See [CHANGELOG.md](CHANGELOG.md) for the full, dated release history — every
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the full, dated release history — every
 version back to v3.0.0, with the defect it fixed or the feature it added.
 
-Current release: **v4.70.0** — see [CHANGELOG.md](CHANGELOG.md) for what shipped
+Current release: **v4.70.0** — see [docs/CHANGELOG.md](docs/CHANGELOG.md) for what shipped
 and why; this line is pinned to the changelog's latest entry by
 `TestDocsMetadataMatchesSourceOfTruth` so it cannot go stale silently.
 

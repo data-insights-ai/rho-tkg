@@ -27,7 +27,8 @@ import (
 // label's class (reference <-> event) — otherwise the live row stays on its
 // original shard while later history snapshots route elsewhere, fragmenting
 // the version chain. Single-shard backends (memory, badger) need no guard.
-// See tiered.ErrPrimaryLabelClassMutation and lessons.md B33.
+// See tiered.ErrPrimaryLabelClassMutation and docs/architecture.md
+// "Tiered primary-label class is immutable".
 type Store interface {
 	Lifecycle
 	NodeCRUDCapability

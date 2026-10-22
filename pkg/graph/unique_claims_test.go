@@ -15,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// UniqueForever claims of the node door family (tasks/backlog.md item 29).
+// UniqueForever claims of the node door family (docs/CHANGELOG.md backlog 29).
 //
 // Rule under test: a claiming door claims a UniqueForever value for the node
 // under the value stripe BEFORE its store write. When the call then fails —

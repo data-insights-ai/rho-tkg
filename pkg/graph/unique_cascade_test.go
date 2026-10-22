@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Unique constraints through SetNodeVersionInterval (tasks/backlog.md item 12).
+// Unique constraints through SetNodeVersionInterval (docs/CHANGELOG.md backlog 12).
 //
 // Rule under test: a cascade appends rows carrying its props patch. The patch
 // is judged as the update doors judge a write:

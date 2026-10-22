@@ -439,7 +439,7 @@ func txbR16Fixture(t *testing.T, g *Core) txbR16Fix {
 //     update of P, the update of A at t, the create N) while the delete of B
 //     fails its order check — partial t stamps;
 //   - the queued create's caller-visible skeleton left with a TxFrom after
-//     the refusal (AGENTS.md "Batch relationship failure rollback");
+//     the refusal (docs/architecture.md "Batch relationship failure rollback");
 //   - two writes on one relationship in one unit: each passes alone against
 //     the stored chain, but applied in sequence the later one fails after the
 //     earlier was stamped (two caller-instant updates in reversed order; a

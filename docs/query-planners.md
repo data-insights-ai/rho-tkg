@@ -206,7 +206,7 @@ means:
   needs its own brief `idxMu.RLock()` per node
   (`prefetchNodeScan`/`prefetchNodeNoFill`), so holding one lock across the
   whole call would self-deadlock (`sync.RWMutex` is not reentrant — see
-  AGENTS.md "Concurrency"); badger's rescan therefore collects the current
+  docs/architecture.md "Concurrency"); badger's rescan therefore collects the current
   node values with `idxMu` released. That unlocked-collect window is guarded
   by an optimistic **write generation** (`PropertyStatsAccumulator.WriteGen`,
   bumped under `idxMu.Lock()` on every `Observe`/`Forget`): the rescan reads

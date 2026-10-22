@@ -103,7 +103,7 @@ mints use `nextNodeIDForLane` / `nextRelIDForLane`.
 - No counter persistence: no `next_node_id` / `next_rel_id` key exists.
 - Horizon: 2^48 µs ≈ 8.92 years, so the time field is exhausted on
   **2034-12-02** UTC; the generator has no guard against the time field
-  reaching the sign bit (`tasks/backlog.md` "Snowflake ID horizon").
+  reaching the sign bit (`tasks/todo.md` "Backlog (open)" item 4 (v)).
 - Clock: the generator reads a monotonic clock anchored at the epoch; a
   backward step reuses the last timestamp and advances the step (it waits only
   on step overflow). No cross-restart guard.

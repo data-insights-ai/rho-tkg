@@ -27,7 +27,7 @@ func buildOne(t *testing.T, ids []types.NodeID, vals map[types.NodeID]any) *Labe
 // outcome: a uniform column must not carry the array it does not need. Reading a
 // value cannot detect the waste — a mixed-representation column returns identical
 // values while costing double the memory the typed layout exists to save
-// (lessons.md 46: assert the structural property).
+// (docs/CONTRIBUTING.md lesson 46: assert the structural property).
 func TestTypedColumn_StorageStateIsTheCheapestExactOne(t *testing.T) {
 	ids := []types.NodeID{1, 2, 3}
 

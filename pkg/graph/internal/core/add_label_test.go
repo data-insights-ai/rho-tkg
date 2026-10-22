@@ -172,8 +172,9 @@ func TestAddNodeLabel_TooManyLabelsDoesNotRegisterRejectedLabel(t *testing.T) {
 }
 
 // TestAddNodeLabel_RejectsUniqueConstraintViolation guards BACKLOG 9n:
-// CLAUDE.md documents AddLabel as "the door everyone forgets" for
-// unique-constraint enforcement — a node NOT yet carrying the constrained
+// docs/architecture.md ("Enforce at the finalized-state seam, not per door")
+// documents AddLabel as "the door everyone forgets" for unique-constraint
+// enforcement — a node NOT yet carrying the constrained
 // label can hold an offending value freely, but acquiring the label must be
 // rejected if another node already owns that value under it
 // (enforceUniqueForNode, node_label.go:164). This is the only door among

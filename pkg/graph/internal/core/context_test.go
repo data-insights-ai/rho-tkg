@@ -1030,8 +1030,8 @@ func TestDeleteNodeWithContext_LocksRelationships(t *testing.T) {
 // racing a node-delete cascade must never leave an orphaned relationship
 // pointing at the deleted node. The two-phase delete's TOCTOU retry (Phase A
 // snapshots adjacency, Phase B re-verifies under LockMany and retries if
-// changed — up to 10 times, see CLAUDE.md "Two-phase delete with TOCTOU
-// retry") is supposed to guarantee this, but the original version of this
+// changed — up to 10 times, see docs/architecture.md "Two-phase delete with
+// TOCTOU retry") is supposed to guarantee this, but the original version of this
 // test only checked that the NODE ended up gone — it discarded every
 // concurrent Add's result and never enumerated what happened to the
 // relationships those calls raced to create, so a bug that let one survive

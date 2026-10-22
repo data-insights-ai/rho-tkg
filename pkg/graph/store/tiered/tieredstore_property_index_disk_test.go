@@ -141,7 +141,8 @@ func TestTieredPropertyIndexOnDisk_ReopenPersistence(t *testing.T) {
 	}
 
 	// CreatePropertyIndex in disk mode requires a wired property-key registry
-	// (CLAUDE.md / badgerstore.go PropertyIndexOnDisk doc) — the tiered store
+	// (docs/architecture.md "Configuration" / badgerstore.go PropertyIndexOnDisk
+	// doc) — the tiered store
 	// has no Config.PropertyKeyRegistry field (unlike badger.Config), so tests
 	// wire it post-construction via SetPropertyKeyRegistry, exactly like a
 	// graph-layer Open would (core.go wires it the same way for every backend).

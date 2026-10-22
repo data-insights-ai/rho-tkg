@@ -2145,10 +2145,11 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	if nodes, err := g.Nodes.GetByIDs([]types.NodeID{a.ID(), b.ID()}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || nodes != nil {
 		t.Fatalf("GetNodesByIDs non-ascending rows = (%v, %v), want nil, ErrInvalidStoreMutation", nodes, err)
 	}
-	// BACKLOG 14d: CLAUDE.md's documented Store contract explicitly permits a
-	// store aliasing the same row pointer for a duplicate requested ID
-	// ("Rows for duplicate requested IDs may alias the same frozen pointer")
-	// — this must succeed, not be rejected as corruption.
+	// BACKLOG 14d: the Store contract (docs/architecture.md, "Deep-Copy / Frozen
+	// Rows at Store Boundary") explicitly permits a store aliasing the same row
+	// pointer for a duplicate requested ID ("Rows for duplicate requested IDs
+	// may alias the same frozen pointer") — this must succeed, not be rejected
+	// as corruption.
 	fs.getNodeRows = []*types.Node{a, a}
 	if nodes, err := g.Nodes.GetByIDs([]types.NodeID{a.ID(), a.ID()}); err != nil || len(nodes) != 2 || nodes[0].ID() != a.ID() || nodes[1].ID() != a.ID() {
 		t.Fatalf("GetNodesByIDs aliased duplicate rows = (%v, %v), want 2 rows for %d, nil error", nodes, err, a.ID())

@@ -57,7 +57,7 @@ func TestNewFailsClosedWhenShardedStoreDoesNotCoverIngestLanes(t *testing.T) {
 }
 
 // TestNewSucceedsWhenShardedStoreCoversAllNeededSlots is the positive case,
-// matching CLAUDE.md's own documented example: SnowflakeNodeID=0 +
+// matching docs/architecture.md "Configuration" (IngestLanes): SnowflakeNodeID=0 +
 // IngestLanes=4 needs slots {0,1} (interactive) + {2,3,4,5} (lanes) => claim
 // BaseSlot=0, SlotCount=6 covers everything and New() must succeed.
 func TestNewSucceedsWhenShardedStoreCoversAllNeededSlots(t *testing.T) {

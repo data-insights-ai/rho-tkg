@@ -408,11 +408,11 @@ func (vi *VectorIndex) IDs() []snowflake.ID {
 // mutation order used by backends (store lock -> vector lock).
 //
 // When the index is running its default HNSW engine (BruteForce == false),
-// results are approximate — see CLAUDE.md "Vector Indexes" for the
-// documented recall target. A filtered search over-fetches
-// hnswOverfetchFactor times its effective ef worth of candidates before
-// applying filter; if fewer than k survive, it falls back to an exact
-// brute-force scan of every entry (with the same filter) so a highly
+// results are approximate — see docs/architecture.md "Vector indexes" and the
+// recall gate TestHNSWRecallAtK10 for the documented recall target. A filtered
+// search over-fetches hnswOverfetchFactor times its effective ef worth of
+// candidates before applying filter; if fewer than k survive, it falls back to
+// an exact brute-force scan of every entry (with the same filter) so a highly
 // selective filter never silently under-returns.
 func (vi *VectorIndex) SearchNearest(query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	if vi == nil {

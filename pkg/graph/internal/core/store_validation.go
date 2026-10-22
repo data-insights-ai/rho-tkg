@@ -410,9 +410,10 @@ func validateRelRowPage(rels []*types.Relationship, opts storepkg.QueryOpts, sou
 
 // validateNodesByIDRows checks that nodes is exactly the multiset GetNodesByIDs
 // promises for ids: each requested ID present as often as requested, ascending.
-// It does NOT reject the same *types.Node pointer for a duplicate ID: CLAUDE.md
-// permits aliasing of rows for duplicate IDs (BACKLOG 14d). Over-return is caught
-// by the count check (remaining[id] hits 0 on the extra row).
+// It does NOT reject the same *types.Node pointer for a duplicate ID:
+// docs/architecture.md ("Deep-Copy / Frozen Rows at Store Boundary") permits
+// aliasing of rows for duplicate IDs (BACKLOG 14d). Over-return is caught by
+// the count check (remaining[id] hits 0 on the extra row).
 func validateNodesByIDRows(ids []types.NodeID, nodes []*types.Node) error {
 	remaining := make(map[types.NodeID]int, len(ids))
 	for _, id := range ids {

@@ -8,9 +8,9 @@ package core
 // fuzz coverage: a primary's change-log feed record (LSN, Tag, Payload) is,
 // from a replica's point of view, exactly as untrusted as an import stream —
 // it arrives over the wire from a peer and is decoded via
-// storeutil.SafeUnmarshal per CLAUDE.md's "decode untrusted msgpack only
-// through SafeUnmarshal" rule — but unlike Import, nothing had ever driven
-// arbitrary/adversarial (Tag, Payload) pairs through it directly. Same
+// storeutil.SafeUnmarshal per docs/architecture.md "Decode untrusted msgpack
+// only through storeutil.SafeUnmarshal" — but unlike Import, nothing had ever
+// driven arbitrary/adversarial (Tag, Payload) pairs through it directly. Same
 // contract as lesson 47/FuzzImport: apply of ANY (tag, payload) must NEVER
 // panic or crash the process — it returns an error (rejected) or applies
 // cleanly.

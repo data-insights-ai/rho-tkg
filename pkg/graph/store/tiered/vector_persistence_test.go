@@ -57,7 +57,8 @@ func TestTieredStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
 // TestTieredStore_VectorIndex_DefinitionSurvivesRestart: it proves the
 // documented contract (tiered persists UseBruteForce/M/EfConstruction/
 // EfSearch, not just Dims/Metric, in the vector index definition file — see
-// vectorIdxDef in vector_index_file.go and CLAUDE.md "Vector Indexes") by
+// vectorIdxDef in vector_index_file.go and docs/architecture.md "Vector
+// indexes") by
 // creating the index through CreateVectorIndexWithOptions with every tunable
 // field set to a non-default, non-zero value, reopening the store, and
 // asserting the SAME options come back via VectorIndexOptionsForTest — not

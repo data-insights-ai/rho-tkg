@@ -1,7 +1,7 @@
 name: Fuzz
 
 # Weekly (and on-demand) bounded fuzz run over the five trust-boundary decode
-# harnesses documented in SECURITY.md's "Fuzz harnesses" section: the
+# harnesses documented in docs/SECURITY.md's "Fuzz harnesses" section: the
 # end-to-end import pipeline, the change-log replica-apply decode path (same
 # untrusted-stream contract as import — BACKLOG 12g), and the checked
 # wire-decode/validate path for nodes and relationships. Each target's own
@@ -10,7 +10,7 @@ name: Fuzz
 # generating NEW adversarial inputs via `go test -fuzz`, matching the
 # "never panic on any (tag, payload)" contract each harness pins.
 #
-# Reverses the earlier "fuzzing stays out of CI" owner decision (CHANGELOG
+# Reverses the earlier "fuzzing stays out of CI" owner decision (docs/CHANGELOG
 # 4467): that decision predates a scheduled, time-boxed, non-blocking job.
 # A crasher this job finds is written by `go test -fuzz` to
 # testdata/fuzz/<FuzzName>/ and must be committed as a permanent regression

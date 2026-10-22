@@ -628,7 +628,8 @@ func declChild(dir, mode string) {
 }
 
 // TestGroupCommitIsOneDurableOperation pins the R3 group-commit contract
-// (tasks/evidence/temporal-index/20260909-stream2/result.md, "R3 contract"):
+// (git show 6e20157c:tasks/evidence/temporal-index/20260909-stream2/result.md,
+// "R3 contract"):
 // one acknowledged Sync Submit of one group costs O(1) physical durability
 // operations, not O(mutations). Before the group commit a 128-row group cost
 // 833 sync calls in this measurement (1 node-batch flush + 256 relationship

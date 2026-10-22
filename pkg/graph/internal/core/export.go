@@ -525,7 +525,8 @@ func writeFull(w io.Writer, data []byte) error {
 //
 // BACKLOG 12k: the body is read proportional to bytes actually DELIVERED
 // (io.CopyN into a capped-growth buffer), not pre-allocated from the
-// declared length header, mirroring readImportStageRecord (lessons.md 48).
+// declared length header, mirroring readImportStageRecord
+// (docs/CONTRIBUTING.md lesson 48).
 // r is always this Core's own already-staged replay source (staged via
 // readImportStageRecord's identical bounded read, itself capped by
 // ImportOptions.MaxStagedBytes), never a raw untrusted network stream

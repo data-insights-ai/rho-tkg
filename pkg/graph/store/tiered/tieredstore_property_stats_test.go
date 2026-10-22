@@ -186,8 +186,8 @@ func TestTieredStoreNodePropertyStats_CrossShardCountsOnce(t *testing.T) {
 // TestTieredStoreNodePropertyStats_ColdShardFold verifies the fold reaches a
 // COLD (lazily-closed) event shard: data written while the shard was hot
 // must still be counted after the shard is demoted to cold, exercising the
-// checkoutStoreForRead lazy-reopen path (CLAUDE.md "checkout/checkin for
-// cold shards").
+// checkoutStoreForRead lazy-reopen path (docs/architecture.md "Checkout/checkin
+// for cold shards").
 func TestTieredStoreNodePropertyStats_ColdShardFold(t *testing.T) {
 	ts, _, signalTok, _ := setupPropertyStatsShards(t)
 	gen := tieredNodeGen(t)

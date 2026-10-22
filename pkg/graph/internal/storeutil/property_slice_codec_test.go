@@ -15,7 +15,7 @@ import (
 // schema with the entity wire's type tags; these pin that the standalone
 // codec keeps every value's exact Go type and bits. (Nested values follow the
 // entity wire's rules exactly: a nested small integer is widened there, so it
-// is left out here — see tasks/backlog.md.)
+// is left out here — see docs/CHANGELOG.md [4.37.0], backlog 3.)
 func TestPropertySliceCodec_RoundTripKeepsKindsAndBits(t *testing.T) {
 	ps, err := types.NewPropertySlice(map[string]any{
 		"a": int8(-3), "b": uint64(math.MaxUint64), "c": math.Float64frombits(0x7ff8000000000123),

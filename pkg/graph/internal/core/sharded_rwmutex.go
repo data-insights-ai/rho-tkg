@@ -24,7 +24,8 @@ import "sync"
 //     other writers.
 //   - Non-reentrant, exactly like sync.RWMutex: a reader holding a stripe that
 //     re-locks the SAME stripe while a writer waits deadlocks — the existing
-//     "inner methods must be lock-free" discipline (see CLAUDE.md Concurrency)
+//     "inner methods must be lock-free" discipline (see docs/architecture.md
+//     "sync.RWMutex is NOT reentrant")
 //     is unchanged and still required.
 //
 // Deadlock freedom: a reader holds AT MOST ONE stripe at a time (RLockShard

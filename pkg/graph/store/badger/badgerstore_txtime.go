@@ -774,10 +774,11 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	// idxMu.RLock() hold — nesting a second idxMu.RLock() from the SAME
 	// goroutine inside that hold would self-deadlock once a writer is queued
 	// (sync.RWMutex is not reentrant, lesson 9). A candidate list collected
-	// slightly before Phase 2's lock is fine — CLAUDE.md's own two-phase
-	// "collect IDs, then process" convention already accepts this; the
-	// consistency guarantee below is about VALUES read during Phase 2, not
-	// about the candidate SET being perfectly synced to one instant.
+	// slightly before Phase 2's lock is fine — the two-phase "collect IDs, then
+	// process" convention (docs/architecture.md "History-aware merging")
+	// accepts this; the consistency guarantee below is about VALUES read during
+	// Phase 2, not about the candidate SET being perfectly synced to one
+	// instant.
 	bs.idxMu.RLock()
 	liveIDs := make([]types.NodeID, 0, len(bs.nodeIDs))
 	for nid := range bs.nodeIDs {

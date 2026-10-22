@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# R1 sweep driver for the temporal-replay benchmark (tasks/plan-temporal-index-ingestion.md).
+# R1 sweep driver for the temporal-replay benchmark
+# (git show 8d8100b3^:tasks/plan-temporal-index-ingestion.md).
 #
 # Two passes per configuration on the same durable workload:
 #   timing   — plain run, wall/latency/RSS/digest into <out>/<cfg>.json

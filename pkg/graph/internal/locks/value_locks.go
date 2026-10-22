@@ -28,7 +28,8 @@ const ValueShardCount = 256
 // same value serialize and exactly one wins (the loser sees the other's freshly
 // written index entry and is rejected).
 //
-// LOCK ORDER (global, documented once here and repeated in CLAUDE.md):
+// LOCK ORDER (global, documented once here and repeated in docs/architecture.md
+// "Lock ordering"):
 //
 //	entity locks  ->  value locks  ->  idxMu
 //

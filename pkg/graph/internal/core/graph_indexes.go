@@ -554,9 +554,9 @@ func (i *IndexOps) DeleteHighFrequency(label string) error {
 // --- Vector indexes ---
 
 // CreateVector creates a vector index on (label, propertyKey) with dims and
-// metric, defaulting to the HNSW engine (CLAUDE.md "Vector Indexes"); see
-// CreateVectorWithOptions for brute force or tuning. Resolves or creates the
-// label token. Returns ErrVectorIndexExists if it exists.
+// metric, defaulting to the HNSW engine (docs/architecture.md "Vector
+// indexes"); see CreateVectorWithOptions for brute force or tuning. Resolves or
+// creates the label token. Returns ErrVectorIndexExists if it exists.
 func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
 	return i.CreateVectorWithOptions(label, propertyKey, dims, metric, storepkg.VectorIndexOptions{})
 }

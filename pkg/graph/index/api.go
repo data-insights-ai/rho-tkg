@@ -293,8 +293,8 @@ func (a *API) DeleteRelTemporal(typeName string) error {
 // CreateVector creates a vector (kNN) index. Existing indexed vectors with
 // non-finite coordinates are rejected with ErrInvalidVectorValue.
 //
-// The index defaults to an approximate HNSW engine (see CLAUDE.md "Vector
-// Indexes" for the recall target and tuning); use CreateVectorWithOptions
+// The index defaults to an approximate HNSW engine (see docs/architecture.md
+// "Vector indexes" for the recall target and tuning); use CreateVectorWithOptions
 // for the brute-force escape hatch or HNSW tuning.
 //
 // Persistence: vector index DEFINITIONS survive restart, but the index

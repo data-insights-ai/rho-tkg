@@ -6,10 +6,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 16d: tasks/lessons.md #65 documented the FNV-1a short-sequential-
-// integer undercount as a TEST-AUTHORING footgun ("feed well-distributed
-// values, never short sequential integers") and left production code
-// unchanged. But the sketch's actual hash input in production is
+// BACKLOG 16d: docs/CONTRIBUTING.md lesson 65 documented the FNV-1a
+// short-sequential-integer undercount as a TEST-AUTHORING footgun ("feed
+// well-distributed values, never short sequential integers") and left
+// production code unchanged. But the sketch's actual hash input in production is
 // types.IndexablePropertyValueKey(value) — e.g. "i64:1990", "i64:1991",
 // "i64:1992" for a "birthYear" property, or "i64:0".."i64:120" for an "age"
 // property — which is EXACTLY the adversarial shape lesson 65 identified:

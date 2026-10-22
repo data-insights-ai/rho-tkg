@@ -11,7 +11,7 @@ import "context"
 
 // CloneSlice returns an independent copy of s, or nil if s is nil — the
 // defensive-copy contract every sub-API accessor returning a slice must
-// honor (CLAUDE.md "Defensive Copying").
+// honor (docs/architecture.md "Defensive copying").
 func CloneSlice[T any](s []T) []T {
 	if s == nil {
 		return nil

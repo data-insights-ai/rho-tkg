@@ -448,10 +448,10 @@ func TestGetOrCreateByKey_IdempotencyStorm(t *testing.T) {
 // GetOrCreateByKey callers (TestGetOrCreateByKey_IdempotencyStorm above,
 // "no-constraint" case) — but a PLAIN g.Nodes().Add call takes NO value
 // stripe at all when no constraint is active on (label, key) (value-stripe
-// locking is unique-constraint-enforcement machinery — CLAUDE.md
-// "Concurrency": "a create/update/label-add that introduces or changes a
-// CONSTRAINED value holds the value stripe"; with no constraint, nothing is
-// constrained, so nothing locks). So GetOrCreateByKey's atomicity is scoped
+// locking is unique-constraint-enforcement machinery — docs/architecture.md
+// "Lock ordering" under Concurrency: value stripes guard unique-constraint
+// enforcement only; with no constraint, nothing is constrained, so nothing
+// locks). So GetOrCreateByKey's atomicity is scoped
 // to callers that participate in the stripe protocol (other
 // GetOrCreateByKey calls, or writes enforced by an active constraint) — NOT
 // to an arbitrary concurrent plain Add. This test demonstrates that scope

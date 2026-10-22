@@ -48,9 +48,9 @@ import (
 //     live population, VectorIndex triggers a full rebuild from the
 //     current entry set (see hnswRebuildTombstoneRatio).
 
-// HNSW tuning defaults (documented in CLAUDE.md "Vector Indexes"). A caller
-// supplying VectorIndexOptions with a zero M/EfConstruction/EfSearch field
-// gets these.
+// HNSW tuning defaults (documented in docs/architecture.md "Vector indexes"). A
+// caller supplying VectorIndexOptions with a zero M/EfConstruction/EfSearch
+// field gets these.
 const (
 	DefaultHNSWM              = 16
 	DefaultHNSWEfConstruction = 200

@@ -116,9 +116,10 @@ func (s *StatOps) NodeCountByLabel(label string) (int, error) { return s.c.Nodes
 // EVERY label, not just registered ones. The prior label-lookup-first order
 // let an unregistered label short-circuit to a zero-value success before the
 // capability check (buried inside c.nodeCountByLabelAndPropertyKey) was ever
-// reached, silently masking the fail-closed contract CLAUDE.md documents for
-// this capability "at RUNTIME" — a store-level feature-availability gate
-// that should not depend on whether the queried label happens to exist.
+// reached, silently masking the fail-closed contract docs/query-planners.md
+// documents for this capability (DisablePlannerStats, a RUNTIME decline) — a
+// store-level feature-availability gate that should not depend on whether the
+// queried label happens to exist.
 func (s *StatOps) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, error) {
 	c := s.c
 	if err := c.validateIndexLabel(label); err != nil {

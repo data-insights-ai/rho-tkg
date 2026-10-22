@@ -114,9 +114,9 @@ func TestStrictCheckMergeRecord_NodeHistoryTruncate_KnownCurrentRow(t *testing.T
 // TestStrictCheckMergeRecord_NodeHistoryVersion_KnownHistoryOnly exercises the
 // SECOND leg of baseKnowsNode (history present, no current row) — a
 // deleted-with-history entity. Node.Delete leaves an append-only tombstone
-// version behind (CLAUDE.md "Append-only: Delete paths save tombstone
-// versions... History is never erased on delete"), so the entity is known to
-// the base via history alone.
+// version behind (docs/architecture.md "Append-only": Delete paths save
+// tombstone versions... History is never erased on delete), so the entity is
+// known to the base via history alone.
 func TestStrictCheckMergeRecord_NodeHistoryVersion_KnownHistoryOnly(t *testing.T) {
 	ctx := context.Background()
 	base := newPlainGraph(t, 0)

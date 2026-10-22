@@ -10,8 +10,8 @@ import (
 // BACKLOG 11d: Batch.Execute stamped TxFrom ONCE for the whole node-creation
 // phase (txNow computed before the node loop, shared by every node) but
 // called b.g.now() FRESH inside the per-relationship loop for rel creates —
-// contradicting CLAUDE.md's documented Ingest Pipeline invariant "a whole
-// commit group shares one TxFrom." Since c.now() is a monotonic-floor
+// contradicting the Ingest pipeline invariant in docs/architecture.md (ADR-0006)
+// "a whole commit group shares one TxFrom." Since c.now() is a monotonic-floor
 // counter (context.go: next = max(observed, last+1) — every call returns a
 // value strictly greater than the previous), distinct relationships created
 // in the SAME batch could get DIFFERENT (increasing) TxFrom stamps.

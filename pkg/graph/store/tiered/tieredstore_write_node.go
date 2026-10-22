@@ -141,18 +141,19 @@ func (ts *Store) putNode(n *types.Node, checkGlobalDuplicate bool) error {
 // prepareNodeVectorUpdates reads ts.vectorIndexes (structural map access) under
 // a brief RLock and returns without holding any lock across the physical
 // shard write. This is safe (BACKLOG 19q): each *indexpkg.VectorIndex has its
-// OWN internal mutex guarding HNSW mutation (CLAUDE.md "Vector Indexes:
-// Thread safety, no new lock class"), so AddPreparedNodeToVectorIndexes's
-// later update.idx.AddOwned(...) call is self-synchronized against concurrent
-// inserts/removes on the SAME index without needing ts.vectorIdxMu held. The
-// only structural race this leaves is "an index is created or dropped between
-// prepare and apply" — confirmed harmless: a concurrently-DROPPED index's
-// captured *VectorIndex pointer stays valid (Go GC keeps it alive) and the
-// wasted AddOwned call has no observable effect once the index is no longer
-// in ts.vectorIndexes; a concurrently-CREATED index cannot miss this node
-// because index creation's own 3-phase Mutated-tracking backfill (CLAUDE.md
-// "3-phase index creation") independently picks up any node written during
-// its build window, exactly as it already must for ANY concurrent write.
+// OWN internal mutex guarding HNSW mutation (VectorIndex.mu in
+// internal/index/vector_index.go; docs/architecture.md "Vector indexes"), so
+// AddPreparedNodeToVectorIndexes's later update.idx.AddOwned(...) call is
+// self-synchronized against concurrent inserts/removes on the SAME index
+// without needing ts.vectorIdxMu held. The only structural race this leaves is
+// "an index is created or dropped between prepare and apply" — confirmed
+// harmless: a concurrently-DROPPED index's captured *VectorIndex pointer stays
+// valid (Go GC keeps it alive) and the wasted AddOwned call has no observable
+// effect once the index is no longer in ts.vectorIndexes; a
+// concurrently-CREATED index cannot miss this node because index creation's own
+// 3-phase Mutated-tracking backfill (docs/architecture.md "3-phase index
+// creation") independently picks up any node written during its build window,
+// exactly as it already must for ANY concurrent write.
 func (ts *Store) prepareNodeVectorUpdates(n *types.Node, id snowflake.ID) ([]indexpkg.NodeVectorIndexUpdate, error) {
 	ts.vectorIdxMu.RLock()
 	defer ts.vectorIdxMu.RUnlock()

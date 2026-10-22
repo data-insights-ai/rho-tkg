@@ -9,8 +9,8 @@ import (
 )
 
 // =============================================================================
-// The claim hold shared by every unique-claiming door (tasks/backlog.md items
-// 12 and 29).
+// The claim hold shared by every unique-claiming door (docs/CHANGELOG.md backlog
+// items 12 and 29).
 //
 // A passing unique check hands its door a uniqueHold: the value stripes it
 // holds and the UniqueForever claims THIS call made (registry misses — a value

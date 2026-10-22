@@ -477,7 +477,8 @@ func TestTieredStore_CheckoutArchiveLifecycle(t *testing.T) {
 // ErrStoreClosed on every shard tier. Without this, a goroutine racing
 // Close past the activeReqs spin-wait could obtain a checkout on a
 // shard whose store is about to be closed — Badger v4 WriteBatch.Flush
-// then blocks forever (CLAUDE.md). The pre-fix shape only had the spin-
+// then blocks forever (docs/architecture.md "Badger WriteBatch.Flush() blocks
+// forever on closed DB"). The pre-fix shape only had the spin-
 // wait, which is necessary but not sufficient.
 func TestTieredStore_CheckoutStore_RefusesAfterClose(t *testing.T) {
 	ts := newTestTieredStore(t)

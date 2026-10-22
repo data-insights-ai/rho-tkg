@@ -16,7 +16,7 @@ import (
 )
 
 // Fault-injecting Config.Store decorators for the unique-claim tests
-// (tasks/backlog.md item 29). Each embeds one in-tree backend and overrides
+// (docs/CHANGELOG.md backlog 29). Each embeds one in-tree backend and overrides
 // the node write doors the claiming paths reach (PutNode, PutNodesBatch,
 // ReplaceNode, ReplaceNodeWithHistory, AddNodeLabelTokenWithHistory), the
 // partial-create cleanup (DeleteNode) and the registry persist (MetaSet).

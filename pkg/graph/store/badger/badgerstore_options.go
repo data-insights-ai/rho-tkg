@@ -80,8 +80,8 @@ const (
 	// minNumCompactors is Badger's documented minimum compactor count.
 	minNumCompactors = 2
 	// minZSTDCompressionLevel / maxZSTDCompressionLevel mirror the documented
-	// bound in CLAUDE.md/docs: ZSTDCompressionLevel (1-15, zero = Badger
-	// default 1).
+	// bound in docs/architecture.md "Configuration": ZSTDCompressionLevel
+	// (1-15, zero = Badger default 1).
 	minZSTDCompressionLevel = 1
 	maxZSTDCompressionLevel = 15
 )

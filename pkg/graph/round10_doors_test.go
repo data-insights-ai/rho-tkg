@@ -26,7 +26,7 @@ import (
 // epoch, int and float of one value in every width, NaN, values above 2^53,
 // lists and maps, deletes, retractions, label removal, re-imports, excises
 // and valid-time rewrites below earlier pins. The -short tier runs fewer
-// seeds and steps of the same cases (AGENTS.md race budget).
+// seeds and steps of the same cases (docs/CONTRIBUTING.md race budget).
 
 // r10Values are the property values the histories write.
 var r10Values = []any{

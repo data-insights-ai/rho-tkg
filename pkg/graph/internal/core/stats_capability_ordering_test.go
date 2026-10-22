@@ -18,8 +18,9 @@ import (
 // c.nodeCountByLabelAndPropertyKey / c.nodePropertyStats — so for an
 // UNREGISTERED label specifically, those two doors silently returned success
 // regardless of DisablePlannerStats, while their siblings correctly failed
-// closed. All four are documented (CLAUDE.md) to fail closed with
-// ErrCapabilityNotSupported "at RUNTIME" when the store declines — a
+// closed. All four are documented (docs/query-planners.md,
+// DisablePlannerStats) to fail closed with ErrCapabilityNotSupported at
+// RUNTIME when the store declines — a
 // store-level feature-availability gate that should not depend on whether
 // the queried label happens to be registered.
 //

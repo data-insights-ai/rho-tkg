@@ -78,7 +78,7 @@ const (
 //
 // Physical-redo-log caveat: the change-log is a MUTATION-LEVEL physical redo
 // log, not a logical/transactional one — see the doc comment on
-// store.ChangeFeedCapability and CLAUDE.md's change-log invariants. Since
+// store.ChangeFeedCapability and docs/architecture.md "Change-log / op-log". Since
 // v4.10.1 a rolled-back transaction or batch is diverted before commit and
 // therefore emits nothing to the feed, but two separately-committed
 // mutations (e.g. a delete followed by a later, distinct re-create) each

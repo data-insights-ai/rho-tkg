@@ -12,7 +12,7 @@
 //
 // Run: `make bench` (informal, -benchtime=0.3s) or the mandatory gate
 // `go test -bench=. -benchtime=1x ./bench` (every benchmark at least once).
-// See bench/README.md for the regression-check workflow.
+// See docs/CONTRIBUTING.md "Benchmarks" for the regression-check workflow.
 package bench
 
 import (

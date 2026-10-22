@@ -8,17 +8,17 @@ import (
 )
 
 // BACKLOG 16i: a direct, FAST, always-run (not -short-skipped) BFS-
-// reachability regression test. CLAUDE.md documents that a naive "keep the
-// M/M0 closest" neighbor-selection policy (tried first, reverted) fragments
-// a clustered corpus into per-cluster islands: "a purely-closest-pruned
-// 2000-node/20-cluster graph left only ~109 of 2000 nodes reachable from the
-// entry point" — verified via exactly this kind of BFS check during
-// development, but that check never landed as a fast committed test; only
-// the recall@10 proxy exists, and it is skipped under -short and only
+// reachability regression test. hnsw.go (selectNeighborsHeuristic) documents
+// that a naive "keep the M/M0 closest" neighbor-selection policy (tried first,
+// reverted) fragments a clustered corpus into per-cluster islands: "a
+// purely-closest-pruned 2000-node/20-cluster graph left only ~109 of 2000 nodes
+// reachable from the entry point" — verified via exactly this kind of BFS check
+// during development, but that check never landed as a fast committed test;
+// only the recall@10 proxy exists, and it is skipped under -short and only
 // INDIRECTLY sensitive to fragmentation (a fragmented graph can still score
 // well on recall if the query's true nearest neighbors happen to land in the
-// same reachable component as the entry point — recall is a STATISTICAL
-// proxy, not a structural guarantee).
+// same reachable component as the entry point — recall is a STATISTICAL proxy,
+// not a structural guarantee).
 //
 // Uses a small clustered corpus (fast: no -short skip needed) and BFS's the
 // graph's OWN layer-0 adjacency (every node has a layer-0 presence, so
@@ -49,7 +49,7 @@ func TestHNSWBFSReachability_ClusteredCorpus(t *testing.T) {
 	reachable := bfsLayer0Reachable(g)
 
 	if len(reachable) != n {
-		t.Fatalf("BFS from entry point reached %d/%d nodes — graph is fragmented into disconnected islands (the exact naive-closest-selection regression CLAUDE.md documents catching during development)",
+		t.Fatalf("BFS from entry point reached %d/%d nodes — graph is fragmented into disconnected islands (the exact naive-closest-selection regression selectNeighborsHeuristic's doc comment records)",
 			len(reachable), n)
 	}
 }
@@ -79,7 +79,7 @@ func bfsLayer0Reachable(g *hnswGraph) map[int32]bool {
 }
 
 // TestHNSWBFSReachability_AfterDeletions covers the soft-delete/tombstone
-// case: CLAUDE.md documents that Remove tombstones a node WITHOUT unlinking
+// case: hnsw.go documents that Remove tombstones a node WITHOUT unlinking
 // it specifically so its edges keep the graph connected THROUGH it — deleted
 // nodes must still count toward layer-0 connectivity for this test's
 // purpose (they are excluded from search RESULTS, never from the graph

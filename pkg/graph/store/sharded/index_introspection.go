@@ -8,7 +8,7 @@ import (
 // property/temporal/vector/rel-property index counterparts to
 // CompositeIndexIntrospectionCapability (composite_index.go). Every shard
 // holds IDENTICAL definitions (DDL fans out uniformly via fanOutUniform, per
-// CLAUDE.md "Full index/stats capability parity (S5)"), so each door reads
+// docs/architecture.md "Capability Parity (S5)"), so each door reads
 // from the anchor shard exactly like ListCompositePropertyIndexes does.
 
 var (
@@ -45,8 +45,8 @@ func (s *Store) HasTemporalIndex(labelToken uint16) (bool, error) {
 // VectorIndexInfo returns the declared configuration of the vector index on
 // (labelToken, propertyKey), reading from the anchor shard — every shard's
 // vector index for the same key shares an identical definition, only the
-// indexed ENTRIES differ per shard (see CLAUDE.md "Vector Indexes: Store-level
-// scope in TieredStore" analog for sharded).
+// indexed ENTRIES differ per shard (see docs/architecture.md "Vector indexes",
+// "Store-level scope in TieredStore", analog for sharded).
 func (s *Store) VectorIndexInfo(labelToken uint16, propertyKey string) (storecontract.VectorIndexInfo, bool, error) {
 	if err := s.checkOpen(); err != nil {
 		return storecontract.VectorIndexInfo{}, false, err

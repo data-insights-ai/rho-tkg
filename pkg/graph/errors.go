@@ -242,10 +242,10 @@ var (
 // callers can classify it with errors.Is(err, graph.ErrIngestClosed).
 var ErrIngestClosed = core.ErrIngestClosed
 
-// TieredStore reference/event ontology sentinels (ADR-0007; see CLAUDE.md's
-// TieredStore section). Reachable through THREE different sub-APIs
-// depending on which door the caller used, so they are re-exported here
-// (the central consumer surface) rather than in a single sub-API package's
+// TieredStore reference/event ontology sentinels (ADR-0007; see
+// docs/architecture.md "TieredStore rules"). Reachable through THREE different
+// sub-APIs depending on which door the caller used, so they are re-exported
+// here (the central consumer surface) rather than in a single sub-API package's
 // own errors.go.
 var (
 	// ErrNotReferenceEntity is returned by g.Tier().Archive/Restore when the

@@ -20,10 +20,10 @@ func maxRelValidFrom(c *Core, rels ...*types.Relationship) types.Instant {
 }
 
 // These tests guarantee Relationship-side parity with the Node-side
-// temporal query convenience methods (CLAUDE.md rules 2 and 17). Each test
-// follows the two-phase shape required by rule 15: create → mutate → query
-// at the pre-mutation instant, then assert the *historical* state, not the
-// post-mutation state.
+// temporal query convenience methods (docs/CONTRIBUTING.md testing rules 2 and
+// 17). Each test follows the two-phase shape required by rule 15: create →
+// mutate → query at the pre-mutation instant, then assert the *historical*
+// state, not the post-mutation state.
 
 // --- GetRelationshipsByTypeValidAt ---
 
@@ -352,12 +352,12 @@ func TestRelationshipsByTypePropertyAndTime_DeletedRel(t *testing.T) {
 
 // --- RelationshipsByTypePropertyDuring ---
 
-// Two-phase + predicate-during-interval edge case (CLAUDE.md "Most-recent-
-// overlap is wrong for predicate-during-interval"). The rel had property X
-// during *part* of [start, end), then mutated to Y. The most-recent
+// Two-phase + predicate-during-interval edge case (docs/CONTRIBUTING.md
+// "Most-recent-overlap is wrong for predicate-during-interval"). The rel had
+// property X during *part* of [start, end), then mutated to Y. The most-recent
 // overlapping version no longer matches X — but the rel must still be in
-// results because findRelVersionMatchingDuring scans all overlapping
-// versions, not just the latest.
+// results because findRelVersionMatchingDuring scans all overlapping versions,
+// not just the latest.
 func TestRelationshipsByTypePropertyDuring_PredicateDuringInterval(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)

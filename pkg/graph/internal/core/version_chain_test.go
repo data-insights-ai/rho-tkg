@@ -1166,7 +1166,7 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 
 // TestCloseRelVersion_AdvancesVersionIdentity is the relationship-side mirror of
 // TestCloseNodeVersion_AdvancesVersionIdentity (BACKLOG 9a — Node/Relationship
-// structural-mirror parity, CLAUDE.md Testing Rule 2).
+// structural-mirror parity, docs/CONTRIBUTING.md testing rule 2).
 func TestCloseRelVersion_AdvancesVersionIdentity(t *testing.T) {
 	g := newTestGraphForChain(t)
 	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)

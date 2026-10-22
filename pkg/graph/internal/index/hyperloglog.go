@@ -109,12 +109,12 @@ func (h *HyperLogLog) addHash(hash uint64) {
 // for real sequential-ish property values (birth years, ages, small
 // counters), which correlate heavily in the top bits addHash uses for the
 // register index and collapse thousands of logically-distinct values into a
-// handful of registers (see tasks/lessons.md #65 — an ~11x undercount was
-// observed on sequential int keys). Re-mixing with a proper avalanche
-// function whitens FNV-1a's output before use without changing the hash
-// choice itself, so equality/collision behavior for the property index
-// (which uses the SAME valueKey string separately, via exact map/bucket
-// lookup, never this sketch) is unaffected.
+// handful of registers (see docs/CONTRIBUTING.md lesson 65 — an ~11x
+// undercount was observed on sequential int keys). Re-mixing with a proper
+// avalanche function whitens FNV-1a's output before use without changing the
+// hash choice itself, so equality/collision behavior for the property index
+// (which uses the SAME valueKey string separately, via exact map/bucket lookup,
+// never this sketch) is unaffected.
 func mix64(x uint64) uint64 {
 	x ^= x >> 33
 	x *= 0xff51afd7ed558ccd

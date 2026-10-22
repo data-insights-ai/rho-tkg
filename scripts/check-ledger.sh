@@ -8,15 +8,18 @@ latest=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | hea
 grep -q "^| ${latest} |" tasks/todo.md || { echo "ledger: releases table lacks ${latest}"; fail=1; }
 grep -q "${latest}" HANDOVER.md || { echo "ledger: HANDOVER.md does not name ${latest}"; fail=1; }
 head -1 tasks/todo.md | grep -q "${latest}" || { echo "ledger: todo.md header does not name ${latest}"; fail=1; }
-# A user-request row still "open"/"building"/"in progress" whose backlog item is closed.
-# Closed rows read "| Item 73 (…" or "| BACKLOG 12 — …"; take the first number of each.
-closed=$(awk '/^## Closed/{f=1} f' tasks/backlog.md | grep -oiE '^\| *(item|backlog) +[0-9]+[a-z]?' | grep -oE '[0-9]+[a-z]?$' | sort -u)
-[ -n "$closed" ] || { echo "ledger: found no closed backlog items (table format changed?)"; fail=1; }
+# The user-request rows only (other todo tables also start with "| N |").
+requests=$(awk '/^## User requests/{f=1;next} /^## /{f=0} f' tasks/todo.md | grep -E '^\| [0-9]+[a-z]? \|')
+# A user-request row still "open"/"building"/"in progress" citing a backlog item that is closed, i.e. whose
+# number is not a row of todo's "## Backlog (open)" table (backlog.md moved there in row 110).
+open_items=$(awk '/^## Backlog \(open\)/{f=1;next} /^## /{f=0} f' tasks/todo.md | grep -oE '^\| [0-9]+[a-z]? \|' | grep -oE '[0-9]+[a-z]?' | sort -u)
+[ -n "$open_items" ] || { echo "ledger: found no open backlog items in tasks/todo.md (section or table format changed?)"; fail=1; }
 while IFS= read -r row; do
-  for n in $(echo "$row" | grep -oE 'backlog [0-9]+[a-z]?' | awk '{print $2}'); do
-    if echo "$closed" | grep -qx "$n"; then echo "ledger: row still open but backlog $n is closed: ${row:0:80}"; fail=1; fi
+  [ -n "$row" ] || continue
+  for n in $(echo "$row" | grep -oiE 'backlog [0-9]+[a-z]?' | awk '{print $2}'); do
+    if ! echo "$open_items" | grep -qx "$n"; then echo "ledger: row still open but backlog $n is closed (not in Backlog (open)): ${row:0:80}"; fail=1; fi
   done
-done < <(grep -E '^\| [0-9]+[a-z]? \|' tasks/todo.md | grep -iE '\| *(open|building|in progress)')
+done < <(echo "$requests" | grep -iE '\| *(open|building|in progress)')
 # A request row "in progress" for which no worktree or agent branch exists is stale: list them for the reader.
-grep -E '^\| [0-9]+[a-z]? \|' tasks/todo.md | grep -iE '\| *(in progress|building)' | cut -c1-90 | sed 's/^/ledger: still in progress (check): /'
+echo "$requests" | grep -iE '\| *(in progress|building)' | cut -c1-90 | sed 's/^/ledger: still in progress (check): /'
 exit $fail

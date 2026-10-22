@@ -61,8 +61,8 @@ func OpenInMemory(opts ...Option) (*Graph, error) {
 }
 
 // WithSnowflakeNodeID sets Config.SnowflakeNodeID (valid range 0-15; each
-// concurrent graph instance must use a distinct value — see CLAUDE.md
-// "Snowflake Configuration").
+// concurrent graph instance must use a distinct value — see
+// docs/architecture.md "Snowflake IDs").
 func WithSnowflakeNodeID(id int) Option {
 	return func(cfg *Config) {
 		cfg.SnowflakeNodeID = int64(id)
@@ -79,8 +79,8 @@ func WithValidation(v ValidationLimits) Option {
 
 // WithProfileSmall bounds the badger-backed store's per-instance footprint
 // for many-instance or embedded deployments — e.g. one graph per
-// tenant/shard/test inside a single process — where CHANGELOG.md [4.8.0]'s
-// stock defaults (1GB vlog / 64MB memtable / 256MB block cache / 4
+// tenant/shard/test inside a single process — where docs/CHANGELOG.md
+// [4.8.0]'s stock defaults (1GB vlog / 64MB memtable / 256MB block cache / 4
 // compactors) would multiply out of proportion to the number of open
 // instances. Every value stays inside the [4.8.0] validated bounds (vlog
 // [1MB,2GB), memtable [8MB,1GB], cache >=0, compactors 0 or >=2).
@@ -88,7 +88,7 @@ func WithProfileSmall() Option {
 	return func(cfg *Config) {
 		// 64MB: well above the 1MB validation floor, far below the 1GB
 		// stock default — bounds the on-disk value-log segment size per
-		// instance (CHANGELOG.md [4.8.0]).
+		// instance (docs/CHANGELOG.md [4.8.0]).
 		cfg.ValueLogFileSize = 64 * oneMiB
 		// 8MB: the validated floor itself ([4.8.0]: memtable [8MB,1GB]) —
 		// the smallest write buffer Badger accepts, minimizing per-instance
@@ -106,8 +106,8 @@ func WithProfileSmall() Option {
 
 // WithProfileServer explicitly resets the footprint knobs to zero, i.e.
 // Badger's own stock defaults (1GB vlog / 64MB memtable / 256MB block cache
-// / 4 compactors per CHANGELOG.md [4.8.0]) — the right choice for a single
-// graph instance with a whole process/host to itself, where per-instance
+// / 4 compactors per docs/CHANGELOG.md [4.8.0]) — the right choice for a
+// single graph instance with a whole process/host to itself, where per-instance
 // footprint never has to be divided across many open stores. Zero is
 // already Config's zero value, so applying this Option to a zero Config is
 // a no-op; it exists so "yes, stock Badger defaults, deliberately" is

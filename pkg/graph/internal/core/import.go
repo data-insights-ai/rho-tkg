@@ -39,7 +39,7 @@ const importMemoryStageLimit = 8 << 20 // 8 MiB before spilling to temp file.
 // The maps are created empty in newImportReplaySeen/newImportRollback and grow
 // naturally during replay, so this is a pure pre-sizing hint: a small cap keeps
 // the common-case optimization while bounding hostile amplification. See
-// lessons.md 48.
+// docs/CONTRIBUTING.md lesson 48.
 const importPreallocLimit = 4096
 
 // importBodyPreallocCap bounds the buffer pre-allocated for an inbound record
@@ -48,7 +48,7 @@ const importPreallocLimit = 4096
 // length would let ~5 hostile bytes amplify into a 128 MiB allocation (a
 // memory-exhaustion DoS at the import trust boundary). We instead grow the body
 // buffer with the bytes actually read, pre-reserving at most this cap. See
-// lessons.md 48.
+// docs/CONTRIBUTING.md lesson 48.
 const importBodyPreallocCap int64 = 64 << 10 // 64 KiB
 
 // Import reads a portable graph snapshot from r and restores it into c,
@@ -276,7 +276,7 @@ func readImportStageRecord(r io.Reader, staged, cap int64) (tag byte, data []byt
 	// Read the body proportional to bytes actually present, not the declared
 	// length: io.CopyN grows the buffer with the data it reads and reports a
 	// short stream as an error, so a header lying about a 128 MiB length on a
-	// tiny stream costs ~64 KiB, not 128 MiB. (lessons.md 48)
+	// tiny stream costs ~64 KiB, not 128 MiB. (docs/CONTRIBUTING.md lesson 48)
 	var body bytes.Buffer
 	body.Grow(int(min(int64(length), importBodyPreallocCap)))
 	got, rerr := io.CopyN(&body, r, int64(length))

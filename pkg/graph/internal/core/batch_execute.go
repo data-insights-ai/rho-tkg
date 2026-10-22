@@ -370,8 +370,8 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// TxFrom, in contrast, is stamped ONCE for the whole rel-creation phase
 	// (relsTxNow, computed here) — mirroring the node-creation phase above
 	// and the documented "a whole commit group shares one TxFrom" contract
-	// (CLAUDE.md's Ingest Pipeline section: "A whole commit group shares one
-	// TxFrom... TxFrom is strictly increasing ACROSS groups"), NOT
+	// (docs/architecture.md "Ingest pipeline (ADR-0006)": a whole commit group
+	// shares one TxFrom, and TxFrom is strictly increasing ACROSS groups), NOT
 	// per-relationship inside the loop (BACKLOG 11d — the previous code
 	// called b.g.now() fresh per-rel, so distinct rels in the SAME batch
 	// could get DIFFERENT TxFrom stamps). Distinct rels remain each their

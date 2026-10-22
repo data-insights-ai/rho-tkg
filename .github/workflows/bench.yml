@@ -3,8 +3,8 @@ name: Bench
 # Two jobs, one comparator (bench/bench-compare.sh):
 #
 #  - bench-gate (pull_request, BLOCKING): the wired-up flip-to-blocking plan
-#    from bench/README.md. Benchmarks the PR's merge-base and HEAD on the
-#    SAME runner (same noise environment) with -count=3 (5 for
+#    from docs/CONTRIBUTING.md "Benchmarks". Benchmarks the PR's merge-base and
+#    HEAD on the SAME runner (same noise environment) with -count=3 (5 for
 #    PinnedRelPropertyLookup, which is allocs-gated, not time-gated) — benchstat then
 #    compares MEDIANS, absorbing single-sample scheduler spikes — and fails
 #    the check if any core scenario's median time regressed by more than
@@ -21,7 +21,8 @@ name: Bench
 #    a perf claim from a fork or an ad-hoc branch without a PR.
 #
 # The authoritative high-resolution tooling remains LOCAL:
-# make bench-baseline + make bench-check on stable hardware (bench/README.md).
+# make bench-baseline + make bench-check on stable hardware
+# (docs/CONTRIBUTING.md "Benchmarks").
 on:
   workflow_dispatch:
   pull_request:
@@ -103,7 +104,7 @@ jobs:
             status=${PIPESTATUS[0]}
             echo '```'
             if [[ "$status" != "0" ]]; then
-              echo "**FAILED — a core scenario regressed beyond the threshold.** Re-run the job once before concluding (shared runners are noisy); a repeated failure is a real signal. See bench/README.md."
+              echo "**FAILED — a core scenario regressed beyond the threshold.** Re-run the job once before concluding (shared runners are noisy); a repeated failure is a real signal. See docs/CONTRIBUTING.md (Benchmarks)."
             fi
             exit "$status"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -923,7 +923,7 @@ type VectorIndexInfo struct {
 type VectorIndexIntrospectionCapability interface {
 	// VectorIndexInfo returns the declared configuration of the vector index on
 	// (labelToken, propertyKey), or (zero, false). Definition only, no rebuild status
-	// (AGENTS.md "Vector Indexes").
+	// (docs/architecture.md "Vector indexes").
 	VectorIndexInfo(labelToken uint16, propertyKey string) (VectorIndexInfo, bool, error)
 }
 
@@ -1100,7 +1100,7 @@ type VectorIndexCapability interface {
 
 // VectorIndexOptions configures the engine and tuning at creation. Zero values
 // select the defaults: approximate HNSW with M=16, EfConstruction=200,
-// EfSearch=64 (AGENTS.md "Vector Indexes"). A backend without
+// EfSearch=64 (docs/architecture.md "Vector indexes"). A backend without
 // VectorIndexOptionsCapability keeps its own default engine.
 type VectorIndexOptions struct {
 	// UseBruteForce selects the exact linear-scan engine instead of HNSW (exact

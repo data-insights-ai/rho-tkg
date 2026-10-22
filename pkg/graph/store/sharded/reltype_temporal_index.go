@@ -9,7 +9,7 @@ import (
 // BACKLOG 21c) — the rel-type-keyed mirror of temporal_index.go, following the
 // same ADR-0007 fan-out shape: a rel type's relationships are distributed
 // across slots by the RELATIONSHIP'S OWN ID (never an endpoint's — see
-// CLAUDE.md TieredStore/sharded routing rule), so the index is fanned out to
+// docs/architecture.md "Relationship Co-location"), so the index is fanned out to
 // every shard and each accelerates its local portion via the badger
 // implementation added alongside this file.
 

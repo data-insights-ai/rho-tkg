@@ -9,7 +9,8 @@ import (
 )
 
 // lockHandle is a no-op off unix: the directory is not locked against a
-// second process (documented in AGENTS.md; the supported platforms are unix).
+// second process (documented in docs/architecture.md "Configuration",
+// SegmentDir; the supported platforms are unix).
 type lockHandle struct{}
 
 func lockDir(string) (lockHandle, error) { return lockHandle{}, nil }

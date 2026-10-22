@@ -121,12 +121,12 @@ Do not take a production dependency on experimental surfaces without understandi
 
 - **CHANGELOG.md is the source of truth** for version history. Each release is dated; every release tag (`vX.Y.Z`) has a `## [X.Y.Z] - date` section in CHANGELOG (the module path carries only the major version, `/v4`).
 - **Versions batch multiple changes.** A single feature, bug fix, or test improvement may span multiple internal commits (via rebase or squash) but appears as one bullet in the public CHANGELOG under the version it ships in.
-- **Docs-consistency check:** `pkg/graph/internal/core/docs_consistency_test.go` pins the current release from the topmost `## [x.y.z]` heading in `CHANGELOG.md` against fixed strings in `README.md`, `AGENTS.md` and `docs/architecture.md`, and pins the Go version from `go.mod` against `README.md` / `AGENTS.md` / `docs/architecture.md`. Stale status lines fail that test.
+- **Docs-consistency check:** `pkg/graph/internal/core/docs_consistency_test.go` pins the current release from the topmost `## [x.y.z]` heading in `docs/CHANGELOG.md` against fixed strings in `README.md`, `AGENTS.md` and `docs/architecture.md`, and pins the Go version from `go.mod` against `README.md` / `AGENTS.md` / `docs/architecture.md`. Stale status lines fail that test.
 
 ## See Also
 
 - [`CHANGELOG.md`](../CHANGELOG.md) for the full release history
 - [`docs/api.md`](api.md) for the API reference (`go doc` on each `pkg/graph` sub-package is the complete method list)
 - [`docs/errors.md`](errors.md) for every public error sentinel
-- Lessons in `tasks/lessons.md` document patterns, anti-patterns, and historical context
+- Lessons in `docs/CONTRIBUTING.md` (## Lessons) document patterns, anti-patterns, and historical context
 

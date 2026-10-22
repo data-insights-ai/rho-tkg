@@ -100,7 +100,7 @@ func (c *Core) deleteInstantForRelationship(current *types.Relationship) types.I
 // already pushed past the clock by validInstantAfter (an explicit future
 // valid-from), c.now() is below it and the candidate falls back to at+1: that
 // path hands out unreserved instants today regardless of this helper (see the
-// tasks/backlog.md "temporal semantics review 2026-09-24" section).
+// tasks/todo.md backlog 4, "traced 2026-09-24").
 func (c *Core) deleteInstantClearOfCloses(at types.Instant, tms ...*types.TemporalMetadata) types.Instant {
 	for moved := true; moved && at < math.MaxInt64; {
 		moved = false
@@ -584,7 +584,7 @@ func relRowAtTx(a types.ValidAxis, entry *types.Relationship, txAt types.Instant
 // Deliberately does NOT replace nodeVersionBounds: the monotonic fast path,
 // the interval door, the Relate (Allen) door, and SelectAsOf all keep using
 // positional bounds, which is correct for them (see the design rationale in
-// CHANGELOG.md's BACKLOG 10b entry) — do not widen this helper's use
+// docs/CHANGELOG.md's BACKLOG 10b entry) — do not widen this helper's use
 // without re-running the full bitemporal oracle fuzz harness at full
 // iteration count (10b's two prior fix attempts were reverted after
 // touching nodeVersionBounds itself broke it in non-obvious multi-cascade
