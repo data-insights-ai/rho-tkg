@@ -283,6 +283,7 @@ renumber or reuse. "merged into N" / "superseded by N" stubs keep a number alive
 One current rule per bullet; the number owns the detail.
 
 - Never create a new .md file: the documentation set and which file owns what is the table in README.md § Documentation (84).
+- Commits, MRs and PRs carry no agent attribution (no Co-Authored-By, no Claude-Session, no "Generated with"); tell every agent that commits (82).
 - Versioning: a fix is a PATCH, a new door/option a MINOR; a fix never rides in a minor, a door never in a patch; doors from
   one round of consumer requests batch into one minor, fixes into one patch (79).
 - Scope: just essential patches (consumer-blocking or wrong-answer/data bugs) EXCEPT ai-soc runtime items, which have René's
@@ -305,7 +306,7 @@ One current rule per bullet; the number owns the detail.
 - One owner per fact, consolidate in place, trace the cause before asking (84). Act, do not offer (81).
 - Red break-the-code test first (one compact test, red output kept under `tasks/evidence/<item>/`), clean root-cause fix at the
   shared seam, no "known limitation" instead of work; a limit is documented only after the sound fix was shown impossible (78).
-- Behaviour changes go through the deprecation ritual (`docs/stability.md`), no new named exceptions (79).
+- Behaviour changes go through the deprecation ritual (`docs/api.md` § Stability and deprecation), no new named exceptions (79).
 - A contract over a family of doors lands in every door; test cross-door agreement (58).
 - Trust boundary: validate IDs and decoded bytes at every entry, `SafeUnmarshal`, allocate by bytes delivered, verify imported
   hashes (1, 6, 44, 47, 48).
@@ -888,7 +889,7 @@ Detector: a tag whose CI run is not `success`.
 
 ### 84. Trace The Cause, Then Consolidate: No Unreflected Questions, No Layers On Top
 
-Rule (René 2026-10-14, -16, -22; also in ~/CLAUDE.md): before a design question to René, trace where it comes from in the
+Rule (René 2026-10-14, -16, -22): before a design question to René, trace where it comes from in the
 current code (file:line, not an old note), look for a strategy that removes it (fix upstream, a standard, an existing mechanism)
 and solve it if one works; ask only the remainder, naming the cause and each rejected strategy in one line.
 Consolidate, don't add: when two code paths, notes or rules do the same job, merge them and delete the rest; duplication is often
