@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.70.1] - 2026-10-22
+
+No behaviour change: documentation, code comments, tests and a fast-track release gate.
+
+### Changed
+
+- **Documentation consolidated to 13 Markdown files** (rows 108-113). `README.md` § Documentation is the complete set and
+  names the owner of each topic; `TestNoMDFileOutsideTheDocumentation` fails on any `.md` file it does not list.
+  `CHANGELOG.md`, `SECURITY.md` and `CONTRIBUTING.md` moved to `docs/`; `tasks/lessons.md` (lesson numbers kept),
+  `AGENTS.md`'s rules and `bench/README.md` are now `docs/CONTRIBUTING.md`; `docs/SPEC.md`, `docs/design.md` and ADR-0011
+  are folded into `docs/architecture.md` and `docs/persistence.md`; `docs/stability.md` is `docs/api.md` § Stability and
+  deprecation; `tasks/backlog.md` is `tasks/todo.md` (open work only). Removed files stay readable with
+  `git show 6e20157c:<path>`.
+- **Docs corrected against the code:** `TemporalMetadata` fields (`BaseEntityID()` is a method; `Retracted`, `Void`,
+  `DeleteKeptValidTo` added), the source of `ErrOpenInterval` (`types.Relate` and the interval doors, not `Compose`),
+  compaction, delta backups and the change feed on tiered (supported), the key layout (13 prefixes), the lock order, the
+  store zero-value / nil-receiver contract.
+- Code comments that cited removed files now cite the owning doc section or `git show <commit>:<path>`.
+
+### Added
+
+- **`make ci-fast`**: fast-track release gate for a batch that changes no shipped Go code since the last tag
+  (`scripts/commentonly` checks comment-free token streams, go.mod/go.sum, added/removed files); runs fmt-check, vet,
+  build, `-race -short` of only the changed tests, the docs tests and check-ledger. Anything else → `make ci-docker`.
+  GitHub CI still runs the full suite. Documented in `docs/CONTRIBUTING.md` lesson 82.
+
+### Tests
+
+- `TestSetIdleTimeoutForTest_NoRace` (row 100, the v4.69.1 fix's red test) is now committed.
+- `TestDocsMetadataMatchesSourceOfTruth` reads `docs/CHANGELOG.md`.
+
 ## [4.70.0] - 2026-10-22
 
 ### Added

@@ -1,0 +1,2 @@
+--- FAIL: TestTestPackages (0.00s)
+    main_test.go:98: got "", want "./pkg/graph/internal/core/ ./pkg/graph/store/tiered/ ./scripts/commentonly/"

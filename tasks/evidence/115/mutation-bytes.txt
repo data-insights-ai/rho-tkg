@@ -1,0 +1,3 @@
+--- FAIL: TestCommentOnly (0.00s)
+    main_test.go:56: comment-only change: refused "a.go: code changed (not only comments)", want eligible
+FAIL

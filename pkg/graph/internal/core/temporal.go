@@ -100,7 +100,7 @@ func (c *Core) deleteInstantForRelationship(current *types.Relationship) types.I
 // already pushed past the clock by validInstantAfter (an explicit future
 // valid-from), c.now() is below it and the candidate falls back to at+1: that
 // path hands out unreserved instants today regardless of this helper (see the
-// tasks/todo.md backlog 4, "traced 2026-09-24").
+// tasks/todo.md backlog 4 (ii)).
 func (c *Core) deleteInstantClearOfCloses(at types.Instant, tms ...*types.TemporalMetadata) types.Instant {
 	for moved := true; moved && at < math.MaxInt64; {
 		moved = false

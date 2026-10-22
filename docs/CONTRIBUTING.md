@@ -882,6 +882,11 @@ NEW patch tag; never rerun the old tag's run (it re-tests the old commit).
 Operations: `make ci-docker` mounts the live work tree, so code edits and merges wait until it exits (md edits are harmless). The
 CI concurrency group cancels a running main run on every push (no run on the tag ref): batch note commits and watch the newest
 main run. The Go build cache is shared by every session on the machine: `go clean -cache` only when no session builds.
+Fast track (René 2026-10-22, todo 115): `make ci-fast` replaces step (3)'s `make ci-docker` when the batch since the last tag
+changes no shipped Go code: `scripts/commentonly` refuses on a changed go.mod/go.sum, an added/removed/renamed non-test .go file
+outside scripts/, bench/, tutorials/, or a non-test .go file whose comment-free tokens differ. It then runs fmt-check, vet, build,
+`-race -short` of only the tests whose code changed (whole package for a changed helper or tool), the docs tests and
+check-ledger; ~15 s for a docs batch. Refused → `make ci-docker`. GitHub CI still runs the full suite on the pushed commit.
 Release checklist (the one order): (1) merge every branch of the batch, `go test -short` of the touched packages; (2) Fable review
 of the merged batch, fixes merged; (3) `make ci-docker` + consumer build/vet (HANDOVER Appendix B), no code edits meanwhile;
 (4) release commit: CHANGELOG heading, README "Current release", `docs/architecture.md` line 1, HANDOVER names the tag, the

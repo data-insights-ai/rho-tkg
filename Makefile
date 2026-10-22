@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-fast check ci clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -194,6 +194,19 @@ vulncheck-docker:
 # Full CI gate using the dockerized tools for the three host-optional binaries
 # (fmt-check/vet/build/test-race/cover-gate run natively on the host).
 ci-docker: fmt-check vet lint-docker build test-race security-docker vulncheck-docker cover-gate check-metakv-reap
+
+# Fast-track release gate (todo 115): only for a batch that changes no shipped Go code since the last
+# release tag (docs, comments, tests, scripts); scripts/commentonly refuses anything else -> make ci-docker.
+# Runs fmt-check, vet, build, -short -race of only the tests whose code changed (whole package for
+# changed helpers and tools), the docs tests and the ledger check. GitHub CI still runs the full suite on the pushed commit.
+ci-fast: fmt-check vet build
+	@base=$$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1); \
+	echo "ci-fast: batch $$base..work tree"; \
+	pkgs=$$(go run ./scripts/commentonly "$$base") || exit 1; \
+	for t in $$pkgs; do pkg=$${t%%@*}; run=; case $$t in *@*) run=$${t#*@};; esac; \
+	  go test -short -race -count=1 $${run:+-run "$$run"} "$$pkg" || exit 1; done; \
+	go test -count=1 -run 'Docs|Consistency|MD|Errors' ./... >/dev/null || { echo "ci-fast: docs tests failed"; exit 1; }; \
+	scripts/check-ledger.sh && echo "ci-fast: ok"
 
 # Quick pre-commit check
 check: vet build test

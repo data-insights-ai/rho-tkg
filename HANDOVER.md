@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-22: latest tag v4.70.0, rows 104-105 sigma O1-3 doors; v4.69.2 row 106; v4.69.1 row 100; v4.69.0 row 99)
+# HANDOVER — rho-tkg v4 line (2026-10-22: latest tag v4.70.1 = md consolidation + `make ci-fast`, no behaviour change; v4.70.0 rows 104-105 sigma O1-3 doors; v4.69.2 row 106; v4.69.1 row 100; v4.69.0 row 99)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file = state, consumers, glossary, user-only actions. File roles: README.md § Documentation.

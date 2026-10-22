@@ -1,0 +1,15 @@
+--- FAIL: TestCommentOnly (0.00s)
+    main_test.go:59: code change: reasons "", want one naming "code.go"
+    main_test.go:59: string literal change: reasons "", want one naming "str.go"
+    main_test.go:59: new non-test file: reasons "", want one naming "n.go"
+    main_test.go:59: removed non-test file: reasons "", want one naming "d.go"
+    main_test.go:59: renamed non-test file: reasons "", want one naming "r.go"
+    main_test.go:59: go.mod change: reasons "", want one naming "go.mod"
+    main_test.go:59: go.sum change: reasons "", want one naming "go.sum"
+    main_test.go:59: unreadable file refuses: reasons "", want one naming "missing.go"
+    main_test.go:59: one bad among good: reasons "", want one naming "code.go"
+--- FAIL: TestParseNameStatus (0.00s)
+    main_test.go:69: got [], want [{77 pkg/a.go} {65 docs/x.md} {82 new.go} {68 gone.go}]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/scripts/commentonly	0.009s
+FAIL

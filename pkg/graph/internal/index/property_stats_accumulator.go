@@ -198,8 +198,7 @@ func (a *PropertyStatsAccumulator) Sketch() *HyperLogLog {
 // ordered family is ignored (still folded into Count/NDV by the caller, just
 // not Min/Max). This is the reusable comparison helper the tiered backend's
 // cross-shard PropertyStats fold calls — see
-// docs/query-planners.md "Tiered NDV fold" ("reuse the existing comparison helper
-// rather than re-implementing").
+// docs/query-planners.md "Tiered NDV fold".
 //
 // A nil incomingMin (that shard/accumulator observed no ordered value at
 // all) is a safe no-op; a nil runningMin simply adopts the incoming pair —

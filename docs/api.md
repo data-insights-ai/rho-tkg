@@ -52,7 +52,7 @@ Nil `*Node` / `*Relationship` accessors return zero values, no-error mutators no
 
 **Aliases on `pkg/graph`**: `QueryOpts`, `ShardDepth`, `DistanceMetric` (+ `DistanceCosine` / `DistanceEuclidean`), and the sentinels `ErrNodeExists`, `ErrRelExists`, `ErrIndexExists`, `ErrIndexNotFound`, `ErrTemporalIndexExists`, `ErrTemporalIndexNotFound`, so most callers need no `pkg/graph/store` import. The `Depth*` constants stay in `store`.
 
-Store interfaces and capabilities (`MandatoryStore` plus ~80 optional `*Capability` interfaces in `pkg/graph/store/capabilities.go`): [architecture.md](architecture.md). A door whose optional capability is missing falls back to a slower correct path or declines as stated per door below; `store.CapabilitiesOf(s)` states what a store serves.
+Store interfaces and capabilities (`MandatoryStore` plus 91 optional `*Capability` interfaces in `pkg/graph/store/capabilities.go`): [architecture.md](architecture.md). A door whose optional capability is missing falls back to a slower correct path or declines as stated per door below; `store.CapabilitiesOf(s)` states what a store serves.
 
 ### Entity management
 
