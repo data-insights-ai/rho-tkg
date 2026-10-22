@@ -15,7 +15,7 @@ import (
 )
 
 // Shared fixtures for the caller-instant delete/update tests (DeleteWithTx,
-// UpdateWithTx; tasks/handover-tx-backfill-delete-update-20261009.md §5).
+// UpdateWithTx; git show 8d8100b3^:tasks/handover-tx-backfill-delete-update-20261009.md §5).
 // Every test runs over memory, badger (in-memory), sharded and tiered; on
 // tiered the relationship is cross-shard ("Ref" endpoint on the reference
 // shard, "Ev" endpoint on the hot event shard).

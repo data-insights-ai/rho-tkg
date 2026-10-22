@@ -19,7 +19,7 @@ for older v4 minors, and v3.x is no longer maintained.
 | v4.x (latest) | Yes |
 | < v4.x (older minors) | No — upgrade |
 | v3.x | No |
-| v5 (branch `v5`, own module) | Not released — in development, no support yet |
+| v5 (own module, unreleased, development paused) | No |
 
 ## Reporting a vulnerability
 

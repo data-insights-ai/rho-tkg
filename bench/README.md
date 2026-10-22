@@ -70,6 +70,41 @@ the 10-100x gaps typically reported in the ANN literature at 100k-1M+ point
 scale, where the O(n) vs O(log n) gap widens substantially. Run
 `go test -bench=BenchmarkANNSearch10k -benchtime=200x ./bench` to reproduce.
 
+## Write-path micro-benchmarks (`AddNode`, `AddRelationship`)
+
+`pkg/graph/internal/core` benchmarks the single-entity create doors on
+`memory.New()` (badger ingest is measured here in `bench/` as `Ingest1kSingle`
+/ `Ingest10kBatch`). Measured 2026-10-22 at v4.70.0, AMD Ryzen 9 7950X3D, Go
+1.26.9, shared host (load ~5), `-benchtime=0.3s`; 1 label + 2 properties
+(`AddNode`), type `KNOWS` + 1 property over pre-created pairs (`AddRelationship`).
+ns/op varies about 2x on this host; allocs/op and B/op carry over:
+
+| Benchmark | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| `AddNode` (3 runs) | 1,800-2,020 | ~1,100 | 12 |
+| `AddRelationship` (3 runs) | 2,150-2,390 | ~1,170 | 11 |
+| `MemoryStorePutNode` | 787 | 277 | 4 |
+| `NodeDeepCopy` | 100 | 368 | 4 |
+| `ComputeNodeHash` | 151 | 64 | 1 |
+| `NewPropertySlice` | 98 | 64 | 1 |
+| `SnowflakeIDGen` | 24 | 0 | 0 |
+
+```bash
+go test -run '^$' -bench 'Benchmark(AddNode|AddRelationship|SnowflakeIDGen|NewPropertySlice|ComputeNodeHash|NodeDeepCopy|MemoryStorePutNode)$' \
+  -benchmem -benchtime=0.3s ./pkg/graph/internal/core
+```
+
+Path: `Nodes().Add` runs `addNodeInternal` (`node_add.go`): validate, property
+slice + label tokens, snowflake ID, `integrity.ComputeNodeHashChecked` (SHA-256
+over one pooled buffer), metadata, unique-constraint stripes, `Store.PutNode`.
+`Rels().Add` / `AddByID` run `createRelationshipLocked` (`relationship_add.go`)
+and the create kernel (`relationship_create_kernel.go`): `LockTwo` on the
+endpoints, endpoint checks and hashes before the ID is minted, the rel-type
+token after every endpoint failure path, `Store.PutRelationship` (type, out and
+in indexes). Both puts also keep a compact frozen copy with its ordinal, the K1
+membership record, planner statistics (off with `Config.DisablePlannerStats`)
+and the change-log record where enabled.
+
 ## ADR-0011 S0 baseline (a measurement test, not a benchmark)
 
 `segment_baseline_test.go` records the row store's cost for the column-segment
@@ -145,19 +180,8 @@ real regressions at this scale.
   `v4.27.0`, `v4.26.0`. Pass explicit refs to the script for anything else.
   This is diagnostic only — the blocking regression gate remains
   `bench-gate` / `make bench-check`.
-- **Fixed: write-scenario accumulation drift.** `Ingest1kSingle`,
-  `Ingest10kBatch`, and `BulkAddNodes10k` used to reuse one graph across every
-  `b.Loop()` iteration, so ns/op grew with the run's total iteration count
-  instead of measuring a constant-size ingest (an iteration late in a
-  higher-`-benchtime` run wrote into an already much larger graph than an
-  iteration early in a 1x run) — this alone produced a false-positive >15%
-  regression flag on an otherwise-untouched scenario. Each of the three now
-  builds and tears down a fresh, empty graph every iteration with
-  construction/teardown excluded from timing (see `ingest_test.go`), so ns/op
-  is flat regardless of `-benchtime` iteration count; any remaining spread
-  between runs is ordinary single-sample process noise (comparable to the
-  spread between independent `-benchtime=1x` invocations), not systematic
-  drift.
+- Write scenarios build a fresh graph per iteration (intro above), so their
+  ns/op does not drift with `-benchtime`; remaining spread is single-sample noise.
 
 ## CI: `.github/workflows/bench.yml` (blocking PR gate + manual dispatch)
 

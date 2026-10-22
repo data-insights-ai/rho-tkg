@@ -14,7 +14,7 @@ import (
 // that does not sum (a value on two shards would double count): raw per-shard
 // sketches (store-internal NodePropertyStatsSketch) are register-max MERGED
 // (indexpkg.HyperLogLog.Merge) and Estimate() runs once on the result
-// (docs/adr/0005-tiered-parity.md §3.1). ErrHLLPrecisionMismatch is
+// (docs/query-planners.md "Tiered NDV fold"). ErrHLLPrecisionMismatch is
 // PROPAGATED, never discarded (it would silently under-count NDV).
 func (ts *Store) NodePropertyStats(labelToken uint16, propertyKey string) (storecontract.PropertyStats, error) {
 	return ts.foldNodePropertySketches(labelToken, propertyKey, (*BadgerStore).NodePropertyStatsSketch)

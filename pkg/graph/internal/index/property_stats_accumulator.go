@@ -177,7 +177,7 @@ func (a *PropertyStatsAccumulator) Snapshot() (ndv int64, min, max any) {
 // cannot fold NDV by summing per-shard Estimate()s — that over-counts any
 // value present on more than one shard — so it must merge the RAW sketches
 // register-max (HyperLogLog.Merge) and call Estimate() exactly once on the
-// merged result. See docs/adr/0005-tiered-parity.md §3.1 and
+// merged result. See docs/query-planners.md "Tiered NDV fold" and
 // docs/query-planners.md "Tiered NDV fold". A clone is returned (not the
 // live pointer) so the caller can Merge/mutate it outside this accumulator's
 // lock without racing concurrent Observe/Forget calls. Safe on a nil
@@ -198,7 +198,7 @@ func (a *PropertyStatsAccumulator) Sketch() *HyperLogLog {
 // ordered family is ignored (still folded into Count/NDV by the caller, just
 // not Min/Max). This is the reusable comparison helper the tiered backend's
 // cross-shard PropertyStats fold calls — see
-// docs/adr/0005-tiered-parity.md §3.1 ("reuse the existing comparison helper
+// docs/query-planners.md "Tiered NDV fold" ("reuse the existing comparison helper
 // rather than re-implementing").
 //
 // A nil incomingMin (that shard/accumulator observed no ordered value at

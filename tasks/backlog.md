@@ -33,16 +33,16 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 25 | MEDIUM | A future close followed by a delete changes the answer at an earlier pin | parked with the tombstone writer (todo rows 71, 74); readers shipped v4.62.0, `stampDeleteTombstone` still clamps on main |
 | 26 | LOW (known limit) | Old chains with collided versions keep answering in the old version order | open; schedule only if a consumer holds such chains |
 | 31 | LOW | Bulk and point as-of disagree with the cascade oracle on version gaps | open; fix when a consumer holds such chains |
-| 37 | LOW | Tiered error-rollback restore leaves a window with empty history | open; `restoreRelHistorySnapshot` still truncates then puts (`tieredstore_write_history.go:899`) |
+| 37 | LOW | Tiered error-rollback restore leaves a window with empty history | open; `restoreRelHistorySnapshot` still truncates then puts (`tieredstore_write_history.go:913`) |
 | 39 | LOW (not tested) | Per-entity compaction stubs survive `Admin().Reset` | open; `reapCompactionForReset` still leaves the stubs (`core/compaction.go:285`) |
 | 40 | LOW (cosmetic) | A cascade resumption may end at an earlier life's own bound | open |
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
-| 46 | LOW (stale comments) | Code comments that cite ADRs no longer in `docs/adr/` or old lesson/B-numbers | open; still stale: `tieredstore_property_stats.go:19`, `bench/ingest_pipeline_test.go:13,101` (ADR-0005/0006), `badgerstore_property_stats.go:38` (lesson 62 vs 63), `store/store.go:30` and `docs/architecture.md` (B-numbers), `effective_timeline.go` header |
+| 46 | LOW (stale comments) | Code comments that cite ADRs no longer in `docs/adr/` or old lesson/B-numbers | open; still stale: `bench/ingest_pipeline_test.go:13,101` (ADR-0006), `store/badger/badgerstore_property_stats.go:38` (lesson 62 vs 63), `store/store.go:30` and `docs/architecture.md` (B-numbers), `effective_timeline.go` header |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
 | 71 | FEATURE (sigma round 8, optional) | Valid-time hull per label / relationship type | mostly covered by v4.60.0 `ValidHullByLabel` / `ValidHullByType` (exact, off the count timeline); remainder O(1) for the current rows parked, no requester (spec below) |
 | 76 | LOW (perf) | Property equality lookups of a number make one store call per width key (up to 12): ~0.4 -> 1.5-1.8 us memory, 3.4 -> 5.5 us badger for one match (v4.57.1, `tasks/evidence/numeric-equality/bench.txt`) | open; keep a per-(label, key) set of the stored widths in the property index and look up only those |
 | 78 | FEATURE (door family) | `EndValidity` (the delete that keeps the valid past on every axis) has the plain doors and the GraphTx twins only: no `*WithTx`, no `BatchBuilder` / ingest `Session` queue twins | open; build on request: `tombstoneSpec.keepPast` on `pendingNodeDelete` / `pendingRelDelete` and the queue doors, the caller instant through `endNode` / `endRelationship` (`withTx`) |
-| 80 | MEDIUM (review finding after v4.66.0) | Whole-axis entities patched while closed under v4.66.0 keep a stale current row | open; essential only if a consumer holds such rows: `core/temporal_cascade.go:702-712` matches only `PrevHash ==` the current row's hash |
+| 80 | MEDIUM (review finding after v4.66.0) | Whole-axis entities patched while closed under v4.66.0 keep a stale current row | open; essential only if a consumer holds such rows: `cascadeNewCurrent` (`core/temporal_cascade.go:798`) moves the slot only to an appended row whose PrevHash is the current row's hash |
 | 81 | LOW (pre-existing, v4.67.0 review) | A sharded rel row with a local start and a remote end gets no in-key repair at open | open, no requester (todo row 97) |
 | 82 | LOW (v4.67.0 review nit) | Ex-adjacency of a reference node at `DepthAll` opens every cold shard | open, no requester (todo row 97) |
 
@@ -54,7 +54,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
 *FEATURE* — S0-S3, S5 done (S2/S5 in v4.39.0, S3 + P7 in v4.40.0); S4 merge, S6, S7 and sub-points (a), (b), (d)-(i) open.
 
-**Column segments on NVMe (ADR-0011, accepted 2026-09-24)** — FEATURE: steps S0–S7 in `docs/adr/0011-column-segments.md` §6, each with a failing test first and a gate measured at the three synthday sizes; integrity block size configurable (`IntegrityBlockRows`, default 64). Goal: resident memory independent of the day size for declared bulk relationship types (~744 B/rel today). **Progress:** S0 done (baseline harness `bench/segment_baseline_test.go`; memory 718–723 B/rel, badger lean does not reproduce 191 — measures 301), S1 done (codec `pkg/graph/internal/segment`; 22–25 B/HOP on disk; decode of full rows below the memory store's zero-copy scan rate, columns alone 24–28 M rows/s), S2 done on the rho-tkg side (memory store seals declared types into in-RAM segments on a background sealer; `Config.RelSegments`; segments share store-level endpoint and string dictionaries; P6 HOP resident 24.0 / 24.8 / 25.7 B/HOP beyond the memtable, gate ≤ 60 met; legacy 70–71 B/HOP over it because of `support`), S5 done on the rho-tkg side (`ScanRelSegments`, `ScanRelColumns` from segment columns) with the sigma branch `seg/s5-columns` built and tested, not released. **Open from S2/S5:** (a) the ai-soc half of S2's gate — xcheck AGREE on the three synthday days and on BA on Flux with `engine.Open` declaring HOP (ai-soc work, after P6); (b) the per-segment adjacency directory (a node code and two CSR offsets per endpoint per segment, 0.22 → 0.68 B/HOP from 1 to 5 segments) — S4's merge bounds it; (c) DONE: v4.39.0 carries S2/S5 and sigma-tkgd pins the latest tag; (d) the rel property / temporal indexes and the lazily built belief-watermark and rel-type tx-membership sidecars keep one entry per row when a caller creates or triggers them — check at the ai-soc gate whether ai-soc's queries build them; (e) the row doors on sealed rows stay 3–20× below the zero-copy row store: consumers of bulk types read `ScanRelSegments`. **S3 done on the rho-tkg side (2026-09-25):** `Config.SegmentDir` — self-contained segment files, manifest, crash recovery, mmap reads; Go heap beyond the memtable 0.3–0.7 B/HOP at the three sizes (gate ≤ 1 B/HOP growth met), write median 7.86 s against S2 7.87 s (5 alternating runs each, pinned; gate met). **Open from S3:** (f) the BA day on Flux (masked twin in git) — ai-soc passes `SegmentDir`; (g) per-segment node hashes and dictionaries make files 27–28 B/HOP at 12.6 M (4–5 segments) — S4's merge; (h) Q8 (page cache under cgroup `MemoryMax`) — measure on Flux; (i) a reopen verifies every integrity group (~0.46 M rows/s): fine for a day, a cost for a year of segments. Next: S4.
+**Column segments on NVMe (ADR-0011, accepted 2026-09-24)** — FEATURE: steps S0–S7 of ADR-0011 §6 (folded into `docs/architecture.md` 2026-10-22; the ADR file is in git history), each with a failing test first and a gate measured at the three synthday sizes; integrity block size configurable (`IntegrityBlockRows`, default 64). Goal: resident memory independent of the day size for declared bulk relationship types (~744 B/rel today). **Progress:** S0 done (baseline harness `bench/segment_baseline_test.go`; memory 718–723 B/rel, badger lean does not reproduce 191 — measures 301), S1 done (codec `pkg/graph/internal/segment`; 22–25 B/HOP on disk; decode of full rows below the memory store's zero-copy scan rate, columns alone 24–28 M rows/s), S2 done on the rho-tkg side (memory store seals declared types into in-RAM segments on a background sealer; `Config.RelSegments`; segments share store-level endpoint and string dictionaries; P6 HOP resident 24.0 / 24.8 / 25.7 B/HOP beyond the memtable, gate ≤ 60 met; legacy 70–71 B/HOP over it because of `support`), S5 done on the rho-tkg side (`ScanRelSegments`, `ScanRelColumns` from segment columns) with the sigma branch `seg/s5-columns` built and tested, not released. **Open from S2/S5:** (a) the ai-soc half of S2's gate — xcheck AGREE on the three synthday days and on BA on Flux with `engine.Open` declaring HOP (ai-soc work, after P6); (b) the per-segment adjacency directory (a node code and two CSR offsets per endpoint per segment, 0.22 → 0.68 B/HOP from 1 to 5 segments) — S4's merge bounds it; (c) DONE: v4.39.0 carries S2/S5 and sigma-tkgd pins the latest tag; (d) the rel property / temporal indexes and the lazily built belief-watermark and rel-type tx-membership sidecars keep one entry per row when a caller creates or triggers them — check at the ai-soc gate whether ai-soc's queries build them; (e) the row doors on sealed rows stay 3–20× below the zero-copy row store: consumers of bulk types read `ScanRelSegments`. **S3 done on the rho-tkg side (2026-09-25):** `Config.SegmentDir` — self-contained segment files, manifest, crash recovery, mmap reads; Go heap beyond the memtable 0.3–0.7 B/HOP at the three sizes (gate ≤ 1 B/HOP growth met), write median 7.86 s against S2 7.87 s (5 alternating runs each, pinned; gate met). **Open from S3:** (f) the BA day on Flux (masked twin in git) — ai-soc passes `SegmentDir`; (g) per-segment node hashes and dictionaries make files 27–28 B/HOP at 12.6 M (4–5 segments) — S4's merge; (h) Q8 (page cache under cgroup `MemoryMax`) — measure on Flux; (i) a reopen verifies every integrity group (~0.46 M rows/s): fine for a day, a cost for a year of segments. Next: S4.
 
 ### 1. Import-under-a-scope
 
@@ -191,12 +191,11 @@ test passes.
   `TestDeleteAheadOfClock4` (parked as `tasks/evidence/4/delete_ahead4_test.go.txt`, branch worktree-agent-a0d52d5298e44faee, red output `tasks/evidence/4/red.txt`; a pin
   taken after a far-future delete still answers the entity). The 77 mirror (tx instant = clock,
   `txAfter`) is refused by the store: the tombstone's ValidTo is the delete instant, now below
-  ValidFrom (`store/invariants.go:292`, `tasks/evidence/4/clock-stamp-attempt.txt`); keeping ValidTo =
-  ValidFrom + 1 breaks the "ValidTo == DeletedAt" delete marker read by the pinned normalizers
-  (`core/txtime.go:502`, `memory/memorystore_history.go:1226`, `storeutil/asof_select.go:169`,
-  `index/property_tx_members_window.go:87`). The excise's void row cannot carry it either: the row
-  that ends the life must carry DeletedAt/TxTo, and a void row with deleted_at is rejected
-  (`storeutil/wire.go:172`, `types/temporal.go:71` "never a tombstone"; the excise refuses a deleted
+  ValidFrom (`store/invariants.go` "valid_from must be before valid_to", `tasks/evidence/4/clock-stamp-attempt.txt`); keeping
+  ValidTo = ValidFrom + 1 breaks the "ValidTo == DeletedAt" delete marker read by the pinned normalizers
+  (`storeutil.NormalizeTemporalVisibleAtTxTime` and its memory/index mirrors; line numbers as of 2026-10-17 in git). The excise's void
+  row cannot carry it either: the row that ends the life must carry DeletedAt/TxTo, and a void row with deleted_at is rejected
+  (`types.TemporalMetadata.Void` "never a tombstone"; the excise refuses a deleted
   entity, `core/excise.go:49`). Decided 2026-10-17 (René, todo row 71): one explicit "delete wrote this ValidTo" marker; readers shipped v4.62.0, the writer (fixes 4, 25, 7) is parked on branch `tombstone-writer-v4.63` ("not now", René via sigma 2026-10-19) and needs a rebuild on the v4.66 axis code as a later minor.
 - **(MEDIUM?) As-of vs point resolver order.** `SelectAsOf` picks the newest candidate by
   version; the point resolver breaks overlaps by (TxFrom, version). After a cascade whose rows
@@ -221,7 +220,7 @@ test passes.
 
 *FEATURE (limitation)* — parked with the tombstone writer (todo rows 71, 74); `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` (R8, v4.44.0).
 
-**Caller-instant delete of a row with a scheduled close** (FEATURE, follows item 6): `DeleteWithTx(id, t)` refuses when the recorded `ValidTo >= t`, because one tombstone row cannot end belief at `t` and keep the close that pins before `t` believed (decision 2026-10-09, tx-backfill handover §6.11 (removed, in git history); the refusal shipped in v4.44.0, `core/tx_order.go`). Lifting it needs a tombstone that keeps the believed `ValidTo` beside the deletion instant (no clamp for a caller instant), with the normalizer (`normalizeTemporalVisibleAtTxTime`, `core/txtime.go:495`) and the valid-time history reads agreeing. Write the two-phase red test first.
+**Caller-instant delete of a row with a scheduled close** (FEATURE, follows item 6): `DeleteWithTx(id, t)` refuses when the recorded `ValidTo >= t`, because one tombstone row cannot end belief at `t` and keep the close that pins before `t` believed (decision 2026-10-09, tx-backfill handover §6.11 (removed, in git history); the refusal shipped in v4.44.0, `core/tx_order.go`). Lifting it needs a tombstone that keeps the believed `ValidTo` beside the deletion instant (no clamp for a caller instant), with the normalizer (`storeutil.NormalizeTemporalVisibleAtTxTime`, `storeutil/asof_select.go:172`) and the valid-time history reads agreeing. Write the two-phase red test first.
 
 ### 10. Tiered store: remaining work after composite + rel temporal indexes
 
@@ -253,9 +252,9 @@ Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs pla
 
 ### 25. A future close followed by a delete changes the answer at an earlier pin
 
-*MEDIUM* — parked with the tombstone writer (todo rows 71, 74); `stampDeleteTombstone` still clamps on main (`core/temporal.go:133-137`).
+*MEDIUM* — parked with the tombstone writer (todo rows 71, 74); `stampDeleteTombstone` still clamps on main (`core/temporal.go:149`).
 
-**A future close followed by a delete changes the answer at an earlier pin** (MEDIUM, pre-existing on main, found by the review of the cascade-correctness branch 2026-10-09): `CloseVersion(far-1)` → pin → `Delete`: `AsOf(pin)` changes from `[1000,far-1)` to `[1000,inf)` and `AtTx(far, pin)` from absent to present, because `stampDeleteTombstone` clamps the close to the delete instant (`core/temporal.go:136`) and the as-of rewind (`normalizeTemporalVisibleAtTxTime`, `core/txtime.go:495`) reopens it to 0 (the same "known limitation: future-scheduled close, then delete" of the 2026-09-24 review, now that the life-end cap exists the delete could keep a finite ValidTo). Red test first: two-phase on all four backends, node and rel; fix: the tombstone keeps the believed ValidTo beside the deletion instant (see item 7). (Seen again on a re-imported ID's earlier life, item L review 2026-10-09.)
+**A future close followed by a delete changes the answer at an earlier pin** (MEDIUM, pre-existing on main, found by the review of the cascade-correctness branch 2026-10-09): `CloseVersion(far-1)` → pin → `Delete`: `AsOf(pin)` changes from `[1000,far-1)` to `[1000,inf)` and `AtTx(far, pin)` from absent to present, because `stampDeleteTombstone` clamps the close to the delete instant (`core/temporal.go:149`) and the as-of rewind (`storeutil.NormalizeTemporalVisibleAtTxTime`, `storeutil/asof_select.go:172`) reopens it to 0 (the same "known limitation: future-scheduled close, then delete" of the 2026-09-24 review, now that the life-end cap exists the delete could keep a finite ValidTo). Red test first: two-phase on all four backends, node and rel; fix: the tombstone keeps the believed ValidTo beside the deletion instant (see item 7). (Seen again on a re-imported ID's earlier life, item L review 2026-10-09.)
 
 ### 26. Old chains with collided versions keep answering in the old version order
 
@@ -272,9 +271,9 @@ Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs pla
 
 ### 37. Tiered error-rollback restore leaves a window with empty history
 
-*LOW* — open; `restoreRelHistorySnapshot` still truncates then puts (`tieredstore_write_history.go:899`).
+*LOW* — open; `restoreRelHistorySnapshot` still truncates then puts (`tieredstore_write_history.go:913`).
 
-**Tiered error-rollback restore leaves a window with empty history** (LOW, pre-existing, found by the review of the point-door race fix 2026-10-09): `rollbackDeletedRelationships` → `restoreRelHistorySnapshot` (`store/tiered/tieredstore_write_history.go:899`) runs `TruncateRelHistory(0)` and then `PutRelVersion`; on that error-rollback path a concurrent reader can see an empty history between the two calls. Fix by restoring in one shard call or under a lock readers respect (the publish-history-first rule of AGENTS.md "Version History"). Red test first: a hook between the truncate and the put, plus a pinned `RelAtTx`/`History` read there, on the tiered store.
+**Tiered error-rollback restore leaves a window with empty history** (LOW, pre-existing, found by the review of the point-door race fix 2026-10-09): `rollbackDeletedRelationships` → `restoreRelHistorySnapshot` (`store/tiered/tieredstore_write_history.go:913`) runs `TruncateRelHistory(0)` and then `PutRelVersion`; on that error-rollback path a concurrent reader can see an empty history between the two calls. Fix by restoring in one shard call or under a lock readers respect (the publish-history-first rule of AGENTS.md "Version History"). Red test first: a hook between the truncate and the put, plus a pinned `RelAtTx`/`History` read there, on the tiered store.
 
 ### 39. Per-entity compaction stubs survive `Admin().Reset`
 
@@ -286,7 +285,7 @@ Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs pla
 
 *LOW (cosmetic)* — open.
 
-**A cascade resumption may end at an earlier life's own bound** (LOW, cosmetic, item L review 2026-10-09): `temporal_cascade.go:334,352` (`nodeResumptionEnd` / `relResumptionEnd`) considers bounds of rows before the last tombstone, which adds an extra split row; reads are unchanged (life oracle). Fix only if row count matters: consider only rows after the last tombstone. Red first: a row-count assertion on a cascade after a re-import.
+**A cascade resumption may end at an earlier life's own bound** (LOW, cosmetic, item L review 2026-10-09): `temporal_cascade.go:425,444` (`nodeResumptionEnd` / `relResumptionEnd`) considers bounds of rows before the last tombstone, which adds an extra split row; reads are unchanged (life oracle). Fix only if row count matters: consider only rows after the last tombstone. Red first: a row-count assertion on a cascade after a re-import.
 
 ### 45. Internal sentinels reach callers but have no exported alias
 
@@ -294,7 +293,7 @@ Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs pla
 
 `ErrNilCallback` (`pkg/graph/internal/grapherr/errors.go:13`), `ErrCommitClockExhausted` and `ErrForeignStampImplausible`
 (`pkg/graph/internal/core/core.go`) can be returned to callers, but no public package re-exports them, so `errors.Is` cannot
-name them; `pkg/graph/temporal/api.go:474` even tells callers to expect `ErrNilCallback`. `graph.ErrMixedNumericColumn`
+name them; `pkg/graph/temporal/api.go:687` even tells callers to expect `ErrNilCallback`. `graph.ErrMixedNumericColumn`
 (`pkg/graph/column_scan.go`) lives outside the `errors.go` inventory that `errors_doc_test.go` / `errors_identity_test.go` pin.
 Red tests first: for each sentinel, a public-layer test that `errors.Is(err, graph.ErrX)` holds for a real failing call (nil callback on a
 Tx/Temporal door, clock exhaustion by `AdvanceClock` to the limit, an implausible foreign stamp on replica apply, a mixed numeric column
@@ -305,7 +304,7 @@ scan); the inventory test fails when an exported error is missing from `errors.g
 
 *LOW (stale comments)* — found by the doc reviews 2026-10-10. Fixed since: the "88 bytes" note in `pkg/types/node.go`, the lane range in `ingest_lanes.go`.
 
-Still stale: ADR-0005 / ADR-0006 citations (`pkg/graph/store/tiered/tieredstore_property_stats.go:19`, `bench/ingest_pipeline_test.go:13,101`; recover with `git log --all -- docs/adr/` or state the rule); `pkg/graph/store/badgerstore_property_stats.go:38` cites lesson 62 (it is 63); old B-numbering in `pkg/graph/store/store.go:30` and `docs/architecture.md`; the `effective_timeline.go` header describes a point resolver, the code (`effectivePieces`) uses one max-heap sweep.
+Still stale: ADR-0006 citations (`bench/ingest_pipeline_test.go:13,101`; recover with `git log --all -- docs/adr/` or state the rule); `pkg/graph/store/badger/badgerstore_property_stats.go:38` cites lesson 62 (it is 63); old B-numbering in `pkg/graph/store/store.go:30` and `docs/architecture.md`; the `effective_timeline.go` header describes a point resolver, the code (`effectivePieces`) uses one max-heap sweep.
 
 ### 47. Claims that need a real check before they become work
 
@@ -322,7 +321,7 @@ no budget; reopen only if a consumer reports memory pressure; then design a per-
 
 ## v5
 
-v5 is Markus Nissl's work on branch `origin/v5`, a separate Go module (`v5/`); the plan (`docs/v5/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md`) lives on branch `v5`, not on main (our plan commit `b1193dc`, tag `v5-plan-20261009`). Do not push to `v5`; Markus merges v5 into main (René 2026-10-12), we do not; open questions for him are the rho-tkg GitHub issue #11. Maturity, merge analysis and the v4 to v5 door mapping: `docs/v5-gap-to-main.md`; the Fable review of the branch: `docs/v5/HANDOVER.md` on branch `v5`. The older notes `tasks/review-v5-plan-vs-code-20261009.md` and `tasks/v4-changes-for-v5-importer-20261010.md` were removed from main (recover with `git log -- <path>`). v5 is PAUSED (René 2026-10-16, todo row 61); its state lives in `HANDOVER.md`. **DECIDED 2026-09-25 (René): ADR-0011 S2 and S5 shipped on v4 as v4.39.0** (ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward.
+v5 (own module `v5/`) is PAUSED (René 2026-10-16, todo row 61) on the local branch `v5-takeover`; state: `HANDOVER.md` §2, open work packages: `tasks/todo.md`, the v4-to-v5 door map: `git show 7c0a4b74:docs/v5-gap-to-main.md` (removed from the tree 2026-10-22). Plan files (`docs/v5/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md`) live on branch `v5` (plan commit `b1193dc`, tag `v5-plan-20261009`); never push `origin/v5`. **DECIDED 2026-09-25 (René): ADR-0011 S2 and S5 shipped on v4 as v4.39.0** (ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward.
 
 ---
 

@@ -234,7 +234,7 @@ func (s *StatOps) RelPropertyTypeClassCounts(typeName, propertyKey string) (stor
 // "unregistered label → 0" convention. Backends without
 // store.NodePropertyStatsCapability return storepkg.ErrCapabilityNotSupported
 // (memory, badger, and tiered all implement it — see
-// docs/adr/0005-tiered-parity.md §3.1).
+// docs/query-planners.md "Tiered NDV fold").
 //
 // BACKLOG 14e: the capability check runs BEFORE the label lookup, for the
 // same reason as NodeCountByLabelAndPropertyKey's sibling fix — see there.

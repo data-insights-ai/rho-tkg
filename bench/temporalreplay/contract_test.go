@@ -1,7 +1,7 @@
 package temporalreplay
 
 // The "tests that must break incorrect implementations" of
-// tasks/plan-temporal-index-ingestion.md, written against the CURRENT public
+// git show 8d8100b3^:tasks/plan-temporal-index-ingestion.md, written against the CURRENT public
 // API only. Each test states the contract the AI-SOC replay adapter relies on.
 // A test that stays red documents a demonstrated gap, not a wish.
 

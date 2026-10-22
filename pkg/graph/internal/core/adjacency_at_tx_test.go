@@ -16,7 +16,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RT-1 (tasks/hp-workplan-2026-07-04.md): OutgoingForNodesAtTx/IncomingForNodesAtTx
+// RT-1 (git show 4f71fc3e^:tasks/hp-workplan-2026-07-04.md): OutgoingForNodesAtTx/IncomingForNodesAtTx
 // resolve pinned adjacency through the adjacency index + the SAME chain seam
 // the generic TxAt door uses (findRelVersionForOpts -> filterRelChainByTxAt),
 // instead of a full history-aware ByType scan. The break-test pattern (Pattern

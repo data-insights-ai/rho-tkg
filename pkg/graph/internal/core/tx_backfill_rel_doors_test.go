@@ -16,7 +16,7 @@ import (
 
 // Break-the-code tests for Rels.DeleteWithTx / Rels.UpdateWithTx — ending and
 // superseding belief at a caller-supplied transaction instant t
-// (tasks/handover-tx-backfill-delete-update-20261009.md §5 R1-R8, R10, R11 and
+// (git show 8d8100b3^:tasks/handover-tx-backfill-delete-update-20261009.md §5 R1-R8, R10, R11 and
 // the no-op part of R16; §6 overrides). Every test names the faulty
 // implementation it catches; an accepted case appears only as the counterpart
 // inside a refusal test. Every refusal asserts nothing changed (current row,

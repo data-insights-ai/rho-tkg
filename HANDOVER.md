@@ -1,8 +1,8 @@
 # HANDOVER — rho-tkg v4 line (2026-10-22: latest tag v4.70.0, rows 104-105 sigma O1-3 doors; v4.69.2 row 106; v4.69.1 row 100; v4.69.0 row 99)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). This file owns state and next steps only. Rules: `tasks/lessons.md` (digest at the top). Requests, ledger, releases,
-decisions: `tasks/todo.md` (the ONE plan). Open items: `tasks/backlog.md` (open table). What shipped: `CHANGELOG.md`. Read in
+database). This file owns state, next steps and René's open decisions (§3). Rules: `tasks/lessons.md` (digest at the top). Requests,
+ledger, releases, v5 work packages and v5 decisions: `tasks/todo.md` (the ONE plan). Open items: `tasks/backlog.md` (open table). What shipped: `CHANGELOG.md`. Read in
 this order: this file, lessons digest, todo (user requests, releases table), backlog open table, `CHANGELOG.md` top.
 
 ## 1. Next steps (focus René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
@@ -15,7 +15,8 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
    sigma uses LowestAnsweredPins (P1); RelEffectiveTimelinesByProperties comes with its paging layer: on tiered the driver is
    the first indexed key (device before estate), segments whole, DepthAll only; ai-soc declares (type, device) rel indexes.
    Answered without code: row 107 (ai-soc /bars: sigma ListDerived as is, fixed pin = consistent, first TxFrom = VersionBefore(id, 1)).
-   Docs: README up to v4.69.1+ (row 103, bfd5aac3).
+   Row 100's red test `pkg/graph/store/tiered/idle_timeout_race_test.go` (`TestSetIdleTimeoutForTest_NoRace`) is untracked: v4.69.1
+   shipped the fix without it; run it with `-race`, commit it.
 3. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
    on ai-soc's profile only.
 4. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
@@ -44,15 +45,15 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
   now", René via sigma 2026-10-19); needs a rebuild on the v4.66 axis code (Markus's axis-aware `stampDeleteTombstone`,
   `EndValidity`), ~half a day, a later minor. v4.64.0 was never cut. sigma's P24 (marker-aware ValidTo reads) is parked with it.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
-  Reason: real ai-soc import showed ~92 records/op, 11x v4 disk, ~200 writes/s. Gap analysis: `docs/v5-gap-to-main.md`. Real-store
+  Reason: real ai-soc import showed ~92 records/op, 11x v4 disk, ~200 writes/s. Gap analysis (file removed 2026-10-22): `git show 7c0a4b74:docs/v5-gap-to-main.md`. Real-store
   harness + scale notes: local branches `v5-realstore-harness` (`af75a982`, `tasks/evidence/v5-scale/notes.md`) and
-  `wp-37-import-throughput` (`392f88e2`); not pushed. v5 façade waits for Markus; no posts on GitHub issue #11 (René tells Markus).
+  `wp-37-import-throughput` (`392f88e2`); not pushed. Since the takeover (row 51) `pkg/graph` + `v5compat` are ours on `v5-takeover` (WP table in todo); no posts on GitHub issue #11 (René tells Markus).
 - **Consumers** (answer new requests the same day: ledger row first, then lesson 79):
-  - ai-soc: on rho v4.67.0+ with tiered as the main store (`AdjacencyIndexOnDisk`, `RelsByMint`, `SyncWrites`, `DepthWarm` on
+  - ai-soc: root module `ai-soc-main` pins rho v4.70.0 (`engine/` still v4.41.0), tiered as the main store (`AdjacencyIndexOnDisk`, `RelsByMint`, `SyncWrites`, `DepthWarm` on
     windowed reads); declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets `UntimedValidStart:
     UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data day; `/bars`,
     `/tkg/asof` = its HTTP read doors.)
-  - sigma-tkgd: v0.11.55 (2026-10-22, sigma-only fixes) on rho v4.70.0; P1 uses LowestAnsweredPins; RelEffectiveTimelinesByProperties with its paging layer (O1-3 step 2/3)
+  - sigma-tkgd: v0.11.55 (2026-10-22) pins rho v4.70.0; O1-3 state in §1 item 2.
   - Notify after gate + tag + push: `sigma-tkgd-c3` and `ai-soc-main-e7` (`ListAgents`, main session only; socket names change
     per session). If neither resolves, put the release note here and tell René in one line.
 - **Housekeeping:** session scratchpad emptied 2026-10-20 (row 76); deletions stay René's call (`rm -rf` is denied to agents).
@@ -83,6 +84,8 @@ user-request rows of tasks/todo.md; backlog NN = tasks/backlog.md items; lesson 
 4. Retention purge vs retained pins (todo row 104): a purged entity answers not-found at pins it answered before (no tombstone).
    (a) no rho change, sigma treats not-found for an id it saw before as purged; (b) rho refuses those pins with
    ErrRetentionExpired (per-entity purge tombstone, behaviour change via the deprecation ritual). Default: (a).
+5. `UntimedWholeAxis` as the default for new stores: CHANGELOG `[4.65.0]` Deprecated announced it for "the next minor"; held
+   since (row 75b), five minors shipped without it. Default: stays held; the next minor either flips it or rewords the notice.
 
 ## Appendix A — origin watch
 
@@ -91,7 +94,7 @@ pushes by Markus only go to its log. Re-arm after each exit; one instance at a t
 
 ## Appendix B — consumer build check (recreate if /tmp is gone)
 
-For each consumer `C` in `~/Work/2026/datainsights/sigma-tkgd`, `~/Work/2026/datainsights/ai-soc/ai-soc-main/engine`,
+For each consumer `C` in `~/Work/2026/datainsights/sigma-tkgd`, `~/Work/2026/datainsights/ai-soc/ai-soc-main` (and its `engine/`),
 `~/Work/2026/bds421/sigma/agent-bookkeeping`: `mkdir -p $S/<name>; cp C/go.mod C/go.sum $S/<name>/;
 (cd $S/<name> && go mod edit -replace github.com/data-insights-ai/rho-tkg/v4=/home/renework2023/Work/2026/datainsights/rho-tkg go.mod)`,
 then `cd C && GOFLAGS=-mod=mod go build -modfile=$S/<name>/go.mod ./... && GOFLAGS=-mod=mod go vet -modfile=$S/<name>/go.mod ./...`.

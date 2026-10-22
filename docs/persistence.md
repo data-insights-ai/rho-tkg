@@ -33,7 +33,7 @@ The badger backend acknowledges a write when it is applied in memory, not when i
 |---|---|---|
 | Default (`SyncWrites=false`, `FlushInterval`=100ms, `MaxPendingWrites`=100,000) | Loses every acknowledged write still in the async buffer: normally up to ~100 ms of writes, up to `MaxPendingWrites` ops under a burst. Flushed batches survive (they are in Badger's log, in the OS page cache). | Additionally may lose recently flushed batches: Badger does not fsync without `SyncWrites`. |
 | `SyncWrites=true` | Nothing acknowledged is lost: each Store call is flushed and fsynced before it returns — except inside a `DurableCommit` group (`GraphTx` mutations, `Batch.Execute`, `Rollback`), whose writes are held and fsynced together when the group's door returns. | Same. |
-| `graph.Config.DurableCommit=true` (default off) | A `GraphTx` commit (`Tx().Run*`), `Batch.Execute` or strong-ingest group is on disk when its door returns: one flush of the whole pending buffer plus a WAL fsync per open shard that took writes; a failed flush returns `ErrCommitNotDurable` with the group committed in memory and still pending. Standalone mutations and concurrent-mode ingest keep the async window. | Narrower: Badger's `Sync` covers only the active memtable WAL and the current value-log file, so rows of a group whose flush crossed a memtable or value-log switch can be unsynced after the return. Power-loss durability needs `DurableCommit` + `SyncWrites` on a badger, sharded or tiered store (`tiered.Config.SyncWrites`, backlog 93): a group then costs one Badger-synced WriteBatch per touched shard at its commit, not one sync per mutation (backlog 52), measured 13.5 ms per 530-op group against 12.5 ms for `DurableCommit` alone (backlog 15, `tasks/evidence/aisoc-commit-cost/52-bench.txt`). |
+| `graph.Config.DurableCommit=true` (default off) | A `GraphTx` commit (`Tx().Run*`), `Batch.Execute` or strong-ingest group is on disk when its door returns: one flush of the whole pending buffer plus a WAL fsync per open shard that took writes; a failed flush returns `ErrCommitNotDurable` with the group committed in memory and still pending. Standalone mutations and concurrent-mode ingest keep the async window. | Narrower: Badger's `Sync` covers only the active memtable WAL and the current value-log file, so rows of a group whose flush crossed a memtable or value-log switch can be unsynced after the return. Power-loss durability needs `DurableCommit` + `SyncWrites` on a badger, sharded or tiered store (`tiered.Config.SyncWrites`): a group then costs one Badger-synced WriteBatch per touched shard at its commit, not one sync per mutation (backlog 52), measured 13.5 ms per 530-op group against 12.5 ms for `DurableCommit` alone (backlog 15, `tasks/evidence/aisoc-commit-cost/52-bench.txt`). |
 
 Atomicity across a crash is per flush, not per logical operation group:
 
@@ -43,7 +43,7 @@ Atomicity across a crash is per flush, not per logical operation group:
 - `tiered.Store` cross-shard relationship writes are two shard commits; a crash between them leaves residue that `RunRepair` resolves.
 - The commit clock survives a crash (backlog 44): every flush that writes rows also writes the newest transaction stamp of every row the store has written (`0x0F/tx_commit_floor`, first in the same `WriteBatch`; tiered keeps its event and archive shards' floor on the reference shard, written ahead of each shard's batch and fsynced there before a `DurableFlush` fsyncs the rows it covers), and `graph.New` raises the clock to it (`store.CommitFloorCapability`). After a crash, `NowTx()` and new stamps stay above every stored row, also when a write burst ran the clock ahead of the wall; only a `NowTx()` / `AdvanceClock` reservation that wrote no row before the crash can be lost (the Close-time watermark covers those).
 
-Choose `DurableCommit=true` + `SyncWrites=true` (badger or sharded; tiered cannot) for power-loss durability of commit groups, `SyncWrites=true` alone when every acknowledged standalone write must never be lost; the default trades that window for throughput. The memory store is not durable at all (sealed relationship segments of a `SegmentDir` excepted).
+Choose `DurableCommit=true` + `SyncWrites=true` (table above) for power-loss durability of commit groups, `SyncWrites=true` alone when every acknowledged standalone write must never be lost; the default trades that window for throughput. The memory store is not durable at all (sealed relationship segments of a `SegmentDir` excepted).
 
 Current and history entity reads validate semantic `NodeWire` / `RelWire`
 invariants after MsgPack decode and before constructing `types.Node` or
@@ -60,140 +60,35 @@ values that pass the same checked range validation.
 The checked encode helpers reject nil node/relationship payloads before reading
 IDs, tokens, properties, temporal metadata, or integrity metadata.
 
-Store write paths validate relationship indexed identity before replacements
-or tombstones are accepted. `ReplaceRelationship`, `ReplaceRelWithHistory`,
-`DeleteRelWithHistory`, and relationship tombstones passed to
-`DeleteNodeWithHistory` must preserve the existing relationship type token and
-endpoints; mismatches return `ErrInvalidStoreMutation` before current rows,
-history, or indexes are changed.
+Store-boundary invariants (positive IDs, immutable indexed identity, nil payloads and callbacks, closed and
+zero-value stores, index-create placeholders, delete lock scope, vector and temporal paging) are owned by
+[`docs/architecture.md`](architecture.md#design-invariants); `tiered.MigrateFromBadger` by `docs/api.md`
+"Migration". Storage-side details not stated there:
 
-Store write paths also reject zero entity identities. Current-row put/replace
-and batch writes return `ErrInvalidStoreMutation` for zero node IDs, zero
-relationship IDs, or zero relationship endpoints before endpoint lookup,
-routing, row mutation, index mutation, or batch partial writes. Badger split
-relationship helper writes validate the same relationship ID/type/endpoint
-index tuple before writing or deleting entity/out or incoming-index rows, and
-repair-only incoming-index deletion helpers reject zero end-node or relationship
-IDs before scanning. Repair incoming-index deletes update the process-local
-`inIdx` and pending/persisted write state together.
+- Store read methods that take caller IDs (`GetNode`, `GetRelationship`, `Get*ByIDs`, adjacency reads,
+  `Get*Version`, `Get*History`, `Truncate*History`) reject zero or negative IDs with `ErrInvalidStoreMutation`
+  before not-found or empty handling; adjacency `typeToken == 0` means "all relationship types". Repair-only
+  helpers (`PurgeOrphanRelationshipIndexes`, `DeleteIncomingByRelID`, `ScanAndDeleteIncoming`) reject them before
+  scanning. History snapshots carry the same entity ID as their storage key. Delete batch methods coalesce
+  duplicate IDs before validation.
+- Tiered `DeleteNodeCascade`, `DeleteNodesBatch` and `DeleteRelationshipsBatch` restore earlier accepted deletes
+  when a later bucket or cross-shard split delete fails while the node row still exists.
+- Non-nil `ForEach*ID` callbacks run outside backend locks and tiered shard checkouts, so they may call Store
+  methods. Badger history iterators page IDs and stop at the start high-water mark, so IDs a callback creates do
+  not extend the active iterator.
+- Badger fixed-width key scans are exact-length only: restart rebuild, history ID scans, pending history overlays,
+  per-entity history reads and truncation ignore overlong keys with a valid prefix.
+- Badger history ID scans merge the async write buffer over persisted history keys. Pending history writes add IDs immediately, and pending history delete writeOps from `TruncateNodeHistory` / `TruncateRelHistory` mask persisted keys until the write buffer flushes.
+- Persisted index definitions are validated before they become in-memory state on open. Badger property, temporal, high-frequency, and vector definitions must decode as MsgPack and reject label token 0 with `ErrInvalidStoreMutation`; Badger property/vector and Tiered vector definitions also reject reserved `tkg_` property keys with `types.ErrReservedPrefix`. Token 0 is an unset sentinel, and shadow keys are graph-resolved metadata, not valid stored index targets.
+- Successful graph writes, batch execution, index creation, and snapshot import that create label or relationship-type tokens save the current registries to persistent stores before returning. Batch execution treats a registry checkpoint failure after the Store write as a committed-row error: the batch reports the failure, but returned entity pointers remain in the finalized state that matches the written rows. Transaction create/import methods add committed rows to the rollback log before returning the checkpoint error, so a later rollback removes those rows and restores the registry snapshot. Commit retries the registry checkpoint before publishing events or releasing the transaction; if the checkpoint still fails, the transaction remains open for retry or rollback.
 
-Atomic history replacement paths validate both payloads before dereferencing
-or marshaling them. `ReplaceNodeWithHistory` and `ReplaceRelWithHistory`
-return `ErrInvalidStoreMutation` for nil current rows or nil previous snapshots
-instead of panicking.
-
-Badger cache-miss deletes prefetch old entity rows before taking `idxMu.Lock`.
-`DeleteNode` and `DeleteRelationship` then re-read the current cached row under
-the write lock and use that row's labels, type token, and endpoints for index
-cleanup. The normal cache-miss Badger read therefore happens outside the global
-index write lock, while direct Store-level ID reuse in the prefetch window
-cannot make cleanup use stale indexed metadata.
-
-Persisted index definitions are validated before they become in-memory state on
-open. Badger property, temporal, high-frequency, and vector definitions must decode as MsgPack
-and reject label token 0 with `ErrInvalidStoreMutation`; Badger property/vector
-and Tiered vector definitions also reject reserved `tkg_` property keys with
-`types.ErrReservedPrefix`. Token 0 is an unset sentinel, and shadow keys are
-graph-resolved metadata, not valid stored index targets.
-
-After `badger.Store.Close`, public operations fail closed with
-`ErrStoreClosed` instead of returning cache hits, O(1) counter values, empty
-fast-path success, vector search results, history scans, registry data, or
-split relationship helper mutations from closed in-memory state. No-error
-diagnostics and routing helpers return zero or nil after close; the private
-flush primitive still uses the Badger closed-DB sentinel to guard against
-`WriteBatch.Flush()` deadlocks.
-
-`memory.Store` has no external resources to tear down, but `Close` still marks
-the lifecycle boundary. Public reads, writes, history, index, count, iteration,
-and empty-fast-path operations return `ErrStoreClosed` after shutdown instead
-of serving or mutating process-local maps. Exported test-only tampering helpers
-return no data or no-op after close.
-
-Store `ForEach*ID` APIs treat a nil callback as invalid input, not a panic:
-MemoryStore, BadgerStore, and TieredStore return `ErrInvalidStoreMutation` on
-open stores, while closed stores still return `ErrStoreClosed` before input
-validation.
-
-Badger history ID scans merge the async write buffer over persisted history
-keys. Pending history writes add IDs immediately, and pending history delete
-writeOps from `TruncateNodeHistory` / `TruncateRelHistory` mask persisted keys
-until the write buffer flushes.
-
-Badger and Tiered registry persistence APIs treat nil registry pointers as
-invalid caller input. On open stores, nil label or relationship-type registries
-return `ErrInvalidStoreMutation`; after close, `ErrStoreClosed` remains the
-first error. `tiered.Store.SetLabelRegistry(nil)` is a no-op and does not clear
-ontology routing state.
-
-Successful graph writes, batch execution, index creation, and snapshot import
-that create label or relationship-type tokens save the current registries to
-persistent stores before returning. Batch execution treats a registry
-checkpoint failure after the Store write as a committed-row error: the batch
-reports the failure, but returned entity pointers remain in the finalized state
-that matches the written rows. Transaction create/import methods add committed
-rows to the rollback log before returning the checkpoint error, so a later
-rollback removes those rows and restores the registry snapshot. Commit retries
-the registry checkpoint before publishing events or releasing the transaction;
-if the checkpoint still fails, the transaction remains open for retry or
-rollback.
-
-`tiered.MigrateFromBadger(src, dst)` requires an empty destination, loads label
-and relationship-type registries from the source BadgerStore, wires destination
-routing from that source label registry, preflights migrated entity tokens and
-relationship endpoints against the source data, and saves both registries to the
-destination TieredStore after a successful copy. Failures roll back inserted
-destination entities, restore the previous ontology registry, and restore or
-remove the destination registry file to match its pre-migration state. Nil
-stores, non-empty destinations, and missing source registry metadata for
-non-empty data return `ErrInvalidStoreMutation`. Closed source or destination
-stores return `ErrStoreClosed`, including the empty-source case.
-
-IO import/export treats stream endpoints as caller input. Nil and typed nil
-readers return `ErrNilReader` before import staging files are created; nil and
-typed nil writers return `ErrNilWriter` before export attempts any stream
-write. This keeps malformed caller input out of the snapshot pipeline instead
-of relying on panics from `io.ReadFull` or `Writer.Write`.
-
-Vector search methods in all in-tree stores re-check close state after
-in-memory vector index scans and filter callbacks before returning empty or
-raw-ID results. Direct Store-level `SearchNearestNodes` applies temporal/depth
-eligibility before heap selection and `QueryOpts.After`/`Limit` over the
-distance-ranked result slice; graph-level search passes only backend-relevant
-opts to stores and paginates after current/history resolution.
-
-Badger temporal bulk reads do not let cold-cache candidates consume `Limit`
-before exact filtering. Index snapshots plus cache peeks may drop cached rows
-that are already known to be temporally invalid, but cache misses are fetched
-and checked before they count toward the page.
-
-Badger property, temporal, high-frequency, and vector index-definition metadata and Tiered
-vector index-definition metadata skip phased-create placeholders until backfill
-finalization completes. Placeholders remain visible in memory for concurrent
-write maintenance, but they are not durable definitions and are not written by
-unrelated concurrent metadata changes. Read paths treat the same placeholders
-as not query-ready: Badger property/temporal/high-frequency queries use complete
-scan paths while a create is building, and Badger/Tiered vector search returns
-`ErrVectorIndexNotFound` until vector create finalization clears the build
-marker.
-
-Tiered vector-index definition create/drop snapshots the raw
-`vector_indexes.msgpack` file before persisting changes. If the persisted
-definition write reports an error, the old raw file is restored or a newly
-created file is removed. Removing the last vector definition fsyncs the metadata
-directory so a crash cannot resurrect a dropped index definition.
-
-Tiered catalog saves apply the same raw-file rollback rule to the catalog JSON:
-`ShardCatalog.Save` snapshots the existing file before writing and restores or
-removes it if the atomic write reports an error.
-
-Tiered registry saves apply the same raw-file rollback rule to
-`registry.msgpack`: the helper snapshots the existing file before writing and
-restores or removes it if the atomic write reports an error.
-
-Tiered registry loads validate both persisted halves. Malformed label or
-relationship-type slices are rejected before startup/load code or deprecated
-single-registry save paths can preserve corrupt metadata.
+Tiered metadata files are all-or-error: vector-index definitions, temporal / high-frequency tracking, the catalog
+JSON (`ShardCatalog.Save`) and `registry.msgpack` each snapshot the raw file before writing and restore or remove
+it when the atomic write reports an error, so in-memory rollback cannot diverge from the file. Removing the last
+vector definition fsyncs the metadata directory so a crash cannot resurrect it. `registry.msgpack` loads reject
+malformed label or relationship-type slices; catalog loads reject duplicate shard names, several hot event shards,
+invalid kind/tier combinations, unsafe relative paths, negative stats and zero or inverted event windows before
+reopening shard handles.
 
 ## Format versions and markers
 
@@ -326,7 +221,7 @@ With `graph.Config.ChangeLog` (or `badger.Config.ChangeLog` / `memory.WithChange
 A badger open used to decode every current row to rebuild the RAM indexes (liveness sets, label / type /
 adjacency maps, planner statistics, and the property, relationship-property, composite, temporal,
 relationship-type temporal, high-frequency and vector index contents), so it grew with the store: 14.3 s for
-519 K nodes / 436 K relationships in the ai-soc shape, 24.8 s on ai-soc's own store. Since v4.51.3 a writable
+519 K nodes / 436 K relationships in the ai-soc shape, 24.8 s on ai-soc's own store. A writable
 `Close` that flushed cleanly ends with the **open image**: the index contents above and the planner statistics,
 chunked under `0x0F tkg_open_image_c<i>` (512 KiB each) and a header `0x0F tkg_open_image` (magic, chunk count,
 length, CRC-32C) written last in its own commit. `Close` holds the flush lock from the image's drained check until
@@ -396,7 +291,7 @@ With `badger.Config.TemporalIndexOnDisk` (or the mirrored `graph.Config.Temporal
 
 **Write-path maintenance.** Maintained ALONGSIDE — never instead of — the existing RAM maintenance (`indexpkg.AddNodeToTemporalIndexes`/`RemoveNodeFromTemporalIndexes`) at every node-mutation door that already calls those: `PutNode`, `DeleteNode`, `ReplaceNode`, `ReplaceNodeWithHistory`, the four label-token doors, `PutNodesBatch`, `DeleteNodesBatch`, and the cascade-delete corruption-path brute-force purge. `CreateTemporalIndex`'s own three-phase backfill writes the disk rows directly (no reliance on the rebuild-on-enable marker); `DropTemporalIndex` purges the whole `labelToken` prefix — safe unconditionally because (unlike the property-index keyspace, whose rows are shared across labels indexing the same property key) a `TemporalIndex` definition is exclusively keyed by `labelToken`: only one definition can ever exist per label. A create that fails or crashes before it publishes purges the label's rows, and an open purges the rows of every label with no definition, so a later create plus a crash reopen cannot load two rows for one node. How the create stays sound against concurrent writes: architecture.md, "Temporal envelope indexes".
 
-**Enable on an existing directory.** The `0x0B` keyspace is new (like `0x0A`), so an existing directory with temporal-index definitions predating the flag is backfilled from current node state exactly once, on the first open with the flag set — guarded by the `temporal_index_on_disk_built` meta marker (mirroring `property_index_on_disk_built`), committed in the SAME `WriteBatch` as the backfill rows so a crash mid-backfill leaves either nothing or everything, never a half-built keyspace a later open trusts as complete. The marker is set unconditionally on the first open with the flag on (even an empty backfill), so any temporal index created afterward — in that session or a later one — stays self-sufficient via the live write-path maintenance above.
+**Enable on an existing directory.** The `0x0B` keyspace is new (like `0x0A`), so an existing directory with temporal-index definitions predating the flag is backfilled from current node state exactly once, on the first open with the flag set — guarded by the `temporal_index_on_disk_built_v2` meta marker (`storeutil.TemporalIndexOnDiskBuiltKey`) (mirroring `property_index_on_disk_built`), committed in the SAME `WriteBatch` as the backfill rows so a crash mid-backfill leaves either nothing or everything, never a half-built keyspace a later open trusts as complete. The marker is set unconditionally on the first open with the flag on (even an empty backfill), so any temporal index created afterward — in that session or a later one — stays self-sufficient via the live write-path maintenance above.
 
 **Measured** (100k entities, one temporal-indexed label, ~6 properties each; Apple Silicon, in-tree): ~1.8x faster open (e.g. 795ms → 452ms). The ratio is driven specifically by eliminating the redundant SECOND full-row decode pass described above, not by avoiding node decode entirely (the first, unconditional pass still pays that cost) — a corpus with multiple temporal-indexed labels covering overlapping entities would see a larger win, since each additional label used to mean one more redundant per-entity decode pass. See `TestTemporalIndexOnDisk_OpenTimeMeasurement_100k` in `pkg/graph/store/badger`.
 
@@ -420,7 +315,7 @@ With `badger.Config.HistoryDeltaEncoding` (or the mirrored `graph.Config.History
 
 ## History rows: versions, lives and RAM sidecars (no format change)
 
-Every row a write appends takes the version one above the highest stored for the entity (current row and history; v4.46, `internal/core/version_alloc.go`), so history keys `0x07`/`0x08` `/<id>/<version>` are unique and ascend in write order. A re-import of a deleted ID continues that numbering and links its `PrevHash` to the top row (v4.48); chains written by v4.43–v4.47 whose earlier life a re-import overwrote stay as stored (no migration). The read-side doors `HasHistory`, `LatestStamps` and the pinned property lookups answer from RAM sidecars (badger: history presence set, history-stamps fold, per-index property tx-membership; memory: its maps): built lazily on first use after open from the history keys and values, maintained wherever a history key enters the write buffer, dropped by `Clear`. The property tx-membership sidecars are built by one scan per kind (rel, node) for every declared index and travel in the open image (backlog 74); the others are never persisted — a reopen pays one build per sidecar instead of a migration.
+Every row a write appends takes the version one above the highest stored for the entity (current row and history; `internal/core/version_alloc.go`), so history keys `0x07`/`0x08` `/<id>/<version>` are unique and ascend in write order. A re-import of a deleted ID continues that numbering and links its `PrevHash` to the top row; chains written by v4.43–v4.47 whose earlier life a re-import overwrote stay as stored (no migration). The read-side doors `HasHistory`, `LatestStamps` and the pinned property lookups answer from RAM sidecars (badger: history presence set, history-stamps fold, per-index property tx-membership; memory: its maps): built lazily on first use after open from the history keys and values, maintained wherever a history key enters the write buffer, dropped by `Clear`. The property tx-membership sidecars are built by one scan per kind (rel, node) for every declared index and travel in the open image (backlog 74); the others are never persisted — a reopen pays one build per sidecar instead of a migration.
 
 ## Column segments (opt-in, `RelSegments` / `SegmentDir`, memory store)
 

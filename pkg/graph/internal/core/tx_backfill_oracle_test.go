@@ -17,7 +17,7 @@ import (
 )
 
 // R15 — the cross-backend bitemporal oracle with backdated ends and
-// supersessions (tasks/handover-tx-backfill-delete-update-20261009.md §5 R15).
+// supersessions (git show 8d8100b3^:tasks/handover-tx-backfill-delete-update-20261009.md §5 R15).
 //
 // A seeded random sequence interleaves plain creates, AddWithTx backfills,
 // Update, Delete, CloseVersion, SetVersionInterval and label changes with the

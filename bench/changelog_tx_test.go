@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
-// M2 — CHANGE-LOG TX SERIALIZATION (tasks/measurements-2026-07-11.md).
+// M2 — CHANGE-LOG TX SERIALIZATION (measurement notes of 2026-07-11, never committed).
 //
 // Hypothesis under test: with Config.ChangeLog enabled, a transaction's
 // mutation door (GraphTx.AddNode et al.) takes c.mu.Lock EXCLUSIVE per

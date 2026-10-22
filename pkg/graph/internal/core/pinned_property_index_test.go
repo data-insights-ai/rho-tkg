@@ -20,7 +20,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Item M (backlog 8, tasks/handover-pinned-index-churn-20261009.md): a pinned
+// Item M (backlog 8, git show 8d8100b3^:tasks/handover-pinned-index-churn-20261009.md): a pinned
 // property lookup (ByTypeAndProperty / ByLabelAndProperty with a temporal
 // filter) must cost the rels that ever carried the value, not the whole
 // history of the graph. These tests pin the ANSWER (T1: exact sets per pin on

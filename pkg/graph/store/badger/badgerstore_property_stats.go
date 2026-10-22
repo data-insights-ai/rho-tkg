@@ -146,7 +146,7 @@ func (bs *Store) resolveNodePropertyStats(labelToken uint16, propertyKey string,
 // over-counts a value present on more than one shard), so tiered.Store calls
 // this on each concrete shard, register-max Merges the returned sketches
 // (indexpkg.HyperLogLog.Merge), and calls Estimate() exactly once on the
-// merged result — see docs/adr/0005-tiered-parity.md §3.1. The returned
+// merged result — see docs/query-planners.md "Tiered NDV fold". The returned
 // sketch is a CLONE (independent of this store's internal accumulator
 // state), safe for the caller to Merge/mutate concurrently with further
 // mutation of this store. Missing/unpopulated pairs return

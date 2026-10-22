@@ -13,7 +13,7 @@ import (
 )
 
 // Fixtures for the cascade-correctness tests (backlog 14, 18, 19 and the 2a
-// half of 20; tasks/handover-effective-read-cost-20261009.md §2). One adapter
+// half of 20; git show 8d8100b3^:tasks/handover-effective-read-cost-20261009.md §2). One adapter
 // drives a node or a relationship through the same scenario, so every test runs
 // node AND relationship (rule 2) on the four backends of txbBackends (memory,
 // badger in-memory, sharded, tiered). Every read is rendered as the exact set

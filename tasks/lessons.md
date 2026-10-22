@@ -12,8 +12,8 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
   standing go; a go René types into a consumer session and that session relays verbatim counts (79, 80). Critical path
   first: build now only what blocks ai-soc on Flux or sigma's O1-3; everything else goes to HANDOVER "Next step (deferred)" (79). sigma requests that serve ai-soc's Flux run (O1-3 = sigma's resident-state work) fall under the ai-soc go.
 - Models: builds Opus, a build Opus cannot finish goes to Fable; Fable reviews (branch and final batch review before the tag)
-  and writes code only, running no tests; the main session runs every deciding test, gate, lint and security check; doc work
-  Sonnet; build briefs end with `make lint-docker security-docker` (79).
+  and writes code only, running no tests; the main session runs every deciding test, gate, lint and security check; doc writing
+  Sonnet (row 36), a docs-against-code audit Opus (row 109); build briefs end with `make lint-docker security-docker` (79).
 - Tests: new tests are `-short` and take seconds; growth/cap tests stay short via test switches; long tests only in the release
   gate `make ci-docker`, which includes the full `make test-race` (87, 66).
 - Release: gate + tag + push, then notify consumers at once; GitHub CI runs in the background; a red tag CI is fixed on main and
@@ -21,7 +21,7 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
   gate tests the live work tree: no code edit or merge while it runs; a push to main cancels the running main CI (82).
 - Ledger: todo.md and HANDOVER updated at every event, consolidated in place; shipped sizing/review sections fold into their rows;
   `scripts/check-ledger.sh` after every merge and before every release commit (80); doc targets at every version bump (41).
-- One owner per fact, consolidate in place, trace the cause before asking (84). Act, do not offer (81).
+- One owner per fact, consolidate in place, never a new .md file (the set is fixed), trace the cause before asking (84). Act, do not offer (81).
 - Red break-the-code test first, clean root-cause fix at the shared seam, no "known limitation" instead of work (78).
 - Behaviour changes go through the deprecation ritual (`docs/stability.md`), no new named exceptions (79).
 - A contract over a family of doors lands in every door; test cross-door agreement (58).
@@ -673,8 +673,11 @@ it. Documentation of two behaviours does not make them one contract.
 Detector: before any verdict "intended / documented / contract choice" on a disagreement between sibling doors, grep for the
 helpers that implement the concept (`func .*(Numeric|Widen|Equal|Key)`); two or more = consolidate (lesson 58 direction rule).
 One overview (René 2026-10-16): agents report in their final message; only `tasks/todo.md` on main plans (v4 + v5); one owner per
-fact: rules in this file, state and next steps in HANDOVER, ledger and releases in todo, open items in backlog; review briefs name
-the full scope up front.
+fact: rules in this file, state, next steps and René's open decisions in HANDOVER, ledger and releases in todo, open items in
+backlog; review briefs name the full scope up front. Never create a new .md for a topic: fold it into the owning file (René
+2026-10-22: "just create a new md file for everything.. this is a mess"). The md set is fixed: README, CHANGELOG, AGENTS,
+CLAUDE (pointer), CONTRIBUTING, SECURITY, HANDOVER, tasks/{todo,backlog,lessons}, bench/README, docs/{api,architecture,errors,
+persistence,query-planners,SPEC,stability}; tasks/evidence/ holds raw outputs only. A removed doc is cited as `git show <hash>:<path>`.
 Cost claims name their condition and are measured, not inferred (2026-10-21: "no demotion fallback, pending ≈ one group"
 ignored that one DurableCommit group can itself be large; ai-soc's failed write-back rollback then ran > 2 h, row 102).
 

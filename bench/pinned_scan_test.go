@@ -16,7 +16,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// M1 — PINNED-SCAN SCALING (tasks/measurements-2026-07-11.md).
+// M1 — PINNED-SCAN SCALING (measurement notes of 2026-07-11, never committed).
 //
 // Hypothesis under test: a TxPin/AsOf ByLabel scan costs O(everything that
 // ever carried ANY history), because candidate collection
@@ -228,7 +228,7 @@ func buildPinnedScanFixture(tb testing.TB, bc backendCase, entityCount int, chur
 //	c_nodesasof_filtered — g.Temporal().NodesAsOf(pin), filtered to L (the door currently in use downstream)
 //	d_bylabel_txat       — g.Nodes().ByLabel(L, QueryOpts{TxAt: pin})
 //
-// See tasks/measurements-2026-07-11.md for the ratio tables and verdict.
+// See measurement notes of 2026-07-11, never committed for the ratio tables and verdict.
 func BenchmarkPinnedScanScaling(b *testing.B) {
 	bc := backendCase{name: "badger", snowflakeNode: 3, badger: true}
 	for _, entityCount := range pinnedScanEntityCounts {
@@ -297,7 +297,7 @@ func BenchmarkPinnedScanScaling(b *testing.B) {
 					// seconds ahead of the real wall clock, so at query time
 					// nowInstant() is far BEHIND most of this fixture's own
 					// TxFrom/UpdatedAt timestamps. The practical effect (see
-					// tasks/measurements-2026-07-11.md): every entity's superseded
+					// measurement notes of 2026-07-11, never committed): every entity's superseded
 					// GENESIS version (whose vStart falls back to the real-clock
 					// snowflake-ID timestamp, not a monotonic-floor stamp) ends up
 					// "covering" the real-wall-clock probe regardless of later

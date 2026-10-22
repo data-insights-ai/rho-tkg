@@ -38,7 +38,7 @@ License: Apache-2.0
 
 **Registry zero values preserve token invariants.** Internal label and relationship-type registries lazily initialize the reserved token-0 entry, so direct zero-value use reports an empty registry, exports/imports the reserved-name shape, and allocates token 1 first.
 
-**Store** is a pure persistence interface composed from capability sub-interfaces in `pkg/graph/store/capabilities.go`. The mandatory composition (`MandatoryStore` — Lifecycle, NodeCRUD, RelationshipCRUD, Adjacency, BulkRead, Batch, History, Stats, Iteration) is what the graph layer depends on. Optional capabilities are type-asserted at the call sites that need them; the list below is illustrative — `capabilities.go` declares 66 of them (85 `*Capability` interfaces across the `store` package, with `changefeed.go`, `history_stamps.go`, `current_stamps.go`, `member_ids.go`, `property_stats.go`, `rel_segments.go`, …), and the code is the authority: DepthHistoryIteration, DeletedIteration, DepthDeletedIteration, ExAdjacency, PropertyIndex, TemporalIndex, VectorIndex, VectorIndexOptions, FilteredVectorSearch, HighFrequencyIndex, CompositePropertyIndex, RelPropertyIndex, MetaKV, ChangeFeed, TransactionTimeQuery, HistoryCompaction, RetentionPurge, PreEncodedPut, Degree, BeliefWatermark, TemporalCandidate, DurableFlush, HistoryPresence, HistoryStamps, CurrentStamps, MemberIDs, Rel/NodePropertyTxMembership, PropertyTxMembershipStats, RelSegment, …. `ExAdjacencyCapability` yields, per node and direction, the relationships that named the node in a row its live adjacency no longer holds (deleted ones, earlier lives of re-imported ones), kept by the store with every delete and every history row with other endpoints; the graph layer uses it for the adjacency coverage fold (`g.Temporal().OutgoingRelsAt`/`IncomingRelsAt`/`NeighborsAt`/`ForEachRelEffectiveAtNodes`, the pinned adjacency doors) so cost is O(the seed's ever-degree) instead of O(total history). `DeletedIterationCapability` (and the depth variant) yields IDs with history rows but no current row. Four in-tree implementations satisfy the full composition: `memory.Store` (testing), `badger.Store` (single-instance persistent), `tiered.Store` (multi-shard persistent), and `sharded.Store` (slot-topology persistent — EXPERIMENTAL, ADR-0007). Nil concrete in-tree Store receivers return `ErrNilStore` from lifecycle `Close` and `Clear` calls. The `memory.Store` zero value is usable; persistent Store zero values fail closed with `ErrStoreClosed`.
+**Store** is a pure persistence interface composed from capability sub-interfaces in `pkg/graph/store/capabilities.go`. The mandatory composition (`MandatoryStore` — Lifecycle, NodeCRUD, RelationshipCRUD, Adjacency, BulkRead, Batch, History, Stats, Iteration) is what the graph layer depends on. Optional capabilities are type-asserted at the call sites that need them; the list below is illustrative — the `*Capability` interfaces in `capabilities.go` and its siblings (`changefeed.go`, `history_stamps.go`, `current_stamps.go`, `member_ids.go`, `property_stats.go`, `rel_segments.go`, …) are the authority: DepthHistoryIteration, DeletedIteration, DepthDeletedIteration, ExAdjacency, PropertyIndex, TemporalIndex, VectorIndex, VectorIndexOptions, FilteredVectorSearch, HighFrequencyIndex, CompositePropertyIndex, RelPropertyIndex, MetaKV, ChangeFeed, TransactionTimeQuery, HistoryCompaction, RetentionPurge, PreEncodedPut, Degree, BeliefWatermark, TemporalCandidate, DurableFlush, HistoryPresence, HistoryStamps, CurrentStamps, MemberIDs, Rel/NodePropertyTxMembership, PropertyTxMembershipStats, RelSegment, …. `ExAdjacencyCapability` yields, per node and direction, the relationships that named the node in a row its live adjacency no longer holds (deleted ones, earlier lives of re-imported ones), kept by the store with every delete and every history row with other endpoints; the graph layer uses it for the adjacency coverage fold (`g.Temporal().OutgoingRelsAt`/`IncomingRelsAt`/`NeighborsAt`/`ForEachRelEffectiveAtNodes`, the pinned adjacency doors) so cost is O(the seed's ever-degree) instead of O(total history). `DeletedIterationCapability` (and the depth variant) yields IDs with history rows but no current row. Four in-tree implementations satisfy the full composition: `memory.Store` (testing), `badger.Store` (single-instance persistent), `tiered.Store` (multi-shard persistent), and `sharded.Store` (slot-topology persistent — EXPERIMENTAL, ADR-0007; ADR texts are in git history, `git log --all -- docs/adr/`; ADR-0011 is summarized in its own section below). Nil concrete in-tree Store receivers return `ErrNilStore` from lifecycle `Close` and `Clear` calls. The `memory.Store` zero value is usable; persistent Store zero values fail closed with `ErrStoreClosed`.
 
 **Store registry inputs are lifecycle-checked.** BadgerStore and TieredStore registry save/load APIs reject nil label or relationship-type registry pointers with `ErrInvalidStoreMutation` before dereference on open stores. Closed stores still return `ErrStoreClosed` first. `tiered.Store.SetLabelRegistry(nil)` is a no-op so direct Store callers cannot accidentally clear ontology routing state. Tiered `registry.msgpack` loads validate both label and relationship-type slices before returning metadata to startup/load or deprecated single-registry save paths.
 
@@ -52,7 +52,7 @@ License: Apache-2.0
 
 **Tiered temporal index kind is a store-wide invariant.** `tiered.Store` serializes temporal and high-frequency index create/drop against shard rotation, preflights shard-local index kind before mutating, persists store-level temporal/HFI tracking metadata, and treats `ErrTemporalIndexExists` as retryable only when the existing shard index is the same kind and HFI bucket size. HFI bucket sizes must be positive whole milliseconds because buckets are stored in `Instant` precision. A partial same-kind create can be completed; a partial interval/HFI cross-kind or different-bucket HFI leftover fails closed instead of creating mixed per-shard temporal index state. If a later shard fails during create, drop, tracking-file persistence, tracked-index application to a newly opened shard, or persisted tracking replay on open, earlier shard-local changes are undone before returning the error.
 
-**Vector indexes** live at the Store level (per-Store in `memory.Store`/`badger.Store`, per-`tiered.Store` -- not per-shard). In-memory k-NN with Cosine and Euclidean distance metrics. Two engines: `CreateVectorIndex` defaults to the approximate HNSW engine (`pkg/graph/internal/index/hnsw.go`, `M=16`, `EfConstruction=200`, `EfSearch=64`), and `CreateVectorIndexWithOptions` (`VectorIndexOptionsCapability`) selects the tuning or switches to the exact linear-scan engine via `VectorIndexOptions.UseBruteForce` — the escape hatch for exact-recall requirements. Brute force also remains the correctness fallback for filtered searches. Dimensions must be positive and metrics must be one of the supported values before any placeholder or persisted definition is accepted. Protected by a dedicated `vectorIdxMu sync.RWMutex` in tiered stores and the store index mutex in single-shard stores. BadgerStore and TieredStore persist index definitions and rebuild entries from node properties on open; MemoryStore remains process-local. Definition serializers skip phased-create placeholders until backfill finalization clears their build marker, so concurrent metadata writes cannot durably publish unfinished indexes. Tiered vector definition create/drop snapshots the raw definition file before persisting, restores/removes it on write failure, and fsyncs the metadata directory after deleting the last definition. Tiered catalog saves also snapshot and restore/remove the raw JSON file on write failure, matching caller-level in-memory catalog rollback. Auto-maintained across all mutation paths (`PutNode`, `ReplaceNode`, `DeleteNode`, `RemoveNodeLabelToken`), including delete paths that mutate state and return a corruption error after cleanup. Creation installs a visible placeholder, scans existing nodes, then merges backfill while skipping IDs touched by concurrent mutations; scan failures remove the placeholder. Search applies Store-level temporal/depth eligibility before heap selection, resolves ranked IDs back to nodes, applies cursor pagination over distance order, and skips only `ErrNodeNotFound` from concurrent deletes; other read errors propagate. Heap allocation is capped by indexed entry count, so oversized `k` values do not allocate proportional memory on tiny indexes. Tiered vector search applies `DepthHot`/`DepthWarm` before heap selection by combining reference/archive residency with event-shard tier snapshots.
+**Vector indexes** live at the Store level (per-Store in `memory.Store`/`badger.Store`, per-`tiered.Store` -- not per-shard). In-memory k-NN with Cosine and Euclidean distance metrics. Two engines: `CreateVectorIndex` defaults to the approximate HNSW engine (`pkg/graph/internal/index/hnsw.go`, `M=16`, `EfConstruction=200`, `EfSearch=64`), and `CreateVectorIndexWithOptions` (`VectorIndexOptionsCapability`) selects the tuning or switches to the exact linear-scan engine via `VectorIndexOptions.UseBruteForce` — the escape hatch for exact-recall requirements. Brute force also remains the correctness fallback for filtered searches. Protected by a dedicated `vectorIdxMu sync.RWMutex` in tiered stores and the store index mutex in single-shard stores. BadgerStore and TieredStore persist index definitions and rebuild entries from node properties on open; MemoryStore remains process-local. Definition serializers skip phased-create placeholders until backfill finalization clears their build marker, so concurrent metadata writes cannot durably publish unfinished indexes. Tiered vector definition create/drop snapshots the raw definition file before persisting, restores/removes it on write failure, and fsyncs the metadata directory after deleting the last definition. Tiered catalog saves also snapshot and restore/remove the raw JSON file on write failure, matching caller-level in-memory catalog rollback. Auto-maintained across all mutation paths (`PutNode`, `ReplaceNode`, `DeleteNode`, `RemoveNodeLabelToken`), including delete paths that mutate state and return a corruption error after cleanup. Creation and config validation: "Vector Index Creation" below. Search applies Store-level temporal/depth eligibility before heap selection, resolves ranked IDs back to nodes, applies cursor pagination over distance order, and skips only `ErrNodeNotFound` from concurrent deletes; other read errors propagate. Heap allocation is capped by indexed entry count, so oversized `k` values do not allocate proportional memory on tiny indexes. Tiered vector search applies `DepthHot`/`DepthWarm` before heap selection by combining reference/archive residency with event-shard tier snapshots.
 
 **Internal no-error index helpers fail closed on nil or zero values.** Property indexes lazily initialize value maps on first `Add`; high-frequency indexes lazily initialize buckets on first `Add`; zero-value LRU caches lazily initialize as minimum-capacity caches. Nil property, temporal, high-frequency, and vector cleanup/read helpers no-op or return zero/nil values instead of panicking. Nil vector writes/searches return `ErrInvalidVectorIndexConfig` because they have an error channel.
 
@@ -107,7 +107,7 @@ Read-only virtual properties dispatched by the graph layer from internal metadat
 | `tkg_auth_level` | `uint8` | Both | Authorization -- caller-supplied authorization tier |
 | `tkg_base_entity` | `entityID` | Both | Version chain |
 
-Caller-supplied provenance/authorization shadow inputs are validated before they are stripped from the property map: `tkg_author_id` and `tkg_authorized_by` require `string`, `tkg_signature` requires `[]byte`, and `tkg_auth_level` requires a bounded numeric tier with an integer value.
+Caller-supplied provenance/authorization shadow inputs are validated before they are stripped from the property map: `tkg_author_id` and `tkg_authorized_by` require `string`, `tkg_signature` requires `[]byte`, and `tkg_auth_level` requires an integer value in `[0, 255]` (integer or whole-number float types).
 
 Caller-supplied temporal shadow inputs are also stripped before property validation. `tkg_valid_from`, `tkg_valid_to`, and `tkg_created_at` accept millisecond values as `types.Instant`, safe integer types, or whole-number floats inside each float type's contiguous exact integer range.
 
@@ -153,30 +153,30 @@ Caller-supplied temporal shadow inputs are also stripped before property validat
 
 All mutations enforce `ValidationLimits` (5 configurable limits with defaults). Update-style paths extract provenance/authorization shadow keys, reject other reserved `tkg_` keys, and validate update values before entity locks, transaction rollback snapshots, or batch queueing. They also recheck final property count after nil deletes/adds/sets are applied and before persistence. Versioned mutations use a checked next-version helper and return `ErrVersionOverflow` at `math.MaxUint32` before history writes, wrapped version `0`, or label-token allocation for rejected add-label calls; version-chain successor lookup also treats `math.MaxUint32` as having no successor instead of wrapping to genesis, and version-chain navigation validates explicit IDs before returning `nil, nil` for a missing neighbor version. Batch update queues deep-copy caller maps after validation so later caller mutations cannot change `Execute`. Add-label paths check node existence, idempotence, and `MaxLabelsPerNode` before creating a token for an unseen label. Node create/import/add-label write failures restore any newly allocated label tokens, and multi-label allocation failures restore partial suffixes before returning. Batch node queueing uses non-zero probe tokens for unseen labels and allocates real tokens only during `Execute`, retokenizing returned node pointers in place before persistence. Batch relationship create failures restore queue-time `TxFrom`, endpoint hashes, and type-token state on the returned relationship pointer. Direct relationship create paths run temporal constraints before allocating a token for an unseen relationship type and restore newly allocated type tokens on final write failure. `CloseVersion`, node label add/remove, node/relationship property CAS, and node/relationship in-place updates recompute hash-chain fields while preserving existing provenance, signature, authorization, and relationship endpoint-hash metadata because those APIs have no provenance shadow-key channel. Registry rollback windows release their allocation mutex via `defer`, so backend panics do not strand future registry writes. Every mutation door is ctx-first and adds cancellation checks at critical points — v4.0 collapsed the old `*WithContext` / non-context pairs into single `ctx`-taking methods.
 
-### Sub-API Accessors (v3.4.0 introduced; v4.2.0 converted to methods)
+### Sub-API Accessors
 
-The 130+ implementation methods on `*core.Core` are reachable through 16 sub-API accessor methods on `*Graph`. The thin `*Graph` façade itself (in `pkg/graph/graph.go`) only exposes `New`, `Close`, `SetReplicationSource`, the 16 accessor methods listed below, and the columnar scans `ScanNodeColumns` / `ScanRelColumns` / `ScanRelSegments` (`pkg/graph/column_scan.go`) (the package-level `Open`, `OpenInMemory`, `RestoreInto`, `NewBatchBuilder`, `DecomposeNodeID` and `DecomposeRelID` helpers live alongside it); the old form `g.AddNode(...)` was removed in v3.4.0, and the supported public form is `g.Nodes().Add(...)`. The earlier `Graph.Core()` escape hatch was removed during the post-v3.4.0 cleanup; `*core.Core` is again strictly internal. Until v4.2.0 these accessors were exported fields (`g.Nodes` etc.); v4.2.0 converted them to nil-safe methods so `(*Graph)(nil).Nodes()` returns nil and chained calls fail closed with `ErrNilGraph`.
+The implementation methods on `*core.Core` are reachable through 16 nil-safe sub-API accessor methods on `*Graph` (`(*Graph)(nil).Nodes()` returns nil and chained calls fail closed with `ErrNilGraph`). The thin `*Graph` façade (`pkg/graph/graph.go`) exposes only `New`, `Close`, `SetReplicationSource`, the 16 accessors below, and the columnar scans `ScanNodeColumns` / `ScanRelColumns` / `ScanRelSegments` (`pkg/graph/column_scan.go`); the package-level `Open`, `OpenInMemory`, `RestoreInto`, `NewBatchBuilder`, `DecomposeNodeID` and `DecomposeRelID` helpers live alongside it. `*core.Core` is strictly internal.
 
-| Field | Package | Wraps |
-|-------|---------|-------|
-| `g.Nodes` | `pkg/graph/nodes` | Node CRUD + label/property/version helpers |
-| `g.Rels` | `pkg/graph/rels` | Relationship CRUD + adjacency/property/version helpers |
-| `g.Temporal` | `pkg/graph/temporal` | Point-in-time, interval, bitemporal (record and state doors), effective timeline, snapshot/diff, Allen relations, version-interval corrections |
-| `g.Index` | `pkg/graph/index` | Property/vector/high-frequency index management + IndexProvider |
-| `g.Events` | `pkg/graph/events` | Sync/async EventBus install + retrieval; setters return `ErrGraphClosed` after graph close |
-| `g.Constraints` | `pkg/graph/constraints` | Temporal-constraint set management (`Set`/`Add`/`Get`, `DryRunValidate`); `Add`/`Set` reject unknown kinds before changing the set, and relationship writes fail closed with `ErrInvalidTemporalConstraint` if an invalid kind reaches enforcement. Also owns the unique-property constraints (ADR-0002): `CreateUnique`, `CreateUniqueForever`, `ReleaseOwnership`, `DropUnique`, `UniqueConstraints` — six `ErrUnique*` sentinels re-exported from `pkg/graph` |
-| `g.IO` | `pkg/graph/io` | Export / Import, delta export (`ExportSince` / `ImportMerge`), backups (`BackupTo` / `BackupDeltaTo`) (shadows stdlib `io` — alias as `tkgio` if both are imported) |
-| `g.Admin` | `pkg/graph/admin` | Backend-agnostic admin: `Reset` (gated by `Config.AllowReset`, else `ErrResetDisabled`), `DecomposeNodeID`, `DecomposeRelID`, `CompactHistoryNodes` / `CompactHistoryRels` (ADR-0001 history retention), `PurgeExpiredNodes` (ADR-0008 R2 hard purge, gated by `Config.AllowRetentionPurge`, else `ErrRetentionPurgeDisabled`), `ExactErase` (gated by `Config.AllowExactErasure`; read-only preview `ResolveExactErasure`), `SealRelSegments` / `RelSegmentStats` (ADR-0011) |
-| `g.Tier` | `pkg/graph/tier` | Tiered-store admin: `Archive`, `Restore`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `Repair`, `VerifyShard` (reuses `core.AdminOps`) |
-| `g.Stats` | `pkg/graph/stats` | Count helpers |
-| `g.Hash` | `pkg/graph/hash` | Hash-chain verification (shadows stdlib `hash` — alias as `tkghash` if both are imported) |
-| `g.Replication` | `pkg/graph/replication` | Change-log / op-log: `ChangeFeed`, `ForEachChange`, `LastCommittedLSN`; replica apply (`ApplyChange`/`ApplyChanges`, `AppliedLSN`/`SetAppliedLSN`), `RegistrySnapshot`, `IDSlotLease`/`SetIDSlotLease` |
-| `g.Ingest` | `pkg/graph/ingest` | ADR-0006 prepare-parallel / apply-sequential write door: `NewSession`, `AppliedSeq`, `WaitApplied` |
-| `g.Resolve` | `pkg/graph/resolve` | Shadow-property accessors (`NodeProperty`, `RelProperty`) |
-| `g.Tx` | `pkg/graph/subapi.go` (in-package `TxAPI`) | `Begin()` / `Run(fn)` / `RunContext(ctx, fn)` |
-| `g.Batch` | `pkg/graph/subapi.go` (in-package `BatchAPI`) | `New()` returns a `*BatchBuilder` |
+| Accessor | Package | Exported methods (v4.70.0) | Wraps |
+|---|---|---|---|
+| `g.Nodes` | `pkg/graph/nodes` | 73 | Node CRUD (incl. `AddWithTx` / `UpdateWithTx` / `DeleteWithTx`), label, property, version chain, `HasHistory` / `LatestStamps`, DocValues, streaming ForEach/Iter |
+| `g.Rels` | `pkg/graph/rels` | 75 | Relationship CRUD (incl. the `WithTx` doors), adjacency (incl. pinned `*ForNodesAtTx` / `*AtPin`), property, version chain, `HasHistory` / `LatestStamps`, streaming ForEach |
+| `g.Temporal` | `pkg/graph/temporal` | 83 | Point-in-time, interval, bitemporal (record and state doors), effective timeline (+ scan forms), version-interval corrections, commit clock (`NowTx` / `CommittedTx` / `PeekTx` / `AdvanceClock`), snapshot/diff, Allen relations, named as-of tags |
+| `g.Index` | `pkg/graph/index` | 34 | Property / rel-property / composite / temporal / rel-temporal / high-frequency / vector index management, `InventoryEpoch`, IndexProvider registry, scored search |
+| `g.Events` | `pkg/graph/events` | 4 | Sync/async EventBus install + retrieval; setters return `ErrGraphClosed` after graph close |
+| `g.Constraints` | `pkg/graph/constraints` | 9 | Temporal-constraint set (`Set`/`Add`/`Get`, `DryRunValidate`; `Add`/`Set` reject unknown kinds before changing the set, and relationship writes fail closed with `ErrInvalidTemporalConstraint` if an invalid kind reaches enforcement) and the unique-property constraints (ADR-0002): `CreateUnique`, `CreateUniqueForever`, `ReleaseOwnership`, `DropUnique`, `UniqueConstraints` — six `ErrUnique*` sentinels re-exported from `pkg/graph` |
+| `g.IO` | `pkg/graph/io` | 7 | Export / Import, deltas (`Watermark`, `ExportSince`, `ImportMerge`), backups (`BackupTo` / `BackupDeltaTo`); package-level `HeaderOf`. Shadows stdlib `io` — alias as `tkgio` |
+| `g.Admin` | `pkg/graph/admin` | 15 | `Reset` (`Config.AllowReset`, else `ErrResetDisabled`), `SetUntimedValidStart` / `UntimedValidStart` / `ValidAxis`, `IsReferenceLabel`, `DecomposeNodeID` / `DecomposeRelID`, `CompactHistoryNodes` / `Rels` (ADR-0001), `PurgeExpiredNodes` / `Rels` (ADR-0008, `Config.AllowRetentionPurge`, else `ErrRetentionPurgeDisabled`), `ExactErase` (`Config.AllowExactErasure`; preview `ResolveExactErasure`), `SealRelSegments` / `RelSegmentStats` (ADR-0011) |
+| `g.Tier` | `pkg/graph/tier` | 7 | Tiered-store admin: `Archive`, `Restore`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `Repair`, `VerifyShard` (reuses `core.AdminOps`) |
+| `g.Stats` | `pkg/graph/stats` | 30 | Counts and planner statistics (owner: `docs/query-planners.md`) |
+| `g.Hash` | `pkg/graph/hash` | 2 | `VerifyNodeChain` / `VerifyRelChain`. Shadows stdlib `hash` — alias as `tkghash` |
+| `g.Replication` | `pkg/graph/replication` | 11 | Change-log / op-log (`ChangeFeed`, `ForEachChange`, `LastCommittedLSN`, `Watch`), replica apply (`ApplyChange`/`ApplyChanges`, `AppliedLSN`/`SetAppliedLSN`), `RegistrySnapshot`, `IDSlotLease`/`SetIDSlotLease`; package-level `DecodeChangeIdentity` / `ChangeOpOf` |
+| `g.Ingest` | `pkg/graph/ingest` | 3 | ADR-0006 prepare-parallel / apply-sequential write door: `NewSession`, `AppliedSeq`, `WaitApplied` |
+| `g.Resolve` | `pkg/graph/resolve` | 2 | Shadow-property accessors (`NodeProperty`, `RelProperty`) |
+| `g.Tx` | `pkg/graph/subapi.go` (`TxAPI`) | 4 | `Begin` / `Run` / `RunContext` / `RunWithLSN` |
+| `g.Batch` | `pkg/graph/subapi.go` (`BatchAPI`) | 3 | `New` (a `*BatchBuilder`), `Run` / `RunContext` |
 
-Each sub-API package declares its own local `Core` interface listing only the methods it forwards to. `*core.Core` satisfies each `Core` implicitly (no explicit declaration required), which lets sub-API packages stay independent of `pkg/graph/internal/core` while still type-checking the wiring at compile time. Wrappers are 1-2 lines, single indirect dispatch each. Nil, zero-value, or typed-nil wrappers fail closed: error-returning methods return `ErrNilGraph`, while no-error helpers return zero values. The `temporal`, `index`, and `events` sub-APIs were collapsed into their existing types-only sibling packages in v3.4.0 post-cleanup (previously `pkg/graph/{temporalapi,indexapi,eventsapi}`).
+Each sub-API package declares its own local `Core` interface listing only the methods it forwards to. `*core.Core` satisfies each `Core` implicitly (no explicit declaration required), which lets sub-API packages stay independent of `pkg/graph/internal/core` while still type-checking the wiring at compile time. Wrappers are 1-2 lines, single indirect dispatch each. Nil, zero-value, or typed-nil wrappers fail closed: error-returning methods return `ErrNilGraph`, while no-error helpers return zero values. The `temporal`, `index`, and `events` sub-APIs share their package with the types-only declarations of the same name.
 
 `g.Index` provider registration rejects nil and typed nil providers before
 calling `Name()`, rejects empty or whitespace-only provider names before
@@ -194,9 +194,9 @@ for in-flight `Initializable.Init` callbacks before invoking provider `Close`.
 |---|---|---|---|
 | `tkg_tx_from` | "the DB recorded this fact at T" | the system — automatically (or a privileged backfill under `Config.AllowTxBackfill`, §4.1) | always stamped: every Add allocates `TemporalMetadata` and sets `TxFrom` |
 | `tkg_created_at` | "the entity record came into existence at T" | system-derived (snowflake ID timestamp); caller may override at Add | always derivable — the shadow resolver applies the snowflake fallback |
-| `tkg_valid_from` | "the fact holds **in the world** from T" | only the domain — a recorder/curator with actual knowledge | `0` = no world-time claim made |
+| `tkg_valid_from` | "the fact holds **in the world** from T" | only the domain — a recorder/curator with actual knowledge | no world-time claim made (stored `0` on the legacy valid axis; api.md "Valid-time start (Config.UntimedValidStart)") |
 
-Two doors expose two deliberate views of valid-time. The shadow resolver (`g.Resolve().NodeProperty(n, "tkg_valid_from")`) returns the RAW asserted value — `(Instant(0), ok=true)` when never asserted (`ok` is true because `TemporalMetadata` always exists; check the zero value, not `ok`). Temporal queries use the EFFECTIVE valid-from (explicit `ValidFrom`, else the row's `TxFrom`; api.md "Valid-time start (Config.UntimedValidStart)"), so an entity with unset `ValidFrom` is "eternal" through the shadow door but time-bounded through the query door. Which start an untimed FIRST version stores is `Config.UntimedValidStart`, persisted per store: under the default (`UntimedDefault`, v4.57.0) a new store writes `ValidFrom = types.UnboundedValidFrom` (valid from -inf, an explicit start the shadow door reports), while a store created under v4.56.x defaults or earlier keeps `ValidFrom` 0 (valid from `TxFrom`); later untimed versions start at their `TxFrom` in both. Shadow props report *stored/asserted* state; temporal queries report *effective* state. Writers must never default `tkg_valid_from := now()` without domain knowledge — that conflates TX with VT; consumers wanting "unstamped ⇒ valid since recorded" should implement it as an explicit, flagged heuristic on their side.
+Two doors expose two deliberate views of valid-time. The shadow resolver (`g.Resolve().NodeProperty(n, "tkg_valid_from")`) returns the RAW asserted value — `(Instant(0), ok=true)` when never asserted (`ok` is true because `TemporalMetadata` always exists; check the zero value, not `ok`). Temporal queries use the EFFECTIVE valid-from (explicit `ValidFrom`, else the row's `TxFrom`; api.md "Valid-time start (Config.UntimedValidStart)"), so an entity with unset `ValidFrom` is "eternal" through the shadow door but time-bounded through the query door. Which start an untimed write stores, and whether a stored 0 is a claim, is the store's persisted `Config.UntimedValidStart` mode (`UntimedFromTxFrom`, `UntimedUnbounded` — the default for new stores —, or `UntimedWholeAxis` on the literal valid axis); owner: api.md "Valid-time start (Config.UntimedValidStart)". Shadow props report *stored/asserted* state; temporal queries report *effective* state. Writers must never default `tkg_valid_from := now()` without domain knowledge — that conflates TX with VT; consumers wanting "unstamped ⇒ valid since recorded" should implement it as an explicit, flagged heuristic on their side.
 
 **Canonical temporal predicates.** The effective-valid-from derivation and the point/interval predicates are defined ONCE, in `storeutil` (`EntityValidFrom`, `MatchesPointInTime`, `MatchesInterval`); the core graph layer delegates its `nodeValidFrom`/`relValidFrom`/validity helpers there and the store backends use the same functions for query push-down. Never redefine these semantics elsewhere — the cross-door equivalence test (`TestTemporalTwoDoorsAgreeOnLabelQueries`) asserts the named door, the generic `QueryOpts` door, and the per-ID resolver return identical sets.
 
@@ -204,11 +204,11 @@ Two doors expose two deliberate views of valid-time. The shadow resolver (`g.Res
 
 **Cascade interval edits (`SetNodeVersionInterval`) are append-only and not wire-atomic.** The cascade never rewrites a stored row (lesson 46). It appends, at one new `TxFrom`, one row per piece of `[validFrom, validTo)` where the pre-correction state differs (each piece = the version valid there, as believed before the call, plus the `props` patch; a piece with no valid version uses the current row, the most recent version), plus a resumption row that re-asserts the state at `validTo`. On overlap the newer belief wins at read time. Appended rows take versions above every stored row, carry no `TxTo`/`DeletedAt`, and the newest row whose own interval is open takes the current slot. Unique constraints judge the built rows (`unique_cascade.go`); a hard-deleted entity is refused with `ErrEntityDeleted` (wraps `ErrNodeNotFound` / `ErrRelNotFound`). The rows are written sequentially under the entity lock, the new current row last. A crash mid-cascade leaves some appended rows without the rest; each row write is atomic and there is no in-progress marker.
 
-**TX visibility: superseded is not retracted (lesson 43).** `QueryOpts.TxAt` / `NodeAtTx` filter the version chain to versions RECORDED by txAt (`TxFrom <= txAt`). `TxTo` deliberately does not bound visibility: it marks when a version stopped being the current record, and the row remains the authority for its valid-time slot in every later belief state. (The previous `< TxTo` clause treated every supersession as a retraction, so `NodeAtTx(oldVT, now)` returned nothing after any update — including the flagship explicit-VT tiling scenario.) Belief reconstruction falls out of the vEnd derivation over the TxFrom-filtered chain: versions recorded after txAt are absent, so the then-latest version is open-ended exactly as believed at txAt. All of this lives in one funnel, `internal/core/chain_resolver.go`, which every named and generic temporal door uses. Two read-time caps complete it: a replacing write (Update, `CloseVersion`, a label change, a property CAS, `UpdateWithTx`) ends every older belief that started at or before its row's start, also on a chain a cascade made non-monotonic (`chain_supersession.go`); and a hard delete ends every row of its life (`lifeEnds`). A chain is ordered by life (a row's life = the deletes recorded before it), then version, so a re-imported ID's rows follow the earlier life's; since v4.48 a re-import continues the chain (version above every stored row, `PrevHash` linked to that row, stamped after every stamp of the chain; a backfilled `tkg_tx_from` at or below one returns `ErrTxOrder`; `lifeStart` in `version_alloc.go`).
+**TX visibility: superseded is not retracted (lesson 43).** `QueryOpts.TxAt` / `NodeAtTx` filter the version chain to versions RECORDED by txAt (`TxFrom <= txAt`). `TxTo` deliberately does not bound visibility: it marks when a version stopped being the current record, and the row remains the authority for its valid-time slot in every later belief state. (The previous `< TxTo` clause treated every supersession as a retraction, so `NodeAtTx(oldVT, now)` returned nothing after any update — including the flagship explicit-VT tiling scenario.) Belief reconstruction falls out of the vEnd derivation over the TxFrom-filtered chain: versions recorded after txAt are absent, so the then-latest version is open-ended exactly as believed at txAt. All of this lives in one funnel, `internal/core/chain_resolver.go`, which every named and generic temporal door uses. Two read-time caps complete it: a replacing write (Update, `CloseVersion`, a label change, a property CAS, `UpdateWithTx`) ends every older belief that started at or before its row's start, also on a chain a cascade made non-monotonic (`chain_supersession.go`); and a hard delete ends every row of its life (`lifeEnds`). A chain is ordered by life (a row's life = the deletes recorded before it), then version, so a re-imported ID's rows follow the earlier life's; a re-import continues the chain (version above every stored row, `PrevHash` linked to that row, stamped after every stamp of the chain; a backfilled `tkg_tx_from` at or below one returns `ErrTxOrder`; `lifeStart` in `version_alloc.go`).
 
-**Record doors vs state doors.** `NodeAsOf` / `RelAsOf` / `NodesAsOf` / `RelsAsOf` and `QueryOpts.TxPin` are RECORD doors: they answer the newest row recorded by the pin, whatever valid time it covers (pin-stable since v4.46: one rule, `storeutil.SelectAsOfWithCurrent`, in memory, the badger native scan and the core fallback; a row recorded later never changes the answer at an earlier pin). `NodeAtTx` / `RelAtTx`, `ByLabel` / `ByType` with `ValidAt` + `TxAt`, and the effective timeline are STATE doors: the row valid at `t` as believed at the pin. After a bounded correction `[2000,3000)` the record door answers the correction row at every valid time, the state door only inside `[2000,3000)`. The effective timeline (`effective_timeline.go`) is the state door's interval form: half-open segments, each holding the row `NodeAtTx(id, t, pin)` returns for every `t` in it, computed from one chain load with one max-heap sweep (O(n log n)) under the entity's lock; a pin above the commit clock (`PeekTx`) returns `ErrTxPinTooNew`.
+**Record doors vs state doors.** `NodeAsOf` / `RelAsOf` / `NodesAsOf` / `RelsAsOf` and `QueryOpts.TxPin` are RECORD doors: they answer the newest row recorded by the pin, whatever valid time it covers (pin-stable: one rule, `storeutil.SelectAsOfWithCurrent`, in memory, the badger native scan and the core fallback; a row recorded later never changes the answer at an earlier pin). `NodeAtTx` / `RelAtTx`, `ByLabel` / `ByType` with `ValidAt` + `TxAt`, and the effective timeline are STATE doors: the row valid at `t` as believed at the pin. After a bounded correction `[2000,3000)` the record door answers the correction row at every valid time, the state door only inside `[2000,3000)`. The effective timeline (`effective_timeline.go`) is the state door's interval form: half-open segments, each holding the row `NodeAtTx(id, t, pin)` returns for every `t` in it, computed from one chain load with one max-heap sweep (O(n log n)) under the entity's lock; a pin above the commit clock (`PeekTx`) returns `ErrTxPinTooNew`.
 
-**Bitemporal back-compat shims and their sunset.** Two shims remain for pre-4.3.0 data: the inherited-valid-from detector (`nodeInheritedValidFrom`, bypassed once the post-open migration has run — `bitemporalMigrated`) and the `UpdatedAt`-as-`vEnd` fallback for rows without explicit valid-time. Retirement condition: the detector can be deleted once every supported backend requires `MetaKVCapability` (so the migration always runs) — revisit at the next major version. The `UpdatedAt` fallback is permanent API surface: it is what gives unstamped entities TX-as-VT semantics. Since v4.54.0 (backlog 62) it lives in the one start rule `storeutil.EntityValidFrom` — explicit `ValidFrom`, else `TxFrom`, else (legacy rows) `UpdatedAt`, else the mint instant — for creates and later versions alike; the resolver, the store push-down, the temporal index envelopes and the column filters all read it. The persisted envelopes keyed by the older mint start are rebuilt on the first open (open image format 2, 0x0B marker `temporal_index_on_disk_built_v2`); persisted column blobs are format 2 (an effective-start column).
+**Bitemporal back-compat shims and their sunset.** Two shims remain for pre-4.3.0 data: the inherited-valid-from detector (`nodeInheritedValidFrom`, bypassed once the post-open migration has run — `bitemporalMigrated`) and the `UpdatedAt`-as-`vEnd` fallback for rows without explicit valid-time. Retirement condition: the detector can be deleted once every supported backend requires `MetaKVCapability` (so the migration always runs) — revisit at the next major version. The `UpdatedAt` fallback is permanent API surface: it is what gives unstamped entities TX-as-VT semantics. It lives in the one start rule `storeutil.EntityValidFrom` (backlog 62; `temporal_filter.go:19` over `types.ValidAxis.Start`) — a claimed `ValidFrom`, else `TxFrom`, else (legacy rows) `UpdatedAt`, else the mint instant — for creates and later versions alike; the resolver, the store push-down, the temporal index envelopes and the column filters all read it. The persisted envelopes keyed by the older mint start are rebuilt on the first open (open image format 2, 0x0B marker `temporal_index_on_disk_built_v2`); persisted column blobs are format 2 (an effective-start column).
 
 All of the following are methods on `g.Temporal()` (`pkg/graph/temporal`):
 
@@ -232,14 +232,14 @@ Corrections: `SetNodeVersionInterval`, `SetRelVersionInterval`
 1. **Collect** -- `ForEachNodeID` + `ForEachNodeHistoryID` insert unique IDs into a `seen` map. Store implementations invoke callbacks outside their internal locks and Tiered shard checkouts, so callbacks may re-enter Store methods.
 2. **Process** -- iterate `seen` map after ForEach returns.
 
-This replaced the pre-v3.0.31 approach of materializing all IDs into slices (`allKnownNodeIDs`/`mergeIDSlices`), reducing peak memory by ~83% for 10M nodes.
+No ID slice is materialized (peak memory ~83% below the slice approach at 10M nodes).
 
 `DiffCallback` applies the same lock-boundary rule at the graph layer: it collects known IDs and resolves each before/after entity pair under short `g.mu.RLock()` windows, then invokes caller `DiffHandlers` outside the graph lock. Handlers may call graph read APIs without deadlocking behind a waiting writer.
 
 **Temporal semantics:**
-- `effectiveValidFrom` derives from explicit `ValidFrom` (if set) or snowflake ID timestamp (always available)
-- Point-in-time match: `effectiveValidFrom <= t AND (ValidTo == 0 OR ValidTo > t)`
-- Interval overlap: `effectiveValidFrom < end AND (ValidTo == 0 OR ValidTo > start)`
+- Start: `storeutil.EntityValidFrom` (above); "open end" is the store's valid axis (`ValidAxis.Open`: `ValidTo == 0` on the legacy axis, `types.InfiniteValidTo` on the literal one)
+- Point-in-time match (`MatchesPointInTime`): `start <= t AND (open end OR ValidTo > t)`
+- Interval overlap (`MatchesInterval`): `start < end AND (open end OR ValidTo > start)`
 - Explicit finite ranges are half-open and non-empty: when both `ValidFrom` and `ValidTo` are set, `ValidFrom < ValidTo` is required at graph input, durable wire, and direct Store write boundaries.
 
 ### Batch Operations
@@ -303,6 +303,7 @@ type QueryOpts struct {
     ValidAt         types.Instant  // Point-in-time filter (0 = disabled)
     ValidStart      types.Instant  // Interval filter start (0 = disabled)
     ValidEnd        types.Instant  // Interval filter end (0 = disabled)
+    ValidAtSet, ValidWindowSet, TxAtSet, TxPinSet bool // explicit presence: the filter is on whatever its instants (0 included)
     TxAt            types.Instant  // Bitemporal: restrict chain to TxFrom <= TxAt (0 = no TX filter)
     TxPin           types.Instant  // Belief state: pure knowledge-time resolution, NO valid-time filter (0 = disabled)
     IncludeEclipsed bool           // Reserved no-op, kept for API compatibility
@@ -328,9 +329,11 @@ empty success.
 `Limit` accepts `0` for unbounded queries or a positive maximum; negative
 values return `ErrInvalidQueryLimit`. `After` accepts `0` for the first page or
 a non-negative entity cursor; negative values return `ErrInvalidQueryCursor`.
-`ValidAt != 0` activates point-in-time filtering. `ValidStart`/`ValidEnd`
-activate interval filtering only when both bounds are non-zero; 0 is the only
-unset value, a negative bound is a real bound.
+Without its presence flag, `ValidAt != 0` activates point-in-time filtering and
+`ValidStart`/`ValidEnd` activate interval filtering only when both are non-zero
+(0 is the only unset value, a negative bound is a real bound); a `*Set` flag
+makes the filter on whatever its instants, 0 included. Every door reads
+presence through the `Has*` methods (`pkg/graph/store/opts.go`).
 
 `TxAt` and `TxPin` are different pins and are mutually exclusive. `TxAt` is the
 BITEMPORAL coordinate: it restricts the version chain to `TxFrom <= TxAt`, and
@@ -378,7 +381,7 @@ filter returns `ErrConflictingTemporalOpts` rather than mis-resolving silently.
 
 ## memory.Store (`pkg/graph/store/memory/memorystore.go`)
 
-Thread-safe in-memory Store (49 production files, `memorystore*.go`). One `sync.RWMutex` protects the maps (the `LatestStamps` cache has its own `histStampsMu`). Core maps:
+Thread-safe in-memory Store (`memorystore*.go`). One `sync.RWMutex` protects the maps (the `LatestStamps` cache has its own `histStampsMu`). Core maps:
 
 ```
 nodes        map[types.NodeID]*types.Node
@@ -405,7 +408,7 @@ Alongside them: the index maps (property, rel-property, composite, temporal, rel
 
 ## badger.Store (`pkg/graph/store/badger/`)
 
-The implementation is split across 77 themed production files; the principal ones:
+The implementation is split across themed production files; the principal ones:
 
 - `badgerstore.go` — Store struct, sentinel-error aliases, `New`, `Close`, `Clear`, `loadIndexes`.
 - `badgerstore_node.go` — node CRUD (`PutNode`, `GetNode`, `DeleteNode`, `ReplaceNode`, label-token mutations) plus node queries and node-batch ops.
@@ -448,13 +451,9 @@ Two layers, per row (`fv`) and per store (the `wire_format_version` marker, veri
 
 ### Write-Pressure Bound
 
-`Config.MaxPendingWrites` (default 100,000 ops; negative disables; under
-`SyncWrites` it bounds only a durable group's held flushes, below) bounds the async write buffer: dirty cache entries are never
-evicted by design, so without a bound a sustained burst faster than
-`FlushInterval` grows memory without limit. At the bound, the writing call
-flushes synchronously (backpressure); a failing backpressure flush surfaces
-its error to the writer and requeues the ops. `Store.PendingWriteCount()`
-exposes the pressure signal.
+`badger.Config.MaxPendingWrites` bounds the async write buffer (dirty cache entries are
+never evicted); at the bound the writing call flushes synchronously. Defaults,
+failure behaviour and `PendingWriteCount()`: `docs/persistence.md`.
 
 ### Durable-on-return commit
 
@@ -494,7 +493,7 @@ Under `SyncWrites` (strict power-loss durability: Badger fsyncs the WAL after
 every write and syncs a value-log file it retires, so no memtable or value-log
 switch leaves a gap) the store flushes every mutation. Inside a durable group
 that cost one Badger sync per mutation (~1 s per 530-op group, backlog 52), so
-the graph holds it (`store.MutationFlushHoldCapability`, badger only): each
+the graph holds it (`store.MutationFlushHoldCapability`, badger and tiered): each
 `GraphTx` mutation, the whole `Batch.Execute` window and a `Rollback` run under
 the exclusive graph lock with the per-mutation flush held, and the group's one
 `DurableFlush` commits the held writes as one WriteBatch that Badger syncs
@@ -503,24 +502,19 @@ every other mutation out of the hold, so a standalone write still returns
 synced. A held buffer that reaches `MaxPendingWrites` flushes (synced) in
 steps; a `Rollback` ends with one durable flush, because part of the group can
 already be on disk. Without `DurableCommit`, `SyncWrites` still syncs every
-mutation; tiered and sharded stores keep per-mutation syncs. Side effect: with
+mutation; sharded keeps per-mutation syncs. Side effect: with
 both flags each `GraphTx` mutation takes the exclusive `c.mu.Lock` instead of
 the shared one, so standalone writers, readers and concurrent ingest lanes wait
 for each tx mutation (in-memory work only; the sync runs at the commit, outside
 the lock). The hold is released exactly once, under the holder's lock.
 
-"Crash" above means a process crash. Power loss is narrower: Badger v4's
-`db.Sync()` fsyncs only the active memtable's WAL and the current value-log
-file. A memtable switch during the flush (`ensureRoomForWrite`) retires the old
-WAL without an fsync, and a finished value-log file is fsynced only under
-`SyncWrites`, so rows of a group whose flush filled the memtable or a value-log
-file can still be unsynced after `DurableFlush` returned. Power-loss durability
-needs `DurableCommit` + `SyncWrites` on a badger, sharded or tiered store:
-measured 13.5 ms per 530-op group against 12.5 ms for `DurableCommit` alone
-(backlog 15, closed in 4.51.4 by this measurement; `tasks/evidence/aisoc-commit-cost/52-bench.txt`).
-On tiered, `tiered.Config.SyncWrites` reaches every writable shard, and one
-shared flush hold covers every shard, a shard opened during the hold included
-(backlog 93).
+"Crash" above means a process crash. Power loss is narrower (Badger's
+`db.Sync()` covers only the active memtable WAL and the current value-log file,
+so a group whose flush crossed a memtable or value-log switch can be unsynced);
+it needs `DurableCommit` + `SyncWrites` on a badger, sharded or tiered store.
+Mode table and measured cost: `docs/persistence.md`. On tiered,
+`tiered.Config.SyncWrites` reaches every writable shard, and one shared flush
+hold covers every shard, a shard opened during the hold included.
 
 `DurableFlush` re-checks the store's closed state under `flushMu`: `Close`
 sets `closing` before its final flush, which needs `flushMu`, so a durable
@@ -563,13 +557,12 @@ flush writes the group). Sharded holds its store lock across the fold.
 3. Background flush loop drains buffer via Badger `WriteBatch` every `FlushInterval` (default 100ms)
 4. Counter keys (`meta/node_count`, `meta/rel_count`) included in same WriteBatch for atomic crash recovery
 5. Failed ops re-queued via `requeueOps()`
+6. `Close()` calls `flush()` unconditionally (even if the flush loop never started)
 
-With `SyncWrites`, `FlushInterval` is forced to zero and callers that enqueue
-Badger writeOps flush before returning. That includes property, temporal,
-high-frequency, and vector index definition metadata create/drop paths plus split relationship
-helper write/delete paths used by Tiered routing and repair; those methods
-release `idxMu` before flushing because `flush()` takes `idxMu.RLock()` for its
-snapshot.
+With `SyncWrites`, `FlushInterval` is forced to zero and every Badger writeOp
+enqueuer (index-definition create/drop, split relationship helpers) flushes
+before returning, after releasing `idxMu` because `flush()` takes
+`idxMu.RLock()` for its snapshot. Contract: `docs/persistence.md`.
 
 **Old-state reads for Badger mutations:** `ReplaceNode`, label-token mutation
 paths, and their history variants prefetch the current node outside `idxMu` to
@@ -595,9 +588,9 @@ endpoint-resolving traversals without fetching the relationship row.
 **RAM sidecars (no on-disk keyspace; built lazily, rebuilt after reopen, dropped by `Clear`):**
 - *History presence* (`HasNodeHistory` / `HasRelHistory`): the IDs with history rows and their highest history version, built by one key-only scan of `0x07`/`0x08` (write buffer included) and maintained in `noteHistoryKey` under `wbMu`, the one seam every history key passes; a delete marks the ID for a per-ID key probe installed under a write-generation stamp. `Config.HistoryPresenceProbeOnly` (tiered cold shards) answers by probe without building.
 - *History stamps* (`NodeHistoryStamps` / `RelHistoryStamps`, behind `LatestStamps`): the fold of each ID's history-row `TxFrom` / `TxTo` / `DeletedAt` (`store.FoldTxStamps`), built from the temporal block of each history value, same maintenance and probe protocol.
-- *Transaction-time membership*: per label / rel type (`ByLabel` / `ByType` with `TxAt` / `TxPin`) and, since v4.48, per declared property index (`ForEach{Node,Rel}PropertyTxMember`: value -> every entity whose rows ever carried it, with the earliest `TxFrom`, merged by `index.MergeFirstTx` so an unstamped 0 is never raised). Append-only sound supersets: the chain resolver stays the authority. Recorded at the current-row index seam and every history-row door. The property ones are the exception to "rebuilt after reopen": one scan per kind builds every declared one, and the open image carries the built ones across a clean close (backlog 74).
+- *Transaction-time membership*: per label / rel type (`ByLabel` / `ByType` with `TxAt` / `TxPin`) and per declared property index (`ForEach{Node,Rel}PropertyTxMember`: value -> every entity whose rows ever carried it, with the earliest `TxFrom`, merged by `index.MergeFirstTx` so an unstamped 0 is never raised). Append-only sound supersets: the chain resolver stays the authority. Recorded at the current-row index seam and every history-row door. The property ones are the exception to "rebuilt after reopen": one scan per kind builds every declared one, and the open image carries the built ones across a clean close (backlog 74).
 
-**Key layout (11 prefixes):**
+**Key layout (13 prefixes, `internal/storeutil/keys.go:26-36`):**
 
 | Prefix | Key pattern | Size | Purpose |
 |--------|-------------|------|---------|
@@ -612,6 +605,7 @@ endpoint-resolving traversals without fetching the relationship row.
 | `0x09` | `/<8B LSN>` | 9B | Change-log (op-log) record — opt-in (`ChangeLog`); value = `tag(1B) ‖ msgpack(body)` |
 | `0x0A` | `/<2B propKeyToken>/<payload>/<8B nodeID>` | var | Persisted property-index entry — opt-in (`Config.PropertyIndexOnDisk`) |
 | `0x0B` | `/<2B labelToken>/<8B from>/<8B nodeID>` | 19B | Persisted temporal-index raw-entry row — opt-in (`Config.TemporalIndexOnDisk`) |
+| `0x0D` | `/<8B nodeID>/<1B dir>/<8B relID>` | 18B | Ex-adjacency (`ExAdjacencyCapability`, backlog 50) |
 | `0x0F` | `/meta/*` | var | Counters, registry tokens, property index defs, `last_lsn` watermark |
 
 All IDs stored as big-endian uint64 for correct sort order and temporal clustering.
@@ -719,7 +713,7 @@ assignment) lives in consumer — rho-tkg exposes the primitives.
 
 Multi-shard Store routing entities across a reference shard and time-windowed event shards.
 
-The package is 43 production files; `tieredstore.go` plus the
+`tieredstore.go` plus the
 `tieredstore_read_*` / `tieredstore_write_*` splits carry the core, with
 `tieredstore_admin.go`, `_catalog.go`, `_changelog.go`, `_compaction.go`,
 `_docvalues.go`, `_durable.go`, `_history_presence.go`, `_history_stamps.go`, `_history_epoch.go`,
@@ -759,7 +753,7 @@ closeCh              chan struct{}                 -- signals idle-close gorouti
 closeOnce            sync.Once                     -- idempotent Close
 ```
 
-**refArchive checkout discipline (v3.1.11):** every refArchive read or write
+**refArchive checkout discipline:** every refArchive read or write
 goes through `checkoutArchive() (*BadgerStore, func(), error)`, mirroring the
 event-shard `checkoutStore`. Returns nil with a no-op checkin when no archive
 exists in the catalog. Increments `archiveActiveReqs` so a concurrent `Close`
@@ -774,7 +768,7 @@ archive-placement identity for history read/truncate callers; those callers do
 not compare against a fresh `refArchive.Load()` after the archive has been
 pinned.
 
-**EventShard checkout discipline for admin paths (v3.1.16):** admin methods
+**EventShard checkout discipline for admin paths:** admin methods
 that iterate event shards (`ListShards`, `RebuildCatalog`, `Clear`,
 `CreateTemporalIndex`, `DropTemporalIndex`, `CreateHighFrequencyIndex`,
 `DropHighFrequencyIndex`) must pin each shard via `checkoutStore` /
@@ -876,15 +870,13 @@ Cross-shard split writes use `badgerstore_partial.go` helpers: `PutRelEntityAndO
 6. If `ColdAfter > 0` and eligible warm shards exist, demote to cold (close store, set `store=nil`)
 7. Update catalog
 
-**Cold shard access (`checkoutStore`/`checkinStore`):**
+**Cold shard access (`checkoutStore`/`checkinStore`; returning a `*BadgerStore` and releasing the lock would race idle-close):**
 - `checkoutStore` increments `activeReqs`, lazy-opens if `store==nil`
 - `checkinStore` decrements `activeReqs`
 - `closeIdleShards()` skips shards with `activeReqs > 0`
 - idle-close `BadgerStore.Close` errors are recorded, logged, block later lazy checkout, and are joined into `Store.Close`
 - explicit `Store.Close` takes the same event-shard mutex before closing or clearing `store`, so close and idle-close cannot race on the shard handle
-- MemoryStore public APIs return `ErrStoreClosed` after close before serving or mutating process-local maps; exported test-only tampering helpers return no data or no-op
-- BadgerStore public APIs return `ErrStoreClosed` after close before serving cache hits, O(1) counts, empty fast-path success, vector search, history scans, metadata, or split relationship helper mutations; no-error diagnostics return zero values
-- checked node/relationship routing, create-time rotation, valid index create/drop/search calls, direct read/count/bulk/history APIs, empty batch/history write edges, and public admin/metadata operations return `ErrStoreClosed` after close starts, before reading reference state, event shard handles, store-level index maps, catalog metadata, or registry files
+- after close starts, routing, create-time rotation and every public door return `ErrStoreClosed` (System Overview, "Store index definitions require real targets")
 - Background goroutine `idleCloseLoop()` ticks every `IdleTimeout/2`, stopped via `closeCh`; positive `IdleTimeout` is validated as a whole millisecond, and `ColdAfter`/`IdleTimeout` reject negative durations.
 
 **Warm recovery on restart:** Constructor reads catalog, reopens warm shards writable, and recovers cold shards with `store=nil` for lazy writable open on first access.
@@ -986,7 +978,7 @@ One store-global LSN allocator (`changeLogAllocator`) is injected into every sha
 
 ### Capability Parity (S5)
 
-A label's entities are distributed across slots, so — unlike tiered, which routes property indexes to its ontology reference shard — every index/stats capability fans its DDL out to EVERY shard (each badger shard maintains its own index over its local entities, in lockstep via `fanOutUniform`) and folds the per-shard results on read. Implemented: PropertyIndex, RelPropertyIndex (accelerated — sharded shards are static and all-open, so a per-shard rel-value index is foldable, where tiered declines), Composite + CompositeIntrospection, TemporalIndex, HighFrequencyIndex, NodePropertyKeyStats, NodePropertyTypeClassCounts, inline `NodeRangeCardinality` (per-shard exact sum; exact only if every shard is exact), and Vector (VectorIndex + Options + FilteredVectorSearch). Vector indexes keep ONE index PER SHARD (reusing badger's per-write maintenance — no store-level write-path hooks, avoiding tiered's silent-staleness surface) and merge per-shard top-k globally by `index.VectorDistance` — EXACT for brute-force, sound-approximate for HNSW; the store persists only per-index def metadata (dims+metric) to anchor MetaKV. Also the history sidecars (`HasNodeHistory` / `*HistoryStamps` ask the owning slot), the property tx-membership sidecars (union of the slots, `property_tx_members.go`) and `DurableFlush` (every slot, `durable.go`). Since v4.43 also the DocValues columns (`docvalues.go`: each slot's badger builds and caches its own snapshot, the store streams the slots in slot order, bounds each slot by its exact label count so a slot with members that cannot build declines the whole call, routes a snapshot's `Row` to the ID's slot, and states gen as the slots' per-label epochs summed — `NodeLabelMutationEpoch`) and `RelPropertyTypeClassCounts` (the slots' counters summed; a relationship's row lives on one slot). The typed column scans (`ScanNodeColumns` / `ScanRelColumns`) are not implemented: their batches promise ascending ID order across the whole label, which slot-by-slot streaming does not give.
+A label's entities are distributed across slots, so every index/stats capability fans its DDL out to EVERY shard (each badger shard maintains its own index over its local entities, in lockstep via `fanOutUniform`) and folds the per-shard results on read. Implemented: PropertyIndex, RelPropertyIndex, Composite + CompositeIntrospection, TemporalIndex, HighFrequencyIndex, NodePropertyKeyStats, NodePropertyTypeClassCounts, `NodeRangeCardinality` / `RelRangeCardinality` (per-shard exact sum; exact only if every shard is exact), `NodePropertyBounds` / `RelPropertyBounds`, the ordered range and prefix walks (k-way merge, `ordered_scan.go`; full list: `docs/query-planners.md` "Backend coverage"), and Vector (VectorIndex + Options + FilteredVectorSearch). Vector indexes keep ONE index PER SHARD (reusing badger's per-write maintenance — no store-level write-path hooks, avoiding tiered's silent-staleness surface) and merge per-shard top-k globally by `index.VectorDistance` — EXACT for brute-force, sound-approximate for HNSW; the store persists only per-index def metadata (dims+metric) to anchor MetaKV. Also the history sidecars (`HasNodeHistory` / `*HistoryStamps` ask the owning slot), the property tx-membership sidecars (union of the slots, `property_tx_members.go`) and `DurableFlush` (every slot, `durable.go`). Also the DocValues columns (`docvalues.go`: each slot's badger builds and caches its own snapshot, the store streams the slots in slot order, bounds each slot by its exact label count so a slot with members that cannot build declines the whole call, routes a snapshot's `Row` to the ID's slot, and states gen as the slots' per-label epochs summed — `NodeLabelMutationEpoch`) and `RelPropertyTypeClassCounts` (the slots' counters summed; a relationship's row lives on one slot). The typed column scans (`ScanNodeColumns` / `ScanRelColumns`) are not implemented: their batches promise ascending ID order across the whole label, which slot-by-slot streaming does not give.
 
 ### Declined-with-reason
 
@@ -1008,7 +1000,7 @@ func ShardIndex(id snowflake.ID) uint8 {
 }
 ```
 
-Extracts low 8 bits of the snowflake timestamp via `Layout.Decompose()`. Entities created >256µs apart distribute across shards.
+Takes the low 8 bits of the snowflake microsecond timestamp, so consecutive mints spread over the stripes (the pattern repeats every 256 µs).
 
 | Method | Use case | Deadlock prevention |
 |--------|----------|---------------------|
@@ -1019,7 +1011,7 @@ Extracts low 8 bits of the snowflake timestamp via `Layout.Decompose()`. Entitie
 
 Unique-property constraints add a second 256-stripe pool keyed by (label, key, value) (`value_locks.go`, `ValueManager`); a claiming door holds its stripes across its store write and the withdrawal of a failed claim (`uniqueHold`, `internal/core/unique_hold.go`).
 
-Lock ordering: entity locks -> value locks -> `idxMu`. Always.
+Lock order (one place): `txMu` -> `Core.mu` -> entity locks -> value locks -> store locks (`retention_purge.go:196`, `core.go:350`). Inside badger: `flushMu` -> `idxMu` -> sidecar `buildMu` -> `wbMu` (`badgerstore.go:2039`); tiered: `moveMu` -> `ts.mu` / `archiveMu` ("Routing and the move lock").
 
 ---
 
@@ -1044,6 +1036,24 @@ PropertyKeyRegistry: map[string]propKeyToken + []string reverse lookup
 
 ---
 
+## Design invariants
+
+Invariants not already stated in the sections above (those are not repeated here).
+
+- **Pure-data entities**: `Node` and `Relationship` hold no references to Graph, registries or resolvers.
+- **Defined ID types**: `types.NodeID` / `RelID` / `EntityID` are defined types over `snowflake.ID` (`type NodeID snowflake.ID`, not an alias); `SnowflakeID()` is the one bridge, so entity method signatures do not leak `snowflake.ID`.
+- **Copies and tokens**: besides the accessors under Core Types, `AllLabelTokens()` and `PropertiesMap()` return copies; `PropertyValueEqual` compares without handing out stored reference values. Label/type tokens are unexported types (`labelToken`, `relTypeToken`); `HasLabelTokenRaw(uint16)` / `HasTypeTokenRaw(uint16)` are the zero-allocation hot-path checks, and token 0 is false everywhere. Constructors keep token-0 payloads representable; Store writes reject them (`ErrInvalidStoreMutation`). `NewNode` deduplicates extra labels and removes the primary from them.
+- **Property allowlist**: accepted built-ins are the concrete scalars (`bool`, `int*`, `uint*`, `float*`, `string`), `[]string`, `[]int`, `[]int64`, `[]float32`, `[]float64`, `[]byte`, `[]bool`, `[]any`, `map[string]any`, `map[string]string`, and registered custom structs; named aliases, pointers, unregistered structs, arrays, channels, functions and unsafe pointers are rejected at any depth (`ErrUnsupportedValueType`); deeper than 32 levels returns `ErrMaxDepthExceeded`. `RegisterPropertyStructType(nil)` is refused (pass a zero value or typed pointer). `PropertySlice.Set` and `Delete` reject `tkg_` keys (`ErrReservedPrefix`). `NewPropertySlice(map)` validates, copies and sorts once (O(N log N)).
+- **Nil receivers fail closed**: nil `*types.Node` / `*types.Relationship` accessors return zero values, no-error mutators no-op, error-returning ones return `ErrNilNode` / `ErrNilRelationship`; nil `*PropertySlice` mutators return `ErrNilPropertySlice`; `ConstraintSet.ForEach(nil)` returns `ErrInvalidTemporalConstraint`. `g.Resolve()` returns `(nil, false)` for an entity without temporal or integrity metadata.
+- **Names validate before work**: label/type query and count APIs reject empty, whitespace-only or overlong names before registry lookup (adjacency's empty `typeName` means all types); label mutations and relationship-type creation reject them before property validation, lookup, snapshots, ID generation or writes.
+- **Update maps**: a `nil` value deletes the key; an empty map is a no-op without lock or version bump (`UpdateWithTx` with an empty map returns `ErrTxOrder`).
+- **Put vs Replace**: `Put*` rejects an existing ID (`ErrNodeExists` / `ErrRelExists`), `Replace*` a missing one (`ErrNodeNotFound` / `ErrRelNotFound`); labels, type and endpoints are immutable through Replace.
+- **Cascade delete** removes outgoing then incoming relationships (a self-loop's second visit skips `ErrRelNotFound`) and writes every tombstone in one `DeleteNodeWithHistory` call.
+- **Absence over an interval is a void row**, not a delete or retraction (`ExciseNodeValidity` / `ExciseRelValidity`; history readers skip voids); api.md "Excise (valid-time)".
+- **History sidecars equal their fold**: `HasHistory(id) == len(History(id)) > 0` and `LatestStamps(id)` equals the fold of `Get` + `History` at every moment (pending writes, flush, reopen, compaction, purge, erasure, `Clear`, replica apply).
+
+---
+
 ## Key Architectural Patterns
 
 Distilled from real bugs into the compact checklist in `tasks/lessons.md`.
@@ -1057,17 +1067,13 @@ Multi-step mutations split work into a read/validate phase and an apply phase. T
 
 Used by: `DeleteNodeCascade`, `CreatePropertyIndex` (all-or-nothing); `BatchBuilder.Execute` (per-op result reporting).
 
-### Async Persistence with Last-Write-Wins
-
-Write operations update in-memory state immediately, queue write ops into `map[string]writeOp` (dedup by key). Background flush loop drains via Badger WriteBatch. Counters in the same WriteBatch for atomic crash recovery. `Close()` calls `flush()` unconditionally (even if flushLoop never started).
-
-### Deep-Copy / Frozen Rows at Store Boundary (since v4.5.0)
+### Deep-Copy / Frozen Rows at Store Boundary
 
 `Put*` deep-copies before caching and freezes the cached entry (`types.Node.Freeze()` / `types.Relationship.Freeze()`). Point reads (`GetNode`/`GetRelationship`) deep-copy on return, so callers get mutable, independent copies. Plural/scan reads (`*ByLabel*`, `All*`, `Get*ByIDs`, adjacency traversals, temporal/index scans) return the shared frozen pointer directly — zero-copy. Frozen entities reject mutation: error-returning mutators return `ErrFrozenNode`/`ErrFrozenRelationship`, void/bool mutators panic, and `DeepCopy()` is the thaw operation. Rows for duplicate requested IDs may alias the same frozen pointer. Internal locked methods (`getNodeLocked`) skip the copy when the caller already holds the write lock. The frozen guard also covers the pointer escape hatches: on a FROZEN entity, `Temporal()` and `Integrity()` return independent copies (Signature bytes cloned) instead of the shared internal pointer — their exported fields would otherwise let a scan consumer silently corrupt the canonical cached row (the poisoning tests in `pkg/graph/frozen_poisoning_test.go` pin this). Unfrozen entities keep the shared-pointer contract the graph layer relies on. `AddByIDIfAbsent` deep-copies on the found branch so both branches return mutable results.
 
 ### Temporal Data Is Append-Only
 
-No mutation door physically deletes history (only the opt-in admin doors — `CompactHistory*`, retention purge, exact erasure — and the `GraphTx` rollback trim of rows the transaction wrote remove history rows). Delete paths save tombstone versions (with `DeletedAt`/`ValidTo`) before deletion. Past-time queries reconstruct deleted entities from history — including transaction-time reads: a delete is a transaction-time tombstone, so any `TxAt`/as-of read pinned BEFORE the delete returns the entity in its pre-delete belief state (the post-pin `DeletedAt`/`ValidTo`/`TxTo` stamps are normalized away on a copy), and any pin at or after the delete excludes it (v4.11.1, lesson 60).
+No mutation door physically deletes history (only the opt-in admin doors — `CompactHistory*`, retention purge, exact erasure — and the `GraphTx` rollback trim of rows the transaction wrote remove history rows). Delete paths save tombstone versions (with `DeletedAt`/`ValidTo`) before deletion. Past-time queries reconstruct deleted entities from history — including transaction-time reads: a delete is a transaction-time tombstone, so any `TxAt`/as-of read pinned BEFORE the delete returns the entity in its pre-delete belief state (the post-pin `DeletedAt`/`ValidTo`/`TxTo` stamps are normalized away on a copy), and any pin at or after the delete excludes it (lesson 60).
 
 For single-shard stores, the tombstone write and the entity deletion are combined in a single atomic Store call (`DeleteNodeWithHistory` / `DeleteRelWithHistory`). All ops land in one Badger `WriteBatch.Flush()` under the same `idxMu.Lock()`, eliminating the crash window that previously existed between N+2 separate store calls. Tiered stores preserve that per-shard atomicity, preflight relationship tombstone coverage before the first delete, and add rollback around plain and history-carrying pre-node relationship deletes when a later step fails before the node is removed. Rollback failures are surfaced with the primary error.
 
@@ -1076,10 +1082,6 @@ Delete tombstone payloads are validated before deletion. A relationship tombston
 ### ForEach for OOM-Safe Iteration
 
 Callback-based iteration (`fn(snowflake.ID) bool` -- return true to continue, false to stop) avoids materialising all per-shard slices and preserves early stop. Store implementations collect a bounded shard/page snapshot, release backend locks or check in the Tiered shard, then invoke the caller callback. Callbacks may call Store methods. Badger history iterators overlay pending truncation deletes and stop at the start high-water mark so callback-created higher history IDs do not extend the same iterator. TieredStore still iterates shards sequentially, one shard snapshot at a time.
-
-### Cold Shard Checkout/Checkin
-
-Returning a `*BadgerStore` pointer and releasing the lock creates a race with idle-close. Solution: `checkoutStore` increments `activeReqs`, caller defers `checkinStore`, `closeIdleShards` skips shards with `activeReqs > 0`.
 
 ### Cross-Shard Split-Write Ordering
 
@@ -1183,48 +1185,9 @@ Import treats record streams as untrusted input. `ImportOptions.MaxStagedBytes =
 
 ---
 
-## Version History
-
-| Version | What changed |
-|---------|-------------|
-| v3.0.15 | Phase 1a-1d: UpdateNode/UpdateRel, version history, hash chains, bulk queries |
-| v3.0.16 | Phase 1e: FlushInterval policy, LRU evictClean O(1) early exit |
-| v3.0.17 | Phase 1f: Batch operations (PutNodesBatch, BatchBuilder) |
-| v3.0.18 | Phase 1g: Context-aware operations (8 WithContext methods) |
-| v3.0.19 | Phase 2b: Hash chain verification (VerifyNodeHashChain, VerifyRelHashChain) |
-| v3.0.20 | Phase 2d: Per-label/per-type statistics (initially O(N), later upgraded to O(1)) |
-| v3.0.21 | Phase 2a: Temporal queries (GetNodesValidAt, Snapshot, etc.) |
-| v3.0.22 | Phase 2c: Property indexes (CreatePropertyIndex, auto-maintenance) |
-| v3.0.23 | Phase 2 review: 6 fixes (truncation resilience, 3-phase index lock, delete preserves history, history-aware temporal queries) |
-| v3.0.25 | Phase 2h: 5 architectural fixes (entity locks, ID-only queries, LockMany, cascade index cleanup, Snapshot vs Batch isolation) |
-| v3.0.26 | Phase 3a: TieredStore foundation (ontology, shard catalog, ref+hot event, cross-shard rels, 52 tests) |
-| v3.0.27 | Phase 3b+3c: Shard rotation, warm tier, depth-aware reads, E->E cross-shard fix |
-| v3.0.28 | Phase 3d: Cold shard lifecycle, parallel queries, reference archive, idle-close |
-| v3.0.29 | Phase 3e: Admin API, repair tool, verification caching, ID decomposition, migration |
-| v3.0.30 | 5 bug fixes: checkout/checkin race, cold shard skip, archive rollback, dirty-map tracking, canonical hash |
-| v3.0.31 | OOM fix: ForEach iterators for temporal pipeline (~83% memory reduction) |
-| v3.0.54 | Phase 4.22: `AllowSelfLoops bool` in `ValidationLimits`, `ErrSelfLoop` sentinel, guard in `AddRelationshipWithContext`/`ImportRelationshipWithID` |
-| v3.0.55 | Phase 4.23: `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound store methods; `deleteNodeLocked`/`DeleteRelationshipWithContext` rewritten to single store call |
-| v3.0.56 | 7 production defects: cold shard race, pagination, batch rollback, disk I/O under lock, ImportGraph lock, DropOldest livelock |
-| v3.0.57 | 6 production defects (A-F): rollback panic leak, RemoveNodeLabel history, DiffSnapshots lock removal, searchNearest heap, constraint alloc, TOCTOU backoff |
-| v3.0.58 | Temporal index lazy sort (Fix G), extraLabels nil invariant (Fix H) |
-| v3.0.59 | Tx isolation (internal/external method split), event buffering in tx, directory fsync, dead code removal |
-| v3.0.60 | Temporal index concurrent sort race fix (sortMu), NodesByLabel temporal fast path nil fallthrough fix, tutorial 005 upgrade |
-| v3.0.61 | 6 defects: batch lock-leak on panic, negative config validation, BadgerStore invalid config, auth level float truncation, RemoveNodeLabel crash-consistency, store API test coverage |
-| v3.0.62 | 5 production defects (U-Y), module rename tkg-v3 → tkg/v3, documentation refactor to docs/ |
-| v3.0.63 | Caller-provided temporal metadata via `tkg_` props (`tkg_valid_from`, `tkg_valid_to`, `tkg_created_at` in AddNode/AddRelationship props map), tutorial 002 update |
-| v3.0.64 | `AddRelationshipByID` / `AddRelationshipByIDWithContext` — high-throughput relationship creation by endpoint snowflake IDs |
-| v3.0.65 | `AddRelationshipByIDIfAbsent` / `AddRelationshipByIDIfAbsentWithContext` — atomic check-then-create for relationships |
-| v3.0.66 | `GraphTx.GetNode`, `GraphTx.AddRelationshipByID`, `GraphTx.AddRelationshipByIDIfAbsent` for transactional graph writes |
-| v3.0.67 | Cross-shard incoming relationship type filter fix — `inIdx` changed from `map[ID]struct{}` to `map[ID]uint16` (relID → typeToken; today `inEdge{startNodeID, typeToken}`) |
-
-The table records the v3.0 build-out only. Every later release is in `CHANGELOG.md`; the sections above describe the current code.
-
----
-
 ## File Map (`pkg/graph/`)
 
-After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin façade: the `Graph` type holds a `*core.Core` plus 16 unexported sub-API pointers exposed via nil-safe accessor methods. All implementation lives in `pkg/graph/internal/core/`. The 130+ public methods that used to live directly on `*Graph` were removed — customers use the sub-APIs (`g.Nodes().Add`, `g.Temporal().NodesAt`, etc.).
+`pkg/graph/` is a thin façade: the `Graph` type holds a `*core.Core` plus 16 unexported sub-API pointers exposed via nil-safe accessor methods (`g.Nodes().Add`, `g.Temporal().NodesAt`, …). All implementation lives in `pkg/graph/internal/core/`. Version history: `CHANGELOG.md`.
 
 #### `pkg/graph/` (7 production files; tests alongside)
 
@@ -1239,11 +1202,11 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 | `doc.go` | Package documentation. |
 | `subapi_smoke_test.go` | `TestSubAPISmoke` — exercises every sub-API accessor end-to-end (one of the package's tests). |
 
-#### `pkg/graph/<types-package>/` (types-only public packages, v3.3.0)
+#### `pkg/graph/<types-package>/` (types-only public packages)
 
 | Package | Purpose |
 |---------|---------|
-| `pkg/graph/store` | `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, `VectorIndexOptions`, `ChangeFeedCapability` + `ChangeRecord`/`ChangeTag`, `ReplicationSource` + `RegistrySnapshot`/`IDSlotLeaseRecord`, 85 `*Capability` interfaces (66 in `capabilities.go`), 45 store sentinels (37 in `errors.go`). |
+| `pkg/graph/store` | `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, `VectorIndexOptions`, `ChangeFeedCapability` + `ChangeRecord`/`ChangeTag`, `ReplicationSource` + `RegistrySnapshot`/`IDSlotLeaseRecord`, the `*Capability` interfaces (`capabilities.go` and siblings), the store sentinels (`errors.go` and siblings). |
 | `pkg/graph/store/memory` | `memory.Store`, `memory.New()`. |
 | `pkg/graph/store/badger` | `badger.Store`, `badger.Config`, `badger.New()`. |
 | `pkg/graph/store/tiered` | `tiered.Store`, `tiered.Config`, `tiered.New()`, `MigrateFromBadger`, `EventShard`, `ShardInfo`, `VerifyResult`, `RepairResult`. |
@@ -1258,11 +1221,11 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 
 | Package | Purpose |
 |---|---|
-| `internal/core` | (v3.4.0) `Core` type holding all unexported state and the method bodies that previously lived on `*Graph`. ~43K LOC of implementation across 116 files; ~111K LOC of internal tests across 301 test files. Temporal reads funnel through `chain_resolver.go` (+ `chain_supersession.go`, `effective_timeline.go`); `version_alloc.go` allocates every appended row's version; `history_presence.go` / `latest_stamps.go` back `HasHistory` / `LatestStamps`; `unique_hold.go` / `unique_cascade.go` hold and withdraw unique claims; `durable_commit.go` runs the `DurableCommit` flush. |
+| `internal/core` | `Core` type holding all unexported state and every graph-layer method body (one package: ~57K LOC of implementation, ~133K LOC of tests at v4.70.0). Temporal reads funnel through `chain_resolver.go` (+ `chain_supersession.go`, `effective_timeline.go`); `version_alloc.go` allocates every appended row's version; `history_presence.go` / `latest_stamps.go` back `HasHistory` / `LatestStamps`; `unique_hold.go` / `unique_cascade.go` hold and withdraw unique claims; `durable_commit.go` runs the `DurableCommit` flush. |
 | `internal/snowflake` | `IDComponents`, `DecomposeID`, and `Epoch` / `Layout` re-exported from `pkg/internal/idlayout`. |
 | `pkg/internal/idlayout` | (outside `pkg/graph`) The single home of the snowflake epoch and bit layout and `MintInstantMillis`, shared by `pkg/types` (`MintInstant`) and `pkg/graph/internal/**`. |
 | `pkg/internal/hash32` | (outside `pkg/graph`) The single conversion between an integrity hash's 64-hex public form and its 32 raw bytes: compact frozen rows, row wire (binary hashes, backlog 61), segments. |
-| `internal/storeutil` | (renamed from `internal/store` in v3.3.0) Store-internal helpers: key encoding, msgpack wire types, pagination helpers, temporal-filter push-down, the shared as-of selection rule `SelectAsOfWithCurrent`. The public Store contract lives in `pkg/graph/store`. |
+| `internal/storeutil` | Store-internal helpers: key encoding, msgpack wire types, pagination helpers, temporal-filter push-down, the shared as-of selection rule `SelectAsOfWithCurrent`. The public Store contract lives in `pkg/graph/store`. |
 | `internal/locks` | 256-shard entity-lock `Manager` (`LockEntity`/`LockTwo`/`LockThree`/`LockMany` in ascending order) and the 256-stripe unique-value `ValueManager`. |
 | `internal/registry` | `LabelRegistry`, `RelTypeRegistry`, `PropertyKeyRegistry`. Internal types — not part of public API. |
 | `internal/index` | In-memory indexes only: property (incl. range / prefix), composite, rel-property, temporal interval, high-frequency, vector (HNSW + brute force), DocValues / columnar helpers, the property tx-membership sidecar (`property_tx_members.go`, `MergeFirstTx`). (`OntologyMapping` lives in `pkg/graph/ontology`.) |
@@ -1270,29 +1233,75 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 | `internal/grapherr` | `ErrNilGraph` / `ErrNilCallback` + the `IsNil` typed-nil detection every sub-API `ready()` uses to fail closed. |
 | `internal/apiutil` | Generic helpers shared by the sub-API wrapper packages (`CloneSlice`, `CloneMap`, `IterateForEach`) — de-duplicated from nodes/rels/index/tier/stats. |
 | `internal/generatedcreate` | `Proof` / `FreshGraphID()` — the unforgeable internal token that marks a create as carrying a freshly minted graph ID, so the duplicate-check fast path cannot be reached from outside `pkg/graph`. |
-| `internal/segment` | ADR-0011 column-segment codec (step S1): an immutable, versioned, CRC32C-checked column format for one declared relationship type, with ID index, out/in CSR and per-group SHA-256 integrity roots; the per-row hash is recomputed from the columns. Used by the memory store for declared relationship types (S2: in-RAM segments; other backends fail `New` with `ErrCapabilityNotSupported`). See `docs/adr/0011-column-segments.md`. |
+| `internal/segment` | ADR-0011 column-segment codec (step S1): an immutable, versioned, CRC32C-checked column format for one declared relationship type, with ID index, out/in CSR and per-group SHA-256 integrity roots; the per-row hash is recomputed from the columns. Used by the memory store for declared relationship types (S2: in-RAM segments; other backends fail `New` with `ErrCapabilityNotSupported`). See "ADR-0011" below. |
 | `internal/segdir` | ADR-0011 S3: the segment directory — `LOCK`, a versioned CRC-checked `MANIFEST`, immutable `seg-t<token>-<seq>.tkgs` files read memory-mapped, the seal crash protocol and `.tmp` cleanup (`Config.SegmentDir`). |
 
-### `pkg/graph/<sub-api>/` packages (v3.4.0)
+### `pkg/graph/<sub-api>/` packages
 
-| Package | Field on Graph | Methods |
-|---------|----------------|---------|
-| `pkg/graph/nodes` | `g.Nodes` | ~53 wrappers — node CRUD (incl. `AddWithTx` / `UpdateWithTx` / `DeleteWithTx`), label, property, version chain, `HasHistory` / `LatestStamps`, DocValues, streaming ForEach/Iter. |
-| `pkg/graph/rels` | `g.Rels` | ~61 wrappers — relationship CRUD (incl. the `WithTx` doors), adjacency (incl. pinned `*ForNodesAtTx` / `*AtPin`), property, version chain, `HasHistory` / `LatestStamps`, streaming ForEach. |
-| `pkg/graph/temporal` | `g.Temporal` | ~50 wrappers — point-in-time, interval, bitemporal, effective timeline (+ scan forms), version-interval corrections, commit clock (`NowTx` / `CommittedTx` / `PeekTx` / `AdvanceClock`), snapshot/diff, Allen relations, named as-of tags. Coexists with the temporal types (`GraphSnapshot`, `SnapshotDiff`, …) in the same package. |
-| `pkg/graph/index` | `g.Index` | ~29 wrappers — property/rel-property/vector/high-frequency/temporal/rel-temporal/composite index management + IndexProvider + scored search. Coexists with `IndexProvider`, `Initializable`, `GraphReader` in the same package. |
-| `pkg/graph/events` | `g.Events` | 4 wrappers — sync/async EventBus management. Coexists with `EventBus`, `AsyncEventBus`, `Event`, … in the same package. |
-| `pkg/graph/constraints` | `g.Constraints` | 9 wrappers — temporal-constraint set management (`Set`, `Add`, `Get`, `DryRunValidate`) plus the five unique-property-constraint doors (ADR-0002) in `unique.go`. |
-| `pkg/graph/io` | `g.IO` | 7 wrappers — Export / Import, deltas (`Watermark`, `ExportSince`, `ImportMerge`), backups (`BackupTo`, `BackupDeltaTo`); package-level `HeaderOf`. Shadows stdlib `io`; alias as `tkgio` at consumer sites that also need stdlib `io`. |
-| `pkg/graph/admin` | `g.Admin` | 10 wrappers — backend-agnostic admin (`Reset`, `DecomposeNodeID`, `DecomposeRelID`, `CompactHistoryNodes`/`Rels`, `PurgeExpiredNodes`, exact-erasure doors, `SealRelSegments` / `RelSegmentStats`). `Reset` and `PurgeExpiredNodes` are opt-in via `Config.AllowReset` / `Config.AllowRetentionPurge`. |
-| `pkg/graph/tier` | `g.Tier` | 7 wrappers — tiered-store admin (archive, restore, rotate, shards, rebuild-catalog, repair, verify-shard). Reuses `core.AdminOps`. |
-| `pkg/graph/replication` | `g.Replication` | 11 wrappers — change-log / op-log + replica apply: `ChangeFeed`, `ForEachChange`, `LastCommittedLSN`, `Watch`, `ApplyChange`/`ApplyChanges`, `AppliedLSN`/`SetAppliedLSN`, `RegistrySnapshot`, `IDSlotLease`/`SetIDSlotLease`; package-level `DecodeChangeIdentity` / `ChangeOpOf`. |
-| `pkg/graph/ingest` | `g.Ingest` | 3 wrappers — the ADR-0006 prepare-parallel / apply-sequential write door (`NewSession`, `AppliedSeq`, `WaitApplied`). |
-| `pkg/graph/stats` | `g.Stats` | ~17 wrappers — count helpers (including property-key presence, type-class partitions, range cardinality, rel-side mirrors). |
-| `pkg/graph/hash` | `g.Hash` | 2 wrappers — hash-chain verification (`VerifyNodeChain`, `VerifyRelChain`). Shadows stdlib `hash`; alias as `tkghash` at consumer sites that also need stdlib `hash`. |
-| `pkg/graph/resolve` | `g.Resolve` | 2 wrappers — shadow-property accessors (`NodeProperty`, `RelProperty`). |
+One package per accessor; table: "Sub-API Accessors" above.
 
-`g.Tx` (`TxAPI` in `subapi.go`) and `g.Batch` (`BatchAPI`) live in the `pkg/graph` package itself because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types. `TxAPI.Run` / `TxAPI.RunContext` add closure-style transaction helpers on top of `Begin`.
+---
+
+## ADR-0011 — Column segments for bulk relationship types (decision record)
+
+Accepted by René 2026-09-24; folded here from `docs/adr/0011-column-segments.md` (full text, including the
+design-time rationale, Q1-Q10 and the sigma/ai-soc integration notes: `git show 238e2644:docs/adr/0011-column-segments.md`).
+Code comments cite the section numbers below.
+
+**Decision.** Rows of a *declared* relationship type (`Config.RelSegments`) move from the row store into
+immutable, versioned, CRC32C-checked column segments (one type per segment), so resident memory stops growing
+with the day. The row API stays a view over memtable + overlay + segments; `ScanRelSegments` is the bulk door.
+Integrity block size is a setting (`IntegrityBlockRows`, default 64, a power of two 1-4,096, written in the
+footer). Every step is gated by a measurement at the three synthday sizes (790 K, 3.15 M, 12.6 M rows).
+
+**Status vs code (v4.70.0).** No segment step since v4.49.0.
+
+| Step | What | State |
+|---|---|---|
+| S0, S1 | baseline harness (`bench/segment_baseline_test.go`); codec `internal/segment` | done (v4.37.0) |
+| S2 | memory store seals declared types into in-RAM segments (union view, differential oracle) | done rho-tkg side (v4.39.0): 24.0 / 24.8 / 25.7 B/HOP beyond the memtable (gate ≤ 60); ai-soc parity gate open (`tasks/backlog.md` item 0) |
+| S3 | `Config.SegmentDir`: files, manifest, crash recovery, mmap (`internal/segdir`) | done rho-tkg side (v4.40.0): heap growth 0.3-0.7 B/HOP (gate ≤ 1); BA day on Flux open |
+| S4 | compaction, overlay folding, time partitions, cold tier | open |
+| S5 | `ScanRelSegments`, `ScanRelColumns` from segment columns | done rho-tkg side (v4.39.0; ID order since v4.39.1) |
+| S6 | `AppendColumns` bulk append + ingest routing | open |
+| S7 | badger / tiered / sharded segments | open: only the memory store implements `store.RelSegmentCapability` / `RelSegmentDirCapability`; other backends fail `New` with `ErrCapabilityNotSupported` (`internal/core/rel_segments.go:36,81`) |
+
+Facts the code relies on:
+
+- **§2.2 Format.** Header with magic and format version; endpoint node table and out-CSR; column-major pages of
+  4,096 rows (constant / FOR / plain per page); in-CSR, sorted ID index, SHA-256 group roots, footer with type
+  name, declared schema, sorted dictionaries, per-column stats and page index. A string column whose distinct
+  count exceeds a threshold is stored plain, not as a dictionary, so dictionaries never grow with the rows.
+  Unknown versions fail closed; decode never allocates from an untrusted count.
+- **§3.1 Seal.** The memtable is the row store's unsealed tail (same doors, locks, constraints, change-log).
+  Seal: snapshot the type's unsealed rows; encode and verify (§4.3); write `.tmp`, fsync, rename, dir fsync; map
+  and open; commit the manifest; install; remove the sealed rows from the row store without delete records.
+  Files are `seg-t<token>-<seq>.tkgs`, self-contained. Open verifies every listed file fully, then deletes
+  `.tmp` and unlisted files; a row the row store holds with the same ID, version and hash leaves it, another
+  version shadows the sealed copy. On the memory store only the segments are durable.
+- **§3.2 Mapped segments.** Read-only mmap; dictionaries decoded into the heap (no caller string points into a
+  mapping); a segment is pinned by reference count and unmapped at zero.
+- **§3.4 Compaction (S4, not built).** A merge never produces more than 64 M rows (`segment.MaxRows`).
+- **§3.5 Budget.** `SegmentMemoryBudget` (default 256 MiB) bounds the memtable; over it the type seals, and if
+  sealing cannot keep up, appends block.
+- **§4.1 / §4.5 Overlay.** A sealed row is never rewritten: an update writes a new row, a write to a sealed row
+  faults it back into the memtable and marks the sealed copy dead; every reader door resolves set-vs-delete per
+  key across memtable, overlay and segments (lesson 57). Bitemporal predicates are the storeutil ones.
+- **§4.3 Integrity.** The per-row hash is not stored: it is recomputed from the columns (ID, version, type name,
+  endpoints, properties with their exact Go kind; a value of another kind goes to the fallback column with its
+  wire tag). The witness is a SHA-256 root per `IntegrityBlockRows` group built from the rows' stored hashes at
+  seal time; sealing refuses on any mismatch.
+- **§4.6 Generated IDs.** A per-type maximum sealed ID makes the duplicate probe for a generated ID one compare.
+- **§4.8 Replication.** A seal is a physical move, not a mutation: no change-log records; replicas seal on their
+  own schedule.
+- **§4.9 Declared schema.** Properties outside the declared columns go to the per-row fallback column.
+- **§5.3 `ScanRelSegments`.** `(relType, props, fn) (ok, err)`, no `QueryOpts`: every current row of a declared
+  type in ascending ID order (identical on every call), string columns as dictionary codes; `ok=false` when the
+  type is undeclared, the backend has no segments, or a property is not a declared column.
+- **§6** is the step table above; **§7**: a declared bulk type is never routed through the DocValues builder
+  (`MaxDocValuesNodes` caps it, segments do not).
+- **§8 Provenance.** Synthday sizes 790 K / 3.15 M / 12.6 M rows (107,113 / 408,282 / 1,584,150 HOP); analysis
+  numbers from ai-soc `tasks/todo.md:23-29` heap profiles; `internal/synthhop` reproduces the workload shape.
 
 ---
 
@@ -1300,8 +1309,8 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 
 Recorded so future readers know these are conscious choices, not oversights:
 
-- **Core sub-packaging**: `internal/core` is one large package (~34K LOC of
-  implementation at the review, ~43K at v4.49, plus a larger test surface); the sub-Ops decomposition is
+- **Core sub-packaging**: `internal/core` is one large package (size: File
+  Map); the sub-Ops decomposition is
   namespacing, not separation. Splitting into `core/tx`, `core/temporal`,
   `core/mutate` is a multi-week, behavior-neutral restructure — planned as its
   own effort. The shared relationship-create kernel removed the most acute

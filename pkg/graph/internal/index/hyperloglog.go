@@ -173,7 +173,7 @@ func (h *HyperLogLog) convertToDense() {
 // (PropertyStatsAccumulator.Sketch()) is Merge()d register-max into one
 // combined sketch, then Estimate() is called ONCE on the result (summing
 // per-shard Estimate()s would over-count a value present on more than one
-// shard) — see docs/adr/0005-tiered-parity.md §3.1 and
+// shard) — see docs/query-planners.md "Tiered NDV fold" and
 // docs/query-planners.md "Tiered NDV fold".
 func (h *HyperLogLog) Merge(other *HyperLogLog) error {
 	if h == nil || other == nil {

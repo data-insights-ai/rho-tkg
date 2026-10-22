@@ -16,7 +16,7 @@ import (
 // Break-the-code tests for Nodes.DeleteWithTx / Nodes.UpdateWithTx and their
 // GraphTx, batch and ingest twins — ending and superseding a node's belief at a
 // caller-supplied transaction instant t (handover
-// tasks/handover-tx-backfill-delete-update-20261009.md §5 R1-R11, R16 no-op;
+// git show 8d8100b3^:tasks/handover-tx-backfill-delete-update-20261009.md §5 R1-R11, R16 no-op;
 // §6 overrides). A node delete cascades: one instant t for the node and every
 // relationship it removes, and the order rule runs on every one of them before
 // anything is written. Every test names the faulty implementation it catches;

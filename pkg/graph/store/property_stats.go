@@ -49,7 +49,7 @@ type PropertyStats struct {
 //
 // memory, badger, AND tiered all implement this capability (tiered folds
 // NDV via a register-max HyperLogLog merge across shards — see
-// docs/adr/0005-tiered-parity.md §3.1 and docs/query-planners.md "Tiered NDV
+// docs/query-planners.md "Tiered NDV fold" and docs/query-planners.md "Tiered NDV
 // fold"). A backend satisfying only MandatoryStore returns
 // ErrCapabilityNotSupported; check with errors.Is, never a string compare.
 type NodePropertyStatsCapability interface {

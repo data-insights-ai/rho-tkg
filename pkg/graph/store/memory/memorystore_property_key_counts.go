@@ -186,7 +186,7 @@ func (ms *Store) NodePropertyStats(labelToken uint16, propertyKey string) (store
 // per-(labelToken, propertyKey) HyperLogLog sketch alongside the exact
 // min/max/count, for the tiered backend's cross-shard PropertyStats fold
 // (register-max Merge across shards, Estimate() called once on the merged
-// result — see docs/adr/0005-tiered-parity.md §3.1). The returned sketch is
+// result — see docs/query-planners.md "Tiered NDV fold"). The returned sketch is
 // a CLONE, independent of this store's internal accumulator state.
 // Missing/unpopulated pairs return (nil, nil, nil, 0, nil) — not an error,
 // mirroring NodePropertyStats' own "unregistered → zero value" convention.

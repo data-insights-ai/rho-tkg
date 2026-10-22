@@ -17,40 +17,19 @@ binary, no server, no query language — so most changes are either a fix in
 
 ## Building and testing
 
+The full target list and the CI race-shard layout are in `AGENTS.md` ("Build & Test Commands"). The ones a PR needs:
+
 ```bash
-make build          # verify compilation
-make test           # unit tests (short mode, no cache)
-make test-v         # verbose tests
+make check          # pre-commit: vet + build + test (short mode)
 make test-race      # race detector — required for any change touching concurrency
-make test-integration  # integration tests (long-running)
 make cover          # coverage report -> coverage.html
-make check          # pre-commit: vet + build + test
+go test -run TestFoo ./pkg/types/   # one test
 ```
 
-Run a single test:
-
-```bash
-go test -run TestFoo ./pkg/types/
-```
-
-### Lint, security, and vulnerability scans
-
-`golangci-lint`, `gosec`, and `govulncheck` are usually **not installed
-locally**. Don't skip these gates because the binary is missing — run them in
-the go.mod-matching Docker toolchain image instead (cached named volumes, fast
-after the first run):
-
-```bash
-make lint-docker        # golangci-lint v2 (reads .golangci.yml)
-make security-docker    # gosec
-make vulncheck-docker   # govulncheck
-make ci-docker          # full gate: fmt-check + vet + lint-docker + build + test-race + security-docker + vulncheck-docker + cover-gate + check-metakv-reap
-```
-
-The security tools are version-pinned by the Makefile. Both `gosec` and
-`govulncheck` are clean, blocking gates; new findings must be fixed or documented
-at their exact call site. Golangci-lint uses its pull-request new-issues mode for
-the older lint backlog.
+`golangci-lint`, `gosec` and `govulncheck` are usually not installed locally; do not skip them, run them in the
+go.mod-matching Docker image: `make lint-docker`, `make security-docker`, `make vulncheck-docker`, or the whole gate
+`make ci-docker`. The tools are version-pinned by the Makefile; `gosec` and `govulncheck` are clean, blocking gates (new
+findings are fixed or documented at their exact call site).
 
 ## Testing Rules (hard requirements)
 
@@ -133,19 +112,10 @@ actually fixed a real defect.
 
 ## Fuzzing
 
-The trust-boundary fuzz harnesses (`FuzzImport`, `FuzzApplyChange` in
-`pkg/graph/internal/core`; `FuzzWireToNodeChecked`, `FuzzWireToRelChecked`,
-`FuzzUnmarshalNodeWireWithKeys`, `FuzzDecodeNodeHistoryDelta`,
-`FuzzDecodeRelHistoryDelta` in `pkg/graph/internal/storeutil`; `FuzzOpen`,
-`FuzzOpenResealed`, `FuzzOpenWithNodeDict` in `pkg/graph/internal/segment`) run
-their seed corpora as ordinary tests in `make test`. The first five also get a
-bounded weekly run in `.github/workflows/fuzz.yml` (non-blocking, scheduled).
-Deep fuzz sessions are a local, deliberate activity — run one when you change a
-decode/import surface:
+The trust-boundary fuzz harnesses, which of them `.github/workflows/fuzz.yml` runs weekly, and how their seed corpora
+run in `make test` are listed in `SECURITY.md` ("Fuzz harnesses"). Run a deep session when you change a decode/import
+surface, and commit any new crasher (under the package's `testdata/fuzz/`) together with the fix:
 
 ```bash
 go test -fuzz=FuzzImport -fuzztime=30m -run='^$' ./pkg/graph/internal/core
 ```
-
-Commit any new crasher the run minted (it lands under the package's
-`testdata/fuzz/` directory) together with the fix.

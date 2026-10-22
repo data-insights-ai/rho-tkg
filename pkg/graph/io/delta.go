@@ -29,8 +29,8 @@ import (
 // from the ordered op-log, the one source that records every committed mutation.
 //
 // Precondition. ExportSince requires the graph to have a change-log
-// (graph.Config.ChangeLog) on a backend that exposes a change-feed (memory or
-// badger; the tiered backend declines). Without one, ExportSince fails closed
+// (graph.Config.ChangeLog) on a backend that exposes a change-feed (memory,
+// badger, tiered and sharded). Without one, ExportSince fails closed
 // and the caller falls back to a full Export — exactly the degradation a backup
 // pipeline already handles for an unchanged tenant.
 

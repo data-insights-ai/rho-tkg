@@ -5,7 +5,7 @@
 // another repository and cannot be imported here.
 //
 // What is copied from the real workload (measured 2026-09-24 on the three
-// synthday days, see docs/adr/0011-column-segments.md §8 and CHANGELOG):
+// synthday days, see docs/architecture.md "ADR-0011" §8 and CHANGELOG):
 //
 //   - the counts per size: HOP rows, distinct (start, end) pairs (= ORIGIN
 //     rows), VATTR regimes, CATTR rows (= distinct actors), host nodes;

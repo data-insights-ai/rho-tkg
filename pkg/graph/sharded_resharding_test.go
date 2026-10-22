@@ -30,7 +30,7 @@ import (
 //
 // These tests are the missing end-to-end proof of that claim (see the
 // decision note next to sharded.Config.BaseSlot/SlotCount in sharded.go, and
-// docs/adr/0007-horizontal-scaling.md) — not new production code.
+// git show 4f71fc3e^:docs/adr/0007-slot-sharded-store.md) — not new production code.
 
 // TestShardedResharding_GrowRoundTrip_ExactSet grows a 2-slot store into a
 // 4-slot store via export/import and asserts an EXACT match: same live node

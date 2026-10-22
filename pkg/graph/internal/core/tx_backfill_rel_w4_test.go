@@ -14,8 +14,8 @@ import (
 )
 
 // Break-the-code tests for the relationship caller-instant doors of GraphTx,
-// Batch and the ingest pipeline (W4; tasks/handover-tx-backfill-delete-update-
-// 20261009.md §5 R1-R4, R7, R8, R12, R16 and §6.7). R1-R4 and the as-of cache
+// Batch and the ingest pipeline (W4; git show
+// 8d8100b3^:tasks/handover-tx-backfill-delete-update-20261009.md §5 R1-R4, R7, R8, R12, R16 and §6.7). R1-R4 and the as-of cache
 // report run through the shared door table (txbDoors in
 // tx_backfill_rel_doors_test.go includes txbW4Doors). Every refusal asserts
 // nothing changed.

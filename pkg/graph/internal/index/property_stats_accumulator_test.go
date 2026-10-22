@@ -465,7 +465,7 @@ func TestPropertyStatsAccumulatorSketch(t *testing.T) {
 // TestCombineExtrema exercises every branch of the cross-shard fold's
 // min/max tie-break helper directly (the tiered backend's
 // NodePropertyStats calls this per shard — see
-// docs/adr/0005-tiered-parity.md §3.1): a nil incoming pair is a no-op, a nil
+// docs/query-planners.md "Tiered NDV fold"): a nil incoming pair is a no-op, a nil
 // running pair adopts the incoming one, same-family pairs fold to the
 // min-of-mins/max-of-maxes, and a MIXED-family incoming pair (the "unusual
 // in a well-typed graph" case documented on PropertyStatsAccumulator) is

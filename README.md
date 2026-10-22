@@ -274,7 +274,53 @@ github.com/data-insights-ai/rho-tkg/v4
 
 **Go:** 1.26.9
 **License:** Apache-2.0
-**Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), [`msgpack/v5`](https://github.com/vmihailenco/msgpack) (serialization), [`badger/v4`](https://github.com/dgraph-io/badger) (persistence)
+**Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), [`msgpack/v5`](https://github.com/vmihailenco/msgpack) (serialization), [`badger/v4`](https://github.com/dgraph-io/badger) (persistence); `klauspost/compress` is required directly only by tests (`pkg/graph/internal/storeutil/wire_b3_ondisk_gate_test.go`, `pkg/graph/integrity_bytes_test.go`). The OpenTelemetry modules arrive transitively via Badger and are not in this library's call graph.
+
+<details>
+<summary>All 36 modules of <code>go list -m all</code> and their licenses</summary>
+
+Every license is one of Apache-2.0, BSD-2-Clause, BSD-3-Clause, MIT, ISC (ISC: permissive, MIT-equivalent). Licenses were read from each module's LICENSE file in the module cache (2026-10-10); the module list and versions were re-checked against `go list -m all` on 2026-10-22 (v4.70.0), unchanged.
+
+| Module | Version | License |
+|--------|---------|---------|
+| github.com/bds421/rho-mclock | v0.2.1 | Apache-2.0 |
+| github.com/bds421/rho-snowflake-2026 | v1.3.2 | Apache-2.0 |
+| github.com/cespare/xxhash/v2 | v2.3.0 | MIT |
+| github.com/davecgh/go-spew | v1.1.1 | ISC |
+| github.com/dgraph-io/badger/v4 | v4.9.2 | Apache-2.0 |
+| github.com/dgraph-io/ristretto/v2 | v2.2.0 | Apache-2.0 |
+| github.com/dgryski/go-farm | v0.0.0-20240924180020-3414d57e47da | MIT |
+| github.com/dustin/go-humanize | v1.0.1 | MIT |
+| github.com/go-logr/logr | v1.4.3 | Apache-2.0 |
+| github.com/go-logr/stdr | v1.2.2 | Apache-2.0 |
+| github.com/golang/protobuf | v1.5.0 | BSD-3-Clause |
+| github.com/google/flatbuffers | v25.2.10+incompatible | Apache-2.0 |
+| github.com/google/go-cmp | v0.7.0 | BSD-3-Clause |
+| github.com/google/uuid | v1.6.0 | BSD-3-Clause |
+| github.com/inconshreveable/mousetrap | v1.1.0 | Apache-2.0 |
+| github.com/klauspost/compress | v1.18.7 | BSD-3-Clause |
+| github.com/kr/pretty | v0.3.1 | MIT |
+| github.com/kr/text | v0.2.0 | MIT |
+| github.com/pmezard/go-difflib | v1.0.0 | BSD-3-Clause |
+| github.com/rogpeppe/go-internal | v1.14.1 | BSD-3-Clause |
+| github.com/spf13/cobra | v1.9.1 | Apache-2.0 |
+| github.com/spf13/pflag | v1.0.6 | BSD-3-Clause |
+| github.com/stretchr/testify | v1.11.1 | MIT |
+| github.com/vmihailenco/msgpack/v5 | v5.4.1 | BSD-3-Clause |
+| github.com/vmihailenco/tagparser/v2 | v2.0.0 | MIT |
+| go.opentelemetry.io/auto/sdk | v1.2.1 | Apache-2.0 |
+| go.opentelemetry.io/contrib/zpages | v0.62.0 | Apache-2.0 |
+| go.opentelemetry.io/otel | v1.42.0 | Apache-2.0 |
+| go.opentelemetry.io/otel/metric | v1.42.0 | Apache-2.0 |
+| go.opentelemetry.io/otel/sdk | v1.37.0 | Apache-2.0 |
+| go.opentelemetry.io/otel/trace | v1.42.0 | Apache-2.0 |
+| golang.org/x/sys | v0.44.0 | BSD-3-Clause |
+| golang.org/x/xerrors | v0.0.0-20191204190536-9bdfabe68543 | BSD-3-Clause |
+| google.golang.org/protobuf | v1.36.7 | BSD-3-Clause |
+| gopkg.in/check.v1 | v1.0.0-20201130134442-10cb98267c6c | BSD-2-Clause |
+| gopkg.in/yaml.v3 | v3.0.1 | Apache-2.0 |
+
+</details>
 
 Each concurrent graph instance uses `Config.SnowflakeNodeID` (0–15) to keep
 minted IDs unique; see [`docs/architecture.md`](docs/architecture.md#snowflake-ids)
@@ -291,10 +337,11 @@ leave the stdlib import unaliased.
 - [`docs/api.md`](docs/api.md) — API & Core Types: graph layer, registries, validation limits, temporal queries, transactions, and shadow properties.
 - [`docs/architecture.md`](docs/architecture.md) — Architecture & Concurrency: system boundaries, entity lock manager, multi-phase iteration, and thread safety.
 - [`docs/persistence.md`](docs/persistence.md) — Storage interfaces, `badger.Store`, `tiered.Store`, and EXPERIMENTAL `sharded.Store` slot-topology persistence.
-- [`docs/design.md`](docs/design.md) — Design invariants: protocol guarantees, referential integrity, defensive copying, and error sentinels.
+- [`docs/architecture.md#design-invariants`](docs/architecture.md#design-invariants) — Design invariants: protocol guarantees, referential integrity, defensive copying, store-boundary validation.
 - [`docs/errors.md`](docs/errors.md) — Error sentinels reference: every public sentinel and the doors that return it.
 - [`docs/query-planners.md`](docs/query-planners.md) — Query planner statistics: cardinality estimates, index-usability checks, staleness detection.
 - [`docs/stability.md`](docs/stability.md) — API Stability & Deprecation Policy: v4 stability promise, experimental surfaces, and release conventions.
+- [`bench/README.md`](bench/README.md) — Benchmark suite, regression gate and write-path micro-benchmarks.
 - [`docs/SPEC.md`](docs/SPEC.md) — Formal specifications and algorithms.
 
 ## Tutorials
