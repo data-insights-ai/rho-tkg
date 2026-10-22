@@ -11,6 +11,11 @@ exposes the local primitives.
 Read order: [AGENTS.md](../AGENTS.md). HANDOVER.md holds the state, [tasks/todo.md](../tasks/todo.md) the next steps and open
 decisions; the newest user message wins. Standing rules: the [Rules digest](#rules-digest).
 
+- Before planning: read the full API of every file the change touches, not snippets near the suspected bug; ask "does this
+  algorithm deliver what the method name promises?" and "which existing feature could this break?".
+- After implementation: update only docs whose user-facing behaviour, API contract or architecture changed; tighten the
+  owning text, no long-form notes.
+
 ## Build, test and gates
 
 ```bash
