@@ -10,7 +10,7 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
   one round of consumer requests batch into one minor, fixes into one patch (79).
 - Scope: just essential patches (consumer-blocking or wrong-answer/data bugs) EXCEPT ai-soc runtime items, which have René's
   standing go; a go René types into a consumer session and that session relays verbatim counts (79, 80). Critical path
-  first: build now only what blocks ai-soc on Flux or sigma's O1-3; everything else goes to HANDOVER "Next step (deferred)" (79).
+  first: build now only what blocks ai-soc on Flux or sigma's O1-3; everything else goes to HANDOVER "Next step (deferred)" (79). sigma requests that serve ai-soc's Flux run (O1-3 = sigma's resident-state work) fall under the ai-soc go.
 - Models: builds Opus, a build Opus cannot finish goes to Fable; Fable reviews (branch and final batch review before the tag)
   and writes code only, running no tests; the main session runs every deciding test, gate, lint and security check; doc work
   Sonnet; build briefs end with `make lint-docker security-docker` (79).
@@ -646,6 +646,12 @@ are harmless); the release commit after a green gate changes only version lines 
 concurrency group cancels a running main run on every push, so batch note commits while CI runs and watch the newest main run
 (no run is triggered on the tag ref). The Go build cache is shared by every session on the machine: `go clean -cache` only when
 no session builds (René's cleanup 2026-10-22: rho ran it during ai-soc's `go test -race`).
+Release checklist (the one order): (1) merge every branch of the batch, `go test -short` of the touched packages;
+(2) Fable review of the merged batch, fixes merged; (3) `make ci-docker` + consumer build/vet (HANDOVER Appendix B), no code
+edits meanwhile; (4) release commit: CHANGELOG heading, README "Current release", AGENTS.md "Status:", docs/architecture.md
+line 1, todo releases row + header, HANDOVER; docs tests + `scripts/check-ledger.sh`; (5) push main, `git tag -a vX.Y.Z`, push
+the tag; (6) notify sigma-tkgd + ai-soc with tag, commit and migration notes; (7) watch the newest main CI run in the
+background; red → fix on main, new patch tag. Note pushes during CI are allowed; each one restarts the main run.
 Detector: a tag whose CI run is not `success`.
 
 ## 83. Test Enough To Prove The Item, Then Build

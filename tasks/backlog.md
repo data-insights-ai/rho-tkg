@@ -14,7 +14,7 @@ concurrency edge / perf cliff / contract inconsistency. LOW = smell / doc drift.
 TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
-**Open work (current at v4.68.0 + v4.69.0 release commit, 2026-10-21):** no reproduced CRITICAL item. Scope rule (lesson 79 (10)): essential patches and ai-soc items are built; the rest is parked until a consumer asks. Closed items are one line in the Closed table below.
+**Open work (current at v4.70.0, 2026-10-22; deferred items with resume points: HANDOVER "Next step (deferred)"):** no reproduced CRITICAL item. Scope rule (lesson 79 (10)): essential patches and ai-soc items are built; the rest is parked until a consumer asks. Closed items are one line in the Closed table below.
 
 | # | Type / severity | Item | Status |
 |---|---|---|---|

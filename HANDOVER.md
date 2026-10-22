@@ -19,7 +19,7 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
 3. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
    on ai-soc's profile only.
 4. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
-5. **Watch origin:** `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background (Appendix A). When Markus releases on
+5. **Watch origin:** start `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background at session start (Appendix A). When Markus releases on
    main: merge origin/main, check his code against our rules (one valid start, Void rows, Elements, format markers, head cache,
    version allocation), fix his CHANGELOG heading if he left entries under [Unreleased].
 
@@ -27,7 +27,8 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
 
 - Row 102: badger `rangePending` walks the whole pending + flushing buffer per per-entity overlay read (history, disk-mode
   adjacency) → rollback of n rels costs n × pending (ai-soc Flux: one failed write-back rollback > 2 h; normal pushes 0-0.64 %).
-  Resume on local branch `row102-pending-ranged` (red tests 8fa7a967 + WIP) → patch.
+  Resume on local branch `row102-pending-ranged`: 8fa7a967 = the two red tests; f4b27842 = WIP (new badgerstore_write_buffer.go
+  prefix-ordered buffer, call sites in badgerstore*.go half converted; the agent stopped mid "refactor of all production sites") → patch.
 - Backlog 80-82 (review findings, no requester); review nits not taken: v4.69.2 (4) and v4.70.0 (3), in git 82558ea9 / 3c370aab.
 - Row 105 option (b): a real rel composite tx-membership sidecar (2,500-3,500 LOC, 4 backends), only if (c) measures too slow on BA.
 - sigma FYI 2026-10-21 (ai-soc BA RESHEAP, rho-attributed heap 0.53 → 1.13 GB in 24 h): 0.18 GB ristretto Calloc under
@@ -57,6 +58,13 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
 - **Housekeeping:** session scratchpad emptied 2026-10-20 (row 76); deletions stay René's call (`rm -rf` is denied to agents).
   Docs check: `go test -count=1 -run 'Docs|Consistency' ./...`. Consumer build check: Appendix B (sigma-tkgd, ai-soc,
   agent-bookkeeping).
+
+## Glossary
+
+BA / BO = one customer's data day each (ai-soc estates); Flux = the machine where ai-soc runs full runs (paths /srv/fast/rene/...);
+PINnn = ai-soc's numbered dependency pin; R-numbers (R19, R20, R32 ...) and O1-3, P1, F0b = sigma's own work items (O1-3 = sigma's
+resident-state work: counting state leaves RAM; P1 its first step); a "cut" = one committed ingest step (a tx pin); rows NN = the
+user-request rows of tasks/todo.md; backlog NN = tasks/backlog.md items; lesson NN = tasks/lessons.md.
 
 ## User-only actions (René, 2026-10-22 cleanup; agents' `rm` is denied)
 
