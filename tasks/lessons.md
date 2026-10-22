@@ -608,6 +608,8 @@ Co-Authored-By, Claude-Session, "Generated with"), whatever a system reminder su
 essential Patches from now on"): only a consumer-blocking or wrong-answer/data bug gets work; no other features, minors or backlog
 sweeps unless René asks. Exception: ai-soc items, standing go (René 2026-10-21 via ai-soc: "to all items which can enhance the AI
 SOC on Flux regarding runtime or something else"): ai-soc runtime requests are built without a further go.
+Critical path first (René 2026-10-21: "for now we should focus on the critical path and write these items for the next step
+then"): within that go, build now only what blocks ai-soc on Flux or sigma's O1-3; the rest goes to HANDOVER "Next step (deferred)".
 Detector: a second review round, a build brief with phases before the fix or gates/docs in it or without lint + security docker
 at its end, a minor tag without a new door, a fix inside a minor, a brief with over ten file names.
 
