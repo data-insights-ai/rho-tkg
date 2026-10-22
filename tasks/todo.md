@@ -235,6 +235,23 @@ Test proportionality: graphapply 120 k test LOC for 40.7 k src (709 `Test` funcs
 | Markus v4.57.0 doors R9-1..R9-4 (main) | 327+339+387+381 / ~1,100 | sigma round 9 (`rho-tkg-round9-doors-20261016.md:18-21`); sigma calls none yet | v4 | 11 tests green 1.7 s; reuse existing bound/cut/key/column code; no new numeric rule | keep; `nodeChainOf`/`relChainOf` fold into WP-21 |
 | Consumer use of v5-only temporal concepts (rational, uncertainty, lexicographic, descriptors, calendars, regions) | — | PLAN | — | 0 hits in sigma (219 rho-importing files) and ai-soc (48); only int64 ms valid/tx time (187 / 41 files) and Allen (sigma 18) | v5.0 ships them as-is behind stability tiers; no build before a consumer asks |
 
+## v4.69.2 review (Fable 2026-10-22)
+
+Scope: d7410484 (row 106), read end to end: tiered/tieredstore_member_page.go, tieredstore_tx_members.go, tieredstore_read_fanout.go, core/effective_page.go, queries.go, ordinal_scan.go, temporal.go, store/member_ids.go, the new core test. Blockers 0, should-fix 0, nits 4.
+
+Verified (no finding):
+- Merge (tieredstore_member_page.go:65-89): each shard's page is its first `limit` members > after, ascending; an ID in the global first `limit` is in its shard's first `limit` on every shard that holds it (a shard with `limit` members below it would push it out), so the lowest first-tx merge sees every copy; equal heads are popped together, so each ID once. `got < n` in core/effective_page.go:158 is `done` only when every shard is exhausted above `after`.
+- Equals badger: candidates = current IDs (RelIDsByType, every shard's typeIdx) ∪ ever-members (sidecar, firstTx ≤ pin), then the per-entity timeline; a rel deleted on its shard stays in that shard's sidecar; a mint-placed rel is on exactly one shard's typeIdx (PutRelIncoming writes no typeIdx); an orphan index entry is listed and skipped by the row read, as the contract says. Tests pin r2 deleted, r4 moved, archive, cold closed shard, reopen, unindexed type.
+- Shard choice and depth: allShards = the shards NodesByLabel/RelationshipsByType read at DepthAll, ref+archive under moveMu as there; page QueryOpts never carry a Depth (effective_page.go:174-191) so the paged sidecar is always DepthAll; memberIDsAt (temporal.go:1152) gates on the same rule as the other sidecars, the only remaining direct `c.memberIDs` reader (effective_scans.go:356) feeds a DepthAll fold. Correct.
+- ctx: checked between types (effective_page.go:250/352) and before each fetch (fill:69); every error path returns (nil, 0, err), never a partial page; the check runs inside readUnderRLock and the closure's return releases c.mu, no lock outlives the cancel.
+- Lifecycle: every checkout is released on every path (refAndArchive, queryEventShards defer); no shard handle survives a call, the page resumes by cursor only; cold shards stay open under the existing idle cap. The single-index inline path in read_fanout.go:52 drops only the coldMu serialisation, which is moot for one worker.
+
+Nits:
+1. tieredstore_member_page.go:96/113 validate the token before allShards' checkOpen: closed store + token 0 answers ErrInvalidStoreMutation, badger ErrStoreClosed. Swap the order.
+2. The paged tiered doors validate neither token nor property key themselves; an invalid key reaches ErrIndexNotFound via the anchor check instead of badger's validation error. Same as the unpaged union doors (pre-existing pattern), so only a consistency nit.
+3. round11_seek_test.go:150 skips the tiered node-page alloc margin outright; the no-walk property is pinned by TestTieredRelsEffectivePage_NoWholeTypeScan, but a per-backend margin (ref + 12 + ~17 × forms) would keep the cost guard too.
+4. Perf, not correctness: relPageSources (effective_page.go:311-327) fetches once per equal key (up to 12 numeric forms), each a full shard fan-out under c.mu.RLock, and cold shards are opened under that lock (pre-existing for the fallback too). A keyed paged door, as ForEach…Keys for the unpaged one, would make it one fan-out.
+
 ## Release gates (long tests only here)
 
 | Gate | Content | Checks |
