@@ -1,0 +1,55 @@
+--- FAIL: TestRelEffectiveTimelinesByProperties_MatchesPerTupleTimeline (0.04s)
+    --- FAIL: TestRelEffectiveTimelinesByProperties_MatchesPerTupleTimeline/memory (0.00s)
+        effective_timelines_by_test.go:215: pin1: door: row 105: not built
+    --- FAIL: TestRelEffectiveTimelinesByProperties_MatchesPerTupleTimeline/badger (0.03s)
+        effective_timelines_by_test.go:215: pin1: door: row 105: not built
+    --- FAIL: TestRelEffectiveTimelinesByProperties_MatchesPerTupleTimeline/sharded (0.00s)
+        effective_timelines_by_test.go:215: pin1: door: row 105: not built
+    --- FAIL: TestRelEffectiveTimelinesByProperties_MatchesPerTupleTimeline/tiered (0.00s)
+        effective_timelines_by_test.go:215: pin1: door: row 105: not built
+--- FAIL: TestRelEffectiveTimelinesByProperties_RefusesWithoutIndex (0.13s)
+    --- FAIL: TestRelEffectiveTimelinesByProperties_RefusesWithoutIndex/memory (0.00s)
+        effective_timelines_by_test.go:290: no index: , row 105: not built, 0 reads; want ErrIndexNotFound, nil, 0 reads
+    --- FAIL: TestRelEffectiveTimelinesByProperties_RefusesWithoutIndex/badger (0.03s)
+        effective_timelines_by_test.go:290: no index: , row 105: not built, 0 reads; want ErrIndexNotFound, nil, 0 reads
+    --- FAIL: TestRelEffectiveTimelinesByProperties_RefusesWithoutIndex/sharded (0.04s)
+        effective_timelines_by_test.go:290: no index: , row 105: not built, 0 reads; want ErrIndexNotFound, nil, 0 reads
+    --- FAIL: TestRelEffectiveTimelinesByProperties_RefusesWithoutIndex/tiered (0.06s)
+        effective_timelines_by_test.go:290: no index: , row 105: not built, 0 reads; want ErrIndexNotFound, nil, 0 reads
+    --- FAIL: TestRelEffectiveTimelinesByProperties_RefusesWithoutIndex/mid-build (0.00s)
+        effective_timelines_by_test.go:312: CreateRelProperty(NET, estate): graph: store does not support this capability: RelPropertyIndexCapability
+--- FAIL: TestRelEffectiveTimelinesByProperties_PinGates (0.00s)
+    effective_timelines_by_test.go:350: above the clock (pin 1792633640978): , row 105: not built, 0 reads; want graph: transaction-time pin is ahead of the commit clock, nil, 0 reads
+--- FAIL: TestRelEffectiveTimelinesByProperties_WindowCut (0.03s)
+    --- FAIL: TestRelEffectiveTimelinesByProperties_WindowCut/memory (0.00s)
+        effective_timelines_by_test.go:429: window [2000,3000): door: row 105: not built
+    --- FAIL: TestRelEffectiveTimelinesByProperties_WindowCut/badger (0.01s)
+        effective_timelines_by_test.go:429: window [2000,3000): door: row 105: not built
+    --- FAIL: TestRelEffectiveTimelinesByProperties_WindowCut/sharded (0.01s)
+        effective_timelines_by_test.go:429: window [2000,3000): door: row 105: not built
+    --- FAIL: TestRelEffectiveTimelinesByProperties_WindowCut/tiered (0.01s)
+        effective_timelines_by_test.go:429: window [2000,3000): door: row 105: not built
+--- FAIL: TestRelEffectiveTimelinesByProperties_BadInput (0.00s)
+    effective_timelines_by_test.go:497: no keys: , row 105: not built, 0 reads; want graph: invalid store mutation, nil, 0 reads
+    effective_timelines_by_test.go:497: five keys: , row 105: not built, 0 reads; want graph: invalid store mutation, nil, 0 reads
+    effective_timelines_by_test.go:497: duplicate key: , row 105: not built, 0 reads; want graph: invalid store mutation, nil, 0 reads
+    effective_timelines_by_test.go:497: reserved prefix: , row 105: not built, 0 reads; want types: property key uses reserved tkg_ prefix, nil, 0 reads
+    effective_timelines_by_test.go:497: empty key: , row 105: not built, 0 reads; want graph: name must not be empty, nil, 0 reads
+    effective_timelines_by_test.go:497: short tuple: , row 105: not built, 0 reads; want graph: invalid store mutation, nil, 0 reads
+    effective_timelines_by_test.go:497: long tuple: , row 105: not built, 0 reads; want graph: invalid store mutation, nil, 0 reads
+    effective_timelines_by_test.go:497: nil value: , row 105: not built, 0 reads; want types: unsupported property value type, nil, 0 reads
+    effective_timelines_by_test.go:497: list value: , row 105: not built, 0 reads; want types: unsupported property value type, nil, 0 reads
+    effective_timelines_by_test.go:497: map value: , row 105: not built, 0 reads; want types: unsupported property value type, nil, 0 reads
+    effective_timelines_by_test.go:497: empty type: , row 105: not built, 0 reads; want graph: name must not be empty, nil, 0 reads
+    effective_timelines_by_test.go:497: nil ctx: , row 105: not built, 0 reads; want graph: context must not be nil, nil, 0 reads
+    effective_timelines_by_test.go:497: cancelled ctx: , row 105: not built, 0 reads; want context canceled, nil, 0 reads
+    effective_timelines_by_test.go:504: empty tuples = [], row 105: not built, 0 reads; want empty, nil, 0 reads
+    effective_timelines_by_test.go:517: cancel between candidates: , row 105: not built, 0 reads; want context.Canceled, nil, <= 3 reads of 10
+    effective_timelines_by_test.go:525: closed graph: [], row 105: not built; want ErrGraphClosed
+--- FAIL: TestRelEffectiveTimelinesByProperties_OneFanoutManyTuples (0.26s)
+    effective_timelines_by_test.go:614: pin {Tx:1792633639193 ValidAt:0 ValidStart:0 ValidEnd:0 ValidAtSet:false ValidWindowSet:false}: door: row 105: not built
+--- FAIL: TestRelEffectiveTimelinesByProperties_NoWholeTypeScan (0.06s)
+    effective_timelines_by_test.go:665: row 105: not built
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.560s
+FAIL

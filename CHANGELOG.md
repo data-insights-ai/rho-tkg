@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`g.Temporal().RelEffectiveTimelinesByProperties(ctx, typeName, keys, tuples, pin)`: effective timelines per
+  property tuple** (sigma O1-3, row 105). Per probe tuple (`keys[j] = tuples[i][j]`, 1-4 keys) the segments at
+  `pin.Tx` of the type's relationships whose row carries every value and that meet `pin`'s valid filter, aligned
+  with `tuples`, grouped by relationship ascending. One call serves every tuple: the driver is the indexed key with
+  the fewest current members (`CountByTypePropertyValue`; tiered, without counts, the first indexed key in `keys`
+  order), its transaction-time membership sidecar is enumerated once for all tuples (one shard fan-out on tiered and
+  sharded), each candidate's timeline is read once, and the other keys are checked on the row. No declared
+  `(type, key)` index on any key, or one still being built, is `ErrIndexNotFound` (no history fold). Cost: about the
+  driver value's relationships in the window (100,000 relationships, one device probed: 100 timelines read); a
+  probe by a low-selectivity key alone (`(action)`) is O(A) by nature. RAM: a probe with a valid filter opens the
+  windowed view of each probed driver value (110-145 B per posting instead of 25, kept by later writes). Tests
+  `TestRelEffectiveTimelinesByProperties_*` (oracle per tuple on four backends, index refusal, pin gates, window
+  cut, bad input, one fan-out for 50 tuples on tiered, no whole-type scan); evidence `tasks/evidence/row105/`.
+
 ## [4.69.2] - 2026-10-22
 
 ### Fixed
