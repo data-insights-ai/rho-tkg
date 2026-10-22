@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`NodeLowestAnsweredPin(id)` / `RelLowestAnsweredPin(id)` and the plural `NodesLowestAnsweredPins(ids)` /
+  `RelsLowestAnsweredPins(ids)`** (sigma O1-3, row 104): the lowest transaction pin at which an entity's point reads
+  answer without `ErrHistoryCompacted` / `ErrRetentionExpired`, the max of the floors of the gates those reads run
+  (compaction stub `LastTrimmedTxTo` under the graph watermark; label watermarks for a node; the type watermark and the
+  node-family maximum for a relationship). One call replaces a binary search over the reads. `0` when no gate applies;
+  an unknown or retention-purged node answers `0` (the reads answer `ErrNodeNotFound` at every pin); a gone relationship
+  minted below the relationship maximum answers that maximum. The plural form is aligned with `ids` and holds one read
+  lock. The point gates now compute their refusal from the same floor functions (no behaviour change). Note: a retention
+  purge removes whole entities, so pins at or above its watermark that answered a purged entity before answer not found
+  afterwards (`TestRetentionPurgeChangesRetainedPins`); compaction keeps a retained pin's belief. Test
+  `TestLowestAnsweredPin` (oracle: binary search over the singular reads, four backends).
+
 ## [4.69.2] - 2026-10-22
 
 ### Fixed

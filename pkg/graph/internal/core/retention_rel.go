@@ -208,24 +208,38 @@ func (c *Core) reapRelRetentionForReset() error {
 // (a relationship purge may have removed it, so its type is unknown). One
 // atomic load when no relationship purge ever ran.
 func (c *Core) checkRelTypePointRetention(id types.RelID, pin types.Instant) error {
-	if pin == 0 {
+	if pin == 0 || int64(pin) >= c.retentionRelMaxWatermark.Load() {
 		return nil
 	}
-	relMax := c.retentionRelMaxWatermark.Load()
-	// A relationship minted at or after every relationship watermark was never
-	// a purge candidate (a purge takes mint < Before <= the max): its rows
-	// are whole, so the door answers it normally.
-	if int64(pin) >= relMax || int64(id.MintInstant()) >= relMax {
-		return nil
-	}
-	tok, ok, err := c.relTypeTokenForRetention(id)
+	floor, gated, err := c.relTypeRetentionFloor(id)
 	if err != nil {
 		return err
 	}
-	if !ok || int64(pin) < c.relRetentionWatermark(tok) {
+	if gated && int64(pin) < floor {
 		return ErrRetentionExpired
 	}
 	return nil
+}
+
+// relTypeRetentionFloor is checkRelTypePointRetention as a floor (row 104): a
+// pin (not 0) is refused exactly when gated and pin < floor. Not gated: a
+// relationship minted at or after every relationship watermark (never a
+// purge candidate: a purge takes mint < Before <= the max). Gated: the
+// relationship max when the relationship is gone (its type is unknown), else
+// min(max, its type's watermark).
+func (c *Core) relTypeRetentionFloor(id types.RelID) (floor int64, gated bool, err error) {
+	relMax := c.retentionRelMaxWatermark.Load()
+	if int64(id.MintInstant()) >= relMax {
+		return 0, false, nil
+	}
+	tok, ok, err := c.relTypeTokenForRetention(id)
+	if err != nil {
+		return 0, false, err
+	}
+	if !ok {
+		return relMax, true, nil
+	}
+	return min(relMax, c.relRetentionWatermark(tok)), true, nil
 }
 
 // relTypeTokenForRetention reads the relationship's type from its current row

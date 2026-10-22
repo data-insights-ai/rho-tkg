@@ -304,46 +304,45 @@ func (c *Core) reapCompactionForReset() error {
 // never compacted — the current row still answers. Gated by the lock-free graph
 // watermark so the common (no compaction ever) path pays nothing.
 func (c *Core) checkNodePointCompaction(id types.NodeID, txPin types.Instant) error {
+	return c.checkPointCompaction(txPin, func() (compactionStub, bool, error) { return c.loadNodeCompactionStub(id) })
+}
+
+// checkRelPointCompaction is the relationship mirror of checkNodePointCompaction.
+func (c *Core) checkRelPointCompaction(id types.RelID, txPin types.Instant) error {
+	return c.checkPointCompaction(txPin, func() (compactionStub, bool, error) { return c.loadRelCompactionStub(id) })
+}
+
+func (c *Core) checkPointCompaction(txPin types.Instant, load func() (compactionStub, bool, error)) error {
 	if txPin == 0 {
 		return nil
 	}
-	wm := c.compactedThroughTx.Load()
-	if wm == 0 || int64(txPin) >= wm {
+	if wm := c.compactedThroughTx.Load(); wm == 0 || int64(txPin) >= wm {
 		return nil
 	}
-	stub, ok, err := c.loadNodeCompactionStub(id)
+	floor, gated, err := c.compactionFloor(load)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return nil
-	}
-	if int64(txPin) < stub.LastTrimmedTxTo {
+	if gated && int64(txPin) < floor {
 		return ErrHistoryCompacted
 	}
 	return nil
 }
 
-// checkRelPointCompaction is the relationship mirror of checkNodePointCompaction.
-func (c *Core) checkRelPointCompaction(id types.RelID, txPin types.Instant) error {
-	if txPin == 0 {
-		return nil
-	}
+// compactionFloor is the point compaction gate as a floor (row 104): a pin
+// (not 0) is refused exactly when gated and pin < floor, floor = min(graph
+// watermark, the entity's stub LastTrimmedTxTo). Not gated: no compaction
+// ever, or no stub for the entity.
+func (c *Core) compactionFloor(load func() (compactionStub, bool, error)) (floor int64, gated bool, err error) {
 	wm := c.compactedThroughTx.Load()
-	if wm == 0 || int64(txPin) >= wm {
-		return nil
+	if wm == 0 {
+		return 0, false, nil
 	}
-	stub, ok, err := c.loadRelCompactionStub(id)
-	if err != nil {
-		return err
+	stub, ok, err := load()
+	if err != nil || !ok {
+		return 0, false, err
 	}
-	if !ok {
-		return nil
-	}
-	if int64(txPin) < stub.LastTrimmedTxTo {
-		return ErrHistoryCompacted
-	}
-	return nil
+	return min(wm, stub.LastTrimmedTxTo), true, nil
 }
 
 // checkScanCompaction errors a scan whose transaction-time pin falls before the

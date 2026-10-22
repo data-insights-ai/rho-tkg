@@ -255,24 +255,42 @@ func (c *Core) checkNodePointRetention(id types.NodeID, pin types.Instant) error
 	if pin == 0 {
 		return nil
 	}
-	max := c.retentionMaxWatermark.Load()
-	if max == 0 || int64(pin) >= max {
+	if graphMax := c.retentionMaxWatermark.Load(); graphMax == 0 || int64(pin) >= graphMax {
 		return nil
 	}
-	tokens, err := c.nodeLabelTokensForRetention(id)
-	if err != nil || len(tokens) == 0 {
+	floor, err := c.nodeRetentionFloor(id)
+	if err != nil {
 		return err
 	}
+	if floor != 0 && int64(pin) < floor {
+		return ErrRetentionExpired
+	}
+	return nil
+}
+
+// nodeRetentionFloor is the node point retention gate as a floor (row 104):
+// a pin (not 0) is refused exactly when pin < floor, floor = min(graph max,
+// the highest watermark of the node's labels); 0 when no label of the node
+// (current row, else newest history row) has a watermark, or the node has
+// neither.
+func (c *Core) nodeRetentionFloor(id types.NodeID) (int64, error) {
+	graphMax := c.retentionMaxWatermark.Load()
+	if graphMax == 0 {
+		return 0, nil
+	}
+	tokens, err := c.nodeLabelTokensForRetention(id)
+	if err != nil {
+		return 0, err
+	}
+	var floor int64
 	for _, tok := range tokens {
 		wm, err := c.retentionWatermarkForLabel(tok)
 		if err != nil {
-			return err
+			return 0, err
 		}
-		if wm != 0 && int64(pin) < wm {
-			return ErrRetentionExpired
-		}
+		floor = max(floor, wm)
 	}
-	return nil
+	return min(graphMax, floor), nil
 }
 
 // checkRelPointRetention is the relationship point gate of the node family.
@@ -284,7 +302,24 @@ func (c *Core) checkNodePointRetention(id types.NodeID, pin types.Instant) error
 // (checkRelTypePointRetention), not in the helpers the scans resolve their
 // candidates through: a scan already passed its own scoped gate.
 func (c *Core) checkRelPointRetention(pin types.Instant) error {
-	return c.checkScanRetentionAt(pin, scopeNodes)
+	if pin == 0 {
+		return nil
+	}
+	if floor, gated := c.relNodeFamilyFloor(); gated && int64(pin) < floor {
+		return ErrRetentionExpired
+	}
+	return nil
+}
+
+// relNodeFamilyFloor is checkRelPointRetention as a floor (row 104): the
+// node-family scan gate (checkScanRetentionAt, scopeNodes) refuses a pin (not
+// 0) exactly when gated and pin < min(any-family max, node max).
+func (c *Core) relNodeFamilyFloor() (floor int64, gated bool) {
+	anyMax := c.retentionAnyMax.Load()
+	if anyMax == 0 {
+		return 0, false
+	}
+	return min(anyMax, c.retentionMaxWatermark.Load()), true
 }
 
 // nodeLabelTokensForRetention returns the node's label tokens from its current
