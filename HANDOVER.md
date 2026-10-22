@@ -11,7 +11,7 @@ Critical path first (René 2026-10-21: "for now we should focus on the critical 
 only items that block ai-soc on Flux or sigma get built now; the rest is listed under "Next step (deferred)" below.
 
 1. **Shipped v4.69.2 = row 106** (ai-soc Flux blocker: tiered as-of pages); ai-soc pins it and reruns the full run.
-2. **Building v4.70.0 = row 104** (sigma O1-3 P1, critical path: `LowestAnsweredPin(id[s])` + retention-purge check); row 105 next.
+2. **Building v4.70.0 = row 104** (sigma O1-3 P1, critical path: `LowestAnsweredPin(id[s])` + retention-purge check); row 105 (rel composite read at a pin over a valid window, sigma shapes in todo) being sized by Fable, then built into the same minor.
 3. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
    on ai-soc's profile only.
 4. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
@@ -25,7 +25,6 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
   adjacency) → rollback of n rels costs n × pending (ai-soc Flux: one failed write-back rollback > 2 h; normal pushes 0-0.64 %).
   Resume on local branch `row102-pending-ranged` (red tests 8fa7a967 + WIP) → patch.
 - Backlog 80-82 (review findings, no requester).
-- Row 105 (sigma O1-3): composite reads at a pin on RELS (all 17 ai-soc probe types are edge types): a rel composite door + a range on tkg_valid_from; the node door `ByLabelAndProperties` exists. Size when sigma sends the slow probes.
 - sigma FYI 2026-10-21 (ai-soc BA RESHEAP, rho-attributed heap 0.53 → 1.13 GB in 24 h): 0.18 GB ristretto Calloc under
   Session.checkEntities → latestStamps. In code: each opened tiered shard owns its own badger block/index cache (badgerCfg
   passes BlockCacheSize; 0 = Badger's default, badgerstore_options.go:182), so cache RAM = open shards × per-shard size,
