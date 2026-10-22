@@ -12,6 +12,10 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
 
 1. **Shipped v4.69.2 = row 106** (ai-soc Flux blocker: tiered as-of pages); ai-soc pins it and reruns the full run.
 2. **Shipped v4.70.0 = rows 104-105** (sigma O1-3 doors); open from it: René decision §3 item 4 (purge vs retained pins).
+   sigma uses LowestAnsweredPins (P1); RelEffectiveTimelinesByProperties comes with its paging layer: on tiered the driver is
+   the first indexed key (device before estate), segments whole, DepthAll only; ai-soc declares (type, device) rel indexes.
+   Answered without code: row 107 (ai-soc /bars: sigma ListDerived as is, fixed pin = consistent, first TxFrom = VersionBefore(id, 1)).
+   Docs: README up to v4.69.1+ (row 103, bfd5aac3).
 3. **Waiting for ai-soc** (row 92): reopen `ReadHistory` 526 s vs 57 s; rho's `readUnderRLock` is unchanged since v4.66.0; rho acts
    on ai-soc's profile only.
 4. **Open work:** the open table of `tasks/backlog.md` (80-82 from the v4.66/v4.67 reviews; nothing with a requester).
@@ -24,7 +28,8 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
 - Row 102: badger `rangePending` walks the whole pending + flushing buffer per per-entity overlay read (history, disk-mode
   adjacency) → rollback of n rels costs n × pending (ai-soc Flux: one failed write-back rollback > 2 h; normal pushes 0-0.64 %).
   Resume on local branch `row102-pending-ranged` (red tests 8fa7a967 + WIP) → patch.
-- Backlog 80-82 (review findings, no requester).
+- Backlog 80-82 (review findings, no requester); review nits not taken: v4.69.2 (4) and v4.70.0 (3), in git 82558ea9 / 3c370aab.
+- Row 105 option (b): a real rel composite tx-membership sidecar (2,500-3,500 LOC, 4 backends), only if (c) measures too slow on BA.
 - sigma FYI 2026-10-21 (ai-soc BA RESHEAP, rho-attributed heap 0.53 → 1.13 GB in 24 h): 0.18 GB ristretto Calloc under
   Session.checkEntities → latestStamps. In code: each opened tiered shard owns its own badger block/index cache (badgerCfg
   passes BlockCacheSize; 0 = Badger's default, badgerstore_options.go:182), so cache RAM = open shards × per-shard size,
@@ -52,6 +57,14 @@ only items that block ai-soc on Flux or sigma get built now; the rest is listed 
 - **Housekeeping:** session scratchpad emptied 2026-10-20 (row 76); deletions stay René's call (`rm -rf` is denied to agents).
   Docs check: `go test -count=1 -run 'Docs|Consistency' ./...`. Consumer build check: Appendix B (sigma-tkgd, ai-soc,
   agent-bookkeeping).
+
+## User-only actions (René, 2026-10-22 cleanup; agents' `rm` is denied)
+
+1. `! rm -rf /dev/shm/sigma-*` (sigma test dirs, ~11 GB) and the merged worktrees in `~/Work/2026/datainsights/sigma-tkgd` (`git worktree list`).
+2. `! rm -rf /tmp/claude-1000/-home-renework2023-Work-2026-datainsights-rho-tkg/aa649ecc-3385-4943-a9bf-f630b51c9f5c/scratchpad/r3` (rho 22 M bench seed, 3.3 GB).
+3. `! rm ~/Work/2026/datainsights/rho-tkg/warm` (stray 10-byte file, untracked).
+4. gh-dashboard scratchpad (667 MB, path in that session). The cleanup message to tts-tests-b6 expired and monitoring-a9's is
+   held (different permission mode); tell them directly if wanted.
 
 ## 3. René's open decisions (my default)
 

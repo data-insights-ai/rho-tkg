@@ -9,14 +9,16 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 - Versioning: a fix is a PATCH, a new door/option a MINOR; a fix never rides in a minor, a door never in a patch; doors from
   one round of consumer requests batch into one minor, fixes into one patch (79).
 - Scope: just essential patches (consumer-blocking or wrong-answer/data bugs) EXCEPT ai-soc runtime items, which have René's
-  standing go; a go René types into a consumer session and that session relays verbatim counts (79, 80).
+  standing go; a go René types into a consumer session and that session relays verbatim counts (79, 80). Critical path
+  first: build now only what blocks ai-soc on Flux or sigma's O1-3; everything else goes to HANDOVER "Next step (deferred)" (79).
 - Models: builds Opus, a build Opus cannot finish goes to Fable; Fable reviews (branch and final batch review before the tag)
   and writes code only, running no tests; the main session runs every deciding test, gate, lint and security check; doc work
   Sonnet; build briefs end with `make lint-docker security-docker` (79).
 - Tests: new tests are `-short` and take seconds; growth/cap tests stay short via test switches; long tests only in the release
   gate `make ci-docker`, which includes the full `make test-race` (87, 66).
 - Release: gate + tag + push, then notify consumers at once; GitHub CI runs in the background; a red tag CI is fixed on main and
-  shipped as a NEW patch tag, never by rerunning the old tag's run (82); a green workflow means its gates ran (75).
+  shipped as a NEW patch tag, never by rerunning the old tag's run (82); a green workflow means its gates ran (75). The local
+  gate tests the live work tree: no code edit or merge while it runs; a push to main cancels the running main CI (82).
 - Ledger: todo.md and HANDOVER updated at every event, consolidated in place; shipped sizing/review sections fold into their rows;
   `scripts/check-ledger.sh` after every merge and before every release commit (80); doc targets at every version bump (41).
 - One owner per fact, consolidate in place, trace the cause before asking (84). Act, do not offer (81).
@@ -637,6 +639,11 @@ Rule: the release gate is `make ci-docker` AND the GitHub CI run of the pushed c
 after the local gate, tag and push; nobody waits on CI (René 2026-10-20: "not always waiting before the other agents can work
 delays everything"). CI runs in the background; the consumers get one line if a red run changes anything for them. Check `gh run list --branch main --workflow CI` before reporting a release done. A tag's red CI is fixed on main and shipped as a NEW patch tag right away; never rerun the old tag's run, it re-tests the old commit and fails the same way (René 2026-10-20: "New tag next time (this is so stupid)").
 Trigger: René 2026-10-13 "why is the ci pipeline always failing?" — CI `test` (race on 4-vCPU runners) timed out on every main push since 2026-10-10 (v4.50.1–v4.51.4) while the local 32-core gate passed; nobody looked.
+Operations (2026-10-21/22): `make ci-docker` mounts the live work tree, so code edits and merges wait until it exits (md edits
+are harmless); the release commit after a green gate changes only version lines and is checked with the docs tests. The CI
+concurrency group cancels a running main run on every push, so batch note commits while CI runs and watch the newest main run
+(no run is triggered on the tag ref). The Go build cache is shared by every session on the machine: `go clean -cache` only when
+no session builds (René's cleanup 2026-10-22: rho ran it during ai-soc's `go test -race`).
 Detector: a tag whose CI run is not `success`.
 
 ## 83. Test Enough To Prove The Item, Then Build
@@ -660,6 +667,8 @@ helpers that implement the concept (`func .*(Numeric|Widen|Equal|Key)`); two or 
 One overview (René 2026-10-16): agents report in their final message; only `tasks/todo.md` on main plans (v4 + v5); one owner per
 fact: rules in this file, state and next steps in HANDOVER, ledger and releases in todo, open items in backlog; review briefs name
 the full scope up front.
+Cost claims name their condition and are measured, not inferred (2026-10-21: "no demotion fallback, pending ≈ one group"
+ignored that one DurableCommit group can itself be large; ai-soc's failed write-back rollback then ran > 2 h, row 102).
 
 ## 85. Comment Trimming Is Editing, Not A Script
 
