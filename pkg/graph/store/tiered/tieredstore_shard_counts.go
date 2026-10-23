@@ -165,9 +165,7 @@ func (ts *Store) enforceColdShardCap() {
 				ts.recordBackgroundError(fmt.Errorf("graph: cap-close cold shard %s: %w", es.name, err))
 				slog.Error("tiered cold shard cap-close failed", "shard", es.name, "err", err)
 			}
-			es.store = nil
-			es.readTransientOpen = false
-			ts.openColdShards.Add(-1)
+			es.clearStoreLocked(ts)
 		}
 		es.shardMu.Unlock()
 	}

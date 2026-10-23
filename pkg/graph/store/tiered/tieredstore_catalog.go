@@ -156,7 +156,10 @@ func (ts *Store) rotateHotShardLocked() error {
 	for _, es := range coldDemotions {
 		es.setTier(TierCold)
 		// Do NOT close here: idle-close handles it (in-flight reads may hold
-		// pointers).
+		// pointers). The open handle now counts against MaxOpenColdShards.
+		es.shardMu.Lock()
+		es.countColdStoreLocked(ts)
+		es.shardMu.Unlock()
 		freeColdRelTemporalIndexes(es.store, es.name)
 	}
 

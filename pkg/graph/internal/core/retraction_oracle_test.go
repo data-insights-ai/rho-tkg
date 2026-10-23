@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -51,14 +52,13 @@ func TestRetractionOracle_NeverRecordedWorld(t *testing.T) {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
-	seeds, nOps := 3, 36
+	// -short runs only under -race (the race gate): a reduced sweep sized for
+	// the CI race budget; the coverage check below still holds.
+	seeds, nOps := 2, 36
 	if !testing.Short() {
 		seeds, nOps = 16, 44
-	}
-	if isRaceEnabled() {
-		seeds = 3
-		if testing.Short() {
-			seeds = 2 // the 4-vCPU CI race run; the coverage check below still holds
+		if isRaceEnabled() {
+			seeds = 3
 		}
 	}
 	// A longer sweep: RT_ORACLE_SEEDS=200 go test -run TestRetractionOracle_NeverRecordedWorld
@@ -67,18 +67,28 @@ func TestRetractionOracle_NeverRecordedWorld(t *testing.T) {
 	}
 	const base uint64 = 0x43_2E_7AC7 // "43.retract"
 	x0 := types.Instant(time.Now().Add(time.Hour).UnixMilli()/1_000_000*1_000_000 + 1_000_000)
-	var retractions, lives, compared int
-	for _, be := range txbBackends() {
-		for i := 0; i < seeds; i++ {
-			seed := base + uint64(i)
-			t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
-				r, l, c := runNeverRecorded(t, be, seed, nOps, x0)
-				retractions += r
-				lives += l
-				compared += c
-			})
+	var (
+		mu                           sync.Mutex // guards the tallies across parallel subtests
+		retractions, lives, compared int
+	)
+	// The group returns once every parallel subtest has finished, so the
+	// coverage check below sees the full tallies.
+	t.Run("runs", func(t *testing.T) {
+		for _, be := range txbBackends() {
+			for i := 0; i < seeds; i++ {
+				seed := base + uint64(i)
+				t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
+					t.Parallel()
+					r, l, c := runNeverRecorded(t, be, seed, nOps, x0)
+					mu.Lock()
+					retractions += r
+					lives += l
+					compared += c
+					mu.Unlock()
+				})
+			}
 		}
-	}
+	})
 	if t.Failed() {
 		return
 	}

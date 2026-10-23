@@ -240,9 +240,6 @@ func TestTieredCacheTuningReachesEveryShard(t *testing.T) {
 // 128MB WAL / ~2GB vlog per shard — the exact multiply-by-shard-count cost this
 // change exists to remove).
 func TestTieredFootprintKnobsReachShards(t *testing.T) {
-	if testing.Short() {
-		t.Skip("opens shard files at tuned apparent sizes incl a multi-MB vlog")
-	}
 	dir := t.TempDir()
 	const memtable = 8 << 20
 	const vlog = 4 << 20
@@ -501,16 +498,19 @@ func TestTieredColdShardRetroLinkWrite(t *testing.T) {
 // MemTableSize must NOT crash — openBadgerStoreWithRecovery migrates the
 // oversized WAL before its read-only probe, then serves every record.
 func TestTieredOversizedWALMigratedOnWarmReopen(t *testing.T) {
-	if testing.Short() {
-		t.Skip("writes ~30MB through a 64MB memtable and copies the live DataDir")
-	}
+	// Sized for the -short (and race) gate: the source memtable is just over
+	// the reopen's 16MB so its WAL (2x, 40MB apparent) is oversized for the
+	// reopen, the vlog files are 1MB instead of the stock ~2GB apparent (the
+	// live-DataDir copy reads every byte of them), and the payload stays inside
+	// one memtable so it lives in the WAL the migration must carry.
 	srcDir := t.TempDir()
 	ts1, err := New(Config{
-		DataDir:       srcDir,
-		RefLabels:     []string{"Case", "User"},
-		ShardWindow:   7 * 24 * time.Hour,
-		FlushInterval: 1<<63 - 1,
-		MemTableSize:  64 << 20, // large: the payload stays in the live WAL
+		DataDir:          srcDir,
+		RefLabels:        []string{"Case", "User"},
+		ShardWindow:      7 * 24 * time.Hour,
+		FlushInterval:    1<<63 - 1,
+		MemTableSize:     20 << 20, // > the reopen's 16MB: the payload stays in the live WAL
+		ValueLogFileSize: 1 << 20,
 	})
 	if err != nil {
 		t.Fatalf("New (source): %v", err)
@@ -523,7 +523,10 @@ func TestTieredOversizedWALMigratedOnWarmReopen(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 	pad := strings.Repeat("y", 30*1024)
-	const n = 1000
+	n := 400 // ~12MB, inside the 20MB memtable
+	if testing.Short() {
+		n = 100
+	}
 	ids := make([]types.NodeID, 0, n)
 	for i := 0; i < n; i++ {
 		node := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
@@ -566,11 +569,12 @@ func TestTieredOversizedWALMigratedOnWarmReopen(t *testing.T) {
 	// Reopen at the SMALLER memtable. Without the pre-probe migration the warm
 	// shard's read-only recovery probe would terminate the process.
 	ts2, err := New(Config{
-		DataDir:       dstDir,
-		RefLabels:     []string{"Case", "User"},
-		ShardWindow:   7 * 24 * time.Hour,
-		FlushInterval: 1<<63 - 1,
-		MemTableSize:  16 << 20,
+		DataDir:          dstDir,
+		RefLabels:        []string{"Case", "User"},
+		ShardWindow:      7 * 24 * time.Hour,
+		FlushInterval:    1<<63 - 1,
+		MemTableSize:     16 << 20,
+		ValueLogFileSize: 1 << 20,
 	})
 	if err != nil {
 		t.Fatalf("reopen at smaller memtable: %v", err)

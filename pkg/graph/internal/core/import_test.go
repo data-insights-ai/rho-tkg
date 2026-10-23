@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -508,93 +507,119 @@ func TestGraphTx_ImportWithID_CanceledContextDoesNotWaitBehindTxMutex(t *testing
 
 // --- Fix #5: ImportGraph does not block reads during streaming ---
 
-// TestImportGraph_DoesNotBlockReadsWhileStreaming verifies that concurrent GetNode
-// calls succeed during ImportGraph execution. Before fix #5, ImportGraph held
-// g.mu.Lock for the entire io.Reader read, blocking all reads.
+// TestImportGraph_DoesNotBlockReadsWhileStreaming pins fix #5: ImportGraph
+// streams the io.Reader with no graph lock held (Phase 1), so a read issued
+// while the stream is stalled mid-way completes. The reader is held
+// mid-stream until the read has returned; a regression that takes c.mu
+// before streaming blocks the read for as long as the stream is held.
 func TestImportGraph_DoesNotBlockReadsWhileStreaming(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 
-	// Build a source graph with a few nodes.
 	src, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	defer src.Close() //nolint:errcheck
-
-	n1, err := src.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	n1, err := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	n2, err := src.Nodes.Add(context.Background(), []string{"City"}, map[string]any{"city": "Vienna"})
+	n2, err := src.Nodes.Add(ctx, []string{"City"}, map[string]any{"city": "Vienna"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	_, err = src.Rels.Add(context.Background(), "LIVES_IN", n1, n2, nil)
-	if err != nil {
+	if _, err := src.Rels.Add(ctx, "LIVES_IN", n1, n2, nil); err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-
-	// Export to a buffer.
 	var buf bytes.Buffer
 	if err := src.IO.Export(&buf); err != nil {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 
-	// Build the destination graph. Keep the label registry empty so the imported
-	// registry record (Person/City from src) does not conflict with dst's registry.
 	dst, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New dst: %v", err)
 	}
 	defer dst.Close() //nolint:errcheck
-
-	// Pre-populate one node directly in the store (bypass graph.Nodes.Add so the
-	// label registry stays empty). The concurrent reader fetches this node via
-	// dst.Nodes.Get, which acquires g.mu.RLock — proving that reads are non-blocking
-	// during ImportGraph Phase 1 (which holds no lock after the fix).
+	// Put the probe node straight into the store so dst's label registry stays
+	// empty and does not conflict with the imported one.
 	const existingID = snowflake.ID(0xABCD0001)
 	if err := dst.store.PutNode(types.NewNode(types.NodeID(existingID), 1, nil)); err != nil {
 		t.Fatalf("pre-populate store: %v", err)
 	}
 
-	// Wrap the export buffer in a slow reader that yields to other goroutines,
-	// giving concurrent reads a chance to run while ImportGraph is active.
-	slow := &slowReader{r: bytes.NewReader(buf.Bytes()), delay: 2 * time.Millisecond}
+	hr := newHeldReader(buf.Bytes(), buf.Len()/2)
+	defer hr.release() // runs before dst.Close: never leave the import parked
+	importDone := make(chan error, 1)
+	go func() { importDone <- dst.IO.Import(hr, tkgio.ImportOptions{}) }()
 
-	// Launch concurrent reader that polls until import is done.
-	var readSucceeded atomic.Bool
-	var readerWg sync.WaitGroup
-	readerWg.Add(1)
+	const bound = 10 * time.Second // deadlock bound, not the oracle
+	select {
+	case <-hr.held:
+	case err := <-importDone:
+		t.Fatalf("import returned before reaching the mid-stream hold: %v", err)
+	case <-time.After(bound):
+		t.Fatal("import never reached the mid-stream hold")
+	}
+
+	readDone := make(chan error, 1)
 	go func() {
-		defer readerWg.Done()
-		for i := 0; i < 20; i++ {
-			_, err := dst.Nodes.Get(context.Background(), types.NodeID(existingID))
-			if err == nil {
-				readSucceeded.Store(true)
-			}
-			time.Sleep(2 * time.Millisecond)
-		}
+		_, err := dst.Nodes.Get(ctx, types.NodeID(existingID))
+		readDone <- err
 	}()
+	select {
+	case err := <-readDone:
+		if err != nil {
+			t.Fatalf("Get while import is held mid-stream: %v", err)
+		}
+	case <-time.After(bound):
+		hr.release()
+		<-importDone
+		<-readDone
+		t.Fatal("Get blocked while ImportGraph was held mid-stream: the import holds the graph lock while streaming")
+	}
 
-	if err := dst.IO.Import(slow, tkgio.ImportOptions{}); err != nil {
+	hr.release()
+	if err := <-importDone; err != nil {
 		t.Fatalf("ImportGraph: %v", err)
 	}
-
-	readerWg.Wait()
-
-	if !readSucceeded.Load() {
-		t.Error("concurrent GetNode never succeeded during ImportGraph — reads were likely blocked")
+	if _, err := dst.Nodes.Get(ctx, n1.ID()); err != nil {
+		t.Fatalf("imported node missing after import: %v", err)
 	}
 }
 
-// slowReader wraps an io.Reader and introduces a small delay before each Read
-// to simulate slow I/O (network stream, large file) during ImportGraph.
-type slowReader struct {
-	r     io.Reader
-	delay time.Duration
+// heldReader serves data up to cut, then parks the next Read (closing held)
+// until release is called, then serves the rest.
+type heldReader struct {
+	data     []byte
+	off, cut int
+	parked   bool
+	held     chan struct{}
+	gate     chan struct{}
+	once     sync.Once
 }
 
-func (s *slowReader) Read(p []byte) (int, error) {
-	time.Sleep(s.delay)
-	return s.r.Read(p)
+func newHeldReader(data []byte, cut int) *heldReader {
+	return &heldReader{data: data, cut: cut, held: make(chan struct{}), gate: make(chan struct{})}
+}
+
+func (h *heldReader) release() { h.once.Do(func() { close(h.gate) }) }
+
+func (h *heldReader) Read(p []byte) (int, error) {
+	if h.off >= h.cut && !h.parked {
+		h.parked = true
+		close(h.held)
+		<-h.gate
+	}
+	if h.off >= len(h.data) {
+		return 0, io.EOF
+	}
+	end := len(h.data)
+	if !h.parked {
+		end = h.cut
+	}
+	n := copy(p, h.data[h.off:end])
+	h.off += n
+	return n, nil
 }

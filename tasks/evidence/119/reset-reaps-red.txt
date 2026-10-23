@@ -1,0 +1,22 @@
+diff --git a/pkg/graph/internal/core/admin.go b/pkg/graph/internal/core/admin.go
+index 359daaf2..0476cfe6 100644
+--- a/pkg/graph/internal/core/admin.go
++++ b/pkg/graph/internal/core/admin.go
+@@ -327,7 +327,7 @@ func (c *Core) reapCoreStateForClear(leaseBytes []byte) error {
+ 		c.reapUniqueConstraintsForReset(),
+ 		c.reapCompactionForReset(),
+ 		c.reapRetentionForReset(),
+-		c.reapUniqueForeverOwnersForReset(),
++		nil, // MUTANT 119: Reset stops reaping UniqueForever owners
+ 	)
+ 
+ 	c.restoreOpCounters(opCounterSnapshot{})
+=== RUN   TestUniqueForever_ResetReaps
+    unique_forever_test.go:242: add User{email:"own@x.com"}: graph: unique constraint violation: label "User" key "email" value permanently owned by node 836575972962254848 (UniqueForever)
+--- FAIL: TestUniqueForever_ResetReaps (0.00s)
+=== RUN   TestUniqueTiered_ResetReaps
+    unique_tiered_test.go:252: post-reset add of formerly-owned value: graph: unique constraint violation: label "User" key "email" value permanently owned by node 836575977326393344 (UniqueForever)
+--- FAIL: TestUniqueTiered_ResetReaps (0.31s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.324s
+FAIL

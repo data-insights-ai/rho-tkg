@@ -1,0 +1,30 @@
+diff --git a/pkg/graph/internal/core/import.go b/pkg/graph/internal/core/import.go
+index f40b0c76..4bfa0ed8 100644
+--- a/pkg/graph/internal/core/import.go
++++ b/pkg/graph/internal/core/import.go
+@@ -102,6 +102,8 @@ func (o *IOOps) Import(r io.Reader, opts tkgio.ImportOptions) error {
+ 		return fmt.Errorf("%w: negative cap %d", ErrImportSizeLimit, opts.MaxStagedBytes)
+ 	}
+ 
++	c.mu.Lock() // MUTANT 119: import holds the graph lock while streaming
++	defer c.mu.Unlock()
+ 	// --- Phase 1: stream all records into a bounded stage (no lock) ---
+ 	stage := newImportStage(opts.StagingDir, importMemoryStageLimit)
+ 	defer stage.close()
+@@ -135,8 +137,6 @@ func (o *IOOps) Import(r io.Reader, opts tkgio.ImportOptions) error {
+ 	// Reads are from a local temp file (bounded latency, no network) so the
+ 	// time-under-lock cost is dominated by deserialization + store writes,
+ 	// not I/O. A buffered reader keeps the actual disk syscalls cheap.
+-	c.mu.Lock()
+-	defer c.mu.Unlock()
+ 	if c.closed.Load() {
+ 		return ErrGraphClosed
+ 	}
+=== RUN   TestImportGraph_DoesNotBlockReadsWhileStreaming
+=== PAUSE TestImportGraph_DoesNotBlockReadsWhileStreaming
+=== CONT  TestImportGraph_DoesNotBlockReadsWhileStreaming
+    import_test.go:580: Get blocked while ImportGraph was held mid-stream: the import holds the graph lock while streaming
+--- FAIL: TestImportGraph_DoesNotBlockReadsWhileStreaming (10.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	10.017s
+FAIL

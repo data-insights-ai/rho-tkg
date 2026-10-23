@@ -1,0 +1,11 @@
+--- PASS: TestDrainSpinLimitConstant (0.06s)
+--- PASS: TestTieredClose_LeakedEventShardCheckinTimesOutInsteadOfHanging (0.11s)
+--- PASS: TestTieredClose_LeakedRefShardCheckinTimesOutInsteadOfHanging (0.20s)
+--- PASS: TestColdShardStaysOpenForTheNextRead (1.92s)
+--- PASS: TestColdShardCapBoundsOpenHandles (2.02s)
+--- PASS: TestColdCapNeverClosesAShardBeingRead (1.36s)
+--- PASS: TestTieredPutRelationship_ER_SecondWriteFailsLeavesNoResidue (0.59s)
+--- PASS: TestTieredDeleteNodesBatch_LaterBucketFailsRestoresEarlierBuckets (0.59s)
+--- PASS: TestTieredFootprintKnobsReachShards (0.49s)
+--- PASS: TestTieredOversizedWALMigratedOnWarmReopen (1.73s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	10.579s

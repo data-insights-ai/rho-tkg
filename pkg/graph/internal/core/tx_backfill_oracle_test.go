@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1101,56 +1102,75 @@ func TestTxBackfillOracle_CrossBackend(t *testing.T) {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
-	seeds, nOps := 24, 40
+	// -short runs only under -race (the race gate), sized for the CI race
+	// budget: the first crossSeeds seeds run on every backend, the rest on
+	// the reference backend only (its oracle checks still run). The
+	// generator-coverage check below counts the reference backend alone.
+	seeds, nOps, crossSeeds := 24, 40, 6
 	if !testing.Short() {
 		seeds, nOps = 48, 48
+		crossSeeds = seeds
 	}
 	// A longer sweep: TXB_ORACLE_SEEDS=300 go test -run TestTxBackfillOracle_CrossBackend
 	if n, err := strconv.Atoi(os.Getenv("TXB_ORACLE_SEEDS")); err == nil && n > 0 {
-		seeds = n
+		seeds, crossSeeds = n, n
 	}
 	const base uint64 = 0x7B_0D_15 // "tx-bf-15"
 	// One test clock origin for every backend: read per backend, the wall
 	// clock could cross a rounding boundary between two runs of a seed and
 	// shift every stamp of the later backend.
 	x0 := types.Instant(time.Now().Add(time.Hour).UnixMilli()/1_000_000*1_000_000 + 1_000_000)
-	accepted := map[string]int{}
-	refused, intents, above := 0, 0, 0
-	for i := 0; i < seeds; i++ {
-		seed := base + uint64(i)
-		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
-			var (
-				refCanon   string
-				refAnswers []string
-				probes     []probe
-				pins       []types.Instant
-			)
-			for bi, be := range txbBackends() {
-				canon, answers, p, pn, o := txbOracleRun(t, be, seed, nOps, x0, probes, pins)
-				if bi == 0 {
-					refCanon, refAnswers, probes, pins = canon, answers, p, pn
-					for k, v := range o.accepted {
-						accepted[k] += v
+	var (
+		mu                      sync.Mutex // guards the coverage tallies across parallel seeds
+		accepted                = map[string]int{}
+		refused, intents, above int
+	)
+	// The group returns once every parallel seed has finished, so the
+	// coverage check below sees the full tallies.
+	t.Run("seeds", func(t *testing.T) {
+		for i := 0; i < seeds; i++ {
+			seed := base + uint64(i)
+			t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
+				t.Parallel()
+				var (
+					refCanon   string
+					refAnswers []string
+					probes     []probe
+					pins       []types.Instant
+				)
+				backends := txbBackends()
+				if i >= crossSeeds {
+					backends = backends[:1]
+				}
+				for bi, be := range backends {
+					canon, answers, p, pn, o := txbOracleRun(t, be, seed, nOps, x0, probes, pins)
+					if bi == 0 {
+						refCanon, refAnswers, probes, pins = canon, answers, p, pn
+						mu.Lock()
+						for k, v := range o.accepted {
+							accepted[k] += v
+						}
+						refused += o.refused
+						intents += len(o.intents)
+						above += o.aboveCurrent
+						mu.Unlock()
+						continue
 					}
-					refused += o.refused
-					intents += len(o.intents)
-					above += o.aboveCurrent
-					continue
-				}
-				if canon != refCanon {
-					o.fail("chains differ from %s:%s", txbBackends()[0].name, txbLineDiff(refCanon, canon))
-				}
-				if len(answers) != len(refAnswers) {
-					o.fail("%d answers; %s gave %d", len(answers), txbBackends()[0].name, len(refAnswers))
-				}
-				for j := range answers {
-					if answers[j] != refAnswers[j] {
-						o.fail("answer differs from %s:\n %s\n %s", txbBackends()[0].name, refAnswers[j], answers[j])
+					if canon != refCanon {
+						o.fail("chains differ from %s:%s", txbBackends()[0].name, txbLineDiff(refCanon, canon))
+					}
+					if len(answers) != len(refAnswers) {
+						o.fail("%d answers; %s gave %d", len(answers), txbBackends()[0].name, len(refAnswers))
+					}
+					for j := range answers {
+						if answers[j] != refAnswers[j] {
+							o.fail("answer differs from %s:\n %s\n %s", txbBackends()[0].name, refAnswers[j], answers[j])
+						}
 					}
 				}
-			}
-		})
-	}
+			})
+		}
+	})
 	if t.Failed() {
 		return
 	}
