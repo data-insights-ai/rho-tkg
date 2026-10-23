@@ -32,8 +32,59 @@ Next steps and René's open decisions: `tasks/todo.md`.
 BA / BO = one customer's data day each (ai-soc estates); Flux = the machine where ai-soc runs full runs (paths /srv/fast/rene/...);
 PINnn = ai-soc's numbered dependency pin; R-numbers (R19, R20, R32 ...) and O1-3, P1, F0b = sigma's own work items (O1-3 = sigma's
 resident-state work: counting state leaves RAM; P1 its first step); a "cut" = one committed ingest step (a tx pin); rows NN = the
-user-request rows (open ones in tasks/todo.md, all in `git show aeb7f8e0:tasks/todo.md`); backlog NN = the items of tasks/todo.md "### Backlog" (under Parked) (closed ones: docs/CHANGELOG.md);
+user-request rows (all in `git show aeb7f8e0:tasks/todo.md`); backlog NN = the items of "## Backlog" below (closed ones:
+docs/CHANGELOG.md); todo tags and their rows: CHAIN, CHAIN-2 = row 122; R37 = 121; REOPEN = 92; PENDING = 102;
+RELSIDECAR = 105; PURGE = 104; COLDSTART = 108; GUARDS = 118; FLAKE, SUITE, NOCOMPRESS = 119; V5 = 61; SHARD = 117;
 lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
+
+## Decisions waiting for René (todo items "Waits for: René"; my default)
+
+- CHAIN-2: rho's options are (a) the believed row stays the current row, so a re-derived fact reads the current row,
+  not history; (b) an excise piece stores no copy of the row; (c) a delta's anchor is decoded once per read, not once
+  per row; (d) decoded rows closer to their stored size. Default: none before CHAIN's numbers.
+- REVIEWS: findings not taken under the scope rule (tests review #5-#10, code review #4-#7, docs #9-#10, old rows 77-82).
+  Default: leave them until a consumer hits one.
+- PURGE (row 104): (a) no rho change, sigma treats not-found for a known id as purged; (b) `ErrRetentionExpired` via a
+  per-entity purge tombstone (behaviour change). Default: (a).
+- AXIS: `UntimedWholeAxis` as the default for new stores, announced in CHANGELOG `[4.65.0]` for "the next minor" and held
+  for five minors. Default: keep holding; the next minor makes it or rewords the notice.
+- FOLDS (backlog 16): keep today's documented behaviour. Default: keep.
+- TOMBSTONE: rebuild branch `tombstone-writer-v4.63` (`37a1ff56`) on the v4.66 axis code, ~½ day, a minor, heads-up to
+  sigma and ai-soc. Default: parked until sigma or ai-soc needs P24.
+- V5 (row 61): open WPs and the breaking API-pass candidates in `git show 791c1aa3:tasks/todo.md`. Default: paused;
+  `v5.0.0-alpha.1` at its S2 exit once restarted.
+- SHARD (row 117): plan, defaults and the blocker (the reference shard grows ~60 GB per BA day) in
+  `git show 791c1aa3:tasks/todo.md`. Default: parked until René restarts it.
+
+## Backlog (no requester; numbers stable, code cites "backlog N"; details: `git show 6e20157c:tasks/backlog.md`)
+
+- 0 — column segments on NVMe (ADR-0011): steps S4 merge, S6, S7 open
+- 1 — a failed import should leave no change-log record
+- 2 — test gaps: tiered crash matrix, clock skew vs rotation, tiered metadata fuzz, extreme inputs, race soak, validation limits
+- 3 — two adjacency-at reads skip badger's fast path and fold deleted rels per call
+- 4 — five temporal read edge cases (future-only during-reads, delete of a future row, as-of after a cascade, unset valid start, the 2034 ID horizon)
+- 5 — 388 B per HOP row left to compact (key tokens, history versions, cache of frozen rows, string interning)
+- 7 — `DeleteWithTx(id, t)` refuses a recorded valid end at or after t; goes with TOMBSTONE and 25
+- 10 — tiered lacks the node-side temporal candidate index
+- 13 — async ingest can blame the wrong group when a node and a rel share a number
+- 16 — range lookups check the resolved version (FOLDS)
+- 20 — a missing benchmark for `RelAtTx`
+- 23 — the change feed prefetches unused values and may read past its keyspace
+- 25 — close, pin, delete: an as-of rewind reopens the old range; goes with TOMBSTONE and 7
+- 26 — chains with two rows of one version keep the old order
+- 31 — `NodeAsOf` misses a row above a version gap
+- 37 — tiered error rollback: a reader can see empty history for a moment
+- 39 — compaction stubs survive a reset; an import of an old ID can restart at version 0
+- 40 — cascade resumption can write one extra split row
+- 45 — three errors lack an exported alias; one is outside the errors inventory test
+- 46 — stale comments (old ADR and lesson numbers)
+- 47 — an unverified claim about `NodesByLabelAt`; no RAM budget for property sidecars
+- 71 — the valid-time hull of current rows takes a full pass per call
+- 76 — a number lookup makes one store call per number width
+- 78 — `EndValidity` lacks its with-tx, batch and ingest twins
+- 80 — whole-axis entities patched while closed keep a stale current row
+- 81 — sharded: a rel row with a local start and a remote end is not repaired at open
+- 82 — tiered: an adjacency read of a reference node at full depth opens every cold shard
 
 ## User-only actions (René, 2026-10-22 cleanup; agents' `rm` is denied)
 
