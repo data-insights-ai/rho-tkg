@@ -77,9 +77,10 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 
 ## Later
 
-- **FLUSHPART** — A flush above badger's batch limit (about 10 MB or 105,000 entries) is several transactions, so a crash
-  can keep rows without their change-log records and counters (`docs/badger.md` rule 1). Done when: a crash test at
-  each split point reopens consistent, released as a patch.
+- **FLUSHPART** — A flush above badger's batch limit (about 10 MB or 104,855 entries) is several transactions, so a
+  crash keeps a random subset of its rows, loses its change-log records for good, and after a purge leaves a store that
+  refuses to open (`docs/badger.md` rule 1). Done when: a crash test at a planted split reopens consistent and loses
+  no record, released as a patch.
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
 - **PREFETCH** — 13 iterators turn on value prefetching, one goroutine per row for values that are inline anyway (rule

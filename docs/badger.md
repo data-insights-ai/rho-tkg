@@ -30,8 +30,11 @@ Dir/
   log, and one above `maxBatchSize` (about 10 MB) cannot be written at all (section 2).
 - **Versions.** Every key carries a commit timestamp. A read sees the newest version at or below its read timestamp.
 - **A cleanly closed directory** holds `MANIFEST`, `KEYREGISTRY`, `DISCARD`, the `.sst` files and a tiny `.vlog`: no
-  `.mem` (Close flushes the memtable) and no `LOCK`. A `.mem` file means an unclean close; the next open replays it. A
-  leftover `LOCK` file is only a stale pid file: whether the directory is open is told by its flock, not by the file.
+  `.mem` (Close flushes the memtable) and no `LOCK`. A `.mem` file means an unclean close; the next open replays it into
+  a full memtable arena (`db.go:325`, `memtable.go:99`), read-only or not. A WAL torn at its end is cut after the last
+  complete entry by a writable open, silently; a read-only open refuses it with `ErrTruncateNeeded`
+  (`memtable.go:209-212`). A leftover `LOCK` file is only a stale pid file: whether the directory is open is told by its
+  flock, not by the file.
 
 ## 2. Writes and durability
 
@@ -51,6 +54,8 @@ Dir/
 - **Stalls.** A full memtable is queued for flushing and a new one allocated; with `NumMemtables` (5) waiting, writers
   poll every 10 ms (`db.go` ensureRoomForWrite). With 15 L0 tables (`NumLevelZeroTablesStall`) the flusher waits for
   compaction (`levels.go:1588-1597`).
+- **A split batch after a crash.** Parts commit in order, one write request each, so a crash keeps a prefix of the
+  parts (the WAL replays in order). Each part holds whatever entries the caller added first.
 - **Durability.** `SyncWrites` msyncs the active WAL once per write request (`writeToLSM`, `db.go:826-827`) and, through
   a deferred sync in `vlog.write`, the current value-log file once per write group, even when it received nothing.
   Measured on NVMe, one request per group: 630-774 us per synced request, of which 444 us is the WAL msync and 53 us the
@@ -74,8 +79,10 @@ Dir/
   900-byte row, warm block cache: 3,667 B per `Get` inside one read transaction (one table), 4,581 B with versions in
   four tables, 3,795 B with its own read transaction per `Get` (rho's cold point-read pattern).
 - **A forward walk is nearly free.** `Iterator.Next` reuses the previous item and its buffers (`iterator.go` Next);
-  measured 7 B per row (21-23 B with four tables). `Seek` drops the current item and allocates a new one with fresh
-  buffers (`iterator.go:726-760`): measured 2,315 B per row for one `Seek` per row, between a walk and a `Get`.
+  measured 7 B per row (21-23 B with four tables). `Seek` returns the prefetched items to the reuse list but not the
+  current one (`prefetch` sets it to nil, `iterator.go:726-760`), so each `Seek` allocates one item with fresh buffers,
+  on top of re-seeking every table iterator: measured 2,315 B per row for one `Seek` per row, between a walk and a
+  `Get`.
 - **`Prefix` prunes tables** by their smallest and biggest keys (`iterator.go:332-376`); without it the iterator merges
   every table of every level. The bloom filter is used only by key iterators.
 - **`PrefetchValues`** (default true, 100 items) starts one goroutine per item to copy its value (`iterator.go:696-715`).
@@ -112,7 +119,14 @@ Dir/
   2 MB and 10 goroutines.
 - **Close** (`db.go:531-660`): blocks writes, flushes the current memtable to an L0 table, waits for a running
   compaction, closes the value log and tables, removes `LOCK`, syncs the directories.
-- **Read-only** opens replay the WALs read-only, allocate no memtable, run no compactors, and refuse a missing directory.
+- **Read-only** opens allocate no new memtable and run no compactors, so a read-only shard never compacts; they still
+  replay every leftover `.mem` into a full arena (a cleanly closed directory has none: the 2 MB measured), refuse a torn
+  WAL, and refuse a missing directory. On a read-only mount only a read-only open works.
+- **No integrity check of data.** With `ChecksumVerificationMode` off, a changed byte in a table's data block reaches
+  the reader undetected (the table index alone is checksummed at open); rho's decoder fails closed only on a malformed
+  row, and only `VerifyShard` sees a silently changed value.
+- **Mappings.** Every `.sst`, `.mem` and `.vlog` is a separate mmap; a 1 GB shard of 2 MB base tables is about 500,
+  well under Linux's default `vm.max_map_count`.
 
 ## 6. Options
 
@@ -139,9 +153,16 @@ Dir/
 Each rule says what rho does; a gap is a `tasks/todo.md` item.
 
 1. **A flush is atomic or self-consistent per part.** A `WriteBatch` above the limits is several transactions, so a
-   crash keeps a prefix of it. rho's flush (`badgerstore_flush.go`) writes rows, then counters, then change-log records
-   and the LSN watermark in one batch and calls that atomic: above about 10 MB or 105,000 entries a crash can keep
-   rows without their change-log records. Gap: FLUSHPART.
+   crash keeps a prefix of it. rho's flush (`badgerstore_flush.go:296-355`) adds its write buffer's ops in map order
+   (`pending` is a map, `badgerstore.go:549`), then the counters, then the change-log records and `LastLSNKey`, and its
+   comments call that atomic. A crash after the first part keeps a random subset of the flush's rows and keys (a
+   current row without its history row, an index key without its row), the old counters, and none of the change-log
+   records: replicas and the feed miss those mutations for good (LSNs are not reused, `seedLogLSN` takes the highest
+   record, `badgerstore_changelog.go:346-368`). An undercount heals at open; a flush that removed rows (purge, erasure)
+   reopens with counters above the live rows and the store refuses to open (`reconcilePersistedCounter`,
+   `badgerstore.go:1947-1966`). A torn entity is not detected at open. Trigger: a flush above about 10 MB of entries
+   (about 6,000-10,000 rows of 1 KB with their index keys) or 104,855 entries: bulk imports, large batches, purge
+   chunks, fast ingest without `SyncWrites`. Gap: FLUSHPART.
 2. **Read by walking, not by point gets, where IDs come in order.** A `Get` costs about 4x the row and a read
    transaction; a forward walk costs almost nothing. The read snapshot walks; entity point reads on a cache miss,
    history version and anchor reads, and committed-stamp reads still `Get`. Gap: GETWALK.
@@ -149,8 +170,10 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
    including the full node scan at open when there is no open image. Gap: PREFETCH.
 4. **Every iterator gets the narrowest `Prefix`**, at least its keyspace byte, so other keyspaces' tables are not
    merged. The read-snapshot and scan-snapshot walkers have none. Gap: ITERPREFIX.
-5. **Open read-only when no write follows.** A writable open costs 83 MB and 6 more goroutines than a read-only one;
-   cold shards open writable for reads. Gap: SHARD step 4a.
+5. **Open read-only when no write follows.** A writable open of a cleanly closed directory costs 83 MB and 6 more
+   goroutines than a read-only one; cold shards open writable for reads. A read-only handle must be closed before a
+   writable open of the same directory (the flock), and a shard left with `.mem` files needs one writable open to
+   recover before it opens read-only. Gap: SHARD step 4a.
 6. **Badger creates a missing directory; rho must refuse it** for a shard it already knows. Gap: SHARD step 1.
 7. **Hold read transactions briefly.** A read transaction pins versions from compaction and the value log; release it
    before user callbacks (the read snapshot does, per chunk).
@@ -158,7 +181,8 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
 9. **The value-log GC loop has work only for rows of 1 MB or more** (`badgerstore_flush.go` gcLoop); without such rows
    it finds nothing. Gap: VLOGGC.
 10. **Batch synced writes.** Under `SyncWrites` every request costs a WAL msync and every write group a value-log msync;
-    rho's group commit writes one request per group, which is right.
+    rho's group commit writes one request per group, which is right, unless the flush is split (rule 1): each part is
+    a request of its own.
 11. **Store-wide operations pause writes.** `DropPrefix` / `DropAll` refuse concurrent writes; rho calls them only in
     `Clear`, under its own locks.
 
