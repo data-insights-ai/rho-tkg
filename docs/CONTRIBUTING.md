@@ -20,8 +20,9 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   (3) the implementation; (4) the tests green; (5) the review; (6) when finished, the item leaves `tasks/todo.md` and its
   `docs/CHANGELOG.md` entry names the same tag. HANDOVER (state) is updated at every event; `scripts/check-ledger.sh` before
   every release commit.
-- Models: Opus builds, Fable reviews (one round per branch, writes no tests, runs none), Sonnet writes docs; the main session runs
-  every test, lint and gate that decides a merge or release.
+- Who works (René 2026-10-23): the main session does the work itself, analysis and code alike, and runs every test, lint
+  and gate. One persistent Fable agent reviews and monitors (writes no code or tests, runs none). No other subagents unless
+  René asks for them.
 - Act, do not offer: open work with a clear next step is started. Before asking René a design question, trace its cause in
   the code and try to remove it; ask only the remainder.
 - Behaviour changes go through the deprecation ritual (`docs/api.md` § Stability and deprecation).

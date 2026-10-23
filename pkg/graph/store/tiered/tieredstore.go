@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -575,13 +576,14 @@ func New(cfg Config) (*Store, error) {
 		ts.changeLogAlloc = newChangeLogAllocator(ts)
 	}
 
-	// Create directory layout for disk-backed stores.
+	// Create the directory layout for disk-backed stores. The reference and
+	// archive shard directories are created by their first open, never here:
+	// a store whose catalog names them must find them (requireShardDir), and
+	// an empty directory made here would hide a lost one.
 	if !cfg.InMemory {
 		dirs := []string{
 			filepath.Join(cfg.DataDir, "meta"),
-			filepath.Join(cfg.DataDir, "reference"),
 			filepath.Join(cfg.DataDir, "events"),
-			filepath.Join(cfg.DataDir, "archive"),
 		}
 		for _, d := range dirs {
 			if err := os.MkdirAll(d, 0o750); err != nil {
@@ -603,8 +605,12 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
-	// Open reference shard.
-	refStore, err := ts.openBadgerStore("reference")
+	// Open reference shard (an existing store's must be there).
+	openRef := ts.openBadgerStore
+	if _, ok := ts.catalog.GetShard("reference"); ok {
+		openRef = ts.openExistingBadgerStore
+	}
+	refStore, err := openRef("reference")
 	if err != nil {
 		return nil, fmt.Errorf("graph: open reference shard: %w", err)
 	}
@@ -665,17 +671,19 @@ func New(cfg Config) (*Store, error) {
 	windowEnd := windowStart.Add(window)
 
 	// Check if a hot shard already exists in catalog (mid-window restart).
+	openHot := ts.openBadgerStore
 	if existing, ok := ts.catalog.HotEventShard(); ok {
 		hotName = existing.Name
 		windowStart = existing.TimeStart
 		windowEnd = existing.TimeEnd
+		openHot = ts.openExistingBadgerStore
 	}
 
 	hotDir := hotName
 	if !cfg.InMemory {
 		hotDir = filepath.Join("events", hotName)
 	}
-	hotStore, err := ts.openBadgerStore(hotDir)
+	hotStore, err := openHot(hotDir)
 	if err != nil {
 		_ = refStore.Close() // best-effort cleanup; returning primary error
 		return nil, fmt.Errorf("graph: open hot event shard: %w", err)
@@ -1436,6 +1444,41 @@ func (ts *Store) openBadgerStore(name string) (*BadgerStore, error) {
 	return NewBadgerStore(ts.badgerCfg(name, false))
 }
 
+// shardDir is the directory of the shard at catalog path rel: every shard
+// path goes through here (SHARD step 1, the seam ADR-0012's volumes resolve
+// through).
+func (ts *Store) shardDir(rel string) string {
+	return filepath.Join(ts.dataDir, rel)
+}
+
+// requireShardDir fails with fs.ErrNotExist when the directory of a shard the
+// catalog already names is missing (a lost or unmounted volume). Badger would
+// create an empty directory and the store would answer "not found" for every
+// row the shard held. A shard being created (rotation, the first archive, a
+// new store) does not call it.
+func (ts *Store) requireShardDir(rel string) error {
+	if ts.inMemory {
+		return nil
+	}
+	dir := ts.shardDir(rel)
+	if _, err := os.Stat(dir); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("graph: shard directory %s is missing: %w", dir, fs.ErrNotExist)
+		}
+		return fmt.Errorf("graph: shard directory %s: %w", dir, err)
+	}
+	return nil
+}
+
+// openExistingBadgerStore is openBadgerStore for a shard the catalog already
+// names: it refuses a missing directory instead of creating one.
+func (ts *Store) openExistingBadgerStore(name string) (*BadgerStore, error) {
+	if err := ts.requireShardDir(name); err != nil {
+		return nil, err
+	}
+	return ts.openBadgerStore(name)
+}
+
 // badgerCfg builds the per-shard BadgerStoreConfig from the tiered store's
 // configuration. It is the SINGLE source of truth for shard options — shared by
 // openBadgerStore and by the explicit WAL migration in
@@ -1471,7 +1514,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		SharedFlushHold: &ts.flushHold,
 	}
 	if !ts.inMemory {
-		cfg.Dir = filepath.Join(ts.dataDir, name)
+		cfg.Dir = ts.shardDir(name)
 	}
 	// Inject the canonical property-key registry so this shard's loadIndexes can
 	// resolve tokenized property keys at open. Nil while the reference shard
@@ -1544,6 +1587,11 @@ func (ts *Store) shardCfg(name string, readOnly, cold bool) BadgerStoreConfig {
 }
 
 func (ts *Store) openShardStoreWithRecovery(name string, cold bool) (*BadgerStore, error) {
+	// Every reopen of a cataloged shard (lazy cold, warm at open, the drop and
+	// Clear rollbacks) comes through here.
+	if err := ts.requireShardDir(name); err != nil {
+		return nil, err
+	}
 	// Flush any oversized WAL BEFORE the read-only probe. A read-only open
 	// replays WALs into the same MemTableSize-bounded arena as a writable one
 	// (badger openMemTables runs before its read-only branch), so an oversized
