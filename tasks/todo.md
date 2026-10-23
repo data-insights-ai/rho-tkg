@@ -20,7 +20,8 @@ Each item: one sentence, then when it is done and what it waits for.
    good); without the change log a crashed removal flush leaves "node counter 20000 does not match 4 live rows" and the
    store refuses to open. The first simulation passed because Store.Close's flush loop ran a final flush that consumed
    the injected failure; the crash now stops the store without any final flush.
-2. [ ] Fable reviews the fix design: a flush that fits in one badger transaction commits as today; a larger one is staged
+2. [ ] (in review, 2026-10-23; ai-soc asked for its flush sizes, change-log use and rollback risk) Fable reviews the
+   fix design: a flush that fits in one badger transaction commits as today; a larger one is staged
    under a private key prefix, made visible by a small marker, applied, then cleaned up; at open a marker means
    re-apply, no marker means discard the staging.
 3. [ ] The change is built and the tests pass, under `-race` too.
