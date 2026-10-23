@@ -40,6 +40,7 @@ import (
 // (TestFlushingCommitWindow_* with historyScanTestHook), which lands a
 // concurrent flush inside the window on demand.
 func TestBitemporalOracle_BadgerCommitWindow(t *testing.T) {
+	t.Parallel()
 	const iterations = 10
 	const base uint64 = 0xB17E_C0DE_64 // "bit-code-64"
 

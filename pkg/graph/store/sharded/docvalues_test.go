@@ -126,6 +126,7 @@ func addSpread(t *testing.T, g *graph.Graph, labels []string, count int, props f
 // column and an empty label decline; DocValuesColumn states numeric for the
 // pure column and none for the mixed one.
 func TestShardedDocValuesAcrossSlots(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g := newLanedShardedGraph(t, 4)
 	nodes, slots := addSpread(t, g, []string{"P"}, 60, func(i int) map[string]any {
@@ -262,6 +263,7 @@ func addSpreadOther(g *graph.Graph) (int, bool, error) {
 
 // Concurrent readers of one sharded snapshot (run under -race).
 func TestShardedDocValuesSnapshotConcurrentReads(t *testing.T) {
+	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	addSpread(t, g, []string{"P"}, 40, func(i int) map[string]any { return map[string]any{"age": int64(i)} })
 	reader, _, ok, err := g.Nodes().DocValuesSnapshot("P", []string{"age"})

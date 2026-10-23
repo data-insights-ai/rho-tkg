@@ -13,6 +13,7 @@ import (
 // implementation that reads only the map reports a sealed relationship as
 // not found (and LatestStamps would call it deleted).
 func TestCurrentStamps_SealedRelationships(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewSource(42)) // #nosec G404 -- deterministic test data
 	tw := newSegTwin(t, 0, 6)
 	for i := 0; i < 40; i++ {

@@ -13,6 +13,7 @@ import (
 // across a reopen, clean (open image) and rebuilt, as the write path holds
 // them; OutgoingRelIDsOfType filters them by type like IncomingRelIDs.
 func TestCoLocatedLegsSurviveReopen(t *testing.T) {
+	t.Parallel()
 	for _, rebuild := range []bool{false, true} {
 		name := "clean"
 		if rebuild {

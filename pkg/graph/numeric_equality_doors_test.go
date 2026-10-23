@@ -82,6 +82,7 @@ func exactNumber(v any) (*big.Float, bool) {
 // filter, and the exact counts (count == len(lookup)), for every numeric width,
 // NaN, ±Inf, -0.0, nil and the 2^53 / 2^63 boundaries.
 func TestPropertyEqualityDoorsAgree(t *testing.T) {
+	t.Parallel()
 	nan32 := float32(math.NaN())
 	inf32 := float32(math.Inf(1))
 	stored := []any{
@@ -244,6 +245,7 @@ func relIDs(rs []*types.Relationship) []int64 {
 // RangeCardinalityAt [3, 3] equals the equality count, 2^53+1 is not in
 // [2^53, 2^53], and an Update of int64(3) to 3.0 stores the float64.
 func TestPropertyEqualityWriteDoors(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		n, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{"v": int64(3), "nan": math.NaN()})
@@ -323,6 +325,7 @@ func TestPropertyEqualityWriteDoors(t *testing.T) {
 // alone passes, while a new value equal to them, or a change into one, is
 // refused.
 func TestUniqueLegacyWidthTwins(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1})
 	if err != nil {

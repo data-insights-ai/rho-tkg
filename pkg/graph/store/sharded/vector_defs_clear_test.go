@@ -22,6 +22,7 @@ import (
 // package-internal since there is no public introspection door for it) and
 // that the search-side behavior (ErrVectorIndexNotFound) is unchanged.
 func TestClear_ResetsVectorDefs(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 2)
 
 	const label, propKey = uint16(5), "embedding"

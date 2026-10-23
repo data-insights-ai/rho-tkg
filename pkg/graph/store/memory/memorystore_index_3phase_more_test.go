@@ -71,6 +71,7 @@ func TestCreateCompositePropertyIndex_ConcurrentMutationDuringScanIsReconciled(t
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ms := New()
 	const n = 20_000
 	for i := 1; i <= n; i++ {
@@ -325,6 +326,7 @@ func TestCreateHighFrequencyIndex_ReleasesLockDuringScan(t *testing.T) {
 }
 
 func TestCreateHighFrequencyIndex_ConcurrentMutationDuringScanIsReconciled(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	const n = 20_000
 	for i := 1; i <= n; i++ {
@@ -463,6 +465,7 @@ func TestCreateVectorIndexWithOptions_ConcurrentMutationDuringScanIsReconciled(t
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ms := New()
 	const n = 5_000
 	const dims = 4

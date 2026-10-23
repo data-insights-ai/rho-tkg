@@ -190,6 +190,7 @@ func r10CheckPrefixWalk(t *testing.T, what string, all, walked []r10Row, prefix 
 //     stored value at each of the preferred width, the class partition;
 //   - RelPropertyTypeClassCounts equal the brute-force partition.
 func TestRound10CompositeOrderedWalksAndStats(t *testing.T) {
+	t.Parallel()
 	n, rounds := 120, 12
 	if testing.Short() {
 		n, rounds = 60, 6
@@ -399,6 +400,7 @@ func TestRound10CompositeOrderedWalksAndStats(t *testing.T) {
 // (a part without a usable index fails the composite walk); the bounds
 // decline.
 func TestRound10CompositeWalkRefusesWithoutIndex(t *testing.T) {
+	t.Parallel()
 	for _, b := range r10CompositeBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)

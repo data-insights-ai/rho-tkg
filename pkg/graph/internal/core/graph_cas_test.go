@@ -348,6 +348,7 @@ func TestCAS_NaNStillRequiresExactType(t *testing.T) {
 }
 
 func TestCAS_RegisteredCustomStructNaNMatches(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(casNaNProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}

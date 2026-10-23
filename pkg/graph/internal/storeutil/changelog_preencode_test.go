@@ -16,6 +16,7 @@ import (
 // ingest producer thread pre-encode the change-log body and the applier patch
 // it — with zero risk of a diverged feed record.
 func TestPreEncodeNodePutPayloadV2CrownEquivalence(t *testing.T) {
+	t.Parallel()
 	mkNode := func(i int, props map[string]any) *types.Node {
 		n := types.NewNode(types.NodeID(1000+i), uint16(1+i%3), []uint16{uint16(10 + i%2)})
 		ps, err := types.NewOwnedPropertySlice(props)
@@ -110,6 +111,7 @@ func TestPreEncodeNodePutPayloadV2CrownEquivalence(t *testing.T) {
 // (BACKLOG 21f/15p): Patch(PreEncodeRelPutPayloadV2(R,0),T) ==
 // RelPutPayload(R,T) byte-for-byte.
 func TestPreEncodeRelPutPayloadV2CrownEquivalence(t *testing.T) {
+	t.Parallel()
 	mkRel := func(i int, props map[string]any) *types.Relationship {
 		start := types.NodeID(2000 + i)
 		end := types.NodeID(3000 + i)

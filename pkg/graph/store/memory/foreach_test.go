@@ -312,6 +312,7 @@ func TestMemoryStore_ForEachDeletedRelID(t *testing.T) {
 }
 
 func TestMemoryStore_ForEachCallbacksCanMutateStore(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	if err := ms.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
 		t.Fatal(err)

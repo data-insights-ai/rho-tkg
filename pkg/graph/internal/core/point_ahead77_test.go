@@ -20,6 +20,7 @@ import (
 // unpinned point door and the at-tx door at the newest TxFrom answer the
 // segment's version.
 func TestPointDoorAheadOfClock77(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, be := range r10Backends() {
 		for _, rel := range []bool{false, true} {

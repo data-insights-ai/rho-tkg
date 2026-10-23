@@ -14,6 +14,7 @@ import (
 // TestIngestPipeline_PublicFacadeSmoke exercises every public method on the
 // ingest sub-API through the graph façade end-to-end (Testing Rule 1).
 func TestIngestPipeline_PublicFacadeSmoke(t *testing.T) {
+	t.Parallel()
 	g, err := graph.New(graph.Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)

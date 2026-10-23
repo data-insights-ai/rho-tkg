@@ -26,6 +26,7 @@ import (
 // range covering v0's start). Both v0 and v1 cover t=2500; v1 must win
 // (newest belief), and v1 must also become the new "current" row.
 func TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -94,6 +95,7 @@ func TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent(t *testing.T) {
 // TestCascadeRel_OpenCorrectionBeforeUntouchedOpenCurrent is the relationship
 // mirror of TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent (rule 2).
 func TestCascadeRel_OpenCorrectionBeforeUntouchedOpenCurrent(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -167,6 +169,7 @@ func TestCascadeRel_OpenCorrectionBeforeUntouchedOpenCurrent(t *testing.T) {
 // Painted timeline: [1000,2000)A, [2000,2500)B, [2500,3000)C, [3000,4000)B, [4000,+inf)A.
 // Asserts ABSOLUTE values (rule 16), not merely "engine agrees with itself".
 func TestCascade_NestedMultiCascadeAccumulation(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -234,6 +237,7 @@ func TestCascade_NestedMultiCascadeAccumulation(t *testing.T) {
 // interval [1500,+inf) is "more specific" to 1600 than C's [1200,+inf). C
 // also becomes the new current row.
 func TestCascade_TwoOpenCascadesStacked(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -294,6 +298,7 @@ func TestCascade_TwoOpenCascadesStacked(t *testing.T) {
 // PRE-correction chain, the resumption's own ValidTo must stay 0 (open), not
 // some other value — so [3000,+inf) resolves to A again, not Wipe or absent.
 func TestCascade_ResumptionAgainstOpenTailStaysOpen(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"L"}, map[string]any{

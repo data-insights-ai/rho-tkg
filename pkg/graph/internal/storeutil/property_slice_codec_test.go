@@ -17,6 +17,7 @@ import (
 // entity wire's rules exactly: a nested small integer is widened there, so it
 // is left out here — see docs/CHANGELOG.md [4.37.0], backlog 3.)
 func TestPropertySliceCodec_RoundTripKeepsKindsAndBits(t *testing.T) {
+	t.Parallel()
 	ps, err := types.NewPropertySlice(map[string]any{
 		"a": int8(-3), "b": uint64(math.MaxUint64), "c": math.Float64frombits(0x7ff8000000000123),
 		"d": float32(math.Copysign(0, -1)), "e": []any{"x", int64(2), map[string]any{"k": true}},
@@ -47,6 +48,7 @@ func TestPropertySliceCodec_RoundTripKeepsKindsAndBits(t *testing.T) {
 }
 
 func TestPropertySliceCodec_EmptySliceIsNil(t *testing.T) {
+	t.Parallel()
 	b, err := MarshalPropertySlice(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +60,7 @@ func TestPropertySliceCodec_EmptySliceIsNil(t *testing.T) {
 }
 
 func TestPropertySliceCodec_CorruptInputIsCorruptWire(t *testing.T) {
+	t.Parallel()
 	good, err := MarshalPropertySlice(types.PropertySlice{{Key: "a", Value: "x"}, {Key: "b", Value: int64(1)}})
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +96,7 @@ func TestPropertySliceCodec_CorruptInputIsCorruptWire(t *testing.T) {
 }
 
 func TestPropertySliceCodec_MarshalRejectsUnsupportedValue(t *testing.T) {
+	t.Parallel()
 	if _, err := MarshalPropertySlice(types.PropertySlice{{Key: "a", Value: struct{}{}}}); err == nil {
 		t.Fatal("unsupported value marshalled")
 	}

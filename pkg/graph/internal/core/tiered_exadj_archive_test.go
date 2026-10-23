@@ -13,6 +13,7 @@ import (
 // before the delete must still reach it from the archived node, in both
 // directions (tiered reads the archive's ex-adjacency, tieredstore_exadj.go).
 func TestTieredArchivedNodeRelDeletePinnedDoor(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	ctx := context.Background()
 	x, err := g.Nodes.Add(ctx, []string{"Case"}, nil)

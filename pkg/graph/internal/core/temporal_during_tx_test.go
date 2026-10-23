@@ -36,6 +36,7 @@ func vf(from types.Instant, extra map[string]any) map[string]any {
 }
 
 func TestNodesDuringTx_BitemporalTwoPhase(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 	ctx := context.Background()
@@ -112,6 +113,7 @@ func TestNodesDuringTx_BitemporalTwoPhase(t *testing.T) {
 
 // TestRelsDuringTx_BitemporalTwoPhase is the relationship mirror (rule 2 parity).
 func TestRelsDuringTx_BitemporalTwoPhase(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 	ctx := context.Background()
@@ -173,6 +175,7 @@ func TestRelsDuringTx_BitemporalTwoPhase(t *testing.T) {
 // TestNodesDuringTx_InvalidRange asserts the range guard is shared with
 // NodesDuring (from >= resolved end → error).
 func TestNodesDuringTx_InvalidRange(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	if _, err := g.Temporal.NodesDuringTx(50, 20, 0); err == nil {
 		t.Fatal("NodesDuringTx(50,20,0) err = nil, want ErrInvalidTimeRange")

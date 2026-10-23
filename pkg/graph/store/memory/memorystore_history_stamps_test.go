@@ -13,6 +13,7 @@ import (
 // that kept the entry answers the old max); the zero-value store answers no
 // history; a closed store fails.
 func TestMemoryHistoryStampsTamperDoorAndZeroValue(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	id := types.NodeID(77)
 	put := func(ver uint32, tf, tt types.Instant) {

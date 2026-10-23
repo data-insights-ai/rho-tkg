@@ -15,6 +15,7 @@ import (
 // float32 widened, also past 2^53; no cross-kind match, NaN and nil never
 // equal), and declines (exact=false) where the index cannot say.
 func TestEqualCountMatchesCypherEquality(t *testing.T) {
+	t.Parallel()
 	stored := []any{
 		int(3), int8(3), int16(3), int32(3), int64(3), uint(3), uint8(3), uint16(3), uint32(3), uint64(3),
 		float32(3), float64(3), "3", true, false, math.Copysign(0, -1), int64(0), float32(0.1), float64(0.1),

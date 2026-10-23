@@ -22,6 +22,7 @@ import (
 )
 
 func TestRelTemporalIndex_ImportedHistoryVersionStaysFindable(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src, err := New(Config{Store: memory.New()})
 	if err != nil {

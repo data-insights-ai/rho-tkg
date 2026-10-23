@@ -14,6 +14,7 @@ import (
 // ErrCapabilityNotSupported, the per-write maintenance sweep never runs, and
 // ordinary node reads/writes stay byte-correct.
 func TestBadgerStoreDisablePlannerStats(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{
 		InMemory:            true,
 		FlushInterval:       1<<63 - 1,
@@ -78,6 +79,7 @@ func TestBadgerStoreDisablePlannerStats(t *testing.T) {
 
 // TestBadgerStoreDefaultPlannerStatsEnabled is the control.
 func TestBadgerStoreDefaultPlannerStatsEnabled(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	n := types.NewNode(types.NodeID(snowflake.ID(201)), 1, []uint16{2})

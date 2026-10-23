@@ -13,6 +13,7 @@ import (
 // Count the stats doors return and leave the accumulators dirty (no
 // rescan). Faulty implementation caught: NDV served through the stats door.
 func TestMemoryPropertyNDVDoesNotRescan(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	defer ms.Close()
 	put := func(id int64, v int64) {

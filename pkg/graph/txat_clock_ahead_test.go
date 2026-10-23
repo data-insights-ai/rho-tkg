@@ -339,6 +339,7 @@ func wantTxAhead(got []string, f txAheadFixture, pin types.Instant, version int)
 }
 
 func TestTxAtDoorsWhenTxClockIsAheadOfWall(t *testing.T) {
+	t.Parallel()
 	backends := []struct {
 		name                string
 		primaryCfg, replCfg graph.Config

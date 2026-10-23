@@ -14,6 +14,7 @@ import (
 // End-to-end: a change-log-enabled graph surfaces its mutations through the
 // g.Replication() sub-API, with a gap-free LSN watermark.
 func TestReplication_EndToEnd(t *testing.T) {
+	t.Parallel()
 	g, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("graph.New: %v", err)
@@ -86,6 +87,7 @@ func TestReplication_EndToEnd(t *testing.T) {
 // into changeFeedCapability) but reports an empty, inactive feed — not
 // ErrCapabilityNotSupported. Enabling the log (a separate test) makes it emit.
 func TestReplication_TieredWithoutChangeLogIsEmpty(t *testing.T) {
+	t.Parallel()
 	ts, err := tiered.New(tiered.Config{
 		InMemory:    true,
 		RefLabels:   []string{"Person"},
@@ -114,6 +116,7 @@ func TestReplication_TieredWithoutChangeLogIsEmpty(t *testing.T) {
 
 // The accessor and its methods are nil-safe.
 func TestReplication_NilSafe(t *testing.T) {
+	t.Parallel()
 	var g *graph.Graph
 	api := g.Replication()
 	if api != nil {

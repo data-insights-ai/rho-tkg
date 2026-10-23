@@ -3,6 +3,7 @@ package store
 import "testing"
 
 func TestChangeTagString(t *testing.T) {
+	t.Parallel()
 	cases := map[ChangeTag]string{
 		ChangeNodePut:               "NodePut",
 		ChangeRelPut:                "RelPut",
@@ -29,6 +30,7 @@ func TestChangeTagString(t *testing.T) {
 }
 
 func TestChangeTagValid(t *testing.T) {
+	t.Parallel()
 	for tag := ChangeNodePut; tag <= ChangeRelRangePurge; tag++ {
 		if !tag.Valid() {
 			t.Errorf("tag %v should be valid", tag)
@@ -44,6 +46,7 @@ func TestChangeTagValid(t *testing.T) {
 // Tag numbers are durable on disk: this pins them so a careless renumber fails
 // the build's test gate rather than silently misreading every persisted record.
 func TestChangeTagWireNumbersStable(t *testing.T) {
+	t.Parallel()
 	pinned := map[ChangeTag]byte{
 		ChangeNodePut:               1,
 		ChangeRelPut:                2,

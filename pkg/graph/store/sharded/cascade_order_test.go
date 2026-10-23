@@ -18,6 +18,7 @@ import (
 // RelDelete(ascending IDs)..., NodeDelete. Rels are created out of ID order and
 // spread over every shard so neither creation order nor shard order can fake it.
 func TestDeleteNodeCascadeOrderAscendingRelsNodeLast(t *testing.T) {
+	t.Parallel()
 	st := newMemStoreLog(t, 0, 3)
 	hub := mkNodeID(0, 1)
 	putNode(t, st, hub, 1)

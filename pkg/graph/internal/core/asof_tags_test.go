@@ -21,6 +21,7 @@ import (
 // argument together with a §4.1 backfill.
 
 func TestAsOfTags_RoundTripOverwriteRemove(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	at := erkenntnisZeit()
 
@@ -64,6 +65,7 @@ func TestAsOfTags_RoundTripOverwriteRemove(t *testing.T) {
 }
 
 func TestAsOfTags_InvalidInput(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	for _, name := range []string{"", "   ", "\t"} {
 		if err := g.Temporal.TagAsOf(name, erkenntnisZeit()); !errors.Is(err, ErrInvalidAsOfTag) {
@@ -91,6 +93,7 @@ func TestAsOfTags_InvalidInput(t *testing.T) {
 // Durability: tags survive a Close/reopen of the same badger data dir — the
 // reason the plan prefers this over an app-side alias map.
 func TestAsOfTags_PersistAcrossReopen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	at := erkenntnisZeit()
 
@@ -118,6 +121,7 @@ func TestAsOfTags_PersistAcrossReopen(t *testing.T) {
 
 // A corrupt on-disk blob must fail closed (SafeUnmarshal discipline), never panic.
 func TestAsOfTags_CorruptBlobFailsClosed(t *testing.T) {
+	t.Parallel()
 	ms := memory.New()
 	g, err := New(Config{Store: ms})
 	if err != nil {
@@ -167,6 +171,7 @@ func TestAsOfTags_NonPositiveInstantFailsClosed(t *testing.T) {
 type noMetaStore struct{ storepkg.MandatoryStore }
 
 func TestAsOfTags_DeclinesWithoutMetaKV(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Store: &noMetaStore{MandatoryStore: memory.New()}, AllowReset: true})
 	if err != nil {
 		t.Fatalf("New(no-MetaKV store): %v", err)
@@ -216,6 +221,7 @@ func (s *failMetaStore) MetaSet(key string, v []byte) error {
 }
 
 func TestAsOfTags_MetaStoreErrorsSurface(t *testing.T) {
+	t.Parallel()
 	t.Run("MetaSet failure on write", func(t *testing.T) {
 		ms := memory.New()
 		store := &failMetaStore{MandatoryStore: ms, inner: ms, failSet: errors.New("meta write boom")}
@@ -251,6 +257,7 @@ func TestAsOfTags_MetaStoreErrorsSurface(t *testing.T) {
 
 // Capacity is bounded; overwriting an existing tag at capacity is still allowed.
 func TestAsOfTags_CapacityBound(t *testing.T) {
+	t.Parallel()
 	ms := memory.New()
 	g, err := New(Config{Store: ms})
 	if err != nil {
@@ -279,6 +286,7 @@ func TestAsOfTags_CapacityBound(t *testing.T) {
 
 // A read-only replica tags on its primary: writes reject, reads pass.
 func TestAsOfTags_ReadOnlyReplicaRejectsWrites(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Store: memory.New(), ReadOnlyReplica: true})
 	if err != nil {
 		t.Fatalf("New(ReadOnlyReplica): %v", err)
@@ -299,6 +307,7 @@ func TestAsOfTags_ReadOnlyReplicaRejectsWrites(t *testing.T) {
 // Clear()/Reset reaps the durable tag registry (lesson 53 scan-based meta reap
 // covers this new key).
 func TestAsOfTags_ResetReapsTags(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	if err := g.Temporal.TagAsOf("x", erkenntnisZeit()); err != nil {
 		t.Fatalf("TagAsOf: %v", err)
@@ -314,6 +323,7 @@ func TestAsOfTags_ResetReapsTags(t *testing.T) {
 // Concurrent distinct tags must not lose updates (asofMu serializes the RMW).
 // Run under -race to catch a missing lock.
 func TestAsOfTags_ConcurrentWritesNoLostUpdate(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	const n = 24
 	var wg sync.WaitGroup
@@ -347,6 +357,7 @@ func TestAsOfTags_ConcurrentWritesNoLostUpdate(t *testing.T) {
 // silently reverted to an earlier writer's value after a later one
 // "succeeded"). Runs many rounds to shake out ordering-dependent bugs.
 func TestAsOfTags_ConcurrentWritesSameNameNoLostUpdate(t *testing.T) {
+	t.Parallel()
 	for round := 0; round < 20; round++ {
 		g := newTestGraph(t)
 		const n = 16
@@ -396,6 +407,7 @@ func TestAsOfTags_ConcurrentWritesSameNameNoLostUpdate(t *testing.T) {
 // End-to-end: a §4.1 backfilled node addressed via a §4.2 named mark — the OETK
 // "AS OF SYSTEM TIME $tag against a documented Erkenntniszeit" loop.
 func TestAsOfTags_ResolvedTagDrivesBitemporalQuery(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Store: memory.New(), AllowTxBackfill: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)

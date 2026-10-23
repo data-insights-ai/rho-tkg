@@ -13,6 +13,7 @@ import (
 // counts, the bounds, the value statistics — so a composite store never
 // merges a part's partial entries; once built they answer.
 func TestPropertyIndexDeclinesWhileBuilding(t *testing.T) {
+	t.Parallel()
 	for _, rangeCounts := range []bool{false, true} {
 		pi := NewPropertyIndexWith(rangeCounts, false)
 		pi.Add(snowflake.ID(1), int64(3))

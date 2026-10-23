@@ -42,6 +42,7 @@ var changeBodyGolden = map[string]string{
 // fields case and the every-optional-field-present case of each of the 10
 // body types.
 func TestChangeBodyEncodeGolden(t *testing.T) {
+	t.Parallel()
 	nw := NodeWire{FormatVersion: 2, ID: 100, PrimaryLabel: 1, Version: 1}
 	rw := RelWire{FormatVersion: 2, ID: 200, RelType: 2, StartID: 10, EndID: 20, Version: 1}
 

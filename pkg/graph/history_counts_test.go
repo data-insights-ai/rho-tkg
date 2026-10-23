@@ -74,6 +74,7 @@ func historyCountBackends() []historyCountBackend {
 // transaction's writes, a compaction, a retention purge and a reset. Two-phase:
 // a count taken before an update is the old one, the count after it moved.
 func TestHistoryCountsEqualTheStoresWalk(t *testing.T) {
+	t.Parallel()
 	for _, b := range historyCountBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			cfg, it := b.open(t)
@@ -193,6 +194,7 @@ func TestHistoryCountsEqualTheStoresWalk(t *testing.T) {
 // Badger's count survives a reopen: the first call after it counts the
 // persisted history keys.
 func TestHistoryCountsAfterReopen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{BadgerDir: dir})
@@ -230,6 +232,7 @@ func TestHistoryCountsAfterReopen(t *testing.T) {
 
 // Tiered states none; a closed graph fails.
 func TestHistoryCountsUnstated(t *testing.T) {
+	t.Parallel()
 	for _, b := range allStoreBackends() {
 		if b.name != "tiered" {
 			continue
@@ -254,6 +257,7 @@ func TestHistoryCountsUnstated(t *testing.T) {
 // Readers of HistoryCounts beside writers of history: no race, and once the
 // writers stop the count equals the store's walk (no stale cache survives).
 func TestHistoryCountsConcurrentWriters(t *testing.T) {
+	t.Parallel()
 	for _, b := range historyCountBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			cfg, it := b.open(t)

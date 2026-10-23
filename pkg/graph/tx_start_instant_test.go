@@ -23,6 +23,7 @@ func txFromOf(t *testing.T, g *graphpkg.Graph, id types.NodeID) types.Instant {
 // that existed and was then updated inside the transaction reads with its
 // old value; a node the transaction created is absent).
 func TestGraphTxStartInstant(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		before, err := g.Nodes().Add(ctx, []string{"A"}, map[string]any{"v": int64(1)})

@@ -127,6 +127,7 @@ var labelAtProbes = []storepkg.QueryOpts{
 // CountByLabelAt at a point and over an interval equal the oracle's set, in
 // ascending ID order, on every backend.
 func TestLabelReadAtAgreesWithTheResolver(t *testing.T) {
+	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			g := be.open(t)
@@ -196,6 +197,7 @@ func TestLabelReadAtAgreesWithTheResolver(t *testing.T) {
 // valid-time label read resolves via the chain resolver only nodes with history
 // rows. Catches per-candidate GetNode and chain load.
 func TestLabelReadAtReadsNoHistoryNodeTwice(t *testing.T) {
+	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		if be.name != "memory" && be.name != "badger" {
 			continue
@@ -236,6 +238,7 @@ func TestLabelReadAtReadsNoHistoryNodeTwice(t *testing.T) {
 // TestForEachByLabelAtStreams: a callback that stops after the first row leaves the
 // rest unresolved (at most one chunk). Catches resolving every candidate up front.
 func TestForEachByLabelAtStreams(t *testing.T) {
+	t.Parallel()
 	g := pinnedPropBackends()[0].open(t)
 	ctx := context.Background()
 	const n = 3 * labelScanAtChunk
@@ -277,6 +280,7 @@ func TestForEachByLabelAtStreams(t *testing.T) {
 // TestSingleVersionNodeMatchesResolver holds firstVersionCovers equal to the chain
 // resolver over the one-row chain, for every interval shape at and around its bounds.
 func TestSingleVersionNodeMatchesResolver(t *testing.T) {
+	t.Parallel()
 	g := pinnedPropBackends()[0].open(t)
 	ctx := context.Background()
 	shapes := []map[string]any{
@@ -335,6 +339,7 @@ func TestSingleVersionNodeMatchesResolver(t *testing.T) {
 // TestTypeReadAtAgreesWithTheResolver is the label test for relationship types
 // (ByType, ForEachByType, CountByTypeAt); memory and badger also bound chain loads.
 func TestTypeReadAtAgreesWithTheResolver(t *testing.T) {
+	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			g := be.open(t)

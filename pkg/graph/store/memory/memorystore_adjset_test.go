@@ -21,6 +21,7 @@ func adjSetIDs(s *adjSet) []types.RelID {
 // and removes (absent IDs included) leaves the adjacency set answering
 // exactly like the map set it replaces, across the small-to-map switch.
 func TestAdjSetMatchesAMapSet(t *testing.T) {
+	t.Parallel()
 	for _, span := range []int{4, adjSetSmallMax, adjSetSmallMax + 1, 4 * adjSetSmallMax} {
 		rng := rand.New(rand.NewPCG(uint64(span), 7)) // #nosec G404 -- deterministic test input
 		var s *adjSet
@@ -60,6 +61,7 @@ func TestAdjSetMatchesAMapSet(t *testing.T) {
 }
 
 func TestAdjSetNilAndEarlyStop(t *testing.T) {
+	t.Parallel()
 	var s *adjSet
 	if s.len() != 0 || s.has(1) || s.remove(1) || len(adjSetIDs(s)) != 0 {
 		t.Fatal("nil adjacency set is not empty")
@@ -91,6 +93,7 @@ func TestAdjSetNilAndEarlyStop(t *testing.T) {
 // (ForEachAdjacentEndpointOrdinal) need no sort per call. Faulty
 // implementation caught: the append / swap-remove slice (unordered).
 func TestAdjSetSmallSetIsAscending(t *testing.T) {
+	t.Parallel()
 	rng := rand.New(rand.NewPCG(9, 11)) // #nosec G404 -- deterministic test input
 	s := &adjSet{}
 	for op := 0; op < 4000; op++ {

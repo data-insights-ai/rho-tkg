@@ -133,6 +133,7 @@ func nodeVersionsByIndex(nodes []*types.Node) map[int]int64 {
 }
 
 func TestNodeScans_ConcurrentReplaceAndFlush_NoDropNoStale(t *testing.T) {
+	t.Parallel()
 	scans := map[string]func(bs *Store) ([]*types.Node, error){
 		"ForEachNodeByLabel": func(bs *Store) ([]*types.Node, error) {
 			var out []*types.Node
@@ -181,6 +182,7 @@ func relVersionsByIndex(rels []*types.Relationship) map[int]int64 {
 }
 
 func TestRelScans_ConcurrentReplaceAndFlush_NoDropNoStale(t *testing.T) {
+	t.Parallel()
 	const rows = 1024
 	ids := make([]types.RelID, rows)
 	for i := range ids {

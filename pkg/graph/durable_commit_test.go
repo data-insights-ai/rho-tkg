@@ -59,6 +59,7 @@ func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger(t *testing.T) {
 	if testing.Short() {
 		t.Skip("spawns crash children")
 	}
+	t.Parallel()
 	for _, door := range []string{"tx", "run", "batch", "ingest"} {
 		t.Run(door, func(t *testing.T) {
 			nodes, rels := dcCrashCounts(t, "badger", door, true)
@@ -75,6 +76,7 @@ func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_DefaultFlushInterval(t *t
 	if testing.Short() {
 		t.Skip("spawns crash children")
 	}
+	t.Parallel()
 	nodes, rels := dcCrashCountsFlush(t, "badger", "tx", true, "100ms")
 	if nodes != dcSignals+2 || rels != 1 {
 		t.Fatalf("DurableCommit, 100ms flush: %d nodes, %d rels after the crash, want %d/1", nodes, rels, dcSignals+2)
@@ -88,6 +90,7 @@ func TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists(t *testing.T) {
 	if testing.Short() {
 		t.Skip("spawns crash children")
 	}
+	t.Parallel()
 	t.Run("no-retry-lost", func(t *testing.T) {
 		nodes, rels := dcCrashCounts(t, "badger", "tx-fail", true)
 		if nodes != 0 || rels != 0 {
@@ -109,6 +112,7 @@ func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards(t *testin
 	if testing.Short() {
 		t.Skip("spawns crash children")
 	}
+	t.Parallel()
 	for _, door := range []string{"tx", "batch"} {
 		t.Run(door, func(t *testing.T) {
 			nodes, rels := dcCrashCounts(t, "tiered", door, true)
@@ -125,6 +129,7 @@ func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots(t *testin
 	if testing.Short() {
 		t.Skip("spawns crash children")
 	}
+	t.Parallel()
 	for _, door := range []string{"tx", "batch"} {
 		t.Run(door, func(t *testing.T) {
 			nodes, rels := dcCrashCounts(t, "sharded", door, true)
@@ -138,6 +143,7 @@ func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots(t *testin
 // Catches: a flush per mutation (N+3 calls instead of one), no flush at all, and
 // a door that skips the flush (RunContext, RunWithLSN, ingest Submit).
 func TestDurableCommit_OneDurableFlushPerGroup(t *testing.T) {
+	t.Parallel()
 	g, spy := newDurableSpyGraph(t, true)
 	ctx := context.Background()
 	doors := []struct {
@@ -179,6 +185,7 @@ func TestDurableCommit_OneDurableFlushPerGroup(t *testing.T) {
 // Catches: a durable flush issued although the flag is off (the default must not
 // add a flush or an fsync to any door).
 func TestDurableCommit_OffNeverDurableFlushes(t *testing.T) {
+	t.Parallel()
 	g, spy := newDurableSpyGraph(t, false)
 	for _, door := range []string{"tx", "run", "batch", "ingest"} {
 		if err := dcWriteGroup(g, door); err != nil {
@@ -193,6 +200,7 @@ func TestDurableCommit_OffNeverDurableFlushes(t *testing.T) {
 // Catches: a Rollback (explicit, or Run's on a callback error) that flushes —
 // it would write the rolled-back churn to disk on the caller's latency.
 func TestDurableCommit_RollbackDoesNotFlush(t *testing.T) {
+	t.Parallel()
 	g, spy := newDurableSpyGraph(t, true)
 	tx, err := g.Tx().Begin()
 	if err != nil {
@@ -270,6 +278,7 @@ func commitTx(t *testing.T, g *graphpkg.Graph) (*graphpkg.GraphTx, error) {
 // buffered group instead of requeuing it, and a batch error that drops the
 // result. The store's REAL flush fails once (badger's own requeue path).
 func TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending(t *testing.T) {
+	t.Parallel()
 	g, bs := newDurableFailGraph(t, false)
 
 	t.Run("tx", func(t *testing.T) {
@@ -339,6 +348,7 @@ func TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending(t *testing.T) {
 // durable flush. With the change-log on, CommitLogScope already wrote the group,
 // so the failure is injected into the WAL fsync.
 func TestDurableCommit_NotDurableKeepsLSNAndResult(t *testing.T) {
+	t.Parallel()
 	g, bs := newDurableFailGraph(t, true)
 
 	t.Run("tx", func(t *testing.T) {
@@ -439,6 +449,7 @@ func assertSyncRetried(t *testing.T, g *graphpkg.Graph, bs *badger.Store) {
 // the graph is closed, or a not-durable commit whose store was closed under it
 // (Close's own final flush then wrote the group).
 func TestDurableCommit_CommitRacingCloseNeverPanics(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{BadgerDir: t.TempDir(), DurableCommit: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)

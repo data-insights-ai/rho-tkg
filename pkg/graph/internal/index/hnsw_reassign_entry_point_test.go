@@ -21,6 +21,7 @@ import (
 // (level 2), which is what index-order-only iteration would incorrectly
 // pick since it is simply the last non-deleted node by index.
 func TestHNSWReassignEntryPoint_PicksMaxLevelSurvivor(t *testing.T) {
+	t.Parallel()
 	g := newHNSWGraph(storepkg.DistanceCosine, DefaultHNSWM, DefaultHNSWEfConstruction, DefaultHNSWEfSearch)
 
 	levels := []int{1, 5, 3, 2}
@@ -59,6 +60,7 @@ func TestHNSWReassignEntryPoint_PicksMaxLevelSurvivor(t *testing.T) {
 // LATER-inserted (higher-index) node wins ties, matching the spirit of the
 // original iteration order.
 func TestHNSWReassignEntryPoint_TiebreakPrefersMostRecentlyInserted(t *testing.T) {
+	t.Parallel()
 	g := newHNSWGraph(storepkg.DistanceCosine, DefaultHNSWM, DefaultHNSWEfConstruction, DefaultHNSWEfSearch)
 
 	levels := []int{2, 4, 4, 1} // indices 1 and 2 tie at the max level (4)
@@ -93,6 +95,7 @@ func TestHNSWReassignEntryPoint_TiebreakPrefersMostRecentlyInserted(t *testing.T
 // TestHNSWReassignEntryPoint_AllDeletedYieldsEmptyGraph covers the
 // already-tested-by-construction "no survivors" branch directly.
 func TestHNSWReassignEntryPoint_AllDeletedYieldsEmptyGraph(t *testing.T) {
+	t.Parallel()
 	g := newHNSWGraph(storepkg.DistanceCosine, DefaultHNSWM, DefaultHNSWEfConstruction, DefaultHNSWEfSearch)
 	g.nodes = append(g.nodes, hnswNode{extID: 1, vec: []float32{1, 0}, level: 2, deleted: true, neighbors: make([][]int32, 3)})
 	g.entryPoint = 0

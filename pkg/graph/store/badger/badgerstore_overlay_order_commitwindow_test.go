@@ -31,6 +31,7 @@ func commitParkedDuringHook(t *testing.T, bs *Store) {
 // whole chain even when the flush holding the newest history row commits
 // during the lazy build.
 func TestNodeBeliefWatermark_NoDropAcrossFlushCommit(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	cur := bgNode(1, []uint16{10}, 100)
 	cur.SetVersion(1)
@@ -58,6 +59,7 @@ func TestNodeBeliefWatermark_NoDropAcrossFlushCommit(t *testing.T) {
 
 // SYSTEM PROPERTY (rel mirror).
 func TestRelBeliefWatermark_NoDropAcrossFlushCommit(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	putTestNode(t, bs, 1, 10, nil)
 	putTestNode(t, bs, 2, 10, nil)

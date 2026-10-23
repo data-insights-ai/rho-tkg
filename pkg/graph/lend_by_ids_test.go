@@ -46,6 +46,7 @@ func lendOracle[ID ~int64, Row any](t *testing.T, ids []ID, lend func(ID) (Row, 
 // one chunk (4,096) is served, early stop stops, and the errors come before
 // any call. Every backend; nodes and relationships.
 func TestLendByIDs(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		var nodes []*types.Node
@@ -184,6 +185,7 @@ func TestLendByIDs(t *testing.T) {
 // succeeds, every lent row is a frozen row of the asked ID, and an ID never
 // deleted is always lent (run under -race).
 func TestLendByIDs_ConcurrentWithWriters(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		ids := make([]types.NodeID, 300)

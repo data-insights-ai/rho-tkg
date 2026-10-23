@@ -97,6 +97,7 @@ func assertRelSet(t *testing.T, label string, got []*types.Relationship, want []
 //     chain[len(chain)-1]'s labels — same B30 bug, different branch. A
 //     legitimate label-mutated chain on a deleted node must still verify.
 func TestVerifyNodeChain_LabelMutations(t *testing.T) {
+	t.Parallel()
 	t.Run("three-distinct-label-sets verifies", func(t *testing.T) {
 		g := newTestGraph(t)
 		n, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
@@ -261,6 +262,7 @@ func TestVerifyNodeChain_LabelMutations(t *testing.T) {
 // Walks the full chain (history + current) and verifies link integrity
 // directly, independent of VerifyNodeChain.
 func TestNodeHashChain_InspectsHashValues(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 
 	// v0: genesis version.
@@ -340,6 +342,7 @@ func TestNodeHashChain_InspectsHashValues(t *testing.T) {
 }
 
 func TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
@@ -364,6 +367,7 @@ func TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion(t *testing.T) {
 }
 
 func TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
@@ -398,6 +402,7 @@ func TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion(t *tes
 }
 
 func TestGetNeighborsValidAt_UsesHistoricalRelationships(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
@@ -429,6 +434,7 @@ func TestGetNeighborsValidAt_UsesHistoricalRelationships(t *testing.T) {
 }
 
 func TestGetNeighborsValidAt_DeletedTargetUsesHistory(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
@@ -460,6 +466,7 @@ func TestGetNeighborsValidAt_DeletedTargetUsesHistory(t *testing.T) {
 }
 
 func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		labels []string
@@ -524,6 +531,7 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 }
 
 func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
+	t.Parallel()
 	t.Run("idempotent add label", func(t *testing.T) {
 		g := newTestGraphForEvents(t)
 		n, err := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
@@ -630,6 +638,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 }
 
 func TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 	events := collectEvents(g, eventspkg.EventNodeCreate)
 	before, _ := g.Stats.Get()
@@ -666,6 +675,7 @@ func TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats(t *testing.T) {
 }
 
 func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
@@ -732,6 +742,7 @@ func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t
 //	bob   ┤ no Pending ──► (label added) ───┤ Pending
 //	carol ┤ Pending ────► (deleted) ✗
 func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	clk := useTestClock(t, g)
 
@@ -836,6 +847,7 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 // "got 3, want 4" with alice missing. Boundary case at the bottom probes the
 // half-open semantic of the version interval.
 func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	clk := useTestClock(t, g)
 
@@ -946,6 +958,7 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 //	r2  ┤ WORKS_WITH ──► (deleted) ✗
 //	r3  ┤ KNOWS (still alive) ──────┤
 func TestRelationshipsByType_TemporalOpts_Adversarial(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	clk := useTestClock(t, g)
 

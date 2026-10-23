@@ -12,6 +12,7 @@ import (
 // Final review of backlog 56, finding 2: Phase 2 ranged a node's history map
 // after RUnlock while a concurrent PutNodeVersion wrote it (run with -race).
 func TestMemoryNodeTemporalEnvelope_ConcurrentPutNodeVersionDuringCreate(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	const n = 200
 	for i := 0; i < n; i++ {

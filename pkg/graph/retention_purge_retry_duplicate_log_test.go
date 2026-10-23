@@ -31,6 +31,7 @@ import (
 // twice is a no-op the second time — this test proves that harmlessness
 // directly rather than changing production behavior.
 func TestRetentionPurge_RetryAfterWatermarkAdvanceDuplicatesLogButConverges(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	primary, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, AllowRetentionPurge: true})

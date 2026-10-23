@@ -11,6 +11,7 @@ import (
 // indexDDL advances the epoch on success and on a failure that may have left
 // partial state, and not on a refusal that changed nothing (wrapped or not).
 func TestIndexDDLAdvancesExceptOnRefusals(t *testing.T) {
+	t.Parallel()
 	c := &Core{}
 	ops := &IndexOps{c: c}
 	want := uint64(0)

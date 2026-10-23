@@ -192,6 +192,7 @@ func TestPropTxBuild_OnePassScanCount(t *testing.T) {
 // (rows carrying ptxLabel and opL2), recording the unindexed type opT4 or
 // label 9, losing the buffered rows.
 func TestPropTxBuild_OnePassEqualsPerKeyBuild(t *testing.T) {
+	t.Parallel()
 	cfg := func(c *Config) { c.HistoryDeltaEncoding, c.HistoryAnchorInterval = true, 2 }
 	all := newFlushParkStore(t, cfg)
 	opDeclare(t, all, opRelKeys, opNodeKeys)
@@ -231,6 +232,7 @@ func TestPropTxBuild_OnePassEqualsPerKeyBuild(t *testing.T) {
 // sidecars must be rebuilt, not restored), a restored sidecar the doors do not
 // record into (rel 950 written after the reopen).
 func TestPropTxBuild_CleanReopenRestoresSidecars(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	open := func() *Store {
 		t.Helper()

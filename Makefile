@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-fast check ci clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-fast fuzz-smoke check ci clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -190,14 +190,28 @@ security-docker:
 vulncheck-docker:
 	$(DOCKER_GO) sh -c 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && govulncheck ./...'
 
-# Full CI gate using the dockerized tools for the three host-optional binaries
-# (fmt-check/vet/build/test-race/cover-gate run natively on the host).
-ci-docker: fmt-check vet lint-docker build test-race security-docker vulncheck-docker cover-gate check-metakv-reap
+# Minor release gate, local (GitHub CI on a tag only builds, vets and runs the
+# short tests): the dockerized lint/gosec/govulncheck, the full race suite,
+# coverage, the meta-key reap policy, a short fuzz of every trust-boundary
+# harness and the ledger check.
+ci-docker: fmt-check vet lint-docker build test-race security-docker vulncheck-docker cover-gate check-metakv-reap fuzz-smoke
+	scripts/check-ledger.sh
+
+# fuzz-smoke runs each trust-boundary fuzz harness for FUZZTIME (nothing runs
+# them on a schedule); a crasher lands in testdata/fuzz/ and is committed with
+# its fix.
+FUZZTIME ?= 20s
+fuzz-smoke:
+	go test -run '^$$' -fuzz=FuzzImport -fuzztime=$(FUZZTIME) ./pkg/graph/internal/core/
+	go test -run '^$$' -fuzz=FuzzApplyChange -fuzztime=$(FUZZTIME) ./pkg/graph/internal/core/
+	go test -run '^$$' -fuzz=FuzzWireToNodeChecked -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
+	go test -run '^$$' -fuzz=FuzzWireToRelChecked -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
+	go test -run '^$$' -fuzz=FuzzUnmarshalNodeWireWithKeys -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
 
 # Patch release gate (todo 115/116; minors use ci-docker). scripts/patchgate plans it from the batch since the
 # last release tag and refuses new exported API (a door = a minor). Runs fmt-check, vet, build, lint, -short of
 # packages whose shipped code changed, -race of only the changed tests (whole package for a changed helper or
-# tool), the docs tests and the ledger check. gosec, govulncheck and the full race suite run in GitHub CI.
+# tool), the docs tests and the ledger check.
 ci-fast: fmt-check vet build lint-docker
 	@base=$$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1); \
 	echo "ci-fast: batch $$base..work tree"; \

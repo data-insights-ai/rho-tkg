@@ -140,6 +140,7 @@ func TestReplicaConvergence_TieredPrimaryByteExact(t *testing.T) {
 // post-cursor changes merges onto a base to an equivalent graph (ADR-0005 §2 Stage
 // F downstream unlock).
 func TestExportSince_TieredSource(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newTieredChangeLogPrimary(t)
 

@@ -25,6 +25,7 @@ func newScopeStore(t *testing.T) *Store {
 // A scope that is DISCARDED must emit zero records and burn zero LSNs — the
 // headline property (a rolled-back tx leaves the feed untouched).
 func TestLogScope_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
+	t.Parallel()
 	bs := newScopeStore(t)
 	putTestNode(t, bs, 1, 10, nil) // a committed pre-scope write
 	if err := bs.Flush(); err != nil {
@@ -68,6 +69,7 @@ func TestLogScope_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
 // A scope that is COMMITTED emits its buffered records with contiguous LSNs minted
 // at commit time, co-committed (visible in the feed).
 func TestLogScope_CommitMintsContiguousLSNsAndEmits(t *testing.T) {
+	t.Parallel()
 	bs := newScopeStore(t)
 	putTestNode(t, bs, 1, 10, nil)
 	if err := bs.Flush(); err != nil {

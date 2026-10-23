@@ -17,6 +17,7 @@ import (
 // a nil store are refused. Faulty implementations caught: answering the
 // whole label, dropping a deleted or history-only member, ignoring the stop.
 func TestMemoryLabelTxMembersOf(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	defer ms.Close()
 	const tokL, tokK uint16 = 1, 2
@@ -72,6 +73,7 @@ func TestMemoryLabelTxMembersOf(t *testing.T) {
 
 // TestMemoryRelTypeTxMembersOf is the relationship mirror.
 func TestMemoryRelTypeTxMembersOf(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	defer ms.Close()
 	for _, n := range []*types.Node{mustNode(t, 1, []uint16{1}, 1), mustNode(t, 2, []uint16{1}, 1)} {

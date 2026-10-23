@@ -10,6 +10,7 @@ import (
 // Property-key registry foundation tests (report 6.5).
 
 func TestPropertyKeyRegistry_PopulatedOnAdd(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	_, err := g.Nodes.Add(context.Background(), []string{"L"}, map[string]any{
 		"name":  "Ada",
@@ -37,6 +38,7 @@ func TestPropertyKeyRegistry_PopulatedOnAdd(t *testing.T) {
 }
 
 func TestPropertyKeyRegistry_PopulatedOnUpdate(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	n, _ := g.Nodes.Add(context.Background(), []string{"L"}, map[string]any{
 		"name": "Ada",
@@ -64,6 +66,7 @@ func TestPropertyKeyRegistry_DedupedAcrossEntities(t *testing.T) {
 }
 
 func TestPropertyKeyRegistry_ShadowKeysSkipped(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	_, err := g.Nodes.Add(context.Background(), []string{"L"}, map[string]any{
 		"tkg_valid_from": int64(1000),
@@ -81,6 +84,7 @@ func TestPropertyKeyRegistry_ShadowKeysSkipped(t *testing.T) {
 }
 
 func TestPropertyKeyRegistry_WireRoundTripPreservesProperties(t *testing.T) {
+	t.Parallel()
 	// Round-trip via Badger: write a node with several properties, read it
 	// back, all property keys + values must match. Confirms encoder
 	// tokenization and decoder resolution work end-to-end.
@@ -128,6 +132,7 @@ func TestPropertyKeyRegistry_WireRoundTripPreservesProperties(t *testing.T) {
 }
 
 func TestPropertyKeyRegistry_WireRoundTripAfterReopen(t *testing.T) {
+	t.Parallel()
 	// Close + reopen the Badger store: property-key registry must be
 	// reloaded and the previously-written tokenized rows must still decode
 	// correctly via the restored registry.

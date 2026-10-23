@@ -287,6 +287,7 @@ func TestWithHistoryDoorsPublishHistoryBeforeCurrent(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for _, fl := range mpoFlavours {
 		for _, d := range mpoDoors() {
 			t.Run(fl.name+"/"+d.name, func(t *testing.T) {

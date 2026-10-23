@@ -15,6 +15,7 @@ import (
 // DDL contract, including the shared-namespace exclusion with the temporal
 // index and bucket-size validation.
 func TestShardedHighFrequencyIndexDDLSentinels(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)

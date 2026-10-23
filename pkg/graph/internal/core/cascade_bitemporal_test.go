@@ -21,6 +21,7 @@ import (
 // nothing). Runs node + rel across all three backends — the resolver/cascade
 // must agree everywhere (rule 2 parity, MR protocol phase 2).
 func TestCascade_BeliefIsConsistentPerTxAt(t *testing.T) {
+	t.Parallel()
 	for _, backend := range storeContractBackends() {
 		backend := backend
 		t.Run(backend.name, func(t *testing.T) {
@@ -62,6 +63,7 @@ func TestCascade_BeliefIsConsistentPerTxAt(t *testing.T) {
 
 // TestCascade_BeliefIsConsistentPerTxAt_Rel is the relationship mirror.
 func TestCascade_BeliefIsConsistentPerTxAt_Rel(t *testing.T) {
+	t.Parallel()
 	for _, backend := range storeContractBackends() {
 		backend := backend
 		t.Run(backend.name, func(t *testing.T) {
@@ -111,6 +113,7 @@ func TestCascade_BeliefIsConsistentPerTxAt_Rel(t *testing.T) {
 // still-covering tile and the newer correction both cover part of the range. The
 // newer belief (higher TxFrom) must win — resolveNodeVersionAt's overlap rule.
 func TestCascade_CorrectionSpanningBoundary(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 	ctx := context.Background()

@@ -17,6 +17,7 @@ import (
 // reached stable storage is undecodable on reload. So intern a label and a property key
 // inside a transaction, commit, close, reopen from the same directory, and read the row back.
 func TestTokenInternedInTxSurvivesReopen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	g, err := graph.New(graph.Config{SnowflakeNodeID: 0, BadgerDir: dir})

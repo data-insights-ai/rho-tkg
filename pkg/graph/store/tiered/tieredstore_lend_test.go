@@ -12,6 +12,7 @@ import (
 // reference node, an event node, a same-shard and a cross-shard
 // relationship (entity on the event shard, in/ on the reference shard).
 func TestTieredStoreLend(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen, rgen := tieredNodeGen(t), tieredRelGen(t)
 	ref := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
@@ -73,6 +74,7 @@ func TestTieredStoreLend(t *testing.T) {
 }
 
 func TestTieredLendHelpersAndNilEpochs(t *testing.T) {
+	t.Parallel()
 	var nilStore *Store
 	if nilStore.NodeMutationEpoch() != 0 || nilStore.RelMutationEpoch() != 0 {
 		t.Fatal("nil store epochs must be 0")

@@ -17,6 +17,7 @@ import (
 // direct cause of 17c shipping unnoticed).
 
 func TestMemoryStorePurgeNodesByLabelValidToBefore_NilTemporalDoesNotPanic(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	const eventLabel = uint16(10)
 
@@ -51,6 +52,7 @@ func TestMemoryStorePurgeNodesByLabelValidToBefore_NilTemporalDoesNotPanic(t *te
 }
 
 func TestMemoryStorePurgeNodesByLabelValidToBefore_PurgesOnlyExpiredValidTo(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	const eventLabel = uint16(10)
 	const boundary = types.Instant(1000)

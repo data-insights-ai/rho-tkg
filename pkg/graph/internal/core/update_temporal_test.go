@@ -14,6 +14,7 @@ import (
 // 15 (two-phase: write→update→query at intermediate VT).
 
 func TestUpdateNode_AcceptsValidFrom(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -39,6 +40,7 @@ func TestUpdateNode_AcceptsValidFrom(t *testing.T) {
 }
 
 func TestUpdateRel_AcceptsValidFrom(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -66,6 +68,7 @@ func TestUpdateRel_AcceptsValidFrom(t *testing.T) {
 }
 
 func TestUpdateNode_AcceptsValidTo(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -111,6 +114,7 @@ func TestUpdateNode_RejectsValidFromBeforePrevious(t *testing.T) {
 }
 
 func TestUpdateRel_RejectsValidFromBeforePrevious(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -130,6 +134,7 @@ func TestUpdateRel_RejectsValidFromBeforePrevious(t *testing.T) {
 }
 
 func TestUpdateNode_RejectsValidFromGteValidTo(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -148,6 +153,7 @@ func TestUpdateNode_RejectsValidFromGteValidTo(t *testing.T) {
 }
 
 func TestUpdateNode_RejectsCreatedAtAsReserved(t *testing.T) {
+	t.Parallel()
 	// tkg_created_at is not in the temporal-update allowlist (per-entity, not
 	// per-version). Should still error with ErrReservedPrefix.
 	g := newTxTimeGraph(t)
@@ -162,6 +168,7 @@ func TestUpdateNode_RejectsCreatedAtAsReserved(t *testing.T) {
 }
 
 func TestUpdateNode_TwoPhaseBitemporalRoundTrip(t *testing.T) {
+	t.Parallel()
 	// Rule 15: two-phase. Create at VT=1000, Update with VT=2000.
 	// Query NodeAt(1500) → original. Query NodeAt(2500) → updated.
 	g := newTxTimeGraph(t)
@@ -199,6 +206,7 @@ func TestUpdateNode_TwoPhaseBitemporalRoundTrip(t *testing.T) {
 }
 
 func TestUpdateRel_TwoPhaseBitemporalRoundTrip(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -266,6 +274,7 @@ func TestUpdateNode_TxPath_AcceptsValidFrom(t *testing.T) {
 // UpdateInPlace temporal — report 6.2 followup. Rule 2 parity Node/Rel.
 
 func TestUpdateInPlaceNode_AcceptsValidFrom(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 
 	n, _ := g.Nodes.Add(context.Background(), []string{"L"}, map[string]any{
@@ -299,6 +308,7 @@ func TestUpdateInPlaceNode_AcceptsValidFrom(t *testing.T) {
 }
 
 func TestUpdateInPlaceRel_AcceptsValidFrom(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	a, _ := g.Nodes.Add(context.Background(), []string{"L"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"L"}, nil)
@@ -331,6 +341,7 @@ func TestUpdateInPlaceRel_AcceptsValidFrom(t *testing.T) {
 }
 
 func TestUpdateInPlaceNode_TemporalOnlyMutationStillWrites(t *testing.T) {
+	t.Parallel()
 	// Even a temporal-only update (no business-property changes) must be
 	// applied — the tmp.present gate in the mutates check covers this.
 	g := newTxTimeGraph(t)
@@ -350,6 +361,7 @@ func TestUpdateInPlaceNode_TemporalOnlyMutationStillWrites(t *testing.T) {
 }
 
 func TestUpdateNode_BatchPath_AcceptsValidFrom(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 
 	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{

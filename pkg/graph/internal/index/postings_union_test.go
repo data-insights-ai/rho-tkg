@@ -12,6 +12,7 @@ import (
 // IDs than one batch), and PostingsOfKeys returns the list itself for one key,
 // an empty set for none, a union for several (repeated keys once).
 func TestPostingsUnion(t *testing.T) {
+	t.Parallel()
 	pi := NewPropertyIndex()
 	want := map[snowflake.ID]bool{}
 	for i := 1; i <= 400; i++ {

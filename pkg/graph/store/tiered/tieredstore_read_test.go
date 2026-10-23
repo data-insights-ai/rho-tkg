@@ -9,6 +9,7 @@ import (
 )
 
 func TestTieredMergeNodeSlicesPreservesSortedOrder(t *testing.T) {
+	t.Parallel()
 	got := mergeNodeSlices([][]*types.Node{
 		{tieredMergeNode(1), tieredMergeNode(4)},
 		nil,
@@ -21,6 +22,7 @@ func TestTieredMergeNodeSlicesPreservesSortedOrder(t *testing.T) {
 }
 
 func TestTieredMergeRelSlicesPreservesSortedOrder(t *testing.T) {
+	t.Parallel()
 	got := mergeRelSlices([][]*types.Relationship{
 		{tieredMergeRel(2), tieredMergeRel(5)},
 		{tieredMergeRel(1), tieredMergeRel(4)},
@@ -32,6 +34,7 @@ func TestTieredMergeRelSlicesPreservesSortedOrder(t *testing.T) {
 }
 
 func TestTieredMergeNodeIDSlicesPreservesSortedOrderAndFastPaths(t *testing.T) {
+	t.Parallel()
 	if got := mergeNodeIDSlices(nil); got != nil {
 		t.Fatalf("mergeNodeIDSlices(nil) = %v, want nil", got)
 	}
@@ -54,6 +57,7 @@ func TestTieredMergeNodeIDSlicesPreservesSortedOrderAndFastPaths(t *testing.T) {
 }
 
 func TestTieredMergeRelIDSlicesPreservesSortedOrder(t *testing.T) {
+	t.Parallel()
 	got := mergeRelIDSlices([][]types.RelID{{1, 4}, {1, 3}, {2, 4}})
 	if !reflect.DeepEqual(got, []types.RelID{1, 1, 2, 3, 4, 4}) {
 		t.Fatalf("mergeRelIDSlices = %v, want stable sorted duplicates", got)
@@ -61,6 +65,7 @@ func TestTieredMergeRelIDSlicesPreservesSortedOrder(t *testing.T) {
 }
 
 func TestTieredPaginationHelpersApplyCursorAndLimit(t *testing.T) {
+	t.Parallel()
 	rels := []*types.Relationship{
 		tieredMergeRel(10),
 		tieredMergeRel(20),

@@ -12,6 +12,7 @@ import (
 // Gate-2 consumer re-checking NodeLabelMutationEpoch(X) is not forced to discard a
 // still-valid result. A write to X DOES invalidate it.
 func TestPerLabelEpoch_SurvivesUnrelatedWrites(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	gen := newTestGen(t, 0)
 	const labelX, labelY = uint16(1), uint16(2)

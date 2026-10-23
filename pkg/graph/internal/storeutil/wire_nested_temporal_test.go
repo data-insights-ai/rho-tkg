@@ -43,6 +43,7 @@ func wireRoundTrip(t *testing.T, key string, v any) any {
 // renderings of the SAME instant in different zones make a "normalize to one
 // canonical instant" implementation fail too — identity is the rendering.
 func TestWire_NestedTemporalsRoundTripTyped(t *testing.T) {
+	t.Parallel()
 	value := []any{
 		types.TemporalValue{Kind: types.TemporalDate, Value: "2024-01-01"},
 		types.TemporalValue{Kind: types.TemporalDuration, Value: "P1DT2H"},
@@ -63,6 +64,7 @@ func TestWire_NestedTemporalsRoundTripTyped(t *testing.T) {
 // a genuine string property that looks like a date, and one that is byte-equal
 // to a temporal's rendering, must both come back as strings.
 func TestWire_NestedISOLookingStringsStayStrings(t *testing.T) {
+	t.Parallel()
 	value := []any{
 		"2024-01-01",
 		"P1DT2H",
@@ -90,6 +92,7 @@ func TestWire_NestedISOLookingStringsStayStrings(t *testing.T) {
 // list that has exactly the temporal envelope arity, which an unescaped
 // implementation would silently turn into a TemporalValue.
 func TestWire_MarkerShapedUserListsRoundTripUnchanged(t *testing.T) {
+	t.Parallel()
 	cases := map[string][]any{
 		"bare marker":           {nestedWireTemporalMarker},
 		"temporal-shaped":       {nestedWireTemporalMarker, int64(0), "2024-01-01"},
@@ -112,6 +115,7 @@ func TestWire_MarkerShapedUserListsRoundTripUnchanged(t *testing.T) {
 // Catches a decoder that best-effort guesses at a malformed envelope. Corrupt
 // or hostile rows must be rejected, never decoded into a different value.
 func TestWire_MalformedNestedEnvelopeRejected(t *testing.T) {
+	t.Parallel()
 	cases := map[string]any{
 		"wrong arity":     []any{nestedWireTemporalMarker, 0},
 		"kind not int":    []any{nestedWireTemporalMarker, "0", "2024-01-01"},
@@ -134,6 +138,7 @@ func TestWire_MalformedNestedEnvelopeRejected(t *testing.T) {
 // no temporal and no marker must keep its original wire bytes, so existing
 // rows are unchanged and the encoding stays backward compatible.
 func TestWire_NonTemporalNestedValuesAreNotRewritten(t *testing.T) {
+	t.Parallel()
 	value := []any{"a", int64(1), []any{"b"}, map[string]any{"c": "d"}}
 	pw, err := propertyToWire(types.Property{Key: "k", Value: value})
 	if err != nil {
@@ -146,6 +151,7 @@ func TestWire_NonTemporalNestedValuesAreNotRewritten(t *testing.T) {
 
 // Catches an envelope decoder that recurses without a bound on hostile input.
 func TestWire_NestedEnvelopeDepthBounded(t *testing.T) {
+	t.Parallel()
 	var deep any = []any{nestedWireTemporalMarker, 0, "2024-01-01"}
 	for range maxWireDecodeDepth + 2 {
 		deep = []any{deep}

@@ -68,6 +68,7 @@ func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
 }
 
 func TestTieredStore_Repair_OrphanedIncomingMissingEndNode(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	relTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")
 
@@ -97,6 +98,7 @@ func TestTieredStore_Repair_OrphanedIncomingMissingEndNode(t *testing.T) {
 }
 
 func TestTieredStoreRepairPurgesStaleTypeIndexWithOrphanedIncoming(t *testing.T) {
+	t.Parallel()
 	relID := snowflake.ID(777)
 	startID := snowflake.ID(10)
 	endID := snowflake.ID(20)
@@ -199,6 +201,7 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 }
 
 func TestTieredStoreRepairPurgesStaleIncomingTypeAndRecreatesCorrectEntry(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

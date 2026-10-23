@@ -22,6 +22,7 @@ import (
 // stub BYTE-EXACT from the ChangeForeignIncoming feed record (the foreign-slot
 // stub is routed by the END-node slot on apply, not the rel slot).
 func TestModelA_ForeignIncomingConvergence(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	// END machine (sharded, change-log ON).
@@ -148,6 +149,7 @@ func TestModelA_ForeignIncomingConvergence(t *testing.T) {
 // stub-free state via the dedicated ChangeForeignIncomingDelete feed record
 // (routed by the END-node slot, idempotently).
 func TestModelA_ForeignIncomingDeleteConvergence(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	eStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})
@@ -260,6 +262,7 @@ func TestModelA_ForeignIncomingDeleteConvergence(t *testing.T) {
 // route its restore through the foreign-incoming capability (by END slot), not a
 // slot-routed PutRelationship that would fail closed.
 func TestModelA_TxRollbackRestoresStub(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 	if err != nil {

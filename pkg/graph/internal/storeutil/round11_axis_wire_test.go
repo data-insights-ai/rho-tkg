@@ -18,6 +18,7 @@ import (
 // and the scanner read the values back unchanged; only the axis says what a
 // 0 means.
 func TestRound11RowBytesUnchanged(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name      string
 		tm        types.TemporalMetadata
@@ -87,6 +88,7 @@ func mustDecodeNodeWire(t *testing.T, raw []byte) NodeWire {
 // the instant 0 on the literal axis; the literal axis's open end is
 // types.InfiniteValidTo and its untimed start types.UnboundedValidFrom.
 func TestRound11AxisReadsStoredValues(t *testing.T) {
+	t.Parallel()
 	leg, lit := types.LegacyValidAxis, types.LiteralValidAxis
 	tm := &types.TemporalMetadata{ValidFrom: 0, ValidTo: 0, TxFrom: 77}
 	if got := EntityValidFrom(leg, 0, tm); got != 77 {

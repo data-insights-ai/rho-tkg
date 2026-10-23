@@ -97,6 +97,7 @@ func TestReimportAcrossShardsKeepsEarlierLife(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ctx := context.Background()
 	scenarios := []struct {
 		name  string

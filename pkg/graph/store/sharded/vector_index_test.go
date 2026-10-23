@@ -43,6 +43,7 @@ func addVectorNodesAcrossShards(t *testing.T, g *graph.Graph, n int) (map[int]ty
 // return the EXACT global top-k in distance order — proving the cross-shard
 // merge re-ranks correctly, not just returns some-per-shard-k.
 func TestShardedVectorBruteForceExactCrossShard(t *testing.T) {
+	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	byI, slots := addVectorNodesAcrossShards(t, g, 12)
 	if len(slots) < 2 {
@@ -74,6 +75,7 @@ func TestShardedVectorBruteForceExactCrossShard(t *testing.T) {
 // through to the merged search: a new node appears, an updated vector re-ranks,
 // and a deleted node disappears.
 func TestShardedVectorAutoMaintenance(t *testing.T) {
+	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	byI, _ := addVectorNodesAcrossShards(t, g, 6)
 
@@ -117,6 +119,7 @@ func TestShardedVectorAutoMaintenance(t *testing.T) {
 // filter admitting only even-i nodes must yield the exact even-i top-k in
 // distance order, re-ranked across shards.
 func TestShardedVectorFilteredSearch(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)
@@ -183,6 +186,7 @@ func TestShardedVectorFilteredSearch(t *testing.T) {
 // TestShardedVectorDDLSentinels checks store-level vector DDL sentinels +
 // dimension validation.
 func TestShardedVectorDDLSentinels(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)
@@ -215,6 +219,7 @@ func TestShardedVectorDDLSentinels(t *testing.T) {
 // TestShardedVectorReopenOnDisk verifies the store-level def metadata (dims +
 // metric) is persisted and reloaded, so a vector search works after reopen.
 func TestShardedVectorReopenOnDisk(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	var byI map[int]types.NodeID
 

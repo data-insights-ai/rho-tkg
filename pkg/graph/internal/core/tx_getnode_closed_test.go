@@ -25,6 +25,7 @@ import (
 // already honors.
 
 func TestGraphTx_GetNode_AfterCloseReturnsErrGraphClosed(t *testing.T) {
+	t.Parallel()
 	g := newTxTestGraph(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
@@ -46,6 +47,7 @@ func TestGraphTx_GetNode_AfterCloseReturnsErrGraphClosed(t *testing.T) {
 }
 
 func TestGraphTx_GetRelationship_AfterCloseReturnsErrGraphClosed(t *testing.T) {
+	t.Parallel()
 	g := newTxTestGraph(t)
 	ctx := context.Background()
 	a, err := g.Nodes.Add(ctx, []string{"Person"}, nil)
@@ -78,6 +80,7 @@ func TestGraphTx_GetRelationship_AfterCloseReturnsErrGraphClosed(t *testing.T) {
 // TestGraphTx_GetNode_StillWorksInsideOpenTx is the non-regression
 // counterpart: the fix must not break the ordinary, still-open-tx read path.
 func TestGraphTx_GetNode_StillWorksInsideOpenTx(t *testing.T) {
+	t.Parallel()
 	g := newTxTestGraph(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Ada"})
 	if err != nil {

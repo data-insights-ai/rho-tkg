@@ -21,6 +21,7 @@ import (
 // spreads across MULTIPLE lane slots (genuine shard distribution), and (3) each
 // session's nodes co-locate on a single slot.
 func TestGraphLevelIngestLanesRouteAcrossShards(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)

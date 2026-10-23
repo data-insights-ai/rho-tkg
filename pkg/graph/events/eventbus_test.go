@@ -3,6 +3,7 @@ package events
 import "testing"
 
 func TestEventBusZeroValueReadyToUse(t *testing.T) {
+	t.Parallel()
 	var bus EventBus
 
 	var got []EventType
@@ -24,6 +25,7 @@ func TestEventBusZeroValueReadyToUse(t *testing.T) {
 }
 
 func TestEventBusSubscribeNilIsNoop(t *testing.T) {
+	t.Parallel()
 	var bus EventBus
 
 	unsub := bus.Subscribe(nil)
@@ -42,6 +44,7 @@ func TestEventBusSubscribeNilIsNoop(t *testing.T) {
 }
 
 func TestEventBusNilReceiverMethodsAreNoop(t *testing.T) {
+	t.Parallel()
 	var bus *EventBus
 
 	unsub := bus.Subscribe(func(Event) {
@@ -55,6 +58,7 @@ func TestEventBusNilReceiverMethodsAreNoop(t *testing.T) {
 }
 
 func TestEventBusPublishBatchUsesStableHandlerSnapshot(t *testing.T) {
+	t.Parallel()
 	var bus EventBus
 
 	var got []EventType

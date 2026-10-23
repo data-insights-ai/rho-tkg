@@ -17,6 +17,7 @@ import (
 // cross-shard routing path (not just the badger-level helpers in isolation)
 // through the public TieredStore API.
 func TestTieredPutRelationship_CrossShardEmitsChangeRecords(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)

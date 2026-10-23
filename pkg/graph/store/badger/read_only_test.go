@@ -87,6 +87,7 @@ func TestBadgerStoreReadOnlyRejectsMutatingMethods(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	labels := registrypkg.NewLabelRegistry()
 	relTypes := registrypkg.NewRelTypeRegistry()
 
@@ -252,6 +253,7 @@ func TestBadgerStoreReadOnlyRejectsMutatingMethods(t *testing.T) {
 }
 
 func TestBadgerStoreReadOnlyAllowsEmptyBatches(t *testing.T) {
+	t.Parallel()
 	bs, seed := newReadOnlySeededBadgerStore(t)
 
 	tests := []struct {

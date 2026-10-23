@@ -49,6 +49,7 @@ func assertClassCounts(t *testing.T, g *Core, label, key string, want storepkg.P
 // missing node (slices sort BEFORE numbers, nulls sort last — opposite ends);
 // the type-class partition separates every case exactly.
 func TestPropertyTypeClassCounts_SigmaProbe(t *testing.T) {
+	t.Parallel()
 	for name, mk := range multiBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			g := mk(t)
@@ -93,6 +94,7 @@ func TestPropertyTypeClassCounts_SigmaProbe(t *testing.T) {
 // Exactness across the mutation lifecycle: class-changing update, delete,
 // label add/remove, NaN and ±Inf placement.
 func TestPropertyTypeClassCounts_MutationLifecycle(t *testing.T) {
+	t.Parallel()
 	for name, mk := range multiBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			g := mk(t)
@@ -148,6 +150,7 @@ func TestPropertyTypeClassCounts_MutationLifecycle(t *testing.T) {
 // loadIndexes pass that rebuilds the presence counters — a reopened directory
 // must answer identically.
 func TestPropertyTypeClassCounts_BadgerReopenRebuild(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	g, err := New(Config{BadgerDir: dir})
 	if err != nil {
@@ -183,6 +186,7 @@ func TestPropertyTypeClassCounts_BadgerReopenRebuild(t *testing.T) {
 // order-insensitive set matching — exactly the query door's routing rule;
 // definitions survive a badger reopen; drop removes them.
 func TestCompositeIntrospection(t *testing.T) {
+	t.Parallel()
 	for name, mk := range multiBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			g := mk(t)
@@ -276,6 +280,7 @@ func TestCompositeIntrospection(t *testing.T) {
 // introspection doors identically (the query-door acceleration also depends
 // on this reload).
 func TestCompositeIntrospection_BadgerReopen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	g, err := New(Config{BadgerDir: dir})
 	if err != nil {
@@ -305,6 +310,7 @@ func TestCompositeIntrospection_BadgerReopen(t *testing.T) {
 // answers (an unregistered label lists none), and the type-class counters
 // FOLD across shards there.
 func TestSigmaR3_TieredBehavior(t *testing.T) {
+	t.Parallel()
 	g := newTieredTestCore(t)
 	if got, err := g.Index.ListComposites("A"); err != nil || len(got) != 0 {
 		t.Fatalf("tiered ListComposites = %v, %v; want empty, nil", got, err)

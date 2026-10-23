@@ -128,6 +128,7 @@ func TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	const id = 77
 	shapes := []struct {
 		name string

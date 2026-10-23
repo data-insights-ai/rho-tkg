@@ -27,6 +27,7 @@ var (
 // would pay a disk sync), and one that syncs only what its OWN flush wrote — a
 // group drained earlier by a plain background Flush must still be fsynced.
 func TestDurableFlush_Badger_SyncsExactlyWhatWasWritten(t *testing.T) {
+	t.Parallel()
 	bs, err := badger.New(badger.Config{Dir: t.TempDir(), FlushInterval: time.Hour})
 	if err != nil {
 		t.Fatalf("badger.New: %v", err)
@@ -87,6 +88,7 @@ func TestDurableFlush_Badger_SyncsExactlyWhatWasWritten(t *testing.T) {
 // Catches: a second fsync per commit under SyncWrites, where Badger already
 // fsynced every WriteBatch.
 func TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync(t *testing.T) {
+	t.Parallel()
 	bs, err := badger.New(badger.Config{Dir: t.TempDir(), SyncWrites: true})
 	if err != nil {
 		t.Fatalf("badger.New: %v", err)
@@ -108,6 +110,7 @@ func TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync(t *testing.T) {
 // silent no-op there, so a nil answer would be a false promise), and a closed
 // store answering nil.
 func TestDurableFlush_Badger_SupportAndRefusals(t *testing.T) {
+	t.Parallel()
 	disk, err := badger.New(badger.Config{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("badger.New dir: %v", err)
@@ -141,6 +144,7 @@ func TestDurableFlush_Tiered_DrainsEveryTouchedShard(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), RefLabels: []string{"Ref"}, FlushInterval: time.Hour})
 	if err != nil {
 		t.Fatalf("tiered.New: %v", err)
@@ -202,6 +206,7 @@ func TestDurableFlush_Tiered_SupportAndRefusals(t *testing.T) {
 // Catches: a sharded DurableFlush that reaches only the anchor slot, an
 // in-memory sharded store claiming durability, and a closed store answering nil.
 func TestDurableFlush_Sharded_DrainsEverySlotAndRefuses(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{Dir: t.TempDir(), BaseSlot: 0, SlotCount: 2, FlushInterval: time.Hour})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)

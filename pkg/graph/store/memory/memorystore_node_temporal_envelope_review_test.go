@@ -39,6 +39,7 @@ func TestMemoryNodeTemporalEnvelope_PutNodeVersionDuringCreate(t *testing.T) {
 
 // The plain add-label door (rollback path, no history row) folds history too.
 func TestMemoryNodeTemporalEnvelope_PlainAddLabelOnLiveNode(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	nid := types.NodeID(snowflake.ID(8035))
 	v0 := envNode(nid, 0, 100, 200, 8, 7)

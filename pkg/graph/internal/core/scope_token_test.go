@@ -6,6 +6,7 @@ import (
 )
 
 func TestScopeToken_RoundTrip(t *testing.T) {
+	t.Parallel()
 	ctx := withScopeToken(context.Background(), 42)
 	token, ok := scopeTokenFrom(ctx)
 	if !ok {
@@ -17,6 +18,7 @@ func TestScopeToken_RoundTrip(t *testing.T) {
 }
 
 func TestScopeToken_AbsentOnPlainContext(t *testing.T) {
+	t.Parallel()
 	token, ok := scopeTokenFrom(context.Background())
 	if ok {
 		t.Fatal("scopeTokenFrom(context.Background()): ok = true, want false")
@@ -27,6 +29,7 @@ func TestScopeToken_AbsentOnPlainContext(t *testing.T) {
 }
 
 func TestScopeToken_NilContextDoesNotPanic(t *testing.T) {
+	t.Parallel()
 	//nolint:staticcheck // deliberately probing nil-safety
 	token, ok := scopeTokenFrom(nil)
 	if ok || token != 0 {
@@ -39,6 +42,7 @@ func TestScopeToken_NilContextDoesNotPanic(t *testing.T) {
 // yet) must never observe a scope token. Guards against a future accidental
 // key collision with another package's context value.
 func TestScopeToken_ForeignContextNeverObserved(t *testing.T) {
+	t.Parallel()
 	type otherKey struct{}
 	ctx := context.WithValue(context.Background(), otherKey{}, uint64(99))
 	token, ok := scopeTokenFrom(ctx)
@@ -48,6 +52,7 @@ func TestScopeToken_ForeignContextNeverObserved(t *testing.T) {
 }
 
 func TestScopeToken_ZeroTokenRoundTrips(t *testing.T) {
+	t.Parallel()
 	// withScopeToken(ctx, 0) is discouraged by its own doc comment, but must
 	// not panic or misbehave — scopeTokenFrom should report ok=true with
 	// token 0, which every scoped door already treats identically to "no
@@ -60,6 +65,7 @@ func TestScopeToken_ZeroTokenRoundTrips(t *testing.T) {
 }
 
 func TestScopeToken_NestedContextOverride(t *testing.T) {
+	t.Parallel()
 	outer := withScopeToken(context.Background(), 1)
 	inner := withScopeToken(outer, 2)
 	token, ok := scopeTokenFrom(inner)

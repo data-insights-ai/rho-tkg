@@ -19,6 +19,7 @@ import (
 // Phase 2 must clean BOTH residues on the surviving ref shard, or they dangle as
 // phantoms in the reference node's adjacency fold.
 func TestTieredPurge_CrossShardEdgeSweep(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	const refTok = uint16(1) // "Case" (reference)

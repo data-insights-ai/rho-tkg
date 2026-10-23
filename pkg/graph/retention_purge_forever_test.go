@@ -13,6 +13,7 @@ import (
 // purging a node which OWNS a UniqueForever value releases the claim, so the value
 // is reusable afterward — rather than being barred forever by a ghost owner.
 func TestPurge_ReapsUniqueForeverOwner(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true})
 	if err != nil {
@@ -59,6 +60,7 @@ func TestPurge_ReapsUniqueForeverOwner(t *testing.T) {
 // unverified by any test, unlike the single-key case). Purges the owner and
 // asserts BOTH claims are released, not just one.
 func TestPurge_ReapsAllForeverKeysOfMultiKeyOwner(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true})
 	if err != nil {

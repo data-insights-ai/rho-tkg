@@ -20,6 +20,7 @@ import (
 // with the rows evicted from a one-entry cache that is two cache misses per
 // entity; the ID-only gather leaves one (the timeline's own read).
 func TestEffectiveScanReadsEachRowOnce(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st, err := badger.New(badger.Config{Dir: t.TempDir(), FlushInterval: time.Hour, CacheCapacity: 1})
 	if err != nil {

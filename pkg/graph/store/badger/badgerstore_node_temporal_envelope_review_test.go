@@ -77,6 +77,7 @@ func TestNodeTemporalEnvelope_RecreateDuringBuild(t *testing.T) {
 
 // The plain add-label door (rollback path, no history row) folds history too.
 func TestNodeTemporalEnvelope_PlainAddLabelOnLiveNode(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	nid := types.NodeID(snowflake.ID(8041))
 	v0 := envNode(nid, 0, 100, 200, 8, 7)

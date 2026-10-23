@@ -12,6 +12,7 @@ import (
 // struct exactly, for both the all-omitted-optional-fields case and the
 // every-optional-field-present case.
 func TestChangeBodyRoundTrip(t *testing.T) {
+	t.Parallel()
 	nw := NodeWire{FormatVersion: 2, ID: 100, PrimaryLabel: 1, Version: 1}
 	rw := RelWire{FormatVersion: 2, ID: 200, RelType: 2, StartID: 10, EndID: 20, Version: 1}
 
@@ -61,6 +62,7 @@ func TestChangeBodyRoundTrip(t *testing.T) {
 // skipped rather than erroring, matching reflection's ignore-unknown-struct-
 // fields behavior (forward compatibility for a future field addition).
 func TestChangeBodyDecodeUnknownKeyForwardCompat(t *testing.T) {
+	t.Parallel()
 	// Build a MetaBody payload with an extra unknown "zz" key manually via a
 	// generic map, then decode it as MetaBody — the unknown key must be
 	// skipped, not error.

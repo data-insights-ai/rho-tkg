@@ -197,6 +197,7 @@ func lapPin(t *testing.T, g *Core) types.Instant {
 }
 
 func TestLowestAnsweredPin(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, be := range txbBackends(func(c *Config) { c.AllowRetentionPurge = true }) {
 		t.Run(be.name, func(t *testing.T) {

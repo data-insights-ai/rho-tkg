@@ -147,6 +147,7 @@ func TestBadgerStorePropertyIndexCreatePlaceholderGuards(t *testing.T) {
 }
 
 func TestBadgerStoreQueriesIgnoreBuildingIndexPlaceholders(t *testing.T) {
+	t.Parallel()
 	t.Run("property", func(t *testing.T) {
 		bs := newTestBadgerStore(t)
 

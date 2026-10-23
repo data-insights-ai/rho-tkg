@@ -138,6 +138,7 @@ func TestReplicaConvergence_ByteExactViaTail(t *testing.T) {
 // Re-applying the same records must be a no-op (idempotent at-least-once
 // redelivery after a crash between a door commit and the watermark advance).
 func TestReplicaConvergence_IdempotentReapply(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
@@ -190,6 +191,7 @@ func TestReplicaConvergence_IdempotentReapply(t *testing.T) {
 // which would leave a permanent gap in coverage). The successful prefix before
 // the out-of-order record is still flushed and watermarked.
 func TestReplicaApplyChanges_RejectsMisorderedBatch(t *testing.T) {
+	t.Parallel()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("primary New: %v", err)
@@ -259,6 +261,7 @@ func TestReplicaApplyChanges_RejectsMisorderedBatch(t *testing.T) {
 // world-time (ValidFrom) is a fixed PAST value no wall-clock stamp could
 // coincidentally reproduce.
 func TestReplicaApply_ReproducesTemporalVerbatim(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
@@ -333,6 +336,7 @@ func TestReplicaApply_ReproducesTemporalVerbatim(t *testing.T) {
 // the watermark back to simulate a crash that lost the watermark advance, so the
 // redelivered record actually re-enters the apply path.
 func TestReplicaApply_LabelAddRedeliveryNoOps(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
@@ -403,6 +407,7 @@ func TestReplicaApply_LabelAddRedeliveryNoOps(t *testing.T) {
 // watermark — the durability-ordering path (flush-before-watermark) that keeps
 // the watermark from ever running ahead of the data.
 func TestReplicaConvergence_DurableRestartResume(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
@@ -471,6 +476,7 @@ func TestReplicaConvergence_DurableRestartResume(t *testing.T) {
 // A record at or below the applied watermark (stale / out-of-order redelivery)
 // must be a no-op — it must not regress the replica's current row or watermark.
 func TestReplicaApply_SkipsStaleLSN(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
@@ -537,6 +543,7 @@ func TestReplicaApply_SkipsStaleLSN(t *testing.T) {
 // applyRelHistoryVersionLocked). Full convergence — including version-history
 // parity for every live and deleted entity — is the oracle.
 func TestReplicaConvergence_RelDeleteAndVersionInterval(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {

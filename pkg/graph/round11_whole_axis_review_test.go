@@ -33,6 +33,7 @@ func r11Segmented(t *testing.T, g *graphpkg.Graph) types.NodeID {
 }
 
 func TestRound11WholeAxisReviewDoors(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) {
 		c.UntimedValidStart = graphpkg.UntimedWholeAxis
@@ -173,6 +174,7 @@ func r11SegmentedRel(t *testing.T, g *graphpkg.Graph) types.RelID {
 // refused before its compare: a CAS whose new value the current segment
 // already holds does not report success while an earlier segment differs.
 func TestRound11WholeAxisReviewRelDoors(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) {
 		c.UntimedValidStart = graphpkg.UntimedWholeAxis

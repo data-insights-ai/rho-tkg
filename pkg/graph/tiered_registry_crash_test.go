@@ -42,6 +42,7 @@ func TestWriteAheadRegistryCrash(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ctx := context.Background()
 
 	if os.Getenv("TKG_CRASH_CHILD") == "1" {

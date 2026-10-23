@@ -13,6 +13,7 @@ import (
 // that AT MOST maxShardWorkers invocations of fn are ever in flight at once,
 // while every task still eventually completes.
 func TestRunShardPoolBoundsConcurrency(t *testing.T) {
+	t.Parallel()
 	const n = 24 // > maxShardWorkers, exercises the pool boundary
 	if n <= maxShardWorkers {
 		t.Fatalf("test setup invalid: n (%d) must exceed maxShardWorkers (%d)", n, maxShardWorkers)
@@ -75,6 +76,7 @@ func TestRunShardPoolBoundsConcurrency(t *testing.T) {
 // workers := min(maxShardWorkers, n) clamp must handle: n=0 (no tasks, no
 // goroutines spawned) and n < maxShardWorkers (fewer workers than the cap).
 func TestRunShardPoolZeroAndSmallN(t *testing.T) {
+	t.Parallel()
 	// n=0 must return immediately without spawning or blocking.
 	done := make(chan struct{})
 	go func() {

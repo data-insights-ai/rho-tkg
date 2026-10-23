@@ -139,6 +139,7 @@ func TestByLabelAndProperties_PartialMatchExcluded(t *testing.T) {
 // during-interval query (docs/CONTRIBUTING.md testing rule 16 and
 // "Most-recent-overlap is wrong for predicate-during-interval").
 func TestNodesByLabelAndProperties_TemporalOpts_Adversarial(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	clk := useTestClock(t, g)
 

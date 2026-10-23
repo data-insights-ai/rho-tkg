@@ -187,6 +187,7 @@ func nodeIndexOn(s *BadgerStore) (storecontract.PropertyIndexOptions, bool) {
 }
 
 func TestTieredStoreRelPropertyIndex_FansOut(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	w := newPropIndexWorld(t, ts)
 	want1 := []string{"ev1", "hot1", "ref1"}
@@ -291,6 +292,7 @@ func TestTieredStoreRelPropertyIndex_FansOut(t *testing.T) {
 }
 
 func TestTieredStoreNodePropertyIndex_EventLabelFansOut(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	w := newPropIndexWorld(t, ts)
 	want1 := []string{"s1", "s3"}
@@ -347,6 +349,7 @@ func TestTieredStoreNodePropertyIndex_EventLabelFansOut(t *testing.T) {
 // removed stays a member), declined when the anchor has no index or any shard
 // lacks it or carries other options.
 func TestTieredStorePropertyTxMembers_UnionAcrossShards(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	w := newPropIndexWorld(t, ts)
 	if _, err := w.relMembers(int64(1)); !errors.Is(err, storecontract.ErrIndexNotFound) {
@@ -433,6 +436,7 @@ func TestTieredStorePropertyTxMembers_UnionAcrossShards(t *testing.T) {
 }
 
 func TestTieredStorePropertyIndex_Elements(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	w := newPropIndexWorld(t, ts)
 	el := storecontract.PropertyIndexOptions{Elements: true}
@@ -478,6 +482,7 @@ func TestTieredStorePropertyIndex_Elements(t *testing.T) {
 // A closed cold shard is reached by the DDL and by the reads, and a lazy
 // reopen keeps the definitions.
 func TestTieredStorePropertyIndex_ClosedColdShard(t *testing.T) {
+	t.Parallel()
 	ts := newDiskTestTieredStore(t) // an in-memory shard loses its rows on close
 	w := newPropIndexWorld(t, ts)
 	demoteToCold(ts, w.first)
@@ -514,6 +519,7 @@ func TestTieredStorePropertyIndex_ClosedColdShard(t *testing.T) {
 // A step that fails mid fan-out leaves every shard as before (create and drop,
 // failing at the last event shard and at the reference shard).
 func TestTieredStorePropertyIndex_FanOutFaultRollsBack(t *testing.T) {
+	t.Parallel()
 	errInjected := errors.New("injected shard failure")
 	kinds := []struct {
 		name   string
@@ -575,6 +581,7 @@ func TestTieredStorePropertyIndex_FanOutFaultRollsBack(t *testing.T) {
 // An interrupted create left a definition with OTHER options on a shard: the
 // re-run create must replace it, never tolerate it as already done.
 func TestTieredStorePropertyIndex_RerunCreateReplacesStaleOptions(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	w := newPropIndexWorld(t, ts)
 	hot := ts.hotShard.store
@@ -598,6 +605,7 @@ func TestTieredStorePropertyIndex_RerunCreateReplacesStaleOptions(t *testing.T) 
 // definition (create interrupted before the anchor), a missing one (drop
 // interrupted after some shards), other options.
 func TestTieredStorePropertyIndex_InterruptedDDLRepairedAtOpen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{DataDir: dir, RefLabels: []string{"Case", "User"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}
 	ts, err := New(cfg)
@@ -714,6 +722,7 @@ func TestTieredStorePropertyIndex_ArchiveMoveDuringRead(t *testing.T) {
 // A retention drop removes a whole event shard: its rows leave the answers and
 // the sidecar union stays answerable.
 func TestTieredStorePropertyIndex_RetentionDrop(t *testing.T) {
+	t.Parallel()
 	ts := newPersistentTieredStore(t)
 	const relType = piType
 	gen, rgen := tieredNodeGen(t), tieredRelGen(t)

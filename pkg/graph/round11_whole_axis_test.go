@@ -106,6 +106,7 @@ func r11Want(t *testing.T, what, got, want string) {
 // the effective timeline is one whole-axis segment at either pin. Nodes and
 // relationships, every backend.
 func TestRound11WholeAxisPure(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
 		t.Run(b.name, func(t *testing.T) {
@@ -188,6 +189,7 @@ func TestRound11WholeAxisPure(t *testing.T) {
 // segment appears before 100 (existence unchanged); AS OF before the update
 // sees j=1 in both. Nodes and relationships, every backend.
 func TestRound11WholeAxisMixed(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
 		t.Run(b.name, func(t *testing.T) {
@@ -280,6 +282,7 @@ func TestRound11WholeAxisMixed(t *testing.T) {
 // AS OF before the delete it is valid everywhere. Nodes and relationships,
 // every backend.
 func TestRound11WholeAxisTimedSplitAndDelete(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
 		t.Run(b.name, func(t *testing.T) {
@@ -404,6 +407,7 @@ func TestRound11WholeAxisReopenAndMismatch(t *testing.T) {
 // update still starts at its TxFrom (the rule of the other modes is not
 // changed by the flag).
 func TestRound11WholeAxisOtherModesUnchanged(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedUnbounded})
 	if err != nil {
@@ -435,6 +439,7 @@ func TestRound11WholeAxisOtherModesUnchanged(t *testing.T) {
 // explicit valid-time segments is refused with ErrUntimedModeMismatch (the
 // label index follows the current row; per-segment labels are an open item).
 func TestRound11WholeAxisDoors(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
 		t.Run(b.name, func(t *testing.T) {
@@ -494,6 +499,7 @@ func TestRound11WholeAxisDoors(t *testing.T) {
 // carries the mode (header "ua"); an empty default store that imports it
 // adopts it; a store of another mode with rows refuses it.
 func TestRound11WholeAxisExportImport(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedWholeAxis})
 	if err != nil {

@@ -217,6 +217,7 @@ func chainDoorsRelReport(t *testing.T, rows []chainFixtureRow) string {
 // relating, effective timeline, any-version chain, legacy ValidFrom
 // migration, untimed first-version stamp), recorded before WP-21 folded the builders into chainOf.
 func TestChainDoorsCharacterization(t *testing.T) {
+	t.Parallel()
 	for _, fx := range chainFixtures {
 		t.Run(fx.name, func(t *testing.T) {
 			if got, want := chainDoorsNodeReport(t, fx.rows), chainDoorsGolden["node/"+fx.name]; got != want {

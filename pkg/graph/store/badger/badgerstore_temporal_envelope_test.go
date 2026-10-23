@@ -30,6 +30,7 @@ func envelopeCoversPast(t *testing.T, bs *Store, label uint16, id snowflake.ID, 
 }
 
 func TestTemporalEnvelope_ForwardMaintenance(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
 		t.Fatal(err)
@@ -59,6 +60,7 @@ func TestTemporalEnvelope_ForwardMaintenance(t *testing.T) {
 // The envelope must be reconstructed from history on restart (rebuild sees only
 // the current version; the history-fold pass restores the past coverage).
 func TestTemporalEnvelope_SurvivesRestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
 	if err != nil {

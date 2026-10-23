@@ -15,6 +15,7 @@ import (
 // TestDryRunValidate_Unique proves the dry-run door reports unique violations
 // (committed-current, intra-set duplicate) without mutating the graph.
 func TestDryRunValidate_Unique(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
@@ -71,6 +72,7 @@ func TestDryRunValidate_Unique(t *testing.T) {
 // it, so a later REAL assert of that value still succeeds. (Tx+rollback would
 // leave a permanent claim and wrongly bar the value.)
 func TestDryRunValidate_ForeverLeavesNoGhostClaim(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
@@ -103,6 +105,7 @@ func TestDryRunValidate_ForeverLeavesNoGhostClaim(t *testing.T) {
 // TestDryRunValidate_Temporal proves the door reports temporal (rel-within-
 // endpoints) violations for a proposed relationship without asserting it.
 func TestDryRunValidate_Temporal(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
@@ -144,6 +147,7 @@ func TestDryRunValidate_Temporal(t *testing.T) {
 // node PROPOSED in the SAME fact set (not yet asserted) is validated against that
 // proposed node's interval — not reported as "start node not found".
 func TestDryRunValidate_CoProposedEndpoint(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
@@ -198,6 +202,7 @@ func TestDryRunValidate_CoProposedEndpoint(t *testing.T) {
 // a self-loop fact was never even inspected and DryRunValidate silently
 // reported zero violations for a fact set a real Add would reject.
 func TestDryRunValidate_SelfLoopRejectedWithoutAnyConstraintConfigured(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{}) // AllowSelfLoops defaults false, NO constraints configured
 	if err != nil {
@@ -234,6 +239,7 @@ func TestDryRunValidate_SelfLoopRejectedWithoutAnyConstraintConfigured(t *testin
 // self-loop check still fires even when a temporal constraint IS configured
 // (the gate that used to hide it in the zero-constraint case).
 func TestDryRunValidate_SelfLoopRejectedWithConstraintsConfigured(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
@@ -266,6 +272,7 @@ func TestDryRunValidate_SelfLoopRejectedWithConstraintsConfigured(t *testing.T) 
 // count exceeding MaxLabelsPerNode passed a dry run silently even though a
 // real Add rejects both.
 func TestDryRunValidate_NodeLabelValidation(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
@@ -308,6 +315,7 @@ func TestDryRunValidate_NodeLabelValidation(t *testing.T) {
 // relationship type name passed a dry run silently even though a real Add
 // rejects it.
 func TestDryRunValidate_RelTypeNameValidation(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {

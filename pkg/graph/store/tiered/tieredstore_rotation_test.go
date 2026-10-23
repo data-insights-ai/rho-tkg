@@ -54,6 +54,7 @@ func TestTieredStore_Rotation(t *testing.T) {
 }
 
 func TestTieredStore_RotationIdempotent(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	// Expire hot shard.
@@ -176,6 +177,7 @@ func TestTieredStore_RotationPreservesEventShards(t *testing.T) {
 }
 
 func TestTieredStore_ForceRotate(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -198,6 +200,7 @@ func TestTieredStore_ForceRotate(t *testing.T) {
 }
 
 func TestTieredStore_RotateHotShardPublicCallSerializesConcurrentRotations(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	const rotations = 4

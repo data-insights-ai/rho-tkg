@@ -126,6 +126,7 @@ func TestTieredPropertyIndexOnDisk_ReachesEveryShard(t *testing.T) {
 // any in-memory index rebuild pass — the reference shard's own badger.Store
 // reloads its persisted property-key registry and 0x0A rows on its own.
 func TestTieredPropertyIndexOnDisk_ReopenPersistence(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := tieredPropIdxDiskCfg(dir)
 
@@ -301,7 +302,7 @@ func TestTieredPropertyIndexOnDisk_EventLabelOnEveryShard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	defer ts.Close()
+	t.Cleanup(func() { _ = ts.Close() }) // after the shard pins allShardStoresForTest releases in its own cleanup
 
 	labelReg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(labelReg)

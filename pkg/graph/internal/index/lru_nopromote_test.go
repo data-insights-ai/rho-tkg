@@ -72,6 +72,7 @@ func TestLRUGetNoPromoteDoesNotPromote(t *testing.T) {
 // never observe a torn items map or entry while the writer holds the exclusive
 // Lock.
 func TestLRUGetNoPromoteConcurrent(t *testing.T) {
+	t.Parallel()
 	c := NewCache[string](1000)
 	const keys = 500
 	for i := 0; i < keys; i++ {

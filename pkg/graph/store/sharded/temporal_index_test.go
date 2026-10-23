@@ -14,6 +14,7 @@ import (
 // DDL contract: double-create -> ErrTemporalIndexExists, drop-missing ->
 // ErrTemporalIndexNotFound, both errors.Is-able through the coalesce.
 func TestShardedTemporalIndexDDLSentinels(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)

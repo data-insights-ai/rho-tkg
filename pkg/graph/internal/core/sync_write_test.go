@@ -7,6 +7,7 @@ import (
 )
 
 func TestSyncWrite_Graph_ConfigPassthrough(t *testing.T) {
+	t.Parallel()
 	// Verify that Config.SyncWrites flows through to the backing badger.Store.
 	dir := t.TempDir()
 	g, err := New(Config{

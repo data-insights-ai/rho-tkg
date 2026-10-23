@@ -73,6 +73,7 @@ func TestRelEndpointHashLadder_DoesNotMintIDWhenEndpointMissing(t *testing.T) {
 }
 
 func TestRelEndpointHashLadder_MintsIDAfterValidationPasses(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphBadgerNoEndpointHashWrite(t)
 	ctx := context.Background()
 
@@ -146,6 +147,7 @@ func TestRelEndpointHashLadder_ConstraintsBranch_DoesNotMintIDWhenEndpointMissin
 // non-regression counterpart via the public door: the reordering must not
 // change the observable error for a missing endpoint.
 func TestAddByID_MissingEndpointStillReturnsExpectedError(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	ctx := context.Background()
 

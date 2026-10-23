@@ -38,6 +38,7 @@ func TestRelSegmentsDifferentialOracleOnDisk(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	var dirs []string
 	root := t.TempDir() // outlives the per-seed subtests: checked below
 	runSegOracle(t, func(t *testing.T) string {

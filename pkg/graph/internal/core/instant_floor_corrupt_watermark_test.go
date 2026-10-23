@@ -29,6 +29,7 @@ import (
 // wrapped-NEGATIVE one. Both are why it asserts the property (a plausible,
 // positive instant) rather than a predicted failure mode.
 func TestInstantFloor_CorruptWatermarkCannotPoisonTheCommitClock(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()
 

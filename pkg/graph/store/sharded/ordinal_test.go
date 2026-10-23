@@ -3,6 +3,7 @@ package sharded
 import "testing"
 
 func TestShardedStoreOrdinals(t *testing.T) {
+	t.Parallel()
 	s, err := New(Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 	if err != nil {
 		t.Fatal(err)

@@ -18,6 +18,7 @@ import (
 // that a tailing replica applies to BYTE-EXACT convergence. This is what makes
 // the concurrent write door safe to use in a replicated deployment.
 func TestIngestConcurrentReplicaByteExact(t *testing.T) {
+	t.Parallel()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("primary New: %v", err)

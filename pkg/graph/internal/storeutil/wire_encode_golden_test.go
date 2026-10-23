@@ -26,6 +26,7 @@ var wireGolden = map[string]string{
 }
 
 func TestWireEncodePropertyGolden(t *testing.T) {
+	t.Parallel()
 	nodeCases := map[string]NodeWire{
 		"node_v2_1prop": {FormatVersion: 2, ID: 12345, PrimaryLabel: 1, Version: 3, Hash: "abc123def456",
 			Properties: []PropertyWire{{KeyToken: 3, Value: int64(99), Type: 2}}},

@@ -15,6 +15,7 @@ import (
 // preferred type among those present at the key, and an empty view is
 // has=false.
 func TestNumericBoundsMatchesScan(t *testing.T) {
+	t.Parallel()
 	pool := []any{int64(3), 3.0, int8(3), uint16(3), float32(0.5), 0.5, math.Inf(-1), math.Inf(1), math.NaN(),
 		int64(-7), -7.0, int32(-7), uint8(200), 200.0, float32(-7), "s", true}
 	rank := func(v any) int {
@@ -82,6 +83,7 @@ func TestNumericBoundsMatchesScan(t *testing.T) {
 // TestNumericBoundsUnsupported: a nil index, an Elements index, an index being
 // built and one holding an integer past 2^53 state nothing.
 func TestNumericBoundsUnsupported(t *testing.T) {
+	t.Parallel()
 	var nilIdx *PropertyIndex
 	if _, _, _, _, _, ok := nilIdx.NumericBounds(); ok {
 		t.Error("nil index supported")
@@ -110,6 +112,7 @@ func TestNumericBoundsUnsupported(t *testing.T) {
 // declines where NumericBounds does, and declines where the index and the
 // class counts disagree on whether a number exists.
 func TestPropertyBoundsOf(t *testing.T) {
+	t.Parallel()
 	pi := NewPropertyIndex()
 	pi.Add(1, int64(2))
 	pi.Add(2, 5.5)

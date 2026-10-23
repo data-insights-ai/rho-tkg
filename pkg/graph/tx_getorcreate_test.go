@@ -25,6 +25,7 @@ import (
 // first call's create (ghost-read consistency) — created=false, same ID, and the
 // node is readable via the tx's own read door before Commit.
 func TestTxGetOrCreateByKey_InTxVisibility(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -75,6 +76,7 @@ func TestTxGetOrCreateByKey_InTxVisibility(t *testing.T) {
 // Rollback, neither the property scan nor a point read finds it) — proving the
 // create truly participated in the tx rather than auto-committing.
 func TestTxGetOrCreateByKey_RollbackUndoesCreate(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -121,6 +123,7 @@ func TestTxGetOrCreateByKey_RollbackUndoesCreate(t *testing.T) {
 // the tx opened) is a hit — created=false, returns the pre-existing node, adds
 // no new holder.
 func TestTxGetOrCreateByKey_HitPreExisting(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)

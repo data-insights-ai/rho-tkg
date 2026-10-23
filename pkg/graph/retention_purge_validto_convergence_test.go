@@ -19,6 +19,7 @@ import (
 // early-closed events gone, the open one kept. A blind "delete all Events" would
 // wrongly remove the open survivor, so this asserts the predicate, not the effect.
 func TestRetentionPurge_ByValidToReplicaConvergence(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	const boundary = types.Instant(5000)
 

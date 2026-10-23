@@ -72,6 +72,7 @@ func expectRelStamps(t *testing.T, ts *Store, step string, id types.RelID, wantF
 }
 
 func TestTieredHistoryStamps_RoutingShapes(t *testing.T) {
+	t.Parallel()
 	t.Run("event live (B)", func(t *testing.T) {
 		e := newBranchTestEnv(t)
 		n, plain := e.newEventNode(t), e.newEventNode(t)
@@ -282,6 +283,7 @@ func TestTieredHistoryStamps_Errors(t *testing.T) {
 // both directions (the owner's copy higher, the other's higher) and for an
 // archived entity, whose owner is the archive.
 func TestTieredHistoryStamps_DuplicateVersionAcrossShards(t *testing.T) {
+	t.Parallel()
 	t.Run("node, reference live, archive copy higher", func(t *testing.T) {
 		e := newBranchTestEnv(t)
 		n := e.newRefNode(t)

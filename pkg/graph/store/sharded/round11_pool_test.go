@@ -20,6 +20,7 @@ func goid() string {
 // shard body grows it: a third of a two-shard string seek before). Every
 // index still runs once, at most maxShardWorkers at a time.
 func TestRound11ShardPoolCallerWorks(t *testing.T) {
+	t.Parallel()
 	caller := goid()
 	runShardPool(0, func(i int) { t.Fatalf("n=0: fn(%d) ran", i) })
 	for _, n := range []int{1, 2, 7, 32} {

@@ -65,6 +65,7 @@ func TestCoreIsBlankNameUnicodeAndInvalidUTF8(t *testing.T) {
 }
 
 func TestValidatePropertyValueLimitTypedDirectBranches(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3, MaxPropertyContainerLength: 3}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -140,6 +141,7 @@ func TestValidatePropertyValueLimitTypedDirectBranches(t *testing.T) {
 }
 
 func TestValidatePropertyValueLimitReflectBranches(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3, MaxPropertyContainerLength: 3}})
 	if err != nil {
 		t.Fatalf("New: %v", err)

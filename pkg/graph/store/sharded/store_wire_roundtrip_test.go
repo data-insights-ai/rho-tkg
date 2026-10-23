@@ -15,6 +15,7 @@ import (
 // rather than a byte-golden comparison — see store_wire_golden_test.go's doc
 // comment for why a fixed hex golden isn't meaningful for that case.
 func TestStoreWireRoundTrip(t *testing.T) {
+	t.Parallel()
 	t.Run("vectorDefBlob", func(t *testing.T) {
 		in := vectorDefBlob{LabelToken: 3, PropertyKey: "vec", Dims: 128, Metric: storecontract.DistanceCosine}
 		b, err := msgpack.Marshal(in)
@@ -113,6 +114,7 @@ func TestStoreWireRoundTrip(t *testing.T) {
 // (DecodeMsgpack correctly stays pointer-receiver, since decode always
 // targets an addressable &out).
 func TestStoreWireEncodeByValue(t *testing.T) {
+	t.Parallel()
 	if _, err := msgpack.Marshal(vectorDefBlob{LabelToken: 1, PropertyKey: "a", Dims: 2}); err != nil {
 		t.Fatalf("msgpack.Marshal(vectorDefBlob{...}) (by value) = %v, want nil (EncodeMsgpack must use a value receiver)", err)
 	}

@@ -116,6 +116,7 @@ func TestBadgerPropertyNDVDoesNotRescan(t *testing.T) {
 // TestBadgerPropertyNDVDisabledPlannerStats: a store opened without planner
 // statistics refuses the NDV doors as it refuses the stats doors.
 func TestBadgerPropertyNDVDisabledPlannerStats(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true, DisablePlannerStats: true})
 	if err != nil {
 		t.Fatal(err)

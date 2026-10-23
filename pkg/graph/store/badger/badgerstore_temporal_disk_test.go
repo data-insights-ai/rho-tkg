@@ -510,6 +510,7 @@ func TestTemporalIndexOnDisk_CrashRecoveryAgreesWithRowData(t *testing.T) {
 // `pending` would miss the parked row and orphan it once the concurrent
 // flush lands it.
 func TestTemporalIndexDiskPurge_FlushingOverlay_ParkedRowGetsPurged(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.TemporalIndexOnDisk = true })
 	const label = uint16(1)
 	if err := bs.CreateTemporalIndex(label); err != nil {
@@ -549,6 +550,7 @@ func TestTemporalIndexDiskPurge_FlushingOverlay_ParkedRowGetsPurged(t *testing.T
 // `flushing` for a label about to be dropped must be found and deleted by
 // purgeTemporalIndexDiskEntriesLocked, not just the durable Badger rows.
 func TestTemporalIndexDropPurge_FlushingOverlay_ParkedRowGetsPurged(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.TemporalIndexOnDisk = true })
 	const label = uint16(1)
 	if err := bs.CreateTemporalIndex(label); err != nil {
@@ -724,6 +726,7 @@ func TestTemporalIndexOnDisk_OpenTimeMeasurement_100k(t *testing.T) {
 	if testing.Short() {
 		t.Skip("100k-entity open-time measurement skipped in -short mode")
 	}
+	t.Parallel()
 	const label = uint16(1)
 	const n = 100_000
 

@@ -240,6 +240,7 @@ func stampsScenario(t *testing.T, k stampsKind, st storecontract.Store, check fu
 }
 
 func TestHistoryStampsMatchHistoryFold(t *testing.T) {
+	t.Parallel()
 	for _, b := range stampsBackends() {
 		for _, k := range stampsKinds() {
 			t.Run(b.name+"/"+k.name+"/checked", func(t *testing.T) {
@@ -337,6 +338,7 @@ func TestHistoryStampsErrors(t *testing.T) {
 
 // FoldTxStamps is the one definition every backend and the core fallback use.
 func TestFoldTxStamps(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name                string
 		from, to            types.Instant

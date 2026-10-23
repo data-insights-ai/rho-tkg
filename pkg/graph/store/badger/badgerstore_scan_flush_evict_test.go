@@ -30,6 +30,7 @@ const scanFlushEvictLabel = uint16(7)
 const scanFlushEvictType = uint16(9)
 
 func TestForEachNodeByLabel_NoDropWhenFlushEvictsMidScan(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
 
 	const n = 64
@@ -93,6 +94,7 @@ func (c *flushOnNthGet) GetNoPromote(id snowflake.ID) (*types.Node, indexpkg.Cac
 }
 
 func TestCollectNodesBulkParallel_NoDropWhenFlushEvictsMidScan(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
 
 	const n = 64
@@ -128,6 +130,7 @@ func TestCollectNodesBulkParallel_NoDropWhenFlushEvictsMidScan(t *testing.T) {
 }
 
 func TestForEachRelBulk_NoDropWhenFlushEvictsMidScan(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
 
 	putTestNode(t, bs, 1, scanFlushEvictLabel, nil)
@@ -223,6 +226,7 @@ func relScanVersion(t *testing.T, r *types.Relationship) int64 {
 }
 
 func TestForEachNodeByLabel_NoStaleVersionWhenFlushEvictsMidScan(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
 	const n = 64
 	putFlushedThenUpdatedNodes(t, bs, 4000, n)
@@ -251,6 +255,7 @@ func TestForEachNodeByLabel_NoStaleVersionWhenFlushEvictsMidScan(t *testing.T) {
 }
 
 func TestCollectNodesBulkParallel_NoStaleVersionWhenFlushEvictsMidScan(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
 	const n = 64
 	ids := putFlushedThenUpdatedNodes(t, bs, 5000, n)
@@ -285,6 +290,7 @@ func TestCollectNodesBulkParallel_NoStaleVersionWhenFlushEvictsMidScan(t *testin
 }
 
 func TestForEachRelBulk_NoStaleVersionWhenFlushEvictsMidScan(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
 	putTestNode(t, bs, 1, scanFlushEvictLabel, nil)
 	putTestNode(t, bs, 2, scanFlushEvictLabel, nil)
@@ -515,6 +521,7 @@ func (c *hookBeforeFill[V]) LoadCleanAt(id snowflake.ID, v V, epoch uint64) bool
 }
 
 func TestGetNode_NoStaleCacheFillAfterConcurrentFlushEvict(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
 	mk := func(id int64, v int64) *types.Node {
 		node := types.NewNode(types.NodeID(snowflake.ID(id)), scanFlushEvictLabel, nil)
@@ -567,6 +574,7 @@ func TestGetNode_NoStaleCacheFillAfterConcurrentFlushEvict(t *testing.T) {
 }
 
 func TestGetRelationship_NoStaleCacheFillAfterConcurrentFlushEvict(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
 	putTestNode(t, bs, 1, scanFlushEvictLabel, nil)
 	putTestNode(t, bs, 2, scanFlushEvictLabel, nil)
@@ -625,6 +633,7 @@ func TestGetRelationship_NoStaleCacheFillAfterConcurrentFlushEvict(t *testing.T)
 // reopens it: the scan must be complete and current before the restart, and the
 // flush it raced must have persisted every row at its latest version.
 func TestForEachNodeByLabel_FlushEvictMidScanOnDiskAndAfterRestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{Dir: dir, FlushInterval: time.Hour, CacheCapacity: 1}
 	bs, err := New(cfg)

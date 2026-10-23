@@ -35,6 +35,7 @@ func newForEachTestGraph(t *testing.T, n int, cacheCapacity int) *graph.Graph {
 // including past the entity-cache capacity, where the streaming arm's
 // no-fill reads must still decode every row correctly.
 func TestForEachByLabel_MatchesByLabel(t *testing.T) {
+	t.Parallel()
 	g := newForEachTestGraph(t, 40, 8) // cardinality 5x the cache capacity
 
 	want, err := g.Nodes().ByLabel("Person", graph.QueryOpts{})
@@ -73,6 +74,7 @@ func TestForEachByLabel_MatchesByLabel(t *testing.T) {
 // TestForEachByLabel_EarlyStopAndLimit pins fn=false termination and the
 // Limit opt — both must stop the scan without error.
 func TestForEachByLabel_EarlyStopAndLimit(t *testing.T) {
+	t.Parallel()
 	g := newForEachTestGraph(t, 20, 0)
 
 	seen := 0
@@ -101,6 +103,7 @@ func TestForEachByLabel_EarlyStopAndLimit(t *testing.T) {
 // TestForEachByLabel_NilCallbackAndUnknownLabel pins the error and empty
 // edges: nil fn is rejected; an unregistered label streams nothing.
 func TestForEachByLabel_NilCallbackAndUnknownLabel(t *testing.T) {
+	t.Parallel()
 	g := newForEachTestGraph(t, 3, 0)
 
 	if err := g.Nodes().ForEachByLabel("Person", graph.QueryOpts{}, nil); err == nil {
@@ -122,6 +125,7 @@ func TestForEachByLabel_NilCallbackAndUnknownLabel(t *testing.T) {
 // fn may call back into the graph (the materializing path under c.mu could
 // not allow this — RWMutex readers deadlock behind queued writers).
 func TestForEachByLabel_CallbackReentry(t *testing.T) {
+	t.Parallel()
 	g := newForEachTestGraph(t, 10, 0)
 
 	var reErr error
@@ -142,6 +146,7 @@ func TestForEachByLabel_CallbackReentry(t *testing.T) {
 // TestForEachByLabel_TemporalFallback pins that a temporal filter routes
 // through the history-aware materializing path and still streams rows.
 func TestForEachByLabel_TemporalFallback(t *testing.T) {
+	t.Parallel()
 	g := newForEachTestGraph(t, 6, 0)
 
 	nodes, err := g.Nodes().ByLabel("Person", graph.QueryOpts{})
@@ -168,6 +173,7 @@ func TestForEachByLabel_TemporalFallback(t *testing.T) {
 // guard against accidental sentinel removal — the nil-callback error must
 // stay distinguishable.
 func TestForEachByLabel_NilCallbackSentinel(t *testing.T) {
+	t.Parallel()
 	g := newForEachTestGraph(t, 1, 0)
 	err := g.Nodes().ForEachByLabel("Person", graph.QueryOpts{}, nil)
 	if err == nil || errors.Is(err, graph.ErrNodeNotFound) {

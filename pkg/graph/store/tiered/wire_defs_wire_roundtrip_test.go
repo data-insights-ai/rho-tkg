@@ -12,6 +12,7 @@ import (
 // the original value exactly, including the nil-vs-empty-slice case for
 // temporalIndexFileData's non-omitempty fields.
 func TestTieredWireRoundTrip(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		in   any
@@ -78,6 +79,7 @@ func TestTieredWireRoundTrip(t *testing.T) {
 // receiver (DecodeMsgpack correctly stays pointer-receiver, since decode
 // always targets an addressable &out).
 func TestTieredWireEncodeByValue(t *testing.T) {
+	t.Parallel()
 	if _, err := msgpack.Marshal(RegistryFileData{Labels: []string{"A"}, RelTypes: []string{"B"}}); err != nil {
 		t.Fatalf("msgpack.Marshal(RegistryFileData{...}) (by value) = %v, want nil (EncodeMsgpack must use a value receiver)", err)
 	}

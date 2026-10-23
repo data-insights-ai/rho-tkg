@@ -62,6 +62,7 @@ func TestShardedRWMutexExcludesReaders(t *testing.T) {
 // directly with an atomic reader counter: while a writer holds Lock, the number
 // of readers in their critical section must be exactly zero.
 func TestShardedRWMutexWriterSeesNoReaders(t *testing.T) {
+	t.Parallel()
 	var m shardedRWMutex
 	var activeReaders atomic.Int64
 	var violations atomic.Int64
@@ -123,6 +124,7 @@ func TestShardedRWMutexWriterSeesNoReaders(t *testing.T) {
 // guards against a regression to an accidental single-stripe implementation
 // where reader B waits for reader A.
 func TestShardedRWMutexReadersDoNotExcludeAcrossStripes(t *testing.T) {
+	t.Parallel()
 	var m shardedRWMutex
 	bothIn := make(chan struct{})
 	release := make(chan struct{})
@@ -158,6 +160,7 @@ func TestShardedRWMutexReadersDoNotExcludeAcrossStripes(t *testing.T) {
 // RLockShard returns the resolved stripe (hint masked into range) and distinct
 // hints landing on the same stripe still pair correctly.
 func TestShardedRWMutexRLockShardPairing(t *testing.T) {
+	t.Parallel()
 	var m shardedRWMutex
 	// hint and hint+stripes map to the same stripe; both must lock/unlock cleanly.
 	tok := m.RLockShard(5)

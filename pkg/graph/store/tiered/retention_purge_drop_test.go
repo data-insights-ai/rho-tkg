@@ -46,6 +46,7 @@ func TestTieredColdShardFastDrop(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts := newPersistentTieredStore(t)
 	const caseTok, signalTok, relType = uint16(1), uint16(3), uint16(5)
 
@@ -287,6 +288,7 @@ func TestTieredColdShardFastDrop_CloseDoesNotRaceEventShardsMap(t *testing.T) {
 // and in-memory routing all survive intact — the drop simply fails and can be
 // retried, instead of destroying data it couldn't durably record as gone.
 func TestTieredColdShardFastDrop_CatalogSaveFailureLeavesShardIntact(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-driven write-failure injection is unreliable on Windows")
 	}

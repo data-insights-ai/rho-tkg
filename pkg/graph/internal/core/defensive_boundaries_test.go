@@ -1358,6 +1358,7 @@ func staleRelIDInAllRelIDs(t *testing.T, bs *badger.Store, relID types.RelID) {
 // the exact divergence — without it we'd be testing the happy path,
 // not the fix's errors.Is(err, storepkg.ErrRelNotFound) gate (review HIGH Q7).
 func TestRunRepair_SkipsLegitimateRelNotFound(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	// Build a cross-shard rel so Phase 2 enters the GetRelationship loop.

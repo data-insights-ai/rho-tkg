@@ -26,6 +26,7 @@ func memTags(recs []storecontract.ChangeRecord) []storecontract.ChangeTag {
 }
 
 func TestMemoryChangeLog_DisabledByDefault(t *testing.T) {
+	t.Parallel()
 	ms := New() // no WithChangeLog
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
 		t.Fatalf("PutNode: %v", err)
@@ -47,6 +48,7 @@ func TestMemoryChangeLog_DisabledByDefault(t *testing.T) {
 }
 
 func TestMemoryChangeLog_BasicFeed(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
 		t.Fatalf("PutNode 1: %v", err)
@@ -100,6 +102,7 @@ func TestMemoryChangeLog_BasicFeed(t *testing.T) {
 // off-by-one in the search predicate or slicing would silently drop or
 // duplicate a boundary record, which this test exhaustively checks for.
 func TestMemoryChangeLog_SnapshotBoundaryEquivalence(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	const n = 37
 	for i := 0; i < n; i++ {
@@ -147,6 +150,7 @@ func TestMemoryChangeLog_SnapshotBoundaryEquivalence(t *testing.T) {
 }
 
 func TestMemoryChangeLog_ForEachAndNilCallback(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	for i := int64(1); i <= 4; i++ {
 		if err := ms.PutNode(memNode(i, 10)); err != nil {

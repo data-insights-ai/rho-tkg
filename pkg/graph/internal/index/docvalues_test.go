@@ -38,6 +38,7 @@ func collectRows(l *LabelDocValues, keys []string) (ids []types.NodeID, vals [][
 // the way a float64-only store would (the int64 column rule, docs/api.md "Columnar
 // reads (DocValues)").
 func TestDocValues_Int64PrecisionPreserved(t *testing.T) {
+	t.Parallel()
 	const big = int64(9_000_000_000_000_001) // > 2^53; not representable exactly as float64
 	ids := []types.NodeID{3, 1, 2}
 	props := map[types.NodeID]map[string]any{
@@ -64,6 +65,7 @@ func TestDocValues_Int64PrecisionPreserved(t *testing.T) {
 // when it lacks the property (present=false, value nil) — so count(*) over the
 // column counts the same rows the unfiltered scan would (critique M2).
 func TestDocValues_FullMembershipAndAbsent(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{1, 2, 3, 4}
 	props := map[types.NodeID]map[string]any{
 		1: {"age": int64(30)},
@@ -93,6 +95,7 @@ func TestDocValues_FullMembershipAndAbsent(t *testing.T) {
 // TestDocValues_StringDictEncoding pins string columns reconstruct the exact value
 // for low-cardinality group keys (the city/status case).
 func TestDocValues_StringDictEncoding(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{1, 2, 3, 4}
 	props := map[types.NodeID]map[string]any{
 		1: {"city": "berlin"}, 2: {"city": "munich"}, 3: {"city": "berlin"}, 4: {"city": "berlin"},
@@ -117,6 +120,7 @@ func TestDocValues_StringDictEncoding(t *testing.T) {
 // numeric+string values, or an unsupported type (bool), is NOT buildable — the
 // consumer must fall back rather than guess (correctness over reach).
 func TestDocValues_HeterogeneousUnbuildable(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{1, 2}
 	cases := map[string]map[types.NodeID]map[string]any{
 		"numeric+string": {1: {"x": int64(5)}, 2: {"x": "five"}},
@@ -139,6 +143,7 @@ func TestDocValues_HeterogeneousUnbuildable(t *testing.T) {
 // TestDocValues_ZippedAlignment pins that two columns iterate aligned by ordinal —
 // the (groupKey, aggArg) pair the sink zips must refer to the same node per row.
 func TestDocValues_ZippedAlignment(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{5, 1, 3} // unsorted on purpose; builder sorts
 	props := map[types.NodeID]map[string]any{
 		1: {"city": "a", "age": int64(10)},
@@ -186,6 +191,7 @@ func TestDocValues_Immutable(t *testing.T) {
 // collide — the fixed 2-byte-per-token packing makes {0x0102} and {1, 2}
 // distinguishable by length, which a delimiter-free %v join would not.
 func TestMultiLabelKey_OrderIndependentAndCollisionFree(t *testing.T) {
+	t.Parallel()
 	if MultiLabelKey([]uint16{3, 1, 2}) != MultiLabelKey([]uint16{1, 2, 3}) {
 		t.Fatal("MultiLabelKey is order-dependent — (A,B,C) and (C,A,B) must share a cache entry")
 	}
@@ -213,6 +219,7 @@ func TestMultiLabelKey_OrderIndependentAndCollisionFree(t *testing.T) {
 // shuffled-ID column (the binary search must use the same SnowflakeID comparator
 // the column sorted with).
 func TestPointSnapshot_OrderAndComparator(t *testing.T) {
+	t.Parallel()
 	// IDs deliberately out of order; columns store them sorted.
 	ids := []types.NodeID{50, 10, 30, 20, 40}
 	props := map[types.NodeID]map[string]any{
@@ -252,6 +259,7 @@ func TestPointSnapshot_OrderAndComparator(t *testing.T) {
 // requested key makes NewPointSnapshot decline (ok=false) so the consumer falls
 // back, rather than reading the column as spurious nulls.
 func TestPointSnapshot_DeclineUnbuildable(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{1, 2}
 	props := map[types.NodeID]map[string]any{
 		1: {"score": int64(5)},
@@ -267,6 +275,7 @@ func TestPointSnapshot_DeclineUnbuildable(t *testing.T) {
 // BUILDABLE column still treats every member as present-for-counting (Row returns
 // true with present=false), so count(*) over the expand counts every edge.
 func TestPointSnapshot_AllAbsentBuildable(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{1, 2, 3}
 	// Members exist but NONE has "amt" — a buildable (numeric) all-absent column.
 	props := map[types.NodeID]map[string]any{1: {"other": int64(1)}, 2: {"other": int64(2)}, 3: {"other": int64(3)}}

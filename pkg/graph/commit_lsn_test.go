@@ -60,6 +60,7 @@ func TestTxRunWithLSN(t *testing.T) {
 // TestTxRunWithLSN_NoChangeLog: without a change-log, the commit-LSN is 0 (there
 // is no feed to bookmark) but the tx still commits successfully.
 func TestTxRunWithLSN_NoChangeLog(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -79,6 +80,7 @@ func TestTxRunWithLSN_NoChangeLog(t *testing.T) {
 
 // TestBatchCommittedLSN proves the batch path surfaces its commit-LSN too.
 func TestBatchCommittedLSN(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ChangeLog: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)

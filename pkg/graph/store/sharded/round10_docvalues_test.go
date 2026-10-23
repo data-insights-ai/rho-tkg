@@ -16,6 +16,7 @@ import (
 // label and intersection; the ordinal snapshots carry ForEachDocValuesOrdinal's
 // ordinals across the slots.
 func TestShardedMixedColumnChunks(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g := newLanedShardedGraph(t, 4)
 	nodes, slots := addSpread(t, g, []string{"P", "Q"}, 60, func(i int) map[string]any { return map[string]any{"k": int64(i)} })

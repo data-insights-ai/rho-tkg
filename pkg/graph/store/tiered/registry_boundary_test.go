@@ -8,6 +8,7 @@ import (
 )
 
 func TestTieredStoreRegistryMethodsRejectNilRegistries(t *testing.T) {
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	labels := registrypkg.NewLabelRegistry()
 	relTypes := registrypkg.NewRelTypeRegistry()
@@ -40,6 +41,7 @@ func TestTieredStoreRegistryMethodsRejectNilRegistries(t *testing.T) {
 }
 
 func TestTieredStoreRegistryNilChecksPreserveClosedPrecedence(t *testing.T) {
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	if err := ts.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -54,6 +56,7 @@ func TestTieredStoreRegistryNilChecksPreserveClosedPrecedence(t *testing.T) {
 }
 
 func TestTieredStoreSetLabelRegistryIgnoresNil(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	if _, err := reg.GetOrCreate("Case"); err != nil {

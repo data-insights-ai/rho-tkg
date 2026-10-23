@@ -19,6 +19,7 @@ import (
 // flavor): created OPEN, then closed by a later Update, so a purge that read the
 // genesis (open) state instead of the current (closed) state would wrongly keep it.
 func TestPurgeExpiredNodes_ByValidTo(t *testing.T) {
+	t.Parallel()
 	// Run on both native backends so badger's getNodeLocked selection path (a
 	// cache/db read) is covered alongside memory's under-lock map read.
 	for _, backend := range []struct {

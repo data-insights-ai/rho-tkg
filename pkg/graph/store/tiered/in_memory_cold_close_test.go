@@ -15,6 +15,7 @@ import (
 // the twin whose sweep came a millisecond later). A disk store still closes
 // the shard and reads the rows back from disk.
 func TestTieredStore_ColdShardClose_KeepsRows(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		open      func(t *testing.T) *Store

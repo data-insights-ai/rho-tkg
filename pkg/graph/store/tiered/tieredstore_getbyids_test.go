@@ -58,6 +58,7 @@ func TestTieredStore_GetNodesByIDsShardBatchedContract(t *testing.T) {
 }
 
 func TestTieredStore_GetByIDsSingleIDFastPathContract(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -175,6 +176,7 @@ func TestTieredStore_GetRelationshipsByIDsShardBatchedContract(t *testing.T) {
 }
 
 func TestTieredStore_GetRelationshipsByIDsIncludesArchivedRelationships(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 	gen := tieredNodeGen(t)
 	a := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)

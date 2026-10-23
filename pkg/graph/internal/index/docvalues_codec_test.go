@@ -69,6 +69,7 @@ func codecDump(t *testing.T, l *LabelDocValues) []string {
 }
 
 func TestCodec_RoundTripIsIndistinguishable(t *testing.T) {
+	t.Parallel()
 	big := int64(9_000_000_000_000_001) // > 2^53
 	cases := map[string]struct {
 		vals     map[types.NodeID]any
@@ -108,6 +109,7 @@ func TestCodec_RoundTripIsIndistinguishable(t *testing.T) {
 // must be reported as unreadable — never decoded into a plausible-looking column,
 // and never a panic. The caller's response is always "rebuild".
 func TestCodec_CorruptionAlwaysRebuilds(t *testing.T) {
+	t.Parallel()
 	orig := codecBuild(t, map[types.NodeID]any{1: "a", 2: "b", 3: int64(0)}, true)
 	good := EncodeColumns(orig)
 	mk := func(v int64) types.NodeID { return types.NodeID(v) }
@@ -155,6 +157,7 @@ func TestCodec_CorruptionAlwaysRebuilds(t *testing.T) {
 // epoch it was built at, and a caller compares that against the label's CURRENT
 // epoch. Losing it would make every persisted column look fresh forever.
 func TestCodec_EpochSurvives(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{1, 2}
 	gp := func(types.NodeID, string) (any, bool) { return int64(1), true }
 	orig := BuildLabelDocValues(4242, ids, []string{"v"}, gp, nil)

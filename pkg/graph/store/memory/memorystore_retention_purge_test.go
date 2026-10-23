@@ -23,6 +23,7 @@ func idAtTimeField(usec, low uint64) snowflake.ID {
 // survive; chunking + More drive the loop; a re-run is an idempotent no-op. The
 // memory store is the cross-backend oracle, so parity here is load-bearing.
 func TestMemoryPurgeNodesByLabelBefore(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	const eventLabel, machineLabel, relType = uint16(10), uint16(11), uint16(5)
 

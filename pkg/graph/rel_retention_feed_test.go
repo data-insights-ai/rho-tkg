@@ -25,6 +25,7 @@ import (
 // purge that ships per-entity deletes, reuses tag 13 (an old replica would
 // purge nodes), or a bootstrap that drops the watermark.
 func TestRelRetentionPurgeFeed(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primaries := []struct {
 		name string

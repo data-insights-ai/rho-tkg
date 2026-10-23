@@ -174,6 +174,7 @@ func TestLabelTxMembership_NoDropForVersionInsertDuringBuild(t *testing.T) {
 
 // SYSTEM PROPERTY (rel mirror).
 func TestRelTypeTxMembership_NoDropForVersionInsertDuringBuild(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	const knows, likes uint16 = 7, 8
 	putTestNode(t, bs, 1, 10, nil)

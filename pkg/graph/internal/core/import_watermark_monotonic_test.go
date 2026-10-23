@@ -19,6 +19,7 @@ import (
 // after the (older) snapshot's LSN would be momentarily resurrected by the
 // import's own row data until the re-tail caught back up to the delete.
 func TestImport_BootstrapWatermarkDoesNotRegress(t *testing.T) {
+	t.Parallel()
 	dst := newTestGraph(t)
 
 	// Simulate a replica that has already tailed past LSN 100 (e.g. via prior
@@ -61,6 +62,7 @@ func TestImport_BootstrapWatermarkDoesNotRegress(t *testing.T) {
 // watermark must still advance it — the fix must not turn the write into a
 // permanent no-op.
 func TestImport_BootstrapWatermarkAdvancesWhenNewer(t *testing.T) {
+	t.Parallel()
 	dst := newTestGraph(t)
 
 	dst.mu.Lock()

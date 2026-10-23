@@ -226,6 +226,7 @@ func TestRound10SnapshotMultiAndOrdinals(t *testing.T) {
 // DisableOrdinals numbers no node, so the ordinal snapshots decline (no
 // zeros handed out), as ForEachDocValuesOrdinal does.
 func TestRound10OrdinalSnapshotDeclinesWithoutOrdinals(t *testing.T) {
+	t.Parallel()
 	st, err := badger.New(badger.Config{InMemory: true, DisableOrdinals: true})
 	if err != nil {
 		t.Fatal(err)
@@ -258,6 +259,7 @@ func TestRound10OrdinalSnapshotDeclinesWithoutOrdinals(t *testing.T) {
 // stores that keep one part (memory, badger) still decline the column (a
 // part's column holds one kind).
 func TestRound10MixedColumnAcrossParts(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		if b.name == "sharded" {
 			// One graph handle mints every node on one slot; the sharded

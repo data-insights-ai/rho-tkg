@@ -25,6 +25,7 @@ func nodeLabelToken(t *testing.T, g *Core, label string) uint16 {
 }
 
 func TestRetention_TwoDoorWatermark(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	ctx := context.Background()
 
@@ -93,6 +94,7 @@ func TestRetention_TwoDoorWatermark(t *testing.T) {
 
 // The watermark advances max-monotonically and never lowers the graph max.
 func TestRetention_WatermarkMonotonic(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	lTok := nodeLabelToken(t, g, "L")
 	if err := g.advanceRetentionWatermark(lTok, 8000); err != nil {
@@ -117,6 +119,7 @@ func TestRetention_WatermarkMonotonic(t *testing.T) {
 // The graph retention watermark is durable: it rehydrates from MetaKV at open so
 // a reopened store still fails closed below the boundary (loadRetentionWatermark).
 func TestRetention_PersistsAcrossReopen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	g, err := New(Config{BadgerDir: dir})
 	if err != nil {
@@ -150,6 +153,7 @@ func TestRetention_PersistsAcrossReopen(t *testing.T) {
 // Reset clears the graph retention watermark so a reset graph does not inherit a
 // stale watermark that spuriously fails temporal reads.
 func TestRetention_ResetClears(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	lTok := nodeLabelToken(t, g, "L")
 	if err := g.advanceRetentionWatermark(lTok, 5000); err != nil {

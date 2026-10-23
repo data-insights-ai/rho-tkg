@@ -8,6 +8,7 @@ import (
 )
 
 func TestTieredStoreNodesByLabelAndPropertyReferenceArchiveDepth(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -38,6 +39,7 @@ func TestTieredStoreNodesByLabelAndPropertyReferenceArchiveDepth(t *testing.T) {
 }
 
 func TestTieredStoreNodesByLabelAndPropertyEventDepth(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -70,6 +72,7 @@ func TestTieredStoreNodesByLabelAndPropertyEventDepth(t *testing.T) {
 }
 
 func TestTieredStoreLabelReadsIncludeMixedClassExtraLabels(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -132,6 +135,7 @@ func TestTieredStoreLabelReadsIncludeMixedClassExtraLabels(t *testing.T) {
 }
 
 func TestTieredStoreNodesByLabelAndPropertyValidationAndClosed(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 
 	if _, err := ts.NodesByLabelAndProperty(0, "status", "open", QueryOpts{}); !errors.Is(err, ErrInvalidStoreMutation) {

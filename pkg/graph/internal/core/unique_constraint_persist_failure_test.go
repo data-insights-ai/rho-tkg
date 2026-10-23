@@ -75,6 +75,7 @@ func (m *blockingFailUniqueMetaKV) MetaSet(key string, v []byte) error {
 // AT ALL, independent of scheduling — a strictly stronger, timing-
 // independent guarantee than "the race is merely unlikely."
 func TestCreateUnique_PersistFailureNeverExposesActiveConstraintToConcurrentReader(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)

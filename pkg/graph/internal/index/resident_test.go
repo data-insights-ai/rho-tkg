@@ -11,6 +11,7 @@ import (
 // the same entity twice), whereas the default cache evicts them. This is the
 // big-O fix for graph-larger-than-cache traversal (re-decode -> super-linear).
 func TestSetNoEvict_NoEviction(t *testing.T) {
+	t.Parallel()
 	key := func(i int) snowflake.ID { return snowflake.ID(int64(i + 1)) }
 
 	// Control: default cache (capacity 2) evicts clean entries past capacity.

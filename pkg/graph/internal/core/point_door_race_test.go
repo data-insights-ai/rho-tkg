@@ -492,6 +492,7 @@ func TestPointDoorRace_UnderMovingWriters(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	const (
 		entities = 20
 		writers  = 4

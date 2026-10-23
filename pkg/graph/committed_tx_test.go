@@ -35,6 +35,7 @@ func personValues(t *testing.T, g *graphpkg.Graph, opts graphpkg.QueryOpts) []in
 // after Rollback) the read at that pin is unchanged; a new CommittedTx sees
 // what committed.
 func TestCommittedTxExcludesAnOpenTransaction(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		var base []types.NodeID
@@ -220,6 +221,7 @@ func TestCommittedTxNeverSeesAPartialTransaction(t *testing.T) {
 // CommittedTx on a closed graph fails; without an open transaction it is a
 // fresh NowTx (strictly after an earlier NowTx).
 func TestCommittedTxWithoutATransaction(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
 		t.Fatal(err)

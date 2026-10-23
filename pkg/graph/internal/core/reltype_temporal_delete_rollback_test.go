@@ -21,6 +21,7 @@ import (
 )
 
 func TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion(t *testing.T) {
+	t.Parallel()
 	for _, backend := range []struct {
 		name  string
 		index bool

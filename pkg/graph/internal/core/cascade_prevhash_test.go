@@ -23,6 +23,7 @@ import (
 // and so links to the template's hash. This test pins both rules for a
 // mid-history insertion and a gap insertion, and that the chain verifies.
 func TestCascade_MidHistoryInsertion_PrevHashLinksToBase(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 

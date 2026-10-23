@@ -27,6 +27,7 @@ import (
 // delete+recreate with a reused ID — changes it. All three call sites now
 // AND relDeleteInfoRevCurrentLocked into the fast-path gate.
 func TestRelDeleteInfoStillIndexedLocked_DiskMode_BlindToEndpointReuse(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true, AdjacencyIndexOnDisk: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -92,6 +93,7 @@ func TestRelDeleteInfoStillIndexedLocked_DiskMode_BlindToEndpointReuse(t *testin
 // prefetch and lock, the rev gate must still pass so the fast path (the
 // entire point of prefetching outside the lock) is preserved.
 func TestRelDeleteInfoRevCurrentLocked_UnchangedRevReusesPrefetch(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 	putTestNode(t, bs, 1, 10, nil)
 	putTestNode(t, bs, 2, 10, nil)
@@ -129,6 +131,7 @@ func TestRelDeleteInfoRevCurrentLocked_UnchangedRevReusesPrefetch(t *testing.T) 
 // above that a stale snapshot taken beforehand is correctly rejected by the
 // fix rather than silently reused.
 func TestDeleteRelationshipsBatch_DiskMode_ReusedIDDoesNotOrphanNewAdjacency(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true, AdjacencyIndexOnDisk: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)

@@ -121,6 +121,7 @@ func TestCreatePropertyIndex_ConcurrentMutationDuringScanIsReconciled(t *testing
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ms := New()
 	const n = 20_000
 	for i := 1; i <= n; i++ {

@@ -36,6 +36,7 @@ import (
 // strictly before touched[5]) is the actual torn-read signature this test
 // checks for.
 func TestNodesAsOf_SingleSnapshotConsistencyUnderConcurrentWrite(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 
 	const population = 4000

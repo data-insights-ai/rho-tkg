@@ -19,6 +19,7 @@ import (
 // to the reference shard, "P" (with "Ref" as an extra label) to the hot event
 // shard, so the pages merge two shards.
 func TestSortedPostingsPagesAllBackends(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		rng := rand.New(rand.NewSource(11)) // #nosec G404 -- deterministic test input

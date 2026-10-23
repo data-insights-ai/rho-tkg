@@ -205,6 +205,7 @@ func relBoundsOracle(t *testing.T, g *graphpkg.Graph, typeName, key string) boun
 // existing rows (tiered and sharded fold their shards' bounds since sigma round 10;
 // tiered's nodes here span the reference and an event shard).
 func TestPropertyBounds(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		native := true // every in-tree backend states bounds (sharded and tiered fold their parts, sigma round 10)
@@ -390,6 +391,7 @@ func TestPropertyBounds(t *testing.T) {
 // NaN counts as a number, a string or a list does not, a node or relationship
 // without the key breaks NullFree; an empty answer is HasNumeric false.
 func TestPropertyBoundsFlags(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"memory", "badger"} {
 		t.Run(name, func(t *testing.T) {
 			g := openBoundsGraph(t, name == "badger", nil)
@@ -460,6 +462,7 @@ func openBoundsGraph(t *testing.T, badger bool, mut func(*graphpkg.Config)) *gra
 // past 2^53 (until it leaves), planner statistics disabled, badger
 // PropertyIndexOnDisk for nodes (its relationship index stays in RAM).
 func TestPropertyBoundsDeclines(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, name := range []string{"memory", "badger"} {
 		t.Run(name, func(t *testing.T) {
@@ -551,6 +554,7 @@ func TestPropertyBoundsDeclines(t *testing.T) {
 // TestPropertyBoundsAfterReopen: badger rebuilds the index and (deferred)
 // planner statistics at open; the bounds after a reopen equal those before.
 func TestPropertyBoundsAfterReopen(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 	open := func() *graphpkg.Graph {

@@ -17,6 +17,7 @@ import (
 // substitute; an unknown label or type is the zero value; a closed graph is
 // ErrGraphClosed.
 func TestStatsPropertyNDV(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		label := "P"

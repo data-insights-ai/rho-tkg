@@ -27,6 +27,7 @@ import (
 // have their own dedicated, tested reap-vs-preserve behavior (preserved,
 // re-persisted after Clear).
 func TestMetaKVReapPolicyCoversEveryKey(t *testing.T) {
+	t.Parallel()
 	dir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Getwd: %v", err)

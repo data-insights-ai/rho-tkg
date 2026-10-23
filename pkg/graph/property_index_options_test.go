@@ -19,6 +19,7 @@ func TestPropertyIndexOptionsSurviveReopen(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for _, backend := range []struct {
 		name string
 		open func(t *testing.T, dir string) *graphpkg.Graph
@@ -128,6 +129,7 @@ func TestPropertyIndexOptionsSurviveReopen(t *testing.T) {
 // with ErrCapabilityNotSupported and creates nothing (no label left behind,
 // the inventory epoch unmoved); the same store creates the plain index.
 func TestPropertyIndexOptionsRefusedOnDiskIndex(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerDir: t.TempDir(), PropertyIndexOnDisk: true})
 	if err != nil {
 		t.Fatal(err)

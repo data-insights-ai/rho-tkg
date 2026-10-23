@@ -38,6 +38,7 @@ import (
 // preserved (multi-version + deleted-with-history), and a post-migration
 // VerifyConsistency() report with ZERO ShardMismatches.
 func TestShardedResharding_GrowRoundTrip_ExactSet(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	sourceStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
@@ -147,6 +148,7 @@ func TestShardedResharding_GrowRoundTrip_ExactSet(t *testing.T) {
 // test for the migration path: an entity in state X at t0, mutated after t0,
 // must still resolve to X at t0 AFTER a grow-topology export/import.
 func TestShardedResharding_TwoPhaseTemporalSurvival(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	sourceStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
@@ -212,6 +214,7 @@ func TestShardedResharding_TwoPhaseTemporalSurvival(t *testing.T) {
 // migrated entity's hash chain verifies at the GRAPH level (not just
 // Import's own internal recompute-and-compare check) after a grow.
 func TestShardedResharding_HashChainIntegrityPostMigration(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	sourceStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
@@ -387,6 +390,7 @@ func TestShardedResharding_UnsafeShrinkFailsClosed(t *testing.T) {
 // actually IN USE succeeds cleanly, even though the source store nominally
 // claimed a wider range.
 func TestShardedResharding_EmptySlotShrinkSucceeds(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	// Source claims 4 slots, but SnowflakeNodeID 0 only ever mints into
@@ -444,6 +448,7 @@ func TestShardedResharding_EmptySlotShrinkSucceeds(t *testing.T) {
 // does not cover the source's slots at all (a pure rebase, not a shrink)
 // fails closed the same way.
 func TestShardedResharding_BaseSlotRebaseFailsClosed(t *testing.T) {
+	t.Parallel()
 	sourceStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 	if err != nil {
 		t.Fatalf("sourceStore: %v", err)
@@ -495,6 +500,7 @@ func TestShardedResharding_BaseSlotRebaseFailsClosed(t *testing.T) {
 // export header's SnapshotLSN must carry over so a receiving graph can
 // record it as its applied watermark, and the migrated data must be intact.
 func TestShardedResharding_ChangeLogSourceWatermarkHandoff(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	sourceStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})

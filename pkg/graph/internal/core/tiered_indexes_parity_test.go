@@ -287,6 +287,7 @@ func TestTieredRelTemporalPrune_ParityWithBadger_RotationColdRepair(t *testing.T
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	bc, bs := newBadgerCoreForIndexes(t)
 	tc, ts := newDiskTieredCoreForIndexes(t)
 	bw, tw := newRelTemporalWorld(bc, bs), newRelTemporalWorld(tc, ts)
@@ -351,6 +352,7 @@ func TestTieredRelTemporalIndex_DropRemovesEverywhere(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	tc, ts := newDiskTieredCoreForIndexes(t)
 	tw := newRelTemporalWorld(tc, ts)
 	tw.phase1(t)
@@ -448,6 +450,7 @@ func TestTieredComposite_ExactSetsAcrossShardsUpdateDeleteCold(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	bc, _ := newBadgerCoreForIndexes(t)
 	tc, ts := newDiskTieredCoreForIndexes(t)
 	bw := &compositeWorld{c: bc, names: map[types.NodeID]string{}, nodes: map[string]*types.Node{}}
@@ -537,6 +540,7 @@ func TestTieredComposite_ExactSetsAcrossShardsUpdateDeleteCold(t *testing.T) {
 // current row, so it must not prune: the moved row's past version still
 // answers at t=1500 (two-phase), exactly as on badger.
 func TestTieredRelTemporalPrune_ArchiveRestoreKeepsHistory(t *testing.T) {
+	t.Parallel()
 	bc, bs := newBadgerCoreForIndexes(t)
 	tc, ts := newDiskTieredCoreForIndexes(t)
 	bw, tw := newRelTemporalWorld(bc, bs), newRelTemporalWorld(tc, ts)
@@ -587,6 +591,7 @@ func TestTieredComposite_ArchiveDepthAndPaging(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	tc, ts := newDiskTieredCoreForIndexes(t)
 	ctx := context.Background()
 	names := map[types.NodeID]string{}

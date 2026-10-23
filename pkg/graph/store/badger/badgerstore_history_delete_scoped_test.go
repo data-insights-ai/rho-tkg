@@ -391,6 +391,7 @@ func TestScopedDelete_NodeWithMultipleRelsAllTombstoned(t *testing.T) {
 // ─── Concurrent goroutines each with their own scope: no data race ─────────
 
 func TestScopedDelete_ConcurrentGoroutinesNoRace(t *testing.T) {
+	t.Parallel()
 	bs := newChangeLogStore(t, false)
 	const n = 8
 	// Seed n distinct nodes up front (sequential — only the delete-with-

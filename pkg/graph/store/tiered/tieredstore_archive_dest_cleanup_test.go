@@ -15,6 +15,7 @@ import (
 // proves that documented, deliberate cleanup side effect actually works —
 // no test covered it before this rename made the behavior explicit.
 func TestCheckAndCleanArchiveNodeDestination_PurgesOrphanedAdjacency(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

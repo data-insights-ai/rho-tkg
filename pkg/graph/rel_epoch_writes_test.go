@@ -107,6 +107,7 @@ func relEpochDoors() []relEpochDoor {
 }
 
 func TestRelMutationEpochMovesOnEveryRelationshipWrite(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		layouts := [][2]string{{"A", "B"}}
@@ -146,6 +147,7 @@ func TestRelMutationEpochMovesOnEveryRelationshipWrite(t *testing.T) {
 // between the transaction's write and the rollback holds state the rollback
 // discards.
 func TestRelMutationEpochMovesOnRollback(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		start, err := g.Nodes().Add(ctx, []string{"A"}, nil)
@@ -189,6 +191,7 @@ func TestRelMutationEpochMovesOnRollback(t *testing.T) {
 // (two-phase: the first scan caches the column at w=1, the write moves w to 2,
 // the second scan must report 2 and must not report 1).
 func TestRelColumnsFollowPropertyWritesAndDeletes(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"City"}, nil)

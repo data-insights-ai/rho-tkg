@@ -35,6 +35,7 @@ func rcRel(id uint64, version uint32, tm *types.TemporalMetadata) *types.Relatio
 // --- Node: point (probePoint) ---------------------------------------------
 
 func TestResolveNodeChain_Point(t *testing.T) {
+	t.Parallel()
 	c := resolverTestCore()
 	// Monotonic tiled chain: v0 [1000,2000), v1 [2000, open).
 	build := func() []*types.Node {
@@ -84,6 +85,7 @@ func TestResolveNodeChain_Point(t *testing.T) {
 // ordinary span, and the RelateOpen open-end classification. Query interval
 // b = [100,200).
 func TestResolveChainRelating_WhiteBox(t *testing.T) {
+	t.Parallel()
 	c := resolverTestCore()
 
 	// Chain: v0 [10,50) (tiles to v1's ValidFrom), v1 a one-tick [50,51), v2
@@ -209,6 +211,7 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 // hard-deleted row queried at a pin BEFORE the delete is normalized to its live
 // belief (ValidTo/DeletedAt cleared) rather than silently excluded.
 func TestResolveNodeChain_TombstoneNormalizedAtPreDeletePin(t *testing.T) {
+	t.Parallel()
 	c := resolverTestCore()
 	build := func() []*types.Node {
 		return []*types.Node{
@@ -237,6 +240,7 @@ func TestResolveNodeChain_TombstoneNormalizedAtPreDeletePin(t *testing.T) {
 // --- Node: interval (probeInterval) — predicate-anywhere (rule 16) ---------
 
 func TestResolveNodeChain_IntervalPredicateAnywhere(t *testing.T) {
+	t.Parallel()
 	c := resolverTestCore()
 	build := func() []*types.Node {
 		return []*types.Node{
@@ -268,6 +272,7 @@ func TestResolveNodeChain_IntervalPredicateAnywhere(t *testing.T) {
 // --- Node: as-of (probeAsOf) — belief selection + retraction (lesson 62) ---
 
 func TestResolveNodeChain_AsOf(t *testing.T) {
+	t.Parallel()
 	c := resolverTestCore()
 	// v0 superseded by v1 at tx 2000.
 	buildSupersede := func() []*types.Node {
@@ -315,6 +320,7 @@ func TestResolveNodeChain_AsOf(t *testing.T) {
 // post-pin tombstone, resolveNodeChainAsOf must apply the same discipline
 // (BACKLOG 10a).
 func TestResolveNodeChain_AsOf_DoesNotMutateInputChain(t *testing.T) {
+	t.Parallel()
 	c := resolverTestCore()
 	chain := []*types.Node{
 		rcNode(1, 0, &types.TemporalMetadata{ValidFrom: 1000, TxFrom: 1000, TxTo: 3000, DeletedAt: 3000, ValidTo: 3000}),
@@ -339,6 +345,7 @@ func TestResolveNodeChain_AsOf_DoesNotMutateInputChain(t *testing.T) {
 // TestResolveRelChain_AsOf_DoesNotMutateInputChain is the relationship mirror
 // of TestResolveNodeChain_AsOf_DoesNotMutateInputChain (rule 2).
 func TestResolveRelChain_AsOf_DoesNotMutateInputChain(t *testing.T) {
+	t.Parallel()
 	c := resolverTestCore()
 	chain := []*types.Relationship{
 		rcRel(1, 0, &types.TemporalMetadata{ValidFrom: 1000, TxFrom: 1000, TxTo: 3000, DeletedAt: 3000, ValidTo: 3000}),
@@ -361,6 +368,7 @@ func TestResolveRelChain_AsOf_DoesNotMutateInputChain(t *testing.T) {
 // --- Relationship parity (rule 2) -----------------------------------------
 
 func TestResolveRelChain_Point(t *testing.T) {
+	t.Parallel()
 	c := resolverTestCore()
 	build := func() []*types.Relationship {
 		return []*types.Relationship{
@@ -380,6 +388,7 @@ func TestResolveRelChain_Point(t *testing.T) {
 }
 
 func TestResolveRelChain_IntervalPredicateAnywhere(t *testing.T) {
+	t.Parallel()
 	c := resolverTestCore()
 	build := func() []*types.Relationship {
 		return []*types.Relationship{
@@ -394,6 +403,7 @@ func TestResolveRelChain_IntervalPredicateAnywhere(t *testing.T) {
 }
 
 func TestResolveRelChain_AsOf(t *testing.T) {
+	t.Parallel()
 	c := resolverTestCore()
 	build := func() []*types.Relationship {
 		return []*types.Relationship{

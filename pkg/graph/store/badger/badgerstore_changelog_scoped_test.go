@@ -258,6 +258,7 @@ func TestScopedChangeLog_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
 // ─── Concurrent goroutines each with their own scope: no data race ─────────
 
 func TestScopedChangeLog_ConcurrentGoroutinesNoRace(t *testing.T) {
+	t.Parallel()
 	bs := newChangeLogStore(t, false)
 	const n = 8
 	var wg sync.WaitGroup

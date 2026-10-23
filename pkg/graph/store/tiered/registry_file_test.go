@@ -13,6 +13,7 @@ import (
 )
 
 func TestRegistryFile_SaveLoadRoundTrip(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "registry.msgpack")
 
@@ -48,6 +49,7 @@ func TestRegistryFile_SaveLoadRoundTrip(t *testing.T) {
 }
 
 func TestRegistryFile_LoadMissing(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nonexistent.msgpack")
 
@@ -192,6 +194,7 @@ func TestRegistryFileSaveRejectsInvalidRegistries(t *testing.T) {
 }
 
 func TestRegistryFile_EmptyRegistries(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "registry.msgpack")
 
@@ -209,6 +212,7 @@ func TestRegistryFile_EmptyRegistries(t *testing.T) {
 }
 
 func TestRegistryFile_AtomicRename(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "registry.msgpack")
 
@@ -226,6 +230,7 @@ func TestRegistryFile_AtomicRename(t *testing.T) {
 }
 
 func TestWriteFullHandlesShortWrites(t *testing.T) {
+	t.Parallel()
 	w := &tieredShortChunkWriter{maxChunk: 2}
 	data := []byte("registry bytes")
 
@@ -245,6 +250,7 @@ func TestWriteFullHandlesShortWrites(t *testing.T) {
 }
 
 func TestRegistryFileRollbackRestoresPreviousBytes(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.msgpack")
 	original := []byte("previous registry bytes")
 	if err := atomicWriteFile(path, original, "test registry setup"); err != nil {
@@ -289,6 +295,7 @@ type tieredZeroProgressWriter struct{}
 func (tieredZeroProgressWriter) Write([]byte) (int, error) { return 0, nil }
 
 func TestRegistryFileRollbackRemovesNewFile(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.msgpack")
 	snapshot, err := snapshotRegistryFile(path)
 	if err != nil {

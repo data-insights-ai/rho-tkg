@@ -15,6 +15,7 @@ import (
 // TestScanRelColumns_EndToEndBothBackends asserts the facade returns the same
 // (start, end, weight) a row read would, on each backend.
 func TestScanRelColumns_EndToEndBothBackends(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, err := g.Nodes().Add(ctx, []string{"City"}, map[string]any{"name": "a"})
@@ -83,6 +84,7 @@ func TestScanRelColumns_EndToEndBothBackends(t *testing.T) {
 // unsupported backend (ok=false) — a caller that conflated them would take the row
 // fallback for every empty type and never notice.
 func TestScanRelColumns_UnknownTypeIsZeroRowsNotUnsupported(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		rows := 0
 		ok, err := g.ScanRelColumns("NO_SUCH_TYPE", []string{"weight"}, graphpkg.QueryOpts{},
@@ -103,6 +105,7 @@ func TestScanRelColumns_UnknownTypeIsZeroRowsNotUnsupported(t *testing.T) {
 // TestScanRelColumns_NilGraphDoesNotPanic — the facade's nil guard, matching
 // ScanNodeColumns.
 func TestScanRelColumns_NilGraphDoesNotPanic(t *testing.T) {
+	t.Parallel()
 	var g *graphpkg.Graph
 	ok, err := g.ScanRelColumns("ROAD", nil, graphpkg.QueryOpts{},
 		func(batch *graphpkg.RelColumnBatch) bool { return true })

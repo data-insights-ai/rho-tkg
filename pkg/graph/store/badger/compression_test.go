@@ -13,6 +13,7 @@ import (
 // (options.None) keeps Badger's default codec. Mutation: dropping the WithCompression call, or
 // applying it for the zero value, fails a row.
 func TestCompression_ReachesBadgerOptions(t *testing.T) {
+	t.Parallel()
 	defaultCodec := (func() options.CompressionType {
 		bs, err := New(Config{InMemory: true})
 		if err != nil {
@@ -58,6 +59,7 @@ func TestCompression_ReachesBadgerOptions(t *testing.T) {
 // TestCompression_ZSTD_DataSurvivesReopen writes under ZSTD, closes (which
 // flushes), reopens and reads the row back from disk, not from the cache.
 func TestCompression_ZSTD_DataSurvivesReopen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{Dir: dir, Compression: options.ZSTD, ZSTDCompressionLevel: 3}
 

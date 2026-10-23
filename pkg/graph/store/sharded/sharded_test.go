@@ -113,6 +113,7 @@ func mustSorted(t *testing.T, nodes []*types.Node) {
 // --- (a) point CRUD + history round-trips per slot + cross-slot ---
 
 func TestPointCRUDPerSlotAndCrossSlot(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 
 	// Nodes spread across all four slots.
@@ -158,6 +159,7 @@ func TestPointCRUDPerSlotAndCrossSlot(t *testing.T) {
 // --- (b) ErrSlotNotLocal on unclaimed-slot IDs ---
 
 func TestErrSlotNotLocal(t *testing.T) {
+	t.Parallel()
 	// Claim slots [2,4): shards for slots 2 and 3 only.
 	st := newMemStore(t, 2, 2)
 
@@ -186,6 +188,7 @@ func TestErrSlotNotLocal(t *testing.T) {
 // --- (c) label/type folds: exact ID-sorted union incl. pagination straddle ---
 
 func TestLabelFoldExactSetAndPagination(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Label 10 members spread across slots so a paginated window straddles shards.
 	var members []types.NodeID
@@ -237,6 +240,7 @@ func TestLabelFoldExactSetAndPagination(t *testing.T) {
 }
 
 func TestTypeFoldExactSet(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Nodes to be endpoints (all on slot 0 for simplicity).
 	a := mkNodeID(0, 1)
@@ -263,6 +267,7 @@ func TestTypeFoldExactSet(t *testing.T) {
 // --- (d) adjacency folds: rels on shard X between nodes on shards Y,Z ---
 
 func TestAdjacencyFoldsCrossShard(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Endpoints on different shards.
 	y := mkNodeID(1, 1) // start on slot 1
@@ -325,6 +330,7 @@ func TestAdjacencyFoldsCrossShard(t *testing.T) {
 // --- (e) counts/stats folds vs per-shard sums ---
 
 func TestCountsFolds(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	putNode(t, st, mkNodeID(0, 1), 10)
 	putNode(t, st, mkNodeID(1, 1), 10)
@@ -356,6 +362,7 @@ func TestCountsFolds(t *testing.T) {
 // --- (g) Clear resets counts and preserves the catalog ---
 
 func TestClearResetsCounts(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 3)
 	putNode(t, st, mkNodeID(0, 1), 10)
 	putNode(t, st, mkNodeID(1, 1), 10)
@@ -379,6 +386,7 @@ func TestClearResetsCounts(t *testing.T) {
 // --- (h) frozen scan pointers vs mutable point-read copies ---
 
 func TestFrozenScanMutablePointRead(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 2)
 	id := mkNodeID(1, 1)
 	putNode(t, st, id, 10)
@@ -405,6 +413,7 @@ func TestFrozenScanMutablePointRead(t *testing.T) {
 // --- (f) catalog: create->reopen round-trip; conflicting-config fails closed ---
 
 func TestCatalogReopenRoundTrip(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	st, err := New(Config{Dir: dir, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
@@ -467,6 +476,7 @@ func TestCatalogConflictMissingShardDir(t *testing.T) {
 // routed to the entity's own shard, for BOTH node and relationship (rule 2/15) ---
 
 func TestHistoryTwoPhaseNodeAndRelCrossSlot(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 
 	// Node on slot 2: create state=old (v0), then supersede with state=new (v1).
@@ -549,6 +559,7 @@ func TestHistoryTwoPhaseNodeAndRelCrossSlot(t *testing.T) {
 // --- config validation ---
 
 func TestConfigRangeValidation(t *testing.T) {
+	t.Parallel()
 	cases := []Config{
 		{InMemory: true, BaseSlot: 0, SlotCount: 0},  // zero count
 		{InMemory: true, BaseSlot: 30, SlotCount: 4}, // overflows 32

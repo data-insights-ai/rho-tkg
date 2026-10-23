@@ -7,6 +7,7 @@ import (
 )
 
 func TestBadgerStoreOrdinals(t *testing.T) {
+	t.Parallel()
 	shared := &OrdinalAllocator{}
 	for _, cfg := range []Config{
 		{InMemory: true, FlushInterval: 1<<63 - 1},
@@ -74,6 +75,7 @@ func TestBadgerStoreOrdinals(t *testing.T) {
 // store holds no row for is resolved through Config.ForeignNodeOrdinal (the
 // sharded store's cross-slot lookup), else 0; DisableOrdinals states none.
 func TestBadgerNodeOrdinalAndForeignEndpoint(t *testing.T) {
+	t.Parallel()
 	gen := newTestGen(t, 0)
 	foreign := types.NodeID(newTestGen(t, 2).Generate())
 	asked := 0

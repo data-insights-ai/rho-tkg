@@ -86,6 +86,7 @@ func TestEventShard_CheckoutStoreIfOpen_DoesNotLazyOpenClosedCold(t *testing.T) 
 }
 
 func TestTieredStore_CheckedRoutersReturnStableArchivePlacement(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
 	gen := tieredNodeGen(t)
@@ -368,6 +369,7 @@ func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
 }
 
 func TestTieredStore_Close_WaitsForReferenceCheckout(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, release, err := ts.ResolveShardStoreForTest("reference")
 	if err != nil {
@@ -398,6 +400,7 @@ func TestTieredStore_Close_WaitsForReferenceCheckout(t *testing.T) {
 }
 
 func TestTieredStore_CheckoutArchiveLifecycle(t *testing.T) {
+	t.Parallel()
 	t.Run("nil store", func(t *testing.T) {
 		var ts *Store
 		archive, release, err := ts.checkoutArchive()
@@ -583,6 +586,7 @@ func mustClosingTieredStore(t *testing.T) (*Store, *EventShard, func()) {
 // The test runs Clear in a goroutine and fails after 3 s to detect hangs that
 // would not be caught by an err != nil assertion.
 func TestTieredStore_Clear_DoesNotTouchClosingEventShard(t *testing.T) {
+	t.Parallel()
 	ts, _, cleanup := mustClosingTieredStore(t)
 	defer cleanup()
 
@@ -605,6 +609,7 @@ func TestTieredStore_Clear_DoesNotTouchClosingEventShard(t *testing.T) {
 // Pre-fix: ListShards called es.Store().NodeCount() directly — no pin, no
 // check of ts.ClosedForTest(); the shard was counted as open even after Close started.
 func TestTieredStore_ListShards_ReportsEventShardNotOpen_WhenClosing(t *testing.T) {
+	t.Parallel()
 	ts, hot, cleanup := mustClosingTieredStore(t)
 	defer cleanup()
 
@@ -622,6 +627,7 @@ func TestTieredStore_ListShards_ReportsEventShardNotOpen_WhenClosing(t *testing.
 // than calling NodeCount/RelCount on a BadgerStore that Close is concurrently
 // tearing down. Runs in a goroutine with a timeout to catch hangs.
 func TestTieredStore_RebuildCatalog_DoesNotTouchClosingEventShard(t *testing.T) {
+	t.Parallel()
 	ts, _, cleanup := mustClosingTieredStore(t)
 	defer cleanup()
 

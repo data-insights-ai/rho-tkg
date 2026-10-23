@@ -12,6 +12,7 @@ import (
 // bounded correction, an import of its history) must join that envelope —
 // a covered id whose envelope misses one of its rows would be pruned wrongly.
 func TestRelTypeTemporalIndex_PutRelVersionExtendsDeletedCovered(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	const relType, label = uint16(6), uint16(1)
 	for _, id := range []types.NodeID{1, 2} {

@@ -29,6 +29,7 @@ import (
 // untimed node's start: -inf or its TxFrom). After a conversion it answers
 // UntimedUnbounded. A closed graph answers ErrGraphClosed.
 func TestRound11UntimedModeDoor(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, mode := range []graphpkg.UntimedValidStart{graphpkg.UntimedDefault, graphpkg.UntimedFromTxFrom, graphpkg.UntimedUnbounded} {
 		for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.UntimedValidStart = mode }) {
@@ -75,6 +76,7 @@ func TestRound11UntimedModeDoor(t *testing.T) {
 // written under UntimedFromTxFrom stays one), and a conversion cut short
 // answers UntimedUnbounded, not complete, until it finishes.
 func TestRound11UntimedModeDoorPersisted(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range uvsDurable {
 		t.Run(b.name, func(t *testing.T) {
@@ -120,6 +122,7 @@ func TestRound11UntimedModeDoorPersisted(t *testing.T) {
 // replicated: after it applies the primary's conversion it answers
 // UntimedUnbounded.
 func TestRound11UntimedModeDoorReplica(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, ChangeLog: true, Store: memory.New(memory.WithChangeLog()), UntimedValidStart: graphpkg.UntimedFromTxFrom})
 	if err != nil {
@@ -161,6 +164,7 @@ func TestRound11UntimedModeDoorReplica(t *testing.T) {
 // reopen under UntimedDefault, on the durable backends; an empty default
 // store that imports a UntimedFromTxFrom export adopts and answers it.
 func TestRound11UntimedModeDoorLegacyAndImport(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range uvsDurable {
 		t.Run(b.name, func(t *testing.T) {
@@ -214,6 +218,7 @@ func TestRound11UntimedModeDoorLegacyAndImport(t *testing.T) {
 // primary's "converting" record but not its final one answers
 // UntimedUnbounded, not complete; after the rest of the feed, complete.
 func TestRound11UntimedModeDoorReplicaMidConversion(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, ChangeLog: true, Store: memory.New(memory.WithChangeLog()), UntimedValidStart: graphpkg.UntimedFromTxFrom})
 	if err != nil {

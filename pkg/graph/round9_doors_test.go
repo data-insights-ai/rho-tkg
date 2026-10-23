@@ -159,6 +159,7 @@ func round9History(t *testing.T, b storeBackend, g *graphpkg.Graph, label string
 // matches at {ValidStart 1, ValidEnd MaxInt64, TxAt pin}, ascending, once
 // each; RangeCardinalityAnyVersion counts them; tiered and sharded decline.
 func TestRangeAnyVersionMatchesEquality(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		label := "Ref"
 		if err := g.Index().CreateProperty(label, "v"); err != nil {
@@ -390,6 +391,7 @@ func round9Untimed(segFrom, rowFrom, txFrom types.Instant, version uint32, genes
 // members whose effective segments, an untimed start from -inf, hold;
 // MaxSegments declines.
 func TestCountTimelineMatchesCountByLabelAt(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		label := "Ref"
 		_, _, pins := round9History(t, b, g, label, 2)
@@ -538,6 +540,7 @@ func checkSegments(t *testing.T, segs []storepkg.CountSegment) {
 // pin stays the pin's after later writes, the current timeline (pin 0)
 // follows them, and a past-dated write at or below the pin moves it.
 func TestCountTimelineFollowsWrites(t *testing.T) {
+	t.Parallel()
 	for _, b := range allStoreBackendsWith(txFromCfg)[:2] { // an UntimedFromTxFrom store (UntimedFromMinusInf below)
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
@@ -605,6 +608,7 @@ func TestCountTimelineFollowsWrites(t *testing.T) {
 // and Rows / MaxRows bound their entity counts from above (rows are
 // versions); tiered and sharded decline.
 func TestPropertyValueStatsMatchesIndex(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		label := "Ref"
 		if err := g.Index().CreateProperty(label, "v"); err != nil {
@@ -772,6 +776,7 @@ func maxInt64(a, b int64) int64 {
 // in Rows and once in Distinct — and a later write changes neither the
 // pin's statistics nor misses the current ones; an Elements index declines.
 func TestPropertyValueStatsPerVersion(t *testing.T) {
+	t.Parallel()
 	for _, b := range allStoreBackends()[:2] {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
@@ -828,6 +833,7 @@ func TestPropertyValueStatsPerVersion(t *testing.T) {
 // count timeline answer as before the close (the index, its sidecar and the
 // histories are rebuilt or restored at open).
 func TestRound9DoorsAfterReopen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()
 	g, err := graphpkg.Open(dir)

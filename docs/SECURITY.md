@@ -85,8 +85,8 @@ process. Pointers into the code for anyone auditing this library:
     (`pkg/graph/internal/storeutil/wire_fuzz_test.go`) — the checked wire
     decode/validate path for nodes and relationships.
 
-  These five run weekly (and on-demand) with a bounded per-target fuzztime
-  in `.github/workflows/fuzz.yml`; each seed corpus also runs as an ordinary
+  These five run for a bounded time in the local minor gate (`make fuzz-smoke`)
+  and on demand in `.github/workflows/fuzz.yml`; each seed corpus also runs as an ordinary
   test in `make test`. The anchor+delta history decoders
   (`FuzzDecodeNodeHistoryDelta`, `FuzzDecodeRelHistoryDelta`,
   `pkg/graph/internal/storeutil/wire_history_delta_fuzz_test.go`) and the

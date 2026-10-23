@@ -133,6 +133,7 @@ func TestExportSince_RoundTripEquivalence(t *testing.T) {
 
 // --- 2. Idempotency: applying the same delta twice is a no-op.
 func TestImportMerge_Idempotent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "alice"})
@@ -156,6 +157,7 @@ func TestImportMerge_Idempotent(t *testing.T) {
 
 // --- 3. Chaining: base + deltaA + deltaB == source@C2; overlap re-apply is safe.
 func TestImportMerge_Chaining(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "alice"})
@@ -234,6 +236,7 @@ func TestExportSince_Tombstones(t *testing.T) {
 
 // --- Connected-node cascade delete in window.
 func TestExportSince_CascadeDelete(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, nil)
@@ -258,6 +261,7 @@ func TestExportSince_CascadeDelete(t *testing.T) {
 
 // --- Label change in window (multiple label-token mutations).
 func TestExportSince_LabelChange(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	n, _ := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "alice"})
@@ -281,6 +285,7 @@ func TestExportSince_LabelChange(t *testing.T) {
 
 // --- 5. ExpectBase mismatch → ErrDeltaBaseMismatch.
 func TestImportMerge_ExpectBaseMismatch(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, nil)
@@ -301,6 +306,7 @@ func TestImportMerge_ExpectBaseMismatch(t *testing.T) {
 
 // --- 6. Epoch mismatch → ErrCursorUnknown.
 func TestExportSince_EpochMismatch(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	if _, err := src.Nodes.Add(ctx, []string{"Person"}, nil); err != nil {
@@ -317,6 +323,7 @@ func TestExportSince_EpochMismatch(t *testing.T) {
 
 // --- Cursor ahead of the log → ErrCursorUnknown.
 func TestExportSince_CursorAhead(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	if _, err := src.Nodes.Add(ctx, []string{"Person"}, nil); err != nil {
@@ -332,6 +339,7 @@ func TestExportSince_CursorAhead(t *testing.T) {
 
 // --- 7. No change-log → Watermark/ExportSince decline; consumer falls back.
 func TestExportSince_NoChangeLog(t *testing.T) {
+	t.Parallel()
 	g := newPlainGraph(t, 0)
 	if _, err := g.IO.Watermark(); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Fatalf("Watermark(no change-log) = %v, want ErrCapabilityNotSupported", err)
@@ -344,6 +352,7 @@ func TestExportSince_NoChangeLog(t *testing.T) {
 
 // --- 8. Empty delta: no changes in window → header+registry only; merge is a no-op.
 func TestExportSince_EmptyDelta(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	if _, err := src.Nodes.Add(ctx, []string{"Person"}, nil); err != nil {
@@ -372,6 +381,7 @@ func TestExportSince_EmptyDelta(t *testing.T) {
 
 // --- 9. HeaderOf distinguishes full vs delta and decodes From/To.
 func TestHeaderOf_FullVsDelta(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	if _, err := src.Nodes.Add(ctx, []string{"Person"}, nil); err != nil {
@@ -422,6 +432,7 @@ func TestHeaderOf_FullVsDelta(t *testing.T) {
 
 // HeaderOf on a non-header first record fails closed.
 func TestHeaderOf_NotAHeader(t *testing.T) {
+	t.Parallel()
 	_, err := tkgio.HeaderOf(bytes.NewReader([]byte{0x03, 0, 0, 0, 0}))
 	if !errors.Is(err, ErrCorruptExport) {
 		t.Fatalf("HeaderOf(non-header) = %v, want ErrCorruptExport", err)
@@ -431,6 +442,7 @@ func TestHeaderOf_NotAHeader(t *testing.T) {
 // --- 10. Corruption rollback: a flipped change-record byte fails closed and
 // leaves the base unchanged.
 func TestImportMerge_CorruptionRollsBack(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "alice"})
@@ -468,6 +480,7 @@ func TestImportMerge_CorruptionRollsBack(t *testing.T) {
 
 // --- 11. Strict: tombstone/update for a missing entity.
 func TestImportMerge_Strict(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, nil)
@@ -496,6 +509,7 @@ func TestImportMerge_Strict(t *testing.T) {
 // --- Consumer pattern: derive the base cursor from the full export header
 // (gapless, self-contained) rather than a separate Watermark() call.
 func TestExportSince_BaseCursorFromHeader(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	if _, err := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "alice"}); err != nil {
@@ -529,6 +543,7 @@ func TestExportSince_BaseCursorFromHeader(t *testing.T) {
 
 // --- Cross-backend: badger source delta merged onto a memory base.
 func TestExportSince_BadgerSourceCrossBackend(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src, err := New(Config{UntimedValidStart: UntimedFromTxFrom, BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 0})
 	if err != nil {
@@ -571,6 +586,7 @@ func TestExportSince_BadgerSourceCrossBackend(t *testing.T) {
 // verifyNodeChainPagedLocked, so this pins the DAG fix on the paged path too,
 // plus a full badger->badger round-trip of a cascade-corrected graph.
 func TestExportSince_BadgerCascadePagedVerify(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src, err := New(Config{UntimedValidStart: UntimedFromTxFrom, BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 0})
 	if err != nil {
@@ -612,6 +628,7 @@ func TestExportSince_BadgerCascadePagedVerify(t *testing.T) {
 // check catches a regression here (the round-trip byte equivalence above also
 // covers it; this isolates the field for a clear failure message).
 func TestImportMerge_ReproducesSupersededTxTo(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "alice"})
@@ -648,6 +665,7 @@ func TestImportMerge_ReproducesSupersededTxTo(t *testing.T) {
 // --- Relationship parity: rel update + rel delete in window round-trip
 // (exercises the ChangeRelPut / ChangeRelDelete capture + apply branches).
 func TestExportSince_RelChangesRoundTrip(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, nil)
@@ -676,6 +694,7 @@ func TestExportSince_RelChangesRoundTrip(t *testing.T) {
 // relationship back to its pre-merge state (exercises restoreMergeRel + the
 // rel capture path in mergeRollback).
 func TestImportMerge_RelCorruptionRollsBack(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, nil)
@@ -722,6 +741,7 @@ func TestImportMerge_RelCorruptionRollsBack(t *testing.T) {
 // the node's adjacency too, exactly like ChangeNodePut/ChangeNodeDelete — or a
 // rolled-back merge silently DESTROYS an edge the delta never touched.
 func TestImportMerge_HistoryVersionCorruptionPreservesEdges(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "alice"})
@@ -809,6 +829,7 @@ func TestImportMerge_HistoryVersionCorruptionPreservesEdges(t *testing.T) {
 // NOTHING, never a silently-empty delta a backup pipeline would mistake for "no
 // changes". Existing ExportSince tests all run on enabled logs or memory.
 func TestExportSince_BadgerChangeLogDisabledFailsClosed(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, BadgerInMemory: true, ChangeLog: false, SnowflakeNodeID: 0})
 	if err != nil {
 		t.Fatalf("New badger: %v", err)
@@ -837,6 +858,7 @@ func TestExportSince_BadgerChangeLogDisabledFailsClosed(t *testing.T) {
 // cascade-corrected chain failed verification, so neither a full Export+Import
 // NOR a delta merge could round-trip it. Now both do.
 func TestExportSince_VersionIntervalCascade(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	n, _ := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "alice"})
@@ -879,6 +901,7 @@ func TestExportSince_VersionIntervalCascade(t *testing.T) {
 // --- A delta carrying a ChangeMeta record (no door emits it; not entity state)
 // is rejected at the trust boundary.
 func TestImportMerge_RejectsMetaRecord(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	base := newPlainGraph(t, 1)
 	if _, err := base.Nodes.Add(ctx, []string{"Person"}, nil); err != nil {
@@ -915,6 +938,7 @@ func TestImportMerge_RejectsMetaRecord(t *testing.T) {
 // closed with ErrCorruptExport and leaves the base unchanged (decode is part of
 // the trust boundary; lesson 44/47).
 func TestImportMerge_MalformedChangePayload(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	base := newPlainGraph(t, 1)
 	if _, err := base.Nodes.Add(ctx, []string{"Person"}, nil); err != nil {
@@ -948,6 +972,7 @@ func TestImportMerge_MalformedChangePayload(t *testing.T) {
 
 // --- Strict: a delete record for an entity absent from the base.
 func TestImportMerge_StrictDeleteMissing(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, _ := src.Nodes.Add(ctx, []string{"Person"}, nil)
@@ -966,6 +991,7 @@ func TestImportMerge_StrictDeleteMissing(t *testing.T) {
 // --- Strict, relationship parity: a rel delete + rel update for entities absent
 // from the base (covers the ChangeRelDelete / ChangeRelPut Strict branches).
 func TestImportMerge_StrictRelMissing(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	// Rel delete of a rel absent from the base.
@@ -999,6 +1025,7 @@ func TestImportMerge_StrictRelMissing(t *testing.T) {
 
 // --- A full export stream rejected by ImportMerge; a delta rejected by Import.
 func TestImportMerge_RejectsFullStream(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	if _, err := src.Nodes.Add(ctx, []string{"Person"}, nil); err != nil {

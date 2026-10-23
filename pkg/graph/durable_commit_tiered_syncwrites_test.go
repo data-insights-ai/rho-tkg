@@ -76,6 +76,7 @@ func tieredGroup(tx *graphpkg.GraphTx, seq, ops int) error {
 }
 
 func TestTieredSyncWrites(t *testing.T) {
+	t.Parallel()
 	commit := func(g *graphpkg.Graph, seq, ops int) error {
 		return g.Tx().Run(func(tx *graphpkg.GraphTx) error { return tieredGroup(tx, seq, ops) })
 	}

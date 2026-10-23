@@ -260,6 +260,7 @@ func TestBadgerStoreNodePropertyStatsRescanSkipsOrphanedLabelIndexEntry(t *testi
 // extremum) would leave the exact Min/Max wrong here even though no worker
 // errored.
 func TestBadgerStoreNodePropertyStatsConcurrent(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 	const labelToken = uint16(1)
 	const workers = 8

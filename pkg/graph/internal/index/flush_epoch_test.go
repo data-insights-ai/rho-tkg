@@ -29,6 +29,7 @@ func markAllFlushed(c epochCache) {
 }
 
 func TestFlushEpoch(t *testing.T) {
+	t.Parallel()
 	impls := map[string]func() epochCache{
 		"Cache":        func() epochCache { return NewCache[int](8) },
 		"ZeroCache":    func() epochCache { return &Cache[int]{} },
@@ -86,6 +87,7 @@ func TestFlushEpoch(t *testing.T) {
 // touches shard A must still invalidate a fill for a key in shard B, because a
 // scan's badger snapshot is shared across all keys.
 func TestShardedCacheFlushEpochIsShared(t *testing.T) {
+	t.Parallel()
 	c := NewShardedCache[int](64, 16)
 	var a, b snowflake.ID = 1, 0
 	for k := snowflake.ID(2); k < 1000; k++ {

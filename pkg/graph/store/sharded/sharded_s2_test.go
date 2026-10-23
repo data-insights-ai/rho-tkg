@@ -19,6 +19,7 @@ import (
 // --- Batched node puts ---
 
 func TestPutNodesBatchCrossShard(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Eight nodes, two per slot — one batch call must land them on four shards.
 	var ids []types.NodeID
@@ -72,6 +73,7 @@ func TestPutNodesBatchCrossShard(t *testing.T) {
 // alignment, a node would read back another node's TxFrom. A nil body in the
 // middle must fall back to encode-at-door (still correct).
 func TestPutNodesBatchPreEncodedAlignment(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	var nodes []*types.Node
 	var wire [][]byte
@@ -120,6 +122,7 @@ func TestPutNodesBatchPreEncodedAlignment(t *testing.T) {
 // bodies are carried but unused by the shard; the assertion is that the entity
 // rows still round-trip with their own patched TxFrom (alignment preserved).
 func TestPutNodesBatchPreEncodedLogAlignment(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	var nodes []*types.Node
 	var wire, logs [][]byte
@@ -167,6 +170,7 @@ func TestPutNodesBatchPreEncodedLogAlignment(t *testing.T) {
 // --- Batched relationship puts ---
 
 func TestPutRelationshipsBatchCrossShard(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Endpoints on slots 0 and 1.
 	a := mkNodeID(0, 1)
@@ -229,6 +233,7 @@ func TestPutRelationshipsBatchCrossShard(t *testing.T) {
 // --- Batched deletes ---
 
 func TestDeleteNodesBatchCrossShard(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	var ids []types.NodeID
 	for slot := uint8(0); slot < 4; slot++ {
@@ -268,6 +273,7 @@ func TestDeleteNodesBatchCrossShard(t *testing.T) {
 }
 
 func TestDeleteRelationshipsBatchCrossShard(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	a := mkNodeID(0, 1)
 	b := mkNodeID(1, 1)
@@ -305,6 +311,7 @@ func TestDeleteRelationshipsBatchCrossShard(t *testing.T) {
 // --- Cross-shard cascade delete (ADR-0007 Risk 1) ---
 
 func TestDeleteNodeCascadeCrossShard(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Hub node on slot 0; neighbors on slots 1 and 2.
 	hub := mkNodeID(0, 1)
@@ -363,6 +370,7 @@ func TestDeleteNodeCascadeCrossShard(t *testing.T) {
 // --- VerifyConsistency ---
 
 func TestVerifyConsistencyClean(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	a := mkNodeID(0, 1)
 	b := mkNodeID(1, 1)
@@ -381,6 +389,7 @@ func TestVerifyConsistencyClean(t *testing.T) {
 }
 
 func TestVerifyConsistencyDetectsAdjacencyOrphan(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	a := mkNodeID(0, 1)
 	b := mkNodeID(1, 1)
@@ -408,6 +417,7 @@ func TestVerifyConsistencyDetectsAdjacencyOrphan(t *testing.T) {
 }
 
 func TestVerifyConsistencyDetectsEndpointOrphan(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	start := mkNodeID(0, 1)
 	putNode(t, st, start, 10)
@@ -458,6 +468,7 @@ func TestVerifyConsistencyDetectsEndpointOrphan(t *testing.T) {
 }
 
 func TestVerifyConsistencyDetectsShardMismatch(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// A node whose ID carries slot 2 written directly onto shard 0's badger —
 	// slot 2 routes to shard index 2, so shard 0 holding it is a mismatch.
@@ -499,6 +510,7 @@ func TestNewPartialOpenFailureClosesShards(t *testing.T) {
 // a torn prior write). The adjacency FOLD must skip it (resolveRelsTolerant), and
 // a cascade must purge it rather than fail (isRelNotFound → PurgeOrphanRelationshipIndexes).
 func TestAdjacencyOrphanToleratedAndPurged(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	n := mkNodeID(0, 1)
 	putNode(t, st, n, 10)
@@ -541,6 +553,7 @@ func TestAdjacencyOrphanToleratedAndPurged(t *testing.T) {
 // --- PartialBatchError shape ---
 
 func TestPartialBatchErrorTypeAndUnwrap(t *testing.T) {
+	t.Parallel()
 	inner := ErrInvalidStoreMutation
 	pe := &PartialBatchError{
 		Op:              "PutNodesBatch",

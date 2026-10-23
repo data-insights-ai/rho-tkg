@@ -16,6 +16,7 @@ import (
 // that take QueryOpts, a reference node's mint-placed rels are scoped by
 // opts.Depth, with and without a temporal filter, ex-adjacency included.
 func TestRelsByMint_AdjacencyAtHonoursDepth(t *testing.T) {
+	t.Parallel()
 	ts, err := tiered.New(tiered.Config{
 		InMemory:      true,
 		RefLabels:     []string{"Ref"},

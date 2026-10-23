@@ -33,6 +33,7 @@ var storeWireGolden = map[string]string{
 // cases (see storeWireGolden's doc comment for why the non-empty-map
 // slotCatalog case is excluded from byte-golden comparison).
 func TestStoreWireEncodeGolden(t *testing.T) {
+	t.Parallel()
 	cases := map[string]any{
 		"vectorDefBlob":       vectorDefBlob{LabelToken: 3, PropertyKey: "vec", Dims: 128, Metric: storecontract.DistanceCosine},
 		"vectorDefBlob_slice": []vectorDefBlob{{LabelToken: 1, PropertyKey: "a", Dims: 2, Metric: storecontract.DistanceCosine}},

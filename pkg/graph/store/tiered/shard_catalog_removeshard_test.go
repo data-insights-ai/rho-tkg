@@ -13,6 +13,7 @@ import "testing"
 // composing two already-tested primitives works.
 
 func TestShardCatalog_RemoveShard_RemovesExistingEntry(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "hot", Kind: ShardEvent, Tier: TierHot})
 
@@ -26,6 +27,7 @@ func TestShardCatalog_RemoveShard_RemovesExistingEntry(t *testing.T) {
 }
 
 func TestShardCatalog_RemoveShard_MissingNameReturnsFalse(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "hot", Kind: ShardEvent, Tier: TierHot})
 
@@ -47,6 +49,7 @@ func TestShardCatalog_RemoveShard_MissingNameReturnsFalse(t *testing.T) {
 // (e.g. an off-by-one in the slice-splice) would silently delete the wrong
 // shard's catalog entry, a data-loss-adjacent bug for a real deployment.
 func TestShardCatalog_RemoveShard_OnlyRemovesTheNamedEntry(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "events-2026-W01", Kind: ShardEvent, Tier: TierWarm})
 	sc.AddShard(ShardEntry{Name: "events-2026-W02", Kind: ShardEvent, Tier: TierWarm})
@@ -70,6 +73,7 @@ func TestShardCatalog_RemoveShard_OnlyRemovesTheNamedEntry(t *testing.T) {
 }
 
 func TestShardCatalog_RemoveShard_DoubleRemoveIsIdempotentFalse(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "hot", Kind: ShardEvent, Tier: TierHot})
 
@@ -87,6 +91,7 @@ func TestShardCatalog_RemoveShard_DoubleRemoveIsIdempotentFalse(t *testing.T) {
 // removal followed by a restore from the pre-removal snapshot must bring the
 // entry fully back, indistinguishable from the removal never having happened.
 func TestShardCatalog_RemoveShard_SnapshotRestoreRollsBack(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{
 		Name:     "events-2026-W01",
@@ -136,6 +141,7 @@ func TestShardCatalog_RemoveShard_SnapshotRestoreRollsBack(t *testing.T) {
 // later in-place mutation of a ShardEntry field (UpdateShardTier etc.) after
 // the snapshot was taken would corrupt the rollback target too.
 func TestShardCatalog_SnapshotShards_IsADeepCopy(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "hot", Kind: ShardEvent, Tier: TierHot, Labels: []string{"Signal"}})
 

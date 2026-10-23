@@ -9,6 +9,7 @@ import (
 // successor [t,u) with the same timeStart. The empty shard holds no window and
 // must not hide the successor, whatever order the index is built in.
 func TestTimestampToEventShardZeroLengthWindow(t *testing.T) {
+	t.Parallel()
 	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	at := base.Add(time.Hour)
 	for iter := 0; iter < 64; iter++ { // map order is random: both sort orders occur

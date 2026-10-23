@@ -27,6 +27,7 @@ func TestInstantFloor_MalformedWatermarkIsAbsentAndSelfHeals(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	be := func(v uint64) []byte {
 		b := make([]byte, 8)
 		binary.BigEndian.PutUint64(b, v)

@@ -21,6 +21,7 @@ import (
 // minting, which co-locates a whole ingest group on one slot, is exercised by
 // TestGraphLevelIngestLanesRouteAcrossShards.)
 func TestGraphLevelSmoke(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)

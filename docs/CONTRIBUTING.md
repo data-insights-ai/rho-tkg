@@ -60,14 +60,15 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 | Command | Use |
 |---|---|
 | `make ci-fast` | **Patch gate** (~30 s for docs, 1–2 min for a fix): fmt, vet, build, lint, `scripts/patchgate` (refuses new exported API), `-short` of changed packages, `-race` of changed tests, docs tests, check-ledger |
-| `make ci-docker` | **Minor gate**: fmt, vet, lint, build, full `test-race`, gosec, govulncheck, cover-gate (80 %), metakv-reap check |
+| `make ci-docker` | **Minor gate**: fmt, vet, lint, build, full `test-race`, gosec, govulncheck, cover-gate (80 %), metakv-reap check, `fuzz-smoke` (each trust-boundary fuzz harness for `FUZZTIME`, default 20 s), check-ledger |
 | `make test` / `make test-race` | short tests / race detector |
 | `make cover` | coverage report (`coverage.html`) |
 | `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable" |
 | `go test -run TestFoo ./pkg/...` | one test |
 
-GitHub CI runs the race suite as a matrix (`scripts/test-race.sh`: parts `other`, `graph`, `memory`, `core-1..4`), each part
-under 5 min at 4 CPUs; gosec and govulncheck are blocking; `#nosec` is allowed only with a reason at the call site.
+GitHub CI runs only when a `v*` tag is pushed and only builds, vets and runs `go test -short ./...`; a push to main without a
+tag runs nothing, and nothing is scheduled. Everything else runs locally in the gate above. Fuzzing and benchmarks run on
+GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed only with a reason at the call site.
 
 ### Release checklist
 
@@ -79,8 +80,8 @@ under 5 min at 4 CPUs; gosec and govulncheck are blocking; `#nosec` is allowed o
    rows leave `tasks/todo.md`; docs tests and `scripts/check-ledger.sh` green.
 5. Push main, `git tag -a vX.Y.Z`, push the tag.
 6. Notify sigma-tkgd and ai-soc: tag, commit, migration notes.
-7. Watch the newest main CI run (`gh run list --branch main --workflow CI`). A red run is fixed on main and shipped as a new
-   patch tag, never by re-running the old run.
+7. Watch the tag's CI run (`gh run list --workflow CI --limit 1`). A red run is fixed on main and shipped as a new patch tag,
+   never by re-running the old run.
 
 ## Review
 
@@ -96,7 +97,7 @@ CHANGELOG entries go under `[Unreleased]` in the same change as the code. A new 
 
 ## Fuzzing
 
-The trust-boundary fuzz harnesses and which of them `.github/workflows/fuzz.yml` runs weekly are listed in
+The trust-boundary fuzz harnesses (`make fuzz-smoke` runs them briefly in the minor gate; `.github/workflows/fuzz.yml` on demand) are listed in
 [SECURITY.md](SECURITY.md) ("Fuzz harnesses"). Run a deep session when you change a decode or import surface and commit any new
 crasher (under the package's `testdata/fuzz/`) with the fix:
 
@@ -212,7 +213,7 @@ Index (`→` names where the rule lives now):
 79. Fix = patch, door = minor → digest (Process); `scripts/patchgate`
 80. Keep todo and HANDOVER current → digest (Process); `scripts/check-ledger.sh`
 81. Act, do not offer → digest (Process)
-82. A release is green only when GitHub CI is green → Release checklist
+82. A release is green only when the tag's GitHub CI is green → Release checklist
 83. → 78
 84. Trace the cause, then consolidate → digest (Process)
 85. Comment trimming is editing → digest (Code)

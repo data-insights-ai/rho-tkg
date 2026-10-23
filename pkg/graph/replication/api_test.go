@@ -93,6 +93,7 @@ func (f *fakeOps) SetIDSlotLease(rec *store.IDSlotLeaseRecord) error {
 }
 
 func TestAPI_ForwardsToOps(t *testing.T) {
+	t.Parallel()
 	ops := &fakeOps{
 		feed:    []store.ChangeRecord{{LSN: 1, Tag: store.ChangeNodePut}, {LSN: 2, Tag: store.ChangeRelPut}},
 		lastLSN: 2,
@@ -141,6 +142,7 @@ func TestAPI_ForwardsToOps(t *testing.T) {
 }
 
 func TestAPI_PropagatesOpsError(t *testing.T) {
+	t.Parallel()
 	sentinel := errors.New("boom")
 	api := replication.New(&fakeOps{err: sentinel})
 	if _, err := api.LastCommittedLSN(); !errors.Is(err, sentinel) {
@@ -161,6 +163,7 @@ func TestAPI_PropagatesOpsError(t *testing.T) {
 }
 
 func TestAPI_NilAndZeroValueFailClosed(t *testing.T) {
+	t.Parallel()
 	// New(nil) yields a not-ready API; methods return ErrNilGraph.
 	api := replication.New(nil)
 	if _, err := api.LastCommittedLSN(); err == nil {

@@ -397,6 +397,7 @@ func TestMemoryScopedReplace_DisabledByDefault(t *testing.T) {
 // ─── Concurrent goroutines each with their own scope: no data race ─────────
 
 func TestMemoryScopedReplace_ConcurrentGoroutinesNoRace(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	const n = 8
 	// Seed n distinct nodes up front (sequential — only the replace-with-

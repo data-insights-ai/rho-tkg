@@ -85,6 +85,7 @@ func newTemporalCandidateCountingGraph(t *testing.T) (*Core, *temporalCandidateC
 // matching index and merge them with history IDs via forEach{Node,Rel}CandidateID,
 // rather than degrading to ForEachNodeID/ForEachRelID over every entity.
 func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
+	t.Parallel()
 	g, store := newTemporalCandidateCountingGraph(t)
 	useTestClock(t, g)
 
@@ -133,6 +134,7 @@ func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 // of "property index installed" + "planner only ever calls NodesByLabelAndProperty"
 // proves that the seed comes from the tightest available index.
 func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testing.T) {
+	t.Parallel()
 	g, store := newTemporalCandidateCountingGraph(t)
 	useTestClock(t, g)
 
@@ -184,6 +186,7 @@ func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testi
 // must derive candidates from outgoing/incoming adjacency / type index and
 // merge with history IDs, never falling back to ForEachRelID over every rel.
 func TestHistoryAwareNeighborQuery_DoesNotScanAllCurrentRelIDs(t *testing.T) {
+	t.Parallel()
 	g, store := newTemporalCandidateCountingGraph(t)
 	useTestClock(t, g)
 
@@ -271,6 +274,7 @@ func TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure(t *testing.
 // FIX: temporal.go AllNodes/AllRelationships storepkg.QueryOpts handling must merge
 // current IDs with history IDs and resolve each via GetNodeAt/GetRelAt.
 func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
@@ -323,6 +327,7 @@ func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 // metadata-preparation helper that context.go AddNodeWithContext uses,
 // extracting tkg_ keys before the property-validation step.
 func TestBatchCreation_UsesSharedMetadataPreparation(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	useTestClock(t, g)
 	b, _ := NewBatchBuilder(g)
@@ -394,6 +399,7 @@ func TestBatchCreation_UsesSharedMetadataPreparation(t *testing.T) {
 //     the endpoint state at commit time, so an UpdateNode that fires
 //     between AddRelationship and Execute is reflected.
 func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	useTestClock(t, g)
 	bb, _ := NewBatchBuilder(g)
@@ -478,6 +484,7 @@ func (s *failPutNodesBatchStore) PutNodesBatch(nodes []*types.Node) error {
 // nodes must report a clear "endpoint create failed" diagnostic instead of
 // letting PutRelationship surface a generic "node not found".
 func TestBatchExecute_RelSkipsAfterNodeBatchFailure(t *testing.T) {
+	t.Parallel()
 	injected := errors.New("injected PutNodesBatch failure")
 	store := &failPutNodesBatchStore{Store: memory.New(), err: injected}
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: store})
@@ -538,6 +545,7 @@ func TestBatchExecute_RelSkipsAfterNodeBatchFailure(t *testing.T) {
 // (snowflake-derived vStart >= 1.75e12 is never less than 0) and the query
 // silently returns an empty slice for a still-live entity.
 func TestGetNodesValidDuring_EndZero_IncludesLiveEntities(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -560,6 +568,7 @@ func TestGetNodesValidDuring_EndZero_IncludesLiveEntities(t *testing.T) {
 }
 
 func TestGetRelationshipsValidDuring_EndZero_IncludesLiveEntities(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -590,6 +599,7 @@ func TestGetRelationshipsValidDuring_EndZero_IncludesLiveEntities(t *testing.T) 
 // otherwise the caller observes a half-committed state through the same
 // pointer that AddNode returned.
 func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *testing.T) {
+	t.Parallel()
 	injected := errors.New("injected PutNodesBatch failure for rollback test")
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: &failPutNodesBatchStore{Store: memory.New(), err: injected}})
 	if err != nil {
@@ -620,6 +630,7 @@ func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *tes
 }
 
 func TestTemporalQueries_ComposeDepthFilter(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	g, err := New(Config{
 		UntimedValidStart: UntimedFromTxFrom,
@@ -738,6 +749,7 @@ func TestTemporalQueries_ComposeDepthFilter(t *testing.T) {
 // rollback the caller's *types.Relationship reflects a relationship write that
 // never actually committed.
 func TestBatchExecute_FailedPutRelationship_RollsBackReturnedEntityState(t *testing.T) {
+	t.Parallel()
 	injected := errors.New("injected PutRelationship failure for rollback test")
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: &failPutRelationshipStore{Store: memory.New(), err: injected}})
 	if err != nil {
@@ -804,6 +816,7 @@ func (s *failPutRelationshipStore) PutRelationship(r *types.Relationship) error 
 // body runs several times, then asserting that no node whose vStart
 // fell after the captured upper bound appears in the result.
 func TestGetNodesValidDuring_OpenEnd_SnapshotUpperBound(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {
 		t.Fatalf("New: %v", err)

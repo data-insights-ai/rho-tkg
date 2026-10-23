@@ -275,6 +275,7 @@ func (s *registryPersistPanicStore) SaveRegistries(*registrypkg.LabelRegistry, *
 }
 
 func TestDeclaredVocabularyRejectsBeforeAllocating(t *testing.T) {
+	t.Parallel()
 	for _, opts := range []IngestOptions{
 		{DeclareLabels: []string{"reserved", " "}},
 		{DeclareLabels: []string{"reserved"}, DeclareRelTypes: []string{"reserved", " "}},
@@ -290,6 +291,7 @@ func TestDeclaredVocabularyRejectsBeforeAllocating(t *testing.T) {
 }
 
 func TestVocabularyPreflightCapacityCountsDistinctNewNames(t *testing.T) {
+	t.Parallel()
 	c := newCoreForRegistryRollbackTest(t)
 	lookup := func(name string) (uint16, bool) { return 1, name == "existing" }
 	full := int(registrypkg.TokenCapacityMax)

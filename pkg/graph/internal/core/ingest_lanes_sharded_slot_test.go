@@ -61,6 +61,7 @@ func TestNewFailsClosedWhenShardedStoreDoesNotCoverIngestLanes(t *testing.T) {
 // IngestLanes=4 needs slots {0,1} (interactive) + {2,3,4,5} (lanes) => claim
 // BaseSlot=0, SlotCount=6 covers everything and New() must succeed.
 func TestNewSucceedsWhenShardedStoreCoversAllNeededSlots(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)
@@ -79,6 +80,7 @@ func TestNewSucceedsWhenShardedStoreCoversAllNeededSlots(t *testing.T) {
 // — badger/tiered would behave identically since the type assertion simply
 // fails), so this fix cannot regress any non-sharded deployment.
 func TestNewIgnoresSlotCoverageForNonShardedStores(t *testing.T) {
+	t.Parallel()
 	c, err := New(Config{SnowflakeNodeID: 0, IngestLanes: 4})
 	if err != nil {
 		t.Fatalf("New() with no store (defaults to memory) and IngestLanes: %v", err)
@@ -96,6 +98,7 @@ func TestNewIgnoresSlotCoverageForNonShardedStores(t *testing.T) {
 // during this fix caught exactly this: 4 existing sharded-replica-convergence
 // tests broke before this exemption was added.
 func TestNewSkipsSlotCoverageForReadOnlyReplica(t *testing.T) {
+	t.Parallel()
 	// SnowflakeNodeID=6 needs slots {12,13}, but this store only claims
 	// [0,2) — would fail closed for a normal (non-replica) config.
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})

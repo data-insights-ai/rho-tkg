@@ -11,6 +11,7 @@ import (
 )
 
 func TestMigrateFromBadgerRejectsNilInputs(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -39,6 +40,7 @@ func TestMigrateFromBadgerRejectsNilInputs(t *testing.T) {
 }
 
 func TestMigrateFromBadgerClosedDestinationPrecedesEmptySuccess(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -57,6 +59,7 @@ func TestMigrateFromBadgerClosedDestinationPrecedesEmptySuccess(t *testing.T) {
 }
 
 func TestMigrateFromBadgerClosedSourceFailsClosed(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -73,6 +76,7 @@ func TestMigrateFromBadgerClosedSourceFailsClosed(t *testing.T) {
 }
 
 func TestMigrateFromBadgerRejectsMissingSourceLabelRegistryForData(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -93,6 +97,7 @@ func TestMigrateFromBadgerRejectsMissingSourceLabelRegistryForData(t *testing.T)
 }
 
 func TestMigrateFromBadgerRejectsNonEmptyDestination(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -128,6 +133,7 @@ func TestMigrateFromBadgerRejectsNonEmptyDestination(t *testing.T) {
 }
 
 func TestMigrateFromBadgerRejectsDestinationWithHistoryOnly(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -170,6 +176,7 @@ func TestMigrateFromBadgerRejectsDestinationWithHistoryOnly(t *testing.T) {
 }
 
 func TestMigrateFromBadgerRejectsDestinationWithRelationshipHistoryOnly(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -218,6 +225,7 @@ func TestMigrateFromBadgerRejectsDestinationWithRelationshipHistoryOnly(t *testi
 }
 
 func TestMigrateFromBadgerRejectsNodeTokenOutsideSourceRegistry(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -255,6 +263,7 @@ func TestMigrateFromBadgerRejectsNodeTokenOutsideSourceRegistry(t *testing.T) {
 }
 
 func TestMigrateFromBadgerRejectsRelTypeOutsideSourceRegistry(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -297,6 +306,7 @@ func TestMigrateFromBadgerRejectsRelTypeOutsideSourceRegistry(t *testing.T) {
 }
 
 func TestMigrateFromBadgerRejectsRelationshipMissingEndpoint(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name         string
 		missingStart bool
@@ -364,6 +374,7 @@ func TestMigrateFromBadgerRejectsRelationshipMissingEndpoint(t *testing.T) {
 }
 
 func TestValidateMigrateRelEndpointsPropagatesSourceReadErrors(t *testing.T) {
+	t.Parallel()
 	t.Run("start read error", func(t *testing.T) {
 		src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 		if err != nil {
@@ -398,6 +409,7 @@ func TestValidateMigrateRelEndpointsPropagatesSourceReadErrors(t *testing.T) {
 }
 
 func TestMigrateFromBadgerRollsBackDestinationWritesOnPutFailure(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -452,6 +464,7 @@ func TestMigrateFromBadgerRollsBackDestinationWritesOnPutFailure(t *testing.T) {
 }
 
 func TestMigrateRollbackRestoresDestinationRegistryFile(t *testing.T) {
+	t.Parallel()
 	dst := newDiskTestTieredStore(t)
 	original := []byte("previous registry bytes")
 	if err := atomicWriteFile(dst.regFile, original, "test registry setup"); err != nil {
@@ -479,6 +492,7 @@ func TestMigrateRollbackRestoresDestinationRegistryFile(t *testing.T) {
 }
 
 func TestMigrateRollbackRemovesNewDestinationRegistryFile(t *testing.T) {
+	t.Parallel()
 	dst := newDiskTestTieredStore(t)
 	snapshot, err := snapshotMigrateRegistryFile(dst)
 	if err != nil {
@@ -498,6 +512,7 @@ func TestMigrateRollbackRemovesNewDestinationRegistryFile(t *testing.T) {
 }
 
 func TestMigrateFromBadgerSavesRegistriesToDestination(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)

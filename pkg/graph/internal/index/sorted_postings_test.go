@@ -14,12 +14,13 @@ import (
 // ascending and descending runs, chunk splits and merges — every After(cursor)
 // read must give the oracle's sorted IDs above the cursor.
 func TestIDPostingsAgainstOracle(t *testing.T) {
+	t.Parallel()
 	for seed := int64(1); seed <= 6; seed++ {
 		rng := rand.New(rand.NewSource(seed)) // #nosec G404 -- deterministic test input
 		var p IDPostings
 		oracle := map[snowflake.ID]struct{}{}
 		span := int64(50 + rng.Intn(4*orderedKeyChunk))
-		for op := 0; op < 6000; op++ {
+		for op := 0; op < oracleOps(); op++ {
 			id := snowflake.ID(1 + rng.Int63n(span))
 			switch r := rng.Intn(10); {
 			case r < 5:
@@ -117,6 +118,7 @@ func head(ids []snowflake.ID) []snowflake.ID { return ids[:min(len(ids), 4)] }
 // allocated at the first key (backlog 72) and a read before must not touch
 // them. Found by the sharded RangeCardinality tests.
 func TestRangeCardinalityEmptyCountedIndex(t *testing.T) {
+	t.Parallel()
 	pi := NewPropertyIndexWith(true, false)
 	if n, ok := pi.RangeCardinality(1, 10, true, true); n != 0 || !ok {
 		t.Fatalf("empty counted index: %d, %v", n, ok)
@@ -132,6 +134,7 @@ func TestRangeCardinalityEmptyCountedIndex(t *testing.T) {
 // add order (shuffled, duplicated, empty key ignored), and an index filled
 // from it in that order holds exact 512-ID chunks.
 func TestPostingsBuildSortedDistinctExactChunks(t *testing.T) {
+	t.Parallel()
 	b := NewPostingsBuild(false)
 	rng := rand.New(rand.NewSource(3)) // #nosec G404 -- deterministic test input
 	const n = 3 * orderedKeyChunk
@@ -166,6 +169,7 @@ func TestPostingsBuildSortedDistinctExactChunks(t *testing.T) {
 
 // A nil posting list (a value key nobody holds) reads as empty.
 func TestIDPostingsNil(t *testing.T) {
+	t.Parallel()
 	var p *IDPostings
 	if p.Len() != 0 || p.Has(1) {
 		t.Fatal("nil postings not empty")
@@ -182,6 +186,7 @@ func TestIDPostingsNil(t *testing.T) {
 // sorted buckets: a value held by many IDs pages in ID order across the cursor,
 // in both directions, without the bucket being collected and sorted.
 func TestOrderedPagesTieOrderFromSortedBuckets(t *testing.T) {
+	t.Parallel()
 	pi := NewPropertyIndex()
 	rng := rand.New(rand.NewSource(7)) // #nosec G404 -- deterministic test input
 	ids := rng.Perm(3000)
@@ -230,4 +235,13 @@ func TestOrderedPagesTieOrderFromSortedBuckets(t *testing.T) {
 			t.Fatalf("string desc=%v: %d IDs, sorted %v", desc, len(sgot), slices.IsSorted(sgot))
 		}
 	}
+}
+
+// oracleOps is the op count of TestIDPostingsAgainstOracle: a third under
+// -short, the full run otherwise.
+func oracleOps() int {
+	if testing.Short() {
+		return 2000
+	}
+	return 6000
 }

@@ -83,6 +83,7 @@ func docOracle(t *testing.T, g *graphpkg.Graph, labels, keys []string) string {
 // only on the intersection) or no member column is fresh, the nodes are read
 // and the answer is the same.
 func TestDocValuesMultiFromMemberColumns(t *testing.T) {
+	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			ctx := context.Background()

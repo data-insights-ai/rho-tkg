@@ -69,6 +69,7 @@ func wlByLabel(t *testing.T, g *graphpkg.Graph, label string, opts storepkg.Quer
 }
 
 func TestWholeAxisLabelChangePerSegment(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, door := range []string{"api", "tx"} {
 		for _, b := range allStoreBackendsWith(r11WholeAxis) {
@@ -192,6 +193,7 @@ func TestWholeAxisLabelChangePerSegment(t *testing.T) {
 // rolls back restores the current row, its label index and every pin's
 // answer; a label change of a closed whole-axis node applies to its segment.
 func TestWholeAxisLabelChangeRollback(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
 		t.Run(b.name, func(t *testing.T) {

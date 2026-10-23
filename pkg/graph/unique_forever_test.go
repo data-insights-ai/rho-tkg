@@ -14,6 +14,7 @@ import (
 // 50 goroutines race to claim the SAME forever value: exactly one owner, the
 // rest ErrUniqueViolation — the durable claim is made under the value stripe.
 func TestUniqueForever_ConcurrentClaimOneOwner(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -87,6 +88,7 @@ func TestUniqueForever_BarredAfterDelete(t *testing.T) {
 // The owning entity (any later version) may keep or restore its value; another
 // entity may not take a value the owner moved AWAY from.
 func TestUniqueForever_SameEntityAnyVersion(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -114,6 +116,7 @@ func TestUniqueForever_SameEntityAnyVersion(t *testing.T) {
 // ReleaseOwnership lets an operator free a value for reclamation; it is
 // idempotent and requires a UniqueForever constraint.
 func TestUniqueForever_ReleaseOwnership(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -145,6 +148,7 @@ func TestUniqueForever_ReleaseOwnership(t *testing.T) {
 
 // ReleaseOwnership without a UniqueForever constraint on the pair fails.
 func TestUniqueForever_ReleaseWithoutConstraint(t *testing.T) {
+	t.Parallel()
 	g := bcMemory(t)
 	defer g.Close()
 	ctx := context.Background()
@@ -158,6 +162,7 @@ func TestUniqueForever_ReleaseWithoutConstraint(t *testing.T) {
 
 // CreateUniqueForever over existing current duplicates is rejected.
 func TestUniqueForever_ExistingDuplicatesRejected(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -174,6 +179,7 @@ func TestUniqueForever_ExistingDuplicatesRejected(t *testing.T) {
 
 // Introspection surfaces the forever scope.
 func TestUniqueForever_Introspection(t *testing.T) {
+	t.Parallel()
 	g := bcMemory(t)
 	defer g.Close()
 	mustCreateUniqueForever(t, g)
@@ -225,6 +231,7 @@ func TestUniqueForever_ReopenDurability(t *testing.T) {
 
 // Admin().Reset reaps the durable ownership registry.
 func TestUniqueForever_ResetReaps(t *testing.T) {
+	t.Parallel()
 	g := bcMemory(t)
 	defer g.Close()
 	ctx := context.Background()
@@ -252,6 +259,7 @@ func TestUniqueForever_ResetReaps(t *testing.T) {
 // tuple as it was checked, so a later tuple's violation left the earlier
 // claim durably persisted on an entity that never actually got created.
 func TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -294,6 +302,7 @@ func TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim(t *testing.T) {
 // (BACKLOG 9e) — partitionBatchNodesByUnique had the identical per-tuple
 // check-then-claim interleaving bug.
 func TestUniqueForever_BatchMultiKeyViolationLeavesNoOrphanedClaim(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)

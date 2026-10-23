@@ -9,6 +9,7 @@ import (
 )
 
 func TestBadgerStoreRelTypeDegreeStats(t *testing.T) {
+	t.Parallel()
 	for _, onDisk := range []bool{false, true} {
 		bs, err := New(Config{InMemory: true, FlushInterval: 1<<63 - 1, AdjacencyIndexOnDisk: onDisk})
 		if err != nil {
@@ -66,6 +67,7 @@ func TestBadgerStoreRelTypeDegreeStats(t *testing.T) {
 // to RelTypeDegreeStats' answer, count only the type's live relationships,
 // and decline with AdjacencyIndexOnDisk.
 func TestBadgerRelTypeDegreeCounts(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	for i := int64(1); i <= 4; i++ {
 		putTestNode(t, bs, i, 1, nil)

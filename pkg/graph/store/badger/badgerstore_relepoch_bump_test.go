@@ -13,6 +13,7 @@ import (
 // (a property write, a delete with a tombstone, a version write), the
 // node-delete cascades and the cross-shard split helpers moved neither.
 func TestRelationshipDoorsBumpRelMutationEpochs(t *testing.T) {
+	t.Parallel()
 	type door struct {
 		name string
 		run  func(t *testing.T, bs *Store, r *types.Relationship) error
@@ -113,6 +114,7 @@ func TestRelationshipDoorsBumpRelMutationEpochs(t *testing.T) {
 
 // A nil *SharedMutationEpochs reads as zero and is never written.
 func TestSharedMutationEpochsNil(t *testing.T) {
+	t.Parallel()
 	var e *SharedMutationEpochs
 	e.node()
 	e.rel()

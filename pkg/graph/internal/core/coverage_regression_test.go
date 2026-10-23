@@ -70,6 +70,7 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 }
 
 func TestTieredStore_AddNodeLabelToken(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -98,6 +99,7 @@ func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 }
 
 func TestTieredStore_AddNodeLabelTokenWithHistory(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)

@@ -48,6 +48,7 @@ func erkenntnisZeit() types.Instant {
 // -----------------------------------------------------------------------------
 
 func TestBackfill_GateOff_RejectsEveryCreateDoor(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t) // default Config → AllowTxBackfill false
 	ctx := context.Background()
 	tx := erkenntnisZeit()
@@ -107,6 +108,7 @@ func TestBackfill_GateOff_RejectsEveryCreateDoor(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestBackfill_InvalidTxFrom(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("AddWithTx zero", func(t *testing.T) {
@@ -156,6 +158,7 @@ func TestBackfill_InvalidTxFrom(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestBackfill_FutureTxFromRejected(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	future := types.Instant(time.Now().Add(365 * 24 * time.Hour).UnixMilli()) // ~1yr ahead
 
@@ -217,6 +220,7 @@ func TestBackfill_FutureTxFromRejected(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestBackfill_StampsTxFromVerbatim_NodeAndRel(t *testing.T) {
+	t.Parallel()
 	g := newBackfillGraph(t)
 	ctx := context.Background()
 	tx := erkenntnisZeit()
@@ -261,6 +265,7 @@ func TestBackfill_StampsTxFromVerbatim_NodeAndRel(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestBackfill_Batch_PerNodeDistinctTxFrom(t *testing.T) {
+	t.Parallel()
 	g := newBackfillGraph(t)
 	ctx := context.Background()
 	tx1 := erkenntnisZeit()
@@ -294,6 +299,7 @@ func TestBackfill_Batch_PerNodeDistinctTxFrom(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestBackfill_KnowledgeTimeAddressableViaAsOf(t *testing.T) {
+	t.Parallel()
 	g := newBackfillGraph(t)
 	ctx := context.Background()
 	stichtag := types.Instant(time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC).UnixMilli()) // valid-from
@@ -425,6 +431,7 @@ func TestBackfill_BatchPartialLiveEventUsesRealClock(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestBackfill_TxPath(t *testing.T) {
+	t.Parallel()
 	tx1 := erkenntnisZeit()
 
 	t.Run("gate on: tx create backfills verbatim", func(t *testing.T) {
@@ -474,6 +481,7 @@ func TestBackfill_TxPath(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestBackfill_UpdateRejectsTxFrom(t *testing.T) {
+	t.Parallel()
 	g := newBackfillGraph(t) // even with the gate ON
 	ctx := context.Background()
 	n, err := g.Nodes.AddWithTx(ctx, []string{"N"}, map[string]any{"x": int64(1)}, erkenntnisZeit())

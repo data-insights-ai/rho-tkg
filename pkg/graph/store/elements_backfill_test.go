@@ -14,6 +14,7 @@ import (
 // "written concurrently". Node and relationship, every backend, element at
 // first, middle and last position, duplicates.
 func TestElementsIndexBackfillIndexesEveryElement(t *testing.T) {
+	t.Parallel()
 	el := storecontract.PropertyIndexOptions{Elements: true}
 	list := []any{int64(1), int64(9), int64(4), int64(9)}
 	for _, b := range propTxBackends() {

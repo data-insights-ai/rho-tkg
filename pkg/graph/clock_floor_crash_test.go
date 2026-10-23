@@ -41,6 +41,7 @@ const (
 // TestClockFloorCrashChild is the child body; a no-op unless the parent set
 // cfEnvMode.
 func TestClockFloorCrashChild(t *testing.T) {
+	t.Parallel()
 	if os.Getenv(cfEnvMode) != "1" {
 		t.Skip("crash child: run only by TestCrashReopenNowTxAboveStoredStamps")
 	}
@@ -273,6 +274,7 @@ func TestCrashReopenNowTxAboveStoredStamps(t *testing.T) {
 	if testing.Short() {
 		t.Skip("spawns crash children")
 	}
+	t.Parallel()
 	cases := []struct {
 		name, backend, scenario string
 		readOnly                bool // reopen the badger store ReadOnly (no fresh write)

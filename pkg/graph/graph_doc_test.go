@@ -21,6 +21,7 @@ import (
 // future accessor added without updating the doc list now fails HERE at the
 // source of truth, instead of silently drifting until a human notices.
 func TestGraphPackageDocListsEveryPublicMethod(t *testing.T) {
+	t.Parallel()
 	fset := token.NewFileSet()
 	astFile, err := parser.ParseFile(fset, "graph.go", nil, parser.ParseComments)
 	if err != nil {

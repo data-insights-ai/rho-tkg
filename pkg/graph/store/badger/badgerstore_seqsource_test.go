@@ -40,6 +40,7 @@ func (s *testSeqSource) Observe(w uint64) {
 // TestChangeLogSeqSourceInjection proves a badger shard opened with an injected
 // ChangeLogSeqSource draws every change-log LSN from that source (not logSeq).
 func TestChangeLogSeqSourceInjection(t *testing.T) {
+	t.Parallel()
 	src := &testSeqSource{seq: 1000} // pretend other shards already reached LSN 1000
 	bs, err := badgerNewSeq(t, src)
 	if err != nil {
@@ -83,6 +84,7 @@ func TestChangeLogSeqSourceInjection(t *testing.T) {
 // TestChangeLogSeqSourceObserveAtOpen proves the shard folds its durable
 // watermark into the allocator via Observe when reopened.
 func TestChangeLogSeqSourceObserveAtOpen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src1 := &testSeqSource{}
 	bs, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true, ChangeLogSeqSource: src1})
@@ -151,6 +153,7 @@ func TestChangeLogSeqSourceObserveAtOpen(t *testing.T) {
 // TestChangeLogNilSeqSourceUnchanged proves the self-owned counter path is
 // byte-for-byte unchanged: with no source, logSeq advances as before.
 func TestChangeLogNilSeqSourceUnchanged(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)

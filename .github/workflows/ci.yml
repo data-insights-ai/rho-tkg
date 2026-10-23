@@ -1,123 +1,26 @@
 name: CI
 
+# Minimal release check (René 2026-10-23): runs only when a release tag is
+# pushed; a push to main without a tag runs nothing, and nothing is scheduled.
+# The thorough gates run locally before the tag: `make ci-fast` for a patch,
+# `make ci-docker` for a minor (race, gosec, govulncheck, coverage, fuzz smoke).
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    tags: ["v*"]
 
-# Least-privilege default: every job here only checks out and runs local
-# tooling (make targets, golangci-lint-action) — none needs to write back to
-# the repo, open checks, or touch PRs. Override per-job only if a future job
-# genuinely needs more.
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-      - run: make vet
-      - run: make build
-      - run: make test
-
-  # The race gate's parts, read from scripts/test-race.sh (no Go needed), so
-  # the matrix below cannot drift from the script: "other", the isolated
-  # packages (pkg/graph, store/memory) and core in four exhaustive batches of
-  # whole top-level tests. On one 4-vCPU runner these packages shared the CPUs
-  # and pkg/graph, core and memory each crossed Go's 10 min package timeout.
-  race-plan:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      parts: ${{ steps.plan.outputs.parts }}
-    steps:
-      - uses: actions/checkout@v7
-      - run: make test-race-script
-      - id: plan
-        run: echo "parts=$(RACE_SHARD=list bash scripts/test-race.sh 4)" >> "$GITHUB_OUTPUT"
-
-  # One job per part; each part is its own `go test` invocation with Go's
-  # default 10 min timeout (no -timeout override). Measured <= 5 min per part
-  # at GOMAXPROCS=4 (tasks/evidence/ci-race/).
-  race:
-    needs: race-plan
-    runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        part: ${{ fromJSON(needs.race-plan.outputs.parts) }}
-    name: race (${{ matrix.part }})
-    env:
-      ROOT_RACE_CORE_SHARDS: "4"
-      RACE_SHARD: ${{ matrix.part }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - run: make test-race
-
-  # Blocking: fails below the 80% floor (project rule, Testing Rules #7).
-  # `make cover-gate` runs its own short-mode suite over ./pkg/... — separate
-  # from the race job's runs above — so the floor is measured and
-  # enforced on every push and PR, not only when someone remembers to run
-  # `make cover` locally.
-  coverage:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-      - run: make cover-gate
-
-  # Lint runs on pull requests only and is BLOCKING for findings introduced by
-  # the PR itself (only-new-issues). The repo carries a documented pre-existing
-  # baseline (~40 findings); scanning the whole tree on every push would only
-  # re-report that baseline, so push events skip lint entirely until the
-  # baseline is burned down.
-  lint:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          version: v2.13.2
-          only-new-issues: true
-          args: --timeout=5m
-
-  security:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-      - run: make tools
-      - run: make security
-      - run: make vulncheck
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test -short -count=1 -timeout 20m ./...

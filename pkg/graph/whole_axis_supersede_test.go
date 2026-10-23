@@ -40,6 +40,7 @@ func r12RelRow(t *testing.T, rows []*types.Relationship, v uint32) *types.Relati
 }
 
 func TestWholeAxisUpdateStampsSupersededTxTo(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
 		t.Run(b.name, func(t *testing.T) {
@@ -169,6 +170,7 @@ func TestWholeAxisUpdateStampsSupersededTxTo(t *testing.T) {
 // only (the others already hold the value) leaves the unchanged segments'
 // rows answering, at every valid instant, after the write.
 func TestWholeAxisUpdatePartialKeepsReads(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
 		t.Run(b.name, func(t *testing.T) {

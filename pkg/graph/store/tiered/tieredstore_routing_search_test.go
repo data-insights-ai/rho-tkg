@@ -50,6 +50,7 @@ func (ts *Store) linearOracle(id snowflake.ID) *EventShard {
 }
 
 func TestTimestampToEventShardBinarySearch(t *testing.T) {
+	t.Parallel()
 	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	for _, n := range []int{1, 2, 28, 700} {
 		ts := routingStore(base, n, map[int]bool{n / 2: n > 2})

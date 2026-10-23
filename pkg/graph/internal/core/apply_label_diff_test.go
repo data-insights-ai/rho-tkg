@@ -12,6 +12,7 @@ import (
 // diff (a record a correct contiguous feed never produces) instead of silently
 // applying one token and diverging the label index.
 func TestLabelTokenDiff_Counts(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                 string
 		localExtra, nExtra   []uint16 // both share primary token 10
@@ -42,6 +43,7 @@ func TestLabelTokenDiff_Counts(t *testing.T) {
 // index diverged from the stored row. The guard runs before any store write, so
 // no partial mutation occurs.
 func TestApplyNodeLabelChange_FailsClosedOnMultiTokenDiff(t *testing.T) {
+	t.Parallel()
 	c := newTxTimeGraph(t)
 
 	local := types.NewNode(types.NodeID(1), 10, nil)          // tokens {10}

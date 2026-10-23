@@ -7,6 +7,7 @@ import (
 )
 
 func TestPropertyStatsAccumulatorCodecRoundTrip(t *testing.T) {
+	t.Parallel()
 	sparse := NewPropertyStatsAccumulator()
 	sparse.Observe("a", "apple")
 	sparse.Observe("b", "pear")
@@ -57,6 +58,7 @@ func TestPropertyStatsAccumulatorCodecRoundTrip(t *testing.T) {
 }
 
 func TestPropertyStatsAccumulatorCodecRejectsDamage(t *testing.T) {
+	t.Parallel()
 	a := NewPropertyStatsAccumulator()
 	a.Observe("1", int64(1))
 	a.Observe("9", int64(9))

@@ -22,6 +22,7 @@ var _ storecontract.ScopedDeleteCapability = (*Store)(nil)
 // ─── token == 0 is exactly the unscoped door ────────────────────────────────
 
 func TestMemoryScopedDelete_ZeroTokenMatchesUnscopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
@@ -66,6 +67,7 @@ func TestMemoryScopedDelete_ZeroTokenMatchesUnscopedDoor(t *testing.T) {
 // ─── An open (uncommitted) scope is invisible to the feed ──────────────────
 
 func TestMemoryScopedDelete_UncommittedScopeInvisibleToFeed(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
@@ -129,6 +131,7 @@ func TestMemoryScopedDelete_UncommittedScopeInvisibleToFeed(t *testing.T) {
 // specifically must leave zero trace in the feed after a discard.
 
 func TestMemoryScopedDelete_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if err := ms.PutNode(memNode(1, 10)); err != nil { // eager create, LSN 1
@@ -185,6 +188,7 @@ func TestMemoryScopedDelete_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
 // ─── Unknown / retired token fails closed ───────────────────────────────────
 
 func TestMemoryScopedDelete_UnknownTokenFailsClosed(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
@@ -274,6 +278,7 @@ func TestMemoryScopedDelete_ConcurrentScopesDoNotCrossContaminate(t *testing.T) 
 // ─── DeleteRelWithHistoryScoped mirrors DeleteNodeWithHistoryScoped (rule 2 parity) ───
 
 func TestMemoryScopedDelete_DeleteRelWithHistoryScoped(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
@@ -340,6 +345,7 @@ func TestMemoryScopedDelete_DeleteRelWithHistoryScoped(t *testing.T) {
 // ─── Disabled log: the scoped door is a documented no-op fallback ───────────
 
 func TestMemoryScopedDelete_DisabledByDefault(t *testing.T) {
+	t.Parallel()
 	ms := New() // no WithChangeLog
 
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
@@ -372,6 +378,7 @@ func TestMemoryScopedDelete_DisabledByDefault(t *testing.T) {
 // the scoped route (2+ connected rels, scoped, all correctly tombstoned) ────
 
 func TestMemoryScopedDelete_NodeWithMultipleRelsAllTombstoned(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
@@ -444,6 +451,7 @@ func TestMemoryScopedDelete_NodeWithMultipleRelsAllTombstoned(t *testing.T) {
 // ─── Concurrent goroutines each with their own scope: no data race ─────────
 
 func TestMemoryScopedDelete_ConcurrentGoroutinesNoRace(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	const n = 8
 	// Seed n distinct nodes up front (sequential — only the delete-with-

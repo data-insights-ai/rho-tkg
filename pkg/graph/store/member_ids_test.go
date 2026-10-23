@@ -18,6 +18,7 @@ import (
 // Faults it names: the other token's members, a deleted member still listed,
 // a buffered write missing, one sharded slot missing, unsorted output.
 func TestMemberIDsMatchTheScanDoors(t *testing.T) {
+	t.Parallel()
 	for _, b := range currentBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			st := b.open(t)

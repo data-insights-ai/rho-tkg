@@ -45,6 +45,7 @@ func requireUnsupportedHashError(t *testing.T, err error) {
 }
 
 func TestHashPanicProperty_CreatePathsReturnError(t *testing.T) {
+	t.Parallel()
 	registerPanicHashProperty(t)
 
 	t.Run("node add", func(t *testing.T) {
@@ -187,6 +188,7 @@ func TestHashPanicProperty_CreatePathsReturnError(t *testing.T) {
 }
 
 func TestHashPanicProperty_UpdateAndVerifyPathsReturnError(t *testing.T) {
+	t.Parallel()
 	registerPanicHashProperty(t)
 
 	t.Run("node update", func(t *testing.T) {

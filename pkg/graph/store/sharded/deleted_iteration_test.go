@@ -33,6 +33,7 @@ var _ storecontract.DeletedIterationCapability = (*Store)(nil)
 // row, no current row) and some still live, spread across shards.
 
 func TestForEachDeletedNodeID_FoldsAcrossShards(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 
 	var deleted, live []types.NodeID
@@ -82,6 +83,7 @@ func TestForEachDeletedNodeID_FoldsAcrossShards(t *testing.T) {
 }
 
 func TestForEachDeletedRelID_FoldsAcrossShards(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	a := mkNodeID(0, 100)
 	b := mkNodeID(1, 100)
@@ -138,6 +140,7 @@ func TestForEachDeletedRelID_FoldsAcrossShards(t *testing.T) {
 // every other ForEach* door on this store honors: fn==nil is rejected, and
 // returning false from fn stops iteration early without a full-shard scan.
 func TestForEachDeletedNodeID_EarlyStopAndNilCallback(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 2)
 	for slot := uint8(0); slot < 2; slot++ {
 		id := mkNodeID(slot, 1)

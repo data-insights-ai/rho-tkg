@@ -205,6 +205,7 @@ func buildExportGraph(t *testing.T) (g *Core, nodeID, relID uint64) {
 // TestExportImport_RoundTrip_MemoryStore tests a full export→import roundtrip
 // using MemoryStore on both sides.
 func TestExportImport_RoundTrip_MemoryStore(t *testing.T) {
+	t.Parallel()
 	src, _, _ := buildExportGraph(t)
 	defer src.Close() //nolint:errcheck
 
@@ -258,6 +259,7 @@ func TestExportImport_RoundTrip_MemoryStore(t *testing.T) {
 
 // TestExport_Empty_Graph verifies ExportGraph on a graph with no entities.
 func TestExport_Empty_Graph(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close() //nolint:errcheck
 
@@ -283,6 +285,7 @@ func TestExport_Empty_Graph(t *testing.T) {
 }
 
 func TestIOExportNilWriterReturnsSentinel(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -301,6 +304,7 @@ func TestIOExportNilWriterReturnsSentinel(t *testing.T) {
 }
 
 func TestIOImportNilReaderReturnsSentinel(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -319,6 +323,7 @@ func TestIOImportNilReaderReturnsSentinel(t *testing.T) {
 }
 
 func TestTxExportNilWriterReturnsSentinel(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -407,6 +412,7 @@ func TestExport_RelHistory(t *testing.T) {
 // TestImport_IdempotentRegistry verifies that importing into a graph that already
 // has the same registries populated does not return an error.
 func TestImport_IdempotentRegistry(t *testing.T) {
+	t.Parallel()
 	src, _ := New(Config{Store: memory.New()})
 	defer src.Close() //nolint:errcheck
 
@@ -430,6 +436,7 @@ func TestImport_IdempotentRegistry(t *testing.T) {
 
 // TestExport_Writer_Error verifies that ExportGraph propagates a write error.
 func TestExport_Writer_Error(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()                                       //nolint:errcheck
 	g.Nodes.Add(context.Background(), []string{"X"}, nil) //nolint:errcheck
@@ -478,6 +485,7 @@ func TestImport_InvalidHeader(t *testing.T) {
 // TestExportImport_IntegrityPreserved verifies that node/rel hash chains survive
 // the export→import roundtrip.
 func TestExportImport_IntegrityPreserved(t *testing.T) {
+	t.Parallel()
 	src, _ := New(Config{Store: memory.New()})
 	defer src.Close() //nolint:errcheck
 
@@ -528,6 +536,7 @@ func TestExportImport_IntegrityPreserved(t *testing.T) {
 // TestExportImport_EndpointHashesPreserved verifies FromNodeHash/ToNodeHash survive
 // the export→import roundtrip (Phase 4.13 integration test).
 func TestExportImport_EndpointHashesPreserved(t *testing.T) {
+	t.Parallel()
 	src, _ := New(Config{Store: memory.New()})
 	defer src.Close() //nolint:errcheck
 
@@ -565,6 +574,7 @@ func TestExportImport_EndpointHashesPreserved(t *testing.T) {
 // TestExportImport_AuthorIDPreserved verifies AuthorID/Signature survive the
 // export→import roundtrip (Phase 4.14 integration test).
 func TestExportImport_AuthorIDPreserved(t *testing.T) {
+	t.Parallel()
 	src, _ := New(Config{Store: memory.New()})
 	defer src.Close() //nolint:errcheck
 
@@ -604,6 +614,7 @@ func TestExportImport_AuthorIDPreserved(t *testing.T) {
 // TestExport_ShadowProperty_Survives verifies that shadow property values on
 // a node are accessible via ResolveNodeProperty after an import.
 func TestExport_ShadowProperty_Survives(t *testing.T) {
+	t.Parallel()
 	src, _ := New(Config{Store: memory.New()})
 	defer src.Close() //nolint:errcheck
 
@@ -713,6 +724,7 @@ func TestImportGraph_CompatibleRegistryIdempotent(t *testing.T) {
 // whose length header claims more than maxExportRecordSize bytes causes
 // ImportGraph to return an error without allocating the huge buffer.
 func TestReadExportRecord_OversizeRecord(t *testing.T) {
+	t.Parallel()
 	// Craft a 5-byte "record": tag=exportTagHeader(0x01), length=128MiB+1.
 	// No body follows — the size guard must fire before make([]byte, length).
 	const oversizeLen = 128*1024*1024 + 1
@@ -981,6 +993,7 @@ func makeBadVersionStream(t *testing.T) io.Reader {
 }
 
 func TestExportGraph_CurrentEntitiesPageIDsBeforeFetching(t *testing.T) {
+	t.Parallel()
 	base := memory.New()
 	store := &exportPagingTrackingStore{MandatoryStore: base, historyPager: base}
 	g, err := New(Config{Store: store})
@@ -1027,6 +1040,7 @@ func TestExportGraph_CurrentEntitiesPageIDsBeforeFetching(t *testing.T) {
 }
 
 func TestExportGraph_HistoryPagesVersionsWhenCapabilityAvailable(t *testing.T) {
+	t.Parallel()
 	base := memory.New()
 	store := &exportPagingTrackingStore{MandatoryStore: base, historyPager: base}
 	g, err := New(Config{Store: store})
@@ -1074,6 +1088,7 @@ func TestExportGraph_HistoryPagesVersionsWhenCapabilityAvailable(t *testing.T) {
 }
 
 func TestExportGraph_HistoryVersionPagingSplitsDeepEntity(t *testing.T) {
+	t.Parallel()
 	base := memory.New()
 	store := &exportPagingTrackingStore{MandatoryStore: base, historyPager: base}
 	g, err := New(Config{Store: store})
@@ -1107,6 +1122,7 @@ func TestExportGraph_HistoryVersionPagingSplitsDeepEntity(t *testing.T) {
 }
 
 func TestExportGraph_HistoryFallsBackWithoutVersionPager(t *testing.T) {
+	t.Parallel()
 	base := memory.New()
 	store := &exportHistoryFallbackStore{MandatoryStore: base}
 	g, err := New(Config{Store: store})
@@ -1146,6 +1162,7 @@ func TestExportGraph_HistoryFallsBackWithoutVersionPager(t *testing.T) {
 }
 
 func TestExportGraph_IgnoresInheritedNativeHistoryPagerOnWrapper(t *testing.T) {
+	t.Parallel()
 	store := &exportEmbeddedNativeHistoryWrapper{Store: memory.New()}
 	if _, ok := any(store).(storepkg.HistoryVersionPageCapability); !ok {
 		t.Fatal("test wrapper no longer inherits HistoryVersionPageCapability")

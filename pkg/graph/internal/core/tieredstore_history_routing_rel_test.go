@@ -18,6 +18,7 @@ import (
 // shardForRelIDChecked must locate the shard owning a same-shard reference
 // relationship and return a checkin that is safe to invoke.
 func TestTieredStore_ShardForRelIDChecked_SameShardRef(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
@@ -45,6 +46,7 @@ func TestTieredStore_ShardForRelIDChecked_SameShardRef(t *testing.T) {
 // shardForRelIDChecked on an unknown ID must return a usable shard whose
 // downstream Get* surfaces storepkg.ErrRelNotFound, and the checkin must be balanced.
 func TestTieredStore_ShardForRelIDChecked_NotFoundReturnsCandidate(t *testing.T) {
+	t.Parallel()
 	_, ts := newTestTieredGraph(t)
 	const unknownID types.RelID = 0xDEADBEEF
 	shard, checkin, err := ts.ShardForRelIDCheckedForTest(unknownID)
@@ -64,6 +66,7 @@ func TestTieredStore_ShardForRelIDChecked_NotFoundReturnsCandidate(t *testing.T)
 // still return the historical snapshot. This exercises the forEachHistoryShard
 // fallback combined with shardForRelIDChecked.
 func TestTieredStore_GetRelVersion_AfterCrossShardDelete(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	caseN, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
@@ -113,6 +116,7 @@ func TestTieredStore_GetRelVersion_AfterCrossShardDelete(t *testing.T) {
 }
 
 func TestTieredStore_RelHistoryVersionsFrom_RoutingBranches(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	refA, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -206,6 +210,7 @@ func TestTieredStore_RelHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 // After deleting a cross-shard relationship, TruncateRelHistory must locate
 // the tombstone history (on the start-node's shard) and truncate it.
 func TestTieredStore_TruncateRelHistory_AfterCrossShardDelete(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	caseN, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
@@ -250,6 +255,7 @@ func TestTieredStore_TruncateRelHistory_AfterCrossShardDelete(t *testing.T) {
 }
 
 func TestTieredStore_TruncateRelHistory_UnknownID_NoError(t *testing.T) {
+	t.Parallel()
 	_, ts := newTestTieredGraph(t)
 	if err := ts.TruncateRelHistory(types.RelID(0xDEADBEEF), 0); err != nil {
 		t.Errorf("TruncateRelHistory(unknown) err = %v, want nil", err)
@@ -274,6 +280,7 @@ func TestTieredStore_TruncateRelHistory_UnknownID_NoError(t *testing.T) {
 // optimisation in forEachHistoryShard regresses this path silently — the
 // regression doesn't surface until cold demotion is enabled in production.
 func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	// Step 1: nodes created in the original hot shard.
@@ -342,6 +349,7 @@ func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testin
 // If the old shard later becomes cold, every public relationship lookup path
 // must still find the live rel.
 func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardCold(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
@@ -408,6 +416,7 @@ func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *test
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	g, ts := newDiskTieredGraph(t)
 
 	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
@@ -608,6 +617,7 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 }
 
 func TestTieredStore_BatchGeneratedCreatesDoNotOpenClosedColdShards(t *testing.T) {
+	t.Parallel()
 	g, _, cold := newTieredGraphWithClosedColdShard(t)
 
 	b, err := NewBatchBuilder(g)
@@ -638,6 +648,7 @@ func TestTieredStore_BatchGeneratedCreatesDoNotOpenClosedColdShards(t *testing.T
 // branch; this test guards the shape on this branch where the same write
 // paths now use shardForRelIDChecked.)
 func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -680,6 +691,7 @@ func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.
 // runs through tiered.Store which previously resolved owners via the
 // unchecked shardForRelID/shardForNodeID.
 func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
+	t.Parallel()
 	rotateAndDemoteHot := func(t *testing.T, ts *tiered.Store) {
 		t.Helper()
 		ts.MuForTest().RLock()
@@ -779,6 +791,7 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 // underlying store so this stays a routing-only check. End-to-end
 // ArchiveNode/RestoreNode tests cover placement migration separately.
 func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	src, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -944,6 +957,7 @@ func TestTieredStore_RunRepair_ColdShardsSurviveIdleClose(t *testing.T) {
 // below — full-path rollback with injected failure requires a Store
 // wrapper hook that the tiered.Store test scaffolding does not yet expose.
 func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -1004,6 +1018,7 @@ func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
 // together with its endpoints, or any future cross-shard migration) gets
 // version writes on the wrong shard via PutRelVersion.
 func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -1060,6 +1075,7 @@ func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
 // the in/ leg has already succeeded — without symmetric restore the
 // rollback would leave inIdx in a state different from before the delete.
 func TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {

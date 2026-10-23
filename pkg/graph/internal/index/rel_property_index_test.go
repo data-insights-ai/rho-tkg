@@ -27,6 +27,7 @@ func relIDSet(ids []types.RelID) map[types.RelID]struct{} {
 }
 
 func TestRelPropertyIndexAddRemoveLookup(t *testing.T) {
+	t.Parallel()
 	const knows = uint16(7)
 	indexes := map[RelPropertyIndexKey]*PropertyIndex{
 		{RelTypeToken: knows, PropertyKey: "weight"}: NewPropertyIndex(),
@@ -70,6 +71,7 @@ func TestRelPropertyIndexAddRemoveLookup(t *testing.T) {
 }
 
 func TestRelPropertyIndexRangeRelIDs(t *testing.T) {
+	t.Parallel()
 	idx := NewPropertyIndex()
 	for id, w := range map[snowflake.ID]int64{10: 1, 20: 5, 30: 9, 40: 15} {
 		idx.AddKey(id, PropertyValueKey(w))
@@ -106,6 +108,7 @@ func TestRelPropertyIndexRangeRelIDs(t *testing.T) {
 }
 
 func TestRelPropertyIndexPurge(t *testing.T) {
+	t.Parallel()
 	const knows = uint16(7)
 	indexes := map[RelPropertyIndexKey]*PropertyIndex{
 		{RelTypeToken: knows, PropertyKey: "weight"}: NewPropertyIndex(),
@@ -134,6 +137,7 @@ func TestRelPropertyIndexPurge(t *testing.T) {
 // "index cleanup on corruption must clean ALL indexes" violation the finding
 // describes).
 func TestRelPropertyIndexPurgeCleansStringOrderedView(t *testing.T) {
+	t.Parallel()
 	const knows = uint16(7)
 	idx := NewPropertyIndex()
 	r := relWithProps(t, 500, knows, map[string]any{"city": "berlin"})
@@ -157,6 +161,7 @@ func TestRelPropertyIndexPurgeCleansStringOrderedView(t *testing.T) {
 }
 
 func TestRelPropertyIndexNilAndEmptyGuards(t *testing.T) {
+	t.Parallel()
 	// Nil map / nil rel are no-ops (must not panic).
 	AddRelToPropertyIndexes(nil, nil, 1)
 	RemoveRelFromPropertyIndexes(nil, nil, 1)

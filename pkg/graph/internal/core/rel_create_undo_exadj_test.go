@@ -20,6 +20,7 @@ import (
 // a failed import) removes a relationship that never committed, so it leaves
 // no ex-adjacency; a real delete still records both legs.
 func TestRelCreateUndoLeavesNoExAdjacency(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, b := range []struct {
 		name  string

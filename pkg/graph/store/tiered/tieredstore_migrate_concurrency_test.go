@@ -17,6 +17,7 @@ import (
 // goroutine race is needed — to simulate an in-flight migration, and
 // confirms a second MigrateFromBadger call blocks until it releases.
 func TestMigrateFromBadger_SerializesConcurrentCalls(t *testing.T) {
+	t.Parallel()
 	dst := newTestTieredStore(t)
 
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})

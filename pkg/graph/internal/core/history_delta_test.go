@@ -37,6 +37,7 @@ import (
 // maximally adversarial case — before any Add/Update call ever reaches the
 // map-iteration-order-dependent path.
 func TestHistoryDeltaCoreDifferentialAndIntegrity(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	deltaG, err := New(Config{BadgerInMemory: true, HistoryDeltaEncoding: true})

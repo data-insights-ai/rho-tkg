@@ -21,6 +21,7 @@ func envNode(id types.NodeID, version uint32, from, to types.Instant, primary ui
 // (a) PutNodeVersion on a covered node: the imported past row [100,200)
 // must join the envelope.
 func TestNodeTemporalEnvelope_PutNodeVersionCovered(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	nid := types.NodeID(snowflake.ID(8030))
 	if err := bs.PutNode(envNode(nid, 5, 5000, 6000, 7)); err != nil {
@@ -67,6 +68,7 @@ func TestNodeTemporalEnvelope_CreatePruneBeforeHistoryFold(t *testing.T) {
 // (c) A live node that carried label 7 in [100,200), lost it, and gets it back
 // after the index exists: the envelope must cover the old row too.
 func TestNodeTemporalEnvelope_LabelReAddOnLiveNode(t *testing.T) {
+	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	nid := types.NodeID(snowflake.ID(8032))
 	v0 := envNode(nid, 0, 100, 200, 8, 7)

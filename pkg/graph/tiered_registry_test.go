@@ -24,6 +24,7 @@ func TestTieredEventShardTokenizedReload(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()
 

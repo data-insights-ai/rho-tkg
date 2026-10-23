@@ -8,6 +8,7 @@ import (
 )
 
 func TestDocsMetadataMatchesSourceOfTruth(t *testing.T) {
+	t.Parallel()
 	goMod, err := os.ReadFile("../../../../go.mod")
 	if err != nil {
 		t.Fatalf("read go.mod: %v", err)

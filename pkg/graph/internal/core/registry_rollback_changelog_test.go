@@ -18,6 +18,7 @@ import (
 // (de-allocate for an exact rollback) is preserved — pinned by the existing
 // TestGetOrCreateLabelWithSnapshotAllocatesExistingAndRollsBack.
 func TestRestoreNewLabelOnError_KeepsTokenWhenChangeLogEnabled(t *testing.T) {
+	t.Parallel()
 	c, err := New(Config{Store: memory.New(memory.WithChangeLog())})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -45,6 +46,7 @@ func TestRestoreNewLabelOnError_KeepsTokenWhenChangeLogEnabled(t *testing.T) {
 }
 
 func TestRestoreNewRelTypeOnError_KeepsTokenWhenChangeLogEnabled(t *testing.T) {
+	t.Parallel()
 	c, err := New(Config{Store: memory.New(memory.WithChangeLog())})
 	if err != nil {
 		t.Fatalf("New: %v", err)

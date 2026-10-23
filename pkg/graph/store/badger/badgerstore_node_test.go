@@ -314,6 +314,7 @@ func (b badgerCustomProperty) HashBytes() []byte {
 func (b badgerCustomProperty) DeepCopyValue() any { return b }
 
 func TestBadgerStoreCustomPropertyRoundTripsFromDisk(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(badgerCustomProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}

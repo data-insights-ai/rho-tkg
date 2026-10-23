@@ -18,6 +18,7 @@ import (
 // holding an integer past 2^53, an Elements index and an index being built
 // decline.
 func TestOrderedValuePagesMatchBruteForce(t *testing.T) {
+	t.Parallel()
 	stored := map[snowflake.ID]any{}
 	pi := NewPropertyIndex()
 	put := func(id snowflake.ID, v any) { stored[id] = v; pi.Add(id, v) }

@@ -18,6 +18,7 @@ func containsNodeID(nodes []*types.Node, id types.NodeID) bool {
 }
 
 func TestBadgerStore_AddNodeLabelToken(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 
 	n := putTestNode(t, bs, 100, 1, nil)
@@ -48,6 +49,7 @@ func TestBadgerStore_AddNodeLabelToken(t *testing.T) {
 }
 
 func TestBadgerStore_AddNodeLabelTokenWithHistory(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 
 	n := putTestNode(t, bs, 101, 1, nil)
@@ -79,6 +81,7 @@ func TestBadgerStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 }
 
 func TestBadgerStore_AddNodeLabelToken_NotFound(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 
 	updated := types.NewNode(types.NodeID(snowflake.ID(999)), 1, []uint16{2})

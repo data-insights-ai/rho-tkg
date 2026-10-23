@@ -18,6 +18,7 @@ import (
 // recomputed hash disagree and loadUniqueForeverOwners returns ErrCorruptWire —
 // never silently granting or revoking ownership.
 func TestUniqueForever_SelfHashTamperFailsClosed(t *testing.T) {
+	t.Parallel()
 	ms := memory.New()
 	g, err := New(Config{Store: ms})
 	if err != nil {
@@ -94,6 +95,7 @@ func foreverRecords(t *testing.T, ms *memory.Store) map[string]int64 {
 // what v4.57.0 writes (an older binary reads it): int(3) persists "i:3",
 // uint8(4) "u8:4", never the canonical "i64:" key.
 func TestUniqueForever_PersistsStoredWidthKey(t *testing.T) {
+	t.Parallel()
 	ms := memory.New()
 	g, err := New(Config{Store: ms})
 	if err != nil {
@@ -123,6 +125,7 @@ func TestUniqueForever_PersistsStoredWidthKey(t *testing.T) {
 // owner ID owns the value: A keeps writing it, B's claim of it is refused, and
 // a later persist keeps both raw records (B's is not silently dropped).
 func TestUniqueForever_LegacyWidthTwinsLoad(t *testing.T) {
+	t.Parallel()
 	ms := memory.New()
 	g, err := New(Config{Store: ms})
 	if err != nil {

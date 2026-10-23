@@ -149,6 +149,7 @@ func TestHFIndex_ConflictsWithTemporalIndex(t *testing.T) {
 }
 
 func TestHFIndex_CreateBeforeLabelExists(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)

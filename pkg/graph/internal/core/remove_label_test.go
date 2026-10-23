@@ -11,6 +11,7 @@ import (
 )
 
 func TestRemoveNodeLabel_ExtraLabel(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person", "Employee"}, nil)
 	id := n.ID()
@@ -29,6 +30,7 @@ func TestRemoveNodeLabel_ExtraLabel(t *testing.T) {
 }
 
 func TestRemoveNodeLabel_PrimaryPromotesExtra(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Primary", "Secondary"}, nil)
 	id := n.ID()
@@ -46,6 +48,7 @@ func TestRemoveNodeLabel_PrimaryPromotesExtra(t *testing.T) {
 }
 
 func TestRemoveNodeLabel_LastLabelError(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Solo"}, nil)
 	id := n.ID()
@@ -57,6 +60,7 @@ func TestRemoveNodeLabel_LastLabelError(t *testing.T) {
 }
 
 func TestRemoveNodeLabel_LabelNotFoundError(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
@@ -80,6 +84,7 @@ func TestRemoveNodeLabel_NodeNotFoundError(t *testing.T) {
 }
 
 func TestRemoveNodeLabel_HashUpdated(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
@@ -106,6 +111,7 @@ func TestRemoveNodeLabel_HashUpdated(t *testing.T) {
 }
 
 func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Thing", "Tag"}, nil)
 	id := n.ID()

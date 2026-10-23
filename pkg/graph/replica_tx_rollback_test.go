@@ -17,6 +17,7 @@ import (
 // the old physical-redo-log behavior where a rolled-back tx shipped its create +
 // hard-cascade-delete churn and the replica transiently materialized the phantom.
 func TestReplicaConvergence_RolledBackTxEmitsNothing(t *testing.T) {
+	t.Parallel()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("primary New: %v", err)
@@ -98,6 +99,7 @@ func TestReplicaConvergence_RolledBackTxEmitsNothing(t *testing.T) {
 // path: a multi-op tx (create + update + delete, plus a new label token) whose
 // records were buffered during the body and emitted atomically at commit.
 func TestReplicaConvergence_CommittedTxViaBuffer(t *testing.T) {
+	t.Parallel()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("primary New: %v", err)

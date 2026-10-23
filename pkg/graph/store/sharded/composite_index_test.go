@@ -41,6 +41,7 @@ func addCityDeptNodes(t *testing.T, g *graph.Graph, combos [][2]string, per int)
 // over two keys returns the EXACT cross-shard set, phantom combos return empty,
 // and introspection reports the declared tuple.
 func TestShardedCompositeIndexCrossShard(t *testing.T) {
+	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	combos := [][2]string{{"Berlin", "Eng"}, {"Berlin", "Sales"}, {"Paris", "Eng"}}
 	byCombo, slots := addCityDeptNodes(t, g, combos, 3) // 9 sessions
@@ -92,6 +93,7 @@ func TestShardedCompositeIndexCrossShard(t *testing.T) {
 // duplicate ordered-key definition -> ErrIndexExists, drop-missing ->
 // ErrIndexNotFound, and a different key ORDER is a distinct definition.
 func TestShardedCompositeIndexDDLSentinels(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)

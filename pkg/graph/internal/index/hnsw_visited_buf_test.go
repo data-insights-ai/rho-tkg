@@ -15,6 +15,7 @@ import (
 // TestHNSWVisitedBuf_FreshBorrowStartsAllUnvisited proves a freshly-grown
 // buffer reports every index unvisited before anything is marked.
 func TestHNSWVisitedBuf_FreshBorrowStartsAllUnvisited(t *testing.T) {
+	t.Parallel()
 	vb := getHNSWVisitedBuf(10)
 	defer putHNSWVisitedBuf(vb)
 	for i := int32(0); i < 10; i++ {
@@ -27,6 +28,7 @@ func TestHNSWVisitedBuf_FreshBorrowStartsAllUnvisited(t *testing.T) {
 // TestHNSWVisitedBuf_MarkVisited proves marking one index does not affect
 // its neighbors.
 func TestHNSWVisitedBuf_MarkVisited(t *testing.T) {
+	t.Parallel()
 	vb := getHNSWVisitedBuf(5)
 	defer putHNSWVisitedBuf(vb)
 	vb.markVisited(2)
@@ -45,6 +47,7 @@ func TestHNSWVisitedBuf_MarkVisited(t *testing.T) {
 // borrow as still visited — the whole point of bumping the generation
 // instead of physically clearing the slice.
 func TestHNSWVisitedBuf_ReuseDoesNotLeakStaleMarks(t *testing.T) {
+	t.Parallel()
 	vb1 := getHNSWVisitedBuf(8)
 	vb1.markVisited(0)
 	vb1.markVisited(3)
@@ -76,6 +79,7 @@ func TestHNSWVisitedBuf_ReuseDoesNotLeakStaleMarks(t *testing.T) {
 // when a later call needs a larger one — the case where g.nodes has grown
 // since the pooled buffer was last sized.
 func TestHNSWVisitedBuf_GrowsForLargerGraph(t *testing.T) {
+	t.Parallel()
 	vb1 := getHNSWVisitedBuf(4)
 	vb1.markVisited(1)
 	putHNSWVisitedBuf(vb1)
@@ -99,6 +103,7 @@ func TestHNSWVisitedBuf_GrowsForLargerGraph(t *testing.T) {
 // generation-tagged view) — one goroutine's marks must never be visible to
 // another's concurrently-running search.
 func TestHNSWVisitedBuf_ConcurrentBorrowersDoNotShareState(t *testing.T) {
+	t.Parallel()
 	const goroutines = 16
 	const n = 500
 	var wg sync.WaitGroup

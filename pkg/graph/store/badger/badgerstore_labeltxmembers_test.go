@@ -35,6 +35,7 @@ func bgNode(id int64, tokens []uint16, txFrom types.Instant) *types.Node {
 // by a fresh lazy build after reopen — including a historical-only label carried
 // only by a version-history row (proving the build scans the 0x07 keyspace).
 func TestBadgerLabelTxMembership_RebuildOnReopen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	const tokL uint16 = 1
 	const tokM uint16 = 2
@@ -92,6 +93,7 @@ func TestBadgerLabelTxMembership_RebuildOnReopen(t *testing.T) {
 // TestBadgerLabelTxMembership_PendingOverlay verifies the lazy build folds
 // UNFLUSHED (pending) writes: a node written but not yet flushed is a member.
 func TestBadgerLabelTxMembership_PendingOverlay(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -140,6 +142,7 @@ func TestBadgerLabelTxMembership_PostBuildHistoryVersion(t *testing.T) {
 
 // TestBadgerRelTypeTxMembership_Basic covers the rel-type mirror.
 func TestBadgerRelTypeTxMembership_Basic(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
 		t.Fatalf("open: %v", err)

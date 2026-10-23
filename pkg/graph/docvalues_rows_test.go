@@ -47,6 +47,7 @@ func readColumnRows(rr types.NodeColumnRowReader, workers int) []columnRow {
 // taken before an update keeps the old value at its position, one taken after
 // has the new. A position outside the range panics.
 func TestDocValuesSnapshotRowsByPosition(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		label := "P"

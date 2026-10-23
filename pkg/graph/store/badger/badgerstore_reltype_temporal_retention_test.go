@@ -12,6 +12,7 @@ import (
 // temporal entry. A merely deleted relationship keeps its entry (append-only;
 // its history stays).
 func TestRelTypeTemporalIndex_RetentionPurgeRemovesEnvelope(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	const relType, label = uint16(6), uint16(1)
 	for _, id := range []types.NodeID{1, 2, 3} {

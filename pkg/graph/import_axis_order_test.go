@@ -57,6 +57,7 @@ func axisOrderCheck(t *testing.T, g *graphpkg.Graph, what string) {
 // the same; an
 // import rolled back after the header leaves the target's mode as it was.
 func TestImportAdoptsAxisBeforeRows(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	one := axisOrderExport(t, 1)
 	for _, b := range allStoreBackends() {

@@ -43,6 +43,7 @@ func putMemRel(t *testing.T, ms *Store, id, start, end int64, weight any) {
 // delegates to the SHARED row builder, so this asserts the door reaches it with the
 // right rows and endpoints rather than re-testing the builder.
 func TestMemRelColumnScan_MatchesRowPath(t *testing.T) {
+	t.Parallel()
 	ms := newMemRelScanStore(t)
 	putMemRel(t, ms, 1, 1, 2, int64(10))
 	putMemRel(t, ms, 2, 2, 3, int64(20))
@@ -79,6 +80,7 @@ func TestMemRelColumnScan_MatchesRowPath(t *testing.T) {
 // refusal. The rules live in ColumnData.appendRow with the node path; a rel-specific
 // copy would be free to drift, and this is what would catch that.
 func TestMemRelColumnScan_MixedNumericRefuses(t *testing.T) {
+	t.Parallel()
 	ms := newMemRelScanStore(t)
 	putMemRel(t, ms, 1, 1, 2, int64(2))
 	putMemRel(t, ms, 2, 2, 3, 2.5)
@@ -93,6 +95,7 @@ func TestMemRelColumnScan_MixedNumericRefuses(t *testing.T) {
 // TestMemRelColumnScan_RejectsNilInputs — a nil callback is a caller bug, not an
 // empty scan; the callback is the only way results leave this door.
 func TestMemRelColumnScan_RejectsNilInputs(t *testing.T) {
+	t.Parallel()
 	ms := newMemRelScanStore(t)
 	if err := ms.ScanRelColumns(memRelScanType, []string{"weight"},
 		storecontract.QueryOpts{}, nil); err == nil {
@@ -108,6 +111,7 @@ func TestMemRelColumnScan_RejectsNilInputs(t *testing.T) {
 // TestMemRelColumnScan_EarlyStopHonoured — returning false must stop the scan; a
 // caller using it as a limit would otherwise pay for the whole type.
 func TestMemRelColumnScan_EarlyStopHonoured(t *testing.T) {
+	t.Parallel()
 	ms := newMemRelScanStore(t)
 	putMemRel(t, ms, 1, 1, 2, int64(1))
 	putMemRel(t, ms, 2, 2, 3, int64(2))

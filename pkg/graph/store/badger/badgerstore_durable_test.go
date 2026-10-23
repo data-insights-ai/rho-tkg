@@ -17,6 +17,7 @@ import (
 // db.Close drops the memtable, so a later db.Sync dereferences it (SIGSEGV in
 // memTable.SyncWAL). Reachable from GraphTx.Commit racing Graph.Close.
 func TestDurableFlush_CloseAfterCheckOpenReturnsStoreClosed(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{Dir: t.TempDir(), FlushInterval: time.Hour})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -36,6 +37,7 @@ func TestDurableFlush_CloseAfterCheckOpenReturnsStoreClosed(t *testing.T) {
 // loop, a second DurableFlush and Close (run under -race), and any error from
 // DurableFlush other than ErrStoreClosed once Close started.
 func TestDurableFlush_ConcurrentWithBackgroundFlushDurableFlushAndClose(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{Dir: t.TempDir(), FlushInterval: time.Millisecond})
 	if err != nil {
 		t.Fatalf("New: %v", err)

@@ -9,6 +9,7 @@ import (
 )
 
 func TestAsyncEventBus_HandlerReceivesEvent(t *testing.T) {
+	t.Parallel()
 	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 1, QueueSize: 16})
 	defer bus.Close()
 
@@ -33,6 +34,7 @@ func TestAsyncEventBus_HandlerReceivesEvent(t *testing.T) {
 }
 
 func TestAsyncEventBusSubscribeNilIsNoop(t *testing.T) {
+	t.Parallel()
 	var bus AsyncEventBus
 
 	unsub := bus.Subscribe(nil)
@@ -54,6 +56,7 @@ func TestAsyncEventBusSubscribeNilIsNoop(t *testing.T) {
 }
 
 func TestAsyncEventBusNilReceiverMethodsAreNoop(t *testing.T) {
+	t.Parallel()
 	var bus *AsyncEventBus
 
 	unsub := bus.Subscribe(func(Event) {
@@ -68,6 +71,7 @@ func TestAsyncEventBusNilReceiverMethodsAreNoop(t *testing.T) {
 }
 
 func TestAsyncEventBusZeroValueStartsOnFirstUse(t *testing.T) {
+	t.Parallel()
 	var bus AsyncEventBus
 	defer bus.Close()
 
@@ -92,6 +96,7 @@ func TestAsyncEventBusZeroValueStartsOnFirstUse(t *testing.T) {
 }
 
 func TestAsyncEventBusZeroValueCloseBeforeUse(t *testing.T) {
+	t.Parallel()
 	var bus AsyncEventBus
 	bus.Close()
 	bus.Close()
@@ -110,6 +115,7 @@ func TestAsyncEventBusZeroValueCloseBeforeUse(t *testing.T) {
 }
 
 func TestAsyncEventBusSubscribeAfterCloseIsNoop(t *testing.T) {
+	t.Parallel()
 	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 1, QueueSize: 4})
 	bus.Close()
 
@@ -128,6 +134,7 @@ func TestAsyncEventBusSubscribeAfterCloseIsNoop(t *testing.T) {
 }
 
 func TestAsyncEventBusInvalidBackpressureDefaultsToBlock(t *testing.T) {
+	t.Parallel()
 	bus := NewAsyncEventBus(AsyncEventBusConfig{
 		Workers:      1,
 		QueueSize:    16,
@@ -156,6 +163,7 @@ func TestAsyncEventBusInvalidBackpressureDefaultsToBlock(t *testing.T) {
 }
 
 func TestAsyncEventBusPublishAfterCloseDoesNotEnqueue(t *testing.T) {
+	t.Parallel()
 	for _, strategy := range []BackpressureStrategy{
 		BackpressureBlock,
 		BackpressureDropOldest,
@@ -185,6 +193,7 @@ func TestAsyncEventBusPublishAfterCloseDoesNotEnqueue(t *testing.T) {
 }
 
 func TestAsyncEventBusCloseUnblocksBackpressureBlockPublisher(t *testing.T) {
+	t.Parallel()
 	bus := NewAsyncEventBus(AsyncEventBusConfig{
 		Workers:      1,
 		QueueSize:    1,
@@ -260,6 +269,7 @@ func TestAsyncEventBusCloseUnblocksBackpressureBlockPublisher(t *testing.T) {
 }
 
 func TestAsyncEventBusPublishBatchStrictPriorityDuringClose(t *testing.T) {
+	t.Parallel()
 	bus := NewAsyncEventBus(AsyncEventBusConfig{
 		Workers:      2,
 		QueueSize:    16,
@@ -530,6 +540,7 @@ func stalledBus(t *testing.T, cfg AsyncEventBusConfig) (bus *AsyncEventBus, rele
 }
 
 func TestAsyncEventBus_SlowHandlerDoesNotBlockPublish(t *testing.T) {
+	t.Parallel()
 	const queueSize = 64
 	bus, release := stalledBus(t, AsyncEventBusConfig{
 		Workers: 1, QueueSize: queueSize, Backpressure: BackpressureDropLatest,
@@ -548,6 +559,7 @@ func TestAsyncEventBus_SlowHandlerDoesNotBlockPublish(t *testing.T) {
 }
 
 func TestAsyncEventBus_BackpressureBlock(t *testing.T) {
+	t.Parallel()
 	// With BackpressureBlock and a full queue, publish should eventually unblock
 	bus := NewAsyncEventBus(AsyncEventBusConfig{
 		Workers:      1,
@@ -584,6 +596,7 @@ func TestAsyncEventBus_BackpressureBlock(t *testing.T) {
 }
 
 func TestAsyncEventBus_BackpressureDropOldest(t *testing.T) {
+	t.Parallel()
 	bus, release := stalledBus(t, AsyncEventBusConfig{
 		Workers: 1, QueueSize: 2, Backpressure: BackpressureDropOldest,
 	})
@@ -600,6 +613,7 @@ func TestAsyncEventBus_BackpressureDropOldest(t *testing.T) {
 }
 
 func TestAsyncEventBus_BackpressureDropLatest(t *testing.T) {
+	t.Parallel()
 	bus, release := stalledBus(t, AsyncEventBusConfig{
 		Workers: 1, QueueSize: 2, Backpressure: BackpressureDropLatest,
 	})
@@ -616,6 +630,7 @@ func TestAsyncEventBus_BackpressureDropLatest(t *testing.T) {
 }
 
 func TestAsyncEventBusEnqueueLockedDefensiveBranches(t *testing.T) {
+	t.Parallel()
 	t.Run("invalid priority uses normal queue", func(t *testing.T) {
 		var bus AsyncEventBus
 		bus.backpressure = BackpressureDropLatest
@@ -684,6 +699,7 @@ func TestAsyncEventBusEnqueueLockedDefensiveBranches(t *testing.T) {
 }
 
 func TestAsyncEventBus_Close_DrainsQueue(t *testing.T) {
+	t.Parallel()
 	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 2, QueueSize: 64})
 
 	var counter atomic.Int32
@@ -704,6 +720,7 @@ func TestAsyncEventBus_Close_DrainsQueue(t *testing.T) {
 }
 
 func TestAsyncEventBusCloseFinalDrainAfterPublisherGate(t *testing.T) {
+	t.Parallel()
 	var bus AsyncEventBus
 	var delivered atomic.Int32
 	wrongType := make(chan EventType, 1)
@@ -756,6 +773,7 @@ func TestAsyncEventBusCloseFinalDrainAfterPublisherGate(t *testing.T) {
 }
 
 func TestAsyncEventBusConcurrentPublishers(t *testing.T) {
+	t.Parallel()
 	// Run with -race to detect data races across concurrent publishers.
 	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 4, QueueSize: 256})
 	defer bus.Close()
@@ -795,6 +813,7 @@ func TestAsyncEventBusConcurrentPublishers(t *testing.T) {
 }
 
 func TestPriority_ZeroValueIsNormal(t *testing.T) {
+	t.Parallel()
 	// Event{} zero value should have PriorityNormal (0)
 	e := Event{}
 	if e.Priority != PriorityNormal {
@@ -803,6 +822,7 @@ func TestPriority_ZeroValueIsNormal(t *testing.T) {
 }
 
 func TestPriority_CriticalBeforeNormal(t *testing.T) {
+	t.Parallel()
 	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 2, QueueSize: 64})
 	defer bus.Close()
 

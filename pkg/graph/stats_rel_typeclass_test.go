@@ -18,6 +18,7 @@ import (
 // delete / node-cascade-delete on both backends. The mixed-class case (some numeric,
 // some string under one type+key) is the whole point — it makes an ORDER BY unsound.
 func TestRelPropertyTypeClassCounts_ExactPartition(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"P"}, nil)
@@ -75,6 +76,7 @@ func TestRelPropertyTypeClassCounts_ExactPartition(t *testing.T) {
 // from loadIndexes at open (so deletes after reopen still
 // decrement precisely — the "survives restart" rule).
 func TestRelPropertyTypeClassCounts_Reopen(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 
@@ -118,6 +120,7 @@ func TestRelPropertyTypeClassCounts_Reopen(t *testing.T) {
 // and event nodes (a cross-shard relationship's row lives on one shard),
 // counted once each, follow an update and a delete.
 func TestRelPropertyTypeClassCounts_Tiered(t *testing.T) {
+	t.Parallel()
 	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Machine"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatalf("tiered.New: %v", err)

@@ -21,6 +21,7 @@ import (
 // removing a row the rollback would restore. Faulty implementation caught: a
 // purge chunk that runs while a transaction holds a pre-image of its victim.
 func TestRelRetentionPurgeTxRollbackNoResurrection(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -77,6 +78,7 @@ func TestNodeRetentionPurgeTxRollback(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -122,6 +124,7 @@ func TestNodeRetentionPurgeTxRollback(t *testing.T) {
 // open transaction (e.g. one the caller's own goroutine holds) returns
 // ctx.Err() when ctx ends instead of blocking for good.
 func TestRetentionPurgeWaitHonoursCtx(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true})
 	if err != nil {
 		t.Fatal(err)
@@ -173,6 +176,7 @@ func TestRelRetentionPurgeConcurrent(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
 		t.Run(be.name, func(t *testing.T) {

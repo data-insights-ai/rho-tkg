@@ -16,6 +16,7 @@ import (
 // archived entities. Pre-fix, archived nodes were GetNode-addressable but
 // silently absent from public bulk scans.
 func TestTieredStore_BulkQueries_IncludeArchive(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": 1})
@@ -83,6 +84,7 @@ func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	mkStore := func() *tiered.Store {
 		ts, err := tiered.New(tiered.Config{
@@ -187,6 +189,7 @@ func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 // label/property/type indexes on the archive store carry the same
 // metadata refShard does.
 func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
+	t.Parallel()
 	// The self-loop makes the relationship fully archive-resident, so the
 	// rel-side assertions exercise archive indexes directly. Cross-shard
 	// archive-placement migration is covered by the node routing tests.
@@ -304,6 +307,7 @@ func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
 // to exclude. refShard is queried for all Depth values per existing
 // semantics — reference data is not Depth-tiered.
 func TestTieredStore_BulkQueries_DepthGatesArchive(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -366,6 +370,7 @@ func TestTieredStore_BulkQueries_DepthGatesArchive(t *testing.T) {
 }
 
 func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -451,6 +456,7 @@ func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
 }
 
 func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"status": "open"})
@@ -530,6 +536,7 @@ func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
 }
 
 func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -570,6 +577,7 @@ func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
 // though it remains GetNode-addressable. Also covers DropTemporalIndex
 // reaching the archive (orphan index files would otherwise persist).
 func TestTieredStore_TemporalIndexCreate_CoversArchive(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -611,6 +619,7 @@ func TestTieredStore_TemporalIndexCreate_CoversArchive(t *testing.T) {
 // drains archiveActiveReqs (sees zero), proceeds to archive.Close(),
 // and the verifier hits Badger v4's Flush-on-closed-DB hang.
 func TestTieredStore_ResolveShardStore_PinsArchive(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -646,6 +655,7 @@ func TestTieredStore_ResolveShardStore_PinsArchive(t *testing.T) {
 // "missing everywhere" so a real in/ entry on another shard pointing
 // to it was treated as orphaned and DELETED — silent data loss.
 func TestTieredStore_FindRelInAnyShardStore_ProbesArchive(t *testing.T) {
+	t.Parallel()
 	ts, relID, _ := mustArchivedRelationshipFixture(t)
 
 	stores, release, err := ts.AllShardStoresWithLazyOpenForTest()
@@ -668,6 +678,7 @@ func TestTieredStore_FindRelInAnyShardStore_ProbesArchive(t *testing.T) {
 // includes refArchive. Otherwise the rel-IDs and in/ entries on the
 // archive are entirely invisible to the repair scanner.
 func TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -703,6 +714,7 @@ func TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive(t *testing.T) {
 // TestTieredStore_HighFrequencyIndexCreate_CoversArchive — same gap as
 // the temporal index test above, for high-frequency time-bucketed indexes.
 func TestTieredStore_HighFrequencyIndexCreate_CoversArchive(t *testing.T) {
+	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)

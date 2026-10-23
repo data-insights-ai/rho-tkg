@@ -12,6 +12,7 @@ import (
 // reproduces the original struct exactly, for both the all-omitted-optional-
 // fields case and the every-optional-field-present case.
 func TestHistoryDeltaRoundTrip(t *testing.T) {
+	t.Parallel()
 	nw := NodeWire{FormatVersion: 2, ID: 100, PrimaryLabel: 1, Version: 2}
 	rw := RelWire{FormatVersion: 2, ID: 200, RelType: 2, StartID: 10, EndID: 20, Version: 2}
 	ps := []PropertyWire{{KeyToken: 3, Value: int64(9), Type: 2}}
@@ -52,6 +53,7 @@ func TestHistoryDeltaRoundTrip(t *testing.T) {
 // actual on-disk door, tag byte + msgpack body) end to end, confirming the
 // hand-written codecs work through the full historyDeltaTag framing too.
 func TestEncodeDecodeNodeRelHistoryDelta_RoundTrip(t *testing.T) {
+	t.Parallel()
 	nw := NodeWire{FormatVersion: 2, ID: 100, PrimaryLabel: 1, Version: 2}
 	d := NodeHistoryDelta{
 		Meta: nw,

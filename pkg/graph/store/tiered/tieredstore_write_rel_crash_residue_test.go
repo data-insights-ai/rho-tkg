@@ -22,6 +22,7 @@ import (
 // erroring, so the phantom in/ entry must never surface as an error or a
 // wrong non-empty result, only as an absent one.
 func TestIncomingRelationships_SkipsPhantomInEntryFromCrashedCrossShardWrite(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

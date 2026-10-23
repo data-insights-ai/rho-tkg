@@ -255,18 +255,24 @@ func effectiveTimelinesCost(t *testing.T) {
 		// singular door hydrates up to k rows per pin even on a store with
 		// temporal skeletons (badger) — the cost the plural door must not
 		// multiply by the pins.
+		// -short builds 128 versions: the rows-read bound (flat in the pins)
+		// holds at any length; ai-soc's 511 runs without -short.
+		n := manyPinsVersions
+		if testing.Short() {
+			n = 128
+		}
 		id := e.add("F", 1000, nil)
-		for i := 1; i < manyPinsVersions; i++ {
+		for i := 1; i < n; i++ {
 			from := types.Instant(1000 + 10*i)
 			e.mustCascade(id, from, from+10, map[string]any{"x": int64(i)})
 		}
 		stamps := e.stamps(id)
 		versions := len(e.chain(id))
-		if versions < manyPinsVersions {
-			t.Fatalf("chain has %d rows, want >= %d", versions, manyPinsVersions)
+		if versions < n {
+			t.Fatalf("chain has %d rows, want >= %d", versions, n)
 		}
 		limit := versions + 8 // one chain walk plus a few point reads
-		for _, p := range []int{16, 64, 511} {
+		for _, p := range []int{16, 64, n} {
 			pins := make([]types.Instant, p)
 			for i := range pins {
 				pins[i] = stamps[i*len(stamps)/p]

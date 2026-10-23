@@ -10,6 +10,7 @@ import (
 )
 
 func TestUpdateNodeInPlace_NoHistoryEntry(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Thing"}, map[string]any{"x": int64(1)})
 	id := n.ID()
@@ -29,6 +30,7 @@ func TestUpdateNodeInPlace_NoHistoryEntry(t *testing.T) {
 }
 
 func TestUpdateNodeInPlace_VersionUnchanged(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Thing"}, map[string]any{"v": int64(0)})
 	id := n.ID()
@@ -44,6 +46,7 @@ func TestUpdateNodeInPlace_VersionUnchanged(t *testing.T) {
 }
 
 func TestUpdateNodeInPlace_PropertiesUpdated(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Thing"}, map[string]any{"a": "old"})
 	id := n.ID()
@@ -60,6 +63,7 @@ func TestUpdateNodeInPlace_PropertiesUpdated(t *testing.T) {
 }
 
 func TestUpdateNodeInPlace_NoOp(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
 	id := n.ID()
@@ -104,6 +108,7 @@ func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
 }
 
 func TestUpdateNodeInPlace_WithContext_Cancelled(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
 	id := n.ID()
@@ -120,6 +125,7 @@ func TestUpdateNodeInPlace_WithContext_Cancelled(t *testing.T) {
 // --- Relationship mirrors ---
 
 func TestUpdateRelInPlace_NoHistoryEntry(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
@@ -141,6 +147,7 @@ func TestUpdateRelInPlace_NoHistoryEntry(t *testing.T) {
 }
 
 func TestUpdateRelInPlace_VersionUnchanged(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
@@ -158,6 +165,7 @@ func TestUpdateRelInPlace_VersionUnchanged(t *testing.T) {
 }
 
 func TestUpdateRelInPlace_PropertiesUpdated(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
@@ -176,6 +184,7 @@ func TestUpdateRelInPlace_PropertiesUpdated(t *testing.T) {
 }
 
 func TestUpdateRelInPlace_NoOp(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)

@@ -52,6 +52,7 @@ func withArchiveAndRegistry(t *testing.T) (*Store, uint16, uint16) {
 // --- RebuildCatalog hits the archive branch (lines ~240-253) ---
 
 func TestTiered_RebuildCatalog_WithArchivePresent(t *testing.T) {
+	t.Parallel()
 	ts, _, _ := withArchiveAndRegistry(t)
 	if err := ts.RebuildCatalog(); err != nil {
 		t.Fatalf("RebuildCatalog with archive: %v", err)
@@ -65,6 +66,7 @@ func TestTiered_RebuildCatalog_WithArchivePresent(t *testing.T) {
 // --- CreateTemporalIndex with archive present exercises ensureTemporalIndexArchiveOpenLocked ---
 
 func TestTiered_CreateTemporalIndex_WithArchivePresent(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := withArchiveAndRegistry(t)
 	if err := ts.CreateTemporalIndex(caseTok); err != nil {
 		t.Fatalf("CreateTemporalIndex with archive: %v", err)
@@ -76,6 +78,7 @@ func TestTiered_CreateTemporalIndex_WithArchivePresent(t *testing.T) {
 }
 
 func TestTiered_CreateHighFrequencyIndex_WithArchivePresent(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := withArchiveAndRegistry(t)
 	if err := ts.CreateHighFrequencyIndex(caseTok, time.Hour); err != nil {
 		t.Fatalf("CreateHighFrequencyIndex with archive: %v", err)
@@ -83,6 +86,7 @@ func TestTiered_CreateHighFrequencyIndex_WithArchivePresent(t *testing.T) {
 }
 
 func TestTiered_DropTemporalIndex_WithArchivePresent(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := withArchiveAndRegistry(t)
 	if err := ts.CreateTemporalIndex(caseTok); err != nil {
 		t.Fatalf("CreateTemporalIndex: %v", err)
@@ -93,6 +97,7 @@ func TestTiered_DropTemporalIndex_WithArchivePresent(t *testing.T) {
 }
 
 func TestTiered_DropHighFrequencyIndex_WithArchivePresent(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := withArchiveAndRegistry(t)
 	if err := ts.CreateHighFrequencyIndex(caseTok, time.Hour); err != nil {
 		t.Fatalf("CreateHighFrequencyIndex: %v", err)
@@ -313,6 +318,7 @@ func TestTiered_GetRelHistory_AfterRestore_MergesRefAndArchive(t *testing.T) {
 // is open). The function must read both shards' history for the queried
 // node and merge — even though only refShard contains its history.
 func TestTiered_GetNodeHistory_RefLiveWithArchivePresent(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := withArchiveAndRegistry(t)
 
 	// Queried node: stays on refShard.
@@ -334,6 +340,7 @@ func TestTiered_GetNodeHistory_RefLiveWithArchivePresent(t *testing.T) {
 }
 
 func TestTiered_GetRelHistory_RefLiveWithArchivePresent(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := withArchiveAndRegistry(t)
 
 	gen := tieredNodeGen(t)
@@ -380,6 +387,7 @@ func (failingHashChainVerifier) VerifyNodeChain(types.NodeID) (bool, error) {
 func (failingHashChainVerifier) VerifyRelChain(types.RelID) (bool, error) { return false, nil }
 
 func TestTiered_VerifyShard_ArchiveShard(t *testing.T) {
+	t.Parallel()
 	ts, _, _ := withArchiveAndRegistry(t)
 	result, err := ts.VerifyShard(noopHashChainVerifier{}, "archive")
 	if err != nil {
@@ -556,6 +564,7 @@ func TestTiered_PutRelationshipsBatch_DuplicateInBatchRejected(t *testing.T) {
 // at each depth. Exercises the archive-and-event-shard merging logic in
 // maxNodeHistoryIDByDepth and forEachNodeHistoryIDByDepth.
 func TestTiered_ForEachNodeHistoryIDByDepth_AllTiers(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok := withArchiveAndRegistry(t)
 
 	gen := tieredNodeGen(t)
@@ -605,6 +614,7 @@ func TestTiered_ForEachNodeHistoryIDByDepth_AllTiers(t *testing.T) {
 }
 
 func TestTiered_ForEachRelHistoryIDByDepth_AllTiers(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok := withArchiveAndRegistry(t)
 
 	gen := tieredNodeGen(t)

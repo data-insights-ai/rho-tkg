@@ -1,6 +1,6 @@
 name: Fuzz
 
-# Weekly (and on-demand) bounded fuzz run over the five trust-boundary decode
+# On-demand bounded fuzz run over the five trust-boundary decode
 # harnesses documented in docs/SECURITY.md's "Fuzz harnesses" section: the
 # end-to-end import pipeline, the change-log replica-apply decode path (same
 # untrusted-stream contract as import — BACKLOG 12g), and the checked
@@ -16,9 +16,9 @@ name: Fuzz
 # testdata/fuzz/<FuzzName>/ and must be committed as a permanent regression
 # seed once triaged, per the existing seed-corpus discipline.
 
+# Manual only (no schedule, René 2026-10-23); `make fuzz-smoke` runs the same
+# targets briefly in the local minor gate.
 on:
-  schedule:
-    - cron: '0 4 * * 1'
   workflow_dispatch:
     inputs:
       fuzztime:

@@ -15,6 +15,7 @@ import (
 // MarkDeleted / LoadClean / Get / MarkFlushed / EvictForTest with a small
 // capacity so eviction churns continuously.
 func TestCache_DirtySetMatchesFullScan(t *testing.T) {
+	t.Parallel()
 	rng := rand.New(rand.NewSource(99)) //nolint:gosec // deterministic test
 	c := NewCache[int](8)
 

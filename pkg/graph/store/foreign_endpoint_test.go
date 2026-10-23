@@ -20,6 +20,7 @@ import (
 // still rejects a zero AttestTx (the one check that DOES exist).
 
 func TestForeignEndpointValidate_AcceptsArbitrarilyOldAttestTx(t *testing.T) {
+	t.Parallel()
 	fe := ForeignEndpoint{
 		NodeID:   types.NodeID(snowflake.ID(1)),
 		Hash:     "deadbeef",
@@ -31,6 +32,7 @@ func TestForeignEndpointValidate_AcceptsArbitrarilyOldAttestTx(t *testing.T) {
 }
 
 func TestForeignEndpointValidate_RejectsZeroAttestTx(t *testing.T) {
+	t.Parallel()
 	fe := ForeignEndpoint{
 		NodeID:   types.NodeID(snowflake.ID(1)),
 		Hash:     "deadbeef",
@@ -42,6 +44,7 @@ func TestForeignEndpointValidate_RejectsZeroAttestTx(t *testing.T) {
 }
 
 func TestForeignEndpointValidate_RejectsZeroNodeIDAndEmptyHash(t *testing.T) {
+	t.Parallel()
 	valid := ForeignEndpoint{NodeID: types.NodeID(snowflake.ID(1)), Hash: "deadbeef", AttestTx: 1}
 
 	zeroID := valid
@@ -58,6 +61,7 @@ func TestForeignEndpointValidate_RejectsZeroNodeIDAndEmptyHash(t *testing.T) {
 }
 
 func TestForeignIncomingEdgeValidate_AcceptsArbitrarilyOldAttestTx(t *testing.T) {
+	t.Parallel()
 	e := ForeignIncomingEdge{
 		RelID:    types.RelID(snowflake.ID(2)),
 		TypeName: "KNOWS",
@@ -71,6 +75,7 @@ func TestForeignIncomingEdgeValidate_AcceptsArbitrarilyOldAttestTx(t *testing.T)
 }
 
 func TestForeignIncomingEdgeValidate_RejectsZeroAttestTx(t *testing.T) {
+	t.Parallel()
 	e := ForeignIncomingEdge{
 		RelID:    types.RelID(snowflake.ID(2)),
 		TypeName: "KNOWS",
@@ -84,6 +89,7 @@ func TestForeignIncomingEdgeValidate_RejectsZeroAttestTx(t *testing.T) {
 }
 
 func TestForeignIncomingEdgeValidate_RejectsZeroIDsAndEmptyTypeName(t *testing.T) {
+	t.Parallel()
 	valid := ForeignIncomingEdge{
 		RelID:    types.RelID(snowflake.ID(2)),
 		TypeName: "KNOWS",

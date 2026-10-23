@@ -14,6 +14,7 @@ import (
 // event shard while both endpoints live in the current one. Its ex-adjacency
 // must still be found from each endpoint (noteHistoryRowLegs).
 func TestExAdjacencyHistoryRowOnAnotherShard(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, _, signal := installDefaultTestLabelRegistry(t, ts)
 	rid := types.RelID(tieredRelGen(t).Generate()) // minted before the rotation: the old shard's
@@ -64,6 +65,7 @@ func exAdjSet(t *testing.T, ts *Store, n types.NodeID, incoming bool) []types.Re
 // shards; nothing left any node's adjacency, so the move records no
 // ex-adjacency — only the deleted relationship's legs stay.
 func TestArchiveMoveLeavesNoExAdjacencyLegs(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	caseTok, _, signal := installDefaultTestLabelRegistry(t, ts)
 	gen, rgen := tieredNodeGen(t), tieredRelGen(t)
@@ -109,6 +111,7 @@ func TestArchiveMoveLeavesNoExAdjacencyLegs(t *testing.T) {
 // each on its endpoint's shard: the delete doors, not the Remove*Placement ones.
 // An undone create of the same relationship leaves none.
 func TestCrossShardDeleteKeepsExAdjacencyLegs(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"delete", "delete with history", "undo create"} {
 		ts := newTestTieredStore(t)
 		_, _, signal := installDefaultTestLabelRegistry(t, ts)

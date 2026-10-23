@@ -20,6 +20,7 @@ func TestHistoryPresenceBuildScanCost(t *testing.T) {
 	if testing.Short() || raceEnabled {
 		t.Skip("timing guard (skipped under -short and -race)")
 	}
+	t.Parallel()
 	const ids = 10_000
 	for _, shape := range []struct {
 		name  string

@@ -129,6 +129,7 @@ func TestTieredStoreNewRejectsInvalidColdShardTiming(t *testing.T) {
 }
 
 func TestTieredStore_PutGetNode_Ref(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -265,6 +266,7 @@ func TestTieredStore_NodeIntegrityHashCapabilities(t *testing.T) {
 }
 
 func TestTieredStore_NodeIntegrityHashClosedStore(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	gen := tieredNodeGen(t)
 	n := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
@@ -283,6 +285,7 @@ func TestTieredStore_NodeIntegrityHashClosedStore(t *testing.T) {
 }
 
 func TestTieredStore_RemoveNodeLabelToken_UpdatesIndexes(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -340,6 +343,7 @@ func TestTieredStore_RemoveNodeLabelToken_UpdatesIndexes(t *testing.T) {
 }
 
 func TestTieredStore_RemoveNodeLabelTokenWithHistory_UpdatesIndexesAndHistory(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -399,6 +403,7 @@ func TestTieredStore_RemoveNodeLabelTokenWithHistory_UpdatesIndexesAndHistory(t 
 }
 
 func TestTieredStore_AddNodeLabelToken_UpdatesIndexes(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -454,6 +459,7 @@ func TestTieredStore_AddNodeLabelToken_UpdatesIndexes(t *testing.T) {
 }
 
 func TestTieredStore_AddNodeLabelTokenWithHistory_UpdatesIndexesAndHistory(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -543,6 +549,7 @@ func TestTieredStore_RemoveNodeLabelToken_RejectsPrimaryClassMutation(t *testing
 }
 
 func TestTieredStore_NodeLabelTokenHelpersRejectInvalidDeltas(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -729,6 +736,7 @@ func TestTieredStore_ReplaceNode(t *testing.T) {
 }
 
 func TestTieredStore_ReplaceNode_RejectsPrimaryClassMutation(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -762,6 +770,7 @@ func TestTieredStore_ReplaceNode_RejectsPrimaryClassMutation(t *testing.T) {
 }
 
 func TestTieredStore_ReplaceNode_RejectsSameClassLabelMutation(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -1292,6 +1301,7 @@ func TestTieredStore_DeleteNodeCascade_EventNodeWithCrossShardRels(t *testing.T)
 }
 
 func TestTieredStore_DeleteNodeCascadeRollsBackPriorRelOnCrossShardFailure(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -1487,6 +1497,7 @@ func TestTieredStore_PutNodesBatch_RejectsDuplicateIDAcrossClasses(t *testing.T)
 }
 
 func TestTieredStore_RejectsZeroIDWrites(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -1614,6 +1625,7 @@ func TestTieredStore_PutNode_RejectsDuplicateIDInArchive(t *testing.T) {
 }
 
 func TestTieredStore_DepthFilterPinsArchive(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -1716,6 +1728,7 @@ func TestTieredStore_DeleteNodesBatchRejectsConnectedRelationships(t *testing.T)
 }
 
 func TestTieredStore_DeleteNodesBatchRollbackRestoresDeletedBuckets(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -1758,6 +1771,7 @@ func TestTieredStore_DeleteNodesBatchRollbackRestoresDeletedBuckets(t *testing.T
 }
 
 func TestTieredStore_DeleteNodesBatchDeduplicatesInput(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -2031,6 +2045,7 @@ func TestTieredStore_PutRelationshipsBatch_MissingEndpointDoesNotPartiallyWrite(
 }
 
 func TestTieredStore_PutRelationshipsBatch_RollsBackCrossShardOnSameShardBucketFailure(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(unmarshalableProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}
@@ -2111,6 +2126,7 @@ func TestTieredStore_PropertyIndex_RoutedByLabel(t *testing.T) {
 }
 
 func TestTieredStore_Close_Idempotent(t *testing.T) {
+	t.Parallel()
 	ts, err := New(Config{
 		InMemory:      true,
 		RefLabels:     []string{"Case"},
@@ -2153,6 +2169,7 @@ func TestTieredStore_Clear_AllShards(t *testing.T) {
 }
 
 func TestTieredStore_EventShardsMap(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	if len(ts.EventShardsForTest()) != 1 {
 		t.Errorf("eventShards count = %d, want 1", len(ts.EventShardsForTest()))
@@ -2319,6 +2336,7 @@ func TestTieredStore_DiskBacked_CreateAndReopen(t *testing.T) {
 }
 
 func TestTieredStore_MidWindowRestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	// Create first store.
@@ -2685,6 +2703,7 @@ func TestTieredStore_ReplaceNodeWithHistory(t *testing.T) {
 }
 
 func TestTieredStore_ReplaceNodeWithHistory_RejectsPrimaryClassMutation(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -2720,6 +2739,7 @@ func TestTieredStore_ReplaceNodeWithHistory_RejectsPrimaryClassMutation(t *testi
 }
 
 func TestTieredStore_ReplaceNodeWithHistory_RejectsSameClassLabelMutation(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -2754,6 +2774,7 @@ func TestTieredStore_ReplaceNodeWithHistory_RejectsSameClassLabelMutation(t *tes
 }
 
 func TestTieredStore_ReplaceWithHistoryRejectsNilPayloads(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -3236,6 +3257,7 @@ func TestTieredStore_RestartWarmShardWritable(t *testing.T) {
 }
 
 func TestTieredStore_RestartPreservesHotShard(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	ts1, err := New(Config{
@@ -3977,6 +3999,7 @@ func TestTieredStore_ParallelErrorPropagation(t *testing.T) {
 }
 
 func TestTieredStore_PropertyIndex_RefLabel(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -4018,6 +4041,7 @@ func TestTieredStore_PropertyIndex_EventLabelAccepted(t *testing.T) {
 }
 
 func TestTieredStore_PropertyIndex_ErrorsIs(t *testing.T) {
+	t.Parallel()
 	// Verify ErrEventPropertyIndex works with errors.Is.
 	err := fmt.Errorf("wrapped: %w", ErrEventPropertyIndex)
 	if !errors.Is(err, ErrEventPropertyIndex) {
@@ -4026,6 +4050,7 @@ func TestTieredStore_PropertyIndex_ErrorsIs(t *testing.T) {
 }
 
 func TestMigrateFromBadger_Empty(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -4045,6 +4070,7 @@ func TestMigrateFromBadger_Empty(t *testing.T) {
 }
 
 func TestMigrateFromBadger_NodesOnly(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -4096,6 +4122,7 @@ func TestMigrateFromBadger_NodesOnly(t *testing.T) {
 }
 
 func TestMigrateFromBadger_WithRels(t *testing.T) {
+	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -4289,6 +4316,7 @@ func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 }
 
 func TestTieredStore_CloseWaitsForEventShardMutex(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	ts.MuForTest().RLock()
@@ -4328,6 +4356,7 @@ func TestTieredStore_CloseWaitsForEventShardMutex(t *testing.T) {
 }
 
 func TestTieredStore_PostCloseRoutingReturnsStoreClosed(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -4363,6 +4392,7 @@ func TestTieredStore_PostCloseRoutingReturnsStoreClosed(t *testing.T) {
 }
 
 func TestTieredStoreDirectReadsReturnStoreClosedAfterClose(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 
 	const relTypeTok uint16 = 1
@@ -4632,6 +4662,7 @@ func TestTieredStoreZeroValueLifecycleReturnsStoreClosed(t *testing.T) {
 }
 
 func TestTieredStoreAdminAndMetadataAPIsReturnStoreClosedAfterClose(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
 	if err := ts.PutNode(n); err != nil {
@@ -4705,6 +4736,7 @@ func TestTieredStoreAdminAndMetadataAPIsReturnStoreClosedAfterClose(t *testing.T
 }
 
 func TestTieredStore_NodeCreateDuplicateProbeUsesCheckoutClosedGate(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -5388,6 +5420,7 @@ func TestTieredStoreIncomingRelationshipsVerifyFetchedRowType(t *testing.T) {
 }
 
 func TestTieredStoreAdjacencyPropagatesCorruptNodeRows(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	caseTok, _, _ := installDefaultTestLabelRegistry(t, ts)
 
@@ -5451,6 +5484,7 @@ func TestTieredStoreAdjacencyPropagatesCorruptNodeRows(t *testing.T) {
 }
 
 func TestTieredStorePutRelationshipPropagatesCorruptEndpointRows(t *testing.T) {
+	t.Parallel()
 	checks := []struct {
 		name string
 		run  func(*Store, *types.Relationship) error

@@ -12,6 +12,7 @@ import (
 )
 
 func TestSyncWrite_ConfigPassthrough(t *testing.T) {
+	t.Parallel()
 	// Verify SyncWrites=true flows through Config → Config → Store.
 	// Create a Store with SyncWrites=true and verify:
 	// 1. The bs.SyncWritesForTest() field is true
@@ -36,6 +37,7 @@ func TestSyncWrite_ConfigPassthrough(t *testing.T) {
 }
 
 func TestSyncWrite_DataSurvivesWithoutClose(t *testing.T) {
+	t.Parallel()
 	// With SyncWrites=true, data written to Store should be persisted
 	// immediately (not just buffered). To verify, write a node, then open
 	// a SECOND Store on the same directory without closing the first
@@ -97,6 +99,7 @@ func TestSyncWrite_IndexDefinitionMutationsPersistImmediately(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	tests := []struct {
 		name   string
 		key    []byte
@@ -174,6 +177,7 @@ func TestSyncWrite_IndexDefinitionMutationsPersistImmediately(t *testing.T) {
 }
 
 func TestSyncWrite_SplitRelationshipHelpersPersistImmediately(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{
 		Dir:        t.TempDir(),
 		SyncWrites: true,
@@ -243,6 +247,7 @@ func TestSyncWrite_SplitRelationshipHelpersPersistImmediately(t *testing.T) {
 }
 
 func TestSyncWrite_HistoryMaintenancePersistsImmediately(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{
 		Dir:        t.TempDir(),
 		SyncWrites: true,
@@ -334,6 +339,7 @@ func badgerKeyExists(t *testing.T, bs *Store, key []byte) bool {
 }
 
 func TestSyncWrite_FlushIntervalIgnored_WhenSyncWrites(t *testing.T) {
+	t.Parallel()
 	// Verify that even if FlushInterval is set, SyncWrites forces flushInt=0.
 	dir := t.TempDir()
 	bs, err := New(Config{
@@ -352,6 +358,7 @@ func TestSyncWrite_FlushIntervalIgnored_WhenSyncWrites(t *testing.T) {
 }
 
 func TestSyncWrite_ReadOnly_SyncWritesIgnored(t *testing.T) {
+	t.Parallel()
 	// Verify that SyncWrites is a no-op in ReadOnly mode.
 	// ReadOnly mode does not allow writes, so syncWrites must be false.
 	dir := t.TempDir()

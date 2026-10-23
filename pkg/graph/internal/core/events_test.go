@@ -36,6 +36,7 @@ func TestEventBus_Subscribe_Unsubscribe(t *testing.T) {
 // TestEventBus_Unsubscribe_Idempotent verifies that calling the unsubscribe
 // function multiple times is safe and does not panic.
 func TestEventBus_Unsubscribe_Idempotent(t *testing.T) {
+	t.Parallel()
 	bus := eventspkg.NewEventBus()
 	unsub := bus.Subscribe(func(eventspkg.Event) {})
 	unsub()
@@ -44,6 +45,7 @@ func TestEventBus_Unsubscribe_Idempotent(t *testing.T) {
 
 // TestEventBus_MultipleHandlers verifies all registered handlers receive every event.
 func TestEventBus_MultipleHandlers(t *testing.T) {
+	t.Parallel()
 	bus := eventspkg.NewEventBus()
 
 	counts := make([]int, 3)
@@ -65,6 +67,7 @@ func TestEventBus_MultipleHandlers(t *testing.T) {
 // TestGraph_EventBus_NilDefault verifies that a freshly created Graph has no
 // eventspkg.EventBus attached and does not panic on mutations.
 func TestGraph_EventBus_NilDefault(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -89,6 +92,7 @@ func TestGraph_EventBus_NilDefault(t *testing.T) {
 }
 
 func TestGraph_EventBusGettersReturnNilAfterClose(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New sync graph: %v", err)
@@ -130,6 +134,7 @@ func TestGraph_EventBusGettersReturnNilAfterClose(t *testing.T) {
 // TestGraph_NodeCreate_Event verifies that AddNode fires eventspkg.EventNodeCreate with
 // the correct EntityID and a non-zero Timestamp.
 func TestGraph_NodeCreate_Event(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 	events := collectEvents(g, eventspkg.EventNodeCreate)
 
@@ -155,6 +160,7 @@ func TestGraph_NodeCreate_Event(t *testing.T) {
 
 // TestGraph_NodeUpdate_Event verifies that UpdateNode fires eventspkg.EventNodeUpdate.
 func TestGraph_NodeUpdate_Event(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
@@ -177,6 +183,7 @@ func TestGraph_NodeUpdate_Event(t *testing.T) {
 
 // TestGraph_NodeDelete_Event verifies that DeleteNode fires eventspkg.EventNodeDelete.
 func TestGraph_NodeDelete_Event(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
@@ -198,6 +205,7 @@ func TestGraph_NodeDelete_Event(t *testing.T) {
 }
 
 func TestGraph_NodeCascadeDelete_RelDeleteEvents(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 
 	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
@@ -264,6 +272,7 @@ func TestGraph_NodeCascadeDelete_RelDeleteEvents(t *testing.T) {
 
 // TestGraph_RelCreate_Event verifies that AddRelationship fires eventspkg.EventRelCreate.
 func TestGraph_RelCreate_Event(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 
 	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
@@ -284,6 +293,7 @@ func TestGraph_RelCreate_Event(t *testing.T) {
 
 // TestGraph_RelDelete_Event verifies that DeleteRelationship fires eventspkg.EventRelDelete.
 func TestGraph_RelDelete_Event(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 
 	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
@@ -305,6 +315,7 @@ func TestGraph_RelDelete_Event(t *testing.T) {
 
 // TestGraph_RelUpdate_Event verifies that UpdateRelationship fires eventspkg.EventRelUpdate.
 func TestGraph_RelUpdate_Event(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 
 	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
@@ -325,6 +336,7 @@ func TestGraph_RelUpdate_Event(t *testing.T) {
 }
 
 func TestGraph_RelCompareAndSetProperty_Event(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 
 	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
@@ -350,6 +362,7 @@ func TestGraph_RelCompareAndSetProperty_Event(t *testing.T) {
 
 // TestGraph_CloseNodeVersion_Event verifies CloseNodeVersion fires eventspkg.EventNodeUpdate.
 func TestGraph_CloseNodeVersion_Event(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"E"}, nil)
@@ -373,6 +386,7 @@ func TestGraph_CloseNodeVersion_Event(t *testing.T) {
 
 // TestGraph_CloseRelVersion_Event verifies CloseRelVersion fires eventspkg.EventRelUpdate.
 func TestGraph_CloseRelVersion_Event(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForEvents(t)
 
 	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
@@ -432,6 +446,7 @@ func drain(events *[]eventspkg.Event) []eventspkg.Event {
 // TestEventBus_PanicHandler verifies that a panicking handler does not crash
 // the publish call and does not prevent other handlers from receiving the event.
 func TestEventBus_PanicHandler(t *testing.T) {
+	t.Parallel()
 	bus := eventspkg.NewEventBus()
 
 	// First handler panics.

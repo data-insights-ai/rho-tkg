@@ -11,6 +11,7 @@ import (
 )
 
 func TestTemporalIndexFileRollbackRestoresPreviousBytes(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "temporal_indexes.msgpack")
 	original := []byte("previous temporal index bytes")
 	if err := atomicWriteFile(path, original, "test temporal setup"); err != nil {
@@ -37,6 +38,7 @@ func TestTemporalIndexFileRollbackRestoresPreviousBytes(t *testing.T) {
 }
 
 func TestTemporalIndexFileRollbackRemovesNewFile(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "temporal_indexes.msgpack")
 	snapshot, err := snapshotTemporalIndexFile(path)
 	if err != nil {

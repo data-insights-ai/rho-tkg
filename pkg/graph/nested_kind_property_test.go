@@ -106,6 +106,7 @@ func checkNestedKindEntities(t *testing.T, g *graphpkg.Graph, es []nestedKindEnt
 }
 
 func TestNestedKinds_BadgerReopenKeepsKindAndChain(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 5, BadgerDir: dir})
 	if err != nil {
@@ -125,6 +126,7 @@ func TestNestedKinds_BadgerReopenKeepsKindAndChain(t *testing.T) {
 }
 
 func TestNestedKinds_MemoryExportImportKeepsKindAndChain(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 6, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)

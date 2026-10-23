@@ -42,6 +42,7 @@ import (
 // snapshot) has fully finished — so its snapshot decision and its
 // enforcement call are provably indivisible from CreateUnique's install.
 func TestUpdateInPlace_HasUniqueConstraintsSnapshotIndivisibleFromInstall(t *testing.T) {
+	t.Parallel()
 	ms := memory.New()
 	c, err := New(Config{Store: ms})
 	if err != nil {

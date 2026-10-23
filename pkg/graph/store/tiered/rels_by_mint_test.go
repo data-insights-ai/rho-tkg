@@ -117,6 +117,7 @@ func rotate(t *testing.T, ts *Store) {
 }
 
 func TestRelsByMint_PlacementOnMintShard(t *testing.T) {
+	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg("", true))
 	a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
@@ -196,6 +197,7 @@ func TestRelsByMint_PlacementOnMintShard(t *testing.T) {
 }
 
 func TestRelsByMint_FallbackCounted(t *testing.T) {
+	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg("", true))
 	a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
@@ -449,6 +451,7 @@ func TestRelsByMint_AdjacencyReadsEqual(t *testing.T) {
 }
 
 func TestRelsByMint_ColdCloseFreesLegs(t *testing.T) {
+	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg(t.TempDir(), true))
 	a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
@@ -496,6 +499,7 @@ func TestRelsByMint_ColdCloseFreesLegs(t *testing.T) {
 }
 
 func TestRelsByMint_DeleteNoResidue(t *testing.T) {
+	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg("", true))
 	a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
@@ -577,6 +581,7 @@ func TestRelsByMint_DeleteNoResidue(t *testing.T) {
 }
 
 func TestRelsByMint_DeleteRefNodeRefuses(t *testing.T) {
+	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg(t.TempDir(), true))
 	a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
@@ -614,6 +619,7 @@ func TestRelsByMint_DeleteRefNodeRefuses(t *testing.T) {
 }
 
 func TestRelsByMint_ArchiveRestoreSeesMintRels(t *testing.T) {
+	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg("", true))
 	a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
@@ -683,6 +689,7 @@ func TestRelsByMint_ArchiveRestoreSeesMintRels(t *testing.T) {
 }
 
 func TestRelsByMint_ChangelogOneRecord(t *testing.T) {
+	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	cfg := mintCfg("", true)
 	cfg.ChangeLog = true
@@ -730,6 +737,7 @@ func TestRelsByMint_ChangelogOneRecord(t *testing.T) {
 // the duplicate probe on the mint shard; Clear keeps the option's marker only
 // while the option is on; the ByDepth ex-adjacency door validates its input.
 func TestRelsByMint_BatchAndClear(t *testing.T) {
+	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg("", true))
 	a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
@@ -785,6 +793,7 @@ func TestRelsByMint_BatchAndClear(t *testing.T) {
 // legs, as DeleteNodeWithHistory does. Break cases: the rel on a cold (closed)
 // mint shard, both directions (a->b and b->a), a self-loop.
 func TestRelsByMint_DeleteNodeCascadeNoDangling(t *testing.T) {
+	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg(t.TempDir(), true))
 	a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)

@@ -13,6 +13,7 @@ import (
 // yields EXACTLY the same node set (and order) as the materializing ByLabel, over a
 // large label that exercises the bulk-scan substrate, on both backends.
 func TestIterByLabel_EqualsByLabel(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		const n = 3000 // > any internal bulk/parallel threshold

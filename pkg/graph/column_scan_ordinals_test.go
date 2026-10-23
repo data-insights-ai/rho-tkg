@@ -49,6 +49,7 @@ func columnScanOrdinals(t *testing.T, g *graphpkg.Graph) (map[types.NodeID]uint3
 // relationship, the survivors keep their ordinals, the deleted one is gone and
 // the new one carries its own. Badger with DisableOrdinals carries zeros.
 func TestColumnScansCarryOrdinals(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		cfg  func(t *testing.T) graphpkg.Config
@@ -143,6 +144,7 @@ func TestColumnScansCarryOrdinals(t *testing.T) {
 // A declared segment type's rows carry ordinal 0 in the column scan, as they
 // do everywhere.
 func TestRelColumnScanSegmentTypeOrdinals(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 4, Store: memory.New(), RelSegments: []graphpkg.RelSegmentSpec{{
 		Type: "HOP", Columns: []graphpkg.SegmentColumn{{Name: "w", Kind: graphpkg.SegmentInt64}},
 	}}})

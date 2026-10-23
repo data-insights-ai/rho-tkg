@@ -25,6 +25,7 @@ import (
 // allocated-but-unused token is harmless) so every emitted record stays
 // resolvable. This test pins convergence for a rolled-back NEW-token tx.
 func TestReplicaConvergence_RolledBackNewTokenTx(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {

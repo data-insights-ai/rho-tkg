@@ -18,6 +18,7 @@ import (
 // backfill not yet merged: the row's keys are absent from the postings.
 // Plain and Elements, node and relationship.
 func TestPropertyIndexLookupWhileBuilding(t *testing.T) {
+	t.Parallel()
 	for _, elements := range []bool{false, true} {
 		name := map[bool]string{false: "plain", true: "elements"}[elements]
 		t.Run(name, func(t *testing.T) {

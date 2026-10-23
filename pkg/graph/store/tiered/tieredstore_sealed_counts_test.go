@@ -21,6 +21,7 @@ func TestSealedCountsSurviveARestart(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 
 	cfg := openParallelCfg(dir)
@@ -117,6 +118,7 @@ func TestOpeningAShardUnsealsIt(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := openParallelCfg(dir)
 	cfg.ColdAfter = time.Millisecond

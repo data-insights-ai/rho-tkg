@@ -9,6 +9,7 @@ import (
 )
 
 func TestBadgerStoreLend(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true, FlushInterval: 1<<63 - 1, CacheCapacity: 2})
 	if err != nil {
 		t.Fatal(err)

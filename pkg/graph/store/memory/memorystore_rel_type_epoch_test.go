@@ -16,6 +16,7 @@ import (
 // Faulty implementations caught: the store-wide epoch (red: A moves on a B
 // write), a per-type bump that misses a door of the type's own writes.
 func TestMemoryRelTypeEpochSurvivesOtherTypes(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	defer ms.Close()
 	const typA, typB uint16 = 3, 4

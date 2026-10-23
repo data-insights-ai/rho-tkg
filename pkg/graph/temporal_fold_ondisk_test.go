@@ -14,6 +14,7 @@ import (
 // version matches a past instant. Two-phase: state X at t1, changed after,
 // queried at t1 after a reopen that rebuilds from the rows.
 func TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 	cfg := graphpkg.Config{BadgerDir: dir, LabelIndexOnDisk: true}

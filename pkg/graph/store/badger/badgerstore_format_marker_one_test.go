@@ -20,6 +20,7 @@ func TestFormatMarkerOneTrackerAcrossFeatures(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	elements := storecontract.PropertyIndexOptions{Elements: true}
 	nid := types.NodeID(snowflake.ID(400))
 	void := func(bs *Store, version uint32) {

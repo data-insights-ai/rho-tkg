@@ -27,6 +27,7 @@ func memRel(id int64, relType uint16, startID, endID int64) *types.Relationship 
 // ─── Disabled log: every scoped method is a documented no-op ───────────────
 
 func TestMemoryScopedChangeLog_DisabledByDefault(t *testing.T) {
+	t.Parallel()
 	ms := New() // no WithChangeLog
 
 	token, err := ms.BeginScopedLog()
@@ -51,6 +52,7 @@ func TestMemoryScopedChangeLog_DisabledByDefault(t *testing.T) {
 // ─── token == 0 is exactly the unscoped door ────────────────────────────────
 
 func TestMemoryScopedChangeLog_ZeroTokenMatchesUnscopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if err := ms.PutNodeScoped(memNode(1, 10), 0); err != nil {
@@ -87,6 +89,7 @@ func TestMemoryScopedChangeLog_ZeroTokenMatchesUnscopedDoor(t *testing.T) {
 // ─── An open (uncommitted) scope is invisible to the feed ──────────────────
 
 func TestMemoryScopedChangeLog_UncommittedScopeInvisibleToFeed(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	token, err := ms.BeginScopedLog()
@@ -131,6 +134,7 @@ func TestMemoryScopedChangeLog_UncommittedScopeInvisibleToFeed(t *testing.T) {
 // ─── DiscardScopedLog drops the buffer and burns no LSN ─────────────────────
 
 func TestMemoryScopedChangeLog_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
@@ -167,6 +171,7 @@ func TestMemoryScopedChangeLog_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
 // ─── Unknown / retired token fails closed ───────────────────────────────────
 
 func TestMemoryScopedChangeLog_UnknownTokenFailsClosed(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if _, err := ms.CommitScopedLog(999); !errors.Is(err, storecontract.ErrInvalidStoreMutation) {
@@ -188,6 +193,7 @@ func TestMemoryScopedChangeLog_UnknownTokenFailsClosed(t *testing.T) {
 // ─── Two concurrent scopes never cross-contaminate ──────────────────────────
 
 func TestMemoryScopedChangeLog_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	tokenA, err := ms.BeginScopedLog()
@@ -231,6 +237,7 @@ func TestMemoryScopedChangeLog_ConcurrentScopesDoNotCrossContaminate(t *testing.
 // ─── Concurrent goroutines each with their own scope: no data race ─────────
 
 func TestMemoryScopedChangeLog_ConcurrentGoroutinesNoRace(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	const n = 8
 	var wg sync.WaitGroup
@@ -266,6 +273,7 @@ func TestMemoryScopedChangeLog_ConcurrentGoroutinesNoRace(t *testing.T) {
 // ─── PutRelationshipScoped with a nonzero token (badger parity) ────────────
 
 func TestMemoryScopedChangeLog_PutRelationshipScoped(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
 		t.Fatalf("PutNode n1: %v", err)
@@ -309,6 +317,7 @@ func TestMemoryScopedChangeLog_PutRelationshipScoped(t *testing.T) {
 // ─── PutRelationshipGeneratedIDWithEndpointHashesScoped ─────────────────────
 
 func TestMemoryScopedChangeLog_PutRelationshipGeneratedIDWithEndpointHashesScoped(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
 		t.Fatalf("PutNode n1: %v", err)
@@ -360,6 +369,7 @@ func TestMemoryScopedChangeLog_PutRelationshipGeneratedIDWithEndpointHashesScope
 
 // token == 0 for the endpoint-hash door matches its unscoped sibling exactly.
 func TestMemoryScopedChangeLog_PutRelationshipGeneratedIDWithEndpointHashesScopedZeroToken(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
 		t.Fatalf("PutNode n1: %v", err)
@@ -389,6 +399,7 @@ func TestMemoryScopedChangeLog_PutRelationshipGeneratedIDWithEndpointHashesScope
 // ─── Legacy single-scope mechanism is unaffected (regression check) ────────
 
 func TestMemoryScopedChangeLog_LegacyMechanismUnaffected(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if err := ms.BeginLogScope(); err != nil {

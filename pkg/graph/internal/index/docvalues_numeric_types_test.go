@@ -21,6 +21,7 @@ import (
 // alongside int64/float64 values (mirroring real heterogeneous-but-numeric
 // data), now builds as ColNumeric instead of colUnbuildable.
 func TestDocValues_WidenedNumericTypesBuildable(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		val  any
@@ -71,6 +72,7 @@ func TestDocValues_WidenedNumericTypesBuildable(t *testing.T) {
 // property_stats_accumulator.go's numericValue already documents and
 // accepts for int64/uint64 beyond 2^53, never a silent negative wrap.
 func TestDocValues_Uint64OverflowFallsBackToFloat64(t *testing.T) {
+	t.Parallel()
 	huge := uint64(math.MaxInt64) + 1000
 	ids := []types.NodeID{1}
 	props := map[types.NodeID]map[string]any{1: {"x": huge}}
@@ -98,6 +100,7 @@ func TestDocValues_Uint64OverflowFallsBackToFloat64(t *testing.T) {
 // integer widths over time) all build as one numeric column, not just each
 // type in isolation.
 func TestDocValues_MixedWidenedTypesInOneColumn(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{1, 2, 3, 4, 5}
 	props := map[types.NodeID]map[string]any{
 		1: {"x": int8(1)},

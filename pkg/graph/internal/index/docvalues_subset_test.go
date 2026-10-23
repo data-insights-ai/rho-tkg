@@ -19,6 +19,7 @@ import (
 // (strings and numbers) or has not built declines, as do rows without
 // validity columns.
 func TestSubsetDocValuesEqualsBuild(t *testing.T) {
+	t.Parallel()
 	rng := rand.New(rand.NewPCG(7, 11))
 	const n = 9000
 	ids := make([]types.NodeID, n)

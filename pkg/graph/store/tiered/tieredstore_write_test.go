@@ -89,6 +89,7 @@ func TestTieredStoreTrackedTemporalIndexes_InheritOnLazyArchiveOpen(t *testing.T
 }
 
 func TestTieredStoreSequentialStoreWideOperationBlocksClose(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	release, err := ts.beginSequentialStoreWideOperation()
@@ -130,6 +131,7 @@ func TestTieredStoreTemporalIndexOpsCoverClosedColdShards(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 
@@ -517,6 +519,7 @@ func TestTieredStoreHighFrequencyIndex_DropSnapshotFailureLeavesIndex(t *testing
 }
 
 func TestTieredStoreTemporalIndex_RollsBackEarlierShardOnBackfillFailure(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
 	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), signalTok, nil)
@@ -550,6 +553,7 @@ func TestTieredStoreTemporalIndex_RollsBackEarlierShardOnBackfillFailure(t *test
 }
 
 func TestTieredStoreHighFrequencyIndex_RollsBackEarlierShardOnBackfillFailure(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
 	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), signalTok, nil)
@@ -583,6 +587,7 @@ func TestTieredStoreHighFrequencyIndex_RollsBackEarlierShardOnBackfillFailure(t 
 }
 
 func TestTieredStoreTemporalIndexDrop_RollsBackEarlierShardOnLaterFailure(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
 	if err := ts.CreateTemporalIndex(signalTok); err != nil {
@@ -845,6 +850,7 @@ func TestTieredStoreLoadTemporalIndexDefsRollsBackEarlierShardCreatesOnLaterFail
 }
 
 func TestTieredStoreHighFrequencyIndexDrop_RollsBackEarlierShardOnLaterFailure(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
 	if err := ts.CreateHighFrequencyIndex(signalTok, time.Hour); err != nil {
@@ -891,6 +897,7 @@ func TestTieredStoreTrackedTemporalIndexes_SurviveRestart(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	caseTok := uint16(1)
 	signalTok := uint16(3)
@@ -945,6 +952,7 @@ func TestTieredStoreTrackedHighFrequencyDrop_SurvivesRestart(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	signalTok := uint16(3)
 
@@ -990,6 +998,7 @@ func TestTieredStoreTrackedTemporalIndexes_ClearSurvivesRestart(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	caseTok := uint16(1)
 	signalTok := uint16(3)
@@ -1749,6 +1758,7 @@ func TestTieredStoreDropPropertyIndexEventLabelNotFound(t *testing.T) {
 }
 
 func TestTieredStorePutNodeWithBackdatedEventIDRemainsReadable(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -1770,6 +1780,7 @@ func TestTieredStorePutNodeWithBackdatedEventIDRemainsReadable(t *testing.T) {
 }
 
 func TestTieredStorePutNodesBatchWithBackdatedEventIDRemainsReadable(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -1790,6 +1801,7 @@ func TestTieredStorePutNodeRejectsDuplicateIDInClosedColdShard(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, caseTok, signalTok := setupDiskBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -1809,6 +1821,7 @@ func TestTieredStorePutNodeRejectsDuplicateIDInClosedColdShard(t *testing.T) {
 }
 
 func TestTieredStorePutNodeGeneratedIDFreshProofStoresNode(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -1826,6 +1839,7 @@ func TestTieredStorePutNodeGeneratedIDFreshProofStoresNode(t *testing.T) {
 }
 
 func TestTieredStoreGeneratedNodeRequiresFreshProof(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -1841,6 +1855,7 @@ func TestTieredStoreGeneratedNodeRequiresFreshProof(t *testing.T) {
 }
 
 func TestTieredStorePutNodeGeneratedIDRejectsInvalidAndClosedStore(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
 	if err := ts.PutNodeGeneratedID(nil, generatedcreate.FreshGraphID()); !errors.Is(err, ErrInvalidStoreMutation) {
@@ -1858,6 +1873,7 @@ func TestTieredStorePutNodeGeneratedIDRejectsInvalidAndClosedStore(t *testing.T)
 }
 
 func TestTieredStorePutNodesBatchGeneratedIDFreshProofStoresMixedNodes(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -1878,6 +1894,7 @@ func TestTieredStorePutNodesBatchGeneratedIDFreshProofStoresMixedNodes(t *testin
 }
 
 func TestTieredStoreGeneratedNodeBatchRequiresFreshProof(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -1893,6 +1910,7 @@ func TestTieredStoreGeneratedNodeBatchRequiresFreshProof(t *testing.T) {
 }
 
 func TestTieredStorePutNodesBatchGeneratedIDRejectsInvalidAndClosedStore(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
 	if err := ts.PutNodesBatchGeneratedID([]*types.Node{nil}, generatedcreate.FreshGraphID()); !errors.Is(err, ErrInvalidStoreMutation) {
@@ -1913,6 +1931,7 @@ func TestTieredStorePutRelationshipRejectsDuplicateIDInClosedColdShard(t *testin
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, _, signalTok := setupDiskBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -1950,6 +1969,7 @@ func TestTieredStorePutRelationshipRejectsCurrentIDDuplicateInClosedColdStartSha
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, _, signalTok := setupDiskBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -1989,6 +2009,7 @@ func TestTieredStoreGeneratedRelationshipRequiresFreshProof(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, _, signalTok := setupDiskBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -2066,6 +2087,7 @@ func TestTieredStorePutRelationshipGeneratedIDFreshProofStoresCrossShardRel(t *t
 }
 
 func TestTieredStorePutRelationshipGeneratedIDRejectsInvalidAndClosedStore(t *testing.T) {
+	t.Parallel()
 	ts, _, _ := setupBatchDelete(t)
 
 	if err := ts.PutRelationshipGeneratedID(nil, generatedcreate.FreshGraphID()); !errors.Is(err, ErrInvalidStoreMutation) {
@@ -2544,6 +2566,7 @@ func TestTieredStoreDeleteRelWithHistoryCrossShard(t *testing.T) {
 }
 
 func TestTieredStoreDeleteRelWithHistoryRestoresIncomingOnEntityFailure(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(unmarshalableProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}

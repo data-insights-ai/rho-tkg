@@ -23,6 +23,7 @@ var _ storecontract.ScopedCascadeCapability = (*Store)(nil)
 // ─── PutNodeVersionScoped: token == 0 is exactly the unscoped door ─────────
 
 func TestMemoryScopedCascade_PutNodeVersionZeroTokenMatchesUnscopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n := memNode(1, 10)
@@ -55,6 +56,7 @@ func TestMemoryScopedCascade_PutNodeVersionZeroTokenMatchesUnscopedDoor(t *testi
 // ─── ReplaceNodeScoped: token == 0 is exactly the unscoped door ────────────
 
 func TestMemoryScopedCascade_ReplaceNodeZeroTokenMatchesUnscopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n := memNode(1, 10)
@@ -80,6 +82,7 @@ func TestMemoryScopedCascade_ReplaceNodeZeroTokenMatchesUnscopedDoor(t *testing.
 // ─── An open (uncommitted) scope is invisible to the feed (PutNodeVersion) ──
 
 func TestMemoryScopedCascade_PutNodeVersionUncommittedScopeInvisibleToFeed(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n := memNode(1, 10)
@@ -136,6 +139,7 @@ func TestMemoryScopedCascade_PutNodeVersionUncommittedScopeInvisibleToFeed(t *te
 // ─── DiscardScopedLog drops the buffer and burns no LSN (ReplaceNode) ───────
 
 func TestMemoryScopedCascade_ReplaceNodeDiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n1 := memNode(1, 10) // eager create, LSN 1
@@ -183,6 +187,7 @@ func TestMemoryScopedCascade_ReplaceNodeDiscardEmitsNothingAndBurnsNoLSN(t *test
 // ─── Unknown / retired token fails closed (both call shapes) ───────────────
 
 func TestMemoryScopedCascade_UnknownTokenFailsClosed(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n := memNode(1, 10)
@@ -204,6 +209,7 @@ func TestMemoryScopedCascade_UnknownTokenFailsClosed(t *testing.T) {
 // ─── Two concurrent scopes never cross-contaminate ──────────────────────────
 
 func TestMemoryScopedCascade_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n1 := memNode(1, 10)
@@ -261,6 +267,7 @@ func TestMemoryScopedCascade_ConcurrentScopesDoNotCrossContaminate(t *testing.T)
 // ─── PutRelVersionScoped / ReplaceRelationshipScoped mirror the node doors ──
 
 func TestMemoryScopedCascade_RelDoors(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
@@ -324,6 +331,7 @@ func TestMemoryScopedCascade_RelDoors(t *testing.T) {
 // ─── Disabled log: the scoped doors are documented no-op fallbacks ─────────
 
 func TestMemoryScopedCascade_DisabledByDefault(t *testing.T) {
+	t.Parallel()
 	ms := New() // no WithChangeLog
 
 	n := memNode(1, 10)
@@ -351,6 +359,7 @@ func TestMemoryScopedCascade_DisabledByDefault(t *testing.T) {
 // ─── Concurrent goroutines each with their own scope: no data race ─────────
 
 func TestMemoryScopedCascade_ConcurrentGoroutinesNoRace(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	const n = 8
 	nodes := make([]*types.Node, n)

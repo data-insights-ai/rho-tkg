@@ -190,6 +190,7 @@ func rtbNames(w *rtbWorld, segs []temporal.RelSegment) string {
 // first pin and one added after it. Breaks: a swapped tuple and an unknown
 // value answer nil.
 func TestRelEffectiveTimelinesByProperties_MatchesPerTupleTimeline(t *testing.T) {
+	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			g := be.open(t, false)
@@ -467,6 +468,7 @@ func TestRelEffectiveTimelinesByProperties_PinGates(t *testing.T) {
 // empty window, a lone ValidEnd and a point with a window are
 // ErrInvalidTimeRange. Every backend, oracle-checked.
 func TestRelEffectiveTimelinesByProperties_WindowCut(t *testing.T) {
+	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			g := be.open(t, false)
@@ -637,6 +639,7 @@ func (s *countingTiered) ForEachRelPropertyTxMemberKeysDuring(tok uint16, key st
 // windowed), equal the oracle, and keep the cold-minted relationships and the
 // one deleted inside the window (its closed segment).
 func TestRelEffectiveTimelinesByProperties_OneFanoutManyTuples(t *testing.T) {
+	t.Parallel()
 	ts, err := tiered.New(tiered.Config{
 		DataDir:           t.TempDir(),
 		RefLabels:         []string{"Ref"},

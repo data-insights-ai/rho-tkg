@@ -177,6 +177,7 @@ const maxValueLogFileSizeForTest = 2<<30 - 1
 // rotation) the warm shard — the per-shard heap-bound knobs behind the
 // many-open-shards memory cost.
 func TestTieredCacheTuningReachesEveryShard(t *testing.T) {
+	t.Parallel()
 	const wantCap = 250
 	const wantBudget = int64(7 << 20)
 	ts, err := New(Config{
@@ -303,6 +304,7 @@ func TestTieredFootprintKnobsReachShards(t *testing.T) {
 // dropped BlockCacheSize or NumCompactors would pass the file-size test but fail
 // here, on the reference, hot, and (post-rotation) warm shards alike.
 func TestTieredFootprintKnobsReachBadgerOptions(t *testing.T) {
+	t.Parallel()
 	const (
 		vlog       = 64 << 20
 		memtable   = 16 << 20
@@ -371,6 +373,7 @@ func TestTieredFootprintKnobsReachBadgerOptions(t *testing.T) {
 // openBadgerStore -> badgerCfg, so it must inherit the footprint knobs and the
 // cache byte budget like every other shard.
 func TestTieredArchiveShardInheritsTuning(t *testing.T) {
+	t.Parallel()
 	const (
 		vlog       = 64 << 20
 		memtable   = 16 << 20

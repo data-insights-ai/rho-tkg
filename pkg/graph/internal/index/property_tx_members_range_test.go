@@ -14,6 +14,7 @@ import (
 // merged bound; NaN values always come back; an empty range returns the NaN
 // values only.
 func TestPropertyTxMembersInRange(t *testing.T) {
+	t.Parallel()
 	m := NewPropertyTxMembers[types.NodeID]()
 	m.Record(PropertyValueKey(int64(3)), 1, 50)
 	m.Record(PropertyValueKey(3.0), 2, 40)

@@ -17,6 +17,7 @@ import (
 // routing end-to-end today.
 
 func TestPutImportedNode_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 
@@ -60,6 +61,7 @@ func TestPutImportedNode_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
 }
 
 func TestPutImportedNode_NoTokenRoutesThroughPlainDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 
@@ -78,6 +80,7 @@ func TestPutImportedNode_NoTokenRoutesThroughPlainDoor(t *testing.T) {
 }
 
 func TestPutImportedRelationship_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 
@@ -124,6 +127,7 @@ func TestPutImportedRelationship_ScopedTokenRoutesThroughScopedDoor(t *testing.T
 }
 
 func TestPutImportedRelationship_NoTokenRoutesThroughPlainDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 

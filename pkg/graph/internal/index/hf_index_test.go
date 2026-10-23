@@ -10,6 +10,7 @@ import (
 )
 
 func TestHFIndex_Add_PointQuery(t *testing.T) {
+	t.Parallel()
 	origin := types.Instant(1000000)
 	hfi := NewHighFrequencyIndex(time.Hour, origin)
 
@@ -35,6 +36,7 @@ func TestHFIndex_Add_PointQuery(t *testing.T) {
 }
 
 func TestHFIndex_RangeQuery(t *testing.T) {
+	t.Parallel()
 	origin := types.Instant(0)
 	hfi := NewHighFrequencyIndex(time.Hour, origin)
 
@@ -88,6 +90,7 @@ func TestHFIndex_RangeQuery_EmptyOrReversedRange(t *testing.T) {
 }
 
 func TestHFIndex_Remove(t *testing.T) {
+	t.Parallel()
 	origin := types.Instant(0)
 	hfi := NewHighFrequencyIndex(time.Hour, origin)
 
@@ -126,6 +129,7 @@ func TestHFIndexRemovePurgesDuplicateBucketEntries(t *testing.T) {
 }
 
 func TestHFIndex_HighWriteRate(t *testing.T) {
+	t.Parallel()
 	// Run with -race; 10k concurrent adds
 	origin := types.Instant(0)
 	hfi := NewHighFrequencyIndex(time.Minute, origin)
@@ -152,6 +156,7 @@ func TestHFIndex_HighWriteRate(t *testing.T) {
 }
 
 func TestHFIndex_BucketFor_BeforeOrigin(t *testing.T) {
+	t.Parallel()
 	// origin = 1 hour in ms; test a time before origin uses negative bucket
 	origin := types.Instant(3600 * 1000)
 	hfi := NewHighFrequencyIndex(time.Hour, origin)
@@ -173,6 +178,7 @@ func TestHFIndex_BucketFor_BeforeOrigin(t *testing.T) {
 }
 
 func TestHFIndex_RangeQuery_EmptyResult(t *testing.T) {
+	t.Parallel()
 	origin := types.Instant(0)
 	hfi := NewHighFrequencyIndex(time.Hour, origin)
 
@@ -261,6 +267,7 @@ func TestHFIndex_RangeQuery_OpenEndedDoesNotHang(t *testing.T) {
 }
 
 func TestHFIndex_PurgeNodeFromAllHighFrequencyIndexes(t *testing.T) {
+	t.Parallel()
 	idxs := map[uint16]*HighFrequencyIndex{
 		1: NewHighFrequencyIndex(time.Hour, 0),
 		2: NewHighFrequencyIndex(time.Hour, 0),
@@ -333,6 +340,7 @@ func hfIDsContain(ids []types.NodeID, want types.NodeID) bool {
 // every later start's; validFrom - origin overflowed and wrapped it to the
 // top.
 func TestHFIndexBucketForIsMonotonicAtTheExtremes(t *testing.T) {
+	t.Parallel()
 	starts := []types.Instant{types.UnboundedValidFrom, types.UnboundedValidFrom + 1, -3_600_001, -1, 0, 1, 3_600_000, 1<<63 - 1}
 	for _, origin := range []types.Instant{0, 1_000_000, -1_000_000, types.UnboundedValidFrom, 1<<63 - 1} {
 		hfi := NewHighFrequencyIndex(time.Hour, origin)

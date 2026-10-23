@@ -43,6 +43,7 @@ func closeEventShardStore(t *testing.T, ts *Store, name string) {
 // catalog shard (ADR-0005 §2.3). Records from the retired shard and the new hot
 // shard emerge in one ascending LSN stream.
 func TestTieredChangeFeedAcrossRotation(t *testing.T) {
+	t.Parallel()
 	ts, _, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 
@@ -80,6 +81,7 @@ func TestTieredChangeFeedColdShardReadOnly(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts := newDiskChangeLogStore(t)
 	nodeGen := tieredNodeGen(t)
 	_, signalTok := wireRegistry(t, ts)

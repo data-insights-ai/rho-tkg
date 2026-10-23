@@ -39,6 +39,7 @@ func degreeOracle(t *testing.T, g *Core, typeName string) storepkg.RelTypeDegree
 // stripe count again; an untracked type and an untracked-again type count
 // as before. Memory and badger.
 func TestTrackRelTypeDegrees(t *testing.T) {
+	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			ctx := context.Background()
@@ -194,6 +195,7 @@ func nodesRel(t *testing.T, g *Core, n *types.Node) types.RelID {
 // relationships of a tracked type while two read its stats; once they stop,
 // the stats equal a count (run under -race).
 func TestTrackRelTypeDegrees_ConcurrentWriters(t *testing.T) {
+	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			ctx := context.Background()

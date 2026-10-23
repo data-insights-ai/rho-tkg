@@ -41,6 +41,7 @@ func newTieredPurgeGraph(t *testing.T, snowID int64, readOnly bool) *graphpkg.Gr
 // re-executes the predicate across ITS shards — cross-shard residue sweep included
 // — reaching the same purged, dangle-free state with its watermark advanced.
 func TestRetentionPurge_TieredReplicaConvergence(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary := newTieredPurgeGraph(t, 3, false)
 

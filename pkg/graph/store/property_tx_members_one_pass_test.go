@@ -37,6 +37,7 @@ func opNode(id int64, labels []uint16, seat, zone int64, version uint32, tx type
 }
 
 func TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex(t *testing.T) {
+	t.Parallel()
 	for _, be := range propTxBackends() {
 		if be.name == "memory" {
 			continue // builds from RAM, no store scan

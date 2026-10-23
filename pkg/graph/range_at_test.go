@@ -67,6 +67,7 @@ func TestRangeAtFromSidecar(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		label := "Ref" // tiered keeps property indexes on its reference labels

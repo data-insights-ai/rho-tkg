@@ -42,6 +42,7 @@ func (s *reapFailStore) Close() error { return nil }
 // obligation after Clear, not the last; the Reap steps are only clearing more
 // state and cannot be harmed by running after.
 func TestReset_PreserveKeysSurviveAFailingReapStep(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	base := memory.New()
 	st := &reapFailStore{Store: base}
@@ -100,6 +101,7 @@ func TestReset_PreserveKeysSurviveAFailingReapStep(t *testing.T) {
 // Protecting a value that no longer exists costs the very thing it was
 // protecting.
 func TestReset_RestoresTheFloorEvenWhenTheSeedWasUnreadable(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 

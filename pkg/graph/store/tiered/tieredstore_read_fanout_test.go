@@ -149,6 +149,7 @@ func TestReadFanoutClosesTransientColdShard(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, cold, n := setupClosedColdReadFanoutShard(t)
 
 	nodes, err := ts.AllNodes(QueryOpts{Depth: DepthAll})
@@ -171,6 +172,7 @@ func TestReadFanoutIDQueriesCloseTransientColdShards(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, coldNodeShard, n := setupClosedColdReadFanoutShard(t)
 
 	nodeIDs, err := ts.AllNodeIDs(QueryOpts{Depth: DepthAll})
@@ -197,6 +199,7 @@ func TestNodeIDBatchReadsCloseTransientColdShard(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, cold, n := setupClosedColdReadFanoutShard(t)
 
 	nodes, err := ts.GetNodesByIDs([]types.NodeID{n.ID()})
@@ -227,6 +230,7 @@ func TestPointNodeRouteClosesTransientColdShard(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, cold, n := setupClosedColdReadFanoutShard(t)
 
 	got, err := ts.GetNode(n.ID())
@@ -255,6 +259,7 @@ func TestPointNodeRouteClosesTransientColdShard(t *testing.T) {
 }
 
 func TestArchiveEventNodeClosesTransientColdShard(t *testing.T) {
+	t.Parallel()
 	ts, cold, n := setupClosedColdReadFanoutShard(t)
 
 	err := ts.ArchiveNode(n.ID())
@@ -268,6 +273,7 @@ func TestRelationshipReadsCloseTransientColdShard(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, cold, rel := setupClosedColdRelationshipShard(t)
 
 	got, err := ts.GetRelationship(rel.ID())
@@ -296,6 +302,7 @@ func TestRelIDCheckedRouteClosesTransientColdShard(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, cold, rel := setupClosedColdRelationshipShard(t)
 
 	shard, release, err := ts.ShardForRelIDCheckedForTest(rel.ID())
@@ -320,6 +327,7 @@ func TestRelIDCheckedRouteClosesTransientColdShard(t *testing.T) {
 }
 
 func TestReadFanoutClosesTransientColdShardAfterOverlappingReads(t *testing.T) {
+	t.Parallel()
 	ts, cold, _ := setupClosedColdReadFanoutShard(t)
 
 	store1, release1, err := cold.checkoutStoreForRead(ts)
@@ -380,6 +388,7 @@ func TestReadFanoutTransientColdShardPromotesOnRegularCheckout(t *testing.T) {
 }
 
 func TestListShardsPreservesTransientColdShard(t *testing.T) {
+	t.Parallel()
 	ts, cold, _ := setupClosedColdReadFanoutShard(t)
 
 	_, release, err := cold.checkoutStoreForRead(ts)
@@ -399,6 +408,7 @@ func TestListShardsConcurrentTransientColdShardRaceSafe(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, cold, _ := setupClosedColdReadFanoutShard(t)
 
 	stop := make(chan struct{})

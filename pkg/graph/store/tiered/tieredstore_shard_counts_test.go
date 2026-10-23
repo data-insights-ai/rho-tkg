@@ -89,6 +89,7 @@ func TestCountFoldsDoNotReopenClosedShards(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, _ := coldTieredStore(t)
 
 	before, err := ts.NodeCount()
@@ -149,6 +150,7 @@ func TestCountFoldsAgreeWithTheShardsTheyReplace(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, signalTok := coldTieredStore(t)
 
 	token := signalTok
@@ -198,6 +200,7 @@ func TestReopenedShardDropsItsSnapshot(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, _ := coldTieredStore(t)
 	closeColdStores(t, ts)
 

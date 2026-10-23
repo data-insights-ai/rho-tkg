@@ -67,6 +67,7 @@ func TestColumnPatch_UpdateIsPatched(t *testing.T) {
 // built for records no update (the removal seam poisons it, as before), so
 // a write-only label pays nothing new per write.
 func TestColumnPatch_UnreadLabelStaysPoisoned(t *testing.T) {
+	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 3; i++ {
 		adPut(t, bs, i, i)
@@ -260,6 +261,7 @@ func sortedRows(m map[int64]string) []string {
 // invariant (qty / 1000 == id) and the final read equals the last writes.
 // Run under -race.
 func TestColumnPatch_ConcurrentUpdatesAndReads(t *testing.T) {
+	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 20; i++ {
 		adPut(t, bs, i, i*1000)

@@ -12,6 +12,7 @@ import (
 // ordinals (ok=false), instead of handing out chunks with empty Ordinals;
 // the same fold over the slots' ordinal snapshots serves them.
 func TestChunkSnapshotOverNeedsOrdinals(t *testing.T) {
+	t.Parallel()
 	s, err := New(Config{InMemory: true, SlotCount: 2})
 	if err != nil {
 		t.Fatal(err)

@@ -11,6 +11,7 @@ import (
 // the legs they drop; the placement removals (a cross-shard move, a create
 // rollback) remove the same keys and record none.
 func TestPlacementDeletesWriteNoExAdjacency(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name     string
 		entity   func(*Store, snowflake.ID) (RelDeleteInfo, error)

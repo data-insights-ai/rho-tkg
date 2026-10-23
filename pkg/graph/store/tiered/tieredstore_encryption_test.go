@@ -203,6 +203,7 @@ func TestTieredEncryptionValidationSurfacesAtNew(t *testing.T) {
 // either field for one shard kind would pass a single-shard check but fail
 // here.
 func TestTieredEncryptionKnobsReachEveryShardOptions(t *testing.T) {
+	t.Parallel()
 	ts, err := New(Config{
 		DataDir:        t.TempDir(),
 		RefLabels:      []string{"Case", "User"},

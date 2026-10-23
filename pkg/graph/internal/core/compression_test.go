@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompression_Graph_ConfigPassthrough(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	g, err := New(Config{
 		BadgerDir:            dir,
@@ -35,6 +36,7 @@ func TestCompression_Graph_ConfigPassthrough(t *testing.T) {
 }
 
 func TestCompression_TieredStore_Passthrough(t *testing.T) {
+	t.Parallel()
 	ts, err := tiered.New(tiered.Config{
 		InMemory:             true,
 		RefLabels:            []string{"Ref"},

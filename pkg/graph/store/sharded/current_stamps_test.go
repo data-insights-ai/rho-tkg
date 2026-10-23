@@ -15,6 +15,7 @@ import (
 // with ErrInvalidStoreMutation, a closed store with ErrStoreClosed, a nil
 // store with ErrNilStore.
 func TestCurrentStampsSharded(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 2)
 	for slot := uint8(0); slot < 2; slot++ {
 		base := types.Instant(1000 * (int64(slot) + 1))

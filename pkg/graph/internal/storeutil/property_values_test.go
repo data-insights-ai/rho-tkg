@@ -10,6 +10,7 @@ import (
 )
 
 func TestDistinctIndexKeys(t *testing.T) {
+	t.Parallel()
 	clean := []string{"i64:3", "f64:3"}
 	if got := DistinctIndexKeys(clean); !slices.Equal(got, clean) || &got[0] != &clean[0] {
 		t.Errorf("clean keys: %v (copied: %v), want the input itself", got, &got[0] != &clean[0])
@@ -37,6 +38,7 @@ func TestDistinctIndexKeys(t *testing.T) {
 }
 
 func TestValueIndexKeys(t *testing.T) {
+	t.Parallel()
 	got, err := ValueIndexKeys(int64(3), "door")
 	if err != nil || !slices.Equal(got, []string{"i64:3"}) {
 		t.Errorf("int64(3): %v %v", got, err)
@@ -51,6 +53,7 @@ func TestValueIndexKeys(t *testing.T) {
 }
 
 func TestHasAnyIndexKey(t *testing.T) {
+	t.Parallel()
 	n := types.NewNode(1, 1, nil)
 	if err := n.SetProperty("k", []any{int64(3), "x"}); err != nil {
 		t.Fatal(err)

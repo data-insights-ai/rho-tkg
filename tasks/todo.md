@@ -28,6 +28,10 @@
    Found on the way: `Compression: options.None` cannot disable compression (None is the zero value = Snappy); a
    `DisableCompression` option would be a door (minor) — only on a consumer request.
 
+   Found on the way: `TestTemporalPropertySeekAnswersEverLabelMembers/badger` misses the relabelled node at `TxPin: pinBefore`
+   only when run beside other parallel tests (passes 20x alone; kept serial). Check whether a write can share the pin's
+   instant (clock semantics) before calling it test-only.
+
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.
 - A consumer report against v4.70.0 (ai-soc's full Flux rerun, row 106 fix; sigma O1-3 on `LowestAnsweredPins` (P1) and `RelEffectiveTimelinesByProperties`: tiered, driver = first indexed key, device before estate, segments whole, DepthAll only, ai-soc declares (type, device) rel indexes) → build only what blocks them (lesson 79 (10)).

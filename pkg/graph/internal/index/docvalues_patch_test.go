@@ -40,8 +40,13 @@ func reprOf(l *LabelDocValues) string {
 // zone blocks), random in-place changes within the column's class (values,
 // int<->float, present<->absent, validity), Patch against a full rebuild.
 func TestPatch_MatchesFullRebuild(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewSource(5)) // #nosec G404 -- deterministic test sequence
-	for round := range 300 {
+	rounds := 300
+	if testing.Short() {
+		rounds = 100 // -short: same generator, a third of the rounds
+	}
+	for round := range rounds {
 		n := 1 + r.Intn(3*zoneBlockSize)
 		str := r.Intn(2) == 0
 		val := func() any {
@@ -109,6 +114,7 @@ func TestPatch_MatchesFullRebuild(t *testing.T) {
 // TestPatch_Refuses pins the inputs where an in-place patch is not what a
 // rebuild would give; each must return nil.
 func TestPatch_Refuses(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{10, 20, 30}
 	nums := map[types.NodeID]any{10: int64(1), 20: int64(2), 30: 3.5}
 	strs := map[types.NodeID]any{10: "a", 20: "b", 30: "a"}
@@ -156,6 +162,7 @@ func TestPatch_Refuses(t *testing.T) {
 // patch leaves the dictionary, and new terms are numbered in first-appearance
 // order, as a rebuild numbers them.
 func TestPatch_StringDictionaryDropsUnusedTerms(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{1, 2, 3, 4}
 	vals := map[types.NodeID]any{1: "a", 2: "b", 3: "c", 4: "a"}
 	base := BuildLabelDocValues(1, ids, []string{"v"}, extProps(vals), nil)

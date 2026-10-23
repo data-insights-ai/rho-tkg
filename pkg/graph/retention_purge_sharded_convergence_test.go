@@ -19,6 +19,7 @@ import (
 // re-executes the predicate across ITS shards and converges to the same purged
 // state — including the cross-shard edge sweep — with no per-entity records.
 func TestRetentionPurge_ShardedReplicaConvergence(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	pStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})

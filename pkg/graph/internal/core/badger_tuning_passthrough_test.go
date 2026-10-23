@@ -13,6 +13,7 @@ import (
 // Badger's stock footprint. Verified against the live DB options, so it cannot
 // pass with an un-applied knob.
 func TestCoreConfigFootprintKnobsReachBadger(t *testing.T) {
+	t.Parallel()
 	const (
 		vlog       = 64 << 20
 		memtable   = 16 << 20
@@ -61,6 +62,7 @@ func TestCoreConfigFootprintKnobsReachBadger(t *testing.T) {
 // above. A dropped field here would silently leave a graph.New(...) store
 // unencrypted despite the caller setting EncryptionKey.
 func TestCoreConfigEncryptionKnobsReachBadger(t *testing.T) {
+	t.Parallel()
 	const (
 		cache      = 1 << 20
 		indexCache = 1 << 20

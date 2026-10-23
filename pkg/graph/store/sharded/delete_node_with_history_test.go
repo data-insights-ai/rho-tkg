@@ -25,6 +25,7 @@ import (
 // verifies the node + both rels are gone with their history preserved, their
 // neighbors survive, and the store is left fully consistent.
 func TestDeleteNodeWithHistoryCrossShard(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 
 	hub := mkNodeID(0, 1) // node's shard = 0
@@ -120,6 +121,7 @@ func TestDeleteNodeWithHistoryCrossShard(t *testing.T) {
 // FIRST (its ID is smaller despite its higher slot) — relB succeeds and is
 // gone before relA is even reached and fails.
 func TestDeleteNodeWithHistoryCrossShard_DeterministicAscendingOrder(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 
 	hub := mkNodeID(0, 1)
@@ -172,6 +174,7 @@ func TestDeleteNodeWithHistoryCrossShard_DeterministicAscendingOrder(t *testing.
 // with-history delete, so the node-shard's tombstone validation and cascade
 // sweep see stub-free adjacency.
 func TestDeleteNodeWithHistoryForeignIncomingStub(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 2)
 
 	end := putNode(t, st, mkNodeID(0, 1), 10) // local, shard 0

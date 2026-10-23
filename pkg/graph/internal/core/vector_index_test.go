@@ -82,6 +82,7 @@ func TestVectorIndex_CreateAndSearch_Euclidean(t *testing.T) {
 // returns the SAME nodes in the SAME order as SearchNearest, each paired with
 // its distance from the query under the index's metric.
 func TestVectorIndex_SearchNearestScored(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	label := "Item"
 	key := "embedding"
@@ -169,6 +170,7 @@ func TestVectorIndex_SearchNearestScored(t *testing.T) {
 // the historical version, but Distance is computed against the CURRENT vector
 // (the index holds only latest vectors).
 func TestVectorIndex_SearchNearestScored_TemporalCaveat(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	label := "Doc"
 	key := "embedding"
@@ -271,6 +273,7 @@ func TestVectorIndex_TxPinRejected(t *testing.T) {
 // to float32), not a silently unindexed property. Exercises both index-build
 // (node added before CreateVector) and auto-maintenance (node added after).
 func TestVectorIndex_Float64Embeddings_Indexed(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	label := "Doc"
 	key := "embedding"
@@ -332,6 +335,7 @@ func TestVectorIndex_AutoMaintained_OnAdd(t *testing.T) {
 }
 
 func TestVectorIndex_AutoMaintained_OnDelete(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	label := "E"
 	key := "v"
@@ -399,6 +403,7 @@ func TestVectorIndex_IndexNotFound(t *testing.T) {
 }
 
 func TestVectorIndex_CreateBeforeLabelExistsIndexesFutureNodes(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	label := "Ghost"
 	key := "v"
@@ -422,6 +427,7 @@ func TestVectorIndex_CreateBeforeLabelExistsIndexesFutureNodes(t *testing.T) {
 }
 
 func TestIndexCreateRejectsInvalidLabelAndPropertyKey(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 3}})
 
 	creates := []struct {
@@ -731,6 +737,7 @@ func TestVectorIndex_CreateWithOptions_AppliesTuning(t *testing.T) {
 // documented equivalence: CreateVector == CreateVectorWithOptions with a
 // zero-value VectorIndexOptions.
 func TestVectorIndex_CreateWithOptions_ZeroValueMatchesPlainCreate(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	label := "Item"
 	key := "embedding"
@@ -756,6 +763,7 @@ func TestVectorIndex_CreateWithOptions_ZeroValueMatchesPlainCreate(t *testing.T)
 }
 
 func TestVectorIndex_AutoMaintained_OnUpdate(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	label := "U"
 	key := "v"
@@ -783,6 +791,7 @@ func TestVectorIndex_AutoMaintained_OnUpdate(t *testing.T) {
 }
 
 func TestVectorIndex_toFloat32Slice_MixedAny(t *testing.T) {
+	t.Parallel()
 	// Test that []any containing float64 values is accepted by the index.
 	g, _ := New(Config{})
 	label := "M"

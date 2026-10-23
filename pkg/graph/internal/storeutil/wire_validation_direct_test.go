@@ -3,6 +3,7 @@ package storeutil
 import "testing"
 
 func TestValidateNodeWireDirectBranches(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		wire NodeWire
@@ -31,6 +32,7 @@ func TestValidateNodeWireDirectBranches(t *testing.T) {
 }
 
 func TestValidateRelWireDirectBranches(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		wire RelWire
@@ -57,6 +59,7 @@ func TestValidateRelWireDirectBranches(t *testing.T) {
 }
 
 func TestWireToCheckedAcceptsMinimalValidWire(t *testing.T) {
+	t.Parallel()
 	node, err := WireToNodeChecked(NodeWire{ID: 1, PrimaryLabel: 2})
 	if err != nil {
 		t.Fatalf("WireToNodeChecked: %v", err)

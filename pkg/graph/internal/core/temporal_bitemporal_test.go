@@ -15,6 +15,7 @@ import (
 // Rule 2: Node and Rel parity.
 
 func TestNodeAtTx_BitemporalTwoPhase(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -57,6 +58,7 @@ func TestNodeAtTx_BitemporalTwoPhase(t *testing.T) {
 }
 
 func TestRelAtTx_BitemporalTwoPhase(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -97,6 +99,7 @@ func TestRelAtTx_BitemporalTwoPhase(t *testing.T) {
 }
 
 func TestNodeAtTx_BeforeCreateReturnsNoVersion(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -111,6 +114,7 @@ func TestNodeAtTx_BeforeCreateReturnsNoVersion(t *testing.T) {
 }
 
 func TestRelAtTx_BeforeCreateReturnsNoVersion(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -150,6 +154,7 @@ func TestNodeAtTx_TxAtZeroEquivalentToNodeAt(t *testing.T) {
 }
 
 func TestNodesAtTx_FiltersByBothAxes(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -181,6 +186,7 @@ func TestNodesAtTx_FiltersByBothAxes(t *testing.T) {
 }
 
 func TestRelsAtTx_FiltersByBothAxes(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -213,6 +219,7 @@ func TestRelsAtTx_FiltersByBothAxes(t *testing.T) {
 }
 
 func TestQueryOptsTxAt_NodesByLabel(t *testing.T) {
+	t.Parallel()
 	// QueryOpts.TxAt threads through opts-based queries (e.g. NodesByLabel).
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
@@ -248,6 +255,7 @@ func TestQueryOptsTxAt_NodesByLabel(t *testing.T) {
 }
 
 func TestQueryOptsTxAt_RelsByType(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -287,6 +295,7 @@ func TestQueryOptsTxAt_RelsByType(t *testing.T) {
 // Rule 2: Node + Rel parity.
 
 func TestUpdateNode_NoValidFromInheritance(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -311,6 +320,7 @@ func TestUpdateNode_NoValidFromInheritance(t *testing.T) {
 }
 
 func TestUpdateRel_NoValidFromInheritance(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -337,6 +347,7 @@ func TestUpdateRel_NoValidFromInheritance(t *testing.T) {
 }
 
 func TestUpdateNode_ResolverUsesUpdatedAtForNonGenesis(t *testing.T) {
+	t.Parallel()
 	// After Phase 1, the resolver computes vStart from UpdatedAt for non-genesis
 	// versions (the old inheritance pattern no longer creates false ValidFrom values).
 	g := newTxTimeGraph(t)
@@ -370,6 +381,7 @@ func TestUpdateNode_ResolverUsesUpdatedAtForNonGenesis(t *testing.T) {
 }
 
 func TestVersionVisibleAtTx_Helper(t *testing.T) {
+	t.Parallel()
 	// Direct unit test of the helper. Rule 4: sentinel test (no errors here,
 	// just predicate verification on boundary conditions).
 	tests := []struct {

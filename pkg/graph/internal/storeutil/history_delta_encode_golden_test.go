@@ -28,6 +28,7 @@ var historyDeltaGolden = map[string]string{
 // encoding, for the all-omitted-optional-fields case and the
 // every-optional-field-present case.
 func TestHistoryDeltaEncodeGolden(t *testing.T) {
+	t.Parallel()
 	nw := NodeWire{FormatVersion: 2, ID: 100, PrimaryLabel: 1, Version: 2}
 	rw := RelWire{FormatVersion: 2, ID: 200, RelType: 2, StartID: 10, EndID: 20, Version: 2}
 	ps := []PropertyWire{{KeyToken: 3, Value: int64(9), Type: 2}}

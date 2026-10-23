@@ -119,6 +119,7 @@ func (s *walkCountingStore) RelationshipsByType(tok uint16, opts storepkg.QueryO
 // asked once per form (ten lookups and ten enumerations; on tiered each over
 // every shard).
 func TestRound11PointSeekAsksTheStoreOnce(t *testing.T) {
+	t.Parallel()
 	st := &walkCountingStore{Store: memory.New()}
 	g, err := New(Config{Store: st})
 	if err != nil {

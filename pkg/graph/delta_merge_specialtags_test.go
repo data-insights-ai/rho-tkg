@@ -23,6 +23,7 @@ import (
 // availability bug for any sharded deployment using cross-machine
 // foreign-incoming edges together with delta backups.
 func TestDeltaMerge_ForeignIncomingPutAndDeleteMerges(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	eStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})
@@ -140,6 +141,7 @@ func mustShardedStore(t *testing.T) *sharded.Store {
 // for a possible rollback would undermine retention's own guarantee); this
 // test also proves that omission does not corrupt or block the merge.
 func TestDeltaMerge_RangePurgeMerges(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	primary, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, AllowRetentionPurge: true})

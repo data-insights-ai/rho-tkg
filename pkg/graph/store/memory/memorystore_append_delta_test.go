@@ -76,6 +76,7 @@ func mdWant(t *testing.T, got, want map[int64]int64) {
 // this, the default-poison design could silently never opt in and every correctness
 // probe below would be testing the rebuild path against itself.
 func TestMemAppendDelta_PureInsertExtends(t *testing.T) {
+	t.Parallel()
 	ms := mdStore(t)
 	for i := int64(1); i <= 5; i++ {
 		mdPut(t, ms, i, i*100)
@@ -101,6 +102,7 @@ func TestMemAppendDelta_PureInsertExtends(t *testing.T) {
 // the poison catches: the epoch stamp matches (the insert recorded it), the insert
 // is a clean append, and the deleted row's absence is INVISIBLE to Extend.
 func TestMemAppendDelta_DeleteThenInsertWithoutAnInterveningRead(t *testing.T) {
+	t.Parallel()
 	ms := mdStore(t)
 	for i := int64(1); i <= 4; i++ {
 		mdPut(t, ms, i, i*100)
@@ -123,6 +125,7 @@ func TestMemAppendDelta_DeleteThenInsertWithoutAnInterveningRead(t *testing.T) {
 // TestMemAppendDelta_UpdateThenInsertWithoutAnInterveningRead is the stale-VALUE
 // sibling.
 func TestMemAppendDelta_UpdateThenInsertWithoutAnInterveningRead(t *testing.T) {
+	t.Parallel()
 	ms := mdStore(t)
 	for i := int64(1); i <= 4; i++ {
 		mdPut(t, ms, i, i*100)
@@ -143,6 +146,7 @@ func TestMemAppendDelta_UpdateThenInsertWithoutAnInterveningRead(t *testing.T) {
 // insert that ERRORS must not record an append: `inserted` stays nil, and a nil
 // poisons. Otherwise the next read would extend using an ID that was never written.
 func TestMemAppendDelta_FailedInsertLeavesNoPhantomAppend(t *testing.T) {
+	t.Parallel()
 	ms := mdStore(t)
 	for i := int64(1); i <= 3; i++ {
 		mdPut(t, ms, i, i*100)
@@ -163,6 +167,7 @@ func TestMemAppendDelta_FailedInsertLeavesNoPhantomAppend(t *testing.T) {
 // rows. Both paths return the same data by construction, so this is the only oracle
 // that can catch a divergence between them.
 func TestMemAppendDelta_ExtendMatchesRebuildExactly(t *testing.T) {
+	t.Parallel()
 	build := func(defeat bool) map[int64]int64 {
 		ms := mdStore(t)
 		for i := int64(1); i <= 20; i++ {

@@ -30,6 +30,7 @@ func newChangeLogTieredStore(t *testing.T) (*Store, uint16, uint16, uint16) {
 
 // TestTieredChangeLogEnabled proves ChangeLogStatusCapability reports the intent.
 func TestTieredChangeLogEnabled(t *testing.T) {
+	t.Parallel()
 	ts, _, _, _ := newChangeLogTieredStore(t)
 	if !ts.ChangeLogEnabled() {
 		t.Fatal("ChangeLogEnabled() = false, want true")
@@ -43,6 +44,7 @@ func TestTieredChangeLogEnabled(t *testing.T) {
 // TestTieredChangeFeedAscendingCrossShard proves cross-shard records emerge in
 // ascending store-global LSN order and LastCommittedLSN folds the global max.
 func TestTieredChangeFeedAscendingCrossShard(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 
@@ -100,6 +102,7 @@ func TestTieredChangeFeedAscendingCrossShard(t *testing.T) {
 
 // TestTieredChangeFeedForEachStops proves ForEachChange honors early stop.
 func TestTieredChangeFeedForEachStops(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, _ := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 	for i := 0; i < 5; i++ {

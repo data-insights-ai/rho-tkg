@@ -140,6 +140,7 @@ func containsNaN(v any) bool {
 // writes (marshal, checked unmarshal, checked reconstruction) and the
 // standalone property-slice codec of the segment fallback column.
 func TestWire_NestedKindsRoundTripExact(t *testing.T) {
+	t.Parallel()
 	registerNestedKindCustom(t)
 	for _, c := range nestedKindCases() {
 		for _, w := range nestedKindWrappers() {
@@ -222,6 +223,7 @@ func legacyNestedDecoded() []any {
 }
 
 func TestWire_LegacyNestedIntegersStillDecode(t *testing.T) {
+	t.Parallel()
 	relBlob, _ := hex.DecodeString(legacyNestedRelHex)
 	rw, err := UnmarshalRelWireWithKeys(relBlob, nil)
 	if err != nil {
@@ -252,6 +254,7 @@ func TestWire_LegacyNestedIntegersStillDecode(t *testing.T) {
 // bytes (int64, uint64, float32, float64, bool, string, []byte, nil and
 // untyped containers).
 func TestWire_NativeNestedKindsAreNotRewritten(t *testing.T) {
+	t.Parallel()
 	value := []any{"a", int64(-1), uint64(math.MaxUint64), float32(1.5), 2.5, true, nil, []byte{1},
 		[]any{int64(1)}, map[string]any{"c": uint64(1)}}
 	pw, err := propertyToWire(types.Property{Key: "k", Value: value})
@@ -279,6 +282,7 @@ func decodeWireProperty(t *testing.T, value any) error {
 // kind envelopes: a corrupt or hostile row must fail, never decode into a
 // silently different value.
 func TestWire_MalformedNestedKindEnvelopeRejected(t *testing.T) {
+	t.Parallel()
 	registerNestedKindCustom(t)
 	customData, err := msgpack.Marshal(wireValueDirectCustom{X: 7})
 	if err != nil {
@@ -332,6 +336,7 @@ func TestWire_MalformedNestedKindEnvelopeRejected(t *testing.T) {
 // top-level one: a value whose msgpack round trip changes its hash bytes is
 // refused at write time rather than stored lossy.
 func TestWire_NestedCustomRoundTripHashMismatchRejected(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(wireValueDirectHiddenFieldCustom{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}
@@ -345,6 +350,7 @@ func TestWire_NestedCustomRoundTripHashMismatchRejected(t *testing.T) {
 // The envelopes stay inside the reserved marker namespace, so a caller list
 // that starts with the marker string is escaped and round-trips unchanged.
 func TestWire_KindMarkerShapedUserListRoundTrips(t *testing.T) {
+	t.Parallel()
 	for _, first := range []string{nestedWireKindMarker, nestedWireCustomMarker} {
 		want := []any{[]any{first, int64(4), int64(2)}}
 		got := wireRoundTrip(t, "k", want)
@@ -364,6 +370,7 @@ func TestWire_KindMarkerShapedUserListRoundTrips(t *testing.T) {
 // accepts must still read back — the depth limit applies to the stored value,
 // not to its wire encoding.
 func TestWire_EnvelopeAtMaximumDepthRoundTrips(t *testing.T) {
+	t.Parallel()
 	registerNestedKindCustom(t)
 	leaves := []any{
 		int16(1), uint8(2), int(3), []string{"a"}, []string(nil), map[string]string{"a": "b"},
@@ -403,6 +410,7 @@ func TestWire_EnvelopeAtMaximumDepthRoundTrips(t *testing.T) {
 // value nested far past what any stored value can produce is still rejected
 // (an in-memory PropertyWire does not pass the msgpack depth guard).
 func TestWire_OverDeepRawNestedValueRejected(t *testing.T) {
+	t.Parallel()
 	var deep any = []any{int64(1)}
 	for range 2 * maxWireDecodeDepth {
 		deep = []any{deep}

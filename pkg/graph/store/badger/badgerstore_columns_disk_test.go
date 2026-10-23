@@ -57,6 +57,7 @@ func cdRead(t *testing.T, bs *Store) map[int64]int64 {
 // flag off, the on-disk keyspace must be untouched. A cache that writes when it was
 // told not to is a behaviour change, not an optimisation.
 func TestColumnsOnDisk_OffIsAByteForByteNoOp(t *testing.T) {
+	t.Parallel()
 	bs := cdStore(t, false)
 	for i := int64(1); i <= 5; i++ {
 		cdPut(t, bs, i, i*100)
@@ -71,6 +72,7 @@ func TestColumnsOnDisk_OffIsAByteForByteNoOp(t *testing.T) {
 // TestColumnsOnDisk_PersistsAndServes pins that a build writes a blob and that a
 // later read at the same epoch is served from it rather than rebuilt.
 func TestColumnsOnDisk_PersistsAndServes(t *testing.T) {
+	t.Parallel()
 	bs := cdStore(t, true)
 	for i := int64(1); i <= 5; i++ {
 		cdPut(t, bs, i, i*100)
@@ -107,6 +109,7 @@ func TestColumnsOnDisk_PersistsAndServes(t *testing.T) {
 // subsequent write must never be served: it is the difference between a cache and a
 // second source of truth.
 func TestColumnsOnDisk_StaleBlobIsIgnored(t *testing.T) {
+	t.Parallel()
 	bs := cdStore(t, true)
 	for i := int64(1); i <= 3; i++ {
 		cdPut(t, bs, i, i*100)
@@ -131,6 +134,7 @@ func TestColumnsOnDisk_StaleBlobIsIgnored(t *testing.T) {
 // TestColumnsOnDisk_CorruptBlobRebuilds pins that corruption is a rebuild, never an
 // error and never a wrong answer.
 func TestColumnsOnDisk_CorruptBlobRebuilds(t *testing.T) {
+	t.Parallel()
 	bs := cdStore(t, true)
 	for i := int64(1); i <= 3; i++ {
 		cdPut(t, bs, i, i*100)
@@ -166,6 +170,7 @@ func TestColumnsOnDisk_CorruptBlobRebuilds(t *testing.T) {
 // TestColumnsOnDisk_SameAnswersEitherWay is the differential oracle: a store with
 // persistence on and one with it off must expose identical rows.
 func TestColumnsOnDisk_SameAnswersEitherWay(t *testing.T) {
+	t.Parallel()
 	run := func(onDisk bool) map[int64]int64 {
 		bs := cdStore(t, onDisk)
 		for i := int64(1); i <= 8; i++ {

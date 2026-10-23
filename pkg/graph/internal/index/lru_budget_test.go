@@ -21,6 +21,7 @@ func sizerLen(v string) int64 { return int64(len(v)) }
 // churn with values of randomized size against a small count capacity AND
 // a small byte budget so both eviction triggers fire continuously.
 func TestCacheBudget_AccountingMatchesFullScan(t *testing.T) {
+	t.Parallel()
 	rng := rand.New(rand.NewSource(7)) //nolint:gosec // deterministic test
 	c := NewCacheWithBudget(8, 2_000, sizerLen)
 

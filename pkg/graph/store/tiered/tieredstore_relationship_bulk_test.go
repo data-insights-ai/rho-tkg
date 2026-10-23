@@ -8,6 +8,7 @@ import (
 )
 
 func TestTieredStoreRelationshipBulkQueriesIncludeArchiveOnlyInDepthAll(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -74,6 +75,7 @@ func TestTieredStoreRelationshipBulkQueriesIncludeArchiveOnlyInDepthAll(t *testi
 }
 
 func TestTieredStoreRelationshipCountSentinels(t *testing.T) {
+	t.Parallel()
 	ts, _, _ := setupBatchDelete(t)
 
 	if _, err := ts.RelCountByType(0); !errors.Is(err, ErrInvalidStoreMutation) {

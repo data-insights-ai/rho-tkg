@@ -63,6 +63,7 @@ func mustCreateUnique(t *testing.T, g *graphpkg.Graph) {
 }
 
 func TestUnique_CreateThenViolate(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -85,6 +86,7 @@ func TestUnique_CreateThenViolate(t *testing.T) {
 }
 
 func TestUnique_UpdateIntoViolation(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -111,6 +113,7 @@ func TestUnique_UpdateIntoViolation(t *testing.T) {
 }
 
 func TestUnique_CASIntoViolation(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -133,6 +136,7 @@ func TestUnique_CASIntoViolation(t *testing.T) {
 }
 
 func TestUnique_LabelAddIntoViolation(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -163,6 +167,7 @@ func TestUnique_LabelAddIntoViolation(t *testing.T) {
 }
 
 func TestUnique_DeleteFreesValue(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -180,6 +185,7 @@ func TestUnique_DeleteFreesValue(t *testing.T) {
 }
 
 func TestUnique_SupersessionFrees(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -198,6 +204,7 @@ func TestUnique_SupersessionFrees(t *testing.T) {
 }
 
 func TestUnique_ExistingDataValidationFails(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -250,6 +257,7 @@ func TestUnique_FloatRejected(t *testing.T) {
 }
 
 func TestUnique_DropAndDoubleCreate(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -282,6 +290,7 @@ func TestUnique_DropAndDoubleCreate(t *testing.T) {
 // Two-phase temporal sanity: history rows carrying a duplicate value do NOT
 // violate the CURRENT-scope constraint — only current nodes count.
 func TestUnique_HistoryDuplicatesAreLegal(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -315,6 +324,7 @@ func TestUnique_HistoryDuplicatesAreLegal(t *testing.T) {
 // 100 goroutines create the SAME value under an active constraint: exactly one
 // winner, N-1 ErrUniqueViolation.
 func TestUnique_ConcurrentStormOneWinner(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -398,6 +408,7 @@ func TestUnique_ReopenDurability(t *testing.T) {
 
 // Admin().Reset reaps the durable constraint registry.
 func TestUnique_ResetReaps(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -420,6 +431,7 @@ func TestUnique_ResetReaps(t *testing.T) {
 
 // AddByIDIfAbsent (a caller-ID create door) is enforced.
 func TestUnique_AddByIDIfAbsentEnforced(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -460,6 +472,7 @@ func TestUnique_ViolationErrorDetail(t *testing.T) {
 // optional MetaKVCapability methods are not promoted and the type assertion in
 // uniqueMetaKV misses.
 func TestUnique_DeclinesWithoutMetaKV(t *testing.T) {
+	t.Parallel()
 	shim := noMetaKVStore{MandatoryStore: memory.New()}
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 7, Store: shim})
 	if err != nil {

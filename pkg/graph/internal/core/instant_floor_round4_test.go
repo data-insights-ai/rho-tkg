@@ -31,6 +31,7 @@ import (
 // MALFORMED blob (wrong length, or <= 0, which cannot be a real instant)
 // justifies replacing it.
 func TestInstantFloor_RefusedSeedMustNotDestroyTheWatermark(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	base := memory.New()
 
@@ -97,6 +98,7 @@ func TestInstantFloor_RefusedSeedMustNotDestroyTheWatermark(t *testing.T) {
 // AS-OF pin can ever reach, and TxFrom is outside the integrity hash so the
 // chain verifiers still report the store healthy.
 func TestForeignStamp_NegativeIsRejected(t *testing.T) {
+	t.Parallel()
 	g, endID := newForeignIncomingTestGraph(t, ValidationLimits{})
 
 	edge := baseForeignEdge(endID)
@@ -127,6 +129,7 @@ func TestForeignStamp_NegativeIsRejected(t *testing.T) {
 // the following Close decline to persist a strictly higher floor, stranding
 // every post-Reset write above the durable watermark.
 func TestReset_ClearsTheStaleSeedFlagSoCloseStillPersists(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 
@@ -182,6 +185,7 @@ func TestReset_ClearsTheStaleSeedFlagSoCloseStillPersists(t *testing.T) {
 // unconditionally and correctly, having no way to know the record was about to
 // be rejected upstream. Rollback unwinds the local store; it cannot unpublish.
 func TestImport_ImplausibleStampIsRejectedBeforeTheRowIsStored(t *testing.T) {
+	t.Parallel()
 	// The change log must be ON: publication is the harm rollback cannot undo.
 	st := memory.New(memory.WithChangeLog())
 	g, err := New(Config{Store: st})

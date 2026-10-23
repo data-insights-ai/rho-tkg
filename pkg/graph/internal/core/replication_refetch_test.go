@@ -48,6 +48,7 @@ func (f *faultyPersistStore) LoadPropertyKeyRegistry(*registrypkg.PropertyKeyReg
 // A refetched snapshot whose CapturedAtLSN is below the record's LSN is the
 // retryable stale condition — surfaced as errors.Is(ErrPrimaryRegistryStale).
 func TestRefetch_StaleSnapshotIsRetryableSentinel(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	if _, err := g.Nodes.Add(context.Background(), []string{"A"}, nil); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -70,6 +71,7 @@ func TestRefetch_StaleSnapshotIsRetryableSentinel(t *testing.T) {
 // A source whose names do NOT prefix-extend the replica's is a FATAL divergence
 // — surfaced as errors.Is(ErrRegistryDiverged), caught even in the grow branch.
 func TestRefetch_DivergedSourceIsFatalSentinel(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	if _, err := g.Nodes.Add(context.Background(), []string{"A"}, nil); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -93,6 +95,7 @@ func TestRefetch_DivergedSourceIsFatalSentinel(t *testing.T) {
 // (in-memory never leads what was meant to be durable), and a retry once the
 // failure clears converges.
 func TestRefetch_PersistFailureRollsBackThenRetryConverges(t *testing.T) {
+	t.Parallel()
 	fs := &faultyPersistStore{Store: memory.New()}
 	g, err := New(Config{Store: fs})
 	if err != nil {
@@ -133,6 +136,7 @@ func TestRefetch_PersistFailureRollsBackThenRetryConverges(t *testing.T) {
 // The replication sub-API surfaces ErrCapabilityNotSupported (errors.Is) for
 // the change-log / MetaKV-dependent methods on a mandatory-only backend.
 func TestReplOps_CapabilityDeclinesAreSentinels(t *testing.T) {
+	t.Parallel()
 	g := newMandatoryOnlyGraph(t)
 	if _, err := g.Repl.RegistrySnapshot(); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("RegistrySnapshot = %v, want ErrCapabilityNotSupported", err)
@@ -147,6 +151,7 @@ func TestReplOps_CapabilityDeclinesAreSentinels(t *testing.T) {
 
 // Nil-receiver calls fail closed with ErrNilGraph (never panic).
 func TestReplOps_NilReceiverIsErrNilGraph(t *testing.T) {
+	t.Parallel()
 	var r *ReplOps
 	if _, err := r.RegistrySnapshot(); !errors.Is(err, ErrNilGraph) {
 		t.Errorf("RegistrySnapshot(nil) = %v, want ErrNilGraph", err)

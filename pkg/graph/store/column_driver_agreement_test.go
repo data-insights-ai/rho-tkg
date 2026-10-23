@@ -18,6 +18,7 @@ import (
 // copies are the same — not that either is right — and would happily compile a
 // change that broke both.
 func TestColumnDrivers_NodeAndRelAgree(t *testing.T) {
+	t.Parallel()
 	props := []string{"a", "b", "c"}
 
 	for _, tc := range []struct {

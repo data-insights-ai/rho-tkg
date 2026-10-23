@@ -335,6 +335,7 @@ func (s *shardedGetOverride) NodesByLabel(tok uint16, opts storepkg.QueryOpts) (
 // declares the methods itself is asked (its calls are counted) and answers the
 // oracle.
 func TestCurrentStampsCapabilityAdmission(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	scenario := func(t *testing.T, g *graphpkg.Graph) (types.NodeID, types.RelID) {
 		t.Helper()

@@ -16,6 +16,7 @@ import (
 // value strictly greater than the previous), distinct relationships created
 // in the SAME batch could get DIFFERENT (increasing) TxFrom stamps.
 func TestBatchExecute_RelationshipsShareOneTxFromPerCommitGroup(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 	b, err := NewBatchBuilder(g)
 	if err != nil {

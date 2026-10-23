@@ -13,6 +13,7 @@ func TestTieredStore_RestartedWarmShardPersistsNodeReplace(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	ts1, signalTok := newDiskWarmWriteTestStore(t, dir)
 
@@ -65,6 +66,7 @@ func TestTieredStore_RestartedWarmShardPersistsRelationshipDelete(t *testing.T) 
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	ts1, signalTok := newDiskWarmWriteTestStore(t, dir)
 

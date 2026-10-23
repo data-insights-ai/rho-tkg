@@ -62,6 +62,7 @@ func TestColdShardStaysOpenForTheNextRead(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, signalTok := coldCapStore(t, 4, 8)
 	closeColdStores(t, ts)
 
@@ -88,6 +89,7 @@ func TestColdShardStaysOpenForTheNextRead(t *testing.T) {
 // their stores open. The sweeper itself never ticks here (coldCapStore sets
 // IdleTimeout to an hour), so the test drives its work directly.
 func TestColdShardCapBoundsOpenHandles(t *testing.T) {
+	t.Parallel()
 	const cap = 2
 	const shards = 6
 	ts, signalTok := coldCapStore(t, shards, cap)
@@ -136,6 +138,7 @@ func TestColdCapNeverClosesAShardBeingRead(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts, _ := coldCapStore(t, 5, 1)
 	closeColdStores(t, ts)
 

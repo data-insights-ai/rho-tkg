@@ -10,6 +10,7 @@ import (
 )
 
 func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		run  func(t *testing.T, g *Core)

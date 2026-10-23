@@ -54,6 +54,7 @@ const (
 func pdID(slot uint8, n int64) snowflake.ID { return snowflake.ID(n<<15 | int64(slot)<<10) }
 
 func TestSortedPostingsDifferential(t *testing.T) {
+	t.Parallel()
 	backends := []struct {
 		name string
 		open func(t *testing.T) postingsDiffStore

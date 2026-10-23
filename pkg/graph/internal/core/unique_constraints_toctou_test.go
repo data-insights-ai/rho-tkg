@@ -37,6 +37,7 @@ import (
 // commit, confirming CreateUnique blocks on the install until that "in-flight
 // write" completes, and then simulating its late commit.
 func TestCreateUnique_BlocksInstallUntilInFlightWriteCompletes(t *testing.T) {
+	t.Parallel()
 	ms := memory.New()
 	c, err := New(Config{Store: ms})
 	if err != nil {
@@ -119,6 +120,7 @@ func TestCreateUnique_BlocksInstallUntilInFlightWriteCompletes(t *testing.T) {
 // rejects with ErrUniqueViolationExisting — never silently activating with
 // some of the racers' duplicates unaccounted for.
 func TestCreateUnique_AdversarialConcurrentRace(t *testing.T) {
+	t.Parallel()
 	const racers = 8
 
 	ctx := context.Background()

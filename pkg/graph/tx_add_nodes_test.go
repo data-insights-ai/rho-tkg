@@ -35,6 +35,7 @@ func txAddNodesProps(n int) []map[string]any {
 // transaction time, a create event each after commit, the graph's add counter.
 // Nodes created before the call and a node of another label are untouched.
 func TestGraphTxAddNodes(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackendsTxFrom(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		var mu sync.Mutex
@@ -144,6 +145,7 @@ func TestGraphTxAddNodes(t *testing.T) {
 // Rollback removes every node AddNodes created, and the label it introduced;
 // the counter returns to its value at Begin.
 func TestGraphTxAddNodesRollback(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		keep, err := g.Nodes().Add(ctx, []string{"Kept"}, nil)
@@ -186,6 +188,7 @@ func TestGraphTxAddNodesRollback(t *testing.T) {
 // property value, a reserved key, a bad label. Nothing is created (the label
 // registry's rollback is checked in core, TestAddNodesInternalRestoresLabels).
 func TestGraphTxAddNodesRejectsBeforeCreating(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		for _, tc := range []struct {
 			name   string
@@ -227,6 +230,7 @@ func TestGraphTxAddNodesRejectsBeforeCreating(t *testing.T) {
 // repeated within the call or taken before is refused with ErrUniqueViolation
 // at that element, the earlier ones exist until the transaction rolls back.
 func TestGraphTxAddNodesUniqueConstraint(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		label := "User"
@@ -272,6 +276,7 @@ func TestGraphTxAddNodesUniqueConstraint(t *testing.T) {
 
 // An empty call creates nothing and is not an error.
 func TestGraphTxAddNodesEmpty(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
 		t.Fatal(err)

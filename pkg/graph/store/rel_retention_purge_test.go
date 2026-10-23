@@ -21,6 +21,7 @@ import (
 // relationship stay; chunks report More; a rerun, a non-positive boundary and
 // type token 0 are no-ops.
 func TestPurgeRelsByTypeBefore(t *testing.T) {
+	t.Parallel()
 	const evType, otherType = uint16(5), uint16(6)
 	a, b := currentNodeID(1), currentNodeID(2)
 	live, liveHist, deleted, histOnly, other := currentRelID(10), currentRelID(11), currentRelID(12), currentRelID(13), currentRelID(14)

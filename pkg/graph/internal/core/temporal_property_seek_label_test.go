@@ -141,6 +141,7 @@ func TestTemporalPropertySeekAnswersEverLabelMembers(t *testing.T) {
 // the chains of the current matches and of the nodes that ever carried P,
 // not those of the churned :Tick nodes, however many there are.
 func TestTemporalPropertySeekLoadsNoOtherLabelChains(t *testing.T) {
+	t.Parallel()
 	for _, be := range pinnedLoadBackends() {
 		if be.name == "sharded" {
 			continue // states no label membership: the full-history fold stays its contract
@@ -181,6 +182,7 @@ func TestTemporalPropertySeekLoadsNoOtherLabelChains(t *testing.T) {
 // relationships that held the value (a deleted one included) and loads no
 // chain of the churned relationships of another type.
 func TestTemporalRelPropertySeekScopedToType(t *testing.T) {
+	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			g := be.open(t)

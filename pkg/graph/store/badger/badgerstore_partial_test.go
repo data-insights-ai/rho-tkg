@@ -26,6 +26,7 @@ func newTestBadgerStoreInMemory(t *testing.T) *Store {
 }
 
 func TestPutRelEntityAndOut_CreatesEntityButNotInIdx(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	// Create two nodes.
@@ -75,6 +76,7 @@ func TestPutRelEntityAndOut_CreatesEntityButNotInIdx(t *testing.T) {
 }
 
 func TestPutRelEntityAndOutRejectsInvalidPayload(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	tests := []struct {
@@ -120,6 +122,7 @@ func TestPutRelEntityAndOutRejectsInvalidPayload(t *testing.T) {
 // (any caller, not just TieredStore) would see the rel property index and
 // RelPropertyTypeClassCounts silently drift from the true relationship set.
 func TestPutAndDeleteRelEntityAndOut_MaintainRelPropertyIndexAndTypeClassCounts(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	gen := newTestGen(t, 0)
@@ -186,6 +189,7 @@ func TestPutAndDeleteRelEntityAndOut_MaintainRelPropertyIndexAndTypeClassCounts(
 }
 
 func TestPutRelIncoming_CreatesInIdxOnly(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	// Create one node (the endpoint).
@@ -216,6 +220,7 @@ func TestPutRelIncoming_CreatesInIdxOnly(t *testing.T) {
 }
 
 func TestPutRelIncomingRejectsZeroIndexFields(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	tests := []struct {
@@ -245,6 +250,7 @@ func TestPutRelIncomingRejectsZeroIndexFields(t *testing.T) {
 }
 
 func TestDeleteRelEntityAndOut_RemovesEntityButNotInIdx(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	gen := newTestGen(t, 0)
@@ -300,6 +306,7 @@ func TestDeleteRelEntityAndOut_RemovesEntityButNotInIdx(t *testing.T) {
 }
 
 func TestDeleteRelEntityAndOutRejectsStaleEntityRowNotInLiveSet(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	gen := newTestGen(t, 0)
@@ -348,6 +355,7 @@ func TestDeleteRelEntityAndOutRejectsStaleEntityRowNotInLiveSet(t *testing.T) {
 }
 
 func TestDeleteRelEntityAndOutRejectsInvalidID(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	tests := []struct {
@@ -367,6 +375,7 @@ func TestDeleteRelEntityAndOutRejectsInvalidID(t *testing.T) {
 }
 
 func TestDeleteRelIncoming_RemovesInIdxOnly(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	gen := newTestGen(t, 0)
@@ -416,6 +425,7 @@ func TestDeleteRelIncoming_RemovesInIdxOnly(t *testing.T) {
 }
 
 func TestDeleteRelIncomingRejectsMismatchedRelTypeWithoutDroppingMemory(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	endID := snowflake.ID(1001)
@@ -443,6 +453,7 @@ func TestDeleteRelIncomingRejectsMismatchedRelTypeWithoutDroppingMemory(t *testi
 }
 
 func TestDeleteRelIncomingRejectsZeroIndexFields(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	tests := []struct {
@@ -481,6 +492,7 @@ func TestDeleteRelIncomingRejectsZeroIndexFields(t *testing.T) {
 }
 
 func TestScanAndDeleteIncoming_DeletesPersistedInKey(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	endID := snowflake.ID(1001)
@@ -522,6 +534,7 @@ func TestScanAndDeleteIncoming_DeletesPersistedInKey(t *testing.T) {
 }
 
 func TestDeleteIncomingByRelID_MatchesPendingEndNode(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	relID := snowflake.ID(3003)
@@ -559,6 +572,7 @@ func TestDeleteIncomingByRelID_MatchesPendingEndNode(t *testing.T) {
 }
 
 func TestDeleteIncomingByRelIDDeletesDuplicateIncomingKeys(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	endID := snowflake.ID(1001)
@@ -599,6 +613,7 @@ func TestDeleteIncomingByRelIDDeletesDuplicateIncomingKeys(t *testing.T) {
 }
 
 func TestDeleteIncomingByRelIDDeletesPersistedKeyWhenMemoryMissing(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	endID := snowflake.ID(1001)
@@ -638,6 +653,7 @@ func TestDeleteIncomingByRelIDDeletesPersistedKeyWhenMemoryMissing(t *testing.T)
 }
 
 func TestScanAndDeleteIncoming_MatchesPendingEndNode(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	relID := snowflake.ID(3003)
@@ -681,6 +697,7 @@ func TestScanAndDeleteIncoming_MatchesPendingEndNode(t *testing.T) {
 }
 
 func TestDeleteIncomingByRelIDRejectsInvalidFields(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	tests := []struct {
@@ -704,6 +721,7 @@ func TestDeleteIncomingByRelIDRejectsInvalidFields(t *testing.T) {
 }
 
 func TestScanAndDeleteIncomingRejectsInvalidFields(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	tests := []struct {
@@ -727,6 +745,7 @@ func TestScanAndDeleteIncomingRejectsInvalidFields(t *testing.T) {
 }
 
 func TestHasNodeID_HasRelID(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	gen := newTestGen(t, 0)
@@ -748,6 +767,7 @@ func TestHasNodeID_HasRelID(t *testing.T) {
 }
 
 func TestOutgoingRelIDs_Sorted(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	gen := newTestGen(t, 0)
@@ -781,6 +801,7 @@ func TestOutgoingRelIDs_Sorted(t *testing.T) {
 }
 
 func TestIncomingRelIDs_TypeFilter(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	gen := newTestGen(t, 0)
@@ -833,6 +854,7 @@ func TestIncomingRelIDs_TypeFilter(t *testing.T) {
 }
 
 func TestIncomingIndexEntries_IncludesEntriesWithoutEndNode(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	endB := snowflake.ID(2002)

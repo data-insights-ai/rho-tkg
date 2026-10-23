@@ -391,6 +391,7 @@ func TestPinnedByTypeAndPropertyEqualsPinnedScan(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		for _, withIndex := range []bool{true, false} {
 			if withIndex && !be.canIndex {
@@ -509,6 +510,7 @@ func countChainLoads(g *Core, fn func()) int {
 // Faulty implementation it catches: today's fold, which loads every rel
 // (node) with a history row across all types, so the count tracks the churn.
 func TestPinnedPropertyLookupLoadsOnlyEverMembers(t *testing.T) {
+	t.Parallel()
 	for _, be := range pinnedLoadBackends() {
 		t.Run(be.name+"/rel", func(t *testing.T) {
 			g := be.open(t)
@@ -1275,6 +1277,7 @@ func TestPinnedPropertyLookupLifecycle(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ctx := context.Background()
 	for _, be := range lifecycleBackends() {
 		t.Run(be.name+"/late-index-drop-recreate", func(t *testing.T) {

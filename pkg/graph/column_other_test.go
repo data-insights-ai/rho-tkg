@@ -74,6 +74,7 @@ func gotOtherCells(t *testing.T, cd *storepkg.ColumnData, n int) [][]otherCell {
 // backend and on declared segment relationships: current rows, a ValidAt and a
 // TxAt pin taken before one row's list was fixed and another row broken to a map.
 func TestColumnScanOther_MatchesRowRead(t *testing.T) {
+	t.Parallel()
 	segments := storeBackend{name: "memory-segments", open: func(t *testing.T) *graphpkg.Graph {
 		g, err := graphpkg.New(graphpkg.Config{Validation: graphpkg.ValidationLimits{AllowSelfLoops: true}, SnowflakeNodeID: 4, Store: memory.New(), RelSegments: []graphpkg.RelSegmentSpec{{
 			Type: "R", Columns: []graphpkg.SegmentColumn{
@@ -231,6 +232,7 @@ func assertOtherCells(t *testing.T, b storeBackend, what string, opts graphpkg.Q
 // uint32 and a uint64 that fits are int64; a uint64 past MaxInt64 is float64,
 // and next to a small one the column is mixed and refused.
 func TestColumnScanIntegerWidths_PathsAgree(t *testing.T) {
+	t.Parallel()
 	const ints = "kind=0 null=[false false false false false] ints=[-1 2 3 4 5] flts=[] other=[]"
 	for _, tc := range []struct {
 		name string

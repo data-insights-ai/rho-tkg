@@ -10,6 +10,7 @@ import (
 // at a history row write, at a removal (truncation) and at Clear, and not at
 // a current-row write.
 func TestBadgerStoreHistoryGeneration(t *testing.T) {
+	t.Parallel()
 	ms := newTestBadgerStoreInMemory(t)
 	n := types.NewNode(types.NodeID(10), 1, nil)
 	if err := ms.PutNode(n); err != nil {

@@ -9,6 +9,7 @@ import (
 )
 
 func TestShardCatalog_SaveLoadRoundTrip(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalog.json")
 
@@ -75,6 +76,7 @@ func TestShardCatalog_SaveLoadRoundTrip(t *testing.T) {
 }
 
 func TestShardCatalog_LoadMissing(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nonexistent.json")
 
@@ -88,6 +90,7 @@ func TestShardCatalog_LoadMissing(t *testing.T) {
 }
 
 func TestShardCatalog_LoadEmptyPathNoop(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	if err := sc.Load(); err != nil {
 		t.Fatalf("Load empty path: %v", err)
@@ -165,6 +168,7 @@ func TestShardCatalog_LoadRejectsInvalidPersistedTopology(t *testing.T) {
 }
 
 func TestShardCatalogLoadRejectsInvalidFileWithoutMutatingCatalog(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "catalog.json")
 	sc := NewShardCatalog(path)
 	sc.AddShard(ShardEntry{
@@ -194,6 +198,7 @@ func TestShardCatalogLoadRejectsInvalidFileWithoutMutatingCatalog(t *testing.T) 
 }
 
 func TestShardCatalogSaveRejectsInvalidCurrentTopology(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "catalog.json")
 	original := []byte(`{"shards":[]}`)
 	if err := atomicWriteFile(path, original, "test catalog setup"); err != nil {
@@ -221,6 +226,7 @@ func TestShardCatalogSaveRejectsInvalidCurrentTopology(t *testing.T) {
 }
 
 func TestShardCatalog_GetShard_NotFound(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	_, ok := sc.GetShard("nope")
 	if ok {
@@ -229,6 +235,7 @@ func TestShardCatalog_GetShard_NotFound(t *testing.T) {
 }
 
 func TestShardCatalog_AddShardCopiesSliceFields(t *testing.T) {
+	t.Parallel()
 	labels := []string{"Case"}
 	relTypes := []string{"RELATES_TO"}
 	sc := NewShardCatalog("")
@@ -256,6 +263,7 @@ func TestShardCatalog_AddShardCopiesSliceFields(t *testing.T) {
 }
 
 func TestShardCatalogReturnedEntriesDoNotAliasSliceFields(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{
 		Name:     "hot",
@@ -324,6 +332,7 @@ func TestShardCatalogReturnedEntriesDoNotAliasSliceFields(t *testing.T) {
 }
 
 func TestShardCatalog_EventShards(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "reference", Kind: ShardReference})
 	sc.AddShard(ShardEntry{Name: "2026-W08", Kind: ShardEvent, Tier: TierWarm})
@@ -336,6 +345,7 @@ func TestShardCatalog_EventShards(t *testing.T) {
 }
 
 func TestShardCatalog_HotEventShard(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "reference", Kind: ShardReference})
 	sc.AddShard(ShardEntry{Name: "2026-W08", Kind: ShardEvent, Tier: TierWarm})
@@ -351,6 +361,7 @@ func TestShardCatalog_HotEventShard(t *testing.T) {
 }
 
 func TestShardCatalog_HotEventShard_None(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "reference", Kind: ShardReference})
 
@@ -361,6 +372,7 @@ func TestShardCatalog_HotEventShard_None(t *testing.T) {
 }
 
 func TestShardCatalog_AddLabel_Idempotent(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "ref", Kind: ShardReference})
 
@@ -375,6 +387,7 @@ func TestShardCatalog_AddLabel_Idempotent(t *testing.T) {
 }
 
 func TestShardCatalog_AddRelType_Idempotent(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "ev", Kind: ShardEvent})
 
@@ -389,12 +402,14 @@ func TestShardCatalog_AddRelType_Idempotent(t *testing.T) {
 }
 
 func TestShardCatalog_AddLabel_MissingShard(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	// Should be a no-op, not a panic.
 	sc.AddLabel("nonexistent", "Test")
 }
 
 func TestShardCatalog_SaveAtomicity(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalog.json")
 
@@ -414,6 +429,7 @@ func TestShardCatalog_SaveAtomicity(t *testing.T) {
 }
 
 func TestShardCatalogFileRollbackRestoresPreviousBytes(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "catalog.json")
 	original := []byte(`{"shards":[{"name":"old"}]}`)
 	if err := atomicWriteFile(path, original, "test catalog setup"); err != nil {
@@ -440,6 +456,7 @@ func TestShardCatalogFileRollbackRestoresPreviousBytes(t *testing.T) {
 }
 
 func TestShardCatalogFileRollbackRemovesNewFile(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "catalog.json")
 	snapshot, err := snapshotShardCatalogFile(path)
 	if err != nil {

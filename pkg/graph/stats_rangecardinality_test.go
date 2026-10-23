@@ -14,6 +14,7 @@ import (
 // both the memory and badger backends (Testing Rule 1: direct test of the
 // new public method, not delegation-assumption).
 func TestStatsRangeCardinality_MatchesNodesAlias(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		for i := 0; i < 20; i++ {
@@ -93,6 +94,7 @@ func TestStatsRangeCardinality_MatchesNodesAlias(t *testing.T) {
 // decline (exact=false) identically for both TxAt and TxPin, exactly like the
 // existing ValidAt case above.
 func TestRangeCardinality_DeclinesOnBitemporalTxFilter(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		for i := 0; i < 20; i++ {
@@ -136,6 +138,7 @@ func TestRangeCardinality_DeclinesOnBitemporalTxFilter(t *testing.T) {
 // sentinel, verifiable with errors.Is (Testing Rule 4) — exactly like every
 // other Stats accessor.
 func TestStatsRangeCardinality_DeclinesWithSentinelOnClosedGraph(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		if _, err := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"age": int64(5)}); err != nil {

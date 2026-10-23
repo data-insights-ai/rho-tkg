@@ -16,6 +16,7 @@ import (
 // PropertyStats basic test (BACKLOG 21a): NDV/min/max/count for a rel type's
 // current relationships carrying a numeric property.
 func TestRelPropertyStats_BasicNDVMinMax(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"P"}, nil)
@@ -50,6 +51,7 @@ func TestRelPropertyStats_BasicNDVMinMax(t *testing.T) {
 // TestRelPropertyStats_MissingPairReturnsZeroValue mirrors
 // RelPropertyTypeClassCounts' "unregistered → zero" convention (rule 2).
 func TestRelPropertyStats_MissingPairReturnsZeroValue(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		stats, err := g.Stats().RelPropertyStats("NOPE", "nope")
 		if err != nil {
@@ -65,6 +67,7 @@ func TestRelPropertyStats_MissingPairReturnsZeroValue(t *testing.T) {
 // property value (a slice) contributes to neither Count nor NDV/Min/Max —
 // mirroring the node-side NonIndexableValueExcluded test.
 func TestRelPropertyStats_NonIndexableValueExcluded(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"P"}, nil)
@@ -89,6 +92,7 @@ func TestRelPropertyStats_NonIndexableValueExcluded(t *testing.T) {
 // value ever observed) does NOT decrement, matching the node-side deletion
 // semantics documented on store.PropertyStats.NDV.
 func TestRelPropertyStats_DeleteExtremumTriggersRescan(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"P"}, nil)
@@ -154,6 +158,7 @@ func TestRelPropertyStats_DeleteExtremumTriggersRescan(t *testing.T) {
 // reflected — the old value's contribution removed, the new value's added —
 // on the SAME call as the type-class/rel-property-index maintenance.
 func TestRelPropertyStats_UpdateChangesStats(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"P"}, nil)
@@ -195,6 +200,7 @@ func TestRelPropertyStats_UpdateChangesStats(t *testing.T) {
 // counter to zero with no drift, mirroring
 // TestRelPropertyTypeClassCounts_ExactPartition's cascade scenario.
 func TestRelPropertyStats_CascadeDeleteViaNodeDelete(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"P"}, nil)
@@ -221,6 +227,7 @@ func TestRelPropertyStats_CascadeDeleteViaNodeDelete(t *testing.T) {
 // max accumulator rebuild from loadIndexes at open,
 // mirroring TestRelPropertyTypeClassCounts_Reopen's "survives restart" rule.
 func TestRelPropertyStats_Reopen(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 
@@ -280,6 +287,7 @@ func TestRelPropertyStats_Reopen(t *testing.T) {
 // RelPropertyTypeClassCounts (neither of which tiered implements either —
 // rel property indexes are RAM-only per-shard with no cross-shard fold).
 func TestRelPropertyStats_TieredDeclines(t *testing.T) {
+	t.Parallel()
 	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Machine"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatalf("tiered.New: %v", err)
@@ -313,6 +321,7 @@ func TestRelPropertyStats_TieredDeclines(t *testing.T) {
 // package's own seeded accuracy regression (hyperloglog_test.go) uses to
 // avoid the identical pitfall with distinct random strings.
 func TestRelPropertyStats_NDVAccuracy(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"P"}, nil)

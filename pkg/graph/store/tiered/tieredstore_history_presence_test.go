@@ -47,6 +47,7 @@ func expectRelPresence(t *testing.T, ts *Store, step string, id types.RelID, wan
 // whose history is on the archive (A with archive), a deleted entity whose
 // history lives on another shard (D), and a cross-shard relationship.
 func TestTieredHistoryPresence_RoutingShapes(t *testing.T) {
+	t.Parallel()
 	t.Run("event live (B)", func(t *testing.T) {
 		e := newBranchTestEnv(t)
 		n, plain := e.newEventNode(t), e.newEventNode(t)
@@ -247,6 +248,7 @@ func TestTieredHistoryPresence_ColdClosedShard(t *testing.T) {
 }
 
 func TestTieredHistoryPresence_Errors(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	for _, bad := range []int64{0, -3} {
 		if _, err := e.ts.HasNodeHistory(types.NodeID(bad)); !errors.Is(err, ErrInvalidStoreMutation) {

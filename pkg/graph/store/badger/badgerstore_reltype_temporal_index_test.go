@@ -39,6 +39,7 @@ func putRelTypeTemporalTestRel(t *testing.T, bs *Store, relType uint16, rid type
 // CreateRelTemporalIndex/DropRelTemporalIndex's sentinel-error behavior — the
 // rel-side mirror of the node CreateTemporalIndex/DropTemporalIndex contract.
 func TestCreateRelTemporalIndex_ExistsAndNotFound(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
 		t.Fatal(err)
@@ -68,6 +69,7 @@ func TestCreateRelTemporalIndex_ExistsAndNotFound(t *testing.T) {
 // (rule 15): create at t0 in [10,20), mutate to [30,40), assert the envelope
 // still answers the t0 window.
 func TestRelTypeTemporalEnvelope_ForwardMaintenance(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +110,7 @@ func TestRelTypeTemporalEnvelope_ForwardMaintenance(t *testing.T) {
 // A relationship written after the reopen is maintained; a dropped index stays
 // dropped across the next reopen; another type was never indexed.
 func TestRelTypeTemporalIndex_SurvivesRestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	open := func() *Store {
 		bs, err := New(Config{Dir: dir})

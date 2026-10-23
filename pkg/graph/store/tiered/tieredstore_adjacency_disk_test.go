@@ -20,6 +20,7 @@ import (
 // Break cases: flag off reaches no shard; a cold reopen without the flag opens
 // the shard in map mode (the flag is per open, not persisted).
 func TestTieredConfig_AdjacencyIndexOnDisk_Propagates(t *testing.T) {
+	t.Parallel()
 	for _, on := range []bool{true, false} {
 		t.Run(fmt.Sprintf("flag=%v", on), func(t *testing.T) {
 			dir := t.TempDir()
@@ -169,6 +170,7 @@ func renderAdjacency(t *testing.T, ts *Store, fx adjParityFixture) string {
 // deleted rel whose delete is still pending, a self-loop, an unknown node,
 // archive + restore of a connected node, repair.
 func TestTieredAdjacencyOnDisk_ReadsEqual(t *testing.T) {
+	t.Parallel()
 	mem, caseTok, signalTok := newAdjParityStore(t, false)
 	disk, _, _ := newAdjParityStore(t, true)
 	stores := []*Store{mem, disk}

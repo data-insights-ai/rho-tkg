@@ -30,6 +30,7 @@ import (
 // must carry exactly one ChangeNodePut for that ID (a second record would
 // poison a replica with a phantom duplicate). Run under `go test -race`.
 func TestTieredPutNode_ConcurrentSameIDCrossClassRace(t *testing.T) {
+	t.Parallel()
 	const iterations = 20
 	const goroutines = 200
 
@@ -117,6 +118,7 @@ func TestTieredPutNode_ConcurrentSameIDCrossClassRace(t *testing.T) {
 // scope here (not a regression: reproduced identically against the
 // pre-19q code).
 func TestTieredPutNode_GeneratedThenSuppliedDuplicateDetected(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	id := types.NodeID(tieredNodeGen(t).Generate())
 
@@ -146,6 +148,7 @@ func TestTieredPutNode_GeneratedThenSuppliedDuplicateDetected(t *testing.T) {
 // same-ID race tests above — it would also catch a broken reservation
 // (e.g. a stuck per-ID lock blocking an unrelated id).
 func TestTieredPutNode_ConcurrentDistinctIDsAcrossShards(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 
@@ -205,6 +208,7 @@ func TestTieredPutNode_ConcurrentDistinctIDsAcrossShards(t *testing.T) {
 // pins the observable behavior: retrying a DIFFERENT id immediately after a
 // failure must not block, and the original id must still be usable for reads.
 func TestTieredPutNode_LockNotStuckAfterFailedCreate(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, _ := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 
@@ -250,6 +254,7 @@ func TestTieredPutNode_LockNotStuckAfterFailedCreate(t *testing.T) {
 // the change-log must carry exactly one ChangeRelPut record (same-shard rel
 // creates delegate to badger's own PutRelationship, which logs normally).
 func TestTieredRelationship_ConcurrentSameIDSameShardRace(t *testing.T) {
+	t.Parallel()
 	const iterations = 20
 	const goroutines = 200
 
@@ -339,6 +344,7 @@ func TestTieredRelationship_ConcurrentSameIDSameShardRace(t *testing.T) {
 // out of scope for BACKLOG 19q (a create-mutex/concurrency fix) — flagged here
 // rather than silently worked around.
 func TestTieredRelationship_ConcurrentSameIDCrossShardRace(t *testing.T) {
+	t.Parallel()
 	const iterations = 20
 	const goroutines = 200
 
@@ -429,6 +435,7 @@ func newTestTieredStoreForRelRace(t *testing.T) (*Store, uint16, uint16, uint16)
 // non-overlapping id in BOTH batches still ends up created — a batch losing
 // on its one shared id must not corrupt or drop its unrelated ids.
 func TestTieredPutNodesBatch_ConcurrentOverlappingBatches(t *testing.T) {
+	t.Parallel()
 	const iterations = 20
 	const perBatch = 20
 
@@ -531,6 +538,7 @@ func TestTieredPutRelationshipsBatch_ConcurrentOverlappingBatches(t *testing.T) 
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	const iterations = 20
 	const perBatch = 10
 

@@ -38,6 +38,7 @@ func (s *floorFailStore) Close() error { return nil }
 // open reseeds the regressed value and NowTx() under-covers burst rows that are
 // still in the store. That is the lesson-71 anachronism, reintroduced durably.
 func TestInstantFloor_FailedSeedMustNotDowngradeTheWatermark(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	base := memory.New()
 

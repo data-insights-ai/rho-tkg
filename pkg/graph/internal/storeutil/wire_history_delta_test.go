@@ -80,6 +80,7 @@ func baseNode(ver int, props []PropertyWire) NodeWire {
 }
 
 func TestNodeHistoryDeltaReconstructs(t *testing.T) {
+	t.Parallel()
 	// blob prop (token 1) unchanged; status (token 2) changed; counter (token 3)
 	// changed; extra (token 4) only on anchor (removed); added (token 5) only on
 	// target (added).
@@ -134,6 +135,7 @@ func TestNodeHistoryDeltaReconstructs(t *testing.T) {
 }
 
 func TestNodeHistoryDeltaDeterministicAndIdempotent(t *testing.T) {
+	t.Parallel()
 	anchor := baseNode(0, tokProps(p(1, bigBlob, 6), p(2, "active", 6), p(3, int64(0), 2)))
 	target := baseNode(1, tokProps(p(1, bigBlob, 6), p(2, "pending", 6), p(3, int64(9), 2)))
 
@@ -163,6 +165,7 @@ func TestNodeHistoryDeltaDeterministicAndIdempotent(t *testing.T) {
 }
 
 func TestHistoryValueKindOf(t *testing.T) {
+	t.Parallel()
 	full := baseNode(3, tokProps(p(1, "x", 6)))
 	fb, err := msgpack.Marshal(full)
 	if err != nil {
@@ -195,6 +198,7 @@ func TestHistoryValueKindOf(t *testing.T) {
 // struct decode rejects it. This is why enabling HistoryDeltaEncoding is
 // fail-closed for an older reader even without a wire-format-version bump.
 func TestHistoryDeltaFailsClosedForDeltaUnawareDecoder(t *testing.T) {
+	t.Parallel()
 	anchor := baseNode(0, tokProps(p(1, bigBlob, 6), p(2, "active", 6)))
 	target := baseNode(1, tokProps(p(1, bigBlob, 6), p(2, "closed", 6)))
 	enc, err := EncodeNodeHistoryDelta(DiffNodeHistory(anchor, target))
@@ -208,6 +212,7 @@ func TestHistoryDeltaFailsClosedForDeltaUnawareDecoder(t *testing.T) {
 }
 
 func TestNodeHistoryDeltaSizeWin(t *testing.T) {
+	t.Parallel()
 	// Wide entity, big blob, only one scalar changes: the delta must be far
 	// smaller than a full snapshot.
 	props := []PropertyWire{p(1, bigBlob, 6)}
@@ -257,6 +262,7 @@ func baseRel(ver int, props []PropertyWire) RelWire {
 }
 
 func TestRelHistoryDeltaReconstructs(t *testing.T) {
+	t.Parallel()
 	anchor := baseRel(0, tokProps(p(1, bigBlob, 6), p(2, "active", 6), p(4, "legacy", 6)))
 	target := baseRel(1, tokProps(p(1, bigBlob, 6), p(2, "closed", 6), p(5, int64(1), 2)))
 

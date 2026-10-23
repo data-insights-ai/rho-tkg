@@ -15,6 +15,7 @@ import (
 // inclusivity, mixed int/float values on one key, removal maintenance, and
 // the ErrIndexNotFound fallback signal when no index exists.
 func TestForEachByLabelPropertyRange(t *testing.T) {
+	t.Parallel()
 	g, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)

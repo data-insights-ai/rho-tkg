@@ -16,6 +16,7 @@ import (
 // decline (exact=false, no error) without an index, for an unknown label or
 // type, under temporal opts, for a list value and on tiered.
 func TestCountByPropertyValue(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		if err := g.Index().CreateProperty("Ref", "v"); err != nil {
@@ -133,6 +134,7 @@ func TestCountByPropertyValue(t *testing.T) {
 // PropertyIndexOnDisk keeps no counted node value sets, so the node count
 // declines (the relationship index stays in RAM and answers).
 func TestCountByPropertyValueDeclinesOnDiskIndex(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{BadgerInMemory: true, PropertyIndexOnDisk: true})
 	if err != nil {
 		t.Fatal(err)

@@ -82,6 +82,7 @@ func TestMarshalWirePooledByteIdentical(t *testing.T) {
 // it. Run under `go test -race` (see the package's `-race` gate) to also
 // catch any unsynchronized access to the shared buffer.
 func TestMarshalWirePooledConcurrentSafe(t *testing.T) {
+	t.Parallel()
 	const goroutines = 32
 	const iterations = 200
 

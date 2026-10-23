@@ -11,6 +11,7 @@ import (
 // scan (backlog 48): nil on a batch without an Other cell — no allocation on the
 // common path, and no mark carried over from an earlier batch.
 func TestColumnData_OtherPerBatch(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		first any   // row 0's value; every other row holds an int64
@@ -73,6 +74,7 @@ func (s noOtherSource) Value(i, c int) (ColumnKind, int64, float64, string, bool
 // RelColumnSource: a source without it still scans with the same Null, and
 // reports no Other at all (not a partial one from the driver's kind check).
 func TestScanColumnsFromRelSource_OtherOptional(t *testing.T) {
+	t.Parallel()
 	vals := []any{[]any{int64(1)}, int64(5), "five"} // held list, int, kind mismatch
 	rels := make([]*types.Relationship, len(vals))
 	for i, v := range vals {

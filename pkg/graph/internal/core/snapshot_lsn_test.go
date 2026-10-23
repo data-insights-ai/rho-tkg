@@ -14,6 +14,7 @@ import (
 // gate for the format bump. A too-new header must fail with ErrIncompatibleExport
 // so an old build refuses a newer snapshot instead of silently mis-reading it.
 func TestImport_HeaderVersionRange(t *testing.T) {
+	t.Parallel()
 	build := func(ver uint8) []byte {
 		var buf bytes.Buffer
 		hdr := exportHeader{Version: ver, ExportedAt: 1}

@@ -21,6 +21,7 @@ import (
 // row would, and drives cascadeDeleteLocked (the idxMu-locked wrapper)
 // straight into the fallback branch.
 func TestCascadeDeleteInner_CorruptionFallback_BumpsNodeEpochSalt(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)

@@ -10,6 +10,7 @@ import (
 // not kept (and drops the entry it would replace), and the weight held never
 // passes headCacheMaxPieces however many entries are put.
 func TestHeadCache_BoundedByPieces(t *testing.T) {
+	t.Parallel()
 	var h headCache
 	h.put(headKey{id: 1}, &headEntry{pieces: make([]headPiece, 3)})
 	h.put(headKey{id: 1}, &headEntry{pieces: make([]headPiece, headMaxEntryPieces+1)})

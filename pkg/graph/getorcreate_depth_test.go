@@ -204,6 +204,7 @@ func TestGetOrCreateByKeyOpts_DepthBound(t *testing.T) {
 }
 
 func TestByLabelAndProperty_DepthAllReturnsEveryShardCopy(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, ts := openDepthTieredGraph(t)
 	add := func() types.NodeID {

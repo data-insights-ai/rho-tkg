@@ -13,6 +13,7 @@ import (
 )
 
 func TestTieredStore_OntologyRouting_RefNode(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -29,6 +30,7 @@ func TestTieredStore_OntologyRouting_RefNode(t *testing.T) {
 }
 
 func TestTieredStore_OntologyRouting_ShardForNode(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -45,6 +47,7 @@ func TestTieredStore_OntologyRouting_ShardForNode(t *testing.T) {
 }
 
 func TestTieredStore_OntologyRouting_UnknownDefaultsToEvent(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -56,6 +59,7 @@ func TestTieredStore_OntologyRouting_UnknownDefaultsToEvent(t *testing.T) {
 }
 
 func TestRelationshipRowExistsRejectsStaleTypeIndex(t *testing.T) {
+	t.Parallel()
 	relID := snowflake.ID(777)
 	stale := newBadgerStoreWithOnlyRelTypeIndex(t, relID, 7)
 
@@ -68,6 +72,7 @@ func TestRelationshipRowExistsRejectsStaleTypeIndex(t *testing.T) {
 }
 
 func TestFindRelInAnyShardStoreSkipsStaleTypeIndex(t *testing.T) {
+	t.Parallel()
 	relID := snowflake.ID(777)
 	stale := newBadgerStoreWithOnlyRelTypeIndex(t, relID, 7)
 	live, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
@@ -100,6 +105,7 @@ func TestFindRelInAnyShardStoreSkipsStaleTypeIndex(t *testing.T) {
 }
 
 func TestTieredRelIDExistsIgnoresStaleTypeIndex(t *testing.T) {
+	t.Parallel()
 	relID := snowflake.ID(777)
 	staleRef := newBadgerStoreWithOnlyRelTypeIndex(t, relID, 7)
 	ts := newTestTieredStore(t)
@@ -115,6 +121,7 @@ func TestTieredRelIDExistsIgnoresStaleTypeIndex(t *testing.T) {
 }
 
 func TestTieredShardForNodeIDIgnoresStaleLabelIndexInRefShard(t *testing.T) {
+	t.Parallel()
 	nodeID := snowflake.ID(777)
 	staleRef := newBadgerStoreWithOnlyLabelIndex(t, nodeID, 7)
 	ts := newTestTieredStore(t)
@@ -178,6 +185,7 @@ func newBadgerStoreWithStaleIndexKeys(t *testing.T, keys ...[]byte) *BadgerStore
 }
 
 func TestTieredStore_ShardWindowStart_WeeklyISOWeekOne(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		in   time.Time
@@ -211,6 +219,7 @@ func TestTieredStore_ShardWindowStart_WeeklyISOWeekOne(t *testing.T) {
 }
 
 func TestTieredStore_ShardWindowStart_SubDayWindows(t *testing.T) {
+	t.Parallel()
 	in := time.Date(2026, time.May, 10, 12, 34, 56, 789_000_000, time.UTC)
 	cases := []struct {
 		name     string
@@ -374,6 +383,7 @@ func TestTieredStore_DepthZeroIsAll(t *testing.T) {
 }
 
 func TestTieredStore_InvalidDepthRejected(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -447,6 +457,7 @@ func TestTieredStore_InvalidDepthRejected(t *testing.T) {
 }
 
 func TestTieredStore_AllIDs_TemporalOpts(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -669,6 +680,7 @@ func TestTieredStore_ColdShard_TimestampResolution(t *testing.T) {
 }
 
 func TestTieredStore_ShardForNodeID_Error(t *testing.T) {
+	t.Parallel()
 	// Verify shardForNodeID succeeds for a generated but absent event ID.
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -688,6 +700,7 @@ func TestTieredStore_ShardForNodeID_Error(t *testing.T) {
 }
 
 func TestTieredStore_ShardForRelID_Error(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -705,6 +718,7 @@ func TestTieredStore_ShardForRelID_Error(t *testing.T) {
 }
 
 func TestTieredStore_RoutingErrorInWrite(t *testing.T) {
+	t.Parallel()
 	// Verify that write operations propagate routing errors.
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -794,6 +808,7 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 // (configured RefLabels) report true; any other label — the event-class default
 // — reports false. Classification is by name, independent of token registration.
 func TestTieredStore_IsReferenceLabel(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t) // RefLabels: Case, User
 	if !ts.IsReferenceLabel("Case") {
 		t.Error("Case is a configured RefLabel, want IsReferenceLabel true")

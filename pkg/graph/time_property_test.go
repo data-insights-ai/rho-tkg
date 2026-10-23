@@ -16,6 +16,7 @@ import (
 // and an export/import reproduces it byte-for-byte (the canonical form is what
 // persists, so no new wire type is introduced).
 func TestNode_TimePropertyRoundTrip(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 3, BadgerInMemory: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)

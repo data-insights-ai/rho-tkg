@@ -18,6 +18,7 @@ import (
 // proves write order without needing to force a mid-group failure (every rel
 // here legitimately commits).
 func TestPutRelationshipsBatchSameShard_DeterministicAscendingOrder(t *testing.T) {
+	t.Parallel()
 	st := newMemStoreLog(t, 0, 4)
 
 	hub := mkNodeID(0, 1)

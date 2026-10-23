@@ -44,6 +44,7 @@ func builtColumn(t *testing.T, g *graphpkg.Graph, label, key string) storepkg.Do
 // Two-phase: a key that was numeric turns none when a string arrives and
 // numeric again when it leaves.
 func TestDocValuesColumnAgreesWithTheBuild(t *testing.T) {
+	t.Parallel()
 	values := []func(r *rand.Rand) any{
 		func(r *rand.Rand) any { return r.Int64N(100) },
 		func(r *rand.Rand) any { return r.Float64() },
@@ -124,6 +125,7 @@ func TestDocValuesColumnAgreesWithTheBuild(t *testing.T) {
 
 // The rule itself, branch by branch (store.DocValuesColumnOf).
 func TestDocValuesColumnOf(t *testing.T) {
+	t.Parallel()
 	type counts = storepkg.PropertyTypeClassCounts
 	for _, tc := range []struct {
 		name string
@@ -150,6 +152,7 @@ func TestDocValuesColumnOf(t *testing.T) {
 // Badger without planner statistics keeps no class counts: ok=false. A closed
 // graph is an error.
 func TestDocValuesColumnWithoutCounters(t *testing.T) {
+	t.Parallel()
 	st, err := badger.New(badger.Config{InMemory: true, DisablePlannerStats: true})
 	if err != nil {
 		t.Fatal(err)

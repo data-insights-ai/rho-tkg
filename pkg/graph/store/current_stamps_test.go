@@ -214,6 +214,7 @@ func expectCurrent(t *testing.T, k currentKind, st storecontract.Store, step str
 // running max over the writes, zero stamps from the compact form or the
 // stored row, an evicted row answered from anything but its stored bytes.
 func TestCurrentStampsMatchCurrentRow(t *testing.T) {
+	t.Parallel()
 	for _, b := range currentBackends() {
 		for _, k := range currentKinds() {
 			t.Run(b.name+"/"+k.name, func(t *testing.T) {

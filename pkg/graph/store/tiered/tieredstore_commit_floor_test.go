@@ -39,6 +39,7 @@ func cfPutSignal(t *testing.T, ts *Store, tok uint16, txFrom types.Instant) {
 // them durable — whether that flush writes the rows itself or a background
 // flush wrote them before. A background flush pays no fsync.
 func TestShardCommitFloorSyncedByDurableFlush(t *testing.T) {
+	t.Parallel()
 	ts, tok := cfTieredStore(t, t.TempDir())
 	t.Cleanup(func() { _ = ts.Close() })
 	ref := ts.RefShardForTest()
@@ -79,6 +80,7 @@ func TestShardCommitFloorRewrittenAfterClear(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	ts, tok := cfTieredStore(t, dir)
 	t.Cleanup(func() { _ = ts.Close() })

@@ -23,6 +23,7 @@ import (
 // stale VM image, a dead RTC, a container with no NTP) sees EVERY legitimate
 // primary stamp as out-of-bound and stops advancing entirely.
 func TestInstantFloor_CommittedStampAlwaysRaisesTheFloor(t *testing.T) {
+	t.Parallel()
 
 	g, err := New(Config{Store: memory.New(), SnowflakeNodeID: 1})
 	if err != nil {
@@ -52,6 +53,7 @@ func TestInstantFloor_CommittedStampAlwaysRaisesTheFloor(t *testing.T) {
 // itself but `next = max(wall, last+1)` overflowing MaxInt64 into MinInt64 and
 // turning every subsequent TxFrom negative.
 func TestCommitClock_NeverWrapsPastMaxInt64(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Store: memory.New(), SnowflakeNodeID: 1})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -70,6 +72,7 @@ func TestCommitClock_NeverWrapsPastMaxInt64(t *testing.T) {
 // The untrusted door keeps its bound: a corrupt watermark must still be refused.
 // This is the control that stops the fix above from simply removing the guard.
 func TestInstantFloor_SeedStillRefusesAnImplausibleWatermark(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{Store: memory.New(), SnowflakeNodeID: 1})
 	if err != nil {
 		t.Fatalf("New: %v", err)

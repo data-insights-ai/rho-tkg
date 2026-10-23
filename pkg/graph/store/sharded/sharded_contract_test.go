@@ -13,6 +13,7 @@ import (
 // SHARDED routing/fold wrapper round-trips across a multi-slot spread.
 
 func TestBulkReadFolds(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	var nodeIDs []types.NodeID
 	for slot := uint8(0); slot < 4; slot++ {
@@ -62,6 +63,7 @@ func TestBulkReadFolds(t *testing.T) {
 }
 
 func TestReplaceAndLabelTokenDoors(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	nid := mkNodeID(2, 1)
 	putNode(t, st, nid, 10)
@@ -115,6 +117,7 @@ func TestReplaceAndLabelTokenDoors(t *testing.T) {
 }
 
 func TestHistoryDoorsCrossSlot(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 
 	// PutNodeVersion writes a history-only row; then label-with-history doors.
@@ -184,6 +187,7 @@ func TestHistoryDoorsCrossSlot(t *testing.T) {
 }
 
 func TestIterationAndFlushFolds(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	var want []types.NodeID
 	for slot := uint8(0); slot < 4; slot++ {

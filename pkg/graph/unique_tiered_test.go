@@ -57,6 +57,7 @@ func mustAddTieredUser(t *testing.T, g *graphpkg.Graph, email string) *types.Nod
 // battery: create the constraint, a duplicate current value violates, and a
 // value freed by supersession becomes reusable — all on tiered.
 func TestUniqueTiered_ReferenceLabel_CreateViolateFree(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 3)
 	defer g.Close()
@@ -104,6 +105,7 @@ func TestUniqueTiered_ReferenceLabel_CreateViolateFree(t *testing.T) {
 // (both ref-class, so the label-add door does not trip the primary-label-class
 // immutability guard) let the label-add seam be exercised cleanly.
 func TestUniqueTiered_ReferenceLabel_CrossDoor(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	ts, err := tieredpkg.New(tieredpkg.Config{DataDir: t.TempDir(), RefLabels: []string{"User", "Member"}})
 	if err != nil {
@@ -158,6 +160,7 @@ func TestUniqueTiered_ReferenceLabel_CrossDoor(t *testing.T) {
 // constraint is refused with the dedicated sentinel, via errors.Is at the
 // public door. UniqueForever is refused identically.
 func TestUniqueTiered_EventLabelRejected(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 5)
 	defer g.Close()
@@ -192,6 +195,7 @@ func TestUniqueTiered_DurableAcrossRestart(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 
@@ -222,6 +226,7 @@ func TestUniqueTiered_DurableAcrossRestart(t *testing.T) {
 // constraint AND forever-owner registries on tiered (reapUnique*ForReset run via
 // the ref-shard MetaKV) — after Reset a previously-barred value is free.
 func TestUniqueTiered_ResetReaps(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 7)
 	defer g.Close()
@@ -264,6 +269,7 @@ func TestUniqueTiered_ForeverAcrossRestart(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 
@@ -307,6 +313,7 @@ func TestUniqueTiered_ForeverAcrossRestart(t *testing.T) {
 // same value return the SAME node (hit), a different value creates a new node.
 // GetOrCreateByKey needs no constraint (the value lock alone makes it atomic).
 func TestUniqueTiered_GetOrCreateByKey(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 9)
 	defer g.Close()
@@ -408,6 +415,7 @@ func TestUniqueTiered_BatchAndTxDoors(t *testing.T) {
 // like a live one and the value stays barred. This IS the documented/intended
 // behavior (archive != delete), not a bug being asserted as a contract.
 func TestUniqueTiered_ArchivedEntity_UniqueCurrentStillHeld(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 14)
 	defer g.Close()
@@ -453,6 +461,7 @@ func TestUniqueTiered_ArchivedEntity_UniqueCurrentStillHeld(t *testing.T) {
 // on refArchive, survive Restore, and still let the OWNER itself keep the
 // value and an operator release it.
 func TestUniqueTiered_ForeverAcrossArchiveRestore(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 15)
 	defer g.Close()
@@ -505,6 +514,7 @@ func TestUniqueTiered_ForeverAcrossArchiveRestore(t *testing.T) {
 // ErrUniqueViolation, and the store must end with exactly one node holding it.
 // Run under -race (shared shard state under checkout/checkin + value stripes).
 func TestUniqueTiered_ConcurrentStorm(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 10)
 	defer g.Close()

@@ -13,6 +13,7 @@ import (
 // A NIL CALLBACK must error rather than panic, and a nil store must error rather
 // than dereference.
 func TestScanNodeColumns_RejectsNilInputs(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	defer func() { _ = ms.Close() }()
 	const tok uint16 = 1

@@ -25,6 +25,7 @@ func TestHistorySidecars_Differential(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	pks, iks := presenceKinds(), idOverlayKinds()
 	for ki, sk := range stampKinds() {
 		pk, ik := pks[ki], iks[ki]

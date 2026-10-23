@@ -46,6 +46,7 @@ func cpfState(t *testing.T, bs *Store, nid types.NodeID, orphans []types.RelID) 
 // as it reads its keys (the order before backlog 32: the first orphan is
 // purged before the second read fails); both delete doors.
 func TestCascadeDeleteFatalPreflightAppliesNothing(t *testing.T) {
+	t.Parallel()
 	for _, door := range []string{"DeleteNodeCascade", "DeleteNodeWithHistory"} {
 		t.Run(door, func(t *testing.T) {
 			bs := newChangeLogStore(t, false)

@@ -15,6 +15,7 @@ import (
 // converges. (Unlike a tx, a batch is NOT all-or-nothing — it keeps successful ops
 // — so the scope is always committed, never discarded.)
 func TestReplicaConvergence_CommittedBatchViaBuffer(t *testing.T) {
+	t.Parallel()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("primary New: %v", err)

@@ -77,6 +77,7 @@ func orderedOracle(rows []idValue, keep func(any) bool, desc bool) []idValue {
 // (temporal opts, no index, tiered, sharded); an unknown label walks
 // nothing. Nodes and relationships.
 func TestForEachIDOrdered(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		if err := g.Index().CreateProperty("Ref", "v"); err != nil {
@@ -243,6 +244,7 @@ func TestForEachIDOrdered(t *testing.T) {
 // TestForEachIDOrderedDeclinesOnDiskIndex: badger with PropertyIndexOnDisk
 // keeps no RAM node index, so the node walks report ErrIndexNotFound.
 func TestForEachIDOrderedDeclinesOnDiskIndex(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{BadgerInMemory: true, PropertyIndexOnDisk: true})
 	if err != nil {
 		t.Fatal(err)

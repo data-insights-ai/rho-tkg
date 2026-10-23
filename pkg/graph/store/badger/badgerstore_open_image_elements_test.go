@@ -18,6 +18,7 @@ import (
 // from the rows, so every element answers. Control: an image of the current
 // format is trusted (the damage survives), so the test sees the image.
 func TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		format  byte
@@ -99,6 +100,7 @@ func TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade(t *testing.T) {
 // the declared index's "contains" match, not plain equality (a list holding
 // the value matches; a plain index's scan would miss it). Node and rel.
 func TestElementsIndexLookupWhileBuilding(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
 		t.Fatal(err)

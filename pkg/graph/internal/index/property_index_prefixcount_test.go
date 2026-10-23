@@ -81,7 +81,11 @@ func TestRangeCardinality_PrefixSumsVsIteration(t *testing.T) {
 			t.Fatalf("the largest index spanned %d chunks; the test must cross chunk boundaries", maxChunks)
 		}
 	}()
-	for trial := range 12 {
+	trials := 12
+	if testing.Short() {
+		trials = 4 // -short: same generator, a third of the trials
+	}
+	for trial := range trials {
 		t.Run(fmt.Sprintf("trial%d", trial), func(t *testing.T) {
 			pi := NewPropertyIndexWith(true, false)
 			vals := map[snowflake.ID]float64{}

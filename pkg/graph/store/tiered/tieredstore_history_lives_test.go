@@ -16,6 +16,7 @@ import (
 // record. The cross-backend door test is
 // core.TestReimportAcrossShardsKeepsEarlierLife.
 func TestHistoryLives_RelReimportOntoNewEventShard(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
@@ -113,6 +114,7 @@ func TestHistoryLives_RelReimportOntoNewEventShard(t *testing.T) {
 // earlier life lies in the archive and whose new row is an event row is
 // recorded.
 func TestHistoryLives_RecordsOnlyUnreachedHistory(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok := newArchiveWriteTestStore(t)
 	archive := mustArchiveStore(t, ts)
 	gen := tieredNodeGen(t)
@@ -179,6 +181,7 @@ func TestHistoryLives_RecordsOnlyUnreachedHistory(t *testing.T) {
 // deleted and never re-imported, and a same-shard re-import, stay unrecorded.
 // The marker is then set, so the walk runs once.
 func TestHistoryLives_BackfillAtOpen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	open := func() *Store {
 		t.Helper()
@@ -276,6 +279,7 @@ func TestHistoryLives_BackfillAtOpen(t *testing.T) {
 // The generated-ID batch door with an invalid proof is the caller-ID door:
 // it records a re-import onto another shard.
 func TestHistoryLives_GeneratedBatchWithoutProofRecords(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	caseTok, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
@@ -310,6 +314,7 @@ func TestHistoryLives_PersistedAndValidatedAtOpen(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	// write opens a fresh store, applies fn, closes it; then the store is
 	// opened again.
 	reopen := func(t *testing.T, fn func(ts *Store) error) (*Store, error) {

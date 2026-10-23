@@ -271,6 +271,7 @@ func purgeRels(t *testing.T, g *graphpkg.Graph, typ string, before types.Instant
 // rel (< vs <=), one that leaves a leg or a counter behind, one that touches
 // nodes or another type.
 func TestPurgeExpiredRelsByAge(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -374,6 +375,7 @@ func TestPurgeExpiredRelsByAge(t *testing.T) {
 // any write. Faulty implementations caught: a door that creates the unknown
 // type's token, accepts ByValidTo, or skips a gate.
 func TestPurgeExpiredRelsByAge_Refusals(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true})
 	if err != nil {
@@ -436,6 +438,7 @@ func TestPurgeExpiredRelsByAge_Refusals(t *testing.T) {
 // TestPurgeExpiredRelsByAge_ManyChunks: more relationships than one store
 // chunk (256) all go, on every backend.
 func TestPurgeExpiredRelsByAge_ManyChunks(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -477,6 +480,7 @@ func TestPurgeExpiredRelsByAge_ManyChunks(t *testing.T) {
 // OV_PAIR and Overview reads fail), no rel watermark (the EVENT reads answer
 // an incomplete set), a lowered watermark, a watermark lost at reopen.
 func TestRelRetentionWatermarkGatesScans(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -724,6 +728,7 @@ func assertTxRelGates(t *testing.T, g *graphpkg.Graph, f relRetentionFixture) {
 // point read of it at a low pin answers normally (here: no version at the
 // pin), not ErrRetentionExpired.
 func TestRelPointGateAnswersLaterIDs(t *testing.T) {
+	t.Parallel()
 	g, _ := relRetentionBackends()[0].open(t, graphpkg.Config{AllowRetentionPurge: true, AllowTxBackfill: true})
 	f := buildRelRetentionFixture(t, g)
 	purgeRels(t, g, "EVENT", f.before)
@@ -743,6 +748,7 @@ func TestRelPointGateAnswersLaterIDs(t *testing.T) {
 // (v4.51.3) and a reopen without it; the rows a crash left behind (watermark
 // written, purge not run) stay gated and a rerun removes them.
 func TestRelRetentionWatermarkSurvivesReopen(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 	open := func() *graphpkg.Graph {

@@ -16,6 +16,7 @@ import (
 // Reset, on every backend; it stays put for refusals (exists, not found,
 // unsupported), validation failures, data writes and reads.
 func TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges(t *testing.T) {
+	t.Parallel()
 	backends := allStoreBackendsWith(func(cfg *graphpkg.Config) { cfg.AllowReset = true })
 	for _, b := range backends {
 		t.Run(b.name, func(t *testing.T) {
@@ -184,6 +185,7 @@ func TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges(t *testing.T) {
 // each advance the epoch once, and a reader polling it never sees it go back
 // (run with -race).
 func TestIndexInventoryEpochConcurrentDDL(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1})
 	if err != nil {
 		t.Fatal(err)

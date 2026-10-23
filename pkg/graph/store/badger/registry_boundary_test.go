@@ -8,6 +8,7 @@ import (
 )
 
 func TestBadgerStoreRegistryMethodsRejectNilRegistries(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labels := registrypkg.NewLabelRegistry()
 	relTypes := registrypkg.NewRelTypeRegistry()
@@ -40,6 +41,7 @@ func TestBadgerStoreRegistryMethodsRejectNilRegistries(t *testing.T) {
 }
 
 func TestBadgerStoreRegistryNilChecksPreserveClosedPrecedence(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 	if err := bs.Close(); err != nil {
 		t.Fatalf("Close: %v", err)

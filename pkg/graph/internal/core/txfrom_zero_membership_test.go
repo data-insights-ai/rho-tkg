@@ -71,6 +71,7 @@ func unstampRel(t *testing.T, g *Core, id types.RelID) types.Instant {
 }
 
 func TestUnstampedRowKeepsMembershipBoundAtZero(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for name, cfg := range txFromZeroBackends() {
 		for _, warm := range []bool{false, true} {

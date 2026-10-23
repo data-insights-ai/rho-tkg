@@ -29,6 +29,7 @@ func tbuild(n int, ranges func(i int) (int64, int64)) *LabelDocValues {
 // distinguishable from "bounds are zero". Conflating them would let a reader treat
 // an unknown validity as valid-for-all-time and return rows it cannot justify.
 func TestTemporal_NilAccessorMeansNoColumns(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{1, 2}
 	l := BuildLabelDocValues(1, ids, []string{"v"},
 		func(types.NodeID, string) (any, bool) { return int64(1), true }, nil)
@@ -50,6 +51,7 @@ func TestTemporal_NilAccessorMeansNoColumns(t *testing.T) {
 // that zero into zoneMaxTo as a literal 0, the block looks like it ended at the
 // epoch and every query after that instant skips it, dropping live rows.
 func TestTemporal_OpenEndedRowBlocksUpperBoundSkip(t *testing.T) {
+	t.Parallel()
 	// One block. Rows 0..8 are closed and long expired; row 9 is open-ended.
 	l := tbuild(10, func(i int) (int64, int64) {
 		if i == 9 {
@@ -73,6 +75,7 @@ func TestTemporal_OpenEndedRowBlocksUpperBoundSkip(t *testing.T) {
 // row the upper-bound skip must actually fire, or the zone map is inert and buys
 // nothing. A zone map that never skips passes every correctness test.
 func TestTemporal_AllClosedBlockIsSkippable(t *testing.T) {
+	t.Parallel()
 	l := tbuild(10, func(int) (int64, int64) { return 100, 200 })
 	if l.BlockCanMatch(0, 10_000, 20_000) {
 		t.Error("a block whose rows all expired at 200 was NOT skipped for a query " +
@@ -87,6 +90,7 @@ func TestTemporal_AllClosedBlockIsSkippable(t *testing.T) {
 // TestTemporal_FutureBlockIsSkippable exercises the lower-bound arm: every row
 // starts after the query's upper bound.
 func TestTemporal_FutureBlockIsSkippable(t *testing.T) {
+	t.Parallel()
 	l := tbuild(10, func(int) (int64, int64) { return 9_000, 0 })
 	if l.BlockCanMatch(0, 100, 200) {
 		t.Error("block whose rows all start at 9000 was not skipped for a query ending at 200")
@@ -102,6 +106,7 @@ func TestTemporal_FutureBlockIsSkippable(t *testing.T) {
 // blocks and query windows, a block may only be skipped when NO row in it actually
 // matches. This is the property; the individual probes above are the named traps.
 func TestTemporal_SkipNeverDropsAMatchingRow(t *testing.T) {
+	t.Parallel()
 	const n = zoneBlockSize*2 + 500 // three blocks, last one partial
 	l := tbuild(n, func(i int) (int64, int64) {
 		switch i % 4 {
@@ -143,6 +148,7 @@ func TestTemporal_SkipNeverDropsAMatchingRow(t *testing.T) {
 // TestTemporal_NodeWithoutMetadataIsNotClaimedValid pins that a node whose accessor
 // reports ok=false lands as (0,0) and does NOT get treated as a real bound.
 func TestTemporal_NodeWithoutMetadataIsNotClaimedValid(t *testing.T) {
+	t.Parallel()
 	ids := []types.NodeID{1, 2}
 	l := BuildLabelDocValues(1, ids, []string{"v"},
 		func(types.NodeID, string) (any, bool) { return int64(1), true },

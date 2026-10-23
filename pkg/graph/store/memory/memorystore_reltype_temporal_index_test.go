@@ -29,6 +29,7 @@ func relTypeEnvelopeCovers(t *testing.T, ms *Store, relType uint16, id snowflake
 // CreateRelTemporalIndex/DropRelTemporalIndex's sentinel-error behavior on the
 // memory backend (badger mirror lives in badgerstore_reltype_temporal_index_test.go).
 func TestCreateRelTemporalIndex_ExistsAndNotFound(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	t.Cleanup(func() { _ = ms.Close() })
 	const relType = uint16(1)
@@ -53,6 +54,7 @@ func TestCreateRelTemporalIndex_ExistsAndNotFound(t *testing.T) {
 // a past version's interval after ReplaceRelWithHistory moves the current
 // version off it.
 func TestRelTypeTemporalEnvelope_ForwardMaintenance(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	t.Cleanup(func() { _ = ms.Close() })
 	const relType = uint16(5)
@@ -94,6 +96,7 @@ func TestRelTypeTemporalEnvelope_ForwardMaintenance(t *testing.T) {
 // entries the index covers, and a rel outside the queried window must be
 // excluded.
 func TestRelationshipsByType_TemporalIndexFastPath(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	t.Cleanup(func() { _ = ms.Close() })
 	const relType = uint16(9)

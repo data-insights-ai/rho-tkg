@@ -32,6 +32,7 @@ var idxDefGolden = map[string]string{
 // pure-reflection msgpack.Marshal encoding, both for a single value and for
 // the top-level-slice shape actually used at the persist* call sites.
 func TestIdxDefEncodeGolden(t *testing.T) {
+	t.Parallel()
 	cases := map[string]any{
 		"hfIdxDef":              hfIdxDef{LabelToken: 3, BucketSizeMillis: 60000},
 		"propIdxDef":            propIdxDef{LabelToken: 3, PropertyKey: "name"},

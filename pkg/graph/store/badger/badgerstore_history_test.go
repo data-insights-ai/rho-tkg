@@ -1406,6 +1406,7 @@ func (b badgerUnmarshalableCustomProperty) DeepCopyValue() any {
 }
 
 func TestBadgerStoreDeleteRelWithHistoryRejectsUnmarshalableTombstone(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(badgerUnmarshalableCustomProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}

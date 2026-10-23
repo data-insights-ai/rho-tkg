@@ -322,6 +322,7 @@ func TestMemoryStoreNodePropertyStatsClearResets(t *testing.T) {
 // deadlock risk, but this pins that a future refactor cannot introduce a
 // re-entrant lock without a race/deadlock catching it.
 func TestMemoryStoreNodePropertyStatsConcurrent(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	t.Cleanup(func() { _ = ms.Close() })
 	const labelToken = uint16(1)

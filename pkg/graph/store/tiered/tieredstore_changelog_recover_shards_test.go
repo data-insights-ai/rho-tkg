@@ -26,6 +26,7 @@ import (
 // EnableChangeLogWithSource into every currently-open shard so it resumes
 // proper change-log production without a close/reopen.
 func TestTieredRecoverChangeLogReenablesEventShard(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	nodeGen := tieredNodeGen(t)
 
@@ -139,6 +140,7 @@ func TestTieredRecoverChangeLogThenRotationWiresNewHotShard(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	nodeGen := tieredNodeGen(t)
 

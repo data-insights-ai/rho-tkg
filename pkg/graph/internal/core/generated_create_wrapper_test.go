@@ -57,6 +57,7 @@ func (r *generatedCreateRelationshipRecorder) PutNodesBatchGeneratedID([]*types.
 }
 
 func TestPutGeneratedRelationshipUsesGeneratedCreateCapability(t *testing.T) {
+	t.Parallel()
 	rec := &generatedCreateRelationshipRecorder{}
 	c := &Core{generatedCreate: rec}
 	rel := types.NewRelationship(types.RelID(123), 1, types.NodeID(10), types.NodeID(20))
@@ -73,6 +74,7 @@ func TestPutGeneratedRelationshipUsesGeneratedCreateCapability(t *testing.T) {
 }
 
 func TestGeneratedCreateFastPath_IgnoresTieredWrapperForNodeAdd(t *testing.T) {
+	t.Parallel()
 	injected := errors.New("injected wrapper PutNode failure")
 	wrapper := &failPutNodeTieredWrapper{Store: newTestTieredStore(t), err: injected}
 	if _, ok := any(wrapper).(generatedcreate.Capability); !ok {
@@ -98,6 +100,7 @@ func TestGeneratedCreateFastPath_IgnoresTieredWrapperForNodeAdd(t *testing.T) {
 }
 
 func TestGeneratedCreateFastPath_IgnoresTieredWrapperForBatchNodeAdd(t *testing.T) {
+	t.Parallel()
 	injected := errors.New("injected wrapper PutNodesBatch failure")
 	wrapper := &failPutNodesBatchTieredWrapper{Store: newTestTieredStore(t), err: injected}
 	if _, ok := any(wrapper).(generatedcreate.Capability); !ok {
@@ -138,6 +141,7 @@ func TestGeneratedCreateFastPath_IgnoresTieredWrapperForBatchNodeAdd(t *testing.
 }
 
 func TestGeneratedCreateFastPath_IgnoresTieredWrapperForRelationshipAdd(t *testing.T) {
+	t.Parallel()
 	injected := errors.New("injected wrapper PutRelationship failure")
 	wrapper := &failPutRelationshipTieredWrapper{Store: newTestTieredStore(t), err: injected}
 	if _, ok := any(wrapper).(generatedcreate.Capability); !ok {

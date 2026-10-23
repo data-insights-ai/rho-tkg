@@ -14,6 +14,7 @@ import (
 // exactly what the rows built from it carry, and Batch.Row builds the same
 // row Scan does — one decode serves both the row door and a column consumer.
 func TestScanBatches_ColumnsEqualRowsAndRowEqualsScan(t *testing.T) {
+	t.Parallel()
 	rows := corpus(t, 9000, 3)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 1024))
 	want := scanAll(t, seg)
@@ -65,6 +66,7 @@ func TestScanBatches_ColumnsEqualRowsAndRowEqualsScan(t *testing.T) {
 }
 
 func TestForEachID_AscendingAndPointsAtTheRow(t *testing.T) {
+	t.Parallel()
 	rows := corpus(t, 5000, 4)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 512))
 	all := scanAll(t, seg)
@@ -107,6 +109,7 @@ func TestForEachID_AscendingAndPointsAtTheRow(t *testing.T) {
 }
 
 func TestScanRange_BoundsAndEarlyStop(t *testing.T) {
+	t.Parallel()
 	rows := corpus(t, 3000, 5)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 256))
 	all := scanAll(t, seg)
@@ -138,6 +141,7 @@ func TestScanRange_BoundsAndEarlyStop(t *testing.T) {
 // TestLookup_EveryIDAcrossPageBoundaries checks the page-level binary search
 // with tiny pages, so ID runs (several versions) straddle page boundaries.
 func TestLookup_EveryIDAcrossPageBoundaries(t *testing.T) {
+	t.Parallel()
 	rows := corpus(t, 4000, 6)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 16))
 	all := scanAll(t, seg)
@@ -164,6 +168,7 @@ func TestLookup_EveryIDAcrossPageBoundaries(t *testing.T) {
 }
 
 func TestRowError_NamesTheRefusedRow(t *testing.T) {
+	t.Parallel()
 	good := mkRow(t, 10, 0, 1, 2, map[string]any{"s": "x"}, nil, nil)
 	bad := mkRow(t, 11, 3, 1, 2, map[string]any{"s": "y"}, nil, nil)
 	bad.Integrity().Hash = good.Integrity().Hash // content does not reproduce it
@@ -184,6 +189,7 @@ func TestRowError_NamesTheRefusedRow(t *testing.T) {
 }
 
 func TestValidateSchema(t *testing.T) {
+	t.Parallel()
 	if err := ValidateSchema(testSchema()); err != nil {
 		t.Fatalf("valid schema: %v", err)
 	}
@@ -204,6 +210,7 @@ func TestValidateSchema(t *testing.T) {
 // the rows carry — dictionary codes resolve to the row's string, int columns
 // hold the declared value's bits, presence matches.
 func TestBatch_TypedColumnsMatchRows(t *testing.T) {
+	t.Parallel()
 	rows := corpus(t, 6000, 9)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 1024))
 	want := scanAll(t, seg)
@@ -253,6 +260,7 @@ func TestBatch_TypedColumnsMatchRows(t *testing.T) {
 }
 
 func TestSectionBytes_MatchesTheDirectoryAndSumsBelowTheSegment(t *testing.T) {
+	t.Parallel()
 	data := mustEncode(t, corpus(t, 2000, 10), Options{}, PageRows)
 	seg := mustOpen(t, data)
 	got := seg.SectionBytes()

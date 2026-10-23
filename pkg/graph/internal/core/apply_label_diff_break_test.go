@@ -12,6 +12,7 @@ import (
 // the apply guard relies on removedN to reject a multi-remove diff a correct
 // contiguous feed never emits.
 func TestLabelTokenDiff_TwoRemovedCount(t *testing.T) {
+	t.Parallel()
 	local := types.NewNode(types.NodeID(3), 10, []uint16{20, 30}) // tokens {10,20,30}
 	n := types.NewNode(types.NodeID(3), 10, nil)                  // tokens {10}
 	added, removed, addedN, removedN := labelTokenDiff(local, n)
@@ -28,6 +29,7 @@ func TestLabelTokenDiff_TwoRemovedCount(t *testing.T) {
 // from the stored row. The guard runs before any store write, so no partial
 // mutation occurs (we do NOT assert via GetNode — the row is never persisted).
 func TestApplyNodeLabelChange_FailsClosedOn2Removed(t *testing.T) {
+	t.Parallel()
 	c := newTxTimeGraph(t)
 
 	local := types.NewNode(types.NodeID(3), 10, []uint16{20, 30}) // tokens {10,20,30}

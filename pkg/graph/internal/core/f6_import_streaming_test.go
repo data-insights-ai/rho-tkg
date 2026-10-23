@@ -25,6 +25,7 @@ import (
 )
 
 func TestImport_StagingFile_RemovedAfterReturn(t *testing.T) {
+	t.Parallel()
 	// Not parallel: counts entries in the shared os.TempDir() and would
 	// race with any other in-flight Import in the same package.
 	src, err := New(Config{Store: memory.New()})
@@ -59,6 +60,7 @@ func TestImport_StagingFile_RemovedAfterReturn(t *testing.T) {
 }
 
 func TestImport_StagingFile_RemovedAfterPhase1Error(t *testing.T) {
+	t.Parallel()
 	// Not parallel: counts entries in the shared os.TempDir() and would
 	// race with any other in-flight Import in the same package.
 	dst, err := New(Config{Store: memory.New()})

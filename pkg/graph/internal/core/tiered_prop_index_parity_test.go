@@ -138,6 +138,7 @@ func newPropParityBackend(t *testing.T, name string) (*Core, *tiered.Store) {
 }
 
 func TestTieredPropertyIndex_ParityAcrossBackends(t *testing.T) {
+	t.Parallel()
 	big := int64(1<<53 + 1)
 	type q struct {
 		name  string

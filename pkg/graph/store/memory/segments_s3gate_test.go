@@ -171,6 +171,7 @@ func (r s3GateRun) String() string {
 func ms(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }
 
 func TestSegmentS3WriteGate(t *testing.T) {
+	t.Parallel()
 	v := os.Getenv("RHO_TKG_SEGMENT_S3_GATE")
 	if v == "" {
 		t.Skip("measurement: set RHO_TKG_SEGMENT_S3_GATE=<runs per mode>")

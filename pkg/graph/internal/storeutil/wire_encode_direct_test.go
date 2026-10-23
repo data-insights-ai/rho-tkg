@@ -8,6 +8,7 @@ import (
 )
 
 func TestNodeWireEncodeMsgpackAllOptionalFieldsRoundTrip(t *testing.T) {
+	t.Parallel()
 	in := NodeWire{
 		ID:                 1,
 		PrimaryLabel:       2,
@@ -63,6 +64,7 @@ func TestNodeWireEncodeMsgpackAllOptionalFieldsRoundTrip(t *testing.T) {
 }
 
 func TestRelWireEncodeMsgpackAllOptionalFieldsRoundTrip(t *testing.T) {
+	t.Parallel()
 	in := RelWire{
 		ID:                 1,
 		RelType:            2,
@@ -118,6 +120,7 @@ func TestRelWireEncodeMsgpackAllOptionalFieldsRoundTrip(t *testing.T) {
 }
 
 func TestPropertyWireEncodeMsgpackCustomFieldsRoundTrip(t *testing.T) {
+	t.Parallel()
 	in := PropertyWire{
 		Key:           "custom",
 		Value:         []byte("payload"),
@@ -143,6 +146,7 @@ func TestPropertyWireEncodeMsgpackCustomFieldsRoundTrip(t *testing.T) {
 }
 
 func TestMarshalRelWireEncodesValidRelationship(t *testing.T) {
+	t.Parallel()
 	r := types.NewRelationship(types.RelID(1), 2, types.NodeID(3), types.NodeID(4))
 	if err := r.SetProperty("name", "edge"); err != nil {
 		t.Fatalf("SetProperty: %v", err)

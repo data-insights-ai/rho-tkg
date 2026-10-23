@@ -11,6 +11,7 @@ import (
 // Gate-2 reader (BACKLOG 4b): g.Nodes().NodeLabelMutationEpoch(label) advances only
 // when a node carrying THAT label is written, not on unrelated-label writes.
 func TestNodeLabelMutationEpoch_PublicDoor(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{BadgerInMemory: true})
 	if err != nil {

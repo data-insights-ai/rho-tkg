@@ -116,6 +116,7 @@ func endpointOrdinalRows(t *testing.T, g *graphpkg.Graph, step string, nodes []*
 // The sharded fixture puts nodes and relationships on different slots
 // (node field 0, relationship field 1), so every endpoint is on another slot.
 func TestRelEndpointOrdinals(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		none := b.tiered
@@ -205,6 +206,7 @@ func TestRelEndpointOrdinals(t *testing.T) {
 // Badger with DisableOrdinals numbers nothing: every row carries 0, the
 // column batches too.
 func TestRelEndpointOrdinalsDisabled(t *testing.T) {
+	t.Parallel()
 	st, err := badger.New(badger.Config{InMemory: true, DisableOrdinals: true})
 	if err != nil {
 		t.Fatal(err)
@@ -231,6 +233,7 @@ func TestRelEndpointOrdinalsAfterReopen(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		cfg  func(t *testing.T, dir string) graphpkg.Config
@@ -294,6 +297,7 @@ func TestRelEndpointOrdinalsAfterReopen(t *testing.T) {
 // A declared segment type's rows carry 0 for the endpoints, as for their own
 // ordinal, in the memtable and once sealed, rows and column batches alike.
 func TestRelEndpointOrdinalsSegmentType(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 4, Store: memory.New(), RelSegments: []graphpkg.RelSegmentSpec{{
 		Type: "HOP", Columns: []graphpkg.SegmentColumn{{Name: "w", Kind: graphpkg.SegmentInt64}},
 	}}})

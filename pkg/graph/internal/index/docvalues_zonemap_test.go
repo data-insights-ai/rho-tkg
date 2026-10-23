@@ -49,6 +49,7 @@ func zoneSkipRatio(l *LabelDocValues, n int, qFrom, qTo int64) float64 {
 // mint time — so a column of nodes that never set ValidFrom explicitly arrives
 // sorted for free.
 func TestZoneMap_SkipsOnlyWhenClustered(t *testing.T) {
+	t.Parallel()
 	const n = 200_000
 	cl, sc := zoneBuild(n, true), zoneBuild(n, false)
 	qFrom, qTo := int64(n*10/2), int64(n*10/2+n*10/100) // narrow window, ~1% of range

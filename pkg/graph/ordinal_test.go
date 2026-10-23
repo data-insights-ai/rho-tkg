@@ -198,6 +198,7 @@ func TestOrdinalsAcrossDoorsAndWrites(t *testing.T) {
 }
 
 func TestOrdinalsConcurrentCreates(t *testing.T) {
+	t.Parallel()
 	for _, b := range allStoreBackends() {
 		if b.tiered {
 			continue
@@ -252,6 +253,7 @@ func TestOrdinalsConcurrentCreates(t *testing.T) {
 // A memory store numbers the relationships of a declared segment type 0: a
 // row that moves between the memtable and a segment would change ordinal.
 func TestOrdinalsDeclaredSegmentTypeHasNone(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 4, Store: memory.New(), RelSegments: []graphpkg.RelSegmentSpec{{
 		Type: "HOP", Columns: []graphpkg.SegmentColumn{{Name: "w", Kind: graphpkg.SegmentInt64}},
 	}}})
@@ -287,6 +289,7 @@ func TestOrdinalsDeclaredSegmentTypeHasNone(t *testing.T) {
 // Badger numbers the stored entities 1..N in ID order when it opens; the
 // numbering is not persisted, so it is checked for its own guarantees only.
 func TestOrdinalsBadgerReopen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	open := func() *graphpkg.Graph {
 		g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 2, BadgerDir: dir})
@@ -331,6 +334,7 @@ func TestOrdinalsBadgerReopen(t *testing.T) {
 // The sharded store's slots draw from one allocator: nodes on two slots never
 // share an ordinal.
 func TestOrdinalsShardedUniqueAcrossSlots(t *testing.T) {
+	t.Parallel()
 	for _, b := range allStoreBackends() {
 		if b.name != "sharded" {
 			continue

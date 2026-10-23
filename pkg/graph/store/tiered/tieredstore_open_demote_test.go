@@ -16,6 +16,7 @@ func TestColdAfterAppliesAtOpen(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 
 	// Build a store with several past shards, all warm.

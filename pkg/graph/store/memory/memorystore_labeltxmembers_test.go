@@ -24,6 +24,7 @@ func collectLabelMembers(t *testing.T, ms *Store, tok uint16) map[types.NodeID]t
 // never drops a member (append-only), while a new label acquisition after the
 // build is captured incrementally.
 func TestMemoryLabelTxMembership_LazyBuildAndAppendOnly(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	defer ms.Close()
 

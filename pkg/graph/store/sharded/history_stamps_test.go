@@ -13,6 +13,7 @@ import (
 // fails like GetNodeHistory, invalid IDs like the history doors, a closed
 // store with ErrStoreClosed.
 func TestHistoryStampsSharded(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 2)
 	for slot := uint8(0); slot < 2; slot++ {
 		base := types.Instant(1000 * (int64(slot) + 1))

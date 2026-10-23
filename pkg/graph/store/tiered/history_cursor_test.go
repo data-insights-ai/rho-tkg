@@ -50,6 +50,7 @@ func seedTieredHistory(t *testing.T, ts *Store, refCount, evtCount int) []types.
 }
 
 func TestTieredStore_AllNodeHistoryIDsFrom_Empty(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	got, err := ts.AllNodeHistoryIDsFrom(types.NodeID(0), 64)
@@ -62,6 +63,7 @@ func TestTieredStore_AllNodeHistoryIDsFrom_Empty(t *testing.T) {
 }
 
 func TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	checks := []struct {
@@ -96,6 +98,7 @@ func TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination(t *testing.T) {
 }
 
 func TestTieredStore_AllNodeHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	want := seedTieredHistory(t, ts, 50, 50)
 
@@ -117,6 +120,7 @@ func TestTieredStore_AllNodeHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
 }
 
 func TestTieredStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	want := seedTieredHistory(t, ts, 200, 300)
 
@@ -228,6 +232,7 @@ func TestTieredStore_AllNodeHistoryIDsFrom_CrossShardDedup(t *testing.T) {
 }
 
 func TestTieredStore_GetNodeHistory_MergesReferenceAndArchiveVersions(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
 	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
@@ -273,6 +278,7 @@ func TestTieredStore_GetNodeHistory_MergesReferenceAndArchiveVersions(t *testing
 }
 
 func TestTieredStore_NodeHistoryVersionsFrom_MergesReferenceAndArchiveVersions(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
 	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
@@ -313,6 +319,7 @@ func TestTieredStore_NodeHistoryVersionsFrom_MergesReferenceAndArchiveVersions(t
 }
 
 func TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -387,6 +394,7 @@ func corruptTieredNodeRowAfterFlush(t *testing.T, shard *BadgerStore, nid types.
 }
 
 func TestTieredStore_AllRelHistoryIDsFrom_Empty(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	got, err := ts.AllRelHistoryIDsFrom(types.RelID(0), 64)
@@ -449,6 +457,7 @@ func TestTieredStore_AllRelHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
 }
 
 func TestTieredStore_GetRelHistory_MergesReferenceAndArchiveVersions(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
 	gen := tieredNodeGen(t)
@@ -504,6 +513,7 @@ func TestTieredStore_GetRelHistory_MergesReferenceAndArchiveVersions(t *testing.
 }
 
 func TestTieredStore_RelHistoryVersionsFrom_MergesReferenceAndArchiveVersions(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
 	gen := tieredNodeGen(t)
@@ -554,6 +564,7 @@ func TestTieredStore_RelHistoryVersionsFrom_MergesReferenceAndArchiveVersions(t 
 }
 
 func TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -638,6 +649,7 @@ func corruptTieredRelRowAfterFlush(t *testing.T, shard *BadgerStore, rid types.R
 }
 
 func TestTieredStore_GetVersionFindsArchiveHistoryAfterRestore(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
 	gen := tieredNodeGen(t)

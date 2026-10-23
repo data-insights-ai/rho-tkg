@@ -30,6 +30,7 @@ import (
 // saturation it corrects. Monotonicity is the clock's whole contract; it should
 // not quietly stop holding at the top of the range.
 func TestCommitClock_SaturationNeverStampsTwoRowsIdentically(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := New(Config{Store: memory.New(), SnowflakeNodeID: 1})
 	if err != nil {

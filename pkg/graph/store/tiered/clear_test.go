@@ -47,6 +47,7 @@ func TestTieredStoreClear_ClearsVectorIndexes(t *testing.T) {
 }
 
 func TestTieredStoreClear_VectorMetadataFailureDoesNotClearEntities(t *testing.T) {
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -76,6 +77,7 @@ func TestTieredStoreClear_VectorMetadataFailureDoesNotClearEntities(t *testing.T
 }
 
 func TestTieredStoreClear_TemporalMetadataFailureDoesNotClearEntities(t *testing.T) {
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -102,6 +104,7 @@ func TestTieredStoreClear_TemporalMetadataFailureDoesNotClearEntities(t *testing
 }
 
 func TestTieredStoreClear_CheckoutFailureRestoresIndexMetadata(t *testing.T) {
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -393,6 +396,7 @@ func TestTieredStoreClear_ResetsCatalogVerificationCache(t *testing.T) {
 }
 
 func TestTieredStoreClear_CatalogSaveFailureKeepsLiveCatalogCleared(t *testing.T) {
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	name := ts.HotShardForTest().Name()
 	if !ts.CatalogForTest().UpdateShardStats(name, 7, 3) {

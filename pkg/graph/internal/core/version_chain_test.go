@@ -72,6 +72,7 @@ func (s *versionInvalidIDProbeStore) GetRelVersion(types.RelID, uint32) (*types.
 // TestGetPreviousNodeVersion_AtGenesis verifies that querying the version before
 // the genesis (version 0) returns nil, nil without error.
 func TestGetPreviousNodeVersion_AtGenesis(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
@@ -89,6 +90,7 @@ func TestGetPreviousNodeVersion_AtGenesis(t *testing.T) {
 }
 
 func TestGetNextNodeVersion_MaxUint32HasNoWrappedSuccessor(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
@@ -110,6 +112,7 @@ func TestGetNextNodeVersion_MaxUint32HasNoWrappedSuccessor(t *testing.T) {
 }
 
 func TestNodeVersionChainMissingIDReturnsErrNodeNotFound(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	missing := types.NodeID(999999999)
 
@@ -186,6 +189,7 @@ func TestVersionNavigationInvalidIDsRejectedBeforeStoreRead(t *testing.T) {
 
 // TestGetPreviousNodeVersion_Normal verifies that for version N, version N-1 is returned.
 func TestGetPreviousNodeVersion_Normal(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
@@ -223,6 +227,7 @@ func TestGetPreviousNodeVersion_Normal(t *testing.T) {
 // TestGetNextNodeVersion_AtTip verifies that querying version N+1 when N is the
 // current tip returns nil, nil.
 func TestGetNextNodeVersion_AtTip(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
@@ -327,6 +332,7 @@ func TestGetNextNodeVersion_ThroughHistory(t *testing.T) {
 // TestCloseNodeVersion_SetsValidTo verifies that CloseNodeVersion sets ValidTo
 // and makes the node invisible at queries after the close time.
 func TestCloseNodeVersion_SetsValidTo(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
@@ -368,6 +374,7 @@ func TestCloseNodeVersion_SetsValidTo(t *testing.T) {
 // that reuses the pre-close version number for the post-close row makes the closed
 // transition invisible to chain-walking consumers (BACKLOG 9a).
 func TestCloseNodeVersion_AdvancesVersionIdentity(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
@@ -440,6 +447,7 @@ func TestCloseNodeVersion_AdvancesVersionIdentity(t *testing.T) {
 // alone leaves the wrong-vs-right PrevHash both plausible-looking for a
 // genesis predecessor with an empty PrevHash.
 func TestCloseNodeVersion_HashChainVerifiesAfterClose(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
@@ -482,6 +490,7 @@ func TestCloseNodeVersion_HashChainVerifiesAfterClose(t *testing.T) {
 }
 
 func TestCloseNodeVersion_PreservesIntegrityMetadata(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, map[string]any{
 		"tkg_author_id":     "node-author",
@@ -522,6 +531,7 @@ func TestCloseNodeVersion_PreservesIntegrityMetadata(t *testing.T) {
 // TestCloseNodeVersion_AlreadyClosed verifies that a second CloseNodeVersion call
 // returns ErrAlreadyClosed.
 func TestCloseNodeVersion_AlreadyClosed(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
@@ -539,6 +549,7 @@ func TestCloseNodeVersion_AlreadyClosed(t *testing.T) {
 }
 
 func TestClosedEntitiesRejectMutations(t *testing.T) {
+	t.Parallel()
 	t.Run("node", func(t *testing.T) {
 		g := newTestGraphForChain(t)
 		n, err := g.Nodes.Add(context.Background(), []string{"Person", "Active"}, map[string]any{"state": "open"})
@@ -675,6 +686,7 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 }
 
 func TestCloseVersionRejectsZeroCloseTime(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	start, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
@@ -713,6 +725,7 @@ func TestCloseVersionRejectsZeroCloseTime(t *testing.T) {
 }
 
 func TestCloseVersionRejectsNonPositiveLifetime(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	start, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
@@ -751,6 +764,7 @@ func TestCloseVersionRejectsNonPositiveLifetime(t *testing.T) {
 }
 
 func TestDeleteTombstonesKeepPositiveLifetime(t *testing.T) {
+	t.Parallel()
 	t.Run("node", func(t *testing.T) {
 		g := newTestGraphForChain(t)
 		n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
@@ -866,6 +880,7 @@ func TestDeleteTombstonesKeepPositiveLifetime(t *testing.T) {
 }
 
 func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
+	t.Parallel()
 	t.Run("node update", func(t *testing.T) {
 		g := newTestGraphForChain(t)
 		n, err := g.Nodes.Add(context.Background(), []string{"Event"}, map[string]any{"v": "old"})
@@ -1026,6 +1041,7 @@ func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 }
 
 func TestInheritedExplicitValidFromDoesNotHideEarlierVersions(t *testing.T) {
+	t.Parallel()
 	t.Run("node", func(t *testing.T) {
 		g := newTestGraphForChain(t)
 		clk := useTestClock(t, g)
@@ -1102,6 +1118,7 @@ func TestInheritedExplicitValidFromDoesNotHideEarlierVersions(t *testing.T) {
 // TestCloseNodeVersion_NotFound verifies that CloseNodeVersion on a missing node
 // returns storepkg.ErrNodeNotFound.
 func TestCloseNodeVersion_NotFound(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	err := g.Nodes.CloseVersion(context.Background(), types.NodeID(999999999), types.Instant(time.Now().UnixMilli()))
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -1112,6 +1129,7 @@ func TestCloseNodeVersion_NotFound(t *testing.T) {
 // TestCloseRelVersion_Mirrors verifies the relationship mirrors of the version
 // chain methods behave identically to the node variants.
 func TestCloseRelVersion_Mirrors(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 
 	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
@@ -1168,6 +1186,7 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 // TestCloseNodeVersion_AdvancesVersionIdentity (BACKLOG 9a — Node/Relationship
 // structural-mirror parity, docs/CONTRIBUTING.md testing rule 2).
 func TestCloseRelVersion_AdvancesVersionIdentity(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
@@ -1236,6 +1255,7 @@ func TestCloseRelVersion_AdvancesVersionIdentity(t *testing.T) {
 // mirror of TestCloseNodeVersion_HashChainVerifiesAfterClose (rule 2, node/rel
 // parity) — see that test's comment for the BACKLOG 9a/9m background.
 func TestCloseRelVersion_HashChainVerifiesAfterClose(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
@@ -1286,6 +1306,7 @@ func TestCloseRelVersion_HashChainVerifiesAfterClose(t *testing.T) {
 }
 
 func TestCloseRelVersion_PreservesEndpointHashesAndIntegrityMetadata(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 
 	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
@@ -1555,6 +1576,7 @@ func TestGetNextRelVersion_ThroughHistory(t *testing.T) {
 }
 
 func TestGetNextRelVersion_MaxUint32HasNoWrappedSuccessor(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "A"})
 	if err != nil {
@@ -1584,6 +1606,7 @@ func TestGetNextRelVersion_MaxUint32HasNoWrappedSuccessor(t *testing.T) {
 }
 
 func TestRelVersionChainMissingIDReturnsErrRelNotFound(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	missing := types.RelID(999999999)
 

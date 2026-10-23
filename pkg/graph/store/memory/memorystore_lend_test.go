@@ -9,6 +9,7 @@ import (
 )
 
 func TestMemoryStoreLend(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	a := types.NewNode(types.NodeID(10), 1, nil)
 	b := types.NewNode(types.NodeID(20), 1, nil)
@@ -63,6 +64,7 @@ func TestMemoryStoreLend(t *testing.T) {
 // stored frozen rows, nil for an absent ID, twice for a duplicate; closed and
 // nil stores fail as LendNode does.
 func TestMemoryStoreLendSorted(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	a := types.NewNode(types.NodeID(10), 1, nil)
 	b := types.NewNode(types.NodeID(20), 1, nil)

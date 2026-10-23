@@ -18,6 +18,7 @@ import (
 // (depth + per-version content hashes) via its own write path. Crosses the
 // anchor boundary (>16 versions) so the primary genuinely stores deltas.
 func TestReplicaConvergence_HistoryDeltaPrimary(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{
 		SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true,

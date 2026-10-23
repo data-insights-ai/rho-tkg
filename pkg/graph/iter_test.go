@@ -106,6 +106,7 @@ func relIDSet(rels []*types.Relationship) map[types.RelID]bool {
 // TestIter_NodeParity pins that Nodes().Iter's collected ID set equals both
 // ForEach's and All's, over ~200 mixed-label nodes on both backends.
 func TestIter_NodeParity(t *testing.T) {
+	t.Parallel()
 	iterBackends(t, func(t *testing.T, g *graph.Graph) {
 		seeded := seedIterNodes(t, g, 200)
 		want := nodeIDSet(seeded)
@@ -168,6 +169,7 @@ func TestIter_NodeParity(t *testing.T) {
 // TestIter_RelParity mirrors TestIter_NodeParity for relationships
 // (Testing Rule 2 — Node/Rel parity).
 func TestIter_RelParity(t *testing.T) {
+	t.Parallel()
 	iterBackends(t, func(t *testing.T, g *graph.Graph) {
 		_, seeded := seedIterRels(t, g, 200)
 		want := relIDSet(seeded)
@@ -227,6 +229,7 @@ func TestIter_RelParity(t *testing.T) {
 // the same rows, same order, as ForEachOutgoing/ForEachIncoming on a hub
 // node.
 func TestOutgoingIncomingIter_Parity(t *testing.T) {
+	t.Parallel()
 	iterBackends(t, func(t *testing.T, g *graph.Graph) {
 		ctx := context.Background()
 		hub, err := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"hub": true})
@@ -302,6 +305,7 @@ func TestOutgoingIncomingIter_Parity(t *testing.T) {
 // copies via GetNode — see Iter's doc comment). Limit is set here
 // specifically to force that fallback path.
 func TestIter_NodeFrozenContract(t *testing.T) {
+	t.Parallel()
 	iterBackends(t, func(t *testing.T, g *graph.Graph) {
 		ctx := context.Background()
 		want, err := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"name": "Ada"})
@@ -337,6 +341,7 @@ func TestIter_NodeFrozenContract(t *testing.T) {
 // relationships (Testing Rule 2 — Node/Rel parity). Limit forces the same
 // All-backed fallback path that yields frozen rows on a trusted backend.
 func TestIter_RelFrozenContract(t *testing.T) {
+	t.Parallel()
 	iterBackends(t, func(t *testing.T, g *graph.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"name": "Alice"})
@@ -372,6 +377,7 @@ func TestIter_RelFrozenContract(t *testing.T) {
 // TestIter_NodeCtxCancelMidIteration pins that cancelling ctx during a real
 // backend scan yields exactly one (nil, ctx.Err()) then stops.
 func TestIter_NodeCtxCancelMidIteration(t *testing.T) {
+	t.Parallel()
 	iterBackends(t, func(t *testing.T, g *graph.Graph) {
 		seedIterNodes(t, g, 50)
 
@@ -409,6 +415,7 @@ func TestIter_NodeCtxCancelMidIteration(t *testing.T) {
 // TestIter_RelCtxCancelMidIteration mirrors TestIter_NodeCtxCancelMidIteration
 // for relationships.
 func TestIter_RelCtxCancelMidIteration(t *testing.T) {
+	t.Parallel()
 	iterBackends(t, func(t *testing.T, g *graph.Graph) {
 		seedIterRels(t, g, 50)
 
@@ -450,6 +457,7 @@ func TestIter_RelCtxCancelMidIteration(t *testing.T) {
 // (concurrent structural mutation must never corrupt a frozen row already in
 // flight).
 func TestIter_ConcurrentWriterRace(t *testing.T) {
+	t.Parallel()
 	iterBackends(t, func(t *testing.T, g *graph.Graph) {
 		seedIterNodes(t, g, 100)
 

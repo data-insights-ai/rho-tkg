@@ -237,6 +237,7 @@ func TestLatestStampsDifferential(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	steps := 160
 	if testing.Short() {
 		steps = 70
@@ -724,6 +725,7 @@ func runLatestStampsDifferential(t *testing.T, b hasHistoryBackend, seed int64, 
 // the tombstone), re-imported (deleted false again, the earlier life's stamps
 // still count). The neighbour keeps its own answer throughout.
 func TestLatestStampsDoorContract(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		for _, bad := range []int64{0, -1} {
@@ -869,6 +871,7 @@ func TestLatestStampsDoorContract(t *testing.T) {
 // hides every optional capability) is answered from History with the same
 // values, deleted and re-imported entities included.
 func TestLatestStampsFallbackWithoutCapability(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := historyOnlyStore{memory.New()}
 	if _, ok := any(st).(storepkg.HistoryStampsCapability); ok {
@@ -961,6 +964,7 @@ func TestLatestStampsImport(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for _, b := range hasHistoryBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -1020,6 +1024,7 @@ func TestLatestStampsImport(t *testing.T) {
 // (which builds badger's sidecar) runs before the primary's later writes reach
 // it, the second after.
 func TestLatestStampsReplicaApply(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		store func(t *testing.T) storepkg.Store

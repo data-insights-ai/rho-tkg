@@ -196,6 +196,7 @@ func TestTieredStore_ForEachRelID_AllShards(t *testing.T) {
 }
 
 func TestTieredStore_ForEachRelID_RefArchiveAndEarlyStop(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
@@ -365,6 +366,7 @@ func TestTieredStore_ForEachDeletedRelID(t *testing.T) {
 }
 
 func TestTieredStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 
@@ -453,6 +455,7 @@ func TestTieredStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
 }
 
 func TestTieredStore_ForEachHistoryByDepthCallbacksDoNotExtendIterator(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 
@@ -541,6 +544,7 @@ func TestTieredStore_ForEachHistoryByDepthCallbacksDoNotExtendIterator(t *testin
 }
 
 func TestTieredStore_ForEachNodeHistoryIDByDepth_GatesArchive(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
@@ -670,6 +674,7 @@ func TestTieredStore_ForEachNodeHistoryIDByDepth_GatesArchive(t *testing.T) {
 }
 
 func TestTieredStore_ForEachNodeHistoryIDByDepth_IncludesRestoredRefWithArchiveHistory(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
@@ -751,6 +756,7 @@ func TestTieredStore_ForEachRelHistoryID(t *testing.T) {
 }
 
 func TestTieredStore_ForEachCallbacksCanMutateStore(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	gen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -839,6 +845,7 @@ func TestTieredStore_ForEachCallbacksCanMutateStore(t *testing.T) {
 }
 
 func TestTieredStore_ForEachRelHistoryIDByDepth_GatesArchive(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
@@ -985,6 +992,7 @@ func TestTieredStore_ForEachRelHistoryIDByDepth_GatesArchive(t *testing.T) {
 }
 
 func TestTieredStore_ForEachRelHistoryIDByDepth_IncludesRestoredRefWithArchiveHistory(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)

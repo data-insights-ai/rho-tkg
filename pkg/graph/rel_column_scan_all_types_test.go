@@ -38,6 +38,7 @@ func scanRelColumnsByType(t *testing.T, g *graphpkg.Graph, relType string) (map[
 // declared segment type (sealed and memtable rows) and badger; tiered and
 // sharded have no column scan (ok=false), for "" as for a type.
 func TestScanRelColumnsEveryType(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		cfg  graphpkg.Config

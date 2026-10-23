@@ -184,7 +184,12 @@ func cutCost(tb testing.TB, be r10Backend, sh cutShape, rel, reads bool, cuts, k
 // grows with the chain). Before the fix the write path read and copied the
 // whole history past the caps: x10 to x14.
 func TestCascadeHead85_ConsumerShapeFlat(t *testing.T) {
-	const small, large, k = 48, 640, 3
+	// -short: 256 cuts still shows a per-cut cost that grows with the chain
+	// (5x the small chain); 640 runs without -short.
+	small, large, k := 48, 640, 3
+	if testing.Short() {
+		large = 256
+	}
 	for _, be := range r10Backends() {
 		for _, sh := range cutShapes {
 			for _, rel := range []bool{false, true} {

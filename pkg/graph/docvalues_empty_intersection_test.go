@@ -17,6 +17,7 @@ import (
 // them empties the intersection again. Every backend. A label the graph does
 // not know still declines (ok=false), as before.
 func TestForEachDocValuesMultiServesAnEmptyIntersection(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		la, lb := "A", "B"

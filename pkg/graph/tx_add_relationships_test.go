@@ -61,6 +61,7 @@ func txRelSpecs(nodes []*types.Node, n int) []graphpkg.RelCreate {
 // both adjacency directions and the type scan inside the transaction.
 // Relationships of another type are untouched.
 func TestGraphTxAddRelationships(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackendsTxFrom(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		nodes := txRelEndpoints(t, b, g, 4)
@@ -182,6 +183,7 @@ func TestGraphTxAddRelationships(t *testing.T) {
 // ID, so it differs; TestGraphTxAddRelationships verifies each chain), and the
 // returned rows behave like the single door's.
 func TestGraphTxAddRelationshipsMatchesAddRelationshipByID(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		nodes := txRelEndpoints(t, b, g, 3)
 		specs := txRelSpecs(nodes, 3)
@@ -217,6 +219,7 @@ func TestGraphTxAddRelationshipsMatchesAddRelationshipByID(t *testing.T) {
 // introduced; the counter returns to its value at Begin; the transaction is
 // done afterwards.
 func TestGraphTxAddRelationshipsRollback(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		nodes := txRelEndpoints(t, b, g, 3)
@@ -264,6 +267,7 @@ func TestGraphTxAddRelationshipsRollback(t *testing.T) {
 // endpoint ID, a malformed type name. Nothing is created (the type registry's
 // rollback is checked in core, TestAddRelationshipsInternalRestoresType).
 func TestGraphTxAddRelationshipsRejectsBeforeCreating(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		nodes := txRelEndpoints(t, b, g, 3)
 		ghost := g.Nodes().NextID() // minted, never stored
@@ -306,6 +310,7 @@ func TestGraphTxAddRelationshipsRejectsBeforeCreating(t *testing.T) {
 // A self-loop is refused unless the graph allows self-loops, before anything
 // is created.
 func TestGraphTxAddRelationshipsSelfLoop(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -335,6 +340,7 @@ func TestGraphTxAddRelationshipsSelfLoop(t *testing.T) {
 // element: a relationship outside its endpoints' validity is refused at that
 // element, the earlier ones exist until the transaction rolls back.
 func TestGraphTxAddRelationshipsConstraint(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		if err := g.Constraints().Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}); err != nil {
@@ -385,6 +391,7 @@ func TestGraphTxAddRelationshipsConstraint(t *testing.T) {
 
 // An empty call creates nothing and is not an error.
 func TestGraphTxAddRelationshipsEmpty(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
 		t.Fatal(err)

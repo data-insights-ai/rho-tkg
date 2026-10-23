@@ -12,6 +12,7 @@ import (
 )
 
 func TestTieredStoreStoreWideAdminNilReceiversReturnErrNilStore(t *testing.T) {
+	t.Parallel()
 	var ts *Store
 	checks := []struct {
 		name string
@@ -40,6 +41,7 @@ func (*panicHashVerifier) VerifyRelChain(types.RelID) (bool, error) {
 }
 
 func TestVerifyShardNilVerifierReturnsInvalidStoreMutation(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	if _, err := ts.VerifyShard(nil, "reference"); !errors.Is(err, ErrInvalidStoreMutation) {
@@ -56,6 +58,7 @@ func TestRebuildCatalog_CountsClosedColdEventShard(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -105,6 +108,7 @@ func TestRebuildCatalog_CountsClosedColdEventShard(t *testing.T) {
 }
 
 func TestRebuildCatalog_ReturnsColdShardOpenFailure(t *testing.T) {
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -161,6 +165,7 @@ func TestRebuildCatalog_ReturnsColdShardOpenFailure(t *testing.T) {
 }
 
 func TestAllShardStoresWithLazyOpen_ClosesTransientColdEventShardAfterRelease(t *testing.T) {
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

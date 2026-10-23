@@ -56,6 +56,7 @@ func strayMD(files []string, allowed map[string]bool) []string {
 }
 
 func TestDocumentedMDParsesTheSection(t *testing.T) {
+	t.Parallel()
 	ok := "# x\n\n## Documentation\n\n| `README.md` | a |\n| `doc/A.md`, `doc/B.md` | b |\n\n## Next\n`doc/C.md`\n"
 	cases := []struct {
 		name, readme string
@@ -88,6 +89,7 @@ func TestDocumentedMDParsesTheSection(t *testing.T) {
 }
 
 func TestStrayMDNamesOnlyUnlistedMDFiles(t *testing.T) {
+	t.Parallel()
 	allowed := map[string]bool{"README.md": true, "doc/A.md": true}
 	files := []string{"doc/Z.md", "README.md", "main.go", "doc/A.md", "tasks/x.md", "doc/A.md.txt"}
 	if got := strings.Join(strayMD(files, allowed), ","); got != "doc/Z.md,tasks/x.md" {
@@ -99,6 +101,7 @@ func TestStrayMDNamesOnlyUnlistedMDFiles(t *testing.T) {
 }
 
 func TestNoMDFileOutsideTheDocumentation(t *testing.T) {
+	t.Parallel()
 	root, err := filepath.Abs("../../../..")
 	if err != nil {
 		t.Fatal(err)

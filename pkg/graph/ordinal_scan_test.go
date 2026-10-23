@@ -23,6 +23,7 @@ import (
 // After and Limit apply; an early stop stops; tiered (no ordinals) is
 // ErrCapabilityNotSupported.
 func TestForEachByOrdinals(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		label := "Ref"

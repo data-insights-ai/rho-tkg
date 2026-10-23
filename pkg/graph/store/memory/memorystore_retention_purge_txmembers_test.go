@@ -22,6 +22,7 @@ import (
 // label's nodes, and confirm ForEachLabelTxMember/ForEachRelTypeTxMember no
 // longer report the purged IDs.
 func TestMemoryPurgeNodesByLabelBefore_ReapsLabelAndRelTypeTxMembers(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	const eventLabel, machineLabel, relType = uint16(20), uint16(21), uint16(6)
 

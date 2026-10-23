@@ -29,6 +29,7 @@ import (
 // so it must be bounded like the import doors — but within the bound it must
 // advance, because the row is stored either way.
 func TestInstantFloor_RecordForeignIncomingCoversItsStoredStamp(t *testing.T) {
+	t.Parallel()
 	g, endID := newForeignIncomingTestGraph(t, ValidationLimits{})
 
 	// Plausible but ahead of this host: a peer one hour fast, or mid-burst.

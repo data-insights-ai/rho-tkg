@@ -27,6 +27,7 @@ var errSeedFailure = errors.New("fanout test: seeded shard failure")
 var errRollbackFailure = errors.New("fanout test: seeded rollback failure")
 
 func TestFanOutUniformCreate_NoRollbackOnFullSuccess(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	var doCalls, rollbackCalls atomic.Int64
 
@@ -46,6 +47,7 @@ func TestFanOutUniformCreate_NoRollbackOnFullSuccess(t *testing.T) {
 }
 
 func TestFanOutUniformCreate_UniformFailureNoRollbackNeeded(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	var rollbackCalls atomic.Int64
 
@@ -65,6 +67,7 @@ func TestFanOutUniformCreate_UniformFailureNoRollbackNeeded(t *testing.T) {
 // some shards succeed, one fails — the succeeded ones must be rolled back,
 // and the failure must still be visible in the returned error.
 func TestFanOutUniformCreate_RollsBackOnPartialFailure(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	failShard := 1
 	var rolledBack []int
@@ -111,6 +114,7 @@ func TestFanOutUniformCreate_RollsBackOnPartialFailure(t *testing.T) {
 // dropped — an operator must be able to tell "rollback also failed, manual
 // reconciliation needed" from "rollback succeeded cleanly".
 func TestFanOutUniformCreate_RollbackFailureIsJoinedNotSwallowed(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 
 	err := st.fanOutUniformCreate(
@@ -143,6 +147,7 @@ func TestFanOutUniformCreate_RollbackFailureIsJoinedNotSwallowed(t *testing.T) {
 // (ErrIndexExists) while succeeding fresh on the others — the fix must roll
 // the others back rather than leave the index inconsistently present.
 func TestCreatePropertyIndex_PartialFailureRollsBackSucceededShards(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	const labelTok = uint16(10)
 	const key = "email"

@@ -52,6 +52,7 @@ func setupPropertyStatsShards(t *testing.T) (ts *Store, caseTok, signalTok, shar
 // the event shard, Max on the reference shard — the fold must combine both,
 // not just report whichever shard happens to be checked out first.
 func TestTieredStoreNodePropertyStats_MinMaxSpanningRefAndEventShards(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok, sharedTok := setupPropertyStatsShards(t)
 	gen := tieredNodeGen(t)
 
@@ -88,6 +89,7 @@ func TestTieredStoreNodePropertyStats_MinMaxSpanningRefAndEventShards(t *testing
 // stays on refShard, another is moved to refArchive — Count/Min/Max must
 // combine both.
 func TestTieredStoreNodePropertyStats_ArchiveShardFold(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, _ := setupPropertyStatsShards(t)
 	gen := tieredNodeGen(t)
 
@@ -142,6 +144,7 @@ const crossShardPropStatsStep = 97
 // ONE Estimate() call on the combined sketch must land close to the true 75,
 // not the naive 100.
 func TestTieredStoreNodePropertyStats_CrossShardCountsOnce(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok, _ := setupPropertyStatsShards(t)
 	gen := tieredNodeGen(t)
 
@@ -189,6 +192,7 @@ func TestTieredStoreNodePropertyStats_CrossShardCountsOnce(t *testing.T) {
 // checkoutStoreForRead lazy-reopen path (docs/architecture.md "Checkout/checkin
 // for cold shards").
 func TestTieredStoreNodePropertyStats_ColdShardFold(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok, _ := setupPropertyStatsShards(t)
 	gen := tieredNodeGen(t)
 
@@ -230,6 +234,7 @@ func TestTieredStoreNodePropertyStats_ColdShardFold(t *testing.T) {
 // NodeCountByLabelAndPropertyKey's "unregistered → 0, not an error"
 // convention for the richer PropertyStats sibling.
 func TestTieredStoreNodePropertyStats_EmptyPairZeroValue(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, _ := setupPropertyStatsShards(t)
 
 	stats, err := ts.NodePropertyStats(caseTok, "missing")
@@ -249,6 +254,7 @@ func TestTieredStoreNodePropertyStats_EmptyPairZeroValue(t *testing.T) {
 // directly against the concrete shards' own sketches, rather than merely
 // hoping NodePropertyStats never errors.
 func TestTieredStoreNodePropertyStats_ShardSketchesShareEquivalentPrecision(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok, _ := setupPropertyStatsShards(t)
 	gen := tieredNodeGen(t)
 
@@ -284,6 +290,7 @@ func TestTieredStoreNodePropertyStats_ShardSketchesShareEquivalentPrecision(t *t
 }
 
 func TestTieredStoreNodePropertyStatsErrors(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, _ := setupPropertyStatsShards(t)
 
 	if _, err := ts.NodePropertyStats(0, "v"); err == nil {

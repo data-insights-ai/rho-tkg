@@ -28,6 +28,7 @@ func labelTestNode(id int64, primary uint16, extra ...uint16) *types.Node {
 // ─── token == 0 is exactly the unscoped door (add) ──────────────────────────
 
 func TestMemoryScopedLabel_AddZeroTokenMatchesUnscopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n := labelTestNode(1, 10)
@@ -70,6 +71,7 @@ func TestMemoryScopedLabel_AddZeroTokenMatchesUnscopedDoor(t *testing.T) {
 // ─── token == 0 is exactly the unscoped door (remove) ───────────────────────
 
 func TestMemoryScopedLabel_RemoveZeroTokenMatchesUnscopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n := labelTestNode(1, 10, 20)
@@ -104,6 +106,7 @@ func TestMemoryScopedLabel_RemoveZeroTokenMatchesUnscopedDoor(t *testing.T) {
 // ─── An open (uncommitted) scope is invisible to the feed ──────────────────
 
 func TestMemoryScopedLabel_UncommittedScopeInvisibleToFeed(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n := labelTestNode(1, 10)
@@ -169,6 +172,7 @@ func TestMemoryScopedLabel_UncommittedScopeInvisibleToFeed(t *testing.T) {
 // ─── DiscardScopedLog drops the buffer and burns no LSN ─────────────────────
 
 func TestMemoryScopedLabel_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n1 := labelTestNode(1, 10) // eager create, LSN 1
@@ -223,6 +227,7 @@ func TestMemoryScopedLabel_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
 // ─── Unknown / retired token fails closed ───────────────────────────────────
 
 func TestMemoryScopedLabel_UnknownTokenFailsClosed(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n := labelTestNode(1, 10)
@@ -323,6 +328,7 @@ func TestMemoryScopedLabel_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
 // ─── RemoveNodeLabelTokenWithHistoryScoped mirrors the add door (rule 2 parity) ───
 
 func TestMemoryScopedLabel_RemoveNodeLabelTokenWithHistoryScoped(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n := labelTestNode(1, 10, 20)
@@ -385,6 +391,7 @@ func TestMemoryScopedLabel_RemoveNodeLabelTokenWithHistoryScoped(t *testing.T) {
 // ─── Disabled log: the scoped door is a documented no-op fallback ───────────
 
 func TestMemoryScopedLabel_DisabledByDefault(t *testing.T) {
+	t.Parallel()
 	ms := New() // no WithChangeLog
 
 	n := labelTestNode(1, 10)
@@ -419,6 +426,7 @@ func TestMemoryScopedLabel_DisabledByDefault(t *testing.T) {
 // ─── Legacy single-scope mechanism unaffected ───────────────────────────────
 
 func TestMemoryScopedLabel_LegacyMechanismUnaffected(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 
 	n := labelTestNode(1, 10)
@@ -469,6 +477,7 @@ func TestMemoryScopedLabel_LegacyMechanismUnaffected(t *testing.T) {
 // ─── Concurrent goroutines each with their own scope: no data race ─────────
 
 func TestMemoryScopedLabel_ConcurrentGoroutinesNoRace(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	const n = 8
 	nodes := make([]*types.Node, n)

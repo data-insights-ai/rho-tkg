@@ -63,6 +63,7 @@ func baseForeignEdge(endID types.NodeID) storepkg.ForeignIncomingEdge {
 }
 
 func TestRecordForeignIncoming_RejectsOversizedTypeName(t *testing.T) {
+	t.Parallel()
 	g, endID := newForeignIncomingTestGraph(t, ValidationLimits{MaxNameLength: 5})
 	edge := baseForeignEdge(endID)
 	edge.TypeName = "MUCH_LONGER_THAN_FIVE_CHARS"
@@ -78,6 +79,7 @@ func TestRecordForeignIncoming_RejectsOversizedTypeName(t *testing.T) {
 }
 
 func TestRecordForeignIncoming_RejectsTooManyProperties(t *testing.T) {
+	t.Parallel()
 	g, endID := newForeignIncomingTestGraph(t, ValidationLimits{MaxPropertiesPerEntity: 1})
 	edge := baseForeignEdge(endID)
 	edge.Properties = map[string]any{"a": int64(1), "b": int64(2)}
@@ -93,6 +95,7 @@ func TestRecordForeignIncoming_RejectsTooManyProperties(t *testing.T) {
 // TestRecordForeignIncoming_SucceedsWithinLimits is the non-regression
 // counterpart: an edge within the configured limits must still succeed.
 func TestRecordForeignIncoming_SucceedsWithinLimits(t *testing.T) {
+	t.Parallel()
 	g, endID := newForeignIncomingTestGraph(t, ValidationLimits{})
 	edge := baseForeignEdge(endID)
 

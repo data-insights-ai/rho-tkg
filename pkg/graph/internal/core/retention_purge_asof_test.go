@@ -69,6 +69,7 @@ func TestRetentionPurgeAsOfBumpAfterRows(t *testing.T) {
 // Faulty implementation caught: a relationship purge that bumps the cache
 // (every dashboard pin goes cold at each overview cut).
 func TestRelRetentionPurgeKeepsAsOfCache(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, be := range pastDatedBackends() {
 		t.Run(be.name, func(t *testing.T) {

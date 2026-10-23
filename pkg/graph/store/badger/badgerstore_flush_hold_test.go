@@ -15,6 +15,7 @@ import (
 // FlushesEveryMutation answering true without SyncWrites (the graph would then
 // take the exclusive lock for nothing).
 func TestMutationFlushHold(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name       string
 		cfg        Config

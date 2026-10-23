@@ -14,6 +14,7 @@ import (
 // (resolver vEnd uses next.ValidFrom). Rule 15 two-phase + rule 2 parity.
 
 func TestSetNodeVersionInterval_TimelineTiles(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -64,6 +65,7 @@ func TestSetNodeVersionInterval_TimelineTiles(t *testing.T) {
 }
 
 func TestSetRelVersionInterval_TimelineTiles(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -100,6 +102,7 @@ func TestSetRelVersionInterval_TimelineTiles(t *testing.T) {
 // classification, then asserts post-cascade resolver behaviour.
 
 func TestCascade_CloseRight_OpenEndedTarget(t *testing.T) {
+	t.Parallel()
 	// Existing: [1000, ∞) state=A.
 	// Cascade: [2000, ∞) state=B.
 	// Expected: A closes at 2000, B is current open-ended.
@@ -127,6 +130,7 @@ func TestCascade_CloseRight_OpenEndedTarget(t *testing.T) {
 }
 
 func TestCascade_Eclipse(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 
 	n, _ := g.Nodes.Add(context.Background(), []string{"L"}, map[string]any{
@@ -158,6 +162,7 @@ func TestCascade_Eclipse(t *testing.T) {
 }
 
 func TestCascade_OpenLeft(t *testing.T) {
+	t.Parallel()
 	// Existing: [1000, 5000) state=A.
 	// Cascade: [800, 2000) state=B.
 	// A: starts at 1000 (>= 800), ends at 5000 (> 2000) → open-left:
@@ -188,6 +193,7 @@ func TestCascade_OpenLeft(t *testing.T) {
 }
 
 func TestCascade_Split(t *testing.T) {
+	t.Parallel()
 	// Existing: [1000, 5000) state=A.
 	// Cascade: [2000, 3000) state=B.
 	// A spans [1000, 5000) which contains [2000, 3000) — split.
@@ -218,6 +224,7 @@ func TestCascade_Split(t *testing.T) {
 }
 
 func TestCascade_MidHistoryInsertion(t *testing.T) {
+	t.Parallel()
 	// Existing two-tile timeline: [1000, 3000) A, [3000, ∞) C.
 	// Cascade insert at [1500, 2500) B.
 	// Expected:
@@ -261,6 +268,7 @@ func TestCascade_MidHistoryInsertion(t *testing.T) {
 }
 
 func TestCascade_RejectsZeroValidFrom(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	n, _ := g.Nodes.Add(context.Background(), []string{"L"}, map[string]any{
 		"tkg_valid_from": types.Instant(1000),
@@ -272,6 +280,7 @@ func TestCascade_RejectsZeroValidFrom(t *testing.T) {
 }
 
 func TestCascade_RejectsInvertedInterval(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	n, _ := g.Nodes.Add(context.Background(), []string{"L"}, map[string]any{
 		"tkg_valid_from": types.Instant(1000),
@@ -285,6 +294,7 @@ func TestCascade_RejectsInvertedInterval(t *testing.T) {
 // Rel parity (rule 2): repeat the closeRight, eclipse, split classifications.
 
 func TestCascadeRel_CloseRight(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	a, _ := g.Nodes.Add(context.Background(), []string{"N"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"N"}, nil)
@@ -306,6 +316,7 @@ func TestCascadeRel_CloseRight(t *testing.T) {
 }
 
 func TestCascadeRel_Split(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	a, _ := g.Nodes.Add(context.Background(), []string{"N"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"N"}, nil)
@@ -329,6 +340,7 @@ func TestCascadeRel_Split(t *testing.T) {
 }
 
 func TestCascade_BatchPath(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	n, _ := g.Nodes.Add(context.Background(), []string{"L"}, map[string]any{
 		"tkg_valid_from": types.Instant(1000),
@@ -386,6 +398,7 @@ func TestCascade_TxPath(t *testing.T) {
 }
 
 func TestCascadeRel_BatchPath(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	a, _ := g.Nodes.Add(context.Background(), []string{"N"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"N"}, nil)
@@ -415,6 +428,7 @@ func TestCascadeRel_BatchPath(t *testing.T) {
 }
 
 func TestSetNodeVersionInterval_AdversarialMultiVersion(t *testing.T) {
+	t.Parallel()
 	// Rule 16: adversarial. Multiple historical transitions tile correctly.
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)

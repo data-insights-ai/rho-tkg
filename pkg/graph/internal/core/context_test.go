@@ -173,6 +173,7 @@ func TestDeleteRelWithContextCancelled(t *testing.T) {
 }
 
 func TestDeleteNodeWithContextCanceledAfterAdjacencyReadDoesNotPersist(t *testing.T) {
+	t.Parallel()
 	store := &cancelDuringStoreReadStore{Store: memory.New()}
 	g, err := New(Config{Store: store})
 	if err != nil {
@@ -208,6 +209,7 @@ func TestDeleteNodeWithContextCanceledAfterAdjacencyReadDoesNotPersist(t *testin
 }
 
 func TestDeleteRelWithContextCanceledAfterReadDoesNotPersist(t *testing.T) {
+	t.Parallel()
 	store := &cancelDuringStoreReadStore{Store: memory.New()}
 	g, err := New(Config{Store: store})
 	if err != nil {
@@ -240,6 +242,7 @@ func TestDeleteRelWithContextCanceledAfterReadDoesNotPersist(t *testing.T) {
 }
 
 func TestAddByIDIfAbsentWithContextCanceledAfterExistingProbeDoesNotSucceed(t *testing.T) {
+	t.Parallel()
 	store := &cancelDuringStoreReadStore{Store: memory.New()}
 	g, err := New(Config{Store: store})
 	if err != nil {
@@ -304,6 +307,7 @@ func TestGetRelWithContextCancelled(t *testing.T) {
 }
 
 func TestGetNodeWithContextCanceledAfterStoreReadDoesNotSucceed(t *testing.T) {
+	t.Parallel()
 	store := &cancelDuringStoreReadStore{Store: memory.New()}
 	g, err := New(Config{Store: store})
 	if err != nil {
@@ -329,6 +333,7 @@ func TestGetNodeWithContextCanceledAfterStoreReadDoesNotSucceed(t *testing.T) {
 }
 
 func TestGetRelWithContextCanceledAfterStoreReadDoesNotSucceed(t *testing.T) {
+	t.Parallel()
 	store := &cancelDuringStoreReadStore{Store: memory.New()}
 	g, err := New(Config{Store: store})
 	if err != nil {

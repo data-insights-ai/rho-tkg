@@ -69,6 +69,7 @@ func TestBadgerStoreHighFrequencyIndex_MaintainsNodeWrites(t *testing.T) {
 }
 
 func TestBadgerStoreHighFrequencyIndex_DefinitionSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	labelTok := uint16(1)
 
@@ -115,6 +116,7 @@ func TestBadgerStoreHighFrequencyIndex_DefinitionSurvivesRestart(t *testing.T) {
 }
 
 func TestBadgerStoreHighFrequencyIndex_DropDefinitionSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	labelTok := uint16(1)
 
@@ -143,6 +145,7 @@ func TestBadgerStoreHighFrequencyIndex_DropDefinitionSurvivesRestart(t *testing.
 }
 
 func TestBadgerStoreHighFrequencyIndex_ClearDefinitionSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	labelTok := uint16(1)
 
@@ -171,6 +174,7 @@ func TestBadgerStoreHighFrequencyIndex_ClearDefinitionSurvivesRestart(t *testing
 }
 
 func TestBadgerStoreHighFrequencyIndexRejectsTemporalIndexSameLabel(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 
 	if err := bs.CreateHighFrequencyIndex(1, time.Hour); err != nil {
@@ -182,6 +186,7 @@ func TestBadgerStoreHighFrequencyIndexRejectsTemporalIndexSameLabel(t *testing.T
 }
 
 func TestBadgerStoreHighFrequencyIndex_BackfillFailureRollsBackPlaceholder(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 
 	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)

@@ -33,6 +33,7 @@ func newTxTimeGraphWithChangeLog(t *testing.T) *Core {
 }
 
 func TestSetNodeVersionInterval_ScopedTokenRoutesThroughScopedDoors(t *testing.T) {
+	t.Parallel()
 	c := newTxTimeGraphWithChangeLog(t)
 
 	n, err := c.Nodes.Add(context.Background(), []string{"A"}, map[string]any{
@@ -105,6 +106,7 @@ func TestSetNodeVersionInterval_ScopedTokenRoutesThroughScopedDoors(t *testing.T
 }
 
 func TestSetNodeVersionInterval_NoTokenRoutesThroughPlainDoors(t *testing.T) {
+	t.Parallel()
 	c := newTxTimeGraphWithChangeLog(t)
 
 	n, err := c.Nodes.Add(context.Background(), []string{"A"}, map[string]any{
@@ -143,6 +145,7 @@ func TestSetNodeVersionInterval_NoTokenRoutesThroughPlainDoors(t *testing.T) {
 }
 
 func TestSetRelVersionInterval_ScopedTokenRoutesThroughScopedDoors(t *testing.T) {
+	t.Parallel()
 	c := newTxTimeGraphWithChangeLog(t)
 
 	n1, err := c.Nodes.Add(context.Background(), []string{"A"}, nil)

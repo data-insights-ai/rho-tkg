@@ -17,6 +17,7 @@ import (
 // routing end-to-end today.
 
 func TestAddNodeLabelTokenWithHistory_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 
@@ -74,6 +75,7 @@ func TestAddNodeLabelTokenWithHistory_ScopedTokenRoutesThroughScopedDoor(t *test
 }
 
 func TestAddNodeLabelTokenWithHistory_NoTokenRoutesThroughPlainDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 
@@ -105,6 +107,7 @@ func TestAddNodeLabelTokenWithHistory_NoTokenRoutesThroughPlainDoor(t *testing.T
 }
 
 func TestRemoveNodeLabelTokenWithHistory_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 
@@ -160,6 +163,7 @@ func TestRemoveNodeLabelTokenWithHistory_ScopedTokenRoutesThroughScopedDoor(t *t
 }
 
 func TestRemoveNodeLabelTokenWithHistory_NoTokenRoutesThroughPlainDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 

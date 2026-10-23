@@ -12,6 +12,7 @@ import (
 // scope is open (divert off) emits eagerly.
 
 func TestMemoryLogScope_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
 		t.Fatalf("PutNode: %v", err)
@@ -49,6 +50,7 @@ func TestMemoryLogScope_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
 }
 
 func TestMemoryLogScope_CommitMintsContiguousLSNs(t *testing.T) {
+	t.Parallel()
 	ms := New(WithChangeLog())
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
 		t.Fatalf("PutNode: %v", err)

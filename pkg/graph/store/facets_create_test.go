@@ -23,6 +23,7 @@ import (
 // tiered both a reference label and an event label, since the node property
 // flag covers every label.
 func TestCapabilitiesOf_MatchesCreate(t *testing.T) {
+	t.Parallel()
 	type backend struct {
 		name string
 		open func(t *testing.T) storecontract.Store

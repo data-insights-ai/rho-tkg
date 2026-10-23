@@ -28,6 +28,7 @@ var tieredWireGolden = map[string]string{
 // persistence-type EncodeMsgpack (BACKLOG 15v) produces byte-identical output
 // to the previous pure-reflection msgpack.Marshal encoding.
 func TestTieredWireEncodeGolden(t *testing.T) {
+	t.Parallel()
 	cases := map[string]any{
 		"RegistryFileData":          &RegistryFileData{Labels: []string{"A", "B"}, RelTypes: []string{"REL"}},
 		"vectorIdxDef_min":          vectorIdxDef{LabelToken: 3, PropertyKey: "vec", Dims: 128, Metric: DistanceCosine},

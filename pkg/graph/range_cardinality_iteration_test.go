@@ -42,6 +42,7 @@ func TestRangeCardinalityMatchesIteration(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for _, mode := range []struct {
 		name string
 		opts graphpkg.PropertyIndexOptions

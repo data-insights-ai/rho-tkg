@@ -34,6 +34,7 @@ var errCommitLogScopeInjected = errors.New("injected: commit log scope failure")
 // scenario a caller most needs surfaced, not swallowed because something
 // unrelated also failed in the same batch.
 func TestBatchExecute_CommitLogScopeErrorSurfacedAlongsidePerOpFailure(t *testing.T) {
+	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true, ChangeLog: true})
 	if err != nil {
 		t.Fatalf("badger.New: %v", err)
@@ -92,6 +93,7 @@ func TestBatchExecute_CommitLogScopeErrorSurfacedAlongsidePerOpFailure(t *testin
 // surfaced (the pre-fix `result.Failed == 0` branch already handled this
 // case correctly — this pins it stays correct after the fix).
 func TestBatchExecute_CommitLogScopeErrorSurfacedAlone(t *testing.T) {
+	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true, ChangeLog: true})
 	if err != nil {
 		t.Fatalf("badger.New: %v", err)

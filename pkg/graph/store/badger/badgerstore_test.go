@@ -966,6 +966,7 @@ func TestBadgerStoreLoadRejectsMismatchedPersistedCounters(t *testing.T) {
 // fatal. The opposite direction (counter > live rows = rows missing) stays fatal
 // and is covered by TestBadgerStoreLoadRejectsMismatchedPersistedCounters.
 func TestBadgerStoreLoadHealsUndercountedPersistedCounters(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bs1, err := New(Config{Dir: dir})
 	if err != nil {
@@ -1953,6 +1954,7 @@ func TestBadgerStoreRecoveryAfterAbruptShutdown(t *testing.T) {
 // triggers when the underlying Badger DB is closed before WriteBatch.Flush().
 // It verifies that failed ops are requeued via requeueOps so they are not lost.
 func TestBadgerStoreFlushWriteBatchError(t *testing.T) {
+	t.Parallel()
 	// Not parallel: directly manipulates internal Store state.
 
 	// Create a store without the helper to manage lifecycle manually.
@@ -2370,6 +2372,7 @@ func TestBadgerStore_ForEachDeletedRelID(t *testing.T) {
 }
 
 func TestBadgerStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 	n := types.NewNode(types.NodeID(10), 1, nil)
 	if err := bs.PutNode(n); err != nil {
@@ -2439,6 +2442,7 @@ func TestBadgerStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
 }
 
 func TestBadgerStore_ForEachCallbacksCanMutateStore(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStore(t)
 	if err := bs.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
 		t.Fatal(err)

@@ -180,6 +180,7 @@ func baseRelRows() []relScanRow {
 // TestRelColumnScan_ColumnarMatchesRowPath is the RC acceptance oracle: columnar vs
 // row path, value for value, including endpoints and the temporal window.
 func TestRelColumnScan_ColumnarMatchesRowPath(t *testing.T) {
+	t.Parallel()
 	props := []string{"weight", "tag"}
 	for _, tc := range []struct {
 		name string
@@ -205,6 +206,7 @@ func TestRelColumnScan_ColumnarMatchesRowPath(t *testing.T) {
 // relationship, so a wrong column choice (start read from the end array) would still
 // produce well-formed aligned output and pass every count-based check.
 func TestRelColumnScan_EndpointsMatchTheRelationship(t *testing.T) {
+	t.Parallel()
 	rows := baseRelRows()
 	bs := newRelScanStore(t, rows)
 
@@ -263,6 +265,7 @@ func TestRelColumnScan_ColumnarPathActuallyRuns(t *testing.T) {
 // and reporting zero rows, which is what "matches nothing" would look like to a
 // caller who cannot tell an empty result from a refused one.
 func TestRelColumnScan_InvertedIntervalRefusesLikeTheRowPath(t *testing.T) {
+	t.Parallel()
 	bs := newRelScanStore(t, baseRelRows())
 	opts := storecontract.QueryOpts{ValidStart: 400, ValidEnd: 100}
 
@@ -285,6 +288,7 @@ func TestRelColumnScan_InvertedIntervalRefusesLikeTheRowPath(t *testing.T) {
 // The rules live in ColumnData.appendRow, shared with the node path, so this asserts
 // the RELATIONSHIP door reaches them — a rel-specific copy would be free to drift.
 func TestRelColumnScan_MixedNumericColumnDoesNotSilentlyWiden(t *testing.T) {
+	t.Parallel()
 	rows := []relScanRow{
 		{id: 1, start: 1, end: 2, weight: int64(2), tag: "a", from: 10, validTo: 0},
 		{id: 2, start: 2, end: 3, weight: 2.5, tag: "b", from: 20, validTo: 0},
@@ -302,6 +306,7 @@ func TestRelColumnScan_MixedNumericColumnDoesNotSilentlyWiden(t *testing.T) {
 // TestRelColumnScan_EmptyTypeIsNotAnError — no relationships of a type is zero rows,
 // not a failure.
 func TestRelColumnScan_EmptyTypeIsNotAnError(t *testing.T) {
+	t.Parallel()
 	bs := newRelScanStore(t, nil)
 	got := drainRelScan(t, bs, []string{"weight"}, storecontract.QueryOpts{})
 	if len(got.ids) != 0 || got.batches != 0 {
@@ -313,6 +318,7 @@ func TestRelColumnScan_EmptyTypeIsNotAnError(t *testing.T) {
 // TestRelColumnScan_NilCallbackRejected — the callback is the only way results leave
 // this door, so a nil one is a caller bug, not an empty scan.
 func TestRelColumnScan_NilCallbackRejected(t *testing.T) {
+	t.Parallel()
 	bs := newRelScanStore(t, baseRelRows())
 	if err := bs.ScanRelColumns(relScanType, []string{"weight"},
 		storecontract.QueryOpts{}, nil); err == nil {

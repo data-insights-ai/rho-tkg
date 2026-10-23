@@ -363,6 +363,7 @@ func columnScanNative(b storeBackend) bool { return b.name == "memory" || b.name
 // memory NodesByLabel / badger's columnar path, which filter live rows and
 // ignore TxAt/TxPin) and the missing opts validation.
 func TestScanDoorsAgreeWithByLabelOpts_NodeColumns(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		fx := buildScanOptsFixture(t, g)
 		for _, tc := range scanOptsCases(fx) {
@@ -413,6 +414,7 @@ func TestScanDoorsAgreeWithByLabelOpts_NodeColumns(t *testing.T) {
 // RelationshipsByType / segments, badger's columnar path) for a named type AND
 // for the every-type scan (relType ""), and the missing opts validation.
 func TestScanDoorsAgreeWithByLabelOpts_RelColumns(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		fx := buildScanOptsFixture(t, g)
 		for _, tc := range scanOptsCases(fx) {
@@ -498,6 +500,7 @@ func filterNamed(m map[string]int64, min, max float64) map[string]int64 {
 // reference is ByLabel(opts) with the range applied to the resolved version's
 // value — the same value-at-t the ordered sibling sorts on.
 func TestScanDoorsAgreeWithByLabelOpts_NodeRange(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		fx := buildScanOptsFixture(t, g)
 		for _, tc := range scanOptsCases(fx) {
@@ -535,6 +538,7 @@ func TestScanDoorsAgreeWithByLabelOpts_NodeRange(t *testing.T) {
 // (memory and badger ForEachRelByTypePropertyRange) and the index-required
 // decline under a temporal opt (tiered, sharded).
 func TestScanDoorsAgreeWithByLabelOpts_RelRange(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		fx := buildScanOptsFixture(t, g)
 		for _, tc := range scanOptsCases(fx) {
@@ -572,6 +576,7 @@ func TestScanDoorsAgreeWithByLabelOpts_RelRange(t *testing.T) {
 // caught: Limit applied by ID BEFORE the value filter (the page {A, B} holds A,
 // out of range, so one row instead of two), After ignored, fn's false ignored.
 func TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		buildScanOptsFixture(t, g)
 		base := graphpkg.QueryOpts{ValidAt: 1500}
@@ -642,6 +647,7 @@ func sortedIDKeys[ID ~int64](m map[ID]scanRow) []int64 {
 // exactly. Faulty implementation caught: the fold applying inclMin/inclMax in
 // float64 (numericInRange), which drops 2^53+1 for "> 2^53".
 func TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		const big = int64(1)<<53 + 1
@@ -689,6 +695,7 @@ func TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound(t *testing.T) {
 // (numericInRange(f, min, max, inclMin, inclMax)), which silently drops 2^53+1
 // for "> 2^53".
 func TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		const big = int64(1)<<53 + 1
@@ -826,6 +833,7 @@ func TestScanDoorsTemporalOpts_ColumnScansFailClosedBelowWatermarks(t *testing.T
 // in-range number. Faulty implementations caught: reading the live value, a
 // fold that offers every label member and leaves the whole predicate to fn.
 func TestScanDoorsTemporalOpts_RangeSkipsAbsentAndNonNumeric(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		absent, err := g.Nodes().Add(ctx, []string{scanLabel}, map[string]any{"tkg_valid_from": types.Instant(1000)})
@@ -886,6 +894,7 @@ func TestScanDoorsTemporalOpts_RangeSkipsAbsentAndNonNumeric(t *testing.T) {
 // Faulty implementations caught: a stop that only ends the current type, a
 // batch labelled with the wrong type, a type skipped, the live value.
 func TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"H"}, nil)

@@ -13,6 +13,7 @@ import (
 // --- tiered.Store: RemoveNodeLabelToken, CreateVectorIndex, DropVectorIndex, SearchNearestNodes ---
 
 func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
+	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"User", "Admin"}, nil)
@@ -32,6 +33,7 @@ func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
+	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 	label := "User"
 	key := "embedding"
@@ -56,6 +58,7 @@ func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_AlreadyExists(t *testing.T) {
+	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 	g.Nodes.Add(context.Background(), []string{"User"}, nil)
 	g.Index.CreateVector("User", "v", 2, storepkg.DistanceCosine)
@@ -66,6 +69,7 @@ func TestTieredStore_VectorIndex_AlreadyExists(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_Drop(t *testing.T) {
+	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 	g.Nodes.Add(context.Background(), []string{"User"}, nil)
 	g.Index.CreateVector("User", "v", 2, storepkg.DistanceCosine)

@@ -15,6 +15,7 @@ import (
 // since every depth sees every node. A blank label is refused with
 // ErrEmptyName, a closed graph with ErrGraphClosed.
 func TestAdminIsReferenceLabel(t *testing.T) {
+	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)

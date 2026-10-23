@@ -12,6 +12,7 @@ import (
 // 0 for an unknown or deleted ID; a length mismatch is an error; fails closed
 // after Close.
 func TestBadgerStoreOrdinalsOf(t *testing.T) {
+	t.Parallel()
 	ms := newTestBadgerStoreInMemory(t)
 	a, b, c := types.NewNode(types.NodeID(10), 1, nil), types.NewNode(types.NodeID(20), 1, nil), types.NewNode(types.NodeID(30), 1, nil)
 	for _, n := range []*types.Node{a, b, c} {

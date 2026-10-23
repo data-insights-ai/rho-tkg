@@ -14,6 +14,7 @@ import (
 // generated_create_scoped_test.go's shape for Batch A's doors 1-3.
 
 func TestUpdateNodePreparedInternal_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c, err := New(Config{Store: ms})
 	if err != nil {
@@ -77,6 +78,7 @@ func TestUpdateNodePreparedInternal_ScopedTokenRoutesThroughScopedDoor(t *testin
 }
 
 func TestUpdateNodePreparedInternal_NoTokenRoutesThroughPlainDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c, err := New(Config{Store: ms})
 	if err != nil {
@@ -111,6 +113,7 @@ func TestUpdateNodePreparedInternal_NoTokenRoutesThroughPlainDoor(t *testing.T) 
 }
 
 func TestUpdateRelationshipPreparedInternal_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c, err := New(Config{Store: ms})
 	if err != nil {
@@ -175,6 +178,7 @@ func TestUpdateRelationshipPreparedInternal_ScopedTokenRoutesThroughScopedDoor(t
 }
 
 func TestUpdateRelationshipPreparedInternal_NoTokenRoutesThroughPlainDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c, err := New(Config{Store: ms})
 	if err != nil {

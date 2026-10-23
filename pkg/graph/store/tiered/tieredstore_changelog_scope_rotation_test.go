@@ -19,6 +19,7 @@ import (
 // is included atomically in the eventual commit, with a contiguous LSN minted at
 // CommitLogScope — unaffected by this fix (no rotation involved).
 func TestScopeRotation_ShardBeforeFirstDivert_Included(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, _ := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 
@@ -56,6 +57,7 @@ func TestScopeRotation_ShardBeforeFirstDivert_Included(t *testing.T) {
 // Before the fix, LastCommittedLSN would already read 1 after the first PutNode
 // (the eager self-commit); after the fix it must read 0 until CommitLogScope.
 func TestScopeRotation_ShardAfterFirstDivert_NowIncluded(t *testing.T) {
+	t.Parallel()
 	ts, _, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 
@@ -122,6 +124,7 @@ func TestScopeRotation_ShardAfterFirstDivert_NowIncluded(t *testing.T) {
 // the rotated-in shard was outside the scope's buffer entirely, so
 // DiscardLogScope could never reach it.
 func TestScopeRotation_Rollback_DoesNotLeak(t *testing.T) {
+	t.Parallel()
 	ts, _, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 

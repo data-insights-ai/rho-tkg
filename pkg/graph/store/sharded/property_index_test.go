@@ -94,6 +94,7 @@ func assertNodeIDSet(t *testing.T, got []*types.Node, want []types.NodeID) {
 // (folded across shards), an empty set for a phantom value, and paginates over
 // the merged global order. Index created AFTER nodes exist (per-shard backfill).
 func TestShardedPropertyIndexCrossShard(t *testing.T) {
+	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	cities := []string{"Berlin", "Paris", "Tokyo"}
 	byCity, slots := addCityNodesAcrossShards(t, g, cities, 3) // 9 sessions
@@ -142,6 +143,7 @@ func TestShardedPropertyIndexCrossShard(t *testing.T) {
 // store handle is kept, and the label token is resolved from the persisted
 // registry for the raw store call.
 func TestShardedPropertyIndexStoreFoldDirect(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)
@@ -197,6 +199,7 @@ func TestShardedPropertyIndexStoreFoldDirect(t *testing.T) {
 // updating a node's indexed value moves it between value buckets, and deleting
 // a node removes it — all reflected through the cross-shard fold.
 func TestShardedPropertyIndexAutoMaintenance(t *testing.T) {
+	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	cities := []string{"Berlin", "Paris"}
 	byCity, _ := addCityNodesAcrossShards(t, g, cities, 3) // 6 sessions
@@ -235,6 +238,7 @@ func TestShardedPropertyIndexAutoMaintenance(t *testing.T) {
 // double-create returns ErrIndexExists, drop-missing returns ErrIndexNotFound,
 // and both are errors.Is-able through the cross-shard coalesce.
 func TestShardedPropertyIndexDDLSentinels(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)

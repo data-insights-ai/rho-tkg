@@ -131,6 +131,7 @@ func TestBadgerReopenAcrossTuningChange(t *testing.T) {
 	if testing.Short() {
 		t.Skip("creates GB-scale sparse files")
 	}
+	t.Parallel()
 
 	stockDir := t.TempDir()
 	stock := func(dir string) Config { return Config{Dir: dir} } // zero = stock
@@ -251,6 +252,7 @@ func TestBadgerReopenLiveWALAcrossMemtableShrink(t *testing.T) {
 	if testing.Short() {
 		t.Skip("writes ~30MB through a 64MB memtable and copies a 128MB WAL")
 	}
+	t.Parallel()
 	const n = 1000
 	dstDir := writeOversizedWALCopy(t, n, 30*1024) // ~30MB total
 
@@ -280,6 +282,7 @@ func TestBadgerMigrateOversizedWALMakesReadOnlyOpenSafe(t *testing.T) {
 	if testing.Short() {
 		t.Skip("writes ~30MB through a 64MB memtable and copies a 128MB WAL")
 	}
+	t.Parallel()
 	const n = 1000
 	dstDir := writeOversizedWALCopy(t, n, 30*1024)
 
@@ -379,6 +382,7 @@ func TestBadgerRawReadOnlyOpenOnOversizedWALExitsProcess(t *testing.T) {
 // must be: in-memory, untuned (MemTableSize == 0), a missing dir, and a clean
 // dir with no oversized WAL.
 func TestMigrateOversizedWALNoOps(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		cfg  Config
@@ -476,6 +480,7 @@ func TestBadgerMigrateOversizedWALCoversRevertToStock(t *testing.T) {
 	if testing.Short() {
 		t.Skip("writes ~30MB through a 128MB memtable and copies a ~256MB WAL")
 	}
+	t.Parallel()
 	const n = 1000
 	dstDir := writeStockOversizedWALCopy(t, n, 100*1024)
 
@@ -539,6 +544,7 @@ func TestBadgerFootprintKnobsApplied(t *testing.T) {
 	if testing.Short() {
 		t.Skip("creates a multi-MB vlog file")
 	}
+	t.Parallel()
 	const memtable = 8 << 20       // -> WAL apparent 16MB (stock would be 128MB)
 	const vlog = 4 << 20           // -> vlog apparent 8MB (stock would be ~2GB)
 	const stockWAL = 64 << 20      // 2x stock memtable would be 128MB; assert well under
@@ -598,6 +604,7 @@ func TestBadgerFootprintKnobsApplied(t *testing.T) {
 // here. Each tuned value is also asserted to DIFFER from Badger's stock value,
 // so the test cannot pass by coincidence with an un-applied knob.
 func TestBadgerAllFootprintKnobsReachBadgerOptions(t *testing.T) {
+	t.Parallel()
 	const (
 		vlog       = 64 << 20
 		memtable   = 16 << 20
@@ -649,6 +656,7 @@ func TestBadgerAllFootprintKnobsReachBadgerOptions(t *testing.T) {
 // applied a value for a zero knob, the resolved options would diverge from
 // Badger's DefaultOptions and this fails.
 func TestBadgerZeroTuningKeepsBadgerStockOptions(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -678,6 +686,7 @@ func TestBadgerZeroTuningKeepsBadgerStockOptions(t *testing.T) {
 // mid-write. Every record must survive the rotations, a clean close, and a
 // reopen — and a clean close must leave no WAL files and no oversized vlogs.
 func TestBadgerTinyMemtableConcurrentFlushStorm(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{Dir: dir, MemTableSize: minMemTableSize, ValueLogFileSize: 1 << 20, BlockCacheSize: 1 << 20, NumCompactors: 2}
 	bs, err := New(cfg)

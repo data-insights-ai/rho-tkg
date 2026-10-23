@@ -50,6 +50,7 @@ func idSet(ids []types.NodeID) map[types.NodeID]struct{} {
 }
 
 func TestMemStoreNodesByLabel_NoSortSkipsSort(t *testing.T) {
+	t.Parallel()
 	const label = uint16(30)
 	want, ms := newNoSortTestStore(t, label)
 	wantSet := idSet(want)
@@ -91,6 +92,7 @@ func TestMemStoreNodesByLabel_NoSortSkipsSort(t *testing.T) {
 }
 
 func TestMemStoreNodesByLabel_NoSortIgnoredWithPagination(t *testing.T) {
+	t.Parallel()
 	const label = uint16(31)
 	want, ms := newNoSortTestStore(t, label)
 
@@ -111,6 +113,7 @@ func TestMemStoreNodesByLabel_NoSortIgnoredWithPagination(t *testing.T) {
 // and every scan is ascending. The second scan must walk the same kept
 // array, not a fresh collection.
 func TestMemStoreForEachNodeByLabel_NoSortWalksTheKeptOrder(t *testing.T) {
+	t.Parallel()
 	const label = uint16(32)
 	want, ms := newNoSortTestStore(t, label)
 	wantSet := idSet(want)

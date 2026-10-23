@@ -112,6 +112,7 @@ func sameDump(t *testing.T, what string, got, want []string) {
 // re-reads only the appended ones; a rebuild re-reads everything. They must agree on
 // values, presence, validity AND zone-map decisions.
 func TestExtend_MatchesFullRebuild(t *testing.T) {
+	t.Parallel()
 	cases := map[string]struct {
 		base, add map[types.NodeID]any
 	}{
@@ -157,6 +158,7 @@ func TestExtend_MatchesFullRebuild(t *testing.T) {
 // Each must return nil so the caller rebuilds; returning a snapshot would ship a
 // silently stale or mistyped column.
 func TestExtend_RefusesNonAppends(t *testing.T) {
+	t.Parallel()
 	base := BuildLabelDocValues(1, []types.NodeID{10, 20}, []string{"v"},
 		extProps(map[types.NodeID]any{10: int64(1), 20: int64(2)}), extTemporal)
 	vals := map[types.NodeID]any{10: int64(1), 20: int64(2), 30: int64(3)}
@@ -220,6 +222,7 @@ func TestExtend_RefusesNonAppends(t *testing.T) {
 // discipline rests on: a reader holding the old snapshot must keep seeing exactly
 // what it saw.
 func TestExtend_DoesNotMutateTheReceiver(t *testing.T) {
+	t.Parallel()
 	vals := map[types.NodeID]any{1: int64(1), 2: int64(2), 3: int64(3)}
 	base := BuildLabelDocValues(1, []types.NodeID{1, 2}, []string{"v"}, extProps(vals), extTemporal)
 	before := dump(t, base)
@@ -241,6 +244,7 @@ func TestExtend_DoesNotMutateTheReceiver(t *testing.T) {
 // column into carrying both halves. A mixed-representation column returns identical
 // values while costing double, so only a structural assertion catches it.
 func TestExtend_UniformColumnStaysUniform(t *testing.T) {
+	t.Parallel()
 	vals := map[types.NodeID]any{1: int64(1), 2: int64(2), 3: int64(3)}
 	base := BuildLabelDocValues(1, []types.NodeID{1, 2}, []string{"v"}, extProps(vals), extTemporal)
 	ext := base.Extend(2, []types.NodeID{3}, extProps(vals), extTemporal)

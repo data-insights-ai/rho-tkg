@@ -12,6 +12,7 @@ import (
 // round-trip, and a reader that does not know "rc" skips it (the index then
 // loads plain).
 func TestIdxDefRangeCountsWire(t *testing.T) {
+	t.Parallel()
 	for name, c := range map[string]struct {
 		in   any
 		out  any

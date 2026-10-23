@@ -179,6 +179,7 @@ func (s *closeTrackingStore) Close() error {
 }
 
 func TestIndexProvider_RegisterAndListIsOrdered(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 
 	providers := []indexpkg.IndexProvider{
@@ -200,6 +201,7 @@ func TestIndexProvider_RegisterAndListIsOrdered(t *testing.T) {
 }
 
 func TestIndexProvider_ProvidersClosedFlagReturnsEmpty(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	if err := g.Index.RegisterProvider(&mockIndexProvider{name: "spatial"}); err != nil {
 		t.Fatalf("RegisterProvider: %v", err)
@@ -215,6 +217,7 @@ func TestIndexProvider_ProvidersClosedFlagReturnsEmpty(t *testing.T) {
 }
 
 func TestIndexProvider_ProvidersRechecksClosedAfterWaitingForLock(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	if err := g.Index.RegisterProvider(&mockIndexProvider{name: "spatial"}); err != nil {
 		t.Fatalf("RegisterProvider: %v", err)
@@ -247,6 +250,7 @@ func TestIndexProvider_ProvidersRechecksClosedAfterWaitingForLock(t *testing.T) 
 }
 
 func TestIndexProvider_DuplicateNameRejected(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	p := &mockIndexProvider{name: "spatial"}
 	if err := g.Index.RegisterProvider(p); err != nil {
@@ -259,6 +263,7 @@ func TestIndexProvider_DuplicateNameRejected(t *testing.T) {
 }
 
 func TestIndexProvider_EmptyNameRejected(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	err := g.Index.RegisterProvider(&mockIndexProvider{name: ""})
 	if !errors.Is(err, indexpkg.ErrIndexProviderEmptyName) {
@@ -267,6 +272,7 @@ func TestIndexProvider_EmptyNameRejected(t *testing.T) {
 }
 
 func TestIndexProvider_BlankNameRejected(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	if err := g.Index.RegisterProvider(&mockIndexProvider{name: " \t\n "}); !errors.Is(err, indexpkg.ErrIndexProviderEmptyName) {
 		t.Fatalf("RegisterProvider blank name = %v, want ErrIndexProviderEmptyName", err)
@@ -277,6 +283,7 @@ func TestIndexProvider_BlankNameRejected(t *testing.T) {
 }
 
 func TestIndexProvider_NilRejected(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	if err := g.Index.RegisterProvider(nil); err == nil {
 		t.Error("expected error for nil provider")
@@ -289,6 +296,7 @@ func TestIndexProvider_NilRejected(t *testing.T) {
 }
 
 func TestIndexProvider_AutoCreatesEventBus(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 
 	if g.Events.GetSync() != nil {
@@ -304,6 +312,7 @@ func TestIndexProvider_AutoCreatesEventBus(t *testing.T) {
 }
 
 func TestIndexProvider_ReceivesNodeEvents(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	p := &mockIndexProvider{name: "spatial"}
 	if err := g.Index.RegisterProvider(p); err != nil {
@@ -358,6 +367,7 @@ func TestIndexProvider_UnregisterStopsEvents(t *testing.T) {
 }
 
 func TestIndexProvider_UnregisterClosePanicIsReturnedAndStopsEvents(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	p := &mockIndexProvider{name: "spatial", closePanic: "unregister-panicked"}
 	if err := g.Index.RegisterProvider(p); err != nil {
@@ -390,6 +400,7 @@ func TestIndexProvider_UnregisterClosePanicIsReturnedAndStopsEvents(t *testing.T
 }
 
 func TestIndexProvider_UnregisterUnknown(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	err := g.Index.UnregisterProvider("nope")
 	if !errors.Is(err, indexpkg.ErrIndexProviderNotFound) {
@@ -398,6 +409,7 @@ func TestIndexProvider_UnregisterUnknown(t *testing.T) {
 }
 
 func TestIndexProvider_CloseCalledFromGraphClose(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -415,6 +427,7 @@ func TestIndexProvider_CloseCalledFromGraphClose(t *testing.T) {
 }
 
 func TestIndexProvider_CloseErrorsAreJoined(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -431,6 +444,7 @@ func TestIndexProvider_CloseErrorsAreJoined(t *testing.T) {
 }
 
 func TestIndexProvider_ClosePanicIsReturnedAndStoreStillCloses(t *testing.T) {
+	t.Parallel()
 	store := &closeTrackingStore{MandatoryStore: memory.New()}
 	g, err := New(Config{Store: store})
 	if err != nil {
@@ -501,6 +515,7 @@ func TestIndexProvider_AsyncBusSupported(t *testing.T) {
 //
 // Run with -race to surface any residual races on g.indexProviders.
 func TestIndexProvider_ConcurrentRegisterRaceSafe(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 
 	const N = 50
@@ -566,6 +581,7 @@ func TestIndexProvider_ConcurrentRegisterRaceSafe(t *testing.T) {
 // --- Phase 6 redesign: indexpkg.Initializable, indexpkg.GraphReader ---
 
 func TestIndexProvider_InitializableBulkLoad(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	// Seed graph state BEFORE registering the provider so Init has
 	// something to bulk-load.
@@ -602,6 +618,7 @@ func TestIndexProvider_InitializableBulkLoad(t *testing.T) {
 }
 
 func TestIndexProvider_InitializableErrorRollsBackRegistration(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	boom := errors.New("init-failed")
 	p := &initializableProvider{
@@ -634,6 +651,7 @@ func TestIndexProvider_InitializableErrorRollsBackRegistration(t *testing.T) {
 }
 
 func TestIndexProvider_InitializableErrorReturnsCloseFailure(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	initErr := errors.New("init-failed")
 	closeErr := errors.New("close-failed")
@@ -661,6 +679,7 @@ func TestIndexProvider_InitializableErrorReturnsCloseFailure(t *testing.T) {
 }
 
 func TestIndexProvider_InitializableErrorReturnsClosePanic(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	initErr := errors.New("init-failed")
 	p := &initializableProvider{
@@ -690,6 +709,7 @@ func TestIndexProvider_InitializableErrorReturnsClosePanic(t *testing.T) {
 }
 
 func TestIndexProvider_InitializablePanicRollsBackRegistration(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	p := &initializableProvider{
 		mockIndexProvider: mockIndexProvider{name: "spatial"},
@@ -719,6 +739,7 @@ func TestIndexProvider_InitializablePanicRollsBackRegistration(t *testing.T) {
 }
 
 func TestIndexProvider_CloseWaitsForInitializableProviderInit(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -772,6 +793,7 @@ func TestIndexProvider_CloseWaitsForInitializableProviderInit(t *testing.T) {
 }
 
 func TestIndexProvider_UnregisterWaitsForInitializableProviderInit(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	p := newBlockingInitializableProvider("spatial")
 
@@ -822,6 +844,7 @@ func TestIndexProvider_UnregisterWaitsForInitializableProviderInit(t *testing.T)
 }
 
 func TestIndexProvider_GraphCloseWaitsForInFlightEvent(t *testing.T) {
+	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -884,6 +907,7 @@ func TestIndexProvider_GraphCloseWaitsForInFlightEvent(t *testing.T) {
 }
 
 func TestIndexProvider_UnregisterWaitsForInFlightEvent(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	p := newBlockingEventProvider("spatial")
 	if err := g.Index.RegisterProvider(p); err != nil {
@@ -943,6 +967,7 @@ func TestIndexProvider_UnregisterWaitsForInFlightEvent(t *testing.T) {
 }
 
 func TestIndexProvider_InitializableSeesAddedAfterEvents(t *testing.T) {
+	t.Parallel()
 	// Two-phase: Init populates from current state, then subsequent
 	// mutations arrive via OnEvent. Verify the provider can stitch
 	// bulk-load + incremental updates without missing or double-counting.
@@ -972,6 +997,7 @@ func TestIndexProvider_InitializableSeesAddedAfterEvents(t *testing.T) {
 }
 
 func TestIndexProvider_OnEventErrorDoesNotAbortMutation(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	p := &mockIndexProvider{name: "spatial", onErr: errors.New("provider-failed")}
 	if err := g.Index.RegisterProvider(p); err != nil {
@@ -990,6 +1016,7 @@ func TestIndexProvider_OnEventErrorDoesNotAbortMutation(t *testing.T) {
 }
 
 func TestGraphReaderViewDelegatesReadMethods(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
@@ -1056,6 +1083,7 @@ func (p *graphReaderProbe) Init(g indexpkg.GraphReader) error {
 }
 
 func TestIndexProvider_InitReceivesGraphReaderInterface(t *testing.T) {
+	t.Parallel()
 	g := newProviderTestGraph(t)
 	p := &graphReaderProbe{mockIndexProvider: mockIndexProvider{name: "probe"}}
 	if err := g.Index.RegisterProvider(p); err != nil {

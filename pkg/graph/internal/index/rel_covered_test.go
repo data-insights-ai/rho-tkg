@@ -8,6 +8,7 @@ import (
 )
 
 func TestRelCoveredInTemporalIndexes(t *testing.T) {
+	t.Parallel()
 	r := types.NewRelationship(7, 3, 1, 2)
 	if RelCoveredInTemporalIndexes(nil, r, 7) {
 		t.Error("nil index map reports coverage")

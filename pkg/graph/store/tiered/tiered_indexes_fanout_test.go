@@ -84,6 +84,7 @@ func eventShardCount(ts *Store) int {
 }
 
 func TestTieredIndexes_CapabilityFlagsMatchSharded(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	ss, err := shardedpkg.New(shardedpkg.Config{InMemory: true, SlotCount: 2})
 	if err != nil {
@@ -113,6 +114,7 @@ func TestTieredIndexes_CapabilityFlagsMatchSharded(t *testing.T) {
 }
 
 func TestTieredRelTemporalIndex_DDLBreakCases(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	ddl := relTemporalDDL(t, ts)
 	const typ uint16 = 7
@@ -163,6 +165,7 @@ func TestTieredRelTemporalIndex_DDLBreakCases(t *testing.T) {
 }
 
 func TestTieredRelTemporalIndex_PruneDeclinesWithoutFilterOrIndex(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	const typ uint16 = 7
 	prune := relTemporalPrune(t, ts)
@@ -193,6 +196,7 @@ func TestTieredRelTemporalIndex_PruneDeclinesWithoutFilterOrIndex(t *testing.T) 
 }
 
 func TestTieredRelTemporalIndex_EveryShardAndNewHotShard(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	forceRotation(t, ts) // two event shards before the create
 	const typ uint16 = 9
@@ -224,6 +228,7 @@ func TestTieredRelTemporalIndex_SurvivesRestartAndColdReopen(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{
 		DataDir:       dir,
@@ -284,6 +289,7 @@ func TestTieredRelTemporalIndex_SurvivesRestartAndColdReopen(t *testing.T) {
 }
 
 func TestTieredComposite_DDLBreakCases(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	ddl, intro := compositeDDL(t, ts)
@@ -362,6 +368,7 @@ func TestTieredComposite_DDLBreakCases(t *testing.T) {
 }
 
 func TestTieredComposite_EveryShardAndNewHotShard(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	forceRotation(t, ts)
@@ -391,6 +398,7 @@ func TestTieredComposite_SurvivesRestart(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{
 		DataDir:       dir,
@@ -439,6 +447,7 @@ func TestTieredShardIndexes_InterruptedDDLRepairedAtOpen(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{
 		DataDir:       dir,
@@ -510,6 +519,7 @@ func TestTieredShardIndexes_InterruptedDDLRepairedAtOpen(t *testing.T) {
 // changed) and at the reference step (every event shard changed), for create
 // and drop of both index kinds.
 func TestTieredShardIndexes_FanOutRollsBackOnShardFailure(t *testing.T) {
+	t.Parallel()
 	errInjected := errors.New("injected shard failure")
 	const typ, label = uint16(8), uint16(3)
 	keys := []string{"device", "pid"}

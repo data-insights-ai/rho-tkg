@@ -15,6 +15,7 @@ import (
 // shape for Batch B's doors.
 
 func TestDeleteNodeInternal_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c, err := New(Config{Store: ms})
 	if err != nil {
@@ -74,6 +75,7 @@ func TestDeleteNodeInternal_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
 }
 
 func TestDeleteNodeInternal_NoTokenRoutesThroughPlainDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c, err := New(Config{Store: ms})
 	if err != nil {
@@ -108,6 +110,7 @@ func TestDeleteNodeInternal_NoTokenRoutesThroughPlainDoor(t *testing.T) {
 }
 
 func TestDeleteRelationshipInternal_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c, err := New(Config{Store: ms})
 	if err != nil {
@@ -168,6 +171,7 @@ func TestDeleteRelationshipInternal_ScopedTokenRoutesThroughScopedDoor(t *testin
 }
 
 func TestDeleteRelationshipInternal_NoTokenRoutesThroughPlainDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c, err := New(Config{Store: ms})
 	if err != nil {

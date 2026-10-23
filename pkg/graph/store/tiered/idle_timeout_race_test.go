@@ -10,6 +10,7 @@ import (
 // idle timeout on every tick; a test that sets it while the loop runs (sigma's
 // TestFoldReadDepthHot sets 0, then sweeps) must be clean under -race.
 func TestSetIdleTimeoutForTest_NoRace(t *testing.T) {
+	t.Parallel()
 	ts, err := New(Config{
 		DataDir:       t.TempDir(),
 		RefLabels:     []string{"Case", "User"},

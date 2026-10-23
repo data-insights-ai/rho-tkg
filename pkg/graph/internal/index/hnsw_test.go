@@ -453,6 +453,7 @@ func TestHNSWSingleEntryIndex(t *testing.T) {
 // nondeterministic) — the goal is proving the absence of a data race and
 // that every concurrent call returns without error/panic.
 func TestHNSWConcurrentSearchAndMutate(t *testing.T) {
+	t.Parallel()
 	const (
 		n    = 500
 		dims = 16

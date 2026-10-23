@@ -46,6 +46,7 @@ func seedNodeWithHistory(t *testing.T, ms *Store, id types.NodeID) *types.Node {
 
 // (a) PutNodeVersion on a covered node.
 func TestMemoryNodeTemporalEnvelope_PutNodeVersionCovered(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	nid := types.NodeID(snowflake.ID(8030))
 	if err := ms.PutNode(envNode(nid, 5, 5000, 6000, 7)); err != nil {
@@ -89,6 +90,7 @@ func TestMemoryNodeTemporalEnvelope_UpdateDuringCreate(t *testing.T) {
 // (c) A live node that carried label 7 in [100,200), lost it, and gets it back
 // after the index exists.
 func TestMemoryNodeTemporalEnvelope_LabelReAddOnLiveNode(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	nid := types.NodeID(snowflake.ID(8032))
 	v0 := envNode(nid, 0, 100, 200, 8, 7)
@@ -110,6 +112,7 @@ func TestMemoryNodeTemporalEnvelope_LabelReAddOnLiveNode(t *testing.T) {
 
 // (d) Re-create of a deleted node whose history is kept.
 func TestMemoryNodeTemporalEnvelope_RecreateDeletedNode(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	nid := types.NodeID(snowflake.ID(8033))
 	seedNodeWithHistory(t, ms, nid)

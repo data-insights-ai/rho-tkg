@@ -103,6 +103,7 @@ func assertWatchAscending(t *testing.T, recs []store.ChangeRecord) {
 // record's own LSN: it must yield exactly records 3..5, in ascending order,
 // then block (idle-poll) rather than fabricate or skip anything.
 func TestWatch_ResumeExactness(t *testing.T) {
+	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			g := newWatchGraph(t, backend)
@@ -179,6 +180,7 @@ func TestWatch_ResumeExactness(t *testing.T) {
 // commits 3 more while the Watch consumer is actively polling; the consumer
 // must observe all 8 in strictly ascending LSN order. Run with -race.
 func TestWatch_LiveTail(t *testing.T) {
+	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			g := newWatchGraph(t, backend)
@@ -247,6 +249,7 @@ func TestWatch_LiveTail(t *testing.T) {
 // (bounded well under 1s) after ctx cancel, with no goroutine leak, whether
 // cancellation lands while idling on the backoff poll.
 func TestWatch_CtxCancelBounded(t *testing.T) {
+	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			g := newWatchGraph(t, backend)
@@ -302,6 +305,7 @@ func TestWatch_CtxCancelBounded(t *testing.T) {
 // implement the feed methods) — Watch now fails closed on that case too via
 // the same ChangeLogActive probe Watermark/ExportSince use.
 func TestWatch_NoCapability(t *testing.T) {
+	t.Parallel()
 	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Ref"}})
 	if err != nil {
 		t.Fatalf("tiered.New: %v", err)
@@ -341,6 +345,7 @@ func TestWatch_NoCapability(t *testing.T) {
 // ErrCapabilityNotSupported exactly once and stop, never a silent empty tail a
 // long-lived consumer would mistake for "caught up, nothing yet".
 func TestWatch_BadgerChangeLogDisabledFailsClosed(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{BadgerInMemory: true, ChangeLog: false})
 	if err != nil {
 		t.Fatalf("graphpkg.New: %v", err)
@@ -357,6 +362,7 @@ func TestWatch_BadgerChangeLogDisabledFailsClosed(t *testing.T) {
 // so it must fail the same way rather than silently tailing an always-empty
 // feed forever.
 func TestWatch_MemoryChangeLogDisabledFailsClosed(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("graphpkg.New: %v", err)
@@ -372,6 +378,7 @@ func TestWatch_MemoryChangeLogDisabledFailsClosed(t *testing.T) {
 // sentinel WITHOUT ever calling ForEachChange (the disabled check happens
 // before the first pull, not as a side effect of one).
 func TestWatch_FakeOps_ChangeLogDisabled(t *testing.T) {
+	t.Parallel()
 	ops := &fakeOps{disabled: true, feed: []store.ChangeRecord{{LSN: 1, Tag: store.ChangeNodePut}}}
 	api := replication.New(ops)
 
@@ -402,6 +409,7 @@ func TestWatch_FakeOps_ChangeLogDisabled(t *testing.T) {
 // record with that error EXACTLY ONCE and then stops (no retry, no further
 // yields).
 func TestWatch_FakeOps_NoCapability(t *testing.T) {
+	t.Parallel()
 	ops := &fakeOps{err: store.ErrCapabilityNotSupported}
 	api := replication.New(ops)
 
@@ -427,6 +435,7 @@ func TestWatch_FakeOps_NoCapability(t *testing.T) {
 // TestWatch_NilAPI confirms the nil-safe accessor pattern used across every
 // other method on *API also holds for Watch.
 func TestWatch_NilAPI(t *testing.T) {
+	t.Parallel()
 	var api *replication.API
 	var calls int
 	var gotErr error

@@ -12,6 +12,7 @@ import (
 // Phase 1 proper — bitemporal migration tests.
 
 func TestBitemporalMigration_StampsSchemaVersionOnFreshStore(t *testing.T) {
+	t.Parallel()
 	st := memory.New()
 	g, err := New(Config{Store: st})
 	if err != nil {
@@ -33,6 +34,7 @@ func TestBitemporalMigration_StampsSchemaVersionOnFreshStore(t *testing.T) {
 }
 
 func TestBitemporalMigration_IdempotentOnSecondRun(t *testing.T) {
+	t.Parallel()
 	// Use a shared store across two Core instances without closing the
 	// store between them (memory.Store does not survive Close).
 	st := memory.New()
@@ -93,6 +95,7 @@ func TestBitemporalMigration_ClearsInheritedValidFrom(t *testing.T) {
 }
 
 func TestBitemporalMigration_PreservesExplicitValidFrom(t *testing.T) {
+	t.Parallel()
 	// History row vf=5000, current row with DIFFERENT vf=7000 → not inherited.
 	st := memory.New()
 	id := types.NodeID(1<<30 | 1)
@@ -132,6 +135,7 @@ func TestBitemporalMigration_PreservesExplicitValidFrom(t *testing.T) {
 // would have wrongly treated v0 as v2's "predecessor" purely by array
 // position and cleared v2's genuine explicit ValidFrom.
 func TestBitemporalMigration_TruncationGapDoesNotMisfire(t *testing.T) {
+	t.Parallel()
 	st := memory.New()
 	id := types.NodeID(1<<30 | 2)
 

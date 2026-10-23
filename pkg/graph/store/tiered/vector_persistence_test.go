@@ -18,6 +18,7 @@ import (
 )
 
 func TestTieredStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	labelTok := createDiskTieredVectorIndex(t, dir)
 
@@ -64,6 +65,7 @@ func TestTieredStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
 // asserting the SAME options come back via VectorIndexOptionsForTest — not
 // merely that search still resolves the pre-existing definition.
 func TestTieredStore_VectorIndex_NonDefaultOptionsSurviveRestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	opts := storecontract.VectorIndexOptions{UseBruteForce: true, M: 8, EfConstruction: 50, EfSearch: 10}
 	labelTok := createDiskTieredVectorIndexWithOptions(t, dir, opts)
@@ -173,6 +175,7 @@ func TestTieredStore_VectorIndex_DropDefinitionSurvivesRestart(t *testing.T) {
 }
 
 func TestVectorIndexFileRollbackRestoresPreviousBytes(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "vector_indexes.msgpack")
 	original := []byte("previous vector index bytes")
 	if err := atomicWriteFile(path, original, "test vector setup"); err != nil {
@@ -199,6 +202,7 @@ func TestVectorIndexFileRollbackRestoresPreviousBytes(t *testing.T) {
 }
 
 func TestVectorIndexFileRollbackRemovesNewFile(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "vector_indexes.msgpack")
 	snapshot, err := snapshotVectorIndexFile(path)
 	if err != nil {
@@ -257,6 +261,7 @@ func TestTieredStore_VectorIndex_ClearRemovesPersistedDefinition(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_PersistSkipsBuildingDefinition(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	ts, err := New(Config{
 		DataDir:       dir,
@@ -295,6 +300,7 @@ func TestTieredStore_VectorIndex_PersistSkipsBuildingDefinition(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_LoadRejectsInvalidDefinition(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	metaDir := filepath.Join(dir, "meta")
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {
@@ -316,6 +322,7 @@ func TestTieredStore_VectorIndex_LoadRejectsInvalidDefinition(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_LoadRejectsZeroLabelDefinition(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	metaDir := filepath.Join(dir, "meta")
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {
@@ -337,6 +344,7 @@ func TestTieredStore_VectorIndex_LoadRejectsZeroLabelDefinition(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_LoadRejectsReservedPropertyDefinition(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	metaDir := filepath.Join(dir, "meta")
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {
@@ -358,6 +366,7 @@ func TestTieredStore_VectorIndex_LoadRejectsReservedPropertyDefinition(t *testin
 }
 
 func TestTieredStore_VectorIndex_LoadRejectsConflictingDuplicateDefinition(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	metaDir := filepath.Join(dir, "meta")
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {
@@ -453,6 +462,7 @@ func TestVectorIndexFileLoadRejectsDuplicateDefinition(t *testing.T) {
 }
 
 func TestTieredStoreVectorIndexLoadRejectsDuplicateDefinition(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	metaDir := filepath.Join(dir, "meta")
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {

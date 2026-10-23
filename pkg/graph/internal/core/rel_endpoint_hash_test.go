@@ -10,6 +10,7 @@ import (
 // TestFromNodeHashStoredOnAdd verifies that FromNodeHash and ToNodeHash are
 // set on the relationship integrity when AddRelationship is called.
 func TestFromNodeHashStoredOnAdd(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
@@ -58,6 +59,7 @@ func TestFromNodeHashStoredOnAdd(t *testing.T) {
 // TestEndpointHashFromShadow verifies that tkg_from_hash and tkg_to_hash are
 // readable via ResolveRelProperty using the shadow key constants.
 func TestEndpointHashFromShadow(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
@@ -96,6 +98,7 @@ func TestEndpointHashFromShadow(t *testing.T) {
 // TestEndpointHashPreservedOnUpdate verifies that UpdateRelationship refreshes
 // FromNodeHash and ToNodeHash to reflect the current endpoint node hashes.
 func TestEndpointHashPreservedOnUpdate(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
@@ -135,6 +138,7 @@ func TestEndpointHashPreservedOnUpdate(t *testing.T) {
 // TestEndpointHashRefreshedOnUpdateInPlace verifies that in-place relationship
 // updates refresh endpoint hashes without creating a history entry or version bump.
 func TestEndpointHashRefreshedOnUpdateInPlace(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
@@ -186,6 +190,7 @@ func TestEndpointHashRefreshedOnUpdateInPlace(t *testing.T) {
 
 // TestEndpointHashSelfLoop verifies endpoint hashes for a self-loop relationship.
 func TestEndpointHashSelfLoop(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{AllowSelfLoops: true}})
 	defer g.Close() //nolint:errcheck
 
@@ -211,6 +216,7 @@ func TestEndpointHashSelfLoop(t *testing.T) {
 // TestEndpointHashNotOnNode verifies that tkg_from_hash and tkg_to_hash return
 // (nil, false) when resolved on a node (they are rel-only).
 func TestEndpointHashNotOnNode(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 

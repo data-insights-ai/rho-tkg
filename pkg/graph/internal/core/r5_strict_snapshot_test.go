@@ -76,6 +76,7 @@ func TestR9_StandaloneExportBlocksStandaloneMutation(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	g := newTestGraph(t)
 	if _, err := g.Nodes.Add(context.Background(), []string{"X"}, nil); err != nil {
 		t.Fatal(err)

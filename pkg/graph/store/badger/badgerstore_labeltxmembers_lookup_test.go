@@ -17,6 +17,7 @@ import (
 // a nil store are refused. Faulty implementations caught: answering the
 // whole label, dropping a deleted or history-only member, ignoring the stop.
 func TestBadgerLabelTxMembersOf(t *testing.T) {
+	t.Parallel()
 	bs := newLookupTestStore(t)
 
 	const tokL, tokK uint16 = 1, 2
@@ -74,6 +75,7 @@ func TestBadgerLabelTxMembersOf(t *testing.T) {
 
 // TestBadgerRelTypeTxMembersOf is the relationship mirror.
 func TestBadgerRelTypeTxMembersOf(t *testing.T) {
+	t.Parallel()
 	bs := newLookupTestStore(t)
 
 	for _, n := range []*types.Node{bgNode(1, []uint16{1}, 1), bgNode(2, []uint16{1}, 1)} {

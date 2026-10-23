@@ -150,6 +150,7 @@ func noHistProbeOpts(f noHistAdjFixture, g *Core) []storepkg.QueryOpts {
 // per-relationship version resolution, for instants, windows (boundaries
 // included) and transaction-time pins.
 func TestForEachAdjacentAt_NoHistoryRelsAgreeWithChainResolution(t *testing.T) {
+	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			g := be.open(t)
@@ -200,6 +201,7 @@ func sameAnyMap(a, b map[types.RelID]any) bool {
 // stores that state history presence; the plain relationships answer from
 // the live row the door already read.
 func TestForEachAdjacentAt_NoHistoryRelsLoadNoChain(t *testing.T) {
+	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		if be.name == "wrapper" {
 			continue // states history presence through the embedded store too, but keep the count to the in-tree stores
@@ -252,6 +254,7 @@ func sortedRelIDs(ids []types.RelID) []types.RelID {
 // bound. Faulty implementation caught: a bound off by one (half-open window,
 // inclusive start), the mint-instant fallback missing, a valid-to ignored.
 func TestSingleVersionAdjacencyMatchesResolver(t *testing.T) {
+	t.Parallel()
 	g := pinnedPropBackends()[0].open(t)
 	ctx := context.Background()
 	a, _ := g.Nodes.Add(ctx, []string{"P"}, nil)

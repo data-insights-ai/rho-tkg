@@ -20,6 +20,7 @@ import (
 // only have arrived there via the *Scoped door, never the plain one.
 
 func TestPutGeneratedNode_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 
@@ -60,6 +61,7 @@ func TestPutGeneratedNode_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
 }
 
 func TestPutGeneratedNode_NoTokenRoutesThroughPlainDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 
@@ -106,6 +108,7 @@ func TestPutGeneratedNode_TokenIgnoredWhenGeneratedCreateSet(t *testing.T) {
 }
 
 func TestPutGeneratedRelationship_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms}
 
@@ -155,6 +158,7 @@ func TestPutGeneratedRelationship_ScopedTokenRoutesThroughScopedDoor(t *testing.
 // putRelationshipEndpointHashWrite) routes through the generatedcreate scoped
 // endpoint-hash capability when ctx carries a token.
 func TestPutRelationshipEndpointHashWrite_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms, endpointHashWrite: ms}
 
@@ -201,6 +205,7 @@ func TestPutRelationshipEndpointHashWrite_ScopedTokenRoutesThroughScopedDoor(t *
 }
 
 func TestPutRelationshipEndpointHashWrite_NoTokenRoutesThroughPlainDoor(t *testing.T) {
+	t.Parallel()
 	ms := memory.New(memory.WithChangeLog())
 	c := &Core{store: ms, endpointHashWrite: ms}
 

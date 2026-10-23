@@ -40,6 +40,7 @@ func newArchiveWriteNodePair(t *testing.T) (types.NodeID, types.NodeID) {
 }
 
 func TestMigrateRelationshipPlacement_EntityOnly(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)
 
@@ -73,6 +74,7 @@ func TestMigrateRelationshipPlacement_EntityOnly(t *testing.T) {
 }
 
 func TestMigrateRelationshipPlacement_NoMove(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	start, end := newArchiveWriteNodePair(t)
@@ -91,6 +93,7 @@ func TestMigrateRelationshipPlacement_NoMove(t *testing.T) {
 }
 
 func TestMigrateRelationshipPlacement_IncomingOnly(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)
 
@@ -131,6 +134,7 @@ func TestMigrateRelationshipPlacement_IncomingOnly(t *testing.T) {
 }
 
 func TestMigrateRelationshipPlacement_DuplicateNewEntityLeavesOldPlacement(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)
 
@@ -160,6 +164,7 @@ func TestMigrateRelationshipPlacement_DuplicateNewEntityLeavesOldPlacement(t *te
 }
 
 func TestMigrateRelationshipPlacement_RollsBackNewWritesWhenOldEntityDeleteFails(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)
 
@@ -197,6 +202,7 @@ func TestMigrateRelationshipPlacement_RollsBackNewWritesWhenOldEntityDeleteFails
 }
 
 func TestRollbackRelationshipPlacementMoves_RestoresCommittedMove(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)
 
@@ -243,6 +249,7 @@ func TestRollbackRelationshipPlacementMoves_RestoresCommittedMove(t *testing.T) 
 }
 
 func TestRollbackRelationshipPlacementMoves_ReturnsFirstFailure(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)
 
@@ -269,6 +276,7 @@ func TestRollbackRelationshipPlacementMoves_ReturnsFirstFailure(t *testing.T) {
 }
 
 func TestPlanRelationshipPlacementMoves_MissingEndpointBranches(t *testing.T) {
+	t.Parallel()
 	t.Run("old start missing", func(t *testing.T) {
 		ts := newTestTieredStore(t)
 		archive := mustArchiveStore(t, ts)
@@ -316,6 +324,7 @@ func TestPlanRelationshipPlacementMoves_MissingEndpointBranches(t *testing.T) {
 }
 
 func TestPlanRelationshipPlacementMoves_CachesPeerEndpointShardPins(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok := newArchiveWriteTestStore(t)
 	archive := mustArchiveStore(t, ts)
 	gen := tieredNodeGen(t)
@@ -366,6 +375,7 @@ func TestPlanRelationshipPlacementMoves_CachesPeerEndpointShardPins(t *testing.T
 }
 
 func TestMergeUniqueRelIDs_DeduplicatesBothInputs(t *testing.T) {
+	t.Parallel()
 	a := snowflake.ID(1)
 	b := snowflake.ID(2)
 	got := mergeUniqueRelIDs([]snowflake.ID{a, a, b}, []snowflake.ID{b, a})

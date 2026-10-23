@@ -135,6 +135,7 @@ func TestHasHistoryDifferential(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	steps := 160
 	if testing.Short() {
 		steps = 60
@@ -450,6 +451,7 @@ func TestHasHistoryImport(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for _, b := range hasHistoryBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -515,6 +517,7 @@ func TestHasHistoryImport(t *testing.T) {
 // ApplyChanges the replica's HasHistory agrees with its History, entity by
 // entity, for updated, deleted, cascaded and plain entities.
 func TestHasHistoryReplicaApply(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		store func(t *testing.T) storepkg.Store
@@ -619,6 +622,7 @@ func TestHasHistoryReplicaApply(t *testing.T) {
 // plain entity is false and an updated one true (two-phase: the same entity
 // before and after the update).
 func TestHasHistoryDoorContract(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		for _, bad := range []int64{0, -1} {
@@ -690,6 +694,7 @@ func TestHasHistoryDoorContract(t *testing.T) {
 type historyOnlyStore struct{ storepkg.Store }
 
 func TestHasHistoryFallbackWithoutCapability(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := historyOnlyStore{memory.New()}
 	if _, ok := any(st).(storepkg.HistoryPresenceCapability); ok {

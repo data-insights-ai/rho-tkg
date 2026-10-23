@@ -33,6 +33,7 @@ func chunkPart(t *testing.T, base int64, keys []string, rows []map[string]any) t
 // distinct codes), across every part boundary; a string column against a
 // numeric one declines.
 func TestChunkConcatAcrossParts(t *testing.T) {
+	t.Parallel()
 	keys := []string{"n", "s"}
 	parts := []types.NodeColumnReader{
 		chunkPart(t, 100, keys, []map[string]any{{"n": int64(1), "s": "a"}, {"n": int64(2)}, {"s": "b"}}),
@@ -157,6 +158,7 @@ func (fakeReader) Epoch() uint64                        { return 0 }
 // every chunk without ordinals; a plain snapshot clears a reused chunk's
 // ordinals; NewOrdinalSnapshot refuses ordinals of another length.
 func TestChunkConcatOrdinals(t *testing.T) {
+	t.Parallel()
 	keys := []string{"n"}
 	part := func(base int64, n int, ord0 uint32) (*OrdinalSnapshot, *PointSnapshot[types.NodeID]) {
 		rows := make([]map[string]any, n)

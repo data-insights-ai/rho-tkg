@@ -363,6 +363,7 @@ func r10Backends() []storeBackend {
 //     as typed rows: IDs, endpoints, spans, int and string columns, no
 //     ordinals.
 func TestRound10WindowDoorsMatchOracle(t *testing.T) {
+	t.Parallel()
 	_, _, seeds := r10Size()
 	for _, b := range r10Backends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -574,6 +575,7 @@ func r10CheckAdjacencyWindow(t *testing.T, g *graphpkg.Graph, w *r10World, pin t
 // pin the effective scans' error, a nil callback ErrNilCallback; the empty
 // window streams nothing but still checks the gates.
 func TestRound10WindowDoorsRefuse(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -859,6 +861,7 @@ func r10CheckTimeline(t *testing.T, what string, segs []storepkg.CountSegment, s
 //     explicit Empty and OpenEnd;
 //   - CurrentRows with a pin is ErrInvalidTimeRange.
 func TestRound10CurrentRowsTimelineAndHull(t *testing.T) {
+	t.Parallel()
 	_, _, seeds := r10Size()
 	for _, b := range r10Backends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -938,6 +941,7 @@ func TestRound10CurrentRowsTimelineAndHull(t *testing.T) {
 // timeline follow them; a valid-time rewrite stamped at or below the pin
 // (AllowTxBackfill) moves the pin's hull.
 func TestRound10HullTwoPhase(t *testing.T) {
+	t.Parallel()
 	for _, b := range r10Backends()[:4] {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
@@ -1108,6 +1112,7 @@ func TestRound10ClassCountsAtPin(t *testing.T) {
 // count, a retracted life's rows do not, an excise appends no counted row of
 // its own; a rewrite below the pin moves the pin's answer.
 func TestRound10ClassCountsExact(t *testing.T) {
+	t.Parallel()
 	for _, b := range r10Backends()[:4] {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
@@ -1178,6 +1183,7 @@ func TestRound10ClassCountsExact(t *testing.T) {
 // and at types.UnboundedValidFrom (a real bound since sigma round 10, as on the read doors since v4.58.1); 0 stays
 // refused (no stored piece can start at the unset valid-from).
 func TestRound10ExciseNegativeStart(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		n, err := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"tkg_valid_from": types.UnboundedValidFrom, "v": int64(1)})
@@ -1223,6 +1229,7 @@ func TestRound10ExciseNegativeStart(t *testing.T) {
 // ByLabel / ByType, the windowed reads), on every backend, at negative
 // instants too.
 func TestRound10IntervalEndIsExclusive(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		late, err := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"tkg_valid_from": types.Instant(-20)})

@@ -39,6 +39,7 @@ func assertTxTimeVisibleBeforeDelete(t *testing.T, tm *types.TemporalMetadata) {
 }
 
 func TestTxFromSetOnAdd(t *testing.T) {
+	t.Parallel()
 	// TxFrom should be set on new node and rel. The test asserts
 	// "TxFrom is captured between two clock samples bracketing Add" —
 	// works equally well with the injected test clock (which is what
@@ -83,6 +84,7 @@ func TestTxFromSetOnAdd(t *testing.T) {
 }
 
 func TestTxToSetOnUpdate(t *testing.T) {
+	t.Parallel()
 	// Old version should have TxTo set; new version has a new TxFrom
 	g := newTxTimeGraph(t)
 	useTestClock(t, g)
@@ -127,6 +129,7 @@ func TestTxToSetOnUpdate(t *testing.T) {
 }
 
 func TestTxTimeMonotonicWhenClockRepeats(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	fixed := time.Now().Add(time.Second)
 	g.SetClockForTest(t, func() time.Time { return fixed })
@@ -160,6 +163,7 @@ func TestTxTimeMonotonicWhenClockRepeats(t *testing.T) {
 }
 
 func TestRelTxTimeMonotonicWhenClockRepeats(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	fixed := time.Now().Add(time.Second)
 	g.SetClockForTest(t, func() time.Time { return fixed })
@@ -201,6 +205,7 @@ func TestRelTxTimeMonotonicWhenClockRepeats(t *testing.T) {
 }
 
 func TestTxTimeMandatoryFallback_NodeAndRelVersions(t *testing.T) {
+	t.Parallel()
 	g := newMandatoryOnlyGraph(t)
 	if g.txTimeQuery != nil {
 		t.Fatal("mandatory-only graph unexpectedly enabled transaction-time query capability")
@@ -265,6 +270,7 @@ func TestTxTimeMandatoryFallback_NodeAndRelVersions(t *testing.T) {
 }
 
 func TestTxTimeMandatoryFallback_BulkUsesHistoryIDsAndSkipsDeleted(t *testing.T) {
+	t.Parallel()
 	g := newMandatoryOnlyGraph(t)
 	if g.txTimeQuery != nil {
 		t.Fatal("mandatory-only graph unexpectedly enabled transaction-time query capability")
@@ -342,6 +348,7 @@ func TestTxTimeMandatoryFallback_BulkUsesHistoryIDsAndSkipsDeleted(t *testing.T)
 }
 
 func TestTxToSetOnDelete(t *testing.T) {
+	t.Parallel()
 	// Deleted node's last history version should have TxTo set
 	g := newTxTimeGraph(t)
 	useTestClock(t, g)
@@ -382,6 +389,7 @@ func TestTxToSetOnDelete(t *testing.T) {
 }
 
 func TestGetNodeAsOf_BeforeCreate(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	useTestClock(t, g)
 
@@ -396,6 +404,7 @@ func TestGetNodeAsOf_BeforeCreate(t *testing.T) {
 }
 
 func TestGetNodeAsOf_CurrentVersion(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	useTestClock(t, g)
 
@@ -414,6 +423,7 @@ func TestGetNodeAsOf_CurrentVersion(t *testing.T) {
 }
 
 func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -527,6 +537,7 @@ func TestNodeAsOfDeletedEntityBeforeDelete(t *testing.T) {
 }
 
 func TestNodesAsOfDeletedEntityBeforeDelete(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -573,6 +584,7 @@ func TestNodesAsOfDeletedEntityBeforeDelete(t *testing.T) {
 }
 
 func TestNodeAsOfBeforeCloseVersionHidesCloseState(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -618,6 +630,7 @@ func TestNodeAsOfBeforeCloseVersionHidesCloseState(t *testing.T) {
 }
 
 func TestNodesAsOfReturnsSortedByID(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -678,6 +691,7 @@ func TestRelAsOfDeletedEntityBeforeDelete(t *testing.T) {
 }
 
 func TestRelsAsOfCascadeDeletedRelationshipBeforeDelete(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -726,6 +740,7 @@ func TestRelsAsOfCascadeDeletedRelationshipBeforeDelete(t *testing.T) {
 }
 
 func TestRelAsOfBeforeCloseVersionHidesCloseState(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -773,6 +788,7 @@ func TestRelAsOfBeforeCloseVersionHidesCloseState(t *testing.T) {
 }
 
 func TestRelsAsOfReturnsSortedByID(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -804,6 +820,7 @@ func TestRelsAsOfReturnsSortedByID(t *testing.T) {
 }
 
 func TestGetRelAsOf(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -834,6 +851,7 @@ func TestGetRelAsOf(t *testing.T) {
 }
 
 func TestTxTimeQueriesAfterCloseReturnGraphClosed(t *testing.T) {
+	t.Parallel()
 	g := newTxTimeGraph(t)
 	useTestClock(t, g)
 
@@ -1166,6 +1184,7 @@ func TestTxTimeQueryCapabilityBulkErrorsPropagate(t *testing.T) {
 }
 
 func TestVisibleAtTxTimeNil(t *testing.T) {
+	t.Parallel()
 	if got := nodeVisibleAtTxTime(types.LegacyValidAxis, nil, 10); got != nil {
 		t.Fatalf("nodeVisibleAtTxTime(types.LegacyValidAxis, nil) = %v, want nil", got)
 	}

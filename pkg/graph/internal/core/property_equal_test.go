@@ -36,6 +36,7 @@ func (s *lookupCountingStore) NodesByLabel(tok uint16, opts storepkg.QueryOpts) 
 // forms and filters the rest, never the 12^3 combinations: at most 12 store
 // lookups, and the rows of every width.
 func TestCompositeLookupDoesNotCombineForms(t *testing.T) {
+	t.Parallel()
 	st := &lookupCountingStore{Store: memory.New()}
 	g, err := New(Config{Store: st})
 	if err != nil {

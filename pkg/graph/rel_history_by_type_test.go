@@ -14,6 +14,7 @@ import (
 // (keeps its history) and writes to another type; unknown type is 0; stores
 // without the per-type answer report ok=false, never a substitute count.
 func TestRelHistoryCountByType(t *testing.T) {
+	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		labels := []string{"P"}

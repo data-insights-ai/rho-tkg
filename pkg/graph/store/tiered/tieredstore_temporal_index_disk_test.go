@@ -96,6 +96,7 @@ func TestTieredTemporalIndexOnDisk_ReopenPersistence(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{
 		DataDir:             dir,

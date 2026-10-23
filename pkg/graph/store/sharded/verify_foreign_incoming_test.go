@@ -18,6 +18,7 @@ import (
 // legitimate stub (built exactly like TestRecordForeignIncoming_StoreWrite's
 // setup) no longer appears in ShardMismatches.
 func TestVerifyConsistencyForeignIncomingStubNotFlagged(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 2)
 	end := putNode(t, st, mkNodeID(0, 1), 10)
 
@@ -51,6 +52,7 @@ func TestVerifyConsistencyForeignIncomingStubNotFlagged(t *testing.T) {
 // and must still be reported — mirroring the existing
 // TestVerifyConsistencyDetectsShardMismatch node-side test, for the rel side.
 func TestVerifyConsistencyGenuinelyMisroutedRelStillFlagged(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Both endpoints live on shard[1] (slot 1) — NOT shard[0].
 	start := putNode(t, st, mkNodeID(1, 1), 10)

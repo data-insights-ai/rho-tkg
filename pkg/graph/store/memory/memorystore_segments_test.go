@@ -876,7 +876,12 @@ func TestSegments_StringColumnBytesDoNotGrowWithSegmentCount(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
-	const values, rows, perSeal = 400, 9600, 1200
+	// -short runs only under -race (the race gate): half the rows, still 8
+	// segments with more distinct values than a dictionary keeps per segment.
+	values, rows, perSeal := 400, 9600, 1200
+	if testing.Short() {
+		rows, perSeal = 4800, 600
+	}
 	build := func(sealEvery int) (*segTwin, int, int) {
 		r := rand.New(rand.NewSource(33))
 		tw := newSegTwin(t, 1<<40, 40)

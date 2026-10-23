@@ -16,6 +16,7 @@ import (
 // tiered shard keeps every cross-shard row it could prune (lost recall) and a
 // deleted row stays covered by a stale envelope.
 func TestRelTypeTemporalIndex_PartialDoorsMaintainEnvelope(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	const relType, label = uint16(6), uint16(1)
 	if err := bs.PutNode(types.NewNode(types.NodeID(1), label, nil)); err != nil {
@@ -66,6 +67,7 @@ func TestRelTypeTemporalIndex_PartialDoorsMaintainEnvelope(t *testing.T) {
 // DeleteRelEntityAndOut) puts the row back with PutRelEntityAndOut while its
 // history versions never left the shard. The envelope must still cover them.
 func TestRelTypeTemporalIndex_DeleteThenReputKeepsHistoryCovered(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	const relType, label = uint16(6), uint16(1)
 	if err := bs.PutNode(types.NewNode(types.NodeID(1), label, nil)); err != nil {
@@ -103,6 +105,7 @@ func TestRelTypeTemporalIndex_DeleteThenReputKeepsHistoryCovered(t *testing.T) {
 // relationship without a current row uncovered (never pruned) instead of
 // vouching for one version while its other rows stay outside.
 func TestRelTypeTemporalIndex_PutRelVersionExtendsLiveOnly(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	const relType, label = uint16(6), uint16(1)
 	for _, id := range []types.NodeID{1, 2} {
@@ -153,6 +156,7 @@ func TestRelTypeTemporalIndex_PutRelVersionExtendsLiveOnly(t *testing.T) {
 // open), a read-only open with it only skips the build, and a later plain
 // open finds no definition to rebuild.
 func TestDropRelTemporalIndexesAtOpen_DiscardsWithoutBuilding(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
 	if err != nil {
@@ -219,6 +223,7 @@ func TestDropRelTemporalIndexesAtOpen_DiscardsWithoutBuilding(t *testing.T) {
 // CompositePropertyIndexDefs (direct test, rule 1): every definition across
 // labels, copies, dropped definitions and labels gone, closed store refused.
 func TestCompositePropertyIndexDefs_ListsEveryLabel(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	if defs, err := bs.CompositePropertyIndexDefs(); err != nil || len(defs) != 0 {
 		t.Fatalf("empty store defs = %v, %v; want empty", defs, err)

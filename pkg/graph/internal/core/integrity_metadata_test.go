@@ -48,6 +48,7 @@ func assertRelIntegrityMetadata(t *testing.T, r *types.Relationship, author, sig
 }
 
 func TestNodeIntegrityMetadataPreservedAcrossBlindMutations(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{
 		"state":             "draft",
@@ -99,6 +100,7 @@ func TestNodeIntegrityMetadataPreservedAcrossBlindMutations(t *testing.T) {
 }
 
 func TestRelInPlacePreservesEndpointHashesAndIntegrityMetadata(t *testing.T) {
+	t.Parallel()
 	g := newTestGraphForChain(t)
 	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {

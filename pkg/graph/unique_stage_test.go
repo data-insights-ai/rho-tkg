@@ -21,6 +21,7 @@ import (
 // Two same-value node creates inside ONE batch: the second fails at op time,
 // the first commits.
 func TestUnique_BatchInternalDuplicate(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -75,6 +76,7 @@ func TestUnique_BatchInternalDuplicate(t *testing.T) {
 // A batch create that collides with COMMITTED state fails; a batch create of a
 // fresh value commits.
 func TestUnique_BatchVsCommitted(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -111,6 +113,7 @@ func TestUnique_BatchVsCommitted(t *testing.T) {
 // Batch UPDATE into a violation is rejected (delegates to the enforced internal
 // update door).
 func TestUnique_BatchUpdateIntoViolation(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -180,6 +183,7 @@ func TestUnique_TxInternalDuplicate(t *testing.T) {
 // A UniqueCurrent value claimed inside a tx is freed on rollback (removing the
 // created node removes its index entry).
 func TestUnique_TxRollbackFreesValue(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -263,6 +267,7 @@ func TestUnique_TxVsStandaloneRace(t *testing.T) {
 // A stream carrying two current nodes with the same constrained value fails the
 // post-replay validation with ErrUniqueViolation and rolls the import back.
 func TestUnique_ImportValidatesAndRollsBack(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	// Source graph WITHOUT a constraint holds duplicate emails.
 	src, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1})
@@ -317,6 +322,7 @@ func TestUnique_ImportValidatesAndRollsBack(t *testing.T) {
 // locally-active unique constraint (ADR-0002 Decision 4). A record that would
 // violate the target's constraint still lands.
 func TestUnique_ReplicaApplyDoesNotEnforce(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
@@ -379,6 +385,7 @@ func TestUnique_ReplicaApplyDoesNotEnforce(t *testing.T) {
 // 100 goroutines GetOrCreateByKey the SAME key: exactly one create, 99 gets, all
 // returning the same node ID. Runs with and without an active constraint.
 func TestGetOrCreateByKey_IdempotencyStorm(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		for _, withConstraint := range []bool{false, true} {
 			name := bc.name
@@ -504,6 +511,7 @@ func TestGetOrCreateByKey_DoesNotSerializeAgainstPlainConcurrentAddWithoutConstr
 
 // A hit returns a mutable, independent copy (Get semantics) and the created==false.
 func TestGetOrCreateByKey_HitReturnsCopy(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -558,6 +566,7 @@ func TestGetOrCreateByKey_FloatRejected(t *testing.T) {
 // registry, not only current-state equality (there is no current holder after
 // the owner is deleted, yet the value stays owned forever).
 func TestUniqueForever_BatchBarredAfterDelete(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -679,6 +688,7 @@ func TestUniqueForever_TxBarredAfterDelete(t *testing.T) {
 // one node ends up holding the value and the durable registry names one owner
 // (race-detector coverage of the batch claim path).
 func TestUniqueForever_BatchStandaloneStorm(t *testing.T) {
+	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)

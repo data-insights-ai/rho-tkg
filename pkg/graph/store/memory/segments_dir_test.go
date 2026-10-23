@@ -1104,6 +1104,12 @@ func TestSegments_AnswersDoNotDependOnSealBoundaries(t *testing.T) {
 		{"every 97, files", 1 << 40, 97, true},
 		{"budget sealer, files", 12 << 10, 0, true},
 	}
+	// -short runs only under -race (the race gate): 700 writes still seal
+	// every layout at least once; the full run writes 1,500.
+	writes := 1500
+	if testing.Short() {
+		writes = 700
+	}
 	props := []string{"weight", "actor", "n"}
 	var ref []string
 	segCounts := map[int]bool{}
@@ -1117,7 +1123,7 @@ func TestSegments_AnswersDoNotDependOnSealBoundaries(t *testing.T) {
 				}
 				t.Cleanup(func() { _ = tw.declared.Close() })
 			}
-			for i := 1; i <= 1500; i++ {
+			for i := 1; i <= writes; i++ {
 				if r.Intn(8) == 0 {
 					tw.mutate(r)
 				} else {

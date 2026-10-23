@@ -108,6 +108,7 @@ func newContractGraph(t *testing.T, backend storeContractBackend) *Core {
 }
 
 func TestStoreContract_CurrentVisibility(t *testing.T) {
+	t.Parallel()
 	runStoreContract(t, "current visibility", func(t *testing.T, backend storeContractBackend) {
 		g := newContractGraph(t, backend)
 
@@ -152,6 +153,7 @@ func TestStoreContract_CurrentVisibility(t *testing.T) {
 // the memory oracle. Exercises every arm: current-match fast path, history-scan,
 // not-yet-created, deleted-before/after, and the bulk two-pass union.
 func TestStoreContract_TransactionTimeAsOf(t *testing.T) {
+	t.Parallel()
 	runStoreContract(t, "transaction-time AsOf", func(t *testing.T, backend storeContractBackend) {
 		g := newContractGraph(t, backend)
 		clk := useTestClock(t, g)
@@ -269,6 +271,7 @@ func TestStoreContract_TransactionTimeAsOf(t *testing.T) {
 }
 
 func TestStoreContract_HistoryVisibility(t *testing.T) {
+	t.Parallel()
 	runStoreContract(t, "history visibility", func(t *testing.T, backend storeContractBackend) {
 		g := newContractGraph(t, backend)
 		caseNode, signalNode, rel := addContractCaseSignalRel(t, g)
@@ -339,6 +342,7 @@ func TestStoreContract_HistoryVisibility(t *testing.T) {
 }
 
 func TestStoreContract_DeleteTombstonesAndHistory(t *testing.T) {
+	t.Parallel()
 	runStoreContract(t, "delete tombstones and history", func(t *testing.T, backend storeContractBackend) {
 		g := newContractGraph(t, backend)
 		caseNode, signalNode, rel := addContractCaseSignalRel(t, g)
@@ -407,6 +411,7 @@ func TestStoreContract_DeleteTombstonesAndHistory(t *testing.T) {
 }
 
 func TestStoreContract_Pagination(t *testing.T) {
+	t.Parallel()
 	runStoreContract(t, "pagination", func(t *testing.T, backend storeContractBackend) {
 		g := newContractGraph(t, backend)
 
@@ -566,6 +571,7 @@ func TestStoreContract_Events(t *testing.T) {
 }
 
 func TestStoreContract_Stats(t *testing.T) {
+	t.Parallel()
 	runStoreContract(t, "stats", func(t *testing.T, backend storeContractBackend) {
 		g := newContractGraph(t, backend)
 

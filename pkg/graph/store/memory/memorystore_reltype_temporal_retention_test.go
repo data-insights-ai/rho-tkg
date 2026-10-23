@@ -10,6 +10,7 @@ import (
 // rel-type temporal entry goes too; a merely deleted relationship keeps its
 // entry (append-only; its history stays).
 func TestRelTypeTemporalIndex_RetentionPurgeRemovesEnvelope(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	const relType, aged, kept = uint16(6), uint16(1), uint16(2)
 	nodes := map[types.NodeID]uint16{1: aged, 2: kept, 3: kept}

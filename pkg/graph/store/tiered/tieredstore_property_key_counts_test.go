@@ -11,6 +11,7 @@ import (
 // counts must all fold into one total. A non-indexable property value and a
 // property key absent from a label both report 0.
 func TestTieredStoreNodeCountByLabelAndPropertyKey(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -66,6 +67,7 @@ func TestTieredStoreNodeCountByLabelAndPropertyKey(t *testing.T) {
 }
 
 func TestTieredStoreNodeCountByLabelAndPropertyKeyErrors(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 
 	if _, err := ts.NodeCountByLabelAndPropertyKey(0, "id"); err == nil {

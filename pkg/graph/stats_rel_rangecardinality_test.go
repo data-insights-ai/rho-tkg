@@ -13,6 +13,7 @@ import (
 // (exact=false) with no index, is exact once the rel property index is built, and
 // declines under a temporal filter.
 func TestRelRangeCardinality_Parity(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		// Two endpoints + 20 KNOWS rels with weight 0..19.
@@ -82,6 +83,7 @@ func TestRelRangeCardinality_Parity(t *testing.T) {
 // TxPin-pinned call must decline (exact=false) rather than silently answer
 // from the CURRENT-state BSI/property-index fast path while claiming exact.
 func TestRelRangeCardinality_DeclinesOnBitemporalTxFilter(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, err := g.Nodes().Add(ctx, []string{"P"}, nil)

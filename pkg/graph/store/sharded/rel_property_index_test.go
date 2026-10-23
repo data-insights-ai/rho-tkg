@@ -74,6 +74,7 @@ func assertRelIDSet(t *testing.T, got []*types.Relationship, want []types.RelID)
 // index over cross-shard-distributed rels returns the EXACT set per value
 // (folded across shards), empty for a phantom, and paginates the merged order.
 func TestShardedRelPropertyIndexCrossShard(t *testing.T) {
+	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	weights := []string{"strong", "weak"}
 	byWeight, slots := addWeightedRelsAcrossShards(t, g, weights, 4) // 8 sessions
@@ -117,6 +118,7 @@ func TestShardedRelPropertyIndexCrossShard(t *testing.T) {
 // TestShardedRelPropertyIndexDDLSentinels checks store-level DDL sentinels for
 // the rel index (mirrors the node property-index DDL contract).
 func TestShardedRelPropertyIndexDDLSentinels(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
 		t.Fatalf("sharded.New: %v", err)

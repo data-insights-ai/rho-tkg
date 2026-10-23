@@ -116,6 +116,7 @@ func (e *branchTestEnv) writeRelHistoryV0V1(t *testing.T, r *types.Relationship)
 // --- (B) Event-shard live: no fanout, local history only ---
 
 func TestTiered_NodeHistoryVersionsFrom_EventShardLive_NoFanout(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newEventNode(t)
 	e.writeNodeHistoryV0V1(t, n)
@@ -130,6 +131,7 @@ func TestTiered_NodeHistoryVersionsFrom_EventShardLive_NoFanout(t *testing.T) {
 }
 
 func TestTiered_GetNodeVersion_EventShardLive_NotFound(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newEventNode(t)
 	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
@@ -144,6 +146,7 @@ func TestTiered_GetNodeVersion_EventShardLive_NotFound(t *testing.T) {
 }
 
 func TestTiered_GetNodeHistory_EventShardLive_NoFanout(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newEventNode(t)
 	e.writeNodeHistoryV0V1(t, n)
@@ -157,6 +160,7 @@ func TestTiered_GetNodeHistory_EventShardLive_NoFanout(t *testing.T) {
 }
 
 func TestTiered_TruncateNodeHistory_EventShardLive_DelegatesToShard(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newEventNode(t)
 	e.writeNodeHistoryV0V1(t, n)
@@ -175,6 +179,7 @@ func TestTiered_TruncateNodeHistory_EventShardLive_DelegatesToShard(t *testing.T
 // --- (D) Deleted from current — history-only across all shards ---
 
 func TestTiered_NodeHistoryVersionsFrom_DeletedEvent_FanoutBranch(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newEventNode(t)
 	e.writeNodeHistoryV0V1(t, n)
@@ -191,6 +196,7 @@ func TestTiered_NodeHistoryVersionsFrom_DeletedEvent_FanoutBranch(t *testing.T) 
 }
 
 func TestTiered_GetNodeHistory_DeletedEvent_FanoutBranch(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newEventNode(t)
 	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
@@ -209,6 +215,7 @@ func TestTiered_GetNodeHistory_DeletedEvent_FanoutBranch(t *testing.T) {
 }
 
 func TestTiered_GetNodeVersion_DeletedEvent_HistoryFanout(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newEventNode(t)
 	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
@@ -230,6 +237,7 @@ func TestTiered_GetNodeVersion_DeletedEvent_HistoryFanout(t *testing.T) {
 }
 
 func TestTiered_TruncateNodeHistory_DeletedEvent_FanoutBranch(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newEventNode(t)
 	e.writeNodeHistoryV0V1(t, n)
@@ -251,6 +259,7 @@ func TestTiered_TruncateNodeHistory_DeletedEvent_FanoutBranch(t *testing.T) {
 // --- (A without archive) — refShard live, no archive shard exists yet ---
 
 func TestTiered_NodeHistoryVersionsFrom_RefLive_NoArchive(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newRefNode(t)
 	e.writeNodeHistoryV0V1(t, n)
@@ -267,6 +276,7 @@ func TestTiered_NodeHistoryVersionsFrom_RefLive_NoArchive(t *testing.T) {
 }
 
 func TestTiered_GetNodeHistory_RefLive_NoArchive(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newRefNode(t)
 	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
@@ -282,6 +292,7 @@ func TestTiered_GetNodeHistory_RefLive_NoArchive(t *testing.T) {
 }
 
 func TestTiered_TruncateNodeHistory_RefLive_NoArchive(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newRefNode(t)
 	e.writeNodeHistoryV0V1(t, n)
@@ -300,6 +311,7 @@ func TestTiered_TruncateNodeHistory_RefLive_NoArchive(t *testing.T) {
 // --- (C) Archive-shard routed — live row on refArchive ---
 
 func TestTiered_NodeHistoryVersionsFrom_Archive_MergesRefHistory(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newRefNode(t)
 	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
@@ -324,6 +336,7 @@ func TestTiered_NodeHistoryVersionsFrom_Archive_MergesRefHistory(t *testing.T) {
 }
 
 func TestTiered_GetNodeHistory_Archive_MergesRefHistory(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newRefNode(t)
 	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
@@ -347,6 +360,7 @@ func TestTiered_GetNodeHistory_Archive_MergesRefHistory(t *testing.T) {
 }
 
 func TestTiered_GetNodeVersion_Archive_FindsRefHistory(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newRefNode(t)
 	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
@@ -367,6 +381,7 @@ func TestTiered_GetNodeVersion_Archive_FindsRefHistory(t *testing.T) {
 }
 
 func TestTiered_TruncateNodeHistory_Archive_MergesRefHistory(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newRefNode(t)
 	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
@@ -395,6 +410,7 @@ func TestTiered_TruncateNodeHistory_Archive_MergesRefHistory(t *testing.T) {
 // --- Relationship parity for all four shapes ---
 
 func TestTiered_RelHistoryVersionsFrom_EventShardLive_NoFanout(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
 	end := e.newEventNode(t)
@@ -411,6 +427,7 @@ func TestTiered_RelHistoryVersionsFrom_EventShardLive_NoFanout(t *testing.T) {
 }
 
 func TestTiered_GetRelVersion_EventShardLive_NotFound(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
 	end := e.newEventNode(t)
@@ -427,6 +444,7 @@ func TestTiered_GetRelVersion_EventShardLive_NotFound(t *testing.T) {
 }
 
 func TestTiered_GetRelHistory_EventShardLive_NoFanout(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
 	end := e.newEventNode(t)
@@ -442,6 +460,7 @@ func TestTiered_GetRelHistory_EventShardLive_NoFanout(t *testing.T) {
 }
 
 func TestTiered_TruncateRelHistory_EventShardLive_DelegatesToShard(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
 	end := e.newEventNode(t)
@@ -460,6 +479,7 @@ func TestTiered_TruncateRelHistory_EventShardLive_DelegatesToShard(t *testing.T)
 }
 
 func TestTiered_RelHistoryVersionsFrom_DeletedEvent_FanoutBranch(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
 	end := e.newEventNode(t)
@@ -478,6 +498,7 @@ func TestTiered_RelHistoryVersionsFrom_DeletedEvent_FanoutBranch(t *testing.T) {
 }
 
 func TestTiered_GetRelHistory_DeletedEvent_FanoutBranch(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
 	end := e.newEventNode(t)
@@ -498,6 +519,7 @@ func TestTiered_GetRelHistory_DeletedEvent_FanoutBranch(t *testing.T) {
 }
 
 func TestTiered_GetRelVersion_DeletedEvent_HistoryFanout(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
 	end := e.newEventNode(t)
@@ -518,6 +540,7 @@ func TestTiered_GetRelVersion_DeletedEvent_HistoryFanout(t *testing.T) {
 }
 
 func TestTiered_TruncateRelHistory_DeletedEvent_FanoutBranch(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
 	end := e.newEventNode(t)
@@ -539,6 +562,7 @@ func TestTiered_TruncateRelHistory_DeletedEvent_FanoutBranch(t *testing.T) {
 }
 
 func TestTiered_RelHistoryVersionsFrom_RefLive_NoArchive(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newRefNode(t)
 	end := e.newRefNode(t)
@@ -557,6 +581,7 @@ func TestTiered_RelHistoryVersionsFrom_RefLive_NoArchive(t *testing.T) {
 }
 
 func TestTiered_GetRelHistory_RefLive_NoArchive(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newRefNode(t)
 	end := e.newRefNode(t)
@@ -574,6 +599,7 @@ func TestTiered_GetRelHistory_RefLive_NoArchive(t *testing.T) {
 }
 
 func TestTiered_TruncateRelHistory_RefLive_NoArchive(t *testing.T) {
+	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newRefNode(t)
 	end := e.newRefNode(t)

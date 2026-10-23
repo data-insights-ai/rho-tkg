@@ -27,6 +27,7 @@ import (
 // a present TxAt 0 = nothing recorded (ErrNoVersionValidAt, nil in the
 // batch), also = NodeAtTx(id, v, -1); ValidAt absent = now.
 func TestRound11AtOptsDoors(t *testing.T) {
+	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)

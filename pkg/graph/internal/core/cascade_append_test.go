@@ -146,6 +146,7 @@ func TestCascadeAppend67_AllocsFlat(t *testing.T) {
 func TestCascadeAppend67_Twin(t *testing.T) {
 	for _, be := range r10AllBackends(t) {
 		t.Run(be.name, func(t *testing.T) {
+			t.Parallel()
 			tw := newHeadTwin(t, be, 0x67)
 			ctx := context.Background()
 			nid, rid := tw.nodes[1], tw.rels[0] // open, valid from 100 and 50

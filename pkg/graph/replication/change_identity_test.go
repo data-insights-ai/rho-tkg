@@ -22,6 +22,7 @@ import (
 // encoders actually write.
 
 func TestDecodeChangeIdentity_RealRecords(t *testing.T) {
+	t.Parallel()
 	// UntimedFromTxFrom: no ChangeMeta record at open, so feed[0] is n1.
 	g, err := graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog()), UntimedValidStart: graphpkg.UntimedFromTxFrom})
 	if err != nil {
@@ -124,6 +125,7 @@ func assertIdentity(t *testing.T, rec store.ChangeRecord, wantKind replication.E
 // A corrupt/hostile payload fails closed with store.ErrCorruptWire (rule 4 —
 // errors.Is at the public boundary), never a panic.
 func TestDecodeChangeIdentity_CorruptFailsClosed(t *testing.T) {
+	t.Parallel()
 	garbage := []byte{0xc1, 0xff, 0xff, 0xff, 0xff} // 0xc1 is msgpack "never used"
 	for _, tag := range []store.ChangeTag{
 		store.ChangeNodePut, store.ChangeRelPut,
@@ -141,6 +143,7 @@ func TestDecodeChangeIdentity_CorruptFailsClosed(t *testing.T) {
 
 // The store-global control tags name no single entity.
 func TestDecodeChangeIdentity_ControlTags(t *testing.T) {
+	t.Parallel()
 	for _, tag := range []store.ChangeTag{store.ChangeMeta, store.ChangeClear} {
 		_, _, err := replication.DecodeChangeIdentity(store.ChangeRecord{Tag: tag})
 		if !errors.Is(err, replication.ErrNoEntityIdentity) {
@@ -151,6 +154,7 @@ func TestDecodeChangeIdentity_ControlTags(t *testing.T) {
 
 // An unrecognized tag fails closed with ErrCorruptWire.
 func TestDecodeChangeIdentity_UnknownTag(t *testing.T) {
+	t.Parallel()
 	_, _, err := replication.DecodeChangeIdentity(store.ChangeRecord{Tag: store.ChangeTag(200)})
 	if !errors.Is(err, store.ErrCorruptWire) {
 		t.Fatalf("unknown tag err = %v, want ErrCorruptWire", err)
@@ -164,6 +168,7 @@ func TestDecodeChangeIdentity_UnknownTag(t *testing.T) {
 // store.ErrCorruptWire. Driven against REAL records from RecordForeignIncoming
 // + a subsequent node delete (which cascades a ChangeForeignIncomingDelete).
 func TestDecodeChangeIdentity_ForeignIncomingRecords(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	eStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})
@@ -252,6 +257,7 @@ func TestDecodeChangeIdentity_ForeignIncomingRecords(t *testing.T) {
 // (like ChangeMeta/ChangeClear), not the unknown-tag default
 // store.ErrCorruptWire — it names a predicate, not one entity.
 func TestDecodeChangeIdentity_RangePurgeRecord(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog()), AllowRetentionPurge: true})
 	if err != nil {
@@ -293,6 +299,7 @@ func TestDecodeChangeIdentity_RangePurgeRecord(t *testing.T) {
 // against the SAME real feed shape as the identity test so tag→op stays aligned
 // with what the encoders actually emit.
 func TestChangeOpOf_RealRecords(t *testing.T) {
+	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog())})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -360,6 +367,7 @@ func TestChangeOpOf_RealRecords(t *testing.T) {
 // closed, and — unlike DecodeChangeIdentity — a corrupt PAYLOAD is irrelevant
 // because the body is never decoded.
 func TestChangeOpOf_ControlUnknownAndCorruptPayload(t *testing.T) {
+	t.Parallel()
 	for _, tag := range []store.ChangeTag{store.ChangeMeta, store.ChangeClear} {
 		if _, err := replication.ChangeOpOf(store.ChangeRecord{Tag: tag}); !errors.Is(err, replication.ErrNoEntityIdentity) {
 			t.Fatalf("control tag %s err = %v, want ErrNoEntityIdentity", tag, err)
@@ -376,6 +384,7 @@ func TestChangeOpOf_ControlUnknownAndCorruptPayload(t *testing.T) {
 }
 
 func TestChangeOp_String(t *testing.T) {
+	t.Parallel()
 	cases := map[replication.ChangeOp]string{
 		replication.ChangeOpUpsert:          "Upsert",
 		replication.ChangeOpDelete:          "Delete",
@@ -392,6 +401,7 @@ func TestChangeOp_String(t *testing.T) {
 }
 
 func TestEntityKind_String(t *testing.T) {
+	t.Parallel()
 	cases := map[replication.EntityKind]string{
 		replication.EntityKindNode:         "Node",
 		replication.EntityKindRelationship: "Relationship",

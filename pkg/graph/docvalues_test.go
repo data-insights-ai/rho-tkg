@@ -55,6 +55,7 @@ func drainDocValues(t *testing.T, g *graphpkg.Graph, label string, keys []string
 // member (including one lacking the property → nil) and preserves the stored Go
 // type — the store-level contract the cypher sink relies on, on both backends.
 func TestDocValues_FullMembershipAndTypes(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"city": "berlin", "age": int64(30)})
@@ -85,6 +86,7 @@ func TestDocValues_FullMembershipAndTypes(t *testing.T) {
 // MUST advance the node-mutation epoch so the cached column is rebuilt with the new
 // value. A counter hooked only on label-index changes would serve the stale value.
 func TestDocValues_StaleOnPropertyEdit(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		n, _ := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"age": int64(30)})
@@ -111,6 +113,7 @@ func TestDocValues_StaleOnPropertyEdit(t *testing.T) {
 // the (unfiltered) label set — and a non-temporal aggregation counts it. The column
 // membership must match: it must still yield that node's row.
 func TestDocValues_ExpiredNodeStillCounted(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		live, _ := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"age": int64(1)})
@@ -148,6 +151,7 @@ func TestDocValues_ExpiredNodeStillCounted(t *testing.T) {
 // backends. A new write path added without hooking the epoch fails a sub-case (this
 // is how the missed ReplaceNodeWithHistory and badger delete doors were caught).
 func TestDocValues_EpochBumpsOnEveryMutationDoor(t *testing.T) {
+	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		n, _ := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"age": int64(1)})

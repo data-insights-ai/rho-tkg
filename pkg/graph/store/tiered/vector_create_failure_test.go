@@ -14,6 +14,7 @@ import (
 )
 
 func TestTieredStore_VectorIndex_CreateCleansPlaceholderOnScanError(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -50,6 +51,7 @@ func TestTieredStore_VectorIndex_CreateCleansPlaceholderOnScanError(t *testing.T
 }
 
 func TestTieredStore_VectorIndex_CreateIgnoresCorruptUnrelatedLabelRow(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -94,6 +96,7 @@ func TestTieredStore_VectorIndex_CreateIgnoresCorruptUnrelatedLabelRow(t *testin
 }
 
 func TestTieredStore_VectorIndex_CreateRejectsInvalidConfig(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	cases := []struct {
@@ -119,6 +122,7 @@ func TestTieredStore_VectorIndex_CreateRejectsInvalidConfig(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_SearchRejectsBuildingPlaceholder(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -148,6 +152,7 @@ func TestTieredStore_VectorIndex_SearchRejectsBuildingPlaceholder(t *testing.T) 
 }
 
 func TestTieredStore_VectorIndex_CreateRejectsBackfillDimensionMismatch(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -172,6 +177,7 @@ func TestTieredStore_VectorIndex_CreateRejectsBackfillDimensionMismatch(t *testi
 }
 
 func TestTieredStore_VectorIndex_RejectsNonFiniteVectors(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -220,6 +226,7 @@ func TestTieredStore_VectorIndex_RejectsNonFiniteVectors(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_PutNodeRejectsMaintenanceDimensionMismatch(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -243,6 +250,7 @@ func TestTieredStore_VectorIndex_PutNodeRejectsMaintenanceDimensionMismatch(t *t
 }
 
 func TestTieredStore_VectorIndex_SearchPropagatesCandidateCorruption(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -278,6 +286,7 @@ func TestTieredStore_VectorIndex_SearchPropagatesCandidateCorruption(t *testing.
 }
 
 func TestTieredStore_DeleteNodeWithHistoryPurgesVectorAfterCorruptShardCleanup(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

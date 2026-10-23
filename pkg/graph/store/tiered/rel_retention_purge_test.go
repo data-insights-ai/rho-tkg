@@ -23,6 +23,7 @@ func TestTieredRelPurge_ColdStartRefEnd(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	caseTok, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	const evType, keepType = uint16(5), uint16(6)

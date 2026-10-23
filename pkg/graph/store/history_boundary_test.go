@@ -54,6 +54,7 @@ func directStoreBackends(t *testing.T) map[string]storepkg.Store {
 }
 
 func TestDirectStoreHistoryWritesRejectInvalidSnapshots(t *testing.T) {
+	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			n := types.NewNode(types.NodeID(snowflake.ID(101)), 1, nil)
@@ -72,6 +73,7 @@ func TestDirectStoreHistoryWritesRejectInvalidSnapshots(t *testing.T) {
 }
 
 func TestDirectStoreHistoryWritesRejectPayloadVersionMismatch(t *testing.T) {
+	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			n := types.NewNode(types.NodeID(snowflake.ID(111)), 1, nil)
@@ -90,6 +92,7 @@ func TestDirectStoreHistoryWritesRejectPayloadVersionMismatch(t *testing.T) {
 }
 
 func TestDirectStoreAtomicHistoryMethodsRejectPayloadVersionMismatch(t *testing.T) {
+	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			n1 := types.NewNode(types.NodeID(snowflake.ID(121)), 1, nil)
@@ -152,6 +155,7 @@ func TestDirectStoreAtomicHistoryMethodsRejectPayloadVersionMismatch(t *testing.
 }
 
 func TestDirectStoreAtomicHistoryMethodsRejectStaleLiveVersion(t *testing.T) {
+	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			nReplace := types.NewNode(types.NodeID(snowflake.ID(131)), 1, nil)
@@ -236,6 +240,7 @@ func TestDirectStoreAtomicHistoryMethodsRejectStaleLiveVersion(t *testing.T) {
 }
 
 func TestDirectStoreDeleteNodeWithHistoryRejectsMalformedNodeTombstone(t *testing.T) {
+	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			n := types.NewNode(types.NodeID(snowflake.ID(301)), 1, nil)
@@ -262,6 +267,7 @@ func TestDirectStoreDeleteNodeWithHistoryRejectsMalformedNodeTombstone(t *testin
 }
 
 func TestDirectStoreLabelAndTypeReadsRejectReservedTokens(t *testing.T) {
+	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			if _, err := backend.NodesByLabel(0, storepkg.QueryOpts{}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
@@ -281,6 +287,7 @@ func TestDirectStoreLabelAndTypeReadsRejectReservedTokens(t *testing.T) {
 }
 
 func TestDirectStoreExplicitIDReadsRejectInvalidIDs(t *testing.T) {
+	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			n1 := types.NewNode(types.NodeID(snowflake.ID(401)), 1, nil)

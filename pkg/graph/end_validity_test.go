@@ -105,6 +105,7 @@ func newestRelRow(t *testing.T, g *graphpkg.Graph, id types.RelID) *types.Relati
 }
 
 func TestEndValidityKeepsThePast(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, m := range evModes {
 		for _, door := range []string{"api", "tx"} {
@@ -321,6 +322,7 @@ func TestEndValidityKeepsThePast(t *testing.T) {
 // Delete's rows (same fields apart from the instants), and on a whole-axis
 // graph Delete stays a retraction while EndValidity is not.
 func TestEndValidityLegacyIsDelete(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, m := range evModes {
 		for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.UntimedValidStart = m.mode }) {

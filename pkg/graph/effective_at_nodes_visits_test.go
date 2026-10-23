@@ -21,6 +21,7 @@ import (
 // deleted-ID fold (O(deleted) per call), and a gather that drops the seed's
 // deleted or re-imported earlier lives (the exact answer).
 func TestEffectiveAtNodesVisitsSeedAdjacencyOnly(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st, err := badger.New(badger.Config{Dir: t.TempDir(), FlushInterval: time.Hour, CacheCapacity: 1})
 	if err != nil {

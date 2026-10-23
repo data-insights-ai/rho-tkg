@@ -13,6 +13,7 @@ import (
 // TestCreateTemporalIndex_ConcurrentMutationDuringScanIsReconciled flake in CI
 // (run 39035363652, todo row 72) while its writes were not confined to Phase 2.
 func TestCreateTemporalIndex_ReplaceAfterPublishKeepsEnvelope(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	nd := memNode(1, 10)
 	nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(1000)})

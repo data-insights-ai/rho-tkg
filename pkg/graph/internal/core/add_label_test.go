@@ -47,6 +47,7 @@ import (
 // --- Graph.Nodes.AddLabel ---
 
 func TestAddNodeLabel_AddsExtraLabel(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
@@ -65,6 +66,7 @@ func TestAddNodeLabel_AddsExtraLabel(t *testing.T) {
 }
 
 func TestAddNodeLabel_IdempotentIfAlreadyPresent(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person", "Employee"}, nil)
 	id := n.ID()
@@ -88,6 +90,7 @@ type addLabelCorruptTokenStore struct {
 }
 
 func TestAddNodeLabel_CorruptFutureTokenRollsBackRegistry(t *testing.T) {
+	t.Parallel()
 	backing := memory.New()
 	id := types.NodeID(424242)
 	if err := backing.PutNode(types.NewNode(id, 1, nil)); err != nil {
@@ -127,6 +130,7 @@ func TestAddNodeLabel_CorruptFutureTokenRollsBackRegistry(t *testing.T) {
 }
 
 func TestAddNodeLabel_EmptyNameRejected(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
@@ -137,6 +141,7 @@ func TestAddNodeLabel_EmptyNameRejected(t *testing.T) {
 }
 
 func TestAddNodeLabel_NameTooLong(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 5}})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Short"}, nil)
 	id := n.ID()
@@ -148,6 +153,7 @@ func TestAddNodeLabel_NameTooLong(t *testing.T) {
 }
 
 func TestAddNodeLabel_TooManyLabelsRejected(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
@@ -159,6 +165,7 @@ func TestAddNodeLabel_TooManyLabelsRejected(t *testing.T) {
 }
 
 func TestAddNodeLabel_TooManyLabelsDoesNotRegisterRejectedLabel(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 1}})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 
@@ -183,6 +190,7 @@ func TestAddNodeLabel_TooManyLabelsDoesNotRegisterRejectedLabel(t *testing.T) {
 // being explicitly called out by name as the easiest one for a future
 // refactor to silently drop.
 func TestAddNodeLabel_RejectsUniqueConstraintViolation(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, _ := New(Config{})
 	if err := g.Constraints.CreateUnique(ctx, "Employee", "email"); err != nil {
@@ -226,6 +234,7 @@ func TestAddNodeLabel_RejectsUniqueConstraintViolation(t *testing.T) {
 }
 
 func TestAddNodeLabel_NodeNotFound(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	err := g.Nodes.AddLabel(context.Background(), 999, "Person")
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -234,6 +243,7 @@ func TestAddNodeLabel_NodeNotFound(t *testing.T) {
 }
 
 func TestNodeLabelMutationsValidateNameBeforeNodeLookup(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 
 	checks := []struct {
@@ -258,6 +268,7 @@ func TestNodeLabelMutationsValidateNameBeforeNodeLookup(t *testing.T) {
 }
 
 func TestAddNodeLabel_HashChainAdvances(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
@@ -285,6 +296,7 @@ func TestAddNodeLabel_HashChainAdvances(t *testing.T) {
 }
 
 func TestAddNodeLabel_WritesHistoryEntry(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
@@ -313,6 +325,7 @@ func TestAddNodeLabel_WritesHistoryEntry(t *testing.T) {
 }
 
 func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
 	id := n.ID()
@@ -448,6 +461,7 @@ func TestGraphTx_AddNodeLabelFailedTooManyLabelsDoesNotRegisterOnCommit(t *testi
 }
 
 func TestGraphTx_AddNodeLabel_ClosedNodeDoesNotSnapshot(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
@@ -720,6 +734,7 @@ func TestGraphTx_LabelRollbackRestoresTieredPrimaryWithoutClassHop(t *testing.T)
 }
 
 func TestGraphTx_LabelMutationsValidateNameBeforeNodeLookup(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 
 	checks := []struct {
@@ -749,6 +764,7 @@ func TestGraphTx_LabelMutationsValidateNameBeforeNodeLookup(t *testing.T) {
 }
 
 func TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
@@ -805,6 +821,7 @@ func TestGraphTx_RemoveNodeLabel_Rollback(t *testing.T) {
 }
 
 func TestGraphTx_RemoveNodeLabel_LastLabelError(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Solo"}, nil)
 	id := n.ID()
@@ -822,6 +839,7 @@ func TestGraphTx_RemoveNodeLabel_LastLabelError(t *testing.T) {
 }
 
 func TestGraphTx_RemoveNodeLabel_LabelNotFoundDoesNotSnapshot(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
@@ -842,6 +860,7 @@ func TestGraphTx_RemoveNodeLabel_LabelNotFoundDoesNotSnapshot(t *testing.T) {
 }
 
 func TestGraphTx_RemoveNodeLabel_UnknownLabelPrecedesNodeLookup(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 
 	tx, _ := g.BeginTx()
@@ -857,6 +876,7 @@ func TestGraphTx_RemoveNodeLabel_UnknownLabelPrecedesNodeLookup(t *testing.T) {
 }
 
 func TestGraphTx_RemoveNodeLabel_AfterRollbackReturnsTxDone(t *testing.T) {
+	t.Parallel()
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()

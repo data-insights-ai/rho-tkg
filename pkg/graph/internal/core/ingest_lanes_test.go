@@ -36,6 +36,7 @@ func slotOf(id snowflake.ID) uint8 {
 // asserts the ENTIRE node∪rel ID set is collision-free — the silent-ID-collision
 // class that dropping the even/odd value-uniqueness invariant could reintroduce.
 func TestLaneGeneratorsGlobalUniqueness(t *testing.T) {
+	t.Parallel()
 	const lanes = 6
 	c := newLanedCore(t, 0, lanes)
 
@@ -70,6 +71,7 @@ func TestLaneGeneratorsGlobalUniqueness(t *testing.T) {
 // (the concurrent-ingest scenario) and asserts global uniqueness. Run under
 // -race, it also proves the shared generators are safe under parallel Generate.
 func TestLaneGeneratorsConcurrentUniqueness(t *testing.T) {
+	t.Parallel()
 	const lanes = 8
 	c := newLanedCore(t, 0, lanes)
 
@@ -113,6 +115,7 @@ func TestLaneGeneratorsConcurrentUniqueness(t *testing.T) {
 // node-field (slot), none colliding with the interactive pair, and that a
 // unified generator stamps the SAME slot on both a node and a rel it mints.
 func TestLaneGeneratorSlots(t *testing.T) {
+	t.Parallel()
 	const snowflakeNodeID = 3 // interactive pair {6,7}
 	const lanes = 5
 	c := newLanedCore(t, snowflakeNodeID, lanes)
@@ -150,6 +153,7 @@ func TestLaneGeneratorSlots(t *testing.T) {
 // TestLaneGeneratorsDisabledByDefault confirms IngestLanes==0 keeps the legacy
 // dual model: no lane generators, and a nonzero lane falls back to interactive.
 func TestLaneGeneratorsDisabledByDefault(t *testing.T) {
+	t.Parallel()
 	c := newLanedCore(t, 0, 0)
 	if len(c.laneGenerators) != 0 {
 		t.Fatalf("laneGenerators should be empty when IngestLanes==0, got %d", len(c.laneGenerators))
@@ -170,6 +174,7 @@ func TestLaneGeneratorsDisabledByDefault(t *testing.T) {
 // population (nodes AND rels, across multiple sub-group Submits) lands on ONE
 // slot — the "group -> one slot -> one shard" property S4 exists to provide.
 func TestIngestConcurrentLanePinning(t *testing.T) {
+	t.Parallel()
 	c, err := New(Config{Store: memory.New(), IngestLanes: 4})
 	if err != nil {
 		t.Fatalf("New(IngestLanes=4): %v", err)

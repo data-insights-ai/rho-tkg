@@ -13,6 +13,7 @@ import (
 // over several slots are each counted once by the summed slot counts, against
 // the values written; token 0 and a closed store are errors.
 func TestShardedEqualCount(t *testing.T) {
+	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {
 		t.Fatal(err)

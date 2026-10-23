@@ -253,6 +253,7 @@ func (w wireCustomProperty) HashBytes() []byte {
 func (w wireCustomProperty) DeepCopyValue() any { return w }
 
 func TestPropertyWireRegisteredCustomValueRoundTrip(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(wireCustomProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}
@@ -331,6 +332,7 @@ func (w wireUnmarshalableCustomProperty) HashBytes() []byte  { return []byte("ba
 func (w wireUnmarshalableCustomProperty) DeepCopyValue() any { return w }
 
 func TestMarshalNodeWireRejectsUnmarshalableCustomProperty(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(wireUnmarshalableCustomProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}
@@ -358,6 +360,7 @@ func (w wirePanicHashCustomProperty) HashBytes() []byte {
 func (w wirePanicHashCustomProperty) DeepCopyValue() any { return w }
 
 func TestMarshalNodeWireRejectsPanicHashCustomProperty(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(wirePanicHashCustomProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}
@@ -414,6 +417,7 @@ func panicCopyPropertyWire(t *testing.T) []PropertyWire {
 }
 
 func TestCheckedWireRejectsPanicDeepCopyCustomProperty(t *testing.T) {
+	t.Parallel()
 	properties := panicCopyPropertyWire(t)
 
 	if err := ValidatePropertyWireSlice(properties); !errors.Is(err, types.ErrUnsupportedValueType) {

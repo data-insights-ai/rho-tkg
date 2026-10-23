@@ -57,6 +57,7 @@ func tailAll(t *testing.T, primary, replica *graph.Graph) error {
 // byte-exact (the refetched tokens land at the same indices as the primary's,
 // so the integrity hashes match).
 func TestReplicaRefetch_ResolvesPostSnapshotTokens(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
@@ -91,6 +92,7 @@ func TestReplicaRefetch_ResolvesPostSnapshotTokens(t *testing.T) {
 // behaviour before refetch existed) — the apply errors and the watermark does
 // not advance past the unresolved record.
 func TestReplicaRefetch_NoSourceFailsClosed(t *testing.T) {
+	t.Parallel()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("primary New: %v", err)
@@ -127,6 +129,7 @@ func TestReplicaRefetch_NoSourceFailsClosed(t *testing.T) {
 // surfaces the RETRYABLE ErrPrimaryRegistryStale sentinel through the full stack
 // (g.Replication().ApplyChanges → core refetch), so a driver can branch on it.
 func TestReplicaRefetch_StaleSourceSurfacesSentinel(t *testing.T) {
+	t.Parallel()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("primary New: %v", err)

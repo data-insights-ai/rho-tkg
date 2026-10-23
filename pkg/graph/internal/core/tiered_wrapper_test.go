@@ -39,6 +39,7 @@ func newTieredWrapperGraph(t *testing.T) (*Core, *tieredWrapperStore) {
 }
 
 func TestTieredWrapper_AdminOperationsUseCapabilities(t *testing.T) {
+	t.Parallel()
 	g, wrapper := newTieredWrapperGraph(t)
 	if wrapper.setLabelRegistryCalls == 0 {
 		t.Fatal("New did not wire the label registry through the tiered wrapper")
@@ -63,6 +64,7 @@ func TestTieredWrapper_AdminOperationsUseCapabilities(t *testing.T) {
 }
 
 func TestTieredWrapper_TxRollbackRewiresLabelRegistry(t *testing.T) {
+	t.Parallel()
 	g, wrapper := newTieredWrapperGraph(t)
 	wrapper.setLabelRegistryCalls = 0
 
@@ -82,6 +84,7 @@ func TestTieredWrapper_TxRollbackRewiresLabelRegistry(t *testing.T) {
 }
 
 func TestTieredWrapper_ImportRollbackRewiresLabelRegistry(t *testing.T) {
+	t.Parallel()
 	g, wrapper := newTieredWrapperGraph(t)
 	wrapper.setLabelRegistryCalls = 0
 

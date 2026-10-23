@@ -8,6 +8,7 @@ import (
 )
 
 func TestRollbackArchiveNodeStateRemovesDestinationNode(t *testing.T) {
+	t.Parallel()
 	shard, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -32,6 +33,7 @@ func TestRollbackArchiveNodeStateRemovesDestinationNode(t *testing.T) {
 }
 
 func TestAppendMissingNodeBucketSelectsOnlyMissingSnapshots(t *testing.T) {
+	t.Parallel()
 	shard, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
@@ -74,6 +76,7 @@ func TestAppendMissingNodeBucketSelectsOnlyMissingSnapshots(t *testing.T) {
 }
 
 func TestAppendMissingRelationshipsSelectsOnlyMissingSnapshots(t *testing.T) {
+	t.Parallel()
 	shard, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)

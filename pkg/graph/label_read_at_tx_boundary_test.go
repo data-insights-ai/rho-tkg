@@ -18,6 +18,7 @@ import (
 // The tx clock runs ahead of the wall clock within one millisecond, so a wall-clock
 // "now" can land on either side; this test reads both sides directly.
 func TestLabelReadAtTheUpdatesTxBoundary(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	backends := map[string]func(t *testing.T) graphpkg.Config{
 		"memory": func(*testing.T) graphpkg.Config { return graphpkg.Config{SnowflakeNodeID: 1} },

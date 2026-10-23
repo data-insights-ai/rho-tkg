@@ -18,6 +18,7 @@ import (
 // guard the same way flush()'s own dbClosed test does.
 
 func TestCommitPropertyIndexOnDiskBackfill_DbClosedGuard(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	bs.dbClosed.Store(true)
@@ -30,6 +31,7 @@ func TestCommitPropertyIndexOnDiskBackfill_DbClosedGuard(t *testing.T) {
 }
 
 func TestCommitTemporalIndexOnDiskBackfill_DbClosedGuard(t *testing.T) {
+	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
 	bs.dbClosed.Store(true)

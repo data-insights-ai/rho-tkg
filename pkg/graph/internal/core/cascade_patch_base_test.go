@@ -320,6 +320,7 @@ func runCascadePatchBase(t *testing.T, fn func(t *testing.T, s cpSubject, pinBef
 // 1. The probe: a patch inside ONE old version keeps that version's other
 // properties; the timeline outside the interval is unchanged.
 func TestCascadePatch_AppliedToThenValidVersion(t *testing.T) {
+	t.Parallel()
 	runCascadePatchBase(t, func(t *testing.T, s cpSubject, pinBefore types.Instant) {
 		ret, err := s.correct(context.Background(), 2021*cpU, 2022*cpU, map[string]any{"name": "B"})
 		if err != nil {
@@ -345,6 +346,7 @@ func TestCascadePatch_AppliedToThenValidVersion(t *testing.T) {
 // 2. A correction spanning TWO underlying versions is split at the old version
 // boundary; each piece keeps its own then-valid base.
 func TestCascadePatch_SpansTwoVersions(t *testing.T) {
+	t.Parallel()
 	runCascadePatchBase(t, func(t *testing.T, s cpSubject, pinBefore types.Instant) {
 		ret, err := s.correct(context.Background(), 2021*cpU, 2025*cpU, map[string]any{"name": "B"})
 		if err != nil {
@@ -370,6 +372,7 @@ func TestCascadePatch_SpansTwoVersions(t *testing.T) {
 // old-version piece keeps city:X, the tail piece (which becomes current) keeps
 // city:Y.
 func TestCascadePatch_OpenEndedFromOldVersion(t *testing.T) {
+	t.Parallel()
 	runCascadePatchBase(t, func(t *testing.T, s cpSubject, pinBefore types.Instant) {
 		ret, err := s.correct(context.Background(), 2021*cpU, 0, map[string]any{"name": "B"})
 		if err != nil {
@@ -395,6 +398,7 @@ func TestCascadePatch_OpenEndedFromOldVersion(t *testing.T) {
 // 4. A nil patch value deletes the key only inside the interval, on each
 // underlying version's own base.
 func TestCascadePatch_NilDeletesOnlyInsideInterval(t *testing.T) {
+	t.Parallel()
 	runCascadePatchBase(t, func(t *testing.T, s cpSubject, pinBefore types.Instant) {
 		if _, err := s.correct(context.Background(), 2021*cpU, 2025*cpU, map[string]any{"name": nil}); err != nil {
 			t.Fatalf("correct: %v", err)
@@ -413,6 +417,7 @@ func TestCascadePatch_NilDeletesOnlyInsideInterval(t *testing.T) {
 // A correction straddling the gap and the first version uses the gap base for
 // the gap piece and the then-valid version for the rest.
 func TestCascadePatch_GapSegmentUsesMostRecentVersion(t *testing.T) {
+	t.Parallel()
 	runCascadePatchBase(t, func(t *testing.T, s cpSubject, pinBefore types.Instant) {
 		ret, err := s.correct(context.Background(), 2000*cpU, 2010*cpU, map[string]any{"name": "B"})
 		if err != nil {
@@ -446,6 +451,7 @@ func TestCascadePatch_GapSegmentUsesMostRecentVersion(t *testing.T) {
 // correction's state (the then-believed winner), not the untouched original
 // version underneath it.
 func TestCascadePatch_StackedCorrectionsPatchNewestBelief(t *testing.T) {
+	t.Parallel()
 	runCascadePatchBase(t, func(t *testing.T, s cpSubject, pinBefore types.Instant) {
 		ctx := context.Background()
 		if _, err := s.correct(ctx, 2021*cpU, 2023*cpU, map[string]any{"city": "Z"}); err != nil {
@@ -471,6 +477,7 @@ func TestCascadePatch_StackedCorrectionsPatchNewestBelief(t *testing.T) {
 // labelled current row keeps the current labels — the store's current slot
 // cannot change label tokens, so the tail's base must be the current row.
 func TestCascadePatch_NodeLabelsComeFromBase(t *testing.T) {
+	t.Parallel()
 	for _, backend := range storeContractBackends() {
 		backend := backend
 		t.Run(backend.name, func(t *testing.T) {

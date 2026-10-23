@@ -160,6 +160,7 @@ func setRelTemporal(t *testing.T, g *Core, id types.RelID, validFrom, validTo ty
 }
 
 func TestDiffSnapshots_ReturnsSortedChangeSlices(t *testing.T) {
+	t.Parallel()
 	store := &orderedDiffStore{Store: memory.New()}
 	g, err := New(Config{Store: store})
 	if err != nil {
@@ -267,6 +268,7 @@ func TestDiffSnapshots_ReturnsSortedChangeSlices(t *testing.T) {
 
 // TestDiffSnapshots_InvalidRange verifies that invalid time ranges return ErrInvalidTimeRange.
 func TestDiffSnapshots_InvalidRange(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 
 	now := types.Instant(time.Now().UnixMilli())
@@ -293,6 +295,7 @@ func TestDiffSnapshots_InvalidRange(t *testing.T) {
 // TestDiffSnapshots_EmptyGraph verifies that diffing an empty graph returns
 // an empty (non-nil) diff without panicking.
 func TestDiffSnapshots_EmptyGraph(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 	t1 := types.Instant(time.Now().UnixMilli()) - 200
 	t2 := t1 + 100
@@ -316,6 +319,7 @@ func TestDiffSnapshots_EmptyGraph(t *testing.T) {
 // TestDiffSnapshots_Created verifies that a node added between t1 and t2 appears
 // in NodesCreated.
 func TestDiffSnapshots_Created(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 
 	base := types.Instant(time.Now().UnixMilli())
@@ -347,6 +351,7 @@ func TestDiffSnapshots_Created(t *testing.T) {
 // TestDiffSnapshots_Deleted verifies that a node that expires between t1 and t2
 // appears in NodesDeleted.
 func TestDiffSnapshots_Deleted(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 
 	base := types.Instant(time.Now().UnixMilli())
@@ -378,6 +383,7 @@ func TestDiffSnapshots_Deleted(t *testing.T) {
 // TestDiffSnapshots_Updated verifies that a node whose properties changed between
 // t1 and t2 appears in NodesUpdated.
 func TestDiffSnapshots_Updated(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 	clk := useTestClock(t, g)
 
@@ -421,6 +427,7 @@ func TestDiffSnapshots_Updated(t *testing.T) {
 // TestDiffSnapshots_Unchanged verifies that a node not changed between t1 and t2
 // does not appear in any diff list.
 func TestDiffSnapshots_Unchanged(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 
 	base := types.Instant(time.Now().UnixMilli())
@@ -449,6 +456,7 @@ func TestDiffSnapshots_Unchanged(t *testing.T) {
 // TestDiffSnapshots_RelCreated verifies that a relationship added between t1 and t2
 // appears in RelsCreated.
 func TestDiffSnapshots_RelCreated(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 
 	base := types.Instant(time.Now().UnixMilli())
@@ -487,6 +495,7 @@ func TestDiffSnapshots_RelCreated(t *testing.T) {
 // TestDiffSnapshots_RelDeleted verifies that a relationship expiring between t1
 // and t2 appears in RelsDeleted.
 func TestDiffSnapshots_RelDeleted(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 
 	base := types.Instant(time.Now().UnixMilli())
@@ -524,6 +533,7 @@ func TestDiffSnapshots_RelDeleted(t *testing.T) {
 // TestDiffSnapshots_RelUpdated verifies that a relationship whose properties changed
 // between t1 and t2 appears in RelsUpdated.
 func TestDiffSnapshots_RelUpdated(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 	clk := useTestClock(t, g)
 
@@ -567,6 +577,7 @@ func TestDiffSnapshots_RelUpdated(t *testing.T) {
 // when integrity is unset, so DiffSnapshotsCallback treats two such versions
 // as identical (no spurious Updated entry).
 func TestNodeHash_NilIntegrity(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 
 	n, _ := g.Nodes.Add(context.Background(), []string{"Shared"}, nil)
@@ -579,6 +590,7 @@ func TestNodeHash_NilIntegrity(t *testing.T) {
 
 // TestRelHash_NilIntegrity verifies the nil-integrity path for relationships.
 func TestRelHash_NilIntegrity(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
@@ -593,6 +605,7 @@ func TestRelHash_NilIntegrity(t *testing.T) {
 // TestDiffSnapshots_MixedScenario verifies a mix of created, updated, deleted,
 // and unchanged entities each appear in the correct diff category.
 func TestDiffSnapshots_MixedScenario(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 	clk := useTestClock(t, g)
 

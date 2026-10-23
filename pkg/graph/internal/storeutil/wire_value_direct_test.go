@@ -39,6 +39,7 @@ func (v wireValueDirectHiddenFieldCustom) HashBytes() []byte {
 func (v wireValueDirectHiddenFieldCustom) DeepCopyValue() any { return v }
 
 func TestValidatePropertyWireValueDirectBranches(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		value   any
@@ -80,6 +81,7 @@ func TestValidatePropertyWireValueDirectBranches(t *testing.T) {
 }
 
 func TestPropertyToWireRejectsUnsupportedUnknownValue(t *testing.T) {
+	t.Parallel()
 	_, err := propertyToWire(types.Property{
 		Key:   "bad",
 		Value: struct{ X int }{X: 1},
@@ -98,6 +100,7 @@ func TestPropertyToWireRejectsUnsupportedUnknownValue(t *testing.T) {
 }
 
 func TestValidatePropertyWireSliceRejectsInvalidTypedNilMarkers(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		wire PropertyWire
@@ -125,6 +128,7 @@ func TestValidatePropertyWireSliceRejectsInvalidTypedNilMarkers(t *testing.T) {
 }
 
 func TestValidateWireSliceAndMapDirectBranches(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		run     func() error
@@ -166,6 +170,7 @@ func TestValidateWireSliceAndMapDirectBranches(t *testing.T) {
 }
 
 func TestWireFloatAndCollectionConversionFallbacks(t *testing.T) {
+	t.Parallel()
 	if got, ok := wireFloat64(float32(1.25)); !ok || got != 1.25 {
 		t.Fatalf("wireFloat64(float32) = (%v, %v), want (1.25, true)", got, ok)
 	}
@@ -194,6 +199,7 @@ func TestWireFloatAndCollectionConversionFallbacks(t *testing.T) {
 }
 
 func TestReconstructCustomPropertyValueDirectBranches(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(wireValueDirectCustom{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}
@@ -241,6 +247,7 @@ func TestReconstructCustomPropertyValueDirectBranches(t *testing.T) {
 // user-registered custom property type — a real integrity guarantee, not a
 // duplicate of a cheaper check performed elsewhere.
 func TestPropertyToWire_CustomRoundTripHashMismatchRejected(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(wireValueDirectHiddenFieldCustom{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}
@@ -255,6 +262,7 @@ func TestPropertyToWire_CustomRoundTripHashMismatchRejected(t *testing.T) {
 }
 
 func TestValidatePropertyWireSliceRejectsCustomWireShape(t *testing.T) {
+	t.Parallel()
 	err := ValidatePropertyWireSlice([]PropertyWire{{
 		Key:        "custom",
 		Value:      "not bytes",
@@ -270,6 +278,7 @@ func TestValidatePropertyWireSliceRejectsCustomWireShape(t *testing.T) {
 }
 
 func TestValidatePropertyWireSliceRejectsCustomMetadataOnNonCustomTags(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		wire PropertyWire

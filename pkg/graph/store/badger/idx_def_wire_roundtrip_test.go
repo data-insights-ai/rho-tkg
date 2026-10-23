@@ -12,6 +12,7 @@ import (
 // value exactly, both for a single value and for a slice (the shape the
 // persist*/load* call sites actually use).
 func TestIdxDefRoundTrip(t *testing.T) {
+	t.Parallel()
 	t.Run("single", func(t *testing.T) {
 		cases := []struct {
 			name string
@@ -80,6 +81,7 @@ func TestIdxDefRoundTrip(t *testing.T) {
 // with "Encode(non-addressable ...)" unless EncodeMsgpack has a VALUE
 // receiver. Every EncodeMsgpack in this file must stay value-receiver.
 func TestIdxDefEncodeByValue(t *testing.T) {
+	t.Parallel()
 	if _, err := msgpack.Marshal(hfIdxDef{LabelToken: 1, BucketSizeMillis: 1000}); err != nil {
 		t.Fatalf("msgpack.Marshal(hfIdxDef{...}) (by value) = %v, want nil", err)
 	}

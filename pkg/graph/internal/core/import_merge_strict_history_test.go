@@ -32,6 +32,7 @@ func mustMarshalChangeBody(t *testing.T, body any) []byte {
 // --- Positive: wrong-base detection fires for each of the four extended tags.
 
 func TestStrictCheckMergeRecord_NodeHistoryVersion_WrongBase(t *testing.T) {
+	t.Parallel()
 	base := newPlainGraph(t, 0)
 	missing := types.NodeID(999888777)
 	body := storeutil.HistoryVersionNodeBody{Version: 3, Wire: storeutil.NodeWire{ID: int64(missing.SnowflakeID()), PrimaryLabel: 1}}
@@ -44,6 +45,7 @@ func TestStrictCheckMergeRecord_NodeHistoryVersion_WrongBase(t *testing.T) {
 }
 
 func TestStrictCheckMergeRecord_RelHistoryVersion_WrongBase(t *testing.T) {
+	t.Parallel()
 	base := newPlainGraph(t, 0)
 	missing := types.RelID(999888666)
 	body := storeutil.HistoryVersionRelBody{Version: 3, Wire: storeutil.RelWire{ID: int64(missing.SnowflakeID()), RelType: 1, StartID: 1, EndID: 2}}
@@ -56,6 +58,7 @@ func TestStrictCheckMergeRecord_RelHistoryVersion_WrongBase(t *testing.T) {
 }
 
 func TestStrictCheckMergeRecord_NodeHistoryTruncate_WrongBase(t *testing.T) {
+	t.Parallel()
 	base := newPlainGraph(t, 0)
 	missing := types.NodeID(999888555)
 	body := storeutil.HistoryTruncateBody{ID: int64(missing.SnowflakeID()), Bound: 1}
@@ -68,6 +71,7 @@ func TestStrictCheckMergeRecord_NodeHistoryTruncate_WrongBase(t *testing.T) {
 }
 
 func TestStrictCheckMergeRecord_RelHistoryTruncate_WrongBase(t *testing.T) {
+	t.Parallel()
 	base := newPlainGraph(t, 0)
 	missing := types.RelID(999888444)
 	body := storeutil.HistoryTruncateBody{ID: int64(missing.SnowflakeID()), Bound: 1}
@@ -82,6 +86,7 @@ func TestStrictCheckMergeRecord_RelHistoryTruncate_WrongBase(t *testing.T) {
 // --- Negative: legitimate records referencing a base-resident entity must not flag.
 
 func TestStrictCheckMergeRecord_NodeHistoryVersion_KnownCurrentRow(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	base := newPlainGraph(t, 0)
 	n, err := base.Nodes.Add(ctx, []string{"Person"}, nil)
@@ -97,6 +102,7 @@ func TestStrictCheckMergeRecord_NodeHistoryVersion_KnownCurrentRow(t *testing.T)
 }
 
 func TestStrictCheckMergeRecord_NodeHistoryTruncate_KnownCurrentRow(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	base := newPlainGraph(t, 0)
 	n, err := base.Nodes.Add(ctx, []string{"Person"}, nil)
@@ -118,6 +124,7 @@ func TestStrictCheckMergeRecord_NodeHistoryTruncate_KnownCurrentRow(t *testing.T
 // tombstone versions... History is never erased on delete), so the entity is
 // known to the base via history alone.
 func TestStrictCheckMergeRecord_NodeHistoryVersion_KnownHistoryOnly(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	base := newPlainGraph(t, 0)
 	n, err := base.Nodes.Add(ctx, []string{"Person"}, nil)
@@ -150,6 +157,7 @@ func TestStrictCheckMergeRecord_NodeHistoryVersion_KnownHistoryOnly(t *testing.T
 // verdict — the gate is conservative by design (BACKLOG 12i decision: gate on
 // Version>0 rather than checking every version).
 func TestStrictCheckMergeRecord_NodeHistoryVersion_VersionZero_NotFlaggedEvenIfAbsent(t *testing.T) {
+	t.Parallel()
 	base := newPlainGraph(t, 0)
 	missing := types.NodeID(999888333)
 	body := storeutil.HistoryVersionNodeBody{Version: 0, Wire: storeutil.NodeWire{ID: int64(missing.SnowflakeID()), PrimaryLabel: 1}}
@@ -165,6 +173,7 @@ func TestStrictCheckMergeRecord_NodeHistoryVersion_VersionZero_NotFlaggedEvenIfA
 // ChangeForeignIncomingDelete, ChangeRangePurge — documented as structurally
 // unaddressable in the switch's own doc comment) never errors.
 func TestStrictCheckMergeRecord_ForeignIncoming_PassesThroughUnaffected(t *testing.T) {
+	t.Parallel()
 	base := newPlainGraph(t, 0)
 	missing := types.RelID(999888222)
 	body := storeutil.RelPutBody{Wire: storeutil.RelWire{ID: int64(missing.SnowflakeID()), RelType: 1, StartID: 1, EndID: 2}}
@@ -180,6 +189,7 @@ func TestStrictCheckMergeRecord_ForeignIncoming_PassesThroughUnaffected(t *testi
 // isolated strictCheckMergeRecord function. Mirrors
 // TestImportMerge_HistoryVersionCorruptionPreservesEdges's setup shape.
 func TestImportMerge_StrictHistoryVersion_EndToEnd(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
 	a, err := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "alice"})

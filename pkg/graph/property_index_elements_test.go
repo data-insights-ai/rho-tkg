@@ -134,6 +134,7 @@ func TestPropertyIndexElementsContains(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	ctx := context.Background()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		label := "Derived"
@@ -287,6 +288,7 @@ func TestPropertyIndexElementsContains(t *testing.T) {
 // Tiered keeps an Elements index on the reference shard only; event-shard and
 // archived Ref nodes answer with the same "contains" match, current and pinned.
 func TestPropertyIndexElementsTieredEventShardAndArchive(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Ref"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {

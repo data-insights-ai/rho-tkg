@@ -17,6 +17,7 @@ import (
 // far smaller than the data. Each scan must return every row, none older than
 // the version committed before the scan began.
 func TestTieredNodesByLabel_ConcurrentReplaceAndFlush_NoDropNoStale(t *testing.T) {
+	t.Parallel()
 	const rows = 2048
 	const rounds = 12
 	ts, err := New(Config{

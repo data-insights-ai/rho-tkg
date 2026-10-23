@@ -10,6 +10,7 @@ import (
 // The ID-slot lease round-trips through the durable MetaKV store, and an unset
 // lease reads back as (nil, nil).
 func TestIDSlotLease_RoundTrip(t *testing.T) {
+	t.Parallel()
 	g, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -36,6 +37,7 @@ func TestIDSlotLease_RoundTrip(t *testing.T) {
 // A slot outside the 0-15 snowflake range is rejected at write time (so it can
 // never drive a New that would itself reject the slot).
 func TestIDSlotLease_RejectsOutOfRangeSlot(t *testing.T) {
+	t.Parallel()
 	g, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -55,6 +57,7 @@ func TestIDSlotLease_RejectsOutOfRangeSlot(t *testing.T) {
 // leased slot mints IDs in that slot — distinct from the demoted node's slot, so
 // IDs minted before and after promotion never collide.
 func TestIDSlotLease_PromotionByReopen(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 

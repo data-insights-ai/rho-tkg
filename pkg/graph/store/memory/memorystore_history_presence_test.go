@@ -12,6 +12,7 @@ import (
 // for a neighbour, false again once every row is trimmed (an emptied inner
 // map must not read as history), errors like GetNodeHistory / GetRelHistory.
 func TestHistoryPresenceMemory(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	n := types.NewNode(types.NodeID(10), 1, nil)
 	if err := ms.PutNodeVersion(n.ID(), 0, n); err != nil {

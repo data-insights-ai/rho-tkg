@@ -23,6 +23,7 @@ const drainTestSpins = 50
 // TestDrainSpinLimitConstant pins the production drain bound (~5s at 1ms/spin)
 // the drain tests lower, and that a store with no override uses it.
 func TestDrainSpinLimitConstant(t *testing.T) {
+	t.Parallel()
 	if coldShardDrainSpinLimit != 5000 {
 		t.Fatalf("coldShardDrainSpinLimit = %d, want 5000", coldShardDrainSpinLimit)
 	}
@@ -68,6 +69,7 @@ func closeWithDeadline(t *testing.T, ts *Store, deadline time.Duration) error {
 }
 
 func TestTieredClose_LeakedEventShardCheckinTimesOutInsteadOfHanging(t *testing.T) {
+	t.Parallel()
 	ts := newDrainTestStore(t)
 	ts.drainSpinsForTest.Store(drainTestSpins)
 
@@ -90,6 +92,7 @@ func TestTieredClose_LeakedEventShardCheckinTimesOutInsteadOfHanging(t *testing.
 }
 
 func TestTieredClose_LeakedRefShardCheckinTimesOutInsteadOfHanging(t *testing.T) {
+	t.Parallel()
 	ts := newDrainTestStore(t)
 	ts.drainSpinsForTest.Store(drainTestSpins)
 	ts.RefActiveReqsForTest().Add(1) // simulate a leaked checkin

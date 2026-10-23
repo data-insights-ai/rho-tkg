@@ -69,6 +69,7 @@ func relWireBytes(t *testing.T, r *types.Relationship) []byte {
 // history read door returns byte-identical entities — reconstruction must be
 // transparent. It also white-box-checks that deltas were actually written.
 func TestBadgerHistoryDeltaDifferential(t *testing.T) {
+	t.Parallel()
 	const versions = 21 // crosses the anchor boundary at 16
 	id := snowflake.ID(1)
 
@@ -184,6 +185,7 @@ func assertNodeSlicesEqual(t *testing.T, a, b []*types.Node, ctx string) {
 // does not orphan a kept delta from a removed anchor: the reads after truncation
 // still match the full-snapshot oracle truncated the same way.
 func TestBadgerHistoryDeltaTruncateAnchorSafety(t *testing.T) {
+	t.Parallel()
 	const versions = 20
 	id := snowflake.ID(7)
 	on := deltaTestStore(t, true)
@@ -219,6 +221,7 @@ func TestBadgerHistoryDeltaTruncateAnchorSafety(t *testing.T) {
 // reads after compaction still match the full-snapshot oracle compacted the same
 // way. Same hazard as truncate, via the compactHistoryByPrefix path.
 func TestBadgerHistoryDeltaCompactAnchorSafety(t *testing.T) {
+	t.Parallel()
 	const versions = 20
 	id := snowflake.ID(9)
 	on := deltaTestStore(t, true)
@@ -249,6 +252,7 @@ func TestBadgerHistoryDeltaCompactAnchorSafety(t *testing.T) {
 // TestBadgerHistoryDeltaPersistence proves deltas + anchors survive a close/reopen
 // on disk and still reconstruct.
 func TestBadgerHistoryDeltaPersistence(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	id := snowflake.ID(3)
 	const versions = 18
@@ -294,6 +298,7 @@ func deltaVersionRel(id snowflake.ID, v uint32) *types.Relationship {
 }
 
 func TestBadgerHistoryDeltaRelDifferential(t *testing.T) {
+	t.Parallel()
 	const versions = 20
 	id := snowflake.ID(2)
 	on := deltaTestStore(t, true)
@@ -361,6 +366,7 @@ func TestBadgerHistoryDeltaRelDifferential(t *testing.T) {
 // round-trips: versions written at interval 4 (anchors at 0,4,8,12,16) reconstruct
 // exactly after reopen at the same interval.
 func TestHistoryAnchorInterval_ConfiguredRoundTrips(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	id := snowflake.ID(7)
 	const versions = 18
@@ -396,6 +402,7 @@ func TestHistoryAnchorInterval_ConfiguredRoundTrips(t *testing.T) {
 // TestHistoryAnchorInterval_MismatchFailsClosed is the silent-misread guard: a delta
 // store written at interval 4 must FAIL CLOSED when reopened at a different interval.
 func TestHistoryAnchorInterval_MismatchFailsClosed(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	id := snowflake.ID(9)
 	func() {
@@ -423,6 +430,7 @@ func TestHistoryAnchorInterval_MismatchFailsClosed(t *testing.T) {
 
 // TestHistoryAnchorInterval_Validation rejects an out-of-range interval at New.
 func TestHistoryAnchorInterval_Validation(t *testing.T) {
+	t.Parallel()
 	for _, bad := range []int{1, -1, 4097} {
 		if _, err := New(Config{Dir: t.TempDir(), HistoryAnchorInterval: bad}); err == nil {
 			t.Fatalf("New with HistoryAnchorInterval=%d succeeded, want validation error", bad)

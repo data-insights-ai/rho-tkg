@@ -45,6 +45,7 @@ func TestParallelOpen_MountsEveryShard(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	warmShards(t, dir, 4)
 
@@ -99,6 +100,7 @@ func TestParallelOpen_FailureLeaksNoHandles(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	dir := t.TempDir()
 	warmShards(t, dir, 4)
 

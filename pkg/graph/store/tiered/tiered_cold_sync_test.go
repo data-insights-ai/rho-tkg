@@ -15,6 +15,7 @@ func TestTieredColdLazyOpen_SyncsToAnchor(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	cfg := Config{
 		DataDir:           t.TempDir(),
 		RefLabels:         []string{"Case", "User"},

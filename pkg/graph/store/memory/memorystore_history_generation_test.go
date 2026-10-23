@@ -10,6 +10,7 @@ import (
 // at a history row write, at a removal (truncation) and at Clear, and not at
 // a current-row write; a nil store reads 0.
 func TestMemoryStoreHistoryGeneration(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	n := types.NewNode(types.NodeID(10), 1, nil)
 	if err := ms.PutNode(n); err != nil {

@@ -43,6 +43,7 @@ func row(v uint32, txFrom, txTo, from, to types.Instant) RowInfo {
 // UnboundedValidFrom start, a nil sidecar, and a Record (unknown span)
 // member that meets every window.
 func TestPropertyTxMembersWindowBoundaries(t *testing.T) {
+	t.Parallel()
 	m := NewPropertyTxMembers[int64]()
 	m.RecordRow("v", 1, row(1, 5, 0, 10, 20), true)
 	m.RecordRow("v", 2, row(1, 5, 0, 20, inf), true)
@@ -94,6 +95,7 @@ func TestPropertyTxMembersWindowBoundaries(t *testing.T) {
 // current row replaced without RecordReplaced (an in-place rewrite). The view
 // opened before or after the writes answers the same.
 func TestPropertyTxMembersWindowReplacedRowEnds(t *testing.T) {
+	t.Parallel()
 	late := func(m *PropertyTxMembers[int64], pin types.Instant) []int64 {
 		return windowIDs(t, m, "v", 500, inf, pin)
 	}
@@ -154,6 +156,7 @@ func TestPropertyTxMembersWindowReplacedRowEnds(t *testing.T) {
 // delete the member meets only the tombstone's span, before it the reopened
 // row (ValidTo == DeletedAt reads open there).
 func TestPropertyTxMembersWindowDelete(t *testing.T) {
+	t.Parallel()
 	m := NewPropertyTxMembers[int64]()
 	m.RecordRow("v", 1, row(1, 10, 0, 100, inf), true)
 	tomb := row(1, 10, 30, 100, 300)
@@ -183,6 +186,7 @@ func TestPropertyTxMembersWindowDelete(t *testing.T) {
 // any-pin envelope (late envelope, at pins >= last) meets the window, and no
 // other.
 func TestPropertyTxMembersWindowEquivalence(t *testing.T) {
+	t.Parallel()
 	for seed := uint64(0); seed < 6; seed++ {
 		rng := rand.New(rand.NewPCG(seed, 62))
 		early := NewPropertyTxMembers[int64]()
@@ -301,6 +305,7 @@ func TestPropertyTxMembersWindowEquivalence(t *testing.T) {
 // its replacing row like the write path; a replacing row without the value
 // still ends it; rows past the search window keep their own span.
 func TestRowScanEndsReplacedRows(t *testing.T) {
+	t.Parallel()
 	var s RowScan[int64]
 	s.Add(1, row(1, 10, 20, 100, inf), false, []string{"v"})
 	s.Add(1, row(2, 20, 0, 110, 150), true, []string{"v"})
@@ -328,6 +333,7 @@ func TestRowScanEndsReplacedRows(t *testing.T) {
 // (a build scan and a concurrent record commute) instead of replacing, and a
 // united current row is never ended by a later replacing row.
 func TestPropertyTxMembersWindowMergeUnitesCurrent(t *testing.T) {
+	t.Parallel()
 	m := NewPropertyTxMembers[int64]()
 	m.RecordRow("v", 1, row(2, 5, 0, 100, 200), true)
 	scan := NewPropertyTxMembers[int64]()

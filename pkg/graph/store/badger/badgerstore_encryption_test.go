@@ -42,6 +42,7 @@ func encCfg(dir string, key []byte) Config {
 // flush, close, reopen with the identical key, and every record must still
 // be readable.
 func TestBadgerEncryptionRoundTripSameKey(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := encCfg(dir, key32)
 
@@ -284,6 +285,7 @@ func TestBadgerEncryptionSentinelsWithErrorsIs(t *testing.T) {
 // this test asserts the REJECTION (the panic is prevented, not merely
 // tolerated) — it must never reach badgerv4.Open with this combination.
 func TestBadgerEncryptionWithoutIndexCacheWouldPanicOnFlush(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	_, err := New(Config{Dir: dir, EncryptionKey: key32, BlockCacheSize: 1 << 20})
 	if !errors.Is(err, ErrEncryptionRequiresIndexCache) {
@@ -295,6 +297,7 @@ func TestBadgerEncryptionWithoutIndexCacheWouldPanicOnFlush(t *testing.T) {
 // reaches Badger's live options (the same "applied, not just accepted" shape
 // as the other footprint knobs), alongside IndexCacheSize.
 func TestBadgerEncryptionKeyRotationApplied(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	const rotation = 3 * 24 * 60 * 60 * 1_000_000_000 // 3 days, in time.Duration units (ns)
 	bs, err := New(Config{

@@ -7,6 +7,7 @@ import (
 )
 
 func TestShardCatalog_UpdateShardTier(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "shard-1", Tier: TierHot})
 
@@ -24,6 +25,7 @@ func TestShardCatalog_UpdateShardTier(t *testing.T) {
 }
 
 func TestShardCatalog_UpdateShardTierNotFound(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	if sc.UpdateShardTier("nonexistent", TierWarm) {
 		t.Error("UpdateShardTier should return false for unknown shard")
@@ -31,6 +33,7 @@ func TestShardCatalog_UpdateShardTierNotFound(t *testing.T) {
 }
 
 func TestShardCatalog_ColdEventShards(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "hot", Kind: ShardEvent, Tier: TierHot})
 	sc.AddShard(ShardEntry{Name: "warm", Kind: ShardEvent, Tier: TierWarm})
@@ -45,6 +48,7 @@ func TestShardCatalog_ColdEventShards(t *testing.T) {
 }
 
 func TestShardCatalog_UpdateVerified(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "shard1", Kind: ShardEvent, Tier: TierWarm})
 
@@ -70,6 +74,7 @@ func TestShardCatalog_UpdateVerified(t *testing.T) {
 }
 
 func TestShardCatalog_UpdateStats(t *testing.T) {
+	t.Parallel()
 	sc := NewShardCatalog("")
 	sc.AddShard(ShardEntry{Name: "s1", Kind: ShardEvent, Tier: TierHot})
 
@@ -87,6 +92,7 @@ func TestShardCatalog_UpdateStats(t *testing.T) {
 }
 
 func TestTieredStore_ListShards_Initial(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 
 	infos, lsErr := ts.ListShards()
@@ -119,6 +125,7 @@ func TestTieredStore_ListShards_Initial(t *testing.T) {
 }
 
 func TestTieredStore_ListShards_AfterRotation(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -143,6 +150,7 @@ func TestTieredStore_ListShards_AfterRotation(t *testing.T) {
 }
 
 func TestTieredStore_ListShards_WithCold(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

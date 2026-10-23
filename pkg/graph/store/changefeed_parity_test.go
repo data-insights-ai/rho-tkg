@@ -97,6 +97,7 @@ func newParityTieredStore(t *testing.T) *tiered.Store {
 }
 
 func TestChangeFeedParity_BadgerVsMemory(t *testing.T) {
+	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("badger.New: %v", err)

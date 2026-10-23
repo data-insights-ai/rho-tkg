@@ -12,6 +12,7 @@ import (
 // reads false, an ID of a slot this store does not own fails like
 // GetNodeHistory, invalid IDs fail like the history doors.
 func TestHistoryPresenceSharded(t *testing.T) {
+	t.Parallel()
 	st := newMemStore(t, 0, 2)
 	for slot := uint8(0); slot < 2; slot++ {
 		n := types.NewNode(mkNodeID(slot, 7), 1, nil)

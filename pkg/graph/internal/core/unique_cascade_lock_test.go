@@ -119,6 +119,7 @@ func waitDone(ch <-chan error, d time.Duration) (error, bool) {
 // An open-ended cascade that moves A off "a" must wait for the old value's
 // stripe. Catches: a cascade that takes only the new value's stripe.
 func TestUniqueCascade_HoldsOldValueStripe(t *testing.T) {
+	t.Parallel()
 	c := newUniqueCascadeCore(t, nil)
 	a := addRefK(t, c, "a")
 	old := stripeOf(t, c, a, "a")
@@ -154,6 +155,7 @@ func TestUniqueCascade_HoldsOldValueStripe(t *testing.T) {
 // Catches: a fix that locks (and checks) every patch value under
 // UniqueCurrent, which would also refuse legal history duplicates.
 func TestUniqueCascade_BoundedCurrentScopeTakesNoStripe(t *testing.T) {
+	t.Parallel()
 	c := newUniqueCascadeCore(t, nil)
 	a := addRefK(t, c, "a")
 	held := c.valueLocks.LockStripes([]uint8{stripeOf(t, c, a, "p")})
@@ -198,6 +200,7 @@ func TestUniqueCascade_InvalidPatchValueKeepsKernelError(t *testing.T) {
 // stripe after the check but before the write (B passes the index check
 // against A's old row and both end up holding "v").
 func TestUniqueCascade_StripeHeldAcrossStoreWrite(t *testing.T) {
+	t.Parallel()
 	st := &cascadeGateStore{Store: memory.New()}
 	c := newUniqueCascadeCore(t, st)
 	a := addRefK(t, c, "a")
@@ -312,6 +315,7 @@ func newForeverFailCore(t *testing.T) (*Core, *cascadeFailStore) {
 // under the stripe and keeps the claim when the write that would have carried
 // the value fails (the value is owned forever by a node that never held it).
 func TestUniqueCascade_StoreWriteFailureWithdrawsUnwrittenClaim(t *testing.T) {
+	t.Parallel()
 	c, st := newForeverFailCore(t)
 	ctx := context.Background()
 	a := addRefK(t, c, "a")
@@ -351,6 +355,7 @@ func (s *cascadeMetaFailStore) MetaSet(key string, value []byte) error {
 // Catches: a withdrawal that drops the in-memory claim although the persisted
 // registry still holds it (after reopen the value would be owned again).
 func TestUniqueCascade_StoreWriteFailureWithdrawPersistFailureKeepsClaim(t *testing.T) {
+	t.Parallel()
 	st := &cascadeMetaFailStore{cascadeFailStore: &cascadeFailStore{Store: memory.New()}}
 	c, err := New(Config{Store: st})
 	if err != nil {
@@ -392,6 +397,7 @@ func TestUniqueCascade_StoreWriteFailureWithdrawPersistFailureKeepsClaim(t *test
 // UniqueForever claim stays. Catches: a withdrawal that ignores which rows
 // were already written (it would free a value present in the node's history).
 func TestUniqueCascade_StoreWriteFailureKeepsWrittenClaim(t *testing.T) {
+	t.Parallel()
 	c, st := newForeverFailCore(t)
 	ctx := context.Background()
 	a := addRefK(t, c, "a")

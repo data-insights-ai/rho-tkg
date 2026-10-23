@@ -352,6 +352,7 @@ func TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup(t *testing.T) {
 	if testing.Short() {
 		t.Skip("spawns crash children")
 	}
+	t.Parallel()
 	for _, door := range []string{"tx", "run", "batch"} {
 		t.Run(door, func(t *testing.T) {
 			nodes, rels := dcCrashCounts(t, "badger", door, false)
@@ -371,6 +372,7 @@ func TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup(t *testing.T) {
 // Catches: a default-off path that calls the store's Flush from Commit,
 // Execute, Run or the ingest applier.
 func TestDurableCommitOff_NoStoreFlushOnCommit(t *testing.T) {
+	t.Parallel()
 	bs, err := badger.New(badger.Config{Dir: t.TempDir(), FlushInterval: time.Hour})
 	if err != nil {
 		t.Fatalf("badger.New: %v", err)

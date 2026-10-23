@@ -15,6 +15,7 @@ import (
 // with an OPEN interval (ValidTo == 0) is NOT purged even though it is older than the
 // boundary in mint-time, so the reference node retains exactly that one edge.
 func TestTieredPurge_ByValidTo_CrossShardEdgeSweep(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	const refTok = uint16(1) // "Case" (reference)

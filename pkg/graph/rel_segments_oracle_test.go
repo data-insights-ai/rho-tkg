@@ -690,6 +690,7 @@ func TestRelSegmentsDifferentialOracle(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	runSegOracle(t, func(t *testing.T) string { return "" })
 }
 
@@ -741,6 +742,7 @@ func runSegOracle(t *testing.T, segDir func(*testing.T) string) {
 // state X at t0 and sealed; then it is updated and deleted; reads pinned at
 // t0 still return X, from the declared replica exactly as from the plain one.
 func TestRelSegmentsTwoPhaseAcrossSeal(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewSource(9))
 	o := newSegOracle(t, 0)
 	o.seed(r, 6)

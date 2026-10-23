@@ -17,6 +17,7 @@ const farFuture = types.Instant(1 << 50)
 
 // TestPurgeExpiredNodes_Gates covers the door's refusal contract.
 func TestPurgeExpiredNodes_Gates(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	// Gate 1: disabled by default.

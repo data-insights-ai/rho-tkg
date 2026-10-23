@@ -25,6 +25,7 @@ import (
 // end node ID that was never created anywhere — the same observable state a
 // node purge racing a concurrent relationship write would leave behind.
 func TestTieredStore_Repair_OrphanedRelEndpointDoesNotAbortPass(t *testing.T) {
+	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

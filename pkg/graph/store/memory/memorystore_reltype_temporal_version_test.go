@@ -12,6 +12,7 @@ import (
 // relationship without a current row uncovered (never pruned) instead of
 // vouching for one version while its other rows stay outside.
 func TestRelTypeTemporalIndex_PutRelVersionExtendsLiveOnly(t *testing.T) {
+	t.Parallel()
 	ms := New()
 	const relType, label = uint16(6), uint16(1)
 	for _, id := range []types.NodeID{1, 2} {

@@ -9,6 +9,7 @@ import (
 )
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesInvalidProofFallback(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -53,6 +54,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesInvalidProofFallback(
 }
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesRejectsInvalidRelationship(t *testing.T) {
+	t.Parallel()
 	ts, _, _ := setupBatchDelete(t)
 
 	if _, _, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(nil, generatedcreate.FreshGraphID()); !errors.Is(err, ErrInvalidStoreMutation) {
@@ -61,6 +63,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesRejectsInvalidRelatio
 }
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesSelfEndpoint(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -85,6 +88,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesSelfEndpoint(t *testi
 }
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesRestoresCallerHashesOnError(t *testing.T) {
+	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -112,6 +116,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesRestoresCallerHashesO
 }
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesRollsBackIncomingOnEntityFailure(t *testing.T) {
+	t.Parallel()
 	if err := types.RegisterPropertyStructType(unmarshalableProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
 	}

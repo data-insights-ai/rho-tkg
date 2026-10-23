@@ -86,6 +86,7 @@ func sortedIDs(s map[snowflake.ID]struct{}) []snowflake.ID {
 // instant reflects the belief state THEN, not the post-mutation state, by
 // comparing the pruned sidecar path against the unpruned fold at every pin.
 func TestK1LabelMembershipTwoPhaseAcrossDoors(t *testing.T) {
+	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {AllowTxBackfill: true},
 		"badger": {BadgerInMemory: true, AllowTxBackfill: true},
@@ -269,6 +270,7 @@ func TestK1PrunedVsUnprunedEquivalence(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for name, mk := range map[string]func() (*Core, error){
 		"memory": func() (*Core, error) { return New(Config{}) },
 		"badger": func() (*Core, error) { return New(Config{BadgerInMemory: true}) },
@@ -427,6 +429,7 @@ func TestK1RelTypeMembershipEquivalence(t *testing.T) {
 // active for memory and badger (a silent nil would make the equivalence tests
 // vacuously pass by taking the fold on both sides).
 func TestK1SidecarWiredForNativeBackends(t *testing.T) {
+	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {},
 		"badger": {BadgerInMemory: true},

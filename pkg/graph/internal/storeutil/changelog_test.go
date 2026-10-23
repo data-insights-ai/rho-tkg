@@ -11,6 +11,7 @@ import (
 )
 
 func TestChangeLogKeyRoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, lsn := range []uint64{0, 1, 2, 255, 256, 1 << 32, math.MaxUint64} {
 		key := ChangeLogKey(lsn)
 		if len(key) != SizeChangeLog {
@@ -29,6 +30,7 @@ func TestChangeLogKeyRoundTrip(t *testing.T) {
 // Big-endian LSN encoding must make a lexicographic key scan yield ascending
 // LSN (commit) order — the property a ForEachChange prefix iterator relies on.
 func TestChangeLogKeyOrdering(t *testing.T) {
+	t.Parallel()
 	lsns := []uint64{1, 2, 255, 256, 65535, 65536, 1 << 40}
 	for i := 1; i < len(lsns); i++ {
 		lo := ChangeLogKey(lsns[i-1])
@@ -40,6 +42,7 @@ func TestChangeLogKeyOrdering(t *testing.T) {
 }
 
 func TestChangeLogLSNFromKey_Rejects(t *testing.T) {
+	t.Parallel()
 	cases := map[string][]byte{
 		"wrong prefix": append([]byte{KeyMeta}, make([]byte, 8)...),
 		"too short":    {KeyChangeLog, 0x00},
@@ -56,6 +59,7 @@ func TestChangeLogLSNFromKey_Rejects(t *testing.T) {
 }
 
 func TestEncodeSplitChangeValue_RoundTrip(t *testing.T) {
+	t.Parallel()
 	tags := []storepkg.ChangeTag{
 		storepkg.ChangeNodePut, storepkg.ChangeRelPut,
 		storepkg.ChangeNodeDelete, storepkg.ChangeRelDelete,
@@ -85,6 +89,7 @@ func TestEncodeSplitChangeValue_RoundTrip(t *testing.T) {
 }
 
 func TestSplitChangeValue_FailsClosed(t *testing.T) {
+	t.Parallel()
 	t.Run("empty", func(t *testing.T) {
 		_, _, err := SplitChangeValue(nil)
 		if !errors.Is(err, storepkg.ErrCorruptWire) {
@@ -114,6 +119,7 @@ func sampleRelWire() RelWire {
 }
 
 func TestChangeBody_RoundTrip(t *testing.T) {
+	t.Parallel()
 	t.Run("NodePut", func(t *testing.T) {
 		w := sampleNodeWire()
 		body := NodePutBody{Wire: w, WithHistory: true}
@@ -287,6 +293,7 @@ func TestChangeBody_RoundTrip(t *testing.T) {
 // Every decoder must fail with an error (never panic) on truncated/garbage
 // bytes — the trust-boundary contract for persisted change-log values.
 func TestChangeBodyDecoders_FailClosedOnGarbage(t *testing.T) {
+	t.Parallel()
 	garbage := []byte{0xc1, 0xff, 0x00, 0xde, 0xad} // 0xc1 is an invalid msgpack type byte
 	decoders := map[string]func([]byte) error{
 		"NodePut":               func(p []byte) error { _, e := DecodeNodePut(p); return e },

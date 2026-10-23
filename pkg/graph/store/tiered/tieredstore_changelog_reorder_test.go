@@ -42,6 +42,7 @@ func (ts *Store) mergeChangeFeedUnbounded(afterLSN uint64) ([]storecontract.Chan
 // flush-before-read barrier, so it emits BOTH in ascending order and skips
 // nothing.
 func TestTieredChangeFeedReorderBarrierNoSkip(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 
@@ -91,6 +92,7 @@ func TestTieredChangeFeedReorderBarrierNoSkip(t *testing.T) {
 // LSNs allocated BEFORE the call durable, the W-bound stops the merge from
 // crossing an LSN allocated DURING the drain (ADR-0005 §2.2).
 func TestTieredChangeFeedWBound(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 	for i := 0; i < 3; i++ {
@@ -140,6 +142,7 @@ func TestTieredChangeFeedWBound(t *testing.T) {
 // by an end-to-end accounting check (every LSN ever minted must have been
 // delivered exactly once, in order) rather than relying on catching it live.
 func TestTieredChangeFeedConcurrentWritersNoGaps(t *testing.T) {
+	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
 

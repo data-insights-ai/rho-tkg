@@ -43,6 +43,7 @@ func addNodesWithPropsAcrossShards(t *testing.T, g *graph.Graph, label string, p
 // TestShardedPropertyTypeClassCountsCrossShard is the S5-C stats gate: the exact
 // type-class partition summed across shards, with graph-computed Missing.
 func TestShardedPropertyTypeClassCountsCrossShard(t *testing.T) {
+	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	propsList := []map[string]any{
 		{"score": int64(5)},        // Numeric
