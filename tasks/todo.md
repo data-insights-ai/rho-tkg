@@ -77,6 +77,18 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 
 ## Later
 
+- **FLUSHPART** — A flush above badger's batch limit (about 10 MB or 105,000 entries) is several transactions, so a crash
+  can keep rows without their change-log records and counters (`docs/badger.md` rule 1). Done when: a crash test at
+  each split point reopens consistent, released as a patch.
+- **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
+  (about 4x the row each) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
+- **PREFETCH** — 13 iterators turn on value prefetching, one goroutine per row for values that are inline anyway (rule
+  3). Done when: none does, the open-time node scan measured.
+- **ITERPREFIX** — The snapshot walkers merge every table of every level because they set no prefix (rule
+  4). Done when: each sets at least its keyspace byte.
+- **VLOGGC** — The value-log GC loop runs for nothing, since every row is stored inline (rule 9). Done when: removed
+  or made conditional.
+
 - **COLDSTART** — A fresh agent has to be able to work from the 13 docs alone. Done when: every gap it finds is fixed
   in the file that owns it.
 - **GUARDS** — The rules the docs no longer state need tests that fail when the rule is broken. Done when: each guard

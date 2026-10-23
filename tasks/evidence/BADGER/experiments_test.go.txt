@@ -1,0 +1,182 @@
+package badger
+
+// Scratch experiments for the badger analysis (BADGER). NOT FOR COMMIT.
+
+import (
+	"encoding/binary"
+	"fmt"
+	"runtime"
+	"testing"
+	"time"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
+)
+
+func zzKey(i int) []byte {
+	k := make([]byte, 9)
+	k[0] = 0x01
+	binary.BigEndian.PutUint64(k[1:], uint64(i))
+	return k
+}
+
+func zzOpen(t *testing.T, dir string, mut func(*badgerv4.Options)) *badgerv4.DB {
+	opts := badgerv4.DefaultOptions(dir).WithLogger(nil).WithDetectConflicts(false)
+	if mut != nil {
+		mut(&opts)
+	}
+	db, err := badgerv4.Open(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+func zzHeap() uint64 {
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.HeapAlloc
+}
+
+func zzAlloc() uint64 {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.TotalAlloc
+}
+
+// E1: a WriteBatch above maxBatchCount commits its first part on its own.
+func TestZZE1WriteBatchNotAtomic(t *testing.T) {
+	db := zzOpen(t, t.TempDir(), nil)
+	defer db.Close()
+	n := int(db.MaxBatchCount()) + 1000
+	wb := db.NewWriteBatch()
+	for i := 0; i < n; i++ {
+		if err := wb.Set(zzKey(i), []byte("v")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wb.Cancel() // the caller gives up before Flush
+	time.Sleep(200 * time.Millisecond)
+	visible := 0
+	_ = db.View(func(txn *badgerv4.Txn) error {
+		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{0x01}})
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			visible++
+		}
+		return nil
+	})
+	t.Logf("E1: MaxBatchCount %d, MaxBatchSize %d; wrote %d entries, cancelled before Flush: %d visible",
+		db.MaxBatchCount(), db.MaxBatchSize(), n, visible)
+}
+
+// E2: bytes per read of a 900-byte row: Get vs a forward walk, versions on 1 level and on several.
+func TestZZE2ReadCopies(t *testing.T) {
+	for _, rewrites := range []int{0, 3} {
+		dir := t.TempDir()
+		db := zzOpen(t, dir, nil)
+		const n = 2000
+		val := make([]byte, 900)
+		for r := 0; r <= rewrites; r++ {
+			wb := db.NewWriteBatch()
+			for i := 0; i < n; i++ {
+				val[0] = byte(r)
+				_ = wb.Set(zzKey(i), append([]byte(nil), val...))
+			}
+			_ = wb.Flush()
+			_ = db.Close() // close flushes the memtable to an L0 table: each rewrite lands in its own table
+			db = zzOpen(t, dir, nil)
+		}
+		// warm the block cache once
+		read := func(get bool) int {
+			a := zzAlloc()
+			_ = db.View(func(txn *badgerv4.Txn) error {
+				if get {
+					for i := 0; i < n; i++ {
+						item, err := txn.Get(zzKey(i))
+						if err != nil {
+							t.Fatal(err)
+						}
+						_ = item.Value(func([]byte) error { return nil })
+					}
+					return nil
+				}
+				it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{0x01}})
+				defer it.Close()
+				for it.Rewind(); it.Valid(); it.Next() {
+					_ = it.Item().Value(func([]byte) error { return nil })
+				}
+				return nil
+			})
+			return int(zzAlloc()-a) / n
+		}
+		read(true)
+		read(false)
+		g, w := read(true), read(false)
+		t.Logf("E2: %d rewrite(s) (tables %d): Get %d B per row, forward walk %d B per row (row 900 B)", rewrites, len(db.Tables()), g, w)
+		_ = db.Close()
+	}
+}
+
+// E3: heap and goroutines per open DB, writable vs read-only, default options.
+func TestZZE3OpenFootprint(t *testing.T) {
+	dir := t.TempDir()
+	db := zzOpen(t, dir, nil)
+	_ = db.Update(func(txn *badgerv4.Txn) error { return txn.Set(zzKey(1), []byte("x")) })
+	_ = db.Close()
+	for _, ro := range []bool{false, true} {
+		h0, g0 := zzHeap(), runtime.NumGoroutine()
+		a0 := zzAlloc()
+		db := zzOpen(t, dir, func(o *badgerv4.Options) { o.ReadOnly = ro })
+		h1, g1 := zzHeap(), runtime.NumGoroutine()
+		t.Logf("E3: read-only=%v: open allocates %d MB, heap +%d MB, goroutines +%d", ro, (zzAlloc()-a0)>>20, (h1-h0)>>20, g1-g0)
+		_ = db.Close()
+	}
+}
+
+// E4: time per synced write request (SyncWrites), one 900-byte row per request.
+func TestZZE4SyncedWriteCost(t *testing.T) {
+	for _, sync := range []bool{false, true} {
+		db := zzOpen(t, t.TempDir(), func(o *badgerv4.Options) { o.SyncWrites = sync })
+		val := make([]byte, 900)
+		const n = 200
+		start := time.Now()
+		for i := 0; i < n; i++ {
+			wb := db.NewWriteBatch()
+			_ = wb.Set(zzKey(i), val)
+			if err := wb.Flush(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Logf("E4: SyncWrites=%v: %v per write request", sync, time.Since(start)/n)
+		_ = db.Close()
+	}
+}
+
+// E5: iterating 20k inline rows with and without PrefetchValues.
+func TestZZE5Prefetch(t *testing.T) {
+	db := zzOpen(t, t.TempDir(), nil)
+	defer db.Close()
+	const n = 20000
+	wb := db.NewWriteBatch()
+	val := make([]byte, 900)
+	for i := 0; i < n; i++ {
+		_ = wb.Set(zzKey(i), val)
+	}
+	_ = wb.Flush()
+	for _, pf := range []bool{false, true, false, true} {
+		a := zzAlloc()
+		start := time.Now()
+		_ = db.View(func(txn *badgerv4.Txn) error {
+			it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{0x01}, PrefetchValues: pf, PrefetchSize: 100})
+			defer it.Close()
+			for it.Rewind(); it.Valid(); it.Next() {
+				_ = it.Item().Value(func([]byte) error { return nil })
+			}
+			return nil
+		})
+		t.Logf("E5: PrefetchValues=%v: %v, %d B per row", pf, time.Since(start), int(zzAlloc()-a)/n)
+	}
+}
+
+var _ = fmt.Sprint

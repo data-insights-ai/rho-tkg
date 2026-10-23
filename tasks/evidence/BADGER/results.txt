@@ -1,0 +1,8 @@
+## Experiments (raw badger v4.9.2, default options, scratch test)
+- E1 WriteBatch not atomic: 105,857 entries (> MaxBatchCount 104,857), Cancel before Flush -> 104,855 visible.
+- E2 bytes per read of a 900-byte row (block cache warm): Txn.Get+Value 3,667 B (1 table), 4,582 B (4 tables holding
+  versions); forward iterator walk 7 B (1 table), 23 B (4 tables).
+- E3 open footprint: writable +83 MB heap (85 MB allocated), +16 goroutines; read-only +2 MB, +10 goroutines.
+- E4 per write request, NVMe (/home): SyncWrites off 11.6 us; on 630 us: WAL msync (128 MB mapping) 444 us, idle vlog
+  msync (2 GB mapping) 53 us, both on every request (strace -T, 200 requests).
+- E5 20k inline rows: PrefetchValues=true takes ~2x the time of false (19 vs 10 ms) and allocates more.
