@@ -12,6 +12,17 @@ Each item: one sentence, then when it is done and what it waits for.
   refuses to open (`docs/badger.md` rule 1). Done when: a crash test at a planted split reopens consistent and loses
   no record, released as a patch. Order (René 23 Oct): tests first, then the change, the tests run, then Fable reviews.
 
+### FLUSHPART plan
+
+1. [ ] The tests in `pkg/graph/store/badger/flush_split_test.go` fail on today's code: find out why the simulated crash
+   leaves no partial flush (they pass now), and fix the simulation.
+2. [ ] Fable reviews the fix design: a flush that fits in one badger transaction commits as today; a larger one is staged
+   under a private key prefix, made visible by a small marker, applied, then cleaned up; at open a marker means
+   re-apply, no marker means discard the staging.
+3. [ ] The change is built and the tests pass, under `-race` too.
+4. [ ] Fable reviews the diff and the test output.
+5. [ ] Released as a patch; ai-soc and sigma are told; the item moves to `docs/CHANGELOG.md`.
+
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
