@@ -82,7 +82,8 @@ Dir/
   measured 7 B per row (21-23 B with four tables). `Seek` returns the prefetched items to the reuse list but not the
   current one (`prefetch` sets it to nil, `iterator.go:726-760`), so each `Seek` allocates one item with fresh buffers,
   on top of re-seeking every table iterator: measured 2,315 B per row for one `Seek` per row, between a walk and a
-  `Get`.
+  `Get`. Profiled per seek: ~1,000 B key and value copied into the new item (`SafeCopy`), ~1,000 B its value buffer
+  (`Slice.Resize`), ~180 B the item, ~110 B table-block positioning.
 - **`Prefix` prunes tables** by their smallest and biggest keys (`iterator.go:332-376`); without it the iterator merges
   every table of every level. The bloom filter is used only by key iterators.
 - **`PrefetchValues`** (default true, 100 items) starts one goroutine per item to copy its value (`iterator.go:696-715`).

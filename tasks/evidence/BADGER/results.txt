@@ -9,3 +9,5 @@ E4 per write request, one request per group, NVMe: SyncWrites off 11.5 us; on 63
 E5 20k inline rows: PrefetchValues=true 19-22 ms vs false 10-11 ms, 27-32 B vs 0 B per row.
 E6 one Seek per row on one iterator, ascending: 2,315 B (1 table), 2,391 B (4 tables) per 900-byte row.
 E7 Get in its own read transaction per row: 3,795 B per 900-byte row.
+E6 profile (100,000 seeks, 900-byte rows): SafeCopy 101 MB, Slice.Resize 100 MB, Iterator.newItem 18 MB, Table.block
+   10.9 MB cumulative: ~1,000 + ~1,000 + ~180 + ~110 B per seek; the item and its buffers, not table positioning.
