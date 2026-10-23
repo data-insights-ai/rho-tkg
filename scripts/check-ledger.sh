@@ -17,10 +17,10 @@ if [ "v${top}" != "${latest}" ]; then
     echo "ledger: pending release v${top}: HANDOVER.md does not name it"; fail=1
   fi
 fi
-# todo.md holds open work only, in order (ai-soc's format): "## 0. Now" (René's current request, quoted), numbered
-# sections, "Waiting for René", "Parked, each with its trigger" with a "### Backlog" of "- N — problem" lines.
-for sec in '0\. Now' '[0-9]+\. Waiting for René' '[0-9]+\. Parked, each with its trigger'; do
-  grep -qE "^## ${sec}" tasks/todo.md || { echo "ledger: tasks/todo.md lacks a '## ${sec}' section"; fail=1; }
+# todo.md holds open work only, in order (sigma's format): Now, Next, Waiting, Later, Parked, each item one sentence
+# with "Done when" and "Waits for"; Parked ends in a "### Backlog" of "- N — problem" lines.
+for sec in 'Now' 'Next' 'Waiting' 'Later' 'Parked'; do
+  grep -qE "^## ${sec}$" tasks/todo.md || { echo "ledger: tasks/todo.md lacks a '## ${sec}' section"; fail=1; }
 done
 grep -qE '^### Backlog' tasks/todo.md || { echo "ledger: tasks/todo.md lacks '### Backlog' under Parked"; fail=1; }
 # Every line outside the parked backlog is a next step, a trigger or a decision.

@@ -1,129 +1,104 @@
-# todo — what is next (v4 line)
+# todo
 
-Open work only, in order. Done work: `docs/CHANGELOG.md` (same row number). State and René's standing requests:
-`HANDOVER.md`; old ledger (done rows, releases, review log, v5 WP history): `git show aeb7f8e0:tasks/todo.md`. Each step:
-red test first (short, one named mutation), then the change; a door is a minor, a fix a patch; consumer data stays on
-Flux (counts, sizes, relation names only); long runs only on René's word ("run").
+What rho does next, in order. Last release: v4.74.0 (2026-10-23). Background: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`.
+Full text of the items before this format (file cites, plans): `git show 791c1aa3:tasks/todo.md`.
 
-## 0. Now — René 23 Oct: "i think we have to rewrite the full data chain, we wasted 3 up to 4x data storage and memory"
-Evidence so far (row 121, sigma's one-fact run on the ai-soc BA slice-gate copy `/srv/fast/rene/rho-analysis-k10230918/store`):
-a 2-row bar fact stores 1,132 B for a fact nobody sees (row 2 = a full copy + `ov_void`, sigma's old write-back); 72% of
-each row is identity repeated per version; a re-derived fact keeps its first write as the current row and grows 2 history
-rows per re-derivation; a history row read costs ~3.7 kB full, 6-7 kB as a delta (~560 B of properties).
-1. [ ] The split per layer, one aggregate run on the kept Flux copy (owner sigma, `projects/derived-writeback` wbscan
-   with rho v4.74.0's `Admin().NodeStoredSizes`; on René's "run"): property bytes vs stored bytes, history share,
-   void/retraction rows, per relation. Proof: sigma's report, counts and sizes only.
-2. [ ] René decides the rewrite per layer from 1, against a target (e.g. stored bytes per fact <= 1.5x its values).
-   rho's levers, each a red test first: (a) the believed stretch becomes the current row (a re-derived fact reads
-   current, not history); (b) an excise piece stores no row copy; (c) one anchor decode per history read (a delta row
-   re-reads and fully decodes its anchor, per row); (d) a decoded row nearer its stored size (Node struct, a Temporal
-   copy per skeleton, msgpack strings). sigma's: identity once instead of per version, one validity source, the write
-   pattern of shifted re-derivations. ai-soc's: whether every re-derivation must be kept.
-3. [ ] Then the rewrite, each layer its own release; ai-soc's cold /bars guard (`TestDerivedRowsColdBytesPerFactBoundedBySize`,
-   at most 4x the fact's values) passes on Flux.
+Each item: one sentence, then when it is done and what it waits for.
 
-## 1. Row 121: listing bytes (ai-soc R37), after 0.2
-Shipped v4.71.0-v4.74.0: the page door `ForEachNodeEffectiveByLabelAndProperties`, tiered read snapshot, winners read in
-place (rho's cold guard `TestForEachNodeEffectiveByLabelAndPropertiesColdBytes`: 5.3x values at one version, 10.8x
-rewritten, 14.9x with history winners). ai-soc measured v4.73.0: cold 9.1x / 32.6x, warm memory 4.0x / 7.8x.
-- [ ] Per-entity skeleton cache keyed by the history epoch (badger/tiered `HistoryEpochCapability`): warm rewritten
-  listings re-read the skeleton (~2 kB fixed per call once history exists, ~0.87 kB per version).
-- [ ] Relationship decode re-copies its properties on install (no `SetPropertiesCanonicalShared` on Relationship).
+## Now
 
-## 2. Docs and guards
-- [ ] (108) Cold-start test 2 on the finished md set (13 files): fresh agent, new questions (not test 1's 12). Check:
-  each gap it finds is fixed in the owning file, docs tests green.
-- [ ] (118) Guards for the rules the docs no longer carry as prose (René 2026-10-23: tests, not prose), each red-first:
-  (a) `check-ledger.sh` fails on attribution lines in `git log <last tag>..HEAD`, and runs in `ci-docker` too; (b) docs
-  test: every `lesson N` cite resolves to an index line 1-88 in CONTRIBUTING § Lessons; (c) source-scan test: raw
-  `msgpack.Unmarshal` only in `SafeUnmarshal` + the 4 allowlisted flat-struct loaders (lesson 47); (d) reflection test:
-  every msgpack-tagged wire field round-trips (lesson 39); (e) golangci `forbidigo` for `sort.Slice` /
-  `reflect.DeepEqual` in non-test code (lesson 70) and `errorlint`; (f) design-rule gaps from the Opus audit:
-  relationship-create kernel reachability, canonical hash, tombstone cache-miss, rotation boundary, reflection
-  close-sweep of every public method. Check: each guard red on a planted violation.
-- [ ] (119) (a) `TestTemporalPropertySeekAnswersEverLabelMembers/badger` misses the relabelled node at `TxPin: pinBefore`
-  only beside other parallel tests (passes 20x alone; kept serial): check whether a write can share the pin's instant
-  before calling it test-only. (b) `Compression: options.None` cannot disable compression (None is the zero value =
-  Snappy); a `DisableCompression` option is a door (minor), only on a consumer request. (c) the rest of the shared store
-  suite (history_generation, ordinal_lookup, propertytxmembers_range, reltype_temporal_deleted, compaction,
-  labeltxmembers, retention_purge, property_bounds, ~5k lines) moves into pkg/graph/store as the scoped batteries did
-  (c9e78bf6).
+- **CHAIN** — René 23 Oct: "we have to rewrite the full data chain, we wasted 3 up to 4x data storage and memory"; first
+  measure which layer wastes how much, on the BA copy on Flux, with sigma's store analysis tool and rho's stored-size
+  read. Done when: the split per layer (ai-soc, sigma, rho) is known. Waits for: René's "run" (sigma runs it).
 
-## 3. Waiting, each with its trigger
-- (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee
-  under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.
-- A consumer report against v4.70.0+ (ai-soc's full Flux rerun; sigma O1-3 on `LowestAnsweredPins` and
-  `RelEffectiveTimelinesByProperties`) → build only what blocks them (lesson 79 (10)).
-- Origin watch (HANDOVER Appendix A, at session start): a Markus release → merge origin/main, check his code against the
-  rules (one valid start, Void rows, Elements, format markers, head cache, version allocation), fix his CHANGELOG heading.
-- D1 (102) ai-soc raises priority, or nothing else is open → resume branch `row102-pending-ranged` (base 6ac9ea5f;
-  8fa7a967 = the two red tests, f4b27842 = WIP `badgerstore_write_buffer.go`), rebase onto main first; badger
-  `rangePending` walks all of pending + flushing per per-entity overlay read. Check:
-  `TestPendingOverlayCostIndependentOfPendingSize` + `TestRollbackManyCreatedRelsLinearInPending` green → patch.
-- D2 ai-soc memory pressure (BA RESHEAP 0.53 → 1.13 GB in 24 h; 0.18 GB ristretto under `Session.checkEntities →
-  latestStamps`) → one store-wide badger cache budget or a documented per-shard size (`badgerstore_options.go:182`).
-- D3 (105 (b)) `RelEffectiveTimelinesByProperties` measures too slow on BA → rel composite tx-membership sidecar
-  (2,500-3,500 LOC, 4 backends).
-- D4 decision 3, or sigma/ai-soc needs P24 → tombstone writer `DeleteKeptValidTo` (fixes backlog 4 (ii), 7, 25): branch
-  `tombstone-writer-v4.63` (`37a1ff56`), rebuild on the v4.66 axis code, ~½ day, a minor; heads-up to sigma + ai-soc.
-- D5 a consumer hits one → backlog 80-82 and the review nits not taken (v4.69.2: 4, git 82558ea9; v4.70.0: 3, git 3c370aab).
-- D6 next touch → repoint stale code cites of gone todo sections: `tasks/todo.md "R3 sizing"` (badger/tiered
-  adjacency-disk tests; sizing in git f94060df), `tasks/todo.md, Tier D` (`core/node_delete.go:353,378`).
+## Next
 
-## 4. Waiting for René (my default)
-1. Section 0.2: the rewrite per layer, after the split. Default: none until 0.1's numbers.
-2. Review findings not taken under the scope rule (tests review #5-#10, code review #4-#7, docs #9-#10, old rows 77-82).
-   Default: untaken until a consumer hits one.
-3. v5 restart (row 61) and the first v5 tag. Default: paused; `v5.0.0-alpha.1` at S2 exit once restarted.
-4. Tombstone writer rebuild (D4). Default: parked until sigma or ai-soc needs P24.
-5. Retention purge vs retained pins (row 104; a purged entity answers not-found at pins it answered before): (a) no rho
-   change, sigma treats not-found for a seen id as purged; (b) `ErrRetentionExpired` via a per-entity purge tombstone.
-   Default: (a).
-6. `UntimedWholeAxis` default for new stores: announced in CHANGELOG `[4.65.0]` Deprecated for "the next minor", held
-   for five minors. Default: stays held; the next minor flips it or rewords the notice.
-7. Backlog 16 (range folds: resolved version vs predicate-anywhere). Default: keep today's documented behaviour.
-8. Shard upgrade (row 117) and its defaults, below in 5. Default: parked until René restarts it.
+- **CHAIN-2** — Decide what each layer changes, against a target such as stored bytes per fact at most 1.5 times its
+  values; rho's options: the believed row stays the current row, excise pieces store no row copy, a delta's anchor is
+  decoded once per read, decoded rows closer to their stored size. Done when: René has decided. Waits for: CHAIN.
 
-## 5. Parked, each with its trigger
-### Backlog (no requester: a consumer hits one, or René's word)
-Numbers are stable (code cites "backlog N"); closed ones are in `docs/CHANGELOG.md`; details: `git show 6e20157c:tasks/backlog.md`.
-- 0 — column segments on NVMe (ADR-0011; `pkg/graph/internal/segment`, `Config.RelSegments`): S4 merge, S6, S7 open
-- 1 — failed `IO().Import` should emit no change-log record; import takes `c.mu` only, needs `c.txMu` (`importRollback.restoreRegistries`)
-- 2 — test gaps 22a-f: tiered crash matrix, clock skew vs rotation, tiered metadata decoder fuzz, NaN/Inf/huge-dim inputs, race soak, `ValidationLimits`
-- 3 — `ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` bypass badger's decode-skip, fold deleted rels O(deleted) per call
-- 4 — `core/temporal.go`: (i) `NodesDuring`/`RelsDuring` `end == 0` misses future-only; (ii) delete of a future-ValidFrom row (`TestDeleteAheadOfClock4`, fix = D4); (iii) `SelectAsOf` after a cascade; (iv) `NodeMatchesValidTime` unset ValidFrom; (v) snowflake horizon 2034-12-02
-- 5 — P7 row compaction follow-ups, 388 B per HOP row left (key tokens, history versions, badger cache of frozen rows, string interning)
-- 7 — `DeleteWithTx(id, t)` refuses a recorded `ValidTo >= t` (`core/tx_order.go`); goes with D4 and 25
-- 10 — tiered lacks node-side `TemporalCandidateCapability`
-- 13 — async ingest attributes group errors by numeric id, node and rel with one number land in the wrong group (`groupApplyError`, `core/ingest.go`)
-- 16 — under `ValidStart`+`ValidEnd` range folds test the resolved version, `ByLabelAndProperty` matches anywhere in the interval (decision 7)
-- 20 — `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` missing
-- 23 — `changeFeedPage` prefetches unused values, may read past the keyspace (`badgerstore_changelog.go:648-659`)
-- 25 — `CloseVersion(far-1)` → pin → `Delete`: as-of rewind reopens `[1000,inf)` (`core/temporal.go:149`, `storeutil/asof_select.go:172`); with D4 and 7
-- 26 — pre-allocator chains with two rows of one version keep the old order
-- 31 — `NodeAsOf` misses a row above a version gap past current + 1 (`core/version_alloc.go`)
-- 37 — tiered error-rollback restore: reader sees empty history between truncate and put (`tieredstore_write_history.go:913`)
-- 39 — compaction stubs survive `Admin().Reset`; Import of an old ID can restart at version 0 (`core/compaction.go:285`)
-- 40 — cascade resumption considers bounds before the last tombstone, one extra split row (`temporal_cascade.go:425,444`)
-- 45 — `ErrNilCallback`, `ErrCommitClockExhausted`, `ErrForeignStampImplausible` lack an exported alias; `ErrMixedNumericColumn` outside the errors inventory test
-- 46 — stale comments: ADR-0006 cites, `badgerstore_property_stats.go:38` lesson 62 (is 63), old B-numbers, `effective_timeline.go` header
-- 47 — (a) `NodesByLabelAt` "folds history instead of K1" unverified; (b) RAM budget for property sidecars
-- 71 — hull of current rows in O(1)/O(log n) (`ValidHullByLabel` is one pass per call)
-- 76 — number equality lookups: one store call per width key (up to 12)
-- 78 — `EndValidity` lacks `*WithTx`, `BatchBuilder` and ingest `Session` twins (`tombstoneSpec.keepPast`)
-- 80 — whole-axis entities patched while closed keep a stale current row (`cascadeNewCurrent`, `core/temporal_cascade.go:798`)
-- 81 — sharded rel row with local start, remote end: no in-key repair at open
-- 82 — tiered ex-adjacency of a reference node at `DepthAll` opens every cold shard
+## Waiting
 
-### v5 (row 61; trigger: René restarts it)
-Local branch `v5-takeover` (not pushed). Open: WP-16 per-partition allocation + `Graph.Owner`; WP-18 WAL write-EIO
-fail-stop (Markus F2); WP-22 one byte framing `v5/internal/wire`; WP-28 `Recorded` evidence through dist op log +
-range-move export; WP-33 Scan streams index pages (65,536-row cap). Breaking API-pass candidates (architecture.md
-"Deferred Architectural Decisions" 2026-06-10): split `internal/core` into tx/temporal/mutate; rename `pkg/graph/hash`/`io`
-(stdlib shadowing); one parameterized iteration interface instead of the history × deleted × depth × paged capability
-grid; `tier` stops returning `tiered.*` types and exposing `RecoverBackgroundError`; pending/dirty counts in `StoreStats`.
+- **R37** (row 121) — Listing facts that were changed still costs more than ai-soc's limit of 4 times a fact's values
+  (on v4.73.0: 9.1x cold, 32.6x for rewritten facts). Done when: ai-soc's cold /bars test passes on Flux. Waits for:
+  CHAIN-2, which decides the remaining fixes (skeleton cache, relationship decode copy).
+- **REOPEN** (row 92) — ai-soc saw a slow history read after a reopen; rho acts only on a profile naming the slow call.
+  Done when: the profile is in and acted on. Waits for: ai-soc.
+- **REPORT** — ai-soc and sigma report on the doors of v4.70.0 and later; rho builds only what blocks them. Done when:
+  both reported. Waits for: ai-soc, sigma.
+- **ORIGIN** — A release by Markus on origin is merged and checked against rho's rules at the start of a session.
+  Done when: no release of his is unmerged. Waits for: Markus.
+- **PENDING** (row 102) — Reading one entity walks the whole write buffer on badger; half-built on branch
+  `row102-pending-ranged`. Done when: the cost no longer grows with the buffer, released as a patch. Waits for: ai-soc
+  raising its priority, or nothing else open.
+- **CACHE** — Every open badger shard has its own cache, so ai-soc's memory grows with open shards. Done when: one
+  store-wide cache budget, or a documented size per shard. Waits for: ai-soc's memory numbers.
+- **RELSIDECAR** (row 105) — Relationship lookups by several properties may be too slow on BA. Done when: measured
+  fast enough, or a sidecar index built. Waits for: a BA measurement.
+- **TOMBSTONE** — A delete that keeps the believed end of validity (fixes backlog 4, 7, 25); branch
+  `tombstone-writer-v4.63`, about half a day, a minor. Done when: released with a heads-up to sigma and ai-soc. Waits
+  for: René, or sigma or ai-soc needing it.
+- **NITS** — Backlog 80-82 and review findings not taken. Done when: a consumer hits one and it is fixed. Waits for:
+  a consumer.
+- **REVIEWS** — Review findings left out under the scope rule. Done when: René decides (my default: leave them until a
+  consumer hits one). Waits for: René.
+- **PURGE** (row 104) — A purged entity answers "not found" at a time it answered before. Done when: René decides (my
+  default: no rho change, sigma treats not-found for a known id as purged). Waits for: René.
+- **AXIS** — The announced change of the default valid-time start for new stores has been held for five
+  minors. Done when: René decides (my default: keep holding; the next minor makes it or rewords the notice). Waits for: René.
+- **FOLDS** (backlog 16) — Range lookups check the resolved version, not any version in the range. Done when: René
+  decides (my default: keep today's documented behaviour). Waits for: René.
 
-### Shard upgrade (row 117; trigger: René restarts it, parked 2026-10-23)
-- Plan: (117) Per-tier data directories (René via ai-soc 2026-10-22: hot RAM, warm NVMe, cold HDD). Today every tier is a badger shard under one `DataDir` (`tieredstore.go:574-583`, shard dir `:1471`); "hot" is on disk, tiers are catalog labels (`shard_catalog.go:30-35`); demotion to cold does not close the store (`tieredstore_catalog.go:162-166`; `architecture.md:780` wrongly says it does). Plan (Opus analysis, Fable review 2026-10-23): one `Config.ColdDir` (empty = `DataDir`, byte-identical catalog), `ShardEntry.Volume`; hot, warm, reference, archive, `meta/` stay on NVMe; the mover takes only cold event shards, never ref/archive/warm (sigma keeps Derived in RefLabels). Move = `Flush`, record badger `MaxVersion`, stream copy (`NewStream`→`StreamWriter`, keeps versions; rho reads no older MVCC versions; Flush msyncs tables + dirs) into a fresh `ColdDir/events/<name>.moving-<nonce>`, close, rename, fsync parent. Switch under `ts.mu.Lock` → `shardMu` (the store-wide-op lock is only an RLock, `tieredstore.go:1182`): re-check `ts.eventShards[name]==es`, `Flush` + same `MaxVersion` (respect `SharedFlushHold`), drain `activeReqs` like drop (`retention_purge_drop.go:120-135`), close, `store=nil`, catalog save = commit point, then remove source. Steps, each with its red test: (a) XS `ts.shardDir` for `:1471` and the 4 `RemoveAll` on `ts.dataDir` (`tieredstore_catalog.go:83,129,379`, `retention_purge_drop.go:207`), patch; (b) S New/lazy-open refuse a missing shard dir (today badger creates an empty shard) — behaviour change, ships in the minor with CHANGELOG Changed; (c) S `ColdDir` + `Volume` + format marker as a sentinel entry the current validator rejects (`{name:"__format__",kind:"catalog/2"}`; a JSON field would be ignored by older rho, `shard_catalog.go:98`), written only at a store's first move (ai-soc), named in the CHANGELOG as a one-way door (sigma); (d) M copy without switch, `ExportSince` + encryption parity; (e) M switch + orphan rule in New: `*.moving-*` → remove, `Volume=cold` + NVMe dir → remove source, `Volume=""` + ColdDir dir → remove dest; crash at each of copy/rename/save/remove; (f) S races: drop (also `dropOneShard` saves without `ts.mu`, `retention_purge_drop.go:180-190`, and rotation's `restoreShards` can undo a concurrent commit), write, reader, rotation, `RebuildCatalog` keeps `Volume`, `PromoteColdShardsAtOpen` on a moved shard; (g) S `ColdCompression` (per-table codec in the badger manifest, no persistence; document `BlockCacheSize==0` trap); (h) S mover on the idle-sweep tick, one shard at a time, migrates today's cold shards; (i) S cold-shard opens per read as a read-cost/EXPLAIN field (sigma p2/p3), can ship first; (j) XS architecture.md contract + `:780` fix, persistence.md:372 layout. ~2 weeks, one minor. Alternative to note for René: symlink `events/<name>` → ColdDir (no catalog field, no one-way door, older rho reads it; drop must `EvalSymlinks`). Blocker: reference shard growth below. ai-soc's side (`-cold-data`, `internal/graphmgr/manager.go:97-103,495-505`, `cmd/aisoc/core.go`, `serve.go:172`) sent to ai-soc-main-45.
-- Defaults: (a) hot = NVMe + badger caches, not RAM (a RAM tier breaks DurableCommit/SyncWrites crash safety); (b) `ColdDir` only, archive stays on NVMe; (c) a cold shard promoted at open stays on HDD; (d) the catalog format marker is an accepted one-way door (older rho refuses a moved store); (e) ZSTD on cold is opt-in (`ColdCompression`). Default: all as written; sigma and ai-soc agree to (a)-(e) (2026-10-23).
-- Reference shard growth (blocker; ai-soc measured on Flux 2026-10-23): ref shard ~2/3 of store bytes (~60 GB per BA day estimated, never moves; 28 days ≈ 1.7 TB vs 870 GB `/srv/fast`), so `ColdDir` alone does not fit NVMe. Cause (Fable, from code): not history (ai-soc never updates nodes) but one ref node per instance (Process/File/RegValue/LocalObject keyed per record, ai-soc `readers/defender/inputs*.go`) because a unique key needs a reference label (`core/unique_constraints.go:75-83`), plus cut nodes (~80-120 B/record). Options: (1) old ref versions to day shards — no versions to move, L, reject; (2) purge ref by age — exists for nodes (`tiered/retention_purge.go`), safe for cut/ended/voided, unsafe for instances with newer edges; (3) keyed event labels (index on ref, row on mint day shard) — M-L, ~2 weeks, a minor; (4) no rho change: ai-soc makes per-instance labels event-class, dedupes via its RAM window (`DedupeWindow`), purges cut nodes with (2). Default: (4) now, (3) only if a consumer needs instance identity beyond the dedupe window; first a prefix-size scan of the Flux ref dir to confirm instances vs cut nodes. Product question: may a Process re-seen after the dedupe window become a new node?
+## Later
+
+- **COLDSTART** (row 108) — A fresh agent tries to work from the 13 docs alone, with new questions. Done when: every gap
+  it finds is fixed in the file that owns it.
+- **GUARDS** (row 118) — The rules the docs no longer state need tests that fail when broken (René: tests, not prose):
+  attribution lines, lesson cites, raw msgpack use, wire round trips, banned sort and compare calls, design-rule gaps.
+  Done when: each guard fails on a planted violation.
+- **FLAKE** (row 119) — One property test misses a node only when run in parallel; it may be a clock question, not a
+  test problem. Done when: explained and fixed.
+- **SUITE** (row 119) — About 5,000 lines of memory and badger tests are near copies; they move into the shared store
+  suite. Done when: moved and green.
+- **STALECITE** — Code comments still cite todo sections that are gone. Done when: repointed, at the next touch of that
+  code.
+
+## Parked
+
+- **NOCOMPRESS** (row 119) — Compression cannot be turned off (None is the default value). Waits for: a consumer asking.
+- **V5** (row 61) — The v5 line, paused on local branch `v5-takeover`, first tag at its S2 exit. Waits for: René.
+- **SHARD** (row 117) — Separate disks per tier (hot, warm, cold), about two weeks, one minor; plan, defaults and the
+  blocker (the reference shard grows ~60 GB per BA day): `git show 791c1aa3:tasks/todo.md`. Waits for: René.
+
+### Backlog
+
+No requester yet; each waits for a consumer to hit it or for René. Numbers are stable (code cites "backlog N"); closed
+ones are in `docs/CHANGELOG.md`; details: `git show 6e20157c:tasks/backlog.md`.
+
+- 0 — column segments on NVMe (ADR-0011): steps S4 merge, S6, S7 open
+- 1 — a failed import should leave no change-log record
+- 2 — test gaps: tiered crash matrix, clock skew vs rotation, tiered metadata fuzz, extreme inputs, race soak, validation limits
+- 3 — two adjacency-at reads skip badger's fast path and fold deleted rels per call
+- 4 — five temporal read edge cases (future-only during-reads, delete of a future row, as-of after a cascade, unset valid start, the 2034 ID horizon)
+- 5 — 388 B per HOP row left to compact (key tokens, history versions, cache of frozen rows, string interning)
+- 7 — `DeleteWithTx(id, t)` refuses a recorded valid end at or after t; goes with TOMBSTONE and 25
+- 10 — tiered lacks the node-side temporal candidate index
+- 13 — async ingest can blame the wrong group when a node and a rel share a number
+- 16 — range lookups check the resolved version (FOLDS)
+- 20 — a missing benchmark for `RelAtTx`
+- 23 — the change feed prefetches unused values and may read past its keyspace
+- 25 — close, pin, delete: an as-of rewind reopens the old range; goes with TOMBSTONE and 7
+- 26 — chains with two rows of one version keep the old order
+- 31 — `NodeAsOf` misses a row above a version gap
+- 37 — tiered error rollback: a reader can see empty history for a moment
+- 39 — compaction stubs survive a reset; an import of an old ID can restart at version 0
+- 40 — cascade resumption can write one extra split row
+- 45 — three errors lack an exported alias; one is outside the errors inventory test
+- 46 — stale comments (old ADR and lesson numbers)
+- 47 — an unverified claim about `NodesByLabelAt`; no RAM budget for property sidecars
+- 71 — the valid-time hull of current rows takes a full pass per call
+- 76 — a number lookup makes one store call per number width
+- 78 — `EndValidity` lacks its with-tx, batch and ingest twins
+- 80 — whole-axis entities patched while closed keep a stale current row
+- 81 — sharded: a rel row with a local start and a remote end is not repaired at open
+- 82 — tiered: an adjacency read of a reference node at full depth opens every cold shard
