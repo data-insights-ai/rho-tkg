@@ -4,32 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 )
-
-func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
-	t.Parallel()
-
-	var nilAPI *API
-	if err := nilAPI.Set(temporalpkg.ConstraintSet{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil Set = %v, want ErrNilGraph", err)
-	}
-	if err := nilAPI.Add(temporalpkg.TemporalConstraint{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil Add = %v, want ErrNilGraph", err)
-	}
-	if got := nilAPI.Get(); got.Len() != 0 {
-		t.Fatalf("nil Get length = %d, want 0", got.Len())
-	}
-
-	api := New((*constraintsOpsSpy)(nil))
-	if err := api.Set(temporalpkg.ConstraintSet{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil Set = %v, want ErrNilGraph", err)
-	}
-	if got := api.Get(); got.Len() != 0 {
-		t.Fatalf("typed-nil Get length = %d, want 0", got.Len())
-	}
-}
 
 func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	t.Parallel()

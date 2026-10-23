@@ -6,7 +6,6 @@ import (
 	stdio "io"
 	"testing"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 )
 
@@ -66,45 +65,6 @@ func (f *fakeOps) ImportMerge(r stdio.Reader, opts tkgio.MergeOptions) error {
 	f.importMergeReader = r
 	f.importMergeOpts = opts
 	return f.importMergeErr
-}
-
-func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
-	t.Parallel()
-
-	var nilAPI *tkgio.API
-	if err := nilAPI.Export(nil); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil Export = %v, want ErrNilGraph", err)
-	}
-	if err := nilAPI.Import(nil, tkgio.ImportOptions{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil Import = %v, want ErrNilGraph", err)
-	}
-
-	if _, err := nilAPI.Watermark(); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil Watermark = %v, want ErrNilGraph", err)
-	}
-	if err := nilAPI.ExportSince(nil, tkgio.Cursor{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil ExportSince = %v, want ErrNilGraph", err)
-	}
-	if err := nilAPI.ImportMerge(nil, tkgio.MergeOptions{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil ImportMerge = %v, want ErrNilGraph", err)
-	}
-
-	api := tkgio.New((*fakeOps)(nil))
-	if err := api.Export(nil); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil Export = %v, want ErrNilGraph", err)
-	}
-	if err := api.Import(nil, tkgio.ImportOptions{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil Import = %v, want ErrNilGraph", err)
-	}
-	if _, err := api.Watermark(); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil Watermark = %v, want ErrNilGraph", err)
-	}
-	if err := api.ExportSince(nil, tkgio.Cursor{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil ExportSince = %v, want ErrNilGraph", err)
-	}
-	if err := api.ImportMerge(nil, tkgio.MergeOptions{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil ImportMerge = %v, want ErrNilGraph", err)
-	}
 }
 
 func TestAPIForwardsMethodsAndErrors(t *testing.T) {

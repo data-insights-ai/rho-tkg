@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 )
 
 // BACKLOG 7g: pkg/graph/ingest had zero direct tests — subapi_zero_value_test.go
@@ -45,39 +44,6 @@ func (o *ingestOpsSpy) WaitApplied(token core.SubmitToken) error {
 	o.waitAppliedCalls++
 	o.lastToken = token
 	return o.waitAppliedErr
-}
-
-func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
-	t.Parallel()
-
-	var nilAPI *API
-	if _, err := nilAPI.NewSession(IngestOptions{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil API.NewSession = %v, want ErrNilGraph", err)
-	}
-	if got := nilAPI.AppliedSeq(); got != 0 {
-		t.Fatalf("nil API.AppliedSeq = %d, want 0", got)
-	}
-	if err := nilAPI.WaitApplied(SubmitToken{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil API.WaitApplied = %v, want ErrNilGraph", err)
-	}
-
-	var zero API
-	if _, err := zero.NewSession(IngestOptions{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("zero-value API.NewSession = %v, want ErrNilGraph", err)
-	}
-	if got := zero.AppliedSeq(); got != 0 {
-		t.Fatalf("zero-value API.AppliedSeq = %d, want 0", got)
-	}
-	if err := zero.WaitApplied(SubmitToken{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("zero-value API.WaitApplied = %v, want ErrNilGraph", err)
-	}
-
-	// Typed-nil Ops: New's !grapherr.IsNil(ops) guard must also catch a
-	// non-nil-interface-holding-nil-pointer Ops value.
-	api := New((*ingestOpsSpy)(nil))
-	if _, err := api.NewSession(IngestOptions{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil-ops API.NewSession = %v, want ErrNilGraph", err)
-	}
 }
 
 func TestAPIForwardsEveryMethod(t *testing.T) {

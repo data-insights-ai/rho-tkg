@@ -28,9 +28,8 @@ import (
 //     underlying *Core which returns ErrGraphClosed. This matches the
 //     close-then-call semantics every other path uses.
 //
-// The deeper, per-method nil-pointer + zero-value test surface for each
-// sub-API lives in subapi_zero_value_test.go and is unchanged by the
-// field→method conversion. This file specifically targets the Graph-level
+// The per-method nil-pointer + zero-value surface of every sub-API is the
+// reflection walk in subapi_nil_receiver_test.go. This file specifically targets the Graph-level
 // accessors that didn't exist before v4.2.0.
 
 func TestGraphAccessor_NilGraphReturnsNilForEveryAccessor(t *testing.T) {

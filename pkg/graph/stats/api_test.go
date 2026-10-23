@@ -11,62 +11,6 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
-	t.Parallel()
-
-	var nilAPI *API
-	for _, check := range []struct {
-		name string
-		fn   func() (int, error)
-	}{
-		{name: "NodeCount", fn: nilAPI.NodeCount},
-		{name: "RelCount", fn: nilAPI.RelCount},
-		{name: "NodeCountByLabel", fn: func() (int, error) { return nilAPI.NodeCountByLabel("Person") }},
-		{name: "NodeCountByLabelAndPropertyKey", fn: func() (int, error) { return nilAPI.NodeCountByLabelAndPropertyKey("Person", "id") }},
-		{name: "RelCountByType", fn: func() (int, error) { return nilAPI.RelCountByType("KNOWS") }},
-	} {
-		got, err := check.fn()
-		if got != 0 {
-			t.Fatalf("%s nil count = %d, want 0", check.name, got)
-		}
-		if !errors.Is(err, grapherr.ErrNilGraph) {
-			t.Fatalf("%s nil error = %v, want ErrNilGraph", check.name, err)
-		}
-	}
-	if got, err := nilAPI.Get(); got != (GraphStats{}) || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil Get = (%+v, %v), want (zero, ErrNilGraph)", got, err)
-	}
-	if got, err := nilAPI.AllLabelCounts(); got != nil || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil AllLabelCounts = (%v, %v), want (nil, ErrNilGraph)", got, err)
-	}
-	if got, err := nilAPI.AllRelTypeCounts(); got != nil || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil AllRelTypeCounts = (%v, %v), want (nil, ErrNilGraph)", got, err)
-	}
-	if count, exact, err := nilAPI.RangeCardinality("Person", "age", 0, 100, true, true, storepkg.QueryOpts{}); count != 0 || exact || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil RangeCardinality = (%d, %v, %v), want (0, false, ErrNilGraph)", count, exact, err)
-	}
-	if got, err := nilAPI.PropertyStats("Person", "id"); got != (storepkg.PropertyStats{}) || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil PropertyStats = (%+v, %v), want (zero, ErrNilGraph)", got, err)
-	}
-	if got, err := nilAPI.RelPropertyStats("KNOWS", "weight"); got != (storepkg.PropertyStats{}) || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil RelPropertyStats = (%+v, %v), want (zero, ErrNilGraph)", got, err)
-	}
-	if got, err := nilAPI.PropertyNDV("Person", "id"); got != (storepkg.PropertyNDV{}) || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil PropertyNDV = (%+v, %v), want (zero, ErrNilGraph)", got, err)
-	}
-	if got, err := nilAPI.RelPropertyNDV("KNOWS", "weight"); got != (storepkg.PropertyNDV{}) || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil RelPropertyNDV = (%+v, %v), want (zero, ErrNilGraph)", got, err)
-	}
-
-	api := New((*statsOpsSpy)(nil))
-	if got, err := api.NodeCount(); got != 0 || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil NodeCount = (%d, %v), want (0, ErrNilGraph)", got, err)
-	}
-	if got, err := api.Get(); got != (GraphStats{}) || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil Get = (%+v, %v), want (zero, ErrNilGraph)", got, err)
-	}
-}
-
 // TestAPIGetPropagatesSnapshotError pins the close-error contract: when the
 // backing ops report a snapshot error (e.g. ErrGraphClosed from a closed
 // graph), API.Get must surface it. Pre-fix, SnapshotCounters silently

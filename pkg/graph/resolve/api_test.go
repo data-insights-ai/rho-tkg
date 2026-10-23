@@ -6,23 +6,6 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-func TestAPINilReceiversReturnZeroOrFalse(t *testing.T) {
-	t.Parallel()
-
-	var nilAPI *API
-	if got, ok := nilAPI.NodeProperty(nil, "name"); got != nil || ok {
-		t.Fatalf("nil NodeProperty = (%v, %v), want (nil, false)", got, ok)
-	}
-	if got, ok := nilAPI.RelProperty(nil, "weight"); got != nil || ok {
-		t.Fatalf("nil RelProperty = (%v, %v), want (nil, false)", got, ok)
-	}
-
-	api := New((*resolveOpsSpy)(nil))
-	if got, ok := api.NodeProperty(nil, "name"); got != nil || ok {
-		t.Fatalf("typed-nil NodeProperty = (%v, %v), want (nil, false)", got, ok)
-	}
-}
-
 func TestAPIForwardsMethods(t *testing.T) {
 	t.Parallel()
 

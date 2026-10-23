@@ -1,0 +1,3 @@
+    --- FAIL: TestSubAPINilAndZeroReceiversFailClosed/nodes.Add/zero (0.00s)
+    --- FAIL: TestSubAPINilAndZeroReceiversFailClosed/nodes.AddByIDIfAbsent/zero (0.00s)
+    --- FAIL: TestSubAPINilAndZeroReceiversFailClosed/nodes.AddLabel/zero (0.00s)

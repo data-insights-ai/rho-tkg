@@ -11,67 +11,6 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-func TestAPINilReceiversReturnErrNilGraphOrNil(t *testing.T) {
-	t.Parallel()
-
-	var nilAPI *API
-	for _, tc := range []struct {
-		name string
-		run  func() error
-	}{
-		{name: "CreateProperty", run: func() error { return nilAPI.CreateProperty("Node", "name") }},
-		{name: "DropProperty", run: func() error { return nilAPI.DeleteProperty("Node", "name") }},
-		{name: "CreateComposite", run: func() error { return nilAPI.CreateComposite("Node", []string{"a", "b"}) }},
-		{name: "DeleteComposite", run: func() error { return nilAPI.DeleteComposite("Node", []string{"a", "b"}) }},
-		{name: "CreateHighFrequency", run: func() error { return nilAPI.CreateHighFrequency("Node", time.Second) }},
-		{name: "DropHighFrequency", run: func() error { return nilAPI.DeleteHighFrequency("Node") }},
-		{name: "CreateTemporal", run: func() error { return nilAPI.CreateTemporal("Node") }},
-		{name: "DropTemporal", run: func() error { return nilAPI.DeleteTemporal("Node") }},
-		{name: "CreateRelTemporal", run: func() error { return nilAPI.CreateRelTemporal("KNOWS") }},
-		{name: "DeleteRelTemporal", run: func() error { return nilAPI.DeleteRelTemporal("KNOWS") }},
-		{name: "CreateVector", run: func() error { return nilAPI.CreateVector("Node", "embedding", 3, storepkg.DistanceCosine) }},
-		{name: "CreateVectorWithOptions", run: func() error {
-			return nilAPI.CreateVectorWithOptions("Node", "embedding", 3, storepkg.DistanceCosine, storepkg.VectorIndexOptions{UseBruteForce: true})
-		}},
-		{name: "DropVector", run: func() error { return nilAPI.DeleteVector("Node", "embedding") }},
-		{name: "RegisterProvider", run: func() error { return nilAPI.RegisterProvider(testIndexProvider{}) }},
-		{name: "UnregisterProvider", run: func() error { return nilAPI.UnregisterProvider("geo") }},
-	} {
-		if err := tc.run(); !errors.Is(err, grapherr.ErrNilGraph) {
-			t.Fatalf("%s = %v, want ErrNilGraph", tc.name, err)
-		}
-	}
-	if _, err := nilAPI.SearchNearest("Node", "embedding", []float32{1, 2, 3}, 2, storepkg.QueryOpts{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("SearchNearest = %v, want ErrNilGraph", err)
-	}
-	if _, err := nilAPI.SearchNearestScored("Node", "embedding", []float32{1, 2, 3}, 2, storepkg.QueryOpts{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("SearchNearestScored = %v, want ErrNilGraph", err)
-	}
-	if _, err := nilAPI.HasProperty("Node", "name"); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("HasProperty = %v, want ErrNilGraph", err)
-	}
-	if _, err := nilAPI.HasRelProperty("KNOWS", "weight"); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("HasRelProperty = %v, want ErrNilGraph", err)
-	}
-	if _, err := nilAPI.HasTemporal("Node"); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("HasTemporal = %v, want ErrNilGraph", err)
-	}
-	if _, _, err := nilAPI.VectorIndexInfo("Node", "embedding"); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("VectorIndexInfo = %v, want ErrNilGraph", err)
-	}
-	if got := nilAPI.Providers(); got != nil {
-		t.Fatalf("nil Providers = %v, want nil", got)
-	}
-
-	api := New((*indexOpsSpy)(nil))
-	if err := api.CreateTemporal("Node"); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil CreateTemporal = %v, want ErrNilGraph", err)
-	}
-	if got := api.Providers(); got != nil {
-		t.Fatalf("typed-nil Providers = %v, want nil", got)
-	}
-}
-
 func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	t.Parallel()
 

@@ -2,62 +2,10 @@ package admin
 
 import (
 	"context"
-	"errors"
 	"testing"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
-
-func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
-	t.Parallel()
-
-	var nilAPI *API
-	if err := nilAPI.Reset(); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil Reset = %v, want ErrNilGraph", err)
-	}
-	if got := nilAPI.DecomposeNodeID(1); got != (IDComponents{}) {
-		t.Fatalf("nil DecomposeNodeID = %+v, want zero", got)
-	}
-	if got := nilAPI.DecomposeRelID(1); got != (IDComponents{}) {
-		t.Fatalf("nil DecomposeRelID = %+v, want zero", got)
-	}
-	if _, err := nilAPI.ExactErase(context.Background(), ExactErasureRequest{NodeIDs: []types.NodeID{1}}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil ExactErase = %v, want ErrNilGraph", err)
-	}
-	if _, err := nilAPI.ResolveExactErasure(context.Background(), ExactErasureRequest{NodeIDs: []types.NodeID{1}}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil ResolveExactErasure = %v, want ErrNilGraph", err)
-	}
-	if err := nilAPI.SealRelSegments("HOP"); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil SealRelSegments = %v, want ErrNilGraph", err)
-	}
-	if _, err := nilAPI.PurgeExpiredRels(context.Background(), RelPurgePolicy{}); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil PurgeExpiredRels = %v, want ErrNilGraph", err)
-	}
-	if _, err := nilAPI.RelSegmentStats("HOP"); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil RelSegmentStats = %v, want ErrNilGraph", err)
-	}
-	if err := nilAPI.SetUntimedValidStart(context.Background(), UntimedUnbounded); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil SetUntimedValidStart = %v, want ErrNilGraph", err)
-	}
-	if _, err := nilAPI.ValidAxis(); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil ValidAxis = %v, want ErrNilGraph", err)
-	}
-	if ok, err := nilAPI.IsReferenceLabel("Ref"); !errors.Is(err, grapherr.ErrNilGraph) || ok {
-		t.Fatalf("nil IsReferenceLabel = %v, %v, want false, ErrNilGraph", ok, err)
-	}
-	if _, _, err := nilAPI.UntimedValidStart(); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil UntimedValidStart = %v, want ErrNilGraph", err)
-	}
-
-	api := New((*adminOpsSpy)(nil))
-	if err := api.Reset(); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil Reset = %v, want ErrNilGraph", err)
-	}
-	if got := api.DecomposeNodeID(1); got != (IDComponents{}) {
-		t.Fatalf("typed-nil DecomposeNodeID = %+v, want zero", got)
-	}
-}
 
 func TestAPIForwardsEveryMethod(t *testing.T) {
 	t.Parallel()

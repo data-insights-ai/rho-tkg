@@ -3,38 +3,7 @@ package events
 import (
 	"errors"
 	"testing"
-
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 )
-
-func TestAPINilReceiversReturnErrNilGraphOrNil(t *testing.T) {
-	t.Parallel()
-
-	var nilAPI *API
-	if err := nilAPI.SetSync(nil); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil SetSync = %v, want ErrNilGraph", err)
-	}
-	if err := nilAPI.SetAsync(nil); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil SetAsync = %v, want ErrNilGraph", err)
-	}
-	if got := nilAPI.GetSync(); got != nil {
-		t.Fatalf("nil GetSync = %v, want nil", got)
-	}
-	if got := nilAPI.GetAsync(); got != nil {
-		t.Fatalf("nil GetAsync = %v, want nil", got)
-	}
-
-	api := New((*eventsOpsSpy)(nil))
-	if err := api.SetSync(nil); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil SetSync = %v, want ErrNilGraph", err)
-	}
-	if got := api.GetSync(); got != nil {
-		t.Fatalf("typed-nil GetSync = %v, want nil", got)
-	}
-	if got := api.GetAsync(); got != nil {
-		t.Fatalf("typed-nil GetAsync = %v, want nil", got)
-	}
-}
 
 func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	t.Parallel()

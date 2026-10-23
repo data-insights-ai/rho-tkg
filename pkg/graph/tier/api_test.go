@@ -1,46 +1,11 @@
 package tier
 
 import (
-	"errors"
 	"testing"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
-
-func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
-	t.Parallel()
-
-	var nilAPI *API
-	for _, check := range []struct {
-		name string
-		err  error
-	}{
-		{name: "nil Archive", err: nilAPI.Archive(1)},
-		{name: "nil Restore", err: nilAPI.Restore(1)},
-		{name: "nil ForceRotate", err: nilAPI.ForceRotate()},
-		{name: "nil RebuildCatalog", err: nilAPI.RebuildCatalog()},
-	} {
-		if !errors.Is(check.err, grapherr.ErrNilGraph) {
-			t.Fatalf("%s = %v, want ErrNilGraph", check.name, check.err)
-		}
-	}
-	if _, err := nilAPI.ListShards(); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil ListShards = %v, want ErrNilGraph", err)
-	}
-	if _, err := nilAPI.Repair(); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil Repair = %v, want ErrNilGraph", err)
-	}
-	if _, err := nilAPI.VerifyShard("hot"); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil VerifyShard = %v, want ErrNilGraph", err)
-	}
-
-	api := New((*tierOpsSpy)(nil))
-	if err := api.ForceRotate(); !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil ForceRotate = %v, want ErrNilGraph", err)
-	}
-}
 
 func TestAPIForwardsEveryMethod(t *testing.T) {
 	t.Parallel()

@@ -4,29 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
-
-func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
-	t.Parallel()
-
-	var nilAPI *API
-	if got, err := nilAPI.VerifyNodeChain(1); got || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil VerifyNodeChain = (%v, %v), want (false, ErrNilGraph)", got, err)
-	}
-	if got, err := nilAPI.VerifyRelChain(2); got || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("nil VerifyRelChain = (%v, %v), want (false, ErrNilGraph)", got, err)
-	}
-
-	api := New((*hashOpsSpy)(nil))
-	if got, err := api.VerifyNodeChain(1); got || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil VerifyNodeChain = (%v, %v), want (false, ErrNilGraph)", got, err)
-	}
-	if got, err := api.VerifyRelChain(2); got || !errors.Is(err, grapherr.ErrNilGraph) {
-		t.Fatalf("typed-nil VerifyRelChain = (%v, %v), want (false, ErrNilGraph)", got, err)
-	}
-}
 
 func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	t.Parallel()
