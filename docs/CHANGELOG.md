@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Documentation
+
+- **BADGER**: `docs/badger.md` (René's request): badger v4.9.2 read from its source and measured
+  (`tasks/evidence/BADGER/`): how it stores, writes and reads data, compaction, open and close, memory and disk per
+  database, its options, and the rules rho follows when it uses it. Reviewed by Fable; its gaps are todo items
+  FLUSHPART (a flush above the batch limit is not atomic), GETWALK, PREFETCH, ITERPREFIX and VLOGGC.
+
 ## [4.74.0] - 2026-10-23
 
 ### Added
