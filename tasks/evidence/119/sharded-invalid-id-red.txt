@@ -1,0 +1,6 @@
+--- FAIL: TestDirectStoreExplicitIDReadsRejectInvalidIDs (0.04s)
+    --- FAIL: TestDirectStoreExplicitIDReadsRejectInvalidIDs/sharded (0.00s)
+        history_boundary_test.go:380: GetNodeVersion negative = graph: entity slot not local to this partitioned store: slot 31 (id -1), want ErrInvalidStoreMutation
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.405s
+FAIL

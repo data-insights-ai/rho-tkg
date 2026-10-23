@@ -174,9 +174,13 @@ func (s *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship,
 	return merged, nil
 }
 
-// shardIndexForNode / shardIndexForRel return the shard index owning the ID, or
+// shardIndexForNode / shardIndexForRel return the shard index owning the ID,
+// ErrInvalidStoreMutation for a zero/negative ID (checked before routing), or
 // ErrSlotNotLocal.
 func (s *Store) shardIndexForNode(id types.NodeID) (int, error) {
+	if err := validRoutingID(id.SnowflakeID()); err != nil {
+		return 0, err
+	}
 	idx, ok := s.catalog.shardIndexForSlot(slotOf(id.SnowflakeID()))
 	if !ok {
 		return 0, ErrSlotNotLocal
@@ -185,6 +189,9 @@ func (s *Store) shardIndexForNode(id types.NodeID) (int, error) {
 }
 
 func (s *Store) shardIndexForRel(id types.RelID) (int, error) {
+	if err := validRoutingID(id.SnowflakeID()); err != nil {
+		return 0, err
+	}
 	idx, ok := s.catalog.shardIndexForSlot(slotOf(id.SnowflakeID()))
 	if !ok {
 		return 0, ErrSlotNotLocal

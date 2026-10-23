@@ -9,6 +9,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -31,10 +32,18 @@ func directStoreBackends(t *testing.T) map[string]storepkg.Store {
 		t.Fatalf("tiered.New: %v", err)
 	}
 
+	ss, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+	if err != nil {
+		_ = bs.Close()
+		_ = ts.Close()
+		t.Fatalf("sharded.New: %v", err)
+	}
+
 	backends := map[string]storepkg.Store{
-		"memory": memory.New(),
-		"badger": bs,
-		"tiered": ts,
+		"memory":  memory.New(),
+		"badger":  bs,
+		"tiered":  ts,
+		"sharded": ss,
 	}
 	t.Cleanup(func() {
 		for _, backend := range backends {

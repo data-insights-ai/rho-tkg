@@ -1,0 +1,5 @@
+--- FAIL: TestDeleteNodeCascadeOrderAscendingRelsNodeLast (0.01s)
+    cascade_order_test.go:83: cascade rel delete order = [393216 296960 230400 165888 98304 66560], want ascending [66560 98304 165888 230400 296960 393216]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.013s
+FAIL
