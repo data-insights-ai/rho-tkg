@@ -5,6 +5,44 @@ database). This file = state, consumers, glossary, user-only actions. File roles
 
 Next steps and René's open decisions: `tasks/todo.md`.
 
+## Brief for the agents (2026-10-23 evening; read before anything else)
+
+**Both agents.** The main session (Opus) does all the work itself, analysis and code; ONE persistent Fable agent reviews
+and monitors; no other subagents without René's go (CONTRIBUTING § Rules digest "Who works"). Work order: todo item
+first, then the red test, the change, the tests green, the Fable review; a finished item moves from todo to CHANGELOG
+under its tag. Commit with explicit paths, never `git commit -a` (it swept unreviewed code onto main on 23 Oct; reverted
+in 2be9a231). Consumer data and runs: ask the owning agent (sigma "Handover and README review", ai-soc `ai-soc-main-45`),
+never browse their repos; Flux rule: copies only, counts/sizes/relation names out. badger facts: `docs/badger.md`
+(read from v4.9.2's source, measured, Fable-reviewed; rules 1-11) — check a badger claim there or in the source, never
+from memory.
+
+**Opus (builder), where things stand:**
+- **FLUSHPART (Now, a patch).** A flush above badger's transaction limit (about 10 MB / 104,855 entries) is several
+  badger transactions; rho's flush adds its ops in map order, then counters, then change-log records, and calls it
+  atomic (docs/badger.md rule 1). Tests written, uncommitted: `pkg/graph/store/badger/flush_split_test.go`
+  (`TestFlushAboveBatchLimitIsAllOrNothingAfterCrash`, `...WithRemovalsReopensAfterCrash`; 8 MB memtable so the limit
+  is ~13,100 entries; crash = `FailNextFlushForTest` on the flush and on Close's final flush). They are NOT red yet: all
+  20,000 nodes and records survive. Cause not found; next check the durable state right after the failing `Flush`
+  (`DBForTest`), whether the requeued ops are written by another path before Close, and the write buffer's self-flush
+  (`MaxPendingWrites` 100,000, `badgerstore_flush.go:111`). Planned fix (not yet reviewed): commit a flush that fits in
+  one badger `Txn` as today; on `ErrTxnTooBig`, stage it under a private key prefix, commit a small marker, apply, drop
+  the marker, delete the staging keys; at open, marker present = re-apply, absent = discard staging. Have Fable review
+  the design before building.
+- **SHARD (Next).** Design ADR-0012 (architecture.md); plan with boxes in todo. Step 1 (refuse a missing shard
+  directory, one `shardDir` seam) is on local branch `shard-step1` (5da2cdfa, not pushed): code + red tests; still to
+  change: pre-create `reference/` and `archive/` only for a new store (René's choice (b)). Adopted review points for
+  later steps: the mover checks a flock on the shard DIRECTORY (the `LOCK` file is only a pid file, not copied); a
+  read-only handle is closed before a writable open of the same directory; `DiskBytes` counts blocks; a shard with
+  `.mem` files gets one writable open before a move or a read-only open.
+- **Later items:** GETWALK, PREFETCH, ITERPREFIX, VLOGGC (badger rules 2-4, 9); RESUME (sigma's red test is in its
+  message; one resumption row too many per rewritten step); CHAIN waits for René's "run" (sigma's
+  `projects/derived-writeback` scan on the Flux copy `/srv/fast/rene/rho-analysis-k10230918/store`).
+
+**Fable (reviewer and monitor):** review every step's diff and test output against `docs/badger.md`, ADR-0012 and the
+SHARD plan; write no code or tests, run none; answer only what is wrong or missing. Already reviewed: ADR-0012 (three
+volumes, mover, global index), docs/badger.md (seven corrections confirmed; the Seek cost settled by profile in
+`tasks/evidence/BADGER/results.txt`). Next for review: the FLUSHPART design, then its diff; SHARD step 1's diff.
+
 ## State
 
 - **Scope:** just essential patches, except ai-soc items (standing go, René 2026-10-21); lesson 79 (10).
@@ -15,14 +53,15 @@ Next steps and René's open decisions: `tasks/todo.md`.
   Gap analysis (file removed 2026-10-22): `git show 7c0a4b74:docs/v5-gap-to-main.md`. Real-store harness: local branches `v5-realstore-harness`
   (`af75a982`) and `wp-37-import-throughput` (`392f88e2`); not pushed. Local branch `v5` (`b1193dc0`) = stale, behind origin/v5 (`91426024`) by 1,440 commits, 1 ahead (its extra review file is in main at `0622da63`); deletable (René, user-only action 5). Since the takeover (row 51) `pkg/graph` + `v5compat` are ours on `v5-takeover` (open WPs in todo; WP history `git show aeb7f8e0:tasks/todo.md`); no posts on GitHub issue #11 (René tells Markus).
 - **Consumers** (answer new requests the same day: ledger row first, then lesson 79):
-  - ai-soc: root module `ai-soc-main` pins rho v4.70.0 (`engine/` still v4.41.0), tiered as the main store (`AdjacencyIndexOnDisk`, `RelsByMint`, `SyncWrites`, `DepthWarm` on
+  - ai-soc: root module `ai-soc-main` measured on rho v4.73.0 (`engine/` still v4.41.0), tiered as the main store (`AdjacencyIndexOnDisk`, `RelsByMint`, `SyncWrites`, `DepthWarm` on
     windowed reads); declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets `UntimedValidStart:
     UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data day; `/bars`,
     `/tkg/asof` = its HTTP read doors.)
-  - sigma-tkgd: v0.11.55 (2026-10-22) pins rho v4.70.0; O1-3 consumer work in `tasks/todo.md` Next steps.
-  - Notify after gate + tag + push: `sigma-tkgd-c3` and `ai-soc-main-e7` (`ListAgents`, main session only; socket names change
-    per session). If neither resolves, put the release note here and tell René in one line.
-- **Unpushed:** local main is ahead of origin/main by the md commits 6e20157c, aeb7f8e0 (+ the row-112 commit); pushing is René's or the next release's call.
+  - sigma-tkgd: main adopted rho v4.73.0 (ListDerivedRows on the page door); its store analysis tool is
+    `projects/derived-writeback` (cmd/wbscan).
+  - Notify after gate + tag + push: sigma (session "Handover and README review") and `ai-soc-main-45` (`ListAgents`;
+    names change per session). If neither resolves, put the release note here and tell René in one line.
+- **Unpushed:** main is pushed; only branch `shard-step1` (SHARD step 1 work) is local.
 - **Housekeeping:** session scratchpad emptied 2026-10-20 (row 76); deletions stay René's call (`rm -rf` is denied to agents).
   Docs check: `go test -count=1 -run 'Docs|Consistency' ./...`. Consumer build check: Appendix B (sigma-tkgd, ai-soc,
   agent-bookkeeping).
