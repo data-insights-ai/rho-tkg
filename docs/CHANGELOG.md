@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.72.2] - 2026-10-23
+
+### Fixed
+
+- **Reading a history version on badger decoded it and then copied it again** (sigma R37: a fact rewritten with a
+  shifted validity, where an older version wins the pin). `GetNodeVersion` / `GetRelVersion` returned a `DeepCopy` of
+  their own fresh decode, and a full history row was copied out of the read transaction before decoding. A full row now
+  decodes once, inside the read and into a pooled scratch list: 4,890 → 2,722 B per version read of a 13-column row,
+  the cost of a cold current-row read. sigma's rewritten-fact listing on badger 14.9 → 11.3 kB per fact. No API change.
+
 ## [4.72.1] - 2026-10-23
 
 ### Fixed

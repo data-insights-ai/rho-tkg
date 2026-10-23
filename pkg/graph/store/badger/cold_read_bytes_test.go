@@ -88,3 +88,69 @@ func TestColdLendNodeBytesBoundedByRowSize(t *testing.T) {
 		t.Fatalf("cold read ov_cb = %v, %v; want term-value-b", v, ok)
 	}
 }
+
+// TestGetNodeVersionBytesMatchColdRead pins row 121's rewritten-fact shape:
+// when an older version wins a pin, hydrating it reads one history row; that
+// costs what a cold current-row read costs (one point read, one decode), not a
+// second full copy of the freshly decoded row. Mutation: GetNodeVersion's
+// DeepCopy of its own decode adds a whole node per call. Serial: it reads the
+// process-wide allocation counter.
+func TestGetNodeVersionBytesMatchColdRead(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	const nodes = 64
+	ids := make([]types.NodeID, nodes)
+	for i := range ids {
+		ps := types.PropertySlice{}
+		for c := 0; c < 13; c++ {
+			if err := ps.Set("ov_c"+string(rune('a'+c)), "term-value-"+string(rune('a'+c))); err != nil {
+				t.Fatal(err)
+			}
+		}
+		n := types.NewNode(types.NodeID(snowflake.ID(1000+i)), 1, nil)
+		if err := n.SetProperties(ps); err != nil {
+			t.Fatal(err)
+		}
+		if err := bs.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+		if err := bs.PutNodeVersion(n.ID(), 0, n); err != nil {
+			t.Fatal(err)
+		}
+		ids[i] = n.ID()
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	measure := func(read func(types.NodeID)) int {
+		for _, id := range ids {
+			read(id) // warm the badger read path
+		}
+		bs.NodeCacheForTest().ResetForTest()
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		for _, id := range ids {
+			read(id)
+		}
+		runtime.ReadMemStats(&after)
+		return int(after.TotalAlloc-before.TotalAlloc) / nodes
+	}
+	cold := measure(func(id types.NodeID) { // measure resets the cache once: each read is cold
+		if _, err := bs.LendNode(id); err != nil {
+			t.Fatal(err)
+		}
+	})
+	version := measure(func(id types.NodeID) {
+		v, err := bs.GetNodeVersion(id, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.PropertyCount() != 13 {
+			t.Fatalf("version has %d properties, want 13", v.PropertyCount())
+		}
+	})
+	t.Logf("GetNodeVersion %d B per read, cold LendNode %d B", version, cold)
+	if !raceEnabled && version*10 > cold*13 {
+		t.Fatalf("GetNodeVersion allocates %d B per read, want <= 1.3x a cold read (%d B)", version, cold)
+	}
+}

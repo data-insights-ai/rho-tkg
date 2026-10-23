@@ -661,12 +661,13 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 		if err != nil {
 			return nil, err
 		}
-		return n.DeepCopy(), nil
+		return n, nil // a fresh decode: the caller's own row, no second copy
 	}
 
-	// Copy the raw value out of the View first: delta reconstruction point-reads the
-	// anchor via a separate read txn.
+	// A full row decodes inside the View; a delta row is copied out first,
+	// because its reconstruction point-reads the anchor via a separate read txn.
 	var raw []byte
+	var n *types.Node
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
 		if err == badgerv4.ErrKeyNotFound {
@@ -676,6 +677,11 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 			return err
 		}
 		return item.Value(func(val []byte) error {
+			if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
+				var derr error
+				n, derr = bs.decodeHistoryNodeValue(id, uint64(version), val)
+				return derr
+			}
 			raw = make([]byte, len(val))
 			copy(raw, val)
 			return nil
@@ -684,16 +690,32 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 	if err != nil {
 		return nil, err
 	}
-	n, err := bs.decodeHistoryNodeValue(id, uint64(version), raw)
+	if n != nil {
+		return n, nil // a fresh decode: the caller's own row, no second copy
+	}
+	n, err = bs.decodeHistoryNodeValue(id, uint64(version), raw)
 	if err != nil {
 		return nil, err
 	}
-	return n.DeepCopy(), nil
+	return n, nil // a fresh decode: the caller's own row, no second copy
 }
 
 // decodeHistoryNodeValue reconstructs (full-or-delta) then decodes one node
 // history value to a *types.Node. Point-reads the interval anchor for a delta.
 func (bs *Store) decodeHistoryNodeValue(id snowflake.ID, version uint64, raw []byte) (*types.Node, error) {
+	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
+		// A full row needs no anchor: decode into a pooled wire (row 121).
+		w := getPooledNodeWire()
+		defer putPooledNodeWire(w)
+		if err := storepkg.SafeUnmarshal(raw, w); err != nil {
+			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
+		}
+		n, err := bs.decodeNodeHistoryWireForKey(*w, id, version)
+		if err != nil {
+			return nil, fmt.Errorf("graph: decode node version: %w", err)
+		}
+		return n, nil
+	}
 	w, err := bs.reconstructNodeHistoryWire(id, version, raw, nil)
 	if err != nil {
 		return nil, fmt.Errorf("graph: unmarshal node version: %w", err)

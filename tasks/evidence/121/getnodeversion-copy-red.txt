@@ -1,0 +1,6 @@
+    cold_read_bytes_test.go:152: GetNodeVersion 4890 B per read, cold LendNode 2823 B
+    cold_read_bytes_test.go:154: GetNodeVersion allocates 4890 B per read, want <= 1.3x a cold read (2823 B)
+--- FAIL: TestGetNodeVersionBytesMatchColdRead (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.012s
+FAIL

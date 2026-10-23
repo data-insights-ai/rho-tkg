@@ -285,7 +285,7 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 		if err != nil {
 			return nil, err
 		}
-		return r.DeepCopy(), nil
+		return r, nil // a fresh decode: the caller's own row, no second copy
 	}
 
 	// Fall through to Badger. Copy the raw value out before reconstruction (a
@@ -312,7 +312,7 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 	if err != nil {
 		return nil, err
 	}
-	return r.DeepCopy(), nil
+	return r, nil // a fresh decode: the caller's own row, no second copy
 }
 
 // decodeHistoryRelValue reconstructs (full-or-delta) then decodes one rel history
