@@ -11,6 +11,17 @@ Each item: one sentence, then when it is done and what it waits for.
   crash keeps a random subset of its rows, loses its change-log records for good, and after a purge leaves a store that
   refuses to open (`docs/badger.md` rule 1). Done when: a crash test at a planted split reopens consistent and loses
   no record, released as a patch. Order (René 23 Oct): tests first, then the change, the tests run, then Fable reviews.
+
+## Next
+
+- **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
+  built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
+  below are ticked and released. Waits for: FLUSHPART; step 1 with option (b), pre-creating `reference/` and
+  `archive/` only for a new store (René 23 Oct), from branch `shard-step1`.
+
+- **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
+  fact. Done when: René has decided per layer. Waits for: CHAIN.
+
 ### SHARD plan
 
 The main agent builds each step (red test, change, tests green), the Fable agent reviews it and monitors the plan; a
@@ -38,16 +49,6 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 10. [ ] The global index on the fast volume, unique keys first (keyed event labels), then label and property
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
     its data cleanup.
-
-## Next
-
-- **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
-  built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
-  below are ticked and released. Waits for: FLUSHPART; step 1 with option (b), pre-creating `reference/` and
-  `archive/` only for a new store (René 23 Oct), from branch `shard-step1`.
-
-- **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
-  fact. Done when: René has decided per layer. Waits for: CHAIN.
 
 ## Waiting
 
