@@ -158,7 +158,7 @@ func (d *NodeHistoryDelta) DecodeMsgpack(dec *msgpack.Decoder) error {
 		case "m":
 			err = d.Meta.DecodeMsgpack(dec)
 		case "ps":
-			d.PS, err = decodePropertyArray(dec, kb)
+			d.PS, err = decodePropertyArray(dec, kb, nil)
 		case "pr":
 			d.PR, err = decodePropKeyRefArray(dec)
 		default:
@@ -220,7 +220,7 @@ func (d *RelHistoryDelta) DecodeMsgpack(dec *msgpack.Decoder) error {
 		case "m":
 			err = d.Meta.DecodeMsgpack(dec)
 		case "ps":
-			d.PS, err = decodePropertyArray(dec, kb)
+			d.PS, err = decodePropertyArray(dec, kb, nil)
 		case "pr":
 			d.PR, err = decodePropKeyRefArray(dec)
 		default:

@@ -134,7 +134,7 @@ func (w *NodeWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 		case "el":
 			w.ExtraLabels, err = decodeIntSlice(dec)
 		case "p":
-			w.Properties, err = decodePropertyArray(dec, kb)
+			w.Properties, err = decodePropertyArray(dec, kb, w.Properties)
 		case "v":
 			w.Version, err = dec.DecodeInt()
 		case "ht":
@@ -213,7 +213,7 @@ func (w *RelWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 		case "e":
 			w.EndID, err = dec.DecodeInt64()
 		case "p":
-			w.Properties, err = decodePropertyArray(dec, kb)
+			w.Properties, err = decodePropertyArray(dec, kb, w.Properties)
 		case "v":
 			w.Version, err = dec.DecodeInt()
 		case "ht":
@@ -317,7 +317,10 @@ func decodeIntSlice(dec *msgpack.Decoder) ([]int, error) {
 
 // decodePropertyArray decodes the "p" array of PropertyWire elements, reusing
 // the caller's key buffer for every element's keys.
-func decodePropertyArray(dec *msgpack.Decoder, kb []byte) ([]PropertyWire, error) {
+// decodePropertyArray decodes the property list. reuse, when it has the
+// capacity, is the backing array to decode into (a pooled NodeWire's; row 121):
+// the entries are scratch, read once into the entity's own property slice.
+func decodePropertyArray(dec *msgpack.Decoder, kb []byte, reuse []PropertyWire) ([]PropertyWire, error) {
 	n, err := dec.DecodeArrayLen()
 	if err != nil {
 		return nil, err
@@ -325,7 +328,10 @@ func decodePropertyArray(dec *msgpack.Decoder, kb []byte) ([]PropertyWire, error
 	if n < 0 {
 		return nil, nil
 	}
-	out := make([]PropertyWire, 0, min(n, wireArrayPreallocCap))
+	out := reuse[:0]
+	if cap(out) < min(n, wireArrayPreallocCap) {
+		out = make([]PropertyWire, 0, min(n, wireArrayPreallocCap))
+	}
 	for i := 0; i < n; i++ {
 		var pw PropertyWire
 		if err := decodePropertyWireInto(dec, &pw, kb); err != nil {

@@ -5,6 +5,7 @@ package badger
 
 import (
 	"fmt"
+	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -941,11 +942,12 @@ func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.No
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var w storepkg.NodeWire
-			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+			w := getPooledNodeWire()
+			defer putPooledNodeWire(w)
+			if err := storepkg.SafeUnmarshal(val, w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			decoded, err := bs.decodeNodeWireForKey(w, id)
+			decoded, err := bs.decodeNodeWireForKey(*w, id)
 			if err != nil {
 				return fmt.Errorf("graph: decode node: %w", err)
 			}
@@ -1003,4 +1005,25 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 	n.Freeze() // shared between cache and caller
 	bs.nodeCache.LoadCleanAt(id, n, epoch)
 	return n, nil
+}
+
+// nodeWirePool keeps the property-entry backing array of a cold point read's
+// NodeWire between reads (row 121): the entries are scratch, copied into the
+// node's own property slice by the checked decode. Every other field is reset
+// per read, so nothing of one row reaches the next or the decoded node.
+var nodeWirePool = sync.Pool{New: func() any { return new(storepkg.NodeWire) }}
+
+func getPooledNodeWire() *storepkg.NodeWire {
+	w := nodeWirePool.Get().(*storepkg.NodeWire)
+	props := w.Properties[:0]
+	*w = storepkg.NodeWire{Properties: props}
+	return w
+}
+
+func putPooledNodeWire(w *storepkg.NodeWire) {
+	clear(w.Properties) // drop the keys and values: the pool must not retain them
+	if cap(w.Properties) > 256 {
+		w.Properties = nil // do not pin a very wide row's array
+	}
+	nodeWirePool.Put(w)
 }

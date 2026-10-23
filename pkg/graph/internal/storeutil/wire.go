@@ -431,7 +431,7 @@ func MarshalNodeWire(n *types.Node) ([]byte, error) {
 // error return through the test.
 func MustWireToNode(w NodeWire) *types.Node {
 	n := newNodeFromWire(w)
-	if err := applyNodeWireFields(n, w, wireToProperties(w.Properties)); err != nil {
+	if err := applyNodeWireFields(n, w, wireToProperties(w.Properties), false); err != nil {
 		panic(fmt.Sprintf("storeutil: MustWireToNode with invalid prevalidated properties: %v", err))
 	}
 	return n
@@ -445,8 +445,13 @@ func newNodeFromWire(w NodeWire) *types.Node {
 	return types.NewNode(types.NodeID(w.ID), uint16(w.PrimaryLabel), extras) // #nosec G115 — token from our own serialization
 }
 
-func applyNodeWireFields(n *types.Node, w NodeWire, props types.PropertySlice) error {
-	if err := n.SetProperties(props); err != nil {
+// applyNodeWireFields installs props and the wire's scalar fields. owned: props
+// is canonical (validated sorted, unique, reserved-free) and owned by this
+// decode, so it is installed without SetProperties' copy (row 121).
+func applyNodeWireFields(n *types.Node, w NodeWire, props types.PropertySlice, owned bool) error {
+	if owned {
+		n.SetPropertiesCanonicalShared(props)
+	} else if err := n.SetProperties(props); err != nil {
 		return err
 	}
 	n.SetVersion(uint32(w.Version)) // #nosec G115 — version from our own serialization
@@ -499,7 +504,7 @@ func WireToNodeChecked(w NodeWire) (*types.Node, error) {
 		return nil, fmt.Errorf("node wire: properties: %w", err)
 	}
 	n := newNodeFromWire(w)
-	if err := applyNodeWireFields(n, w, props); err != nil {
+	if err := applyNodeWireFields(n, w, props, true); err != nil {
 		return nil, fmt.Errorf("node wire: properties: %w", err)
 	}
 	return n, nil
@@ -696,6 +701,9 @@ func ValidatePropertyWireSlice(pw []PropertyWire) error {
 }
 
 func validatePropertyWire(p PropertyWire, index int, prev string) (types.Property, error) {
+	if p.Key == "" {
+		return types.Property{}, fmt.Errorf("property[%d]: %w", index, types.ErrEmptyPropertyKey)
+	}
 	if types.IsShadowKey(p.Key) {
 		return types.Property{}, fmt.Errorf("property[%d] key %q uses reserved tkg_ prefix", index, p.Key)
 	}
@@ -730,9 +738,13 @@ func validatePropertyWire(p PropertyWire, index int, prev string) (types.Propert
 	if err := types.ValidatePropertyValue(value); err != nil {
 		return types.Property{}, fmt.Errorf("property[%d] key %q reconstructed value: %w", index, p.Key, err)
 	}
-	var probe types.PropertySlice
-	if err := probe.Set(p.Key, value); err != nil {
-		return types.Property{}, fmt.Errorf("property[%d] key %q reconstructed value install: %w", index, p.Key, err)
+	// A scalar passed every check Set makes; a container or custom value is
+	// installed into a probe to run Set's deep-copy shape checks.
+	if p.Nil || p.Type < ptBool || p.Type > ptString {
+		var probe types.PropertySlice
+		if err := probe.Set(p.Key, value); err != nil {
+			return types.Property{}, fmt.Errorf("property[%d] key %q reconstructed value install: %w", index, p.Key, err)
+		}
 	}
 	return types.Property{Key: p.Key, Value: value}, nil
 }

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.72.1] - 2026-10-23
+
+### Fixed
+
+- **A cold node read copied its properties three times** (sigma R37 / ai-soc cold listings). Decoding a node row that is
+  not in the entity cache built a scratch property list, re-installed every property into a validation probe, then
+  copied the validated slice again on install. The checked decode now installs its own validated slice, probes only
+  container and custom values, and reuses the scratch list from a pool. A cold read of a 13-column row allocates 6.8x its
+  encoded size instead of 11.7x; sigma's cold listing benchmark 3.2 MB → 1.8 MB, 20,000 facts 12.7 → 6.9 kB per fact.
+  No API or format change.
+
 ## [4.72.0] - 2026-10-23
 
 ### Added

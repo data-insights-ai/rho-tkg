@@ -24,12 +24,11 @@
    per-entity skeleton cached by history epoch (badger/tiered have HistoryEpochCapability). Build when ai-soc's re-measure
    on v4.72.0 still misses the 4x bound at 1-2 versions.
 
-5. (121) sigma R37 cold rows (2026-10-23): a cold read of one entity's current row costs ~11 kB per listed fact for a
-   ~0.5 kB row (badger prefetchNodeNoFill -> DB.View -> Item.Value), and a listing page reads each row twice
-   (ByLabelAndProperties' prefetch, then the timeline). badger 20,000 facts 12.7 kB/fact, tiered CacheCapacity 100
-   10.9 kB/fact; ai-soc BA projection ~1.8 GB per cold listing. Ask: cold read ~ encoded size; one read per row per
-   page (or a page door returning each node's timeline at a pin). Reproducer: sigma main BenchmarkListDerivedRowsTieredCold,
-   TestListDerivedRowsManyFacts.
+5. (121) Cold rows, part 2: v4.72.1 decodes a row's properties once (11.7x → 6.8x the encoded row). The floor of one
+   badger Get per row is ~2.9x (read txn, Get's key and value copies) + ~2.5x the decoded node, so ai-soc's 4x needs a
+   page door: one txn and one iterator for a listing page, each row read once (not ByLabelAndProperties' prefetch and
+   then the timeline), returning each node's timeline at a pin (like NodesEffectivePage). A door: minor. Also the
+   relationship decode still re-copies on install (Relationship has no SetPropertiesCanonicalShared).
 
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.
