@@ -10,7 +10,7 @@ import (
 )
 
 // (newTinyCacheBadgerStore — CacheCapacity 1, so post-flush reads MISS the cache and
-// go through the badger decode path — is defined in v3056_fixes_test.go.)
+// go through the badger decode path — is defined in delete_prefetch_test.go.)
 
 // TestCollectNodesBulkParallel_EquivalentToSerial is the correctness gate for
 // parallel decode: for the same ID list — including deleted (tombstoned) and absent

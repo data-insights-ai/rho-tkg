@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -21,6 +20,7 @@ func TestBitemporalPointQueryAfterSupersession(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
+	clk := useTestClock(t, g) // strictly increasing stamps, no sleeps
 	ctx := context.Background()
 
 	n, err := g.Nodes.Add(ctx, []string{"T"}, map[string]any{
@@ -29,17 +29,14 @@ func TestBitemporalPointQueryAfterSupersession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
-	time.Sleep(3 * time.Millisecond)
-	txBetween := types.Instant(time.Now().UnixMilli())
-	time.Sleep(3 * time.Millisecond)
+	txBetween := types.Instant(clk.Now().UnixMilli())
 
 	if _, err := g.Nodes.Update(ctx, n.ID(), map[string]any{
 		"tkg_valid_from": types.Instant(2000), "state": "v1",
 	}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	time.Sleep(3 * time.Millisecond)
-	txNow := types.Instant(time.Now().UnixMilli())
+	txNow := types.Instant(clk.Now().UnixMilli())
 
 	// (VT=1500, txAt=now): tiled answer is v0 — [1000, 2000) as known now.
 	at, err := g.Temporal.NodeAtTx(n.ID(), 1500, txNow)
@@ -85,6 +82,7 @@ func TestBitemporalRelPointQueryAfterSupersession(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
+	clk := useTestClock(t, g) // strictly increasing stamps, no sleeps
 	ctx := context.Background()
 
 	a, _ := g.Nodes.Add(ctx, []string{"N"}, nil)
@@ -98,14 +96,12 @@ func TestBitemporalRelPointQueryAfterSupersession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rel add: %v", err)
 	}
-	time.Sleep(3 * time.Millisecond)
 	if _, err := g.Rels.Update(ctx, r.ID(), map[string]any{
 		"tkg_valid_from": types.Instant(2000), "state": "v1",
 	}); err != nil {
 		t.Fatalf("rel update: %v", err)
 	}
-	time.Sleep(3 * time.Millisecond)
-	txNow := types.Instant(time.Now().UnixMilli())
+	txNow := types.Instant(clk.Now().UnixMilli())
 
 	at, err := g.Temporal.RelAtTx(r.ID(), 1500, txNow)
 	if err != nil {

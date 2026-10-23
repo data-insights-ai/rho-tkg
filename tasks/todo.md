@@ -11,26 +11,10 @@
    `errorlint`; (f) design-rule gaps from the Opus audit: relationship-create kernel reachability, canonical hash, tombstone
    cache-miss, rotation boundary, reflection close-sweep of every public method. Check: each guard red on a planted violation.
 
-3. (119) Test-suite cleanup (7 Sonnet reviews 2026-10-23; ~6,700 tests, ~369k lines). Verdict: mostly real oracles (mutation runs: 9-14 of 14
-   injected bugs killed per slice); the waste is duplication, not junk. Steps, each verified before deleting:
-   (a) done in v4.70.3 (tiered cold-shard counter, sharded invalid IDs, door rollback tests, blind tests strengthened).
-   (b) delete ~150 vacuous/duplicate tests (~5k lines): compression ×5 (read from cache), unfalsifiable v3056 ×2 and flush-loop ×2,
-   sub-API smoke files (870 lines, 11 statements of unique coverage), stale `*WithContext` rows, `context_test.go` leftovers,
-   `TestBench*` and B3/B6 measurement gates, empty tutorial tests, coverage_lift duplicates, assertion-free lock tests;
-   (c) one reflection test for every sub-API nil/zero receiver (replaces ~2k lines of hand tables);
-   (d) one shared store contract suite over memory/badger/tiered/sharded with multi-slot IDs (replaces ~10k lines of mirrored
-   per-backend files, e.g. the scoped-door batteries ×3) and one backend-matrix helper instead of ~20;
-   (e) cost: always-run tests over 2 s (`TestEffectiveTimelinesManyPins_OneChainWalk` 23-43 s, `TestLoadIndexes_MintInKeyRepairedAfterSplitFlush`,
-   `TestTieredPropertyIndexOnDisk_EventLabelOnEveryShard`), memory race part 371 s (segment tests), 14 `TestUniqueCascade_*` ~125 s;
-   (f) hygiene: sleeps → `useTestClock`/hooks, `round9/10/11` and row-numbered files renamed by behaviour, old algorithms kept in
-   production only as oracles (`headWriteOff`, `correctionPerCut`) move to tests. Expected: ~15-20 % fewer test lines, no lost protection.
-
-   Found on the way: `Compression: options.None` cannot disable compression (None is the zero value = Snappy); a
-   `DisableCompression` option would be a door (minor) — only on a consumer request.
-
-   Found on the way: `TestTemporalPropertySeekAnswersEverLabelMembers/badger` misses the relabelled node at `TxPin: pinBefore`
-   only when run beside other parallel tests (passes 20x alone; kept serial). Check whether a write can share the pin's
-   instant (clock semantics) before calling it test-only.
+3. (119 follow-ups) (a) `TestTemporalPropertySeekAnswersEverLabelMembers/badger` misses the relabelled node at
+   `TxPin: pinBefore` only when run beside other parallel tests (passes 20x alone; kept serial): check whether a write can
+   share the pin's instant (clock semantics) before calling it test-only. (b) `Compression: options.None` cannot disable
+   compression (None is the zero value = Snappy); a `DisableCompression` option is a door (minor), only on a consumer request.
 
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.
