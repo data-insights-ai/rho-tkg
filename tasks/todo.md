@@ -9,7 +9,8 @@ Each item: one sentence, then when it is done and what it waits for.
 
 - **FLUSHPART** — A flush above badger's batch limit (about 10 MB or 104,855 entries) is several transactions, so a
   crash keeps a random subset of its rows, loses its change-log records for good, and after a purge leaves a store that
-  refuses to open (`docs/badger.md` rule 1). Done when: a crash test at a planted split reopens consistent and loses
+  refuses to open (`docs/badger.md` rule 1). ai-soc (23 Oct): no change log, but commit groups of up to 99,999 ops, so
+  groups above 10 MB split today and a crash tears them (SyncWrites makes each part durable). Done when: a crash test at a planted split reopens consistent and loses
   no record, released as a patch. Order (René 23 Oct): tests first, then the change, the tests run, then Fable reviews.
 
 ### FLUSHPART plan
@@ -91,6 +92,9 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   one cache budget for the whole store, or a documented size per shard. Waits for: ai-soc's memory numbers.
 - **TOMBSTONE** — A delete cannot keep the believed end of validity (backlog 4, 7, 25). Done when: released as a minor.
   Waits for: René, or sigma or ai-soc needing it.
+- **STORE** (ai-soc, 23 Oct) — Store layout choices for ai-soc's remodel: history delta encoding per label, Derived and
+  Session on the never-purged reference shard, and the instance nodes (~2/3 of the BA store). Done when: René has
+  decided with ai-soc and sigma (their STORECFG talk). Waits for: René.
 - **REVIEWS** — Review findings were left out under the scope rule. Done when: René has decided. Waits for: René.
 - **PURGE** — A purged entity answers "not found" at a time it answered before. Done when: René has decided. Waits
   for: René.
@@ -104,6 +108,10 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 - **AISOC** — ai-soc remodels its wasteful data model and may send rho requests; each becomes its own item here, queued
   after the items above (René 23 Oct), worked on its own branch with clean commits. Done when: none is open. Waits for:
   ai-soc's requests.
+- **DEVREF** (ai-soc, 23 Oct) — ai-soc wants a device id stored once, on its Device node, so rho must find a node's
+  edges by that endpoint in one index read, as cheaply as today's estate+device property index. Done when: ai-soc
+  drops the `device` text property from edges and still answers "rows of device X" in one index read. Waits for:
+  FLUSHPART and SHARD.
 
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
