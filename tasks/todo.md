@@ -94,6 +94,10 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 
 ## Later
 
+- **AISOC** — ai-soc remodels its wasteful data model and may send rho requests; each becomes its own item here, queued
+  after the items above (René 23 Oct), worked on its own branch with clean commits. Done when: none is open. Waits for:
+  ai-soc's requests.
+
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
 - **PREFETCH** — 13 iterators turn on value prefetching, one goroutine per row for values that are inline anyway (rule
