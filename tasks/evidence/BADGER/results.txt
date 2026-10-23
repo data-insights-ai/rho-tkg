@@ -1,8 +1,11 @@
-## Experiments (raw badger v4.9.2, default options, scratch test)
-- E1 WriteBatch not atomic: 105,857 entries (> MaxBatchCount 104,857), Cancel before Flush -> 104,855 visible.
-- E2 bytes per read of a 900-byte row (block cache warm): Txn.Get+Value 3,667 B (1 table), 4,582 B (4 tables holding
-  versions); forward iterator walk 7 B (1 table), 23 B (4 tables).
-- E3 open footprint: writable +83 MB heap (85 MB allocated), +16 goroutines; read-only +2 MB, +10 goroutines.
-- E4 per write request, NVMe (/home): SyncWrites off 11.6 us; on 630 us: WAL msync (128 MB mapping) 444 us, idle vlog
-  msync (2 GB mapping) 53 us, both on every request (strace -T, 200 requests).
-- E5 20k inline rows: PrefetchValues=true takes ~2x the time of false (19 vs 10 ms) and allocates more.
+badger v4.9.2, default options, experiments_test.go.txt (two runs, 2026-10-23; the second on NVMe /home)
+E1 WriteBatch not atomic: 105,857 entries (> MaxBatchCount 104,857), Cancel before Flush -> 104,855 visible
+   (= one full transaction: count starts at 1, ErrTxnTooBig at count >= 104,857).
+E2 bytes per read of a 900-byte row, warm block cache: Txn.Get+Value 3,667 B (1 table), 4,581-4,582 B (4 tables holding
+   versions); forward iterator walk 7 B (1 table), 21-23 B (4 tables).
+E3 open footprint: writable +83 MB heap (85 MB allocated), +16 goroutines; read-only +2 MB, +10 goroutines.
+E4 per write request, one request per group, NVMe: SyncWrites off 11.5 us; on 630-774 us: WAL msync (128 MB mapping)
+   444 us, idle vlog msync (2 GB mapping) 53 us (strace -T, 200 requests: 200 + 202 msyncs).
+E5 20k inline rows: PrefetchValues=true 19-22 ms vs false 10-11 ms, 27-32 B vs 0 B per row.
+E6 one Seek per row on one iterator, ascending: 2,315 B (1 table), 2,391 B (4 tables) per 900-byte row.
+E7 Get in its own read transaction per row: 3,795 B per 900-byte row.

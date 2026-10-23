@@ -110,10 +110,27 @@ func TestZZE2ReadCopies(t *testing.T) {
 			})
 			return int(zzAlloc()-a) / n
 		}
+		seek := func() int { // E6: one Seek per row on one iterator, ascending keys
+			a := zzAlloc()
+			_ = db.View(func(txn *badgerv4.Txn) error {
+				it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{0x01}})
+				defer it.Close()
+				for i := 0; i < n; i++ {
+					it.Seek(zzKey(i))
+					if !it.Valid() {
+						t.Fatal("seek missed")
+					}
+					_ = it.Item().Value(func([]byte) error { return nil })
+				}
+				return nil
+			})
+			return int(zzAlloc()-a) / n
+		}
 		read(true)
 		read(false)
-		g, w := read(true), read(false)
-		t.Logf("E2: %d rewrite(s) (tables %d): Get %d B per row, forward walk %d B per row (row 900 B)", rewrites, len(db.Tables()), g, w)
+		seek()
+		g, w, sk := read(true), read(false), seek()
+		t.Logf("E2/E6: %d rewrite(s) (tables %d): Get %d B per row, forward walk %d B per row, Seek per row %d B (row 900 B)", rewrites, len(db.Tables()), g, w, sk)
 		_ = db.Close()
 	}
 }
@@ -180,3 +197,34 @@ func TestZZE5Prefetch(t *testing.T) {
 }
 
 var _ = fmt.Sprint
+
+// E7: a point read in its own read transaction, as rho's cold point reads do (bs.view per read).
+func TestZZE7GetOwnTxn(t *testing.T) {
+	dir := t.TempDir()
+	db := zzOpen(t, dir, nil)
+	const n = 2000
+	val := make([]byte, 900)
+	wb := db.NewWriteBatch()
+	for i := 0; i < n; i++ {
+		_ = wb.Set(zzKey(i), val)
+	}
+	_ = wb.Flush()
+	_ = db.Close()
+	db = zzOpen(t, dir, nil)
+	defer db.Close()
+	read := func() int {
+		a := zzAlloc()
+		for i := 0; i < n; i++ {
+			_ = db.View(func(txn *badgerv4.Txn) error {
+				item, err := txn.Get(zzKey(i))
+				if err != nil {
+					t.Fatal(err)
+				}
+				return item.Value(func([]byte) error { return nil })
+			})
+		}
+		return int(zzAlloc()-a) / n
+	}
+	read()
+	t.Logf("E7: Get in its own View: %d B per row (row 900 B)", read())
+}
