@@ -84,8 +84,8 @@ type Config struct {
 	// Default: 5 minutes when ColdAfter > 0. If set, must be at least 1ms.
 	IdleTimeout time.Duration
 	// Compression sets the SSTable compression algorithm for all shards.
-	// Valid values: options.None (0), options.Snappy (1), options.ZSTD (2).
-	// Zero keeps the Badger default (Snappy).
+	// options.Snappy or options.ZSTD. options.None is the zero value and so
+	// keeps the Badger default (Snappy): no compression cannot be selected.
 	Compression options.CompressionType
 	// ZSTDCompressionLevel sets the ZSTD compression level (1-15) for all shards.
 	// Only effective when Compression is options.ZSTD.

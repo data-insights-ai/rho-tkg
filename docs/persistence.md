@@ -151,7 +151,7 @@ Switch. `Config.DisableIntegrityHashes` (default false = on) computes and stores
 
 Persisted setting. MetaKV key `integrity_hashes`, written durably (`MetaSetDurable` on badger, the tiered reference shard and the sharded anchor) as the last step of a successful `New`, kept across `Admin().Reset()`. A store with rows keeps its setting by refusal: `New` under the other setting fails with `ErrIntegrityModeMismatch` and writes nothing. Without the key the rows decide (a hashed row makes an on-store, an unhashed row an off-store); a store without rows takes the configured setting. To change it, export and import into a new store opened with the wanted setting. A custom backend without MetaKV follows the configuration.
 
-Cost, a relationship row of four properties (`TestIntegrityBytesPerEdge`, 20,000 relationships, badger): 366.9 B raw / 251.2 B Snappy as hex, 270.9 / 151.8 B binary, 158.9 / 43.5 B with hashes off. Errors: `docs/errors.md`.
+Cost, a relationship row of four properties (measured 2026-10 with 20,000 relationships, badger): 366.9 B raw / 251.2 B Snappy as hex, 270.9 / 151.8 B binary, 158.9 / 43.5 B with hashes off. Errors: `docs/errors.md`.
 
 ## Upgrading a store
 

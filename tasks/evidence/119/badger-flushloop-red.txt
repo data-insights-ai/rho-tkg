@@ -1,0 +1,4 @@
+    badgerstore_test.go:1730: flush loop did not drain the write buffer: 8 pending
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	5.042s
+FAIL

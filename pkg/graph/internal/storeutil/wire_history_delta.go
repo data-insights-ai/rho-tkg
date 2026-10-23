@@ -17,8 +17,8 @@ import (
 // HistoryAnchorInterval versions and, between anchors, stores a DELTA that carries
 // only the properties that CHANGED vs the interval's anchor — the large unchanged
 // values are stored once per interval, not once per version. Measured 39% less
-// history storage after block-Snappy on history-heavy wide entities
-// (wire_b6_history_gate_test.go).
+// history storage after block-Snappy on history-heavy wide entities (CHANGELOG,
+// ADR-0009).
 //
 // On-disk framing (self-describing, zero migration):
 //   - ANCHOR row: the raw full-snapshot marshal, UNCHANGED. A msgpack map header

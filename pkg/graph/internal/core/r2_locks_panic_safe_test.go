@@ -15,7 +15,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -191,35 +190,5 @@ func TestDeleteNode_PanicInAdjacencyRead_DoesNotLeakEntityLocks(t *testing.T) {
 	})
 	if !completed {
 		t.Fatal("follow-up Nodes.Update deadlocked — entity lock leaked across the adjacency-read panic")
-	}
-}
-
-// Negative control: ErrNodeNotFound during endpoint refresh in batch
-// must NOT trigger the BatchError path — that's the documented silent
-// case and the unlock pattern must work the same way.
-func TestBatch_EndpointNotFound_StillRunsToCompletion(t *testing.T) {
-	t.Parallel()
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close()
-
-	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
-	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
-
-	bb, _ := NewBatchBuilder(g)
-	if _, err := bb.AddRelationship("KNOWS", a, b, nil); err != nil {
-		t.Fatalf("queue rel: %v", err)
-	}
-	res, err := bb.Execute()
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	if res.Failed != 0 {
-		t.Fatalf("res.Failed = %d, want 0 (clean run, no synthetic faults)", res.Failed)
-	}
-	if !errors.Is(error(nil), nil) { // appease unused-import
-		t.Fatal("unreachable")
 	}
 }

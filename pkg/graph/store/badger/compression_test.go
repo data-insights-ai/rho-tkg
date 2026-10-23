@@ -8,142 +8,64 @@ import (
 	"github.com/dgraph-io/badger/v4/options"
 )
 
-func TestCompression_BadgerStore_None(t *testing.T) {
-	dir := t.TempDir()
-	bs, err := New(Config{
-		Dir:         dir,
-		Compression: options.None,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
+// TestCompression_ReachesBadgerOptions pins that Config.Compression and
+// ZSTDCompressionLevel reach the Badger options, and that the zero value
+// (options.None) keeps Badger's default codec. Mutation: dropping the WithCompression call, or
+// applying it for the zero value, fails a row.
+func TestCompression_ReachesBadgerOptions(t *testing.T) {
+	defaultCodec := (func() options.CompressionType {
+		bs, err := New(Config{InMemory: true})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		defer bs.Close()
+		return bs.DBForTest().Opts().Compression
+	})()
+	cases := []struct {
+		name      string
+		cfg       Config
+		wantCodec options.CompressionType
+		wantLevel int
+	}{
+		{"none is the zero value: keeps the default", Config{Compression: options.None}, defaultCodec, 0},
+		{"snappy", Config{Compression: options.Snappy}, options.Snappy, 0},
+		{"zstd level 3", Config{Compression: options.ZSTD, ZSTDCompressionLevel: 3}, options.ZSTD, 3},
+		{"zero keeps default", Config{}, defaultCodec, 0},
+		{"in-memory zstd", Config{InMemory: true, Compression: options.ZSTD}, options.ZSTD, 0},
 	}
-	defer bs.Close()
-
-	// Write and read back to verify the store works with no compression.
-	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
-	if err := bs.PutNode(n); err != nil {
-		t.Fatalf("PutNode: %v", err)
-	}
-	got, err := bs.GetNode(n.ID())
-	if err != nil {
-		t.Fatalf("GetNode: %v", err)
-	}
-	if got == nil {
-		t.Fatal("GetNode returned nil")
-	}
-}
-
-func TestCompression_BadgerStore_Snappy(t *testing.T) {
-	dir := t.TempDir()
-	bs, err := New(Config{
-		Dir:         dir,
-		Compression: options.Snappy,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer bs.Close()
-
-	n := types.NewNode(types.NodeID(snowflake.ID(2)), 1, nil)
-	if err := bs.PutNode(n); err != nil {
-		t.Fatalf("PutNode: %v", err)
-	}
-	got, err := bs.GetNode(n.ID())
-	if err != nil {
-		t.Fatalf("GetNode: %v", err)
-	}
-	if got == nil {
-		t.Fatal("GetNode returned nil")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := c.cfg
+			if !cfg.InMemory {
+				cfg.Dir = t.TempDir()
+			}
+			bs, err := New(cfg)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer bs.Close()
+			opts := bs.DBForTest().Opts()
+			if opts.Compression != c.wantCodec {
+				t.Errorf("Compression reached Badger as %v, want %v", opts.Compression, c.wantCodec)
+			}
+			if c.wantLevel > 0 && opts.ZSTDCompressionLevel != c.wantLevel {
+				t.Errorf("ZSTDCompressionLevel reached Badger as %d, want %d", opts.ZSTDCompressionLevel, c.wantLevel)
+			}
+		})
 	}
 }
 
-func TestCompression_BadgerStore_ZSTD(t *testing.T) {
-	dir := t.TempDir()
-	bs, err := New(Config{
-		Dir:                  dir,
-		Compression:          options.ZSTD,
-		ZSTDCompressionLevel: 3,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer bs.Close()
-
-	n := types.NewNode(types.NodeID(snowflake.ID(3)), 1, nil)
-	if err := bs.PutNode(n); err != nil {
-		t.Fatalf("PutNode: %v", err)
-	}
-	got, err := bs.GetNode(n.ID())
-	if err != nil {
-		t.Fatalf("GetNode: %v", err)
-	}
-	if got == nil {
-		t.Fatal("GetNode returned nil")
-	}
-}
-
-func TestCompression_BadgerStore_ZeroKeepsDefault(t *testing.T) {
-	// Zero Compression value should not call WithCompression (keeps Badger default = Snappy).
-	dir := t.TempDir()
-	bs, err := New(Config{
-		Dir: dir,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer bs.Close()
-
-	n := types.NewNode(types.NodeID(snowflake.ID(4)), 1, nil)
-	if err := bs.PutNode(n); err != nil {
-		t.Fatalf("PutNode: %v", err)
-	}
-	got, err := bs.GetNode(n.ID())
-	if err != nil {
-		t.Fatalf("GetNode: %v", err)
-	}
-	if got == nil {
-		t.Fatal("GetNode returned nil")
-	}
-}
-
-func TestCompression_BadgerStore_InMemory(t *testing.T) {
-	// Compression should work with InMemory mode.
-	bs, err := New(Config{
-		InMemory:    true,
-		Compression: options.None,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer bs.Close()
-
-	n := types.NewNode(types.NodeID(snowflake.ID(5)), 1, nil)
-	if err := bs.PutNode(n); err != nil {
-		t.Fatalf("PutNode: %v", err)
-	}
-	got, err := bs.GetNode(n.ID())
-	if err != nil {
-		t.Fatalf("GetNode: %v", err)
-	}
-	if got == nil {
-		t.Fatal("GetNode returned nil")
-	}
-}
-
+// TestCompression_ZSTD_DataSurvivesReopen writes under ZSTD, closes (which
+// flushes), reopens and reads the row back from disk, not from the cache.
 func TestCompression_ZSTD_DataSurvivesReopen(t *testing.T) {
 	dir := t.TempDir()
+	cfg := Config{Dir: dir, Compression: options.ZSTD, ZSTDCompressionLevel: 3}
 
-	// Write with ZSTD compression.
-	bs1, err := New(Config{
-		Dir:                  dir,
-		Compression:          options.ZSTD,
-		ZSTDCompressionLevel: 3,
-	})
+	bs1, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New (write): %v", err)
 	}
-
-	n := types.NewNode(types.NodeID(snowflake.ID(6)), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(6)), 7, nil)
 	if err := bs1.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
@@ -151,22 +73,16 @@ func TestCompression_ZSTD_DataSurvivesReopen(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	// Reopen and verify data is readable.
-	bs2, err := New(Config{
-		Dir:                  dir,
-		Compression:          options.ZSTD,
-		ZSTDCompressionLevel: 3,
-	})
+	bs2, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New (read): %v", err)
 	}
 	defer bs2.Close()
-
 	got, err := bs2.GetNode(n.ID())
 	if err != nil {
-		t.Fatalf("GetNode: %v", err)
+		t.Fatalf("GetNode after reopen: %v", err)
 	}
-	if got == nil {
-		t.Fatal("GetNode returned nil")
+	if got.ID() != n.ID() || got.PrimaryLabelToken() != 7 {
+		t.Fatalf("reopened node = id %v label %d, want id %v label 7", got.ID(), got.PrimaryLabelToken(), n.ID())
 	}
 }

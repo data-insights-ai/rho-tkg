@@ -1,7 +1,6 @@
 package badger
 
 import (
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,55 +21,44 @@ func newTinyCacheBadgerStore(t *testing.T) *Store {
 	return bs
 }
 
-// TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock verifies that DeleteNode on a
-// cache-miss node completes without contention on idxMu during Badger I/O.
-// We exercise this by flushing the store (evicting the write-pending entry from
-// the dirty path), then deleting concurrently while another goroutine holds an
-// RLock to detect any deadlock that would previously occur.
+// TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock pins that DeleteNode reads a
+// cache-miss row BEFORE it takes the idxMu write lock: with a read lock held,
+// the row must reach the cache (the prefetch ran) while the delete is still
+// waiting for the write lock. A delete that read under the write lock would
+// never fill the cache and waitForNodeCacheHits would fail.
 func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(types.NodeID(snowflake.ID(9901)), 1, nil)
-	if err := bs.PutNode(n); err != nil {
-		t.Fatalf("PutNode: %v", err)
-	}
-	// Flush to Badger and evict from LRU so the delete path hits db.View.
+	putTestNode(t, bs, 9901, 1, nil)
 	if err := bs.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
-	bs.NodeCacheForTest().ResetForTest() // evict all entries (post-Flush, all are clean)
+	bs.NodeCacheForTest().ResetForTest()
 
-	// Hold an RLock concurrently for the duration of DeleteNode.
-	// Before fix #4, DeleteNode held idxMu.Lock() THEN called db.View, which
-	// would block the concurrent RLock for the I/O duration. Now prefetchNode
-	// does db.View before the write lock, so the RLock holder is not blocked.
-	var rLockDuration atomic.Int64
-	done := make(chan struct{})
-	rlockHeld := make(chan struct{})
-	go func() {
-		defer close(done)
-		start := time.Now()
-		bs.LockIdxMuRForTest()
-		close(rlockHeld)                 // signal: RLock is actually held, not just "should be by now"
-		time.Sleep(5 * time.Millisecond) // simulate RLock holder doing work
-		bs.UnlockIdxMuRForTest()
-		rLockDuration.Store(time.Since(start).Milliseconds())
+	bs.LockIdxMuRForTest()
+	released := false
+	defer func() {
+		if !released {
+			bs.UnlockIdxMuRForTest()
+		}
 	}()
+	done := make(chan error, 1)
+	go func() { done <- bs.DeleteNode(types.NodeID(9901)) }()
 
-	<-rlockHeld // wait for the RLock to be held instead of guessing with a sleep
-	if err := bs.DeleteNode(types.NodeID(9901)); err != nil {
+	waitForNodeCacheHits(t, bs, 9901)
+	bs.UnlockIdxMuRForTest()
+	released = true
+	if err := <-done; err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
-
-	<-done
-
-	// Verify deletion.
 	if _, err := bs.GetNode(types.NodeID(9901)); err == nil {
 		t.Error("node still present after DeleteNode")
 	}
 }
 
+// TestBadgerStore_DeleteRelationship_CacheMissUnderReadLockContention is the
+// relationship twin: the cache-miss row is prefetched outside the write lock.
 func TestBadgerStore_DeleteRelationship_CacheMissUnderReadLockContention(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -83,27 +71,22 @@ func TestBadgerStore_DeleteRelationship_CacheMissUnderReadLockContention(t *test
 	}
 	bs.RelCacheForTest().ResetForTest()
 
-	locked := make(chan struct{})
-	release := make(chan struct{})
+	bs.LockIdxMuRForTest()
+	released := false
+	defer func() {
+		if !released {
+			bs.UnlockIdxMuRForTest()
+		}
+	}()
 	done := make(chan error, 1)
-	go func() {
-		bs.LockIdxMuRForTest()
-		close(locked)
-		<-release
-		bs.UnlockIdxMuRForTest()
-	}()
-	<-locked
+	go func() { done <- bs.DeleteRelationship(types.RelID(9930)) }()
 
-	go func() {
-		done <- bs.DeleteRelationship(types.RelID(9930))
-	}()
-
-	time.Sleep(5 * time.Millisecond)
-	close(release)
+	waitForRelCacheHits(t, bs, 9930)
+	bs.UnlockIdxMuRForTest()
+	released = true
 	if err := <-done; err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
-
 	if _, err := bs.GetRelationship(types.RelID(9930)); err == nil {
 		t.Fatal("relationship still present after DeleteRelationship")
 	}

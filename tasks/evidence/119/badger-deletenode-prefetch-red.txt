@@ -1,0 +1,5 @@
+--- FAIL: TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock (5.00s)
+    v3056_fixes_test.go:49: node cache entries were not prefetched before idxMu write lock for IDs [9901]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	5.009s
+FAIL

@@ -1708,9 +1708,6 @@ func TestBadgerStoreCountersPersistAtomicallyWithData(t *testing.T) {
 // ─── Gap 2: Background Processes ────────────────────────────────────────────
 
 func TestBadgerStoreFlushLoopAutoFlush(t *testing.T) {
-	if testing.Short() && !raceEnabled {
-		t.Skip("long tier: release gate")
-	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -1728,8 +1725,9 @@ func TestBadgerStoreFlushLoopAutoFlush(t *testing.T) {
 	putTestNode(t, bs1, 2, 1, nil)
 	putTestRel(t, bs1, 3, 1, 1, 2)
 
-	// NO explicit Flush() — let the auto-flush goroutine handle it.
-	time.Sleep(200 * time.Millisecond)
+	// NO explicit Flush(): only the auto-flush goroutine can drain the buffer
+	// before Close (whose own final flush would hide a dead loop).
+	waitPendingDrained(t, bs1)
 
 	if err := bs1.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -1758,9 +1756,6 @@ func TestBadgerStoreFlushLoopAutoFlush(t *testing.T) {
 }
 
 func TestBadgerStoreRapidWritesBetweenFlushes(t *testing.T) {
-	if testing.Short() && !raceEnabled {
-		t.Skip("long tier: release gate")
-	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -1778,8 +1773,8 @@ func TestBadgerStoreRapidWritesBetweenFlushes(t *testing.T) {
 		putTestNode(t, bs1, int64(i+1), 1, nil)
 	}
 
-	// Wait for multiple flush cycles to drain the buffer.
-	time.Sleep(300 * time.Millisecond)
+	// The flush loop, not Close, must drain the buffer.
+	waitPendingDrained(t, bs1)
 
 	if err := bs1.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -2540,4 +2535,17 @@ func seedBadgerStore(t *testing.T, bs *Store, label uint16, count int) []snowfla
 		}
 	}
 	return ids
+}
+
+// waitPendingDrained waits until the background flush loop has drained the
+// write buffer (bounded), failing the test if it never does.
+func waitPendingDrained(t *testing.T, bs *Store) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for bs.PendingWriteCount() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("flush loop did not drain the write buffer: %d pending", bs.PendingWriteCount())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }

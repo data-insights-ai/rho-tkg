@@ -125,10 +125,9 @@ cover:
 	@echo "Coverage report: coverage.html"
 
 # Coverage gate: fails if total ./pkg/... coverage falls below COVER_MIN
-# (default 80, project rule). Wrappers in the sub-API accessors are pinned by
-# pkg/graph/subapi_smoke_test.go and pkg/graph/subapi_smoke_extra_test.go;
-# the gate exists so a future regression in a non-wrapper package surfaces
-# instead of silently lowering the floor.
+# (default 80, project rule), so a regression surfaces instead of silently
+# lowering the floor. The sub-API wrappers are covered by their packages' own
+# forwarding tests.
 COVER_MIN ?= 80
 cover-gate:
 	@go test -short -count=1 -coverpkg=./pkg/... -coverprofile=coverage.pkg.out ./pkg/... > coverage.test.log 2>&1 || { grep -E -B2 -A20 -- '--- FAIL|^FAIL|panic:' coverage.test.log | head -200; exit 1; }

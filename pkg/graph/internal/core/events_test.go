@@ -348,33 +348,6 @@ func TestGraph_RelCompareAndSetProperty_Event(t *testing.T) {
 	}
 }
 
-// TestEventBus_AsyncHandler verifies that a handler pushing to a buffered channel
-// receives all events without dropping any.
-func TestEventBus_AsyncHandler(t *testing.T) {
-	g := newTestGraphForEvents(t)
-
-	ch := make(chan eventspkg.Event, 10)
-	g.Events.GetSync().Subscribe(func(e eventspkg.Event) { ch <- e })
-
-	const n = 5
-	for i := range n {
-		if _, err := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"i": int64(i)}); err != nil {
-			t.Fatalf("AddNode %d: %v", i, err)
-		}
-	}
-
-	// Give any async processing a moment, then drain.
-	time.Sleep(time.Millisecond)
-	close(ch)
-	var got []eventspkg.Event
-	for e := range ch {
-		got = append(got, e)
-	}
-	if len(got) != n {
-		t.Fatalf("expected %d events, got %d", n, got)
-	}
-}
-
 // TestGraph_CloseNodeVersion_Event verifies CloseNodeVersion fires eventspkg.EventNodeUpdate.
 func TestGraph_CloseNodeVersion_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)

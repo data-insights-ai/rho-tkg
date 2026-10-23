@@ -25,6 +25,9 @@
    (f) hygiene: sleeps → `useTestClock`/hooks, `round9/10/11` and row-numbered files renamed by behaviour, old algorithms kept in
    production only as oracles (`headWriteOff`, `correctionPerCut`) move to tests. Expected: ~15-20 % fewer test lines, no lost protection.
 
+   Found on the way: `Compression: options.None` cannot disable compression (None is the zero value = Snappy); a
+   `DisableCompression` option would be a door (minor) — only on a consumer request.
+
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.
 - A consumer report against v4.70.0 (ai-soc's full Flux rerun, row 106 fix; sigma O1-3 on `LowestAnsweredPins` (P1) and `RelEffectiveTimelinesByProperties`: tiered, driver = first indexed key, device before estate, segments whole, DepthAll only, ai-soc declares (type, device) rel indexes) → build only what blocks them (lesson 79 (10)).

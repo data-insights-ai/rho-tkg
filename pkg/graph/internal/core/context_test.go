@@ -717,65 +717,6 @@ func TestGetNodeWithContextDeadline(t *testing.T) {
 // --- Group D: Delegation regression (4 tests) ---
 // Non-context methods still work after refactoring.
 
-func TestAddNodeDelegatesToContext(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-
-	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	if err != nil {
-		t.Fatalf("AddNode error: %v", err)
-	}
-	if n == nil {
-		t.Fatal("AddNode returned nil")
-	}
-	if v, _ := n.GetProperty("name"); v != "Alice" {
-		t.Errorf("name = %v, want Alice", v)
-	}
-}
-
-func TestUpdateNodeDelegatesToContext(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	updated, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"name": "Bob"})
-	if err != nil {
-		t.Fatalf("UpdateNode error: %v", err)
-	}
-	if v, _ := updated.GetProperty("name"); v != "Bob" {
-		t.Errorf("name = %v, want Bob", v)
-	}
-}
-
-func TestDeleteNodeDelegatesToContext(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
-	err := g.Nodes.Delete(context.Background(), n.ID())
-	if err != nil {
-		t.Fatalf("DeleteNode error: %v", err)
-	}
-	_, err = g.Nodes.Get(context.Background(), n.ID())
-	if !errors.Is(err, storepkg.ErrNodeNotFound) {
-		t.Errorf("GetNode after delete: err = %v, want storepkg.ErrNodeNotFound", err)
-	}
-}
-
-func TestGetNodeDelegatesToContext(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	got, err := g.Nodes.Get(context.Background(), n.ID())
-	if err != nil {
-		t.Fatalf("GetNode error: %v", err)
-	}
-	if v, _ := got.GetProperty("name"); v != "Alice" {
-		t.Errorf("name = %v, want Alice", v)
-	}
-}
-
 // --- Group E: Edge cases (4 tests) ---
 
 func TestUpdateNodeWithContextEmptyUpdatesNoop(t *testing.T) {

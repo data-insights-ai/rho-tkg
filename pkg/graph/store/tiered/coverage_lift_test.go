@@ -427,18 +427,6 @@ func TestTiered_VerifyShard_FailedChain(t *testing.T) {
 	}
 }
 
-// TestTiered_VerifyShard_NilVerifierRejected covers the nil-guard at line 307.
-func TestTiered_VerifyShard_NilVerifierRejected(t *testing.T) {
-	ts := newTestTieredStore(t)
-	reg := registrypkg.NewLabelRegistry()
-	ts.SetLabelRegistry(reg)
-	_, _ = reg.GetOrCreate("Case")
-	_, _ = reg.GetOrCreate("User")
-	if _, err := ts.VerifyShard(nil, "reference"); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-		t.Fatalf("VerifyShard nil verifier = %v, want ErrInvalidStoreMutation", err)
-	}
-}
-
 // TestTiered_VerifyShard_UnknownShard covers the catalog-miss branch at line 311.
 func TestTiered_VerifyShard_UnknownShard(t *testing.T) {
 	ts := newTestTieredStore(t)
@@ -478,33 +466,6 @@ func TestTiered_VerifyShard_ReferenceShard(t *testing.T) {
 }
 
 // --- TruncateNodeHistory error path: invalid keep ---
-
-func TestTiered_TruncateNodeHistory_NegativeKeep(t *testing.T) {
-	ts := newTestTieredStore(t)
-	_ = installDefaultTestLabelRegistryDelegate(t, ts)
-	id := types.NodeID(tieredNodeGen(t).Generate())
-	if err := ts.TruncateNodeHistory(id, -1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-		t.Fatalf("TruncateNodeHistory keep=-1 = %v, want ErrInvalidStoreMutation", err)
-	}
-}
-
-func TestTiered_TruncateRelHistory_NegativeKeep(t *testing.T) {
-	ts := newTestTieredStore(t)
-	_ = installDefaultTestLabelRegistryDelegate(t, ts)
-	id := types.RelID(tieredRelGen(t).Generate())
-	if err := ts.TruncateRelHistory(id, -1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-		t.Fatalf("TruncateRelHistory keep=-1 = %v, want ErrInvalidStoreMutation", err)
-	}
-}
-
-func installDefaultTestLabelRegistryDelegate(t *testing.T, ts *Store) uint16 {
-	t.Helper()
-	reg := registrypkg.NewLabelRegistry()
-	ts.SetLabelRegistry(reg)
-	tok, _ := reg.GetOrCreate("Case")
-	_, _ = reg.GetOrCreate("User")
-	return tok
-}
 
 // --- PutRelationshipsBatch with mixed same-shard and cross-shard rels ---
 
@@ -585,28 +546,6 @@ func TestTiered_PutRelationshipsBatch_DuplicateInBatchRejected(t *testing.T) {
 	r := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), b.ID())
 	if err := ts.PutRelationshipsBatch([]*types.Relationship{r, r}); !errors.Is(err, ErrRelExists) {
 		t.Fatalf("duplicate in-batch = %v, want ErrRelExists", err)
-	}
-}
-
-// TestTiered_PutRelationshipsBatch_MissingEndpoint covers the
-// !startExists / !endExists branches (lines 373, 386).
-func TestTiered_PutRelationshipsBatch_MissingEndpoint(t *testing.T) {
-	ts := newTestTieredStore(t)
-	reg := registrypkg.NewLabelRegistry()
-	ts.SetLabelRegistry(reg)
-	_, _ = reg.GetOrCreate("Case")
-	_, _ = reg.GetOrCreate("User")
-	signalTok, _ := reg.GetOrCreate("Signal")
-
-	gen := tieredNodeGen(t)
-	a := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
-	if err := ts.PutNode(a); err != nil {
-		t.Fatalf("PutNode a: %v", err)
-	}
-	phantomB := types.NodeID(gen.Generate())
-	r := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), phantomB)
-	if err := ts.PutRelationshipsBatch([]*types.Relationship{r}); !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("missing end endpoint = %v, want ErrNodeNotFound", err)
 	}
 }
 

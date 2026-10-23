@@ -256,7 +256,7 @@ github.com/data-insights-ai/rho-tkg/v4
 
 **Go:** 1.26.9
 **License:** Apache-2.0
-**Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), [`msgpack/v5`](https://github.com/vmihailenco/msgpack) (serialization), [`badger/v4`](https://github.com/dgraph-io/badger) (persistence); `klauspost/compress` is required directly only by tests (`pkg/graph/internal/storeutil/wire_b3_ondisk_gate_test.go`, `pkg/graph/integrity_bytes_test.go`). The OpenTelemetry modules arrive transitively via Badger and are not in this library's call graph.
+**Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), [`msgpack/v5`](https://github.com/vmihailenco/msgpack) (serialization), [`badger/v4`](https://github.com/dgraph-io/badger) (persistence). The OpenTelemetry modules arrive transitively via Badger and are not in this library's call graph.
 
 <details>
 <summary>All 36 modules of <code>go list -m all</code> and their licenses</summary>

@@ -194,8 +194,8 @@ type Config struct {
 	// group (HoldMutationFlushes). See docs/architecture.md (Write-Pressure Bound).
 	MaxPendingWrites int
 	// Compression sets the SSTable compression algorithm.
-	// Valid values: options.None (0), options.Snappy (1), options.ZSTD (2).
-	// Zero keeps the Badger default (Snappy).
+	// options.Snappy or options.ZSTD. options.None is the zero value and so
+	// keeps the Badger default (Snappy): no compression cannot be selected.
 	Compression options.CompressionType
 	// ZSTDCompressionLevel sets the ZSTD compression level (1-15).
 	// Only effective when Compression is options.ZSTD.
