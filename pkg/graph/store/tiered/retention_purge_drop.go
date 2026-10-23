@@ -21,8 +21,8 @@ const coldShardDrainSpinLimit = 5000
 // hits coldShardDrainSpinLimit: signals a checkin leak, not late traffic.
 var ErrDrainTimeout = errors.New("graph: active-request drain timed out")
 
-// drainSpinLimit is coldShardDrainSpinLimit unless a test lowered it through
-// SetDrainSpinLimitForTest, so a drain-timeout test waits milliseconds, not 5s.
+// drainSpinLimit is coldShardDrainSpinLimit unless a test lowered it
+// (drainSpinsForTest), so a drain-timeout test waits milliseconds, not 5s.
 func (ts *Store) drainSpinLimit() int64 {
 	if n := ts.drainSpinsForTest.Load(); n > 0 {
 		return n

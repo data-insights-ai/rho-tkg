@@ -15,7 +15,7 @@ import (
 // These tests simulate a leaked checkin via the *ForTest atomic-counter
 // accessors and confirm Close() still terminates, reporting a wrapped
 // ErrDrainTimeout instead of hanging. The drain is lowered to drainTestSpins
-// through SetDrainSpinLimitForTest, so each test waits ~50ms, not the real ~5s;
+// through drainSpinsForTest, so each test waits ~50ms, not the real ~5s;
 // TestDrainSpinLimitConstant pins the real bound once.
 
 const drainTestSpins = 50
@@ -31,7 +31,7 @@ func TestDrainSpinLimitConstant(t *testing.T) {
 	if got := ts.drainSpinLimit(); got != coldShardDrainSpinLimit {
 		t.Fatalf("drainSpinLimit without override = %d, want %d", got, coldShardDrainSpinLimit)
 	}
-	ts.SetDrainSpinLimitForTest(drainTestSpins)
+	ts.drainSpinsForTest.Store(drainTestSpins)
 	if got := ts.drainSpinLimit(); got != drainTestSpins {
 		t.Fatalf("drainSpinLimit with override = %d, want %d", got, drainTestSpins)
 	}
@@ -69,7 +69,7 @@ func closeWithDeadline(t *testing.T, ts *Store, deadline time.Duration) error {
 
 func TestTieredClose_LeakedEventShardCheckinTimesOutInsteadOfHanging(t *testing.T) {
 	ts := newDrainTestStore(t)
-	ts.SetDrainSpinLimitForTest(drainTestSpins)
+	ts.drainSpinsForTest.Store(drainTestSpins)
 
 	ts.MuForTest().RLock()
 	var es *EventShard
@@ -91,7 +91,7 @@ func TestTieredClose_LeakedEventShardCheckinTimesOutInsteadOfHanging(t *testing.
 
 func TestTieredClose_LeakedRefShardCheckinTimesOutInsteadOfHanging(t *testing.T) {
 	ts := newDrainTestStore(t)
-	ts.SetDrainSpinLimitForTest(drainTestSpins)
+	ts.drainSpinsForTest.Store(drainTestSpins)
 	ts.RefActiveReqsForTest().Add(1) // simulate a leaked checkin
 
 	err := closeWithDeadline(t, ts, 5*time.Second)

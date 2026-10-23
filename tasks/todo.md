@@ -13,11 +13,7 @@
 
 3. (119) Test-suite cleanup (7 Sonnet reviews 2026-10-23; ~6,700 tests, ~369k lines). Verdict: mostly real oracles (mutation runs: 9-14 of 14
    injected bugs killed per slice); the waste is duplication, not junk. Steps, each verified before deleting:
-   (a) gaps first (bugs or blind spots): sharded `GetNodeVersion(-1)` returns `ErrSlotNotLocal`, not `ErrInvalidStoreMutation` (add sharded to
-   `directStoreBackends`); tiered E→R put rollback and `DeleteNodesBatch` rollback untested at the door; sharded cascade rel order untested;
-   `TestUniqueForever_ResetReaps` / `TestUniqueTiered_ResetReaps` blind (re-create the constraint after Reset);
-   `TestImportGraph_DoesNotBlockReadsWhileStreaming` vacuous; `TestColdShardCapBoundsOpenHandles` always skips; 4 tiered tests
-   (close-drain ×2, footprint knobs, oversized WAL) and 2 core oracles gated by plain `Short()` run in no gate;
+   (a) done in v4.70.3 (tiered cold-shard counter, sharded invalid IDs, door rollback tests, blind tests strengthened).
    (b) delete ~150 vacuous/duplicate tests (~5k lines): compression ×5 (read from cache), unfalsifiable v3056 ×2 and flush-loop ×2,
    sub-API smoke files (870 lines, 11 statements of unique coverage), stale `*WithContext` rows, `context_test.go` leftovers,
    `TestBench*` and B3/B6 measurement gates, empty tutorial tests, coverage_lift duplicates, assertion-free lock tests;

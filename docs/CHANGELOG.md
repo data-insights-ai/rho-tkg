@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.70.3] - 2026-10-23
+
+### Fixed
+
+- **tiered: `MaxOpenColdShards` stopped capping open cold shards.** The open-cold-shard counter counted only cold
+  shards opened by a read, but every close subtracted: a warm shard demoted to cold by rotation (it keeps its handle)
+  and a cold shard opened by a write were closed without ever being counted, so the counter drifted below the real
+  number and later check-ins kept shards open past the cap (5 open with a cap of 2). Each open cold handle is now
+  counted exactly once, whichever door opened it. No API or format change.
+- **sharded (EXPERIMENTAL): a zero or negative ID is rejected with `ErrInvalidStoreMutation` before slot routing**, as in
+  every other backend. Before, the answer depended on which slots the store claimed (`ErrSlotNotLocal` for an
+  unclaimed slot, e.g. `GetNodeVersion(-1)`). Valid IDs behave as before.
+
+### Changed
+
+- Documentation: `docs/architecture.md` rewritten as a readable architecture (layers, data model, time model, writes and
+  locks, the four backends, 25 design invariants each naming its pinning test); `docs/CONTRIBUTING.md` starts with a
+  short rules digest and holds the lessons as a one-line index pointing to the test or invariant that enforces each.
+- Tests: rollback tests through the public tiered doors (cross-shard relationship put, `DeleteNodesBatch`), a pinned
+  sharded cascade-delete order, strengthened Reset-reaps and import-streaming tests, and the race-gate sizing of two
+  core oracles (72 s / 81 s → 8 s / 25 s under `-race`).
+
 ## [4.70.2] - 2026-10-22
 
 No behaviour change.
