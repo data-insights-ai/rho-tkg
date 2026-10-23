@@ -7,9 +7,9 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-- **SHARD** — René wants three storage tiers (hot, warm NVMe, cold HDD) built while ai-soc cleans up its data waste; a
-  Fable agent designs the architecture and reviews, the main agent implements step by step. Done when: cold shards live
-  on their own disk, released, with ai-soc's reference shard fitting the NVMe. Waits for: the Fable design.
+- **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
+  built while ai-soc cleans up its data waste; a Fable agent designs and reviews, the main agent implements step by
+  step. Done when: shards live on their tier's volume, released. Waits for: the Fable design for three volumes.
 
 ## Next
 
