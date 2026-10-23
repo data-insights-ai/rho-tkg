@@ -24,8 +24,9 @@
    per-entity skeleton cached by history epoch (badger/tiered have HistoryEpochCapability). Build when ai-soc's re-measure
    on v4.72.0 still misses the 4x bound at 1-2 versions.
 
-5. (121) v4.74.0 released: winners read in place; Admin().NodeStoredSizes for sigma's projects/derived-writeback scan of the
-   ai-soc BA store (sigma runs it on Flux; B waits for v4.74.0). Next: read sigma's report, then decide the history shape.
+5. (121) v4.74.0 released (winners read in place; Admin().NodeStoredSizes). Next: a history row read costs ~3.7 kB full and
+   6-7 kB as a delta (~560 B of properties): each delta row re-reads and fully decodes its anchor, per row; share one anchor
+   decode per read (sigma's one-fact run on the ai-soc BA copy, 2026-10-23: 9 kB to resolve a 2-row fact, History 21 kB).
    Earlier follow-ups: Follow-ups after v4.73.0's page door (ai-soc cold listing at 5.3x values, rewritten 10.8x): (a) the
    per-entity skeleton cache keyed by history epoch (warm rewritten listings re-read the skeleton); (b) the remaining
    decode cost (Node struct, a Temporal copy per skeleton, msgpack string allocs) for the 4x bound; (c) Relationship
