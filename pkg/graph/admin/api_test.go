@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -42,6 +43,16 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if st, err := api.RelSegmentStats("HOP"); err != nil || st.Segments != 3 {
 		t.Fatalf("RelSegmentStats = %+v, %v; want Segments 3", st, err)
 	}
+	if rows, err := api.NodeStoredSizes(7); err != nil || len(rows) != 1 || rows[0].Bytes != 70 {
+		t.Fatalf("NodeStoredSizes = %+v, %v; want one row of 70 bytes", rows, err)
+	}
+	var seen []types.NodeID
+	if err := api.ForEachNodeStoredSize(context.Background(), "L", store.DepthHot, func(id types.NodeID, rows []StoredRow) bool {
+		seen = append(seen, id)
+		return len(rows) == 1
+	}); err != nil || len(seen) != 1 || seen[0] != 8 || ops.storedLabel != "L" || ops.storedDepth != store.DepthHot {
+		t.Fatalf("ForEachNodeStoredSize: %v, saw %v, spy got %q %v", err, seen, ops.storedLabel, ops.storedDepth)
+	}
 
 	if err := api.SetUntimedValidStart(context.Background(), UntimedUnbounded); err != nil || ops.untimedMode != UntimedUnbounded {
 		t.Fatalf("SetUntimedValidStart: %v, spy got %v", err, ops.untimedMode)
@@ -72,6 +83,8 @@ type adminOpsSpy struct {
 	resolveExactEraseCalls int
 	exactEraseCalls        int
 	segmentCalls           int
+	storedLabel            string
+	storedDepth            store.ShardDepth
 	untimedMode            UntimedValidStart
 	refLabel               string
 }
@@ -105,6 +118,16 @@ func (s *adminOpsSpy) SealRelSegments(relType string) error {
 func (s *adminOpsSpy) RelSegmentStats(relType string) (RelSegmentStats, error) {
 	s.segmentCalls++
 	return RelSegmentStats{Segments: 3}, nil
+}
+
+func (s *adminOpsSpy) NodeStoredSizes(id types.NodeID) ([]StoredRow, error) {
+	return []StoredRow{{Version: uint32(id), Current: true, Bytes: 10 * int(id)}}, nil
+}
+
+func (s *adminOpsSpy) ForEachNodeStoredSize(_ context.Context, label string, depth store.ShardDepth, fn func(types.NodeID, []StoredRow) bool) error {
+	s.storedLabel, s.storedDepth = label, depth
+	fn(8, []StoredRow{{Version: 8}})
+	return nil
 }
 
 func (s *adminOpsSpy) Reset() error {

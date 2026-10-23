@@ -255,3 +255,18 @@ func (s *Store) RelHistoryVersionsFrom(id types.RelID, startVersion uint32, limi
 }
 
 var _ storecontract.HistoryVersionPageCapability = (*Store)(nil)
+
+var _ storecontract.NodeStoredSizeCapability = (*Store)(nil)
+
+// NodeStoredSizes is store.NodeStoredSizeCapability on the slot the ID routes
+// to, which holds every row of the node.
+func (s *Store) NodeStoredSizes(id types.NodeID) ([]storecontract.StoredRow, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
+	shard, err := s.shardForNodeID(id)
+	if err != nil {
+		return nil, err
+	}
+	return shard.NodeStoredSizes(id)
+}

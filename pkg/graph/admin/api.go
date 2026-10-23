@@ -64,6 +64,9 @@ type ExactErasureReceipt = core.ExactErasureReceipt
 // layout (ADR-0011). Alias of store.RelSegmentStats.
 type RelSegmentStats = store.RelSegmentStats
 
+// StoredRow is one stored row of a node: see NodeStoredSizes.
+type StoredRow = store.StoredRow
+
 // UntimedValidStart is the untimed valid-start mode (backlog 73). See
 // core.UntimedValidStart and graph.Config.UntimedValidStart.
 type UntimedValidStart = core.UntimedValidStart
@@ -95,6 +98,8 @@ type Ops interface {
 	ExactErase(ctx context.Context, request ExactErasureRequest) (ExactErasureReceipt, error)
 	SealRelSegments(relType string) error
 	RelSegmentStats(relType string) (RelSegmentStats, error)
+	NodeStoredSizes(id types.NodeID) ([]StoredRow, error)
+	ForEachNodeStoredSize(ctx context.Context, label string, depth store.ShardDepth, fn func(types.NodeID, []StoredRow) bool) error
 	SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) error
 	UntimedValidStart() (mode UntimedValidStart, complete bool, err error)
 	ValidAxis() (types.ValidAxis, error)
@@ -310,4 +315,36 @@ func (a *API) RelSegmentStats(relType string) (RelSegmentStats, error) {
 		return RelSegmentStats{}, err
 	}
 	return ops.RelSegmentStats(relType)
+}
+
+// NodeStoredSizes reports a node's stored rows (row 121): the current row
+// (Current true, if the node has one) first, then every history row History
+// reads, ascending by version, pending writes included. Bytes is the stored
+// value's length after delta encoding and before the storage engine's block
+// compression; Delta marks a history row stored as a delta against its
+// anchor; Void marks an excise piece (TemporalMetadata.Void). A measurement
+// surface, read-only, under the node's entity lock. Badger, tiered (every
+// shard the node's rows live on) and sharded answer; memory stores no encoded
+// rows: ErrCapabilityNotSupported. Errors: ErrInvalidStoreMutation (invalid
+// ID), ErrGraphClosed.
+func (a *API) NodeStoredSizes(id types.NodeID) ([]StoredRow, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodeStoredSizes(id)
+}
+
+// ForEachNodeStoredSize hands fn(id, rows) every current member of label,
+// from the shards depth selects, ascending by ID, with NodeStoredSizes(id);
+// fn returning false stops, and fn runs without graph locks. One store read
+// per node, 256 nodes per hold of the graph read lock. Errors: as
+// NodeStoredSizes, ErrNilCallback, an invalid label or depth, ErrNilContext,
+// ctx's error (checked between nodes). An unknown label calls fn never.
+func (a *API) ForEachNodeStoredSize(ctx context.Context, label string, depth store.ShardDepth, fn func(id types.NodeID, rows []StoredRow) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachNodeStoredSize(ctx, label, depth, fn)
 }

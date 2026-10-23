@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.74.0] - 2026-10-23
+
+### Added
+
+- **`g.Admin().NodeStoredSizes(id)` / `ForEachNodeStoredSize(ctx, label, depth, fn)`** with `admin.StoredRow{Version,
+  Current, Bytes, Delta, Void}` (row 121, for sigma's write-back analysis of the ai-soc BA store,
+  sigma-tkgd `projects/derived-writeback`): a node's stored rows (the current row, then every history row `History`
+  reads) with the stored value's length after delta encoding, the delta flag and the excise mark.
+  `store.NodeStoredSizeCapability` (badger, tiered across its shards, sharded; memory declines with
+  `ErrCapabilityNotSupported`).
+
+### Fixed
+
+- A listing whose winners are history rows (sigma's back-written facts: a fact re-derived with a shifted validity keeps
+  its first write as the current row, and the believed stretch is a history row) read each winner with a badger `Get`
+  (two copies of the row afresh) and copied it again before decoding. The read snapshot now reads winners with its own
+  forward-walking iterator and decodes them in place: rho's cost test 10.7 → 6.6 kB per fact cold; sigma's rewritten
+  listing at 2 rewrites badger 8.8 → 5.4 kB, tiered 11.0 → 7.7 kB per fact.
+- The page door's match check built an index key per row; string values now compare directly (memory listing +55 →
+  +11 B per fact over the old composition).
+
 ## [4.73.0] - 2026-10-23
 
 ### Added

@@ -24,7 +24,9 @@
    per-entity skeleton cached by history epoch (badger/tiered have HistoryEpochCapability). Build when ai-soc's re-measure
    on v4.72.0 still misses the 4x bound at 1-2 versions.
 
-5. (121) Follow-ups after v4.73.0's page door (ai-soc cold listing at 5.3x values, rewritten 10.8x): (a) the
+5. (121) v4.74.0 released: winners read in place; Admin().NodeStoredSizes for sigma's projects/derived-writeback scan of the
+   ai-soc BA store (sigma runs it on Flux; B waits for v4.74.0). Next: read sigma's report, then decide the history shape.
+   Earlier follow-ups: Follow-ups after v4.73.0's page door (ai-soc cold listing at 5.3x values, rewritten 10.8x): (a) the
    per-entity skeleton cache keyed by history epoch (warm rewritten listings re-read the skeleton); (b) the remaining
    decode cost (Node struct, a Temporal copy per skeleton, msgpack string allocs) for the 4x bound; (c) Relationship
    decode re-copies on install (no SetPropertiesCanonicalShared). Wait for ai-soc's re-measure first.

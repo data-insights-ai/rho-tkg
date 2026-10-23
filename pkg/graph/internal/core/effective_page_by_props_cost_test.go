@@ -21,11 +21,14 @@ import (
 // for one version (2.3 kB measured: one decode of the current row, read
 // through the reference shard's snapshot) and 12x for a fact rewritten in
 // valid time (4.7 kB: the skeleton decoded in place, the current row, no
-// history row copied). Before the door, ByLabelAndProperties plus
+// history row copied), and 16x listed at a pin before the rewrite, where
+// every winner is a history row (6.6 kB: the winners read through the
+// snapshot's own forward iterator and decoded in place; a badger Get per
+// winner cost 10.7 kB). Before the door, ByLabelAndProperties plus
 // NodeEffectiveTimelines per fact cost 11.4 kB and 16.2 kB. Mutation: a
 // candidate list read through rows, a point read per row instead of the
-// snapshot, a history memo that copies every row, or a Seek per entity
-// breaks a bound. Serial: it reads the process-wide allocation counter.
+// snapshot, a history memo that copies every row, a Seek per entity or a
+// Get per winner breaks a bound. Serial: it reads the process-wide allocation counter.
 func TestForEachNodeEffectiveByLabelAndPropertiesColdBytes(t *testing.T) {
 	const facts, columns = 1024, 13
 	open := func(dir string) *Core {
@@ -42,8 +45,9 @@ func TestForEachNodeEffectiveByLabelAndPropertiesColdBytes(t *testing.T) {
 	props := map[string]any{"ns": "n", "rel": "r"}
 	for _, c := range []struct {
 		versions int
-		bound    int // times the fact's values
-	}{{1, 6}, {2, 12}} {
+		early    bool // list at a pin before the rewrite: every winner is a history row
+		bound    int  // times the fact's values
+	}{{1, false, 6}, {2, false, 12}, {2, true, 16}} {
 		dir := t.TempDir()
 		g := open(dir)
 		ctx := context.Background()
@@ -51,6 +55,7 @@ func TestForEachNodeEffectiveByLabelAndPropertiesColdBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 		values := 0
+		ids := make([]types.NodeID, facts)
 		for i := range facts {
 			p := map[string]any{"ns": "n", "rel": "r", "tkg_valid_from": types.Instant(1000)}
 			values = 0
@@ -63,13 +68,20 @@ func TestForEachNodeEffectiveByLabelAndPropertiesColdBytes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			ids[i] = n.ID()
+		}
+		early := g.readNow()
+		for i, id := range ids {
 			for v := 1; v < c.versions; v++ {
-				if _, err := g.Temporal.SetNodeVersionInterval(ctx, n.ID(), 1000, 0, map[string]any{"c0": fmt.Sprintf("%034x", -i-v)}); err != nil {
+				if _, err := g.Temporal.SetNodeVersionInterval(ctx, id, 1000, 0, map[string]any{"c0": fmt.Sprintf("%034x", -i-v)}); err != nil {
 					t.Fatal(err)
 				}
 			}
 		}
 		pin := g.readNow()
+		if c.early {
+			pin = early
+		}
 		if err := g.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +104,7 @@ func TestForEachNodeEffectiveByLabelAndPropertiesColdBytes(t *testing.T) {
 			t.Fatalf("%d versions: %d facts with one segment, want %d", c.versions, seen, facts)
 		}
 		perFact := int(after.TotalAlloc-before.TotalAlloc) / facts
-		t.Logf("%d version(s): %d B per fact cold, %.1fx its %d B of values", c.versions, perFact, float64(perFact)/float64(values), values)
+		t.Logf("%d version(s), early pin %v: %d B per fact cold, %.1fx its %d B of values", c.versions, c.early, perFact, float64(perFact)/float64(values), values)
 		// -race drops sync.Pool entries on purpose: the bound is for real builds.
 		if !isRaceEnabled() && perFact > c.bound*values {
 			t.Fatalf("%d version(s): %d B per fact, want <= %dx the %d B of values", c.versions, perFact, c.bound, values)

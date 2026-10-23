@@ -80,6 +80,7 @@ type Core struct {
 	relPropertyKeysQuery storepkg.RelPropertyKeysLookupCapability
 	compositeQuery       storepkg.CompositePropertyIndexCapability
 	compositeIDPage      storepkg.CompositeIndexIDPageCapability
+	storedSizes          storepkg.NodeStoredSizeCapability
 	compositeQueryTrust  bool
 	filteredVector       storepkg.FilteredVectorSearchCapability
 	vectorIndexOptions   storepkg.VectorIndexOptionsCapability
@@ -2224,6 +2225,7 @@ func New(config Config) (*Core, error) {
 	c.compositeQuery = compositeQueryCapability(store)
 	c.compositeQueryTrust = isExactNativeStore(store)
 	c.compositeIDPage = nativeCapability[storepkg.CompositeIndexIDPageCapability](store, "NodeIDsByLabelAndPropertiesPage")
+	c.storedSizes = nativeCapability[storepkg.NodeStoredSizeCapability](store, "NodeStoredSizes")
 	c.filteredVector = filteredVectorSearchCapability(store)
 	c.vectorIndexOptions = vectorIndexOptionsCapability(store)
 	c.depthHistory = depthHistoryIterationCapability(store)

@@ -38,9 +38,9 @@ func (ts *Store) nodeHistoryTemporalMetaVia(nid types.NodeID, via shardVia) ([]s
 		return nil, err
 	}
 	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
-	return ts.historyMetaAcrossShards(store, liveHere, isArchive, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
+	return historyAcrossShards(ts, store, liveHere, isArchive, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
 		return via(s).NodeHistoryTemporalMeta(nid)
-	})
+	}, mergeHistoryMeta)
 }
 
 // RelHistoryTemporalMeta mirrors NodeHistoryTemporalMeta for relationships.
@@ -61,21 +61,22 @@ func (ts *Store) RelHistoryTemporalMeta(rid types.RelID) ([]storecontract.Versio
 		return nil, err
 	}
 	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
-	return ts.historyMetaAcrossShards(shard, liveHere, isArchive, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
+	return historyAcrossShards(ts, shard, liveHere, isArchive, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
 		return s.RelHistoryTemporalMeta(rid)
-	})
+	}, mergeHistoryMeta)
 }
 
-// historyMetaAcrossShards follows GetNodeHistory's routing: a row live on an
+// historyAcrossShards follows GetNodeHistory's routing: a row live on an
 // event shard answers alone; live on the reference shard adds the archive;
 // archived adds the reference shard; otherwise every history shard is asked.
-func (ts *Store) historyMetaAcrossShards(owner *BadgerStore, liveHere, isArchive bool,
-	fetch func(*BadgerStore) ([]storecontract.VersionTemporalMeta, error)) ([]storecontract.VersionTemporalMeta, error) {
+// merge folds the per-shard answers, the owner's first.
+func historyAcrossShards[T any](ts *Store, owner *BadgerStore, liveHere, isArchive bool,
+	fetch func(*BadgerStore) ([]T, error), merge func([][]T) []T) ([]T, error) {
 	own, err := fetch(owner)
 	if err != nil {
 		return nil, err
 	}
-	parts := [][]storecontract.VersionTemporalMeta{own}
+	parts := [][]T{own}
 	add := func(s *BadgerStore, release func()) error {
 		got, err := fetch(s)
 		release()
@@ -128,7 +129,7 @@ func (ts *Store) historyMetaAcrossShards(owner *BadgerStore, liveHere, isArchive
 			return nil, err
 		}
 	}
-	return mergeHistoryMeta(parts), nil
+	return merge(parts), nil
 }
 
 // mergeHistoryMeta merges per-shard skeletons ascending by version, keeping the

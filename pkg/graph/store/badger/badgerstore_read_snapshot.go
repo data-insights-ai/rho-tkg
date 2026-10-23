@@ -51,6 +51,8 @@ const (
 	snapRelRows
 	snapNodeHist
 	snapRelHist
+	snapNodeVer // point reads of history rows (winners), ascending across entities
+	snapRelVer
 	snapIters
 )
 
@@ -326,6 +328,47 @@ func (s *readSnapshot) version(prefix, key []byte) ([]byte, error) {
 	return item.ValueCopy(nil)
 }
 
+// versionRow hands history row key's raw value to decode, read as version
+// reads it. A full committed row is decoded inside the read, from the
+// iterator's buffer (valid only during decode), so a winning history row
+// costs one decode and no copy of its own (row 121); a delta
+// row is copied out first, as its anchor is read through the same
+// transaction.
+func (s *readSnapshot) versionRow(i int, prefix, key []byte, decode func(raw []byte) error) error {
+	if op, found := s.bs.lookupPending(string(key)); found {
+		if op.opType == writeOpDelete {
+			return ErrVersionNotFound
+		}
+		return decode(op.value)
+	}
+	s.pinned()
+	if s.memo.rows != nil && s.memo.prefix == string(prefix) {
+		raw, ok := s.memo.rows[string(key)]
+		if !ok {
+			return ErrVersionNotFound
+		}
+		return decode(raw)
+	}
+	// Its own iterator, walked forward: winners of ascending entities ascend,
+	// and a walked iterator reuses its items' buffers where a Get copies the
+	// row twice afresh.
+	it := s.seek(i, key)
+	if !it.Valid() || !bytes.Equal(it.Item().Key(), key) {
+		return ErrVersionNotFound
+	}
+	var delta []byte
+	if err := it.Item().Value(func(val []byte) error {
+		if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
+			return decode(val)
+		}
+		delta = append([]byte(nil), val...)
+		return nil
+	}); err != nil || delta == nil {
+		return err
+	}
+	return decode(delta)
+}
+
 // anchor is the localAnchorFunc of a delta row read through the snapshot.
 func (s *readSnapshot) anchor(prefix []byte, key func(uint64) []byte) localAnchorFunc {
 	return func(v uint64) ([]byte, bool) {
@@ -577,11 +620,16 @@ func (s *readSnapshot) GetNodeVersion(nid types.NodeID, version uint32) (*types.
 	}
 	id := nid.SnowflakeID()
 	prefix := storepkg.HistNodePrefix(id)
-	raw, err := s.version(prefix, storepkg.HistNodeKey(id, uint64(version)))
+	var n *types.Node
+	err := s.versionRow(snapNodeVer, prefix, storepkg.HistNodeKey(id, uint64(version)), func(raw []byte) error {
+		var err error
+		n, err = s.decodeNodeVersion(id, uint64(version), raw, prefix)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
-	return s.decodeNodeVersion(id, uint64(version), raw, prefix) // a fresh decode: the caller's own
+	return n, nil // a fresh decode: the caller's own
 }
 
 // GetRelVersion is Store.GetRelVersion through the snapshot.
@@ -595,11 +643,16 @@ func (s *readSnapshot) GetRelVersion(rid types.RelID, version uint32) (*types.Re
 	}
 	id := rid.SnowflakeID()
 	prefix := storepkg.HistRelPrefix(id)
-	raw, err := s.version(prefix, storepkg.HistRelKey(id, uint64(version)))
+	var r *types.Relationship
+	err := s.versionRow(snapRelVer, prefix, storepkg.HistRelKey(id, uint64(version)), func(raw []byte) error {
+		var err error
+		r, err = s.decodeRelVersion(id, uint64(version), raw, prefix)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
-	return s.decodeRelVersion(id, uint64(version), raw, prefix) // a fresh decode: the caller's own
+	return r, nil // a fresh decode: the caller's own
 }
 
 func (s *readSnapshot) decodeNodeVersion(id snowflake.ID, version uint64, raw, prefix []byte) (*types.Node, error) {

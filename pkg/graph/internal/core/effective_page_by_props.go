@@ -73,8 +73,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, 
 	}); err != nil || !known {
 		return 0, err
 	}
-	want := equalKeysOf(props)
-	match := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) && nodeMatchesAllEqual(n, want) }
+	match := nodeEqualMatcher(tok, props)
 	rd := entityReads{c: c, scan: true}
 	if c.readSnapshots != nil {
 		rd.snap = c.readSnapshots.NewReadSnapshot()
@@ -87,7 +86,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, 
 	var (
 		after   = opts.After
 		matched int
-		buf     []entry
+		buf     = make([]entry, 0, effScanChunk)
 	)
 	for {
 		if err := checkCtx(ctx); err != nil {
@@ -166,4 +165,32 @@ func (c *Core) nodeIDsByLabelAndProperties(tok uint16, values map[string]any, af
 		ids[i] = r.ID()
 	}
 	return ids, len(rows) == n, nil
+}
+
+// nodeEqualMatcher is the composite lookup's predicate (label and
+// nodeMatchesAllEqual on every pair) with string values compared as strings:
+// a string has one index form, so equality is its index key's equality,
+// without building the row's key per read.
+func nodeEqualMatcher(tok uint16, values map[string]any) func(*types.Node) bool {
+	strs := make(map[string]string, len(values))
+	rest := make(map[string]any, len(values))
+	for k, v := range values {
+		if s, ok := v.(string); ok {
+			strs[k] = s
+		} else {
+			rest[k] = v
+		}
+	}
+	want := equalKeysOf(rest)
+	return func(n *types.Node) bool {
+		if !n.HasLabelTokenRaw(tok) {
+			return false
+		}
+		for k, s := range strs {
+			if v, ok := n.GetProperty(k); !ok || v != any(s) {
+				return false
+			}
+		}
+		return nodeMatchesAllEqual(n, want)
+	}
 }
