@@ -323,10 +323,10 @@ This list is the complete documentation set; there are no other `.md` files. Put
 | `README.md` | Overview, install, quickstart, features, backends, this list |
 | [`docs/api.md`](docs/api.md) | API and core types: every door, `QueryOpts`, temporal queries, transactions, indexes, IO, admin; stability promise and deprecation ritual |
 | [`docs/errors.md`](docs/errors.md) | Every public error sentinel and the doors that return it |
-| [`docs/architecture.md`](docs/architecture.md) | Architecture, IDs, shadow properties, Store interfaces and capabilities (memory, badger, tiered, EXPERIMENTAL sharded), concurrency, lock order, [design invariants](docs/architecture.md#design-invariants), decision records (ADR-0011) |
+| [`docs/architecture.md`](docs/architecture.md) | How rho is built: layers, data model, IDs, time model, write doors and lock order, the four storage backends, [design invariants](docs/architecture.md#design-invariants) with the tests that pin them, decision records |
 | [`docs/persistence.md`](docs/persistence.md) | Storage formats, wire format and key layout, durability, change-log, backups, upgrading a store |
 | [`docs/query-planners.md`](docs/query-planners.md) | Planner statistics (cardinality, HyperLogLog NDV, bounds, timelines), index usability, staleness |
-| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Build, test, lint and release gates; benchmarks; development rules and numbered lessons ("lesson N") |
+| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Rules digest (read every session), gates and release checklist, testing and review rules, benchmarks, the lesson index ("lesson N") |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security policy and reporting |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Every release, dated: what shipped and why |
 | `HANDOVER.md` | Current state, next steps, open decisions (for the next session) |

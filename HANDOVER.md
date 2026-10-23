@@ -33,7 +33,7 @@ BA / BO = one customer's data day each (ai-soc estates); Flux = the machine wher
 PINnn = ai-soc's numbered dependency pin; R-numbers (R19, R20, R32 ...) and O1-3, P1, F0b = sigma's own work items (O1-3 = sigma's
 resident-state work: counting state leaves RAM; P1 its first step); a "cut" = one committed ingest step (a tx pin); rows NN = the
 user-request rows (open ones in tasks/todo.md, all in `git show aeb7f8e0:tasks/todo.md`); backlog NN = the items of tasks/todo.md "Parked backlog" (closed ones: docs/CHANGELOG.md);
-lesson NN = `### NN.` in docs/CONTRIBUTING.md.
+lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
 
 ## User-only actions (René, 2026-10-22 cleanup; agents' `rm` is denied)
 

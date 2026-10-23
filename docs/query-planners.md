@@ -206,7 +206,7 @@ means:
   needs its own brief `idxMu.RLock()` per node
   (`prefetchNodeScan`/`prefetchNodeNoFill`), so holding one lock across the
   whole call would self-deadlock (`sync.RWMutex` is not reentrant — see
-  docs/architecture.md "Concurrency"); badger's rescan therefore collects the current
+  docs/CONTRIBUTING.md § Rules digest); badger's rescan therefore collects the current
   node values with `idxMu` released. That unlocked-collect window is guarded
   by an optimistic **write generation** (`PropertyStatsAccumulator.WriteGen`,
   bumped under `idxMu.Lock()` on every `Observe`/`Forget`): the rescan reads
@@ -527,9 +527,8 @@ already small.
   `RelPropertyIndexCapability`, `g.Index().CreateRelProperty` — and back the
   rel-side doors above; only the multi-key composite is node-only.)
 - **Tiered and sharded build it per shard / slot** and fold the matches;
-  on tiered event labels are allowed. Fan-out, rebuild and RAM cost:
-  `docs/architecture.md` tiered "Composite, property and relationship temporal
-  indexes".
+  on tiered event labels are allowed. Each shard maintains its own index; reads fan out over the shards of the
+  requested depth.
 
 ### Proving the accelerated path exists — `HasComposite` / `ListComposites`
 

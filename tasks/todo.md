@@ -3,6 +3,14 @@
 ## Next (ordered)
 1. (108) Cold-start test 2 on the finished md set (13 files): fresh agent, new questions (not test 1's 12). Check: each gap it finds is fixed in the owning file, docs tests green.
 
+2. (118) Guards for the rules the docs no longer carry as prose (René 2026-10-23: tests, not prose). Each a small red-first change:
+   (a) `check-ledger.sh` fails on attribution lines in `git log <last tag>..HEAD`, and runs in `ci-docker` too; (b) docs test: every
+   `lesson N` cite resolves to an index line 1-88 in CONTRIBUTING § Lessons; (c) source-scan test: raw `msgpack.Unmarshal` only in
+   `SafeUnmarshal` + the 4 allowlisted flat-struct loaders (lesson 47); (d) reflection test: every msgpack-tagged wire field
+   round-trips (lesson 39); (e) golangci `forbidigo` for `sort.Slice` / `reflect.DeepEqual` in non-test code (lesson 70) and
+   `errorlint`; (f) design-rule gaps from the Opus audit: relationship-create kernel reachability, canonical hash, tombstone
+   cache-miss, rotation boundary, reflection close-sweep of every public method. Check: each guard red on a planted violation.
+
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.
 - A consumer report against v4.70.0 (ai-soc's full Flux rerun, row 106 fix; sigma O1-3 on `LowestAnsweredPins` (P1) and `RelEffectiveTimelinesByProperties`: tiered, driver = first indexed key, device before estate, segments whole, DepthAll only, ai-soc declares (type, device) rel indexes) → build only what blocks them (lesson 79 (10)).

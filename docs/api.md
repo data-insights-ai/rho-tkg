@@ -367,4 +367,4 @@ func (g *Graph) SomeMethod() { ... }
 - An **on-disk format change** goes in two releases: the announcing release already reads the new format, the next one writes it, so a rollback can always go back one release. Markers: [persistence.md](persistence.md) "Upgrading a store".
 - A bug fix that makes a door return what its documented contract already promises is not a behaviour change: it ships in a patch under CHANGELOG "Fixed". Past exceptions to the ritual are recorded in [CHANGELOG.md](CHANGELOG.md) (v4.46.0, v4.48.0, v4.51.2); there are no new ones.
 
-Version numbering (new door = minor, fix = patch) and the release checklist: [CONTRIBUTING.md](CONTRIBUTING.md) lessons 79 and 82.
+Version numbering (new door = minor, fix = patch) and the release checklist: [CONTRIBUTING.md](CONTRIBUTING.md) § Rules digest and § Release checklist.
