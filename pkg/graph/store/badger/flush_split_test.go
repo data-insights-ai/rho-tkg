@@ -2,51 +2,38 @@ package badger
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// FLUSHPART (docs/badger.md rule 1): a flush larger than one badger transaction
-// (MaxBatchCount entries or MaxBatchSize bytes) must not leave a part of itself
-// behind after a crash. The crash is simulated with the flush seam: badger
-// commits a batch's first transaction on its own as soon as the batch outgrows
-// it, so a flush that fails before its final commit has, with a plain
-// WriteBatch, already made that part durable; the store is then closed with its
-// final flush failing too (no open image, nothing requeued is written), which
-// is what a process that died after the first part leaves on disk.
+// FLUSHPART (docs/badger.md rule 1). A flush larger than one badger
+// transaction (MaxBatchCount entries or MaxBatchSize bytes) was one WriteBatch,
+// which badger splits into independent transactions: a crash between them kept
+// a random part of the flush (rows without their change-log records; after a
+// removal flush, counters above the live rows and a store that refuses to
+// open). Red on the WriteBatch flush: tasks/evidence/FLUSHPART/red.txt.
+//
+// Now a flush that fits one transaction commits as one Txn, and a larger one is
+// staged: written under the 0x0E keyspace, made the commit by a small marker
+// (which raises the store format marker), applied, unmarked and cleaned; New
+// re-applies a marked flush and discards unmarked staging. The tests crash the
+// store at each step through the stagedFlushFault seam and reopen it.
 
 // splitFlushConfig is a store whose badger transaction limit is small (8 MB
-// memtable: about 1.26 MB and 13,100 entries per transaction), so a test flush
+// memtable: about 1.26 MB and 13,107 entries per transaction), so a test flush
 // outgrows it quickly.
 func splitFlushConfig(dir string) Config {
 	return Config{Dir: dir, ChangeLog: true, MemTableSize: 8 << 20, FlushInterval: time.Hour}
 }
 
-// crashAfterSplitFlush makes the next flush die before its final commit and
-// then stops the store the way a dead process leaves it: the flush loop's final
-// flush dies the same way, and Store.Close's own final flush never runs (badger
-// is closed directly, no open image).
-func crashAfterSplitFlush(t *testing.T, bs *Store) {
-	t.Helper()
-	injected := errors.New("crash during flush")
-	bs.FailNextFlushForTest(injected)
-	if err := bs.Flush(); !errors.Is(err, injected) {
-		t.Fatalf("Flush = %v, want the injected crash", err)
-	}
-	bs.FailNextFlushForTest(injected) // for the flush loop's final flush
-	bs.closeOnce.Do(func() {
-		bs.closing.Store(true)
-		close(bs.stopCh)
-		<-bs.flushDone
-		<-bs.gcDone
-		bs.dbClosed.Store(true)
-		_ = bs.db.Close()
-	})
-}
+const splitFlushNodeCount = 8_000 // 16,000 ops (+ 8,000 change-log records): above 13,107 entries
 
 func splitFlushNodes(n int) []*types.Node {
 	nodes := make([]*types.Node, n)
@@ -57,116 +44,404 @@ func splitFlushNodes(n int) []*types.Node {
 	return nodes
 }
 
-// TestFlushAboveBatchLimitIsAllOrNothingAfterCrash pins FLUSHPART for
-// creations: a flush of 20,000 new nodes (several badger transactions' worth)
-// that dies before its final commit reopens with either every node and every
-// change-log record of the flush, or none of them, and the persisted node count
-// equals the live rows. Mutation: a plain WriteBatch (today) keeps its first
-// transaction: thousands of nodes without a single change-log record.
-func TestFlushAboveBatchLimitIsAllOrNothingAfterCrash(t *testing.T) {
-	dir := t.TempDir()
-	cfg := splitFlushConfig(dir)
-	bs, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	const n = 20_000
-	for _, node := range splitFlushNodes(n) {
+func putNodes(t *testing.T, bs *Store, nodes []*types.Node) {
+	t.Helper()
+	for _, node := range nodes {
 		if err := bs.PutNode(node); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if maxCount := int(bs.DBForTest().MaxBatchCount()); n < maxCount {
-		t.Fatalf("fixture too small: %d nodes against a %d-entry transaction limit", n, maxCount)
-	}
-	crashAfterSplitFlush(t, bs)
+}
 
-	bs, err = New(cfg)
-	if err != nil {
-		t.Fatalf("reopen after the crash: %v", err)
+// crashStop stops the store the way a dead process leaves it: the flush loop's
+// final flush dies before writing (FailNextFlushForTest), Store.Close's own
+// final flush never runs, and badger is closed directly (no open image).
+func crashStop(bs *Store) {
+	bs.FailNextFlushForTest(errors.New("crash"))
+	bs.closeOnce.Do(func() {
+		bs.closing.Store(true)
+		close(bs.stopCh)
+		<-bs.flushDone
+		<-bs.gcDone
+		bs.dbClosed.Store(true)
+		_ = bs.db.Close()
+	})
+}
+
+// failAt makes the staged flush fail right after step (a crash point when the
+// test then calls crashStop) and returns the injected error.
+func failAt(bs *Store, step stagedFlushStep) error {
+	injected := fmt.Errorf("injected failure after %v", step)
+	bs.stagedFlushFault = func(s stagedFlushStep) error {
+		if s == step {
+			return injected
+		}
+		return nil
 	}
-	t.Cleanup(func() { _ = bs.Close() })
+	return injected
+}
+
+// keysWithPrefix counts the keys of an open store under prefix.
+func keysWithPrefix(t *testing.T, bs *Store, prefix []byte) int {
+	t.Helper()
+	n := 0
+	if err := bs.DBForTest().View(func(txn *badgerv4.Txn) error {
+		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: prefix})
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			n++
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// storedFormatMarker reads the store-level format marker of an open store.
+func storedFormatMarker(t *testing.T, bs *Store) uint16 {
+	t.Helper()
+	var v uint16
+	if err := bs.DBForTest().View(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(storepkg.WireFormatVersionKey)
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error { v = uint16(val[0])<<8 | uint16(val[1]); return nil })
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+func liveNodes(t *testing.T, bs *Store, nodes []*types.Node) int {
+	t.Helper()
 	live := 0
-	for _, node := range splitFlushNodes(n) {
+	for _, node := range nodes {
 		if _, err := bs.GetNode(node.ID()); err == nil {
 			live++
 		} else if !errors.Is(err, storecontract.ErrNodeNotFound) {
 			t.Fatal(err)
 		}
 	}
-	records := 0
-	if err := bs.ForEachChange(0, func(storecontract.ChangeRecord) bool { records++; return true }); err != nil {
-		t.Fatal(err)
-	}
-	count, err := bs.NodeCount()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("after the crash: %d of %d nodes live, %d change-log records, node count %d", live, n, records, count)
-	if live != 0 && live != n {
-		t.Fatalf("a part of the flush survived: %d of %d nodes", live, n)
-	}
-	if records != live {
-		t.Fatalf("%d live nodes but %d change-log records", live, records)
-	}
-	if count != live {
-		t.Fatalf("node count %d, live rows %d", count, live)
+	return live
+}
+
+var stagedFlushSteps = []stagedFlushStep{stagedStepStaged, stagedStepMarked, stagedStepApplyWritten, stagedStepUnmarked, stagedStepCleanWritten}
+
+// TestStagedFlushCrashMatrix pins FLUSHPART at every crash point, with and
+// without SyncWrites. Creations (change log on): a flush of 8,000 new nodes
+// reopens with all of them and all their records, or none, never a part. The
+// flush is lost when the crash comes before the marker and complete from the
+// marker on. Removals (change log off: the counters are the batch's last
+// entries): a flush deleting 8,000 nodes reopens, with the node count equal to
+// the live rows. After every reopen no staging key and no marker remain, and
+// the format marker is StagedFlushStoreFormatVersion exactly when the marker
+// was committed. Mutation: the plain WriteBatch keeps a random part (red.txt);
+// recovery skipped leaves the marked flush unapplied; staging applied without a
+// marker resurrects a flush that never committed.
+func TestStagedFlushCrashMatrix(t *testing.T) {
+	for _, sync := range []bool{false, true} {
+		for _, step := range stagedFlushSteps {
+			for _, removal := range []bool{false, true} {
+				name := fmt.Sprintf("sync=%v/%v/removal=%v", sync, step, removal)
+				t.Run(name, func(t *testing.T) {
+					t.Parallel()
+					cfg := splitFlushConfig(t.TempDir())
+					cfg.SyncWrites = sync
+					cfg.ChangeLog = !removal
+					bs, err := New(cfg)
+					if err != nil {
+						t.Fatal(err)
+					}
+					nodes := splitFlushNodes(splitFlushNodeCount)
+					putNodes(t, bs, nodes)
+					before := 0
+					if removal {
+						if err := bs.Flush(); err != nil {
+							t.Fatal(err)
+						}
+						before = len(nodes)
+						for _, node := range nodes {
+							if err := bs.DeleteNode(node.ID()); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+					injected := failAt(bs, step)
+					if err := bs.Flush(); !errors.Is(err, injected) {
+						t.Fatalf("Flush = %v, want the injected failure", err)
+					}
+					crashStop(bs)
+
+					bs, err = New(cfg)
+					if err != nil {
+						t.Fatalf("reopen after a crash at %v: %v", step, err)
+					}
+					t.Cleanup(func() { _ = bs.Close() })
+					after := 0
+					if !removal {
+						after = len(nodes)
+					}
+					want := before
+					if step >= stagedStepMarked {
+						want = after
+					}
+					if got := liveNodes(t, bs, nodes); got != want {
+						t.Fatalf("crash at %v: %d of %d nodes live, want %d", step, got, len(nodes), want)
+					}
+					count, err := bs.NodeCount()
+					if err != nil {
+						t.Fatal(err)
+					}
+					if count != want {
+						t.Fatalf("node count %d, want %d", count, want)
+					}
+					if !removal {
+						records := 0
+						if err := bs.ForEachChange(0, func(storecontract.ChangeRecord) bool { records++; return true }); err != nil {
+							t.Fatal(err)
+						}
+						if records != want {
+							t.Fatalf("%d change-log records, want %d", records, want)
+						}
+					}
+					if n := keysWithPrefix(t, bs, []byte{storepkg.KeyFlushStage}); n != 0 {
+						t.Fatalf("%d staging keys left after recovery", n)
+					}
+					if n := keysWithPrefix(t, bs, storepkg.FlushStageMarkerKey); n != 0 {
+						t.Fatal("the staged-flush marker is left after recovery")
+					}
+					marker := storedFormatMarker(t, bs)
+					if staged := step >= stagedStepMarked; staged != (marker == storepkg.StagedFlushStoreFormatVersion) {
+						t.Fatalf("crash at %v: format marker %d", step, marker)
+					}
+				})
+			}
+		}
 	}
 }
 
-// TestFlushAboveBatchLimitWithRemovalsReopensAfterCrash pins FLUSHPART for
-// removals: 20,000 nodes flushed cleanly, then one flush deleting all of them
-// dies before its final commit; the store must open again with a node count
-// equal to its live rows. Without the change log the counters are the batch's
-// last entries, so they fall in the transaction the crash loses. Mutation: a
-// plain WriteBatch keeps the first transactions' deletes but not the counter,
-// the persisted count exceeds the live rows, and New refuses the store
-// (reconcilePersistedCounter).
-func TestFlushAboveBatchLimitWithRemovalsReopensAfterCrash(t *testing.T) {
-	dir := t.TempDir()
-	cfg := splitFlushConfig(dir)
-	cfg.ChangeLog = false
+// TestStagedApplyFailureFailsClosed pins the rule after the marker: an apply
+// that fails without a crash is never requeued (the marker already promises
+// the staged values, and a requeued flush could later be overwritten by a
+// stale re-apply); the store fails closed and the next open applies the flush.
+// Mutation: requeue after the marker lets a write through, and the reopen's
+// re-apply of the staged value hides it.
+func TestStagedApplyFailureFailsClosed(t *testing.T) {
+	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const n = 20_000
-	nodes := splitFlushNodes(n)
-	for _, node := range nodes {
-		if err := bs.PutNode(node); err != nil {
-			t.Fatal(err)
+	nodes := splitFlushNodes(splitFlushNodeCount)
+	putNodes(t, bs, nodes)
+	injected := failAt(bs, stagedStepApplyWritten)
+	if err := bs.Flush(); !errors.Is(err, injected) {
+		t.Fatalf("Flush = %v, want the injected failure", err)
+	}
+	newer := types.NewNode(nodes[0].ID(), 7, nil)
+	_ = newer.SetProperty("k", int64(-1))
+	if err := bs.PutNode(newer); err == nil {
+		t.Fatal("a write after a failed staged apply was accepted; the store must fail closed")
+	}
+	_ = bs.Close()
+
+	bs, err = New(cfg)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	if got := liveNodes(t, bs, nodes); got != len(nodes) {
+		t.Fatalf("%d of %d nodes live after the reopen applied the flush", got, len(nodes))
+	}
+	n, err := bs.GetNode(nodes[0].ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := n.GetProperty("k"); v != int64(0) {
+		t.Fatalf("node 0 k = %v, want the staged 0", v)
+	}
+}
+
+// TestStagedFlushRecoveryCountMismatchFailsClosed: a marked flush whose
+// staging lost an entry (only corruption can do that: the marker commits after
+// the staging) fails the open instead of applying a part. Mutation: apply what
+// is there.
+func TestStagedFlushRecoveryCountMismatchFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	cfg := splitFlushConfig(dir)
+	bs, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putNodes(t, bs, splitFlushNodes(splitFlushNodeCount))
+	injected := failAt(bs, stagedStepMarked)
+	if err := bs.Flush(); !errors.Is(err, injected) {
+		t.Fatalf("Flush = %v, want the injected failure", err)
+	}
+	crashStop(bs)
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyFlushStage}})
+		defer it.Close()
+		it.Rewind()
+		if !it.Valid() {
+			return errors.New("no staging key to remove")
 		}
+		return txn.Delete(it.Item().KeyCopy(nil))
+	})
+	if bs, err := New(cfg); err == nil {
+		_ = bs.Close()
+		t.Fatal("New applied a staged flush that lost an entry")
+	}
+}
+
+// TestStagedFlushAbortedAttemptsDoNotMix: two flushes that fail before their
+// markers leave staging of two attempts; a later flush that succeeds, and the
+// reopen, keep exactly the final state and no staging. Mutation: a reused
+// sequence number lets recovery apply an older attempt's entries.
+func TestStagedFlushAbortedAttemptsDoNotMix(t *testing.T) {
+	cfg := splitFlushConfig(t.TempDir())
+	bs, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes := splitFlushNodes(splitFlushNodeCount)
+	putNodes(t, bs, nodes)
+	for attempt := 0; attempt < 2; attempt++ {
+		injected := failAt(bs, stagedStepStaged)
+		if err := bs.Flush(); !errors.Is(err, injected) {
+			t.Fatalf("attempt %d: Flush = %v", attempt, err)
+		}
+	}
+	bs.stagedFlushFault = nil
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if n := keysWithPrefix(t, bs, []byte{storepkg.KeyFlushStage}); n != 0 {
+		t.Fatalf("%d staging keys left after a completed flush", n)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	bs, err = New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	if got := liveNodes(t, bs, nodes); got != len(nodes) {
+		t.Fatalf("%d of %d nodes live", got, len(nodes))
+	}
+}
+
+// TestStagedFlushReadOnlyOpenNeedsRecovery: a read-only open of a store with a
+// pending marker cannot apply it and fails with an error matching badger's
+// ErrTruncateNeeded (the tiered store's recovery probe then falls through to a
+// writable open); the writable open recovers. Mutation: a read-only open that
+// ignores the marker answers without the committed flush.
+func TestStagedFlushReadOnlyOpenNeedsRecovery(t *testing.T) {
+	cfg := splitFlushConfig(t.TempDir())
+	bs, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes := splitFlushNodes(splitFlushNodeCount)
+	putNodes(t, bs, nodes)
+	injected := failAt(bs, stagedStepMarked)
+	if err := bs.Flush(); !errors.Is(err, injected) {
+		t.Fatalf("Flush = %v, want the injected failure", err)
+	}
+	crashStop(bs)
+	ro := cfg
+	ro.ReadOnly = true
+	if bs, err := New(ro); err == nil {
+		_ = bs.Close()
+		t.Fatal("a read-only open of a store with a pending staged flush succeeded")
+	} else if !errors.Is(err, badgerv4.ErrTruncateNeeded) {
+		t.Fatalf("read-only open = %v, want an error matching badger's ErrTruncateNeeded", err)
+	}
+	bs, err = New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	if got := liveNodes(t, bs, nodes); got != len(nodes) {
+		t.Fatalf("%d of %d nodes live after recovery", got, len(nodes))
+	}
+}
+
+// TestClearDropsStagingKeys: Clear removes staging leftovers with the data,
+// with and without the change log. Mutation: 0x0E missing from Clear's drop
+// list.
+func TestClearDropsStagingKeys(t *testing.T) {
+	for _, changeLog := range []bool{true, false} {
+		t.Run(fmt.Sprintf("changeLog=%v", changeLog), func(t *testing.T) {
+			cfg := splitFlushConfig(t.TempDir())
+			cfg.ChangeLog = changeLog
+			bs, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = bs.Close() })
+			putNodes(t, bs, splitFlushNodes(splitFlushNodeCount))
+			injected := failAt(bs, stagedStepStaged)
+			if err := bs.Flush(); !errors.Is(err, injected) {
+				t.Fatalf("Flush = %v, want the injected failure", err)
+			}
+			bs.stagedFlushFault = nil
+			if n := keysWithPrefix(t, bs, []byte{storepkg.KeyFlushStage}); n == 0 {
+				t.Fatal("fixture left no staging keys")
+			}
+			if err := bs.Clear(); err != nil {
+				t.Fatal(err)
+			}
+			if n := keysWithPrefix(t, bs, []byte{storepkg.KeyFlushStage}); n != 0 {
+				t.Fatalf("Clear left %d staging keys", n)
+			}
+		})
+	}
+}
+
+// TestStagedFlushFormatMarker: a flush under the transaction limit leaves the
+// format marker as it was and writes no staging; a staged flush raises it to
+// StagedFlushStoreFormatVersion, which a binary reading only up to the previous
+// version refuses at open. Mutation: the marker not raised lets an older rho
+// open the store, ignore a pending marker and keep writing.
+func TestStagedFlushFormatMarker(t *testing.T) {
+	cfg := splitFlushConfig(t.TempDir())
+	bs, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutNode(types.NewNode(types.NodeID(snowflake.ID(42)), 7, nil)); err != nil {
+		t.Fatal(err)
 	}
 	if err := bs.Flush(); err != nil {
 		t.Fatal(err)
 	}
-	for _, node := range nodes {
-		if err := bs.DeleteNode(node.ID()); err != nil {
-			t.Fatal(err)
-		}
+	if small := storedFormatMarker(t, bs); small >= storepkg.StagedFlushStoreFormatVersion {
+		t.Fatalf("a flush under the limit raised the marker to %d", small)
 	}
-	crashAfterSplitFlush(t, bs)
-
-	bs, err = New(cfg)
-	if err != nil {
-		t.Fatalf("reopen after a crashed removal flush: %v", err)
+	if n := keysWithPrefix(t, bs, []byte{storepkg.KeyFlushStage}); n != 0 {
+		t.Fatalf("a flush under the limit wrote %d staging keys", n)
 	}
-	t.Cleanup(func() { _ = bs.Close() })
-	live := 0
-	for _, node := range nodes {
-		if _, err := bs.GetNode(node.ID()); err == nil {
-			live++
-		}
-	}
-	count, err := bs.NodeCount()
-	if err != nil {
+	putNodes(t, bs, splitFlushNodes(splitFlushNodeCount))
+	if err := bs.Flush(); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("after the crash: %d of %d nodes live, node count %d", live, n, count)
-	if live != 0 && live != n {
-		t.Fatalf("a part of the removal flush survived: %d of %d nodes live", live, n)
+	if got := storedFormatMarker(t, bs); got != storepkg.StagedFlushStoreFormatVersion {
+		t.Fatalf("after a staged flush the marker is %d, want %d", got, storepkg.StagedFlushStoreFormatVersion)
 	}
-	if count != live {
-		t.Fatalf("node count %d, live rows %d", count, live)
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	old := maxReadableStoreFormatVersion
+	maxReadableStoreFormatVersion = storepkg.StagedFlushStoreFormatVersion - 1
+	t.Cleanup(func() { maxReadableStoreFormatVersion = old })
+	if bs, err := New(cfg); err == nil {
+		_ = bs.Close()
+		t.Fatal("an older reader opened a store with a staged flush")
+	} else if !errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
+		t.Fatalf("older reader: %v, want ErrWireFormatVersionUnsupported", err)
 	}
 }
