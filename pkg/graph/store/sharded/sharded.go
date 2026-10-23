@@ -448,14 +448,29 @@ func slotOf(id snowflake.ID) uint8 {
 }
 
 // shardForID resolves the shard owning id, or ErrSlotNotLocal if the slot is
-// not claimed by this store.
+// not claimed by this store. A zero or negative id is rejected with
+// ErrInvalidStoreMutation BEFORE routing (a negative id decomposes to a slot like
+// any other, so routing first would answer ErrSlotNotLocal or reach a shard
+// depending on which slots this store claims — the contract is one answer).
 func (s *Store) shardForID(id snowflake.ID) (*badger.Store, error) {
+	if err := validRoutingID(id); err != nil {
+		return nil, err
+	}
 	slot := slotOf(id)
 	idx, ok := s.catalog.shardIndexForSlot(slot)
 	if !ok {
 		return nil, fmt.Errorf("%w: slot %d (id %d)", ErrSlotNotLocal, slot, id)
 	}
 	return s.shards[idx], nil
+}
+
+// validRoutingID is the shared pre-routing ID check of every explicit-ID door:
+// a zero or negative id is ErrInvalidStoreMutation in every backend.
+func validRoutingID(id snowflake.ID) error {
+	if id <= 0 {
+		return fmt.Errorf("%w: non-positive entity ID %d", ErrInvalidStoreMutation, id)
+	}
+	return nil
 }
 
 func (s *Store) shardForNodeID(id types.NodeID) (*badger.Store, error) {
