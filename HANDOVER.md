@@ -19,12 +19,9 @@ from memory.
 **Opus (builder), where things stand:**
 - **FLUSHPART (Now, a patch).** A flush above badger's transaction limit (about 10 MB / 104,855 entries) is several
   badger transactions; rho's flush adds its ops in map order, then counters, then change-log records, and calls it
-  atomic (docs/badger.md rule 1). Tests written, uncommitted: `pkg/graph/store/badger/flush_split_test.go`
-  (`TestFlushAboveBatchLimitIsAllOrNothingAfterCrash`, `...WithRemovalsReopensAfterCrash`; 8 MB memtable so the limit
-  is ~13,100 entries; crash = `FailNextFlushForTest` on the flush and on Close's final flush). They are NOT red yet: all
-  20,000 nodes and records survive. Cause not found; next check the durable state right after the failing `Flush`
-  (`DBForTest`), whether the requeued ops are written by another path before Close, and the write buffer's self-flush
-  (`MaxPendingWrites` 100,000, `badgerstore_flush.go:111`). Planned fix (not yet reviewed): commit a flush that fits in
+  atomic (docs/badger.md rule 1). Tests in `pkg/graph/store/badger/flush_split_test.go` are red (step 1 of the FLUSHPART plan in todo): 7,582 of
+  20,000 change-log records lost after a crash at a split; without the change log a crashed removal flush leaves a store
+  that refuses to open. Planned fix (not yet reviewed): commit a flush that fits in
   one badger `Txn` as today; on `ErrTxnTooBig`, stage it under a private key prefix, commit a small marker, apply, drop
   the marker, delete the staging keys; at open, marker present = re-apply, absent = discard staging. Have Fable review
   the design before building.

@@ -1,0 +1,10 @@
+=== RUN   TestFlushAboveBatchLimitIsAllOrNothingAfterCrash
+    flush_split_test.go:105: after the crash: 20000 of 20000 nodes live, 12418 change-log records, node count 20000
+    flush_split_test.go:110: 20000 live nodes but 12418 change-log records
+--- FAIL: TestFlushAboveBatchLimitIsAllOrNothingAfterCrash (0.58s)
+=== RUN   TestFlushAboveBatchLimitWithRemovalsReopensAfterCrash
+    flush_split_test.go:152: reopen after a crashed removal flush: graph: load indexes: graph: invalid store mutation: node counter 20000 does not match 4 live rows
+--- FAIL: TestFlushAboveBatchLimitWithRemovalsReopensAfterCrash (0.60s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.188s
+FAIL

@@ -14,8 +14,11 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ### FLUSHPART plan
 
-1. [ ] The tests in `pkg/graph/store/badger/flush_split_test.go` fail on today's code: find out why the simulated crash
-   leaves no partial flush (they pass now), and fix the simulation.
+1. [x] The tests in `pkg/graph/store/badger/flush_split_test.go` fail on today's code (evidence
+   `tasks/evidence/FLUSHPART/red.txt`): 20,000 nodes live with 12,418 of 20,000 change-log records (7,582 lost for
+   good); without the change log a crashed removal flush leaves "node counter 20000 does not match 4 live rows" and the
+   store refuses to open. The first simulation passed because Store.Close's flush loop ran a final flush that consumed
+   the injected failure; the crash now stops the store without any final flush.
 2. [ ] Fable reviews the fix design: a flush that fits in one badger transaction commits as today; a larger one is staged
    under a private key prefix, made visible by a small marker, applied, then cleaned up; at open a marker means
    re-apply, no marker means discard the staging.
