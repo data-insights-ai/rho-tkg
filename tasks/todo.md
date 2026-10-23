@@ -19,9 +19,6 @@ Each item: one sentence, then when it is done and what it waits for.
   below are ticked and released. Waits for: FLUSHPART; step 1 with option (b), pre-creating `reference/` and
   `archive/` only for a new store (René 23 Oct), from branch `shard-step1`.
 
-- **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
-  fact. Done when: René has decided per layer. Waits for: CHAIN.
-
 ### SHARD plan
 
 The main agent builds each step (red test, change, tests green), the Fable agent reviews it and monitors the plan; a
@@ -49,6 +46,9 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 10. [ ] The global index on the fast volume, unique keys first (keyed event labels), then label and property
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
     its data cleanup.
+
+- **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
+  fact. Done when: René has decided per layer. Waits for: CHAIN.
 
 ## Waiting
 
