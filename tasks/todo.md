@@ -8,9 +8,10 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 - **BADGER** — René wants a full analysis of badger v4.9.2 (its whole API, configuration and how it stores and reads
-  data) and of how rho should integrate it correctly and efficiently, before SHARD builds on it. Done when: the findings
-  and rho's integration rules are in `docs/architecture.md`, sent to the Fable agent, and each change they call for is
-  a todo item. Waits for: nothing.
+  data) and of how rho should integrate it correctly and efficiently, before SHARD builds on it. Done when: the whole
+  source is read, the findings and rho's integration rules are in a new `docs/badger.md` (René's explicit request, listed
+  in README § Documentation), the Fable agent has reviewed it, and each change it calls for is a todo item. Waits for:
+  nothing.
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Waits for: nothing.
