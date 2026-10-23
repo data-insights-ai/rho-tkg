@@ -9,7 +9,7 @@ import (
 )
 
 // TestReadableCaps: this binary reads every row format a feature writes (fv
-// 6) and every store marker (8). Catches a merge that keeps one feature's cap
+// 6) and every store marker (9). Catches a merge that keeps one feature's cap
 // and refuses the other feature's rows or stores.
 func TestReadableCaps(t *testing.T) {
 	if maxReadableWireFormatVersion != KeptValidToWireFormatVersion || KeptValidToWireFormatVersion != 6 ||
@@ -17,9 +17,10 @@ func TestReadableCaps(t *testing.T) {
 		t.Fatalf("row cap %d (kept valid-to %d, void %d, binary hash %d, retracted %d); want 6 over 6/5/4/3",
 			maxReadableWireFormatVersion, KeptValidToWireFormatVersion, VoidWireFormatVersion, BinaryHashWireFormatVersion, RetractedWireFormatVersion)
 	}
-	if MaxReadableStoreFormatVersion != KeptValidToStoreFormatVersion || KeptValidToStoreFormatVersion != 8 ||
-		UntimedUnboundedStoreFormatVersion != 7 || VoidStoreFormatVersion != 6 || ElementsStoreFormatVersion != 5 || BinaryHashStoreFormatVersion != 4 {
-		t.Fatalf("store cap %d; want 8 over kept valid-to 8, untimed unbounded 7, void 6, elements 5, binary hash 4", MaxReadableStoreFormatVersion)
+	if MaxReadableStoreFormatVersion != StagedFlushStoreFormatVersion || StagedFlushStoreFormatVersion != 9 ||
+		KeptValidToStoreFormatVersion != 8 || UntimedUnboundedStoreFormatVersion != 7 || VoidStoreFormatVersion != 6 ||
+		ElementsStoreFormatVersion != 5 || BinaryHashStoreFormatVersion != 4 {
+		t.Fatalf("store cap %d; want 9 over staged flush 9, kept valid-to 8, untimed unbounded 7, void 6, elements 5, binary hash 4", MaxReadableStoreFormatVersion)
 	}
 }
 

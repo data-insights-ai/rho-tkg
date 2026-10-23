@@ -222,6 +222,14 @@ func (bs *Store) flush() error {
 // be an RLock and this function releases it after the snapshot. With true the
 // caller retains responsibility for unlocking.
 func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
+	// A staged flush that committed but was not applied owns the store until
+	// the next open: no other flush may commit after its marker.
+	if err := bs.stagedFailureErr(); err != nil {
+		if !keepIndexLock {
+			bs.idxMu.RUnlock()
+		}
+		return err
+	}
 	// Step 1: Atomically snapshot dirty cache versions, pending ops, pending
 	// change-log records, and counters. idxMu.RLock blocks writers (who hold
 	// idxMu.Lock) during this phase, ensuring no writer is between cache.Put and
@@ -291,83 +299,58 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		floorInBatch = false
 	}
 
-	// Step 2: Write all ops + counters + change-log records to Badger via one
-	// WriteBatch (blind writes, no OCC).
-	wb := bs.db.NewWriteBatch()
-	defer wb.Cancel() // no-op if Flush already called
-
+	// Step 2: commit all ops + counters + change-log records atomically
+	// (FLUSHPART, docs/badger.md rule 1): one badger transaction when they fit,
+	// else a staged flush (badgerstore_flush_staged.go). A crash leaves the
+	// flush whole or absent, never a part (a split WriteBatch kept a random part).
+	entries := make([]flushEntry, 0, len(ops)+len(logs)+4)
 	if floorInBatch {
-		if err := wb.SetEntry(commitFloorEntry(floor)); err != nil {
-			requeue()
-			return fmt.Errorf("graph: write batch set commit floor: %w", err)
-		}
+		e := commitFloorEntry(floor)
+		entries = append(entries, flushEntry{key: e.Key, value: e.Value})
 	}
 	for _, op := range ops {
-		switch op.opType {
-		case writeOpSet:
-			if err := wb.SetEntry(badgerv4.NewEntry(op.key, op.value)); err != nil {
-				requeue()
-				return fmt.Errorf("graph: write batch set: %w", err)
-			}
-		case writeOpDelete:
-			if err := wb.Delete(op.key); err != nil {
-				requeue()
-				return fmt.Errorf("graph: write batch delete: %w", err)
-			}
-		}
+		entries = append(entries, flushEntry{key: op.key, value: op.value, del: op.opType == writeOpDelete})
 	}
-
-	// Include counters in the same atomic batch — no TOCTOU drift on crash.
+	// Counters ride the same commit as the rows they count.
 	ncBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(ncBuf, uint64(nc)) // #nosec G115 — intentional int64→uint64 for binary encoding
-	if err := wb.SetEntry(badgerv4.NewEntry(counterNodeCountKey, ncBuf)); err != nil {
-		requeue()
-		return fmt.Errorf("graph: write batch set counter: %w", err)
-	}
 	rcBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(rcBuf, uint64(rc)) // #nosec G115 — intentional int64→uint64 for binary encoding
-	if err := wb.SetEntry(badgerv4.NewEntry(counterRelCountKey, rcBuf)); err != nil {
-		requeue()
-		return fmt.Errorf("graph: write batch set counter: %w", err)
-	}
-
-	// Change-log records ride the SAME batch as the data they describe and the
-	// counters, so a record commits atomically with its mutation. Sorted by LSN
-	// so a requeue interleave can never persist them out of order; LastLSNKey
-	// captures the highest LSN in this batch (crash-consistent with the records).
+	entries = append(entries, flushEntry{key: counterNodeCountKey, value: ncBuf}, flushEntry{key: counterRelCountKey, value: rcBuf})
+	// Change-log records ride the same commit as the data they describe and the
+	// counters. Sorted by LSN so a requeue interleave can never persist them out
+	// of order; LastLSNKey carries the highest LSN of this flush.
 	if len(logs) > 0 {
 		sort.Slice(logs, func(i, j int) bool { return logs[i].lsn < logs[j].lsn })
 		var maxLSN uint64
 		for _, r := range logs {
-			if err := wb.SetEntry(badgerv4.NewEntry(storepkg.ChangeLogKey(r.lsn), r.value)); err != nil {
-				requeue()
-				return fmt.Errorf("graph: write batch set change-log: %w", err)
-			}
+			entries = append(entries, flushEntry{key: storepkg.ChangeLogKey(r.lsn), value: r.value})
 			if r.lsn > maxLSN {
 				maxLSN = r.lsn
 			}
 		}
 		lsnBuf := make([]byte, 8)
 		binary.BigEndian.PutUint64(lsnBuf, maxLSN)
-		if err := wb.SetEntry(badgerv4.NewEntry(storepkg.LastLSNKey, lsnBuf)); err != nil {
-			requeue()
-			return fmt.Errorf("graph: write batch set lsn watermark: %w", err)
-		}
+		entries = append(entries, flushEntry{key: storepkg.LastLSNKey, value: lsnBuf})
 	}
-
-	// Guard against blocking forever: Badger v4's WriteBatch.Flush() hangs
-	// when called after db.Close() (WaitForMark blocks on a stopped oracle).
+	// Guard against blocking forever: a Badger v4 commit hangs when called
+	// after db.Close() (WaitForMark blocks on a stopped oracle).
 	if bs.dbClosed.Load() {
-		wb.Cancel()
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", badgerv4.ErrDBClosed)
 	}
-	if injected := bs.failNextFlush.Swap(nil); injected != nil { // test seam
-		wb.Cancel()
+	if injected := bs.failNextFlush.Swap(nil); injected != nil { // test seam: the flush dies before writing
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", *injected)
 	}
-	if err := wb.Flush(); err != nil {
+	if state, err := bs.commitFlushEntries(entries); err != nil {
+		if state == flushCommittedNotApplied {
+			// Committed by its marker: never requeued. The store fails closed
+			// (bs.flushing stays, so nothing reads around the rows) and the
+			// next open applies the flush.
+			bs.failStagedFlush(err)
+			return fmt.Errorf("graph: write batch flush: %w", err)
+		}
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", err)
 	}

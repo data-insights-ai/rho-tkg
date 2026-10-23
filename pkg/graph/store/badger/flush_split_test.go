@@ -3,6 +3,7 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func splitFlushConfig(dir string) Config {
 	return Config{Dir: dir, ChangeLog: true, MemTableSize: 8 << 20, FlushInterval: time.Hour}
 }
 
-const splitFlushNodeCount = 8_000 // 16,000 ops (+ 8,000 change-log records): above 13,107 entries
+const splitFlushNodeCount = 16_000 // creations or deletions of 16,000 nodes: above 13,107 entries
 
 func splitFlushNodes(n int) []*types.Node {
 	nodes := make([]*types.Node, n)
@@ -42,6 +43,19 @@ func splitFlushNodes(n int) []*types.Node {
 		_ = nodes[i].SetProperty("k", int64(i))
 	}
 	return nodes
+}
+
+// inOneFlush runs writes and commits them as one flush: under SyncWrites
+// (rho flushes per mutation) inside a group commit, as ai-soc's commit groups
+// do, else buffered and flushed by Flush. It returns that flush's error.
+func inOneFlush(bs *Store, sync bool, writes func()) error {
+	if sync {
+		bs.BeginGroupCommit()
+		writes()
+		return bs.EndGroupCommit()
+	}
+	writes()
+	return bs.Flush()
 }
 
 func putNodes(t *testing.T, bs *Store, nodes []*types.Node) {
@@ -127,7 +141,13 @@ func liveNodes(t *testing.T, bs *Store, nodes []*types.Node) int {
 	return live
 }
 
-var stagedFlushSteps = []stagedFlushStep{stagedStepStaged, stagedStepMarked, stagedStepApplyWritten, stagedStepUnmarked, stagedStepCleanWritten}
+var stagedFlushSteps = []stagedFlushStep{stagedStepStaged, stagedStepMarked, stagedStepApplyWritten, stagedStepApplied, stagedStepUnmarked, stagedStepCleanWritten}
+
+// flushReportsFailure is whether a fault after step makes the flush fail: up
+// to the unmark it does (before the marker it is requeued, after it the store
+// fails closed); after the unmark the flush is applied and only its clean-up
+// is left, so it succeeds.
+func flushReportsFailure(step stagedFlushStep) bool { return step < stagedStepUnmarked }
 
 // TestStagedFlushCrashMatrix pins FLUSHPART at every crash point, with and
 // without SyncWrites. Creations (change log on): a flush of 8,000 new nodes
@@ -155,22 +175,29 @@ func TestStagedFlushCrashMatrix(t *testing.T) {
 						t.Fatal(err)
 					}
 					nodes := splitFlushNodes(splitFlushNodeCount)
-					putNodes(t, bs, nodes)
+					write := func() { putNodes(t, bs, nodes) }
 					before := 0
 					if removal {
-						if err := bs.Flush(); err != nil {
+						if err := inOneFlush(bs, sync, write); err != nil {
 							t.Fatal(err)
 						}
 						before = len(nodes)
-						for _, node := range nodes {
-							if err := bs.DeleteNode(node.ID()); err != nil {
-								t.Fatal(err)
+						write = func() {
+							for _, node := range nodes {
+								if err := bs.DeleteNode(node.ID()); err != nil {
+									t.Fatal(err)
+								}
 							}
 						}
 					}
+					markerBefore := storedFormatMarker(t, bs)
 					injected := failAt(bs, step)
-					if err := bs.Flush(); !errors.Is(err, injected) {
-						t.Fatalf("Flush = %v, want the injected failure", err)
+					err = inOneFlush(bs, sync, write)
+					if flushReportsFailure(step) && !errors.Is(err, injected) {
+						t.Fatalf("the flush = %v, want the injected failure", err)
+					}
+					if !flushReportsFailure(step) && err != nil {
+						t.Fatalf("the flush = %v; it applied, only its clean-up failed", err)
 					}
 					crashStop(bs)
 
@@ -212,9 +239,12 @@ func TestStagedFlushCrashMatrix(t *testing.T) {
 					if n := keysWithPrefix(t, bs, storepkg.FlushStageMarkerKey); n != 0 {
 						t.Fatal("the staged-flush marker is left after recovery")
 					}
-					marker := storedFormatMarker(t, bs)
-					if staged := step >= stagedStepMarked; staged != (marker == storepkg.StagedFlushStoreFormatVersion) {
-						t.Fatalf("crash at %v: format marker %d", step, marker)
+					wantMarker := markerBefore
+					if step >= stagedStepMarked {
+						wantMarker = storepkg.StagedFlushStoreFormatVersion
+					}
+					if marker := storedFormatMarker(t, bs); marker != wantMarker {
+						t.Fatalf("crash at %v: format marker %d, want %d", step, marker, wantMarker)
 					}
 				})
 			}
@@ -242,8 +272,8 @@ func TestStagedApplyFailureFailsClosed(t *testing.T) {
 	}
 	newer := types.NewNode(nodes[0].ID(), 7, nil)
 	_ = newer.SetProperty("k", int64(-1))
-	if err := bs.PutNode(newer); err == nil {
-		t.Fatal("a write after a failed staged apply was accepted; the store must fail closed")
+	if err := bs.ReplaceNode(newer); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("a write after a failed staged apply = %v, want ErrStoreClosed (the store fails closed)", err)
 	}
 	_ = bs.Close()
 
@@ -290,9 +320,13 @@ func TestStagedFlushRecoveryCountMismatchFailsClosed(t *testing.T) {
 		}
 		return txn.Delete(it.Item().KeyCopy(nil))
 	})
-	if bs, err := New(cfg); err == nil {
+	bs, err = New(cfg)
+	if err == nil {
 		_ = bs.Close()
 		t.Fatal("New applied a staged flush that lost an entry")
+	}
+	if !errors.Is(err, ErrInvalidStoreMutation) || !strings.Contains(err.Error(), "its marker says") {
+		t.Fatalf("New = %v, want the staged flush's entry-count refusal", err)
 	}
 }
 
@@ -443,5 +477,39 @@ func TestStagedFlushFormatMarker(t *testing.T) {
 		t.Fatal("an older reader opened a store with a staged flush")
 	} else if !errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
 		t.Fatalf("older reader: %v, want ErrWireFormatVersionUnsupported", err)
+	}
+}
+
+// TestStagedFlushKeepsFormatMarkerRaisedMidFlush: a feature raises the format
+// marker (here to KeptValidTo, 8) while a staged flush runs, after its snapshot:
+// the raise's write lands in the next flush. The staged flush's marker
+// transaction stores 9; the next flush must not lower it to 8 (an older
+// release would then open a store whose staged-flush marker it ignores).
+// Mutation: the flush writes the raise's own value instead of the tracker's.
+func TestStagedFlushKeepsFormatMarkerRaisedMidFlush(t *testing.T) {
+	cfg := splitFlushConfig(t.TempDir())
+	bs, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	putNodes(t, bs, splitFlushNodes(splitFlushNodeCount))
+	bs.stagedFlushFault = func(s stagedFlushStep) error {
+		if s == stagedStepBegin { // after the snapshot, before the staged flush raises the tracker
+			bs.wbMu.Lock()
+			bs.raiseFormatMarkerPendingLocked(storepkg.KeptValidToStoreFormatVersion)
+			bs.wbMu.Unlock()
+		}
+		return nil
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	bs.stagedFlushFault = nil
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if got := storedFormatMarker(t, bs); got != storepkg.StagedFlushStoreFormatVersion {
+		t.Fatalf("format marker %d after a mid-flush raise to %d, want %d", got, storepkg.KeptValidToStoreFormatVersion, storepkg.StagedFlushStoreFormatVersion)
 	}
 }

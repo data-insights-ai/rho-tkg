@@ -95,9 +95,19 @@ const UntimedUnboundedStoreFormatVersion = 7
 // written; every other store keeps its marker. 4 to 7 are taken, so this is 8.
 const KeptValidToStoreFormatVersion = 8
 
+// StagedFlushStoreFormatVersion is the store-level marker of a directory that
+// has (or had) a staged flush (FLUSHPART: a flush larger than one badger
+// transaction, written under KeyFlushStage and committed by
+// FlushStageMarkerKey). A binary that predates it ignores both, would lose a
+// pending staged flush and keep writing, and a newer binary would then
+// re-apply the stale staged values: it must refuse the store. Raised in the
+// transaction that commits the first staged flush; every other store keeps its
+// marker. 4 to 8 are taken, so this is 9.
+const StagedFlushStoreFormatVersion = 9
+
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = KeptValidToStoreFormatVersion
+const MaxReadableStoreFormatVersion = StagedFlushStoreFormatVersion
 
 // writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every

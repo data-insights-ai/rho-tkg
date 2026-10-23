@@ -749,7 +749,16 @@ type Store struct {
 	// Test seams (nil in production): failNextFlush fails the next WriteBatch commit
 	// through the real requeue path; testHookDurableAfterCheckOpen runs in DurableFlush
 	// after checkOpen so a test can interleave Close.
-	failNextFlush                 atomic.Pointer[error]
+	failNextFlush atomic.Pointer[error]
+	// stagedFlushFault (tests only) fails a staged flush right after the step
+	// it names (badgerstore_flush_staged.go).
+	stagedFlushFault func(stagedFlushStep) error
+	// stagedFailure is set when a staged flush committed but could not be
+	// applied: the store fails closed until the next open applies it.
+	stagedFailure atomic.Pointer[error]
+	// stageSeq is the last staging sequence of this session (nextStageSeq).
+	stageSeq                      atomic.Uint64
+	stageSeqOnce                  sync.Once
 	failNextSync                  atomic.Pointer[error]
 	testHookDurableAfterCheckOpen func()
 
@@ -886,6 +895,12 @@ func New(cfg Config) (*Store, error) {
 	// would conflate with corruption.
 	formatMarker, err := verifyAndStampWireFormatVersion(db, cfg.ReadOnly)
 	if err != nil {
+		_ = db.Close() // best-effort cleanup
+		return nil, err
+	}
+	// A staged flush that committed before a crash is applied (or uncommitted
+	// staging deleted) before any row, counter or index is read.
+	if err := recoverStagedFlush(db, cfg.ReadOnly); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
@@ -2244,6 +2259,9 @@ func (bs *Store) checkOpen() error {
 	}
 	if bs.dbClosed.Load() {
 		return ErrStoreClosed
+	}
+	if err := bs.stagedFailureErr(); err != nil {
+		return err
 	}
 	return nil
 }

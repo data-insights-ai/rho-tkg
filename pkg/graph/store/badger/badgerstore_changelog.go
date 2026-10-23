@@ -310,6 +310,7 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 		[]byte{storepkg.KeyOut}, []byte{storepkg.KeyIn},
 		[]byte{storepkg.KeyHistNode}, []byte{storepkg.KeyHistRel},
 		[]byte{storepkg.KeyChangeLog}, []byte{storepkg.KeyExAdj},
+		[]byte{storepkg.KeyFlushStage},
 	); err != nil {
 		return fmt.Errorf("graph: clear drop data: %w", err)
 	}

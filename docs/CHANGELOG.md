@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **FLUSHPART**: a badger flush is all-or-nothing at any size (`docs/badger.md` rule 1). A flush above one badger
+  transaction (about 10 MB or 104,855 entries at the default 64 MB memtable; ai-soc commit groups of up to 99,999 ops
+  reach it) was one `WriteBatch`, which badger splits into independent transactions: a crash between them kept a
+  random part of the flush (rows without their change-log records; after a removal flush, counters above the live
+  rows and a store that refused to open, `tasks/evidence/FLUSHPART/red.txt`). A flush that fits now commits as one
+  badger transaction; a larger one is staged under the new `0x0E` keyspace, committed by the marker `flush_stage`,
+  applied, unmarked and cleaned, and `New` re-applies a committed staged flush before it reads a row (a read-only open
+  with one fails matching badger's `ErrTruncateNeeded`, so the tiered recovery probe opens it writable). A staged
+  flush whose apply or unmark fails after its marker fails the store closed (`ErrStoreClosed` at every door) until
+  the next open applies it; it is never requeued. Tested by crashing at every step (with and without `SyncWrites`,
+  creations, replacements and removals) against an uncrashed store's index digest and change log, failures inside
+  recovery, damaged staging, readers during the flush and a tiered warm shard; 17 of 18 code mutations fail a test
+  (the 18th, `last_lsn` left out of the flush, has no effect while change-log records are never deleted).
+  - **One-way door**: the first staged flush raises the store format marker to **9**; v4.74.0 and earlier refuse such
+    a store at open (`ErrWireFormatVersionUnsupported`). Stores whose flushes all fit one transaction keep their
+    marker. Upgrade every reader of a store before its writer.
+  - **Cost**: a staged flush writes its entries about three times (staging, apply, staging delete); flushes under the
+    limit cost what they did.
+
 ### Documentation
 
 - **BADGER**: `docs/badger.md` (René's request): badger v4.9.2 read from its source and measured

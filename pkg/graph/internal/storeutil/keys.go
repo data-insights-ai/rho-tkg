@@ -33,7 +33,12 @@ const (
 	KeyHistRel   byte = 0x08 // + 8B relID + 8B version               = 17B
 	KeyChangeLog byte = 0x09 // + 8B LSN                               =  9B
 	KeyExAdj     byte = 0x0D // + 8B node + 1B dir + 8B rel            = 18B
-	KeyMeta      byte = 0x0F // + variable (rare, only registry keys)
+	// KeyFlushStage holds a staged flush (FLUSHPART, docs/badger.md rule 1):
+	// + 8B staging sequence + the entry's own key; value = 1B op + value.
+	// Live only between a staged flush's start and its clean-up; recovery at
+	// open applies or deletes it. No reader iterates it.
+	KeyFlushStage byte = 0x0E
+	KeyMeta       byte = 0x0F // + variable (rare, only registry keys)
 )
 
 // Key size constants — byte counts for the Badger key layout.
@@ -283,6 +288,10 @@ var TemporalIndexOnDiskBuiltV1Key = MetaKey("temporal_index_on_disk_built")
 // a crash the marker and the maximum KeyChangeLog key are always consistent.
 // Absent (or zero) means an empty change-log; the LSN allocator seeds from 0.
 var LastLSNKey = MetaKey("last_lsn")
+
+// FlushStageMarkerKey marks a committed staged flush: 8B staging sequence +
+// 8B entry count. Present only between a staged flush's commit and its apply.
+var FlushStageMarkerKey = MetaKey("flush_stage")
 
 // --- Parser functions ---
 
