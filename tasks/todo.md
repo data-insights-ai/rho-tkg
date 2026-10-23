@@ -7,9 +7,9 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-- **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
-  measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
-  known. Waits for: René's "run" (sigma runs it).
+- **SHARD** — René wants three storage tiers (hot, warm NVMe, cold HDD) built while ai-soc cleans up its data waste; a
+  Fable agent designs the architecture and reviews, the main agent implements step by step. Done when: cold shards live
+  on their own disk, released, with ai-soc's reference shard fitting the NVMe. Waits for: the Fable design.
 
 ## Next
 
@@ -18,6 +18,9 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Waiting
 
+- **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
+  measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
+  known. Waits for: René's "run" (sigma runs it).
 - **R37** — Listing facts that were changed still costs more than ai-soc's limit of 4 times a fact's values. Done when:
   ai-soc's cold /bars test passes on Flux. Waits for: CHAIN-2.
 - **REPORT** — ai-soc and sigma have not yet reported on rho's newer doors, and rho builds only what blocks
@@ -56,6 +59,5 @@ Each item: one sentence, then when it is done and what it waits for.
 - **NOCOMPRESS** — Compression cannot be turned off, because "none" is the default value. Waits for: a consumer asking.
 - **STALECITE** — Some code comments cite todo sections that no longer exist. Waits for: the next change to that code.
 - **V5** — The v5 line is paused on the local branch `v5-takeover`. Waits for: René.
-- **SHARD** — Separate disks per tier (hot, warm, cold), about two weeks of work. Waits for: René.
 - **BACKLOG** — 26 numbered items without a requester, listed in `HANDOVER.md` because code cites their numbers. Waits
   for: a consumer hitting one, or René.

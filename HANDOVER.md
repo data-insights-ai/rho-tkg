@@ -53,8 +53,6 @@ lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
   sigma and ai-soc. Default: parked until sigma or ai-soc needs P24.
 - V5 (row 61): open WPs and the breaking API-pass candidates in `git show 791c1aa3:tasks/todo.md`. Default: paused;
   `v5.0.0-alpha.1` at its S2 exit once restarted.
-- SHARD (row 117): plan, defaults and the blocker (the reference shard grows ~60 GB per BA day) in
-  `git show 791c1aa3:tasks/todo.md`. Default: parked until René restarts it.
 
 ## Backlog (no requester; numbers stable, code cites "backlog N"; details: `git show 6e20157c:tasks/backlog.md`)
 
