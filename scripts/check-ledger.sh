@@ -17,21 +17,23 @@ if [ "v${top}" != "${latest}" ]; then
     echo "ledger: pending release v${top}: HANDOVER.md does not name it"; fail=1
   fi
 fi
-# todo.md holds next steps only: sections Next, Waiting, Decisions, Parked backlog (one "- N — problem" line per item).
-for sec in 'Next' 'Waiting' 'Decisions' 'Parked backlog'; do
-  grep -q "^## ${sec}" tasks/todo.md || { echo "ledger: tasks/todo.md lacks '## ${sec}'"; fail=1; }
+# todo.md holds open work only, in order (ai-soc's format): "## 0. Now" (René's current request, quoted), numbered
+# sections, "Waiting for René", "Parked, each with its trigger" with a "### Backlog" of "- N — problem" lines.
+for sec in '0\. Now' '[0-9]+\. Waiting for René' '[0-9]+\. Parked, each with its trigger'; do
+  grep -qE "^## ${sec}" tasks/todo.md || { echo "ledger: tasks/todo.md lacks a '## ${sec}' section"; fail=1; }
 done
+grep -qE '^### Backlog' tasks/todo.md || { echo "ledger: tasks/todo.md lacks '### Backlog' under Parked"; fail=1; }
 # Every line outside the parked backlog is a next step, a trigger or a decision.
-steps=$(awk '/^## /{f=($0 !~ /^## Parked backlog/)} f' tasks/todo.md)
+steps=$(awk '/^##+ /{f=($0 !~ /^### Backlog/)} f' tasks/todo.md)
 # A done item does not belong in todo.md (shipped = docs/CHANGELOG.md).
-echo "$steps" | grep -iE '✅|^([0-9]+\.|-) +(\([0-9]+\) +)?(done|shipped|answered)\b|\b(done|shipped|answered)[.)]*$' | cut -c1-90 | sed 's/^/ledger: done item left in todo.md: /' | grep . && fail=1
+echo "$steps" | grep -iE '✅|\[x\]|^([0-9]+\.|-) +(\[ \] +)?(\([0-9]+\) +)?(done|shipped|answered)\b|\b(done|shipped|answered)[.)]*$' | cut -c1-90 | sed 's/^/ledger: done item left in todo.md: /' | grep . && fail=1
 # A step citing a backlog item that is closed, i.e. whose number is not a line of "## Parked backlog".
-open_items=$(awk '/^## /{f=($0 ~ /^## Parked backlog/);next} f' tasks/todo.md | grep -oE '^- [0-9]+[a-z]? ' | grep -oE '[0-9]+[a-z]?' | sort -u)
-[ -n "$open_items" ] || { echo "ledger: found no parked backlog items in tasks/todo.md (section or '- N — ' format changed?)"; fail=1; }
+open_items=$(awk '/^##+ /{f=($0 ~ /^### Backlog/);next} f' tasks/todo.md | grep -oE '^- [0-9]+[a-z]? ' | grep -oE '[0-9]+[a-z]?' | sort -u)
+[ -n "$open_items" ] || { echo "ledger: found no backlog items in tasks/todo.md (### Backlog or '- N — ' format changed?)"; fail=1; }
 while IFS= read -r row; do
   [ -n "$row" ] || continue
   for n in $(echo "$row" | grep -oiE 'backlog [0-9]+[a-z]?(( \([a-z]+\))?(, | and |-)[0-9]+[a-z]?)*' | grep -oE '[0-9]+[a-z]?'); do
-    if ! echo "$open_items" | grep -qx "$n"; then echo "ledger: todo cites closed backlog $n (not in Parked backlog): ${row:0:80}"; fail=1; fi
+    if ! echo "$open_items" | grep -qx "$n"; then echo "ledger: todo cites closed backlog $n (not in ### Backlog): ${row:0:80}"; fail=1; fi
   done
 done <<< "$steps"
 exit $fail
