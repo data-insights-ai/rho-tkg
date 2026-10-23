@@ -200,7 +200,11 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
    reopens with counters above the live rows and the store refuses to open (`reconcilePersistedCounter`,
    `badgerstore.go:1947-1966`). A torn entity is not detected at open. Trigger: a flush above about 10 MB of entries
    (about 6,000-10,000 rows of 1 KB with their index keys) or 104,855 entries: bulk imports, large batches, purge
-   chunks, fast ingest without `SyncWrites`. Gap: FLUSHPART.
+   chunks, fast ingest without `SyncWrites`. Closed by FLUSHPART (v4.75.0): a flush that fits commits as one `Txn`,
+   a larger one is staged under `0x0E` and committed by a marker that `New` re-applies
+   (`badgerstore_flush_staged.go`, `docs/persistence.md` § Durability). The index backfills
+   (`badgerstore_property_disk.go`, `badgerstore_temporal_disk.go`) stay one `WriteBatch` with their built marker
+   last: a crash keeps a prefix without the marker, and the backfill runs again.
 2. **Read by walking, not by point gets, where IDs come in order.** A `Get` costs about 4x the row and a read
    transaction; a forward walk costs almost nothing. The read snapshot walks; entity point reads on a cache miss,
    history version and anchor reads, and committed-stamp reads still `Get`. Gap: GETWALK.
