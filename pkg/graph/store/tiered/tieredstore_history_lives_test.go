@@ -80,6 +80,7 @@ func TestHistoryLives_RelReimportOntoNewEventShard(t *testing.T) {
 		}
 	}
 	h, err := ts.GetRelHistory(rid)
+	(&branchTestEnv{ts: ts}).assertRelMetaParity(t, rid)
 	assertVersions("GetRelHistory", h, err, 1, 2)
 	page, err := ts.RelHistoryVersionsFrom(rid, 0, 10)
 	assertVersions("RelHistoryVersionsFrom", page, err, 1, 2)
@@ -98,6 +99,7 @@ func TestHistoryLives_RelReimportOntoNewEventShard(t *testing.T) {
 		t.Fatal(err)
 	}
 	h, err = ts.GetRelHistory(rid)
+	(&branchTestEnv{ts: ts}).assertRelMetaParity(t, rid)
 	assertVersions("GetRelHistory after TruncateRelHistory(1)", h, err, 2)
 
 	if err := ts.Clear(); err != nil {
@@ -247,10 +249,12 @@ func TestHistoryLives_BackfillAtOpen(t *testing.T) {
 	histories := func(ts *Store) (int, int) {
 		t.Helper()
 		rh, err := ts.GetRelHistory(moved.ID())
+		(&branchTestEnv{ts: ts}).assertRelMetaParity(t, moved.ID())
 		if err != nil {
 			t.Fatal(err)
 		}
 		nh, err := ts.GetNodeHistory(node.ID())
+		(&branchTestEnv{ts: ts}).assertNodeMetaParity(t, node.ID())
 		if err != nil {
 			t.Fatal(err)
 		}

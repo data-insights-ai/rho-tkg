@@ -1,0 +1,12 @@
+    --- FAIL: TestEffectiveTimelinesLendTheCurrentRow/memory (0.00s)
+        effective_timelines_lend_test.go:70: node segment is a copy of the current row, want the lent row itself
+        effective_timelines_lend_test.go:82: relationship segment is a copy of the current row, want the lent row itself
+    --- FAIL: TestEffectiveTimelinesLendTheCurrentRow/badger (0.00s)
+        effective_timelines_lend_test.go:70: node segment is a copy of the current row, want the lent row itself
+        effective_timelines_lend_test.go:82: relationship segment is a copy of the current row, want the lent row itself
+    --- FAIL: TestEffectiveTimelinesLendTheCurrentRow/tiered (0.01s)
+        effective_timelines_lend_test.go:70: node segment is a copy of the current row, want the lent row itself
+        effective_timelines_lend_test.go:82: relationship segment is a copy of the current row, want the lent row itself
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.010s
+FAIL

@@ -19,6 +19,10 @@
    mirrors (history_generation, ordinal_lookup, propertytxmembers_range, reltype_temporal_deleted, compaction, labeltxmembers,
    retention_purge, property_bounds, ~5k lines, 0.7-0.96 token-similar) move into pkg/graph/store the same way.
 
+4. (120 follow-up) Effective timelines still cost ~0.75 kB per history version (the temporal skeleton: meta decode, a node
+   shell per version, the sweep; badger 32 versions 24.9 kB/call flushed). O(rows returned) needs a per-entity skeleton
+   cached by history epoch. Build only if sigma/ai-soc facts reach many versions (ai-soc: 1-2 today).
+
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.
 - A consumer report against v4.70.0 (ai-soc's full Flux rerun, row 106 fix; sigma O1-3 on `LowestAnsweredPins` (P1) and `RelEffectiveTimelinesByProperties`: tiered, driver = first indexed key, device before estate, segments whole, DepthAll only, ai-soc declares (type, device) rel indexes) → build only what blocks them (lesson 79 (10)).

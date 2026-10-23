@@ -123,7 +123,7 @@ func (c *Core) nodeEffectiveTimelinesLocked(id types.NodeID, pins []types.Instan
 	if err := c.checkNodePointRetention(id, low); err != nil {
 		return nil, err
 	}
-	current, err := rd.currentNode(id)
+	current, err := rd.lentCurrentNode(id) // handed out frozen: no copy needed
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 	if err := c.checkRelPointRetention(low); err != nil {
 		return nil, err
 	}
-	current, err := rd.currentRel(id)
+	current, err := rd.lentCurrentRel(id) // handed out frozen: no copy needed
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}

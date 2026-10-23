@@ -68,6 +68,24 @@ func (r entityReads) currentNode(id types.NodeID) (*types.Node, error) {
 	return r.c.trustedCurrentNode(id, n, err)
 }
 
+// lentCurrentNode is currentNode without the defensive copy where the store
+// lends its frozen row (trusted memory, badger, tiered; no snapshot): for a
+// reader that only hands the row out frozen, such as an effective timeline.
+func (r entityReads) lentCurrentNode(id types.NodeID) (*types.Node, error) {
+	if lender, ok := r.c.store.(storepkg.EntityLendCapability); ok && r.snap == nil && r.c.storeRowsTrust {
+		return lender.LendNode(id)
+	}
+	return r.currentNode(id)
+}
+
+// lentCurrentRel is lentCurrentNode for relationships.
+func (r entityReads) lentCurrentRel(id types.RelID) (*types.Relationship, error) {
+	if lender, ok := r.c.store.(storepkg.EntityLendCapability); ok && r.snap == nil && r.c.storeRowsTrust {
+		return lender.LendRelationship(id)
+	}
+	return r.currentRel(id)
+}
+
 func (r entityReads) currentRel(id types.RelID) (*types.Relationship, error) {
 	if r.snap == nil {
 		return r.c.getCurrentRelationship(id)

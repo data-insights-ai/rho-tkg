@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.71.0] - 2026-10-23
+
+### Added
+
+- **tiered implements `store.TemporalMetaHistoryCapability`** (`NodeHistoryTemporalMeta` / `RelHistoryTemporalMeta`,
+  sigma R37 for ai-soc's cold listings). Effective timelines and other historical-pin reads on tiered now read the
+  history's temporal skeleton across the shards (owner, archive or reference shard, earlier lives) and decode only the
+  winning rows, as on badger: a fact corrected 32 times decodes 1 row, not 32. The row set equals `GetNodeHistory` /
+  `GetRelHistory` on every routing branch.
+
+### Changed
+
+- **Effective timelines lend the current row:** `NodeEffectiveTimeline(s)` / `RelEffectiveTimeline(s)` hand out the
+  store's frozen current row (as `Lend` does) instead of a `DeepCopy` of it on memory, badger and tiered. A listing of
+  13-property facts drops from a full row copy per fact to about 0.65 kB per call at one version. Rows were already
+  frozen; code that mutated them failed before and still fails.
+- GitHub CI runs only on a `v*` tag (build, vet, `go test -short`); a push to main runs nothing; no scheduled jobs. The
+  thorough checks run locally: `make ci-fast` for a patch, `make ci-docker` (now with a fuzz smoke run) for a minor.
+- Tests: about 2,000 more run in parallel, slow ones are sized for `-short`, vacuous and duplicated ones are removed or
+  merged (one scoped change-log suite for every backend, one reflection test for every sub-API's nil receivers).
+
 ## [4.70.3] - 2026-10-23
 
 ### Fixed

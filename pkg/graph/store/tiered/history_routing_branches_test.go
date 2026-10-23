@@ -151,6 +151,7 @@ func TestTiered_GetNodeHistory_EventShardLive_NoFanout(t *testing.T) {
 	n := e.newEventNode(t)
 	e.writeNodeHistoryV0V1(t, n)
 	history, err := e.ts.GetNodeHistory(n.ID())
+	e.assertNodeMetaParity(t, n.ID())
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -168,6 +169,7 @@ func TestTiered_TruncateNodeHistory_EventShardLive_DelegatesToShard(t *testing.T
 		t.Fatalf("TruncateNodeHistory: %v", err)
 	}
 	remaining, err := e.ts.GetNodeHistory(n.ID())
+	e.assertNodeMetaParity(t, n.ID())
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -206,6 +208,7 @@ func TestTiered_GetNodeHistory_DeletedEvent_FanoutBranch(t *testing.T) {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 	history, err := e.ts.GetNodeHistory(n.ID())
+	e.assertNodeMetaParity(t, n.ID())
 	if err != nil {
 		t.Fatalf("GetNodeHistory after delete: %v", err)
 	}
@@ -248,6 +251,7 @@ func TestTiered_TruncateNodeHistory_DeletedEvent_FanoutBranch(t *testing.T) {
 		t.Fatalf("TruncateNodeHistory keep=1 after delete: %v", err)
 	}
 	history, err := e.ts.GetNodeHistory(n.ID())
+	e.assertNodeMetaParity(t, n.ID())
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -283,6 +287,7 @@ func TestTiered_GetNodeHistory_RefLive_NoArchive(t *testing.T) {
 		t.Fatalf("PutNodeVersion: %v", err)
 	}
 	history, err := e.ts.GetNodeHistory(n.ID())
+	e.assertNodeMetaParity(t, n.ID())
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -300,6 +305,7 @@ func TestTiered_TruncateNodeHistory_RefLive_NoArchive(t *testing.T) {
 		t.Fatalf("TruncateNodeHistory: %v", err)
 	}
 	history, err := e.ts.GetNodeHistory(n.ID())
+	e.assertNodeMetaParity(t, n.ID())
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -351,6 +357,7 @@ func TestTiered_GetNodeHistory_Archive_MergesRefHistory(t *testing.T) {
 		t.Fatalf("PutNodeVersion v1: %v", err)
 	}
 	history, err := e.ts.GetNodeHistory(n.ID())
+	e.assertNodeMetaParity(t, n.ID())
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -399,6 +406,7 @@ func TestTiered_TruncateNodeHistory_Archive_MergesRefHistory(t *testing.T) {
 		t.Fatalf("TruncateNodeHistory keep=1 archived: %v", err)
 	}
 	history, err := e.ts.GetNodeHistory(n.ID())
+	e.assertNodeMetaParity(t, n.ID())
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -451,6 +459,7 @@ func TestTiered_GetRelHistory_EventShardLive_NoFanout(t *testing.T) {
 	r := e.putRelBetween(t, start, end)
 	e.writeRelHistoryV0V1(t, r)
 	history, err := e.ts.GetRelHistory(r.ID())
+	e.assertRelMetaParity(t, r.ID())
 	if err != nil {
 		t.Fatalf("GetRelHistory: %v", err)
 	}
@@ -470,6 +479,7 @@ func TestTiered_TruncateRelHistory_EventShardLive_DelegatesToShard(t *testing.T)
 		t.Fatalf("TruncateRelHistory: %v", err)
 	}
 	history, err := e.ts.GetRelHistory(r.ID())
+	e.assertRelMetaParity(t, r.ID())
 	if err != nil {
 		t.Fatalf("GetRelHistory: %v", err)
 	}
@@ -510,6 +520,7 @@ func TestTiered_GetRelHistory_DeletedEvent_FanoutBranch(t *testing.T) {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 	history, err := e.ts.GetRelHistory(r.ID())
+	e.assertRelMetaParity(t, r.ID())
 	if err != nil {
 		t.Fatalf("GetRelHistory after delete: %v", err)
 	}
@@ -553,6 +564,7 @@ func TestTiered_TruncateRelHistory_DeletedEvent_FanoutBranch(t *testing.T) {
 		t.Fatalf("TruncateRelHistory keep=1 after delete: %v", err)
 	}
 	history, err := e.ts.GetRelHistory(r.ID())
+	e.assertRelMetaParity(t, r.ID())
 	if err != nil {
 		t.Fatalf("GetRelHistory: %v", err)
 	}
@@ -590,6 +602,7 @@ func TestTiered_GetRelHistory_RefLive_NoArchive(t *testing.T) {
 		t.Fatalf("PutRelVersion: %v", err)
 	}
 	history, err := e.ts.GetRelHistory(r.ID())
+	e.assertRelMetaParity(t, r.ID())
 	if err != nil {
 		t.Fatalf("GetRelHistory no-archive: %v", err)
 	}
@@ -609,10 +622,55 @@ func TestTiered_TruncateRelHistory_RefLive_NoArchive(t *testing.T) {
 		t.Fatalf("TruncateRelHistory: %v", err)
 	}
 	history, err := e.ts.GetRelHistory(r.ID())
+	e.assertRelMetaParity(t, r.ID())
 	if err != nil {
 		t.Fatalf("GetRelHistory: %v", err)
 	}
 	if versions := tieredRelHistoryVersions(history); !reflect.DeepEqual(versions, []uint32{1}) {
 		t.Fatalf("after truncate keep=1 versions = %v, want [1]", versions)
+	}
+}
+
+// assertNodeMetaParity pins row 120: the history temporal-meta read returns
+// exactly GetNodeHistory's rows (versions and temporal blocks) on every
+// routing branch.
+func (e *branchTestEnv) assertNodeMetaParity(t *testing.T, id types.NodeID) {
+	t.Helper()
+	rows, err := e.ts.GetNodeHistory(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	metas, err := e.ts.NodeHistoryTemporalMeta(id)
+	if err != nil {
+		t.Fatalf("NodeHistoryTemporalMeta: %v", err)
+	}
+	if len(metas) != len(rows) {
+		t.Fatalf("NodeHistoryTemporalMeta has %d rows, GetNodeHistory %d", len(metas), len(rows))
+	}
+	for i, r := range rows {
+		if metas[i].Version != r.Version() || !reflect.DeepEqual(metas[i].Temporal, r.Temporal()) {
+			t.Fatalf("row %d: meta v%d %+v, history v%d %+v", i, metas[i].Version, metas[i].Temporal, r.Version(), r.Temporal())
+		}
+	}
+}
+
+// assertRelMetaParity mirrors assertNodeMetaParity for relationships.
+func (e *branchTestEnv) assertRelMetaParity(t *testing.T, id types.RelID) {
+	t.Helper()
+	rows, err := e.ts.GetRelHistory(id)
+	if err != nil {
+		t.Fatalf("GetRelHistory: %v", err)
+	}
+	metas, err := e.ts.RelHistoryTemporalMeta(id)
+	if err != nil {
+		t.Fatalf("RelHistoryTemporalMeta: %v", err)
+	}
+	if len(metas) != len(rows) {
+		t.Fatalf("RelHistoryTemporalMeta has %d rows, GetRelHistory %d", len(metas), len(rows))
+	}
+	for i, r := range rows {
+		if metas[i].Version != r.Version() || !reflect.DeepEqual(metas[i].Temporal, r.Temporal()) {
+			t.Fatalf("row %d: meta v%d %+v, history v%d %+v", i, metas[i].Version, metas[i].Temporal, r.Version(), r.Temporal())
+		}
 	}
 }

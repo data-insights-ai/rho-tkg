@@ -1,0 +1,6 @@
+    effective_timelines_tiered_cost_test.go:61: rows decoded for two pins: 4 at 4 versions, 32 at 32
+    effective_timelines_tiered_cost_test.go:63: rows decoded grow with the history: 4 at 4 versions, 32 at 32 (want flat: the winners only)
+--- FAIL: TestNodeEffectiveTimelinesTieredRowsFlatInVersions (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.016s
+FAIL
