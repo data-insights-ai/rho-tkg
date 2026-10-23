@@ -15,6 +15,9 @@
    `TxPin: pinBefore` only when run beside other parallel tests (passes 20x alone; kept serial): check whether a write can
    share the pin's instant (clock semantics) before calling it test-only. (b) `Compression: options.None` cannot disable
    compression (None is the zero value = Snappy); a `DisableCompression` option is a door (minor), only on a consumer request.
+   (c) the rest of the shared store suite: only the scoped batteries were merged (c9e78bf6); the other memory/badger
+   mirrors (history_generation, ordinal_lookup, propertytxmembers_range, reltype_temporal_deleted, compaction, labeltxmembers,
+   retention_purge, property_bounds, ~5k lines, 0.7-0.96 token-similar) move into pkg/graph/store the same way.
 
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.
