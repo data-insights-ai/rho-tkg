@@ -1,0 +1,10 @@
+    effective_timelines_bytes_test.go:83: memory: 632 B per call at 1 version, 2100 at 2
+    effective_timelines_bytes_test.go:85: memory: a second version adds 1468 B per call, want < 1 kB
+    effective_timelines_bytes_test.go:83: badger: 632 B per call at 1 version, 3576 at 2
+    effective_timelines_bytes_test.go:85: badger: a second version adds 2944 B per call, want < 1 kB
+    effective_timelines_bytes_test.go:83: tiered: 664 B per call at 1 version, 4344 at 2
+    effective_timelines_bytes_test.go:85: tiered: a second version adds 3680 B per call, want < 1 kB
+--- FAIL: TestEffectiveTimelinesBytesPerExtraVersion (0.11s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.128s
+FAIL

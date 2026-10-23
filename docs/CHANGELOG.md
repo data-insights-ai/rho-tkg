@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.72.0] - 2026-10-23
+
+### Added
+
+- **memory implements `store.TemporalMetaHistoryCapability`** (`NodeHistoryTemporalMeta` / `RelHistoryTemporalMeta`):
+  historical-pin reads on the memory store resolve over the history's temporal blocks and copy only the winning rows,
+  as on badger and tiered (ai-soc R37: a listing's second version no longer copies the whole history).
+
+### Fixed
+
+- **Effective timelines copied the lent current row's temporal block on every resolver read** (v4.71.0 lent the frozen
+  row; `Node.Temporal()` on a frozen row returns a copy). The resolver now works on a skeleton of the current row (one
+  copy) and hydrates the lent row only when it wins. Bytes per `NodeEffectiveTimelines` call for a 13-column fact at two
+  pins: memory 632 → 392 B at 1 version, 2,100 → 880 B at 2; badger and tiered 2,888 → 2,672 B and 4,344 → 3,440 B at 2
+  (their remaining fixed cost is badger's iterator once any history exists).
+
 ## [4.71.0] - 2026-10-23
 
 ### Added

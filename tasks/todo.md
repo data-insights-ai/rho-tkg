@@ -19,9 +19,17 @@
    mirrors (history_generation, ordinal_lookup, propertytxmembers_range, reltype_temporal_deleted, compaction, labeltxmembers,
    retention_purge, property_bounds, ~5k lines, 0.7-0.96 token-similar) move into pkg/graph/store the same way.
 
-4. (120 follow-up) Effective timelines still cost ~0.75 kB per history version (the temporal skeleton: meta decode, a node
-   shell per version, the sweep; badger 32 versions 24.9 kB/call flushed). O(rows returned) needs a per-entity skeleton
-   cached by history epoch. Build only if sigma/ai-soc facts reach many versions (ai-soc: 1-2 today).
+4. (120 follow-up) Effective timelines on badger/tiered: a fixed ~2 kB per call once any history exists (badger iterator
+   setup) plus ~0.87 kB per history version (meta decode + skeleton); memory ~0.36 kB per version. O(rows returned) needs a
+   per-entity skeleton cached by history epoch (badger/tiered have HistoryEpochCapability). Build when ai-soc's re-measure
+   on v4.72.0 still misses the 4x bound at 1-2 versions.
+
+5. (121) sigma R37 cold rows (2026-10-23): a cold read of one entity's current row costs ~11 kB per listed fact for a
+   ~0.5 kB row (badger prefetchNodeNoFill -> DB.View -> Item.Value), and a listing page reads each row twice
+   (ByLabelAndProperties' prefetch, then the timeline). badger 20,000 facts 12.7 kB/fact, tiered CacheCapacity 100
+   10.9 kB/fact; ai-soc BA projection ~1.8 GB per cold listing. Ask: cold read ~ encoded size; one read per row per
+   page (or a page door returning each node's timeline at a pin). Reproducer: sigma main BenchmarkListDerivedRowsTieredCold,
+   TestListDerivedRowsManyFacts.
 
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.

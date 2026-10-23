@@ -67,6 +67,7 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false // decode happens inside Value(), no staging copy
+		opts.Prefix = prefix        // tables without the key are skipped, not iterated
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {

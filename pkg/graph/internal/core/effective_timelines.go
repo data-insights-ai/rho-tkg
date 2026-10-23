@@ -131,7 +131,10 @@ func (c *Core) nodeEffectiveTimelinesLocked(id types.NodeID, pins []types.Instan
 		if has, known, err := rd.hasNodeHistory(id); err != nil {
 			return nil, err
 		} else if known && !has {
-			out, _ := effectiveTimelinesOver(c, nodeKernel, []*types.Node{current}, pins, nodeSegment, nil)
+			hydrate := func(_ int, pin types.Instant, _ *types.Node) (*types.Node, bool) {
+				return nodeRowAtTx(c.axis(), current, pin)
+			}
+			out, _ := effectiveTimelinesOver(c, nodeKernel, []*types.Node{nodeSkeleton(current)}, pins, nodeSegment, hydrate)
 			return out, nil
 		}
 	}
@@ -153,15 +156,15 @@ func (c *Core) nodeEffectiveTimelinesLocked(id types.NodeID, pins []types.Instan
 			chain = append(chain, s)
 		}
 		if current != nil {
-			chain = append(chain, current)
+			chain = append(chain, nodeSkeleton(current))
 		}
 		// Winners are told apart by origin, not by version (a re-imported
 		// ID's current row may share version numbers with history); each
 		// is read once for every pin.
 		full := make(map[int]*types.Node)
-		hydrate := func(src int, pin types.Instant, row *types.Node) (*types.Node, bool) {
+		hydrate := func(src int, pin types.Instant, _ *types.Node) (*types.Node, bool) {
 			if src >= len(metas) {
-				return row, true // the current row (or the resolver's normalized copy of it)
+				return nodeRowAtTx(c.axis(), current, pin) // the lent current row
 			}
 			f, ok := full[src]
 			if !ok {
@@ -211,7 +214,10 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 		if has, known, err := rd.hasRelHistory(id); err != nil {
 			return nil, err
 		} else if known && !has {
-			out, _ := effectiveTimelinesOver(c, relKernel, []*types.Relationship{current}, pins, relSegment, nil)
+			hydrate := func(_ int, pin types.Instant, _ *types.Relationship) (*types.Relationship, bool) {
+				return relRowAtTx(c.axis(), current, pin)
+			}
+			out, _ := effectiveTimelinesOver(c, relKernel, []*types.Relationship{relSkeleton(current)}, pins, relSegment, hydrate)
 			return out, nil
 		}
 	}
@@ -233,15 +239,15 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 			chain = append(chain, s)
 		}
 		if current != nil {
-			chain = append(chain, current)
+			chain = append(chain, relSkeleton(current))
 		}
 		// Winners are told apart by origin, not by version (a re-imported
 		// ID's current row may share version numbers with history); each
 		// is read once for every pin.
 		full := make(map[int]*types.Relationship)
-		hydrate := func(src int, pin types.Instant, row *types.Relationship) (*types.Relationship, bool) {
+		hydrate := func(src int, pin types.Instant, _ *types.Relationship) (*types.Relationship, bool) {
 			if src >= len(metas) {
-				return row, true // the current row (or the resolver's normalized copy of it)
+				return relRowAtTx(c.axis(), current, pin) // the lent current row
 			}
 			f, ok := full[src]
 			if !ok {
@@ -297,4 +303,27 @@ func effectiveTimelinesOver[T interface {
 		out[i] = segs
 	}
 	return out, true
+}
+
+// nodeSkeleton is the resolver's stand-in for a lent (frozen) current row: its
+// version and one copy of its temporal block, so the resolver's many temporal
+// reads do not each copy the frozen row's block; the winner is hydrated from
+// the row itself (row 120).
+func nodeSkeleton(row *types.Node) *types.Node {
+	s := types.NewNode(row.ID(), 0, nil)
+	s.SetVersion(row.Version())
+	if tm := row.Temporal(); tm != nil {
+		s.SetTemporal(tm)
+	}
+	return s
+}
+
+// relSkeleton is nodeSkeleton for relationships.
+func relSkeleton(row *types.Relationship) *types.Relationship {
+	s := types.NewRelationship(row.ID(), 0, 0, 0)
+	s.SetVersion(row.Version())
+	if tm := row.Temporal(); tm != nil {
+		s.SetTemporal(tm)
+	}
+	return s
 }
