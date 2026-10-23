@@ -28,7 +28,7 @@ Each item: one sentence, then when it is done and what it waits for.
    store fails closed, and `Close` finishes it first. `New` recovers before counters are reconciled (marker: re-apply,
    no marker: delete staging); a read-only open with a marker fails typed. `Clear` drops `0x0E`; reap policy and
    persistence.md list the new keys. Write amplification of an oversized flush: 3x.
-3. [ ] Tests first (Fable's list): the two red tests; a crash matrix at stage, marker, mid-apply, unmark, clean, with
+3. [ ] (tests written on branch `flushpart`, 2026-10-23; they need the change to build) Tests first (Fable's list): the two red tests; a crash matrix at stage, marker, mid-apply, unmark, clean, with
    `SyncWrites` on and off; a failed apply then a newer write then a crash (the newer value wins); recovery with and
    without a marker; a recount mismatch fails closed; two aborted attempts never mix; read-only open with a marker;
    `Clear` with staging present; the format marker 9 only after a staged flush; path A unchanged. Then the change;
