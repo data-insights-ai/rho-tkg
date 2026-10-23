@@ -7,10 +7,10 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-- **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
-  built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
-  below are ticked and released. Waits for: nothing.
-
+- **FLUSHPART** — A flush above badger's batch limit (about 10 MB or 104,855 entries) is several transactions, so a
+  crash keeps a random subset of its rows, loses its change-log records for good, and after a purge leaves a store that
+  refuses to open (`docs/badger.md` rule 1). Done when: a crash test at a planted split reopens consistent and loses
+  no record, released as a patch. Order (René 23 Oct): tests first, then the change, the tests run, then Fable reviews.
 ### SHARD plan
 
 The main agent builds each step (red test, change, tests green), the Fable agent reviews it and monitors the plan; a
@@ -40,6 +40,11 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
     its data cleanup.
 
 ## Next
+
+- **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
+  built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
+  below are ticked and released. Waits for: FLUSHPART; step 1 with option (b), pre-creating `reference/` and
+  `archive/` only for a new store (René 23 Oct), from branch `shard-step1`.
 
 - **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
   fact. Done when: René has decided per layer. Waits for: CHAIN.
@@ -72,10 +77,6 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 
 ## Later
 
-- **FLUSHPART** — A flush above badger's batch limit (about 10 MB or 104,855 entries) is several transactions, so a
-  crash keeps a random subset of its rows, loses its change-log records for good, and after a purge leaves a store that
-  refuses to open (`docs/badger.md` rule 1). Done when: a crash test at a planted split reopens consistent and loses
-  no record, released as a patch.
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
 - **PREFETCH** — 13 iterators turn on value prefetching, one goroutine per row for values that are inline anyway (rule
