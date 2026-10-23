@@ -685,16 +685,16 @@ func reconstructTypedValue(v any, tag byte) any {
 		if f, ok := v.(float64); ok {
 			return float32(f)
 		}
-		if f, ok := v.(float32); ok {
-			return f
+		if _, ok := v.(float32); ok {
+			return v
 		}
 	case ptFloat64:
 		if f, ok := wireFloat64(v); ok {
 			return f
 		}
 	case ptString:
-		if s, ok := v.(string); ok {
-			return s
+		if _, ok := v.(string); ok {
+			return v // the decoded interface itself: no second boxing
 		}
 	case ptSliceStr:
 		return toStringSlice(v)
@@ -708,8 +708,8 @@ func reconstructTypedValue(v any, tag byte) any {
 		return toFloat64Slice(v)
 	case ptSliceByte:
 		// msgpack encodes []byte as binary — comes back as []byte.
-		if b, ok := v.([]byte); ok {
-			return b
+		if _, ok := v.([]byte); ok {
+			return v
 		}
 	case ptSliceBool:
 		return toBoolSlice(v)

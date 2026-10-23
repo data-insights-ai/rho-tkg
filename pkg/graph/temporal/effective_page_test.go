@@ -76,3 +76,53 @@ func TestEffectivePageWrappers(t *testing.T) {
 		}
 	}
 }
+
+func (s *temporalOpsSpy) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, label string, props map[string]any, pin types.Instant, opts EffectivePageOpts, fn func(types.NodeID, []NodeSegment) bool) (types.NodeID, error) {
+	s.record("ForEachNodeEffectiveByLabelAndProperties")
+	spyLabelPropsArgs = labelPropsArgs{ctx, label, props, pin, opts}
+	fn(10, s.nodeSegs)
+	return 78, s.err
+}
+
+type labelPropsArgs struct {
+	ctx   context.Context
+	label string
+	props map[string]any
+	pin   types.Instant
+	opts  EffectivePageOpts
+}
+
+var spyLabelPropsArgs labelPropsArgs
+
+// TestForEachNodeEffectiveByLabelAndPropertiesWrapper — rule 1 for the
+// listing page door (row 121): nil API and typed-nil Ops are ErrNilGraph; a
+// ready API forwards every argument verbatim and returns the Ops' cursor and
+// error, fn seeing the Ops' segments. Not parallel: the spy records into one
+// package variable.
+func TestForEachNodeEffectiveByLabelAndPropertiesWrapper(t *testing.T) {
+	ctx := context.Background()
+	props := map[string]any{"ns": "a", "rel": "r"}
+	opts := EffectivePageOpts{After: 5, Limit: 7, Depth: 1}
+	none := func(types.NodeID, []NodeSegment) bool { return true }
+	for name, api := range map[string]*API{"nil API": nil, "typed-nil ops": New((*temporalOpsSpy)(nil))} {
+		if _, err := api.ForEachNodeEffectiveByLabelAndProperties(ctx, "L", props, 9, opts, none); !errors.Is(err, grapherr.ErrNilGraph) {
+			t.Fatalf("%s = %v, want ErrNilGraph", name, err)
+		}
+	}
+	wantErr := errors.New("ops failed")
+	spy := &temporalOpsSpy{err: wantErr, nodeSegs: []NodeSegment{{ValidFrom: 1, Node: types.NewNode(10, 0, nil)}}}
+	var got int
+	next, err := New(spy).ForEachNodeEffectiveByLabelAndProperties(ctx, "L", props, 9, opts, func(id types.NodeID, segs []NodeSegment) bool {
+		got += int(id) + len(segs)
+		return true
+	})
+	a := spyLabelPropsArgs
+	switch {
+	case len(spy.calls) != 1 || spy.calls[0] != "ForEachNodeEffectiveByLabelAndProperties":
+		t.Fatalf("calls %v", spy.calls)
+	case a.ctx != ctx || a.label != "L" || a.props["ns"] != "a" || a.pin != 9 || a.opts != opts:
+		t.Fatalf("forwarded %+v", a)
+	case next != 78 || !errors.Is(err, wantErr) || got != 11:
+		t.Fatalf("returned next %d, err %v, fn saw %d", next, err, got)
+	}
+}

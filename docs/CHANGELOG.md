@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.73.0] - 2026-10-23
+
+### Added
+
+- **`Temporal().ForEachNodeEffectiveByLabelAndProperties(ctx, label, props, pin, temporal.EffectivePageOpts{After, Limit,
+  Depth}, fn(id, segs) bool) (next, err)`** (row 121, sigma R37 for ai-soc's cold listing): `ByLabelAndProperties` paged
+  by ID with each match's `NodeEffectiveTimelines` at one pin, in one call. Candidates come from the composite index's
+  posting list without decoding a row; each match is read once (its current row decides the match and is the row the
+  timeline resolves; only winning history rows are decoded), a chunk of 256 through one read snapshot. ai-soc's shape
+  (tiered, reference label, 13 columns, 442 B of values, cold after reopen): 11.4 → 2.3 kB per fact for one version,
+  16.2 → 4.7 kB for a fact rewritten in valid time.
+- `store.CompositeIndexIDPageCapability` (badger, tiered): a composite equality lookup's candidate IDs, paged.
+- `store.ReadSnapshotLendCapability` (badger, sharded, tiered snapshots): `LendNode` / `LendRelationship` through a read
+  snapshot.
+- tiered implements `store.ReadSnapshotCapability`: every read routes as the store's method; the reference shard is read
+  through one badger snapshot per run. Effective scans on tiered now read a chunk through it.
+
+### Fixed
+
+- The badger read snapshot copied every history row of an entity to read its temporal skeleton, re-sought its iterator
+  for each entity (a badger Seek drops the current item and copies the next value afresh), and copied its own fresh
+  decodes (`GetNode`, `GetNodeVersion`, `GetNodeHistory`). The skeleton now decodes in place, an ascending scan walks
+  forward, and row decodes are pooled and lent: a warm rewritten-fact listing 4.0 → 1.7 kB per fact.
+- tiered's liveness probe read a full copy of the row (`GetNode`); it lends it now.
+- A decoded string, `[]byte` or `float32` property value was boxed twice.
+
 ## [4.72.2] - 2026-10-23
 
 ### Fixed

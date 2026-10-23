@@ -222,7 +222,7 @@ func relationshipRowExists(store *BadgerStore, id types.RelID) bool {
 // relationshipRowLive is for caller-visible read paths where corruption must
 // be returned instead of being treated as ordinary liveness.
 func relationshipRowLive(store *BadgerStore, id types.RelID) (bool, error) {
-	_, found, err := relationshipRow(store, id)
+	_, found, err := lendRelationshipRow(store, id) // presence only: no copy of the row
 	if err != nil {
 		return false, err
 	}
@@ -264,7 +264,7 @@ func nodeRowLive(store *BadgerStore, id types.NodeID) (bool, error) {
 	if store == nil || !store.HasNodeID(id.SnowflakeID()) {
 		return false, nil
 	}
-	_, err := store.GetNode(id)
+	_, err := store.LendNode(id) // presence only: no copy of the row
 	if err != nil {
 		if errors.Is(err, ErrNodeNotFound) {
 			return false, nil

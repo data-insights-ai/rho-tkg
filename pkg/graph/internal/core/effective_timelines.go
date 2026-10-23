@@ -113,18 +113,36 @@ func (c *Core) validateEffectivePins(pins []types.Instant) ([]types.Instant, err
 // nodeEffectiveTimelinesLocked is nodeEffectiveTimelineFrom (plain reads, no
 // head cache) at every pin over one chain read (c.mu held).
 func (c *Core) nodeEffectiveTimelinesLocked(id types.NodeID, pins []types.Instant) ([][]temporal.NodeSegment, error) {
-	rd := entityReads{c: c}
+	out, _, err := c.nodeEffectiveTimelinesFrom(entityReads{c: c}, id, pins, nil)
+	return out, err
+}
+
+// nodeEffectiveTimelinesFrom is the body reading through rd (c.mu held). With
+// match set, an entity whose current row is absent or fails match is not
+// read further (matched false, no error): the page door's index match, judged
+// on the row the timeline reads.
+func (c *Core) nodeEffectiveTimelinesFrom(rd entityReads, id types.NodeID, pins []types.Instant, match func(*types.Node) bool) (_ [][]temporal.NodeSegment, matched bool, _ error) {
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
+	current, err := rd.lentCurrentNode(id) // handed out frozen: no copy needed
+	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+		return nil, false, err
+	}
+	if match != nil && (current == nil || !match(current)) {
+		return nil, false, nil
+	}
+	out, err := c.nodeEffectiveTimelinesOf(rd, id, current, pins)
+	return out, err == nil, err
+}
+
+// nodeEffectiveTimelinesOf resolves id's timelines from its current row
+// (nil: none) and history (entity lock held).
+func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current *types.Node, pins []types.Instant) ([][]temporal.NodeSegment, error) {
 	low := slices.Min(pins)
 	if err := c.checkNodePointCompaction(id, low); err != nil {
 		return nil, err
 	}
 	if err := c.checkNodePointRetention(id, low); err != nil {
-		return nil, err
-	}
-	current, err := rd.lentCurrentNode(id) // handed out frozen: no copy needed
-	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
 	if current != nil {

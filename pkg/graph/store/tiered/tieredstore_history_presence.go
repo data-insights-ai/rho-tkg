@@ -16,13 +16,17 @@ var _ storecontract.HistoryPresenceCapability = (*Store)(nil)
 // checkoutStoreForRead and answer by a per-ID key probe (badger
 // Config.HistoryPresenceProbeOnly).
 func (ts *Store) HasNodeHistory(nid types.NodeID) (bool, error) {
+	return ts.hasNodeHistoryVia(nid, directReads)
+}
+
+func (ts *Store) hasNodeHistoryVia(nid types.NodeID, via shardVia) (bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return false, err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return false, err
 	}
-	return walkNodeHistoryShards(ts, nid, func(s *BadgerStore) (bool, error) { return s.HasNodeHistory(nid) }, orPresence)
+	return walkNodeHistoryShards(ts, nid, func(s *BadgerStore) (bool, error) { return via(s).HasNodeHistory(nid) }, orPresence)
 }
 
 // HasRelHistory is HasNodeHistory for relationships, walking the shards

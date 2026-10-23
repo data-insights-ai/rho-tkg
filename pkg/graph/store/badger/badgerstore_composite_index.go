@@ -303,3 +303,43 @@ func validateCompositeQueryValuesBadger(values map[string]any) error {
 	}
 	return nil
 }
+
+var _ storecontract.CompositeIndexIDPageCapability = (*Store)(nil)
+
+// NodeIDsByLabelAndPropertiesPage lists the composite index's posting list
+// above after (store.CompositeIndexIDPageCapability): no row is read, so an
+// orphaned or stale posting is the caller's to drop. depth is ignored (one
+// shard).
+func (bs *Store) NodeIDsByLabelAndPropertiesPage(labelToken uint16, values map[string]any, after types.NodeID, n int, _ storecontract.ShardDepth) ([]types.NodeID, bool, bool, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, false, false, err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return nil, false, false, err
+	}
+	if err := validateCompositeQueryValuesBadger(values); err != nil {
+		return nil, false, false, err
+	}
+	if n <= 0 {
+		return nil, false, true, nil
+	}
+	bs.idxMu.RLock()
+	idx, found := indexpkg.FindCompositeIndexForQuery(bs.compositeIndexes, bs.compositeIndexesByLabel, labelToken, values)
+	if !found || idx.Mutated != nil {
+		bs.idxMu.RUnlock()
+		return nil, false, false, nil
+	}
+	vk, ok := indexpkg.QueryCompositeValueKey(idx.Keys, values)
+	if !ok {
+		bs.idxMu.RUnlock()
+		return nil, false, true, nil
+	}
+	// One more than asked tells whether more follow.
+	raw := idx.Postings(vk).AppendAfter(nil, after.SnowflakeID(), n+1)
+	bs.idxMu.RUnlock()
+	more := len(raw) > n
+	if more {
+		raw = raw[:n]
+	}
+	return storepkg.ToNodeIDs(raw), more, true, nil
+}

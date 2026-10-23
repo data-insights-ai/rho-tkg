@@ -3,6 +3,8 @@ package temporal
 import (
 	"context"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -107,4 +109,54 @@ func (a *API) NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after t
 		return nil, 0, err
 	}
 	return ops.NodesEffectivePage(ctx, pin, f, after, limit)
+}
+
+// EffectivePageOpts pages ForEachNodeEffectiveByLabelAndProperties: the
+// matches above After (ascending node ID), at most Limit of them (0: all),
+// listed from the shards Depth selects (store.QueryOpts.Depth).
+type EffectivePageOpts struct {
+	After types.NodeID
+	Limit int
+	Depth storepkg.ShardDepth
+}
+
+// ForEachNodeEffectiveByLabelAndProperties pages Nodes().ByLabelAndProperties
+// (label, props: 2..4 keys, equality on every pair) by node ID and hands each
+// match's effective segments at pin to fn: fn(id, segs) with segs exactly
+// NodeEffectiveTimelines(id, []Instant{pin})[0] (TxAt = pin, no valid-time
+// filter; empty when the node has no segment at the pin, and fn is still
+// called: the page counts matches, not segments). Row 121 (sigma R37).
+//
+// Paging: the matches above opts.After in ascending ID order, at most
+// opts.Limit (0: all). next is the last match's ID when the page holds Limit
+// matches, the ID of the match whose fn returned false (which stops the
+// call), else 0. A match is judged on the node's current row at the moment
+// its timeline is read, so a page never lists a node whose current row no
+// longer carries the values.
+//
+// Rows: segment rows are the store's frozen shared rows (lent), valid while
+// the graph is open; read them (GetProperty, ForEachPropertyTypeClass,
+// TxStamps), never mutate them. fn runs without graph locks.
+//
+// Cost: one call per page. With a composite index declared on (label, the
+// keys of props) (Index().CreateComposite), the candidates are the index's
+// posting list, read without decoding a row; otherwise the page lists through
+// ByLabelAndProperties. Each match is then read once: its current row (which
+// decides the match), its history skeleton and its winning history row only.
+// On badger, sharded and tiered, a chunk of up to 256 candidates reads
+// through one read snapshot (one transaction and forward iterators, tiered
+// for its reference shard), not one transaction per row.
+//
+// Errors: as ByLabelAndProperties for label, props and opts.Depth;
+// NodeEffectiveTimelines' pin gates (ErrTxPinTooNew, ErrHistoryCompacted,
+// ErrRetentionExpired); ErrInvalidQueryLimit (Limit < 0),
+// ErrInvalidQueryCursor (After < 0), ErrNilCallback (nil fn),
+// ErrNilContext, ctx's error (checked between nodes), ErrGraphClosed. An
+// unknown label answers no match (next 0).
+func (a *API) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, label string, props map[string]any, pin types.Instant, opts EffectivePageOpts, fn func(id types.NodeID, segs []NodeSegment) bool) (next types.NodeID, err error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.ForEachNodeEffectiveByLabelAndProperties(ctx, label, props, pin, opts, fn)
 }

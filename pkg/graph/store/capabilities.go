@@ -871,6 +871,19 @@ type CompositePropertyIndexCapability interface {
 	NodesByLabelAndProperties(labelToken uint16, values map[string]any, opts QueryOpts) ([]*types.Node, error)
 }
 
+// CompositeIndexIDPageCapability is OPTIONAL (row 121): the candidate IDs of
+// an equality lookup over a composite index, ascending above after, at most n,
+// read from the index without reading a row. Every node whose current row
+// carries labelToken and every (key, value) pair is listed; a listed node's
+// row may no longer match (the caller checks the row it reads). more reports
+// that IDs above the last one returned may follow. handled is false when no
+// composite index answers values (or one is still being built): the caller
+// falls back to NodesByLabelAndProperties. depth selects the shards as
+// QueryOpts.Depth does.
+type CompositeIndexIDPageCapability interface {
+	NodeIDsByLabelAndPropertiesPage(labelToken uint16, values map[string]any, after types.NodeID, n int, depth ShardDepth) (ids []types.NodeID, more, handled bool, err error)
+}
+
 // CompositeIndexIntrospectionCapability is OPTIONAL: the planner existence door for
 // composite definitions (without one, NodesByLabelAndProperties is a scan that can
 // be worse than a single-key plan). Separate from CompositePropertyIndexCapability

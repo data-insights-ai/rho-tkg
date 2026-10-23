@@ -24,13 +24,10 @@
    per-entity skeleton cached by history epoch (badger/tiered have HistoryEpochCapability). Build when ai-soc's re-measure
    on v4.72.0 still misses the 4x bound at 1-2 versions.
 
-5. (121) Cold and rewritten rows, next step (minor): v4.72.1/v4.72.2 decode a current or history row once (cold row 6.8x
-   its encoded size; badger floor ~2.9x per Get). Left per listed fact: one badger txn + iterator for the skeleton, the
-   winner's decode, the current row's decode even when an older version wins, the resolver. Plan, waiting for sigma's
-   exact call shape (asked 2026-10-23): a page door reading one listing page in ONE read txn, e.g.
-   `g.Temporal().ForEachNodeEffectiveByLabelAndProperties(label, props, pin, fn(node, segs) bool)`: index lookup, skeleton,
-   winner only, current decoded only when it wins, rows lent frozen; plus a per-entity skeleton cache keyed by the history
-   epoch. Relationship decode still re-copies on install (no SetPropertiesCanonicalShared on Relationship).
+5. (121) Follow-ups after v4.73.0's page door (ai-soc cold listing at 5.3x values, rewritten 10.8x): (a) the
+   per-entity skeleton cache keyed by history epoch (warm rewritten listings re-read the skeleton); (b) the remaining
+   decode cost (Node struct, a Temporal copy per skeleton, msgpack string allocs) for the 4x bound; (c) Relationship
+   decode re-copies on install (no SetPropertiesCanonicalShared). Wait for ai-soc's re-measure first.
 
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.

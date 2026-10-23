@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.72.2)
+# Architecture — tkg/v4 (v4.73.0)
 
 rho-tkg is a pure Go library for temporal knowledge graphs: typed nodes and relationships whose every version is
 kept, stamped in two time dimensions and hash-chained. It is a library, not a database: no binary, no server, no
@@ -307,6 +307,8 @@ that test.
 | 23 | Index answers equal a brute-force scan. | `TestPropertyIndexAgreesWithBruteForceTwin` |
 | 24 | Ingest pre-encoding is byte-identical to the store's own encode. | `TestIngestPreEncodedVsDisabledEquivalence` |
 | 25 | A store zero value or closed store fails closed with `ErrStoreClosed`. | `TestBadgerStoreZeroValueLifecycleReturnsStoreClosed` |
+| 26 | A store read snapshot, kept across many entities in any order, answers every read as the store's method (badger, sharded, tiered). | `TestReadSnapshotParityAcrossEntities` |
+| 27 | The listing page door hands `fn` exactly `ByLabelAndProperties`' matches with `NodeEffectiveTimelines` at the pin, in any page size; a candidate is only a candidate. | `TestForEachNodeEffectiveByLabelAndPropertiesMatchesComposition`, `TestForEachNodeEffectiveByLabelAndPropertiesChecksTheRow` |
 
 ---
 

@@ -118,25 +118,8 @@ func (n *NodeOps) ByLabelAndProperties(label string, values map[string]any, opts
 	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
 	}
-	if err := c.validateIndexLabel(label); err != nil {
+	if err := c.validateLabelAndProperties(label, values, "nodes by label and properties value"); err != nil {
 		return nil, err
-	}
-	keys := make([]string, 0, len(values))
-	for k := range values {
-		keys = append(keys, k)
-	}
-	if err := storepkg.ValidateCompositeIndexKeys(keys); err != nil {
-		return nil, err
-	}
-	for _, k := range keys {
-		if err := c.validateIndexPropertyKey(k); err != nil {
-			return nil, err
-		}
-	}
-	for _, v := range values {
-		if err := types.ValidatePropertyValue(v); err != nil {
-			return nil, fmt.Errorf("graph: nodes by label and properties value: %w", err)
-		}
 	}
 	var result []*types.Node
 	err := c.readUnderRLock(func() error {
@@ -148,6 +131,32 @@ func (n *NodeOps) ByLabelAndProperties(label string, values map[string]any, opts
 		return nil, err
 	}
 	return result, nil
+}
+
+// validateLabelAndProperties checks a composite equality lookup's label,
+// keys (2..4 valid index keys) and values; what names the value check.
+func (c *Core) validateLabelAndProperties(label string, values map[string]any, what string) error {
+	if err := c.validateIndexLabel(label); err != nil {
+		return err
+	}
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		keys = append(keys, k)
+	}
+	if err := storepkg.ValidateCompositeIndexKeys(keys); err != nil {
+		return err
+	}
+	for _, k := range keys {
+		if err := c.validateIndexPropertyKey(k); err != nil {
+			return err
+		}
+	}
+	for _, v := range values {
+		if err := types.ValidatePropertyValue(v); err != nil {
+			return fmt.Errorf("graph: %s: %w", what, err)
+		}
+	}
+	return nil
 }
 
 // nodesByLabelAndPropertiesLocked is the lock-free body of

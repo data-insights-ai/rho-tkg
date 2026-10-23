@@ -12,6 +12,12 @@ import (
 // O(1) shard resolution: ref probe + timestamp extraction.
 
 func (ts *Store) GetNode(nid types.NodeID) (*types.Node, error) {
+	return ts.getNodeVia(nid, directReads, false)
+}
+
+// getNodeVia is GetNode (lend false) or LendNode (lend true) reading the
+// routed shard through via.
+func (ts *Store) getNodeVia(nid types.NodeID, via shardVia, lend bool) (*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -25,7 +31,10 @@ func (ts *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 		return nil, err
 	}
 	defer checkin()
-	return store.GetNode(nid)
+	if lend {
+		return via(store).LendNode(nid)
+	}
+	return via(store).GetNode(nid)
 }
 
 // NodeIntegrityHash returns a live node's integrity hash via the owning shard
@@ -116,20 +125,7 @@ var _ storecontract.EntityLendCapability = (*Store)(nil)
 // shard (store.EntityLendCapability); it stays valid after checkin or
 // idle-close.
 func (ts *Store) LendNode(nid types.NodeID) (*types.Node, error) {
-	if err := ts.checkOpen(); err != nil {
-		return nil, err
-	}
-	if err := storecontract.ValidateNodeID(nid); err != nil {
-		return nil, err
-	}
-	move := ts.lockMoveRead() // route and read see the row on one shard
-	defer move.unlock()
-	store, checkin, err := ts.shardForNodeIDChecked(nid)
-	if err != nil {
-		return nil, err
-	}
-	defer checkin()
-	return store.LendNode(nid)
+	return ts.getNodeVia(nid, directReads, true)
 }
 
 // LendRelationship is LendNode for relationships, routed as GetRelationship

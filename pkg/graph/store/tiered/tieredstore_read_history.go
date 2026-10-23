@@ -13,6 +13,10 @@ import (
 // --- History reads ---
 
 func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
+	return ts.getNodeVersionVia(nid, version, directReads)
+}
+
+func (ts *Store) getNodeVersionVia(nid types.NodeID, version uint32, via shardVia) (*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -24,7 +28,7 @@ func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 		return nil, err
 	}
 	defer checkin()
-	n, err := shard.GetNodeVersion(nid, version)
+	n, err := via(shard).GetNodeVersion(nid, version)
 	if err == nil || !errors.Is(err, ErrVersionNotFound) {
 		return n, err
 	}
@@ -44,7 +48,7 @@ func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 				return nil, archiveErr
 			}
 			if archive != nil {
-				n, err := archive.GetNodeVersion(nid, version)
+				n, err := via(archive).GetNodeVersion(nid, version)
 				archiveCheckin()
 				if err == nil || !errors.Is(err, ErrVersionNotFound) {
 					return n, err
@@ -56,7 +60,7 @@ func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 
 	var found *types.Node
 	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
-		n, err := candidate.GetNodeVersion(nid, version)
+		n, err := via(candidate).GetNodeVersion(nid, version)
 		if errors.Is(err, ErrVersionNotFound) {
 			return false, nil
 		}

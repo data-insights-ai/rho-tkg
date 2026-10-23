@@ -18,6 +18,10 @@ var _ storecontract.TemporalMetaHistoryCapability = (*Store)(nil)
 // NodeHistoryTemporalMeta returns the temporal skeleton of every history
 // version of nid, ascending by version.
 func (ts *Store) NodeHistoryTemporalMeta(nid types.NodeID) ([]storecontract.VersionTemporalMeta, error) {
+	return ts.nodeHistoryTemporalMetaVia(nid, directReads)
+}
+
+func (ts *Store) nodeHistoryTemporalMetaVia(nid types.NodeID, via shardVia) ([]storecontract.VersionTemporalMeta, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -35,7 +39,7 @@ func (ts *Store) NodeHistoryTemporalMeta(nid types.NodeID) ([]storecontract.Vers
 	}
 	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
 	return ts.historyMetaAcrossShards(store, liveHere, isArchive, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
-		return s.NodeHistoryTemporalMeta(nid)
+		return via(s).NodeHistoryTemporalMeta(nid)
 	})
 }
 

@@ -17,14 +17,15 @@ import (
 // A scan reads its candidates' timelines effScanChunk at a time under one
 // hold of the graph read lock, each entity under its own entity lock as
 // before, through one store.ReadSnapshot where the store offers it (badger:
-// one transaction and forward-walking iterators; sharded: one per slot), and
+// one transaction and forward-walking iterators; sharded: one per slot;
+// tiered: one for the reference shard, row 121), and
 // hands the chunk's segments to fn after the lock is released. Each entity is
 // still read at one moment, and a snapshot read equals the store's own read
 // at that moment (store.ReadSnapshot's contract), so every answer is the
 // per-ID path's; the store opens one transaction per chunk plus one per flush
-// that lands during it, none while fn runs. Memory and tiered read entity by
-// entity through the store as before (tiered checks a shard out per read, so
-// no snapshot can outlive one read).
+// that lands during it, none while fn runs. Memory reads entity by entity
+// through the store; tiered reads its event shards and archive so (it checks
+// a shard out per read, and a cold shard may close between reads).
 // =============================================================================
 
 // effScanChunk is how many entities a scan reads per hold of the graph read
@@ -69,10 +70,17 @@ func (r entityReads) currentNode(id types.NodeID) (*types.Node, error) {
 }
 
 // lentCurrentNode is currentNode without the defensive copy where the store
-// lends its frozen row (trusted memory, badger, tiered; no snapshot): for a
+// (or its read snapshot) lends its frozen row (trusted stores only): for a
 // reader that only hands the row out frozen, such as an effective timeline.
 func (r entityReads) lentCurrentNode(id types.NodeID) (*types.Node, error) {
-	if lender, ok := r.c.store.(storepkg.EntityLendCapability); ok && r.snap == nil && r.c.storeRowsTrust {
+	if !r.c.storeRowsTrust {
+		return r.currentNode(id)
+	}
+	if r.snap != nil {
+		if lender, ok := r.snap.(storepkg.ReadSnapshotLendCapability); ok {
+			return lender.LendNode(id)
+		}
+	} else if lender, ok := r.c.store.(storepkg.EntityLendCapability); ok {
 		return lender.LendNode(id)
 	}
 	return r.currentNode(id)
@@ -80,7 +88,14 @@ func (r entityReads) lentCurrentNode(id types.NodeID) (*types.Node, error) {
 
 // lentCurrentRel is lentCurrentNode for relationships.
 func (r entityReads) lentCurrentRel(id types.RelID) (*types.Relationship, error) {
-	if lender, ok := r.c.store.(storepkg.EntityLendCapability); ok && r.snap == nil && r.c.storeRowsTrust {
+	if !r.c.storeRowsTrust {
+		return r.currentRel(id)
+	}
+	if r.snap != nil {
+		if lender, ok := r.snap.(storepkg.ReadSnapshotLendCapability); ok {
+			return lender.LendRelationship(id)
+		}
+	} else if lender, ok := r.c.store.(storepkg.EntityLendCapability); ok {
 		return lender.LendRelationship(id)
 	}
 	return r.currentRel(id)

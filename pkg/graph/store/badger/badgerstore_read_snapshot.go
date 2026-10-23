@@ -39,6 +39,8 @@ import (
 
 var _ storecontract.ReadSnapshotCapability = (*Store)(nil)
 
+var _ storecontract.ReadSnapshotLendCapability = (*readSnapshot)(nil)
+
 // NewReadSnapshot returns a store.ReadSnapshot; it opens its transaction on
 // the first read that reaches Badger.
 func (bs *Store) NewReadSnapshot() storecontract.ReadSnapshot { return &readSnapshot{bs: bs} }
@@ -64,6 +66,7 @@ type readSnapshot struct {
 	relEpoch  uint64
 	its       [snapIters]snapIter
 	memo      histMemo
+	metas     metaMemo
 }
 
 // snapIter is one keyspace's iterator and the key it last sought, the
@@ -81,6 +84,15 @@ type snapIter struct {
 type histMemo struct {
 	prefix string
 	rows   map[string][]byte
+}
+
+// metaMemo is the committed history skeleton (key → temporal meta) of the
+// entity whose skeleton was read last in the current transaction: the
+// presence probe and the skeleton read of one entity walk Badger once and copy
+// no row (row 121); a winning row is then read on its own (version).
+type metaMemo struct {
+	prefix string
+	metas  map[string]storecontract.VersionTemporalMeta
 }
 
 // pinned returns the transaction, re-opened when a commit happened since it
@@ -113,10 +125,25 @@ func (s *readSnapshot) Release() {
 	}
 	s.txn = nil
 	s.memo = histMemo{}
+	s.metas = metaMemo{}
 }
 
 // Close is Release: a snapshot holds nothing between runs.
 func (s *readSnapshot) Close() { s.Release() }
+
+// pastPrefix records a walk that read every key under prefix: the iterator
+// stands at the first key at or after the prefix's end, so the next
+// ascending entity walks forward from it instead of seeking (a badger Seek
+// drops the iterator's current item and copies the next value afresh).
+func (si *snapIter) pastPrefix(prefix []byte) {
+	si.last = append(si.last[:0], prefix...)
+	for i := len(si.last) - 1; i >= 0; i-- {
+		if si.last[i]++; si.last[i] != 0 {
+			return
+		}
+	}
+	si.last = nil // the keyspace's end: the next read seeks
+}
 
 // seek positions keyspace i's iterator at the first key at or after key.
 func (s *readSnapshot) seek(i int, key []byte) *badgerv4.Iterator {
@@ -145,14 +172,15 @@ func (s *readSnapshot) seek(i int, key []byte) *badgerv4.Iterator {
 	return si.it
 }
 
-// row returns a copy of the value stored at key (keyspace i), or false.
-func (s *readSnapshot) row(i int, key []byte) ([]byte, bool, error) {
+// row hands the value stored at key (keyspace i) to decode, or reports
+// false. The value is the iterator's buffer, valid only during decode: the
+// iterator reuses it across rows, so a run of reads copies no row (row 121).
+func (s *readSnapshot) row(i int, key []byte, decode func(val []byte) error) (bool, error) {
 	it := s.seek(i, key)
 	if !it.Valid() || !bytes.Equal(it.Item().Key(), key) {
-		return nil, false, nil
+		return false, nil
 	}
-	val, err := it.Item().ValueCopy(nil)
-	return val, err == nil, err
+	return true, it.Item().Value(decode)
 }
 
 // committedHistory returns the committed history rows under prefix (keyspace
@@ -175,15 +203,77 @@ func (s *readSnapshot) committedHistory(i int, prefix []byte) (map[string][]byte
 		}
 		rows[string(item.KeyCopy(nil))] = val
 	}
-	// The walk moved past the prefix: the next forward walk starts from here.
-	si := &s.its[i]
-	if si.it.Valid() {
-		si.last = append(si.last[:0], si.it.Item().Key()...)
-	} else {
-		si.last = nil
-	}
+	s.its[i].pastPrefix(prefix)
 	s.memo = histMemo{prefix: string(prefix), rows: rows}
 	return rows, nil
+}
+
+// committedMetas returns the temporal skeleton of the committed history rows
+// under prefix (keyspace i) in the current transaction, decoded in place from
+// the iterator's buffers, from the memo when this entity was read last. Call
+// it after the overlay capture.
+func (s *readSnapshot) committedMetas(i int, prefix []byte) (map[string]storecontract.VersionTemporalMeta, error) {
+	s.pinned()
+	if s.metas.metas != nil && s.metas.prefix == string(prefix) {
+		return s.metas.metas, nil
+	}
+	node := i == snapNodeHist
+	metas := map[string]storecontract.VersionTemporalMeta{}
+	if s.memo.rows != nil && s.memo.prefix == string(prefix) {
+		for k, raw := range s.memo.rows {
+			m, err := historyTemporalMetaOf(raw, node)
+			if err != nil {
+				return nil, err
+			}
+			metas[k] = m
+		}
+	} else {
+		for it := s.seek(i, prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			if len(item.Key()) != storepkg.SizeHistKey {
+				continue
+			}
+			var m storecontract.VersionTemporalMeta
+			if err := item.Value(func(val []byte) error {
+				var err error
+				m, err = historyTemporalMetaOf(val, node)
+				return err
+			}); err != nil {
+				return nil, err
+			}
+			metas[string(item.Key())] = m
+		}
+		s.its[i].pastPrefix(prefix)
+	}
+	s.metas = metaMemo{prefix: string(prefix), metas: metas}
+	return metas, nil
+}
+
+// historyMetas merges the committed skeleton under prefix with the write
+// buffer as history merges rows: key → temporal meta.
+func (s *readSnapshot) historyMetas(i int, prefix []byte) (map[string]storecontract.VersionTemporalMeta, error) {
+	overlay, overlayDeletes := s.bs.pendingHistoryVersionOverlay(prefix, 0)
+	if h := s.bs.historyScanTestHook; h != nil {
+		h() // tests only: the commit window between the overlay capture and the read
+	}
+	committed, err := s.committedMetas(i, prefix)
+	if err != nil {
+		return nil, err
+	}
+	entries := make(map[string]storecontract.VersionTemporalMeta, len(committed)+len(overlay))
+	for k, m := range committed {
+		if _, deleted := overlayDeletes[k]; !deleted {
+			entries[k] = m
+		}
+	}
+	for k, raw := range overlay {
+		m, err := historyTemporalMetaOf(raw, i == snapNodeHist)
+		if err != nil {
+			return nil, fmt.Errorf("graph: decode pending history temporal meta: %w", err)
+		}
+		entries[k] = m
+	}
+	return entries, nil
 }
 
 // history merges the committed rows under prefix with the write buffer as
@@ -245,22 +335,22 @@ func (s *readSnapshot) anchor(prefix []byte, key func(uint64) []byte) localAncho
 }
 
 // historyMeta is historyTemporalMetaByPrefix through the snapshot.
-func (s *readSnapshot) historyMeta(i int, prefix []byte, node bool) ([]storecontract.VersionTemporalMeta, error) {
-	entries, err := s.history(i, prefix)
+func (s *readSnapshot) historyMeta(i int, prefix []byte) ([]storecontract.VersionTemporalMeta, error) {
+	entries, err := s.historyMetas(i, prefix)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("graph: scan history temporal meta: %w", err)
 	}
 	if len(entries) == 0 {
 		return nil, nil
 	}
-	keys := sortedKeys(entries)
+	keys := make([]string, 0, len(entries))
+	for k := range entries {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	out := make([]storecontract.VersionTemporalMeta, 0, len(keys))
 	for _, k := range keys {
-		m, err := historyTemporalMetaOf(entries[k], node)
-		if err != nil {
-			return nil, fmt.Errorf("graph: scan history temporal meta: %w", err)
-		}
-		out = append(out, m)
+		out = append(out, entries[k])
 	}
 	return out, nil
 }
@@ -278,6 +368,17 @@ func sortedKeys(m map[string][]byte) []string {
 
 // GetNode is Store.GetNode through the snapshot.
 func (s *readSnapshot) GetNode(nid types.NodeID) (*types.Node, error) {
+	n, err := s.LendNode(nid)
+	if err != nil {
+		return nil, err
+	}
+	return n.DeepCopy(), nil
+}
+
+// LendNode is Store.LendNode through the snapshot
+// (store.ReadSnapshotLendCapability): the cached frozen row, or the committed
+// row decoded in place, frozen, cached and lent.
+func (s *readSnapshot) LendNode(nid types.NodeID) (*types.Node, error) {
 	bs := s.bs
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -289,7 +390,7 @@ func (s *readSnapshot) GetNode(nid types.NodeID) (*types.Node, error) {
 	v, status := bs.nodeCache.Get(id)
 	switch status {
 	case indexpkg.CacheHit:
-		return v.DeepCopy(), nil
+		return v, nil
 	case indexpkg.CacheDeleted:
 		return nil, ErrNodeNotFound
 	}
@@ -299,28 +400,42 @@ func (s *readSnapshot) GetNode(nid types.NodeID) (*types.Node, error) {
 	if !exists {
 		return nil, ErrNodeNotFound
 	}
-	val, ok, err := s.row(snapNodeRows, storepkg.NodeKey(id))
+	var n *types.Node
+	ok, err := s.row(snapNodeRows, storepkg.NodeKey(id), func(val []byte) error {
+		w := getPooledNodeWire()
+		defer putPooledNodeWire(w)
+		if err := storepkg.SafeUnmarshal(val, w); err != nil {
+			return fmt.Errorf("graph: unmarshal node: %w", err)
+		}
+		decoded, err := bs.decodeNodeWireForKey(*w, id)
+		if err != nil {
+			return fmt.Errorf("graph: decode node: %w", err)
+		}
+		n = decoded
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return nil, ErrNodeNotFound
 	}
-	var w storepkg.NodeWire
-	if err := storepkg.SafeUnmarshal(val, &w); err != nil {
-		return nil, fmt.Errorf("graph: unmarshal node: %w", err)
-	}
-	n, err := bs.decodeNodeWireForKey(w, id)
-	if err != nil {
-		return nil, fmt.Errorf("graph: decode node: %w", err)
-	}
 	n.Freeze() // shared between cache and caller
 	bs.nodeCache.LoadCleanAt(id, n, s.nodeEpoch)
-	return n.DeepCopy(), nil
+	return n, nil
 }
 
 // GetRelationship is Store.GetRelationship through the snapshot.
 func (s *readSnapshot) GetRelationship(rid types.RelID) (*types.Relationship, error) {
+	r, err := s.LendRelationship(rid)
+	if err != nil {
+		return nil, err
+	}
+	return r.DeepCopy(), nil
+}
+
+// LendRelationship is LendNode for relationships.
+func (s *readSnapshot) LendRelationship(rid types.RelID) (*types.Relationship, error) {
 	bs := s.bs
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -332,7 +447,7 @@ func (s *readSnapshot) GetRelationship(rid types.RelID) (*types.Relationship, er
 	v, status := bs.relCache.Get(id)
 	switch status {
 	case indexpkg.CacheHit:
-		return v.DeepCopy(), nil
+		return v, nil
 	case indexpkg.CacheDeleted:
 		return nil, ErrRelNotFound
 	}
@@ -342,28 +457,30 @@ func (s *readSnapshot) GetRelationship(rid types.RelID) (*types.Relationship, er
 	if !exists {
 		return nil, ErrRelNotFound
 	}
-	val, ok, err := s.row(snapRelRows, storepkg.RelKey(id))
+	var r *types.Relationship
+	ok, err := s.row(snapRelRows, storepkg.RelKey(id), func(val []byte) error {
+		var w storepkg.RelWire
+		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+			return fmt.Errorf("graph: unmarshal relationship: %w", err)
+		}
+		decoded, err := bs.decodeRelWireForKey(w, id)
+		if err != nil {
+			return fmt.Errorf("graph: decode relationship: %w", err)
+		}
+		r = decoded
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return nil, ErrRelNotFound
 	}
-	var w storepkg.RelWire
-	if err := storepkg.SafeUnmarshal(val, &w); err != nil {
-		return nil, fmt.Errorf("graph: unmarshal relationship: %w", err)
-	}
-	r, err := bs.decodeRelWireForKey(w, id)
-	if err != nil {
-		return nil, fmt.Errorf("graph: decode relationship: %w", err)
-	}
 	r.Freeze() // shared between cache and caller
 	bs.relCache.LoadCleanAt(id, r, s.relEpoch)
-	return r.DeepCopy(), nil
+	return r, nil
 }
 
-// HasNodeHistory is Store.HasNodeHistory: the RAM set, and an ID it does not
-// decide probed through the snapshot.
 func (s *readSnapshot) HasNodeHistory(nid types.NodeID) (bool, error) {
 	bs := s.bs
 	if err := bs.checkOpen(); err != nil {
@@ -395,7 +512,7 @@ func (s *readSnapshot) probe(kind byte, id snowflake.ID, _ bool) (bool, uint32, 
 	if kind == storepkg.KeyHistNode {
 		i, prefix = snapNodeHist, storepkg.HistNodePrefix(id)
 	}
-	entries, err := s.history(i, prefix)
+	entries, err := s.historyMetas(i, prefix)
 	if err != nil {
 		return false, 0, fmt.Errorf("graph: probe history presence: %w", err)
 	}
@@ -435,7 +552,7 @@ func (s *readSnapshot) NodeHistoryTemporalMeta(nid types.NodeID) ([]storecontrac
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	return s.historyMeta(snapNodeHist, storepkg.HistNodePrefix(nid.SnowflakeID()), true)
+	return s.historyMeta(snapNodeHist, storepkg.HistNodePrefix(nid.SnowflakeID()))
 }
 
 // RelHistoryTemporalMeta is Store.RelHistoryTemporalMeta through the snapshot.
@@ -446,7 +563,7 @@ func (s *readSnapshot) RelHistoryTemporalMeta(rid types.RelID) ([]storecontract.
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	return s.historyMeta(snapRelHist, storepkg.HistRelPrefix(rid.SnowflakeID()), false)
+	return s.historyMeta(snapRelHist, storepkg.HistRelPrefix(rid.SnowflakeID()))
 }
 
 // GetNodeVersion is Store.GetNodeVersion through the snapshot.
@@ -464,11 +581,7 @@ func (s *readSnapshot) GetNodeVersion(nid types.NodeID, version uint32) (*types.
 	if err != nil {
 		return nil, err
 	}
-	n, err := s.decodeNodeVersion(id, uint64(version), raw, prefix)
-	if err != nil {
-		return nil, err
-	}
-	return n.DeepCopy(), nil
+	return s.decodeNodeVersion(id, uint64(version), raw, prefix) // a fresh decode: the caller's own
 }
 
 // GetRelVersion is Store.GetRelVersion through the snapshot.
@@ -486,14 +599,13 @@ func (s *readSnapshot) GetRelVersion(rid types.RelID, version uint32) (*types.Re
 	if err != nil {
 		return nil, err
 	}
-	r, err := s.decodeRelVersion(id, uint64(version), raw, prefix)
-	if err != nil {
-		return nil, err
-	}
-	return r.DeepCopy(), nil
+	return s.decodeRelVersion(id, uint64(version), raw, prefix) // a fresh decode: the caller's own
 }
 
 func (s *readSnapshot) decodeNodeVersion(id snowflake.ID, version uint64, raw, prefix []byte) (*types.Node, error) {
+	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
+		return s.bs.decodeHistoryNodeValue(id, version, raw) // no anchor: the pooled full-row decode
+	}
 	anchor := s.anchor(prefix, func(v uint64) []byte { return storepkg.HistNodeKey(id, v) })
 	w, err := s.bs.reconstructNodeHistoryWire(id, version, raw, anchor)
 	if err != nil {
@@ -533,7 +645,7 @@ func (s *readSnapshot) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, n.DeepCopy())
+		out = append(out, n)
 	}
 	return out, nil
 }
@@ -552,7 +664,7 @@ func (s *readSnapshot) GetRelHistory(rid types.RelID) ([]*types.Relationship, er
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, r.DeepCopy())
+		out = append(out, r)
 	}
 	return out, nil
 }

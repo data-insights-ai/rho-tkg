@@ -620,3 +620,94 @@ func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 	parts = append(parts, results...)
 	return applyNodePagination(mergeNodeSlices(parts), opts), nil
 }
+
+var _ storecontract.CompositeIndexIDPageCapability = (*Store)(nil)
+
+// NodeIDsByLabelAndPropertiesPage is store.CompositeIndexIDPageCapability
+// over NodesByLabelAndProperties' shards (the reference shard, the archive at
+// DepthAll, the event shards depth selects): each shard's page above after,
+// merged ascending, duplicates once, the first n. handled is false when a
+// shard has no composite index answering values.
+func (ts *Store) NodeIDsByLabelAndPropertiesPage(labelToken uint16, values map[string]any, after types.NodeID, n int, depth storecontract.ShardDepth) ([]types.NodeID, bool, bool, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, false, false, err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return nil, false, false, err
+	}
+	if n <= 0 {
+		return nil, false, true, nil
+	}
+	var (
+		parts   [][]types.NodeID
+		more    bool
+		handled = true
+	)
+	page := func(s *BadgerStore) error {
+		ids, m, h, err := s.NodeIDsByLabelAndPropertiesPage(labelToken, values, after, n, depth)
+		if err != nil {
+			return err
+		}
+		parts, more, handled = append(parts, ids), more || m, handled && h
+		return nil
+	}
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, false, false, err
+	}
+	err = page(ref)
+	refCheckin()
+	if err != nil {
+		return nil, false, false, err
+	}
+	if depth == DepthAll {
+		ts.refArchiveGapHook()
+		archive, archiveCheckin, err := ts.checkoutArchive()
+		if err != nil {
+			return nil, false, false, err
+		}
+		if archive != nil {
+			err = page(archive)
+			archiveCheckin()
+			if err != nil {
+				return nil, false, false, err
+			}
+		}
+	}
+	move.unlock()
+
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(depth)
+	ts.mu.RUnlock()
+	for _, es := range eventShards {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			return nil, false, false, err
+		}
+		err = page(store)
+		release()
+		if err != nil {
+			return nil, false, false, err
+		}
+	}
+	if !handled {
+		return nil, false, false, nil
+	}
+	merged := mergeAscendingIDs(parts)
+	if len(merged) > n {
+		merged, more = merged[:n], true
+	}
+	return merged, more, true, nil
+}
+
+// mergeAscendingIDs merges ascending ID lists, each ID once.
+func mergeAscendingIDs(parts [][]types.NodeID) []types.NodeID {
+	var out []types.NodeID
+	for _, p := range parts {
+		out = append(out, p...)
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}

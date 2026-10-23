@@ -79,6 +79,7 @@ type Core struct {
 	propertyKeysQuery    storepkg.PropertyKeysLookupCapability
 	relPropertyKeysQuery storepkg.RelPropertyKeysLookupCapability
 	compositeQuery       storepkg.CompositePropertyIndexCapability
+	compositeIDPage      storepkg.CompositeIndexIDPageCapability
 	compositeQueryTrust  bool
 	filteredVector       storepkg.FilteredVectorSearchCapability
 	vectorIndexOptions   storepkg.VectorIndexOptionsCapability
@@ -2222,6 +2223,7 @@ func New(config Config) (*Core, error) {
 	c.relPropertyKeysQuery = nativeCapability[storepkg.RelPropertyKeysLookupCapability](store, "RelationshipsByTypeAndPropertyKeys")
 	c.compositeQuery = compositeQueryCapability(store)
 	c.compositeQueryTrust = isExactNativeStore(store)
+	c.compositeIDPage = nativeCapability[storepkg.CompositeIndexIDPageCapability](store, "NodeIDsByLabelAndPropertiesPage")
 	c.filteredVector = filteredVectorSearchCapability(store)
 	c.vectorIndexOptions = vectorIndexOptionsCapability(store)
 	c.depthHistory = depthHistoryIterationCapability(store)

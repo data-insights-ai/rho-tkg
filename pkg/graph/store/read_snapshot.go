@@ -5,7 +5,8 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // ReadSnapshotCapability is OPTIONAL (backlog 55): a store that serves a run
 // of per-entity reads — an effective scan's timelines, one entity after the
 // other — through one read snapshot instead of one storage transaction per
-// read. Badger and sharded (one snapshot per slot) implement it; a store
+// read. Badger, sharded (one snapshot per slot) and tiered (one for the
+// reference shard; its other shards are read direct) implement it; a store
 // without it is read entity by entity through its own methods, with the same
 // answers.
 type ReadSnapshotCapability interface {
@@ -37,4 +38,15 @@ type ReadSnapshot interface {
 	GetRelHistory(id types.RelID) ([]*types.Relationship, error)
 	Release()
 	Close()
+}
+
+// ReadSnapshotLendCapability is OPTIONAL on a ReadSnapshot (row 121): the
+// store's EntityLendCapability through the snapshot, so a scan that hands its
+// rows out frozen reads each row without a defensive copy. LendNode and
+// LendRelationship answer what GetNode and GetRelationship answer, as the
+// store's frozen shared row (never to be mutated). Badger, sharded and tiered
+// snapshots offer it.
+type ReadSnapshotLendCapability interface {
+	LendNode(id types.NodeID) (*types.Node, error)
+	LendRelationship(id types.RelID) (*types.Relationship, error)
 }

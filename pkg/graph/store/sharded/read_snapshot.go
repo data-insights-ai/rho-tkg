@@ -8,6 +8,8 @@ import (
 
 var _ storecontract.ReadSnapshotCapability = (*Store)(nil)
 
+var _ storecontract.ReadSnapshotLendCapability = (*readSnapshot)(nil)
+
 // NewReadSnapshot returns a store.ReadSnapshot (backlog 55) that routes every
 // read to the slot the ID routes to, as the store's own reads do, and reads
 // it through that slot's badger snapshot (opened on the slot's first read):
@@ -57,6 +59,31 @@ func (r *readSnapshot) GetRelationship(id types.RelID) (*types.Relationship, err
 		return nil, err
 	}
 	return snap.GetRelationship(id)
+}
+
+// LendNode is GetNode lent (store.ReadSnapshotLendCapability), through the
+// slot's badger snapshot.
+func (r *readSnapshot) LendNode(id types.NodeID) (*types.Node, error) {
+	if err := storecontract.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
+	snap, err := r.slot(int64(id))
+	if err != nil {
+		return nil, err
+	}
+	return snap.(storecontract.ReadSnapshotLendCapability).LendNode(id)
+}
+
+// LendRelationship is LendNode for relationships.
+func (r *readSnapshot) LendRelationship(id types.RelID) (*types.Relationship, error) {
+	if err := storecontract.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	snap, err := r.slot(int64(id))
+	if err != nil {
+		return nil, err
+	}
+	return snap.(storecontract.ReadSnapshotLendCapability).LendRelationship(id)
 }
 
 func (r *readSnapshot) HasNodeHistory(id types.NodeID) (bool, error) {
