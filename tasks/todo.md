@@ -20,11 +20,18 @@ Each item: one sentence, then when it is done and what it waits for.
    good); without the change log a crashed removal flush leaves "node counter 20000 does not match 4 live rows" and the
    store refuses to open. The first simulation passed because Store.Close's flush loop ran a final flush that consumed
    the injected failure; the crash now stops the store without any final flush.
-2. [ ] (in review, 2026-10-23; ai-soc asked for its flush sizes, change-log use and rollback risk) Fable reviews the
-   fix design: a flush that fits in one badger transaction commits as today; a larger one is staged
-   under a private key prefix, made visible by a small marker, applied, then cleaned up; at open a marker means
-   re-apply, no marker means discard the staging.
-3. [ ] The change is built and the tests pass, under `-race` too.
+2. [x] Fable reviewed the design (2026-10-23); adopted with its four blocking points: a flush that fits one badger
+   transaction commits as one `Txn` (atomic); a larger one is staged under `0x0E` with a unique sequence, made the
+   commit by a small marker (which also raises the store format marker to 9: an older rho refuses the store), applied
+   (commit floor first), unmarked, cleaned. After the marker nothing is requeued: the apply retries in place or the
+   store fails closed, and `Close` finishes it first. `New` recovers before counters are reconciled (marker: re-apply,
+   no marker: delete staging); a read-only open with a marker fails typed. `Clear` drops `0x0E`; reap policy and
+   persistence.md list the new keys. Write amplification of an oversized flush: 3x.
+3. [ ] Tests first (Fable's list): the two red tests; a crash matrix at stage, marker, mid-apply, unmark, clean, with
+   `SyncWrites` on and off; a failed apply then a newer write then a crash (the newer value wins); recovery with and
+   without a marker; a recount mismatch fails closed; two aborted attempts never mix; read-only open with a marker;
+   `Clear` with staging present; the format marker 9 only after a staged flush; path A unchanged. Then the change;
+   all tests pass, under `-race` too.
 4. [ ] Fable reviews the diff and the test output.
 5. [ ] Released as a patch; ai-soc and sigma are told; the item moves to `docs/CHANGELOG.md`.
 
