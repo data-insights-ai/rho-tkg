@@ -46,8 +46,9 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 **Tests**
 
-- New tests run under `-short` in seconds (one test ≲2 s, a package ≲5 s). Slow tests sit behind `testing.Short()` and run in
-  `make ci-docker`. A cap or growth test lowers the cap through a test switch.
+- New tests run under `-short` in seconds (one test ≲2 s, a package ≲5 s). A slow test is gated with
+  `testing.Short() && !raceEnabled` so it runs in the race gate; a plain `testing.Short()` gate runs in no gate at all. A cap or
+  growth test lowers the cap through a test switch.
 - History-aware code gets two-phase tests: create state X at t0, mutate after t0, query at t0 and assert X.
 - Assert exact sets and negative cases ("must NOT contain Y"), not happy paths. Ask of every test: would it fail if the code
   returned the current instead of the historical version?

@@ -11,6 +11,24 @@
    `errorlint`; (f) design-rule gaps from the Opus audit: relationship-create kernel reachability, canonical hash, tombstone
    cache-miss, rotation boundary, reflection close-sweep of every public method. Check: each guard red on a planted violation.
 
+3. (119) Test-suite cleanup (7 Sonnet reviews 2026-10-23; ~6,700 tests, ~369k lines). Verdict: mostly real oracles (mutation runs: 9-14 of 14
+   injected bugs killed per slice); the waste is duplication, not junk. Steps, each verified before deleting:
+   (a) gaps first (bugs or blind spots): sharded `GetNodeVersion(-1)` returns `ErrSlotNotLocal`, not `ErrInvalidStoreMutation` (add sharded to
+   `directStoreBackends`); tiered E→R put rollback and `DeleteNodesBatch` rollback untested at the door; sharded cascade rel order untested;
+   `TestUniqueForever_ResetReaps` / `TestUniqueTiered_ResetReaps` blind (re-create the constraint after Reset);
+   `TestImportGraph_DoesNotBlockReadsWhileStreaming` vacuous; `TestColdShardCapBoundsOpenHandles` always skips; 4 tiered tests
+   (close-drain ×2, footprint knobs, oversized WAL) and 2 core oracles gated by plain `Short()` run in no gate;
+   (b) delete ~150 vacuous/duplicate tests (~5k lines): compression ×5 (read from cache), unfalsifiable v3056 ×2 and flush-loop ×2,
+   sub-API smoke files (870 lines, 11 statements of unique coverage), stale `*WithContext` rows, `context_test.go` leftovers,
+   `TestBench*` and B3/B6 measurement gates, empty tutorial tests, coverage_lift duplicates, assertion-free lock tests;
+   (c) one reflection test for every sub-API nil/zero receiver (replaces ~2k lines of hand tables);
+   (d) one shared store contract suite over memory/badger/tiered/sharded with multi-slot IDs (replaces ~10k lines of mirrored
+   per-backend files, e.g. the scoped-door batteries ×3) and one backend-matrix helper instead of ~20;
+   (e) cost: always-run tests over 2 s (`TestEffectiveTimelinesManyPins_OneChainWalk` 23-43 s, `TestLoadIndexes_MintInKeyRepairedAfterSplitFlush`,
+   `TestTieredPropertyIndexOnDisk_EventLabelOnEveryShard`), memory race part 371 s (segment tests), 14 `TestUniqueCascade_*` ~125 s;
+   (f) hygiene: sleeps → `useTestClock`/hooks, `round9/10/11` and row-numbered files renamed by behaviour, old algorithms kept in
+   production only as oracles (`headWriteOff`, `correctionPerCut`) move to tests. Expected: ~15-20 % fewer test lines, no lost protection.
+
 ## Waiting (trigger → action)
 - (92) ai-soc's reopen profile (ReadHistory via `readUnderRLock` 526 s vs 57 s for fix5) arrives with rho version + callee under `fn` → act on that only; `readUnderRLock` (locks.go:80) unchanged since v4.66.0.
 - A consumer report against v4.70.0 (ai-soc's full Flux rerun, row 106 fix; sigma O1-3 on `LowestAnsweredPins` (P1) and `RelEffectiveTimelinesByProperties`: tiered, driver = first indexed key, device before estate, segments whole, DepthAll only, ai-soc declares (type, device) rel indexes) → build only what blocks them (lesson 79 (10)).
