@@ -8,8 +8,36 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
-  built while ai-soc cleans up its data waste; a Fable agent designs and reviews, the main agent implements step by
-  step. Done when: shards live on their tier's volume, released. Waits for: the Fable design for three volumes.
+  built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
+  below are ticked and released. Waits for: nothing.
+
+### SHARD plan
+
+The main agent builds each step (red test, change, tests green), the Fable agent reviews it and monitors the plan; a
+step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
+
+1. [ ] A shard whose directory is missing fails to open instead of opening empty; every shard path goes through one
+   function. Done when: released as a patch (red test `TestLazyOpenRefusesMissingShardDir`).
+2. [ ] The shard listing shows each shard's volume, path and bytes on disk. Done when: in the volume minor (red test
+   `TestListShardsDiskBytesMatchesDirectory`).
+3. [ ] The config names a warm and a cold volume and where the reference shard and archive live; the catalog records
+   each shard's volume and refuses an unknown one. Done when: in the volume minor (red tests
+   `TestShardOpensFromItsVolume`, `TestUnmappedVolumeFailsNew`, `TestSentinelRejectedByOldValidator`).
+4. [ ] A closed shard moves to another volume crash-safely. Done when: in the volume minor (red tests: the crash
+   matrix after copy, rename, catalog save and removal; a drop of a moved shard removes it there).
+5. [ ] An open warm shard moves too: its readers and writers wait, nothing written is lost. Done when: in the volume
+   minor (red test `TestMoveWarmShard_WriterWaitsAndWriteLandsOnNewVolume`).
+6. [ ] The idle sweep moves one shard per tick to its tier's volume and never fails the store. Done when: in the
+   volume minor (red tests `TestSweepMovesWarmToWarmDirAndColdToColdDir`, `TestMoverErrorIsNotStoreWide`).
+7. [ ] The reference shard and the archive move offline. Done when: in the volume minor (red test: the reference
+   shard on the warm volume still answers unique checks and the watermark).
+8. [ ] Each read reports how many cold shards it opened. Done when: in the volume minor (red test: a closed cold
+   shard counts once, a retained one not).
+9. [ ] The volume minor is released with its one-way door named in the CHANGELOG, and ai-soc and sigma are
+   told. Done when: tagged.
+10. [ ] The global index on the fast volume, unique keys first (keyed event labels), then label and property
+    postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
+    its data cleanup.
 
 ## Next
 

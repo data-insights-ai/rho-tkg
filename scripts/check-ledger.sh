@@ -23,8 +23,9 @@ for sec in 'Now' 'Next' 'Waiting' 'Later' 'Parked'; do
   grep -qE "^## ${sec}$" tasks/todo.md || { echo "ledger: tasks/todo.md lacks a '## ${sec}' section"; fail=1; }
 done
 steps=$(cat tasks/todo.md)
-# A done item does not belong in todo.md (shipped = docs/CHANGELOG.md).
-echo "$steps" | grep -iE '✅|\[x\]|^- +\*\*[A-Z0-9-]+\*\* +— +(done|shipped|answered)\b|\b(done|shipped|answered)[.)]*$' | cut -c1-90 | sed 's/^/ledger: done item left in todo.md: /' | grep . && fail=1
+# A done item does not belong in todo.md (shipped = docs/CHANGELOG.md); a ticked step "N. [x]" of a plan in progress
+# stays until the plan is finished.
+echo "$steps" | grep -iE '✅|^- +\*\*[A-Z0-9-]+\*\* +— +(done|shipped|answered)\b|\b(done|shipped|answered)[.)]*$' | cut -c1-90 | sed 's/^/ledger: done item left in todo.md: /' | grep . && fail=1
 # A todo item citing a backlog number that is closed, i.e. not a line of HANDOVER.md "## Backlog".
 open_items=$(awk '/^## /{f=($0 ~ /^## Backlog/);next} f' HANDOVER.md | grep -oE '^- [0-9]+[a-z]? ' | grep -oE '[0-9]+[a-z]?' | sort -u)
 [ -n "$open_items" ] || { echo "ledger: found no backlog items in HANDOVER.md (## Backlog or '- N — ' format changed?)"; fail=1; }

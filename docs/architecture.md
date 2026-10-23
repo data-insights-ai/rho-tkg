@@ -224,9 +224,12 @@ DataDir/
   events/      one shard per time window (ShardWindow, default 1 week)
                hot  = the current window, written by new events
                warm = older windows, open and writable
-               cold = older than ColdAfter, closed, reopened on demand
+               cold = older than ColdAfter, closed by the idle sweep, reopened (writable) on demand
   archive/     archived reference nodes
 ```
+
+Tiers are catalog states, not places: today every shard lives under `DataDir`. Three storage volumes (hot on fast
+NVMe, warm on SSD, cold on block devices) and a global index on the fast volume are being built: ADR-0012.
 
 - **Routing.** A node's label decides its *class* (reference or event) at creation. An event entity lives in the
   shard whose time window contains its ID's mint time. Lookup goes reference shard → archive → event shard by ID
@@ -235,8 +238,10 @@ DataDir/
 - **`RelsByMint`** puts a relationship between reference nodes on its mint shard instead, so reference-heavy graphs
   do not pile every edge into the reference shard.
 - **Rotation** opens the next hot shard, saves the catalog, and only then flips the old hot shard to warm.
-  Shards older than `ColdAfter` become cold and are closed by the idle sweep; a cold shard reopens for a read, and
-  at most `MaxOpenColdShards` stay open.
+  Shards older than `ColdAfter` become cold; a demoted shard keeps its handle until the idle sweep closes it after
+  `IdleTimeout` unused. A cold shard reopens writable on any access, and at most `MaxOpenColdShards` stay open.
+- **No RAM tier.** `DurableCommit` / `SyncWrites` need every write on a disk with a write-ahead log; RAM is each
+  shard's cache (`MemTableSize`, `BlockCacheSize`, `CacheBudgetBytes`).
 - **Shard pinning.** Every access pins a shard (`checkoutStore` / `checkinStore`); `Close` and the idle sweep wait
   for pins to drain, so no reader ever holds a closed database.
 - **Old entities stay writable** on their own shard after rotation; there is no read-only tier.
@@ -328,3 +333,34 @@ that test.
   declared by the consumer are stored as immutable column segments (CSR adjacency, bit-packed integer pages,
   dictionary or plain string columns, SHA-256 group roots) instead of one row per relationship, within a RAM
   budget (default 256 MiB) and optionally as sealed files (`SegmentDir`). `ScanRelSegments` reads them column-wise.
+- **ADR-0012 Three storage volumes and a global index** (tiered; designed 2026-10-23, Fable; built in the steps of
+  `tasks/todo.md` SHARD, each marked here when released).
+  - *Volumes.* A volume is a directory on a device: `hot` = `DataDir` (fast NVMe), `warm` = `Config.WarmDir` (SSD),
+    `cold` = `Config.ColdDir` (block devices). Tier (catalog state) and volume are separate: rotation flips tiers at
+    once, as today; a shard's volume follows its tier later, through the mover. Placement: `meta/` and the hot shard
+    only on hot; the reference shard on hot or warm (`Config.ReferenceVolume`; never cold: every commit and every
+    unique check reads it); the archive on any (`Config.ArchiveVolume`); event shards on any; a future global index
+    only on hot. The catalog entry carries `Volume` (`""` = hot, `"warm"`, `"cold"`), resolved through the config at
+    open, so a remount needs no catalog edit and a fourth volume needs no format change.
+  - *A cataloged shard whose directory is missing fails the open* (`fs.ErrNotExist`); badger would otherwise create
+    an empty shard and reads would answer "not found" (step 1).
+  - *The mover* (one, for any event shard and any volume pair; one move per idle-sweep tick, or `tier.API.MoveShard`):
+    a closed shard is copied file by file (byte-exact, fsync of files and directory) into
+    `<volume>/events/<name>.moving-<nonce>`, renamed, the catalog saved with the new `Volume` (the commit point), then
+    the source removed. An open (warm) shard is first quiesced: a `moving` gate makes its checkouts wait, pins drain,
+    the shard closes (flushing), moves as above and reopens; the mover never starts inside a `DurableCommit` group.
+    At open, orphans are removed by the catalog's word (`*.moving-*`; a copy on a volume the catalog does not name).
+    The mover never fails the store: errors are logged and retried. The reference shard and the archive move only
+    offline (`MoveShardOffline`).
+  - *One-way door.* The first move writes the catalog entry `__format__` (kind `catalog/2`); releases before the
+    volume minor refuse such a store at open and write nothing. A store that never moved stays byte-identical.
+  - *Failure per volume.* SSD down: warm shards' reads and writes fail, hot writes and the reference shard (on NVMe)
+    continue. Block device down: cold reads fail per read. `New` fails closed when a warm shard cannot open.
+  - *Global index* (`DataDir/index/`, a badger on the hot volume; keys only, never rows): unique-key postings
+    `(label, key, value) → ID`, label/property postings, and an owner map for relationships off their mint shard. A
+    move changes nothing in it (postings name IDs, the catalog names volumes). Write order: posting first, row
+    second, every read checks the row, so a crash leaves at most a dangling candidate, never a lost key. At open it
+    replays each open shard's change-log above its watermark (requires `ChangeLog`); a full rebuild is an admin door.
+    About 55 B per posting on NVMe and one more fsync per commit group. Its unique-key slice lets a keyed label be an
+    event label (the key stays on NVMe, the row moves with its day), which shrinks the reference shard; built only on
+    a measured need after ai-soc's data cleanup.
