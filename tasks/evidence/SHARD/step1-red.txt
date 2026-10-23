@@ -1,0 +1,15 @@
+    shard_dir_missing_test.go:60: GetNode on a shard whose directory is gone = graph: lazy-open cold shard 2026-W43: graph: badger open: Cannot find directory "/tmp/TestLazyOpenRefusesMissingShardDir368971784/001/events/2026-W43" for read-only open, want fs.ErrNotExist
+--- FAIL: TestLazyOpenRefusesMissingShardDir (0.37s)
+    shard_dir_missing_test.go:87: New = graph: open warm shard 2026-W43: graph: badger open: Cannot find directory "/tmp/TestNewRefusesMissingWarmShardDir1642767759/001/events/2026-W43" for read-only open, want fs.ErrNotExist
+--- FAIL: TestNewRefusesMissingWarmShardDir (0.43s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.444s
+FAIL
+    shard_dir_missing_test.go:136: New opened a store whose reference shard directory is gone; GetNode = graph: node not found
+    shard_dir_missing_test.go:136: New opened a store whose hot shard directory is gone; GetNode = graph: node not found
+--- FAIL: TestNewRefusesMissingHotOrReferenceShardDir (0.00s)
+    --- FAIL: TestNewRefusesMissingHotOrReferenceShardDir/reference (0.45s)
+    --- FAIL: TestNewRefusesMissingHotOrReferenceShardDir/hot (0.45s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.461s
+FAIL

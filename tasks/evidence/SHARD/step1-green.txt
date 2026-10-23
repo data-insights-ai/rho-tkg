@@ -1,0 +1,6 @@
+--- PASS: TestNewRefusesMissingHotOrReferenceShardDir (0.00s)
+    --- PASS: TestNewRefusesMissingHotOrReferenceShardDir/reference (0.26s)
+    --- PASS: TestNewRefusesMissingHotOrReferenceShardDir/hot (0.32s)
+--- PASS: TestLazyOpenRefusesMissingShardDir (0.37s)
+--- PASS: TestNewRefusesMissingWarmShardDir (0.44s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.449s
