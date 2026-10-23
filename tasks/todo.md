@@ -46,6 +46,9 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 
 ## Waiting
 
+- **RESUME** — sigma reports that a valid-time write ending exactly where an existing row starts still writes a copy
+  of that row as a "resumption" row (one wasted row per rewritten step, part of CHAIN's waste). Done when: rho writes
+  no resumption row when nothing needs resuming, with the same answers, released as a patch. Waits for: SHARD step 1.
 - **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
   known. Waits for: René's "run" (sigma runs it).
