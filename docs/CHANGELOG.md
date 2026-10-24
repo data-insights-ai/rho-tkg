@@ -38,9 +38,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     an uncrashed store's index digest and change log, failures inside recovery, damaged and torn staging, duplicate
     keys, readers during the flush, every door after a failure, a discard on a wrong path, and a tiered warm shard.
     All 27 code mutations of the sweep fail a test (`tasks/evidence/FLUSHPART/mutations.txt`); the review was by Fable.
-  - **Not covered**: a single entry above badger's transaction limit (a row of about 10 MB or more at the default
-    memtable; rho allows rows up to 64 MB) still cannot be committed: its flush fails and is requeued every cycle, as
-    before. Todo ROWSIZE.
+  - **Single rows**: one entry always fits a badger transaction (badger refuses to open with `ValueThreshold` above
+    the batch size; a row of 1 MB or more goes to the value log and counts as its key + 24 bytes; measured with a
+    20 MB row at the smallest memtable, `tasks/evidence/BADGER/batch_test.go.txt`), so only a flush's number of
+    entries ever stages it.
 
 ### Documentation
 
