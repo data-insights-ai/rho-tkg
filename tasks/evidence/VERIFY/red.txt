@@ -1,0 +1,14 @@
+VERIFY + BADGERLOG red (2026-10-24, v4.75.1 code, default options):
+--- FAIL: TestVlogFlippedByteOlderFileIsAnError (0.39s)
+badgerstore_verify_test.go:112: a flipped value-log byte was returned as data (p12 altered: true)
+--- FAIL: TestTableFlippedByteNeverPanics (1.36s)
+badgerstore_verify_test.go:150: flip at 5% of the table: PANIC Unclosed iterator at time of Txn.Discard.
+badgerstore_verify_test.go:150: flip at 20% of the table: PANIC Unclosed iterator at time of Txn.Discard.
+badgerstore_verify_test.go:150: flip at 30% of the table: PANIC Unclosed iterator at time of Txn.Discard.
+--- FAIL: TestBadgerErrorsReachSlogByDefault (0.47s)
+badgerstore_verify_test.go:206: badger's report of the failed read did not reach slog (read error: graph: unmarshal node: graph: corrupt wire data: truncated msgpack while measuring depth); slog got: ""
+--- FAIL: TestNewestVlogCutAtOpenIsReported (0.29s)
+badgerstore_verify_test.go:238: the open cut 000001.vlog without a report; slog got: ""
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.654s
+FAIL
