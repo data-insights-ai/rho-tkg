@@ -49,7 +49,8 @@ Each item: one sentence, then when it is done and what it waits for.
    truncation) and BADGERLOG; ai-soc and sigma asked (24 Oct) which configurations they run (on-disk indexes, value-log
    size, in-memory stores, row and string sizes, a logger, Reset), to order the fixes; DISCARDCLOSE measured (the
    101st discard after Close blocks); sigma answered (VALUESIZE real,
-   KEYSIZE latent, no logger, Reset reachable, no corruption seen), ai-soc pending; each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
+   KEYSIZE latent, no logger, Reset reachable, no corruption seen); ai-soc answered (cut records up to ~5 MB in the
+   value log, default value-log size, no on-disk property index, no logger, no Reset); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence; fixes come after the milestone (René 24 Oct). Also measured: DROPALL at rho
    level, a writable shard open 86.5 MB and 18 goroutines against 3.3 MB and 10 read-only. Not testable here:
    METASYNC (needs a power-loss filesystem; source-confirmed).
@@ -117,7 +118,8 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   `ValueLogFileSize` 1 MB, or in an in-memory badger store, is acknowledged and then refused by badger at every flush
   ("Value with size 1440490 exceeded 1048576"), blocking all later writes like KEYSIZE; with default options it
   commits. sigma (24 Oct): exposed: its PageState Derived facts can exceed 1 MB, its daemon sets the value-log size
-  down to 1 MB (TKGD_BADGER_VLOG_MB) and offers an in-memory store. Done when: the write door refuses a row the store
+  down to 1 MB (TKGD_BADGER_VLOG_MB) and offers an in-memory store. ai-soc (24 Oct): not exposed (default value-log
+  size, no in-memory store), though its cut records reach several MB. Done when: the write door refuses a row the store
   cannot hold, the test passes, released as a patch.
 - **DISCARDCLOSE** (confirmed, low; `tasks/evidence/USAGE/discard_test.go.txt`) — The scan snapshot and the rel-type
   build walk always `Discard` their transaction; after `db.Close` up to 100 such discards return and the 101st blocks
@@ -198,13 +200,15 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   DATA, no error, no log (rows of 1 MB or more); in the newest value-log file the next writable open silently cuts
   the file there, losing that row and every later one in it; in a table, 3 of 7 positions made badger PANIC (the
   process dies), 3 made the open refuse on the counter check, 1 failed reads. Done when: value checksums and block
-  checksums are verified (`VerifyValueChecksum`, `ChecksumVerificationMode` OnBlockRead, measured cost), a corrupt
+  checksums are verified. ai-soc (24 Oct): exposed in the value log: its cut records (up to ~5 MB) live there, so a
+  flipped byte can reach it as data. Fix: (`VerifyValueChecksum`, `ChecksumVerificationMode` OnBlockRead, measured cost), a corrupt
   read is an error and never a panic, and an admin door runs `VerifyChecksum` per shard.
 - **OPENIMAGE** — A reopen after a crash rebuilds every row although the open image holds most of the state;
   `IteratorOptions.SinceTs` reads only the keys newer than the image. Done when: such a reopen reads only those keys,
   measured on a large shard.
 - **VLOGGC** — The value-log GC loop runs on every shard although only rows of 1 MB or more reach the value log (rule
-  9). Done when: it runs only where the value log holds data.
+  9); ai-soc's cut records (up to ~5 MB, rewritten often) do, so there it is needed. Done when: it runs where the
+  value log holds data and its reclaim is measured on such a shard.
 
 - **COLDSTART** — A fresh agent has to be able to work from the 13 docs alone. Done when: every gap it finds is fixed
   in the file that owns it.
