@@ -28,8 +28,8 @@ VERIFY + BADGERLOG, CLEARMETA, DROPALL + DISCARDCLOSE; then BADGER step 3.
 4. [x] Fable reviewed twice; all points fixed: a torn unsynced flush (power loss) is discarded at open, a synced one
    refuses and names the new `badger.DiscardStagedFlush`, which also drops the counters.
 5. [ ] Found before release (24 Oct): a 64,995-byte key or a value of exactly `ValueLogFileSize` fits badger directly
-   but fails staged (red test `TestStagedFlushEntryAtBadgerLimits`); the write-door limits of KEYSIZE and VALUESIZE
-   must include the staging overhead and ship in the same release. `make ci-docker` passed before this (900f0a78); Fable's last verdict, then
+   but fails staged; the KEYSIZE/VALUESIZE door limits include the staging overhead (branch `entrysize` on top of
+   `flushpart`, `TestStagedFlushEntryAtBadgerLimits` green at the limits). `make ci-docker` passed before this (900f0a78); Fable's last verdict, then
    René's go, merge, tag v4.75.0, tell ai-soc and sigma, move the item to `docs/CHANGELOG.md`. Parked by René while
    the badger work runs.
 
@@ -114,13 +114,15 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   the meta that interprets it (the order is drafted, not applied), the test passes, released as a patch. The fix
   waits until the BADGER milestone's step 2 is through (René 24 Oct: verify first). sigma (24 Oct): reachable through
   its daemon's admin reset with the change log on.
-- **KEYSIZE** (confirmed, data loss; `tasks/evidence/USAGE/size_test.go.txt`) — A string value rho accepts (65,100
+- **KEYSIZE** (built on branch `entrysize`, 24 Oct: every badger write door refuses an oversized row, change-log
+  record or on-disk index key with `store.ErrEntryTooLarge` before any mutation; door-family tests, 6 mutations
+  caught, full short suite and `-race` on the stores green; reviewed by the main session) (confirmed, data loss; `tasks/evidence/USAGE/size_test.go.txt`) — A string value rho accepts (65,100
   bytes, under its 65,536 limit) on a label with an on-disk property index makes an index key above badger's 65,000
   (`property_index_key.go:136-139`, `txn.go:352`): the write is acknowledged, every later flush fails on that key, and
   nothing written afterwards reaches disk. sigma (24 Oct): latent: no on-disk property index on strings in
   production, but its ov_key strings are unbounded. Done when: such a write is refused at the door or stored (capped
   or hashed key), the test passes, released as a patch.
-- **VALUESIZE** (confirmed, data loss; same evidence) — A 1.4 MB row (every value under rho's limits) with
+- **VALUESIZE** (built with KEYSIZE on `entrysize`) (confirmed, data loss; same evidence) — A 1.4 MB row (every value under rho's limits) with
   `ValueLogFileSize` 1 MB, or in an in-memory badger store, is acknowledged and then refused by badger at every flush
   ("Value with size 1440490 exceeded 1048576"), blocking all later writes like KEYSIZE; with default options it
   commits. sigma (24 Oct): exposed: its PageState Derived facts can exceed 1 MB, its daemon sets the value-log size
