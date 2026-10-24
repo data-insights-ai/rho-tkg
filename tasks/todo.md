@@ -194,6 +194,10 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   edges by that endpoint in one index read, as cheaply as today's estate+device property index. Done when: ai-soc
   drops the `device` text property from edges and still answers "rows of device X" in one index read. Waits for:
   FLUSHPART and SHARD.
+- **TIERLABELDISK** (sigma, 24 Oct) — tiered has `PropertyIndexOnDisk` but no `LabelIndexOnDisk`, so a paged row costs
+  about 1.2 kB of RAM there instead of about 200 B (sigma's p4b measurement on badger). Done when: tiered passes
+  `LabelIndexOnDisk` to every shard, released as a minor. Waits for: the agreed fixes and SHARD (may ride SHARD's
+  per-tier options).
 - **WRITTENAT** (ai-soc, 24 Oct) — ai-soc wants the nodes of one label (and one property value) written at one
   transaction, without a scan, so its records can drop the list of changed keys. Done when: such a lookup costs
   O(rows written at that transaction), with its write cost per row measured. Waits for: FLUSHPART and SHARD.
