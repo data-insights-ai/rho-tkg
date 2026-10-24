@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.75.5] - 2026-10-24
+
 ### Fixed
 
 - **SAMESTART** (sigma; met by sigma's write-back and probably by ai-soc's run k10241303): when a node's or

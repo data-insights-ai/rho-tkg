@@ -8,7 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct, "fixes first", then "the given order"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0
-(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); CLEARMETA shipped in v4.75.3 (tagged, sigma and ai-soc told, tag CI green); CLEARSHARDS shipped in v4.75.4 (tagged, sigma and ai-soc told, tag CI green); next BADGER step 3 /
+(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); CLEARMETA shipped in v4.75.3 (tagged, sigma and ai-soc told, tag CI green); CLEARSHARDS shipped in v4.75.4; SAMESTART shipped in v4.75.5; next OPENEXCISE, then BADGER step 3 /
 SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -40,29 +40,6 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
 
-- **SAMESTART** (sigma, 24 Oct; found by sigma's reviewer on v4.75.1) — When all of a node's rows start at the same
-  instant, `sortNodeChainForResolve` reports the chain monotonic and the fast path (newest first, first covering row
-  wins, `internal/core/temporal.go` ~346-425) skips the supersession the cascade arm applies (`supersessionCaps`: a
-  replacing write ends every older belief that started at or before its start). Probe: Add [92,∞); UpdateNode
-  `tkg_valid_to` 233; `SetNodeVersionInterval(92, +inf)`; UpdateNode `tkg_valid_to` 93: `NodeAt(100)` returns the
-  [92,233) row, and after `ExciseNodeValidity(92,93)` it returns [93,233); expected `ErrNoVersionValidAt` after the
-  close to 93. sigma guards against it on its side. Done when: the probe is a red test, both arms apply one rule,
-  released as a patch. Order (decided 24 Oct from the data, René: "open decisions answered by data and the other
-  agents"): next, before SHARD: a wrong answer from `NodeAt`, met in practice by sigma, and fixes come first.
-  sigma (24 Oct): every session-open fact closed in place and regrown from the same start makes such a chain, and the
-  exposed row also reached its effective-timeline reads (`NodeEffectiveTimeline`, `NodesEffectiveByIDs`,
-  `ForEachNodeEffectiveByLabelAndProperties`): a retracted fact read back as [93,233).
-  Red test on branch `samestart` (24 Oct, `tasks/evidence/SAMESTART/red.txt`): memory and badger both answer
-  `NodeAt(93..232)` with the superseded [92,233) row, the effective timeline holds [93,233), and after the excise
-  [93,233) returns. ai-soc (24 Oct): probably hit on run k10241303 (an in-place extension read back unchanged at its
-  pin, so /events refused for the whole run); a rho-side fix matters to it.
-  Fixed on `samestart` (24 Oct): the fast path runs only when rows sharing a start tile; node and relationship tests
-  green on memory and badger. The oracle harness had mirrored the engine's dispatch (so it shared the blind spot)
-  and had no close in place: it now resolves by the reference rule only and gains close and regrow ops; it fails the
-  old code. The effective-timeline head overlay now applies the same rule (its long-tier test failed under -race
-  after the resolver change; fixed with one shared helper). Suite and race green except `TestHistoryScanAllocGate`
-  again: a steady background allocation rate added +5 to whole runs, so its bar is now twice the reference plus 10
-  (a missing prefix still fails it, 622 vs 114). CHANGELOG written; patch gate next, v4.75.5.
 - **OPENEXCISE** (sigma for ai-soc, 24 Oct; blocks ai-soc's BA run: on k10241303 every history check fails, an
   extension reads as the earlier version at its pin) — sigma ends an open tail by closing the current row
   (`UpdateNode(tkg_valid_to: a)`), which rho writes as a new row restating the current properties over [start, a)
@@ -72,7 +49,7 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   Request: a door that ends validity from a on, open-ended, without restating and without tx-ending rows so older
   beliefs reappear: `ExciseNodeValidity(id, a, open)` (today refused, `temporal_cascade.go:1268`; a bounded excise
   to MaxInt64-1 leaves a resumption row). sigma's randomized probe fails 5-10% of seeds, every failure ending in an
-  open-tail excise. Order (decided 24 Oct from the data): after SAMESTART's release, before SHARD: a consumer's
+  open-tail excise. Order (decided 24 Oct from the data): now (SAMESTART shipped), before SHARD: a consumer's
   correctness on its full run, and fixes come first. Done when: (A) and (B) are red tests, the door exists for nodes
   and relationships in every backend, released (a widened door: a minor). sigma (24 Oct): in (A) the [500,∞) c=1 row is a
   `SetNodeVersionInterval(id, 500, open, props)` (reconcile's whole write), then `UpdateNode(tkg_valid_to: 501)`,
