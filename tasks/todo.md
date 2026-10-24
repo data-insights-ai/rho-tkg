@@ -44,7 +44,8 @@ Each item: one sentence, then when it is done and what it waits for.
    prefix holds per WAL file only under power loss without `SyncWrites`; the `Discard` rules; citations; section 8
    passed against the source (uncited rows are doc comments of features rho does not use).
 2. [ ] rho's current badger use, fully verified in tests: the call map and the 9-category analysis exist
-   (`tasks/evidence/USAGE/`); CLEARMETA confirmed by a real crash test (24 Oct); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
+   (`tasks/evidence/USAGE/`); confirmed by real tests (24 Oct): CLEARMETA (a crash inside `Clear`), KEYSIZE and
+   VALUESIZE (one oversized entry blocks all later persistence); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence, then its fix.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
@@ -99,12 +100,15 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   their tokens (its query fails: "property-key token 1 not in registry"). Done when: `Clear` drops the data before
   the meta that interprets it (the order is drafted, not applied), the test passes, released as a patch. The fix
   waits until the BADGER milestone's step 2 is through (René 24 Oct: verify first).
-- **KEYSIZE** (candidate) — rho allows property values of 65,536 bytes and copies a string value verbatim into its
-  on-disk property index key (`property_index_key.go:136-139`), above badger's 65,000-byte key limit (`txn.go:352`),
-  so such a value would make its flush fail. Done when: a test shows it, and the value is capped or the key hashed.
-- **VALUESIZE** (candidate) — badger refuses a value above `ValueLogFileSize` (rho allows 1 MB) and, in memory, one
-  at or above 1 MB (B10), while rho allows rows of about 64 MB. Done when: a test shows what a large row does with a
-  small value-log file and in memory, and the write door refuses it up front.
+- **KEYSIZE** (confirmed, data loss; `tasks/evidence/USAGE/size_test.go.txt`) — A string value rho accepts (65,100
+  bytes, under its 65,536 limit) on a label with an on-disk property index makes an index key above badger's 65,000
+  (`property_index_key.go:136-139`, `txn.go:352`): the write is acknowledged, every later flush fails on that key, and
+  nothing written afterwards reaches disk. Done when: such a write is refused at the door or stored (capped or hashed
+  key), the test passes, released as a patch.
+- **VALUESIZE** (confirmed, data loss; same evidence) — A 1.4 MB row (every value under rho's limits) with
+  `ValueLogFileSize` 1 MB, or in an in-memory badger store, is acknowledged and then refused by badger at every flush
+  ("Value with size 1440490 exceeded 1048576"), blocking all later writes like KEYSIZE; with default options it
+  commits. Done when: the write door refuses a row the store cannot hold, the test passes, released as a patch.
 - **DISCARDCLOSE** (candidate) — The scan snapshot and the rel-type build walk always `Discard` their transaction,
   which can block after `db.Close` (`y/watermark.go:60`, `:77-79`). Done when: a test closes the store under them.
 - **BADGERLOG** (USAGE O1) — No backend gives badger a logger, so every badger error report is discarded, including

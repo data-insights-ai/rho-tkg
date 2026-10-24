@@ -78,3 +78,16 @@ crash ordering except W5, open image, key repair, shard drop. Findings: O1 badge
 W5 Clear deletes interpreting meta before the data (candidate, could be serious); DROPALL value-log read across Clear
 (measured, fails closed); METASYNC (source); O2/O3 per-shard cost incl. writable cold shards (confirmed, CACHE/SHARD);
 ITERPREFIX 49 sites, PREFETCH ~15, GETWALK 45 Get sites (cost, confirmed).
+
+Size limits through rho's own write path (size_test.go.txt, run as pkg/graph/*_test.go, 2026-10-24, main):
+  KEYSIZE: Add of a 65100-byte indexed string: err=<nil>; Flush: err=graph: write batch set: Key with size 65114 exceeded 65000 limit. Key:
+  the write was acknowledged but cannot be persisted: graph: write batch set: Key with size 65114 exceeded 65000 limit. Key:
+  KEYSIZE: an ordinary node written afterwards (838821710943977472), next Flush: err=graph: write batch set: Key with size 65114 exceeded 65000 limit. Key:
+  one oversized key blocks every later write from persisting: graph: write batch set: Key with size 65114 exceeded 65000 limit. Key:
+  VALUESIZE value-log file 1 MB: Add of a 1.4 MB row: err=<nil>; Flush: err=graph: write batch set: Value with size 1440490 exceeded 1048576 limit. Value:
+  the write was acknowledged but cannot be persisted: graph: write batch set: Value with size 1440490 exceeded 1048576 limit. Value:
+  VALUESIZE in memory: Add of a 1.4 MB row: err=<nil>; Flush: err=graph: write batch set: Value with size 1440490 exceeded 1048576 limit. Value:
+  the write was acknowledged but cannot be persisted: graph: write batch set: Value with size 1440490 exceeded 1048576 limit. Value:
+  VALUESIZE defaults: Add of a 1.4 MB row: err=<nil>; Flush: err=<nil>
+  => rho acknowledges the write, every later flush fails on the same entry (the batch is requeued), so nothing
+     written afterwards reaches disk: a crash or Close loses it all.
