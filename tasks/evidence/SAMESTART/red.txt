@@ -1,0 +1,16 @@
+SAMESTART red (24 Oct, branch samestart, on v4.75.4): sigma's probe as TestSameStartChainCloseIsNotUndone, memory and badger.
+same_start_resolve_test.go:77: after the close to 93: NodeAt(93) = the row [92,233), want ErrNoVersionValidAt (closed at 93)
+same_start_resolve_test.go:77: after the close to 93: NodeAt(100) = the row [92,233), want ErrNoVersionValidAt (closed at 93)
+same_start_resolve_test.go:77: after the close to 93: NodeAt(232) = the row [92,233), want ErrNoVersionValidAt (closed at 93)
+same_start_resolve_test.go:77: after the close to 93: effective timeline holds [93,233), past the close at 93 (all: [92,93) [93,233) )
+same_start_resolve_test.go:83: after excising [92,93): NodeAt(100) = the row [93,233), want ErrNoVersionValidAt
+same_start_resolve_test.go:83: after excising [92,93): NodeAt(232) = the row [93,233), want ErrNoVersionValidAt
+same_start_resolve_test.go:77: after the close to 93: NodeAt(93) = the row [92,233), want ErrNoVersionValidAt (closed at 93)
+same_start_resolve_test.go:77: after the close to 93: NodeAt(100) = the row [92,233), want ErrNoVersionValidAt (closed at 93)
+same_start_resolve_test.go:77: after the close to 93: NodeAt(232) = the row [92,233), want ErrNoVersionValidAt (closed at 93)
+same_start_resolve_test.go:77: after the close to 93: effective timeline holds [93,233), past the close at 93 (all: [92,93) [93,233) )
+same_start_resolve_test.go:83: after excising [92,93): NodeAt(100) = the row [93,233), want ErrNoVersionValidAt
+same_start_resolve_test.go:83: after excising [92,93): NodeAt(232) = the row [93,233), want ErrNoVersionValidAt
+--- FAIL: TestSameStartChainCloseIsNotUndone (0.08s)
+--- FAIL: TestSameStartChainCloseIsNotUndone/memory (0.00s)
+--- FAIL: TestSameStartChainCloseIsNotUndone/badger (0.08s)
