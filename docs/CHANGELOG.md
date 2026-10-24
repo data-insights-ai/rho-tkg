@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   process that died between the two reopened a store that answered empty while its rows remained, and the first new
   label reused their tokens: its query failed ("property-key token 1 not in registry"). `Clear` now deletes the
   entity counters, drops the data, then deletes the rest of the metadata: a crash after any step reopens the old
-  store or an empty one (`TestClearCrashAtEveryDurableStep`, a real child-process crash at each of the four steps,
+  store or an empty one (`TestClearCrashAtEveryDurableStep` in the badger package, a real child-process crash at each of the four steps,
   `tasks/evidence/CLEARMETA/`). Tiered and sharded shards clear the same way; a crash between two shards' clears is
   checked next (CLEARSHARDS).
 

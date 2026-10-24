@@ -25,3 +25,11 @@ Mutations, each caught:
      reopen after a crash at step 2 refused: ... node counter 21 does not match 0 live row
 Removed as untestable: deleting the open-image header in step 1 (the step's commit already puts the store past the
 header, so the old image is not trusted either way).
+
+Test moved (24 Oct, v4.75.3 gate): the graph-level test needed an exported crash hook in badger (a door; the patch
+gate refused it), and pkg/graph imports badger, so a badger-internal test cannot use pkg/graph. The test is now
+store-level in the badger package (badgerstore_clear_crash_test.go), with the property-key registry loaded and
+installed as graph.New does and committed by a flush, as a running store does. Same results:
+  fix: steps 1-4 green (step 1 reopens the old rows, steps 2-4 empty)
+  M1 old order:   crash at step 2: reading every stored node fails: ... property-key token 1 not in registry
+  M2 counters kept: reopen after a crash at step 2 refused: ... node counter 21 does not match 0 live rows

@@ -325,12 +325,3 @@ func SetMaxReadableStoreFormatVersionForTest(v uint16) (restore func()) {
 	maxReadableStoreFormatVersion = v
 	return func() { maxReadableStoreFormatVersion = prev }
 }
-
-// SetClearStepFaultForTest installs fn after each durable step of Clear's
-// change-log arm (badgerstore_changelog.go) and returns the restore func. Not
-// for production use.
-func SetClearStepFaultForTest(fn func(step int) error) (restore func()) {
-	prev := clearStepFaultForTest
-	clearStepFaultForTest = fn
-	return func() { clearStepFaultForTest = prev }
-}
