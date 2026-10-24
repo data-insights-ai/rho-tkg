@@ -55,6 +55,9 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   `SetNodeVersionInterval(id, 500, open, props)` (reconcile's whole write), then `UpdateNode(tkg_valid_to: 501)`,
   then `ExciseNodeValidity(500, 501)`; sigma's red tests are TestRetractAfterAnEarlierOpenStartLeavesNothing (A),
   TestBAREADShrink (B) and TestBAREADProbe (randomized) on sigma branch fix/baread.
+  Red tests on branch `openexcise` (24 Oct, `tasks/evidence/OPENEXCISE/red.txt`): (A), (B) and the relationship
+  door, memory and badger; all refused today ("excise needs a bounded end", `excise.go:34` and
+  `checkCascadeInterval`). `EndValidity` is no substitute: it deletes at the transaction instant.
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
