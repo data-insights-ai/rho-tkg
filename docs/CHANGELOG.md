@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **CLEARSHARDS**: `Clear` (`Admin().Reset()`) of a tiered or sharded store cleared the shard holding the shared
+  property-key, label and relationship-type registries (tiered: the reference shard; sharded: the anchor, shard 0)
+  before the other shards. A process that died in between reopened rows whose tokens no registry held: tiered could
+  not read its event-shard rows ("property-key token 1 not in registry"); in sharded a property key written after the
+  reopen took an old token, and an old node answered under the new key (silent wrong data). `Clear` now writes a
+  durable pending marker first, clears the registry-holding shard last, and an open that finds the marker finishes
+  the `Clear`: a crash at any stage reopens empty (`TestTieredClearCrashAtEveryStage`, 7 stages;
+  `TestShardedClearCrashAtEveryStage`, 5 stages; `tasks/evidence/CLEARSHARDS/`). Once the marker is written, a
+  crashed `Clear` completes at the next open instead of leaving the old store.
+
 ## [4.75.3] - 2026-10-24
 
 ### Fixed
