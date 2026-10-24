@@ -171,6 +171,12 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 - **ITERPREFIX** — 49 of rho's 71 iterators seek a prefix without setting `IteratorOptions.Prefix`, so badger cannot
   skip the tables outside it (rule 4; `tasks/evidence/USAGE/usage-map.txt`). Done when: each sets at least its
   keyspace byte, measured on a multi-level store.
+- **VERIFY + BADGERLOG plan** (24 Oct, branch `verifylog`, one patch): (1) the damage tests of
+  `tasks/evidence/USAGE/vlog_test.go.txt` move into the suite as red tests: a flipped byte in an older value-log file
+  must give an error, a flipped table byte never a panic, a failed value-log read must reach rho's logging, a
+  newest value-log file cut at open must be reported; (2) badger's value and block checksums on, read cost measured
+  before; (3) a default badger logger routing Errorf/Warningf to `slog` (covers tiered and sharded without a new
+  field); (4) rho compares the newest value-log file's size across the open and reports a cut; (5) tests, gate, patch.
 - **VERIFY** (confirmed by damage tests, `tasks/evidence/USAGE/vlog_test.go.txt`) — With rho's options badger checks
   neither value-log values nor table blocks. One flipped byte: in an older value-log file it reaches the caller AS
   DATA, no error, no log (rows of 1 MB or more); in the newest value-log file the next writable open silently cuts
