@@ -54,7 +54,8 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   `ForEachNodeEffectiveByLabelAndProperties`): a retracted fact read back as [93,233).
   Red test on branch `samestart` (24 Oct, `tasks/evidence/SAMESTART/red.txt`): memory and badger both answer
   `NodeAt(93..232)` with the superseded [92,233) row, the effective timeline holds [93,233), and after the excise
-  [93,233) returns.
+  [93,233) returns. ai-soc (24 Oct): probably hit on run k10241303 (an in-place extension read back unchanged at its
+  pin, so /events refused for the whole run); a rho-side fix matters to it.
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
@@ -113,7 +114,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   no resumption row when nothing needs resuming, with the same answers, released as a patch. Waits for: SHARD step 1.
 - **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
-  known. Waits for: René's word and a free Flux. sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
+  known. Waits for: René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
   is ready, but Flux runs one big job at a time (ai-soc's k10241303 now) and a Flux run needs René's word.
 - **R37** — Listing facts that were changed still costs more than ai-soc's limit of 4 times a fact's values. Done when:
   ai-soc's cold /bars test passes on Flux. Waits for: CHAIN-2.
@@ -125,20 +126,26 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   so ai-soc's memory grows with the shards it opens (`docs/badger.md` section 9, item 11). Done when: one cache budget
   for the whole store (`CacheMaxCost`) and per-role options, or a documented cost per shard. Waits for: ai-soc's memory numbers.
 - **TOMBSTONE** — A delete cannot keep the believed end of validity (backlog 4, 7, 25). Done when: released as a minor.
-  Waits for: sigma or ai-soc needing it (asked 24 Oct).
+  Parked 24 Oct: neither sigma nor ai-soc needs it (sigma removes by excising validity). Waits for: a consumer
+  needing it.
 - **STORE** (ai-soc, 23 Oct) — Store layout choices for ai-soc's remodel: history delta encoding per label, Derived and
   Session on the never-purged reference shard, and the instance nodes (~2/3 of the BA store). Done when: René has
   decided with ai-soc and sigma (their STORECFG talk). sigma (24 Oct): agreed with René for p4b only:
   `PropertyIndexOnDisk`, a bounded entity cache, DerivedPage as a reference label on ai-soc's tiered stores
   (`LabelIndexOnDisk` once TIERLABELDISK ships); delta encoding per label, Derived/Session placement and the instance
-  nodes are not agreed. Waits for: ai-soc's answer (asked 24 Oct).
+  nodes are not agreed. ai-soc (24 Oct): René works on it with them directly (STORECFG). Waits for: René.
 - **REVIEWS** — Review findings were left out under the scope rule. Done when: René has decided. Waits for: the main session, which decides each finding on its evidence.
-- **PURGE** — A purged entity answers "not found" at a time it answered before. Done when: René has decided. Waits
-  for: René.
-- **AXIS** — The announced change of the default valid-time start for new stores is still held. Done when: René has
-  decided. Waits for: sigma's and ai-soc's use of it (asked 24 Oct), then decided on that data.
+- **PURGE** — A purged entity answers "not found" at a time it answered before. Decided 24 Oct from the data (René:
+  open decisions by data and agents): no change. sigma reads below a purge through a floor that gates the cut, and
+  ai-soc has no purge yet; neither expects an old answer from before a purge. Leaves todo with the next release.
+- **AXIS** — The announced change of the default valid-time start for new stores is held. Decided 24 Oct from the
+  data: dropped, the default stays. ai-soc creates a fresh store per run and relies on the default (graphmgr
+  manager.go:473); sigma sets `UntimedWholeAxis` explicitly. Changing it would silently change ai-soc's answers.
+  Leaves todo with the next release; the announcement is withdrawn in the CHANGELOG then.
 - **FOLDS** — Range lookups check the resolved version, not every version in the range (backlog 16). Done when: René
-  has decided. Waits for: sigma's and ai-soc's use of it (asked 24 Oct), then decided on that data.
+  has decided. sigma (24 Oct) uses both forms: `ForEachByLabelPropertyRange` (resolved version) and
+  `ForEachByLabelPropertyRangeAnyVersion` (graphhost/bind.go:528), and `NodesByLabelPropertyDuring` in its write-back.
+  Waits for: ai-soc's check of its history range reads, then decided on that data.
 
 ## Later
 
@@ -168,7 +175,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   current version only. Fix: a chain's decoded versions reuse the previous version's value when the bytes are equal (no
   API, no format change, a patch). Done when: a test shows n versions sharing one copy of an unchanged value
   (allocation count), every history read path (badger, tiered, sharded, memory) covered. Order: by its measured heap
-  share (asked ai-soc and sigma, 24 Oct).
+  share. ai-soc (24 Oct): it reads the share from run k10241303's heap-end profile (34.2 GB after GC) after the
+  reopens; the decision follows from that number.
 - **IDPROPS** (sigma for ai-soc, 24 Oct; the larger form of CHAININTERN) — Immutable properties per (label, key), set
   at `AddNode`, refused by every update and cascade patch, stored once per node and attached to every version on read.
   A new door (a minor) and a format change (a one-way door). Waits for: CHAININTERN's measured saving, then René.
