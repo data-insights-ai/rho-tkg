@@ -40,12 +40,22 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
 
-- **CLEARSHARDS** (found 24 Oct in CLEARMETA's review; not yet tested) — tiered clears its reference shard, then each
-  event shard, then its catalog and registry file; sharded clears each shard, then re-saves its catalog, which the
-  first shard's `Clear` wiped. A crash between those steps may reopen shards that disagree (rows in an uncleared
-  shard whose labels the cleared reference shard or registry no longer holds; a sharded store without its catalog).
-  Done when: a child-process crash test at every step of both stores' `Clear` shows the old store or an empty one,
-  or the order is fixed until it does. Next, before SHARD (fixes first, René 24 Oct).
+- **CLEARSHARDS** (confirmed 24 Oct by a real crash test on branch `clearshards`, `tasks/evidence/CLEARSHARDS/red.txt`;
+  reachable: sigma's daemon resets tiered and sharded stores through `Admin().Reset()`) — tiered `Clear` clears the
+  reference shard, which holds the shared property-key registry, before the event shards: a crash in between reopens
+  event-shard rows nobody can read ("property-key token 1 not in registry"). The other four crash points reopen old
+  or empty. sharded is still to test (its first shard's `Clear` wipes the catalog it re-saves last). Fix plan: a
+  durable "clear pending" marker on the reference shard first; event shards and the archive before the reference
+  shard; an open that finds the marker finishes the `Clear` before serving. Done when: both stores' crash tests
+  show old or empty at every stage, released as a patch. Now, before SHARD (fixes first, René 24 Oct).
+- **SAMESTART** (sigma, 24 Oct; found by sigma's reviewer on v4.75.1) — When all of a node's rows start at the same
+  instant, `sortNodeChainForResolve` reports the chain monotonic and the fast path (newest first, first covering row
+  wins, `internal/core/temporal.go` ~346-425) skips the supersession the cascade arm applies (`supersessionCaps`: a
+  replacing write ends every older belief that started at or before its start). Probe: Add [92,∞); UpdateNode
+  `tkg_valid_to` 233; `SetNodeVersionInterval(92, +inf)`; UpdateNode `tkg_valid_to` 93: `NodeAt(100)` returns the
+  [92,233) row, and after `ExciseNodeValidity(92,93)` it returns [93,233); expected `ErrNoVersionValidAt` after the
+  close to 93. sigma guards against it on its side. Done when: the probe is a red test, both arms apply one rule,
+  released as a patch. Order: René.
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
