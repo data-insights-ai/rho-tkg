@@ -47,7 +47,8 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   block-cache miss, about 1 ms per MB-sized row read, `tasks/evidence/VERIFY/cost.txt`), badger's reports go to `slog`
   by default in every backend, a value-log cut at open is reported, and rho recovers badger panics on its own read
   paths and the open scan. Tests: 6, each red without its part (72 flipped table positions: none silent with
-  checksums, 11 without). Done when: released as a patch, ai-soc and sigma told.
+  checksums, 11 without). Full short suite and `-race` on badger, tiered and sharded green (24 Oct). Next: docs,
+  CHANGELOG, commit, patch gate. Done when: released as a patch, ai-soc and sigma told.
 - **CLEARMETA** (confirmed by a real crash test on branch `clearmeta`, `tasks/evidence/CLEARMETA/red.txt`) — `Clear`
   with the change log on (or once on) deletes every meta key except `last_lsn` before it drops the data; a process
   that dies there reopens a store that looks empty while its rows remain, and the first new label collides with
