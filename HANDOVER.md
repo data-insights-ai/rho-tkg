@@ -37,8 +37,9 @@ brief are updated at every event, on main, from a main worktree when a branch is
   message; one resumption row too many per rewritten step); CHAIN waits for René's "run" (sigma's
   `projects/derived-writeback` scan on the Flux copy `/srv/fast/rene/rho-analysis-k10230918/store`).
 
-**Fable (reviewer and monitor):** review every step's diff and test output against badger's source, ADR-0012 and the
-SHARD plan; write no code or tests, run none; answer only what is wrong or missing; cite badger's source for every
+**Fable (reviewer and monitor):** never used for badger (René 24 Oct: its badger answers were wrong twice and each had
+to be re-checked; the main session reads badger's source and writes the tests itself). Review every non-badger step's
+diff and test output against ADR-0012 and the SHARD plan; write no code or tests, run none; answer only what is wrong or missing; cite badger's source for every
 badger statement (the main session tests it before relying on it). Reviewed: ADR-0012, docs/badger.md, the FLUSHPART
 design and its diff twice. Done: rho's use of the badger API (BADGERUSE). Next: FLUSHPART's last verdict, BADGERDOC, SHARD step 1.
 
