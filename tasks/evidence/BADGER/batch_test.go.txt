@@ -1,0 +1,351 @@
+package badger
+
+// Evidence for docs/badger.md (the batch API, badger v4.9.2). Run it by copying it into pkg/graph/store/badger as
+// a _test.go file (go test -run ^TestZB -v). Each test
+// states a claim and fails if badger does not behave that way.
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
+	"testing"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
+)
+
+const zbMem = 8 << 20 // rho's smallest MemTableSize: MaxBatchSize 1,258,291 B, MaxBatchCount 13,107
+
+func zbOpen(t testing.TB, dir string, mut func(*badgerv4.Options)) *badgerv4.DB {
+	opts := badgerv4.DefaultOptions(dir).WithLogger(nil).WithMemTableSize(zbMem)
+	if mut != nil {
+		mut(&opts)
+	}
+	db, err := badgerv4.Open(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+func zbKey(i int) []byte {
+	k := make([]byte, 9)
+	k[0] = 0x01
+	binary.BigEndian.PutUint64(k[1:], uint64(i))
+	return k
+}
+
+// versions returns the commit version of keys 0..n-1 (0 = absent).
+func zbVersions(t testing.TB, db *badgerv4.DB, n int) []uint64 {
+	out := make([]uint64, n)
+	if err := db.View(func(txn *badgerv4.Txn) error {
+		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{0x01}})
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			i := int(binary.BigEndian.Uint64(it.Item().Key()[1:]))
+			if i < n {
+				out[i] = it.Item().Version()
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// B1: the limits are MaxBatchSize = 15% of MemTableSize and MaxBatchCount =
+// MaxBatchSize / skl.MaxNodeSize; a Txn holds MaxBatchCount-2 entries (count
+// starts at 1, ErrTxnTooBig at count >= MaxBatchCount) when the count binds.
+func TestZBLimitsAndCount(t *testing.T) {
+	db := zbOpen(t, t.TempDir(), nil)
+	defer db.Close()
+	if db.MaxBatchSize() != 15*zbMem/100 {
+		t.Fatalf("MaxBatchSize %d, want %d", db.MaxBatchSize(), 15*zbMem/100)
+	}
+	txn := db.NewTransaction(true)
+	defer txn.Discard()
+	n := 0
+	for ; ; n++ {
+		if err := txn.Set(zbKey(n), nil); err != nil {
+			if !errors.Is(err, badgerv4.ErrTxnTooBig) {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+	if int64(n) != db.MaxBatchCount()-2 {
+		t.Fatalf("a txn held %d empty entries, want MaxBatchCount-2 = %d", n, db.MaxBatchCount()-2)
+	}
+	t.Logf("B1 MaxBatchSize %d MaxBatchCount %d; entries per txn %d", db.MaxBatchSize(), db.MaxBatchCount(), n)
+}
+
+// B2: when the size binds, an inline entry costs len(key)+len(value)+12 and
+// the txn starts at len("!badger!txn")+10 = 21 bytes.
+func TestZBSizeAccounting(t *testing.T) {
+	db := zbOpen(t, t.TempDir(), nil)
+	defer db.Close()
+	val := make([]byte, 1000)
+	txn := db.NewTransaction(true)
+	defer txn.Discard()
+	n := 0
+	for ; ; n++ {
+		if err := txn.Set(zbKey(n), val); err != nil {
+			break
+		}
+	}
+	per := int64(9 + 1000 + 12)
+	want := (db.MaxBatchSize() - 21 - 1) / per // largest n with 21 + n*per < MaxBatchSize
+	if int64(n) != want {
+		t.Fatalf("a txn held %d 1,000-byte entries, want %d", n, want)
+	}
+	t.Logf("B2 1,000-byte values: %d per txn (cost %d B each)", n, per)
+}
+
+// B3: a value at or above ValueThreshold (1 MB) goes to the value log and
+// costs len(key)+24 in the txn, whatever its size: a single row of 20 MB
+// commits in one Txn even at the smallest MemTableSize (MaxBatchSize 1.26 MB).
+func TestZBLargeValueFitsATxn(t *testing.T) {
+	db := zbOpen(t, t.TempDir(), nil)
+	defer db.Close()
+	big := make([]byte, 20<<20)
+	for i := range big {
+		big[i] = byte(i)
+	}
+	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set(zbKey(1), big) }); err != nil {
+		t.Fatalf("a 20 MB value did not commit: %v", err)
+	}
+	if err := db.View(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(zbKey(1))
+		if err != nil {
+			return err
+		}
+		v, err := item.ValueCopy(nil)
+		if err == nil && (len(v) != len(big) || v[12345] != big[12345]) {
+			err = fmt.Errorf("read back %d bytes", len(v))
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The largest inline value (just under 1 MB) also fits: 1 MB + 21 < 1.26 MB.
+	inline := make([]byte, (1<<20)-1)
+	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set(zbKey(2), inline) }); err != nil {
+		t.Fatalf("the largest inline value did not commit: %v", err)
+	}
+	t.Log("B3 a 20 MB value and a 1 MB - 1 inline value each commit in one txn at MemTableSize 8 MB")
+}
+
+// B4: badger refuses to open when ValueThreshold > MaxBatchSize (db.go:151-157):
+// so an inline value (< ValueThreshold) always fits the size limit, up to the
+// key and 33 bytes of overhead. At rho's smallest MemTableSize (8 MB) the
+// margin is 1,258,291 - 1,048,576 = 209,715 bytes, far above any rho key: no
+// single entry can make a transaction too big.
+func TestZBOpenRefusesThresholdAboveBatchSize(t *testing.T) {
+	opts := badgerv4.DefaultOptions(t.TempDir()).WithLogger(nil).WithMemTableSize(4 << 20) // MaxBatchSize 629,145 < 1 MB
+	if db, err := badgerv4.Open(opts); err == nil {
+		_ = db.Close()
+		t.Fatal("badger opened with ValueThreshold above MaxBatchSize")
+	} else {
+		t.Logf("B4 MemTableSize 4 MB (MaxBatchSize 629,145 < ValueThreshold 1 MB): Open refuses: %v", err)
+	}
+}
+
+// B5: a WriteBatch above the limits is several transactions, committed in
+// insertion order (each part one version, versions rising with the parts).
+func TestZBWriteBatchSplitsInOrder(t *testing.T) {
+	db := zbOpen(t, t.TempDir(), nil)
+	defer db.Close()
+	per := int(db.MaxBatchCount() - 2)
+	n := 3*per + per/2
+	wb := db.NewWriteBatch()
+	for i := 0; i < n; i++ {
+		if err := wb.Set(zbKey(i), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := wb.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	vs := zbVersions(t, db, n)
+	parts := 1
+	for i := 1; i < n; i++ {
+		switch {
+		case vs[i] == vs[i-1]:
+		case vs[i] > vs[i-1]:
+			parts++
+			if i%per != 0 {
+				t.Fatalf("a new part starts at entry %d, not at a multiple of %d", i, per)
+			}
+		default:
+			t.Fatalf("entry %d has version %d below entry %d's %d: parts out of order", i, vs[i], i-1, vs[i-1])
+		}
+	}
+	if parts != 4 {
+		t.Fatalf("%d parts, want 4", parts)
+	}
+	t.Logf("B5 %d entries: %d parts of %d, versions rising in insertion order", n, parts, per)
+}
+
+// B6: Cancel discards only the open part; parts already handed off commit.
+func TestZBCancelKeepsCommittedParts(t *testing.T) {
+	db := zbOpen(t, t.TempDir(), nil)
+	defer db.Close()
+	per := int(db.MaxBatchCount() - 2)
+	n := 2*per + per/2
+	wb := db.NewWriteBatch()
+	for i := 0; i < n; i++ {
+		if err := wb.Set(zbKey(i), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wb.Cancel()
+	vs := zbVersions(t, db, n)
+	present := 0
+	for i, v := range vs {
+		if v != 0 {
+			present++
+			if i >= 2*per {
+				t.Fatalf("entry %d of the cancelled open part is present", i)
+			}
+		}
+	}
+	if present != 2*per {
+		t.Fatalf("%d entries survived Cancel, want the 2 full parts = %d", present, 2*per)
+	}
+	t.Logf("B6 Cancel after %d entries: the 2 committed parts (%d entries) stay, the open part is gone", n, present)
+}
+
+// B7: transactions that only write never conflict, even with conflict
+// detection on and both writing the same key.
+func TestZBBlindWritesNeverConflict(t *testing.T) {
+	db := zbOpen(t, t.TempDir(), func(o *badgerv4.Options) { o.DetectConflicts = true })
+	defer db.Close()
+	a, b := db.NewTransaction(true), db.NewTransaction(true)
+	defer a.Discard()
+	defer b.Discard()
+	_ = a.Set(zbKey(1), []byte("a"))
+	_ = b.Set(zbKey(1), []byte("b"))
+	if err := a.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Commit(); err != nil {
+		t.Fatalf("second blind write: %v, want no conflict", err)
+	}
+	// The same pair, but b read the key first: now it conflicts.
+	c, d := db.NewTransaction(true), db.NewTransaction(true)
+	defer c.Discard()
+	defer d.Discard()
+	_, _ = d.Get(zbKey(1))
+	_ = c.Set(zbKey(1), []byte("c"))
+	_ = d.Set(zbKey(1), []byte("d"))
+	if err := c.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Commit(); !errors.Is(err, badgerv4.ErrConflict) {
+		t.Fatalf("a txn that read a key written meanwhile: %v, want ErrConflict", err)
+	}
+	t.Log("B7 write-only txns never conflict; a txn that read the key does")
+}
+
+// B8: a commit or Flush with no writes writes nothing (MaxVersion unchanged);
+// a key set twice in one txn is written once, the last value.
+func TestZBEmptyCommitAndDuplicateKeys(t *testing.T) {
+	db := zbOpen(t, t.TempDir(), nil)
+	defer db.Close()
+	before := db.MaxVersion()
+	if err := db.NewWriteBatch().Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Update(func(*badgerv4.Txn) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if db.MaxVersion() != before {
+		t.Fatalf("an empty commit moved MaxVersion %d -> %d", before, db.MaxVersion())
+	}
+	if err := db.Update(func(txn *badgerv4.Txn) error {
+		_ = txn.Set(zbKey(1), []byte("first"))
+		return txn.Set(zbKey(1), []byte("last"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	versions := 0
+	var last []byte
+	_ = db.View(func(txn *badgerv4.Txn) error {
+		it := txn.NewIterator(badgerv4.IteratorOptions{AllVersions: true, Prefix: zbKey(1)})
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			versions++
+			last, _ = it.Item().ValueCopy(nil)
+		}
+		return nil
+	})
+	if versions != 1 || string(last) != "last" {
+		t.Fatalf("a key set twice in one txn: %d versions, value %q; want 1, \"last\"", versions, last)
+	}
+	t.Log("B8 empty commits write nothing; a duplicate key in one txn is written once, last value wins")
+}
+
+// B9: a process that dies while a WriteBatch is committing leaves, after
+// reopen, whole parts in insertion order: a prefix of the batch whose length
+// is a multiple of the part size (or all of it). The child is this test
+// binary; it exits with os.Exit at a varying point, without Flush or Close.
+func TestZBCrashKeepsWholePartsInOrder(t *testing.T) {
+	if os.Getenv("ZB_CHILD_DIR") != "" {
+		zbCrashChild()
+		return
+	}
+	for _, exitAfter := range []int{20_000, 33_333, 51_111, 64_000, 90_000} {
+		for _, sync := range []bool{false, true} {
+			dir := t.TempDir()
+			cmd := exec.Command(os.Args[0], "-test.run=^TestZBCrashKeepsWholePartsInOrder$")
+			cmd.Env = append(os.Environ(), "ZB_CHILD_DIR="+dir, "ZB_EXIT_AFTER="+strconv.Itoa(exitAfter), "ZB_SYNC="+strconv.FormatBool(sync))
+			if out, err := cmd.CombinedOutput(); err == nil || cmd.ProcessState.ExitCode() != 3 {
+				t.Fatalf("child did not die as planned: %v\n%s", err, out)
+			}
+			db := zbOpen(t, dir, nil)
+			per := int(db.MaxBatchCount() - 2)
+			vs := zbVersions(t, db, 100_000)
+			_ = db.Close()
+			present := 0
+			for i, v := range vs {
+				if v != 0 {
+					if present != i {
+						t.Fatalf("exit after %d (sync %v): entry %d present but entry %d missing: not a prefix", exitAfter, sync, i, present)
+					}
+					present++
+				}
+			}
+			if present%per != 0 {
+				t.Fatalf("exit after %d (sync %v): %d entries survived, not whole parts of %d", exitAfter, sync, present, per)
+			}
+			if present > exitAfter {
+				t.Fatalf("exit after %d: %d entries survived", exitAfter, present)
+			}
+			t.Logf("B9 exit after %d entries (SyncWrites %v): %d survive = %d whole parts, a prefix", exitAfter, sync, present, present/per)
+		}
+	}
+}
+
+func zbCrashChild() {
+	dir := os.Getenv("ZB_CHILD_DIR")
+	exitAfter, _ := strconv.Atoi(os.Getenv("ZB_EXIT_AFTER"))
+	sync := os.Getenv("ZB_SYNC") == "true"
+	opts := badgerv4.DefaultOptions(dir).WithLogger(nil).WithMemTableSize(zbMem).WithSyncWrites(sync)
+	db, err := badgerv4.Open(opts)
+	if err != nil {
+		os.Exit(2)
+	}
+	wb := db.NewWriteBatch()
+	for i := 0; i < 100_000; i++ {
+		if i == exitAfter {
+			os.Exit(3) // parts handed off may be mid-write
+		}
+		if err := wb.Set(zbKey(i), nil); err != nil {
+			os.Exit(2)
+		}
+	}
+	os.Exit(2)
+}

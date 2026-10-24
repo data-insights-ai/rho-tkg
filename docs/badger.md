@@ -1,9 +1,10 @@
 # badger in rho (badger v4.9.2)
 
 rho's disk stores are `github.com/dgraph-io/badger/v4` v4.9.2: `badger.Store` is one badger database, `tiered.Store`
-and `sharded.Store` run one per shard or slot. This file is how badger stores and reads data, what it costs, and the
-rules rho follows when it uses it. Facts are read from badger's source at that version (file:line in the module
-directory, `go list -m -f '{{.Dir}}' github.com/dgraph-io/badger/v4`); measured numbers come from the experiments in
+and `sharded.Store` run one per shard or slot. This file is how badger stores and reads data, what it costs, the
+rules rho follows when it uses it, its complete API (section 8) and what rho should integrate (section 9). Facts are
+read from badger's source at that version (file:line in the module directory,
+`go list -m -f '{{.Dir}}' github.com/dgraph-io/badger/v4`); measured numbers come from the experiments in
 `tasks/evidence/BADGER/` (raw badger, default options, NVMe). Re-check this file when the badger version changes.
 
 ## 1. How badger stores data
@@ -27,7 +28,7 @@ Dir/
   holds a pointer; smaller values are inline (`structs.go:147-162`). The default and maximum threshold is 1 MB
   (`options.go:201`), so every rho row under 1 MB is inline (open-image chunks are 512 KB). rho's default limits allow
   a row of up to about 64 MB (1,000 properties of 64 KB, `core.go:795-797`): a row of 1 MB or more goes to the value
-  log, and one above `maxBatchSize` (about 10 MB) cannot be written at all (section 2).
+  log. Every single row fits one transaction (section 2, "One entry always fits").
 - **Versions.** Every key carries a commit timestamp. A read sees the newest version at or below its read timestamp.
 - **A cleanly closed directory** holds `MANIFEST`, `KEYREGISTRY`, `DISCARD`, the `.sst` files and a tiny `.vlog`: no
   `.mem` (Close flushes the memtable) and no `LOCK`. A `.mem` file means an unclean close; the next open replays it into
@@ -41,11 +42,30 @@ Dir/
 - **Transaction limits.** A transaction holds at most `maxBatchSize` = 15% of `MemTableSize` bytes and
   `maxBatchCount` = `maxBatchSize` / 96 (one skiplist node) entries (`db.go:136-137`): 10,066,329 bytes and 104,857
   entries at defaults. The count starts at 1 for the commit marker (`txn.go` newTransaction) and `Set` returns
-  `ErrTxnTooBig` at `count >= maxBatchCount` (`txn.go:335-344`), so one transaction carries at most 104,855 entries. A
-  single entry above the size limit cannot be committed at all.
-- **A `WriteBatch` is not atomic.** On `ErrTxnTooBig` it commits the transaction it has so far and starts a new one
-  (`batch.go:137-205`); each part commits on its own. Measured: 105,857 entries, the batch cancelled before `Flush`,
-  104,855 of them visible afterwards: exactly the first full transaction.
+  `ErrTxnTooBig` at `count >= maxBatchCount` (`txn.go:335-344`), so one transaction carries at most 104,855 entries.
+  An entry's size is `len(key) + len(value) + 12` for a value under `ValueThreshold` and `len(key) + 24` for one at or
+  above it (value-log pointer), starting from 21 bytes (`structs.go:147-157`, `txn.go:338`, `txn.go:770-771`).
+  Measured (`tasks/evidence/BADGER/batch_test.go.txt`, B1-B2): 13,105 empty entries or 1,232 entries of 1,000 bytes
+  per transaction at `MemTableSize` 8 MB.
+- **One entry always fits.** badger refuses to open when `ValueThreshold` > `maxBatchSize` (`db.go:151-157`), so an
+  inline value is smaller than the size limit and a value-log value costs its key + 24 bytes, whatever its size. At
+  rho's smallest `MemTableSize` (8 MB: limit 1,258,291 bytes) the margin over the largest inline value is 209,715
+  bytes. Measured (B3, B4): a 20 MB value and a 1 MB - 1 inline value each commit in one transaction at 8 MB; at 4 MB
+  the open fails. Only the number of entries in one transaction is ever too big, never one entry.
+- **A `WriteBatch` is not atomic.** On `ErrTxnTooBig` it commits the transaction it has so far (`CommitWith`,
+  asynchronous, up to 16 in flight: `SetMaxPendingTxns`) and retries the entry in a new one (`batch.go:137-207`); each
+  part commits on its own. Parts enter the WAL in the order they were committed: `commitAndSend` assigns the commit
+  timestamp and queues the request under one lock (`txn.go:521-593`). The first failed part's error is kept and no
+  later part is committed after it is seen (`batch.go:79-89`, `:193`); `Flush` commits the last part and waits for all
+  (`:211-230`); `Cancel` discards only the open part, parts handed off still commit (`:62-77`). Measured: 105,857
+  entries cancelled before `Flush` leave 104,855 visible (the first full transaction); with 8 MB memtables (B5, B6) a
+  batch of 45,867 entries is 4 parts whose versions rise in insertion order, and a cancel after 32,762 keeps exactly
+  the 2 committed parts. A process killed while a batch commits (B9, a child process, 10 runs with and without
+  `SyncWrites`) always reopens with whole parts in insertion order: a prefix.
+- **Small transaction facts.** A transaction that read nothing never conflicts, even with `DetectConflicts` on; one
+  that read a key written meanwhile does (`txn.go:128`, B7). A commit or `Flush` without writes writes nothing and
+  leaves `MaxVersion` (`CommitWith`, `txn.go:705-712`, B8). A key set twice in one transaction is written once, the
+  last value (B8).
 - **The commit pipeline.** One transaction is one write request, stored contiguously (`db.go:888-912`). Requests queue
   on one channel; `doWrites` collects the requests waiting and hands them as one group to `writeRequests`, one group at
   a time; it writes the value log (values above the threshold only), then each request's entries into the memtable and
@@ -137,7 +157,7 @@ Dir/
 | `NumMemtables` | 5 | default | Up to 5 arenas under write load. |
 | `BlockCacheSize` | 256 MB | `Config.BlockCacheSize` (0 = default) | Per DB, required with Snappy; resizable at runtime (`CacheMaxCost`). |
 | `IndexCacheSize` | 0 | `Config.IndexCacheSize` | Required with encryption only. |
-| `ValueThreshold` | 1 MB | default | Rows are inline; the value log is unused. |
+| `ValueThreshold` | 1 MB | default | Rows under 1 MB are inline; a row of 1 MB or more (rho allows ~64 MB) goes to the value log. |
 | `Compression` | Snappy | `Config.Compression` | `options.None` is the zero value, so rho cannot turn it off. |
 | `SyncWrites` | false | `Config.SyncWrites` | Two msyncs per write request (section 2). |
 | `NumVersionsToKeep` | 1 | default | Right for rho (history is rho's own keyspace). |
@@ -187,8 +207,179 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
 11. **Store-wide operations pause writes.** `DropPrefix` / `DropAll` refuse concurrent writes; rho calls them only in
     `Clear`, under its own locks.
 
-## 8. Read at the API level only
+## 8. The complete API
 
-rho uses none of these, so they were read as API, not in depth: discard statistics and value-log GC internals,
-ristretto's internals, the publisher (`Subscribe`), `Sequence`, `MergeOperator`, managed mode (`OpenManaged`),
-`Stream` / `StreamWriter` / `Backup` / `Load`, `Flatten`, `EstimateSize`, `Ranges`.
+Every exported symbol of badger v4.9.2, read from `go doc -all` of each package and, where the doc comment is thin
+or misleading, from the source (file:line). "rho" says where rho uses it (rho imports only `badger` and
+`badger/options`); "-" means unused. Section 9 lists what rho should integrate.
+
+### 8.1 Opening, closing, sizing (`DB`)
+
+| Symbol | What it does | rho |
+|---|---|---|
+| `Open(Options)` | Opens or creates the DB; creates missing `Dir`/`ValueDir` on a writable open; takes the directory flock (section 5). Panics if compression or encryption is on and `BlockCacheSize` is 0 (`db.go:170-172`). | `buildBadgerOptions` + `Open` in `New`, `MigrateOversizedWAL`, `DiscardStagedFlush` |
+| `OpenManaged(Options)` | Open in managed mode: the caller supplies every read and commit timestamp. | - |
+| `DefaultOptions(dir)` / `LSMOnlyOptions(dir)` | Defaults (table in 8.6); LSM-only sets `ValueThreshold` to its maximum (1 MB, the same as the default in v4.9.2). | `DefaultOptions` |
+| `(Options).FromSuperFlag(s)` | Parses `"key=value; ..."` into the fields it names. | - |
+| `Close()` | Pushes a non-empty memtable to L0 (`db.go:561-573`), stops compactors, closes files; idempotent. With `CompactL0OnClose` it then compacts L0 (`db.go:597`). | `Store.Close` |
+| `IsClosed()` | Whether `Close` ran. | - (rho keeps `dbClosed`) |
+| `Opts()` | A copy of the options. | - |
+| `Sync()` | msyncs the **active** memtable's WAL and the value log only (`db.go:673`); a rotated memtable's WAL is not synced (`ensureRoomForWrite`, `db.go:1015-1041`). | `DurableFlush`, durable meta writes |
+| `Size()` | LSM and value-log bytes from expvar counters that a goroutine refreshes **once a minute** by walking the directory (`db.go:1148-1262`); always 0 when `MetricsEnabled` is false. | - (rho reports sizes itself) |
+| `EstimateSize(prefix)` | On-disk and uncompressed bytes of the tables whose **both** ends carry the prefix (`db.go:1394`): table-granular, misses data in tables that straddle the prefix and everything in memtables. | - |
+| `Levels()`, `LevelsToString()`, `Tables()` | Per-level and per-table info (`LevelInfo`, `TableInfo`: key count, on-disk, stale and uncompressed size, max version, index and bloom size). | - |
+| `Ranges(prefix, n)` | Rough key ranges from the last level's tables, to split an iteration. | - |
+| `MaxVersion()` | Highest committed version (badger timestamp). | open-image trust rule |
+| `MaxBatchCount()`, `MaxBatchSize()` | The per-transaction limits (section 2). | - (section 9) |
+| `BlockCacheMetrics()`, `IndexCacheMetrics()` | ristretto metrics of the two caches. | - |
+| `CacheMaxCost(cache, cost)` | Resizes the block or index cache at runtime; a negative cost reads it (`db.go:2042`). | - (section 9) |
+| `PrintHistogram(prefix)` | Prints a key/value size histogram to the logger. | - |
+| `VerifyChecksum()` | Verifies the block checksums of every table (with `ChecksumVerificationMode` none, nothing else does). | - (section 9) |
+| `BanNamespace(ns)`, `BannedNamespaces()` | With `NamespaceOffset` >= 0: refuse reads and writes of keys in a namespace (`ErrBannedKey`). | - |
+
+### 8.2 Transactions (`Txn`) and entries
+
+| Symbol | What it does | rho |
+|---|---|---|
+| `NewTransaction(update)` | A transaction at the current read timestamp; must be `Discard`ed. Not safe for concurrent use. | flush path A (`commitFlushEntries`) |
+| `NewTransactionAt(readTs, update)` | Managed mode. | - |
+| `Update(fn)`, `View(fn)` | Run `fn` in a read-write / read-only transaction and commit / discard it. | 15 / 16 call sites |
+| `Txn.Get(key)` | Point read, `ErrKeyNotFound` if absent; probes memtables then levels with bloom filters (section 3). | everywhere |
+| `Txn.Set`, `SetEntry`, `Delete` | Buffer a write; return `ErrTxnTooBig` when the transaction would pass `MaxBatchCount`/`MaxBatchSize` (section 2). Keep a reference to the slices until commit. | flush, meta writes |
+| `Txn.Commit()` | Conflict check (a transaction that read nothing never conflicts, `txn.go:128`; with `DetectConflicts` false nothing is tracked), then one write request: one WAL record set ending in a finish entry, so replay applies all or none of it (`memtable.go:433-530`). | flush path A, `Update` |
+| `Txn.CommitWith(cb)` | `Commit` that returns at once and runs `cb` after the write. | - |
+| `Txn.CommitAt(ts, cb)` | Managed mode. | - |
+| `Txn.Discard()` | Releases the transaction; idempotent; required. | deferred |
+| `Txn.ReadTs()` | The read timestamp. | - |
+| `Txn.NewIterator(opt)` | Iterator over the snapshot (8.3). | 71 call sites |
+| `Txn.NewKeyIterator(key, opt)` | All versions of one key; uses the bloom filter on the exact key to skip tables (`iterator.go:496-504`, `:348`). | - (section 9) |
+| `NewEntry(k, v)`, `WithMeta`, `WithTTL`, `WithDiscard` | An entry with a user-meta byte, an expiry, or "older versions may be dropped". | `NewEntry` only |
+| `Entry` fields | `Key`, `Value`, `ExpiresAt`, `UserMeta`. | - |
+
+### 8.3 Iterators and items
+
+| Symbol | What it does | rho |
+|---|---|---|
+| `IteratorOptions` | `PrefetchValues`/`PrefetchSize` (a goroutine per item, section 3), `Reverse`, `AllVersions`, `Prefix` (skips tables outside it), `SinceTs` (skips tables whose max version is below it and versions at or below it, `iterator.go:334-361`, `:629`), `InternalAccess`. | `Prefix` rarely set (todo ITERPREFIX), prefetch in 13 places (todo PREFETCH) |
+| `DefaultIteratorOptions` | Prefetch on, 100 items. | 59 call sites |
+| `Iterator.Rewind`, `Seek`, `Next`, `Valid`, `ValidForPrefix`, `Item`, `Close` | Cursor over keys in order; `Item` is valid until `Next`. `ThreadId` and `Alloc` serve `Stream`. | everywhere |
+| `Item.Key`, `KeyCopy` | The key (valid until `Next`) or a copy. | 26 `KeyCopy` |
+| `Item.Value(fn)`, `ValueCopy` | The value inside the transaction, or a copy. | everywhere |
+| `Item.Version()` | The commit timestamp. | open image |
+| `Item.EstimatedSize()` | Key + inline value, or the value-log record length for a value-log value (`iterator.go:216`): no value read. | - (section 9) |
+| `Item.KeySize()`, `ValueSize()` | Key length + 8; value length (approximate for value-log values, `iterator.go:238`). | `ValueSize` once |
+| `Item.UserMeta()`, `ExpiresAt()`, `IsDeletedOrExpired()`, `DiscardEarlierVersions()`, `String()` | Entry metadata. | - |
+
+### 8.4 Batches, bulk load and copy
+
+| Symbol | What it does | rho |
+|---|---|---|
+| `NewWriteBatch()` | Blind writes packed into transactions; above the limits it commits and starts another: **not atomic** (section 2). `Set`, `SetEntry`, `Delete`, `Flush`, `Cancel` (must be called if `Flush` may not be), `Error`, `SetMaxPendingTxns` (default 16), `Write(buf)`, `WriteList(kvList)`. | staged flush steps 1, 3, 5; index backfills; open image; Clear |
+| `NewWriteBatchAt`, `NewManagedWriteBatch`, `SetEntryAt`, `DeleteAt` | Managed mode. | - |
+| `NewKVLoader(maxPending)`, `KVLoader.Set`, `Finish` | Writes `pb.KV`s (a backup) in batches. | - |
+| `Backup(w, since)` / `Stream.Backup` | Protobuf dump of every entry with version >= `since`; returns the last version, so `last+1` makes the next dump incremental. | - (section 9) |
+| `Load(r, maxPending)` | Restores a `Backup` into a DB that runs nothing else. | - |
+| `NewStream()`, `NewStreamAt(ts)` | Concurrent snapshot iteration (`NumGo`, default 8) over key ranges, `ChooseKey`, `KeyToList` / `KeyToListWithThreadId` + `FinishThread`, `Send` (serial), `Prefix`, `SinceTs`, `MaxSize`; keys are NOT in order. `Orchestrate(ctx)` runs it, `ToList` is the default `KeyToList`, `SendDoneMarkers`. | - |
+| `NewStreamWriter()` | Writes sorted, non-overlapping streams straight into SSTables, no WAL and no compaction: `Prepare` (deletes all existing data), `PrepareIncremental`, `Write(buf)`, `Flush` (syncs directories), `Cancel`. Only for bootstrapping a DB. | - |
+| `StreamDB(outOptions)` | Copies a snapshot of every key into a new DB at `outOptions.Dir`: `OpenManaged` + `StreamWriter.Prepare` + `NewStreamAt(MaxUint64)` + `Flush` (`db.go:1996-2024`). The copy is compacted SSTables only (no WAL, no value log). | - (section 9) |
+| `Flatten(workers)` | Compacts all tables onto one level (after a restore). | - |
+| `DropAll()` | Deletes every table and value-log file; blocks writes (`ErrBlockedWrites`); **concurrent reads may panic** (doc comment). | `Clear` of a never-logged store (section 9) |
+| `DropPrefix(prefixes...)` | Flushes memtables skipping the prefixes, compacts them away; blocks writes meanwhile. | `Clear` paths |
+| `BufferToKVList`, `KVToBuffer` | Convert between `z.Buffer` and `pb.KVList` (Stream framing). | - |
+
+### 8.5 Other services
+
+| Symbol | What it does | rho |
+|---|---|---|
+| `Subscribe(ctx, cb, matches)` | Calls `cb` with batches of written KVs that match `pb.Match` prefixes; published right after the write reaches the LSM, before the writer's `Commit` returns (`db.go:880`), held in memory only (channel of 1,000 lists per subscriber, `publisher.go:112`): lost on a crash, no replay. | - (cannot replace rho's change log) |
+| `GetSequence(key, bandwidth)`, `Sequence.Next`, `Release` | Monotonic integers leased in blocks; panics in managed mode. | - (rho has snowflake ids and its LSN allocator) |
+| `GetMergeOperator(key, f, dur)`, `MergeOperator.Add`, `Get`, `Stop` | Appends values merged by `MergeFunc` in a background goroutine. | - |
+| `RunValueLogGC(ratio)` | Rewrites a value-log file when a sample shows `ratio` of it reclaimable; `ErrNoRewrite`, `ErrRejected`. | `gcLoop` (todo VLOGGC: only rows of 1 MB or more reach the value log) |
+| `SetDiscardTs(ts)` | Managed mode: versions at or below `ts` may be dropped. | - |
+| `KeyRegistry`, `OpenKeyRegistry`, `WriteKeyRegistry`, `KeyRegistryOptions`, `KeyRegistryFileName` | The encrypted data-key file (`KEYREGISTRY`); `WriteKeyRegistry` rewrites it, the way to change the master key offline. | - (section 9) |
+| `Manifest`, `ReplayManifestFile`, `TableManifest`, `ManifestFilename` | The `MANIFEST` file (table set per level) and its parser. | `ManifestFilename` (`DiscardStagedFlush`) |
+| `InitDiscardStats` | Value-log discard statistics file. | - |
+| `Logger`, `DEBUG`...`ERROR`, `WithLoggingLevel` | Logging interface and the default logger's level. | `Config.Logger` (nil = silent) |
+| `KVList` (= `pb.KVList`), `CacheType` (`BlockCache`, `IndexCache`), `LevelInfo`, `TableInfo` | Types of the calls above. | - |
+| `ValueThresholdLimit` | Maximum `ValueThreshold` (65,520). | - |
+
+### 8.6 Options (all fields)
+
+Section 6 judges the ones rho sets; these are all of them, with the v4.9.2 default (`options.go:125-175`).
+
+| Field | Default | Field | Default |
+|---|---|---|---|
+| `Dir`, `ValueDir` | the path | `SyncWrites` | false |
+| `NumVersionsToKeep` | 1 | `ReadOnly` | false |
+| `Logger` | stderr, INFO | `Compression` | Snappy |
+| `InMemory` | false | `MetricsEnabled` | true (expvar counters per directory) |
+| `NumGoroutines` (Stream) | 8 | `MemTableSize` | 64 MB |
+| `BaseTableSize` | 2 MB | `BaseLevelSize` | 10 MB |
+| `LevelSizeMultiplier` | 10 | `TableSizeMultiplier` | 2 |
+| `MaxLevels` | 7 | `VLogPercentile` | 0 |
+| `ValueThreshold` | 1 MB | `NumMemtables` | 5 |
+| `BlockSize` | 4 KB | `BloomFalsePositive` | 0.01 |
+| `BlockCacheSize` | 256 MB | `IndexCacheSize` | 0 (indexes in memory) |
+| `NumLevelZeroTables` / `...Stall` | 5 / 15 | `ValueLogFileSize` | 1 GB - 1 |
+| `ValueLogMaxEntries` | 1,000,000 | `NumCompactors` | 4 |
+| `CompactL0OnClose` | false (forced off read-only) | `LmaxCompaction` | false |
+| `ZSTDCompressionLevel` | 1 | `VerifyValueChecksum` | false |
+| `EncryptionKey` / `...RotationDuration` | none / 10 days | `BypassLockGuard` | false |
+| `ChecksumVerificationMode` | `NoVerification` (`OnTableRead`, `OnBlockRead`, `OnTableAndBlockRead`) | `DetectConflicts` | true |
+| `NamespaceOffset` | -1 (off) | `ExternalMagicVersion` | 0 (checked against the MANIFEST at open, `manifest.go:122-158`) |
+
+### 8.7 Errors
+
+`ErrKeyNotFound`, `ErrTxnTooBig`, `ErrConflict` (impossible with `DetectConflicts` false), `ErrReadOnlyTxn`,
+`ErrDiscardedTxn`, `ErrEmptyKey`, `ErrInvalidKey` (the reserved `!badger!` prefix), `ErrBannedKey`,
+`ErrThresholdZero`, `ErrNoRewrite`, `ErrRejected`, `ErrInvalidRequest`, `ErrManagedTxn`, `ErrNamespaceMode`,
+`ErrInvalidDump`, `ErrZeroBandwidth`, `ErrWindowsNotSupported` / `ErrPlan9NotSupported` (read-only opens),
+`ErrTruncateNeeded` (a torn log on a read-only open; rho also wraps it for a pending staged flush), `ErrBlockedWrites`
+(during `DropAll`/`DropPrefix`/`Close`), `ErrNilCallback`, `ErrEncryptionKeyMismatch`, `ErrInvalidDataKeyID`,
+`ErrInvalidEncryptionKey`, `ErrGCInMemoryMode`, `ErrGCInReadOnlyMode`, `ErrDBClosed`, `ErrValueLogSize`. rho tests
+`ErrKeyNotFound`, `ErrTxnTooBig`, `ErrTruncateNeeded`, `ErrDBClosed` and `ErrEncryptionKeyMismatch` by identity;
+the rest surface wrapped. Outside badger's debug mode `y.Wrap` formats the cause with `%+v` (`y/error.go:55-63`), so
+`errors.Is` fails on errors badger wrapped itself; rho's tiered probe also matches `ErrTruncateNeeded` by message.
+
+### 8.8 Packages beside `badger`
+
+`options` (`CompressionType`: `None`, `Snappy`, `ZSTD`; `ChecksumVerificationMode`) is used by rho's configs. `pb`
+holds the protobuf types of backups, streams and the manifest (`KV`, `KVList`, `Match`, `DataKey`, `Checksum`,
+`ManifestChange`, `ManifestChangeSet`). `y` (shared helpers, `y.Wrapf` formats with `%+v`, so `errors.Is` may fail
+on errors badger wrapped, section 8.7), `table` (SSTable builder and
+reader), `skl` (the memtable skiplist and arena), `trie` (prefix matching for `Subscribe`) and `fb` (flatbuffers of
+table indexes) are badger's internals: exported, not meant for applications, unused by rho.
+
+## 9. Integration findings
+
+Badger features rho does not use yet that fit a rho need, and one risk. Each is a todo item; none is built.
+
+1. **Moving shards between volumes (SHARD)**: `StreamDB` (or `Stream` + `StreamWriter`) copies a snapshot into a
+   new directory as compacted SSTables, without a WAL; the mover between hot, warm and cold volumes can use it
+   instead of copying files of a live DB. Needs: the copy's open format marker and rho meta keys travel with it
+   (they are ordinary keys), and a writable source must be quiesced or the copy taken from a snapshot.
+2. **Limits from badger, not from formulas**: `MaxBatchSize()` / `MaxBatchCount()` give the exact per-transaction
+   limits; rho needs them only for the number of entries (one entry always fits, section 2), e.g. to size a staged
+   flush's parts.
+3. **Per-shard caches (CACHE)**: `CacheMaxCost` resizes an open DB's block cache, so the tiered store can share one
+   budget across its open shards; `BlockCacheMetrics` shows the hit rate.
+4. **Point reads (GETWALK)**: `NewKeyIterator` checks the bloom filter on the exact key before it picks tables.
+5. **Iterator pruning (ITERPREFIX, PREFETCH)**: `IteratorOptions.Prefix` skips tables outside the prefix;
+   `PrefetchValues` false avoids a goroutine per item.
+6. **Admin views**: `Tables()`, `Levels()`, `EstimateSize(prefix)` (table-granular), `Item.EstimatedSize()` (no
+   value read) and `VerifyChecksum()` (block checksums, otherwise never verified) can back size and integrity
+   reports per shard.
+7. **Backups**: `Backup(w, since)` with the returned version makes incremental dumps; `Load` restores them. rho
+   has no backup door; a store-level one would be thin.
+8. **Changed since a version (WRITTENAT)**: `IteratorOptions.SinceTs` skips whole tables older than a badger
+   version. Badger versions are commit timestamps, not rho transaction times, so it serves "changed since a
+   badger version", not "written at a rho tx".
+9. **Master-key change**: `WriteKeyRegistry` rewrites the key registry under a new master key offline; rho has no
+   tool for it.
+10. **Risk, to verify (DROPALL)**: `Clear` of a store that never had the change log calls `DropAll`, which badger
+    says may panic concurrent reads. `Clear` holds `idxMu` and `flushMu`; whether every badger read path takes one
+    of them is not yet checked.
+11. **To measure**: `MetricsEnabled` (default, rho leaves it on) registers expvar counters per directory; with many
+    shards opened over a process's life they accumulate. `Subscribe` is not durable and cannot replace the change
+    log. `ExternalMagicVersion` could guard the format at badger level beside rho's `wire_format_version`; changing
+    it is a one-way door.

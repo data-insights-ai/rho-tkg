@@ -6,4 +6,5 @@ rho-tkg (`tkg/v4`) is a pure Go temporal knowledge-graph library. This file is t
 agents; it holds no rules beyond this one.
 
 Read before any work: `HANDOVER.md` (state) → `docs/CONTRIBUTING.md` § Rules digest → `tasks/todo.md` (Now, Next,
-Waiting). Read `docs/architecture.md`, a lesson or another doc section when the task or the code you touch needs it.
+Waiting). Read `docs/architecture.md`, a lesson or another doc section when the task or the code you touch needs it, and
+`docs/badger.md` before changing code that reads or writes badger.

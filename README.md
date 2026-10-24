@@ -325,14 +325,14 @@ This list is the complete documentation set; there are no other `.md` files. Put
 | [`docs/errors.md`](docs/errors.md) | Every public error sentinel and the doors that return it |
 | [`docs/architecture.md`](docs/architecture.md) | How rho is built: layers, data model, IDs, time model, write doors and lock order, the four storage backends, [design invariants](docs/architecture.md#design-invariants) with the tests that pin them, decision records |
 | [`docs/persistence.md`](docs/persistence.md) | Storage formats, wire format and key layout, durability, change-log, backups, upgrading a store |
-| [`docs/badger.md`](docs/badger.md) | badger v4.9.2: how it stores, writes and reads data, its costs (measured), its options, and the rules rho follows when it uses it |
+| [`docs/badger.md`](docs/badger.md) | badger v4.9.2, read from its source: how it stores, writes and reads data, its costs (measured), its options, the rules rho follows when it uses it, its complete API (every exported symbol, section 8) and the badger features rho should integrate (section 9). Read it before changing any code that reads or writes badger |
 | [`docs/query-planners.md`](docs/query-planners.md) | Planner statistics (cardinality, HyperLogLog NDV, bounds, timelines), index usability, staleness |
 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Rules digest (read every session), gates and release checklist, testing and review rules, benchmarks, the lesson index ("lesson N") |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security policy and reporting |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Every release, dated: what shipped and why |
 | `HANDOVER.md` | Current state, next steps, open decisions (for the next session) |
 | `tasks/todo.md` | Open work only, in order: Now, Next, Waiting, Later, Parked (the numbered backlog lives in the handover) |
-| `CLAUDE.md`, `AGENTS.md` | Entry points for Claude Code and Codex: pointers into this list (CLAUDE imports AGENTS) |
+| `CLAUDE.md`, `AGENTS.md` | Entry points for Claude Code and Codex: pointers into this list (CLAUDE imports AGENTS); they send an agent to the badger file above before any badger work |
 
 Measurement data (`.txt`, `.json`) lives under `tasks/evidence/`, explained by the todo row or changelog entry that cites it.
 Removed files (old lessons, backlog, ADRs, evidence notes) stay readable in git: `git show 6e20157c:<path>`. `TestNoMDFileOutsideTheDocumentation` fails on any `.md` file this table does not name.

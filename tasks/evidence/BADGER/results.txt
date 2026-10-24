@@ -11,3 +11,23 @@ E6 one Seek per row on one iterator, ascending: 2,315 B (1 table), 2,391 B (4 ta
 E7 Get in its own read transaction per row: 3,795 B per 900-byte row.
 E6 profile (100,000 seeks, 900-byte rows): SafeCopy 101 MB, Slice.Resize 100 MB, Iterator.newItem 18 MB, Table.block
    10.9 MB cumulative: ~1,000 + ~1,000 + ~180 + ~110 B per seek; the item and its buffers, not table positioning.
+
+Batch API, batch_test.go.txt (2026-10-24, MemTableSize 8 MB = rho's minimum unless noted; all 9 pass):
+  B1 MaxBatchSize 1258291 MaxBatchCount 13107; entries per txn 13105
+  B2 1,000-byte values: 1232 per txn (cost 1021 B each)
+  B3 a 20 MB value and a 1 MB - 1 inline value each commit in one txn at MemTableSize 8 MB
+  B4 MemTableSize 4 MB (MaxBatchSize 629,145 < ValueThreshold 1 MB): Open refuses: Valuethreshold 1048576 greater than max batch size of 629145. Either reduce opt.ValueThreshold or increase opt.BaseTa
+  B5 45867 entries: 4 parts of 13105, versions rising in insertion order
+  B6 Cancel after 32762 entries: the 2 committed parts (26210 entries) stay, the open part is gone
+  B7 write-only txns never conflict; a txn that read the key does
+  B8 empty commits write nothing; a duplicate key in one txn is written once, last value wins
+  B9 exit after 20000 entries (SyncWrites false): 13105 survive = 1 whole parts, a prefix
+  B9 exit after 20000 entries (SyncWrites true): 13105 survive = 1 whole parts, a prefix
+  B9 exit after 33333 entries (SyncWrites false): 26210 survive = 2 whole parts, a prefix
+  B9 exit after 33333 entries (SyncWrites true): 26210 survive = 2 whole parts, a prefix
+  B9 exit after 51111 entries (SyncWrites false): 39315 survive = 3 whole parts, a prefix
+  B9 exit after 51111 entries (SyncWrites true): 39315 survive = 3 whole parts, a prefix
+  B9 exit after 64000 entries (SyncWrites false): 52420 survive = 4 whole parts, a prefix
+  B9 exit after 64000 entries (SyncWrites true): 52420 survive = 4 whole parts, a prefix
+  B9 exit after 90000 entries (SyncWrites false): 78630 survive = 6 whole parts, a prefix
+  B9 exit after 90000 entries (SyncWrites true): 78630 survive = 6 whole parts, a prefix
