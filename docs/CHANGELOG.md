@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.76.0] - 2026-10-24
+
 ### Changed
 
 - **OPENEXCISE** (sigma for ai-soc's BA run): `ExciseNodeValidity` / `ExciseRelValidity` (and their `GraphTx`,

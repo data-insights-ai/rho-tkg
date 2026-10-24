@@ -8,7 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct, "fixes first", then "the given order"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0
-(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); CLEARMETA shipped in v4.75.3 (tagged, sigma and ai-soc told, tag CI green); CLEARSHARDS shipped in v4.75.4; SAMESTART shipped in v4.75.5 (tagged, sigma and ai-soc told, tag CI green); next OPENEXCISE, then BADGER step 3 /
+(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); CLEARMETA shipped in v4.75.3 (tagged, sigma and ai-soc told, tag CI green); CLEARSHARDS shipped in v4.75.4; SAMESTART shipped in v4.75.5; OPENEXCISE shipped in v4.76.0; next BADGER step 3 /
 SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -40,30 +40,6 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
 
-- **OPENEXCISE** (sigma for ai-soc, 24 Oct; blocks ai-soc's BA run: on k10241303 every history check fails, an
-  extension reads as the earlier version at its pin) — sigma ends an open tail by closing the current row
-  (`UpdateNode(tkg_valid_to: a)`), which rho writes as a new row restating the current properties over [start, a)
-  and a tx-end of the old row. (A) An older row with a later start, out-believed only by the now tx-ended open row,
-  reads again: write [1000,∞) c=2, write [500,∞) c=1, close to 501, excise [500,501): `NodeAt(1500)` = c=2.
-  (B) The restated close row is stamped after rows written earlier in the same transaction and shadows them.
-  Request: a door that ends validity from a on, open-ended, without restating and without tx-ending rows so older
-  beliefs reappear: `ExciseNodeValidity(id, a, open)` (today refused, `temporal_cascade.go:1268`; a bounded excise
-  to MaxInt64-1 leaves a resumption row). sigma's randomized probe fails 5-10% of seeds, every failure ending in an
-  open-tail excise. Order (decided 24 Oct from the data): now (SAMESTART shipped), before SHARD: a consumer's
-  correctness on its full run, and fixes come first. Done when: (A) and (B) are red tests, the door exists for nodes
-  and relationships in every backend, released (a widened door: a minor). sigma (24 Oct): in (A) the [500,∞) c=1 row is a
-  `SetNodeVersionInterval(id, 500, open, props)` (reconcile's whole write), then `UpdateNode(tkg_valid_to: 501)`,
-  then `ExciseNodeValidity(500, 501)`; sigma's red tests are TestRetractAfterAnEarlierOpenStartLeavesNothing (A),
-  TestBAREADShrink (B) and TestBAREADProbe (randomized) on sigma branch fix/baread.
-  Red tests on branch `openexcise` (24 Oct, `tasks/evidence/OPENEXCISE/red.txt`): (A), (B) and the relationship
-  door, memory and badger; all refused today ("excise needs a bounded end", `excise.go:34` and
-  `checkCascadeInterval`). `EndValidity` is no substitute: it deletes at the transaction instant.
-  Fixed on the branch (24 Oct): the doors accept an open end; void pieces over [a, open), no resumption, no row
-  ended in transaction time. The open void row is a new row shape (the decoder allowed bounded void rows only; the
-  oracle harness found it, 75 of 200 seeds): row format 7, store marker 10, a one-way door for the minor v4.76.0;
-  a bounded excise keeps 5 and 6. Three mutations caught. Suite and race green after updating three excise contract
-  tests (they asserted the lifted refusal) and adding the batch twin; CHANGELOG written. Next: `make ci-docker`,
-  v4.76.0.
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
