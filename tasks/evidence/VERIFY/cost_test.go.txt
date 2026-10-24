@@ -1,0 +1,84 @@
+package badger
+
+// VERIFY cost evidence, kept as tasks/evidence/VERIFY/cost_test.go.txt.
+
+import (
+	"encoding/binary"
+	"fmt"
+	"math/rand"
+	"testing"
+	"time"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
+	"github.com/dgraph-io/badger/v4/options"
+)
+
+func TestChecksumCost(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		mut  func(*badgerv4.Options)
+	}{
+		{"checksums off (rho today)", func(o *badgerv4.Options) {}},
+		{"block OnBlockRead + value checksum", func(o *badgerv4.Options) {
+			o.ChecksumVerificationMode = options.OnBlockRead
+			o.VerifyValueChecksum = true
+		}},
+	} {
+		dir := t.TempDir()
+		opts := badgerv4.DefaultOptions(dir).WithLogger(nil).WithBlockCacheSize(4 << 20)
+		c.mut(&opts)
+		db, err := badgerv4.Open(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := make([]byte, 900)
+		big := make([]byte, 1_400_000)
+		wb := db.NewWriteBatch()
+		for i := 0; i < 200_000; i++ {
+			k := make([]byte, 9)
+			k[0] = 1
+			binary.BigEndian.PutUint64(k[1:], uint64(i))
+			_ = wb.Set(k, row)
+		}
+		for i := 0; i < 20; i++ {
+			_ = wb.Set([]byte{2, byte(i)}, big)
+		}
+		_ = wb.Flush()
+		_ = db.Close()
+		db, _ = badgerv4.Open(opts) // reads from tables, cold block cache
+		r := rand.New(rand.NewSource(1))
+		start := time.Now()
+		const gets = 50_000
+		_ = db.View(func(txn *badgerv4.Txn) error {
+			k := make([]byte, 9)
+			k[0] = 1
+			for i := 0; i < gets; i++ {
+				binary.BigEndian.PutUint64(k[1:], uint64(r.Intn(200_000)))
+				item, err := txn.Get(k)
+				if err != nil {
+					return err
+				}
+				_ = item.Value(func([]byte) error { return nil })
+			}
+			return nil
+		})
+		small := time.Since(start) / gets
+		start = time.Now()
+		for rep := 0; rep < 5; rep++ {
+			_ = db.View(func(txn *badgerv4.Txn) error {
+				for i := 0; i < 20; i++ {
+					item, err := txn.Get([]byte{2, byte(i)})
+					if err != nil {
+						return err
+					}
+					_, _ = item.ValueCopy(nil)
+				}
+				return nil
+			})
+		}
+		large := time.Since(start) / 100
+		_ = db.Close()
+		t.Logf("%s: %v per random Get of a 900-byte row (cache 4 MB), %v per read of a 1.4 MB value-log row", c.name, small, large)
+	}
+	_ = fmt.Sprint()
+}

@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.75.2] - 2026-10-24
+
+### Fixed
+
+- **VERIFY**: with rho's options badger checked no value-log value and no table block, so one flipped byte on disk
+  could reach a caller as altered data. Badger now verifies both (`VerifyValueChecksum`, `ChecksumVerificationMode`
+  `OnBlockRead`): a damaged value-log value is an error, a damaged table block an error or a refused open. Measured
+  over 72 flipped positions of a table: none passes silently with the checksums, 11 did without (altered rows,
+  silently missing rows, panics). Cost: a few µs per block-cache miss, about 1 ms per MB-sized value-log read
+  (`tasks/evidence/VERIFY/cost.txt`). Badger panics in rho's read paths and the open scan (a damaged block can panic
+  badger before its checksum is checked, `table/table.go:575-604`) come back as `ErrCorruptWire`; a panic in one of
+  badger's own goroutines still ends the process (BADGERPANIC, accepted: rho uses badger as it is).
+- **BADGERLOG**: no backend gave badger a logger, so its reports were discarded: the cause of a failed value-log
+  read, and the cut of the newest value-log file at a bad entry on a writable open. A nil `Config.Logger` now sends
+  badger's errors and warnings to `slog` (its info and debug at slog's Debug level), in the badger, tiered and sharded
+  stores; rho itself warns when an open cut written value-log data, and stays quiet after a plain crash, whose
+  value-log tail is preallocated zeros.
+
 ### Documentation
 
 - **USAGE, BADGERDOC** (René 24 Oct): rho's badger use mapped in 9 categories (49 files; `tasks/evidence/USAGE/`) and
@@ -14,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   10). Every claim in `docs/badger.md` now cites badger's source or a measurement, and what rho relies on is proven by
   15 evidence tests that fail when their claim is false (`tasks/evidence/BADGER/`); eight earlier claims were false
   and are corrected.
+
 
 ## [4.75.1] - 2026-10-24
 

@@ -131,7 +131,10 @@ Dir/
   mmapped table and Snappy-decodes it into a fresh buffer (`table.go:527-568`, `785-806`). Table indexes and bloom
   filters are read from the mmapped table (page cache, zero-copy, `table.go:455-458`) unless encryption is on, which
   requires `IndexCacheSize`. Block checksums are checked only under `ChecksumVerificationMode` `OnBlockRead` /
-  `OnTableAndBlockRead` (`table.go:603`; at table open under `OnTableRead` / `OnTableAndBlockRead`, `table.go:301`).
+  `OnTableAndBlockRead` (`table.go:603`; at table open under `OnTableRead` / `OnTableAndBlockRead`, `table.go:301`);
+  rho sets `OnBlockRead` and `VerifyValueChecksum` (v4.75.2). Badger parses a block's trailer (its entry count) before
+  it verifies the checksum (`table.go:575-604`): a damaged trailer panics, also with checksums on. rho recovers that
+  panic on its own reads; in badger's goroutines (table open, compaction) it ends the process (BADGERPANIC).
 
 ## 4. Compaction and space
 
@@ -396,8 +399,8 @@ Badger features rho does not use yet that fit a rho need, and one risk. Each is 
 5. **Iterator pruning (ITERPREFIX, PREFETCH)**: `IteratorOptions.Prefix` skips tables outside the prefix;
    `PrefetchValues` false avoids a goroutine per item.
 6. **Admin views**: `Tables()`, `Levels()`, `EstimateSize(prefix)` (table-granular), `Item.EstimatedSize()` (no
-   value read) and `VerifyChecksum()` (block checksums, otherwise never verified) can back size and integrity
-   reports per shard.
+   value read) and `VerifyChecksum()` (every block of every table, beyond the blocks reads touch) can back size and
+   integrity reports per shard.
 7. **Backups**: `Backup(w, since)` with the returned version makes incremental dumps; `Load` restores them. rho
    has no backup door; a store-level one would be thin.
 8. **Changed since a version (WRITTENAT)**: `IteratorOptions.SinceTs` skips whole tables older than a badger
@@ -409,7 +412,7 @@ Badger features rho does not use yet that fit a rho need, and one risk. Each is 
     may panic, `db.go:1699-1700`) while a cache-miss point read or a read snapshot may hold a badger transaction
     outside `idxMu`/`flushMu`. Measured (`tasks/evidence/USAGE/`): an item looked up before `DropAll` still yields
     an inline value whole, but a value-log value (a row of 1 MB or more) comes back empty with a nil error, because
-    badger swallows value-log read errors (`iterator.go:158-187`); with rho's nil logger nothing is reported.
+    badger swallows value-log read errors (`iterator.go:158-187`); since v4.75.2 the cause reaches `slog`.
 11. **Per-shard defaults (CACHE, SHARD)**: every writable open starts the writer, the flusher, 4 compactors with
     50 ms tickers and a directory walk every minute (`db.go:303-387`, `:458`, not guarded by `MetricsEnabled`);
     `CompactL0OnClose` for warm and cold shards saves their read-only opens a table probe per read for good;

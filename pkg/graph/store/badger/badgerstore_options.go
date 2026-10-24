@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
+	"github.com/dgraph-io/badger/v4/options"
 )
 
 // ErrOversizedWAL is returned when a data dir holds a WAL that cannot be safely
@@ -159,11 +160,13 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
 	if cfg.ReadOnly {
 		opts = opts.WithReadOnly(true)
 	}
-	if cfg.Logger != nil {
-		opts = opts.WithLogger(cfg.Logger)
-	} else {
-		opts = opts.WithLogger(nil) // suppress default Badger logs
-	}
+	// badger reports a failed value-log read only by log: never nil
+	// (BADGERLOG). Its info and debug lines go to slog's Debug level.
+	opts = opts.WithLogger(badgerLogger(cfg))
+	// Verify table blocks on read and value-log values (VERIFY): without
+	// them a flipped byte reached callers as data or panicked badger
+	// (tasks/evidence/USAGE/vlog_test.go.txt; cost tasks/evidence/VERIFY/cost.txt).
+	opts = opts.WithChecksumVerificationMode(options.OnBlockRead).WithVerifyValueChecksum(true)
 	if cfg.SyncWrites && !cfg.ReadOnly {
 		opts = opts.WithSyncWrites(true)
 	}

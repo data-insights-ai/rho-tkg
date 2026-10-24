@@ -2,9 +2,11 @@ package badger
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -26,7 +28,7 @@ type vfLog struct {
 }
 
 func (l *vfLog) Write(p []byte) (int, error) { l.mu.Lock(); defer l.mu.Unlock(); return l.buf.Write(p) }
-func (l *vfLog) String() string               { l.mu.Lock(); defer l.mu.Unlock(); return l.buf.String() }
+func (l *vfLog) String() string              { l.mu.Lock(); defer l.mu.Unlock(); return l.buf.String() }
 
 func vfCaptureSlog(t *testing.T) *vfLog {
 	t.Helper()
@@ -113,58 +115,94 @@ func TestVlogFlippedByteOlderFileIsAnError(t *testing.T) {
 	}
 }
 
-// V2: a flipped byte in a table never panics the process; the read or the open
-// fails with an error. Mutation: block checksums off (badger panicked in 3 of 7
-// positions).
+// V2: one flipped byte at each of ~80 positions of a table (one per copy of
+// the store): with block checksums on, no position yields altered data, a
+// silently missing row or a panic; measured with them off: 6 altered, 2
+// silently missing, 2 panics (tasks/evidence/VERIFY/). The bytes of the block
+// trailers are skipped: badger parses a trailer before it verifies the block
+// and panics in its own goroutine (BADGERPANIC, accepted). Mutation: block
+// checksums off.
 func TestTableFlippedByteNeverPanics(t *testing.T) {
-	for _, frac := range []float64{0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6} {
-		dir := t.TempDir()
-		bs, err := New(Config{Dir: dir})
-		if err != nil {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: ~70 store copies opened")
+	}
+	base := t.TempDir()
+	bs, err := New(Config{Dir: base})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []types.NodeID
+	for i := 0; i < 50; i++ {
+		n := types.NewNode(types.NodeID(snowflake.ID(5000+i)), 7, nil)
+		_ = n.SetProperty("note", fmt.Sprintf("value-%04d-%s", i, strings.Repeat("q", 200)))
+		if err := bs.PutNode(n); err != nil {
 			t.Fatal(err)
 		}
-		var ids []types.NodeID
-		for i := 0; i < 50; i++ {
-			n := types.NewNode(types.NodeID(snowflake.ID(5000+i)), 7, nil)
-			_ = n.SetProperty("note", fmt.Sprintf("value-%04d-%s", i, strings.Repeat("q", 200)))
-			if err := bs.PutNode(n); err != nil {
-				t.Fatal(err)
-			}
-			ids = append(ids, n.ID())
+		ids = append(ids, n.ID())
+	}
+	_ = bs.Close()
+	tables, _ := filepath.Glob(filepath.Join(base, "*.sst"))
+	if len(tables) != 1 {
+		t.Fatalf("fixture: %d tables, want 1", len(tables))
+	}
+	orig, err := os.ReadFile(tables[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The table's tail: ... blocks | index | index length (4) | checksum | checksum length (4).
+	u32 := func(at int) int {
+		return int(orig[at])<<24 | int(orig[at+1])<<16 | int(orig[at+2])<<8 | int(orig[at+3])
+	}
+	tableChk := u32(len(orig) - 4)
+	indexLen := u32(len(orig) - 4 - tableChk - 4)
+	blocksEnd := len(orig) - 4 - tableChk - 4 - indexLen
+	if blocksEnd > 4096+512 {
+		t.Fatalf("fixture: %d bytes of blocks, want one block", blocksEnd)
+	}
+	blockChk := u32(blocksEnd - 4)
+	trailerFrom := blocksEnd - 4 - blockChk - 4 // the block's entry count, checksum and checksum length
+	var silent []string
+	positions := 0
+	for at := 20; at < trailerFrom-4; at += 37 {
+		positions++
+		dir := t.TempDir()
+		ents, _ := os.ReadDir(base)
+		for _, e := range ents {
+			b, _ := os.ReadFile(filepath.Join(base, e.Name()))
+			_ = os.WriteFile(filepath.Join(dir, e.Name()), b, 0o600)
 		}
-		_ = bs.Close()
-		tables, _ := filepath.Glob(filepath.Join(dir, "*.sst"))
-		if len(tables) == 0 {
-			t.Fatal("no table written")
-		}
-		fi, _ := os.Stat(tables[0])
-		off := int64(float64(fi.Size()) * frac)
-		fh, _ := os.OpenFile(tables[0], os.O_RDWR, 0)
-		b := make([]byte, 1)
-		_, _ = fh.ReadAt(b, off)
-		_, _ = fh.WriteAt([]byte{b[0] ^ 0x5A}, off)
-		_ = fh.Close()
+		flipped := append([]byte(nil), orig...)
+		flipped[at] ^= 0x5A
+		_ = os.WriteFile(filepath.Join(dir, filepath.Base(tables[0])), flipped, 0o600)
 		func() {
 			defer func() {
 				if p := recover(); p != nil {
-					t.Errorf("flip at %.0f%% of the table: PANIC %v", frac*100, p)
+					silent = append(silent, fmt.Sprintf("byte %d: panic %v", at, p))
 				}
 			}()
-			bs, err := New(Config{Dir: dir, CacheCapacity: 1})
+			s, err := New(Config{Dir: dir, CacheCapacity: 1})
 			if err != nil {
-				return // refused: fine
+				return // refused
 			}
-			defer bs.Close()
+			defer s.Close()
 			for i, id := range ids {
-				n, err := bs.GetNode(id)
-				if err != nil {
-					continue
-				}
-				if v, _ := n.GetProperty("note"); v != fmt.Sprintf("value-%04d-%s", i, strings.Repeat("q", 200)) {
-					t.Errorf("flip at %.0f%%: node %d returned altered data", frac*100, i)
+				n, err := s.GetNode(id)
+				switch {
+				case errors.Is(err, ErrNodeNotFound):
+					silent = append(silent, fmt.Sprintf("byte %d: node %d silently missing", at, i))
+					return
+				case err != nil:
+				default:
+					if v, _ := n.GetProperty("note"); v != fmt.Sprintf("value-%04d-%s", i, strings.Repeat("q", 200)) {
+						silent = append(silent, fmt.Sprintf("byte %d: node %d altered", at, i))
+						return
+					}
 				}
 			}
 		}()
+	}
+	if len(silent) > 0 {
+		t.Fatalf("%d of %d flipped positions passed silently or panicked: %v", len(silent), positions, silent)
 	}
 }
 
@@ -236,5 +274,47 @@ func TestNewestVlogCutAtOpenIsReported(t *testing.T) {
 	defer bs.Close()
 	if !strings.Contains(logs.String(), "value log") || !strings.Contains(logs.String(), filepath.Base(holder)) {
 		t.Fatalf("the open cut %s without a report; slog got: %.300q", filepath.Base(holder), logs.String())
+	}
+}
+
+// V5: no false alarm. A process that exits uncleanly after complete writes
+// leaves the newest value-log file with a preallocated zero tail, which the
+// next open drops: no written data is cut, so nothing is reported. Mutation:
+// comparing file sizes instead of the end of written data.
+func TestVlogCrashTailIsNotReported(t *testing.T) {
+	if dir := os.Getenv("RHO_VF_CHILD_DIR"); dir != "" {
+		bs, err := New(Config{Dir: dir})
+		if err != nil {
+			os.Exit(2)
+		}
+		for i := 0; i < 3; i++ {
+			if err := bs.PutNode(vfBigNode(7000 + i)); err != nil {
+				os.Exit(2)
+			}
+		}
+		if err := bs.Flush(); err != nil {
+			os.Exit(2)
+		}
+		os.Exit(3) // no Close
+	}
+	dir := t.TempDir()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestVlogCrashTailIsNotReported$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "RHO_VF_CHILD_DIR="+dir)
+	if out, _ := cmd.CombinedOutput(); cmd.ProcessState.ExitCode() != 3 {
+		t.Fatalf("child: exit %d\n%s", cmd.ProcessState.ExitCode(), out)
+	}
+	logs := vfCaptureSlog(t)
+	bs, err := New(Config{Dir: dir, CacheCapacity: 1})
+	if err != nil {
+		t.Fatalf("reopen after the crash: %v", err)
+	}
+	defer bs.Close()
+	for i := 0; i < 3; i++ {
+		if _, err := bs.GetNode(types.NodeID(snowflake.ID(7000 + i))); err != nil {
+			t.Fatalf("node %d lost in the crash: %v", i, err)
+		}
+	}
+	if strings.Contains(logs.String(), "cut value log") {
+		t.Fatalf("a plain crash tail was reported as a cut: %.300q", logs.String())
 	}
 }

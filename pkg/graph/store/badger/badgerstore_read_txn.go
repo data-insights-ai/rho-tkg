@@ -1,8 +1,10 @@
 package badger
 
 import (
+	"fmt"
 	"sync/atomic"
 
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
@@ -15,9 +17,21 @@ import (
 var readTxnsTotal, openReadTxns atomic.Int64
 
 // view is db.View, counted.
-func (bs *Store) view(fn func(txn *badgerv4.Txn) error) error {
+func (bs *Store) view(fn func(txn *badgerv4.Txn) error) (err error) {
 	readTxnsTotal.Add(1)
+	defer recoverBadgerPanic(&err)
 	return bs.db.View(fn)
+}
+
+// recoverBadgerPanic turns a panic out of badger into ErrCorruptWire. badger
+// parses a table block's trailer before it verifies the block's checksum
+// (table/table.go:575-604), so a damaged trailer panics the reader even under
+// ChecksumVerificationMode OnBlockRead (VERIFY; badgerstore_verify_test.go).
+// The read fails; the process lives.
+func recoverBadgerPanic(err *error) {
+	if p := recover(); p != nil {
+		*err = fmt.Errorf("%w: badger panicked reading the store (a damaged table): %v", storecontract.ErrCorruptWire, p)
+	}
 }
 
 // newReadTxn opens a read transaction, counted; the caller ends it with

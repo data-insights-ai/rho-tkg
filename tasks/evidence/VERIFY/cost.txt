@@ -1,0 +1,5 @@
+Checksum read cost (cost_test.go.txt, raw badger v4.9.2, 2026-10-24, two runs; 200,000 rows of 900 B and 20 values
+of 1.4 MB, block cache 4 MB so most point reads miss and read a block):
+  checksums off (rho before VERIFY): 11-15 us per random Get of a 900-byte row; 0.14-0.26 ms per 1.4 MB value-log read
+  ChecksumVerificationMode OnBlockRead + VerifyValueChecksum: ~19 us per Get; 1.0-1.8 ms per 1.4 MB read
+Block checksums cost only on a block-cache miss; value checksums about 1 ms per MB-sized value-log row read.

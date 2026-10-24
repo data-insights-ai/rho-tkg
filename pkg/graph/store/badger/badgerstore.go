@@ -100,7 +100,9 @@ type Config struct {
 	ValidAxis types.ValidAxis
 	// InMemory enables memory-only mode (no disk I/O). Useful for testing.
 	InMemory bool
-	// Logger is the Badger logger. Nil uses Badger's default logger.
+	// Logger is the Badger logger, also used for rho's reports about badger.
+	// Nil sends badger's errors and warnings to slog (its info and debug at
+	// slog's Debug level).
 	Logger badgerv4.Logger
 	// CacheCapacity is the per-cache (nodes, rels) soft limit. Default: 10,000.
 	CacheCapacity int
@@ -888,9 +890,22 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
+	// A writable open may cut the newest value-log file at a bad entry, and
+	// badger says nothing: note where its written data ends, report a cut.
+	var vlogPath string
+	var vlogWritten int64
+	vlogKnown := false
+	if !cfg.InMemory && !cfg.ReadOnly {
+		if vlogPath = newestVlog(cfg.Dir); vlogPath != "" {
+			vlogWritten, vlogKnown = writtenEnd(vlogPath)
+		}
+	}
 	db, err := badgerv4.Open(buildBadgerOptions(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("graph: badger open: %w", err)
+	}
+	if vlogKnown {
+		reportVlogCut(badgerLogger(cfg), vlogPath, vlogWritten)
 	}
 
 	// Enforce the on-disk format contract before decoding a row: a directory stamped by
@@ -903,7 +918,7 @@ func New(cfg Config) (*Store, error) {
 	}
 	// A staged flush that committed before a crash is applied (or uncommitted
 	// staging deleted) before any row, counter or index is read.
-	if err := recoverStagedFlush(db, cfg.ReadOnly, cfg.Logger); err != nil {
+	if err := recoverStagedFlush(db, cfg.ReadOnly, badgerLogger(cfg)); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
@@ -1004,7 +1019,7 @@ func New(cfg Config) (*Store, error) {
 		stopCh:                  make(chan struct{}),
 		flushDone:               make(chan struct{}),
 		gcDone:                  make(chan struct{}),
-		logger:                  cfg.Logger,
+		logger:                  badgerLogger(cfg),
 	}
 	// atomic.Bool cannot be set in a composite literal; set it before bs escapes.
 	bs.logEnabled.Store(cfg.ChangeLog && !cfg.ReadOnly)
@@ -1058,7 +1073,7 @@ func New(cfg Config) (*Store, error) {
 	// A cleanly closed store opens from its keys and the persisted open image
 	// (badgerstore_open_image.go) instead of decoding every row.
 	img := bs.readOpenImage()
-	if err := bs.loadIndexes(img); err != nil {
+	if err := bs.loadIndexesRecovering(img); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, fmt.Errorf("graph: load indexes: %w", err)
 	}
@@ -2415,4 +2430,11 @@ func (bs *Store) resolveNodeWireKeys(w *storepkg.NodeWire) error {
 
 func (bs *Store) resolveRelWireKeys(w *storepkg.RelWire) error {
 	return storepkg.ResolvePropertyKeyTokens(w.Properties, bs.propKeyReg.Load())
+}
+
+// loadIndexesRecovering is loadIndexes with a badger panic (a damaged table,
+// recoverBadgerPanic) turned into an error: the open fails closed.
+func (bs *Store) loadIndexesRecovering(img *openImage) (err error) {
+	defer recoverBadgerPanic(&err)
+	return bs.loadIndexes(img)
 }
