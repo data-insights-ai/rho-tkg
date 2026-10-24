@@ -48,7 +48,8 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   the reference shard, an open that finds the marker finishes the `Clear`; green at all 7 stages, three mutations
   caught (an archive or cold shard is not in the fixture). Sharded confirmed red (24 Oct): the anchor (shard 0)
   holds the registries and is cleared first; after a crash there a key written after the reopen reuses the old rows'
-  token, and an old node answers under the new key (silent wrong data). Next: the same fix for sharded. Done when: both stores' crash tests
+  token, and an old node answers under the new key (silent wrong data). Sharded fixed the same way (the anchor
+  last), green at all 5 stages, three mutations caught. Next: the full suite, docs, the patch gate, v4.75.4. Done when: both stores' crash tests
   show old or empty at every stage, released as a patch. Now, before SHARD (fixes first, René 24 Oct).
 - **SAMESTART** (sigma, 24 Oct; found by sigma's reviewer on v4.75.1) — When all of a node's rows start at the same
   instant, `sortNodeChainForResolve` reports the chain monotonic and the fast path (newest first, first covering row
