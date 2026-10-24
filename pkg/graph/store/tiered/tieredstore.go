@@ -1240,6 +1240,9 @@ func (ts *Store) Clear() error {
 		shards = append(shards, es)
 	}
 
+	if err := clearStepFault("index files"); err != nil {
+		return err
+	}
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return rollbackIndexMetadata(err)
@@ -1261,9 +1264,15 @@ func (ts *Store) Clear() error {
 		return rollbackIndexMetadata(err)
 	}
 	refCheckin()
+	if err := clearStepFault("reference shard"); err != nil {
+		return err
+	}
 	for _, es := range shards {
 		if err := ts.clearEventShard(es); err != nil {
 			return rollbackIndexMetadata(fmt.Errorf("graph: clear event shard %s: %w", es.name, err))
+		}
+		if err := clearStepFault("event shard"); err != nil {
+			return err
 		}
 	}
 
@@ -1310,8 +1319,22 @@ func (ts *Store) Clear() error {
 			archiveCheckin()
 		}
 	}
+	if err := clearStepFault("index defs and archive"); err != nil {
+		return err
+	}
 	if err := ts.resetCatalogAfterClear(); err != nil {
 		return err
+	}
+	return clearStepFault("catalog")
+}
+
+// clearStepFaultForTest (tests only) runs after each durable stage of Clear,
+// named by stage; a test may stop the process there.
+var clearStepFaultForTest func(stage string) error
+
+func clearStepFault(stage string) error {
+	if clearStepFaultForTest != nil {
+		return clearStepFaultForTest(stage)
 	}
 	return nil
 }

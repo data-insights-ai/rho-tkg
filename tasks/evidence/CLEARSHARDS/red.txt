@@ -1,0 +1,16 @@
+CLEARSHARDS red (24 Oct, branch clearshards, on v4.75.3). TestTieredClearCrashAtEveryStage: a child process runs
+tiered Clear and dies after each stage; 12 event-shard (Signal) and 5 reference-shard (Case) nodes, property key
+"zone". The reference shard holds the shared property-key registry.
+
+  crash after "index files":            12 Signal, 5 Case, 17 stored (old store)          PASS
+  crash after "reference shard":        FAIL
+     Signal nodes: graph: decode node: ... storeutil: property-key token 1 not in registry
+     reading every stored node fails: ... property-key token 1 not in registry
+     -1 Signal and 0 Case nodes, 0 stored: neither the old store nor an empty one
+  crash after "event shard":            empty                                             PASS
+  crash after "index defs and archive": empty                                             PASS
+  crash after "catalog":                empty                                             PASS
+
+Cause: tiered Clear clears the reference shard (its metadata, the shared registry included) before the event
+shards, whose rows carry the registry's tokens. Reachable: sigma's daemon (tkgd) opens tiered and sharded stores and
+its admin reset calls g.Admin().Reset() on the open store (handler_admin.go:78).
