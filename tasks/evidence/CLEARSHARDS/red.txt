@@ -23,3 +23,14 @@ files, event shard, archive, reference shard, index defs, catalog): each reopens
   M3 reference shard first (marker and resume kept):
                           crash after "reference shard": reading every stored node fails: ... token 1 not in registry
 Not covered by the test: a store with an archive shard or a cold event shard (the fixture has neither).
+
+Sharded red (24 Oct). TestShardedClearCrashAtEveryStage: 3 slots, 4 nodes each, change log on (as sigma's tkgd).
+The anchor (shard 0) holds the property-key, label and relationship-type registries; Clear clears shard 0 first.
+  crash after "shard 0": reading every stored node fails: ... property-key token 1 not in registry
+                         0 of 12 nodes stored: neither the old store nor an empty one
+                         an old node answers under the new key invoice_no      <- silent wrong data
+  crash after "shard 1": the same three
+  crash after "shard 2": empty      PASS
+  crash after "catalog": empty      PASS
+A property key first written after the reopen takes token 1, which the old rows on shards 1 and 2 use for "zone":
+GetNode of an old node then returns its zone value under the name invoice_no.

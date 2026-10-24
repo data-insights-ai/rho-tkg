@@ -542,6 +542,17 @@ func (s *Store) closeOpenShards() {
 // Clear truncates every shard (data, indexes, history, counters) and re-persists
 // the slot catalog on the anchor. Registries are a graph-layer concern and are
 // not part of Clear.
+// clearStepFaultForTest (tests only) runs after each durable stage of Clear,
+// named by stage; a test may stop the process there.
+var clearStepFaultForTest func(stage string) error
+
+func clearStepFault(stage string) error {
+	if clearStepFaultForTest != nil {
+		return clearStepFaultForTest(stage)
+	}
+	return nil
+}
+
 func (s *Store) Clear() error {
 	if err := s.checkOpen(); err != nil {
 		return err
@@ -550,6 +561,9 @@ func (s *Store) Clear() error {
 	for i, shard := range s.shards {
 		if err := shard.Clear(); err != nil {
 			errs = append(errs, fmt.Errorf("graph: sharded: clear shard %d: %w", i, err))
+		}
+		if err := clearStepFault(fmt.Sprintf("shard %d", i)); err != nil {
+			return err
 		}
 	}
 	if len(errs) > 0 {
@@ -562,6 +576,9 @@ func (s *Store) Clear() error {
 	}
 	if err := s.anchor().MetaSet(catalogMetaKey, blob); err != nil {
 		return fmt.Errorf("graph: sharded: re-persist catalog: %w", err)
+	}
+	if err := clearStepFault("catalog"); err != nil {
+		return err
 	}
 	// BACKLOG 20n: each shard.Clear() above already reset that shard's OWN
 	// vectorIndexes map to empty, but the store-level vectorDefs cache (kept
