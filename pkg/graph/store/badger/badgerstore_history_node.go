@@ -66,6 +66,10 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
+	if err := bs.checkNodeIndexKeysLocked(updatedNode, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
+	}
 	if prefetchErr != nil {
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read node before remove label history: %w", prefetchErr)
@@ -200,6 +204,10 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
+	}
+	if err := bs.checkNodeIndexKeysLocked(updatedNode, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
 	}
 	if prefetchErr != nil {
 		bs.idxMu.Unlock()
@@ -338,6 +346,10 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
+	}
+	if err := bs.checkNodeIndexKeysLocked(current, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
 	}
 	if prefetchErr != nil {
 		bs.idxMu.Unlock()

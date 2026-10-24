@@ -756,6 +756,9 @@ type Store struct {
 	// stagedFailure is set when a staged flush committed but could not be
 	// applied: the store fails closed until the next open applies it.
 	stagedFailure atomic.Pointer[error]
+	// maxEntryKey / maxEntryValue: the largest key and value a door may hand
+	// badger (badgerstore_entry_size.go).
+	maxEntryKey, maxEntryValue int
 	// stageSeq is the last staging sequence of this session (nextStageSeq).
 	stageSeq                      atomic.Uint64
 	stageSeqOnce                  sync.Once
@@ -942,8 +945,11 @@ func New(cfg Config) (*Store, error) {
 		gcRatio = DefaultGCDiscardRatio
 	}
 
+	maxEntryKey, maxEntryValue := entryLimits(cfg)
 	bs := &Store{
-		db: db,
+		db:            db,
+		maxEntryKey:   maxEntryKey,
+		maxEntryValue: maxEntryValue,
 
 		historyPresenceProbeOnly: cfg.HistoryPresenceProbeOnly,
 		nodeIDs:                  make(map[types.NodeID]struct{}),
@@ -2341,14 +2347,24 @@ func (bs *Store) PropertyKeyRegistry() *registrypkg.PropertyKeyRegistry {
 }
 
 // marshalNodeBytes encodes a node via MarshalNodeWireWithKeys using the
-// currently-installed property-key registry (nil-safe).
+// currently-installed property-key registry (nil-safe), refusing a row the
+// store cannot hold (ErrEntryTooLarge).
 func (bs *Store) marshalNodeBytes(n *types.Node) ([]byte, error) {
-	return storepkg.MarshalNodeWireWithKeys(n, bs.propKeyReg.Load())
+	data, err := storepkg.MarshalNodeWireWithKeys(n, bs.propKeyReg.Load())
+	if err == nil {
+		err = bs.checkEntryValue("node row", len(data))
+	}
+	return data, err
 }
 
-// marshalRelBytes encodes a relationship via MarshalRelWireWithKeys.
+// marshalRelBytes encodes a relationship via MarshalRelWireWithKeys, refusing a
+// row the store cannot hold (ErrEntryTooLarge).
 func (bs *Store) marshalRelBytes(r *types.Relationship) ([]byte, error) {
-	return storepkg.MarshalRelWireWithKeys(r, bs.propKeyReg.Load())
+	data, err := storepkg.MarshalRelWireWithKeys(r, bs.propKeyReg.Load())
+	if err == nil {
+		err = bs.checkEntryValue("relationship row", len(data))
+	}
+	return data, err
 }
 
 // persistRegistryIfGrew write-ahead commits the property-key registry whenever it

@@ -89,7 +89,11 @@ func (bs *Store) buildChangePayload(body any) ([]byte, error) {
 	if !bs.logEnabled.Load() {
 		return nil, nil
 	}
-	return storepkg.MarshalChangeBody(body)
+	payload, err := storepkg.MarshalChangeBody(body)
+	if err == nil {
+		err = bs.checkChangePayload(payload)
+	}
+	return payload, err
 }
 
 // historyVersionNodePayload builds a ChangeNodeHistoryVersion body for an
@@ -110,7 +114,7 @@ func (bs *Store) buildNodePutPayload(n *types.Node, withHistory bool) ([]byte, e
 	if err != nil {
 		return nil, fmt.Errorf("graph: encode change-log: %w", err)
 	}
-	return payload, nil
+	return payload, bs.checkChangePayload(payload)
 }
 
 func (bs *Store) buildRelPutPayload(r *types.Relationship, withHistory bool) ([]byte, error) {
@@ -121,7 +125,7 @@ func (bs *Store) buildRelPutPayload(r *types.Relationship, withHistory bool) ([]
 	if err != nil {
 		return nil, fmt.Errorf("graph: encode change-log: %w", err)
 	}
-	return payload, nil
+	return payload, bs.checkChangePayload(payload)
 }
 
 // relPutTag chooses the ChangeForeignIncoming tag for a cross-machine incoming
@@ -138,7 +142,7 @@ func (bs *Store) historyVersionNodePayload(version uint32, n *types.Node) ([]byt
 	if !bs.logEnabled.Load() {
 		return nil, nil
 	}
-	return storepkg.NodeHistoryVersionPayload(version, n)
+	return bs.checkedPayload(storepkg.NodeHistoryVersionPayload(version, n))
 }
 
 // historyVersionRelPayload is the relationship counterpart of historyVersionNodePayload.
@@ -146,7 +150,7 @@ func (bs *Store) historyVersionRelPayload(version uint32, r *types.Relationship)
 	if !bs.logEnabled.Load() {
 		return nil, nil
 	}
-	return storepkg.RelHistoryVersionPayload(version, r)
+	return bs.checkedPayload(storepkg.RelHistoryVersionPayload(version, r))
 }
 
 // nodeDeleteWithHistoryPayload builds a with-history ChangeNodeDelete body: the
@@ -156,7 +160,7 @@ func (bs *Store) nodeDeleteWithHistoryPayload(id snowflake.ID, nodeTombstone *ty
 	if !bs.logEnabled.Load() {
 		return nil, nil
 	}
-	return storepkg.NodeDeleteWithHistoryPayload(id, nodeTombstone, relTombstones)
+	return bs.checkedPayload(storepkg.NodeDeleteWithHistoryPayload(id, nodeTombstone, relTombstones))
 }
 
 // logCascadeNodeDeleteRouted is logCascadeNodeDelete's token-aware sibling
@@ -188,7 +192,7 @@ func (bs *Store) relDeleteWithHistoryPayload(id snowflake.ID, tombstone *types.R
 	if !bs.logEnabled.Load() {
 		return nil, nil
 	}
-	return storepkg.RelDeleteWithHistoryPayload(id, tombstone)
+	return bs.checkedPayload(storepkg.RelDeleteWithHistoryPayload(id, tombstone))
 }
 
 // clearAndReanchorChangeLog wipes the store while keeping the durable change-log

@@ -42,6 +42,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     the batch size; a row of 1 MB or more goes to the value log and counts as its key + 24 bytes; measured with a
     20 MB row at the smallest memtable, `tasks/evidence/BADGER/batch_test.go.txt`), so only a flush's number of
     entries ever stages it.
+- **KEYSIZE, VALUESIZE**: an entry the badger store cannot persist is refused at its write door with the new
+  **`store.ErrEntryTooLarge`**, before any mutation. Before, badger refused it only at flush time: the write was
+  acknowledged, every later flush failed on it, and nothing written afterwards reached disk (measured through the
+  public API: a 65,100-byte string on a label with an on-disk property index, under rho's own 65,536-byte limit; a
+  1.4 MB row with `ValueLogFileSize` 1 MB or in an in-memory store; `tasks/evidence/USAGE/size_test.go.txt`). The
+  limits include what a staged flush adds (9 key bytes, 1 value byte), so FLUSHPART never stages an entry badger
+  refuses: key 64,991 bytes, value `ValueLogFileSize` - 1 (in memory 1 MB - 1). Every node and relationship door
+  checks its row, change-log record and on-disk index keys (put, replace, label changes, batches, pre-encoded
+  batches, history versions); a cascade delete whose change-log record would be too large (about 116,000
+  relationships of one node in memory or with a 1 MB value log) is refused before it deletes anything. With default
+  options (a 1 GB value-log file) rows of any size rho allows are accepted as before. sigma's state pages and a 1 MB
+  value-log setting were exposed; ai-soc was not.
 
 ### Documentation
 

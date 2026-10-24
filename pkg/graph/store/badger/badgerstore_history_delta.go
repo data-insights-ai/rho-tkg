@@ -70,6 +70,14 @@ func (bs *Store) readHistoryRaw(key []byte) ([]byte, error) {
 
 // historyNodeValue builds the on-disk history value for (version, state).
 func (bs *Store) historyNodeValue(id snowflake.ID, version uint64, state *types.Node) ([]byte, error) {
+	v, err := bs.historyNodeValueUnchecked(id, version, state)
+	if err == nil {
+		err = bs.checkEntryValue("history row", len(v))
+	}
+	return v, err
+}
+
+func (bs *Store) historyNodeValueUnchecked(id snowflake.ID, version uint64, state *types.Node) ([]byte, error) {
 	reg := bs.propKeyReg.Load()
 	targetWire, err := storepkg.NodeToWireCheckedWithKeys(state, reg)
 	if err != nil {
@@ -99,6 +107,14 @@ func (bs *Store) historyNodeValue(id snowflake.ID, version uint64, state *types.
 
 // historyRelValue mirrors historyNodeValue for relationships.
 func (bs *Store) historyRelValue(id snowflake.ID, version uint64, state *types.Relationship) ([]byte, error) {
+	v, err := bs.historyRelValueUnchecked(id, version, state)
+	if err == nil {
+		err = bs.checkEntryValue("history row", len(v))
+	}
+	return v, err
+}
+
+func (bs *Store) historyRelValueUnchecked(id snowflake.ID, version uint64, state *types.Relationship) ([]byte, error) {
 	reg := bs.propKeyReg.Load()
 	targetWire, err := storepkg.RelToWireCheckedWithKeys(state, reg)
 	if err != nil {

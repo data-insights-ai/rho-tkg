@@ -58,6 +58,9 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 				return fmt.Errorf("graph: encode change-log: %w", err)
 			}
 			putPayloads[i] = p
+			if err := bs.checkChangePayload(p); err != nil {
+				return err
+			}
 		}
 		rid := r.InternalID()
 		startNID := r.StartNodeID()

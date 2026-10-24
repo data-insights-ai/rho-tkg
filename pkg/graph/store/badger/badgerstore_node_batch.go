@@ -295,6 +295,11 @@ func (bs *Store) cascadeDeleteLocked(nid types.NodeID, prefetched cascadeDeleteP
 func (bs *Store) cascadeDeleteRouted(nid types.NodeID, prefetched cascadeDeletePrefetch, token uint64) ([]RelDeleteInfo, error, error) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
+	// The cascade's change-log record names every cascaded relationship and is
+	// built after the mutation, so its size is bounded here, before it.
+	if err := bs.checkCascadeRecordLocked(nid); err != nil {
+		return nil, nil, err
+	}
 	deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched, nil, 0)
 	// Emit the single ChangeNodeDelete under the same lock as the cascade ops
 	// (cascadeDeleteInner / deleteRelByInfo emit nothing). Skipped on fatalErr.
@@ -566,6 +571,9 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		var data []byte
 		if i < len(wireBodies) && wireBodies[i] != nil {
 			data = wireBodies[i]
+			if err := bs.checkEntryValue("node row", len(data)); err != nil {
+				return err
+			}
 		} else {
 			d, err := bs.marshalNodeBytes(n)
 			if err != nil {
@@ -585,6 +593,9 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 				}
 				putPayloads[i] = p
 			}
+			if err := bs.checkChangePayload(putPayloads[i]); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -602,6 +613,12 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 			return fmt.Errorf("graph: duplicate node ID %d in batch", nd.id)
 		}
 		seen[nd.nid] = struct{}{}
+	}
+	for i, n := range nodes { // KEYSIZE, before any mutation
+		if err := bs.checkNodeIndexKeysLocked(n, serialized[i].id); err != nil {
+			bs.idxMu.Unlock()
+			return err
+		}
 	}
 	vectorUpdates := make([][]indexpkg.NodeVectorIndexUpdate, len(nodes))
 	for i, n := range nodes {

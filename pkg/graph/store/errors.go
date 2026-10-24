@@ -35,9 +35,14 @@ var (
 	ErrInvalidQueryLimit          = errors.New("graph: invalid query limit")
 	ErrInvalidQueryCursor         = errors.New("graph: invalid query cursor")
 	ErrInvalidStoreMutation       = errors.New("graph: invalid store mutation")
-	ErrNilStore                   = errors.New("graph: store must not be nil")
-	ErrTxDone                     = errors.New("graph: transaction already committed or rolled back")
-	ErrStoreClosed                = errors.New("graph: store already closed")
+	// ErrEntryTooLarge is returned before any mutation when a write would hand
+	// the store an entry it cannot persist (a badger key above 65,000 bytes or
+	// a value above the value-log file size; in memory, 1 MB), staging overhead
+	// included.
+	ErrEntryTooLarge = errors.New("graph: entry too large for the store")
+	ErrNilStore      = errors.New("graph: store must not be nil")
+	ErrTxDone        = errors.New("graph: transaction already committed or rolled back")
+	ErrStoreClosed   = errors.New("graph: store already closed")
 	// ErrExactErasureRelationshipEscape is returned before any mutation when a
 	// relationship version touching a declared node is outside the declared
 	// relationship set; exact erasure never widens scope.

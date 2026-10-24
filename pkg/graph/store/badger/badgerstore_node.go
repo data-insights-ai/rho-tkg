@@ -55,6 +55,10 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 		bs.idxMu.Unlock()
 		return ErrNodeExists
 	}
+	if err := bs.checkNodeIndexKeysLocked(n, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
+	}
 	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(bs.vectorIndexes, n, id)
 	if err != nil {
 		bs.idxMu.Unlock()
@@ -545,6 +549,10 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
+	if err := bs.checkNodeIndexKeysLocked(n, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
+	}
 	if prefetchErr != nil {
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read node before replace: %w", prefetchErr)
@@ -642,6 +650,10 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
+	}
+	if err := bs.checkNodeIndexKeysLocked(updatedNode, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
 	}
 	if prefetchErr != nil {
 		bs.idxMu.Unlock()
@@ -756,6 +768,10 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
+	}
+	if err := bs.checkNodeIndexKeysLocked(updatedNode, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
 	}
 	if prefetchErr != nil {
 		bs.idxMu.Unlock()

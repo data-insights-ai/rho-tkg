@@ -60,7 +60,10 @@ Dir/
   the open fails. So the size accounting never rejects one entry. But `Txn.modify` refuses outright a key above
   65,000 bytes, a value above `ValueLogFileSize`, and in memory a value at or above `ValueThreshold`
   (`txn.go:352-371`; measured B10: 1 MB + 1 refused at `ValueLogFileSize` 1 MB and in memory). rho allows property
-  values of 65,536 bytes and puts a string value verbatim into an on-disk property index key (todo KEYSIZE).
+  values of 65,536 bytes and puts a string value verbatim into an on-disk property index key. Since v4.75.0 every
+  write door refuses, before any mutation, an entry above these limits less the staging overhead (key 64,991 bytes,
+  value `ValueLogFileSize` - 1, in memory 1 MB - 1) with `ErrEntryTooLarge` (`badgerstore_entry_size.go`); before, it
+  was acknowledged and then failed every flush, and nothing written after it persisted (KEYSIZE, VALUESIZE).
 - **A `WriteBatch` is not atomic.** On `ErrTxnTooBig` it commits the transaction it has so far (`CommitWith`,
   asynchronous, up to 16 in flight: `SetMaxPendingTxns`) and retries the entry in a new one (`batch.go:137-207`); each
   part commits on its own. Parts enter the WAL in the order they were committed: `commitAndSend` assigns the commit

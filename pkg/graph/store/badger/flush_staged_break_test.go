@@ -776,49 +776,40 @@ func TestStagedDurableFlushReportsTheFailure(t *testing.T) {
 }
 
 // TestStagedFlushEntryAtBadgerLimits: staging adds 9 bytes to a key and 1 to a
-// value, so an entry that fits badger's limits directly must still fit staged.
-// Red until the write door refuses entries above the staged limits (KEYSIZE,
-// VALUESIZE): today the staged flush fails and is requeued forever. A staged flush (20,000 small entries) with
-// one key of 64,995 bytes (fits 65,000; staged 65,004), and a value-log
-// store with one value of exactly ValueLogFileSize (fits; staged +1).
+// value, so the write door's limits (maxEntryKey, maxEntryValue) leave that
+// room: an entry exactly at them stages and commits; one byte above, the door
+// refuses it (TestEntryTooLargeRefusedAtEveryDoor). Mutation: limits without
+// the staging overhead (the staged flush then fails and is requeued forever).
 func TestStagedFlushEntryAtBadgerLimits(t *testing.T) {
 	small := func(n int) []flushEntry {
 		e := make([]flushEntry, 0, n+1)
 		for i := 0; i < n; i++ {
-			e = append(e, flushEntry{key: storepkg.MetaKey("zz_" + string(rune(i%26+'a')) + string(rune(i/26%26+'a')) + string(rune(i/676%26+'a'))), value: []byte{1}})
+			e = append(e, flushEntry{key: storepkg.MetaKey(fmt.Sprintf("zz_%06d", i)), value: []byte{1}})
 		}
 		return e
 	}
-	t.Run("key 64,995 bytes", func(t *testing.T) {
+	t.Run("key at the door limit", func(t *testing.T) {
 		bs, err := New(Config{Dir: t.TempDir(), MemTableSize: 8 << 20})
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer bs.Close()
-		long := make([]byte, 64_995)
+		long := make([]byte, bs.maxEntryKey)
 		long[0] = 0x0C // an unused keyspace
-		direct := bs.DBForTest().Update(func(txn *badgerv4.Txn) error { return txn.Set(long, []byte{1}) })
 		entries := append(small(20_000), flushEntry{key: long, value: []byte{2}})
-		state, err := bs.commitFlushEntries(entries)
-		t.Logf("direct Set of the key: %v; staged flush with it: state %d, err %.100v", direct, state, err)
-		if direct == nil && err != nil {
-			t.Errorf("an entry that fits badger directly fails when staged: %.100v", err)
+		if state, err := bs.commitFlushEntries(entries); err != nil {
+			t.Fatalf("a staged flush with a %d-byte key (the door limit): state %d, %v", len(long), state, err)
 		}
 	})
-	t.Run("value = ValueLogFileSize", func(t *testing.T) {
+	t.Run("value at the door limit", func(t *testing.T) {
 		bs, err := New(Config{Dir: t.TempDir(), MemTableSize: 8 << 20, ValueLogFileSize: 1 << 20})
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer bs.Close()
-		val := make([]byte, 1<<20)
-		key := []byte{0x0C, 1}
-		direct := bs.DBForTest().Update(func(txn *badgerv4.Txn) error { return txn.Set(key, val) })
-		entries := append(small(20_000), flushEntry{key: key, value: val})
-		state, err := bs.commitFlushEntries(entries)
-		t.Logf("direct Set of the value: %v; staged flush with it: state %d, err %.100v", direct, state, errors.Unwrap(err))
-		if direct == nil && err != nil {
-			t.Errorf("an entry that fits badger directly fails when staged: %.100v", err)
+		entries := append(small(20_000), flushEntry{key: []byte{0x0C, 1}, value: make([]byte, bs.maxEntryValue)})
+		if state, err := bs.commitFlushEntries(entries); err != nil {
+			t.Fatalf("a staged flush with a %d-byte value (the door limit): state %d, %v", bs.maxEntryValue, state, err)
 		}
 	})
 }
