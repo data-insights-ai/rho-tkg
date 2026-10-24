@@ -1,0 +1,59 @@
+package badger
+
+// USAGE evidence (per-shard cost), kept as tasks/evidence/USAGE/shardcost_test.go.txt:
+// heap and goroutines of rho badger stores opened as tiered opens a shard
+// (writable, default options) against read-only, 8 stores each.
+
+import (
+	"fmt"
+	"runtime"
+	"testing"
+	"time"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+func zsSettle() (heap uint64, gor int) {
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+		time.Sleep(50 * time.Millisecond)
+	}
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.HeapInuse, runtime.NumGoroutine()
+}
+
+func TestUsageShardOpenCost(t *testing.T) {
+	const shards = 8
+	dirs := make([]string, shards)
+	for i := range dirs {
+		dirs[i] = t.TempDir()
+		bs, err := New(Config{Dir: dirs[i]})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for j := 0; j < 1000; j++ {
+			_ = bs.PutNode(types.NewNode(types.NodeID(snowflake.ID(1+j)), 7, nil))
+		}
+		_ = bs.Close()
+	}
+	for _, ro := range []bool{false, true} {
+		h0, g0 := zsSettle()
+		var open []*Store
+		for _, d := range dirs {
+			bs, err := New(Config{Dir: d, ReadOnly: ro})
+			if err != nil {
+				t.Fatal(err)
+			}
+			open = append(open, bs)
+		}
+		h1, g1 := zsSettle()
+		for _, bs := range open {
+			_ = bs.Close()
+		}
+		t.Logf("SHARDCOST read-only=%v: per open shard %.1f MB heap in use, %.1f goroutines",
+			ro, float64(int64(h1)-int64(h0))/shards/(1<<20), float64(g1-g0)/shards)
+	}
+	_ = fmt.Sprint()
+}

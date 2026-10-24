@@ -121,3 +121,12 @@ DROPALL at rho level (dropall_rho_test.go.txt with the pause seam dropall_rho_se
 2026-10-24): GetNode has found the key when Clear (a store without the change log: DropAll) runs, then takes the
 value. A 100 KB inline row: the read returns the row as before the Clear. A 1.4 MB value-log row: the read fails
 with "corrupt wire data", a false corruption report for a healthy store.
+
+Per-shard open cost through rho's store (shardcost_test.go.txt, 2026-10-24, 8 stores, default options): writable
+86.5 MB heap in use and 18 goroutines per open store; read-only 3.3 MB and 10. Tiered opens every shard writable,
+cold ones included (O3): about 83 MB per open cold shard that only serves reads.
+
+METASYNC: not testable here. Its harm needs a power loss (pages lost from the page cache); a killed process keeps
+the page cache, so a process-kill test cannot show it. Source-confirmed: db.Sync msyncs only the active WAL
+(db.go:673), a rotation syncs nothing (db.go:1015-1041). A real test needs a fault-injecting filesystem (LazyFS or
+dm-flakey).

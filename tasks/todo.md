@@ -43,14 +43,16 @@ Each item: one sentence, then when it is done and what it waits for.
    2); badger refuses a value above `ValueLogFileSize` or, in memory, at or above `ValueThreshold` (B10); a crash
    prefix holds per WAL file only under power loss without `SyncWrites`; the `Discard` rules; citations; section 8
    passed against the source (uncited rows are doc comments of features rho does not use).
-2. [ ] rho's current badger use, fully verified in tests: the call map and the 9-category analysis exist
+2. [x] rho's current badger use, fully verified in tests (2026-10-24): the call map and the 9-category analysis exist
    (`tasks/evidence/USAGE/`); confirmed by real tests (24 Oct): CLEARMETA (a crash inside `Clear`), KEYSIZE and
    VALUESIZE (one oversized entry blocks all later persistence), VERIFY (silent corruption, panics, silent
    truncation) and BADGERLOG; ai-soc and sigma asked (24 Oct) which configurations they run (on-disk indexes, value-log
    size, in-memory stores, row and string sizes, a logger, Reset), to order the fixes; DISCARDCLOSE measured (the
    101st discard after Close blocks); sigma answered (VALUESIZE real,
    KEYSIZE latent, no logger, Reset reachable, no corruption seen), ai-soc pending; each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
-   that shows the harm or its absence, then its fix.
+   that shows the harm or its absence; fixes come after the milestone (René 24 Oct). Also measured: DROPALL at rho
+   level, a writable shard open 86.5 MB and 18 goroutines against 3.3 MB and 10 read-only. Not testable here:
+   METASYNC (needs a power-loss filesystem; source-confirmed).
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
 
@@ -129,10 +131,11 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   a GetNode that found the key of a 1.4 MB row before `Clear` fails with "corrupt wire data" (badger swallows the
   value-log read error and returns an empty value); an inline row reads back whole. The same holds for any value-log read failure, its cause unlogged under rho's nil badger
   logger. Done when: such a read reports the real cause, and a read racing `Clear` reports not-found or the row.
-- **METASYNC** — `MetaSetDurable` and the property-key registry save promise durability after `db.Sync`, which syncs
-  only the active WAL, so after a memtable rotation the write may not survive a power loss without `SyncWrites`
-  (`badgerstore_meta.go:324-334`, `:420-434`). Done when: a test shows the gap or its absence, and the doors and
-  `docs/persistence.md` state what holds.
+- **METASYNC** (source-confirmed; not testable by a process kill) — `MetaSetDurable` and the property-key registry
+  save promise durability after `db.Sync`, which syncs only the active WAL, so after a memtable rotation the write
+  may not survive a power loss without `SyncWrites` (`badgerstore_meta.go:324-334`, `:420-434`). Done when: the doors
+  and `docs/persistence.md` state what holds, and a power-loss test (LazyFS or dm-flakey) shows it, if René wants
+  that rig.
 - **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
   fact. Done when: René has decided per layer. Waits for: CHAIN.
 
