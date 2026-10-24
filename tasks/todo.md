@@ -49,6 +49,9 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   close to 93. sigma guards against it on its side. Done when: the probe is a red test, both arms apply one rule,
   released as a patch. Order (decided 24 Oct from the data, René: "open decisions answered by data and the other
   agents"): next, before SHARD: a wrong answer from `NodeAt`, met in practice by sigma, and fixes come first.
+  sigma (24 Oct): every session-open fact closed in place and regrown from the same start makes such a chain, and the
+  exposed row also reached its effective-timeline reads (`NodeEffectiveTimeline`, `NodesEffectiveByIDs`,
+  `ForEachNodeEffectiveByLabelAndProperties`): a retracted fact read back as [93,233).
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
@@ -107,7 +110,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   no resumption row when nothing needs resuming, with the same answers, released as a patch. Waits for: SHARD step 1.
 - **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
-  known. Waits for: sigma's readiness and a free Flux (asked 24 Oct; their yes is the go, per René).
+  known. Waits for: René's word and a free Flux. sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
+  is ready, but Flux runs one big job at a time (ai-soc's k10241303 now) and a Flux run needs René's word.
 - **R37** — Listing facts that were changed still costs more than ai-soc's limit of 4 times a fact's values. Done when:
   ai-soc's cold /bars test passes on Flux. Waits for: CHAIN-2.
 - **REPORT** — ai-soc and sigma have not yet reported on rho's newer doors, and rho builds only what blocks
@@ -121,7 +125,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   Waits for: sigma or ai-soc needing it (asked 24 Oct).
 - **STORE** (ai-soc, 23 Oct) — Store layout choices for ai-soc's remodel: history delta encoding per label, Derived and
   Session on the never-purged reference shard, and the instance nodes (~2/3 of the BA store). Done when: René has
-  decided with ai-soc and sigma (their STORECFG talk). Waits for: their agreed layout (asked 24 Oct).
+  decided with ai-soc and sigma (their STORECFG talk). sigma (24 Oct): agreed with René for p4b only:
+  `PropertyIndexOnDisk`, a bounded entity cache, DerivedPage as a reference label on ai-soc's tiered stores
+  (`LabelIndexOnDisk` once TIERLABELDISK ships); delta encoding per label, Derived/Session placement and the instance
+  nodes are not agreed. Waits for: ai-soc's answer (asked 24 Oct).
 - **REVIEWS** — Review findings were left out under the scope rule. Done when: René has decided. Waits for: the main session, which decides each finding on its evidence.
 - **PURGE** — A purged entity answers "not found" at a time it answered before. Done when: René has decided. Waits
   for: René.
