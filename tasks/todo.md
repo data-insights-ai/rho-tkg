@@ -60,7 +60,9 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   green on memory and badger. The oracle harness had mirrored the engine's dispatch (so it shared the blind spot)
   and had no close in place: it now resolves by the reference rule only and gains close and regrow ops; it fails the
   old code. The effective-timeline head overlay now applies the same rule (its long-tier test failed under -race
-  after the resolver change; fixed with one shared helper). Next: the full suite, docs, the patch gate, v4.75.5.
+  after the resolver change; fixed with one shared helper). Suite and race green except `TestHistoryScanAllocGate`
+  again: a steady background allocation rate added +5 to whole runs, so its bar is now twice the reference plus 10
+  (a missing prefix still fails it, 622 vs 114). CHANGELOG written; patch gate next, v4.75.5.
 - **OPENEXCISE** (sigma for ai-soc, 24 Oct; blocks ai-soc's BA run: on k10241303 every history check fails, an
   extension reads as the earlier version at its pin) — sigma ends an open tail by closing the current row
   (`UpdateNode(tkg_valid_to: a)`), which rho writes as a new row restating the current properties over [start, a)
