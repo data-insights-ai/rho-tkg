@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **SAMESTART** (sigma; met by sigma's write-back and probably by ai-soc's run k10241303): when a node's or
+  relationship's rows all started at the same instant, the resolver took the chain as tiling and answered newest
+  first with no supersession. A close narrower than an older row of the same start (close an open fact to 233,
+  re-open it from its start, close it to 93) left the older row answering: `NodeAt(100)` returned the [92,233) row,
+  the effective timelines held [93,233), and an excise of [92,93) exposed [93,233). The fast path now runs only when
+  rows sharing a start tile (the newer ends no earlier than the older); otherwise the own-bounds arm answers, for
+  `NodeAt`, `RelAt`, every `*At`/`*AtTx` door and the effective timelines alike, and the timeline head overlay applies
+  the same rule. The bitemporal oracle harness had mirrored the engine's fast/slow dispatch and so shared the blind
+  spot; it now resolves by the reference rule only, gains close and regrow operations, and fails the old code
+  (`tasks/evidence/SAMESTART/`).
+
 ## [4.75.4] - 2026-10-24
 
 ### Fixed
