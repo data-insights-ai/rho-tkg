@@ -492,7 +492,12 @@ func TestHistoryScanAllocGate(t *testing.T) {
 			for _, d := range doors {
 				ref := measure(d.name+"/aboveAll", d.fn(plainAbove))
 				mid := measure(d.name+"/amongDense", d.fn(plainMiddle))
-				if mid > ref+4 {
+				// A missing prefix costs about 600 allocations per call (one
+				// per prefetched neighbour row); a steady background rate in a
+				// busy test process added +5 to both measurements, sometimes to
+				// one only. Twice the reference plus 10 keeps the defect far
+				// above the bar and that noise below it.
+				if mid > 2*ref+10 {
 					t.Errorf("%s: plain entity among dense neighbour history allocates %.1f/op vs %.1f/op past the last key: "+
 						"the iterator reads other entities' rows (missing opts.Prefix)", d.name, mid, ref)
 				}
