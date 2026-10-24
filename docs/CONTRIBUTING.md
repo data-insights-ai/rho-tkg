@@ -25,7 +25,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   `../rho-tkg-main` while a branch is checked out, never deferred to the branch's end (todo went a day stale, 2026-10-24);
   `scripts/check-ledger.sh` before every such commit.
 - Who works (René 2026-10-23): the main session does the work itself, analysis and code alike, and runs every test, lint
-  and gate. One persistent Fable agent reviews and monitors (writes no code or tests, runs none). No other subagents unless
+  and gate, and reviews its own work (§ Review); the Fable reviewer was deleted (René 2026-10-24). No subagents unless
   René asks for them.
 - Act, do not offer: open work with a clear next step is started. Before asking René a design question, trace its cause in
   the code and try to remove it; ask only the remainder.
@@ -85,7 +85,7 @@ GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed 
 ### Release checklist
 
 1. Merge every branch of the batch; `go test -short` of the touched packages.
-2. Fable review of the merged batch; fixes merged.
+2. Self-review of the merged batch (§ Review); fixes merged.
 3. Gate: `make ci-fast` for a patch, `make ci-docker` for a minor; plus the consumer build/vet (HANDOVER Appendix B). No code
    edits while a gate runs (it tests the live work tree).
 4. Release commit: CHANGELOG heading, README "Current release", line 1 of `docs/architecture.md`, HANDOVER names the tag, shipped
@@ -97,9 +97,10 @@ GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed 
 
 ## Review
 
-One Fable round per branch. The reviewer reads the full diff and answers: does each new method do what its name promises; is
+The main session reviews each branch itself before its gate: it reads the full diff and answers: does each new method do what its name promises; is
 the same defect in sibling doors, the other backends, batch/tx/ingest paths; would each new test fail on a plausible bug
-(current instead of historical, skipped rollback, reordered write). Findings are split into blocking and non-blocking.
+(current instead of historical, skipped rollback, reordered write), shown by breaking the code once per defended property.
+Every claim about badger cites its source or a measurement.
 
 ## Documentation
 

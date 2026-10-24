@@ -72,8 +72,8 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 ### SHARD plan
 
-The main agent builds each step (red test, change, tests green), the Fable agent reviews it and monitors the plan; a
-step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
+The main session builds and reviews each step (red test, change, tests green, self-review); a step is ticked when it
+is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 1. [ ] A shard whose directory is missing fails to open instead of opening empty; every shard path goes through one
    function. Done when: released as a patch (red test `TestLazyOpenRefusesMissingShardDir`).

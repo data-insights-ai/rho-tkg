@@ -7,41 +7,29 @@ Next steps and René's open decisions: `tasks/todo.md`.
 
 ## Brief for the agents (2026-10-24; read before anything else)
 
-**Both agents.** The main session (Opus) does all the work itself, analysis and code; ONE persistent Fable agent reviews
-and monitors; no other subagents without René's go (CONTRIBUTING § Rules digest "Who works"). Work order: todo item
-first, then the red test, the change, the tests green, the Fable review; a finished item moves from todo to CHANGELOG
-under its tag. Commit with explicit paths, never `git commit -a` (it swept unreviewed code onto main on 23 Oct; reverted
-in 2be9a231). Consumer data and runs: ask the owning agent (sigma "Handover and README review", ai-soc `ai-soc-main-45`),
-never browse their repos; Flux rule: copies only, counts/sizes/relation names out. badger facts: `docs/badger.md`
-(v4.9.2: sections 1-7 the analysis, 8 the complete API, 9 what rho should integrate) — trust a claim only with a source
-line or a measurement, and test what rho relies on (BADGERDOC: a false claim stood a day). `tasks/todo.md` and this
-brief are updated at every event, on main, from a main worktree when a branch is checked out.
+**The main session (Opus) works alone** (René 24 Oct: the Fable reviewer is deleted; no subagents without René's go,
+CONTRIBUTING § Rules digest "Who works"). Work order: todo item first, then the red test, the change, the tests green,
+the self-review and mutation check (CONTRIBUTING § Review); a finished item moves from todo to CHANGELOG under its tag.
+Commit with explicit paths, never `git commit -a` (it swept unreviewed code onto main on 23 Oct; reverted in 2be9a231).
+Consumer data and runs: ask the owning agent (sigma "Handover and README review", ai-soc `ai-soc-main-45`), never
+browse their repos; Flux rule: copies only, counts/sizes/relation names out. badger facts: `docs/badger.md` (v4.9.2:
+sections 1-7 the analysis, 8 the complete API, 9 what rho should integrate) — trust a claim only with a source line or
+a measurement, and test what rho relies on. `tasks/todo.md` and this brief are updated at every event, on main, from
+the main worktree `../rho-tkg-main` when a branch is checked out.
 
-**Opus (builder), where things stand:**
-- **FLUSHPART (Now, the v4.75.0 minor).** Built and tested on branch `flushpart` (rebased on main): one badger `Txn`
-  when a flush fits, else staged under `0x0E` and committed by the marker `flush_stage` (format marker 9, a one-way
-  door); `New` applies a committed flush; fail closed after the marker; a torn unsynced flush is discarded at open, a
-  synced one refuses and names `badger.DiscardStagedFlush`. 27 of 27 mutations caught; Fable reviewed twice, all points
-  fixed. Left: `make ci-docker` on the final branch, Fable's last verdict, then René's go to merge and tag.
-- **BADGERDOC (Now).** Every `docs/badger.md` claim gets a source line or a measurement and a breaking test where rho
-  relies on it (the batch API is done: `tasks/evidence/BADGER/batch_test.go.txt`). BADGERUSE is done: Fable's review
-  of rho's badger use became DROPALL, METASYNC, VERIFY, OPENIMAGE and additions to GETWALK, PREFETCH, ITERPREFIX, CACHE.
-- **SHARD (Next).** Design ADR-0012 (architecture.md); plan with boxes in todo. Step 1 (refuse a missing shard
-  directory, one `shardDir` seam) is on local branch `shard-step1` (5da2cdfa, not pushed): code + red tests; still to
-  change: pre-create `reference/` and `archive/` only for a new store (René's choice (b)). Adopted review points for
-  later steps: the mover checks a flock on the shard DIRECTORY (the `LOCK` file is only a pid file, not copied); a
-  read-only handle is closed before a writable open of the same directory; `DiskBytes` counts blocks; a shard with
+**Where things stand** (order, René 24 Oct: VERIFY + BADGERLOG, CLEARMETA, BADGER step 3 / SHARD, then DROPALL,
+DISCARDCLOSE, METASYNC):
+- **v4.75.2 (VERIFY + BADGERLOG)** on branch `verifylog`: checksums on, badger panics on rho's reads become
+  `ErrCorruptWire`, badger's log reaches slog by default, a value-log cut at open is reported. In the patch gate.
+- **CLEARMETA** next: the red test is on branch `clearmeta` (needs a rebase); the fix reorders `Clear` (data before
+  the meta that interprets it).
+- **SHARD**: design ADR-0012 (architecture.md), plan with boxes in todo. Step 1 is on local branch `shard-step1`
+  (5da2cdfa, not pushed); still to change: pre-create `reference/` and `archive/` only for a new store (René's choice
+  (b)). Points for later steps: the mover checks a flock on the shard DIRECTORY (the `LOCK` file is only a pid file);
+  a read-only handle is closed before a writable open of the same directory; `DiskBytes` counts blocks; a shard with
   `.mem` files gets one writable open before a move or a read-only open.
-- **Later items:** GETWALK, PREFETCH, ITERPREFIX, VLOGGC (badger rules 2-4, 9); WRITTENAT (ai-soc), VALUES and TKGID
-  (sigma), all after FLUSHPART and SHARD; RESUME (sigma's red test is in its
-  message; one resumption row too many per rewritten step); CHAIN waits for René's "run" (sigma's
-  `projects/derived-writeback` scan on the Flux copy `/srv/fast/rene/rho-analysis-k10230918/store`).
-
-**Fable (reviewer and monitor):** never used for badger (René 24 Oct: its badger answers were wrong twice and each had
-to be re-checked; the main session reads badger's source and writes the tests itself). Review every non-badger step's
-diff and test output against ADR-0012 and the SHARD plan; write no code or tests, run none; answer only what is wrong or missing; cite badger's source for every
-badger statement (the main session tests it before relying on it). Reviewed: ADR-0012, docs/badger.md, the FLUSHPART
-design and its diff twice. Done: rho's use of the badger API (BADGERUSE). Next: FLUSHPART's last verdict, BADGERDOC, SHARD step 1.
+- **Queued:** CHAININTERN and IDPROPS (sigma for ai-soc, order: René); WRITTENAT, VALUES, TKGID, TIERLABELDISK; GETWALK,
+  PREFETCH, ITERPREFIX, VLOGGC, OPENIMAGE; CHAIN waits for René's "run". Parked: BADGERPANIC (badger as it is).
 
 ## State
 
