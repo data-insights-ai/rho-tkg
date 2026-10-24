@@ -8,7 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct, "fixes first", then "the given order"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0
-(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); CLEARMETA shipped in v4.75.3 (tagged, sigma and ai-soc told, sigma asked whether it Resets tiered or sharded stores; tag CI running); next CLEARSHARDS, then BADGER step 3 /
+(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); CLEARMETA shipped in v4.75.3 (tagged, sigma and ai-soc told, tag CI green); next CLEARSHARDS, then BADGER step 3 /
 SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -44,9 +44,10 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   reachable: sigma's daemon resets tiered and sharded stores through `Admin().Reset()`) — tiered `Clear` clears the
   reference shard, which holds the shared property-key registry, before the event shards: a crash in between reopens
   event-shard rows nobody can read ("property-key token 1 not in registry"). The other four crash points reopen old
-  or empty. sharded is still to test (its first shard's `Clear` wipes the catalog it re-saves last). Fix plan: a
-  durable "clear pending" marker on the reference shard first; event shards and the archive before the reference
-  shard; an open that finds the marker finishes the `Clear` before serving. Done when: both stores' crash tests
+  or empty. Tiered fixed on the branch (24 Oct): a durable pending marker first, event shards and the archive before
+  the reference shard, an open that finds the marker finishes the `Clear`; green at all 7 stages, three mutations
+  caught (an archive or cold shard is not in the fixture). Next: sharded's crash test (its first shard's `Clear`
+  wipes the catalog it re-saves last). Done when: both stores' crash tests
   show old or empty at every stage, released as a patch. Now, before SHARD (fixes first, René 24 Oct).
 - **SAMESTART** (sigma, 24 Oct; found by sigma's reviewer on v4.75.1) — When all of a node's rows start at the same
   instant, `sortNodeChainForResolve` reports the chain monotonic and the fast path (newest first, first covering row
