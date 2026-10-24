@@ -13,8 +13,8 @@ import (
 )
 
 // CLEARSHARDS. A process dies inside a tiered Clear after one of its stages:
-// the index files, the reference shard, an event shard, the index definitions
-// and archive, the catalog. The reference shard holds the property-key
+// the pending marker, the index files, an event shard, the archive, the
+// reference shard, the index definitions, the catalog. The reference shard holds the property-key
 // registry every shard's rows decode with. The reopened store must open and
 // hold the old rows or none, and a property key first written after the
 // reopen must read back as itself. The child runs the real Clear and exits
@@ -27,7 +27,7 @@ const (
 	tcRefs     = 5
 )
 
-var tcStages = []string{"index files", "reference shard", "event shard", "index defs and archive", "catalog"}
+var tcStages = []string{"pending marker", "index files", "event shard", "archive", "reference shard", "index defs", "catalog"}
 
 // tcOpen opens the store the way graph.New does: fixed label tokens (the
 // graph's label registry), and the property-key registry loaded from the

@@ -14,3 +14,12 @@ tiered Clear and dies after each stage; 12 event-shard (Signal) and 5 reference-
 Cause: tiered Clear clears the reference shard (its metadata, the shared registry included) before the event
 shards, whose rows carry the registry's tokens. Reachable: sigma's daemon (tkgd) opens tiered and sharded stores and
 its admin reset calls g.Admin().Reset() on the open store (handler_admin.go:78).
+
+Tiered fix (24 Oct): a durable pending marker on the reference shard first; event shards and the archive before the
+reference shard; New finishes a Clear whose marker it finds. Crash test green at all 7 stages (pending marker, index
+files, event shard, archive, reference shard, index defs, catalog): each reopens empty. Mutations, each caught:
+  M1 no resume at open:   crash after "event shard": 0 Signal and 5 Case nodes, 5 stored: neither ...
+  M2 no pending marker:   crash after "event shard": 0 Signal and 5 Case nodes, 5 stored: neither ...
+  M3 reference shard first (marker and resume kept):
+                          crash after "reference shard": reading every stored node fails: ... token 1 not in registry
+Not covered by the test: a store with an archive shard or a cold event shard (the fixture has neither).

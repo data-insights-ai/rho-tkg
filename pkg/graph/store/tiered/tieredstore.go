@@ -900,6 +900,11 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: backfill history lives: %w", err)
 	}
 
+	if err := ts.finishInterruptedClear(); err != nil {
+		_ = ts.Close()
+		return nil, err
+	}
+
 	// Start idle-close goroutine for cold shards.
 	if ts.idleTimeoutValue() > 0 {
 		go ts.idleCloseLoop()
@@ -1221,6 +1226,25 @@ func (ts *Store) Clear() error {
 		return err
 	}
 
+	// CLEARSHARDS. The reference shard holds what every shard's rows decode
+	// with (the property-key registry), so it is cleared last, after the event
+	// shards and the archive. A Clear spans several badger stores and cannot
+	// commit at once: the durable pending marker, written first, makes an open
+	// that finds it finish the Clear (finishInterruptedClear). The reference
+	// shard's own Clear removes the marker with the rest of its metadata.
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return err
+	}
+	err = ref.MetaSetDurable(clearPendingKey, []byte{1})
+	refCheckin()
+	if err != nil {
+		return fmt.Errorf("graph: clear: mark pending: %w", err)
+	}
+	if err := clearStepFault("pending marker"); err != nil {
+		return err
+	}
+
 	restoreIndexMetadata, err := ts.prepareIndexMetadataForClear()
 	if err != nil {
 		return err
@@ -1234,16 +1258,41 @@ func (ts *Store) Clear() error {
 		}
 		return clearErr
 	}
+	if err := clearStepFault("index files"); err != nil {
+		return err
+	}
 
 	shards := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
 		shards = append(shards, es)
 	}
+	for _, es := range shards {
+		if err := ts.clearEventShard(es); err != nil {
+			return rollbackIndexMetadata(fmt.Errorf("graph: clear event shard %s: %w", es.name, err))
+		}
+		if err := clearStepFault("event shard"); err != nil {
+			return err
+		}
+	}
 
-	if err := clearStepFault("index files"); err != nil {
+	if ts.refArchive.Load() != nil || ts.hasArchiveShard() {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return rollbackIndexMetadata(archiveErr)
+		}
+		if archive != nil {
+			if err := archive.Clear(); err != nil {
+				archiveCheckin()
+				return rollbackIndexMetadata(fmt.Errorf("graph: clear ref archive: %w", err))
+			}
+			archiveCheckin()
+		}
+	}
+	if err := clearStepFault("archive"); err != nil {
 		return err
 	}
-	ref, refCheckin, err := ts.checkoutRefShard()
+
+	ref, refCheckin, err = ts.checkoutRefShard()
 	if err != nil {
 		return rollbackIndexMetadata(err)
 	}
@@ -1258,7 +1307,6 @@ func (ts *Store) Clear() error {
 		refCheckin()
 		return rollbackIndexMetadata(err)
 	}
-	// An empty store has nothing to backfill: keep the next open from walking.
 	if err := ref.MetaSet(historyLivesBackfilledKey, []byte{1}); err != nil {
 		refCheckin()
 		return rollbackIndexMetadata(err)
@@ -1267,19 +1315,7 @@ func (ts *Store) Clear() error {
 	if err := clearStepFault("reference shard"); err != nil {
 		return err
 	}
-	for _, es := range shards {
-		if err := ts.clearEventShard(es); err != nil {
-			return rollbackIndexMetadata(fmt.Errorf("graph: clear event shard %s: %w", es.name, err))
-		}
-		if err := clearStepFault("event shard"); err != nil {
-			return err
-		}
-	}
 
-	// Reset Store-level state. Without this, post-Clear callers see
-	// "already exists" on a logically empty store (vectorIndexes), and the
-	// next rotation re-creates temporal indexes on the new hot shard for
-	// labels that were dropped along with the shard data (tempIdxLabels).
 	ts.vectorIdxMu.Lock()
 	ts.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 	if err := ts.persistVectorIndexDefsLocked(); err != nil {
@@ -1296,36 +1332,30 @@ func (ts *Store) Clear() error {
 		return err
 	}
 	ts.tempIdxMu.Unlock()
-
-	// Skip the archive checkout entirely when neither the in-memory pointer
-	// nor the catalog has an archive. checkoutArchive would otherwise be a
-	// no-op too, but bailing early makes the intent explicit and avoids the
-	// theoretical lazy-open-then-clear churn if the archive is on disk but
-	// has not been opened this session.
-	if ts.refArchive.Load() != nil || ts.hasArchiveShard() {
-		// Pin via checkoutArchive — see resolveShardStore("archive") doc.
-		// A raw refArchive.Load() races Close, which drains archiveActiveReqs
-		// (sees 0) and proceeds to archive.Close() while Clear is still
-		// touching the DB → Badger v4 Flush-on-closed-DB hang.
-		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-		if archiveErr != nil {
-			return rollbackIndexMetadata(archiveErr)
-		}
-		if archive != nil {
-			if err := archive.Clear(); err != nil {
-				archiveCheckin()
-				return rollbackIndexMetadata(fmt.Errorf("graph: clear ref archive: %w", err))
-			}
-			archiveCheckin()
-		}
-	}
-	if err := clearStepFault("index defs and archive"); err != nil {
+	if err := clearStepFault("index defs"); err != nil {
 		return err
 	}
 	if err := ts.resetCatalogAfterClear(); err != nil {
 		return err
 	}
 	return clearStepFault("catalog")
+}
+
+// clearPendingKey marks a Clear in progress on the reference shard (see Clear).
+const clearPendingKey = "tiered_clear_pending"
+
+// finishInterruptedClear runs a Clear whose process died before it finished:
+// New calls it once every shard is registered.
+func (ts *Store) finishInterruptedClear() error {
+	pending, err := ts.refShard.MetaGet(clearPendingKey)
+	if err != nil {
+		return fmt.Errorf("graph: read clear marker: %w", err)
+	}
+	if pending == nil {
+		return nil
+	}
+	slog.Warn("graph: tiered: finishing a Clear interrupted by a crash")
+	return ts.Clear()
 }
 
 // clearStepFaultForTest (tests only) runs after each durable stage of Clear,
