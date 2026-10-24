@@ -33,7 +33,7 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ### BADGER plan
 
-1. [ ] Full badger API understanding: every claim in `docs/badger.md` cites badger's source or a measurement, and every
+1. [x] Full badger API understanding (2026-10-24): every claim in `docs/badger.md` cites badger's source or a measurement, and every
    claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it. Done so far: the API reference
    (section 8), the batch API (B1-B9), the source check of sections 1-7 (one false claim fixed), the read side R1-R5
    (prefix pruning, compaction, read-only open, directory lock, MaxVersion; R3 corrected section 1: a read-only open
@@ -41,8 +41,8 @@ Each item: one sentence, then when it is done and what it waits for.
    their claim false; now fixed, all 15 evidence tests can fail and pass. Re-checked in the source by the main
    session (Fable is not used for badger, René 24 Oct): MaxVersion falls when compaction drops a tombstone (R5: 4 to
    2); badger refuses a value above `ValueLogFileSize` or, in memory, at or above `ValueThreshold` (B10); a crash
-   prefix holds per WAL file only under power loss without `SyncWrites`; the `Discard` rules; citations. Left: a
-   last pass of section 8 against the source by the main session.
+   prefix holds per WAL file only under power loss without `SyncWrites`; the `Discard` rules; citations; section 8
+   passed against the source (uncited rows are doc comments of features rho does not use).
 2. [ ] rho's current badger use, fully verified in tests: the call map and the 9-category analysis exist
    (`tasks/evidence/USAGE/`); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence, then its fix.

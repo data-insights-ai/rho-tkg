@@ -230,7 +230,8 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
 ## 8. The complete API
 
 Every exported symbol of badger v4.9.2, read from `go doc -all` of each package and, where the doc comment is thin
-or misleading, from the source (file:line). "rho" says where rho uses it (rho imports only `badger` and
+or misleading, from the source (file:line). A row without a source line restates badger's doc comment for a feature
+rho does not use; everything rho uses is cited or measured. "rho" says where rho uses it (rho imports only `badger` and
 `badger/options`); "-" means unused. Section 9 lists what rho should integrate.
 
 ### 8.1 Opening, closing, sizing (`DB`)
@@ -254,7 +255,7 @@ or misleading, from the source (file:line). "rho" says where rho uses it (rho im
 | `BlockCacheMetrics()`, `IndexCacheMetrics()` | ristretto metrics of the two caches. | - |
 | `CacheMaxCost(cache, cost)` | Resizes the block or index cache at runtime; a negative cost reads it (`db.go:2042`). | - (section 9) |
 | `PrintHistogram(prefix)` | Prints a key/value size histogram to the logger. | - |
-| `VerifyChecksum()` | Verifies the block checksums of every table (with `ChecksumVerificationMode` none, nothing else does). | - (section 9) |
+| `VerifyChecksum()` | Reads and verifies every block of every table (`levels.go:1750-1765`, `table/table.go:702-713`); not memtables, not the value log. With `ChecksumVerificationMode` none nothing else verifies blocks. | - (section 9) |
 | `BanNamespace(ns)`, `BannedNamespaces()` | With `NamespaceOffset` >= 0: refuse reads and writes of keys in a namespace (`ErrBannedKey`). | - |
 
 ### 8.2 Transactions (`Txn`) and entries
@@ -297,10 +298,10 @@ or misleading, from the source (file:line). "rho" says where rho uses it (rho im
 | `NewWriteBatch()` | Blind writes packed into transactions; above the limits it commits and starts another: **not atomic** (section 2). `Set`, `SetEntry`, `Delete`, `Flush`, `Cancel` (must be called if `Flush` may not be; safe after `Flush`, its finish runs once, `y/y.go:237-251`), `Error`, `SetMaxPendingTxns` (default 16), `Write(buf)`, `WriteList(kvList)`. | staged flush steps 1, 3, 5; index backfills; open image; Clear |
 | `NewWriteBatchAt`, `NewManagedWriteBatch`, `SetEntryAt`, `DeleteAt` | Managed mode. | - |
 | `NewKVLoader(maxPending)`, `KVLoader.Set`, `Finish` | Writes `pb.KV`s (a backup) in batches. | - |
-| `Backup(w, since)` / `Stream.Backup` | Protobuf dump of every entry with version >= `since`; returns the last version, so `last+1` makes the next dump incremental. | - (section 9) |
+| `Backup(w, since)` / `Stream.Backup` | Protobuf dump of every entry with version >= `since` (`backup.go:54-77`); returns the last version, so `last+1` makes the next dump incremental. | - (section 9) |
 | `Load(r, maxPending)` | Restores a `Backup` into a DB that runs nothing else. | - |
 | `NewStream()`, `NewStreamAt(ts)` | Concurrent snapshot iteration (`NumGo`, default 8) over key ranges, `ChooseKey`, `KeyToList` / `KeyToListWithThreadId` + `FinishThread`, `Send` (serial), `Prefix`, `SinceTs`, `MaxSize`; keys are NOT in order. `Orchestrate(ctx)` runs it, `ToList` is the default `KeyToList`, `SendDoneMarkers`. | - |
-| `NewStreamWriter()` | Writes sorted, non-overlapping streams straight into SSTables, no WAL and no compaction: `Prepare` (deletes all existing data), `PrepareIncremental`, `Write(buf)`, `Flush` (syncs directories), `Cancel`. Only for bootstrapping a DB. | - |
+| `NewStreamWriter()` | Writes sorted, non-overlapping streams straight into SSTables, no WAL and no compaction: `Prepare` (deletes all existing data through `dropAll`, `stream_writer.go:65`), `PrepareIncremental`, `Write(buf)`, `Flush` (syncs directories), `Cancel`. Only for bootstrapping a DB. | - |
 | `StreamDB(outOptions)` | Copies a snapshot of every key into a new DB at `outOptions.Dir`: `OpenManaged` + `StreamWriter.Prepare` + `NewStreamAt(MaxUint64)` + `Flush` (`db.go:1996-2024`). The copy is compacted SSTables only (no WAL, no value log). | - (section 9) |
 | `Flatten(workers)` | Compacts all tables onto one level (after a restore). | - |
 | `DropAll()` | Deletes every table and value-log file; blocks writes (`ErrBlockedWrites`); **concurrent reads may panic** (doc comment). | `Clear` of a never-logged store (section 9) |
@@ -312,9 +313,9 @@ or misleading, from the source (file:line). "rho" says where rho uses it (rho im
 | Symbol | What it does | rho |
 |---|---|---|
 | `Subscribe(ctx, cb, matches)` | Calls `cb` with batches of written KVs that match `pb.Match` prefixes; published right after the write reaches the LSM, before the writer's `Commit` returns (`db.go:880`), held in memory only (channel of 1,000 lists per subscriber, `publisher.go:112`): lost on a crash, no replay. | - (cannot replace rho's change log) |
-| `GetSequence(key, bandwidth)`, `Sequence.Next`, `Release` | Monotonic integers leased in blocks; panics in managed mode. | - (rho has snowflake ids and its LSN allocator) |
+| `GetSequence(key, bandwidth)`, `Sequence.Next`, `Release` | Monotonic integers leased in blocks; panics in managed mode and on a read-only DB (`db.go:1358-1362`). | - (rho has snowflake ids and its LSN allocator) |
 | `GetMergeOperator(key, f, dur)`, `MergeOperator.Add`, `Get`, `Stop` | Appends values merged by `MergeFunc` in a background goroutine. | - |
-| `RunValueLogGC(ratio)` | Rewrites a value-log file when a sample shows `ratio` of it reclaimable; `ErrNoRewrite`, `ErrRejected`. | `gcLoop` (todo VLOGGC: only rows of 1 MB or more reach the value log) |
+| `RunValueLogGC(ratio)` | Rewrites a value-log file when a sample shows `ratio` of it reclaimable; `ErrNoRewrite`, `ErrRejected`; `ErrGCInMemoryMode`, `ErrGCInReadOnlyMode`, and `ErrInvalidRequest` outside (0, 1) (`db.go:1234-1246`). | `gcLoop` (todo VLOGGC: only rows of 1 MB or more reach the value log) |
 | `SetDiscardTs(ts)` | Managed mode: versions at or below `ts` may be dropped. | - |
 | `KeyRegistry`, `OpenKeyRegistry`, `WriteKeyRegistry`, `KeyRegistryOptions`, `KeyRegistryFileName` | The encrypted data-key file (`KEYREGISTRY`); `WriteKeyRegistry` rewrites it, the way to change the master key offline. | - (section 9) |
 | `Manifest`, `ReplayManifestFile`, `TableManifest`, `ManifestFilename` | The `MANIFEST` file (table set per level) and its parser. | `ManifestFilename` (`DiscardStagedFlush`) |
