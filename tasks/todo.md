@@ -72,7 +72,10 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   to MaxInt64-1 leaves a resumption row). sigma's randomized probe fails 5-10% of seeds, every failure ending in an
   open-tail excise. Order (decided 24 Oct from the data): after SAMESTART's release, before SHARD: a consumer's
   correctness on its full run, and fixes come first. Done when: (A) and (B) are red tests, the door exists for nodes
-  and relationships in every backend, released (a widened door: a minor).
+  and relationships in every backend, released (a widened door: a minor). sigma (24 Oct): in (A) the [500,∞) c=1 row is a
+  `SetNodeVersionInterval(id, 500, open, props)` (reconcile's whole write), then `UpdateNode(tkg_valid_to: 501)`,
+  then `ExciseNodeValidity(500, 501)`; sigma's red tests are TestRetractAfterAnEarlierOpenStartLeavesNothing (A),
+  TestBAREADShrink (B) and TestBAREADProbe (randomized) on sigma branch fix/baread.
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
