@@ -112,7 +112,7 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
-	if err := checkCascadeInterval(c.axis(), newVF, newVT, void); err != nil {
+	if err := checkCascadeInterval(c.axis(), newVF, newVT); err != nil {
 		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -946,7 +946,7 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
-	if err := checkCascadeInterval(c.axis(), newVF, newVT, void); err != nil {
+	if err := checkCascadeInterval(c.axis(), newVF, newVT); err != nil {
 		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -1261,7 +1261,7 @@ func applyRelProvenance(ig *types.RelIntegrity, prov *updateProvenance) {
 // graph's valid axis a (round 11): newVF must be a claimed start (the legacy
 // axis's 0 is "unset") and a bounded end must follow it; an open end is the
 // whole tail from newVF, an excise's included (OPENEXCISE).
-func checkCascadeInterval(a types.ValidAxis, newVF, newVT types.Instant, void bool) error {
+func checkCascadeInterval(a types.ValidAxis, newVF, newVT types.Instant) error {
 	if !a.Claimed(newVF) {
 		return fmt.Errorf("%w: cascade requires a claimed validFrom (non-zero on the legacy valid axis)", ErrInvalidTimeRange)
 	}
