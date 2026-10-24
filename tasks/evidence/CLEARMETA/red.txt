@@ -1,0 +1,11 @@
+clear_meta_crash_test.go:78: meta keys deleted as Clear's step 2 does: [integrity_hashes label_tokens node_count prop_indexes property_keys rel_count rel_exadj_built reltype_tokens schema_version tkg_open_image tkg_open_image_c0 tx_commit_floor tx_instant_floor untimed_valid_start wire_format_version]
+clear_meta_crash_test.go:93: after reopen: ByLabel(Host) = 0 nodes, err <nil> (before: 20)
+clear_meta_crash_test.go:95: after reopen: ByLabel(Account) = 0 nodes, err <nil> (before: 1)
+clear_meta_crash_test.go:97: after reopen: Host zone=z0 = 0 nodes, err <nil> (before: 7)
+clear_meta_crash_test.go:110: after reopen, one Invoice node added: ByLabel(Invoice) = 21 nodes, err <nil> (want 1)
+clear_meta_crash_test.go:112: a label written after the reopen answers 21 nodes: it took a token the old rows carry
+clear_meta_crash_test.go:115: the reopened store answers differently from before Clear (and it did not refuse to open)
+--- FAIL: TestClearCrashBetweenMetaDeleteAndDataDrop (0.19s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.199s
+FAIL
