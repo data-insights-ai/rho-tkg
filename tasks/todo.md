@@ -7,34 +7,32 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-- **FLUSHPART** — A flush above badger's batch limit (about 10 MB or 104,855 entries) is several transactions, so a
-  crash keeps a random subset of its rows, loses its change-log records for good, and after a purge leaves a store that
-  refuses to open (`docs/badger.md` rule 1). ai-soc (23 Oct): no change log, but commit groups of up to 99,999 ops, so
-  groups above 10 MB split today and a crash tears them (SyncWrites makes each part durable). Done when: a crash test at a planted split reopens consistent and loses
-  no record, released as a patch. Order (René 23 Oct): tests first, then the change, the tests run, then Fable reviews.
+- **FLUSHPART** — A flush above one badger transaction (104,855 entries or about 10 MB at default options) was several
+  transactions, so a crash kept a random part of it (`docs/badger.md` rule 1). Done when: merged and released as
+  v4.75.0 (a minor: format marker 9 is a one-way door), ai-soc and sigma told. Waits for: René's go to merge and tag.
 
 ### FLUSHPART plan
 
-1. [x] The tests in `pkg/graph/store/badger/flush_split_test.go` (on branch `flushpart` until the fix lands) fail on
-   today's code (evidence
-   `tasks/evidence/FLUSHPART/red.txt`): 20,000 nodes live with 12,418 of 20,000 change-log records (7,582 lost for
-   good); without the change log a crashed removal flush leaves "node counter 20000 does not match 4 live rows" and the
-   store refuses to open. The first simulation passed because Store.Close's flush loop ran a final flush that consumed
-   the injected failure; the crash now stops the store without any final flush.
-2. [x] Fable reviewed the design (2026-10-23); adopted with its four blocking points: a flush that fits one badger
-   transaction commits as one `Txn` (atomic); a larger one is staged under `0x0E` with a unique sequence, made the
-   commit by a small marker (which also raises the store format marker to 9: an older rho refuses the store), applied
-   (commit floor first), unmarked, cleaned. After the marker nothing is requeued: the apply retries in place or the
-   store fails closed, and `Close` finishes it first. `New` recovers before counters are reconciled (marker: re-apply,
-   no marker: delete staging); a read-only open with a marker fails typed. `Clear` drops `0x0E`; reap policy and
-   persistence.md list the new keys. Write amplification of an oversized flush: 3x.
-3. [ ] (tests written on branch `flushpart`, 2026-10-23; they need the change to build) Tests first (Fable's list): the two red tests; a crash matrix at stage, marker, mid-apply, unmark, clean, with
-   `SyncWrites` on and off; a failed apply then a newer write then a crash (the newer value wins); recovery with and
-   without a marker; a recount mismatch fails closed; two aborted attempts never mix; read-only open with a marker;
-   `Clear` with staging present; the format marker 9 only after a staged flush; path A unchanged. Then the change;
-   all tests pass, under `-race` too.
-4. [ ] Fable reviews the diff and the test output.
-5. [ ] Released as a patch; ai-soc and sigma are told; the item moves to `docs/CHANGELOG.md`.
+1. [x] Red tests on branch `flushpart` (`tasks/evidence/FLUSHPART/red.txt`): a crash lost 7,582 of 20,000 change-log
+   records; a crashed removal flush left a store that refused to open.
+2. [x] Fable reviewed the design (2026-10-23): one `Txn` when the flush fits, else staged under `0x0E` and committed
+   by a marker that raises the format marker to 9; `New` applies a committed flush; fail closed after the marker.
+3. [x] Built on `flushpart` with tests that try to break it (2026-10-24): a crash at every step compared with an
+   uncrashed store, crashes inside recovery, damaged and torn staging, readers during the flush, every door after a
+   failure, a tiered warm shard. 27 of 27 code mutations fail a test
+   (`tasks/evidence/FLUSHPART/mutations.txt`); `make ci-docker` green before the last review round.
+4. [x] Fable reviewed twice; all points fixed: a torn unsynced flush (power loss) is discarded at open, a synced one
+   refuses and names the new `badger.DiscardStagedFlush`, which also drops the counters.
+5. [ ] `make ci-docker` on the final branch and Fable's last verdict; then René's go, merge, tag v4.75.0, tell ai-soc
+   and sigma, move the item to `docs/CHANGELOG.md`.
+
+- **BADGERDOC** (René 24 Oct) — René does not trust rho's understanding of badger: a claim that one row above about
+  10 MB cannot commit stood for a day and was false. Done when: every claim in `docs/badger.md` cites badger's source
+  or a measurement, every claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it, and Fable
+  has reviewed the result. The batch API is done (`batch_test.go.txt`, B1-B9).
+- **BADGERUSE** (René 24 Oct) — Fable reviews how rho's code uses the badger API (lifecycle, errors, `Sync`,
+  `DropAll`, iterator options, per-shard options) and which badger features rho should use (`docs/badger.md`
+  section 9). Done when: each finding is fixed or is its own item. Waits for: Fable's report.
 
 ## Next
 
@@ -71,6 +69,9 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
     its data cleanup.
 
+- **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll`, which badger says may panic
+  concurrent reads; it is not yet checked that every read takes a lock `Clear` holds. Done when: proved safe, or
+  fixed with a test that races reads against `Clear`. Waits for: Fable's BADGERUSE report.
 - **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
   fact. Done when: René has decided per layer. Waits for: CHAIN.
 
@@ -112,15 +113,22 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   edges by that endpoint in one index read, as cheaply as today's estate+device property index. Done when: ai-soc
   drops the `device` text property from edges and still answers "rows of device X" in one index read. Waits for:
   FLUSHPART and SHARD.
+- **WRITTENAT** (ai-soc, 24 Oct) — ai-soc wants the nodes of one label (and one property value) written at one
+  transaction, without a scan, so its records can drop the list of changed keys. Done when: such a lookup costs
+  O(rows written at that transaction), with its write cost per row measured. Waits for: FLUSHPART and SHARD.
+- **VALUES** (sigma, 24 Oct) — sigma wants one lookup by many values of one property instead of one call per value.
+  Done when: `nodes.ByLabelAndPropertyValues` is released on every backend. Waits for: FLUSHPART and SHARD.
+- **TKGID** (sigma, 24 Oct) — sigma wants the shadow name `tkg_id` (an entity's id) reserved, best resolved by rho.
+  Done when: `NodeProperty` and `RelProperty` answer `tkg_id`. Waits for: FLUSHPART and SHARD.
 
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
-- **PREFETCH** — 13 iterators turn on value prefetching, one goroutine per row for values that are inline anyway (rule
-  3). Done when: none does, the open-time node scan measured.
+- **PREFETCH** — 13 iterators turn on value prefetching, one goroutine per row for values that are almost always
+  inline (rule 3). Done when: none does, the open-time node scan measured.
 - **ITERPREFIX** — The snapshot walkers merge every table of every level because they set no prefix (rule
   4). Done when: each sets at least its keyspace byte.
-- **VLOGGC** — The value-log GC loop runs for nothing, since every row is stored inline (rule 9). Done when: removed
-  or made conditional.
+- **VLOGGC** — The value-log GC loop runs on every shard although only rows of 1 MB or more reach the value log (rule
+  9). Done when: it runs only where the value log holds data.
 
 - **COLDSTART** — A fresh agent has to be able to work from the 13 docs alone. Done when: every gap it finds is fixed
   in the file that owns it.
