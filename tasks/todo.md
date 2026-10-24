@@ -126,7 +126,8 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   forever. Done when: they skip `Discard` after `Close` as the read snapshot does, tested with 101.
 - **BADGERLOG** (confirmed, same evidence) — No backend gives badger a logger, so badger's reports are discarded: a
   failed value-log read shows rho only "corrupt wire data", while the cause ("Unable to read … ErrEOF") reaches only
-  a configured logger. sigma (24 Oct): passes no logger. Done when: badger's errors reach rho's logging by default,
+  a configured logger. `tiered.Config` and `sharded.Config` have no logger field at all, so their users (ai-soc)
+  cannot pass one. sigma (24 Oct): passes no logger. Done when: badger's errors reach rho's logging by default,
   tested with a failed value-log read.
 - **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
   read snapshots may hold a badger transaction; measured at rho level (`tasks/evidence/USAGE/dropall_rho_test.go.txt`):
