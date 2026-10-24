@@ -111,3 +111,8 @@ Damage on disk, through rho's store (vlog_test.go.txt, 2026-10-24, main, default
   (value.go:603-617), then starts a new file (:619-622); values are read without a checksum unless
   VerifyValueChecksum (value.go:950-962); table blocks are checked only under ChecksumVerificationMode OnBlockRead
   (table.go:603).
+
+DISCARDCLOSE (discard_test.go.txt, 2026-10-24): read transactions opened before db.Close and discarded after it: up to
+100 return, the 101st blocks forever (the read mark goes into the stopped watermark's 100-slot channel,
+y/watermark.go:60, :77-79). rho's read snapshot skips Discard after Close; its scan snapshot and rel-type build walk
+always discard, so more than 100 of them in flight across one store's Close would hang a goroutine. Low severity.

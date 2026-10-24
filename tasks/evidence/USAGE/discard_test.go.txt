@@ -1,0 +1,51 @@
+package badger
+
+// USAGE evidence (DISCARDCLOSE), kept as tasks/evidence/USAGE/discard_test.go.txt:
+// Txn.Discard of read transactions opened before db.Close and discarded after it.
+
+import (
+	"testing"
+	"time"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
+)
+
+func TestUsageDiscardAfterClose(t *testing.T) {
+	for _, n := range []int{1, 50, 99, 100, 101, 150} {
+		db, err := badgerv4.Open(badgerv4.DefaultOptions(t.TempDir()).WithLogger(nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		txns := make([]*badgerv4.Txn, n)
+		for i := range txns {
+			txns[i] = db.NewTransaction(false)
+		}
+		_ = db.Close()
+		done := make(chan int)
+		go func() {
+			for i, txn := range txns {
+				txn.Discard()
+				done <- i + 1
+			}
+			close(done)
+		}()
+		discarded := 0
+		timeout := time.After(2 * time.Second)
+	wait:
+		for {
+			select {
+			case k, ok := <-done:
+				if !ok {
+					break wait
+				}
+				discarded = k
+			case <-timeout:
+				break wait
+			}
+		}
+		t.Logf("DISCARDCLOSE %d read transactions open at Close: %d discarded afterwards within 2 s", n, discarded)
+		if n <= 100 && discarded != n {
+			t.Errorf("%d of %d discards returned: blocked below the channel's 100 slots", discarded, n)
+		}
+	}
+}

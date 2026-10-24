@@ -47,7 +47,8 @@ Each item: one sentence, then when it is done and what it waits for.
    (`tasks/evidence/USAGE/`); confirmed by real tests (24 Oct): CLEARMETA (a crash inside `Clear`), KEYSIZE and
    VALUESIZE (one oversized entry blocks all later persistence), VERIFY (silent corruption, panics, silent
    truncation) and BADGERLOG; ai-soc and sigma asked (24 Oct) which configurations they run (on-disk indexes, value-log
-   size, in-memory stores, row and string sizes, a logger, Reset), to order the fixes; sigma answered (VALUESIZE real,
+   size, in-memory stores, row and string sizes, a logger, Reset), to order the fixes; DISCARDCLOSE measured (the
+   101st discard after Close blocks); sigma answered (VALUESIZE real,
    KEYSIZE latent, no logger, Reset reachable, no corruption seen), ai-soc pending; each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence, then its fix.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
@@ -116,8 +117,9 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   commits. sigma (24 Oct): exposed: its PageState Derived facts can exceed 1 MB, its daemon sets the value-log size
   down to 1 MB (TKGD_BADGER_VLOG_MB) and offers an in-memory store. Done when: the write door refuses a row the store
   cannot hold, the test passes, released as a patch.
-- **DISCARDCLOSE** (candidate) — The scan snapshot and the rel-type build walk always `Discard` their transaction,
-  which can block after `db.Close` (`y/watermark.go:60`, `:77-79`). Done when: a test closes the store under them.
+- **DISCARDCLOSE** (confirmed, low; `tasks/evidence/USAGE/discard_test.go.txt`) — The scan snapshot and the rel-type
+  build walk always `Discard` their transaction; after `db.Close` up to 100 such discards return and the 101st blocks
+  forever. Done when: they skip `Discard` after `Close` as the read snapshot does, tested with 101.
 - **BADGERLOG** (confirmed, same evidence) — No backend gives badger a logger, so badger's reports are discarded: a
   failed value-log read shows rho only "corrupt wire data", while the cause ("Unable to read … ErrEOF") reaches only
   a configured logger. sigma (24 Oct): passes no logger. Done when: badger's errors reach rho's logging by default,
