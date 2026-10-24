@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.75.1] - 2026-10-24
+
+### Fixed
+
+- **DECODEBOUND**: an 80-byte stored or imported node row took 13 s to reject (fuzz smoke of the v4.75.0 gate,
+  `tasks/evidence/DECODEBOUND/`; present since before v4.74.0). A msgpack extension header stood where a property was
+  expected; the decoder reads through it (`DecodeMapLen` skips it) into a map whose header claimed ~808 million
+  entries and sized the map by that claim, while the trust-boundary pre-scan (`guardMsgpackDepth`) skipped the
+  extension payload unread. rho writes no msgpack extension type, so the pre-scan now rejects every extension code
+  as `ErrCorruptWire`: the row is rejected in about 20 µs. The input is a committed `FuzzWireToNodeChecked` seed.
 ## [4.75.0] - 2026-10-24
 
 ### Fixed

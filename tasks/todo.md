@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.75.0 (2026-10-24). Background, René's open decisions with my defaults,
+What rho does next, in order. Last release: v4.75.1 (2026-10-24). Background, René's open decisions with my defaults,
 and the numbered backlog: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`, under the same tag.
 
 Each item: one sentence, then when it is done and what it waits for.
@@ -8,7 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct, "fixes first", then "the given order"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0
-(tagged, ai-soc and sigma told); next DECODEBOUND (a patch), VERIFY + BADGERLOG, CLEARMETA, then BADGER step 3 /
+(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; next VERIFY + BADGERLOG, CLEARMETA, then BADGER step 3 /
 SHARD; DROPALL + DISCARDCLOSE after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -49,11 +49,6 @@ SHARD; DROPALL + DISCARDCLOSE after SHARD.
   10 MB cannot commit stood for a day and was false. Done when: every claim in `docs/badger.md` cites badger's source
   or a measurement, every claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it, and Fable
   has reviewed the result. The batch API is done (`batch_test.go.txt`, B1-B9).
-
-- **DECODEBOUND** (found by the v4.75.0 gate's fuzz smoke, 24 Oct; `tasks/evidence/DECODEBOUND/`) — An 80-byte node
-  row takes 13.6 s to reject in the trust-boundary decoder (a map header declaring ~808 million entries), so a
-  crafted import or replication row can stall a process; the same on v4.74.0. Done when: the decoder rejects it in
-  microseconds, the crasher is a committed fuzz seed, released as a patch right after v4.75.0.
 
 ## Next
 

@@ -175,31 +175,12 @@ func guardMsgpackDepth(data []byte) error {
 			if err := push(2 * n); err != nil {
 				return err
 			}
-		case c == 0xd4: // fixext1
-			pos += 1 + 1
-		case c == 0xd5: // fixext2
-			pos += 1 + 2
-		case c == 0xd6: // fixext4
-			pos += 1 + 4
-		case c == 0xd7: // fixext8
-			pos += 1 + 8
-		case c == 0xd8: // fixext16
-			pos += 1 + 16
-		case c == 0xc7: // ext8
-			if pos >= len(data) {
-				return truncated()
-			}
-			pos += 1 + 1 + int(data[pos])
-		case c == 0xc8: // ext16
-			if pos+2 > len(data) {
-				return truncated()
-			}
-			pos += 2 + 1 + int(binary.BigEndian.Uint16(data[pos:]))
-		case c == 0xc9: // ext32
-			if pos+4 > len(data) {
-				return truncated()
-			}
-			pos += 4 + 1 + int(binary.BigEndian.Uint32(data[pos:]))
+		case c >= 0xd4 && c <= 0xd8, c >= 0xc7 && c <= 0xc9: // fixext1..16, ext8/16/32
+			// rho writes no msgpack extension type, and the decoder reads
+			// through an extension header into the container behind it
+			// (DecodeMapLen skips it), which this scan would treat as an
+			// opaque payload: reject (DECODEBOUND).
+			return fmt.Errorf("%w: msgpack extension type 0x%02x (rho writes none)", storepkg.ErrCorruptWire, c)
 		default: // 0xc1 — never a valid msgpack type
 			return fmt.Errorf("%w: invalid msgpack type byte 0x%02x", storepkg.ErrCorruptWire, c)
 		}
