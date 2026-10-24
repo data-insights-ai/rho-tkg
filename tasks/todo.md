@@ -26,6 +26,10 @@ Each item: one sentence, then when it is done and what it waits for.
 5. [ ] `make ci-docker` on the final branch and Fable's last verdict; then René's go, merge, tag v4.75.0, tell ai-soc
    and sigma, move the item to `docs/CHANGELOG.md`.
 
+- **USAGE** (René 24 Oct) — Re-analyse rho's current badger use in the main session, without relying on Fable's
+  review: a map of every badger call by kind (writes, point reads, iterators and their options, sync, drops, GC, open
+  options), and each finding checked in the code and, where it can fail, by a test. Done when: the map is in
+  `tasks/evidence/USAGE/`, each finding is confirmed or refuted with its evidence, and the todo items say so.
 - **BADGERDOC** (René 24 Oct) — René does not trust rho's understanding of badger: a claim that one row above about
   10 MB cannot commit stood for a day and was false. Done when: every claim in `docs/badger.md` cites badger's source
   or a measurement, every claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it, and Fable
