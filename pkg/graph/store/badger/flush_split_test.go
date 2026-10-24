@@ -294,24 +294,20 @@ func TestStagedApplyFailureFailsClosed(t *testing.T) {
 	}
 }
 
-// TestStagedFlushRecoveryCountMismatchFailsClosed: a marked flush whose
-// staging lost an entry (only corruption can do that: the marker commits after
-// the staging) fails the open instead of applying a part. Mutation: apply what
-// is there.
-func TestStagedFlushRecoveryCountMismatchFailsClosed(t *testing.T) {
-	dir := t.TempDir()
-	cfg := splitFlushConfig(dir)
+// tornAtMarker leaves dir with a committed staged flush of n new nodes whose
+// staging lost one entry, written with or without SyncWrites.
+func tornAtMarker(t *testing.T, cfg Config, nodes []*types.Node) {
+	t.Helper()
 	bs, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	putNodes(t, bs, splitFlushNodes(splitFlushNodeCount))
 	injected := failAt(bs, stagedStepMarked)
-	if err := bs.Flush(); !errors.Is(err, injected) {
-		t.Fatalf("Flush = %v, want the injected failure", err)
+	if err := inOneFlush(bs, cfg.SyncWrites, func() { putNodes(t, bs, nodes) }); !errors.Is(err, injected) {
+		t.Fatalf("the flush = %v, want the injected failure", err)
 	}
 	crashStop(bs)
-	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+	updateRawBadgerDir(t, cfg.Dir, func(txn *badgerv4.Txn) error {
 		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyFlushStage}})
 		defer it.Close()
 		it.Rewind()
@@ -320,13 +316,81 @@ func TestStagedFlushRecoveryCountMismatchFailsClosed(t *testing.T) {
 		}
 		return txn.Delete(it.Item().KeyCopy(nil))
 	})
-	bs, err = New(cfg)
+}
+
+// wantFlushAbsent: the store holds none of nodes, counts none, logs none and
+// has no staged flush left.
+func wantFlushAbsent(t *testing.T, bs *Store, nodes []*types.Node) {
+	t.Helper()
+	if got := liveNodes(t, bs, nodes); got != 0 {
+		t.Fatalf("%d nodes of a discarded flush live", got)
+	}
+	if c, err := bs.NodeCount(); err != nil || c != 0 {
+		t.Fatalf("node count %d (%v), want 0", c, err)
+	}
+	if n := keysWithPrefix(t, bs, []byte{storepkg.KeyFlushStage}); n != 0 {
+		t.Fatalf("%d staging keys left", n)
+	}
+	if n := keysWithPrefix(t, bs, storepkg.FlushStageMarkerKey); n != 0 {
+		t.Fatal("marker left")
+	}
+}
+
+// TestStagedFlushRecoveryCountMismatchFailsClosed: a SyncWrites staged flush
+// whose staging lost an entry (only corruption can do that: every part was
+// durable before the marker) fails the open, naming the way out; after
+// DiscardStagedFlush the store opens without the flush. Mutation: apply what
+// is there; discard it silently; a refusal that DiscardStagedFlush cannot
+// clear.
+func TestStagedFlushRecoveryCountMismatchFailsClosed(t *testing.T) {
+	cfg := splitFlushConfig(t.TempDir())
+	cfg.SyncWrites = true
+	nodes := splitFlushNodes(splitFlushNodeCount)
+	tornAtMarker(t, cfg, nodes)
+	bs, err := New(cfg)
 	if err == nil {
 		_ = bs.Close()
-		t.Fatal("New applied a staged flush that lost an entry")
+		t.Fatal("New applied (or dropped) a synced staged flush that lost an entry")
 	}
-	if !errors.Is(err, ErrInvalidStoreMutation) || !strings.Contains(err.Error(), "its marker says") {
-		t.Fatalf("New = %v, want the staged flush's entry-count refusal", err)
+	if !errors.Is(err, ErrInvalidStoreMutation) || !strings.Contains(err.Error(), "its marker says") || !strings.Contains(err.Error(), "DiscardStagedFlush") {
+		t.Fatalf("New = %v, want the entry-count refusal naming DiscardStagedFlush", err)
+	}
+	dropped, err := DiscardStagedFlush(cfg)
+	if err != nil || !dropped {
+		t.Fatalf("DiscardStagedFlush = %v, %v", dropped, err)
+	}
+	if dropped, err := DiscardStagedFlush(cfg); err != nil || dropped {
+		t.Fatalf("a second DiscardStagedFlush = %v, %v; want nothing to drop", dropped, err)
+	}
+	bs, err = New(cfg)
+	if err != nil {
+		t.Fatalf("open after DiscardStagedFlush: %v", err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	wantFlushAbsent(t, bs, nodes)
+}
+
+// TestStagedTornUnsyncedFlushIsDiscarded: without SyncWrites a power loss can
+// keep the marker and lose earlier staging (badger syncs no rotated
+// memtable's WAL). Such a flush was never durable: the open discards it and
+// opens, as it would after losing any unsynced flush. Mutation: refuse it (a
+// power loss would leave a store that does not open).
+func TestStagedTornUnsyncedFlushIsDiscarded(t *testing.T) {
+	cfg := splitFlushConfig(t.TempDir())
+	nodes := splitFlushNodes(splitFlushNodeCount)
+	tornAtMarker(t, cfg, nodes)
+	bs, err := New(cfg)
+	if err != nil {
+		t.Fatalf("open after a torn unsynced staged flush: %v", err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	wantFlushAbsent(t, bs, nodes)
+	records := 0
+	if err := bs.ForEachChange(0, func(storecontract.ChangeRecord) bool { records++; return true }); err != nil {
+		t.Fatal(err)
+	}
+	if records != 0 {
+		t.Fatalf("%d change-log records of a discarded flush", records)
 	}
 }
 

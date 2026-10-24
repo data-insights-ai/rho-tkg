@@ -517,19 +517,35 @@ func crashedAtMarker(t *testing.T, cfg Config, nodes []*types.Node) {
 	crashStop(bs)
 }
 
-// TestStagedRecoveryRefusesDamage: a damaged marker or staged entry fails the
-// open with ErrInvalidStoreMutation instead of applying a guess. Catches a
-// recovery that applies whatever it finds.
+// TestStagedRecoveryRefusesDamage: a damaged marker or staged entry (a short
+// marker, a synced marker whose staging is missing, an empty staged value, a
+// staged entry more than the marker counts: none of them a power loss) fails
+// the open with ErrInvalidStoreMutation instead of applying a guess, and
+// DiscardStagedFlush clears it. Catches a recovery that applies whatever it
+// finds, or discards damage it cannot explain.
 func TestStagedRecoveryRefusesDamage(t *testing.T) {
 	damage := map[string]func(txn *badgerv4.Txn) error{
 		"short marker": func(txn *badgerv4.Txn) error {
 			return txn.Set(storepkg.FlushStageMarkerKey, make([]byte, 15))
 		},
-		"marker names no staging": func(txn *badgerv4.Txn) error {
-			v := make([]byte, 16)
+		"synced marker names no staging": func(txn *badgerv4.Txn) error {
+			v := make([]byte, stageMarkerLen)
 			binary.BigEndian.PutUint64(v, 1)
 			binary.BigEndian.PutUint64(v[8:], 3)
+			v[16] = stageMarkerSynced
 			return txn.Set(storepkg.FlushStageMarkerKey, v)
+		},
+		"extra staged entry": func(txn *badgerv4.Txn) error {
+			item, err := txn.Get(storepkg.FlushStageMarkerKey)
+			if err != nil {
+				return err
+			}
+			m, err := item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			key := append(stagePrefix(binary.BigEndian.Uint64(m)), storepkg.MetaKey("flushpart_extra")...)
+			return txn.Set(key, []byte{byte(writeOpSet), 1})
 		},
 		"empty staged value": func(txn *badgerv4.Txn) error {
 			it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyFlushStage}})
@@ -552,9 +568,17 @@ func TestStagedRecoveryRefusesDamage(t *testing.T) {
 				_ = bs.Close()
 				t.Fatal("New applied a damaged staged flush")
 			}
-			if !errors.Is(err, ErrInvalidStoreMutation) {
-				t.Fatalf("New = %v, want ErrInvalidStoreMutation", err)
+			if !errors.Is(err, ErrInvalidStoreMutation) || !strings.Contains(err.Error(), "DiscardStagedFlush") {
+				t.Fatalf("New = %v, want ErrInvalidStoreMutation naming DiscardStagedFlush", err)
 			}
+			if dropped, err := DiscardStagedFlush(cfg); err != nil || !dropped {
+				t.Fatalf("DiscardStagedFlush = %v, %v", dropped, err)
+			}
+			bs, err = New(cfg)
+			if err != nil {
+				t.Fatalf("open after DiscardStagedFlush: %v", err)
+			}
+			_ = bs.Close()
 		})
 	}
 }
@@ -675,4 +699,78 @@ func digestDiff(got, want string) string {
 		out = append(out[:20], fmt.Sprintf("... %d more", len(out)-20))
 	}
 	return strings.Join(out, "\n")
+}
+
+// TestStagedFlushDuplicateKeysKeepTheLast: a staged flush whose entries name a
+// key twice (no entry source does today) stages and counts it once, so a
+// crash after the marker reopens with the last value instead of a count
+// refusal. Catches a marker that counts entries rather than staged keys.
+func TestStagedFlushDuplicateKeysKeepTheLast(t *testing.T) {
+	cfg := splitFlushConfig(t.TempDir())
+	bs, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make([]flushEntry, 0, 20_001)
+	for i := 0; i < 20_000; i++ {
+		entries = append(entries, flushEntry{key: storepkg.MetaKey(fmt.Sprintf("flushpart_dup_%05d", i)), value: []byte{0}})
+	}
+	dup := storepkg.MetaKey("flushpart_dup_00007")
+	entries = append(entries, flushEntry{key: dup, value: []byte{9}})
+	injected := failAt(bs, stagedStepMarked)
+	if _, err := bs.commitFlushEntries(entries); !errors.Is(err, injected) {
+		t.Fatalf("commit = %v, want the injected failure (a staged flush)", err)
+	}
+	crashStop(bs)
+	bs, err = New(cfg)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	if err := bs.DBForTest().View(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(dup)
+		if err != nil {
+			return err
+		}
+		return item.Value(func(v []byte) error {
+			if len(v) != 1 || v[0] != 9 {
+				t.Fatalf("duplicated key holds %x, want the last value 09", v)
+			}
+			return nil
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestStagedDurableFlushReportsTheFailure: a DurableFlush whose staged flush
+// fails after the marker reports the failure (matching both ErrStoreClosed
+// and the cause), and a retry is refused: the commit is not durable now, and
+// the next open applies it. Catches a DurableFlush that reports success
+// before the apply, or a retry that commits after the marker.
+func TestStagedDurableFlushReportsTheFailure(t *testing.T) {
+	cfg := splitFlushConfig(t.TempDir())
+	bs, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes := splitFlushNodes(splitFlushNodeCount)
+	putNodes(t, bs, nodes)
+	injected := failAt(bs, stagedStepApplyWritten)
+	err = bs.DurableFlush()
+	if !errors.Is(err, injected) || !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("DurableFlush = %v, want the failure matching ErrStoreClosed and its cause", err)
+	}
+	if err := bs.DurableFlush(); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("retried DurableFlush = %v, want ErrStoreClosed", err)
+	}
+	_ = bs.Close()
+	bs, err = New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	if got := liveNodes(t, bs, nodes); got != len(nodes) {
+		t.Fatalf("%d of %d nodes after the reopen applied the flush", got, len(nodes))
+	}
 }

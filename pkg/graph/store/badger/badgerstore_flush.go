@@ -349,7 +349,7 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 			// (bs.flushing stays, so nothing reads around the rows) and the
 			// next open applies the flush.
 			bs.failStagedFlush(err)
-			return fmt.Errorf("graph: write batch flush: %w", err)
+			return fmt.Errorf("graph: write batch flush: %w", bs.stagedFailureErr())
 		}
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", err)

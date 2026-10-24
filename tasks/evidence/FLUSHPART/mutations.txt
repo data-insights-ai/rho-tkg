@@ -1,0 +1,29 @@
+FLUSHPART mutation sweep, 2026-10-24, branch flushpart (after the fixes from Fable's review).
+Each mutant changes the code once; each line names it and the tests that failed. Tests run: TestStaged*,
+TestStageSeq*, TestClearDropsStaging*, TestChangeLog_LogOffClearPreservesWatermark (badger) and
+TestTieredWarmShardRecoversStagedFlush (tiered). A test timeout would count as caught; none occurred.
+
+M1 recovery skipped: CAUGHT by TestStagedFlushCrashMatrix, TestStagedFlushDuplicateKeysKeepTheLast, TestStagedFlushReadOnlyOpenNeedsRecovery, TestStagedFlushRecoveryCountMismatchFailsClosed, TestStagedFlushRecoveryMatchesUncrashedStore, TestStagedLeftoverWithoutMarkerReadOnly, TestStagedRecoveryAppliesOnlyTheMarkedSequence, TestStagedRecoveryIsRedoable, TestStagedRecoveryRefusesDamage, TestStagedT
+M2 requeue after the marker: CAUGHT by TestStagedApplyFailureFailsClosed, TestStagedDurableFlushReportsTheFailure, TestStagedFailClosedEveryDoor, TestStagedFlushCrashMatrix, TestStagedFlushReadOnlyOpenNeedsRecovery, TestStagedFlushRecoveryCountMismatchFailsClosed, TestStagedFlushRecoveryMatchesUncrashedStore, TestStagedRecoveryAppliesOnlyTheMarkedSequence, TestStagedRecoveryIsRedoable, TestStagedRecoveryRefusesDamage, TestStagedTornUnsyncedFlushIsDiscarded
+M3 marker txn does not raise the format marker: CAUGHT by TestStagedFlushCleanReopenTrustsImage, TestStagedFlushCrashMatrix, TestStagedFlushFormatMarker
+M4 Clear keeps staging: CAUGHT by TestClearDropsStagingKeys
+M5 unmarked staging applied: CAUGHT by TestChangeLog_LogOffClearPreservesWatermark, TestClearDropsStagingKeys, TestStagedApplyFailureFailsClosed, TestStagedDurableFlushReportsTheFailure, TestStagedFailClosedEveryDoor, TestStagedFlushAbortedAttemptsDoNotMix, TestStagedFlushCleanReopenTrustsImage, TestStagedFlushCrashMatrix, TestStagedFlushDuplicateKeysKeepTheLast, TestStagedFlushFormatMarker, TestStagedFlushKeepsFormatMarkerRaisedMidFlush, TestStagedFlushReadOnlyOpenNeedsRecovery, TestStagedFlushReadersSeeEveryRowThroughout, TestStagedFlushRecoveryCountMismatchFailsClosed, TestStagedFlushRecoveryMatchesUncrashedStore, TestStagedLeftoverWithoutMarkerReadOnly, TestStagedRecoveryAppliesOnlyTheMarkedSequence, TestStagedRecoveryIsRedoable, TestStagedRecoveryRefusesDamage, TestStagedTornUnsyncedFlushIsDiscarded, TestTieredWarmShardRecoversStagedFlush
+M6 count mismatch ignored: CAUGHT by TestStagedFlushRecoveryCountMismatchFailsClosed, TestStagedRecoveryRefusesDamage
+M7 flush writes the raise value, not the tracker: CAUGHT by TestStagedFlushKeepsFormatMarkerRaisedMidFlush
+M8 overlay dropped right after the marker: CAUGHT by TestStagedFlushReadersSeeEveryRowThroughout
+M9 recovery unmarks before applying: CAUGHT by TestStagedRecoveryIsRedoable
+M10 recovery applies every sequence: CAUGHT by TestStagedRecoveryAppliesOnlyTheMarkedSequence
+M11 recovery writes on every open: CAUGHT by TestStagedFlushCleanReopenTrustsImage
+M12 checkOpen ignores the fail-closed state: CAUGHT by TestStagedApplyFailureFailsClosed, TestStagedFailClosedEveryDoor
+M13 staging sequence reused: CAUGHT by TestStageSeqNeverRepeats
+M14 read-only open ignores a marker: CAUGHT by TestStagedFlushReadOnlyOpenNeedsRecovery, TestTieredWarmShardRecoversStagedFlush
+M15 commit floor dropped from the flush: CAUGHT by TestStagedFlushRecoveryMatchesUncrashedStore
+M16 LastLSNKey dropped from the flush: CAUGHT by TestChangeLog_LogOffClearPreservesWatermark
+M17 unmark failure does not fail closed: CAUGHT by TestStagedFailClosedEveryDoor
+M18 recovery after loadIndexes: CAUGHT by TestStagedFlushReadOnlyOpenNeedsRecovery, TestStagedFlushRecoveryCountMismatchFailsClosed, TestStagedRecoveryIsRedoable, TestStagedRecoveryRefusesDamage, TestTieredWarmShardRecoversStagedFlush
+M19 torn unsynced staging refused: CAUGHT by TestStagedTornUnsyncedFlushIsDiscarded
+M20 torn synced staging discarded: CAUGHT by TestStagedFlushRecoveryCountMismatchFailsClosed, TestStagedRecoveryRefusesDamage
+M21 marker counts entries, not staged keys: CAUGHT by TestStagedFlushDuplicateKeysKeepTheLast
+M22 marker records no SyncWrites flag: CAUGHT by TestStagedFlushRecoveryCountMismatchFailsClosed
+M23 failing flush hides ErrStoreClosed: CAUGHT by TestStagedDurableFlushReportsTheFailure
+M24 DiscardStagedFlush drops nothing: CAUGHT by TestStagedFlushRecoveryCountMismatchFailsClosed, TestStagedRecoveryRefusesDamage

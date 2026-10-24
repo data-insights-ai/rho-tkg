@@ -15,17 +15,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rows and a store that refused to open, `tasks/evidence/FLUSHPART/red.txt`). A flush that fits now commits as one
   badger transaction; a larger one is staged under the new `0x0E` keyspace, committed by the marker `flush_stage`,
   applied, unmarked and cleaned, and `New` re-applies a committed staged flush before it reads a row (a read-only open
-  with one fails matching badger's `ErrTruncateNeeded`, so the tiered recovery probe opens it writable). A staged
-  flush whose apply or unmark fails after its marker fails the store closed (`ErrStoreClosed` at every door) until
-  the next open applies it; it is never requeued. Tested by crashing at every step (with and without `SyncWrites`,
-  creations, replacements and removals) against an uncrashed store's index digest and change log, failures inside
-  recovery, damaged staging, readers during the flush and a tiered warm shard; 17 of 18 code mutations fail a test
-  (the 18th, `last_lsn` left out of the flush, has no effect while change-log records are never deleted).
+  with one fails matching badger's `ErrTruncateNeeded`, so the tiered recovery probe opens it writable).
+  - **Fail closed**: a staged flush whose apply or unmark fails after its marker is never requeued; the store answers
+    `ErrStoreClosed` (also matching the cause) at every door until the next open applies the flush. The failing
+    `DurableFlush` reports it (the group is not durable now; the next open applies it); writes still buffered are lost
+    at `Close`, which writes no open image; in tiered the shard's error fails the whole store closed.
+  - **Power loss without `SyncWrites`** can keep the marker and lose earlier staging (badger syncs no rotated
+    memtable's WAL): the open discards that flush, logged, like any lost unsynced flush. Under `SyncWrites` a torn
+    staging can only be corruption: the open refuses (`ErrInvalidStoreMutation`) and names the new
+    **`badger.DiscardStagedFlush(cfg) (bool, error)`**, which drops the flush from a closed store directory (a badger
+    store, tiered shard or sharded slot); its writes are lost, an applied part stays.
   - **One-way door**: the first staged flush raises the store format marker to **9**; v4.74.0 and earlier refuse such
-    a store at open (`ErrWireFormatVersionUnsupported`); hence a minor. Stores whose flushes all fit one transaction keep their
-    marker. Upgrade every reader of a store before its writer.
-  - **Cost**: a staged flush writes its entries about three times (staging, apply, staging delete); flushes under the
-    limit cost what they did.
+    a store at open (`ErrWireFormatVersionUnsupported`); hence a minor. Stores whose flushes all fit one transaction
+    keep their marker. Upgrade every reader of a store before its writer.
+  - **Cost**: a staged flush writes its entries about three times (staging, apply, staging delete) and holds about
+    twice its bytes in memory while it runs (recovery holds the staged flush once); flushes under the limit cost what
+    they did.
+  - **Tests**: crashes at every step (with and without `SyncWrites`; creations, replacements, removals) compared with
+    an uncrashed store's index digest and change log, failures inside recovery, damaged and torn staging, duplicate
+    keys, readers during the flush, every door after a failure, and a tiered warm shard. All 18 code mutations of
+    the sweep fail a test (`tasks/evidence/FLUSHPART/mutations.txt`); the review was by Fable.
+  - **Not covered**: a single entry above badger's transaction limit (a row of about 10 MB or more at the default
+    memtable; rho allows rows up to 64 MB) still cannot be committed: its flush fails and is requeued every cycle, as
+    before. Todo ROWSIZE.
 
 ### Documentation
 

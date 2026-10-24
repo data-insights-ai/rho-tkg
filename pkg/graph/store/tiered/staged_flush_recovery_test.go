@@ -61,9 +61,10 @@ func TestTieredWarmShardRecoversStagedFlush(t *testing.T) {
 	stageKey[0] = storepkg.KeyFlushStage
 	binary.BigEndian.PutUint64(stageKey[1:], seq)
 	stageKey = append(stageKey, probe...)
-	marker := make([]byte, 16)
+	marker := make([]byte, 17) // sequence, entry count, flags (1 = written under SyncWrites)
 	binary.BigEndian.PutUint64(marker, seq)
 	binary.BigEndian.PutUint64(marker[8:], 1)
+	marker[16] = 1
 	shardDir := filepath.Join(dir, "events", warmName)
 	db, err := badgerv4.Open(badgerv4.DefaultOptions(shardDir).WithMemTableSize(cfg.MemTableSize).WithValueLogFileSize(cfg.ValueLogFileSize).WithLogger(nil))
 	if err != nil {

@@ -900,7 +900,7 @@ func New(cfg Config) (*Store, error) {
 	}
 	// A staged flush that committed before a crash is applied (or uncommitted
 	// staging deleted) before any row, counter or index is read.
-	if err := recoverStagedFlush(db, cfg.ReadOnly); err != nil {
+	if err := recoverStagedFlush(db, cfg.ReadOnly, cfg.Logger); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
