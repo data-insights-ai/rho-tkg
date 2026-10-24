@@ -37,7 +37,11 @@ Each item: one sentence, then when it is done and what it waits for.
    claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it. Done so far: the API reference
    (section 8), the batch API (B1-B9), the source check of sections 1-7 (one false claim fixed), the read side R1-R5
    (prefix pruning, compaction, read-only open, directory lock, MaxVersion; R3 corrected section 1: a read-only open
-   refuses every unclean WAL, not only a torn one). Left: Fable's review of the result.
+   refuses every unclean WAL, not only a torn one). Fable's review (24 Oct) reopened it: R3, R5 and B9 can pass with
+   their claim false (no assertion, a no-op compaction, zero survivors accepted); MaxVersion CAN fall when compaction
+   drops a tombstone (source-checked); 12 doc points (prefix per WAL file under power loss, Discard rules, the
+   65,000-byte key limit, citations). Left: those fixed, each checked in the source, the three tests made able to
+   fail.
 2. [ ] rho's current badger use, fully verified in tests: the call map and the 9-category analysis exist
    (`tasks/evidence/USAGE/`); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence, then its fix.
