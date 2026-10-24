@@ -72,6 +72,11 @@ VERIFY + BADGERLOG, CLEARMETA, DROPALL + DISCARDCLOSE; then BADGER step 3.
   or a measurement, every claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it, and Fable
   has reviewed the result. The batch API is done (`batch_test.go.txt`, B1-B9).
 
+- **DECODEBOUND** (found by the v4.75.0 gate's fuzz smoke, 24 Oct; `tasks/evidence/DECODEBOUND/`) — An 80-byte node
+  row takes 13.6 s to reject in the trust-boundary decoder (a map header declaring ~808 million entries), so a
+  crafted import or replication row can stall a process; the same on v4.74.0. Done when: the decoder rejects it in
+  microseconds, the crasher is a committed fuzz seed, released as a patch right after v4.75.0.
+
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)

@@ -1,0 +1,7 @@
+DECODEBOUND red (2026-10-24): make ci-docker's fuzz-smoke found an 80-byte input that FuzzWireToNodeChecked
+(storeutil, the node-row decoder at the trust boundary) needs 13.6 s to reject; the fuzzer counts it as hung.
+Same 13.6 s on main (v4.74.0 code): not caused by v4.75.0. The input ends in a msgpack map32 header declaring
+0x30303030 (~808 million) entries with 7 bytes left; user 27 s + sys 13 s suggests allocation or iteration by the
+declared count (lesson 48: allocate by bytes delivered). Reproduce: copy the corpus file into
+pkg/graph/internal/storeutil/testdata/fuzz/FuzzWireToNodeChecked/ and run
+go test -run='FuzzWireToNodeChecked/396714ffb9b3703b' ./pkg/graph/internal/storeutil/
