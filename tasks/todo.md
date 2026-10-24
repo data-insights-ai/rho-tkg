@@ -47,7 +47,8 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   `tkg_valid_to` 233; `SetNodeVersionInterval(92, +inf)`; UpdateNode `tkg_valid_to` 93: `NodeAt(100)` returns the
   [92,233) row, and after `ExciseNodeValidity(92,93)` it returns [93,233); expected `ErrNoVersionValidAt` after the
   close to 93. sigma guards against it on its side. Done when: the probe is a red test, both arms apply one rule,
-  released as a patch. Order: René.
+  released as a patch. Order (decided 24 Oct from the data, René: "open decisions answered by data and the other
+  agents"): next, before SHARD: a wrong answer from `NodeAt`, met in practice by sigma, and fixes come first.
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
@@ -106,7 +107,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   no resumption row when nothing needs resuming, with the same answers, released as a patch. Waits for: SHARD step 1.
 - **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
-  known. Waits for: René's "run" (sigma runs it).
+  known. Waits for: sigma's readiness and a free Flux (asked 24 Oct; their yes is the go, per René).
 - **R37** — Listing facts that were changed still costs more than ai-soc's limit of 4 times a fact's values. Done when:
   ai-soc's cold /bars test passes on Flux. Waits for: CHAIN-2.
 - **REPORT** — ai-soc and sigma have not yet reported on rho's newer doors, and rho builds only what blocks
@@ -117,17 +118,17 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   so ai-soc's memory grows with the shards it opens (`docs/badger.md` section 9, item 11). Done when: one cache budget
   for the whole store (`CacheMaxCost`) and per-role options, or a documented cost per shard. Waits for: ai-soc's memory numbers.
 - **TOMBSTONE** — A delete cannot keep the believed end of validity (backlog 4, 7, 25). Done when: released as a minor.
-  Waits for: René, or sigma or ai-soc needing it.
+  Waits for: sigma or ai-soc needing it (asked 24 Oct).
 - **STORE** (ai-soc, 23 Oct) — Store layout choices for ai-soc's remodel: history delta encoding per label, Derived and
   Session on the never-purged reference shard, and the instance nodes (~2/3 of the BA store). Done when: René has
-  decided with ai-soc and sigma (their STORECFG talk). Waits for: René.
-- **REVIEWS** — Review findings were left out under the scope rule. Done when: René has decided. Waits for: René.
+  decided with ai-soc and sigma (their STORECFG talk). Waits for: their agreed layout (asked 24 Oct).
+- **REVIEWS** — Review findings were left out under the scope rule. Done when: René has decided. Waits for: the main session, which decides each finding on its evidence.
 - **PURGE** — A purged entity answers "not found" at a time it answered before. Done when: René has decided. Waits
   for: René.
 - **AXIS** — The announced change of the default valid-time start for new stores is still held. Done when: René has
-  decided. Waits for: René.
+  decided. Waits for: sigma's and ai-soc's use of it (asked 24 Oct), then decided on that data.
 - **FOLDS** — Range lookups check the resolved version, not every version in the range (backlog 16). Done when: René
-  has decided. Waits for: René.
+  has decided. Waits for: sigma's and ai-soc's use of it (asked 24 Oct), then decided on that data.
 
 ## Later
 
@@ -156,7 +157,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   paged and timeline reads decode each version alone (`badgerstore_history_node.go:772`); rho's entity cache holds the
   current version only. Fix: a chain's decoded versions reuse the previous version's value when the bytes are equal (no
   API, no format change, a patch). Done when: a test shows n versions sharing one copy of an unchanged value
-  (allocation count), every history read path (badger, tiered, sharded, memory) covered. Order: René.
+  (allocation count), every history read path (badger, tiered, sharded, memory) covered. Order: by its measured heap
+  share (asked ai-soc and sigma, 24 Oct).
 - **IDPROPS** (sigma for ai-soc, 24 Oct; the larger form of CHAININTERN) — Immutable properties per (label, key), set
   at `AddNode`, refused by every update and cascade patch, stored once per node and attached to every version on read.
   A new door (a minor) and a format change (a one-way door). Waits for: CHAININTERN's measured saving, then René.
@@ -191,7 +193,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **NITS** — Small findings no consumer has hit (backlog 80-82, review nits). Waits for: a consumer hitting one.
 - **NOCOMPRESS** — Compression cannot be turned off, because "none" is the default value. Waits for: a consumer asking.
 - **STALECITE** — Some code comments cite todo sections that no longer exist. Waits for: the next change to that code.
-- **V5** — The v5 line is paused on the local branch `v5-takeover`. Waits for: René.
+- **V5** — The v5 line is paused on the local branch `v5-takeover`. Waits for: sigma's and ai-soc's use of it (asked 24 Oct), then decided on that data.
 - **BACKLOG** — 26 numbered items without a requester, listed in `HANDOVER.md` because code cites their numbers. Waits
   for: a consumer hitting one, or René.
 - **BADGERPANIC** — badger panics in its own goroutines (table open, compaction) when a table block's trailer is
