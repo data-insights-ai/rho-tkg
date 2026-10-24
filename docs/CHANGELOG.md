@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **OPENEXCISE** (sigma for ai-soc's BA run): `ExciseNodeValidity` / `ExciseRelValidity` (and their `GraphTx`,
+  `BatchBuilder` and `WithTx` twins) accept an open end, `b = 0`: the open tail `[a, open)` is excised. Nothing is
+  valid from `a` on at later pins, no resumption row is written and no row is ended in transaction time, so an
+  older belief does not read again and rows written earlier in the same transaction keep their range; pins taken
+  before the excise read as before. Current-state reads (`Get`, `ByLabel` without a valid instant) keep the current
+  row, as after a bounded excise. Before, an open tail had to be closed by an update (`tkg_valid_to`), which
+  restated the current row's properties with a newer stamp and tx-ended the old row: an older row with a later
+  start read again (write `[1000, open)`, write `[500, open)` over it, close at 501, excise `[500, 501)`:
+  `NodeAt(1500)` answered the first write), and a row written earlier in the same transaction was shadowed.
+  `tasks/evidence/OPENEXCISE/`.
+- **One-way door**: the open-ended void piece is a new row shape, row format 7 (`OpenVoidWireFormatVersion`), and a
+  store holding one is stamped with store marker 10 (`OpenVoidStoreFormatVersion`): a release before v4.76.0
+  refuses to open it (`ErrWireFormatVersionUnsupported`), and an export, change feed or replica row with it fails
+  closed there. Roll back only to v4.76.0 or later once an open tail has been excised. A bounded excise still writes
+  row format 5 and marker 6.
+
 ## [4.75.5] - 2026-10-24
 
 ### Fixed

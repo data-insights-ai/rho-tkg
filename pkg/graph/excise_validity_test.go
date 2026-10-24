@@ -133,7 +133,8 @@ func historyLen(t *testing.T, g *graphpkg.Graph, id types.NodeID) int {
 // before the excise; the void pieces are history rows of one tx instant, never
 // the current row; NodeAsOf answers a real row; the effective timeline has the
 // hole; the label and interval doors drop the node inside [a,b). Break-the-code
-// cases: inverted, empty, b = 0 and a = 0 ranges, a range where nothing is
+// cases: inverted, empty and a = 0 ranges (an open b is an open-tail excise
+// since v4.76.0, open_excise_test.go), a range where nothing is
 // valid (also the hole itself), an unknown and a deleted node — each refused
 // with nothing written.
 //
@@ -264,7 +265,6 @@ func TestExciseNodeValidity(t *testing.T) {
 			}{
 				{"inverted", closed.ID(), k(30), k(20), graphpkg.ErrInvalidTimeRange},
 				{"empty", closed.ID(), k(20), k(20), graphpkg.ErrInvalidTimeRange},
-				{"open tail b=0", closed.ID(), k(20), 0, graphpkg.ErrInvalidTimeRange},
 				{"a=0", closed.ID(), 0, k(20), graphpkg.ErrInvalidTimeRange},
 				// A negative a is a real start since sigma round 10 (TestRound10ExciseNegativeStart).
 				{"nothing valid", closed.ID(), k(60), k(70), graphpkg.ErrNoVersionValidAt},
@@ -515,9 +515,6 @@ func TestExciseNodeValidityTxAndBatch(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := bb.ExciseNodeValidity(x, k(20), 0); !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
-				t.Fatalf("batch queue b=0: %v", err)
-			}
 			if err := bb.ExciseNodeValidity(x, k(20), k(30)); err != nil {
 				t.Fatal(err)
 			}
@@ -695,7 +692,6 @@ func TestExciseRelValidity(t *testing.T) {
 				want error
 			}{
 				{"inverted", k(30), k(20), graphpkg.ErrInvalidTimeRange},
-				{"b=0", k(20), 0, graphpkg.ErrInvalidTimeRange},
 				{"nothing valid", k(60), k(70), graphpkg.ErrNoVersionValidAt},
 				{"the hole", k(21), k(29), graphpkg.ErrNoVersionValidAt},
 			} {

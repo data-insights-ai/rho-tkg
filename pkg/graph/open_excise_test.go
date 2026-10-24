@@ -212,3 +212,28 @@ func TestOpenExciseRaisesTheStoreMarker(t *testing.T) {
 		t.Fatalf("a marker-9 release opened a store holding an open void piece: %v", err)
 	}
 }
+
+// The batch twin queues an open-tail excise like the direct door.
+func TestOpenExciseBatch(t *testing.T) {
+	ctx := context.Background()
+	g := openExciseGraph(t, "badger")
+	n, err := g.Nodes().Add(ctx, []string{"Fact"}, map[string]any{"tkg_valid_from": types.Instant(100), "c": int64(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bb, err := g.Batch().New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bb.ExciseNodeValidity(n.ID(), 300, 0); err != nil {
+		t.Fatalf("batch queue of an open-tail excise: %v", err)
+	}
+	if _, err := bb.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for at, want := range map[types.Instant]string{200: "1", 300: "absent", 1 << 40: "absent"} {
+		if got := propAt(g, n.ID(), at); got != want {
+			t.Errorf("after the batch: NodeAt(%d) = %s, want %s", at, got, want)
+		}
+	}
+}
