@@ -7,8 +7,9 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-Order (René 24 Oct, "fixes first"): FLUSHPART release, then KEYSIZE + VALUESIZE (one fix at the write door), VERIFY +
-BADGERLOG, CLEARMETA, DROPALL + DISCARDCLOSE; then BADGER step 3.
+Order (René 24 Oct, "fixes first"): FLUSHPART together with KEYSIZE + VALUESIZE (one release: staging adds 9 bytes
+to a key and 1 to a value, so FLUSHPART alone breaks entries at badger's limits; red test on `flushpart`), then
+VERIFY + BADGERLOG, CLEARMETA, DROPALL + DISCARDCLOSE; then BADGER step 3.
 
 - **FLUSHPART** — A flush above one badger transaction (104,855 entries or about 10 MB at default options) was several
   transactions, so a crash kept a random part of it (`docs/badger.md` rule 1). Done when: merged and released as
@@ -26,7 +27,9 @@ BADGERLOG, CLEARMETA, DROPALL + DISCARDCLOSE; then BADGER step 3.
    (`tasks/evidence/FLUSHPART/mutations.txt`); `make ci-docker` green before the last review round.
 4. [x] Fable reviewed twice; all points fixed: a torn unsynced flush (power loss) is discarded at open, a synced one
    refuses and names the new `badger.DiscardStagedFlush`, which also drops the counters.
-5. [ ] `make ci-docker` on the final branch passed (2026-10-24, 900f0a78, coverage 87.4%); Fable's last verdict, then
+5. [ ] Found before release (24 Oct): a 64,995-byte key or a value of exactly `ValueLogFileSize` fits badger directly
+   but fails staged (red test `TestStagedFlushEntryAtBadgerLimits`); the write-door limits of KEYSIZE and VALUESIZE
+   must include the staging overhead and ship in the same release. `make ci-docker` passed before this (900f0a78); Fable's last verdict, then
    René's go, merge, tag v4.75.0, tell ai-soc and sigma, move the item to `docs/CHANGELOG.md`. Parked by René while
    the badger work runs.
 
