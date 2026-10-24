@@ -52,6 +52,9 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   sigma (24 Oct): every session-open fact closed in place and regrown from the same start makes such a chain, and the
   exposed row also reached its effective-timeline reads (`NodeEffectiveTimeline`, `NodesEffectiveByIDs`,
   `ForEachNodeEffectiveByLabelAndProperties`): a retracted fact read back as [93,233).
+  Red test on branch `samestart` (24 Oct, `tasks/evidence/SAMESTART/red.txt`): memory and badger both answer
+  `NodeAt(93..232)` with the superseded [92,233) row, the effective timeline holds [93,233), and after the excise
+  [93,233) returns.
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
