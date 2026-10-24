@@ -8,7 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct, "fixes first", then "the given order"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0
-(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); next CLEARMETA (in progress on `clearmeta`), then BADGER step 3 /
+(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); CLEARMETA shipped in v4.75.3; next CLEARSHARDS, then BADGER step 3 /
 SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -40,26 +40,17 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
 
-- **CLEARMETA** (confirmed by a real crash test on branch `clearmeta`, `tasks/evidence/CLEARMETA/red.txt`) — `Clear`
-  with the change log on (or once on) deletes every meta key except `last_lsn` before it drops the data; a process
-  that dies there reopens a store that looks empty while its rows remain, and the first new label collides with
-  their tokens (its query fails: "property-key token 1 not in registry"). Done when: `Clear` drops the data before
-  the meta that interprets it (the order is drafted), the test passes, released as a patch. Fixed on `clearmeta` (24 Oct): counters, then data, then the rest of the metadata; the crash test
-  green at all four steps and now requires a reopen and no row on disk for "empty"; two mutations caught. Next: the
-  patch gate, v4.75.3. sigma (24 Oct): reachable through
-  its daemon's admin reset with the change log on.
-
 - **CLEARSHARDS** (found 24 Oct in CLEARMETA's review; not yet tested) — tiered clears its reference shard, then each
   event shard, then its catalog and registry file; sharded clears each shard, then re-saves its catalog, which the
   first shard's `Clear` wiped. A crash between those steps may reopen shards that disagree (rows in an uncleared
   shard whose labels the cleared reference shard or registry no longer holds; a sharded store without its catalog).
   Done when: a child-process crash test at every step of both stores' `Clear` shows the old store or an empty one,
-  or the order is fixed until it does. Next after CLEARMETA, before SHARD (fixes first, René 24 Oct).
+  or the order is fixed until it does. Next, before SHARD (fixes first, René 24 Oct).
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
-  below are ticked and released. Waits for: CLEARMETA (René 24 Oct); then BADGER step 3
+  below are ticked and released. Waits for: CLEARSHARDS (fixes first, René 24 Oct); then BADGER step 3
   (per-tier badger options) leads in; step 1 with option (b), pre-creating `reference/` and `archive/` only for a new
   store (René 23 Oct), from branch `shard-step1`.
 

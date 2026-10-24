@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.75.3] - 2026-10-24
+
 ### Fixed
 
 - **CLEARMETA**: `Clear` (`Admin().Reset()`) of a badger store with the change log on, or once on, deleted every
