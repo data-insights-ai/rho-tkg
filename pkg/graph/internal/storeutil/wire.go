@@ -107,7 +107,14 @@ const StagedFlushStoreFormatVersion = 9
 
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = StagedFlushStoreFormatVersion
+const MaxReadableStoreFormatVersion = OpenVoidStoreFormatVersion
+
+// OpenVoidStoreFormatVersion is the store-level marker of a directory that
+// holds an open-ended void piece (OPENEXCISE, OpenVoidWireFormatVersion rows).
+// A binary that predates it must refuse the store at open rather than fail on
+// the first such row mid-operation. Raised only when such a row is written;
+// 4 to 9 are taken, so this is 10.
+const OpenVoidStoreFormatVersion = 10
 
 // writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every
@@ -180,9 +187,28 @@ const VoidWireFormatVersion = 5
 // a replica. Only such tombstones carry it; 5 is taken by void rows.
 const KeptValidToWireFormatVersion = 6
 
+// OpenVoidWireFormatVersion is the per-row format version of a void piece
+// with an open end (OPENEXCISE: an excise of [a, open) retracts an open tail).
+// The layout is v2's; a binary that predates it refuses such a row as a
+// malformed void piece (it allowed bounded pieces only) instead of with a
+// clear error, so the row carries 7 and fails closed there with
+// store.ErrWireFormatVersionUnsupported, also in an export, a change feed or a
+// replica. Bounded void pieces keep VoidWireFormatVersion; 6 is taken by kept
+// ValidTo tombstones.
+const OpenVoidWireFormatVersion = 7
+
 // maxReadableWireFormatVersion is the highest per-row format version every
 // decoder accepts. A variable only so a test can play an older reader.
-var maxReadableWireFormatVersion uint8 = KeptValidToWireFormatVersion
+var maxReadableWireFormatVersion uint8 = OpenVoidWireFormatVersion
+
+// IsOpenVoidEnd reports whether a void piece [vf, vt) is open-ended. The
+// codec reads no valid axis: types.InfiniteValidTo is the literal axis's open
+// end; 0 is the legacy axis's open end after a positive start, while a piece
+// [vf, 0) with vf < 0 is a bounded piece on the literal axis (and, after a
+// legacy -inf start, reads as open there as it always did).
+func IsOpenVoidEnd(vf, vt int64) bool {
+	return vt == math.MaxInt64 || (vt == 0 && vf > 0)
+}
 
 // SetMaxReadableWireFormatVersionForTest plays a reader that accepts row
 // format versions up to v and returns the restore. Test seam only.
@@ -193,17 +219,19 @@ func SetMaxReadableWireFormatVersionForTest(v uint8) (restore func()) {
 }
 
 // checkVoidWire rejects a void marker on a row that cannot be a void piece:
-// an excise appends bounded, non-empty, live rows only. The codec reads no
+// an excise appends non-empty, live rows, bounded unless the row carries
+// OpenVoidWireFormatVersion (an open tail, OPENEXCISE). The codec reads no
 // valid axis (round 11): an end of types.InfiniteValidTo is open on the
 // literal axis and refused; an end of 0 is the instant 0 there (a piece
 // [vf, 0) with vf < 0) and the open end on the legacy axis, where every
 // stored start is positive or -inf, so vf >= vt refuses it there except
 // below 0, which no legacy excise writes.
-func checkVoidWire(what string, void bool, vf, vt, deletedAt int64, retracted bool) error {
+func checkVoidWire(what string, void bool, vf, vt, deletedAt int64, retracted bool, fv uint8) error {
 	if !void {
 		return nil
 	}
-	if vt == math.MaxInt64 || vf >= vt || deletedAt != 0 || retracted {
+	open := fv >= OpenVoidWireFormatVersion && IsOpenVoidEnd(vf, vt)
+	if (!open && (vt == math.MaxInt64 || vf >= vt)) || deletedAt != 0 || retracted {
 		return fmt.Errorf("%s: void marker on a row valid [%d, %d) deleted_at %d retracted %v", what, vf, vt, deletedAt, retracted)
 	}
 	return nil
@@ -219,12 +247,16 @@ func checkRowFormatVersion(what string, fv uint8) error {
 }
 
 // emittedRowFormatVersion is the fv an encoder writes: the highest version
-// a feature of the row needs — a tombstone that kept its ValidTo
+// a feature of the row needs — an open-ended void piece
+// OpenVoidWireFormatVersion, a tombstone that kept its ValidTo
 // KeptValidToWireFormatVersion, a void piece VoidWireFormatVersion, a row with
 // a binary integrity hash BinaryHashWireFormatVersion, a retraction tombstone
 // RetractedWireFormatVersion (all v2 layout) — else the version it carries,
 // so its bytes are unchanged.
-func emittedRowFormatVersion(fv uint8, retracted, binaryHash, void, keptValidTo bool) uint8 {
+func emittedRowFormatVersion(fv uint8, retracted, binaryHash, void, keptValidTo, openVoid bool) uint8 {
+	if openVoid {
+		fv = max(fv, OpenVoidWireFormatVersion)
+	}
 	if keptValidTo {
 		fv = max(fv, KeptValidToWireFormatVersion)
 	}
@@ -861,7 +893,7 @@ func validateNodeWireFields(w NodeWire) error {
 	if w.DeleteKeptValidTo && w.ValidTo != 0 && w.ValidTo < w.DeletedAt {
 		return fmt.Errorf("node wire: kept-valid-to marker on a close %d before deleted_at %d", w.ValidTo, w.DeletedAt)
 	}
-	if err := checkVoidWire("node wire", w.Void, w.ValidFrom, w.ValidTo, w.DeletedAt, w.Retracted); err != nil {
+	if err := checkVoidWire("node wire", w.Void, w.ValidFrom, w.ValidTo, w.DeletedAt, w.Retracted, w.FormatVersion); err != nil {
 		return err
 	}
 	return nil
@@ -935,7 +967,7 @@ func validateRelWireFields(w RelWire) error {
 	if w.DeleteKeptValidTo && w.ValidTo != 0 && w.ValidTo < w.DeletedAt {
 		return fmt.Errorf("relationship wire: kept-valid-to marker on a close %d before deleted_at %d", w.ValidTo, w.DeletedAt)
 	}
-	if err := checkVoidWire("rel wire", w.Void, w.ValidFrom, w.ValidTo, w.DeletedAt, w.Retracted); err != nil {
+	if err := checkVoidWire("rel wire", w.Void, w.ValidFrom, w.ValidTo, w.DeletedAt, w.Retracted, w.FormatVersion); err != nil {
 		return err
 	}
 	return nil

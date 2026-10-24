@@ -14,3 +14,16 @@ open_excise_test.go:149: open-ended relationship excise refused: graph: invalid 
 --- FAIL: TestOpenExciseRel (0.07s)
 --- FAIL: TestOpenExciseRel/memory (0.00s)
 --- FAIL: TestOpenExciseRel/badger (0.07s)
+
+Fix (24 Oct): the excise doors accept an open end (validateExciseInterval, checkCascadeInterval): the cascade writes
+void pieces over [a, open), no resumption, no row ended in transaction time. All three red tests green.
+Found on the way: the oracle harness, given open excises (b = 0 in a quarter of its excises), failed 75 of 200 seeds:
+History refused the row ("void marker on a row valid [2282, 0)"); the decoder allowed bounded void rows only. An
+open void row is a new row shape: per-row format version 7 (OpenVoidWireFormatVersion) and store marker 10
+(OpenVoidStoreFormatVersion), as void rows got 5 and 6. A bounded excise keeps 5 and 6. Harness green afterwards.
+Current-state reads (Get, ByLabel without a valid instant) keep the current row, as after a bounded excise of a
+node's whole validity (checked: that keeps it too).
+Mutations, each caught:
+  M1 no store marker 10:        TestOpenExciseRaisesTheStoreMarker (a marker-9 release opened the store)
+  M2 encoder writes fv 5:       TestOpenVoidRow_FormatVersion7
+  M3 decoder ignores fv:        TestOpenVoidRow_FormatVersion7 (an open void piece at fv 5 was accepted)

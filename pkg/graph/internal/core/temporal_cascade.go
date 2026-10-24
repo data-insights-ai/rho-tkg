@@ -1259,14 +1259,11 @@ func applyRelProvenance(ig *types.RelIntegrity, prov *updateProvenance) {
 
 // checkCascadeInterval is the cascade kernels' interval check, on the
 // graph's valid axis a (round 11): newVF must be a claimed start (the legacy
-// axis's 0 is "unset"), an excise needs a bounded end, and a bounded end must
-// follow the start.
+// axis's 0 is "unset") and a bounded end must follow it; an open end is the
+// whole tail from newVF, an excise's included (OPENEXCISE).
 func checkCascadeInterval(a types.ValidAxis, newVF, newVT types.Instant, void bool) error {
 	if !a.Claimed(newVF) {
 		return fmt.Errorf("%w: cascade requires a claimed validFrom (non-zero on the legacy valid axis)", ErrInvalidTimeRange)
-	}
-	if void && a.Open(newVT) {
-		return fmt.Errorf("%w: excise requires a bounded end", ErrInvalidTimeRange)
 	}
 	if !a.Open(newVT) && newVF >= newVT {
 		return fmt.Errorf("%w: validFrom %d >= validTo %d", ErrInvalidTimeRange, newVF, newVT)

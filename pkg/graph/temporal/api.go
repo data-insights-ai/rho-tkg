@@ -1008,8 +1008,16 @@ func (a *API) SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, v
 // current slot and never answer NodeAsOf. A later SetNodeVersionInterval over
 // [a, b) fills the hole again.
 //
-// Refusals, nothing written: b == 0 (an open tail is CloseVersion's), a == 0
-// or a >= b (ErrInvalidTimeRange; a negative a, types.UnboundedValidFrom
+// b == 0 (the valid axis's open end) excises the open tail [a, open) (v4.76.0,
+// OPENEXCISE): nothing is valid from a on at later pins, no resumption is
+// written and no row is ended in transaction time, so older beliefs do not
+// read again; current-state reads (Get, ByLabel without a valid instant) keep
+// the current row, as after a bounded excise. Its void piece is a new row
+// shape (row format 7, store marker 10: a release before v4.76.0 refuses the
+// store).
+//
+// Refusals, nothing written: a == 0 or, with a bounded b, a >= b
+// (ErrInvalidTimeRange; a negative a, types.UnboundedValidFrom
 // included, is a real start since sigma round 10); no version valid anywhere in [a, b)
 // (ErrNoVersionValidAt); an unknown node (ErrNodeNotFound); a hard-deleted one
 // (ErrEntityDeleted). Twins with the same rules: GraphTx.ExciseNodeValidity

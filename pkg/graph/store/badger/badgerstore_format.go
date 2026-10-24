@@ -103,12 +103,15 @@ func (bs *Store) raiseFormatMarkerPendingLocked(v uint16) {
 	bs.pending[string(storepkg.WireFormatVersionKey)] = writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)}
 }
 
-// historyRowMarker is the marker a history row needs: VoidStoreFormatVersion
-// for an excise's void piece (backlog 64), KeptValidToStoreFormatVersion for a
-// delete tombstone that kept its believed ValidTo (backlogs 4, 7, 25), else
-// none.
+// historyRowMarker is the marker a history row needs:
+// OpenVoidStoreFormatVersion for an open-ended void piece (OPENEXCISE),
+// VoidStoreFormatVersion for an excise's void piece (backlog 64),
+// KeptValidToStoreFormatVersion for a delete tombstone that kept its believed
+// ValidTo (backlogs 4, 7, 25), else none.
 func historyRowMarker(tm *types.TemporalMetadata) uint16 {
 	switch {
+	case storepkg.IsVoid(tm) && storepkg.IsOpenVoidEnd(int64(tm.ValidFrom), int64(tm.ValidTo)):
+		return storepkg.OpenVoidStoreFormatVersion
 	case tm != nil && tm.DeleteKeptValidTo:
 		return storepkg.KeptValidToStoreFormatVersion
 	case storepkg.IsVoid(tm):

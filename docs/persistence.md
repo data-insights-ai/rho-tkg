@@ -142,6 +142,7 @@ Purpose: an older binary must refuse data it cannot read, instead of misdecoding
 | 7 | v4.56.0 on, only for an `UntimedUnbounded` or `UntimedWholeAxis` store | the store's untimed valid-start mode is `UntimedUnbounded` or (round 11, key byte 3) `UntimedWholeAxis`, or a conversion to `UntimedUnbounded` started (backlog 73; an earlier v4.56.0 or later reader refuses byte 3 at open, `ErrCorruptWire`); raised on the shard holding the MetaKV key (badger; tiered reference shard; sharded anchor) in one transaction with the key `untimed_valid_start` (`MetaSetDurableRaising`) | unchanged (an untimed start is an ordinary `ValidFrom`; an `UntimedWholeAxis` row stores literal instants, the open end `math.MaxInt64`) |
 | 8 | read since v4.62.0; written by no release yet | the store holds a delete tombstone that kept its believed `ValidTo` (`DeleteKeptValidTo`, key `dk`; backlogs 4, 7, 25): a close at or after the delete, or the open end of a row starting at or after it | 6 for that tombstone |
 | 9 | v4.75.0 on, only after a first staged flush | the store has (or had) a flush larger than one badger transaction, staged under `0x0E` with the marker `flush_stage` (FLUSHPART); raised in the marker's transaction | unchanged |
+| 10 | v4.76.0 on, only after a first open-ended excise | the store holds an open-ended void row (`ExciseNodeValidity` / `ExciseRelValidity` with `b = 0`, OPENEXCISE) | 7 for that void row |
 
 One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features keeps its marker (3 or 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: "Row wire format" below; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
 
@@ -264,9 +265,10 @@ Row format versions (`fv`; the levels and the store marker: "Format versions and
 | 4 | `BinaryHashWireFormatVersion` | `h`, `ph`, `fnh`, `tnh` as 32 raw bytes (msgpack bin, 34B) instead of 64 hex characters (66B); decoders read both |
 | 5 | `VoidWireFormatVersion` | the row carries `vd` (an excise void piece) |
 | 6 | `KeptValidToWireFormatVersion` | the row carries `dk`; read since v4.62.0, written by no release yet |
+| 7 | `OpenVoidWireFormatVersion` | the row carries `vd` with an open end (an excise of `[a, open)`, v4.76.0); 5 and below refuse an open void row |
 
 A row's `fv` is the max over its features; every decoder (checked, selection-scope partial and its scanner,
-delta-history `Meta`, import, change feed, replica apply) fails closed above 6. Checked validation
+delta-history `Meta`, import, change feed, replica apply) fails closed above 7. Checked validation
 (`ValidateNodeWire` / `ValidateRelWire`) refuses `rx` or `dk` without `da`, `dk` on a close before `da`, and `vd`
 on a row that cannot be a void piece (`checkVoidWire`). Retraction tombstones written by v4.49.1 (`fv=2` plus `rx`)
 still decode as retractions, but a release reading `fv <= 2` skips the key and answers a plain delete; upgrade every

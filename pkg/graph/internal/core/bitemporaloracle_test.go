@@ -948,6 +948,9 @@ func (w *world) exciseNode() {
 	id := alive[w.rng.IntN(len(alive))]
 	a := w.cascadeVF()
 	b := a + w.width()
+	if w.rng.IntN(4) == 0 {
+		b = 0 // an open tail (OPENEXCISE)
+	}
 	err := w.g.Temporal.ExciseNodeValidity(w.ctx, id, a, b)
 	w.record(fmt.Sprintf("exciseNode(%v,[%d,%d))", id, a, b), err)
 }
@@ -960,6 +963,9 @@ func (w *world) exciseRel() {
 	id := alive[w.rng.IntN(len(alive))]
 	a := w.cascadeVF()
 	b := a + w.width()
+	if w.rng.IntN(4) == 0 {
+		b = 0 // an open tail (OPENEXCISE)
+	}
 	err := w.g.Temporal.ExciseRelValidity(w.ctx, id, a, b)
 	w.record(fmt.Sprintf("exciseRel(%v,[%d,%d))", id, a, b), err)
 }

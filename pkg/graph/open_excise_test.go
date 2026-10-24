@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -160,5 +163,52 @@ func TestOpenExciseRel(t *testing.T) {
 				t.Errorf("a pin before the excise: RelAtTx(1000): %v, want the relationship", err)
 			}
 		})
+	}
+}
+
+// TestOpenExciseRaisesTheStoreMarker: the open void piece is a new row shape,
+// so a badger store holding one carries OpenVoidStoreFormatVersion and a
+// release reading markers up to 9 refuses to open it (the one-way door), while
+// a store that only had bounded excises stays readable there. Catches a marker
+// left at 6 (an older binary opens the store and fails on the row
+// mid-operation) and one raised for every excise.
+func TestOpenExciseRaisesTheStoreMarker(t *testing.T) {
+	ctx := context.Background()
+	write := func(open bool) string {
+		dir := t.TempDir()
+		g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 3, BadgerDir: dir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err := g.Nodes().Add(ctx, []string{"Fact"}, map[string]any{"tkg_valid_from": types.Instant(100), "c": int64(1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := types.Instant(300)
+		if open {
+			b = 0
+		}
+		if err := g.Temporal().ExciseNodeValidity(ctx, n.ID(), 200, b); err != nil {
+			t.Fatal(err)
+		}
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	olderOpens := func(dir string) error {
+		restore := badger.SetMaxReadableStoreFormatVersionForTest(storeutil.StagedFlushStoreFormatVersion)
+		defer restore()
+		st, err := badger.New(badger.Config{Dir: dir})
+		if err != nil {
+			return err
+		}
+		return st.Close()
+	}
+	if err := olderOpens(write(false)); err != nil {
+		t.Fatalf("a store with a bounded excise only must stay readable by a marker-9 release: %v", err)
+	}
+	if err := olderOpens(write(true)); !errors.Is(err, storepkg.ErrWireFormatVersionUnsupported) {
+		t.Fatalf("a marker-9 release opened a store holding an open void piece: %v", err)
 	}
 }

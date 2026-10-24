@@ -23,17 +23,15 @@ import (
 // newer belief and fills it again.
 
 // validateExciseInterval is the interval check of the excise doors, on the
-// graph's valid axis ax: a non-empty bounded range (b open, an open tail, is
-// CloseVersion's job). A negative bound is a real one
+// graph's valid axis ax: a claimed start a and an end b after it, or b open
+// (OPENEXCISE: [a, open) ends validity from a on, an open tail retracted
+// without restating the current row as a close would). A negative bound is a real one
 // (types.UnboundedValidFrom included, the rows of an UntimedUnbounded store
 // start there); on the legacy axis 0 is refused, the instant no stored row
 // can start a piece at (ValidFrom 0 is unset), on the literal axis
 // (UntimedWholeAxis, round 11) it is an ordinary bound.
 func validateExciseInterval(ax types.ValidAxis, a, b types.Instant) error {
-	if ax.Open(b) {
-		return fmt.Errorf("%w: excise needs a bounded end (use CloseVersion for an open tail)", ErrInvalidTimeRange)
-	}
-	if !ax.Claimed(a) || a >= b {
+	if !ax.Claimed(a) || (!ax.Open(b) && a >= b) {
 		return fmt.Errorf("%w: excise range [%d, %d) is empty or inverted", ErrInvalidTimeRange, a, b)
 	}
 	return nil
@@ -45,8 +43,8 @@ func validateExciseInterval(ax types.ValidAxis, a, b types.Instant) error {
 // current version (open or closed) and on historical ones, also across
 // several. Append-only and atomic under the node's entity lock: every row it
 // appends (the void pieces, the resumption from b) carries one transaction
-// instant. Refusals, nothing written: a = 0, b = 0, a >= b
-// (ErrInvalidTimeRange); no version valid anywhere in [a, b)
+// instant. An open b excises the tail [a, open): no resumption (OPENEXCISE).
+// Refusals, nothing written: a = 0, a >= a bounded b (ErrInvalidTimeRange); no version valid anywhere in [a, b)
 // (ErrNoVersionValidAt); an unknown node (ErrNodeNotFound); a hard-deleted one
 // (ErrEntityDeleted).
 func (t *TempOps) ExciseNodeValidity(ctx context.Context, id types.NodeID, a, b types.Instant) error {
