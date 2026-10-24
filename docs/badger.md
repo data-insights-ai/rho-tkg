@@ -23,19 +23,21 @@ Dir/
 
 - **An LSM tree.** A write goes to the active memtable (a skiplist in one preallocated arena) and its WAL. A full
   memtable (skiplist or WAL at `MemTableSize`) becomes immutable and a background flusher writes it as an L0 table.
-  Compactors merge tables down levels L1..L6.
+  Compactors merge tables down levels L1..L6 (`memtable.go:179-185` WAL first, then the skiplist; `db.go:1068-1102`).
 - **Values live in the LSM, not the value log.** A value of at least `ValueThreshold` goes to the value log and the LSM
   holds a pointer; smaller values are inline (`structs.go:147-162`). The default and maximum threshold is 1 MB
   (`options.go:201`), so every rho row under 1 MB is inline (open-image chunks are 512 KB). rho's default limits allow
   a row of up to about 64 MB (1,000 properties of 64 KB, `core.go:795-797`): a row of 1 MB or more goes to the value
   log. Every single row fits one transaction (section 2, "One entry always fits").
-- **Versions.** Every key carries a commit timestamp. A read sees the newest version at or below its read timestamp.
+- **Versions.** Every key carries a commit timestamp (`y/y.go:113-121`). A read sees the newest version at or below its
+  read timestamp (`iterator.go:629`).
 - **A cleanly closed directory** holds `MANIFEST`, `KEYREGISTRY`, `DISCARD`, the `.sst` files and a tiny `.vlog`: no
   `.mem` (Close flushes the memtable) and no `LOCK`. A `.mem` file means an unclean close; the next open replays it into
   a full memtable arena (`db.go:325`, `memtable.go:99`), read-only or not. A WAL torn at its end is cut after the last
   complete entry by a writable open, silently; a read-only open refuses it with `ErrTruncateNeeded`
   (`memtable.go:209-212`). A leftover `LOCK` file is only a stale pid file: whether the directory is open is told by its
-  flock, not by the file.
+  flock on the directory, exclusive when writable, shared when read-only; only a writable open writes the pid file
+  (`dir_unix.go:35-63`).
 
 ## 2. Writes and durability
 
@@ -83,7 +85,7 @@ Dir/
   `db.Sync()` (`db.go:673`) syncs only the ACTIVE WAL and the value log: rows in a retired memtable that is not yet
   flushed are not covered, so without `SyncWrites` a power loss can lose them even after `Sync`. L0 tables are msynced
   when written (`table.go:258`) and the manifest is fsynced per change.
-- **Deletes.** `Delete` writes a tombstone. `DropPrefix` / `DropAll` block every write (a concurrent write gets
+- **Deletes.** `Delete` writes a tombstone (`txn.go:427`). `DropPrefix` / `DropAll` block every write (a concurrent write gets
   `ErrBlockedWrites`), flush the memtables, stop compactions and rewrite every table holding the prefix
   (`db.go:1662-1813`): a store-wide pause.
 
@@ -105,16 +107,18 @@ Dir/
   `Get`. Profiled per seek: ~1,000 B key and value copied into the new item (`SafeCopy`), ~1,000 B its value buffer
   (`Slice.Resize`), ~180 B the item, ~110 B table-block positioning.
 - **`Prefix` prunes tables** by their smallest and biggest keys (`iterator.go:332-376`); without it the iterator merges
-  every table of every level. The bloom filter is used only by key iterators.
+  every table of every level. Bloom filters are checked by a point `Get` per table (`level_handler.go:270-273`) and by a
+  key iterator (`iterator.go:348`, `:409`), not by a prefix iterator. (An earlier version of this file said "only by
+  key iterators": false.)
 - **`PrefetchValues`** (default true, 100 items) starts one goroutine per item to copy its value (`iterator.go:696-715`).
   With inline values that is pure overhead: measured 2x the time of a walk without it.
-- **Old versions.** A non-`AllVersions` iterator still walks every stored version of a key and skips the older ones;
-  versions stay until compaction drops them (section 4).
+- **Old versions.** A non-`AllVersions` iterator still walks every stored version of a key and skips the older ones
+  (`iterator.go:620-660`); versions stay until compaction drops them (section 4).
 - **Blocks.** The block cache (ristretto, `BlockCacheSize`) holds decompressed blocks. A miss reads the block from the
   mmapped table and Snappy-decodes it into a fresh buffer (`table.go:527-568`, `785-806`). Table indexes and bloom
   filters are read from the mmapped table (page cache, zero-copy, `table.go:455-458`) unless encryption is on, which
   requires `IndexCacheSize`. Block checksums are checked only under `ChecksumVerificationMode` `OnBlockRead` /
-  `OnTableAndBlockRead`.
+  `OnTableAndBlockRead` (`table.go:603`; at table open under `OnTableRead` / `OnTableAndBlockRead`, `table.go:301`).
 
 ## 4. Compaction and space
 
@@ -187,10 +191,12 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
 2. **Read by walking, not by point gets, where IDs come in order.** A `Get` costs about 4x the row and a read
    transaction; a forward walk costs almost nothing. The read snapshot walks; entity point reads on a cache miss,
    history version and anchor reads, and committed-stamp reads still `Get`. Gap: GETWALK.
-3. **No `PrefetchValues`.** Values are inline, so prefetching only adds a goroutine per row. 13 iterators set it,
-   including the full node scan at open when there is no open image. Gap: PREFETCH.
+3. **No `PrefetchValues`.** Values are inline, so prefetching only adds a goroutine per row. 14 assignments turn it on
+   over about 15 iterators, plus one by default, including the full node scan at open when there is no open image
+   (`tasks/evidence/USAGE/usage-map.txt`). Gap: PREFETCH.
 4. **Every iterator gets the narrowest `Prefix`**, at least its keyspace byte, so other keyspaces' tables are not
-   merged. The read-snapshot and scan-snapshot walkers have none. Gap: ITERPREFIX.
+   merged. 49 of rho's 71 iterators set none, the read-snapshot and scan-snapshot walkers included
+   (`tasks/evidence/USAGE/usage-map.txt`). Gap: ITERPREFIX.
 5. **Open read-only when no write follows.** A writable open of a cleanly closed directory costs 83 MB and 6 more
    goroutines than a read-only one; cold shards open writable for reads. A read-only handle must be closed before a
    writable open of the same directory (the flock), and a shard left with `.mem` files needs one writable open to
@@ -363,7 +369,8 @@ Badger features rho does not use yet that fit a rho need, and one risk. Each is 
    flush's parts.
 3. **Per-shard caches (CACHE)**: `CacheMaxCost` resizes an open DB's block cache, so the tiered store can share one
    budget across its open shards; `BlockCacheMetrics` shows the hit rate.
-4. **Point reads (GETWALK)**: `NewKeyIterator` checks the bloom filter on the exact key before it picks tables.
+4. **Point reads (GETWALK)**: a forward walk over sorted IDs replaces per-ID `Get`s; `NewKeyIterator` has no bloom
+   advantage over `Get` (both check the filter per table, section 3).
 5. **Iterator pruning (ITERPREFIX, PREFETCH)**: `IteratorOptions.Prefix` skips tables outside the prefix;
    `PrefetchValues` false avoids a goroutine per item.
 6. **Admin views**: `Tables()`, `Levels()`, `EstimateSize(prefix)` (table-granular), `Item.EstimatedSize()` (no

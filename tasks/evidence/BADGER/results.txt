@@ -31,3 +31,9 @@ Batch API, batch_test.go.txt (2026-10-24, MemTableSize 8 MB = rho's minimum unle
   B9 exit after 64000 entries (SyncWrites true): 52420 survive = 4 whole parts, a prefix
   B9 exit after 90000 entries (SyncWrites false): 78630 survive = 6 whole parts, a prefix
   B9 exit after 90000 entries (SyncWrites true): 78630 survive = 6 whole parts, a prefix
+
+Claim inventory of docs/badger.md sections 1-7 (2026-10-24): 112 sentences; 41 cited a source line, 10 a measurement,
+61 nothing. Of the 61: ~12 were backed elsewhere in the same bullet, ~10 are rho facts or rules, ~25 badger facts
+without a line. All ~25 checked in v4.9.2's source and cited; all held except one: "the bloom filter is used only by
+key iterators" was false (a point Get checks it per table, level_handler.go:270-273). Two rho counts were stale
+(prefetch sites, iterators without Prefix) and now cite tasks/evidence/USAGE/usage-map.txt.

@@ -30,7 +30,7 @@ Each item: one sentence, then when it is done and what it waits for.
   review: a map of every badger call by kind (writes, point reads, iterators and their options, sync, drops, GC, open
   options), and each finding checked in the code and, where it can fail, by a test. Done when: the map is in
   `tasks/evidence/USAGE/`, each finding is confirmed or refuted with its evidence, and the todo items say so.
-- **BADGERDOC** (René 24 Oct) — René does not trust rho's understanding of badger: a claim that one row above about
+- **BADGERDOC** (René 24 Oct; claims of sections 1-7 checked: one more false claim fixed, the bloom filter) — René does not trust rho's understanding of badger: a claim that one row above about
   10 MB cannot commit stood for a day and was false. Done when: every claim in `docs/badger.md` cites badger's source
   or a measurement, every claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it, and Fable
   has reviewed the result. The batch API is done (`batch_test.go.txt`, B1-B9).
@@ -137,8 +137,7 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   Done when: `NodeProperty` and `RelProperty` answer `tkg_id`. Waits for: FLUSHPART and SHARD.
 
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
-  (about 4x the row each; 12 sites) where a forward walk costs almost nothing (rule 2); a single-key read can use
-  `NewKeyIterator`. Done when: the hot paths walk, measured.
+  (about 4x the row each; 45 `Txn.Get` sites) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
 - **PREFETCH** — 14 iterators prefetch values (13 explicitly, plus `badgerstore_planner_stats_deferred.go:137` by
   default), one goroutine per row for values that are almost always inline (rule 3). Done when: none does, the open-time node scan measured.
 - **ITERPREFIX** — 49 of rho's 71 iterators seek a prefix without setting `IteratorOptions.Prefix`, so badger cannot
