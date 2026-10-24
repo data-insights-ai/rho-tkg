@@ -59,7 +59,20 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   Fixed on `samestart` (24 Oct): the fast path runs only when rows sharing a start tile; node and relationship tests
   green on memory and badger. The oracle harness had mirrored the engine's dispatch (so it shared the blind spot)
   and had no close in place: it now resolves by the reference rule only and gains close and regrow ops; it fails the
-  old code. Next: the full suite, docs, the patch gate, v4.75.5.
+  old code. The effective-timeline head overlay now applies the same rule (its long-tier test failed under -race
+  after the resolver change; fixed with one shared helper). Next: the full suite, docs, the patch gate, v4.75.5.
+- **OPENEXCISE** (sigma for ai-soc, 24 Oct; blocks ai-soc's BA run: on k10241303 every history check fails, an
+  extension reads as the earlier version at its pin) — sigma ends an open tail by closing the current row
+  (`UpdateNode(tkg_valid_to: a)`), which rho writes as a new row restating the current properties over [start, a)
+  and a tx-end of the old row. (A) An older row with a later start, out-believed only by the now tx-ended open row,
+  reads again: write [1000,∞) c=2, write [500,∞) c=1, close to 501, excise [500,501): `NodeAt(1500)` = c=2.
+  (B) The restated close row is stamped after rows written earlier in the same transaction and shadows them.
+  Request: a door that ends validity from a on, open-ended, without restating and without tx-ending rows so older
+  beliefs reappear: `ExciseNodeValidity(id, a, open)` (today refused, `temporal_cascade.go:1268`; a bounded excise
+  to MaxInt64-1 leaves a resumption row). sigma's randomized probe fails 5-10% of seeds, every failure ending in an
+  open-tail excise. Order (decided 24 Oct from the data): after SAMESTART's release, before SHARD: a consumer's
+  correctness on its full run, and fixes come first. Done when: (A) and (B) are red tests, the door exists for nodes
+  and relationships in every backend, released (a widened door: a minor).
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
