@@ -12,7 +12,7 @@ import (
 )
 
 // CLEARSHARDS. A process dies inside a sharded Clear after one of its stages:
-// each shard's Clear, then the catalog. The anchor (shard 0) holds the
+// the pending marker, each shard's Clear (the anchor last), the catalog. The anchor (shard 0) holds the
 // property-key registry every shard's rows decode with. The reopened store
 // must open and hold the old rows or none, and a property key first written
 // after the reopen must read back as itself. The child runs the real Clear and
@@ -26,11 +26,11 @@ const (
 )
 
 func scStages() []string {
-	var out []string
-	for i := 0; i < scSlots; i++ {
+	out := []string{"pending marker"}
+	for i := 1; i < scSlots; i++ {
 		out = append(out, fmt.Sprintf("shard %d", i))
 	}
-	return append(out, "catalog")
+	return append(out, "shard 0", "catalog") // the anchor last
 }
 
 // scOpen opens the store the way graph.New does: the property-key registry is

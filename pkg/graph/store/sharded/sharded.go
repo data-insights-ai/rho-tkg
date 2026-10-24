@@ -22,6 +22,7 @@ package sharded
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -339,6 +340,10 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	s.opened.Store(true)
+	if err := s.finishInterruptedClear(); err != nil {
+		_ = s.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -542,6 +547,23 @@ func (s *Store) closeOpenShards() {
 // Clear truncates every shard (data, indexes, history, counters) and re-persists
 // the slot catalog on the anchor. Registries are a graph-layer concern and are
 // not part of Clear.
+// clearPendingKey marks a Clear in progress on the anchor (see Clear).
+const clearPendingKey = "sharded_clear_pending"
+
+// finishInterruptedClear runs a Clear whose process died before it finished:
+// New calls it once every shard is open.
+func (s *Store) finishInterruptedClear() error {
+	pending, err := s.anchor().MetaGet(clearPendingKey)
+	if err != nil {
+		return fmt.Errorf("graph: sharded: read clear marker: %w", err)
+	}
+	if pending == nil {
+		return nil
+	}
+	slog.Warn("graph: sharded: finishing a Clear interrupted by a crash")
+	return s.Clear()
+}
+
 // clearStepFaultForTest (tests only) runs after each durable stage of Clear,
 // named by stage; a test may stop the process there.
 var clearStepFaultForTest func(stage string) error
@@ -557,9 +579,26 @@ func (s *Store) Clear() error {
 	if err := s.checkOpen(); err != nil {
 		return err
 	}
+	// CLEARSHARDS. The anchor (shard 0) holds the registries every shard's
+	// rows decode with, so it is cleared last. A Clear spans several badger
+	// stores and cannot commit at once: the durable pending marker, written
+	// first, makes an open that finds it finish the Clear
+	// (finishInterruptedClear). The anchor's own Clear removes the marker with
+	// the rest of its metadata.
+	if err := s.anchor().MetaSetDurable(clearPendingKey, []byte{1}); err != nil {
+		return fmt.Errorf("graph: sharded: clear: mark pending: %w", err)
+	}
+	if err := clearStepFault("pending marker"); err != nil {
+		return err
+	}
+	order := make([]int, 0, len(s.shards))
+	for i := 1; i < len(s.shards); i++ {
+		order = append(order, i)
+	}
+	order = append(order, 0)
 	var errs []error
-	for i, shard := range s.shards {
-		if err := shard.Clear(); err != nil {
+	for _, i := range order {
+		if err := s.shards[i].Clear(); err != nil {
 			errs = append(errs, fmt.Errorf("graph: sharded: clear shard %d: %w", i, err))
 		}
 		if err := clearStepFault(fmt.Sprintf("shard %d", i)); err != nil {
