@@ -91,3 +91,23 @@ Size limits through rho's own write path (size_test.go.txt, run as pkg/graph/*_t
   VALUESIZE defaults: Add of a 1.4 MB row: err=<nil>; Flush: err=<nil>
   => rho acknowledges the write, every later flush fails on the same entry (the batch is requeued), so nothing
      written afterwards reaches disk: a crash or Close loses it all.
+
+Damage on disk, through rho's store (vlog_test.go.txt, 2026-10-24, main, default options):
+  T1 read after one flipped byte: error: graph: unmarshal node: graph: corrupt wire data: truncated msgpack while measuring depth; value-log file 1440486 bytes before the open, 20 after; badger logged: ["ERROR Unable to read: Key:
+  T2 logger=false: read error: graph: unmarshal node: graph: corrupt wire data: truncated msgpack while measuring depth; badger's report: ""
+  T2 logger=true: read error: graph: unmarshal node: graph: corrupt wire data: truncated msgpack while measuring depth; badger's report: "ERROR Unable to read: Key: [1 0 0 0 0 0 0 16 146], Version : 2, meta: 66, userMeta: 0 Error:
+  T0 an undamaged value log (1440486 bytes): the row reads back, p12 60000 bytes
+  T1b (2 value-log files): the read succeeded; p12 carries the flipped byte: true; badger logged 0 lines
+  a flipped byte in an older value-log file reached the caller as data, without any error
+  T3 flip at 5% of a 3082-byte table: PANIC Unclosed iterator at time of Txn.Discard.
+  T3 flip at 10% of a 3086-byte table: 2 of 50 reads failed, 0 returned wrong data
+  T3 flip at 20% of a 3082-byte table: PANIC Unclosed iterator at time of Txn.Discard.
+  T3 flip at 30%: open refused: graph: load indexes: graph: invalid store mutation: node counter 50 does not match 13 live rows
+  T3 flip at 40%: open refused: graph: load indexes: graph: invalid store mutation: node counter 50 does not match 26 live rows
+  T3 flip at 50%: open refused: graph: load indexes: graph: invalid store mutation: node counter 50 does not match 39 live rows
+  T3 flip at 60%: open refused: graph: load indexes: graph: invalid store mutation: node counter 50 does not match 39 live rows
+  T3 outcomes over 7 positions: map[badger panicked:2 open refused:4 reads failed with an error:1]
+  Source: a writable open walks only the NEWEST value-log file and truncates it at the first bad CRC, silently
+  (value.go:603-617), then starts a new file (:619-622); values are read without a checksum unless
+  VerifyValueChecksum (value.go:950-962); table blocks are checked only under ChecksumVerificationMode OnBlockRead
+  (table.go:603).

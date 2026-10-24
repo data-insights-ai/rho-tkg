@@ -45,7 +45,8 @@ Each item: one sentence, then when it is done and what it waits for.
    passed against the source (uncited rows are doc comments of features rho does not use).
 2. [ ] rho's current badger use, fully verified in tests: the call map and the 9-category analysis exist
    (`tasks/evidence/USAGE/`); confirmed by real tests (24 Oct): CLEARMETA (a crash inside `Clear`), KEYSIZE and
-   VALUESIZE (one oversized entry blocks all later persistence); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
+   VALUESIZE (one oversized entry blocks all later persistence), VERIFY (silent corruption, panics, silent
+   truncation) and BADGERLOG; each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence, then its fix.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
@@ -111,9 +112,10 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   commits. Done when: the write door refuses a row the store cannot hold, the test passes, released as a patch.
 - **DISCARDCLOSE** (candidate) — The scan snapshot and the rel-type build walk always `Discard` their transaction,
   which can block after `db.Close` (`y/watermark.go:60`, `:77-79`). Done when: a test closes the store under them.
-- **BADGERLOG** (USAGE O1) — No backend gives badger a logger, so every badger error report is discarded, including
-  value-log read failures, which badger reports only by log. Done when: badger's errors reach rho's logging by
-  default, tested with a failed value-log read.
+- **BADGERLOG** (confirmed, same evidence) — No backend gives badger a logger, so badger's reports are discarded: a
+  failed value-log read shows rho only "corrupt wire data", while the cause ("Unable to read … ErrEOF") reaches only
+  a configured logger. Done when: badger's errors reach rho's logging by default, tested with a failed value-log
+  read.
 - **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
   read snapshots may hold a badger transaction; measured: a value-log value (a row of 1 MB or more) read across it
   comes back empty with a nil error, since badger swallows value-log read errors; rho then reports "corrupt wire
@@ -180,9 +182,13 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 - **ITERPREFIX** — 49 of rho's 71 iterators seek a prefix without setting `IteratorOptions.Prefix`, so badger cannot
   skip the tables outside it (rule 4; `tasks/evidence/USAGE/usage-map.txt`). Done when: each sets at least its
   keyspace byte, measured on a multi-level store.
-- **VERIFY** — badger never verifies block checksums with rho's options (only table indexes at open), so a flipped
-  byte reaches the row decoder. Done when: an admin door runs `VerifyChecksum` per shard and the SHARD mover checks
-  what it copies.
+- **VERIFY** (confirmed by damage tests, `tasks/evidence/USAGE/vlog_test.go.txt`) — With rho's options badger checks
+  neither value-log values nor table blocks. One flipped byte: in an older value-log file it reaches the caller AS
+  DATA, no error, no log (rows of 1 MB or more); in the newest value-log file the next writable open silently cuts
+  the file there, losing that row and every later one in it; in a table, 3 of 7 positions made badger PANIC (the
+  process dies), 3 made the open refuse on the counter check, 1 failed reads. Done when: value checksums and block
+  checksums are verified (`VerifyValueChecksum`, `ChecksumVerificationMode` OnBlockRead, measured cost), a corrupt
+  read is an error and never a panic, and an admin door runs `VerifyChecksum` per shard.
 - **OPENIMAGE** — A reopen after a crash rebuilds every row although the open image holds most of the state;
   `IteratorOptions.SinceTs` reads only the keys newer than the image. Done when: such a reopen reads only those keys,
   measured on a large shard.
