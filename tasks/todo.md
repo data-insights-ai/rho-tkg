@@ -49,7 +49,9 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   paths and the open scan. Tests: 6, each red without its part (72 flipped table positions: none silent with
   checksums, 11 without). Full short suite and `-race` on badger, tiered and sharded green (24 Oct). Committed
   with docs and CHANGELOG on `verifylog` (rebased on main). Gate 1 red on lint (an unchecked `Close` in the new report file),
-  fixed; gate 2 running. Done when: released as a patch, ai-soc and sigma told.
+  fixed; gate 2 refused it as a minor: `scripts/patchgate` counted the exported methods of
+  the unexported `slogBadgerLogger` (badger's Logger interface) as API. The checker now skips methods of unexported
+  types (red case added); gate 3 running. Done when: released as a patch, ai-soc and sigma told.
 - **CLEARMETA** (confirmed by a real crash test on branch `clearmeta`, `tasks/evidence/CLEARMETA/red.txt`) — `Clear`
   with the change log on (or once on) deletes every meta key except `last_lsn` before it drops the data; a process
   that dies there reopens a store that looks empty while its rows remain, and the first new label collides with
