@@ -1,0 +1,2 @@
+patchgate red (24 Oct, v4.75.2 gate 2 refused slogBadgerLogger.Errorf/Warningf/Infof/Debugf as new exported API):
+    main_test.go:93: exported methods of an unexported type are not API: got "pkg/a/impl.go: impl.Errorf, impl.Warn", want ""

@@ -71,6 +71,7 @@ func TestNewExportedAPI(t *testing.T) {
 			"package a\nfunc F() {}\nfunc (s *S) M() {}\nfunc (s *S) N() {}\ntype S struct{}\nfunc G() {}\nfunc helper() {}\nconst K = 1\n"},
 		"pkg/a/priv.go":     {"package a\nfunc f() {}\n", "package a\nfunc f() {}\nfunc g() {}\n"},
 		"pkg/a/new.go":      {"", "package a\ntype T int\n"},
+		"pkg/a/impl.go":     {"", "package a\ntype impl struct{}\nfunc (impl) Errorf() {}\nfunc (p *impl) Warn() {}\n"},
 		"pkg/a/a_test.go":   {"package a\n", "package a\nfunc TestX(t *testing.T) {}\n"},
 		"scripts/t/main.go": {"", "package main\nfunc Exported() {}\n"},
 	}
@@ -83,6 +84,7 @@ func TestNewExportedAPI(t *testing.T) {
 		{"private helper only", []change{{'M', "pkg/a/priv.go"}}, ""},
 		{"new func, method, const", []change{{'M', "pkg/a/a.go"}}, "pkg/a/a.go: G, K, S.N"},
 		{"new file with a type", []change{{'A', "pkg/a/new.go"}}, "pkg/a/new.go: T"},
+		{"exported methods of an unexported type are not API", []change{{'A', "pkg/a/impl.go"}}, ""},
 		{"tests and tools are not API", []change{{'M', "pkg/a/a_test.go"}, {'A', "scripts/t/main.go"}}, ""},
 	}
 	for _, c := range cases {

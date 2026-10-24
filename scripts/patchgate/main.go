@@ -166,7 +166,7 @@ func newExportedAPI(changes []change, readOld, readNew func(string) ([]byte, err
 }
 
 // exportedNames returns a file's exported top-level funcs, types, consts and
-// vars, and its exported methods as "Recv.Name".
+// vars, and the exported methods of its exported types as "Recv.Name".
 func exportedNames(src []byte) []string {
 	f, err := parser.ParseFile(token.NewFileSet(), "", src, parser.SkipObjectResolution)
 	if err != nil {
@@ -183,7 +183,13 @@ func exportedNames(src []byte) []string {
 				out = append(out, d.Name.Name)
 				continue
 			}
-			out = append(out, recvName(d.Recv.List[0].Type)+"."+d.Name.Name)
+			// A method of an unexported type is reachable only through an
+			// interface it satisfies (e.g. a badger.Logger), not as rho's API.
+			// Embedding such a type in an exported struct would promote the
+			// method; the gate does not detect that, the review must.
+			if recv := recvName(d.Recv.List[0].Type); ast.IsExported(recv) {
+				out = append(out, recv+"."+d.Name.Name)
+			}
 		case *ast.GenDecl:
 			for _, s := range d.Specs {
 				switch s := s.(type) {
