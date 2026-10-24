@@ -250,7 +250,7 @@ func (bs *Store) clearAndReanchorChangeLog() error {
 	if err := wb.Flush(); err != nil {
 		return fmt.Errorf("graph: clear marker flush: %w", err)
 	}
-	return nil
+	return clearStepFault(3)
 }
 
 // clearDataPreservingLastLSN wipes every data / index / history / change-log
@@ -305,6 +305,9 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 			return fmt.Errorf("graph: clear delete meta: %w", err)
 		}
 	}
+	if err := clearStepFault(1); err != nil {
+		return err
+	}
 
 	// 3. Bulk-drop every data / index / history / change-log-record keyspace.
 	//    KeyMeta (which holds LastLSNKey) is deliberately left intact.
@@ -317,6 +320,18 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 		[]byte{storepkg.KeyFlushStage},
 	); err != nil {
 		return fmt.Errorf("graph: clear drop data: %w", err)
+	}
+	return clearStepFault(2)
+}
+
+// clearStepFaultForTest (tests only) runs after each durable step of Clear's
+// change-log arm (1: the first metadata commit, 2: the data dropped, 3: the
+// re-anchor marker written); a test may stop the process there or fail Clear.
+var clearStepFaultForTest func(step int) error
+
+func clearStepFault(step int) error {
+	if clearStepFaultForTest != nil {
+		return clearStepFaultForTest(step)
 	}
 	return nil
 }
