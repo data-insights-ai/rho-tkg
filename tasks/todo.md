@@ -47,7 +47,8 @@ Each item: one sentence, then when it is done and what it waits for.
    (`tasks/evidence/USAGE/`); confirmed by real tests (24 Oct): CLEARMETA (a crash inside `Clear`), KEYSIZE and
    VALUESIZE (one oversized entry blocks all later persistence), VERIFY (silent corruption, panics, silent
    truncation) and BADGERLOG; ai-soc and sigma asked (24 Oct) which configurations they run (on-disk indexes, value-log
-   size, in-memory stores, row and string sizes, a logger, Reset), to order the fixes; each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
+   size, in-memory stores, row and string sizes, a logger, Reset), to order the fixes; sigma answered (VALUESIZE real,
+   KEYSIZE latent, no logger, Reset reachable, no corruption seen), ai-soc pending; each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence, then its fix.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
@@ -101,22 +102,26 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   that dies there reopens a store that looks empty while its rows remain, and the first new label collides with
   their tokens (its query fails: "property-key token 1 not in registry"). Done when: `Clear` drops the data before
   the meta that interprets it (the order is drafted, not applied), the test passes, released as a patch. The fix
-  waits until the BADGER milestone's step 2 is through (René 24 Oct: verify first).
+  waits until the BADGER milestone's step 2 is through (René 24 Oct: verify first). sigma (24 Oct): reachable through
+  its daemon's admin reset with the change log on.
 - **KEYSIZE** (confirmed, data loss; `tasks/evidence/USAGE/size_test.go.txt`) — A string value rho accepts (65,100
   bytes, under its 65,536 limit) on a label with an on-disk property index makes an index key above badger's 65,000
   (`property_index_key.go:136-139`, `txn.go:352`): the write is acknowledged, every later flush fails on that key, and
-  nothing written afterwards reaches disk. Done when: such a write is refused at the door or stored (capped or hashed
-  key), the test passes, released as a patch.
+  nothing written afterwards reaches disk. sigma (24 Oct): latent: no on-disk property index on strings in
+  production, but its ov_key strings are unbounded. Done when: such a write is refused at the door or stored (capped
+  or hashed key), the test passes, released as a patch.
 - **VALUESIZE** (confirmed, data loss; same evidence) — A 1.4 MB row (every value under rho's limits) with
   `ValueLogFileSize` 1 MB, or in an in-memory badger store, is acknowledged and then refused by badger at every flush
   ("Value with size 1440490 exceeded 1048576"), blocking all later writes like KEYSIZE; with default options it
-  commits. Done when: the write door refuses a row the store cannot hold, the test passes, released as a patch.
+  commits. sigma (24 Oct): exposed: its PageState Derived facts can exceed 1 MB, its daemon sets the value-log size
+  down to 1 MB (TKGD_BADGER_VLOG_MB) and offers an in-memory store. Done when: the write door refuses a row the store
+  cannot hold, the test passes, released as a patch.
 - **DISCARDCLOSE** (candidate) — The scan snapshot and the rel-type build walk always `Discard` their transaction,
   which can block after `db.Close` (`y/watermark.go:60`, `:77-79`). Done when: a test closes the store under them.
 - **BADGERLOG** (confirmed, same evidence) — No backend gives badger a logger, so badger's reports are discarded: a
   failed value-log read shows rho only "corrupt wire data", while the cause ("Unable to read … ErrEOF") reaches only
-  a configured logger. Done when: badger's errors reach rho's logging by default, tested with a failed value-log
-  read.
+  a configured logger. sigma (24 Oct): passes no logger. Done when: badger's errors reach rho's logging by default,
+  tested with a failed value-log read.
 - **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
   read snapshots may hold a badger transaction; measured: a value-log value (a row of 1 MB or more) read across it
   comes back empty with a nil error, since badger swallows value-log read errors; rho then reports "corrupt wire
