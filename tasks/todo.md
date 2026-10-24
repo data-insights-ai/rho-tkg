@@ -23,8 +23,9 @@ Each item: one sentence, then when it is done and what it waits for.
    (`tasks/evidence/FLUSHPART/mutations.txt`); `make ci-docker` green before the last review round.
 4. [x] Fable reviewed twice; all points fixed: a torn unsynced flush (power loss) is discarded at open, a synced one
    refuses and names the new `badger.DiscardStagedFlush`, which also drops the counters.
-5. [ ] `make ci-docker` on the final branch and Fable's last verdict; then René's go, merge, tag v4.75.0, tell ai-soc
-   and sigma, move the item to `docs/CHANGELOG.md`.
+5. [ ] `make ci-docker` on the final branch passed (2026-10-24, 900f0a78, coverage 87.4%); Fable's last verdict, then
+   René's go, merge, tag v4.75.0, tell ai-soc and sigma, move the item to `docs/CHANGELOG.md`. Parked by René while
+   the badger work runs.
 
 - **USAGE** (René 24 Oct; phase 1 done: 9 categories, `tasks/evidence/USAGE/results.txt`) — Re-analyse rho's current badger use in the main session, without relying on Fable's
   review: a map of every badger call by kind (writes, point reads, iterators and their options, sync, drops, GC, open
