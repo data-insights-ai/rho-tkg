@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -196,8 +197,16 @@ func TestZRReadOnlyOpenAfterCleanAndUncleanExit(t *testing.T) {
 		})
 		_ = ro.Close()
 	}
-	t.Logf("R3 read-only open: after a clean close ok; after an unclean exit with 1,000 committed writes in the memtable: err=%v, %d keys visible (truncate needed: %v)",
-		roErr, n, errors.Is(roErr, badgerv4.ErrTruncateNeeded))
+	// Every transaction the child wrote is complete, so no entry is torn: the
+	// refusal is for the WAL ending short of its preallocated size. Matched by
+	// message: badger wraps it with %+v, so errors.Is cannot see it (y/error.go:55-63).
+	if roErr == nil || !strings.Contains(roErr.Error(), badgerv4.ErrTruncateNeeded.Error()) {
+		t.Fatalf("read-only open after an unclean exit with only complete transactions: err=%v, %d keys; want the truncate-needed refusal", roErr, n)
+	}
+	if errors.Is(roErr, badgerv4.ErrTruncateNeeded) {
+		t.Fatal("errors.Is matched ErrTruncateNeeded: the doc's 'only by message' is wrong")
+	}
+	t.Logf("R3 read-only open: after a clean close ok; after an unclean exit with only complete transactions refused: %.140s", roErr)
 }
 
 // R4: the directory lock. In another process: a writable open excludes any
@@ -235,12 +244,14 @@ func TestZRDirectoryLock(t *testing.T) {
 	t.Log("R4 another process: a writable open refuses every other open; a read-only open refuses writable, admits read-only")
 }
 
-// R5: MaxVersion rises with every commit, survives a reopen and is not lowered
-// by compaction.
+// R5: MaxVersion rises with every commit and survives a reopen; compaction
+// lowers it when it drops the newest version of the store, a tombstone with no
+// overlap below (a table records only the keys it holds, table/builder.go:212-213;
+// db.go:415-434; levels.go:782-797).
 func TestZRMaxVersion(t *testing.T) {
 	dir := t.TempDir()
-	db := zrOpen(t, dir, nil)
-	v0 := db.MaxVersion()
+	one := func(o *badgerv4.Options) { o.NumLevelZeroTables = 1 }
+	db := zrOpen(t, dir, one)
 	for i := 0; i < 3; i++ {
 		before := db.MaxVersion()
 		if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set(zrKey(0x01, i), []byte("v")) }); err != nil {
@@ -250,18 +261,31 @@ func TestZRMaxVersion(t *testing.T) {
 			t.Fatalf("commit %d: MaxVersion %d not above %d", i, db.MaxVersion(), before)
 		}
 	}
-	top := db.MaxVersion()
-	_ = db.Close()
-	db = zrOpen(t, dir, nil)
-	if db.MaxVersion() != top {
-		t.Fatalf("after reopen MaxVersion %d, want %d", db.MaxVersion(), top)
+	live := db.MaxVersion()
+	_ = db.Close() // L0 table 1: the three sets
+	db = zrOpen(t, dir, one)
+	if db.MaxVersion() != live {
+		t.Fatalf("after reopen MaxVersion %d, want %d", db.MaxVersion(), live)
 	}
+	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Delete(zrKey(0x01, 2)) }); err != nil {
+		t.Fatal(err)
+	}
+	withTombstone := db.MaxVersion()
+	_ = db.Close() // L0 table 2: only the tombstone, the store's newest version
+	db = zrOpen(t, dir, one)
+	defer db.Close()
+	// Two L0 tables at NumLevelZeroTables 1 score 2: Flatten compacts L0 down and
+	// merges key 2's versions; with no level below, the tombstone is dropped.
 	if err := db.Flatten(1); err != nil {
 		t.Fatal(err)
 	}
-	if db.MaxVersion() != top {
-		t.Fatalf("after Flatten MaxVersion %d, want %d", db.MaxVersion(), top)
+	after := db.MaxVersion()
+	levels := map[int]int{}
+	for _, ti := range db.Tables() {
+		levels[ti.Level]++
 	}
-	_ = db.Close()
-	t.Logf("R5 MaxVersion %d -> %d over 3 commits, unchanged by reopen and Flatten", v0, top)
+	t.Logf("R5 MaxVersion: %d after 3 commits, %d after a delete (the newest version, a tombstone), unchanged by reopen; after compaction %d (tables per level %v)", live, withTombstone, after, levels)
+	if after >= withTombstone {
+		t.Fatalf("compaction kept MaxVersion at %d: the tombstone was not dropped, the claim is not shown (tables per level %v)", after, levels)
+	}
 }

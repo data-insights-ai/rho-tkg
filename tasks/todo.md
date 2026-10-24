@@ -38,10 +38,11 @@ Each item: one sentence, then when it is done and what it waits for.
    (section 8), the batch API (B1-B9), the source check of sections 1-7 (one false claim fixed), the read side R1-R5
    (prefix pruning, compaction, read-only open, directory lock, MaxVersion; R3 corrected section 1: a read-only open
    refuses every unclean WAL, not only a torn one). Fable's review (24 Oct) reopened it: R3, R5 and B9 can pass with
-   their claim false (no assertion, a no-op compaction, zero survivors accepted); MaxVersion CAN fall when compaction
-   drops a tombstone (source-checked); 12 doc points (prefix per WAL file under power loss, Discard rules, the
-   65,000-byte key limit, citations). Left: those fixed, each checked in the source, the three tests made able to
-   fail.
+   their claim false; now fixed, all 15 evidence tests can fail and pass. Re-checked in the source by the main
+   session (Fable is not used for badger, René 24 Oct): MaxVersion falls when compaction drops a tombstone (R5: 4 to
+   2); badger refuses a value above `ValueLogFileSize` or, in memory, at or above `ValueThreshold` (B10); a crash
+   prefix holds per WAL file only under power loss without `SyncWrites`; the `Discard` rules; citations. Left: a
+   last pass of section 8 against the source by the main session.
 2. [ ] rho's current badger use, fully verified in tests: the call map and the 9-category analysis exist
    (`tasks/evidence/USAGE/`); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence, then its fix.
@@ -97,6 +98,14 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   drops the data; the store a crash leaves there reopens without error, answers 0 for every label, and the next new
   label takes a token the old rows carry (1 new node, 21 answers). Done when: `Clear` drops the data before the meta
   that interprets it, the red test passes, released as a patch.
+- **KEYSIZE** (candidate) — rho allows property values of 65,536 bytes and copies a string value verbatim into its
+  on-disk property index key (`property_index_key.go:136-139`), above badger's 65,000-byte key limit (`txn.go:352`),
+  so such a value would make its flush fail. Done when: a test shows it, and the value is capped or the key hashed.
+- **VALUESIZE** (candidate) — badger refuses a value above `ValueLogFileSize` (rho allows 1 MB) and, in memory, one
+  at or above 1 MB (B10), while rho allows rows of about 64 MB. Done when: a test shows what a large row does with a
+  small value-log file and in memory, and the write door refuses it up front.
+- **DISCARDCLOSE** (candidate) — The scan snapshot and the rel-type build walk always `Discard` their transaction,
+  which can block after `db.Close` (`y/watermark.go:60`, `:77-79`). Done when: a test closes the store under them.
 - **BADGERLOG** (USAGE O1) — No backend gives badger a logger, so every badger error report is discarded, including
   value-log read failures, which badger reports only by log. Done when: badger's errors reach rho's logging by
   default, tested with a failed value-log read.

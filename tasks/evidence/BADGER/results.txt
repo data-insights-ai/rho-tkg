@@ -46,3 +46,14 @@ Read side, read_test.go.txt (2026-10-24, MemTableSize 8 MB; all 5 pass):
   R5 MaxVersion 0 -> 3 over 3 commits, unchanged by reopen and Flatten
   R2 setup note: at the default NumLevelZeroTables (5) four L0 tables are never compacted and Flatten does nothing when
   one level holds all data: a rewritten row's old versions stay on L0 until a fifth table arrives.
+
+Re-run after the step-1 review (2026-10-24; all 15 pass; each test now fails if its claim is false):
+  B10 ValueLogFileSize 1 MB: a 1 MB value commits; 1 MB + 1 refused: Value with size 1048577 exceeded 1048576 limit. Value:
+  B10 in-memory: a value under 1 MB commits; above 1 MB refused: Value with size 1048577 exceeded 1048576 limit. Value:
+  R3 read-only open: after a clean close ok; after an unclean exit with only complete transactions refused: while opening memtables err: while opening fid: 1 err: while updating skiplist err: end offset: 57913 < size: 16777216 err
+  R5 MaxVersion: 3 after 3 commits, 4 after a delete (the newest version, a tombstone), unchanged by reopen; after compaction 2 (tables per level map[6:1])
+  B9 now requires survivors: at least 8 of 10 kill runs keep a whole part (all 10 did).
+  Superseded: the first R5 claimed 'MaxVersion is not lowered by compaction' with a Flatten that compacted nothing
+  (false: it falls when compaction drops the store's newest version, a tombstone); the first R3 asserted nothing;
+  the first B9 accepted zero survivors. B10 corrects 'one entry always fits': a value larger than ValueLogFileSize,
+  or in-memory one above ValueThreshold, is refused outright (txn.go:368-371).

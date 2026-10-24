@@ -297,6 +297,7 @@ func TestZBCrashKeepsWholePartsInOrder(t *testing.T) {
 		zbCrashChild()
 		return
 	}
+	exercised := 0 // runs that kept at least one whole part: the claim was exercised
 	for _, exitAfter := range []int{20_000, 33_333, 51_111, 64_000, 90_000} {
 		for _, sync := range []bool{false, true} {
 			dir := t.TempDir()
@@ -324,8 +325,14 @@ func TestZBCrashKeepsWholePartsInOrder(t *testing.T) {
 			if present > exitAfter {
 				t.Fatalf("exit after %d: %d entries survived", exitAfter, present)
 			}
+			if present >= per {
+				exercised++
+			}
 			t.Logf("B9 exit after %d entries (SyncWrites %v): %d survive = %d whole parts, a prefix", exitAfter, sync, present, present/per)
 		}
+	}
+	if exercised < 8 {
+		t.Fatalf("only %d of 10 runs kept a whole part: the setup did not exercise the claim", exercised)
 	}
 }
 
@@ -348,4 +355,34 @@ func zbCrashChild() {
 		}
 	}
 	os.Exit(2)
+}
+
+// B10: a single value is refused outright (not split, not staged) when it is
+// larger than ValueLogFileSize, and in in-memory mode when it is at least
+// ValueThreshold (txn.go:368-371). A Set below those limits commits.
+func TestZBValueLimits(t *testing.T) {
+	db := zbOpen(t, t.TempDir(), func(o *badgerv4.Options) { o.ValueLogFileSize = 1 << 20 })
+	defer db.Close()
+	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set(zbKey(1), make([]byte, 1<<20)) }); err != nil {
+		t.Fatalf("a value equal to ValueLogFileSize: %v", err)
+	}
+	err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set(zbKey(2), make([]byte, (1<<20)+1)) })
+	if err == nil {
+		t.Fatal("a value one byte above ValueLogFileSize committed")
+	}
+	t.Logf("B10 ValueLogFileSize 1 MB: a 1 MB value commits; 1 MB + 1 refused: %.80s", err)
+
+	mem, err := badgerv4.Open(badgerv4.DefaultOptions("").WithInMemory(true).WithLogger(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mem.Close()
+	if err := mem.Update(func(txn *badgerv4.Txn) error { return txn.Set(zbKey(3), make([]byte, (1<<20)-1)) }); err != nil {
+		t.Fatalf("in-memory, a value under ValueThreshold: %v", err)
+	}
+	err = mem.Update(func(txn *badgerv4.Txn) error { return txn.Set(zbKey(4), make([]byte, (1<<20)+1)) })
+	if err == nil {
+		t.Fatal("in-memory, a value above ValueThreshold committed")
+	}
+	t.Logf("B10 in-memory: a value under 1 MB commits; above 1 MB refused: %.80s", err)
 }

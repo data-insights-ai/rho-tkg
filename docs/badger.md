@@ -17,7 +17,7 @@ Dir/
                  (exclusive for writable, shared for read-only opens; dir_unix.go acquireDirectoryLock)
   NNNNN.mem      memtable write-ahead log, mmapped at 2 x MemTableSize (sparse, 128 MB at defaults)
   NNNNNN.sst     tables of the LSM tree, mmapped
-  NNNNNN.vlog    value log, mmapped at 2 x ValueLogFileSize while open (sparse, 2 GB), truncated at Close
+  NNNNNN.vlog    value log, mmapped at 2 x ValueLogFileSize while open (sparse, 2 GB), truncated at Close to its write offset (`value.go:627-641`)
   DISCARD        value-log discard statistics, 1 MB
 ```
 
@@ -28,13 +28,14 @@ Dir/
   holds a pointer; smaller values are inline (`structs.go:147-162`). The default and maximum threshold is 1 MB
   (`options.go:201`), so every rho row under 1 MB is inline (open-image chunks are 512 KB). rho's default limits allow
   a row of up to about 64 MB (1,000 properties of 64 KB, `core.go:795-797`): a row of 1 MB or more goes to the value
-  log. Every single row fits one transaction (section 2, "One entry always fits").
+  log. A single row fits one transaction's size limit, but badger refuses a value above `ValueLogFileSize` and, in
+  memory, one at or above `ValueThreshold` (section 2, "One entry and its limits").
 - **Versions.** Every key carries a commit timestamp (`y/y.go:113-121`). A read sees the newest version at or below its
   read timestamp (`iterator.go:629`).
 - **A cleanly closed directory** holds `MANIFEST`, `KEYREGISTRY`, `DISCARD`, the `.sst` files and a tiny `.vlog`: no
   `.mem` (Close flushes the memtable) and no `LOCK`. A `.mem` file means an unclean close; the next open replays it into
   a full memtable arena (`db.go:325`, `memtable.go:99`), read-only or not. A writable open cuts the WAL after the last
-  complete entry, silently. A read-only open refuses EVERY unclean WAL, torn or not, because a WAL file is
+  complete transaction (an entry of an unfinished transaction is dropped with it, `memtable.go:481-519`), silently. A read-only open refuses EVERY unclean WAL, torn or not, because a WAL file is
   preallocated and always ends short of its size after a crash ("end offset 57913 < size 16777216",
   `memtable.go:209-212`; measured, `tasks/evidence/BADGER/read_test.go.txt` R3); the error wraps `ErrTruncateNeeded`
   with `%+v`, so `errors.Is` fails on it (section 8.7). After any crash a shard needs one writable open before it
@@ -47,16 +48,19 @@ Dir/
 - **Transaction limits.** A transaction holds at most `maxBatchSize` = 15% of `MemTableSize` bytes and
   `maxBatchCount` = `maxBatchSize` / 96 (one skiplist node) entries (`db.go:136-137`): 10,066,329 bytes and 104,857
   entries at defaults. The count starts at 1 for the commit marker (`txn.go` newTransaction) and `Set` returns
-  `ErrTxnTooBig` at `count >= maxBatchCount` (`txn.go:335-344`), so one transaction carries at most 104,855 entries.
+  `ErrTxnTooBig` at `count >= maxBatchCount` (`txn.go:335-344`), so one transaction carries at most `maxBatchCount` - 2 = 104,855 entries.
   An entry's size is `len(key) + len(value) + 12` for a value under `ValueThreshold` and `len(key) + 24` for one at or
   above it (value-log pointer), starting from 21 bytes (`structs.go:147-157`, `txn.go:338`, `txn.go:770-771`).
   Measured (`tasks/evidence/BADGER/batch_test.go.txt`, B1-B2): 13,105 empty entries or 1,232 entries of 1,000 bytes
   per transaction at `MemTableSize` 8 MB.
-- **One entry always fits.** badger refuses to open when `ValueThreshold` > `maxBatchSize` (`db.go:151-157`), so an
+- **One entry and its limits.** badger refuses to open when `ValueThreshold` > `maxBatchSize` (`db.go:151-157`), so an
   inline value is smaller than the size limit and a value-log value costs its key + 24 bytes, whatever its size. At
   rho's smallest `MemTableSize` (8 MB: limit 1,258,291 bytes) the margin over the largest inline value is 209,715
   bytes. Measured (B3, B4): a 20 MB value and a 1 MB - 1 inline value each commit in one transaction at 8 MB; at 4 MB
-  the open fails. Only the number of entries in one transaction is ever too big, never one entry.
+  the open fails. So the size accounting never rejects one entry. But `Txn.modify` refuses outright a key above
+  65,000 bytes, a value above `ValueLogFileSize`, and in memory a value at or above `ValueThreshold`
+  (`txn.go:352-371`; measured B10: 1 MB + 1 refused at `ValueLogFileSize` 1 MB and in memory). rho allows property
+  values of 65,536 bytes and puts a string value verbatim into an on-disk property index key (todo KEYSIZE).
 - **A `WriteBatch` is not atomic.** On `ErrTxnTooBig` it commits the transaction it has so far (`CommitWith`,
   asynchronous, up to 16 in flight: `SetMaxPendingTxns`) and retries the entry in a new one (`batch.go:137-207`); each
   part commits on its own. Parts enter the WAL in the order they were committed: `commitAndSend` assigns the commit
@@ -79,8 +83,11 @@ Dir/
 - **Stalls.** A full memtable is queued for flushing and a new one allocated; with `NumMemtables` (5) waiting, writers
   poll every 10 ms (`db.go` ensureRoomForWrite). With 15 L0 tables (`NumLevelZeroTablesStall`) the flusher waits for
   compaction (`levels.go:1588-1597`).
-- **A split batch after a crash.** Parts commit in order, one write request each, so a crash keeps a prefix of the
-  parts (the WAL replays in order). Each part holds whatever entries the caller added first.
+- **A split batch after a crash.** Parts commit in order, one write request each. After a process crash the page cache
+  keeps every written page and a crash keeps a prefix of the parts (measured, B9). After a power loss that holds only
+  under `SyncWrites` (each request msynced before the next, `db.go:826-828`): without it pages reach the disk in
+  writeback order, each WAL file is replayed and cut on its own in file order (`memtable.go:53-63`), so the result is a
+  prefix per WAL file, not of the batch. Each part holds whatever entries the caller added first.
 - **Durability.** `SyncWrites` msyncs the active WAL once per write request (`writeToLSM`, `db.go:826-827`) and, through
   a deferred sync in `vlog.write`, the current value-log file once per write group, even when it received nothing.
   Measured on NVMe, one request per group: 630-774 us per synced request, of which 444 us is the WAL msync and 53 us the
@@ -135,7 +142,8 @@ Dir/
   open, 1 after it closed): versions newer than the oldest open read transaction stay. At or
   below it, only the newest `NumVersionsToKeep` (1) version stays; a tombstone is dropped only when no lower level
   overlaps it. So a rewritten row keeps its old versions in lower levels until a compaction merges them, and every
-  point `Get` copies each of them; a long-held read transaction pins every version newer than its read timestamp.
+  point `Get` copies each of them; compaction keeps every version newer than the oldest open read transaction's timestamp plus the newest one at or
+  below it (`levels.go:660`), so a long-held read transaction keeps every later version of the keys it could read.
 
 ## 5. Lifecycle
 
@@ -162,7 +170,7 @@ Dir/
 
 | Option | Default | rho | Verdict |
 |---|---|---|---|
-| `MemTableSize` | 64 MB | `Config.MemTableSize` (0 = default) | Sets the arena (~75 MB per writable DB) and the batch limit. |
+| `MemTableSize` | 64 MB | `Config.MemTableSize` (0 = default) | Sets the arena (`MemTableSize` + `maxBatchSize` + `maxBatchCount` x 96, `db.go:1043-1045`: ~84 MB at defaults, measured +83 MB per writable DB) and the batch limit. |
 | `NumMemtables` | 5 | default | Up to 5 arenas under write load. |
 | `BlockCacheSize` | 256 MB | `Config.BlockCacheSize` (0 = default) | Per DB, required with Snappy; resizable at runtime (`CacheMaxCost`). |
 | `IndexCacheSize` | 0 | `Config.IndexCacheSize` | Required with encryption only. |
@@ -215,8 +223,9 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
 10. **Batch synced writes.** Under `SyncWrites` every request costs a WAL msync and every write group a value-log msync;
     rho's group commit writes one request per group, which is right, unless the flush is split (rule 1): each part is
     a request of its own.
-11. **Store-wide operations pause writes.** `DropPrefix` / `DropAll` refuse concurrent writes; rho calls them only in
-    `Clear`, under its own locks.
+11. **Store-wide operations pause writes, not reads.** `DropPrefix` / `DropAll` refuse concurrent writes; rho calls
+    them only in `Clear`, under its own locks, but cache-miss reads still run (`badgerstore_node.go:132-143`): a
+    value-log value read across `DropAll` comes back empty (DROPALL, section 9 item 10).
 
 ## 8. The complete API
 
@@ -240,7 +249,7 @@ or misleading, from the source (file:line). "rho" says where rho uses it (rho im
 | `EstimateSize(prefix)` | On-disk and uncompressed bytes of the tables whose **both** ends carry the prefix (`db.go:1394`): table-granular, misses data in tables that straddle the prefix and everything in memtables. | - |
 | `Levels()`, `LevelsToString()`, `Tables()` | Per-level and per-table info (`LevelInfo`, `TableInfo`: key count, on-disk, stale and uncompressed size, max version, index and bloom size). | - |
 | `Ranges(prefix, n)` | Rough key ranges from the last level's tables, to split an iteration. | - |
-| `MaxVersion()` | Highest committed version (badger timestamp). | open-image trust rule |
+| `MaxVersion()` | The highest version held by a memtable or a table (`db.go:415-434`; a table records only the keys it holds, `table/builder.go:212-213`). It can FALL: compaction that drops the store's newest version, a tombstone with no overlap below, lowers it (measured R5: 4 to 2). The commit marker never counts: it is written to the WAL only (`memtable.go:187-190`). | open-image trust rule: sound, since the header is a live key and every flush after it writes live counters |
 | `MaxBatchCount()`, `MaxBatchSize()` | The per-transaction limits (section 2). | - (section 9) |
 | `BlockCacheMetrics()`, `IndexCacheMetrics()` | ristretto metrics of the two caches. | - |
 | `CacheMaxCost(cache, cost)` | Resizes the block or index cache at runtime; a negative cost reads it (`db.go:2042`). | - (section 9) |
@@ -260,7 +269,7 @@ or misleading, from the source (file:line). "rho" says where rho uses it (rho im
 | `Txn.Commit()` | Conflict check (a transaction that read nothing never conflicts, `txn.go:128`; with `DetectConflicts` false nothing is tracked), then one write request: one WAL record set ending in a finish entry, so replay applies all or none of it (`memtable.go:433-530`). | flush path A, `Update` |
 | `Txn.CommitWith(cb)` | `Commit` that returns at once and runs `cb` after the write. | - |
 | `Txn.CommitAt(ts, cb)` | Managed mode. | - |
-| `Txn.Discard()` | Releases the transaction; idempotent; required. | deferred |
+| `Txn.Discard()` | Releases the transaction; idempotent; required. Panics while an iterator of the transaction is open (`txn.go:512-513`); after `db.Close` it can block, since the read mark is sent to a stopped watermark's 100-slot channel (`y/watermark.go:60`, `:77-79`). | deferred; the read snapshot skips it after `Close` (`badgerstore_read_snapshot.go:126`), the scan snapshot and the rel-type build walk always discard (`badgerstore_scan_snapshot.go:129`, `badgerstore_reltype_temporal_index.go:302`; todo DISCARDCLOSE) |
 | `Txn.ReadTs()` | The read timestamp. | - |
 | `Txn.NewIterator(opt)` | Iterator over the snapshot (8.3). | 71 call sites |
 | `Txn.NewKeyIterator(key, opt)` | All versions of one key; uses the bloom filter on the exact key to skip tables (`iterator.go:496-504`, `:348`). | - (section 9) |
