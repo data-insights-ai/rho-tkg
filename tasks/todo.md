@@ -88,10 +88,11 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
     its data cleanup.
 
-- **CLEARMETA** (candidate, USAGE W5) — `Clear` deletes every meta key except `last_lsn` (registries, format marker,
-  untimed mode, anchor interval, commit floor, index definitions) and commits that before it drops the data, so a
-  crash between the two would reopen rows without what interprets them. Done when: a test of that crash state shows
-  the harm or its absence, and the order is fixed if needed.
+- **CLEARMETA** (confirmed, a wrong-answer bug; red test on branch `clearmeta`, `tasks/evidence/CLEARMETA/red.txt`) —
+  `Clear` with the change log on (or once on) deletes every meta key except `last_lsn` and commits that before it
+  drops the data; the store a crash leaves there reopens without error, answers 0 for every label, and the next new
+  label takes a token the old rows carry (1 new node, 21 answers). Done when: `Clear` drops the data before the meta
+  that interprets it, the red test passes, released as a patch.
 - **BADGERLOG** (USAGE O1) — No backend gives badger a logger, so every badger error report is discarded, including
   value-log read failures, which badger reports only by log. Done when: badger's errors reach rho's logging by
   default, tested with a failed value-log read.
