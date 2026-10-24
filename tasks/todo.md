@@ -51,7 +51,9 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   with docs and CHANGELOG on `verifylog` (rebased on main). Gate 1 red on lint (an unchecked `Close` in the new report file),
   fixed; gate 2 refused it as a minor: `scripts/patchgate` counted the exported methods of
   the unexported `slogBadgerLogger` (badger's Logger interface) as API. The checker now skips methods of unexported
-  types (red case added); gate 3 running. Done when: released as a patch, ai-soc and sigma told.
+  types (red case added); gate 3 red once on `TestHistoryScanAllocGate` (24 vs 19 allocations;
+  it counts process-wide, passes alone with checksums on and off). Likely cause: the new badger logger formatted lines
+  slog then dropped; it now formats only kept levels; three package runs green, cause not proven. Gate 4 running. Done when: released as a patch, ai-soc and sigma told.
 - **CLEARMETA** (confirmed by a real crash test on branch `clearmeta`, `tasks/evidence/CLEARMETA/red.txt`) — `Clear`
   with the change log on (or once on) deletes every meta key except `last_lsn` before it drops the data; a process
   that dies there reopens a store that looks empty while its rows remain, and the first new label collides with
