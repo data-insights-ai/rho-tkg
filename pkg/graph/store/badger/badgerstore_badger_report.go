@@ -2,6 +2,7 @@ package badger
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -26,17 +27,20 @@ import (
 // Config.Logger is nil, in every backend (tiered and sharded shards included).
 type slogBadgerLogger struct{}
 
-func (slogBadgerLogger) Errorf(f string, a ...any) {
-	slog.Error("badger: " + strings.TrimSpace(fmt.Sprintf(f, a...)))
-}
-func (slogBadgerLogger) Warningf(f string, a ...any) {
-	slog.Warn("badger: " + strings.TrimSpace(fmt.Sprintf(f, a...)))
-}
-func (slogBadgerLogger) Infof(f string, a ...any) {
-	slog.Debug("badger: " + strings.TrimSpace(fmt.Sprintf(f, a...)))
-}
-func (slogBadgerLogger) Debugf(f string, a ...any) {
-	slog.Debug("badger: " + strings.TrimSpace(fmt.Sprintf(f, a...)))
+func (slogBadgerLogger) Errorf(f string, a ...any)   { logBadger(slog.LevelError, f, a) }
+func (slogBadgerLogger) Warningf(f string, a ...any) { logBadger(slog.LevelWarn, f, a) }
+func (slogBadgerLogger) Infof(f string, a ...any)    { logBadger(slog.LevelDebug, f, a) }
+func (slogBadgerLogger) Debugf(f string, a ...any)   { logBadger(slog.LevelDebug, f, a) }
+
+// logBadger formats only when slog keeps the level: badger's info lines
+// (compactions, flushes) come from its background goroutines and would
+// otherwise cost a Sprintf each while slog drops them.
+func logBadger(level slog.Level, f string, a []any) {
+	l := slog.Default()
+	if !l.Enabled(context.Background(), level) {
+		return
+	}
+	l.Log(context.Background(), level, "badger: "+strings.TrimSpace(fmt.Sprintf(f, a...)))
 }
 
 // badgerLogger is the logger rho hands badger and uses for its own reports
