@@ -1,0 +1,61 @@
+// V2b, deterministic: the entry count in the last block's trailer of a table is
+// set huge. badger parses it before verifying the block's checksum and slices
+// out of range (table/table.go:589-594): every open or read of that block
+// panicked. rho turns the panic into ErrCorruptWire. The block is found from
+// the table's tail: ... blocks | index | index length (4) | checksum |
+// checksum length (4); the last block ends where the index starts and its own
+// tail is ... | entry count (4) | checksum | checksum length (4).
+// Mutation: no recover around badger reads.
+func TestTableBlockTrailerDamageIsAnError(t *testing.T) {
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		_ = bs.PutNode(types.NewNode(types.NodeID(snowflake.ID(6000+i)), 7, nil))
+	}
+	_ = bs.Close()
+	tables, _ := filepath.Glob(filepath.Join(dir, "*.sst"))
+	if len(tables) == 0 {
+		t.Fatal("no table")
+	}
+	raw, err := os.ReadFile(tables[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	u32 := func(at int) int { return int(raw[at])<<24 | int(raw[at+1])<<16 | int(raw[at+2])<<8 | int(raw[at+3]) }
+	end := len(raw)
+	tableChk := u32(end - 4)
+	indexLen := u32(end - 4 - tableChk - 4)
+	blockEnd := end - 4 - tableChk - 4 - indexLen
+	blockChk := u32(blockEnd - 4)
+	countAt := blockEnd - 4 - blockChk - 4
+	if countAt < 0 || blockChk > 64 || indexLen > len(raw) {
+		t.Fatalf("table layout not as expected (index %d, block checksum %d)", indexLen, blockChk)
+	}
+	raw[countAt] = 0x7F // entry count ~2 billion
+	if err := os.WriteFile(tables[0], raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	func() {
+		defer func() {
+			if p := recover(); p != nil {
+				t.Fatalf("a damaged block trailer panicked: %v", p)
+			}
+		}()
+		bs, err := New(Config{Dir: dir, CacheCapacity: 1})
+		if err != nil {
+			if !errors.Is(err, storecontract.ErrCorruptWire) {
+				t.Fatalf("open refused, but not as corrupt data: %v", err)
+			}
+			return
+		}
+		defer bs.Close()
+		for i := 0; i < 20; i++ {
+			if _, err := bs.GetNode(types.NodeID(snowflake.ID(6000 + i))); err != nil && !errors.Is(err, storecontract.ErrCorruptWire) && !errors.Is(err, ErrNodeNotFound) {
+				t.Fatalf("read of a damaged block: %v", err)
+			}
+		}
+	}()
+}

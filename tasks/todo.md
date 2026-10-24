@@ -212,3 +212,8 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 - **V5** — The v5 line is paused on the local branch `v5-takeover`. Waits for: René.
 - **BACKLOG** — 26 numbered items without a requester, listed in `HANDOVER.md` because code cites their numbers. Waits
   for: a consumer hitting one, or René.
+- **BADGERPANIC** — badger panics in its own goroutines (table open, compaction) when a table block's trailer is
+  damaged: it parses the trailer before it verifies the block's checksum (`table/table.go:575-604`), so rho cannot
+  recover and the process dies (evidence: `tasks/evidence/VERIFY/trailer_test.go.txt`). René (24 Oct): use badger as
+  it is, no fork. rho recovers the panics it can (its own read paths and the open scan). Waits for: a badger release
+  that verifies before parsing, or René.
