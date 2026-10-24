@@ -72,8 +72,9 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 
 - **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
   read snapshots may hold a badger transaction; measured: a value-log value (a row of 1 MB or more) read across it
-  comes back empty with a nil error, since badger swallows value-log read errors. Done when: a rho-level test drives
-  a read of such a row across `Clear` (needs a seam) and shows what rho returns, and the fix it calls for is in.
+  comes back empty with a nil error, since badger swallows value-log read errors; rho then reports "corrupt wire
+  data", never a wrong row. The same holds for any value-log read failure, its cause unlogged under rho's nil badger
+  logger. Done when: such a read reports the real cause, and a read racing `Clear` reports not-found or the row.
 - **METASYNC** — `MetaSetDurable` and the property-key registry save promise durability after `db.Sync`, which syncs
   only the active WAL, so after a memtable rotation the write may not survive a power loss without `SyncWrites`
   (`badgerstore_meta.go:324-334`, `:420-434`). Done when: a test shows the gap or its absence, and the doors and

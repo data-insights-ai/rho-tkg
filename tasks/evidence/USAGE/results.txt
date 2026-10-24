@@ -18,3 +18,8 @@ DROPALL (dropall_test.go.txt):
   Source: Item.yieldItemValue logs a value-log read error and returns (nil, nil) (iterator.go:158-187, "Don't return
   error if we cannot read the value. Just log the error."); vlog file gone -> "file with ID not found" (value.go:919).
   rho passes a nil badger logger unless Config.Logger is set (badgerstore_options.go), so the error is silent.
+
+What rho makes of the empty value (scratch test in storeutil, 2026-10-24): SafeUnmarshal of an empty node or rel row
+-> "graph: corrupt wire data: truncated msgpack while measuring depth"; an empty history delta -> "history value is
+not a delta". rho fails closed: a read of a row of 1 MB or more racing Clear, or any value-log read failure, reports
+corrupt wire data (never a wrong row), and the real cause (badger's log line) is lost under rho's nil logger.
