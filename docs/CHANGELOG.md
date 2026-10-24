@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Documentation
+
+- **USAGE, BADGERDOC** (René 24 Oct): rho's badger use mapped in 9 categories (49 files; `tasks/evidence/USAGE/`) and
+  every finding tested through rho's own store: CLEARMETA, KEYSIZE, VALUESIZE, VERIFY, BADGERLOG, DROPALL,
+  DISCARDCLOSE confirmed, the per-shard open cost measured (writable 86.5 MB and 18 goroutines, read-only 3.3 MB and
+  10). Every claim in `docs/badger.md` now cites badger's source or a measurement, and what rho relies on is proven by
+  15 evidence tests that fail when their claim is false (`tasks/evidence/BADGER/`); eight earlier claims were false
+  and are corrected.
+
 ## [4.75.1] - 2026-10-24
 
 ### Fixed

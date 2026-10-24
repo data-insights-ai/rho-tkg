@@ -8,12 +8,11 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct, "fixes first", then "the given order"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0
-(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; next VERIFY + BADGERLOG, CLEARMETA, then BADGER step 3 /
-SHARD; DROPALL + DISCARDCLOSE after SHARD.
+(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; next VERIFY + BADGERLOG (built), CLEARMETA, then BADGER step 3 /
+SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
-  then optimises badger for the multi-tier storage. Done when: the three steps below are ticked. The items USAGE,
-  BADGERDOC, CLEARMETA, BADGERLOG, DROPALL and METASYNC are its parts.
+  then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
 ### BADGER plan
 
@@ -41,21 +40,29 @@ SHARD; DROPALL + DISCARDCLOSE after SHARD.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
 
-- **USAGE** (René 24 Oct; phase 1 done: 9 categories, `tasks/evidence/USAGE/results.txt`) — Re-analyse rho's current badger use in the main session, without relying on Fable's
-  review: a map of every badger call by kind (writes, point reads, iterators and their options, sync, drops, GC, open
-  options), and each finding checked in the code and, where it can fail, by a test. Done when: the map is in
-  `tasks/evidence/USAGE/`, each finding is confirmed or refuted with its evidence, and the todo items say so.
-- **BADGERDOC** (René 24 Oct; claims of sections 1-7 checked: one more false claim fixed, the bloom filter) — René does not trust rho's understanding of badger: a claim that one row above about
-  10 MB cannot commit stood for a day and was false. Done when: every claim in `docs/badger.md` cites badger's source
-  or a measurement, every claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it, and Fable
-  has reviewed the result. The batch API is done (`batch_test.go.txt`, B1-B9).
+- **VERIFY + BADGERLOG** (built on branch `verifylog`, 24 Oct; release v4.75.2 pending) — With rho's options badger
+  checked no value-log value and no table block, swallowed a failed value-log read into an empty value, cut the
+  newest value-log file at a bad entry on open without a word, and got no logger (tiered and sharded have no logger
+  field), so one flipped byte could reach a caller as data. Now: value and block checksums on (a few us per
+  block-cache miss, about 1 ms per MB-sized row read, `tasks/evidence/VERIFY/cost.txt`), badger's reports go to `slog`
+  by default in every backend, a value-log cut at open is reported, and rho recovers badger panics on its own read
+  paths and the open scan. Tests: 6, each red without its part (72 flipped table positions: none silent with
+  checksums, 11 without). Done when: released as a patch, ai-soc and sigma told.
+- **CLEARMETA** (confirmed by a real crash test on branch `clearmeta`, `tasks/evidence/CLEARMETA/red.txt`) — `Clear`
+  with the change log on (or once on) deletes every meta key except `last_lsn` before it drops the data; a process
+  that dies there reopens a store that looks empty while its rows remain, and the first new label collides with
+  their tokens (its query fails: "property-key token 1 not in registry"). Done when: `Clear` drops the data before
+  the meta that interprets it (the order is drafted), the test passes, released as a patch. Next after VERIFY +
+  BADGERLOG. sigma (24 Oct): reachable through
+  its daemon's admin reset with the change log on.
 
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
-  below are ticked and released. Waits for: FLUSHPART; step 1 with option (b), pre-creating `reference/` and
-  `archive/` only for a new store (René 23 Oct), from branch `shard-step1`.
+  below are ticked and released. Waits for: VERIFY + BADGERLOG and CLEARMETA (René 24 Oct); then BADGER step 3
+  (per-tier badger options) leads in; step 1 with option (b), pre-creating `reference/` and `archive/` only for a new
+  store (René 23 Oct), from branch `shard-step1`.
 
 ### SHARD plan
 
@@ -85,27 +92,14 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
     its data cleanup.
 
-- **CLEARMETA** (confirmed by a real crash test on branch `clearmeta`, `tasks/evidence/CLEARMETA/red.txt`) — `Clear`
-  with the change log on (or once on) deletes every meta key except `last_lsn` before it drops the data; a process
-  that dies there reopens a store that looks empty while its rows remain, and the first new label collides with
-  their tokens (its query fails: "property-key token 1 not in registry"). Done when: `Clear` drops the data before
-  the meta that interprets it (the order is drafted, not applied), the test passes, released as a patch. The fix
-  waits until the BADGER milestone's step 2 is through (René 24 Oct: verify first). sigma (24 Oct): reachable through
-  its daemon's admin reset with the change log on.
-- **DISCARDCLOSE** (confirmed, low; `tasks/evidence/USAGE/discard_test.go.txt`) — The scan snapshot and the rel-type
+- **DISCARDCLOSE** (after SHARD; confirmed, low; `tasks/evidence/USAGE/discard_test.go.txt`) — The scan snapshot and the rel-type
   build walk always `Discard` their transaction; after `db.Close` up to 100 such discards return and the 101st blocks
   forever. Done when: they skip `Discard` after `Close` as the read snapshot does, tested with 101.
-- **BADGERLOG** (confirmed, same evidence) — No backend gives badger a logger, so badger's reports are discarded: a
-  failed value-log read shows rho only "corrupt wire data", while the cause ("Unable to read … ErrEOF") reaches only
-  a configured logger. `tiered.Config` and `sharded.Config` have no logger field at all, so their users (ai-soc)
-  cannot pass one. sigma (24 Oct): passes no logger. Done when: badger's errors reach rho's logging by default,
-  tested with a failed value-log read.
-- **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
+- **DROPALL** (after SHARD) — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
   read snapshots may hold a badger transaction; measured at rho level (`tasks/evidence/USAGE/dropall_rho_test.go.txt`):
   a GetNode that found the key of a 1.4 MB row before `Clear` fails with "corrupt wire data" (badger swallows the
-  value-log read error and returns an empty value); an inline row reads back whole. The same holds for any value-log read failure, its cause unlogged under rho's nil badger
-  logger. Done when: such a read reports the real cause, and a read racing `Clear` reports not-found or the row.
-- **METASYNC** (source-confirmed; not testable by a process kill) — `MetaSetDurable` and the property-key registry
+  value-log read error and returns an empty value); an inline row reads back whole. Done when: such a read reports the real cause, and a read racing `Clear` reports not-found or the row.
+- **METASYNC** (after SHARD; source-confirmed; not testable by a process kill) — `MetaSetDurable` and the property-key registry
   save promise durability after `db.Sync`, which syncs only the active WAL, so after a memtable rotation the write
   may not survive a power loss without `SyncWrites` (`badgerstore_meta.go:324-334`, `:420-434`). Done when: the doors
   and `docs/persistence.md` state what holds, and a power-loss test (LazyFS or dm-flakey) shows it, if René wants
@@ -171,20 +165,6 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 - **ITERPREFIX** — 49 of rho's 71 iterators seek a prefix without setting `IteratorOptions.Prefix`, so badger cannot
   skip the tables outside it (rule 4; `tasks/evidence/USAGE/usage-map.txt`). Done when: each sets at least its
   keyspace byte, measured on a multi-level store.
-- **VERIFY + BADGERLOG plan** (24 Oct, branch `verifylog`, one patch): (1) the damage tests of
-  `tasks/evidence/USAGE/vlog_test.go.txt` move into the suite as red tests: a flipped byte in an older value-log file
-  must give an error, a flipped table byte never a panic, a failed value-log read must reach rho's logging, a
-  newest value-log file cut at open must be reported; (2) badger's value and block checksums on, read cost measured
-  before; (3) a default badger logger routing Errorf/Warningf to `slog` (covers tiered and sharded without a new
-  field); (4) rho compares the newest value-log file's size across the open and reports a cut; (5) tests, gate, patch.
-- **VERIFY** (confirmed by damage tests, `tasks/evidence/USAGE/vlog_test.go.txt`) — With rho's options badger checks
-  neither value-log values nor table blocks. One flipped byte: in an older value-log file it reaches the caller AS
-  DATA, no error, no log (rows of 1 MB or more); in the newest value-log file the next writable open silently cuts
-  the file there, losing that row and every later one in it; in a table, 3 of 7 positions made badger PANIC (the
-  process dies), 3 made the open refuse on the counter check, 1 failed reads. Done when: value checksums and block
-  checksums are verified. ai-soc (24 Oct): exposed in the value log: its cut records (up to ~5 MB) live there, so a
-  flipped byte can reach it as data. Fix: (`VerifyValueChecksum`, `ChecksumVerificationMode` OnBlockRead, measured cost), a corrupt
-  read is an error and never a panic, and an admin door runs `VerifyChecksum` per shard.
 - **OPENIMAGE** — A reopen after a crash rebuilds every row although the open image holds most of the state;
   `IteratorOptions.SinceTs` reads only the keys newer than the image. Done when: such a reopen reads only those keys,
   measured on a large shard.
