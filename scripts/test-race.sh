@@ -17,15 +17,16 @@ if (( $# > 2 )); then
   fail 'expected a shard count (1 or 4) and optional root/v5 profile'
 fi
 # isolated_names/isolated_paths: whole packages that run in an invocation (and
-# a CI job) of their own instead of in "other" (root: the two packages that,
-# next to core, each need minutes under -race on a 4-vCPU runner).
+# a CI job) of their own instead of in "other" (root: the packages that, next
+# to core, each need minutes under -race on a 4-vCPU runner; badger since
+# v4.76.0: 476-600 s in the shared run, its 10-minute timeout hit in a gate).
 isolated_names=()
 isolated_paths=()
 case "${2-root}" in
   root)
     split_path=./pkg/graph/internal/core; split_name=core
-    isolated_names=(graph memory)
-    isolated_paths=(./pkg/graph ./pkg/graph/store/memory)
+    isolated_names=(graph memory badger)
+    isolated_paths=(./pkg/graph ./pkg/graph/store/memory ./pkg/graph/store/badger)
     ;;
   v5) gate="v5 race gate"; split_path=./internal/graphapply; split_name=graphapply ;;
   *) fail 'profile must be root or v5' ;;

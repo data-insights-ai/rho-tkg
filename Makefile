@@ -8,7 +8,7 @@ BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
 PROD_BENCH_COUNT ?= 1
 # CI opts into four exhaustive core batches; local defaults remain unsplit.
-ROOT_RACE_CORE_SHARDS ?= 1
+ROOT_RACE_CORE_SHARDS ?= 4
 GOLANGCI_LINT_VERSION ?= v2.13.2
 GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
@@ -25,7 +25,10 @@ test:
 test-v:
 	go test -short -count=1 -v ./...
 
-# Run tests with race detector. Local default: one unsplit `go test ./...`.
+# Run tests with race detector. Local default (since v4.76.0): the parts of
+# scripts/test-race.sh in sequence, so each heavy package (core shards, graph,
+# memory, badger) has the machine to itself; one unsplit `go test ./...` ran
+# them in parallel and badger hit its 10-minute timeout on a busy machine.
 # CI: ROOT_RACE_CORE_SHARDS=4 plus RACE_SHARD=<part> runs one matrix part
 # (scripts/test-race.sh; RACE_SHARD=list prints the parts).
 test-race:

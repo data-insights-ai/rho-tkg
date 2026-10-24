@@ -20,10 +20,11 @@ cat > "$work/bin/go" <<EOF
 set -euo pipefail
 if [[ "\$1" == list ]]; then
   case "\${@: -1}" in
-    ./...) printf '%s\n' $mod/pkg/a $mod/pkg/graph $core $mod/pkg/graph/store/memory $mod/pkg/z ;;
+    ./...) printf '%s\n' $mod/pkg/a $mod/pkg/graph $core $mod/pkg/graph/store/badger $mod/pkg/graph/store/memory $mod/pkg/z ;;
     ./pkg/graph/internal/core) echo $core ;;
     ./pkg/graph) echo $mod/pkg/graph ;;
     ./pkg/graph/store/memory) echo $mod/pkg/graph/store/memory ;;
+    ./pkg/graph/store/badger) echo $mod/pkg/graph/store/badger ;;
     *) echo "fake go: unknown list \$*" >&2; exit 1 ;;
   esac
   exit 0
@@ -50,7 +51,7 @@ log() { cat "$FAKE_GO_LOG"; }
 
 # 1. The plan names every shard once, in a fixed order.
 run list 4 || fail "list exited nonzero: $(cat "$work/out")"
-want='["other","graph","memory","core-1","core-2","core-3","core-4"]'
+want='["other","graph","memory","badger","core-1","core-2","core-3","core-4"]'
 [[ "$(cat "$work/out")" == "$want" ]] || fail "list = $(cat "$work/out"), want $want"
 
 # 2. other: every package except the split and the isolated ones, one run.
@@ -62,6 +63,8 @@ run graph 4 || fail "graph exited nonzero"
 [[ "$(log)" == "test -short -race -count=1 $mod/pkg/graph" ]] || fail "graph ran: $(log)"
 run memory 4 || fail "memory exited nonzero"
 [[ "$(log)" == "test -short -race -count=1 $mod/pkg/graph/store/memory" ]] || fail "memory ran: $(log)"
+run badger 4 || fail "badger exited nonzero"
+[[ "$(log)" == "test -short -race -count=1 $mod/pkg/graph/store/badger" ]] || fail "badger ran: $(log)"
 
 # 4. core shards: one run each, only core, and together every compiled name
 #    exactly once (exhaustive, disjoint).
@@ -80,9 +83,9 @@ got=$(printf '%s\n' "${all[@]}" | LC_ALL=C sort)
 want=$(printf '%s\n' ExampleH FuzzG TestA TestB TestC TestD TestE TestF TestI | LC_ALL=C sort)
 [[ "$got" == "$want" ]] || fail "core shards cover ${got//$'\n'/ }, want ${want//$'\n'/ }"
 
-# 5. no selector: every part in sequence (local/v5 behaviour), 7 runs.
+# 5. no selector: every part in sequence (local/v5 behaviour), 8 runs.
 run '' 4 || fail "full sequence exited nonzero"
-[[ $(log | wc -l) -eq 7 ]] || fail "full sequence ran $(log | wc -l) parts: $(log)"
+[[ $(log | wc -l) -eq 8 ]] || fail "full sequence ran $(log | wc -l) parts: $(log)"
 grep -q 'all root packages and core shards passed' "$work/out" || fail "full sequence lacks its completion marker"
 
 # 6. one shard: plain go test ./..., the selector is refused.
