@@ -7,6 +7,9 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
+Order (René 24 Oct, "fixes first"): FLUSHPART release, then KEYSIZE + VALUESIZE (one fix at the write door), VERIFY +
+BADGERLOG, CLEARMETA, DROPALL + DISCARDCLOSE; then BADGER step 3.
+
 - **FLUSHPART** — A flush above one badger transaction (104,855 entries or about 10 MB at default options) was several
   transactions, so a crash kept a random part of it (`docs/badger.md` rule 1). Done when: merged and released as
   v4.75.0 (a minor: format marker 9 is a one-way door), ai-soc and sigma told. Waits for: René's go to merge and tag.
