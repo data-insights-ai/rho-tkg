@@ -459,14 +459,24 @@ func TestHistoryScanAllocGate(t *testing.T) {
 				t.Fatalf("plainMiddle %d has history %v", plainMiddle, got)
 			}
 
+			// AllocsPerRun counts every allocation in the process, so another
+			// test's or store's background goroutines add noise to one
+			// measurement now and then (a +5 seen in the full package). Noise
+			// only adds; the minimum of three is the door's own cost.
 			measure := func(name string, fn func() error) float64 {
-				a := testing.AllocsPerRun(50, func() {
-					if err := fn(); err != nil {
-						t.Fatalf("%s: %v", name, err)
+				best := -1.0
+				for round := 0; round < 3; round++ {
+					a := testing.AllocsPerRun(50, func() {
+						if err := fn(); err != nil {
+							t.Fatalf("%s: %v", name, err)
+						}
+					})
+					if best < 0 || a < best {
+						best = a
 					}
-				})
-				t.Logf("%s: %.1f allocs/op", name, a)
-				return a
+				}
+				t.Logf("%s: %.1f allocs/op (least of 3)", name, best)
+				return best
 			}
 			doors := []struct {
 				name string
