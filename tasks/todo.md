@@ -61,7 +61,9 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   Fixed on the branch (24 Oct): the doors accept an open end; void pieces over [a, open), no resumption, no row
   ended in transaction time. The open void row is a new row shape (the decoder allowed bounded void rows only; the
   oracle harness found it, 75 of 200 seeds): row format 7, store marker 10, a one-way door for the minor v4.76.0;
-  a bounded excise keeps 5 and 6. Three mutations caught. Next: suite, CHANGELOG, `make ci-docker`, v4.76.0.
+  a bounded excise keeps 5 and 6. Three mutations caught. Suite and race green after updating three excise contract
+  tests (they asserted the lifted refusal) and adding the batch twin; CHANGELOG written. Next: `make ci-docker`,
+  v4.76.0.
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
