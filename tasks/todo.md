@@ -195,7 +195,11 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   sharded, committed ahead of the rows that use it); decode resolves tokens, so indexes and filters see plain
   values; a new row shape (a one-way door, a minor). RAM: decoded values interned per token (one string per
   value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
-  then built and released. Order: after SHARD unless ai-soc's measurement of the design says otherwise.
+  then built and released. Order: after SHARD (ai-soc agrees, 24 Oct). Coding is a per-property opt-in list in the
+  config (ai-soc: explicit, testable per property, no high-cardinality property coded by accident), with a cap per
+  property falling back to inline values. First list: `action`, `aisoc_source` (every edge type); `estate`;
+  `local_ip`, `remote_ip`, `account_sid` on NETWORK/NETFIRST/LOGON/FILE/PROCESS/REGISTRY; `src`, `dst`, `service`
+  on FIREWALL/FLOW; possibly sigma's `ov_rel` on Derived. The one-way door ships when René says.
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each; 45 `Txn.Get` sites) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
 - **PREFETCH** — 14 iterators prefetch values (13 explicitly, plus `badgerstore_planner_stats_deferred.go:137` by
