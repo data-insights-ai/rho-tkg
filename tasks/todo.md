@@ -56,6 +56,10 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   `NodeAt(93..232)` with the superseded [92,233) row, the effective timeline holds [93,233), and after the excise
   [93,233) returns. ai-soc (24 Oct): probably hit on run k10241303 (an in-place extension read back unchanged at its
   pin, so /events refused for the whole run); a rho-side fix matters to it.
+  Fixed on `samestart` (24 Oct): the fast path runs only when rows sharing a start tile; node and relationship tests
+  green on memory and badger. The oracle harness had mirrored the engine's dispatch (so it shared the blind spot)
+  and had no close in place: it now resolves by the reference rule only and gains close and regrow ops; it fails the
+  old code. Next: the full suite, docs, the patch gate, v4.75.5.
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
