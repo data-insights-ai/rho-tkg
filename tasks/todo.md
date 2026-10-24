@@ -44,7 +44,7 @@ Each item: one sentence, then when it is done and what it waits for.
    prefix holds per WAL file only under power loss without `SyncWrites`; the `Discard` rules; citations; section 8
    passed against the source (uncited rows are doc comments of features rho does not use).
 2. [ ] rho's current badger use, fully verified in tests: the call map and the 9-category analysis exist
-   (`tasks/evidence/USAGE/`); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
+   (`tasks/evidence/USAGE/`); CLEARMETA confirmed by a real crash test (24 Oct); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence, then its fix.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
@@ -93,11 +93,12 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
     its data cleanup.
 
-- **CLEARMETA** (confirmed, a wrong-answer bug; red test on branch `clearmeta`, `tasks/evidence/CLEARMETA/red.txt`) —
-  `Clear` with the change log on (or once on) deletes every meta key except `last_lsn` and commits that before it
-  drops the data; the store a crash leaves there reopens without error, answers 0 for every label, and the next new
-  label takes a token the old rows carry (1 new node, 21 answers). Done when: `Clear` drops the data before the meta
-  that interprets it, the red test passes, released as a patch.
+- **CLEARMETA** (confirmed by a real crash test on branch `clearmeta`, `tasks/evidence/CLEARMETA/red.txt`) — `Clear`
+  with the change log on (or once on) deletes every meta key except `last_lsn` before it drops the data; a process
+  that dies there reopens a store that looks empty while its rows remain, and the first new label collides with
+  their tokens (its query fails: "property-key token 1 not in registry"). Done when: `Clear` drops the data before
+  the meta that interprets it (the order is drafted, not applied), the test passes, released as a patch. The fix
+  waits until the BADGER milestone's step 2 is through (René 24 Oct: verify first).
 - **KEYSIZE** (candidate) — rho allows property values of 65,536 bytes and copies a string value verbatim into its
   on-disk property index key (`property_index_key.go:136-139`), above badger's 65,000-byte key limit (`txn.go:352`),
   so such a value would make its flush fail. Done when: a test shows it, and the value is capped or the key hashed.
