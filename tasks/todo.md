@@ -8,7 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct, "fixes first", then "the given order"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0
-(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; next VERIFY + BADGERLOG (built), CLEARMETA, then BADGER step 3 /
+(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2; next CLEARMETA, then BADGER step 3 /
 SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -40,33 +40,18 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
 
-- **VERIFY + BADGERLOG** (built on branch `verifylog`, 24 Oct; release v4.75.2 pending) — With rho's options badger
-  checked no value-log value and no table block, swallowed a failed value-log read into an empty value, cut the
-  newest value-log file at a bad entry on open without a word, and got no logger (tiered and sharded have no logger
-  field), so one flipped byte could reach a caller as data. Now: value and block checksums on (a few us per
-  block-cache miss, about 1 ms per MB-sized row read, `tasks/evidence/VERIFY/cost.txt`), badger's reports go to `slog`
-  by default in every backend, a value-log cut at open is reported, and rho recovers badger panics on its own read
-  paths and the open scan. Tests: 6, each red without its part (72 flipped table positions: none silent with
-  checksums, 11 without). Full short suite and `-race` on badger, tiered and sharded green (24 Oct). Committed
-  with docs and CHANGELOG on `verifylog` (rebased on main). Gate 1 red on lint (an unchecked `Close` in the new report file),
-  fixed; gate 2 refused it as a minor: `scripts/patchgate` counted the exported methods of
-  the unexported `slogBadgerLogger` (badger's Logger interface) as API. The checker now skips methods of unexported
-  types (red case added); gate 3 red once on `TestHistoryScanAllocGate` (24 vs 19 allocations;
-  it counts process-wide, passes alone with checksums on and off). Likely cause: the new badger logger formatted lines
-  slog then dropped; it now formats only kept levels; three package runs green, cause not proven. Gate 4 running. Done when: released as a patch, ai-soc and sigma told.
 - **CLEARMETA** (confirmed by a real crash test on branch `clearmeta`, `tasks/evidence/CLEARMETA/red.txt`) — `Clear`
   with the change log on (or once on) deletes every meta key except `last_lsn` before it drops the data; a process
   that dies there reopens a store that looks empty while its rows remain, and the first new label collides with
   their tokens (its query fails: "property-key token 1 not in registry"). Done when: `Clear` drops the data before
-  the meta that interprets it (the order is drafted), the test passes, released as a patch. Next after VERIFY +
-  BADGERLOG. sigma (24 Oct): reachable through
+  the meta that interprets it (the order is drafted), the test passes, released as a patch. Next. sigma (24 Oct): reachable through
   its daemon's admin reset with the change log on.
 
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
-  below are ticked and released. Waits for: VERIFY + BADGERLOG and CLEARMETA (René 24 Oct); then BADGER step 3
+  below are ticked and released. Waits for: CLEARMETA (René 24 Oct); then BADGER step 3
   (per-tier badger options) leads in; step 1 with option (b), pre-creating `reference/` and `archive/` only for a new
   store (René 23 Oct), from branch `shard-step1`.
 
