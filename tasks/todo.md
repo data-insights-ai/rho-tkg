@@ -58,6 +58,10 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   Red tests on branch `openexcise` (24 Oct, `tasks/evidence/OPENEXCISE/red.txt`): (A), (B) and the relationship
   door, memory and badger; all refused today ("excise needs a bounded end", `excise.go:34` and
   `checkCascadeInterval`). `EndValidity` is no substitute: it deletes at the transaction instant.
+  Fixed on the branch (24 Oct): the doors accept an open end; void pieces over [a, open), no resumption, no row
+  ended in transaction time. The open void row is a new row shape (the decoder allowed bounded void rows only; the
+  oracle harness found it, 75 of 200 seeds): row format 7, store marker 10, a one-way door for the minor v4.76.0;
+  a bounded excise keeps 5 and 6. Three mutations caught. Next: suite, CHANGELOG, `make ci-docker`, v4.76.0.
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
