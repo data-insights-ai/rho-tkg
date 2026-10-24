@@ -271,26 +271,21 @@ func (e *oracleEntity) ownBounds(r oracleRow) (types.Instant, types.Instant) {
 }
 
 // pointVisible resolves the version covering validAt as known at txAt, or
-// (row, false) when the entity has no covering version. Mirrors
-// resolveNodeVersionAt's fast/slow dispatch exactly. validAt is covered by a
-// version when vStart <= validAt && (vEnd == 0 || vEnd > validAt).
+// (row, false) when the entity has no covering version. validAt is covered by
+// a version when vStart <= validAt && (vEnd == 0 || vEnd > validAt).
+//
+// It always answers by the reference rule (own bounds, newest belief, a
+// replacing write ends older beliefs from its start), never by the engine's
+// positional fast path: an oracle that mirrored the engine's fast/slow
+// dispatch shared its blind spot (SAMESTART: a same-start chain closed
+// narrower than an older row exposed that row in both). The engine's fast
+// path must agree with this rule wherever it is taken.
 func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, bool) {
-	chain, needed := e.sortChain(e.txFilter(txAt))
+	chain, _ := e.sortChain(e.txFilter(txAt))
 	if len(chain) == 0 {
 		return oracleRow{}, false
 	}
-	if !needed {
-		// Fast path: newest covering version (highest effVF) wins.
-		for i := len(chain) - 1; i >= 0; i-- {
-			vs, ve := e.bounds(chain, i)
-			ve = capAtLifeEnd(ve, lifeEnd(chain, chain[i]))
-			if vs <= validAt && (ve == 0 || ve > validAt) {
-				return chain[i], !chain[i].void // a void winner: absent (backlog 64)
-			}
-		}
-		return oracleRow{}, false
-	}
-	// Slow path (cascade): newest BELIEF covering version wins. BACKLOG 10b:
+	// Newest BELIEF covering version wins. BACKLOG 10b:
 	// own-interval bounds, not positional — see ownBounds.
 	// A belief does not answer at t once a newer REPLACING write (an Update,
 	// CloseVersion or label change: its row is recorded at the TxTo of the
@@ -995,8 +990,77 @@ func (w *world) deleteRel() {
 	}
 }
 
+// closeNode ends a node's current version in place (Update with a
+// tkg_valid_to after its start) and regrowNode re-opens it from that same
+// start (SetNodeVersionInterval [start, open)): together they build the
+// same-start chains of SAMESTART, where a close narrower than an older row
+// must still end that row.
+func (w *world) closeNode() {
+	alive := w.aliveNodes()
+	if len(alive) == 0 {
+		return
+	}
+	id := alive[w.rng.IntN(len(alive))]
+	n, err := w.g.Nodes.Get(w.ctx, id)
+	if err != nil || n.Temporal() == nil {
+		return
+	}
+	vt := n.Temporal().ValidFrom + w.width()
+	_, err = w.g.Nodes.Update(w.ctx, id, map[string]any{"tkg_valid_to": vt, "k": w.seqno})
+	w.seqno++
+	w.record(fmt.Sprintf("closeNode(%v,%d)", id, vt), err)
+}
+
+func (w *world) regrowNode() {
+	alive := w.aliveNodes()
+	if len(alive) == 0 {
+		return
+	}
+	id := alive[w.rng.IntN(len(alive))]
+	n, err := w.g.Nodes.Get(w.ctx, id)
+	if err != nil || n.Temporal() == nil {
+		return
+	}
+	vf := n.Temporal().ValidFrom
+	_, err = w.g.Temporal.SetNodeVersionInterval(w.ctx, id, vf, 0, map[string]any{"k": w.seqno})
+	w.seqno++
+	w.record(fmt.Sprintf("regrowNode(%v,%d)", id, vf), err)
+}
+
+func (w *world) closeRel() {
+	alive := w.aliveRels()
+	if len(alive) == 0 {
+		return
+	}
+	id := alive[w.rng.IntN(len(alive))]
+	r, err := w.g.Rels.Get(w.ctx, id)
+	if err != nil || r.Temporal() == nil {
+		return
+	}
+	vt := r.Temporal().ValidFrom + w.width()
+	_, err = w.g.Rels.Update(w.ctx, id, map[string]any{"tkg_valid_to": vt, "k": w.seqno})
+	w.seqno++
+	w.record(fmt.Sprintf("closeRel(%v,%d)", id, vt), err)
+}
+
+func (w *world) regrowRel() {
+	alive := w.aliveRels()
+	if len(alive) == 0 {
+		return
+	}
+	id := alive[w.rng.IntN(len(alive))]
+	r, err := w.g.Rels.Get(w.ctx, id)
+	if err != nil || r.Temporal() == nil {
+		return
+	}
+	vf := r.Temporal().ValidFrom
+	_, err = w.g.Temporal.SetRelVersionInterval(w.ctx, id, vf, 0, map[string]any{"k": w.seqno})
+	w.seqno++
+	w.record(fmt.Sprintf("regrowRel(%v,%d)", id, vf), err)
+}
+
 func (w *world) step() {
-	switch w.rng.IntN(13) {
+	switch w.rng.IntN(17) {
 	case 0:
 		w.addNode()
 	case 1:
@@ -1023,6 +1087,14 @@ func (w *world) step() {
 		w.exciseNode()
 	case 12:
 		w.exciseRel()
+	case 13:
+		w.closeNode()
+	case 14:
+		w.regrowNode()
+	case 15:
+		w.closeRel()
+	case 16:
+		w.regrowRel()
 	}
 }
 

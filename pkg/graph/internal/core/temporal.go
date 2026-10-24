@@ -344,49 +344,64 @@ func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*type
 // resolveNodeVersionAtCapped is resolveNodeVersionAt with every row's valid end
 // capped at its life end (lifeEnds; nil caps nothing).
 func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, caps lifeEnds[*types.Node]) (*types.Node, error) {
-	ax := c.axis() // once per chain, not per row
-	// Monotonic histories (the overwhelming common case — Update rejects
-	// backdated valid-from) tile without overlap, so iterate newest-first and
-	// return the first covering version: O(1) for a current-state query, no
-	// belief scan. Only a non-monotonic chain (an append-only cascade
-	// correction) needs the overlay, and only it pays the sort + full scan.
+	// Tiling histories (the overwhelming common case — Update rejects
+	// backdated valid-from) take the positional arm: newest first, the first
+	// covering version, O(1) for a current-state query, no belief scan. Every
+	// other chain (a cascade correction, a close in place: SAMESTART) takes
+	// the own-bounds arm and pays the sort + full scan.
 	if !c.sortNodeChainForResolve(chain) {
-		start := len(chain) - 1
-		if c.bitemporalMigrated {
-			// BACKLOG 10m: binary search for the backward scan's STARTING
-			// index instead of always starting at the end — an old t would
-			// otherwise force an O(n) walk past every newer version. Safe
-			// because when bitemporalMigrated is true, nodeVersionBounds'
-			// vStart is PROVABLY IDENTICAL to nodeValidFrom's — the very
-			// function sortNodeChainForResolve just used to confirm the
-			// chain is monotonic — so vStart is non-decreasing across the
-			// array, exactly binary search's precondition. (Pre-migration,
-			// the legacy inherited-ValidFrom heuristic can make them
-			// diverge for an inherited entry, breaking that precondition —
-			// why this is gated on bitemporalMigrated instead of applied
-			// unconditionally.) idx is the first index whose vStart exceeds
-			// t; every entry from idx onward provably cannot cover t, so
-			// the UNCHANGED backward scan below can start one before it.
-			idx := sort.Search(len(chain), func(i int) bool {
-				vStart, _ := c.nodeVersionBounds(chain, i)
-				return vStart > t
-			})
-			start = idx - 1
-		}
-		for i := start; i >= 0; i-- {
-			entry := chain[i]
-			vStart, vEnd := c.nodeVersionBounds(chain, i)
-			vEnd = caps.end(ax, entry, vEnd)
-			if storeutil.IntervalCovers(ax, vStart, vEnd, t) {
-				if isVoidRow(entry) {
-					return nil, storepkg.ErrNoVersionValidAt // an excised piece wins: absent
-				}
-				return entry, nil
-			}
-		}
-		return nil, storepkg.ErrNoVersionValidAt
+		return c.resolveNodePositional(chain, t, caps)
 	}
+	return c.resolveNodeOwnBounds(chain, t, caps)
+}
 
+// resolveNodePositional is the resolver's fast arm for a tiling chain
+// (sortNodeChainForResolve false): newest first, the first row whose
+// positional interval covers t.
+func (c *Core) resolveNodePositional(chain []*types.Node, t types.Instant, caps lifeEnds[*types.Node]) (*types.Node, error) {
+	ax := c.axis()
+	start := len(chain) - 1
+	if c.bitemporalMigrated {
+		// BACKLOG 10m: binary search for the backward scan's STARTING
+		// index instead of always starting at the end — an old t would
+		// otherwise force an O(n) walk past every newer version. Safe
+		// because when bitemporalMigrated is true, nodeVersionBounds'
+		// vStart is PROVABLY IDENTICAL to nodeValidFrom's — the very
+		// function sortNodeChainForResolve just used to confirm the
+		// chain is monotonic — so vStart is non-decreasing across the
+		// array, exactly binary search's precondition. (Pre-migration,
+		// the legacy inherited-ValidFrom heuristic can make them
+		// diverge for an inherited entry, breaking that precondition —
+		// why this is gated on bitemporalMigrated instead of applied
+		// unconditionally.) idx is the first index whose vStart exceeds
+		// t; every entry from idx onward provably cannot cover t, so
+		// the UNCHANGED backward scan below can start one before it.
+		idx := sort.Search(len(chain), func(i int) bool {
+			vStart, _ := c.nodeVersionBounds(chain, i)
+			return vStart > t
+		})
+		start = idx - 1
+	}
+	for i := start; i >= 0; i-- {
+		entry := chain[i]
+		vStart, vEnd := c.nodeVersionBounds(chain, i)
+		vEnd = caps.end(ax, entry, vEnd)
+		if storeutil.IntervalCovers(ax, vStart, vEnd, t) {
+			if isVoidRow(entry) {
+				return nil, storepkg.ErrNoVersionValidAt // an excised piece wins: absent
+			}
+			return entry, nil
+		}
+	}
+	return nil, storepkg.ErrNoVersionValidAt
+}
+
+// resolveNodeOwnBounds is the resolver's own-bounds arm: every row's own
+// interval capped by supersession, the newest belief covering t wins. It is
+// the reference rule; the positional arm must agree with it on every chain
+// sortNodeChainForResolve lets through (TestBitemporalOracleHarness).
+func (c *Core) resolveNodeOwnBounds(chain []*types.Node, t types.Instant, caps lifeEnds[*types.Node]) (*types.Node, error) {
+	ax := c.axis()
 	// Cascade chain: effective intervals can overlap (an older, wider-valid row
 	// under a newer, narrower correction), so the newer BELIEF wins — higher
 	// TxFrom, then version. BACKLOG 10b: bounds here MUST be each row's own
@@ -447,14 +462,19 @@ func nodeBeliefNewerThan(a, b *types.Node) bool {
 
 // sortNodeChainForResolve orders a (txAt-filtered) chain by effective valid-from
 // ascending, version ascending — the order nodeVersionBounds' next-version
-// tiling assumes. It returns true iff it actually had to reorder, i.e. the chain
-// was non-monotonic (only an append-only cascade produces that — Update rejects
-// backdated valid-from). The common monotonic case is detected by an O(n) scan
-// and returns false without sorting, so callers can take their fast path.
+// tiling assumes. It returns true when the resolver must take its own-bounds
+// arm: the chain had to be reordered (only an append-only cascade produces
+// that — Update rejects backdated valid-from), or two rows sharing a start do
+// not tile (tilesWithNext, SAMESTART). A tiling chain is detected by an O(n)
+// scan and returns false without sorting.
 func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
 	ax := c.axis() // once per chain, not per row
+	tiles := true
 	for i := 1; i < len(chain); i++ {
 		pa, pb := ax.NodeStart(chain[i-1]), ax.NodeStart(chain[i])
+		if tiles && !tilesWithNext(ax, chain[i-1].Temporal(), chain[i].Temporal(), pa, pb) {
+			tiles = false
+		}
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
 				va, vb := ax.NodeStart(chain[a]), ax.NodeStart(chain[b])
@@ -466,7 +486,7 @@ func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
 			return true
 		}
 	}
-	return false
+	return !tiles
 }
 
 // versionVisibleAtTx reports whether a version participates in valid-time
@@ -715,12 +735,17 @@ func relBeliefNewerThan(a, b *types.Relationship) bool {
 	return a.Version() > b.Version()
 }
 
-// sortRelChainForResolve mirrors sortNodeChainForResolve for relationships,
-// returning true iff it had to reorder (a cascade chain).
+// sortRelChainForResolve mirrors sortNodeChainForResolve for relationships:
+// true when the resolver must take its own-bounds arm (reordered, or the chain
+// does not tile).
 func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 	ax := c.axis() // once per chain, not per row
+	tiles := true
 	for i := 1; i < len(chain); i++ {
 		pa, pb := ax.RelStart(chain[i-1]), ax.RelStart(chain[i])
+		if tiles && !tilesWithNext(ax, chain[i-1].Temporal(), chain[i].Temporal(), pa, pb) {
+			tiles = false
+		}
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
 				va, vb := ax.RelStart(chain[a]), ax.RelStart(chain[b])
@@ -732,7 +757,32 @@ func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 			return true
 		}
 	}
-	return false
+	return !tiles
+}
+
+// tilesWithNext reports whether the positional fast path answers like the
+// own-bounds arm for a row (prev, starting at pa) and the next one in chain
+// order (next, starting at pb >= pa). Rows with different starts tile: the
+// fast path ends prev at pb, as every writer intends. Rows sharing a start
+// tile when next ends no earlier than prev: next then covers prev wherever
+// prev is valid and the newer row wins in both arms. A narrower next (a close
+// to 93 of a row valid to 233) leaves prev exposed to the fast path; the
+// own-bounds arm ends it at next's start (SAMESTART). The oracle harness
+// (TestBitemporalOracleHarness, its close and regrow ops) holds the fast path
+// to the reference rule on the chains the write doors produce.
+func tilesWithNext(ax types.ValidAxis, prev, next *types.TemporalMetadata, pa, pb types.Instant) bool {
+	if pa < pb {
+		return true
+	}
+	nextOpen := next == nil || ax.Open(next.ValidTo)
+	prevOpen := prev == nil || ax.Open(prev.ValidTo)
+	switch {
+	case nextOpen:
+		return true
+	case prevOpen:
+		return false
+	}
+	return next.ValidTo >= prev.ValidTo
 }
 
 // relOwnBounds mirrors nodeOwnBounds for relationships. See there.

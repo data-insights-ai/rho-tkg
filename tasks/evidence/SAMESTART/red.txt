@@ -14,3 +14,20 @@ same_start_resolve_test.go:83: after excising [92,93): NodeAt(232) = the row [93
 --- FAIL: TestSameStartChainCloseIsNotUndone (0.08s)
 --- FAIL: TestSameStartChainCloseIsNotUndone/memory (0.00s)
 --- FAIL: TestSameStartChainCloseIsNotUndone/badger (0.08s)
+
+Fix (24 Oct): the resolver's positional fast path is taken only when rows sharing a start tile (the newer ends no
+earlier than the older); otherwise the own-bounds arm (supersession) answers. One place, sortNodeChainForResolve /
+sortRelChainForResolve, which NodeAt, RelAt and the effective timelines all use. The resolver is split into its two
+arms (resolveNodePositional, resolveNodeOwnBounds).
+
+Why the oracle harness missed it: its reference model mirrored the engine's fast/slow dispatch exactly, so it shared
+the blind spot, and its ops had no close in place. Now its point resolve always uses the reference rule, and it has
+four new ops (closeNode, regrowNode, closeRel, regrowRel).
+Checks, each against the full harness (200 seeds, memory and badger, every temporal door):
+  fix:                               all green; TestSameStartChainCloseIsNotUndone and ...RelChain... green
+  A old engine:                      FAIL seed=47645253139, seed=47645253221 (v1 [1859,3367) exposed at 2718)
+  C1 equal starts always tile:       FAIL (same seeds)
+  C2 a reach-past clause for rows with different starts: no reachable chain told it apart (harness green either
+                                     way), so it was dropped as untestable; a synthetic-chain property test showed the
+                                     arms differ only on chains no writer produces.
+TestEffectiveTimelinesBytesPerExtraVersion (a same-start chain of open regrows) stays on the fast path: green.
