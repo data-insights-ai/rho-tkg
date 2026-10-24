@@ -24,7 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     memtable's WAL): the open discards that flush, logged, like any lost unsynced flush. Under `SyncWrites` a torn
     staging can only be corruption: the open refuses (`ErrInvalidStoreMutation`) and names the new
     **`badger.DiscardStagedFlush(cfg) (bool, error)`**, which drops the flush from a closed store directory (a badger
-    store, tiered shard or sharded slot); its writes are lost, an applied part stays.
+    store, tiered shard or sharded slot); its writes are lost, an applied part stays. Dropping a flush (by the open or
+    by this function) also drops the node and relationship counters, so the next open counts the live rows instead
+    of refusing counters a surviving part of the apply raised. A path without a badger store fails with
+    `fs.ErrNotExist` (nothing is created); a store of a newer format is refused.
   - **One-way door**: the first staged flush raises the store format marker to **9**; v4.74.0 and earlier refuse such
     a store at open (`ErrWireFormatVersionUnsupported`); hence a minor. Stores whose flushes all fit one transaction
     keep their marker. Upgrade every reader of a store before its writer.
@@ -33,8 +36,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     they did.
   - **Tests**: crashes at every step (with and without `SyncWrites`; creations, replacements, removals) compared with
     an uncrashed store's index digest and change log, failures inside recovery, damaged and torn staging, duplicate
-    keys, readers during the flush, every door after a failure, and a tiered warm shard. All 18 code mutations of
-    the sweep fail a test (`tasks/evidence/FLUSHPART/mutations.txt`); the review was by Fable.
+    keys, readers during the flush, every door after a failure, a discard on a wrong path, and a tiered warm shard.
+    All 27 code mutations of the sweep fail a test (`tasks/evidence/FLUSHPART/mutations.txt`); the review was by Fable.
   - **Not covered**: a single entry above badger's transaction limit (a row of about 10 MB or more at the default
     memtable; rho allows rows up to 64 MB) still cannot be committed: its flush fails and is requeued every cycle, as
     before. Todo ROWSIZE.

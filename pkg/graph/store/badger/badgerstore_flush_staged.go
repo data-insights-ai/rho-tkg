@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"time"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -533,9 +535,19 @@ func readStageMarker(db *badgerv4.DB) ([]byte, error) {
 }
 
 // discardStagedFlush drops a staged flush: the marker first, so a crash
-// leaves unmarked staging, which the next open deletes.
+// leaves unmarked staging, which the next open deletes. The node and
+// relationship counters go in the same transaction: a part of the apply may
+// have survived with the flush's counters, and an absent counter makes the
+// open count the live rows (reconcilePersistedCounter) instead of refusing.
 func discardStagedFlush(db *badgerv4.DB) error {
-	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Delete(storepkg.FlushStageMarkerKey) }); err != nil {
+	if err := db.Update(func(txn *badgerv4.Txn) error {
+		for _, k := range [][]byte{storepkg.FlushStageMarkerKey, counterNodeCountKey, counterRelCountKey} {
+			if err := txn.Delete(k); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		return fmt.Errorf("graph: discard staged flush marker: %w", err)
 	}
 	if err := deleteAllStaging(db, nil); err != nil {
@@ -551,17 +563,31 @@ func discardStagedFlush(db *badgerv4.DB) error {
 // and a part of it that was already applied stays applied. The store must be
 // closed; cfg carries its options (encryption key, memtable size). It reports
 // whether there was a staged flush to drop. Without one it changes nothing.
+// A directory without a badger store fails with fs.ErrNotExist (nothing is
+// created); a store of a newer format is refused.
 func DiscardStagedFlush(cfg Config) (bool, error) {
 	if cfg.InMemory || cfg.Dir == "" {
 		return false, fmt.Errorf("graph: discard staged flush: needs an on-disk store directory")
 	}
+	if _, err := os.Stat(filepath.Join(cfg.Dir, badgerv4.ManifestFilename)); err != nil {
+		return false, fmt.Errorf("graph: discard staged flush: no badger store in %s: %w", cfg.Dir, err)
+	}
 	cfg.ReadOnly = false
+	if err := validateTuningConfig(cfg); err != nil {
+		return false, err
+	}
+	if err := validateEncryptionConfig(cfg); err != nil {
+		return false, err
+	}
 	if err := MigrateOversizedWAL(cfg); err != nil {
 		return false, err
 	}
 	db, err := badgerv4.Open(buildBadgerOptions(cfg))
 	if err != nil {
 		return false, fmt.Errorf("graph: badger open: %w", err)
+	}
+	if _, err := verifyAndStampWireFormatVersion(db, true); err != nil { // read-only: verifies, stamps nothing
+		return false, errors.Join(err, db.Close())
 	}
 	marker, err := readStageMarker(db)
 	if err == nil && marker != nil {

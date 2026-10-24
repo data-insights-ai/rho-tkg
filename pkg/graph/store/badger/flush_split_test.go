@@ -1,8 +1,12 @@
 package badger
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -575,5 +579,75 @@ func TestStagedFlushKeepsFormatMarkerRaisedMidFlush(t *testing.T) {
 	}
 	if got := storedFormatMarker(t, bs); got != storepkg.StagedFlushStoreFormatVersion {
 		t.Fatalf("format marker %d after a mid-flush raise to %d, want %d", got, storepkg.KeptValidToStoreFormatVersion, storepkg.StagedFlushStoreFormatVersion)
+	}
+}
+
+// TestDiscardStagedFlushRefusesWhatIsNotItsStore: DiscardStagedFlush on a
+// missing directory, or a directory that holds no badger store, fails with
+// fs.ErrNotExist and creates nothing; on a store of a newer format it refuses
+// (ErrWireFormatVersionUnsupported) and leaves the staged flush alone.
+// Catches a discard that creates an empty store at a mistyped path and
+// answers "nothing to drop", or edits a store this binary cannot read.
+func TestDiscardStagedFlushRefusesWhatIsNotItsStore(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no-such-store")
+	if _, err := DiscardStagedFlush(splitFlushConfig(missing)); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("missing dir: %v, want fs.ErrNotExist", err)
+	}
+	if _, err := os.Stat(missing); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("DiscardStagedFlush created the missing directory")
+	}
+	empty := t.TempDir()
+	if _, err := DiscardStagedFlush(splitFlushConfig(empty)); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("dir without a store: %v, want fs.ErrNotExist", err)
+	}
+	if entries, _ := os.ReadDir(empty); len(entries) != 0 {
+		t.Fatalf("DiscardStagedFlush wrote %d files into a dir without a store", len(entries))
+	}
+
+	cfg := splitFlushConfig(t.TempDir())
+	cfg.SyncWrites = true
+	tornAtMarker(t, cfg, splitFlushNodes(splitFlushNodeCount))
+	old := maxReadableStoreFormatVersion
+	maxReadableStoreFormatVersion = storepkg.StagedFlushStoreFormatVersion - 1
+	_, err := DiscardStagedFlush(cfg)
+	maxReadableStoreFormatVersion = old
+	if !errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
+		t.Fatalf("newer-format store: %v, want ErrWireFormatVersionUnsupported", err)
+	}
+	if dropped, err := DiscardStagedFlush(cfg); err != nil || !dropped {
+		t.Fatalf("the staged flush must still be there to drop: %v, %v", dropped, err)
+	}
+}
+
+// TestDiscardedFlushLeavesCountersReconcilable: a torn staged flush whose
+// counter keys were already applied (a part of the apply survived) leaves
+// counters above the live rows; dropping the flush (DiscardStagedFlush when it
+// was synced, the open itself when not) also drops the counters, so the open
+// counts the live rows instead of refusing. Catches a discard after which the
+// store still does not open.
+func TestDiscardedFlushLeavesCountersReconcilable(t *testing.T) {
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("sync=%v", sync), func(t *testing.T) {
+			cfg := splitFlushConfig(t.TempDir())
+			cfg.SyncWrites = sync
+			nodes := splitFlushNodes(splitFlushNodeCount)
+			tornAtMarker(t, cfg, nodes)
+			updateRawBadgerDir(t, cfg.Dir, func(txn *badgerv4.Txn) error {
+				v := make([]byte, 8)
+				binary.BigEndian.PutUint64(v, uint64(len(nodes)))
+				return txn.Set(counterNodeCountKey, v) // the counter part of the apply survived
+			})
+			if sync {
+				if dropped, err := DiscardStagedFlush(cfg); err != nil || !dropped {
+					t.Fatalf("DiscardStagedFlush = %v, %v", dropped, err)
+				}
+			}
+			bs, err := New(cfg)
+			if err != nil {
+				t.Fatalf("open after the discard: %v", err)
+			}
+			t.Cleanup(func() { _ = bs.Close() })
+			wantFlushAbsent(t, bs, nodes)
+		})
 	}
 }
