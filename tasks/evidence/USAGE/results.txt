@@ -1,0 +1,20 @@
+USAGE, 2026-10-24 (branch flushpart = main + FLUSHPART; badger v4.9.2)
+
+Call map (usage-map.txt, from usage-map.py.txt; regex per file and per function, prefetch counts checked by hand):
+  49 non-test files import badger. View 85, NewIterator 71, Txn.Get 45, WriteBatch writes 20, Txn.Set/SetEntry 15,
+  Update 15, NewWriteBatch 11, Txn.Delete 6, Open 3, DropAll 2, NewTransaction 2, Sync 2, MaxVersion 2, DropPrefix 1,
+  RunValueLogGC 1; NewKeyIterator 0.
+  Iterators without IteratorOptions.Prefix: 49 of 71 (they Seek a prefix and test ValidForPrefix, so badger cannot skip
+  tables outside it). Fable's review counted 11: wrong.
+  Prefetch on: 14 assignments (some conditional on the open image) over ~15 iterators, plus one by default
+  (badgerstore_planner_stats_deferred.go:137). Fable's review: 14.
+
+DROPALL (dropall_test.go.txt):
+  rho level, random race: 100 Clears of a store without the change log against 8 readers on cache misses: no failure,
+  but only 6-20 badger reads overlapped a Clear (after Clear the RAM indexes answer "not found" without badger):
+  inconclusive.
+  badger level, deterministic: a read that looked up an item before DropAll and takes its value after it: an inline
+  value (100 KB) comes back whole; a value-log value (2 MB) comes back EMPTY with a nil error.
+  Source: Item.yieldItemValue logs a value-log read error and returns (nil, nil) (iterator.go:158-187, "Don't return
+  error if we cannot read the value. Just log the error."); vlog file gone -> "file with ID not found" (value.go:919).
+  rho passes a nil badger logger unless Config.Logger is set (badgerstore_options.go), so the error is silent.

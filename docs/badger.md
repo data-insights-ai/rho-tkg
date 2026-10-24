@@ -264,7 +264,7 @@ or misleading, from the source (file:line). "rho" says where rho uses it (rho im
 | `DefaultIteratorOptions` | Prefetch on, 100 items. | 59 call sites |
 | `Iterator.Rewind`, `Seek`, `Next`, `Valid`, `ValidForPrefix`, `Item`, `Close` | Cursor over keys in order; `Item` is valid until `Next`. `ThreadId` and `Alloc` serve `Stream`. | everywhere |
 | `Item.Key`, `KeyCopy` | The key (valid until `Next`) or a copy. | 26 `KeyCopy` |
-| `Item.Value(fn)`, `ValueCopy` | The value inside the transaction, or a copy. | everywhere |
+| `Item.Value(fn)`, `ValueCopy` | The value inside the transaction, or a copy. **A value-log read error is logged and swallowed: the value comes back empty with a nil error** (`iterator.go:158-187`); measured after `DropAll` (`tasks/evidence/USAGE/`). Inline values cannot fail this way. | everywhere |
 | `Item.Version()` | The commit timestamp. | open image |
 | `Item.EstimatedSize()` | Key + inline value, or the value-log record length for a value-log value (`iterator.go:216`): no value read. | - (section 9) |
 | `Item.KeySize()`, `ValueSize()` | The key's length without its timestamp (`iterator.go:230-232`; badger's comment says + 8, the code does not add it); the value's length (approximate for value-log values, `iterator.go:238`). | `ValueSize` once |
@@ -376,11 +376,11 @@ Badger features rho does not use yet that fit a rho need, and one risk. Each is 
    badger version", not "written at a rho tx".
 9. **Master-key change**: `WriteKeyRegistry` rewrites the key registry under a new master key offline; rho has no
    tool for it.
-10. **Risk (DROPALL)**: `Clear` of a store that never had the change log calls `DropAll`, which badger says may
-    panic concurrent reads (`db.go:1699-1700`). Fable traced it (2026-10-24, not yet tested): a cache-miss point read
-    and a read snapshot hold a badger transaction outside `idxMu`/`flushMu`; memtables and tables are
-    reference-counted, so only a value-log read can fail (a deleted file, `value.go:919`), which rho makes only for a
-    row of 1 MB or more.
+10. **Risk (DROPALL)**: `Clear` of a store that never had the change log calls `DropAll` (badger: concurrent reads
+    may panic, `db.go:1699-1700`) while a cache-miss point read or a read snapshot may hold a badger transaction
+    outside `idxMu`/`flushMu`. Measured (`tasks/evidence/USAGE/`): an item looked up before `DropAll` still yields
+    an inline value whole, but a value-log value (a row of 1 MB or more) comes back empty with a nil error, because
+    badger swallows value-log read errors (`iterator.go:158-187`); with rho's nil logger nothing is reported.
 11. **Per-shard defaults (CACHE, SHARD)**: every writable open starts the writer, the flusher, 4 compactors with
     50 ms tickers and a directory walk every minute (`db.go:303-387`, `:458`, not guarded by `MetricsEnabled`);
     `CompactL0OnClose` for warm and cold shards saves their read-only opens a table probe per read for good;

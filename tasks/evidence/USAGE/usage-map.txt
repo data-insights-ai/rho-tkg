@@ -1,0 +1,120 @@
+files importing badger (non-test): 49
+TOTALS: View 85, NewIterator 71, Txn.Get 45, wb.Set/SetEntry/Delete 20, Txn.Set/SetEntry 15, Update 15, NewWriteBatch 11, Txn.Delete 6, badgerv4.Open 3, DropAll 2, NewTransaction 2, Sync 2, MaxVersion 2, DropPrefix 1, RunValueLogGC 1
+
+badger/badgerstore_adjacency_disk.go NewIterator=3 View=3
+badger/badgerstore_beliefwatermark.go NewIterator=2 View=2
+badger/badgerstore_changelog.go DropAll=1 DropPrefix=1 NewIterator=3 NewWriteBatch=2 Txn.Get=3 View=4 wb.Set/SetEntry/Delete=3
+badger/badgerstore_current_stamps.go Txn.Get=1 View=1
+badger/badgerstore_exact_erasure.go NewIterator=4 View=4
+badger/badgerstore_exadj.go NewIterator=1 View=1
+badger/badgerstore_flush.go RunValueLogGC=1
+badger/badgerstore_flush_staged.go NewIterator=2 NewTransaction=1 NewWriteBatch=4 Txn.Delete=4 Txn.Get=1 Txn.Set/SetEntry=4 Update=5 View=3 badgerv4.Open=1 wb.Set/SetEntry/Delete=6
+badger/badgerstore_format.go Txn.Get=2 Txn.Set/SetEntry=3 Update=3 View=2
+badger/badgerstore.go DropAll=1 NewIterator=7 Txn.Get=7 View=2 badgerv4.Open=1
+badger/badgerstore_history_delta.go Txn.Get=1 View=1
+badger/badgerstore_history.go NewIterator=4 View=4
+badger/badgerstore_history_node.go NewIterator=3 Txn.Get=1 View=4
+badger/badgerstore_history_presence.go NewIterator=4 View=2
+badger/badgerstore_history_rel.go NewIterator=3 Txn.Get=1 View=4
+badger/badgerstore_history_stamps.go NewIterator=1 View=1
+badger/badgerstore_index_repair.go NewIterator=1 NewWriteBatch=1 wb.Set/SetEntry/Delete=2
+badger/badgerstore_label_disk.go NewIterator=2 View=2
+badger/badgerstore_labeltxmembers.go NewIterator=2 View=2
+badger/badgerstore_meta.go NewIterator=1 Sync=2 Txn.Get=5 Txn.Set/SetEntry=6 Update=5 View=5
+badger/badgerstore_node_batch.go NewIterator=1 View=1
+badger/badgerstore_node.go Txn.Get=6 View=4
+badger/badgerstore_open_image.go MaxVersion=2 NewWriteBatch=1 Txn.Get=3 Txn.Set/SetEntry=1 Update=1 View=2 wb.Set/SetEntry/Delete=2
+badger/badgerstore_options.go badgerv4.Open=1
+badger/badgerstore_partial.go NewIterator=1 View=1
+badger/badgerstore_planner_stats_deferred.go NewIterator=1 View=1
+badger/badgerstore_property_disk.go NewIterator=6 NewWriteBatch=1 View=6 wb.Set/SetEntry/Delete=2
+badger/badgerstore_propertytxmembers.go NewIterator=2 Txn.Get=1 View=1
+badger/badgerstore_read_snapshot.go NewIterator=1 Txn.Get=1
+badger/badgerstore_read_txn.go NewTransaction=1 View=1
+badger/badgerstore_rel.go Txn.Get=3 View=3
+badger/badgerstore_rel_retention_purge.go NewIterator=1 View=1
+badger/badgerstore_reltype_temporal_index.go NewIterator=1 Txn.Delete=1 Txn.Get=1 Update=1 View=1
+badger/badgerstore_retention_purge.go NewIterator=1 View=1
+badger/badgerstore_scan_snapshot.go NewIterator=1
+badger/badgerstore_shard_drop.go NewIterator=1 View=1
+badger/badgerstore_stored_sizes.go NewIterator=1 Txn.Get=1 View=2
+badger/badgerstore_temporal_disk.go NewIterator=4 NewWriteBatch=2 Txn.Get=1 View=4 wb.Set/SetEntry/Delete=5
+badger/badgerstore_temporalmeta.go NewIterator=1 View=1
+badger/badgerstore_txtime.go NewIterator=1 Txn.Get=2 View=2
+badger/badgerstore_valid_axis.go Txn.Get=1 View=1
+badger/badgerstore_valid_end.go NewIterator=2 Txn.Get=1 View=2
+badger/test_export.go NewIterator=1 Txn.Get=1 View=2
+badger/test_export_openimage.go NewIterator=1 Txn.Delete=1 Txn.Get=1 Txn.Set/SetEntry=1
+
+ITERATORS (file:line func | options | Prefix | PrefetchValues | AllVersions/Reverse)
+badger/badgerstore_adjacency_disk.go:86 adjacentRelIDsSnapshotLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_adjacency_disk.go:165 adjacentRelMetasSnapshotLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_adjacency_disk.go:350 incomingIndexEntriesFromKeyspaceLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_beliefwatermark.go:112 ensureNodeBeliefWatermarkBuilt | opts | Prefix no | Prefetch true | 
+badger/badgerstore_beliefwatermark.go:183 ensureRelBeliefWatermarkBuilt | opts | Prefix no | Prefetch true | 
+badger/badgerstore_changelog.go:271 clearDataPreservingLastLSN | opts | Prefix yes | Prefetch false | 
+badger/badgerstore_changelog.go:379 maxChangeLogLSN | opts | Prefix no | Prefetch false | Reverse
+badger/badgerstore_changelog.go:657 changeFeedPage | opts | Prefix no | Prefetch true | 
+badger/badgerstore_exact_erasure.go:332 exactErasurePropertyIndexOpsLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_exact_erasure.go:365 exactErasureTemporalIndexOpsLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_exact_erasure.go:634 exactErasureRelationshipClosureLocked | opts | Prefix no | Prefetch true | 
+badger/badgerstore_exact_erasure.go:735 exactErasureChangeLogRetainedLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_exadj.go:83 exAdjRelIDs | opts | Prefix yes | Prefetch false | 
+badger/badgerstore_flush_staged.go:351 deleteAllStaging | badgerv4.IteratorOptions{Prefix: prefix} | Prefix yes | Prefetch false(zero) | 
+badger/badgerstore_flush_staged.go:430 recoverStagedFlush | badgerv4.IteratorOptions{Prefix: prefix} | Prefix yes | Prefetch false(zero) | 
+badger/badgerstore.go:1183 loadIndexesScan | valueOpts | Prefix no | Prefetch false | 
+badger/badgerstore.go:1250 loadIndexesScan | opts | Prefix no | Prefetch false | 
+badger/badgerstore.go:1288 loadIndexesScan | relValueOpts | Prefix no | Prefetch false | 
+badger/badgerstore.go:1354 loadIndexesScan | opts | Prefix no | Prefetch false | 
+badger/badgerstore.go:1390 loadIndexesScan | opts | Prefix no | Prefetch false | 
+badger/badgerstore.go:1435 loadIndexesScan | opts | Prefix no | Prefetch false | 
+badger/badgerstore.go:1747 loadIndexesScan | valueOpts | Prefix no | Prefetch false | 
+badger/badgerstore_history.go:47 truncateHistoryByPrefixRouted | opts | Prefix no | Prefetch false | 
+badger/badgerstore_history.go:141 historyTruncateDeleteKeys | opts | Prefix no | Prefetch false | 
+badger/badgerstore_history.go:266 trimHistoryFromPrefixRouted | opts | Prefix no | Prefetch false | 
+badger/badgerstore_history.go:409 maxHistoryID | opts | Prefix no | Prefetch false | Reverse
+badger/badgerstore_history_node.go:775 getNodeHistoryByPrefix | opts | Prefix yes | Prefetch true | 
+badger/badgerstore_history_node.go:887 nodeHistoryVersionsFromPrefix | opts | Prefix yes | Prefetch true | 
+badger/badgerstore_history_node.go:1168 AllNodeHistoryIDsFrom | opts | Prefix no | Prefetch false | 
+badger/badgerstore_history_presence.go:402 scanHistoryTops | fopts | Prefix yes | Prefetch false | Reverse
+badger/badgerstore_history_presence.go:406 scanHistoryTops | ropts | Prefix yes | Prefetch false | Reverse
+badger/badgerstore_history_presence.go:524 probeHistoryPresence | opts | Prefix yes | Prefetch false | Reverse
+badger/badgerstore_history_presence.go:532 probeHistoryPresence | opts | Prefix yes | Prefetch false | Reverse
+badger/badgerstore_history_rel.go:374 getRelHistoryByPrefix | opts | Prefix yes | Prefetch true | 
+badger/badgerstore_history_rel.go:482 relHistoryVersionsFromPrefix | opts | Prefix yes | Prefetch true | 
+badger/badgerstore_history_rel.go:756 AllRelHistoryIDsFrom | opts | Prefix no | Prefetch false | 
+badger/badgerstore_history_stamps.go:342 scanHistoryStamps | opts | Prefix no | Prefetch false | 
+badger/badgerstore_index_repair.go:51 addMissing | opts | Prefix no | Prefetch false | 
+badger/badgerstore_label_disk.go:81 labelNodeIDsSnapshotLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_label_disk.go:141 nodeLabelTokensFromKeyspaceLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_labeltxmembers.go:266 ensureLabelTxMembersBuilt | opts | Prefix no | Prefetch true | 
+badger/badgerstore_labeltxmembers.go:337 ensureRelTypeTxMembersBuilt | opts | Prefix no | Prefetch true | 
+badger/badgerstore_meta.go:388 ForEachMetaName | opts | Prefix yes | Prefetch false | 
+badger/badgerstore_node_batch.go:462 relationshipIndexKeysForRel | opts | Prefix no | Prefetch false | 
+badger/badgerstore_partial.go:356 scanAndDeleteIncomingPersisted | opts | Prefix yes | Prefetch false | 
+badger/badgerstore_planner_stats_deferred.go:137 mergeScanCurrent | badgerv4.DefaultIteratorOptions | Prefix no | Prefetch default(true) | 
+badger/badgerstore_property_disk.go:213 maintainPropertyIndexesPurge | opts | Prefix no | Prefetch false | 
+badger/badgerstore_property_disk.go:278 propertyIndexDiskEqualityCandidatesLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_property_disk.go:355 propertyIndexDiskRangeCandidatesLocked | opts | Prefix yes | Prefetch false | 
+badger/badgerstore_property_disk.go:475 propertyIndexDiskRangeOrderedEntriesLocked | opts | Prefix yes | Prefetch false | 
+badger/badgerstore_property_disk.go:607 propertyIndexDiskPrefixEntriesLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_property_disk.go:663 purgePropertyKeyDiskEntriesLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_propertytxmembers.go:609 scanPropTxRows | opts | Prefix yes | Prefetch true | 
+badger/badgerstore_propertytxmembers.go:641 scanPropTxRows | opts | Prefix yes | Prefetch true | 
+badger/badgerstore_read_snapshot.go:157 seek | opts | Prefix no | Prefetch false | 
+badger/badgerstore_rel_retention_purge.go:186 relPurgeCandidates | opts | Prefix no | Prefetch false | 
+badger/badgerstore_reltype_temporal_index.go:318 newRelBuildWalk | opts | Prefix yes | Prefetch false | 
+badger/badgerstore_retention_purge.go:299 purgedRelsForNodeLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_scan_snapshot.go:84 seekAfterMiss | iopts | Prefix no | Prefetch false | 
+badger/badgerstore_shard_drop.go:99 hasForeignLabelTokensLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_stored_sizes.go:70 NodeStoredSizes | opts | Prefix yes | Prefetch false | 
+badger/badgerstore_temporal_disk.go:142 maintainTemporalIndexDiskPurge | opts | Prefix no | Prefetch false | 
+badger/badgerstore_temporal_disk.go:188 purgeTemporalIndexDiskEntriesLocked | opts | Prefix no | Prefetch false | 
+badger/badgerstore_temporal_disk.go:219 commitTemporalIndexOnDiskBackfill | opts | Prefix no | Prefetch false | 
+badger/badgerstore_temporal_disk.go:277 purgeUndefinedTemporalDiskRows | opts | Prefix no | Prefetch false | 
+badger/badgerstore_temporalmeta.go:71 historyTemporalMetaByPrefix | opts | Prefix yes | Prefetch false | 
+badger/badgerstore_txtime.go:164 reverseScanHistoryVersionInTxnOverlay | opts | Prefix no | Prefetch false | Reverse
+badger/badgerstore_valid_end.go:169 validEndRowsBulk | opts | Prefix no | Prefetch false | 
+badger/badgerstore_valid_end.go:172 validEndRowsBulk | opts | Prefix no | Prefetch false | 
+badger/test_export.go:147 TemporalIndexDiskEntryCountForTest | opts | Prefix no | Prefetch false | 
+badger/test_export_openimage.go:231 forEachOpenStateKey | opts | Prefix yes | Prefetch false | 

@@ -1,0 +1,57 @@
+import re, os, sys, subprocess, collections
+R='/home/renework2023/Work/2026/datainsights/rho-tkg'
+files=subprocess.run(['bash','-c',f'cd {R} && grep -rl "dgraph-io/badger/v4" --include=*.go pkg cmd 2>/dev/null | grep -v _test.go | sort'],capture_output=True,text=True).stdout.split()
+kinds={
+ 'Txn.Get':r'\b(txn|tx|t|rtxn|s\.txn|snap\.txn|r\.txn)\.Get\(',
+ 'Txn.Set/SetEntry':r'\b(txn|tx|t)\.(Set|SetEntry)\(',
+ 'Txn.Delete':r'\b(txn|tx|t)\.Delete\(',
+ 'NewTransaction':r'\.NewTransaction\(',
+ 'Update':r'\bdb\.Update\(|\.db\.Update\(',
+ 'View':r'\bdb\.View\(|\.db\.View\(|\bbs\.view\(|\.view\(func',
+ 'NewIterator':r'\.NewIterator\(',
+ 'NewKeyIterator':r'\.NewKeyIterator\(',
+ 'NewWriteBatch':r'\.NewWriteBatch\(',
+ 'wb.Set/SetEntry/Delete':r'\bwb\w*\.(Set|SetEntry|Delete)\(',
+ 'Sync':r'\.db\.Sync\(|\bdb\.Sync\(',
+ 'DropAll':r'\.DropAll\(',
+ 'DropPrefix':r'\.DropPrefix\(',
+ 'RunValueLogGC':r'RunValueLogGC\(',
+ 'MaxVersion':r'\.MaxVersion\(',
+ 'badgerv4.Open':r'badgerv4\.Open\(',
+}
+tot=collections.Counter(); per={}
+for f in files:
+    src=open(os.path.join(R,f)).read()
+    c=collections.Counter()
+    for k,p in kinds.items():
+        n=len(re.findall(p,src))
+        if n: c[k]=n; tot[k]+=n
+    per[f]=c
+print(f'files importing badger (non-test): {len(files)}')
+print('TOTALS:', ', '.join(f'{k} {v}' for k,v in tot.most_common()))
+print()
+for f,c in per.items():
+    if c: print(f.replace('pkg/graph/store/',''), ' '.join(f'{k}={v}' for k,v in sorted(c.items())))
+# iterator table: per function
+print('\nITERATORS (file:line func | options | Prefix | PrefetchValues | AllVersions/Reverse)')
+for f in files:
+    src=open(os.path.join(R,f)).read(); lines=src.split('\n')
+    funcs=[(m.start(), m.group(1)) for m in re.finditer(r'^func (?:\([^)]*\) )?(\w+)', src, re.M)]
+    for m in re.finditer(r'\.NewIterator\(([^)]*)\)', src):
+        pos=m.start(); line=src.count('\n',0,pos)+1
+        fn=[n for s,n in funcs if s<pos]; fn=fn[-1] if fn else '?'
+        fstart=[s for s,n in funcs if s<pos]; fstart=fstart[-1] if fstart else 0
+        body=src[fstart:pos+400]
+        arg=m.group(1).strip()
+        lit=None
+        if arg.startswith('badgerv4.IteratorOptions{') or 'IteratorOptions{' in arg: lit=arg
+        # find option var definition in function body
+        optsrc=body
+        pre= 'yes' if re.search(r'Prefix\s*[:=]',optsrc) and not re.search(r'Prefix\s*[:=]\s*nil',optsrc) else 'no'
+        pf='default(true)' if 'DefaultIteratorOptions' in optsrc else 'false(zero)'
+        if re.search(r'PrefetchValues\s*[:=]\s*true',optsrc): pf='true'
+        if re.search(r'PrefetchValues\s*[:=]\s*false',optsrc): pf='false'
+        av=[]
+        if re.search(r'AllVersions\s*[:=]\s*true',optsrc): av.append('AllVersions')
+        if re.search(r'Reverse\s*[:=]\s*true',optsrc): av.append('Reverse')
+        print(f'{f.replace("pkg/graph/store/","")}:{line} {fn} | {arg[:40]} | Prefix {pre} | Prefetch {pf} | {",".join(av)}')

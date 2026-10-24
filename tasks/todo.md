@@ -71,8 +71,9 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
     its data cleanup.
 
 - **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
-  read snapshots may hold a badger transaction; Fable's trace says only a read of a row of 1 MB or more (value log)
-  can fail. Done when: a test races such reads against `Clear`, and the fix it shows is in.
+  read snapshots may hold a badger transaction; measured: a value-log value (a row of 1 MB or more) read across it
+  comes back empty with a nil error, since badger swallows value-log read errors. Done when: a rho-level test drives
+  a read of such a row across `Clear` (needs a seam) and shows what rho returns, and the fix it calls for is in.
 - **METASYNC** — `MetaSetDurable` and the property-key registry save promise durability after `db.Sync`, which syncs
   only the active WAL, so after a memtable rotation the write may not survive a power loss without `SyncWrites`
   (`badgerstore_meta.go:324-334`, `:420-434`). Done when: a test shows the gap or its absence, and the doors and
@@ -132,8 +133,9 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   `NewKeyIterator`. Done when: the hot paths walk, measured.
 - **PREFETCH** — 14 iterators prefetch values (13 explicitly, plus `badgerstore_planner_stats_deferred.go:137` by
   default), one goroutine per row for values that are almost always inline (rule 3). Done when: none does, the open-time node scan measured.
-- **ITERPREFIX** — 11 iterators, the read and scan snapshot walkers among them, merge every table of every level
-  because they set no prefix (rule 4). Done when: each sets at least its keyspace byte.
+- **ITERPREFIX** — 49 of rho's 71 iterators seek a prefix without setting `IteratorOptions.Prefix`, so badger cannot
+  skip the tables outside it (rule 4; `tasks/evidence/USAGE/usage-map.txt`). Done when: each sets at least its
+  keyspace byte, measured on a multi-level store.
 - **VERIFY** — badger never verifies block checksums with rho's options (only table indexes at open), so a flipped
   byte reaches the row decoder. Done when: an admin door runs `VerifyChecksum` per shard and the SHARD mover checks
   what it copies.

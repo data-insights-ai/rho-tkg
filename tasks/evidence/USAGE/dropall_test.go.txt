@@ -1,0 +1,155 @@
+package badger
+
+// USAGE evidence (scratch): Clear on a store without the change log calls
+// badger's DropAll while cache-miss reads run. Kept as
+// tasks/evidence/USAGE/dropall_test.go.txt.
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	badgerv4 "github.com/dgraph-io/badger/v4"
+)
+
+func zdNode(i int, propBytes int) *types.Node {
+	n := types.NewNode(types.NodeID(snowflake.ID(100+i)), 7, nil)
+	chunk := strings.Repeat("x", 60_000)
+	for p := 0; p*60_000 < propBytes; p++ {
+		_ = n.SetProperty(fmt.Sprintf("p%02d", p), chunk)
+	}
+	return n
+}
+
+func zdRun(t *testing.T, propBytes int) {
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir, CacheCapacity: 1, FlushInterval: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	const nodes = 32
+	put := func() {
+		for i := 0; i < nodes; i++ {
+			if err := bs.PutNode(zdNode(i, propBytes)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := bs.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put()
+	var stop, clearing atomic.Bool
+	var decodes, overlapped atomic.Int64
+	restore := SetRowDecodeHookForTest(func() {
+		decodes.Add(1)
+		if clearing.Load() {
+			overlapped.Add(1)
+		}
+	})
+	defer restore()
+	var odd atomic.Int64
+	var firstOdd atomic.Value
+	var wg sync.WaitGroup
+	for r := 0; r < 8; r++ {
+		wg.Add(1)
+		go func(r int) {
+			defer wg.Done()
+			defer func() {
+				if p := recover(); p != nil {
+					odd.Add(1)
+					firstOdd.CompareAndSwap(nil, fmt.Sprintf("panic: %v", p))
+				}
+			}()
+			for i := 0; !stop.Load(); i++ {
+				_, err := bs.GetNode(types.NodeID(snowflake.ID(100 + (i+r)%nodes)))
+				if err != nil && !errors.Is(err, storecontract.ErrNodeNotFound) {
+					odd.Add(1)
+					firstOdd.CompareAndSwap(nil, err.Error())
+				}
+			}
+		}(r)
+	}
+	vlogBytes := func() (n int64) {
+		ents, _ := os.ReadDir(dir)
+		for _, e := range ents {
+			if strings.HasSuffix(e.Name(), ".vlog") {
+				if fi, err := e.Info(); err == nil {
+					n += fi.Size()
+				}
+			}
+		}
+		return n
+	}
+	t.Logf("value-log bytes on disk after the first write: %d", vlogBytes())
+	for c := 0; c < 100; c++ {
+		clearing.Store(true)
+		err := bs.Clear()
+		clearing.Store(false)
+		if err != nil {
+			t.Fatalf("Clear %d: %v", c, err)
+		}
+		put()
+	}
+	stop.Store(true)
+	wg.Wait()
+	first, _ := firstOdd.Load().(string)
+	lsm, vlog := bs.DBForTest().Size()
+	t.Logf("row decodes from badger %d, of them during a Clear %d; badger Size lsm %d vlog %d (refreshed per minute)", decodes.Load(), overlapped.Load(), lsm, vlog)
+	t.Logf("rows of %d B: %d reads failed other than not-found during 100 Clears; first: %.200s", propBytes, odd.Load(), first)
+}
+
+func TestZDDropAllSmallRows(t *testing.T) { zdRun(t, 120_000) }   // inline rows
+func TestZDDropAllLargeRows(t *testing.T) { zdRun(t, 1_300_000) } // value-log rows
+
+// Badger level, deterministic: a read that looked up an item before DropAll
+// takes its value after it. Inline value vs value-log value.
+func TestZDBadgerReadAcrossDropAll(t *testing.T) {
+	for _, size := range []int{100_000, 2 << 20} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			db := zbOpenRaw(t)
+			defer db.Close()
+			key := []byte{0x01, 1}
+			val := make([]byte, size)
+			if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set(key, val) }); err != nil {
+				t.Fatal(err)
+			}
+			txn := db.NewTransaction(false)
+			item, err := txn.Get(key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := db.DropAll(); err != nil {
+				t.Fatal(err)
+			}
+			var got []byte
+			func() {
+				defer func() {
+					if p := recover(); p != nil {
+						t.Logf("value of %d B after DropAll: PANIC %v", size, p)
+					}
+				}()
+				got, err = item.ValueCopy(nil)
+				t.Logf("value of %d B after DropAll: err=%v, %d bytes", size, err, len(got))
+			}()
+			txn.Discard()
+		})
+	}
+}
+
+func zbOpenRaw(t *testing.T) *badgerv4.DB {
+	db, err := badgerv4.Open(badgerv4.DefaultOptions(t.TempDir()).WithLogger(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
