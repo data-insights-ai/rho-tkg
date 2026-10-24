@@ -125,9 +125,9 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   a configured logger. sigma (24 Oct): passes no logger. Done when: badger's errors reach rho's logging by default,
   tested with a failed value-log read.
 - **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
-  read snapshots may hold a badger transaction; measured: a value-log value (a row of 1 MB or more) read across it
-  comes back empty with a nil error, since badger swallows value-log read errors; rho then reports "corrupt wire
-  data", never a wrong row. The same holds for any value-log read failure, its cause unlogged under rho's nil badger
+  read snapshots may hold a badger transaction; measured at rho level (`tasks/evidence/USAGE/dropall_rho_test.go.txt`):
+  a GetNode that found the key of a 1.4 MB row before `Clear` fails with "corrupt wire data" (badger swallows the
+  value-log read error and returns an empty value); an inline row reads back whole. The same holds for any value-log read failure, its cause unlogged under rho's nil badger
   logger. Done when: such a read reports the real cause, and a read racing `Clear` reports not-found or the row.
 - **METASYNC** — `MetaSetDurable` and the property-key registry save promise durability after `db.Sync`, which syncs
   only the active WAL, so after a memtable rotation the write may not survive a power loss without `SyncWrites`

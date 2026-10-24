@@ -116,3 +116,8 @@ DISCARDCLOSE (discard_test.go.txt, 2026-10-24): read transactions opened before 
 100 return, the 101st blocks forever (the read mark goes into the stopped watermark's 100-slot channel,
 y/watermark.go:60, :77-79). rho's read snapshot skips Discard after Close; its scan snapshot and rel-type build walk
 always discard, so more than 100 of them in flight across one store's Close would hang a goroutine. Low severity.
+
+DROPALL at rho level (dropall_rho_test.go.txt with the pause seam dropall_rho_seam.diff.txt applied to GetNode,
+2026-10-24): GetNode has found the key when Clear (a store without the change log: DropAll) runs, then takes the
+value. A 100 KB inline row: the read returns the row as before the Clear. A 1.4 MB value-log row: the read fails
+with "corrupt wire data", a false corruption report for a healthy store.

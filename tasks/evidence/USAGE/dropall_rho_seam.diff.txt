@@ -1,0 +1,21 @@
+diff --git a/pkg/graph/store/badger/badgerstore_node.go b/pkg/graph/store/badger/badgerstore_node.go
+index bcebfb6e..ecde2290 100644
+--- a/pkg/graph/store/badger/badgerstore_node.go
++++ b/pkg/graph/store/badger/badgerstore_node.go
+@@ -148,6 +148,9 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
+ 		if err != nil {
+ 			return err
+ 		}
++		if zzGetNodeAfterGetHook != nil { // SCRATCH, not committed
++			zzGetNodeAfterGetHook()
++		}
+ 		return item.Value(func(val []byte) error {
+ 			var w storepkg.NodeWire
+ 			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+@@ -1027,3 +1030,6 @@ func putPooledNodeWire(w *storepkg.NodeWire) {
+ 	}
+ 	nodeWirePool.Put(w)
+ }
++
++// SCRATCH evidence seam, not committed.
++var zzGetNodeAfterGetHook func()
