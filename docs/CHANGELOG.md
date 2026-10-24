@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.75.0] - 2026-10-24
+
 ### Fixed
 
 - **FLUSHPART**: a badger flush is all-or-nothing at any size (`docs/badger.md` rule 1). A flush above one badger

@@ -1,37 +1,14 @@
 # todo
 
-What rho does next, in order. Last release: v4.74.0 (2026-10-23). Background, René's open decisions with my defaults,
+What rho does next, in order. Last release: v4.75.0 (2026-10-24). Background, René's open decisions with my defaults,
 and the numbered backlog: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`, under the same tag.
 
 Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-Order (René 24 Oct, "fixes first"): FLUSHPART together with KEYSIZE + VALUESIZE (one release: staging adds 9 bytes
-to a key and 1 to a value, so FLUSHPART alone breaks entries at badger's limits; red test on `flushpart`), then
-VERIFY + BADGERLOG, CLEARMETA, DROPALL + DISCARDCLOSE; then BADGER step 3.
-
-- **FLUSHPART** — A flush above one badger transaction (104,855 entries or about 10 MB at default options) was several
-  transactions, so a crash kept a random part of it (`docs/badger.md` rule 1). Done when: merged and released as
-  v4.75.0 (a minor: format marker 9 is a one-way door), ai-soc and sigma told. Waits for: René's go to merge and tag.
-
-### FLUSHPART plan
-
-1. [x] Red tests on branch `flushpart` (`tasks/evidence/FLUSHPART/red.txt`): a crash lost 7,582 of 20,000 change-log
-   records; a crashed removal flush left a store that refused to open.
-2. [x] Fable reviewed the design (2026-10-23): one `Txn` when the flush fits, else staged under `0x0E` and committed
-   by a marker that raises the format marker to 9; `New` applies a committed flush; fail closed after the marker.
-3. [x] Built on `flushpart` with tests that try to break it (2026-10-24): a crash at every step compared with an
-   uncrashed store, crashes inside recovery, damaged and torn staging, readers during the flush, every door after a
-   failure, a tiered warm shard. 27 of 27 code mutations fail a test
-   (`tasks/evidence/FLUSHPART/mutations.txt`); `make ci-docker` green before the last review round.
-4. [x] Fable reviewed twice; all points fixed: a torn unsynced flush (power loss) is discarded at open, a synced one
-   refuses and names the new `badger.DiscardStagedFlush`, which also drops the counters.
-5. [ ] Found before release (24 Oct): a 64,995-byte key or a value of exactly `ValueLogFileSize` fits badger directly
-   but fails staged; the KEYSIZE/VALUESIZE door limits include the staging overhead (branch `entrysize` on top of
-   `flushpart`, `TestStagedFlushEntryAtBadgerLimits` green at the limits). `make ci-docker` passed before this (900f0a78); Fable's last verdict, then
-   René's go, merge, tag v4.75.0, tell ai-soc and sigma, move the item to `docs/CHANGELOG.md`. Parked by René while
-   the badger work runs.
+Order (René 24 Oct, "fixes first"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0; next VERIFY + BADGERLOG,
+CLEARMETA, DROPALL + DISCARDCLOSE; then BADGER step 3.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked. The items USAGE,
@@ -119,21 +96,6 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   the meta that interprets it (the order is drafted, not applied), the test passes, released as a patch. The fix
   waits until the BADGER milestone's step 2 is through (René 24 Oct: verify first). sigma (24 Oct): reachable through
   its daemon's admin reset with the change log on.
-- **KEYSIZE** (built on branch `entrysize`, 24 Oct: every badger write door refuses an oversized row, change-log
-  record or on-disk index key with `store.ErrEntryTooLarge` before any mutation; door-family tests, 6 mutations
-  caught, full short suite and `-race` on the stores green; reviewed by the main session) (confirmed, data loss; `tasks/evidence/USAGE/size_test.go.txt`) — A string value rho accepts (65,100
-  bytes, under its 65,536 limit) on a label with an on-disk property index makes an index key above badger's 65,000
-  (`property_index_key.go:136-139`, `txn.go:352`): the write is acknowledged, every later flush fails on that key, and
-  nothing written afterwards reaches disk. sigma (24 Oct): latent: no on-disk property index on strings in
-  production, but its ov_key strings are unbounded. Done when: such a write is refused at the door or stored (capped
-  or hashed key), the test passes, released as a patch.
-- **VALUESIZE** (built with KEYSIZE on `entrysize`) (confirmed, data loss; same evidence) — A 1.4 MB row (every value under rho's limits) with
-  `ValueLogFileSize` 1 MB, or in an in-memory badger store, is acknowledged and then refused by badger at every flush
-  ("Value with size 1440490 exceeded 1048576"), blocking all later writes like KEYSIZE; with default options it
-  commits. sigma (24 Oct): exposed: its PageState Derived facts can exceed 1 MB, its daemon sets the value-log size
-  down to 1 MB (TKGD_BADGER_VLOG_MB) and offers an in-memory store. ai-soc (24 Oct): not exposed (default value-log
-  size, no in-memory store), though its cut records reach several MB. Done when: the write door refuses a row the store
-  cannot hold, the test passes, released as a patch.
 - **DISCARDCLOSE** (confirmed, low; `tasks/evidence/USAGE/discard_test.go.txt`) — The scan snapshot and the rel-type
   build walk always `Discard` their transaction; after `db.Close` up to 100 such discards return and the 101st blocks
   forever. Done when: they skip `Discard` after `Close` as the read snapshot does, tested with 101.

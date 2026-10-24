@@ -20,7 +20,7 @@ import (
 // (badgerstore_flush_staged.go). So every door checks the entries it will hand
 // badger against the limits less that overhead, before any mutation.
 
-// ErrEntryTooLarge: see storecontract.ErrEntryTooLarge.
+// ErrEntryTooLarge is storecontract.ErrEntryTooLarge, refused at every write door.
 var ErrEntryTooLarge = storecontract.ErrEntryTooLarge
 
 const (
