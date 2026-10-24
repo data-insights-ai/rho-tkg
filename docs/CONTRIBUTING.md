@@ -11,7 +11,8 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Never create a new .md file; fold new facts into the owning file (README § Documentation). One fact, one place.
 - Commits, MRs and PRs carry no agent attribution: no Co-Authored-By, no Claude-Session, no "Generated with".
 - A fix is a PATCH, a new door or option a MINOR. A fix never rides in a minor, a door never in a patch; one round of consumer
-  requests ships as one minor or one patch.
+  requests ships as one minor or one patch. A new store format marker is a door (older releases refuse the store), and so is
+  any new exported name, internal packages included: `scripts/patchgate` decides (FLUSHPART, 2026-10-24).
 - Scope: consumer-blocking or wrong-answer/data bugs only, plus ai-soc runtime items (standing go). A backlog item needs a
   consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
 - Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc without asking. `git fetch` + merge origin/main
@@ -19,8 +20,10 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Commit with explicit paths, never `git commit -a`: a docs commit swept unreviewed step code onto main (2026-10-23).
 - Work order (René 2026-10-23): (1) the request's `tasks/todo.md` item first, before any other action; (2) the red test;
   (3) the implementation; (4) the tests green; (5) the review; (6) when finished, the item leaves `tasks/todo.md` and its
-  `docs/CHANGELOG.md` entry names the same tag. HANDOVER (state) is updated at every event; `scripts/check-ledger.sh` before
-  every release commit.
+  `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` and the HANDOVER brief are updated and committed on main at
+  every event (a step done, a review verdict, a decision, a request queued, a claim found false), from the main worktree
+  `../rho-tkg-main` while a branch is checked out, never deferred to the branch's end (todo went a day stale, 2026-10-24);
+  `scripts/check-ledger.sh` before every such commit.
 - Who works (René 2026-10-23): the main session does the work itself, analysis and code alike, and runs every test, lint
   and gate. One persistent Fable agent reviews and monitors (writes no code or tests, runs none). No other subagents unless
   René asks for them.
@@ -32,7 +35,9 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 **Code**
 
 - Red test first: one compact break-the-code test, red output kept under `tasks/evidence/<item>/`, then the root-cause fix at the
-  shared seam. No "known limitation" unless the sound fix was shown impossible.
+  shared seam. No "known limitation" unless the sound fix was shown impossible. A crash-safety change also gets a mutation
+  sweep: each defended property broken once in the code must fail a test; the sweep runs every test that guards the code (the
+  long tier too, not only the new tests), counts a timeout as caught, and a fault hook fires once (a requeue re-runs it).
 - Validate before any side effect: IDs, decoded bytes and property values at every entry, before an ID is minted, a token
   interned, a snapshot taken or an op queued. Decode untrusted bytes only through `storeutil.SafeUnmarshal`; allocate by bytes
   delivered, never by a declared count; verify imported hashes.
@@ -45,7 +50,10 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Persistence: every in-memory structure needs a rebuild path at open and fails closed on bad data; flush data before advancing
   a watermark.
 - Sentinel errors are precise and tested with `errors.Is`; a caller skips only the sentinel the operation tolerates.
-- Profile before optimizing, and reproduce an external performance diagnosis before touching the component it names.
+- Reproduce before relying: profile before optimizing; reproduce an external performance diagnosis before touching the
+  component it names; check a claim about a dependency's behaviour (badger) or a reviewer's statement against the source,
+  and give it a test that tries to break it before code, docs or a plan builds on it (two rounds of false badger claims in
+  `docs/badger.md`, 2026-10-23/24).
 - Trim comments by hand, never by script; never drop lock-order, crash-ordering or ownership contracts.
 
 **Tests**
@@ -207,15 +215,15 @@ Index (`→` names where the rule lives now):
 69. No overlap prune for non-overlapping Allen relations → `TestNodesRelating_AllThirteenRelations`
 70. No `reflect` sorting or comparison on hot paths → rule until a lint exists
 71. The monotonic floor is reopen-safe → invariant 7
-72. Reproduce and profile a performance diagnosis first → digest (Code)
+72. Reproduce before relying (a diagnosis, a dependency claim, a reviewer's statement) → digest (Code); `tasks/evidence/BADGER/`
 73. The resolver's input order is semantic → `TestSkeletonResolve_RandomizedEquivalence`
 74. → 64
 75. A green workflow means its gates ran → CI configuration; retired
 76. A type tag covers one level; test every kind at depth → `TestWire_NestedKindsRoundTripExact`
 77. → 78
-78. Red break-the-code test first → digest (Code)
+78. Red break-the-code test first; mutation sweep for crash safety → digest (Code); `tasks/evidence/FLUSHPART/mutations.txt`
 79. Fix = patch, door = minor → digest (Process); `scripts/patchgate`
-80. Keep todo and HANDOVER current → digest (Process); `scripts/check-ledger.sh`
+80. Keep todo and HANDOVER current, on main, at every event → digest (Process); `scripts/check-ledger.sh`
 81. Act, do not offer → digest (Process)
 82. A release is green only when the tag's GitHub CI is green → Release checklist
 83. → 78
