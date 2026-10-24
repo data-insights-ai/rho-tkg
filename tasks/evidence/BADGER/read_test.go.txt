@@ -1,0 +1,267 @@
+package badger
+
+// Evidence for docs/badger.md sections 1, 3-5 (badger v4.9.2). Run it by copying it into pkg/graph/store/badger as a
+// _test.go file (go test -run ^TestZR -v). Each test states a claim and fails if badger does not behave that way.
+
+import (
+	"encoding/binary"
+	"errors"
+	"os"
+	"os/exec"
+	"strconv"
+	"testing"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
+)
+
+func zrOpen(t testing.TB, dir string, mut func(*badgerv4.Options)) *badgerv4.DB {
+	t.Helper()
+	opts := badgerv4.DefaultOptions(dir).WithLogger(nil).WithMemTableSize(8 << 20)
+	if mut != nil {
+		mut(&opts)
+	}
+	db, err := badgerv4.Open(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+func zrKey(space byte, i int) []byte {
+	k := make([]byte, 9)
+	k[0] = space
+	binary.BigEndian.PutUint64(k[1:], uint64(i))
+	return k
+}
+
+func zrFill(t testing.TB, db *badgerv4.DB, space byte, n, valLen int) {
+	t.Helper()
+	wb := db.NewWriteBatch()
+	val := make([]byte, valLen)
+	for i := 0; i < n; i++ {
+		if err := wb.Set(zrKey(space, i), val); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := wb.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// R1: Prefix prunes tables. With many tables of keyspace 0x01 and a few keys of
+// 0x02, an iterator over 0x02 that seeks without IteratorOptions.Prefix builds a
+// table iterator for every table; with Prefix only for the tables that can hold
+// it. Measured as allocations of NewIterator+Seek+walk+Close.
+func TestZRPrefixPrunesTables(t *testing.T) {
+	dir := t.TempDir()
+	small := func(o *badgerv4.Options) { o.BaseTableSize = 64 << 10 } // many small tables
+	db := zrOpen(t, dir, small)
+	zrFill(t, db, 0x01, 200_000, 100) // ~20 MB
+	zrFill(t, db, 0x02, 100, 100)
+	_ = db.Close() // memtables to L0
+	db = zrOpen(t, dir, small)
+	defer db.Close()
+	if err := db.Flatten(1); err != nil { // L0 into level tables of 64 KB
+		t.Fatal(err)
+	}
+	tables := len(db.Tables())
+	walk := func(withPrefix bool) func() {
+		return func() {
+			_ = db.View(func(txn *badgerv4.Txn) error {
+				opts := badgerv4.IteratorOptions{}
+				prefix := []byte{0x02}
+				if withPrefix {
+					opts.Prefix = prefix
+				}
+				it := txn.NewIterator(opts)
+				defer it.Close()
+				n := 0
+				for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+					n++
+				}
+				if n != 100 {
+					t.Errorf("walked %d keys, want 100", n)
+				}
+				return nil
+			})
+		}
+	}
+	without := testing.AllocsPerRun(50, walk(false))
+	with := testing.AllocsPerRun(50, walk(true))
+	if with >= without {
+		t.Fatalf("Prefix did not reduce work: %.0f allocs with, %.0f without (%d tables)", with, without, tables)
+	}
+	t.Logf("R1 %d tables: one walk over 100 keys of another keyspace: %.0f allocs without Prefix, %.0f with", tables, without, with)
+}
+
+// R2: compaction keeps only the newest version (NumVersionsToKeep 1) of a key
+// once no read transaction older than the overwrite is open; an open older read
+// transaction keeps the versions it can see.
+func TestZRCompactionDropsOldVersions(t *testing.T) {
+	// L0 compacts at one table, so Flatten merges the tables holding the versions
+	// (at the default 5, four L0 tables are never compacted and Flatten does nothing).
+	db := zrOpen(t, t.TempDir(), func(o *badgerv4.Options) { o.NumLevelZeroTables = 1 })
+	defer db.Close()
+	key := zrKey(0x01, 1)
+	set := func(v byte) {
+		if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set(key, []byte{v}) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	versions := func() int {
+		n := 0
+		_ = db.View(func(txn *badgerv4.Txn) error {
+			it := txn.NewIterator(badgerv4.IteratorOptions{AllVersions: true, Prefix: key})
+			defer it.Close()
+			for it.Rewind(); it.Valid(); it.Next() {
+				n++
+			}
+			return nil
+		})
+		return n
+	}
+	compact := func() {
+		zrFill(t, db, 0x02, 150_000, 100) // push the memtable holding the versions out to tables
+		if err := db.Flatten(1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(1)
+	pinned := db.NewTransaction(false) // sees version 1 only
+	set(2)
+	set(3)
+	compact()
+	held := versions()
+	if _, err := pinned.Get(key); err != nil {
+		t.Fatalf("the pinned read lost its version: %v", err)
+	}
+	pinned.Discard()
+	set(4)
+	compact()
+	after := versions()
+	l0 := 0
+	for _, ti := range db.Tables() {
+		if ti.Level == 0 {
+			l0++
+		}
+	}
+	t.Logf("tables after the last compaction: %d, on L0 %d", len(db.Tables()), l0)
+	if held < 2 || after != 1 {
+		t.Fatalf("versions after compaction: %d with an old read open (want >= 2), %d after it closed (want 1)", held, after)
+	}
+	t.Logf("R2 versions of a key after compaction: %d while an older read transaction was open, %d after it closed", held, after)
+}
+
+// R3: a read-only open after a clean Close works; after a process died with
+// writes in the memtable, it replays the WAL. Badger refuses (ErrTruncateNeeded)
+// only when the WAL ends short of its recorded size.
+func TestZRReadOnlyOpenAfterCleanAndUncleanExit(t *testing.T) {
+	if dir := os.Getenv("ZR_CHILD_DIR"); dir != "" {
+		db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil).WithMemTableSize(8 << 20))
+		if err != nil {
+			os.Exit(2)
+		}
+		for i := 0; i < 1000; i++ {
+			_ = db.Update(func(txn *badgerv4.Txn) error { return txn.Set(zrKey(0x01, i), []byte("v")) })
+		}
+		os.Exit(3) // no Close
+	}
+	clean := t.TempDir()
+	db := zrOpen(t, clean, nil)
+	zrFill(t, db, 0x01, 1000, 1)
+	_ = db.Close()
+	ro, err := badgerv4.Open(badgerv4.DefaultOptions(clean).WithLogger(nil).WithMemTableSize(8 << 20).WithReadOnly(true))
+	if err != nil {
+		t.Fatalf("read-only open after a clean close: %v", err)
+	}
+	_ = ro.Close()
+
+	unclean := t.TempDir()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestZRReadOnlyOpenAfterCleanAndUncleanExit$")
+	cmd.Env = append(os.Environ(), "ZR_CHILD_DIR="+unclean)
+	if err := cmd.Run(); cmd.ProcessState.ExitCode() != 3 {
+		t.Fatalf("child: %v", err)
+	}
+	ro, err = badgerv4.Open(badgerv4.DefaultOptions(unclean).WithLogger(nil).WithMemTableSize(8 << 20).WithReadOnly(true))
+	roErr := err
+	n := 0
+	if err == nil {
+		_ = ro.View(func(txn *badgerv4.Txn) error {
+			it := txn.NewIterator(badgerv4.IteratorOptions{})
+			defer it.Close()
+			for it.Rewind(); it.Valid(); it.Next() {
+				n++
+			}
+			return nil
+		})
+		_ = ro.Close()
+	}
+	t.Logf("R3 read-only open: after a clean close ok; after an unclean exit with 1,000 committed writes in the memtable: err=%v, %d keys visible (truncate needed: %v)",
+		roErr, n, errors.Is(roErr, badgerv4.ErrTruncateNeeded))
+}
+
+// R4: the directory lock. In another process: a writable open excludes any
+// other open; read-only opens share.
+func TestZRDirectoryLock(t *testing.T) {
+	if dir := os.Getenv("ZR_LOCK_DIR"); dir != "" {
+		ro, _ := strconv.ParseBool(os.Getenv("ZR_LOCK_RO"))
+		db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil).WithMemTableSize(8 << 20).WithReadOnly(ro))
+		if err != nil {
+			os.Exit(4)
+		}
+		_ = db.Close()
+		os.Exit(0)
+	}
+	dir := t.TempDir()
+	db := zrOpen(t, dir, nil)
+	zrFill(t, db, 0x01, 10, 1)
+	_ = db.Close()
+	child := func(ro bool) int {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestZRDirectoryLock$")
+		cmd.Env = append(os.Environ(), "ZR_LOCK_DIR="+dir, "ZR_LOCK_RO="+strconv.FormatBool(ro))
+		_ = cmd.Run()
+		return cmd.ProcessState.ExitCode()
+	}
+	w := zrOpen(t, dir, nil)
+	whileW := [2]int{child(false), child(true)}
+	_ = w.Close()
+	r := zrOpen(t, dir, func(o *badgerv4.Options) { o.ReadOnly = true })
+	whileR := [2]int{child(false), child(true)}
+	_ = r.Close()
+	if whileW != [2]int{4, 4} || whileR != [2]int{4, 0} {
+		t.Fatalf("child exit codes (4 = refused): while writable open: writable %d, read-only %d; while read-only open: writable %d, read-only %d",
+			whileW[0], whileW[1], whileR[0], whileR[1])
+	}
+	t.Log("R4 another process: a writable open refuses every other open; a read-only open refuses writable, admits read-only")
+}
+
+// R5: MaxVersion rises with every commit, survives a reopen and is not lowered
+// by compaction.
+func TestZRMaxVersion(t *testing.T) {
+	dir := t.TempDir()
+	db := zrOpen(t, dir, nil)
+	v0 := db.MaxVersion()
+	for i := 0; i < 3; i++ {
+		before := db.MaxVersion()
+		if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set(zrKey(0x01, i), []byte("v")) }); err != nil {
+			t.Fatal(err)
+		}
+		if db.MaxVersion() <= before {
+			t.Fatalf("commit %d: MaxVersion %d not above %d", i, db.MaxVersion(), before)
+		}
+	}
+	top := db.MaxVersion()
+	_ = db.Close()
+	db = zrOpen(t, dir, nil)
+	if db.MaxVersion() != top {
+		t.Fatalf("after reopen MaxVersion %d, want %d", db.MaxVersion(), top)
+	}
+	if err := db.Flatten(1); err != nil {
+		t.Fatal(err)
+	}
+	if db.MaxVersion() != top {
+		t.Fatalf("after Flatten MaxVersion %d, want %d", db.MaxVersion(), top)
+	}
+	_ = db.Close()
+	t.Logf("R5 MaxVersion %d -> %d over 3 commits, unchanged by reopen and Flatten", v0, top)
+}

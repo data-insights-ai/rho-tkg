@@ -33,9 +33,12 @@ Dir/
   read timestamp (`iterator.go:629`).
 - **A cleanly closed directory** holds `MANIFEST`, `KEYREGISTRY`, `DISCARD`, the `.sst` files and a tiny `.vlog`: no
   `.mem` (Close flushes the memtable) and no `LOCK`. A `.mem` file means an unclean close; the next open replays it into
-  a full memtable arena (`db.go:325`, `memtable.go:99`), read-only or not. A WAL torn at its end is cut after the last
-  complete entry by a writable open, silently; a read-only open refuses it with `ErrTruncateNeeded`
-  (`memtable.go:209-212`). A leftover `LOCK` file is only a stale pid file: whether the directory is open is told by its
+  a full memtable arena (`db.go:325`, `memtable.go:99`), read-only or not. A writable open cuts the WAL after the last
+  complete entry, silently. A read-only open refuses EVERY unclean WAL, torn or not, because a WAL file is
+  preallocated and always ends short of its size after a crash ("end offset 57913 < size 16777216",
+  `memtable.go:209-212`; measured, `tasks/evidence/BADGER/read_test.go.txt` R3); the error wraps `ErrTruncateNeeded`
+  with `%+v`, so `errors.Is` fails on it (section 8.7). After any crash a shard needs one writable open before it
+  can be opened read-only. A leftover `LOCK` file is only a stale pid file: whether the directory is open is told by its
   flock on the directory, exclusive when writable, shared when read-only; only a writable open writes the pid file
   (`dir_unix.go:35-63`).
 
@@ -126,8 +129,10 @@ Dir/
   hold about 11% of it. L0 tables are memtable-sized (64 MB), base-level tables 2 MB, doubling per level below
   (`levels.go:371-438`).
 - **Compactors** (`NumCompactors`, 4) tick every 50 ms; L0 is compacted at 5 tables, other levels when their size
-  exceeds the target (`levels.go:440-625`).
-- **What compaction drops** (`levels.go:650-760`): versions newer than the oldest open read transaction stay. At or
+  exceeds the target (`levels.go:440-625`). So a quiet DB keeps up to four L0 tables uncompacted for good, with the
+  old versions in them; `Flatten` does nothing while one level holds all data (`db.go:1611-1636`; measured, R2).
+- **What compaction drops** (`levels.go:650-760`; measured, R2: 3 versions kept while an older read transaction was
+  open, 1 after it closed): versions newer than the oldest open read transaction stay. At or
   below it, only the newest `NumVersionsToKeep` (1) version stays; a tombstone is dropped only when no lower level
   overlaps it. So a rewritten row keeps its old versions in lower levels until a compaction merges them, and every
   point `Get` copies each of them; a long-held read transaction pins every version newer than its read timestamp.

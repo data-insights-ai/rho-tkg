@@ -35,8 +35,9 @@ Each item: one sentence, then when it is done and what it waits for.
 
 1. [ ] Full badger API understanding: every claim in `docs/badger.md` cites badger's source or a measurement, and every
    claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it. Done so far: the API reference
-   (section 8), the batch API (B1-B9), the source check of sections 1-7 (one false claim fixed); running: R1-R5 (prefix
-   pruning, compaction, read-only open, directory lock, MaxVersion).
+   (section 8), the batch API (B1-B9), the source check of sections 1-7 (one false claim fixed), the read side R1-R5
+   (prefix pruning, compaction, read-only open, directory lock, MaxVersion; R3 corrected section 1: a read-only open
+   refuses every unclean WAL, not only a torn one). Left: Fable's review of the result.
 2. [ ] rho's current badger use, fully verified in tests: the call map and the 9-category analysis exist
    (`tasks/evidence/USAGE/`); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence, then its fix.

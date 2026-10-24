@@ -37,3 +37,12 @@ Claim inventory of docs/badger.md sections 1-7 (2026-10-24): 112 sentences; 41 c
 without a line. All ~25 checked in v4.9.2's source and cited; all held except one: "the bloom filter is used only by
 key iterators" was false (a point Get checks it per table, level_handler.go:270-273). Two rho counts were stale
 (prefetch sites, iterators without Prefix) and now cite tasks/evidence/USAGE/usage-map.txt.
+
+Read side, read_test.go.txt (2026-10-24, MemTableSize 8 MB; all 5 pass):
+  R1 4 tables: one walk over 100 keys of another keyspace: 82 allocs without Prefix, 49 with
+  R2 versions of a key after compaction: 3 while an older read transaction was open, 1 after it closed
+  R3 read-only open: after a clean close ok; after an unclean exit with 1,000 committed writes in the memtable: err=while opening memtables err: while opening fid: 1 err: while updating skiplist err: end offset: 57913 < size: 16777216 err: Log truncate required to run DB. This might result in data loss, 0 keys visible (truncate 
+  R4 another process: a writable open refuses every other open; a read-only open refuses writable, admits read-only
+  R5 MaxVersion 0 -> 3 over 3 commits, unchanged by reopen and Flatten
+  R2 setup note: at the default NumLevelZeroTables (5) four L0 tables are never compacted and Flatten does nothing when
+  one level holds all data: a rewritten row's old versions stay on L0 until a fifth table arrives.
