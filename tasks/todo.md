@@ -7,8 +7,9 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-Order (René 24 Oct, "fixes first"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0; next VERIFY + BADGERLOG,
-CLEARMETA, DROPALL + DISCARDCLOSE; then BADGER step 3.
+Order (René 24 Oct, "fixes first", then "the given order"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0
+(tagged, ai-soc and sigma told); next DECODEBOUND (a patch), VERIFY + BADGERLOG, CLEARMETA, then BADGER step 3 /
+SHARD; DROPALL + DISCARDCLOSE after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked. The items USAGE,
