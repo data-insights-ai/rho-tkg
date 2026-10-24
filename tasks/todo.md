@@ -46,7 +46,8 @@ Each item: one sentence, then when it is done and what it waits for.
 2. [ ] rho's current badger use, fully verified in tests: the call map and the 9-category analysis exist
    (`tasks/evidence/USAGE/`); confirmed by real tests (24 Oct): CLEARMETA (a crash inside `Clear`), KEYSIZE and
    VALUESIZE (one oversized entry blocks all later persistence), VERIFY (silent corruption, panics, silent
-   truncation) and BADGERLOG; each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
+   truncation) and BADGERLOG; ai-soc and sigma asked (24 Oct) which configurations they run (on-disk indexes, value-log
+   size, in-memory stores, row and string sizes, a logger, Reset), to order the fixes; each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
    that shows the harm or its absence, then its fix.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
