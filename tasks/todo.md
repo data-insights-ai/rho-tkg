@@ -186,6 +186,16 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **IDPROPS** (sigma for ai-soc, 24 Oct; the larger form of CHAININTERN) — Immutable properties per (label, key), set
   at `AddNode`, refused by every update and cascade patch, stored once per node and attached to every version on read.
   A new door (a minor) and a format change (a one-way door). Waits for: CHAININTERN's measured saving, then René.
+- **DICT** (ai-soc, René's yes, 24 Oct) — Store repeated string property values once per (label or type, property),
+  dictionary-coded, invisible to reads, filters and property-index probes. ai-soc's store meter (graphmgr
+  StoredCopies) on the BA slice store (16,558 rows, v4.75.1): 57.8 % of 15.06 MB of stored values (>= 8 B) are
+  copies; ai-soc and sigma remove most themselves; what only a store dictionary removes: `action` 285,733 B (1.9 %),
+  `aisoc_source` 367,310 B (2.4 %), repeated ip, sid and path values 0.7-1.1 MB (up to ~7 %). Sketch: like the
+  property-key registry (tokens on disk, one canonical registry, on the reference shard in tiered, the anchor in
+  sharded, committed ahead of the rows that use it); decode resolves tokens, so indexes and filters see plain
+  values; a new row shape (a one-way door, a minor). RAM: decoded values interned per token (one string per
+  value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
+  then built and released. Order: after SHARD unless ai-soc's measurement of the design says otherwise.
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each; 45 `Txn.Get` sites) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
 - **PREFETCH** — 14 iterators prefetch values (13 explicitly, plus `badgerstore_planner_stats_deferred.go:137` by
