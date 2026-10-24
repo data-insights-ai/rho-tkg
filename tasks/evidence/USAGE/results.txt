@@ -23,3 +23,58 @@ What rho makes of the empty value (scratch test in storeutil, 2026-10-24): SafeU
 -> "graph: corrupt wire data: truncated msgpack while measuring depth"; an empty history delta -> "history value is
 not a delta". rho fails closed: a read of a row of 1 MB or more racing Clear, or any value-log read failure, reports
 corrupt wire data (never a wrong row), and the real cause (badger's log line) is lost under rho's nil logger.
+
+FINDINGS LOG (breadth first; level: confirmed in code / measured / candidate)
+
+Category 2, writes (11 WriteBatch sites + Txn/Update sites):
+  W1 staged flush (4 sites): built for splitting (FLUSHPART). confirmed.
+  W2 index backfills (property_disk.go:684, temporal_disk.go:231): "built" marker is the batch's last entry, so a crash
+     keeps a prefix without it and the backfill reruns. confirmed. Their comments ("one WriteBatch, all or nothing")
+     overstate it.
+  W3 purgeUndefinedTemporalDiskRows (temporal_disk.go:301): deletes only; a partial run is finished by the next. confirmed.
+  W4 clearAndReanchorChangeLog (changelog.go:234): 2 entries, always one transaction. confirmed.
+  W5 CANDIDATE clearDataPreservingLastLSN (changelog.go:262-313): step 2 deletes EVERY meta key except last_lsn
+     (registries, wire_format_version, untimed_valid_start, history_anchor_interval, tx_commit_floor, index defs) and
+     commits before step 3 drops the data (DropPrefix). A crash between them reopens a store whose rows remain while
+     what decodes and interprets them is gone. The comment reasons only about the counters. Not yet tested.
+  W6 writeKeyRepair (index_repair.go:119-135): a failed or split repair suppresses the open image; the next open repairs
+     again. confirmed. writeOpenImage (open_image.go:193-215): chunks may split; the header (length, CRC) is the last
+     commit and is trusted only while its version is MaxVersion. confirmed.
+
+Category 4, iterators: see the call map above (49 of 71 without Prefix; ~15 prefetch). confirmed by hand on samples.
+Category 5, value-log reads: badger swallows read errors (empty value); rho reports corrupt wire data. measured.
+
+Category 1, opening and options (badgerstore_options.go buildBadgerOptions; core.go:2125-2150; tiered badgerCfg
+tieredstore.go:1447-1475; sharded shardConfig sharded.go:362-385):
+  O1 CONFIRMED (medium): no backend passes a badger Logger (core, tiered and sharded configs have no Logger field set),
+     and buildBadgerOptions sets WithLogger(nil) then: every badger error log is discarded in production (value-log
+     read failures, which badger reports ONLY by log, compaction and flush errors, WAL truncation at open).
+  O2 confirmed: per DB defaults left on: BlockCacheSize 256 MB, NumCompactors 4, MetricsEnabled (expvar per dir and a
+     directory walk per minute), Snappy (NOCOMPRESS). Measured 23 Oct: writable open +83 MB heap, +16 goroutines.
+  O3 confirmed: tiered opens every shard writable, cold ones included (openShardStoreWithRecovery returns
+     shardCfg(name, false, cold)); only the recovery probe is read-only. Each open cold shard pays O2.
+  O4 confirmed: DetectConflicts false everywhere (right: rho serialises writes); ValueThreshold default 1 MB.
+
+Category 3, point reads (45 Txn.Get): every site reads the value inside the same transaction; ErrKeyNotFound compared
+  unwrapped (correct: Txn.Get returns it bare). Cost: GETWALK (measured 23 Oct, E2/E7). confirmed.
+
+Category 6, sync and durability: DurableFlush and MetaSetDurable/SavePropertyKeyRegistry call db.Sync, which syncs only
+  the active WAL (db.go:673, ensureRoomForWrite db.go:1015-1041): exact under SyncWrites only. confirmed in source
+  (METASYNC); no power-loss test is possible here.
+
+Category 7, clear and drop: DropAll on a never-logged Clear (DROPALL, measured); W5 candidate above; tiered shard drop
+  closes the shard, then os.RemoveAll (retention_purge_drop.go:200-218), reopening it if the close fails. confirmed.
+
+Category 8, background: every writable DB runs rho's flushLoop and gcLoop (RunValueLogGC per tick, badgerstore_flush.go
+  ~458) plus badger's own goroutines (O2); gcLoop reclaims only value-log data, which only rows of 1 MB or more create
+  (VLOGGC). Close: final flush, open image, badger Close (memtable to L0, CompactL0OnClose off). confirmed.
+
+Category 9, tiered and sharded: tiered migrates an oversized WAL, probes read-only, falls through to a writable open on
+  ErrTruncateNeeded (matched by message, since y.Wrap hides it from errors.Is); sharded opens each slot through
+  badger.New with the same options. Both inherit O1-O3. confirmed.
+
+PHASE 1 SUMMARY (2026-10-24): 9 categories read. Clean: transaction and iterator lifecycle, item borrows, writes'
+crash ordering except W5, open image, key repair, shard drop. Findings: O1 badger errors discarded (medium, confirmed);
+W5 Clear deletes interpreting meta before the data (candidate, could be serious); DROPALL value-log read across Clear
+(measured, fails closed); METASYNC (source); O2/O3 per-shard cost incl. writable cold shards (confirmed, CACHE/SHARD);
+ITERPREFIX 49 sites, PREFETCH ~15, GETWALK 45 Get sites (cost, confirmed).

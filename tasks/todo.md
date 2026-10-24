@@ -26,7 +26,7 @@ Each item: one sentence, then when it is done and what it waits for.
 5. [ ] `make ci-docker` on the final branch and Fable's last verdict; then René's go, merge, tag v4.75.0, tell ai-soc
    and sigma, move the item to `docs/CHANGELOG.md`.
 
-- **USAGE** (René 24 Oct) — Re-analyse rho's current badger use in the main session, without relying on Fable's
+- **USAGE** (René 24 Oct; phase 1 done: 9 categories, `tasks/evidence/USAGE/results.txt`) — Re-analyse rho's current badger use in the main session, without relying on Fable's
   review: a map of every badger call by kind (writes, point reads, iterators and their options, sync, drops, GC, open
   options), and each finding checked in the code and, where it can fail, by a test. Done when: the map is in
   `tasks/evidence/USAGE/`, each finding is confirmed or refuted with its evidence, and the todo items say so.
@@ -70,6 +70,13 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
     its data cleanup.
 
+- **CLEARMETA** (candidate, USAGE W5) — `Clear` deletes every meta key except `last_lsn` (registries, format marker,
+  untimed mode, anchor interval, commit floor, index definitions) and commits that before it drops the data, so a
+  crash between the two would reopen rows without what interprets them. Done when: a test of that crash state shows
+  the harm or its absence, and the order is fixed if needed.
+- **BADGERLOG** (USAGE O1) — No backend gives badger a logger, so every badger error report is discarded, including
+  value-log read failures, which badger reports only by log. Done when: badger's errors reach rho's logging by
+  default, tested with a failed value-log read.
 - **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
   read snapshots may hold a badger transaction; measured: a value-log value (a row of 1 MB or more) read across it
   comes back empty with a nil error, since badger swallows value-log read errors; rho then reports "corrupt wire
