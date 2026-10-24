@@ -44,9 +44,17 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
   with the change log on (or once on) deletes every meta key except `last_lsn` before it drops the data; a process
   that dies there reopens a store that looks empty while its rows remain, and the first new label collides with
   their tokens (its query fails: "property-key token 1 not in registry"). Done when: `Clear` drops the data before
-  the meta that interprets it (the order is drafted), the test passes, released as a patch. Next. sigma (24 Oct): reachable through
+  the meta that interprets it (the order is drafted), the test passes, released as a patch. Fixed on `clearmeta` (24 Oct): counters, then data, then the rest of the metadata; the crash test
+  green at all four steps and now requires a reopen and no row on disk for "empty"; two mutations caught. Next: the
+  patch gate, v4.75.3. sigma (24 Oct): reachable through
   its daemon's admin reset with the change log on.
 
+- **CLEARSHARDS** (found 24 Oct in CLEARMETA's review; not yet tested) — tiered clears its reference shard, then each
+  event shard, then its catalog and registry file; sharded clears each shard, then re-saves its catalog, which the
+  first shard's `Clear` wiped. A crash between those steps may reopen shards that disagree (rows in an uncleared
+  shard whose labels the cleared reference shard or registry no longer holds; a sharded store without its catalog).
+  Done when: a child-process crash test at every step of both stores' `Clear` shows the old store or an empty one,
+  or the order is fixed until it does. Next after CLEARMETA, before SHARD (fixes first, René 24 Oct).
 ## Next
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
