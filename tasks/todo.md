@@ -162,6 +162,16 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
 - **TKGID** (sigma, 24 Oct) — sigma wants the shadow name `tkg_id` (an entity's id) reserved, best resolved by rho.
   Done when: `NodeProperty` and `RelProperty` answer `tkg_id`. Waits for: FLUSHPART and SHARD.
 
+- **CHAININTERN** (sigma for ai-soc, 24 Oct; heap profile, sigma v0.11.60 on rho v4.75.1) — A node with n versions
+  holds every unchanged property value n times in decoded history rows: a Derived node's identity properties
+  (`ov_namespace`, `ov_rel`, `ov_key`, about 146 B) once per version, 5 copies for one fact. `GetNodeHistory` and the
+  paged and timeline reads decode each version alone (`badgerstore_history_node.go:772`); rho's entity cache holds the
+  current version only. Fix: a chain's decoded versions reuse the previous version's value when the bytes are equal (no
+  API, no format change, a patch). Done when: a test shows n versions sharing one copy of an unchanged value
+  (allocation count), every history read path (badger, tiered, sharded, memory) covered. Order: René.
+- **IDPROPS** (sigma for ai-soc, 24 Oct; the larger form of CHAININTERN) — Immutable properties per (label, key), set
+  at `AddNode`, refused by every update and cascade patch, stored once per node and attached to every version on read.
+  A new door (a minor) and a format change (a one-way door). Waits for: CHAININTERN's measured saving, then René.
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each; 45 `Txn.Get` sites) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
 - **PREFETCH** — 14 iterators prefetch values (13 explicitly, plus `badgerstore_planner_stats_deferred.go:137` by
