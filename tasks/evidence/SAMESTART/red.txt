@@ -31,3 +31,10 @@ Checks, each against the full harness (200 seeds, memory and badger, every tempo
                                      way), so it was dropped as untestable; a synthetic-chain property test showed the
                                      arms differ only on chains no writer produces.
 TestEffectiveTimelinesBytesPerExtraVersion (a same-start chain of open regrows) stays on the fast path: green.
+
+Head overlay (24 Oct): TestHeadOverlay_MatchesFold (long tier, run under -race) failed after the fix:
+  iter 1891: overlay [{500 700 0} {700 900 2} {900 1000 1}], fold [{500 700 0} {700 900 2} {900 1000 1} {1000 0 0}]
+The overlay extends a cached timeline with appended rows on the positional arm while starts do not fall; an appended
+row sharing the previous start but ending earlier now sends the fold to the own-bounds arm. The overlay applies the
+same rule (endsNoEarlier, shared with tilesWithNext) and treats such an append like a non-monotonic one. Green
+under -race; the oracle harness and the byte budget stay green.

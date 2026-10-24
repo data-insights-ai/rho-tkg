@@ -407,7 +407,8 @@ func headOverlay[T interface {
 	bounds := slices.Clone(e.bounds)
 	spans := make([]headSpan, 0, len(appended))
 	a := c.axis()
-	monotonic := true // the grown chain stays in version order by start
+	monotonic := true // the grown chain stays in version order by start and tiles
+	prevStart, prevEnd := e.lastStart, e.lastEnd
 	for _, r := range appended {
 		tm := r.Temporal()
 		if tm == nil || tm.DeletedAt != 0 || tm.Retracted || tm.TxTo != 0 ||
@@ -418,7 +419,10 @@ func headOverlay[T interface {
 		if (!a.Open(end) && end <= s) || s < out.pieceFrom {
 			return nil // empty, or below the watermark: what it paints over is unknown
 		}
-		monotonic = monotonic && s >= out.lastStart
+		// A row sharing the previous row's start but ending earlier makes the
+		// fold take the own-bounds arm (tilesWithNext, SAMESTART).
+		monotonic = monotonic && s >= out.lastStart && (s != prevStart || endsNoEarlier(a, end, prevEnd))
+		prevStart, prevEnd = s, end
 		spans = append(spans, headSpan{headPiece: headPiece{from: s, to: end, version: r.Version()}, void: tm.Void})
 		out.void = out.void || tm.Void
 		out.maxTx, out.maxVer = tm.TxFrom, r.Version()

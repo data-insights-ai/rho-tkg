@@ -774,15 +774,26 @@ func tilesWithNext(ax types.ValidAxis, prev, next *types.TemporalMetadata, pa, p
 	if pa < pb {
 		return true
 	}
-	nextOpen := next == nil || ax.Open(next.ValidTo)
-	prevOpen := prev == nil || ax.Open(prev.ValidTo)
+	end := func(tm *types.TemporalMetadata) types.Instant {
+		if tm == nil {
+			return ax.OpenEnd()
+		}
+		return tm.ValidTo
+	}
+	return endsNoEarlier(ax, end(next), end(prev))
+}
+
+// endsNoEarlier reports whether a valid end next lies at or after prev (an
+// open end lies after every bounded one): the same-start half of
+// tilesWithNext, shared with the effective-timeline head overlay.
+func endsNoEarlier(ax types.ValidAxis, next, prev types.Instant) bool {
 	switch {
-	case nextOpen:
+	case ax.Open(next):
 		return true
-	case prevOpen:
+	case ax.Open(prev):
 		return false
 	}
-	return next.ValidTo >= prev.ValidTo
+	return next >= prev
 }
 
 // relOwnBounds mirrors nodeOwnBounds for relationships. See there.
