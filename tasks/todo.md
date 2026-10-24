@@ -27,6 +27,22 @@ Each item: one sentence, then when it is done and what it waits for.
    René's go, merge, tag v4.75.0, tell ai-soc and sigma, move the item to `docs/CHANGELOG.md`. Parked by René while
    the badger work runs.
 
+- **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
+  then optimises badger for the multi-tier storage. Done when: the three steps below are ticked. The items USAGE,
+  BADGERDOC, CLEARMETA, BADGERLOG, DROPALL and METASYNC are its parts.
+
+### BADGER plan
+
+1. [ ] Full badger API understanding: every claim in `docs/badger.md` cites badger's source or a measurement, and every
+   claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it. Done so far: the API reference
+   (section 8), the batch API (B1-B9), the source check of sections 1-7 (one false claim fixed); running: R1-R5 (prefix
+   pruning, compaction, read-only open, directory lock, MaxVersion).
+2. [ ] rho's current badger use, fully verified in tests: the call map and the 9-category analysis exist
+   (`tasks/evidence/USAGE/`); each finding (CLEARMETA, BADGERLOG, DROPALL, METASYNC, the per-shard costs) gets a test
+   that shows the harm or its absence, then its fix.
+3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
+   `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
+
 - **USAGE** (René 24 Oct; phase 1 done: 9 categories, `tasks/evidence/USAGE/results.txt`) — Re-analyse rho's current badger use in the main session, without relying on Fable's
   review: a map of every badger call by kind (writes, point reads, iterators and their options, sync, drops, GC, open
   options), and each finding checked in the code and, where it can fail, by a test. Done when: the map is in
