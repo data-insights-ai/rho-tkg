@@ -8,7 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct, "fixes first", then "the given order"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0
-(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); CLEARMETA shipped in v4.75.3 (tagged, sigma and ai-soc told, tag CI green); next CLEARSHARDS, then BADGER step 3 /
+(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); CLEARMETA shipped in v4.75.3 (tagged, sigma and ai-soc told, tag CI green); CLEARSHARDS shipped in v4.75.4; next BADGER step 3 /
 SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -40,19 +40,6 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
 
-- **CLEARSHARDS** (confirmed 24 Oct by a real crash test on branch `clearshards`, `tasks/evidence/CLEARSHARDS/red.txt`;
-  reachable: sigma's daemon resets tiered and sharded stores through `Admin().Reset()`) — tiered `Clear` clears the
-  reference shard, which holds the shared property-key registry, before the event shards: a crash in between reopens
-  event-shard rows nobody can read ("property-key token 1 not in registry"). The other four crash points reopen old
-  or empty. Tiered fixed on the branch (24 Oct): a durable pending marker first, event shards and the archive before
-  the reference shard, an open that finds the marker finishes the `Clear`; green at all 7 stages, three mutations
-  caught (an archive or cold shard is not in the fixture). Sharded confirmed red (24 Oct): the anchor (shard 0)
-  holds the registries and is cleared first; after a crash there a key written after the reopen reuses the old rows'
-  token, and an old node answers under the new key (silent wrong data). Sharded fixed the same way (the anchor
-  last), green at all 5 stages, three mutations caught. Suite and race green except the flaky
-  `TestHistoryScanAllocGate` (process-wide allocation noise, +5 on one measurement); it now takes the least of three
-  runs and still fails without the iterator prefix (622 vs 52). Docs written; patch gate next, v4.75.4. Done when: both stores' crash tests
-  show old or empty at every stage, released as a patch. Now, before SHARD (fixes first, René 24 Oct).
 - **SAMESTART** (sigma, 24 Oct; found by sigma's reviewer on v4.75.1) — When all of a node's rows start at the same
   instant, `sortNodeChainForResolve` reports the chain monotonic and the fast path (newest first, first covering row
   wins, `internal/core/temporal.go` ~346-425) skips the supersession the cascade arm applies (`supersessionCaps`: a
@@ -65,7 +52,7 @@ SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
-  below are ticked and released. Waits for: CLEARSHARDS (fixes first, René 24 Oct); then BADGER step 3
+  below are ticked and released. Waits for: nothing (fixes shipped); BADGER step 3
   (per-tier badger options) leads in; step 1 with option (b), pre-creating `reference/` and `archive/` only for a new
   store (René 23 Oct), from branch `shard-step1`.
 

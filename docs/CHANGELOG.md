@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.75.4] - 2026-10-24
+
 ### Fixed
 
 - **CLEARSHARDS**: `Clear` (`Admin().Reset()`) of a tiered or sharded store cleared the shard holding the shared
