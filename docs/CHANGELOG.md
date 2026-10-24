@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`tasks/evidence/BADGER/`): how it stores, writes and reads data, compaction, open and close, memory and disk per
   database, its options, and the rules rho follows when it uses it. Reviewed by Fable; its gaps are todo items
   FLUSHPART (a flush above the batch limit is not atomic), GETWALK, PREFETCH, ITERPREFIX and VLOGGC.
+- **BADGERUSE** (René's request, 2026-10-24): `docs/badger.md` section 8 lists badger's complete API (every exported
+  symbol, source-checked) and section 9 what rho should integrate; the batch API is proved by 9 tests
+  (`tasks/evidence/BADGER/batch_test.go.txt`), which also showed that one row always fits a badger transaction (the
+  earlier "a row above about 10 MB cannot commit" was false). Fable reviewed rho's use of the badger API (49 files):
+  lifecycle, item borrows, writes and errors are clean; its findings are todo items DROPALL, METASYNC, VERIFY,
+  OPENIMAGE and additions to GETWALK, PREFETCH, ITERPREFIX and CACHE.
 
 ## [4.74.0] - 2026-10-23
 

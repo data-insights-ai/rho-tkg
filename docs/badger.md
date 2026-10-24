@@ -267,14 +267,14 @@ or misleading, from the source (file:line). "rho" says where rho uses it (rho im
 | `Item.Value(fn)`, `ValueCopy` | The value inside the transaction, or a copy. | everywhere |
 | `Item.Version()` | The commit timestamp. | open image |
 | `Item.EstimatedSize()` | Key + inline value, or the value-log record length for a value-log value (`iterator.go:216`): no value read. | - (section 9) |
-| `Item.KeySize()`, `ValueSize()` | Key length + 8; value length (approximate for value-log values, `iterator.go:238`). | `ValueSize` once |
+| `Item.KeySize()`, `ValueSize()` | The key's length without its timestamp (`iterator.go:230-232`; badger's comment says + 8, the code does not add it); the value's length (approximate for value-log values, `iterator.go:238`). | `ValueSize` once |
 | `Item.UserMeta()`, `ExpiresAt()`, `IsDeletedOrExpired()`, `DiscardEarlierVersions()`, `String()` | Entry metadata. | - |
 
 ### 8.4 Batches, bulk load and copy
 
 | Symbol | What it does | rho |
 |---|---|---|
-| `NewWriteBatch()` | Blind writes packed into transactions; above the limits it commits and starts another: **not atomic** (section 2). `Set`, `SetEntry`, `Delete`, `Flush`, `Cancel` (must be called if `Flush` may not be), `Error`, `SetMaxPendingTxns` (default 16), `Write(buf)`, `WriteList(kvList)`. | staged flush steps 1, 3, 5; index backfills; open image; Clear |
+| `NewWriteBatch()` | Blind writes packed into transactions; above the limits it commits and starts another: **not atomic** (section 2). `Set`, `SetEntry`, `Delete`, `Flush`, `Cancel` (must be called if `Flush` may not be; safe after `Flush`, its finish runs once, `y/y.go:237-251`), `Error`, `SetMaxPendingTxns` (default 16), `Write(buf)`, `WriteList(kvList)`. | staged flush steps 1, 3, 5; index backfills; open image; Clear |
 | `NewWriteBatchAt`, `NewManagedWriteBatch`, `SetEntryAt`, `DeleteAt` | Managed mode. | - |
 | `NewKVLoader(maxPending)`, `KVLoader.Set`, `Finish` | Writes `pb.KV`s (a backup) in batches. | - |
 | `Backup(w, since)` / `Stream.Backup` | Protobuf dump of every entry with version >= `since`; returns the last version, so `last+1` makes the next dump incremental. | - (section 9) |
@@ -301,7 +301,7 @@ or misleading, from the source (file:line). "rho" says where rho uses it (rho im
 | `InitDiscardStats` | Value-log discard statistics file. | - |
 | `Logger`, `DEBUG`...`ERROR`, `WithLoggingLevel` | Logging interface and the default logger's level. | `Config.Logger` (nil = silent) |
 | `KVList` (= `pb.KVList`), `CacheType` (`BlockCache`, `IndexCache`), `LevelInfo`, `TableInfo` | Types of the calls above. | - |
-| `ValueThresholdLimit` | Maximum `ValueThreshold` (65,520). | - |
+| `ValueThresholdLimit` | 65,520: dead in v4.9.2, read by nothing; the effective maximum is `maxValueThreshold`, 1 MB (`options.go:201`, `db.go:140`). | - |
 
 ### 8.6 Options (all fields)
 
@@ -319,7 +319,7 @@ Section 6 judges the ones rho sets; these are all of them, with the v4.9.2 defau
 | `MaxLevels` | 7 | `VLogPercentile` | 0 |
 | `ValueThreshold` | 1 MB | `NumMemtables` | 5 |
 | `BlockSize` | 4 KB | `BloomFalsePositive` | 0.01 |
-| `BlockCacheSize` | 256 MB | `IndexCacheSize` | 0 (indexes in memory) |
+| `BlockCacheSize` | 256 MB | `IndexCacheSize` | 0: without encryption the index parsed from the mmapped table at open is used (`table.go:502-505`); the cache serves encryption only |
 | `NumLevelZeroTables` / `...Stall` | 5 / 15 | `ValueLogFileSize` | 1 GB - 1 |
 | `ValueLogMaxEntries` | 1,000,000 | `NumCompactors` | 4 |
 | `CompactL0OnClose` | false (forced off read-only) | `LmaxCompaction` | false |
@@ -337,8 +337,8 @@ Section 6 judges the ones rho sets; these are all of them, with the v4.9.2 defau
 `ErrTruncateNeeded` (a torn log on a read-only open; rho also wraps it for a pending staged flush), `ErrBlockedWrites`
 (during `DropAll`/`DropPrefix`/`Close`), `ErrNilCallback`, `ErrEncryptionKeyMismatch`, `ErrInvalidDataKeyID`,
 `ErrInvalidEncryptionKey`, `ErrGCInMemoryMode`, `ErrGCInReadOnlyMode`, `ErrDBClosed`, `ErrValueLogSize`. rho tests
-`ErrKeyNotFound`, `ErrTxnTooBig`, `ErrTruncateNeeded`, `ErrDBClosed` and `ErrEncryptionKeyMismatch` by identity;
-the rest surface wrapped. Outside badger's debug mode `y.Wrap` formats the cause with `%+v` (`y/error.go:55-63`), so
+`ErrKeyNotFound`, `ErrTxnTooBig`, `ErrTruncateNeeded` and `ErrDBClosed` by identity (`ErrEncryptionKeyMismatch` is
+named in a comment, not matched); the rest surface wrapped. Outside badger's debug mode `y.Wrap` formats the cause with `%+v` (`y/error.go:55-63`), so
 `errors.Is` fails on errors badger wrapped itself; rho's tiered probe also matches `ErrTruncateNeeded` by message.
 
 ### 8.8 Packages beside `badger`
@@ -355,9 +355,9 @@ table indexes) are badger's internals: exported, not meant for applications, unu
 Badger features rho does not use yet that fit a rho need, and one risk. Each is a todo item; none is built.
 
 1. **Moving shards between volumes (SHARD)**: `StreamDB` (or `Stream` + `StreamWriter`) copies a snapshot into a
-   new directory as compacted SSTables, without a WAL; the mover between hot, warm and cold volumes can use it
-   instead of copying files of a live DB. Needs: the copy's open format marker and rho meta keys travel with it
-   (they are ordinary keys), and a writable source must be quiesced or the copy taken from a snapshot.
+   new directory as compacted SSTables, without a WAL; `ToList` keeps the newest version and drops deleted keys
+   (right for rho, one version per key). A byte copy of a closed directory instead keeps the open image, the key
+   registry and the compression state and needs no second DB; the mover chooses between them.
 2. **Limits from badger, not from formulas**: `MaxBatchSize()` / `MaxBatchCount()` give the exact per-transaction
    limits; rho needs them only for the number of entries (one entry always fits, section 2), e.g. to size a staged
    flush's parts.
@@ -376,10 +376,18 @@ Badger features rho does not use yet that fit a rho need, and one risk. Each is 
    badger version", not "written at a rho tx".
 9. **Master-key change**: `WriteKeyRegistry` rewrites the key registry under a new master key offline; rho has no
    tool for it.
-10. **Risk, to verify (DROPALL)**: `Clear` of a store that never had the change log calls `DropAll`, which badger
-    says may panic concurrent reads. `Clear` holds `idxMu` and `flushMu`; whether every badger read path takes one
-    of them is not yet checked.
-11. **To measure**: `MetricsEnabled` (default, rho leaves it on) registers expvar counters per directory; with many
+10. **Risk (DROPALL)**: `Clear` of a store that never had the change log calls `DropAll`, which badger says may
+    panic concurrent reads (`db.go:1699-1700`). Fable traced it (2026-10-24, not yet tested): a cache-miss point read
+    and a read snapshot hold a badger transaction outside `idxMu`/`flushMu`; memtables and tables are
+    reference-counted, so only a value-log read can fail (a deleted file, `value.go:919`), which rho makes only for a
+    row of 1 MB or more.
+11. **Per-shard defaults (CACHE, SHARD)**: every writable open starts the writer, the flusher, 4 compactors with
+    50 ms tickers and a directory walk every minute (`db.go:303-387`, `:458`, not guarded by `MetricsEnabled`);
+    `CompactL0OnClose` for warm and cold shards saves their read-only opens a table probe per read for good;
+    `BloomFalsePositive` below 0.01 may pay on the reference shard, whose unique checks read absent keys.
+12. **Faster reopen after a crash (OPENIMAGE)**: `IteratorOptions.SinceTs` can rebuild from the open image plus the
+    keys newer than its header instead of a full scan.
+13. **To measure**: `MetricsEnabled` (default, rho leaves it on) registers expvar counters per directory; with many
     shards opened over a process's life they accumulate. `Subscribe` is not durable and cannot replace the change
     log. `ExternalMagicVersion` could guard the format at badger level beside rho's `wire_format_version`; changing
     it is a one-way door.

@@ -23,9 +23,9 @@ brief are updated at every event, on main, from a main worktree when a branch is
   door); `New` applies a committed flush; fail closed after the marker; a torn unsynced flush is discarded at open, a
   synced one refuses and names `badger.DiscardStagedFlush`. 27 of 27 mutations caught; Fable reviewed twice, all points
   fixed. Left: `make ci-docker` on the final branch, Fable's last verdict, then René's go to merge and tag.
-- **BADGERDOC, BADGERUSE (Now).** Every `docs/badger.md` claim gets a source line or a measurement and a breaking test
-  where rho relies on it (the batch API is done: `tasks/evidence/BADGER/batch_test.go.txt`); Fable is reviewing rho's
-  badger use.
+- **BADGERDOC (Now).** Every `docs/badger.md` claim gets a source line or a measurement and a breaking test where rho
+  relies on it (the batch API is done: `tasks/evidence/BADGER/batch_test.go.txt`). BADGERUSE is done: Fable's review
+  of rho's badger use became DROPALL, METASYNC, VERIFY, OPENIMAGE and additions to GETWALK, PREFETCH, ITERPREFIX, CACHE.
 - **SHARD (Next).** Design ADR-0012 (architecture.md); plan with boxes in todo. Step 1 (refuse a missing shard
   directory, one `shardDir` seam) is on local branch `shard-step1` (5da2cdfa, not pushed): code + red tests; still to
   change: pre-create `reference/` and `archive/` only for a new store (René's choice (b)). Adopted review points for
@@ -40,7 +40,7 @@ brief are updated at every event, on main, from a main worktree when a branch is
 **Fable (reviewer and monitor):** review every step's diff and test output against badger's source, ADR-0012 and the
 SHARD plan; write no code or tests, run none; answer only what is wrong or missing; cite badger's source for every
 badger statement (the main session tests it before relying on it). Reviewed: ADR-0012, docs/badger.md, the FLUSHPART
-design and its diff twice. Now: rho's use of the badger API (BADGERUSE); next: FLUSHPART's last verdict, SHARD step 1.
+design and its diff twice. Done: rho's use of the badger API (BADGERUSE). Next: FLUSHPART's last verdict, BADGERDOC, SHARD step 1.
 
 ## State
 

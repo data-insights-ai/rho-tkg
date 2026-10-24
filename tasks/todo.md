@@ -30,9 +30,6 @@ Each item: one sentence, then when it is done and what it waits for.
   10 MB cannot commit stood for a day and was false. Done when: every claim in `docs/badger.md` cites badger's source
   or a measurement, every claim rho relies on has a test in `tasks/evidence/BADGER/` that tries to break it, and Fable
   has reviewed the result. The batch API is done (`batch_test.go.txt`, B1-B9).
-- **BADGERUSE** (René 24 Oct) — Fable reviews how rho's code uses the badger API (lifecycle, errors, `Sync`,
-  `DropAll`, iterator options, per-shard options) and which badger features rho should use (`docs/badger.md`
-  section 9). Done when: each finding is fixed or is its own item. Waits for: Fable's report.
 
 ## Next
 
@@ -69,9 +66,13 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
     its data cleanup.
 
-- **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll`, which badger says may panic
-  concurrent reads; it is not yet checked that every read takes a lock `Clear` holds. Done when: proved safe, or
-  fixed with a test that races reads against `Clear`. Waits for: Fable's BADGERUSE report.
+- **DROPALL** — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
+  read snapshots may hold a badger transaction; Fable's trace says only a read of a row of 1 MB or more (value log)
+  can fail. Done when: a test races such reads against `Clear`, and the fix it shows is in.
+- **METASYNC** — `MetaSetDurable` and the property-key registry save promise durability after `db.Sync`, which syncs
+  only the active WAL, so after a memtable rotation the write may not survive a power loss without `SyncWrites`
+  (`badgerstore_meta.go:324-334`, `:420-434`). Done when: a test shows the gap or its absence, and the doors and
+  `docs/persistence.md` state what holds.
 - **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
   fact. Done when: René has decided per layer. Waits for: CHAIN.
 
@@ -89,8 +90,9 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   them. Done when: both have reported. Waits for: ai-soc, sigma.
 - **ORIGIN** — Every release Markus makes on origin has to be merged and checked against rho's rules. Done when: no
   release of his is unmerged. Waits for: Markus.
-- **CACHE** — Every open badger shard keeps its own cache, so ai-soc's memory grows with the shards it opens. Done when:
-  one cache budget for the whole store, or a documented size per shard. Waits for: ai-soc's memory numbers.
+- **CACHE** — Every open badger shard keeps its own 256 MB block cache, 4 compactors and a per-minute directory walk,
+  so ai-soc's memory grows with the shards it opens (`docs/badger.md` section 9, item 11). Done when: one cache budget
+  for the whole store (`CacheMaxCost`) and per-role options, or a documented cost per shard. Waits for: ai-soc's memory numbers.
 - **TOMBSTONE** — A delete cannot keep the believed end of validity (backlog 4, 7, 25). Done when: released as a minor.
   Waits for: René, or sigma or ai-soc needing it.
 - **STORE** (ai-soc, 23 Oct) — Store layout choices for ai-soc's remodel: history delta encoding per label, Derived and
@@ -122,11 +124,18 @@ step is ticked when it is released. The plan moves to `docs/CHANGELOG.md` when t
   Done when: `NodeProperty` and `RelProperty` answer `tkg_id`. Waits for: FLUSHPART and SHARD.
 
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
-  (about 4x the row each) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
-- **PREFETCH** — 13 iterators turn on value prefetching, one goroutine per row for values that are almost always
-  inline (rule 3). Done when: none does, the open-time node scan measured.
-- **ITERPREFIX** — The snapshot walkers merge every table of every level because they set no prefix (rule
-  4). Done when: each sets at least its keyspace byte.
+  (about 4x the row each; 12 sites) where a forward walk costs almost nothing (rule 2); a single-key read can use
+  `NewKeyIterator`. Done when: the hot paths walk, measured.
+- **PREFETCH** — 14 iterators prefetch values (13 explicitly, plus `badgerstore_planner_stats_deferred.go:137` by
+  default), one goroutine per row for values that are almost always inline (rule 3). Done when: none does, the open-time node scan measured.
+- **ITERPREFIX** — 11 iterators, the read and scan snapshot walkers among them, merge every table of every level
+  because they set no prefix (rule 4). Done when: each sets at least its keyspace byte.
+- **VERIFY** — badger never verifies block checksums with rho's options (only table indexes at open), so a flipped
+  byte reaches the row decoder. Done when: an admin door runs `VerifyChecksum` per shard and the SHARD mover checks
+  what it copies.
+- **OPENIMAGE** — A reopen after a crash rebuilds every row although the open image holds most of the state;
+  `IteratorOptions.SinceTs` reads only the keys newer than the image. Done when: such a reopen reads only those keys,
+  measured on a large shard.
 - **VLOGGC** — The value-log GC loop runs on every shard although only rows of 1 MB or more reach the value log (rule
   9). Done when: it runs only where the value log holds data.
 
