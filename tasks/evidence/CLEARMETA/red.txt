@@ -13,3 +13,15 @@ clear_meta_crash_test.go:122: crash at step 3: reopened empty or neither
 FAIL
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.614s
 FAIL
+
+Fix (24 Oct): Clear's change-log arm runs (1) delete the entity counters, (2) drop the data, (3) delete the rest of
+the metadata, (4) re-anchor; a crash point after each. TestClearCrashAtEveryDurableStep now requires the reopen to
+succeed and an "empty" store to hold no row on disk (AllNodes), not only to answer 0 per label. Green at steps 1-4.
+Mutations, each caught:
+  M1 old order (metadata before the data drop, a crash point after each step):
+     crash at step 2: 0 Host and 0 Account nodes, 1 stored: neither the old store nor an empty one
+     crash at step 2: ByLabel(Invoice) fails: ... property-key token 1 not in registry
+  M2 counters not deleted in step 1:
+     reopen after a crash at step 2 refused: ... node counter 21 does not match 0 live row
+Removed as untestable: deleting the open-image header in step 1 (the step's commit already puts the store past the
+header, so the old image is not trusted either way).

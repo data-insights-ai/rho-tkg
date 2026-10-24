@@ -15,8 +15,9 @@ import (
 
 // CLEARMETA (USAGE W5). A process dies inside Clear (g.Admin().Reset() on a
 // badger store with the change log on) right after one of Clear's durable
-// steps. The reopened store must answer as before the Clear or as an empty
-// store, and a label written after the reopen must answer only its own nodes.
+// steps. The reopened store must open, answer as before the Clear or as an
+// empty store (no row left on disk), and a label written after the reopen must
+// answer only its own nodes.
 // The child process runs the real Clear and exits there without Close; only
 // the exit point comes from the test seam.
 
@@ -60,7 +61,7 @@ func TestClearMetaCrashChild(t *testing.T) {
 
 func TestClearCrashAtEveryDurableStep(t *testing.T) {
 	ctx := context.Background()
-	for step := 1; step <= 3; step++ {
+	for step := 1; step <= 4; step++ {
 		t.Run(fmt.Sprintf("crash after step %d", step), func(t *testing.T) {
 			dir := t.TempDir()
 			g := cmOpen(t, dir)
@@ -86,18 +87,23 @@ func TestClearCrashAtEveryDurableStep(t *testing.T) {
 				t.Fatalf("the child did not die at step %d (exit %d):\n%s", step, code, out)
 			}
 
+			// A crash inside a Reset must not leave a store that cannot open.
 			bs, err := badger.New(badger.Config{Dir: dir, ChangeLog: true})
 			if err != nil {
-				t.Logf("reopen after a crash at step %d refused (fails closed): %v", step, err)
-				return
+				t.Fatalf("reopen after a crash at step %d refused: %v", step, err)
 			}
 			g, err = graphpkg.New(graphpkg.Config{Store: bs, AllowReset: true})
 			if err != nil {
 				_ = bs.Close()
-				t.Logf("graph after a crash at step %d refused (fails closed): %v", step, err)
-				return
+				t.Fatalf("graph after a crash at step %d refused: %v", step, err)
 			}
 			defer g.Close()
+			// Every row on disk, decoded: label queries alone answer 0 when the
+			// registries are gone and the rows remain.
+			all, allErr := bs.AllNodes(storepkg.QueryOpts{})
+			if allErr != nil {
+				t.Errorf("crash at step %d: reading every stored node fails: %v", step, allErr)
+			}
 			count := func(label string) int {
 				ns, err := g.Nodes().ByLabel(label, storepkg.QueryOpts{})
 				if err != nil {
@@ -109,9 +115,9 @@ func TestClearCrashAtEveryDurableStep(t *testing.T) {
 			hosts, accounts := count("Host"), count("Account")
 			t.Logf("crash at step %d: after reopen Host %d, Account %d (before the Clear 20 and 1)", step, hosts, accounts)
 			old := hosts == 20 && accounts == 1
-			empty := hosts == 0 && accounts == 0
+			empty := hosts == 0 && accounts == 0 && allErr == nil && len(all) == 0
 			if !old && !empty {
-				t.Errorf("crash at step %d: %d Host and %d Account nodes: neither the old store nor an empty one", step, hosts, accounts)
+				t.Errorf("crash at step %d: %d Host and %d Account nodes, %d stored: neither the old store nor an empty one", step, hosts, accounts, len(all))
 			}
 			if _, err := g.Nodes().Add(ctx, []string{"Invoice"}, nil); err != nil {
 				t.Fatal(err)

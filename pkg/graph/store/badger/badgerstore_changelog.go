@@ -250,7 +250,7 @@ func (bs *Store) clearAndReanchorChangeLog() error {
 	if err := wb.Flush(); err != nil {
 		return fmt.Errorf("graph: clear marker flush: %w", err)
 	}
-	return clearStepFault(3)
+	return clearStepFault(4)
 }
 
 // clearDataPreservingLastLSN wipes every data / index / history / change-log
@@ -258,14 +258,15 @@ func (bs *Store) clearAndReanchorChangeLog() error {
 // Shared by both Clear() arms so the LSN watermark is never absent across a Clear
 // (lesson 53): a future change-log-enabled reopen reseeds the allocator FROM it,
 // never from 0, so post-Clear LSNs cannot collide with a consumer's pre-Clear
-// checkpoint. The entity-counter meta keys are deleted BEFORE the data drop, so a
-// crash between the two leaves the counters absent (reconcilePersistedCounter then
-// trusts the live rows) rather than claiming rows that no longer exist (which
-// would fatal the reopen). Called under idxMu.Lock + flushMu.
+// checkpoint. Called under idxMu.Lock + flushMu.
+//
+// Order (CLEARMETA): a crash after any step reopens the old store or an empty
+// one, never rows without the metadata that interprets them: (1) the entity
+// counters, (2) the data, (3) the rest of the metadata.
 func (bs *Store) clearDataPreservingLastLSN() error {
-	// 1. Collect every metadata key except LastLSNKey. Scanning (rather than a
-	//    hard-coded list) also reaps dynamically-set meta keys (registries,
-	//    index defs, the replica watermark, the id-slot lease, …).
+	// Collect every metadata key except LastLSNKey. Scanning (rather than a
+	// hard-coded list) also reaps dynamically-set meta keys (registries, index
+	// defs, the replica watermark, the id-slot lease, …).
 	lastLSN := string(storepkg.LastLSNKey)
 	var metaKeys [][]byte
 	if err := bs.view(func(txn *badgerv4.Txn) error {
@@ -285,10 +286,50 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 	}); err != nil {
 		return fmt.Errorf("graph: clear scan meta: %w", err)
 	}
+	if bs.dbClosed.Load() {
+		return fmt.Errorf("graph: clear: %w", badgerv4.ErrDBClosed)
+	}
 
-	// 2. Delete the stale meta keys (incl. the entity counters) and flush. After
-	//    this the counters are absent → reconcilePersistedCounter trusts the live
-	//    rows, so a crash here (data still present) reopens consistently.
+	// 1. The entity counters, one commit. A crash here reopens the old store:
+	//    absent counters make the open count the live rows
+	//    (reconcilePersistedCounter), and the commit puts the store past the
+	//    open-image header, so the old image is not trusted.
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		for _, k := range [][]byte{counterNodeCountKey, counterRelCountKey} {
+			if err := txn.Delete(k); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("graph: clear delete counters: %w", err)
+	}
+	if err := clearStepFault(1); err != nil {
+		return err
+	}
+
+	// 2. Bulk-drop every data / index / history / change-log-record keyspace.
+	//    KeyMeta (which holds LastLSNKey) is deliberately left intact. A crash
+	//    here reopens an empty store with its old metadata: no row needs it,
+	//    and new labels continue the old registries instead of reusing tokens.
+	if err := bs.db.DropPrefix(
+		[]byte{storepkg.KeyNode}, []byte{storepkg.KeyRel},
+		[]byte{storepkg.KeyLabel}, []byte{storepkg.KeyRelType},
+		[]byte{storepkg.KeyOut}, []byte{storepkg.KeyIn},
+		[]byte{storepkg.KeyHistNode}, []byte{storepkg.KeyHistRel},
+		[]byte{storepkg.KeyChangeLog}, []byte{storepkg.KeyExAdj},
+		[]byte{storepkg.KeyFlushStage},
+	); err != nil {
+		return fmt.Errorf("graph: clear drop data: %w", err)
+	}
+	if err := clearStepFault(2); err != nil {
+		return err
+	}
+
+	// 3. The rest of the metadata (registries, format marker, index
+	//    definitions, …), now that no row needs it. Deleted before the data
+	//    (before CLEARMETA), a crash left rows whose label, type and
+	//    property-key tokens the emptied registries handed out again.
 	if len(metaKeys) > 0 {
 		wbMeta := bs.db.NewWriteBatch()
 		defer wbMeta.Cancel()
@@ -305,28 +346,13 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 			return fmt.Errorf("graph: clear delete meta: %w", err)
 		}
 	}
-	if err := clearStepFault(1); err != nil {
-		return err
-	}
-
-	// 3. Bulk-drop every data / index / history / change-log-record keyspace.
-	//    KeyMeta (which holds LastLSNKey) is deliberately left intact.
-	if err := bs.db.DropPrefix(
-		[]byte{storepkg.KeyNode}, []byte{storepkg.KeyRel},
-		[]byte{storepkg.KeyLabel}, []byte{storepkg.KeyRelType},
-		[]byte{storepkg.KeyOut}, []byte{storepkg.KeyIn},
-		[]byte{storepkg.KeyHistNode}, []byte{storepkg.KeyHistRel},
-		[]byte{storepkg.KeyChangeLog}, []byte{storepkg.KeyExAdj},
-		[]byte{storepkg.KeyFlushStage},
-	); err != nil {
-		return fmt.Errorf("graph: clear drop data: %w", err)
-	}
-	return clearStepFault(2)
+	return clearStepFault(3)
 }
 
 // clearStepFaultForTest (tests only) runs after each durable step of Clear's
-// change-log arm (1: the first metadata commit, 2: the data dropped, 3: the
-// re-anchor marker written); a test may stop the process there or fail Clear.
+// change-log arm (1: the entity counters deleted, 2: the data
+// dropped, 3: the rest of the metadata deleted, 4: the re-anchor marker
+// written); a test may stop the process there or fail Clear.
 var clearStepFaultForTest func(step int) error
 
 func clearStepFault(step int) error {
