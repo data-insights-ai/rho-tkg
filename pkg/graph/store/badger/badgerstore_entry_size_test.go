@@ -248,3 +248,20 @@ func TestCascadeDeleteRecordTooLargeRefused(t *testing.T) {
 		return nodeErr == nil && relErr == nil
 	})
 }
+
+// TestMetaSetDurableRaisingTooLargeRefused: MetaSetDurableRaising buffers its
+// entry and change-log record like a row (store.MetaFormatMarkerCapability), so
+// it refuses a value the flush could not commit. Mutation: no check (the entry
+// is buffered and every later flush fails).
+func TestMetaSetDurableRaisingTooLargeRefused(t *testing.T) {
+	bs, err := New(Config{InMemory: true, ChangeLog: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	err = bs.MetaSetDurableRaising("zz_big", make([]byte, 1<<20), 0)
+	esAfter(t, bs, "MetaSetDurableRaising", err, func() bool {
+		v, err := bs.MetaGet("zz_big")
+		return err == nil && v == nil
+	})
+}

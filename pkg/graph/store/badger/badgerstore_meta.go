@@ -356,6 +356,16 @@ func (bs *Store) MetaSetDurableRaising(key string, value []byte, marker uint16) 
 	if err != nil {
 		return fmt.Errorf("graph: meta %q change record: %w", key, err)
 	}
+	// The entry and its record go to the write buffer: refuse what the flush
+	// could not commit (ErrEntryTooLarge), as every buffered door does.
+	if err := bs.checkEntryValue("meta value", len(value)); err != nil {
+		return err
+	}
+	if bs.logEnabled.Load() {
+		if err := bs.checkChangePayload(payload); err != nil {
+			return err
+		}
+	}
 	val := append([]byte(nil), value...)
 	if err := bs.appendOpsLoggedRoutedRaising(marker, storecontract.ChangeMeta, payload, 0,
 		writeOp{opType: writeOpSet, key: storepkg.MetaKey(key), value: val}); err != nil {

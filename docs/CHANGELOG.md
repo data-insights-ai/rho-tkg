@@ -52,8 +52,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   checks its row, change-log record and on-disk index keys (put, replace, label changes, batches, pre-encoded
   batches, history versions); a cascade delete whose change-log record would be too large (about 116,000
   relationships of one node in memory or with a 1 MB value log) is refused before it deletes anything. With default
-  options (a 1 GB value-log file) rows of any size rho allows are accepted as before. sigma's state pages and a 1 MB
-  value-log setting were exposed; ai-soc was not.
+  options (a 1 GB value-log file) rows of any size rho allows are accepted as before; `MetaSetDurableRaising` (it
+  buffers like a row) refuses an oversized value too. Not covered: a store reopened with a smaller `ValueLogFileSize`
+  than its existing rows need can still fail a flush that re-writes such a row (history re-anchoring, exact
+  erasure). sigma's state pages and a 1 MB value-log setting were exposed; ai-soc was not.
 
 ### Documentation
 
