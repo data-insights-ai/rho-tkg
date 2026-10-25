@@ -91,8 +91,16 @@ func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
 		return err
 	}
 	err = ts.moveClosedShard(ctx, es.name, es.path, vol, dstRoot)
-	if es.currentTier() != TierCold && !ts.closing.Load() {
-		err = errors.Join(err, ts.reopenMovedShard(es))
+	if es.currentTier() != TierCold {
+		if !ts.closing.Load() {
+			return errors.Join(err, ts.reopenMovedShard(es))
+		}
+		// Not reopened: cold in memory (the catalog keeps warm), so until
+		// Close marks the store closed an access takes the locked path,
+		// which opens the shard, not the warm fast path with no store.
+		es.shardMu.Lock()
+		es.setTier(TierCold)
+		es.shardMu.Unlock()
 	}
 	return err
 }

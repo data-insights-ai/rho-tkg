@@ -820,3 +820,42 @@ func TestSweepRunsOnTheIdleLoop(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// TestCloseStoppingWarmMoveLeavesShardCold pins that a warm shard whose move
+// Close stopped (so it is not reopened) is cold in memory: its accesses take
+// the locked path, which sees the store closed or opens it, never the warm
+// fast path with no store (a nil dereference for a write or a listing in the
+// moment before Close marks the store closed). Its catalog tier stays warm.
+func TestCloseStoppingWarmMoveLeavesShardCold(t *testing.T) {
+	t.Parallel()
+	ts, cfg, n, _, old, _ := warmMoveFixture(t)
+	release := make(chan struct{})
+	reached := holdMoveAt(ts, "copied", release)
+	moved := make(chan error, 1)
+	go func() { moved <- ts.MoveShard(context.Background(), old, VolumeWarm) }()
+	awaitHold(t, reached, moved)
+	closed := make(chan error, 1)
+	go func() { closed <- ts.Close() }()
+	for !ts.ClosingForTest() {
+		time.Sleep(time.Millisecond)
+	}
+	close(release)
+	<-moved
+	if err := <-closed; err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if tier := ts.EventShardsForTest()[old].Tier(); tier != TierCold {
+		t.Fatalf("shard whose move Close stopped is %s in memory, want cold", tier)
+	}
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ts.Close() }()
+	if tier := ts.EventShardsForTest()[old].Tier(); tier != TierWarm {
+		t.Fatalf("shard reopens %s, want warm (the catalog keeps its tier)", tier)
+	}
+	if _, err := ts.GetNode(n.ID()); err != nil {
+		t.Fatalf("GetNode after the stopped move: %v", err)
+	}
+}

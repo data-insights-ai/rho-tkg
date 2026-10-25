@@ -10,3 +10,7 @@ dropped as untestable (redundant): an anchored-index sync at the reopen (fan-out
 mutations (each failed a test, hangs by the 60 s test timeout): fast-path checkout ignoring the move; open-read
   ignoring it; open-read waiting for it; no drain; no reopen; cold shard reopened; counts not sealed; not demoted in
   memory; moving flag never set; tracked temporal indexes applied at the reopen (deadlock)
+review before the release (25 Oct): a warm shard whose move Close stopped was not reopened but stayed warm with no
+  store, so in the moment between the move's end and Close marking the store closed a write (checkoutStore fast
+  path) or a listing would dereference a nil store. Now cold in memory (catalog keeps warm). Red test
+  TestCloseStoppingWarmMoveLeavesShardCold ("is warm in memory, want cold"), green, -race -count=5 ok.
