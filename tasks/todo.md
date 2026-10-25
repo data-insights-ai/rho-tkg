@@ -10,7 +10,7 @@ Each item: one sentence, then when it is done and what it waits for.
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2 (all tagged, CI green, ai-soc and sigma told; ai-soc measures
 DICT before configuring it; `docs/CHANGELOG.md`). Next BADGER step 3 / SHARD steps 3-10 (steps 2
-to 5 green on branch `shard2`; v4.77.2 CI green, consumers build); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
+to 6 green on branch `shard2`; v4.77.2 CI green, consumers build); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -65,12 +65,15 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
    reference shard or archive), and v4.77.2 refuses such a store and writes nothing.
 4. [ ] A closed shard moves to another volume crash-safely. Done when: in the volume minor (red tests: the crash
    matrix after copy, rename, catalog save and removal; a drop of a moved shard removes it there). Green on branch
-   `shard2` (`tasks/evidence/SHARD/step4.txt`): `tiered.Store.MoveShard`; `tier.API.MoveShard` comes with step 6.
+   `shard2` (`tasks/evidence/SHARD/step4.txt`): `tiered.Store.MoveShard`.
 5. [ ] An open warm shard moves too: its readers and writers wait, nothing written is lost. Done when: in the volume
    minor (red test `TestMoveWarmShard_WriterWaitsAndWriteLandsOnNewVolume`). Green on branch `shard2`
    (`tasks/evidence/SHARD/step5.txt`; found and fixed a reopen/temporal-DDL deadlock before it shipped).
 6. [ ] The idle sweep moves one shard per tick to its tier's volume and never fails the store. Done when: in the
-   volume minor (red tests `TestSweepMovesWarmToWarmDirAndColdToColdDir`, `TestMoverErrorIsNotStoreWide`).
+   volume minor (red tests `TestSweepMovesWarmToWarmDirAndColdToColdDir`, `TestMoverErrorIsNotStoreWide`). Green on
+   branch `shard2` (`tasks/evidence/SHARD/step6.txt`): a step down only (a shard moved by hand to a slower volume
+   stays), a failed shard retried after the others; `IdleTimeout` defaults to 5m when a volume is mapped;
+   `g.Tier().MoveShard` is the door.
 7. [ ] The reference shard and the archive move offline. Done when: in the volume minor (red test: the reference
    shard on the warm volume still answers unique checks and the watermark).
 8. [ ] Each read reports how many cold shards it opened. Done when: in the volume minor (red test: a closed cold
@@ -154,6 +157,9 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **TKGID** (sigma, 24 Oct) — sigma wants the shadow name `tkg_id` (an entity's id) reserved, best resolved by rho.
   Done when: `NodeProperty` and `RelProperty` answer `tkg_id`. Waits for: FLUSHPART and SHARD.
 
+- **WBA-8** (ai-soc from sigma's todo, recorded 25 Oct) — rho stores a duplicate row in one case (52,031 on the BA
+  store of run k10251802). Never recorded in rho before; no fix shipped. Done when: the case is named (which rows,
+  which write door), reproduced by a red test and fixed or explained. Waits for: ai-soc naming the case (asked 25 Oct).
 - **CHAININTERN** (sigma for ai-soc, 24 Oct; heap profile, sigma v0.11.60 on rho v4.75.1) — A node with n versions
   holds every unchanged property value n times in decoded history rows: a Derived node's identity properties
   (`ov_namespace`, `ov_rel`, `ov_key`, about 146 B) once per version, 5 copies for one fact. `GetNodeHistory` and the
