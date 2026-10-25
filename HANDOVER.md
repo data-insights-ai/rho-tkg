@@ -28,7 +28,7 @@ DISCARDCLOSE, METASYNC):
   (b)). Points for later steps: the mover checks a flock on the shard DIRECTORY (the `LOCK` file is only a pid file);
   a read-only handle is closed before a writable open of the same directory; `DiskBytes` counts blocks; a shard with
   `.mem` files gets one writable open before a move or a read-only open.
-- **Queued:** DICT after SHARD (named per-property value dictionaries, opt-in list agreed with ai-soc and sigma);
+- **Queued:** DICT after SHARD step 1 and before SHARD steps 2-10 (ai-soc with René's yes, 25 Oct; named per-property value dictionaries, opt-in list agreed with ai-soc and sigma);
   CHAININTERN (order by ai-soc's heap share) and IDPROPS (after it); WRITTENAT, VALUES, TKGID, TIERLABELDISK; GETWALK,
   PREFETCH, ITERPREFIX, VLOGGC, OPENIMAGE; CHAIN waits for René's word (a Flux run); STORE is with René. Parked:
   BADGERPANIC (badger as it is). The local race gate runs its parts in sequence, badger isolated (v4.76.0).

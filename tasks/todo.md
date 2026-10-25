@@ -7,9 +7,10 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are
-released in v4.75.0 to v4.76.0 (all tagged, CI green, ai-soc and sigma told; `docs/CHANGELOG.md`). Next BADGER step 3
-/ SHARD, then DICT; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
+Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
+in v4.75.0 to v4.76.0 (all tagged, CI green, ai-soc and sigma told; `docs/CHANGELOG.md`). Next SHARD step 1 (a fix),
+then DICT (ai-soc with René's yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and METASYNC
+after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -42,6 +43,30 @@ released in v4.75.0 to v4.76.0 (all tagged, CI green, ai-soc and sigma told; `do
 
 ## Next
 
+- **DICT** (ai-soc, René's yes, 24 Oct) — Store repeated string property values once per (label or type, property),
+  dictionary-coded, invisible to reads, filters and property-index probes. ai-soc's store meter (graphmgr
+  StoredCopies) on the BA slice store (16,558 rows, v4.75.1): 57.8 % of 15.06 MB of stored values (>= 8 B) are
+  copies; ai-soc and sigma remove most themselves; what only a store dictionary removes: `action` 285,733 B (1.9 %),
+  `aisoc_source` 367,310 B (2.4 %), repeated ip, sid and path values 0.7-1.1 MB (up to ~7 %). Sketch: like the
+  property-key registry (tokens on disk, one canonical registry, on the reference shard in tiered, the anchor in
+  sharded, committed ahead of the rows that use it); decode resolves tokens, so indexes and filters see plain
+  values; a new row shape (a one-way door, a minor). RAM: decoded values interned per token (one string per
+  value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
+  then built and released. Order (ai-soc with René's yes, 25 Oct): after SHARD step 1, before SHARD steps
+  2-10; nothing in SHARD blocks it (the dictionary moves with the reference shard). ai-soc's tracker on the kit BA
+  slice (25 Oct): 2,207,339 B of 7,852,216 B of stored values (>= 8 B) are copies, about 900 KB of them one value
+  repeated across rows of one property: `action` 186,354 B (NETFIRST, NETWORK, FILE, REGISTRY); `folder` (FILE,
+  PROCESS), `reg_key`, `cmdline`, `request_sid`, and `local_ip`/`remote_ip`/`account_sid` on NETFIRST/NETWORK
+  714,640 B; asked for the final list with distinct counts per property (the caps). Rows written before the opt-in
+  stay inline. Coding is a per-property opt-in list in the
+  config (ai-soc: explicit, testable per property, no high-cardinality property coded by accident), with a cap per
+  property falling back to inline values. First list: `action`, `aisoc_source` (every edge type); `estate`;
+  `local_ip`, `remote_ip`, `account_sid` on NETWORK/NETFIRST/LOGON/FILE/PROCESS/REGISTRY; `src`, `dst`, `service`
+  on FIREWALL/FLOW; possibly sigma's `ov_rel` on Derived. The one-way door ships when René says. Design answers to
+  sigma (24 Oct): a dictionary is named, and the opt-in list maps (label or type, property) to it, so a Derived key
+  column (an IP in `ov_c1`) can share `NETWORK.remote_ip`'s dictionary; default one per (label, property). Strings
+  first (an int or float is 8 fixed bytes; a token saves little); string elements of lists later if the tracker
+  shows them. `ov_rel` on Derived is on the first list.
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Waits for: nothing (fixes shipped); BADGER step 3
@@ -167,24 +192,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   sigma (24 Oct): an identity freezes from its declaration on; sigma restructures Derived identities (key terms as
   typed columns plus an int hash, the DerivedPage shape) with ordinary writes first, then declares. No re-key door
   unless a need after the declaration appears.
-- **DICT** (ai-soc, René's yes, 24 Oct) — Store repeated string property values once per (label or type, property),
-  dictionary-coded, invisible to reads, filters and property-index probes. ai-soc's store meter (graphmgr
-  StoredCopies) on the BA slice store (16,558 rows, v4.75.1): 57.8 % of 15.06 MB of stored values (>= 8 B) are
-  copies; ai-soc and sigma remove most themselves; what only a store dictionary removes: `action` 285,733 B (1.9 %),
-  `aisoc_source` 367,310 B (2.4 %), repeated ip, sid and path values 0.7-1.1 MB (up to ~7 %). Sketch: like the
-  property-key registry (tokens on disk, one canonical registry, on the reference shard in tiered, the anchor in
-  sharded, committed ahead of the rows that use it); decode resolves tokens, so indexes and filters see plain
-  values; a new row shape (a one-way door, a minor). RAM: decoded values interned per token (one string per
-  value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
-  then built and released. Order: after SHARD (ai-soc agrees, 24 Oct). Coding is a per-property opt-in list in the
-  config (ai-soc: explicit, testable per property, no high-cardinality property coded by accident), with a cap per
-  property falling back to inline values. First list: `action`, `aisoc_source` (every edge type); `estate`;
-  `local_ip`, `remote_ip`, `account_sid` on NETWORK/NETFIRST/LOGON/FILE/PROCESS/REGISTRY; `src`, `dst`, `service`
-  on FIREWALL/FLOW; possibly sigma's `ov_rel` on Derived. The one-way door ships when René says. Design answers to
-  sigma (24 Oct): a dictionary is named, and the opt-in list maps (label or type, property) to it, so a Derived key
-  column (an IP in `ov_c1`) can share `NETWORK.remote_ip`'s dictionary; default one per (label, property). Strings
-  first (an int or float is 8 fixed bytes; a token saves little); string elements of lists later if the tracker
-  shows them. `ov_rel` on Derived is on the first list.
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each; 45 `Txn.Get` sites) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
 - **PREFETCH** — 14 iterators prefetch values (13 explicitly, plus `badgerstore_planner_stats_deferred.go:137` by
