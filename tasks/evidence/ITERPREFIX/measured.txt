@@ -1,0 +1,9 @@
+ITERPREFIX measured (2026-10-25), no code change
+walk_probe_test.go.txt: a badger store of 200,000 nodes and 199,999 relationships flushed in 1,000-row groups
+  (8 MB memtable; compacted to L0 1 table, L6 10 tables); 20,000 walks of one node's outgoing keys:
+  without Prefix 80.5 / 69.8 / 79.8 ms, with Prefix 60.4 / 70.1 / 71.6 ms (about 3.5 us a walk either way; the
+  difference is within the noise of a host at load average 50-67).
+l0_probe_test.go.txt (a raw badger DB with compaction off and an L0 pile-up) hangs in its walk; not pursued.
+decision: no change to the 49 iterators. The gain is not measurable on a compacted store, and a Prefix that does not
+  cover every key an iterator visits makes badger skip the tables holding them (silently missing rows). Revisit
+  with a shard that shows L0 pile-up under ai-soc's load (badger's Levels() per shard).

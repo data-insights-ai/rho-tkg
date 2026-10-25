@@ -1,0 +1,87 @@
+package badger
+
+import (
+	"encoding/binary"
+	"testing"
+	"time"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	badgerv4 "github.com/dgraph-io/badger/v4"
+)
+
+// TestZZIterPrefixProbe: 200,000 nodes and 200,000 relationships, flushed in
+// many groups (many tables on several levels); then 20,000 short walks of one
+// node's outgoing keys (KeyOut prefix + node ID), with and without
+// IteratorOptions.Prefix.
+func TestZZIterPrefixProbe(t *testing.T) {
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir, MemTableSize: 8 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	gen, _ := snowflake.NewNode(5)
+	rgen, _ := snowflake.NewNode(6)
+	ids := make([]types.NodeID, 0, 200_000)
+	batch := make([]*types.Node, 0, 1000)
+	for i := 0; i < 200_000; i++ {
+		n := types.NewNode(types.NodeID(gen.Generate()), 7, nil)
+		_ = n.SetProperty("k", int64(i))
+		ids = append(ids, n.ID())
+		batch = append(batch, n)
+		if len(batch) == cap(batch) {
+			if err := bs.PutNodesBatch(batch); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			batch = batch[:0]
+		}
+	}
+	for i := 0; i+1 < len(ids); i++ {
+		r := types.NewRelationship(types.RelID(rgen.Generate()), 3, ids[i], ids[i+1])
+		if err := bs.PutRelationship(r); err != nil {
+			t.Fatal(err)
+		}
+		if i%1000 == 0 {
+			if err := bs.Flush(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	lv := bs.db.Levels()
+	for _, l := range lv {
+		if l.NumTables > 0 {
+			t.Logf("PROBE level %d: %d tables", l.Level, l.NumTables)
+		}
+	}
+	walk := func(withPrefix bool) time.Duration {
+		start := time.Now()
+		_ = bs.db.View(func(txn *badgerv4.Txn) error {
+			for i := 0; i < 20_000; i++ {
+				p := binary.BigEndian.AppendUint64([]byte{storepkg.KeyOut}, uint64(ids[(i*7919)%len(ids)]))
+				opts := badgerv4.DefaultIteratorOptions
+				opts.PrefetchValues = false
+				if withPrefix {
+					opts.Prefix = p
+				}
+				it := txn.NewIterator(opts)
+				for it.Seek(p); it.ValidForPrefix(p); it.Next() {
+					_ = it.Item().Key()
+				}
+				it.Close()
+			}
+			return nil
+		})
+		return time.Since(start)
+	}
+	for r := 0; r < 3; r++ {
+		t.Logf("PROBE 20,000 walks: without Prefix %v, with Prefix %v", walk(false), walk(true))
+	}
+}

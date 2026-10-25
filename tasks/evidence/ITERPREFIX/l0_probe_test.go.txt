@@ -1,0 +1,67 @@
+package badger
+
+import (
+	"encoding/binary"
+	"testing"
+	"time"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
+)
+
+// TestZZIterPrefixL0Probe: a raw badger DB with compaction off and 15 L0
+// tables, each holding keys of 4 keyspaces (bytes 1-4); 20,000 short walks of
+// one keyspace-1 prefix with and without IteratorOptions.Prefix.
+func TestZZIterPrefixL0Probe(t *testing.T) {
+	opts := badgerv4.DefaultOptions(t.TempDir()).WithLogger(nil).WithNumCompactors(0).
+		WithNumLevelZeroTables(100).WithNumLevelZeroTablesStall(200).WithMemTableSize(8 << 20)
+	db, err := badgerv4.Open(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for table := 0; table < 15; table++ {
+		wb := db.NewWriteBatch()
+		for i := 0; i < 20_000; i++ {
+			for ks := byte(1); ks <= 4; ks++ {
+				k := binary.BigEndian.AppendUint64([]byte{ks}, uint64(i*15+table))
+				if err := wb.Set(k, []byte("v")); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if err := wb.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.DropPrefix([]byte{9}); err != nil { // flushes the memtable to L0
+			t.Fatal(err)
+		}
+	}
+	for _, l := range db.Levels() {
+		if l.NumTables > 0 {
+			t.Logf("PROBE level %d: %d tables", l.Level, l.NumTables)
+		}
+	}
+	walk := func(withPrefix bool) time.Duration {
+		start := time.Now()
+		_ = db.View(func(txn *badgerv4.Txn) error {
+			for i := 0; i < 20_000; i++ {
+				p := binary.BigEndian.AppendUint64([]byte{1}, uint64((i*7919)%300_000))[:7]
+				o := badgerv4.DefaultIteratorOptions
+				o.PrefetchValues = false
+				if withPrefix {
+					o.Prefix = p
+				}
+				it := txn.NewIterator(o)
+				for it.Seek(p); it.ValidForPrefix(p); it.Next() {
+					_ = it.Item().Key()
+				}
+				it.Close()
+			}
+			return nil
+		})
+		return time.Since(start)
+	}
+	for r := 0; r < 3; r++ {
+		t.Logf("PROBE 20,000 walks over 15 L0 tables: without Prefix %v, with Prefix %v", walk(false), walk(true))
+	}
+}
