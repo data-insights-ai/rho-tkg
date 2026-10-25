@@ -8,9 +8,9 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
-in v4.75.0 to v4.76.1, DICT in v4.77.0 (all tagged, ai-soc and sigma told; CI green, v4.77.0's running; ai-soc measures
-DICT before configuring it; `docs/CHANGELOG.md`). Next RESUME (a patch), then BADGER step 3 / SHARD steps 2-10; DROPALL,
-DISCARDCLOSE and METASYNC after SHARD.
+in v4.75.0 to v4.76.1, DICT in v4.77.0 (all tagged, CI green, ai-soc and sigma told; ai-soc measures DICT before
+configuring it; `docs/CHANGELOG.md`). Now RESUME (a patch, branch `resume`: red test green, oracle harness running),
+then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
