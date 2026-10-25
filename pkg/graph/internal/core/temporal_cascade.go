@@ -244,7 +244,11 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 			}
 		}
 	}
-	if hc.hasSrc {
+	// No resumption when src's own interval starts at newVT (RESUME, sigma):
+	// the pieces end there, so every row covering an instant from newVT on
+	// is unchanged and src still answers it; the copy would only be a
+	// wasted row (one per rewritten step).
+	if hc.hasSrc && !c.nodeStartsAt(hc.src, newVT) {
 		resumption := hc.src.DeepCopy()
 		ensureNodeTemporal(resumption)
 		stampValidFrom(c.axis(), resumption.Temporal(), newVT, true)
@@ -438,6 +442,19 @@ func nodeResumptionEnd(c *Core, preChain []*types.Node, newVT types.Instant) typ
 		}
 	}
 	return end
+}
+
+// nodeStartsAt reports whether n's own interval starts at t: a resumption
+// from t would copy it.
+func (c *Core) nodeStartsAt(n *types.Node, t types.Instant) bool {
+	vStart, _ := c.nodeOwnBounds(n)
+	return vStart == t
+}
+
+// relStartsAt mirrors nodeStartsAt for relationships.
+func (c *Core) relStartsAt(r *types.Relationship, t types.Instant) bool {
+	vStart, _ := c.relOwnBounds(r)
+	return vStart == t
 }
 
 // relResumptionEnd mirrors nodeResumptionEnd for relationships.
@@ -1042,7 +1059,7 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 			}
 		}
 	}
-	if hc.hasSrc {
+	if hc.hasSrc && !c.relStartsAt(hc.src, newVT) { // RESUME: as for nodes
 		resumption := hc.src.DeepCopy()
 		ensureRelTemporal(resumption)
 		stampValidFrom(c.axis(), resumption.Temporal(), newVT, true)

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **RESUME** (sigma): a valid-time write (`SetNodeVersionInterval` / `SetRelVersionInterval`, their `WithTx`, batch
+  and transaction twins, and a bounded excise) that ends exactly where the row valid there starts no longer appends
+  a copy of that row as a resumption row. Its pieces end where that row starts, so the rows covering any later
+  instant are unchanged and that row still answers them: one row less per rewritten step (write `[1000, 1100)`
+  before a row `[1100, open)`: 1 row appended, was 2). The values every read answers are unchanged; such a later
+  instant now answers the existing row (its version and stamps) instead of its copy. Checked by the bitemporal
+  oracle harness, whose bounded writes and excises now end at a stored row's start one draw in three
+  (`tasks/evidence/RESUME/`).
+
 ## [4.77.0] - 2026-10-25
 
 ### Added

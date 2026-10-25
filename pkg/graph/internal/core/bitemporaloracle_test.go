@@ -906,6 +906,50 @@ func (w *world) cascadeVF() types.Instant {
 	return types.Instant(500 + w.rng.IntN(int(w.vclock)))
 }
 
+// alignedNodeEnd returns, one draw in three, a stored row's own start after
+// vf as a bounded write's end (RESUME: a write ending where a row starts
+// appends no resumption copy), else end.
+func (w *world) alignedNodeEnd(id types.NodeID, vf, end types.Instant) types.Instant {
+	if w.rng.IntN(3) != 0 {
+		return end
+	}
+	chain, _ := w.g.getNodeHistory(id)
+	if cur, err := w.g.getCurrentNode(id); err == nil && cur != nil {
+		chain = append(chain, cur)
+	}
+	var starts []types.Instant
+	for _, n := range chain {
+		if s, _ := w.g.nodeOwnBounds(n); s > vf {
+			starts = append(starts, s)
+		}
+	}
+	if len(starts) == 0 {
+		return end
+	}
+	return starts[w.rng.IntN(len(starts))]
+}
+
+// alignedRelEnd mirrors alignedNodeEnd for relationships.
+func (w *world) alignedRelEnd(id types.RelID, vf, end types.Instant) types.Instant {
+	if w.rng.IntN(3) != 0 {
+		return end
+	}
+	chain, _ := w.g.getRelHistory(id)
+	if cur, err := w.g.getCurrentRelationship(id); err == nil && cur != nil {
+		chain = append(chain, cur)
+	}
+	var starts []types.Instant
+	for _, r := range chain {
+		if s, _ := w.g.relOwnBounds(r); s > vf {
+			starts = append(starts, s)
+		}
+	}
+	if len(starts) == 0 {
+		return end
+	}
+	return starts[w.rng.IntN(len(starts))]
+}
+
 func (w *world) cascadeNode() {
 	alive := w.aliveNodes()
 	if len(alive) == 0 {
@@ -915,7 +959,7 @@ func (w *world) cascadeNode() {
 	vf := w.cascadeVF()
 	var vt types.Instant
 	if w.rng.IntN(2) == 0 {
-		vt = vf + w.width()
+		vt = w.alignedNodeEnd(id, vf, vf+w.width())
 	}
 	_, err := w.g.Temporal.SetNodeVersionInterval(w.ctx, id, vf, vt, map[string]any{"k": w.seqno})
 	w.seqno++
@@ -931,7 +975,7 @@ func (w *world) cascadeRel() {
 	vf := w.cascadeVF()
 	var vt types.Instant
 	if w.rng.IntN(2) == 0 {
-		vt = vf + w.width()
+		vt = w.alignedRelEnd(id, vf, vf+w.width())
 	}
 	_, err := w.g.Temporal.SetRelVersionInterval(w.ctx, id, vf, vt, map[string]any{"k": w.seqno})
 	w.seqno++
@@ -947,7 +991,7 @@ func (w *world) exciseNode() {
 	}
 	id := alive[w.rng.IntN(len(alive))]
 	a := w.cascadeVF()
-	b := a + w.width()
+	b := w.alignedNodeEnd(id, a, a+w.width())
 	if w.rng.IntN(4) == 0 {
 		b = 0 // an open tail (OPENEXCISE)
 	}
@@ -962,7 +1006,7 @@ func (w *world) exciseRel() {
 	}
 	id := alive[w.rng.IntN(len(alive))]
 	a := w.cascadeVF()
-	b := a + w.width()
+	b := w.alignedRelEnd(id, a, a+w.width())
 	if w.rng.IntN(4) == 0 {
 		b = 0 // an open tail (OPENEXCISE)
 	}

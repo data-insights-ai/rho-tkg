@@ -1,0 +1,12 @@
+RESUME (sigma): no resumption row when the write ends where the row valid there starts.
+Red (before the fix): go test -count=1 -run TestResume_ ./pkg/graph/internal/core/
+    (a) rows = 3, want 2 (genesis + the piece, no resumption copy)   memory and badger, nodes and relationships
+Green after the fix (temporal_cascade.go: nodeStartsAt / relStartsAt guard the resumption).
+Oracle harness (bitemporaloracle_test.go): bounded cascades and excises now end at a stored row's own start one draw in
+three (alignedNodeEnd / alignedRelEnd); a temporary counter showed 396 skipped resumptions over the 200 full seeds.
+go test -count=1 -run Oracle ./pkg/graph/internal/core/                     -> ok (219 s)
+go test -count=1 ./pkg/graph/internal/core/ ./pkg/graph/                     -> ok
+Mutation: skip whenever the winner starts at or before newVT -> FAIL TestBitemporalOracleHarness.
+Long tier (go test without -short) on the store packages, unrelated to RESUME: TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock
+and TestBadgerMigrateOversizedWALCoversRevertToStock fail at v4.76.1 too (00001.mem missing); TestRelPlannerStatsMemoBounded
+failed next to the package's parallel tests and passes alone (process heap). Recorded in todo (LONGTIER).
