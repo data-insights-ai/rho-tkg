@@ -11,7 +11,7 @@ Order (René 24 Oct: fixes first; open decisions settled from the data and the c
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
 consumers build, ai-soc and sigma told; RACETIME: the isolated race packages now have 20 min; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, MOVEREAD (after ai-soc's shard
-sizes), SHARD step 10 (after ai-soc's measurement). DISCARDCLOSE and DROPALL in v4.78.1 (CI running); METASYNC's docs on
+sizes), SHARD step 10 (after ai-soc's measurement). DISCARDCLOSE and DROPALL in v4.78.1 (CI green); METASYNC's docs on
 main.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -102,6 +102,14 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   seconds of stall are fine, minutes stall `/tkg/asof` and a restart. Done when: reads of a moving shard go on from
   a read-only handle on the source during the copy (writers wait), built with read-only shard handles (BADGER step 3).
   ai-soc pins v4.78.x before it maps a volume.
+  Green on branch `moveread` (`tasks/evidence/MOVEREAD/fix.txt`); releasing as v4.78.2.
+- **TRUNCPIN** (found in MOVEREAD, 25 Oct; pre-existing) — tiered `TruncateNodeHistory` / `TruncateRelHistory`
+  collect the shards holding the entity's history through `forEachHistoryShard`, which releases each pin after its
+  callback, then write to those stores: a cold shard opened for the walk may be closed by then (a write to a closed
+  badger). Done when: the truncates hold their pins until they wrote, with a red test on a cold shard.
+- **FLAKYWAL** (seen 25 Oct; pre-existing, 1 of 10 on main) — `TestTieredOversizedWALMigratedOnWarmReopen` copies a
+  live data directory while a memtable flush deletes a `.mem` file ("copyTree: no such file"). Done when: the
+  fixture copies a state that cannot change under it (or the test retries a vanished file), 50 runs green.
 
 - **METASYNC** (docs on main, ships with the next tag) — the doors and `docs/persistence.md` state what holds: a
   process crash never loses a durable meta write; without `SyncWrites` a power loss can, when a memtable rotation put
