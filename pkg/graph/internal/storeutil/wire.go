@@ -107,7 +107,7 @@ const StagedFlushStoreFormatVersion = 9
 
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = OpenVoidStoreFormatVersion
+const MaxReadableStoreFormatVersion = ValueDictStoreFormatVersion
 
 // OpenVoidStoreFormatVersion is the store-level marker of a directory that
 // holds an open-ended void piece (OPENEXCISE, OpenVoidWireFormatVersion rows).
@@ -115,6 +115,13 @@ const MaxReadableStoreFormatVersion = OpenVoidStoreFormatVersion
 // the first such row mid-operation. Raised only when such a row is written;
 // 4 to 9 are taken, so this is 10.
 const OpenVoidStoreFormatVersion = 10
+
+// ValueDictStoreFormatVersion is the store-level marker of a directory that
+// holds value-dictionary entries and rows coded with them (DICT,
+// ValueDictWireFormatVersion rows). A binary that predates it must refuse the
+// store at open: it would skip a property's token and read a nil value.
+// Raised with the first entry; 4 to 10 are taken, so this is 11.
+const ValueDictStoreFormatVersion = 11
 
 // writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every
@@ -197,9 +204,18 @@ const KeptValidToWireFormatVersion = 6
 // ValidTo tombstones.
 const OpenVoidWireFormatVersion = 7
 
+// ValueDictWireFormatVersion is the per-row format version of a row with a
+// property whose string value is a value-dictionary token (DICT, PropertyWire
+// DictToken, `dt` in place of `v`). A binary that predates it skips the
+// unknown `dt` and would read the property as nil, so the row carries 8 and
+// fails closed there with store.ErrWireFormatVersionUnsupported. The token
+// means something only in the store that wrote it: an export, a change feed
+// and a replica carry the plain value.
+const ValueDictWireFormatVersion = 8
+
 // maxReadableWireFormatVersion is the highest per-row format version every
 // decoder accepts. A variable only so a test can play an older reader.
-var maxReadableWireFormatVersion uint8 = OpenVoidWireFormatVersion
+var maxReadableWireFormatVersion uint8 = ValueDictWireFormatVersion
 
 // IsOpenVoidEnd reports whether a void piece [vf, vt) is open-ended. The
 // codec reads no valid axis: types.InfiniteValidTo is the literal axis's open
@@ -247,13 +263,17 @@ func checkRowFormatVersion(what string, fv uint8) error {
 }
 
 // emittedRowFormatVersion is the fv an encoder writes: the highest version
-// a feature of the row needs — an open-ended void piece
+// a feature of the row needs — a value-dictionary token
+// ValueDictWireFormatVersion, an open-ended void piece
 // OpenVoidWireFormatVersion, a tombstone that kept its ValidTo
 // KeptValidToWireFormatVersion, a void piece VoidWireFormatVersion, a row with
 // a binary integrity hash BinaryHashWireFormatVersion, a retraction tombstone
 // RetractedWireFormatVersion (all v2 layout) — else the version it carries,
 // so its bytes are unchanged.
-func emittedRowFormatVersion(fv uint8, retracted, binaryHash, void, keptValidTo, openVoid bool) uint8 {
+func emittedRowFormatVersion(fv uint8, retracted, binaryHash, void, keptValidTo, openVoid, dictCoded bool) uint8 {
+	if dictCoded {
+		fv = max(fv, ValueDictWireFormatVersion)
+	}
 	if openVoid {
 		fv = max(fv, OpenVoidWireFormatVersion)
 	}
@@ -385,6 +405,11 @@ type PropertyWire struct {
 	Nil           bool   `msgpack:"n,omitempty"`  // typed nil slice/map marker
 	CustomType    string `msgpack:"ct,omitempty"` // registered custom property element type
 	CustomPointer bool   `msgpack:"cp,omitempty"` // original custom property form was *T
+	// DictToken is the value-dictionary token of a string value (DICT): on the
+	// wire `dt` replaces `v`. Nonzero only between a store's encode and its
+	// decode (ResolvePropertyValueTokens clears it); rows carrying one are
+	// ValueDictWireFormatVersion.
+	DictToken uint32 `msgpack:"dt,omitempty"`
 }
 
 // --- Node conversion ---
@@ -743,6 +768,9 @@ func ValidatePropertyWireSlice(pw []PropertyWire) error {
 }
 
 func validatePropertyWire(p PropertyWire, index int, prev string) (types.Property, error) {
+	if p.DictToken != 0 {
+		return types.Property{}, fmt.Errorf("property[%d]: unresolved value-dictionary token %d: %w", index, p.DictToken, storepkg.ErrCorruptWire)
+	}
 	if p.Key == "" {
 		return types.Property{}, fmt.Errorf("property[%d]: %w", index, types.ErrEmptyPropertyKey)
 	}

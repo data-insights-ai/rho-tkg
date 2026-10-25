@@ -371,6 +371,8 @@ func decodePropertyWireInto(dec *msgpack.Decoder, p *PropertyWire, kb []byte) er
 			p.CustomType, err = dec.DecodeString()
 		case "cp":
 			p.CustomPointer, err = dec.DecodeBool()
+		case "dt":
+			p.DictToken, err = dec.DecodeUint32()
 		default:
 			err = dec.Skip()
 		}

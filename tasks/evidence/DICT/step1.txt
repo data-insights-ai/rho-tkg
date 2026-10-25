@@ -1,0 +1,8 @@
+DICT step 1, the row shape (storeutil).
+go test -count=1 -run ValueDict ./pkg/graph/internal/storeutil/  -> ok
+go test -count=1 ./pkg/graph/internal/storeutil/                  -> ok
+Mutations (each restored after):
+M1 encoder ignores the token for fv            -> FAIL TestValueDictRow_FormatVersion8
+M2 decoder skips dt                             -> FAIL TestValueDictRow_FormatVersion8, TestValueDictRow_FailsClosed
+M3 resolver accepts a token on a row below 8    -> FAIL TestValueDictRow_FailsClosed
+The future-version tests moved from OpenVoid*+1 to ValueDict*+1 (8 and 11 are now readable).

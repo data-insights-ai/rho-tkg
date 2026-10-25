@@ -13,7 +13,7 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	// wire_temporal_tail.go.
 	var hb, pb [32]byte // integrity hashes as raw bytes (encodeHashField)
 	hBin, pBin := binaryHash(w.Hash, &hb), binaryHash(w.PrevHash, &pb)
-	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted, hBin || pBin, w.Void, w.DeleteKeptValidTo, w.Void && IsOpenVoidEnd(w.ValidFrom, w.ValidTo))
+	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted, hBin || pBin, w.Void, w.DeleteKeptValidTo, w.Void && IsOpenVoidEnd(w.ValidFrom, w.ValidTo), hasDictToken(w.Properties))
 	v2 := fv >= 2
 	fields := 3 // id, pl, v
 	if fv != 0 {
@@ -238,7 +238,7 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	var hb, pb, fb, tb [32]byte // integrity hashes as raw bytes (encodeHashField)
 	hBin, pBin := binaryHash(w.Hash, &hb), binaryHash(w.PrevHash, &pb)
 	fBin, tBin := binaryHash(w.FromNodeHash, &fb), binaryHash(w.ToNodeHash, &tb)
-	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted, hBin || pBin || fBin || tBin, w.Void, w.DeleteKeptValidTo, w.Void && IsOpenVoidEnd(w.ValidFrom, w.ValidTo))
+	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted, hBin || pBin || fBin || tBin, w.Void, w.DeleteKeptValidTo, w.Void && IsOpenVoidEnd(w.ValidFrom, w.ValidTo), hasDictToken(w.Properties))
 	v2 := fv >= 2
 	fields := 5 // id, rt, s, e, v
 	if fv != 0 {
@@ -472,7 +472,8 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 // EncodeMsgpack writes PropertyWire with the same map keys as the struct tags
 // in wire.go while avoiding per-property reflective omitempty checks.
 func (p PropertyWire) EncodeMsgpack(enc *msgpack.Encoder) error {
-	// Required: v + t. Optional (omitempty): k, kt, n, ct, cp.
+	// Required: v (or dt, a value-dictionary token in its place) + t.
+	// Optional (omitempty): k, kt, n, ct, cp.
 	// Key and KeyToken alternate: in V2 rows with tokenization, k is empty
 	// and kt holds the registry token; V1 rows have k set, kt == 0.
 	fields := 2 // v, t
@@ -504,11 +505,20 @@ func (p PropertyWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 			return err
 		}
 	}
-	if err := enc.EncodeString("v"); err != nil {
-		return err
-	}
-	if err := enc.Encode(p.Value); err != nil {
-		return err
+	if p.DictToken != 0 {
+		if err := enc.EncodeString("dt"); err != nil {
+			return err
+		}
+		if err := enc.EncodeUint(uint64(p.DictToken)); err != nil {
+			return err
+		}
+	} else {
+		if err := enc.EncodeString("v"); err != nil {
+			return err
+		}
+		if err := enc.Encode(p.Value); err != nil {
+			return err
+		}
 	}
 	if err := encodeStringUint8Field(enc, "t", p.Type); err != nil {
 		return err
