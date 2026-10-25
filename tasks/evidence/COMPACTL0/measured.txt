@@ -1,0 +1,8 @@
+CompactL0OnClose per tier measured (2026-10-26), no change (l0close_probe_test.go.txt; the probe ran with a temporary
+Config.CompactL0OnClose wired to badger's option, reverted)
+setup: 200,000 rows in flushes of 20,000 (8 MB memtable): 5 L0 tables before close; close; read-only reopen; 20,000
+  cache-miss point reads; twice each way.
+without: 1 and 2 L0 tables at the read-only open; close 43 / 64 ms; reads 74.0 / 76.3 ms
+with:    0 L0 tables;                               close 147 / 116 ms; reads 70.3 / 69.6 ms
+decision: about 5 % on reads of such a shard for 70-100 ms more per close (every idle close of a cold shard, every
+  move); badger's compactors already keep L0 to a few tables. Not adopted; docs/badger.md rule 11 updated.

@@ -422,7 +422,8 @@ Badger features rho does not use yet that fit a rho need, and one risk. Each is 
     value-log GC, not at once.
 11. **Per-shard defaults (CACHE, SHARD)**: every writable open starts the writer, the flusher, 4 compactors with
     50 ms tickers and a directory walk every minute (`db.go:303-387`, `:458`, not guarded by `MetricsEnabled`);
-    `CompactL0OnClose` for warm and cold shards saves their read-only opens a table probe per read for good;
+    `CompactL0OnClose` was measured for warm and cold shards: about 5 % faster read-only reads for 70-100 ms more per
+    close, not adopted (`tasks/evidence/COMPACTL0/`);
     `BloomFalsePositive` below 0.01 may pay on the reference shard, whose unique checks read absent keys.
 12. **Faster reopen after a crash (OPENIMAGE)**: `IteratorOptions.SinceTs` can rebuild from the open image plus the
     keys newer than its header instead of a full scan.

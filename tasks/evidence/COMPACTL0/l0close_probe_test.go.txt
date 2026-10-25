@@ -1,0 +1,66 @@
+package badger
+
+import (
+	"testing"
+	"time"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// TestZZCompactL0OnCloseProbe: a store filled in flushes of 20,000 rows
+// (8 MB memtable, several L0 tables at close), closed with and without
+// CompactL0OnClose, then reopened read-only: close time, level-0 tables, and
+// 20,000 cache-miss point reads.
+func TestZZCompactL0OnCloseProbe(t *testing.T) {
+	for _, compact := range []bool{false, true, false, true} {
+		dir := t.TempDir()
+		bs, err := New(Config{Dir: dir, MemTableSize: 8 << 20, CompactL0OnClose: compact})
+		if err != nil {
+			t.Fatal(err)
+		}
+		gen, _ := snowflake.NewNode(5)
+		ids := make([]types.NodeID, 0, 200_000)
+		for i := 0; i < 200_000; i++ {
+			n := types.NewNode(types.NodeID(gen.Generate()), 7, nil)
+			_ = n.SetProperty("k", int64(i))
+			ids = append(ids, n.ID())
+			if err := bs.PutNode(n); err != nil {
+				t.Fatal(err)
+			}
+			if i%20_000 == 19_999 {
+				if err := bs.Flush(); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		l0 := func(s *Store) int {
+			for _, l := range s.db.Levels() {
+				if l.Level == 0 {
+					return l.NumTables
+				}
+			}
+			return 0
+		}
+		before := l0(bs)
+		start := time.Now()
+		if err := bs.Close(); err != nil {
+			t.Fatal(err)
+		}
+		closeDur := time.Since(start)
+		ro, err := New(Config{Dir: dir, ReadOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		after := l0(ro)
+		start = time.Now()
+		for i := 0; i < 20_000; i++ {
+			if _, err := ro.GetNode(ids[(i*7919)%len(ids)]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		reads := time.Since(start)
+		_ = ro.Close()
+		t.Logf("PROBE CompactL0OnClose=%v: L0 tables %d before close, %d at the read-only open; close %v; 20,000 reads %v", compact, before, after, closeDur, reads)
+	}
+}
