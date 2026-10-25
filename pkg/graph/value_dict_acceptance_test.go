@@ -92,7 +92,7 @@ func vdWorkload(t *testing.T, g *graphpkg.Graph) []types.Instant {
 				vf := int64(1_790_700_000_000 + i*1000)
 				_, err = tx.AddRelationshipByID("LOGON", acct.ID(), dev.ID(), map[string]any{
 					"action": vdActions[i%3], "remote_ip": vdIP(i), "account_sid": fmt.Sprintf("S-1-5-21-%04d", i%15),
-					"cmdline": fmt.Sprintf(`"C:\Windows\system32\svchost.exe" -k netsvcs -p -s Schedule%d`, i%400),
+					"cmdline":    fmt.Sprintf(`"C:\Windows\system32\svchost.exe" -k netsvcs -p -s Schedule%d`, i%400),
 					"logon_type": "Network", "tkg_valid_from": vf, "record": fmt.Sprintf("r%05d", i)})
 				if err != nil {
 					return err
@@ -128,7 +128,11 @@ func vdWorkload(t *testing.T, g *graphpkg.Graph) []types.Instant {
 	return append(pins, vdPin(t, g))
 }
 
-func vdRecord(r *types.Relationship) string { v, _ := r.GetProperty("record"); s, _ := v.(string); return s }
+func vdRecord(r *types.Relationship) string {
+	v, _ := r.GetProperty("record")
+	s, _ := v.(string)
+	return s
+}
 
 func vdCmp(a, b string) int {
 	switch {
