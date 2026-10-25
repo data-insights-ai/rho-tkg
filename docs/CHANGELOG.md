@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.78.5] - 2026-10-25
+
 ### Fixed
 
 - **DSTWIN** (ai-soc, run k10252216): a tiered store whose daily or weekly shard window held a daylight-saving change

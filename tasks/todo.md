@@ -11,7 +11,8 @@ Order (René 24 Oct: fixes first; open decisions settled from the data and the c
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
 consumers build, ai-soc and sigma told; RACETIME: the isolated race packages now have 20 min; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, SHARD step 10 (René, with ai-soc's
-counts). FLAKYWAL fixed (test only); COLDRO in v4.78.3, PREFETCH in v4.78.4. DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
+counts). FLAKYWAL fixed (test only); COLDRO in v4.78.3, PREFETCH in v4.78.4, DSTWIN (ai-soc's urgent rotation fault at the end of summer time) in
+v4.78.5. DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
 it (its rig is René's call).
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
