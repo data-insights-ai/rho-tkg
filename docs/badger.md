@@ -230,7 +230,9 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
    before user callbacks (the read snapshot does, per chunk).
 8. **Size caches per shard role.** Defaults give every open DB a 256 MB block cache and a 75 MB arena. Gap: CACHE.
 9. **The value-log GC loop has work only for rows of 1 MB or more** (`badgerstore_flush.go` gcLoop); without such rows
-   it finds nothing. Gap: VLOGGC.
+   a pass costs 28 ns. It reclaims a dead value only after compaction has dropped it (discard statistics): measured
+   114 MB to 32 MB once deletes were compacted, nothing before; a value kept by history is never garbage
+   (`tasks/evidence/VLOGGC/`, VLOGGC: measured, no change).
 10. **Batch synced writes.** Under `SyncWrites` every request costs a WAL msync and every write group a value-log msync;
     rho's group commit writes one request per group, which is right, unless the flush is split (rule 1): each part is
     a request of its own.

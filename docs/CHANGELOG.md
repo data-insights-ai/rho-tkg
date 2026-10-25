@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **VLOGGC** (BADGER step 3; measured, no code change): the value-log GC loop costs 28 ns a pass where the value log
+  holds nothing, and reclaims dead large values once compaction has dropped them (114 MB to 32 MB in the probe); a
+  large value kept by history stays (`tasks/evidence/VLOGGC/`, `docs/badger.md` rule 9).
+
 ## [4.80.0] - 2026-10-25
 
 ### Added

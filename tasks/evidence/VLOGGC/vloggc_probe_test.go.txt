@@ -1,0 +1,137 @@
+package badger
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+func vlogBytes(t *testing.T, dir string) int64 {
+	var total int64
+	ents, _ := os.ReadDir(dir)
+	for _, e := range ents {
+		if strings.HasSuffix(e.Name(), ".vlog") {
+			fi, _ := os.Stat(filepath.Join(dir, e.Name()))
+			total += fi.Size()
+		}
+	}
+	return total
+}
+
+func gcAll(bs *Store) int {
+	runs := 0
+	for bs.db.RunValueLogGC(0.5) == nil {
+		runs++
+	}
+	return runs
+}
+
+// TestZZVlogGCProbe: one node whose 2 MB property is rewritten 20 times (a
+// history version each), 16 MB value-log files; value-log bytes after each
+// stage and how many GC rewrites ran.
+func TestZZVlogGCProbe(t *testing.T) {
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir, ValueLogFileSize: 16 << 20, MemTableSize: 8 << 20, GCInterval: 1<<63 - 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	gen, _ := snowflake.NewNode(5)
+	id := types.NodeID(gen.Generate())
+	for i := 0; i < 21; i++ {
+		n := types.NewNode(id, 7, nil)
+		_ = n.SetProperty("cut", strings.Repeat(string(rune('a'+i%26)), 2<<20))
+		n.SetVersion(uint32(i + 1))
+		if i == 0 {
+			err = bs.PutNode(n)
+		} else {
+			prev, gerr := bs.GetNode(id)
+			if gerr != nil {
+				t.Fatal(gerr)
+			}
+			err = bs.ReplaceNodeWithHistory(n, prev.Version(), prev)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := bs.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Logf("PROBE after 21 writes: vlog %d MB, open snapshot txns %d", vlogBytes(t, dir)>>20, openReadTxns.Load())
+	for _, l := range bs.db.Levels() {
+		if l.NumTables > 0 {
+			t.Logf("PROBE level %d: %d tables", l.Level, l.NumTables)
+		}
+	}
+	t.Logf("PROBE flatten: %v", bs.db.Flatten(1))
+	t.Logf("PROBE GC with history kept: %d rewrites, vlog %d MB", gcAll(bs), vlogBytes(t, dir)>>20)
+	if err := bs.TruncateNodeHistory(id, 0); err != nil {
+		t.Fatal(err)
+	}
+	_ = bs.Flush()
+	_ = bs.db.Flatten(1)
+	t.Logf("PROBE GC after truncating history: %d rewrites, vlog %d MB", gcAll(bs), vlogBytes(t, dir)>>20)
+	if err := bs.DeleteNode(id); err != nil {
+		t.Fatal(err)
+	}
+	_ = bs.Flush()
+	_ = bs.db.Flatten(1)
+	t.Logf("PROBE GC after deleting the node: %d rewrites, vlog %d MB", gcAll(bs), vlogBytes(t, dir)>>20)
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	bs, err = New(Config{Dir: dir, ValueLogFileSize: 16 << 20, MemTableSize: 8 << 20, GCInterval: 1<<63 - 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("PROBE GC after a reopen: %d rewrites, vlog %d MB", gcAll(bs), vlogBytes(t, dir)>>20)
+	// Push the deletes through compaction: many small rows over several memtables.
+	gen2, _ := snowflake.NewNode(6)
+	for i := 0; i < 400_000; i++ {
+		n := types.NewNode(types.NodeID(gen2.Generate()), 8, nil)
+		_ = n.SetProperty("k", int64(i))
+		if err := bs.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+		if i%20_000 == 0 {
+			_ = bs.Flush()
+		}
+	}
+	_ = bs.Flush()
+	_ = bs.db.Flatten(1)
+	for _, l := range bs.db.Levels() {
+		if l.NumTables > 0 {
+			t.Logf("PROBE level %d: %d tables", l.Level, l.NumTables)
+		}
+	}
+	t.Logf("PROBE GC after 400,000 more rows and a flatten: %d rewrites, vlog %d MB", gcAll(bs), vlogBytes(t, dir)>>20)
+}
+
+// TestZZVlogGCEmptyCost: the cost of one GC pass on a store whose value log
+// holds nothing (small rows only).
+func TestZZVlogGCEmptyCost(t *testing.T) {
+	bs, err := New(Config{Dir: t.TempDir(), GCInterval: 1<<63 - 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	gen, _ := snowflake.NewNode(7)
+	for i := 0; i < 10_000; i++ {
+		n := types.NewNode(types.NodeID(gen.Generate()), 8, nil)
+		_ = n.SetProperty("k", int64(i))
+		_ = bs.PutNode(n)
+	}
+	_ = bs.Flush()
+	start := time.Now()
+	var last error
+	for i := 0; i < 1000; i++ {
+		last = bs.db.RunValueLogGC(0.5)
+	}
+	t.Logf("PROBE 1,000 GC passes on an empty value log: %v (%v each), last %v", time.Since(start), time.Since(start)/1000, last)
+}

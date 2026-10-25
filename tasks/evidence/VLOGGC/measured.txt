@@ -1,0 +1,14 @@
+VLOGGC measured (2026-10-26), no code change (vloggc_probe_test.go.txt)
+reclaim: one node whose 2 MB property is rewritten 20 times with history (21 versions), 16 MB value-log files, 8 MB
+  memtable: 114 MB of value log (about 5.4 MB per 2 MB rewrite: the current row and the history row each carry
+  the value, and a flush above one badger transaction is staged first, FLUSHPART). GC rewrote nothing while the
+  history was kept (every version is live), nothing right after truncating the history or deleting the node, nor
+  after a reopen: badger rewrites a file only from discard statistics, which compaction writes when it drops a
+  dead version, and nothing had been compacted yet. After 400,000 small rows pushed those versions through
+  compaction (6 tables on L6), 5 GC rewrites took the value log from 114 MB to 32 MB (the active file is never
+  rewritten).
+cost where the value log holds nothing: 1,000 GC passes in 28 us (28 ns each, ErrNoRewrite); the loop runs one pass
+  per GCInterval (5 min), so running it on every writable shard costs nothing measurable.
+decision: the loop stays as it is. For ai-soc: while history is kept, every version of a cut record stays in the
+  value log (rewrites of a 5 MB record add about 13 MB each); only a history purge or truncation followed by
+  compaction lets GC reclaim it.
