@@ -10,7 +10,7 @@ Each item: one sentence, then when it is done and what it waits for.
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2 (all tagged, CI green, ai-soc and sigma told; ai-soc measures
 DICT before configuring it; `docs/CHANGELOG.md`). Next BADGER step 3 / SHARD steps 3-10 (steps 2
-to 6 green on branch `shard2`; v4.77.2 CI green, consumers build); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
+to 7 green on branch `shard2`; v4.77.2 CI green, consumers build); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -76,6 +76,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
    `g.Tier().MoveShard` is the door.
 7. [ ] The reference shard and the archive move offline. Done when: in the volume minor (red test: the reference
    shard on the warm volume still answers unique checks and the watermark).
+   Green on branch `shard2` (`tasks/evidence/SHARD/step7.txt`): `tiered.MoveShardOffline`, under badger's directory
+   lock on the reference shard (unix only).
 8. [ ] Each read reports how many cold shards it opened. Done when: in the volume minor (red test: a closed cold
    shard counts once, a retained one not).
 9. [ ] The volume minor is released with its one-way door named in the CHANGELOG, and ai-soc and sigma are
@@ -157,21 +159,12 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **TKGID** (sigma, 24 Oct) — sigma wants the shadow name `tkg_id` (an entity's id) reserved, best resolved by rho.
   Done when: `NodeProperty` and `RelProperty` answer `tkg_id`. Waits for: FLUSHPART and SHARD.
 
-- **WBA-8** (ai-soc from sigma's todo, recorded 25 Oct) — rho stores a duplicate row in one case (52,031 on the BA
-  store of run k10251802). Never recorded in rho before; no fix shipped. Done when: the case is named (which rows,
-  which write door), reproduced by a red test and fixed or explained. Waits for: ai-soc naming the case (asked 25 Oct).
-- **CHAININTERN** (sigma for ai-soc, 24 Oct; heap profile, sigma v0.11.60 on rho v4.75.1) — A node with n versions
-  holds every unchanged property value n times in decoded history rows: a Derived node's identity properties
-  (`ov_namespace`, `ov_rel`, `ov_key`, about 146 B) once per version, 5 copies for one fact. `GetNodeHistory` and the
-  paged and timeline reads decode each version alone (`badgerstore_history_node.go:772`); rho's entity cache holds the
-  current version only. Fix: a chain's decoded versions reuse the previous version's value when the bytes are equal (no
-  API, no format change, a patch). Done when: a test shows n versions sharing one copy of an unchanged value
-  (allocation count), every history read path (badger, tiered, sharded, memory) covered. Order: by its measured heap
-  share. ai-soc (24 Oct): it reads the share from run k10241303's heap-end profile (34.2 GB after GC) after the
-  reopens; the decision follows from that number.
 - **IDPROPS** (sigma for ai-soc, 24 Oct; the larger form of CHAININTERN) — Immutable properties per (label, key), set
   at `AddNode`, refused by every update and cascade patch, stored once per node and attached to every version on read.
-  A new door (a minor) and a format change (a one-way door). Waits for: CHAININTERN's measured saving, then René. Design answer to
+  A new door (a minor) and a format change (a one-way door). Waits for: ai-soc's on-disk product (Derived versions
+  beyond each node's first x about 146 B, against 818.6 MB of stored values, run k10251802, due tonight), then René.
+  CHAININTERN, its heap form, is withdrawn: decoded history is 0.31 % of the heap (101.1 of 32,565.5 MB, ai-soc,
+  heap-end profile of run k10251802, 25 Oct). WBA-8 (sigma, 52,031 duplicate rows) was RESUME, fixed in v4.77.1. Design answer to
   sigma (24 Oct): an identity freezes from its declaration on; sigma restructures Derived identities (key terms as
   typed columns plus an int hash, the DerivedPage shape) with ordinary writes first, then declares. No re-key door
   unless a need after the declaration appears.

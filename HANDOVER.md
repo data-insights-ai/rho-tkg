@@ -28,7 +28,7 @@ the main worktree `../rho-tkg-main` when a branch is checked out.
   Points for later steps: the mover checks a flock on the shard DIRECTORY (the `LOCK` file is only a pid file);
   a read-only handle is closed before a writable open of the same directory; `DiskBytes` counts blocks; a shard with
   `.mem` files gets one writable open before a move or a read-only open.
-- **Queued:** DICTMERGE and PROPPOS (after DICT's measurement); CHAININTERN (order by ai-soc's heap share) and IDPROPS (after it); WRITTENAT, VALUES, TKGID, TIERLABELDISK; GETWALK,
+- **Queued:** DICTMERGE and PROPPOS (after DICT's measurement); IDPROPS (after ai-soc's on-disk product; CHAININTERN withdrawn: 0.31 % of the heap); WRITTENAT, VALUES, TKGID, TIERLABELDISK; GETWALK,
   PREFETCH, ITERPREFIX, VLOGGC, OPENIMAGE; CHAIN waits for René's word (a Flux run); STORE is with René. Parked:
   BADGERPANIC (badger as it is). The local race gate runs its parts in sequence, badger isolated (v4.76.0).
 
