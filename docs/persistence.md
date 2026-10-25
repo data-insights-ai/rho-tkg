@@ -143,8 +143,27 @@ Purpose: an older binary must refuse data it cannot read, instead of misdecoding
 | 8 | read since v4.62.0; written by no release yet | the store holds a delete tombstone that kept its believed `ValidTo` (`DeleteKeptValidTo`, key `dk`; backlogs 4, 7, 25): a close at or after the delete, or the open end of a row starting at or after it | 6 for that tombstone |
 | 9 | v4.75.0 on, only after a first staged flush | the store has (or had) a flush larger than one badger transaction, staged under `0x0E` with the marker `flush_stage` (FLUSHPART); raised in the marker's transaction | unchanged |
 | 10 | v4.76.0 on, only after a first open-ended excise | the store holds an open-ended void row (`ExciseNodeValidity` / `ExciseRelValidity` with `b = 0`, OPENEXCISE) | 7 for that void row |
+| 11 | v4.77.0 on, only with `ValueDictionaries` configured and a first value coded | the store holds value-dictionary entries and rows coded with them (DICT, "Value dictionaries" below); raised with the first entry | 8 for a coded row |
 
 One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features keeps its marker (3 or 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: "Row wire format" below; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
+
+## Value dictionaries
+
+Purpose: a string value repeated across many rows of one property (an action word, an ip, a sid, a folder) is
+stored once per store (DICT, v4.77.0). `Config.ValueDictionaries` (badger and tiered; `store.ValueDictionary`) names
+each dictionary, its cap and its members, a (label or relationship type, property) pair each; the graph installs its
+label and type registries to resolve the names. Only member string values of 4 bytes or more are coded; a value past
+the cap stays inline and is counted (`ValueDictionaryStats`).
+
+Storage, per badger store (per tiered shard): meta `vdict_names` (msgpack `[]string`, a name per id) and
+`vdict/` + the token (4 bytes big-endian) holding uvarint(name id) + the value. A row stores the property as
+`dt` + the token in place of `v` (`fv` 8). A new entry, a grown names list and the marker raise to 11 are appended
+to the pending batch under the dictionary's lock before the encode returns the token, so they precede every row
+using it: no flush, single or staged, commits the row without its entry. Decode resolves tokens without a lock
+from an append-only table loaded on the first coded row; a token that does not resolve is `ErrCorruptWire`. Coded
+rows decode without the configuration. `Clear` stores the in-memory entries again (a token handed out before the
+wipe may reach a row after it). The change log, exports and replica rows carry the plain value; reads, filters and
+property indexes see it.
 
 ## Integrity hashes
 
@@ -172,6 +191,8 @@ A store is opened by a release that reads its marker (the table above). Opening 
 | 7 | v4.56.0 and later (mode byte 3, UntimedWholeAxis: v4.65.0 and later) | v4.55.3 and earlier (a release that ignores `untimed_valid_start` would write `TxFrom`-start creates into an `UntimedUnbounded` store) |
 | 8 | v4.62.0 and later | v4.61.x and earlier (a release that skips `dk` would read a kept close as the delete's end) |
 | 9 | v4.75.0 and later | v4.74.x and earlier (a release that ignores `flush_stage` would lose a pending staged flush and keep writing; a newer release would then re-apply the stale staged values) |
+| 10 | v4.76.0 and later | v4.75.x and earlier (an open void row reads as malformed) |
+| 11 | v4.77.0 and later | v4.76.x and earlier (a release that skips `dt` would read a coded property as nil) |
 
 Rows and feeds behave alike: an `fv` above what a release reads fails that row closed in an export, a change feed or a replica (fv 3 retraction: v4.49.2 and later; fv 4 binary hashes: v4.52.2 and later; fv 5 void row: v4.54.0 and later; fv 6 kept-valid-to tombstone: read since v4.62.0; written by no release yet). Upgrade readers, replicas and importers before the writer.
 
@@ -266,9 +287,10 @@ Row format versions (`fv`; the levels and the store marker: "Format versions and
 | 5 | `VoidWireFormatVersion` | the row carries `vd` (an excise void piece) |
 | 6 | `KeptValidToWireFormatVersion` | the row carries `dk`; read since v4.62.0, written by no release yet |
 | 7 | `OpenVoidWireFormatVersion` | the row carries `vd` with an open end (an excise of `[a, open)`, v4.76.0); 5 and below refuse an open void row |
+| 8 | `ValueDictWireFormatVersion` | a property carries `dt` (a value-dictionary token, v4.77.0) in place of `v`; a delta-history `Meta` carries 8 when its row does |
 
 A row's `fv` is the max over its features; every decoder (checked, selection-scope partial and its scanner,
-delta-history `Meta`, import, change feed, replica apply) fails closed above 7. Checked validation
+delta-history `Meta`, import, change feed, replica apply) fails closed above 8. Checked validation
 (`ValidateNodeWire` / `ValidateRelWire`) refuses `rx` or `dk` without `da`, `dk` on a close before `da`, and `vd`
 on a row that cannot be a void piece (`checkVoidWire`). Retraction tombstones written by v4.49.1 (`fv=2` plus `rx`)
 still decode as retractions, but a release reading `fv <= 2` skips the key and answers a plain delete; upgrade every

@@ -1,0 +1,13 @@
+DICT step 5, acceptance (pkg/graph/value_dict_acceptance_test.go).
+Two graphs over tiered stores (RelsByMint, RefLabels Device/Account), one with ai-soc's kind of list (action, remote_ip,
+account_sid, cmdline on LOGON; Device key and folder), one without; the same 1,200 records, keyed upserts, two update
+rounds. Compared, before and after a reopen: ByType, ByLabel, ByTypeAndProperty on action (5 values) and remote_ip
+(31 values, property-indexed), ByLabelAndProperty on the coded unique key and the indexed coded folder, RelsAsOf at
+three pins (the newest stamp after each phase), RelsByTypeAt, RelsByTypePropertyAt.
+go test -count=1 -v -run TestValueDict_Acceptance ./pkg/graph/
+    stored bytes: plain 842729, coded 755739 (10.3 % less)   (every key and value in every shard, indexes and meta included)
+--- PASS
+Mutation: ValueOf resolves token t to entry t-1 -> FAIL TestValueDict_Acceptance.
+Found while writing it: the store's transaction stamps run ahead of the wall clock (each commit takes the next ms),
+so wall-clock pins answer few rows; the pins come from the rows.
+docs/persistence.md: marker 11, fv 8, the "Value dictionaries" section; the upgrade table gained the missing row 10.

@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **DICT** (ai-soc, René's yes, 24 and 25 Oct): value dictionaries. `badger.Config.ValueDictionaries` and
+  `tiered.Config.ValueDictionaries` (`store.ValueDictionary`: a name, a cap, members as (label or relationship type,
+  property) pairs) store each string value of a member once per store (per tiered shard) and a token in every row
+  that carries it. Reads, filters, property indexes, keyed upserts, history and as-of reads see the plain value:
+  the same writes with and without the list give equal answers on every read door and index probe
+  (`TestValueDict_Acceptance`, ai-soc's LOGON shape: 10.3 % fewer stored bytes in that test). Values under 4 bytes,
+  non-strings and values past a dictionary's cap stay inline; `ValueDictionaryStats` (badger and tiered stores)
+  counts coded values, new entries and values left inline because a dictionary was full. Rows written before a
+  member was listed stay inline; coded rows decode without the list. The graph installs its label and type
+  registries on such a store (`SetNameRegistries`). `docs/persistence.md` "Value dictionaries";
+  `tasks/evidence/DICT/`.
+- **One-way door**: a coded row is row format 8 (`ValueDictWireFormatVersion`) and a store holding one is store
+  marker 11 (`ValueDictStoreFormatVersion`): a release before v4.77.0 refuses to open it
+  (`ErrWireFormatVersionUnsupported`). A store without `ValueDictionaries` keeps its marker. The change log, exports
+  and replica rows carry plain values.
+
 ## [4.76.1] - 2026-10-25
 
 ### Fixed
