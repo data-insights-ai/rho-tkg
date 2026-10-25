@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   read-only handle on the source; writes to the shard (corrections, endings, index changes) still wait, and the
   source is removed or reopened only after those reads finish. ai-soc (25 Oct): a day shard of the full estate is
   tens of GB, and a minutes-long stall would hold `/tkg/asof` and a restart's record-history read.
+- **TRUNCPIN**: a tiered `TruncateNodeHistory` / `TruncateRelHistory` to 0 of an entity re-imported onto another
+  shard left the earlier history on its old cold shard while returning nil (or failed with "store already closed"):
+  the history walk released each cold shard it opened before the truncation wrote to it. The walk now holds those
+  shards until the truncation is done (`TestTruncateRelHistoryHoldsColdShardPins`, `...Node...`).
 
 ### Changed
 

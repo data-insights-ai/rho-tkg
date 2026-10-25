@@ -330,12 +330,24 @@ func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 //
 // fn only reads: a moving event shard answers from its source
 // (checkoutStoreReadOnly). A caller that writes to the stores it collects uses
-// forEachHistoryShardFor(skip, false, fn).
+// forEachHistoryShardFor with hold.
 func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
-	return ts.forEachHistoryShardFor(skip, true, fn)
+	return ts.forEachHistoryShardFor(skip, nil, fn)
 }
 
-func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, readOnly bool, fn func(*BadgerStore) (bool, error)) error {
+// forEachHistoryShardFor is forEachHistoryShard for a caller that writes to
+// the stores fn sees (TRUNCPIN): with hold set, each such store is checked out
+// writable and its release appended to *hold instead of run after fn, so a
+// cold shard opened for the walk stays open until the caller wrote to it and
+// ran the releases.
+func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, hold *[]func(), fn func(*BadgerStore) (bool, error)) error {
+	done := func(release func()) {
+		if hold != nil {
+			*hold = append(*hold, release)
+		} else {
+			release()
+		}
+	}
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -345,7 +357,7 @@ func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, readOnly bool, fn fun
 	}
 	if ref != skip {
 		stop, err := fn(ref)
-		refCheckin()
+		done(refCheckin)
 		if err != nil || stop {
 			return err
 		}
@@ -362,7 +374,7 @@ func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, readOnly bool, fn fun
 	}
 	if archive != nil && archive != skip {
 		stop, err := fn(archive)
-		archiveCheckin()
+		done(archiveCheckin)
 		if err != nil || stop {
 			return err
 		}
@@ -375,7 +387,7 @@ func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, readOnly bool, fn fun
 	ts.mu.RUnlock()
 
 	for _, es := range eventShards {
-		store, release, err := es.checkoutForRead(ts, readOnly)
+		store, release, err := es.checkoutForRead(ts, hold == nil)
 		if err != nil {
 			return err
 		}
@@ -384,7 +396,7 @@ func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, readOnly bool, fn fun
 			continue
 		}
 		stop, cbErr := fn(store)
-		release()
+		done(release)
 		if cbErr != nil {
 			return cbErr
 		}

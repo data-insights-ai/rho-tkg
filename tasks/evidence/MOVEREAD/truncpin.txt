@@ -1,0 +1,8 @@
+TRUNCPIN (branch moveread), 2026-10-25
+red: TestTruncateRelHistoryHoldsColdShardPins "TruncateRelHistory: graph: store already closed" (without the fix);
+  a first fixture that wrote a history row straight into a cold shard (no history-lives record) truncated nothing
+  because no read sees such a row: replaced by the documented case, a re-import onto another shard
+  (rel: new start node; node: event label to reference label).
+fix: forEachHistoryShardFor(skip, hold, fn): with hold, each store fn sees is checked out writable and its release
+  appended to *hold; the truncates release after writing.
+green: both tests; mutation: the node truncate with hold nil fails its test ("store already closed").
