@@ -46,8 +46,7 @@ it (its rig is René's call).
    Read-only cold opens released in v4.78.3 (COLDRO, `tasks/evidence/COLDRO/`: 1.3 ms and 3.3 MB against 27.6 ms
    and 94 MB per open). Left: caches, compactors and `CompactL0OnClose` per tier, ITERPREFIX, PREFETCH, GETWALK, the
    mover's copy method, each measured. PREFETCH released in v4.78.4 (`tasks/evidence/PREFETCH/`: the open
-   without an image 7-18 % faster). ITERPREFIX measured, no change (`tasks/evidence/ITERPREFIX/`: no measurable gain
-   on a compacted store, and a wrong Prefix hides rows).
+   without an image 7-18 % faster). ITERPREFIX and VLOGGC measured, no change (`tasks/evidence/ITERPREFIX/`, `VLOGGC/`).
 
 ## Next
 
@@ -180,9 +179,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **OPENIMAGE** — A reopen after a crash rebuilds every row although the open image holds most of the state;
   `IteratorOptions.SinceTs` reads only the keys newer than the image. Done when: such a reopen reads only those keys,
   measured on a large shard.
-- **VLOGGC** — The value-log GC loop runs on every shard although only rows of 1 MB or more reach the value log (rule
-  9); ai-soc's cut records (up to ~5 MB, rewritten often) do, so there it is needed. Done when: it runs where the
-  value log holds data and its reclaim is measured on such a shard.
+- **VLOGGC** (measured 26 Oct, no change; `tasks/evidence/VLOGGC/`) — the loop costs 28 ns a pass on an empty
+  value log and reclaims dead large values after compaction; values kept by history stay.
 
 - **COLDSTART** — A fresh agent has to be able to work from the 13 docs alone. Done when: every gap it finds is fixed
   in the file that owns it.
