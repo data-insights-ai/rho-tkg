@@ -16,6 +16,8 @@ import (
 	lockspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/valuedict"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
@@ -143,6 +145,11 @@ type Config struct {
 	// and archive nodes then fan out over the event shards (honouring
 	// QueryOpts.Depth) for good. Default off.
 	RelsByMint bool
+	// ValueDictionaries codes the listed properties in every shard (DICT,
+	// store.ValueDictionary, badger.Config.ValueDictionaries): each shard
+	// keeps the entries its own rows use; the caps hold per shard and the
+	// counters (ValueDictionaryStats) sum over shards. Validated at New.
+	ValueDictionaries []storecontract.ValueDictionary
 	// TemporalIndexOnDisk is the tiered sibling of badger.Config's
 	// TemporalIndexOnDisk: a rebuild-at-open accelerator, NOT a RAM-vs-disk
 	// trade-off — the index stays fully resident in RAM at runtime on every
@@ -283,18 +290,21 @@ type Store struct {
 	shardFloor        shardCommitFloor                                // non-reference shards' commit floor, kept on refShard (tieredstore_commit_floor.go)
 	mutationEpochs    badger.SharedMutationEpochs                     // advanced by every shard (badgerCfg injects it); NodeMutationEpoch / RelMutationEpoch read it
 	propKeyReg        atomic.Pointer[registrypkg.PropertyKeyRegistry] // single canonical property-key registry, injected into every shard at open
-	refActiveReqs     atomic.Int64                                    // refcount for refShard — Close spin-waits on this before refShard.Close()
-	refArchive        atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
-	archiveMu         sync.Mutex                                      // serializes lazy-open of refArchive (single-flight)
-	migrateMu         sync.Mutex                                      // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
-	moveMu            sync.RWMutex                                    // ArchiveNode/RestoreNode hold it; reads of the reference shard and the archive (and point routes) read-hold it (refAndArchive, lockMoveRead); writes do not, so a direct user must not write during a move (the graph fences with c.mu)
-	fanoutRefReadHook func()                                          // test-only: refArchiveGapHook runs it between a door's reference shard read and its archive read
-	typeScanHook      func(door string)                               // test-only: noteTypeScan reports every whole-label/type/history ID scan door (WP-31 "no type scan" proof)
-	drainSpinsForTest atomic.Int64                                    // test-only: lowers coldShardDrainSpinLimit for this store (drainSpinLimit); 0 = the constant
-	archiveActiveReqs atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
-	eventShards       map[string]*EventShard                          // name -> event shard
-	shardIndex        []*EventShard                                   // eventShards sorted by timeStart; rebuilt by reindexShardsLocked on every insert/delete; guarded by mu
-	hotShard          *EventShard                                     // convenience pointer to current hot shard
+	vdPlan            *valuedict.Plan                                 // value dictionaries, shared by every shard (nil: none)
+	labelNames        atomic.Pointer[registrypkg.LabelRegistry]       // names vdPlan's members; installed on every shard at open
+	relTypeNames      atomic.Pointer[registrypkg.RelTypeRegistry]
+	refActiveReqs     atomic.Int64                // refcount for refShard — Close spin-waits on this before refShard.Close()
+	refArchive        atomic.Pointer[BadgerStore] // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
+	archiveMu         sync.Mutex                  // serializes lazy-open of refArchive (single-flight)
+	migrateMu         sync.Mutex                  // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
+	moveMu            sync.RWMutex                // ArchiveNode/RestoreNode hold it; reads of the reference shard and the archive (and point routes) read-hold it (refAndArchive, lockMoveRead); writes do not, so a direct user must not write during a move (the graph fences with c.mu)
+	fanoutRefReadHook func()                      // test-only: refArchiveGapHook runs it between a door's reference shard read and its archive read
+	typeScanHook      func(door string)           // test-only: noteTypeScan reports every whole-label/type/history ID scan door (WP-31 "no type scan" proof)
+	drainSpinsForTest atomic.Int64                // test-only: lowers coldShardDrainSpinLimit for this store (drainSpinLimit); 0 = the constant
+	archiveActiveReqs atomic.Int64                // refcount for refArchive — Close spin-waits on this before archive.Close()
+	eventShards       map[string]*EventShard      // name -> event shard
+	shardIndex        []*EventShard               // eventShards sorted by timeStart; rebuilt by reindexShardsLocked on every insert/delete; guarded by mu
+	hotShard          *EventShard                 // convenience pointer to current hot shard
 	ontology          *OntologyMapping
 	catalog           *ShardCatalog
 	regFile           string // path to registry.msgpack
@@ -487,6 +497,10 @@ func New(cfg Config) (*Store, error) {
 	if !cfg.InMemory && cfg.DataDir == "" {
 		return nil, fmt.Errorf("graph: Config.DataDir required unless InMemory")
 	}
+	vdPlan, err := valuedict.NewPlan(cfg.ValueDictionaries)
+	if err != nil {
+		return nil, fmt.Errorf("graph: %w", err)
+	}
 	for i, label := range cfg.RefLabels {
 		if strings.TrimSpace(label) == "" {
 			return nil, fmt.Errorf("graph: Config.RefLabels[%d] must not be empty", i)
@@ -534,6 +548,7 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	ts := &Store{
+		vdPlan:                vdPlan,
 		eventShards:           make(map[string]*EventShard),
 		ontology:              NewOntologyMapping(cfg.RefLabels),
 		dataDir:               cfg.DataDir,
@@ -1005,6 +1020,50 @@ func (ts *Store) LoadPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) (
 // SetPropertyKeyRegistry installs the property-key registry on every shard
 // (reference + each event shard). Wire encoders + decoders consult the
 // registry to dictionary-encode property keys on disk.
+// newShardStore opens a shard and installs the registries naming the value
+// dictionaries' members (every shard open goes through here).
+func (ts *Store) newShardStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
+	s, err := NewBadgerStore(cfg)
+	if err == nil {
+		s.SetNameRegistries(ts.labelNames.Load(), ts.relTypeNames.Load())
+	}
+	return s, err
+}
+
+// SetNameRegistries installs the label and relationship-type registries on
+// every open shard and on each shard opened later (DICT; the graph installs
+// its own at open).
+func (ts *Store) SetNameRegistries(labels *registrypkg.LabelRegistry, relTypes *registrypkg.RelTypeRegistry) {
+	if ts == nil {
+		return
+	}
+	if labels != nil {
+		ts.labelNames.Store(labels)
+	}
+	if relTypes != nil {
+		ts.relTypeNames.Store(relTypes)
+	}
+	if ts.refShard != nil {
+		ts.refShard.SetNameRegistries(labels, relTypes)
+	}
+	ts.mu.RLock()
+	for _, es := range ts.eventShards {
+		if es != nil && es.store != nil {
+			es.store.SetNameRegistries(labels, relTypes)
+		}
+	}
+	ts.mu.RUnlock()
+	if arc := ts.refArchive.Load(); arc != nil {
+		arc.SetNameRegistries(labels, relTypes)
+	}
+}
+
+// ValueDictionaryStats returns each value dictionary's counters since open,
+// summed over the shards; nil without dictionaries.
+func (ts *Store) ValueDictionaryStats() []storecontract.ValueDictionaryStats {
+	return ts.vdPlan.Stats()
+}
+
 func (ts *Store) SetPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) {
 	if ts == nil {
 		return
@@ -1463,7 +1522,7 @@ func (ts *Store) clearEventShard(es *EventShard) error {
 		es.clearStoreLocked(ts)
 	}
 
-	store, err := NewBadgerStore(ts.shardCfg(es.path, false, es.currentTier() == TierCold))
+	store, err := ts.newShardStore(ts.shardCfg(es.path, false, es.currentTier() == TierCold))
 	if err != nil {
 		return err
 	}
@@ -1502,7 +1561,7 @@ func (ts *Store) resetCatalogAfterClear() error {
 // The shard is always opened writable; read-only opens go through badgerCfg
 // (the recovery probe).
 func (ts *Store) openBadgerStore(name string) (*BadgerStore, error) {
-	return NewBadgerStore(ts.badgerCfg(name, false))
+	return ts.newShardStore(ts.badgerCfg(name, false))
 }
 
 // shardDir is the directory of the shard at catalog path rel: every shard
@@ -1589,6 +1648,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	if reg := ts.propKeyReg.Load(); reg != nil {
 		cfg.PropertyKeyRegistry = reg
 	}
+	cfg.ValueDictionaryPlan = ts.vdPlan
 	// Write-ahead hook: before a flush persists rows that reference newly-
 	// allocated property-key tokens, commit the shared registry to the reference
 	// shard (with fsync) ahead of the row WriteBatch. Set only for non-reference
@@ -1667,18 +1727,18 @@ func (ts *Store) openShardStoreWithRecovery(name string, cold bool) (*BadgerStor
 	// The probe is closed right away: open it with the discard option so it
 	// skips the relationship temporal rebuild (read-only, it leaves the
 	// persisted definitions for the real open).
-	probe, err := NewBadgerStore(ts.shardCfg(name, true, true))
+	probe, err := ts.newShardStore(ts.shardCfg(name, true, true))
 	if err == nil {
 		if err := probe.Close(); err != nil {
 			return nil, fmt.Errorf("graph: recovery probe close %s: %w", name, err)
 		}
-		return NewBadgerStore(ts.shardCfg(name, false, cold))
+		return ts.newShardStore(ts.shardCfg(name, false, cold))
 	}
 	if !isTruncateNeeded(err) {
 		return nil, err
 	}
 	slog.Warn("graph: recovering corrupt WAL by truncation", "shard", name)
-	return NewBadgerStore(ts.shardCfg(name, false, cold))
+	return ts.newShardStore(ts.shardCfg(name, false, cold))
 }
 
 // isTruncateNeeded checks whether the error indicates a Badger WAL truncation

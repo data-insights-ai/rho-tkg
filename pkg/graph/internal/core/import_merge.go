@@ -890,5 +890,6 @@ func (mrb *mergeRollback) restoreRegistries() error {
 	mrb.c.relTypes = relTypes
 	mrb.c.clearRelTypeCache()
 	setTieredLabelRegistryIfSupported(mrb.c.store, mrb.c.labels)
+	setNameRegistriesIfSupported(mrb.c.store, mrb.c.labels, mrb.c.relTypes)
 	return mrb.c.persistRegistries()
 }

@@ -1,0 +1,8 @@
+DICT step 3 (core installs the label and rel-type registries) and step 4 (tiered).
+go test -count=1 -run TestValueDict_GraphInstallsNames ./pkg/graph/          -> ok (600 ai-soc-shaped LOGON rels, 20 coded device keys found again by keyed upserts)
+go test -count=1 -run TestValueDict_TieredShards ./pkg/graph/store/tiered/    -> ok (two shards, cold lazy open, reopen without dictionaries)
+go test -short -count=1 ./pkg/graph/ ./pkg/graph/internal/core/ ./pkg/graph/store/tiered/ ./pkg/graph/store/sharded/ -> ok
+Mutations (each restored after):
+M1 core does not install the name registries         -> FAIL TestValueDict_GraphInstallsNames (nothing coded)
+M2 a shard opened later gets no registries            -> FAIL TestValueDict_TieredShards (the rotated-in shard codes nothing)
+M3 tiered shards get no plan                          -> FAIL TestValueDict_TieredShards

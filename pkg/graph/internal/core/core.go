@@ -2377,6 +2377,7 @@ func New(config Config) (*Core, error) {
 	if setter, ok := store.(propertyKeyRegistrySetter); ok {
 		setter.SetPropertyKeyRegistry(c.propKeys)
 	}
+	setNameRegistriesIfSupported(store, c.labels, c.relTypes)
 
 	c.runBitemporalMigrationBestEffort()
 	c.backfillExAdjacencyBestEffort(store)

@@ -28,6 +28,20 @@ type tieredLabelRegistrySetter interface {
 	SetLabelRegistry(*registrypkg.LabelRegistry)
 }
 
+// nameRegistriesSetter is a store that names its value dictionaries' members
+// (DICT): it needs the graph's label and relationship-type registries.
+type nameRegistriesSetter interface {
+	SetNameRegistries(*registrypkg.LabelRegistry, *registrypkg.RelTypeRegistry)
+}
+
+// setNameRegistriesIfSupported installs the registries on such a store; called
+// wherever the graph installs or swaps them.
+func setNameRegistriesIfSupported(store storepkg.MandatoryStore, labels *registrypkg.LabelRegistry, relTypes *registrypkg.RelTypeRegistry) {
+	if setter, ok := store.(nameRegistriesSetter); ok {
+		setter.SetNameRegistries(labels, relTypes)
+	}
+}
+
 func setTieredLabelRegistryIfSupported(store storepkg.MandatoryStore, labels *registrypkg.LabelRegistry) {
 	if setter, ok := store.(tieredLabelRegistrySetter); ok {
 		setter.SetLabelRegistry(labels)

@@ -1334,6 +1334,7 @@ func (rb *importRollback) restoreRegistries() error {
 	rb.c.relTypes = relTypes
 	rb.c.clearRelTypeCache()
 	setTieredLabelRegistryIfSupported(rb.c.store, rb.c.labels)
+	setNameRegistriesIfSupported(rb.c.store, rb.c.labels, rb.c.relTypes)
 	return rb.c.persistRegistries()
 }
 
