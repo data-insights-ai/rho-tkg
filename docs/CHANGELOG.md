@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.79.0] - 2026-10-25
+
 ### Added
 
 - **TIERLABELDISK** (sigma, 24 Oct): `tiered.Config.LabelIndexOnDisk` passes badger's `LabelIndexOnDisk` to every shard
