@@ -60,7 +60,10 @@ yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and M
   shards, so indexes, filters and `@source` see the plain value. Acceptance: the same writes with and without the
   list give equal answers on every read door, history and index probe; the bytes per property from a store meter.
   `cmdline` pays: on the kit slice 49,006 B of copies over 699 repeats is ~70 B a value, a token saves ~66 B a repeat
-  (full store ~108,600 repeats, ~7 MB). RAM: decoded values interned per token (one string per
+  (full store ~108,600 repeats, ~7 MB). Design sent to ai-soc and sigma (25 Oct); waiting for ai-soc's review, the
+  caps (default 4x its full-store counts) and whether it writes these properties through sharded too. sigma (25
+  Oct): nothing of sigma's in the first cut; its Derived (label, ov_cN) pairs join ai-soc's dictionaries later,
+  after René's yes to KEYENC and sigma's KEYCOLS (rows written before a property is listed stay inline). RAM: decoded values interned per token (one string per
   value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
   then built and released. Order (ai-soc with René's yes, 25 Oct): after SHARD step 1, before SHARD steps
   2-10; nothing in SHARD blocks it (the dictionary moves with the reference shard). ai-soc's tracker on the kit BA
