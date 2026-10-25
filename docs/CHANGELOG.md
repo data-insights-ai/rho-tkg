@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **LONGTIER** (tests only): the long tier (`go test` without `-short`) of the badger package passes again. The two
+  revert-to-stock WAL tests (`TestBadgerMigrateOversizedWALCoversRevertToStock`,
+  `TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock`) failed since FLUSHPART (v4.75.0): their fixture wrote
+  ~100 MB in one flush, which is now staged and written twice, so the 128 MB memtable rotated and its WAL vanished
+  while being copied; the fixture flushes in pieces of one badger transaction. `TestRelPlannerStatsMemoBounded`
+  measures the process heap, which leftover background work of earlier tests inflated once by 130 MB; it takes the
+  least of three measurements.
+
 ## [4.77.1] - 2026-10-25
 
 ### Fixed

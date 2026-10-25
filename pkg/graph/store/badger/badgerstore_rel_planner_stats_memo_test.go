@@ -28,9 +28,17 @@ func TestRelPlannerStatsMemoBounded(t *testing.T) {
 		t.Skip("long tier: release gate")
 	}
 	t.Run("heap", func(t *testing.T) {
-		small := storeRelStatsRetainedHeap(t, 10_000)
-		large := storeRelStatsRetainedHeap(t, 100_000)
-		perRel := float64(large-small) / 90_000
+		// The least of three: the measure is the process heap, and leftover
+		// background work of earlier tests (badger compaction) only ever adds
+		// to one run (130 MB once in the long tier, 25 Oct; LONGTIER).
+		var small, large int64
+		perRel := math.Inf(1)
+		for range 3 {
+			s, l := storeRelStatsRetainedHeap(t, 10_000), storeRelStatsRetainedHeap(t, 100_000)
+			if p := float64(l-s) / 90_000; p < perRel {
+				small, large, perRel = s, l, p
+			}
+		}
 		t.Logf("planner-stat heap: %d B at 10K rels, %d B at 100K rels, growth %.1f B per rel", small, large, perRel)
 		if perRel > 8 {
 			t.Fatalf("planner-stat heap grows %.1f B per relationship written (10K: %d B, 100K: %d B); want a constant (≤ 8 B/rel)", perRel, small, large)

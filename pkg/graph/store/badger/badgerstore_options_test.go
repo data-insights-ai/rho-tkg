@@ -449,6 +449,14 @@ func writeStockOversizedWALCopy(t *testing.T, n, padBytes int) string {
 		if err := bs.PutNode(node); err != nil {
 			t.Fatalf("put %d: %v", i, err)
 		}
+		// Flush in pieces of one badger transaction: one ~100 MB flush is
+		// staged (FLUSHPART) and writes the rows twice, which rotates the
+		// 128 MB memtable and deletes the WAL this fixture copies.
+		if i%50 == 0 {
+			if err := bs.Flush(); err != nil {
+				t.Fatalf("flush: %v", err)
+			}
+		}
 	}
 	if err := bs.Flush(); err != nil {
 		t.Fatalf("flush: %v", err)
