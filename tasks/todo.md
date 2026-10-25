@@ -82,14 +82,14 @@ yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and M
   config (ai-soc: explicit, testable per property, no high-cardinality property coded by accident), with a cap per
   property falling back to inline values. First list: `action`, `aisoc_source` (every edge type); `estate`;
   `local_ip`, `remote_ip`, `account_sid` on NETWORK/NETFIRST/LOGON/FILE/PROCESS/REGISTRY; `src`, `dst`, `service`
-  on FIREWALL/FLOW; possibly sigma's `ov_rel` on Derived. The one-way door ships when René says. Design answers to
+  on FIREWALL/FLOW; possibly sigma's `ov_rel` on Derived. Design answers to
   sigma (24 Oct): a dictionary is named, and the opt-in list maps (label or type, property) to it, so a Derived key
   column (an IP in `ov_c1`) can share `NETWORK.remote_ip`'s dictionary; default one per (label, property). Strings
   first (an int or float is 8 fixed bytes; a token saves little); string elements of lists later if the tracker
   shows them. `ov_rel` on Derived is on the first list.
 ### DICT plan
 
-Branch `dict`; each step red test first, mutation-checked; the minor ships on René's word (a one-way door).
+Branch `dict`; each step red test first, mutation-checked; the minor ships when its gate is green (René 25 Oct: no go needed).
 
 1. [ ] Row shape (storeutil): a property may carry `dt` (a dictionary token) in place of `v`; a row with one is row
    format 8, a store holding one marker 11; a `dt` on a row below 8, on a non-string or next to a `v` is corrupt; an
@@ -108,10 +108,10 @@ Branch `dict`; each step red test first, mutation-checked; the minor ships on Re
    steps 3-4).
 5. [ ] Acceptance: the same writes with and without the list give equal answers on every read door, history read
    and index probe; stored bytes per property measured; CHANGELOG with the one-way door; `docs/persistence.md` rows
-   for format 8 and marker 11; minor gate, consumer build; tag on René's word. Acceptance, docs and CHANGELOG green on
+   for format 8 and marker 11; minor gate, consumer build, tag. Acceptance, docs and CHANGELOG green on
    branch `dict` (0cfce028; equal answers over tiered across a reopen, 10.3 % fewer stored bytes on the test's LOGON
    shape; `tasks/evidence/DICT/step5.txt`). Consumers build and vet against the branch; the minor gate (`make ci-docker`)
-   run 1 stopped at fmt-check (the acceptance test, gofmt'd in 556ca117), run 2 running; ai-soc has the config shape. Then René's word for the tag (v4.77.0).
+   run 1 stopped at fmt-check (the acceptance test, gofmt'd in 556ca117), run 2 running; ai-soc has the config shape. Then the tag v4.77.0 (René: yes, 25 Oct).
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
