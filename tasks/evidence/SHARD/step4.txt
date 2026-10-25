@@ -1,0 +1,12 @@
+SHARD step 4 (branch shard2), 2026-10-25
+red: go vet ./pkg/graph/store/tiered -> ts.SetMoveFaultForTest undefined (no mover)
+green: TestMoveClosedShard_CrashMatrix (crash after copied/renamed/saved/removed/none: one copy after reopen, on the
+  volume the catalog names, row readable), TestMoveShardRefusals, TestMoveShardCancelledLeavesSource,
+  TestMovedShardReadAndDrop (byte-exact copy, bytes on disk not grown, drop removes it on warm), TestMoveGateHoldsReaders,
+  TestCloseStopsMove, TestOrphanKeptWhenNamedCopyMissing, TestMoveRetryAfterCrashBeforeSave; tiered, tier, graph, core
+  -short ok; -race -count=3 on the move/volume/listing/fast-drop tests ok; make build (incl. linux/386), windows ok
+measured: a closed shard 20,480 bytes on disk; copied without hole skipping 1,064,960 (an all-zero preallocation)
+mutations (each failed a test; "no gate" and "open shard moved" by hanging to the 600 s test timeout): orphan removal
+  off; *.moving-* kept; orphan removed without the named copy; drop resolving its dir after the entry; no hole skipping;
+  no gate; Close not stopping; no cancel check in the copy; open shard moved; hot shard moved; same-volume move (it
+  deletes the shard: the guard stays); source kept; stale target copy not removed; no truncate; tmp left on a copy error

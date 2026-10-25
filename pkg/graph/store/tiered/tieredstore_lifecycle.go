@@ -71,6 +71,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		}
 		if es.currentTier() == TierCold {
 			es.shardMu.Lock()
+			es.waitMoveLocked()
 			if es.store == nil {
 				store, err := ts.openColdBadgerStoreWithRecovery(es.path)
 				if err != nil {
@@ -100,6 +101,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 	// This prevents closeIdleShards from closing the store between open and
 	// the activeReqs increment (the v3.0.30 TOCTOU bug).
 	es.shardMu.Lock()
+	es.waitMoveLocked()
 	if ts.closed.Load() {
 		es.shardMu.Unlock()
 		return nil, ErrStoreClosed
@@ -158,6 +160,7 @@ func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), err
 	}
 
 	es.shardMu.Lock()
+	es.waitMoveLocked()
 	if ts.closed.Load() {
 		es.shardMu.Unlock()
 		return nil, noop, ErrStoreClosed

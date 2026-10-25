@@ -349,6 +349,10 @@ that test.
     and bytes on disk (step 2). *The config maps the volumes* (`WarmDir`, `ColdDir`, each its own directory;
     `ReferenceVolume`, `ArchiveVolume` for a new store's reference shard and archive), `New` fails when a cataloged
     shard's volume is not mapped, and no shard is made under a missing volume root (an unmounted device) (step 3).
+    `tiered.Store.MoveShard(ctx, name, volume)` moves a closed event shard (step 4; an open one returns
+    `ErrShardOpen` until step 5): the copy keeps sparse files sparse (an all-zero 1 MB chunk is skipped), its lazy
+    opens wait on the shard's move gate, `ctx` or `Close` stops it before the catalog save, and a retention drop of a
+    moved shard removes it on its volume.
   - *The mover* (one, for any event shard and any volume pair; one move per idle-sweep tick, or `tier.API.MoveShard`):
     a closed shard is copied file by file (byte-exact, fsync of files and directory) into
     `<volume>/events/<name>.moving-<nonce>`, renamed, the catalog saved with the new `Volume` (the commit point), then

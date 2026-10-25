@@ -17,6 +17,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   not mapped, and the catalog refuses an unknown volume, the hot shard off the hot volume and the reference shard on
   the cold one. No shard is made under a missing volume root. A catalog with a shard off the hot volume carries a
   `__format__` entry that every earlier v4 release refuses at open (a one-way door, taken only by using a volume).
+- **SHARD step 4**: `tiered.Store.MoveShard(ctx, name, volume)` moves a closed event shard to another volume
+  crash-safely: copy into `<volume>/events/<name>.moving-<nonce>` (fsynced, byte for byte, sparse files kept
+  sparse), rename, catalog save (the commit point), source removal. A crash at any step leaves one copy after the
+  next open, on the volume the catalog names; `New` removes the other (never when the named copy is missing). The
+  shard's reads and writes wait while it moves; `ctx` or `Close` stops a move before its commit. An open shard is
+  refused with `tiered.ErrShardOpen` (step 5 moves it), the hot shard always.
+
+### Fixed
+
+- A retention fast drop of a shard resolved its directory after removing its catalog entry, so for a shard off the
+  hot volume it would have deleted under `DataDir` and left the shard on its volume (no release had volumes yet).
 
 ## [4.77.2] - 2026-10-25
 

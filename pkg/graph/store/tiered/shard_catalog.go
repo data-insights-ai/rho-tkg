@@ -340,6 +340,20 @@ func (sc *ShardCatalog) restoreShards(snapshot []ShardEntry) {
 	sc.Shards = cloneShardEntries(snapshot)
 }
 
+// UpdateShardVolume sets the volume of shard name; false when it is not
+// cataloged.
+func (sc *ShardCatalog) UpdateShardVolume(name, volume string) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	for i := range sc.Shards {
+		if sc.Shards[i].Name == name {
+			sc.Shards[i].Volume = volume
+			return true
+		}
+	}
+	return false
+}
+
 // volumeOfPath is the volume of the shard at catalog path rel, "" (hot) when
 // none is cataloged there.
 func (sc *ShardCatalog) volumeOfPath(rel string) string {

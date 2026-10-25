@@ -215,15 +215,16 @@ type EventShard struct {
 	store             *BadgerStore // nil when cold + closed (lazy-open)
 	tier              ShardTier
 	tierCode          atomic.Uint32
-	timeStart         time.Time    // shard window start (inclusive)
-	timeEnd           time.Time    // shard window end (exclusive)
-	readOnly          bool         // warm/cold tier marker; Badger handles remain writable for owner-shard mutations
-	path              string       // relative path for lazy-open (e.g., "events/2026-W10")
-	shardMu           sync.Mutex   // protects lazy open/close
-	activeReqs        atomic.Int64 // outstanding read requests; blocks idle-close
-	lastAccess        atomic.Int64 // unix ms, idle-close tracking
-	readTransientOpen bool         // shardMu-protected: cold store was opened only for transient read fanout
-	coldCounted       bool         // shardMu-protected: this shard's open store is counted in Store.openColdShards
+	timeStart         time.Time     // shard window start (inclusive)
+	timeEnd           time.Time     // shard window end (exclusive)
+	readOnly          bool          // warm/cold tier marker; Badger handles remain writable for owner-shard mutations
+	path              string        // relative path for lazy-open (e.g., "events/2026-W10")
+	shardMu           sync.Mutex    // protects lazy open/close
+	activeReqs        atomic.Int64  // outstanding read requests; blocks idle-close
+	lastAccess        atomic.Int64  // unix ms, idle-close tracking
+	readTransientOpen bool          // shardMu-protected: cold store was opened only for transient read fanout
+	moveDone          chan struct{} // shardMu-protected: non-nil while MoveShard moves the shard; closed when it ends
+	coldCounted       bool          // shardMu-protected: this shard's open store is counted in Store.openColdShards
 
 	// counts is what this shard held when it was last closed, so counting
 	// questions can be answered without reopening it. See shardCounts.
@@ -323,9 +324,11 @@ type Store struct {
 	temporalIdxFile   string // path to temporal_indexes.msgpack
 	vectorIdxFile     string // path to vector_indexes.msgpack
 	dataDir           string
-	warmDir, coldDir  string // volumes (shard_volume.go); "" = not mapped
-	refVolume         string // catalog volume a new reference shard is made on
-	archiveVolume     string // catalog volume a new archive is made on
+	closing           atomic.Bool             // set when Close begins: a running move stops (shard_move.go)
+	moveFault         func(step string) error // test hook: a crash after a move step
+	warmDir, coldDir  string                  // volumes (shard_volume.go); "" = not mapped
+	refVolume         string                  // catalog volume a new reference shard is made on
+	archiveVolume     string                  // catalog volume a new archive is made on
 	inMemory          bool
 	shardWindow       time.Duration
 	cacheCap          int
@@ -639,6 +642,7 @@ func New(cfg Config) (*Store, error) {
 		if err := ts.checkCatalogVolumes(); err != nil {
 			return nil, err
 		}
+		ts.removeMoveOrphans()
 	}
 
 	// Open reference shard (an existing store's must be there). A new store,
@@ -1122,6 +1126,7 @@ func (ts *Store) Close() error {
 	}
 	var closeErr error
 	ts.closeOnce.Do(func() {
+		ts.closing.Store(true) // a running move stops instead of holding Close
 		ts.lifecycleMu.Lock()
 		defer ts.lifecycleMu.Unlock()
 
@@ -1533,6 +1538,7 @@ func (ts *Store) clearEventShard(es *EventShard) error {
 
 	es.shardMu.Lock()
 	defer es.shardMu.Unlock()
+	es.waitMoveLocked()
 
 	es.activeReqs.Add(1)
 	defer es.activeReqs.Add(-1)

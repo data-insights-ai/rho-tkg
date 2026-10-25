@@ -35,14 +35,22 @@ func volumeName(v string) string {
 	return v
 }
 
-// catalogVolume is the catalog form of a configured volume name ("" or hot =
-// ""), or an error for an unknown one.
-func catalogVolume(field, v string) (string, error) {
+// parseVolume is the catalog form of a volume name ("" or hot = ""); false
+// for an unknown one.
+func parseVolume(v string) (string, bool) {
 	switch v {
 	case "", VolumeHot:
-		return "", nil
+		return "", true
 	case VolumeWarm, VolumeCold:
-		return v, nil
+		return v, true
+	}
+	return "", false
+}
+
+// catalogVolume is parseVolume for a Config field.
+func catalogVolume(field, v string) (string, error) {
+	if cv, ok := parseVolume(v); ok {
+		return cv, nil
 	}
 	return "", fmt.Errorf("graph: Config.%s %q is not a volume (hot, warm or cold)", field, v)
 }

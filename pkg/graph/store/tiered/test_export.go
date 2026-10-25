@@ -238,3 +238,11 @@ func (ts *Store) VectorIndexOptionsForTest(labelToken uint16, propertyKey string
 		EfSearch:       vi.HNSWEfSearch,
 	}, true
 }
+
+// SetMoveFaultForTest makes MoveShard stop, as a crash would, when fault
+// returns an error after a step ("gated", "copied", "renamed", "saved",
+// "removed"); a fault that blocks holds the move there.
+func (ts *Store) SetMoveFaultForTest(fault func(step string) error) { ts.moveFault = fault }
+
+// ClosingForTest reports whether Close has begun.
+func (ts *Store) ClosingForTest() bool { return ts.closing.Load() }

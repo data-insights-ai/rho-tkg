@@ -190,6 +190,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	}
 	es.shardMu.Unlock()
 
+	dir := ts.shardDir(es.path) // before the entry goes: it names the shard's volume
 	snapshot := ts.catalog.snapshotShards()
 	ts.catalog.RemoveShard(es.name)
 	if serr := ts.catalog.Save(); serr != nil {
@@ -212,7 +213,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		}
 		return zero, false, serr
 	}
-	if rerr := os.RemoveAll(ts.shardDir(es.path)); rerr != nil {
+	if rerr := os.RemoveAll(dir); rerr != nil {
 		return zero, false, rerr
 	}
 
