@@ -103,8 +103,8 @@ func (e appendEntity) rows(tb testing.TB, g *Core) int {
 
 // TestCascadeCorrection85_CostFlat: a write's cost grows with the chain as
 // V log V (its history read and one sweep), not as cuts × V log V. From 100
-// to 1,000 rows (the cuts grow with the chain here) bytes and time per write
-// grow about 10 × a log factor; the per-cut resolver grew 30 to 60 × (memory:
+// to 1,000 rows (the cuts grow with the chain here) bytes per write grow
+// about 10 × a log factor (time is logged); the per-cut resolver grew 30 to 60 × (memory:
 // 120 µs to 6.3 ms per write before row 85).
 func TestCascadeCorrection85_CostFlat(t *testing.T) {
 	const k = 5
@@ -115,13 +115,13 @@ func TestCascadeCorrection85_CostFlat(t *testing.T) {
 				b1000, n1000 := cutsCost(t, be, rel, 1000, k)
 				t.Logf("per write: %.0f / %.0f bytes, %.0f / %.0f µs at 100 / 1,000 rows (x%.1f bytes, x%.1f time)",
 					b100, b1000, n100/1e3, n1000/1e3, b1000/b100, n1000/n100)
-				// 10 × log2(1000)/log2(100) = 15 for V log V; 20 (bytes) and 30
-				// (time, noisier) leave room for noise; cuts × V log V measured 29 to 62.
+				// 10 × log2(1000)/log2(100) = 15 for V log V; 20 leaves room;
+				// cuts × V log V measured 29 to 62. Bytes decide: time is logged
+				// only, since a shared runner stretched it to x34.9 on a
+				// healthy write (v4.78.4 CI, CASCADEFLAKY) and its bound would
+				// overlap the regression's.
 				if b1000 > 20*b100 {
 					t.Errorf("bytes per write grow with cuts × chain: %.0f -> %.0f (x%.1f)", b100, b1000, b1000/b100)
-				}
-				if n1000 > 30*n100 {
-					t.Errorf("time per write grows with cuts × chain: %.0f -> %.0f µs (x%.1f)", n100/1e3, n1000/1e3, n1000/n100)
 				}
 			})
 		}

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **CASCADEFLAKY** (tests only): `TestCascadeCorrection85_CostFlat` asserts the growth of bytes per write only and
+  logs time; a shared CI runner stretched the time ratio to x34.9 on a healthy write (v4.78.4's CI), over its bound
+  of 30, while bytes grew x10.8 as they should (bound 20; the regression it guards grew 29 to 62).
+
 ## [4.78.5] - 2026-10-25
 
 ### Fixed
