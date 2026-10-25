@@ -11,7 +11,7 @@ Order (René 24 Oct: fixes first; open decisions settled from the data and the c
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
 consumers build, ai-soc and sigma told; RACETIME: the isolated race packages now have 20 min; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, SHARD step 10 (René, with ai-soc's
-counts). FLAKYWAL fixed (test only); COLDRO in v4.78.3. DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
+counts). FLAKYWAL fixed (test only); COLDRO in v4.78.3 (CI green). DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
 it (its rig is René's call).
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -44,7 +44,8 @@ it (its rig is René's call).
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
    Read-only cold opens released in v4.78.3 (COLDRO, `tasks/evidence/COLDRO/`: 1.3 ms and 3.3 MB against 27.6 ms
    and 94 MB per open). Left: caches, compactors and `CompactL0OnClose` per tier, ITERPREFIX, PREFETCH, GETWALK, the
-   mover's copy method, each measured.
+   mover's copy method, each measured. PREFETCH green on branch `prefetch` (`tasks/evidence/PREFETCH/`: open
+   without an image 7-18 % faster), ships with ITERPREFIX as v4.78.4.
 
 ## Next
 
@@ -180,8 +181,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   per-property overhead is measured as a share of stored bytes on a real store (ai-soc's tracker), then decided.
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each; 45 `Txn.Get` sites) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
-- **PREFETCH** — 14 iterators prefetch values (13 explicitly, plus `badgerstore_planner_stats_deferred.go:137` by
-  default), one goroutine per row for values that are almost always inline (rule 3). Done when: none does, the open-time node scan measured.
 - **ITERPREFIX** — 49 of rho's 71 iterators seek a prefix without setting `IteratorOptions.Prefix`, so badger cannot
   skip the tables outside it (rule 4; `tasks/evidence/USAGE/usage-map.txt`). Done when: each sets at least its
   keyspace byte, measured on a multi-level store.
