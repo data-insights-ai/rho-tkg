@@ -74,8 +74,6 @@ lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
   Default: leave them until a consumer hits one.
 - PURGE (row 104): (a) no rho change, sigma treats not-found for a known id as purged; (b) `ErrRetentionExpired` via a
   per-entity purge tombstone (behaviour change). Default: (a).
-- AXIS: `UntimedWholeAxis` as the default for new stores, announced in CHANGELOG `[4.65.0]` for "the next minor" and held
-  for five minors. Default: keep holding; the next minor makes it or rewords the notice.
 - FOLDS (backlog 16): keep today's documented behaviour. Default: keep.
 - TOMBSTONE: rebuild branch `tombstone-writer-v4.63` (`37a1ff56`) on the v4.66 axis code, ~½ day, a minor, heads-up to
   sigma and ai-soc. Default: parked until sigma or ai-soc needs P24.

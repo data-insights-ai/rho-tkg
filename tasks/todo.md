@@ -53,8 +53,8 @@ it (its rig is René's call).
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
-  below are ticked and released. Waits for: nothing (fixes shipped); BADGER step 3
-  (per-tier badger options) leads in. Step 1 shipped in v4.76.1; DICT in v4.77.0; RESUME in v4.77.1.
+  below are ticked and released. Steps 1-8 shipped (v4.76.1, v4.78.0; MOVEREAD v4.78.2, COLDRO v4.78.3). Waits for:
+  step 10's decision (René, with ai-soc's counts).
 
 ### SHARD plan
 
@@ -134,10 +134,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **PURGE** — A purged entity answers "not found" at a time it answered before. Decided 24 Oct from the data (René:
   open decisions by data and agents): no change. sigma reads below a purge through a floor that gates the cut, and
   ai-soc has no purge yet; neither expects an old answer from before a purge. Leaves todo with the next release.
-- **AXIS** — The announced change of the default valid-time start for new stores is held. Decided 24 Oct from the
-  data: dropped, the default stays. ai-soc creates a fresh store per run and relies on the default (graphmgr
-  manager.go:473); sigma sets `UntimedWholeAxis` explicitly. Changing it would silently change ai-soc's answers.
-  Leaves todo with the next release; the announcement is withdrawn in the CHANGELOG then.
 - **FOLDS** — Range lookups check the resolved version, not every version in the range (backlog 16). Done when: René
   has decided. sigma (24 Oct) uses both forms: `ForEachByLabelPropertyRange` (resolved version) and
   `ForEachByLabelPropertyRangeAnyVersion` (graphhost/bind.go:528), and `NodesByLabelPropertyDuring` in its write-back.

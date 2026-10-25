@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **AXIS** (announcement withdrawn): the v4.65.0 Deprecated note that the default `Config.UntimedValidStart` for new
+  stores becomes `UntimedWholeAxis` "in the next minor" is withdrawn; the default stays `UntimedUnbounded`. ai-soc
+  creates a fresh store per run and relies on the default, so a flip would silently change its answers; sigma sets
+  `UntimedWholeAxis` explicitly (decided 24 Oct from the consumers' use).
 - **FLAKE** (tests only): `TestTemporalPropertySeekAnswersEverLabelMembers` pinned with an instant that reserves
   nothing, so a write in the same millisecond could be stamped at the pin; beside other tests it then missed a node.
   It pins with `NowTx()` and runs in parallel again; `TestTemporalPropertySeekPinUnderFrozenClock` reproduces the
