@@ -224,6 +224,7 @@ type EventShard struct {
 	lastAccess        atomic.Int64  // unix ms, idle-close tracking
 	readTransientOpen bool          // shardMu-protected: cold store was opened only for transient read fanout
 	moveDone          chan struct{} // shardMu-protected: non-nil while MoveShard moves the shard; closed when it ends
+	moving            atomic.Bool   // set with moveDone: the lock-free checkout of an open shard backs off to the gate
 	coldCounted       bool          // shardMu-protected: this shard's open store is counted in Store.openColdShards
 
 	// counts is what this shard held when it was last closed, so counting

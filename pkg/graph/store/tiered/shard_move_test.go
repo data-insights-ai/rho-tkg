@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -128,9 +129,9 @@ func TestMoveClosedShard_CrashMatrix(t *testing.T) {
 	}
 }
 
-// TestMoveShardRefusals: MoveShard refuses an unknown shard, the hot shard,
-// an open shard and an unmapped or unknown volume, and moving a shard to the
-// volume it is on does nothing. Each refusal leaves the shard where it was.
+// TestMoveShardRefusals: MoveShard refuses an unknown shard, the hot shard
+// and an unmapped or unknown volume, and moving a shard to the volume it is
+// on does nothing. Each refusal leaves the shard where it was.
 func TestMoveShardRefusals(t *testing.T) {
 	t.Parallel()
 	ts, cfg, _, old, _ := moveFixture(t)
@@ -149,14 +150,6 @@ func TestMoveShardRefusals(t *testing.T) {
 	}
 	if err := ts.MoveShard(ctx, old, VolumeHot); err != nil {
 		t.Fatalf("a move to the shard's own volume = %v, want nil", err)
-	}
-	es := ts.EventShardsForTest()[old]
-	if _, err := es.CheckoutStoreForTest(ts); err != nil {
-		t.Fatal(err)
-	}
-	es.CheckinStoreForTest()
-	if err := ts.MoveShard(ctx, old, VolumeWarm); !errors.Is(err, ErrShardOpen) {
-		t.Fatalf("moving an open shard = %v, want ErrShardOpen", err)
 	}
 	if got := shardCopies(t, cfg, old); len(got) != 1 || got[0] != filepath.Join(cfg.DataDir, "events", old) {
 		t.Fatalf("shard copies %v after the refusals, want only the one under DataDir", got)
@@ -280,6 +273,17 @@ func holdMoveAt(ts *Store, step string, release <-chan struct{}) <-chan struct{}
 	return reached
 }
 
+// awaitHold waits until the move reaches its hold, failing when it returns
+// first.
+func awaitHold(t *testing.T, reached <-chan struct{}, moved <-chan error) {
+	t.Helper()
+	select {
+	case <-reached:
+	case err := <-moved:
+		t.Fatalf("MoveShard returned before its hold: %v", err)
+	}
+}
+
 // TestMoveGateHoldsReaders: a read of a shard being moved waits for the move
 // and then reads the shard from the new volume. Catches a lazy open during
 // the move (it opens the source, which the move then removes).
@@ -291,7 +295,7 @@ func TestMoveGateHoldsReaders(t *testing.T) {
 	reached := holdMoveAt(ts, "copied", release)
 	moved := make(chan error, 1)
 	go func() { moved <- ts.MoveShard(context.Background(), old, VolumeWarm) }()
-	<-reached
+	awaitHold(t, reached, moved)
 	read := make(chan error, 1)
 	go func() {
 		_, err := ts.GetNode(n.ID())
@@ -324,7 +328,7 @@ func TestCloseStopsMove(t *testing.T) {
 	reached := holdMoveAt(ts, "gated", release)
 	moved := make(chan error, 1)
 	go func() { moved <- ts.MoveShard(context.Background(), old, VolumeWarm) }()
-	<-reached
+	awaitHold(t, reached, moved)
 	closed := make(chan error, 1)
 	go func() { closed <- ts.Close() }()
 	for !ts.ClosingForTest() {
@@ -404,5 +408,236 @@ func TestMoveRetryAfterCrashBeforeSave(t *testing.T) {
 	}
 	if _, err := ts.GetNode(n.ID()); err != nil {
 		t.Fatalf("GetNode: %v", err)
+	}
+}
+
+// warmMoveFixture is a store with a warm volume whose rotated-out shard is
+// warm (open), holding one node; it also returns an ID minted in that
+// shard's window, not yet written.
+func warmMoveFixture(t *testing.T) (*Store, Config, *types.Node, types.NodeID, string, uint16) {
+	t.Helper()
+	cfg := volumeCfg(t.TempDir(), t.TempDir(), "")
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	tok, _ := reg.GetOrCreate("Signal")
+	gen := tieredNodeGen(t)
+	n := types.NewNode(types.NodeID(gen.Generate()), tok, nil)
+	later := types.NodeID(gen.Generate())
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	old := ts.HotShardForTest().Name()
+	forceRotation(t, ts)
+	if tier := ts.EventShardsForTest()[old].Tier(); tier != TierWarm {
+		t.Fatalf("rotated-out shard is %s, want warm", tier)
+	}
+	return ts, cfg, n, later, old, tok
+}
+
+// TestMoveWarmShard_WriterWaitsAndWriteLandsOnNewVolume pins SHARD step 5: an
+// open warm shard moves; a write to it during the move waits, then lands on
+// the new volume; the shard is open again (warm) after the move, and after a
+// reopen both rows read back from the warm volume. Catches a warm shard
+// refused, a write taken by the old copy during the move (lost with it) and a
+// shard left closed.
+func TestMoveWarmShard_WriterWaitsAndWriteLandsOnNewVolume(t *testing.T) {
+	t.Parallel()
+	ts, cfg, n, later, old, tok := warmMoveFixture(t)
+	release := make(chan struct{})
+	reached := holdMoveAt(ts, "copied", release)
+	moved := make(chan error, 1)
+	go func() { moved <- ts.MoveShard(context.Background(), old, VolumeWarm) }()
+	awaitHold(t, reached, moved)
+	wrote := make(chan error, 1)
+	go func() { wrote <- ts.PutNode(types.NewNode(later, tok, nil)) }()
+	select {
+	case err := <-wrote:
+		t.Fatalf("a write to the shard returned during its move (err %v)", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	if err := <-moved; err != nil {
+		t.Fatalf("MoveShard: %v", err)
+	}
+	if err := <-wrote; err != nil {
+		t.Fatalf("the held write: %v", err)
+	}
+	es := ts.EventShardsForTest()[old]
+	if es.Store() == nil || es.Tier() != TierWarm {
+		t.Fatalf("after the move the shard is %s, open %v; want warm and open", es.Tier(), es.Store() != nil)
+	}
+	if err := ts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := shardCopies(t, cfg, old); len(got) != 1 || got[0] != filepath.Join(cfg.WarmDir, "events", old) {
+		t.Fatalf("shard copies %v, want only the one on the warm volume", got)
+	}
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ts.Close() }()
+	for _, id := range []types.NodeID{n.ID(), later} {
+		if _, err := ts.GetNode(id); err != nil {
+			t.Fatalf("GetNode %v after the reopen: %v", id, err)
+		}
+	}
+}
+
+// TestDurableFlushDuringMoveDoesNotWait: a durable flush during a warm
+// shard's move returns without waiting for the copy (the shard's close
+// synced what it held). Catches durable commits stalled for a whole move.
+func TestDurableFlushDuringMoveDoesNotWait(t *testing.T) {
+	t.Parallel()
+	ts, _, _, _, old, _ := warmMoveFixture(t)
+	defer func() { _ = ts.Close() }()
+	release := make(chan struct{})
+	reached := holdMoveAt(ts, "copied", release)
+	moved := make(chan error, 1)
+	go func() { moved <- ts.MoveShard(context.Background(), old, VolumeWarm) }()
+	awaitHold(t, reached, moved)
+	flushed := make(chan error, 1)
+	go func() { flushed <- ts.DurableFlush() }()
+	select {
+	case err := <-flushed:
+		if err != nil {
+			t.Fatalf("DurableFlush: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("DurableFlush waited for the move")
+	}
+	close(release)
+	if err := <-moved; err != nil {
+		t.Fatalf("MoveShard: %v", err)
+	}
+}
+
+// TestMoveOpenColdShardStaysClosed: a cold shard a read left open moves and
+// stays closed afterwards (a cold shard opens on use) with its counts sealed,
+// its row still read.
+func TestMoveOpenColdShardStaysClosed(t *testing.T) {
+	t.Parallel()
+	ts, cfg, n, old, _ := moveFixture(t)
+	defer func() { _ = ts.Close() }()
+	es := ts.EventShardsForTest()[old]
+	if _, err := es.CheckoutStoreForTest(ts); err != nil {
+		t.Fatal(err)
+	}
+	es.CheckinStoreForTest()
+	if err := ts.MoveShard(context.Background(), old, VolumeWarm); err != nil {
+		t.Fatalf("MoveShard of an open cold shard: %v", err)
+	}
+	if es.Store() != nil {
+		t.Fatal("the moved cold shard was reopened")
+	}
+	if es.cachedCounts() == nil {
+		t.Fatal("the move closed the cold shard without sealing its counts (a count would reopen it)")
+	}
+	if got := shardCopies(t, cfg, old); len(got) != 1 || got[0] != filepath.Join(cfg.WarmDir, "events", old) {
+		t.Fatalf("shard copies %v, want only the one on the warm volume", got)
+	}
+	if _, err := ts.GetNode(n.ID()); err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+}
+
+// TestMovedShardThatDoesNotReopenIsDemoted: a warm shard whose new copy is
+// gone when the move reopens it (a volume lost at that moment) is demoted to
+// cold; the move reports why, a read of the shard fails with
+// fs.ErrNotExist, and the store still takes writes. Catches a warm shard left
+// with no store (every checkout of it would get nil).
+func TestMovedShardThatDoesNotReopenIsDemoted(t *testing.T) {
+	t.Parallel()
+	ts, cfg, n, _, old, tok := warmMoveFixture(t)
+	defer func() { _ = ts.Close() }()
+	ts.SetMoveFaultForTest(func(step string) error {
+		if step == "saved" {
+			return os.Rename(filepath.Join(cfg.WarmDir, "events", old), filepath.Join(cfg.WarmDir, "lost"))
+		}
+		return nil
+	})
+	if err := ts.MoveShard(context.Background(), old, VolumeWarm); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("MoveShard = %v, want fs.ErrNotExist from the reopen", err)
+	}
+	if tier := ts.EventShardsForTest()[old].Tier(); tier != TierCold {
+		t.Fatalf("the shard is %s, want cold", tier)
+	}
+	if e, _ := ts.CatalogForTest().GetShard(old); e.Tier != TierCold {
+		t.Fatalf("catalog tier %s, want cold", e.Tier)
+	}
+	if _, err := ts.GetNode(n.ID()); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("GetNode on the lost shard = %v, want fs.ErrNotExist", err)
+	}
+	if err := ts.PutNode(types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), tok, nil)); err != nil {
+		t.Fatalf("a write to the hot shard after the failed reopen: %v", err)
+	}
+}
+
+// TestMoveWaitsForPins: a move of an open shard closes it only once the pin
+// taken before the move is returned. Catches a close under a running read or
+// write.
+func TestMoveWaitsForPins(t *testing.T) {
+	t.Parallel()
+	ts, _, _, _, old, _ := warmMoveFixture(t)
+	defer func() { _ = ts.Close() }()
+	es := ts.EventShardsForTest()[old]
+	if _, err := es.CheckoutStoreForTest(ts); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	close(release)
+	reached := holdMoveAt(ts, "copied", release)
+	moved := make(chan error, 1)
+	go func() { moved <- ts.MoveShard(context.Background(), old, VolumeWarm) }()
+	select {
+	case <-reached:
+		t.Fatal("the move copied the shard while it was pinned")
+	case err := <-moved:
+		t.Fatalf("MoveShard returned while the shard was pinned: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	es.CheckinStoreForTest()
+	if err := <-moved; err != nil {
+		t.Fatalf("MoveShard: %v", err)
+	}
+}
+
+// TestMovedWarmShardKeepsIndexes: a warm shard reopened after its move
+// carries the relationship temporal index (rebuilt in memory) and a temporal
+// index created while it was closed for the move. Catches a reopen without
+// the index sync an open shard gets.
+func TestMovedWarmShardKeepsIndexes(t *testing.T) {
+	t.Parallel()
+	ts, _, _, _, old, tok := warmMoveFixture(t)
+	defer func() { _ = ts.Close() }()
+	const relType = uint16(5)
+	if err := ts.CreateRelTemporalIndex(relType); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	reached := holdMoveAt(ts, "copied", release)
+	moved := make(chan error, 1)
+	go func() { moved <- ts.MoveShard(context.Background(), old, VolumeWarm) }()
+	awaitHold(t, reached, moved)
+	created := make(chan error, 1)
+	go func() { created <- ts.CreateTemporalIndex(tok) }()
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	if err := <-moved; err != nil {
+		t.Fatalf("MoveShard: %v", err)
+	}
+	if err := <-created; err != nil {
+		t.Fatalf("CreateTemporalIndex: %v", err)
+	}
+	store := ts.EventShardsForTest()[old].Store()
+	if types, err := store.RelTemporalIndexTypes(); err != nil || !slices.Contains(types, relType) {
+		t.Fatalf("relationship temporal indexes %v (%v), want %d", types, err, relType)
+	}
+	if has, _, _, err := store.TemporalIndexState(tok); err != nil || !has {
+		t.Fatalf("temporal index on the moved shard: %v (%v)", has, err)
 	}
 }

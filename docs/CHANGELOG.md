@@ -21,8 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   crash-safely: copy into `<volume>/events/<name>.moving-<nonce>` (fsynced, byte for byte, sparse files kept
   sparse), rename, catalog save (the commit point), source removal. A crash at any step leaves one copy after the
   next open, on the volume the catalog names; `New` removes the other (never when the named copy is missing). The
-  shard's reads and writes wait while it moves; `ctx` or `Close` stops a move before its commit. An open shard is
-  refused with `tiered.ErrShardOpen` (step 5 moves it), the hot shard always.
+  shard's reads and writes wait while it moves; `ctx` or `Close` stops a move before its commit. The hot shard is
+  refused.
+- **SHARD step 5**: an open shard moves too: its checkouts wait on the move gate, it closes once its pins drain
+  (flushing and syncing what a durable group holds), moves, and a warm one reopens from the new volume, so a write
+  during the move lands there; a shard that cannot reopen is demoted to cold (its reads report why). `DurableFlush`
+  and `ListShards` never wait for a move.
 
 ### Fixed
 

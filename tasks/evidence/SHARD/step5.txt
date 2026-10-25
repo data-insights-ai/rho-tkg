@@ -1,0 +1,12 @@
+SHARD step 5 (branch shard2), 2026-10-25
+red: TestMoveOpenColdShardStaysClosed "graph: shard is open"; the warm-shard tests hung (the move refused before its hold)
+green: TestMoveWarmShard_WriterWaitsAndWriteLandsOnNewVolume, TestDurableFlushDuringMoveDoesNotWait,
+  TestMoveOpenColdShardStaysClosed (counts sealed), TestMovedShardThatDoesNotReopenIsDemoted, TestMoveWaitsForPins,
+  TestMovedWarmShardKeepsIndexes; all step-4 tests; tiered, tier, graph, core -short ok; -race -count=3 ok
+found by TestMovedWarmShardKeepsIndexes: a deadlock (CreateTemporalIndex holds tempIdxMu waiting on the move gate; a
+  reopen that applied the tracked temporal indexes took tempIdxMu). The reopen applies none: persisted indexes reopen
+  with the shard and a waiting fan-out applies its own.
+dropped as untestable (redundant): an anchored-index sync at the reopen (fan-outs wait on the gate, never skip)
+mutations (each failed a test, hangs by the 60 s test timeout): fast-path checkout ignoring the move; open-read
+  ignoring it; open-read waiting for it; no drain; no reopen; cold shard reopened; counts not sealed; not demoted in
+  memory; moving flag never set; tracked temporal indexes applied at the reopen (deadlock)

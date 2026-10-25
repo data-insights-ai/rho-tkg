@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // The mover (ADR-0012, SHARD step 4): a closed event shard is copied file by
@@ -22,17 +23,16 @@ import (
 // was, one from it on leaves it on the new volume; the copy the catalog does
 // not name is removed at the next open (removeMoveOrphans).
 
-// ErrShardOpen is returned by MoveShard for a shard whose store is open.
-var ErrShardOpen = errors.New("graph: shard is open")
-
 // moveChunk is the copy buffer; an all-zero chunk is skipped, so a sparse
 // file stays sparse on the new volume.
 const moveChunk = 1 << 20
 
-// MoveShard moves the closed event shard name to volume (hot, warm or cold).
-// While it moves, the shard's readers and writers wait. A shard already on
-// volume is left alone. ctx, or Close, cancels a move before its catalog save
-// and leaves the shard where it was.
+// MoveShard moves the event shard name to volume (hot, warm or cold). While
+// it moves, the shard's readers and writers wait (DurableFlush and the listing
+// do not: moveGate); an open shard closes once its pins drain (its close
+// flushes and syncs it), moves, and a warm one reopens from the new volume. A
+// shard already on volume is left alone. ctx, or Close, cancels a move before
+// its catalog save and leaves the shard where it was.
 func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
 	vol, ok := parseVolume(volume)
 	if !ok {
@@ -64,16 +64,14 @@ func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
 
 	es.shardMu.Lock()
 	es.waitMoveLocked()
-	if es.store != nil {
-		es.shardMu.Unlock()
-		return fmt.Errorf("%w: %s", ErrShardOpen, name)
-	}
 	done := make(chan struct{})
 	es.moveDone = done
+	es.moving.Store(true)
 	es.shardMu.Unlock()
 	defer func() {
 		es.shardMu.Lock()
 		es.moveDone = nil
+		es.moving.Store(false)
 		close(done)
 		es.shardMu.Unlock()
 	}()
@@ -88,7 +86,65 @@ func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
 	if err := ts.moveFaultAt("gated"); err != nil {
 		return err
 	}
-	return ts.moveClosedShard(ctx, es, vol, dstRoot)
+	if err := ts.closeForMove(ctx, es); err != nil {
+		return err
+	}
+	err = ts.moveClosedShard(ctx, es, vol, dstRoot)
+	if es.currentTier() != TierCold && !ts.closing.Load() {
+		err = errors.Join(err, ts.reopenMovedShard(es))
+	}
+	return err
+}
+
+// closeForMove closes es's store once its pins drain (new checkouts wait on
+// the gate MoveShard set). A cold shard's counts are sealed first, as on its
+// idle close.
+func (ts *Store) closeForMove(ctx context.Context, es *EventShard) error {
+	for {
+		es.shardMu.Lock()
+		if es.activeReqs.Load() == 0 {
+			break
+		}
+		es.shardMu.Unlock()
+		if err := ts.moveCancelled(ctx); err != nil {
+			return err
+		}
+		time.Sleep(time.Millisecond)
+	}
+	defer es.shardMu.Unlock()
+	if es.store == nil {
+		return nil
+	}
+	sealed := es.currentTier() == TierCold && es.snapshotCountsLocked(ts)
+	if err := es.store.Close(); err != nil {
+		return fmt.Errorf("graph: MoveShard: close shard %s: %w", es.name, err)
+	}
+	es.clearStoreLocked(ts)
+	if sealed {
+		ts.saveCatalogBestEffort("seal shard counts on a move")
+	}
+	return nil
+}
+
+// reopenMovedShard reopens a warm shard after its move from the volume the
+// catalog names. Its indexes reopen with it (they are persisted in the
+// shard); an index fan-out that ran during the move waited on the gate and
+// applies itself to the reopened store (applying the tracked temporal
+// indexes here would deadlock with it on tempIdxMu). A shard that does not
+// reopen is demoted to cold, so its reads open it and report why.
+func (ts *Store) reopenMovedShard(es *EventShard) error {
+	store, err := ts.openBadgerStoreWithRecovery(es.path)
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+	if err != nil {
+		es.setTier(TierCold)
+		ts.catalog.UpdateShardTier(es.name, TierCold)
+		ts.saveCatalogBestEffort("demote a moved shard that did not reopen")
+		slog.Error("tiered: moved shard did not reopen; demoted to cold", "shard", es.name, "err", err)
+		return fmt.Errorf("graph: MoveShard: reopen shard %s: %w", es.name, err)
+	}
+	es.setStoreLocked(ts, store)
+	return nil
 }
 
 // waitMoveLocked returns once no move of es is running. Caller holds

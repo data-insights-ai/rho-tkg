@@ -69,6 +69,15 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 			es.activeReqs.Add(-1)
 			return nil, ErrStoreClosed
 		}
+		// A move closes the shard once its pins drain: wait for it, then
+		// check out whatever the shard is afterwards (shard_move.go).
+		if es.moving.Load() {
+			es.activeReqs.Add(-1)
+			es.shardMu.Lock()
+			es.waitMoveLocked()
+			es.shardMu.Unlock()
+			return es.checkoutStore(ts)
+		}
 		if es.currentTier() == TierCold {
 			es.shardMu.Lock()
 			es.waitMoveLocked()
@@ -200,17 +209,26 @@ func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), err
 // checkoutOpenStoreForRead pins an already-open shard for informational reads
 // without lazy-opening a closed cold shard or promoting a transient cold read
 // handle into a long-lived open handle.
+//
+// It never waits for a move: a moving shard is pinned while its store is still
+// open and reported closed once the move has closed it (the close flushed and
+// synced it), so DurableFlush and the listing do not stall for a copy.
 func (es *EventShard) checkoutOpenStoreForRead(ts *Store) (*BadgerStore, func(), bool, error) {
 	noop := func() {}
-	if es.currentTier() != TierCold {
-		store, err := es.checkoutStore(ts)
-		if err != nil {
-			return nil, noop, false, err
-		}
-		return store, es.checkinStore, true, nil
-	}
 	if err := ts.backgroundError(); err != nil {
 		return nil, noop, false, err
+	}
+	if es.currentTier() != TierCold {
+		es.activeReqs.Add(1)
+		if ts.closed.Load() {
+			es.activeReqs.Add(-1)
+			return nil, noop, false, ErrStoreClosed
+		}
+		if !es.moving.Load() && es.currentTier() != TierCold {
+			es.lastAccess.Store(time.Now().UnixMilli())
+			return es.store, es.checkinStore, true, nil
+		}
+		es.activeReqs.Add(-1) // moving or just demoted: the locked path below
 	}
 
 	es.shardMu.Lock()
