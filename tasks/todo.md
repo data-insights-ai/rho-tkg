@@ -85,14 +85,15 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
    the difference around it; per call needs a context the store doors do not take).
 9. [ ] The volume minor is released with its one-way door named in the CHANGELOG, and ai-soc and sigma are
    told. Done when: tagged.
+10. [ ] The global index on the fast volume, unique keys first (keyed event labels), then label and property
+    postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
+    its data cleanup.
+
 - **MOVEREAD** (found in the volume minor's review, 25 Oct) — a move makes the shard's readers and writers wait for
   its whole copy (its `DiskBytes` at the volumes' copy rate), and the sweep moves a warm shard soon after rotation.
   Done when: reads of a moving shard go on from the source during the copy (writers wait), or the measured stall is
   accepted. Waits for: ai-soc's shard sizes on disk and whether its reads and writes reach a rotated-out shard
   (asked 25 Oct); no consumer maps a volume yet.
-10. [ ] The global index on the fast volume, unique keys first (keyed event labels), then label and property
-    postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
-    its data cleanup.
 
 - **DISCARDCLOSE** (after SHARD; confirmed, low; `tasks/evidence/USAGE/discard_test.go.txt`) — The scan snapshot and the rel-type
   build walk always `Discard` their transaction; after `db.Close` up to 100 such discards return and the 101st blocks
