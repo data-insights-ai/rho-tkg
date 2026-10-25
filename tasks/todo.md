@@ -66,7 +66,8 @@ yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and M
   wants a readable counter of values left inline because a dictionary was full; pins the minor only on René's word
   after measuring a rebuilt slice. sigma (25
   Oct): nothing of sigma's in the first cut; its Derived (label, ov_cN) pairs join ai-soc's dictionaries later,
-  after sigma's KEYCOLS (René's yes to KEYENC came 25 Oct; rows written before a property is listed stay inline). RAM: decoded values interned per token (one string per
+  (25 Oct, after KEYENC's re-check): no Derived key columns for DICT (typed columns cost more than they save); only a
+  (Derived, ov_rel) dictionary pays (~82 KB), which is ai-soc's config. RAM: decoded values interned per token (one string per
   value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
   then built and released. Order (ai-soc with René's yes, 25 Oct): after SHARD step 1, before SHARD steps
   2-10; nothing in SHARD blocks it (the dictionary moves with the reference shard). ai-soc's tracker on the kit BA
@@ -234,6 +235,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **DICTMERGE** (ai-soc, 25 Oct; after DICT) — with per-shard dictionaries a value seen daily is stored once per day
   shard (~365 a year). Could cold shards share or merge their dictionaries when they move cold, so a value is stored
   once per cold volume? Done when: answered from DICT's measured per-shard dictionary bytes.
+- **PROPPOS** (sigma's question, 25 Oct; after DICT) — every stored property is a msgpack map with named fields:
+  about 12 B (map header, `kt` + uint16, `v`, `t` + type byte) before its value. A positional form ([kt, v|dt, t])
+  would cut about 7 B from every property in every store. A one-way door (a new row format). Done when: the
+  per-property overhead is measured as a share of stored bytes on a real store (ai-soc's tracker), then decided.
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each; 45 `Txn.Get` sites) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
 - **PREFETCH** — 14 iterators prefetch values (13 explicitly, plus `badgerstore_planner_stats_deferred.go:137` by
