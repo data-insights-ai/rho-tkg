@@ -144,3 +144,70 @@ func TestNewRefusesMissingHotOrReferenceShardDir(t *testing.T) {
 		})
 	}
 }
+
+// TestNewStoreMakesReferenceAndArchiveDirs pins option (b) of SHARD step 1
+// (René 23 Oct): a new store gets its reference and archive directories up
+// front, an existing one never (the reference case above fails if a reopen
+// makes them). Mutation: drop the pre-creation → archive/ is missing until the
+// first archive write.
+func TestNewStoreMakesReferenceAndArchiveDirs(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	ts, err := New(Config{DataDir: dir, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+	for _, d := range []string{"reference", "archive"} {
+		if fi, err := os.Stat(filepath.Join(dir, d)); err != nil || !fi.IsDir() {
+			t.Fatalf("new store: %s directory = %v, %v; want a directory", d, fi, err)
+		}
+	}
+}
+
+// TestMissingArchiveDirRefused is the archive twin: a store whose cataloged
+// archive directory is gone refuses to read the archived node with
+// fs.ErrNotExist (at New or at the read) and does not recreate the directory.
+// Mutation: open the archive through the creating open → GetNode answers
+// ErrNodeNotFound and archive/ is back, empty.
+func TestMissingArchiveDirRefused(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := Config{DataDir: dir, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	tok, _ := reg.GetOrCreate("Case")
+	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), tok, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := ts.ArchiveNode(n.ID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	if !ts.HasArchiveShardForTest() {
+		t.Fatal("the archive is not in the catalog after ArchiveNode")
+	}
+	if err := ts.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	archivePath := filepath.Join(dir, "archive")
+	if err := os.RemoveAll(archivePath); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := New(cfg)
+	if err == nil {
+		reopened.SetLabelRegistry(reg)
+		_, err = reopened.GetNode(n.ID())
+		_ = reopened.Close()
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("New or GetNode with the archive directory gone = %v, want fs.ErrNotExist", err)
+	}
+	if _, statErr := os.Stat(archivePath); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("the missing archive directory was recreated (stat err %v)", statErr)
+	}
+}

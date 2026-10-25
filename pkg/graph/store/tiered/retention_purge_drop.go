@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -213,7 +212,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		}
 		return zero, false, serr
 	}
-	if rerr := os.RemoveAll(filepath.Join(ts.dataDir, es.path)); rerr != nil {
+	if rerr := os.RemoveAll(ts.shardDir(es.path)); rerr != nil {
 		return zero, false, rerr
 	}
 

@@ -80,7 +80,7 @@ func (ts *Store) rotateHotShardLocked() error {
 			slog.Error("graph: rollback close new hot shard after index setup failure", "shard", newName, "error", cerr)
 		}
 		if !ts.inMemory {
-			if rerr := os.RemoveAll(filepath.Join(ts.dataDir, newDir)); rerr != nil {
+			if rerr := os.RemoveAll(ts.shardDir(newDir)); rerr != nil {
 				slog.Error("graph: rollback remove new hot shard after index setup failure", "dir", newDir, "error", rerr)
 			}
 		}
@@ -126,7 +126,7 @@ func (ts *Store) rotateHotShardLocked() error {
 				slog.Error("graph: rollback close new hot shard", "shard", newName, "error", cerr)
 			}
 			if !ts.inMemory {
-				if rerr := os.RemoveAll(filepath.Join(ts.dataDir, newDir)); rerr != nil {
+				if rerr := os.RemoveAll(ts.shardDir(newDir)); rerr != nil {
 					slog.Error("graph: rollback remove new hot shard files", "dir", newDir, "error", rerr)
 				}
 			}
@@ -350,7 +350,11 @@ func (ts *Store) openRefArchive() error {
 	if ts.refArchive.Load() != nil {
 		return nil
 	}
-	store, err := ts.openBadgerStore("archive") // writable: archive needs writes
+	openArchive := ts.openBadgerStore // writable: archive needs writes
+	if ts.hasArchiveShard() {
+		openArchive = ts.openExistingBadgerStore // cataloged: its directory must be there
+	}
+	store, err := openArchive("archive")
 	if err != nil {
 		return fmt.Errorf("graph: open ref archive: %w", err)
 	}
@@ -379,7 +383,7 @@ func (ts *Store) openRefArchive() error {
 				if cerr := store.Close(); cerr != nil {
 					rollbackErr = errors.Join(rollbackErr, fmt.Errorf("close archive store: %w", cerr))
 				}
-				if rerr := os.RemoveAll(filepath.Join(ts.dataDir, "archive")); rerr != nil {
+				if rerr := os.RemoveAll(ts.shardDir("archive")); rerr != nil {
 					rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove archive store: %w", rerr))
 				}
 				if rollbackErr != nil {

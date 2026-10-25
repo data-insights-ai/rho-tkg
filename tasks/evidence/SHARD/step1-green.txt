@@ -1,6 +1,11 @@
---- PASS: TestNewRefusesMissingHotOrReferenceShardDir (0.00s)
-    --- PASS: TestNewRefusesMissingHotOrReferenceShardDir/reference (0.26s)
-    --- PASS: TestNewRefusesMissingHotOrReferenceShardDir/hot (0.32s)
---- PASS: TestLazyOpenRefusesMissingShardDir (0.37s)
---- PASS: TestNewRefusesMissingWarmShardDir (0.44s)
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.449s
+Step 1 with option (b) (René 23 Oct): reference/ and archive/ made only for a new store (no reference shard in the catalog).
+go test -count=1 -run 'MissingShardDir|MissingWarmShardDir|MissingHotOrReference|ReferenceAndArchiveDirs|MissingArchiveDir' ./pkg/graph/store/tiered/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.527s
+go test -count=1 ./pkg/graph/store/tiered/ ./pkg/graph/store/sharded/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	61.006s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	7.886s
+
+Mutations (each restored after):
+M1 no pre-creation for a new store        -> FAIL TestNewStoreMakesReferenceAndArchiveDirs
+M2 cataloged archive opens by creating     -> FAIL TestMissingArchiveDirRefused
+M3 pre-creation on every open (variant a)  -> FAIL TestNewRefusesMissingHotOrReferenceShardDir, TestMissingArchiveDirRefused
