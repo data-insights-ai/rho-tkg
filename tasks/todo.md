@@ -12,7 +12,7 @@ in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in
 consumers build, ai-soc and sigma told; RACETIME: the isolated race packages now have 20 min; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, SHARD step 10 (René, with ai-soc's
 counts). FLAKYWAL fixed (test only); COLDRO in v4.78.3, PREFETCH in v4.78.4, DSTWIN (ai-soc's urgent rotation fault at the end of summer time) in
-v4.78.5 (CI green; v4.78.4's red CI was a timing flake, rerun green, CASCADEFLAKY fixed); TIERLABELDISK in v4.79.0 (CI green), VALUES and TKGID in v4.80.0. DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
+v4.78.5 (CI green; v4.78.4's red CI was a timing flake, rerun green, CASCADEFLAKY fixed); TIERLABELDISK in v4.79.0 (CI green), VALUES and TKGID in v4.80.0 (tagged, consumers build, sigma told; CI running). DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
 it (its rig is René's call).
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -152,9 +152,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   edges by that endpoint in one index read, as cheaply as today's estate+device property index. Done when: ai-soc
   drops the `device` text property from edges and still answers "rows of device X" in one index read. Waits for:
   FLUSHPART and SHARD.
-- **WRITTENAT** (ai-soc, 24 Oct) — ai-soc wants the nodes of one label (and one property value) written at one
-  transaction, without a scan, so its records can drop the list of changed keys. Done when: such a lookup costs
-  O(rows written at that transaction), with its write cost per row measured. Waits for: FLUSHPART and SHARD.
+- **WRITTENAT** (ai-soc, 24 Oct; withdrawn by ai-soc 26 Oct) — not built: sigma's PUBIDS gives ai-soc the ids of the
+  facts a publication wrote (Delta.Written), with no store index. Waits for: ai-soc, only if PUBIDS fails.
 
 - **IDPROPS** (sigma for ai-soc, 24 Oct; the larger form of CHAININTERN) — Immutable properties per (label, key), set
   at `AddNode`, refused by every update and cascade patch, stored once per node and attached to every version on read.
