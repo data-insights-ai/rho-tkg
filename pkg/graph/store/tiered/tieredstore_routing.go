@@ -414,3 +414,26 @@ func shardWindowStart(t time.Time, window time.Duration) time.Time {
 		return t.Truncate(window)
 	}
 }
+
+// shardWindowEnd is the end of the shard window containing t: the next
+// window's start. A daily or weekly window starts at local midnight, so its
+// end counts calendar days, not 24-hour days: a local day is 23 or 25 hours
+// long where daylight saving time begins or ends (DSTWIN; 24 h per day ended
+// Berlin's 25 October 2026 window an hour early, and a rotation in that hour
+// made a window ending before it started).
+func shardWindowEnd(t time.Time, window time.Duration) time.Time {
+	start := shardWindowStart(t, window)
+	const day = 24 * time.Hour
+	if window < day {
+		return start.Add(window)
+	}
+	return start.AddDate(0, 0, int(window/day)).Add(window % day)
+}
+
+// rotationWindow is the new hot shard's window for a rotation at now: from
+// the boundary (now + 1 ms; the old shard keeps now's millisecond) to the end
+// of the window holding the boundary, named after that window.
+func rotationWindow(now time.Time, window time.Duration) (name string, start, end time.Time) {
+	boundary := now.Truncate(time.Millisecond).Add(time.Millisecond)
+	return shardWindowName(boundary, window), boundary, shardWindowEnd(boundary, window)
+}

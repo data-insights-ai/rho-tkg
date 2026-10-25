@@ -1,0 +1,22 @@
+DSTWIN (ai-soc, Flux run k10252216, 25 Oct 2026; branch dstwin)
+report: tiered, ShardWindow 24 h; at 2026-10-25T22:00:30Z (Europe/Berlin, the day summer time ended) a commit
+  failed: "graph: save catalog after rotation: shard catalog: event shard "2026-10-25-..." has invalid time window;
+  reopen to recover"; every later commit was refused. ai-soc reproduced it locally for any tiered store opened in
+  [22:00Z, 23:00Z) that day.
+cause: a daily (or weekly) window starts at local midnight (shardWindowStart uses t's location), but its end was
+  start + 24 h (start + 168 h). Berlin's 25 Oct 2026 is 25 hours long: the window [24 Oct 22:00Z, ...) ended at
+  25 Oct 22:00Z, an hour before the next local midnight (23:00Z). A rotation at 22:00:30Z named its shard
+  "2026-10-25" (suffixed: the old one has that name), started it at the boundary 22:00:30.001Z and ended it at
+  22:00Z, before its start; the catalog validator refuses that and the rotation failed. On the 23-hour spring day
+  the window ended at 01:00 the next day, overlapping the next window's first hour.
+fix: shardWindowEnd counts calendar days (AddDate) for windows of a day or more; rotationWindow derives the new
+  shard's name and end from the boundary (now + 1 ms), so a rotation in a window's last millisecond starts the
+  next window instead of an empty one. New's hot window uses shardWindowEnd too.
+red: TestRotationWindowAcrossDST (every hour of 2026 in Europe/Berlin, America/New_York, Australia/Sydney; daily and
+  weekly): "Europe/Berlin window 24h0m0s, rotation at 2026-03-29 00:00:30 +0100 CET: window "2026-03-29" ends at
+  2026-03-30 01:00:00 +0200 CEST, the next window starts at 2026-03-30 00:00:00 +0200 CEST"; ai-soc's rotation at
+  22:00:30Z asserted to end at 23:00Z.
+mutations (each failed the test): end counted in hours; end of now's window instead of the boundary's; name of now's
+  window. Not mutation-tested: New's call (it reads the real clock and time.Local).
+recovery: a store whose hot shard was cataloged with the short end (22:00Z) reopens with it and rotates at once into
+  a valid window.

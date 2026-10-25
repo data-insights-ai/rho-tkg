@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **DSTWIN** (ai-soc, run k10252216): a tiered store whose daily or weekly shard window held a daylight-saving change
+  stopped taking commits. The window starts at local midnight but ended 24 hours (168 hours) later, so on a 25-hour
+  day a rotation in the last local hour made a shard ending before it started; the catalog refused it ("event
+  shard ... has invalid time window"). On a 23-hour day the window overlapped the next day's first hour. Window ends
+  now count calendar days, and a rotation names and ends its shard by the boundary it starts at
+  (`TestRotationWindowAcrossDST`, every hour of 2026 in three zones). A store stopped by it reopens and rotates
+  into a valid window.
+
 ## [4.78.4] - 2026-10-25
 
 ### Changed

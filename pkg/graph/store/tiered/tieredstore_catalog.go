@@ -45,15 +45,13 @@ func (ts *Store) rotateHotShardLocked() error {
 		return fmt.Errorf("graph: flush hot shard before rotation: %w", err)
 	}
 
-	// Boundary at millisecond precision + 1ms: snowflake IDs have ms resolution,
-	// so same-millisecond entities (old shard) still resolve there.
-	boundary := now.Truncate(time.Millisecond).Add(time.Millisecond)
-
-	// New shard name/location; a name colliding with the old hot shard (same
-	// window) gets a disambiguating suffix.
-	newName := shardWindowName(now, ts.shardWindow)
-	windowStart := boundary
-	windowEnd := shardWindowStart(now, ts.shardWindow).Add(ts.shardWindow)
+	// New shard name and window (rotationWindow): it starts at the boundary,
+	// now at millisecond precision + 1 ms (snowflake IDs have ms resolution, so
+	// same-millisecond entities still resolve to the old shard). A name
+	// colliding with the old hot shard (same window) gets a disambiguating
+	// suffix.
+	newName, windowStart, windowEnd := rotationWindow(now, ts.shardWindow)
+	boundary := windowStart
 	if _, exists := ts.eventShards[newName]; exists {
 		newName = fmt.Sprintf("%s-%d", newName, now.UnixNano())
 	}

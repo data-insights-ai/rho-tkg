@@ -728,7 +728,7 @@ func New(cfg Config) (*Store, error) {
 	now := time.Now()
 	hotName := shardWindowName(now, window)
 	windowStart := shardWindowStart(now, window)
-	windowEnd := windowStart.Add(window)
+	windowEnd := shardWindowEnd(now, window)
 
 	// Check if a hot shard already exists in catalog (mid-window restart).
 	openHot := ts.openBadgerStore
