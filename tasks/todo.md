@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.76.0 (2026-10-24). Background, René's open decisions with my defaults,
+What rho does next, in order. Last release: v4.76.1 (2026-10-25). Background, René's open decisions with my defaults,
 and the numbered backlog: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`, under the same tag.
 
 Each item: one sentence, then when it is done and what it waits for.
@@ -8,9 +8,8 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
-in v4.75.0 to v4.76.0 (all tagged, CI green, ai-soc and sigma told; `docs/CHANGELOG.md`). Next SHARD step 1 (a fix),
-then DICT (ai-soc with René's yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and METASYNC
-after SHARD.
+in v4.75.0 to v4.76.1 (all tagged, CI green, ai-soc and sigma told; `docs/CHANGELOG.md`). Next DICT (ai-soc with René's
+yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -74,18 +73,16 @@ after SHARD.
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Waits for: nothing (fixes shipped); BADGER step 3
-  (per-tier badger options) leads in. Step 1 with option (b) (René 23 Oct) is green on branch `shard-step1`
-  (b9944379: all shard paths through `shardDir`, a cataloged shard with a missing directory fails with
-  fs.ErrNotExist, `reference/` and `archive/` made only for a new store; 5 red tests, 3 mutations caught,
-  `tasks/evidence/SHARD/`); next its patch gate and release.
+  (per-tier badger options) leads in. Step 1 shipped in v4.76.1; DICT comes before step 2 (ai-soc with René's yes,
+  25 Oct).
 
 ### SHARD plan
 
 The main session builds and reviews each step (red test, change, tests green, self-review); a step is ticked when it
 is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
-1. [ ] A shard whose directory is missing fails to open instead of opening empty; every shard path goes through one
-   function. Done when: released as a patch (red test `TestLazyOpenRefusesMissingShardDir`).
+1. [x] A shard whose directory is missing fails to open instead of opening empty; every shard path goes through one
+   function. Released in v4.76.1 (`tasks/evidence/SHARD/`).
 2. [ ] The shard listing shows each shard's volume, path and bytes on disk. Done when: in the volume minor (red test
    `TestListShardsDiskBytesMatchesDirectory`).
 3. [ ] The config names a warm and a cold volume and where the reference shard and archive live; the catalog records
@@ -126,7 +123,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 - **RESUME** — sigma reports that a valid-time write ending exactly where an existing row starts still writes a copy
   of that row as a "resumption" row (one wasted row per rewritten step, part of CHAIN's waste). Done when: rho writes
-  no resumption row when nothing needs resuming, with the same answers, released as a patch. Waits for: SHARD step 1.
+  no resumption row when nothing needs resuming, with the same answers, released as a patch. Waits for: DICT (SHARD step 1 shipped in v4.76.1; answers already right, so it follows DICT).
 - **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
   known. Waits for: René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
