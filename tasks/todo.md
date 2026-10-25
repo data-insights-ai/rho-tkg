@@ -9,8 +9,8 @@ Each item: one sentence, then when it is done and what it waits for.
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2 (all tagged, CI green, ai-soc and sigma told; ai-soc measures
-DICT before configuring it; `docs/CHANGELOG.md`). Next BADGER step 3 / SHARD steps 3-10 (step 2
-green on branch `shard2`, step 3 in progress there; v4.77.2 CI green, consumers build); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
+DICT before configuring it; `docs/CHANGELOG.md`). Next BADGER step 3 / SHARD steps 3-10 (steps 2
+and 3 green on branch `shard2`; v4.77.2 CI green, consumers build); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -60,7 +60,9 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
    blocks, as `du` counts them, since an open shard's value log is a sparse 2 GB file.
 3. [ ] The config names a warm and a cold volume and where the reference shard and archive live; the catalog records
    each shard's volume and refuses an unknown one. Done when: in the volume minor (red tests
-   `TestShardOpensFromItsVolume`, `TestUnmappedVolumeFailsNew`, `TestSentinelRejectedByOldValidator`).
+   `TestShardOpensFromItsVolume`, `TestUnmappedVolumeFailsNew`, `TestSentinelRejectedByOldValidator`). Green on branch
+   `shard2` (`tasks/evidence/SHARD/step3.txt`): the sentinel is written whenever a shard is off hot (also a new store's
+   reference shard or archive), and v4.77.2 refuses such a store and writes nothing.
 4. [ ] A closed shard moves to another volume crash-safely. Done when: in the volume minor (red tests: the crash
    matrix after copy, rename, catalog save and removal; a drop of a moved shard removes it there).
 5. [ ] An open warm shard moves too: its readers and writers wait, nothing written is lost. Done when: in the volume
