@@ -319,7 +319,7 @@ Wire format and backup naming: [persistence.md](persistence.md).
 
 **Tiered store** (`g.Tier()` methods return `ErrNotTieredStore` on other backends; configuration and semantics in [persistence.md](persistence.md) "Tiered Persistence"):
 - `Archive(id)` / `Restore(id)` move a reference node between the reference shard and the archive with its rels.
-- `ForceRotate()` rotates the hot shard transactionally. `ListShards()` returns `[]ShardInfo`. `RebuildCatalog()`, `Repair()` (fixes cross-shard split writes), `VerifyShard(name)` (`tx.VerifyShard` inside a transaction).
+- `ForceRotate()` rotates the hot shard transactionally. `ListShards()` returns `[]ShardInfo`, each with its volume, directory and bytes on disk (`DiskBytes`: the blocks its files hold, as `du` counts them, so an open shard's sparse 2 GB value log counts only what it holds; -1 when the directory cannot be read; none in memory). `RebuildCatalog()`, `Repair()` (fixes cross-shard split writes), `VerifyShard(name)` (`tx.VerifyShard` inside a transaction).
 - `tiered.Config.RelsByMint` places a rel between two reference nodes on the event shard of its mint instant (cold mint shard: reference shard, counted by `RelsByMintFallbacks()`); adjacency reads of reference nodes then honour `QueryOpts.Depth` via `ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt`. `tiered.Config.AdjacencyIndexOnDisk` drops per-node adjacency maps for a pending-write scan per hot-shard read. `tiered.Config.SyncWrites` syncs every writable shard.
 
 ### Migration

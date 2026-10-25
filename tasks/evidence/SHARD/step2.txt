@@ -1,0 +1,5 @@
+SHARD step 2 (branch shard2), 2026-10-25
+red: go vet ./pkg/graph/store/tiered -> si.Volume undefined (ShardInfo has no Volume/Path/DiskBytes)
+green: TestListShardsDiskBytesMatchesDirectory, TestListShardsInMemoryHasNoDisk, TestListShardsMissingDirIsUnknownBytes pass; tiered -short ok; -race -count=3 ok
+mutations (each failed a test): apparent size for DiskBytes; missing dir as 0; no in-memory branch; event shard path wrong; MANIFEST skipped
+cross-build: darwin, freebsd, windows ok (fileDiskBytes off unix = file size)

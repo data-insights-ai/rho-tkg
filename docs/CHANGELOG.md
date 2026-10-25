@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **SHARD step 2**: `ListShards` reports each shard's `Volume` (`hot` until the warm and cold volumes come),
+  `Path` (its directory) and `DiskBytes`, the blocks its files hold as `du` counts them (an open shard's value log
+  is a sparse 2 GB file), -1 when the directory cannot be read (a lost volume), without opening a closed shard.
+
 ## [4.77.2] - 2026-10-25
 
 ### Fixed

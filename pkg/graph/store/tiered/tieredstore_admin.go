@@ -20,6 +20,9 @@ type ShardInfo struct {
 	Rels      int  // live count from open store, 0 if closed
 	Open      bool // whether the store is currently open
 	Verified  bool
+	Volume    string // VolumeHot; "" in memory
+	Path      string // the shard's directory; "" in memory
+	DiskBytes int64  // blocks its files hold on disk (du); -1 when the directory cannot be read
 }
 
 // VerifyResult holds the outcome of a per-shard hash chain verification.
@@ -59,6 +62,7 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 		tier      ShardTier
 		timeStart time.Time
 		timeEnd   time.Time
+		path      string
 		wasOpen   bool
 	}
 
@@ -74,6 +78,7 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 			tier:      es.currentTier(),
 			timeStart: es.timeStart,
 			timeEnd:   es.timeEnd,
+			path:      es.path,
 			wasOpen:   wasOpen,
 		})
 	}
@@ -100,6 +105,7 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 		Rels:     refRels,
 		Verified: refEntry != nil && refEntry.Verified,
 	}
+	refInfo.Volume, refInfo.Path, refInfo.DiskBytes = ts.shardDisk("reference")
 	infos = append(infos, refInfo)
 
 	// Archive shard (if open or in catalog). Pin via checkoutArchive so a
@@ -126,10 +132,11 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 			Rels:     archRels,
 			Verified: archiveEntry != nil && archiveEntry.Verified,
 		}
+		archiveInfo.Volume, archiveInfo.Path, archiveInfo.DiskBytes = ts.shardDisk("archive")
 		infos = append(infos, archiveInfo)
 	} else if ts.hasArchiveShard() {
 		archiveEntry, _ := ts.catalog.GetShard("archive") // (ShardEntry, bool) — bool discarded
-		infos = append(infos, ShardInfo{
+		archiveInfo := ShardInfo{
 			Name:     "archive",
 			Kind:     ShardArchive,
 			Tier:     TierCold,
@@ -137,7 +144,9 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 			Nodes:    approxNodes(archiveEntry),
 			Rels:     approxRels(archiveEntry),
 			Verified: archiveEntry != nil && archiveEntry.Verified,
-		})
+		}
+		archiveInfo.Volume, archiveInfo.Path, archiveInfo.DiskBytes = ts.shardDisk("archive")
+		infos = append(infos, archiveInfo)
 	}
 
 	// Event shards. For each shard observed open in the snapshot, take a
@@ -157,6 +166,7 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 			Nodes:     approxNodes(entry),
 			Rels:      approxRels(entry),
 		}
+		si.Volume, si.Path, si.DiskBytes = ts.shardDisk(sn.path)
 		if sn.wasOpen {
 			store, release, open, err := sn.es.checkoutOpenStoreForRead(ts)
 			if err == nil && open {
