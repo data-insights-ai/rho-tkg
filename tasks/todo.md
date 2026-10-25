@@ -65,8 +65,7 @@ yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and M
   caps 4x the full-store counts (ample: its shards are days); one shared `action` dictionary, the rest as grouped;
   wants a readable counter of values left inline because a dictionary was full; pins the minor only on René's word
   after measuring a rebuilt slice. sigma (25
-  Oct): nothing of sigma's in the first cut; its Derived (label, ov_cN) pairs join ai-soc's dictionaries later,
-  (25 Oct, after KEYENC's re-check): no Derived key columns for DICT (typed columns cost more than they save); only a
+  Oct): nothing of sigma's in the first cut; after KEYENC's re-check (25 Oct) no Derived key columns for DICT (typed columns cost more than they save); only a
   (Derived, ov_rel) dictionary pays (~82 KB), which is ai-soc's config. RAM: decoded values interned per token (one string per
   value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
   then built and released. Order (ai-soc with René's yes, 25 Oct): after SHARD step 1, before SHARD steps
