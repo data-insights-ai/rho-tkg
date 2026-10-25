@@ -8,8 +8,8 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
-in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, consumers
-build, ai-soc and sigma told; CI running; the badger race package took 582 of its 600 s in the gate; ai-soc
+in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
+consumers build, ai-soc and sigma told; the badger race package took 582 of its 600 s in the gate; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, MOVEREAD (after ai-soc's shard
 sizes), SHARD step 10 (after ai-soc's measurement); then DROPALL, DISCARDCLOSE and METASYNC.
 
@@ -97,6 +97,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **DISCARDCLOSE** (after SHARD; confirmed, low; `tasks/evidence/USAGE/discard_test.go.txt`) — The scan snapshot and the rel-type
   build walk always `Discard` their transaction; after `db.Close` up to 100 such discards return and the 101st blocks
   forever. Done when: they skip `Discard` after `Close` as the read snapshot does, tested with 101.
+  Green on branch `discardclose` (`tasks/evidence/DISCARDCLOSE/fix.txt`); released with DROPALL as a patch.
 - **DROPALL** (after SHARD) — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
   read snapshots may hold a badger transaction; measured at rho level (`tasks/evidence/USAGE/dropall_rho_test.go.txt`):
   a GetNode that found the key of a 1.4 MB row before `Clear` fails with "corrupt wire data" (badger swallows the
