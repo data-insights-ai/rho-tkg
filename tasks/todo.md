@@ -57,8 +57,12 @@ after SHARD.
   slice (25 Oct): 2,207,339 B of 7,852,216 B of stored values (>= 8 B) are copies, about 900 KB of them one value
   repeated across rows of one property: `action` 186,354 B (NETFIRST, NETWORK, FILE, REGISTRY); `folder` (FILE,
   PROCESS), `reg_key`, `cmdline`, `request_sid`, and `local_ip`/`remote_ip`/`account_sid` on NETFIRST/NETWORK
-  714,640 B; asked for the final list with distinct counts per property (the caps). Rows written before the opt-in
-  stay inline. Coding is a per-property opt-in list in the
+  714,640 B. ai-soc's list (25 Oct; rows/distinct on the kit slice, full 12-day store): `action` on NETFIRST,
+  NETWORK, FILE, REGISTRY, IMAGELOAD, DNSQUERY (<= 14 distinct); shared `remote_ip` (NETFIRST+NETWORK, 24,608) and
+  `local_ip` (7,933); one `account_sid` dictionary over NETFIRST/NETWORK/FILE/PROCESS/REGISTRY `account_sid` and
+  FILE.`request_sid` (~2,200); PROCESS.`account` (2,796); shared `folder` (FILE 45,507, PROCESS, IMAGELOAD);
+  REGISTRY.`reg_key` (23,095); PROCESS.`cmdline` (61,259, 2.8 rows per value) only if it pays. Caps: a multiple of
+  the full-store counts (the estate grows). Rows written before the opt-in stay inline. Coding is a per-property opt-in list in the
   config (ai-soc: explicit, testable per property, no high-cardinality property coded by accident), with a cap per
   property falling back to inline values. First list: `action`, `aisoc_source` (every edge type); `estate`;
   `local_ip`, `remote_ip`, `account_sid` on NETWORK/NETFIRST/LOGON/FILE/PROCESS/REGISTRY; `src`, `dst`, `service`
@@ -70,8 +74,10 @@ after SHARD.
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Waits for: nothing (fixes shipped); BADGER step 3
-  (per-tier badger options) leads in; step 1 with option (b), pre-creating `reference/` and `archive/` only for a new
-  store (René 23 Oct), from branch `shard-step1`.
+  (per-tier badger options) leads in. Step 1 with option (b) (René 23 Oct) is green on branch `shard-step1`
+  (b9944379: all shard paths through `shardDir`, a cataloged shard with a missing directory fails with
+  fs.ErrNotExist, `reference/` and `archive/` made only for a new store; 5 red tests, 3 mutations caught,
+  `tasks/evidence/SHARD/`); next its patch gate and release.
 
 ### SHARD plan
 
