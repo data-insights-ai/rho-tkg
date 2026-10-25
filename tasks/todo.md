@@ -10,7 +10,7 @@ Each item: one sentence, then when it is done and what it waits for.
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2 (all tagged, CI green, ai-soc and sigma told; ai-soc measures
 DICT before configuring it; `docs/CHANGELOG.md`). Next BADGER step 3 / SHARD steps 3-10 (steps 2
-to 7 green on branch `shard2`; v4.77.2 CI green, consumers build); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
+to 8 green on branch `shard2`; v4.77.2 CI green, consumers build); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -80,6 +80,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
    lock on the reference shard (unix only).
 8. [ ] Each read reports how many cold shards it opened. Done when: in the volume minor (red test: a closed cold
    shard counts once, a retained one not).
+   Green on branch `shard2` (`tasks/evidence/SHARD/step8.txt`): `ShardInfo.ColdOpens` per shard (a read's opens are
+   the difference around it; per call needs a context the store doors do not take).
 9. [ ] The volume minor is released with its one-way door named in the CHANGELOG, and ai-soc and sigma are
    told. Done when: tagged.
 10. [ ] The global index on the fast volume, unique keys first (keyed event labels), then label and property
@@ -161,9 +163,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 - **IDPROPS** (sigma for ai-soc, 24 Oct; the larger form of CHAININTERN) — Immutable properties per (label, key), set
   at `AddNode`, refused by every update and cascade patch, stored once per node and attached to every version on read.
-  A new door (a minor) and a format change (a one-way door). Waits for: ai-soc's on-disk product (Derived versions
-  beyond each node's first x about 146 B, against 818.6 MB of stored values, run k10251802, due tonight), then René.
-  CHAININTERN, its heap form, is withdrawn: decoded history is 0.31 % of the heap (101.1 of 32,565.5 MB, ai-soc,
+  A new door (a minor) and a format change (a one-way door). Waits for: René.
+  Measured (ai-soc, 25 Oct, run k10251802 after KEYBIN and DICT): 470,239 older Derived versions carry 13.2 MB of
+  identity (28 B binary keys), 1.6 % of 818.6 MB stored values. Recommendation to René: withdraw (a one-way door
+  for 1.6 %). CHAININTERN, its heap form, is withdrawn: decoded history is 0.31 % of the heap (101.1 of 32,565.5 MB, ai-soc,
   heap-end profile of run k10251802, 25 Oct). WBA-8 (sigma, 52,031 duplicate rows) was RESUME, fixed in v4.77.1. Design answer to
   sigma (24 Oct): an identity freezes from its declaration on; sigma restructures Derived identities (key terms as
   typed columns plus an int hash, the DerivedPage shape) with ordinary writes first, then declares. No re-key door
