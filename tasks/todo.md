@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.77.1 (2026-10-25). Background, René's open decisions with my defaults,
+What rho does next, in order. Last release: v4.77.2 (2026-10-25). Background, René's open decisions with my defaults,
 and the numbered backlog: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`, under the same tag.
 
 Each item: one sentence, then when it is done and what it waits for.
@@ -8,14 +8,9 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
-in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1 (all tagged, CI green, ai-soc and sigma told; LONGTIER's test fixes on main, `[Unreleased]`; ai-soc measures
-DICT before configuring it; `docs/CHANGELOG.md`). Next ARM32 (a fix, first), then BADGER step 3 / SHARD steps 3-10 (step 2
+in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2 (all tagged, CI green, ai-soc and sigma told; ai-soc measures
+DICT before configuring it; `docs/CHANGELOG.md`). Next BADGER step 3 / SHARD steps 3-10 (step 2
 green on branch `shard2`); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
-
-- **ARM32** — the library no longer builds for 32-bit targets since DICT (v4.77.0): `vdictMaxEntries` (`math.MaxUint32 - 1`)
-  overflows `int` in `badgerstore_value_dict.go`; v4.76.1 built on `GOARCH=arm` and `386`. Done when: released as a
-  patch with a 32-bit build in `make build`. Waits for: nothing. Fixed on branch `arm32` (red: `make build` for
-  `linux/386`); releasing as v4.77.2 with LONGTIER.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.

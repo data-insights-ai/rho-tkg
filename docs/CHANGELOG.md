@@ -6,8 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.77.2] - 2026-10-25
+
 ### Fixed
 
+- **ARM32**: the library builds for 32-bit targets again (`GOARCH=386`, `arm`); since DICT (v4.77.0) the value
+  dictionary's entry bound `vdictMaxEntries` overflowed `int` there. `make build` now also builds for `linux/386`.
 - **LONGTIER** (tests only): the long tier (`go test` without `-short`) of the badger package passes again. The two
   revert-to-stock WAL tests (`TestBadgerMigrateOversizedWALCoversRevertToStock`,
   `TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock`) failed since FLUSHPART (v4.75.0): their fixture wrote
