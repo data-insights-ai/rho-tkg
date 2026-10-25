@@ -60,8 +60,11 @@ yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and M
   shards, so indexes, filters and `@source` see the plain value. Acceptance: the same writes with and without the
   list give equal answers on every read door, history and index probe; the bytes per property from a store meter.
   `cmdline` pays: on the kit slice 49,006 B of copies over 699 repeats is ~70 B a value, a token saves ~66 B a repeat
-  (full store ~108,600 repeats, ~7 MB). Design sent to ai-soc and sigma (25 Oct); waiting for ai-soc's review, the
-  caps (default 4x its full-store counts) and whether it writes these properties through sharded too. sigma (25
+  (full store ~108,600 repeats, ~7 MB). Design sent to ai-soc and sigma (25 Oct). ai-soc's review (25 Oct): agreed;
+  tiered only (one tiered store, day shards via RelsByMint; no sharded writes), so the first cut is badger + tiered;
+  caps 4x the full-store counts (ample: its shards are days); one shared `action` dictionary, the rest as grouped;
+  wants a readable counter of values left inline because a dictionary was full; pins the minor only on René's word
+  after measuring a rebuilt slice. sigma (25
   Oct): nothing of sigma's in the first cut; its Derived (label, ov_cN) pairs join ai-soc's dictionaries later,
   after sigma's KEYCOLS (René's yes to KEYENC came 25 Oct; rows written before a property is listed stay inline). RAM: decoded values interned per token (one string per
   value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
@@ -209,6 +212,9 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   sigma (24 Oct): an identity freezes from its declaration on; sigma restructures Derived identities (key terms as
   typed columns plus an int hash, the DerivedPage shape) with ordinary writes first, then declares. No re-key door
   unless a need after the declaration appears.
+- **DICTMERGE** (ai-soc, 25 Oct; after DICT) — with per-shard dictionaries a value seen daily is stored once per day
+  shard (~365 a year). Could cold shards share or merge their dictionaries when they move cold, so a value is stored
+  once per cold volume? Done when: answered from DICT's measured per-shard dictionary bytes.
 - **GETWALK** — Entity reads on a cache miss, history version and anchor reads and committed-stamp reads use point gets
   (about 4x the row each; 45 `Txn.Get` sites) where a forward walk costs almost nothing (rule 2). Done when: the hot paths walk, measured.
 - **PREFETCH** — 14 iterators prefetch values (13 explicitly, plus `badgerstore_planner_stats_deferred.go:137` by
