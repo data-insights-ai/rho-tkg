@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
-consumers build, ai-soc and sigma told; the badger race package took 582 of its 600 s in the gate; ai-soc
+consumers build, ai-soc and sigma told; RACETIME: the isolated race packages now have 20 min; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, MOVEREAD (after ai-soc's shard
 sizes), SHARD step 10 (after ai-soc's measurement). DISCARDCLOSE and DROPALL in v4.78.1 (CI running); METASYNC's docs on
 main.
