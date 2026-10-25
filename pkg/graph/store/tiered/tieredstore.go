@@ -96,7 +96,9 @@ type Config struct {
 	MaxOpenColdShards int
 	// IdleTimeout closes idle cold shards after this duration. 0 = never close.
 	// InMemory stores never close a cold shard (its store is the only copy).
-	// Default: 5 minutes when ColdAfter > 0. If set, must be at least 1ms.
+	// Default: 5 minutes when ColdAfter > 0 or WarmDir or ColdDir is set (the
+	// idle sweep also moves shards to their tier's volume). If set, must be at
+	// least 1ms.
 	IdleTimeout time.Duration
 	// Compression sets the SSTable compression algorithm for all shards.
 	// options.Snappy or options.ZSTD. options.None is the zero value and so
@@ -225,6 +227,7 @@ type EventShard struct {
 	readTransientOpen bool          // shardMu-protected: cold store was opened only for transient read fanout
 	moveDone          chan struct{} // shardMu-protected: non-nil while MoveShard moves the shard; closed when it ends
 	moving            atomic.Bool   // set with moveDone: the lock-free checkout of an open shard backs off to the gate
+	moveFailedAt      atomic.Int64  // when the idle sweep's last move of the shard failed (unix ns; 0 = never): it retries the others first
 	coldCounted       bool          // shardMu-protected: this shard's open store is counted in Store.openColdShards
 
 	// counts is what this shard held when it was last closed, so counting
@@ -553,7 +556,7 @@ func New(cfg Config) (*Store, error) {
 		maxOpenCold = 0
 	}
 	idleTimeout := cfg.IdleTimeout
-	if idleTimeout == 0 && cfg.ColdAfter > 0 {
+	if idleTimeout == 0 && (cfg.ColdAfter > 0 || cfg.WarmDir != "" || cfg.ColdDir != "") {
 		idleTimeout = 5 * time.Minute
 	}
 	if idleTimeout < 0 {

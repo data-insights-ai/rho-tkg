@@ -270,3 +270,73 @@ func TestTieredPrimaryLabelClassMutationRejectedAllDoors(t *testing.T) {
 		t.Fatalf("event unreadable after rejected flip: %v", err)
 	}
 }
+
+// TestTierMoveShard pins the g.Tier().MoveShard door (SHARD step 6): it moves
+// a rotated-out shard to the warm volume, whose rows still read; an unknown
+// volume is refused; a graph not on a tiered store and a closed graph refuse
+// it. Catches a door that does not reach the store.
+func TestTierMoveShard(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ts, err := tieredpkg.New(tieredpkg.Config{
+		DataDir:       t.TempDir(),
+		WarmDir:       t.TempDir(),
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatalf("tiered.New: %v", err)
+	}
+	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12, Store: ts})
+	if err != nil {
+		t.Fatalf("graph.New: %v", err)
+	}
+	ev, err := g.Nodes().Add(ctx, []string{"Signal"}, nil)
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if err := g.Tier().ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate: %v", err)
+	}
+	shards, err := g.Tier().ListShards()
+	if err != nil {
+		t.Fatalf("ListShards: %v", err)
+	}
+	name := ""
+	for _, s := range shards {
+		if s.Kind == tieredpkg.ShardEvent && s.Tier == tieredpkg.TierWarm {
+			name = s.Name
+		}
+	}
+	if err := g.Tier().MoveShard(ctx, name, "ssd"); err == nil {
+		t.Fatal("MoveShard to an unknown volume succeeded")
+	}
+	if err := g.Tier().MoveShard(ctx, name, tieredpkg.VolumeWarm); err != nil {
+		t.Fatalf("MoveShard: %v", err)
+	}
+	shards, err = g.Tier().ListShards()
+	if err != nil {
+		t.Fatalf("ListShards: %v", err)
+	}
+	for _, s := range shards {
+		if s.Name == name && s.Volume != tieredpkg.VolumeWarm {
+			t.Fatalf("shard %s is on %s after MoveShard, want warm", name, s.Volume)
+		}
+	}
+	if _, err := g.Nodes().Get(ctx, ev.ID()); err != nil {
+		t.Fatalf("Get after the move: %v", err)
+	}
+	g.Close()
+	if err := g.Tier().MoveShard(ctx, name, tieredpkg.VolumeHot); !errors.Is(err, graphpkg.ErrGraphClosed) {
+		t.Fatalf("MoveShard on a closed graph = %v, want ErrGraphClosed", err)
+	}
+	mem, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12})
+	if err != nil {
+		t.Fatalf("graph.New: %v", err)
+	}
+	defer mem.Close()
+	if err := mem.Tier().MoveShard(ctx, name, tieredpkg.VolumeWarm); !errors.Is(err, graphpkg.ErrNotTieredStore) {
+		t.Fatalf("MoveShard on a non-tiered graph = %v, want ErrNotTieredStore", err)
+	}
+}

@@ -412,7 +412,8 @@ func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 }
 
 // idleCloseLoop periodically checks cold shards and closes those that have been
-// idle longer than IdleTimeout. Runs every IdleTimeout/2. Stopped via closeCh.
+// idle longer than IdleTimeout, then moves one shard to its tier's volume.
+// Runs every IdleTimeout/2. Stopped via closeCh.
 func (ts *Store) idleCloseLoop() {
 	tick := time.NewTicker(ts.idleTimeoutValue() / 2)
 	defer tick.Stop()
@@ -427,6 +428,7 @@ func (ts *Store) idleCloseLoop() {
 			// reclaimed here rather than at check-in, so this is what keeps a
 			// scan across a years-old store from holding every shard open.
 			ts.enforceColdShardCap()
+			ts.sweepMoveOne()
 		}
 	}
 }

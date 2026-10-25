@@ -381,3 +381,63 @@ func (ts *Store) removeMoveOrphans() {
 		}
 	}
 }
+
+// volumeRank orders the catalog volumes from fast to slow.
+func volumeRank(v string) int {
+	switch v {
+	case VolumeWarm:
+		return 1
+	case VolumeCold:
+		return 2
+	}
+	return 0
+}
+
+// sweepVolume is the catalog volume the idle sweep moves a shard of tier to:
+// the tier's own, or the next faster one the config maps (a cold shard goes
+// to warm when only WarmDir is set); a hot shard stays on hot.
+func (ts *Store) sweepVolume(tier ShardTier) string {
+	switch {
+	case tier == TierCold && ts.coldDir != "":
+		return VolumeCold
+	case tier != TierHot && ts.warmDir != "":
+		return VolumeWarm
+	}
+	return ""
+}
+
+// sweepMoveOne is the idle sweep's move (ADR-0012): of the event shards on a
+// faster volume than their tier's, it moves the one whose last failed move is
+// oldest (one never failed first), then the oldest, a step down to
+// sweepVolume; a shard on a slower volume (moved there by hand) stays. A
+// failed move is logged and retried on a later tick, never recorded as the
+// store's background error.
+func (ts *Store) sweepMoveOne() {
+	if ts.inMemory {
+		return
+	}
+	var (
+		pick   *EventShard
+		target string
+	)
+	ts.mu.RLock()
+	for _, entry := range ts.catalog.EventShards() {
+		vol := ts.sweepVolume(entry.Tier)
+		es := ts.eventShards[entry.Name]
+		if es == nil || volumeRank(vol) <= volumeRank(entry.Volume) {
+			continue
+		}
+		if pick == nil || es.moveFailedAt.Load() < pick.moveFailedAt.Load() ||
+			es.moveFailedAt.Load() == pick.moveFailedAt.Load() && es.timeStart.Before(pick.timeStart) {
+			pick, target = es, vol
+		}
+	}
+	ts.mu.RUnlock()
+	if pick == nil {
+		return
+	}
+	if err := ts.MoveShard(context.Background(), pick.name, target); err != nil {
+		pick.moveFailedAt.Store(time.Now().UnixNano())
+		slog.Error("graph: idle sweep: move shard (retried on a later tick)", "shard", pick.name, "volume", target, "error", err)
+	}
+}

@@ -27,6 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (flushing and syncing what a durable group holds), moves, and a warm one reopens from the new volume, so a write
   during the move lands there; a shard that cannot reopen is demoted to cold (its reads report why). `DurableFlush`
   and `ListShards` never wait for a move.
+- **SHARD step 6**: each idle-sweep tick moves one shard a step down to its tier's volume (a warm shard to the warm
+  volume, a cold one to the cold volume, or to warm when only `WarmDir` is set), the oldest first; a shard already on
+  a slower volume (moved there by hand) stays. A failed move is logged and retried on a later tick after the other
+  shards, never recorded as the store's error. `IdleTimeout` defaults to 5 minutes also when `WarmDir` or `ColdDir`
+  is set, so the sweep runs. `g.Tier().MoveShard(ctx, name, volume)` is the door.
 
 ### Fixed
 

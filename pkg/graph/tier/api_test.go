@@ -1,6 +1,7 @@
 package tier
 
 import (
+	"context"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -38,6 +39,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if again[0].Name != "hot" {
 		t.Fatalf("mutating ListShards result changed ops shards: %+v", again)
 	}
+	if err := api.MoveShard(context.Background(), "2026-W43", "warm"); err != nil {
+		t.Fatalf("MoveShard: %v", err)
+	}
 	if err := api.RebuildCatalog(); err != nil {
 		t.Fatalf("RebuildCatalog: %v", err)
 	}
@@ -56,12 +60,13 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		t.Fatal("VerifyShard returned nil result")
 	}
 
-	if ops.archiveID != nodeID || ops.restoreID != nodeID || ops.verifyShard != "archive" {
-		t.Fatalf("forwarded args = archive %d restore %d shard %q", ops.archiveID, ops.restoreID, ops.verifyShard)
+	if ops.archiveID != nodeID || ops.restoreID != nodeID || ops.verifyShard != "archive" ||
+		ops.moveShard != [2]string{"2026-W43", "warm"} {
+		t.Fatalf("forwarded args = archive %d restore %d shard %q move %q", ops.archiveID, ops.restoreID, ops.verifyShard, ops.moveShard)
 	}
 	if ops.archiveCalls != 1 || ops.restoreCalls != 1 || ops.forceRotateCalls != 1 ||
 		ops.listShardsCalls != 2 || ops.rebuildCatalogCalls != 1 || ops.repairCalls != 1 ||
-		ops.verifyShardCalls != 1 {
+		ops.verifyShardCalls != 1 || ops.moveShardCalls != 1 {
 		t.Fatalf("unexpected call counts: %+v", ops)
 	}
 }
@@ -71,6 +76,7 @@ type tierOpsSpy struct {
 	restoreID types.NodeID
 
 	verifyShard string
+	moveShard   [2]string
 	shards      []tiered.ShardInfo
 
 	archiveCalls        int
@@ -80,6 +86,7 @@ type tierOpsSpy struct {
 	rebuildCatalogCalls int
 	repairCalls         int
 	verifyShardCalls    int
+	moveShardCalls      int
 }
 
 func (s *tierOpsSpy) Archive(id types.NodeID) error {
@@ -105,6 +112,12 @@ func (s *tierOpsSpy) ListShards() ([]tiered.ShardInfo, error) {
 		s.shards = []tiered.ShardInfo{{Name: "hot"}}
 	}
 	return s.shards, nil
+}
+
+func (s *tierOpsSpy) MoveShard(_ context.Context, name, volume string) error {
+	s.moveShardCalls++
+	s.moveShard = [2]string{name, volume}
+	return nil
 }
 
 func (s *tierOpsSpy) RebuildCatalog() error {

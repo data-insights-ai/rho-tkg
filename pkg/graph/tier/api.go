@@ -1,6 +1,7 @@
 // Package tier is a sub-API accessor for tiered.Store-specific operations:
 // reference-archive (Archive/Restore), hot/warm rotation (ForceRotate),
-// shard inspection (ListShards/VerifyShard), and consistency repair
+// shard inspection (ListShards/VerifyShard), moving a shard to another volume
+// (MoveShard), and consistency repair
 // (RebuildCatalog/Repair).
 //
 // Every method on this sub-API returns graph.ErrNotTieredStore when the
@@ -11,6 +12,8 @@
 package tier
 
 import (
+	"context"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -23,6 +26,7 @@ type Ops interface {
 	Restore(id types.NodeID) error
 	ForceRotate() error
 	ListShards() ([]tiered.ShardInfo, error)
+	MoveShard(ctx context.Context, name, volume string) error
 	RebuildCatalog() error
 	Repair() (*tiered.RepairResult, error)
 	VerifyShard(shardName string) (*tiered.VerifyResult, error)
@@ -82,6 +86,16 @@ func (a *API) ListShards() ([]tiered.ShardInfo, error) {
 		return nil, err
 	}
 	return apiutil.CloneSlice(shards), nil
+}
+
+// MoveShard moves the event shard name to volume ("hot", "warm" or "cold",
+// which the store's config maps): see tiered.Store.MoveShard.
+func (a *API) MoveShard(ctx context.Context, name, volume string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.MoveShard(ctx, name, volume)
 }
 
 // RebuildCatalog reconstructs the shard catalog from live state.

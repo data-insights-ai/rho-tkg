@@ -1,0 +1,13 @@
+SHARD step 6 (branch shard2), 2026-10-25
+red: TestSweepMovesWarmToWarmDirAndColdToColdDir, TestMoverErrorIsNotStoreWide, TestSweepVolume,
+  TestSweepRunsOnTheIdleLoop (no sweep: build failed on sweepMoveOne); TestTierMoveShard, TestAPIForwardsEveryMethod
+  (no MoveShard door)
+green: those; all step-4/5 tests; tiered, tier, core, graph -short ok; -race -count=3 of the move tests ok; make build
+  (amd64 and 386) ok
+rule: the sweep moves only a step down (to a slower volume), so a shard moved by hand to a slower volume stays
+dropped as redundant: a hot-shard skip in the sweep (the hot tier's volume is hot, so it is never a candidate)
+mutations (each failed a test): sweep not called by the idle loop; IdleTimeout not defaulted when a volume is
+  mapped; moving up too; newest first; failed shard not ordered last; failure time not recorded; failure recorded
+  as background error; cold shard not sent to warm when only WarmDir is set; hot tier sent to warm; cold ignoring an
+  unmapped ColdDir; every candidate moved in one tick; core door not forwarding; door not refusing a non-tiered
+  graph; door without its closed check (store error instead of ErrGraphClosed)

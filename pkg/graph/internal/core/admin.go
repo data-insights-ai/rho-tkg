@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
@@ -14,6 +15,7 @@ type tieredAdminStore interface {
 	RestoreNode(types.NodeID) error
 	ForceRotate() error
 	ListShards() ([]tiered.ShardInfo, error)
+	MoveShard(context.Context, string, string) error
 	RebuildCatalog() error
 	RunRepair() (*tiered.RepairResult, error)
 	VerifyShard(tiered.HashChainVerifier, string) (*tiered.VerifyResult, error)
@@ -137,6 +139,23 @@ func (a *AdminOps) ForceRotate() error {
 	}
 	if ts, ok := c.store.(tieredAdminStore); ok {
 		return ts.ForceRotate()
+	}
+	return ErrNotTieredStore
+}
+
+// MoveShard moves the event shard name to volume (hot, warm or cold): see
+// tiered.Store.MoveShard. Only available with tiered.Store.
+//
+// Concurrency: takes no graph lock. The store orders the move against its
+// readers, writers, Reset and Close itself (the idle sweep moves shards the
+// same way), and a Close stops a running move instead of waiting for its copy.
+func (a *AdminOps) MoveShard(ctx context.Context, name, volume string) error {
+	c := a.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if ts, ok := c.store.(tieredAdminStore); ok {
+		return ts.MoveShard(ctx, name, volume)
 	}
 	return ErrNotTieredStore
 }

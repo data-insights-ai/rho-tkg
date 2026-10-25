@@ -641,3 +641,177 @@ func TestMovedWarmShardKeepsIndexes(t *testing.T) {
 		t.Fatalf("temporal index on the moved shard: %v (%v)", has, err)
 	}
 }
+
+// sweepFixture is a store with a warm and a cold volume and two rotated-out
+// shards on hot, each holding one node: the older demoted to cold, the newer
+// warm. It returns the store, the nodes and the shard names, older first.
+func sweepFixture(t *testing.T) (*Store, [2]*types.Node, [2]string) {
+	t.Helper()
+	ts, err := New(volumeCfg(t.TempDir(), t.TempDir(), t.TempDir()))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	tok, _ := reg.GetOrCreate("Signal")
+	gen := tieredNodeGen(t)
+	var nodes [2]*types.Node
+	var names [2]string
+	for i := range nodes {
+		nodes[i] = types.NewNode(types.NodeID(gen.Generate()), tok, nil)
+		if err := ts.PutNode(nodes[i]); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+		names[i] = ts.HotShardForTest().Name()
+		forceRotation(t, ts)
+	}
+	demoteToCold(ts, names[0])
+	return ts, nodes, names
+}
+
+// shardVolumes is each event shard's volume, as ListShards reports it.
+func shardVolumes(t *testing.T, ts *Store) map[string]string {
+	t.Helper()
+	shards, err := ts.ListShards()
+	if err != nil {
+		t.Fatalf("ListShards: %v", err)
+	}
+	out := map[string]string{}
+	for _, s := range shards {
+		if s.Kind == ShardEvent {
+			out[s.Name] = s.Volume
+		}
+	}
+	return out
+}
+
+// wantVolumes fails unless the shards are on the given volumes and every
+// other event shard (the hot one) is on hot.
+func wantVolumes(t *testing.T, ts *Store, want map[string]string) {
+	t.Helper()
+	for name, vol := range shardVolumes(t, ts) {
+		w, ok := want[name]
+		if !ok {
+			w = VolumeHot
+		}
+		if vol != w {
+			t.Fatalf("shard %s is on %s, want %s (all: %v)", name, vol, w, shardVolumes(t, ts))
+		}
+	}
+}
+
+// TestSweepMovesWarmToWarmDirAndColdToColdDir pins SHARD step 6: each idle
+// sweep tick moves one shard, the oldest first, to its tier's volume (a cold
+// shard to the cold volume, a warm one to the warm volume); the hot shard
+// stays, and a shard already on a slower volume than its tier's is left
+// there. Catches a sweep moving every shard at once, a shard sent to the
+// wrong volume and a manual move undone.
+func TestSweepMovesWarmToWarmDirAndColdToColdDir(t *testing.T) {
+	t.Parallel()
+	ts, nodes, names := sweepFixture(t)
+	ts.sweepMoveOne()
+	wantVolumes(t, ts, map[string]string{names[0]: VolumeCold})
+	ts.sweepMoveOne()
+	wantVolumes(t, ts, map[string]string{names[0]: VolumeCold, names[1]: VolumeWarm})
+	for _, n := range nodes {
+		if _, err := ts.GetNode(n.ID()); err != nil {
+			t.Fatalf("GetNode after the sweep: %v", err)
+		}
+	}
+	if err := ts.MoveShard(context.Background(), names[1], VolumeCold); err != nil {
+		t.Fatalf("MoveShard: %v", err)
+	}
+	ts.sweepMoveOne()
+	wantVolumes(t, ts, map[string]string{names[0]: VolumeCold, names[1]: VolumeCold})
+}
+
+// TestSweepVolume pins the volume the sweep moves a shard of each tier to:
+// its tier's own, or the next faster one the config maps.
+func TestSweepVolume(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		warm, cold string
+		tier       ShardTier
+		want       string
+	}{
+		{"w", "c", TierWarm, VolumeWarm},
+		{"w", "c", TierCold, VolumeCold},
+		{"w", "", TierCold, VolumeWarm},
+		{"", "c", TierWarm, VolumeHot},
+		{"", "c", TierCold, VolumeCold},
+		{"w", "c", TierHot, VolumeHot},
+	} {
+		ts := &Store{warmDir: c.warm, coldDir: c.cold}
+		if got := volumeName(ts.sweepVolume(c.tier)); got != c.want {
+			t.Errorf("warm %q cold %q: a %s shard goes to %s, want %s", c.warm, c.cold, c.tier, got, c.want)
+		}
+	}
+}
+
+// TestMoverErrorIsNotStoreWide pins SHARD step 6: a sweep move that fails
+// leaves the shard where it was and the store working (no background error,
+// writes and reads go on); the next tick moves another shard, the one after
+// retries the failed one. Catches a mover error that fails the store and a
+// failing shard that blocks the others.
+func TestMoverErrorIsNotStoreWide(t *testing.T) {
+	t.Parallel()
+	ts, nodes, names := sweepFixture(t)
+	failed := false
+	ts.SetMoveFaultForTest(func(step string) error {
+		if step == "copied" && !failed {
+			failed = true
+			return errors.New("injected copy failure")
+		}
+		return nil
+	})
+	ts.sweepMoveOne()
+	if !failed {
+		t.Fatal("the sweep did not try a move")
+	}
+	wantVolumes(t, ts, nil)
+	if err := ts.backgroundError(); err != nil {
+		t.Fatalf("background error after a failed move: %v", err)
+	}
+	if _, err := ts.GetNode(nodes[0].ID()); err != nil {
+		t.Fatalf("GetNode of the shard that did not move: %v", err)
+	}
+	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), nodes[0].LabelTokenRawAt(0), nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode after a failed move: %v", err)
+	}
+	ts.sweepMoveOne()
+	wantVolumes(t, ts, map[string]string{names[1]: VolumeWarm})
+	ts.sweepMoveOne()
+	wantVolumes(t, ts, map[string]string{names[0]: VolumeCold, names[1]: VolumeWarm})
+}
+
+// TestSweepRunsOnTheIdleLoop pins that the idle loop runs the sweep, and
+// that a store with a volume mapped runs the loop by default.
+func TestSweepRunsOnTheIdleLoop(t *testing.T) {
+	t.Parallel()
+	cfg := volumeCfg(t.TempDir(), t.TempDir(), "")
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if got := ts.idleTimeoutValue(); got != 5*time.Minute {
+		t.Fatalf("IdleTimeout with a warm volume = %v, want the 5m default", got)
+	}
+	_ = ts.Close()
+	cfg.IdleTimeout = 10 * time.Millisecond
+	ts, err = New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = ts.Close() }()
+	old := ts.HotShardForTest().Name()
+	forceRotation(t, ts)
+	deadline := time.Now().Add(10 * time.Second)
+	for shardVolumes(t, ts)[old] != VolumeWarm {
+		if time.Now().After(deadline) {
+			t.Fatalf("shard %s still on %s after 10s of idle ticks", old, shardVolumes(t, ts)[old])
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
