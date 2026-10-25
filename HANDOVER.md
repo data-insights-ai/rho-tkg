@@ -23,7 +23,7 @@ the main worktree `../rho-tkg-main` when a branch is checked out.
 - **v4.75.3 (CLEARMETA)**, **v4.75.4 (CLEARSHARDS)**, **v4.75.5 (SAMESTART)** and **v4.76.0 (OPENEXCISE)** shipped.
   **v4.76.1 (SHARD step 1)**, **v4.77.0 (DICT)** and **v4.77.1 (RESUME)** and **v4.77.2 (ARM32, LONGTIER)**, **v4.78.0 (SHARD steps
   2-8, the volume minor)**, **v4.78.1 (DISCARDCLOSE, DROPALL)** and **v4.78.2 (MOVEREAD, TRUNCPIN)** shipped; ai-soc measures DICT on a rebuilt slice before it pins (a one-way door). Next:
-  BADGER step 3, SHARD step 10 (René, with ai-soc's counts), FLAKYWAL; METASYNC's rig is René's call. Open decisions are settled from the data and the consumer agents (René 24 Oct).
+  BADGER step 3, SHARD step 10 (René, with ai-soc's counts); METASYNC's rig is René's call. Open decisions are settled from the data and the consumer agents (René 24 Oct).
 - **SHARD**: design ADR-0012 (architecture.md), plan with boxes in todo; step 1 shipped in v4.76.1 (option (b)), steps 2-8 in v4.78.0.
   Points for later steps: the mover checks a flock on the shard DIRECTORY (the `LOCK` file is only a pid file);
   a read-only handle is closed before a writable open of the same directory; `DiskBytes` counts blocks; a shard with
