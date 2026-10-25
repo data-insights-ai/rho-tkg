@@ -8,9 +8,9 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
-in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2 (all tagged, CI green, ai-soc and sigma told; ai-soc measures
-DICT before configuring it; `docs/CHANGELOG.md`). Next BADGER step 3 / SHARD steps 3-10 (steps 2
-to 8 green on branch `shard2`; v4.77.2 CI green, consumers build); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
+in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged; ai-soc
+measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, MOVEREAD (after ai-soc's shard
+sizes), SHARD step 10 (after ai-soc's measurement); then DROPALL, DISCARDCLOSE and METASYNC.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -55,35 +55,33 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 1. [x] A shard whose directory is missing fails to open instead of opening empty; every shard path goes through one
    function. Released in v4.76.1 (`tasks/evidence/SHARD/`).
-2. [ ] The shard listing shows each shard's volume, path and bytes on disk. Done when: in the volume minor (red test
-   `TestListShardsDiskBytesMatchesDirectory`). Green on branch `shard2` (`tasks/evidence/SHARD/step2.txt`): bytes on disk are allocated
+2. [x] The shard listing shows each shard's volume, path and bytes on disk. Done when: in the volume minor (red test
+   `TestListShardsDiskBytesMatchesDirectory`). Released in v4.78.0 (`tasks/evidence/SHARD/step2.txt`): bytes on disk are allocated
    blocks, as `du` counts them, since an open shard's value log is a sparse 2 GB file.
-3. [ ] The config names a warm and a cold volume and where the reference shard and archive live; the catalog records
+3. [x] The config names a warm and a cold volume and where the reference shard and archive live; the catalog records
    each shard's volume and refuses an unknown one. Done when: in the volume minor (red tests
-   `TestShardOpensFromItsVolume`, `TestUnmappedVolumeFailsNew`, `TestSentinelRejectedByOldValidator`). Green on branch
-   `shard2` (`tasks/evidence/SHARD/step3.txt`): the sentinel is written whenever a shard is off hot (also a new store's
+   `TestShardOpensFromItsVolume`, `TestUnmappedVolumeFailsNew`, `TestSentinelRejectedByOldValidator`). Released in v4.78.0 (`tasks/evidence/SHARD/step3.txt`): the sentinel is written whenever a shard is off hot (also a new store's
    reference shard or archive), and v4.77.2 refuses such a store and writes nothing.
-4. [ ] A closed shard moves to another volume crash-safely. Done when: in the volume minor (red tests: the crash
-   matrix after copy, rename, catalog save and removal; a drop of a moved shard removes it there). Green on branch
-   `shard2` (`tasks/evidence/SHARD/step4.txt`): `tiered.Store.MoveShard`.
-5. [ ] An open warm shard moves too: its readers and writers wait, nothing written is lost. Done when: in the volume
-   minor (red test `TestMoveWarmShard_WriterWaitsAndWriteLandsOnNewVolume`). Green on branch `shard2`
+4. [x] A closed shard moves to another volume crash-safely. Done when: in the volume minor (red tests: the crash
+   matrix after copy, rename, catalog save and removal; a drop of a moved shard removes it there). Released in v4.78.0 (`tasks/evidence/SHARD/step4.txt`): `tiered.Store.MoveShard`.
+5. [x] An open warm shard moves too: its readers and writers wait, nothing written is lost. Done when: in the volume
+   minor (red test `TestMoveWarmShard_WriterWaitsAndWriteLandsOnNewVolume`). Released in v4.78.0
    (`tasks/evidence/SHARD/step5.txt`; found and fixed a reopen/temporal-DDL deadlock before it shipped, and in the
    pre-release review a nil store when Close stops a warm shard's move).
-6. [ ] The idle sweep moves one shard per tick to its tier's volume and never fails the store. Done when: in the
-   volume minor (red tests `TestSweepMovesWarmToWarmDirAndColdToColdDir`, `TestMoverErrorIsNotStoreWide`). Green on
-   branch `shard2` (`tasks/evidence/SHARD/step6.txt`): a step down only (a shard moved by hand to a slower volume
+6. [x] The idle sweep moves one shard per tick to its tier's volume and never fails the store. Done when: in the
+   volume minor (red tests `TestSweepMovesWarmToWarmDirAndColdToColdDir`, `TestMoverErrorIsNotStoreWide`). Released in
+   v4.78.0 (`tasks/evidence/SHARD/step6.txt`): a step down only (a shard moved by hand to a slower volume
    stays), a failed shard retried after the others; `IdleTimeout` defaults to 5m when a volume is mapped;
    `g.Tier().MoveShard` is the door.
-7. [ ] The reference shard and the archive move offline. Done when: in the volume minor (red test: the reference
+7. [x] The reference shard and the archive move offline. Done when: in the volume minor (red test: the reference
    shard on the warm volume still answers unique checks and the watermark).
-   Green on branch `shard2` (`tasks/evidence/SHARD/step7.txt`): `tiered.MoveShardOffline`, under badger's directory
+   Released in v4.78.0 (`tasks/evidence/SHARD/step7.txt`): `tiered.MoveShardOffline`, under badger's directory
    lock on the reference shard (unix only).
-8. [ ] Each read reports how many cold shards it opened. Done when: in the volume minor (red test: a closed cold
+8. [x] Each read reports how many cold shards it opened. Done when: in the volume minor (red test: a closed cold
    shard counts once, a retained one not).
-   Green on branch `shard2` (`tasks/evidence/SHARD/step8.txt`): `ShardInfo.ColdOpens` per shard (a read's opens are
+   Released in v4.78.0 (`tasks/evidence/SHARD/step8.txt`): `ShardInfo.ColdOpens` per shard (a read's opens are
    the difference around it; per call needs a context the store doors do not take).
-9. [ ] The volume minor is released with its one-way door named in the CHANGELOG, and ai-soc and sigma are
+9. [x] The volume minor is released with its one-way door named in the CHANGELOG, and ai-soc and sigma are
    told. Done when: tagged.
 10. [ ] The global index on the fast volume, unique keys first (keyed event labels), then label and property
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after

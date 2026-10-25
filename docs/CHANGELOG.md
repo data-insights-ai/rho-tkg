@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.78.0] - 2026-10-25
+
+The volume minor (SHARD steps 2-8, ADR-0012 in `docs/architecture.md`): a tiered store spreads its shards over a hot,
+a warm and a cold volume and moves them between volumes. Nothing changes for a store that maps no volume.
+
+**One-way door:** the first shard off the hot volume (a move, or a new store with `ReferenceVolume` or
+`ArchiveVolume` off hot) writes the catalog entry `__format__` (kind `catalog/2`); every earlier v4 release refuses
+such a store at open ("invalid path") and writes nothing (checked with v4.77.2). A store moved back entirely to hot
+drops the entry. **Cost of a move:** the shard's readers and writers wait for its whole copy (its `DiskBytes` at the
+volumes' copy rate), and the idle sweep moves a warm shard soon after rotation; MOVEREAD (todo) lets reads go on
+during the copy once ai-soc's shard sizes are in.
+
 ### Added
 
 - **SHARD step 2**: `ListShards` reports each shard's `Volume` (`hot` until the warm and cold volumes come),

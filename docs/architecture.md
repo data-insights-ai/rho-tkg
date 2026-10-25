@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.77.2)
+# Architecture — tkg/v4 (v4.78.0)
 
 rho-tkg is a pure Go library for temporal knowledge graphs: typed nodes and relationships whose every version is
 kept, stamped in two time dimensions and hash-chained. It is a library, not a database: no binary, no server, no
@@ -336,7 +336,7 @@ that test.
   dictionary or plain string columns, SHA-256 group roots) instead of one row per relationship, within a RAM
   budget (default 256 MiB) and optionally as sealed files (`SegmentDir`). `ScanRelSegments` reads them column-wise.
 - **ADR-0012 Three storage volumes and a global index** (tiered; designed 2026-10-23, Fable; built in the steps of
-  `tasks/todo.md` SHARD, each marked here when released).
+  `tasks/todo.md` SHARD, each marked here when released: steps 1 in v4.76.1, 2-8 in v4.78.0).
   - *Volumes.* A volume is a directory on a device: `hot` = `DataDir` (fast NVMe), `warm` = `Config.WarmDir` (SSD),
     `cold` = `Config.ColdDir` (block devices). Tier (catalog state) and volume are separate: rotation flips tiers at
     once, as today; a shard's volume follows its tier later, through the mover. Placement: `meta/` and the hot shard
