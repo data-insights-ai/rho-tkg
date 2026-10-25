@@ -228,8 +228,10 @@ DataDir/
   archive/     archived reference nodes
 ```
 
-Tiers are catalog states, not places: today every shard lives under `DataDir`. Three storage volumes (hot on fast
-NVMe, warm on SSD, cold on block devices) and a global index on the fast volume are being built: ADR-0012.
+Tiers are catalog states, not places. Each catalog entry names its shard's volume: hot (`DataDir`, fast NVMe), warm
+(`WarmDir`, SSD) or cold (`ColdDir`, block devices); a new store makes its reference shard on `ReferenceVolume` (hot or
+warm) and its archive on `ArchiveVolume`, everything else starts on hot. Moving shards between volumes and a global
+index on the fast volume are being built: ADR-0012.
 
 - **Routing.** A node's label decides its *class* (reference or event) at creation. An event entity lives in the
   shard whose time window contains its ID's mint time. Lookup goes reference shard → archive → event shard by ID
@@ -343,7 +345,10 @@ that test.
     only on hot. The catalog entry carries `Volume` (`""` = hot, `"warm"`, `"cold"`), resolved through the config at
     open, so a remount needs no catalog edit and a fourth volume needs no format change.
   - *A cataloged shard whose directory is missing fails the open* (`fs.ErrNotExist`); badger would otherwise create
-    an empty shard and reads would answer "not found" (step 1).
+    an empty shard and reads would answer "not found" (step 1). `ListShards` reports each shard's volume, directory
+    and bytes on disk (step 2). *The config maps the volumes* (`WarmDir`, `ColdDir`, each its own directory;
+    `ReferenceVolume`, `ArchiveVolume` for a new store's reference shard and archive), `New` fails when a cataloged
+    shard's volume is not mapped, and no shard is made under a missing volume root (an unmounted device) (step 3).
   - *The mover* (one, for any event shard and any volume pair; one move per idle-sweep tick, or `tier.API.MoveShard`):
     a closed shard is copied file by file (byte-exact, fsync of files and directory) into
     `<volume>/events/<name>.moving-<nonce>`, renamed, the catalog saved with the new `Volume` (the commit point), then
@@ -352,8 +357,10 @@ that test.
     At open, orphans are removed by the catalog's word (`*.moving-*`; a copy on a volume the catalog does not name).
     The mover never fails the store: errors are logged and retried. The reference shard and the archive move only
     offline (`MoveShardOffline`).
-  - *One-way door.* The first move writes the catalog entry `__format__` (kind `catalog/2`); releases before the
-    volume minor refuse such a store at open and write nothing. A store that never moved stays byte-identical.
+  - *One-way door.* A catalog with a shard off the hot volume (the first move, or a new store with its reference
+    shard or archive off hot) carries the entry `__format__` (kind `catalog/2`, no path); every v4 release before the
+    volume minor refuses such a store at open ("invalid path") and writes nothing (checked with v4.77.2). A store
+    that never left the hot volume stays byte-identical.
   - *Failure per volume.* SSD down: warm shards' reads and writes fail, hot writes and the reference shard (on NVMe)
     continue. Block device down: cold reads fail per read. `New` fails closed when a warm shard cannot open.
   - *Global index* (`DataDir/index/`, a badger on the hot volume; keys only, never rows): unique-key postings

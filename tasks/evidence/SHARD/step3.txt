@@ -1,0 +1,16 @@
+SHARD step 3 (branch shard2), 2026-10-25
+red: go vet ./pkg/graph/store/tiered -> unknown field WarmDir in struct literal of type Config
+green: TestShardOpensFromItsVolume, TestReferenceOnWarmVolume, TestUnmappedVolumeFailsNew, TestCatalogVolumeShapesRefused,
+  TestVolumeConfigRefused, TestSentinelRejectedByOldValidator, TestArchiveOnColdVolume; tiered, tier, graph, core -short ok;
+  -race -count=2 on the volume tests ok; make build (incl. linux/386) and GOOS=windows build ok
+mutations (each failed a test): shardDir ignores the volume; no sentinel written; catalog without sentinel accepted;
+  newer sentinel accepted; unknown volume accepted; hot shard off hot accepted; reference on cold in the catalog accepted;
+  unmapped catalog volume not checked at New; ReferenceVolume cold accepted; unmapped Reference/ArchiveVolume accepted;
+  duplicate volume dirs accepted (also as a relative path); volumes on an in-memory store accepted; volume root not
+  required at New's pre-creation; nor at a lazy open (the archive); reference entry without its volume; archive entry
+  without its volume
+dropped as unreachable: a "reserved name" check in the validator (stripping the sentinel at load already refuses a
+  shard named __format__ as a sentinel of another kind)
+one-way door, with the real old release: a store made by this branch with one event shard on the warm volume, opened by
+  v4.77.2 (git archive, tiered.New): "graph: load catalog: shard catalog: invalid path for shard "__format__": """,
+  catalog file byte-identical afterwards. The path check is in every v4 tag from v4.0.0 (f8963602).

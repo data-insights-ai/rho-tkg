@@ -34,6 +34,18 @@ type Config struct {
 	DataDir string
 	// InMemory creates in-memory shards (testing only).
 	InMemory bool
+	// WarmDir and ColdDir are the warm and cold volumes (ADR-0012: SSD and
+	// block devices; DataDir is the hot volume, fast NVMe). Each needs its own
+	// directory. A shard's catalog entry names its volume; New fails when a
+	// cataloged shard's volume is not mapped here. Empty = not mapped.
+	WarmDir string
+	ColdDir string
+	// ReferenceVolume is where a new store makes its reference shard: hot
+	// (""), or warm; never cold, every commit and unique check reads it.
+	// ArchiveVolume is where the archive is made: hot (""), warm or cold. An
+	// existing shard stays where its catalog entry says.
+	ReferenceVolume string
+	ArchiveVolume   string
 	// RefLabels are entity labels classified as reference (long-lived).
 	// All other labels default to event classification.
 	RefLabels []string
@@ -311,6 +323,9 @@ type Store struct {
 	temporalIdxFile   string // path to temporal_indexes.msgpack
 	vectorIdxFile     string // path to vector_indexes.msgpack
 	dataDir           string
+	warmDir, coldDir  string // volumes (shard_volume.go); "" = not mapped
+	refVolume         string // catalog volume a new reference shard is made on
+	archiveVolume     string // catalog volume a new archive is made on
 	inMemory          bool
 	shardWindow       time.Duration
 	cacheCap          int
@@ -582,6 +597,9 @@ func New(cfg Config) (*Store, error) {
 		relCreateLocks:        lockspkg.NewManager(),
 	}
 	ts.idleTimeout.Store(int64(idleTimeout))
+	if err := ts.volumeConfig(cfg); err != nil {
+		return nil, err
+	}
 	// Build the store-global change-log allocator BEFORE opening any shard, so it
 	// can be injected via badgerCfg (ChangeLogSeqSource). Each shard folds its
 	// durable watermark into it at open via Observe; after the reference shard
@@ -618,6 +636,9 @@ func New(cfg Config) (*Store, error) {
 		if err := ts.catalog.Load(); err != nil {
 			return nil, fmt.Errorf("graph: load catalog: %w", err)
 		}
+		if err := ts.checkCatalogVolumes(); err != nil {
+			return nil, err
+		}
 	}
 
 	// Open reference shard (an existing store's must be there). A new store,
@@ -627,9 +648,12 @@ func New(cfg Config) (*Store, error) {
 	if _, ok := ts.catalog.GetShard("reference"); ok {
 		openRef = ts.openExistingBadgerStore
 	} else if !cfg.InMemory {
-		for _, d := range []string{ts.shardDir("reference"), ts.shardDir("archive")} {
-			if err := os.MkdirAll(d, 0o750); err != nil {
-				return nil, fmt.Errorf("graph: create dir %s: %w", d, err)
+		for _, rel := range []string{"reference", "archive"} {
+			if err := ts.requireVolume(rel); err != nil {
+				return nil, err
+			}
+			if err := os.MkdirAll(ts.shardDir(rel), 0o750); err != nil {
+				return nil, fmt.Errorf("graph: create dir %s: %w", ts.shardDir(rel), err)
 			}
 		}
 	}
@@ -683,6 +707,7 @@ func New(cfg Config) (*Store, error) {
 			Kind:   ShardReference,
 			Tier:   TierHot,
 			Path:   "data/reference",
+			Volume: ts.refVolume,
 			Labels: cfg.RefLabels,
 		})
 	}
@@ -1561,14 +1586,18 @@ func (ts *Store) resetCatalogAfterClear() error {
 // The shard is always opened writable; read-only opens go through badgerCfg
 // (the recovery probe).
 func (ts *Store) openBadgerStore(name string) (*BadgerStore, error) {
+	if err := ts.requireVolume(name); err != nil {
+		return nil, err
+	}
 	return ts.newShardStore(ts.badgerCfg(name, false))
 }
 
-// shardDir is the directory of the shard at catalog path rel: every shard
-// path goes through here (SHARD step 1, the seam ADR-0012's volumes resolve
-// through).
+// shardDir is the directory of the shard at catalog path rel on its volume
+// (volumeOf): every shard path goes through here (SHARD steps 1 and 3).
+// New has checked that every cataloged volume is mapped.
 func (ts *Store) shardDir(rel string) string {
-	return filepath.Join(ts.dataDir, rel)
+	root, _ := ts.volumeDir(ts.volumeOf(rel))
+	return filepath.Join(root, rel)
 }
 
 // requireShardDir fails with fs.ErrNotExist when the directory of a shard the

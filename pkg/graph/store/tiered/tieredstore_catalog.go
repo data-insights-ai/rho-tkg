@@ -371,10 +371,11 @@ func (ts *Store) openRefArchive() error {
 	if _, ok := ts.catalog.GetShard("archive"); !ok {
 		catalogSnapshot := ts.catalog.snapshotShards()
 		ts.catalog.AddShard(ShardEntry{
-			Name: "archive",
-			Kind: ShardArchive,
-			Tier: TierCold,
-			Path: "archive",
+			Name:   "archive",
+			Kind:   ShardArchive,
+			Tier:   TierCold,
+			Path:   "archive",
+			Volume: ts.archiveVolume,
 		})
 		if !ts.inMemory {
 			if err := ts.catalog.Save(); err != nil {

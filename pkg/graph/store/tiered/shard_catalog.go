@@ -37,10 +37,13 @@ const (
 
 // ShardEntry describes a single shard in the catalog.
 type ShardEntry struct {
-	Name        string    `json:"name"`
-	Kind        ShardKind `json:"kind"`
-	Tier        ShardTier `json:"tier"`
-	Path        string    `json:"path"`
+	Name string    `json:"name"`
+	Kind ShardKind `json:"kind"`
+	Tier ShardTier `json:"tier"`
+	Path string    `json:"path"`
+	// Volume is where the shard's directory lives (ADR-0012): "" = hot
+	// (DataDir), VolumeWarm or VolumeCold, resolved through the config.
+	Volume      string    `json:"volume,omitempty"`
 	TimeStart   time.Time `json:"time_start,omitempty"`
 	TimeEnd     time.Time `json:"time_end,omitempty"`
 	Labels      []string  `json:"labels"`
@@ -99,11 +102,50 @@ func (sc *ShardCatalog) Load() error {
 	if err := json.Unmarshal(data, &loaded); err != nil {
 		return fmt.Errorf("shard catalog: unmarshal: %w", err)
 	}
+	shards, err := stripFormatSentinel(loaded.Shards)
+	if err != nil {
+		return err
+	}
+	loaded.Shards = shards
 	if err := loaded.validateLoadedLocked(); err != nil {
 		return err
 	}
 	sc.Shards = cloneShardEntries(loaded.Shards)
 	return nil
+}
+
+// stripFormatSentinel removes the format sentinel from loaded entries. A
+// sentinel of another kind was written by a newer release; a shard off the
+// hot volume without one was not written by Save.
+func stripFormatSentinel(entries []ShardEntry) ([]ShardEntry, error) {
+	out := entries[:0:0]
+	sentinel, offHot := false, false
+	for _, e := range entries {
+		if e.Name == catalogFormatSentinel {
+			if e.Kind != catalogFormatKind {
+				return nil, fmt.Errorf("shard catalog: format %q is newer than this release reads (%q)", e.Kind, catalogFormatKind)
+			}
+			sentinel = true
+			continue
+		}
+		offHot = offHot || e.Volume != ""
+		out = append(out, e)
+	}
+	if offHot && !sentinel {
+		return nil, fmt.Errorf("shard catalog: a shard off the hot volume but no %s entry", catalogFormatSentinel)
+	}
+	return out, nil
+}
+
+// withFormatSentinel is entries plus the format sentinel when a shard is off
+// the hot volume; a store that never left it is written as before.
+func withFormatSentinel(entries []ShardEntry) []ShardEntry {
+	for _, e := range entries {
+		if e.Volume != "" {
+			return append(entries[:len(entries):len(entries)], ShardEntry{Name: catalogFormatSentinel, Kind: catalogFormatKind})
+		}
+	}
+	return entries
 }
 
 func (sc *ShardCatalog) validateLoadedLocked() error {
@@ -127,9 +169,18 @@ func (sc *ShardCatalog) validateLoadedLocked() error {
 			return fmt.Errorf("shard catalog: negative stats for shard %q", entry.Name)
 		}
 
+		switch entry.Volume {
+		case "", VolumeWarm, VolumeCold:
+		default:
+			return fmt.Errorf("shard catalog: shard %q has unknown volume %q", entry.Name, entry.Volume)
+		}
+
 		switch entry.Kind {
 		case ShardReference:
 			referenceShards++
+			if entry.Volume == VolumeCold {
+				return fmt.Errorf("shard catalog: reference shard %q is on the cold volume", entry.Name)
+			}
 			if entry.Tier != TierHot {
 				return fmt.Errorf("shard catalog: reference shard %q has invalid tier %q", entry.Name, entry.Tier)
 			}
@@ -142,6 +193,9 @@ func (sc *ShardCatalog) validateLoadedLocked() error {
 			switch entry.Tier {
 			case TierHot:
 				hotEvents++
+				if entry.Volume != "" {
+					return fmt.Errorf("shard catalog: hot event shard %q is off the hot volume", entry.Name)
+				}
 			case TierWarm, TierCold:
 			default:
 				return fmt.Errorf("shard catalog: event shard %q has invalid tier %q", entry.Name, entry.Tier)
@@ -189,7 +243,9 @@ func (sc *ShardCatalog) Save() error {
 		sc.mu.RUnlock()
 		return err
 	}
-	data, err := json.MarshalIndent(sc, "", "  ")
+	data, err := json.MarshalIndent(struct {
+		Shards []ShardEntry `json:"shards"`
+	}{withFormatSentinel(sc.Shards)}, "", "  ")
 	sc.mu.RUnlock()
 	if err != nil {
 		return fmt.Errorf("shard catalog: marshal: %w", err)
@@ -282,6 +338,19 @@ func (sc *ShardCatalog) restoreShards(snapshot []ShardEntry) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	sc.Shards = cloneShardEntries(snapshot)
+}
+
+// volumeOfPath is the volume of the shard at catalog path rel, "" (hot) when
+// none is cataloged there.
+func (sc *ShardCatalog) volumeOfPath(rel string) string {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	for i := range sc.Shards {
+		if sc.Shards[i].Path == rel {
+			return sc.Shards[i].Volume
+		}
+	}
+	return ""
 }
 
 // GetShard looks up a shard by name.

@@ -11,6 +11,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **SHARD step 2**: `ListShards` reports each shard's `Volume` (`hot` until the warm and cold volumes come),
   `Path` (its directory) and `DiskBytes`, the blocks its files hold as `du` counts them (an open shard's value log
   is a sparse 2 GB file), -1 when the directory cannot be read (a lost volume), without opening a closed shard.
+- **SHARD step 3**: `tiered.Config` maps the warm and cold volumes (`WarmDir`, `ColdDir`) and places a new store's
+  reference shard (`ReferenceVolume`: hot or warm) and archive (`ArchiveVolume`: hot, warm or cold). Each catalog
+  entry records its shard's `Volume` and the shard opens from there; `New` fails when a cataloged shard's volume is
+  not mapped, and the catalog refuses an unknown volume, the hot shard off the hot volume and the reference shard on
+  the cold one. No shard is made under a missing volume root. A catalog with a shard off the hot volume carries a
+  `__format__` entry that every earlier v4 release refuses at open (a one-way door, taken only by using a volume).
 
 ## [4.77.2] - 2026-10-25
 

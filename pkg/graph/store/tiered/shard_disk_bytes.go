@@ -5,10 +5,6 @@ import (
 	"path/filepath"
 )
 
-// VolumeHot names the volume of DataDir (ADR-0012), the only one until the
-// warm and cold volumes are configured.
-const VolumeHot = "hot"
-
 // shardDisk is the volume, directory and bytes on disk of the shard at rel,
 // or nothing for an in-memory store. The bytes are -1 when the directory
 // cannot be read (missing, or a file removed by a compaction mid-walk).
@@ -16,12 +12,12 @@ func (ts *Store) shardDisk(rel string) (volume, path string, bytes int64) {
 	if ts.inMemory {
 		return "", "", 0
 	}
-	path = ts.shardDir(rel)
+	volume, path = volumeName(ts.volumeOf(rel)), ts.shardDir(rel)
 	n, err := dirDiskBytes(path)
 	if err != nil {
-		return VolumeHot, path, -1
+		return volume, path, -1
 	}
-	return VolumeHot, path, n
+	return volume, path, n
 }
 
 // dirDiskBytes sums the bytes on disk of the regular files under dir.
