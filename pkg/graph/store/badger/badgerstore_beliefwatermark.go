@@ -108,7 +108,7 @@ func (bs *Store) ensureNodeBeliefWatermarkBuilt() error {
 	scanErr := bs.view(func(txn *badgerv4.Txn) error {
 		for _, prefix := range [][]byte{{storepkg.KeyNode}, {storepkg.KeyHistNode}} {
 			opts := badgerv4.DefaultIteratorOptions
-			opts.PrefetchValues = true
+			opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
 			it := txn.NewIterator(opts)
 			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 				item := it.Item()
@@ -179,7 +179,7 @@ func (bs *Store) ensureRelBeliefWatermarkBuilt() error {
 	scanErr := bs.view(func(txn *badgerv4.Txn) error {
 		for _, prefix := range [][]byte{{storepkg.KeyRel}, {storepkg.KeyHistRel}} {
 			opts := badgerv4.DefaultIteratorOptions
-			opts.PrefetchValues = true
+			opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
 			it := txn.NewIterator(opts)
 			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 				item := it.Item()

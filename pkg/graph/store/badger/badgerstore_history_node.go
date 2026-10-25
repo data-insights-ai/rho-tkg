@@ -782,8 +782,8 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 	entries := make(map[string][]byte) // key string -> value bytes
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = true
-		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
+		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
+		opts.Prefix = prefix        // bound the scan and the value prefetch to this entity (backlog 20)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 
@@ -894,8 +894,8 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 	seekKey := historyVersionSeekKey(prefix, startVersion)
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = true
-		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
+		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
+		opts.Prefix = prefix        // bound the scan and the value prefetch to this entity (backlog 20)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 

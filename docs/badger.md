@@ -214,9 +214,10 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
 2. **Read by walking, not by point gets, where IDs come in order.** A `Get` costs about 4x the row and a read
    transaction; a forward walk costs almost nothing. The read snapshot walks; entity point reads on a cache miss,
    history version and anchor reads, and committed-stamp reads still `Get`. Gap: GETWALK.
-3. **No `PrefetchValues`.** Values are inline, so prefetching only adds a goroutine per row. 14 assignments turn it on
-   over about 15 iterators, plus one by default, including the full node scan at open when there is no open image
-   (`tasks/evidence/USAGE/usage-map.txt`). Gap: PREFETCH.
+3. **No `PrefetchValues`.** Values are inline, so prefetching only adds a goroutine per row (`iterator.go:707-713`).
+   No iterator of rho's turns it on since v4.78.4 (PREFETCH: 15 did, the full node scan at open without an open image
+   among them; that open is 7-18 % faster without, `tasks/evidence/PREFETCH/`); `TestNoIteratorPrefetchesValues`
+   guards it.
 4. **Every iterator gets the narrowest `Prefix`**, at least its keyspace byte, so other keyspaces' tables are not
    merged. 49 of rho's 71 iterators set none, the read-snapshot and scan-snapshot walkers included
    (`tasks/evidence/USAGE/usage-map.txt`). Gap: ITERPREFIX.

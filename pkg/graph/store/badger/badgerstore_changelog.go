@@ -676,7 +676,7 @@ func (bs *Store) changeFeedPage(afterLSN uint64, limit int) ([]storecontract.Cha
 	recs := make([]storecontract.ChangeRecord, 0, limit)
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = true
+		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **PREFETCH** (BADGER step 3): no badger iterator prefetches values any more; 15 did (14 assignments and one by
+  default), starting a goroutine per row for values that are inline. The open without an open image, which scans
+  every row, is 7-18 % faster on 200,000 nodes (`tasks/evidence/PREFETCH/`); `TestNoIteratorPrefetchesValues`
+  keeps it so.
+
 ## [4.78.3] - 2026-10-25
 
 ### Changed

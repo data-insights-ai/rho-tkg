@@ -601,7 +601,7 @@ func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.
 	}
 	return bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = true
+		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
 
 		// Committed current rows the overlay does not resolve.
 		prefix := []byte{curKind}

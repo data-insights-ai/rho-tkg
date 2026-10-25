@@ -1,0 +1,10 @@
+PREFETCH (BADGER step 3; branch prefetch), 2026-10-25
+sites: 15 iterators prefetched (beliefwatermark x2, changelog, exact_erasure, history_rel x2, history_node x2,
+  propertytxmembers, labeltxmembers x2, badgerstore.go open scan nodes and rels (img == nil), temporal index load,
+  and mergeScanCurrent's DefaultIteratorOptions); every one reads its item inside the loop iteration (audited), so
+  turning prefetch off changes no value read. mergeScanCurrent also sets its keyspace prefix.
+measured (open_scan_probe_test.go.txt: open without an open image of 200,000 nodes, alternating pairs, host load
+  average 50-67 on 32 cores): before 480/1303/596 ms, after 445/502/488 ms (median of 3 each): 7-18 % faster where
+  the load did not distort the pair; 200,000 goroutine starts per such open avoided.
+guard: TestNoIteratorPrefetchesValues (source scan) flags all 15 old sites on the old code, none now.
+green: badger, tiered -short.

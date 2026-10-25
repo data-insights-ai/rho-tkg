@@ -134,7 +134,10 @@ func sortedIDs[ID ~int64](set map[ID]struct{}) []ID {
 // sorted live IDs together in ID order, calling fn once per live ID with the
 // stored value, or with nil for a live ID not in badger yet (write buffer).
 func mergeScanCurrent[ID ~int64](txn *badgerv4.Txn, prefix byte, size int, ids []ID, fn func(id ID, raw []byte)) error {
-	it := txn.NewIterator(badgerv4.DefaultIteratorOptions)
+	opts := badgerv4.DefaultIteratorOptions
+	opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
+	opts.Prefix = []byte{prefix}
+	it := txn.NewIterator(opts)
 	defer it.Close()
 	p := []byte{prefix}
 	i := 0

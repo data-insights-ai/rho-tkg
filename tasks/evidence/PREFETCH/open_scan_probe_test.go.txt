@@ -1,0 +1,52 @@
+package badger
+
+import (
+	"runtime"
+	"testing"
+	"time"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// TestZZOpenScanProbe times an open without the open image (the full node and
+// relationship scan) over 200,000 nodes, 3 rounds.
+func TestZZOpenScanProbe(t *testing.T) {
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gen, _ := snowflake.NewNode(5)
+	batch := make([]*types.Node, 0, 1000)
+	for i := 0; i < 200_000; i++ {
+		n := types.NewNode(types.NodeID(gen.Generate()), 7, nil)
+		_ = n.SetProperty("k", int64(i))
+		batch = append(batch, n)
+		if len(batch) == cap(batch) {
+			if err := bs.PutNodesBatch(batch); err != nil {
+				t.Fatal(err)
+			}
+			batch = batch[:0]
+		}
+	}
+	bs.openImageSuppressed.Store(true)
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for round := 0; round < 3; round++ {
+		runtime.GC()
+		g0 := runtime.NumGoroutine()
+		start := time.Now()
+		bs, err = New(Config{Dir: dir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		el := time.Since(start)
+		t.Logf("PROBE open without image: %v (goroutines now %d over %d)", el, runtime.NumGoroutine(), g0)
+		bs.openImageSuppressed.Store(true)
+		if err := bs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

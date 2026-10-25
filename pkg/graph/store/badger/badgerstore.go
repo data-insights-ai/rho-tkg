@@ -1222,12 +1222,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 
 		// Scan node entities. The node row is authoritative for liveness: stale label keys
 		// must not manufacture live nodeIDs, missing ones can be rebuilt from the row.
-		valueOpts := opts
-		valueOpts.PrefetchValues = true
-		if img != nil {
-			valueOpts.PrefetchValues = false // keys only
-		}
-		it := txn.NewIterator(valueOpts)
+		it := txn.NewIterator(opts) // no prefetch: values are inline (PREFETCH)
 		prefix := []byte{storepkg.KeyNode}
 		var loadErr error
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
@@ -1330,9 +1325,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 
 		// Scan relationship entities. The entity row is authoritative for liveness: stale
 		// reltype/outgoing keys (interrupted repair/delete) must not manufacture live relIDs.
-		relValueOpts := opts
-		relValueOpts.PrefetchValues = img == nil
-		it = txn.NewIterator(relValueOpts)
+		it = txn.NewIterator(opts)
 		prefix = []byte{storepkg.KeyRel}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			item := it.Item()
@@ -1789,7 +1782,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					// Fast path: stream (from, to, id) triples from the 0x0B keyspace without decoding
 					// nodes; key order matches TemporalIndex.Entries (storeutil.TemporalIndexEntryKey).
 					valueOpts := opts
-					valueOpts.PrefetchValues = true
+					valueOpts.PrefetchValues = false // values are inline (PREFETCH)
 					prefix := storepkg.TemporalIndexTokenPrefix(tok)
 					it := txn.NewIterator(valueOpts)
 					for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
