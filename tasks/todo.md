@@ -12,7 +12,7 @@ in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in
 consumers build, ai-soc and sigma told; RACETIME: the isolated race packages now have 20 min; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, SHARD step 10 (René, with ai-soc's
 counts). FLAKYWAL fixed (test only); COLDRO in v4.78.3, PREFETCH in v4.78.4, DSTWIN (ai-soc's urgent rotation fault at the end of summer time) in
-v4.78.5 (CI green; v4.78.4's red CI was a timing flake, rerun green, CASCADEFLAKY fixed); TIERLABELDISK in v4.79.0 (tagged, consumers build, told; CI running). Next: VALUES, then TKGID. DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
+v4.78.5 (CI green; v4.78.4's red CI was a timing flake, rerun green, CASCADEFLAKY fixed); TIERLABELDISK in v4.79.0 (CI green), VALUES and TKGID in v4.80.0. DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
 it (its rig is René's call).
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -155,11 +155,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **WRITTENAT** (ai-soc, 24 Oct) — ai-soc wants the nodes of one label (and one property value) written at one
   transaction, without a scan, so its records can drop the list of changed keys. Done when: such a lookup costs
   O(rows written at that transaction), with its write cost per row measured. Waits for: FLUSHPART and SHARD.
-- **VALUES** (sigma, 24 Oct) — sigma wants one lookup by many values of one property instead of one call per value.
-  Done when: `nodes.ByLabelAndPropertyValues` is released on every backend. Green on branch `values`
-  (`tasks/evidence/VALUES/`); ships with TKGID as v4.80.0.
-- **TKGID** (sigma, 24 Oct) — sigma wants the shadow name `tkg_id` (an entity's id) reserved, best resolved by rho.
-  Done when: `NodeProperty` and `RelProperty` answer `tkg_id`. Waits for: FLUSHPART and SHARD.
 
 - **IDPROPS** (sigma for ai-soc, 24 Oct; the larger form of CHAININTERN) — Immutable properties per (label, key), set
   at `AddNode`, refused by every update and cascade patch, stored once per node and attached to every version on read.

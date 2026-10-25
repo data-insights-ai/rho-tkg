@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.80.0] - 2026-10-25
+
 ### Added
 
 - **VALUES** (sigma, 24 Oct): `g.Nodes().ByLabelAndPropertyValues(label, key, values []any, opts)` returns the nodes of
