@@ -1,0 +1,7 @@
+The shard mover's copy method measured (2026-10-26), no change (copy_probe_test.go.txt)
+512 MB of random bytes (a dense table or value-log file), same NVMe, fsync after each copy, host under load:
+  mover copyShardFile (1 MB chunks, zero chunks skipped): 374 ms / 749 ms / 1,017 ms (1,371 / 683 / 503 MB/s)
+  io.Copy (copy_file_range on Linux):                     384 ms / 984 ms /   927 ms (1,335 / 520 / 552 MB/s)
+decision: the same speed (disk-bound), and the mover keeps sparse files sparse, which copy_file_range across
+  devices does not promise; no change. At 0.5-1.4 GB/s a move of a shard of tens of GB holds its writers for tens
+  of seconds (its reads go on, MOVEREAD).

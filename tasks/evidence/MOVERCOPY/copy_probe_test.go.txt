@@ -1,0 +1,54 @@
+package tiered
+
+import (
+	"context"
+	"crypto/rand"
+	"io"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// TestZZMoverCopyProbe: a 512 MB file of random bytes (a dense SST or value
+// log), copied by the mover's copyShardFile and by io.Copy (copy_file_range on
+// Linux), each followed by an fsync; three rounds each.
+func TestZZMoverCopyProbe(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	f, err := os.Create(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1<<20)
+	for i := 0; i < 512; i++ {
+		_, _ = rand.Read(buf)
+		if _, err := f.Write(buf); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = f.Sync()
+	_ = f.Close()
+	ts := &Store{}
+	for r := 0; r < 3; r++ {
+		dst := filepath.Join(dir, "a")
+		start := time.Now()
+		if err := ts.copyShardFile(context.Background(), src, dst); err != nil {
+			t.Fatal(err)
+		}
+		mover := time.Since(start)
+		_ = os.Remove(dst)
+		start = time.Now()
+		in, _ := os.Open(src)
+		out, _ := os.Create(dst)
+		if _, err := io.Copy(out, in); err != nil {
+			t.Fatal(err)
+		}
+		_ = out.Sync()
+		_ = out.Close()
+		_ = in.Close()
+		plain := time.Since(start)
+		_ = os.Remove(dst)
+		t.Logf("PROBE 512 MB: mover copy %v (%.0f MB/s), io.Copy %v (%.0f MB/s)", mover, 512/mover.Seconds(), plain, 512/plain.Seconds())
+	}
+}
