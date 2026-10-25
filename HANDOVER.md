@@ -22,7 +22,7 @@ the main worktree `../rho-tkg-main` when a branch is checked out.
 - **v4.75.2 (VERIFY + BADGERLOG)** shipped; ai-soc's multi-MB value-log rows are now checksummed.
 - **v4.75.3 (CLEARMETA)**, **v4.75.4 (CLEARSHARDS)**, **v4.75.5 (SAMESTART)** and **v4.76.0 (OPENEXCISE)** shipped.
   **v4.76.1 (SHARD step 1)**, **v4.77.0 (DICT)** and **v4.77.1 (RESUME)** shipped; ai-soc measures DICT on a rebuilt slice before it
-  pins (a one-way door). Next: BADGER step 3 / SHARD steps 2-10; LONGTIER (long-tier test failures). Open decisions are settled from the data and the consumer
+  pins (a one-way door). Next: BADGER step 3 / SHARD steps 2-10 (the long tier passes again: LONGTIER, `[Unreleased]`). Open decisions are settled from the data and the consumer
   agents (René 24 Oct).
 - **SHARD**: design ADR-0012 (architecture.md), plan with boxes in todo; step 1 shipped in v4.76.1 (option (b)).
   Points for later steps: the mover checks a flock on the shard DIRECTORY (the `LOCK` file is only a pid file);
