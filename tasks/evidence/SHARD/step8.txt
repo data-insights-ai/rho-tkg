@@ -1,0 +1,10 @@
+SHARD step 8 (branch shard2), 2026-10-25
+form: ShardInfo.ColdOpens per event shard (lazy opens of the closed cold shard since New); a read's cold opens are
+  the difference around it. Per call is not possible without a context through the store doors (most take none).
+red: TestColdOpensCountsEachOpenOfAClosedShard (build failed: no ShardInfo.ColdOpens). First version of the test
+  assumed retention by default; MaxOpenColdShards defaults to 0, so every read of a closed cold shard opens it
+  again (the counter showed 2 after two reads): the test now covers both.
+green: that (retained 1,1,2; not retained 1,2,3; listings open nothing); tiered, tier, graph -short ok; -race
+  -count=2 ok; make build (amd64, 386)
+refactor: the three lazy-open sites share openColdLocked (open, count, install, sync indexes)
+mutations (each failed the test): open not counted; listing not filled; counted per checkout of an open shard

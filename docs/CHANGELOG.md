@@ -37,6 +37,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reference shard, so it refuses while a process has the store open and the store cannot open during the move (unix
   only). `New` also removes a reference or archive copy the catalog does not name, never another directory at a
   volume root.
+- **SHARD step 8**: `ShardInfo.ColdOpens` counts, per event shard, how often an access opened it while it was closed
+  and cold since `New`; diffed around a read it shows the cold shards that read opened. A shard retained open
+  (`MaxOpenColdShards`) counts once; without retention every read of a closed cold shard opens it again and counts.
+  Per shard, not per call: most store reads take no context to carry a count.
 
 ### Fixed
 

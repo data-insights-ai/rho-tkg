@@ -23,6 +23,7 @@ type ShardInfo struct {
 	Volume    string // VolumeHot; "" in memory
 	Path      string // the shard's directory; "" in memory
 	DiskBytes int64  // blocks its files hold on disk (du); -1 when the directory cannot be read
+	ColdOpens int64  // event shards: how often an access opened the closed cold shard since New (a retained one opens nothing)
 }
 
 // VerifyResult holds the outcome of a per-shard hash chain verification.
@@ -167,6 +168,7 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 			Rels:      approxRels(entry),
 		}
 		si.Volume, si.Path, si.DiskBytes = ts.shardDisk(sn.path)
+		si.ColdOpens = sn.es.coldOpens.Load()
 		if sn.wasOpen {
 			store, release, open, err := sn.es.checkoutOpenStoreForRead(ts)
 			if err == nil && open {

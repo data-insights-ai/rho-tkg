@@ -23,7 +23,12 @@ import (
 // config, the node, the shard's name and the label token.
 func moveFixture(t *testing.T) (*Store, Config, *types.Node, string, uint16) {
 	t.Helper()
-	cfg := volumeCfg(t.TempDir(), t.TempDir(), "")
+	return closedColdFixtureWith(t, volumeCfg(t.TempDir(), t.TempDir(), ""))
+}
+
+// closedColdFixtureWith is moveFixture with the given config.
+func closedColdFixtureWith(t *testing.T, cfg Config) (*Store, Config, *types.Node, string, uint16) {
+	t.Helper()
 	ts, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
