@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **FLAKYWAL** (tests only): `TestTieredOversizedWALMigratedOnWarmReopen` writes a payload that stays in the first WAL
+  and checks it; 400 rows rotated the memtable, so badger's flush deleted `00001.mem` under the test's live copy
+  (1 run in 10 failed) and otherwise the payload was not in the WAL the test migrates.
+
 ## [4.78.2] - 2026-10-25
 
 ### Fixed

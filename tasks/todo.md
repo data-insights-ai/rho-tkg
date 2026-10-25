@@ -11,7 +11,7 @@ Order (René 24 Oct: fixes first; open decisions settled from the data and the c
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
 consumers build, ai-soc and sigma told; RACETIME: the isolated race packages now have 20 min; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, SHARD step 10 (René, with ai-soc's
-counts), FLAKYWAL. DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
+counts). FLAKYWAL fixed on main (test only). DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
 it (its rig is René's call).
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -93,10 +93,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
     under 32,000 each; cap 4,096 B); about 1.9 M BA edges plus 1.0 M BO; reference shard 828 MB, the day shard 1.2 GB;
     indexed rel properties `aisoc_record` (~22 B) on every edge, `device`, `remote_ip`, `src`/`action`; no on-disk
     property index; ErrEntryTooLarge never. Decision on the unique-key slice: René, with these numbers.
-
-- **FLAKYWAL** (seen 25 Oct; pre-existing, 1 of 10 on main) — `TestTieredOversizedWALMigratedOnWarmReopen` copies a
-  live data directory while a memtable flush deletes a `.mem` file ("copyTree: no such file"). Done when: the
-  fixture copies a state that cannot change under it (or the test retries a vanished file), 50 runs green.
 
 - **METASYNC** (docs on main, ships with the next tag) — the doors and `docs/persistence.md` state what holds: a
   process crash never loses a durable meta write; without `SyncWrites` a power loss can, when a memtable rotation put
