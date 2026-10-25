@@ -58,6 +58,16 @@ func RelTemporalIndexBuildsTotalForTest() int64 { return relTemporalBuildsTotal.
 // entries. Not for production use.
 func (bs *Store) PropertyIndexOnDiskForTest() bool { return bs.propIdxOnDisk }
 
+// LabelIndexOnDiskForTest reports whether this shard was opened with
+// Config.LabelIndexOnDisk set, and the entry count of its label->nodes map.
+// Exported so tiered tests can assert the tiered pass-through reached a shard
+// and left the map empty. Not for production use.
+func (bs *Store) LabelIndexOnDiskForTest() (onDisk bool, labelN int) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	return bs.labelOnDisk, len(bs.labelIdx)
+}
+
 // AdjacencyIndexOnDiskForTest reports whether this shard was opened with
 // Config.AdjacencyIndexOnDisk set, and the entry counts of its outIdx, inIdx
 // and relRevs maps. Exported so tiered tests can assert the tiered

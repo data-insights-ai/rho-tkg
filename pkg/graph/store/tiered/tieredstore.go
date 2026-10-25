@@ -183,6 +183,15 @@ type Config struct {
 	// EVERY shard (reference, hot, warm, lazy cold/archive, and
 	// rotation-created): a hot shard turns warm without a reopen.
 	AdjacencyIndexOnDisk bool
+	// LabelIndexOnDisk is the tiered sibling of badger.Config's
+	// LabelIndexOnDisk: every shard answers label reads from its persisted
+	// label keyspace instead of a label->nodes map in RAM (a paged row about
+	// 200 B of RAM instead of about 1.2 kB, sigma's measurement on badger).
+	// Doc-values columns decline on such a shard (their callers read per
+	// node), as on badger. Default false. Passed through badgerCfg to EVERY
+	// shard (reference, hot, warm, lazy cold/archive, and rotation-created).
+	// TIERLABELDISK.
+	LabelIndexOnDisk bool
 	// DisablePlannerStats turns OFF the query-planner statistics (presence/NDV/
 	// min-max/type-class counters) on every shard's badger store — see
 	// badger.Config.DisablePlannerStats. Passed through badgerCfg to EVERY shard;
@@ -370,6 +379,7 @@ type Store struct {
 	flushHold             atomic.Bool   // every shard's flush-hold flag (badgerCfg shares it; tieredstore_flush_hold.go)
 	temporalIndexOnDisk   bool          // per-shard rebuild-at-open accelerator; index itself stays RAM-resident on every shard
 	adjacencyIndexOnDisk  bool          // every shard answers adjacency from its out/in keys, no RAM maps
+	labelIndexOnDisk      bool          // every shard answers label reads from its label keys, no RAM map
 	closeCh               chan struct{} // signals idle-close goroutine to stop
 	closeOnce             sync.Once
 	lifecycleMu           sync.RWMutex // blocks Close while long sequential store-wide operations release per-shard pins
@@ -597,6 +607,7 @@ func New(cfg Config) (*Store, error) {
 		propertyIndexOnDisk:   cfg.PropertyIndexOnDisk,
 		temporalIndexOnDisk:   cfg.TemporalIndexOnDisk,
 		adjacencyIndexOnDisk:  cfg.AdjacencyIndexOnDisk,
+		labelIndexOnDisk:      cfg.LabelIndexOnDisk,
 		disablePlannerStats:   cfg.DisablePlannerStats,
 		historyDeltaEncoding:  cfg.HistoryDeltaEncoding,
 		syncWrites:            cfg.SyncWrites,
@@ -1668,6 +1679,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		PropertyIndexOnDisk:   ts.propertyIndexOnDisk,
 		TemporalIndexOnDisk:   ts.temporalIndexOnDisk,
 		AdjacencyIndexOnDisk:  ts.adjacencyIndexOnDisk,
+		LabelIndexOnDisk:      ts.labelIndexOnDisk,
 		DisablePlannerStats:   ts.disablePlannerStats,
 		HistoryDeltaEncoding:  ts.historyDeltaEncoding,
 		ValidAxis:             ts.validAxis.Get(),

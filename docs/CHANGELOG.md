@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **TIERLABELDISK** (sigma, 24 Oct): `tiered.Config.LabelIndexOnDisk` passes badger's `LabelIndexOnDisk` to every shard
+  (reference, hot, rotation-created, warm, archive, lazily opened cold), so no shard keeps a label->nodes map in RAM
+  (sigma measured a paged row at about 200 B of RAM instead of about 1.2 kB on badger). Label doors answer the same
+  with the flag on as off; doc-values columns decline on such a shard and their callers read per node, as on
+  badger. Default off. Tests: `TestTieredConfig_LabelIndexOnDisk_Propagates`, `TestTieredLabelIndexOnDisk_Parity`.
+
 ### Changed
 
 - **CASCADEFLAKY** (tests only): `TestCascadeCorrection85_CostFlat` asserts the growth of bytes per write only and

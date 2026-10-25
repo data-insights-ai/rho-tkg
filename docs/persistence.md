@@ -345,7 +345,8 @@ Value encodings:
 - Temporal index (`0x0B`): `from` is sign-bit flipped, so a prefix scan yields (From ASC, ID ASC).
 
 On disk vs RAM: label and adjacency keys (`0x03`–`0x06`) are always written; `LabelIndexOnDisk` /
-`AdjacencyIndexOnDisk` answer reads from them instead of RAM maps. `PropertyIndexOnDisk` moves property-index
+`AdjacencyIndexOnDisk` answer reads from them instead of RAM maps (both also on `tiered.Config`, passed to every shard;
+label since v4.79.0). With the label index on disk, doc-values columns decline and their callers read per node. `PropertyIndexOnDisk` moves property-index
 entries into `0x0A`; `TemporalIndexOnDisk` keeps `0x0B` only as a rebuild accelerator (the index stays resident);
 each is backfilled from current rows once, under its build marker. Every other index (vector, relationship
 property, relationship-type temporal, high-frequency, composite) persists only its definition; its contents come

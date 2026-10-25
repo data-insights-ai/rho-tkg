@@ -1,0 +1,10 @@
+TIERLABELDISK (sigma, 24 Oct; branch tierlabeldisk), 2026-10-25
+red: TestTieredConfig_LabelIndexOnDisk_Propagates with the field added but not passed: "reference shard
+  LabelIndexOnDisk = false, want true", "holds 1 label map entries in disk mode", likewise hot and the rest.
+fix: tiered.Config.LabelIndexOnDisk -> ts.labelIndexOnDisk -> badgerCfg (every shard open goes through it).
+green: the propagation test (reference, hot, rotation-created, warm, archive, lazy cold; flag on and off) and
+  TestTieredLabelIndexOnDisk_Parity (NodesByLabel, NodeCountByLabel, AllNodeIDs over two rotations with deletes).
+whole tiered suite with the flag forced on: only the doc-values tests fail ("ForEachDocValues declined; want
+  usable"): badger declines doc-values columns with the label index on disk (badgerstore_docvalues.go:86) and
+  callers fall back to per-node reads; documented on the field and in persistence.md, as on badger.
+mutation: the pass-through removed is the red above.

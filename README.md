@@ -246,7 +246,7 @@ runnable example.
 
 ### Tiered store
 
-Three tiers: a **reference shard** (long-lived labels named in `RefLabels`), **event shards** by time (hot, warm, cold) and an **archive**. `QueryOpts.Depth` (`DepthAll`, `DepthWarm`, `DepthHot`) bounds a read to the tiers it needs. Configuration (`ShardWindow`, `ColdAfter`, `SyncWrites`, `RelsByMint`, `AdjacencyIndexOnDisk`, per-shard cache sizes): [`docs/persistence.md`](docs/persistence.md#tiered-persistence-tieredstore).
+Three tiers: a **reference shard** (long-lived labels named in `RefLabels`), **event shards** by time (hot, warm, cold) and an **archive**. `QueryOpts.Depth` (`DepthAll`, `DepthWarm`, `DepthHot`) bounds a read to the tiers it needs. Configuration (`ShardWindow`, `ColdAfter`, `SyncWrites`, `RelsByMint`, `AdjacencyIndexOnDisk`, `LabelIndexOnDisk`, per-shard cache sizes): [`docs/persistence.md`](docs/persistence.md#tiered-persistence-tieredstore).
 
 ## Module
 
