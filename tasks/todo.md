@@ -11,7 +11,8 @@ Order (René 24 Oct: fixes first; open decisions settled from the data and the c
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
 consumers build, ai-soc and sigma told; the badger race package took 582 of its 600 s in the gate; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, MOVEREAD (after ai-soc's shard
-sizes), SHARD step 10 (after ai-soc's measurement); METASYNC. DISCARDCLOSE and DROPALL in v4.78.1.
+sizes), SHARD step 10 (after ai-soc's measurement). DISCARDCLOSE and DROPALL in v4.78.1 (CI running); METASYNC's docs on
+main.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -94,11 +95,9 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   accepted. Waits for: ai-soc's shard sizes on disk and whether its reads and writes reach a rotated-out shard
   (asked 25 Oct); no consumer maps a volume yet.
 
-- **METASYNC** (after SHARD; source-confirmed; not testable by a process kill) — `MetaSetDurable` and the property-key registry
-  save promise durability after `db.Sync`, which syncs only the active WAL, so after a memtable rotation the write
-  may not survive a power loss without `SyncWrites` (`badgerstore_meta.go:324-334`, `:420-434`). Done when: the doors
-  and `docs/persistence.md` state what holds, and a power-loss test (LazyFS or dm-flakey) shows it, if René wants
-  that rig.
+- **METASYNC** (docs on main, ships with the next tag) — the doors and `docs/persistence.md` state what holds: a
+  process crash never loses a durable meta write; without `SyncWrites` a power loss can, when a memtable rotation put
+  it in a retired memtable. Waits for: René, whether he wants a power-loss rig (LazyFS or dm-flakey) to test it.
 - **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
   fact. Done when: René has decided per layer. Waits for: CHAIN.
 
