@@ -98,7 +98,9 @@ Branch `dict`; each step red test first, mutation-checked; the minor ships on Re
 2. [ ] Badger store: config `ValueDictionaries` (name, cap, members (label or rel type, property)); one token space per
    store; a new value's entry goes into the pending batch (with the marker raise) before the row that uses it, so
    no flush commits the row without it; entries load on first use; decode resolves to one `unique` string per
-   value; Clear drops the entries after the data; pre-encoded batch bodies of coded nodes are re-encoded.
+   value; Clear keeps the entries (a token handed out before it may reach a row after it); pre-encoded batch bodies
+   of coded nodes are re-encoded. Green on branch `dict` (4dee6d3b; 5 mutations caught, race-clean concurrent test;
+   found: a history delta wrote format 2 with tokens, fixed; `tasks/evidence/DICT/step2.txt`).
 3. [ ] Core installs the label and rel-type registries into a store with dictionaries (names to tokens).
 4. [ ] Tiered: the config reaches every shard; counters per dictionary (coded, left inline because full, new
    entries) summed over shards and readable (ai-soc).
