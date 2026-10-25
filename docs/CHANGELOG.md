@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **METASYNC** (docs): `MetaSetDurable`, the property-key registry save and `docs/persistence.md` state what their
+  sync holds: a process crash never loses the write; a power loss can, without `SyncWrites`, when badger rotated its
+  memtable between the write and `db.Sync`, which syncs only the active WAL (the write is on disk once the retired
+  memtable reaches L0). Not tested: a power-loss rig (LazyFS or dm-flakey) is René's call.
+
 ## [4.78.1] - 2026-10-25
 
 ### Fixed

@@ -319,10 +319,18 @@ func (bs *Store) MetaSet(key string, value []byte) error {
 	})
 }
 
-// MetaSetDurable is MetaSet made durable before it returns: the write-ahead
-// log is fsynced, as SavePropertyKeyRegistry does, unless SyncWrites already
-// did or the store is InMemory. For a meta entry that must not be lost while a
-// row written after it (to another store) survives a power loss.
+// MetaSetDurable is MetaSet followed by db.Sync, as SavePropertyKeyRegistry
+// does, unless SyncWrites already synced the write or the store is InMemory.
+// For a meta entry that must not be lost while a row written after it (to
+// another store) survives a power loss.
+//
+// What holds (METASYNC): a process crash never loses it (the write is in the
+// WAL, in the OS page cache). A power loss does not either, unless badger
+// rotated its memtable between the write and the Sync: db.Sync syncs only the
+// active memtable's WAL and the value log (db.go:673-693), so a write left in
+// a retired memtable is on disk only once that memtable's flush to L0
+// completes (seconds later). With SyncWrites every write is synced as it
+// commits and the gap does not exist.
 func (bs *Store) MetaSetDurable(key string, value []byte) error {
 	if err := bs.MetaSet(key, value); err != nil {
 		return err
@@ -432,6 +440,11 @@ func (bs *Store) SavePropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) e
 	// while its token is still in an unsynced refShard buffer, making the row
 	// undecodable on reload (counter mismatch → fatal). New keys are rare
 	// (bounded by the schema), so this fsync amortizes to near-zero.
+	//
+	// The Sync covers the active WAL only: a memtable rotation between the
+	// write and the Sync leaves the registry in a retired memtable until its
+	// flush to L0, a power-loss gap of seconds without SyncWrites (METASYNC;
+	// MetaSetDurable).
 	//
 	// Skip when SyncWrites is on (db.Update already fsynced) or in InMemory mode
 	// (no WAL — mt.wal is nil, so db.Sync would nil-panic, and there is nothing

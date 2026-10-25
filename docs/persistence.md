@@ -46,6 +46,12 @@ Atomicity across a crash is per flush, not per logical operation group:
 - `tiered.Store` cross-shard relationship writes are two shard commits; a crash between them leaves residue that `RunRepair` resolves.
 - The commit clock survives a crash (backlog 44): every flush that writes rows also writes the newest transaction stamp of every row the store has written (`0x0F/tx_commit_floor`, first in the same `WriteBatch`; tiered keeps its event and archive shards' floor on the reference shard, written ahead of each shard's batch and fsynced there before a `DurableFlush` fsyncs the rows it covers), and `graph.New` raises the clock to it (`store.CommitFloorCapability`). After a crash, `NowTx()` and new stamps stay above every stored row, also when a write burst ran the clock ahead of the wall; only a `NowTx()` / `AdvanceClock` reservation that wrote no row before the crash can be lost (the Close-time watermark covers those).
 
+Durable meta writes (`MetaSetDurable`, the property-key registry save) sync badger's write-ahead log before they
+return (METASYNC): a process crash never loses them, and a power loss does not either unless badger rotated its
+memtable between the write and the sync, because `db.Sync` syncs only the active memtable's WAL; the write is then on
+disk once the retired memtable's flush to L0 completes, seconds later. `SyncWrites=true` closes that gap. A power-loss
+test of it needs a rig (LazyFS or dm-flakey) that rho does not have.
+
 Choose `DurableCommit=true` + `SyncWrites=true` (table above) for power-loss durability of commit groups, `SyncWrites=true` alone when every acknowledged standalone write must never be lost; the default trades that window for throughput. The memory store is not durable at all (sealed relationship segments of a `SegmentDir` excepted).
 
 ### Durable-on-return commit (`DurableCommit`)
