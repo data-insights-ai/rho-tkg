@@ -1,0 +1,15 @@
+DICT step 2, the badger store (badgerstore_value_dict.go, internal/valuedict).
+go test -count=1 -run ValueDict ./pkg/graph/store/badger/                     -> ok (7 tests)
+go test -race -count=1 -run ValueDict_Concurrent ./pkg/graph/store/badger/    -> ok (8 writers, readers, flushes)
+go test -count=1 ./pkg/graph/internal/valuedict/                               -> ok
+go test -short -count=1 ./pkg/graph/store/badger/ ./pkg/graph/internal/storeutil/ -> ok
+Mutations (each restored after):
+M1 Clear without re-appending the entries          -> FAIL TestValueDict_SurvivesClear
+M2 a pre-encoded node body stored as given          -> FAIL TestValueDict_PreEncodedNodeBodyRecoded
+M3 history rows encoded without the dictionary      -> FAIL TestValueDict_HistoryRowsCoded
+M4 a delta's Meta keeps format 2 with tokens        -> FAIL TestValueDict_HistoryRowsCoded
+M5 cap not enforced                                  -> FAIL TestValueDict_CapLeavesInlineAndCounts
+Found while testing: a history delta's Meta carries no properties, so its encode did not see the tokens and wrote
+format 2; the delta now carries the version (storeutil DiffNodeHistory / DiffRelHistory).
+Not testable by a test here: the entry is appended to pending under vd.mu before the token is returned, so it precedes
+every row using it (a crash between flushes cannot keep the row without the entry); reviewed in code.

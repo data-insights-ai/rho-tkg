@@ -19,6 +19,7 @@ import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/valuedict"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -265,6 +266,15 @@ type Config struct {
 	// and the store does not load or persist its own copy. When nil the store loads its
 	// own from meta.
 	PropertyKeyRegistry *registrypkg.PropertyKeyRegistry
+	// ValueDictionaries lists the value dictionaries new rows are coded with
+	// (DICT, store.ValueDictionary): a member's string value is stored once in
+	// this store and a token in each row. The members are named; the graph
+	// installs its label and type registries at open (SetNameRegistries).
+	// Coded rows decode with or without this list. Validated at New.
+	ValueDictionaries []storecontract.ValueDictionary
+	// ValueDictionaryPlan, when non-nil, replaces ValueDictionaries with a plan
+	// shared by several stores (a tiered store's shards: one set of counters).
+	ValueDictionaryPlan *valuedict.Plan
 	// OnPropertyKeyGrow, when non-nil, is called from flush() before the row
 	// WriteBatch whenever the registry grew (write-ahead registry persistence; the
 	// tiered store commits it to the reference shard). When nil the store persists to
@@ -531,6 +541,14 @@ type Store struct {
 	// unmarshal dictionary-encodes property keys into uint16 tokens. nil
 	// preserves the pre-tokenization (V1) on-disk format.
 	propKeyReg atomic.Pointer[registrypkg.PropertyKeyRegistry]
+
+	// vdict holds this store's value dictionaries (DICT,
+	// badgerstore_value_dict.go); never nil, so coded rows decode without a
+	// plan. labelNames / relTypeNames name the plan's members
+	// (SetNameRegistries); nil codes nothing.
+	vdict        *valueDict
+	labelNames   atomic.Pointer[registrypkg.LabelRegistry]
+	relTypeNames atomic.Pointer[registrypkg.RelTypeRegistry]
 
 	// onPropertyKeyGrow is the write-ahead hook fired from flush() when the
 	// registry has grown since the last commit (see Config.OnPropertyKeyGrow).
@@ -870,6 +888,13 @@ func New(cfg Config) (*Store, error) {
 	if err := validateEncryptionConfig(cfg); err != nil {
 		return nil, err
 	}
+	vdPlan := cfg.ValueDictionaryPlan
+	if vdPlan == nil {
+		var err error
+		if vdPlan, err = valuedict.NewPlan(cfg.ValueDictionaries); err != nil {
+			return nil, fmt.Errorf("graph: %w", err)
+		}
+	}
 
 	// Shrinking the effective MemTableSize on a dir with WALs written under a larger
 	// memtable fails the open ("Arena too small", unrecoverable), so flush such WALs at
@@ -962,6 +987,7 @@ func New(cfg Config) (*Store, error) {
 
 	maxEntryKey, maxEntryValue := entryLimits(cfg)
 	bs := &Store{
+		vdict:         newValueDict(vdPlan),
 		db:            db,
 		maxEntryKey:   maxEntryKey,
 		maxEntryValue: maxEntryValue,
@@ -2202,6 +2228,9 @@ func (bs *Store) Clear() (err error) {
 			err = bs.restampBinaryHashMarker()
 		}
 	}()
+	// The value dictionaries outlive the wipe (a token handed out before it
+	// may reach a row written after it): their entries go back into the batch.
+	defer bs.vdict.reappend(bs)
 	bs.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
 	bs.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	bs.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
@@ -2365,7 +2394,11 @@ func (bs *Store) PropertyKeyRegistry() *registrypkg.PropertyKeyRegistry {
 // currently-installed property-key registry (nil-safe), refusing a row the
 // store cannot hold (ErrEntryTooLarge).
 func (bs *Store) marshalNodeBytes(n *types.Node) ([]byte, error) {
-	data, err := storepkg.MarshalNodeWireWithKeys(n, bs.propKeyReg.Load())
+	w, err := bs.nodeWire(n)
+	var data []byte
+	if err == nil {
+		data, err = storepkg.MarshalNodeWireStruct(w)
+	}
 	if err == nil {
 		err = bs.checkEntryValue("node row", len(data))
 	}
@@ -2375,7 +2408,11 @@ func (bs *Store) marshalNodeBytes(n *types.Node) ([]byte, error) {
 // marshalRelBytes encodes a relationship via MarshalRelWireWithKeys, refusing a
 // row the store cannot hold (ErrEntryTooLarge).
 func (bs *Store) marshalRelBytes(r *types.Relationship) ([]byte, error) {
-	data, err := storepkg.MarshalRelWireWithKeys(r, bs.propKeyReg.Load())
+	w, err := bs.relWire(r)
+	var data []byte
+	if err == nil {
+		data, err = storepkg.MarshalRelWireStruct(w)
+	}
 	if err == nil {
 		err = bs.checkEntryValue("relationship row", len(data))
 	}
@@ -2425,11 +2462,17 @@ func (bs *Store) persistRegistryIfGrew() error {
 // it walks the wire's property slice and replaces any tokenized keys with
 // their resolved strings. Call after msgpack.Unmarshal of NodeWire.
 func (bs *Store) resolveNodeWireKeys(w *storepkg.NodeWire) error {
-	return storepkg.ResolvePropertyKeyTokens(w.Properties, bs.propKeyReg.Load())
+	if err := storepkg.ResolvePropertyKeyTokens(w.Properties, bs.propKeyReg.Load()); err != nil {
+		return err
+	}
+	return bs.resolveValueTokens(w.Properties, w.FormatVersion)
 }
 
 func (bs *Store) resolveRelWireKeys(w *storepkg.RelWire) error {
-	return storepkg.ResolvePropertyKeyTokens(w.Properties, bs.propKeyReg.Load())
+	if err := storepkg.ResolvePropertyKeyTokens(w.Properties, bs.propKeyReg.Load()); err != nil {
+		return err
+	}
+	return bs.resolveValueTokens(w.Properties, w.FormatVersion)
 }
 
 // loadIndexesRecovering is loadIndexes with a badger panic (a damaged table,

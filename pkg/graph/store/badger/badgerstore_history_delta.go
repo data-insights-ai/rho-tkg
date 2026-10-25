@@ -78,8 +78,7 @@ func (bs *Store) historyNodeValue(id snowflake.ID, version uint64, state *types.
 }
 
 func (bs *Store) historyNodeValueUnchecked(id snowflake.ID, version uint64, state *types.Node) ([]byte, error) {
-	reg := bs.propKeyReg.Load()
-	targetWire, err := storepkg.NodeToWireCheckedWithKeys(state, reg)
+	targetWire, err := bs.nodeWire(state)
 	if err != nil {
 		return nil, err
 	}
@@ -115,8 +114,7 @@ func (bs *Store) historyRelValue(id snowflake.ID, version uint64, state *types.R
 }
 
 func (bs *Store) historyRelValueUnchecked(id snowflake.ID, version uint64, state *types.Relationship) ([]byte, error) {
-	reg := bs.propKeyReg.Load()
-	targetWire, err := storepkg.RelToWireCheckedWithKeys(state, reg)
+	targetWire, err := bs.relWire(state)
 	if err != nil {
 		return nil, err
 	}

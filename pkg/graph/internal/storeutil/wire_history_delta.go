@@ -203,6 +203,11 @@ func SortWirePropertiesByKey(props []PropertyWire) {
 func DiffNodeHistory(anchor, target NodeWire) NodeHistoryDelta {
 	meta := target
 	meta.Properties = nil
+	if hasDictToken(target.Properties) {
+		// Meta carries no properties, so its encode cannot see the tokens:
+		// the version the reconstructed row needs rides on Meta.
+		meta.FormatVersion = max(meta.FormatVersion, ValueDictWireFormatVersion)
+	}
 	ps, pr := diffProperties(anchor.Properties, target.Properties)
 	return NodeHistoryDelta{Meta: meta, PS: ps, PR: pr}
 }
@@ -218,6 +223,11 @@ func ApplyNodeHistory(anchor NodeWire, d NodeHistoryDelta) NodeWire {
 func DiffRelHistory(anchor, target RelWire) RelHistoryDelta {
 	meta := target
 	meta.Properties = nil
+	if hasDictToken(target.Properties) {
+		// Meta carries no properties, so its encode cannot see the tokens:
+		// the version the reconstructed row needs rides on Meta.
+		meta.FormatVersion = max(meta.FormatVersion, ValueDictWireFormatVersion)
+	}
 	ps, pr := diffProperties(anchor.Properties, target.Properties)
 	return RelHistoryDelta{Meta: meta, PS: ps, PR: pr}
 }

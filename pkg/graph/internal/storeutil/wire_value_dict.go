@@ -52,3 +52,16 @@ func ResolvePropertyValueTokens(pw []PropertyWire, fv uint8, vt ValueTokens) err
 	}
 	return nil
 }
+
+// CodableString returns a property's string value when a value dictionary
+// may code it: a non-nil string of at least minLen bytes, not yet coded.
+func CodableString(p *PropertyWire, minLen int) (string, bool) {
+	if p.DictToken != 0 || p.Nil || p.Type != ptString {
+		return "", false
+	}
+	s, ok := p.Value.(string)
+	if !ok || len(s) < minLen {
+		return "", false
+	}
+	return s, true
+}

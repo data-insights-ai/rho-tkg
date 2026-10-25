@@ -569,7 +569,9 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 			return err
 		}
 		var data []byte
-		if i < len(wireBodies) && wireBodies[i] != nil {
+		// A body pre-encoded without this store's value dictionaries is
+		// re-encoded when the store codes node properties.
+		if i < len(wireBodies) && wireBodies[i] != nil && !bs.codesNodeProperties() {
 			data = wireBodies[i]
 			if err := bs.checkEntryValue("node row", len(data)); err != nil {
 				return err
