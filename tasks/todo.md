@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.77.0 (2026-10-25). Background, René's open decisions with my defaults,
+What rho does next, in order. Last release: v4.77.1 (2026-10-25). Background, René's open decisions with my defaults,
 and the numbered backlog: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`, under the same tag.
 
 Each item: one sentence, then when it is done and what it waits for.
@@ -8,10 +8,9 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
-in v4.75.0 to v4.76.1, DICT in v4.77.0 (all tagged, CI green, ai-soc and sigma told; ai-soc measures DICT before
-configuring it; `docs/CHANGELOG.md`). Now RESUME (a patch, branch `resume` 762f3a06: red test green, oracle harness
-green with aligned ends, 396 skips over 200 seeds; patch gate next), then BADGER step 3 / SHARD steps 2-10; DROPALL,
-DISCARDCLOSE and METASYNC after SHARD.
+in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1 (all tagged, CI green, ai-soc and sigma told; ai-soc measures
+DICT before configuring it; `docs/CHANGELOG.md`). Next BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and
+METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -47,7 +46,7 @@ DISCARDCLOSE and METASYNC after SHARD.
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Waits for: nothing (fixes shipped); BADGER step 3
-  (per-tier badger options) leads in. Step 1 shipped in v4.76.1; DICT in v4.77.0; RESUME (a patch) before step 2.
+  (per-tier badger options) leads in. Step 1 shipped in v4.76.1; DICT in v4.77.0; RESUME in v4.77.1.
 
 ### SHARD plan
 
@@ -94,9 +93,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
-- **RESUME** — sigma reports that a valid-time write ending exactly where an existing row starts still writes a copy
-  of that row as a "resumption" row (one wasted row per rewritten step, part of CHAIN's waste). Done when: rho writes
-  no resumption row when nothing needs resuming, with the same answers, released as a patch. Waits for: nothing (SHARD step 1 and DICT shipped); next.
 - **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
   known. Waits for: René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
