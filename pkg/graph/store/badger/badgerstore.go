@@ -2081,9 +2081,9 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 // not cleared.
 //
 // flushMu is taken first to drain any in-flight flush, which could otherwise race
-// ahead of DropAll() and resurrect pre-Clear entities, and to block new flushes. In
-// SyncWrites mode concurrent mutations block for the duration of DropAll (accepted:
-// Clear is rare and admin-scoped). Releasing flushMu before DropAll would not help:
+// ahead of the wipe and resurrect pre-Clear entities, and to block new flushes. In
+// SyncWrites mode concurrent mutations block for the duration of the wipe (accepted:
+// Clear is rare and admin-scoped). Releasing flushMu before the wipe would not help:
 // flush() also needs idxMu.RLock, which Clear holds via idxMu.Lock.
 func (bs *Store) Clear() (err error) {
 	if err := bs.checkWritable(); err != nil {
@@ -2191,7 +2191,7 @@ func (bs *Store) Clear() (err error) {
 	bs.relCache = newRelCache(cap, bs.relCache.Budget())
 
 	// Clear the pending buffer (flushMu serializes against flush()) and any buffered
-	// change-log records: DropAll wipes KeyChangeLog, so a stale record would be
+	// change-log records: the wipe drops KeyChangeLog, so a stale record would be
 	// re-flushed as a phantom. logSeq stays monotonic so post-Clear LSNs never collide
 	// with a consumer's pre-Clear watermark.
 	bs.commitGen.Add(1) // read snapshots re-pin after the wipe
@@ -2250,16 +2250,12 @@ func (bs *Store) Clear() (err error) {
 	}
 	// Change-log is off now, but a prior enabled session may have left a durable
 	// LastLSNKey; wiping it would let a later enabled reopen reseed LSNs to 0 and reuse
-	// LSNs a consumer checkpointed past (lesson 53). Preserve it whenever present; only
-	// a never-logged store takes the single atomic DropAll.
-	hasLSN, err := bs.lastLSNKeyPresent()
-	if err != nil {
-		return err
-	}
-	if hasLSN {
-		return bs.clearDataPreservingLastLSN()
-	}
-	return bs.db.DropAll()
+	// LSNs a consumer checkpointed past (lesson 53), so it is kept when present. A
+	// never-logged store is wiped the same way, never by DropAll (DROPALL): DropAll
+	// deletes the value-log files under a read that already found a key, and badger
+	// returns an empty value for a value-log read it cannot do (iterator.go:187-188).
+	// DropPrefix leaves them to the value-log GC, so such a read gets its row.
+	return bs.clearDataPreservingLastLSN()
 }
 
 // Close stops background goroutines, performs a final flush (including counters)

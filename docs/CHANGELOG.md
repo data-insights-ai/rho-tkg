@@ -13,6 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Discard` once the store is closing or closed: badger's `Discard` after `db.Close` sends to a 100-slot channel
   nobody drains, so the 101st such end blocked (`TestSnapshotsEndAfterCloseWithoutBlocking`: 100 of 101 ended
   before).
+- **DROPALL**: `Clear` of a badger store that never had the change log no longer calls badger's `DropAll`, which
+  deleted the value-log files under a read that had already found a key: a row of 1 MB or more then came back empty
+  and failed as "corrupt wire data" (`TestClearUnderHeldReadKeepsTheValue`: 0 of 1,440,438 bytes before). It is
+  wiped by `DropPrefix` like a logged store, so such a read gets its row and later reads find none; the wiped
+  values' space comes back with the value-log GC. An empty value now fails as `ErrCorruptWire` naming a failed
+  value-log read, whose cause badger logs, instead of "truncated msgpack".
 
 ## [4.78.0] - 2026-10-25
 

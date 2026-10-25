@@ -1,0 +1,11 @@
+DROPALL (branch discardclose), 2026-10-25
+red: TestClearUnderHeldReadKeepsTheValue "value read after Clear: 0 of 1440438 bytes (<nil>)": an item of a 1.4 MB
+  row found before Clear of a never-logged store reads back empty after it (badger's DropAll deleted the value-log
+  files; badger logs the read error and returns no bytes, iterator.go:187-188)
+fix: every Clear wipes through clearDataPreservingLastLSN (DropPrefix in the CLEARMETA order), never DropAll; the
+  value-log files stay until the value-log GC, so the held read gets its row; GetNode after Clear: ErrNodeNotFound.
+  lastLSNKeyPresent removed (no caller left). SafeUnmarshal reports an empty value as ErrCorruptWire naming a
+  failed value-log read (was "truncated msgpack while measuring depth").
+red (message): TestSafeUnmarshalEmptyNamesTheCause with the empty check off: "truncated msgpack while measuring depth"
+green: both; badger, storeutil, tiered, sharded, graph -short ok
+trade-off: the wiped values' disk space returns with the value-log GC, not at once (Clear is rare, admin-scoped)

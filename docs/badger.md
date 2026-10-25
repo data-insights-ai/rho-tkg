@@ -234,8 +234,9 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
     rho's group commit writes one request per group, which is right, unless the flush is split (rule 1): each part is
     a request of its own.
 11. **Store-wide operations pause writes, not reads.** `DropPrefix` / `DropAll` refuse concurrent writes; rho calls
-    them only in `Clear`, under its own locks, but cache-miss reads still run (`badgerstore_node.go:132-143`): a
-    value-log value read across `DropAll` comes back empty (DROPALL, section 9 item 10).
+    only `DropPrefix`, only in `Clear`, under its own locks, while cache-miss reads still run
+    (`badgerstore_node.go:132-143`). `DropAll` would delete the value-log files under such a read, whose value then
+    comes back empty; `DropPrefix` leaves them to the value-log GC (DROPALL, v4.78.1).
 
 ## 8. The complete API
 
@@ -314,7 +315,7 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 | `NewStreamWriter()` | Writes sorted, non-overlapping streams straight into SSTables, no WAL and no compaction: `Prepare` (deletes all existing data through `dropAll`, `stream_writer.go:65`), `PrepareIncremental`, `Write(buf)`, `Flush` (syncs directories), `Cancel`. Only for bootstrapping a DB. | - |
 | `StreamDB(outOptions)` | Copies a snapshot of every key into a new DB at `outOptions.Dir`: `OpenManaged` + `StreamWriter.Prepare` + `NewStreamAt(MaxUint64)` + `Flush` (`db.go:1996-2024`). The copy is compacted SSTables only (no WAL, no value log). | - (section 9) |
 | `Flatten(workers)` | Compacts all tables onto one level (after a restore). | - |
-| `DropAll()` | Deletes every table and value-log file; blocks writes (`ErrBlockedWrites`); **concurrent reads may panic** (doc comment). | `Clear` of a never-logged store (section 9) |
+| `DropAll()` | Deletes every table and value-log file; blocks writes (`ErrBlockedWrites`); **concurrent reads may panic** (doc comment). | - (`Clear` of a never-logged store until v4.78.1; DROPALL) |
 | `DropPrefix(prefixes...)` | Flushes memtables skipping the prefixes, compacts them away; blocks writes meanwhile. | `Clear` paths |
 | `BufferToKVList`, `KVToBuffer` | Convert between `z.Buffer` and `pb.KVList` (Stream framing). | - |
 
@@ -408,11 +409,14 @@ Badger features rho does not use yet that fit a rho need, and one risk. Each is 
    badger version", not "written at a rho tx".
 9. **Master-key change**: `WriteKeyRegistry` rewrites the key registry under a new master key offline; rho has no
    tool for it.
-10. **Risk (DROPALL)**: `Clear` of a store that never had the change log calls `DropAll` (badger: concurrent reads
-    may panic, `db.go:1699-1700`) while a cache-miss point read or a read snapshot may hold a badger transaction
-    outside `idxMu`/`flushMu`. Measured (`tasks/evidence/USAGE/`): an item looked up before `DropAll` still yields
-    an inline value whole, but a value-log value (a row of 1 MB or more) comes back empty with a nil error, because
-    badger swallows value-log read errors (`iterator.go:158-187`); since v4.75.2 the cause reaches `slog`.
+10. **Fixed (DROPALL, v4.78.1)**: `Clear` of a store that never had the change log called `DropAll` (badger:
+    concurrent reads may panic, `db.go:1699-1700`) while a cache-miss point read or a read snapshot may hold a badger
+    transaction outside `idxMu`/`flushMu`. Measured (`tasks/evidence/USAGE/`): a value-log value (a row of 1 MB or
+    more) looked up before `DropAll` came back empty with a nil error, because badger swallows value-log read errors
+    (`iterator.go:158-187`). Every `Clear` now wipes by `DropPrefix`, which leaves the value-log files to the GC
+    (`TestClearUnderHeldReadKeepsTheValue`), and an empty value fails as `ErrCorruptWire` naming a failed value-log
+    read; badger's log, in `slog` since v4.75.2, names the cause. The space of the wiped values returns with the
+    value-log GC, not at once.
 11. **Per-shard defaults (CACHE, SHARD)**: every writable open starts the writer, the flusher, 4 compactors with
     50 ms tickers and a directory walk every minute (`db.go:303-387`, `:458`, not guarded by `MetricsEnabled`);
     `CompactL0OnClose` for warm and cold shards saves their read-only opens a table probe per read for good;

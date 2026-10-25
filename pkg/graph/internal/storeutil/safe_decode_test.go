@@ -3,6 +3,7 @@ package storeutil
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -159,5 +160,19 @@ func TestGuardMsgpackDepthAcceptsLegitimateWires(t *testing.T) {
 	}
 	if _, err := WireToNodeChecked(w); err != nil {
 		t.Fatalf("checked decode of deep-but-legal node: %v", err)
+	}
+}
+
+// TestSafeUnmarshalEmptyNamesTheCause pins DROPALL's message: an empty value,
+// which badger returns for a value-log read it could not do, fails as
+// ErrCorruptWire saying so, not as truncated msgpack.
+func TestSafeUnmarshalEmptyNamesTheCause(t *testing.T) {
+	t.Parallel()
+	var w NodeWire
+	for _, data := range [][]byte{nil, {}} {
+		err := SafeUnmarshal(data, &w)
+		if !errors.Is(err, storepkg.ErrCorruptWire) || !strings.Contains(err.Error(), "value-log read") {
+			t.Fatalf("SafeUnmarshal(%v) = %v, want ErrCorruptWire naming a failed value-log read", data, err)
+		}
 	}
 }

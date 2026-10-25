@@ -255,8 +255,8 @@ func (bs *Store) clearAndReanchorChangeLog() error {
 
 // clearDataPreservingLastLSN wipes every data / index / history / change-log
 // keyspace and all metadata EXCEPT LastLSNKey, which stays continuously durable.
-// Shared by both Clear() arms so the LSN watermark is never absent across a Clear
-// (lesson 53): a future change-log-enabled reopen reseeds the allocator FROM it,
+// Every Clear wipes through it (DROPALL: never DropAll), so the LSN watermark is
+// never absent across a Clear (lesson 53): a future change-log-enabled reopen reseeds the allocator FROM it,
 // never from 0, so post-Clear LSNs cannot collide with a consumer's pre-Clear
 // checkpoint. Called under idxMu.Lock + flushMu.
 //
@@ -349,10 +349,10 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 	return clearStepFault(3)
 }
 
-// clearStepFaultForTest (tests only) runs after each durable step of Clear's
-// change-log arm (1: the entity counters deleted, 2: the data
-// dropped, 3: the rest of the metadata deleted, 4: the re-anchor marker
-// written); a test may stop the process there or fail Clear.
+// clearStepFaultForTest (tests only) runs after each durable step of Clear
+// (1: the entity counters deleted, 2: the data dropped, 3: the rest of the
+// metadata deleted, 4: the change-log arm's re-anchor marker written); a test
+// may stop the process there or fail Clear.
 var clearStepFaultForTest func(step int) error
 
 func clearStepFault(step int) error {
@@ -360,28 +360,6 @@ func clearStepFault(step int) error {
 		return clearStepFaultForTest(step)
 	}
 	return nil
-}
-
-// lastLSNKeyPresent reports whether a durable LastLSNKey exists on disk — i.e.
-// whether a prior change-log-enabled session left a watermark that a Clear must
-// preserve even when the log is currently disabled.
-func (bs *Store) lastLSNKeyPresent() (bool, error) {
-	present := false
-	err := bs.view(func(txn *badgerv4.Txn) error {
-		_, gerr := txn.Get(storepkg.LastLSNKey)
-		if gerr == badgerv4.ErrKeyNotFound {
-			return nil
-		}
-		if gerr != nil {
-			return gerr
-		}
-		present = true
-		return nil
-	})
-	if err != nil {
-		return false, fmt.Errorf("graph: probe last_lsn: %w", err)
-	}
-	return present, nil
 }
 
 // seedLogLSN reads the durable change-log watermark within the open-time

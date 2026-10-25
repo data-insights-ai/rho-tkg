@@ -42,8 +42,14 @@ const maxWireDecodeDepth = 64
 //
 // On the normal path SafeUnmarshal returns the decoder's own error (or nil)
 // unchanged, so existing errors.Is checks on decode failures are preserved;
-// only an actual panic or an over-deep blob is converted to ErrCorruptWire.
+// only an actual panic, an over-deep blob or an empty value (DROPALL) is
+// converted to ErrCorruptWire.
 func SafeUnmarshal(data []byte, v any) (err error) {
+	if len(data) == 0 {
+		// rho writes no empty value it decodes; badger returns one for a
+		// value-log read it could not do (iterator.go:187-188), and logs why.
+		return fmt.Errorf("%w: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)", storepkg.ErrCorruptWire)
+	}
 	if derr := guardMsgpackDepth(data); derr != nil {
 		return derr
 	}
