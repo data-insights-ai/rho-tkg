@@ -46,10 +46,21 @@ yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and M
   dictionary-coded, invisible to reads, filters and property-index probes. ai-soc's store meter (graphmgr
   StoredCopies) on the BA slice store (16,558 rows, v4.75.1): 57.8 % of 15.06 MB of stored values (>= 8 B) are
   copies; ai-soc and sigma remove most themselves; what only a store dictionary removes: `action` 285,733 B (1.9 %),
-  `aisoc_source` 367,310 B (2.4 %), repeated ip, sid and path values 0.7-1.1 MB (up to ~7 %). Sketch: like the
-  property-key registry (tokens on disk, one canonical registry, on the reference shard in tiered, the anchor in
-  sharded, committed ahead of the rows that use it); decode resolves tokens, so indexes and filters see plain
-  values; a new row shape (a one-way door, a minor). RAM: decoded values interned per token (one string per
+  `aisoc_source` 367,310 B (2.4 %), repeated ip, sid and path values 0.7-1.1 MB (up to ~7 %). Design (25 Oct,
+  replaces the registry-style sketch): each badger store (each tiered or sharded shard) holds the dictionary entries
+  its own rows use, written in the same commit as the first row that uses one (a staged flush writes them first).
+  Reason: the property-key registry fsyncs the reference shard before any row with a new token
+  (`badgerstore_meta.go:427`), fine for rare keys, but ai-soc's full store brings ~110,000 new values in 12 days;
+  per shard there is no cross-store ordering, a moved or cold shard is self-contained, and a cold open loads a
+  dictionary only when a row needs it. A value used in several shards is stored once per shard. Row shape:
+  `PropertyWire` gains `dt` (the token, uint32) in place of `v`; a row with one is row format 8, a store holding one
+  marker 11 (a one-way door, a minor). Coded only where key tokens apply (stored rows); the change log, export and
+  replica rows stay plain (`badgerstore_changelog.go:102`). Inline instead: a non-string, a string under 4 bytes, a
+  property off the list, a dictionary at its cap. Decode resolves the token to one interned string per value across
+  shards, so indexes, filters and `@source` see the plain value. Acceptance: the same writes with and without the
+  list give equal answers on every read door, history and index probe; the bytes per property from a store meter.
+  `cmdline` pays: on the kit slice 49,006 B of copies over 699 repeats is ~70 B a value, a token saves ~66 B a repeat
+  (full store ~108,600 repeats, ~7 MB). RAM: decoded values interned per token (one string per
   value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
   then built and released. Order (ai-soc with René's yes, 25 Oct): after SHARD step 1, before SHARD steps
   2-10; nothing in SHARD blocks it (the dictionary moves with the reference shard). ai-soc's tracker on the kit BA
