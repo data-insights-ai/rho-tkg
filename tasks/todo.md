@@ -9,8 +9,9 @@ Each item: one sentence, then when it is done and what it waits for.
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
 in v4.75.0 to v4.76.1, DICT in v4.77.0 (all tagged, CI green, ai-soc and sigma told; ai-soc measures DICT before
-configuring it; `docs/CHANGELOG.md`). Now RESUME (a patch, branch `resume`: red test green, oracle harness running),
-then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
+configuring it; `docs/CHANGELOG.md`). Now RESUME (a patch, branch `resume` 762f3a06: red test green, oracle harness
+green with aligned ends, 396 skips over 200 seeds; patch gate next), then BADGER step 3 / SHARD steps 2-10; DROPALL,
+DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -167,6 +168,11 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   sigma (24 Oct): an identity freezes from its declaration on; sigma restructures Derived identities (key terms as
   typed columns plus an int hash, the DerivedPage shape) with ordinary writes first, then declares. No re-key door
   unless a need after the declaration appears.
+- **LONGTIER** (found 25 Oct, running the store packages without `-short`) — two badger tests fail in the long tier
+  that no gate runs, already at v4.76.1: `TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock` and
+  `TestBadgerMigrateOversizedWALCoversRevertToStock` (`00001.mem` missing); `TestRelPlannerStatsMemoBounded` measures
+  the process heap next to the package's parallel tests (failed there, passes alone). Done when: each passes in the
+  long tier or is removed as untestable, with the cause stated.
 - **DICTMERGE** (ai-soc, 25 Oct; after DICT) — with per-shard dictionaries a value seen daily is stored once per day
   shard (~365 a year). Could cold shards share or merge their dictionaries when they move cold, so a value is stored
   once per cold volume? Done when: answered from DICT's measured per-shard dictionary bytes.
