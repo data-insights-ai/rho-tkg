@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.78.4] - 2026-10-25
+
 ### Changed
 
 - **PREFETCH** (BADGER step 3): no badger iterator prefetches values any more; 15 did (14 assignments and one by
