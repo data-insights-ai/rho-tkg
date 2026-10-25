@@ -72,7 +72,12 @@ func TestDurableFlush_ConcurrentWithBackgroundFlushDurableFlushAndClose(t *testi
 			}
 		}()
 	}
-	time.Sleep(50 * time.Millisecond)
+	// Close once a durable flush has synced (a fixed 50 ms sleep was too short
+	// under -race next to the whole package), still while rows are written.
+	for deadline := time.Now().Add(10 * time.Second); bs.DurableSyncCountForTest() == 0 && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(10 * time.Millisecond)
 	closed.Store(true)
 	if err := bs.Close(); err != nil {
 		t.Errorf("Close: %v", err)
