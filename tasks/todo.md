@@ -88,12 +88,20 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 10. [ ] The global index on the fast volume, unique keys first (keyed event labels), then label and property
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
     its data cleanup.
+    ai-soc's counts (25 Oct, run k10251802, reduced BA set over 3 data days, one mint-day shard): 1,038,092 keyed
+    nodes (Process 632,653 at 40.6 B average key, File 229,863 at 110.9 B, RegValue 74,934 at 125.2 B, 7 more labels
+    under 32,000 each; cap 4,096 B); about 1.9 M BA edges plus 1.0 M BO; reference shard 828 MB, the day shard 1.2 GB;
+    indexed rel properties `aisoc_record` (~22 B) on every edge, `device`, `remote_ip`, `src`/`action`; no on-disk
+    property index; ErrEntryTooLarge never. Decision on the unique-key slice: René, with these numbers.
 
 - **MOVEREAD** (found in the volume minor's review, 25 Oct) — a move makes the shard's readers and writers wait for
   its whole copy (its `DiskBytes` at the volumes' copy rate), and the sweep moves a warm shard soon after rotation.
-  Done when: reads of a moving shard go on from the source during the copy (writers wait), or the measured stall is
-  accepted. Waits for: ai-soc's shard sizes on disk and whether its reads and writes reach a rotated-out shard
-  (asked 25 Oct); no consumer maps a volume yet.
+  ai-soc (25 Oct, run k10251802): `ShardWindow` 24 h, `ColdAfter` 3 d; one day shard on the full estate is an
+  estimated tens of GB; after rotation only corrections, retractions and endings write to it, while as-of reads,
+  the record-history read after a restart, the dedupe index below its 25-h window and sigma's by-id reads read it;
+  seconds of stall are fine, minutes stall `/tkg/asof` and a restart. Done when: reads of a moving shard go on from
+  a read-only handle on the source during the copy (writers wait), built with read-only shard handles (BADGER step 3).
+  ai-soc pins v4.78.x before it maps a volume.
 
 - **METASYNC** (docs on main, ships with the next tag) — the doors and `docs/persistence.md` state what holds: a
   process crash never loses a durable meta write; without `SyncWrites` a power loss can, when a memtable rotation put
