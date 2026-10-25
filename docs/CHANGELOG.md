@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.78.3] - 2026-10-25
+
 ### Changed
 
 - **COLDRO** (BADGER step 3, read-only cold opens): a read of a closed cold shard opens it read-only, 1.3 ms and
@@ -13,8 +15,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `MaxOpenColdShards` 0 every such read paid that open. A write, or a checkout that may write, replaces the
   read-only handle with a writable one once its readers finish. A shard whose read-only open fails (an unclean WAL)
   or whose index definitions differ from the anchor's still opens writable.
-
-### Changed
 
 - **FLAKYWAL** (tests only): `TestTieredOversizedWALMigratedOnWarmReopen` writes a payload that stays in the first WAL
   and checks it; 400 rows rotated the memtable, so badger's flush deleted `00001.mem` under the test's live copy
