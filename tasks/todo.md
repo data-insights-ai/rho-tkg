@@ -1,15 +1,15 @@
 # todo
 
-What rho does next, in order. Last release: v4.75.1 (2026-10-24). Background, René's open decisions with my defaults,
+What rho does next, in order. Last release: v4.76.0 (2026-10-24). Background, René's open decisions with my defaults,
 and the numbered backlog: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`, under the same tag.
 
 Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-Order (René 24 Oct, "fixes first", then "the given order"): FLUSHPART + KEYSIZE + VALUESIZE shipped in v4.75.0
-(tagged, ai-soc and sigma told); DECODEBOUND shipped in v4.75.1; VERIFY + BADGERLOG shipped in v4.75.2 (tagged, ai-soc and sigma told, tag CI green); CLEARMETA shipped in v4.75.3 (tagged, sigma and ai-soc told, tag CI green); CLEARSHARDS shipped in v4.75.4; SAMESTART shipped in v4.75.5; OPENEXCISE shipped in v4.76.0 (tagged, sigma and ai-soc told, tag CI green); next BADGER step 3 /
-SHARD; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
+Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are
+released in v4.75.0 to v4.76.0 (all tagged, CI green, ai-soc and sigma told; `docs/CHANGELOG.md`). Next BADGER step 3
+/ SHARD, then DICT; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
