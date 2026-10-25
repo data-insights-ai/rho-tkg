@@ -19,7 +19,7 @@ func (bs *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
-	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
+	snap := newScanSnapshot(bs, bs.nodeCache.FlushEpoch)
 	defer snap.close()
 	for i, nid := range ids {
 		out[i] = nil
@@ -66,7 +66,7 @@ func (bs *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relatio
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
-	snap := newScanSnapshot(bs.db, bs.relCache.FlushEpoch)
+	snap := newScanSnapshot(bs, bs.relCache.FlushEpoch)
 	defer snap.close()
 	for i, rid := range ids {
 		out[i] = nil

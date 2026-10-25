@@ -148,7 +148,7 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 // scanSnapshot that re-pins after a flush, so a row committed and evicted
 // mid-scan is never read from a stale snapshot.
 func (bs *Store) forEachNodeBulk(ids []types.NodeID, fn func(*types.Node) bool) error {
-	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
+	snap := newScanSnapshot(bs, bs.nodeCache.FlushEpoch)
 	defer snap.close()
 	for _, nid := range ids {
 		id := nid.SnowflakeID()

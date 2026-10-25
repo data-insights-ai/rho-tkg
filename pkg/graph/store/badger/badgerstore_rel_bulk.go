@@ -35,7 +35,7 @@ import (
 // node bulk path: ids come from a membership index that can lag a delete, and a
 // column build must not fail because an index entry outlived its row.
 func (bs *Store) forEachRelBulk(ids []types.RelID, fn func(*types.Relationship) bool) error {
-	snap := newScanSnapshot(bs.db, bs.relCache.FlushEpoch)
+	snap := newScanSnapshot(bs, bs.relCache.FlushEpoch)
 	defer snap.close()
 	for _, rid := range ids {
 		id := rid.SnowflakeID()

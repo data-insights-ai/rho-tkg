@@ -458,7 +458,7 @@ func (bs *Store) ensureNodeRowsLive(ids []types.NodeID) error {
 	if len(misses) > 0 {
 		slices.Sort(misses)
 		misses = slices.Compact(misses)
-		snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
+		snap := newScanSnapshot(bs, bs.nodeCache.FlushEpoch)
 		for _, nid := range misses {
 			if err := bs.checkNodeRowInSnapshot(snap, nid); err != nil {
 				fail(nid, err)

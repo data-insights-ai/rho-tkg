@@ -52,7 +52,7 @@ func (bs *Store) collectNodesBulkParallel(ids []types.NodeID) ([]*types.Node, er
 	// Serial pass: cache hits fill results inline; misses stage their raw bytes.
 	// Misses read through a scanSnapshot, which re-pins after a flush (see its
 	// doc comment for the dropped/replaced row a single snapshot would cause).
-	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
+	snap := newScanSnapshot(bs, bs.nodeCache.FlushEpoch)
 	defer snap.close()
 	for i, nid := range ids {
 		id := nid.SnowflakeID()

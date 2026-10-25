@@ -29,6 +29,7 @@ import (
 // Not safe for concurrent use: one goroutine per scanSnapshot, like a badger
 // transaction. Items returned by seekAfterMiss are valid until the next call.
 type scanSnapshot struct {
+	bs     *Store
 	db     *badgerv4.DB
 	epoch  func() uint64 // the flush epoch of the cache the reader consults
 	pinned uint64        // epoch read immediately before txn opened
@@ -37,8 +38,8 @@ type scanSnapshot struct {
 	last   []byte // the key seekAfterMiss sought last on it (nil: none yet)
 }
 
-func newScanSnapshot(db *badgerv4.DB, epoch func() uint64) *scanSnapshot {
-	return &scanSnapshot{db: db, epoch: epoch}
+func newScanSnapshot(bs *Store, epoch func() uint64) *scanSnapshot {
+	return &scanSnapshot{bs: bs, db: bs.db, epoch: epoch}
 }
 
 // txnAfterMiss returns a read transaction that holds the latest committed
@@ -119,6 +120,9 @@ func (s *scanSnapshot) stepTo(key []byte) bool {
 const seekSteps = 4
 
 // close releases the iterator and transaction. Safe to call repeatedly.
+// After the store closed the transaction is dropped without Discard, as the
+// read snapshot's (DISCARDCLOSE: badger's Discard after db.Close sends to a
+// 100-slot channel nobody drains, so the 101st blocks forever).
 func (s *scanSnapshot) close() {
 	if s.it != nil {
 		s.it.Close()
@@ -126,7 +130,7 @@ func (s *scanSnapshot) close() {
 	}
 	s.last = nil
 	if s.txn != nil {
-		endReadTxn(s.txn, true)
+		endReadTxn(s.txn, !s.bs.isClosingOrClosed())
 		s.txn = nil
 	}
 }

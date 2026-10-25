@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **DISCARDCLOSE**: a scan or relationship-type build that still held its badger read transaction when the store
+  closed no longer blocks forever when it ends. Like the read snapshot, both now drop the transaction without
+  `Discard` once the store is closing or closed: badger's `Discard` after `db.Close` sends to a 100-slot channel
+  nobody drains, so the 101st such end blocked (`TestSnapshotsEndAfterCloseWithoutBlocking`: 100 of 101 ended
+  before).
+
 ## [4.78.0] - 2026-10-25
 
 The volume minor (SHARD steps 2-8, ADR-0012 in `docs/architecture.md`): a tiered store spreads its shards over a hot,

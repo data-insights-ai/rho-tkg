@@ -1,0 +1,7 @@
+DISCARDCLOSE (branch discardclose), 2026-10-25
+red: TestSnapshotsEndAfterCloseWithoutBlocking, both subtests: "100 of 101 snapshots ended within 10 s after Close"
+  (scan snapshot and rel-type build snapshot, each on its own in-memory store, so each red is that path's own)
+fix: scanSnapshot and relBuildSnap keep their store and end the transaction without Discard once it is closing
+  or closed (isClosingOrClosed), as the read snapshot does (badgerstore_read_snapshot.go:126)
+green: that; badger -short ok (65 s); -race -count=3 of the test ok; go build ./... ok
+mutation: the red run is the check (each path discarding unconditionally failed its own subtest)

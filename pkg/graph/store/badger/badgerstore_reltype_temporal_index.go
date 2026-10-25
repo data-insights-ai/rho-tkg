@@ -221,7 +221,7 @@ func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.Tempor
 	ids = slices.Compact(ids)
 	pending := bs.pendingRelHistoryRows(ids)
 
-	snap := &relBuildSnap{db: bs.db, epoch: bs.relCache.FlushEpoch}
+	snap := &relBuildSnap{bs: bs, db: bs.db, epoch: bs.relCache.FlushEpoch}
 	defer snap.close()
 	kept := make([]bool, len(ids))
 	for i, id := range ids {
@@ -273,6 +273,7 @@ const relWalkMaxSteps = 32
 // relBuildSnap is the build's read snapshot (one transaction, two walks), re-pinned
 // when the cache flush epoch moved (see scanSnapshot). One goroutine only.
 type relBuildSnap struct {
+	bs         *Store
 	db         *badgerv4.DB
 	epoch      func() uint64
 	pinned     uint64
@@ -299,7 +300,7 @@ func (s *relBuildSnap) close() {
 	}
 	s.rows.it.Close()
 	s.hist.it.Close()
-	endReadTxn(s.txn, true)
+	endReadTxn(s.txn, !s.bs.isClosingOrClosed()) // after Close without Discard (scanSnapshot.close)
 	s.txn, s.rows, s.hist = nil, nil, nil
 }
 

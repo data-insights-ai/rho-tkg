@@ -818,7 +818,7 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 		bs.bulkAsOfOverlayTestHook()
 	}
 	idx := 0
-	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
+	snap := newScanSnapshot(bs, bs.nodeCache.FlushEpoch)
 	err := func() error {
 		defer snap.close()
 		for _, nid := range liveIDs {
@@ -898,7 +898,7 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 		bs.bulkAsOfOverlayTestHook()
 	}
 	idx := 0
-	snap := newScanSnapshot(bs.db, bs.relCache.FlushEpoch)
+	snap := newScanSnapshot(bs, bs.relCache.FlushEpoch)
 	err := func() error {
 		defer snap.close()
 		for _, rid := range liveIDs {

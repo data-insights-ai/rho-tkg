@@ -105,7 +105,7 @@ func TestScanSnapshotSeekAfterMissSteps(t *testing.T) {
 		t.Fatal(err)
 	}
 	targets := []int64{1, 2, 3, 4, 9, 10, 11, 17, 20, 21, 25, 30, 31, 45, 46, 60, 61, 5, 6, 59, 2}
-	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
+	snap := newScanSnapshot(bs, bs.nodeCache.FlushEpoch)
 	defer snap.close()
 	for _, id := range targets {
 		item := snap.seekAfterMiss(storepkg.NodeKey(snowflake.ID(id)))
