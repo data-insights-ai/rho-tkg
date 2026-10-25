@@ -1,0 +1,13 @@
+FLAKE (row 119 follow-up (a); branch flake), 2026-10-26
+symptom: TestTemporalPropertySeekAnswersEverLabelMembers/badger missed the relabelled node at TxPin: pinBefore only
+  beside other parallel tests (passed alone; it had been made serial).
+cause (test): the fixture pinned with g.readNow(), which reserves nothing (context.go documents peekNow/readNow as
+  "NOT a sound as-of pin"). A commit takes the wall millisecond whenever it is above the last stamp (c.now), so
+  when the wall had moved past the floor before the pin, the pin and the relabel right after it read the same
+  millisecond: the relabel was stamped at the pin and showed there. Alone, the fixture's burst of writes ran the
+  floor ahead of the wall, so the next stamp was floor + 1, after the pin.
+fix: the fixture pins with g.Temporal.NowTx() (reserves the instant; every later write is stamped after it); the
+  test runs in parallel again. Not a product bug: a sound pin is NowTx or an instant a write returned.
+red: TestTemporalPropertySeekPinUnderFrozenClock (a test clock that jumps past every stamp just before the pin and
+  holds still) with the readNow pin: "at the pin before the relabel: [plain], want [plain relabelled]" on memory,
+  memory-segments, badger, sharded; green with NowTx; -count=3 green.

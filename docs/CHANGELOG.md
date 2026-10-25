@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **FLAKE** (tests only): `TestTemporalPropertySeekAnswersEverLabelMembers` pinned with an instant that reserves
+  nothing, so a write in the same millisecond could be stamped at the pin; beside other tests it then missed a node.
+  It pins with `NowTx()` and runs in parallel again; `TestTemporalPropertySeekPinUnderFrozenClock` reproduces the
+  collision deterministically.
+
+### Changed
+
 - **VLOGGC** (BADGER step 3; measured, no code change): the value-log GC loop costs 28 ns a pass where the value log
   holds nothing, and reclaims dead large values once compaction has dropped them (114 MB to 32 MB in the probe); a
   large value kept by history stays (`tasks/evidence/VLOGGC/`, `docs/badger.md` rule 9).

@@ -20,7 +20,9 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -36,7 +38,9 @@ type seekFixture struct {
 	pinBefore  types.Instant // after the first writes, before gained got P
 }
 
-func buildSeekFixture(t *testing.T, g *Core, churn, versions int) seekFixture {
+// buildSeekFixture builds the fixture; beforePin, when given, runs right
+// before the pin is taken (a test moves its clock there).
+func buildSeekFixture(t *testing.T, g *Core, churn, versions int, beforePin ...func()) seekFixture {
 	t.Helper()
 	ctx := context.Background()
 	add := func(labels []string, props map[string]any) types.NodeID {
@@ -56,7 +60,17 @@ func buildSeekFixture(t *testing.T, g *Core, churn, versions int) seekFixture {
 	f.relabelled = add([]string{"P", "R"}, map[string]any{"id": int64(1), "tkg_valid_from": int64(1000)})
 	f.gained = add([]string{"Q"}, map[string]any{"id": int64(1), "tkg_valid_from": int64(1000)})
 	f.other = add([]string{"P"}, map[string]any{"id": int64(5), "tkg_valid_from": int64(1000)})
-	f.pinBefore = g.readNow()
+	for _, fn := range beforePin {
+		fn()
+	}
+	// A reserved instant (NowTx): every later write is stamped after it. A
+	// readNow() pin reserves nothing, so the relabel could take its instant
+	// and show at the pin (FLAKE; context.go, peekNow).
+	pin, err := g.Temporal.NowTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.pinBefore = pin
 	if err := g.Nodes.RemoveLabel(ctx, f.relabelled, "P"); err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +110,7 @@ func sortedNodeIDs(ids ...types.NodeID) []types.NodeID {
 // TestTemporalPropertySeekAnswersEverLabelMembers: exact sets for windows,
 // instants and pins, both doors, every backend.
 func TestTemporalPropertySeekAnswersEverLabelMembers(t *testing.T) {
+	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		if be.name == "tiered" {
 			continue // a label change across its reference/event classes is refused there
@@ -242,6 +257,38 @@ func TestTemporalRelPropertySeekScopedToType(t *testing.T) {
 						t.Errorf("%+v: %d chain loads, want at most 3 (the T relationships)", tc.opts, loads)
 					}
 				}
+			}
+		})
+	}
+}
+
+// TestTemporalPropertySeekPinUnderFrozenClock pins FLAKE: when the clock moves
+// past every stamp so far just before the pin and holds still, a pin that
+// reserves nothing (readNow) equals the next write's stamp and that write (the
+// relabel) shows at the pin. The fixture's pin is reserved (NowTx): the
+// relabelled node still carries P at it. Before, the test failed only beside
+// other parallel tests, where the writes before the pin did not happen to run
+// the clock's floor ahead of the wall.
+func TestTemporalPropertySeekPinUnderFrozenClock(t *testing.T) {
+	t.Parallel()
+	for _, be := range pinnedPropBackends() {
+		if be.name == "tiered" {
+			continue // as TestTemporalPropertySeekAnswersEverLabelMembers
+		}
+		t.Run(be.name, func(t *testing.T) {
+			g := be.open(t)
+			var step atomic.Int64
+			base := time.Now().Add(time.Hour)
+			g.SetClockForTest(t, func() time.Time { return base.Add(time.Duration(step.Load()) * time.Second) })
+			// The clock jumps past every stamp so far just before the pin and
+			// stays there: the pin and the next write read the same instant.
+			f := buildSeekFixture(t, g, 1, 1, func() { step.Add(1) })
+			got, err := g.Nodes.ByLabelAndProperty("P", "id", int64(1), storepkg.QueryOpts{TxPin: f.pinBefore})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := sortedNodeIDs(f.plain, f.relabelled); fmt.Sprint(seekIDSet(got)) != fmt.Sprint(want) {
+				t.Fatalf("at the pin before the relabel: %v, want %v", seekIDSet(got), want)
 			}
 		})
 	}
