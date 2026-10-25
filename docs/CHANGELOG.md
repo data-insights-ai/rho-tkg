@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.78.1] - 2026-10-25
+
 ### Fixed
 
 - **DISCARDCLOSE**: a scan or relationship-type build that still held its badger read transaction when the store

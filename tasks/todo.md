@@ -11,7 +11,7 @@ Order (René 24 Oct: fixes first; open decisions settled from the data and the c
 in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
 consumers build, ai-soc and sigma told; the badger race package took 582 of its 600 s in the gate; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, MOVEREAD (after ai-soc's shard
-sizes), SHARD step 10 (after ai-soc's measurement); then DROPALL, DISCARDCLOSE and METASYNC.
+sizes), SHARD step 10 (after ai-soc's measurement); METASYNC. DISCARDCLOSE and DROPALL in v4.78.1.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -94,15 +94,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   accepted. Waits for: ai-soc's shard sizes on disk and whether its reads and writes reach a rotated-out shard
   (asked 25 Oct); no consumer maps a volume yet.
 
-- **DISCARDCLOSE** (after SHARD; confirmed, low; `tasks/evidence/USAGE/discard_test.go.txt`) — The scan snapshot and the rel-type
-  build walk always `Discard` their transaction; after `db.Close` up to 100 such discards return and the 101st blocks
-  forever. Done when: they skip `Discard` after `Close` as the read snapshot does, tested with 101.
-  Green on branch `discardclose` (`tasks/evidence/DISCARDCLOSE/fix.txt`); releasing with DROPALL as v4.78.1.
-- **DROPALL** (after SHARD) — `Clear` of a store that never had the change log calls badger's `DropAll` while cache-miss reads and
-  read snapshots may hold a badger transaction; measured at rho level (`tasks/evidence/USAGE/dropall_rho_test.go.txt`):
-  a GetNode that found the key of a 1.4 MB row before `Clear` fails with "corrupt wire data" (badger swallows the
-  value-log read error and returns an empty value); an inline row reads back whole. Done when: such a read reports the real cause, and a read racing `Clear` reports not-found or the row.
-  Green on branch `discardclose` (`tasks/evidence/DROPALL/fix.txt`); releasing with DISCARDCLOSE as v4.78.1.
 - **METASYNC** (after SHARD; source-confirmed; not testable by a process kill) — `MetaSetDurable` and the property-key registry
   save promise durability after `db.Sync`, which syncs only the active WAL, so after a memtable rotation the write
   may not survive a power loss without `SyncWrites` (`badgerstore_meta.go:324-334`, `:420-434`). Done when: the doors
