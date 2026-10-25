@@ -101,9 +101,11 @@ Branch `dict`; each step red test first, mutation-checked; the minor ships on Re
    value; Clear keeps the entries (a token handed out before it may reach a row after it); pre-encoded batch bodies
    of coded nodes are re-encoded. Green on branch `dict` (4dee6d3b; 5 mutations caught, race-clean concurrent test;
    found: a history delta wrote format 2 with tokens, fixed; `tasks/evidence/DICT/step2.txt`).
-3. [ ] Core installs the label and rel-type registries into a store with dictionaries (names to tokens).
+3. [ ] Core installs the label and rel-type registries into a store with dictionaries (names to tokens). Green on
+   branch `dict` (a063667c, `tasks/evidence/DICT/step3-4.txt`).
 4. [ ] Tiered: the config reaches every shard; counters per dictionary (coded, left inline because full, new
-   entries) summed over shards and readable (ai-soc).
+   entries) summed over shards and readable (ai-soc). Green on branch `dict` (a063667c; 3 mutations caught across
+   steps 3-4).
 5. [ ] Acceptance: the same writes with and without the list give equal answers on every read door, history read
    and index probe; stored bytes per property measured; CHANGELOG with the one-way door; `docs/persistence.md` rows
    for format 8 and marker 11; minor gate, consumer build; tag on René's word.
