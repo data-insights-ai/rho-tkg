@@ -87,6 +87,24 @@ yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and M
   column (an IP in `ov_c1`) can share `NETWORK.remote_ip`'s dictionary; default one per (label, property). Strings
   first (an int or float is 8 fixed bytes; a token saves little); string elements of lists later if the tracker
   shows them. `ov_rel` on Derived is on the first list.
+### DICT plan
+
+Branch `dict`; each step red test first, mutation-checked; the minor ships on René's word (a one-way door).
+
+1. [ ] Row shape (storeutil): a property may carry `dt` (a dictionary token) in place of `v`; a row with one is row
+   format 8, a store holding one marker 11; a `dt` on a row below 8, on a non-string or next to a `v` is corrupt; an
+   unknown token fails closed.
+2. [ ] Badger store: config `ValueDictionaries` (name, cap, members (label or rel type, property)); one token space per
+   store; a new value's entry goes into the pending batch (with the marker raise) before the row that uses it, so
+   no flush commits the row without it; entries load on first use; decode resolves to one `unique` string per
+   value; Clear drops the entries after the data; pre-encoded batch bodies of coded nodes are re-encoded.
+3. [ ] Core installs the label and rel-type registries into a store with dictionaries (names to tokens).
+4. [ ] Tiered: the config reaches every shard; counters per dictionary (coded, left inline because full, new
+   entries) summed over shards and readable (ai-soc).
+5. [ ] Acceptance: the same writes with and without the list give equal answers on every read door, history read
+   and index probe; stored bytes per property measured; CHANGELOG with the one-way door; `docs/persistence.md` rows
+   for format 8 and marker 11; minor gate, consumer build; tag on René's word.
+
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Waits for: nothing (fixes shipped); BADGER step 3
