@@ -63,7 +63,7 @@ yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and M
   (full store ~108,600 repeats, ~7 MB). Design sent to ai-soc and sigma (25 Oct); waiting for ai-soc's review, the
   caps (default 4x its full-store counts) and whether it writes these properties through sharded too. sigma (25
   Oct): nothing of sigma's in the first cut; its Derived (label, ov_cN) pairs join ai-soc's dictionaries later,
-  after René's yes to KEYENC and sigma's KEYCOLS (rows written before a property is listed stay inline). RAM: decoded values interned per token (one string per
+  after sigma's KEYCOLS (René's yes to KEYENC came 25 Oct; rows written before a property is listed stay inline). RAM: decoded values interned per token (one string per
   value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
   then built and released. Order (ai-soc with René's yes, 25 Oct): after SHARD step 1, before SHARD steps
   2-10; nothing in SHARD blocks it (the dictionary moves with the reference shard). ai-soc's tracker on the kit BA
