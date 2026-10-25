@@ -111,7 +111,7 @@ Branch `dict`; each step red test first, mutation-checked; the minor ships on Re
    for format 8 and marker 11; minor gate, consumer build; tag on René's word. Acceptance, docs and CHANGELOG green on
    branch `dict` (0cfce028; equal answers over tiered across a reopen, 10.3 % fewer stored bytes on the test's LOGON
    shape; `tasks/evidence/DICT/step5.txt`). Consumers build and vet against the branch; the minor gate (`make ci-docker`)
-   runs on the branch (25 Oct); ai-soc has the config shape. Then René's word for the tag (v4.77.0).
+   run 1 stopped at fmt-check (the acceptance test, gofmt'd in 556ca117), run 2 running; ai-soc has the config shape. Then René's word for the tag (v4.77.0).
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
