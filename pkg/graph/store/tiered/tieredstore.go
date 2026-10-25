@@ -229,6 +229,7 @@ type EventShard struct {
 	moving            atomic.Bool   // set with moveDone: the lock-free checkout of an open shard backs off to the gate
 	moveRead          *BadgerStore  // shardMu-protected: while a move copies the shard, a read-only handle on the source that readers pin (MOVEREAD)
 	moveReadReady     chan struct{} // shardMu-protected: closed once the copy's read-only handle is open; nil outside the copy or when it did not open
+	storeRO           bool          // shardMu-protected: store is a read-only handle (COLDRO): a writer upgrades it first
 	coldOpens         atomic.Int64  // lazy opens of the closed cold shard since New (ShardInfo.ColdOpens)
 	moveFailedAt      atomic.Int64  // when the idle sweep's last move of the shard failed (unix ns; 0 = never): it retries the others first
 	coldCounted       bool          // shardMu-protected: this shard's open store is counted in Store.openColdShards

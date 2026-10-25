@@ -1,0 +1,21 @@
+COLDRO (BADGER step 3, read-only cold opens; branch coldro), 2026-10-25
+measured (open_cost_test.go.txt, 20 opens of a closed cold shard each, this host under load):
+  cold open before (read-only recovery probe + writable open): 27.6 ms, +93.9 MB heap, +18 goroutines
+  read-only open:                                               1.26 ms, +3.3 MB heap,  +10 goroutines
+design: a reader (checkoutStoreReadOnly and the read routings, switched in MOVEREAD) opens a closed cold shard
+  read-only; it opens writable as before when the read-only open fails (an unclean WAL needs a writable recovery)
+  or when the shard's index definitions differ from the anchor's (only a writable open syncs them;
+  anchoredIndexesMatch). A checkout that may write (checkoutStore, checkoutStoreForRead) replaces a read-only
+  handle: it gates new checkouts as a move does, waits for the handle's readers (its own pin excepted), closes it
+  and opens writable (the directory lock is shared by the read-only handle). ColdOpens counts both opens.
+found while testing: property and composite index DDL opens closed cold shards (the hot + warm bound of
+  shard_index_fanout.go is for relationship temporal indexes), so a mismatch at a cold open only follows an
+  interrupted DDL; the check stays (tested by indexes on the shard alone and on the anchor alone).
+red: the COLDRO tests failed as each mutation below; first anchor-only test case was wrong (its own writable
+  checkout synced the index) and was fixed to leave the shard closed.
+mutations (each failed a test): no read-only open; no upgrade at checkoutStore's locked path (backfill create);
+  no upgrade in checkoutStoreForRead; no drain before the upgrade's close; indexes always matching; property defs
+  ignored; composite defs compared one way (each way).
+not mutation-tested: the upgrade's own-pin count 1 in checkoutStore's demotion-race branch (reached only when a
+  shard turns cold between two checks).
+green: COLDRO tests; tiered, graph -short; -race -count=3 of the cold, move and truncate tests

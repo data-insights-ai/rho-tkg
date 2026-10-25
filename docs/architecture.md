@@ -241,7 +241,9 @@ index on the fast volume are being built: ADR-0012.
   do not pile every edge into the reference shard.
 - **Rotation** opens the next hot shard, saves the catalog, and only then flips the old hot shard to warm.
   Shards older than `ColdAfter` become cold; a demoted shard keeps its handle until the idle sweep closes it after
-  `IdleTimeout` unused. A cold shard reopens writable on any access, and at most `MaxOpenColdShards` stay open.
+  `IdleTimeout` unused. A read reopens a cold shard read-only (COLDRO: 1.3 ms against 27.6 ms writable), a write or a
+  checkout that may write reopens it writable (replacing a read-only handle once its readers finish), and at most
+  `MaxOpenColdShards` stay open.
 - **No RAM tier.** `DurableCommit` / `SyncWrites` need every write on a disk with a write-ahead log; RAM is each
   shard's cache (`MemTableSize`, `BlockCacheSize`, `CacheBudgetBytes`).
 - **Shard pinning.** Every access pins a shard (`checkoutStore` / `checkinStore`); `Close` and the idle sweep wait

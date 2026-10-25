@@ -38,10 +38,66 @@ func (es *EventShard) openColdLocked(ts *Store) error {
 	return nil
 }
 
+// openColdReadOnlyLocked lazily opens the closed cold shard es read-only for
+// a reader (COLDRO): about 1 ms and 3 MB of heap where a writable open costs
+// about 28 ms and 94 MB (tasks/evidence/COLDRO). It opens writable instead
+// when the read-only open fails (an unclean WAL needs a writable recovery) or
+// when the shard's index definitions differ from the anchor's, which only a
+// writable open syncs. Caller holds es.shardMu.
+func (es *EventShard) openColdReadOnlyLocked(ts *Store) error {
+	store, err := ts.newShardStore(ts.shardCfg(es.path, true, true))
+	if err != nil {
+		return es.openColdLocked(ts)
+	}
+	if match, merr := ts.anchoredIndexesMatch(store); merr != nil || !match {
+		if cerr := store.Close(); cerr != nil {
+			return fmt.Errorf("graph: close read-only cold shard %s: %w", es.name, cerr)
+		}
+		return es.openColdLocked(ts)
+	}
+	es.coldOpens.Add(1)
+	es.setStoreLocked(ts, store)
+	es.storeRO = true
+	return nil
+}
+
+// openColdWritableLocked makes es's store writable: it opens the closed cold
+// shard, or replaces its read-only handle. A replacement first waits for the
+// handle's readers (the caller's own pins, own, excepted) behind the shard's
+// gate, as a move does, since the writable open needs the directory lock the
+// read-only handle shares. Caller holds es.shardMu, again on return.
+func (es *EventShard) openColdWritableLocked(ts *Store, own int64) error {
+	if es.store == nil {
+		return es.openColdLocked(ts)
+	}
+	done := make(chan struct{})
+	es.moveDone = done
+	es.moving.Store(true)
+	defer func() {
+		es.moveDone = nil
+		es.moving.Store(false)
+		close(done)
+	}()
+	for es.activeReqs.Load() > own {
+		es.shardMu.Unlock()
+		time.Sleep(time.Millisecond)
+		es.shardMu.Lock()
+	}
+	if es.store == nil { // the idle sweep closed it meanwhile
+		return es.openColdLocked(ts)
+	}
+	if err := es.store.Close(); err != nil {
+		return fmt.Errorf("graph: close read-only cold shard %s: %w", es.name, err)
+	}
+	es.clearStoreLocked(ts)
+	return es.openColdLocked(ts)
+}
+
 // clearStoreLocked drops es's store (the caller closed it) and uncounts it.
 // Caller holds es.shardMu.
 func (es *EventShard) clearStoreLocked(ts *Store) {
 	es.store = nil
+	es.storeRO = false
 	es.readTransientOpen = false
 	if es.coldCounted {
 		es.coldCounted = false
@@ -94,8 +150,8 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		if es.currentTier() == TierCold {
 			es.shardMu.Lock()
 			es.waitMoveLocked()
-			if es.store == nil {
-				if err := es.openColdLocked(ts); err != nil {
+			if es.store == nil || es.storeRO {
+				if err := es.openColdWritableLocked(ts, 1); err != nil {
 					es.activeReqs.Add(-1)
 					es.shardMu.Unlock()
 					return nil, err
@@ -125,8 +181,8 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		es.shardMu.Unlock()
 		return nil, ErrStoreClosed
 	}
-	if es.store == nil {
-		if err := es.openColdLocked(ts); err != nil {
+	if es.store == nil || es.storeRO {
+		if err := es.openColdWritableLocked(ts, 0); err != nil {
 			es.shardMu.Unlock()
 			return nil, err
 		}
@@ -214,8 +270,21 @@ func (es *EventShard) checkoutForRead(ts *Store, readOnly bool) (*BadgerStore, f
 		es.shardMu.Unlock()
 		return nil, noop, ErrStoreClosed
 	}
+	if es.store != nil && es.storeRO && !readOnly {
+		// A caller that may write: the read-only handle gives way to a
+		// writable one, which stays as a read's transient open would.
+		if err := es.openColdWritableLocked(ts, 0); err != nil {
+			es.shardMu.Unlock()
+			return nil, noop, err
+		}
+		es.readTransientOpen = true
+	}
 	if es.store == nil {
-		if err := es.openColdLocked(ts); err != nil {
+		open := es.openColdLocked
+		if readOnly {
+			open = es.openColdReadOnlyLocked
+		}
+		if err := open(ts); err != nil {
 			es.shardMu.Unlock()
 			return nil, noop, err
 		}

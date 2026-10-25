@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -314,6 +315,58 @@ func (ts *Store) syncAnchoredIndexes(store *BadgerStore, relTemporal bool) error
 
 // syncPropertyIndexDefs makes store carry exactly ref's node (rel=false) or
 // relationship property index definitions, options included.
+// anchoredIndexesMatch reports whether a cold shard's index definitions are
+// the anchor's (composite and property indexes; a cold shard keeps no
+// relationship temporal index), so that syncAnchoredIndexes(store, false)
+// would change nothing and a read-only open may serve it (COLDRO).
+func (ts *Store) anchoredIndexesMatch(store *BadgerStore) (bool, error) {
+	ref := ts.refShard
+	if ref == nil || store == ref {
+		return true, nil
+	}
+	wantDefs, err := ref.CompositePropertyIndexDefs()
+	if err != nil {
+		return false, err
+	}
+	haveDefs, err := store.CompositePropertyIndexDefs()
+	if err != nil {
+		return false, err
+	}
+	if !sameCompositeDefs(wantDefs, haveDefs) || !sameCompositeDefs(haveDefs, wantDefs) {
+		return false, nil
+	}
+	for _, rel := range []bool{false, true} {
+		defs := (*BadgerStore).PropertyIndexDefs
+		if rel {
+			defs = (*BadgerStore).RelPropertyIndexDefs
+		}
+		want, err := defs(ref)
+		if err != nil {
+			return false, err
+		}
+		have, err := defs(store)
+		if err != nil {
+			return false, err
+		}
+		if !maps.EqualFunc(want, have, func(a, b map[string]storecontract.PropertyIndexOptions) bool { return maps.Equal(a, b) }) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// sameCompositeDefs reports whether every definition of a is in b.
+func sameCompositeDefs(a, b map[uint16][][]string) bool {
+	for tok, defs := range a {
+		for _, keys := range defs {
+			if !slices.ContainsFunc(b[tok], func(d []string) bool { return slices.Equal(d, keys) }) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func syncPropertyIndexDefs(ref, store *BadgerStore, rel bool) error {
 	defs := (*BadgerStore).PropertyIndexDefs
 	if rel {

@@ -1,0 +1,40 @@
+package tiered
+
+import (
+	"runtime"
+	"testing"
+	"time"
+)
+
+func TestZZColdOpenCostProbe(t *testing.T) {
+	ts, _, _, old, _ := moveFixture(t)
+	defer func() { _ = ts.Close() }()
+	path := ts.EventShardsForTest()[old].path
+	measure := func(name string, open func() (*BadgerStore, error)) {
+		var total time.Duration
+		var ms0, ms1 runtime.MemStats
+		g0 := runtime.NumGoroutine()
+		const rounds = 20
+		var goroutines int
+		var heap uint64
+		for i := 0; i < rounds; i++ {
+			runtime.GC()
+			runtime.ReadMemStats(&ms0)
+			start := time.Now()
+			s, err := open()
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			total += time.Since(start)
+			runtime.ReadMemStats(&ms1)
+			heap += ms1.HeapAlloc - ms0.HeapAlloc
+			goroutines += runtime.NumGoroutine() - g0
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Logf("PROBE %s: open %v avg, heap +%.1f MB avg, goroutines +%d avg", name, total/rounds, float64(heap)/rounds/1e6, goroutines/rounds)
+	}
+	measure("cold open today (RO probe + RW)", func() (*BadgerStore, error) { return ts.openColdBadgerStoreWithRecovery(path) })
+	measure("read-only open", func() (*BadgerStore, error) { return ts.newShardStore(ts.shardCfg(path, true, true)) })
+}
