@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **SHARD step 1** (tiered): a shard the catalog names (reference, hot, warm, cold, archive) whose directory is
+  missing, as on a lost or unmounted volume, now fails to open with `fs.ErrNotExist` and the directory is not
+  recreated. Before, badger created an empty shard there and every row it held read as "not found" (the reference
+  and an existing hot shard at `New`, a cold shard at its lazy open, the archive at its first read). A new store
+  still gets its `reference/` and `archive/` directories up front; a reopen makes neither. Every shard path goes
+  through one function (`shardDir`), the seam the volume steps resolve through. `tasks/evidence/SHARD/`.
+
 ## [4.76.0] - 2026-10-24
 
 ### Changed
