@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -89,7 +90,7 @@ func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
 	if err := ts.closeForMove(ctx, es); err != nil {
 		return err
 	}
-	err = ts.moveClosedShard(ctx, es, vol, dstRoot)
+	err = ts.moveClosedShard(ctx, es.name, es.path, vol, dstRoot)
 	if es.currentTier() != TierCold && !ts.closing.Load() {
 		err = errors.Join(err, ts.reopenMovedShard(es))
 	}
@@ -159,14 +160,15 @@ func (es *EventShard) waitMoveLocked() {
 	}
 }
 
-// moveClosedShard runs the move of the closed shard es; the caller holds
-// its move gate.
-func (ts *Store) moveClosedShard(ctx context.Context, es *EventShard, vol, dstRoot string) error {
+// moveClosedShard runs the move of the closed shard name, at rel under its
+// volume root; the caller holds its move gate (an event shard) or its
+// directory lock (MoveShardOffline).
+func (ts *Store) moveClosedShard(ctx context.Context, name, rel, vol, dstRoot string) error {
 	if _, err := os.Stat(dstRoot); err != nil {
 		return fmt.Errorf("graph: MoveShard: volume directory %s: %w", dstRoot, err)
 	}
-	src := ts.shardDir(es.path)
-	dst := filepath.Join(dstRoot, es.path)
+	src := ts.shardDir(rel)
+	dst := filepath.Join(dstRoot, rel)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return fmt.Errorf("graph: MoveShard: %w", err)
 	}
@@ -199,8 +201,8 @@ func (ts *Store) moveClosedShard(ctx context.Context, es *EventShard, vol, dstRo
 		return err
 	}
 	snapshot := ts.catalog.snapshotShards()
-	if !ts.catalog.UpdateShardVolume(es.name, vol) {
-		return errors.Join(fmt.Errorf("graph: MoveShard: shard %q left the catalog during the move", es.name), os.RemoveAll(dst))
+	if !ts.catalog.UpdateShardVolume(name, vol) {
+		return errors.Join(fmt.Errorf("graph: MoveShard: shard %q left the catalog during the move", name), os.RemoveAll(dst))
 	}
 	if err := ts.catalog.Save(); err != nil {
 		ts.catalog.restoreShards(snapshot)
@@ -211,9 +213,9 @@ func (ts *Store) moveClosedShard(ctx context.Context, es *EventShard, vol, dstRo
 	}
 	// Committed: the source is now an orphan; one left here goes at the next open.
 	if err := os.RemoveAll(src); err != nil {
-		slog.Warn("tiered: moved shard's old copy not removed", "shard", es.name, "dir", src, "err", err)
+		slog.Warn("tiered: moved shard's old copy not removed", "shard", name, "dir", src, "err", err)
 	} else if err := syncDir(filepath.Dir(src)); err != nil {
-		slog.Warn("tiered: moved shard's old directory removal not synced", "shard", es.name, "err", err)
+		slog.Warn("tiered: moved shard's old directory removal not synced", "shard", name, "err", err)
 	}
 	return ts.moveFaultAt("removed")
 }
@@ -354,32 +356,58 @@ func (ts *Store) removeMoveOrphans() {
 		if !ok {
 			continue
 		}
-		dir := filepath.Join(root, "events")
-		ents, err := os.ReadDir(dir)
-		if err != nil {
-			if !errors.Is(err, fs.ErrNotExist) {
-				slog.Warn("tiered: move orphans not checked", "dir", dir, "err", err)
-			}
+		ts.removeOrphansIn(v, root, "events", nil)
+		ts.removeOrphansIn(v, root, "", []string{"reference", "archive"})
+	}
+}
+
+// removeOrphansIn removes the move orphans in root/sub on volume v: every
+// copy being made, and every shard copy whose catalog entry names another
+// volume where its copy is. only, when set, limits it to those shards (a
+// volume root holds other directories).
+func (ts *Store) removeOrphansIn(v, root, sub string, only []string) {
+	dir := filepath.Join(root, sub)
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			slog.Warn("tiered: move orphans not checked", "dir", dir, "err", err)
+		}
+		return
+	}
+	for _, e := range ents {
+		name := e.Name()
+		shard, _, moving := strings.Cut(name, ".moving-")
+		if only != nil && !slices.Contains(only, shard) {
 			continue
 		}
-		for _, e := range ents {
-			name := e.Name()
-			if !strings.Contains(name, ".moving-") {
-				entry, ok := ts.catalog.GetShard(name)
-				if !ok || entry.Kind != ShardEvent || entry.Volume == v || entry.Path != filepath.Join("events", name) {
-					continue
-				}
-				named, _ := ts.volumeDir(entry.Volume)
-				if _, err := os.Stat(filepath.Join(named, entry.Path)); err != nil {
-					slog.Warn("tiered: shard copy kept: the copy its catalog entry names is not there", "shard", name, "kept", filepath.Join(dir, name), "err", err)
-					continue
-				}
+		if !moving {
+			entry, ok := ts.catalog.GetShard(name)
+			if !ok || entry.Volume == v || ts.shardRel(entry) != filepath.Join(sub, name) {
+				continue
 			}
-			if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
-				slog.Warn("tiered: move orphan not removed", "dir", filepath.Join(dir, name), "err", err)
+			named, _ := ts.volumeDir(entry.Volume)
+			if _, err := os.Stat(filepath.Join(named, filepath.Join(sub, name))); err != nil {
+				slog.Warn("tiered: shard copy kept: the copy its catalog entry names is not there", "shard", name, "kept", filepath.Join(dir, name), "err", err)
+				continue
 			}
 		}
+		if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
+			slog.Warn("tiered: move orphan not removed", "dir", filepath.Join(dir, name), "err", err)
+		}
 	}
+}
+
+// shardRel is the directory of a catalog entry's shard under its volume
+// root: the reference shard's and the archive's are fixed (the reference
+// entry's Path is a label, "data/reference"), an event shard's is its Path.
+func (ts *Store) shardRel(e *ShardEntry) string {
+	switch e.Kind {
+	case ShardReference:
+		return "reference"
+	case ShardArchive:
+		return "archive"
+	}
+	return e.Path
 }
 
 // volumeRank orders the catalog volumes from fast to slow.

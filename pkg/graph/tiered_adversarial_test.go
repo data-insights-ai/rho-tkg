@@ -340,3 +340,83 @@ func TestTierMoveShard(t *testing.T) {
 		t.Fatalf("MoveShard on a non-tiered graph = %v, want ErrNotTieredStore", err)
 	}
 }
+
+// TestMoveShardOffline_ReferenceAnswersUniqueAndWatermark pins SHARD step 7:
+// the reference shard moved offline to the warm volume and the archive to the
+// cold one, a reopened graph still refuses a duplicate unique key, continues
+// the change log above its last LSN and restores the archived node. Catches a
+// reference shard or archive reopened empty (a fresh one made under DataDir)
+// and a change-log watermark lost with the move.
+func TestMoveShardOffline_ReferenceAnswersUniqueAndWatermark(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cfg := tieredpkg.Config{
+		DataDir:       t.TempDir(),
+		WarmDir:       t.TempDir(),
+		ColdDir:       t.TempDir(),
+		RefLabels:     []string{"User"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+		ChangeLog:     true,
+	}
+	open := func() *graphpkg.Graph {
+		t.Helper()
+		ts, err := tieredpkg.New(cfg)
+		if err != nil {
+			t.Fatalf("tiered.New: %v", err)
+		}
+		g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12, Store: ts})
+		if err != nil {
+			t.Fatalf("graph.New: %v", err)
+		}
+		return g
+	}
+	g := open()
+	if err := g.Constraints().CreateUnique(ctx, "User", "email"); err != nil {
+		t.Fatalf("CreateUnique: %v", err)
+	}
+	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "a@x.com"}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	gone, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "b@x.com"})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if err := g.Tier().Archive(gone.ID()); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	head, err := g.Replication().LastCommittedLSN()
+	if err != nil || head == 0 {
+		t.Fatalf("LastCommittedLSN = %d, %v", head, err)
+	}
+	g.Close()
+	if err := tieredpkg.MoveShardOffline(ctx, cfg, "reference", tieredpkg.VolumeWarm); err != nil {
+		t.Fatalf("MoveShardOffline(reference): %v", err)
+	}
+	if err := tieredpkg.MoveShardOffline(ctx, cfg, "archive", tieredpkg.VolumeCold); err != nil {
+		t.Fatalf("MoveShardOffline(archive): %v", err)
+	}
+	g = open()
+	defer g.Close()
+	shards, err := g.Tier().ListShards()
+	if err != nil {
+		t.Fatalf("ListShards: %v", err)
+	}
+	for _, s := range shards {
+		if s.Name == "reference" && s.Volume != tieredpkg.VolumeWarm || s.Name == "archive" && s.Volume != tieredpkg.VolumeCold {
+			t.Fatalf("%s is on %s after the offline moves", s.Name, s.Volume)
+		}
+	}
+	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "a@x.com"}); !errors.Is(err, graphpkg.ErrUniqueViolation) {
+		t.Fatalf("duplicate key after the move = %v, want ErrUniqueViolation", err)
+	}
+	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "c@x.com"}); err != nil {
+		t.Fatalf("Add after the move: %v", err)
+	}
+	if next, err := g.Replication().LastCommittedLSN(); err != nil || next <= head {
+		t.Fatalf("LastCommittedLSN after the move = %d (%v), want above %d", next, err, head)
+	}
+	if err := g.Tier().Restore(gone.ID()); err != nil {
+		t.Fatalf("Restore from the moved archive: %v", err)
+	}
+}

@@ -32,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a slower volume (moved there by hand) stays. A failed move is logged and retried on a later tick after the other
   shards, never recorded as the store's error. `IdleTimeout` defaults to 5 minutes also when `WarmDir` or `ColdDir`
   is set, so the sweep runs. `g.Tier().MoveShard(ctx, name, volume)` is the door.
+- **SHARD step 7**: `tiered.MoveShardOffline(ctx, cfg, name, volume)` moves the reference shard (hot or warm) or
+  the archive (any volume) of a closed store, with the mover's crash safety; it takes badger's directory lock on the
+  reference shard, so it refuses while a process has the store open and the store cannot open during the move (unix
+  only). `New` also removes a reference or archive copy the catalog does not name, never another directory at a
+  volume root.
 
 ### Fixed
 

@@ -357,7 +357,8 @@ that test.
     before its catalog save; a retention drop of a moved shard removes it on its volume. Each idle-sweep tick moves
     one shard a step down to its tier's volume (or the next faster one mapped), the oldest first, a shard whose last
     move failed after the others; a shard on a slower volume stays; `IdleTimeout` defaults to 5 minutes when a
-    volume is mapped (step 6).
+    volume is mapped (step 6). `tiered.MoveShardOffline` moves the reference shard or the archive of a closed store,
+    holding badger's directory lock on the reference shard for the move (step 7).
   - *The mover* (one, for any event shard and any volume pair; one move per idle-sweep tick, or `tier.API.MoveShard`):
     a closed shard is copied file by file (byte-exact, fsync of files and directory) into
     `<volume>/events/<name>.moving-<nonce>`, renamed, the catalog saved with the new `Volume` (the commit point), then

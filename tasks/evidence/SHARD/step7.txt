@@ -1,0 +1,16 @@
+SHARD step 7 (branch shard2), 2026-10-25
+red: TestMoveShardOffline_CrashMatrix, TestMoveShardOfflineRefusals (build failed: no moveShardOffline);
+  TestMoveShardOffline_ReferenceAnswersUniqueAndWatermark (pkg/graph; no MoveShardOffline)
+green: those (reference on warm: a duplicate unique key refused, the change log continues above its last LSN, the
+  archive on cold restores its node); all step 4-6 tests; tiered (4 runs), tier, graph -short ok; -race -count=3
+  of the offline and orphan tests ok; the volume tests -count=15 ok; make build (amd64, 386); GOOS=windows and
+  darwin build ok
+lock: badger v4.9.2 flocks a shard directory LOCK_EX|LOCK_NB (dir_unix.go:47-52); MoveShardOffline takes the same
+  lock on the reference shard, so it fails while any process has the store open and keeps New out during the move
+unexplained: one run of `go test ./pkg/graph/store/tiered/ ./pkg/graph/tier/` printed FAIL for tiered with the
+  output cut by tail; not reproduced in 4 package runs and 15 runs of the volume tests. Watch CI.
+mutations (each failed a test): no orphan removal at volume roots; none under events/; no filter on the root
+  (a foreign *.moving-* removed); reference rel taken from its catalog Path; named-copy check on the volume root
+  only; no directory lock; a shared lock (two offline moves at once); no early cold-reference refusal (copied
+  first); same-volume move not skipped (would delete the shard); unmapped catalog volume not checked; an event
+  shard accepted; a missing shard taken as done
