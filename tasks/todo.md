@@ -68,7 +68,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
    `shard2` (`tasks/evidence/SHARD/step4.txt`): `tiered.Store.MoveShard`.
 5. [ ] An open warm shard moves too: its readers and writers wait, nothing written is lost. Done when: in the volume
    minor (red test `TestMoveWarmShard_WriterWaitsAndWriteLandsOnNewVolume`). Green on branch `shard2`
-   (`tasks/evidence/SHARD/step5.txt`; found and fixed a reopen/temporal-DDL deadlock before it shipped).
+   (`tasks/evidence/SHARD/step5.txt`; found and fixed a reopen/temporal-DDL deadlock before it shipped, and in the
+   pre-release review a nil store when Close stops a warm shard's move).
 6. [ ] The idle sweep moves one shard per tick to its tier's volume and never fails the store. Done when: in the
    volume minor (red tests `TestSweepMovesWarmToWarmDirAndColdToColdDir`, `TestMoverErrorIsNotStoreWide`). Green on
    branch `shard2` (`tasks/evidence/SHARD/step6.txt`): a step down only (a shard moved by hand to a slower volume
@@ -84,6 +85,11 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
    the difference around it; per call needs a context the store doors do not take).
 9. [ ] The volume minor is released with its one-way door named in the CHANGELOG, and ai-soc and sigma are
    told. Done when: tagged.
+- **MOVEREAD** (found in the volume minor's review, 25 Oct) — a move makes the shard's readers and writers wait for
+  its whole copy (its `DiskBytes` at the volumes' copy rate), and the sweep moves a warm shard soon after rotation.
+  Done when: reads of a moving shard go on from the source during the copy (writers wait), or the measured stall is
+  accepted. Waits for: ai-soc's shard sizes on disk and whether its reads and writes reach a rotated-out shard
+  (asked 25 Oct); no consumer maps a volume yet.
 10. [ ] The global index on the fast volume, unique keys first (keyed event labels), then label and property
     postings, then the relationship owner map. Done when: each slice released. Waits for: ai-soc's measurement after
     its data cleanup.
