@@ -8,7 +8,8 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
-in v4.75.0 to v4.76.1, DICT in v4.77.0 (all tagged, CI green, ai-soc and sigma told; `docs/CHANGELOG.md`). Next RESUME (a
+in v4.75.0 to v4.76.1, DICT in v4.77.0 (all tagged, CI green, ai-soc and sigma told; `docs/CHANGELOG.md`). v4.77.0's minor gate run 4 runs (run 3 failed a
+fixed-sleep race test, fixed in 5910c3e2), then the tag. Next RESUME (a
 patch), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
