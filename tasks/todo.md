@@ -14,7 +14,8 @@ green on branch `shard2`); DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **ARM32** — the library no longer builds for 32-bit targets since DICT (v4.77.0): `vdictMaxEntries` (`math.MaxUint32 - 1`)
   overflows `int` in `badgerstore_value_dict.go`; v4.76.1 built on `GOARCH=arm` and `386`. Done when: released as a
-  patch with a 32-bit build in `make build`. Waits for: nothing.
+  patch with a 32-bit build in `make build`. Waits for: nothing. Fixed on branch `arm32` (red: `make build` for
+  `linux/386`); releasing as v4.77.2 with LONGTIER.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
