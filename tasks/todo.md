@@ -187,7 +187,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   in the file that owns it.
 - **GUARDS** — The rules the docs no longer state need tests that fail when the rule is broken. Done when: each guard
   fails on a planted violation.
-- **FLAKE** — One property test misses a node only when it runs beside other tests. Done when: explained and fixed.
 - **SUITE** — About 5,000 lines of memory and badger tests are near copies of each other. Done when: they run as the
   shared store suite.
 
