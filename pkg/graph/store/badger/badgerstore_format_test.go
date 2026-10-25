@@ -124,7 +124,7 @@ func TestWireFormatMarkerFromNewerReleaseFailsOpen(t *testing.T) {
 	newDiskStoreWithNode(t, dir, 200)
 
 	futureVal := make([]byte, 2)
-	binary.BigEndian.PutUint16(futureVal, storepkg.StoreFormatVersion+8)
+	binary.BigEndian.PutUint16(futureVal, storepkg.MaxReadableStoreFormatVersion+1)
 	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.WireFormatVersionKey, futureVal)
 	})
