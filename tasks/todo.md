@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.76.1 (2026-10-25). Background, René's open decisions with my defaults,
+What rho does next, in order. Last release: v4.77.0 (2026-10-25). Background, René's open decisions with my defaults,
 and the numbered backlog: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`, under the same tag.
 
 Each item: one sentence, then when it is done and what it waits for.
@@ -8,8 +8,8 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
-in v4.75.0 to v4.76.1 (all tagged, CI green, ai-soc and sigma told; `docs/CHANGELOG.md`). Next DICT (ai-soc with René's
-yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
+in v4.75.0 to v4.76.1, DICT in v4.77.0 (all tagged, CI green, ai-soc and sigma told; `docs/CHANGELOG.md`). Next RESUME (a
+patch), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and METASYNC after SHARD.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -42,83 +42,10 @@ yes, 25 Oct), then BADGER step 3 / SHARD steps 2-10; DROPALL, DISCARDCLOSE and M
 
 ## Next
 
-- **DICT** (ai-soc, René's yes, 24 Oct) — Store repeated string property values once per (label or type, property),
-  dictionary-coded, invisible to reads, filters and property-index probes. ai-soc's store meter (graphmgr
-  StoredCopies) on the BA slice store (16,558 rows, v4.75.1): 57.8 % of 15.06 MB of stored values (>= 8 B) are
-  copies; ai-soc and sigma remove most themselves; what only a store dictionary removes: `action` 285,733 B (1.9 %),
-  `aisoc_source` 367,310 B (2.4 %), repeated ip, sid and path values 0.7-1.1 MB (up to ~7 %). Design (25 Oct,
-  replaces the registry-style sketch): each badger store (each tiered or sharded shard) holds the dictionary entries
-  its own rows use, written in the same commit as the first row that uses one (a staged flush writes them first).
-  Reason: the property-key registry fsyncs the reference shard before any row with a new token
-  (`badgerstore_meta.go:427`), fine for rare keys, but ai-soc's full store brings ~110,000 new values in 12 days;
-  per shard there is no cross-store ordering, a moved or cold shard is self-contained, and a cold open loads a
-  dictionary only when a row needs it. A value used in several shards is stored once per shard. Row shape:
-  `PropertyWire` gains `dt` (the token, uint32) in place of `v`; a row with one is row format 8, a store holding one
-  marker 11 (a one-way door, a minor). Coded only where key tokens apply (stored rows); the change log, export and
-  replica rows stay plain (`badgerstore_changelog.go:102`). Inline instead: a non-string, a string under 4 bytes, a
-  property off the list, a dictionary at its cap. Decode resolves the token to one interned string per value across
-  shards, so indexes, filters and `@source` see the plain value. Acceptance: the same writes with and without the
-  list give equal answers on every read door, history and index probe; the bytes per property from a store meter.
-  `cmdline` pays: on the kit slice 49,006 B of copies over 699 repeats is ~70 B a value, a token saves ~66 B a repeat
-  (full store ~108,600 repeats, ~7 MB). Design sent to ai-soc and sigma (25 Oct). ai-soc's review (25 Oct): agreed;
-  tiered only (one tiered store, day shards via RelsByMint; no sharded writes), so the first cut is badger + tiered;
-  caps 4x the full-store counts (ample: its shards are days); one shared `action` dictionary, the rest as grouped;
-  wants a readable counter of values left inline because a dictionary was full; pins the minor only on René's word
-  after measuring a rebuilt slice. sigma (25
-  Oct): nothing of sigma's in the first cut; after KEYENC's re-check (25 Oct) no Derived key columns for DICT (typed columns cost more than they save); only a
-  (Derived, ov_rel) dictionary pays (~82 KB), which is ai-soc's config. RAM: decoded values interned per token (one string per
-  value), which also covers CHAININTERN. Done when: a design ai-soc measures with its tracker on the same slice,
-  then built and released. Order (ai-soc with René's yes, 25 Oct): after SHARD step 1, before SHARD steps
-  2-10; nothing in SHARD blocks it (the dictionary moves with the reference shard). ai-soc's tracker on the kit BA
-  slice (25 Oct): 2,207,339 B of 7,852,216 B of stored values (>= 8 B) are copies, about 900 KB of them one value
-  repeated across rows of one property: `action` 186,354 B (NETFIRST, NETWORK, FILE, REGISTRY); `folder` (FILE,
-  PROCESS), `reg_key`, `cmdline`, `request_sid`, and `local_ip`/`remote_ip`/`account_sid` on NETFIRST/NETWORK
-  714,640 B. ai-soc's list (25 Oct; rows/distinct on the kit slice, full 12-day store): `action` on NETFIRST,
-  NETWORK, FILE, REGISTRY, IMAGELOAD, DNSQUERY (<= 14 distinct); shared `remote_ip` (NETFIRST+NETWORK, 24,608) and
-  `local_ip` (7,933); one `account_sid` dictionary over NETFIRST/NETWORK/FILE/PROCESS/REGISTRY `account_sid` and
-  FILE.`request_sid` (~2,200); PROCESS.`account` (2,796); shared `folder` (FILE 45,507, PROCESS, IMAGELOAD);
-  REGISTRY.`reg_key` (23,095); PROCESS.`cmdline` (61,259, 2.8 rows per value) only if it pays. Caps: a multiple of
-  the full-store counts (the estate grows). Rows written before the opt-in stay inline. Coding is a per-property opt-in list in the
-  config (ai-soc: explicit, testable per property, no high-cardinality property coded by accident), with a cap per
-  property falling back to inline values. First list: `action`, `aisoc_source` (every edge type); `estate`;
-  `local_ip`, `remote_ip`, `account_sid` on NETWORK/NETFIRST/LOGON/FILE/PROCESS/REGISTRY; `src`, `dst`, `service`
-  on FIREWALL/FLOW; possibly sigma's `ov_rel` on Derived. Design answers to
-  sigma (24 Oct): a dictionary is named, and the opt-in list maps (label or type, property) to it, so a Derived key
-  column (an IP in `ov_c1`) can share `NETWORK.remote_ip`'s dictionary; default one per (label, property). Strings
-  first (an int or float is 8 fixed bytes; a token saves little); string elements of lists later if the tracker
-  shows them. `ov_rel` on Derived is on the first list.
-### DICT plan
-
-Branch `dict`; each step red test first, mutation-checked; the minor ships when its gate is green (René 25 Oct: no go needed).
-
-1. [ ] Row shape (storeutil): a property may carry `dt` (a dictionary token) in place of `v`; a row with one is row
-   format 8, a store holding one marker 11; a `dt` on a row below 8, on a non-string or next to a `v` is corrupt; an
-   unknown token fails closed. Green on branch `dict` (fb955cc4; 3 mutations caught,
-   `tasks/evidence/DICT/step1.txt`).
-2. [ ] Badger store: config `ValueDictionaries` (name, cap, members (label or rel type, property)); one token space per
-   store; a new value's entry goes into the pending batch (with the marker raise) before the row that uses it, so
-   no flush commits the row without it; entries load on first use; decode resolves to one `unique` string per
-   value; Clear keeps the entries (a token handed out before it may reach a row after it); pre-encoded batch bodies
-   of coded nodes are re-encoded. Green on branch `dict` (4dee6d3b; 5 mutations caught, race-clean concurrent test;
-   found: a history delta wrote format 2 with tokens, fixed; `tasks/evidence/DICT/step2.txt`).
-3. [ ] Core installs the label and rel-type registries into a store with dictionaries (names to tokens). Green on
-   branch `dict` (a063667c, `tasks/evidence/DICT/step3-4.txt`).
-4. [ ] Tiered: the config reaches every shard; counters per dictionary (coded, left inline because full, new
-   entries) summed over shards and readable (ai-soc). Green on branch `dict` (a063667c; 3 mutations caught across
-   steps 3-4).
-5. [ ] Acceptance: the same writes with and without the list give equal answers on every read door, history read
-   and index probe; stored bytes per property measured; CHANGELOG with the one-way door; `docs/persistence.md` rows
-   for format 8 and marker 11; minor gate, consumer build, tag. Acceptance, docs and CHANGELOG green on
-   branch `dict` (0cfce028; equal answers over tiered across a reopen, 10.3 % fewer stored bytes on the test's LOGON
-   shape; `tasks/evidence/DICT/step5.txt`). Consumers build and vet against the branch; the minor gate (`make ci-docker`)
-   run 1 stopped at fmt-check (the acceptance test, gofmt'd in 556ca117), run 2 failed one race test (TestWireFormatMarkerFromNewerReleaseFailsOpen stamped a "future" marker 11, now
-   readable; it stamps MaxReadableStoreFormatVersion+1 now), run 3 running; ai-soc has the config shape. Then the tag v4.77.0 (René: yes, 25 Oct).
-
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Waits for: nothing (fixes shipped); BADGER step 3
-  (per-tier badger options) leads in. Step 1 shipped in v4.76.1; DICT comes before step 2 (ai-soc with René's yes,
-  25 Oct).
+  (per-tier badger options) leads in. Step 1 shipped in v4.76.1; DICT in v4.77.0; RESUME (a patch) before step 2.
 
 ### SHARD plan
 
@@ -167,7 +94,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 - **RESUME** — sigma reports that a valid-time write ending exactly where an existing row starts still writes a copy
   of that row as a "resumption" row (one wasted row per rewritten step, part of CHAIN's waste). Done when: rho writes
-  no resumption row when nothing needs resuming, with the same answers, released as a patch. Waits for: DICT (SHARD step 1 shipped in v4.76.1; answers already right, so it follows DICT).
+  no resumption row when nothing needs resuming, with the same answers, released as a patch. Waits for: nothing (SHARD step 1 and DICT shipped); next.
 - **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
   known. Waits for: René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)

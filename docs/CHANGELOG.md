@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.77.0] - 2026-10-25
+
 ### Added
 
 - **DICT** (ai-soc, René's yes, 24 and 25 Oct): value dictionaries. `badger.Config.ValueDictionaries` and
