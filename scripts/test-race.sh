@@ -20,6 +20,8 @@ fi
 # a CI job) of their own instead of in "other" (root: the packages that, next
 # to core, each need minutes under -race on a 4-vCPU runner; badger since
 # v4.76.0: 476-600 s in the shared run, its 10-minute timeout hit in a gate).
+# They run with a 20-minute timeout: badger alone took 582 s in the v4.78.0
+# gate on a loaded host and timed out once at Go's default 10 minutes.
 isolated_names=()
 isolated_paths=()
 case "${2-root}" in
@@ -164,7 +166,7 @@ fi
 for ((i=0; i<${#isolated[@]}; i++)); do
   if runs "${isolated_names[$i]}"; then
     printf '%s: isolated package %s\n' "$gate" "${isolated[$i]}"
-    go test "${flags[@]}" "${isolated[$i]}"
+    go test "${flags[@]}" -timeout 20m "${isolated[$i]}"
   fi
 done
 for ((bucket=0; bucket<shards; bucket++)); do

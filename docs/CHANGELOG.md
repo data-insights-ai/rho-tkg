@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **RACETIME** (gate): the race gate's isolated packages (graph, memory, badger) run with a 20-minute timeout; badger
+  alone took 582 s in the v4.78.0 gate on a loaded host and had timed out once at Go's default 10 minutes.
 - **METASYNC** (docs): `MetaSetDurable`, the property-key registry save and `docs/persistence.md` state what their
   sync holds: a process crash never loses the write; a power loss can, without `SyncWrites`, when badger rotated its
   memtable between the write and `db.Sync`, which syncs only the active WAL (the write is on disk once the retired

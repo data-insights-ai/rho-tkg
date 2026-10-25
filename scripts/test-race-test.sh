@@ -60,11 +60,11 @@ run other 4 || fail "other exited nonzero: $(cat "$work/out")"
 
 # 3. an isolated package runs alone.
 run graph 4 || fail "graph exited nonzero"
-[[ "$(log)" == "test -short -race -count=1 $mod/pkg/graph" ]] || fail "graph ran: $(log)"
+[[ "$(log)" == "test -short -race -count=1 -timeout 20m $mod/pkg/graph" ]] || fail "graph ran: $(log)"
 run memory 4 || fail "memory exited nonzero"
-[[ "$(log)" == "test -short -race -count=1 $mod/pkg/graph/store/memory" ]] || fail "memory ran: $(log)"
+[[ "$(log)" == "test -short -race -count=1 -timeout 20m $mod/pkg/graph/store/memory" ]] || fail "memory ran: $(log)"
 run badger 4 || fail "badger exited nonzero"
-[[ "$(log)" == "test -short -race -count=1 $mod/pkg/graph/store/badger" ]] || fail "badger ran: $(log)"
+[[ "$(log)" == "test -short -race -count=1 -timeout 20m $mod/pkg/graph/store/badger" ]] || fail "badger ran: $(log)"
 
 # 4. core shards: one run each, only core, and together every compiled name
 #    exactly once (exhaustive, disjoint).
