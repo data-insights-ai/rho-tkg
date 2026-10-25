@@ -156,7 +156,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   transaction, without a scan, so its records can drop the list of changed keys. Done when: such a lookup costs
   O(rows written at that transaction), with its write cost per row measured. Waits for: FLUSHPART and SHARD.
 - **VALUES** (sigma, 24 Oct) — sigma wants one lookup by many values of one property instead of one call per value.
-  Done when: `nodes.ByLabelAndPropertyValues` is released on every backend. Waits for: FLUSHPART and SHARD.
+  Done when: `nodes.ByLabelAndPropertyValues` is released on every backend. Green on branch `values`
+  (`tasks/evidence/VALUES/`); ships with TKGID as v4.80.0.
 - **TKGID** (sigma, 24 Oct) — sigma wants the shadow name `tkg_id` (an entity's id) reserved, best resolved by rho.
   Done when: `NodeProperty` and `RelProperty` answer `tkg_id`. Waits for: FLUSHPART and SHARD.
 
