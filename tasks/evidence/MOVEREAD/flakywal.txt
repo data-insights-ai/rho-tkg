@@ -1,0 +1,8 @@
+FLAKYWAL (branch flakywal), 2026-10-25
+cause: TestTieredOversizedWALMigratedOnWarmReopen wrote 400 x 30 KB rows into a 20 MB memtable; with keys and arena
+  overhead the skiplist reached MemTableSize (badger memtable.go:160), so the memtable rotated: probed 5 of 5 runs
+  left only 00002.mem in the hot shard. badger's background flush deletes 00001.mem, sometimes while copyTree walks
+  the live directory ("copyTree: open .../00001.mem: no such file", 1 of 10 runs on main), and otherwise the test
+  passed without its payload in the WAL it meant to migrate (00002.mem is preallocated oversized).
+fix: 200 rows (probed: only 00001.mem, 3 of 3) and a precondition that the hot shard has only 00001.mem.
+green: 50 runs (20 + 30); mutation: 400 rows fails "fixture invalid" 3 of 3.

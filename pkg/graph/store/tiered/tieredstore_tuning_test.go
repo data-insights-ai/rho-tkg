@@ -526,7 +526,7 @@ func TestTieredOversizedWALMigratedOnWarmReopen(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 	pad := strings.Repeat("y", 30*1024)
-	n := 400 // ~12MB, inside the 20MB memtable
+	n := 200 // ~6MB of values, well inside the 20MB memtable (checked below)
 	if testing.Short() {
 		n = 100
 	}
@@ -554,6 +554,24 @@ func TestTieredOversizedWALMigratedOnWarmReopen(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 	if err := ts1.RotateHotShard(); err != nil {
 		t.Fatalf("rotate: %v", err)
+	}
+
+	// Precondition: the payload is in the first WAL. A payload that filled the
+	// memtable (400 rows did, with keys and arena overhead) rotates it, and
+	// badger's flush deletes 00001.mem in the background, under the copy below
+	// (FLAKYWAL), leaving only a preallocated 00002.mem without the payload.
+	ents, err := os.ReadDir(filepath.Join(srcDir, "events", hotName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mems []string
+	for _, e := range ents {
+		if strings.HasSuffix(e.Name(), ".mem") {
+			mems = append(mems, e.Name())
+		}
+	}
+	if len(mems) != 1 || mems[0] != "00001.mem" {
+		t.Fatalf("fixture invalid: the hot shard's WALs are %v, want only 00001.mem (the payload rotated the memtable)", mems)
 	}
 
 	// Snapshot the LIVE DataDir (ts1 still open) — a crash-consistent copy.
