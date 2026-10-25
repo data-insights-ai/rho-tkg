@@ -14,8 +14,10 @@ GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
 
 # Build (verify compilation)
+# The library also builds for 32-bit targets (ARM32: DICT broke it unnoticed).
 build:
 	go build ./...
+	GOOS=linux GOARCH=386 go build ./...
 
 # Run unit tests
 test:

@@ -255,7 +255,7 @@ func (vd *valueDict) token(bs *Store, d int, s string) (uint32, bool) {
 		return tok, true
 	}
 	sn := vd.snap.Load()
-	if vd.size[d] >= vd.plan.Cap(d) || len(sn.vals) >= vdictMaxEntries {
+	if vd.size[d] >= vd.plan.Cap(d) || uint64(len(sn.vals)) >= vdictMaxEntries {
 		vd.plan.NoteInlineFull(d)
 		return 0, false
 	}
