@@ -48,23 +48,71 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 	return result, nil
 }
 
+// ByLabelAndPropertyValues returns nodes carrying the label whose property
+// matches ANY of values, each under the property equality of
+// ByLabelAndProperty: the union of ByLabelAndProperty per value, each node
+// once, in ID order, paged by opts.After / opts.Limit over the union (VALUES).
+// Equal values and repeats count once; no values, or values no node has,
+// match nothing. One index read for all values where the store has
+// PropertyKeysLookupCapability (every in-tree backend): its work grows with
+// the distinct values (one posting list each, the union held as one cursor
+// per value's form).
+func (n *NodeOps) ByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexPropertyKey(key); err != nil {
+		return nil, err
+	}
+	for _, value := range values {
+		if err := types.ValidatePropertyValue(value); err != nil {
+			return nil, fmt.Errorf("graph: nodes by label and property values: %w", err)
+		}
+	}
+	forms := unionEqualForms(values)
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.nodesByLabelAndPropertyFormsLocked(label, key, forms, opts)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // nodesByLabelAndPropertyLocked is the lock-free body of NodeOps.ByLabelAndProperty.
 // Callers must hold c.mu (R or W).
 func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return c.nodesByLabelAndPropertyFormsLocked(label, key, types.EqualIndexValues(value), opts)
+}
+
+// nodesByLabelAndPropertyFormsLocked is nodesByLabelAndPropertyLocked over
+// the equal forms of one value or several (unionEqualForms). Callers must hold
+// c.mu (R or W).
+func (c *Core) nodesByLabelAndPropertyFormsLocked(label, key string, forms []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	temporal := hasTemporalFilter(opts)
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
 	if !temporal {
-		return c.nodesByLabelAndProperty(tok, key, value, opts)
+		return c.nodesByLabelAndPropertyForms(tok, key, forms, opts)
 	}
-	keys := equalKeys(types.EqualIndexKeys(value))
-	if keys == nil {
+	if len(forms) == 0 {
 		return nil, nil
 	}
+	keys := keysOf(forms)
 	currentIDs := func() ([]types.NodeID, error) {
-		currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
+		currentMatching, err := c.nodesByLabelAndPropertyForms(tok, key, forms, storepkg.QueryOpts{Depth: opts.Depth})
 		if err != nil {
 			return nil, err
 		}

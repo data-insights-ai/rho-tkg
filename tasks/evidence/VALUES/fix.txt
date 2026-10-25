@@ -1,0 +1,12 @@
+VALUES (sigma, 24 Oct; branch values), 2026-10-25
+door: nodes.API.ByLabelAndPropertyValues(label, key, values []any, opts) -> core NodeOps; the single-value
+  lookup generalized to a list of equal forms (unionEqualForms: every value's types.EqualIndexValues), both the
+  current path (one NodesByLabelAndPropertyKeys call on every in-tree backend; per form or scan otherwise) and
+  the temporal path (candidates for the union's keys, each re-checked at its version).
+red: the door did not exist (build).
+green: TestByLabelAndPropertyValuesAllBackends on memory, badger, tiered, sharded: with and without a property
+  index, with and without ValidAt, five value sets (repeats, equal numeric forms, values no node has, none):
+  equals the sorted union of ByLabelAndProperty per value, and a 4-row page walk equals it; an invalid value is
+  refused; an unknown label answers nothing. TestAPIForwardsEveryMethod covers the forwarding.
+mutations (each failed a test): only the first value used; no value validation; temporal keys of the first form only.
+removed as untestable: a dedupe of repeated forms (the store union counts repeats once).

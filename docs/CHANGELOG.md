@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **VALUES** (sigma, 24 Oct): `g.Nodes().ByLabelAndPropertyValues(label, key, values []any, opts)` returns the nodes of
+  the label whose property equals ANY of the values: the union of `ByLabelAndProperty` per value (property
+  equality, so 1, 1.0 and int8(1) are one value), each node once, in ID order, paged by `opts.After` /
+  `opts.Limit` over the union, under temporal filters as the single-value door. Every in-tree backend answers it
+  with one index read (`PropertyKeysLookupCapability`), a scan and filter without an index. Test:
+  `TestByLabelAndPropertyValuesAllBackends` (parity with the per-value union on memory, badger, tiered, sharded).
+
 ## [4.79.0] - 2026-10-25
 
 ### Added

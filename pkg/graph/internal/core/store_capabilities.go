@@ -97,7 +97,12 @@ func (c *Core) highFrequencyIndexCap() (storepkg.HighFrequencyIndexCapability, e
 // query correctness. A value without forms (nil, NaN, a list, a map) matches
 // nothing.
 func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	forms := types.EqualIndexValues(value)
+	return c.nodesByLabelAndPropertyForms(tok, key, types.EqualIndexValues(value), opts)
+}
+
+// nodesByLabelAndPropertyForms is nodesByLabelAndProperty over the equal forms
+// of one value or several (unionEqualForms).
+func (c *Core) nodesByLabelAndPropertyForms(tok uint16, key string, forms []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if len(forms) == 0 {
 		return nil, nil
 	}

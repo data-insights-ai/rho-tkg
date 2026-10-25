@@ -71,6 +71,7 @@ type Ops interface {
 	NodeMutationEpoch() uint64
 	NodeLabelMutationEpoch(label string) uint64
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
+	ByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	Count() (int, error)
 	CountByLabel(label string) (int, error)
@@ -980,6 +981,21 @@ func (a *API) ByLabelAndProperty(label, key string, value any, opts storepkg.Que
 		return nil, err
 	}
 	return ops.ByLabelAndProperty(label, key, value, opts)
+}
+
+// ByLabelAndPropertyValues returns nodes carrying the label whose property
+// matches ANY of values, each under the property equality of
+// ByLabelAndProperty: the union of ByLabelAndProperty per value, each node
+// once, in ID order, paged by opts.After / opts.Limit over the union. Equal
+// values (3, int8(3), 3.0) and repeats count once; no values match nothing.
+// One index read for all values on every in-tree backend; its work grows with
+// the distinct values.
+func (a *API) ByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.ByLabelAndPropertyValues(label, key, values, opts)
 }
 
 // ByLabelAndProperties returns nodes carrying the label whose properties

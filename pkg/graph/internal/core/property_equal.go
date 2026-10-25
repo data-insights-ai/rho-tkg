@@ -50,6 +50,17 @@ func keysOf(forms []any) equalKeys {
 	return keys
 }
 
+// unionEqualForms is the equal forms of every value (types.EqualIndexValues):
+// the forms a lookup by any of the values matches (VALUES). A form two values
+// share appears twice; the lookups count a repeated key once.
+func unionEqualForms(values []any) []any {
+	var forms []any
+	for _, v := range values {
+		forms = append(forms, types.EqualIndexValues(v)...)
+	}
+	return forms
+}
+
 // equalKeysOf are the equal keys of each (key, value) pair.
 func equalKeysOf(values map[string]any) map[string]equalKeys {
 	out := make(map[string]equalKeys, len(values))
