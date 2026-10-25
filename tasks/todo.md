@@ -108,7 +108,9 @@ Branch `dict`; each step red test first, mutation-checked; the minor ships on Re
    steps 3-4).
 5. [ ] Acceptance: the same writes with and without the list give equal answers on every read door, history read
    and index probe; stored bytes per property measured; CHANGELOG with the one-way door; `docs/persistence.md` rows
-   for format 8 and marker 11; minor gate, consumer build; tag on René's word.
+   for format 8 and marker 11; minor gate, consumer build; tag on René's word. Acceptance, docs and CHANGELOG green on
+   branch `dict` (0cfce028; equal answers over tiered across a reopen, 10.3 % fewer stored bytes on the test's LOGON
+   shape; `tasks/evidence/DICT/step5.txt`); next the minor gate on the branch, then René's word for the tag.
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
