@@ -35,6 +35,8 @@ func (c *Core) nodePropertyUnlocked(n *types.Node, key string) (any, bool) {
 
 	switch key {
 	// Structural
+	case types.ShadowID:
+		return n.ID(), true
 	case types.ShadowLabels:
 		return c.nodeLabelsUnlocked(n), true
 	case types.ShadowType:
@@ -165,6 +167,8 @@ func (c *Core) relPropertyUnlocked(rel *types.Relationship, key string) (any, bo
 
 	switch key {
 	// Structural
+	case types.ShadowID:
+		return rel.ID(), true
 	case types.ShadowLabels:
 		return nil, false // node-only
 	case types.ShadowType:

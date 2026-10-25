@@ -6,7 +6,7 @@ func TestIsShadowKey(t *testing.T) {
 	t.Parallel()
 
 	shadowKeys := []string{
-		ShadowLabels, ShadowType,
+		ShadowID, ShadowLabels, ShadowType,
 		ShadowValidFrom, ShadowValidTo,
 		ShadowTxFrom, ShadowTxTo,
 		ShadowCreatedAt, ShadowUpdatedAt, ShadowDeletedAt,
@@ -22,8 +22,8 @@ func TestIsShadowKey(t *testing.T) {
 		}
 	}
 
-	if len(shadowKeys) != 15 {
-		t.Fatalf("expected 15 shadow keys, got %d", len(shadowKeys))
+	if len(shadowKeys) != 16 {
+		t.Fatalf("expected 16 shadow keys, got %d", len(shadowKeys))
 	}
 }
 
@@ -60,6 +60,7 @@ func TestShadowKeyConstants(t *testing.T) {
 		{"Version", ShadowVersion, "tkg_version"},
 		{"Hash", ShadowHash, "tkg_hash"},
 		{"PrevHash", ShadowPrevHash, "tkg_prev_hash"},
+		{"ID", ShadowID, "tkg_id"},
 		{"BaseEntity", ShadowBaseEntity, "tkg_base_entity"},
 	}
 

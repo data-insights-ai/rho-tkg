@@ -65,7 +65,8 @@ door whose capability is missing fails with `ErrCapabilityNotSupported` or takes
 - **Properties** are an allowlist: scalars, string/number/byte/bool slices, `map[string]any`,
   `map[string]string`, `types.TemporalValue` (and `time.Time`, stored as one), and registered structs.
   `ValidationLimits` bounds labels, properties, key and value sizes.
-- **Shadow properties** are 21 read-only `tkg_*` keys resolved from metadata: `tkg_labels`, `tkg_type`,
+- **Shadow properties** are 22 read-only `tkg_*` keys resolved from metadata: `tkg_id` (the entity's own ID, since
+  v4.80.0), `tkg_labels`, `tkg_type`,
   `tkg_valid_from`, `tkg_valid_to`, `tkg_tx_from`, `tkg_tx_to`, `tkg_created_at`, `tkg_updated_at`,
   `tkg_deleted_at`, `tkg_created_by`, `tkg_updated_by`, `tkg_version`, `tkg_hash`, `tkg_prev_hash`,
   `tkg_from_hash`, `tkg_to_hash`, `tkg_author_id`, `tkg_signature`, `tkg_authorized_by`, `tkg_auth_level`,

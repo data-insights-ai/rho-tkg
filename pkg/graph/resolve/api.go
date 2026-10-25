@@ -1,5 +1,5 @@
 // Package resolve is a sub-API accessor for shadow-property resolution
-// (the 21 tkg_* shadow keys on Node and Relationship). Registry token
+// (the 22 tkg_* shadow keys on Node and Relationship). Registry token
 // methods that previously lived here were removed in API 4.0 — they leaked
 // the internal uint16 token representation. Customers needing token lookup
 // should use a value-typed wrapper or reach internal/registry directly

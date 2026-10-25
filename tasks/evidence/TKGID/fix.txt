@@ -1,0 +1,7 @@
+TKGID (sigma, 24 Oct; branch values), 2026-10-25
+red: TestShadowIDResolves with the constant added but no resolver case: NodeProperty, RelProperty, tx.NodeProperty
+  and tx.RelProperty all "(<nil>, false), want (<id>, true)".
+fix: types.ShadowID = "tkg_id"; nodePropertyUnlocked and relPropertyUnlocked answer n.ID() / rel.ID() (the public
+  resolver and the transaction's both go through them). A write of tkg_id is refused like every tkg_ key (tested).
+green: core, types (TestIsShadowKey lists 16 constants now).
+mutation: the red above is each case removed.

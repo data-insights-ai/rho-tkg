@@ -6,9 +6,10 @@ import "strings"
 // layer from internal metadata. They are never stored in the entity's
 // PropertySlice; PropertySlice.Set rejects any key with the "tkg_" prefix.
 //
-// Final 21 shadow keys per spec.
+// 22 shadow keys (tkg_id since v4.80.0, TKGID).
 const (
 	// Structural
+	ShadowID     = "tkg_id"     // Both: the entity's own ID (types.NodeID or types.RelID)
 	ShadowLabels = "tkg_labels" // Node: []string
 	ShadowType   = "tkg_type"   // Relationship: string
 

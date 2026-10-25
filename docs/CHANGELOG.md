@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `opts.Limit` over the union, under temporal filters as the single-value door. Every in-tree backend answers it
   with one index read (`PropertyKeysLookupCapability`), a scan and filter without an index. Test:
   `TestByLabelAndPropertyValuesAllBackends` (parity with the per-value union on memory, badger, tiered, sharded).
+- **TKGID** (sigma, 24 Oct): the shadow key `tkg_id` resolves to the entity's own ID (`types.NodeID` on a node,
+  `types.RelID` on a relationship) through `g.Resolve().NodeProperty` / `RelProperty` and inside a transaction; like
+  every `tkg_` key it is reserved, so a write of it is refused. Test: `TestShadowIDResolves`.
 
 ## [4.79.0] - 2026-10-25
 
