@@ -12,7 +12,7 @@ in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in
 consumers build, ai-soc and sigma told; RACETIME: the isolated race packages now have 20 min; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, SHARD step 10 (René, with ai-soc's
 counts). FLAKYWAL fixed (test only); COLDRO in v4.78.3, PREFETCH in v4.78.4, DSTWIN (ai-soc's urgent rotation fault at the end of summer time) in
-v4.78.5 (CI green; v4.78.4's red CI was a timing flake, rerun green, CASCADEFLAKY fixed); TIERLABELDISK in v4.79.0 (CI green), VALUES and TKGID in v4.80.0 (tagged, consumers build, sigma told; CI running). DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
+v4.78.5 (CI green; v4.78.4's red CI was a timing flake, rerun green, CASCADEFLAKY fixed); TIERLABELDISK in v4.79.0 (CI green), VALUES and TKGID in v4.80.0 (CI green). DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
 it (its rig is René's call).
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -46,7 +46,8 @@ it (its rig is René's call).
    Read-only cold opens released in v4.78.3 (COLDRO, `tasks/evidence/COLDRO/`: 1.3 ms and 3.3 MB against 27.6 ms
    and 94 MB per open). Left: caches, compactors and `CompactL0OnClose` per tier, ITERPREFIX, PREFETCH, GETWALK, the
    mover's copy method, each measured. PREFETCH released in v4.78.4 (`tasks/evidence/PREFETCH/`: the open
-   without an image 7-18 % faster). ITERPREFIX and VLOGGC measured, no change (`tasks/evidence/ITERPREFIX/`, `VLOGGC/`).
+   without an image 7-18 % faster). ITERPREFIX, VLOGGC and `CompactL0OnClose` measured, no change (`tasks/evidence/ITERPREFIX/`,
+   `VLOGGC/`, `COMPACTL0/`).
 
 ## Next
 
