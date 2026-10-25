@@ -26,7 +26,7 @@ func (ts *Store) getNodeVia(nid types.NodeID, via shardVia, lend bool) (*types.N
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	store, checkin, err := ts.shardForNodeIDRead(nid)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (ts *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	store, checkin, err := ts.shardForNodeIDRead(nid)
 	if err != nil {
 		return "", err
 	}
@@ -74,7 +74,7 @@ func (ts *Store) EndpointIntegrityHashes(startID, endID types.NodeID) (string, s
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	startShard, startCheckin, err := ts.shardForNodeIDChecked(startID)
+	startShard, startCheckin, err := ts.shardForNodeIDRead(startID)
 	if err != nil {
 		return "", "", err
 	}
@@ -87,7 +87,7 @@ func (ts *Store) EndpointIntegrityHashes(startID, endID types.NodeID) (string, s
 		return hash, hash, nil
 	}
 
-	endShard, endCheckin, err := ts.shardForNodeIDChecked(endID)
+	endShard, endCheckin, err := ts.shardForNodeIDRead(endID)
 	if err != nil {
 		return "", "", err
 	}
@@ -184,7 +184,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types
 	}
 
 	candidateEntry := ts.timestampToEventShardEntry(rid.SnowflakeID())
-	candidate, candidateRelease, err := candidateEntry.checkoutStoreForRead(ts)
+	candidate, candidateRelease, err := candidateEntry.checkoutStoreReadOnly(ts)
 	if err != nil {
 		return zero, err
 	}
@@ -208,7 +208,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types
 	ts.mu.RUnlock()
 
 	for _, es := range probe {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return zero, err
 		}
@@ -449,7 +449,7 @@ func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID
 	checkedCandidates := make(map[*EventShard]struct{}, len(candidateBuckets))
 	for es, bucket := range candidateBuckets {
 		checkedCandidates[es] = struct{}{}
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return nil, err
 		}
@@ -474,7 +474,7 @@ func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID
 	ts.mu.RUnlock()
 
 	for _, es := range probe {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return nil, err
 		}
@@ -574,7 +574,7 @@ func (ts *Store) groupNodeIDsByShard(ids []types.NodeID) ([]nodeShardIDBatch, er
 
 		es := ts.timestampToEventShardEntry(raw)
 		add(es, func() (*BadgerStore, func(), error) {
-			return es.checkoutStoreForRead(ts)
+			return es.checkoutStoreReadOnly(ts)
 		}, id)
 	}
 	return batches, nil
@@ -603,7 +603,7 @@ func (ts *Store) OutgoingRelationshipsByDepth(nid types.NodeID, typeToken uint16
 	// resolver so a cold owner stays pinned for the duration of the read.
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	shard, checkin, err := ts.shardForNodeIDRead(nid)
 	if err != nil {
 		return nil, err
 	}
@@ -722,7 +722,7 @@ func (ts *Store) adjacencyDegree(nid types.NodeID, typeToken uint16, incoming bo
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	shard, checkin, err := ts.shardForNodeIDRead(nid)
 	if err != nil {
 		return 0, err
 	}
@@ -774,7 +774,7 @@ func (ts *Store) IncomingRelationshipsByDepth(nid types.NodeID, typeToken uint16
 	// cold node shard cannot be closed mid-read.
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	shard, checkin, err := ts.shardForNodeIDRead(nid)
 	if err != nil {
 		return nil, err
 	}

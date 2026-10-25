@@ -1,0 +1,22 @@
+MOVEREAD (branch moveread), 2026-10-25
+need: ai-soc (run k10251802): a day shard of the full estate is an estimated tens of GB; minutes of stall hold
+  /tkg/asof and a restart's record-history read; only corrections, retractions and endings write a rotated shard.
+design: after closeForMove the mover opens a read-only handle on the source (moveRead); checkoutStoreReadOnly and
+  the read routings (shardForNodeIDRead[WithArchive], shardForRelIDReadWithArchive, routeRelShardFor) pin it
+  during the copy; checkoutStore and checkoutStoreForRead (callers that may write) still wait on the gate.
+  endMoveRead (before the source removal, after the catalog save; and on every stopped move) makes new reads wait,
+  drains the pins and closes the handle.
+first attempt (served the handle to every checkoutStoreForRead): CreateTemporalIndex failed "read-only store"
+  (withTemporalIndexShard writes through checkoutStoreForRead) and TestMoveGateHoldsReaders hung; so the read-only
+  checkout is opt-in, switched only at call sites that only read the store they get. Kept waiting: admin
+  (RebuildCatalog, lazy-open listing), history lives, ex-adjacency, mint-shard walk, open-shard walk, archive miss,
+  withTemporalIndexShard, the truncates' history walk (forEachHistoryShardFor(..., false, ...)).
+found: TruncateNodeHistory/TruncateRelHistory write to stores whose pins forEachHistoryShard already released
+  (todo TRUNCPIN, pre-existing).
+red: TestMoveReadsGoOnFromTheSource and TestMoveReadsGoOnForAWarmShard "a read ... waited for its move" (with the
+  handle not opened); TestMoveSourceRemovalWaitsForReaders.
+green: those; tiered (one pre-existing flake, TestTieredOversizedWALMigratedOnWarmReopen, 1 of 10 on main too:
+  todo FLAKYWAL), graph -short; -race -count=3 of the move tests.
+mutations (each failed a test): no read-only handle; no drain before the source removal; GetNode routed writable;
+  label scan on the waiting checkout; the warm read fast path ignoring a move. Not mutation-tested: the truncates'
+  writable walk (a moving shard holding history of a node owned by another shard; the safe default).

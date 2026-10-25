@@ -121,7 +121,7 @@ func (ts *Store) foldDocValuesServingEmpty(tokens []uint16, emptyServes bool, ca
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
-		store, release, serr := es.checkoutStoreForRead(ts)
+		store, release, serr := es.checkoutStoreReadOnly(ts)
 		if serr != nil {
 			return 0, false, serr
 		}

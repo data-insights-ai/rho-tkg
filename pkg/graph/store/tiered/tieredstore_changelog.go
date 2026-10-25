@@ -512,7 +512,7 @@ func (s *logShardSource) page(ts *Store, afterLSN, w uint64) ([]storecontract.Ch
 		}
 		return pageBoundedFeed(archive, afterLSN, w)
 	case logShardEvent:
-		store, release, err := s.es.checkoutStoreForRead(ts)
+		store, release, err := s.es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return nil, err
 		}

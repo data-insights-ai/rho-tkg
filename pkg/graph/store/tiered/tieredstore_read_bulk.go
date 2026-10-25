@@ -64,7 +64,7 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -145,7 +145,7 @@ func (ts *Store) NodeCount() (int, error) {
 			results[i].count = n
 			return
 		}
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -215,7 +215,7 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 			results[i].count = n
 			return
 		}
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -282,7 +282,7 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -353,7 +353,7 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -440,7 +440,7 @@ func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return err
 		}

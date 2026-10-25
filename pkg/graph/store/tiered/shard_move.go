@@ -67,6 +67,7 @@ func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
 	es.waitMoveLocked()
 	done := make(chan struct{})
 	es.moveDone = done
+	es.moveReadReady = make(chan struct{})
 	es.moving.Store(true)
 	es.shardMu.Unlock()
 	defer func() {
@@ -88,9 +89,12 @@ func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
 		return err
 	}
 	if err := ts.closeForMove(ctx, es); err != nil {
+		ts.endMoveRead(es)
 		return err
 	}
-	err = ts.moveClosedShard(ctx, es.name, es.path, vol, dstRoot)
+	ts.openMoveRead(es)
+	err = ts.moveClosedShard(ctx, es.name, es.path, vol, dstRoot, func() { ts.endMoveRead(es) })
+	ts.endMoveRead(es) // a move that stopped before its source removal
 	if es.currentTier() != TierCold {
 		if !ts.closing.Load() {
 			return errors.Join(err, ts.reopenMovedShard(es))
@@ -135,6 +139,68 @@ func (ts *Store) closeForMove(ctx context.Context, es *EventShard) error {
 	return nil
 }
 
+// openMoveRead opens a read-only handle on the closed source of a moving
+// shard for its readers (MOVEREAD): they pin it during the copy instead of
+// waiting for the move, and writers still wait. A handle that does not open
+// leaves readers waiting, as before.
+func (ts *Store) openMoveRead(es *EventShard) {
+	store, err := ts.newShardStore(ts.shardCfg(es.path, true, es.currentTier() == TierCold))
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+	if err != nil {
+		slog.Warn("tiered: no read-only handle on a moving shard; its reads wait for the move", "shard", es.name, "err", err)
+	} else {
+		es.moveRead = store
+	}
+	if es.moveReadReady != nil {
+		close(es.moveReadReady)
+		if es.moveRead == nil {
+			es.moveReadReady = nil // the woken readers wait for the move's end
+		}
+	}
+}
+
+// endMoveRead stops reads from the source of a moving shard: new readers wait
+// for the move again, the ones holding the read-only handle finish, then it
+// closes, so the source can be removed or reopened writable. Idempotent.
+func (ts *Store) endMoveRead(es *EventShard) {
+	es.shardMu.Lock()
+	ro := es.moveRead
+	es.moveRead, es.moveReadReady = nil, nil
+	es.shardMu.Unlock()
+	if ro == nil {
+		return
+	}
+	for es.activeReqs.Load() != 0 {
+		time.Sleep(time.Millisecond)
+	}
+	if err := ro.Close(); err != nil {
+		slog.Warn("tiered: close a moving shard's read-only handle", "shard", es.name, "err", err)
+	}
+}
+
+// waitMoveForReadLocked is waitMoveLocked for a reader: while a move copies
+// the shard it pins the read-only handle on the source instead (ok true, with
+// its release); otherwise it returns once no move runs. Caller holds
+// es.shardMu, which it holds again on return.
+func (es *EventShard) waitMoveForReadLocked() (*BadgerStore, func(), bool) {
+	for es.moveDone != nil {
+		if es.moveRead != nil {
+			es.activeReqs.Add(1)
+			es.lastAccess.Store(time.Now().UnixMilli())
+			return es.moveRead, func() { es.activeReqs.Add(-1) }, true
+		}
+		done, ready := es.moveDone, es.moveReadReady
+		es.shardMu.Unlock()
+		select {
+		case <-done:
+		case <-ready: // nil outside the copy: wait for the move's end
+		}
+		es.shardMu.Lock()
+	}
+	return nil, nil, false
+}
+
 // reopenMovedShard reopens a warm shard after its move from the volume the
 // catalog names. Its indexes reopen with it (they are persisted in the
 // shard); an index fan-out that ran during the move waited on the gate and
@@ -170,8 +236,9 @@ func (es *EventShard) waitMoveLocked() {
 
 // moveClosedShard runs the move of the closed shard name, at rel under its
 // volume root; the caller holds its move gate (an event shard) or its
-// directory lock (MoveShardOffline).
-func (ts *Store) moveClosedShard(ctx context.Context, name, rel, vol, dstRoot string) error {
+// directory lock (MoveShardOffline). beforeRemove, when set, runs after the
+// catalog save and before the source is removed (the end of reads from it).
+func (ts *Store) moveClosedShard(ctx context.Context, name, rel, vol, dstRoot string, beforeRemove func()) error {
 	if _, err := os.Stat(dstRoot); err != nil {
 		return fmt.Errorf("graph: MoveShard: volume directory %s: %w", dstRoot, err)
 	}
@@ -220,6 +287,9 @@ func (ts *Store) moveClosedShard(ctx context.Context, name, rel, vol, dstRoot st
 		return err
 	}
 	// Committed: the source is now an orphan; one left here goes at the next open.
+	if beforeRemove != nil {
+		beforeRemove()
+	}
 	if err := os.RemoveAll(src); err != nil {
 		slog.Warn("tiered: moved shard's old copy not removed", "shard", name, "dir", src, "err", err)
 	} else if err := syncDir(filepath.Dir(src)); err != nil {

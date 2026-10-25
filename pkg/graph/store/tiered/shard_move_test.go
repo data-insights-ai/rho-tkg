@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -289,14 +290,19 @@ func awaitHold(t *testing.T, reached <-chan struct{}, moved <-chan error) {
 	}
 }
 
-// TestMoveGateHoldsReaders: a read of a shard being moved waits for the move
-// and then reads the shard from the new volume. Catches a lazy open during
-// the move (it opens the source, which the move then removes).
-func TestMoveGateHoldsReaders(t *testing.T) {
+// TestMoveReadsGoOnFromTheSource pins MOVEREAD for a closed cold shard: a
+// read of the shard during its copy returns its row at once (from a
+// read-only handle on the source) instead of waiting for the move; after the
+// move the shard is closed and only the copy on the new volume is left.
+// Catches a read held for the whole copy and a lazy writable open of the
+// source during the move (left open over a removed directory).
+func TestMoveReadsGoOnFromTheSource(t *testing.T) {
 	t.Parallel()
 	ts, cfg, n, old, _ := moveFixture(t)
 	defer func() { _ = ts.Close() }()
 	release := make(chan struct{})
+	unhold := sync.OnceFunc(func() { close(release) })
+	defer unhold() // a failure ends the move before Close waits for it
 	reached := holdMoveAt(ts, "copied", release)
 	moved := make(chan error, 1)
 	go func() { moved <- ts.MoveShard(context.Background(), old, VolumeWarm) }()
@@ -308,15 +314,100 @@ func TestMoveGateHoldsReaders(t *testing.T) {
 	}()
 	select {
 	case err := <-read:
-		t.Fatalf("a read of the shard returned during its move (err %v)", err)
-	case <-time.After(200 * time.Millisecond):
+		if err != nil {
+			t.Fatalf("read during the move: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a read of the shard waited for its move")
 	}
-	close(release)
+	unhold()
 	if err := <-moved; err != nil {
 		t.Fatalf("MoveShard: %v", err)
 	}
-	if err := <-read; err != nil {
-		t.Fatalf("the held read: %v", err)
+	if ts.EventShardsForTest()[old].Store() != nil {
+		t.Fatal("the moved cold shard is open: a read opened its source during the move")
+	}
+	if got := shardCopies(t, cfg, old); len(got) != 1 || got[0] != filepath.Join(cfg.WarmDir, "events", old) {
+		t.Fatalf("shard copies %v, want only the one on the warm volume", got)
+	}
+	if _, err := ts.GetNode(n.ID()); err != nil {
+		t.Fatalf("GetNode after the move: %v", err)
+	}
+}
+
+// TestMoveReadsGoOnForAWarmShard pins MOVEREAD for an open warm shard: during
+// its copy a by-ID read and a label scan return its row at once, while a
+// write to it waits (TestMoveWarmShard_WriterWaitsAndWriteLandsOnNewVolume).
+func TestMoveReadsGoOnForAWarmShard(t *testing.T) {
+	t.Parallel()
+	ts, _, n, _, old, tok := warmMoveFixture(t)
+	defer func() { _ = ts.Close() }()
+	release := make(chan struct{})
+	unhold := sync.OnceFunc(func() { close(release) })
+	defer unhold() // a failure ends the move before Close waits for it
+	reached := holdMoveAt(ts, "copied", release)
+	moved := make(chan error, 1)
+	go func() { moved <- ts.MoveShard(context.Background(), old, VolumeWarm) }()
+	awaitHold(t, reached, moved)
+	read := make(chan error, 1)
+	go func() {
+		if _, err := ts.GetNode(n.ID()); err != nil {
+			read <- err
+			return
+		}
+		nodes, err := ts.NodesByLabel(tok, QueryOpts{})
+		if err == nil && len(nodes) != 1 {
+			err = fmt.Errorf("NodesByLabel = %d nodes, want 1", len(nodes))
+		}
+		read <- err
+	}()
+	select {
+	case err := <-read:
+		if err != nil {
+			t.Fatalf("reads during the move: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a read of the warm shard waited for its move")
+	}
+	unhold()
+	if err := <-moved; err != nil {
+		t.Fatalf("MoveShard: %v", err)
+	}
+}
+
+// TestMoveSourceRemovalWaitsForReaders pins that the move removes its source
+// only after the readers holding the source's read-only handle finish (and the
+// handle is closed). Catches the source deleted under a read.
+func TestMoveSourceRemovalWaitsForReaders(t *testing.T) {
+	t.Parallel()
+	ts, cfg, n, old, _ := moveFixture(t)
+	defer func() { _ = ts.Close() }()
+	release := make(chan struct{})
+	unhold := sync.OnceFunc(func() { close(release) })
+	defer unhold() // a failure ends the move before Close waits for it
+	reached := holdMoveAt(ts, "copied", release)
+	moved := make(chan error, 1)
+	go func() { moved <- ts.MoveShard(context.Background(), old, VolumeWarm) }()
+	awaitHold(t, reached, moved)
+	store, unpin, err := ts.EventShardsForTest()[old].checkoutStoreReadOnly(ts)
+	if err != nil {
+		t.Fatalf("checkout during the move: %v", err)
+	}
+	unhold()
+	select {
+	case err := <-moved:
+		t.Fatalf("the move ended while a reader held its source (err %v)", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if _, err := os.Stat(filepath.Join(cfg.DataDir, "events", old)); err != nil {
+		t.Fatalf("the source went while a reader held it: %v", err)
+	}
+	if _, err := store.GetNode(n.ID()); err != nil {
+		t.Fatalf("read from the held source: %v", err)
+	}
+	unpin()
+	if err := <-moved; err != nil {
+		t.Fatalf("MoveShard: %v", err)
 	}
 	if got := shardCopies(t, cfg, old); len(got) != 1 || got[0] != filepath.Join(cfg.WarmDir, "events", old) {
 		t.Fatalf("shard copies %v, want only the one on the warm volume", got)

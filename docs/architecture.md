@@ -359,12 +359,17 @@ that test.
     move failed after the others; a shard on a slower volume stays; `IdleTimeout` defaults to 5 minutes when a
     volume is mapped (step 6). `tiered.MoveShardOffline` moves the reference shard or the archive of a closed store,
     holding badger's directory lock on the reference shard for the move (step 7). `ShardInfo.ColdOpens` counts each
-    lazy open of a closed cold shard, so a read's cold opens show as the difference around it (step 8).
+    lazy open of a closed cold shard, so a read's cold opens show as the difference around it (step 8). During
+    the copy, reads go on from a read-only handle on the source; writes wait (MOVEREAD, v4.78.2).
   - *The mover* (one, for any event shard and any volume pair; one move per idle-sweep tick, or `tier.API.MoveShard`):
     a closed shard is copied file by file (byte-exact, fsync of files and directory) into
     `<volume>/events/<name>.moving-<nonce>`, renamed, the catalog saved with the new `Volume` (the commit point), then
     the source removed. An open (warm) shard is first quiesced: a `moving` gate makes its checkouts wait, pins drain,
-    the shard closes (flushing), moves as above and reopens. A `DurableCommit` group needs no exclusion: the close
+    the shard closes (flushing), moves as above and reopens. MOVEREAD: once the shard is closed the mover opens a
+    read-only handle on the source, and every checkout that only reads (`checkoutStoreReadOnly`, the read routings
+    `shardForNodeIDRead`, `shardForRelIDReadWithArchive`) pins it instead of waiting; checkouts that may write
+    (`checkoutStore`, `checkoutStoreForRead`) still wait. Before the source is removed (after the catalog save) or
+    reopened writable (a stopped move), new reads wait again, the pins drain and the handle closes. A `DurableCommit` group needs no exclusion: the close
     syncs the writes it holds, and its `DurableFlush` pins or skips the shard instead of waiting.
     At open, orphans are removed by the catalog's word (`*.moving-*`; a copy on a volume the catalog does not name).
     The mover never fails the store: errors are logged and retried. The reference shard and the archive move only

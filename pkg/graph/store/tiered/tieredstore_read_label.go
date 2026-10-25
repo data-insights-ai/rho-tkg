@@ -62,7 +62,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -143,7 +143,7 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -257,7 +257,7 @@ func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts Qu
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return

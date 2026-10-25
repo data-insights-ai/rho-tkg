@@ -64,7 +64,7 @@ func foldShards[T any](ts *Store, read func(*BadgerStore) (T, error)) ([]T, erro
 	results := make([]T, len(eventShards))
 	errs := make([]error, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			errs[i] = err
 			return

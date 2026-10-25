@@ -19,7 +19,7 @@ func (ts *Store) NodeStoredSizes(nid types.NodeID) ([]storecontract.StoredRow, e
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
+	store, checkin, isArchive, err := ts.shardForNodeIDReadWithArchive(nid)
 	if err != nil {
 		return nil, err
 	}

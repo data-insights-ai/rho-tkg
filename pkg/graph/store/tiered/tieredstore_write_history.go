@@ -181,7 +181,7 @@ func (ts *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	}
 
 	sources := nodeHistorySourcesFrom(shard, history)
-	err = ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+	err = ts.forEachHistoryShardFor(shard, false, func(candidate *BadgerStore) (bool, error) {
 		history, err := candidate.GetNodeHistory(nid)
 		if err != nil {
 			return false, err
@@ -287,7 +287,7 @@ func (ts *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	}
 
 	sources := relHistorySourcesFrom(shard, history)
-	err = ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+	err = ts.forEachHistoryShardFor(shard, false, func(candidate *BadgerStore) (bool, error) {
 		history, err := candidate.GetRelHistory(rid)
 		if err != nil {
 			return false, err

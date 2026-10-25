@@ -53,7 +53,7 @@ func orPresence(a, b bool) bool { return a || b }
 // falls back to every shard (TestRefArchiveReadersSeeMovedEntityOnce).
 func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
-	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
+	store, checkin, isArchive, err := ts.shardForNodeIDReadWithArchive(nid)
 	if err != nil {
 		return zero, err
 	}
@@ -83,7 +83,7 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerS
 // (TestRefArchiveReadersSeeMovedEntityOnce).
 func walkRelHistoryShards[T any](ts *Store, rid types.RelID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
-	shard, checkin, isArchive, probe, err := ts.routeRelShard(rid)
+	shard, checkin, isArchive, probe, err := ts.routeRelShardFor(rid, true)
 	if err != nil {
 		return zero, err
 	}

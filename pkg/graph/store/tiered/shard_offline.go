@@ -61,5 +61,5 @@ func moveShardOffline(ctx context.Context, cfg Config, name, volume string, faul
 		return fmt.Errorf("graph: MoveShardOffline: the store is open (its reference shard is locked): %w", err)
 	}
 	defer unlock()
-	return ts.moveClosedShard(ctx, name, name, vol, dstRoot)
+	return ts.moveClosedShard(ctx, name, name, vol, dstRoot, nil)
 }

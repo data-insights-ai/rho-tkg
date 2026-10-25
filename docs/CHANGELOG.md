@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **MOVEREAD**: reads of a shard being moved no longer wait for its whole copy. Once the shard is closed for the move,
+  its reads (by ID, history and as-of, label, property and bulk scans, counts, the change-log feed) go on from a
+  read-only handle on the source; writes to the shard (corrections, endings, index changes) still wait, and the
+  source is removed or reopened only after those reads finish. ai-soc (25 Oct): a day shard of the full estate is
+  tens of GB, and a minutes-long stall would hold `/tkg/asof` and a restart's record-history read.
+
 ### Changed
 
 - **RACETIME** (gate): the race gate's isolated packages (graph, memory, badger) run with a 20-minute timeout; badger

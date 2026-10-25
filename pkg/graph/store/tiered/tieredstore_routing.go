@@ -124,6 +124,13 @@ func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerS
 	return store, checkin, isArchive, err
 }
 
+// shardForRelIDReadWithArchive is shardForRelIDCheckedWithArchive for a caller
+// that only reads the store it gets (MOVEREAD, shardForNodeIDRead).
+func (ts *Store) shardForRelIDReadWithArchive(id types.RelID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
+	store, checkin, isArchive, _, err = ts.routeRelShardFor(id, true)
+	return store, checkin, isArchive, err
+}
+
 // relRowProbe is the result of routeRelShard's probe: live (shard holds the
 // entity row), err (corrupt but indexed row, which still occupies the ID), or
 // neither (no shard holds the row).
@@ -143,6 +150,12 @@ func probeRelRow(store *BadgerStore, id types.RelID) (p relRowProbe, exists bool
 // the shard it returns, so a caller that next asks whether the row is live
 // there (the history walks) does not read the row a second time.
 func (ts *Store) routeRelShard(id types.RelID) (store *BadgerStore, checkin func(), isArchive bool, found relRowProbe, err error) {
+	return ts.routeRelShardFor(id, false)
+}
+
+// routeRelShardFor is routeRelShard; readOnly checks the event shards out
+// with checkoutStoreReadOnly.
+func (ts *Store) routeRelShardFor(id types.RelID, readOnly bool) (store *BadgerStore, checkin func(), isArchive bool, found relRowProbe, err error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, nil, false, relRowProbe{}, err
 	}
@@ -171,7 +184,7 @@ func (ts *Store) routeRelShard(id types.RelID) (store *BadgerStore, checkin func
 	}
 
 	candidateEntry := ts.timestampToEventShardEntry(raw)
-	candidate, candidateRelease, err := candidateEntry.checkoutStoreForRead(ts)
+	candidate, candidateRelease, err := candidateEntry.checkoutForRead(ts, readOnly)
 	if err != nil {
 		return nil, nil, false, relRowProbe{}, err
 	}
@@ -193,7 +206,7 @@ func (ts *Store) routeRelShard(id types.RelID) (store *BadgerStore, checkin func
 	ts.mu.RUnlock()
 
 	for _, es := range probe {
-		s, release, err := es.checkoutStoreForRead(ts)
+		s, release, err := es.checkoutForRead(ts, readOnly)
 		if err != nil {
 			candidateRelease()
 			return nil, nil, false, relRowProbe{}, err
@@ -286,6 +299,23 @@ func (ts *Store) shardForNodeIDChecked(id types.NodeID) (store *BadgerStore, che
 }
 
 func (ts *Store) shardForNodeIDCheckedWithArchive(id types.NodeID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
+	return ts.routeNodeShard(id, false)
+}
+
+// shardForNodeIDRead is shardForNodeIDChecked for a caller that only reads
+// the store it gets: a moving event shard answers from its source
+// (checkoutStoreReadOnly, MOVEREAD).
+func (ts *Store) shardForNodeIDRead(id types.NodeID) (store *BadgerStore, checkin func(), err error) {
+	store, checkin, _, err = ts.routeNodeShard(id, true)
+	return store, checkin, err
+}
+
+// shardForNodeIDReadWithArchive is shardForNodeIDRead reporting an archive hit.
+func (ts *Store) shardForNodeIDReadWithArchive(id types.NodeID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
+	return ts.routeNodeShard(id, true)
+}
+
+func (ts *Store) routeNodeShard(id types.NodeID, readOnly bool) (store *BadgerStore, checkin func(), isArchive bool, err error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, nil, false, err
 	}
@@ -316,7 +346,7 @@ func (ts *Store) shardForNodeIDCheckedWithArchive(id types.NodeID) (store *Badge
 	// Event shard: resolve via timestamp, then checkout to prevent idle-close
 	// races. Cold shards opened only for this operation close again on checkin.
 	es := ts.timestampToEventShardEntry(raw)
-	store, checkin, err = es.checkoutStoreForRead(ts)
+	store, checkin, err = es.checkoutForRead(ts, readOnly)
 	if err != nil {
 		return nil, nil, false, err
 	}

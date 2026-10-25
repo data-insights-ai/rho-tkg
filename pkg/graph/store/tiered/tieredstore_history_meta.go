@@ -28,7 +28,7 @@ func (ts *Store) nodeHistoryTemporalMetaVia(nid types.NodeID, via shardVia) ([]s
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
+	store, checkin, isArchive, err := ts.shardForNodeIDReadWithArchive(nid)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (ts *Store) RelHistoryTemporalMeta(rid types.RelID) ([]storecontract.Versio
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
+	shard, checkin, isArchive, err := ts.shardForRelIDReadWithArchive(rid)
 	if err != nil {
 		return nil, err
 	}

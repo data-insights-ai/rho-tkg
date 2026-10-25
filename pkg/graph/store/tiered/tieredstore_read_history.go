@@ -23,7 +23,7 @@ func (ts *Store) getNodeVersionVia(nid types.NodeID, version uint32, via shardVi
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	shard, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
+	shard, checkin, isArchive, err := ts.shardForNodeIDReadWithArchive(nid)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
+	store, checkin, isArchive, err := ts.shardForNodeIDReadWithArchive(nid)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (ts *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 	if err := storecontract.ValidateHistoryPageLimit(limit); err != nil {
 		return nil, err
 	}
-	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
+	store, checkin, isArchive, err := ts.shardForNodeIDReadWithArchive(nid)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +297,7 @@ func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 	shards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return nil, err
 		}
@@ -327,7 +327,15 @@ func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 // fallback selects an event shard.
 // Cold shards opened only for this read are closed after the callback so
 // broad scans do not accumulate Badger handles.
+//
+// fn only reads: a moving event shard answers from its source
+// (checkoutStoreReadOnly). A caller that writes to the stores it collects uses
+// forEachHistoryShardFor(skip, false, fn).
 func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
+	return ts.forEachHistoryShardFor(skip, true, fn)
+}
+
+func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, readOnly bool, fn func(*BadgerStore) (bool, error)) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -367,7 +375,7 @@ func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (b
 	ts.mu.RUnlock()
 
 	for _, es := range eventShards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutForRead(ts, readOnly)
 		if err != nil {
 			return err
 		}
@@ -496,7 +504,7 @@ func (ts *Store) forEachNodeHistoryIDByDepth(depth ShardDepth, fn func(types.Nod
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return err
 		}
@@ -640,7 +648,7 @@ func (ts *Store) maxNodeHistoryIDByDepth(depth ShardDepth) (types.NodeID, error)
 	shards := ts.eventShardSnapshot(depth)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return 0, err
 		}
@@ -692,7 +700,7 @@ func (ts *Store) maxNodeHistoryIDAll() (types.NodeID, error) {
 	shards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return 0, err
 		}

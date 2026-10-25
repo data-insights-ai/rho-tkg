@@ -20,7 +20,7 @@ func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
+	shard, checkin, isArchive, err := ts.shardForRelIDReadWithArchive(rid)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (ts *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
+	shard, checkin, isArchive, err := ts.shardForRelIDReadWithArchive(rid)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (ts *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 	if err := storecontract.ValidateHistoryPageLimit(limit); err != nil {
 		return nil, err
 	}
-	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
+	shard, checkin, isArchive, err := ts.shardForRelIDReadWithArchive(rid)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +281,7 @@ func (ts *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 	shards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return nil, err
 		}
@@ -408,7 +408,7 @@ func (ts *Store) forEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelI
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return err
 		}
@@ -552,7 +552,7 @@ func (ts *Store) maxRelHistoryIDByDepth(depth ShardDepth) (types.RelID, error) {
 	shards := ts.eventShardSnapshot(depth)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return 0, err
 		}
@@ -604,7 +604,7 @@ func (ts *Store) maxRelHistoryIDAll() (types.RelID, error) {
 	shards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return 0, err
 		}

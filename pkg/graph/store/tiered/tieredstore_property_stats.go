@@ -116,7 +116,7 @@ func (ts *Store) foldNodePropertySketches(labelToken uint16, propertyKey string,
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return

@@ -58,7 +58,7 @@ func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -137,7 +137,7 @@ func (ts *Store) RelationshipCount() (int, error) {
 			results[i].count = n
 			return
 		}
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -207,7 +207,7 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 			results[i].count = n
 			return
 		}
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -275,7 +275,7 @@ func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			results[i].err = err
 			return
@@ -358,7 +358,7 @@ func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return err
 		}

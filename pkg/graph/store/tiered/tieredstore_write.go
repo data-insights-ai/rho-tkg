@@ -293,7 +293,7 @@ func (ts *Store) relsByTypePropertyKeys(relTypeToken uint16, key string, opts Qu
 	results := make([][]*types.Relationship, len(eventShards))
 	errs := make([]error, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			errs[i] = err
 			return

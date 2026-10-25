@@ -160,23 +160,56 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 // a years-old store no longer accumulates one handle per historical shard,
 // because the least recently used are closed once the cap is passed.
 func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), error) {
+	return es.checkoutForRead(ts, false)
+}
+
+// checkoutStoreReadOnly is checkoutStoreForRead for a caller that only reads
+// the store: while a move copies the shard it gets the read-only handle on the
+// source instead of waiting for the move (MOVEREAD). A caller that may write,
+// even through a store it found by a read, uses checkoutStoreForRead.
+func (es *EventShard) checkoutStoreReadOnly(ts *Store) (*BadgerStore, func(), error) {
+	return es.checkoutForRead(ts, true)
+}
+
+func (es *EventShard) checkoutForRead(ts *Store, readOnly bool) (*BadgerStore, func(), error) {
 	noop := func() {}
-	if es.currentTier() != TierCold {
-		store, err := es.checkoutStore(ts)
-		if err != nil {
-			return nil, noop, err
-		}
-		return store, es.checkinStore, nil
-	}
 	if err := ts.backgroundError(); err != nil {
 		return nil, noop, err
 	}
 	if ts.closed.Load() {
 		return nil, noop, ErrStoreClosed
 	}
+	if es.currentTier() != TierCold {
+		if !readOnly {
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				return nil, noop, err
+			}
+			return store, es.checkinStore, nil
+		}
+		// Hot/warm: the open store, pinned as checkoutStore does; a moving
+		// shard takes the locked path, which reads its source.
+		es.activeReqs.Add(1)
+		if ts.closed.Load() {
+			es.activeReqs.Add(-1)
+			return nil, noop, ErrStoreClosed
+		}
+		if !es.moving.Load() && es.currentTier() != TierCold {
+			es.lastAccess.Store(time.Now().UnixMilli())
+			return es.store, es.checkinStore, nil
+		}
+		es.activeReqs.Add(-1)
+	}
 
 	es.shardMu.Lock()
-	es.waitMoveLocked()
+	if readOnly {
+		if store, release, ok := es.waitMoveForReadLocked(); ok {
+			es.shardMu.Unlock()
+			return store, release, nil
+		}
+	} else {
+		es.waitMoveLocked()
+	}
 	if ts.closed.Load() {
 		es.shardMu.Unlock()
 		return nil, noop, ErrStoreClosed

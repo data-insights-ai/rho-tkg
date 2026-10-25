@@ -59,7 +59,7 @@ func allShards[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)
 	results := make([]T, len(shards))
 	errs := make([]error, len(shards))
 	queryEventShards(shards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
+		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			errs[i] = err
 			return

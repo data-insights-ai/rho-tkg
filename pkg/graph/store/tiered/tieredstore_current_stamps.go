@@ -22,7 +22,7 @@ func (ts *Store) NodeCurrentStamps(nid types.NodeID) (storecontract.RowStamps, e
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	store, checkin, err := ts.shardForNodeIDRead(nid)
 	if err != nil {
 		return storecontract.RowStamps{}, err
 	}
