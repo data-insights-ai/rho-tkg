@@ -93,7 +93,8 @@ Branch `dict`; each step red test first, mutation-checked; the minor ships on Re
 
 1. [ ] Row shape (storeutil): a property may carry `dt` (a dictionary token) in place of `v`; a row with one is row
    format 8, a store holding one marker 11; a `dt` on a row below 8, on a non-string or next to a `v` is corrupt; an
-   unknown token fails closed.
+   unknown token fails closed. Green on branch `dict` (fb955cc4; 3 mutations caught,
+   `tasks/evidence/DICT/step1.txt`).
 2. [ ] Badger store: config `ValueDictionaries` (name, cap, members (label or rel type, property)); one token space per
    store; a new value's entry goes into the pending batch (with the marker raise) before the row that uses it, so
    no flush commits the row without it; entries load on first use; decode resolves to one `unique` string per
