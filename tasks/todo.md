@@ -44,10 +44,10 @@ it (its rig is René's call).
 3. [ ] Badger optimised for the multi-tier storage (SHARD): per-tier options (read-only cold opens, caches, compactors,
    `CompactL0OnClose`), iterator prefixes and prefetch, point reads, the shard mover's copy method, measured per tier.
    Read-only cold opens released in v4.78.3 (COLDRO, `tasks/evidence/COLDRO/`: 1.3 ms and 3.3 MB against 27.6 ms
-   and 94 MB per open). Left: caches, compactors and `CompactL0OnClose` per tier, ITERPREFIX, PREFETCH, GETWALK, the
-   mover's copy method, each measured. PREFETCH released in v4.78.4 (`tasks/evidence/PREFETCH/`: the open
-   without an image 7-18 % faster). ITERPREFIX, VLOGGC and `CompactL0OnClose` measured, no change (`tasks/evidence/ITERPREFIX/`,
-   `VLOGGC/`, `COMPACTL0/`).
+   and 94 MB per open).  PREFETCH released in v4.78.4 (`tasks/evidence/PREFETCH/`: the open
+   without an image 7-18 % faster). ITERPREFIX, VLOGGC, `CompactL0OnClose` and the mover's copy measured, no change
+   (`tasks/evidence/ITERPREFIX/`, `VLOGGC/`, `COMPACTL0/`, `MOVERCOPY/`). Left: GETWALK, and per-tier caches and
+   compactors (worth less since COLDRO: a read-only cold open starts no compactor).
 
 ## Next
 
