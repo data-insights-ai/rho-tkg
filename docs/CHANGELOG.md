@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.78.2] - 2026-10-25
+
 ### Fixed
 
 - **MOVEREAD**: reads of a shard being moved no longer wait for its whole copy. Once the shard is closed for the move,
