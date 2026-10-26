@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.87.2] - 2026-10-26
+
 ### Fixed
 
 - **IDLESTAMP** (sigma, three tests red on v4.87.1): EVENTCLOCK stamped `lastAccess` when a shard turned cold, so an

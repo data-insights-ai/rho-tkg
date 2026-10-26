@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-26 Oct: v4.75.0 to v4.87.1 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
+Released 24-26 Oct: v4.75.0 to v4.87.2 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
@@ -55,11 +55,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
-- **IDLESTAMP** (sigma 26 Oct: three tests red on v4.87.1) — v4.87.1 stamped `lastAccess` at a shard's demotion, so
-  an idle sweep in the demotion's millisecond with `IdleTimeout` 0 kept it open (sigma's TestFoldReadDepthHot; its
-  heap test after it in the same process read 3.9-4.3 KB a row). Fix on branch `idlestamp` (1f021390, mutation-checked):
-  a demotion stamps nothing. sigma's tests pass on it; its third red test counted `CommittedTx` advances (sigma's
-  side, told). Done when: v4.87.2 tagged, CI green, sigma bumps.
 - **OPENIMAGE** (SCALE, moved up 26 Oct: ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in
   tiered.New, 53 % in loadNodeFromBadger) — a crash open trusts no image, so it rebuilds every RAM index by decoding
   each member node with a point Get (property without disk, composite, temporal without TemporalIndexOnDisk,
