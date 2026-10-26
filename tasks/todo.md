@@ -138,7 +138,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **OPENCOLD** (found 26 Oct in UNIQIDX) — a graph's open on a tiered store opens every cold shard once (4 of 4 in
   the test, with or without a constraint). Cause (26 Oct): `forEachOpenShard` opened every closed cold shard, and a
   graph's open (`SetValidAxis`) and every `Flush` used it; a closed shard has nothing pending and takes the axis at
-  its open. Fixed on branch `opencold` (it visits open shards only; the purges use `forEachShard`), test and
+  its open. Fixed on branch `opencold` (d6b062e2: it visits open shards only; the purges use `forEachShard`), test and
   mutations green. Done when: released as a patch with RESTART's measurement.
 - **WINDOWZONE** (ai-soc, 26 Oct: yes, they set UTC) — tiered daily and weekly windows follow the process's zone
   (`time.Local`), which is how DSTWIN reached ai-soc (Flux runs Berlin). Done when: a `tiered.Config` zone for the
