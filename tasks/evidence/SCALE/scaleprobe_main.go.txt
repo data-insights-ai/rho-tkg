@@ -1,0 +1,86 @@
+// scaleprobe measures what an open shard keeps in RAM per entity and how long
+// an open takes, on ai-soc's tiered config (Derived on the reference shard).
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"runtime"
+	"runtime/debug"
+	"runtime/pprof"
+	"time"
+
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+)
+
+var store *tieredpkg.Store
+
+func open(dir string) *graphpkg.Graph {
+	ts, err := tieredpkg.New(tieredpkg.Config{DataDir: dir, RefLabels: []string{"Derived"}, ShardWindow: 24 * time.Hour,
+		ColdAfter: 72 * time.Hour, HistoryDeltaEncoding: true, RelsByMint: true,
+		AdjacencyIndexOnDisk: true, LabelIndexOnDisk: true})
+	if err != nil {
+		panic(err)
+	}
+	store = ts
+	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12, Store: ts, UntimedValidStart: graphpkg.UntimedUnbounded})
+	if err != nil {
+		panic(err)
+	}
+	return g
+}
+
+func heap() uint64 {
+	runtime.GC()
+	debug.FreeOSMemory()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.HeapInuse
+}
+
+func main() {
+	n := flag.Int("n", 1_000_000, "entities")
+	label := flag.String("label", "Derived", "Derived (reference shard) or Event (hot shard)")
+	prof := flag.String("memprofile", "", "heap profile after the reopen")
+	flag.Parse()
+	dir, _ := os.MkdirTemp(".", "store")
+	defer os.RemoveAll(dir)
+	g := open(dir)
+	h0 := heap()
+	t0 := time.Now()
+	const batch = 1000
+	for i := 0; i < *n; i += batch {
+		if _, err := g.Batch().Run(func(b *graphpkg.BatchBuilder) error {
+			for j := i; j < i+batch && j < *n; j++ {
+				if _, err := b.AddNode([]string{*label}, map[string]any{"k": int64(j)}); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			panic(err)
+		}
+	}
+	if err := store.Flush(); err != nil {
+		panic(err)
+	}
+	ins := time.Since(t0)
+	h1 := heap()
+	fmt.Printf("%s n=%d insert %.1fs (%.0f/s) heap +%.1f MB = %.1f B/entity\n", *label, *n, ins.Seconds(), float64(*n)/ins.Seconds(), float64(h1-h0)/1e6, float64(h1-h0)/float64(*n))
+	g.Close()
+	runtime.GC()
+	hb := heap()
+	t1 := time.Now()
+	g = open(dir)
+	op := time.Since(t1)
+	h2 := heap()
+	if *prof != "" {
+		f, _ := os.Create(*prof)
+		pprof.WriteHeapProfile(f)
+		f.Close()
+	}
+	fmt.Printf("clean reopen %.2fs, heap +%.1f MB = %.1f B/entity\n", op.Seconds(), float64(h2-hb)/1e6, float64(h2-hb)/float64(*n))
+	g.Close()
+}

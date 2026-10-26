@@ -1,7 +1,8 @@
 # todo
 
-What rho does next, in order. Last release: v4.82.0 (2026-10-26). Background, René's open decisions with my defaults,
-and the numbered backlog: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`, under the same tag.
+What rho does next, in order. Last release: v4.82.0 (2026-10-26). René's open decisions are the items that wait for
+him, each with my default. State, consumers and the numbered backlog: `HANDOVER.md`; rules: `docs/CONTRIBUTING.md`
+§ Rules digest. Done work: `docs/CHANGELOG.md`, under the same tag.
 
 Each item: one sentence, then when it is done and what it waits for.
 
@@ -9,16 +10,16 @@ Each item: one sentence, then when it is done and what it waits for.
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-26 Oct: v4.75.0 to v4.82.0 (`docs/CHANGELOG.md`). Now: R37 (ai-soc's order 26 Oct: memory, restart, listing, storage; memory and restart are mostly sigma's, so
-rho's lever is listing), then SCALE, then BADGER step 3's last pieces. Standing goal (René 26 Oct): realtime at about
-2 TB a day, sometimes more, grown only by more RAM, NVMe and block storage; work that removes a wall to that ranks
-above a constant-factor win.
+rho's lever is listing), then SCALE, then BADGER step 3's last pieces. Ranked by the goal in the rules digest
+(realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
 - **R37** (ai-soc's lever for rho, 26 Oct) — listing changed facts costs more than ai-soc's 4x a fact's values. ai-soc
   on v4.79.0 (derived_list_cost_test.go): warm 6.4x (13 props, 2 versions), 4.5x (20 props); cold 8.8x (1 version)
   and 24.7x (2 versions), the one that hurts. Done when: rho's part is reproduced in a rho test, cut, and ai-soc's
   warm and cold tests are under 4x (sigma's part follows rho's). ai-soc's split: rho 97 % of the listing's bytes.
   Branch `r37` (9a08f196, rho repro TestR37ListingBytesPerFact, `tasks/evidence/R37/`): 2 versions 8.5x -> 4.0x
-  warm, 14.9x -> 10.5x cold; 1 version 0.8x / 5.3x. Patch v4.82.1 after v4.82.0. Left: a cold listing decodes each
+  warm, 14.9x -> 10.5x cold; 1 version 0.8x / 5.3x. Ships as minor v4.83.0 (it adds
+  `store.NodeVersionSharingCapability`; the patch gate refused it); its `make ci-docker` is running. Left: a cold listing decodes each
   current row into a Node (~3.6x by itself); below 4x needs a door that hands sigma columns per segment without
   Nodes. sigma (26 Oct): not now; stop at v4.82.1, ai-soc re-measures cold /bars on it. If it still fails on Flux,
   the column door (cols incl. ov_session, ov_sid; ValidFrom/To and TxFrom per segment; values shared when
@@ -31,7 +32,15 @@ above a constant-factor win.
   Done when: architecture.md lists what grows with total volume instead of per shard (RAM structures that grow with
   entity count; open, crash recovery, Clear and compaction cost that grow with store size; hot-shard write
   throughput against peaks; sub-day shard windows), each measured and either bounded or queued here as its own item
-  ranked by how soon it walls 2 TB a day.
+  ranked by how soon it walls 2 TB a day. Measured so far (`tasks/evidence/SCALE/existence_maps.txt`, probe beside
+  it): every open shard keeps ~63 B per node in RAM (`nodeIDs` 30 B, `nodeRevs` 32.5 B; rels the same pair), and a
+  clean open walks every node key to fill them (~1.4 s per 1 M nodes): a 4-billion-fact day-shard needs ~250 GB of
+  heap and ~90 min to reopen, the always-open reference shard grows for ever. A composite index rebuilds at open by
+  decoding every row (2 M Derived rows: 8.9 s against 2.8 s). Durable writes (SyncWrites + DurableCommit, 500 B
+  facts, one writer, batches of 1000): 27 k/s against the goal's 46 k/s sustained (measured under a gate's load;
+  re-measure idle). Candidate items: EXISTMAP (a compact persisted ID set and a bounded striped revision table
+  instead of the two maps), COMPOSITEDISK (composite postings on disk or in the open image), WRITERATE (where a
+  durable commit spends its time).
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
@@ -145,29 +154,33 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   known. Waits for: sigma's ENDPOINT and EDGEREF tags (sigma 26 Oct: ai-soc's next full run waits for them), René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
   is ready, but Flux runs one big job at a time (ai-soc's k10241303 now) and a Flux run needs René's word.
 - **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
-  fact. Done when: René has decided per layer. Waits for: CHAIN.
+  fact. rho's options: (a) the believed row stays the current row, so a re-derived fact reads the current row, not
+  history; (b) an excise piece stores no copy of the row; (c) a delta's anchor is decoded once per read, not once per
+  row; (d) decoded rows closer to their stored size. Default: none before CHAIN's numbers. Done when: René has
+  decided per layer. Waits for: CHAIN.
 - **REPORT** — ai-soc and sigma have not yet reported on rho's newer doors, and rho builds only what blocks
   them. 26 Oct: sigma pins v4.80.0 for ENDPOINT (VALUES, TKGID not wired yet); ai-soc pins v4.79.0 and takes v4.81.1
   and v4.82.0 with its next pin (ShardWindowLocation UTC, OpenStats read at the next run). Done when: both have reported. Waits for: ai-soc, sigma.
 - **ORIGIN** — Every release Markus makes on origin has to be merged and checked against rho's rules. Done when: no
   release of his is unmerged. Waits for: Markus.
 - **TOMBSTONE** — A delete cannot keep the believed end of validity (backlog 4, 7, 25). Done when: released as a minor.
-  Parked 24 Oct: neither sigma nor ai-soc needs it (sigma removes by excising validity). Waits for: a consumer
-  needing it.
+  Parked 24 Oct: neither sigma nor ai-soc needs it (sigma removes by excising validity). Plan: rebuild branch
+  `tombstone-writer-v4.63` (`37a1ff56`) on the v4.66 axis code, ~½ day, heads-up to sigma and ai-soc (v4.64.0 was
+  never cut). Waits for: a consumer needing it (sigma's P24).
 - **STORE** (ai-soc, 23 Oct) — Store layout choices for ai-soc's remodel: history delta encoding per label, Derived and
   Session on the never-purged reference shard, and the instance nodes (~2/3 of the BA store). Done when: René has
   decided with ai-soc and sigma (their STORECFG talk). sigma (24 Oct): agreed with René for p4b only:
   `PropertyIndexOnDisk`, a bounded entity cache, DerivedPage as a reference label on ai-soc's tiered stores
   (`LabelIndexOnDisk` once TIERLABELDISK ships); delta encoding per label, Derived/Session placement and the instance
   nodes are not agreed. ai-soc (24 Oct): René works on it with them directly (STORECFG). Waits for: René.
-- **REVIEWS** — Review findings were left out under the scope rule. Done when: René has decided. Waits for: the main session, which decides each finding on its evidence.
-- **PURGE** — A purged entity answers "not found" at a time it answered before. Decided 24 Oct from the data (René:
-  open decisions by data and agents): no change. sigma reads below a purge through a floor that gates the cut, and
-  ai-soc has no purge yet; neither expects an old answer from before a purge. Leaves todo with the next release.
+- **REVIEWS** — Review findings were left out under the scope rule: tests review #5-#10, code review #4-#7, docs
+  #9-#10, old rows 77-82. Done when: each is decided on its evidence. Default: leave each until a consumer hits it.
+  Waits for: the main session.
 - **FOLDS** — Range lookups check the resolved version, not every version in the range (backlog 16). Done when: René
   has decided. sigma (24 Oct) uses both forms: `ForEachByLabelPropertyRange` (resolved version) and
   `ForEachByLabelPropertyRangeAnyVersion` (graphhost/bind.go:528), and `NodesByLabelPropertyDuring` in its write-back.
-  Waits for: ai-soc's check of its history range reads, then decided on that data.
+  Default: keep today's documented behaviour. Waits for: ai-soc's check of its history range reads, then decided on
+  that data.
 
 ## Later
 
@@ -234,7 +247,9 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **NITS** — Small findings no consumer has hit (backlog 80-82, review nits). Waits for: a consumer hitting one.
 - **NOCOMPRESS** — Compression cannot be turned off, because "none" is the default value. Waits for: a consumer asking.
 - **STALECITE** — Some code comments cite todo sections that no longer exist. Waits for: the next change to that code.
-- **V5** — The v5 line is paused on the local branch `v5-takeover`. Waits for: sigma's and ai-soc's use of it (asked 24 Oct), then decided on that data.
+- **V5** — The v5 line is paused on the local branch `v5-takeover` (state: HANDOVER; open WPs and the breaking API-pass
+  candidates: `git show 791c1aa3:tasks/todo.md`). Default: paused; `v5.0.0-alpha.1` at its S2 exit once restarted.
+  Waits for: sigma's and ai-soc's use of it (asked 24 Oct), then decided on that data.
 - **BACKLOG** — 26 numbered items without a requester, listed in `HANDOVER.md` because code cites their numbers. Waits
   for: a consumer hitting one, or René.
 - **BADGERPANIC** — badger panics in its own goroutines (table open, compaction) when a table block's trailer is

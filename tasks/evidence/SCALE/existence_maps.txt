@@ -1,0 +1,30 @@
+SCALE: what an open badger shard keeps in RAM per entity (26 Oct 2026, v4.82.0, rho-tkg-main fdfb411b)
+
+Probe: tasks/evidence/SCALE/scaleprobe_main.go.txt (own module, replace -> rho-tkg-main). ai-soc's tiered
+config (RefLabels Derived, ShardWindow 24h, HistoryDeltaEncoding, RelsByMint, AdjacencyIndexOnDisk,
+LabelIndexOnDisk; no SyncWrites). N nodes of one int property through g.Batch() (1000 per batch), Flush,
+heap (HeapInuse after GC) before and after; Close, clean reopen (open image), heap again.
+
+label   N          insert             heap after insert    clean reopen   heap after reopen
+Derived 1,000,000  4.3 s (231 k/s)    +234 MB              1.31 s         +367 MB
+Event     250,000  1.2 s (211 k/s)    +34 MB               0.34 s         +252 MB
+Event   1,000,000  4.9 s (203 k/s)    +232 MB              2.06 s         +466 MB
+Event   2,000,000  8.6 s (231 k/s)    +345 MB              2.80 s         +670 MB
+Event   3,000,000 15.8 s (190 k/s)    +586 MB              4.39 s         +767 MB
+(timings taken while a docker gate ran on the same machine: indicative only)
+
+Heap profile after the 2 M reopen (inuse_space, 568 MB):
+  237 MB  ristretto z.Calloc       badger block cache, filled by the open scan; capped (BlockCacheSize)
+  166 MB  skl.newArena             memtables; fixed per writable shard (CACHE: ~88 MB + 18 goroutines)
+   65 MB  bumpNodeRevLocked        nodeRevs map[NodeID]uint64: 32.5 B per node
+   60 MB  loadIndexesScan.func1    nodeIDs map[NodeID]struct{}: 30 B per node
+  (relIDs / relRevs are the same pair for relationships)
+
+Reading: the bounded parts are caches; what grows without bound is ~63 B per node (+ the same per rel)
+in every open shard, and a clean open that walks every node key to fill them (~1.4 s per 1 M nodes).
+
+At the SCALE goal (2 TB a day, ~4 billion 500-byte facts):
+  - a day-shard's maps: 4e9 x 63 B ~ 250 GB of heap while it is open (hot and warm shards are open);
+  - its clean reopen: ~4e9 / 1 M x 1.4 s ~ 90 min; a crash reopen (~10 s per 1 M, CHAIN) ~ 11 h;
+  - the reference shard (ai-soc's Derived) is always open and grows for ever: both costs grow with
+    the store's total, not with a window.

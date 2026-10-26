@@ -8,6 +8,10 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 **Process (René's standing rules)**
 
+- The goal (René 2026-10-26): a realtime system at about 2 TB a day, sometimes more (about 23 MB/s sustained, 4 billion
+  500-byte facts a day), grown only by more RAM, NVMe and block storage, never by a redesign. Nothing may grow in RAM per
+  entity, or in open, recovery, Clear or compaction time per store, without a bound; work that removes such a wall ranks
+  above a constant-factor win (todo SCALE, `tasks/evidence/SCALE/`).
 - Never create a new .md file; fold new facts into the owning file (README § Documentation). One fact, one place.
 - Commits, MRs and PRs carry no agent attribution: no Co-Authored-By, no Claude-Session, no "Generated with".
 - A fix is a PATCH, a new door or option a MINOR. A fix never rides in a minor, a door never in a patch; one round of consumer
@@ -15,7 +19,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   any new exported name, internal packages included: `scripts/patchgate` decides (FLUSHPART, 2026-10-24).
 - Scope: consumer-blocking or wrong-answer/data bugs only, plus ai-soc runtime items (standing go). A backlog item needs a
   consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
-- Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc without asking. `git fetch` + merge origin/main
+- Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc (their agents: HANDOVER § State) without asking. `git fetch` + merge origin/main
   before a gate; never force-push, never push `origin/v5`. Follow the release checklist below.
 - Commit with explicit paths, never `git commit -a`: a docs commit swept unreviewed step code onto main (2026-10-23).
 - Work order (René 2026-10-23): (1) the request's `tasks/todo.md` item first, before any other action; (2) the red test;
@@ -27,6 +31,10 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Who works (René 2026-10-23): the main session does the work itself, analysis and code alike, and runs every test, lint
   and gate, and reviews its own work (§ Review); the Fable reviewer was deleted (René 2026-10-24). No subagents unless
   René asks for them.
+- Consumer data: ask the consumer's agent for runs and stores, never browse its repo. Flux (ai-soc's run machine) needs
+  René's word per run; customer data stays on Flux: copy the store into a new dir under `/srv/fast/rene/` and open only
+  the copy, report counts, sizes and relation names only (no row values, hosts, keys or record ids in chat or git), and
+  never touch the other `aisoc serve` there.
 - Act, do not offer: open work with a clear next step is started. Before asking René a design question, trace its cause in
   the code and try to remove it; ask only the remainder.
 - Behaviour changes go through the deprecation ritual (`docs/api.md` § Stability and deprecation).
@@ -54,6 +62,11 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   component it names; check a claim about a dependency's behaviour (badger) or a reviewer's statement against the source,
   and give it a test that tries to break it before code, docs or a plan builds on it (two rounds of false badger claims in
   `docs/badger.md`, 2026-10-23/24).
+- Cost is part of done (lesson 89): an item that adds or changes a door, a format or a stored structure states its cost
+  budget in its todo "Done when" (bytes allocated per fact, RAM per entity, open time per million rows, durable writes
+  per second, whichever it touches), measured by a rho test on the consumer's shape (row size, versions, warm and cold)
+  before its first release. Design from `docs/badger.md`'s measured costs, and profile before the review, not after a
+  consumer's complaint.
 - Trim comments by hand, never by script; never drop lock-order, crash-ordering or ownership contracts.
 
 **Tests**
@@ -87,7 +100,8 @@ GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed 
 1. Merge every branch of the batch; `go test -short` of the touched packages.
 2. Self-review of the merged batch (§ Review); fixes merged.
 3. Gate: `make ci-fast` for a patch, `make ci-docker` for a minor; plus the consumer build/vet (HANDOVER Appendix B). No code
-   edits while a gate runs (it tests the live work tree).
+   edits while a gate runs (it tests the live work tree). A minor also runs the scale probe (a scratch module from
+   `tasks/evidence/SCALE/scaleprobe_main.go.txt`, replace to the release's worktree) and appends its numbers there.
 4. Release commit: CHANGELOG heading, README "Current release", line 1 of `docs/architecture.md`, HANDOVER names the tag, shipped
    rows leave `tasks/todo.md`; docs tests and `scripts/check-ledger.sh` green.
 5. Push main, `git tag -a vX.Y.Z`, push the tag.
@@ -233,3 +247,5 @@ Index (`→` names where the rule lives now):
 86. v5 convergence happens in v5 → digest (Process)
 87. Fast tests per commit → digest (Tests)
 88. → 79
+89. Cost is part of done: doors shipped correct and were made cheap only after a consumer measured them (R37, 26 Oct:
+    24.7x a fact's values, cut in a second release) → digest (Code); `TestR37ListingBytesPerFact`
