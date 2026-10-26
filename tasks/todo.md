@@ -8,8 +8,20 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-26 Oct: v4.75.0 to v4.82.0 (`docs/CHANGELOG.md`). Now: COLDWRITE's test, BADGER step 3's last pieces.
+Released 24-26 Oct: v4.75.0 to v4.82.0 (`docs/CHANGELOG.md`). Now: R37 (ai-soc's order 26 Oct: memory, restart, listing, storage; memory and restart are mostly sigma's, so
+rho's lever is listing), then BADGER step 3's last pieces.
 
+- **R37** (ai-soc's lever for rho, 26 Oct) — listing changed facts costs more than ai-soc's 4x a fact's values. ai-soc
+  on v4.79.0 (derived_list_cost_test.go): warm 6.4x (13 props, 2 versions), 4.5x (20 props); cold 8.8x (1 version)
+  and 24.7x (2 versions), the one that hurts. Done when: rho's part is reproduced in a rho test, cut, and ai-soc's
+  warm and cold tests are under 4x (sigma's part follows rho's). ai-soc's split: rho 97 % of the listing's bytes.
+  Branch `r37` (9a08f196, rho repro TestR37ListingBytesPerFact, `tasks/evidence/R37/`): 2 versions 8.5x -> 4.0x
+  warm, 14.9x -> 10.5x cold; 1 version 0.8x / 5.3x. Patch v4.82.1 after v4.82.0. Left: a cold listing decodes each
+  current row into a Node (~3.6x by itself); below 4x needs a door that hands sigma columns per segment without
+  Nodes. sigma (26 Oct): not now; stop at v4.82.1, ai-soc re-measures cold /bars on it. If it still fails on Flux,
+  the column door (cols incl. ov_session, ov_sid; ValidFrom/To and TxFrom per segment; values shared when
+  unchanged) and sigma's segment-based joined() are one item, queued where ai-soc ranks it. Note: sigma lists a fact
+  with 2+ segments through Nodes().Get and a full history read (ListDerived), not through the segments.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
@@ -115,40 +127,20 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
         minor, ai-soc and sigma told. Released in v4.81.0 (`tasks/evidence/UNIQIDX/`). Next slices (label and property
         postings, the relationship owner map) wait for a measured need.
 
-- **METASYNC** (docs on main, ships with the next tag) — the doors and `docs/persistence.md` state what holds: a
-  process crash never loses a durable meta write; without `SyncWrites` a power loss can, when a memtable rotation put
-  it in a retired memtable. The power-loss rig (LazyFS or dm-flakey) is a later item (René 26 Oct).
-- **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
-  fact. Done when: René has decided per layer. Waits for: CHAIN.
-
-- **CALENDAR** (ai-soc on René's word, 26 Oct) — done on main: every time-based place is in
-  `tasks/evidence/CALENDAR/table.txt` with its test; the one failure (zones that jump forward at midnight) is fixed in
-  v4.81.1; granularity and recurrence are UTC and tested under another process zone. ai-soc asked for a Config zone
-  for the windows (WINDOWZONE).
-- **COLDWRITE** (ai-soc, Fable G4, 26 Oct) — can a tiered write land in a cold shard, and is it lost to recovery?
-  Answered from the code: yes it can (an update or late event older than ColdAfter opens the shard writable,
-  `tieredstore_lifecycle.go` checkout); rho's recovery does not scan by time (each shard replays its WAL at its next
-  open; the clock floor is one reference-shard key raised before any shard's rows). Done when: a test writes INTO a
-  cold shard with DurableCommit, drops the store without Close, and reads it back after reopen (for other
-  consumers). ai-soc (26 Oct): the recovery "by time" is ai-soc's own (graphmgr), and no ai-soc write opens a cold
-  shard (reference labels, RelsByMint edges on the hot shard, recent rows only); nothing more asked.
-
 ## Waiting
 
-- **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
+- **CHAIN** (memory split known 26 Oct: k10260011 heap 30.0 GB, sigma 89 %, rho 3.3 GB, badger 0.77 GB; storage
+  split still open) — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
   known. Waits for: sigma's ENDPOINT and EDGEREF tags (sigma 26 Oct: ai-soc's next full run waits for them), René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
   is ready, but Flux runs one big job at a time (ai-soc's k10241303 now) and a Flux run needs René's word.
-- **R37** — Listing facts that were changed still costs more than ai-soc's limit of 4 times a fact's values (ai-soc,
-  v4.74.0: 7.9x warm, 9.2x cold after a restart; sigma's part follows rho's). Done when: ai-soc's warm and cold /bars
-  tests are under 4x on Flux. Waits for: CHAIN-2.
+- **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
+  fact. Done when: René has decided per layer. Waits for: CHAIN.
 - **REPORT** — ai-soc and sigma have not yet reported on rho's newer doors, and rho builds only what blocks
-  them. Done when: both have reported. Waits for: ai-soc, sigma.
+  them. 26 Oct: sigma pins v4.80.0 for ENDPOINT (VALUES, TKGID not wired yet); ai-soc pins v4.79.0 and takes v4.81.1
+  and v4.82.0 with its next pin (ShardWindowLocation UTC, OpenStats read at the next run). Done when: both have reported. Waits for: ai-soc, sigma.
 - **ORIGIN** — Every release Markus makes on origin has to be merged and checked against rho's rules. Done when: no
   release of his is unmerged. Waits for: Markus.
-- **CACHE** — Every open badger shard keeps its own 256 MB block cache, 4 compactors and a per-minute directory walk,
-  so ai-soc's memory grows with the shards it opens (`docs/badger.md` section 9, item 11). Done when: one cache budget
-  for the whole store (`CacheMaxCost`) and per-role options, or a documented cost per shard. Waits for: ai-soc's memory numbers.
 - **TOMBSTONE** — A delete cannot keep the believed end of validity (backlog 4, 7, 25). Done when: released as a minor.
   Parked 24 Oct: neither sigma nor ai-soc needs it (sigma removes by excising validity). Waits for: a consumer
   needing it.
@@ -197,11 +189,19 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **ITERPREFIX** (measured 25 Oct, no change) — 49 iterators set no `IteratorOptions.Prefix`; on a compacted store
   a short walk costs about 3.5 us with or without it (`tasks/evidence/ITERPREFIX/`). Waits for: a shard showing an
   L0 pile-up under ai-soc's load (badger `Levels()`), where a Prefix would skip L0 tables.
+- **COLDWRITE** (ai-soc, Fable G4, 26 Oct; for other consumers, ai-soc asks nothing) — can a tiered write land in a cold shard, and is it lost to recovery?
+  Answered from the code: yes it can (an update or late event older than ColdAfter opens the shard writable,
+  `tieredstore_lifecycle.go` checkout); rho's recovery does not scan by time (each shard replays its WAL at its next
+  open; the clock floor is one reference-shard key raised before any shard's rows). Done when: a test writes INTO a
+  cold shard with DurableCommit, drops the store without Close, and reads it back after reopen (for other
+  consumers). ai-soc (26 Oct): the recovery "by time" is ai-soc's own (graphmgr), and no ai-soc write opens a cold
+  shard (reference labels, RelsByMint edges on the hot shard, recent rows only); nothing more asked.
+- **METASYNCRIG** (René 26 Oct: a later item) — the power-loss case of METASYNC (without `SyncWrites` a meta write
+  in a retired memtable can be lost; source-confirmed, docs in v4.81.0) has no test: it needs a power-loss filesystem
+  (LazyFS or dm-flakey). Done when: the rig shows the loss and the documented guard (`SyncWrites`, `MetaSetDurable`).
 - **OPENIMAGE** — A reopen after a crash rebuilds every row although the open image holds most of the state;
   `IteratorOptions.SinceTs` reads only the keys newer than the image. Done when: such a reopen reads only those keys,
   measured on a large shard.
-- **VLOGGC** (measured 26 Oct, no change; `tasks/evidence/VLOGGC/`) — the loop costs 28 ns a pass on an empty
-  value log and reclaims dead large values after compaction; values kept by history stay.
 
 - **COLDSTART** — A fresh agent has to be able to work from the 13 docs alone. Done when: every gap it finds is fixed
   in the file that owns it.
@@ -212,6 +212,11 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Parked
 
+- **CACHE** — Every open badger shard keeps its own memtable arena, block cache and 4 compactors: 88 MB of heap and
+  18 goroutines per writable shard (rho probe, 26 Oct; read-only 3.3 MB). ai-soc's k10260011 heap (26 Oct): 30.0 GB
+  in use, sigma 26.6 GB (89 %), rho 3.3 GB (1.4 GB not via sigma), badger and ristretto 0.77 GB, so a store-wide
+  budget or read-only warm shards would save under 1 GB. Parked by ai-soc's ranking; reopen on a consumer whose
+  badger share is large.
 - **REOPEN** — ai-soc saw a slow history read after a reopen. Waits for: ai-soc's profile naming the slow call.
 - **PENDING** — Reading one entity walks the whole write buffer on badger (half built on branch
   `row102-pending-ranged`). Waits for: ai-soc raising its priority, or nothing else open.

@@ -1,0 +1,10 @@
+CACHE probe (2026-10-26, rho v4.82.0 candidate, tiered on disk, daily ShardWindow, badger defaults): heap in use and
+goroutines added by reopening a store with N open writable shards (reference + hot + warm), after GC.
+open shards 2: +176.5 MB heap, +36 goroutines (open 85 ms)
+open shards 3: +267.1 MB, +54 (126 ms)
+open shards 5: +441.8 MB, +90 (128 ms)   <- ai-soc's usual: reference, hot, 3 warm (ColdAfter 3 d)
+open shards 8: +708.1 MB, +144 (160 ms)
+=> about 88 MB and 18 goroutines per writable shard (memtable arena 64 MB, caches, writer, flusher, 4 compactors);
+a read-only open costs 3.3 MB (tasks/evidence/COLDRO/).
+ai-soc's k10260011 heap (26 Oct): 30.0 GB in use; sigma 26.6 GB (89 %); rho 3.3 GB (1.4 GB not via sigma); badger and
+ristretto 0.77 GB. Decision: not built (a store-wide budget or read-only warm shards would save under 1 GB of 30).

@@ -1,0 +1,51 @@
+package tiered
+
+import (
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	"runtime"
+	"testing"
+	"time"
+)
+
+func memNow() (sys, heap uint64, gor int) {
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.Sys, m.HeapInuse, runtime.NumGoroutine()
+}
+
+// TestZZCacheProbe: process memory of a reopened tiered store by the number of
+// warm (open, writable) shards; ai-soc keeps ~3 warm daily shards (ColdAfter 3 d).
+func TestZZCacheProbe(t *testing.T) {
+	for _, warm := range []int{0, 1, 3, 6} {
+		dir := t.TempDir()
+		ts, err := New(Config{DataDir: dir, RefLabels: []string{"Case"}, ShardWindow: 24 * time.Hour, FlushInterval: 1<<63 - 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, sigTok := installDefaultTestLabelRegistry(t, ts)
+		gen := tieredNodeGen(t)
+		for i := 0; i < warm; i++ {
+			for j := 0; j < 1000; j++ {
+				n := types.NewNode(types.NodeID(gen.Generate()), sigTok, nil)
+				if err := ts.PutNode(n); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := ts.RotateHotShard(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_ = ts.Close()
+		s0, h0, g0 := memNow()
+		ts, err = New(Config{DataDir: dir, RefLabels: []string{"Case"}, ShardWindow: 24 * time.Hour, FlushInterval: 1<<63 - 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s1, h1, g1 := memNow()
+		st := ts.OpenStats()
+		t.Logf("PROBE warm=%d (open shards %d): +Sys %.1f MB, +HeapInuse %.1f MB, +goroutines %d, open %v",
+			warm, st.WarmShards+2, float64(s1-s0)/1e6, float64(h1-h0)/1e6, g1-g0, st.Duration)
+		_ = ts.Close()
+	}
+}
