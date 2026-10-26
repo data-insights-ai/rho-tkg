@@ -28,11 +28,7 @@ func (bs *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	set := bs.typeIdx[token]
-	rids := make([]types.RelID, 0, len(set))
-	for id := range set {
-		rids = append(rids, id)
-	}
+	rids := bs.typeIDsLocked(token)
 	bs.idxMu.RUnlock()
 
 	if len(rids) == 0 {
@@ -231,12 +227,12 @@ func (bs *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error)
 		return len(set), nil
 	}
 	typeSet := bs.typeIdx[typeToken]
-	if len(typeSet) == 0 {
+	if typeSet == nil {
 		return 0, nil
 	}
 	n := 0
 	for id := range set {
-		if _, ok := typeSet[id]; ok {
+		if typeSet.Has(int64(id)) {
 			n++
 		}
 	}

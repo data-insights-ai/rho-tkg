@@ -376,7 +376,7 @@ type Store struct {
 	statsDeferred             atomic.Bool                                   // a clean open left planner stats unbuilt: writes skip them, the first stat read builds them from the rows (ensurePlannerStats)
 	historyDelta              bool                                          // store version-history rows as anchor+delta (ADR-0009); reads accept both forms regardless
 	historyAnchorInterval     uint64                                        // anchor spacing for historyDelta (>=1, default 16); baked into the on-disk layout — verified against a persisted marker at open
-	typeIdx                   map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
+	typeIdx                   map[uint16]*indexpkg.IDSet                    // relTypeToken → set(relID), ~9 B per rel (OPENWALK)
 	labelOrder                storepkg.MemberOrder[types.NodeID]            // scan order of labelIdx (addLabelIdxLocked; RAM label mode)
 	typeOrder                 storepkg.MemberOrder[types.RelID]             // scan order of typeIdx (addTypeIdxLocked)
 	outIdx                    map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
@@ -1020,7 +1020,7 @@ func New(cfg Config) (*Store, error) {
 		nodeRevs:                 newRevTable(),
 		relRevs:                  newRevTable(),
 		labelIdx:                 make(map[uint16]map[types.NodeID]struct{}),
-		typeIdx:                  make(map[uint16]map[types.RelID]struct{}),
+		typeIdx:                  make(map[uint16]*indexpkg.IDSet),
 		outIdx:                   make(map[types.NodeID]map[types.RelID]types.NodeID),
 		inIdx:                    make(map[types.NodeID]map[types.RelID]inEdge),
 		// relValidIdx is built lazily on the first temporal traversal.
@@ -1519,39 +1519,44 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 
 		// Scan reltype index: keyRelType(1B) + token(2B) + relID(8B). Only rows with a
 		// local entity key may populate it; ignore keys that disagree with a decoded row.
-		it = txn.NewIterator(opts)
-		prefix = []byte{storepkg.KeyRelType}
-		if openWalkTestHook != nil {
-			openWalkTestHook(prefix[0])
-		}
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().Key()
-			if len(key) != storepkg.SizeRelTypeIdx {
-				continue
+		if img != nil && img.relIDs != nil && img.relTypes != nil {
+			// The image holds the index over the same trusted rel set (OPENWALK).
+			bs.typeIdx = img.relTypes
+		} else {
+			it = txn.NewIterator(opts)
+			prefix = []byte{storepkg.KeyRelType}
+			if openWalkTestHook != nil {
+				openWalkTestHook(prefix[0])
 			}
-			token := binary.BigEndian.Uint16(key[1:3])
-			rid := types.RelID(storepkg.ParseIDFromKey(key, 3))
-			if img != nil {
-				if local := relEntityIDs.Has(int64(rid)); local {
-					bs.addTypeIdxLocked(token, rid)
+			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+				key := it.Item().Key()
+				if len(key) != storepkg.SizeRelTypeIdx {
+					continue
 				}
-				continue
-			}
-			info, decoded := decodedRelInfo[rid]
-			if !decoded {
-				if local := relEntityIDs.Has(int64(rid)); !local {
-					kr.drop(key) // no row (an undecodable row keeps its keys)
+				token := binary.BigEndian.Uint16(key[1:3])
+				rid := types.RelID(storepkg.ParseIDFromKey(key, 3))
+				if img != nil {
+					if local := relEntityIDs.Has(int64(rid)); local {
+						bs.addTypeIdxLocked(token, rid)
+					}
+					continue
 				}
-				continue
+				info, decoded := decodedRelInfo[rid]
+				if !decoded {
+					if local := relEntityIDs.Has(int64(rid)); !local {
+						kr.drop(key) // no row (an undecodable row keeps its keys)
+					}
+					continue
+				}
+				if info.RelType != token {
+					kr.drop(key)
+					continue
+				}
+				kr.acceptedTypes++
+				bs.addTypeIdxLocked(token, rid)
 			}
-			if info.RelType != token {
-				kr.drop(key)
-				continue
-			}
-			kr.acceptedTypes++
-			bs.addTypeIdxLocked(token, rid)
+			it.Close()
 		}
-		it.Close()
 
 		// A trusted image vouches for the adjacency keys, and the disk mode
 		// answers from them: the walks below would keep nothing (OPENWALK).
@@ -1711,7 +1716,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			}
 		}
 		for token, set := range bs.typeIdx {
-			bs.getOrCreateTypeCounter(token).Store(int64(len(set)))
+			bs.getOrCreateTypeCounter(token).Store(int64(set.Len()))
 		}
 
 		// Load property index definitions and rebuild index data.
@@ -1817,9 +1822,10 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if entries, ok := img.takeRelProp(key); ok {
 					installValueIDs(entries, idx.AddKey)
-				} else if relIDs, ok := bs.typeIdx[def.RelTypeToken]; ok {
+				} else if relIDs := bs.typeIdx[def.RelTypeToken]; relIDs != nil {
 					build := indexpkg.NewPostingsBuild(def.Elements)
-					for relID := range relIDs {
+					for id := range relIDs.All() {
+						relID := types.RelID(id)
 						rawID := relID.SnowflakeID()
 						r, rerr := bs.loadRelFromBadger(txn, rawID)
 						if rerr != nil {
@@ -2271,7 +2277,7 @@ func (bs *Store) Clear() (err error) {
 	bs.relIDs = indexpkg.IDSet{}
 	bs.relRevs.bumpAll()
 	bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
-	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})
+	bs.typeIdx = make(map[uint16]*indexpkg.IDSet)
 	bs.labelOrder.Reset()
 	bs.typeOrder.Reset()
 	bs.ords.reset()

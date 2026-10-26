@@ -648,7 +648,7 @@ func TestBadgerStore_RelationshipsByType_VerifiesFetchedRowTypeBeforeLimit(t *te
 	bs.RelCacheForTest().ResetForTest()
 
 	bs.idxMu.Lock()
-	bs.typeIdx[4][wrongType.ID()] = struct{}{}
+	bs.addTypeIdxLocked(4, wrongType.ID())
 	bs.idxMu.Unlock()
 
 	got, err := bs.RelationshipsByType(4, QueryOpts{Limit: 1})

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -218,19 +219,17 @@ func (bs *Store) adjacentRelIDsFromMapsLocked(nid types.NodeID, typeToken uint16
 		return rids
 	}
 	set := bs.outIdx[nid]
-	var typeSet map[types.RelID]struct{}
+	var typeSet *indexpkg.IDSet
 	if typeToken != 0 {
 		typeSet = bs.typeIdx[typeToken]
-		if len(typeSet) == 0 {
+		if typeSet == nil {
 			return nil
 		}
 	}
 	rids := make([]types.RelID, 0, len(set))
 	for id := range set {
-		if typeToken != 0 {
-			if _, ok := typeSet[id]; !ok {
-				continue
-			}
+		if typeToken != 0 && !typeSet.Has(int64(id)) {
+			continue
 		}
 		rids = append(rids, id)
 	}
@@ -254,19 +253,17 @@ func (bs *Store) adjacentRelMetasFromMapsLocked(nid types.NodeID, typeToken uint
 		return metas
 	}
 	set := bs.outIdx[nid]
-	var typeSet map[types.RelID]struct{}
+	var typeSet *indexpkg.IDSet
 	if typeToken != 0 {
 		typeSet = bs.typeIdx[typeToken]
-		if len(typeSet) == 0 {
+		if typeSet == nil {
 			return nil
 		}
 	}
 	metas := make([]adjMeta, 0, len(set))
 	for id, end := range set {
-		if typeToken != 0 {
-			if _, ok := typeSet[id]; !ok {
-				continue
-			}
+		if typeToken != 0 && !typeSet.Has(int64(id)) {
+			continue
 		}
 		metas = append(metas, adjMeta{rel: id, other: end})
 	}

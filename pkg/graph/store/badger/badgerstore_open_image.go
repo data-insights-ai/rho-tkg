@@ -83,6 +83,7 @@ const (
 	imgSecNodeIDs     // the live node IDs, ascending, delta-encoded (EXISTMAP): the open skips the node-key walk
 	imgSecRelIDs      // the live rel IDs, as imgSecNodeIDs
 	imgSecLabelCounts // the live nodes per label token (OPENWALK): with the label index on disk the open skips the label-key walk
+	imgSecRelTypes    // the rel-type index, an ID set per token (OPENWALK): the open skips the rel-type-key walk
 )
 
 type imgValueIDs struct {
@@ -129,6 +130,9 @@ type openImage struct {
 	// labelCounts are the closing process's live nodes per label token; nil
 	// when the image has none (written before OPENWALK).
 	labelCounts map[uint16]int64
+	// relTypes is the closing process's rel-type index; nil when the image
+	// has none (written before OPENWALK).
+	relTypes map[uint16]*indexpkg.IDSet
 }
 
 func newOpenImage() *openImage {
@@ -272,6 +276,12 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 	section(imgSecNodeIDs, appendIDSet(&bs.nodeIDs))
 	section(imgSecRelIDs, appendIDSet(&bs.relIDs))
 	section(imgSecLabelCounts, bs.appendLabelCounts())
+	relTypes := binary.AppendUvarint(nil, uint64(len(bs.typeIdx)))
+	for _, tok := range slices.Sorted(maps.Keys(bs.typeIdx)) {
+		relTypes = binary.BigEndian.AppendUint16(relTypes, tok)
+		relTypes = append(relTypes, appendIDSet(bs.typeIdx[tok])...)
+	}
+	section(imgSecRelTypes, relTypes)
 	// appendKeyIDs is one value key with its IDs, ascending so the reload's
 	// AddKey fills exact chunks.
 	appendKeyIDs := func(b []byte, vk string, n int, ids iter.Seq[snowflake.ID]) []byte {
@@ -787,6 +797,13 @@ func decodeOpenImage(blob []byte) (*openImage, error) {
 			img.nodeIDs = r.idSet()
 		case imgSecRelIDs:
 			img.relIDs = r.idSet()
+		case imgSecRelTypes:
+			n := r.count(len(r.b))
+			img.relTypes = make(map[uint16]*indexpkg.IDSet, n)
+			for range n {
+				tok := r.u16()
+				img.relTypes[tok] = r.idSet()
+			}
 		case imgSecLabelCounts:
 			n := r.count(len(r.b))
 			img.labelCounts = make(map[uint16]int64, n)

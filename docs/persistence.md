@@ -472,10 +472,12 @@ believe, so a writable rebuild deletes the keys it skips and writes the ones a r
 open then:
 
 - takes the live node and relationship ID sets from the image (EXISTMAP, v4.84.0: trusted only when their sizes
-  equal the persisted `node_count` / `rel_count`, else it walks the entity keys) and builds ordinals, label /
-  type / adjacency maps and counters from the index **keys** alone (no value read); with `LabelIndexOnDisk` it
-  only counts the label keys, and an index that needs a label's members reads that label's keys. An older
-  release fails on the image's ID sections and rebuilds once from the rows;
+  equal the persisted `node_count` / `rel_count`, else it walks the entity keys) and, with them, the rel-type
+  index (an ID set per type) and the label counts (OPENWALK, v4.87.0); it builds ordinals and the label and
+  adjacency maps from the index **keys** alone (no value read). With `LabelIndexOnDisk` it walks no label key (an
+  index that needs a label's members reads that label's keys), with `AdjacencyIndexOnDisk` no adjacency key, so
+  with both a clean open walks no key per entity. An image without these sections walks their keys; an older
+  release fails on the image's sections and rebuilds once from the rows;
 - installs each defined index from the image (temporal envelopes restricted to the label's or type's current
   members, as a rebuild would keep them); an index the image lacks (still being created at `Close`, a
   pending `TemporalIndexOnDisk` backfill) is rebuilt from its rows as before;

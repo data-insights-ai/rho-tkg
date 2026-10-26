@@ -1368,10 +1368,7 @@ func TestBadgerStoreCascadeDeletePropagatesCorruptRelError(t *testing.T) {
 		bs.outIdx[types.NodeID(nodeID)] = make(map[types.RelID]types.NodeID)
 	}
 	bs.outIdx[types.NodeID(nodeID)][types.RelID(relID)] = types.NodeID(0)
-	if bs.typeIdx[1] == nil {
-		bs.typeIdx[1] = make(map[types.RelID]struct{})
-	}
-	bs.typeIdx[1][types.RelID(relID)] = struct{}{}
+	bs.addTypeIdxLocked(1, types.RelID(relID))
 	bs.relCount.Add(1)
 	bs.idxMu.Unlock()
 
@@ -1476,7 +1473,7 @@ func TestBadgerStoreCascadeDeletePurgesOrphanAdjacency(t *testing.T) {
 	bs.relIDs.Add(int64(orphan)) // simulate pre-existing in-memory orphan state
 	bs.outIdx[types.NodeID(10)] = map[types.RelID]types.NodeID{orphan: types.NodeID(20)}
 	bs.inIdx[types.NodeID(20)] = map[types.RelID]inEdge{orphan: {start: types.NodeID(10), typ: 7}}
-	bs.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}
+	bs.addTypeIdxLocked(7, orphan)
 	bs.getOrCreateTypeCounter(7).Store(1)
 	bs.relCount.Store(1)
 	bs.idxMu.Unlock()
@@ -1503,7 +1500,7 @@ func TestBadgerStoreCascadeDeletePurgesOrphanAdjacency(t *testing.T) {
 	if _, ok := bs.inIdx[types.NodeID(20)][orphan]; ok {
 		t.Error("orphan rel remained in incoming adjacency after cascade")
 	}
-	if _, ok := bs.typeIdx[7][orphan]; ok {
+	if bs.typeHasLocked(7, orphan) {
 		t.Error("orphan rel remained in type index after cascade")
 	}
 	bs.idxMu.RUnlock()
@@ -1537,7 +1534,7 @@ func TestBadgerStorePurgeOrphanRelationshipIndexes(t *testing.T) {
 	bs.idxMu.Lock()
 	bs.outIdx[types.NodeID(10)] = map[types.RelID]types.NodeID{orphan: types.NodeID(20)}
 	bs.inIdx[types.NodeID(20)] = map[types.RelID]inEdge{orphan: {start: types.NodeID(10), typ: 7}}
-	bs.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}
+	bs.addTypeIdxLocked(7, orphan)
 	bs.getOrCreateTypeCounter(7).Store(1)
 	bs.idxMu.Unlock()
 	bs.appendOps(
@@ -1563,7 +1560,7 @@ func TestBadgerStorePurgeOrphanRelationshipIndexes(t *testing.T) {
 	if _, ok := bs.inIdx[types.NodeID(20)][orphan]; ok {
 		t.Error("orphan rel remained in incoming adjacency after purge")
 	}
-	if _, ok := bs.typeIdx[7][orphan]; ok {
+	if bs.typeHasLocked(7, orphan) {
 		t.Error("orphan rel remained in type index after purge")
 	}
 	bs.idxMu.RUnlock()

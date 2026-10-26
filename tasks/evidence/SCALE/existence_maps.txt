@@ -54,3 +54,15 @@ v4.86.0 release scale probe (93bc7635, Derived, 1 M nodes, load average 21-24; a
   v4.86.0   insert 3.7 / 3.9 s   clean reopen 0.27 / 0.25 s   heap after reopen +192.6 / +192.9 MB
   v4.84.0   insert 3.6 s         clean reopen 0.26 s          heap after reopen +192.0 MB
 Reading: no change (TIERSTATS adds one atomic add per shard checkout).
+
+OPENWALK (26 Oct, branch openwalk on v4.86.1; probe flag -rels: one EVT_NEXT rel per node with a 22 B record
+property; ai-soc's tiered config, label and adjacency indexes on disk; 1 M nodes of 100 B, main and branch
+alternated):
+  1 M nodes + 1 M rels, clean reopen:  main 1.28 / 1.22 s, heap +376 MB   branch 0.11 / 0.16 s, heap +211.5 MB
+  1 M nodes only, clean reopen:        main 0.22 s, heap +213 MB          branch 0.07 s, heap +189 MB
+  insert unchanged (55-61 k/s both).
+Before, rels cost ~163 B of heap and 0.86 s per 1 M at open: the open walked the KeyOut and KeyIn keys though the
+disk mode keeps none (~410 ms), counted every label key, and rebuilt the RAM rel-type index from every KeyRelType
+key (~360 ms; a map per type, ~36 B per rel), and the walks filled the block cache (~129 MB). Now the image holds
+the label counts and the rel-type index (an ID set per type), so with both indexes on disk a clean open walks no
+key per entity; RAM per rel 49.7 -> 16.2 B (TestOpenWalkResidentBytesPerRel, budget 24 B).

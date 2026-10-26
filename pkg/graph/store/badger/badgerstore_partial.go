@@ -206,12 +206,7 @@ func (bs *Store) deleteRelEntityAndOut(id snowflake.ID, exLeg bool) (RelDeleteIn
 	delete(bs.relValidIdx, rid) // drop the inline valid-time stamp
 
 	// Type index cleanup.
-	if set, exists := bs.typeIdx[info.RelType]; exists {
-		delete(set, rid)
-		if len(set) == 0 {
-			delete(bs.typeIdx, info.RelType)
-		}
-	}
+	bs.removeTypeIdxLocked(info.RelType, rid)
 
 	// Outgoing adjacency cleanup only (RAM mirror; disk mode relies on the
 	// OutKey delete op).

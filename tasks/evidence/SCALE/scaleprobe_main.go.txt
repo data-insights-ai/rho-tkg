@@ -30,6 +30,7 @@ var batchN = flag.Int("batch", 1000, "nodes per batch")
 var insProf = flag.String("insertprofile", "", "CPU profile of the insert")
 var blockProf = flag.String("blockprofile", "", "block profile of the insert")
 var mutexProf = flag.String("mutexprofile", "", "mutex profile of the insert")
+var withRels = flag.Bool("rels", false, "add one relationship per node (EVT_NEXT from the previous node of its batch) with a 22 B record property")
 var writers = flag.Int("writers", 1, "concurrent writers, each inserting its share of n in its own batches")
 
 func open(dir string) *graphpkg.Graph {
@@ -95,6 +96,7 @@ func main() {
 			defer wg.Done()
 			for i := lo; i < hi; i += batch {
 				if _, err := g.Batch().Run(func(b *graphpkg.BatchBuilder) error {
+					var prev *types.Node
 					for j := i; j < i+batch && j < hi; j++ {
 						p := map[string]any{"k": int64(j)}
 						if *padBytes > 0 {
@@ -106,9 +108,16 @@ func main() {
 						if *valid {
 							p["tkg_valid_from"], p["tkg_valid_to"] = types.Instant(1_000_000+j), types.Instant(2_000_000+j)
 						}
-						if _, err := b.AddNode([]string{*label}, p); err != nil {
+						node, err := b.AddNode([]string{*label}, p)
+						if err != nil {
 							return err
 						}
+						if *withRels && prev != nil {
+							if _, err := b.AddRelationship("EVT_NEXT", prev, node, map[string]any{"rec": fmt.Sprintf("rec-%018d", j)}); err != nil {
+								return err
+							}
+						}
+						prev = node
 					}
 					return nil
 				}); err != nil {

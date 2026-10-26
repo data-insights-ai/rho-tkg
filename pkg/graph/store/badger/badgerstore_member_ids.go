@@ -38,12 +38,7 @@ func (bs *Store) RelIDsByType(typeToken uint16) ([]types.RelID, error) {
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	set := bs.typeIdx[typeToken]
-	ids := make([]types.RelID, 0, len(set))
-	for id := range set {
-		ids = append(ids, id)
-	}
+	ids := bs.typeIDsLocked(typeToken) // ascending
 	bs.idxMu.RUnlock()
-	storepkg.SortRelIDs(ids)
 	return ids, nil
 }

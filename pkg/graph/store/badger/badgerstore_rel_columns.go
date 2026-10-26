@@ -50,16 +50,12 @@ func (bs *Store) buildRelColumns(typeToken uint16, requested []string) (col *ind
 	gen := bs.relTypeEpoch(typeToken)
 
 	bs.idxMu.RLock()
-	set := bs.typeIdx[typeToken]
-	n := len(set)
+	n := bs.typeLenLocked(typeToken)
 	if n == 0 || n > indexpkg.MaxDocValuesNodes {
 		bs.idxMu.RUnlock()
 		return nil, true
 	}
-	ids := make([]types.RelID, 0, n)
-	for id := range set {
-		ids = append(ids, id)
-	}
+	ids := bs.typeIDsLocked(typeToken)
 	bs.idxMu.RUnlock()
 
 	keys := relColumnKeys(requested)

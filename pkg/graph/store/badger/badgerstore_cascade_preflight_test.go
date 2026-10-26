@@ -25,7 +25,7 @@ func cpfState(t *testing.T, bs *Store, nid types.NodeID, orphans []types.RelID) 
 	idx := ""
 	for _, o := range orphans {
 		_, out := bs.outIdx[nid][o]
-		_, typ := bs.typeIdx[7][o]
+		typ := bs.typeHasLocked(7, o)
 		rel := bs.relIDs.Has(int64(o))
 		idx += fmt.Sprintf(" %d:out=%v,type=%v,relIDs=%v", o, out, typ, rel)
 	}
@@ -57,12 +57,11 @@ func TestCascadeDeleteFatalPreflightAppliesNothing(t *testing.T) {
 			bs.idxMu.Lock()
 			bs.outIdx[nid] = map[types.RelID]types.NodeID{}
 			bs.inIdx[end] = map[types.RelID]inEdge{}
-			bs.typeIdx[7] = map[types.RelID]struct{}{}
 			for _, o := range orphans {
 				bs.relIDs.Add(int64(o))
 				bs.outIdx[nid][o] = end
 				bs.inIdx[end][o] = inEdge{start: nid, typ: 7}
-				bs.typeIdx[7][o] = struct{}{}
+				bs.addTypeIdxLocked(7, o)
 				bs.appendOps(
 					writeOp{opType: writeOpSet, key: storepkg.OutKey(10, 7, 20, o.SnowflakeID())},
 					writeOp{opType: writeOpSet, key: storepkg.InKey(20, 7, 10, o.SnowflakeID())},

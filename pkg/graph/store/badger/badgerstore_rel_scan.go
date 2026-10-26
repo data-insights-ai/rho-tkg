@@ -226,21 +226,16 @@ func (bs *Store) ForEachAdjacentEndpointOrdinal(nid types.NodeID, typeToken uint
 // kept. Takes and releases idxMu.
 func (bs *Store) typeScanIDs(token uint16) []types.RelID {
 	bs.idxMu.RLock()
-	set := bs.typeIdx[token]
-	ids, gen, ok := bs.typeOrder.Ordered(token, len(set))
+	ids, gen, ok := bs.typeOrder.Ordered(token, bs.typeLenLocked(token))
 	if ok {
 		bs.idxMu.RUnlock()
 		return ids
 	}
-	ids = make([]types.RelID, 0, len(set))
-	for id := range set {
-		ids = append(ids, id)
-	}
+	ids = bs.typeIDsLocked(token) // ascending
 	bs.idxMu.RUnlock()
 	if len(ids) == 0 {
 		return nil
 	}
-	storepkg.SortMembers(ids)
 	bs.idxMu.RLock()
 	bs.typeOrder.Install(token, gen, ids)
 	bs.idxMu.RUnlock()

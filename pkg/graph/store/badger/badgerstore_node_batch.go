@@ -356,7 +356,7 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 	inNodes := make([]types.NodeID, 0)
 
 	for tok, set := range bs.typeIdx {
-		if _, ok := set[rid]; ok {
+		if set.Has(int64(rid)) {
 			typeTokens = append(typeTokens, tok)
 		}
 	}
@@ -402,12 +402,8 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 	bs.wbMu.Unlock()
 
 	for _, tok := range typeTokens {
-		set := bs.typeIdx[tok]
-		delete(set, rid)
-		if len(set) == 0 {
-			delete(bs.typeIdx, tok)
-		}
-		bs.getOrCreateTypeCounter(tok).Store(int64(len(set)))
+		bs.removeTypeIdxLocked(tok, rid)
+		bs.getOrCreateTypeCounter(tok).Store(int64(bs.typeLenLocked(tok)))
 	}
 	for _, nid := range outNodes {
 		set := bs.outIdx[nid]

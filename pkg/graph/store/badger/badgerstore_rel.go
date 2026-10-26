@@ -594,9 +594,7 @@ func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {
 	if !bs.relIDs.Has(int64(rid)) {
 		return false
 	}
-	if set, exists := bs.typeIdx[info.RelType]; !exists {
-		return false
-	} else if _, ok := set[rid]; !ok {
+	if !bs.typeHasLocked(info.RelType, rid) {
 		return false
 	}
 	// Disk mode keeps no adjacency RAM mirror to verify against; relIDs +
@@ -647,12 +645,7 @@ func (bs *Store) removeRelByInfo(info RelDeleteInfo, old *types.Relationship, ex
 	bs.removeRelPropertyStatsCounts(old)
 
 	// Type index cleanup.
-	if set, exists := bs.typeIdx[info.RelType]; exists {
-		delete(set, rid)
-		if len(set) == 0 {
-			delete(bs.typeIdx, info.RelType)
-		}
-	}
+	bs.removeTypeIdxLocked(info.RelType, rid)
 
 	// Adjacency cleanup (RAM mirror only — the delete ops below remove the
 	// persisted keys; disk mode has no mirror).

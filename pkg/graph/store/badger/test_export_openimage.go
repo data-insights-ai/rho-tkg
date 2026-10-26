@@ -63,8 +63,8 @@ func (bs *Store) IndexStateDigestForTest() string {
 	for tok, set := range bs.labelIdx {
 		add("label %d %v", tok, digestNodeIDs(set))
 	}
-	for tok, set := range bs.typeIdx {
-		add("type %d %v", tok, digestRelIDs(set))
+	for tok := range bs.typeIdx {
+		add("type %d %v", tok, bs.typeIDsLocked(tok))
 	}
 	for start, set := range bs.outIdx {
 		for rid, end := range set {
@@ -196,15 +196,6 @@ func digestNodeIDs(set map[types.NodeID]struct{}) []types.NodeID {
 func digestRelIDSet(set *indexpkg.IDSet) []types.RelID {
 	out := make([]types.RelID, 0, set.Len())
 	set.Ascend(func(id int64) bool { out = append(out, types.RelID(id)); return true })
-	return out
-}
-
-func digestRelIDs(set map[types.RelID]struct{}) []types.RelID {
-	out := make([]types.RelID, 0, len(set))
-	for id := range set {
-		out = append(out, id)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
 

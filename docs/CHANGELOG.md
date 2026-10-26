@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **OPENWALK** (SCALE: the goal of about 2 TB a day; budget per lesson 89): a clean open of a badger store or tiered
+  shard with the label and adjacency indexes on disk walks no key per entity. Before, it walked every adjacency key
+  twice and kept none, counted every label key, and rebuilt the RAM rel-type index from every rel-type key: 1 M
+  rels added 0.86 s and ~163 B of heap each to a reopen. The rel-type index is now an ID set per type (49.7 to
+  16.2 B per rel with the rel ID set, `TestOpenWalkResidentBytesPerRel`), and the open image carries it and the
+  label counts (`TestOpenWalkCleanOpenSkipsDiskIndexes`). ai-soc's shard shape, 1 M nodes and 1 M rels: clean
+  reopen 1.2-1.3 s to 0.11-0.16 s, heap 376 to 212 MB; nodes only 0.22 to 0.07 s
+  (`tasks/evidence/SCALE/existence_maps.txt`). One-way door: the image gains two sections, so a store closed by
+  v4.87.0 and opened by an older release is rebuilt from its rows once (no refusal, no data change).
+
 ## [4.86.1] - 2026-10-26
 
 ### Fixed

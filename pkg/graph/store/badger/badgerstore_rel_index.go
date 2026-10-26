@@ -189,11 +189,7 @@ func (bs *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 	// Fallback: type scan + property filter, with the declared index's match
 	// while it is still building (an Elements index means "contains").
 	scanElements := bs.relPropertyIndexes[key].Elements()
-	set := bs.typeIdx[relTypeToken]
-	rids := make([]types.RelID, 0, len(set))
-	for id := range set {
-		rids = append(rids, id)
-	}
+	rids := bs.typeIDsLocked(relTypeToken)
 	bs.idxMu.RUnlock()
 	if len(rids) == 0 {
 		return nil, nil
@@ -301,15 +297,7 @@ func (bs *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey stri
 // relTypeRelIDsSnapshotLocked returns a snapshot of the type's current rel IDs.
 // Caller holds idxMu. Unlike labels, the rel-type index is always a RAM map.
 func (bs *Store) relTypeRelIDsSnapshotLocked(relTypeToken uint16) []types.RelID {
-	set := bs.typeIdx[relTypeToken]
-	if len(set) == 0 {
-		return nil
-	}
-	rids := make([]types.RelID, 0, len(set))
-	for id := range set {
-		rids = append(rids, id)
-	}
-	return rids
+	return bs.typeIDsLocked(relTypeToken)
 }
 
 // persistRelPropertyIndexDefs serializes the current rel property index
