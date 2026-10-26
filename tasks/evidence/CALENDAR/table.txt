@@ -1,0 +1,49 @@
+CALENDAR (ai-soc on René's word, 26 Oct): every time-based place in rho, how it counts time, and its test.
+Zones checked: UTC, Europe/Berlin, America/New_York, Australia/Sydney, America/Santiago, America/Havana,
+America/Asuncion, Asia/Beirut, Asia/Kathmandu, Australia/Lord_Howe, America/Bogota, America/St_Johns; years 2020,
+2024 (leap), 2025 (non-leap), 2026 (ISO week 53).
+
+place                              counts time as                         test / result
+---------------------------------  -------------------------------------  ------------------------------------------
+tiered ShardWindow daily, weekly   local calendar days in the PROCESS's   TestRotationWindowAcrossDST: 11 zones, every
+ (shard names, window bounds)      zone (time.Now(), time.Local); a day   hour of 2024-2026, daily and weekly: the window
+                                   starts at local midnight or, where     holds the instant, a rotation's window ends
+                                   midnight is skipped, at the jump       after it starts and where the next begins.
+                                   (dayStart)                             DSTWIN fixed in v4.78.5 (Berlin's 25-h day);
+                                                                          midnight jumps fixed in v4.81.1 (Santiago,
+                                                                          Havana, Asuncion: 40/40/8 bad quarter hours).
+tiered ShardWindow < 1 day         fixed durations (Truncate)              same test's invariants hold by construction
+TZ change between runs             a reopen keeps the hot shard's stored  by code (tieredstore.go:748-754, rotation
+                                   window; a rotation starts at the old   boundary = old end): windows never overlap or
+                                   end; only where days begin follows     leave a gap; days follow the new zone
+                                   the new zone
+wall clock stepped back            auto rotation only once now >= the     the catalog's save refuses an inverted window
+                                   hot window's end; an explicit          (shard_catalog.go:203) and the rotation rolls
+                                   RotateHotShard before the hot start    back; an in-memory store does not save, so
+                                   is refused at the catalog save         its catalog is not checked (no consumer path)
+transaction clock                  monotonic floor above every stamp,     TestTxAtDoorsWhenTxClockIsAheadOfWall,
+                                   independent of the wall clock          TestNowTx_ReopenAfterBurst_MonotonicFloor-
+                                                                          Anachronism, TestCrashReopenNowTxAboveStored-
+                                                                          Stamps (a clock ahead of the wall = a wall
+                                                                          clock that stepped back)
+ColdAfter, IdleTimeout,            durations against instants             zone-free by construction
+ MaxOpenColdShards (LRU)
+retention purges (PurgeExpired-    absolute instants (Before, Watermark)  zone-free: rho compares instants; a "28-day"
+ Nodes/Rels), truncation           the caller computes                    purge at a DST change is the caller's sum
+                                                                          (28*24 h vs 28 calendar days differ by 1 h)
+high-frequency index buckets       whole milliseconds from the epoch      zone-free by construction
+types granularity (Day, Week,      UTC calendar units                     TestGranularityCalendar: every hour (and
+ Month, Year: Truncate, Round,                                            hh:30:45.123) of 2020, 2024, 2025, 2026: the
+ Ceil)                                                                    unit holds it, starts at UTC midnight on its
+                                                                          day/Monday/1st/1 Jan, tiles, rounds to the
+                                                                          nearer boundary
+types recurrence (weekly,          UTC calendar days; DayOfMonth 0-28     TestRecurrence_* (29 Feb, 28 Feb, month ends);
+ monthly, yearly)                  (0 = the month's last day)             validation refuses 29-31
+process zone independence          granularity and recurrence ignore TZ   TestCalendarIgnoresProcessZone: both re-run
+                                                                          with TZ=America/St_Johns (-03:30, DST)
+
+mutations (each failed its test): granularity in the process zone (only the St_Johns child sees it; Kathmandu,
++05:45, let a local weekday pass, hence St_Johns); recurrence weekday in the process zone; Sunday as a week start;
+a month as 30 days; the midnight-jump branch of dayStart.
+open question for ai-soc: the tiered windows are the only place that follows the process's zone (by design since
+v3: "local midnight"). A Config zone (e.g. UTC windows whatever TZ) would be a minor; asked 26 Oct.

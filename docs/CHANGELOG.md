@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **CALENDAR** (tests and docs; ai-soc on René's word): every time-based place in rho checked against leap and
+  non-leap years, ISO week 53, month ends and zones with DST, midnight jumps and half-hour offsets
+  (`tasks/evidence/CALENDAR/table.txt`). New tests: `TestGranularityCalendar` (every hour of 2020, 2024, 2025 and
+  2026 for the day, week, month and year granularities) and `TestCalendarIgnoresProcessZone` (granularity and
+  recurrence re-run under TZ=America/St_Johns). Nothing failed beyond v4.81.1's fix. persistence.md now says that
+  tiered daily and weekly windows follow the process's zone.
+
 ## [4.81.1] - 2026-10-26
 
 ### Fixed
