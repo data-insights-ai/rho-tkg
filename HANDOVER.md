@@ -8,7 +8,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 ## State
 
 - **Released 24-26 Oct:** v4.75.0 to v4.84.0 (v4.83.0 R37, v4.84.0 EXISTMAP), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
-- **Branches:** none open; merged item branches (r37, existmap included) wait for René's delete (user-only
+- **Branches:** `txsnap` (TXSNAP, from main 58ed9969; no commits yet); merged item branches (r37, existmap included) wait for René's delete (user-only
   action 6). main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The

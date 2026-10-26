@@ -51,6 +51,13 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   and state are written once (chain 1); the exposure left is the estate write-back Session node, one version per
   cut that changes facts or coverage (~794 on ai-soc's BA slice, thousands a day), each stamp a
   `SetNodeVersionInterval` in the write's Tx; Derived facts keep a few versions. The 1,000-against-10 shape fits.
+  Measured (26 Oct, branch `txsnap`, scratch probe, all four backends): with a valid head entry a Tx patch costs
+  the same at 10 and 1,000 versions (51-97 allocs, no history read); without one the correction folds the chain
+  AND the snapshot copies it (60-80x at 1,000; the bounded grow shape 10,000x). So the snapshot capability alone
+  cannot meet the budget: the cause is a missing entry. Candidates: a store wrapper that only inherits
+  HistoryEpochCapability (rho then turns the cache off for the graph), a chain row that disqualifies the entry
+  (delete, retraction, shared version), or stripe eviction (~every 250 cuts at ai-soc's rate: cheap). Asked
+  ai-soc (store type) and sigma (stamp shape, deletes) 26 Oct; the test follows their shape.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
