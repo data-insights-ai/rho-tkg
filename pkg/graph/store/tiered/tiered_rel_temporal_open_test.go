@@ -52,15 +52,15 @@ func TestTieredRelTemporalIndex_WarmOpenBuildsOnce(t *testing.T) {
 	if got := reopen(); got != 0 {
 		t.Errorf("clean reopen built %d relationship temporal indexes, want 0 (restored, backlog 54)", got)
 	}
-	// Without trusted images (a foreign write after Close), each shard rebuilds once.
+	// Without trusted images (the open state deleted after Close), each shard rebuilds once.
 	invalidateOpenImages(t, dir)
 	if got := reopen(); got != 3 {
 		t.Errorf("reopen built %d relationship temporal indexes, want 3 (reference, warm, hot)", got)
 	}
 }
 
-// invalidateOpenImages commits one foreign key into every badger directory
-// under dir, so no shard trusts its clean-close open image.
+// invalidateOpenImages deletes the open state in every badger directory
+// under dir, so every shard rebuilds from its rows.
 func invalidateOpenImages(t *testing.T, dir string) {
 	t.Helper()
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -71,7 +71,7 @@ func invalidateOpenImages(t *testing.T, dir string) {
 		if err != nil {
 			return err
 		}
-		if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), []byte("x")) }); err != nil {
+		if err := db.Update(func(txn *badgerv4.Txn) error { return badgerpkg.DeleteOpenStateForTest(txn) }); err != nil {
 			_ = db.Close()
 			return err
 		}

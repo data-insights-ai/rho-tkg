@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
@@ -46,7 +47,7 @@ func TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen(t *testing.T) {
 	if err := g.Close(); err != nil {
 		t.Fatal(err)
 	}
-	rawWrite(t, dir, func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), nil) }) // force the row rebuild
+	rawWrite(t, dir, func(txn *badgerv4.Txn) error { return badger.DeleteOpenStateForTest(txn) }) // force the row rebuild
 	if g, err = graphpkg.New(cfg); err != nil {
 		t.Fatal(err)
 	}

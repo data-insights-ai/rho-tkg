@@ -74,7 +74,7 @@ func testOpenWalk(t *testing.T, filter func(kind byte) bool, mustWalk []byte) {
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	// The oracle: the same files with the image invalidated, so its open
+	// The oracle: the same files with the open state deleted, so its open
 	// rebuilds every index from the keys.
 	oracle := t.TempDir()
 	copyDirFiles(t, dir, oracle)
@@ -82,7 +82,7 @@ func testOpenWalk(t *testing.T, filter func(kind byte) bool, mustWalk []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), nil) }); err != nil {
+	if err := db.Update(func(txn *badgerv4.Txn) error { return DeleteOpenStateForTest(txn) }); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {

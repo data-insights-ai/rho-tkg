@@ -106,7 +106,7 @@ func TestCleanReopenDeferredStateUnderConcurrentWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), nil) }); err != nil {
+	if err := db.Update(func(txn *badgerv4.Txn) error { return DeleteOpenStateForTest(txn) }); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
@@ -257,7 +257,7 @@ func TestFirstStatsReadThroughEachDoorAfterDeferredOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), nil) }); err != nil {
+	if err := db.Update(func(txn *badgerv4.Txn) error { return DeleteOpenStateForTest(txn) }); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
@@ -417,7 +417,7 @@ func TestCloseImageExcludesWriteRacingClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), nil) }); err != nil {
+	if err := db.Update(func(txn *badgerv4.Txn) error { return DeleteOpenStateForTest(txn) }); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {

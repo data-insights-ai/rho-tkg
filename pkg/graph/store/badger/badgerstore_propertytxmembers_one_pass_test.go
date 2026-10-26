@@ -296,12 +296,12 @@ func TestPropTxBuild_CleanReopenRestoresSidecars(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A commit after the clean close: the image is not trusted.
+	// The open state deleted after the clean close: the open rebuilds.
 	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), nil) }); err != nil {
+	if err := db.Update(func(txn *badgerv4.Txn) error { return DeleteOpenStateForTest(txn) }); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
@@ -311,7 +311,7 @@ func TestPropTxBuild_CleanReopenRestoresSidecars(t *testing.T) {
 	defer bs.Close()
 	scans = opCountScans(bs)
 	if st, _ := bs.PropertyTxMembershipStats(); st.RelSidecars != 0 || st.NodeSidecars != 0 {
-		t.Fatalf("an untrusted image restored sidecars: %+v", st)
+		t.Fatalf("a reopen without an image restored sidecars: %+v", st)
 	}
 	for i := range opRelKeys[:2] { // ptxT: rel 950 joined both keys
 		if got := opDump(t, bs, &opRelKeys[i], nil); !strings.Contains(got, "950:300") {
@@ -319,9 +319,9 @@ func TestPropTxBuild_CleanReopenRestoresSidecars(t *testing.T) {
 		}
 	}
 	if got, want := opDump(t, bs, &opRelKeys[2], nil), before[fmt.Sprint(opRelKeys[2])]; got != want {
-		t.Fatalf("%v after an untrusted reopen\n got %s\nwant %s", opRelKeys[2], got, want)
+		t.Fatalf("%v after a reopen without an image\n got %s\nwant %s", opRelKeys[2], got, want)
 	}
 	if n := scans.Load(); n != 1 {
-		t.Fatalf("rebuild after an untrusted reopen scanned %d times, want 1", n)
+		t.Fatalf("rebuild after a reopen without an image scanned %d times, want 1", n)
 	}
 }

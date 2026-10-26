@@ -95,7 +95,7 @@ func TestShardedCleanReopenMatchesFullRebuild(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), nil) }); err != nil {
+		if err := db.Update(func(txn *badgerv4.Txn) error { return badger.DeleteOpenStateForTest(txn) }); err != nil {
 			_ = db.Close()
 			return err
 		}

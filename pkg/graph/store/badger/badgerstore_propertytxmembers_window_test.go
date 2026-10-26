@@ -13,7 +13,7 @@ import (
 
 // Ledger row 62: the windowed property membership on badger answers the same
 // from the write path's records, from an open image after a clean close, and
-// from a build scan after an untrusted reopen.
+// from a build scan after a reopen without an image.
 
 func winRel(id int64, seat int64, version uint32, txFrom, txTo, vf, vt types.Instant) *types.Relationship {
 	r := types.NewRelationship(types.RelID(id), ptxT, types.NodeID(1), types.NodeID(2))
@@ -123,10 +123,10 @@ func TestPropTxWindow_WritePathImageScanAgree(t *testing.T) {
 	}
 	must("close", bs.Close())
 
-	// A commit after the clean close: the image is not trusted, a scan rebuilds.
+	// The open state deleted after the clean close: a scan rebuilds.
 	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
 	must("raw open", err)
-	must("foreign commit", db.Update(func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), nil) }))
+	must("delete the open state", db.Update(func(txn *badgerv4.Txn) error { return DeleteOpenStateForTest(txn) }))
 	must("raw close", db.Close())
 	bs = open()
 	defer bs.Close()

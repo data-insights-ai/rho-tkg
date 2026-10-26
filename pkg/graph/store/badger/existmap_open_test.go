@@ -65,7 +65,7 @@ func TestExistMapCleanOpenMatchesFullRebuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), nil) }); err != nil {
+	if err := db.Update(func(txn *badgerv4.Txn) error { return DeleteOpenStateForTest(txn) }); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
