@@ -28,3 +28,18 @@ At the SCALE goal (2 TB a day, ~4 billion 500-byte facts):
   - its clean reopen: ~4e9 / 1 M x 1.4 s ~ 90 min; a crash reopen (~10 s per 1 M, CHAIN) ~ 11 h;
   - the reference shard (ai-soc's Derived) is always open and grows for ever: both costs grow with
     the store's total, not with a window.
+
+v4.83.0 scale probe, machine idle (26 Oct, after the release; the rows above ran under a docker gate's load)
+
+label    N          flags                insert              clean reopen
+Event    2,000,000  -                    7.7 s (260 k/s)     2.43 s
+Derived  2,000,000  -                    9.7 s (206 k/s)     3.08 s
+Derived  2,000,000  composite, validity  10.3-13.5 s         2.72-3.69 s
+Derived  4,000,000  composite, validity  28.0 s (143 k/s)    7.69 s
+Event      500,000  500 B, sync+durable  7.8 s (64 k/s)      0.77 s
+Event      500,000  500 B, no sync       6.7 s (74 k/s)      1.41 s
+
+Reading, corrected: the clean reopen is linear at ~1.5-1.9 s per 1 M entities; the composite rebuild adds at most
+~0.6 s per 2 M (the 8.9 s above was the gate's load). Durable writes, one writer, batches of 1000, 500 B facts:
+64 k/s against the goal's 46 k/s sustained (peaks need headroom; several writers not yet measured). At 4 billion
+facts: ~2 h for a clean reopen of a day-shard, plus ~63 B per node per open shard.

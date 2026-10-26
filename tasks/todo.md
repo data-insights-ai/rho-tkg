@@ -19,14 +19,14 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   entity count; open, crash recovery, Clear and compaction cost that grow with store size; hot-shard write
   throughput against peaks; sub-day shard windows), each measured and either bounded or queued here as its own item
   ranked by how soon it walls 2 TB a day. Measured so far (`tasks/evidence/SCALE/existence_maps.txt`, probe beside
-  it): every open shard keeps ~63 B per node in RAM (`nodeIDs` 30 B, `nodeRevs` 32.5 B; rels the same pair), and a
-  clean open walks every node key to fill them (~1.4 s per 1 M nodes): a 4-billion-fact day-shard needs ~250 GB of
-  heap and ~90 min to reopen, the always-open reference shard grows for ever. A composite index rebuilds at open by
-  decoding every row (2 M Derived rows: 8.9 s against 2.8 s). Durable writes (SyncWrites + DurableCommit, 500 B
-  facts, one writer, batches of 1000): 27 k/s against the goal's 46 k/s sustained (measured under a gate's load;
-  re-measure idle). Candidate items: EXISTMAP (a compact persisted ID set and a bounded striped revision table
-  instead of the two maps), COMPOSITEDISK (composite postings on disk or in the open image), WRITERATE (where a
-  durable commit spends its time). ai-soc's walls (26 Oct, k10260011, 3 BA days): sigma's resident state (25.4 GB
+  it, idle runs at the end): every open shard keeps ~63 B per node in RAM (`nodeIDs` 30 B, `nodeRevs` 32.5 B; rels
+  the same pair), and a clean open walks every node key to fill them (~1.5-1.9 s per 1 M, linear): a 4-billion-fact
+  day-shard needs ~250 GB of heap and ~2 h to reopen, and the always-open reference shard grows for ever. A
+  composite index adds ~8 B per node and at most ~0.6 s per 2 M at open. Durable writes (SyncWrites +
+  DurableCommit, 500 B facts, one writer, batches of 1000): 64 k/s against the goal's 46 k/s sustained. Items, in
+  order: EXISTMAP (a compact ID set saved in the open image and a bounded striped revision table instead of the two
+  maps: RAM and open time no longer grow per entity), then WRITERATE (peak headroom, several writers), then
+  COMPOSITEDISK (postings out of RAM; small today). ai-soc's walls (26 Oct, k10260011, 3 BA days): sigma's resident state (25.4 GB
   census, growing with data; sigma's PROBEMASK, PAGESWITCH, JOINFIT page it); the reference shard keeps every
   Derived fact and every keyed node for ever (Process, File, RegValue, LocalObject: 93 % of 1.04 M keys in 3 days;
   UNIQIDX adoption with SHARD step 10 moves the keyed nodes to event shards, Derived stays; a purge for result rows
