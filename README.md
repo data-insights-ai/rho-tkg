@@ -366,7 +366,7 @@ including the Docker-based `lint`/`security`/`vulncheck` targets.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the full, dated release history — every
 version back to v3.0.0, with the defect it fixed or the feature it added.
 
-Current release: **v4.86.1** — see [docs/CHANGELOG.md](docs/CHANGELOG.md) for what shipped
+Current release: **v4.87.0** — see [docs/CHANGELOG.md](docs/CHANGELOG.md) for what shipped
 and why; this line is pinned to the changelog's latest entry by
 `TestDocsMetadataMatchesSourceOfTruth` so it cannot go stale silently.
 

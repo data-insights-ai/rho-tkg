@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.87.0] - 2026-10-26
+
 ### Changed
 
 - **OPENWALK** (SCALE: the goal of about 2 TB a day; budget per lesson 89): a clean open of a badger store or tiered

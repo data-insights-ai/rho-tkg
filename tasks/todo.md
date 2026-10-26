@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-26 Oct: v4.75.0 to v4.86.1 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
+Released 24-26 Oct: v4.75.0 to v4.87.0 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
@@ -28,9 +28,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   maps: RAM and open time no longer grow per entity), then WRITERATE (peak headroom, several writers), then
   COMPOSITEDISK (postings out of RAM; small today). EXISTMAP shipped in v4.84.0: ~8 B per node in an open shard,
   clean reopen ~0.25 s per 1 M (`tasks/evidence/EXISTMAP/results.txt`); a read that misses a listed row is now
-  `ErrCorruptWire`. Next walls found on the way: the rel-type index `typeIdx` stays in RAM per rel (~23.6 B per
-  rel, a map per type, no on-disk mode; ai-soc: ~71 MB at its 3 M rels, below sigma's items, no request yet), the
-  lazily built `relValidIdx` costs 43-67 B per rel, and a crash reopen still decodes every row (OPENIMAGE). ai-soc's walls (26 Oct, k10260011, 3 BA days): sigma's resident state (25.4 GB
+  `ErrCorruptWire`. OPENWALK (v4.87.0): with the label and adjacency indexes on disk a clean open walks no key per
+  entity and an open shard keeps ~16 B per rel (the rel ID set and the rel-type index as ID sets). Next walls found
+  on the way: the lazily built `relValidIdx` costs 43-67 B per rel (plain badger graphs only; tiered never builds
+  it), the other lazy per-entity sidecars (belief watermarks, tx membership, history presence; which ones ai-soc
+  and sigma trigger comes with ai-soc's next Flux heap profile), and a crash reopen still decodes every row
+  (OPENIMAGE). ai-soc's walls (26 Oct, k10260011, 3 BA days): sigma's resident state (25.4 GB
   census, growing with data; sigma's PROBEMASK, PAGESWITCH, JOINFIT page it); the reference shard keeps every
   Derived fact and every keyed node for ever (Process, File, RegValue, LocalObject: 93 % of 1.04 M keys in 3 days;
   UNIQIDX adoption with SHARD step 10 moves the keyed nodes to event shards, Derived stays; a purge for result rows
@@ -52,16 +55,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
-- **OPENWALK** (SCALE, measured 26 Oct with the probe's `-rels`) — rels still cost per entity at open: 1 M rels add
-  ~163 MB of heap and 0.86 s to a clean reopen (nodes ~8 B, 0.2 s). The open walks the KeyOut and KeyIn keys though
-  disk mode keeps none (~410 ms), counts every label key (disk mode), and rebuilds the RAM rel-type index `typeIdx`
-  from every KeyRelType key (~360 ms, 36 B per rel). Steps: (1) skip the dead adjacency walks and (2) take the label
-  counts from the image; (3) `typeIdx` as an ID set per type kept in the image, so a clean all-on-disk open walks
-  no per-entity key: all three on branch openwalk b3a2b19e (reopen 1 M nodes + 1 M rels 1.25 s to 0.13 s, heap 376
-  to 212 MB, RAM per rel 49.7 to 16.2 B); a minor (v4.87.0). First ci-docker red: VERIFY V2's fixture was five
-  compressed blocks, not one, and the image's new bytes moved a block trailer onto a flip position (badger panics
-  there, BADGERPANIC); fixed on the branch (one real block, checked), ci-docker rerunning. Done when: the probe's clean reopen with rels costs
-  about what one without rels does, and RAM per rel drops, measured.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
