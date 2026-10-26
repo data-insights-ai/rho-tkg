@@ -17,7 +17,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **v4.87.0** (OPENWALK, a minor: the open image gains two sections, an older release rebuilds once): tag CI
   green; ci-docker green on the second run (the first hit VERIFY V2's multi-block fixture, fixed with the release), consumers build
   and vet clean; scale probe in `tasks/evidence/SCALE/existence_maps.txt` (reopen with 1 M rels 1.25 s to 0.13 s).
-- **v4.87.1** (EVENTCLOCK + PENDSEEK, a patch for ai-soc's Flux run k10262212 and kit A/B): ci-fast green, consumers
+- **v4.87.1** (EVENTCLOCK + PENDSEEK, a patch for ai-soc's Flux run k10262212 and kit A/B): tag CI and ci-fast green, consumers
   build and vet clean; a mutation without an event publisher takes no event timestamp, hot and warm checkouts stamp
   no `lastAccess`, a disk property equality lookup seeks its buffered entries (64 k buffered: 5.2 ms to 3.5 us).
 - **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1). The merged item branches are deleted and the kept ones pushed
