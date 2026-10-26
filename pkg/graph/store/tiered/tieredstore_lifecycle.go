@@ -127,9 +127,10 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		return nil, ErrStoreClosed
 	}
 	if es.currentTier() != TierCold {
-		// Hot/warm: stores are always open, never closed by idle-close.
+		// Hot/warm: stores are always open, never closed by idle-close, so
+		// the checkout stamps no access (EVENTCLOCK: a clock read per
+		// checkout); setTier stamps it when the shard turns cold.
 		es.activeReqs.Add(1)
-		es.lastAccess.Store(time.Now().UnixMilli())
 		// Re-check closed AFTER the increment so a concurrent Close that
 		// observed activeReqs == 0 between our load and our add doesn't
 		// proceed to close the store. If we lost the race, decrement and
@@ -254,7 +255,6 @@ func (es *EventShard) checkoutForRead(ts *Store, readOnly bool) (*BadgerStore, f
 			return nil, noop, ErrStoreClosed
 		}
 		if !es.moving.Load() && es.currentTier() != TierCold {
-			es.lastAccess.Store(time.Now().UnixMilli())
 			es.countAccess()
 			return es.store, es.checkinStore, nil
 		}
@@ -337,7 +337,6 @@ func (es *EventShard) checkoutOpenStoreForRead(ts *Store) (*BadgerStore, func(),
 			return nil, noop, false, ErrStoreClosed
 		}
 		if !es.moving.Load() && es.currentTier() != TierCold {
-			es.lastAccess.Store(time.Now().UnixMilli())
 			es.countAccess()
 			return es.store, es.checkinStore, true, nil
 		}

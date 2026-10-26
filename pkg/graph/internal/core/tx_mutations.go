@@ -145,7 +145,7 @@ func (tx *GraphTx) noteNodeCreateResultLocked(n *types.Node) {
 	if n == nil {
 		return
 	}
-	tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
+	tx.g.publishEventNow(eventspkg.EventNodeCreate, types.EntityID(n.ID()), eventspkg.PriorityHigh)
 	tx.trackCreatedNodeLocked(n.ID().SnowflakeID(), n.Version())
 }
 
@@ -153,7 +153,7 @@ func (tx *GraphTx) noteRelCreateResultLocked(r *types.Relationship) {
 	if r == nil {
 		return
 	}
-	tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
+	tx.g.publishEventNow(eventspkg.EventRelCreate, types.EntityID(r.ID()), eventspkg.PriorityHigh)
 	tx.trackCreatedRelLocked(r.ID().SnowflakeID(), r.Version())
 }
 
@@ -242,7 +242,7 @@ func (tx *GraphTx) updateNodeAt(id types.NodeID, updates map[string]any, at type
 
 	n, mutated, err := tx.g.updateNodePreparedInternal(tx.doorCtx(), id, prov, tmp, preparedUpdates)
 	if err == nil && mutated {
-		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+		tx.g.publishEventNow(eventspkg.EventNodeUpdate, types.EntityID(id), eventspkg.PriorityNormal)
 	}
 	return n, err
 }
@@ -294,7 +294,7 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 
 	r, mutated, err := tx.g.updateRelationshipPreparedInternal(tx.doorCtx(), id, prov, tmp, preparedUpdates)
 	if err == nil && mutated {
-		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+		tx.g.publishEventNow(eventspkg.EventRelUpdate, types.EntityID(id), eventspkg.PriorityNormal)
 	}
 	return r, err
 }
@@ -327,7 +327,7 @@ func (tx *GraphTx) setNodeVersionIntervalLocked(id types.NodeID, validFrom, vali
 
 	n, err := tx.g.cascadeNodeVersionInterval(tx.doorCtx(), id, validFrom, validTo, props, at)
 	if err == nil && n != nil {
-		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+		tx.g.publishEventNow(eventspkg.EventNodeUpdate, types.EntityID(id), eventspkg.PriorityNormal)
 	}
 	return n, err
 }
@@ -355,7 +355,7 @@ func (tx *GraphTx) setRelVersionIntervalLocked(id types.RelID, validFrom, validT
 
 	r, err := tx.g.cascadeRelVersionInterval(tx.doorCtx(), id, validFrom, validTo, props, at)
 	if err == nil && r != nil {
-		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+		tx.g.publishEventNow(eventspkg.EventRelUpdate, types.EntityID(id), eventspkg.PriorityNormal)
 	}
 	return r, err
 }
@@ -470,7 +470,7 @@ func (tx *GraphTx) deleteNodeAt(id types.NodeID, spec tombstoneSpec) error {
 		return err
 	}
 
-	tx.g.publishCascadeDeleteEvents(id, cascadeRelIDs, tx.g.now())
+	tx.g.publishCascadeDeleteEvents(id, cascadeRelIDs)
 	tx.trackDeletedNodeLocked(id.SnowflakeID())
 	for _, r := range relCopies {
 		tx.trackDeletedRelLocked(r.rel.ID().SnowflakeID())
@@ -527,7 +527,7 @@ func (tx *GraphTx) deleteRelationshipAtLocked(id types.RelID, spec tombstoneSpec
 		return err
 	}
 
-	tx.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), tx.g.now(), eventspkg.PriorityCritical)
+	tx.g.publishEventNow(eventspkg.EventRelDelete, types.EntityID(id), eventspkg.PriorityCritical)
 	tx.trackDeletedRelLocked(id.SnowflakeID())
 	tx.deletedRels = append(tx.deletedRels, deletedRelSnapshot{
 		rel:             relCopy,
@@ -647,7 +647,7 @@ func (tx *GraphTx) UpdateRelationshipWithTx(id types.RelID, updates map[string]a
 	}
 	r, mutated, err := tx.g.updateRelationshipPreparedInternal(tx.doorCtx(), id, prov, tmp, preparedUpdates)
 	if err == nil && mutated {
-		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+		tx.g.publishEventNow(eventspkg.EventRelUpdate, types.EntityID(id), eventspkg.PriorityNormal)
 	}
 	return r, err
 }
@@ -816,7 +816,7 @@ func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 		return nil
 	}
 
-	tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+	tx.g.publishEventNow(eventspkg.EventNodeUpdate, types.EntityID(id), eventspkg.PriorityNormal)
 	return nil
 }
 
@@ -849,7 +849,7 @@ func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 		return err
 	}
 
-	tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+	tx.g.publishEventNow(eventspkg.EventNodeUpdate, types.EntityID(id), eventspkg.PriorityNormal)
 	return nil
 }
 

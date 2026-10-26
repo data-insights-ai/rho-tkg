@@ -104,10 +104,23 @@ func (c *Core) publishEvent(typ eventspkg.EventType, id types.EntityID, t types.
 	c.events.Publish(e)
 }
 
-func (c *Core) publishCascadeDeleteEvents(nodeID types.NodeID, relIDs []types.RelID, t types.Instant) {
+// publishEventNow is publishEvent stamped with c.now(), taken only when a
+// publisher is attached: without one a mutation reads no clock and reserves no
+// instant for its event (EVENTCLOCK). Same locking rule as publishEvent.
+func (c *Core) publishEventNow(typ eventspkg.EventType, id types.EntityID, priority eventspkg.EventPriority) {
 	if c.events == nil {
 		return
 	}
+	c.publishEvent(typ, id, c.now(), priority)
+}
+
+// publishCascadeDeleteEvents publishes a node delete and its cascaded rel
+// deletes, stamped with one c.now() taken only when a publisher is attached.
+func (c *Core) publishCascadeDeleteEvents(nodeID types.NodeID, relIDs []types.RelID) {
+	if c.events == nil {
+		return
+	}
+	t := c.now()
 	for _, relID := range relIDs {
 		c.publishEvent(eventspkg.EventRelDelete, types.EntityID(relID), t, eventspkg.PriorityCritical)
 	}

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **EVENTCLOCK** (SCALE, ai-soc's Flux run k10262212 on v4.87.0: time.Now 15 % of CPU in the first minute, Core.now
+  35 % of it, hot and warm checkouts 36 %). Transaction and batch mutations took their event timestamp (`c.now()`: a
+  clock read, a CAS and a reserved instant) before the publish checked for a publisher, so a graph without one paid it
+  per mutation and pushed the commit-clock floor one ms ahead of the wall per mutation (50 creates in one
+  transaction: 101 clock reads, floor 100 ms ahead; now 51 and 50, one TxFrom per create). With a publisher the
+  timestamps are unchanged (`TestEventClockNoPublisherReservesNoInstant`). Hot and warm shard checkouts no longer
+  stamp `lastAccess` (only cold shards read it); a shard turning cold counts as accessed then, so `IdleTimeout`
+  runs from the demotion (before: from its last read while warm) (`TestEventClockHotWarmReadsStampNoAccess`).
+
 ## [4.87.0] - 2026-10-26
 
 ### Changed

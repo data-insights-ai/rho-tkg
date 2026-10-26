@@ -569,7 +569,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else if mutated {
 			result.Updated++
-			b.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(pu.id), b.g.now(), eventspkg.PriorityNormal)
+			b.g.publishEventNow(eventspkg.EventNodeUpdate, types.EntityID(pu.id), eventspkg.PriorityNormal)
 		}
 	}
 
@@ -593,7 +593,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else if mutated {
 			result.Updated++
-			b.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(pu.id), b.g.now(), eventspkg.PriorityNormal)
+			b.g.publishEventNow(eventspkg.EventRelUpdate, types.EntityID(pu.id), eventspkg.PriorityNormal)
 		}
 	}
 
@@ -609,7 +609,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Updated++
-			b.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(pc.id), b.g.now(), eventspkg.PriorityNormal)
+			b.g.publishEventNow(eventspkg.EventNodeUpdate, types.EntityID(pc.id), eventspkg.PriorityNormal)
 		}
 	}
 	for _, pc := range b.relCascades {
@@ -623,7 +623,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Updated++
-			b.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(pc.id), b.g.now(), eventspkg.PriorityNormal)
+			b.g.publishEventNow(eventspkg.EventRelUpdate, types.EntityID(pc.id), eventspkg.PriorityNormal)
 		}
 	}
 
@@ -640,7 +640,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Deleted++
-			b.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(d.id), b.g.now(), eventspkg.PriorityCritical)
+			b.g.publishEventNow(eventspkg.EventRelDelete, types.EntityID(d.id), eventspkg.PriorityCritical)
 		}
 	}
 
@@ -657,7 +657,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Deleted += 1 + len(cascadeRelIDs)
-			b.g.publishCascadeDeleteEvents(id, cascadeRelIDs, b.g.now())
+			b.g.publishCascadeDeleteEvents(id, cascadeRelIDs)
 		}
 	}
 

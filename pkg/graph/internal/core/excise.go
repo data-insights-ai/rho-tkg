@@ -187,7 +187,7 @@ func (tx *GraphTx) exciseNodeLocked(id types.NodeID, a, b, at types.Instant) err
 	if err := tx.g.exciseNode(tx.doorCtx(), id, a, b, at); err != nil {
 		return err
 	}
-	tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+	tx.g.publishEventNow(eventspkg.EventNodeUpdate, types.EntityID(id), eventspkg.PriorityNormal)
 	return nil
 }
 
@@ -232,7 +232,7 @@ func (tx *GraphTx) exciseRelLocked(id types.RelID, a, b, at types.Instant) error
 	if err := tx.g.exciseRel(tx.doorCtx(), id, a, b, at); err != nil {
 		return err
 	}
-	tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+	tx.g.publishEventNow(eventspkg.EventRelUpdate, types.EntityID(id), eventspkg.PriorityNormal)
 	return nil
 }
 
