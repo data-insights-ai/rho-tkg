@@ -1,0 +1,7 @@
+=== RUN   TestExistMapResidentBytesPerNode
+    existmap_ram_test.go:69: reopened store: 17694720 B at 50000 nodes, 40779776 B at 250000 nodes: 115.4 B per node
+    existmap_ram_test.go:71: an open store keeps 115.4 B of heap per node, budget 12 B
+--- FAIL: TestExistMapResidentBytesPerNode (3.40s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	3.416s
+FAIL
