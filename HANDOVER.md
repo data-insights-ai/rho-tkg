@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.86.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.86.1; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,13 +7,15 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-26 Oct:** v4.75.0 to v4.86.0 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
+- **Released 24-26 Oct:** v4.75.0 to v4.86.1 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
 - **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
   "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
   v4.86.0) ci-docker also runs `make test-long` (~1 min).
-- **Branches:** none open. Merged item branches wait for René's delete (user-only actions 5 and 6); the kept
-  branches' push to origin is user-only action 7. main is pushed.
+- **v4.86.1** (ASYNCSTAGE, a patch): ci-fast green plus every other package's short tests, consumers build and vet
+  clean; async ingest 1.55-2.0x (`tasks/evidence/WRITERATE/results.txt`).
+- **Branches:** asyncstage (merged into v4.86.1). The merged item branches are deleted and the kept ones pushed
+  (René, 26 Oct); user-only action 5 stays. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
   91.8 records/op is a synthetic in-memory probe; options A/B/C are in no committed file: `git show af75a982:tasks/evidence/v5-scale/notes.md`.

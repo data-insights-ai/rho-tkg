@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.86.1] - 2026-10-26
+
 ### Fixed
 
 - **ASYNCSTAGE** (WRITERATE): an async store's backpressure flush waited for `MaxPendingWrites` (100 k ops, ~60 MB
