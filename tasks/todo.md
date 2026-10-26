@@ -55,18 +55,23 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
-- **EVENTCLOCK** (SCALE, ai-soc 26 Oct, Flux run k10262212 on v4.87.0) — time.Now is 15 % of CPU in the run's first
-  minute: Core.now 35 % of it, EventShard.checkoutForRead 36 %, peekNow 14 %, checkRotation 10 %. Flux's clocksource
-  is hpet (the kernel dropped tsc at boot), so each time.Now is a slow read there: the host clock is René's call
-  (ai-soc asks him). rho's part on branch `eventclock` (744c1bcc, mutation-checked): a mutation without an event
-  publisher takes no event timestamp (50 creates in one transaction: 101 clock reads to 51, floor 100 to 50 ms ahead),
-  and hot and warm checkouts stamp no `lastAccess` (a demotion stamps it). Next: the gate, then v4.87.1.
-- **PENDSEEK** (SCALE, ai-soc 26 Oct, kit A/B on v4.87.0) — with `PropertyIndexOnDisk` ai-soc's answers are equal and
-  the heap falls 750 to 680 MB, but the push takes 2x (60 to 120 s): every property lookup ranges over the whole
-  pending-write overlay (`propertyIndexDiskKeysCandidatesLocked`, the `rangePending` closure, 10.2 s flat of 71 s), so
-  a commit group of a few thousand writes with a GetOrCreateByKey per record is quadratic. Done when: a lookup seeks the
-  pending 0x0A keys by prefix (cost independent of the pending size, by a test), released as a patch; ai-soc then reruns
-  the kit A/B. If the seek is not cheap, the per-index on-disk flag (a minor) instead.
+- **v4.87.1** (patch, in release) — EVENTCLOCK and PENDSEEK together, so ai-soc pins once.
+  - EVENTCLOCK (ai-soc, Flux run k10262212: time.Now 15 % of CPU in minute 1; Flux's clocksource is hpet, the
+    host clock René's call via ai-soc): a mutation without an event publisher takes no event timestamp (50 creates
+    in one transaction: 101 clock reads to 51, floor 100 to 50 ms ahead), hot and warm checkouts stamp no
+    `lastAccess` (a demotion stamps it). On main, `make ci-fast` green.
+  - PENDSEEK (ai-soc's kit A/B with `PropertyIndexOnDisk`: push 60 to 120 s): a disk property equality lookup finds
+    its values' buffered entries by prefix instead of walking the write buffer (one lookup with 64 k buffered
+    entries 5.2 ms to 3.5 us). Branch `pendseek` (f3523d32), mutation-checked; gate next.
+  Done when: tagged, CI green, both agents told; then ai-soc reruns the kit A/B and switches PROPDISK on.
+- **OPENIMAGE** (SCALE, moved up 26 Oct: ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in
+  tiered.New, 53 % in loadNodeFromBadger) — a crash open trusts no image, so it rebuilds every RAM index by decoding
+  each member node with a point Get (property without disk, composite, temporal without TemporalIndexOnDisk,
+  high-frequency, vector; badgerstore.go:1764-2091), thrashing the block cache (badger has no no-fill scan:
+  level_handler.go:302-305). Reuse the last image and read only keys newer than it (`IteratorOptions.SinceTs`), with a
+  periodic image (checkpoint) so a daemon that never closes cleanly bounds the work. Done when: a crash reopen reads
+  only the keys written since the last image, measured on a large shard. Asked ai-soc which index kinds that store
+  defines.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
@@ -272,10 +277,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **METASYNCRIG** (René 26 Oct: a later item) — the power-loss case of METASYNC (without `SyncWrites` a meta write
   in a retired memtable can be lost; source-confirmed, docs in v4.81.0) has no test: it needs a power-loss filesystem
   (LazyFS or dm-flakey). Done when: the rig shows the loss and the documented guard (`SyncWrites`, `MetaSetDurable`).
-- **OPENIMAGE** — A reopen after a crash rebuilds every row although the open image holds most of the state;
-  `IteratorOptions.SinceTs` reads only the keys newer than the image. Done when: such a reopen reads only those keys,
-  measured on a large shard.
-
 - **COLDSTART** — A fresh agent has to be able to work from the 13 docs alone. Done when: every gap it finds is fixed
   in the file that owns it.
 - **GUARDS** — The rules the docs no longer state need tests that fail when the rule is broken. Done when: each guard
