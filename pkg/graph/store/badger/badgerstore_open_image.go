@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"hash/crc32"
 	"iter"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
+	"sync/atomic"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -78,8 +80,9 @@ const (
 	imgSecNodePropTx
 	imgSecRelPropTxSpans // built property membership sidecars with spans (backlog 74, ledger row 62)
 	imgSecNodePropTxSpans
-	imgSecNodeIDs // the live node IDs, ascending, delta-encoded (EXISTMAP): the open skips the node-key walk
-	imgSecRelIDs  // the live rel IDs, as imgSecNodeIDs
+	imgSecNodeIDs     // the live node IDs, ascending, delta-encoded (EXISTMAP): the open skips the node-key walk
+	imgSecRelIDs      // the live rel IDs, as imgSecNodeIDs
+	imgSecLabelCounts // the live nodes per label token (OPENWALK): with the label index on disk the open skips the label-key walk
 )
 
 type imgValueIDs struct {
@@ -123,6 +126,9 @@ type openImage struct {
 	// image has none (an image written before EXISTMAP), so the open walks
 	// the entity keys.
 	nodeIDs, relIDs *indexpkg.IDSet
+	// labelCounts are the closing process's live nodes per label token; nil
+	// when the image has none (written before OPENWALK).
+	labelCounts map[uint16]int64
 }
 
 func newOpenImage() *openImage {
@@ -221,6 +227,24 @@ func (bs *Store) writeOpenImage() error {
 
 var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 
+// appendLabelCounts renders the label counters, ascending by token, without
+// the zero ones (a rebuild creates none for a label without members).
+func (bs *Store) appendLabelCounts() []byte {
+	counts := map[uint16]int64{}
+	bs.labelCounts.Range(func(k, v any) bool {
+		if n := v.(*atomic.Int64).Load(); n > 0 {
+			counts[k.(uint16)] = n
+		}
+		return true
+	})
+	b := binary.AppendUvarint(nil, uint64(len(counts)))
+	for _, tok := range slices.Sorted(maps.Keys(counts)) {
+		b = binary.BigEndian.AppendUint16(b, tok)
+		b = binary.AppendUvarint(b, uint64(counts[tok])) // #nosec G115 -- a positive count
+	}
+	return b
+}
+
 // encodeOpenImageLocked renders every RAM index content the rows would
 // otherwise rebuild. Indexes still being created are left out (rebuilt).
 // Caller holds idxMu (read).
@@ -247,6 +271,7 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 	}
 	section(imgSecNodeIDs, appendIDSet(&bs.nodeIDs))
 	section(imgSecRelIDs, appendIDSet(&bs.relIDs))
+	section(imgSecLabelCounts, bs.appendLabelCounts())
 	// appendKeyIDs is one value key with its IDs, ascending so the reload's
 	// AddKey fills exact chunks.
 	appendKeyIDs := func(b []byte, vk string, n int, ids iter.Seq[snowflake.ID]) []byte {
@@ -762,6 +787,17 @@ func decodeOpenImage(blob []byte) (*openImage, error) {
 			img.nodeIDs = r.idSet()
 		case imgSecRelIDs:
 			img.relIDs = r.idSet()
+		case imgSecLabelCounts:
+			n := r.count(len(r.b))
+			img.labelCounts = make(map[uint16]int64, n)
+			for range n {
+				tok := r.u16()
+				v := r.uvarint()
+				if v > math.MaxInt64 {
+					r.fail("label count")
+				}
+				img.labelCounts[tok] = int64(v) // #nosec G115 -- checked above
+			}
 		default:
 			r.fail("section kind")
 		}

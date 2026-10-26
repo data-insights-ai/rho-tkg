@@ -1227,6 +1227,10 @@ func (bs *Store) openLabelMembers(txn *badgerv4.Txn, tok uint16, lazy bool) (map
 	return set, true
 }
 
+// openWalkTestHook (tests only) is called with the keyspace prefix of each
+// walk the open's index scan starts.
+var openWalkTestHook func(prefix byte)
+
 func (bs *Store) loadIndexesScan(img *openImage) error {
 	// propIdxNeedsBuild / propIdxBackfillOps: one-time backfill of the new 0x0A
 	// keyspace for a directory with property-index definitions when PropertyIndexOnDisk
@@ -1310,6 +1314,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		} else {
 			it = txn.NewIterator(opts) // no prefetch: values are inline (PREFETCH)
 			prefix = []byte{storepkg.KeyNode}
+			if openWalkTestHook != nil {
+				openWalkTestHook(prefix[0])
+			}
 			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 				item := it.Item()
 				key := item.Key()
@@ -1379,40 +1386,52 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		// peak); an index the image lacks reads its label's keys (openLabelMembers).
 		lazyLabels := img != nil && bs.labelOnDisk
 		labelCounts := map[uint16]int64{}
-		it = txn.NewIterator(opts)
-		prefix = []byte{storepkg.KeyLabel}
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().Key()
-			if len(key) != storepkg.SizeLabelIdx {
-				continue
+		if lazyLabels && img.nodeIDs != nil && img.labelCounts != nil {
+			// The image holds the counts the walk below would make (OPENWALK),
+			// over the same trusted node set.
+			for token, n := range img.labelCounts {
+				labelCounts[token] = n
+				bs.nodeLabelEpochs[token%nodeLabelEpochStripes].Add(uint64(n)) // #nosec G115 -- a positive count
 			}
-			token := binary.BigEndian.Uint16(key[1:3])
-			nid := types.NodeID(storepkg.ParseIDFromKey(key, 3))
-			if !nodeEntityIDs.Has(int64(nid)) {
-				if img == nil {
-					kr.drop(key) // no row
-				}
-				continue
+		} else {
+			it = txn.NewIterator(opts)
+			prefix = []byte{storepkg.KeyLabel}
+			if openWalkTestHook != nil {
+				openWalkTestHook(prefix[0])
 			}
-			if labels, decoded := decodedNodeLabels[nid]; decoded {
-				if _, ok := labels[token]; !ok {
-					kr.drop(key) // the row does not carry the label
+			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+				key := it.Item().Key()
+				if len(key) != storepkg.SizeLabelIdx {
 					continue
 				}
-				kr.acceptedLabels++
+				token := binary.BigEndian.Uint16(key[1:3])
+				nid := types.NodeID(storepkg.ParseIDFromKey(key, 3))
+				if !nodeEntityIDs.Has(int64(nid)) {
+					if img == nil {
+						kr.drop(key) // no row
+					}
+					continue
+				}
+				if labels, decoded := decodedNodeLabels[nid]; decoded {
+					if _, ok := labels[token]; !ok {
+						kr.drop(key) // the row does not carry the label
+						continue
+					}
+					kr.acceptedLabels++
+				}
+				if lazyLabels {
+					labelCounts[token]++
+				} else {
+					bs.addLabelIdxLocked(token, nid)
+				}
+				if img != nil {
+					// The epoch bump the full path makes per (node, label) through
+					// addNodePropertyKeyCounts.
+					bs.nodeLabelEpochs[token%nodeLabelEpochStripes].Add(1)
+				}
 			}
-			if lazyLabels {
-				labelCounts[token]++
-			} else {
-				bs.addLabelIdxLocked(token, nid)
-			}
-			if img != nil {
-				// The epoch bump the full path makes per (node, label) through
-				// addNodePropertyKeyCounts.
-				bs.nodeLabelEpochs[token%nodeLabelEpochStripes].Add(1)
-			}
+			it.Close()
 		}
-		it.Close()
 
 		relEntityIDs := &indexpkg.IDSet{} // as nodeEntityIDs
 		decodedRelInfo := make(map[types.RelID]RelDeleteInfo)
@@ -1432,6 +1451,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		} else {
 			it = txn.NewIterator(opts)
 			prefix = []byte{storepkg.KeyRel}
+			if openWalkTestHook != nil {
+				openWalkTestHook(prefix[0])
+			}
 			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 				item := it.Item()
 				key := item.Key()
@@ -1499,6 +1521,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		// local entity key may populate it; ignore keys that disagree with a decoded row.
 		it = txn.NewIterator(opts)
 		prefix = []byte{storepkg.KeyRelType}
+		if openWalkTestHook != nil {
+			openWalkTestHook(prefix[0])
+		}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
 			if len(key) != storepkg.SizeRelTypeIdx {
@@ -1528,97 +1553,107 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		}
 		it.Close()
 
-		// Scan outgoing adjacency: keyOut(1B) + startID(8B) + relType(2B) + endID(8B) +
-		// relID(8B). Ignore keys without a local relationship entity. A key with one
-		// is kept whether or not its start node is local, as the write path keeps it:
-		// a tiered mint shard holds rels of nodes that live on the reference shard
-		// (tiered.Config.RelsByMint).
-		it = txn.NewIterator(opts)
-		prefix = []byte{storepkg.KeyOut}
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().Key()
-			if len(key) != storepkg.SizeAdjacency {
-				continue
+		// A trusted image vouches for the adjacency keys, and the disk mode
+		// answers from them: the walks below would keep nothing (OPENWALK).
+		if img == nil || !bs.adjOnDisk {
+			// Scan outgoing adjacency: keyOut(1B) + startID(8B) + relType(2B) + endID(8B) +
+			// relID(8B). Ignore keys without a local relationship entity. A key with one
+			// is kept whether or not its start node is local, as the write path keeps it:
+			// a tiered mint shard holds rels of nodes that live on the reference shard
+			// (tiered.Config.RelsByMint).
+			it = txn.NewIterator(opts)
+			prefix = []byte{storepkg.KeyOut}
+			if openWalkTestHook != nil {
+				openWalkTestHook(prefix[0])
 			}
-			startID := storepkg.ParseIDFromKey(key, 1)
-			relType := binary.BigEndian.Uint16(key[9:11])
-			endID := storepkg.ParseIDFromKey(key, 11)
-			relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
-			if img != nil {
-				if local := relEntityIDs.Has(int64(relID)); !local {
+			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+				key := it.Item().Key()
+				if len(key) != storepkg.SizeAdjacency {
 					continue
 				}
-			} else if info, decoded := decodedRelInfo[relID]; !decoded ||
-				info.StartID != startID || info.EndID != endID || info.RelType != relType {
-				if local := relEntityIDs.Has(int64(relID)); decoded || !local {
-					kr.drop(key) // the row disagrees, or there is none
+				startID := storepkg.ParseIDFromKey(key, 1)
+				relType := binary.BigEndian.Uint16(key[9:11])
+				endID := storepkg.ParseIDFromKey(key, 11)
+				relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
+				if img != nil {
+					if local := relEntityIDs.Has(int64(relID)); !local {
+						continue
+					}
+				} else if info, decoded := decodedRelInfo[relID]; !decoded ||
+					info.StartID != startID || info.EndID != endID || info.RelType != relType {
+					if local := relEntityIDs.Has(int64(relID)); decoded || !local {
+						kr.drop(key) // the row disagrees, or there is none
+					}
+					continue
+				} else {
+					kr.acceptedOut++
 				}
-				continue
-			} else {
-				kr.acceptedOut++
+				if bs.adjOnDisk {
+					continue // disk mode answers from these keys; no RAM map, not even transient
+				}
+				startNID := types.NodeID(startID)
+				if bs.outIdx[startNID] == nil {
+					bs.outIdx[startNID] = make(map[types.RelID]types.NodeID)
+				}
+				bs.outIdx[startNID][relID] = types.NodeID(endID)
 			}
-			if bs.adjOnDisk {
-				continue // disk mode answers from these keys; no RAM map, not even transient
-			}
-			startNID := types.NodeID(startID)
-			if bs.outIdx[startNID] == nil {
-				bs.outIdx[startNID] = make(map[types.RelID]types.NodeID)
-			}
-			bs.outIdx[startNID][relID] = types.NodeID(endID)
-		}
-		it.Close()
+			it.Close()
 
-		if img == nil {
-			for _, info := range decodedRelInfo {
-				if bs.inKeyHereLocked(info) {
-					kr.expectedIn++
+			if img == nil {
+				for _, info := range decodedRelInfo {
+					if bs.inKeyHereLocked(info) {
+						kr.expectedIn++
+					}
 				}
 			}
-		}
-		// Scan incoming adjacency: keyIn(1B) + endID(8B) + relType(2B) + startID(8B) +
-		// relID(8B). Incoming-only rows are valid in tiered cross-shard layouts, so keep keys
-		// with no local entity; with a local row accept only the canonical entry.
-		it = txn.NewIterator(opts)
-		prefix = []byte{storepkg.KeyIn}
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().Key()
-			if len(key) != storepkg.SizeAdjacency {
-				continue
+			// Scan incoming adjacency: keyIn(1B) + endID(8B) + relType(2B) + startID(8B) +
+			// relID(8B). Incoming-only rows are valid in tiered cross-shard layouts, so keep keys
+			// with no local entity; with a local row accept only the canonical entry.
+			it = txn.NewIterator(opts)
+			prefix = []byte{storepkg.KeyIn}
+			if openWalkTestHook != nil {
+				openWalkTestHook(prefix[0])
 			}
-			endID := storepkg.ParseIDFromKey(key, 1)
-			relType := binary.BigEndian.Uint16(key[9:])
-			startID := storepkg.ParseIDFromKey(key, 11)
-			relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
-			hasLocalEntity := relEntityIDs.Has(int64(relID))
-			info, decoded := decodedRelInfo[relID]
-			if img != nil && hasLocalEntity {
-				decoded = true // clean close: the key agrees with the row
-				info = RelDeleteInfo{ID: relID.SnowflakeID(), StartID: startID, EndID: endID, RelType: relType}
-			}
-			if decoded {
-				if info.StartID != startID || info.EndID != endID || info.RelType != relType {
-					kr.drop(key) // only reached on a rebuild: an image's keys agree
+			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+				key := it.Item().Key()
+				if len(key) != storepkg.SizeAdjacency {
 					continue
 				}
-				// A key backed by the local row is kept whether or not its end
-				// node is local (the outgoing scan's rule); it counts toward the
-				// shortfall check where the row wants it, as expectedIn does.
-				if img == nil && bs.inKeyHereLocked(info) {
-					kr.acceptedIn++
+				endID := storepkg.ParseIDFromKey(key, 1)
+				relType := binary.BigEndian.Uint16(key[9:])
+				startID := storepkg.ParseIDFromKey(key, 11)
+				relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
+				hasLocalEntity := relEntityIDs.Has(int64(relID))
+				info, decoded := decodedRelInfo[relID]
+				if img != nil && hasLocalEntity {
+					decoded = true // clean close: the key agrees with the row
+					info = RelDeleteInfo{ID: relID.SnowflakeID(), StartID: startID, EndID: endID, RelType: relType}
 				}
-			} else if hasLocalEntity {
-				continue
+				if decoded {
+					if info.StartID != startID || info.EndID != endID || info.RelType != relType {
+						kr.drop(key) // only reached on a rebuild: an image's keys agree
+						continue
+					}
+					// A key backed by the local row is kept whether or not its end
+					// node is local (the outgoing scan's rule); it counts toward the
+					// shortfall check where the row wants it, as expectedIn does.
+					if img == nil && bs.inKeyHereLocked(info) {
+						kr.acceptedIn++
+					}
+				} else if hasLocalEntity {
+					continue
+				}
+				if bs.adjOnDisk {
+					continue
+				}
+				endNID := types.NodeID(endID)
+				if bs.inIdx[endNID] == nil {
+					bs.inIdx[endNID] = make(map[types.RelID]inEdge)
+				}
+				bs.inIdx[endNID][relID] = inEdge{start: types.NodeID(startID), typ: relType}
 			}
-			if bs.adjOnDisk {
-				continue
-			}
-			endNID := types.NodeID(endID)
-			if bs.inIdx[endNID] == nil {
-				bs.inIdx[endNID] = make(map[types.RelID]inEdge)
-			}
-			bs.inIdx[endNID][relID] = inEdge{start: types.NodeID(startID), typ: relType}
+			it.Close()
 		}
-		it.Close()
 
 		if img == nil {
 			kr.addMissingKeys(txn, decodedNodeLabels, decodedRelInfo, bs.inKeyHereLocked)
