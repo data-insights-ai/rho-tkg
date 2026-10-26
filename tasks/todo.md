@@ -162,6 +162,11 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **SCALEPROFILE** (SCALE, ai-soc 26 Oct) — which RAM structures grow with data in ai-soc's daemon plus sigma.
+  Flux run k10261904 on v4.86.0 is the baseline (heap, memstats and smaps_rollup every 600 s and after the final
+  GC, reopen times, the top-40 inuse_space with node and rel counts); the run after the PAGEREF pin carries
+  v4.87.0 (OPENWALK) and shows the difference. Done when: each per-entity structure in the profile is bounded or
+  queued as its own item.
 - **R37** (ai-soc's lever for rho, 26 Oct) — listing changed facts costs more than ai-soc's 4x a fact's values (ai-soc
   on v4.79.0: cold 24.7x for 2 versions; rho 97 % of the bytes). Done when: ai-soc's warm and cold listing tests are
   under 4x. v4.83.0 cut rho's part (`TestR37ListingBytesPerFact`): 2 versions 8.5x -> 4.0x warm, 14.9x -> 10.5x
