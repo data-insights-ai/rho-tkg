@@ -19,7 +19,7 @@ rho's lever is listing), then SCALE, then BADGER step 3's last pieces. Ranked by
   warm and cold tests are under 4x (sigma's part follows rho's). ai-soc's split: rho 97 % of the listing's bytes.
   Branch `r37` (9a08f196, rho repro TestR37ListingBytesPerFact, `tasks/evidence/R37/`): 2 versions 8.5x -> 4.0x
   warm, 14.9x -> 10.5x cold; 1 version 0.8x / 5.3x. Ships as minor v4.83.0 (it adds
-  `store.NodeVersionSharingCapability`; the patch gate refused it); its `make ci-docker` is running. Left: a cold listing decodes each
+  `store.NodeVersionSharingCapability`; the patch gate refused it); `make ci-docker` passed on the branch, all R37 work committed; releasing. Left: a cold listing decodes each
   current row into a Node (~3.6x by itself); below 4x needs a door that hands sigma columns per segment without
   Nodes. sigma (26 Oct): not now; stop at v4.82.1, ai-soc re-measures cold /bars on it. If it still fails on Flux,
   the column door (cols incl. ov_session, ov_sid; ValidFrom/To and TxFrom per segment; values shared when
