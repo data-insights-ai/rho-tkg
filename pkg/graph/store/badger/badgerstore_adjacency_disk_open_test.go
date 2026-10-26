@@ -12,8 +12,8 @@ import (
 
 // Row 95 cuts B + B2 (`git show f94060df:tasks/todo.md` § "R3 sizing"): a shard opened with
 // AdjacencyIndexOnDisk builds no transient outIdx/inIdx maps at open (the
-// adjacency lives in the out/in keys) and does not seed relRevs (rev 0
-// already forces the locked re-read in every prefetch door).
+// adjacency lives in the out/in keys); the rel revisions are a fixed striped
+// table since EXISTMAP, nothing per rel.
 
 const adjOpenRels = 10000 // rels per measurement; d=1 (two private endpoints per rel)
 
@@ -71,7 +71,7 @@ func openAllocPerRel(t *testing.T, relDir, baseDir string, adjOnDisk bool) (floa
 
 // TestLoadIndexes_AdjOnDisk_NoTransientMaps measures per-rel bytes of an
 // opened shard and pins: with the flag, outIdx/inIdx stay empty through the
-// open (no transient build) and relRevs is not seeded.
+// open (no transient build); the revisions are a fixed table (EXISTMAP).
 // Break case: flag off still builds and keeps the maps (the default must not
 // change). The unclean open is the next test.
 func TestLoadIndexes_AdjOnDisk_NoTransientMaps(t *testing.T) {
@@ -82,7 +82,7 @@ func TestLoadIndexes_AdjOnDisk_NoTransientMaps(t *testing.T) {
 	offAlloc, off := openAllocPerRel(t, relDir, baseDir, false)
 	offLive := off.RelMapBytesForTest() / adjOpenRels
 	off.idxMu.RLock()
-	outOff, revOff := len(off.outIdx), len(off.relRevs)
+	outOff := len(off.outIdx)
 	off.idxMu.RUnlock()
 	if err := off.Close(); err != nil {
 		t.Fatal(err)
@@ -94,16 +94,13 @@ func TestLoadIndexes_AdjOnDisk_NoTransientMaps(t *testing.T) {
 		adjOpenRels, offAlloc, offLive, onAlloc, onLive)
 
 	on.idxMu.RLock()
-	outN, inN, revN, relN := len(on.outIdx), len(on.inIdx), len(on.relRevs), on.relIDs.Len()
+	outN, inN, relN := len(on.outIdx), len(on.inIdx), on.relIDs.Len()
 	on.idxMu.RUnlock()
 	if relN != adjOpenRels {
 		t.Fatalf("flag on: %d live rels after open, want %d", relN, adjOpenRels)
 	}
 	if outN != 0 || inN != 0 {
 		t.Errorf("flag on: outIdx %d / inIdx %d entries after open, want 0", outN, inN)
-	}
-	if revN != 0 {
-		t.Errorf("flag on: relRevs seeded with %d entries at open, want 0 (rev 0 falls back)", revN)
 	}
 	// The open also allocates badger's reads of the rel keys; the transient
 	// nested adjacency maps alone add > 500 B/rel at d=1.
@@ -118,8 +115,8 @@ func TestLoadIndexes_AdjOnDisk_NoTransientMaps(t *testing.T) {
 	}
 
 	// Break: the default keeps building and keeping the maps.
-	if outOff != adjOpenRels || revOff != adjOpenRels {
-		t.Errorf("flag off: outIdx %d relRevs %d after open, want %d each", outOff, revOff, adjOpenRels)
+	if outOff != adjOpenRels {
+		t.Errorf("flag off: outIdx %d after open, want %d", outOff, adjOpenRels)
 	}
 }
 
@@ -164,11 +161,11 @@ func TestLoadIndexes_AdjOnDisk_UncleanOpenRepairsDroppedKey(t *testing.T) {
 	}
 }
 
-// TestRelRevs_LazySeed_PrefetchFallsBack: after a disk-mode open the first
-// Replace of a rel reads its row under the lock (prefetch rev is 0), then
-// seeds the rev. Break: a concurrent property write between prefetch and lock
-// is still detected (no phantom index entry).
-func TestRelRevs_LazySeed_PrefetchFallsBack(t *testing.T) {
+// TestRelRevs_AfterDiskOpen_ConcurrentWriteDetected: after a disk-mode open a
+// rel's revision is usable without a per-rel seed (the striped table starts at
+// 1, EXISTMAP), and a concurrent property write between the first Replace's
+// prefetch and its lock is still detected (no phantom index entry).
+func TestRelRevs_AfterDiskOpen_ConcurrentWriteDetected(t *testing.T) {
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
 	if err != nil {
@@ -202,20 +199,8 @@ func TestRelRevs_LazySeed_PrefetchFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pre.rev != 0 {
-		t.Fatalf("prefetch rev after disk-mode open = %d, want 0 (unseeded)", pre.rev)
-	}
-	// A prefetched row that differs from the stored one: rev 0 must not trust it.
-	stale := pre
-	stale.rel = mk("stale")
-	bs.idxMu.Lock()
-	cur, err := bs.currentRelForPrefetchLocked(rid, stale)
-	bs.idxMu.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v, _ := cur.GetProperty("status"); v != "A" {
-		t.Fatalf("rev 0 returned the prefetched row (status %v) instead of reading it under the lock", v)
+	if pre.rev == 0 {
+		t.Fatal("prefetch rev after disk-mode open = 0: every prefetch would re-read under the lock")
 	}
 
 	// Break: the concurrent write lands in the prefetch->lock window of the
@@ -238,9 +223,9 @@ func TestRelRevs_LazySeed_PrefetchFallsBack(t *testing.T) {
 		t.Errorf("status=C rows %d err %v, want 1", len(got), err)
 	}
 	bs.idxMu.RLock()
-	seeded := bs.relRevs[rid]
+	seeded := bs.relRevs.get(int64(rid))
 	bs.idxMu.RUnlock()
-	if seeded == 0 {
-		t.Error("rel rev not seeded by its first write after open")
+	if seeded == pre.rev {
+		t.Error("rel rev unchanged by the writes after open")
 	}
 }

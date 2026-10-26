@@ -157,14 +157,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 // property-only write in the prefetch-lock window (endpoints/type are immutable,
 // so relDeleteInfoStillIndexedLocked cannot).
 func (bs *Store) bumpRelRevLocked(rid types.RelID) {
-	if bs.relRevs == nil {
-		bs.relRevs = make(map[types.RelID]uint64)
-	}
-	bs.nextRelRev++
-	if bs.nextRelRev == 0 {
-		bs.nextRelRev = 1
-	}
-	bs.relRevs[rid] = bs.nextRelRev
+	bs.relRevs.bump(int64(rid))
 }
 
 // seedRelRevAtOpenLocked gives a rel loaded at open a non-zero rev, so its
@@ -180,7 +173,7 @@ func (bs *Store) seedRelRevAtOpenLocked(rid types.RelID) {
 
 // deleteRelRevLocked mirrors deleteNodeRevLocked; called from deleteRelByInfo.
 func (bs *Store) deleteRelRevLocked(rid types.RelID) {
-	delete(bs.relRevs, rid)
+	bs.relRevs.bump(int64(rid))
 }
 
 // GetRelationship retrieves a relationship by ID (LRU cache first).
@@ -551,7 +544,7 @@ type relPrefetchSnapshot struct {
 // brief RLock the rev is later compared against — see relPrefetchSnapshot.
 func (bs *Store) prefetchRelWithRev(rid types.RelID) (relPrefetchSnapshot, error) {
 	bs.idxMu.RLock()
-	rev := bs.relRevs[rid]
+	rev := bs.relRevs.get(int64(rid))
 	bs.idxMu.RUnlock()
 	r, err := bs.prefetchRel(rid)
 	if err != nil {
@@ -561,7 +554,7 @@ func (bs *Store) prefetchRelWithRev(rid types.RelID) (relPrefetchSnapshot, error
 }
 
 func (bs *Store) currentRelForPrefetchLocked(rid types.RelID, prefetched relPrefetchSnapshot) (*types.Relationship, error) {
-	if prefetched.rel != nil && prefetched.rev != 0 && bs.relRevs[rid] == prefetched.rev {
+	if prefetched.rel != nil && prefetched.rev != 0 && bs.relRevs.get(int64(rid)) == prefetched.rev {
 		info := relDeleteInfoFromRelationship(prefetched.rel)
 		if types.RelID(info.ID) == rid && bs.relDeleteInfoStillIndexedLocked(info) {
 			return prefetched.rel, nil
@@ -576,7 +569,7 @@ func (bs *Store) currentRelForPrefetchLocked(rid types.RelID, prefetched relPref
 // membership check cannot catch in AdjacencyIndexOnDisk mode.
 func (bs *Store) prefetchRelDeleteInfo(rid types.RelID) (RelDeleteInfo, error) {
 	bs.idxMu.RLock()
-	rev := bs.relRevs[rid]
+	rev := bs.relRevs.get(int64(rid))
 	bs.idxMu.RUnlock()
 	r, err := bs.prefetchRel(rid)
 	if err != nil {
@@ -592,7 +585,7 @@ func (bs *Store) prefetchRelDeleteInfo(rid types.RelID) (RelDeleteInfo, error) {
 // matches the live rev. Caller holds bs.idxMu (R or W). info.Rev == 0 (no rev
 // captured) always reports stale, forcing a locked re-read.
 func (bs *Store) relDeleteInfoRevCurrentLocked(info RelDeleteInfo) bool {
-	return info.Rev != 0 && bs.relRevs[types.RelID(info.ID)] == info.Rev
+	return info.Rev != 0 && bs.relRevs.get(int64(types.RelID(info.ID))) == info.Rev
 }
 
 func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {

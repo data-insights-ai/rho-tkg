@@ -237,7 +237,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	bs.idxMu.RLock()
 	exists := bs.nodeIDs.Has(int64(nid))
 	hash, hasHash := bs.nodeHashes[nid]
-	rev := bs.nodeRevs[nid]
+	rev := bs.nodeRevs.get(int64(nid))
 	bs.idxMu.RUnlock()
 	if !exists {
 		return "", ErrNodeNotFound
@@ -306,7 +306,7 @@ func (bs *Store) fillNodeHash(nid types.NodeID, rev uint64, hash string) (string
 	if !bs.nodeIDs.Has(int64(nid)) {
 		return "", ErrNodeNotFound
 	}
-	if bs.nodeRevs[nid] != rev {
+	if bs.nodeRevs.get(int64(nid)) != rev {
 		return hash, nil
 	}
 	if cur, ok := bs.nodeHashes[nid]; ok {
@@ -349,14 +349,7 @@ type nodeDeleteInfo struct {
 }
 
 func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
-	if bs.nodeRevs == nil {
-		bs.nodeRevs = make(map[types.NodeID]uint64)
-	}
-	bs.nextNodeRev++
-	if bs.nextNodeRev == 0 {
-		bs.nextNodeRev = 1
-	}
-	bs.nodeRevs[nid] = bs.nextNodeRev
+	bs.nodeRevs.bump(int64(nid))
 	delete(bs.nodeHashes, nid) // the row changed: the next NodeIntegrityHash refills
 	bs.nodeEpoch.Add(1)        // every non-delete node write invalidates cached columns
 	bs.sharedEpochs.node()
@@ -383,7 +376,7 @@ func (bs *Store) bumpRelEpoch() {
 }
 
 func (bs *Store) deleteNodeRevLocked(nid types.NodeID) {
-	delete(bs.nodeRevs, nid)
+	bs.nodeRevs.bump(int64(nid))
 	delete(bs.nodeHashes, nid)
 }
 
@@ -393,7 +386,7 @@ func (bs *Store) prefetchNodeDeleteInfo(nid types.NodeID) (nodeDeleteInfo, error
 		bs.idxMu.RUnlock()
 		return nodeDeleteInfo{}, ErrNodeNotFound
 	}
-	rev := bs.nodeRevs[nid]
+	rev := bs.nodeRevs.get(int64(nid))
 	bs.idxMu.RUnlock()
 
 	n, err := bs.prefetchNode(nid)
@@ -410,7 +403,7 @@ func (bs *Store) nodeDeleteInfoStillCurrentLocked(nid types.NodeID, info nodeDel
 	if !bs.nodeIDs.Has(int64(nid)) {
 		return false
 	}
-	return bs.nodeRevs[nid] == info.rev
+	return bs.nodeRevs.get(int64(nid)) == info.rev
 }
 
 func (bs *Store) currentNodeForPrefetchLocked(nid types.NodeID, info nodeDeleteInfo) (*types.Node, error) {

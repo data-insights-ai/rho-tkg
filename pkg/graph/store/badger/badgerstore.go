@@ -356,13 +356,11 @@ type Store struct {
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
 	idxMu                 sync.RWMutex
-	nodeIDs               indexpkg.IDSet          // live node IDs (EXISTMAP: sorted chunks, ~8 B per ID)
-	nodeHashes            map[types.NodeID]string // lazy cache of current node integrity hashes (NodeIntegrityHash fills, every node-row write drops; row 66)
-	nodeRevs              map[types.NodeID]uint64 // live node row revision for safe prefetch handoff
-	nextNodeRev           uint64
-	relIDs                indexpkg.IDSet         // live rel IDs (as nodeIDs)
-	relRevs               map[types.RelID]uint64 // live rel row revision for safe prefetch handoff (BACKLOG 18b — relRevs/nextRelRev mirror nodeRevs/nextNodeRev)
-	nextRelRev            uint64
+	nodeIDs               indexpkg.IDSet                                // live node IDs (EXISTMAP: sorted chunks, ~8 B per ID)
+	nodeHashes            map[types.NodeID]string                       // lazy cache of current node integrity hashes (NodeIntegrityHash fills, every node-row write drops; row 66)
+	nodeRevs              revTable                                      // node row revisions for safe prefetch handoff (striped, EXISTMAP)
+	relIDs                indexpkg.IDSet                                // live rel IDs (as nodeIDs)
+	relRevs               revTable                                      // rel row revisions for safe prefetch handoff (BACKLOG 18b; mirrors nodeRevs)
 	labelIdx              map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
 	labelOnDisk           bool                                          // answer label snapshots from the persisted keyspace
 	adjOnDisk             bool                                          // answer adjacency snapshots from the persisted keyspaces
@@ -1002,8 +1000,8 @@ func New(cfg Config) (*Store, error) {
 
 		historyPresenceProbeOnly: cfg.HistoryPresenceProbeOnly,
 		nodeHashes:               make(map[types.NodeID]string),
-		nodeRevs:                 make(map[types.NodeID]uint64),
-		relRevs:                  make(map[types.RelID]uint64),
+		nodeRevs:                 newRevTable(),
+		relRevs:                  newRevTable(),
 		labelIdx:                 make(map[uint16]map[types.NodeID]struct{}),
 		typeIdx:                  make(map[uint16]map[types.RelID]struct{}),
 		outIdx:                   make(map[types.NodeID]map[types.RelID]types.NodeID),
@@ -2113,9 +2111,10 @@ func (bs *Store) Clear() (err error) {
 	// Clear in-memory indexes.
 	bs.nodeIDs = indexpkg.IDSet{}
 	bs.nodeHashes = make(map[types.NodeID]string)
-	bs.nodeRevs = make(map[types.NodeID]uint64)
-	// nextNodeRev keeps counting: a lazy hash read that started before Clear
-	// must not match a re-created node's revision (fillNodeHash).
+	// Every node revision moves past any captured before Clear: a lazy hash
+	// read that started before it must not match a re-created node's revision
+	// (fillNodeHash).
+	bs.nodeRevs.bumpAll()
 	bs.nodeEpoch.Add(1) // invalidate cached columns built before Clear
 	bs.sharedEpochs.node()
 	bs.nodeEpochSalt.Add(1) // label-less event: invalidate every per-label column too (BACKLOG 4b)
@@ -2128,8 +2127,7 @@ func (bs *Store) Clear() (err error) {
 	bs.colOrds = columnOrdinalCache{}
 	bs.docMu.Unlock()
 	bs.relIDs = indexpkg.IDSet{}
-	bs.relRevs = make(map[types.RelID]uint64)
-	bs.nextRelRev = 0
+	bs.relRevs.bumpAll()
 	bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})
 	bs.labelOrder.Reset()
