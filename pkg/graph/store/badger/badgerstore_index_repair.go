@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"errors"
 	"fmt"
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -95,6 +96,40 @@ func (kr *keyRepair) addMissingKeys(txn *badgerv4.Txn, labels map[types.NodeID]m
 		}
 		kr.addMissing(txn, storepkg.KeyIn, want)
 	}
+}
+
+// acceptAdjacencyKeys counts the outgoing and incoming keys of the decoded
+// rels that exist, by point reads: a delta open with the adjacency index on
+// disk runs no adjacency walk (OPENIMAGE), and addMissingKeys must see the
+// keys the touched rels already have.
+func (kr *keyRepair) acceptAdjacencyKeys(txn *badgerv4.Txn, rels map[types.RelID]RelDeleteInfo, inKeyHere func(RelDeleteInfo) bool) error {
+	has := func(key []byte) (bool, error) {
+		_, err := txn.Get(key)
+		if errors.Is(err, badgerv4.ErrKeyNotFound) {
+			return false, nil
+		}
+		return err == nil, err
+	}
+	for _, info := range rels {
+		ok, err := has(storepkg.OutKey(info.StartID, info.RelType, info.EndID, info.ID))
+		if err != nil {
+			return err
+		}
+		if ok {
+			kr.acceptedOut++
+		}
+		if !inKeyHere(info) {
+			continue
+		}
+		kr.expectedIn++
+		if ok, err = has(storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID)); err != nil {
+			return err
+		}
+		if ok {
+			kr.acceptedIn++
+		}
+	}
+	return nil
 }
 
 // commit writes the repair. A read-only store cannot: it has rebuilt its RAM

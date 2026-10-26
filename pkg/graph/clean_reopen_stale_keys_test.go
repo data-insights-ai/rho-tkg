@@ -18,7 +18,9 @@ import (
 // trusts every key. So the open that rebuilds must repair the keys it skips
 // or misses, or the next clean Close would freeze them into trusted state
 // (Fable review of v4.51.3, probe B). Labels, types, outgoing and incoming
-// adjacency; a read-only rebuild repairs nothing and writes no image.
+// adjacency; a read-only rebuild repairs nothing and writes no image. Since
+// OPENIMAGE the open after such a leftover applies the image and checks the
+// entities the newer keys name, with the same repair.
 func TestCleanReopenAfterStaleIndexKeys(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
@@ -125,7 +127,7 @@ func TestCleanReopenAfterStaleIndexKeys(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				dir := t.TempDir()
 				f := build(t, dir)
-				rawWrite(t, dir, tc.edit(f)) // the crash leftover; also a foreign commit: the next open rebuilds
+				rawWrite(t, dir, tc.edit(f)) // the crash leftover, a commit after the image: the next open decodes and checks the entities its keys name
 				if readOnlyFirst {
 					// Rebuilds in RAM, may not repair, writes no image.
 					_, ro := openReopenGraph(t, dir, reopenCfg{readOnly: true})
@@ -137,7 +139,8 @@ func TestCleanReopenAfterStaleIndexKeys(t *testing.T) {
 				if err := g.Close(); err != nil {            // a clean Close: image written
 					t.Fatal(err)
 				}
-				want := withoutNDV(fullRebuildDigest(t, dir, reopenCfg{}))
+				want, _ := fullRebuildDigest(t, dir, reopenCfg{})
+				want = withoutNDV(want)
 				got, _ := reopenDigest(t, dir, reopenCfg{}, func(g *graphpkg.Graph) {
 					if n, err := g.Nodes().CountByLabel("B"); err != nil || n != 1 {
 						t.Errorf("CountByLabel(B) = %d, %v; want 1", n, err)

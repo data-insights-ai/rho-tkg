@@ -480,6 +480,30 @@ func (bs *Store) foldTemporalHistoryEnvelopes(tokens []uint16) error {
 	return nil
 }
 
+// foldTemporalHistoryEnvelopesOf folds the history of ids (members of label
+// tok) into tok's temporal index, as foldTemporalHistoryEnvelopes does for
+// every member (a delta open: badgerstore_open_image_delta.go).
+func (bs *Store) foldTemporalHistoryEnvelopesOf(tok uint16, ids []types.NodeID) error {
+	bs.idxMu.RLock()
+	ti, ok := bs.temporalIndexes[tok]
+	bs.idxMu.RUnlock()
+	if !ok || len(ids) == 0 {
+		return nil
+	}
+	_, folds, err := bs.nodeHistoryFolds(tok, ids)
+	if err != nil {
+		return err
+	}
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+	if cur, still := bs.temporalIndexes[tok]; still && cur == ti {
+		for _, f := range folds {
+			ti.Extend(f.id, f.from, f.to)
+		}
+	}
+	return nil
+}
+
 // foldNodeHistoryLocked extends ti by every history row of id; the RAM presence
 // set answers "has none" without a read. Caller holds idxMu.Lock (order idxMu ->
 // presence buildMu -> wbMu); the history read takes only wbMu and a read transaction.

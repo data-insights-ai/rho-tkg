@@ -514,9 +514,23 @@ func (bs *Store) loadRelTypeTemporalIndexes(img *openImage) error {
 			}
 			ti := indexpkg.NewTemporalIndex()
 			for _, e := range entries {
-				if _, ok := members[types.RelID(e.ID)]; ok {
+				if _, ok := members[types.RelID(e.ID)]; ok && !img.relTouched(types.RelID(e.ID)) {
 					ti.AddKnownAbsent(e.ID, e.From, e.To)
 				}
+			}
+			var touched []types.RelID // a delta open's touched members
+			for _, rid := range rids {
+				if img.relTouched(rid) {
+					touched = append(touched, rid)
+				}
+			}
+			if len(touched) > 0 {
+				// From their rows and history, as the rebuild below builds them.
+				built, err := bs.buildRelTypeTemporalIndex(touched)
+				if err != nil {
+					return fmt.Errorf("graph: rebuild relationship temporal index type %d: %w", tok, err)
+				}
+				built.ForEachEntry(func(e indexpkg.IntervalEntry) { ti.AddKnownAbsent(e.ID, e.From, e.To) })
 			}
 			bs.idxMu.Lock()
 			bs.relTypeTemporalIndexes[tok] = ti

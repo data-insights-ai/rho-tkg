@@ -1152,6 +1152,16 @@ func New(cfg Config) (*Store, error) {
 			return nil, fmt.Errorf("graph: fold temporal history envelopes: %w", err)
 		}
 	}
+	if img.delta() {
+		// A delta open restored the untouched envelopes (history folded) and
+		// added the touched members from their rows: fold only theirs.
+		for tok, ids := range img.touchedTemporal {
+			if err := bs.foldTemporalHistoryEnvelopesOf(tok, ids); err != nil {
+				_ = db.Close() // best-effort cleanup
+				return nil, fmt.Errorf("graph: fold temporal history envelopes: %w", err)
+			}
+		}
+	}
 
 	relTemporalLoad := func() error { return bs.loadRelTypeTemporalIndexes(img) }
 	if cfg.DropRelTemporalIndexesAtOpen {
@@ -1185,6 +1195,13 @@ func (bs *Store) loadIndexes(img *openImage) error {
 	err := bs.loadIndexesScan(img)
 	if err != nil {
 		return err
+	}
+	if img.delta() {
+		// The touched rows the walks decoded added their statistics: the
+		// deferred build counts every row, so start it from nothing.
+		bs.idxMu.Lock()
+		bs.resetPlannerStatsLocked()
+		bs.idxMu.Unlock()
 	}
 	if img != nil && !bs.disablePlannerStats {
 		if img.stats != nil {
@@ -1332,9 +1349,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 				nid := types.NodeID(storepkg.ParseIDFromKey(key, 1))
 				nodeEntityIDs.Add(int64(nid))
-				if img != nil {
-					// Clean close: the row is live; labels come from the label keys, hash and
-					// statistics on first use.
+				if img != nil && !img.nodeTouched(nid) {
+					// Clean close (or untouched since an older image): the row is live; labels
+					// come from the label keys, hash and statistics on first use.
 					bs.nodeIDs.Add(int64(nid))
 					bs.ords.node(nid, true)
 					bs.bumpNodeRevLocked(nid)
@@ -1414,7 +1431,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				token := binary.BigEndian.Uint16(key[1:3])
 				nid := types.NodeID(storepkg.ParseIDFromKey(key, 3))
 				if !nodeEntityIDs.Has(int64(nid)) {
-					if img == nil {
+					if img == nil || img.nodeTouched(nid) {
 						kr.drop(key) // no row
 					}
 					continue
@@ -1431,13 +1448,20 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				} else {
 					bs.addLabelIdxLocked(token, nid)
 				}
-				if img != nil {
+				if img != nil && !img.nodeTouched(nid) {
 					// The epoch bump the full path makes per (node, label) through
 					// addNodePropertyKeyCounts.
 					bs.nodeLabelEpochs[token%nodeLabelEpochStripes].Add(1)
 				}
 			}
 			it.Close()
+		}
+
+		if lazyLabels && img.delta() {
+			// The touched rows the node walk decoded added their labels to the
+			// map; openLabelMembers would take that partial map for the label's
+			// members. Drop it: the members come from the label keys.
+			bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 		}
 
 		relEntityIDs := &indexpkg.IDSet{} // as nodeEntityIDs
@@ -1469,8 +1493,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 				rid := types.RelID(storepkg.ParseIDFromKey(key, 1))
 				relEntityIDs.Add(int64(rid))
-				if img != nil {
-					// Clean close: type and adjacency come from their keys below.
+				if img != nil && !img.relTouched(rid) {
+					// Clean close (or untouched since an older image): type and adjacency
+					// come from their keys below.
 					bs.relIDs.Add(int64(rid))
 					bs.ords.rel(rid, true)
 					bs.seedRelRevAtOpenLocked(rid)
@@ -1542,7 +1567,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 				token := binary.BigEndian.Uint16(key[1:3])
 				rid := types.RelID(storepkg.ParseIDFromKey(key, 3))
-				if img != nil {
+				if img != nil && !img.relTouched(rid) {
 					if local := relEntityIDs.Has(int64(rid)); local {
 						bs.addTypeIdxLocked(token, rid)
 					}
@@ -1587,7 +1612,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				relType := binary.BigEndian.Uint16(key[9:11])
 				endID := storepkg.ParseIDFromKey(key, 11)
 				relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
-				if img != nil {
+				if img != nil && !img.relTouched(relID) {
 					if local := relEntityIDs.Has(int64(relID)); !local {
 						continue
 					}
@@ -1611,7 +1636,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			}
 			it.Close()
 
-			if img == nil {
+			if img == nil || img.delta() {
 				for _, info := range decodedRelInfo {
 					if bs.inKeyHereLocked(info) {
 						kr.expectedIn++
@@ -1637,7 +1662,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
 				hasLocalEntity := relEntityIDs.Has(int64(relID))
 				info, decoded := decodedRelInfo[relID]
-				if img != nil && hasLocalEntity {
+				if img != nil && hasLocalEntity && !img.relTouched(relID) {
 					decoded = true // clean close: the key agrees with the row
 					info = RelDeleteInfo{ID: relID.SnowflakeID(), StartID: startID, EndID: endID, RelType: relType}
 				}
@@ -1649,7 +1674,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					// A key backed by the local row is kept whether or not its end
 					// node is local (the outgoing scan's rule); it counts toward the
 					// shortfall check where the row wants it, as expectedIn does.
-					if img == nil && bs.inKeyHereLocked(info) {
+					if (img == nil || img.relTouched(relID)) && bs.inKeyHereLocked(info) {
 						kr.acceptedIn++
 					}
 				} else if hasLocalEntity {
@@ -1667,7 +1692,14 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			it.Close()
 		}
 
-		if img == nil {
+		if img.delta() && bs.adjOnDisk {
+			// The adjacency walks did not run: check the touched rels' keys by
+			// point reads, so a key they have is not taken for a missing one.
+			if err := kr.acceptAdjacencyKeys(txn, decodedRelInfo, bs.inKeyHereLocked); err != nil {
+				return err
+			}
+		}
+		if img == nil || img.delta() {
 			kr.addMissingKeys(txn, decodedNodeLabels, decodedRelInfo, bs.inKeyHereLocked)
 		}
 
@@ -1760,7 +1792,14 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				seenProperty[key] = struct{}{}
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if entries, ok := img.takeNodeProp(key); ok && !bs.propIdxOnDisk {
-					installValueIDs(entries, idx.AddKey)
+					installValueIDsKept(entries, func(id int64) bool { return bs.keepNodeEntry(img, id) }, idx.AddKey)
+					if img.delta() {
+						build := indexpkg.NewPostingsBuild(def.Elements)
+						bs.touchedNodeMembers(txn, decodedNodeLabels, def.LabelToken, &bs.indexRebuildPropertySkips, func(id snowflake.ID, n *types.Node) {
+							build.AddEntityKeys(id, def.PropertyKey, n.ForEachPropertyIndexKey)
+						})
+						fillFromBuild(build, idx.AddKey)
+					}
 				} else if bs.propIdxOnDisk && !propIdxNeedsBuild {
 					// Disk mode keeps the entries in the 0x0A keyspace, already
 					// built: nothing to read from the rows.
@@ -1828,7 +1867,14 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				seenRelProperty[key] = struct{}{}
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if entries, ok := img.takeRelProp(key); ok {
-					installValueIDs(entries, idx.AddKey)
+					installValueIDsKept(entries, func(id int64) bool { return bs.keepRelEntry(img, id) }, idx.AddKey)
+					if img.delta() {
+						build := indexpkg.NewPostingsBuild(def.Elements)
+						bs.touchedRelMembers(txn, decodedRelInfo, def.RelTypeToken, &bs.indexRebuildPropertySkips, func(id snowflake.ID, r *types.Relationship) {
+							build.AddEntityKeys(id, def.PropertyKey, r.ForEachPropertyIndexKey)
+						})
+						fillFromBuild(build, idx.AddKey)
+					}
 				} else if relIDs := bs.typeIdx[def.RelTypeToken]; relIDs != nil {
 					build := indexpkg.NewPostingsBuild(def.Elements)
 					for id := range relIDs.All() {
@@ -1879,7 +1925,12 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				seenComposite[key] = struct{}{}
 				idx := indexpkg.NewCompositePropertyIndex(def.Keys)
 				if entries, ok := img.takeComposite(key); ok {
-					installValueIDs(entries, idx.AddKey)
+					installValueIDsKept(entries, func(id int64) bool { return bs.keepNodeEntry(img, id) }, idx.AddKey)
+					bs.touchedNodeMembers(txn, decodedNodeLabels, def.LabelToken, &bs.indexRebuildCompositeSkips, func(id snowflake.ID, n *types.Node) {
+						if vk, found := indexpkg.NodeCompositeValueKey(idx.Keys, n); found {
+							idx.AddKey(id, vk)
+						}
+					})
 				} else if nodeIDs, ok := bs.openLabelMembers(txn, def.LabelToken, lazyLabels); ok {
 					build := indexpkg.NewPostingsBuild(false)
 					for nodeID := range nodeIDs {
@@ -1934,10 +1985,16 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					// current members, as the row walk below does.
 					members, _ := bs.openLabelMembers(txn, tok, lazyLabels)
 					for _, e := range restored {
-						if _, ok := members[types.NodeID(e.ID)]; ok {
+						if _, ok := members[types.NodeID(e.ID)]; ok && bs.keepNodeEntry(img, int64(e.ID)) {
 							ti.AddKnownAbsent(e.ID, e.From, e.To)
 						}
 					}
+					// A touched member starts from its row; New folds its history.
+					bs.touchedNodeMembers(txn, decodedNodeLabels, tok, &bs.indexRebuildTemporalSkips, func(id snowflake.ID, n *types.Node) {
+						from, to := indexpkg.NodeTemporalBounds(bs.validAxis.Get(), id, n.Temporal())
+						ti.AddKnownAbsent(id, from, to)
+						img.touchedTemporal[tok] = append(img.touchedTemporal[tok], types.NodeID(id))
+					})
 				} else if bs.temporalIdxOnDisk && !temporalIdxNeedsBuild {
 					// Fast path: stream (from, to, id) triples from the 0x0B keyspace without decoding
 					// nodes; key order matches TemporalIndex.Entries (storeutil.TemporalIndexEntryKey).
@@ -2029,8 +2086,14 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				hfi := indexpkg.NewHighFrequencyIndex(bucketSize, 0)
 				if entries, ok := img.takeHF(def.LabelToken); ok {
 					for _, e := range entries {
-						hfi.Add(e.id, e.start)
+						if bs.keepNodeEntry(img, int64(e.id)) {
+							hfi.Add(e.id, e.start)
+						}
 					}
+					bs.touchedNodeMembers(txn, decodedNodeLabels, def.LabelToken, &bs.indexRebuildHFSkips, func(id snowflake.ID, n *types.Node) {
+						from, _ := indexpkg.NodeTemporalBounds(bs.validAxis.Get(), id, n.Temporal())
+						hfi.Add(types.NodeID(id), from)
+					})
 				} else if nodeIDs, ok := bs.openLabelMembers(txn, def.LabelToken, lazyLabels); ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
@@ -2087,10 +2150,23 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				indexpkg.ApplyVectorIndexOptions(vi, def.vectorIndexOptions())
 				if entries, ok := img.takeVector(key, def.Dims); ok {
 					for _, e := range entries {
+						if !bs.keepNodeEntry(img, int64(e.id)) {
+							continue
+						}
 						if addErr := vi.AddOwned(e.id, e.vec); addErr != nil {
 							return fmt.Errorf("graph: load vector index definition label %d property %q restore node %d: %w",
 								def.LabelToken, def.PropertyKey, e.id, addErr)
 						}
+					}
+					var addErr error
+					bs.touchedNodeMembers(txn, decodedNodeLabels, def.LabelToken, &bs.indexRebuildVectorSkips, func(id snowflake.ID, n *types.Node) {
+						if vec, ok := n.Float32SlicePropertyCopy(def.PropertyKey); ok && addErr == nil {
+							addErr = vi.AddOwned(id, vec)
+						}
+					})
+					if addErr != nil {
+						return fmt.Errorf("graph: load vector index definition label %d property %q update from an older image: %w",
+							def.LabelToken, def.PropertyKey, addErr)
 					}
 				} else if nodeIDs, ok := bs.openLabelMembers(txn, def.LabelToken, lazyLabels); ok {
 					for nodeID := range nodeIDs {

@@ -133,6 +133,14 @@ type openImage struct {
 	// relTypes is the closing process's rel-type index; nil when the image
 	// has none (written before OPENWALK).
 	relTypes map[uint16]*indexpkg.IDSet
+	// since is the badger version of an image older than the store's newest
+	// commit, 0 for a trusted one; touchedNodes and touchedRels are the
+	// entities a newer key names (a delta open: badgerstore_open_image_delta.go).
+	since                     uint64
+	touchedNodes, touchedRels *indexpkg.IDSet
+	// touchedTemporal lists, per restored label temporal index, the touched
+	// members a delta open added from their rows: New folds their history.
+	touchedTemporal map[uint16][]types.NodeID
 }
 
 func newOpenImage() *openImage {
@@ -145,6 +153,7 @@ func newOpenImage() *openImage {
 		hf:               make(map[uint16][]imgHFEntry),
 		vectors:          make(map[indexpkg.VectorIndexKey][]imgVector),
 		restoredTemporal: make(map[uint16]bool),
+		touchedTemporal:  make(map[uint16][]types.NodeID),
 		relPropTx:        make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyTxMembers[types.RelID]),
 		nodePropTx:       make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyTxMembers[types.NodeID]),
 	}
@@ -493,6 +502,7 @@ func (bs *Store) readOpenImage() *openImage {
 	}
 	newest := bs.db.MaxVersion()
 	var img *openImage
+	var since uint64 // the header's version when older than newest: a delta open
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(openImageHeaderKey)
 		if errors.Is(err, badgerv4.ErrKeyNotFound) {
@@ -502,7 +512,7 @@ func (bs *Store) readOpenImage() *openImage {
 			return err
 		}
 		if item.Version() != newest {
-			return nil // something committed after the clean close
+			since = item.Version() // something committed after the clean close
 		}
 		var h openImageHeader
 		var ok bool
@@ -521,6 +531,9 @@ func (bs *Store) readOpenImage() *openImage {
 		if bs.logger != nil {
 			bs.logger.Warningf("graph: open image ignored, rebuilding from the rows: %v", err)
 		}
+		return nil
+	}
+	if img != nil && since != 0 && !bs.openImageDelta(img, since) {
 		return nil
 	}
 	return img

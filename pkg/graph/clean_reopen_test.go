@@ -6,7 +6,9 @@ package graph_test
 // structure after a reopen equals a full rebuild from the rows), across the
 // break cases: crash without Close, a store without persisted state (older
 // release), a read-only open, a write by another binary after Close, a
-// corrupted image.
+// corrupted image. Since OPENIMAGE an image older than the store's newest
+// commit (a crash, a later writer) is applied with what changed since: such an
+// open decodes the touched rows only.
 
 import (
 	"context"
@@ -120,6 +122,45 @@ func TestCleanReopenCostNotLinear(t *testing.T) {
 	}
 }
 
+// TestCrashReopenCostNotLinear (OPENIMAGE): after a clean close, a session
+// that writes one ai-soc record and crashes leaves an image older than the
+// store; the reopen decodes only the rows that record touched, at 10x entities
+// too (before: every row, 22+ minutes on ai-soc's 5.67 GB store).
+func TestCrashReopenCostNotLinear(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
+	sizes := [2]int{3_000, 30_000}
+	if !testing.Short() {
+		sizes = [2]int{100_000, 1_000_000}
+	}
+	var decoded [2]int64
+	for i, n := range sizes {
+		dir := t.TempDir()
+		buildAisocStore(t, dir, n)
+		g, bs := openReopenGraph(t, dir, reopenCfg{})
+		writeAisocRecords(t, g, 10_000_000, 1, 7, 11)
+		if err := bs.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		bs.SetDBClosedForTest(true) // the crash: no Close, no image
+		if err := bs.DBForTest().Close(); err != nil {
+			t.Fatal(err)
+		}
+		decoded[i] = badger.CountRowDecodesForTest(func() {
+			g, _ := openReopenGraph(t, dir, reopenCfg{})
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	t.Logf("rows decoded at a crash reopen after one record: %d entities -> %d, %d entities -> %d", sizes[0], decoded[0], sizes[1], decoded[1])
+	if decoded[1] > 2*decoded[0]+64 {
+		t.Fatalf("crash reopen decodes rows linear in the store: %d entities -> %d rows, %d entities -> %d rows",
+			sizes[0], decoded[0], sizes[1], decoded[1])
+	}
+}
+
 // copyStoreDir copies a closed badger directory.
 func copyStoreDir(t *testing.T, src string) string {
 	t.Helper()
@@ -163,13 +204,14 @@ func rawWrite(t *testing.T, dir string, fn func(txn *badgerv4.Txn) error) {
 	}
 }
 
-// fullRebuildDigest is the oracle: a copy of the closed store, written to by a
-// foreign writer after Close so no persisted open state can be trusted, opened
-// and digested.
-func fullRebuildDigest(t *testing.T, dir string, rc reopenCfg) string {
+// fullRebuildDigest is the oracle: a copy of the closed store without its
+// persisted open state, as a release without it would have closed it, opened
+// and digested. (A foreign write after Close no longer forces the rebuild: the
+// open applies what changed since the image, OPENIMAGE.)
+func fullRebuildDigest(t *testing.T, dir string, rc reopenCfg) (string, int64) {
 	t.Helper()
 	cp := copyStoreDir(t, dir)
-	rawWrite(t, cp, func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), []byte("x")) })
+	rawWrite(t, cp, func(txn *badgerv4.Txn) error { return badger.DeleteOpenStateForTest(txn) })
 	var digest string
 	n := badger.CountRowDecodesForTest(func() {
 		g, bs := openReopenGraph(t, cp, rc)
@@ -181,7 +223,7 @@ func fullRebuildDigest(t *testing.T, dir string, rc reopenCfg) string {
 	if n == 0 {
 		t.Fatal("oracle open decoded no rows: it did not rebuild")
 	}
-	return digest
+	return digest, n
 }
 
 // reopenDigest opens dir, digests it and closes (or abandons it on crash),
@@ -306,28 +348,33 @@ func TestCleanReopenMatchesFullRebuild(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			check := func(step string, wantFast bool, readOnly bool, mutate func(g *graphpkg.Graph)) {
+			// check reopens dir and compares it with the full rebuild. open says
+			// what the open may decode: fast none, delta some but fewer than the
+			// rebuild (the rows touched since the image), rebuild every row.
+			check := func(step string, open string, readOnly bool, mutate func(g *graphpkg.Graph)) {
 				t.Helper()
 				orc := rc
 				orc.readOnly = readOnly
-				want := fullRebuildDigest(t, dir, reopenCfg{onDisk: rc.onDisk})
+				want, all := fullRebuildDigest(t, dir, reopenCfg{onDisk: rc.onDisk})
 				got, decoded := reopenDigest(t, dir, orc, mutate)
 				if got, want = withoutNDV(got), withoutNDV(want); got != want {
 					t.Fatalf("%s: reopened state differs from the full rebuild:\n%s", step, firstDiff(got, want))
 				}
-				if wantFast && decoded > 0 {
+				switch {
+				case open == fast && decoded > 0:
 					t.Fatalf("%s: clean reopen decoded %d rows", step, decoded)
-				}
-				if !wantFast && decoded == 0 {
+				case open == delta && (decoded == 0 || decoded >= all):
+					t.Fatalf("%s: reopen from an older image decoded %d rows, want some and fewer than the rebuild's %d", step, decoded, all)
+				case open == rebuild && decoded == 0:
 					t.Fatalf("%s: reopen decoded no rows, but its persisted state is stale", step)
 				}
 			}
 
 			// Clean close, then a session that writes again.
-			check("clean reopen", true, false, func(g *graphpkg.Graph) { mutateMixed(t, g, 2) })
-			check("second clean reopen", true, false, nil)
-			check("read-only open", true, true, nil)
-			check("after read-only close", true, false, nil)
+			check("clean reopen", fast, false, func(g *graphpkg.Graph) { mutateMixed(t, g, 2) })
+			check("second clean reopen", fast, false, nil)
+			check("read-only open", fast, true, nil)
+			check("after read-only close", fast, false, nil)
 
 			// Writes before the first statistics read: the deferred build must
 			// see their rows exactly once.
@@ -357,35 +404,43 @@ func TestCleanReopenMatchesFullRebuild(t *testing.T) {
 			if err := bs.DBForTest().Close(); err != nil {
 				t.Fatal(err)
 			}
-			check("read-only open after crash", false, true, nil)
-			check("reopen after crash", false, false, nil)
-			check("clean reopen after crash recovery", true, false, nil)
+			check("read-only open after crash", delta, true, nil)
+			check("reopen after crash", delta, false, nil)
+			check("clean reopen after crash recovery", fast, false, nil)
 
-			// Another binary wrote after Close (an older release knows nothing of the persisted state).
+			// Another binary wrote after Close (an older release knows nothing of the
+			// persisted state): a key that names no entity touches nothing.
 			rawWrite(t, dir, func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign2"), []byte("y")) })
-			check("reopen after a foreign write", false, false, nil)
+			check("reopen after a foreign write", fast, false, nil)
 
 			// A store closed by a release without persisted open state.
 			rawWrite(t, dir, func(txn *badgerv4.Txn) error { return badger.DeleteOpenStateForTest(txn) })
-			check("older store", false, false, nil)
-			check("older store, second open", true, false, nil)
+			check("older store", rebuild, false, nil)
+			check("older store, second open", fast, false, nil)
 
 			// A damaged chunk of the persisted state.
 			rawWrite(t, dir, func(txn *badgerv4.Txn) error { return badger.CorruptOpenStateForTest(txn) })
-			check("damaged persisted state", false, false, nil)
+			check("damaged persisted state", rebuild, false, nil)
 
 			if !rc.onDisk {
 				// Switching the *OnDisk modes on over a clean image: the pending
 				// on-disk backfills read the rows (the temporal one folds history
 				// again), every other index still comes from the image.
-				check("clean reopen", true, false, nil)
+				check("clean reopen", fast, false, nil)
 				rc.onDisk = true
-				check("first open with the *OnDisk modes", false, false, nil)
-				check("clean reopen with the *OnDisk modes", true, false, nil)
+				check("first open with the *OnDisk modes", rebuild, false, nil)
+				check("clean reopen with the *OnDisk modes", fast, false, nil)
 			}
 		})
 	}
 }
+
+// The opens check expects (decoded rows).
+const (
+	fast    = "fast"
+	delta   = "delta"
+	rebuild = "rebuild"
+)
 
 // withoutNDV drops the NDV estimates from a digest. NDV never decreases
 // (docs/query-planners.md "Deletion semantics"): a clean reopen keeps the
