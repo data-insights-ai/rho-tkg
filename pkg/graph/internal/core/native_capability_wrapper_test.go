@@ -1749,11 +1749,15 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx history fault: %v", err)
 	}
-	if node, err := tx2.UpdateNode(a.ID(), map[string]any{"tx": "blocked"}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || node != nil {
-		t.Fatalf("Tx.UpdateNode nil history row = (%v, %v), want nil, ErrInvalidStoreMutation", node, err)
+	// The update's rollback snapshot keeps only the trim point (no history
+	// row at or above the current row: TXSNAP), so the update reads no
+	// history; the rollback, which rewrites the pre-tx rows on a store
+	// without the rollback trim, reads it and rejects the nil row.
+	if _, err := tx2.UpdateNode(a.ID(), map[string]any{"tx": "blocked"}); err != nil {
+		t.Fatalf("Tx.UpdateNode with a faulty history: %v (the snapshot must not read the history)", err)
 	}
-	if err := tx2.Rollback(); err != nil {
-		t.Fatalf("Rollback history fault tx: %v", err)
+	if err := tx2.Rollback(); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+		t.Fatalf("Rollback over a nil history row = %v, want ErrInvalidStoreMutation", err)
 	}
 	fs.failNodeHist.Store(false)
 	fs.nodeHistory = nil

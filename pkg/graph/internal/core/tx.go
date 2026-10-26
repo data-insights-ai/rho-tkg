@@ -324,19 +324,23 @@ func (tx *GraphTx) snapshotCurrentNodeLocked(node *types.Node) error {
 		})
 		return nil
 	}
-	if tx.g.historyTrim != nil {
-		if found, err := tx.nodeHistoryAtOrAbove(types.NodeID(id), node.Version()); err != nil {
-			return err
-		} else if !found {
-			tx.snapshotSet[key] = true
-			tx.updatedNodes = append(tx.updatedNodes, nodeSnapshot{
-				id:              id,
-				prev:            prev,
-				historyTrimFrom: node.Version(),
-				useHistoryTrim:  true,
-			})
-			return nil
-		}
+	// No history row at or above the current row: the tx's rows are the
+	// current row moved into history and those above it, so the snapshot keeps
+	// the trim point only. A store without the rollback trim (tiered, sharded)
+	// rewrites the pre-tx rows at rollback (removeNodeTxRows) instead of every
+	// first write copying the chain (TXSNAP: sigma's session stamp on tiered,
+	// O(versions) per Tx).
+	if found, err := tx.nodeHistoryAtOrAbove(types.NodeID(id), node.Version()); err != nil {
+		return err
+	} else if !found {
+		tx.snapshotSet[key] = true
+		tx.updatedNodes = append(tx.updatedNodes, nodeSnapshot{
+			id:              id,
+			prev:            prev,
+			historyTrimFrom: node.Version(),
+			useHistoryTrim:  true,
+		})
+		return nil
 	}
 
 	history, err := tx.g.copyNodeHistory(types.NodeID(id))
@@ -385,19 +389,18 @@ func (tx *GraphTx) snapshotCurrentRelLocked(rel *types.Relationship) error {
 		})
 		return nil
 	}
-	if tx.g.historyTrim != nil {
-		if found, err := tx.relHistoryAtOrAbove(types.RelID(id), rel.Version()); err != nil {
-			return err
-		} else if !found {
-			tx.snapshotSet[key] = true
-			tx.updatedRels = append(tx.updatedRels, relSnapshot{
-				id:              id,
-				prev:            prev,
-				historyTrimFrom: rel.Version(),
-				useHistoryTrim:  true,
-			})
-			return nil
-		}
+	// No history row at or above the current row — see snapshotCurrentNodeLocked.
+	if found, err := tx.relHistoryAtOrAbove(types.RelID(id), rel.Version()); err != nil {
+		return err
+	} else if !found {
+		tx.snapshotSet[key] = true
+		tx.updatedRels = append(tx.updatedRels, relSnapshot{
+			id:              id,
+			prev:            prev,
+			historyTrimFrom: rel.Version(),
+			useHistoryTrim:  true,
+		})
+		return nil
 	}
 
 	history, err := tx.g.copyRelHistory(types.RelID(id))

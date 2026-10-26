@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **TXSNAP** (sigma, 26 Oct: 58 % of CPU on ai-soc's BA slice; budget per lesson 89): on a tiered or sharded store,
+  the first write to a node or relationship in a `GraphTx` copied the entity's whole history for the rollback
+  snapshot whenever the head cache had no valid entry for it — every time for sigma's session stamp (each Tx
+  patches the current row's own interval, so the entry the next Tx needs is stale), O(versions) per Tx. The
+  snapshot now keeps only the trim point whenever no history row lies at or above the current row, on every
+  store; a store without the rollback trim (tiered, sharded) rewrites the pre-tx rows at rollback instead. sigma's
+  `WriteDerived` shape at 1,000 versions: 22,752 -> 231 allocations on tiered (same as at 10 versions; memory and
+  badger had it already); a rolled-back stamp leaves the chain as it was
+  (`TestTxSnapSessionStampFlatInChainLength`, `TestTxSnapRelStampFlatInChainLength`).
+
 ## [4.84.0] - 2026-10-26
 
 ### Changed
