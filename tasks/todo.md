@@ -63,8 +63,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   answers an entity's highest stored history version (write buffer included; badger one reverse key seek), used
   by the allocator and by the snapshot (rollback then trims the Tx's own rows above it, as the head path does).
   Budget (lesson 89): a patch in a Tx on a node with 1,000 versions costs at most 1.5x the same patch on a node
-  with 10. Done when: released with the budget met. Waits for: EXISTMAP's tag; sigma's chain length per write
-  sets the test shape.
+  with 10. Done when: released with the budget met. Waits for: EXISTMAP's tag. Chain length (sigma, 26 Oct,
+  v0.11.71 ROWSRUN): before, one Session node gained a version per paged head per cut (45 versions in sigma's test
+  of 2 heads over 24 cuts; 1,000 within a few hundred cuts on ai-soc's program); now each head has its own node,
+  one version per cut, so a long run still reaches thousands per node. The 1,000-against-10 shape fits; ai-soc's
+  BA re-run gives the real per-write length (sigma forwards it).
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
