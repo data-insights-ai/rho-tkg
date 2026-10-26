@@ -26,7 +26,9 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk (not PropertyIndexOnDisk: sigma's DerivedPage ov_k/ov_h
     index grew in RAM, ~1 value per row; ai-soc switching it, 26 Oct), ValueDictionaries, UntimedUnbounded, AllowRetentionPurge;
     `DepthWarm` on windowed reads; `CreateRelTemporal` on its 29 estate-indexed rel types; unique keys on reference
-    labels only; Derived (and its composite index) on the reference shard. Event times UTC (Check Point CSV in the
+    labels only; Derived (and its composite index) on the reference shard. Pins rho v4.86.0 (dc50a553, 26 Oct);
+    its /metrics exports `aisoc_store_shard_access_total{tier}` from ShardAccessStats (kit BA slice: warm, cold and
+    cold opens 0). Event times UTC (Check Point CSV in the
     operator's zone, BO: America/Bogota); Flux runs Europe/Berlin.
   - sigma-tkgd, agent `sigma-tkgd-bb`: bumps to rho v4.85.0 and merges ROWPROBE on the door (26 Oct); PAGEREF/PAGESTATS
     next, on TIERSTATS. v0.11.80 (26 Oct: KEYDICT; v0.11.79 pins rho v4.84.1 in every module, full

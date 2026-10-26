@@ -14,6 +14,7 @@ import (
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
+	"sync"
 	"time"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
@@ -26,6 +27,10 @@ var store *tieredpkg.Store
 var syncW = flag.Bool("sync", false, "ai-soc's durability: SyncWrites + DurableCommit")
 var padBytes = flag.Int("bytes", 0, "add a string property of this many bytes per fact")
 var batchN = flag.Int("batch", 1000, "nodes per batch")
+var insProf = flag.String("insertprofile", "", "CPU profile of the insert")
+var blockProf = flag.String("blockprofile", "", "block profile of the insert")
+var mutexProf = flag.String("mutexprofile", "", "mutex profile of the insert")
+var writers = flag.Int("writers", 1, "concurrent writers, each inserting its share of n in its own batches")
 
 func open(dir string) *graphpkg.Graph {
 	ts, err := tieredpkg.New(tieredpkg.Config{DataDir: dir, RefLabels: []string{"Derived"}, ShardWindow: 24 * time.Hour,
@@ -71,27 +76,60 @@ func main() {
 	t0 := time.Now()
 	batch := *batchN
 	pad := strings.Repeat("x", *padBytes)
-	for i := 0; i < *n; i += batch {
-		if _, err := g.Batch().Run(func(b *graphpkg.BatchBuilder) error {
-			for j := i; j < i+batch && j < *n; j++ {
-				p := map[string]any{"k": int64(j)}
-				if *padBytes > 0 {
-					p["pad"] = fmt.Sprintf("%08d", j) + pad[8:]
-				}
-				if *composite {
-					p["namespace"], p["relation"] = "estate", fmt.Sprintf("r%d", j%50)
-				}
-				if *valid {
-					p["tkg_valid_from"], p["tkg_valid_to"] = types.Instant(1_000_000+j), types.Instant(2_000_000+j)
-				}
-				if _, err := b.AddNode([]string{*label}, p); err != nil {
-					return err
+	if *insProf != "" {
+		f, _ := os.Create(*insProf)
+		pprof.StartCPUProfile(f)
+	}
+	if *mutexProf != "" {
+		runtime.SetMutexProfileFraction(5)
+	}
+	if *blockProf != "" {
+		runtime.SetBlockProfileRate(100_000)
+	}
+	var wg sync.WaitGroup
+	per := (*n + *writers - 1) / *writers
+	for w := 0; w < *writers; w++ {
+		lo, hi := w*per, min((w+1)*per, *n)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := lo; i < hi; i += batch {
+				if _, err := g.Batch().Run(func(b *graphpkg.BatchBuilder) error {
+					for j := i; j < i+batch && j < hi; j++ {
+						p := map[string]any{"k": int64(j)}
+						if *padBytes > 0 {
+							p["pad"] = fmt.Sprintf("%08d", j) + pad[8:]
+						}
+						if *composite {
+							p["namespace"], p["relation"] = "estate", fmt.Sprintf("r%d", j%50)
+						}
+						if *valid {
+							p["tkg_valid_from"], p["tkg_valid_to"] = types.Instant(1_000_000+j), types.Instant(2_000_000+j)
+						}
+						if _, err := b.AddNode([]string{*label}, p); err != nil {
+							return err
+						}
+					}
+					return nil
+				}); err != nil {
+					panic(err)
 				}
 			}
-			return nil
-		}); err != nil {
-			panic(err)
-		}
+		}()
+	}
+	wg.Wait()
+	if *insProf != "" {
+		pprof.StopCPUProfile()
+	}
+	if *blockProf != "" {
+		f, _ := os.Create(*blockProf)
+		pprof.Lookup("block").WriteTo(f, 0)
+		f.Close()
+	}
+	if *mutexProf != "" {
+		f, _ := os.Create(*mutexProf)
+		pprof.Lookup("mutex").WriteTo(f, 0)
+		f.Close()
 	}
 	if err := store.Flush(); err != nil {
 		panic(err)

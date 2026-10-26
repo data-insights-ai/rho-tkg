@@ -36,6 +36,15 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   UNIQIDX adoption with SHARD step 10 moves the keyed nodes to event shards, Derived stays; a purge for result rows
   is STORECFG, René later); restart re-reads all past results (625 s at 3 days, mostly sigma's; rho's share from
   OpenStats of k10260915). So EXISTMAP and COMPOSITEDISK bite first on the reference shard.
+- **WRITERATE** (SCALE, measured 26 Oct, `tasks/evidence/WRITERATE/results.txt`) — a hot shard's ingest is capped by
+  one serial flush pipeline (the graph write lock around each batch, the store's flush mutex, badger's single writer):
+  57-91 k facts/s of 500 B here whatever the writer count, 1.1-2x the goal's 46 k/s sustained, while separate stores
+  scale near linearly (4 stores 228 k/s). Levers, cheapest first: (1) ASYNCSTAGE: an async backpressure flush
+  (100 k ops) always exceeds badger's transaction limit and is staged, writing each entry three times; flush below
+  the limit; (2) GROUPFSYNC: a durable batch holds the graph lock through its fsync; overlap the next batch's apply
+  with it (needs the rule for what a reader sees before the fsync); (3) LANES: several hot write lanes (K badger DBs
+  for the hot window, IDs striped by lane), an ADR first. Done when: one graph ingests 500 B facts at 3x the goal
+  (~140 k/s durable) on this machine, measured with the probe.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 

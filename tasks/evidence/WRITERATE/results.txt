@@ -1,0 +1,35 @@
+WRITERATE: peak write headroom and several writers (26 Oct, v4.86.0, 32 cores, load average 12-34 from other
+sessions, so rates move +-30 % run to run). Probe: tasks/evidence/SCALE/scaleprobe_main.go.txt (new flags -writers,
+-insertprofile, -blockprofile, -mutexprofile). Shape: tiered, label Event (hot shard), 500 B string per fact,
+batches of 1000, each writer its own batches.
+
+Durable (-sync: SyncWrites + DurableCommit, ai-soc's config), 400 k facts:
+  writers   1: 16-38 k/s   2: 33 k/s   4: 41 k/s   8: 49-91 k/s   16: 48 k/s
+Async (no sync), 800 k facts:
+  writers   1: 58-72 k/s   2: 60 k/s   4: 57-64 k/s   8: 57-59 k/s
+Versions (single writer, alternated, same load): v4.82.0, v4.84.0 and v4.86.0 within noise of each other (async
+57-72 k/s all three; durable 24-38 k/s all three): no regression.
+
+Where the writers wait (8 writers):
+  - mutex profile: 96 % of the wait is the graph write lock (core shardedRWMutex): BatchBuilder.Execute holds it
+    exclusively for the whole batch, so batches run one at a time.
+  - block profile inside Execute: async, the holder blocks in badger flushIfNeeded -> flush on the store's flush
+    mutex (the background flush in progress); durable, in DurableFlush on the same mutex plus the fsync.
+  - CPU: the process uses ~2.2 of 32 cores; badger's single write goroutine (doWrites -> writeToLSM ->
+    memtable skiplist) and rho's flush are the serial path.
+  - async only: a backpressure flush fires at MaxPendingWrites (100 k ops, ~60 MB at 500 B), far above badger's
+    transaction limit, so every such flush is staged (FLUSHPART: stage, mark, apply, delete the staging):
+    each entry written three times, and the staging delete iterates the staging prefix (8.7 % of CPU).
+    Durable mode commits each batch in one transaction (no staging).
+
+Do separate stores scale? (independent processes, 4 writers each, async, 800 k facts each)
+  1 store: 64 k/s;  2 stores: 64 + 63 = 127 k/s;  4 stores: 61 + 56 + 56 + 55 = 228 k/s
+  durable, 2 stores x 8 writers: 65 + 65 = 130 k/s
+Reading: the machine has ~4x the write capacity one store uses; a hot shard's ingest is capped by one serial
+flush pipeline (one badger DB's writer plus rho's flush under the graph lock), not by CPU, disk or writers.
+At the goal (46 k facts/s sustained) one hot shard leaves 1.1-2x headroom, so peaks wall; "more hardware" does
+not help a single pipeline. Levers, cheapest first: (1) async: flush below the transaction limit so a flush
+commits directly instead of staged (3x fewer badger writes); (2) durable: overlap the next batch's apply with
+the previous group's fsync (group commit outside the graph lock; needs a decision on what a reader may see
+before the fsync); (3) several hot write lanes (K badger DBs for the hot window, IDs striped by lane), which
+scale like the separate stores above.
