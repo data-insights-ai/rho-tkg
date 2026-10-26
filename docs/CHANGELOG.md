@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.81.1] - 2026-10-26
+
+### Fixed
+
+- **CALENDAR** (first finding of ai-soc's calendar check, on René's word): a daily or weekly tiered `ShardWindow` in a
+  zone whose clocks jump forward AT midnight (America/Santiago, America/Havana, America/Asuncion) built a window that
+  ends before it starts, DSTWIN's failure (the catalog refuses it and the store stops taking commits). Go places the
+  missing 00:00 at 23:00 the evening before, so the evening's window ended an hour early and a rotation in that hour
+  failed (a probe over 2024-2028, every quarter hour: 40, 40 and 8 bad quarter hours; Berlin, Lord_Howe, Kathmandu,
+  Beirut, Bogota and UTC none). A day now begins at the jump (`dayStart`). Only new hot shards (open, rotation) use
+  it: shard names and existing catalog windows are unchanged. `TestRotationWindowAcrossDST` covers 11 zones, every
+  hour of 2024-2026, and that the window holding an instant contains it.
+
 ## [4.81.0] - 2026-10-26
 
 ### Added

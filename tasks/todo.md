@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.81.0 (2026-10-26). Background, René's open decisions with my defaults,
+What rho does next, in order. Last release: v4.81.1 (2026-10-26). Background, René's open decisions with my defaults,
 and the numbered backlog: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`, under the same tag.
 
 Each item: one sentence, then when it is done and what it waits for.
@@ -8,8 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-26 Oct: v4.75.0 to v4.81.0 (`docs/CHANGELOG.md`). Now: CALENDAR's first fix (branch `midnightdst`), then
-the rest of CALENDAR, OPENCOLD with RESTART, COLDWRITE's test, BADGER step 3's last pieces.
+Released 24-26 Oct: v4.75.0 to v4.81.1 (`docs/CHANGELOG.md`). Now: the rest of CALENDAR, OPENCOLD with RESTART, COLDWRITE's test, BADGER step 3's last pieces.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -135,12 +134,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   ai-soc's inputs (26 Oct; pin v4.79.0): ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2, a planned 28-day daily
   purge (a purge at a DST boundary belongs in the table), event zones UTC and America/Bogota, host zone Europe/Berlin
   and TZ unset (nothing may depend on the process's zone). Found first (26 Oct, probe 2024-2028, every quarter
-  hour): where clocks jump forward at midnight (Santiago, Havana, Asuncion) Go places the missing 00:00 at 23:00 the
-  evening before, so that day's daily window ends an hour early and a rotation in that hour builds a window ending
-  before it starts (DSTWIN's failure; 40, 40 and 8 bad quarter hours; Berlin, Lord_Howe, Kathmandu, Beirut, UTC none).
-  Fixed on branch `midnightdst` (`dayStart`: the day begins at the jump; TestRotationWindowAcrossDST now covers
-  these zones, Beirut, Kathmandu, Lord_Howe, Bogota and UTC over 2024-2026; mutation killed; dfb99567); only new
-  hot shards use it (open, rotation), so existing catalog windows stay; patch v4.81.1 next.
+  hour): zones whose clocks jump forward at midnight; fixed in v4.81.1. Left: the other places of the table.
 - **COLDWRITE** (ai-soc, Fable G4, 26 Oct) — can a tiered write land in a cold shard, and is it lost to recovery?
   Answered from the code: yes it can (an update or late event older than ColdAfter opens the shard writable,
   `tieredstore_lifecycle.go` checkout); rho's recovery does not scan by time (each shard replays its WAL at its next

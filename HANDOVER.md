@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.81.0 = UNIQIDX, SHARD step 10 slice 1; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.81.1 = CALENDAR's first fix (daily windows in zones that jump at midnight); v4.81.0 = UNIQIDX, SHARD step 10 slice 1; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file = state, consumers, glossary, user-only actions. File roles: README.md § Documentation.
@@ -19,15 +19,15 @@ the main worktree `../rho-tkg-main` when a branch is checked out.
 
 **Where things stand** (26 Oct; order René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the
 data and the consumer agents):
-- **Released 24-26 Oct:** v4.75.0 to v4.81.0, each under its tag in `docs/CHANGELOG.md`. Unreleased on main (docs and
+- **Released 24-26 Oct:** v4.75.0 to v4.81.1, each under its tag in `docs/CHANGELOG.md`. Unreleased on main (docs and
   tests only): AXIS announcement withdrawn, IDPROPS withdrawn, FLAKE, VLOGGC/COMPACTL0/MOVERCOPY measurements.
 - **BADGER** (milestone, René 24 Oct): steps 1 and 2 done; step 3 left: GETWALK, per-tier caches and compactors (worth
   less since COLDRO).
 - **SHARD** (ADR-0012 in architecture.md, plan with boxes in todo): steps 1-8 shipped (v4.76.1, v4.78.0 to v4.78.5),
   step 10 slice 1 UNIQIDX in v4.81.0; the next slices (label and property postings, the rel owner map) on a measured
   need. ai-soc adopts UNIQIDX with step 10 on René's word, after counting duplicate keys.
-- **Now:** CALENDAR (branch `midnightdst`: a daily window in a zone whose clocks jump at midnight, Santiago, Havana,
-  Asuncion, ended an hour early; fix green, patch next), then OPENCOLD with RESTART's open counters, COLDWRITE's test.
+- **Now:** the rest of CALENDAR (first fix in v4.81.1: daily windows in zones that jump at midnight), then OPENCOLD
+  with RESTART's open counters, COLDWRITE's test.
 - **Queued:** DICTMERGE and PROPPOS (after ai-soc measures DICT); WRITTENAT (withdrawn by ai-soc unless sigma's PUBIDS
   fails); OPENIMAGE; METASYNC's power-loss rig (later, René 26 Oct); PURGEIDS (sigma, Later). CHAIN and R37 wait for a
   Flux run: René's word, after sigma's ENDPOINT and EDGEREF tags. STORE/STORECFG are with René. Parked: BADGERPANIC.
@@ -53,7 +53,7 @@ data and the consumer agents):
     `projects/derived-writeback` (cmd/wbscan).
   - Notify after gate + tag + push: `sigma-tkgd-bb` and `ai-soc-main-45` (`ListAgents`; names change per session). If
     neither resolves, put the release note here and tell René in one line.
-- **Unpushed:** main is pushed; branch `midnightdst` (CALENDAR) is in progress; the other local item branches are merged (user-only action 6).
+- **Unpushed:** main is pushed; the local item branches are merged (user-only action 6).
 - **Housekeeping:** session scratchpad emptied 2026-10-20 (row 76); deletions stay René's call (`rm -rf` is denied to agents).
   Docs check: `go test -count=1 -run 'Docs|Consistency' ./...`. Consumer build check: Appendix B (sigma-tkgd, ai-soc,
   agent-bookkeeping).
@@ -121,7 +121,7 @@ lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
 4. gh-dashboard scratchpad (667 MB, path in that session). The cleanup message to tts-tests-b6 expired and monitoring-a9's is
    held (different permission mode); tell them directly if wanted.
 5. `! git branch -D v5 worktree-agent-a0d52d5298e44faee` (full name; `v5` = stale copy of origin/v5 `04c7fd4f`, worktree-agent: its test and evidence are `tasks/evidence/4/` on main, backlog item 4). Both content-complete elsewhere.
-6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc` (`-d` refuses an unmerged one).
+6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc midnightdst` (`-d` refuses an unmerged one).
 
 ## Appendix A — origin watch
 
