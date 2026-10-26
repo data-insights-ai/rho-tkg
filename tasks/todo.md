@@ -36,6 +36,17 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   UNIQIDX adoption with SHARD step 10 moves the keyed nodes to event shards, Derived stays; a purge for result rows
   is STORECFG, René later); restart re-reads all past results (625 s at 3 days, mostly sigma's; rho's share from
   OpenStats of k10260915). So EXISTMAP and COMPOSITEDISK bite first on the reference shard.
+- **ROWPROBE** (sigma, 26 Oct: ai-soc's PageRows spends 10.7 of 70 s in sigma's paged-row probes; batching them
+  through `ByLabelAndPropertyValues` gains nothing on v4.84.1) — three rho costs, confirmed in the code: badger with
+  `PropertyIndexOnDisk` looks each value up on its own (a pending-overlay pass each) and point-reads every matched
+  row; `NodeHasAnyIndexKey` matches every node against every key (quadratic in a big value list: 1,000 values in one
+  call 1.75 M allocs against 249 k unbatched); the pager reads one effective timeline per node (tiered: 2.81 of
+  3.06 s). Plan: (a) patch — a key set built once per call, one disk pass over all values, matched rows through one
+  scan snapshot; (b) minor — `ForEachNodeEffectiveByLabelAndPropertyValues` (the row-121 page door with one key's
+  value list: candidates and segments at one pin through one snapshot), shape asked of sigma 26 Oct. Budget (lesson
+  89): one call with 1,000 values costs per value at most 1.2x a call with 16, and sigma's all-in-one bench beats
+  its unbatched 74 ms. Done when: both released with the budget met; sigma's branch (one pager call per join level)
+  adopts them.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
