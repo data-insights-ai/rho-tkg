@@ -342,8 +342,9 @@ type Store struct {
 	vectorIdxFile     string // path to vector_indexes.msgpack
 	dataDir           string
 	closing           atomic.Bool
-	ownerIdxMu        sync.Mutex  // guards ownerIdx
-	ownerIdx          *ownerIndex // the owner index (owner_index.go); nil until it exists
+	ownerIdxMu        sync.Mutex   // guards ownerIdx
+	ownerIdx          *ownerIndex  // the owner index (owner_index.go); nil until it exists
+	ownerIdxSyncs     atomic.Int64 // owner-index syncs before durable rows (tests)
 	// set when Close begins: a running move stops (shard_move.go)
 	moveFault        func(step string) error // test hook: a crash after a move step
 	warmDir, coldDir string                  // volumes (shard_volume.go); "" = not mapped
@@ -1739,6 +1740,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		// Same seam for the commit floor (tieredstore_commit_floor.go): the
 		// reference shard keeps it, ahead of this shard's rows.
 		cfg.OnCommitFloor = ts.persistShardCommitFloor
+		cfg.BeforeFlushRows = ts.syncOwnerIndexBeforeRows
 	}
 	// Change-log: slave this shard's LSNs to the store-global allocator and, for
 	// non-reference shards, persist the allocator watermark to the reference

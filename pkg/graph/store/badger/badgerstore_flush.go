@@ -280,6 +280,15 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		return fmt.Errorf("graph: write-ahead property-key registry: %w", err)
 	}
 
+	// Step 1.55: the owner's write-ahead hook (Config.BeforeFlushRows): what it
+	// keeps for these rows (the tiered owner index's claims) is durable first.
+	if bs.beforeFlushRows != nil && len(ops) > 0 {
+		if err := bs.beforeFlushRows(bs.syncWrites || bs.inDurableFlush); err != nil {
+			requeue()
+			return fmt.Errorf("graph: write-ahead before rows: %w", err)
+		}
+	}
+
 	// Step 1.6: the commit floor (badgerstore_commit_floor.go) covers every
 	// row stamp in this batch before any row can be durable: through the
 	// owner's hook ahead of the batch, else as the batch's first entry.

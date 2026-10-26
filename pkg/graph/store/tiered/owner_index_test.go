@@ -127,3 +127,68 @@ func TestOwnerIndexLifecycle(t *testing.T) {
 		t.Fatalf("in-memory owner = %d, %v, %v", id, ok, err)
 	}
 }
+
+// TestOwnerIndexSyncedBeforeDurableRows pins UNIQIDX's write order without a
+// sync per claim: a claim is synced by the first flush that makes rows
+// durable after it (SyncWrites, DurableFlush), once, before those rows; a flush
+// that makes nothing durable does not sync it, nor does a durable flush with
+// no claim since the last sync. Catches the hook not called and a sync per
+// claim or per flush.
+func TestOwnerIndexSyncedBeforeDurableRows(t *testing.T) {
+	t.Parallel()
+	for _, syncWrites := range []bool{false, true} {
+		ts, err := New(Config{DataDir: t.TempDir(), RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour,
+			FlushInterval: 1<<63 - 1, SyncWrites: syncWrites})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		_, _, sigTok := installDefaultTestLabelRegistry(t, ts)
+		if err := ts.DeclareUniqueOwnerIndex(sigTok, "key"); err != nil {
+			t.Fatal(err)
+		}
+		gen := tieredNodeGen(t)
+		claimAndWrite := func(v string) {
+			t.Helper()
+			n := types.NewNode(types.NodeID(gen.Generate()), sigTok, nil)
+			if err := n.SetProperty("key", v); err != nil {
+				t.Fatal(err)
+			}
+			if err := ts.PutUniqueOwner(sigTok, "key", "s:"+v, n.ID()); err != nil {
+				t.Fatal(err)
+			}
+			if err := ts.PutNode(n); err != nil {
+				t.Fatal(err)
+			}
+		}
+		claimAndWrite("a")
+		if err := ts.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		want := int64(0)
+		if syncWrites {
+			want = 1
+		}
+		if got := ts.ownerIdxSyncs.Load(); got != want {
+			t.Fatalf("SyncWrites=%v: %d owner-index syncs after a flush, want %d", syncWrites, got, want)
+		}
+		if err := ts.DurableFlush(); err != nil {
+			t.Fatal(err)
+		}
+		want = 1 // the claim is synced exactly once, by the first durable flush after it
+		if got := ts.ownerIdxSyncs.Load(); got != want {
+			t.Fatalf("SyncWrites=%v: %d owner-index syncs after DurableFlush, want %d", syncWrites, got, want)
+		}
+		// A row without a claim: its durable flush runs the hook, which has
+		// nothing to sync.
+		if err := ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), sigTok, nil)); err != nil {
+			t.Fatal(err)
+		}
+		if err := ts.DurableFlush(); err != nil {
+			t.Fatal(err)
+		}
+		if got := ts.ownerIdxSyncs.Load(); got != want {
+			t.Fatalf("SyncWrites=%v: a durable flush without new claims synced the index (%d)", syncWrites, got)
+		}
+		_ = ts.Close()
+	}
+}

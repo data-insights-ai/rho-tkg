@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -39,6 +40,11 @@ type ownerIndex struct {
 	db       *badgerv4.DB
 	declared map[ownerDecl]struct{}
 	ready    map[ownerDecl]struct{}
+	// Claims are not synced one by one: a shard's durable flush syncs the
+	// index first (syncOwnerIndexBeforeRows). syncMu orders that sync with
+	// the dirty mark, so no flush skips a sync another one has not finished.
+	syncMu sync.Mutex
+	dirty  atomic.Bool
 }
 
 type ownerDecl struct {
@@ -70,6 +76,7 @@ func ownerKey(label uint16, key, valueKey string) []byte {
 // not exist and create is not set.
 func (ts *Store) openOwnerIndex(create bool) (*ownerIndex, error) {
 	cfg := ts.badgerCfg(ownerIndexDir, false)
+	cfg.SyncWrites = false // claims are synced before the rows they back (syncOwnerIndexBeforeRows)
 	if !ts.inMemory {
 		cfg.Dir = filepath.Join(ts.dataDir, ownerIndexDir)
 		if _, err := os.Stat(cfg.Dir); errors.Is(err, fs.ErrNotExist) && !create {
@@ -142,6 +149,9 @@ func (ts *Store) DeclareUniqueOwnerIndex(label uint16, key string) error {
 	if err := idx.db.Update(func(txn *badgerv4.Txn) error { return txn.Set(ownerDeclKey(label, key), nil) }); err != nil {
 		return fmt.Errorf("graph: declare owner index: %w", err)
 	}
+	if err := idx.sync(); err != nil {
+		return err
+	}
 	idx.declared[ownerDecl{label, key}] = struct{}{}
 	return nil
 }
@@ -204,6 +214,7 @@ func (ts *Store) PutUniqueOwner(label uint16, key, valueKey string, id types.Nod
 	if err := idx.db.Update(func(txn *badgerv4.Txn) error { return txn.Set(ownerKey(label, key, valueKey), v) }); err != nil {
 		return fmt.Errorf("graph: claim owner: %w", err)
 	}
+	idx.dirty.Store(true)
 	return nil
 }
 
@@ -234,6 +245,7 @@ func (ts *Store) SeedUniqueOwner(label uint16, key, valueKey string, id types.No
 	if err != nil {
 		return fmt.Errorf("graph: seed owner: %w", err)
 	}
+	idx.dirty.Store(true)
 	return nil
 }
 
@@ -252,6 +264,9 @@ func (ts *Store) MarkUniqueOwnerIndexReady(label uint16, key string) error {
 	defer idx.mu.Unlock()
 	if err := idx.db.Update(func(txn *badgerv4.Txn) error { return txn.Set(ownerReadyKey(label, key), nil) }); err != nil {
 		return fmt.Errorf("graph: mark owner index ready: %w", err)
+	}
+	if err := idx.sync(); err != nil {
+		return err
 	}
 	idx.ready[ownerDecl{label, key}] = struct{}{}
 	return nil
@@ -337,6 +352,45 @@ func (ts *Store) clearOwnerIndex() error {
 	}
 	idx.declared = make(map[ownerDecl]struct{})
 	idx.ready = make(map[ownerDecl]struct{})
+	return nil
+}
+
+// sync makes every write so far durable (a no-op in memory).
+func (idx *ownerIndex) sync() error {
+	idx.syncMu.Lock()
+	defer idx.syncMu.Unlock()
+	idx.dirty.Store(false)
+	if err := idx.db.Sync(); err != nil {
+		idx.dirty.Store(true)
+		return fmt.Errorf("graph: sync owner index: %w", err)
+	}
+	return nil
+}
+
+// syncOwnerIndexBeforeRows is every shard's Config.BeforeFlushRows: before a
+// flush whose rows become durable (SyncWrites, DurableFlush) it syncs the
+// claims written so far, which include the claims of those rows (a claim is
+// written before its row enters the flush's snapshot).
+func (ts *Store) syncOwnerIndexBeforeRows(durable bool) error {
+	if !durable {
+		return nil
+	}
+	ts.ownerIdxMu.Lock()
+	idx := ts.ownerIdx
+	ts.ownerIdxMu.Unlock()
+	if idx == nil {
+		return nil
+	}
+	idx.syncMu.Lock()
+	defer idx.syncMu.Unlock()
+	if !idx.dirty.Swap(false) {
+		return nil
+	}
+	if err := idx.db.Sync(); err != nil {
+		idx.dirty.Store(true)
+		return fmt.Errorf("graph: sync owner index: %w", err)
+	}
+	ts.ownerIdxSyncs.Add(1)
 	return nil
 }
 

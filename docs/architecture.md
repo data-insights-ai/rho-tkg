@@ -390,4 +390,9 @@ that test.
     replays each open shard's change-log above its watermark (requires `ChangeLog`); a full rebuild is an admin door.
     About 55 B per posting on NVMe and one more fsync per commit group. Its unique-key slice lets a keyed label be an
     event label (the key stays on NVMe, the row moves with its day), which shrinks the reference shard; built only on
-    a measured need after ai-soc's data cleanup.
+    a measured need after ai-soc's data cleanup. Slice 1 built (UNIQIDX, v4.81.0; René 26 Oct, shaped by ai-soc): the
+    unique-key owner index, `(label, key, value) -> ID` under `DataDir/index`, kept by core under its value locks
+    (claim before row; readers check the claimant's row, so no replay and no change log needed); claims are synced
+    once per durable shard flush (`badger.Config.BeforeFlushRows`), not per claim. Measured: about 18 B a key on
+    disk; a hit 2.3-3.1 us however many shards; a keyed create in a transaction 19 us against 12 us on the reference
+    shard without SyncWrites (`tasks/evidence/UNIQIDX/`).

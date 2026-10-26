@@ -75,6 +75,12 @@ func (bs *Store) DurableFlush() error {
 			return fmt.Errorf("graph: durable flush: commit floor: %w", err)
 		}
 	}
+	if bs.beforeFlushRows != nil {
+		if err := bs.beforeFlushRows(true); err != nil {
+			bs.unsynced.Store(true)
+			return fmt.Errorf("graph: durable flush: before rows: %w", err)
+		}
+	}
 	if injected := bs.failNextSync.Swap(nil); injected != nil { // test seam
 		bs.unsynced.Store(true)
 		return fmt.Errorf("graph: durable flush: sync write-ahead log: %w", *injected)

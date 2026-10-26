@@ -1,0 +1,96 @@
+package graph_test
+
+import (
+	"context"
+	"fmt"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+)
+
+// TestZZUniqIdxCost: 2,000 GetOrCreateByKey creates of new keys with
+// SyncWrites, a keyed label on the reference shard (today) against an event
+// label kept by the owner index.
+func TestZZUniqIdxCost(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range []struct {
+		name string
+		ref  []string
+	}{{"reference label", []string{"Device", "Process"}}, {"event label + owner index", []string{"Device"}}} {
+		for _, sync := range []bool{false, true} {
+			ts, err := tieredpkg.New(tieredpkg.Config{DataDir: t.TempDir(), RefLabels: c.ref, ShardWindow: 24 * time.Hour, SyncWrites: sync})
+			if err != nil {
+				t.Fatal(err)
+			}
+			g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12, Store: ts})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Constraints().CreateUnique(ctx, "Process", "key"); err != nil {
+				t.Fatal(err)
+			}
+			start := time.Now()
+			for tx := 0; tx < 10; tx++ {
+				if err := g.Tx().Run(func(gt *graphpkg.GraphTx) error {
+					for i := tx * 200; i < (tx+1)*200; i++ {
+						if _, _, err := gt.GetOrCreateByKey("Process", "key", fmt.Sprintf("dev1/proc-%06d", i), nil); err != nil {
+							return err
+						}
+					}
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			create := time.Since(start)
+			start = time.Now()
+			for i := 0; i < 2000; i++ {
+				if _, created, err := g.Nodes().GetOrCreateByKey(ctx, "Process", "key", fmt.Sprintf("dev1/proc-%06d", i), nil); err != nil || created {
+					t.Fatal(err, created)
+				}
+			}
+			hit := time.Since(start)
+			g.Close()
+			t.Logf("PROBE %s, SyncWrites=%v: create in 10 tx of 200 %v/key, hit %v/key", c.name, sync, create/2000, hit/2000)
+		}
+	}
+}
+
+// TestZZUniqIdxSize: bytes on disk of the owner index after 100,000 keyed
+// creates (keys like ai-soc's, about 40 B).
+func TestZZUniqIdxSize(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	ts, err := tieredpkg.New(tieredpkg.Config{DataDir: dir, RefLabels: []string{"Device"}, ShardWindow: 24 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12, Store: ts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Constraints().CreateUnique(ctx, "Process", "key"); err != nil {
+		t.Fatal(err)
+	}
+	for tx := 0; tx < 100; tx++ {
+		if err := g.Tx().Run(func(gt *graphpkg.GraphTx) error {
+			for i := tx * 1000; i < (tx+1)*1000; i++ {
+				if _, _, err := gt.GetOrCreateByKey("Process", "key", fmt.Sprintf("0123456789abcdef/proc-%016d", i), nil); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	g.Close()
+	out, _ := exec.Command("du", "-sb", "--apparent-size", filepath.Join(dir, "index")).Output()
+	blocks, _ := exec.Command("du", "-s", "-B1", filepath.Join(dir, "index")).Output()
+	t.Logf("PROBE owner index after 100,000 claims: apparent %s, on disk %s", strings.Fields(string(out))[0], strings.Fields(string(blocks))[0])
+}

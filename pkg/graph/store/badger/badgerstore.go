@@ -295,6 +295,13 @@ type Config struct {
 	// batch, and with durable=true again before DurableFlush's WAL fsync for rows a
 	// background flush wrote; a background flush passes false (no fsync).
 	OnCommitFloor func(floor types.Instant, durable bool) error
+	// BeforeFlushRows, when non-nil, runs after a flush takes its snapshot of the
+	// pending writes and before it writes them, and again before DurableFlush's WAL
+	// fsync of rows an earlier flush wrote; durable is true when those rows are
+	// synced (SyncWrites, or inside DurableFlush). The tiered store syncs its owner
+	// index there (UNIQIDX), so a claim is durable before the row it backs. An
+	// error aborts the flush.
+	BeforeFlushRows func(durable bool) error
 	// EncryptionKey enables AES encryption-at-rest (SSTables, value log, WAL, key
 	// registry). Length must be 0 (disabled), 16, 24 or 32, else New fails with
 	// ErrInvalidEncryptionKeyLength. Badger panics on Open without a BlockCacheSize, so
@@ -810,6 +817,7 @@ type Store struct {
 	commitFloor        atomic.Int64
 	commitFloorDurable int64
 	onCommitFloor      func(types.Instant, bool) error
+	beforeFlushRows    func(bool) error
 	inDurableFlush     bool
 
 	// Per-transaction change-log scope (store.TxChangeLogScope), guarded by wbMu. While
@@ -1036,6 +1044,7 @@ func New(cfg Config) (*Store, error) {
 		ords:                    newOrdinals(cfg),
 		onChangeLogFlush:        cfg.OnChangeLogFlush,
 		onCommitFloor:           cfg.OnCommitFloor,
+		beforeFlushRows:         cfg.BeforeFlushRows,
 		maxPending:              maxPending,
 		holdMaxPending:          holdMaxPending,
 		flushHold:               cfg.SharedFlushHold,

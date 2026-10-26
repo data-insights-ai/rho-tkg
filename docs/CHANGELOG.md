@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **UNIQIDX** (SHARD step 10 slice 1; René 26 Oct, shaped by ai-soc): `CreateUnique` on a tiered EVENT label (refused
+  before) is kept by an owner index, a badger under `DataDir/index` on the hot volume that maps each value to the
+  node that claimed it. Core claims a value under its value lock before the row is written and every lookup checks
+  the claimant's row, so a crash, a rollback, a value change, a delete or a dropped shard leaves at most a claim that
+  is ignored, never a missing one. The unique check, `GetOrCreateByKey` (also in a transaction) and
+  `ByLabelAndProperty` (current, `DepthAll`) read one key and the owner's row instead of every shard: a key whose
+  row is on a closed cold shard opens only that shard. Rows that exist at `CreateUnique` are seeded; no per-shard
+  property index is made for such a key; `CreateUniqueForever` on an event label stays refused. Claims are synced
+  once per flush that makes event-shard rows durable (new `badger.Config.BeforeFlushRows`). Measured: about 18 B a
+  key on disk (100,000 keys: 1.8 MB); a hit 2.3-3.1 us; a keyed create in a transaction 19 us against 12 us on the
+  reference shard (no SyncWrites). With it ai-soc can move Process, File, RegValue and LocalObject (93 % of its
+  keyed nodes) off the reference shard.
+
 ### Changed
 
 - **IDPROPS** (withdrawn by ai-soc, 26 Oct): immutable identity properties stored once per node are not built. On

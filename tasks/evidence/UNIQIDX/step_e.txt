@@ -1,0 +1,20 @@
+UNIQIDX step (e) (branch uniqidx), 2026-10-26: measured (cost_probe_test.go.txt), and claims synced per durable flush
+first measurement, claims synced one by one (the index inherited SyncWrites): a keyed create with SyncWrites 5.6 ms
+  against 2.07 ms on the reference shard, without 12.7 us against 6.0 us; hits 2.2-2.8 us both. A commit of many
+  new keys would have paid one fsync per key.
+change: the index opens without SyncWrites; badger.Config.BeforeFlushRows runs after a flush takes its snapshot of
+  pending writes and before it writes them, and before DurableFlush's WAL fsync of rows an earlier flush wrote; tiered
+  syncs the owner index there when the rows become durable (SyncWrites or DurableFlush) and claims are pending
+  (syncMu orders the check and the sync across shards). A claim is written before its row enters the pending
+  buffer, so the snapshot's claims are covered. Declarations and ready marks sync at once.
+second measurement (host load 4.6): in 10 transactions of 200 keyed creates: reference shard 12.4 us/key (no
+  SyncWrites) and 2.12 ms/key (SyncWrites); owner index 19.1 us/key and 5.71 ms/key. With SyncWrites a tiered write
+  is flushed at once, so in this single-writer test every create is its own durable flush and pays the extra index
+  fsync; a flush carrying several rows pays it once (the ADR's "one more fsync per commit group"). Hits 2.2-3.1 us,
+  independent of the shard count (TestUniqueOnTieredEventLabel: at most the owner's shard is opened).
+size: 100,000 claims of 40-byte keys: 1,789,952 B on disk after Close (about 18 B a key; the ADR estimated 55 B);
+  ai-soc's 966,709 moved keys: about 17 MB on NVMe.
+test: TestOwnerIndexSyncedBeforeDurableRows (SyncWrites on and off: synced once by the first durable flush after a
+  claim, not by a non-durable flush, not again by a durable flush of a row without a claim).
+mutations (each failed it): hook not called in flush; not called in DurableFlush; a sync on every flush; the
+  pending-claims check ignored (first survived: the last flush had no rows; the test now writes a claimless row).
