@@ -10,9 +10,12 @@ import (
 // EVENTCLOCK (SCALE, ai-soc's Flux run k10262212: EventShard.checkoutForRead
 // was 36 % of the time.Now calls). Every hot and warm checkout stamped
 // lastAccess with the wall clock, though only cold shards read it (idle-close,
-// the open-handle cap). A hot or warm read now stamps nothing, and a shard
-// turning cold counts as accessed then: the idle sweep right after a demotion
-// keeps it open, and closes it once its idle time passes.
+// the open-handle cap). A hot or warm read now stamps nothing, so a shard's
+// idle time counts from its last cold access: a demoted shard no cold read
+// touched closes at the next idle sweep, whatever its idle timeout (v4.87.1
+// stamped the demotion instead, which kept a shard open through a sweep in the
+// demotion's millisecond with IdleTimeout 0: sigma's TestFoldReadDepthHot);
+// a cold read keeps it open for its idle timeout.
 func TestEventClockHotWarmReadsStampNoAccess(t *testing.T) {
 	ts, err := New(Config{
 		DataDir:       t.TempDir(),
@@ -20,6 +23,8 @@ func TestEventClockHotWarmReadsStampNoAccess(t *testing.T) {
 		ShardWindow:   7 * 24 * time.Hour,
 		FlushInterval: 1<<63 - 1,
 		ColdAfter:     time.Millisecond,
+		// A cold read keeps its shard open (up to the cap) for the idle sweep.
+		MaxOpenColdShards: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -68,29 +73,32 @@ func TestEventClockHotWarmReadsStampNoAccess(t *testing.T) {
 	}
 	touch(shard, old, false)
 
-	time.Sleep(5 * time.Millisecond)
-	before := time.Now().UnixMilli()
 	forceRotation(t, ts) // first -> cold
 	if tier := shard.currentTier(); tier != TierCold || shard.Store() == nil {
 		t.Fatalf("shard %s is %s, open %v: want an open cold shard", first, tier, shard.Store() != nil)
 	}
-	if got := shard.lastAccess.Load(); got < before {
-		t.Fatalf("the demotion left lastAccess %d, before it was %d", got, before)
+	isOpen := func() bool {
+		shard.LockShardMuForTest()
+		defer shard.UnlockShardMuForTest()
+		return shard.Store() != nil
 	}
 	ts.SetIdleTimeoutForTest(time.Hour)
 	ts.CloseIdleShardsForTest()
-	shard.LockShardMuForTest()
-	open := shard.Store() != nil
-	shard.UnlockShardMuForTest()
-	if !open {
-		t.Fatal("the idle sweep right after the demotion closed the shard")
+	if isOpen() {
+		t.Fatal("the idle sweep after the demotion kept a shard no cold read touched")
 	}
+	read(old) // reopens it and stamps the access
+	if !isOpen() {
+		t.Fatal("the cold read left the shard closed")
+	}
+	ts.CloseIdleShardsForTest()
+	if !isOpen() {
+		t.Fatal("the idle sweep closed a shard read within its idle timeout")
+	}
+	time.Sleep(2 * time.Millisecond)
 	ts.SetIdleTimeoutForTest(0)
 	ts.CloseIdleShardsForTest()
-	shard.LockShardMuForTest()
-	open = shard.Store() != nil
-	shard.UnlockShardMuForTest()
-	if open {
+	if isOpen() {
 		t.Fatal("the idle sweep past the idle time kept the shard open")
 	}
 	read(old)

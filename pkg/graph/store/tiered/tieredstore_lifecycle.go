@@ -129,7 +129,8 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 	if es.currentTier() != TierCold {
 		// Hot/warm: stores are always open, never closed by idle-close, so
 		// the checkout stamps no access (EVENTCLOCK: a clock read per
-		// checkout); setTier stamps it when the shard turns cold.
+		// checkout); a demoted shard's idle time counts from its last cold
+		// access.
 		es.activeReqs.Add(1)
 		// Re-check closed AFTER the increment so a concurrent Close that
 		// observed activeReqs == 0 between our load and our add doesn't

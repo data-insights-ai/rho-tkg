@@ -296,12 +296,6 @@ func (es *EventShard) initTier(t ShardTier) {
 }
 
 func (es *EventShard) setTier(t ShardTier) {
-	if t == TierCold && es.currentTier() != TierCold {
-		// Hot and warm checkouts stamp no access: a shard turning cold
-		// counts as accessed now, so idle-close and the open-handle cap
-		// measure its idle time from here.
-		es.lastAccess.Store(time.Now().UnixMilli())
-	}
 	es.tier = t
 	es.tierCode.Store(eventShardTierCode(t))
 }

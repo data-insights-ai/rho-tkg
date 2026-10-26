@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **IDLESTAMP** (sigma, three tests red on v4.87.1): EVENTCLOCK stamped `lastAccess` when a shard turned cold, so an
+  idle sweep in the demotion's millisecond with `IdleTimeout` 0 kept the shard open (sigma's `TestFoldReadDepthHot`),
+  and the open shard disturbed a heap measurement run after it in the same process (`TestSubKeyIndexOnDisk`: 3.9-4.3
+  KB a row with the property index on disk; v4.87.0 and this fix 0-0.5 KB, that test's own noise). A demotion now
+  stamps nothing: a shard's idle time counts from its last cold access, so a demoted shard no cold read touched
+  closes at the next idle sweep, as a v4.87.0 shard whose last hot or warm access was over its idle timeout ago did
+  (`TestEventClockHotWarmReadsStampNoAccess`). sigma's third red test counted transactions by the advance of
+  `CommittedTx`, which reserves an instant per call and per stamped row: v4.87.1 no longer reserves one per mutation
+  for an event nobody receives, so the count fell (sigma's side).
+
 ## [4.87.1] - 2026-10-26
 
 ### Fixed
