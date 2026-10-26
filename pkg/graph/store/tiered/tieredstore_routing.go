@@ -398,18 +398,18 @@ func shardWindowStart(t time.Time, window time.Duration) time.Time {
 	case window >= 7*24*time.Hour:
 		// ISO week start (Monday).
 		year, week := t.ISOWeek()
-		// ISO week 1 is the week containing January 4.
-		jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, t.Location())
+		// ISO week 1 is the week containing January 4 (date arithmetic in
+		// UTC, where every day has 24 hours).
+		jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, time.UTC)
 		jan4Weekday := jan4.Weekday()
 		if jan4Weekday == time.Sunday {
 			jan4Weekday = 7
 		}
 		daysToMonday := int(time.Monday - jan4Weekday)
-		isoWeek1Monday := jan4.AddDate(0, 0, daysToMonday)
-		return isoWeek1Monday.AddDate(0, 0, (week-1)*7)
+		monday := jan4.AddDate(0, 0, daysToMonday+(week-1)*7)
+		return dayStart(monday.Year(), monday.Month(), monday.Day(), t.Location())
 	case window >= 24*time.Hour:
-		// Day start.
-		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+		return dayStart(t.Year(), t.Month(), t.Day(), t.Location())
 	default:
 		return t.Truncate(window)
 	}
@@ -427,7 +427,24 @@ func shardWindowEnd(t time.Time, window time.Duration) time.Time {
 	if window < day {
 		return start.Add(window)
 	}
-	return start.AddDate(0, 0, int(window/day)).Add(window % day)
+	return dayStart(start.Year(), start.Month(), start.Day()+int(window/day), start.Location()).Add(window % day)
+}
+
+// dayStart is the first instant of the local calendar day y-m-d (d may
+// overflow the month, as in time.Date). That is midnight, except where the
+// clocks jump forward AT midnight (America/Santiago, Havana, Asuncion): the
+// day has no 00:00, time.Date places it at 23:00 the evening before, and the
+// day begins at the jump instead (CALENDAR: the evening's window ended an
+// hour early, and a rotation in that hour made a window ending before it
+// started, DSTWIN's failure).
+func dayStart(y int, m time.Month, d int, loc *time.Location) time.Time {
+	noon := time.Date(y, m, d, 12, 0, 0, 0, loc) // the day, its overflow resolved
+	midnight := time.Date(noon.Year(), noon.Month(), noon.Day(), 0, 0, 0, 0, loc)
+	if midnight.Day() != noon.Day() {
+		_, jump := midnight.ZoneBounds()
+		return jump
+	}
+	return midnight
 }
 
 // rotationWindow is the new hot shard's window for a rotation at now: from
