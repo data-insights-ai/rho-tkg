@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -24,8 +25,9 @@ import (
 // shard) is ignored, and no claim is ever missing. The index opens at New
 // when its directory exists and at the first declaration otherwise.
 //
-// Keys: 'D' label key -> "" (a declaration); 'U' label len(key) key value ->
-// the owner's ID (8 bytes, big-endian).
+// Keys: 'D' label key -> "" (a declaration); 'R' label key -> "" (seeded
+// from the rows that existed at the declaration: lookups may trust it);
+// 'U' label len(key) key value -> the owner's ID (8 bytes, big-endian).
 const ownerIndexDir = "index"
 
 // ErrUniqueOwnerIndexNotDeclared is returned for a claim on a (label, key)
@@ -36,6 +38,7 @@ type ownerIndex struct {
 	mu       sync.RWMutex
 	db       *badgerv4.DB
 	declared map[ownerDecl]struct{}
+	ready    map[ownerDecl]struct{}
 }
 
 type ownerDecl struct {
@@ -43,8 +46,12 @@ type ownerDecl struct {
 	key   string
 }
 
-func ownerDeclKey(label uint16, key string) []byte {
-	b := binary.BigEndian.AppendUint16([]byte{'D'}, label)
+func ownerDeclKey(label uint16, key string) []byte { return ownerMarkKey('D', label, key) }
+
+func ownerReadyKey(label uint16, key string) []byte { return ownerMarkKey('R', label, key) }
+
+func ownerMarkKey(tag byte, label uint16, key string) []byte {
+	b := binary.BigEndian.AppendUint16([]byte{tag}, label)
 	return append(b, key...)
 }
 
@@ -75,19 +82,22 @@ func (ts *Store) openOwnerIndex(create bool) (*ownerIndex, error) {
 	if err != nil {
 		return nil, fmt.Errorf("graph: open owner index: %w", err)
 	}
-	idx := &ownerIndex{db: db, declared: make(map[ownerDecl]struct{})}
+	idx := &ownerIndex{db: db, declared: make(map[ownerDecl]struct{}), ready: make(map[ownerDecl]struct{})}
 	err = db.View(func(txn *badgerv4.Txn) error {
-		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		opts.Prefix = []byte{'D'}
-		it := txn.NewIterator(opts)
-		defer it.Close()
-		for it.Rewind(); it.Valid(); it.Next() {
-			k := it.Item().Key()
-			if len(k) < 3 {
-				return fmt.Errorf("graph: owner index: malformed declaration key %x", k)
+		for tag, into := range map[byte]map[ownerDecl]struct{}{'D': idx.declared, 'R': idx.ready} {
+			opts := badgerv4.DefaultIteratorOptions
+			opts.PrefetchValues = false
+			opts.Prefix = []byte{tag}
+			it := txn.NewIterator(opts)
+			for it.Rewind(); it.Valid(); it.Next() {
+				k := it.Item().Key()
+				if len(k) < 3 {
+					it.Close()
+					return fmt.Errorf("graph: owner index: malformed mark key %x", k)
+				}
+				into[ownerDecl{binary.BigEndian.Uint16(k[1:3]), string(k[3:])}] = struct{}{}
 			}
-			idx.declared[ownerDecl{binary.BigEndian.Uint16(k[1:3]), string(k[3:])}] = struct{}{}
+			it.Close()
 		}
 		return nil
 	})
@@ -149,9 +159,15 @@ func (ts *Store) DropUniqueOwnerIndex(label uint16, key string) error {
 	}
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	if err := idx.db.Update(func(txn *badgerv4.Txn) error { return txn.Delete(ownerDeclKey(label, key)) }); err != nil {
+	if err := idx.db.Update(func(txn *badgerv4.Txn) error {
+		if err := txn.Delete(ownerReadyKey(label, key)); err != nil {
+			return err
+		}
+		return txn.Delete(ownerDeclKey(label, key))
+	}); err != nil {
 		return fmt.Errorf("graph: drop owner index: %w", err)
 	}
+	delete(idx.ready, ownerDecl{label, key})
 	delete(idx.declared, ownerDecl{label, key})
 	if err := idx.db.DropPrefix(ownerPrefix(label, key)); err != nil {
 		return fmt.Errorf("graph: drop owner index claims: %w", err)
@@ -189,6 +205,71 @@ func (ts *Store) PutUniqueOwner(label uint16, key, valueKey string, id types.Nod
 		return fmt.Errorf("graph: claim owner: %w", err)
 	}
 	return nil
+}
+
+// SeedUniqueOwner records id as the claimant of valueKey under (label, key)
+// only when no claim exists: the seeding of a new declaration from the rows,
+// beside writers whose claims (PutUniqueOwner) are newer and win.
+func (ts *Store) SeedUniqueOwner(label uint16, key, valueKey string, id types.NodeID) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	idx, err := ts.declaredOwnerIndex(label, key)
+	if err != nil {
+		return err
+	}
+	k := ownerKey(label, key, valueKey)
+	v := binary.BigEndian.AppendUint64(nil, uint64(id)) // #nosec G115 -- an ID's bits round-trip
+	err = idx.db.Update(func(txn *badgerv4.Txn) error {
+		if _, err := txn.Get(k); err == nil {
+			return nil
+		} else if !errors.Is(err, badgerv4.ErrKeyNotFound) {
+			return err
+		}
+		return txn.Set(k, v)
+	})
+	if errors.Is(err, badgerv4.ErrConflict) {
+		return nil // a writer claimed it meanwhile: its claim is the newer one
+	}
+	if err != nil {
+		return fmt.Errorf("graph: seed owner: %w", err)
+	}
+	return nil
+}
+
+// MarkUniqueOwnerIndexReady records that (label, key)'s index holds a claim
+// for every row that existed at its declaration (writers claim from the
+// declaration on), so lookups may answer from it.
+func (ts *Store) MarkUniqueOwnerIndexReady(label uint16, key string) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	idx, err := ts.declaredOwnerIndex(label, key)
+	if err != nil {
+		return err
+	}
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if err := idx.db.Update(func(txn *badgerv4.Txn) error { return txn.Set(ownerReadyKey(label, key), nil) }); err != nil {
+		return fmt.Errorf("graph: mark owner index ready: %w", err)
+	}
+	idx.ready[ownerDecl{label, key}] = struct{}{}
+	return nil
+}
+
+// UniqueOwnerIndexReady reports whether (label, key)'s index may answer
+// lookups (MarkUniqueOwnerIndexReady).
+func (ts *Store) UniqueOwnerIndexReady(label uint16, key string) bool {
+	ts.ownerIdxMu.Lock()
+	idx := ts.ownerIdx
+	ts.ownerIdxMu.Unlock()
+	if idx == nil {
+		return false
+	}
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	_, ok := idx.ready[ownerDecl{label, key}]
+	return ok
 }
 
 // UniqueOwner returns the last claimant of valueKey under (label, key); the
@@ -251,10 +332,11 @@ func (ts *Store) clearOwnerIndex() error {
 	}
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	if err := idx.db.DropPrefix([]byte{'U'}, []byte{'D'}); err != nil {
+	if err := idx.db.DropPrefix([]byte{'U'}, []byte{'R'}, []byte{'D'}); err != nil {
 		return fmt.Errorf("graph: clear owner index: %w", err)
 	}
 	idx.declared = make(map[ownerDecl]struct{})
+	idx.ready = make(map[ownerDecl]struct{})
 	return nil
 }
 
@@ -269,3 +351,5 @@ func (ts *Store) closeOwnerIndex() error {
 	ts.ownerIdx = nil
 	return err
 }
+
+var _ storecontract.UniqueOwnerIndexCapability = (*Store)(nil)

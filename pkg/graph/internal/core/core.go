@@ -652,16 +652,12 @@ var (
 	// values are supported. Also returned for an unimplemented UniqueScope.
 	ErrUniqueUnsupportedType = errors.New("graph: unique constraint does not support this value/scope")
 
-	// ErrUniqueEventLabelUnsupported is returned by CreateUnique /
-	// CreateUniqueForever on a TIERED store when the constrained label is
-	// event-class. On tiered, reference-class entities all live on the reference
-	// shard, so a reference-label unique constraint enforces globally via the
-	// ref-shard property index; but an event label's values are spread across
-	// unbounded time shards with no global value index, so uniqueness cannot be
-	// enforced without a store-wide index that contradicts the shard-local
-	// design (ADR-0005 §3.5). This is a permanent correctness boundary, not
-	// deferred work. Distinct from the tiered store's ErrEventPropertyIndex so
-	// the caller sees a unique-specific message.
+	// ErrUniqueEventLabelUnsupported is returned by CreateUniqueForever on a
+	// TIERED store when the constrained label is event-class (its permanent
+	// claims live in one map in MetaKV), and by CreateUnique there on a store
+	// without an owner index. Since v4.81.0 (UNIQIDX, SHARD step 10) a
+	// CreateUnique on an event label keeps its key in the tiered owner index,
+	// a badger on the hot volume (unique_owner_index.go).
 	ErrUniqueEventLabelUnsupported = errors.New("graph: unique constraints on event-class labels are not supported on the tiered store")
 )
 

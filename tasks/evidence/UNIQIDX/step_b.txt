@@ -1,0 +1,16 @@
+UNIQIDX steps (b) and (c) (branch uniqidx), 2026-10-26
+core: CreateUnique on a tiered event label declares the owner index before the pending install (writers claim
+  from then on), skips the per-shard property index, validates existing rows, seeds the index from them
+  (SeedUniqueOwner never replaces a claim), marks it ready, then activates; any failure drops the index;
+  DropUnique drops it; UniqueForever on an event label stays refused. The unique check's claims are written
+  (PutUniqueOwner) after the read-only pass and before the row. nodesByLabelAndPropertyForms answers a ready
+  owner-indexed pair at DepthAll from the index (one claim per value form, the claimant's row checked), so the
+  unique check, GetOrCreateByKey (also in a transaction) and ByLabelAndProperty all read it: (c) merged into (b).
+red: TestUniqueOnTieredEventLabel: "CreateUnique on a tiered event label: ... not supported on the tiered store".
+green: TestUniqueOnTieredEventLabel (keys over five shards a reopen made cold and closed; a lookup of an old key
+  opens at most its own shard; ByLabelAndProperty likewise; a key from before the constraint found; a duplicate
+  refused; a new key created); TestUniqueTiered_EventLabel and TestGetOrCreateByKeyOpts_DepthBound updated to the
+  new contract (CreateUnique accepted; refused by existing per-window copies); graph, core, tiered -short.
+mutations (each failed the test): lookups fan out instead; no claim on write; no seed; never marked ready;
+  CreateUnique still refused.
+found: a graph's open on a tiered store opens every cold shard once (OPENCOLD, todo), with or without a constraint.

@@ -771,6 +771,28 @@ type PropertyIndexCapability interface {
 	NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error)
 }
 
+// UniqueOwnerIndexCapability is OPTIONAL (tiered; SHARD step 10, UNIQIDX):
+// an owner index for a unique (label, key) whose rows span shards: the ID
+// that last claimed each value, so the graph's unique check, GetOrCreateByKey
+// and an equality lookup read one key instead of every shard. The graph keeps
+// it: it declares a (label, key), seeds the claims of the rows that exist then
+// (SeedUniqueOwner never replaces a claim), marks it ready, and claims a value
+// (PutUniqueOwner) under its value lock before the row holding it is written.
+// A claim is a candidate: a reader checks the claimant's row and ignores a
+// claim the row no longer backs. valueKey is the canonical index key
+// (types.CanonicalIndexKey). Claims and lookups on an undeclared (label, key)
+// fail.
+type UniqueOwnerIndexCapability interface {
+	DeclareUniqueOwnerIndex(labelToken uint16, key string) error
+	DropUniqueOwnerIndex(labelToken uint16, key string) error
+	UniqueOwnerIndexDeclared(labelToken uint16, key string) bool
+	MarkUniqueOwnerIndexReady(labelToken uint16, key string) error
+	UniqueOwnerIndexReady(labelToken uint16, key string) bool
+	PutUniqueOwner(labelToken uint16, key, valueKey string, id types.NodeID) error
+	SeedUniqueOwner(labelToken uint16, key, valueKey string, id types.NodeID) error
+	UniqueOwner(labelToken uint16, key, valueKey string) (types.NodeID, bool, error)
+}
+
 // PropertyKeysLookupCapability is OPTIONAL, beside PropertyIndexCapability
 // (round 11): one equality lookup over several index keys. valueKeys are
 // index keys (types.IndexablePropertyValueKey, as the property tx-membership

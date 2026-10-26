@@ -156,18 +156,19 @@ func TestUniqueTiered_ReferenceLabel_CrossDoor(t *testing.T) {
 	}
 }
 
-// TestUniqueTiered_EventLabelRejected asserts an event-class label's unique
-// constraint is refused with the dedicated sentinel, via errors.Is at the
-// public door. UniqueForever is refused identically.
-func TestUniqueTiered_EventLabelRejected(t *testing.T) {
+// TestUniqueTiered_EventLabel: since UNIQIDX (SHARD step 10) a CreateUnique on
+// an event-class label is kept by the owner index; UniqueForever there is
+// still refused with the dedicated sentinel (not the property-index one) and
+// leaves no registry entry.
+func TestUniqueTiered_EventLabel(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 5)
 	defer g.Close()
 
-	err := g.Constraints().CreateUnique(ctx, "Login", "session")
+	err := g.Constraints().CreateUniqueForever(ctx, "Login", "session")
 	if !errors.Is(err, graphpkg.ErrUniqueEventLabelUnsupported) {
-		t.Fatalf("CreateUnique(event) err = %v, want ErrUniqueEventLabelUnsupported", err)
+		t.Fatalf("CreateUniqueForever(event) err = %v, want ErrUniqueEventLabelUnsupported", err)
 	}
 	// It must NOT be the property-index sentinel (distinct message/boundary).
 	if errors.Is(err, tieredpkg.ErrEventPropertyIndex) { //nolint:staticcheck // SA1019: the deprecated sentinel must not alias the unique refusal
@@ -177,9 +178,8 @@ func TestUniqueTiered_EventLabelRejected(t *testing.T) {
 	if got := g.Constraints().UniqueConstraints(); len(got) != 0 {
 		t.Fatalf("rejected event constraint leaked into registry: %+v", got)
 	}
-	// UniqueForever on an event label is refused the same way.
-	if err := g.Constraints().CreateUniqueForever(ctx, "Login", "session"); !errors.Is(err, graphpkg.ErrUniqueEventLabelUnsupported) {
-		t.Fatalf("CreateUniqueForever(event) err = %v, want ErrUniqueEventLabelUnsupported", err)
+	if err := g.Constraints().CreateUnique(ctx, "Login", "session"); err != nil {
+		t.Fatalf("CreateUnique(event) = %v, want it kept by the owner index", err)
 	}
 	// A reference label on the SAME graph still works (positive control).
 	if err := g.Constraints().CreateUnique(ctx, "User", "email"); err != nil {

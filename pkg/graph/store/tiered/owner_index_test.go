@@ -112,7 +112,6 @@ func TestOwnerIndexLifecycle(t *testing.T) {
 		t.Fatal("a claim survived Clear")
 	}
 
-
 	mem, err := New(Config{InMemory: true, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)

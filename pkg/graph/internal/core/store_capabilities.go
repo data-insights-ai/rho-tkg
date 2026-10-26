@@ -106,6 +106,13 @@ func (c *Core) nodesByLabelAndPropertyForms(tok uint16, key string, forms []any,
 	if len(forms) == 0 {
 		return nil, nil
 	}
+	// A tiered event label's unique key: the owner index reads one claim per
+	// value form instead of every shard (UNIQIDX).
+	if opts.Depth == storepkg.DepthAll {
+		if oi, ok := c.readyOwnerIndex(tok, key); ok {
+			return c.nodesByOwnerIndex(oi, tok, key, forms, opts)
+		}
+	}
 	keys := keysOf(forms)
 	lookup := c.propertyKeysQuery != nil
 	perForm := !lookup && c.propertyQuery != nil && len(forms) == 1

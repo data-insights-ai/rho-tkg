@@ -344,16 +344,16 @@ type Store struct {
 	closing           atomic.Bool
 	ownerIdxMu        sync.Mutex  // guards ownerIdx
 	ownerIdx          *ownerIndex // the owner index (owner_index.go); nil until it exists
-             // set when Close begins: a running move stops (shard_move.go)
-	moveFault         func(step string) error // test hook: a crash after a move step
-	warmDir, coldDir  string                  // volumes (shard_volume.go); "" = not mapped
-	refVolume         string                  // catalog volume a new reference shard is made on
-	archiveVolume     string                  // catalog volume a new archive is made on
-	inMemory          bool
-	shardWindow       time.Duration
-	cacheCap          int
-	flushInt          time.Duration
-	coldAfter         time.Duration
+	// set when Close begins: a running move stops (shard_move.go)
+	moveFault        func(step string) error // test hook: a crash after a move step
+	warmDir, coldDir string                  // volumes (shard_volume.go); "" = not mapped
+	refVolume        string                  // catalog volume a new reference shard is made on
+	archiveVolume    string                  // catalog volume a new archive is made on
+	inMemory         bool
+	shardWindow      time.Duration
+	cacheCap         int
+	flushInt         time.Duration
+	coldAfter        time.Duration
 	// idleTimeout is the cold-shard idle timeout in nanoseconds; atomic because
 	// SetIdleTimeoutForTest writes it while idleCloseLoop reads it (row 100).
 	idleTimeout       atomic.Int64

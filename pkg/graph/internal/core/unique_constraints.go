@@ -69,20 +69,6 @@ func (c *Core) uniqueMetaKV() (storepkg.MetaKVCapability, error) {
 	return mk, nil
 }
 
-// rejectTieredEventLabel returns ErrUniqueEventLabelUnsupported when the store is
-// tiered AND the label is event-class (the router's own classifier). Called BEFORE
-// any label token is minted so a rejected create leaves no orphan token.
-func (c *Core) rejectTieredEventLabel(label string) error {
-	ts, ok := c.store.(*tiered.Store)
-	if !ok {
-		return nil
-	}
-	if !ts.IsReferenceLabel(label) {
-		return fmt.Errorf("%w: label %q (values span unbounded time shards)", ErrUniqueEventLabelUnsupported, label)
-	}
-	return nil
-}
-
 // isFloatValueKey reports whether a canonical value key encodes a float (rejected
 // for unique constraints, ADR-0002).
 func isFloatValueKey(valueKey string) bool {
@@ -263,8 +249,10 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	if err := c.validateIndexPropertyKey(propKey); err != nil {
 		return err
 	}
-	// Tiered: reject event-class labels up front (no global value index across time shards).
-	if err := c.rejectTieredEventLabel(label); err != nil {
+	// Tiered: an event-class label keeps its unique key in the owner index
+	// (UNIQIDX, unique_owner_index.go); UniqueForever is refused there.
+	ownerIdx, err := c.tieredEventOwnerIndex(label, scope)
+	if err != nil {
 		return err
 	}
 	mk, err := c.uniqueMetaKV()
@@ -281,6 +269,15 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	labelTok, err := c.getOrCreateLabelPersisted(label)
 	if err != nil {
 		return err
+	}
+	// The owner index first: from here every writer of the label claims there
+	// (writers before the pending install are waited for and seen by the seed).
+	dropOwner := func() {}
+	if ownerIdx != nil {
+		if err := ownerIdx.DeclareUniqueOwnerIndex(labelTok, propKey); err != nil {
+			return err
+		}
+		dropOwner = func() { _ = ownerIdx.DropUniqueOwnerIndex(labelTok, propKey) }
 	}
 
 	// Phase 1: install a PENDING entry so concurrent writers enforce during validation.
@@ -301,6 +298,7 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	// install, and a later one sees the pending constraint (refuseUniqueKey).
 	if err := c.refuseNodeElementsIndex(labelTok, propKey, "unique constraint"); err != nil {
 		c.mu.Unlock()
+		dropOwner()
 		return err
 	}
 	c.uniqueMu.Lock()
@@ -312,6 +310,7 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	if c.totalConstraintsLocked() >= maxUniqueConstraints {
 		c.uniqueMu.Unlock()
 		c.mu.Unlock()
+		dropOwner()
 		return fmt.Errorf("%w: at capacity (%d)", ErrUniqueConstraintExists, maxUniqueConstraints)
 	}
 	c.installConstraintLocked(labelTok, propKey, label, scope, false)
@@ -319,25 +318,40 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	c.mu.Unlock()
 
 	// Auto-ensure a property index as acceleration for enforcement lookups; correct
-	// without it (label scan), so ErrIndexExists is benign.
-	if err := c.Index.CreateProperty(label, propKey); err != nil && !errors.Is(err, storepkg.ErrIndexExists) {
-		c.uninstallPendingConstraint(labelTok, propKey)
-		return fmt.Errorf("graph: unique constraint: ensure property index: %w", err)
+	// without it (label scan), so ErrIndexExists is benign. An owner-indexed
+	// label needs none: the owner index answers its lookups.
+	if ownerIdx == nil {
+		if err := c.Index.CreateProperty(label, propKey); err != nil && !errors.Is(err, storepkg.ErrIndexExists) {
+			c.uninstallPendingConstraint(labelTok, propKey)
+			return fmt.Errorf("graph: unique constraint: ensure property index: %w", err)
+		}
 	}
 
 	// Phase 2: validate existing data (unlocked writers still enforce pending).
 	offenders, unsupported, scanErr := c.validateUniqueExisting(labelTok, propKey)
 	if scanErr != nil {
 		c.uninstallPendingConstraint(labelTok, propKey)
+		dropOwner()
 		return scanErr
 	}
 	if unsupported {
 		c.uninstallPendingConstraint(labelTok, propKey)
+		dropOwner()
 		return fmt.Errorf("%w: label %q key %q holds a float value", ErrUniqueUnsupportedType, label, propKey)
 	}
 	if len(offenders) > 0 {
 		c.uninstallPendingConstraint(labelTok, propKey)
+		dropOwner()
 		return fmt.Errorf("%w: label %q key %q; offenders %v", ErrUniqueViolationExisting, label, propKey, offenders)
+	}
+	// Seed the owner index from the rows and mark it ready before the
+	// constraint is active: a ready index holds a claim for every holder.
+	if ownerIdx != nil {
+		if err := c.seedOwnerIndex(ownerIdx, labelTok, propKey); err != nil {
+			c.uninstallPendingConstraint(labelTok, propKey)
+			dropOwner()
+			return err
+		}
 	}
 
 	// Phase 3: activate + persist. BACKLOG 13j: on persist failure the uninstall
@@ -465,6 +479,12 @@ func (c *Core) dropUnique(ctx context.Context, label, propKey string) error {
 	// seeds cleanly (a dead ID would otherwise bar a value forever).
 	if removed.scope == constraintspkg.UniqueForever {
 		if err := c.purgeForeverOwnersLocked(labelTok, propKey, mk); err != nil {
+			return err
+		}
+	}
+	// An owner-indexed key drops its index: a re-create seeds it afresh.
+	if oi, ok := c.ownerIndexFor(labelTok, propKey); ok {
+		if err := oi.DropUniqueOwnerIndex(labelTok, propKey); err != nil {
 			return err
 		}
 	}
@@ -621,6 +641,20 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 			}
 		}
 	}
+	// Owner index (UNIQIDX): claim each changed value of an owner-indexed key
+	// before the row is written; a claim the write then does not back is
+	// ignored by readers.
+	for _, ck := range checks {
+		if ck.unchanged {
+			continue
+		}
+		if oi, ok := c.ownerIndexFor(ck.labelTok, ck.key); ok {
+			if err := oi.PutUniqueOwner(ck.labelTok, ck.key, ck.valueKey, selfID); err != nil {
+				hold.release()
+				return noop, fmt.Errorf("graph: unique owner claim: %w", err)
+			}
+		}
+	}
 	// Pass 2: claim each UniqueForever value (other owner => violation; same entity
 	// => pass, not recorded; miss => claim + persist, recorded in the hold). A failed
 	// claim (persist, item 29) withdraws this pass's claims, judged against the
@@ -712,7 +746,7 @@ func unchangedConstrainedValue(prev, node *types.Node, labelTok uint16, key stri
 
 // IsReferenceLabel reports whether label is reference-class (row 99): on
 // tiered the router's own classifier, (*tiered.Store).IsReferenceLabel, the
-// one rejectTieredEventLabel asks; on every other store (memory, badger,
+// one tieredEventOwnerIndex asks; on every other store (memory, badger,
 // sharded) true, since a store without time shards answers every depth from
 // every node. ErrGraphClosed on a closed graph, ErrEmptyName for a blank label.
 func (a *AdminOps) IsReferenceLabel(label string) (bool, error) {

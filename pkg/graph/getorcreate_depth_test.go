@@ -197,9 +197,10 @@ func TestGetOrCreateByKeyOpts_DepthBound(t *testing.T) {
 		t.Fatalf("DepthAll copies of p-cold = %v, want %v", got, want)
 	}
 
-	// Event label + unique constraint stays refused.
-	if err := g.Constraints().CreateUnique(ctx, "Proc", "pid"); !errors.Is(err, graphpkg.ErrUniqueEventLabelUnsupported) {
-		t.Fatalf("CreateUnique(Proc,pid) err = %v, want ErrUniqueEventLabelUnsupported", err)
+	// A unique constraint over the per-window copies is refused by them
+	// (since UNIQIDX an event label takes one; the copies are duplicates).
+	if err := g.Constraints().CreateUnique(ctx, "Proc", "pid"); !errors.Is(err, graphpkg.ErrUniqueViolationExisting) {
+		t.Fatalf("CreateUnique(Proc,pid) err = %v, want ErrUniqueViolationExisting", err)
 	}
 }
 
