@@ -49,6 +49,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
     list, one pin. 1,000 values per value 0.9x 16; against the unbatched lookup + timeline 0.79x on memory and
     badger, 0.57x badger-disk, 0.45x tiered-disk (wall: badger-disk 2.7 vs 3.4 ms, tiered 4.1 vs 6.4 ms; RAM
     backends about even, both pay ~10 equal-form keys per value).
+  - 897ae551: `TestR37ListingBytesPerFact` failed on main since v4.84.0 unseen (a plain `testing.Short()` skip, so no
+    gate ran it; EXISTMAP's +2.2x cold listing bytes, the known block-decode cost). Now race-gated, bounds measured,
+    mutation-checked in both builds. The long tier otherwise passed on the branch (26 Oct, 40 packages).
   Next: sigma runs BenchmarkPagedRowsProbeCut against the branch; then release v4.85.0. Done when: released with
   the budget met and sigma's branch (one pager call per join level) adopts it.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
@@ -86,6 +89,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
    compactors (worth less since COLDRO: a read-only cold open starts no compactor).
 
 ## Next
+
+- **GATETIER** (found 26 Oct) — 42 more test files skip with a plain `testing.Short()`, so no gate runs them
+  (CONTRIBUTING § Tests forbids it); one of them (R37) went red unseen for a release. Each either becomes race-gated
+  (`testing.Short() && !raceEnabled`, bounds measured under race) or the release gate gains a long-tier run. Done
+  when: no plain `testing.Short()` skip is left, or the gate runs the long tier, and it is green.
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
