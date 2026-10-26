@@ -139,7 +139,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   evening before, so that day's daily window ends an hour early and a rotation in that hour builds a window ending
   before it starts (DSTWIN's failure; 40, 40 and 8 bad quarter hours; Berlin, Lord_Howe, Kathmandu, Beirut, UTC none).
   Fixed on branch `midnightdst` (`dayStart`: the day begins at the jump; TestRotationWindowAcrossDST now covers
-  these zones, Beirut, Kathmandu, Lord_Howe, Bogota and UTC over 2024-2026; mutation killed); patch next.
+  these zones, Beirut, Kathmandu, Lord_Howe, Bogota and UTC over 2024-2026; mutation killed; dfb99567); only new
+  hot shards use it (open, rotation), so existing catalog windows stay; patch v4.81.1 next.
 - **COLDWRITE** (ai-soc, Fable G4, 26 Oct) — can a tiered write land in a cold shard, and is it lost to recovery?
   Answered from the code: yes it can (an update or late event older than ColdAfter opens the shard writable,
   `tieredstore_lifecycle.go` checkout); rho's recovery does not scan by time (each shard replays its WAL at its next
@@ -158,7 +159,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 - **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
-  known. Waits for: René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
+  known. Waits for: sigma's ENDPOINT and EDGEREF tags (sigma 26 Oct: ai-soc's next full run waits for them), René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
   is ready, but Flux runs one big job at a time (ai-soc's k10241303 now) and a Flux run needs René's word.
 - **R37** — Listing facts that were changed still costs more than ai-soc's limit of 4 times a fact's values (ai-soc,
   v4.74.0: 7.9x warm, 9.2x cold after a restart; sigma's part follows rho's). Done when: ai-soc's warm and cold /bars
