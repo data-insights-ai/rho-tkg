@@ -652,6 +652,12 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 }
 
 func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
+	return bs.GetNodeVersionSharing(nid, version, nil)
+}
+
+// GetNodeVersionSharing is GetNodeVersion decoded beside share
+// (store.NodeVersionSharingCapability; nil shares nothing).
+func (bs *Store) GetNodeVersionSharing(nid types.NodeID, version uint32, share *types.Node) (*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -669,7 +675,7 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 		if op.opType == writeOpDelete {
 			return nil, ErrVersionNotFound
 		}
-		n, err := bs.decodeHistoryNodeValue(id, uint64(version), op.value)
+		n, err := bs.decodeHistoryNodeValueSharing(id, uint64(version), op.value, share)
 		if err != nil {
 			return nil, err
 		}
@@ -691,7 +697,7 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 		return item.Value(func(val []byte) error {
 			if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
 				var derr error
-				n, derr = bs.decodeHistoryNodeValue(id, uint64(version), val)
+				n, derr = bs.decodeHistoryNodeValueSharing(id, uint64(version), val, share)
 				return derr
 			}
 			raw = make([]byte, len(val))
@@ -705,7 +711,7 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 	if n != nil {
 		return n, nil // a fresh decode: the caller's own row, no second copy
 	}
-	n, err = bs.decodeHistoryNodeValue(id, uint64(version), raw)
+	n, err = bs.decodeHistoryNodeValueSharing(id, uint64(version), raw, share)
 	if err != nil {
 		return nil, err
 	}
@@ -1260,3 +1266,5 @@ func (bs *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 	}
 	return out, nil
 }
+
+var _ storecontract.NodeVersionSharingCapability = (*Store)(nil)

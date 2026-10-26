@@ -420,12 +420,6 @@ func (n *Node) SharedStringValue(b []byte, hint int) (any, bool) {
 	return nil, false
 }
 
-// PropertyAt returns the i-th property (ascending by key) without copying
-// the slice; the value is the stored interface value.
-func (n *Node) PropertyAt(i int) Property {
-	return n.properties[i]
-}
-
 // FrozenPropertiesAlias returns a frozen node's property slice itself, for a
 // decoder that installs it on another node with SetPropertiesCanonicalShared
 // (whose writes copy first): a version whose properties all equal the

@@ -59,6 +59,10 @@ type entityReads struct {
 	// scan marks a multi-entity scan: it neither reads nor fills the
 	// head-pin cache, which serves repeated point reads of a small hot set.
 	scan bool
+	// share is the entity's current row as read: a version read without a
+	// snapshot is decoded beside it (store.NodeVersionSharingCapability; a
+	// snapshot shares its own lent row). R37.
+	share *types.Node
 }
 
 func (r entityReads) currentNode(id types.NodeID) (*types.Node, error) {
@@ -154,6 +158,13 @@ func (r entityReads) relMeta(id types.RelID) ([]storepkg.VersionTemporalMeta, er
 
 func (r entityReads) nodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	if r.snap == nil {
+		if sc, ok := r.c.store.(storepkg.NodeVersionSharingCapability); ok && r.share != nil {
+			n, err := sc.GetNodeVersionSharing(id, version, r.share)
+			if r.c.historyRead != nil && err == nil {
+				r.c.historyRead(1)
+			}
+			return r.c.trustedNodeVersion(id, version, n, err)
+		}
 		return r.c.getNodeVersion(id, version)
 	}
 	n, err := r.snap.GetNodeVersion(id, version)

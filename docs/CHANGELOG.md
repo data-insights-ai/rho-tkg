@@ -16,7 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the node's current row (the snapshot's last `LendNode`) takes that row's equal string values without allocating
   them, and its whole property slice when every property equals (frozen source, copied before any write); an
   integrity hash no longer escapes its scratch. A cold listing still decodes each current row into a Node (about
-  3.6x a fact's values), so cold stays above 4x (`tasks/evidence/R37/`).
+  3.6x a fact's values), so cold stays above 4x (`tasks/evidence/R37/`). Outside a snapshot,
+  `NodeEffectiveTimelines` shares the same way (`store.NodeVersionSharingCapability`, badger and tiered), and the
+  per-entity temporal skeleton scan appends in key order instead of a map and sort: sigma's multi-segment fallback
+  (`Nodes().Get` + `NodeEffectiveTimelines` per fact) costs 15.8x a fact's values (was 18.5x). Each such call
+  opens its own badger transaction, and badger copies every value it reads twice, so the page door's segments stay
+  the cheap path.
 
 ## [4.82.0] - 2026-10-26
 

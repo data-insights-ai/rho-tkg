@@ -138,6 +138,7 @@ func (c *Core) nodeEffectiveTimelinesFrom(rd entityReads, id types.NodeID, pins 
 // nodeEffectiveTimelinesOf resolves id's timelines from its current row
 // (nil: none) and history (entity lock held).
 func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current *types.Node, pins []types.Instant) ([][]temporal.NodeSegment, error) {
+	rd.share = current // versions decode beside it (R37)
 	low := slices.Min(pins)
 	if err := c.checkNodePointCompaction(id, low); err != nil {
 		return nil, err

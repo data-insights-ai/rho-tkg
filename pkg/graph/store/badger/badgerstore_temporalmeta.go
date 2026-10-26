@@ -2,6 +2,7 @@ package badger
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -56,7 +57,10 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 
 	metaOf := func(raw []byte) (storecontract.VersionTemporalMeta, error) { return historyTemporalMetaOf(raw, node) }
 
-	byVersion := make(map[uint64]storecontract.VersionTemporalMeta)
+	// Committed rows come ascending by key, so by version: they append to
+	// out, and only a buffered row needs the merge below (R37: a map, a
+	// version list and a sort per read).
+	var out []storecontract.VersionTemporalMeta
 	if bs.historyScanTestHook != nil {
 		// Same commit-window hook point as getNodeHistoryByPrefix: fires
 		// between the overlay capture above and the badger View below, so the
@@ -81,13 +85,12 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 			if _, pending := overlay[string(key)]; pending {
 				continue // overlay set wins (byte-identical for history keys)
 			}
-			version := historyVersionFromKey(key)
 			if err := it.Item().Value(func(val []byte) error {
 				m, err := metaOf(val)
 				if err != nil {
 					return err
 				}
-				byVersion[version] = m
+				out = append(out, m)
 				return nil
 			}); err != nil {
 				return err
@@ -98,25 +101,18 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 	if err != nil {
 		return nil, fmt.Errorf("graph: scan history temporal meta: %w", err)
 	}
+	if len(overlay) == 0 {
+		return out, nil
+	}
 	for k, raw := range overlay {
 		m, err := metaOf(raw)
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode pending history temporal meta: %w", err)
 		}
-		byVersion[historyVersionFromKey([]byte(k))] = m
-	}
-
-	if len(byVersion) == 0 {
-		return nil, nil
-	}
-	versions := make([]uint64, 0, len(byVersion))
-	for v := range byVersion {
-		versions = append(versions, v)
-	}
-	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
-	out := make([]storecontract.VersionTemporalMeta, 0, len(versions))
-	for _, v := range versions {
-		out = append(out, byVersion[v])
+		// The overlay's rows are not in out (skipped above): insert in version order.
+		v := historyVersionFromKey([]byte(k))
+		i := sort.Search(len(out), func(i int) bool { return uint64(out[i].Version) > v })
+		out = slices.Insert(out, i, m)
 	}
 	return out, nil
 }

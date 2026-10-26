@@ -442,6 +442,16 @@ type RelBeliefWatermarkCapability interface {
 	RelBeliefWatermark(id types.RelID) (types.Instant, bool)
 }
 
+// NodeVersionSharingCapability is OPTIONAL: GetNodeVersion decoded beside
+// share, the node's current row as read: string values equal to share's are
+// share's own (not allocated again), and a frozen share's whole property
+// slice when every property equals (a write to the result copies it first).
+// The result is the caller's own, as GetNodeVersion's (R37: the effective
+// timelines read a version beside the current row).
+type NodeVersionSharingCapability interface {
+	GetNodeVersionSharing(id types.NodeID, version uint32, share *types.Node) (*types.Node, error)
+}
+
 // VersionTemporalMeta is one history version's selection-scope temporal skeleton
 // (version plus numeric instants). Temporal is nil when the row had no temporal
 // block. CreatedBy/UpdatedBy/BaseEntityID are absent: hydrate the full row

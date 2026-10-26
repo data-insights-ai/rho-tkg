@@ -16,6 +16,22 @@ func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 	return ts.getNodeVersionVia(nid, version, directReads)
 }
 
+// GetNodeVersionSharing is GetNodeVersion decoded beside share
+// (store.NodeVersionSharingCapability) on whichever shard holds the version.
+func (ts *Store) GetNodeVersionSharing(nid types.NodeID, version uint32, share *types.Node) (*types.Node, error) {
+	return ts.getNodeVersionVia(nid, version, func(s *BadgerStore) shardNodeReads { return sharingReads{s, share} })
+}
+
+// sharingReads reads a shard directly, its versions decoded beside share.
+type sharingReads struct {
+	*BadgerStore
+	share *types.Node
+}
+
+func (r sharingReads) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
+	return r.GetNodeVersionSharing(nid, version, r.share)
+}
+
 func (ts *Store) getNodeVersionVia(nid types.NodeID, version uint32, via shardVia) (*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -871,3 +887,5 @@ func (ts *Store) ForEachDeletedNodeIDByDepth(depth ShardDepth, fn func(types.Nod
 	}
 	return err
 }
+
+var _ storecontract.NodeVersionSharingCapability = (*Store)(nil)
