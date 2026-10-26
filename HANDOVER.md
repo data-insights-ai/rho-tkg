@@ -26,7 +26,10 @@ data and the consumer agents):
 - **SHARD** (ADR-0012 in architecture.md, plan with boxes in todo): steps 1-8 shipped (v4.76.1, v4.78.0 to v4.78.5),
   step 10 slice 1 UNIQIDX in v4.81.0; the next slices (label and property postings, the rel owner map) on a measured
   need. ai-soc adopts UNIQIDX with step 10 on René's word, after counting duplicate keys.
-- **Now:** COLDWRITE's test, then BADGER step 3's last pieces (GETWALK, per-tier caches). CALENDAR done (fix in
+- **Goal (René 26 Oct, standing):** realtime at about 2 TB a day, sometimes more; the architecture holds and grows
+  only by more RAM, NVMe and block storage. Rank work that removes a wall to that above constant-factor wins (SCALE).
+- **Now:** R37 (v4.82.1 from branch `r37`), then SCALE's inventory, then BADGER step 3's last pieces (GETWALK,
+  per-tier caches); COLDWRITE's test is in Later. CALENDAR done (fix in
   v4.81.1, table in `tasks/evidence/CALENDAR/`); OPENCOLD, RESTART and WINDOWZONE in v4.82.0 (ai-soc sets UTC
   windows and reads OpenStats at its next run).
 - **Queued:** DICTMERGE and PROPPOS (after ai-soc measures DICT); WRITTENAT (withdrawn by ai-soc unless sigma's PUBIDS

@@ -9,7 +9,9 @@ Each item: one sentence, then when it is done and what it waits for.
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-26 Oct: v4.75.0 to v4.82.0 (`docs/CHANGELOG.md`). Now: R37 (ai-soc's order 26 Oct: memory, restart, listing, storage; memory and restart are mostly sigma's, so
-rho's lever is listing), then BADGER step 3's last pieces.
+rho's lever is listing), then SCALE, then BADGER step 3's last pieces. Standing goal (René 26 Oct): realtime at about
+2 TB a day, sometimes more, grown only by more RAM, NVMe and block storage; work that removes a wall to that ranks
+above a constant-factor win.
 
 - **R37** (ai-soc's lever for rho, 26 Oct) — listing changed facts costs more than ai-soc's 4x a fact's values. ai-soc
   on v4.79.0 (derived_list_cost_test.go): warm 6.4x (13 props, 2 versions), 4.5x (20 props); cold 8.8x (1 version)
@@ -21,7 +23,15 @@ rho's lever is listing), then BADGER step 3's last pieces.
   Nodes. sigma (26 Oct): not now; stop at v4.82.1, ai-soc re-measures cold /bars on it. If it still fails on Flux,
   the column door (cols incl. ov_session, ov_sid; ValidFrom/To and TxFrom per segment; values shared when
   unchanged) and sigma's segment-based joined() are one item, queued where ai-soc ranks it. Note: sigma lists a fact
-  with 2+ segments through Nodes().Get and a full history read (ListDerived), not through the segments.
+  with 2+ segments through Nodes().Get and NodeEffectiveTimelines per fact (no snapshot): on the branch 18.5x ->
+  15.8x (the version shares the current row's values outside a snapshot too); badger copies every value it reads
+  twice, so the floor is sigma's joined() from the page door's segments (told sigma 26 Oct).
+- **SCALE** (René 26 Oct, the standing goal) — rho holds realtime ingest at about 2 TB a day (about 23 MB/s
+  sustained, peaks higher; about 4 billion 500-byte facts a day) and grows only by more RAM, NVMe and block storage.
+  Done when: architecture.md lists what grows with total volume instead of per shard (RAM structures that grow with
+  entity count; open, crash recovery, Clear and compaction cost that grow with store size; hot-shard write
+  throughput against peaks; sub-day shard windows), each measured and either bounded or queued here as its own item
+  ranked by how soon it walls 2 TB a day.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
