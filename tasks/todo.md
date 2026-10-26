@@ -47,7 +47,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   table, 128 KB fixed); measured as live bytes the test reads 82.7 B per node on main and 6.5-8.4 B on the branch
   (70fcd129): the RAM budget is met. Step 4 (48fa4881): hash cache capped at 64 K entries. Step 5
   (0d16b0a4): ID sets in the open image, label keys only counted with the label index on disk; clean reopen
-  ~0.25 s per 1 M nodes, budget met. Left: crash reopen no slower, the bench check, docs, release as a minor.
+  ~0.25 s per 1 M nodes, budget met; crash reopen faster, no benchmark slower, docs written (ae6fa091,
+  `tasks/evidence/EXISTMAP/results.txt`). Releasing as v4.84.0 (a minor: new `index.IDSet`).
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
