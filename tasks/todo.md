@@ -123,8 +123,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 - **CALENDAR** (ai-soc on René's word, 26 Oct) — done on main: every time-based place is in
   `tasks/evidence/CALENDAR/table.txt` with its test; the one failure (zones that jump forward at midnight) is fixed in
-  v4.81.1; granularity and recurrence are UTC and tested under another process zone. Left: ai-soc's answer whether
-  tiered windows should get a Config zone instead of the process's (a minor; asked 26 Oct).
+  v4.81.1; granularity and recurrence are UTC and tested under another process zone. ai-soc asked for a Config zone
+  for the windows (WINDOWZONE).
 - **COLDWRITE** (ai-soc, Fable G4, 26 Oct) — can a tiered write land in a cold shard, and is it lost to recovery?
   Answered from the code: yes it can (an update or late event older than ColdAfter opens the shard writable,
   `tieredstore_lifecycle.go` checkout); rho's recovery does not scan by time (each shard replays its WAL at its next
@@ -136,11 +136,13 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   k10252216's faulted store took 2,115 s to reopen on v4.78.5, rho's share unmeasured. Done when: the open reports
   its time and the shards it opened or recovered, cheap enough to read at the next run (with OPENCOLD).
 - **OPENCOLD** (found 26 Oct in UNIQIDX) — a graph's open on a tiered store opens every cold shard once (4 of 4 in
-  the test, with or without a constraint). Done when: the cause is named and the open reads no cold shard it
-  does not need, or the reason it must is documented.
-
-## Waiting
-
+  the test, with or without a constraint). Cause (26 Oct): `forEachOpenShard` opened every closed cold shard, and a
+  graph's open (`SetValidAxis`) and every `Flush` used it; a closed shard has nothing pending and takes the axis at
+  its open. Fixed on branch `opencold` (it visits open shards only; the purges use `forEachShard`), test and
+  mutations green. Done when: released as a patch with RESTART's measurement.
+- **WINDOWZONE** (ai-soc, 26 Oct: yes, they set UTC) — tiered daily and weekly windows follow the process's zone
+  (`time.Local`), which is how DSTWIN reached ai-soc (Flux runs Berlin). Done when: a `tiered.Config` zone for the
+  windows (default unchanged: the process's zone) is released as a minor.
 - **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
   known. Waits for: sigma's ENDPOINT and EDGEREF tags (sigma 26 Oct: ai-soc's next full run waits for them), René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
