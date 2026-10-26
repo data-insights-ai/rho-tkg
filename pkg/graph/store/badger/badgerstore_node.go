@@ -51,7 +51,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	bs.idxMu.Lock()
 
 	// Check for duplicate.
-	if _, exists := bs.nodeIDs[nid]; exists {
+	if bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.Unlock()
 		return ErrNodeExists
 	}
@@ -78,7 +78,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 
 	// Update in-memory state.
 	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
-	bs.nodeIDs[nid] = struct{}{}
+	bs.nodeIDs.Add(int64(nid))
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 
@@ -134,7 +134,7 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	// Short-circuit: nodeIDs is rebuilt from node entity rows at open and
 	// maintained with writes, so misses do not need a Badger transaction.
 	bs.idxMu.RLock()
-	_, exists := bs.nodeIDs[nid]
+	exists := bs.nodeIDs.Has(int64(nid))
 	bs.idxMu.RUnlock()
 	if !exists {
 		return nil, ErrNodeNotFound
@@ -192,7 +192,7 @@ func (bs *Store) getNodeInTxn(snap *scanSnapshot, nid types.NodeID) (*types.Node
 		return nil, ErrNodeNotFound
 	}
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		return nil, ErrNodeNotFound
 	}
 
@@ -235,7 +235,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	}
 	id := nid.SnowflakeID()
 	bs.idxMu.RLock()
-	_, exists := bs.nodeIDs[nid]
+	exists := bs.nodeIDs.Has(int64(nid))
 	hash, hasHash := bs.nodeHashes[nid]
 	rev := bs.nodeRevs[nid]
 	bs.idxMu.RUnlock()
@@ -303,7 +303,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 func (bs *Store) fillNodeHash(nid types.NodeID, rev uint64, hash string) (string, error) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		return "", ErrNodeNotFound
 	}
 	if bs.nodeRevs[nid] != rev {
@@ -389,7 +389,7 @@ func (bs *Store) deleteNodeRevLocked(nid types.NodeID) {
 
 func (bs *Store) prefetchNodeDeleteInfo(nid types.NodeID) (nodeDeleteInfo, error) {
 	bs.idxMu.RLock()
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.RUnlock()
 		return nodeDeleteInfo{}, ErrNodeNotFound
 	}
@@ -407,7 +407,7 @@ func (bs *Store) nodeDeleteInfoStillCurrentLocked(nid types.NodeID, info nodeDel
 	if info.node == nil || info.rev == 0 {
 		return false
 	}
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		return false
 	}
 	return bs.nodeRevs[nid] == info.rev
@@ -448,7 +448,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 
 	// TOCTOU guard: re-verify existence after acquiring write lock.
 	// A concurrent delete may have removed the node between prefetchNode and here.
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -495,7 +495,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
-	delete(bs.nodeIDs, nid)
+	bs.nodeIDs.Remove(int64(nid))
 	bs.ords.dropNode(nid)
 	bs.deleteNodeRevLocked(nid)
 	bs.appendOps(ops...)
@@ -545,7 +545,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -647,7 +647,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -765,7 +765,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -941,7 +941,7 @@ func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.No
 
 	// Cache miss — check existence before incurring Badger I/O.
 	bs.idxMu.RLock()
-	_, exists := bs.nodeIDs[nid]
+	exists := bs.nodeIDs.Has(int64(nid))
 	bs.idxMu.RUnlock()
 	if !exists {
 		return nil, false, ErrNodeNotFound

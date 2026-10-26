@@ -83,18 +83,18 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	// Verify endpoints exist (skipped for a co-located sharded write — the sharded
 	// owner validated the endpoints on their own shards before calling).
 	if validateEndpoints {
-		if _, exists := bs.nodeIDs[startNID]; !exists {
+		if !bs.nodeIDs.Has(int64(startNID)) {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
-		if _, exists := bs.nodeIDs[endNID]; !exists {
+		if !bs.nodeIDs.Has(int64(endNID)) {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
 	}
 
 	// Check for duplicate via O(1) relIDs.
-	if _, exists := bs.relIDs[rid]; exists {
+	if bs.relIDs.Has(int64(rid)) {
 		bs.idxMu.Unlock()
 		return ErrRelExists
 	}
@@ -105,7 +105,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 
 	// Update in-memory state.
 	bs.relCache.Put(id, bs.frozenRelRow(r))
-	bs.relIDs[rid] = struct{}{}
+	bs.relIDs.Add(int64(rid))
 	bs.bumpRelRevLocked(rid)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
 
@@ -205,7 +205,7 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	// Short-circuit: relIDs is rebuilt from relationship entity rows at open and
 	// maintained with writes, so misses do not need a Badger transaction.
 	bs.idxMu.RLock()
-	_, exists := bs.relIDs[rid]
+	exists := bs.relIDs.Has(int64(rid))
 	bs.idxMu.RUnlock()
 	if !exists {
 		return nil, ErrRelNotFound
@@ -259,7 +259,7 @@ func (bs *Store) getRelInTxn(snap *scanSnapshot, rid types.RelID) (*types.Relati
 		return nil, ErrRelNotFound
 	}
 
-	if _, exists := bs.relIDs[rid]; !exists {
+	if !bs.relIDs.Has(int64(rid)) {
 		return nil, ErrRelNotFound
 	}
 
@@ -350,7 +350,7 @@ func (bs *Store) replaceRelationshipTagged(r *types.Relationship, token uint64, 
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.relIDs[rid]; !exists {
+	if !bs.relIDs.Has(int64(rid)) {
 		bs.idxMu.Unlock()
 		return ErrRelNotFound
 	}
@@ -451,7 +451,7 @@ func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64, exLeg b
 	}
 
 	bs.idxMu.Lock()
-	if _, exists := bs.relIDs[rid]; !exists {
+	if !bs.relIDs.Has(int64(rid)) {
 		bs.idxMu.Unlock()
 		return ErrRelNotFound
 	}
@@ -490,7 +490,7 @@ func (bs *Store) DeleteRelationshipForeignIncoming(rid types.RelID) error {
 	}
 
 	bs.idxMu.Lock()
-	if _, exists := bs.relIDs[rid]; !exists {
+	if !bs.relIDs.Has(int64(rid)) {
 		bs.idxMu.Unlock()
 		return ErrRelNotFound
 	}
@@ -599,7 +599,7 @@ func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {
 	rid := types.RelID(info.ID)
 	startNID := types.NodeID(info.StartID)
 	endNID := types.NodeID(info.EndID)
-	if _, exists := bs.relIDs[rid]; !exists {
+	if !bs.relIDs.Has(int64(rid)) {
 		return false
 	}
 	if set, exists := bs.typeIdx[info.RelType]; !exists {
@@ -643,7 +643,7 @@ func (bs *Store) removeRelByInfo(info RelDeleteInfo, old *types.Relationship, ex
 
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(info.ID)
-	delete(bs.relIDs, rid)
+	bs.relIDs.Remove(int64(rid))
 	bs.ords.dropRel(rid)
 	bs.deleteRelRevLocked(rid)
 	delete(bs.relValidIdx, rid)                 // drop the inline valid-time stamp
@@ -781,7 +781,7 @@ func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool) (r *types.Rela
 	}
 
 	bs.idxMu.RLock()
-	_, exists := bs.relIDs[rid]
+	exists := bs.relIDs.Has(int64(rid))
 	bs.idxMu.RUnlock()
 	if !exists {
 		return nil, false, ErrRelNotFound

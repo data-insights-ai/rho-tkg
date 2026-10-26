@@ -108,7 +108,7 @@ func (bs *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 	var ops []writeOp
 	var purged []storecontract.PurgedRel
 	for _, v := range victims {
-		if _, live := bs.relIDs[v.id]; live {
+		if bs.relIDs.Has(int64(v.id)) {
 			old, gerr := bs.getRelLocked(v.id)
 			if gerr != nil {
 				bs.idxMu.Unlock()
@@ -323,7 +323,7 @@ func (bs *Store) PurgeRelLegResidue(rel storecontract.PurgedRel) error {
 	}
 	defer bs.bumpRelEpoch()
 	bs.idxMu.Lock()
-	if _, live := bs.relIDs[rel.ID]; live {
+	if bs.relIDs.Has(int64(rel.ID)) {
 		bs.idxMu.Unlock()
 		return nil
 	}

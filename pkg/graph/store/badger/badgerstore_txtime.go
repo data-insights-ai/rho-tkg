@@ -780,10 +780,8 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	// Phase 2, not about the candidate SET being perfectly synced to one
 	// instant.
 	bs.idxMu.RLock()
-	liveIDs := make([]types.NodeID, 0, len(bs.nodeIDs))
-	for nid := range bs.nodeIDs {
-		liveIDs = append(liveIDs, nid)
-	}
+	liveIDs := make([]types.NodeID, 0, bs.nodeIDs.Len())
+	bs.nodeIDs.Ascend(func(id int64) bool { liveIDs = append(liveIDs, types.NodeID(id)); return true })
 	bs.idxMu.RUnlock()
 
 	var deletedIDs []types.NodeID
@@ -872,10 +870,8 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	}
 
 	bs.idxMu.RLock()
-	liveIDs := make([]types.RelID, 0, len(bs.relIDs))
-	for rid := range bs.relIDs {
-		liveIDs = append(liveIDs, rid)
-	}
+	liveIDs := make([]types.RelID, 0, bs.relIDs.Len())
+	bs.relIDs.Ascend(func(id int64) bool { liveIDs = append(liveIDs, types.RelID(id)); return true })
 	bs.idxMu.RUnlock()
 
 	var deletedIDs []types.RelID

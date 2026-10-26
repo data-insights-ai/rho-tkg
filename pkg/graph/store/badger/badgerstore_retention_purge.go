@@ -341,7 +341,7 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 	rid := rel.ID
 
 	bs.idxMu.Lock()
-	if _, entityHere := bs.relIDs[rid]; entityHere {
+	if bs.relIDs.Has(int64(rid)) {
 		// The rel entity lives on this shard — a full recordless delete (both legs'
 		// local keys via the info; the remote leg was already purged with the node)
 		// plus its version history (0x08, co-located with the entity).

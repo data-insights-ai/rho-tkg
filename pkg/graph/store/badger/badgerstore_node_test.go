@@ -748,7 +748,7 @@ func TestBadgerStoreCascadeDeleteCleansLabelIdxOnCorruption(t *testing.T) {
 
 	nid := types.NodeID(id)
 	bs.idxMu.Lock()
-	bs.nodeIDs[nid] = struct{}{}
+	bs.nodeIDs.Add(int64(nid))
 	bs.labelIdx[labelTok] = map[types.NodeID]struct{}{nid: {}}
 	bs.nodeCount.Add(1)
 	bs.idxMu.Unlock()
@@ -763,7 +763,7 @@ func TestBadgerStoreCascadeDeleteCleansLabelIdxOnCorruption(t *testing.T) {
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
 
-	if _, exists := bs.nodeIDs[nid]; exists {
+	if bs.nodeIDs.Has(int64(nid)) {
 		t.Fatal("nodeIDs should not contain the deleted node")
 	}
 	if set, exists := bs.labelIdx[labelTok]; exists {
@@ -788,7 +788,7 @@ func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T
 
 	nid := types.NodeID(id)
 	bs.idxMu.Lock()
-	bs.nodeIDs[nid] = struct{}{}
+	bs.nodeIDs.Add(int64(nid))
 	bs.labelIdx[tok1] = map[types.NodeID]struct{}{nid: {}}
 	bs.labelIdx[tok2] = map[types.NodeID]struct{}{nid: {}}
 	bs.nodeCount.Add(1)
@@ -810,7 +810,7 @@ func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T
 			}
 		}
 	}
-	if _, exists := bs.nodeIDs[nid]; exists {
+	if bs.nodeIDs.Has(int64(nid)) {
 		t.Fatal("nodeIDs should not contain the deleted node")
 	}
 

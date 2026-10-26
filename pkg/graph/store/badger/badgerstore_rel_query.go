@@ -92,7 +92,7 @@ func (bs *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.RUnlock()
 		return nil, ErrNodeNotFound
 	}
@@ -153,7 +153,7 @@ func (bs *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 			continue
 		}
 		seen[nid] = struct{}{}
-		if _, ok := bs.nodeIDs[nid]; !ok {
+		if !bs.nodeIDs.Has(int64(nid)) {
 			bs.idxMu.RUnlock()
 			return nil, ErrNodeNotFound
 		}
@@ -215,7 +215,7 @@ func (bs *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	}
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		return 0, ErrNodeNotFound
 	}
 	if bs.adjOnDisk {
@@ -257,7 +257,7 @@ func (bs *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	}
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		return 0, ErrNodeNotFound
 	}
 	if bs.adjOnDisk {
@@ -294,7 +294,7 @@ func (bs *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.RUnlock()
 		return nil, ErrNodeNotFound
 	}
@@ -357,7 +357,7 @@ func (bs *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 			continue
 		}
 		seen[nid] = struct{}{}
-		if _, ok := bs.nodeIDs[nid]; !ok {
+		if !bs.nodeIDs.Has(int64(nid)) {
 			bs.idxMu.RUnlock()
 			return nil, ErrNodeNotFound
 		}
@@ -448,7 +448,7 @@ func (bs *Store) ensureNodeRowsLive(ids []types.NodeID) error {
 			fail(nid, ErrNodeNotFound)
 			continue
 		}
-		if _, exists := bs.nodeIDs[nid]; !exists {
+		if !bs.nodeIDs.Has(int64(nid)) {
 			fail(nid, ErrNodeNotFound)
 			continue
 		}
@@ -529,10 +529,8 @@ func (bs *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	rids := make([]types.RelID, 0, len(bs.relIDs))
-	for id := range bs.relIDs {
-		rids = append(rids, id)
-	}
+	rids := make([]types.RelID, 0, bs.relIDs.Len())
+	bs.relIDs.Ascend(func(id int64) bool { rids = append(rids, types.RelID(id)); return true })
 	bs.idxMu.RUnlock()
 
 	if len(rids) == 0 {
@@ -663,10 +661,8 @@ func (bs *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	rids := make([]types.RelID, 0, len(bs.relIDs))
-	for id := range bs.relIDs {
-		rids = append(rids, id)
-	}
+	rids := make([]types.RelID, 0, bs.relIDs.Len())
+	bs.relIDs.Ascend(func(id int64) bool { rids = append(rids, types.RelID(id)); return true })
 	bs.idxMu.RUnlock()
 
 	if len(rids) == 0 {
@@ -697,10 +693,8 @@ func (bs *Store) ForEachRelID(fn func(types.RelID) bool) error {
 		return errNilIterationCallback()
 	}
 	bs.idxMu.RLock()
-	ids := make([]types.RelID, 0, len(bs.relIDs))
-	for id := range bs.relIDs {
-		ids = append(ids, id)
-	}
+	ids := make([]types.RelID, 0, bs.relIDs.Len())
+	bs.relIDs.Ascend(func(id int64) bool { ids = append(ids, types.RelID(id)); return true })
 	bs.idxMu.RUnlock()
 	for _, id := range ids {
 		if !fn(id) {

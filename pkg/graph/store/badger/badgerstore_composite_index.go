@@ -111,7 +111,7 @@ func (bs *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
-			if _, alive := bs.nodeIDs[types.NodeID(id)]; !alive {
+			if !bs.nodeIDs.Has(int64(types.NodeID(id))) {
 				continue // node deleted during Phase 2
 			}
 			liveIdx.AddKey(id, vk)

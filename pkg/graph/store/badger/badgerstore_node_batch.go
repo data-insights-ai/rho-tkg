@@ -57,7 +57,7 @@ type cascadeDeletePrefetch struct {
 
 func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefetch, error) {
 	bs.idxMu.RLock()
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.RUnlock()
 		return cascadeDeletePrefetch{}, ErrNodeNotFound
 	}
@@ -111,7 +111,7 @@ func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefe
 //   - corruptErr != nil: cleanup completed but node data was unreadable (indexes brute-force purged).
 //   - otherwise: clean success.
 func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePrefetch, history []writeOp, marker uint16) ([]RelDeleteInfo, error, error) {
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		return nil, nil, ErrNodeNotFound
 	}
 
@@ -235,7 +235,7 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 		indexpkg.PurgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
 
 		bs.nodeCache.MarkDeleted(id)
-		delete(bs.nodeIDs, nid)
+		bs.nodeIDs.Remove(int64(nid))
 		bs.ords.dropNode(nid)
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)
@@ -275,7 +275,7 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
-	delete(bs.nodeIDs, nid)
+	bs.nodeIDs.Remove(int64(nid))
 	bs.ords.dropNode(nid)
 	bs.deleteNodeRevLocked(nid)
 	bs.appendOps(ops...)
@@ -423,8 +423,8 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 			delete(bs.inIdx, nid)
 		}
 	}
-	if _, tracked := bs.relIDs[rid]; tracked {
-		delete(bs.relIDs, rid)
+	if bs.relIDs.Has(int64(rid)) {
+		bs.relIDs.Remove(int64(rid))
 		bs.ords.dropRel(rid)
 		bs.relCount.Add(-1)
 	}
@@ -606,7 +606,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 	// Phase 1: validate — no duplicates in store or within batch.
 	seen := make(map[types.NodeID]struct{}, len(nodes))
 	for _, nd := range serialized {
-		if _, exists := bs.nodeIDs[nd.nid]; exists {
+		if bs.nodeIDs.Has(int64(nd.nid)) {
 			bs.idxMu.Unlock()
 			return ErrNodeExists
 		}
@@ -651,7 +651,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		}
 
 		bs.nodeCache.Put(nd.id, nd.frozen)
-		bs.nodeIDs[nd.nid] = struct{}{}
+		bs.nodeIDs.Add(int64(nd.nid))
 		bs.bumpNodeRevLocked(nd.nid)
 		bs.bumpNodeBeliefWatermarkLocked(nd.nid, nodeTxFrom(n)) // BACKLOG 10c, as PutNode
 
@@ -723,7 +723,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	// prefetch below may hit Badger, so keep that I/O outside idxMu.Lock().
 	bs.idxMu.RLock()
 	for _, nid := range typedIDs {
-		if _, exists := bs.nodeIDs[nid]; !exists {
+		if !bs.nodeIDs.Has(int64(nid)) {
 			bs.idxMu.RUnlock()
 			return ErrNodeNotFound
 		}
@@ -753,7 +753,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	// Phase 1c: revalidate after the prefetch window and capture current rows.
 	nodeData := make([]*types.Node, len(typedIDs))
 	for i, nid := range typedIDs {
-		if _, exists := bs.nodeIDs[nid]; !exists {
+		if !bs.nodeIDs.Has(int64(nid)) {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
@@ -804,7 +804,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, id)
 		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 		bs.nodeCache.MarkDeleted(id)
-		delete(bs.nodeIDs, nid)
+		bs.nodeIDs.Remove(int64(nid))
 		bs.ords.dropNode(nid)
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)

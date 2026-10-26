@@ -39,7 +39,7 @@ func exAdjLegOps(op writeOpType, rel, start, end snowflake.ID) []writeOp {
 // earlier life with other endpoints). Caller holds idxMu (R or W).
 func (bs *Store) exAdjOpsForHistoryRowLocked(rid types.RelID, r *types.Relationship) []writeOp {
 	start, end := r.StartNodeID(), r.EndNodeID()
-	if _, live := bs.relIDs[rid]; live {
+	if bs.relIDs.Has(int64(rid)) {
 		if !bs.adjOnDisk {
 			if e, ok := bs.outIdx[start][rid]; ok && e == end {
 				return nil

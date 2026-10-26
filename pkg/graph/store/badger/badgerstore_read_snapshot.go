@@ -460,7 +460,7 @@ func (s *readSnapshot) LendNode(nid types.NodeID) (*types.Node, error) {
 		return nil, ErrNodeNotFound
 	}
 	bs.idxMu.RLock()
-	_, exists := bs.nodeIDs[nid]
+	exists := bs.nodeIDs.Has(int64(nid))
 	bs.idxMu.RUnlock()
 	if !exists {
 		return nil, ErrNodeNotFound
@@ -518,7 +518,7 @@ func (s *readSnapshot) LendRelationship(rid types.RelID) (*types.Relationship, e
 		return nil, ErrRelNotFound
 	}
 	bs.idxMu.RLock()
-	_, exists := bs.relIDs[rid]
+	exists := bs.relIDs.Has(int64(rid))
 	bs.idxMu.RUnlock()
 	if !exists {
 		return nil, ErrRelNotFound

@@ -88,7 +88,8 @@ func TestCleanReopenDeferredStateUnderConcurrentWrites(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	for id := range bs.nodeIDs {
+	for id := range bs.nodeIDs.All() {
+		id := types.NodeID(id)
 		n, err := bs.GetNode(id)
 		if err != nil {
 			t.Fatal(err)

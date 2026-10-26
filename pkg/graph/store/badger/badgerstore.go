@@ -356,12 +356,12 @@ type Store struct {
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
 	idxMu                 sync.RWMutex
-	nodeIDs               map[types.NodeID]struct{} // O(1) node existence check
-	nodeHashes            map[types.NodeID]string   // lazy cache of current node integrity hashes (NodeIntegrityHash fills, every node-row write drops; row 66)
-	nodeRevs              map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
+	nodeIDs               indexpkg.IDSet          // live node IDs (EXISTMAP: sorted chunks, ~8 B per ID)
+	nodeHashes            map[types.NodeID]string // lazy cache of current node integrity hashes (NodeIntegrityHash fills, every node-row write drops; row 66)
+	nodeRevs              map[types.NodeID]uint64 // live node row revision for safe prefetch handoff
 	nextNodeRev           uint64
-	relIDs                map[types.RelID]struct{} // O(1) rel existence check
-	relRevs               map[types.RelID]uint64   // live rel row revision for safe prefetch handoff (BACKLOG 18b — relRevs/nextRelRev mirror nodeRevs/nextNodeRev)
+	relIDs                indexpkg.IDSet         // live rel IDs (as nodeIDs)
+	relRevs               map[types.RelID]uint64 // live rel row revision for safe prefetch handoff (BACKLOG 18b — relRevs/nextRelRev mirror nodeRevs/nextNodeRev)
 	nextRelRev            uint64
 	labelIdx              map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
 	labelOnDisk           bool                                          // answer label snapshots from the persisted keyspace
@@ -1001,10 +1001,8 @@ func New(cfg Config) (*Store, error) {
 		maxEntryValue: maxEntryValue,
 
 		historyPresenceProbeOnly: cfg.HistoryPresenceProbeOnly,
-		nodeIDs:                  make(map[types.NodeID]struct{}),
 		nodeHashes:               make(map[types.NodeID]string),
 		nodeRevs:                 make(map[types.NodeID]uint64),
-		relIDs:                   make(map[types.RelID]struct{}),
 		relRevs:                  make(map[types.RelID]uint64),
 		labelIdx:                 make(map[uint16]map[types.NodeID]struct{}),
 		typeIdx:                  make(map[uint16]map[types.RelID]struct{}),
@@ -1245,7 +1243,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			if img != nil {
 				// Clean close: the row is live; labels come from the label keys, hash and
 				// statistics on first use.
-				bs.nodeIDs[nid] = struct{}{}
+				bs.nodeIDs.Add(int64(nid))
 				bs.ords.node(nid, true)
 				bs.bumpNodeRevLocked(nid)
 				continue
@@ -1282,7 +1280,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 				continue
 			}
-			bs.nodeIDs[nid] = struct{}{}
+			bs.nodeIDs.Add(int64(nid))
 			bs.ords.node(nid, true) // ID order: the open numbers the stored nodes 1..N
 			bs.bumpNodeRevLocked(nid)
 			labels := bs.addNodeIndexesFromRow(nid, collectNodeLabelTokens(n))
@@ -1346,7 +1344,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			relEntityIDs[rid] = struct{}{}
 			if img != nil {
 				// Clean close: type and adjacency come from their keys below.
-				bs.relIDs[rid] = struct{}{}
+				bs.relIDs.Add(int64(rid))
 				bs.ords.rel(rid, true)
 				bs.seedRelRevAtOpenLocked(rid)
 				continue
@@ -1382,7 +1380,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 				continue
 			}
-			bs.relIDs[rid] = struct{}{}
+			bs.relIDs.Add(int64(rid))
 			bs.ords.rel(rid, true) // ID order: the open numbers the stored relationships 1..N
 			bs.seedRelRevAtOpenLocked(rid)
 			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters (BACKLOG 5B)
@@ -1532,7 +1530,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		if err != nil {
 			return err
 		}
-		liveNodeCount := int64(len(bs.nodeIDs))
+		liveNodeCount := int64(bs.nodeIDs.Len())
 		nodeCount, err = reconcilePersistedCounter("node", nodeCount, liveNodeCount, int64(len(nodeEntityIDs)), bs.logger)
 		if err != nil {
 			return err
@@ -1543,7 +1541,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		if err != nil {
 			return err
 		}
-		liveRelCount := int64(len(bs.relIDs))
+		liveRelCount := int64(bs.relIDs.Len())
 		relCount, err = reconcilePersistedCounter("relationship", relCount, liveRelCount, int64(len(relEntityIDs)), bs.logger)
 		if err != nil {
 			return err
@@ -2044,10 +2042,10 @@ func (bs *Store) addNodeIndexesFromRow(nid types.NodeID, labelTokens []uint16) m
 // start with a remote end is a tiered split write, whose in-key lives on the
 // end node's shard. Caller holds idxMu or is the open.
 func (bs *Store) inKeyHereLocked(info RelDeleteInfo) bool {
-	if _, endLocal := bs.nodeIDs[types.NodeID(info.EndID)]; endLocal {
+	if bs.nodeIDs.Has(int64(types.NodeID(info.EndID))) {
 		return true
 	}
-	_, startLocal := bs.nodeIDs[types.NodeID(info.StartID)]
+	startLocal := bs.nodeIDs.Has(int64(types.NodeID(info.StartID)))
 	return !startLocal
 }
 
@@ -2113,7 +2111,7 @@ func (bs *Store) Clear() (err error) {
 	bs.resetValidEndsLocked() // the valid-end indexes (tracked under idxMu)
 
 	// Clear in-memory indexes.
-	bs.nodeIDs = make(map[types.NodeID]struct{})
+	bs.nodeIDs = indexpkg.IDSet{}
 	bs.nodeHashes = make(map[types.NodeID]string)
 	bs.nodeRevs = make(map[types.NodeID]uint64)
 	// nextNodeRev keeps counting: a lazy hash read that started before Clear
@@ -2129,7 +2127,7 @@ func (bs *Store) Clear() (err error) {
 	bs.docColumnsMulti = nil
 	bs.colOrds = columnOrdinalCache{}
 	bs.docMu.Unlock()
-	bs.relIDs = make(map[types.RelID]struct{})
+	bs.relIDs = indexpkg.IDSet{}
 	bs.relRevs = make(map[types.RelID]uint64)
 	bs.nextRelRev = 0
 	bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})

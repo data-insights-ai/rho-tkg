@@ -26,10 +26,10 @@ func cpfState(t *testing.T, bs *Store, nid types.NodeID, orphans []types.RelID) 
 	for _, o := range orphans {
 		_, out := bs.outIdx[nid][o]
 		_, typ := bs.typeIdx[7][o]
-		_, rel := bs.relIDs[o]
+		rel := bs.relIDs.Has(int64(o))
 		idx += fmt.Sprintf(" %d:out=%v,type=%v,relIDs=%v", o, out, typ, rel)
 	}
-	_, nodeID := bs.nodeIDs[nid]
+	nodeID := bs.nodeIDs.Has(int64(nid))
 	bs.idxMu.RUnlock()
 	bs.wbMu.Lock()
 	pending, logs := len(bs.pending), len(bs.pendingLog)
@@ -59,7 +59,7 @@ func TestCascadeDeleteFatalPreflightAppliesNothing(t *testing.T) {
 			bs.inIdx[end] = map[types.RelID]inEdge{}
 			bs.typeIdx[7] = map[types.RelID]struct{}{}
 			for _, o := range orphans {
-				bs.relIDs[o] = struct{}{}
+				bs.relIDs.Add(int64(o))
 				bs.outIdx[nid][o] = end
 				bs.inIdx[end][o] = inEdge{start: nid, typ: 7}
 				bs.typeIdx[7][o] = struct{}{}

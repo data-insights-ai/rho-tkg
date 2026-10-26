@@ -90,7 +90,7 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 		return err
 	}
 	_ = liveIdx.FinishBuild(backfill, func(id snowflake.ID) (bool, error) {
-		_, alive := bs.relIDs[types.RelID(id)] // a rel deleted during Phase 2 is skipped
+		alive := bs.relIDs.Has(int64(types.RelID(id))) // a rel deleted during Phase 2 is skipped
 		return alive, nil
 	})
 	bs.persistRelPropertyIndexDefs()

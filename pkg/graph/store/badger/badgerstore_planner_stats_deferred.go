@@ -3,7 +3,6 @@ package badger
 import (
 	"encoding/binary"
 	"fmt"
-	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -60,7 +59,7 @@ func (bs *Store) ensurePlannerStats() error {
 	}
 	bs.statsDeferred.Store(false) // the maintenance doors below must run
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
-		err := mergeScanCurrent(txn, storepkg.KeyNode, storepkg.SizeNodeKey, sortedIDs(bs.nodeIDs),
+		err := mergeScanCurrent(txn, storepkg.KeyNode, storepkg.SizeNodeKey, sortedIDs[types.NodeID](&bs.nodeIDs),
 			func(id types.NodeID, raw []byte) {
 				var n *types.Node
 				if raw == nil {
@@ -83,7 +82,7 @@ func (bs *Store) ensurePlannerStats() error {
 		if err != nil {
 			return err
 		}
-		return mergeScanCurrent(txn, storepkg.KeyRel, storepkg.SizeRelKey, sortedIDs(bs.relIDs),
+		return mergeScanCurrent(txn, storepkg.KeyRel, storepkg.SizeRelKey, sortedIDs[types.RelID](&bs.relIDs),
 			func(id types.RelID, raw []byte) {
 				var r *types.Relationship
 				if raw == nil {
@@ -121,12 +120,9 @@ func (bs *Store) resetPlannerStatsLocked() {
 	bs.relPropertyStats = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator)
 }
 
-func sortedIDs[ID ~int64](set map[ID]struct{}) []ID {
-	out := make([]ID, 0, len(set))
-	for id := range set {
-		out = append(out, id)
-	}
-	slices.Sort(out)
+func sortedIDs[ID ~int64](set *indexpkg.IDSet) []ID {
+	out := make([]ID, 0, set.Len())
+	set.Ascend(func(id int64) bool { out = append(out, ID(id)); return true })
 	return out
 }
 

@@ -262,7 +262,7 @@ func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRo
 			found = false
 		default:
 			bs.idxMu.RLock()
-			_, found = bs.nodeIDs[types.NodeID(sid)]
+			found = bs.nodeIDs.Has(int64(types.NodeID(sid)))
 			bs.idxMu.RUnlock()
 			if found {
 				var err error
@@ -280,7 +280,7 @@ func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRo
 			found = false
 		default:
 			bs.idxMu.RLock()
-			_, found = bs.relIDs[types.RelID(sid)]
+			found = bs.relIDs.Has(int64(types.RelID(sid)))
 			bs.idxMu.RUnlock()
 			if found {
 				var err error

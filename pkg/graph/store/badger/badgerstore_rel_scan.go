@@ -107,7 +107,7 @@ func (bs *Store) forEachAdjacentRel(nid types.NodeID, typeToken uint16, incoming
 	}
 
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.RUnlock()
 		return ErrNodeNotFound
 	}
@@ -166,7 +166,7 @@ func (bs *Store) ForEachAdjacentEndpoint(nid types.NodeID, typeToken uint16, inc
 	}
 
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.RUnlock()
 		return ErrNodeNotFound
 	}
@@ -203,7 +203,7 @@ func (bs *Store) ForEachAdjacentEndpointOrdinal(nid types.NodeID, typeToken uint
 		return err
 	}
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.RUnlock()
 		return ErrNodeNotFound
 	}

@@ -90,7 +90,7 @@ func (bs *Store) RelMapBytesForTest() float64 {
 	defer bs.idxMu.RUnlock()
 	runtime.GC()
 	runtime.ReadMemStats(&m0)
-	ids, revs := maps.Clone(bs.relIDs), maps.Clone(bs.relRevs)
+	ids, revs := bs.relIDs.Clone(), maps.Clone(bs.relRevs)
 	typ := make(map[uint16]map[types.RelID]struct{}, len(bs.typeIdx))
 	for k, v := range bs.typeIdx {
 		typ[k] = maps.Clone(v)

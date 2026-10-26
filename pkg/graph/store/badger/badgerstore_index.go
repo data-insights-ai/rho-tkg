@@ -113,7 +113,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
-			if _, alive := bs.nodeIDs[types.NodeID(id)]; !alive {
+			if !bs.nodeIDs.Has(int64(types.NodeID(id))) {
 				continue // node deleted during Phase 2
 			}
 			ops = append(ops, op)
@@ -125,7 +125,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		return bs.flushIfNeeded()
 	}
 	_ = liveIdx.FinishBuild(backfill, func(id snowflake.ID) (bool, error) {
-		_, alive := bs.nodeIDs[types.NodeID(id)] // a node deleted during Phase 2 is skipped
+		alive := bs.nodeIDs.Has(int64(types.NodeID(id))) // a node deleted during Phase 2 is skipped
 		return alive, nil
 	})
 	bs.persistPropertyIndexDefs()
@@ -327,7 +327,7 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	}
 	var diskOps []writeOp
 	for _, entry := range backfill {
-		if _, alive := bs.nodeIDs[types.NodeID(entry.id)]; !alive {
+		if !bs.nodeIDs.Has(int64(types.NodeID(entry.id))) {
 			continue // node deleted during Phase 2
 		}
 		if liveTI.WasMutated(entry.id) {
@@ -704,7 +704,7 @@ func (bs *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Dur
 		return err
 	}
 	for _, entry := range backfill {
-		if _, alive := bs.nodeIDs[types.NodeID(entry.id)]; !alive {
+		if !bs.nodeIDs.Has(int64(types.NodeID(entry.id))) {
 			continue
 		}
 		if liveHFI.WasMutated(entry.id) {
@@ -905,7 +905,7 @@ func (bs *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey str
 		return err
 	}
 	for _, entry := range backfill {
-		if _, alive := bs.nodeIDs[types.NodeID(entry.id)]; !alive {
+		if !bs.nodeIDs.Has(int64(types.NodeID(entry.id))) {
 			continue
 		}
 		if vi.WasMutated(entry.id) {

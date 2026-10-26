@@ -43,7 +43,7 @@ func (bs *Store) NodeCurrentStamps(nid types.NodeID) (storecontract.RowStamps, e
 		return storecontract.RowStamps{}, ErrNodeNotFound
 	}
 	bs.idxMu.RLock()
-	_, exists := bs.nodeIDs[nid]
+	exists := bs.nodeIDs.Has(int64(nid))
 	bs.idxMu.RUnlock()
 	if !exists {
 		return storecontract.RowStamps{}, ErrNodeNotFound
@@ -68,7 +68,7 @@ func (bs *Store) RelCurrentStamps(rid types.RelID) (storecontract.RowStamps, err
 		return storecontract.RowStamps{}, ErrRelNotFound
 	}
 	bs.idxMu.RLock()
-	_, exists := bs.relIDs[rid]
+	exists := bs.relIDs.Has(int64(rid))
 	bs.idxMu.RUnlock()
 	if !exists {
 		return storecontract.RowStamps{}, ErrRelNotFound

@@ -1412,7 +1412,7 @@ func TestBadgerStoreCascadeDeleteAtomicOnCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	bs.idxMu.Lock()
-	bs.relIDs[types.RelID(corruptRelID)] = struct{}{}
+	bs.relIDs.Add(int64(types.RelID(corruptRelID)))
 	if bs.outIdx[types.NodeID(10)] == nil {
 		bs.outIdx[types.NodeID(10)] = make(map[types.RelID]types.NodeID)
 	}
@@ -1434,18 +1434,18 @@ func TestBadgerStoreCascadeDeleteAtomicOnCorruption(t *testing.T) {
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
 
-	if _, exists := bs.relIDs[types.RelID(100)]; !exists {
+	if !bs.relIDs.Has(int64(types.RelID(100))) {
 		t.Error("rel 100 was partially deleted — atomicity violation")
 	}
-	if _, exists := bs.relIDs[types.RelID(101)]; !exists {
+	if !bs.relIDs.Has(int64(types.RelID(101))) {
 		t.Error("rel 101 was partially deleted — atomicity violation")
 	}
-	if _, exists := bs.relIDs[types.RelID(corruptRelID)]; !exists {
+	if !bs.relIDs.Has(int64(types.RelID(corruptRelID))) {
 		t.Error("corrupt rel 999 was removed — atomicity violation")
 	}
 
 	// Node should still exist.
-	if _, exists := bs.nodeIDs[types.NodeID(10)]; !exists {
+	if !bs.nodeIDs.Has(int64(types.NodeID(10))) {
 		t.Error("node 10 was deleted despite cascade failure — atomicity violation")
 	}
 
@@ -1473,7 +1473,7 @@ func TestBadgerStoreCascadeDeletePurgesOrphanAdjacency(t *testing.T) {
 	typeKey := storepkg.RelTypeIndexKey(7, orphan.SnowflakeID())
 
 	bs.idxMu.Lock()
-	bs.relIDs[orphan] = struct{}{} // simulate pre-existing in-memory orphan state
+	bs.relIDs.Add(int64(orphan)) // simulate pre-existing in-memory orphan state
 	bs.outIdx[types.NodeID(10)] = map[types.RelID]types.NodeID{orphan: types.NodeID(20)}
 	bs.inIdx[types.NodeID(20)] = map[types.RelID]inEdge{orphan: {start: types.NodeID(10), typ: 7}}
 	bs.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}

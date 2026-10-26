@@ -94,7 +94,7 @@ func TestLoadIndexes_AdjOnDisk_NoTransientMaps(t *testing.T) {
 		adjOpenRels, offAlloc, offLive, onAlloc, onLive)
 
 	on.idxMu.RLock()
-	outN, inN, revN, relN := len(on.outIdx), len(on.inIdx), len(on.relRevs), len(on.relIDs)
+	outN, inN, revN, relN := len(on.outIdx), len(on.inIdx), len(on.relRevs), on.relIDs.Len()
 	on.idxMu.RUnlock()
 	if relN != adjOpenRels {
 		t.Fatalf("flag on: %d live rels after open, want %d", relN, adjOpenRels)

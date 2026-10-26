@@ -63,7 +63,7 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.relIDs[rid]; !exists {
+	if !bs.relIDs.Has(int64(rid)) {
 		bs.idxMu.Unlock()
 		return ErrRelNotFound
 	}

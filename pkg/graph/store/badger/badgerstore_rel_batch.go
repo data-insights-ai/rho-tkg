@@ -90,15 +90,15 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	// Phase 1: validate — endpoints exist, no duplicates.
 	seen := make(map[types.RelID]struct{}, len(rels))
 	for _, rd := range serialized {
-		if _, exists := bs.nodeIDs[rd.startNID]; !exists {
+		if !bs.nodeIDs.Has(int64(rd.startNID)) {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
-		if _, exists := bs.nodeIDs[rd.endNID]; !exists {
+		if !bs.nodeIDs.Has(int64(rd.endNID)) {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
-		if _, exists := bs.relIDs[rd.rid]; exists {
+		if bs.relIDs.Has(int64(rd.rid)) {
 			bs.idxMu.Unlock()
 			return ErrRelExists
 		}
@@ -121,7 +121,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		rd := serialized[i]
 
 		bs.relCache.Put(rd.id, rd.frozen)
-		bs.relIDs[rd.rid] = struct{}{}
+		bs.relIDs.Add(int64(rd.rid))
 		bs.bumpRelRevLocked(rd.rid)
 		bs.bumpRelBeliefWatermarkLocked(rd.rid, relTxFrom(r)) // BACKLOG 10c, as PutRelationship
 
@@ -201,7 +201,7 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	// may hit Badger, so keep that I/O outside idxMu.Lock().
 	bs.idxMu.RLock()
 	for _, rid := range typedIDs {
-		if _, exists := bs.relIDs[rid]; !exists {
+		if !bs.relIDs.Has(int64(rid)) {
 			bs.idxMu.RUnlock()
 			return ErrRelNotFound
 		}
@@ -227,7 +227,7 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	// Phase 1c: revalidate after the prefetch window and capture current metadata.
 	infos := make([]RelDeleteInfo, len(typedIDs))
 	for i, rid := range typedIDs {
-		if _, exists := bs.relIDs[rid]; !exists {
+		if !bs.relIDs.Has(int64(rid)) {
 			bs.idxMu.Unlock()
 			return ErrRelNotFound
 		}

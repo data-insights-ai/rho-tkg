@@ -50,8 +50,8 @@ func CountRowDecodesForTest(fn func()) int64 {
 // production use.
 func (bs *Store) IndexStateDigestForTest() string {
 	bs.idxMu.RLock()
-	nodes := digestNodeIDs(bs.nodeIDs)
-	rels := digestRelIDs(bs.relIDs)
+	nodes := digestNodeIDSet(&bs.nodeIDs)
+	rels := digestRelIDSet(&bs.relIDs)
 	var lines []string
 	add := func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }
 	for _, id := range nodes {
@@ -178,12 +178,24 @@ func (bs *Store) plannerStatsDigestLines() []string {
 	return lines
 }
 
+func digestNodeIDSet(set *indexpkg.IDSet) []types.NodeID {
+	out := make([]types.NodeID, 0, set.Len())
+	set.Ascend(func(id int64) bool { out = append(out, types.NodeID(id)); return true })
+	return out
+}
+
 func digestNodeIDs(set map[types.NodeID]struct{}) []types.NodeID {
 	out := make([]types.NodeID, 0, len(set))
 	for id := range set {
 		out = append(out, id)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func digestRelIDSet(set *indexpkg.IDSet) []types.RelID {
+	out := make([]types.RelID, 0, set.Len())
+	set.Ascend(func(id int64) bool { out = append(out, types.RelID(id)); return true })
 	return out
 }
 

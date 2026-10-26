@@ -98,8 +98,9 @@ func (bs *Store) ensureRelValidIdxBuilt() {
 	if bs.relValidIdx != nil {
 		return // built by a racing caller while we waited for the lock
 	}
-	idx := make(map[types.RelID]relValidStamp, len(bs.relIDs))
-	for rid := range bs.relIDs {
+	idx := make(map[types.RelID]relValidStamp, bs.relIDs.Len())
+	for id := range bs.relIDs.All() {
+		rid := types.RelID(id)
 		r, err := bs.getRelLocked(rid)
 		if err != nil {
 			continue // gone since the snapshot — a miss falls back to a decode
@@ -142,7 +143,7 @@ func (bs *Store) ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, i
 	}
 
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.RUnlock()
 		return ErrNodeNotFound
 	}
@@ -231,7 +232,7 @@ func (bs *Store) ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incomi
 	}
 
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.RUnlock()
 		return ErrNodeNotFound
 	}

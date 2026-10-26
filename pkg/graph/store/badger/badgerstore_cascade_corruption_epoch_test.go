@@ -30,7 +30,7 @@ func TestCascadeDeleteInner_CorruptionFallback_BumpsNodeEpochSalt(t *testing.T) 
 
 	nid := types.NodeID(snowflake.ID(999_000_001))
 	bs.idxMu.Lock()
-	bs.nodeIDs[nid] = struct{}{}
+	bs.nodeIDs.Add(int64(nid))
 	bs.idxMu.Unlock()
 
 	before := bs.nodeEpochSalt.Load()
@@ -50,7 +50,7 @@ func TestCascadeDeleteInner_CorruptionFallback_BumpsNodeEpochSalt(t *testing.T) 
 
 	// The node must genuinely be gone from the in-memory liveness map too.
 	bs.idxMu.RLock()
-	_, stillPresent := bs.nodeIDs[nid]
+	stillPresent := bs.nodeIDs.Has(int64(nid))
 	bs.idxMu.RUnlock()
 	if stillPresent {
 		t.Fatal("node still present in bs.nodeIDs after corruption-fallback cascade delete")

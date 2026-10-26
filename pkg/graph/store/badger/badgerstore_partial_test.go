@@ -330,7 +330,7 @@ func TestDeleteRelEntityAndOutRejectsStaleEntityRowNotInLiveSet(t *testing.T) {
 	}
 
 	bs.idxMu.Lock()
-	delete(bs.relIDs, r.InternalID())
+	bs.relIDs.Remove(int64(r.InternalID()))
 	bs.relCache.ResetForTest()
 	bs.idxMu.Unlock()
 

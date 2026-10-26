@@ -57,7 +57,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.relIDs[rid]; exists {
+	if bs.relIDs.Has(int64(rid)) {
 		bs.idxMu.Unlock()
 		return ErrRelExists
 	}
@@ -68,7 +68,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 
 	// Update in-memory state.
 	bs.relCache.Put(id, bs.frozenRelRow(r))
-	bs.relIDs[rid] = struct{}{}
+	bs.relIDs.Add(int64(rid))
 	bs.bumpRelRevLocked(rid)
 
 	// Type index.
@@ -179,7 +179,7 @@ func (bs *Store) deleteRelEntityAndOut(id snowflake.ID, exLeg bool) (RelDeleteIn
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.relIDs[rid]; !exists {
+	if !bs.relIDs.Has(int64(rid)) {
 		bs.idxMu.Unlock()
 		return RelDeleteInfo{}, ErrRelNotFound
 	}
@@ -200,7 +200,7 @@ func (bs *Store) deleteRelEntityAndOut(id snowflake.ID, exLeg bool) (RelDeleteIn
 
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(id)
-	delete(bs.relIDs, rid)
+	bs.relIDs.Remove(int64(rid))
 	bs.ords.dropRel(rid)
 	bs.deleteRelRevLocked(rid)
 	delete(bs.relValidIdx, rid) // drop the inline valid-time stamp
@@ -447,7 +447,7 @@ func (bs *Store) HasNodeID(id snowflake.ID) bool {
 		return false
 	}
 	bs.idxMu.RLock()
-	_, exists := bs.nodeIDs[types.NodeID(id)]
+	exists := bs.nodeIDs.Has(int64(types.NodeID(id)))
 	bs.idxMu.RUnlock()
 	return exists
 }
@@ -458,7 +458,7 @@ func (bs *Store) HasRelID(id snowflake.ID) bool {
 		return false
 	}
 	bs.idxMu.RLock()
-	_, exists := bs.relIDs[types.RelID(id)]
+	exists := bs.relIDs.Has(int64(types.RelID(id)))
 	bs.idxMu.RUnlock()
 	return exists
 }

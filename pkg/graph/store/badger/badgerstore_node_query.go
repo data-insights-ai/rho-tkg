@@ -202,10 +202,8 @@ func (bs *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	nids := make([]types.NodeID, 0, len(bs.nodeIDs))
-	for id := range bs.nodeIDs {
-		nids = append(nids, id)
-	}
+	nids := make([]types.NodeID, 0, bs.nodeIDs.Len())
+	bs.nodeIDs.Ascend(func(id int64) bool { nids = append(nids, types.NodeID(id)); return true })
 	bs.idxMu.RUnlock()
 
 	if len(nids) == 0 {
@@ -508,10 +506,8 @@ func (bs *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	nids := make([]types.NodeID, 0, len(bs.nodeIDs))
-	for id := range bs.nodeIDs {
-		nids = append(nids, id)
-	}
+	nids := make([]types.NodeID, 0, bs.nodeIDs.Len())
+	bs.nodeIDs.Ascend(func(id int64) bool { nids = append(nids, types.NodeID(id)); return true })
 	bs.idxMu.RUnlock()
 
 	if len(nids) == 0 {
@@ -541,10 +537,8 @@ func (bs *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 		return errNilIterationCallback()
 	}
 	bs.idxMu.RLock()
-	ids := make([]types.NodeID, 0, len(bs.nodeIDs))
-	for id := range bs.nodeIDs {
-		ids = append(ids, id)
-	}
+	ids := make([]types.NodeID, 0, bs.nodeIDs.Len())
+	bs.nodeIDs.Ascend(func(id int64) bool { ids = append(ids, types.NodeID(id)); return true })
 	bs.idxMu.RUnlock()
 	for _, id := range ids {
 		if !fn(id) {

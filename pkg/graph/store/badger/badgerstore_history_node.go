@@ -62,7 +62,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -201,7 +201,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -343,7 +343,7 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -536,7 +536,7 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 }
 
 func (bs *Store) validateDeleteNodeRelTombstonesLocked(nid types.NodeID, relTombstones []RelTombstone, prefetched map[types.RelID]RelDeleteInfo) error {
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if !bs.nodeIDs.Has(int64(nid)) {
 		return ErrNodeNotFound
 	}
 

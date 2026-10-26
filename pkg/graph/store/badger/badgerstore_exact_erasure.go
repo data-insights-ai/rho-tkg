@@ -108,7 +108,8 @@ func (bs *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 	// Defend against a missing/corrupt adjacency leg: the live relationship row
 	// remains the endpoint authority. A corrupt undeclared row makes the proof
 	// impossible, so fail closed rather than assume it is unrelated.
-	for rid := range bs.relIDs {
+	for id := range bs.relIDs.All() {
+		rid := types.RelID(id)
 		if _, declared := relSet[rid]; declared {
 			continue
 		}
@@ -239,7 +240,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 
 	for _, rid := range req.RelIDs {
 		relPlan := exactErasureRelPlan{id: rid}
-		_, relPlan.live = bs.relIDs[rid]
+		relPlan.live = bs.relIDs.Has(int64(rid))
 		if relPlan.live {
 			if err := bs.exactErasureScanTest("relationship-current", uint64(rid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 				return exactErasurePlan{}, err
@@ -263,7 +264,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 
 	for _, nid := range req.NodeIDs {
 		nodePlan := exactErasureNodePlan{id: nid}
-		_, nodePlan.live = bs.nodeIDs[nid]
+		nodePlan.live = bs.nodeIDs.Has(int64(nid))
 		if nodePlan.live {
 			if err := bs.exactErasureScanTest("node-current", uint64(nid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 				return exactErasurePlan{}, err
@@ -439,7 +440,7 @@ func (bs *Store) applyExactCurrentNodeLocked(nid types.NodeID, node *types.Node)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, node, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, node, rawID)
 	bs.nodeCache.MarkDeleted(rawID)
-	delete(bs.nodeIDs, nid)
+	bs.nodeIDs.Remove(int64(nid))
 	bs.ords.dropNode(nid)
 	bs.deleteNodeRevLocked(nid)
 	bs.nodeCount.Add(-1)
@@ -484,7 +485,7 @@ func (bs *Store) applyExactNodeResidueLocked(plan exactErasureNodePlan) {
 	indexpkg.PurgeNodeFromAllHighFrequencyIndexes(bs.hfIndexes, rawID)
 	indexpkg.PurgeNodeFromAllVectorIndexesExact(bs.vectorIndexes, rawID)
 	bs.nodeCache.MarkDeleted(rawID)
-	delete(bs.nodeIDs, plan.id)
+	bs.nodeIDs.Remove(int64(plan.id))
 	bs.ords.dropNode(plan.id)
 	bs.deleteNodeRevLocked(plan.id)
 	bs.appendOps(plan.residueOps...)
@@ -602,7 +603,8 @@ func (bs *Store) exactErasureRelationshipClosureLocked(
 		return nil
 	}
 
-	for rid := range bs.relIDs {
+	for id := range bs.relIDs.All() {
+		rid := types.RelID(id)
 		rel, err := bs.getRelLocked(rid)
 		if err != nil {
 			return zero, fmt.Errorf("graph: exact erasure closure current relationship %d: %w", rid, err)
@@ -775,7 +777,8 @@ func (bs *Store) rebuildExactErasurePlannerSketchesLocked() {
 		return
 	}
 	bs.propertyStats = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator)
-	for nid := range bs.nodeIDs {
+	for id := range bs.nodeIDs.All() {
+		nid := types.NodeID(id)
 		n, err := bs.getNodeLocked(nid)
 		if err != nil {
 			// Match loadIndexes' corruption tolerance: planner statistics are
@@ -793,7 +796,8 @@ func (bs *Store) rebuildExactErasurePlannerSketchesLocked() {
 		})
 	}
 	bs.relPropertyStats = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator)
-	for rid := range bs.relIDs {
+	for id := range bs.relIDs.All() {
+		rid := types.RelID(id)
 		r, err := bs.getRelLocked(rid)
 		if err != nil {
 			continue

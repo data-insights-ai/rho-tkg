@@ -350,7 +350,7 @@ func (bs *Store) relBuildCurrent(snap *relBuildSnap, id snowflake.ID) (*types.Re
 		return nil, false, nil
 	}
 	bs.idxMu.RLock()
-	_, exists := bs.relIDs[types.RelID(id)]
+	exists := bs.relIDs.Has(int64(types.RelID(id)))
 	bs.idxMu.RUnlock()
 	if !exists {
 		return nil, false, nil

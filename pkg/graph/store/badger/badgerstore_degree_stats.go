@@ -41,7 +41,7 @@ func (bs *Store) RelTypeDegreeCounts(typeToken uint16) (out, in map[types.NodeID
 			if typeToken != 0 && e.typ != typeToken {
 				continue
 			}
-			if _, live := bs.relIDs[rid]; !live {
+			if !bs.relIDs.Has(int64(rid)) {
 				continue // an orphaned incoming entry, not a relationship
 			}
 			rels++

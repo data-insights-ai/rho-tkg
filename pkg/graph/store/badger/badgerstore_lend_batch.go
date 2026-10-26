@@ -33,7 +33,7 @@ func (bs *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 			continue
 		}
 		bs.idxMu.RLock()
-		_, exists := bs.nodeIDs[nid]
+		exists := bs.nodeIDs.Has(int64(nid))
 		bs.idxMu.RUnlock()
 		if !exists {
 			continue
@@ -80,7 +80,7 @@ func (bs *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relatio
 			continue
 		}
 		bs.idxMu.RLock()
-		_, exists := bs.relIDs[rid]
+		exists := bs.relIDs.Has(int64(rid))
 		bs.idxMu.RUnlock()
 		if !exists {
 			continue
