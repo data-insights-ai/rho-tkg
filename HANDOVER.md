@@ -8,9 +8,10 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 ## State
 
 - **Released 24-26 Oct:** v4.75.0 to v4.86.0 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
-- **v4.85.0** (ROWPROBE): CI green, consumers build and vet clean, sigma and ai-soc notified; scale probe as v4.84.0.
-  The ci-docker gate passed every step but the ledger (a todo line ending in "Done"); the todo-only fix reran docs
-  tests and the ledger, not the whole gate.
+- **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
+  notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
+  "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
+  v4.86.0) ci-docker also runs `make test-long` (~1 min).
 - **Branches:** none open. Merged item branches (r37, existmap, txsnap, rowprobe, tierstats included) wait for René's delete (user-only action 6). main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
