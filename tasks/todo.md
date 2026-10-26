@@ -58,7 +58,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   from every KeyRelType key (~360 ms, 36 B per rel). Steps: (1) skip the dead adjacency walks and (2) take the label
   counts from the image; (3) `typeIdx` as an ID set per type kept in the image, so a clean all-on-disk open walks
   no per-entity key: all three on branch openwalk b3a2b19e (reopen 1 M nodes + 1 M rels 1.25 s to 0.13 s, heap 376
-  to 212 MB, RAM per rel 49.7 to 16.2 B); ci-docker next, a minor (v4.87.0). Done when: the probe's clean reopen with rels costs
+  to 212 MB, RAM per rel 49.7 to 16.2 B); a minor (v4.87.0). First ci-docker red: VERIFY V2's fixture was five
+  compressed blocks, not one, and the image's new bytes moved a block trailer onto a flip position (badger panics
+  there, BADGERPANIC); fixed on the branch (one real block, checked), ci-docker rerunning. Done when: the probe's clean reopen with rels costs
   about what one without rels does, and RAM per rel drops, measured.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
