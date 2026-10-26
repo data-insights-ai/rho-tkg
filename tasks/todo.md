@@ -43,7 +43,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   reads and writes in `bench/` within 5 %; crash reopen no slower. Done when: shipped with the budget met. Branch
   `existmap`: red test `TestExistMapResidentBytesPerNode` (5652797d): 118 B per node on ai-soc's shard config
   (nodeRevs ~39 B, nodeIDs ~33 B, the rest map growth slack); with the RAM label index and ordinals (the plain
-  defaults) 215 B. Steps 1-2 done (e8d97150: `index.IDSet`, sorted chunks): ~80 B. Next: step 3, the revisions.
+  defaults) 215 B. Steps 1-2 done (`index.IDSet`, sorted chunks): ~80 B; step 3 done (43011eb1: striped revision
+  table, 128 KB fixed): ~15 B. Next: what the last ~7 B over the ID set are, step 4 (`nodeHashes`), step 5 (open image).
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
