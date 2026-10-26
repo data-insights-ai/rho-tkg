@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -193,3 +194,17 @@ func guardMsgpackDepth(data []byte) error {
 	}
 	return nil
 }
+
+// UnmarshalNodeWireSharing is SafeUnmarshal of a node row into w that takes
+// every string value equal to one of share's from share instead of
+// allocating it, and WireToNodeChecked of w then takes share's whole property
+// slice when every property equals it: a version of a node decoded beside its
+// current row shares what did not change (R37).
+func UnmarshalNodeWireSharing(data []byte, w *NodeWire, share *types.Node) error {
+	w.share = share // kept for WireToNodeChecked, which may share the slice too; DropShare ends it
+	return SafeUnmarshal(data, w)
+}
+
+// DropShare ends w's share (UnmarshalNodeWireSharing), so a pooled wire does
+// not keep the node alive.
+func (w *NodeWire) DropShare() { w.share = nil }

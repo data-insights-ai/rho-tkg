@@ -69,6 +69,9 @@ type readSnapshot struct {
 	its       [snapIters]snapIter
 	memo      histMemo
 	metas     metaMemo
+	// lent is the node LendNode returned last: a version of the same node
+	// decoded next shares its unchanged string values (R37).
+	lent *types.Node
 }
 
 // snapIter is one keyspace's iterator and the key it last sought, the
@@ -94,7 +97,16 @@ type histMemo struct {
 // no row (row 121); a winning row is then read on its own (version).
 type metaMemo struct {
 	prefix string
-	metas  map[string]storecontract.VersionTemporalMeta
+	metas  []keyedMeta // ascending by key (by version); never nil once read
+}
+
+// keyedMeta is one history row's temporal meta under its badger key. A
+// skeleton is a slice ascending by key, not a map: one small allocation per
+// entity where two maps, a key list and a sort cost about 1 KB per read of a
+// one-version history (R37, ai-soc's cold listing).
+type keyedMeta struct {
+	key  string
+	meta storecontract.VersionTemporalMeta
 }
 
 // pinned returns the transaction, re-opened when a commit happened since it
@@ -214,20 +226,20 @@ func (s *readSnapshot) committedHistory(i int, prefix []byte) (map[string][]byte
 // under prefix (keyspace i) in the current transaction, decoded in place from
 // the iterator's buffers, from the memo when this entity was read last. Call
 // it after the overlay capture.
-func (s *readSnapshot) committedMetas(i int, prefix []byte) (map[string]storecontract.VersionTemporalMeta, error) {
+func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error) {
 	s.pinned()
 	if s.metas.metas != nil && s.metas.prefix == string(prefix) {
 		return s.metas.metas, nil
 	}
 	node := i == snapNodeHist
-	metas := map[string]storecontract.VersionTemporalMeta{}
+	metas := []keyedMeta{}
 	if s.memo.rows != nil && s.memo.prefix == string(prefix) {
-		for k, raw := range s.memo.rows {
-			m, err := historyTemporalMetaOf(raw, node)
+		for _, k := range sortedKeys(s.memo.rows) {
+			m, err := historyTemporalMetaOf(s.memo.rows[k], node)
 			if err != nil {
 				return nil, err
 			}
-			metas[k] = m
+			metas = append(metas, keyedMeta{k, m})
 		}
 	} else {
 		for it := s.seek(i, prefix); it.ValidForPrefix(prefix); it.Next() {
@@ -243,7 +255,7 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) (map[string]storecon
 			}); err != nil {
 				return nil, err
 			}
-			metas[string(item.Key())] = m
+			metas = append(metas, keyedMeta{string(item.Key()), m})
 		}
 		s.its[i].pastPrefix(prefix)
 	}
@@ -252,8 +264,10 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) (map[string]storecon
 }
 
 // historyMetas merges the committed skeleton under prefix with the write
-// buffer as history merges rows: key → temporal meta.
-func (s *readSnapshot) historyMetas(i int, prefix []byte) (map[string]storecontract.VersionTemporalMeta, error) {
+// buffer as history merges rows, ascending by key. With nothing buffered for
+// the entity it is the committed skeleton itself (the memo: callers only
+// read it).
+func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 	overlay, overlayDeletes := s.bs.pendingHistoryVersionOverlay(prefix, 0)
 	if h := s.bs.historyScanTestHook; h != nil {
 		h() // tests only: the commit window between the overlay capture and the read
@@ -262,10 +276,13 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) (map[string]storecontr
 	if err != nil {
 		return nil, err
 	}
+	if len(overlay) == 0 && len(overlayDeletes) == 0 {
+		return committed, nil
+	}
 	entries := make(map[string]storecontract.VersionTemporalMeta, len(committed)+len(overlay))
-	for k, m := range committed {
-		if _, deleted := overlayDeletes[k]; !deleted {
-			entries[k] = m
+	for _, e := range committed {
+		if _, deleted := overlayDeletes[e.key]; !deleted {
+			entries[e.key] = e.meta
 		}
 	}
 	for k, raw := range overlay {
@@ -275,7 +292,16 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) (map[string]storecontr
 		}
 		entries[k] = m
 	}
-	return entries, nil
+	keys := make([]string, 0, len(entries))
+	for k := range entries {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	merged := make([]keyedMeta, len(keys))
+	for j, k := range keys {
+		merged[j] = keyedMeta{k, entries[k]}
+	}
+	return merged, nil
 }
 
 // history merges the committed rows under prefix with the write buffer as
@@ -386,14 +412,9 @@ func (s *readSnapshot) historyMeta(i int, prefix []byte) ([]storecontract.Versio
 	if len(entries) == 0 {
 		return nil, nil
 	}
-	keys := make([]string, 0, len(entries))
-	for k := range entries {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	out := make([]storecontract.VersionTemporalMeta, 0, len(keys))
-	for _, k := range keys {
-		out = append(out, entries[k])
+	out := make([]storecontract.VersionTemporalMeta, len(entries))
+	for j, e := range entries {
+		out[j] = e.meta
 	}
 	return out, nil
 }
@@ -433,6 +454,7 @@ func (s *readSnapshot) LendNode(nid types.NodeID) (*types.Node, error) {
 	v, status := bs.nodeCache.Get(id)
 	switch status {
 	case indexpkg.CacheHit:
+		s.lent = v
 		return v, nil
 	case indexpkg.CacheDeleted:
 		return nil, ErrNodeNotFound
@@ -465,6 +487,7 @@ func (s *readSnapshot) LendNode(nid types.NodeID) (*types.Node, error) {
 	}
 	n.Freeze() // shared between cache and caller
 	bs.nodeCache.LoadCleanAt(id, n, s.nodeEpoch)
+	s.lent = n
 	return n, nil
 }
 
@@ -559,11 +582,10 @@ func (s *readSnapshot) probe(kind byte, id snowflake.ID, _ bool) (bool, uint32, 
 	if err != nil {
 		return false, 0, fmt.Errorf("graph: probe history presence: %w", err)
 	}
-	var top uint64
-	for k := range entries {
-		top = max(top, historyVersionFromKey([]byte(k)))
+	if len(entries) == 0 {
+		return false, 0, nil
 	}
-	return len(entries) > 0, clampTop(top), nil
+	return true, clampTop(historyVersionFromKey([]byte(entries[len(entries)-1].key))), nil
 }
 
 // nodeHistoryRaw returns nid's history rows (key → raw) through the snapshot.
@@ -656,8 +678,12 @@ func (s *readSnapshot) GetRelVersion(rid types.RelID, version uint32) (*types.Re
 }
 
 func (s *readSnapshot) decodeNodeVersion(id snowflake.ID, version uint64, raw, prefix []byte) (*types.Node, error) {
+	var share *types.Node
+	if s.lent != nil && s.lent.ID().SnowflakeID() == id {
+		share = s.lent
+	}
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
-		return s.bs.decodeHistoryNodeValue(id, version, raw) // no anchor: the pooled full-row decode
+		return s.bs.decodeHistoryNodeValueSharing(id, version, raw, share) // no anchor: the pooled full-row decode
 	}
 	anchor := s.anchor(prefix, func(v uint64) []byte { return storepkg.HistNodeKey(id, v) })
 	w, err := s.bs.reconstructNodeHistoryWire(id, version, raw, anchor)

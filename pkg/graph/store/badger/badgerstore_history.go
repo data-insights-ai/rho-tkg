@@ -343,9 +343,11 @@ func historyIDMaxSeekKey(prefix byte) []byte {
 }
 
 func (bs *Store) pendingHistoryVersionOverlay(prefix []byte, startVersion uint32) (map[string][]byte, map[string]struct{}) {
+	// The maps are made on the first buffered row of the entity: callers only
+	// read them, and nil reads as empty (R37: two empty maps per history read).
 	prefixStr := string(prefix)
-	entries := make(map[string][]byte)
-	deletes := make(map[string]struct{})
+	var entries map[string][]byte
+	var deletes map[string]struct{}
 
 	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeHistKey || k[:len(prefixStr)] != prefixStr {
@@ -356,11 +358,17 @@ func (bs *Store) pendingHistoryVersionOverlay(prefix []byte, startVersion uint32
 		}
 		if op.opType == writeOpDelete {
 			delete(entries, k)
+			if deletes == nil {
+				deletes = make(map[string]struct{})
+			}
 			deletes[k] = struct{}{}
 			return
 		}
 		cp := make([]byte, len(op.value))
 		copy(cp, op.value)
+		if entries == nil {
+			entries = make(map[string][]byte)
+		}
 		entries[k] = cp
 		delete(deletes, k)
 	})

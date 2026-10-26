@@ -715,11 +715,18 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 // decodeHistoryNodeValue reconstructs (full-or-delta) then decodes one node
 // history value to a *types.Node. Point-reads the interval anchor for a delta.
 func (bs *Store) decodeHistoryNodeValue(id snowflake.ID, version uint64, raw []byte) (*types.Node, error) {
+	return bs.decodeHistoryNodeValueSharing(id, version, raw, nil)
+}
+
+// decodeHistoryNodeValueSharing is decodeHistoryNodeValue whose full-row
+// decode takes the string values equal to share's from share (the node's
+// current row, lent beside it: R37); nil shares none.
+func (bs *Store) decodeHistoryNodeValueSharing(id snowflake.ID, version uint64, raw []byte, share *types.Node) (*types.Node, error) {
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
 		// A full row needs no anchor: decode into a pooled wire (row 121).
 		w := getPooledNodeWire()
 		defer putPooledNodeWire(w)
-		if err := storepkg.SafeUnmarshal(raw, w); err != nil {
+		if err := storepkg.UnmarshalNodeWireSharing(raw, w, share); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
 		n, err := bs.decodeNodeHistoryWireForKey(*w, id, version)

@@ -1038,6 +1038,7 @@ func getPooledNodeWire() *storepkg.NodeWire {
 
 func putPooledNodeWire(w *storepkg.NodeWire) {
 	clear(w.Properties) // drop the keys and values: the pool must not retain them
+	w.DropShare()
 	if cap(w.Properties) > 256 {
 		w.Properties = nil // do not pin a very wide row's array
 	}

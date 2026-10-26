@@ -1,0 +1,21 @@
+R37 (ai-soc, 26 Oct): listing changed facts allocates more than 4x a fact's values. ai-soc on v4.79.0
+(derived_list_cost_test.go, TotalAlloc across graphmgr.DerivedRows -> sigma ListDerivedRows -> rho
+ForEachNodeEffectiveByLabelAndProperties, 128 Derived facts of 447 B on the reference shard): warm 6.4x (2 versions),
+cold 8.8x (1 version) and 24.7x (2 versions); rho 97 % of the listing's bytes.
+
+rho repro (probe_test.go.txt, then TestR37ListingBytesPerFact; ai-soc's tiered config, cold = closed and reopened):
+                               1 version warm / cold     2 versions warm / cold
+before (main, v4.82.0)         0.9x / 5.3x               8.5x / 14.9x
+history skeleton as a slice    0.9x / 5.3x               7.1x / 13.5x   (two maps, a key list and a sort per read: ~640 B)
+unchanged values shared        0.9x / 5.3x               5.5x / 11.9x   (a version's strings equal to the lent current row's)
+pending overlay maps lazy      0.9x / 5.3x               5.3x / 11.7x
+whole property slice shared    0.9x / 5.3x               4.3x / 10.7x   (all properties equal: the frozen row's slice, copy on write)
+hash scratch pooled            0.8x / 5.3x               4.0x / 10.5x   (a [32]byte escaped through ReadFull)
+
+What is left (profile): a cold listing decodes the current row into a Node: PropertySlice 448 B, value strings
+~560 B, their interface boxes 224 B, the Node 219 B, temporal 112 B, integrity ~150 B: about 3.6x a fact's values
+for one decoded row, so a cold listing that hands out Nodes cannot reach 4x. Below that needs a door that hands
+sigma the columns per segment without Nodes (asked sigma and ai-soc).
+mutations: the share test (storeutil TestUnmarshalNodeWireSharing) fails on unequal bytes shared, a slice shared
+over a difference, an unfrozen node's slice shared, no value sharing, and no copy before a write; the bytes test
+fails without value sharing (warm 5.6x > 5.0x).

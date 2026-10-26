@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **R37** (ai-soc, 26 Oct: listing changed facts allocated up to 24.7x a fact's values against their limit of 4x;
+  97 % in rho): `ForEachNodeEffectiveByLabelAndProperties` and every history read allocate less. On ai-soc's shape
+  (`TestR37ListingBytesPerFact`) a fact with two validity versions now costs 4.0x its values warm (was 8.5x) and
+  10.5x cold (was 14.9x); one version 0.8x and 5.3x. A history read builds its temporal skeleton as one sorted slice
+  (two maps, a key list and a sort before) and no overlay maps when nothing is buffered; a version decoded beside
+  the node's current row (the snapshot's last `LendNode`) takes that row's equal string values without allocating
+  them, and its whole property slice when every property equals (frozen source, copied before any write); an
+  integrity hash no longer escapes its scratch. A cold listing still decodes each current row into a Node (about
+  3.6x a fact's values), so cold stays above 4x (`tasks/evidence/R37/`).
+
 ## [4.82.0] - 2026-10-26
 
 ### Added

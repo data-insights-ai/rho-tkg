@@ -7,6 +7,7 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/hash32"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/vmihailenco/msgpack/v5/msgpcode"
 )
@@ -134,7 +135,7 @@ func (w *NodeWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 		case "el":
 			w.ExtraLabels, err = decodeIntSlice(dec)
 		case "p":
-			w.Properties, err = decodePropertyArray(dec, kb, w.Properties)
+			w.Properties, err = decodePropertyArrayShared(dec, kb, w.Properties, w.share)
 		case "v":
 			w.Version, err = dec.DecodeInt()
 		case "ht":
@@ -321,6 +322,13 @@ func decodeIntSlice(dec *msgpack.Decoder) ([]int, error) {
 // capacity, is the backing array to decode into (a pooled NodeWire's; row 121):
 // the entries are scratch, read once into the entity's own property slice.
 func decodePropertyArray(dec *msgpack.Decoder, kb []byte, reuse []PropertyWire) ([]PropertyWire, error) {
+	return decodePropertyArrayShared(dec, kb, reuse, nil)
+}
+
+// decodePropertyArrayShared is decodePropertyArray that takes a string value
+// equal to one of share's from share instead of allocating it (R37; nil:
+// none shared).
+func decodePropertyArrayShared(dec *msgpack.Decoder, kb []byte, reuse []PropertyWire, share *types.Node) ([]PropertyWire, error) {
 	n, err := dec.DecodeArrayLen()
 	if err != nil {
 		return nil, err
@@ -332,9 +340,14 @@ func decodePropertyArray(dec *msgpack.Decoder, kb []byte, reuse []PropertyWire) 
 	if cap(out) < min(n, wireArrayPreallocCap) {
 		out = make([]PropertyWire, 0, min(n, wireArrayPreallocCap))
 	}
+	var vb *[]byte
+	if share != nil {
+		vb = wireValueBufPool.Get().(*[]byte)
+		defer wireValueBufPool.Put(vb)
+	}
 	for i := 0; i < n; i++ {
 		var pw PropertyWire
-		if err := decodePropertyWireInto(dec, &pw, kb); err != nil {
+		if err := decodePropertyWireShared(dec, &pw, kb, share, i, vb); err != nil {
 			return nil, err
 		}
 		out = append(out, pw)
@@ -342,11 +355,52 @@ func decodePropertyArray(dec *msgpack.Decoder, kb []byte, reuse []PropertyWire) 
 	return out, nil
 }
 
+// wireValueBufPool holds the scratch a shared decode reads a string value
+// into before it compares it with the sharing node's.
+var wireValueBufPool = sync.Pool{New: func() any { b := make([]byte, 0, 256); return &b }}
+
+// decodeSharedString decodes the next value when it is a msgpack string:
+// share's equal value (no allocation) or a new string, as DecodeInterface
+// would return it. ok is false, nothing consumed, for any other value.
+func decodeSharedString(dec *msgpack.Decoder, share *types.Node, hint int, vb *[]byte) (v any, ok bool, err error) {
+	c, err := dec.PeekCode()
+	if err != nil {
+		return nil, false, err
+	}
+	if !msgpcode.IsFixedString(c) && c != msgpcode.Str8 && c != msgpcode.Str16 && c != msgpcode.Str32 {
+		return nil, false, nil
+	}
+	n, err := dec.DecodeBytesLen()
+	if err != nil {
+		return nil, false, err
+	}
+	if n <= 0 {
+		return "", true, nil
+	}
+	if cap(*vb) < n {
+		*vb = make([]byte, n)
+	}
+	b := (*vb)[:n]
+	if err := dec.ReadFull(b); err != nil {
+		return nil, false, err
+	}
+	if sv, found := share.SharedStringValue(b, hint); found {
+		return sv, true, nil
+	}
+	return string(b), true, nil
+}
+
 // decodePropertyWireInto decodes one PropertyWire map into p. The value `v` is
 // decoded via DecodeInterface — the exact-width, non-loose interface path that
 // reflection uses for an `any` field by default — so the reconstructed dynamic
 // types are identical to the previous reflection decode.
 func decodePropertyWireInto(dec *msgpack.Decoder, p *PropertyWire, kb []byte) error {
+	return decodePropertyWireShared(dec, p, kb, nil, 0, nil)
+}
+
+// decodePropertyWireShared is decodePropertyWireInto that takes a string
+// value from share when share holds an equal one (decodeSharedString).
+func decodePropertyWireShared(dec *msgpack.Decoder, p *PropertyWire, kb []byte, share *types.Node, hint int, vb *[]byte) error {
 	nf, err := dec.DecodeMapLen()
 	if err != nil {
 		return err
@@ -362,7 +416,13 @@ func decodePropertyWireInto(dec *msgpack.Decoder, p *PropertyWire, kb []byte) er
 		case "kt":
 			p.KeyToken, err = dec.DecodeUint16()
 		case "v":
-			p.Value, err = dec.DecodeInterface()
+			var shared bool
+			if share != nil {
+				p.Value, shared, err = decodeSharedString(dec, share, hint, vb)
+			}
+			if err == nil && !shared {
+				p.Value, err = dec.DecodeInterface()
+			}
 		case "t":
 			p.Type, err = dec.DecodeUint8()
 		case "n":
@@ -402,9 +462,11 @@ func decodeHashField(dec *msgpack.Decoder) (string, error) {
 	if n != 32 {
 		return "", fmt.Errorf("%w: binary integrity hash of %d bytes, want 32", storepkg.ErrCorruptWire, n)
 	}
-	var b [32]byte
-	if err := dec.ReadFull(b[:]); err != nil {
+	vb := wireValueBufPool.Get().(*[]byte) // a [32]byte here escaped through ReadFull: 32 B a hash (R37)
+	defer wireValueBufPool.Put(vb)
+	b := (*vb)[:32]
+	if err := dec.ReadFull(b); err != nil {
 		return "", err
 	}
-	return hash32.String(b[:]), nil
+	return hash32.String(b), nil
 }

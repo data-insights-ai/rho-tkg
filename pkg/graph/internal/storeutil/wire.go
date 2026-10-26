@@ -303,6 +303,9 @@ func emittedRowFormatVersion(fv uint8, retracted, binaryHash, void, keptValidTo,
 // at the deserialization boundary (MustWireToNode / MustWireToRel). Tier D — see
 // keys.go for the chokepoint invariant.
 type NodeWire struct {
+	// share, when set (UnmarshalNodeWireSharing), lends its equal string
+	// values to the decode; never encoded.
+	share *types.Node
 	// FormatVersion is the per-row wire format version. 0 means the row was
 	// written before versioning existed (decode as version 1). See
 	// CurrentWireFormatVersion for the bump protocol.
@@ -566,7 +569,7 @@ func WireToNodeChecked(w NodeWire) (*types.Node, error) {
 	if err := validateNodeWireFields(w); err != nil {
 		return nil, err
 	}
-	props, err := wireToPropertiesChecked(w.Properties)
+	props, err := wireToPropertiesSharing(w.Properties, w.share)
 	if err != nil {
 		return nil, fmt.Errorf("node wire: properties: %w", err)
 	}
@@ -1046,6 +1049,52 @@ func wireToPropertiesUnchecked(pw []PropertyWire) (types.PropertySlice, error) {
 		ps[i] = types.Property{Key: p.Key, Value: value}
 	}
 	return ps, nil
+}
+
+// wireToPropertiesSharing is wireToPropertiesChecked that returns share's
+// own property slice when every property equals share's (same keys, equal
+// string values): a version of a node beside its frozen current row
+// allocates no slice (R37). Validation is the same.
+func wireToPropertiesSharing(pw []PropertyWire, share *types.Node) (types.PropertySlice, error) {
+	alias, ok := share.FrozenPropertiesAlias()
+	if !ok || len(pw) == 0 || len(pw) != len(alias) {
+		return wireToPropertiesChecked(pw)
+	}
+	var ps types.PropertySlice
+	var prev string
+	for i, p := range pw {
+		prop, err := validatePropertyWire(p, i, prev)
+		if err != nil {
+			return nil, err
+		}
+		prev = p.Key
+		if ps == nil {
+			if sameStringProperty(prop, alias[i]) {
+				continue
+			}
+			ps = make(types.PropertySlice, len(pw))
+			copy(ps, alias[:i])
+		}
+		ps[i] = prop
+	}
+	if ps == nil {
+		return alias, nil
+	}
+	return ps, nil
+}
+
+// sameStringProperty reports whether a and b have one key and equal string
+// values.
+func sameStringProperty(a, b types.Property) bool {
+	if a.Key != b.Key {
+		return false
+	}
+	as, ok := a.Value.(string)
+	if !ok {
+		return false
+	}
+	bs, ok := b.Value.(string)
+	return ok && as == bs
 }
 
 func wireToPropertiesChecked(pw []PropertyWire) (types.PropertySlice, error) {

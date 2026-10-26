@@ -396,6 +396,48 @@ func (n *Node) PropertyHashNeedsRecover() bool {
 	return propertySliceHashNeedsRecover(n.properties)
 }
 
+// SharedStringValue returns n's stored property value (a string, as stored:
+// the same interface value) whose bytes equal b, trying position hint first.
+// A decoder of another version of n hands it out instead of allocating the
+// same string again; strings are immutable, so the share is safe whatever the
+// caller does with either node (R37: a listing decoded every version's
+// values afresh though they rarely change).
+func (n *Node) SharedStringValue(b []byte, hint int) (any, bool) {
+	if n == nil {
+		return nil, false
+	}
+	ps := n.properties
+	if hint >= 0 && hint < len(ps) {
+		if s, ok := ps[hint].Value.(string); ok && s == string(b) {
+			return ps[hint].Value, true
+		}
+	}
+	for i := range ps {
+		if s, ok := ps[i].Value.(string); ok && i != hint && len(s) == len(b) && s == string(b) {
+			return ps[i].Value, true
+		}
+	}
+	return nil, false
+}
+
+// PropertyAt returns the i-th property (ascending by key) without copying
+// the slice; the value is the stored interface value.
+func (n *Node) PropertyAt(i int) Property {
+	return n.properties[i]
+}
+
+// FrozenPropertiesAlias returns a frozen node's property slice itself, for a
+// decoder that installs it on another node with SetPropertiesCanonicalShared
+// (whose writes copy first): a version whose properties all equal the
+// current row's shares them (R37). ok is false for a node that is not
+// frozen, whose own writes would show through the alias.
+func (n *Node) FrozenPropertiesAlias() (ps PropertySlice, ok bool) {
+	if n == nil || !n.frozen {
+		return nil, false
+	}
+	return n.properties, true
+}
+
 // Properties returns a copy of the node's property slice.
 func (n *Node) Properties() PropertySlice {
 	if n == nil {
