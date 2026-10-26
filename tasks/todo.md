@@ -157,7 +157,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   cold; sigma's fallback 18.5x -> 15.8x. Left: a cold listing decodes each current row into a Node (~3.6x by
   itself), so below 4x cold needs a column door (cols incl. ov_session, ov_sid; ValidFrom/To and TxFrom per segment;
   values shared when unchanged) together with sigma's segment-based joined(): one item, queued where ai-soc ranks it
-  (sigma 26 Oct: not now). Waits for: ai-soc's re-measure of cold /bars on v4.83.0.
+  (sigma 26 Oct: not now). ai-soc on v4.83.0 (26 Oct, derived_list_cost_test.go): cold 2 versions 21.6x -> 18.3x;
+  cold 1 version 7.4x, warm 2 versions 6.2x (13 props) and 4.3x (20 props) unchanged. Its warm test lists through
+  sigma's joined(), maybe not through the door rho cut; ai-soc ranks the column door below sigma's PAGESWITCH and
+  JOINFIT. Waits for: ai-soc's profile of the warm test (which rho doors it calls).
 - **CHAIN** (memory split known 26 Oct: k10260011 heap 30.0 GB, sigma 89 %, rho 3.3 GB, badger 0.77 GB; storage
   split still open) — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
