@@ -8,7 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
-in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
+in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, UNIQIDX (SHARD step 10 slice 1) in v4.81.0 (tagged 26 Oct); SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
 consumers build, ai-soc and sigma told; RACETIME: the isolated race packages now have 20 min; ai-soc
 measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, SHARD step 10 (René, with ai-soc's
 counts). FLAKYWAL fixed (test only); COLDRO in v4.78.3, PREFETCH in v4.78.4, DSTWIN (ai-soc's urgent rotation fault at the end of summer time) in
@@ -136,7 +136,22 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   truncation by time, the tx-time clock across a backward wall-clock step, any index bucketed by day. Done when: a
   table of each time-based place with its test over every hour of a leap and a non-leap year in UTC,
   Europe/Berlin, America/Santiago, Asia/Kathmandu and Australia/Lord_Howe, green, and a patch tag for whatever fails.
-  Next after UNIQIDX.
+  ai-soc's inputs (26 Oct; pin v4.79.0): ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2, a planned 28-day daily
+  purge (a purge at a DST boundary belongs in the table), event zones UTC and America/Bogota, host zone Europe/Berlin
+  and TZ unset (nothing may depend on the process's zone). Found first (26 Oct, probe 2024-2028, every quarter
+  hour): where clocks jump forward at midnight (Santiago, Havana, Asuncion) Go places the missing 00:00 at 23:00 the
+  evening before, so that day's daily window ends an hour early and a rotation in that hour builds a window ending
+  before it starts (DSTWIN's failure; 40, 40 and 8 bad quarter hours; Berlin, Lord_Howe, Kathmandu, Beirut, UTC none).
+  Fix first, as a patch. Now, after v4.81.0.
+- **COLDWRITE** (ai-soc, Fable G4, 26 Oct) — can a tiered write land in a cold shard, and is it lost to recovery?
+  Answered from the code: yes it can (an update or late event older than ColdAfter opens the shard writable,
+  `tieredstore_lifecycle.go` checkout); rho's recovery does not scan by time (each shard replays its WAL at its next
+  open; the clock floor is one reference-shard key raised before any shard's rows). Done when: a test writes INTO a
+  cold shard with DurableCommit, drops the store without Close, and reads it back after reopen; and ai-soc names
+  the recovery "by time" it meant (theirs or sigma's would miss such a write).
+- **RESTART** (ai-soc, 26 Oct) — k10260011's clean restart took 625 s (nearly all sigma re-reading results);
+  k10252216's faulted store took 2,115 s to reopen on v4.78.5, rho's share unmeasured. Done when: the open reports
+  its time and the shards it opened or recovered, cheap enough to read at the next run (with OPENCOLD).
 - **OPENCOLD** (found 26 Oct in UNIQIDX) — a graph's open on a tiered store opens every cold shard once (4 of 4 in
   the test, with or without a constraint). Done when: the cause is named and the open reads no cold shard it
   does not need, or the reason it must is documented.
@@ -147,8 +162,9 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
   known. Waits for: René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
   is ready, but Flux runs one big job at a time (ai-soc's k10241303 now) and a Flux run needs René's word.
-- **R37** — Listing facts that were changed still costs more than ai-soc's limit of 4 times a fact's values. Done when:
-  ai-soc's cold /bars test passes on Flux. Waits for: CHAIN-2.
+- **R37** — Listing facts that were changed still costs more than ai-soc's limit of 4 times a fact's values (ai-soc,
+  v4.74.0: 7.9x warm, 9.2x cold after a restart; sigma's part follows rho's). Done when: ai-soc's warm and cold /bars
+  tests are under 4x on Flux. Waits for: CHAIN-2.
 - **REPORT** — ai-soc and sigma have not yet reported on rho's newer doors, and rho builds only what blocks
   them. Done when: both have reported. Waits for: ai-soc, sigma.
 - **ORIGIN** — Every release Markus makes on origin has to be merged and checked against rho's rules. Done when: no
@@ -175,6 +191,12 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   Waits for: ai-soc's check of its history range reads, then decided on that data.
 
 ## Later
+
+- **PURGEIDS** (sigma, for PAGEGC; not urgent) — a hard purge by id on every store. rho has PurgeExpiredNodes/Rels
+  (by policy) and Void/ExciseNodeValidity (by validity), no purge by id. Waits for: sigma's answers (nodes, rels or
+  both; history too or current row only; ids reusable or not; batch size; which stores).
+- **UNIQIDX adoption** (ai-soc, 26 Oct) — ai-soc moves Process, File, RegValue and LocalObject to event labels only
+  with SHARD step 10 on René's word, after counting duplicate keys on a store copy (ErrUniqueViolationExisting).
 
 - **AISOC** — ai-soc remodels its wasteful data model and may send rho requests; each becomes its own item here, queued
   after the items above (René 23 Oct), worked on its own branch with clean commits. Done when: none is open. Waits for:
