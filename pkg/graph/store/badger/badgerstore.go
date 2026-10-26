@@ -588,6 +588,13 @@ type Store struct {
 	// maps. Entity point reads survive this window via the resident dirty cache;
 	// overlay scans must use rangePending/lookupPending.
 	flushing map[string]writeOp
+	// pendingProp and flushingProp list the property-index (0x0A) keys of
+	// pending and flushing by value prefix (the key less its 8-byte node ID),
+	// so an equality lookup finds its values' buffered entries without walking
+	// either buffer (PENDSEEK). Kept with propIdxOnDisk only, guarded by wbMu,
+	// swapped and dropped with the buffers they list.
+	pendingProp  map[string][]string
+	flushingProp map[string][]string
 	// commitGen counts the commits that move buffered rows into Badger (flush,
 	// Clear): a read snapshot re-pins when it moved (badgerstore_read_snapshot.go).
 	// Every path that writes entity rows to Badger outside the write buffer must
@@ -2343,6 +2350,7 @@ func (bs *Store) Clear() (err error) {
 	bs.commitGen.Add(1) // read snapshots re-pin after the wipe
 	bs.wbMu.Lock()
 	bs.pending = make(map[string]writeOp)
+	bs.pendingProp = nil
 	bs.pendingLog = nil
 	bs.pendingBytes = 0
 	bs.histNodeEpoch.Add(1)
@@ -2355,7 +2363,7 @@ func (bs *Store) Clear() (err error) {
 	bs.histRelEpochs.NoteAll()
 	// Drop any snapshot a just-completed flush parked, or rangePending would resurface
 	// pre-Clear history keys as phantom IDs.
-	bs.flushing = nil
+	bs.dropFlushingLocked()
 	bs.wbMu.Unlock()
 
 	// Clear all secondary index maps; leftovers would make CreateTemporalIndex /

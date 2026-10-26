@@ -242,6 +242,26 @@ func (bs *Store) distinctPropertyKeyTokensLocked() map[uint16]struct{} {
 	return tokens
 }
 
+// rangePendingPropPrefixes calls fn for each buffered property-index key
+// under one of prefixes (value prefixes: a key less its 8-byte node ID), the
+// flush in flight before pending so a key's newer op comes last, as
+// rangePending does for those keys; it visits no other buffered key
+// (PENDSEEK). Needs propIdxOnDisk.
+func (bs *Store) rangePendingPropPrefixes(prefixes [][]byte, fn func(k string, op writeOp)) {
+	bs.wbMu.Lock()
+	defer bs.wbMu.Unlock()
+	for _, p := range prefixes {
+		for _, k := range bs.flushingProp[string(p)] {
+			fn(k, bs.flushing[k])
+		}
+	}
+	for _, p := range prefixes {
+		for _, k := range bs.pendingProp[string(p)] {
+			fn(k, bs.pending[k])
+		}
+	}
+}
+
 // propertyIndexDiskKeysCandidatesLocked resolves propertyKey and its value
 // keys to the (unsorted, possibly repeated) on-disk candidate node IDs in one
 // pending-write overlay pass and one iterator, seeking once per numeric
@@ -287,15 +307,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	}
 
 	var adds, dels map[string]types.NodeID
-	bs.rangePending(func(k string, op writeOp) {
-		if len(k) <= 8 || k[0] != storepkg.KeyPropertyIndex {
-			return
-		}
-		if _, hit := slices.BinarySearchFunc(prefixes, k[:len(k)-8], func(p []byte, t string) int {
-			return strings.Compare(string(p), t)
-		}); !hit {
-			return
-		}
+	bs.rangePendingPropPrefixes(prefixes, func(k string, op writeOp) {
 		nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey([]byte(k)))
 		if op.opType == writeOpSet {
 			if adds == nil {

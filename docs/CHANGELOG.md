@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **PENDSEEK** (SCALE, ai-soc's kit A/B on v4.87.0 with `PropertyIndexOnDisk`: answers equal, heap 750 to 680 MB, push
+  60 to 120 s). An equality lookup on the on-disk property index walked the whole write buffer (pending and the flush
+  in flight) to find its values' buffered entries, so a commit group with a lookup per record (GetOrCreateByKey) was
+  quadratic. The store now lists the buffered 0x0A keys by value prefix, swapped and dropped with the buffers, and the
+  lookup reads only its values' entries: one lookup 70 us to 3.0 us with 1,000 buffered entries, 5.2 ms to 3.5 us with
+  64,000 (`TestPendSeekLookupCostIgnoresUnrelatedPending`; overlay states incl. a flush in flight, a failed flush's
+  requeue and Clear in `TestPendSeekOverlayStates`).
 - **EVENTCLOCK** (SCALE, ai-soc's Flux run k10262212 on v4.87.0: time.Now 15 % of CPU in the first minute, Core.now
   35 % of it, hot and warm checkouts 36 %). Transaction and batch mutations took their event timestamp (`c.now()`: a
   clock read, a CAS and a reserved instant) before the publish checked for a publisher, so a graph without one paid it

@@ -40,8 +40,25 @@ func (bs *Store) appendOpsRaising(marker uint16, ops ...writeOp) {
 // putPendingLocked queues op in the pending buffer and counts its transaction
 // size. Caller holds wbMu.
 func (bs *Store) putPendingLocked(op writeOp) {
-	bs.pending[string(op.key)] = op
+	k := string(op.key)
+	if bs.propIdxOnDisk && len(k) > 8 && k[0] == storepkg.KeyPropertyIndex {
+		if _, queued := bs.pending[k]; !queued {
+			if bs.pendingProp == nil {
+				bs.pendingProp = make(map[string][]string)
+			}
+			p := k[:len(k)-8]
+			bs.pendingProp[p] = append(bs.pendingProp[p], k)
+		}
+	}
+	bs.pending[k] = op
 	bs.pendingBytes += pendingTxnSize(len(op.key), len(op.value))
+}
+
+// dropFlushingLocked drops the parked flush snapshot and its property-index
+// key list together. Caller holds wbMu.
+func (bs *Store) dropFlushingLocked() {
+	bs.flushing = nil
+	bs.flushingProp = nil
 }
 
 // appendLogLocked queues a change-log record and counts its transaction size.
@@ -284,6 +301,7 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	// swap and wb.Flush() the rows are no longer in `pending` and not yet visible
 	// in a Badger View. Cleared after a successful commit; merged back on failure.
 	bs.flushing = ops
+	bs.flushingProp, bs.pendingProp = bs.pendingProp, nil
 	logs := bs.pendingLog
 	bs.pendingLog = nil
 	bs.pendingBytes = 0
@@ -307,7 +325,7 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		// The ops are back in `pending`; drop the in-flight snapshot so readers
 		// don't double-count and the next flush re-parks a fresh snapshot.
 		bs.wbMu.Lock()
-		bs.flushing = nil
+		bs.dropFlushingLocked()
 		bs.wbMu.Unlock()
 	}
 
@@ -423,7 +441,7 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	// snapshots that predate the commit re-pin (commitGen) before they miss it.
 	bs.commitGen.Add(1)
 	bs.wbMu.Lock()
-	bs.flushing = nil
+	bs.dropFlushingLocked()
 	bs.wbMu.Unlock()
 	if h := bs.flushClearedTestHook; h != nil {
 		h() // tests only: a reader inside the window after the overlay dropped the rows
