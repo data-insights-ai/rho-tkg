@@ -34,10 +34,10 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   the release note here and tell René in one line):
   - ai-soc, agent `ai-soc-main-45`: pins rho v4.83.0 (26 Oct; v4.84.0 and v4.84.1 notified: pins v4.84.1 at its next bump, PIN) with sigma v0.11.65. Tiered
     main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2; HistoryDeltaEncoding, SyncWrites, DurableCommit,
-    RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk (not PropertyIndexOnDisk: sigma's DerivedPage ov_k/ov_h
-    index grew in RAM, ~1 value per row; ai-soc switching it, 26 Oct), ValueDictionaries, UntimedUnbounded, AllowRetentionPurge;
+    RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk, PropertyIndexOnDisk (P4BSTORE 77d7fb7c, 26 Oct; sigma's
+    Elements index dropped with `Index().DeleteProperty`), ValueDictionaries, UntimedUnbounded, AllowRetentionPurge;
     `DepthWarm` on windowed reads; `CreateRelTemporal` on its 29 estate-indexed rel types; unique keys on reference
-    labels only; Derived (and its composite index) on the reference shard. Pins rho v4.86.0 (dc50a553, 26 Oct);
+    labels only; Derived (and its composite index) on the reference shard. Pins rho v4.87.2 (bb26af82, 26 Oct);
     its /metrics exports `aisoc_store_shard_access_total{tier}` from ShardAccessStats (kit BA slice: warm, cold and
     cold opens 0). Event times UTC (Check Point CSV in the
     operator's zone, BO: America/Bogota); Flux runs Europe/Berlin.

@@ -180,12 +180,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
-- **PROPDISK** (SCALE, ai-soc 26 Oct, k10262212) — the RAM property index takes 0.82 GB (22 % of the live heap at
-  600 s) on DerivedPage's int64 hash keys (ov_k, ov_h<mask>; rho internal/index 332 to 1,652 MB per 1,000 done against
-  paging off). `tiered.Config.PropertyIndexOnDisk` moves every shard's property index to disk (store-wide; RangeCounts
-  and Elements refused; composite indexes stay in RAM); ai-soc's kit A/B with it: answers equal, heap 750 to 680 MB,
-  push 2x slower (PENDSEEK, v4.87.1). Waits on ai-soc's rerun on v4.87.1 and its switch (new stores; an existing
-  store with sigma's Elements index drops it once with `Index().DeleteProperty`, which disk mode needs).
 - **SCALEPROFILE** (SCALE, ai-soc 26 Oct) — which RAM structures grow with data in ai-soc's daemon plus sigma.
   Flux run k10261904 on v4.86.0 is the baseline (heap, memstats and smaps_rollup every 600 s and after the final
   GC, reopen times, the top-40 inuse_space with node and rel counts); the run after the PAGEREF pin carries
