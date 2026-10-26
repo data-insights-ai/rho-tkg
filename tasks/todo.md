@@ -48,7 +48,23 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   (70fcd129): the RAM budget is met. Step 4 (48fa4881): hash cache capped at 64 K entries. Step 5
   (0d16b0a4): ID sets in the open image, label keys only counted with the label index on disk; clean reopen
   ~0.25 s per 1 M nodes, budget met; crash reopen faster, no benchmark slower, docs written (ae6fa091,
-  `tasks/evidence/EXISTMAP/results.txt`). Releasing as v4.84.0 (a minor: new `index.IDSet`).
+  `tasks/evidence/EXISTMAP/results.txt`). Its minor gate (26 Oct) failed twice, not tagged: (1) a clean open
+  that trusts the image's ID sets no longer walks the entity keys, so a damaged table block no longer fails the
+  open closed through the counters, and badger's point Get answers a block-read error as "not found"
+  (`TestTableFlippedByteNeverPanics`: rows silently missing); fix: a read that misses a row the ID set holds,
+  with no write in between, is corruption (an error wrapping `ErrCorruptWire`), never "not found"; (2) the RAM
+  budget test reads 20 B per node under the race detector (its own bound there). Found on the way: the lazily
+  built rel validity index (`relValidIdx`) costs 43-67 B per rel once a temporal traversal needs it.
+- **TXSNAP** (sigma, 26 Oct: 58 % of CPU on ai-soc's BA slice, 28.4 of 49.2 s) — inside a Tx the first
+  `SetNodeVersionInterval` of an entity snapshots it for rollback, and when history rows lie above the current
+  version (every interval patch leaves them) the snapshot reads and deep-copies the whole chain
+  (`copyNodeHistory`); the version allocator (`nextNodeVersion`) reads the whole history in the same case. So a
+  node patched once per cut costs O(versions) per patch, growing with run length. Plan: a store capability that
+  answers an entity's highest stored history version (write buffer included; badger one reverse key seek), used
+  by the allocator and by the snapshot (rollback then trims the Tx's own rows above it, as the head path does).
+  Budget (lesson 89): a patch in a Tx on a node with 1,000 versions costs at most 1.5x the same patch on a node
+  with 10. Done when: released with the budget met. Waits for: EXISTMAP's tag; sigma's chain length per write
+  sets the test shape.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
