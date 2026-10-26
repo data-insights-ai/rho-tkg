@@ -51,9 +51,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   `tasks/evidence/EXISTMAP/results.txt`). Its minor gate (26 Oct) failed twice, not tagged: (1) a clean open
   that trusts the image's ID sets no longer walks the entity keys, so a damaged table block no longer fails the
   open closed through the counters, and badger's point Get answers a block-read error as "not found"
-  (`TestTableFlippedByteNeverPanics`: rows silently missing); fix: a read that misses a row the ID set holds,
-  with no write in between, is corruption (an error wrapping `ErrCorruptWire`), never "not found"; (2) the RAM
-  budget test reads 20 B per node under the race detector (its own bound there). Found on the way: the lazily
+  (`TestTableFlippedByteNeverPanics`: rows silently missing); (2) the RAM budget test read 20 B per node. Fixed
+  on the branch (c1b94d7b): a read that misses the row of an entity the ID set holds, with no write in between,
+  is `ErrCorruptWire` on all 15 current-row paths (a cascade delete still scrubs it); the budget test measures in
+  a fresh test process (20 B came from earlier tests' heap in the same process, not from race); the cold
+  listing cost bounds for 1 and 2 versions rise to 8x and 14x (a clean open no longer warms badger's block
+  cache: ~0.85 kB per fact moved from the open to the first scan). Next: rebase, release commit, `make ci-docker`. Found on the way: the lazily
   built rel validity index (`relValidIdx`) costs 43-67 B per rel once a temporal traversal needs it.
 - **TXSNAP** (sigma, 26 Oct: 58 % of CPU on ai-soc's BA slice, 28.4 of 49.2 s) — inside a Tx the first
   `SetNodeVersionInterval` of an entity snapshots it for rollback, and when history rows lie above the current
