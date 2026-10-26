@@ -82,20 +82,15 @@ lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
 
 ## User-only actions (René, 2026-10-22 cleanup; agents' `rm` is denied)
 
+René's word 26 Oct: the merged item branches are deleted (39, flushpart with -D) and row102-pending-ranged,
+tombstone-writer-v4.63, v5-realstore-harness and wp-37-import-throughput are pushed to origin as backups.
+
 1. `! rm -rf /dev/shm/sigma-*` (sigma test dirs, ~11 GB) and the merged worktrees in `~/Work/2026/datainsights/sigma-tkgd` (`git worktree list`).
 2. `! rm -rf /tmp/claude-1000/-home-renework2023-Work-2026-datainsights-rho-tkg/aa649ecc-3385-4943-a9bf-f630b51c9f5c/scratchpad/r3` (rho 22 M bench seed, 3.3 GB).
 3. `! rm ~/Work/2026/datainsights/rho-tkg/warm` (stray 10-byte file, untracked).
 4. gh-dashboard scratchpad (667 MB, path in that session). The cleanup message to tts-tests-b6 expired and monitoring-a9's is
    held (different permission mode); tell them directly if wanted.
 5. `! git branch -D v5 worktree-agent-a0d52d5298e44faee` (full name; `v5` = stale copy of origin/v5 `04c7fd4f`, worktree-agent: its test and evidence are `tasks/evidence/4/` on main, backlog item 4). Both content-complete elsewhere.
-6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc midnightdst calendar opencold r37 existmap txsnap rowprobe tierstats gatetier` (`-d` refuses an unmerged one), and
-   `! git -C ~/Work/2026/datainsights/rho-tkg branch -D flushpart` (pre-rebase copies of v4.75.0; its last red test is
-   main's `054cf8e0`). Run from `../rho-tkg-main` or after checking out another branch: git keeps the checked-out one.
-7. Push the kept local branches to origin as backups (René via ai-soc 26 Oct, "yes and yes"; not run: relayed, so it
-   waits for René's own word to rho or his run): `! git -C ~/Work/2026/datainsights/rho-tkg push origin
-   row102-pending-ranged tombstone-writer-v4.63 v5-realstore-harness wp-37-import-throughput` (PENDING, TOMBSTONE and
-   the v5 harness start from them).
-
 ## Appendix A — origin watch
 
 `scripts/watch-origin.sh` exits only on a push by someone else to main/tags/other branches or a real PR/issue change; routine v5

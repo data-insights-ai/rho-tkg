@@ -44,7 +44,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   the limit; (2) GROUPFSYNC: a durable batch holds the graph lock through its fsync; overlap the next batch's apply
   with it (needs the rule for what a reader sees before the fsync); (3) LANES: several hot write lanes (K badger DBs
   for the hot window, IDs striped by lane), an ADR first. Done when: one graph ingests 500 B facts at 3x the goal
-  (~140 k/s durable) on this machine, measured with the probe.
+  (~140 k/s durable) on this machine, measured with the probe. Consumers (26 Oct): ai-soc runs every store durable
+  (SyncWrites + DurableCommit), 3-5 writers on one graph, BA peak 2,789 rows/s; sigma's tkgd defaults to async, so
+  ASYNCSTAGE serves tkgd only. GROUPFSYNC must keep: Commit returns only once its batch is durable, durability
+  follows commit order (no later batch durable without the earlier), a pin returned is durable; sigma's readers may
+  see a fact before its fsync, ai-soc's HTTP doors reading latest are unchecked, so the visibility rule is René's.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
