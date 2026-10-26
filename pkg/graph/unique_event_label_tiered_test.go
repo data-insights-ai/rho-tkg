@@ -84,7 +84,7 @@ func TestUniqueOnTieredEventLabel(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 	g = uniqEventGraph(t, dir, time.Millisecond)
 	defer g.Close()
-	base := coldOpensTotal(t, g) // the graph's open reads every shard once (OPENCOLD)
+	base := coldOpensTotal(t, g) // 0 since OPENCOLD (a graph open opens no cold shard)
 	n, created, err := g.Nodes().GetOrCreateByKey(ctx, "Process", "key", "p1-2", nil)
 	if err != nil || created || n.ID() != ids["p1-2"] {
 		t.Fatalf("GetOrCreateByKey of an old key = %v created %v (%v), want node %d found", n, created, err, ids["p1-2"])

@@ -558,9 +558,61 @@ func (ts *Store) collectLogShards() []*logShardSource {
 	return sources
 }
 
-// forEachOpenShard folds fn over refShard + archive (if open) + every event
-// shard, one at a time under checkout/checkin. Used by the watermark folds.
+// forEachOpenShard folds fn over the shards whose store is open: refShard,
+// the archive when it is open, and every event shard with an open handle, one
+// at a time under checkout/checkin. It never opens a closed cold shard (a
+// closed shard has nothing pending, and one opened later takes the store's
+// settings at its open, badgerCfg): OPENCOLD, a graph's open (SetValidAxis)
+// and every Flush opened each cold shard of the store. A cold shard that opens
+// meanwhile opens under its shardMu, which the checkout takes, so it is either
+// visited or opened after the caller's change.
 func (ts *Store) forEachOpenShard(fn func(*BadgerStore) error) error {
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return err
+	}
+	err = fn(ref)
+	refCheckin()
+	if err != nil {
+		return err
+	}
+	if ts.refArchive.Load() != nil { // an open archive only
+		archive, archiveCheckin, err := ts.checkoutArchive()
+		if err != nil {
+			return err
+		}
+		if archive != nil {
+			err = fn(archive)
+		}
+		archiveCheckin()
+		if err != nil {
+			return err
+		}
+	}
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+	for _, es := range shards {
+		store, release, open, err := es.checkoutOpenStoreForRead(ts)
+		if err != nil {
+			return err
+		}
+		if !open {
+			continue
+		}
+		ferr := fn(store)
+		release()
+		if ferr != nil {
+			return ferr
+		}
+	}
+	return nil
+}
+
+// forEachShard folds fn over refShard + archive + every event shard, opening
+// a closed archive or cold shard, one at a time under checkout/checkin. For
+// work that must reach every row (the retention purges).
+func (ts *Store) forEachShard(fn func(*BadgerStore) error) error {
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return err

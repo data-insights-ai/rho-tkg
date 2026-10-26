@@ -55,7 +55,7 @@ func (ts *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 // (co-located legs) a per-shard label purge leaves a residue on a survivor's shard
 // for any cross-shard edge. Two phases:
 //
-//	(1) Fan out `perShard` over ref + archive + every event shard (forEachOpenShard).
+//	(1) Fan out `perShard` over ref + archive + every event shard (forEachShard).
 //	    Each shard removes its qualifying nodes, their CO-LOCATED rel parts + history,
 //	    and reports the rels it TOUCHED.
 //	(2) For each touched rel, clean its residue on the SURVIVING endpoint's shard.
@@ -76,7 +76,7 @@ func (ts *Store) purgeNodesFanOut(perShard func(shard *BadgerStore) (storecontra
 	total := storecontract.RetentionPurgeResult{}
 	var purgedIDs []types.NodeID
 	var purgedRels []storecontract.PurgedRel
-	perr := ts.forEachOpenShard(func(shard *BadgerStore) error {
+	perr := ts.forEachShard(func(shard *BadgerStore) error {
 		res, e := perShard(shard)
 		if e != nil {
 			return e

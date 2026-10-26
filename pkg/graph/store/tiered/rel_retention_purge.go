@@ -31,7 +31,7 @@ func (ts *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 		return zero, err
 	}
 	total := storecontract.RetentionPurgeResult{}
-	if err := ts.forEachOpenShard(func(shard *BadgerStore) error {
+	if err := ts.forEachShard(func(shard *BadgerStore) error {
 		res, e := shard.PurgeRelsByTypeBefore(typeToken, before, chunk)
 		if e != nil {
 			return e
