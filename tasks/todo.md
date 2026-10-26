@@ -57,7 +57,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   cannot meet the budget: the cause is a missing entry. Candidates: a store wrapper that only inherits
   HistoryEpochCapability (rho then turns the cache off for the graph), a chain row that disqualifies the entry
   (delete, retraction, shared version), or stripe eviction (~every 250 cuts at ai-soc's rate: cheap). Asked
-  ai-soc (store type) and sigma (stamp shape, deletes) 26 Oct; the test follows their shape.
+  ai-soc (store type) and sigma (stamp shape, deletes) 26 Oct; the test follows their shape. Answers: no wrapper
+  (bare *tiered.Store), no deletes; the stamp patches the current row's own interval once per Tx, which replaces
+  the row and leaves the next Tx's entry stale. Cause found: tiered and sharded lack the rollback trim, so the
+  snapshot's no-history-above path was gated off and it copied the chain. Fixed on branch `txsnap` (7511b639):
+  sigma's WriteDerived shape on tiered at 1,000 versions 22,752 -> 231 allocs (x1.0 against 10), rollback exact.
+  Next: patch release v4.84.1.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
