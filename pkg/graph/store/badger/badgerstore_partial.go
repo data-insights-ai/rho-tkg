@@ -410,7 +410,7 @@ func (bs *Store) deletePendingIncoming(endNodeID, relID snowflake.ID) {
 			continue
 		}
 		if storepkg.ParseIDFromKey(key, 1) == endNodeID && storepkg.ParseRelIDFromAdjKey(key) == relID {
-			bs.pending[k] = writeOp{opType: writeOpDelete, key: op.key}
+			bs.putPendingLocked(writeOp{opType: writeOpDelete, key: op.key})
 		}
 	}
 	// A matching SET parked in `flushing` is mid-commit and cannot be rewritten:
@@ -423,7 +423,7 @@ func (bs *Store) deletePendingIncoming(endNodeID, relID snowflake.ID) {
 		}
 		if storepkg.ParseIDFromKey(key, 1) == endNodeID && storepkg.ParseRelIDFromAdjKey(key) == relID {
 			if _, has := bs.pending[k]; !has {
-				bs.pending[k] = writeOp{opType: writeOpDelete, key: op.key}
+				bs.putPendingLocked(writeOp{opType: writeOpDelete, key: op.key})
 			}
 		}
 	}

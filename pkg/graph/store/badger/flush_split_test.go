@@ -33,9 +33,11 @@ import (
 
 // splitFlushConfig is a store whose badger transaction limit is small (8 MB
 // memtable: about 1.26 MB and 13,107 entries per transaction), so a test flush
-// outgrows it quickly.
+// outgrows it quickly. Its async buffer is unbounded (MaxPendingWrites -1): a
+// bounded one flushes below the limit (ASYNCSTAGE), and these tests need the
+// one large flush.
 func splitFlushConfig(dir string) Config {
-	return Config{Dir: dir, ChangeLog: true, MemTableSize: 8 << 20, FlushInterval: time.Hour}
+	return Config{Dir: dir, ChangeLog: true, MemTableSize: 8 << 20, FlushInterval: time.Hour, MaxPendingWrites: -1}
 }
 
 const splitFlushNodeCount = 16_000 // creations or deletions of 16,000 nodes: above 13,107 entries

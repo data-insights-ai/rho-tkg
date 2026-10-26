@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **ASYNCSTAGE** (WRITERATE): an async store's backpressure flush waited for `MaxPendingWrites` (100 k ops, ~60 MB
+  of 500 B facts), far above badger's transaction limit (~10 MB), so every such flush was staged and wrote each
+  entry three times. The buffer now also flushes at half a transaction (`MaxBatchSize` bytes or `MaxBatchCount`
+  entries), so the flush commits as one transaction: async ingest of 500 B facts 1.55-2.0x faster (63-74 k/s to
+  111-146 k/s, `tasks/evidence/WRITERATE/results.txt`) (`TestAsyncBackpressureFlushFitsOneTransaction`). Durable
+  stores are unchanged; sigma's tkgd runs async by default.
+
 ## [4.86.0] - 2026-10-26
 
 ### Added

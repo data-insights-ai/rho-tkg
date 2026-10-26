@@ -100,7 +100,7 @@ func (bs *Store) raiseFormatMarkerPendingLocked(v uint16) {
 		return
 	}
 	bs.formatMarker = v
-	bs.pending[string(storepkg.WireFormatVersionKey)] = writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)}
+	bs.putPendingLocked(writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)})
 }
 
 // historyRowMarker is the marker a history row needs:

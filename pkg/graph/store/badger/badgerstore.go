@@ -191,9 +191,11 @@ type Config struct {
 	// DurableCommit group) the flush waits for the group's DurableFlush. Ignored in
 	// ReadOnly mode.
 	SyncWrites bool
-	// MaxPendingWrites bounds the async write buffer: at this many pending ops the
-	// mutating call flushes synchronously. Default DefaultMaxPendingWrites; negative
-	// disables the bound. Under SyncWrites it bounds only writes held by a durable
+	// MaxPendingWrites bounds the async write buffer: at this many pending ops, or
+	// at half of one badger transaction (MaxBatchSize bytes or MaxBatchCount
+	// entries) if that comes first, the mutating call flushes synchronously, so
+	// such a flush commits as one transaction, not staged. Default
+	// DefaultMaxPendingWrites; negative disables the bound, both parts. Under SyncWrites it bounds only writes held by a durable
 	// group (HoldMutationFlushes). See docs/architecture.md (Write-Pressure Bound).
 	MaxPendingWrites int
 	// Compression sets the SSTable compression algorithm.
@@ -574,6 +576,11 @@ type Store struct {
 	// Map keyed by string(op.key) for last-write-wins deduplication.
 	wbMu    sync.Mutex
 	pending map[string]writeOp
+	// pendingBytes is the badger transaction size of pending and pendingLog
+	// (pendingTxnSize per entry), guarded by wbMu. It counts every insertion, a
+	// coalesced key's earlier value too, so it can only overstate: an async
+	// backpressure flush may come early, never too late.
+	pendingBytes int64
 	// flushing holds the snapshot a concurrent flush() is committing: parked from
 	// pending under wbMu before the WriteBatch commit, cleared after it succeeds (merged
 	// back on failure). In between a row lives only here, so history, adjacency and
@@ -752,6 +759,14 @@ type Store struct {
 	flushDone   chan struct{}
 	gcDone      chan struct{}
 	closeOnce   sync.Once
+
+	// pendingTxnBytes and pendingTxnEntries bound an async buffer (maxPending >
+	// 0) below one badger transaction: half its MaxBatchSize and MaxBatchCount,
+	// the other half the room for the mutation that crosses the bound, so a
+	// backpressure flush commits as one transaction, not staged (ASYNCSTAGE).
+	pendingTxnBytes   int64
+	pendingTxnEntries int
+
 	// closing is set at the start of Close(), before the final flush snapshots pending
 	// writes; public operations fail closed after it so no mutation misses that flush.
 	closing atomic.Bool
@@ -1044,6 +1059,8 @@ func New(cfg Config) (*Store, error) {
 		onCommitFloor:           cfg.OnCommitFloor,
 		beforeFlushRows:         cfg.BeforeFlushRows,
 		maxPending:              maxPending,
+		pendingTxnBytes:         db.MaxBatchSize() / 2,
+		pendingTxnEntries:       int(db.MaxBatchCount() / 2),
 		holdMaxPending:          holdMaxPending,
 		flushHold:               cfg.SharedFlushHold,
 		flushInt:                flushInt,
@@ -2286,6 +2303,7 @@ func (bs *Store) Clear() (err error) {
 	bs.wbMu.Lock()
 	bs.pending = make(map[string]writeOp)
 	bs.pendingLog = nil
+	bs.pendingBytes = 0
 	bs.histNodeEpoch.Add(1)
 	bs.histRelEpoch.Add(1)
 	bs.histNodePresence.resetLocked()

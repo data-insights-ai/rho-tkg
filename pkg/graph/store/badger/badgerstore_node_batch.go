@@ -382,7 +382,7 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 		if relationshipIndexKeyMatchesRelID(key, rawID) {
 			keyCopy := make([]byte, len(key))
 			copy(keyCopy, key)
-			bs.pending[k] = writeOp{opType: writeOpDelete, key: keyCopy}
+			bs.putPendingLocked(writeOp{opType: writeOpDelete, key: keyCopy})
 			continue
 		}
 	}
@@ -396,7 +396,7 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 		if _, has := bs.pending[k]; !has {
 			keyCopy := make([]byte, len(k))
 			copy(keyCopy, k)
-			bs.pending[k] = writeOp{opType: writeOpDelete, key: keyCopy}
+			bs.putPendingLocked(writeOp{opType: writeOpDelete, key: keyCopy})
 		}
 	}
 	bs.wbMu.Unlock()

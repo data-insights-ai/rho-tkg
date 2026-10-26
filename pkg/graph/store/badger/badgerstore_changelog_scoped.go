@@ -55,7 +55,7 @@ func (bs *Store) CommitScopedLog(token uint64) (uint64, error) {
 	var maxLSN uint64
 	for _, value := range buffered {
 		lsn := bs.nextLSN()
-		bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
+		bs.appendLogLocked(lsn, value)
 		maxLSN = lsn // contiguous + monotonic, so the last minted is the max
 	}
 	bs.wbMu.Unlock()
@@ -146,7 +146,7 @@ func (bs *Store) appendOpsLoggedRouted(tag storecontract.ChangeTag, payload []by
 func (bs *Store) appendOpsLoggedRoutedRaising(marker uint16, tag storecontract.ChangeTag, payload []byte, token uint64, ops ...writeOp) error {
 	bs.wbMu.Lock()
 	for _, op := range ops {
-		bs.pending[string(op.key)] = op
+		bs.putPendingLocked(op)
 		bs.noteHistoryKey(op)
 		bs.noteValidEndOp(op)
 	}
@@ -170,7 +170,7 @@ func (bs *Store) appendOpsLoggedRoutedRaising(marker uint16, tag storecontract.C
 		bs.scopeLog = append(bs.scopeLog, value)
 	} else {
 		lsn := bs.nextLSN()
-		bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
+		bs.appendLogLocked(lsn, value)
 	}
 	bs.wbMu.Unlock()
 	return nil

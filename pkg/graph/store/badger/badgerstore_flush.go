@@ -29,12 +29,37 @@ func (bs *Store) appendOps(ops ...writeOp) {
 func (bs *Store) appendOpsRaising(marker uint16, ops ...writeOp) {
 	bs.wbMu.Lock()
 	for _, op := range ops {
-		bs.pending[string(op.key)] = op
+		bs.putPendingLocked(op)
 		bs.noteHistoryKey(op)
 		bs.noteValidEndOp(op)
 	}
 	bs.raiseFormatMarkerPendingLocked(marker)
 	bs.wbMu.Unlock()
+}
+
+// putPendingLocked queues op in the pending buffer and counts its transaction
+// size. Caller holds wbMu.
+func (bs *Store) putPendingLocked(op writeOp) {
+	bs.pending[string(op.key)] = op
+	bs.pendingBytes += pendingTxnSize(len(op.key), len(op.value))
+}
+
+// appendLogLocked queues a change-log record and counts its transaction size.
+// Caller holds wbMu.
+func (bs *Store) appendLogLocked(lsn uint64, value []byte) {
+	bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
+	bs.pendingBytes += pendingTxnSize(changeLogKeyLen, len(value))
+}
+
+// changeLogKeyLen is the length of a change-log record's key.
+var changeLogKeyLen = len(storepkg.ChangeLogKey(0))
+
+// pendingTxnSize is what an inline entry adds to a badger transaction's size
+// (docs/badger.md section 2): key + value + 12. A value at or above
+// ValueThreshold adds only key + 24 (a value-log pointer); counting it whole
+// overstates, which only brings the flush forward.
+func pendingTxnSize(keyLen, valueLen int) int64 {
+	return int64(keyLen+valueLen) + 12
 }
 
 // publishMoveLocked publishes a with-history write — a row moving from the
@@ -90,8 +115,8 @@ func (bs *Store) putMovedRelLocked(id snowflake.ID, r *types.Relationship) {
 //   - SyncWrites mode: every mutation flushes synchronously, except inside a
 //     store.MutationFlushHoldCapability hold (a durable group), which leaves
 //     the writes pending until the hold bound or the group's DurableFlush.
-//   - Async mode: when the pending write buffer reaches MaxPendingWrites the
-//     WRITER flushes synchronously — backpressure instead of unbounded
+//   - Async mode: when the pending write buffer reaches MaxPendingWrites, or
+//     half a badger transaction (pendingFull), the WRITER flushes synchronously — backpressure instead of unbounded
 //     growth. Without this bound, a sustained burst faster than the flush
 //     interval grows the pending map and the dirty (never-evictable) cache
 //     entries without limit until OOM. The flush error surfaces to the
@@ -108,10 +133,24 @@ func (bs *Store) flushIfNeeded() error {
 		}
 		return bs.flush()
 	}
-	if bs.maxPending > 0 && bs.pendingLen() >= bs.maxPending {
+	if bs.maxPending > 0 && bs.pendingFull() {
 		return bs.flush()
 	}
 	return nil
+}
+
+// pendingFull reports whether an async buffer reached its bound:
+// MaxPendingWrites entries, or half a badger transaction by entries or bytes
+// (pendingTxnEntries, pendingTxnBytes).
+func (bs *Store) pendingFull() bool {
+	bs.wbMu.Lock()
+	n := len(bs.pending)
+	if bs.logEnabled.Load() {
+		n += len(bs.pendingLog)
+	}
+	full := n >= bs.maxPending || n >= bs.pendingTxnEntries || bs.pendingBytes >= bs.pendingTxnBytes
+	bs.wbMu.Unlock()
+	return full
 }
 
 // BeginGroupCommit opens the store.GroupCommitCapability window: every
@@ -247,6 +286,7 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	bs.flushing = ops
 	logs := bs.pendingLog
 	bs.pendingLog = nil
+	bs.pendingBytes = 0
 	bs.wbMu.Unlock()
 	nc := bs.nodeCount.Load()
 	rc := bs.relCount.Load()
@@ -419,6 +459,9 @@ func (bs *Store) requeueLog(failed []pendingLogRecord) {
 	}
 	bs.wbMu.Lock()
 	bs.pendingLog = append(failed, bs.pendingLog...)
+	for _, r := range failed {
+		bs.pendingBytes += pendingTxnSize(changeLogKeyLen, len(r.value))
+	}
 	bs.wbMu.Unlock()
 }
 
@@ -429,7 +472,7 @@ func (bs *Store) requeueOps(failed map[string]writeOp) {
 	bs.wbMu.Lock()
 	for k, op := range failed {
 		if _, exists := bs.pending[k]; !exists {
-			bs.pending[k] = op
+			bs.putPendingLocked(op)
 		}
 	}
 	bs.wbMu.Unlock()

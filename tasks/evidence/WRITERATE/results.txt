@@ -33,3 +33,11 @@ commits directly instead of staged (3x fewer badger writes); (2) durable: overla
 the previous group's fsync (group commit outside the graph lock; needs a decision on what a reader may see
 before the fsync); (3) several hot write lanes (K badger DBs for the hot window, IDs striped by lane), which
 scale like the separate stores above.
+
+ASYNCSTAGE (26 Oct, branch asyncstage on v4.86.0+): the async buffer also flushes at half of one badger
+transaction (MaxBatchSize bytes or MaxBatchCount entries), so a backpressure flush commits as one transaction,
+never staged. Probe as above, async, 800 k facts of 500 B, main and branch alternated, load average 13-25:
+  writers 1: main 74 / 74 / 63 k/s   branch 136 / 114 / 111 k/s   (paired 1.83x, 1.55x, 1.76x)
+  writers 8: main 74 / 40 / 72 k/s   branch 146 /  65 / 146 k/s   (paired 1.98x, 1.61x, 2.02x)
+  heap left after the insert: main 0.9-1.4 GB, branch 0.55-0.83 GB (a smaller pending buffer).
+Durable stores are unchanged (under SyncWrites the async bound is off; each batch already fits one transaction).

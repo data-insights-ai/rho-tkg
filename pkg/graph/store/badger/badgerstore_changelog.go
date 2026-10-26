@@ -75,7 +75,7 @@ func (bs *Store) logChangeRaw(tag storecontract.ChangeTag, payload []byte) {
 		return
 	}
 	lsn := bs.nextLSN()
-	bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
+	bs.appendLogLocked(lsn, value)
 	bs.wbMu.Unlock()
 }
 
@@ -480,7 +480,7 @@ func (bs *Store) CommitLogScope() (uint64, error) {
 	var maxLSN uint64
 	for _, value := range buffered {
 		lsn := bs.nextLSN()
-		bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
+		bs.appendLogLocked(lsn, value)
 		maxLSN = lsn // contiguous + monotonic, so the last minted is the max
 	}
 	bs.wbMu.Unlock()
