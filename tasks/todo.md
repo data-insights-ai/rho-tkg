@@ -124,6 +124,21 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
   fact. Done when: René has decided per layer. Waits for: CHAIN.
 
+- **CALENDAR** (ai-soc on René's word, 26 Oct, after DSTWIN) — check rho systematically for every assumption that a
+  day, week, month or year has a fixed length or that local time is regular. Cases: the 23-h and 25-h days (every
+  hour of the change night), zones changing at midnight (America/Santiago, America/Havana, Asia/Tehran in its DST
+  years), half- and quarter-hour offsets (Asia/Kolkata, Asia/Kathmandu, Australia/Lord_Howe's 30-min DST),
+  southern-hemisphere DST, months of 28-31 days, 29 February, ISO week 53, the year boundary, a zone whose rules
+  changed, and UTC as the control. Places: ShardWindow daily and weekly (DSTWIN), shard naming by local date,
+  ColdAfter, MaxOpenColdShards' age, retention purges by age (PurgeByAge, PurgeByValidTo, the watermark), history
+  truncation by time, the tx-time clock across a backward wall-clock step, any index bucketed by day. Done when: a
+  table of each time-based place with its test over every hour of a leap and a non-leap year in UTC,
+  Europe/Berlin, America/Santiago, Asia/Kathmandu and Australia/Lord_Howe, green, and a patch tag for whatever fails.
+  Next after UNIQIDX.
+- **OPENCOLD** (found 26 Oct in UNIQIDX) — a graph's open on a tiered store opens every cold shard once (4 of 4 in
+  the test, with or without a constraint). Done when: the cause is named and the open reads no cold shard it
+  does not need, or the reason it must is documented.
+
 ## Waiting
 
 - **CHAIN** — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
