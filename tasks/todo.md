@@ -59,10 +59,17 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   tiered.New, 53 % in loadNodeFromBadger) — a crash open trusts no image, so it rebuilds every RAM index by decoding
   each member node with a point Get (property without disk, composite, temporal without TemporalIndexOnDisk,
   high-frequency, vector; badgerstore.go:1764-2091), thrashing the block cache (badger has no no-fill scan:
-  level_handler.go:302-305). Reuse the last image and read only keys newer than it (`IteratorOptions.SinceTs`), with a
-  periodic image (checkpoint) so a daemon that never closes cleanly bounds the work. Done when: a crash reopen reads
-  only the keys written since the last image, measured on a large shard. Asked ai-soc which index kinds that store
-  defines.
+  level_handler.go:302-305). ai-soc's BA store after PropertyIndexOnDisk still decodes for two composites (Derived,
+  Session) and a rel temporal index per edge type (TemporalIndexOnDisk covers node labels only). Plan, on branch
+  `openimage`: (1) a crash open whose image header is older than the newest version uses the image's value-derived
+  index contents (property, rel property, composite, temporal, rel temporal, high-frequency, vector), keeping only
+  entries of live entities not touched since the image (touched: a row, history or index key with a version above
+  the header's, read with `IteratorOptions.SinceTs`), and adds the touched live ones from their rows; ID sets, label
+  counts and the rel-type index come from the key walks as now, planner statistics are deferred, sidecars rebuilt
+  lazily; an index definition changed since the image is rebuilt from its rows. (2) A periodic image (checkpoint) so
+  a daemon that never closes cleanly bounds the touched set. Done when: a crash open decodes only the entities touched
+  since the last image (by a test counting decodes against store size), its index state equals the full rebuild's,
+  and a large shard's crash reopen is measured.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
