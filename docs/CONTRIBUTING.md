@@ -72,7 +72,8 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 **Tests**
 
 - New tests run under `-short` in seconds (one test ≲2 s, a package ≲5 s). A slow test is gated with
-  `testing.Short() && !raceEnabled` so it runs in the race gate; a plain `testing.Short()` gate runs in no gate at all. A cap or
+  `testing.Short() && !raceEnabled` so it runs in the race gate, or with a plain `testing.Short()` when its bounds hold
+  only without race: then the minor gate's long tier runs it (`make test-long`, which finds every such skip). A cap or
   growth test lowers the cap through a test switch.
 - History-aware code gets two-phase tests: create state X at t0, mutate after t0, query at t0 and assert X.
 - Assert exact sets and negative cases ("must NOT contain Y"), not happy paths. Ask of every test: would it fail if the code
@@ -85,7 +86,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 | Command | Use |
 |---|---|
 | `make ci-fast` | **Patch gate** (~30 s for docs, 1–2 min for a fix): fmt, vet, build, lint, `scripts/patchgate` (refuses new exported API), `-short` of changed packages, `-race` of changed tests, docs tests, check-ledger |
-| `make ci-docker` | **Minor gate**: fmt, vet, lint, build, full `test-race`, gosec, govulncheck, cover-gate (80 %), metakv-reap check, `fuzz-smoke` (each trust-boundary fuzz harness for `FUZZTIME`, default 20 s), check-ledger |
+| `make ci-docker` | **Minor gate**: fmt, vet, lint, build, full `test-race`, `test-long` (the tests a plain `testing.Short()` skips), gosec, govulncheck, cover-gate (80 %), metakv-reap check, `fuzz-smoke` (each trust-boundary fuzz harness for `FUZZTIME`, default 20 s), check-ledger |
 | `make test` / `make test-race` | short tests / race detector |
 | `make cover` | coverage report (`coverage.html`) |
 | `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable" |

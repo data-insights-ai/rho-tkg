@@ -36,6 +36,11 @@ test-v:
 test-race:
 	$(SHELL) scripts/test-race.sh "$(ROOT_RACE_CORE_SHARDS)"
 
+# The long tier: every test a plain `testing.Short()` skips (no race exception),
+# run without -short or race (scripts/test-long.sh; LONG_TIER=list prints them).
+test-long:
+	$(SHELL) scripts/test-long.sh
+
 # Tests of the race-gate script itself (fake go, no toolchain needed).
 test-race-script:
 	$(SHELL) scripts/test-race-test.sh
@@ -198,8 +203,8 @@ vulncheck-docker:
 # Minor release gate, local (GitHub CI on a tag only builds, vets and runs the
 # short tests): the dockerized lint/gosec/govulncheck, the full race suite,
 # coverage, the meta-key reap policy, a short fuzz of every trust-boundary
-# harness and the ledger check.
-ci-docker: fmt-check vet lint-docker build test-race security-docker vulncheck-docker cover-gate check-metakv-reap fuzz-smoke
+# harness, the long tier and the ledger check.
+ci-docker: fmt-check vet lint-docker build test-race test-long security-docker vulncheck-docker cover-gate check-metakv-reap fuzz-smoke
 	scripts/check-ledger.sh
 
 # fuzz-smoke runs each trust-boundary fuzz harness for FUZZTIME (nothing runs
