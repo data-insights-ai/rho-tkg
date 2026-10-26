@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.83.0 (2026-10-26). René's open decisions are the items that wait for
+What rho does next, in order. Last release: v4.84.0 (2026-10-26). René's open decisions are the items that wait for
 him, each with my default. State, consumers and the numbered backlog: `HANDOVER.md`; rules: `docs/CONTRIBUTING.md`
 § Rules digest. Done work: `docs/CHANGELOG.md`, under the same tag.
 
@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-26 Oct: v4.75.0 to v4.83.0 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
+Released 24-26 Oct: v4.75.0 to v4.84.0 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
@@ -26,38 +26,16 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   DurableCommit, 500 B facts, one writer, batches of 1000): 64 k/s against the goal's 46 k/s sustained. Items, in
   order: EXISTMAP (a compact ID set saved in the open image and a bounded striped revision table instead of the two
   maps: RAM and open time no longer grow per entity), then WRITERATE (peak headroom, several writers), then
-  COMPOSITEDISK (postings out of RAM; small today). ai-soc's walls (26 Oct, k10260011, 3 BA days): sigma's resident state (25.4 GB
+  COMPOSITEDISK (postings out of RAM; small today). EXISTMAP shipped in v4.84.0: ~8 B per node in an open shard,
+  clean reopen ~0.25 s per 1 M (`tasks/evidence/EXISTMAP/results.txt`); a read that misses a listed row is now
+  `ErrCorruptWire`. Next walls found on the way: the rel-type index `typeIdx` stays in RAM per rel (~23.6 B per
+  rel, a map per type, no on-disk mode; ai-soc: ~71 MB at its 3 M rels, below sigma's items, no request yet), the
+  lazily built `relValidIdx` costs 43-67 B per rel, and a crash reopen still decodes every row (OPENIMAGE). ai-soc's walls (26 Oct, k10260011, 3 BA days): sigma's resident state (25.4 GB
   census, growing with data; sigma's PROBEMASK, PAGESWITCH, JOINFIT page it); the reference shard keeps every
   Derived fact and every keyed node for ever (Process, File, RegValue, LocalObject: 93 % of 1.04 M keys in 3 days;
   UNIQIDX adoption with SHARD step 10 moves the keyed nodes to event shards, Derived stays; a purge for result rows
   is STORECFG, René later); restart re-reads all past results (625 s at 3 days, mostly sigma's; rho's share from
   OpenStats of k10260915). So EXISTMAP and COMPOSITEDISK bite first on the reference shard.
-- **EXISTMAP** (SCALE's first wall, 26 Oct) — every open badger shard keeps per entity `nodeIDs` (30 B), `nodeRevs`
-  (32.5 B), the same pair for rels, and `nodeHashes` (~99 B per node whose hash was read), and a clean open walks
-  every key to fill them. Plan: (1) the maps behind one type (has, add, delete, len, ascending range), no behaviour
-  change; (2) the ID sets become `index.sortedChunks[int64]` (exact chunks for ascending snowflake IDs); (3) the
-  revisions become a fixed striped table (a write bumps its stripe; a collision only reports "changed", which skips a
-  cache fill: safe); (4) `nodeHashes` bounded; (5) the clean-close open image carries the ID sets, so a clean open
-  reads them instead of walking the keys (a crash open still walks). Budget (lesson 89), on the scale probe and a rho
-  test: RAM per node in an open shard <= 12 B (63 B now); clean reopen <= 0.4 s per 1 M (1.5-1.9 s now); point
-  reads and writes in `bench/` within 5 %; crash reopen no slower. Done when: shipped with the budget met. Branch
-  `existmap`: red test `TestExistMapResidentBytesPerNode` (5652797d): 118 B per node on ai-soc's shard config
-  (nodeRevs ~39 B, nodeIDs ~33 B, the rest map growth slack); with the RAM label index and ordinals (the plain
-  defaults) 215 B. Steps 1-2 done (`index.IDSet`, sorted chunks): ~80 B; step 3 done (43011eb1: striped revision
-  table, 128 KB fixed); measured as live bytes the test reads 82.7 B per node on main and 6.5-8.4 B on the branch
-  (70fcd129): the RAM budget is met. Step 4 (48fa4881): hash cache capped at 64 K entries. Step 5
-  (0d16b0a4): ID sets in the open image, label keys only counted with the label index on disk; clean reopen
-  ~0.25 s per 1 M nodes, budget met; crash reopen faster, no benchmark slower, docs written (ae6fa091,
-  `tasks/evidence/EXISTMAP/results.txt`). Its minor gate (26 Oct) failed twice, not tagged: (1) a clean open
-  that trusts the image's ID sets no longer walks the entity keys, so a damaged table block no longer fails the
-  open closed through the counters, and badger's point Get answers a block-read error as "not found"
-  (`TestTableFlippedByteNeverPanics`: rows silently missing); (2) the RAM budget test read 20 B per node. Fixed
-  on the branch (c1b94d7b): a read that misses the row of an entity the ID set holds, with no write in between,
-  is `ErrCorruptWire` on all 15 current-row paths (a cascade delete still scrubs it); the budget test measures in
-  a fresh test process (20 B came from earlier tests' heap in the same process, not from race); the cold
-  listing cost bounds for 1 and 2 versions rise to 8x and 14x (a clean open no longer warms badger's block
-  cache: ~0.85 kB per fact moved from the open to the first scan). Next: rebase, release commit, `make ci-docker`. Found on the way: the lazily
-  built rel validity index (`relValidIdx`) costs 43-67 B per rel once a temporal traversal needs it.
 - **TXSNAP** (sigma, 26 Oct: 58 % of CPU on ai-soc's BA slice, 28.4 of 49.2 s) — inside a Tx the first
   `SetNodeVersionInterval` of an entity snapshots it for rollback, and when history rows lie above the current
   version (every interval patch leaves them) the snapshot reads and deep-copies the whole chain
@@ -66,7 +44,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   answers an entity's highest stored history version (write buffer included; badger one reverse key seek), used
   by the allocator and by the snapshot (rollback then trims the Tx's own rows above it, as the head path does).
   Budget (lesson 89): a patch in a Tx on a node with 1,000 versions costs at most 1.5x the same patch on a node
-  with 10. Done when: released with the budget met. Waits for: EXISTMAP's tag. Chain length (sigma, 26 Oct,
+  with 10. Done when: released with the budget met. Chain length (sigma, 26 Oct,
   v0.11.71 ROWSRUN): before, one Session node gained a version per paged head per cut (45 versions in sigma's test
   of 2 heads over 24 cuts; 1,000 within a few hundred cuts on ai-soc's program); now each head has its own node,
   one version per cut, so a long run still reaches thousands per node. The 1,000-against-10 shape fits; ai-soc's
