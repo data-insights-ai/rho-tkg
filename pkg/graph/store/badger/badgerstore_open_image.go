@@ -78,6 +78,8 @@ const (
 	imgSecNodePropTx
 	imgSecRelPropTxSpans // built property membership sidecars with spans (backlog 74, ledger row 62)
 	imgSecNodePropTxSpans
+	imgSecNodeIDs // the live node IDs, ascending, delta-encoded (EXISTMAP): the open skips the node-key walk
+	imgSecRelIDs  // the live rel IDs, as imgSecNodeIDs
 )
 
 type imgValueIDs struct {
@@ -117,6 +119,10 @@ type openImage struct {
 	// lazily.
 	relPropTx  map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyTxMembers[types.RelID]
 	nodePropTx map[indexpkg.PropertyIndexKey]*indexpkg.PropertyTxMembers[types.NodeID]
+	// nodeIDs / relIDs are the closing process's live ID sets; nil when the
+	// image has none (an image written before EXISTMAP), so the open walks
+	// the entity keys.
+	nodeIDs, relIDs *indexpkg.IDSet
 }
 
 func newOpenImage() *openImage {
@@ -221,10 +227,26 @@ var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 func (bs *Store) encodeOpenImageLocked() []byte {
 	var out []byte
 	section := func(kind byte, payload []byte) {
+		if bs.imageSectionFilterForTest != nil && !bs.imageSectionFilterForTest(kind) {
+			return
+		}
 		out = append(out, kind)
 		out = binary.AppendUvarint(out, uint64(len(payload)))
 		out = append(out, payload...)
 	}
+	// appendIDSet is a count and the IDs as ascending deltas (the first from 0).
+	appendIDSet := func(set *indexpkg.IDSet) []byte {
+		b := binary.AppendUvarint(nil, uint64(set.Len())) // #nosec G115 -- a length
+		prev := int64(0)
+		set.Ascend(func(id int64) bool {
+			b = binary.AppendUvarint(b, uint64(id-prev)) // #nosec G115 -- positive ascending snowflake IDs
+			prev = id
+			return true
+		})
+		return b
+	}
+	section(imgSecNodeIDs, appendIDSet(&bs.nodeIDs))
+	section(imgSecRelIDs, appendIDSet(&bs.relIDs))
 	// appendKeyIDs is one value key with its IDs, ascending so the reload's
 	// AddKey fills exact chunks.
 	appendKeyIDs := func(b []byte, vk string, n int, ids iter.Seq[snowflake.ID]) []byte {
@@ -580,6 +602,27 @@ func (r *imgReader) bytes(n int) []byte {
 	return v
 }
 
+// idSet reads appendIDSet's encoding; IDs must be positive and strictly
+// ascending (a zero delta or an overflow fails the image).
+func (r *imgReader) idSet() *indexpkg.IDSet {
+	set := &indexpkg.IDSet{}
+	n := r.count(len(r.b)) // each ID takes at least one byte
+	prev := int64(0)
+	for range n {
+		d := r.uvarint()
+		if r.err != nil {
+			return nil
+		}
+		if d == 0 || d > math.MaxInt64-uint64(prev) { // #nosec G115 -- prev >= 0
+			r.fail("id set")
+			return nil
+		}
+		prev += int64(d) // #nosec G115 -- bounded above
+		set.Add(prev)
+	}
+	return set
+}
+
 func (r *imgReader) str() string { return string(r.bytes(r.count(len(r.b)))) }
 
 func (r *imgReader) valueIDs() []imgValueIDs {
@@ -715,6 +758,10 @@ func decodeOpenImage(blob []byte) (*openImage, error) {
 		case imgSecNodePropTxSpans:
 			key := indexpkg.PropertyIndexKey{LabelToken: r.u16(), PropertyKey: r.str()}
 			img.nodePropTx[key] = imgPropTx[types.NodeID](&r)
+		case imgSecNodeIDs:
+			img.nodeIDs = r.idSet()
+		case imgSecRelIDs:
+			img.relIDs = r.idSet()
 		default:
 			r.fail("section kind")
 		}

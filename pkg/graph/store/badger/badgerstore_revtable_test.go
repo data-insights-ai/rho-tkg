@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -91,5 +92,39 @@ func TestNodeHashCacheBounded(t *testing.T) {
 	bs.idxMu.RUnlock()
 	if n > 8 {
 		t.Fatalf("node hash cache holds %d entries, cap 8", n)
+	}
+}
+
+// TestOpenImageIDSetSection pins step 5 of EXISTMAP: the image's ID set
+// section decodes to the IDs it holds, ascending, and a zero delta (a repeated
+// ID) or a count beyond the bytes fails the whole image, so the open walks the
+// keys instead. Catches a decoder that accepts a repeat or a short section.
+func TestOpenImageIDSetSection(t *testing.T) {
+	t.Parallel()
+	blob := func(payload ...uint64) []byte {
+		var p []byte
+		for _, v := range payload {
+			p = binary.AppendUvarint(p, v)
+		}
+		b := []byte{imgSecNodeIDs}
+		b = binary.AppendUvarint(b, uint64(len(p)))
+		return append(b, p...)
+	}
+	img, err := decodeOpenImage(blob(3, 5, 3, 100)) // IDs 5, 8, 108
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int64
+	img.nodeIDs.Ascend(func(id int64) bool { got = append(got, id); return true })
+	if len(got) != 3 || got[0] != 5 || got[1] != 8 || got[2] != 108 {
+		t.Fatalf("decoded %v, want [5 8 108]", got)
+	}
+	for name, b := range map[string][]byte{
+		"zero delta": blob(2, 5, 0),
+		"short":      blob(3, 5, 3),
+	} {
+		if _, err := decodeOpenImage(b); err == nil {
+			t.Errorf("%s: decoded, want an error", name)
+		}
 	}
 }
