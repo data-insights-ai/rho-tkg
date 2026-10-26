@@ -18,7 +18,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **Consumers and their agents** (ask the agent for runs and data, never browse their repos; answer a request the same
   day with its todo item first; agent names change per session, `ListAgents`; if neither resolves at a release, put
   the release note here and tell René in one line):
-  - ai-soc, agent `ai-soc-main-45`: pins rho v4.83.0 (26 Oct; v4.84.0 notified) with sigma v0.11.65. Tiered
+  - ai-soc, agent `ai-soc-main-45`: pins rho v4.83.0 (26 Oct; v4.84.0 and v4.84.1 notified: pins v4.84.1 at its next bump, PIN) with sigma v0.11.65. Tiered
     main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2; HistoryDeltaEncoding, SyncWrites, DurableCommit,
     RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk (not PropertyIndexOnDisk: sigma's DerivedPage ov_k/ov_h
     index grew in RAM, ~1 value per row; ai-soc switching it, 26 Oct), ValueDictionaries, UntimedUnbounded, AllowRetentionPurge;
