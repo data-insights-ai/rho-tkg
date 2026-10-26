@@ -109,10 +109,11 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
     shard leave at most such a claim; none is ever missing), so no change-log replay is needed. Steps:
     (a) [x] the index store and its capability on tiered (open at New when declared, Clear wipes it); red: claims
         survive a reopen, Clear empties them. Green on branch `uniqidx` (`tasks/evidence/UNIQIDX/step_a.txt`).
-    (b) [ ] `CreateUnique` on a tiered event label declares the index and seeds it from the current rows (it is
+    (b) [x] `CreateUnique` on a tiered event label declares the index and seeds it from the current rows (it is
         refused today); the unique check and `GetOrCreateByKey` read the owner index for such a label; red: a key
         whose row is on a closed cold shard is found (no new node) opening only that shard, a duplicate is refused.
-    (c) [ ] `ByLabelAndProperty(label, key, v)` (current, DepthAll) on such a label answers from the index.
+    (c) [x] `ByLabelAndProperty(label, key, v)` (current, DepthAll) on such a label answers from the index.
+        (b) and (c) green on branch `uniqidx` (`tasks/evidence/UNIQIDX/step_b.txt`; one lookup path serves both).
     (d) [ ] stale claims: value change, delete, label removal, retention drop, rollback, crash between claim and row:
         the value is free again; red tests for each.
     (e) [ ] measured on ai-soc's shape (lookup cost against shard count, write cost per keyed row), released as a
