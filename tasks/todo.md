@@ -43,7 +43,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   reads and writes in `bench/` within 5 %; crash reopen no slower. Done when: shipped with the budget met. Branch
   `existmap`: red test `TestExistMapResidentBytesPerNode` (5652797d): 118 B per node on ai-soc's shard config
   (nodeRevs ~39 B, nodeIDs ~33 B, the rest map growth slack); with the RAM label index and ordinals (the plain
-  defaults) 215 B. Next: step 1, the maps behind one type.
+  defaults) 215 B. Steps 1-2 done (e8d97150: `index.IDSet`, sorted chunks): ~80 B. Next: step 3, the revisions.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
@@ -160,7 +160,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   (sigma 26 Oct: not now). ai-soc on v4.83.0 (26 Oct, derived_list_cost_test.go): cold 2 versions 21.6x -> 18.3x;
   cold 1 version 7.4x, warm 2 versions 6.2x (13 props) and 4.3x (20 props) unchanged. Its warm test lists through
   sigma's joined(), maybe not through the door rho cut; ai-soc ranks the column door below sigma's PAGESWITCH and
-  JOINFIT. Waits for: ai-soc's profile of the warm test (which rho doors it calls).
+  JOINFIT. ai-soc's warm profile (26 Oct): the listing goes through the page door, but its warm store is memory,
+  whose `GetNodeVersion` deep-copies every version (`PropertySlice.DeepCopy`, 1.5 of 3.5 MB); R37 changed only the
+  badger and tiered paths. Candidate: memory lends its frozen version rows to the timelines (a door, a minor); not
+  requested by ai-soc (its goal 2 is sigma's state). Waits for: a consumer asking, or the column door.
 - **CHAIN** (memory split known 26 Oct: k10260011 heap 30.0 GB, sigma 89 %, rho 3.3 GB, badger 0.77 GB; storage
   split still open) — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
