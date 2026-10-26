@@ -357,7 +357,8 @@ type Store struct {
 	// Protected by idxMu for concurrent read/write access.
 	idxMu                 sync.RWMutex
 	nodeIDs               indexpkg.IDSet                                // live node IDs (EXISTMAP: sorted chunks, ~8 B per ID)
-	nodeHashes            map[types.NodeID]string                       // lazy cache of current node integrity hashes (NodeIntegrityHash fills, every node-row write drops; row 66)
+	nodeHashes            map[types.NodeID]string                       // lazy cache of current node integrity hashes (NodeIntegrityHash fills, every node-row write drops; row 66), at most nodeHashLimit() entries (EXISTMAP)
+	nodeHashCap           int                                           // test switch for nodeHashLimit; 0 = nodeHashCacheCap
 	nodeRevs              revTable                                      // node row revisions for safe prefetch handoff (striped, EXISTMAP)
 	relIDs                indexpkg.IDSet                                // live rel IDs (as nodeIDs)
 	relRevs               revTable                                      // rel row revisions for safe prefetch handoff (BACKLOG 18b; mirrors nodeRevs)

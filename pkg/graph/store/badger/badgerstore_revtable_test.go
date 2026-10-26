@@ -54,3 +54,42 @@ func TestRevTableDeleteAndClearChangeRevisions(t *testing.T) {
 		t.Errorf("Clear left a revision unchanged: node %d -> %d, rel %d -> %d", n0, n1, r0, r1)
 	}
 }
+
+// TestNodeHashCacheBounded pins step 4 of EXISTMAP: the node integrity hash
+// cache holds at most its cap (lowered to 8 through the test switch) however
+// many hashes are read, and a hash read again after its entry was dropped is
+// the same hash. Catches an unbounded fill and an eviction that corrupts a
+// kept entry.
+func TestNodeHashCacheBounded(t *testing.T) {
+	t.Parallel()
+	bs, err := New(Config{InMemory: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	bs.nodeHashCap = 8
+	first := map[types.NodeID]string{}
+	for i := int64(1); i <= 50; i++ {
+		putTestNode(t, bs, i, 10, nil)
+	}
+	for round := range 2 {
+		for i := int64(1); i <= 50; i++ {
+			nid := types.NodeID(i)
+			h, err := bs.NodeIntegrityHash(nid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if round == 0 {
+				first[nid] = h
+			} else if h != first[nid] {
+				t.Fatalf("node %d: hash %q after eviction, was %q", i, h, first[nid])
+			}
+		}
+	}
+	bs.idxMu.RLock()
+	n := len(bs.nodeHashes)
+	bs.idxMu.RUnlock()
+	if n > 8 {
+		t.Fatalf("node hash cache holds %d entries, cap 8", n)
+	}
+}

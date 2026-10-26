@@ -294,6 +294,19 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	return bs.fillNodeHash(nid, rev, hash)
 }
 
+// nodeHashCacheCap bounds the node integrity hash cache (EXISTMAP: ~99 B per
+// entry, filled by every endpoint hash a rel write reads, so unbounded it grew
+// with the nodes that have rels): 64 K entries, ~6.5 MB per store. A miss
+// recomputes the hash from the cached or stored row.
+const nodeHashCacheCap = 1 << 16
+
+func (bs *Store) nodeHashLimit() int {
+	if bs.nodeHashCap > 0 {
+		return bs.nodeHashCap
+	}
+	return nodeHashCacheCap
+}
+
 // fillNodeHash caches a hash computed from a row read without the lock, at
 // the node revision rev read before it. nodeHashes is filled only here (row
 // 66: no write fills it, ~99 B per node), and every node-row write drops the
@@ -311,6 +324,12 @@ func (bs *Store) fillNodeHash(nid types.NodeID, rev uint64, hash string) (string
 	}
 	if cur, ok := bs.nodeHashes[nid]; ok {
 		return cur, nil // a concurrent read filled it at the same revision
+	}
+	if len(bs.nodeHashes) >= bs.nodeHashLimit() {
+		for k := range bs.nodeHashes { // full: drop one entry (map order: an arbitrary one)
+			delete(bs.nodeHashes, k)
+			break
+		}
 	}
 	bs.nodeHashes[nid] = hash
 	return hash, nil
