@@ -107,12 +107,22 @@ func r37Fallback(t *testing.T, g *graphpkg.Graph, ids []types.NodeID) float64 {
 // shares the current row's values and property slice). The bounds leave room
 // for the process-wide counter. Serial: it reads runtime.MemStats.
 func TestR37ListingBytesPerFact(t *testing.T) {
-	if testing.Short() {
+	if testing.Short() && !isRaceEnabled() {
 		t.Skip("builds and reopens two disk stores")
 	}
 	const valueBytes = 447.0
 	ctx := context.Background()
-	bounds := map[int][2]float64{1: {1.5, 6.5}, 2: {5.0, 12.0}} // versions: warm, cold bound (x a fact's values)
+	// Bounds per versions: warm, cold (x a fact's values). The cold ones
+	// rose by 2.2x (~980 B a fact) with EXISTMAP (v4.84.0): the open no longer
+	// reads every row, so the first listing decodes the badger blocks (5.3x and
+	// 10.4x -> 7.5x and 12.6x). The race build allocates up to ~1.35x more on
+	// the listing, ~1.1x on the fallback (17.3x; 19.8x without version
+	// sharing, which its bound catches in both builds).
+	scale, fallbackBound := 1.0, 17.0
+	if isRaceEnabled() {
+		scale, fallbackBound = 1.4, 18.6
+	}
+	bounds := map[int][2]float64{1: {1.5 * scale, 8.7 * scale}, 2: {5.0 * scale, 14.2 * scale}}
 	for _, versions := range []int{1, 2} {
 		dir := t.TempDir()
 		g := r37Open(t, dir)
@@ -146,8 +156,8 @@ func TestR37ListingBytesPerFact(t *testing.T) {
 			r37Fallback(t, g, ids)
 			fb := r37Fallback(t, g, ids) / valueBytes
 			t.Logf("2 versions, sigma's fallback (Get + NodeEffectiveTimelines): %.1fx a fact's values", fb)
-			if fb > 17.0 {
-				t.Fatalf("sigma's fallback: %.1fx a fact's values, bound 17.0x", fb)
+			if fb > fallbackBound {
+				t.Fatalf("sigma's fallback: %.1fx a fact's values, bound %.1fx", fb, fallbackBound)
 			}
 		}
 		g.Close()
