@@ -12,7 +12,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
   "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
   v4.86.0) ci-docker also runs `make test-long` (~1 min).
-- **Branches:** none open. Merged item branches (r37, existmap, txsnap, rowprobe, tierstats included) wait for René's delete (user-only action 6). main is pushed.
+- **Branches:** none open. Merged item branches wait for René's delete (user-only actions 5 and 6); the kept
+  branches' push to origin is user-only action 7. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
   91.8 records/op is a synthetic in-memory probe; options A/B/C are in no committed file: `git show af75a982:tasks/evidence/v5-scale/notes.md`.
@@ -87,7 +88,13 @@ lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
 4. gh-dashboard scratchpad (667 MB, path in that session). The cleanup message to tts-tests-b6 expired and monitoring-a9's is
    held (different permission mode); tell them directly if wanted.
 5. `! git branch -D v5 worktree-agent-a0d52d5298e44faee` (full name; `v5` = stale copy of origin/v5 `04c7fd4f`, worktree-agent: its test and evidence are `tasks/evidence/4/` on main, backlog item 4). Both content-complete elsewhere.
-6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc midnightdst calendar opencold r37 existmap txsnap` (`-d` refuses an unmerged one).
+6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc midnightdst calendar opencold r37 existmap txsnap rowprobe tierstats gatetier` (`-d` refuses an unmerged one), and
+   `! git -C ~/Work/2026/datainsights/rho-tkg branch -D flushpart` (pre-rebase copies of v4.75.0; its last red test is
+   main's `054cf8e0`). Run from `../rho-tkg-main` or after checking out another branch: git keeps the checked-out one.
+7. Push the kept local branches to origin as backups (René via ai-soc 26 Oct, "yes and yes"; not run: relayed, so it
+   waits for René's own word to rho or his run): `! git -C ~/Work/2026/datainsights/rho-tkg push origin
+   row102-pending-ranged tombstone-writer-v4.63 v5-realstore-harness wp-37-import-throughput` (PENDING, TOMBSTONE and
+   the v5 harness start from them).
 
 ## Appendix A — origin watch
 
