@@ -22,3 +22,9 @@ Mutation checks: revision table (bump no-op, rel delete no bump, node delete no 
 cap, image ID-set decode (zero delta), lazy label open (no disk read, no counts, empty entity set): each fails a
 test. Probe: tasks/evidence/SCALE/scaleprobe_main.go.txt (with its -crash and
 -cpuprofile flags).
+
+Release scale probe (v4.84.0 b31e4875 against v4.82.0's probe-main, Derived, 1 M nodes, tiered, alternated twice,
+load average 38-45 from other sessions, so insert rates are load noise: probe-main itself moved 5.0 -> 9.0 s):
+  probe-main (v4.82.0)   insert 5.0 / 9.0 s   clean reopen 1.86 / 3.20 s   heap after reopen +369 / +374 MB
+  v4.84.0                insert 6.7 / 8.5 s   clean reopen 0.45 / 0.52 s   heap after reopen +192 / +194 MB
+  (a v4.84.0 run alone at load 44: insert 9.2 s, reopen 0.36 s, +193 MB)

@@ -47,8 +47,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   with 10. Done when: released with the budget met. Chain length (sigma, 26 Oct,
   v0.11.71 ROWSRUN): before, one Session node gained a version per paged head per cut (45 versions in sigma's test
   of 2 heads over 24 cuts; 1,000 within a few hundred cuts on ai-soc's program); now each head has its own node,
-  one version per cut, so a long run still reaches thousands per node. The 1,000-against-10 shape fits; ai-soc's
-  BA re-run gives the real per-write length (sigma forwards it).
+  one version per cut, so a long run still reaches thousands per node. Since sigma v0.11.73 (ROWSTAMP) paged rows
+  and state are written once (chain 1); the exposure left is the estate write-back Session node, one version per
+  cut that changes facts or coverage (~794 on ai-soc's BA slice, thousands a day), each stamp a
+  `SetNodeVersionInterval` in the write's Tx; Derived facts keep a few versions. The 1,000-against-10 shape fits.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
