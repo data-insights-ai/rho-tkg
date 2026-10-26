@@ -14,8 +14,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   v4.86.0) ci-docker also runs `make test-long` (~1 min).
 - **v4.86.1** (ASYNCSTAGE, a patch): ci-fast green plus every other package's short tests, consumers build and vet
   clean; async ingest 1.55-2.0x (`tasks/evidence/WRITERATE/results.txt`).
-- **v4.87.0** (OPENWALK, a minor: the open image gains two sections, an older release rebuilds once): ci-docker
-  green on the second run (the first hit VERIFY V2's multi-block fixture, fixed with the release), consumers build
+- **v4.87.0** (OPENWALK, a minor: the open image gains two sections, an older release rebuilds once): tag CI
+  green; ci-docker green on the second run (the first hit VERIFY V2's multi-block fixture, fixed with the release), consumers build
   and vet clean; scale probe in `tasks/evidence/SCALE/existence_maps.txt` (reopen with 1 M rels 1.25 s to 0.13 s).
 - **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0). The merged item branches are deleted and the kept ones pushed
   (René, 26 Oct); user-only action 5 stays. main is pushed.
