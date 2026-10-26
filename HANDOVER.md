@@ -26,8 +26,8 @@ data and the consumer agents):
 - **SHARD** (ADR-0012 in architecture.md, plan with boxes in todo): steps 1-8 shipped (v4.76.1, v4.78.0 to v4.78.5),
   step 10 slice 1 UNIQIDX in v4.81.0; the next slices (label and property postings, the rel owner map) on a measured
   need. ai-soc adopts UNIQIDX with step 10 on René's word, after counting duplicate keys.
-- **Now:** the rest of CALENDAR (first fix in v4.81.1: daily windows in zones that jump at midnight), then OPENCOLD
-  with RESTART's open counters, COLDWRITE's test.
+- **Now:** OPENCOLD with RESTART's open counters, then COLDWRITE's test. CALENDAR done (fix in v4.81.1, table in
+  `tasks/evidence/CALENDAR/`); ai-soc to say whether tiered windows need a Config zone.
 - **Queued:** DICTMERGE and PROPPOS (after ai-soc measures DICT); WRITTENAT (withdrawn by ai-soc unless sigma's PUBIDS
   fails); OPENIMAGE; METASYNC's power-loss rig (later, René 26 Oct); PURGEIDS (sigma, Later). CHAIN and R37 wait for a
   Flux run: René's word, after sigma's ENDPOINT and EDGEREF tags. STORE/STORECFG are with René. Parked: BADGERPANIC.
@@ -121,7 +121,7 @@ lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
 4. gh-dashboard scratchpad (667 MB, path in that session). The cleanup message to tts-tests-b6 expired and monitoring-a9's is
    held (different permission mode); tell them directly if wanted.
 5. `! git branch -D v5 worktree-agent-a0d52d5298e44faee` (full name; `v5` = stale copy of origin/v5 `04c7fd4f`, worktree-agent: its test and evidence are `tasks/evidence/4/` on main, backlog item 4). Both content-complete elsewhere.
-6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc midnightdst` (`-d` refuses an unmerged one).
+6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc midnightdst calendar` (`-d` refuses an unmerged one).
 
 ## Appendix A — origin watch
 

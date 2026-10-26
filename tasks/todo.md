@@ -8,7 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-26 Oct: v4.75.0 to v4.81.1 (`docs/CHANGELOG.md`). Now: the rest of CALENDAR, OPENCOLD with RESTART, COLDWRITE's test, BADGER step 3's last pieces.
+Released 24-26 Oct: v4.75.0 to v4.81.1 (`docs/CHANGELOG.md`). Now: OPENCOLD with RESTART, COLDWRITE's test, BADGER step 3's last pieces.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -121,20 +121,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
   fact. Done when: René has decided per layer. Waits for: CHAIN.
 
-- **CALENDAR** (ai-soc on René's word, 26 Oct, after DSTWIN) — check rho systematically for every assumption that a
-  day, week, month or year has a fixed length or that local time is regular. Cases: the 23-h and 25-h days (every
-  hour of the change night), zones changing at midnight (America/Santiago, America/Havana, Asia/Tehran in its DST
-  years), half- and quarter-hour offsets (Asia/Kolkata, Asia/Kathmandu, Australia/Lord_Howe's 30-min DST),
-  southern-hemisphere DST, months of 28-31 days, 29 February, ISO week 53, the year boundary, a zone whose rules
-  changed, and UTC as the control. Places: ShardWindow daily and weekly (DSTWIN), shard naming by local date,
-  ColdAfter, MaxOpenColdShards' age, retention purges by age (PurgeByAge, PurgeByValidTo, the watermark), history
-  truncation by time, the tx-time clock across a backward wall-clock step, any index bucketed by day. Done when: a
-  table of each time-based place with its test over every hour of a leap and a non-leap year in UTC,
-  Europe/Berlin, America/Santiago, Asia/Kathmandu and Australia/Lord_Howe, green, and a patch tag for whatever fails.
-  ai-soc's inputs (26 Oct; pin v4.79.0): ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2, a planned 28-day daily
-  purge (a purge at a DST boundary belongs in the table), event zones UTC and America/Bogota, host zone Europe/Berlin
-  and TZ unset (nothing may depend on the process's zone). Found first (26 Oct, probe 2024-2028, every quarter
-  hour): zones whose clocks jump forward at midnight; fixed in v4.81.1. Left: the other places of the table.
+- **CALENDAR** (ai-soc on René's word, 26 Oct) — done on main: every time-based place is in
+  `tasks/evidence/CALENDAR/table.txt` with its test; the one failure (zones that jump forward at midnight) is fixed in
+  v4.81.1; granularity and recurrence are UTC and tested under another process zone. Left: ai-soc's answer whether
+  tiered windows should get a Config zone instead of the process's (a minor; asked 26 Oct).
 - **COLDWRITE** (ai-soc, Fable G4, 26 Oct) — can a tiered write land in a cold shard, and is it lost to recovery?
   Answered from the code: yes it can (an update or late event older than ColdAfter opens the shard writable,
   `tieredstore_lifecycle.go` checkout); rho's recovery does not scan by time (each shard replays its WAL at its next
