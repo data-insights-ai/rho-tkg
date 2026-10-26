@@ -21,7 +21,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   build and vet clean; a mutation without an event publisher takes no event timestamp, hot and warm checkouts stamp
   no `lastAccess`, a disk property equality lookup seeks its buffered entries (64 k buffered: 5.2 ms to 3.5 us).
 - **v4.87.2** (IDLESTAMP, a patch: v4.87.1 stamped `lastAccess` at a demotion and turned sigma's TestFoldReadDepthHot
-  red): ci-fast green, consumers build and vet clean; sigma's three tests checked on it (two pass, the third is sigma's).
+  red): tag CI and ci-fast green, consumers build and vet clean; sigma's three tests checked on it (two pass, the third is sigma's).
 - **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2); openimage (OPENIMAGE, in progress). The merged item branches are deleted and the kept ones pushed
   (René, 26 Oct); user-only action 5 stays. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
