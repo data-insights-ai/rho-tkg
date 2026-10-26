@@ -43,3 +43,9 @@ Reading, corrected: the clean reopen is linear at ~1.5-1.9 s per 1 M entities; t
 ~0.6 s per 2 M (the 8.9 s above was the gate's load). Durable writes, one writer, batches of 1000, 500 B facts:
 64 k/s against the goal's 46 k/s sustained (peaks need headroom; several writers not yet measured). At 4 billion
 facts: ~2 h for a clean reopen of a day-shard, plus ~63 B per node per open shard.
+
+v4.85.0 release scale probe (2a185bd5, Derived, 1 M nodes, tiered, load average 16-17; alternated with v4.84.0's
+probe binary):
+  v4.85.0   insert 3.9 / 4.4 / 5.6 s   clean reopen 0.29 / 0.27 / 0.38 s   heap after reopen +192.1 / +191.9 / +192.8 MB
+  v4.84.0   insert 3.9 s               clean reopen 0.25 s                 heap after reopen +192.2 MB
+Reading: no change (ROWPROBE touches lookups, not ingest or the open).
