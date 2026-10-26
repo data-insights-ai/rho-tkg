@@ -56,12 +56,17 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
 - **EVENTCLOCK** (SCALE, ai-soc 26 Oct, Flux run k10262212 on v4.87.0) — time.Now is 15 % of CPU in the run's first
-  minute: Core.now 35 % of it, EventShard.checkoutForRead 36 %, peekNow 14 %, checkRotation 10 %. Every mutation
-  takes an event timestamp (`c.now()`: a clock read, a CAS and a reserved instant, which pushes the clock floor
-  ahead of the wall) before the publish checks for a publisher (`tx_mutations.go:148`, `events_dispatch.go:96`).
-  On branch `eventclock`. Done when: a mutation without a publisher reads no clock for its event, by a test, and the
-  hot and warm checkout stamps a coarse clock. Waits on ai-soc for Flux's clocksource (if time.Now is a syscall
-  there, the host clock is René's call).
+  minute: Core.now 35 % of it, EventShard.checkoutForRead 36 %, peekNow 14 %, checkRotation 10 %. Flux's clocksource
+  is hpet (the kernel dropped tsc at boot), so each time.Now is a slow read there: the host clock is René's call
+  (ai-soc asks him). rho's part on branch `eventclock` (744c1bcc, mutation-checked): a mutation without an event
+  publisher takes no event timestamp (50 creates in one transaction: 101 clock reads to 51, floor 100 to 50 ms ahead),
+  and hot and warm checkouts stamp no `lastAccess` (a demotion stamps it). Next: the gate, then v4.87.1.
+- **PENDSEEK** (SCALE, ai-soc 26 Oct, kit A/B on v4.87.0) — with `PropertyIndexOnDisk` ai-soc's answers are equal and
+  the heap falls 750 to 680 MB, but the push takes 2x (60 to 120 s): every property lookup ranges over the whole
+  pending-write overlay (`propertyIndexDiskKeysCandidatesLocked`, the `rangePending` closure, 10.2 s flat of 71 s), so
+  a commit group of a few thousand writes with a GetOrCreateByKey per record is quadratic. Done when: a lookup seeks the
+  pending 0x0A keys by prefix (cost independent of the pending size, by a test), released as a patch; ai-soc then reruns
+  the kit A/B. If the seek is not cheap, the per-index on-disk flag (a minor) instead.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
@@ -171,10 +176,9 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 - **PROPDISK** (SCALE, ai-soc 26 Oct, k10262212) — the RAM property index takes 0.82 GB (22 % of the live heap at
   600 s) on DerivedPage's int64 hash keys (ov_k, ov_h<mask>; rho internal/index 332 to 1,652 MB per 1,000 done against
-  paging off). `tiered.Config.PropertyIndexOnDisk` already moves every shard's property index to disk, the reference
-  shard included (store-wide; RangeCounts and Elements refused; composite indexes stay in RAM). Waits on ai-soc:
-  whether it creates a RangeCounts or Elements index, then a run with the flag (René's word for Flux). A per-index
-  flag is a minor, built only if store-wide does not fit.
+  paging off). `tiered.Config.PropertyIndexOnDisk` moves every shard's property index to disk (store-wide; RangeCounts
+  and Elements refused; composite indexes stay in RAM); ai-soc's kit A/B with it: answers equal, heap 750 to 680 MB,
+  push 2x slower (PENDSEEK). Waits on PENDSEEK, then ai-soc's rerun and its switch.
 - **SCALEPROFILE** (SCALE, ai-soc 26 Oct) — which RAM structures grow with data in ai-soc's daemon plus sigma.
   Flux run k10261904 on v4.86.0 is the baseline (heap, memstats and smaps_rollup every 600 s and after the final
   GC, reopen times, the top-40 inuse_space with node and rel counts); the run after the PAGEREF pin carries
