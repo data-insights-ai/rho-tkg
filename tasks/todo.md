@@ -55,6 +55,13 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
+- **EVENTCLOCK** (SCALE, ai-soc 26 Oct, Flux run k10262212 on v4.87.0) — time.Now is 15 % of CPU in the run's first
+  minute: Core.now 35 % of it, EventShard.checkoutForRead 36 %, peekNow 14 %, checkRotation 10 %. Every mutation
+  takes an event timestamp (`c.now()`: a clock read, a CAS and a reserved instant, which pushes the clock floor
+  ahead of the wall) before the publish checks for a publisher (`tx_mutations.go:148`, `events_dispatch.go:96`).
+  On branch `eventclock`. Done when: a mutation without a publisher reads no clock for its event, by a test, and the
+  hot and warm checkout stamps a coarse clock. Waits on ai-soc for Flux's clocksource (if time.Now is a syscall
+  there, the host clock is René's call).
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
@@ -162,6 +169,12 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **PROPDISK** (SCALE, ai-soc 26 Oct, k10262212) — the RAM property index takes 0.82 GB (22 % of the live heap at
+  600 s) on DerivedPage's int64 hash keys (ov_k, ov_h<mask>; rho internal/index 332 to 1,652 MB per 1,000 done against
+  paging off). `tiered.Config.PropertyIndexOnDisk` already moves every shard's property index to disk, the reference
+  shard included (store-wide; RangeCounts and Elements refused; composite indexes stay in RAM). Waits on ai-soc:
+  whether it creates a RangeCounts or Elements index, then a run with the flag (René's word for Flux). A per-index
+  flag is a minor, built only if store-wide does not fit.
 - **SCALEPROFILE** (SCALE, ai-soc 26 Oct) — which RAM structures grow with data in ai-soc's daemon plus sigma.
   Flux run k10261904 on v4.86.0 is the baseline (heap, memstats and smaps_rollup every 600 s and after the final
   GC, reopen times, the top-40 inuse_space with node and rel counts); the run after the PAGEREF pin carries
