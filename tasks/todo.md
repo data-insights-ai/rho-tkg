@@ -40,7 +40,12 @@ rho's lever is listing), then SCALE, then BADGER step 3's last pieces. Ranked by
   facts, one writer, batches of 1000): 27 k/s against the goal's 46 k/s sustained (measured under a gate's load;
   re-measure idle). Candidate items: EXISTMAP (a compact persisted ID set and a bounded striped revision table
   instead of the two maps), COMPOSITEDISK (composite postings on disk or in the open image), WRITERATE (where a
-  durable commit spends its time).
+  durable commit spends its time). ai-soc's walls (26 Oct, k10260011, 3 BA days): sigma's resident state (25.4 GB
+  census, growing with data; sigma's PROBEMASK, PAGESWITCH, JOINFIT page it); the reference shard keeps every
+  Derived fact and every keyed node for ever (Process, File, RegValue, LocalObject: 93 % of 1.04 M keys in 3 days;
+  UNIQIDX adoption with SHARD step 10 moves the keyed nodes to event shards, Derived stays; a purge for result rows
+  is STORECFG, René later); restart re-reads all past results (625 s at 3 days, mostly sigma's; rho's share from
+  OpenStats of k10260915). So EXISTMAP and COMPOSITEDISK bite first on the reference shard.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
