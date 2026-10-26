@@ -149,7 +149,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **CHAIN** (memory split known 26 Oct: k10260011 heap 30.0 GB, sigma 89 %, rho 3.3 GB, badger 0.77 GB; storage
   split still open) — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is
-  known. Waits for: sigma's EDGEREF tag (ENDPOINT shipped in sigma v0.11.66, 26 Oct; ai-soc's next full run waits for EDGEREF), René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
+  known. Waits for: René's word and a free Flux (sigma's ENDPOINT and EDGEREF shipped in v0.11.66 and v0.11.68, 26 Oct;
+  ai-soc's day run k10260915 on v4.82.0 runs today), René's word and a free Flux (ai-soc: free after about 15:30 on 24 Oct; tell ai-soc before a start). sigma (24 Oct): the scan tool (`projects/derived-writeback`, wbscan)
   is ready, but Flux runs one big job at a time (ai-soc's k10241303 now) and a Flux run needs René's word.
 - **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
   fact. rho's options: (a) the believed row stays the current row, so a re-derived fact reads the current row, not
@@ -157,7 +158,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   row; (d) decoded rows closer to their stored size. Default: none before CHAIN's numbers. Done when: René has
   decided per layer. Waits for: CHAIN.
 - **REPORT** — ai-soc and sigma have not yet reported on rho's newer doors, and rho builds only what blocks
-  them. 26 Oct: sigma v0.11.66 (ENDPOINT) pins v4.80.0 (VALUES, TKGID not wired yet); ai-soc pins v4.79.0 and takes v4.81.1
+  them. 26 Oct: sigma v0.11.68 (ENDPOINT, EDGEREF) pins v4.80.0 (VALUES, TKGID not wired yet); ai-soc pins v4.79.0 and takes v4.81.1
   and v4.82.0 with its next pin (ShardWindowLocation UTC, OpenStats read at the next run). Done when: both have reported. Waits for: ai-soc, sigma.
 - **ORIGIN** — Every release Markus makes on origin has to be merged and checked against rho's rules. Done when: no
   release of his is unmerged. Waits for: Markus.
