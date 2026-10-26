@@ -41,3 +41,10 @@ never staged. Probe as above, async, 800 k facts of 500 B, main and branch alter
   writers 8: main 74 / 40 / 72 k/s   branch 146 /  65 / 146 k/s   (paired 1.98x, 1.61x, 2.02x)
   heap left after the insert: main 0.9-1.4 GB, branch 0.55-0.83 GB (a smaller pending buffer).
 Durable stores are unchanged (under SyncWrites the async bound is off; each batch already fits one transaction).
+
+Durable after ASYNCSTAGE (v4.86.1, 1 writer, 400 k facts of 500 B, -sync, load ~15): 66 k/s; CPU busy 64 % of wall
+(the rest is the fsync wait GROUPFSYNC would overlap). CPU: badger's write path (memtable put 20 %, WAL writeEntry
+11 %, memtable flush and L0 build 9 %) about 40 %; rho's batch (encode, the label/property counters) 27 %; the
+property statistics (HLL over every value key) 7.7 %, of it FNV-1a over the 500 B value 4.4 % (a faster hash would
+change any stored sketch's registers: not worth 4 %). No further cheap lever on one pipeline; LANES is the one
+that scales with hardware.

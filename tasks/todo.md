@@ -39,7 +39,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 - **WRITERATE** (SCALE, measured 26 Oct, `tasks/evidence/WRITERATE/results.txt`) — a hot shard's ingest is capped by
   one serial flush pipeline (the graph write lock around each batch, the store's flush mutex, badger's single writer):
   57-91 k facts/s of 500 B here whatever the writer count, 1.1-2x the goal's 46 k/s sustained, while separate stores
-  scale near linearly (4 stores 228 k/s). Levers, cheapest first: (1) ASYNCSTAGE is in v4.86.1 (async 1.55-2.0x, 111-146 k/s);
+  scale near linearly (4 stores 228 k/s). Levers, cheapest first: (1) ASYNCSTAGE is in v4.86.1 (async 1.55-2.0x, 111-146 k/s; durable
+  one writer 66 k/s, CPU-bound on one serial path, profile in the results file);
   (2) GROUPFSYNC: a durable batch holds the graph lock through its fsync; overlap the next batch's apply
   with it (needs the rule for what a reader sees before the fsync); (3) LANES: several hot write lanes (K badger DBs
   for the hot window, IDs striped by lane), an ADR first. Done when: one graph ingests 500 B facts at 3x the goal
