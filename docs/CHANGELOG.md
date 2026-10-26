@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.82.0] - 2026-10-26
+
 ### Added
 
 - **WINDOWZONE** (ai-soc, 26 Oct): `tiered.Config.ShardWindowLocation` sets the zone whose calendar days daily and

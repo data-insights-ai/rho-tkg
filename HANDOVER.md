@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.81.1 = CALENDAR's first fix (daily windows in zones that jump at midnight); v4.81.0 = UNIQIDX, SHARD step 10 slice 1; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.82.0 = OPENCOLD (a graph's open and Flush open no cold shard) + RESTART (tiered OpenStats) + WINDOWZONE (tiered.Config.ShardWindowLocation); v4.81.1 = CALENDAR's first fix (daily windows in zones that jump at midnight); v4.81.0 = UNIQIDX, SHARD step 10 slice 1; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file = state, consumers, glossary, user-only actions. File roles: README.md § Documentation.
@@ -19,15 +19,16 @@ the main worktree `../rho-tkg-main` when a branch is checked out.
 
 **Where things stand** (26 Oct; order René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the
 data and the consumer agents):
-- **Released 24-26 Oct:** v4.75.0 to v4.81.1, each under its tag in `docs/CHANGELOG.md`. Unreleased on main (docs and
+- **Released 24-26 Oct:** v4.75.0 to v4.82.0, each under its tag in `docs/CHANGELOG.md`. Unreleased on main (docs and
   tests only): AXIS announcement withdrawn, IDPROPS withdrawn, FLAKE, VLOGGC/COMPACTL0/MOVERCOPY measurements.
 - **BADGER** (milestone, René 24 Oct): steps 1 and 2 done; step 3 left: GETWALK, per-tier caches and compactors (worth
   less since COLDRO).
 - **SHARD** (ADR-0012 in architecture.md, plan with boxes in todo): steps 1-8 shipped (v4.76.1, v4.78.0 to v4.78.5),
   step 10 slice 1 UNIQIDX in v4.81.0; the next slices (label and property postings, the rel owner map) on a measured
   need. ai-soc adopts UNIQIDX with step 10 on René's word, after counting duplicate keys.
-- **Now:** OPENCOLD with RESTART's open counters, then COLDWRITE's test. CALENDAR done (fix in v4.81.1, table in
-  `tasks/evidence/CALENDAR/`); ai-soc to say whether tiered windows need a Config zone.
+- **Now:** COLDWRITE's test, then BADGER step 3's last pieces (GETWALK, per-tier caches). CALENDAR done (fix in
+  v4.81.1, table in `tasks/evidence/CALENDAR/`); OPENCOLD, RESTART and WINDOWZONE in v4.82.0 (ai-soc sets UTC
+  windows and reads OpenStats at its next run).
 - **Queued:** DICTMERGE and PROPPOS (after ai-soc measures DICT); WRITTENAT (withdrawn by ai-soc unless sigma's PUBIDS
   fails); OPENIMAGE; METASYNC's power-loss rig (later, René 26 Oct); PURGEIDS (sigma, Later). CHAIN and R37 wait for a
   Flux run: René's word, after sigma's ENDPOINT and EDGEREF tags. STORE/STORECFG are with René. Parked: BADGERPANIC.
@@ -121,7 +122,7 @@ lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
 4. gh-dashboard scratchpad (667 MB, path in that session). The cleanup message to tts-tests-b6 expired and monitoring-a9's is
    held (different permission mode); tell them directly if wanted.
 5. `! git branch -D v5 worktree-agent-a0d52d5298e44faee` (full name; `v5` = stale copy of origin/v5 `04c7fd4f`, worktree-agent: its test and evidence are `tasks/evidence/4/` on main, backlog item 4). Both content-complete elsewhere.
-6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc midnightdst calendar` (`-d` refuses an unmerged one).
+6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc midnightdst calendar opencold` (`-d` refuses an unmerged one).
 
 ## Appendix A — origin watch
 
