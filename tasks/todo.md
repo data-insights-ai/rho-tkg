@@ -46,9 +46,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   for the hot window, IDs striped by lane), an ADR first. Done when: one graph ingests 500 B facts at 3x the goal
   (~140 k/s durable) on this machine, measured with the probe. Consumers (26 Oct): ai-soc runs every store durable
   (SyncWrites + DurableCommit), 3-5 writers on one graph, BA peak 2,789 rows/s; sigma's tkgd defaults to async, so
-  ASYNCSTAGE serves tkgd only. GROUPFSYNC must keep: Commit returns only once its batch is durable, durability
-  follows commit order (no later batch durable without the earlier), a pin returned is durable; sigma's readers may
-  see a fact before its fsync, ai-soc's HTTP doors reading latest are unchecked, so the visibility rule is René's.
+  ASYNCSTAGE serves tkgd only. René's word (26 Oct, relayed by ai-soc): readers never see a fact before its fsync,
+  durability stays as it is (so GROUPFSYNC may overlap only what no reader sees: Commit returns once its batch is
+  durable, durability follows commit order); the per-row writes are cut instead (WRITEPER, ai-soc and sigma: on a
+  BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
+  WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
+  target, so ingest grows with the hardware.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
