@@ -91,6 +91,7 @@ tombstone-writer-v4.63, v5-realstore-harness and wp-37-import-throughput are pus
 4. gh-dashboard scratchpad (667 MB, path in that session). The cleanup message to tts-tests-b6 expired and monitoring-a9's is
    held (different permission mode); tell them directly if wanted.
 5. `! git branch -D v5 worktree-agent-a0d52d5298e44faee` (full name; `v5` = stale copy of origin/v5 `04c7fd4f`, worktree-agent: its test and evidence are `tasks/evidence/4/` on main, backlog item 4). Both content-complete elsewhere.
+
 ## Appendix A — origin watch
 
 `scripts/watch-origin.sh` exits only on a push by someone else to main/tags/other branches or a real PR/issue change; routine v5
