@@ -1,0 +1,9 @@
+UNIQIDX step (d) (branch uniqidx), 2026-10-26
+TestUniqueEventLabelStaleClaims: after a value change, a delete, a label removal, a retention purge (PurgeByAge), a
+  rolled-back transaction (tx.GetOrCreateByKey), and a claim written without its row (the crash case), another
+  node takes the value and ByLabelAndProperty answers only it; after the value change the new value stays guarded.
+  Green from the start: the lookup checks the claimant's row (nodesByOwnerIndex).
+mutations (each failed the test): the value not checked (value change); the label not checked (label removed); a
+  gone claimant an error instead of no holder (delete, retention purge, rollback, claim without its row). A first
+  run of the last mutation did not build (unused import) and looked like a survivor; redone.
+-race -count=2: the step (b) and (d) tests and TestOwnerIndexLifecycle ok.
