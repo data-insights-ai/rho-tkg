@@ -124,75 +124,102 @@ const propNumericSortBitsForNaN = math.MaxUint64
 // value type is not indexable) or malformed (defensive — every real vk has a
 // colon separating its type tag from its payload).
 func PropertyIndexValueBytes(valueKey string) (payload []byte, ok bool) {
-	if valueKey == "" {
-		return nil, false
+	return appendPropertyIndexValueBytes(nil, valueKey)
+}
+
+// AppendPropertyIndexValuePrefix appends PropertyIndexValuePrefix(propKeyToken,
+// PropertyIndexValueBytes(valueKey)) to dst; ok=false (dst unchanged) when the
+// value key has no payload. A many-value lookup builds its prefixes in one
+// buffer (ROWPROBE).
+func AppendPropertyIndexValuePrefix(dst []byte, propKeyToken uint16, valueKey string) ([]byte, bool) {
+	n := len(dst)
+	dst = append(dst, KeyPropertyIndex, 0, 0)
+	PutUint16(dst, n+1, propKeyToken)
+	out, ok := appendPropertyIndexValueBytes(dst, valueKey)
+	if !ok {
+		return dst[:n], false
 	}
-	colon := strings.IndexByte(valueKey, ':')
-	if colon < 0 {
-		return nil, false
-	}
-	tag, rest := valueKey[:colon], valueKey[colon+1:]
-	if subtype, isNumeric := propNumericSubtypeTags[tag]; isNumeric {
-		return propertyIndexNumericBytes(subtype, tag, rest)
-	}
-	// Raw domain: string / bool / TemporalValue — verbatim vk bytes.
-	out := make([]byte, 1+len(valueKey))
-	out[0] = PropIdxDomainRaw
-	copy(out[1:], valueKey)
 	return out, true
 }
 
-func propertyIndexNumericBytes(subtype byte, tag, payload string) ([]byte, bool) {
+// PropertyIndexValueSeekPrefix returns the part of a value prefix
+// (PropertyIndexValuePrefix) shared by every numeric subtype of the same
+// magnitude: the key byte, token, domain and sort key. The typed keys of one
+// numeric value (i64:5, i32:5, f64:5, ...) lie under it, so one seek covers
+// them all. A raw-domain prefix is returned whole.
+func PropertyIndexValueSeekPrefix(prefix []byte) []byte {
+	if len(prefix) == 3+PropIdxNumericPayloadLen && prefix[3] == PropIdxDomainNumeric {
+		return prefix[:3+1+8]
+	}
+	return prefix
+}
+
+func appendPropertyIndexValueBytes(dst []byte, valueKey string) ([]byte, bool) {
+	if valueKey == "" {
+		return dst, false
+	}
+	colon := strings.IndexByte(valueKey, ':')
+	if colon < 0 {
+		return dst, false
+	}
+	tag, rest := valueKey[:colon], valueKey[colon+1:]
+	if subtype, isNumeric := propNumericSubtypeTags[tag]; isNumeric {
+		return appendPropertyIndexNumeric(dst, subtype, tag, rest)
+	}
+	// Raw domain: string / bool / TemporalValue — verbatim vk bytes.
+	dst = append(dst, PropIdxDomainRaw)
+	return append(dst, valueKey...), true
+}
+
+func appendPropertyIndexNumeric(dst []byte, subtype byte, tag, payload string) ([]byte, bool) {
 	var mag float64
 	var bits uint64
 	switch tag {
 	case "i", "i8", "i16", "i32", "i64":
 		n, err := strconv.ParseInt(payload, 10, 64)
 		if err != nil {
-			return nil, false
+			return dst, false
 		}
 		mag = float64(n)
 		bits = uint64(n) // #nosec G115 -- two's complement bit pattern, not a value cast
 	case "u", "u8", "u16", "u32", "u64":
 		n, err := strconv.ParseUint(payload, 10, 64)
 		if err != nil {
-			return nil, false
+			return dst, false
 		}
 		mag = float64(n)
 		bits = n
 	case "f32":
 		if payload == "nan" {
-			return propertyIndexNumericOut(subtype, propNumericSortBitsForNaN, uint64(math.Float32bits(float32(math.NaN())))), true
+			return appendPropertyIndexNumericOut(dst, subtype, propNumericSortBitsForNaN, uint64(math.Float32bits(float32(math.NaN())))), true
 		}
 		f, err := strconv.ParseFloat(payload, 32)
 		if err != nil {
-			return nil, false
+			return dst, false
 		}
 		mag = f
 		bits = uint64(math.Float32bits(float32(f)))
 	case "f64":
 		if payload == "nan" {
-			return propertyIndexNumericOut(subtype, propNumericSortBitsForNaN, math.Float64bits(math.NaN())), true
+			return appendPropertyIndexNumericOut(dst, subtype, propNumericSortBitsForNaN, math.Float64bits(math.NaN())), true
 		}
 		f, err := strconv.ParseFloat(payload, 64)
 		if err != nil {
-			return nil, false
+			return dst, false
 		}
 		mag = f
 		bits = math.Float64bits(f)
 	default:
-		return nil, false
+		return dst, false
 	}
-	return propertyIndexNumericOut(subtype, orderPreservingFloat64Bits(mag), bits), true
+	return appendPropertyIndexNumericOut(dst, subtype, orderPreservingFloat64Bits(mag), bits), true
 }
 
-func propertyIndexNumericOut(subtype byte, sortBits, rawBits uint64) []byte {
-	out := make([]byte, PropIdxNumericPayloadLen)
-	out[0] = PropIdxDomainNumeric
-	binary.BigEndian.PutUint64(out[1:9], sortBits)
-	out[9] = subtype
-	binary.BigEndian.PutUint64(out[10:18], rawBits)
-	return out
+func appendPropertyIndexNumericOut(dst []byte, subtype byte, sortBits, rawBits uint64) []byte {
+	dst = append(dst, PropIdxDomainNumeric)
+	dst = binary.BigEndian.AppendUint64(dst, sortBits)
+	dst = append(dst, subtype)
+	return binary.BigEndian.AppendUint64(dst, rawBits)
 }
 
 // PropertyIndexEntryKey builds the full on-disk key for one (propKeyToken,

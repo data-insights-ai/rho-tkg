@@ -52,7 +52,12 @@ func TestValueIndexKeys(t *testing.T) {
 	}
 }
 
-func TestHasAnyIndexKey(t *testing.T) {
+// TestIndexKeyMatch checks a prepared key list against node and relationship
+// rows both ways it answers: a scan of up to distinctKeysByScan keys and a set
+// above (padded with keys no row carries). Catches a set lookup of the wrong
+// key form, an Elements list matched as a scalar, and a missing property or an
+// empty list that matches.
+func TestIndexKeyMatch(t *testing.T) {
 	t.Parallel()
 	n := types.NewNode(1, 1, nil)
 	if err := n.SetProperty("k", []any{int64(3), "x"}); err != nil {
@@ -62,13 +67,26 @@ func TestHasAnyIndexKey(t *testing.T) {
 	if err := r.SetProperty("k", 3.0); err != nil {
 		t.Fatal(err)
 	}
-	if !NodeHasAnyIndexKey(n, "k", true, []string{"f64:3", "s:x"}) || NodeHasAnyIndexKey(n, "k", false, []string{"i64:3"}) {
-		t.Error("node: Elements list match or plain mismatch wrong")
-	}
-	if NodeHasAnyIndexKey(n, "k", true, nil) || NodeHasAnyIndexKey(n, "other", true, []string{"s:x"}) {
-		t.Error("node: no keys or a missing property must not match")
-	}
-	if !RelHasAnyIndexKey(r, "k", false, []string{"i64:3", "f64:3"}) || RelHasAnyIndexKey(r, "k", false, []string{"i64:3"}) {
-		t.Error("rel: match wrong")
+	for _, padded := range []bool{false, true} {
+		keys := func(k ...string) IndexKeyMatch {
+			if padded {
+				for i := range distinctKeysByScan {
+					k = append(k, fmt.Sprintf("s:pad%d", i))
+				}
+			}
+			return NewIndexKeyMatch(k)
+		}
+		if got := keys("f64:3", "s:x"); (got.set != nil) != padded {
+			t.Fatalf("padded=%v: set mode %v", padded, got.set != nil)
+		}
+		if !keys("f64:3", "s:x").Node(n, "k", true) || keys("i64:3").Node(n, "k", false) {
+			t.Errorf("padded=%v: node: Elements list match or plain mismatch wrong", padded)
+		}
+		if keys().Node(n, "k", true) || keys("s:x").Node(n, "other", true) {
+			t.Errorf("padded=%v: node: no keys or a missing property must not match", padded)
+		}
+		if !keys("i64:3", "f64:3").Rel(r, "k", false) || keys("i64:3").Rel(r, "k", false) {
+			t.Errorf("padded=%v: rel: match wrong", padded)
+		}
 	}
 }

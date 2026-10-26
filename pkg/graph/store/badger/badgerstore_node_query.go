@@ -340,8 +340,8 @@ var _ storecontract.PropertyKeysLookupCapability = (*Store)(nil)
 
 // NodesByLabelAndPropertyKeys implements
 // storecontract.PropertyKeysLookupCapability: one paged walk over the keys'
-// posting lists (index.PostingsOfKeys; on disk, each key's prefix scan,
-// united), or one label scan matching any key (round 11).
+// posting lists (index.PostingsOfKeys; on disk, one iterator seeking each
+// value's prefix), or one label scan matching any key (round 11).
 func (bs *Store) NodesByLabelAndPropertyKeys(labelToken uint16, propKey string, valueKeys []string, opts QueryOpts) ([]*types.Node, error) {
 	return bs.nodesByLabelPropertyKeys(labelToken, propKey, opts, func() ([]string, error) { return valueKeys, nil })
 }
@@ -390,16 +390,11 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 				return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKeys, elements, nids, page)
 			})
 		}
-		var nids []types.NodeID
-		for _, targetKey := range targetKeys {
-			found, dErr := bs.propertyIndexDiskLookupLocked(propKey, targetKey)
-			if dErr != nil {
-				bs.idxMu.RUnlock()
-				return nil, dErr
-			}
-			nids = append(nids, found...)
-		}
+		nids, dErr := bs.propertyIndexDiskKeysCandidatesLocked(propKey, targetKeys)
 		bs.idxMu.RUnlock()
+		if dErr != nil {
+			return nil, dErr
+		}
 		if len(nids) == 0 {
 			return nil, nil
 		}
@@ -471,6 +466,7 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey string,
 	}
 
 	hasTemporal := opts.HasValidTimeFilter()
+	match := storepkg.NewIndexKeyMatch(targetKeys)
 	var result []*types.Node
 	for _, nid := range nids {
 		n, err := bs.prefetchNodeScan(nid)
@@ -483,7 +479,7 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey string,
 		if !n.HasLabelTokenRaw(labelToken) {
 			continue
 		}
-		if storepkg.NodeHasAnyIndexKey(n, propKey, elements, targetKeys) {
+		if match.Node(n, propKey, elements) {
 			if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), nid.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}

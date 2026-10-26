@@ -1106,3 +1106,127 @@ func TestPropertyIndexOnDisk_ConcurrentMutationAndRead(t *testing.T) {
 	close(stop)
 	readers.Wait()
 }
+
+// TestPropertyIndexOnDisk_ManyValuesParityWithMemoryMode is ROWPROBE's
+// correctness probe on the many-value lookup (one overlay pass, one iterator,
+// one seek per numeric magnitude): a list of values answers as on the RAM
+// index across numeric widths (an int32 row found by int64 and float64 values),
+// raw values sharing a byte prefix ("ab", "abc"), and pending writes over a
+// flushed keyspace: a node moved B->A->B and one deleted before the flush, one
+// added after. Mutation: the overlay's pending sets dropped, or one seek per
+// magnitude walking only its first width's prefix, fails it.
+func TestPropertyIndexOnDisk_ManyValuesParityWithMemoryMode(t *testing.T) {
+	t.Parallel()
+	mem, err := New(Config{InMemory: true})
+	if err != nil {
+		t.Fatalf("New mem-mode: %v", err)
+	}
+	t.Cleanup(func() { mem.Close() })
+	disk := newTestBadgerStorePropIdxOnDisk(t)
+	const label = uint16(1)
+	stores := []*Store{mem, disk}
+	for _, bs := range stores {
+		if err := bs.CreatePropertyIndex(label, "v"); err != nil {
+			t.Fatalf("CreatePropertyIndex: %v", err)
+		}
+	}
+	put := func(id int64, v any) {
+		t.Helper()
+		for _, bs := range stores {
+			n := types.NewNode(types.NodeID(id), label, nil)
+			if err := n.SetProperty("v", v); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.PutNode(n); err != nil {
+				t.Fatalf("PutNode(%d): %v", id, err)
+			}
+		}
+	}
+	move := func(id int64, v any) {
+		t.Helper()
+		for _, bs := range stores {
+			n, err := bs.GetNode(types.NodeID(id))
+			if err != nil {
+				t.Fatalf("GetNode(%d): %v", id, err)
+			}
+			if err := n.SetProperty("v", v); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.ReplaceNode(n); err != nil {
+				t.Fatalf("ReplaceNode(%d): %v", id, err)
+			}
+		}
+	}
+	ids := func(bs *Store, values []any) []int64 {
+		t.Helper()
+		var keys []string
+		for _, v := range values { // the core's expansion: every equal form
+			for _, form := range types.EqualIndexValues(v) {
+				keys = append(keys, types.IndexablePropertyValueKey(form))
+			}
+		}
+		nodes, err := bs.NodesByLabelAndPropertyKeys(label, "v", keys, QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabelAndPropertyKeys: %v", err)
+		}
+		out := make([]int64, 0, len(nodes))
+		for _, n := range nodes {
+			out = append(out, int64(n.ID()))
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+		return out
+	}
+	lists := [][]any{
+		{int64(5), "ab", int64(7)},
+		{float64(5), int64(6), "abc"},
+		{"ab", "abc", int64(-3), int64(9)},
+		{int64(7), int64(5), int64(6), int64(9), "zz"},
+	}
+	compare := func(step string, want map[int]string) {
+		t.Helper()
+		for i, values := range lists {
+			a, b := ids(mem, values), ids(disk, values)
+			if fmt.Sprint(a) != fmt.Sprint(b) {
+				t.Fatalf("%s: %v mem=%v disk=%v", step, values, a, b)
+			}
+			if w, ok := want[i]; ok && fmt.Sprint(b) != w {
+				t.Fatalf("%s: %v = %v, want %s", step, values, b, w)
+			}
+		}
+	}
+
+	put(1, int32(5))
+	put(2, int64(5))
+	put(3, "ab")
+	put(4, "abc")
+	put(5, int64(6))
+	put(6, float64(-3))
+	put(7, int64(7))
+	compare("pending", map[int]string{0: "[1 2 3 7]", 1: "[1 2 4 5]", 2: "[3 4 6]"})
+	for _, bs := range stores {
+		if err := bs.Flush(); err != nil {
+			t.Fatalf("flush: %v", err)
+		}
+	}
+	compare("flushed", map[int]string{0: "[1 2 3 7]", 1: "[1 2 4 5]", 2: "[3 4 6]"})
+
+	// Node 7 moves 7 -> 6 -> 7 unflushed (pending: a delete under 6, a set
+	// under 7), node 2 is deleted, node 8 is added.
+	move(7, int64(6))
+	move(7, int64(7))
+	for _, bs := range stores {
+		if err := bs.DeleteNode(types.NodeID(2)); err != nil {
+			t.Fatalf("DeleteNode: %v", err)
+		}
+	}
+	put(8, int64(9))
+	for range 20 { // the overlay's map order varies per call
+		compare("overlay", map[int]string{0: "[1 3 7]", 3: "[1 5 7 8]"})
+	}
+	for _, bs := range stores {
+		if err := bs.Flush(); err != nil {
+			t.Fatalf("flush: %v", err)
+		}
+	}
+	compare("flushed again", map[int]string{0: "[1 3 7]", 3: "[1 5 7 8]"})
+}

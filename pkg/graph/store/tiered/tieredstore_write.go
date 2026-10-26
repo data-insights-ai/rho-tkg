@@ -235,6 +235,7 @@ func (ts *Store) relsByTypePropertyKeys(relTypeToken uint16, key string, opts Qu
 	if targetKeys = storeutil.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
 		return nil, nil
 	}
+	match := storeutil.NewIndexKeyMatch(targetKeys)
 	shardOpts := stripDepth(opts)
 	read := func(store *BadgerStore, elements bool) ([]*types.Relationship, error) {
 		have, has, err := store.RelPropertyIndexOptions(relTypeToken, key)
@@ -249,7 +250,7 @@ func (ts *Store) relsByTypePropertyKeys(relTypeToken uint16, key string, opts Qu
 			return nil, err
 		}
 		return slices.DeleteFunc(rels, func(r *types.Relationship) bool {
-			return !storeutil.RelHasAnyIndexKey(r, key, elements, targetKeys) ||
+			return !match.Rel(r, key, elements) ||
 				(shardOpts.HasValidTimeFilter() && !storeutil.MatchesTemporalFilter(ts.validAxis.Get(), r.ID().SnowflakeID(), r.Temporal(), shardOpts))
 		}), nil
 	}

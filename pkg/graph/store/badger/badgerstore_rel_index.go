@@ -207,6 +207,7 @@ func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey string,
 		return nil, nil
 	}
 	hasTemporal := opts.HasValidTimeFilter()
+	match := storepkg.NewIndexKeyMatch(targetKeys)
 	rels := make([]*types.Relationship, 0, capForLimit(opts.Limit))
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)
@@ -219,7 +220,7 @@ func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey string,
 		if !r.HasTypeTokenRaw(relTypeToken) {
 			continue
 		}
-		if !storepkg.RelHasAnyIndexKey(r, propKey, elements, targetKeys) {
+		if !match.Rel(r, propKey, elements) {
 			continue
 		}
 		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), rid.SnowflakeID(), r.Temporal(), opts) {

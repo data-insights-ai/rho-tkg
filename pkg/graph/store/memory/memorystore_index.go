@@ -1187,6 +1187,7 @@ func (ms *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 // value is one of targetKeys.
 func (ms *Store) nodesByLabelPropertyFrom(labelToken uint16, propKey string, targetKeys []string, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Node {
 	hasTemporal := opts.HasValidTimeFilter()
+	match := storepkg.NewIndexKeyMatch(targetKeys)
 	result := make([]*types.Node, 0, resultCap(opts.Limit, n))
 	for raw := range ids {
 		id := types.NodeID(raw)
@@ -1194,7 +1195,7 @@ func (ms *Store) nodesByLabelPropertyFrom(labelToken uint16, propKey string, tar
 			if !n.HasLabelTokenRaw(labelToken) {
 				continue
 			}
-			if !storepkg.NodeHasAnyIndexKey(n, propKey, elements, targetKeys) {
+			if !match.Node(n, propKey, elements) {
 				continue
 			}
 			if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), n.Temporal(), opts) {

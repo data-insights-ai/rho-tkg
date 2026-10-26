@@ -198,6 +198,7 @@ func (ms *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 	if targetKeys = storepkg.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
 		return nil, nil
 	}
+	match := storepkg.NewIndexKeyMatch(targetKeys)
 
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
 	if idx, ok := ms.relPropertyIndexes[key]; ok && idx.Mutated == nil {
@@ -212,7 +213,7 @@ func (ms *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 				if !r.HasTypeTokenRaw(relTypeToken) {
 					return false
 				}
-				if !storepkg.RelHasAnyIndexKey(r, propKey, elements, targetKeys) {
+				if !match.Rel(r, propKey, elements) {
 					return false
 				}
 				return !opts.HasValidTimeFilter() || storepkg.MatchesTemporalFilter(ms.validAxis.Get(), r.ID().SnowflakeID(), r.Temporal(), opts)
@@ -232,7 +233,7 @@ func (ms *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 	scanElements := ms.relPropertyIndexes[key].Elements()
 	if ms.hasSegmentsLocked(relTypeToken) {
 		rows, err := ms.typeRowsByIDLocked(relTypeToken, opts.After, opts.Limit, func(r *types.Relationship) bool {
-			if !storepkg.RelHasAnyIndexKey(r, propKey, scanElements, targetKeys) {
+			if !match.Rel(r, propKey, scanElements) {
 				return false
 			}
 			return !opts.HasValidTimeFilter() || storepkg.MatchesTemporalFilter(ms.validAxis.Get(), r.ID().SnowflakeID(), r.Temporal(), opts)
@@ -260,6 +261,7 @@ func (ms *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 // relsByTypePropertyFrom is the rel mirror of nodesByLabelPropertyFrom.
 func (ms *Store) relsByTypePropertyFrom(relTypeToken uint16, propKey string, targetKeys []string, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Relationship {
 	hasTemporal := opts.HasValidTimeFilter()
+	match := storepkg.NewIndexKeyMatch(targetKeys)
 	result := make([]*types.Relationship, 0, resultCap(opts.Limit, n))
 	for raw := range ids {
 		id := types.RelID(raw)
@@ -267,7 +269,7 @@ func (ms *Store) relsByTypePropertyFrom(relTypeToken uint16, propKey string, tar
 			if !r.HasTypeTokenRaw(relTypeToken) {
 				continue
 			}
-			if !storepkg.RelHasAnyIndexKey(r, propKey, elements, targetKeys) {
+			if !match.Rel(r, propKey, elements) {
 				continue
 			}
 			if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), r.Temporal(), opts) {

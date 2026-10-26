@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -241,33 +242,73 @@ func (bs *Store) distinctPropertyKeyTokensLocked() map[uint16]struct{} {
 	return tokens
 }
 
-// propertyIndexDiskEqualityCandidatesLocked returns the (unsorted) node IDs
-// whose on-disk entry for propKeyToken exactly matches payload, merging the
-// pending-write overlay (set/delete resolved PER KEY over the persisted
-// keyspace — lesson 57). Caller holds idxMu (R or W).
-func (bs *Store) propertyIndexDiskEqualityCandidatesLocked(propKeyToken uint16, payload []byte) ([]types.NodeID, error) {
-	prefix := storepkg.PropertyIndexValuePrefix(propKeyToken, payload)
-	prefixStr := string(prefix)
-	wantLen := len(prefixStr) + 8
+// propertyIndexDiskKeysCandidatesLocked resolves propertyKey and its value
+// keys to the (unsorted, possibly repeated) on-disk candidate node IDs in one
+// pending-write overlay pass and one iterator, seeking once per numeric
+// magnitude (its typed keys share a seek prefix) or raw value (ROWPROBE: a
+// lookup per value key cost a read txn, an iterator and an overlay pass
+// each). Set and delete resolve PER KEY over the persisted keyspace (lesson
+// 57): a node moved from one listed value to another keeps the new entry. A
+// property key with no token or a non-indexable value matches nothing, the
+// RAM path's silent-empty contract. Caller holds idxMu (R or W).
+func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string) ([]types.NodeID, error) {
+	tok, ok := bs.propKeyTokenFor(propertyKey)
+	if !ok {
+		return nil, nil
+	}
+	// The value prefixes, sorted and distinct in one buffer.
+	var buf []byte
+	ends := make([]int, 0, len(valueKeys))
+	for _, vk := range valueKeys {
+		if buf, ok = storepkg.AppendPropertyIndexValuePrefix(buf, tok, vk); ok {
+			ends = append(ends, len(buf))
+		}
+	}
+	if len(ends) == 0 {
+		return nil, nil
+	}
+	prefixes := make([][]byte, len(ends))
+	for i, end := range ends {
+		start := 0
+		if i > 0 {
+			start = ends[i-1]
+		}
+		prefixes[i] = buf[start:end:end]
+	}
+	slices.SortFunc(prefixes, bytes.Compare)
+	prefixes = slices.CompactFunc(prefixes, bytes.Equal)
+	// listed reports whether an entry key's value prefix is one of ours.
+	listed := func(key []byte) bool {
+		if len(key) <= 8 {
+			return false
+		}
+		_, hit := slices.BinarySearchFunc(prefixes, key[:len(key)-8], bytes.Compare)
+		return hit
+	}
 
-	var adds, dels map[types.NodeID]struct{}
+	var adds, dels map[string]types.NodeID
 	bs.rangePending(func(k string, op writeOp) {
-		if len(k) != wantLen || !strings.HasPrefix(k, prefixStr) {
+		if len(k) <= 8 || k[0] != storepkg.KeyPropertyIndex {
+			return
+		}
+		if _, hit := slices.BinarySearchFunc(prefixes, k[:len(k)-8], func(p []byte, t string) int {
+			return strings.Compare(string(p), t)
+		}); !hit {
 			return
 		}
 		nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey([]byte(k)))
 		if op.opType == writeOpSet {
 			if adds == nil {
-				adds = make(map[types.NodeID]struct{})
+				adds = make(map[string]types.NodeID)
 			}
-			adds[nid] = struct{}{}
-			delete(dels, nid)
+			adds[k] = nid
+			delete(dels, k)
 		} else {
 			if dels == nil {
-				dels = make(map[types.NodeID]struct{})
+				dels = make(map[string]types.NodeID)
 			}
-			dels[nid] = struct{}{}
-			delete(adds, nid)
+			dels[k] = nid
+			delete(adds, k)
 		}
 	})
 
@@ -277,40 +318,34 @@ func (bs *Store) propertyIndexDiskEqualityCandidatesLocked(propKeyToken uint16, 
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().Key()
-			nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey(key))
-			if _, del := dels[nid]; del {
-				continue
+		var last []byte
+		for _, prefix := range prefixes {
+			seek := storepkg.PropertyIndexValueSeekPrefix(prefix)
+			if last != nil && bytes.Equal(seek, last) {
+				continue // the magnitude's typed keys were walked already
 			}
-			delete(adds, nid)
-			nids = append(nids, nid)
+			last = seek
+			for it.Seek(seek); it.ValidForPrefix(seek); it.Next() {
+				key := it.Item().Key()
+				if !listed(key) {
+					continue
+				}
+				if _, del := dels[string(key)]; del {
+					continue
+				}
+				delete(adds, string(key))
+				nids = append(nids, types.NodeID(storepkg.PropertyIndexNodeIDFromKey(key)))
+			}
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("graph: property index equality scan: %w", err)
 	}
-	for nid := range adds {
+	for _, nid := range adds {
 		nids = append(nids, nid)
 	}
 	return nids, nil
-}
-
-// propertyIndexDiskLookupLocked resolves propertyKey+valueKey to disk
-// candidate node IDs. ok=false (nil, nil error) when the property key has no
-// token (registry not wired) or the value isn't indexable — matching the
-// RAM path's silent-empty contract for a non-indexable/unresolvable value.
-func (bs *Store) propertyIndexDiskLookupLocked(propertyKey, valueKey string) ([]types.NodeID, error) {
-	tok, ok := bs.propKeyTokenFor(propertyKey)
-	if !ok {
-		return nil, nil
-	}
-	payload, ok := storepkg.PropertyIndexValueBytes(valueKey)
-	if !ok {
-		return nil, nil
-	}
-	return bs.propertyIndexDiskEqualityCandidatesLocked(tok, payload)
 }
 
 // propertyIndexDiskRangeCandidatesLocked returns the (unsorted) node IDs
