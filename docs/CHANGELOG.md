@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.86.0] - 2026-10-26
+
 ### Added
 
 - **TIERSTATS** (sigma's PAGESTATS, 26 Oct: ai-soc's condition that a paged load opens no cold shard):
