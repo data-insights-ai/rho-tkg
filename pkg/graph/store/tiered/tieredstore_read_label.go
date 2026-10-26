@@ -210,7 +210,8 @@ func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts Qu
 	if err != nil {
 		return nil, err
 	}
-	if targetKeys = storeutil.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
+	match := storeutil.DistinctIndexKeyMatch(targetKeys)
+	if targetKeys = match.Keys(); len(targetKeys) == 0 {
 		return nil, nil
 	}
 
@@ -223,7 +224,7 @@ func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts Qu
 	elemOpts, _, err := ref.PropertyIndexOptions(labelToken, key)
 	var refNodes []*types.Node
 	if err == nil {
-		refNodes, err = shardNodesByLabelAndProperty(ref, elemOpts.Elements, labelToken, key, targetKeys, stripDepth(opts))
+		refNodes, err = shardNodesByLabelAndProperty(ref, elemOpts.Elements, labelToken, key, match, stripDepth(opts))
 	}
 	refCheckin()
 	if err != nil {
@@ -238,7 +239,7 @@ func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts Qu
 			return nil, archiveErr
 		}
 		if archive != nil {
-			archiveNodes, err = shardNodesByLabelAndProperty(archive, elemOpts.Elements, labelToken, key, targetKeys, stripDepth(opts))
+			archiveNodes, err = shardNodesByLabelAndProperty(archive, elemOpts.Elements, labelToken, key, match, stripDepth(opts))
 			archiveCheckin()
 			if err != nil {
 				return nil, err
@@ -263,7 +264,7 @@ func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts Qu
 			return
 		}
 		defer release()
-		results[i].nodes, results[i].err = shardNodesByLabelAndProperty(store, elemOpts.Elements, labelToken, key, targetKeys, stripDepth(opts))
+		results[i].nodes, results[i].err = shardNodesByLabelAndProperty(store, elemOpts.Elements, labelToken, key, match, stripDepth(opts))
 	})
 
 	var slices [][]*types.Node
@@ -287,25 +288,24 @@ func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts Qu
 }
 
 // shardNodesByLabelAndProperty is one shard's part of a node property lookup
-// over the index keys targetKeys under the anchor's index
+// over match's index keys under the anchor's index
 // semantics (elements: the anchor's index is an Elements index, backlog 63):
 // the shard's own door when shardPropertyDoor says it answers the same, else
 // a label scan with the anchor's match (a shard without its copy of an
 // Elements index, or with a stale copy).
-func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken uint16, key string, targetKeys []string, opts QueryOpts) ([]*types.Node, error) {
+func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken uint16, key string, match storeutil.IndexKeyMatch, opts QueryOpts) ([]*types.Node, error) {
 	have, has, err := store.PropertyIndexOptions(labelToken, key)
 	if err != nil {
 		return nil, err
 	}
 	if shardPropertyDoor(have, has, elements) {
-		return store.NodesByLabelAndPropertyKeys(labelToken, key, targetKeys, opts)
+		return store.NodesByLabelAndPropertyKeys(labelToken, key, match.Keys(), opts)
 	}
 	nodes, err := store.NodesByLabel(labelToken, QueryOpts{After: opts.After})
 	if err != nil {
 		return nil, err
 	}
 	temporal := opts.HasValidTimeFilter()
-	match := storeutil.NewIndexKeyMatch(targetKeys)
 	return slices.DeleteFunc(nodes, func(n *types.Node) bool {
 		return !match.Node(n, key, elements) ||
 			(temporal && !storeutil.MatchesTemporalFilter(store.ValidAxis(), n.ID().SnowflakeID(), n.Temporal(), opts))

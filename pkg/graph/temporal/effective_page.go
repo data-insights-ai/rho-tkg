@@ -111,7 +111,8 @@ func (a *API) NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after t
 	return ops.NodesEffectivePage(ctx, pin, f, after, limit)
 }
 
-// EffectivePageOpts pages ForEachNodeEffectiveByLabelAndProperties: the
+// EffectivePageOpts pages ForEachNodeEffectiveByLabelAndProperties and
+// ForEachNodeEffectiveByLabelAndPropertyValues: the
 // matches above After (ascending node ID), at most Limit of them (0: all),
 // listed from the shards Depth selects (store.QueryOpts.Depth).
 type EffectivePageOpts struct {
@@ -159,4 +160,37 @@ func (a *API) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, labe
 		return 0, err
 	}
 	return ops.ForEachNodeEffectiveByLabelAndProperties(ctx, label, props, pin, opts, fn)
+}
+
+// ForEachNodeEffectiveByLabelAndPropertyValues is
+// ForEachNodeEffectiveByLabelAndProperties with one key IN a value list: it
+// pages the nodes with label whose key carries one of values
+// (Nodes().ByLabelAndPropertyValues) and which carry every fixed pair of
+// props (equality; props may be empty), and hands each match's effective
+// segments at pin to fn, exactly as the props door does (fn(id, segs) with
+// segs NodeEffectiveTimelines(id, []Instant{pin})[0], empty when the node has
+// no segment at the pin). One call answers a list of probes (sigma's paged-row
+// join level) instead of a lookup and a timeline read per probe.
+//
+// Paging, rows and the match on the current row are the props door's.
+//
+// Cost: one call per value list. The candidates are the key's matches, one
+// index walk over every value (with the index on disk, one iterator; declare
+// Index().CreateProperty(label, key)); the fixed pairs filter while each
+// candidate is read, so lead with the most selective key. Each match is then
+// read once (current row, history skeleton, winning history row), a chunk of
+// up to 256 through one read snapshot on badger, sharded and tiered.
+//
+// Errors: ByLabelAndPropertyValues' for label, key, values and opts.Depth; a
+// fixed pair's key or value as ByLabelAndProperties refuses it;
+// store.ErrInvalidStoreMutation when key is also a key of props; the pin gates,
+// ErrInvalidQueryLimit, ErrInvalidQueryCursor, ErrNilCallback, ErrNilContext,
+// ctx's error and ErrGraphClosed as the props door. An unknown label or an
+// empty value list answers no match (next 0).
+func (a *API) ForEachNodeEffectiveByLabelAndPropertyValues(ctx context.Context, label string, props map[string]any, key string, values []any, pin types.Instant, opts EffectivePageOpts, fn func(id types.NodeID, segs []NodeSegment) bool) (next types.NodeID, err error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.ForEachNodeEffectiveByLabelAndPropertyValues(ctx, label, props, key, values, pin, opts, fn)
 }

@@ -62,7 +62,13 @@ var pageDoorStores = map[string]func(t *testing.T) storepkg.MandatoryStore{
 // segment at it). It returns the graph and the pin.
 func pageDoorFixture(t *testing.T, st storepkg.MandatoryStore, index bool) (*Core, types.Instant) {
 	t.Helper()
-	g, err := New(Config{Store: st})
+	return pageDoorFixtureCfg(t, Config{Store: st}, index)
+}
+
+// pageDoorFixtureCfg is pageDoorFixture on the graph cfg opens.
+func pageDoorFixtureCfg(t *testing.T, cfg Config, index bool) (*Core, types.Instant) {
+	t.Helper()
+	g, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

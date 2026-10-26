@@ -103,6 +103,12 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 // nodesByLabelAndPropertyForms is nodesByLabelAndProperty over the equal forms
 // of one value or several (unionEqualForms).
 func (c *Core) nodesByLabelAndPropertyForms(tok uint16, key string, forms []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return c.nodesByLabelAndPropertyFormKeys(tok, key, forms, nil, opts)
+}
+
+// nodesByLabelAndPropertyFormKeys is nodesByLabelAndPropertyForms with the
+// forms' keys (keysOf) the caller built already; nil builds them.
+func (c *Core) nodesByLabelAndPropertyFormKeys(tok uint16, key string, forms []any, keys equalKeys, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if len(forms) == 0 {
 		return nil, nil
 	}
@@ -113,7 +119,9 @@ func (c *Core) nodesByLabelAndPropertyForms(tok uint16, key string, forms []any,
 			return c.nodesByOwnerIndex(oi, tok, key, forms, opts)
 		}
 	}
-	keys := keysOf(forms)
+	if keys == nil {
+		keys = keysOf(forms)
+	}
 	lookup := c.propertyKeysQuery != nil
 	perForm := !lookup && c.propertyQuery != nil && len(forms) == 1
 	if !lookup && c.propertyQuery != nil && !perForm {
@@ -173,8 +181,9 @@ func (c *Core) nodesByLabelAndPropertyForms(tok uint16, key string, forms []any,
 		return nil, err
 	}
 	out := make([]*types.Node, 0, len(candidates))
+	match := keys.match()
 	for _, n := range candidates {
-		if keys.node(n, key, elements) {
+		if match.Node(n, key, elements) {
 			out = append(out, n)
 		}
 	}

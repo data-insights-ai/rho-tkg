@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **ROWPROBE** (sigma, 26 Oct: sigma's paged-row probes are 15 % of ai-soc's PageRows; budget per lesson 89):
+  `temporal.API.ForEachNodeEffectiveByLabelAndPropertyValues` pages the nodes of a label whose key carries one of a
+  value list and every fixed pair, each with its effective segments at one pin: one call per join level instead
+  of a lookup and a timeline read per probe. 1,000 values cost per value 0.9x what 16 cost, and 0.45-0.8x the
+  unbatched composition (0.45x on tiered with the index on disk) (`TestRowProbeDoorCostLinearInValues`).
+
+### Fixed
+
+- **ROWPROBE**: a many-value property lookup (`ByLabelAndPropertyValues`, the stores' key-list lookups on nodes and
+  relationships, the label-scan fallbacks and the checks of a store's rows) matched every row against every
+  value's keys: 1,000
+  values in one call cost 1.75 M allocations against 249 k for 1,000 calls. Rows now match against a key set
+  built once per call, and with `PropertyIndexOnDisk` badger walks every value in one pending-overlay pass and one
+  iterator (one seek per numeric magnitude) instead of a read transaction, iterator and overlay pass per value
+  key: per value 146 -> 21 allocations on badger, 290 -> 26 on tiered, 17 with the index in RAM
+  (`TestRowProbeValuesCostLinearInValues`, `TestPropertyIndexOnDisk_ManyValuesParityWithMemoryMode`).
+
 ## [4.84.1] - 2026-10-26
 
 ### Fixed

@@ -320,7 +320,7 @@ that test.
 | 24 | Ingest pre-encoding is byte-identical to the store's own encode. | `TestIngestPreEncodedVsDisabledEquivalence` |
 | 25 | A store zero value or closed store fails closed with `ErrStoreClosed`. | `TestBadgerStoreZeroValueLifecycleReturnsStoreClosed` |
 | 26 | A store read snapshot, kept across many entities in any order, answers every read as the store's method (badger, sharded, tiered). | `TestReadSnapshotParityAcrossEntities` |
-| 27 | The listing page door hands `fn` exactly `ByLabelAndProperties`' matches with `NodeEffectiveTimelines` at the pin, in any page size; a candidate is only a candidate. | `TestForEachNodeEffectiveByLabelAndPropertiesMatchesComposition`, `TestForEachNodeEffectiveByLabelAndPropertiesChecksTheRow` |
+| 27 | The listing page doors hand `fn` exactly `ByLabelAndProperties`' matches (the value-list door: `ByLabelAndPropertyValues`' matches carrying every fixed pair) with `NodeEffectiveTimelines` at the pin, in any page size; a candidate is only a candidate. | `TestForEachNodeEffectiveByLabelAndPropertiesMatchesComposition`, `TestForEachNodeEffectiveByLabelAndPropertiesChecksTheRow`, `TestForEachNodeEffectiveByLabelAndPropertyValuesMatchesComposition` |
 | 28 | A node's stored-size read lists exactly the rows `History` reads (plus the current row), with the stored value lengths. | `TestNodeStoredSizesMatchHistory`, `TestNodeStoredSizesBytesAreTheStoredValues` |
 
 ---

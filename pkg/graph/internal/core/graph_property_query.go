@@ -125,8 +125,9 @@ func (c *Core) nodesByLabelAndPropertyFormsLocked(label, key string, forms []any
 	}
 	var result []*types.Node
 	valueKeys := map[string]equalKeys{key: keys}
+	match := keys.match()
 	pred := func(n *types.Node) bool {
-		return n.HasLabelTokenRaw(tok) && keys.node(n, key, elements)
+		return n.HasLabelTokenRaw(tok) && match.Node(n, key, elements)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachNodePropertyCandidateID(tok, valueKeys, currentIDs, opts, func(id types.NodeID) error {

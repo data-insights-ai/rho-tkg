@@ -232,10 +232,10 @@ func (ts *Store) relsByTypePropertyKeys(relTypeToken uint16, key string, opts Qu
 	if err != nil {
 		return nil, err
 	}
-	if targetKeys = storeutil.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
+	match := storeutil.DistinctIndexKeyMatch(targetKeys)
+	if targetKeys = match.Keys(); len(targetKeys) == 0 {
 		return nil, nil
 	}
-	match := storeutil.NewIndexKeyMatch(targetKeys)
 	shardOpts := stripDepth(opts)
 	read := func(store *BadgerStore, elements bool) ([]*types.Relationship, error) {
 		have, has, err := store.RelPropertyIndexOptions(relTypeToken, key)

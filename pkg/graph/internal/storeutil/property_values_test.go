@@ -54,9 +54,10 @@ func TestValueIndexKeys(t *testing.T) {
 
 // TestIndexKeyMatch checks a prepared key list against node and relationship
 // rows both ways it answers: a scan of up to distinctKeysByScan keys and a set
-// above (padded with keys no row carries). Catches a set lookup of the wrong
-// key form, an Elements list matched as a scalar, and a missing property or an
-// empty list that matches.
+// above (padded with keys no row carries), built by NewIndexKeyMatch and by
+// DistinctIndexKeyMatch. Catches a set lookup of the wrong key form, an
+// Elements list matched as a scalar, and a missing property or an empty list
+// that matches.
 func TestIndexKeyMatch(t *testing.T) {
 	t.Parallel()
 	n := types.NewNode(1, 1, nil)
@@ -67,14 +68,18 @@ func TestIndexKeyMatch(t *testing.T) {
 	if err := r.SetProperty("k", 3.0); err != nil {
 		t.Fatal(err)
 	}
-	for _, padded := range []bool{false, true} {
+	for _, c := range []struct {
+		padded bool
+		build  func([]string) IndexKeyMatch
+	}{{false, NewIndexKeyMatch}, {true, NewIndexKeyMatch}, {false, DistinctIndexKeyMatch}, {true, DistinctIndexKeyMatch}} {
+		padded := c.padded
 		keys := func(k ...string) IndexKeyMatch {
 			if padded {
 				for i := range distinctKeysByScan {
 					k = append(k, fmt.Sprintf("s:pad%d", i))
 				}
 			}
-			return NewIndexKeyMatch(k)
+			return c.build(k)
 		}
 		if got := keys("f64:3", "s:x"); (got.set != nil) != padded {
 			t.Fatalf("padded=%v: set mode %v", padded, got.set != nil)
@@ -87,6 +92,26 @@ func TestIndexKeyMatch(t *testing.T) {
 		}
 		if !keys("i64:3", "f64:3").Rel(r, "k", false) || keys("i64:3").Rel(r, "k", false) {
 			t.Errorf("padded=%v: rel: match wrong", padded)
+		}
+	}
+}
+
+// TestDistinctIndexKeyMatch checks that the one-pass build keeps
+// DistinctIndexKeys' keys (no empty key, no repeat, first-occurrence order)
+// in both modes. Catches a set that keeps a repeat or the empty key in Keys.
+func TestDistinctIndexKeyMatch(t *testing.T) {
+	t.Parallel()
+	for _, n := range []int{2, distinctKeysByScan + 4} {
+		var keys []string
+		for i := range n {
+			keys = append(keys, fmt.Sprintf("s:%d", i), "", fmt.Sprintf("s:%d", i/2))
+		}
+		m := DistinctIndexKeyMatch(keys)
+		if want := DistinctIndexKeys(keys); !slices.Equal(m.Keys(), want) {
+			t.Fatalf("%d keys: Keys %v, want %v", n, m.Keys(), want)
+		}
+		if (m.set != nil) != (len(keys) > distinctKeysByScan) {
+			t.Fatalf("%d keys: set mode %v", len(keys), m.set != nil)
 		}
 	}
 }

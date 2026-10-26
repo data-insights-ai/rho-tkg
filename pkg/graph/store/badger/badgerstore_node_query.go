@@ -365,7 +365,8 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 	if err != nil {
 		return nil, err
 	}
-	if targetKeys = storepkg.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
+	match := storepkg.DistinctIndexKeyMatch(targetKeys)
+	if targetKeys = match.Keys(); len(targetKeys) == 0 {
 		return nil, nil
 	}
 
@@ -387,7 +388,7 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 			}
 			return pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Node, error) {
 				nids := bs.filterNodeIDsByTemporalPeek(storepkg.ToNodeIDs(batch), page)
-				return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKeys, elements, nids, page)
+				return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, match, elements, nids, page)
 			})
 		}
 		nids, dErr := bs.propertyIndexDiskKeysCandidatesLocked(propKey, targetKeys)
@@ -405,7 +406,7 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 		// Temporal pre-filter via Peek.
 		nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
-		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKeys, elements, nids, opts)
+		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, match, elements, nids, opts)
 	}
 
 	// Fallback: label scan + property filter, with the declared index's match
@@ -424,7 +425,7 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 
 	// Sorted scan for property matches.
 	storepkg.SortNodeIDs(nids)
-	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKeys, scanElements, nids, opts)
+	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, match, scanElements, nids, opts)
 }
 
 // NodesByLabelContainingProperty answers an Elements-index lookup (backlog 63) on a
@@ -456,17 +457,16 @@ func (bs *Store) NodesByLabelContainingProperty(labelToken uint16, propKey strin
 		return nil, err
 	}
 	storepkg.SortNodeIDs(nids)
-	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, []string{targetKey}, true, nids, opts)
+	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, storepkg.NewIndexKeyMatch([]string{targetKey}), true, nids, opts)
 }
 
-func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey string, targetKeys []string, elements bool, nids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
+func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey string, match storepkg.IndexKeyMatch, elements bool, nids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
 	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0)
 	if len(nids) == 0 {
 		return nil, nil
 	}
 
 	hasTemporal := opts.HasValidTimeFilter()
-	match := storepkg.NewIndexKeyMatch(targetKeys)
 	var result []*types.Node
 	for _, nid := range nids {
 		n, err := bs.prefetchNodeScan(nid)

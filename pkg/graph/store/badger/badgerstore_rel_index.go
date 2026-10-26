@@ -163,7 +163,8 @@ func (bs *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 	if err != nil {
 		return nil, err
 	}
-	if targetKeys = storepkg.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
+	match := storepkg.DistinctIndexKeyMatch(targetKeys)
+	if targetKeys = match.Keys(); len(targetKeys) == 0 {
 		return nil, nil
 	}
 
@@ -181,7 +182,7 @@ func (bs *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 		}
 		return pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Relationship, error) {
 			rids := bs.filterRelIDsByTemporalPeek(storepkg.ToRelIDs(batch), page)
-			return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKeys, elements, rids, page)
+			return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, match, elements, rids, page)
 		})
 	}
 
@@ -198,16 +199,15 @@ func (bs *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 		return nil, nil
 	}
 	storepkg.SortRelIDs(rids)
-	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKeys, scanElements, rids, opts)
+	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, match, scanElements, rids, opts)
 }
 
-func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey string, targetKeys []string, elements bool, rids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
+func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey string, match storepkg.IndexKeyMatch, elements bool, rids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
 	rids = storepkg.PaginateRelIDs(rids, opts.After, 0)
 	if len(rids) == 0 {
 		return nil, nil
 	}
 	hasTemporal := opts.HasValidTimeFilter()
-	match := storepkg.NewIndexKeyMatch(targetKeys)
 	rels := make([]*types.Relationship, 0, capForLimit(opts.Limit))
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)

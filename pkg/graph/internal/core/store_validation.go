@@ -12,11 +12,12 @@ import (
 // the trust boundary is uniform: validate before deep-copy.
 
 func validateNodesByLabelAndProperty(labelToken uint16, key string, want equalKeys, elements bool, opts storepkg.QueryOpts, nodes []*types.Node) error {
+	match := want.match()
 	for _, n := range nodes {
 		if err := validateNodeByLabelRow(labelToken, n); err != nil {
 			return err
 		}
-		if !want.node(n, key, elements) {
+		if !match.Node(n, key, elements) {
 			return fmt.Errorf("%w: property query node %d does not match property %q", storepkg.ErrInvalidStoreMutation, n.ID(), key)
 		}
 	}
@@ -46,11 +47,12 @@ func validateNodeByLabelRow(labelToken uint16, n *types.Node) error {
 }
 
 func validateRelsByTypeAndProperty(typeToken uint16, key string, want equalKeys, elements bool, opts storepkg.QueryOpts, rels []*types.Relationship) error {
+	match := want.match()
 	for _, r := range rels {
 		if err := validateRelationshipByTypeRow(typeToken, r); err != nil {
 			return err
 		}
-		if !want.rel(r, key, elements) {
+		if !match.Rel(r, key, elements) {
 			return fmt.Errorf("%w: property query relationship %d does not match property %q", storepkg.ErrInvalidStoreMutation, r.ID(), key)
 		}
 	}

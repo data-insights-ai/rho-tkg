@@ -67,6 +67,26 @@ type IndexKeyMatch struct {
 	set  map[string]struct{}
 }
 
+// DistinctIndexKeyMatch is NewIndexKeyMatch(DistinctIndexKeys(keys)) with the
+// set built once: a lookup's keys deduplicated and prepared in one pass. Keys
+// returns the distinct keys.
+func DistinctIndexKeyMatch(keys []string) IndexKeyMatch {
+	if len(keys) <= distinctKeysByScan {
+		return IndexKeyMatch{keys: DistinctIndexKeys(keys)}
+	}
+	m := IndexKeyMatch{set: make(map[string]struct{}, len(keys)), keys: make([]string, 0, len(keys))}
+	for _, k := range keys {
+		if _, dup := m.set[k]; k != "" && !dup {
+			m.set[k] = struct{}{}
+			m.keys = append(m.keys, k)
+		}
+	}
+	return m
+}
+
+// Keys returns the match's keys.
+func (m IndexKeyMatch) Keys() []string { return m.keys }
+
 // NewIndexKeyMatch prepares keys (DistinctIndexKeys' output) for row matches.
 func NewIndexKeyMatch(keys []string) IndexKeyMatch {
 	m := IndexKeyMatch{keys: keys}

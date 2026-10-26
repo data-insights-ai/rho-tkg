@@ -79,6 +79,7 @@ type Ops interface {
 	ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, fn func(RelSegment) bool) error
 	ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(NodeSegment) bool) error
 	ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, label string, props map[string]any, pin types.Instant, opts EffectivePageOpts, fn func(types.NodeID, []NodeSegment) bool) (types.NodeID, error)
+	ForEachNodeEffectiveByLabelAndPropertyValues(ctx context.Context, label string, props map[string]any, key string, values []any, pin types.Instant, opts EffectivePageOpts, fn func(types.NodeID, []NodeSegment) bool) (types.NodeID, error)
 	ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error
 	ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFrom types.Instant, fn func(NodeSegment) bool) error
 	ForEachNodeEffectiveByLabelsWindow(labels []string, pin types.Instant, window Window, fn func(NodeSegment) bool) error

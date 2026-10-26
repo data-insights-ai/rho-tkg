@@ -1145,7 +1145,8 @@ func (ms *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 	if err != nil {
 		return nil, err
 	}
-	if targetKeys = storepkg.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
+	match := storepkg.DistinctIndexKeyMatch(targetKeys)
+	if targetKeys = match.Keys(); len(targetKeys) == 0 {
 		return nil, nil
 	}
 
@@ -1157,7 +1158,7 @@ func (ms *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 		if ids.Len() == 0 {
 			return nil, nil
 		}
-		return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKeys, idx.Elements(), ids.After(opts.After.SnowflakeID()), ids.Len(), opts), nil
+		return ms.nodesByLabelPropertyFrom(labelToken, propKey, match, idx.Elements(), ids.After(opts.After.SnowflakeID()), ids.Len(), opts), nil
 	}
 
 	// Fallback: label scan + property filter, also while the index is still
@@ -1180,14 +1181,13 @@ func (ms *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 		return nil, nil
 	}
 	storepkg.SortNodeIDs(matchIDs)
-	return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKeys, scanElements, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
+	return ms.nodesByLabelPropertyFrom(labelToken, propKey, match, scanElements, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
 }
 
 // nodesByLabelPropertyFrom is nodesByLabelPropertiesFrom for one key whose
-// value is one of targetKeys.
-func (ms *Store) nodesByLabelPropertyFrom(labelToken uint16, propKey string, targetKeys []string, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Node {
+// value is one of match's keys.
+func (ms *Store) nodesByLabelPropertyFrom(labelToken uint16, propKey string, match storepkg.IndexKeyMatch, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Node {
 	hasTemporal := opts.HasValidTimeFilter()
-	match := storepkg.NewIndexKeyMatch(targetKeys)
 	result := make([]*types.Node, 0, resultCap(opts.Limit, n))
 	for raw := range ids {
 		id := types.NodeID(raw)

@@ -195,10 +195,10 @@ func (ms *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 	if err != nil {
 		return nil, err
 	}
-	if targetKeys = storepkg.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
+	match := storepkg.DistinctIndexKeyMatch(targetKeys)
+	if targetKeys = match.Keys(); len(targetKeys) == 0 {
 		return nil, nil
 	}
-	match := storepkg.NewIndexKeyMatch(targetKeys)
 
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
 	if idx, ok := ms.relPropertyIndexes[key]; ok && idx.Mutated == nil {
@@ -223,7 +223,7 @@ func (ms *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 			}
 			return rows, nil
 		}
-		return ms.relsByTypePropertyFrom(relTypeToken, propKey, targetKeys, elements, ids.After(opts.After.SnowflakeID()), ids.Len(), opts), nil
+		return ms.relsByTypePropertyFrom(relTypeToken, propKey, match, elements, ids.After(opts.After.SnowflakeID()), ids.Len(), opts), nil
 	}
 
 	// Fallback: type scan + property filter, also while the index is still
@@ -255,13 +255,12 @@ func (ms *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 		return nil, nil
 	}
 	storepkg.SortRelIDs(matchIDs)
-	return ms.relsByTypePropertyFrom(relTypeToken, propKey, targetKeys, scanElements, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
+	return ms.relsByTypePropertyFrom(relTypeToken, propKey, match, scanElements, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
 }
 
 // relsByTypePropertyFrom is the rel mirror of nodesByLabelPropertyFrom.
-func (ms *Store) relsByTypePropertyFrom(relTypeToken uint16, propKey string, targetKeys []string, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Relationship {
+func (ms *Store) relsByTypePropertyFrom(relTypeToken uint16, propKey string, match storepkg.IndexKeyMatch, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Relationship {
 	hasTemporal := opts.HasValidTimeFilter()
-	match := storepkg.NewIndexKeyMatch(targetKeys)
 	result := make([]*types.Relationship, 0, resultCap(opts.Limit, n))
 	for raw := range ids {
 		id := types.RelID(raw)

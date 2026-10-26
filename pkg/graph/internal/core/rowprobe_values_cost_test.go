@@ -8,6 +8,8 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // ROWPROBE's budget (lesson 89) on sigma's paged-row probe (sigma 26 Oct,
@@ -102,5 +104,119 @@ func TestRowProbeValuesCostLinearInValues(t *testing.T) {
 		if ram, ok := cost["badger-ram"]; ok && cost[disk] > 2*ram {
 			t.Errorf("%s: %.1f allocs per value, over 2x the RAM index's %.1f", disk, cost[disk], ram)
 		}
+	}
+}
+
+// TestRowProbeDoorCostLinearInValues is ROWPROBE's budget on the value-list
+// page door: sigma's join level (label DerivedPage, ov_namespace and
+// ov_relation fixed, ov_h IN the probes, one pin; half of a hash's rows are
+// another relation's) in one call costs per value at most 1.2x a call with 16
+// values, and at most 0.9x the unbatched composition it replaces (per probe:
+// ByLabelAndProperty on ov_h, then NodeEffectiveTimelines at the pin), on
+// every backend and with the index on disk. Measured 26 Oct at 1,000 values:
+// 0.79x on memory and badger (both pay a value's ~10 equal-form keys; the
+// door's set of them for the row re-check is its extra), 0.57x on badger-disk,
+// 0.45x on tiered-disk. Mutation: the forms' keys built twice (the door's
+// match and the lookup's) break the second bound; a set rebuilt per row, the
+// first.
+func TestRowProbeDoorCostLinearInValues(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
+	const rows, small, large = 4000, 16, 1000
+	for _, be := range rowprobeBackends(t) {
+		t.Run(be.name, func(t *testing.T) {
+			g, err := New(be.cfg())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = g.Close() })
+			if err := g.Index.CreateProperty("DerivedPage", "ov_h"); err != nil {
+				t.Fatal(err)
+			}
+			hash := func(i int) int64 { return int64(i)*7919 + 13 }
+			for i := range rows {
+				rel := "r"
+				if i%2 == 1 {
+					rel = "other" // the hash is relation-agnostic: half the hits are another relation's
+				}
+				if _, err := g.Nodes.Add(t.Context(), []string{"DerivedPage"}, map[string]any{
+					"ov_namespace": "n", "ov_relation": rel, "ov_h": hash(i / 2), "c1": int64(i)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if f, ok := g.store.(interface{ Flush() error }); ok {
+				if err := f.Flush(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pin := g.readNow()
+			fixed := map[string]any{"ov_namespace": "n", "ov_relation": "r"}
+			probes := func(n int) []any {
+				values := make([]any, n)
+				for i := range values {
+					values[i] = hash(i * (rows / 2 / n))
+				}
+				return values
+			}
+			door := func(values []any) int {
+				got := 0
+				if _, err := g.Temporal.ForEachNodeEffectiveByLabelAndPropertyValues(t.Context(), "DerivedPage", fixed, "ov_h", values, pin, temporal.EffectivePageOpts{}, func(_ types.NodeID, segs []temporal.NodeSegment) bool {
+					got += len(segs)
+					return true
+				}); err != nil {
+					t.Fatal(err)
+				}
+				return got
+			}
+			unbatched := func(values []any) int {
+				got := 0
+				for _, v := range values {
+					nodes, err := g.Nodes.ByLabelAndProperty("DerivedPage", "ov_h", v, storepkg.QueryOpts{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, n := range nodes {
+						if rel, _ := n.GetProperty("ov_relation"); rel != "r" {
+							continue
+						}
+						segs, err := g.Temporal.NodeEffectiveTimelines(n.ID(), []types.Instant{pin})
+						if err != nil {
+							t.Fatal(err)
+						}
+						got += len(segs[0])
+					}
+				}
+				return got
+			}
+			perValue := func(run func([]any) int, n int) float64 {
+				values := probes(n)
+				best := math.Inf(1)
+				for range 3 {
+					var got int
+					m := mallocs(func() { got = run(values) })
+					if got != n {
+						t.Fatalf("%d values: %d segments, want %d", n, got, n)
+					}
+					best = min(best, float64(m)/float64(n))
+				}
+				return best
+			}
+			a, b, u := perValue(door, small), perValue(door, large), perValue(unbatched, large)
+			start := time.Now()
+			door(probes(large))
+			dd := time.Since(start)
+			start = time.Now()
+			unbatched(probes(large))
+			du := time.Since(start)
+			t.Logf("door allocs per value: %.1f with %d values, %.1f with %d (x%.2f); unbatched %.1f (x%.2f); %d values: door %v, unbatched %v",
+				a, small, b, large, b/a, u, b/u, large, dd, du)
+			if b > 1.2*a {
+				t.Errorf("one call with %d values costs %.1f allocs per value, over 1.2x the %.1f with %d", large, b, a, small)
+			}
+			if b > 0.9*u {
+				t.Errorf("the door costs %.1f allocs per value, over 0.9x the unbatched %.1f", b, u)
+			}
+		})
 	}
 }

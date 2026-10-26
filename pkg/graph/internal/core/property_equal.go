@@ -31,6 +31,10 @@ func (ks equalKeys) node(n *types.Node, prop string, elements bool) bool {
 	return found
 }
 
+// match is ks as a matcher built once (a set past a few keys): a value list's
+// keys checked per row stay linear in rows plus keys (ROWPROBE).
+func (ks equalKeys) match() storeutil.IndexKeyMatch { return storeutil.NewIndexKeyMatch(ks) }
+
 // rel is node for a relationship.
 func (ks equalKeys) rel(r *types.Relationship, prop string, elements bool) bool {
 	found := false

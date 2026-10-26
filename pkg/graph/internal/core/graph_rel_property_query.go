@@ -81,8 +81,9 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 		return nil, err
 	}
 	var result []*types.Relationship
+	match := keys.match()
 	pred := func(r *types.Relationship) bool {
-		return r.HasTypeTokenRaw(tok) && keys.rel(r, key, elements)
+		return r.HasTypeTokenRaw(tok) && match.Rel(r, key, elements)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachRelPropertyCandidateID(tok, key, keys, currentIDs, opts, func(id types.RelID) error {
@@ -175,8 +176,9 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 		return nil, err
 	}
 	out := make([]*types.Relationship, 0, len(candidates))
+	match := keys.match()
 	for _, r := range candidates {
-		if keys.rel(r, key, elements) {
+		if match.Rel(r, key, elements) {
 			out = append(out, r)
 		}
 	}
