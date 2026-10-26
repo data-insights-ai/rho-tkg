@@ -107,8 +107,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
     already takes: the claim is written (synced as the store's writes are) before the row, every lookup reads the
     owner's row and ignores a claim the row no longer backs (a crash, a rollback, a value change, a delete, a dropped
     shard leave at most such a claim; none is ever missing), so no change-log replay is needed. Steps:
-    (a) [ ] the index store and its capability on tiered (open at New when declared, Clear wipes it); red: claims
-        survive a reopen, Clear empties them.
+    (a) [x] the index store and its capability on tiered (open at New when declared, Clear wipes it); red: claims
+        survive a reopen, Clear empties them. Green on branch `uniqidx` (`tasks/evidence/UNIQIDX/step_a.txt`).
     (b) [ ] `CreateUnique` on a tiered event label declares the index and seeds it from the current rows (it is
         refused today); the unique check and `GetOrCreateByKey` read the owner index for such a label; red: a key
         whose row is on a closed cold shard is found (no new node) opening only that shard, a duplicate is refused.
