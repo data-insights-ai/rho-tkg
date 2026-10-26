@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.82.0 (2026-10-26). René's open decisions are the items that wait for
+What rho does next, in order. Last release: v4.83.0 (2026-10-26). René's open decisions are the items that wait for
 him, each with my default. State, consumers and the numbered backlog: `HANDOVER.md`; rules: `docs/CONTRIBUTING.md`
 § Rules digest. Done work: `docs/CHANGELOG.md`, under the same tag.
 
@@ -9,24 +9,10 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-26 Oct: v4.75.0 to v4.82.0 (`docs/CHANGELOG.md`). Now: R37 (ai-soc's order 26 Oct: memory, restart, listing, storage; memory and restart are mostly sigma's, so
-rho's lever is listing), then SCALE, then BADGER step 3's last pieces. Ranked by the goal in the rules digest
+Released 24-26 Oct: v4.75.0 to v4.83.0 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
+rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
-- **R37** (ai-soc's lever for rho, 26 Oct) — listing changed facts costs more than ai-soc's 4x a fact's values. ai-soc
-  on v4.79.0 (derived_list_cost_test.go): warm 6.4x (13 props, 2 versions), 4.5x (20 props); cold 8.8x (1 version)
-  and 24.7x (2 versions), the one that hurts. Done when: rho's part is reproduced in a rho test, cut, and ai-soc's
-  warm and cold tests are under 4x (sigma's part follows rho's). ai-soc's split: rho 97 % of the listing's bytes.
-  Branch `r37` (9a08f196, rho repro TestR37ListingBytesPerFact, `tasks/evidence/R37/`): 2 versions 8.5x -> 4.0x
-  warm, 14.9x -> 10.5x cold; 1 version 0.8x / 5.3x. Ships as minor v4.83.0 (it adds
-  `store.NodeVersionSharingCapability`; the patch gate refused it); `make ci-docker` passed on the branch, all R37 work committed; releasing. Left: a cold listing decodes each
-  current row into a Node (~3.6x by itself); below 4x needs a door that hands sigma columns per segment without
-  Nodes. sigma (26 Oct): not now; stop at v4.82.1, ai-soc re-measures cold /bars on it. If it still fails on Flux,
-  the column door (cols incl. ov_session, ov_sid; ValidFrom/To and TxFrom per segment; values shared when
-  unchanged) and sigma's segment-based joined() are one item, queued where ai-soc ranks it. Note: sigma lists a fact
-  with 2+ segments through Nodes().Get and NodeEffectiveTimelines per fact (no snapshot): on the branch 18.5x ->
-  15.8x (the version shares the current row's values outside a snapshot too); badger copies every value it reads
-  twice, so the floor is sigma's joined() from the page door's segments (told sigma 26 Oct).
 - **SCALE** (René 26 Oct, the standing goal) — rho holds realtime ingest at about 2 TB a day (about 23 MB/s
   sustained, peaks higher; about 4 billion 500-byte facts a day) and grows only by more RAM, NVMe and block storage.
   Done when: architecture.md lists what grows with total volume instead of per shard (RAM structures that grow with
@@ -153,6 +139,13 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **R37** (ai-soc's lever for rho, 26 Oct) — listing changed facts costs more than ai-soc's 4x a fact's values (ai-soc
+  on v4.79.0: cold 24.7x for 2 versions; rho 97 % of the bytes). Done when: ai-soc's warm and cold listing tests are
+  under 4x. v4.83.0 cut rho's part (`TestR37ListingBytesPerFact`): 2 versions 8.5x -> 4.0x warm, 14.9x -> 10.5x
+  cold; sigma's fallback 18.5x -> 15.8x. Left: a cold listing decodes each current row into a Node (~3.6x by
+  itself), so below 4x cold needs a column door (cols incl. ov_session, ov_sid; ValidFrom/To and TxFrom per segment;
+  values shared when unchanged) together with sigma's segment-based joined(): one item, queued where ai-soc ranks it
+  (sigma 26 Oct: not now). Waits for: ai-soc's re-measure of cold /bars on v4.83.0.
 - **CHAIN** (memory split known 26 Oct: k10260011 heap 30.0 GB, sigma 89 %, rho 3.3 GB, badger 0.77 GB; storage
   split still open) — René wants the whole data chain rewritten because it wastes 3 to 4 times the storage and memory, so first
   measure on the BA copy on Flux which layer (ai-soc, sigma, rho) wastes how much. Done when: the split per layer is

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.83.0] - 2026-10-26
+
 ### Fixed
 
 - **R37** (ai-soc, 26 Oct: listing changed facts allocated up to 24.7x a fact's values against their limit of 4x;
