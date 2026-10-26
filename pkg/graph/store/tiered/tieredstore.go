@@ -51,6 +51,14 @@ type Config struct {
 	RefLabels []string
 	// ShardWindow is the time window for event shards. Default: 1 week.
 	ShardWindow time.Duration
+	// ShardWindowLocation is the zone whose calendar days a daily or weekly
+	// ShardWindow follows: its windows start at that zone's midnight and are
+	// named after its dates. nil means the process's zone (time.Local, so TZ
+	// decides; the behaviour before v4.82.0). time.UTC gives UTC days whatever
+	// the host's TZ, with no daylight-saving day of 23 or 25 hours (WINDOWZONE).
+	// A reopen under another zone keeps the stored windows; only later
+	// windows follow it. Sub-day windows are fixed durations in any zone.
+	ShardWindowLocation *time.Location
 	// CacheCapacity is the per-shard LRU capacity. Default: 10,000.
 	CacheCapacity int
 	// FlushInterval is the per-shard flush interval. Default: 100ms.
@@ -352,6 +360,9 @@ type Store struct {
 	archiveVolume    string                  // catalog volume a new archive is made on
 	inMemory         bool
 	shardWindow      time.Duration
+	shardLoc         *time.Location // Config.ShardWindowLocation, time.Local when nil
+	openStats        OpenStats      // New's open (open_stats.go)
+	walTruncations   atomic.Int64   // shards opened by cutting an unclean WAL
 	cacheCap         int
 	flushInt         time.Duration
 	coldAfter        time.Duration
@@ -534,6 +545,7 @@ func (ts *Store) openWarmShards(cfg Config, entries []ShardEntry, warmIdx []int,
 
 // New creates a Store with a reference shard and one hot event shard.
 func New(cfg Config) (*Store, error) {
+	openStart := time.Now()
 	if !cfg.InMemory && cfg.DataDir == "" {
 		return nil, fmt.Errorf("graph: Config.DataDir required unless InMemory")
 	}
@@ -559,6 +571,10 @@ func New(cfg Config) (*Store, error) {
 	}
 	if cfg.ColdAfter < 0 {
 		return nil, fmt.Errorf("graph: Config.ColdAfter must not be negative, got %v", cfg.ColdAfter)
+	}
+	shardLoc := cfg.ShardWindowLocation
+	if shardLoc == nil {
+		shardLoc = time.Local
 	}
 	cacheCap := cfg.CacheCapacity
 	if cacheCap <= 0 {
@@ -594,6 +610,7 @@ func New(cfg Config) (*Store, error) {
 		dataDir:               cfg.DataDir,
 		inMemory:              cfg.InMemory,
 		shardWindow:           window,
+		shardLoc:              shardLoc,
 		cacheCap:              cacheCap,
 		flushInt:              flushInt,
 		coldAfter:             cfg.ColdAfter,
@@ -684,7 +701,9 @@ func New(cfg Config) (*Store, error) {
 			}
 		}
 	}
+	phase := time.Now()
 	refStore, err := openRef("reference")
+	ts.openStats.Reference = time.Since(phase)
 	if err != nil {
 		return nil, fmt.Errorf("graph: open reference shard: %w", err)
 	}
@@ -740,7 +759,7 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	// Open hot event shard.
-	now := time.Now()
+	now := time.Now().In(ts.shardLoc)
 	hotName := shardWindowName(now, window)
 	windowStart := shardWindowStart(now, window)
 	windowEnd := shardWindowEnd(now, window)
@@ -758,7 +777,9 @@ func New(cfg Config) (*Store, error) {
 	if !cfg.InMemory {
 		hotDir = filepath.Join("events", hotName)
 	}
+	phase = time.Now()
 	hotStore, err := openHot(hotDir)
+	ts.openStats.Hot = time.Since(phase)
 	if err != nil {
 		_ = refStore.Close() // best-effort cleanup; returning primary error
 		return nil, fmt.Errorf("graph: open hot event shard: %w", err)
@@ -878,7 +899,10 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
-	if err := ts.openWarmShards(cfg, entries, warmIdx, shards); err != nil {
+	phase = time.Now()
+	err = ts.openWarmShards(cfg, entries, warmIdx, shards)
+	ts.openStats.Warm = time.Since(phase)
+	if err != nil {
 		// Close everything this call opened, including shards other workers
 		// finished after the failure was recorded.
 		for _, es := range shards {
@@ -995,6 +1019,9 @@ func New(cfg Config) (*Store, error) {
 		_ = ts.Close()
 		return nil, err
 	}
+
+	ts.openStats.Demoted, ts.openStats.Promoted = demotedAtOpen, promotedAtOpen
+	ts.finishOpenStats(openStart)
 
 	// Start idle-close goroutine for cold shards.
 	if ts.idleTimeoutValue() > 0 {
@@ -1814,6 +1841,7 @@ func (ts *Store) openShardStoreWithRecovery(name string, cold bool) (*BadgerStor
 		return nil, err
 	}
 	slog.Warn("graph: recovering corrupt WAL by truncation", "shard", name)
+	ts.walTruncations.Add(1)
 	return ts.newShardStore(ts.shardCfg(name, false, cold))
 }
 

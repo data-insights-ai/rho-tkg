@@ -60,6 +60,11 @@ func TestTieredOpenAndFlushOpenNoColdShard(t *testing.T) {
 	if got := coldOpensTotal(t, g); got != 0 {
 		t.Fatalf("the graph's open opened %d cold shards, want 0", got)
 	}
+	// RESTART: the open reports its shards and phases.
+	if st := ts.OpenStats(); st.ColdShards != cold || st.WarmShards != 0 || st.Demoted != cold || st.Duration <= 0 ||
+		st.Reference <= 0 || st.Hot <= 0 || st.Duration < st.Reference+st.Hot+st.Warm {
+		t.Fatalf("OpenStats = %+v, want %d cold shards, all demoted at open, no warm one, phases within the duration", st, cold)
+	}
 	if err := ts.Flush(); err != nil {
 		t.Fatal(err)
 	}

@@ -4935,6 +4935,9 @@ func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
 	if coldES.Store() != nil {
 		t.Error("cold shard store should be nil before first access")
 	}
+	if st := ts2.OpenStats(); st.ColdShards != 1 || st.WALTruncations != 0 {
+		t.Errorf("OpenStats after the reopen = %+v, want 1 cold shard and no WAL truncation yet", st)
+	}
 
 	// Phase 4: trigger lazy-open by reading the node — should recover.
 	got, err := ts2.GetNode(n1.ID())
@@ -4943,6 +4946,9 @@ func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
 	}
 	if got.ID() != n1.ID() {
 		t.Error("node ID mismatch after cold shard WAL recovery")
+	}
+	if got := ts2.OpenStats().WALTruncations; got != 1 {
+		t.Errorf("OpenStats().WALTruncations = %d after the cold shard's recovery, want 1 (RESTART)", got)
 	}
 }
 

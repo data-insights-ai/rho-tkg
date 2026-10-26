@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **WINDOWZONE** (ai-soc, 26 Oct): `tiered.Config.ShardWindowLocation` sets the zone whose calendar days daily and
+  weekly shard windows follow. nil keeps the process's zone (`time.Local`), as before; `time.UTC` gives UTC days
+  whatever the host's `TZ`, so no shard window holds a daylight-saving change (DSTWIN reached ai-soc through a host
+  in Europe/Berlin). A reopen under another zone keeps the stored windows.
+- **RESTART** (ai-soc, 26 Oct): `(*tiered.Store).OpenStats()` reports what `New` spent opening the store: the total,
+  the reference, hot and warm opens, the warm shards opened, the cold shards left closed, the tier changes at open
+  and the WAL truncations (at open and every cold open since). `New` logs the same at Info ("graph: tiered store
+  opened"), so a slow restart shows rho's share.
+
+### Fixed
+
+- **OPENCOLD** (found 26 Oct in UNIQIDX): opening a graph on a tiered store opened every closed cold shard once (its
+  valid axis was handed to each shard), and so did every `(*tiered.Store).Flush` (called before the change-feed
+  doors and Export). Both now visit only the open shards: a closed shard has nothing pending and takes the axis when
+  it opens. In the test, a reopen with four cold shards opened four; now none, and a read of one cold node opens
+  one. The retention purges still reach every shard.
+
 ### Changed
 
 - **CALENDAR** (tests and docs; ai-soc on René's word): every time-based place in rho checked against leap and

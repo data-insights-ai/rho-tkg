@@ -37,7 +37,7 @@ func (ts *Store) rotateHotShardLocked() error {
 		return err
 	}
 	oldHot := ts.hotShard
-	now := time.Now()
+	now := time.Now().In(ts.shardLoc)
 
 	// Flush pending writes to the old hot shard. Failure here is benign:
 	// no live state has changed yet.
