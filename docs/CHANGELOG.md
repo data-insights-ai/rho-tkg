@@ -6,13 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.85.0] - 2026-10-26
+
 ### Added
 
 - **ROWPROBE** (sigma, 26 Oct: sigma's paged-row probes are 15 % of ai-soc's PageRows; budget per lesson 89):
   `temporal.API.ForEachNodeEffectiveByLabelAndPropertyValues` pages the nodes of a label whose key carries one of a
   value list and every fixed pair, each with its effective segments at one pin: one call per join level instead
   of a lookup and a timeline read per probe. 1,000 values cost per value 0.9x what 16 cost, and 0.45-0.8x the
-  unbatched composition (0.45x on tiered with the index on disk) (`TestRowProbeDoorCostLinearInValues`).
+  unbatched composition (0.45x on tiered with the index on disk) (`TestRowProbeDoorCostLinearInValues`). sigma's
+  BenchmarkPagedRowsProbeCut (1,000 probes, badger with the index on disk, medians): one door call 14.6 ms against
+  59 ms unbatched, 36 ms in 16-value calls and 26 ms in one `ByLabelAndPropertyValues` call (was 103-120 ms);
+  tiered in memory about even.
 
 ### Fixed
 

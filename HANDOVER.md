@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.84.1; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.85.0; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,11 +7,9 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-26 Oct:** v4.75.0 to v4.84.1 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
-- **Branches:** `rowprobe` open (ROWPROBE (a) 1f3c2fcd + (b) 62c13459, local, not pushed; release v4.85.0 waits
-  for sigma's BenchmarkPagedRowsProbeCut against it). sigma benches the frozen worktree
-  `../rho-tkg-rowprobe` (detached at 62c13459): leave it untouched until sigma answers, then `git worktree remove` it.
-  Merged item branches (r37, existmap, txsnap included) wait for René's delete (user-only action 6). main is pushed.
+- **Released 24-26 Oct:** v4.75.0 to v4.85.0 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
+- **Branches:** none open; merged item branches (r37, existmap, txsnap, rowprobe included) wait for René's delete
+  (user-only action 6). The frozen worktree `../rho-tkg-rowprobe` (sigma's bench, done) is removed. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
   91.8 records/op is a synthetic in-memory probe; options A/B/C are in no committed file: `git show af75a982:tasks/evidence/v5-scale/notes.md`.

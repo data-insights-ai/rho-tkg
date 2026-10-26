@@ -36,24 +36,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   UNIQIDX adoption with SHARD step 10 moves the keyed nodes to event shards, Derived stays; a purge for result rows
   is STORECFG, René later); restart re-reads all past results (625 s at 3 days, mostly sigma's; rho's share from
   OpenStats of k10260915). So EXISTMAP and COMPOSITEDISK bite first on the reference shard.
-- **ROWPROBE** (sigma, 26 Oct: ai-soc's PageRows spends 10.7 of 70 s in sigma's paged-row probes; batching them
-  through `ByLabelAndPropertyValues` gained nothing on v4.84.1). Budget (lesson 89): one call with 1,000 values costs
-  per value at most 1.2x a call with 16, and sigma's all-in-one bench beats its unbatched 74 ms. Both parts done on
-  branch `rowprobe`:
-  - (a) 1f3c2fcd: rows match a key set built once per call (was every node against every key, 1.75 M allocs for
-    1,000 values in one call against 249 k unbatched); badger's on-disk index walks every value in one overlay pass
-    and one iterator, one seek per numeric magnitude: per value 146 -> 21 allocs on badger-disk, 290 -> 26 on
-    tiered-disk, 17 with the index in RAM. Matched rows through one scan snapshot: dropped, measured no gain (200 k
-    cold rows: per-ID and one-snapshot reads within 0.85-1.2x at 10-10,000 rows; decode ~18 allocs per row).
-  - (b) 62c13459 (minor): `ForEachNodeEffectiveByLabelAndPropertyValues`, fixed pairs plus one key IN a value
-    list, one pin. 1,000 values per value 0.9x 16; against the unbatched lookup + timeline 0.79x on memory and
-    badger, 0.57x badger-disk, 0.45x tiered-disk (wall: badger-disk 2.7 vs 3.4 ms, tiered 4.1 vs 6.4 ms; RAM
-    backends about even, both pay ~10 equal-form keys per value).
-  - 897ae551: `TestR37ListingBytesPerFact` failed on main since v4.84.0 unseen (a plain `testing.Short()` skip, so no
-    gate ran it; EXISTMAP's +2.2x cold listing bytes, the known block-decode cost). Now race-gated, bounds measured,
-    mutation-checked in both builds. The long tier otherwise passed on the branch (26 Oct, 40 packages).
-  Next: sigma runs BenchmarkPagedRowsProbeCut against the branch; then release v4.85.0. Done when: released with
-  the budget met and sigma's branch (one pager call per join level) adopts it.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
