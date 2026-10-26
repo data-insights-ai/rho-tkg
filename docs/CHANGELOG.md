@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.87.1] - 2026-10-26
+
 ### Fixed
 
 - **PENDSEEK** (SCALE, ai-soc's kit A/B on v4.87.0 with `PropertyIndexOnDisk`: answers equal, heap 750 to 680 MB, push

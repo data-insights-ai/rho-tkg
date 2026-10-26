@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.87.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.87.1; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,7 +7,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-26 Oct:** v4.75.0 to v4.87.0 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
+- **Released 24-26 Oct:** v4.75.0 to v4.87.1 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
 - **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
   "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
@@ -17,7 +17,10 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **v4.87.0** (OPENWALK, a minor: the open image gains two sections, an older release rebuilds once): tag CI
   green; ci-docker green on the second run (the first hit VERIFY V2's multi-block fixture, fixed with the release), consumers build
   and vet clean; scale probe in `tasks/evidence/SCALE/existence_maps.txt` (reopen with 1 M rels 1.25 s to 0.13 s).
-- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0). The merged item branches are deleted and the kept ones pushed
+- **v4.87.1** (EVENTCLOCK + PENDSEEK, a patch for ai-soc's Flux run k10262212 and kit A/B): ci-fast green, consumers
+  build and vet clean; a mutation without an event publisher takes no event timestamp, hot and warm checkouts stamp
+  no `lastAccess`, a disk property equality lookup seeks its buffered entries (64 k buffered: 5.2 ms to 3.5 us).
+- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1). The merged item branches are deleted and the kept ones pushed
   (René, 26 Oct); user-only action 5 stays. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The

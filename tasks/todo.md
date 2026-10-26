@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-26 Oct: v4.75.0 to v4.87.0 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
+Released 24-26 Oct: v4.75.0 to v4.87.1 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
@@ -55,15 +55,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
-- **v4.87.1** (patch, in release) — EVENTCLOCK and PENDSEEK together, so ai-soc pins once.
-  - EVENTCLOCK (ai-soc, Flux run k10262212: time.Now 15 % of CPU in minute 1; Flux's clocksource is hpet, the
-    host clock René's call via ai-soc): a mutation without an event publisher takes no event timestamp (50 creates
-    in one transaction: 101 clock reads to 51, floor 100 to 50 ms ahead), hot and warm checkouts stamp no
-    `lastAccess` (a demotion stamps it). On main, `make ci-fast` green.
-  - PENDSEEK (ai-soc's kit A/B with `PropertyIndexOnDisk`: push 60 to 120 s): a disk property equality lookup finds
-    its values' buffered entries by prefix instead of walking the write buffer (one lookup with 64 k buffered
-    entries 5.2 ms to 3.5 us). Branch `pendseek` (f3523d32), mutation-checked; gate next.
-  Done when: tagged, CI green, both agents told; then ai-soc reruns the kit A/B and switches PROPDISK on.
 - **OPENIMAGE** (SCALE, moved up 26 Oct: ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in
   tiered.New, 53 % in loadNodeFromBadger) — a crash open trusts no image, so it rebuilds every RAM index by decoding
   each member node with a point Get (property without disk, composite, temporal without TemporalIndexOnDisk,
@@ -183,7 +174,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   600 s) on DerivedPage's int64 hash keys (ov_k, ov_h<mask>; rho internal/index 332 to 1,652 MB per 1,000 done against
   paging off). `tiered.Config.PropertyIndexOnDisk` moves every shard's property index to disk (store-wide; RangeCounts
   and Elements refused; composite indexes stay in RAM); ai-soc's kit A/B with it: answers equal, heap 750 to 680 MB,
-  push 2x slower (PENDSEEK). Waits on PENDSEEK, then ai-soc's rerun and its switch.
+  push 2x slower (PENDSEEK, v4.87.1). Waits on ai-soc's rerun on v4.87.1 and its switch (new stores; an existing
+  store with sigma's Elements index drops it once with `Index().DeleteProperty`, which disk mode needs).
 - **SCALEPROFILE** (SCALE, ai-soc 26 Oct) — which RAM structures grow with data in ai-soc's daemon plus sigma.
   Flux run k10261904 on v4.86.0 is the baseline (heap, memstats and smaps_rollup every 600 s and after the final
   GC, reopen times, the top-40 inuse_space with node and rel counts); the run after the PAGEREF pin carries
