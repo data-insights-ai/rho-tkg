@@ -1,19 +1,15 @@
 # todo
 
-What rho does next, in order. Last release: v4.77.2 (2026-10-25). Background, René's open decisions with my defaults,
+What rho does next, in order. Last release: v4.81.0 (2026-10-26). Background, René's open decisions with my defaults,
 and the numbered backlog: `HANDOVER.md`. Done work: `docs/CHANGELOG.md`, under the same tag.
 
 Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-Order (René 24 Oct: fixes first; open decisions settled from the data and the consumer agents): the fixes are released
-in v4.75.0 to v4.76.1, DICT in v4.77.0, RESUME in v4.77.1, ARM32 and LONGTIER in v4.77.2, UNIQIDX (SHARD step 10 slice 1) in v4.81.0 (tagged 26 Oct); SHARD steps 2-8 (the volume minor) in v4.78.0 (tagged, CI green,
-consumers build, ai-soc and sigma told; RACETIME: the isolated race packages now have 20 min; ai-soc
-measures DICT before configuring it; `docs/CHANGELOG.md`). Next: BADGER step 3, SHARD step 10 (René, with ai-soc's
-counts). FLAKYWAL fixed (test only); COLDRO in v4.78.3, PREFETCH in v4.78.4, DSTWIN (ai-soc's urgent rotation fault at the end of summer time) in
-v4.78.5 (CI green; v4.78.4's red CI was a timing flake, rerun green, CASCADEFLAKY fixed); TIERLABELDISK in v4.79.0 (CI green), VALUES and TKGID in v4.80.0 (CI green). DISCARDCLOSE and DROPALL in v4.78.1, MOVEREAD and TRUNCPIN in v4.78.2; METASYNC's docs shipped with
-it (its rig is René's call).
+Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
+Released 24-26 Oct: v4.75.0 to v4.81.0 (`docs/CHANGELOG.md`). Now: CALENDAR's first fix (branch `midnightdst`), then
+the rest of CALENDAR, OPENCOLD with RESTART, COLDWRITE's test, BADGER step 3's last pieces.
 
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
@@ -54,7 +50,7 @@ it (its rig is René's call).
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Steps 1-8 shipped (v4.76.1, v4.78.0; MOVEREAD v4.78.2, COLDRO v4.78.3). Step 10
-  approved by René (26 Oct), in progress.
+  approved by René (26 Oct); slice 1 (UNIQIDX) in v4.81.0, the next slices on a measured need.
 
 ### SHARD plan
 
@@ -142,7 +138,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   hour): where clocks jump forward at midnight (Santiago, Havana, Asuncion) Go places the missing 00:00 at 23:00 the
   evening before, so that day's daily window ends an hour early and a rotation in that hour builds a window ending
   before it starts (DSTWIN's failure; 40, 40 and 8 bad quarter hours; Berlin, Lord_Howe, Kathmandu, Beirut, UTC none).
-  Fix first, as a patch. Now, after v4.81.0.
+  Fixed on branch `midnightdst` (`dayStart`: the day begins at the jump; TestRotationWindowAcrossDST now covers
+  these zones, Beirut, Kathmandu, Lord_Howe, Bogota and UTC over 2024-2026; mutation killed); patch next.
 - **COLDWRITE** (ai-soc, Fable G4, 26 Oct) — can a tiered write land in a cold shard, and is it lost to recovery?
   Answered from the code: yes it can (an update or late event older than ColdAfter opens the shard writable,
   `tieredstore_lifecycle.go` checkout); rho's recovery does not scan by time (each shard replays its WAL at its next
