@@ -24,13 +24,13 @@ the main worktree `../rho-tkg-main` when a branch is checked out.
   **v4.76.1 (SHARD step 1)**, **v4.77.0 (DICT)** and **v4.77.1 (RESUME)** and **v4.77.2 (ARM32, LONGTIER)**, **v4.78.0 (SHARD steps
   2-8, the volume minor)**, **v4.78.1 (DISCARDCLOSE, DROPALL)**, **v4.78.2 (MOVEREAD, TRUNCPIN)**, **v4.78.3 (COLDRO)**, **v4.78.4 (PREFETCH)**, **v4.78.5 (DSTWIN)**, **v4.79.0 (TIERLABELDISK)** and **v4.80.0 (VALUES, TKGID)** shipped; ai-soc measures DICT on a rebuilt slice before it pins (a one-way door). Next:
   BADGER step 3's last pieces (GETWALK; per-tier caches and compactors, worth less since COLDRO), SHARD step 10
-  (René, with ai-soc's counts); METASYNC's rig and IDPROPS (1.6 %, recommend withdraw) are René's call. Unreleased
+  (René, with ai-soc's counts); METASYNC's rig is René's call; IDPROPS withdrawn by ai-soc 26 Oct (1.6 % of stored values). Unreleased
   on main (docs and tests only): AXIS announcement withdrawn, FLAKE, VLOGGC/COMPACTL0/MOVERCOPY measurements. Open
   decisions are settled from the data and the consumer agents (René 24 Oct).
 - **SHARD**: design ADR-0012 (architecture.md), plan with boxes in todo; step 1 shipped in v4.76.1 (option (b)), steps 2-8 in v4.78.0;
   reads go on during a move (MOVEREAD, v4.78.2); a read opens a closed cold shard read-only (COLDRO, v4.78.3); daily
   windows end at local midnight in calendar days (DSTWIN, v4.78.5). Step 10 (global index) waits for René.
-- **Queued:** DICTMERGE and PROPPOS (after DICT's measurement); IDPROPS (René; CHAININTERN withdrawn: 0.31 % of the heap); WRITTENAT (withdrawn by ai-soc unless sigma's PUBIDS
+- **Queued:** DICTMERGE and PROPPOS (after DICT's measurement); IDPROPS and CHAININTERN withdrawn (1.6 % of stored values, 0.31 % of the heap); WRITTENAT (withdrawn by ai-soc unless sigma's PUBIDS
   fails); GETWALK, OPENIMAGE (ITERPREFIX, VLOGGC measured: no change); CHAIN waits for René's word (a Flux run); STORE is with René. Parked:
   BADGERPANIC (badger as it is). The local race gate runs its parts in sequence, badger isolated (v4.76.0).
 

@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **IDPROPS** (withdrawn by ai-soc, 26 Oct): immutable identity properties stored once per node are not built. On
+  the full BA store the identity repeated in history versions is 13.2 MB, 1.6 % of 818.6 MB stored values, against
+  a one-way format change. CHAININTERN, its heap form, was withdrawn on 25 Oct (0.31 % of the heap).
 - **AXIS** (announcement withdrawn): the v4.65.0 Deprecated note that the default `Config.UntimedValidStart` for new
   stores becomes `UntimedWholeAxis` "in the next minor" is withdrawn; the default stays `UntimedUnbounded`. ai-soc
   creates a fresh store per run and relies on the default, so a flip would silently change its answers; sigma sets

@@ -151,16 +151,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 - **WRITTENAT** (ai-soc, 24 Oct; withdrawn by ai-soc 26 Oct) — not built: sigma's PUBIDS gives ai-soc the ids of the
   facts a publication wrote (Delta.Written), with no store index. Waits for: ai-soc, only if PUBIDS fails.
 
-- **IDPROPS** (sigma for ai-soc, 24 Oct; the larger form of CHAININTERN) — Immutable properties per (label, key), set
-  at `AddNode`, refused by every update and cascade patch, stored once per node and attached to every version on read.
-  A new door (a minor) and a format change (a one-way door). Waits for: René.
-  Measured (ai-soc, 25 Oct, run k10251802 after KEYBIN and DICT): 470,239 older Derived versions carry 13.2 MB of
-  identity (28 B binary keys), 1.6 % of 818.6 MB stored values. Recommendation to René: withdraw (a one-way door
-  for 1.6 %). CHAININTERN, its heap form, is withdrawn: decoded history is 0.31 % of the heap (101.1 of 32,565.5 MB, ai-soc,
-  heap-end profile of run k10251802, 25 Oct). WBA-8 (sigma, 52,031 duplicate rows) was RESUME, fixed in v4.77.1. Design answer to
-  sigma (24 Oct): an identity freezes from its declaration on; sigma restructures Derived identities (key terms as
-  typed columns plus an int hash, the DerivedPage shape) with ordinary writes first, then declares. No re-key door
-  unless a need after the declaration appears.
 - **DICTMERGE** (ai-soc, 25 Oct; after DICT) — with per-shard dictionaries a value seen daily is stored once per day
   shard (~365 a year). Could cold shards share or merge their dictionaries when they move cold, so a value is stored
   once per cold volume? Done when: answered from DICT's measured per-shard dictionary bytes.
