@@ -114,8 +114,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
         whose row is on a closed cold shard is found (no new node) opening only that shard, a duplicate is refused.
     (c) [x] `ByLabelAndProperty(label, key, v)` (current, DepthAll) on such a label answers from the index.
         (b) and (c) green on branch `uniqidx` (`tasks/evidence/UNIQIDX/step_b.txt`; one lookup path serves both).
-    (d) [ ] stale claims: value change, delete, label removal, retention drop, rollback, crash between claim and row:
-        the value is free again; red tests for each.
+    (d) [x] stale claims: value change, delete, label removal, retention drop, rollback, crash between claim and row:
+        the value is free again; red tests for each. Green on branch `uniqidx` (`step_d.txt`).
     (e) [ ] measured on ai-soc's shape (lookup cost against shard count, write cost per keyed row), released as a
         minor, ai-soc and sigma told.
 
