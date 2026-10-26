@@ -71,8 +71,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   since the last image (by a test counting decodes against store size), its index state equals the full rebuild's,
   and a large shard's crash reopen is measured. State 26 Oct: step (1) committed on `openimage` (b1e146e0); the
   clean-reopen oracle matches at every crash step, and a crash reopen after one record decodes 1 row at 100 k and
-  1 M entities (the full rebuild: 154 k and 1.54 M); next the remaining tests that took a foreign write for an
-  untrusted image, mutation checks, docs, then step (2).
+  1 M entities (the full rebuild: 154 k and 1.54 M); the full-rebuild oracles delete the open state (a foreign
+  write now takes the delta open), badger, tiered, sharded and graph green; next mutation checks, docs, then step
+  (2). ai-soc measures after the tag on copies of k10262212: one full open writing the image, then a crash reopen
+  after a few hundred records.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
