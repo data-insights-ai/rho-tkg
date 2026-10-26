@@ -41,7 +41,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   reads them instead of walking the keys (a crash open still walks). Budget (lesson 89), on the scale probe and a rho
   test: RAM per node in an open shard <= 12 B (63 B now); clean reopen <= 0.4 s per 1 M (1.5-1.9 s now); point
   reads and writes in `bench/` within 5 %; crash reopen no slower. Done when: shipped with the budget met. Branch
-  `existmap`.
+  `existmap`: red test `TestExistMapResidentBytesPerNode` (5652797d): 118 B per node on ai-soc's shard config
+  (nodeRevs ~39 B, nodeIDs ~33 B, the rest map growth slack); with the RAM label index and ordinals (the plain
+  defaults) 215 B. Next: step 1, the maps behind one type.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
