@@ -438,9 +438,11 @@ func TestArchiveNode_ErrorBranches(t *testing.T) {
 			t.Fatal("failed to evict ref node cache entry")
 		}
 
+		// The evicted entry was never flushed: the shard lists a node with no
+		// row, which reads as a damaged table (v4.84.0), not as "not found".
 		err := ts.ArchiveNode(n.ID())
-		if !errors.Is(err, ErrNodeNotFound) {
-			t.Fatalf("ArchiveNode error = %v, want ErrNodeNotFound", err)
+		if !errors.Is(err, storepkg.ErrCorruptWire) {
+			t.Fatalf("ArchiveNode error = %v, want ErrCorruptWire", err)
 		}
 	})
 
@@ -658,9 +660,11 @@ func TestRestoreNode_ErrorBranches(t *testing.T) {
 			t.Fatal("failed to evict archive node cache entry")
 		}
 
+		// The evicted entry was never flushed: the shard lists a node with no
+		// row, which reads as a damaged table (v4.84.0), not as "not found".
 		err := ts.RestoreNode(n.ID())
-		if !errors.Is(err, ErrNodeNotFound) {
-			t.Fatalf("RestoreNode error = %v, want ErrNodeNotFound", err)
+		if !errors.Is(err, storepkg.ErrCorruptWire) {
+			t.Fatalf("RestoreNode error = %v, want ErrCorruptWire", err)
 		}
 	})
 

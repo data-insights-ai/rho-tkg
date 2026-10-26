@@ -197,10 +197,8 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 
 	// Short-circuit: relIDs is rebuilt from relationship entity rows at open and
 	// maintained with writes, so misses do not need a Badger transaction.
-	bs.idxMu.RLock()
-	exists := bs.relIDs.Has(int64(rid))
-	bs.idxMu.RUnlock()
-	if !exists {
+	rev := bs.liveRelRev(rid)
+	if rev == 0 {
 		return nil, ErrRelNotFound
 	}
 
@@ -211,7 +209,7 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
-			return ErrRelNotFound
+			return bs.relRowMissing(rid, rev)
 		}
 		if err != nil {
 			return err
@@ -252,13 +250,14 @@ func (bs *Store) getRelInTxn(snap *scanSnapshot, rid types.RelID) (*types.Relati
 		return nil, ErrRelNotFound
 	}
 
-	if !bs.relIDs.Has(int64(rid)) {
+	rev := bs.liveRelRevLocked(rid)
+	if rev == 0 {
 		return nil, ErrRelNotFound
 	}
 
 	item, err := snap.txnAfterMiss().Get(storepkg.RelKey(id))
 	if err == badgerv4.ErrKeyNotFound {
-		return nil, ErrRelNotFound
+		return nil, bs.relRowMissingLocked(rid, rev)
 	}
 	if err != nil {
 		return nil, err
@@ -773,17 +772,15 @@ func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool) (r *types.Rela
 		return nil, false, ErrRelNotFound
 	}
 
-	bs.idxMu.RLock()
-	exists := bs.relIDs.Has(int64(rid))
-	bs.idxMu.RUnlock()
-	if !exists {
+	rev := bs.liveRelRev(rid)
+	if rev == 0 {
 		return nil, false, ErrRelNotFound
 	}
 
 	err = bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
-			return ErrRelNotFound
+			return bs.relRowMissing(rid, rev)
 		}
 		if err != nil {
 			return err

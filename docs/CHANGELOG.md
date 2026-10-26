@@ -18,7 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   holds at most 64 K entries (it grew with every node a relationship write hashed); the open image carries the ID
   sets, so a clean open walks no entity keys, and with `LabelIndexOnDisk` it no longer builds and drops the RAM
   label map (~33 B per node of open peak). An older release reading a v4.84.0 image rebuilds once from the rows
-  (`tasks/evidence/EXISTMAP/`, `tasks/evidence/SCALE/`).
+  (`tasks/evidence/EXISTMAP/`, `tasks/evidence/SCALE/`). Because a clean open no longer reads the rows, a damaged
+  table block (which badger reports as a missing key) is now met by the read instead of failing the open: a read
+  that misses the row of a node or relationship the store lists, with no write to it in between, returns an error
+  wrapping `ErrCorruptWire` instead of `ErrNodeNotFound`/`ErrRelNotFound` (point reads, `Lend*`, read snapshots,
+  label scans, `NodesAsOf`/`RelsAsOf`, endpoint checks of relationship writes, `CreateRelTemporalIndex`); a
+  cascade delete still scrubs such a row. A label scan right after a clean reopen now decodes the table blocks the
+  open used to read (~0.85 kB per fact on the first pass; the open's own cost fell by more).
 
 ## [4.83.0] - 2026-10-26
 

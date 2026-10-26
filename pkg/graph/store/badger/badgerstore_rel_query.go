@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -438,7 +439,11 @@ func (bs *Store) ensureNodeRowsLive(ids []types.NodeID) error {
 			failed[id] = err
 		}
 	}
-	var misses []types.NodeID
+	type miss struct {
+		nid types.NodeID
+		rev uint64 // see badgerstore_row_missing.go
+	}
+	var misses []miss
 	bs.idxMu.RLock()
 	for _, nid := range ids {
 		switch _, status := bs.nodeCache.GetNoPromote(nid.SnowflakeID()); status {
@@ -448,20 +453,21 @@ func (bs *Store) ensureNodeRowsLive(ids []types.NodeID) error {
 			fail(nid, ErrNodeNotFound)
 			continue
 		}
-		if !bs.nodeIDs.Has(int64(nid)) {
+		rev := bs.liveNodeRevLocked(nid)
+		if rev == 0 {
 			fail(nid, ErrNodeNotFound)
 			continue
 		}
-		misses = append(misses, nid)
+		misses = append(misses, miss{nid, rev})
 	}
 	bs.idxMu.RUnlock()
 	if len(misses) > 0 {
-		slices.Sort(misses)
-		misses = slices.Compact(misses)
+		slices.SortFunc(misses, func(a, b miss) int { return cmp.Compare(a.nid, b.nid) })
+		misses = slices.CompactFunc(misses, func(a, b miss) bool { return a.nid == b.nid })
 		snap := newScanSnapshot(bs, bs.nodeCache.FlushEpoch)
-		for _, nid := range misses {
-			if err := bs.checkNodeRowInSnapshot(snap, nid); err != nil {
-				fail(nid, err)
+		for _, m := range misses {
+			if err := bs.checkNodeRowInSnapshot(snap, m.nid, m.rev); err != nil {
+				fail(m.nid, err)
 			}
 		}
 		snap.close()
@@ -479,8 +485,9 @@ func (bs *Store) ensureNodeRowsLive(ids []types.NodeID) error {
 
 // checkNodeRowInSnapshot is prefetchNodeNoFill's miss branch over a shared
 // scanSnapshot: the cache missed for nid (re-checked here, after which the
-// snapshot's epoch is read), so its row must decode from badger.
-func (bs *Store) checkNodeRowInSnapshot(snap *scanSnapshot, nid types.NodeID) error {
+// snapshot's epoch is read), so its row must decode from badger. rev is nid's
+// revision captured with the cache miss (badgerstore_row_missing.go).
+func (bs *Store) checkNodeRowInSnapshot(snap *scanSnapshot, nid types.NodeID, rev uint64) error {
 	id := nid.SnowflakeID()
 	switch _, status := bs.nodeCache.GetNoPromote(id); status {
 	case indexpkg.CacheHit:
@@ -490,7 +497,7 @@ func (bs *Store) checkNodeRowInSnapshot(snap *scanSnapshot, nid types.NodeID) er
 	}
 	item := snap.seekAfterMiss(storepkg.NodeKey(id))
 	if item == nil {
-		return ErrNodeNotFound
+		return bs.nodeRowMissing(nid, rev)
 	}
 	return item.Value(func(val []byte) error {
 		var w storepkg.NodeWire

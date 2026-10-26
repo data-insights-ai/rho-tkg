@@ -17,14 +17,18 @@ import (
 // listing bound on ai-soc's shape: tiered on disk with the label a reference
 // label, a composite index on (label, ns, rel), facts of 13 columns (442 bytes
 // of values), the store closed and reopened so every row is cold. One page
-// door call over the label allocates per fact at most 6x the fact's values
-// for one version (2.3 kB measured: one decode of the current row, read
-// through the reference shard's snapshot) and 12x for a fact rewritten in
-// valid time (4.7 kB: the skeleton decoded in place, the current row, no
+// door call over the label allocates per fact at most 8x the fact's values
+// for one version (3.3 kB measured: one decode of the current row, read
+// through the reference shard's snapshot) and 14x for a fact rewritten in
+// valid time (5.1-5.7 kB: the skeleton decoded in place, the current row, no
 // history row copied), and 16x listed at a pin before the rewrite, where
 // every winner is a history row (6.6 kB: the winners read through the
 // snapshot's own forward iterator and decoded in place; a badger Get per
-// winner cost 10.7 kB). Before the door, ByLabelAndProperties plus
+// winner cost 10.7 kB; 6.0 kB since v4.84.0). Since v4.84.0 the first two
+// include ~0.85 kB per fact of badger block decompression: a clean open no
+// longer reads the node rows, which had left their table blocks in badger's
+// block cache (2.3 and 4.7 kB before; the open's own cost fell by more).
+// Before the door, ByLabelAndProperties plus
 // NodeEffectiveTimelines per fact cost 11.4 kB and 16.2 kB. Mutation: a
 // candidate list read through rows, a point read per row instead of the
 // snapshot, a history memo that copies every row, a Seek per entity or a
@@ -47,7 +51,7 @@ func TestForEachNodeEffectiveByLabelAndPropertiesColdBytes(t *testing.T) {
 		versions int
 		early    bool // list at a pin before the rewrite: every winner is a history row
 		bound    int  // times the fact's values
-	}{{1, false, 6}, {2, false, 12}, {2, true, 16}} {
+	}{{1, false, 8}, {2, false, 14}, {2, true, 16}} {
 		dir := t.TempDir()
 		g := open(dir)
 		ctx := context.Background()

@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"sync"
@@ -64,8 +65,12 @@ func (bs *Store) collectNodesBulkParallel(ids []types.NodeID) ([]*types.Node, er
 		case indexpkg.CacheDeleted:
 			continue // tombstone — leave nil (skipped in compaction)
 		}
+		rev := bs.liveNodeRev(nid)
 		item := snap.seekAfterMiss(storepkg.NodeKey(id))
 		if item == nil {
+			if err := bs.nodeRowMissing(nid, rev); !errors.Is(err, ErrNodeNotFound) {
+				return nil, err // a damaged table, not a delete
+			}
 			continue // deleted / orphaned index entry
 		}
 		raw, cerr := item.ValueCopy(nil) // copy — bytes must outlive the txn

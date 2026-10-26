@@ -459,10 +459,8 @@ func (s *readSnapshot) LendNode(nid types.NodeID) (*types.Node, error) {
 	case indexpkg.CacheDeleted:
 		return nil, ErrNodeNotFound
 	}
-	bs.idxMu.RLock()
-	exists := bs.nodeIDs.Has(int64(nid))
-	bs.idxMu.RUnlock()
-	if !exists {
+	rev := bs.liveNodeRev(nid)
+	if rev == 0 {
 		return nil, ErrNodeNotFound
 	}
 	var n *types.Node
@@ -483,7 +481,7 @@ func (s *readSnapshot) LendNode(nid types.NodeID) (*types.Node, error) {
 		return nil, err
 	}
 	if !ok {
-		return nil, ErrNodeNotFound
+		return nil, bs.nodeRowMissing(nid, rev) // the snapshot re-pinned after every commit (pinned)
 	}
 	n.Freeze() // shared between cache and caller
 	bs.nodeCache.LoadCleanAt(id, n, s.nodeEpoch)
@@ -517,10 +515,8 @@ func (s *readSnapshot) LendRelationship(rid types.RelID) (*types.Relationship, e
 	case indexpkg.CacheDeleted:
 		return nil, ErrRelNotFound
 	}
-	bs.idxMu.RLock()
-	exists := bs.relIDs.Has(int64(rid))
-	bs.idxMu.RUnlock()
-	if !exists {
+	rev := bs.liveRelRev(rid)
+	if rev == 0 {
 		return nil, ErrRelNotFound
 	}
 	var r *types.Relationship
@@ -540,7 +536,7 @@ func (s *readSnapshot) LendRelationship(rid types.RelID) (*types.Relationship, e
 		return nil, err
 	}
 	if !ok {
-		return nil, ErrRelNotFound
+		return nil, bs.relRowMissing(rid, rev) // the snapshot re-pinned after every commit (pinned)
 	}
 	r.Freeze() // shared between cache and caller
 	bs.relCache.LoadCleanAt(id, r, s.relEpoch)

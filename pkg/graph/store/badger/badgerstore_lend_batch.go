@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"errors"
 	"fmt"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -32,14 +33,15 @@ func (bs *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 		case indexpkg.CacheDeleted:
 			continue
 		}
-		bs.idxMu.RLock()
-		exists := bs.nodeIDs.Has(int64(nid))
-		bs.idxMu.RUnlock()
-		if !exists {
+		rev := bs.liveNodeRev(nid)
+		if rev == 0 {
 			continue
 		}
 		item := snap.seekAfterMiss(storepkg.NodeKey(id))
 		if item == nil {
+			if err := bs.nodeRowMissing(nid, rev); !errors.Is(err, ErrNodeNotFound) {
+				return err // a damaged table, not a delete
+			}
 			continue
 		}
 		if err := item.Value(func(val []byte) error {
@@ -79,14 +81,15 @@ func (bs *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relatio
 		case indexpkg.CacheDeleted:
 			continue
 		}
-		bs.idxMu.RLock()
-		exists := bs.relIDs.Has(int64(rid))
-		bs.idxMu.RUnlock()
-		if !exists {
+		rev := bs.liveRelRev(rid)
+		if rev == 0 {
 			continue
 		}
 		item := snap.seekAfterMiss(storepkg.RelKey(id))
 		if item == nil {
+			if err := bs.relRowMissing(rid, rev); !errors.Is(err, ErrRelNotFound) {
+				return err // a damaged table, not a delete
+			}
 			continue
 		}
 		if err := item.Value(func(val []byte) error {

@@ -52,9 +52,10 @@ func TestPutRelationshipsBatchReadsColdEndpointsInOneSnapshot(t *testing.T) {
 
 // TestPutRelationshipsBatchColdEndpointErrorOrder: with two cold endpoints
 // that fail differently in one batch (node 4's row corrupt, node 2's row gone
-// from badger while the store still lists the node), the error is the one of
-// the endpoint first in the batch's order, as the per-endpoint loop returned
-// it, although the walk reads node 2 first; nothing is written.
+// from badger while the store still lists the node, which reads as a damaged
+// table, errLiveRowMissing), the error is the one of the endpoint first in the
+// batch's order, as the per-endpoint loop returned it, although the walk reads
+// node 2 first; nothing is written.
 func TestPutRelationshipsBatchColdEndpointErrorOrder(t *testing.T) {
 	for _, corruptFirst := range []bool{true, false} {
 		bs := newTestBadgerStoreInMemory(t)
@@ -76,8 +77,11 @@ func TestPutRelationshipsBatchColdEndpointErrorOrder(t *testing.T) {
 		err := bs.PutRelationshipsBatch(batch)
 		if corruptFirst {
 			requireCorruptNodeReadError(t, "corrupt first", err)
-		} else if !errors.Is(err, ErrNodeNotFound) {
-			t.Fatalf("vanished first: err = %v, want ErrNodeNotFound", err)
+			if errors.Is(err, errLiveRowMissing) {
+				t.Fatalf("corrupt first: err = %v, want node 4's decode error", err)
+			}
+		} else if !errors.Is(err, errLiveRowMissing) {
+			t.Fatalf("vanished first: err = %v, want errLiveRowMissing", err)
 		}
 		for _, r := range batch {
 			if _, err := bs.GetRelationship(r.ID()); !errors.Is(err, ErrRelNotFound) {

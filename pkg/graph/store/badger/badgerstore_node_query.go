@@ -164,8 +164,12 @@ func (bs *Store) forEachNodeBulk(ids []types.NodeID, fn func(*types.Node) bool) 
 			continue // tombstone — skip, as an orphaned index entry
 		}
 		// Miss: decode via the shared iterator (opened lazily).
+		rev := bs.liveNodeRev(nid)
 		item := snap.seekAfterMiss(storepkg.NodeKey(id))
 		if item == nil {
+			if err := bs.nodeRowMissing(nid, rev); !errors.Is(err, ErrNodeNotFound) {
+				return err // a damaged table, not a delete
+			}
 			continue // deleted / orphaned index entry
 		}
 		var decoded *types.Node

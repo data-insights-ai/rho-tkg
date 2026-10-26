@@ -349,16 +349,18 @@ func (bs *Store) relBuildCurrent(snap *relBuildSnap, id snowflake.ID) (*types.Re
 	case indexpkg.CacheDeleted:
 		return nil, false, nil
 	}
-	bs.idxMu.RLock()
-	exists := bs.relIDs.Has(int64(types.RelID(id)))
-	bs.idxMu.RUnlock()
-	if !exists {
+	rid := types.RelID(id)
+	rev := bs.liveRelRev(rid)
+	if rev == 0 {
 		return nil, false, nil
 	}
 	w := snap.current().rows // the epoch is read after the miss
 	key := storepkg.RelKey(id)
 	w.seekTo(key)
 	if !w.it.ValidForPrefix(w.prefix) || !bytes.Equal(w.it.Item().Key(), key) {
+		if err := bs.relRowMissing(rid, rev); !errors.Is(err, ErrRelNotFound) {
+			return nil, false, err // a damaged table: an envelope without the rel would prune it
+		}
 		return nil, false, nil
 	}
 	var r *types.Relationship

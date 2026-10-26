@@ -133,10 +133,8 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 
 	// Short-circuit: nodeIDs is rebuilt from node entity rows at open and
 	// maintained with writes, so misses do not need a Badger transaction.
-	bs.idxMu.RLock()
-	exists := bs.nodeIDs.Has(int64(nid))
-	bs.idxMu.RUnlock()
-	if !exists {
+	rev := bs.liveNodeRev(nid)
+	if rev == 0 {
 		return nil, ErrNodeNotFound
 	}
 
@@ -147,7 +145,7 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
-			return ErrNodeNotFound
+			return bs.nodeRowMissing(nid, rev)
 		}
 		if err != nil {
 			return err
@@ -192,13 +190,14 @@ func (bs *Store) getNodeInTxn(snap *scanSnapshot, nid types.NodeID) (*types.Node
 		return nil, ErrNodeNotFound
 	}
 
-	if !bs.nodeIDs.Has(int64(nid)) {
+	rev := bs.liveNodeRevLocked(nid)
+	if rev == 0 {
 		return nil, ErrNodeNotFound
 	}
 
 	item, err := snap.txnAfterMiss().Get(storepkg.NodeKey(id))
 	if err == badgerv4.ErrKeyNotFound {
-		return nil, ErrNodeNotFound
+		return nil, bs.nodeRowMissingLocked(nid, rev)
 	}
 	if err != nil {
 		return nil, err
@@ -264,7 +263,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
-			return ErrNodeNotFound
+			return bs.nodeRowMissing(nid, rev)
 		}
 		if err != nil {
 			return err
@@ -952,10 +951,8 @@ func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.No
 	}
 
 	// Cache miss — check existence before incurring Badger I/O.
-	bs.idxMu.RLock()
-	exists := bs.nodeIDs.Has(int64(nid))
-	bs.idxMu.RUnlock()
-	if !exists {
+	rev := bs.liveNodeRev(nid)
+	if rev == 0 {
 		return nil, false, ErrNodeNotFound
 	}
 
@@ -964,7 +961,7 @@ func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.No
 	err = bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
-			return ErrNodeNotFound
+			return bs.nodeRowMissing(nid, rev)
 		}
 		if err != nil {
 			return err

@@ -1334,11 +1334,10 @@ func staleRelIDInAllRelIDs(t *testing.T, bs *badger.Store, relID types.RelID) {
 		t.Fatalf("flush before stale-id setup: %v", err)
 	}
 
-	// Drop from cache so cacheHit can't return the stale value.
-	bs.RelCacheForTest().EvictForTest(relID.SnowflakeID())
-
-	// Delete the Badger key so GetRelationship's disk read returns
-	// key-not-found, which badger.Store translates to storepkg.ErrRelNotFound.
+	// Delete the Badger key and leave a delete tombstone in the cache, as a
+	// delete that ran after AllRelIDs leaves them: GetRelationship answers
+	// storepkg.ErrRelNotFound from the tombstone. (A missing row with no
+	// tombstone and the ID still listed reads as a damaged table, v4.84.0.)
 	id := relID.SnowflakeID()
 	err := bs.DBForTest().Update(func(txn *badgerv4.Txn) error {
 		return txn.Delete(storeutil.RelKey(id))
@@ -1346,8 +1345,12 @@ func staleRelIDInAllRelIDs(t *testing.T, bs *badger.Store, relID types.RelID) {
 	if err != nil {
 		t.Fatalf("delete rel key for stale-id setup: %v", err)
 	}
+	bs.RelCacheForTest().MarkDeleted(id)
+	if _, err := bs.GetRelationship(relID); !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("stale-id setup: GetRelationship = %v, want ErrRelNotFound", err)
+	}
 	// Note: bs.relIDs still has the entry. AllRelIDs reads from that
-	// in-memory map, so the rel will still be enumerated. This is the
+	// in-memory set, so the rel will still be enumerated. This is the
 	// divergence that simulates the AllRelIDs-then-delete race.
 }
 

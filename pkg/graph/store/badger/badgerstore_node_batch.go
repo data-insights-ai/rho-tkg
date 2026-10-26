@@ -86,8 +86,8 @@ func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefe
 	infos := make(map[types.RelID]RelDeleteInfo, len(relIDs))
 	for _, relID := range relIDs {
 		info, err := bs.prefetchRelDeleteInfo(relID)
-		if errors.Is(err, ErrRelNotFound) {
-			continue
+		if errors.Is(err, ErrRelNotFound) || errors.Is(err, errLiveRowMissing) {
+			continue // the locked re-read scrubs a row it cannot read as an orphan
 		}
 		if err != nil {
 			return cascadeDeletePrefetch{}, fmt.Errorf("graph: cascade read relationship: %w", err)
