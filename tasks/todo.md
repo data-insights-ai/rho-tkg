@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.84.0 (2026-10-26). René's open decisions are the items that wait for
+What rho does next, in order. Last release: v4.84.1 (2026-10-26). René's open decisions are the items that wait for
 him, each with my default. State, consumers and the numbered backlog: `HANDOVER.md`; rules: `docs/CONTRIBUTING.md`
 § Rules digest. Done work: `docs/CHANGELOG.md`, under the same tag.
 
@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-26 Oct: v4.75.0 to v4.84.0 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
+Released 24-26 Oct: v4.75.0 to v4.84.1 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
@@ -36,33 +36,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   UNIQIDX adoption with SHARD step 10 moves the keyed nodes to event shards, Derived stays; a purge for result rows
   is STORECFG, René later); restart re-reads all past results (625 s at 3 days, mostly sigma's; rho's share from
   OpenStats of k10260915). So EXISTMAP and COMPOSITEDISK bite first on the reference shard.
-- **TXSNAP** (sigma, 26 Oct: 58 % of CPU on ai-soc's BA slice, 28.4 of 49.2 s) — inside a Tx the first
-  `SetNodeVersionInterval` of an entity snapshots it for rollback, and when history rows lie above the current
-  version (every interval patch leaves them) the snapshot reads and deep-copies the whole chain
-  (`copyNodeHistory`); the version allocator (`nextNodeVersion`) reads the whole history in the same case. So a
-  node patched once per cut costs O(versions) per patch, growing with run length. Plan: a store capability that
-  answers an entity's highest stored history version (write buffer included; badger one reverse key seek), used
-  by the allocator and by the snapshot (rollback then trims the Tx's own rows above it, as the head path does).
-  Budget (lesson 89): a patch in a Tx on a node with 1,000 versions costs at most 1.5x the same patch on a node
-  with 10. Done when: released with the budget met. Chain length (sigma, 26 Oct,
-  v0.11.71 ROWSRUN): before, one Session node gained a version per paged head per cut (45 versions in sigma's test
-  of 2 heads over 24 cuts; 1,000 within a few hundred cuts on ai-soc's program); now each head has its own node,
-  one version per cut, so a long run still reaches thousands per node. Since sigma v0.11.73 (ROWSTAMP) paged rows
-  and state are written once (chain 1); the exposure left is the estate write-back Session node, one version per
-  cut that changes facts or coverage (~794 on ai-soc's BA slice, thousands a day), each stamp a
-  `SetNodeVersionInterval` in the write's Tx; Derived facts keep a few versions. The 1,000-against-10 shape fits.
-  Measured (26 Oct, branch `txsnap`, scratch probe, all four backends): with a valid head entry a Tx patch costs
-  the same at 10 and 1,000 versions (51-97 allocs, no history read); without one the correction folds the chain
-  AND the snapshot copies it (60-80x at 1,000; the bounded grow shape 10,000x). So the snapshot capability alone
-  cannot meet the budget: the cause is a missing entry. Candidates: a store wrapper that only inherits
-  HistoryEpochCapability (rho then turns the cache off for the graph), a chain row that disqualifies the entry
-  (delete, retraction, shared version), or stripe eviction (~every 250 cuts at ai-soc's rate: cheap). Asked
-  ai-soc (store type) and sigma (stamp shape, deletes) 26 Oct; the test follows their shape. Answers: no wrapper
-  (bare *tiered.Store), no deletes; the stamp patches the current row's own interval once per Tx, which replaces
-  the row and leaves the next Tx's entry stale. Cause found: tiered and sharded lack the rollback trim, so the
-  snapshot's no-history-above path was gated off and it copied the chain. Fixed on branch `txsnap` (7511b639):
-  sigma's WriteDerived shape on tiered at 1,000 versions 22,752 -> 231 allocs (x1.0 against 10), rollback exact.
-  Next: patch release v4.84.1.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 

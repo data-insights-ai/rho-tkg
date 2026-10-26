@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.84.1] - 2026-10-26
+
 ### Fixed
 
 - **TXSNAP** (sigma, 26 Oct: 58 % of CPU on ai-soc's BA slice; budget per lesson 89): on a tiered or sharded store,

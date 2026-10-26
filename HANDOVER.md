@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.84.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.84.1; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,8 +7,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-26 Oct:** v4.75.0 to v4.84.0 (v4.83.0 R37, v4.84.0 EXISTMAP), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
-- **Branches:** `txsnap` (TXSNAP, from main 58ed9969; no commits yet); merged item branches (r37, existmap included) wait for René's delete (user-only
+- **Released 24-26 Oct:** v4.75.0 to v4.84.1 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
+- **Branches:** none open; merged item branches (r37, existmap, txsnap included) wait for René's delete (user-only
   action 6). main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
@@ -81,7 +81,7 @@ lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
 4. gh-dashboard scratchpad (667 MB, path in that session). The cleanup message to tts-tests-b6 expired and monitoring-a9's is
    held (different permission mode); tell them directly if wanted.
 5. `! git branch -D v5 worktree-agent-a0d52d5298e44faee` (full name; `v5` = stale copy of origin/v5 `04c7fd4f`, worktree-agent: its test and evidence are `tasks/evidence/4/` on main, backlog item 4). Both content-complete elsewhere.
-6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc midnightdst calendar opencold r37 existmap` (`-d` refuses an unmerged one).
+6. Merged item branches (content on main, `git branch --merged main`): `! git -C ~/Work/2026/datainsights/rho-tkg branch -d arm32 cascadeflaky clearmeta clearshards coldro compactl0 decodebound dict discardclose dstwin entrysize flake flakywal longtier metasync movercopy moveread openexcise prefetch racetime resume samestart shard-step1 shard2 tierlabeldisk uniqidx values verifylog vloggc midnightdst calendar opencold r37 existmap txsnap` (`-d` refuses an unmerged one).
 
 ## Appendix A — origin watch
 
