@@ -41,7 +41,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   57-91 k facts/s of 500 B here whatever the writer count, 1.1-2x the goal's 46 k/s sustained, while separate stores
   scale near linearly (4 stores 228 k/s). Levers, cheapest first: (1) ASYNCSTAGE: an async backpressure flush
   (100 k ops) always exceeds badger's transaction limit and is staged, writing each entry three times; flush below
-  the limit; (2) GROUPFSYNC: a durable batch holds the graph lock through its fsync; overlap the next batch's apply
+  the limit (branch asyncstage e5610a7b: async 1.55-2.0x, 111-146 k/s; gate next, a patch); (2) GROUPFSYNC: a durable batch holds the graph lock through its fsync; overlap the next batch's apply
   with it (needs the rule for what a reader sees before the fsync); (3) LANES: several hot write lanes (K badger DBs
   for the hot window, IDs striped by lane), an ADR first. Done when: one graph ingests 500 B facts at 3x the goal
   (~140 k/s durable) on this machine, measured with the probe. Consumers (26 Oct): ai-soc runs every store durable
