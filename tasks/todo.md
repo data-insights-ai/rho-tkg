@@ -53,8 +53,8 @@ it (its rig is René's call).
 
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
-  below are ticked and released. Steps 1-8 shipped (v4.76.1, v4.78.0; MOVEREAD v4.78.2, COLDRO v4.78.3). Waits for:
-  step 10's decision (René, with ai-soc's counts).
+  below are ticked and released. Steps 1-8 shipped (v4.76.1, v4.78.0; MOVEREAD v4.78.2, COLDRO v4.78.3). Step 10
+  approved by René (26 Oct), in progress.
 
 ### SHARD plan
 
@@ -98,11 +98,11 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
     nodes (Process 632,653 at 40.6 B average key, File 229,863 at 110.9 B, RegValue 74,934 at 125.2 B, 7 more labels
     under 32,000 each; cap 4,096 B); about 1.9 M BA edges plus 1.0 M BO; reference shard 828 MB, the day shard 1.2 GB;
     indexed rel properties `aisoc_record` (~22 B) on every edge, `device`, `remote_ip`, `src`/`action`; no on-disk
-    property index; ErrEntryTooLarge never. Decision on the unique-key slice: René, with these numbers.
+    property index; ErrEntryTooLarge never. René 26 Oct: yes, build it (unique keys first).
 
 - **METASYNC** (docs on main, ships with the next tag) — the doors and `docs/persistence.md` state what holds: a
   process crash never loses a durable meta write; without `SyncWrites` a power loss can, when a memtable rotation put
-  it in a retired memtable. Waits for: René, whether he wants a power-loss rig (LazyFS or dm-flakey) to test it.
+  it in a retired memtable. The power-loss rig (LazyFS or dm-flakey) is a later item (René 26 Oct).
 - **CHAIN-2** — Each layer's share of the waste decides what that layer changes, against a target for stored bytes per
   fact. Done when: René has decided per layer. Waits for: CHAIN.
 
