@@ -99,6 +99,24 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
     under 32,000 each; cap 4,096 B); about 1.9 M BA edges plus 1.0 M BO; reference shard 828 MB, the day shard 1.2 GB;
     indexed rel properties `aisoc_record` (~22 B) on every edge, `device`, `remote_ip`, `src`/`action`; no on-disk
     property index; ErrEntryTooLarge never. René 26 Oct: yes, build it (unique keys first).
+    Slice 1 (UNIQIDX), shaped by ai-soc (26 Oct): Process, File, RegValue and LocalObject (966,709 of 1,038,092 keyed
+    nodes) become event labels; Device, Account, Address, DnsName, FileHash, AisocMaintText stay reference. Doors:
+    `tx.GetOrCreateByKey`, `CreateUnique` (current scope), `ByLabelAndProperty(label, "key", v)`; a re-seen key must
+    find its old row (24.8 % of rows need lineage older than 25 h); no change log, no replicas. Design: an owner index
+    `(label, key, value) -> ID` in a badger under `DataDir/index` (hot volume), kept by core under the value locks it
+    already takes: the claim is written (synced as the store's writes are) before the row, every lookup reads the
+    owner's row and ignores a claim the row no longer backs (a crash, a rollback, a value change, a delete, a dropped
+    shard leave at most such a claim; none is ever missing), so no change-log replay is needed. Steps:
+    (a) [ ] the index store and its capability on tiered (open at New when declared, Clear wipes it); red: claims
+        survive a reopen, Clear empties them.
+    (b) [ ] `CreateUnique` on a tiered event label declares the index and seeds it from the current rows (it is
+        refused today); the unique check and `GetOrCreateByKey` read the owner index for such a label; red: a key
+        whose row is on a closed cold shard is found (no new node) opening only that shard, a duplicate is refused.
+    (c) [ ] `ByLabelAndProperty(label, key, v)` (current, DepthAll) on such a label answers from the index.
+    (d) [ ] stale claims: value change, delete, label removal, retention drop, rollback, crash between claim and row:
+        the value is free again; red tests for each.
+    (e) [ ] measured on ai-soc's shape (lookup cost against shard count, write cost per keyed row), released as a
+        minor, ai-soc and sigma told.
 
 - **METASYNC** (docs on main, ships with the next tag) — the doors and `docs/persistence.md` state what holds: a
   process crash never loses a durable meta write; without `SyncWrites` a power loss can, when a memtable rotation put
