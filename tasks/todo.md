@@ -72,10 +72,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 
 ## Next
 
-- **GATETIER** (found 26 Oct) — 42 more test files skip with a plain `testing.Short()`, so no gate runs them
-  (CONTRIBUTING § Tests forbids it); one of them (R37) went red unseen for a release. Each either becomes
-  race-gated (`testing.Short() && !raceEnabled`, bounds measured under race) or the release gate gains a long-tier
-  run. Done when: no plain `testing.Short()` skip is left, or the gate runs the long tier, and it is green.
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Steps 1-8 shipped (v4.76.1, v4.78.0; MOVEREAD v4.78.2, COLDRO v4.78.3). Step 10

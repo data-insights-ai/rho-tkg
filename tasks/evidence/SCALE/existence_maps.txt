@@ -49,3 +49,8 @@ probe binary):
   v4.85.0   insert 3.9 / 4.4 / 5.6 s   clean reopen 0.29 / 0.27 / 0.38 s   heap after reopen +192.1 / +191.9 / +192.8 MB
   v4.84.0   insert 3.9 s               clean reopen 0.25 s                 heap after reopen +192.2 MB
 Reading: no change (ROWPROBE touches lookups, not ingest or the open).
+
+v4.86.0 release scale probe (93bc7635, Derived, 1 M nodes, load average 21-24; alternated with v4.84.0's binary):
+  v4.86.0   insert 3.7 / 3.9 s   clean reopen 0.27 / 0.25 s   heap after reopen +192.6 / +192.9 MB
+  v4.84.0   insert 3.6 s         clean reopen 0.26 s          heap after reopen +192.0 MB
+Reading: no change (TIERSTATS adds one atomic add per shard checkout).
