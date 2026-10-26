@@ -14,6 +14,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
 // VERIFY / BADGERLOG (tasks/evidence/USAGE/vlog_test.go.txt): with rho's old
@@ -115,13 +116,15 @@ func TestVlogFlippedByteOlderFileIsAnError(t *testing.T) {
 	}
 }
 
-// V2: one flipped byte at each of ~80 positions of a table (one per copy of
+// V2: one flipped byte at each of ~70 positions of a table (one per copy of
 // the store): with block checksums on, no position yields altered data, a
 // silently missing row or a panic; measured with them off: 6 altered, 2
 // silently missing, 2 panics (tasks/evidence/VERIFY/). The bytes of the block
 // trailers are skipped: badger parses a trailer before it verifies the block
-// and panics in its own goroutine (BADGERPANIC, accepted). Mutation: block
-// checksums off.
+// and panics in its own goroutine (BADGERPANIC, accepted). So the table must
+// be one block: compressed, 50 rows were ~17 KB in five blocks, whose middle
+// trailers the positions could hit (26 Oct, a few bytes more of open image
+// moved one onto a position). Mutation: block checksums off.
 func TestTableFlippedByteNeverPanics(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: ~70 store copies opened")
@@ -132,7 +135,7 @@ func TestTableFlippedByteNeverPanics(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ids []types.NodeID
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 8; i++ {
 		n := types.NewNode(types.NodeID(snowflake.ID(5000+i)), 7, nil)
 		_ = n.SetProperty("note", fmt.Sprintf("value-%04d-%s", i, strings.Repeat("q", 200)))
 		if err := bs.PutNode(n); err != nil {
@@ -145,6 +148,17 @@ func TestTableFlippedByteNeverPanics(t *testing.T) {
 	if len(tables) != 1 {
 		t.Fatalf("fixture: %d tables, want 1", len(tables))
 	}
+	probe := t.TempDir()
+	copyDirFiles(t, base, probe)
+	db, err := badgerv4.Open(badgerv4.DefaultOptions(probe).WithReadOnly(true).WithLogger(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	infos := db.Tables()
+	_ = db.Close()
+	if len(infos) != 1 || infos[0].UncompressedSize > 4096 { // badger's default BlockSize
+		t.Fatalf("fixture: tables %+v, want one table of one 4 KB block", infos)
+	}
 	orig, err := os.ReadFile(tables[0])
 	if err != nil {
 		t.Fatal(err)
@@ -156,14 +170,11 @@ func TestTableFlippedByteNeverPanics(t *testing.T) {
 	tableChk := u32(len(orig) - 4)
 	indexLen := u32(len(orig) - 4 - tableChk - 4)
 	blocksEnd := len(orig) - 4 - tableChk - 4 - indexLen
-	if blocksEnd > 4096+512 {
-		t.Fatalf("fixture: %d bytes of blocks, want one block", blocksEnd)
-	}
 	blockChk := u32(blocksEnd - 4)
 	trailerFrom := blocksEnd - 4 - blockChk - 4 // the block's entry count, checksum and checksum length
 	var silent []string
 	positions := 0
-	for at := 20; at < trailerFrom-4; at += 37 {
+	for at := 20; at < trailerFrom-4; at += 9 {
 		positions++
 		dir := t.TempDir()
 		ents, _ := os.ReadDir(base)
