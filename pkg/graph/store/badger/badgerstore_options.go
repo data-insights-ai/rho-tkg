@@ -140,6 +140,12 @@ func validateEncryptionConfig(cfg Config) error {
 	return nil
 }
 
+// BadgerOptions is the badger options a store opened with cfg uses (the same
+// single construction path): for a side index beside the store's shards, such
+// as tiered's owner index (SHARD step 10), so it checksums, logs, encrypts
+// and syncs as they do.
+func BadgerOptions(cfg Config) badgerv4.Options { return buildBadgerOptions(cfg) }
+
 // buildBadgerOptions translates a Config into Badger options. It is the SINGLE
 // option-construction path — shared by New's open and the WAL-migration open —
 // so the two can never drift (the ai-assisted-soc precedent: four hand-written

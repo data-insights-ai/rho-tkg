@@ -341,7 +341,10 @@ type Store struct {
 	temporalIdxFile   string // path to temporal_indexes.msgpack
 	vectorIdxFile     string // path to vector_indexes.msgpack
 	dataDir           string
-	closing           atomic.Bool             // set when Close begins: a running move stops (shard_move.go)
+	closing           atomic.Bool
+	ownerIdxMu        sync.Mutex  // guards ownerIdx
+	ownerIdx          *ownerIndex // the owner index (owner_index.go); nil until it exists
+             // set when Close begins: a running move stops (shard_move.go)
 	moveFault         func(step string) error // test hook: a crash after a move step
 	warmDir, coldDir  string                  // volumes (shard_volume.go); "" = not mapped
 	refVolume         string                  // catalog volume a new reference shard is made on
@@ -979,6 +982,14 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: backfill history lives: %w", err)
 	}
 
+	if !cfg.InMemory {
+		idx, err := ts.openOwnerIndex(false) // UNIQIDX: open when it exists
+		if err != nil {
+			_ = ts.Close()
+			return nil, err
+		}
+		ts.ownerIdx = idx
+	}
 	if err := ts.finishInterruptedClear(); err != nil {
 		_ = ts.Close()
 		return nil, err
@@ -1230,6 +1241,9 @@ func (ts *Store) Close() error {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref shard: %w", err))
 			}
 		}
+		if err := ts.closeOwnerIndex(); err != nil {
+			closeErr = errors.Join(closeErr, fmt.Errorf("graph: close owner index: %w", err))
+		}
 		closeErr = errors.Join(closeErr, ts.backgroundError())
 	})
 	return closeErr
@@ -1414,6 +1428,11 @@ func (ts *Store) Clear() error {
 	}
 	if err := clearStepFault("archive"); err != nil {
 		return err
+	}
+	// The owner index before the reference shard, whose Clear removes the
+	// pending marker: a crash before that re-runs the whole Clear at open.
+	if err := ts.clearOwnerIndex(); err != nil {
+		return rollbackIndexMetadata(err)
 	}
 
 	ref, refCheckin, err = ts.checkoutRefShard()

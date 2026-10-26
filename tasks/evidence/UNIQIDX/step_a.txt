@@ -1,0 +1,12 @@
+UNIQIDX step (a) (branch uniqidx), 2026-10-26
+the owner index: a badger under DataDir/index (in memory for an in-memory store), opened with the shards' badger
+  options (badger.BadgerOptions: checksums, logger, encryption, SyncWrites); opened at New when the directory
+  exists, made at the first declaration otherwise; declarations stored in it and loaded at open; claims
+  (label, key, value) -> 8-byte ID; Clear wipes it after the archive and before the reference shard (whose Clear
+  removes the pending marker, so a crash re-runs the wipe); Close closes it.
+red: TestOwnerIndexLifecycle did not build (no capability).
+green: TestOwnerIndexLifecycle (no directory without a declaration; claims and declarations survive a reopen; a
+  later claim replaces one; a drop removes the declaration and its claims; Clear empties it; a claim on an
+  undeclared pair refused; in memory); tiered suite.
+mutations (each failed the test): no open at New; Clear keeping the index; a drop keeping its claims; claims without
+  a declaration; the directory made at every New; declarations not loaded at open.
