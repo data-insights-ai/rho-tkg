@@ -116,8 +116,9 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
         (b) and (c) green on branch `uniqidx` (`tasks/evidence/UNIQIDX/step_b.txt`; one lookup path serves both).
     (d) [x] stale claims: value change, delete, label removal, retention drop, rollback, crash between claim and row:
         the value is free again; red tests for each. Green on branch `uniqidx` (`step_d.txt`).
-    (e) [ ] measured on ai-soc's shape (lookup cost against shard count, write cost per keyed row), released as a
-        minor, ai-soc and sigma told.
+    (e) [x] measured on ai-soc's shape (lookup cost against shard count, write cost per keyed row), released as a
+        minor, ai-soc and sigma told. Released in v4.81.0 (`tasks/evidence/UNIQIDX/`). Next slices (label and property
+        postings, the relationship owner map) wait for a measured need.
 
 - **METASYNC** (docs on main, ships with the next tag) — the doors and `docs/persistence.md` state what holds: a
   process crash never loses a durable meta write; without `SyncWrites` a power loss can, when a memtable rotation put

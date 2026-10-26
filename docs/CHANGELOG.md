@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.81.0] - 2026-10-26
+
 ### Added
 
 - **UNIQIDX** (SHARD step 10 slice 1; René 26 Oct, shaped by ai-soc): `CreateUnique` on a tiered EVENT label (refused
@@ -34,8 +36,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   nothing, so a write in the same millisecond could be stamped at the pin; beside other tests it then missed a node.
   It pins with `NowTx()` and runs in parallel again; `TestTemporalPropertySeekPinUnderFrozenClock` reproduces the
   collision deterministically.
-
-### Changed
 
 - **VLOGGC** (BADGER step 3; measured, no code change): the value-log GC loop costs 28 ns a pass where the value log
   holds nothing, and reclaims dead large values once compaction has dropped them (114 MB to 32 MB in the probe); a
