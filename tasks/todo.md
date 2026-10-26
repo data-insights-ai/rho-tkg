@@ -45,8 +45,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   (nodeRevs ~39 B, nodeIDs ~33 B, the rest map growth slack); with the RAM label index and ordinals (the plain
   defaults) 215 B. Steps 1-2 done (`index.IDSet`, sorted chunks): ~80 B; step 3 done (43011eb1: striped revision
   table, 128 KB fixed); measured as live bytes the test reads 82.7 B per node on main and 6.5-8.4 B on the branch
-  (70fcd129): the RAM budget is met. Step 4 done (48fa4881: hash cache capped at 64 K entries). Left: step 5
-  (open image: open time), the bench check.
+  (70fcd129): the RAM budget is met. Step 4 (48fa4881): hash cache capped at 64 K entries. Step 5
+  (0d16b0a4): ID sets in the open image, label keys only counted with the label index on disk; clean reopen
+  ~0.25 s per 1 M nodes, budget met. Left: crash reopen no slower, the bench check, docs, release as a minor.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 

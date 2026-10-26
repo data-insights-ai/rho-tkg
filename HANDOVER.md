@@ -8,7 +8,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 ## State
 
 - **Released 24-26 Oct:** v4.75.0 to v4.83.0, each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
-- **Branches:** none open; merged item branches (r37 included) wait for René's delete (user-only action 6). main
+- **Branches:** `existmap` (EXISTMAP, the next release, a minor: new `index.IDSet`); merged item branches (r37 included) wait for René's delete (user-only action 6). main
   is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
@@ -24,7 +24,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     `DepthWarm` on windowed reads; `CreateRelTemporal` on its 29 estate-indexed rel types; unique keys on reference
     labels only; Derived (and its composite index) on the reference shard. Event times UTC (Check Point CSV in the
     operator's zone, BO: America/Bogota); Flux runs Europe/Berlin.
-  - sigma-tkgd, agent `sigma-tkgd-bb`: v0.11.68 (26 Oct, ENDPOINT and EDGEREF) pins rho v4.80.0 in every module (VALUES and TKGID not wired yet); its
+  - sigma-tkgd, agent `sigma-tkgd-bb`: v0.11.69 (26 Oct: ENDPOINT, EDGEREF, PAGESWITCH) pins rho v4.80.0 in every module (VALUES and TKGID not wired yet); its
     test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired` below); its
     store analysis tool is `projects/derived-writeback` (cmd/wbscan).
   - agent-bookkeeping (`~/Work/2026/bds421/sigma/agent-bookkeeping`): build check only.
