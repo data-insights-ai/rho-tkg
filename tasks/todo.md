@@ -147,8 +147,9 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   Answered from the code: yes it can (an update or late event older than ColdAfter opens the shard writable,
   `tieredstore_lifecycle.go` checkout); rho's recovery does not scan by time (each shard replays its WAL at its next
   open; the clock floor is one reference-shard key raised before any shard's rows). Done when: a test writes INTO a
-  cold shard with DurableCommit, drops the store without Close, and reads it back after reopen; and ai-soc names
-  the recovery "by time" it meant (theirs or sigma's would miss such a write).
+  cold shard with DurableCommit, drops the store without Close, and reads it back after reopen (for other
+  consumers). ai-soc (26 Oct): the recovery "by time" is ai-soc's own (graphmgr), and no ai-soc write opens a cold
+  shard (reference labels, RelsByMint edges on the hot shard, recent rows only); nothing more asked.
 - **RESTART** (ai-soc, 26 Oct) — k10260011's clean restart took 625 s (nearly all sigma re-reading results);
   k10252216's faulted store took 2,115 s to reopen on v4.78.5, rho's share unmeasured. Done when: the open reports
   its time and the shards it opened or recovered, cheap enough to read at the next run (with OPENCOLD).
