@@ -1,0 +1,24 @@
+EXISTMAP results, branch existmap against main (v4.83.0 + docs), 26 Oct 2026
+
+Budget (todo EXISTMAP, lesson 89)                 main            branch          met
+RAM per node, open shard, ai-soc's shard config   82.7 B          6.5-8.4 B       yes (<= 12 B; TestExistMapResidentBytesPerNode)
+clean reopen per 1 M nodes (scale probe, tiered)  1.2-1.4 s       0.22-0.25 s     yes (<= 0.4 s)
+  4 M Derived, composite index, validity          7.69 s          1.26 s
+crash reopen (images invalidated), 2 M nodes      7.7-9.4 s       6.2-6.5 s       yes (no slower)
+  heap after it                                   ~790 MB         ~550 MB
+point reads and writes (bench/, medians of 5)     see below                       no slowdown measurable
+
+bench/ (go test -bench, -count 5, medians, ns/op; branch run first, then main; load average 13-16 from other
+sessions, so the memory store, which the branch does not touch, moves 4-24 % between runs):
+  BulkAddNodes10k/badger           main 20532847   branch 19150988   -6.7 %
+  PointReadHit/badger              main      179   branch      155   -13.7 %
+  RelPropertyLookup10k/badger/idx  main      964   branch      817   -15.3 %
+  TemporalPoint/badger             main 15090764   branch 10787994   -28.5 %
+  (memory store, unchanged code:   -4.0 %, -24.3 %, -23.4 %, -9.4 %)
+graph API (bench-compare-revisions.sh main existmap, -count 5, medians): AddNode -6.8 %, AddNodeTx -16 %,
+AddRelationship -27 %, AddNodeLabel -28 %; allocations equal.
+
+Mutation checks: revision table (bump no-op, rel delete no bump, node delete no bump, Clear no bump), hash cache
+cap, image ID-set decode (zero delta), lazy label open (no disk read, no counts, empty entity set): each fails a
+test. Probe: tasks/evidence/SCALE/scaleprobe_main.go.txt (with its -crash and
+-cpuprofile flags).

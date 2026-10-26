@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **EXISTMAP** (SCALE, 26 Oct: the goal of about 2 TB a day; budget per lesson 89): an open badger store or tiered
+  shard keeps ~8 B of RAM per node instead of ~83 B (`TestExistMapResidentBytesPerNode`, ai-soc's shard config,
+  live heap after a clean reopen), and a clean reopen takes ~0.25 s per million nodes instead of ~1.4 s (4 M
+  Derived nodes with a composite index: 7.69 s -> 1.26 s); a crash reopen got faster too (2 M nodes: 7.7-9.4 s ->
+  6.2-6.5 s). The live node and relationship IDs are sorted chunks (`index.IDSet`) instead of maps; the write
+  revisions that guard the prefetch handoffs are a fixed striped table (a write, delete or `Clear` moves its
+  stripe past every captured revision; a collision only forces the locked re-read); the node integrity-hash cache
+  holds at most 64 K entries (it grew with every node a relationship write hashed); the open image carries the ID
+  sets, so a clean open walks no entity keys, and with `LabelIndexOnDisk` it no longer builds and drops the RAM
+  label map (~33 B per node of open peak). An older release reading a v4.84.0 image rebuilds once from the rows
+  (`tasks/evidence/EXISTMAP/`, `tasks/evidence/SCALE/`).
+
 ## [4.83.0] - 2026-10-26
 
 ### Fixed

@@ -211,7 +211,9 @@ One Badger LSM. Writes land in an in-memory write buffer and are flushed in one 
 together with the counters and the change-log records; `SyncWrites` flushes and fsyncs per write, and
 `DurableCommit` groups a whole commit into one fsync. Readers see the buffer through an overlay, so a write is
 visible before it is durable. Indexes (labels, adjacency, properties, temporal, vector) live in RAM by default and
-optionally on disk; a clean `Close` writes an *open image* so the next open skips the rebuild scan.
+optionally on disk; a clean `Close` writes an *open image* so the next open skips the rebuild scan. What stays in RAM
+per entity is bounded (EXISTMAP): the live ID sets are sorted chunks of IDs (~8 B each), the write revisions a
+fixed striped table (128 KB per kind), the integrity-hash cache at most 64 K entries.
 `docs/persistence.md` owns the key layout, the wire format, the durability guarantees and recovery.
 
 ### tiered.Store (`pkg/graph/store/tiered/`)

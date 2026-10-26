@@ -3,29 +3,39 @@
 package main
 
 import (
+	"io/fs"
+	"path/filepath"
+
 	"flag"
 	"fmt"
+	badger "github.com/dgraph-io/badger/v4"
 	"os"
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"strings"
 	"time"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 var store *tieredpkg.Store
 
+var syncW = flag.Bool("sync", false, "ai-soc's durability: SyncWrites + DurableCommit")
+var padBytes = flag.Int("bytes", 0, "add a string property of this many bytes per fact")
+var batchN = flag.Int("batch", 1000, "nodes per batch")
+
 func open(dir string) *graphpkg.Graph {
 	ts, err := tieredpkg.New(tieredpkg.Config{DataDir: dir, RefLabels: []string{"Derived"}, ShardWindow: 24 * time.Hour,
-		ColdAfter: 72 * time.Hour, HistoryDeltaEncoding: true, RelsByMint: true,
+		ColdAfter: 72 * time.Hour, HistoryDeltaEncoding: true, RelsByMint: true, SyncWrites: *syncW,
 		AdjacencyIndexOnDisk: true, LabelIndexOnDisk: true})
 	if err != nil {
 		panic(err)
 	}
 	store = ts
-	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12, Store: ts, UntimedValidStart: graphpkg.UntimedUnbounded})
+	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12, Store: ts, DurableCommit: *syncW, UntimedValidStart: graphpkg.UntimedUnbounded})
 	if err != nil {
 		panic(err)
 	}
@@ -43,18 +53,38 @@ func heap() uint64 {
 func main() {
 	n := flag.Int("n", 1_000_000, "entities")
 	label := flag.String("label", "Derived", "Derived (reference shard) or Event (hot shard)")
+	composite := flag.Bool("composite", false, "declare ai-soc's composite (namespace, relation) index")
+	valid := flag.Bool("valid", false, "give each node a validity interval (tkg_valid_from/to)")
+	crash := flag.Bool("crash", false, "invalidate the open images before the reopen (full rebuild)")
+	cpuprof := flag.String("cpuprofile", "", "CPU profile of the reopen")
 	prof := flag.String("memprofile", "", "heap profile after the reopen")
 	flag.Parse()
 	dir, _ := os.MkdirTemp(".", "store")
 	defer os.RemoveAll(dir)
 	g := open(dir)
+	if *composite {
+		if err := g.Index().CreateComposite(*label, []string{"namespace", "relation"}); err != nil {
+			panic(err)
+		}
+	}
 	h0 := heap()
 	t0 := time.Now()
-	const batch = 1000
+	batch := *batchN
+	pad := strings.Repeat("x", *padBytes)
 	for i := 0; i < *n; i += batch {
 		if _, err := g.Batch().Run(func(b *graphpkg.BatchBuilder) error {
 			for j := i; j < i+batch && j < *n; j++ {
-				if _, err := b.AddNode([]string{*label}, map[string]any{"k": int64(j)}); err != nil {
+				p := map[string]any{"k": int64(j)}
+				if *padBytes > 0 {
+					p["pad"] = fmt.Sprintf("%08d", j) + pad[8:]
+				}
+				if *composite {
+					p["namespace"], p["relation"] = "estate", fmt.Sprintf("r%d", j%50)
+				}
+				if *valid {
+					p["tkg_valid_from"], p["tkg_valid_to"] = types.Instant(1_000_000+j), types.Instant(2_000_000+j)
+				}
+				if _, err := b.AddNode([]string{*label}, p); err != nil {
 					return err
 				}
 			}
@@ -72,9 +102,36 @@ func main() {
 	g.Close()
 	runtime.GC()
 	hb := heap()
+	if *crash {
+		// Invalidate every shard's open image (a later commit moves MaxVersion
+		// past it), as a crash leaves the store: the open rebuilds.
+		filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || d.Name() != "MANIFEST" {
+				return nil
+			}
+			db, err := badger.Open(badger.DefaultOptions(filepath.Dir(path)).WithLogger(nil))
+			if err != nil {
+				panic(err)
+			}
+			if err := db.Update(func(txn *badger.Txn) error { return txn.Set([]byte("\xfeforeign"), nil) }); err != nil {
+				panic(err)
+			}
+			db.Close()
+			return nil
+		})
+	}
+	var cpuf *os.File
+	if *cpuprof != "" {
+		cpuf, _ = os.Create(*cpuprof)
+		pprof.StartCPUProfile(cpuf)
+	}
 	t1 := time.Now()
 	g = open(dir)
 	op := time.Since(t1)
+	if cpuf != nil {
+		pprof.StopCPUProfile()
+		cpuf.Close()
+	}
 	h2 := heap()
 	if *prof != "" {
 		f, _ := os.Create(*prof)
