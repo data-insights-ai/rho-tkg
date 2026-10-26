@@ -32,6 +32,16 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   UNIQIDX adoption with SHARD step 10 moves the keyed nodes to event shards, Derived stays; a purge for result rows
   is STORECFG, René later); restart re-reads all past results (625 s at 3 days, mostly sigma's; rho's share from
   OpenStats of k10260915). So EXISTMAP and COMPOSITEDISK bite first on the reference shard.
+- **EXISTMAP** (SCALE's first wall, 26 Oct) — every open badger shard keeps per entity `nodeIDs` (30 B), `nodeRevs`
+  (32.5 B), the same pair for rels, and `nodeHashes` (~99 B per node whose hash was read), and a clean open walks
+  every key to fill them. Plan: (1) the maps behind one type (has, add, delete, len, ascending range), no behaviour
+  change; (2) the ID sets become `index.sortedChunks[int64]` (exact chunks for ascending snowflake IDs); (3) the
+  revisions become a fixed striped table (a write bumps its stripe; a collision only reports "changed", which skips a
+  cache fill: safe); (4) `nodeHashes` bounded; (5) the clean-close open image carries the ID sets, so a clean open
+  reads them instead of walking the keys (a crash open still walks). Budget (lesson 89), on the scale probe and a rho
+  test: RAM per node in an open shard <= 12 B (63 B now); clean reopen <= 0.4 s per 1 M (1.5-1.9 s now); point
+  reads and writes in `bench/` within 5 %; crash reopen no slower. Done when: shipped with the budget met. Branch
+  `existmap`.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
