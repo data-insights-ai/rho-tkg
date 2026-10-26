@@ -25,8 +25,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     `DepthWarm` on windowed reads; `CreateRelTemporal` on its 29 estate-indexed rel types; unique keys on reference
     labels only; Derived (and its composite index) on the reference shard. Event times UTC (Check Point CSV in the
     operator's zone, BO: America/Bogota); Flux runs Europe/Berlin.
-  - sigma-tkgd, agent `sigma-tkgd-bb`: v0.11.71 (26 Oct: ROWSRUN, one Session node per paged head; v0.11.69 ENDPOINT,
-    EDGEREF, PAGESWITCH); v0.11.69 pinned rho v4.80.0 in every module (VALUES and TKGID not wired yet); its
+  - sigma-tkgd, agent `sigma-tkgd-bb`: v0.11.80 (26 Oct: KEYDICT; v0.11.79 pins rho v4.84.1 in every module, full
+    gate under race passed, no test adapted for EXISTMAP's ErrCorruptWire) (VALUES and TKGID not wired yet); its
     test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired` below); its
     store analysis tool is `projects/derived-writeback` (cmd/wbscan).
   - agent-bookkeeping (`~/Work/2026/bds421/sigma/agent-bookkeeping`): build check only.
