@@ -5,3 +5,6 @@
 FAIL
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	3.416s
 FAIL
+
+Measured as live bytes (HeapAlloc after GC) instead of in-use spans, the same test on main (v4.83.0 + docs,
+fc0b8bf6): 82.7 B per node, budget 12 B: red. On branch existmap after step 3 (43011eb1): 6.5-8.4 B per node.
