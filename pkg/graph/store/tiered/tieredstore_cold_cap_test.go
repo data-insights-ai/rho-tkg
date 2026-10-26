@@ -95,9 +95,12 @@ func TestColdShardCapBoundsOpenHandles(t *testing.T) {
 	ts, signalTok := coldCapStore(t, shards, cap)
 
 	// Each rotation demotes the warm shards older than ColdAfter; the shard it
-	// just rotated out stays warm. Seven shards: one hot, one warm, five cold.
-	if n := coldShardsWithOpenStore(ts); n != shards-1 {
-		t.Fatalf("setup: %d cold shards hold a store after demotion, want %d", n, shards-1)
+	// just rotated out stays warm. Seven shards: one hot, one warm, five cold;
+	// six cold when a slow pass (a loaded machine, coverage) finds the shard it
+	// just rotated out older than ColdAfter too (1 run in 40 under -coverpkg).
+	// Either is the premise: more cold shards hold a store than the cap allows.
+	if n := coldShardsWithOpenStore(ts); n < shards-1 {
+		t.Fatalf("setup: %d cold shards hold a store after demotion, want at least %d", n, shards-1)
 	}
 
 	// What the sweeper does on its tick.
