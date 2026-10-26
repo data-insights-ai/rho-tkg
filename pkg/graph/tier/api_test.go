@@ -39,6 +39,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if again[0].Name != "hot" {
 		t.Fatalf("mutating ListShards result changed ops shards: %+v", again)
 	}
+	if st, err := api.ShardAccessStats(); err != nil || st.Cold != 7 || st.ColdOpens != 2 {
+		t.Fatalf("ShardAccessStats = %+v, %v; want the ops' {Cold 7, ColdOpens 2}", st, err)
+	}
 	if err := api.MoveShard(context.Background(), "2026-W43", "warm"); err != nil {
 		t.Fatalf("MoveShard: %v", err)
 	}
@@ -66,7 +69,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	}
 	if ops.archiveCalls != 1 || ops.restoreCalls != 1 || ops.forceRotateCalls != 1 ||
 		ops.listShardsCalls != 2 || ops.rebuildCatalogCalls != 1 || ops.repairCalls != 1 ||
-		ops.verifyShardCalls != 1 || ops.moveShardCalls != 1 {
+		ops.verifyShardCalls != 1 || ops.moveShardCalls != 1 || ops.accessStatsCalls != 1 {
 		t.Fatalf("unexpected call counts: %+v", ops)
 	}
 }
@@ -87,6 +90,12 @@ type tierOpsSpy struct {
 	repairCalls         int
 	verifyShardCalls    int
 	moveShardCalls      int
+	accessStatsCalls    int
+}
+
+func (s *tierOpsSpy) ShardAccessStats() (tiered.ShardAccessStats, error) {
+	s.accessStatsCalls++
+	return tiered.ShardAccessStats{Cold: 7, ColdOpens: 2}, nil
 }
 
 func (s *tierOpsSpy) Archive(id types.NodeID) error {

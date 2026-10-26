@@ -213,6 +213,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		}
 		return zero, false, serr
 	}
+	ts.foldDroppedAccesses(es)
 	if rerr := os.RemoveAll(dir); rerr != nil {
 		return zero, false, rerr
 	}

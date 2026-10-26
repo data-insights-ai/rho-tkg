@@ -234,22 +234,23 @@ type EventShard struct {
 	store             *BadgerStore // nil when cold + closed (lazy-open)
 	tier              ShardTier
 	tierCode          atomic.Uint32
-	timeStart         time.Time     // shard window start (inclusive)
-	timeEnd           time.Time     // shard window end (exclusive)
-	readOnly          bool          // warm/cold tier marker; Badger handles remain writable for owner-shard mutations
-	path              string        // relative path for lazy-open (e.g., "events/2026-W10")
-	shardMu           sync.Mutex    // protects lazy open/close
-	activeReqs        atomic.Int64  // outstanding read requests; blocks idle-close
-	lastAccess        atomic.Int64  // unix ms, idle-close tracking
-	readTransientOpen bool          // shardMu-protected: cold store was opened only for transient read fanout
-	moveDone          chan struct{} // shardMu-protected: non-nil while MoveShard moves the shard; closed when it ends
-	moving            atomic.Bool   // set with moveDone: the lock-free checkout of an open shard backs off to the gate
-	moveRead          *BadgerStore  // shardMu-protected: while a move copies the shard, a read-only handle on the source that readers pin (MOVEREAD)
-	moveReadReady     chan struct{} // shardMu-protected: closed once the copy's read-only handle is open; nil outside the copy or when it did not open
-	storeRO           bool          // shardMu-protected: store is a read-only handle (COLDRO): a writer upgrades it first
-	coldOpens         atomic.Int64  // lazy opens of the closed cold shard since New (ShardInfo.ColdOpens)
-	moveFailedAt      atomic.Int64  // when the idle sweep's last move of the shard failed (unix ns; 0 = never): it retries the others first
-	coldCounted       bool          // shardMu-protected: this shard's open store is counted in Store.openColdShards
+	timeStart         time.Time        // shard window start (inclusive)
+	timeEnd           time.Time        // shard window end (exclusive)
+	readOnly          bool             // warm/cold tier marker; Badger handles remain writable for owner-shard mutations
+	path              string           // relative path for lazy-open (e.g., "events/2026-W10")
+	shardMu           sync.Mutex       // protects lazy open/close
+	activeReqs        atomic.Int64     // outstanding read requests; blocks idle-close
+	accesses          [3]atomic.Uint64 // checkouts while hot, warm, cold (ShardAccessStats); beside activeReqs, whose cache line a checkout already writes
+	lastAccess        atomic.Int64     // unix ms, idle-close tracking
+	readTransientOpen bool             // shardMu-protected: cold store was opened only for transient read fanout
+	moveDone          chan struct{}    // shardMu-protected: non-nil while MoveShard moves the shard; closed when it ends
+	moving            atomic.Bool      // set with moveDone: the lock-free checkout of an open shard backs off to the gate
+	moveRead          *BadgerStore     // shardMu-protected: while a move copies the shard, a read-only handle on the source that readers pin (MOVEREAD)
+	moveReadReady     chan struct{}    // shardMu-protected: closed once the copy's read-only handle is open; nil outside the copy or when it did not open
+	storeRO           bool             // shardMu-protected: store is a read-only handle (COLDRO): a writer upgrades it first
+	coldOpens         atomic.Int64     // lazy opens of the closed cold shard since New (ShardInfo.ColdOpens)
+	moveFailedAt      atomic.Int64     // when the idle sweep's last move of the shard failed (unix ns; 0 = never): it retries the others first
+	coldCounted       bool             // shardMu-protected: this shard's open store is counted in Store.openColdShards
 
 	// counts is what this shard held when it was last closed, so counting
 	// questions can be answered without reopening it. See shardCounts.
@@ -332,6 +333,10 @@ type Store struct {
 	labelNames        atomic.Pointer[registrypkg.LabelRegistry]       // names vdPlan's members; installed on every shard at open
 	relTypeNames      atomic.Pointer[registrypkg.RelTypeRegistry]
 	refActiveReqs     atomic.Int64                // refcount for refShard — Close spin-waits on this before refShard.Close()
+	refAccesses       atomic.Uint64               // checkouts of refShard (ShardAccessStats)
+	archiveAccesses   atomic.Uint64               // checkouts of refArchive (ShardAccessStats)
+	droppedAccesses   [3]atomic.Uint64            // accesses of event shards a retention drop removed (ShardAccessStats)
+	droppedColdOpens  atomic.Uint64               // their cold opens
 	refArchive        atomic.Pointer[BadgerStore] // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu         sync.Mutex                  // serializes lazy-open of refArchive (single-flight)
 	migrateMu         sync.Mutex                  // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)

@@ -168,8 +168,10 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 			es.readTransientOpen = false
 			store := es.store
 			es.shardMu.Unlock()
+			es.countAccess()
 			return store, nil
 		}
+		es.countAccess()
 		return es.store, nil
 	}
 	// Cold shard: acquire shardMu to atomically open + increment activeReqs.
@@ -200,6 +202,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 	es.lastAccess.Store(time.Now().UnixMilli())
 	store := es.store
 	es.shardMu.Unlock()
+	es.countAccess()
 	return store, nil
 }
 
@@ -252,6 +255,7 @@ func (es *EventShard) checkoutForRead(ts *Store, readOnly bool) (*BadgerStore, f
 		}
 		if !es.moving.Load() && es.currentTier() != TierCold {
 			es.lastAccess.Store(time.Now().UnixMilli())
+			es.countAccess()
 			return es.store, es.checkinStore, nil
 		}
 		es.activeReqs.Add(-1)
@@ -261,6 +265,7 @@ func (es *EventShard) checkoutForRead(ts *Store, readOnly bool) (*BadgerStore, f
 	if readOnly {
 		if store, release, ok := es.waitMoveForReadLocked(); ok {
 			es.shardMu.Unlock()
+			es.countAccess()
 			return store, release, nil
 		}
 	} else {
@@ -304,6 +309,7 @@ func (es *EventShard) checkoutForRead(ts *Store, readOnly bool) (*BadgerStore, f
 	es.lastAccess.Store(time.Now().UnixMilli())
 	store := es.store
 	es.shardMu.Unlock()
+	es.countAccess()
 
 	// The open-handle cap is NOT enforced here. This checkout is reached from
 	// callers that already hold ts.mu — RebuildCatalog among them — and the cap
@@ -332,6 +338,7 @@ func (es *EventShard) checkoutOpenStoreForRead(ts *Store) (*BadgerStore, func(),
 		}
 		if !es.moving.Load() && es.currentTier() != TierCold {
 			es.lastAccess.Store(time.Now().UnixMilli())
+			es.countAccess()
 			return es.store, es.checkinStore, true, nil
 		}
 		es.activeReqs.Add(-1) // moving or just demoted: the locked path below
@@ -355,6 +362,7 @@ func (es *EventShard) checkoutOpenStoreForRead(ts *Store) (*BadgerStore, func(),
 	es.lastAccess.Store(time.Now().UnixMilli())
 	store := es.store
 	es.shardMu.Unlock()
+	es.countAccess()
 
 	return store, func() { es.checkinReadStore(ts) }, true, nil
 }
@@ -426,6 +434,7 @@ func (es *EventShard) checkoutStoreIfOpen(ts *Store) (*BadgerStore, bool, error)
 		es.activeReqs.Add(-1)
 		return nil, false, ErrStoreClosed
 	}
+	es.countAccess()
 	return store, true, nil
 }
 
@@ -458,6 +467,7 @@ func (ts *Store) checkoutRefShard() (*BadgerStore, func(), error) {
 		ts.refActiveReqs.Add(-1)
 		return nil, noop, ErrStoreClosed
 	}
+	ts.refAccesses.Add(1)
 	return ts.refShard, func() { ts.refActiveReqs.Add(-1) }, nil
 }
 
@@ -514,6 +524,7 @@ func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 		ts.archiveActiveReqs.Add(-1)
 		return nil, noop, ErrStoreClosed
 	}
+	ts.archiveAccesses.Add(1)
 	return archive, func() { ts.archiveActiveReqs.Add(-1) }, nil
 }
 

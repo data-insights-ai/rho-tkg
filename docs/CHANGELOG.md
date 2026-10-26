@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **TIERSTATS** (sigma's PAGESTATS, 26 Oct: ai-soc's condition that a paged load opens no cold shard):
+  `tier.API.ShardAccessStats()` counts a tiered store's shard checkouts by tier (reference, archive, hot, warm,
+  cold) and its cold opens since `New`, cheap enough to diff around every call; a diff bounds the tiers a piece of
+  work touched from above (`TestShardAccessStatsCountsTheTiersAReadTouches`,
+  `TestShardAccessStatsKeepsADroppedShardsCounts`).
+
 ## [4.85.0] - 2026-10-26
 
 ### Added

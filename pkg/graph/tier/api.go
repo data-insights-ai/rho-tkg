@@ -26,6 +26,7 @@ type Ops interface {
 	Restore(id types.NodeID) error
 	ForceRotate() error
 	ListShards() ([]tiered.ShardInfo, error)
+	ShardAccessStats() (tiered.ShardAccessStats, error)
 	MoveShard(ctx context.Context, name, volume string) error
 	RebuildCatalog() error
 	Repair() (*tiered.RepairResult, error)
@@ -86,6 +87,24 @@ func (a *API) ListShards() ([]tiered.ShardInfo, error) {
 		return nil, err
 	}
 	return apiutil.CloneSlice(shards), nil
+}
+
+// ShardAccessStats returns the tiered store's shard checkouts since it opened,
+// counted by the shard's tier at each checkout (reference, archive, hot, warm,
+// cold) plus the lazy opens of closed cold shards. Every read and write pins
+// the shards it touches, and a read by ID that misses the shard of its ID's
+// time pins every other event shard, cold ones included. Diff two snapshots
+// around a piece of work: the difference bounds the tiers that work touched
+// from above, as other callers' accesses in between count too (a zero Cold and
+// ColdOpens diff proves the work opened and read no cold shard). Cheap: atomic
+// counters, no lock beyond the shard list's, nothing opened or walked.
+// ErrNotTieredStore on another store.
+func (a *API) ShardAccessStats() (tiered.ShardAccessStats, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return tiered.ShardAccessStats{}, err
+	}
+	return ops.ShardAccessStats()
 }
 
 // MoveShard moves the event shard name to volume ("hot", "warm" or "cold",

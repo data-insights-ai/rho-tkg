@@ -180,6 +180,22 @@ func (a *AdminOps) ListShards() ([]tiered.ShardInfo, error) {
 	return nil, ErrNotTieredStore
 }
 
+// ShardAccessStats returns a tiered store's shard checkouts since it opened, by
+// tier (tiered.ShardAccessStats). It takes no graph lock: the counters are
+// atomic and the snapshot opens nothing. Only available with tiered.Store.
+func (a *AdminOps) ShardAccessStats() (tiered.ShardAccessStats, error) {
+	c := a.c
+	if err := c.checkOpen(); err != nil {
+		return tiered.ShardAccessStats{}, err
+	}
+	if ts, ok := c.store.(interface {
+		ShardAccessStats() tiered.ShardAccessStats
+	}); ok {
+		return ts.ShardAccessStats(), nil
+	}
+	return tiered.ShardAccessStats{}, ErrNotTieredStore
+}
+
 // RebuildCatalog reconstructs the shard catalog from live state.
 // Only available with tiered.Store.
 //
