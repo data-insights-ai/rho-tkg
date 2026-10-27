@@ -39,7 +39,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **v4.89.1** (PROPSEEK, a patch for ai-soc's BO run k10270452-p4b on v4.89.0): tag CI and ci-fast green, consumers build and
   vet clean; the on-disk equality lookup iterates with AllVersions: 200 lookups before 20,000 deleted entries 325x
   -> 0.9-1.2x their time without them; 4 mutations caught, the fifth's code removed.
-- **v4.89.2** (PROPREWRITE, a patch for sigma's rewritten state units): ci-fast green, consumers build and vet clean;
+- **v4.89.2** (PROPREWRITE, a patch for sigma's rewritten state units): tag CI and ci-fast green, consumers build and vet clean;
   an update writes only the on-disk property entries whose value changed (20 updates: 1 version, before 21); 10
   mutations caught.
 - **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (merged into v4.89.0, local only), propseek (merged into v4.89.1, local only), proprewrite (merged into v4.89.2, local only). The merged item branches are deleted and the kept ones pushed
