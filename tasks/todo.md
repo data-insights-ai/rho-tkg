@@ -12,8 +12,9 @@ Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled 
 Released 24-27 Oct: v4.75.0 to v4.89.3 (`docs/CHANGELOG.md`). Goal 2 begun (27 Oct, after René's three-agent checkpoint):
 ai-soc's P4BSTORE A/B k10271117 on v4.89.2 (disk index 518 s against 453 s in RAM) gave PROPBOUNDS, v4.89.3. Its re-run
 k10271211: disk lookup CPU 48.5 -> 18.25 s, push 454 vs 481 s (+6 %, was +14 %); left: badger Seek across the LSM tables
-per key (11.7 s), NewIterator 2.8 s. Waits for ai-soc (LSM table counts per level) and sigma (miss share, keys per call,
-repeats of a key) to pick the lever: L0 tuning, caller batching, a miss marker key (format, minor) or a result cache. Before it, PARKED (René 27 Oct, relayed by ai-soc): every agent
+per key (11.7 s), NewIterator 2.8 s. sigma's counts: misses under 1 %, one key per
+call, 2.53M of ~2.64M lookups re-evict an unchanged row; sigma's CLEANEVICT drops those (about 96 %), no rho change.
+Waits for the A/B after CLEANEVICT; LSM table counts only if disk still trails. Before it, PARKED (René 27 Oct, relayed by ai-soc): every agent
 works on goal 1, the 134.7 MB k10270301's BA store writes twice by two code paths; ai-soc's meter (ANALYSIS 5) classes
 no item as rho's (STATEREF sigma's, ROWDICT and PAGELEAN sigma's or ai-soc's). rho parks goal-2 work (ITERTOMB, the
 ASOFREAD carry, OPENIMAGE step 3) and takes only a goal-1 item ai-soc sends; a possible question: can an edge
