@@ -46,7 +46,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
   can vanish from the scan until the flush (probe, PropertyIndexOnDisk: a node updated 2 -> 1 is missing from
-  ForEachByLabelPropertyRangeOrdered [1,2], equality finds it). Fix: resolve per key. Done when released.
+  ForEachByLabelPropertyRangeOrdered [1,2], equality finds it). Fix: resolve per key. Built on branch propoverlay
+  (83642255, 9 of 9 mutations caught); ci-fast running. Done when released.
 - **PROPDISKLABEL** (ai-soc 28 Oct; SCALE, goal 2; door, minor v4.91.0 after PROPDISKTOGGLE and PROPOVERLAY; built
   but stashed on branch propdisklabel while PROPOVERLAY ships) — the on-disk property
   index chosen per label: `PropertyIndexOnDiskLabels []string` in badger and tiered Config; ai-soc sets ["DerivedPage"].
