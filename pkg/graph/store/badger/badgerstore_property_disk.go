@@ -271,6 +271,10 @@ func (bs *Store) rangePendingPropPrefixes(prefixes [][]byte, fn func(k string, o
 // 57): a node moved from one listed value to another keeps the new entry. A
 // property key with no token or a non-indexable value matches nothing, the
 // RAM path's silent-empty contract. Caller holds idxMu (R or W).
+// propertyDiskVisitTestHook (tests only) is called for each key an equality
+// lookup on the on-disk property index visits.
+var propertyDiskVisitTestHook func()
+
 func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string) ([]types.NodeID, error) {
 	tok, ok := bs.propKeyTokenFor(propertyKey)
 	if !ok {
@@ -324,6 +328,14 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 		}
 	})
 
+	// A raw-domain (string, bool, temporal) value prefix has no terminator, so
+	// every longer value that extends it shares it: a walk of the prefix visits
+	// all of them (PROPSTR, ai-soc's folder paths). Its entries are
+	// prefix||nodeID and an answer is a live node, whose positive ID
+	// (store.ValidateNodeID) lies in the live set's bounds: the walk runs from
+	// prefix||lo to prefix||hi, where a longer value sorts only if its next
+	// eight bytes fall between two live IDs.
+	lo, hi, _ := bs.nodeIDs.Bounds() // none live: 0, 0, which no entry carries
 	var nids []types.NodeID
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
@@ -337,8 +349,19 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 				continue // the magnitude's typed keys were walked already
 			}
 			last = seek
-			for it.Seek(seek); it.ValidForPrefix(seek); it.Next() {
+			from, to := seek, []byte(nil)
+			if prefix[3] == storepkg.PropIdxDomainRaw {
+				from = binary.BigEndian.AppendUint64(slices.Clone(seek), uint64(lo))
+				to = binary.BigEndian.AppendUint64(slices.Clone(seek), uint64(hi))
+			}
+			for it.Seek(from); it.ValidForPrefix(seek); it.Next() {
 				key := it.Item().Key()
+				if propertyDiskVisitTestHook != nil {
+					propertyDiskVisitTestHook()
+				}
+				if to != nil && bytes.Compare(key, to) > 0 {
+					break
+				}
 				if !listed(key) {
 					continue
 				}
