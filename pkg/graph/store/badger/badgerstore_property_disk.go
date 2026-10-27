@@ -361,14 +361,21 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	// walk runs from prefix||lo to prefix||hi, the snapshot's smallest and
 	// largest stored node IDs (positive, store.ValidateNodeID): a longer value
 	// sorts there only if its next eight bytes fall between two of them.
+	//
+	// The iterator returns every version and deleted entry (AllVersions), so
+	// the walk stops at to: without, badger skips them inside Seek and Next
+	// until it holds two live keys, wherever those are, and the bound above
+	// never stopped that walk (PROPSEEK, ai-soc's rewritten node keys). The
+	// newest version of each key decides.
 	var nids []types.NodeID
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		lo, hi := nodeRowIDBounds(txn) // no row: 0, 0, which no entry carries
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
+		opts.AllVersions = true
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		var last []byte
+		var last, prev []byte
 		for _, prefix := range prefixes {
 			seek := storepkg.PropertyIndexValueSeekPrefix(prefix)
 			if last != nil && bytes.Equal(seek, last) {
@@ -381,14 +388,19 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 				to = binary.BigEndian.AppendUint64(slices.Clone(seek), hi)
 			}
 			for it.Seek(from); it.ValidForPrefix(seek); it.Next() {
-				key := it.Item().Key()
+				item := it.Item()
+				key := item.Key()
 				if propertyDiskVisitTestHook != nil {
 					propertyDiskVisitTestHook()
 				}
 				if to != nil && bytes.Compare(key, to) > 0 {
 					break
 				}
-				if !listed(key) {
+				if bytes.Equal(key, prev) {
+					continue // an older version of the key just decided (in any walk: its newest version is the same)
+				}
+				prev = append(prev[:0], key...)
+				if item.IsDeletedOrExpired() || !listed(key) {
 					continue
 				}
 				if _, del := dels[string(key)]; del {

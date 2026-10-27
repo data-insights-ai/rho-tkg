@@ -240,6 +240,16 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
     only `DropPrefix`, only in `Clear`, under its own locks, while cache-miss reads still run
     (`badgerstore_node.go:132-143`). `DropAll` would delete the value-log files under such a read, whose value then
     comes back empty; `DropPrefix` leaves them to the value-log GC (DROPALL, v4.78.1).
+12. **A walk with its own end bound sees every version.** Without `AllVersions` an iterator skips older versions and
+    deleted entries inside `Seek` and `Next` (`parseItem`, `iterator.go:653-656`, `:668-671`) until it holds the next
+    live key and prefetches one more (`prefetch`, `:726-743`); only `IteratorOptions.Prefix` stops that skip (`:735`,
+    `:581`), a loop's own upper bound never does. A per-call walk therefore pays for every deleted entry and old
+    version between its start and the second live key after it, wherever that is. The on-disk equality lookup
+    iterates with `AllVersions`, takes each key's newest version and stops at its own bound (PROPSEEK, v4.89.1: 200
+    lookups of absent values before 20,000 deleted entries took 325x their time without them, now 0.9-1.2x,
+    `TestPropSeekLookupDoesNotWalkDeletedEntries`). It still visits each version of the keys inside its bound: an
+    update writes an unchanged entry again (100 updates, 100 versions visited). Gaps: ITERTOMB (rho's other walks
+    with their own end bound), PROPREWRITE (unchanged entries).
 
 ## 8. The complete API
 

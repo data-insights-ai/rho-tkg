@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **PROPSEEK** (SCALE, ai-soc's BO run k10270452-p4b on v4.89.0 with `PropertyIndexOnDisk`: stalled at 37 of 55
+  files after 30 min, where the RAM index took 480 s; 91 % of the CPU in the on-disk equality lookup, 99.9 % of that
+  inside badger's `Iterator.Seek`). v4.88.1 bounded the lookup's walk, but a badger iterator without `AllVersions`
+  skips deleted entries and older versions inside `Seek` until it holds two live keys, wherever they are, so every
+  get-or-create of a key that sorts before a rewritten key range walked all its deleted entries. The lookup now
+  iterates with `AllVersions`, keeps each key's newest version and stops at its own bound: 200 lookups of absent
+  values before 20,000 deleted entries took 325x their time without them, now 0.9-1.2x
+  (`TestPropSeekLookupDoesNotWalkDeletedEntries`; versions in `TestPropSeekNewestVersionDecides`). No format change.
+
 ## [4.89.0] - 2026-10-27
 
 ### Added
