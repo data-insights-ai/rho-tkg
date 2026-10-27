@@ -1,12 +1,16 @@
 package badger
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"testing"
 	"time"
 
+	badgerv4 "github.com/dgraph-io/badger/v4"
+
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -15,8 +19,8 @@ import (
 // the RAM index, 91 % in this lookup). A string's on-disk value prefix has no
 // terminator, so an equality lookup walked every stored string that extends
 // the looked-up one (a folder's paths, a short key's extensions). The walk
-// now stays within the live node IDs' bounds after the value: its visits do
-// not grow with the longer strings.
+// now stays within the stored node IDs' bounds after the value: its visits
+// do not grow with the longer strings.
 func TestPropStrLookupIgnoresLongerStrings(t *testing.T) {
 	const label = uint16(1)
 	// visits stores n strings extending "/a" beside "/a" itself and returns
@@ -47,6 +51,16 @@ func TestPropStrLookupIgnoresLongerStrings(t *testing.T) {
 		if err := bs.Flush(); err != nil {
 			t.Fatal(err)
 		}
+		// Foreign keys in the node keyspace that are no node row, at both
+		// ends: the bounds come from node rows alone.
+		if err := bs.DBForTest().Update(func(txn *badgerv4.Txn) error {
+			if err := txn.Set([]byte{storepkg.KeyNode}, nil); err != nil {
+				return err
+			}
+			return txn.Set(append([]byte{storepkg.KeyNode}, bytes.Repeat([]byte{0xFF}, storepkg.SizeNodeKey)...), nil)
+		}); err != nil {
+			t.Fatal(err)
+		}
 		var seen int
 		propertyDiskVisitTestHook = func() { seen++ }
 		defer func() { propertyDiskVisitTestHook = nil }()
@@ -63,8 +77,8 @@ func TestPropStrLookupIgnoresLongerStrings(t *testing.T) {
 }
 
 // TestPropStrLookupFindsEveryLiveID: the bounded walk still finds the
-// value's entries at both ends of the live ID range, among longer strings,
-// buffered or flushed.
+// value's entries at both ends of the stored node ID range, among longer
+// strings, buffered or flushed.
 func TestPropStrLookupFindsEveryLiveID(t *testing.T) {
 	const label = uint16(1)
 	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(),

@@ -44,15 +44,5 @@ func (s *IDSet) All() iter.Seq[int64] {
 	return func(yield func(int64) bool) { s.Ascend(yield) }
 }
 
-// Bounds returns the smallest and the largest ID; ok is false for an empty set.
-func (s *IDSet) Bounds() (lo, hi int64, ok bool) {
-	c := s.s.chunks
-	if len(c) == 0 {
-		return 0, 0, false
-	}
-	last := c[len(c)-1]
-	return c[0][0], last[len(last)-1], true
-}
-
 // Ascend calls fn for every ID in ascending order until fn returns false.
 func (s *IDSet) Ascend(fn func(id int64) bool) { s.s.forEachFrom(math.MinInt64, fn) }

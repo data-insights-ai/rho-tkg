@@ -11,8 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **PROPSTR** (SCALE, ai-soc's BO run k10270113 on v4.87.2 with `PropertyIndexOnDisk`: 39 of 46 files in 32 min
   against all 46 in 8 min with the RAM index; 91 % of the CPU in the on-disk equality lookup, iterating). A string's
   on-disk value prefix has no terminator, so an equality lookup walked every stored string that extends the looked-up
-  one (a folder's paths, a short key's extensions) and dropped them one by one. The walk now runs from the value
-  followed by the smallest live node ID to the value followed by the largest: one lookup beside 10,000 longer strings
+  one (a folder's paths, a short key's extensions) and dropped them one by one. A flush commits an entry with its
+  node's row, so the walk now runs from the value followed by the smallest stored node ID to the value followed by
+  the largest (one seek from each end of the node keyspace, in the lookup's snapshot): one lookup beside 10,000 longer strings
   visits 2 keys, before 10,001 (`TestPropStrLookupIgnoresLongerStrings`; both ends of the ID range in
   `TestPropStrLookupFindsEveryLiveID`). No format change.
 

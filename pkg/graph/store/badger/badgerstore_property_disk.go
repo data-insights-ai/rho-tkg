@@ -271,6 +271,32 @@ func (bs *Store) rangePendingPropPrefixes(prefixes [][]byte, fn func(k string, o
 // 57): a node moved from one listed value to another keeps the new entry. A
 // property key with no token or a non-indexable value matches nothing, the
 // RAM path's silent-empty contract. Caller holds idxMu (R or W).
+// nodeRowIDBounds returns the smallest and the largest ID of a node row in
+// txn's snapshot (0, 0 when there is none): one seek from each end of the
+// node keyspace.
+func nodeRowIDBounds(txn *badgerv4.Txn) (lo, hi uint64) {
+	opts := badgerv4.DefaultIteratorOptions
+	opts.PrefetchValues = false
+	opts.Prefix = []byte{storepkg.KeyNode}
+	end := func(reverse bool) uint64 {
+		opts.Reverse = reverse
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		seek := opts.Prefix
+		if reverse {
+			seek = append(bytes.Repeat([]byte{0xFF}, storepkg.SizeNodeKey), 0xFF) // after every node key
+			seek[0] = storepkg.KeyNode
+		}
+		for it.Seek(seek); it.ValidForPrefix(opts.Prefix); it.Next() {
+			if k := it.Item().Key(); len(k) == storepkg.SizeNodeKey {
+				return binary.BigEndian.Uint64(k[1:])
+			}
+		}
+		return 0
+	}
+	return end(false), end(true)
+}
+
 // propertyDiskVisitTestHook (tests only) is called for each key an equality
 // lookup on the on-disk property index visits.
 var propertyDiskVisitTestHook func()
@@ -331,13 +357,13 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	// A raw-domain (string, bool, temporal) value prefix has no terminator, so
 	// every longer value that extends it shares it: a walk of the prefix visits
 	// all of them (PROPSTR, ai-soc's folder paths). Its entries are
-	// prefix||nodeID and an answer is a live node, whose positive ID
-	// (store.ValidateNodeID) lies in the live set's bounds: the walk runs from
-	// prefix||lo to prefix||hi, where a longer value sorts only if its next
-	// eight bytes fall between two live IDs.
-	lo, hi, _ := bs.nodeIDs.Bounds() // none live: 0, 0, which no entry carries
+	// prefix||nodeID, and a flush commits an entry with its node's row, so the
+	// walk runs from prefix||lo to prefix||hi, the snapshot's smallest and
+	// largest stored node IDs (positive, store.ValidateNodeID): a longer value
+	// sorts there only if its next eight bytes fall between two of them.
 	var nids []types.NodeID
 	err := bs.view(func(txn *badgerv4.Txn) error {
+		lo, hi := nodeRowIDBounds(txn) // no row: 0, 0, which no entry carries
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -351,8 +377,8 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 			last = seek
 			from, to := seek, []byte(nil)
 			if prefix[3] == storepkg.PropIdxDomainRaw {
-				from = binary.BigEndian.AppendUint64(slices.Clone(seek), uint64(lo))
-				to = binary.BigEndian.AppendUint64(slices.Clone(seek), uint64(hi))
+				from = binary.BigEndian.AppendUint64(slices.Clone(seek), lo)
+				to = binary.BigEndian.AppendUint64(slices.Clone(seek), hi)
 			}
 			for it.Seek(from); it.ValidForPrefix(seek); it.Next() {
 				key := it.Item().Key()
