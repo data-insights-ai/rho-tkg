@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.90.2] - 2026-10-28
+
+### Fixed
+
+- **PROPDISKTOGGLE** (found scoping ai-soc's PROPDISKLABEL): badger's `PropertyIndexOnDisk` turned off for one open
+  and on again lost every write made while it was off. The `property_index_on_disk_built` marker stayed set, so the
+  next open trusted a `0x0A` keyspace nothing had maintained: `ByLabelAndProperty` missed a node created and a node
+  whose value changed in between. A writable open without the flag now clears the marker, and the rebuild of the
+  next open with it also deletes the rows it does not write again, in the same batch. A read-only open with the flag
+  over an unbuilt keyspace failed (`No sets or deletes are allowed in a read-only transaction`); it now keeps that
+  open's entries in RAM. `TestPropertyIndexOnDisk_OffThenOnAgain`; 6 of 6 mutations caught.
+
 ## [4.90.1] - 2026-10-27
 
 ### Fixed

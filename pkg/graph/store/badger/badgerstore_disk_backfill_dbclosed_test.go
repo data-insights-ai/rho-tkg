@@ -22,7 +22,7 @@ func TestCommitPropertyIndexOnDiskBackfill_DbClosedGuard(t *testing.T) {
 	bs := newTestBadgerStoreInMemory(t)
 
 	bs.dbClosed.Store(true)
-	err := bs.commitPropertyIndexOnDiskBackfill([]writeOp{{opType: writeOpSet, key: []byte("k"), value: []byte("v")}})
+	err := bs.commitPropertyIndexOnDiskBackfill([]writeOp{{opType: writeOpSet, key: []byte("k"), value: []byte("v")}}, nil)
 	bs.dbClosed.Store(false) // allow t.Cleanup Close() to proceed
 
 	if !errors.Is(err, badgerv4.ErrDBClosed) {

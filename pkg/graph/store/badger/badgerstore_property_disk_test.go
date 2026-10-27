@@ -535,6 +535,117 @@ func TestPropertyIndexOnDisk_EnableOnExistingDir(t *testing.T) {
 	}
 }
 
+// TestPropertyIndexOnDisk_OffThenOnAgain (PROPDISKTOGGLE): a writable open
+// without PropertyIndexOnDisk does not maintain the 0x0A keyspace, so the
+// next open with it rebuilds the keyspace: writes made while it was off are
+// found, and rows they left stale are gone. A read-only open with the flag
+// over a keyspace it cannot rebuild answers from RAM.
+func TestPropertyIndexOnDisk_OffThenOnAgain(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	const label = uint16(1)
+	write := func(bs *Store, id, age int64, replace bool) {
+		t.Helper()
+		n := types.NewNode(types.NodeID(id), label, nil)
+		if err := n.SetProperty("age", age); err != nil {
+			t.Fatal(err)
+		}
+		do := bs.PutNode
+		if replace {
+			do = bs.ReplaceNode
+		}
+		if err := do(n); err != nil {
+			t.Fatalf("write %d: %v", id, err)
+		}
+	}
+	open := func(cfg Config) *Store {
+		t.Helper()
+		cfg.Dir = dir
+		bs, err := New(cfg)
+		if err != nil {
+			t.Fatalf("open %+v: %v", cfg, err)
+		}
+		return bs
+	}
+	closeStore := func(bs *Store) {
+		t.Helper()
+		if err := bs.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		if err := bs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	answers := func(bs *Store) string {
+		t.Helper()
+		return fmt.Sprint(nodeIDsVia(t, bs, label, "age", int64(20)), nodeIDsVia(t, bs, label, "age", int64(30)),
+			nodeIDsVia(t, bs, label, "age", int64(40)))
+	}
+	rows := func(bs *Store) int {
+		n := 0
+		_ = bs.DBForTest().View(func(txn *badgerv4.Txn) error {
+			it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyPropertyIndex}})
+			defer it.Close()
+			for it.Rewind(); it.Valid(); it.Next() {
+				n++
+			}
+			return nil
+		})
+		return n
+	}
+
+	bs := open(Config{PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
+	if err := bs.CreatePropertyIndex(label, "age"); err != nil {
+		t.Fatal(err)
+	}
+	write(bs, 1, 20, false)
+	write(bs, 3, 40, false)
+	write(bs, 5, 40, false) // untouched: its row is written again
+	closeStore(bs)
+
+	bs = open(Config{}) // off: a create, a value change, a delete
+	write(bs, 2, 20, false)
+	write(bs, 1, 30, true)
+	if err := bs.DeleteNode(types.NodeID(3)); err != nil {
+		t.Fatal(err)
+	}
+	closeStore(bs)
+
+	bs = open(Config{PropertyIndexOnDisk: true})
+	if got, want := answers(bs), "[2] [1] [5]"; got != want {
+		t.Fatalf("on again: age 20, 30, 40 = %s, want %s", got, want)
+	}
+	if got := rows(bs); got != 3 {
+		t.Fatalf("on again: %d 0x0A rows, want 3 (stale ones dropped)", got)
+	}
+	closeStore(bs)
+
+	bs = open(Config{ReadOnly: true}) // read-only off: leaves the marker
+	if got, want := answers(bs), "[2] [1] [5]"; got != want {
+		t.Fatalf("read-only off: age 20, 30, 40 = %s, want %s", got, want)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	bs = open(Config{PropertyIndexOnDisk: true})
+	if !badgerHasKey(bs, storepkg.PropertyIndexOnDiskBuiltKey) {
+		t.Fatal("a read-only open without the flag cleared the marker")
+	}
+	closeStore(bs)
+
+	bs = open(Config{}) // off again: clears the marker the rebuild set
+	write(bs, 4, 20, false)
+	closeStore(bs)
+
+	bs = open(Config{PropertyIndexOnDisk: true, ReadOnly: true})
+	if got, want := answers(bs), "[2 4] [1] [5]"; got != want {
+		t.Fatalf("read-only on: age 20, 30, 40 = %s, want %s", got, want)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // --- overlay set-then-delete-then-set (lesson 57) ---
 
 // TestPropertyIndexOnDisk_OverlaySetThenDeleteThenSetPending drives a

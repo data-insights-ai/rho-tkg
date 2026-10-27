@@ -848,14 +848,26 @@ func (bs *Store) purgePropertyKeyDiskEntriesLocked(propertyKey string) ([]writeO
 // crash mid-backfill leaves either NO rows and no marker (retried on the
 // next open) or ALL rows and the marker (never a half-built keyspace that a
 // later open trusts as complete). ops are always writeOpSet: the only
-// caller (loadIndexesScan) only ever backfills additions from current node
-// state, never deletions.
-func (bs *Store) commitPropertyIndexOnDiskBackfill(ops []writeOp) error {
+// caller (loadIndexesScan) backfills additions from current node state.
+// stale holds the 0x0A keys present before it: those ops do not set again
+// are deleted, rows an earlier session with the flag wrote and a session
+// without it left stale (PROPDISKTOGGLE).
+func (bs *Store) commitPropertyIndexOnDiskBackfill(ops []writeOp, stale [][]byte) error {
 	wb := bs.db.NewWriteBatch()
 	defer wb.Cancel()
+	set := make(map[string]struct{}, len(ops))
 	for _, op := range ops {
+		set[string(op.key)] = struct{}{}
 		if err := wb.SetEntry(badgerv4.NewEntry(op.key, op.value)); err != nil {
 			return fmt.Errorf("graph: property-index-on-disk backfill: %w", err)
+		}
+	}
+	for _, key := range stale {
+		if _, ok := set[string(key)]; ok {
+			continue
+		}
+		if err := wb.Delete(key); err != nil {
+			return fmt.Errorf("graph: property-index-on-disk backfill: drop stale entry: %w", err)
 		}
 	}
 	if err := wb.SetEntry(badgerv4.NewEntry(storepkg.PropertyIndexOnDiskBuiltKey, []byte{1})); err != nil {

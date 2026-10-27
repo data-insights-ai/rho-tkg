@@ -128,7 +128,10 @@ type Config struct {
 	// PropertyIndexOnDisk keeps property-index entries in the persisted 0x0A keyspace
 	// (badgerstore_property_disk.go), written with the node row, instead of RAM maps.
 	// A directory with property-index definitions but no 0x0A rows is backfilled once
-	// on the first open with this flag (storeutil.PropertyIndexOnDiskBuiltKey).
+	// on the first open with this flag (storeutil.PropertyIndexOnDiskBuiltKey); a
+	// writable open without it clears the marker, so the next open with it
+	// rebuilds the keyspace. A read-only open over an unbuilt keyspace keeps its
+	// entries in RAM.
 	// Requires a property-key registry (always present via pkg/graph); without one
 	// CreatePropertyIndex fails with ErrInvalidStoreMutation. Ignored when Store is
 	// provided explicitly.
@@ -1288,6 +1291,13 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 	// after it, guarded by storeutil.PropertyIndexOnDiskBuiltKey.
 	var propIdxNeedsBuild bool
 	var propIdxBackfillOps []writeOp
+	// propIdxStale: the 0x0A keys present before a backfill, which may hold
+	// rows a session without the flag left behind (PROPDISKTOGGLE); the
+	// backfill deletes those it does not write again. propIdxUnmark: this
+	// writable open runs without the flag over a built keyspace, which its
+	// writes will not maintain, so the marker goes.
+	var propIdxStale [][]byte
+	var propIdxUnmark bool
 	propIdxDefined := false // any property index definition persisted
 	// temporalIdxNeedsBuild / temporalIdxBackfillOps mirror the above for the 0x0B
 	// temporal-index keyspace, guarded by storeutil.TemporalIndexOnDiskBuiltKey.
@@ -1301,16 +1311,25 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 
-		if bs.propIdxOnDisk {
-			_, merr := txn.Get(storepkg.PropertyIndexOnDiskBuiltKey)
-			switch {
-			case merr == nil:
-				propIdxNeedsBuild = false
-			case errors.Is(merr, badgerv4.ErrKeyNotFound):
-				propIdxNeedsBuild = true
-			default:
-				return fmt.Errorf("graph: read property-index-on-disk marker: %w", merr)
+		propIdxBuilt, err := metaKeyPresent(txn, storepkg.PropertyIndexOnDiskBuiltKey)
+		if err != nil {
+			return fmt.Errorf("graph: read property-index-on-disk marker: %w", err)
+		}
+		switch {
+		case !bs.propIdxOnDisk:
+			propIdxUnmark = propIdxBuilt && !bs.readOnly
+		case !propIdxBuilt && bs.readOnly:
+			// A read-only open cannot write the backfill: it keeps this
+			// open's entries in RAM, as an open without the flag does.
+			bs.propIdxOnDisk = false
+		case !propIdxBuilt:
+			propIdxNeedsBuild = true
+			prefix := []byte{storepkg.KeyPropertyIndex}
+			it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: prefix})
+			for it.Rewind(); it.Valid(); it.Next() {
+				propIdxStale = append(propIdxStale, it.Item().KeyCopy(nil))
 			}
+			it.Close()
 		}
 		if bs.temporalIdxOnDisk {
 			// Trusted only when built under the TxFrom start (v2 marker) and no
@@ -2233,8 +2252,15 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			// No property-key registry wired (direct badger.Store user): skip the backfill and
 			// leave the marker unset so a later open retries. With no definition there is nothing
 			// to backfill: mark it built, or every open re-walks the rows (backlog 54).
-		} else if err := bs.commitPropertyIndexOnDiskBackfill(propIdxBackfillOps); err != nil {
+		} else if err := bs.commitPropertyIndexOnDiskBackfill(propIdxBackfillOps, propIdxStale); err != nil {
 			return err
+		}
+	}
+	if propIdxUnmark {
+		if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+			return txn.Delete(storepkg.PropertyIndexOnDiskBuiltKey)
+		}); err != nil {
+			return fmt.Errorf("graph: clear property-index-on-disk marker: %w", err)
 		}
 	}
 	if bs.temporalIdxOnDisk && temporalIdxNeedsBuild && !bs.readOnly {
