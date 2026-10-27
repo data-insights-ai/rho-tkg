@@ -72,8 +72,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   and a large shard's crash reopen is measured. State 26 Oct: step (1) committed on `openimage` (b1e146e0); the
   clean-reopen oracle matches at every crash step, and a crash reopen after one record decodes 1 row at 100 k and
   1 M entities (the full rebuild: 154 k and 1.54 M); the full-rebuild oracles delete the open state (a foreign
-  write now takes the delta open), badger, tiered, sharded and graph green; next mutation checks, docs, then step
-  (2). ai-soc measures after the tag on copies of k10262212: one full open writing the image, then a crash reopen
+  write now takes the delta open), badger, tiered, sharded and graph green; 25 mutations of the delta open all
+  caught (cff83b32: TestDeltaOpenMatchesFullRebuild for history or rows written alone, purged entities and redefined
+  indexes; no definition guard, the image holds row values). Next: release step (1) as v4.88.0 (ci-docker), then
+  step (2). ai-soc measures after the tag on copies of k10262212: one full open writing the image, then a crash reopen
   after a few hundred records.
 - **PROPSTR** (SCALE, ai-soc 27 Oct, Flux run k10270113 on v4.87.2 with PropertyIndexOnDisk: BO 39 of 46 files in
   32 min against 46 in 8 min with the RAM index; 91 % cum in `propertyIndexDiskKeysCandidatesLocked`, iterating).
