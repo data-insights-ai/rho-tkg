@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.89.1] - 2026-10-27
+
 ### Fixed
 
 - **PROPSEEK** (SCALE, ai-soc's BO run k10270452-p4b on v4.89.0 with `PropertyIndexOnDisk`: stalled at 37 of 55

@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-27: latest tag v4.89.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-27: latest tag v4.89.1; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,7 +7,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-27 Oct:** v4.75.0 to v4.89.0 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
+- **Released 24-27 Oct:** v4.75.0 to v4.89.1 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
 - **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
   "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
@@ -36,7 +36,10 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   consumers build and vet clean; at 1 M nodes / 1 M rels a 16 MB image, 31-33 ms encode under the locks, crash
   reopen 2.7 s (300 rows) against 18.0 s (4.0 M rows) for the full rebuild; 15 checkpoint and 4 pass-through
   mutations caught.
-- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (merged into v4.89.0, local only), propseek (PROPSEEK, af31a6da, local, unmerged: next v4.89.1). The merged item branches are deleted and the kept ones pushed
+- **v4.89.1** (PROPSEEK, a patch for ai-soc's BO run k10270452-p4b on v4.89.0): ci-fast green, consumers build and
+  vet clean; the on-disk equality lookup iterates with AllVersions: 200 lookups before 20,000 deleted entries 325x
+  -> 0.9-1.2x their time without them; 4 mutations caught, the fifth's code removed.
+- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (merged into v4.89.0, local only), propseek (merged into v4.89.1, local only). The merged item branches are deleted and the kept ones pushed
   (René, 26 Oct); user-only action 5 stays. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The

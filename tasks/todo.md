@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-27 Oct: v4.75.0 to v4.89.0 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
+Released 24-27 Oct: v4.75.0 to v4.89.1 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
@@ -181,8 +181,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   prefixes) — shipped in v4.88.1 (the walk is bounded by the snapshot's smallest and largest node row IDs; one
   lookup beside 10,000 longer strings visits 2 keys). ai-soc's BO run k10270452-p4b on v4.89.0 still stalled (37 of
   55 files in 30 min, RAM index 480 s): 99.9 % inside badger's Seek, which skips deleted entries and old versions
-  until two live keys (PROPSEEK, committed on branch `propseek` af31a6da: AllVersions, 325x -> 0.9-1.2x at 20,000
-  deleted entries; next v4.89.1). Done when: ai-soc's BO run with PropertyIndexOnDisk finishes at the RAM index's time.
+  until two live keys (PROPSEEK, shipped in v4.89.1: AllVersions, 325x -> 0.9-1.2x at 20,000 deleted entries). Done when: ai-soc's BO run with PropertyIndexOnDisk finishes at the RAM index's time.
 - **SCALEPROFILE** (SCALE, ai-soc 26 Oct) — which RAM structures grow with data in ai-soc's daemon plus sigma.
   Flux run k10261904 on v4.86.0 is the baseline (heap, memstats and smaps_rollup every 600 s and after the final
   GC, reopen times, the top-40 inuse_space with node and rel counts); the run after the PAGEREF pin carries
