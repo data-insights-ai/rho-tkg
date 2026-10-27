@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.89.0] - 2026-10-27
+
 ### Added
 
 - **OPENIMAGE step 2** (SCALE: a realtime store that never closes cleanly reopened from its last clean `Close`, so

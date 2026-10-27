@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-27 Oct: v4.75.0 to v4.88.1 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
+Released 24-27 Oct: v4.75.0 to v4.89.0 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
@@ -55,21 +55,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
-- **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
-  loadNodeFromBadger) — step (1) shipped in v4.88.0: a crash open applies the older image and decodes only the
-  entities touched since it (1 row at 1 M entities after one record, the full rebuild 1.54 M). Step (2) is
-  committed on branch `checkpoint` (3af4f8d3, 27 Oct): `Config.OpenImageInterval`, header format 4, two slots; at
-  1 M nodes / 1 M rels a 16 MB image, 31-33 ms encode under the locks, crash reopen 2.7 s against 18.0 s for the full
-  rebuild (`tasks/evidence/open-cost/10-checkpoint.txt` on the branch); next: release as v4.89.0 (ci-docker). Left: (2) a periodic
-  image (checkpoint), so a daemon that never closes cleanly bounds the touched set and the SinceTs scan (badger reads
-  every table holding a version newer than the image, `docs/badger.md` item 12); ai-soc's measurement on copies of
-  k10262212 (one full open writing the image, then a crash reopen after a few hundred records); ai-soc takes (1) from
-  the reopen step of its reduced BA run k10270301 (v4.88.0, 27 Oct). Design for (2): the image records the badger
-  version V0 read under the index read lock its encode holds (every commit at or below V0 is in RAM, so in the image;
-  every later write lands above V0 and is touched), in two alternating chunk slots so a crash mid-checkpoint keeps the
-  last image; a header format change (an older release rebuilds once) and a Config interval, so a minor. Done when: a daemon
-  that never closes cleanly reopens after a crash in time bounded by the writes since the last periodic image (a
-  test), and ai-soc's crash reopen is measured.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
@@ -177,6 +162,13 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
+  loadNodeFromBadger) — step (1) shipped in v4.88.0 (a crash open applies the older image and decodes only the
+  entities touched since it), step (2) in v4.89.0 (`Config.OpenImageInterval`: a periodic image, so a store that
+  never closes cleanly reopens from the last one; at 1 M nodes / 1 M rels crash reopen 2.7 s against 18.0 s for the
+  full rebuild). Waits for ai-soc's crash reopen measured on copies of k10262212 (step 1 from the reopen step of its
+  reduced BA run k10270301, step 2 with an interval set). Done when: that reopen is bounded by the writes since the
+  last image.
 - **PROPSTR** (SCALE, ai-soc 27 Oct, BO run k10270113: an on-disk string equality lookup walked every longer string it
   prefixes) — shipped in v4.88.1 (the walk is bounded by the snapshot's smallest and largest node row IDs; one
   lookup beside 10,000 longer strings visits 2 keys). Waits for ai-soc's BO run on v4.88.1 with PropertyIndexOnDisk.
