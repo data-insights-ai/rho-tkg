@@ -1,0 +1,20 @@
+diff --git a/pkg/graph/store/tiered/tieredstore_write_node.go b/pkg/graph/store/tiered/tieredstore_write_node.go
+index dda67cff..6c32a1ab 100644
+--- a/pkg/graph/store/tiered/tieredstore_write_node.go
++++ b/pkg/graph/store/tiered/tieredstore_write_node.go
+@@ -625,7 +625,8 @@ func (ts *Store) DeleteNodesBatch(ids []types.NodeID) error {
+ 			if !errors.Is(err, ErrNodeNotFound) {
+ 				deleted = appendMissingNodeBucket(deleted, shard, bucket, nodesByID)
+ 			}
+-			return rollbackDeleted(err)
++			_ = rollbackDeleted // MUTANT row 119: rollback call removed
++			return err
+ 		}
+ 		deleted = append(deleted, deletedNodeBucket{
+ 			shard: shard,
+=== RUN   TestTieredDeleteNodesBatch_LaterBucketFailsRestoresEarlierBuckets
+    tieredstore_door_rollback_test.go:116: round 2: node 836580554308780032 not restored after the failed batch: graph: node not found
+--- FAIL: TestTieredDeleteNodesBatch_LaterBucketFailsRestoresEarlierBuckets (0.35s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.364s
+FAIL

@@ -27,6 +27,10 @@ func (ts *Store) RefShardForTest() *BadgerStore { return ts.refShard }
 // observer (nil removes it). Set it before the reads it observes.
 func (ts *Store) SetTypeScanHookForTest(fn func(door string)) { ts.typeScanHook = fn }
 
+// SetDrainSpinLimitForTest lowers this store's bounded active-request drain
+// (Close, purge) from coldShardDrainSpinLimit 1ms spins to n; 0 restores it.
+func (ts *Store) SetDrainSpinLimitForTest(n int64) { ts.drainSpinsForTest.Store(n) }
+
 // RefActiveReqsForTest returns the refcount on the reference shard.
 func (ts *Store) RefActiveReqsForTest() *atomic.Int64 { return &ts.refActiveReqs }
 

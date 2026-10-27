@@ -21,11 +21,20 @@ const coldShardDrainSpinLimit = 5000
 // hits coldShardDrainSpinLimit: signals a checkin leak, not late traffic.
 var ErrDrainTimeout = errors.New("graph: active-request drain timed out")
 
+// drainSpinLimit is coldShardDrainSpinLimit unless a test lowered it through
+// SetDrainSpinLimitForTest, so a drain-timeout test waits milliseconds, not 5s.
+func (ts *Store) drainSpinLimit() int64 {
+	if n := ts.drainSpinsForTest.Load(); n > 0 {
+		return n
+	}
+	return coldShardDrainSpinLimit
+}
+
 // drainActiveReqsBounded spin-waits (1ms) for load() <= 0, up to
-// coldShardDrainSpinLimit iterations. Returns false on timeout; the caller
+// ts.drainSpinLimit() iterations. Returns false on timeout; the caller
 // decides (Close must never hang on a wedged counter).
-func drainActiveReqsBounded(load func() int64) bool {
-	for i := 0; i < coldShardDrainSpinLimit; i++ {
+func (ts *Store) drainActiveReqsBounded(load func() int64) bool {
+	for i := int64(0); i < ts.drainSpinLimit(); i++ {
 		if load() <= 0 {
 			return true
 		}
@@ -122,7 +131,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	// (3) Drain in-flight requests. No new checkouts can arrive (unlinked), so
 	// activeReqs only decreases. On timeout, RE-LINK and fall back to row-scan.
 	drained := false
-	for i := 0; i < coldShardDrainSpinLimit; i++ {
+	for i := int64(0); i < ts.drainSpinLimit(); i++ {
 		if es.activeReqs.Load() == 0 {
 			drained = true
 			break
@@ -178,7 +187,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 			es.shardMu.Unlock()
 			return zero, false, closeErr
 		}
-		es.store = nil
+		es.clearStoreLocked(ts)
 	}
 	es.shardMu.Unlock()
 
@@ -192,7 +201,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		es.shardMu.Lock()
 		store, reopenErr := ts.openShardStoreWithRecovery(es.path, es.currentTier() == TierCold)
 		if reopenErr == nil {
-			es.store = store
+			es.setStoreLocked(ts, store)
 		}
 		es.shardMu.Unlock()
 		ts.mu.Lock()

@@ -30,8 +30,7 @@ func closeColdStores(t *testing.T, ts *Store) int {
 				es.shardMu.Unlock()
 				t.Fatalf("close cold shard %s: %v", es.name, err)
 			}
-			es.store = nil
-			es.readTransientOpen = false
+			es.clearStoreLocked(ts)
 			closed++
 		}
 		es.shardMu.Unlock()

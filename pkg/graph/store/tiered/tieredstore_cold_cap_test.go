@@ -32,6 +32,7 @@ func coldCapStore(t *testing.T, shards, cap int) (*Store, uint16) {
 	cfg := openParallelCfg(dir)
 	cfg.ColdAfter = time.Millisecond
 	cfg.MaxOpenColdShards = cap
+	cfg.IdleTimeout = time.Hour // the idle sweeper never ticks during a test; tests drive the cap
 	ts, err := New(cfg)
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -79,38 +80,52 @@ func TestColdShardStaysOpenForTheNextRead(t *testing.T) {
 // not mean retaining ALL of them. A scan across a years-old store would
 // otherwise hold one Badger per historical shard until the idle timer fired.
 //
-// The bound is EVENTUAL, not immediate. The cap runs on the idle sweeper rather
-// than inside the checkout, because the checkout is reached from callers that
-// already hold ts.mu — RebuildCatalog among them — and the cap needs ts.mu to
-// see the shard list. Enforcing it there deadlocked the whole package. So the
-// test drives the sweeper's work directly.
+// A read checkout cannot push the count over the cap: its check-in closes the
+// shard that finds no room. The handles the sweeper's cap trims are the ones
+// opened another way — a warm shard demoted to cold keeps the store it had
+// (rotation never closes it), and so does a cold shard a write opened. So the
+// premise is built by demotion: six rotations leave five cold shards with
+// their stores open. The sweeper itself never ticks here (coldCapStore sets
+// IdleTimeout to an hour), so the test drives its work directly.
 func TestColdShardCapBoundsOpenHandles(t *testing.T) {
 	const cap = 2
-	ts, signalTok := coldCapStore(t, 6, cap)
-	closeColdStores(t, ts)
+	const shards = 6
+	ts, signalTok := coldCapStore(t, shards, cap)
 
-	// A data read that touches every shard, retaining a handle for each.
-	if _, err := ts.NodesByLabel(signalTok, QueryOpts{}); err != nil {
-		t.Fatalf("NodesByLabel: %v", err)
-	}
-	if n := coldShardsWithOpenStore(ts); n <= cap {
-		t.Skipf("only %d shards were retained; the cap has nothing to trim", n)
+	// Each rotation demotes the warm shards older than ColdAfter; the shard it
+	// just rotated out stays warm. Seven shards: one hot, one warm, five cold.
+	if n := coldShardsWithOpenStore(ts); n != shards-1 {
+		t.Fatalf("setup: %d cold shards hold a store after demotion, want %d", n, shards-1)
 	}
 
 	// What the sweeper does on its tick.
 	ts.enforceColdShardCap()
 
-	if n := coldShardsWithOpenStore(ts); n > cap {
-		t.Fatalf("%d cold shards left open with a cap of %d", n, cap)
+	if n := coldShardsWithOpenStore(ts); n != cap {
+		t.Fatalf("%d cold shards left open after the cap, want exactly %d", n, cap)
 	}
 
-	// And the answer is still right with most shards closed.
+	// The answer is still right with most shards closed: one node per rotated
+	// shard, none on the current hot shard.
 	got, err := ts.NodeCount()
 	if err != nil {
-		t.Fatalf("NodeCount second: %v", err)
+		t.Fatalf("NodeCount: %v", err)
 	}
-	if got == 0 {
-		t.Fatal("NodeCount returned 0 after the cap closed shards")
+	if got != shards {
+		t.Fatalf("NodeCount after the cap closed shards = %d, want %d", got, shards)
+	}
+	nodes, err := ts.NodesByLabel(signalTok, QueryOpts{})
+	if err != nil {
+		t.Fatalf("NodesByLabel: %v", err)
+	}
+	if len(nodes) != shards {
+		t.Fatalf("NodesByLabel after the cap closed shards = %d nodes, want %d", len(nodes), shards)
+	}
+
+	// That data read reopened the closed shards through read checkouts; their
+	// check-ins must hold the cap without waiting for the sweeper.
+	if n := coldShardsWithOpenStore(ts); n != cap {
+		t.Fatalf("%d cold shards open after a data read, want exactly the cap %d: the check-in bound did not hold", n, cap)
 	}
 }
 

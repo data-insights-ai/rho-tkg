@@ -1,0 +1,23 @@
+diff --git a/pkg/graph/store/tiered/tieredstore_write_rel.go b/pkg/graph/store/tiered/tieredstore_write_rel.go
+index a763d50e..e674f4ee 100644
+--- a/pkg/graph/store/tiered/tieredstore_write_rel.go
++++ b/pkg/graph/store/tiered/tieredstore_write_rel.go
+@@ -229,11 +229,7 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, mode relCreateMode
+ 		}
+ 		if err := entityShard.PutRelEntityAndOut(r); err != nil {
+ 			// Roll back the in/ write so the partial state isn't left visible.
+-			info := RelDeleteInfo{ID: relID, RelType: relType, StartID: startID, EndID: endID}
+-			if rbErr := inShard.RemoveRelIncomingPlacement(info); rbErr != nil {
+-				return fmt.Errorf("tiered: put cross-shard relationship entity failed after in/ write: %w (rollback in/ failed: %v)", err, rbErr)
+-			}
+-			return err
++			return err // MUTANT row 119: rollback removed
+ 		}
+ 		return nil
+ 	}
+=== RUN   TestTieredPutRelationship_ER_SecondWriteFailsLeavesNoResidue
+    tieredstore_door_rollback_test.go:78: phantom in/ entry left on the reference shard after the entity write failed
+--- FAIL: TestTieredPutRelationship_ER_SecondWriteFailsLeavesNoResidue (0.22s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.223s
+FAIL

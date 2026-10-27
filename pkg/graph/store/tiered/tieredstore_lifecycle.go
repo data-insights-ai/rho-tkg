@@ -6,6 +6,36 @@ import (
 	"time"
 )
 
+// setStoreLocked installs store on es and counts it when es is cold. Caller
+// holds es.shardMu.
+func (es *EventShard) setStoreLocked(ts *Store, store *BadgerStore) {
+	es.store = store
+	es.countColdStoreLocked(ts)
+}
+
+// countColdStoreLocked counts es's open store in ts.openColdShards once while
+// es is cold. A store can become a cold shard's without a cold open — a warm
+// shard demoted by rotation keeps its handle — so the demotion calls this too;
+// otherwise the close of that handle would decrement a count it never added
+// and every later check-in would retain past the cap. Caller holds es.shardMu.
+func (es *EventShard) countColdStoreLocked(ts *Store) {
+	if es.store != nil && !es.coldCounted && es.currentTier() == TierCold {
+		es.coldCounted = true
+		ts.openColdShards.Add(1)
+	}
+}
+
+// clearStoreLocked drops es's store (the caller closed it) and uncounts it.
+// Caller holds es.shardMu.
+func (es *EventShard) clearStoreLocked(ts *Store) {
+	es.store = nil
+	es.readTransientOpen = false
+	if es.coldCounted {
+		es.coldCounted = false
+		ts.openColdShards.Add(-1)
+	}
+}
+
 // checkoutStore returns the BadgerStore and increments activeReqs to prevent
 // idle-close from closing the store while the caller is still using it.
 // Caller must call checkinStore() when done (typically via defer).
@@ -48,7 +78,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 					es.shardMu.Unlock()
 					return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 				}
-				es.store = store
+				es.setStoreLocked(ts, store)
 				ts.syncColdShardIndexes(store, es.name)
 				// The general checkout, which write paths use. A shard that is
 				// open can be written to, so a sealed count must not outlive
@@ -80,7 +110,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 			es.shardMu.Unlock()
 			return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 		}
-		es.store = store
+		es.setStoreLocked(ts, store)
 		ts.syncColdShardIndexes(store, es.name)
 		if es.dropCachedCounts(ts) {
 			ts.saveCatalogBestEffort("unseal shard counts on open")
@@ -138,10 +168,9 @@ func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), err
 			es.shardMu.Unlock()
 			return nil, noop, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 		}
-		es.store = store
+		es.setStoreLocked(ts, store)
 		ts.syncColdShardIndexes(store, es.name)
 		es.readTransientOpen = true
-		ts.openColdShards.Add(1)
 		// READ-ONLY checkout: the shard cannot change through it, so the
 		// sealed catalog entry stays valid and is left alone. Only the
 		// in-memory copy is dropped, because while the store is open it is the
@@ -232,9 +261,7 @@ func (es *EventShard) checkinReadStore(ts *Store) {
 		slog.Error("tiered cold shard transient close failed", "shard", es.name, "err", err)
 		return
 	}
-	es.store = nil
-	es.readTransientOpen = false
-	ts.openColdShards.Add(-1)
+	es.clearStoreLocked(ts)
 	if sealedCounts {
 		defer ts.saveCatalogBestEffort("seal shard counts on transient close")
 	}
@@ -423,9 +450,7 @@ func (ts *Store) closeIdleShards() {
 				ts.recordBackgroundError(wrapped)
 				slog.Error("tiered cold shard idle-close failed", "shard", es.name, "err", err)
 			}
-			es.store = nil
-			es.readTransientOpen = false
-			ts.openColdShards.Add(-1)
+			es.clearStoreLocked(ts)
 		}
 		es.shardMu.Unlock()
 	}

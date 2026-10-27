@@ -1,0 +1,6 @@
+=== RUN   TestColdShardCapBoundsOpenHandles
+    tieredstore_cold_cap_test.go:128: 5 cold shards open after a data read, cap 2: the check-in bound did not hold
+--- FAIL: TestColdShardCapBoundsOpenHandles (0.97s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.979s
+FAIL

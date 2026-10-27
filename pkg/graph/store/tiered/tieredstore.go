@@ -203,6 +203,7 @@ type EventShard struct {
 	activeReqs        atomic.Int64 // outstanding read requests; blocks idle-close
 	lastAccess        atomic.Int64 // unix ms, idle-close tracking
 	readTransientOpen bool         // shardMu-protected: cold store was opened only for transient read fanout
+	coldCounted       bool         // shardMu-protected: this shard's open store is counted in Store.openColdShards
 
 	// counts is what this shard held when it was last closed, so counting
 	// questions can be answered without reopening it. See shardCounts.
@@ -288,6 +289,7 @@ type Store struct {
 	moveMu            sync.RWMutex                                    // ArchiveNode/RestoreNode hold it; reads of the reference shard and the archive (and point routes) read-hold it (refAndArchive, lockMoveRead); writes do not, so a direct user must not write during a move (the graph fences with c.mu)
 	fanoutRefReadHook func()                                          // test-only: refArchiveGapHook runs it between a door's reference shard read and its archive read
 	typeScanHook      func(door string)                               // test-only: noteTypeScan reports every whole-label/type/history ID scan door (WP-31 "no type scan" proof)
+	drainSpinsForTest atomic.Int64                                    // test-only: lowers coldShardDrainSpinLimit for this store (drainSpinLimit); 0 = the constant
 	archiveActiveReqs atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
 	eventShards       map[string]*EventShard                          // name -> event shard
 	shardIndex        []*EventShard                                   // eventShards sorted by timeStart; rebuilt by reindexShardsLocked on every insert/delete; guarded by mu
@@ -309,7 +311,10 @@ type Store struct {
 	maxOpenColdShards int
 	// openColdShards counts cold shards currently holding a Badger handle. It
 	// is what makes retention hard-bounded without taking a lock: the check-in
-	// consults it while holding only its own shard's mutex.
+	// consults it while holding only its own shard's mutex. Every open, close
+	// and demotion goes through setStoreLocked / clearStoreLocked /
+	// countColdStoreLocked, which count a shard once (EventShard.coldCounted)
+	// whichever door opened its store.
 	openColdShards        atomic.Int64
 	compression           options.CompressionType
 	zstdLevel             int
@@ -1050,7 +1055,7 @@ func (ts *Store) Close() error {
 		// elsewhere must not hang Close() forever — report it and proceed
 		// anyway, since Close has no fallback but to terminate.
 		for _, es := range ts.eventShards {
-			if !drainActiveReqsBounded(es.activeReqs.Load) {
+			if !ts.drainActiveReqsBounded(es.activeReqs.Load) {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close event shard %s: %w (checkin leak?)", es.name, ErrDrainTimeout))
 			}
 		}
@@ -1064,8 +1069,7 @@ func (ts *Store) Close() error {
 				if err := es.store.Close(); err != nil {
 					closeErr = errors.Join(closeErr, fmt.Errorf("graph: close event shard %s: %w", es.name, err))
 				}
-				es.store = nil
-				es.readTransientOpen = false
+				es.clearStoreLocked(ts)
 			}
 			es.shardMu.Unlock()
 		}
@@ -1077,7 +1081,7 @@ func (ts *Store) Close() error {
 		// concern as event shards above. Bounded (BACKLOG 19n) — see the
 		// event-shard drain above for the rationale.
 		if archive != nil {
-			if !drainActiveReqsBounded(ts.archiveActiveReqs.Load) {
+			if !ts.drainActiveReqsBounded(ts.archiveActiveReqs.Load) {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref archive: %w (checkin leak?)", ErrDrainTimeout))
 			}
 			if err := archive.Close(); err != nil {
@@ -1089,7 +1093,7 @@ func (ts *Store) Close() error {
 		// store methods that already passed checkOpen cannot have the
 		// Badger handle closed underneath a read/write call. Bounded
 		// (BACKLOG 19n) — see the event-shard drain above for the rationale.
-		if !drainActiveReqsBounded(ts.refActiveReqs.Load) {
+		if !ts.drainActiveReqsBounded(ts.refActiveReqs.Load) {
 			closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref shard: %w (checkin leak?)", ErrDrainTimeout))
 		}
 		if ts.refShard != nil {
@@ -1387,8 +1391,7 @@ func (ts *Store) clearEventShard(es *EventShard) error {
 		if err := es.store.Close(); err != nil {
 			return err
 		}
-		es.store = nil
-		es.readTransientOpen = false
+		es.clearStoreLocked(ts)
 	}
 
 	store, err := NewBadgerStore(ts.shardCfg(es.path, false, es.currentTier() == TierCold))
