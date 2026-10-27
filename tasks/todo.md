@@ -75,6 +75,17 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   write now takes the delta open), badger, tiered, sharded and graph green; next mutation checks, docs, then step
   (2). ai-soc measures after the tag on copies of k10262212: one full open writing the image, then a crash reopen
   after a few hundred records.
+- **PROPSTR** (SCALE, ai-soc 27 Oct, Flux run k10270113 on v4.87.2 with PropertyIndexOnDisk: BO 39 of 46 files in
+  32 min against 46 in 8 min with the RAM index; 91 % cum in `propertyIndexDiskKeysCandidatesLocked`, iterating).
+  A raw-domain (string) value prefix has no terminator (`storeutil/property_index_key.go:150`, `:170`), so the
+  equality seek (`badgerstore_property_disk.go:340`) walks every longer string that extends the looked-up one and
+  `listed()` drops them: linear in the values sharing the prefix (folder paths, short keys). ai-soc keeps the
+  property index in RAM until the fix. Options: (a) a seek bounded to the store's live node-ID high bytes (exact
+  entries are value||nodeID; snowflake high bytes are 0x00-0x07), a patch if every ID the index can hold is
+  covered; (b) an order-preserving terminator (escape 0x00, end with 0x00; a length prefix would break STARTS
+  WITH, `badgerstore_property_disk.go:567+`), a format marker plus a backfill on the first open, a minor. Done
+  when: an equality lookup's cost is independent of the stored strings it prefixes (a test counting keys visited
+  against 10x such strings), and ai-soc's BO run finishes with the disk index at the RAM index's time.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 

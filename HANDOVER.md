@@ -34,8 +34,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   the release note here and tell René in one line):
   - ai-soc, agent `ai-soc-main-45`: pins rho v4.83.0 (26 Oct; v4.84.0 and v4.84.1 notified: pins v4.84.1 at its next bump, PIN) with sigma v0.11.65. Tiered
     main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2; HistoryDeltaEncoding, SyncWrites, DurableCommit,
-    RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk, PropertyIndexOnDisk (P4BSTORE 77d7fb7c, 26 Oct; sigma's
-    Elements index dropped with `Index().DeleteProperty`), ValueDictionaries, UntimedUnbounded, AllowRetentionPurge;
+    RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk (PropertyIndexOnDisk switched on 26 Oct, P4BSTORE 77d7fb7c,
+    and off again 27 Oct until PROPSTR: string lookups walk every longer string), ValueDictionaries, UntimedUnbounded, AllowRetentionPurge;
     `DepthWarm` on windowed reads; `CreateRelTemporal` on its 29 estate-indexed rel types; unique keys on reference
     labels only; Derived (and its composite index) on the reference shard. Pins rho v4.87.2 (bb26af82, 26 Oct);
     its /metrics exports `aisoc_store_shard_access_total{tier}` from ShardAccessStats (kit BA slice: warm, cold and
