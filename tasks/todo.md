@@ -170,7 +170,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   node rewritten every cut). rho's record door `NodeAsOf` walks history newest-first only down to the pin (500
   versions: 325 ns at the newest, 4.7 us one back; NodeHistoryTemporalMeta 166 us at any pin). sigma (27 Oct):
   state units take NodeAsOf (sigma's side, no rho work, no batch door yet); paged rows need the state door. The
-  head-pin cache (backlog 68) answers a head pin in O(segments) but an Update drops its entry (headValid: token,
+  head-pin cache (core/effective_head.go) answers a head pin in O(segments) but an Update drops its entry (headValid: token,
   current version and temporal block change), so a read after each rewrite folds the whole history. Candidate
   (core work): carry the entry across an Update when the current row was its only believed row. Waits for sigma's
   500-cut re-measure after its NodeAsOf switch and whether row segments are an Update chain or corrections.
