@@ -151,30 +151,41 @@ func installValueIDsKept(entries []imgValueIDs, keep func(id int64) bool, add fu
 	})
 }
 
-// touchedNodeMembers calls fn with each touched live node carrying label tok,
-// decoded from its row, in ID order (a delta open; labels holds the labels
-// the node walk decoded). A row that fails to decode is counted on skips and
+// touchedNodeMembers calls fn with each touched node that is a member of
+// label tok as the rebuild counts members, decoded from its row, in ID order
+// (a delta open). With the label map (lazy false) a member is a node the
+// label walk kept, an undecodable row included, as the rebuild loads it from
+// the map; with the label index on disk only a decoded live node carrying
+// tok (labels holds the labels the node walk decoded), as openLabelMembers
+// keeps only live nodes. A row that fails to decode is counted on skips and
 // skipped, as the rebuild skips it.
-func (bs *Store) touchedNodeMembers(txn *badgerv4.Txn, labels map[types.NodeID]map[uint16]struct{}, tok uint16,
-	skips *atomic.Int64, fn func(id snowflake.ID, n *types.Node)) {
-	ids := make([]types.NodeID, 0, len(labels))
-	for id, toks := range labels {
-		if _, ok := toks[tok]; ok {
-			ids = append(ids, id)
-		}
+func (bs *Store) touchedNodeMembers(txn *badgerv4.Txn, img *openImage, labels map[types.NodeID]map[uint16]struct{}, lazy bool,
+	tok uint16, skips *atomic.Int64, fn func(id snowflake.ID, n *types.Node)) {
+	if !img.delta() {
+		return
 	}
-	slices.Sort(ids)
-	for _, id := range ids {
+	img.touchedNodes.Ascend(func(raw int64) bool {
+		id := types.NodeID(raw)
+		member := false
+		if lazy {
+			_, member = labels[id][tok]
+		} else {
+			_, member = bs.labelIdx[tok][id]
+		}
+		if !member {
+			return true
+		}
 		n, err := bs.loadNodeFromBadger(txn, id.SnowflakeID())
 		if err != nil {
 			skips.Add(1)
 			if bs.logger != nil {
 				bs.logger.Warningf("graph: index update from an older image skipped node %d (label %d): %v", id.SnowflakeID(), tok, err)
 			}
-			continue
+			return true
 		}
 		fn(id.SnowflakeID(), n)
-	}
+		return true
+	})
 }
 
 // touchedRelMembers is touchedNodeMembers for the touched live rels of type

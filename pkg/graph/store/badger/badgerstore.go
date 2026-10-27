@@ -1795,7 +1795,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					installValueIDsKept(entries, func(id int64) bool { return bs.keepNodeEntry(img, id) }, idx.AddKey)
 					if img.delta() {
 						build := indexpkg.NewPostingsBuild(def.Elements)
-						bs.touchedNodeMembers(txn, decodedNodeLabels, def.LabelToken, &bs.indexRebuildPropertySkips, func(id snowflake.ID, n *types.Node) {
+						bs.touchedNodeMembers(txn, img, decodedNodeLabels, lazyLabels, def.LabelToken, &bs.indexRebuildPropertySkips, func(id snowflake.ID, n *types.Node) {
 							build.AddEntityKeys(id, def.PropertyKey, n.ForEachPropertyIndexKey)
 						})
 						fillFromBuild(build, idx.AddKey)
@@ -1926,7 +1926,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				idx := indexpkg.NewCompositePropertyIndex(def.Keys)
 				if entries, ok := img.takeComposite(key); ok {
 					installValueIDsKept(entries, func(id int64) bool { return bs.keepNodeEntry(img, id) }, idx.AddKey)
-					bs.touchedNodeMembers(txn, decodedNodeLabels, def.LabelToken, &bs.indexRebuildCompositeSkips, func(id snowflake.ID, n *types.Node) {
+					bs.touchedNodeMembers(txn, img, decodedNodeLabels, lazyLabels, def.LabelToken, &bs.indexRebuildCompositeSkips, func(id snowflake.ID, n *types.Node) {
 						if vk, found := indexpkg.NodeCompositeValueKey(idx.Keys, n); found {
 							idx.AddKey(id, vk)
 						}
@@ -1990,7 +1990,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						}
 					}
 					// A touched member starts from its row; New folds its history.
-					bs.touchedNodeMembers(txn, decodedNodeLabels, tok, &bs.indexRebuildTemporalSkips, func(id snowflake.ID, n *types.Node) {
+					bs.touchedNodeMembers(txn, img, decodedNodeLabels, lazyLabels, tok, &bs.indexRebuildTemporalSkips, func(id snowflake.ID, n *types.Node) {
 						from, to := indexpkg.NodeTemporalBounds(bs.validAxis.Get(), id, n.Temporal())
 						ti.AddKnownAbsent(id, from, to)
 						img.touchedTemporal[tok] = append(img.touchedTemporal[tok], types.NodeID(id))
@@ -2090,7 +2090,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							hfi.Add(e.id, e.start)
 						}
 					}
-					bs.touchedNodeMembers(txn, decodedNodeLabels, def.LabelToken, &bs.indexRebuildHFSkips, func(id snowflake.ID, n *types.Node) {
+					bs.touchedNodeMembers(txn, img, decodedNodeLabels, lazyLabels, def.LabelToken, &bs.indexRebuildHFSkips, func(id snowflake.ID, n *types.Node) {
 						from, _ := indexpkg.NodeTemporalBounds(bs.validAxis.Get(), id, n.Temporal())
 						hfi.Add(types.NodeID(id), from)
 					})
@@ -2159,7 +2159,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						}
 					}
 					var addErr error
-					bs.touchedNodeMembers(txn, decodedNodeLabels, def.LabelToken, &bs.indexRebuildVectorSkips, func(id snowflake.ID, n *types.Node) {
+					bs.touchedNodeMembers(txn, img, decodedNodeLabels, lazyLabels, def.LabelToken, &bs.indexRebuildVectorSkips, func(id snowflake.ID, n *types.Node) {
 						if vec, ok := n.Float32SlicePropertyCopy(def.PropertyKey); ok && addErr == nil {
 							addErr = vi.AddOwned(id, vec)
 						}
