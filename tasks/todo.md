@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-27 Oct: v4.75.0 to v4.88.0 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
+Released 24-27 Oct: v4.75.0 to v4.88.1 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
@@ -63,20 +63,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   k10262212 (one full open writing the image, then a crash reopen after a few hundred records). Done when: a daemon
   that never closes cleanly reopens after a crash in time bounded by the writes since the last periodic image (a
   test), and ai-soc's crash reopen is measured.
-- **PROPSTR** (SCALE, ai-soc 27 Oct, Flux run k10270113 on v4.87.2 with PropertyIndexOnDisk: BO 39 of 46 files in
-  32 min against 46 in 8 min with the RAM index; 91 % cum in `propertyIndexDiskKeysCandidatesLocked`, iterating).
-  A raw-domain (string) value prefix has no terminator (`storeutil/property_index_key.go:150`, `:170`), so the
-  equality seek (`badgerstore_property_disk.go:340`) walks every longer string that extends the looked-up one and
-  `listed()` drops them: linear in the values sharing the prefix (folder paths, short keys). ai-soc keeps the
-  property index in RAM until the fix. Options: (a) a seek bounded to the store's live node-ID high bytes (exact
-  entries are value||nodeID; snowflake high bytes are 0x00-0x07), a patch if every ID the index can hold is
-  covered; (b) an order-preserving terminator (escape 0x00, end with 0x00; a length prefix would break STARTS
-  WITH, `badgerstore_property_disk.go:567+`), a format marker plus a backfill on the first open (a minor).
-  Done when: an equality lookup's cost is independent of the stored strings it prefixes (a test counting keys visited
-  against 10x such strings), and ai-soc's BO run finishes with the disk index at the RAM index's time. State 27 Oct:
-  option (a) on branch `propstr` (66d86ca7): the walk runs from value||minLiveID to value||maxLiveID (IDSet.Bounds);
-  one lookup beside 10,000 longer strings visits 2 keys, before 10,001; 5 mutations caught. Releases as v4.88.1
-  next.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
@@ -184,6 +170,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **PROPSTR** (SCALE, ai-soc 27 Oct, BO run k10270113: an on-disk string equality lookup walked every longer string it
+  prefixes) — shipped in v4.88.1 (the walk is bounded by the snapshot's smallest and largest node row IDs; one
+  lookup beside 10,000 longer strings visits 2 keys). Waits for ai-soc's BO run on v4.88.1 with PropertyIndexOnDisk.
+  Done when: that run finishes at the RAM index's time.
 - **SCALEPROFILE** (SCALE, ai-soc 26 Oct) — which RAM structures grow with data in ai-soc's daemon plus sigma.
   Flux run k10261904 on v4.86.0 is the baseline (heap, memstats and smaps_rollup every 600 s and after the final
   GC, reopen times, the top-40 inuse_space with node and rel counts); the run after the PAGEREF pin carries

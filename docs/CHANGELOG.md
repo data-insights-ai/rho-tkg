@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.88.1] - 2026-10-27
+
 ### Fixed
 
 - **PROPSTR** (SCALE, ai-soc's BO run k10270113 on v4.87.2 with `PropertyIndexOnDisk`: 39 of 46 files in 32 min
