@@ -27,6 +27,13 @@ property be stored as a reference to another edge's property. Before that: SCALE
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
+- **TXMEMBERS** (ai-soc 27 Oct, René's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars hold one RAM
+  entry per id that ever carried the token, built by the first pinned scan and freed only at Close; on the reference
+  shard they grow with every entity ever seen (k10271800, v4.89.4: recordLabelMemberLocked +127 MB of live heap from
+  300 to 900 s). Plan: the sidecar keeps only former members (a stored version carried the token, the current row
+  does not); current members come from the label/type index rho already keeps. Done when recordLabelMemberLocked is
+  flat from 300 to 900 s on ai-soc's next reduced BA run. sigma calls no sidecar capability directly. Waits for
+  ai-soc (LabelIndexOnDisk on the reference shard? label drops or deletes there? direct capability calls?).
 - **SCALE** (René 26 Oct, the standing goal) — rho holds realtime ingest at about 2 TB a day (about 23 MB/s
   sustained, peaks higher; about 4 billion 500-byte facts a day) and grows only by more RAM, NVMe and block storage.
   Done when: architecture.md lists what grows with total volume instead of per shard (RAM structures that grow with
