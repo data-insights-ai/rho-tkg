@@ -48,13 +48,17 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **v4.89.2** (PROPREWRITE, a patch for sigma's rewritten state units): tag CI and ci-fast green, consumers build and vet clean;
   an update writes only the on-disk property entries whose value changed (20 updates: 1 version, before 21); 10
   mutations caught.
-- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (merged into v4.89.0, local only), propseek (merged into v4.89.1, local only), proprewrite (merged into v4.89.2, local only), propbounds (merged into v4.89.3, local only), histpend (merged into v4.89.4, local only). The agent worktrees under rho-tkg/.claude/worktrees are removed (René 27 Oct); their local branches stay: worktree-agent-aa318165f7465324c (row 119 (a), was clean), worktree-agent-a34d277df6499077d and worktree-agent-a6a166b726378f33b (their uncommitted 22 Oct changes kept as one WIP commit each, d2cc529f and d479f1e1: not reviewed, not merged). The merged item branches are deleted and the kept ones pushed
-  (René, 26 Oct); user-only action 5 stays. main is pushed.
+- **Branches:** every merged branch is deleted (René 27 Oct: "delete if everything is merged"): the item branches through
+  histpend (v4.89.4), headparity, openimage (all its patches on main), worktree-agent-aa318165f7465324c, and user-only action 5's
+  `v5` and `worktree-agent-a0d52d5298e44faee`. The checkout `rho-tkg` sits detached at origin/main; item work starts a branch.
+  Unmerged branches stay: row102-pending-ranged, tombstone-writer-v4.63, v5-realstore-harness, wp-37-import-throughput (each pushed
+  to origin as a backup), v5-takeover (local only, paused v5), worktree-agent-a34d277df6499077d and worktree-agent-a6a166b726378f33b
+  (local only: their uncommitted 22 Oct changes as one WIP commit each, d2cc529f and d479f1e1, not reviewed). main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
   91.8 records/op is a synthetic in-memory probe; options A/B/C are in no committed file: `git show af75a982:tasks/evidence/v5-scale/notes.md`.
-  Gap analysis (file removed 2026-10-22): `git show 7c0a4b74:docs/v5-gap-to-main.md`. Real-store harness: local branches `v5-realstore-harness`
-  (`af75a982`) and `wp-37-import-throughput` (`392f88e2`); not pushed. Local branch `v5` (`b1193dc0`) = stale, behind origin/v5 (`91426024`) by 1,440 commits, 1 ahead (its extra review file is in main at `0622da63`); deletable (René, user-only action 5). Since the takeover (row 51) `pkg/graph` + `v5compat` are ours on `v5-takeover` (open WPs in todo; WP history `git show aeb7f8e0:tasks/todo.md`); no posts on GitHub issue #11 (René tells Markus).
+  Gap analysis (file removed 2026-10-22): `git show 7c0a4b74:docs/v5-gap-to-main.md`. Real-store harness: branches `v5-realstore-harness`
+  (`af75a982`) and `wp-37-import-throughput` (`392f88e2`), pushed to origin as backups. The stale local `v5` is deleted (27 Oct; its plan docs are in origin/v5 at `04c7fd4f`, its review file on main at `0622da63`). Since the takeover (row 51) `pkg/graph` + `v5compat` are ours on `v5-takeover` (open WPs in todo; WP history `git show aeb7f8e0:tasks/todo.md`); no posts on GitHub issue #11 (René tells Markus).
 - **Consumers and their agents** (ask the agent for runs and data, never browse their repos; answer a request the same
   day with its todo item first; agent names change per session, `ListAgents`; if neither resolves at a release, put
   the release note here and tell René in one line):
@@ -126,7 +130,6 @@ tombstone-writer-v4.63, v5-realstore-harness and wp-37-import-throughput are pus
 3. `! rm ~/Work/2026/datainsights/rho-tkg/warm` (stray 10-byte file, untracked).
 4. gh-dashboard scratchpad (667 MB, path in that session). The cleanup message to tts-tests-b6 expired and monitoring-a9's is
    held (different permission mode); tell them directly if wanted.
-5. `! git branch -D v5 worktree-agent-a0d52d5298e44faee` (full name; `v5` = stale copy of origin/v5 `04c7fd4f`, worktree-agent: its test and evidence are `tasks/evidence/4/` on main, backlog item 4). Both content-complete elsewhere.
 
 ## Appendix A — origin watch
 
