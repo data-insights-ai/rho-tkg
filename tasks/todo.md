@@ -74,8 +74,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   1 M entities (the full rebuild: 154 k and 1.54 M); the full-rebuild oracles delete the open state (a foreign
   write now takes the delta open), badger, tiered, sharded and graph green; 25 mutations of the delta open all
   caught (cff83b32: TestDeltaOpenMatchesFullRebuild for history or rows written alone, purged entities and redefined
-  indexes; no definition guard, the image holds row values). Next: release step (1) as v4.88.0 (ci-docker), then
-  step (2). ai-soc measures after the tag on copies of k10262212: one full open writing the image, then a crash reopen
+  indexes; no definition guard, the image holds row values). The first ci-docker gate failed in test-race: six
+  TestIndexRebuildStats tests (a corrupt row written after the image is now a touched node, and the delta loaded only
+  decoded ones, so no skip was counted); fixed (touched members as the rebuild counts them), long tier green, gate
+  rerunning for v4.88.0. Then step (2). ai-soc measures after the tag on copies of k10262212: one full open writing the image, then a crash reopen
   after a few hundred records.
 - **PROPSTR** (SCALE, ai-soc 27 Oct, Flux run k10270113 on v4.87.2 with PropertyIndexOnDisk: BO 39 of 46 files in
   32 min against 46 in 8 min with the RAM index; 91 % cum in `propertyIndexDiskKeysCandidatesLocked`, iterating).
