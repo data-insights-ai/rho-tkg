@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.89.2] - 2026-10-27
+
 ### Fixed
 
 - **PROPREWRITE** (SCALE, found with PROPSEEK; sigma's write-back gives a state unit a new version with its indexed
