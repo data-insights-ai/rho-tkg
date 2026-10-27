@@ -39,7 +39,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **v4.89.1** (PROPSEEK, a patch for ai-soc's BO run k10270452-p4b on v4.89.0): tag CI and ci-fast green, consumers build and
   vet clean; the on-disk equality lookup iterates with AllVersions: 200 lookups before 20,000 deleted entries 325x
   -> 0.9-1.2x their time without them; 4 mutations caught, the fifth's code removed.
-- **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): ci-fast green; a history read finds its
+- **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): tag CI and ci-fast green, consumers build and vet clean; a history read finds its
   entity's buffered rows by key prefix instead of walking the write buffer (sigma's bench: last ten cuts 15-20 ->
   10 ms, run 1.30 -> 0.81 s); 7 mutations caught, the unreachable length guard removed.
 - **v4.89.3** (PROPBOUNDS, a patch for ai-soc's P4BSTORE A/B k10271117): tag CI and ci-fast green, consumers build and vet clean; the on-disk equality lookup
