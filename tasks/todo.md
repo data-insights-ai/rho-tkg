@@ -10,7 +10,9 @@ Each item: one sentence, then when it is done and what it waits for.
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-27 Oct: v4.75.0 to v4.90.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
-labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows). Goal 2 begun (27 Oct, after René's three-agent checkpoint):
+labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
+Its first ci-docker failed on gosec G115 at v4.89.3's `propIDs.widen(uint64(id))` (ci-fast runs no gosec): annotated, no
+behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after René's three-agent checkpoint):
 ai-soc's P4BSTORE A/B k10271117 on v4.89.2 (disk index 518 s against 453 s in RAM) gave PROPBOUNDS, v4.89.3. Its re-run
 k10271211: disk lookup CPU 48.5 -> 18.25 s, push 454 vs 481 s (+6 %, was +14 %); left: badger Seek across the LSM tables
 per key (11.7 s), NewIterator 2.8 s. sigma's counts: misses under 1 %, one key per
