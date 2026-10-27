@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"os"
+	"slices"
 	"strconv"
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -342,6 +344,7 @@ func (h *headOracle) checkAll(when string) {
 			}
 		}
 	}
+	h.checkManyDoors(when)
 	for _, id := range h.rels {
 		for _, pin := range h.pickPins() {
 			got, gerr := g.Temporal.RelEffectiveTimeline(id, pin)
@@ -354,5 +357,83 @@ func (h *headOracle) checkAll(when string) {
 					gerr, etSegsString(etRelSegs(got)), werr, etSegsString(etRelSegs(want)))
 			}
 		}
+	}
+}
+
+// checkManyDoors checks the plural doors and the value-list page door against
+// the singular door's fold (sigma, REWRITEBACK: a consumer moves a read
+// between them and relies on equal answers, void rows and older pins
+// included). The plural call answers every pin or refuses the call where some
+// pin's singular read refuses; the page door hands each listed node the
+// singular answer at its pin.
+func (h *headOracle) checkManyDoors(when string) {
+	g := h.g
+	pins := h.pickPins()
+	fold := func(read func(types.Instant) (string, error)) ([]string, error) {
+		g.headCacheOff = true
+		defer func() { g.headCacheOff = false }()
+		out := make([]string, len(pins))
+		for i, pin := range pins {
+			s, err := read(pin)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = s
+		}
+		return out, nil
+	}
+	same := func(what string, want []string, werr error, got []string, gerr error) {
+		h.checks++
+		if (werr != nil) != (gerr != nil) || (werr == nil && !slices.Equal(got, want)) {
+			h.t.Fatalf("%s: %s pins %v (head %d):\n plural %v %v\n fold   %v %v", when, what, pins, g.peekNow(), gerr, got, werr, want)
+		}
+	}
+	for _, id := range h.nodes {
+		want, werr := fold(func(pin types.Instant) (string, error) {
+			s, err := g.Temporal.NodeEffectiveTimeline(id, pin)
+			return etSegsString(etNodeSegs(s)), err
+		})
+		var got []string
+		ss, gerr := g.Temporal.NodeEffectiveTimelines(id, pins)
+		for _, s := range ss {
+			got = append(got, etSegsString(etNodeSegs(s)))
+		}
+		same(fmt.Sprintf("node %v", id), want, werr, got, gerr)
+	}
+	for _, id := range h.rels {
+		want, werr := fold(func(pin types.Instant) (string, error) {
+			s, err := g.Temporal.RelEffectiveTimeline(id, pin)
+			return etSegsString(etRelSegs(s)), err
+		})
+		var got []string
+		ss, gerr := g.Temporal.RelEffectiveTimelines(id, pins)
+		for _, s := range ss {
+			got = append(got, etSegsString(etRelSegs(s)))
+		}
+		same(fmt.Sprintf("rel %v", id), want, werr, got, gerr)
+	}
+	pin := pins[len(pins)-1]
+	listed := map[types.NodeID]string{}
+	_, perr := g.Temporal.ForEachNodeEffectiveByLabelAndPropertyValues(context.Background(), "H", nil, "c",
+		[]any{int64(0), int64(1), int64(2)}, pin, temporal.EffectivePageOpts{}, func(id types.NodeID, s []temporal.NodeSegment) bool {
+			listed[id] = etSegsString(etNodeSegs(s))
+			return true
+		})
+	g.headCacheOff = true
+	defer func() { g.headCacheOff = false }()
+	var ferr error
+	for _, id := range h.nodes {
+		s, err := g.Temporal.NodeEffectiveTimeline(id, pin)
+		if err != nil {
+			ferr = err
+			continue
+		}
+		h.checks++
+		if got, ok := listed[id]; ok && got != etSegsString(etNodeSegs(s)) {
+			h.t.Fatalf("%s: page door node %v pin %d (head %d):\n page %s\n fold %s", when, id, pin, g.peekNow(), got, etSegsString(etNodeSegs(s)))
+		}
+	}
+	if perr != nil && ferr == nil {
+		h.t.Fatalf("%s: page door at pin %d refused (%v) where every singular read answers", when, pin, perr)
 	}
 }
