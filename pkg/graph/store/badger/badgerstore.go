@@ -183,6 +183,14 @@ type Config struct {
 	GCInterval time.Duration
 	// GCDiscardRatio is the discard ratio for RunValueLogGC. Default: 0.5.
 	GCDiscardRatio float64
+	// OpenImageInterval is the time between open images written while the store
+	// runs (OPENIMAGE): an open after a crash then decodes only the rows written
+	// since the last image, not since the last clean Close. Each image commits
+	// the write buffer and encodes the RAM indexes under the index read lock
+	// (writers wait for the encode), then writes the image beside the previous
+	// one. Zero (default) writes the image at Close only. Ignored in InMemory
+	// and ReadOnly mode.
+	OpenImageInterval time.Duration
 	// ReadOnly opens Badger in read-only mode. No flushLoop, no gcLoop,
 	// no write operations. Used for warm/cold shards in TieredStore.
 	ReadOnly bool
@@ -762,9 +770,15 @@ type Store struct {
 	flushInt    time.Duration
 	gcInt       time.Duration
 	gcRatio     float64
+	imageInt    time.Duration // Config.OpenImageInterval
+	// imageVersion is the badger version of the newest open image header this
+	// store wrote or trusted whole at open: a periodic image with nothing
+	// committed since writes nothing.
+	imageVersion atomic.Uint64
 	stopCh      chan struct{}
 	flushDone   chan struct{}
 	gcDone      chan struct{}
+	imageDone   chan struct{}
 	closeOnce   sync.Once
 
 	// pendingTxnBytes and pendingTxnEntries bound an async buffer (maxPending >
@@ -905,6 +919,9 @@ func New(cfg Config) (*Store, error) {
 	}
 	if cfg.GCInterval < 0 {
 		return nil, fmt.Errorf("graph: GCInterval must not be negative")
+	}
+	if cfg.OpenImageInterval < 0 {
+		return nil, fmt.Errorf("graph: OpenImageInterval must not be negative")
 	}
 	if cfg.GCDiscardRatio != 0 && (cfg.GCDiscardRatio <= 0 || cfg.GCDiscardRatio >= 1) {
 		return nil, fmt.Errorf("graph: GCDiscardRatio must be in (0, 1), got %g", cfg.GCDiscardRatio)
@@ -1073,9 +1090,11 @@ func New(cfg Config) (*Store, error) {
 		flushInt:                flushInt,
 		gcInt:                   gcInt,
 		gcRatio:                 gcRatio,
+		imageInt:                cfg.OpenImageInterval,
 		stopCh:                  make(chan struct{}),
 		flushDone:               make(chan struct{}),
 		gcDone:                  make(chan struct{}),
+		imageDone:               make(chan struct{}),
 		logger:                  badgerLogger(cfg),
 	}
 	// atomic.Bool cannot be set in a composite literal; set it before bs escapes.
@@ -1182,6 +1201,11 @@ func New(cfg Config) (*Store, error) {
 		go bs.gcLoop()
 	} else {
 		close(bs.gcDone)
+	}
+	if bs.imageInt > 0 && !cfg.InMemory && !cfg.ReadOnly {
+		go bs.openImageLoop()
+	} else {
+		close(bs.imageDone)
 	}
 
 	return bs, nil
@@ -2495,7 +2519,7 @@ func (bs *Store) Close() error {
 	if bs == nil {
 		return ErrNilStore
 	}
-	if bs.db == nil || bs.stopCh == nil || bs.flushDone == nil || bs.gcDone == nil {
+	if bs.db == nil || bs.stopCh == nil || bs.flushDone == nil || bs.gcDone == nil || bs.imageDone == nil {
 		return ErrStoreClosed
 	}
 	var err error
@@ -2504,6 +2528,7 @@ func (bs *Store) Close() error {
 		close(bs.stopCh)
 		<-bs.flushDone // wait for flushLoop exit (or immediate if never started)
 		<-bs.gcDone    // wait for GC exit
+		<-bs.imageDone // wait for a periodic open image in progress
 		// Explicit final flush — ensures pending ops are persisted even when
 		// flushLoop was never spawned. No-op if already drained.
 		e := bs.flush()

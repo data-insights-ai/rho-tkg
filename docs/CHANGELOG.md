@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **OPENIMAGE step 2** (SCALE: a realtime store that never closes cleanly reopened from its last clean `Close`, so
+  a crash reopen decoded every row written since). `badger.Config.OpenImageInterval` (mirrored by `graph.Config`,
+  `tiered.Config` and `sharded.Config`; zero, the default, keeps images at `Close` only) writes an open image every
+  interval while the store runs: it commits the write buffer and encodes the RAM indexes under the flush lock and
+  the index read lock (writes wait), then writes the image beside the previous one, so a crash while it is written
+  keeps the previous one; an interval with no commit writes nothing. A crash reopen is a delta open from the last
+  image and decodes only the writes since (`TestCheckpointCrashReopenDecodesWritesSinceImage`: 18 rows at 500 and
+  5,000 nodes, the index state equal to the full rebuild's). Measured at 1 M nodes / 1 M relationships with a
+  property and a temporal index: a 16 MB image, writes wait 31-33 ms for its encode, and a crash reopen after 100
+  writes decodes 300 rows in 2.7 s against 4.0 M in 18.0 s for the full rebuild
+  (`tasks/evidence/open-cost/10-checkpoint.txt`). The image header is format 4 (`TKGOI\x04`: slot, kind, since);
+  a format-3 image is still read, so the upgrade rebuilds nothing, and a downgrade to v4.88.x rebuilds once.
+
 ## [4.88.1] - 2026-10-27
 
 ### Fixed

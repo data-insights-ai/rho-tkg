@@ -58,6 +58,11 @@ func RelTemporalIndexBuildsTotalForTest() int64 { return relTemporalBuildsTotal.
 // entries. Not for production use.
 func (bs *Store) PropertyIndexOnDiskForTest() bool { return bs.propIdxOnDisk }
 
+// OpenImageIntervalForTest reports the Config.OpenImageInterval this store
+// was opened with, so tiered, sharded and graph tests can assert their
+// pass-through reached it. Not for production use.
+func (bs *Store) OpenImageIntervalForTest() time.Duration { return bs.imageInt }
+
 // LabelIndexOnDiskForTest reports whether this shard was opened with
 // Config.LabelIndexOnDisk set, and the entry count of its label->nodes map.
 // Exported so tiered tests can assert the tiered pass-through reached a shard

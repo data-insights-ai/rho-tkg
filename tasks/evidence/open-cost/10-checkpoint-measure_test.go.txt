@@ -1,0 +1,100 @@
+package badger
+
+import (
+	"os"
+	"strconv"
+	"testing"
+	"time"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	badgerv4 "github.com/dgraph-io/badger/v4"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// scratch measurement, not committed
+func TestZZMeasureCheckpoint(t *testing.T) {
+	n, _ := strconv.Atoi(os.Getenv("CK_N"))
+	if n == 0 {
+		t.Skip()
+	}
+	dir := t.TempDir()
+	bs := ckStore(t, dir)
+	const b = 10_000
+	for lo := 1; lo <= n; lo += b {
+		nodes := make([]*types.Node, 0, b)
+		rels := make([]*types.Relationship, 0, b)
+		for id := lo; id < lo+b && id <= n; id++ {
+			nodes = append(nodes, ckNode(int64(id), int64(id%1000)))
+			if id > 1 {
+				rels = append(rels, types.NewRelationship(types.RelID(snowflake.ID(int64(id))), 1, types.NodeID(snowflake.ID(int64(id-1))), types.NodeID(snowflake.ID(int64(id)))))
+			}
+		}
+		if err := bs.PutNodesBatch(nodes); err != nil {
+			t.Fatal(err)
+		}
+		if err := bs.PutRelationshipsBatch(rels); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	var hold time.Duration
+	openImageAfterEncodeHook = nil
+	start := time.Now()
+	bs.flushMu.Lock()
+	bs.idxMu.RLock()
+	blob := bs.encodeOpenImageLocked()
+	hold = time.Since(start)
+	bs.idxMu.RUnlock()
+	bs.flushMu.Unlock()
+	start = time.Now()
+	if err := bs.writeOpenImageBlob(blob, openImageKindCheckpoint, bs.db.MaxVersion()); err != nil {
+		t.Fatal(err)
+	}
+	write := time.Since(start)
+	for id := n + 1; id <= n+100; id++ {
+		if err := bs.PutNode(ckNode(int64(id), 1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start = time.Now()
+	if err := bs.checkpointOpenImage(); err != nil {
+		t.Fatal(err)
+	}
+	ck := time.Since(start)
+	for id := n + 101; id <= n+200; id++ {
+		if err := bs.PutNode(ckNode(int64(id), 1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ckCrash(t, bs)
+	start = time.Now()
+	var s *Store
+	var err error
+	dec := CountRowDecodesForTest(func() { s, err = New(Config{Dir: dir, ReadOnly: true}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopen := time.Since(start)
+	s.Close()
+	oracle := t.TempDir()
+	copyDirFiles(t, dir, oracle)
+	db, err := badgerv4.Open(badgerv4.DefaultOptions(oracle).WithLogger(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Update(DeleteOpenStateForTest); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	start = time.Now()
+	full := CountRowDecodesForTest(func() { s, err = New(Config{Dir: oracle, ReadOnly: true}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("full rebuild=%v decoded=%d", time.Since(start), full)
+	s.Close()
+	t.Logf("nodes=%d rels=%d image=%d B (%.1f B/entity) encode-hold=%v write=%v checkpoint=%v crash-reopen=%v decoded=%d", n, n-1, len(blob), float64(len(blob))/float64(2*n-1), hold, write, ck, reopen, dec)
+}

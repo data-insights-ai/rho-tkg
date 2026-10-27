@@ -210,6 +210,8 @@ First writable open on v4.54.0 (one-time work, no action needed):
 - a writable open raises the marker to 4 (binary hashes); hex rows already on disk stay readable and are rewritten as they change;
 - v4.52.1 or earlier cannot open the store afterwards. Roll back only to v4.52.2 or v4.53.0 (they read markers 4 and 5, not 6), and only before the first excise.
 
+First writable open on v4.89.0: the open image is format 4 (`TKGOI\x04`, slot, kind and since in the header); a format-3 image is read as a `Close` image, so the upgrade rebuilds nothing. A downgrade to v4.88.x rebuilds once (it compares the full magic); slot-1 chunks (`tkg_open_image_d<i>`) stay on disk until v4.89.0 writes that slot again — no marker change, no refusal.
+
 First writable open on v4.58.0: the open image is format 3 (`TKGOI\x03`), so every badger directory (each sharded slot, each tiered shard as it opens) is rebuilt from its rows once and a clean `Close` writes the new image; a read-only open rebuilds in RAM on every open until a writable `Close`; downgrade to v4.57.1 rebuilds once more (it compares the full magic) — no marker change, no refusal.
 
 Consumers: untimed rows start at their `TxFrom`, an update setting only `tkg_valid_to` closes the version, and the excise doors exist; see api.md and the 4.54.0 CHANGELOG entry.
@@ -452,20 +454,24 @@ With `graph.Config.ChangeLog` (or `badger.Config.ChangeLog` / `memory.WithChange
 
 **Deferred.** A generic `MetaSet` emits no record (only the untimed valid-start mode key does, as `ChangeMeta`); and LSN-watermark-driven log GC (pruning records below the minimum replica-acked LSN) lands with read replicas — on tiered, a whole retention-dropped event shard drops its log segment with it, so consumers must checkpoint before a shard is retention-dropped (the same discipline any log-truncation policy requires).
 
-## Clean reopen: keys plus the open image (backlog 54, no option)
+## Clean reopen: keys plus the open image (backlog 54)
 
 A badger open used to decode every current row to rebuild the RAM indexes (liveness sets, label / type /
 adjacency maps, planner statistics, and the property, relationship-property, composite, temporal,
 relationship-type temporal, high-frequency and vector index contents), so it grew with the store: 14.3 s for
 519 K nodes / 436 K relationships in the ai-soc shape, 24.8 s on ai-soc's own store. A writable
 `Close` that flushed cleanly ends with the **open image**: the index contents above and the planner statistics,
-chunked under `0x0F tkg_open_image_c<i>` (512 KiB each) and a header `0x0F tkg_open_image` (magic, chunk count,
-length, CRC-32C) written last in its own commit. `Close` holds the flush lock from the image's drained check until
-the store is marked closed, so a write racing `Close` cannot commit between the encode and the header. The next
-open trusts the image whole only if that header is still the store's newest badger version (`db.MaxVersion()`);
-a missing chunk, a length or checksum mismatch or a decode error sends the open to the full rebuild. A later
-commit (writes of a session that crashed, a write by an older release that knows nothing of the image, a raw
-badger write) makes it a **delta open** (OPENIMAGE, v4.88.0). Every commit after the header carries a higher badger
+chunked (512 KiB each) under one of two key sets, `0x0F tkg_open_image_c<i>` (slot 0) or `tkg_open_image_d<i>`
+(slot 1), and a header `0x0F tkg_open_image` written last in its own commit: magic `TKGOI\x04`, chunk count,
+length, slot, kind (`Close` or periodic), the image's *since* version (the store's newest badger version when its
+encode ran) and CRC-32C. An image goes to the slot the current header does not name, deleting that slot's chunks
+past its own count, so a crash while it is written leaves the previous header naming the previous chunks.
+`Close` holds the flush lock from the image's drained check until the store is marked closed, so a write racing
+`Close` cannot commit between the encode and the header. The next open trusts the image whole only if `Close`
+wrote it and its header is still the store's newest badger version (`db.MaxVersion()`); a missing chunk, a length
+or checksum mismatch or a decode error sends the open to the full rebuild. Otherwise (writes of a session that
+crashed, a write by an older release that knows nothing of the image, a raw badger write, a periodic image) the
+open is a **delta open** from the image's since version (OPENIMAGE, v4.88.0). Every commit after it carries a higher badger
 version, so one iterator over the versions above it (`IteratorOptions.SinceTs`, all versions, deletes included)
 names every entity whose row, history, label, type or adjacency keys changed since: the touched entities. The delta open walks the
 entity, label, type and adjacency keys as an open from an image without ID sets does, decodes only the touched
@@ -512,6 +518,23 @@ and reports the damage when the row is read, where the full rebuild skipped and 
 (`IndexRebuildStats`). A raw badger commit that only deletes keys can be dropped by a bottom-level compaction,
 which leaves the header the newest version again and the image trusted; rho-tkg's own deletes commit together
 with their counters, so only raw writers can hit this.
+
+**Periodic images (`OpenImageInterval`, OPENIMAGE step 2, v4.89.0).** A store that never closes cleanly reopens
+from its last clean `Close`, so a crash reopen decodes every row written since, without bound in a long run.
+`badger.Config.OpenImageInterval` (mirrored by `graph.Config`, `tiered.Config` for every shard it opens and
+`sharded.Config` for every slot; zero, the default, writes images at `Close` only; ignored in-memory and read-only)
+writes an image every interval while the store runs: it takes the flush lock and the index read lock, commits the
+write buffer, encodes the RAM indexes at since = the newest badger version, releases the locks and writes the
+image beside the previous one (two slots, above). Writes wait for the flush and the encode, and a read that queues behind a waiting write (the index lock is a
+`sync.RWMutex`) waits with it. A crash
+reopen then decodes only the rows written since the last image; a crash while one is written keeps the previous
+one (`TestCheckpointCrashWhileWritingKeepsPrevious`), and an interval with no commit since the last image writes
+nothing. A periodic image is never trusted whole: the next open is a delta open from its since version, also when
+nothing was written after it. Measured at 1 M nodes / 1 M relationships with a property and a temporal index
+(`tasks/evidence/open-cost/10-checkpoint.txt`): a 16 MB image (8 B per entity), writers wait 31-33 ms for its
+encode, the chunk and header writes take 19 ms outside the locks, and a crash reopen after 100 writes decodes 300
+rows in 2.7 s, against 4.0 M rows in 18.0 s for the full rebuild. Pick the interval from the crash reopen you can
+accept: the decode work after a crash is the writes of one interval.
 
 ## Persistent property index (opt-in, `PropertyIndexOnDisk`)
 

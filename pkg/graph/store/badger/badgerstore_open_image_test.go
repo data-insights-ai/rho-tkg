@@ -350,6 +350,12 @@ func TestFailedKeyRepairWritesNoImage(t *testing.T) {
 			}
 		})
 		ids, _ := s.LabelIndexForTest(adLabel + 1)
+		if fault != nil {
+			// A periodic image is suppressed like the Close one.
+			if err := s.checkpointOpenImage(); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
 		}

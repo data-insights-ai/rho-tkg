@@ -1,0 +1,10 @@
+## OPENIMAGE step 2: periodic open image, quiet host (32 cores), 2026-10-27T03:37:48+01:00
+# store: 1,000,000 nodes / 999,999 rels, one property index and one temporal index; harness 10-checkpoint-measure_test.go.txt (CK_N=1000000)
+# encode-hold: flush and index locks held for the encode (writers wait); write: chunks + header outside the locks; checkpoint: checkpointOpenImage with 100 nodes buffered
+# crash-reopen: 100 nodes written after the checkpoint, no Close; full rebuild: the same directory without its open state
+full rebuild=17.79765328s decoded=4000599
+nodes=1000000 rels=999999 image=15979916 B (8.0 B/entity) encode-hold=32.884298ms write=19.300267ms checkpoint=81.803349ms crash-reopen=2.723502085s decoded=300
+full rebuild=17.98459014s decoded=4000599
+nodes=1000000 rels=999999 image=15979916 B (8.0 B/entity) encode-hold=30.723099ms write=19.160641ms checkpoint=81.544068ms crash-reopen=2.712509854s decoded=300
+
+Summary: a periodic image of 2 M entities is 16 MB; writers wait 31-33 ms for its encode; a checkpoint with 100 nodes buffered takes 82 ms, 19 ms of it writing outside the locks; a crash reopen after it decodes 300 rows in 2.7 s, the full rebuild 4.0 M in 18.0 s.

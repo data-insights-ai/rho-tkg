@@ -210,6 +210,12 @@ type Config struct {
 	// shard's badger store — see badger.Config.HistoryDeltaEncoding (ADR-0009/B6).
 	// Passed through badgerCfg to EVERY shard uniformly. Default false (opt-in).
 	HistoryDeltaEncoding bool
+	// OpenImageInterval is the time between open images each open shard writes
+	// while it runs (badger.Config.OpenImageInterval), so a crash reopen decodes
+	// only the rows written since; a shard with no commit since its last image
+	// writes none. Passed through badgerCfg to EVERY shard. Zero (default)
+	// writes the image at Close only.
+	OpenImageInterval time.Duration
 	// ChangeLog enables the durable, ordered change-log (op-log) across all
 	// shards. A store-level monotonic allocator hands every shard's change-log
 	// record a store-global LSN (a total commit order); each shard co-commits
@@ -395,6 +401,7 @@ type Store struct {
 	propertyIndexOnDisk   bool          // reference-shard-only scope unchanged; changes RAM vs disk representation
 	disablePlannerStats   bool          // skip planner-stat maintenance on every shard; stat folds decline
 	historyDeltaEncoding  bool          // anchor+delta version-history storage on every shard (ADR-0009/B6)
+	openImageInterval     time.Duration // periodic open images on every shard (badger.Config.OpenImageInterval)
 	syncWrites            bool          // Config.SyncWrites: every writable shard opens with badger SyncWrites
 	flushHold             atomic.Bool   // every shard's flush-hold flag (badgerCfg shares it; tieredstore_flush_hold.go)
 	temporalIndexOnDisk   bool          // per-shard rebuild-at-open accelerator; index itself stays RAM-resident on every shard
@@ -636,6 +643,7 @@ func New(cfg Config) (*Store, error) {
 		labelIndexOnDisk:      cfg.LabelIndexOnDisk,
 		disablePlannerStats:   cfg.DisablePlannerStats,
 		historyDeltaEncoding:  cfg.HistoryDeltaEncoding,
+		openImageInterval:     cfg.OpenImageInterval,
 		syncWrites:            cfg.SyncWrites,
 		closeCh:               make(chan struct{}),
 		hfIdxBuckets:          make(map[uint16]time.Duration),
@@ -1734,6 +1742,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		LabelIndexOnDisk:      ts.labelIndexOnDisk,
 		DisablePlannerStats:   ts.disablePlannerStats,
 		HistoryDeltaEncoding:  ts.historyDeltaEncoding,
+		OpenImageInterval:     ts.openImageInterval,
 		ValidAxis:             ts.validAxis.Get(),
 		SyncWrites:            ts.syncWrites && !readOnly,
 		// One hold flag for every shard: a shard opened during a durable

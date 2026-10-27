@@ -35,22 +35,37 @@ import (
 // with the rows first (badgerstore_index_repair.go), so the keys an image
 // later vouches for agree with them.
 //
-// TRUST RULE. The image header is written last, in its own commit, so its
-// badger version is the newest in the store. An open trusts the image (and the
-// keys) only when that still holds: header version == db.MaxVersion(). Any
-// later commit — a session that crashed after writing, a write by an older
-// release that knows nothing of the image, a raw badger write — moves
-// MaxVersion past it and the open falls back to the full rebuild. So does a
-// missing chunk, a length or CRC mismatch, an unknown format, or any decode
-// error. Read-only opens read the image but never write one.
+// TRUST RULE. The image header is written last, in its own commit, and names
+// the badger version the image holds the store at (since: everything committed
+// at or below it, nothing above). Close writes it after its final flush and
+// holds the flush lock until the store is closed, so its header version is the
+// newest in the store. An open trusts a Close image whole only when that still
+// holds: header version == db.MaxVersion(). Any later commit — a session that
+// crashed after writing, a write by an older release that knows nothing of the
+// image, a raw badger write — and every periodic image (Config.OpenImageInterval,
+// written while the store runs) make the open a delta open from since
+// (badgerstore_open_image_delta.go). A missing chunk, a length or CRC mismatch,
+// an unknown format or any decode error sends it to the full rebuild.
+// Read-only opens read the image but never write one.
+//
+// SLOTS. The chunks of consecutive images alternate between two key sets
+// (slot 0: tkg_open_image_c<i>, slot 1: tkg_open_image_d<i>), so a crash while
+// an image is written leaves the previous one and its header intact.
 
 const openImageName = "tkg_open_image"
 
 // openImageHeaderKey also prefixes the chunk keys.
 var openImageHeaderKey = storepkg.MetaKey(openImageName)
 
-func openImageChunkKey(i int) []byte {
-	return storepkg.MetaKey(openImageName + "_c" + strconv.Itoa(i))
+func openImageChunkKey(slot, i int) []byte {
+	return storepkg.MetaKey(openImageSlotPrefix(slot) + strconv.Itoa(i))
+}
+
+func openImageSlotPrefix(slot int) string {
+	if slot == 1 {
+		return openImageName + "_d"
+	}
+	return openImageName + "_c"
 }
 
 // openImageChunkBytes keeps each value well under badger's 1 MiB inline limit
@@ -64,8 +79,20 @@ var openImageChunkBytes = 512 * 1024
 // and prune it, so the open rebuilds instead of trusting it. 3 (v4.58.0): an
 // Elements index built over existing lists before it kept one element per row
 // (PropertyIndex.FinishBuild); an image of format 2 can hold that, so the open
-// rebuilds from the rows.
-const openImageMagic = "TKGOI\x03"
+// rebuilds from the rows. 4 (v4.89.0): the header names the slot, whether
+// Close or a periodic write made the image, and its since version; the image
+// blob is format 3's. An older release refuses the header and rebuilds once.
+const openImageMagic = "TKGOI\x04"
+
+// openImageMagic3 is the format-3 header (no slot, kind or since): read as a
+// Close image in slot 0 whose since is the header's own version.
+const openImageMagic3 = "TKGOI\x03"
+
+// Image kinds in a format-4 header.
+const (
+	openImageKindClose      byte = 1 // Close, after its final flush
+	openImageKindCheckpoint byte = 2 // Config.OpenImageInterval, while the store runs
+)
 
 const (
 	imgSecNodeProp byte = iota + 1
@@ -189,13 +216,60 @@ func (bs *Store) writeOpenImage() error {
 		bs.idxMu.RUnlock()
 		return errors.New("write buffer not drained at close")
 	}
+	since := bs.db.MaxVersion()
 	blob := bs.encodeOpenImageLocked()
 	bs.idxMu.RUnlock()
 	if openImageAfterEncodeHook != nil {
 		openImageAfterEncodeHook()
 	}
+	return bs.writeOpenImageBlob(blob, openImageKindClose, since)
+}
 
-	var oldChunks int
+// checkpointOpenImage writes a periodic open image (Config.OpenImageInterval):
+// it commits the write buffer and encodes the RAM indexes under the flush lock
+// and the index read lock (writers wait for the encode), so the image holds the
+// store at since = the newest version then; a write after it commits above
+// since and the next open re-derives its entity (a delta open).
+func (bs *Store) checkpointOpenImage() error {
+	if bs.openImageSuppressed.Load() {
+		return nil
+	}
+	bs.flushMu.Lock()
+	bs.idxMu.RLock()
+	err := bs.flushIndexLocked(true)
+	var blob []byte
+	var since uint64
+	if err == nil {
+		bs.wbMu.Lock()
+		drained := len(bs.pending) == 0 && len(bs.pendingLog) == 0 && len(bs.flushing) == 0
+		bs.wbMu.Unlock()
+		since = bs.db.MaxVersion()
+		switch {
+		case !drained:
+			err = errors.New("write buffer not drained after the flush")
+		case since != bs.imageVersion.Load(): // else nothing committed since the last image
+			blob = bs.encodeOpenImageLocked()
+		}
+	}
+	bs.idxMu.RUnlock()
+	bs.flushMu.Unlock()
+	if err != nil || blob == nil {
+		return err
+	}
+	if openImageAfterEncodeHook != nil {
+		openImageAfterEncodeHook()
+	}
+	return bs.writeOpenImageBlob(blob, openImageKindCheckpoint, since)
+}
+
+// openImageBeforeHeaderHook, when set, runs after an image's chunks are
+// written and before its header (tests only: a crash lands there).
+var openImageBeforeHeaderHook func()
+
+// writeOpenImageBlob writes blob into the slot the current header does not
+// name, then the header naming it.
+func (bs *Store) writeOpenImageBlob(blob []byte, kind byte, since uint64) error {
+	slot := 0
 	if err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(openImageHeaderKey)
 		if errors.Is(err, badgerv4.ErrKeyNotFound) {
@@ -206,7 +280,7 @@ func (bs *Store) writeOpenImage() error {
 		}
 		return item.Value(func(val []byte) error {
 			if h, ok := parseOpenImageHeader(val); ok {
-				oldChunks = h.chunks
+				slot = 1 - h.slot
 			}
 			return nil
 		})
@@ -215,27 +289,59 @@ func (bs *Store) writeOpenImage() error {
 	}
 
 	chunks := (len(blob) + openImageChunkBytes - 1) / openImageChunkBytes
+	var stale [][]byte // the slot's chunks past this image's count
+	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		opts.Prefix = []byte(storepkg.MetaKey(openImageSlotPrefix(slot)))
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			k := it.Item().Key()
+			if i, err := strconv.Atoi(string(k[len(opts.Prefix):])); err != nil || i >= chunks {
+				stale = append(stale, it.Item().KeyCopy(nil))
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	wb := bs.db.NewWriteBatch()
 	defer wb.Cancel()
 	for i := 0; i < chunks; i++ {
 		lo := i * openImageChunkBytes
-		if err := wb.Set(openImageChunkKey(i), blob[lo:min(lo+openImageChunkBytes, len(blob))]); err != nil {
+		if err := wb.Set(openImageChunkKey(slot, i), blob[lo:min(lo+openImageChunkBytes, len(blob))]); err != nil {
 			return err
 		}
 	}
-	for i := chunks; i < oldChunks; i++ {
-		if err := wb.Delete(openImageChunkKey(i)); err != nil {
+	for _, k := range stale {
+		if err := wb.Delete(k); err != nil {
 			return err
 		}
 	}
 	if err := wb.Flush(); err != nil {
 		return err
 	}
-	// Header last, in its own commit: its version must be the store's newest.
+	if openImageBeforeHeaderHook != nil {
+		openImageBeforeHeaderHook()
+	}
+	// Header last, in its own commit (a Close image's version is then the
+	// store's newest).
 	hdr := binary.AppendUvarint([]byte(openImageMagic), uint64(chunks)) // #nosec G115 -- chunk count of a non-negative length
 	hdr = binary.AppendUvarint(hdr, uint64(len(blob)))
+	hdr = append(hdr, byte(slot), kind) // #nosec G115 -- slot is 0 or 1
+	hdr = binary.AppendUvarint(hdr, since)
 	hdr = binary.BigEndian.AppendUint32(hdr, crc32.Checksum(blob, crc32cTable))
-	return bs.db.Update(func(txn *badgerv4.Txn) error { return txn.Set(openImageHeaderKey, hdr) })
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error { return txn.Set(openImageHeaderKey, hdr) }); err != nil {
+		return err
+	}
+	return bs.db.View(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(openImageHeaderKey)
+		if err == nil {
+			bs.imageVersion.Store(item.Version())
+		}
+		return err
+	})
 }
 
 var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
@@ -480,18 +586,34 @@ func appendImgString(b []byte, s string) []byte {
 type openImageHeader struct {
 	chunks, length int
 	crc            uint32
+	slot           int    // the chunk key set (0 for format 3)
+	kind           byte   // openImageKindClose or openImageKindCheckpoint
+	since          uint64 // the version the image holds the store at; 0: the header's own (format 3)
 }
 
 func parseOpenImageHeader(val []byte) (openImageHeader, bool) {
-	if len(val) < len(openImageMagic) || string(val[:len(openImageMagic)]) != openImageMagic {
+	format4 := len(val) >= len(openImageMagic) && string(val[:len(openImageMagic)]) == openImageMagic
+	if !format4 && (len(val) < len(openImageMagic3) || string(val[:len(openImageMagic3)]) != openImageMagic3) {
 		return openImageHeader{}, false
 	}
 	r := imgReader{b: val[len(openImageMagic):]}
-	chunks, length := r.count(1<<20), r.count(math.MaxInt32)
+	h := openImageHeader{kind: openImageKindClose}
+	h.chunks, h.length = r.count(1<<20), r.count(math.MaxInt32)
+	if format4 {
+		if len(r.b) < 2 {
+			return openImageHeader{}, false
+		}
+		h.slot, h.kind, r.b = int(r.b[0]), r.b[1], r.b[2:]
+		h.since = r.uvarint()
+		if h.slot > 1 || (h.kind != openImageKindClose && h.kind != openImageKindCheckpoint) {
+			return openImageHeader{}, false
+		}
+	}
 	if r.err != nil || len(r.b) != 4 {
 		return openImageHeader{}, false
 	}
-	return openImageHeader{chunks: chunks, length: length, crc: binary.BigEndian.Uint32(r.b)}, true
+	h.crc = binary.BigEndian.Uint32(r.b)
+	return h, true
 }
 
 // readOpenImage returns the image when the open may trust it (see the trust
@@ -511,9 +633,6 @@ func (bs *Store) readOpenImage() *openImage {
 		if err != nil {
 			return err
 		}
-		if item.Version() != newest {
-			since = item.Version() // something committed after the clean close
-		}
 		var h openImageHeader
 		var ok bool
 		if err := item.Value(func(val []byte) error {
@@ -524,6 +643,14 @@ func (bs *Store) readOpenImage() *openImage {
 		}
 		if !ok {
 			return errors.New("unreadable header")
+		}
+		if h.kind != openImageKindClose || item.Version() != newest {
+			// A periodic image, or a commit after the Close image: apply it to
+			// the entities touched since it.
+			since = h.since
+			if since == 0 {
+				since = item.Version()
+			}
 		}
 		return bs.readOpenImageChunks(txn, h, &img)
 	})
@@ -536,6 +663,9 @@ func (bs *Store) readOpenImage() *openImage {
 	if img != nil && since != 0 && !bs.openImageDelta(img, since) {
 		return nil
 	}
+	if img != nil && since == 0 {
+		bs.imageVersion.Store(newest) // trusted whole: the store is at its image
+	}
 	return img
 }
 
@@ -543,7 +673,7 @@ func (bs *Store) readOpenImage() *openImage {
 func (bs *Store) readOpenImageChunks(txn *badgerv4.Txn, h openImageHeader, img **openImage) error {
 	blob := make([]byte, 0, h.length)
 	for i := 0; i < h.chunks; i++ {
-		item, err := txn.Get(openImageChunkKey(i))
+		item, err := txn.Get(openImageChunkKey(h.slot, i))
 		if err != nil {
 			return fmt.Errorf("chunk %d: %w", i, err)
 		}

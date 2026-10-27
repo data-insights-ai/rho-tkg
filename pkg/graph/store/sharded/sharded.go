@@ -179,6 +179,10 @@ type Config struct {
 	// slot's badger store — see badger.Config.HistoryDeltaEncoding (ADR-0009/B6).
 	// Default false (opt-in).
 	HistoryDeltaEncoding bool
+	// OpenImageInterval is the time between open images every slot's badger
+	// store writes while it runs (badger.Config.OpenImageInterval). Zero
+	// (default) writes the image at Close only.
+	OpenImageInterval time.Duration
 
 	// Per-shard badger passthroughs (applied uniformly to every shard).
 	Compression           options.CompressionType
@@ -383,6 +387,7 @@ func (s *Store) shardConfig(cfg Config, k uint8, reg *registrypkg.PropertyKeyReg
 		EncryptionKeyRotation: cfg.EncryptionKeyRotation,
 		DisablePlannerStats:   cfg.DisablePlannerStats,
 		HistoryDeltaEncoding:  cfg.HistoryDeltaEncoding,
+		OpenImageInterval:     cfg.OpenImageInterval,
 		PropertyKeyRegistry:   reg,
 		// The anchor's axis (round 11): it holds the untimed mode key, and
 		// it is open before every other shard (zero while it opens itself).

@@ -925,6 +925,11 @@ type Config struct {
 	// ignored when Store is supplied explicitly, and a no-op on the memory backend
 	// (which keeps full snapshots as the differential oracle).
 	HistoryDeltaEncoding bool
+	// OpenImageInterval is the time between open images the badger backend writes
+	// while it runs, so an open after a crash decodes only the rows written since
+	// the last one — see badger.Config.OpenImageInterval. Zero (default) writes
+	// the image at Close only; ignored when Store is supplied explicitly.
+	OpenImageInterval time.Duration
 	// HistoryAnchorInterval overrides the anchor spacing for HistoryDeltaEncoding
 	// (0 = default 16). Baked into the on-disk delta layout and pinned by a persisted
 	// marker — a mismatched reopen fails closed (ErrHistoryAnchorIntervalMismatch).
@@ -2133,6 +2138,7 @@ func New(config Config) (*Core, error) {
 				TemporalIndexOnDisk:   config.TemporalIndexOnDisk,
 				DisablePlannerStats:   config.DisablePlannerStats,
 				HistoryDeltaEncoding:  config.HistoryDeltaEncoding,
+				OpenImageInterval:     config.OpenImageInterval,
 				HistoryAnchorInterval: config.HistoryAnchorInterval,
 				ValueLogFileSize:      config.ValueLogFileSize,
 				MemTableSize:          config.MemTableSize,

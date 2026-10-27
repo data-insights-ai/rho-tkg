@@ -515,6 +515,24 @@ func (bs *Store) markCacheFlushed(nodeDirty []indexpkg.Entry[*types.Node], relDi
 	}
 }
 
+// openImageLoop writes a periodic open image every Config.OpenImageInterval
+// (checkpointOpenImage). A failed image is logged; the previous one stays.
+func (bs *Store) openImageLoop() {
+	defer close(bs.imageDone)
+	ticker := time.NewTicker(bs.imageInt)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-bs.stopCh:
+			return
+		case <-ticker.C:
+			if err := bs.checkpointOpenImage(); err != nil && bs.logger != nil {
+				bs.logger.Warningf("graph: periodic open image not written (the previous one stays): %v", err)
+			}
+		}
+	}
+}
+
 // gcLoop periodically runs Badger value log GC.
 func (bs *Store) gcLoop() {
 	defer close(bs.gcDone)
