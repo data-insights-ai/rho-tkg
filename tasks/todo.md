@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-27 Oct: v4.75.0 to v4.90.1 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
+Released 24-28 Oct: v4.75.0 to v4.90.2 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
 Its first ci-docker failed on gosec G115 at v4.89.3's `propIDs.widen(uint64(id))` (ci-fast runs no gosec): annotated, no
 behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after René's three-agent checkpoint):
@@ -40,7 +40,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   open trusts a keyspace nothing maintained (probe: a node created and a value changed while off are both missed by
   ByLabelAndProperty). Fix: a writable open without the flag clears the marker; the rebuild drops the stale rows.
   Also: a read-only open with the flag over an unbuilt keyspace failed; it now keeps its entries in RAM. Built on
-  branch propdisktoggle (5641a747, 6 of 6 mutations caught); ci-fast running. Done when released.
+  branch propdisktoggle, 6 of 6 mutations caught. Released v4.90.2 (03222aca): ci-fast, tiered and graph short
+  tests green, consumers build and vet clean; tag CI watched next.
 - **PROPDISKLABEL** (ai-soc 28 Oct; SCALE, goal 2; door, minor v4.91.0 after PROPDISKTOGGLE) — the on-disk property
   index chosen per label: `PropertyIndexOnDiskLabels []string` in badger and tiered Config; ai-soc sets ["DerivedPage"].
   BA k10272220 (v4.90.1): live heap +3,587 MB from 300 to 900 s, rho +1,969 MB of it, PropertyIndex.AddKey +1,720 MB,
