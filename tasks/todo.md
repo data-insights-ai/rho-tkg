@@ -41,7 +41,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   ByLabelAndProperty). Fix: a writable open without the flag clears the marker; the rebuild drops the stale rows.
   Also: a read-only open with the flag over an unbuilt keyspace failed; it now keeps its entries in RAM. Built on
   branch propdisktoggle, 6 of 6 mutations caught. Released v4.90.2 (03222aca): ci-fast, tiered and graph short
-  tests green, consumers build and vet clean; tag CI watched next.
+  tests, tag CI and main CodeQL green, consumers build and vet clean.
 - **PROPDISKLABEL** (ai-soc 28 Oct; SCALE, goal 2; door, minor v4.91.0 after PROPDISKTOGGLE) — the on-disk property
   index chosen per label: `PropertyIndexOnDiskLabels []string` in badger and tiered Config; ai-soc sets ["DerivedPage"].
   BA k10272220 (v4.90.1): live heap +3,587 MB from 300 to 900 s, rho +1,969 MB of it, PropertyIndex.AddKey +1,720 MB,

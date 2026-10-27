@@ -53,7 +53,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **v4.90.2** (PROPDISKTOGGLE, a patch found scoping PROPDISKLABEL): `PropertyIndexOnDisk` off for one open and on
   again lost the writes made while off (the built marker stayed); a writable open without the flag clears it, the
   rebuild drops stale rows, a read-only open over an unbuilt keyspace answers from RAM instead of failing. 6 of 6
-  mutations caught. Gate pending.
+  mutations caught. ci-fast, tiered and graph short tests, tag CI and main CodeQL green; consumers build and vet clean.
 - **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): tag CI and ci-fast green, consumers build and vet clean; a history read finds its
   entity's buffered rows by key prefix instead of walking the write buffer (sigma's bench: last ten cuts 15-20 ->
   10 ms, run 1.30 -> 0.81 s); 7 mutations caught, the unreachable length guard removed.
