@@ -30,7 +30,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   on-disk string equality lookup beside 10,000 longer strings visits 2 keys, before 10,001. The first cut added
   `IDSet.Bounds`, which the patch gate refuses as a door (exported names in internal packages count, CONTRIBUTING
   Rules digest); the bounds now come from two seeks on the node keyspace.
-- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only). The merged item branches are deleted and the kept ones pushed
+- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (OPENIMAGE step 2, 3af4f8d3, local, unmerged: next v4.89.0). The merged item branches are deleted and the kept ones pushed
   (René, 26 Oct); user-only action 5 stays. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The

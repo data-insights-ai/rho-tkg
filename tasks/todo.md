@@ -57,7 +57,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   target, so ingest grows with the hardware.
 - **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
   loadNodeFromBadger) — step (1) shipped in v4.88.0: a crash open applies the older image and decodes only the
-  entities touched since it (1 row at 1 M entities after one record, the full rebuild 1.54 M). Left: (2) a periodic
+  entities touched since it (1 row at 1 M entities after one record, the full rebuild 1.54 M). Step (2) is
+  committed on branch `checkpoint` (3af4f8d3, 27 Oct): `Config.OpenImageInterval`, header format 4, two slots; at
+  1 M nodes / 1 M rels a 16 MB image, 31-33 ms encode under the locks, crash reopen 2.7 s against 18.0 s for the full
+  rebuild (`tasks/evidence/open-cost/10-checkpoint.txt` on the branch); next: release as v4.89.0 (ci-docker). Left: (2) a periodic
   image (checkpoint), so a daemon that never closes cleanly bounds the touched set and the SinceTs scan (badger reads
   every table holding a version newer than the image, `docs/badger.md` item 12); ai-soc's measurement on copies of
   k10262212 (one full open writing the image, then a crash reopen after a few hundred records); ai-soc takes (1) from
