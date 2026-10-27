@@ -775,11 +775,11 @@ type Store struct {
 	// store wrote or trusted whole at open: a periodic image with nothing
 	// committed since writes nothing.
 	imageVersion atomic.Uint64
-	stopCh      chan struct{}
-	flushDone   chan struct{}
-	gcDone      chan struct{}
-	imageDone   chan struct{}
-	closeOnce   sync.Once
+	stopCh       chan struct{}
+	flushDone    chan struct{}
+	gcDone       chan struct{}
+	imageDone    chan struct{}
+	closeOnce    sync.Once
 
 	// pendingTxnBytes and pendingTxnEntries bound an async buffer (maxPending >
 	// 0) below one badger transaction: half its MaxBatchSize and MaxBatchCount,
