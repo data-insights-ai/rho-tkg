@@ -22,8 +22,10 @@ A/B after CLEANEVICT, BO k10271955 on v4.90.0: disk +7.0 % push (435.1 -> 465.5 
 DerivedPage ov_k/ov_sh, ai-soc's ByLabelAndProperty). ai-soc asks for a bounded RAM hot part (recent keys, or a presence
 filter per label/property answering misses without a seek): PROPHOT. ai-soc's split: 15.6 of the 20.8 s are sigma's
 write-back lookup (GraphDerivedWriter derivedByHash, one per Derived fact); sigma v0.11.118 counts Found / Missing /
-Fresh, and if misses dominate sigma skips the lookup for facts it knows are new (as WRITEFAST), no rho change. Waits
-for that split from ai-soc. sigma's FoldInputs rows8
+Fresh, and if misses dominate sigma skips the lookup for facts it knows are new (as WRITEFAST), no rho change. The
+split (ai-soc 28 Oct, BA k10272220): found 17,731 (11.7 %), missing 133,292 (88.3 %); BO cold start all missed. A
+presence filter, then, but only if Derived's index goes to disk; with PROPDISKLABEL (DerivedPage only) PROPHOT waits.
+sigma's FoldInputs rows8
 profile gave HISTPEND, v4.89.4 (a history read walked the whole write buffer; bench last ten cuts 15-20 -> 10 ms; sigma confirmed: WriteRows 34 -> 21 % of CPU; ai-soc BO probe
 k10271336: push 489.7 -> 488.9 s, no BO effect, as BO has few history reads). Before it, PARKED (René 27 Oct, relayed by ai-soc): every agent
 works on goal 1, the 134.7 MB k10270301's BA store writes twice by two code paths; ai-soc's meter (ANALYSIS 5) classes
@@ -33,14 +35,26 @@ property be stored as a reference to another edge's property. Before that: SCALE
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
+- **PROPDISKTOGGLE** (found 28 Oct scoping PROPDISKLABEL; fix, patch v4.90.2) — badger's `PropertyIndexOnDisk` turned
+  off for one open and on again loses every write made while it was off: the 0x0A build marker stays set, so the next
+  open trusts a keyspace nothing maintained (probe: a node created and a value changed while off are both missed by
+  ByLabelAndProperty). Fix: a writable open without the flag clears the marker; the rebuild drops the stale rows.
+  Done when released.
+- **PROPDISKLABEL** (ai-soc 28 Oct; SCALE, goal 2; door, minor v4.91.0 after PROPDISKTOGGLE) — the on-disk property
+  index chosen per label: `PropertyIndexOnDiskLabels []string` in badger and tiered Config; ai-soc sets ["DerivedPage"].
+  BA k10272220 (v4.90.1): live heap +3,587 MB from 300 to 900 s, rho +1,969 MB of it, PropertyIndex.AddKey +1,720 MB,
+  1.66 GB from sigma's paging (RowPage/StatePage -> GraphDerivedWriter.publish, DerivedPage nodes). All-on-disk cost
+  +7.0 % push, mostly Derived's derivedByHash, not DerivedPage. The 0x0A keys carry no label and every reader rechecks
+  label and value, so one shard serves both modes; per-label build markers. Done when ai-soc's BO A/B and reduced BA
+  run on it are in.
 - **TXMEMBERS** (ai-soc 27 Oct, René's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars held one RAM
   entry per id that ever carried the token (k10271800, v4.89.4: recordLabelMemberLocked +127 MB of live heap from 300
   to 900 s on the reference shard; ai-soc runs LabelIndexOnDisk, entities never lose a label, deletes only in crash
   recovery; neither consumer calls the capabilities directly). Released v4.90.1 (e8e3dfec, tag CI and CodeQL green): the
   sidecars hold only former members, the label/type index the current ones; pinned reads equal memory's (badger RAM
   and disk labels, tiered ref), 15 of 16 mutations caught (the 16th equivalent); consumers clean, sigma takes it in
-  v0.11.118, ai-soc pins it. Done when
-  recordLabelMemberLocked is flat from 300 to 900 s on ai-soc's next reduced BA run.
+  v0.11.118, ai-soc pins it. Done: confirmed on BA k10272220 (28 Oct), recordLabelMemberLocked gone from the heap at
+  300 and 900 s (v4.89.4: 45.3 -> 172.0 MB).
 - **SCALE** (René 26 Oct, the standing goal) — rho holds realtime ingest at about 2 TB a day (about 23 MB/s
   sustained, peaks higher; about 4 billion 500-byte facts a day) and grows only by more RAM, NVMe and block storage.
   Done when: architecture.md lists what grows with total volume instead of per shard (RAM structures that grow with
