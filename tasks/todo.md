@@ -60,7 +60,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   entities touched since it (1 row at 1 M entities after one record, the full rebuild 1.54 M). Left: (2) a periodic
   image (checkpoint), so a daemon that never closes cleanly bounds the touched set and the SinceTs scan (badger reads
   every table holding a version newer than the image, `docs/badger.md` item 12); ai-soc's measurement on copies of
-  k10262212 (one full open writing the image, then a crash reopen after a few hundred records). Done when: a daemon
+  k10262212 (one full open writing the image, then a crash reopen after a few hundred records); ai-soc takes (1) from
+  the reopen step of its reduced BA run k10270301 (v4.88.0, 27 Oct). Design for (2): the image records the badger
+  version V0 read under the index read lock its encode holds (every commit at or below V0 is in RAM, so in the image;
+  every later write lands above V0 and is touched), in two alternating chunk slots so a crash mid-checkpoint keeps the
+  last image; a header format change (an older release rebuilds once) and a Config interval, so a minor. Done when: a daemon
   that never closes cleanly reopens after a crash in time bounded by the writes since the last periodic image (a
   test), and ai-soc's crash reopen is measured.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,

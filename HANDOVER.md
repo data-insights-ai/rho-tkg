@@ -26,7 +26,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   run (the first failed six TestIndexRebuildStats tests in test-race, fixed with the release; its ledger step then
   flagged a todo line ending in "Done", fixed in the release commit), consumers build and vet clean; a crash reopen
   after one record decodes 1 row at 1 M entities (the full rebuild 1.54 M); 25 delta-open mutations caught.
-- **v4.88.1** (PROPSTR, a patch for ai-soc's BO run on v4.87.2): ci-fast green, consumers build and vet clean; an
+- **v4.88.1** (PROPSTR, a patch for ai-soc's BO run on v4.87.2): tag CI and ci-fast green, consumers build and vet clean; an
   on-disk string equality lookup beside 10,000 longer strings visits 2 keys, before 10,001. The first cut added
   `IDSet.Bounds`, which the patch gate refuses as a door (exported names in internal packages count, CONTRIBUTING
   Rules digest); the bounds now come from two seeks on the node keyspace.
