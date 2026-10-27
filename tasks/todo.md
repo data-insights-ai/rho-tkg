@@ -187,7 +187,14 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   units are a pure Update chain (closeOpenRun) but read through NodeAsOf now; rows mix in-place closes (Update),
   SetNodeVersionInterval corrections and ExciseNodeValidity, and are rarely rewritten (BO: 3.5 % of 350,057 read
   back). Not to be built until sigma's 500-cut re-measure after REWRITEBACK shows the slope and NodeEffectiveTimelines' share.
-  Done when: sigma's per-cut time stays flat over 500 cuts.
+  Done when: sigma's per-cut time stays flat over 500 cuts. sigma (27 Oct, REWRITEBACK step 0 on v4.89.4): single-pin
+  reads moved to the singular NodeEffectiveTimeline (head cache): unit benches flat (4.7 -> 33 ms becomes 4.2 -> 4.5).
+  Equal answers of singular, plural and page door are now in the head oracle (effective_head_test.go checkManyDoors).
+  HEADPLURAL (asked, no hurry): the plural door could read and fill the cache for pins at or above the entry's maxTx
+  (plain reads); the page door reads through a store snapshot, and the cache is checked against the live history
+  token, so it needs a snapshot-consistent token first. Cold reads still fold (0.7 us a version); sigma sends a
+  restart bench before asking for ASOFREAD. Gap seen: no test has a current row with a delete stamp after the pin
+  (nodeRowAtTx on the current row in the plural fold survives mutation; core never writes such a row today).
 - **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
   loadNodeFromBadger) — step (1) shipped in v4.88.0 (a crash open applies the older image and decodes only the
   entities touched since it), step (2) in v4.89.0 (`Config.OpenImageInterval`: a periodic image, so a store that
