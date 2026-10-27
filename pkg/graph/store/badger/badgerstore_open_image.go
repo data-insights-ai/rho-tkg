@@ -293,7 +293,7 @@ func (bs *Store) writeOpenImageBlob(blob []byte, kind byte, since uint64) error 
 	if err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
-		opts.Prefix = []byte(storepkg.MetaKey(openImageSlotPrefix(slot)))
+		opts.Prefix = storepkg.MetaKey(openImageSlotPrefix(slot))
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {

@@ -306,7 +306,7 @@ func TestOpenImageSlotsHoldNoStaleChunks(t *testing.T) {
 			_ = bs.db.View(func(txn *badgerv4.Txn) error {
 				opts := badgerv4.DefaultIteratorOptions
 				opts.PrefetchValues = false
-				opts.Prefix = []byte(openImageChunkKey(slot, 0)[:len(openImageChunkKey(slot, 0))-1])
+				opts.Prefix = openImageChunkKey(slot, 0)[:len(openImageChunkKey(slot, 0))-1]
 				it := txn.NewIterator(opts)
 				defer it.Close()
 				for it.Rewind(); it.Valid(); it.Next() {
