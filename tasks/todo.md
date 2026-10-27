@@ -204,6 +204,11 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   and backlog. CPU profiles from the start of each open exist on Flux (RAID fast-archive-20261027, fluxkit-1027o/c/j,
   runs/reopen-ba-*/cpu-start-<open>-<nn>.pprof; function names only, profile 01 possibly missing). Waits for: ai-soc's
   RESTART item, which René placed after goal 2, and René's word before rho reads anything on Flux.
+  sigma's RESTART (27 Oct, design in sigma's docs/architecture.md "Restart without a rebuild"): answered that stamps
+  from rho's clock are unique and strictly increasing in reservation order across reopen and crash, on every backend.
+  The exceptions: concurrent writers, caller instants (*WithTx, backfill, import, replica), two graphs, and a lost or
+  unwritten reservation after a crash. Later asks: open time flat as the store grows, and an as-of-tx page door for a
+  crash restart.
 - **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
   loadNodeFromBadger) — step (1) shipped in v4.88.0 (a crash open applies the older image and decodes only the
   entities touched since it), step (2) in v4.89.0 (`Config.OpenImageInterval`: a periodic image, so a store that
