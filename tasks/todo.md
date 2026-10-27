@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-27 Oct: v4.75.0 to v4.90.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
+Released 24-27 Oct: v4.75.0 to v4.90.1 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
 Its first ci-docker failed on gosec G115 at v4.89.3's `propIDs.widen(uint64(id))` (ci-fast runs no gosec): annotated, no
 behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after René's three-agent checkpoint):
@@ -20,7 +20,10 @@ call, 2.53M of ~2.64M lookups re-evict an unchanged row; sigma's CLEANEVICT drop
 A/B after CLEANEVICT, BO k10271955 on v4.90.0: disk +7.0 % push (435.1 -> 465.5 s, ai-soc's gate 5 %), live heap
 -779 MB (maintainPropertyIndexesAdd 714.5 MB -> 0); the cost is the equality lookups (DB.View 12.7 -> 31.4 s, sigma's
 DerivedPage ov_k/ov_sh, ai-soc's ByLabelAndProperty). ai-soc asks for a bounded RAM hot part (recent keys, or a presence
-filter per label/property answering misses without a seek): PROPHOT, after TXMEMBERS. sigma's FoldInputs rows8
+filter per label/property answering misses without a seek): PROPHOT. ai-soc's split: 15.6 of the 20.8 s are sigma's
+write-back lookup (GraphDerivedWriter derivedByHash, one per Derived fact); sigma v0.11.118 counts Found / Missing /
+Fresh, and if misses dominate sigma skips the lookup for facts it knows are new (as WRITEFAST), no rho change. Waits
+for that split from ai-soc. sigma's FoldInputs rows8
 profile gave HISTPEND, v4.89.4 (a history read walked the whole write buffer; bench last ten cuts 15-20 -> 10 ms; sigma confirmed: WriteRows 34 -> 21 % of CPU; ai-soc BO probe
 k10271336: push 489.7 -> 488.9 s, no BO effect, as BO has few history reads). Before it, PARKED (René 27 Oct, relayed by ai-soc): every agent
 works on goal 1, the 134.7 MB k10270301's BA store writes twice by two code paths; ai-soc's meter (ANALYSIS 5) classes
@@ -33,9 +36,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 - **TXMEMBERS** (ai-soc 27 Oct, René's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars held one RAM
   entry per id that ever carried the token (k10271800, v4.89.4: recordLabelMemberLocked +127 MB of live heap from 300
   to 900 s on the reference shard; ai-soc runs LabelIndexOnDisk, entities never lose a label, deletes only in crash
-  recovery; neither consumer calls the capabilities directly). Built on branch txmembers (98243c53, v4.90.1): the
+  recovery; neither consumer calls the capabilities directly). Released v4.90.1 (e8e3dfec, tag CI running): the
   sidecars hold only former members, the label/type index the current ones; pinned reads equal memory's (badger RAM
-  and disk labels, tiered ref), 15 of 16 mutations caught (the 16th equivalent). Gate (ci-fast) next. Done when
+  and disk labels, tiered ref), 15 of 16 mutations caught (the 16th equivalent); consumers clean, sigma takes it in
+  v0.11.118, ai-soc pins it. Done when
   recordLabelMemberLocked is flat from 300 to 900 s on ai-soc's next reduced BA run.
 - **SCALE** (René 26 Oct, the standing goal) — rho holds realtime ingest at about 2 TB a day (about 23 MB/s
   sustained, peaks higher; about 4 billion 500-byte facts a day) and grows only by more RAM, NVMe and block storage.
