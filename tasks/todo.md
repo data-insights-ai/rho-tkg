@@ -9,7 +9,8 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-27 Oct: v4.75.0 to v4.89.4 (`docs/CHANGELOG.md`). Goal 2 begun (27 Oct, after René's three-agent checkpoint):
+Released 24-27 Oct: v4.75.0 to v4.90.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
+labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows). Goal 2 begun (27 Oct, after René's three-agent checkpoint):
 ai-soc's P4BSTORE A/B k10271117 on v4.89.2 (disk index 518 s against 453 s in RAM) gave PROPBOUNDS, v4.89.3. Its re-run
 k10271211: disk lookup CPU 48.5 -> 18.25 s, push 454 vs 481 s (+6 %, was +14 %); left: badger Seek across the LSM tables
 per key (11.7 s), NewIterator 2.8 s. sigma's counts: misses under 1 %, one key per
@@ -195,13 +196,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   token, so it needs a snapshot-consistent token first. Cold reads still fold (0.7 us a version); sigma sends a
   restart bench before asking for ASOFREAD. Gap seen: no test has a current row with a delete stamp after the pin
   (nodeRowAtTx on the current row in the plural fold survives mutation; core never writes such a row today).
-- **VOIDPROPS** (goal 1, sigma 27 Oct, TestStateCopiesSplit: 168-336 excise rows in 60 cuts, each a full copy of the
-  voided row's properties, 100-400 B blobs) — an excise's void piece is a DeepCopy of the version it voids
-  (buildNodeCorrectionRow). No rho reader uses its property values: the resolver, timelines and as-of select use only
-  Void, bounds and TxFrom, and a later correction takes a gap's base from the template. History returns them, and the
-  types.TemporalMetadata.Void doc promises them. Plan (a minor): void pieces keep labels (rels: type and endpoints) and
-  carry no properties. Red test: stored size plus read-door parity. Waits for: sigma and ai-soc on whether they read
-  void-row properties from History.
 - **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
   loadNodeFromBadger) — step (1) shipped in v4.88.0 (a crash open applies the older image and decodes only the
   entities touched since it), step (2) in v4.89.0 (`Config.OpenImageInterval`: a periodic image, so a store that
