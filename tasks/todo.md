@@ -172,8 +172,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   state units take NodeAsOf (sigma's side, no rho work, no batch door yet); paged rows need the state door. The
   head-pin cache (core/effective_head.go) answers a head pin in O(segments) but an Update drops its entry (headValid: token,
   current version and temporal block change), so a read after each rewrite folds the whole history. Candidate
-  (core work): carry the entry across an Update when the current row was its only believed row. Waits for sigma's
-  500-cut re-measure after its NodeAsOf switch and whether row segments are an Update chain or corrections.
+  (core work): carry the entry across an Update when the current row was its only believed row. sigma (27 Oct):
+  units are a pure Update chain (closeOpenRun) but read through NodeAsOf now; rows mix in-place closes (Update),
+  SetNodeVersionInterval corrections and ExciseNodeValidity, and are rarely rewritten (BO: 3.5 % of 350,057 read
+  back). Not to be built until sigma's 500-cut re-measure after REWRITEBACK shows the slope and NodeEffectiveTimelines' share.
   Done when: sigma's per-cut time stays flat over 500 cuts.
 - **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
   loadNodeFromBadger) — step (1) shipped in v4.88.0 (a crash open applies the older image and decodes only the
