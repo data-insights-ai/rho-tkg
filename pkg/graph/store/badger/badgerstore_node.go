@@ -605,7 +605,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(n)
-	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
+	ops = bs.maintainPropertyIndexesUpdate(ops, n, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, n, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, id)
@@ -719,7 +719,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
-	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
+	ops = bs.maintainPropertyIndexesUpdate(ops, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
@@ -836,7 +836,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
-	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
+	ops = bs.maintainPropertyIndexesUpdate(ops, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)

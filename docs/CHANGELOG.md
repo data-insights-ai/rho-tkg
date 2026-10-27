@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **PROPREWRITE** (SCALE, found with PROPSEEK; sigma's write-back gives a state unit a new version with its indexed
+  `ov_k` and `ov_h` values unchanged, every cut its group changes). With `PropertyIndexOnDisk` an update deleted and
+  set every on-disk property entry of the node again, so each update added a version of an unchanged entry that
+  every lookup of the value visits until compaction drops it, besides the write. The replace and label-token
+  doors, with or without history, now write only the entries whose value changed: 20 updates leave the one
+  version the create wrote, before 21 (`TestPropRewriteUnchangedValueWritesNoEntry`). While a property index is
+  being created an update still writes its entries, since the build skips a node the write path touched
+  (`TestPropRewriteDuringIndexBuildKeepsEntry`). No format change.
+
 ## [4.89.1] - 2026-10-27
 
 ### Fixed

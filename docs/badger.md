@@ -247,9 +247,9 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
     version between its start and the second live key after it, wherever that is. The on-disk equality lookup
     iterates with `AllVersions`, takes each key's newest version and stops at its own bound (PROPSEEK, v4.89.1: 200
     lookups of absent values before 20,000 deleted entries took 325x their time without them, now 0.9-1.2x,
-    `TestPropSeekLookupDoesNotWalkDeletedEntries`). It still visits each version of the keys inside its bound: an
-    update writes an unchanged entry again (100 updates, 100 versions visited). Gaps: ITERTOMB (rho's other walks
-    with their own end bound), PROPREWRITE (unchanged entries).
+    `TestPropSeekLookupDoesNotWalkDeletedEntries`). It still visits each version of the keys inside its bound, so an
+    update writes only the entries whose value changed (PROPREWRITE, v4.89.2: 20 updates with an unchanged value
+    leave the one version the create wrote, before 21). Gap: ITERTOMB (rho's other walks with their own end bound).
 
 ## 8. The complete API
 

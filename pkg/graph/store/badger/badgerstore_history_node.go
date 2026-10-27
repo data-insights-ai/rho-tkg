@@ -133,7 +133,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
 	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
-	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
+	ops = bs.maintainPropertyIndexesUpdate(ops, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
@@ -274,7 +274,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
 	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
-	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
+	ops = bs.maintainPropertyIndexesUpdate(ops, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
@@ -399,7 +399,7 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c — the demoted history row
 	bs.recordNodeReplacedLocked(prevState, current)              // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(current)
-	ops = append(ops, bs.maintainPropertyIndexesAdd(current, id)...)
+	ops = bs.maintainPropertyIndexesUpdate(ops, current, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, current, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(current, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, current, id)

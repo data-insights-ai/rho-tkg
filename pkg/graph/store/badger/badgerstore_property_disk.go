@@ -124,6 +124,54 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 	return bs.propertyIndexDiskMaintain(n, id, writeOpSet)
 }
 
+// maintainPropertyIndexesUpdate is maintainPropertyIndexesAdd for the new node
+// of an update whose ops already hold the old node's Remove ops. An on-disk
+// entry the update deletes and sets again keeps its value, so the pair is
+// dropped: writing it again only added a version that every lookup of the
+// value visits until compaction drops it (PROPREWRITE, sigma's rewritten
+// state units). Not while a property index builds: its backfill skips a node
+// the write path marked, so the write path writes the entry itself.
+func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, n *types.Node, id snowflake.ID) []writeOp {
+	from := len(ops)
+	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
+	var removed, unchanged map[string]struct{} // removed: the old node's ops, deletes of its entries
+	for _, op := range ops[:from] {
+		if removed == nil {
+			removed = make(map[string]struct{})
+		}
+		removed[string(op.key)] = struct{}{}
+	}
+	for _, op := range ops[from:] { // the on-disk entry sets
+		if _, ok := removed[string(op.key)]; ok {
+			if unchanged == nil {
+				unchanged = make(map[string]struct{})
+			}
+			unchanged[string(op.key)] = struct{}{}
+		}
+	}
+	if unchanged == nil || bs.propertyIndexBuildingLocked() {
+		return ops
+	}
+	kept := ops[:0]
+	for _, op := range ops {
+		if _, ok := unchanged[string(op.key)]; !ok {
+			kept = append(kept, op)
+		}
+	}
+	return kept
+}
+
+// propertyIndexBuildingLocked reports whether a property index is being
+// created (CreatePropertyIndex between its phases 1 and 3). Caller holds idxMu.
+func (bs *Store) propertyIndexBuildingLocked() bool {
+	for _, idx := range bs.propertyIndexes {
+		if idx.Mutated != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // maintainPropertyIndexesRemove is the Remove counterpart of
 // maintainPropertyIndexesAdd — see its doc comment.
 func (bs *Store) maintainPropertyIndexesRemove(n *types.Node, id snowflake.ID) []writeOp {

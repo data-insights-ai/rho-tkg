@@ -72,6 +72,9 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		return idErr
 	}
 	bs.idxMu.Unlock()
+	if propertyCreatePhase2Hook != nil {
+		propertyCreatePhase2Hook()
+	}
 
 	// Phase 2: fetch node data outside any lock, without the public GetNode defensive
 	// copy. Disk mode collects writeOps instead of populating the RAM Entries map.
@@ -241,6 +244,11 @@ func highFrequencyBucketDuration(bucketMillis int64) (time.Duration, error) {
 // temporalCreateBeforeFoldHook, set only by tests, runs in CreateTemporalIndex
 // after the current-row backfill is merged and before the history fold.
 var temporalCreateBeforeFoldHook func()
+
+// propertyCreatePhase2Hook, set only by tests, runs in CreatePropertyIndex
+// after the live index is installed and before its backfill is read: a write
+// there is a concurrent write the build must not lose.
+var propertyCreatePhase2Hook func()
 
 // temporalCreatePhase2Hook, set only by tests, runs in CreateTemporalIndex
 // after the Phase 2 fetch, before the Phase 3 merge takes idxMu.
