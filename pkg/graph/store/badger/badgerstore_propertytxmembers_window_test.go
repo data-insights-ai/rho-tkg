@@ -13,7 +13,7 @@ import (
 
 // Ledger row 62: the windowed property membership on badger answers the same
 // from the write path's records, from an open image after a clean close, and
-// from a build scan after a reopen without an image.
+// from a build scan after a reopen from an older image or without one.
 
 func winRel(id int64, seat int64, version uint32, txFrom, txTo, vf, vt types.Instant) *types.Relationship {
 	r := types.NewRelationship(types.RelID(id), ptxT, types.NodeID(1), types.NodeID(2))
@@ -120,6 +120,27 @@ func TestPropTxWindow_WritePathImageScanAgree(t *testing.T) {
 	}
 	if n := scans.Load(); n != 0 {
 		t.Fatalf("the restored sidecar scanned the store %d times", n)
+	}
+	// A session that deletes 14 and crashes (OPENIMAGE): the open applies the
+	// older image, whose sidecar lacks the delete, so it builds the sidecar
+	// at its first lookup.
+	tomb = winRel(14, 1, 0, 100, 500, 100, 500)
+	tomb.Temporal().DeletedAt = 500
+	must("delete 14", bs.DeleteRelWithHistory(types.RelID(14), 0, tomb))
+	must("flush", bs.Flush())
+	live = winDump(t, bs)
+	if !strings.Contains(live, "[1000,9223372036854775807)@0=[]") {
+		t.Fatalf("write path: 14 still a member after its delete:\n%s", live)
+	}
+	bs.SetDBClosedForTest(true) // no Close, no image
+	must("crash", bs.DBForTest().Close())
+	bs = open()
+	scans = opCountScans(bs)
+	if got := winDump(t, bs); got != live {
+		t.Fatalf("after a reopen from the older image\n got %s\nwant %s", got, live)
+	}
+	if n := scans.Load(); n != 1 {
+		t.Fatalf("the reopen from the older image scanned %d times, want 1", n)
 	}
 	must("close", bs.Close())
 

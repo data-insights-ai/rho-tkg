@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB: 22+ min in `tiered.New`, 53 % in
+  `loadNodeFromBadger`). An open image older than the store's newest version (a session that crashed after writing,
+  a later writer that knows nothing of the image) sent the open to the full rebuild, which decodes every row and
+  reads each indexed member again by a point Get: linear in the store. Such an open now applies the image: one
+  iterator over the badger versions above the image header names the entities touched since; the open walks the
+  entity, label, type and adjacency keys, decodes only the touched rows (with the key checks and repair the rebuild
+  runs for them), keeps the image's property, relationship-property, composite, temporal, relationship-type
+  temporal, high-frequency and vector entries of live untouched entities and adds the touched live ones from their
+  rows. Planner statistics are deferred and the property membership sidecars build at their first lookup; an index
+  defined or redefined after the image installs under its current definition (an index the image lacks builds from
+  its rows). A crash reopen after one record decodes 1 row at 100 k and 1 M entities, the full rebuild 154 k and
+  1.54 M (`TestCrashReopenCostNotLinear`); the index state equals the full rebuild's at every crash step
+  (`TestCleanReopenMatchesFullRebuild`, stale keys in `TestCleanReopenAfterStaleIndexKeys`; history or rows written
+  alone, purged entities and redefined indexes in `TestDeltaOpenMatchesFullRebuild`). A store that holds no
+  image (never closed cleanly) still takes the full rebuild once.
+
 ## [4.87.2] - 2026-10-26
 
 ### Fixed

@@ -318,6 +318,38 @@ func mutateMixed(t *testing.T, g *graphpkg.Graph, round int) {
 	}
 }
 
+// mutateImaged changes entities an earlier session wrote (so the open image
+// holds them) in every value an index derives from: a node's property,
+// composite and vector values, a rel's property value and valid start.
+func mutateImaged(t *testing.T, g *graphpkg.Graph, round int) {
+	t.Helper()
+	ctx := context.Background()
+	hosts, err := g.Nodes().ByLabel("Host", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, h := range hosts {
+		if i%3 == 0 {
+			if _, err := g.Nodes().Update(ctx, h.ID(), map[string]any{"zone": fmt.Sprintf("old-%d", round), "rank": int64(1000 + i),
+				"emb": []float32{1, float32(round), float32(i)}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	rels, err := g.Rels().ByType("OWNS", storepkg.QueryOpts{}) // LOGON rels are closed: no update
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range rels {
+		if i%3 == 0 {
+			if _, err := g.Rels().Update(ctx, r.ID(), map[string]any{"w": int64(-i),
+				"tkg_valid_from": time.Now().UnixMilli() + 3_600_000 + int64(i)}); err != nil { // ahead of the commit clock
+				t.Fatalf("rel update: %v", err)
+			}
+		}
+	}
+}
+
 func TestCleanReopenMatchesFullRebuild(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
@@ -397,6 +429,7 @@ func TestCleanReopenMatchesFullRebuild(t *testing.T) {
 			// Crash: writes flushed, no Close.
 			g, bs = openReopenGraph(t, dir, rc)
 			mutateMixed(t, g, 3)
+			mutateImaged(t, g, 3)
 			if err := bs.Flush(); err != nil {
 				t.Fatal(err)
 			}
@@ -427,7 +460,22 @@ func TestCleanReopenMatchesFullRebuild(t *testing.T) {
 				// on-disk backfills read the rows (the temporal one folds history
 				// again), every other index still comes from the image.
 				check("clean reopen", fast, false, nil)
+				// On a copy: that first open backfills the on-disk indexes and
+				// crashes. The next open applies the image written without them;
+				// the backfills' keys and markers name no entity.
+				clean := dir
+				dir = copyStoreDir(t, clean)
+				_, bs := openReopenGraph(t, dir, reopenCfg{onDisk: true})
+				if err := bs.Flush(); err != nil {
+					t.Fatal(err)
+				}
+				bs.SetDBClosedForTest(true)
+				if err := bs.DBForTest().Close(); err != nil {
+					t.Fatal(err)
+				}
 				rc.onDisk = true
+				check("open after the first open with the *OnDisk modes crashed", fast, false, nil)
+				dir = clean
 				check("first open with the *OnDisk modes", rebuild, false, nil)
 				check("clean reopen with the *OnDisk modes", fast, false, nil)
 			}

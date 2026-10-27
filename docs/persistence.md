@@ -462,14 +462,24 @@ relationship-type temporal, high-frequency and vector index contents), so it gre
 chunked under `0x0F tkg_open_image_c<i>` (512 KiB each) and a header `0x0F tkg_open_image` (magic, chunk count,
 length, CRC-32C) written last in its own commit. `Close` holds the flush lock from the image's drained check until
 the store is marked closed, so a write racing `Close` cannot commit between the encode and the header. The next
-open trusts the image only if that header is still the store's newest badger version (`db.MaxVersion()`): any
-later commit — writes of a session that crashed, a write by an older release that knows nothing of the image, a
-raw badger write — and any missing chunk, length or checksum mismatch or decode error sends the open to the full
-rebuild. That rebuild also repairs the keys: a crash inside a flush badger split into several transactions can
-leave label, type or adjacency keys that disagree with the rows, which a rebuild skips but a trusted image would
-believe, so a writable rebuild deletes the keys it skips and writes the ones a row needs and the keyspace lacks
-(a failed repair suppresses the session's image; a read-only rebuild repairs nothing and writes none). A trusted
-open then:
+open trusts the image whole only if that header is still the store's newest badger version (`db.MaxVersion()`);
+a missing chunk, a length or checksum mismatch or a decode error sends the open to the full rebuild. A later
+commit (writes of a session that crashed, a write by an older release that knows nothing of the image, a raw
+badger write) makes it a **delta open** (OPENIMAGE, v4.88.0). Every commit after the header carries a higher badger
+version, so one iterator over the versions above it (`IteratorOptions.SinceTs`, all versions, deletes included)
+names every entity whose row, history, label, type or adjacency keys changed since: the touched entities. The delta open walks the
+entity, label, type and adjacency keys as an open from an image without ID sets does, decodes only the touched
+entities' rows, keeps the image's index entries of live untouched entities and adds the touched live ones from
+their rows. Planner statistics are deferred to their first read and the property membership sidecars build at
+their first lookup. An index defined or redefined after the image installs under its current definition: the
+image's entries are the rows' values (a vector, a time), and an index the image lacks builds from its rows. A
+purged entity whose tombstones a compaction dropped is named by no newer key, but it is not live, so the
+liveness filter drops its entries. A crash reopen after one record decodes 1 row at 1 M entities, where the
+full rebuild decoded 1.54 M (`TestCrashReopenCostNotLinear`). The full rebuild, and a delta open for its touched
+entities, also repair the keys: a crash inside a flush badger split into several transactions can leave label,
+type or adjacency keys that disagree with the rows, which a rebuild skips but a trusted image would believe, so a
+writable open deletes the keys it skips and writes the ones a row needs and the keyspace lacks (a failed repair
+suppresses the session's image; a read-only open repairs nothing and writes none). A trusted open then:
 
 - takes the live node and relationship ID sets from the image (EXISTMAP, v4.84.0: trusted only when their sizes
   equal the persisted `node_count` / `rel_count`, else it walks the entity keys) and, with them, the rel-type

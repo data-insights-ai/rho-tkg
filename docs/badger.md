@@ -425,8 +425,12 @@ Badger features rho does not use yet that fit a rho need, and one risk. Each is 
     `CompactL0OnClose` was measured for warm and cold shards: about 5 % faster read-only reads for 70-100 ms more per
     close, not adopted (`tasks/evidence/COMPACTL0/`);
     `BloomFalsePositive` below 0.01 may pay on the reference shard, whose unique checks read absent keys.
-12. **Faster reopen after a crash (OPENIMAGE)**: `IteratorOptions.SinceTs` can rebuild from the open image plus the
-    keys newer than its header instead of a full scan.
+12. **Done (OPENIMAGE, v4.88.0): reopen after a crash.** An open whose image header is older than the store's newest
+    version iterates the versions above it (`IteratorOptions.SinceTs`: versions > SinceTs, `iterator.go:320`, `:629`;
+    a table whose `MaxVersion` is below it is skipped, `:334`, `:361`; memtables are always read) with `AllVersions`
+    (deletes too) to find the touched entities, and decodes only their rows (`docs/persistence.md` "Clean reopen").
+    A table compaction mixed with newer keys is still read key by key, so the scan is bounded by the tables holding
+    versions newer than the image, not by the touched count.
 13. **To measure**: `MetricsEnabled` (default, rho leaves it on) registers expvar counters per directory; with many
     shards opened over a process's life they accumulate. `Subscribe` is not durable and cannot replace the change
     log. `ExternalMagicVersion` could guard the format at badger level beside rho's `wire_format_version`; changing

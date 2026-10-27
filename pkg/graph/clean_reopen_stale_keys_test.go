@@ -105,6 +105,9 @@ func TestCleanReopenAfterStaleIndexKeys(t *testing.T) {
 		{"out key with other endpoints", func(f fixture) func(*badgerv4.Txn) error {
 			return set(storeutil.OutKey(sid(f.n1), f.tokT, sid(f.n1), sid(f.rel)))
 		}},
+		{"out key from another start", func(f fixture) func(*badgerv4.Txn) error { // sorts after the row's key
+			return set(storeutil.OutKey(sid(f.n2), f.tokT, sid(f.n1), sid(f.rel)))
+		}},
 		{"out key without a row", func(f fixture) func(*badgerv4.Txn) error {
 			return set(storeutil.OutKey(sid(f.n1), f.tokT, sid(f.n2), sid(ghost)))
 		}},

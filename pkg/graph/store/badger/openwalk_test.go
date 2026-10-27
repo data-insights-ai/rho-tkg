@@ -27,19 +27,24 @@ import (
 // trusted with the image's ID sets only: an image without one (the entity
 // keys are walked) walks the label and rel-type keys too.
 func TestOpenWalkCleanOpenSkipsDiskIndexes(t *testing.T) {
-	t.Run("trusted", func(t *testing.T) { testOpenWalk(t, nil, nil) })
+	t.Run("trusted", func(t *testing.T) { testOpenWalk(t, nil, nil, false) })
 	t.Run("without node IDs", func(t *testing.T) {
-		testOpenWalk(t, func(kind byte) bool { return kind != imgSecNodeIDs }, []byte{storepkg.KeyLabel, storepkg.KeyRelType})
+		testOpenWalk(t, func(kind byte) bool { return kind != imgSecNodeIDs }, []byte{storepkg.KeyLabel, storepkg.KeyRelType}, false)
 	})
 	t.Run("without rel IDs", func(t *testing.T) {
-		testOpenWalk(t, func(kind byte) bool { return kind != imgSecRelIDs }, []byte{storepkg.KeyLabel, storepkg.KeyRelType})
+		testOpenWalk(t, func(kind byte) bool { return kind != imgSecRelIDs }, []byte{storepkg.KeyLabel, storepkg.KeyRelType}, false)
 	})
+	// A crash after the clean close (OPENIMAGE): the open applies the older
+	// image without its ID sets, and checks the touched rel's adjacency keys
+	// by point reads, not by a walk of either keyspace.
+	t.Run("delta", func(t *testing.T) { testOpenWalk(t, nil, []byte{storepkg.KeyLabel, storepkg.KeyRelType}, true) })
 }
 
-// testOpenWalk writes a store through an image filter, then checks its clean
+// testOpenWalk writes a store through an image filter (with crash, a session
+// after the clean close writes a node and a rel and crashes), then checks its
 // open against the full rebuild and that it walks none of the label and
 // adjacency keyspaces but mustWalk.
-func testOpenWalk(t *testing.T, filter func(kind byte) bool, mustWalk []byte) {
+func testOpenWalk(t *testing.T, filter func(kind byte) bool, mustWalk []byte, crash bool) {
 	cfg := func(dir string, readOnly bool) Config {
 		return Config{Dir: dir, ReadOnly: readOnly, LabelIndexOnDisk: true, AdjacencyIndexOnDisk: true}
 	}
@@ -73,6 +78,25 @@ func testOpenWalk(t *testing.T, filter func(kind byte) bool, mustWalk []byte) {
 	}
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
+	}
+	if crash {
+		s, err := New(cfg(dir, false))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.PutNode(types.NewNode(types.NodeID(42), 1, nil)); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.PutRelationship(types.NewRelationship(types.RelID(200), 7, types.NodeID(42), types.NodeID(1))); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		s.SetDBClosedForTest(true) // no Close, no image
+		if err := s.DBForTest().Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// The oracle: the same files with the open state deleted, so its open
 	// rebuilds every index from the keys.

@@ -1252,7 +1252,7 @@ func (bs *Store) openLabelMembers(txn *badgerv4.Txn, tok uint16, lazy bool) (map
 }
 
 // openWalkTestHook (tests only) is called with the keyspace prefix of each
-// walk the open's index scan starts.
+// walk the open's index scan starts, the key repair's passes included.
 var openWalkTestHook func(prefix byte)
 
 func (bs *Store) loadIndexesScan(img *openImage) error {

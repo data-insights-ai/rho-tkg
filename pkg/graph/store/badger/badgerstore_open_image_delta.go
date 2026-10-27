@@ -9,7 +9,6 @@ import (
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
-	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -20,8 +19,8 @@ import (
 // to send the open to the full rebuild, which decodes every row and reads each
 // indexed member again with a point Get: linear in the store, 22+ minutes on
 // ai-soc's 5.67 GB store. Every commit after the image carries a higher badger
-// version, so the keys newer than the header name every entity whose rows,
-// history or index keys changed since: the touched entities.
+// version, so the keys newer than the header name every entity whose row,
+// history, label, type or adjacency keys changed since: the touched entities.
 //
 // Such an open is a delta open. It walks the entity, label, type and
 // adjacency keys as an open from an image without ID sets does (keys alone),
@@ -30,27 +29,12 @@ import (
 // relationship property, composite, temporal, relationship-type temporal,
 // high-frequency, vector) of live untouched entities and adds the touched
 // live ones from their rows. Planner statistics are deferred to their first
-// read and the property membership sidecars build lazily. An index definition
-// or on-disk build marker written after the image sends the open to the full
-// rebuild. A deleted entity whose tombstones compaction already dropped is
-// not named by any newer key, but it is not live either, so its entries go
-// with the liveness filter.
-
-// openImageDefKeys are the meta keys that, written after the image, make its
-// index contents unusable.
-var openImageDefKeys = map[string]bool{
-	string(storepkg.PropIndexDefsKey):                                true,
-	string(storepkg.RelPropIndexDefsKey):                             true,
-	string(storepkg.CompositeIndexDefsKey):                           true,
-	string(storepkg.TemporalIndexDefsKey):                            true,
-	string(storepkg.RelTypeTemporalIndexDefsKey):                     true,
-	string(storepkg.HighFrequencyIndexDefsKey):                       true,
-	string(storepkg.VectorIndexDefsKey):                              true,
-	string(storepkg.PropertyIndexOnDiskBuiltKey):                     true,
-	string(storepkg.TemporalIndexOnDiskBuiltKey):                     true,
-	string(storepkg.TemporalIndexOnDiskBuiltV1Key):                   true,
-	string(storepkg.MetaKey(storecontract.UntimedValidStartMetaKey)): true,
-}
+// read and the property membership sidecars build lazily. An index defined or
+// redefined after the image installs under its current definition: the
+// image's entries are the rows' values (a vector, a time), and an index the
+// image lacks builds from its rows. A purged entity whose tombstones
+// compaction already dropped is not named by any newer key, but it is not
+// live either, so its entries go with the liveness filter.
 
 // delta reports whether img is an older image the open applies the touched
 // entities to.
@@ -81,10 +65,9 @@ func (bs *Store) keepRelEntry(img *openImage, id int64) bool {
 // openImageDelta prepares img, written at badger version since, for a delta
 // open: it collects the touched entities and drops what only a newest image
 // vouches for (the ID sets, label counts, rel-type index, planner statistics
-// and sidecars). False sends the open to the full rebuild.
+// and sidecars). False (the scan failed) sends the open to the full rebuild.
 func (bs *Store) openImageDelta(img *openImage, since uint64) bool {
 	nodes, rels := &indexpkg.IDSet{}, &indexpkg.IDSet{}
-	defChanged := false
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
@@ -93,18 +76,7 @@ func (bs *Store) openImageDelta(img *openImage, since uint64) bool {
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {
-			key := it.Item().Key()
-			if len(key) == 0 {
-				continue
-			}
-			if key[0] == storepkg.KeyMeta {
-				if openImageDefKeys[string(key)] {
-					defChanged = true
-					return nil
-				}
-				continue
-			}
-			if node, id, ok := touchedEntityOfKey(key); ok {
+			if node, id, ok := touchedEntityOfKey(it.Item().Key()); ok {
 				if node {
 					nodes.Add(id)
 				} else {
@@ -114,13 +86,9 @@ func (bs *Store) openImageDelta(img *openImage, since uint64) bool {
 		}
 		return nil
 	})
-	if err != nil || defChanged {
+	if err != nil {
 		if bs.logger != nil {
-			why := "an index definition changed after it"
-			if err != nil {
-				why = err.Error()
-			}
-			bs.logger.Warningf("graph: open image older than the store not applied, rebuilding from the rows: %s", why)
+			bs.logger.Warningf("graph: open image older than the store not applied, rebuilding from the rows: %v", err)
 		}
 		return false
 	}
@@ -132,9 +100,15 @@ func (bs *Store) openImageDelta(img *openImage, since uint64) bool {
 	return true
 }
 
-// touchedEntityOfKey returns the entity a row, history or index key names
-// (node true for a node), ok false for other keys.
+// touchedEntityOfKey returns the entity a row, history, label, type or
+// adjacency key names (node true for a node), ok false for other keys. The
+// on-disk property and temporal index keys (0x0A, 0x0B) change with their
+// node's row, or with a definition or build marker that sends the open to the
+// full rebuild.
 func touchedEntityOfKey(key []byte) (node bool, id int64, ok bool) {
+	if len(key) == 0 {
+		return false, 0, false
+	}
 	switch key[0] {
 	case storepkg.KeyNode:
 		if len(key) == storepkg.SizeNodeKey {
@@ -163,14 +137,6 @@ func touchedEntityOfKey(key []byte) (node bool, id int64, ok bool) {
 	case storepkg.KeyHistRel:
 		if len(key) == storepkg.SizeHistKey {
 			return false, int64(storepkg.ParseIDFromKey(key, 1)), true
-		}
-	case storepkg.KeyPropertyIndex:
-		if len(key) > 1+2+8 {
-			return true, int64(storepkg.PropertyIndexNodeIDFromKey(key)), true
-		}
-	case storepkg.KeyTemporalIndex:
-		if len(key) == storepkg.SizeTemporalIndexEntryKey {
-			return true, int64(storepkg.TemporalIndexNodeIDFromKey(key)), true
 		}
 	}
 	return false, 0, false

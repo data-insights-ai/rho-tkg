@@ -52,6 +52,9 @@ func (kr *keyRepair) addMissing(txn *badgerv4.Txn, prefix byte, want map[string]
 	it := txn.NewIterator(opts)
 	defer it.Close()
 	p := []byte{prefix}
+	if openWalkTestHook != nil {
+		openWalkTestHook(prefix)
+	}
 	for it.Seek(p); it.ValidForPrefix(p) && len(want) > 0; it.Next() {
 		delete(want, string(it.Item().Key()))
 	}
