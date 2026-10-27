@@ -72,8 +72,10 @@ type TemporalMetadata struct {
 	// ExciseRelValidity, backlog 64): belief, from TxFrom on, that the entity
 	// is absent over [ValidFrom, ValidTo). Where a void row wins the valid-time
 	// resolution the reads answer ErrNoVersionValidAt; it never holds the
-	// current slot, never answers an as-of read and carries no state of its
-	// own (its labels and properties are those of the version it voids).
+	// current slot, never answers an as-of read and carries no state: it keeps
+	// the labels of the version it voids (a relationship: its type and
+	// endpoints) and no properties (v4.90.0 on; a void row written before
+	// holds a copy of the voided version's properties, which no read uses).
 	// Always bounded (ValidTo not the open end of the store's ValidAxis),
 	// never a tombstone; stores reject it otherwise.
 	Void bool

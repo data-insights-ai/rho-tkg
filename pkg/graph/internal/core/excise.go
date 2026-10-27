@@ -14,7 +14,8 @@ import (
 // ExciseRelValidity end an entity's validity over [a, b) and keep it outside.
 // It is the cascade (temporal_cascade.go) with void pieces: over every part of
 // [a, b) where a version is valid as believed before the call, the kernel
-// appends a row marked types.TemporalMetadata.Void, and the resumption
+// appends a row marked types.TemporalMetadata.Void (the voided version's
+// labels, no properties: markVoid), and the resumption
 // re-asserts from b on what held at b. The resolver answers
 // ErrNoVersionValidAt where a void row wins (resolveNodeVersionAtCapped), so
 // reads inside [a, b) find nothing, reads outside keep their answers, and pins

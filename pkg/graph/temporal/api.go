@@ -1005,7 +1005,8 @@ func (a *API) SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, v
 // appends (void pieces over the parts of [a, b) where a version was valid, and
 // a resumption from b) all carry one transaction instant, recorded under the
 // node's entity lock, so pins before the call see the unsplit version.
-// History() returns the void pieces (Temporal().Void); they never hold the
+// History() returns the void pieces (Temporal().Void), with the voided
+// version's labels and no properties (v4.90.0 on); they never hold the
 // current slot and never answer NodeAsOf. A later SetNodeVersionInterval over
 // [a, b) fills the hole again.
 //

@@ -297,7 +297,9 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 			return nil, err
 		}
 		if void {
-			row.Temporal().Void = true
+			if err := markVoid(row); err != nil {
+				return nil, err
+			}
 		}
 		if newVer == nil {
 			newVer = row
@@ -763,6 +765,18 @@ func stampAppendedRow(tm *types.TemporalMetadata, now types.Instant) {
 	tm.Void = false // a void piece is marked by the excise after stamping
 }
 
+// markVoid makes a built correction row a void piece: marked Void and
+// without properties (VOIDPROPS: no read takes a value from a void row, so it
+// keeps only what places it, the voided version's labels or a relationship's
+// type and endpoints). It runs before the row is hashed.
+func markVoid[T interface {
+	Temporal() *types.TemporalMetadata
+	SetProperties(types.PropertySlice) error
+}](row T) error {
+	row.Temporal().Void = true
+	return row.SetProperties(nil)
+}
+
 // isVoidRow reports whether a chain row is a void piece of an excise
 // (types.TemporalMetadata.Void): absent over its own valid interval.
 func isVoidRow[T interface {
@@ -1101,7 +1115,9 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 			return nil, err
 		}
 		if void {
-			row.Temporal().Void = true
+			if err := markVoid(row); err != nil {
+				return nil, err
+			}
 		}
 		if newVer == nil {
 			newVer = row

@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.90.0] - 2026-10-27
+
+### Changed
+
+- **VOIDPROPS** (goal 1, every stored value once; sigma's TestStateCopiesSplit: 168-336 excise rows over 60 cuts,
+  each repeating the voided version's 100-400 B properties). An excise's void piece was built as a copy of the
+  version it voids, its properties included, though no read takes a value from a void row: the resolver, the
+  effective timelines and the as-of select use only its Void mark, valid bounds and TxFrom, and a later correction
+  over the hole builds from the current row. A void piece now keeps the voided version's labels (a relationship's
+  type and endpoints) and stores no properties: a void row of a node with a 400-byte property is 171 bytes stored
+  on badger instead of 612. `History()` returns void rows without properties; void rows written before keep their
+  copy. Reads are unchanged: inside the excised span nothing, outside it and at pins before the excise the full
+  version, the hash chains verify (`TestVoidPropsExciseRowStoresNoValues`, memory, badger, sharded, tiered). sigma
+  and ai-soc read no property of a void row. No format change: an earlier release reads the new void rows.
+
 ## [4.89.4] - 2026-10-27
 
 ### Fixed

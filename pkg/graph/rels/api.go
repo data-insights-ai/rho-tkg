@@ -1076,7 +1076,8 @@ func (a *API) CloseVersion(ctx context.Context, id types.RelID, t types.Instant)
 // The chain holds the rows as written, including an excise's void pieces
 // (Temporal().Void, Temporal().ExciseRelValidity): a void row asserts that the
 // relationship is absent over its [ValidFrom, ValidTo), it is not a state of
-// it. A consumer that reads raw History intervals must skip void rows (or read
+// it: it keeps the voided version's type and endpoints and carries no
+// properties (v4.90.0 on; older void rows copy the voided version's). A consumer that reads raw History intervals must skip void rows (or read
 // RelEffectiveTimeline, which never returns them).
 func (a *API) History(id types.RelID) ([]*types.Relationship, error) {
 	ops, err := a.ready()
