@@ -87,7 +87,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   covered; (b) an order-preserving terminator (escape 0x00, end with 0x00; a length prefix would break STARTS
   WITH, `badgerstore_property_disk.go:567+`), a format marker plus a backfill on the first open, a minor. Done
   when: an equality lookup's cost is independent of the stored strings it prefixes (a test counting keys visited
-  against 10x such strings), and ai-soc's BO run finishes with the disk index at the RAM index's time.
+  against 10x such strings), and ai-soc's BO run finishes with the disk index at the RAM index's time. State 27 Oct:
+  option (a) on branch `propstr` (66d86ca7): the walk runs from value||minLiveID to value||maxLiveID (IDSet.Bounds);
+  one lookup beside 10,000 longer strings visits 2 keys, before 10,001; 5 mutations caught. Releases as v4.88.1
+  after v4.88.0 (OPENIMAGE, ci-docker gate running).
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
