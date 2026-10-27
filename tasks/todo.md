@@ -55,6 +55,14 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
+- **PROPREWRITE** (SCALE, found with PROPSEEK) — an update writes every unchanged on-disk property entry again (a
+  delete and a set of the same key), so each update adds a version that every lookup of the value visits until
+  compaction drops it (100 updates: 100 versions visited), besides the write itself. Cancel the pair when the value
+  is unchanged and the index is built (a node marked `Mutated` during a build needs its write: the backfill skips
+  it). Done when: an update with unchanged indexed values writes no 0x0A key (a test) and ai-soc's rate is measured.
+- **ITERTOMB** (SCALE, `docs/badger.md` rule 12) — rho's other per-call walks that stop at their own end bound
+  without `AllVersions` pay for the deleted entries past it (range and prefix scans, label and adjacency disk
+  lookups, `nodeRowIDBounds` at a purged low end). Done when: each is listed with its cost or fixed.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
@@ -171,8 +179,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   last image.
 - **PROPSTR** (SCALE, ai-soc 27 Oct, BO run k10270113: an on-disk string equality lookup walked every longer string it
   prefixes) — shipped in v4.88.1 (the walk is bounded by the snapshot's smallest and largest node row IDs; one
-  lookup beside 10,000 longer strings visits 2 keys). Waits for ai-soc's BO run on v4.88.1 with PropertyIndexOnDisk.
-  Done when: that run finishes at the RAM index's time.
+  lookup beside 10,000 longer strings visits 2 keys). ai-soc's BO run k10270452-p4b on v4.89.0 still stalled (37 of
+  55 files in 30 min, RAM index 480 s): 99.9 % inside badger's Seek, which skips deleted entries and old versions
+  until two live keys (PROPSEEK, committed on branch `propseek` af31a6da: AllVersions, 325x -> 0.9-1.2x at 20,000
+  deleted entries; next v4.89.1). Done when: ai-soc's BO run with PropertyIndexOnDisk finishes at the RAM index's time.
 - **SCALEPROFILE** (SCALE, ai-soc 26 Oct) — which RAM structures grow with data in ai-soc's daemon plus sigma.
   Flux run k10261904 on v4.86.0 is the baseline (heap, memstats and smaps_rollup every 600 s and after the final
   GC, reopen times, the top-40 inuse_space with node and rel counts); the run after the PAGEREF pin carries

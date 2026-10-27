@@ -36,7 +36,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   consumers build and vet clean; at 1 M nodes / 1 M rels a 16 MB image, 31-33 ms encode under the locks, crash
   reopen 2.7 s (300 rows) against 18.0 s (4.0 M rows) for the full rebuild; 15 checkpoint and 4 pass-through
   mutations caught.
-- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (merged into v4.89.0, local only). The merged item branches are deleted and the kept ones pushed
+- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (merged into v4.89.0, local only), propseek (PROPSEEK, af31a6da, local, unmerged: next v4.89.1). The merged item branches are deleted and the kept ones pushed
   (René, 26 Oct); user-only action 5 stays. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
