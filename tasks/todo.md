@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-26 Oct: v4.75.0 to v4.87.2 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
+Released 24-27 Oct: v4.75.0 to v4.88.0 (`docs/CHANGELOG.md`). Now: SCALE, then BADGER step 3's last pieces (R37,
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
@@ -55,30 +55,14 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
-- **OPENIMAGE** (SCALE, moved up 26 Oct: ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in
-  tiered.New, 53 % in loadNodeFromBadger) — a crash open trusts no image, so it rebuilds every RAM index by decoding
-  each member node with a point Get (property without disk, composite, temporal without TemporalIndexOnDisk,
-  high-frequency, vector; badgerstore.go:1764-2091), thrashing the block cache (badger has no no-fill scan:
-  level_handler.go:302-305). ai-soc's BA store after PropertyIndexOnDisk still decodes for two composites (Derived,
-  Session) and a rel temporal index per edge type (TemporalIndexOnDisk covers node labels only). Plan, on branch
-  `openimage`: (1) a crash open whose image header is older than the newest version uses the image's value-derived
-  index contents (property, rel property, composite, temporal, rel temporal, high-frequency, vector), keeping only
-  entries of live entities not touched since the image (touched: a row, history or index key with a version above
-  the header's, read with `IteratorOptions.SinceTs`), and adds the touched live ones from their rows; ID sets, label
-  counts and the rel-type index come from the key walks as now, planner statistics are deferred, sidecars rebuilt
-  lazily; an index definition changed since the image is rebuilt from its rows. (2) A periodic image (checkpoint) so
-  a daemon that never closes cleanly bounds the touched set. Done when: a crash open decodes only the entities touched
-  since the last image (by a test counting decodes against store size), its index state equals the full rebuild's,
-  and a large shard's crash reopen is measured. State 26 Oct: step (1) committed on `openimage` (b1e146e0); the
-  clean-reopen oracle matches at every crash step, and a crash reopen after one record decodes 1 row at 100 k and
-  1 M entities (the full rebuild: 154 k and 1.54 M); the full-rebuild oracles delete the open state (a foreign
-  write now takes the delta open), badger, tiered, sharded and graph green; 25 mutations of the delta open all
-  caught (cff83b32: TestDeltaOpenMatchesFullRebuild for history or rows written alone, purged entities and redefined
-  indexes; no definition guard, the image holds row values). The first ci-docker gate failed in test-race: six
-  TestIndexRebuildStats tests (a corrupt row written after the image is now a touched node, and the delta loaded only
-  decoded ones, so no skip was counted); fixed (touched members as the rebuild counts them), long tier green, gate
-  rerunning for v4.88.0. Then step (2). ai-soc measures after the tag on copies of k10262212: one full open writing the image, then a crash reopen
-  after a few hundred records.
+- **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
+  loadNodeFromBadger) — step (1) shipped in v4.88.0: a crash open applies the older image and decodes only the
+  entities touched since it (1 row at 1 M entities after one record, the full rebuild 1.54 M). Left: (2) a periodic
+  image (checkpoint), so a daemon that never closes cleanly bounds the touched set and the SinceTs scan (badger reads
+  every table holding a version newer than the image, `docs/badger.md` item 12); ai-soc's measurement on copies of
+  k10262212 (one full open writing the image, then a crash reopen after a few hundred records). Done when: a daemon
+  that never closes cleanly reopens after a crash in time bounded by the writes since the last periodic image (a
+  test), and ai-soc's crash reopen is measured.
 - **PROPSTR** (SCALE, ai-soc 27 Oct, Flux run k10270113 on v4.87.2 with PropertyIndexOnDisk: BO 39 of 46 files in
   32 min against 46 in 8 min with the RAM index; 91 % cum in `propertyIndexDiskKeysCandidatesLocked`, iterating).
   A raw-domain (string) value prefix has no terminator (`storeutil/property_index_key.go:150`, `:170`), so the
@@ -87,12 +71,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   property index in RAM until the fix. Options: (a) a seek bounded to the store's live node-ID high bytes (exact
   entries are value||nodeID; snowflake high bytes are 0x00-0x07), a patch if every ID the index can hold is
   covered; (b) an order-preserving terminator (escape 0x00, end with 0x00; a length prefix would break STARTS
-  WITH, `badgerstore_property_disk.go:567+`), a format marker plus a backfill on the first open, a minor. Done
-  when: an equality lookup's cost is independent of the stored strings it prefixes (a test counting keys visited
+  WITH, `badgerstore_property_disk.go:567+`), a format marker plus a backfill on the first open (a minor).
+  Done when: an equality lookup's cost is independent of the stored strings it prefixes (a test counting keys visited
   against 10x such strings), and ai-soc's BO run finishes with the disk index at the RAM index's time. State 27 Oct:
   option (a) on branch `propstr` (66d86ca7): the walk runs from value||minLiveID to value||maxLiveID (IDSet.Bounds);
   one lookup beside 10,000 longer strings visits 2 keys, before 10,001; 5 mutations caught. Releases as v4.88.1
-  after v4.88.0 (OPENIMAGE, ci-docker gate running).
+  next.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 

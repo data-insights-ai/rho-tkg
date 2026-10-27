@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-26: latest tag v4.87.2; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-27: latest tag v4.88.0; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,7 +7,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-26 Oct:** v4.75.0 to v4.87.2 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
+- **Released 24-27 Oct:** v4.75.0 to v4.88.0 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main.
 - **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
   "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
@@ -22,7 +22,11 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   no `lastAccess`, a disk property equality lookup seeks its buffered entries (64 k buffered: 5.2 ms to 3.5 us).
 - **v4.87.2** (IDLESTAMP, a patch: v4.87.1 stamped `lastAccess` at a demotion and turned sigma's TestFoldReadDepthHot
   red): tag CI and ci-fast green, consumers build and vet clean; sigma's three tests checked on it (two pass, the third is sigma's).
-- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2); openimage (OPENIMAGE, in progress). The merged item branches are deleted and the kept ones pushed
+- **v4.88.0** (OPENIMAGE step 1, a minor: a crash open applies the older open image): ci-docker green on the second
+  run (the first failed six TestIndexRebuildStats tests in test-race, fixed with the release; its ledger step then
+  flagged a todo line ending in "Done", fixed in the release commit), consumers build and vet clean; a crash reopen
+  after one record decodes 1 row at 1 M entities (the full rebuild 1.54 M); 25 delta-open mutations caught.
+- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed); propstr (PROPSTR, v4.88.1 next). The merged item branches are deleted and the kept ones pushed
   (René, 26 Oct); user-only action 5 stays. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
