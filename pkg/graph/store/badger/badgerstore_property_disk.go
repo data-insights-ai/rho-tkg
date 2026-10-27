@@ -94,7 +94,7 @@ func (bs *Store) propertyIndexDiskOp(propertyKey, valueKey string, id snowflake.
 	if opType == writeOpDelete {
 		return writeOp{opType: writeOpDelete, key: key}, true
 	}
-	bs.propIDs.widen(uint64(id))
+	bs.propIDs.widen(uint64(id)) // #nosec G115 — the entry key's ID suffix: int64 bits as uint64, the order nodeRowIDBounds reads
 	return writeOp{opType: writeOpSet, key: key, value: []byte{}}, true
 }
 
