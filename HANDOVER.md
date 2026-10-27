@@ -51,14 +51,17 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **Branches:** every merged branch is deleted (René 27 Oct: "delete if everything is merged"): the item branches through
   histpend (v4.89.4), headparity, openimage (all its patches on main), worktree-agent-aa318165f7465324c, and user-only action 5's
   `v5` and `worktree-agent-a0d52d5298e44faee`. The checkout `rho-tkg` sits detached at origin/main; item work starts a branch.
-  Unmerged branches stay: row102-pending-ranged, tombstone-writer-v4.63, v5-realstore-harness, wp-37-import-throughput (each pushed
-  to origin as a backup), v5-takeover (local only, paused v5), worktree-agent-a34d277df6499077d and worktree-agent-a6a166b726378f33b
-  (local only: their uncommitted 22 Oct changes as one WIP commit each, d2cc529f and d479f1e1, not reviewed). main is pushed.
-- **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
+  The 7 unmerged branches live as parents of one commit on `archive/unmerged-2026-10-27` (6554d8ad, pushed; tree = main's, merge
+  strategy ours; René 27 Oct), whose message gives each tip, base and status. Restore one with `git branch <name> <tip>`:
+  row102-pending-ranged f4b27842, tombstone-writer-v4.63 37a1ff56, v5-takeover 3bd4d13a, v5-realstore-harness af75a982,
+  wp-37-import-throughput 392f88e2, worktree-agent-a34d277df6499077d d2cc529f, worktree-agent-a6a166b726378f33b d479f1e1
+  (the last two: uncommitted 22 Oct agent-worktree changes, not reviewed). Their separate branches, local and on origin, are
+  deleted. main is pushed.
+- **v5 PAUSED** (René 2026-10-16, row 61): `v5-takeover` (tip 3bd4d13a, in `archive/unmerged-2026-10-27`; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
   91.8 records/op is a synthetic in-memory probe; options A/B/C are in no committed file: `git show af75a982:tasks/evidence/v5-scale/notes.md`.
-  Gap analysis (file removed 2026-10-22): `git show 7c0a4b74:docs/v5-gap-to-main.md`. Real-store harness: branches `v5-realstore-harness`
-  (`af75a982`) and `wp-37-import-throughput` (`392f88e2`), pushed to origin as backups. The stale local `v5` is deleted (27 Oct; its plan docs are in origin/v5 at `04c7fd4f`, its review file on main at `0622da63`). Since the takeover (row 51) `pkg/graph` + `v5compat` are ours on `v5-takeover` (open WPs in todo; WP history `git show aeb7f8e0:tasks/todo.md`); no posts on GitHub issue #11 (René tells Markus).
+  Gap analysis (file removed 2026-10-22): `git show 7c0a4b74:docs/v5-gap-to-main.md`. Real-store harness: `v5-realstore-harness`
+  (`af75a982`) and `wp-37-import-throughput` (`392f88e2`), in `archive/unmerged-2026-10-27`. The stale local `v5` is deleted (27 Oct; its plan docs are in origin/v5 at `04c7fd4f`, its review file on main at `0622da63`). Since the takeover (row 51) `pkg/graph` + `v5compat` are ours on `v5-takeover` (open WPs in todo; WP history `git show aeb7f8e0:tasks/todo.md`); no posts on GitHub issue #11 (René tells Markus).
 - **Consumers and their agents** (ask the agent for runs and data, never browse their repos; answer a request the same
   day with its todo item first; agent names change per session, `ListAgents`; if neither resolves at a release, put
   the release note here and tell René in one line):
@@ -123,7 +126,8 @@ lesson NN = line NN of the lesson index in docs/CONTRIBUTING.md § Lessons.
 ## User-only actions (René, 2026-10-22 cleanup; agents' `rm` is denied)
 
 René's word 26 Oct: the merged item branches are deleted (39, flushpart with -D) and row102-pending-ranged,
-tombstone-writer-v4.63, v5-realstore-harness and wp-37-import-throughput are pushed to origin as backups.
+tombstone-writer-v4.63, v5-realstore-harness and wp-37-import-throughput were pushed as backups; since 27 Oct all
+unmerged branches are in `archive/unmerged-2026-10-27` (see Branches).
 
 1. `! rm -rf /dev/shm/sigma-*` (sigma test dirs, ~11 GB) and the merged worktrees in `~/Work/2026/datainsights/sigma-tkgd` (`git worktree list`).
 2. `! rm -rf /tmp/claude-1000/-home-renework2023-Work-2026-datainsights-rho-tkg/aa649ecc-3385-4943-a9bf-f630b51c9f5c/scratchpad/r3` (rho 22 M bench seed, 3.3 GB).

@@ -245,7 +245,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   release of his is unmerged. Waits for: Markus.
 - **TOMBSTONE** — A delete cannot keep the believed end of validity (backlog 4, 7, 25). Done when: released as a minor.
   Parked 24 Oct: neither sigma nor ai-soc needs it (sigma removes by excising validity). Plan: rebuild branch
-  `tombstone-writer-v4.63` (`37a1ff56`) on the v4.66 axis code, ~½ day, heads-up to sigma and ai-soc (v4.64.0 was
+  `tombstone-writer-v4.63` (`37a1ff56`, in `archive/unmerged-2026-10-27`) on the v4.66 axis code, ~½ day, heads-up to sigma and ai-soc (v4.64.0 was
   never cut). Waits for: a consumer needing it (sigma's P24).
 - **STORE** (ai-soc, 23 Oct) — Store layout choices for ai-soc's remodel: history delta encoding per label, Derived and
   Session on the never-purged reference shard, and the instance nodes (~2/3 of the BA store). Done when: René has
@@ -318,12 +318,12 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   badger share is large.
 - **REOPEN** — ai-soc saw a slow history read after a reopen. Waits for: ai-soc's profile naming the slow call.
 - **PENDING** — Reading one entity walks the whole write buffer on badger (half built on branch
-  `row102-pending-ranged`). Waits for: ai-soc raising its priority, or nothing else open.
+  `row102-pending-ranged`, `f4b27842` in `archive/unmerged-2026-10-27`). Waits for: ai-soc raising its priority, or nothing else open.
 - **RELSIDECAR** — Relationship lookups by several properties may be too slow on BA. Waits for: a BA measurement.
 - **NITS** — Small findings no consumer has hit (backlog 80-82, review nits). Waits for: a consumer hitting one.
 - **NOCOMPRESS** — Compression cannot be turned off, because "none" is the default value. Waits for: a consumer asking.
 - **STALECITE** — Some code comments cite todo sections that no longer exist. Waits for: the next change to that code.
-- **V5** — The v5 line is paused on the local branch `v5-takeover` (state: HANDOVER; open WPs and the breaking API-pass
+- **V5** — The v5 line is paused on `v5-takeover` (`3bd4d13a`, in `archive/unmerged-2026-10-27`; state: HANDOVER; open WPs and the breaking API-pass
   candidates: `git show 791c1aa3:tasks/todo.md`). Default: paused; `v5.0.0-alpha.1` at its S2 exit once restarted.
   Waits for: sigma's and ai-soc's use of it (asked 24 Oct), then decided on that data.
 - **BACKLOG** — 26 numbered items without a requester, listed in `HANDOVER.md` because code cites their numbers. Waits
