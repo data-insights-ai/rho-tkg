@@ -31,7 +31,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   `IDSet.Bounds`, which the patch gate refuses as a door (exported names in internal packages count, CONTRIBUTING
   Rules digest); the bounds now come from two seeks on the node keyspace.
 - **v4.89.0** (OPENIMAGE step 2, a minor: `Config.OpenImageInterval` writes a periodic open image, header format 4):
-  ci-docker green on the third run (the first failed fmt-check on `badgerstore.go`, the second two unconvert
+  tag CI green; ci-docker green on the third run (the first failed fmt-check on `badgerstore.go`, the second two unconvert
   findings, both fixed on the branch),
   consumers build and vet clean; at 1 M nodes / 1 M rels a 16 MB image, 31-33 ms encode under the locks, crash
   reopen 2.7 s (300 rows) against 18.0 s (4.0 M rows) for the full rebuild; 15 checkpoint and 4 pass-through
