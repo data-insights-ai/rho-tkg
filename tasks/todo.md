@@ -17,7 +17,10 @@ ai-soc's P4BSTORE A/B k10271117 on v4.89.2 (disk index 518 s against 453 s in RA
 k10271211: disk lookup CPU 48.5 -> 18.25 s, push 454 vs 481 s (+6 %, was +14 %); left: badger Seek across the LSM tables
 per key (11.7 s), NewIterator 2.8 s. sigma's counts: misses under 1 %, one key per
 call, 2.53M of ~2.64M lookups re-evict an unchanged row; sigma's CLEANEVICT drops those (about 96 %), no rho change.
-Waits for the A/B after CLEANEVICT; LSM table counts only if disk still trails. sigma's FoldInputs rows8
+A/B after CLEANEVICT, BO k10271955 on v4.90.0: disk +7.0 % push (435.1 -> 465.5 s, ai-soc's gate 5 %), live heap
+-779 MB (maintainPropertyIndexesAdd 714.5 MB -> 0); the cost is the equality lookups (DB.View 12.7 -> 31.4 s, sigma's
+DerivedPage ov_k/ov_sh, ai-soc's ByLabelAndProperty). ai-soc asks for a bounded RAM hot part (recent keys, or a presence
+filter per label/property answering misses without a seek): PROPHOT, after TXMEMBERS. sigma's FoldInputs rows8
 profile gave HISTPEND, v4.89.4 (a history read walked the whole write buffer; bench last ten cuts 15-20 -> 10 ms; sigma confirmed: WriteRows 34 -> 21 % of CPU; ai-soc BO probe
 k10271336: push 489.7 -> 488.9 s, no BO effect, as BO has few history reads). Before it, PARKED (René 27 Oct, relayed by ai-soc): every agent
 works on goal 1, the 134.7 MB k10270301's BA store writes twice by two code paths; ai-soc's meter (ANALYSIS 5) classes
@@ -27,13 +30,13 @@ property be stored as a reference to another edge's property. Before that: SCALE
 rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
 (realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
 
-- **TXMEMBERS** (ai-soc 27 Oct, René's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars hold one RAM
-  entry per id that ever carried the token, built by the first pinned scan and freed only at Close; on the reference
-  shard they grow with every entity ever seen (k10271800, v4.89.4: recordLabelMemberLocked +127 MB of live heap from
-  300 to 900 s). Plan: the sidecar keeps only former members (a stored version carried the token, the current row
-  does not); current members come from the label/type index rho already keeps. Done when recordLabelMemberLocked is
-  flat from 300 to 900 s on ai-soc's next reduced BA run. sigma calls no sidecar capability directly. Waits for
-  ai-soc (LabelIndexOnDisk on the reference shard? label drops or deletes there? direct capability calls?).
+- **TXMEMBERS** (ai-soc 27 Oct, René's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars held one RAM
+  entry per id that ever carried the token (k10271800, v4.89.4: recordLabelMemberLocked +127 MB of live heap from 300
+  to 900 s on the reference shard; ai-soc runs LabelIndexOnDisk, entities never lose a label, deletes only in crash
+  recovery; neither consumer calls the capabilities directly). Built on branch txmembers (98243c53, v4.90.1): the
+  sidecars hold only former members, the label/type index the current ones; pinned reads equal memory's (badger RAM
+  and disk labels, tiered ref), 15 of 16 mutations caught (the 16th equivalent). Gate (ci-fast) next. Done when
+  recordLabelMemberLocked is flat from 300 to 900 s on ai-soc's next reduced BA run.
 - **SCALE** (René 26 Oct, the standing goal) — rho holds realtime ingest at about 2 TB a day (about 23 MB/s
   sustained, peaks higher; about 4 billion 500-byte facts a day) and grows only by more RAM, NVMe and block storage.
   Done when: architecture.md lists what grows with total volume instead of per shard (RAM structures that grow with
