@@ -42,7 +42,13 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Also: a read-only open with the flag over an unbuilt keyspace failed; it now keeps its entries in RAM. Built on
   branch propdisktoggle, 6 of 6 mutations caught. Released v4.90.2 (03222aca): ci-fast, tiered and graph short
   tests, tag CI and main CodeQL green, consumers build and vet clean.
-- **PROPDISKLABEL** (ai-soc 28 Oct; SCALE, goal 2; door, minor v4.91.0 after PROPDISKTOGGLE) — the on-disk property
+- **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
+  plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
+  the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
+  can vanish from the scan until the flush (probe, PropertyIndexOnDisk: a node updated 2 -> 1 is missing from
+  ForEachByLabelPropertyRangeOrdered [1,2], equality finds it). Fix: resolve per key. Done when released.
+- **PROPDISKLABEL** (ai-soc 28 Oct; SCALE, goal 2; door, minor v4.91.0 after PROPDISKTOGGLE and PROPOVERLAY; built
+  but stashed on branch propdisklabel while PROPOVERLAY ships) — the on-disk property
   index chosen per label: `PropertyIndexOnDiskLabels []string` in badger and tiered Config; ai-soc sets ["DerivedPage"].
   BA k10272220 (v4.90.1): live heap +3,587 MB from 300 to 900 s, rho +1,969 MB of it, PropertyIndex.AddKey +1,720 MB,
   1.66 GB from sigma's paging (RowPage/StatePage -> GraphDerivedWriter.publish, DerivedPage nodes). All-on-disk cost
