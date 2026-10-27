@@ -36,10 +36,10 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   consumers build and vet clean; at 1 M nodes / 1 M rels a 16 MB image, 31-33 ms encode under the locks, crash
   reopen 2.7 s (300 rows) against 18.0 s (4.0 M rows) for the full rebuild; 15 checkpoint and 4 pass-through
   mutations caught.
-- **v4.89.1** (PROPSEEK, a patch for ai-soc's BO run k10270452-p4b on v4.89.0): ci-fast green, consumers build and
+- **v4.89.1** (PROPSEEK, a patch for ai-soc's BO run k10270452-p4b on v4.89.0): tag CI and ci-fast green, consumers build and
   vet clean; the on-disk equality lookup iterates with AllVersions: 200 lookups before 20,000 deleted entries 325x
   -> 0.9-1.2x their time without them; 4 mutations caught, the fifth's code removed.
-- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (merged into v4.89.0, local only), propseek (merged into v4.89.1, local only). The merged item branches are deleted and the kept ones pushed
+- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (merged into v4.89.0, local only), propseek (merged into v4.89.1, local only), proprewrite (PROPREWRITE, local, in progress: next v4.89.2). The merged item branches are deleted and the kept ones pushed
   (René, 26 Oct); user-only action 5 stays. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The

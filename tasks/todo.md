@@ -59,7 +59,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   delete and a set of the same key), so each update adds a version that every lookup of the value visits until
   compaction drops it (100 updates: 100 versions visited), besides the write itself. Cancel the pair when the value
   is unchanged and the index is built (a node marked `Mutated` during a build needs its write: the backfill skips
-  it). Done when: an update with unchanged indexed values writes no 0x0A key (a test) and ai-soc's rate is measured.
+  it). Consumers (27 Oct): ai-soc's own path only creates; sigma's write-back gives state units a new version with
+  ov_k and ov_h<mask> unchanged (both indexed on disk under ai-soc's kit), every cut their group changes. On branch
+  `proprewrite`: the six update doors drop the pair, 20 updates leave 1 version (before 21), 10 mutations caught;
+  next v4.89.2. Done when: an update with unchanged indexed values writes no 0x0A key (a test) and ai-soc's rate is measured.
 - **ITERTOMB** (SCALE, `docs/badger.md` rule 12) — rho's other per-call walks that stop at their own end bound
   without `AllVersions` pay for the deleted entries past it (range and prefix scans, label and adjacency disk
   lookups, `nodeRowIDBounds` at a purged low end). Done when: each is listed with its cost or fixed.
