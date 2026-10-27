@@ -230,7 +230,6 @@ func TestUniqueTiered_ResetReaps(t *testing.T) {
 		t.Fatalf("CreateUniqueForever: %v", err)
 	}
 	owner := mustAddTieredUser(t, g, "owned@x.com")
-	_ = owner
 	// A second holder is barred by ownership.
 	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "owned@x.com"}); !errors.Is(err, graphpkg.ErrUniqueViolation) {
 		t.Fatalf("pre-reset duplicate err = %v, want ErrUniqueViolation", err)
@@ -243,9 +242,17 @@ func TestUniqueTiered_ResetReaps(t *testing.T) {
 	if got := g.Constraints().UniqueConstraints(); len(got) != 0 {
 		t.Fatalf("Reset left constraints behind: %+v", got)
 	}
-	// Ownership reaped: the value is claimable again (no constraint bars it now).
-	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "owned@x.com"}); err != nil {
+	// Ownership reaped: under a re-created forever constraint the value is
+	// claimable by a different node (a leaked owner entry would bar it).
+	if err := g.Constraints().CreateUniqueForever(ctx, "User", "email"); err != nil {
+		t.Fatalf("re-create CreateUniqueForever: %v", err)
+	}
+	n, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "owned@x.com"})
+	if err != nil {
 		t.Fatalf("post-reset add of formerly-owned value: %v", err)
+	}
+	if n.ID() == owner.ID() {
+		t.Fatalf("reclaimer reused the old owner's ID %v", owner.ID())
 	}
 }
 

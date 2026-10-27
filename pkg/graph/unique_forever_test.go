@@ -236,9 +236,12 @@ func TestUniqueForever_ResetReaps(t *testing.T) {
 	if err := g.Admin().Reset(); err != nil {
 		t.Fatalf("Reset: %v", err)
 	}
-	// Constraint + ownership both gone: reclaim now succeeds under a fresh
-	// forever constraint.
-	mustAddUser(t, g, "own@x.com")
+	// Constraint + ownership both gone. Re-create the forever constraint: a
+	// leaked owner entry would still bar the value from this different node.
+	mustCreateUniqueForever(t, g)
+	if b := mustAddUser(t, g, "own@x.com"); b.ID() == a.ID() {
+		t.Fatalf("reclaimer reused the old owner's ID %v", a.ID())
+	}
 }
 
 // TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim guards BACKLOG 9e:
