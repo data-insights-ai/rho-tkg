@@ -195,6 +195,13 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   token, so it needs a snapshot-consistent token first. Cold reads still fold (0.7 us a version); sigma sends a
   restart bench before asking for ASOFREAD. Gap seen: no test has a current row with a delete stamp after the pin
   (nodeRowAtTx on the current row in the plural fold survives mutation; core never writes such a row today).
+- **VOIDPROPS** (goal 1, sigma 27 Oct, TestStateCopiesSplit: 168-336 excise rows in 60 cuts, each a full copy of the
+  voided row's properties, 100-400 B blobs) — an excise's void piece is a DeepCopy of the version it voids
+  (buildNodeCorrectionRow). No rho reader uses its property values: the resolver, timelines and as-of select use only
+  Void, bounds and TxFrom, and a later correction takes a gap's base from the template. History returns them, and the
+  types.TemporalMetadata.Void doc promises them. Plan (a minor): void pieces keep labels (rels: type and endpoints) and
+  carry no properties. Red test: stored size plus read-door parity. Waits for: sigma and ai-soc on whether they read
+  void-row properties from History.
 - **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
   loadNodeFromBadger) — step (1) shipped in v4.88.0 (a crash open applies the older image and decodes only the
   entities touched since it), step (2) in v4.89.0 (`Config.OpenImageInterval`: a periodic image, so a store that
