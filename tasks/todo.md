@@ -36,7 +36,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 - **TXMEMBERS** (ai-soc 27 Oct, René's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars held one RAM
   entry per id that ever carried the token (k10271800, v4.89.4: recordLabelMemberLocked +127 MB of live heap from 300
   to 900 s on the reference shard; ai-soc runs LabelIndexOnDisk, entities never lose a label, deletes only in crash
-  recovery; neither consumer calls the capabilities directly). Released v4.90.1 (e8e3dfec, tag CI running): the
+  recovery; neither consumer calls the capabilities directly). Released v4.90.1 (e8e3dfec, tag CI and CodeQL green): the
   sidecars hold only former members, the label/type index the current ones; pinned reads equal memory's (badger RAM
   and disk labels, tiered ref), 15 of 16 mutations caught (the 16th equivalent); consumers clean, sigma takes it in
   v0.11.118, ai-soc pins it. Done when

@@ -47,8 +47,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **v4.90.1** (TXMEMBERS, a patch for SCALE, ai-soc's k10271800 heap: `recordLabelMemberLocked` 45 -> 172 MB from 300 to
   900 s on the reference shard): badger's K1 label/rel-type sidecars hold only former members, the label and type
   index answer the current ones; pinned reads unchanged against memory (badger RAM and disk labels, tiered ref);
-  15 of 16 mutations caught, the 16th equivalent (a current row passing itself saves a cache lookup). ci-fast green,
-  consumers build and vet clean;
+  15 of 16 mutations caught, the 16th equivalent (a current row passing itself saves a cache lookup). ci-fast, tag CI
+  and main CodeQL green, consumers build and vet clean; sigma takes it in v0.11.118, ai-soc pins it;
   done when ai-soc's next reduced BA run shows the sidecar flat from 300 to 900 s.
 - **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): tag CI and ci-fast green, consumers build and vet clean; a history read finds its
   entity's buffered rows by key prefix instead of walking the write buffer (sigma's bench: last ten cuts 15-20 ->
