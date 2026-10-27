@@ -11,8 +11,11 @@ import (
 // TestTxMembersFanoutListsNodeRestoredMidRead pins that a RestoreNode between
 // the fan-out's reference and archive reads does not drop the node from label
 // membership or valid-end candidates (the history fold lists it). The hook
-// waits a bounded time for the concurrent restore.
+// waits a bounded time for the concurrent restore. Label membership is the
+// point form: a live node is a current member, which the stream form leaves
+// to the label index (TXMEMBERS).
 func TestTxMembersFanoutListsNodeRestoredMidRead(t *testing.T) {
+	var restoreRaceIDs []types.NodeID
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
@@ -22,7 +25,7 @@ func TestTxMembersFanoutListsNodeRestoredMidRead(t *testing.T) {
 	}{
 		{"LabelTxMembership", func(ts *Store, label uint16) (map[types.NodeID]bool, error) {
 			got := map[types.NodeID]bool{}
-			err := ts.ForEachLabelTxMember(label, func(id types.NodeID, _ types.Instant) bool {
+			err := ts.LabelTxMembersOf(label, restoreRaceIDs, func(id types.NodeID, _ types.Instant) bool {
 				got[id] = true
 				return true
 			})
@@ -41,6 +44,7 @@ func TestTxMembersFanoutListsNodeRestoredMidRead(t *testing.T) {
 			ts := newTestTieredStore(t)
 			caseTok, _, _ := installDefaultTestLabelRegistry(t, ts)
 			n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
+			restoreRaceIDs = []types.NodeID{n.ID()}
 			if err := ts.PutNode(n); err != nil {
 				t.Fatal(err)
 			}

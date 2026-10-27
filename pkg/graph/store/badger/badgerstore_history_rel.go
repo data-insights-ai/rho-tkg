@@ -242,7 +242,6 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 			return bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() || len(bs.relTypeTemporalIndexes) > 0 || len(bs.relPropTx) > 0
 		},
 		func() {
-			bs.recordRelTypeMemberLocked(r)
 			bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
 			bs.recordRelRowLocked(r, false) // backlog 8: tracking or built property sidecars
 			// Covered (or Building), not merely live: a relationship re-created

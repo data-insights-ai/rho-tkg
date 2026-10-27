@@ -125,6 +125,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 		}
 	}
 	bs.getOrCreateLabelCounter(tok).Add(-1)
+	bs.departLabelMemberLocked(tok, nid) // TXMEMBERS: a former member from now on
 
 	// Property/temporal/vector indexes for the new node state; the cache
 	// (the new current row) is published last, by publishMoveLocked.
@@ -265,7 +266,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 		bs.addLabelIdxLocked(tok, nid)
 	}
 	bs.getOrCreateLabelCounter(tok).Add(1)
-	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
+	bs.recordNodeLabelMembersLocked(updatedNode, updatedNode) // transaction-time label membership (new token)
 
 	// Property/temporal/vector indexes for the new node state; the cache
 	// (the new current row) is published last, by publishMoveLocked.
@@ -636,7 +637,6 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 			return bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() || len(bs.nodePropTx) > 0 || bs.nodeHasTemporalIndexLocked(n)
 		},
 		func() {
-			bs.recordNodeLabelMembersLocked(n)
 			bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
 			bs.recordNodeRowLocked(n, false)          // backlog 8: tracking or built property sidecars
 			bs.extendNodeVersionTemporalLocked(n, id) // backlog 56: a covered node's envelope holds every row

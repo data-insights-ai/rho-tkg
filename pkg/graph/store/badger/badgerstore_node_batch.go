@@ -213,6 +213,7 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 			for _, tok := range toks {
 				ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
 				bs.getOrCreateLabelCounter(tok).Add(-1)
+				bs.departLabelMemberLocked(tok, nid) // TXMEMBERS: a former member from now on
 			}
 		} else {
 			for tok, set := range bs.labelIdx {
@@ -223,6 +224,7 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 					}
 					ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
 					bs.getOrCreateLabelCounter(tok).Add(-1)
+					bs.departLabelMemberLocked(tok, nid) // TXMEMBERS: a former member from now on
 				}
 			}
 		}
@@ -264,6 +266,7 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 			}
 		}
 		bs.getOrCreateLabelCounter(tok).Add(-1)
+		bs.departLabelMemberLocked(tok, nid) // TXMEMBERS: a former member from now on
 	}
 
 	bs.removeNodePropertyKeyCounts(n)
@@ -661,7 +664,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, nd.id)})
 			bs.getOrCreateLabelCounter(tok).Add(1)
 		}
-		bs.recordNodeLabelMembersLocked(n) // transaction-time label membership
+		bs.recordNodeLabelMembersLocked(n, n) // transaction-time label membership
 		bs.addNodePropertyKeyCounts(n)
 		ops = append(ops, bs.maintainPropertyIndexesAdd(n, nd.id)...)
 		indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, n, nd.id)
@@ -791,6 +794,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 				}
 			}
 			bs.getOrCreateLabelCounter(tok).Add(-1)
+			bs.departLabelMemberLocked(tok, nid) // TXMEMBERS: a former member from now on
 		}
 
 		bs.removeNodePropertyKeyCounts(n)

@@ -10,10 +10,11 @@ import (
 )
 
 // TestBadgerLabelTxMembersOf: the point lookup answers exactly the asked IDs
-// the streamed sidecar holds, with their first transaction time, on its
-// first (building) call and after a delete and a history version that
-// carries a label the current row lacks (append-only); unknown IDs and IDs
-// of another label are skipped; fn returning false stops; a nil callback and
+// that carry the label (first transaction time unknown, 0: TXMEMBERS) or
+// carried it in a history row (the sidecar's bound), on its first (building)
+// call and after a delete and a history version that carries a label the
+// current row lacks (append-only); unknown IDs and IDs of another label are
+// skipped; fn returning false stops; a nil callback and
 // a nil store are refused. Faulty implementations caught: answering the
 // whole label, dropping a deleted or history-only member, ignoring the stop.
 func TestBadgerLabelTxMembersOf(t *testing.T) {
@@ -38,10 +39,10 @@ func TestBadgerLabelTxMembersOf(t *testing.T) {
 		sort.Strings(got)
 		return fmt.Sprint(got)
 	}
-	if got := lookup(tokL, 101, 103, 999); got != "[101@10]" {
-		t.Fatalf("first (building) lookup = %s, want [101@10]", got)
+	if got := lookup(tokL, 101, 103, 999); got != "[101@0]" {
+		t.Fatalf("first (building) lookup = %s, want [101@0]", got)
 	}
-	if got := lookup(tokK, 101, 102, 103); got != "[102@20 103@30]" {
+	if got := lookup(tokK, 101, 102, 103); got != "[102@0 103@0]" {
 		t.Fatalf("K lookup = %s", got)
 	}
 	if err := bs.DeleteNode(102); err != nil {
@@ -52,8 +53,8 @@ func TestBadgerLabelTxMembersOf(t *testing.T) {
 	if err := bs.PutNodeVersion(103, 1, hist); err != nil {
 		t.Fatal(err)
 	}
-	if got := lookup(tokL, 101, 102, 103); got != "[101@10 102@20 103@40]" {
-		t.Fatalf("after delete and history row = %s, want [101@10 102@20 103@40]", got)
+	if got := lookup(tokL, 101, 102, 103); got != "[101@0 102@0 103@40]" {
+		t.Fatalf("after delete and history row = %s, want [101@0 102@0 103@40]", got)
 	}
 	calls := 0
 	if err := bs.LabelTxMembersOf(tokL, []types.NodeID{101, 102, 103}, func(types.NodeID, types.Instant) bool {
@@ -73,7 +74,8 @@ func TestBadgerLabelTxMembersOf(t *testing.T) {
 	}
 }
 
-// TestBadgerRelTypeTxMembersOf is the relationship mirror.
+// TestBadgerRelTypeTxMembersOf is the relationship mirror; a history row of a
+// rel without a current row keeps its bound.
 func TestBadgerRelTypeTxMembersOf(t *testing.T) {
 	t.Parallel()
 	bs := newLookupTestStore(t)
@@ -104,14 +106,19 @@ func TestBadgerRelTypeTxMembersOf(t *testing.T) {
 		sort.Strings(got)
 		return fmt.Sprint(got)
 	}
-	if got := lookup(5, 201, 202, 999); got != "[201@10]" {
+	if got := lookup(5, 201, 202, 999); got != "[201@0]" {
 		t.Fatalf("first lookup = %s", got)
 	}
 	if err := bs.DeleteRelationship(201); err != nil {
 		t.Fatal(err)
 	}
 	put(203, 5, 30)
-	if got := lookup(5, 201, 202, 203); got != "[201@10 203@30]" {
+	hv := types.NewRelationship(204, 5, 1, 2)
+	hv.SetTemporal(&types.TemporalMetadata{TxFrom: 40, ValidFrom: 40})
+	if err := bs.PutRelVersion(204, 0, hv); err != nil {
+		t.Fatal(err)
+	}
+	if got := lookup(5, 201, 202, 203, 204); got != "[201@0 203@0 204@40]" {
 		t.Fatalf("after delete and add = %s", got)
 	}
 	if err := bs.RelTypeTxMembersOf(5, nil, nil); !errors.Is(err, ErrInvalidStoreMutation) {

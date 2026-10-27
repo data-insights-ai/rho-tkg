@@ -21,8 +21,9 @@ import (
 //
 // Per queried token, RAM-only, not persisted: the first candidates call for a
 // type or label after an open tracks it — under idxMu (no row write in
-// flight) its ever-members are taken from the K1 membership sidecar (built on
-// first use, one pass over the rows) and enlisted, then each is read once by
+// flight) its ever-members, the current members of the label or type index
+// and the former ones of the K1 membership sidecar (built on first use, one
+// pass over the history rows), are enlisted, then each is read once by
 // ID through the store's own doors. Persisting the index would not make a
 // restart flat: opening a badger store already walks every current row to
 // rebuild its RAM indexes, linear in the history.
@@ -106,10 +107,68 @@ func (bs *Store) noteValidEndNodeMember(n *types.Node) {
 	}
 }
 
+// tokenMembers is one token's ever-members: its current members (the label
+// or type index) and its former ones (the K1 membership sidecar).
+type tokenMembers struct {
+	each func(fn func(id int64)) // every member, once
+	has  func(id int64) bool
+}
+
+// nodeTokenMembersLocked is label tok's tokenMembers. Caller holds idxMu.
+func (bs *Store) nodeTokenMembersLocked(tok uint16) (tokenMembers, error) {
+	current, err := bs.labelCurrentMembersLocked(tok)
+	if err != nil {
+		return tokenMembers{}, err
+	}
+	former := bs.labelTxMembers[tok]
+	return tokenMembers{
+		each: func(fn func(int64)) {
+			for id := range current {
+				fn(int64(id))
+			}
+			for id := range former {
+				if _, dup := current[id]; !dup {
+					fn(int64(id))
+				}
+			}
+		},
+		has: func(id int64) bool {
+			_, cur := current[types.NodeID(id)]
+			_, was := former[types.NodeID(id)]
+			return cur || was
+		},
+	}, nil
+}
+
+// relTokenMembersLocked is type tok's tokenMembers. Caller holds idxMu.
+func (bs *Store) relTokenMembersLocked(tok uint16) (tokenMembers, error) {
+	current := bs.typeIdx[tok]
+	former := bs.relTypeTxMembers[tok]
+	isCurrent := func(id int64) bool { return current != nil && current.Has(id) }
+	return tokenMembers{
+		each: func(fn func(int64)) {
+			if current != nil {
+				for id := range current.All() {
+					fn(id)
+				}
+			}
+			for id := range former {
+				if !isCurrent(int64(id)) {
+					fn(int64(id))
+				}
+			}
+		},
+		has: func(id int64) bool {
+			_, was := former[types.RelID(id)]
+			return was || isCurrent(id)
+		},
+	}, nil
+}
+
 // trackValidEnds tracks every token of toks not tracked yet (see the file
-// comment). ensureK1 builds the membership sidecar, members lists one token's
+// comment). ensureK1 builds the membership sidecar, members gives one token's
 // ever-members (caller holds idxMu).
-func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensureK1 func() error, members func(tok uint16, enlist func(int64))) error {
+func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensureK1 func() error, members func(tok uint16) (tokenMembers, error)) error {
 	missing := false
 	for _, tok := range toks {
 		missing = missing || !ix.Tracked(tok)
@@ -122,7 +181,15 @@ func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensur
 	}
 	bs.idxMu.Lock()
 	for _, tok := range toks {
-		ix.Track(tok, func(enlist func(int64)) { members(tok, enlist) })
+		if ix.Tracked(tok) {
+			continue
+		}
+		m, err := members(tok)
+		if err != nil {
+			bs.idxMu.Unlock()
+			return err
+		}
+		ix.Track(tok, m.each)
 	}
 	bs.idxMu.Unlock()
 	if bs.validEndTrackHook != nil {
@@ -133,13 +200,13 @@ func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensur
 
 // validEndRowsBulk reads what the index folds of every entity in ids (the
 // unknown entities of one kind): the history rows' and the current row's
-// temporal blocks only, and the tracked tokens each belongs to from the K1
-// membership sidecar (member, read under idxMu.RLock). The committed rows of
+// temporal blocks only, and the tracked tokens each belongs to (members, read
+// under idxMu.RLock). The committed rows of
 // all of them are read in one badger view by one history iterator and one
 // current-row iterator walking forward in ID order (advanceTo); an entity with a buffered
 // write when the read starts (overlay captured BEFORE the view, lesson 64) is
 // read by validEndOverlayRows instead. An entity without rows is omitted.
-func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node bool, member func(tok uint16, id int64) bool) (map[int64][]indexpkg.ValidEndRow, error) {
+func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node bool, members func(tok uint16) (tokenMembers, error)) (map[int64][]indexpkg.ValidEndRow, error) {
 	current, history := storepkg.KeyRel, storepkg.KeyHistRel
 	if node {
 		current, history = storepkg.KeyNode, storepkg.KeyHistNode
@@ -216,15 +283,18 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 		}
 	}
 	bs.idxMu.RLock()
-	tracked := ix.TrackedTokens()
-	for id, rows := range out {
-		for _, tok := range tracked {
-			if member(tok, id) {
+	defer bs.idxMu.RUnlock()
+	for _, tok := range ix.TrackedTokens() {
+		m, err := members(tok)
+		if err != nil {
+			return nil, err
+		}
+		for id, rows := range out {
+			if m.has(id) {
 				rows[0].Tokens = append(rows[0].Tokens, tok)
 			}
 		}
 	}
-	bs.idxMu.RUnlock()
 	return out, nil
 }
 
@@ -339,18 +409,11 @@ func (bs *Store) RelValidEndCandidates(typeToken uint16, pin, validFrom types.In
 		return nil, err
 	}
 	toks := []uint16{typeToken}
-	if err := bs.trackValidEnds(&bs.relValidEnds, toks, bs.ensureRelTypeTxMembersBuilt, func(tok uint16, enlist func(int64)) {
-		for id := range bs.relTypeTxMembers[tok] {
-			enlist(int64(id))
-		}
-	}); err != nil {
+	if err := bs.trackValidEnds(&bs.relValidEnds, toks, bs.ensureRelTypeTxMembersBuilt, bs.relTokenMembersLocked); err != nil {
 		return nil, err
 	}
 	if err := bs.relValidEnds.ResolveUnknownBulk(func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
-		return bs.validEndRowsBulk(&bs.relValidEnds, ids, false, func(tok uint16, id int64) bool {
-			_, member := bs.relTypeTxMembers[tok][types.RelID(id)]
-			return member
-		})
+		return bs.validEndRowsBulk(&bs.relValidEnds, ids, false, bs.relTokenMembersLocked)
 	}); err != nil {
 		return nil, err
 	}
@@ -367,18 +430,11 @@ func (bs *Store) NodeValidEndCandidates(labelTokens []uint16, pin, validFrom typ
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := bs.trackValidEnds(&bs.nodeValidEnds, labelTokens, bs.ensureLabelTxMembersBuilt, func(tok uint16, enlist func(int64)) {
-		for id := range bs.labelTxMembers[tok] {
-			enlist(int64(id))
-		}
-	}); err != nil {
+	if err := bs.trackValidEnds(&bs.nodeValidEnds, labelTokens, bs.ensureLabelTxMembersBuilt, bs.nodeTokenMembersLocked); err != nil {
 		return nil, err
 	}
 	if err := bs.nodeValidEnds.ResolveUnknownBulk(func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
-		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, func(tok uint16, id int64) bool {
-			_, member := bs.labelTxMembers[tok][types.NodeID(id)]
-			return member
-		})
+		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, bs.nodeTokenMembersLocked)
 	}); err != nil {
 		return nil, err
 	}

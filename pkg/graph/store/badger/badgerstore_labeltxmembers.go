@@ -1,6 +1,9 @@
 package badger
 
 import (
+	"bytes"
+	"errors"
+
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -16,24 +19,33 @@ import (
 // into the candidate set, so a pinned scan for a selective label cost
 // O(everything that ever carried ANY label) rather than O(matches).
 //
-// labelTxMembers maps a label token to the set of node IDs that EVER carried it
-// (current OR any historical version), tagged with a lower bound on the
-// transaction time of the earliest acquisition. relTypeTxMembers is the
-// immutable-type rel mirror. Both are SOUND SUPERSETS (append-only — a removed/
-// deleted member is retained so a pin before the removal still admits it) and
-// the core chain resolver remains the correctness authority. firstTxFrom is a
-// lower bound (0 = never prune); pruning is `pin < firstTxFrom → skip`.
+// labelTxMembers maps a label token to the FORMER members (TXMEMBERS): the
+// node IDs a stored version (a history row) carried it in while their current
+// row does not, tagged with a lower bound on the transaction time of the
+// earliest acquisition. The current members are the label index's (labelIdx,
+// or the persisted keyspace in LabelIndexOnDisk mode) and are not repeated
+// here, so the sidecar grows with label removals and deletes, not with every
+// node that ever carried the label (ai-soc 27 Oct: +127 MB in ten minutes on a
+// reference shard whose entities never lose a label). relTypeTxMembers is the
+// immutable-type rel mirror over typeIdx. Both are SOUND SUPERSETS (a stale
+// entry, an ID that carries the token again, is harmless) and the core chain
+// resolver remains the correctness authority. firstTxFrom is a lower bound (0
+// = never prune); pruning is `pin < firstTxFrom → skip`. A history row written
+// while the current row carried the token is not recorded, so its bound is
+// unknown: the ID departs (label removal, delete) with 0, and a point lookup
+// answers a current member with 0.
 //
 // LAZY, RAM-only: nil until the first pinned scan builds it (mirrors the
 // relValidIdx precedent), rebuilt after a Close/reopen on next use. The build
 // runs under idxMu.Lock (no writer can progress and no NEW flush can park —
 // flush takes idxMu.RLock only for its snapshot+swap, so an already-parked flush
 // still commits during the build), reading the write-buffer overlay (flushing ++
-// pending) FIRST and then each committed row's wire tokens directly (no property
-// decode, no registry resolve), so it captures a complete current+history
-// snapshot (lesson 64 ordering). Afterwards every
-// label-acquiring door keeps it fresh incrementally; removal/delete doors are
-// no-ops (append-only).
+// pending) FIRST and then each committed history row's wire tokens and its
+// entity's current row directly (no property decode, no registry resolve), so
+// it captures a complete snapshot (lesson 64 ordering). Afterwards every door
+// keeps it fresh incrementally: a history row records the tokens the entity's
+// current row does not carry, a label-index removal (departLabelMemberLocked,
+// removeTypeIdxLocked) records the departure.
 
 // enqueueVersionAgainstLazyBuilds enqueues a history-version op for a door that
 // does not hold idxMu across its write (PutNodeVersion / PutRelVersion), keeping
@@ -64,9 +76,9 @@ func (bs *Store) enqueueVersionAgainstLazyBuilds(built func() bool, record func(
 	return enqueue()
 }
 
-// recordLabelMemberLocked records node id as an ever-member of tok with the
+// recordLabelMemberLocked records node id as a former member of tok with the
 // given acquisition transaction time, keeping the lowest firstTxFrom seen; 0 (an unstamped row, visible to a TxAt read at
-// every pin) is "unknown" and is never raised (index.MergeFirstTx).
+// every pin, or an unknown bound) is never raised (index.MergeFirstTx).
 // No-op until the sidecar is built. Caller holds idxMu (write).
 func (bs *Store) recordLabelMemberLocked(tok uint16, id types.NodeID, txFrom types.Instant) {
 	if tok == 0 || bs.labelTxMembers == nil {
@@ -84,13 +96,30 @@ func (bs *Store) recordLabelMemberLocked(tok uint16, id types.NodeID, txFrom typ
 	}
 }
 
-// recordNodeLabelMembersLocked records every label token n carries with n's
-// transaction-time stamp. Caller holds idxMu (write).
-func (bs *Store) recordNodeLabelMembersLocked(n *types.Node) {
+// departLabelMemberLocked notes that nid's current row stops carrying tok (a
+// label removal or a delete): the history rows that carried tok while the
+// current row did too were not recorded, so nid becomes a former member with
+// an unknown first acquisition. Caller holds idxMu (write).
+func (bs *Store) departLabelMemberLocked(tok uint16, nid types.NodeID) {
+	bs.recordLabelMemberLocked(tok, nid, 0)
+}
+
+// recordNodeLabelMembersLocked records n, a row a door writes: each token
+// keep, the entity's current row after the door, does not carry, with n's
+// transaction-time stamp. A current row passes itself (a member through the
+// label index: nothing recorded). keep nil: the door does not hold it (a
+// history-only version, a tombstone), so it is read; none, or unreadable,
+// records every token. A token the current row carries is recorded at its
+// departure (departLabelMemberLocked): a label changes only through the label
+// doors. Caller holds idxMu (write).
+func (bs *Store) recordNodeLabelMembersLocked(n, keep *types.Node) {
 	if bs.labelTxMembers == nil || n == nil {
 		return
 	}
 	bs.noteValidEndNodeMember(n) // backlog 51: a tracked label's new member
+	if keep == nil {
+		keep, _ = bs.getNodeLocked(n.ID())
+	}
 	var tx types.Instant
 	if tm := n.Temporal(); tm != nil {
 		tx = tm.TxFrom
@@ -98,70 +127,85 @@ func (bs *Store) recordNodeLabelMembersLocked(n *types.Node) {
 	id := n.ID()
 	count := n.LabelTokenCount()
 	for i := 0; i < count; i++ {
-		bs.recordLabelMemberLocked(n.LabelTokenRawAt(i), id, tx)
+		if tok := n.LabelTokenRawAt(i); keep == nil || !keep.HasLabelTokenRaw(tok) {
+			bs.recordLabelMemberLocked(tok, id, tx)
+		}
 	}
 }
 
-// recordRelTypeMemberLocked records rel r as an ever-member of its type token.
-// Caller holds idxMu (write).
-func (bs *Store) recordRelTypeMemberLocked(r *types.Relationship) {
-	if bs.relTypeTxMembers == nil || r == nil {
+// recordRelTypeTxLocked records rel id as a former member of tok (see
+// recordLabelMemberLocked). Caller holds idxMu (write).
+func (bs *Store) recordRelTypeTxLocked(tok uint16, id types.RelID, txFrom types.Instant) {
+	if tok == 0 || bs.relTypeTxMembers == nil {
 		return
 	}
-	bs.noteValidEndRelMember(r) // backlog 51: a tracked type's new member
-	tok := r.TypeToken().Value()
-	if tok == 0 {
-		return
-	}
-	var tx types.Instant
-	if tm := r.Temporal(); tm != nil {
-		tx = tm.TxFrom
-	}
-	id := r.ID()
 	set := bs.relTypeTxMembers[tok]
 	if set == nil {
 		set = make(map[types.RelID]types.Instant)
 		bs.relTypeTxMembers[tok] = set
 	}
 	if prev, ok := set[id]; ok {
-		set[id] = indexpkg.MergeFirstTx(prev, tx)
+		set[id] = indexpkg.MergeFirstTx(prev, txFrom)
 	} else {
-		set[id] = tx
+		set[id] = txFrom
 	}
 }
 
-// recordNodeWireMembersLocked reads label tokens + TxFrom straight from a decoded
-// NodeWire (no full node reconstruction) and records them. nid comes from the
-// key. Caller holds idxMu (write).
-func (bs *Store) recordNodeWireMembersLocked(nid types.NodeID, w *storepkg.NodeWire) {
-	tx := types.Instant(w.TxFrom)
-	if w.PrimaryLabel != 0 {
-		bs.recordLabelMemberLocked(uint16(w.PrimaryLabel), nid, tx) // #nosec G115 -- wire label tokens are validated as uint16 on decode
+// recordRelTypeMemberLocked is recordNodeLabelMembersLocked for a rel row (a
+// current one, or a history one): its type, unless the rel is a current
+// member of it (typeIdx, which the doors fill before recording;
+// removeTypeIdxLocked records the departure). Caller holds idxMu (write).
+func (bs *Store) recordRelTypeMemberLocked(r *types.Relationship) {
+	if bs.relTypeTxMembers == nil || r == nil {
+		return
+	}
+	bs.noteValidEndRelMember(r) // backlog 51: a tracked type's new member
+	tok := r.TypeToken().Value()
+	if set := bs.typeIdx[tok]; set != nil && set.Has(int64(r.ID())) {
+		return
+	}
+	var tx types.Instant
+	if tm := r.Temporal(); tm != nil {
+		tx = tm.TxFrom
+	}
+	bs.recordRelTypeTxLocked(tok, r.ID(), tx)
+}
+
+// nodeWireCarries reports whether a decoded node row carries tok.
+func nodeWireCarries(w *storepkg.NodeWire, tok uint16) bool {
+	if uint16(w.PrimaryLabel) == tok { // #nosec G115 -- wire label tokens are validated as uint16 on decode
+		return true
 	}
 	for _, el := range w.ExtraLabels {
-		if el != 0 {
-			bs.recordLabelMemberLocked(uint16(el), nid, tx) // #nosec G115 -- wire label tokens are validated as uint16 on decode
+		if uint16(el) == tok { // #nosec G115 -- wire label tokens are validated as uint16 on decode
+			return true
 		}
+	}
+	return false
+}
+
+// recordNodeWireMembersLocked records the label tokens of a decoded history
+// row (no full node reconstruction) that cur, its entity's current row (nil:
+// none), does not carry. nid comes from the key. Caller holds idxMu (write).
+func (bs *Store) recordNodeWireMembersLocked(nid types.NodeID, w, cur *storepkg.NodeWire) {
+	tx := types.Instant(w.TxFrom)
+	record := func(tok uint16) {
+		if tok != 0 && (cur == nil || !nodeWireCarries(cur, tok)) {
+			bs.recordLabelMemberLocked(tok, nid, tx)
+		}
+	}
+	record(uint16(w.PrimaryLabel)) // #nosec G115 -- wire label tokens are validated as uint16 on decode
+	for _, el := range w.ExtraLabels {
+		record(uint16(el)) // #nosec G115 -- wire label tokens are validated as uint16 on decode
 	}
 }
 
 // recordRelWireMembersLocked is the rel-type mirror of recordNodeWireMembersLocked.
-func (bs *Store) recordRelWireMembersLocked(rid types.RelID, w *storepkg.RelWire) {
-	if w.RelType == 0 || bs.relTypeTxMembers == nil {
+func (bs *Store) recordRelWireMembersLocked(rid types.RelID, w, cur *storepkg.RelWire) {
+	if cur != nil && cur.RelType == w.RelType {
 		return
 	}
-	tok := uint16(w.RelType) // #nosec G115 -- wire relationship token is validated as uint16 on decode
-	tx := types.Instant(w.TxFrom)
-	set := bs.relTypeTxMembers[tok]
-	if set == nil {
-		set = make(map[types.RelID]types.Instant)
-		bs.relTypeTxMembers[tok] = set
-	}
-	if p, has := set[rid]; has {
-		set[rid] = indexpkg.MergeFirstTx(p, tx)
-	} else {
-		set[rid] = tx
-	}
+	bs.recordRelTypeTxLocked(uint16(w.RelType), rid, types.Instant(w.TxFrom)) // #nosec G115 -- wire relationship token is validated as uint16 on decode
 }
 
 // decodeNodeWireForMembership decodes a node/node-history row's wire label
@@ -212,8 +256,143 @@ func decodeRelWireForMembership(val []byte) (storepkg.RelWire, bool) {
 	return d.Meta, true
 }
 
+// txMemberBuildRow is one buffered history row a sidecar build records.
+type txMemberBuildRow[W any] struct {
+	id  int64
+	row W
+}
+
+// buildTxMembersLocked is the sidecar build of both kinds: the history rows of
+// the write-buffer overlay (read FIRST) and of the committed history keyspace,
+// each recorded against its entity's current row, the overlay's if buffered,
+// else the committed one (lesson 64: a flush that already parked `pending`
+// into `flushing` still commits while idxMu.Lock is held; read the other way
+// round, a row it commits between the View and the overlay read is in
+// neither). Deletes of history rows are ignored: a stale former member is
+// harmless. Caller holds idxMu (write).
+func buildTxMembersLocked[W any](bs *Store, currentTag, historyTag byte, currentSize int, decode func([]byte) (W, bool), record func(id int64, w, cur *W)) error {
+	type overlayCurrent struct {
+		row W
+		ok  bool // false: buffered delete or an unreadable row
+	}
+	current := make(map[int64]overlayCurrent)
+	var history []txMemberBuildRow[W]
+	bs.rangePending(func(k string, op writeOp) {
+		kb := []byte(k)
+		switch {
+		case len(kb) == currentSize && kb[0] == currentTag:
+			var c overlayCurrent
+			if op.opType != writeOpDelete && len(op.value) > 0 {
+				c.row, c.ok = decode(op.value)
+			}
+			current[int64(storepkg.ParseIDFromKey(kb, 1))] = c
+		case len(kb) == storepkg.SizeHistKey && kb[0] == historyTag:
+			if op.opType == writeOpDelete || len(op.value) == 0 {
+				return
+			}
+			if w, ok := decode(op.value); ok {
+				history = append(history, txMemberBuildRow[W]{id: int64(storepkg.ParseIDFromKey(kb, 1)), row: w})
+			}
+		}
+	})
+	return bs.view(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
+		cit := txn.NewIterator(opts)
+		defer cit.Close()
+		cit.Seek([]byte{currentTag})
+		key := make([]byte, 1+8)
+		key[0] = currentTag
+		// currentOf returns id's current row; ids come in ascending order.
+		var lastID int64
+		var last *W
+		have := false
+		currentOf := func(id int64) (*W, error) {
+			if have && id == lastID {
+				return last, nil
+			}
+			lastID, last, have = id, nil, true
+			if c, buffered := current[id]; buffered {
+				if c.ok {
+					row := c.row
+					last = &row
+				}
+				return last, nil
+			}
+			storepkg.PutUint64(key, 1, id)
+			advanceTo(cit, key)
+			if !cit.Valid() || !bytes.Equal(cit.Item().Key(), key) {
+				return nil, nil
+			}
+			if err := cit.Item().Value(func(val []byte) error {
+				if w, ok := decode(val); ok {
+					last = &w
+				}
+				return nil
+			}); err != nil {
+				return nil, err
+			}
+			return last, nil
+		}
+		hit := txn.NewIterator(opts)
+		defer hit.Close()
+		prefix := []byte{historyTag}
+		for hit.Seek(prefix); hit.ValidForPrefix(prefix); hit.Next() {
+			item := hit.Item()
+			if len(item.Key()) != storepkg.SizeHistKey {
+				continue
+			}
+			id := int64(storepkg.ParseIDFromKey(item.Key(), 1))
+			var w W
+			ok := false
+			if err := item.Value(func(val []byte) error {
+				w, ok = decode(val)
+				return nil
+			}); err != nil {
+				return err
+			}
+			if !ok {
+				continue // skip a genuinely corrupt row; the fold fallback stays correct
+			}
+			cur, err := currentOf(id)
+			if err != nil {
+				return err
+			}
+			record(id, &w, cur)
+		}
+		// The buffered history rows, out of ID order: fresh current lookups.
+		for _, h := range history {
+			var cur *W
+			if c, buffered := current[h.id]; buffered {
+				if c.ok {
+					cur = &c.row
+				}
+			} else {
+				storepkg.PutUint64(key, 1, h.id)
+				item, err := txn.Get(key)
+				switch {
+				case errors.Is(err, badgerv4.ErrKeyNotFound):
+				case err != nil:
+					return err
+				default:
+					if err := item.Value(func(val []byte) error {
+						if w, ok := decode(val); ok {
+							cur = &w
+						}
+						return nil
+					}); err != nil {
+						return err
+					}
+				}
+			}
+			record(h.id, &h.row, cur)
+		}
+		return nil
+	})
+}
+
 // ensureLabelTxMembersBuilt lazily builds the label membership sidecar from the
-// write-buffer overlay (read first) + the committed node/history keyspaces.
+// history rows of the write-buffer overlay and the committed keyspace.
 func (bs *Store) ensureLabelTxMembersBuilt() error {
 	if bs.labelTxMembersBuilt.Load() {
 		return nil
@@ -223,74 +402,16 @@ func (bs *Store) ensureLabelTxMembersBuilt() error {
 	if bs.labelTxMembers != nil {
 		return nil // built by a racing caller while we waited for the lock
 	}
-	members := make(map[uint16]map[types.NodeID]types.Instant)
-	bs.labelTxMembers = members
-
-	// Write-buffer overlay FIRST, Badger View SECOND (lesson 64). idxMu.Lock
-	// keeps writers out, but a flush that already parked `pending` into
-	// `flushing` has released its idxMu.RLock and still commits to Badger and
-	// clears `flushing` while this build runs. Read the other way round, a row
-	// that flush commits between the View and the overlay read is in neither
-	// and the member is lost for the life of the store (the build never
-	// repeats). Overlay first: a row committed before the capture is in the
-	// later View; a row committed after it was in the overlay. Deletes are
-	// ignored — membership is append-only (a deleted node stays a historical
-	// member).
-	bs.rangePending(func(k string, op writeOp) {
-		if op.opType == writeOpDelete || len(op.value) == 0 {
-			return
-		}
-		kb := []byte(k)
-		if len(kb) == 0 {
-			return
-		}
-		switch kb[0] {
-		case storepkg.KeyNode, storepkg.KeyHistNode:
-		default:
-			return
-		}
-		nid := types.NodeID(storepkg.ParseIDFromKey(kb, 1))
-		w, ok := decodeNodeWireForMembership(op.value)
-		if !ok {
-			return
-		}
-		bs.recordNodeWireMembersLocked(nid, &w)
-	})
-
-	// Committed rows: scan the current-node (0x01) and node-history (0x07)
-	// keyspaces, decoding only the wire label tokens + TxFrom.
-	scanErr := bs.view(func(txn *badgerv4.Txn) error {
-		for _, prefix := range [][]byte{{storepkg.KeyNode}, {storepkg.KeyHistNode}} {
-			opts := badgerv4.DefaultIteratorOptions
-			opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
-			it := txn.NewIterator(opts)
-			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-				item := it.Item()
-				nid := types.NodeID(storepkg.ParseIDFromKey(item.KeyCopy(nil), 1))
-				if verr := item.Value(func(val []byte) error {
-					w, ok := decodeNodeWireForMembership(val)
-					if !ok {
-						return nil // skip a genuinely corrupt row; the fold fallback stays correct
-					}
-					bs.recordNodeWireMembersLocked(nid, &w)
-					return nil
-				}); verr != nil {
-					it.Close()
-					return verr
-				}
-			}
-			it.Close()
-		}
-		return nil
-	})
-	if scanErr != nil {
+	bs.labelTxMembers = make(map[uint16]map[types.NodeID]types.Instant)
+	err := buildTxMembersLocked(bs, storepkg.KeyNode, storepkg.KeyHistNode, storepkg.SizeNodeKey, decodeNodeWireForMembership,
+		func(id int64, w, cur *storepkg.NodeWire) { bs.recordNodeWireMembersLocked(types.NodeID(id), w, cur) })
+	if err != nil {
 		bs.labelTxMembers = nil // failed build — retry on next call
-		return scanErr
+		return err
 	}
 	if bs.historyScanTestHook != nil {
 		bs.historyScanTestHook()
 	}
-
 	bs.labelTxMembersBuilt.Store(true)
 	return nil
 }
@@ -305,65 +426,38 @@ func (bs *Store) ensureRelTypeTxMembersBuilt() error {
 	if bs.relTypeTxMembers != nil {
 		return nil
 	}
-	members := make(map[uint16]map[types.RelID]types.Instant)
-	bs.relTypeTxMembers = members
-
-	// Overlay first, View second — see ensureLabelTxMembersBuilt.
-	bs.rangePending(func(k string, op writeOp) {
-		if op.opType == writeOpDelete || len(op.value) == 0 {
-			return
-		}
-		kb := []byte(k)
-		if len(kb) == 0 {
-			return
-		}
-		switch kb[0] {
-		case storepkg.KeyRel, storepkg.KeyHistRel:
-		default:
-			return
-		}
-		rid := types.RelID(storepkg.ParseIDFromKey(kb, 1))
-		w, ok := decodeRelWireForMembership(op.value)
-		if !ok {
-			return
-		}
-		bs.recordRelWireMembersLocked(rid, &w)
-	})
-
-	scanErr := bs.view(func(txn *badgerv4.Txn) error {
-		for _, prefix := range [][]byte{{storepkg.KeyRel}, {storepkg.KeyHistRel}} {
-			opts := badgerv4.DefaultIteratorOptions
-			opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
-			it := txn.NewIterator(opts)
-			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-				item := it.Item()
-				rid := types.RelID(storepkg.ParseIDFromKey(item.KeyCopy(nil), 1))
-				if verr := item.Value(func(val []byte) error {
-					w, ok := decodeRelWireForMembership(val)
-					if !ok {
-						return nil
-					}
-					bs.recordRelWireMembersLocked(rid, &w)
-					return nil
-				}); verr != nil {
-					it.Close()
-					return verr
-				}
-			}
-			it.Close()
-		}
-		return nil
-	})
-	if scanErr != nil {
+	bs.relTypeTxMembers = make(map[uint16]map[types.RelID]types.Instant)
+	err := buildTxMembersLocked(bs, storepkg.KeyRel, storepkg.KeyHistRel, storepkg.SizeRelKey, decodeRelWireForMembership,
+		func(id int64, w, cur *storepkg.RelWire) { bs.recordRelWireMembersLocked(types.RelID(id), w, cur) })
+	if err != nil {
 		bs.relTypeTxMembers = nil
-		return scanErr
+		return err
 	}
 	if bs.historyScanTestHook != nil {
 		bs.historyScanTestHook()
 	}
-
 	bs.relTypeMembersBuilt.Store(true)
 	return nil
+}
+
+// forgetTxMembersLocked drops a purged node and its purged relationships from
+// the former members (the departure the purge's cascade recorded included):
+// no row of them is left to resolve. Caller holds idxMu (write).
+func (bs *Store) forgetTxMembersLocked(nid types.NodeID, rels []RelDeleteInfo) {
+	for tok, members := range bs.labelTxMembers {
+		delete(members, nid)
+		if len(members) == 0 {
+			delete(bs.labelTxMembers, tok)
+		}
+	}
+	for _, rd := range rels {
+		if members := bs.relTypeTxMembers[rd.RelType]; members != nil {
+			delete(members, types.RelID(rd.ID))
+			if len(members) == 0 {
+				delete(bs.relTypeTxMembers, rd.RelType)
+			}
+		}
+	}
 }
 
 // ForEachLabelTxMember implements store.LabelTxMembershipCapability.
@@ -428,9 +522,9 @@ func (bs *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, fi
 	return nil
 }
 
-// LabelTxMembersOf implements store.LabelTxMemberLookupCapability over the
-// same sidecar as ForEachLabelTxMember (built on first use; fn runs outside
-// the store lock).
+// LabelTxMembersOf implements store.LabelTxMemberLookupCapability: each of ids
+// that is a current member of token (firstTxFrom 0) or a former one (the
+// sidecar, built on first use). fn runs outside the store lock.
 func (bs *Store) LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
@@ -442,8 +536,18 @@ func (bs *Store) LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id t
 		return err
 	}
 	bs.idxMu.RLock()
-	members := txMembersOf(bs.labelTxMembers[token], ids)
+	current, err := bs.labelCurrentMembersLocked(token)
+	var members []indexpkg.TxMember[types.NodeID]
+	if err == nil {
+		members = txMembersOf(bs.labelTxMembers[token], ids, func(id types.NodeID) bool {
+			_, ok := current[id]
+			return ok
+		})
+	}
 	bs.idxMu.RUnlock()
+	if err != nil {
+		return err
+	}
 	for _, m := range members {
 		if !fn(m.ID, m.FirstTx) {
 			return nil
@@ -464,7 +568,10 @@ func (bs *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id 
 		return err
 	}
 	bs.idxMu.RLock()
-	members := txMembersOf(bs.relTypeTxMembers[token], ids)
+	current := bs.typeIdx[token]
+	members := txMembersOf(bs.relTypeTxMembers[token], ids, func(id types.RelID) bool {
+		return current != nil && current.Has(int64(id))
+	})
 	bs.idxMu.RUnlock()
 	for _, m := range members {
 		if !fn(m.ID, m.FirstTx) {
@@ -474,11 +581,33 @@ func (bs *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id 
 	return nil
 }
 
-// txMembersOf returns the members of set among ids (point lookups).
-func txMembersOf[ID comparable](set map[ID]types.Instant, ids []ID) []indexpkg.TxMember[ID] {
+// labelCurrentMembersLocked returns token's current members: the label index,
+// in LabelIndexOnDisk mode read from the persisted keyspace. The caller holds
+// idxMu (R or W) and only reads the set.
+func (bs *Store) labelCurrentMembersLocked(token uint16) (map[types.NodeID]struct{}, error) {
+	if !bs.labelOnDisk {
+		return bs.labelIdx[token], nil
+	}
+	ids, err := bs.labelNodeIDsSnapshotLocked(token)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[types.NodeID]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set, nil
+}
+
+// txMembersOf returns the members of token among ids (point lookups): a
+// current member (current) with an unknown first acquisition, else a former
+// one from set.
+func txMembersOf[ID comparable](set map[ID]types.Instant, ids []ID, current func(ID) bool) []indexpkg.TxMember[ID] {
 	var out []indexpkg.TxMember[ID]
 	for _, id := range ids {
-		if tx, ok := set[id]; ok {
+		if current(id) {
+			out = append(out, indexpkg.TxMember[ID]{ID: id})
+		} else if tx, ok := set[id]; ok {
 			out = append(out, indexpkg.TxMember[ID]{ID: id, FirstTx: tx})
 		}
 	}

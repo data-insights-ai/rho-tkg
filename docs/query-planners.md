@@ -783,13 +783,18 @@ clock). For "the state at valid time t as recorded at the pin" use `ValidAt` +
 K1 (`store.LabelTxMembershipCapability`, `RelTypeTxMembershipCapability`) is an
 append-only sound superset kept in RAM, built lazily on the first temporal read
 after open (O(history) once) and maintained at every row write; removing a label,
-deleting the entity or compacting never drops a member. A member with an unset
-(0) first `TxFrom` is never pruned. Sharded and wrapper stores
+deleting the entity or compacting never drops a member. On badger it holds only
+the former members, the entities a history row placed under the label (type)
+while their current row lacks it; the current members are the label and type
+index's, which the read unites (TXMEMBERS, v4.90.1: its RAM grows with label
+removals and deletes, not with every entity ever labelled). A member with an
+unset (0) first `TxFrom` is never pruned. Sharded and wrapper stores
 take the full fold, O(everything that ever had history). Tiered unions its shards' sidecars for DepthAll reads and keeps the depth fold for a depth-scoped read (`docs/architecture.md` tiered "Tx-membership sidecars"). Its point form
 (`store.LabelTxMemberLookupCapability` / `RelTypeTxMemberLookupCapability`)
 scopes a temporal property lookup without a declared index to the history IDs
 that ever carried the label (type): O(history IDs) map lookups instead of a
-version chain per history ID.
+version chain per history ID (on badger with the label index on disk, one walk of
+the label's keys per call); a current member comes with a first `TxFrom` of 0.
 
 Tiered builds the relationship temporal index per shard, bounded to the reference, hot and warm shards (a cold shard's relationships are never pruned, so answers are unchanged); anchoring, cost and the build: `docs/architecture.md` tiered "Composite, property and relationship temporal indexes".
 

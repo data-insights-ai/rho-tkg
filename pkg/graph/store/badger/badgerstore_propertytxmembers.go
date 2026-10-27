@@ -70,7 +70,11 @@ func (bs *Store) recordRelRowLocked(r *types.Relationship, current bool) {
 // recordNodeRowLocked is recordRelRowLocked for node rows (K1 label set and
 // node property sets). Caller holds idxMu (write).
 func (bs *Store) recordNodeRowLocked(n *types.Node, current bool) {
-	bs.recordNodeLabelMembersLocked(n)
+	keep := n // a current row is a member through the label index
+	if !current {
+		keep = nil
+	}
+	bs.recordNodeLabelMembersLocked(n, keep)
 	bs.recordNodePropTxLocked(n, current)
 }
 
@@ -132,7 +136,7 @@ func (bs *Store) recordRelReplacedLocked(prev, next *types.Relationship) {
 
 // recordNodeReplacedLocked is recordRelReplacedLocked for a node row.
 func (bs *Store) recordNodeReplacedLocked(prev, next *types.Node) {
-	bs.recordNodeLabelMembersLocked(prev)
+	bs.recordNodeLabelMembersLocked(prev, next)
 	if len(bs.nodePropTx) == 0 || prev == nil || next == nil {
 		return
 	}

@@ -187,6 +187,7 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		nodesPurged++
 		relsPurged += len(deleted)
 		purgedIDs = append(purgedIDs, v)
+		bs.forgetTxMembersLocked(v, deleted) // TXMEMBERS: no row of them is left
 
 		nodeHistKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistNodePrefix(v.SnowflakeID()), 0)
 		if herr != nil {

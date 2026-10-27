@@ -279,39 +279,46 @@ type TransactionTimeQueryCapability interface {
 	RelsAsOf(txTime types.Instant) ([]*types.Relationship, error)
 }
 
-// LabelTxMembershipCapability is OPTIONAL: enumerates the node IDs that EVER
-// carried a label (current row or any version), each with firstTxFrom, a lower
-// bound on the transaction time of its earliest acquisition, so a pinned label
-// scan costs O(matches) instead of the whole history fold.
+// LabelTxMembershipCapability is OPTIONAL: enumerates the node IDs that carried
+// a label in a stored version and are not among its current members (the
+// label index), each with firstTxFrom, a lower bound on the transaction time of
+// its earliest acquisition, so a pinned label scan costs O(matches) instead of
+// the whole history fold. A caller unites the label's current members: they
+// may be streamed too (memory streams every node that ever carried the label),
+// and badger streams none since TXMEMBERS (v4.90.1), so its RAM grows with
+// label removals and deletes, not with every node ever labelled.
 //
 // Membership is append-only (removing the label or deleting the node keeps the
 // member): the set is a sound superset, the chain resolver stays the authority
 // and rejects over-included candidates. firstTxFrom 0 = unknown (never prune);
 // pruning is sound only as `pin < firstTxFrom -> skip`.
 type LabelTxMembershipCapability interface {
-	// ForEachLabelTxMember streams (id, firstTxFrom) for every node that ever carried
-	// token; fn returning false stops. Order unspecified. The sidecar is built lazily
-	// on first use (after open or Clear).
+	// ForEachLabelTxMember streams (id, firstTxFrom) for every node that carried
+	// token in a stored version and does not carry it in its current row, and
+	// possibly for current members; fn returning false stops. Order unspecified.
+	// The sidecar is built lazily on first use (after open or Clear).
 	ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 }
 
 // RelTypeTxMembershipCapability is the relationship mirror of
-// LabelTxMembershipCapability; a rel's type is immutable, so its ever-members are
-// the rels ever created with the type. Same superset and prune contract.
+// LabelTxMembershipCapability; a rel's type is immutable, so its former members
+// are the rels of the type without a current row (deleted) whose history rows
+// remain. Same superset, union and prune contract.
 type RelTypeTxMembershipCapability interface {
 	ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
 // LabelTxMemberLookupCapability is OPTIONAL: the point form of
-// LabelTxMembershipCapability over the same sidecar: for each of ids that ever
-// carried token, fn receives (id, firstTxFrom); others are skipped. Order
-// unspecified; fn returning false stops.
+// LabelTxMembershipCapability: for each of ids that ever carried token (a
+// current member or a former one), fn receives (id, firstTxFrom); others are
+// skipped. A current member may come with firstTxFrom 0. Order unspecified; fn
+// returning false stops.
 type LabelTxMemberLookupCapability interface {
 	LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 }
 
 // RelTypeTxMemberLookupCapability is the relationship mirror of
-// LabelTxMemberLookupCapability over RelTypeTxMembershipCapability's sidecar.
+// LabelTxMemberLookupCapability.
 type RelTypeTxMemberLookupCapability interface {
 	RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }

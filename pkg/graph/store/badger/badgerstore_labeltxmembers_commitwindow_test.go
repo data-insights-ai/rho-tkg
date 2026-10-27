@@ -77,12 +77,8 @@ func TestRelTypeTxMembership_NoDropAcrossFlushCommit(t *testing.T) {
 		t.Fatalf("Flush(endpoints): %v", err)
 	}
 
-	cur := types.NewRelationship(types.RelID(100), knows, types.NodeID(1), types.NodeID(2))
-	cur.SetTemporal(&types.TemporalMetadata{TxFrom: 200, ValidFrom: 200})
-	cur.SetVersion(1)
-	if err := bs.PutRelationship(cur); err != nil {
-		t.Fatalf("PutRelationship(current): %v", err)
-	}
+	// No current row: the rel's type is carried only by the v0 history row
+	// (a live rel of the type is a current member, never in the sidecar).
 	v0 := types.NewRelationship(types.RelID(100), knows, types.NodeID(1), types.NodeID(2))
 	v0.SetTemporal(&types.TemporalMetadata{TxFrom: 100, ValidFrom: 100})
 	v0.SetVersion(0)

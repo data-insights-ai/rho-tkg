@@ -229,37 +229,60 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 		for _, id := range ids[i] {
 			nodeIDs, relIDs = append(nodeIDs, types.NodeID(id)), append(relIDs, types.RelID(id))
 		}
-		if c, ok := g.store.(storepkg.LabelTxMembershipCapability); !ok {
-			t.Errorf("[%s] graph %d store does not implement LabelTxMembershipCapability", phase, i)
+		// Tx membership (TXMEMBERS): the ever-members are the point form's
+		// answer over every ID (names only: a first tx time is a lower bound,
+		// exact when a shard's sidecar is built after the rows, 0 when a
+		// departure recorded it). The stream lists former members, and a
+		// store may stream more (tiered: an entity a move took off a shard),
+		// so it must stay inside the ever-members.
+		names := func(key string) []string {
+			var ns []string
+			for _, m := range strings.Split(out[key], "\n  ") {
+				if at := strings.IndexByte(m, '@'); at >= 0 {
+					ns = append(ns, m[:at])
+				}
+			}
+			return ns
+		}
+		within := func(stream, ever string) {
+			for _, n := range names(stream) {
+				if !slices.Contains(names(ever), n) {
+					t.Errorf("[%s] graph %d %s lists %s, not in %s %v", phase, i, stream, n, ever, out[ever])
+				}
+			}
+			delete(out, stream)
+		}
+		lc, okL := g.store.(storepkg.LabelTxMembershipCapability)
+		lp, okLP := g.store.(storepkg.LabelTxMemberLookupCapability)
+		if !okL || !okLP {
+			t.Errorf("[%s] graph %d store does not implement the label tx-membership capabilities", phase, i)
 		} else {
 			for _, l := range []string{"Sig", "Case"} {
 				members("LabelTxMembers "+l, func(fn func(int64, types.Instant) bool) error {
-					return c.ForEachLabelTxMember(label(l), func(id types.NodeID, tx types.Instant) bool { return fn(int64(id), tx) })
+					return lc.ForEachLabelTxMember(label(l), func(id types.NodeID, tx types.Instant) bool { return fn(int64(id), tx) })
 				})
+				members("LabelTxMembersOf "+l, func(fn func(int64, types.Instant) bool) error {
+					return lp.LabelTxMembersOf(label(l), append(nodeIDs, 0), func(id types.NodeID, tx types.Instant) bool { return fn(int64(id), tx) })
+				})
+				within("LabelTxMembers "+l, "LabelTxMembersOf "+l)
+				out["LabelTxMembersOf "+l] = sorted(names("LabelTxMembersOf " + l))
 			}
 		}
-		if c, ok := g.store.(storepkg.RelTypeTxMembershipCapability); !ok {
-			t.Errorf("[%s] graph %d store does not implement RelTypeTxMembershipCapability", phase, i)
+		rc, okR := g.store.(storepkg.RelTypeTxMembershipCapability)
+		rp, okRP := g.store.(storepkg.RelTypeTxMemberLookupCapability)
+		if !okR || !okRP {
+			t.Errorf("[%s] graph %d store does not implement the rel-type tx-membership capabilities", phase, i)
 		} else {
 			for _, r := range []string{"LINK", "OWNS"} {
 				members("RelTypeTxMembers "+r, func(fn func(int64, types.Instant) bool) error {
-					return c.ForEachRelTypeTxMember(relType(r), func(id types.RelID, tx types.Instant) bool { return fn(int64(id), tx) })
+					return rc.ForEachRelTypeTxMember(relType(r), func(id types.RelID, tx types.Instant) bool { return fn(int64(id), tx) })
 				})
+				members("RelTypeTxMembersOf "+r, func(fn func(int64, types.Instant) bool) error {
+					return rp.RelTypeTxMembersOf(relType(r), relIDs, func(id types.RelID, tx types.Instant) bool { return fn(int64(id), tx) })
+				})
+				within("RelTypeTxMembers "+r, "RelTypeTxMembersOf "+r)
+				out["RelTypeTxMembersOf "+r] = sorted(names("RelTypeTxMembersOf " + r))
 			}
-		}
-		if c, ok := g.store.(storepkg.LabelTxMemberLookupCapability); !ok {
-			t.Errorf("[%s] graph %d store does not implement LabelTxMemberLookupCapability", phase, i)
-		} else {
-			members("LabelTxMembersOf Case", func(fn func(int64, types.Instant) bool) error {
-				return c.LabelTxMembersOf(label("Case"), append(nodeIDs, 0), func(id types.NodeID, tx types.Instant) bool { return fn(int64(id), tx) })
-			})
-		}
-		if c, ok := g.store.(storepkg.RelTypeTxMemberLookupCapability); !ok {
-			t.Errorf("[%s] graph %d store does not implement RelTypeTxMemberLookupCapability", phase, i)
-		} else {
-			members("RelTypeTxMembersOf LINK", func(fn func(int64, types.Instant) bool) error {
-				return c.RelTypeTxMembersOf(relType("LINK"), relIDs, func(id types.RelID, tx types.Instant) bool { return fn(int64(id), tx) })
-			})
 		}
 		if c, ok := g.store.(storepkg.NodePropertyTxMembershipCapability); !ok {
 			t.Errorf("[%s] graph %d store does not implement NodePropertyTxMembershipCapability", phase, i)

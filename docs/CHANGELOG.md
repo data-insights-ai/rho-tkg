@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.90.1] - 2026-10-27
+
+### Fixed
+
+- **TXMEMBERS** (SCALE, ai-soc's reduced BA k10271800 on v4.89.4: `recordLabelMemberLocked` 45.3 -> 172.0 MB of live
+  heap from 300 to 900 s on a tiered reference shard whose entities never lose a label). badger's label and rel-type
+  transaction-time membership sidecars (K1) held one RAM entry per entity that ever carried the token, for the
+  store's life, though a pinned read unites the token's current members from the label and type index anyway. They
+  now hold only the former members: an entity a history row placed under the token while its current row lacks it
+  (a label removal, a delete, a history-only version of another label). A current row records nothing, a history
+  row records the tokens the entity's current row does not carry, a label-index or type-index removal records the
+  departure (first acquisition unknown, 0), and the lazy build reads each history row against its entity's current
+  row (write buffer first). The point form (`LabelTxMembersOf` / `RelTypeTxMembersOf`) answers a current member from
+  the index with a first acquisition of 0; the valid-end index enlists current and former members. A retention
+  purge now also drops its nodes and relationships from the sidecars. `store.LabelTxMembershipCapability` /
+  `RelTypeTxMembershipCapability`: the stream lists the former members and may list current ones (memory lists
+  every member); the caller unites the current members, as rho's core always did. Pinned reads are unchanged
+  (`TestTxMembersHoldOnlyFormerMembers`: badger with the label index in RAM and on disk and tiered with the label on
+  the reference shard answer ByLabel, ByLabelAndProperty, ByType and the effective doors as memory at every pin, and
+  their streams stay empty under creates, updates, valid-time corrections and pinned reads;
+  `TestBadgerTxMembersForgetRetentionPurge`). sigma and ai-soc call none of these capabilities directly.
+
 ## [4.90.0] - 2026-10-27
 
 ### Changed

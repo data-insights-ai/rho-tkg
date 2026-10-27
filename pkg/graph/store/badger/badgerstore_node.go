@@ -94,7 +94,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)})
 		bs.getOrCreateLabelCounter(tok).Add(1)
 	}
-	bs.recordNodeLabelMembersLocked(n) // transaction-time label membership
+	bs.recordNodeLabelMembersLocked(n, n) // transaction-time label membership
 
 	bs.addNodePropertyKeyCounts(n)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
@@ -495,6 +495,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 			}
 		}
 		bs.getOrCreateLabelCounter(tok).Add(-1)
+		bs.departLabelMemberLocked(tok, nid) // TXMEMBERS: a former member from now on
 	}
 
 	bs.removeNodePropertyKeyCounts(n)
@@ -713,6 +714,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 		}
 	}
 	bs.getOrCreateLabelCounter(tok).Add(-1)
+	bs.departLabelMemberLocked(tok, nid) // TXMEMBERS: a former member from now on
 
 	// Update cache and property/temporal/vector indexes for the new node state.
 	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
@@ -830,7 +832,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 		bs.addLabelIdxLocked(tok, nid)
 	}
 	bs.getOrCreateLabelCounter(tok).Add(1)
-	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
+	bs.recordNodeLabelMembersLocked(updatedNode, updatedNode) // transaction-time label membership (new token)
 
 	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
 	bs.bumpNodeRevLocked(nid)

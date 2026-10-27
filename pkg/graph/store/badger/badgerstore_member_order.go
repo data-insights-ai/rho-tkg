@@ -35,8 +35,10 @@ func (bs *Store) addTypeIdxLocked(tok uint16, rid types.RelID) {
 }
 
 // removeTypeIdxLocked drops rid from tok's members, and the set with its last
-// member. Caller holds idxMu exclusively.
+// member; rid becomes a former member of tok (TXMEMBERS: its history rows were
+// not recorded while it had a current row). Caller holds idxMu exclusively.
 func (bs *Store) removeTypeIdxLocked(tok uint16, rid types.RelID) {
+	bs.recordRelTypeTxLocked(tok, rid, 0)
 	if set := bs.typeIdx[tok]; set != nil {
 		set.Remove(int64(rid))
 		if set.Len() == 0 {
