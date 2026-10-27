@@ -10,6 +10,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -92,7 +94,37 @@ func (bs *Store) propertyIndexDiskOp(propertyKey, valueKey string, id snowflake.
 	if opType == writeOpDelete {
 		return writeOp{opType: writeOpDelete, key: key}, true
 	}
+	bs.propIDs.widen(uint64(id))
 	return writeOp{opType: writeOpSet, key: key, value: []byte{}}, true
+}
+
+// propIDBounds holds bounds every on-disk property entry's node ID lies
+// within: the node rows' bounds at the first lookup, widened by each entry a
+// write builds before it commits, never narrowed (a deleted entry leaves them
+// wider, and a walk within them only visits more keys). A lookup reads them
+// instead of seeking both ends of the node keyspace (PROPBOUNDS).
+type propIDBounds struct {
+	once   sync.Once
+	lo, hi atomic.Uint64 // lo 0: no entry yet (node IDs are positive)
+}
+
+func (b *propIDBounds) widen(id uint64) {
+	for cur := b.lo.Load(); (cur == 0 || id < cur) && !b.lo.CompareAndSwap(cur, id); cur = b.lo.Load() {
+	}
+	for cur := b.hi.Load(); id > cur && !b.hi.CompareAndSwap(cur, id); cur = b.hi.Load() {
+	}
+}
+
+// bounds returns the bounds in txn's snapshot, taking the node rows' at the
+// first call.
+func (b *propIDBounds) bounds(txn *badgerv4.Txn) (lo, hi uint64) {
+	b.once.Do(func() {
+		if lo, hi := nodeRowIDBounds(txn); lo != 0 {
+			b.widen(lo)
+			b.widen(hi)
+		}
+	})
+	return b.lo.Load(), b.hi.Load()
 }
 
 // maintainPropertyIndexesAdd is the write-path maintenance entry point every
@@ -405,10 +437,12 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	// A raw-domain (string, bool, temporal) value prefix has no terminator, so
 	// every longer value that extends it shares it: a walk of the prefix visits
 	// all of them (PROPSTR, ai-soc's folder paths). Its entries are
-	// prefix||nodeID, and a flush commits an entry with its node's row, so the
-	// walk runs from prefix||lo to prefix||hi, the snapshot's smallest and
-	// largest stored node IDs (positive, store.ValidateNodeID): a longer value
-	// sorts there only if its next eight bytes fall between two of them.
+	// prefix||nodeID, so the walk runs from prefix||lo to prefix||hi, bounds
+	// of the node IDs the entries carry (positive, store.ValidateNodeID): a
+	// longer value sorts there only if its next eight bytes fall between two
+	// of them. The bounds are kept in memory (propIDBounds): seeking both ends
+	// of the node keyspace per lookup walked its deleted and rewritten rows
+	// (PROPBOUNDS, ai-soc's BO A/B k10271117).
 	//
 	// The iterator returns every version and deleted entry (AllVersions), so
 	// the walk stops at to: without, badger skips them inside Seek and Next
@@ -417,7 +451,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	// newest version of each key decides.
 	var nids []types.NodeID
 	err := bs.view(func(txn *badgerv4.Txn) error {
-		lo, hi := nodeRowIDBounds(txn) // no row: 0, 0, which no entry carries
+		lo, hi := bs.propIDs.bounds(txn) // no entry: 0, 0, which no entry carries
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.AllVersions = true

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.89.3] - 2026-10-27
+
+### Fixed
+
+- **PROPBOUNDS** (SCALE, ai-soc's BO A/B k10271117 on v4.89.2: with `PropertyIndexOnDisk` the push took 518 s
+  against 453 s with the RAM index, and 59 % of the on-disk equality lookup was `nodeRowIDBounds`). A string
+  lookup bounded its walk by the smallest and largest node row ID, found by a seek from each end of the node
+  keyspace on every lookup; badger skips deleted rows and older row versions inside those seeks, so each lookup
+  paid for every row deleted or rewritten at either end. The bounds are now kept in memory: the node rows' bounds
+  at the first lookup, widened by every entry a write builds and never narrowed. 200 lookups beside 19,999 deleted
+  rows took 3,150x their time without them, now 0.7-0.8x (`TestPropBoundsLookupDoesNotWalkDeletedRows`); a
+  reopened store's first lookup still skips longer strings below the bounds (`TestPropBoundsAfterReopen`). No
+  format change.
+
 ## [4.89.2] - 2026-10-27
 
 ### Fixed

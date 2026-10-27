@@ -249,7 +249,10 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
     lookups of absent values before 20,000 deleted entries took 325x their time without them, now 0.9-1.2x,
     `TestPropSeekLookupDoesNotWalkDeletedEntries`). It still visits each version of the keys inside its bound, so an
     update writes only the entries whose value changed (PROPREWRITE, v4.89.2: 20 updates with an unchanged value
-    leave the one version the create wrote, before 21). Gap: ITERTOMB (rho's other walks with their own end bound).
+    leave the one version the create wrote, before 21). A seek to the first or last live key of a keyspace skips
+    the same way, so the lookup keeps the node ID bounds of its string walk in memory instead of seeking both ends of
+    the node keyspace per call (PROPBOUNDS, v4.89.3: 200 lookups beside 19,999 deleted node rows took 3,150x their
+    time without them, now 0.7-0.8x, `TestPropBoundsLookupDoesNotWalkDeletedRows`). Gap: ITERTOMB (rho's other walks with their own end bound).
 
 ## 8. The complete API
 
