@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.90.3] - 2026-10-28
+
+### Fixed
+
+- **PROPOVERLAY** (found by PROPDISKLABEL's parity test against the memory store): with `PropertyIndexOnDisk`,
+  badger's ordered range (`ForEachByLabelPropertyRangeOrdered`), range and prefix (`ForEachByLabelPropertyPrefix`)
+  scans could miss a node whose update was still in the write buffer. The buffer holds the old value's delete and
+  the new value's set for that node, and the scans resolved it per node ID, so whichever op they visited last
+  decided: 40 nodes updated 2 -> 1 in the buffer, the ordered range [1,2] found 17. Equality lookups were right
+  (they resolve per key). The three scans now resolve the buffer per key (lesson 57), the flush in flight before
+  the pending buffer, as equality does (`TestPropertyIndexOnDisk_UpdateInBufferKeepsScans`,
+  `TestPropertyIndexOnDisk_DeleteOverFlushInFlight`; 9 of 9 mutations caught).
+
 ## [4.90.2] - 2026-10-28
 
 ### Fixed

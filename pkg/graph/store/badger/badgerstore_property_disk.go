@@ -485,7 +485,8 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 
 // propertyIndexDiskRangeCandidatesLocked returns the (unsorted) node IDs
 // whose numeric on-disk sort-key lies within the widened [lo,hi] byte
-// bounds, merging the pending-write overlay. Over-selects exactly like the
+// bounds, merging the pending-write overlay (set/delete resolved PER KEY over
+// the persisted keyspace — lesson 57). Over-selects exactly like the
 // in-memory ordered view (property_index_range.go) — callers MUST
 // post-filter with an exact comparison against the caller's own inclusivity
 // flags. Caller holds idxMu.
@@ -493,7 +494,7 @@ func (bs *Store) propertyIndexDiskRangeCandidatesLocked(propKeyToken uint16, lo,
 	domainPrefix := storepkg.PropertyIndexNumericDomainPrefix(propKeyToken)
 	boundLen := len(lo)
 
-	var adds, dels map[types.NodeID]struct{}
+	ov := pendingKeyOverlay[types.NodeID]{}
 	bs.rangePending(func(k string, op writeOp) {
 		kb := []byte(k)
 		if len(kb) != storepkg.PropIdxNumericEntryKeyLen || !bytes.HasPrefix(kb, domainPrefix) {
@@ -502,20 +503,7 @@ func (bs *Store) propertyIndexDiskRangeCandidatesLocked(propKeyToken uint16, lo,
 		if bytes.Compare(kb[:boundLen], lo) < 0 || bytes.Compare(kb[:boundLen], hi) > 0 {
 			return
 		}
-		nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey(kb))
-		if op.opType == writeOpSet {
-			if adds == nil {
-				adds = make(map[types.NodeID]struct{})
-			}
-			adds[nid] = struct{}{}
-			delete(dels, nid)
-		} else {
-			if dels == nil {
-				dels = make(map[types.NodeID]struct{})
-			}
-			dels[nid] = struct{}{}
-			delete(adds, nid)
-		}
+		ov.note(k, op, types.NodeID(storepkg.PropertyIndexNodeIDFromKey(kb)))
 	})
 
 	var nids []types.NodeID
@@ -529,22 +517,55 @@ func (bs *Store) propertyIndexDiskRangeCandidatesLocked(propKeyToken uint16, lo,
 			if bytes.Compare(key[:boundLen], hi) > 0 {
 				break
 			}
-			nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey(key))
-			if _, del := dels[nid]; del {
+			if ov.overrides(key) {
 				continue
 			}
-			delete(adds, nid)
-			nids = append(nids, nid)
+			nids = append(nids, types.NodeID(storepkg.PropertyIndexNodeIDFromKey(key)))
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("graph: property index range scan: %w", err)
 	}
-	for nid := range adds {
+	for _, nid := range ov.sets {
 		nids = append(nids, nid)
 	}
 	return nids, nil
+}
+
+// pendingKeyOverlay resolves the buffered 0x0A writes a scan visits PER KEY
+// (lesson 57; PROPOVERLAY): a key's last op wins, so an update's delete of the
+// old value and set of the new one, both in range, leave the node once. Per
+// node ID, whichever op came last decided, and the node could vanish.
+type pendingKeyOverlay[E any] struct {
+	sets map[string]E        // buffered sets: the scan adds them
+	dels map[string]struct{} // buffered deletes: the scan skips them on disk
+}
+
+// note records op on key k, e the scan's entry for it.
+func (o *pendingKeyOverlay[E]) note(k string, op writeOp, e E) {
+	if op.opType == writeOpSet {
+		if o.sets == nil {
+			o.sets = make(map[string]E)
+		}
+		o.sets[k] = e // overrides checks sets too: a delete before it no longer matters
+		return
+	}
+	if o.dels == nil {
+		o.dels = make(map[string]struct{})
+	}
+	o.dels[k] = struct{}{}
+	delete(o.sets, k)
+}
+
+// overrides reports whether the buffer decides the persisted key: deleted, or
+// set again (then added from sets, not twice).
+func (o *pendingKeyOverlay[E]) overrides(key []byte) bool {
+	if _, ok := o.dels[string(key)]; ok {
+		return true
+	}
+	_, ok := o.sets[string(key)]
+	return ok
 }
 
 // diskOrderedEntry pairs a numeric entry's order-preserving sort-key bits with
@@ -612,8 +633,7 @@ func (bs *Store) propertyIndexDiskRangeOrderedEntriesLocked(propKeyToken uint16,
 		return binary.BigEndian.Uint64(kb[len(domainPrefix) : len(domainPrefix)+8])
 	}
 
-	var adds map[snowflake.ID]uint64
-	var dels map[snowflake.ID]struct{}
+	ov := pendingKeyOverlay[diskOrderedEntry]{}
 	bs.rangePending(func(k string, op writeOp) {
 		kb := []byte(k)
 		if len(kb) != storepkg.PropIdxNumericEntryKeyLen || !bytes.HasPrefix(kb, domainPrefix) {
@@ -622,20 +642,7 @@ func (bs *Store) propertyIndexDiskRangeOrderedEntriesLocked(propKeyToken uint16,
 		if bytes.Compare(kb[:boundLen], lo) < 0 || bytes.Compare(kb[:boundLen], hi) > 0 {
 			return
 		}
-		nid := storepkg.PropertyIndexNodeIDFromKey(kb)
-		if op.opType == writeOpSet {
-			if adds == nil {
-				adds = make(map[snowflake.ID]uint64)
-			}
-			adds[nid] = sortBitsFromKey(kb)
-			delete(dels, nid)
-		} else {
-			if dels == nil {
-				dels = make(map[snowflake.ID]struct{})
-			}
-			dels[nid] = struct{}{}
-			delete(adds, nid)
-		}
+		ov.note(k, op, diskOrderedEntry{sortBits: sortBitsFromKey(kb), id: storepkg.PropertyIndexNodeIDFromKey(kb)})
 	})
 
 	var entries []diskOrderedEntry
@@ -649,20 +656,18 @@ func (bs *Store) propertyIndexDiskRangeOrderedEntriesLocked(propKeyToken uint16,
 			if bytes.Compare(key[:boundLen], hi) > 0 {
 				break
 			}
-			nid := storepkg.PropertyIndexNodeIDFromKey(key)
-			if _, del := dels[nid]; del {
+			if ov.overrides(key) {
 				continue
 			}
-			delete(adds, nid)
-			entries = append(entries, diskOrderedEntry{sortBits: sortBitsFromKey(key), id: nid})
+			entries = append(entries, diskOrderedEntry{sortBits: sortBitsFromKey(key), id: storepkg.PropertyIndexNodeIDFromKey(key)})
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("graph: property index ordered range scan: %w", err)
 	}
-	for nid, sb := range adds {
-		entries = append(entries, diskOrderedEntry{sortBits: sb, id: nid})
+	for _, e := range ov.sets {
+		entries = append(entries, e)
 	}
 	return entries, nil
 }
@@ -747,27 +752,13 @@ func (bs *Store) propertyIndexDiskPrefixEntriesLocked(keyPrefix []byte) ([]diskS
 	minLen := len(keyPrefix) + 8
 	valOf := func(kb []byte) string { return string(kb[3 : len(kb)-8]) }
 
-	var adds map[snowflake.ID]string
-	var dels map[snowflake.ID]struct{}
+	ov := pendingKeyOverlay[diskStrOrderedEntry]{}
 	bs.rangePending(func(k string, op writeOp) {
 		if len(k) < minLen || !strings.HasPrefix(k, prefixStr) {
 			return
 		}
 		kb := []byte(k)
-		nid := storepkg.PropertyIndexNodeIDFromKey(kb)
-		if op.opType == writeOpSet {
-			if adds == nil {
-				adds = make(map[snowflake.ID]string)
-			}
-			adds[nid] = valOf(kb)
-			delete(dels, nid)
-		} else {
-			if dels == nil {
-				dels = make(map[snowflake.ID]struct{})
-			}
-			dels[nid] = struct{}{}
-			delete(adds, nid)
-		}
+		ov.note(k, op, diskStrOrderedEntry{val: valOf(kb), id: storepkg.PropertyIndexNodeIDFromKey(kb)})
 	})
 
 	var entries []diskStrOrderedEntry
@@ -781,20 +772,18 @@ func (bs *Store) propertyIndexDiskPrefixEntriesLocked(keyPrefix []byte) ([]diskS
 			if len(key) < minLen {
 				continue
 			}
-			nid := storepkg.PropertyIndexNodeIDFromKey(key)
-			if _, del := dels[nid]; del {
+			if ov.overrides(key) {
 				continue
 			}
-			delete(adds, nid)
-			entries = append(entries, diskStrOrderedEntry{val: valOf(key), id: nid})
+			entries = append(entries, diskStrOrderedEntry{val: valOf(key), id: storepkg.PropertyIndexNodeIDFromKey(key)})
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("graph: property index prefix scan: %w", err)
 	}
-	for nid, v := range adds {
-		entries = append(entries, diskStrOrderedEntry{val: v, id: nid})
+	for _, e := range ov.sets {
+		entries = append(entries, e)
 	}
 	return entries, nil
 }

@@ -3,6 +3,7 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"testing"
@@ -644,6 +645,175 @@ func TestPropertyIndexOnDisk_OffThenOnAgain(t *testing.T) {
 	if err := bs.Close(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// propIndexDiskCandidates returns the on-disk candidates of h in [lo,hi]
+// (ordered and plain range) and of the prefix of s, each scan's in turn.
+func propIndexDiskCandidates(t *testing.T, bs *Store, lo, hi float64, prefix string) []snowflake.ID {
+	t.Helper()
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	ordered, _, err := bs.propertyIndexDiskRangeOrderedLocked("h", lo, hi, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, _, err := bs.propertyIndexDiskRangeLocked("h", lo, hi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range plain {
+		ordered = append(ordered, id.SnowflakeID())
+	}
+	prefixed, _, err := bs.propertyIndexDiskPrefixOrderedLocked("s", prefix, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(ordered, prefixed...)
+}
+
+// TestPropertyIndexOnDisk_DeleteOverFlushInFlight (PROPOVERLAY): an entry set
+// in the flush in flight and deleted in the pending buffer is no candidate of
+// the scans (the newer op of the key wins).
+func TestPropertyIndexOnDisk_DeleteOverFlushInFlight(t *testing.T) {
+	t.Parallel()
+	const label = uint16(1)
+	var bs *Store
+	var inFlight []snowflake.ID
+	held, ran := false, false
+	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(),
+		FlushInterval: time.Hour, MaxPendingWrites: -1,
+		BeforeFlushRows: func(bool) error {
+			if held {
+				held, ran = false, true
+				if err := bs.DeleteNode(1); err != nil {
+					t.Error(err)
+				}
+				inFlight = propIndexDiskCandidates(t, bs, 1, 1, "a")
+			}
+			return nil
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	for _, key := range []string{"h", "s"} {
+		if err := bs.CreatePropertyIndex(label, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := types.NewNode(1, label, nil)
+	_ = n.SetProperty("h", int64(1))
+	_ = n.SetProperty("s", "a")
+	if err := bs.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+	held = true
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if !ran || len(inFlight) != 0 {
+		t.Fatalf("during the flush (hook ran: %v) the deleted node is a candidate: %v", ran, inFlight)
+	}
+}
+
+// TestPropertyIndexOnDisk_UpdateInBufferKeepsScans (PROPOVERLAY): an update
+// still in the write buffer holds the old value's delete and the new value's
+// set for one node, both inside the scanned range or prefix. The ordered
+// range, range and prefix scans resolve the buffer per key (lesson 57), so
+// each updated node is found once, whether its old row was flushed or not; a
+// flushed node deleted and created again with its value is found once, and a
+// node created and deleted in the buffer is no candidate.
+func TestPropertyIndexOnDisk_UpdateInBufferKeepsScans(t *testing.T) {
+	t.Parallel()
+	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), FlushInterval: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { bs.Close() })
+	const label = uint16(1)
+	for _, key := range []string{"h", "s"} {
+		if err := bs.CreatePropertyIndex(label, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(id, h int64, s string, replace bool) {
+		t.Helper()
+		n := types.NewNode(types.NodeID(id), label, nil)
+		if err := n.SetProperty("h", h); err != nil {
+			t.Fatal(err)
+		}
+		if err := n.SetProperty("s", s); err != nil {
+			t.Fatal(err)
+		}
+		do := bs.PutNode
+		if replace {
+			do = bs.ReplaceNode
+		}
+		if err := do(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const nodes = 40 // half flushed before the update; each could vanish on its own
+	for id := int64(1); id <= nodes; id++ {
+		write(id, 2, "a1", false)
+		if id == nodes/2 {
+			if err := bs.Flush(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for id := int64(1); id <= nodes; id++ {
+		write(id, 1, "a2", true)
+	}
+	// The candidates (the doors re-check each row): none for the old values,
+	// whose flushed rows the buffer deletes.
+	if ids := propIndexDiskCandidates(t, bs, 2, 2, "a1"); len(ids) != 0 {
+		t.Errorf("candidates for the old values: %v, want none", ids)
+	}
+	const again, gone = nodes + 1, nodes + 2
+	write(again, 1, "a2", false)
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.DeleteNode(types.NodeID(again)); err != nil {
+		t.Fatal(err)
+	}
+	write(again, 1, "a2", false)
+	write(gone, 1, "a2", false)
+	if err := bs.DeleteNode(types.NodeID(gone)); err != nil {
+		t.Fatal(err)
+	}
+	// None for a node created and deleted in the buffer.
+	if ids := propIndexDiskCandidates(t, bs, 1, 1, "a2"); slices.Contains(ids, snowflake.ID(gone)) {
+		t.Errorf("candidates %v hold a node created and deleted in the buffer", ids)
+	}
+	want := []int64{}
+	for id := int64(1); id <= again; id++ {
+		want = append(want, id)
+	}
+	collect := func(name string, scan func(fn func(*types.Node) bool) error) {
+		t.Helper()
+		var got []int64
+		if err := scan(func(n *types.Node) bool {
+			got = append(got, int64(n.ID()))
+			return true
+		}); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		sort.Slice(got, func(i, j int) bool { return got[i] < got[j] })
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%s: %d nodes %v, want the %d updated ones and the recreated one", name, len(got), got, nodes)
+		}
+	}
+	collect("ordered range [1,2]", func(fn func(*types.Node) bool) error {
+		return bs.ForEachNodeByLabelPropertyRangeOrdered(label, "h", 1, 2, true, true, false, fn)
+	})
+	collect("range [1,2]", func(fn func(*types.Node) bool) error {
+		return bs.ForEachNodeByLabelPropertyRange(label, "h", 1, 2, true, true, QueryOpts{}, fn)
+	})
+	collect("prefix a", func(fn func(*types.Node) bool) error {
+		return bs.ForEachNodeByLabelPropertyPrefix(label, "s", "a", false, fn)
+	})
 }
 
 // --- overlay set-then-delete-then-set (lesson 57) ---
