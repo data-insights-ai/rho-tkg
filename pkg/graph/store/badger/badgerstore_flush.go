@@ -41,24 +41,34 @@ func (bs *Store) appendOpsRaising(marker uint16, ops ...writeOp) {
 // size. Caller holds wbMu.
 func (bs *Store) putPendingLocked(op writeOp) {
 	k := string(op.key)
-	if bs.propIdxOnDisk && len(k) > 8 && k[0] == storepkg.KeyPropertyIndex {
+	if listedByPrefix(k) {
 		if _, queued := bs.pending[k]; !queued {
-			if bs.pendingProp == nil {
-				bs.pendingProp = make(map[string][]string)
+			if bs.pendingByPrefix == nil {
+				bs.pendingByPrefix = make(map[string][]string)
 			}
 			p := k[:len(k)-8]
-			bs.pendingProp[p] = append(bs.pendingProp[p], k)
+			bs.pendingByPrefix[p] = append(bs.pendingByPrefix[p], k)
 		}
 	}
 	bs.pending[k] = op
 	bs.pendingBytes += pendingTxnSize(len(op.key), len(op.value))
 }
 
-// dropFlushingLocked drops the parked flush snapshot and its property-index
-// key list together. Caller holds wbMu.
+// listedByPrefix reports whether key k is listed in pendingByPrefix: a
+// history or property-index key.
+func listedByPrefix(k string) bool {
+	switch k[0] { // every key of these keyspaces is longer than its 8-byte suffix
+	case storepkg.KeyHistNode, storepkg.KeyHistRel, storepkg.KeyPropertyIndex:
+		return true
+	}
+	return false
+}
+
+// dropFlushingLocked drops the parked flush snapshot and its prefix index
+// together. Caller holds wbMu.
 func (bs *Store) dropFlushingLocked() {
 	bs.flushing = nil
-	bs.flushingProp = nil
+	bs.flushingByPrefix = nil
 }
 
 // appendLogLocked queues a change-log record and counts its transaction size.
@@ -301,7 +311,7 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	// swap and wb.Flush() the rows are no longer in `pending` and not yet visible
 	// in a Badger View. Cleared after a successful commit; merged back on failure.
 	bs.flushing = ops
-	bs.flushingProp, bs.pendingProp = bs.pendingProp, nil
+	bs.flushingByPrefix, bs.pendingByPrefix = bs.pendingByPrefix, nil
 	logs := bs.pendingLog
 	bs.pendingLog = nil
 	bs.pendingBytes = 0

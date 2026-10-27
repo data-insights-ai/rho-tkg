@@ -349,7 +349,7 @@ func (bs *Store) pendingHistoryVersionOverlay(prefix []byte, startVersion uint32
 	var entries map[string][]byte
 	var deletes map[string]struct{}
 
-	bs.rangePending(func(k string, op writeOp) {
+	note := func(k string, op writeOp) {
 		if len(k) != storepkg.SizeHistKey || k[:len(prefixStr)] != prefixStr {
 			return
 		}
@@ -371,7 +371,12 @@ func (bs *Store) pendingHistoryVersionOverlay(prefix []byte, startVersion uint32
 		}
 		entries[k] = cp
 		delete(deletes, k)
-	})
+	}
+	if len(prefix) == storepkg.SizeHistKey-8 {
+		bs.rangePendingPrefixes([][]byte{prefix}, note) // one entity's rows (HISTPEND)
+	} else {
+		bs.rangePending(note) // a whole keyspace (exact erasure)
+	}
 
 	return entries, deletes
 }
@@ -485,6 +490,26 @@ func (bs *Store) rangePending(fn func(k string, op writeOp)) {
 	}
 	for k, op := range bs.pending {
 		fn(k, op)
+	}
+}
+
+// rangePendingPrefixes calls fn for each buffered key under one of prefixes
+// (a property-index or history key less its last 8 bytes: node ID or
+// version), the flush in flight before pending so a key's newer op comes
+// last, as rangePending does for those keys; it visits no other buffered key
+// (PENDSEEK, HISTPEND).
+func (bs *Store) rangePendingPrefixes(prefixes [][]byte, fn func(k string, op writeOp)) {
+	bs.wbMu.Lock()
+	defer bs.wbMu.Unlock()
+	for _, p := range prefixes {
+		for _, k := range bs.flushingByPrefix[string(p)] {
+			fn(k, bs.flushing[k])
+		}
+	}
+	for _, p := range prefixes {
+		for _, k := range bs.pendingByPrefix[string(p)] {
+			fn(k, bs.pending[k])
+		}
 	}
 }
 

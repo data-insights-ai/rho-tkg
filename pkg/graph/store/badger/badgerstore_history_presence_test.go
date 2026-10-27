@@ -67,7 +67,7 @@ func presenceKinds() []presenceKind {
 func requeueParked(bs *Store) {
 	bs.wbMu.Lock()
 	parked := bs.flushing
-	bs.flushing = nil
+	bs.dropFlushingLocked()
 	bs.wbMu.Unlock()
 	bs.requeueOps(parked)
 }

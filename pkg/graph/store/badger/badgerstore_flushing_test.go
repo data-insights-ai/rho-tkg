@@ -49,6 +49,7 @@ func parkPendingIntoFlushing(t *testing.T, bs *Store) {
 	}
 	bs.flushing = bs.pending
 	bs.pending = make(map[string]writeOp)
+	bs.flushingByPrefix, bs.pendingByPrefix = bs.pendingByPrefix, nil // as flush swaps them
 }
 
 func flushingLen(bs *Store) int {

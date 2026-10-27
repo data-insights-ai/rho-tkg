@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-27: latest tag v4.89.3; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-27: latest tag v4.89.4; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,7 +7,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-27 Oct:** v4.75.0 to v4.89.3 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
+- **Released 24-27 Oct:** v4.75.0 to v4.89.4 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
 - **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
   "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
@@ -39,13 +39,16 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **v4.89.1** (PROPSEEK, a patch for ai-soc's BO run k10270452-p4b on v4.89.0): tag CI and ci-fast green, consumers build and
   vet clean; the on-disk equality lookup iterates with AllVersions: 200 lookups before 20,000 deleted entries 325x
   -> 0.9-1.2x their time without them; 4 mutations caught, the fifth's code removed.
+- **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): ci-fast green; a history read finds its
+  entity's buffered rows by key prefix instead of walking the write buffer (sigma's bench: last ten cuts 15-20 ->
+  10 ms, run 1.30 -> 0.81 s); 7 mutations caught, the unreachable length guard removed.
 - **v4.89.3** (PROPBOUNDS, a patch for ai-soc's P4BSTORE A/B k10271117): tag CI and ci-fast green, consumers build and vet clean; the on-disk equality lookup
   keeps the node ID bounds of its string walk in memory instead of seeking both ends of the node keyspace per call
   (200 lookups beside 19,999 deleted rows: 0.7-0.8x their time without them, before 3,150x); 6 mutations caught.
 - **v4.89.2** (PROPREWRITE, a patch for sigma's rewritten state units): tag CI and ci-fast green, consumers build and vet clean;
   an update writes only the on-disk property entries whose value changed (20 updates: 1 version, before 21); 10
   mutations caught.
-- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (merged into v4.89.0, local only), propseek (merged into v4.89.1, local only), proprewrite (merged into v4.89.2, local only), propbounds (merged into v4.89.3, local only). The agent worktrees under rho-tkg/.claude/worktrees are removed (René 27 Oct); their local branches stay: worktree-agent-aa318165f7465324c (row 119 (a), was clean), worktree-agent-a34d277df6499077d and worktree-agent-a6a166b726378f33b (their uncommitted 22 Oct changes kept as one WIP commit each, d2cc529f and d479f1e1: not reviewed, not merged). The merged item branches are deleted and the kept ones pushed
+- **Branches:** asyncstage (merged into v4.86.1), openwalk (merged into v4.87.0), eventclock and pendseek (merged into v4.87.1), idlestamp (merged into v4.87.2), openimage (merged into v4.88.0; origin/openimage is the copy before its rebase onto main, not force-pushed), propstr (merged into v4.88.1, local only), checkpoint (merged into v4.89.0, local only), propseek (merged into v4.89.1, local only), proprewrite (merged into v4.89.2, local only), propbounds (merged into v4.89.3, local only), histpend (merged into v4.89.4, local only). The agent worktrees under rho-tkg/.claude/worktrees are removed (René 27 Oct); their local branches stay: worktree-agent-aa318165f7465324c (row 119 (a), was clean), worktree-agent-a34d277df6499077d and worktree-agent-a6a166b726378f33b (their uncommitted 22 Oct changes kept as one WIP commit each, d2cc529f and d479f1e1: not reviewed, not merged). The merged item branches are deleted and the kept ones pushed
   (René, 26 Oct); user-only action 5 stays. main is pushed.
 - **v5 PAUSED** (René 2026-10-16, row 61): local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René.
   Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The

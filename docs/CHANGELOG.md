@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.89.4] - 2026-10-27
+
+### Fixed
+
+- **HISTPEND** (SCALE, sigma's BenchmarkFoldInputs rows8 on v4.89.2: a cut grew from 4 to 10-12 ms over 60 cuts, 14 %
+  of the CPU in the pending-history overlay under `SetNodeVersionInterval`'s cascade). A read of one entity's
+  history (history, temporal metadata, the cascade's and read snapshot's history reads, truncate and trim) found
+  the entity's buffered rows by walking the whole write buffer, pending and the flush in flight, so every such read
+  paid for every write buffered beside it. Buffered history keys are now listed by entity prefix beside the on-disk
+  property entries (PENDSEEK's index): one read beside 64,000 unrelated buffered writes took 86x its time beside
+  1,000, now 0.5-1x (`TestHistPendHistoryReadIgnoresUnrelatedPending`). The exact erasure closure still walks the
+  buffer for the whole keyspace (`TestHistPendKeyspaceOverlayStillWalksBuffer`). No format change.
+
 ## [4.89.3] - 2026-10-27
 
 ### Fixed

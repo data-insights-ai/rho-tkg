@@ -7,7 +7,6 @@ import (
 	"time"
 
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
-	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -149,9 +148,9 @@ func TestPendSeekOverlayStates(t *testing.T) {
 	check("cleared", "[] []")
 }
 
-// checkPendSeekIndex fails unless pendingProp and flushingProp list exactly
-// the property-index keys of pending and flushing, each once, under its value
-// prefix.
+// checkPendSeekIndex fails unless pendingByPrefix and flushingByPrefix list exactly
+// the history and property-index keys of pending and flushing, each once,
+// under its prefix.
 func checkPendSeekIndex(t *testing.T, bs *Store, when string) {
 	t.Helper()
 	bs.wbMu.Lock()
@@ -160,7 +159,7 @@ func checkPendSeekIndex(t *testing.T, bs *Store, when string) {
 		name  string
 		buf   map[string]writeOp
 		index map[string][]string
-	}{{"pending", bs.pending, bs.pendingProp}, {"flushing", bs.flushing, bs.flushingProp}} {
+	}{{"pending", bs.pending, bs.pendingByPrefix}, {"flushing", bs.flushing, bs.flushingByPrefix}} {
 		listed := map[string]int{}
 		for p, keys := range side.index {
 			for _, k := range keys {
@@ -171,7 +170,7 @@ func checkPendSeekIndex(t *testing.T, bs *Store, when string) {
 			}
 		}
 		for k := range side.buf {
-			if len(k) > 8 && k[0] == storepkg.KeyPropertyIndex && listed[k] != 1 {
+			if listedByPrefix(k) && listed[k] != 1 {
 				t.Fatalf("%s: %s key %x listed %d times, want once", when, side.name, k, listed[k])
 			}
 		}

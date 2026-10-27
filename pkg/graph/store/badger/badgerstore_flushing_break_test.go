@@ -440,7 +440,7 @@ func landParkedFlushingSets(t *testing.T, bs *Store) {
 	t.Helper()
 	bs.wbMu.Lock()
 	parked := bs.flushing
-	bs.flushing = nil
+	bs.dropFlushingLocked()
 	bs.wbMu.Unlock()
 	if len(parked) == 0 {
 		t.Fatal("landParkedFlushingSets: nothing parked in flushing")
