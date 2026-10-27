@@ -198,6 +198,12 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   token, so it needs a snapshot-consistent token first. Cold reads still fold (0.7 us a version); sigma sends a
   restart bench before asking for ASOFREAD. Gap seen: no test has a current row with a delete stamp after the pin
   (nodeRowAtTx on the current row in the plural fold survives mutation; core never writes such a row today).
+- **CLEANOPEN** (SCALE, ai-soc 27 Oct) — a clean reopen of a reduced BA store spends 11-31 s in tiered.New, almost all
+  in the reference shard, and grows from open 1 to open 2 of the same copy (k10271440, 4.11 GB: 16.7 -> 30.8 s;
+  k10270301 11.4 -> 21.9 s; k10270846 17.5 -> 26.0 s). It is 7-10 % of the time to serve; the rest is sigma's restore
+  and backlog. CPU profiles from the start of each open exist on Flux (RAID fast-archive-20261027, fluxkit-1027o/c/j,
+  runs/reopen-ba-*/cpu-start-<open>-<nn>.pprof; function names only, profile 01 possibly missing). Waits for: ai-soc's
+  RESTART item, which René placed after goal 2, and René's word before rho reads anything on Flux.
 - **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
   loadNodeFromBadger) — step (1) shipped in v4.88.0 (a crash open applies the older image and decodes only the
   entities touched since it), step (2) in v4.89.0 (`Config.OpenImageInterval`: a periodic image, so a store that
