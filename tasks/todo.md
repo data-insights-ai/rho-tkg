@@ -165,6 +165,12 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **ASOFREAD** (SCALE, sigma 27 Oct, BenchmarkStateRefOwnersRewritten at 500 cuts: 5 -> 40 ms a cut, 70 % of the CPU in
+  StatePage.LoadWritten -> NodeEffectiveTimelines -> badger NodeHistoryTemporalMeta, which decodes every version of a
+  node rewritten every cut). rho's record door `NodeAsOf` walks history newest-first only down to the pin (500
+  versions: 325 ns at the newest, 4.7 us one back; NodeHistoryTemporalMeta 166 us at any pin). Waits for sigma: does
+  pageVersionsAt need the record pin (then NodeAsOf per id, or a batch door, a minor) or the state at a valid time
+  (NodeAtTx, which reads the timeline: bounding it is rho work). Done when: sigma's per-cut time stays flat over 500 cuts.
 - **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB, ran 22+ min in tiered.New, 53 % in
   loadNodeFromBadger) — step (1) shipped in v4.88.0 (a crash open applies the older image and decodes only the
   entities touched since it), step (2) in v4.89.0 (`Config.OpenImageInterval`: a periodic image, so a store that
