@@ -48,7 +48,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   can vanish from the scan until the flush (probe, PropertyIndexOnDisk: a node updated 2 -> 1 is missing from
   ForEachByLabelPropertyRangeOrdered [1,2], equality finds it). Fix: resolve per key. Built on branch propoverlay
   (9 of 9 mutations caught). Released v4.90.3 (ff710b52): ci-fast, tiered and graph short tests green, consumers
-  build and vet clean; tag CI watched next.
+  build and vet clean, tag CI and main CodeQL green.
 - **PROPDISKLABEL** (ai-soc 28 Oct; SCALE, goal 2; door, minor v4.91.0 after PROPDISKTOGGLE and PROPOVERLAY; built
   but stashed on branch propdisklabel while PROPOVERLAY ships) — the on-disk property
   index chosen per label: `PropertyIndexOnDiskLabels []string` in badger and tiered Config; ai-soc sets ["DerivedPage"].

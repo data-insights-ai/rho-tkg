@@ -56,7 +56,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   mutations caught. ci-fast, tiered and graph short tests, tag CI and main CodeQL green; consumers build and vet clean.
 - **v4.90.3** (PROPOVERLAY, a patch found by PROPDISKLABEL's parity test): with `PropertyIndexOnDisk` the ordered
   range, range and prefix scans resolved the write buffer per node ID, so a node updated in the buffer could vanish
-  from them until the flush; now per key, as equality. 9 of 9 mutations caught. Gate pending.
+  from them until the flush; now per key, as equality. 9 of 9 mutations caught. ci-fast, tiered and graph short
+  tests, tag CI and main CodeQL green; consumers build and vet clean.
 - **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): tag CI and ci-fast green, consumers build and vet clean; a history read finds its
   entity's buffered rows by key prefix instead of walking the write buffer (sigma's bench: last ten cuts 15-20 ->
   10 ms, run 1.30 -> 0.81 s); 7 mutations caught, the unreachable length guard removed.
