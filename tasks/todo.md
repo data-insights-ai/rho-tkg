@@ -62,7 +62,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   (flush ~7 s, GC on its write path ~17 s). Closed. ai-soc's MemTableSize A/B (BO, 64 -> 128 MB): push -2.9 %, GC mark
   -20.4 s, alloc_space -19.5 GB, heap +170 MB; ai-soc holds it until BA shows how many shards take writes at once
   (only a writable shard holds a memtable arena, up to NumMemtables 5). A per-tier MemTableSize would be a minor, on
-  ai-soc's ask only.
+  ai-soc's ask only. ai-soc's goal-2 RAM review (28 Oct) answered from the code: every
+  index is per live entity, not per version; open doors for later, each a minor on ai-soc's ask with BA numbers:
+  a listed label keeps its Elements definitions in RAM and moves its scalar ones to disk (Derived today fails to list
+  because of ov_support), Elements rows on disk (bigger), COMPOSITEDISK.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
