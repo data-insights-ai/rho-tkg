@@ -164,13 +164,13 @@ func checkPendSeekIndex(t *testing.T, bs *Store, when string) {
 		for p, keys := range side.index {
 			for _, k := range keys {
 				listed[k]++
-				if _, ok := side.buf[k]; !ok || k[:len(k)-8] != p {
+				if _, ok := side.buf[k]; !ok || k[:listedPrefixEnd(k)] != p {
 					t.Fatalf("%s: %s index lists %x under %x, not a buffered key of that prefix", when, side.name, k, p)
 				}
 			}
 		}
 		for k := range side.buf {
-			if listedByPrefix(k) && listed[k] != 1 {
+			if listedPrefixEnd(k) > 0 && listed[k] != 1 {
 				t.Fatalf("%s: %s key %x listed %d times, want once", when, side.name, k, listed[k])
 			}
 		}

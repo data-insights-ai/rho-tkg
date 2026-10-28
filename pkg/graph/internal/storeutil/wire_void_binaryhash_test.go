@@ -19,12 +19,13 @@ func TestReadableCaps(t *testing.T) {
 			maxReadableWireFormatVersion, ValueDictWireFormatVersion, OpenVoidWireFormatVersion, KeptValidToWireFormatVersion, VoidWireFormatVersion,
 			BinaryHashWireFormatVersion, RetractedWireFormatVersion)
 	}
-	if MaxReadableStoreFormatVersion != PropDiskLabelsStoreFormatVersion || PropDiskLabelsStoreFormatVersion != 12 ||
+	if MaxReadableStoreFormatVersion != EntityIndexStoreFormatVersion || EntityIndexStoreFormatVersion != 13 ||
+		PropDiskLabelsStoreFormatVersion != 12 ||
 		ValueDictStoreFormatVersion != 11 || OpenVoidStoreFormatVersion != 10 ||
 		StagedFlushStoreFormatVersion != 9 || KeptValidToStoreFormatVersion != 8 ||
 		UntimedUnboundedStoreFormatVersion != 7 || VoidStoreFormatVersion != 6 ||
 		ElementsStoreFormatVersion != 5 || BinaryHashStoreFormatVersion != 4 {
-		t.Fatalf("store cap %d; want 12 over per-label disk index 12, value dict 11, open void 10, staged flush 9, kept valid-to 8, untimed unbounded 7, void 6, elements 5, binary hash 4", MaxReadableStoreFormatVersion)
+		t.Fatalf("store cap %d; want 13 over entity index 13, per-label disk index 12, value dict 11, open void 10, staged flush 9, kept valid-to 8, untimed unbounded 7, void 6, elements 5, binary hash 4", MaxReadableStoreFormatVersion)
 	}
 }
 

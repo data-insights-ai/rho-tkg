@@ -1,0 +1,5 @@
+--- FAIL: TestPropertyIndexOnDiskPinnedReads (0.43s)
+    reldisk_test.go:248: badger: 3 rel and 2 node membership sidecars built (16 and 10 postings), want 1 (S, in RAM) and 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.447s
+FAIL

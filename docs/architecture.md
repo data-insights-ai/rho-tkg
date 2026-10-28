@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.91.2)
+# Architecture — tkg/v4 (v4.92.0)
 
 rho-tkg is a pure Go library for temporal knowledge graphs: typed nodes and relationships whose every version is
 kept, stamped in two time dimensions and hash-chained. It is a library, not a database: no binary, no server, no
@@ -218,7 +218,10 @@ one. What stays in RAM
 per entity is bounded (EXISTMAP): the live ID sets and the rel-type index are sorted chunks of IDs (~8 B each;
 OPENWALK: ~16 B per rel in all), the write revisions a fixed striped table (128 KB per kind), the integrity-hash
 cache at most 64 K entries, the label and rel-type tx-membership sidecars only the entities that left a label or type
-(TXMEMBERS). With the label and adjacency indexes on disk a clean open walks no key per entity.
+(TXMEMBERS). With the label and adjacency indexes on disk a clean open walks no key per entity. A property
+index kept on disk (nodes: `PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`; relationships:
+`RelPropertyIndexOnDiskTypes`) answers its pinned reads from member entries on disk too, so it builds no
+membership sidecar in RAM (RELDISK).
 `docs/persistence.md` owns the key layout, the wire format, the durability guarantees and recovery.
 
 ### tiered.Store (`pkg/graph/store/tiered/`)

@@ -185,17 +185,19 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 			return nil
 		}
 	}
-	return bs.propertyIndexDiskMaintain(n, id, writeOpSet)
+	return append(bs.propertyIndexDiskMaintain(n, id, writeOpSet), bs.nodeMemberOpsLocked(n, id)...)
 }
 
 // maintainPropertyIndexesUpdate is maintainPropertyIndexesAdd for the new node
-// of an update whose ops already hold the old node's Remove ops. An on-disk
+// n of an update of old whose ops already hold old's Remove ops. An on-disk
 // entry the update deletes and sets again keeps its value, so the pair is
 // dropped: writing it again only added a version that every lookup of the
 // value visits until compaction drops it (PROPREWRITE, sigma's rewritten
-// state units). Not while a property index builds: its backfill skips a node
-// the write path marked, so the write path writes the entry itself.
-func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, n *types.Node, id snowflake.ID) []writeOp {
+// state units). So is a member entry for a value old carried under the same
+// label (old's entry, as low or lower, stays), unless n lowers the bound.
+// Not while a property index builds: its backfill skips a node the write path
+// marked, so the write path writes the entry itself.
+func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, old, n *types.Node, id snowflake.ID) []writeOp {
 	from := len(ops)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
 	var removed, unchanged map[string]struct{} // removed: the old node's ops, deletes of its entries
@@ -205,8 +207,24 @@ func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, n *types.Node, id 
 		}
 		removed[string(op.key)] = struct{}{}
 	}
+	if bs.nodeMembersOnDisk && old != nil {
+		oldTx, _, _ := old.TxStamps()
+		newTx, _, _ := n.TxStamps()
+		if newTx >= oldTx { // n does not lower the bound (0, unknown, is lowest)
+			for _, op := range bs.nodeMemberOpsLocked(old, id) { // old's member entries, by value prefix and ID
+				if removed == nil {
+					removed = make(map[string]struct{})
+				}
+				removed[string(op.key[:len(op.key)-8])] = struct{}{}
+			}
+		}
+	}
 	for _, op := range ops[from:] { // the on-disk entry sets
-		if _, ok := removed[string(op.key)]; ok {
+		k := op.key
+		if k[0] == storepkg.KeyEntityIndex {
+			k = k[:len(k)-8]
+		}
+		if _, ok := removed[string(k)]; ok {
 			if unchanged == nil {
 				unchanged = make(map[string]struct{})
 			}
@@ -269,19 +287,30 @@ func (bs *Store) propertyIndexDiskMaintain(n *types.Node, id snowflake.ID, opTyp
 	return ops
 }
 
-// propDiskDef is one on-disk definition of Store.propDiskDefs.
+// propDiskDef is one on-disk definition of Store.propDiskDefs; members
+// reports whether its member entries are in 0x0C (nodeMemberDisk).
 type propDiskDef struct {
-	key indexpkg.PropertyIndexKey
-	idx *indexpkg.PropertyIndex
+	key     indexpkg.PropertyIndexKey
+	idx     *indexpkg.PropertyIndex
+	members bool
 }
 
-// refreshPropDiskDefsLocked rebuilds propDiskDefs from propertyIndexes.
+// refreshPropDiskDefsLocked rebuilds propDiskDefs from propertyIndexes and
+// nodeMemberDisk, dropping the member mark of a definition gone or in RAM.
 // Caller holds idxMu.
 func (bs *Store) refreshPropDiskDefsLocked() {
 	var defs []propDiskDef
+	bs.nodeMembersOnDisk = false
 	for key, idx := range bs.propertyIndexes {
 		if idx.OnDisk() {
-			defs = append(defs, propDiskDef{key, idx})
+			_, members := bs.nodeMemberDisk[key]
+			defs = append(defs, propDiskDef{key, idx, members})
+			bs.nodeMembersOnDisk = bs.nodeMembersOnDisk || members
+		}
+	}
+	for key := range bs.nodeMemberDisk {
+		if !bs.propertyIndexes[key].OnDisk() {
+			delete(bs.nodeMemberDisk, key)
 		}
 	}
 	bs.propDiskDefs = defs

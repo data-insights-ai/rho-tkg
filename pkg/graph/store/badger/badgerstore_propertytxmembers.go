@@ -236,6 +236,9 @@ func (bs *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 		return err
 	}
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
+	if members, ok, err := bs.relDiskMembers(key, memberQuery{valueKeys: []string{valueKey}}); ok {
+		return emitTxMembers(members, err, fn) // RELDISK: kept on disk
+	}
 	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
 		bs.idxMu.RLock()
 		if !bs.relPropIndexUsableLocked(key) {
@@ -276,6 +279,9 @@ func (bs *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 		return err
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if members, ok, err := bs.nodeDiskMembers(key, memberQuery{valueKeys: []string{valueKey}}); ok {
+		return emitTxMembers(members, err, fn) // RELDISK: members on disk
+	}
 	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
 		bs.idxMu.RLock()
 		if !bs.nodePropIndexUsableLocked(key) {
@@ -324,20 +330,21 @@ type propTxTarget[K comparable, ID cmp.Ordered] struct {
 // buildRelPropTx builds the sidecar for key (see the file comment): nil when built
 // (by this call's pass or a running one), ErrIndexNotFound when the index went away.
 func (bs *Store) buildRelPropTx(key indexpkg.RelPropertyIndexKey) error {
-	return ensurePropTxBuilt(bs, "relationship", key, &bs.relPropTx, &bs.relPropertyIndexes, bs.scanRelPropTx)
+	return ensurePropTxBuilt(bs, "relationship", key, &bs.relPropTx, &bs.relPropertyIndexes, bs.relMembersOnDiskLocked, bs.scanRelPropTx)
 }
 
 // buildNodePropTx is buildRelPropTx for a node property index.
 func (bs *Store) buildNodePropTx(key indexpkg.PropertyIndexKey) error {
-	return ensurePropTxBuilt(bs, "node", key, &bs.nodePropTx, &bs.propertyIndexes, bs.scanNodePropTx)
+	return ensurePropTxBuilt(bs, "node", key, &bs.nodePropTx, &bs.propertyIndexes, bs.nodeMembersOnDiskLocked, bs.scanNodePropTx)
 }
 
 // ensurePropTxBuilt is the body of both builds. sidecars and indexes point at
-// the kind's sidecar map and declared indexes (both guarded by idxMu); scan
-// runs one store pass filling every target. Lock order: idxMu is never held
-// while waiting for a pass or scanning.
+// the kind's sidecar map and declared indexes (both guarded by idxMu); a
+// definition onDisk reports (RELDISK) answers from its member entries and gets
+// no sidecar; scan runs one store pass filling every target. Lock order: idxMu
+// is never held while waiting for a pass or scanning.
 func ensurePropTxBuilt[K comparable, ID cmp.Ordered](bs *Store, what string, key K,
-	sidecars *map[K]*propTxSidecar[ID], indexes *map[K]*indexpkg.PropertyIndex,
+	sidecars *map[K]*propTxSidecar[ID], indexes *map[K]*indexpkg.PropertyIndex, onDisk func(K) bool,
 	scan func([]*propTxTarget[K, ID]) error) error {
 	usable := func(idx *indexpkg.PropertyIndex) bool { return idx != nil && idx.Mutated == nil } // declared, finished creating
 	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
@@ -358,7 +365,7 @@ func ensurePropTxBuilt[K comparable, ID cmp.Ordered](bs *Store, what string, key
 		pass := &propTxPass{done: make(chan struct{})}
 		var targets []*propTxTarget[K, ID]
 		for k, idx := range *indexes {
-			if !usable(idx) {
+			if !usable(idx) || onDisk(k) {
 				continue
 			}
 			sc := (*sidecars)[k]
@@ -480,37 +487,11 @@ func (bs *Store) scanNodePropTx(targets []*nodePropTxTarget) error {
 // it into every target of its type. A row of an untargeted type is skipped
 // before the full decode.
 func (bs *Store) recordRelRowPropTx(byType map[int][]*relPropTxTarget, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-	var w storepkg.RelWire
-	var targets []*relPropTxTarget
-	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
-		d, err := storepkg.DecodeRelHistoryDelta(raw)
-		if err != nil {
-			return err
-		}
-		if targets = byType[d.Meta.RelType]; len(targets) == 0 {
-			return nil
-		}
-		if w, err = bs.reconstructRelHistoryWire(id, version, raw, local); err != nil {
-			return err
-		}
-	} else {
-		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {
-			return err
-		}
-		if targets = byType[w.RelType]; len(targets) == 0 {
-			return nil
-		}
-	}
-	if err := bs.resolveRelWireKeys(&w); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
-	}
-	r, err := storepkg.WireToRelChecked(w)
-	if err != nil {
+	r, err := bs.decodeScannedRel(func(relType int) bool { return len(byType[relType]) > 0 }, id, hist, version, raw, local)
+	if r == nil || err != nil {
 		return err
 	}
-	if r.ID().SnowflakeID() != id {
-		return fmt.Errorf("%w: relationship wire id %d does not match key %d", ErrInvalidStoreMutation, r.ID().SnowflakeID(), id)
-	}
+	targets := byType[int(r.TypeToken().Value())]
 	rid, ri := r.ID(), indexpkg.RelRowInfo(bs.validAxis.Get(), r)
 	for _, t := range targets {
 		var vks []string
@@ -523,38 +504,85 @@ func (bs *Store) recordRelRowPropTx(byType map[int][]*relPropTxTarget, id snowfl
 	return nil
 }
 
-// recordNodeRowPropTx is recordRelRowPropTx for node rows: the row is recorded
-// into the targets of every label it carries.
-func (bs *Store) recordNodeRowPropTx(byLabel map[uint16][]*nodePropTxTarget, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+// decodeScannedRel decodes one stored rel row (current or history, full or
+// delta) through the checked wire path, so its value keys equal the index's;
+// nil, nil for a row of a type want refuses, before the full decode.
+func (bs *Store) decodeScannedRel(want func(relType int) bool, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) (*types.Relationship, error) {
+	var w storepkg.RelWire
+	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
+		d, err := storepkg.DecodeRelHistoryDelta(raw)
+		if err != nil {
+			return nil, err
+		}
+		if !want(d.Meta.RelType) {
+			return nil, nil
+		}
+		if w, err = bs.reconstructRelHistoryWire(id, version, raw, local); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {
+			return nil, err
+		}
+		if !want(w.RelType) {
+			return nil, nil
+		}
+	}
+	if err := bs.resolveRelWireKeys(&w); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
+	}
+	r, err := storepkg.WireToRelChecked(w)
+	if err != nil {
+		return nil, err
+	}
+	if r.ID().SnowflakeID() != id {
+		return nil, fmt.Errorf("%w: relationship wire id %d does not match key %d", ErrInvalidStoreMutation, r.ID().SnowflakeID(), id)
+	}
+	return r, nil
+}
+
+// decodeScannedNode is decodeScannedRel for a node row; want sees the row's
+// wire labels (nodeWireHasTarget).
+func (bs *Store) decodeScannedNode(want func(w *storepkg.NodeWire) bool, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) (*types.Node, error) {
 	var w storepkg.NodeWire
 	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
 		d, err := storepkg.DecodeNodeHistoryDelta(raw)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if !nodeWireHasTarget(&d.Meta, byLabel) {
-			return nil
+		if !want(&d.Meta) {
+			return nil, nil
 		}
 		if w, err = bs.reconstructNodeHistoryWire(id, version, raw, local); err != nil {
-			return err
+			return nil, err
 		}
 	} else {
 		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {
-			return err
+			return nil, err
 		}
-		if !nodeWireHasTarget(&w, byLabel) {
-			return nil
+		if !want(&w) {
+			return nil, nil
 		}
 	}
 	if err := bs.resolveNodeWireKeys(&w); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
 	}
 	n, err := storepkg.WireToNodeChecked(w)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if n.ID().SnowflakeID() != id {
-		return fmt.Errorf("%w: node wire id %d does not match key %d", ErrInvalidStoreMutation, n.ID().SnowflakeID(), id)
+		return nil, fmt.Errorf("%w: node wire id %d does not match key %d", ErrInvalidStoreMutation, n.ID().SnowflakeID(), id)
+	}
+	return n, nil
+}
+
+// recordNodeRowPropTx is recordRelRowPropTx for node rows: the row is recorded
+// into the targets of every label it carries.
+func (bs *Store) recordNodeRowPropTx(byLabel map[uint16][]*nodePropTxTarget, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+	n, err := bs.decodeScannedNode(func(w *storepkg.NodeWire) bool { return nodeWireHasTarget(w, byLabel) }, id, hist, version, raw, local)
+	if n == nil || err != nil {
+		return err
 	}
 	nid, ri := n.ID(), indexpkg.NodeRowInfo(bs.validAxis.Get(), n)
 	for i := 0; i < n.LabelTokenCount(); i++ {

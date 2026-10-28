@@ -63,6 +63,13 @@ func (bs *Store) checkNodeIndexKeysLocked(n *types.Node, id snowflake.ID) error 
 			continue
 		}
 		valueKey, _ := n.IndexablePropertyValueKey(def.key.PropertyKey)
+		if def.members {
+			// Its member entry (RELDISK) is longer than its 0x0A entry.
+			if err := bs.checkEntityIndexKey(storepkg.EntityIndexNodeMember, def.key.PropertyKey, valueKey); err != nil {
+				return err
+			}
+			continue
+		}
 		// The key is 11 bytes and the payload: a domain byte and the value key
 		// for a raw value (a number's is 18 bytes, its key far under any
 		// limit). Within that neither is built (DISKDEFS).
@@ -76,6 +83,66 @@ func (bs *Store) checkNodeIndexKeysLocked(n *types.Node, id snowflake.ID) error 
 		if l := len(storepkg.PropertyIndexEntryKey(0, payload, id)); l > bs.maxEntryKey {
 			return fmt.Errorf("%w: property index key for %q of %d bytes, the store holds at most %d", ErrEntryTooLarge, def.key.PropertyKey, l, bs.maxEntryKey)
 		}
+	}
+	return nil
+}
+
+// checkNodeMoveKeysLocked checks the keys of a with-history door: n's, and
+// the member entries of prev, the demoted row (RELDISK). Caller holds idxMu.
+func (bs *Store) checkNodeMoveKeysLocked(n, prev *types.Node, id snowflake.ID) error {
+	if err := bs.checkNodeIndexKeysLocked(n, id); err != nil {
+		return err
+	}
+	return bs.checkNodeMemberKeysLocked(prev)
+}
+
+// checkNodeMemberKeysLocked checks the 0x0C member entries a row n (current
+// or history) would make for the node definitions whose members are on disk
+// (RELDISK). Caller holds idxMu.
+func (bs *Store) checkNodeMemberKeysLocked(n *types.Node) error {
+	if !bs.nodeMembersOnDisk {
+		return nil
+	}
+	for _, def := range bs.propDiskDefs {
+		if !def.members || !n.HasLabelTokenRaw(def.key.LabelToken) {
+			continue
+		}
+		valueKey, _ := n.IndexablePropertyValueKey(def.key.PropertyKey)
+		if err := bs.checkEntityIndexKey(storepkg.EntityIndexNodeMember, def.key.PropertyKey, valueKey); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkRelIndexKeysLocked checks the 0x0C entries a row r (current or
+// history) would make for the relationship definitions kept on disk (RELDISK):
+// the member entry, the longest. Caller holds idxMu.
+func (bs *Store) checkRelIndexKeysLocked(r *types.Relationship) error {
+	if len(bs.relDiskDefs) == 0 || r == nil {
+		return nil
+	}
+	tok := r.TypeToken().Value()
+	for _, def := range bs.relDiskDefs {
+		if def.key.RelTypeToken != tok {
+			continue
+		}
+		valueKey, _ := r.IndexablePropertyValueKey(def.key.PropertyKey)
+		if err := bs.checkEntityIndexKey(storepkg.EntityIndexRelMember, def.key.PropertyKey, valueKey); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkEntityIndexKey refuses a 0x0C entry of kind for valueKey above the
+// key limit; its length is the head, the payload and the tail.
+func (bs *Store) checkEntityIndexKey(kind byte, propertyKey, valueKey string) error {
+	if valueKey == "" {
+		return nil
+	}
+	if l := storepkg.EntityIndexHeadLen + storepkg.EntityIndexValueLen(valueKey) + storepkg.EntityIndexTailLen(kind); l > bs.maxEntryKey {
+		return fmt.Errorf("%w: property index key for %q of %d bytes, the store holds at most %d", ErrEntryTooLarge, propertyKey, l, bs.maxEntryKey)
 	}
 	return nil
 }

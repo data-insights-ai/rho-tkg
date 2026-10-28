@@ -61,6 +61,10 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 		bs.idxMu.Unlock()
 		return ErrRelExists
 	}
+	if err := bs.checkRelIndexKeysLocked(r); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
+	}
 	if err := bs.foldRecreatedRelHistoryLocked(r, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -97,7 +101,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 
 	// BACKLOG 18l: the entity is fully resident here, so the property index / type
 	// class-count contribution is computable; mirror PutRelationship's maintenance.
-	bs.maintainRelPropertyIndexesAdd(r, id)
+	ops = append(ops, bs.maintainRelPropertyIndexesAdd(r, id)...)
 	bs.maintainRelTypeTemporalIndexesAdd(r, id) // backlog 10: a tiered shard's cross-shard rows
 	bs.addRelPropertyTypeClassCounts(r)
 	bs.addRelPropertyStatsCounts(r) // backlog 53: every door that makes a row current counts it, so a delete can take the row back out
@@ -223,7 +227,7 @@ func (bs *Store) deleteRelEntityAndOut(id snowflake.ID, exLeg bool) (RelDeleteIn
 
 	// BACKLOG 18l: mirror deleteRelByInfo's maintenance; r is available, so the
 	// precise value-based removal is used instead of the brute-force purge.
-	bs.maintainRelPropertyIndexesRemove(r, id)
+	diskOps := bs.maintainRelPropertyIndexesRemove(r, id)
 	// The rel-type temporal envelope stays (append-only): the row's history
 	// stays on this shard, and the tiered rollback re-puts the row without it.
 	bs.removeRelPropertyTypeClassCounts(r)
@@ -238,7 +242,7 @@ func (bs *Store) deleteRelEntityAndOut(id snowflake.ID, exLeg bool) (RelDeleteIn
 		ops = append(ops, exAdjLegOp(writeOpSet, info.StartID, false, id)) // backlog 50: the out-leg's ex-adjacency lives here
 	}
 
-	bs.appendOps(ops...)
+	bs.appendOps(append(ops, diskOps...)...)
 	bs.relCount.Add(-1)
 	bs.getOrCreateTypeCounter(info.RelType).Add(-1)
 	bs.logChangeRaw(storecontract.ChangeRelDelete, relDelPayload)

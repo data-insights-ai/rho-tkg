@@ -70,13 +70,33 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	}
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.propertyIndexes[key] = liveIdx
+	if onDisk {
+		// Its member entries too (RELDISK): every door writes them from here.
+		if bs.nodeMemberDisk == nil {
+			bs.nodeMemberDisk = make(map[indexpkg.PropertyIndexKey]struct{})
+		}
+		bs.nodeMemberDisk[key] = struct{}{}
+	}
 	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
 	if idErr != nil {
 		delete(bs.propertyIndexes, key)
+		bs.refreshPropDiskDefsLocked()
 		bs.idxMu.Unlock()
 		return idErr
 	}
 	bs.refreshPropDiskDefsLocked()
+	if onDisk {
+		// The member entries an earlier definition left go first.
+		stale, err := bs.entityIndexDropOpsLocked(false, labelToken, propertyKey)
+		if err != nil {
+			delete(bs.propertyIndexes, key)
+			bs.refreshPropDiskDefsLocked()
+			bs.idxMu.Unlock()
+			return err
+		}
+		bs.appendOps(stale...)
+	}
+	gen := bs.propTxGen
 	bs.idxMu.Unlock()
 	if propertyCreatePhase2Hook != nil {
 		propertyCreatePhase2Hook()
@@ -108,12 +128,51 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		}
 		backfill.AddEntityKeys(nid.SnowflakeID(), propertyKey, n.ForEachPropertyIndexKey)
 	}
+	// The member entries of every node row, current and history (RELDISK).
+	memberTarget := []entityBuildTarget{{scope: labelToken, propertyKey: propertyKey}}
+	var memberOps []writeOp
+	scanMembers := func() error {
+		memberOps = memberOps[:0]
+		return bs.scanEntityIndexEntries(memberTarget, func(op writeOp) error { memberOps = append(memberOps, op); return nil })
+	}
+	if onDisk {
+		if err := scanMembers(); err != nil {
+			bs.idxMu.Lock()
+			deletePropertyIndexIfCurrent(bs.propertyIndexes, key, liveIdx)
+			bs.refreshPropDiskDefsLocked()
+			bs.idxMu.Unlock()
+			return fmt.Errorf("graph: create property index: %w", err)
+		}
+	}
 
 	// Phase 3: merge backfill under the write lock, skipping IDs written or deleted during Phase 2.
 	bs.idxMu.Lock()
 	if err := requirePropertyIndexCurrentForCreate(bs.propertyIndexes, key, liveIdx); err != nil {
+		bs.refreshPropDiskDefsLocked()
 		bs.idxMu.Unlock()
 		return err
+	}
+	for attempt := 0; onDisk && bs.propTxGen != gen; attempt++ {
+		// A purge, an erasure or a drop moved under the member scan: redo it.
+		if attempt == propTxBuildAttempts {
+			deletePropertyIndexIfCurrent(bs.propertyIndexes, key, liveIdx)
+			bs.refreshPropDiskDefsLocked()
+			bs.idxMu.Unlock()
+			return fmt.Errorf("graph: create property index: raced %d purges or drops: %w", propTxBuildAttempts, ErrIndexNotFound)
+		}
+		gen = bs.propTxGen
+		bs.idxMu.Unlock()
+		err := scanMembers()
+		bs.idxMu.Lock()
+		if err == nil {
+			err = requirePropertyIndexCurrentForCreate(bs.propertyIndexes, key, liveIdx)
+		}
+		if err != nil {
+			deletePropertyIndexIfCurrent(bs.propertyIndexes, key, liveIdx)
+			bs.refreshPropDiskDefsLocked()
+			bs.idxMu.Unlock()
+			return err
+		}
 	}
 	if onDisk {
 		var ops []writeOp
@@ -129,14 +188,16 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		}
 		liveIdx.Mutated = nil // stop tracking — index creation complete
 		bs.persistPropertyIndexDefs()
-		if bs.propIdxOnDisk {
-			bs.appendOps(ops...)
-		} else {
+		if !bs.propIdxOnDisk {
 			// Its rows are built: its marker, so the next open trusts them
 			// (planPropertyIndexDisk).
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.PropertyIndexOnDiskDefBuiltKey(labelToken, propertyKey), value: []byte{1}})
-			bs.appendOpsRaising(storepkg.PropDiskLabelsStoreFormatVersion, ops...)
 		}
+		// Its member entries and their marker (RELDISK), which raises the
+		// format marker past 12.
+		ops = append(ops, memberOps...)
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.EntityIndexBuiltKey(storepkg.EntityIndexNodeMember, labelToken, propertyKey), value: []byte{1}})
+		bs.appendOpsRaising(storepkg.EntityIndexStoreFormatVersion, ops...)
 		bs.idxMu.Unlock()
 		return bs.flushIfNeeded()
 	}
@@ -184,6 +245,10 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 	var purgeErr error
 	if dropped.OnDisk() {
 		purgeOps = append(purgeOps, writeOp{opType: writeOpDelete, key: storepkg.PropertyIndexOnDiskDefBuiltKey(labelToken, propertyKey)})
+		// Its member entries and their marker (RELDISK).
+		var memberOps []writeOp
+		memberOps, purgeErr = bs.entityIndexDropOpsLocked(false, labelToken, propertyKey)
+		purgeOps = append(purgeOps, memberOps...)
 		stillReferenced := false
 		for k, idx := range bs.propertyIndexes {
 			if k.PropertyKey == propertyKey && idx.OnDisk() {
@@ -191,7 +256,7 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 				break
 			}
 		}
-		if !stillReferenced {
+		if !stillReferenced && purgeErr == nil {
 			var rows []writeOp
 			rows, purgeErr = bs.purgePropertyKeyDiskEntriesLocked(propertyKey)
 			purgeOps = append(purgeOps, rows...)

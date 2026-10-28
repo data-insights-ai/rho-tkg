@@ -947,8 +947,8 @@ func TestPropertyIndexOnDiskLabels(t *testing.T) {
 		t.Fatalf("markers after create: D %v, R %v; want D only", marked(bs, d), marked(bs, r))
 	}
 	closeStore(bs)
-	if got, ok := readRawMarker(t, dir); !ok || got != storepkg.PropDiskLabelsStoreFormatVersion {
-		t.Fatalf("format marker %d (present %v), want %d", got, ok, storepkg.PropDiskLabelsStoreFormatVersion)
+	if got, ok := readRawMarker(t, dir); !ok || got != storepkg.EntityIndexStoreFormatVersion {
+		t.Fatalf("format marker %d (present %v), want %d (its member entries, RELDISK)", got, ok, storepkg.EntityIndexStoreFormatVersion)
 	}
 
 	bs = open(false) // D leaves: in RAM, its marker goes
@@ -1034,8 +1034,8 @@ func TestPropertyIndexOnDiskLabels_JoinRaisesFormat(t *testing.T) {
 	if err := bs.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := readRawMarker(t, dir); got != storepkg.PropDiskLabelsStoreFormatVersion {
-		t.Fatalf("format marker %d after D joined, want %d", got, storepkg.PropDiskLabelsStoreFormatVersion)
+	if got, _ := readRawMarker(t, dir); got != storepkg.EntityIndexStoreFormatVersion {
+		t.Fatalf("format marker %d after D joined, want %d (its member entries, RELDISK)", got, storepkg.EntityIndexStoreFormatVersion)
 	}
 }
 

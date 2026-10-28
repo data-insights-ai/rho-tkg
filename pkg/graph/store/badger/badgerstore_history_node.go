@@ -66,7 +66,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
-	if err := bs.checkNodeIndexKeysLocked(updatedNode, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+	if err := bs.checkNodeMoveKeysLocked(updatedNode, prevState, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -134,7 +134,8 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
 	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
-	ops = bs.maintainPropertyIndexesUpdate(ops, updatedNode, id)
+	ops = bs.maintainPropertyIndexesUpdate(ops, old, updatedNode, id)
+	ops = append(ops, bs.nodeReplacedMemberOpsLocked(prevState, old, id)...) // RELDISK: what only the demoted row carries
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
@@ -206,7 +207,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
-	if err := bs.checkNodeIndexKeysLocked(updatedNode, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+	if err := bs.checkNodeMoveKeysLocked(updatedNode, prevState, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -275,7 +276,8 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
 	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
-	ops = bs.maintainPropertyIndexesUpdate(ops, updatedNode, id)
+	ops = bs.maintainPropertyIndexesUpdate(ops, old, updatedNode, id)
+	ops = append(ops, bs.nodeReplacedMemberOpsLocked(prevState, old, id)...) // RELDISK: what only the demoted row carries
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
@@ -348,7 +350,7 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
-	if err := bs.checkNodeIndexKeysLocked(current, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+	if err := bs.checkNodeMoveKeysLocked(current, prevState, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -400,7 +402,8 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c — the demoted history row
 	bs.recordNodeReplacedLocked(prevState, current)              // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(current)
-	ops = bs.maintainPropertyIndexesUpdate(ops, current, id)
+	ops = bs.maintainPropertyIndexesUpdate(ops, old, current, id)
+	ops = append(ops, bs.nodeReplacedMemberOpsLocked(prevState, old, id)...) // RELDISK: what only the demoted row carries
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, current, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(current, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, current, id)
@@ -642,7 +645,12 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 			bs.extendNodeVersionTemporalLocked(n, id) // backlog 56: a covered node's envelope holds every row
 		},
 		func() error {
-			return bs.appendOpsLoggedRoutedRaising(historyRowMarker(n.Temporal()), storecontract.ChangeNodeHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})
+			// Its member entries (RELDISK) go in its batch, checked first.
+			if err := bs.checkNodeMemberKeysLocked(n); err != nil {
+				return err
+			}
+			ops := append([]writeOp{{opType: writeOpSet, key: key, value: data}}, bs.nodeMemberOpsLocked(n, id)...)
+			return bs.appendOpsLoggedRoutedRaising(historyRowMarker(n.Temporal()), storecontract.ChangeNodeHistoryVersion, logPayload, token, ops...)
 		},
 	)
 	if err != nil {

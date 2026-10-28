@@ -98,6 +98,10 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 		bs.idxMu.Unlock()
 		return ErrRelExists
 	}
+	if err := bs.checkRelIndexKeysLocked(r); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
+	}
 	if err := bs.foldRecreatedRelHistoryLocked(r, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -135,7 +139,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 		{opType: writeOpSet, key: storepkg.InKey(endID, relType, startID, id)},
 	}
 
-	bs.maintainRelPropertyIndexesAdd(r, id)
+	ops = append(ops, bs.maintainRelPropertyIndexesAdd(r, id)...)
 	bs.maintainRelTypeTemporalIndexesAdd(r, id) // BACKLOG 21c
 	bs.addRelPropertyTypeClassCounts(r)
 	bs.addRelPropertyStatsCounts(r)
@@ -359,21 +363,25 @@ func (bs *Store) replaceRelationshipTagged(r *types.Relationship, token uint64, 
 		bs.idxMu.Unlock()
 		return err
 	}
+	if err := bs.checkRelIndexKeysLocked(r); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
+	}
 
 	// Type/endpoints are immutable, but property values can change — refresh
 	// the rel property index (remove old value, add new).
-	bs.maintainRelPropertyIndexesRemove(old, id)
+	diskOps := bs.maintainRelPropertyIndexesRemove(old, id)
 	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
 	bs.removeRelPropertyTypeClassCounts(old)         // decrement old
 	bs.removeRelPropertyStatsCounts(old)
 	bs.relCache.Put(id, bs.frozenRelRow(r))
 	bs.bumpRelRevLocked(rid)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
-	bs.maintainRelPropertyIndexesAdd(r, id)
+	diskOps = bs.maintainRelPropertyIndexesUpdate(diskOps, old, r, id)
 	bs.maintainRelTypeTemporalIndexesAdd(r, id) // BACKLOG 21c
 	bs.addRelPropertyTypeClassCounts(r)         // increment new
 	bs.addRelPropertyStatsCounts(r)
-	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
+	bs.appendOps(append([]writeOp{{opType: writeOpSet, key: storepkg.RelKey(id), value: data}}, diskOps...)...)
 	// A version update rewrites the row in place; valid_to may move, so the inline
 	// stamp must be refreshed or a temporal traversal reads a stale interval.
 	bs.setRelValidStampLocked(rid, r)
@@ -636,8 +644,8 @@ func (bs *Store) removeRelByInfo(info RelDeleteInfo, old *types.Relationship, ex
 	bs.relIDs.Remove(int64(rid))
 	bs.ords.dropRel(rid)
 	bs.deleteRelRevLocked(rid)
-	delete(bs.relValidIdx, rid)                 // drop the inline valid-time stamp
-	bs.maintainRelPropertyIndexesPurge(info.ID) // brute-force (RelDeleteInfo has no property values)
+	delete(bs.relValidIdx, rid)                                 // drop the inline valid-time stamp
+	diskOps := bs.maintainRelPropertyIndexesPurge(info.ID, old) // brute-force (RelDeleteInfo has no property values)
 	// The rel-type temporal envelope is append-only (as memory's delete): history
 	// stays, and a rolled-back delete does not re-add versions, so purging would drop
 	// past versions from valid-time queries.
@@ -676,7 +684,7 @@ func (bs *Store) removeRelByInfo(info RelDeleteInfo, old *types.Relationship, ex
 		ops = append(ops, exAdjLegOps(writeOpSet, info.ID, info.StartID, info.EndID)...)
 	}
 
-	bs.appendOps(ops...)
+	bs.appendOps(append(ops, diskOps...)...)
 	bs.relCount.Add(-1)
 	bs.getOrCreateTypeCounter(info.RelType).Add(-1)
 	bs.moveHook() // the relationship left its current slot (backlog 32 tests)

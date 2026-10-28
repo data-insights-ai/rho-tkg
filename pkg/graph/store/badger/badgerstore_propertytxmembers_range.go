@@ -33,6 +33,9 @@ func (bs *Store) ForEachNodePropertyTxMemberInRange(labelToken uint16, propertyK
 		return err
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if members, ok, err := bs.nodeDiskMembers(key, memberQuery{numeric: true, lo: lo, hi: hi}); ok {
+		return emitTxMembers(members, err, fn) // RELDISK: members on disk
+	}
 	return rangePropTxMembers(bs, lo, hi, fn,
 		func() (*propTxSidecar[types.NodeID], bool) {
 			return bs.nodePropTx[key], bs.nodePropIndexUsableLocked(key)
@@ -56,6 +59,9 @@ func (bs *Store) ForEachRelPropertyTxMemberInRange(relTypeToken uint16, property
 		return err
 	}
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
+	if members, ok, err := bs.relDiskMembers(key, memberQuery{numeric: true, lo: lo, hi: hi}); ok {
+		return emitTxMembers(members, err, fn) // RELDISK: kept on disk
+	}
 	return rangePropTxMembers(bs, lo, hi, fn,
 		func() (*propTxSidecar[types.RelID], bool) {
 			return bs.relPropTx[key], bs.relPropIndexUsableLocked(key)
@@ -135,6 +141,9 @@ func (bs *Store) ForEachNodePropertyTxMemberAny(labelToken uint16, propertyKey s
 		return err
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if members, ok, err := bs.nodeDiskMembers(key, memberQuery{}); ok {
+		return emitTxMembers(members, err, fn) // RELDISK: members on disk
+	}
 	return pickPropTxMembers(bs, membersAll[types.NodeID], fn,
 		func() (*propTxSidecar[types.NodeID], bool) {
 			return bs.nodePropTx[key], bs.nodePropIndexUsableLocked(key)
@@ -158,6 +167,9 @@ func (bs *Store) ForEachRelPropertyTxMemberAny(relTypeToken uint16, propertyKey 
 		return err
 	}
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
+	if members, ok, err := bs.relDiskMembers(key, memberQuery{}); ok {
+		return emitTxMembers(members, err, fn) // RELDISK: kept on disk
+	}
 	return pickPropTxMembers(bs, membersAll[types.RelID], fn,
 		func() (*propTxSidecar[types.RelID], bool) {
 			return bs.relPropTx[key], bs.relPropIndexUsableLocked(key)

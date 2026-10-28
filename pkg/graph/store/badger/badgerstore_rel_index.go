@@ -15,9 +15,11 @@ import (
 )
 
 // Relationship property indexes: the rel mirror of badgerstore_index.go's node
-// indexes, keyed by rel-type token. RAM-only: value maps live in
+// indexes, keyed by rel-type token. In RAM: value maps live in
 // bs.relPropertyIndexes, only definitions persist (RelPropIndexDefsKey), and the
-// maps are rebuilt from current relationships at open (loadIndexes).
+// maps are rebuilt from current relationships at open (loadIndexes). A listed
+// type's definitions keep their entries on disk instead (RelPropertyIndexOnDiskTypes,
+// badgerstore_entity_index.go).
 
 // relPropIdxDef is the serialization format for relationship property index
 // definitions (mirror of propIdxDef).
@@ -53,6 +55,15 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	if err := storecontract.ValidatePropertyIndexOptions(opts); err != nil {
 		return err
 	}
+	onDisk := bs.relIdxOnDiskWanted(relTypeToken)
+	if onDisk && (opts.RangeCounts || opts.Elements) {
+		return fmt.Errorf("graph: create relationship property index: range counts and elements need the RAM index, not RelPropertyIndexOnDiskTypes: %w", storecontract.ErrCapabilityNotSupported)
+	}
+	if onDisk {
+		if _, ok := bs.propKeyTokenFor(propertyKey); !ok {
+			return fmt.Errorf("graph: create relationship property index: property-key registry required for RelPropertyIndexOnDiskTypes: %w", ErrInvalidStoreMutation)
+		}
+	}
 
 	// Phase 1: install empty live index, snapshot rel IDs.
 	bs.idxMu.Lock()
@@ -60,6 +71,9 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	if _, exists := bs.relPropertyIndexes[key]; exists {
 		bs.idxMu.Unlock()
 		return ErrIndexExists
+	}
+	if onDisk {
+		return bs.createRelPropertyIndexOnDiskLocked(key)
 	}
 	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts, opts.Elements)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
@@ -117,13 +131,25 @@ func (bs *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) e
 		bs.idxMu.Unlock()
 		return ErrIndexNotFound
 	}
+	dropped := bs.relPropertyIndexes[key]
 	delete(bs.relPropertyIndexes, key)
 	if _, ok := bs.relPropTx[key]; ok {
 		delete(bs.relPropTx, key) // its membership sidecar goes with it
 		bs.propTxGen++
 	}
+	var purgeErr error
+	if dropped.OnDisk() {
+		// Its 0x0C entries and built marker go with it (RELDISK).
+		bs.refreshRelDiskDefsLocked()
+		var ops []writeOp
+		ops, purgeErr = bs.entityIndexDropOpsLocked(true, relTypeToken, propertyKey)
+		bs.appendOps(ops...)
+	}
 	bs.persistRelPropertyIndexDefs()
 	bs.idxMu.Unlock()
+	if purgeErr != nil {
+		return purgeErr
+	}
 	return bs.flushIfNeeded()
 }
 
@@ -170,6 +196,17 @@ func (bs *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 
 	bs.idxMu.RLock()
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
+	if idx, ok := bs.relPropertyIndexes[key]; ok && idx.Mutated == nil && idx.OnDisk() {
+		// RELDISK: the keys' current entries on disk.
+		rids, err := bs.relCurrentCandidatesLocked(relTypeToken, propKey, targetKeys)
+		bs.idxMu.RUnlock()
+		if err != nil || len(rids) == 0 {
+			return nil, err
+		}
+		storepkg.SortRelIDs(rids) // one entry per relationship: no repeats
+		rids = bs.filterRelIDsByTemporalPeek(rids, opts)
+		return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, match, false, rids, opts)
+	}
 	if idx, ok := bs.relPropertyIndexes[key]; ok && idx.Mutated == nil {
 		// The keys' sorted posting lists, paged from opts.After in batches
 		// (backlog 72): no copy or sort of the whole key.
@@ -329,19 +366,42 @@ func (bs *Store) persistRelPropertyIndexDefs() {
 // maintainRelPropertyIndexesAdd / Remove are the write-path entry points every
 // rel-mutation door calls, mutating the RAM value maps under idxMu (held by the
 // caller). Add also records the row into the property membership sidecars (backlog 8).
-func (bs *Store) maintainRelPropertyIndexesAdd(r *types.Relationship, id snowflake.ID) {
+// Both return the 0x0C ops of the definitions kept on disk (RELDISK), which the
+// caller writes in the batch of the row.
+func (bs *Store) maintainRelPropertyIndexesAdd(r *types.Relationship, id snowflake.ID) []writeOp {
 	indexpkg.AddRelToPropertyIndexes(bs.relPropertyIndexes, r, id)
 	bs.recordRelRowLocked(r, true)
+	return bs.relIndexDiskOpsLocked(r, id, writeOpSet, true)
 }
 
-func (bs *Store) maintainRelPropertyIndexesRemove(r *types.Relationship, id snowflake.ID) {
+func (bs *Store) maintainRelPropertyIndexesRemove(r *types.Relationship, id snowflake.ID) []writeOp {
 	indexpkg.RemoveRelFromPropertyIndexes(bs.relPropertyIndexes, r, id)
+	return bs.relIndexDiskOpsLocked(r, id, writeOpDelete, true)
 }
 
-// maintainRelPropertyIndexesPurge is the shared-seam brute-force removal
-// (deleteRelByInfo carries no property values). Caller holds idxMu.
-func (bs *Store) maintainRelPropertyIndexesPurge(id snowflake.ID) {
+// maintainRelPropertyIndexesUpdate is maintainRelPropertyIndexesAdd for the
+// new row r of an update of old, ops being old's Remove ops: what the update
+// writes again for an unchanged value is dropped (dropUnchangedEntityOps).
+func (bs *Store) maintainRelPropertyIndexesUpdate(ops []writeOp, old, r *types.Relationship, id snowflake.ID) []writeOp {
+	from := len(ops)
+	ops = append(ops, bs.maintainRelPropertyIndexesAdd(r, id)...)
+	oldTx, _, _ := old.TxStamps()
+	newTx, _, _ := r.TxStamps()
+	return bs.dropUnchangedEntityOps(ops, from, oldTx, newTx)
+}
+
+// maintainRelPropertyIndexesPurge is the shared-seam removal of a deleted
+// current row: brute force in RAM (deleteRelByInfo carries no property values),
+// and old's current entries on disk; old nil (an unreadable row, which only
+// PurgeRelationshipByInfo deletes) walks every on-disk definition for id's
+// entries, its member entries too: the purge removes them all, and the row
+// that would name them cannot be read. Caller holds idxMu.
+func (bs *Store) maintainRelPropertyIndexesPurge(id snowflake.ID, old *types.Relationship) []writeOp {
 	indexpkg.PurgeRelFromAllPropertyIndexes(bs.relPropertyIndexes, id)
+	if old != nil {
+		return bs.relIndexDiskOpsLocked(old, id, writeOpDelete, true)
+	}
+	return bs.relEntriesOfLocked(id)
 }
 
 func deleteRelPropertyIndexIfCurrent(idxs map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex, key indexpkg.RelPropertyIndexKey, expected *indexpkg.PropertyIndex) {

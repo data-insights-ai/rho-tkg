@@ -57,6 +57,9 @@ func (bs *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 	if err := bs.flush(); err != nil {
 		return zero, err
 	}
+	if bs.exactErasureFlushedTestHook != nil {
+		bs.exactErasureFlushedTestHook()
+	}
 
 	bs.flushMu.Lock()
 	defer bs.flushMu.Unlock()
@@ -165,6 +168,7 @@ func (bs *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 
 type exactErasurePlan struct {
 	historyOps    []writeOp
+	entityOps     []writeOp // the erased entities' 0x0C entries (RELDISK)
 	relationships []exactErasureRelPlan
 	nodes         []exactErasureNodePlan
 }
@@ -313,7 +317,69 @@ func (bs *Store) buildExactErasurePlanLocked(
 		nodePlan.residueOps = append(nodePlan.residueOps, temporalOps...)
 		plan.nodes = append(plan.nodes, nodePlan)
 	}
+	if err := bs.exactErasureScanTest("entity-index", 0); err != nil {
+		return exactErasurePlan{}, err
+	}
+	entityOps, err := bs.exactErasureEntityIndexOpsLocked(req.NodeIDs, req.RelIDs)
+	if err != nil {
+		return exactErasurePlan{}, err
+	}
+	plan.entityOps = entityOps
 	return plan, nil
+}
+
+// exactErasureEntityIndexOpsLocked returns deletes of every 0x0C entry of the
+// erased nodes and relationships (RELDISK: member entries carry values of
+// every row, history included), buffered or persisted, in one walk of the
+// keyspace.
+func (bs *Store) exactErasureEntityIndexOpsLocked(nodeIDs []types.NodeID, relIDs []types.RelID) ([]writeOp, error) {
+	nodes := make(map[snowflake.ID]struct{}, len(nodeIDs))
+	for _, id := range nodeIDs {
+		nodes[id.SnowflakeID()] = struct{}{}
+	}
+	rels := make(map[snowflake.ID]struct{}, len(relIDs))
+	for _, id := range relIDs {
+		rels[id.SnowflakeID()] = struct{}{}
+	}
+	erased := func(key []byte) bool {
+		if len(key) <= storepkg.EntityIndexHeadLen || key[0] != storepkg.KeyEntityIndex {
+			return false
+		}
+		_, id, _, ok := storepkg.EntityIndexEntryOf(key, key[1])
+		if !ok {
+			return false
+		}
+		set := rels
+		if key[1] == storepkg.EntityIndexNodeMember {
+			set = nodes
+		}
+		_, hit := set[id]
+		return hit
+	}
+	ops := make([]writeOp, 0)
+	bs.rangePending(func(k string, op writeOp) {
+		if op.opType == writeOpSet && erased([]byte(k)) {
+			ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
+		}
+	})
+	err := bs.view(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		prefix := []byte{storepkg.KeyEntityIndex}
+		opts.Prefix = prefix
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			if key := it.Item().Key(); erased(key) {
+				ops = append(ops, writeOp{opType: writeOpDelete, key: it.Item().KeyCopy(nil)})
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("graph: exact erasure entity-index scan: %w", err)
+	}
+	return ops, nil
 }
 
 func (bs *Store) exactErasurePropertyIndexOpsLocked(id snowflake.ID) ([]writeOp, error) {
@@ -412,6 +478,7 @@ func (bs *Store) applyExactErasurePlanLocked(plan exactErasurePlan) storecontrac
 		bs.purgeExactNodeSidecarsLocked(nodePlan.id)
 	}
 	bs.appendOps(plan.historyOps...)
+	bs.appendOps(plan.entityOps...)
 	return result
 }
 
@@ -749,7 +816,7 @@ func (bs *Store) purgeExactRelSidecarsLocked(rid types.RelID) {
 	// sidecar: drop them all; they rebuild from the surviving rows (backlog 8).
 	bs.dropPropertyTxMembersLocked()
 	raw := rid.SnowflakeID()
-	bs.maintainRelPropertyIndexesPurge(raw)
+	indexpkg.PurgeRelFromAllPropertyIndexes(bs.relPropertyIndexes, raw) // its 0x0C entries: the plan's entityOps
 	bs.maintainRelTypeTemporalIndexesPurge(raw)
 	delete(bs.relValidIdx, rid)
 	delete(bs.relBeliefWatermark, rid)

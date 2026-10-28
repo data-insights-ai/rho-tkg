@@ -151,8 +151,9 @@ Purpose: an older binary must refuse data it cannot read, instead of misdecoding
 | 10 | v4.76.0 on, only after a first open-ended excise | the store holds an open-ended void row (`ExciseNodeValidity` / `ExciseRelValidity` with `b = 0`, OPENEXCISE) | 7 for that void row |
 | 11 | v4.77.0 on, only with `ValueDictionaries` configured and a first value coded | the store holds value-dictionary entries and rows coded with them (DICT, "Value dictionaries" below); raised with the first entry | 8 for a coded row |
 | 12 | v4.91.0 on, only with `PropertyIndexOnDiskLabels` and a first listed definition built | the store holds a per-definition on-disk property index marker (PROPDISKLABEL, "Persistent property index" below); raised with the first marker, by its create or the open that rebuilds it | unchanged |
+| 13 | v4.92.0 on, only with an on-disk property index (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`, `RelPropertyIndexOnDiskTypes`) and a first definition built | the store holds `0x0C` entries and their built markers (RELDISK, "Persistent relationship property index" below), which an older release would neither maintain nor clear; raised with the first marker, by its create or the open that builds it | unchanged |
 
-One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7), or in the batch of the open that writes the entry needing it (marker 12, `planPropertyIndexDisk`). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features keeps its marker (3 or 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: "Row wire format" below; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
+One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7), or in the batch of the open that writes the entry needing it (marker 12, `planPropertyIndexDisk`; marker 13, `commitEntityIndexOpen`). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features keeps its marker (3 or 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: "Row wire format" below; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
 
 ## Value dictionaries
 
@@ -313,7 +314,7 @@ Integer widths: `pl`, `el` elements, `rt` and `v` use `EncodeInt` (smallest form
 
 Every key starts with a 1-byte prefix (`storeutil/keys.go`, `property_index_key.go`, `temporal_index_key.go`). IDs
 are big-endian int64 (8B) and tokens big-endian uint16 (2B), so byte order is sort order and recent IDs cluster in
-the LSM. `0x0C` and `0x0E` are unused.
+the LSM. Every prefix from `0x01` to `0x0F` is in use.
 
 | Prefix | Key | Value | Size | Purpose |
 |--------|-----|-------|------|---------|
@@ -328,6 +329,7 @@ the LSM. `0x0C` and `0x0E` are unused.
 | `0x09` `KeyChangeLog` | `<8B LSN>` | `tag(1B) ‖ msgpack(body)` | 9B | change-log record (`ChangeLog`) |
 | `0x0A` `KeyPropertyIndex` | `<2B propKeyToken>/<payload>/<8B nodeID>` | empty | var | property index (`PropertyIndexOnDisk`) |
 | `0x0B` `KeyTemporalIndex` | `<2B labelToken>/<8B from>/<8B nodeID>` | 8B big-endian TO | 19B | temporal-index rebuild rows (`TemporalIndexOnDisk`) |
+| `0x0C` `KeyEntityIndex` | `<1B kind>/<2B scope token>/<2B propKeyToken>/<payload>/<8B ID>[/<8B txFrom>]` | empty | var | relationship property index and node membership entries (`RelPropertyIndexOnDiskTypes`, on-disk node indexes; RELDISK) |
 | `0x0D` `KeyExAdj` | `<8B nodeID>/<1B dir>/<8B relID>` | empty | 18B | ex-adjacency (`ExAdjacencyCapability`, backlog 50) |
 | `0x0E` `KeyFlushStage` | `<8B staging sequence>/<the entry's own key>` | `op(1B) ‖ value` | var | a staged flush, between its start and its clean-up (FLUSHPART); no reader iterates it |
 | `0x0F` `KeyMeta` | `<name>` | per key (below) | var | metadata |
@@ -346,13 +348,19 @@ Value encodings:
   raw (string / bool / `TemporalValue`) `0x02 | canonical value-key bytes`. The key omits the label, so definitions
   on two labels over one property key share rows ("Persistent property index").
 - Temporal index (`0x0B`): `from` is sign-bit flipped, so a prefix scan yields (From ASC, ID ASC).
+- Entity index (`0x0C`, `entity_index_key.go`): kind 1 a relationship's current entry (no `txFrom`), kind 2 a
+  relationship's member entry, kind 3 a node's member entry; the scope token is the type or label, so a definition
+  owns its prefix. Numeric payload as `0x0A`; raw `0x02 | value-key bytes with 0x00 written 0x00 0xFF | 0x00`, so
+  an equality walk stops at the first key longer than its value's prefix ID and tail ("Persistent relationship
+  property index").
 
 On disk vs RAM: label and adjacency keys (`0x03`–`0x06`) are always written; `LabelIndexOnDisk` /
 `AdjacencyIndexOnDisk` answer reads from them instead of RAM maps (both also on `tiered.Config`, passed to every shard;
 label since v4.79.0). With the label index on disk, doc-values columns decline and their callers read per node. `PropertyIndexOnDisk` moves property-index
 entries into `0x0A`; `TemporalIndexOnDisk` keeps `0x0B` only as a rebuild accelerator (the index stays resident);
-each is backfilled from current rows once, under its build marker. Every other index (vector, relationship
-property, relationship-type temporal, high-frequency, composite) persists only its definition; its contents come
+each is backfilled from current rows once, under its build marker. `RelPropertyIndexOnDiskTypes` moves the listed types' relationship property indexes into `0x0C`.
+Every other index (vector, relationship property of an unlisted type, relationship-type temporal, high-frequency,
+composite) persists only its definition; its contents come
 from the open image after a clean `Close`, else from the rows ("Clean reopen"). RAM sidecars (history presence,
 history stamps, label / rel-type / property tx-membership) have no keys; the property tx-membership sidecars travel
 in the open image ("History rows: versions, lives and RAM sidecars").
@@ -557,6 +565,42 @@ With `badger.Config.PropertyIndexOnDisk` (or the mirrored `graph.Config.Property
 **Requires a property-key registry.** The on-disk key uses a compact 2-byte property-key TOKEN, resolved through the store's property-key registry (`badger.Config.PropertyKeyRegistry`, always wired when opened via `pkg/graph`). `CreatePropertyIndex` fails closed with `ErrInvalidStoreMutation` in disk mode without one, rather than silently indexing nothing.
 
 **Range cardinality trade-off.** `NodeRangeCardinality` (the O(1) exact-count accelerator backing `count(p) WHERE p.k > x`) always declines (`exact=false`) in disk mode instead of reimplementing the RAM ordered view's per-value bucket-size sum — the persisted keyspace does not maintain those bucket sizes. This is a pure availability difference, never a wrong answer: callers already handle decline by falling back to `ForEachNodeByLabelPropertyRange` plus an exact count.
+
+## Persistent relationship property index (`RelPropertyIndexOnDiskTypes`, since v4.92.0)
+
+Purpose (RELDISK, SCALE goal 2: RAM does not grow with data). A relationship property index and the membership
+sidecar behind its pinned reads (`TxPin`, or `TxAt` with a valid time) hold every value a relationship ever carried
+in RAM, about 25 B per posting when a value has 20 or more rows and about 100 B when every value is distinct.
+`badger.Config`, `tiered.Config` and `graph.Config` take `RelPropertyIndexOnDiskTypes []string`: the listed types'
+property indexes keep their entries in the `0x0C` keyspace (key layout above), written in the batch of the row, and
+no membership sidecar.
+
+- **Current entries** (kind 1): one per relationship and indexed value, deleted when the value changes or the
+  relationship goes; equality lookups (`ByTypeAndProperty`, its multi-value form) read them, then the rows.
+- **Member entries** (kind 2): one per value a row of the relationship carried and per transaction time of such a
+  row, history rows included; never deleted by an update. A reader folds them per relationship to the lowest
+  transaction time (0, unknown, lowest of all): the membership sidecar's answer (`ForEachRelPropertyTxMember` and
+  its window, page, range and any-value doors), read from disk. An update that keeps a value writes no entry again
+  unless its row lowers the relationship's bound.
+- **Node member entries** (kind 3): every node definition kept on disk (`PropertyIndexOnDisk` or a label in
+  `PropertyIndexOnDiskLabels`) answers its pinned reads from member entries too, so neither index kind builds a
+  membership sidecar in RAM. Its `0x0A` entries keep the current lookups.
+- **Places and markers.** The type is named at open by `badger.Config.RelTypeNames` (tiered passes its registry
+  file) or the registry the store persisted. Each definition kept in `0x0C` has a built marker
+  (`entity_index_built/` + kind + scope token + key), set by its create or the open that builds it, deleted by a
+  writable open that keeps it in RAM or by its drop: a type that joins the list is built at the next writable open,
+  with its stale entries deleted in the same `WriteBatch` and the markers last; a read-only open keeps an unbuilt
+  definition in RAM. The first marker raises the format marker to 13: a store with any on-disk property index
+  built by v4.92.0 is refused by v4.91.x.
+- **Removal.** A drop deletes the definition's entries; a retention purge and an exact erasure delete every
+  entry of the entities they remove, history included (a member entry holds a value verbatim); `Clear` drops the
+  keyspace.
+- **Refused or declined.** `RangeCounts` and `Elements` on a listed type (`ErrCapabilityNotSupported`, also an
+  Elements definition loaded at open). A member key is 12 bytes longer than the `0x0A` key, so the largest value an
+  on-disk index accepts shrinks by 12 bytes; every write door refuses a longer one with `ErrEntryTooLarge` before
+  any mutation.
+- **Cost.** A paged member lookup (`...After`) walks its whole value, then pages; a history truncate leaves member
+  entries, which only widen a candidate set the reader filters by the rows.
 
 ## Persistent temporal-index rebuild accelerator (opt-in, `TemporalIndexOnDisk`)
 

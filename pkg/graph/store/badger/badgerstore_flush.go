@@ -41,12 +41,12 @@ func (bs *Store) appendOpsRaising(marker uint16, ops ...writeOp) {
 // size. Caller holds wbMu.
 func (bs *Store) putPendingLocked(op writeOp) {
 	k := string(op.key)
-	if listedByPrefix(k) {
+	if end := listedPrefixEnd(k); end > 0 {
 		if _, queued := bs.pending[k]; !queued {
 			if bs.pendingByPrefix == nil {
 				bs.pendingByPrefix = make(map[string][]string)
 			}
-			p := k[:len(k)-8]
+			p := k[:end]
 			bs.pendingByPrefix[p] = append(bs.pendingByPrefix[p], k)
 		}
 	}
@@ -54,14 +54,20 @@ func (bs *Store) putPendingLocked(op writeOp) {
 	bs.pendingBytes += pendingTxnSize(len(op.key), len(op.value))
 }
 
-// listedByPrefix reports whether key k is listed in pendingByPrefix: a
-// history or property-index key.
-func listedByPrefix(k string) bool {
-	switch k[0] { // every key of these keyspaces is longer than its 8-byte suffix
+// listedPrefixEnd returns the length of the prefix key k is listed under in
+// pendingByPrefix, 0 when it is not listed: a history or 0x0A key under all
+// but its 8-byte suffix, a 0x0C key under its value prefix (all but its ID and,
+// for a member entry, its transaction time).
+func listedPrefixEnd(k string) int {
+	switch k[0] { // every key of these keyspaces is longer than its suffix
 	case storepkg.KeyHistNode, storepkg.KeyHistRel, storepkg.KeyPropertyIndex:
-		return true
+		return len(k) - 8
+	case storepkg.KeyEntityIndex:
+		if len(k) > storepkg.EntityIndexHeadLen {
+			return len(k) - storepkg.EntityIndexTailLen(k[1])
+		}
 	}
-	return false
+	return 0
 }
 
 // dropFlushingLocked drops the parked flush snapshot and its prefix index

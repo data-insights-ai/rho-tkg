@@ -171,7 +171,23 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		// cascade removes them — this is the only way to surface a CROSS-SHARD rel
 		// whose entity lives on another shard (an entity read here would miss it),
 		// which the tiered residue sweep needs.
-		purgedRels = append(purgedRels, bs.purgedRelsForNodeLocked(v)...)
+		nodeRels := bs.purgedRelsForNodeLocked(v)
+		purgedRels = append(purgedRels, nodeRels...)
+		// The member entries (RELDISK) of v's rows and of its relationships'
+		// here, read before the cascade removes the current rows.
+		memberOps, merr := bs.purgedNodeMemberOpsLocked(v)
+		for _, pr := range nodeRels {
+			if merr == nil && bs.relIDs.Has(int64(pr.ID)) {
+				var relOps []writeOp
+				relOps, merr = bs.purgedRelMemberOpsLocked(pr.ID, pr.TypeToken)
+				memberOps = append(memberOps, relOps...)
+			}
+		}
+		if merr != nil {
+			bs.idxMu.Unlock()
+			return zero, merr
+		}
+		histOps = append(histOps, memberOps...)
 		deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(v, pf, nil, 0)
 		if fatalErr != nil {
 			if errors.Is(fatalErr, ErrNodeNotFound) {
@@ -348,6 +364,12 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 		// plus its version history (0x08, co-located with the entity).
 		// The row is read only for the planner statistics' decrement; an
 		// unreadable row still has its residue cleaned (deleteRelByInfo).
+		memberOps, merr := bs.purgedRelMemberOpsLocked(rid, rel.TypeToken) // RELDISK, before the delete
+		if merr != nil {
+			bs.idxMu.Unlock()
+			return merr
+		}
+		bs.appendOps(memberOps...)
 		old, _ := bs.getRelLocked(rid)
 		bs.deleteRelByInfo(RelDeleteInfo{
 			ID:      rid.SnowflakeID(),
@@ -433,6 +455,12 @@ func (bs *Store) PurgeAdjacentRelsForNode(nodeID types.NodeID) (int, error) {
 			bs.idxMu.Unlock()
 			return removed, err
 		}
+		memberOps, merr := bs.purgedRelMemberOpsLocked(rid, r.TypeToken().Value()) // RELDISK, before the delete
+		if merr != nil {
+			bs.idxMu.Unlock()
+			return removed, merr
+		}
+		histOps = append(histOps, memberOps...)
 		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r), r)
 		histOps = append(histOps, exAdjLegOps(writeOpDelete, rid.SnowflakeID(), r.StartNodeID().SnowflakeID(), r.EndNodeID().SnowflakeID())...) // purged: no ex-adjacency (backlog 50)
 		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID())                                                                               // history goes too: nothing left to cover

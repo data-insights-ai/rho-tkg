@@ -37,6 +37,12 @@ func (bs *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyK
 		return err
 	}
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
+	if members, ok, err := bs.relDiskMembers(key, memberQuery{valueKeys: []string{valueKey}}); ok {
+		if validStart >= validEnd {
+			members = nil // an empty window answers nothing
+		}
+		return emitTxMembers(members, err, fn) // RELDISK: every member of the value, a sound superset
+	}
 	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, fn,
 		func() (*propTxSidecar[types.RelID], bool) {
 			return bs.relPropTx[key], bs.relPropIndexUsableLocked(key)
@@ -60,6 +66,12 @@ func (bs *Store) ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKe
 		return err
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if members, ok, err := bs.nodeDiskMembers(key, memberQuery{valueKeys: []string{valueKey}}); ok {
+		if validStart >= validEnd {
+			members = nil // an empty window answers nothing
+		}
+		return emitTxMembers(members, err, fn) // RELDISK: every member of the value, a sound superset
+	}
 	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, fn,
 		func() (*propTxSidecar[types.NodeID], bool) {
 			return bs.nodePropTx[key], bs.nodePropIndexUsableLocked(key)

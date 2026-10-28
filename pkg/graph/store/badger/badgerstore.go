@@ -149,6 +149,21 @@ type Config struct {
 	// (tiered passes its registry); nil reads the registry this store persisted
 	// (SaveRegistries). Once the graph installs its registry, that one names them.
 	LabelNames *registrypkg.LabelRegistry
+	// RelPropertyIndexOnDiskTypes keeps the property indexes of the listed
+	// relationship types on disk (RELDISK), in the persisted 0x0C keyspace written
+	// with the relationship row: a current entry per indexed value, deleted when the
+	// value changes, and a member entry per value a row ever carried with that row's
+	// transaction time, which answers reads at a transaction-time pin (no membership
+	// sidecar in RAM). Every other type keeps its entries in RAM. A definition's
+	// place is fixed when the open loads it or CreateRelPropertyIndex makes it; a
+	// built marker per definition lets the list change between opens, as
+	// PropertyIndexOnDiskLabels. An Elements index stays in RAM: on a listed type it
+	// is refused. Requires a property-key registry (always present via pkg/graph).
+	RelPropertyIndexOnDiskTypes []string
+	// RelTypeNames names the types of RelPropertyIndexOnDiskTypes while the store
+	// opens (tiered passes its registry); nil reads the registry this store
+	// persisted. Once the graph installs its registry, that one names them.
+	RelTypeNames *registrypkg.RelTypeRegistry
 	// TemporalIndexOnDisk is a rebuild-at-open accelerator, not a RAM-vs-disk trade:
 	// the temporal index stays resident at runtime. On, a compact row per (labelToken,
 	// entity) is kept beside the node row (badgerstore_temporal_disk.go) and
@@ -395,6 +410,8 @@ type Store struct {
 	propIdxOnDisk             bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
 	propDiskLabels            map[string]struct{}                           // PropertyIndexOnDiskLabels: these labels' property indexes too
 	propDiskNames             *registrypkg.LabelRegistry                    // names propDiskLabels while the store opens (Config.LabelNames or the persisted registry)
+	relDiskTypes              map[string]struct{}                           // RelPropertyIndexOnDiskTypes
+	relDiskNames              *registrypkg.RelTypeRegistry                  // names relDiskTypes while the store opens (Config.RelTypeNames or the persisted registry)
 	propIDs                   propIDBounds                                  // bounds of the node IDs the 0x0A entries carry (PROPBOUNDS)
 	formatMarker              uint16                                        // store-level format marker (raiseFormatMarkerPendingLocked; guarded by wbMu)
 	temporalIdxOnDisk         bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
@@ -734,6 +751,9 @@ type Store struct {
 	// exactErasureScanTestHook runs before each exact-erasure preflight scan, to prove a
 	// late failure leaves the destructive phase unstarted. Test-only.
 	exactErasureScanTestHook func(stage string, id uint64) error
+	// exactErasureFlushedTestHook runs in ExactErase after its preliminary flush,
+	// before its locks: a write there is buffered when the plan reads. Test-only.
+	exactErasureFlushedTestHook func()
 
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
@@ -741,6 +761,14 @@ type Store struct {
 	// walks those only, not every definition (DISKDEFS). Guarded by idxMu;
 	// refreshPropDiskDefsLocked after each change of propertyIndexes.
 	propDiskDefs []propDiskDef
+	// nodeMemberDisk: the on-disk node definitions whose member entries are in
+	// 0x0C (RELDISK, badgerstore_entity_index.go), built by an open or the
+	// create; nodeMembersOnDisk reports whether there is one. relDiskDefs: the
+	// relationship definitions kept on disk. Guarded by idxMu;
+	// refreshPropDiskDefsLocked / refreshRelDiskDefsLocked after each change.
+	nodeMemberDisk    map[indexpkg.PropertyIndexKey]struct{}
+	nodeMembersOnDisk bool
+	relDiskDefs       []relDiskDef
 
 	// Relationship property indexes: RAM-only value maps keyed by rel-type token.
 	// Definitions persist under RelPropIndexDefsKey; data is rebuilt at open. Guarded by
@@ -1165,6 +1193,23 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
+	if len(cfg.RelPropertyIndexOnDiskTypes) > 0 {
+		bs.relDiskTypes = make(map[string]struct{}, len(cfg.RelPropertyIndexOnDiskTypes))
+		for _, relType := range cfg.RelPropertyIndexOnDiskTypes {
+			bs.relDiskTypes[relType] = struct{}{}
+		}
+		bs.relDiskNames = cfg.RelTypeNames
+		if bs.relDiskNames == nil {
+			reg := registrypkg.NewRelTypeRegistry()
+			if found, err := bs.LoadRelTypeRegistry(reg); err != nil {
+				_ = db.Close() // best-effort cleanup
+				return nil, fmt.Errorf("graph: load relationship type registry for RelPropertyIndexOnDiskTypes: %w", err)
+			} else if found {
+				bs.relDiskNames = reg
+			}
+		}
+	}
+
 	// Write-ahead registry hook (tiered store: commits the shared registry to the
 	// reference shard; standalone: own meta). flush() calls it before the row
 	// WriteBatch, so every token a durable row references is itself durable.
@@ -1324,6 +1369,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 	// rebuilds and the built markers it sets and clears (planPropertyIndexDisk),
 	// planned in the View closure below and committed in one WriteBatch after it.
 	var propDisk *propDiskOpen
+	// entityDisk: which definitions answer from the 0x0C entries this open and
+	// which it builds (planEntityIndexOpen), committed after the View (RELDISK).
+	var entityDisk *entityIndexOpen
 	// temporalIdxNeedsBuild / temporalIdxBackfillOps mirror the above for the 0x0B
 	// temporal-index keyspace, guarded by storeutil.TemporalIndexOnDiskBuiltKey.
 	var temporalIdxNeedsBuild bool
@@ -1822,6 +1870,13 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		if propDisk, err = bs.planPropertyIndexDisk(txn, propDefs); err != nil {
 			return err
 		}
+		entityDisk = bs.planEntityIndexOpen(txn)
+		bs.nodeMemberDisk = make(map[indexpkg.PropertyIndexKey]struct{})
+		for key := range propDisk.disk {
+			if entityDisk.place(bs, txn, false, key.LabelToken, key.PropertyKey) {
+				bs.nodeMemberDisk[key] = struct{}{} // its member entries answer its pinned reads
+			}
+		}
 		{
 			defs := propDefs
 			seenProperty := make(map[indexpkg.PropertyIndexKey]struct{}, len(defs))
@@ -1887,7 +1942,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					fillFromBuild(build, idx.AddKey)
 				}
 				bs.propertyIndexes[key] = idx
-				bs.restoreNodePropTx(img, key)
+				if _, members := bs.nodeMemberDisk[key]; !members {
+					bs.restoreNodePropTx(img, key)
+				}
 			}
 			bs.refreshPropDiskDefsLocked()
 		}
@@ -1917,8 +1974,22 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					continue
 				}
 				seenRelProperty[key] = struct{}{}
+				onDisk := false
+				if bs.relIdxOnDiskWanted(def.RelTypeToken) {
+					if def.Elements {
+						// The 0x0C entries key scalars only. Open it without its
+						// type in RelPropertyIndexOnDiskTypes.
+						return fmt.Errorf("graph: load relationship property index definition type %d property %q: an elements index needs the RAM index, not RelPropertyIndexOnDiskTypes: %w",
+							def.RelTypeToken, def.PropertyKey, storecontract.ErrCapabilityNotSupported)
+					}
+					onDisk = entityDisk.place(bs, txn, true, def.RelTypeToken, def.PropertyKey)
+				}
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
-				if entries, ok := img.takeRelProp(key); ok {
+				if onDisk {
+					// RELDISK: its entries are in 0x0C (built, or built after this View).
+					idx = indexpkg.NewPropertyIndexOnDisk()
+					img.takeRelProp(key)
+				} else if entries, ok := img.takeRelProp(key); ok {
 					installValueIDsKept(entries, func(id int64) bool { return bs.keepRelEntry(img, id) }, idx.AddKey)
 					if img.delta() {
 						build := indexpkg.NewPostingsBuild(def.Elements)
@@ -1947,8 +2018,11 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					fillFromBuild(build, idx.AddKey)
 				}
 				bs.relPropertyIndexes[key] = idx
-				bs.restoreRelPropTx(img, key)
+				if !onDisk {
+					bs.restoreRelPropTx(img, key)
+				}
 			}
+			bs.refreshRelDiskDefsLocked()
 		}
 		// badgerv4.ErrKeyNotFound is OK — no rel property indexes defined yet.
 
@@ -2259,6 +2333,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			return err
 		}
 	}
+	if err := bs.commitEntityIndexOpen(entityDisk); err != nil {
+		return err
+	}
 	if bs.temporalIdxOnDisk && temporalIdxNeedsBuild && !bs.readOnly {
 		if err := bs.commitTemporalIndexOnDiskBackfill(temporalIdxBackfillOps); err != nil {
 			return err
@@ -2496,6 +2573,7 @@ func (bs *Store) Clear() (err error) {
 	bs.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
 	bs.refreshPropDiskDefsLocked()
 	bs.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
+	bs.refreshRelDiskDefsLocked()
 	// The wipe below may drop the format marker: the next Elements definition
 	// re-raises it rather than trusting the cached value.
 	bs.wbMu.Lock()

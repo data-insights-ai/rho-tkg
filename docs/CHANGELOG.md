@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.92.0] - 2026-10-28
+
+### Added
+
+- **RELDISK** (SCALE, goal 2; ai-soc's request for sigma's 2b edges: NETWORK, PROCESS and REGISTRY relationships
+  on event shards, read at a pin). A pinned read (`TxPin`, or `TxAt` with a valid time) took its candidates from
+  the property index's membership sidecar, built in RAM from every row and append-only: about 25 B per posting
+  when a value has 20 or more rows, 100 B when every value is distinct; a relationship property index held its
+  entries in RAM too. `RelPropertyIndexOnDiskTypes []string` on `badger.Config`, `tiered.Config` and
+  `graph.Config` keeps the listed relationship types' property indexes in a new `0x0C` keyspace written in the
+  batch of the row: a current entry per relationship and value for lookups, and a member entry per value a row
+  carried and per transaction time for pinned reads, folded to each relationship's lowest. Node indexes kept on
+  disk (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`) answer their pinned reads from member entries too.
+  Neither builds a sidecar any more (the red test: 3 relationship and 2 node sidecars, 16 and 10 postings, now 1
+  for an unlisted type and 0). Places, built markers and the open that builds a type joining the list follow
+  `PropertyIndexOnDiskLabels`; purges, erasures, drops and `Clear` delete the entries. `RangeCounts` and
+  `Elements` on a listed type are refused. **Migration:** the first marker raises the format marker to 13, so a
+  store with an on-disk property index, node or relationship, built by v4.92.0 is refused by v4.91.x; the largest
+  string an on-disk index accepts is 12 bytes shorter. Tests: `TestPropertyIndexOnDiskPinnedReads` (graph:
+  memory, badger and tiered agree at pins, badger builds no sidecar for them),
+  `TestPropertyIndexOnDiskMembershipDoors` (every membership door at every pin against a RAM store, across reopen,
+  leave and rebuild), badger `TestRelPropertyIndexOnDisk_Lifecycle`, `TestEntityIndex_PurgeAndErasureRemoveEntries`,
+  `TestEntityIndex_ExactValueWalk`, `TestEntityIndex_CreateRacesWrites`, `TestEntityIndex_RangeMembersMatchSidecar`
+  (the range door answers exactly the sidecar's values), `TestEntityIndex_PurgeUnreadableRow`,
+  `TestRelPropertyIndexOnDisk_NeedsRegistry`, `TestRelPropertyIndexOnDisk_ElementsRefusedAtOpen`,
+  `TestNodeMemberEntries_Lifecycle`, `TestEntityIndex_KeyLimitBoundary`; 123 of 124 mutations caught, the 124th
+  equivalent and kept (the lookup's temporal peek, a read saver the RAM path has too); six more were equivalent and
+  their code is removed.
+
 ## [4.91.2] - 2026-10-28
 
 ### Fixed

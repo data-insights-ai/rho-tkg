@@ -36,6 +36,9 @@ func (bs *Store) ForEachRelPropertyTxMemberAfter(relTypeToken uint16, propertyKe
 		return err
 	}
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
+	if members, ok, err := bs.relDiskMembers(key, memberQuery{valueKeys: []string{valueKey}}); ok {
+		return emitTxMembers(pageTxMembers(members, after, limit), err, fn) // RELDISK: kept on disk
+	}
 	return pagePropTxMembers(bs, valueKey, after, limit, fn,
 		func() (*propTxSidecar[types.RelID], bool) {
 			return bs.relPropTx[key], bs.relPropIndexUsableLocked(key)
@@ -59,6 +62,9 @@ func (bs *Store) ForEachNodePropertyTxMemberAfter(labelToken uint16, propertyKey
 		return err
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if members, ok, err := bs.nodeDiskMembers(key, memberQuery{valueKeys: []string{valueKey}}); ok {
+		return emitTxMembers(pageTxMembers(members, after, limit), err, fn) // RELDISK: members on disk
+	}
 	return pagePropTxMembers(bs, valueKey, after, limit, fn,
 		func() (*propTxSidecar[types.NodeID], bool) {
 			return bs.nodePropTx[key], bs.nodePropIndexUsableLocked(key)

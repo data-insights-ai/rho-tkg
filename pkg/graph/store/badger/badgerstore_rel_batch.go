@@ -108,6 +108,12 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		}
 		seen[rd.rid] = struct{}{}
 	}
+	for _, r := range rels {
+		if err := bs.checkRelIndexKeysLocked(r); err != nil { // KEYSIZE, before any mutation
+			bs.idxMu.Unlock()
+			return err
+		}
+	}
 	for i, r := range rels {
 		if err := bs.foldRecreatedRelHistoryLocked(r, serialized[i].id); err != nil {
 			bs.idxMu.Unlock()
@@ -140,7 +146,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		}
 		bs.setRelValidStampLocked(rd.rid, r) // inline valid-time stamp
 		bs.recordRelTypeMemberLocked(r)      // transaction-time rel-type membership
-		bs.maintainRelPropertyIndexesAdd(r, rd.id)
+		ops = append(ops, bs.maintainRelPropertyIndexesAdd(r, rd.id)...)
 		bs.maintainRelTypeTemporalIndexesAdd(r, rd.id) // BACKLOG 21c
 		bs.addRelPropertyTypeClassCounts(r)
 		bs.addRelPropertyStatsCounts(r)

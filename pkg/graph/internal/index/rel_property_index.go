@@ -34,14 +34,17 @@ func (pi *PropertyIndex) RangeRelIDs(min, max float64, inclMin, inclMax bool) (i
 	return ids, true
 }
 
-// AddRelToPropertyIndexes indexes a relationship's properties (at most one
-// matching index: a rel has one type token). Caller must hold the store's write lock.
+// AddRelToPropertyIndexes indexes a relationship's properties into the
+// matching indexes in RAM (a rel has one type token; one the store keeps on
+// disk is skipped). Caller must hold the store's write lock.
 func AddRelToPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyIndex, r *types.Relationship, id snowflake.ID) {
 	if len(indexes) == 0 || r == nil {
 		return
 	}
 	forEachRelIndexKey(indexes, r, func(_ RelPropertyIndexKey, idx *PropertyIndex, valueKey string) {
-		idx.AddKey(id, valueKey)
+		if !idx.onDisk {
+			idx.AddKey(id, valueKey)
+		}
 	})
 }
 

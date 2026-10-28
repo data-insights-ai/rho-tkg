@@ -88,9 +88,17 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 		bs.idxMu.Unlock()
 		return err
 	}
+	if err := bs.checkRelIndexKeysLocked(current); err != nil { // KEYSIZE, before any mutation
+		bs.idxMu.Unlock()
+		return err
+	}
+	if err := bs.checkRelIndexKeysLocked(prevState); err != nil { // the demoted row's member entries (RELDISK)
+		bs.idxMu.Unlock()
+		return err
+	}
 
 	// Refresh the rel property index (property values may have changed).
-	bs.maintainRelPropertyIndexesRemove(old, id)
+	diskOps := bs.maintainRelPropertyIndexesRemove(old, id)
 	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
 	bs.removeRelPropertyTypeClassCounts(old)
 	bs.removeRelPropertyStatsCounts(old)
@@ -98,8 +106,9 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))   // BACKLOG 10c
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState)) // BACKLOG 10c — the demoted history row
 	bs.recordRelReplacedLocked(prevState, current)             // backlog 8 — and its property values
-	bs.maintainRelPropertyIndexesAdd(current, id)
-	bs.maintainRelTypeTemporalIndexesAdd(current, id) // BACKLOG 21c
+	diskOps = bs.maintainRelPropertyIndexesUpdate(diskOps, old, current, id)
+	diskOps = append(diskOps, bs.relReplacedMemberOpsLocked(prevState, old, id)...) // RELDISK: what only the demoted row carries
+	bs.maintainRelTypeTemporalIndexesAdd(current, id)                               // BACKLOG 21c
 	bs.addRelPropertyTypeClassCounts(current)
 	bs.addRelPropertyStatsCounts(current)
 	// Refresh the inline valid-time stamp — a history version-close moves
@@ -108,10 +117,10 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 
 	// Single appendOps call — atomic in the pending buffer — then the cache.
 	histKey := storepkg.HistRelKey(id, uint64(prevVersion))
-	bs.publishMoveLocked(0, []writeOp{
+	bs.publishMoveLocked(0, append([]writeOp{
 		{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
 		{opType: writeOpSet, key: histKey, value: histData},
-	}, func() { bs.putMovedRelLocked(id, current) })
+	}, diskOps...), func() { bs.putMovedRelLocked(id, current) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelPut, changePayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
@@ -253,6 +262,11 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 			}
 		},
 		func() error {
+			// Its member entries (RELDISK) go in its batch, checked first.
+			if err := bs.checkRelIndexKeysLocked(r); err != nil {
+				return err
+			}
+			ops := append(ops, bs.relIndexDiskOpsLocked(r, id, writeOpSet, false)...)
 			return bs.appendOpsLoggedRoutedRaising(historyRowMarker(r.Temporal()), storecontract.ChangeRelHistoryVersion, logPayload, token, ops...)
 		},
 	)
