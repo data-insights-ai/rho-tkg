@@ -28,7 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   per label or type), `TestMapBytesMatchesHeap` (Go maps across each growth band, small maps to 256-slot tables:
   0.89 to 1.00) and `TestChunksBytesMatchesHeap` (an ordered view as a set and with range counts: 0.92), the index
   API's delegation. 54 of 55 mutations caught; the 55th, the directory pointer's 8 B in the measured table
-  constant (a table and its pointer take 40 B), is below the calibration's resolution.
+  constant (a table and its pointer take 40 B), is below the calibration's resolution. Found on the way: the
+  estimate missed each larger map's table and directory pointer (added). ci-docker green; sigma, ai-soc, ai-soc
+  engine and bookkeeping build and vet clean; scale probe unchanged.
 
 ## [4.92.0] - 2026-10-28
 
