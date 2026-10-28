@@ -73,3 +73,13 @@ average ~20; alternated with v4.91.2 from the module cache; the probe sets no on
   v4.91.2   insert 9.4 / 9.6 s   clean reopen 0.11 / 0.11 s   heap after reopen +175.6 / +176.2 MB
 Reading: no change for a store without RelPropertyIndexOnDiskTypes (the write path adds one length check on an
 empty definition list).
+
+v4.93.0 release scale probe (IDXSTATS, branch idxstats 85bdc962, Derived, 1 M nodes + 1 M rels (-rels), load
+average 14-47; alternated with v4.92.0 from the module cache, five runs each):
+  v4.93.0   insert 11.3 / 11.2 / 13.2 / 10.6 / 10.6 s   clean reopen 0.11 / 0.11 / 0.12 / 0.18 / 0.11 s
+            heap after reopen +176.9 / +176.1 / +176.9 / +174.7 / +176.5 MB
+  v4.92.0   insert 11.7 / 10.9 / 19.2 / 10.7 / 10.7 s   clean reopen 0.12 / 0.11 / 0.21 / 0.12 / 0.11 s
+            heap after reopen +177.4 / +175.5 / +177.7 / +176.9 / +176.3 MB
+  The heap after the insert is bimodal on both (v4.92.0 358-477 MB, v4.93.0 373-492 MB): it holds badger's
+  memtables when the GC runs before they flush.
+Reading: no change (IDXSTATS adds a read-only door; the write path is untouched).
