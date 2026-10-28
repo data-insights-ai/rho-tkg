@@ -66,3 +66,10 @@ disk mode keeps none (~410 ms), counted every label key, and rebuilt the RAM rel
 key (~360 ms; a map per type, ~36 B per rel), and the walks filled the block cache (~129 MB). Now the image holds
 the label counts and the rel-type index (an ID set per type), so with both indexes on disk a clean open walks no
 key per entity; RAM per rel 49.7 -> 16.2 B (TestOpenWalkResidentBytesPerRel, budget 24 B).
+
+v4.92.0 release scale probe (RELDISK, branch reldisk 2b49e59f, Derived, 1 M nodes + 1 M rels (-rels), load
+average ~20; alternated with v4.91.2 from the module cache; the probe sets no on-disk index option):
+  v4.92.0   insert 9.6 / 9.7 s   clean reopen 0.11 / 0.11 s   heap after reopen +176.7 / +177.1 MB
+  v4.91.2   insert 9.4 / 9.6 s   clean reopen 0.11 / 0.11 s   heap after reopen +175.6 / +176.2 MB
+Reading: no change for a store without RelPropertyIndexOnDiskTypes (the write path adds one length check on an
+empty definition list).
