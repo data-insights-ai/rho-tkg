@@ -116,9 +116,17 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   fetchNodesByLabelPropertyIDs, and the valid-time filter resolves every candidate. Ask: QueryOpts.ValidEndAfter,
   only nodes with a current segment ending after the bound (open counts), decided without fetching. sigma proposes
   the max ValidTo per posting (0x0C value on disk). Alternative without a format change or write amplification:
-  prune the candidates through the existing RAM valid-end index (backlog 51, NodeValidEndCandidates: per entity an
-  upper bound and a stamp; ~32 B per entity plus 32 B per tracked label). Asked sigma: probes pinned or current,
-  DerivedPage node count (RAM), > or >= at the bound, priority against RELDISK phase 2.
+  prune the candidates through the existing RAM valid-end index (NodeValidEndCandidates: per entity an
+  upper bound and a stamp; ~32 B per entity plus 32 B per tracked label). sigma's answers: current reads,
+  DerivedPage 10 M+ nodes and growing (RAM index out; it also rebuilds after each open), >= is fine, build it
+  before RELDISK phase 2. Design accepted by sigma (29 Oct): config list {Label, KeyPrefix} for on-disk (0x0A)
+  definitions ({DerivedPage, "ov_h"}); posting value = upper bound on the effective valid end, empty = unknown; any
+  write of a listed node resets its listed postings to unknown in the row's batch; a current read that resolved a
+  candidate's exact end refines the posting under wbMu if the current row is still the version it read; built
+  marker per definition, format marker 14. sigma's requirements: the refine is invisible (no tx, version, history,
+  change-log or subscriber event, no effect on pinned reads); reader-reader races tested under -race; counters
+  (pruned, unknown fetched, refines written, refines skipped) in a stats call; the release note says an older rho
+  refuses a store opened with the listing, and a store without it keeps its format. Branch `validendprune`.
 - **RELDISK phase 2** (door, minor v4.94.0, after IDXSTATS; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
