@@ -70,8 +70,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   as reference). Proposed PURGECURSOR (patch): the label purge resumes from a cursor instead of copying the label's
   whole ID list per 256-node call (quadratic at 10 M); with a retention pin it bounds the reference shard. Waits for
   René's word (STORECFG). Valid-time design follow-up (28 Oct): placement by valid time needs no rho change (a
-  caller-minted ID, ImportNodeWithID); proposed DELRESIDUE (patch: a deleted entity with history leaves an `unknown`
-  presence/stamps map entry until probed, ~30-50 B per ID on an open shard; confirm with a test first) and TIMEWINDOW
+  caller-minted ID, ImportNodeWithID); PURGERESIDUE confirmed by a scratch test (patch, rho's own: a purge or history truncate
+  drops an ID's presence slot but records it in the `unknown` map until probed: 1,000 purged IDs -> 1,000 entries,
+  ~30-50 B each, on a shard that stays open; a plain delete keeps history and its one slot, by design; no consumer
+  purges today) and TIMEWINDOW
   reads (minor: a mint-time range on QueryOpts so reads consult only the shards whose window meets it). Wait for
   René's word.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
