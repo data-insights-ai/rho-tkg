@@ -93,7 +93,16 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   node) builds no membership sidecar (RelPostings = NodePostings = 0), the on-disk rel handle holds no entries, a
   reopen and a reopen without the option answer as memory at four pins, every membership door agrees with the
   sidecar it replaces; cost: two keys per indexed rel row (current + member), one per node row (member), no RAM
-  per entity.
+  per entity. Built (2b49e59f on `reldisk`): all of "done when" holds; 123 of 124 mutations caught (the lookup's
+  temporal peek equivalent and kept, six equivalents removed); the sweep found the range door's one-ulp and NaN-bound
+  bounds and an unreadable row's purge leaving member entries (both fixed on the branch, red in
+  `tasks/evidence/RELDISK/`). Next: ci-docker, scale probe, consumers, release, tags to ai-soc and sigma.
+- **VALIDTOPURGE** (found 28 Oct by RELDISK's race test; fix, patch) — badger `PurgeNodesByLabelValidToBefore`
+  dereferences `n.Temporal()` of every node of the label and panics on a node stored without temporal metadata
+  (badgerstore_retention_purge.go:81). Through pkg/graph every row is stamped; a direct badger caller panics. Fix: an
+  unstamped node is open (never purged by validity). After v4.92.0.
+- **CLEARGAP** (seen 28 Oct building RELDISK; unconfirmed) — `Clear`'s DropPrefix list omits `0x0A` and `0x0B`, so
+  on-disk property and temporal index entries may survive a `Clear`. First a red test; a patch if it holds.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
