@@ -42,6 +42,13 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Also: a read-only open with the flag over an unbuilt keyspace failed; it now keeps its entries in RAM. Built on
   branch propdisktoggle, 6 of 6 mutations caught. Released v4.90.2 (03222aca): ci-fast, tiered and graph short
   tests, tag CI and main CodeQL green, consumers build and vet clean.
+- **IDXKEYLAZY** (ai-soc's BO A/B kpdl on v4.91.0, 28 Oct; SCALE; fix, patch v4.91.1) — DerivedPage on disk: answers
+  equal, push 451.1 -> 463.7 s (+2.8 %, all labels +7.0 %), live heap -381 MB (PropertyIndex.AddKey 666 -> 260 MB),
+  but GC mark 97.7 -> 118.1 s. Cause: every index maintenance pass built a value key (a copy of a string value) for
+  every property of the row per label, indexed or not, and with a label listed the RAM and disk passes both ran.
+  Bench (one indexed key, eight 4 KB unindexed strings): RAM 33 KB / 9.5 us per write, listed 66 KB / 16 us; after,
+  ~0.5 KB / <1 us in every mode. Fix: walk the indexes on the row's labels. On branch idxkeylazy; done when released
+  and kpdl re-run.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
