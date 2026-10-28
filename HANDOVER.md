@@ -70,6 +70,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   a node write walked every property-index definition twice to find the on-disk ones, and the check built each
   entry key to measure it; now a list of the on-disk definitions and a length bound (check 225 ns / 4 allocations
   to 70 ns / 1). 8 of 8 mutations caught (a ninth, a numeric term in the bound, was equivalent and is removed).
+  ci-fast, memory, tiered, core and graph short tests green; sigma, ai-soc, ai-soc engine and bookkeeping build and
+  vet clean.
 - **v4.91.1** (IDXKEYLAZY, a patch from kpdl's GC term): index maintenance built a value key for every property of
   the row per label, indexed or not (a copy of each string value; twice with a label listed); now only for indexed
   properties: 33-66 KB to ~0.5 KB per write in the bench. 15 of 16 mutations caught, the 16th equivalent. The patch
