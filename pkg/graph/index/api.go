@@ -18,6 +18,7 @@ type Ops interface {
 	CreateProperty(label, propertyKey string) error
 	DeleteProperty(label, propertyKey string) error
 	HasProperty(label, propertyKey string) (bool, error)
+	PropertyIndexStats() ([]storepkg.PropertyIndexStat, error)
 	CreateRelProperty(typeName, propertyKey string) error
 	DeleteRelProperty(typeName, propertyKey string) error
 	HasRelProperty(typeName, propertyKey string) (bool, error)
@@ -98,6 +99,21 @@ func (a *API) HasProperty(label, propertyKey string) (bool, error) {
 		return false, err
 	}
 	return ops.HasProperty(label, propertyKey)
+}
+
+// PropertyIndexStats reports what each declared property index holds in RAM
+// (IDXSTATS): one row per definition (per open shard on tiered) with its label
+// or relationship type, keys, composite and on-disk flags, distinct values,
+// postings, membership-sidecar postings and estimated bytes;
+// storepkg.PropertyIndexStatsByScope sums them per label or type. A diagnostic:
+// the store walks every indexed value under its index read lock, so writes
+// wait for it. Backends without it return store.ErrCapabilityNotSupported.
+func (a *API) PropertyIndexStats() ([]storepkg.PropertyIndexStat, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.PropertyIndexStats()
 }
 
 // CreateRelProperty creates a relationship property index on the given rel type

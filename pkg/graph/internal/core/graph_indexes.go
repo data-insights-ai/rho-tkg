@@ -308,6 +308,40 @@ func (i *IndexOps) HasProperty(label, propertyKey string) (bool, error) {
 	return out, nil
 }
 
+// PropertyIndexStats reports what each declared property index holds in RAM
+// (IDXSTATS): one row per definition (per open shard on tiered), its label or
+// relationship type named; storepkg.PropertyIndexStatsByScope sums them per
+// label or type. A diagnostic: the store walks every indexed value under its
+// index read lock, so writes wait for it. Backends without the capability
+// return storepkg.ErrCapabilityNotSupported.
+func (i *IndexOps) PropertyIndexStats() ([]storepkg.PropertyIndexStat, error) {
+	c := i.c
+	var out []storepkg.PropertyIndexStat
+	err := c.readUnderRLock(func() error {
+		cap, ok := c.store.(storepkg.PropertyIndexStatsCapability)
+		if !ok {
+			return fmt.Errorf("%w: PropertyIndexStatsCapability", storepkg.ErrCapabilityNotSupported)
+		}
+		stats, err := cap.PropertyIndexStats()
+		if err != nil {
+			return err
+		}
+		for j := range stats {
+			if stats[j].RelTypeToken != 0 {
+				stats[j].RelType = c.relTypes.Resolve(stats[j].RelTypeToken)
+			} else {
+				stats[j].Label = c.labels.Resolve(stats[j].LabelToken)
+			}
+		}
+		out = stats
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HasTemporal reports whether a temporal interval index exists on label (backlog
 // 21b); a high-frequency index does not count. Unregistered labels return false;
 // backends without introspection return storepkg.ErrCapabilityNotSupported.

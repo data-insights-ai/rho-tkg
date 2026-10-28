@@ -567,11 +567,17 @@ func (ts *Store) collectLogShards() []*logShardSource {
 // meanwhile opens under its shardMu, which the checkout takes, so it is either
 // visited or opened after the caller's change.
 func (ts *Store) forEachOpenShard(fn func(*BadgerStore) error) error {
+	return ts.forEachOpenShardNamed(func(_ string, s *BadgerStore) error { return fn(s) })
+}
+
+// forEachOpenShardNamed is forEachOpenShard handing fn each shard's name too:
+// "reference", "archive" or the event shard's.
+func (ts *Store) forEachOpenShardNamed(fn func(name string, s *BadgerStore) error) error {
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return err
 	}
-	err = fn(ref)
+	err = fn("reference", ref)
 	refCheckin()
 	if err != nil {
 		return err
@@ -582,7 +588,7 @@ func (ts *Store) forEachOpenShard(fn func(*BadgerStore) error) error {
 			return err
 		}
 		if archive != nil {
-			err = fn(archive)
+			err = fn("archive", archive)
 		}
 		archiveCheckin()
 		if err != nil {
@@ -600,7 +606,7 @@ func (ts *Store) forEachOpenShard(fn func(*BadgerStore) error) error {
 		if !open {
 			continue
 		}
-		ferr := fn(store)
+		ferr := fn(es.name, store)
 		release()
 		if ferr != nil {
 			return ferr

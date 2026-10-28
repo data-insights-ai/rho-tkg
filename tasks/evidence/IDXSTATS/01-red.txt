@@ -1,0 +1,7 @@
+--- FAIL: TestPropertyIndexStats (0.19s)
+    idxstats_test.go:50: badger: no PropertyIndexStatsCapability
+    idxstats_test.go:50: tiered: no PropertyIndexStatsCapability
+    idxstats_test.go:50: memory: no PropertyIndexStatsCapability
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.199s
+FAIL

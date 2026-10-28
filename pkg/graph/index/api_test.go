@@ -60,6 +60,9 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	if _, err := api.HasProperty("Node", "name"); !errors.Is(err, wantErr) {
 		t.Fatalf("HasProperty = %v, want %v", err, wantErr)
 	}
+	if _, err := api.PropertyIndexStats(); !errors.Is(err, wantErr) {
+		t.Fatalf("PropertyIndexStats = %v, want %v", err, wantErr)
+	}
 	if _, err := api.HasRelProperty("KNOWS", "weight"); !errors.Is(err, wantErr) {
 		t.Fatalf("HasRelProperty = %v, want %v", err, wantErr)
 	}
@@ -82,7 +85,7 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 		"CreateProperty", "DropProperty", "CreateComposite", "DeleteComposite", "CreateHighFrequency", "DropHighFrequency",
 		"CreateTemporal", "DropTemporal", "CreateRelTemporal", "DeleteRelTemporal", "CreateVector", "CreateVectorWithOptions", "DropVector",
 		"RegisterProvider", "UnregisterProvider",
-		"SearchNearest", "SearchNearestScored", "HasProperty", "HasRelProperty", "HasTemporal", "VectorIndexInfo", "Providers", "Providers",
+		"SearchNearest", "SearchNearestScored", "HasProperty", "PropertyIndexStats", "HasRelProperty", "HasTemporal", "VectorIndexInfo", "Providers", "Providers",
 	}
 	if len(ops.calls) != len(wantCalls) {
 		t.Fatalf("calls = %v, want %v", ops.calls, wantCalls)
@@ -140,6 +143,11 @@ func (s *indexOpsSpy) DeleteProperty(label, propertyKey string) error {
 func (s *indexOpsSpy) HasProperty(label, propertyKey string) (bool, error) {
 	s.record("HasProperty")
 	return false, s.err
+}
+
+func (s *indexOpsSpy) PropertyIndexStats() ([]storepkg.PropertyIndexStat, error) {
+	s.record("PropertyIndexStats")
+	return nil, s.err
 }
 
 func (s *indexOpsSpy) CreateRelProperty(typeName, propertyKey string) error {

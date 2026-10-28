@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-28: latest tag v4.92.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-28: latest tag v4.93.0; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,7 +7,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-28 Oct:** v4.75.0 to v4.91.2 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND, v4.90.0 VOIDPROPS, v4.90.1 TXMEMBERS, v4.90.2 PROPDISKTOGGLE, v4.90.3 PROPOVERLAY, v4.91.0 PROPDISKLABEL, v4.91.1 IDXKEYLAZY, v4.91.2 DISKDEFS, v4.92.0 RELDISK), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
+- **Released 24-28 Oct:** v4.75.0 to v4.93.0 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND, v4.90.0 VOIDPROPS, v4.90.1 TXMEMBERS, v4.90.2 PROPDISKTOGGLE, v4.90.3 PROPOVERLAY, v4.91.0 PROPDISKLABEL, v4.91.1 IDXKEYLAZY, v4.91.2 DISKDEFS, v4.92.0 RELDISK, v4.93.0 IDXSTATS), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
 - **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
   "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
@@ -73,6 +73,12 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   ci-fast, memory, tiered, core and graph short tests green; sigma, ai-soc, ai-soc engine and bookkeeping build and
   vet clean. Tag CI and main CodeQL green. ai-soc's k12 BO A/B: push +3.3 % (k11 +3.8 %), the check gone
   from the gap, the disk pass +0.8 s (k11 +2.6); what remains is badger writing the rows. Closed.
+- **v4.93.0** (IDXSTATS, a minor; ai-soc's request after the v4.92.0 kit run): `g.Index().PropertyIndexStats()`
+  gives one row per declared property index (values, postings, sidecar member postings, estimated RAM bytes, on
+  disk), per open shard on tiered and per slot on sharded; `store.PropertyIndexStatsByScope` sums per label or type.
+  The estimate is calibrated against the measured heap (index shapes, maps per growth band, ordered views) within
+  ±20 %. 54 of 55 mutations caught (the 55th, the directory pointer's 8 B in the measured table constant, is below
+  the calibration's resolution). Release gate pending.
 - **v4.92.0** (RELDISK phase 1, a minor for SCALE goal 2, ai-soc's request for sigma's 2b edges):
   `RelPropertyIndexOnDiskTypes` keeps the listed relationship types' property indexes in a new `0x0C` keyspace
   (current entries for lookups, member entries for pinned reads); node indexes on disk answer pinned reads from

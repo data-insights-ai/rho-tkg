@@ -429,6 +429,71 @@ type PropertyTxMembershipStatsCapability interface {
 	PropertyTxMembershipStats() (PropertyTxMembershipStats, error)
 }
 
+// PropertyIndexStat is what one declared property index holds in RAM
+// (IDXSTATS): a node definition (LabelToken, Keys of one property, or of a
+// composite's two to four) or a relationship definition (RelTypeToken). Values
+// are its distinct values (a composite's distinct key tuples), Postings its
+// (entity, value) pairs, MemberPostings those of its membership sidecar when
+// built (the TxPin and TxAt reads' candidates, PropertyTxMembershipStats).
+// RAMBytes estimates the bytes of both: map slots at average load, keys,
+// posting chunks at capacity and the ordered views; a sidecar's windowed and
+// numeric views are not counted. A definition OnDisk keeps its entries and
+// member entries on disk and reports none of them. Label and RelType are
+// filled by the graph door, which names the tokens; Shard names a tiered
+// store's shard ("reference", "archive" or the event shard's name) or a sharded
+// store's slot ("0", "1", ...).
+type PropertyIndexStat struct {
+	Shard          string
+	LabelToken     uint16
+	RelTypeToken   uint16
+	Label          string
+	RelType        string
+	Keys           []string
+	Composite      bool
+	OnDisk         bool
+	Values         int64
+	Postings       int64
+	MemberPostings int64
+	RAMBytes       int64
+}
+
+// PropertyIndexStatsCapability is OPTIONAL: one PropertyIndexStat per declared
+// property index (tiered: per open shard, a closed shard holding none in RAM;
+// sharded: per slot, in slot order). It walks every value of every index under
+// the store's index read lock, so a write waits for it: a diagnostic, not a
+// per-request call.
+type PropertyIndexStatsCapability interface {
+	PropertyIndexStats() ([]PropertyIndexStat, error)
+}
+
+// PropertyIndexStatsByScope sums stats per label or relationship type: one
+// row per scope (Keys nil, Shard empty), Composite and OnDisk set when any of
+// its definitions is, in the order the scopes first appear.
+func PropertyIndexStatsByScope(stats []PropertyIndexStat) []PropertyIndexStat {
+	type scope struct {
+		label, relType uint16
+	}
+	at := make(map[scope]int)
+	var out []PropertyIndexStat
+	for _, s := range stats {
+		k := scope{s.LabelToken, s.RelTypeToken}
+		i, ok := at[k]
+		if !ok {
+			i = len(out)
+			at[k] = i
+			out = append(out, PropertyIndexStat{LabelToken: s.LabelToken, RelTypeToken: s.RelTypeToken, Label: s.Label, RelType: s.RelType})
+		}
+		t := &out[i]
+		t.Composite = t.Composite || s.Composite
+		t.OnDisk = t.OnDisk || s.OnDisk
+		t.Values += s.Values
+		t.Postings += s.Postings
+		t.MemberPostings += s.MemberPostings
+		t.RAMBytes += s.RAMBytes
+	}
+	return out
+}
+
 // NodeBeliefWatermarkCapability is OPTIONAL (backlog 10c): the maximum TxFrom ever
 // recorded across a node's entire version chain (current row plus every history
 // row). When the current row's TxFrom equals it, current is the newest belief in

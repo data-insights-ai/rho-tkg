@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.93.0] - 2026-10-28
+
+### Added
+
+- **IDXSTATS** (SCALE; ai-soc's request after the v4.92.0 kit run, where 128 MB of node index entries had no
+  breakdown by label). `g.Index().PropertyIndexStats() ([]store.PropertyIndexStat, error)` gives one row per
+  declared property index, single-key or composite, node or relationship. A row holds the definition's label or
+  type, its keys, its distinct values (a composite's key tuples) and postings, its membership sidecar's postings
+  once a pinned read built it, `OnDisk` for a definition kept in the `0x0C` keyspace (none of it in RAM), and
+  `RAMBytes`, an estimate of the bytes. The estimate counts map slots at average load, keys at their Go size class,
+  a small map's whole group, posting chunks at capacity and the ordered views (the numeric buckets' posting
+  lists); a sidecar's windowed and numeric views are not counted. `store.PropertyIndexStatsByScope` sums the rows
+  per label or relationship type. New optional capability `store.PropertyIndexStatsCapability` on memory, badger,
+  sharded (a row per slot) and tiered (a row per open shard, named; a closed shard is not opened). It walks every
+  value under the index read lock: a diagnostic, not a per-request call. Tests: `TestFootprintMatchesHeap` (nine
+  shapes, from every value distinct to 20 rows a value, numeric with range counts, composite, sidecar with ordered
+  lists: estimate within ±20 % of the measured heap, 0.85 to 1.06), core `TestPropertyIndexStats` (memory, badger,
+  tiered and sharded: values, postings, member postings, bytes growing when pinned reads build the node and
+  relationship sidecars, on-disk and composite flags, names, the order within each shard, shard names, the sums
+  per label or type), `TestMapBytesMatchesHeap` (Go maps across each growth band, small maps to 256-slot tables:
+  0.89 to 1.00) and `TestChunksBytesMatchesHeap` (an ordered view as a set and with range counts: 0.92), the index
+  API's delegation. 54 of 55 mutations caught; the 55th, the directory pointer's 8 B in the measured table
+  constant (a table and its pointer take 40 B), is below the calibration's resolution.
+
 ## [4.92.0] - 2026-10-28
 
 ### Added
