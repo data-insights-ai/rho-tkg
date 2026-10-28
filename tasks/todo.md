@@ -110,6 +110,15 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   calibrated against the heap (nine index shapes 0.85-1.06, maps per growth band 0.89-1.00, ordered views 0.92);
   54 of 55 mutations caught. ci-docker green, consumers build and vet clean, scale probe unchanged (e45b54ba).
   Released v4.93.0 (316081b1): tag CI and main green, ai-soc and sigma notified.
+- **VALIDENDPRUNE** (sigma 29 Oct, René's standing yes; door, minor) — sigma's paged-row probes by property value
+  (ByLabelAndPropertyValues on DerivedPage) are 30 % of CPU on BA day 3 and grow with the days: each probe fetches
+  every node the value ever had (~100 per value at cut 300 when it uses 1); 95 % of the read is
+  fetchNodesByLabelPropertyIDs, and the valid-time filter resolves every candidate. Ask: QueryOpts.ValidEndAfter,
+  only nodes with a current segment ending after the bound (open counts), decided without fetching. sigma proposes
+  the max ValidTo per posting (0x0C value on disk). Alternative without a format change or write amplification:
+  prune the candidates through the existing RAM valid-end index (backlog 51, NodeValidEndCandidates: per entity an
+  upper bound and a stamp; ~32 B per entity plus 32 B per tracked label). Asked sigma: probes pinned or current,
+  DerivedPage node count (RAM), > or >= at the bound, priority against RELDISK phase 2.
 - **RELDISK phase 2** (door, minor v4.94.0, after IDXSTATS; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
