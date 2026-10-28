@@ -96,7 +96,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   per entity. Built (2b49e59f on `reldisk`): all of "done when" holds; 123 of 124 mutations caught (the lookup's
   temporal peek equivalent and kept, six equivalents removed); the sweep found the range door's one-ulp and NaN-bound
   bounds and an unreadable row's purge leaving member entries (both fixed on the branch, red in
-  `tasks/evidence/RELDISK/`). Next: ci-docker, scale probe, consumers, release, tags to ai-soc and sigma.
+  `tasks/evidence/RELDISK/`). ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean,
+  scale probe unchanged without the option (70869fd3). Next: release, tags to ai-soc and sigma.
 - **VALIDTOPURGE** (found 28 Oct by RELDISK's race test; fix, patch) — badger `PurgeNodesByLabelValidToBefore`
   dereferences `n.Temporal()` of every node of the label and panics on a node stored without temporal metadata
   (badgerstore_retention_purge.go:81). Through pkg/graph every row is stamped; a direct badger caller panics. Fix: an
