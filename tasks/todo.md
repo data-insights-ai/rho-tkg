@@ -108,7 +108,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   confirmed the shape (RAM bytes, on disk, per label or type). Committed on branch `idxstats` (85bdc962):
   memory, badger, sharded (per slot), tiered (per open shard), `store.PropertyIndexStatsByScope`; estimate
   calibrated against the heap (nine index shapes 0.85-1.06, maps per growth band 0.89-1.00, ordered views 0.92);
-  54 of 55 mutations caught. Next: ci-docker, scale probe, consumers, release.
+  54 of 55 mutations caught. ci-docker green, consumers build and vet clean, scale probe unchanged (e45b54ba).
+  Next: merge, tag, push, notify.
 - **RELDISK phase 2** (door, minor v4.94.0, after IDXSTATS; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
