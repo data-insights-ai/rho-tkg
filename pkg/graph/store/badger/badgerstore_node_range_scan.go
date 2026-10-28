@@ -32,7 +32,7 @@ func (bs *Store) NodeRangeCardinality(token uint16, propKey string, min, max flo
 	idx, ok := bs.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: token, PropertyKey: propKey}]
 	var count int64
 	exact := false
-	if ok && !bs.propIdxOnDisk {
+	if ok {
 		count, exact = idx.RangeCardinality(min, max, inclMin, inclMax)
 	}
 	bs.idxMu.RUnlock()
@@ -65,7 +65,7 @@ func (bs *Store) ForEachNodeByLabelPropertyRange(token uint16, propKey string, m
 	supported := false
 	var rangeErr error
 	if ok {
-		if bs.propIdxOnDisk {
+		if idx.OnDisk() {
 			nids, supported, rangeErr = bs.propertyIndexDiskRangeLocked(propKey, min, max)
 		} else {
 			nids, supported = idx.RangeNodeIDs(min, max, inclMin, inclMax)
@@ -156,7 +156,7 @@ func (bs *Store) ForEachNodeByLabelPropertyRangeOrdered(token uint16, propKey st
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: token, PropertyKey: propKey}
 
-	if bs.propIdxOnDisk {
+	if bs.nodePropIndexOnDisk(key) {
 		return bs.forEachNodeRangeOrderedDisk(token, propKey, key, min, max, desc, fn)
 	}
 	return bs.forEachNodeRangeOrderedRAM(token, key, min, max, desc, fn)

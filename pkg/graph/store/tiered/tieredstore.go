@@ -158,6 +158,10 @@ type Config struct {
 	// rebuild. Passed through badgerCfg to EVERY shard (reference, hot, warm,
 	// lazy cold/archive, and rotation-created).
 	PropertyIndexOnDisk bool
+	// PropertyIndexOnDiskLabels is PropertyIndexOnDisk for the listed labels'
+	// property indexes only, every other label's stay in RAM (badger.Config;
+	// PROPDISKLABEL). Passed to every shard with the registry naming the labels.
+	PropertyIndexOnDiskLabels []string
 	// RelsByMint places a relationship whose endpoints both live on the
 	// reference shard on the event shard of its ID's mint instant: entity and
 	// both adjacency legs there, so closing that shard when it goes cold frees
@@ -397,17 +401,19 @@ type Store struct {
 	numCompactors         int
 	encryptionKey         []byte // per-shard AES encryption-at-rest key; nil = disabled
 	encryptionKeyRotation time.Duration
-	cacheBudgetBytes      int64         // per-shard entity-cache byte budget; 0 = off
-	propertyIndexOnDisk   bool          // reference-shard-only scope unchanged; changes RAM vs disk representation
-	disablePlannerStats   bool          // skip planner-stat maintenance on every shard; stat folds decline
-	historyDeltaEncoding  bool          // anchor+delta version-history storage on every shard (ADR-0009/B6)
-	openImageInterval     time.Duration // periodic open images on every shard (badger.Config.OpenImageInterval)
-	syncWrites            bool          // Config.SyncWrites: every writable shard opens with badger SyncWrites
-	flushHold             atomic.Bool   // every shard's flush-hold flag (badgerCfg shares it; tieredstore_flush_hold.go)
-	temporalIndexOnDisk   bool          // per-shard rebuild-at-open accelerator; index itself stays RAM-resident on every shard
-	adjacencyIndexOnDisk  bool          // every shard answers adjacency from its out/in keys, no RAM maps
-	labelIndexOnDisk      bool          // every shard answers label reads from its label keys, no RAM map
-	closeCh               chan struct{} // signals idle-close goroutine to stop
+	cacheBudgetBytes      int64                      // per-shard entity-cache byte budget; 0 = off
+	propertyIndexOnDisk   bool                       // reference-shard-only scope unchanged; changes RAM vs disk representation
+	propDiskLabels        []string                   // PropertyIndexOnDiskLabels
+	openLabelNames        *registrypkg.LabelRegistry // names propDiskLabels for shards opened before the graph installs its registry
+	disablePlannerStats   bool                       // skip planner-stat maintenance on every shard; stat folds decline
+	historyDeltaEncoding  bool                       // anchor+delta version-history storage on every shard (ADR-0009/B6)
+	openImageInterval     time.Duration              // periodic open images on every shard (badger.Config.OpenImageInterval)
+	syncWrites            bool                       // Config.SyncWrites: every writable shard opens with badger SyncWrites
+	flushHold             atomic.Bool                // every shard's flush-hold flag (badgerCfg shares it; tieredstore_flush_hold.go)
+	temporalIndexOnDisk   bool                       // per-shard rebuild-at-open accelerator; index itself stays RAM-resident on every shard
+	adjacencyIndexOnDisk  bool                       // every shard answers adjacency from its out/in keys, no RAM maps
+	labelIndexOnDisk      bool                       // every shard answers label reads from its label keys, no RAM map
+	closeCh               chan struct{}              // signals idle-close goroutine to stop
 	closeOnce             sync.Once
 	lifecycleMu           sync.RWMutex // blocks Close while long sequential store-wide operations release per-shard pins
 	closed                atomic.Bool  // set under archiveMu inside Close before tearing the archive down;
@@ -638,6 +644,7 @@ func New(cfg Config) (*Store, error) {
 		encryptionKeyRotation: cfg.EncryptionKeyRotation,
 		cacheBudgetBytes:      cfg.CacheBudgetBytes,
 		propertyIndexOnDisk:   cfg.PropertyIndexOnDisk,
+		propDiskLabels:        cfg.PropertyIndexOnDiskLabels,
 		temporalIndexOnDisk:   cfg.TemporalIndexOnDisk,
 		adjacencyIndexOnDisk:  cfg.AdjacencyIndexOnDisk,
 		labelIndexOnDisk:      cfg.LabelIndexOnDisk,
@@ -680,6 +687,19 @@ func New(cfg Config) (*Store, error) {
 			}
 		}
 		ts.regFile = filepath.Join(cfg.DataDir, "meta", "registry.msgpack")
+		if len(cfg.PropertyIndexOnDiskLabels) > 0 {
+			labels, _, err := loadRegistryFile(ts.regFile)
+			if err != nil {
+				return nil, err
+			}
+			if labels != nil {
+				reg := registrypkg.NewLabelRegistry()
+				if err := reg.ImportNames(labels); err != nil {
+					return nil, fmt.Errorf("graph: label registry for PropertyIndexOnDiskLabels: %w", err)
+				}
+				ts.openLabelNames = reg
+			}
+		}
 		ts.temporalIdxFile = filepath.Join(cfg.DataDir, "meta", "temporal_indexes.msgpack")
 		ts.vectorIdxFile = filepath.Join(cfg.DataDir, "meta", "vector_indexes.msgpack")
 		ts.catalog = NewShardCatalog(filepath.Join(cfg.DataDir, "meta", "shard_catalog.json"))
@@ -1722,32 +1742,39 @@ func (ts *Store) openExistingBadgerStore(name string) (*BadgerStore, error) {
 // cold/archive, and rotation-created.
 func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	cfg := BadgerStoreConfig{
-		InMemory:              ts.inMemory,
-		CacheCapacity:         ts.cacheCap,
-		CacheBudgetBytes:      ts.cacheBudgetBytes,
-		FlushInterval:         ts.flushInt,
-		ReadOnly:              readOnly,
-		Compression:           ts.compression,
-		ZSTDCompressionLevel:  ts.zstdLevel,
-		ValueLogFileSize:      ts.valueLogFileSize,
-		MemTableSize:          ts.memTableSize,
-		BlockCacheSize:        ts.blockCacheSize,
-		IndexCacheSize:        ts.indexCacheSize,
-		NumCompactors:         ts.numCompactors,
-		EncryptionKey:         ts.encryptionKey,
-		EncryptionKeyRotation: ts.encryptionKeyRotation,
-		PropertyIndexOnDisk:   ts.propertyIndexOnDisk,
-		TemporalIndexOnDisk:   ts.temporalIndexOnDisk,
-		AdjacencyIndexOnDisk:  ts.adjacencyIndexOnDisk,
-		LabelIndexOnDisk:      ts.labelIndexOnDisk,
-		DisablePlannerStats:   ts.disablePlannerStats,
-		HistoryDeltaEncoding:  ts.historyDeltaEncoding,
-		OpenImageInterval:     ts.openImageInterval,
-		ValidAxis:             ts.validAxis.Get(),
-		SyncWrites:            ts.syncWrites && !readOnly,
+		InMemory:                  ts.inMemory,
+		CacheCapacity:             ts.cacheCap,
+		CacheBudgetBytes:          ts.cacheBudgetBytes,
+		FlushInterval:             ts.flushInt,
+		ReadOnly:                  readOnly,
+		Compression:               ts.compression,
+		ZSTDCompressionLevel:      ts.zstdLevel,
+		ValueLogFileSize:          ts.valueLogFileSize,
+		MemTableSize:              ts.memTableSize,
+		BlockCacheSize:            ts.blockCacheSize,
+		IndexCacheSize:            ts.indexCacheSize,
+		NumCompactors:             ts.numCompactors,
+		EncryptionKey:             ts.encryptionKey,
+		EncryptionKeyRotation:     ts.encryptionKeyRotation,
+		PropertyIndexOnDisk:       ts.propertyIndexOnDisk,
+		PropertyIndexOnDiskLabels: ts.propDiskLabels,
+		TemporalIndexOnDisk:       ts.temporalIndexOnDisk,
+		AdjacencyIndexOnDisk:      ts.adjacencyIndexOnDisk,
+		LabelIndexOnDisk:          ts.labelIndexOnDisk,
+		DisablePlannerStats:       ts.disablePlannerStats,
+		HistoryDeltaEncoding:      ts.historyDeltaEncoding,
+		OpenImageInterval:         ts.openImageInterval,
+		ValidAxis:                 ts.validAxis.Get(),
+		SyncWrites:                ts.syncWrites && !readOnly,
 		// One hold flag for every shard: a shard opened during a durable
 		// group's hold (rotation, lazy open) starts held.
 		SharedFlushHold: &ts.flushHold,
+	}
+	if len(ts.propDiskLabels) > 0 {
+		cfg.LabelNames = ts.labelNames.Load()
+		if cfg.LabelNames == nil {
+			cfg.LabelNames = ts.openLabelNames
+		}
 	}
 	if !ts.inMemory {
 		cfg.Dir = ts.shardDir(name)

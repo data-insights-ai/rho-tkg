@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.91.0] - 2026-10-28
+
+### Added
+
+- **PROPDISKLABEL** (SCALE, goal 2; ai-soc's reduced BA k10272220 on v4.90.1: live heap +3,587 MB from 300 to
+  900 s, `PropertyIndex.AddKey` +1,720 MB of it, 1.66 GB from sigma's paged DerivedPage nodes; ai-soc's BO A/B
+  k10271955: every label on disk cost +7.0 % push, mostly another label's lookups).
+  `PropertyIndexOnDiskLabels []string` on `badger.Config`, `tiered.Config` and `graph.Config`: the listed labels'
+  property indexes keep their entries in the on-disk `0x0A` keyspace, every other label's stay in RAM, also on a
+  shared property key (rows are keyed by property key, every reader rechecks label and value). A definition's
+  place is fixed at load or create; the labels are named at open by `badger.Config.LabelNames` (tiered passes its
+  registry file) or the persisted registry. A built marker per listed definition lets the list change between
+  opens: a label that joins is rebuilt by the next writable open with its keys' stale rows dropped, one that leaves
+  loses its marker, a read-only open keeps an unbuilt definition in RAM; the first marker raises the store format
+  marker to 12 (older releases refuse the store). The doors that decline with `PropertyIndexOnDisk` decline for a
+  listed label's index only. Tests: `TestPropertyIndexOnDiskLabels` (graph: memory, badger and tiered answer
+  equality, ordered range, prefix and counts alike before and after a reopen, the listed label's bounds declined),
+  badger `TestPropertyIndexOnDiskLabels` (join, leave, rejoin, switch, read-only, drop, key-size limit),
+  `TestPropertyIndexOnDiskLabels_JoinRaisesFormat`, `TestPropertyIndexOnDisk_NoRegistryStaysInRAM`; 30 of 30
+  mutations caught.
+
 ## [4.90.3] - 2026-10-28
 
 ### Fixed

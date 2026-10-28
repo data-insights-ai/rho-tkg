@@ -16,6 +16,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -77,6 +78,36 @@ func (bs *Store) propKeyTokenFor(propertyKey string) (uint16, bool) {
 	return tok, true
 }
 
+// propIdxOnDiskWanted reports whether a property index on labelToken keeps its
+// entries on disk: every label's with PropertyIndexOnDisk, a listed label's with
+// PropertyIndexOnDiskLabels, named by the graph's registry or else the one the
+// open read. A label no registry names stays in RAM.
+func (bs *Store) propIdxOnDiskWanted(labelToken uint16) bool {
+	if bs.propIdxOnDisk {
+		return true
+	}
+	if len(bs.propDiskLabels) == 0 {
+		return false
+	}
+	reg := bs.labelNames.Load()
+	if reg == nil {
+		reg = bs.propDiskNames
+	}
+	if reg == nil {
+		return false
+	}
+	_, ok := bs.propDiskLabels[reg.Resolve(labelToken)]
+	return ok
+}
+
+// nodePropIndexOnDisk reports whether the property index on key keeps its
+// entries on disk (false without one).
+func (bs *Store) nodePropIndexOnDisk(key indexpkg.PropertyIndexKey) bool {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	return bs.propertyIndexes[key].OnDisk()
+}
+
 // propertyIndexDiskOp builds the writeOp for one (propertyKey, valueKey,
 // nodeID) entry. ok=false when the value isn't indexable or no token could
 // be resolved — callers simply skip the entry, mirroring AddKey/removeKey's
@@ -129,10 +160,9 @@ func (b *propIDBounds) bounds(txn *badgerv4.Txn) (lo, hi uint64) {
 
 // maintainPropertyIndexesAdd is the write-path maintenance entry point every
 // node-mutation door calls in place of indexpkg.AddNodeToPropertyIndexes.
-// When disk mode is off it delegates unchanged (RAM Entries/numBuckets
-// maintenance, zero behavior change). When on, it iterates n's labels exactly
-// like the RAM helper, but for each (label,propertyKey) definition that
-// exists, computes a disk writeOp instead of mutating Entries — and marks
+// The RAM helper maintains the RAM indexes (it skips the on-disk ones); for
+// each on-disk (label,propertyKey) definition that exists,
+// propertyIndexDiskMaintain computes a disk writeOp instead — and marks
 // the definition's Mutated set exactly like AddKey does (3-phase
 // index-creation safety, see CreatePropertyIndex). Caller must already hold
 // idxMu (every call site does) and is responsible for merging the returned
@@ -151,7 +181,9 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 	indexpkg.AddNodeToCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, id)
 	if !bs.propIdxOnDisk {
 		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
-		return nil
+		if len(bs.propDiskLabels) == 0 {
+			return nil
+		}
 	}
 	return bs.propertyIndexDiskMaintain(n, id, writeOpSet)
 }
@@ -210,7 +242,9 @@ func (bs *Store) maintainPropertyIndexesRemove(n *types.Node, id snowflake.ID) [
 	indexpkg.RemoveNodeFromCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, id)
 	if !bs.propIdxOnDisk {
 		indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
-		return nil
+		if len(bs.propDiskLabels) == 0 {
+			return nil
+		}
 	}
 	return bs.propertyIndexDiskMaintain(n, id, writeOpDelete)
 }
@@ -226,7 +260,7 @@ func (bs *Store) propertyIndexDiskMaintain(n *types.Node, id snowflake.ID, opTyp
 		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
 			key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 			idx, exists := bs.propertyIndexes[key]
-			if !exists {
+			if !exists || !idx.OnDisk() {
 				return true
 			}
 			if op, ok := bs.propertyIndexDiskOp(propertyKey, valueKey, id, opType); ok {
@@ -255,7 +289,6 @@ func (bs *Store) maintainPropertyIndexesPurge(id snowflake.ID) []writeOp {
 	indexpkg.PurgeNodeFromAllCompositeIndexes(bs.compositeIndexes, id)
 	if !bs.propIdxOnDisk {
 		indexpkg.PurgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
-		return nil
 	}
 	tokens := bs.distinctPropertyKeyTokensLocked()
 	if len(tokens) == 0 {
@@ -306,11 +339,15 @@ func (bs *Store) maintainPropertyIndexesPurge(id snowflake.ID) []writeOp {
 }
 
 // distinctPropertyKeyTokensLocked returns the set of propertyKey tokens
-// referenced by any CURRENT property-index definition. Caller holds idxMu.
+// referenced by any CURRENT on-disk property-index definition. Caller holds
+// idxMu.
 func (bs *Store) distinctPropertyKeyTokensLocked() map[uint16]struct{} {
 	seenKeys := make(map[string]struct{})
 	tokens := make(map[uint16]struct{})
-	for k := range bs.propertyIndexes {
+	for k, idx := range bs.propertyIndexes {
+		if !idx.OnDisk() {
+			continue
+		}
 		if _, dup := seenKeys[k.PropertyKey]; dup {
 			continue
 		}
@@ -832,15 +869,136 @@ func (bs *Store) purgePropertyKeyDiskEntriesLocked(propertyKey string) ([]writeO
 	return ops, nil
 }
 
-// commitPropertyIndexOnDiskBackfill writes the one-time rebuild-on-enable
-// backfill (item (d)) plus the built marker in a single WriteBatch, so a
-// crash mid-backfill leaves either NO rows and no marker (retried on the
-// next open) or ALL rows and the marker (never a half-built keyspace that a
-// later open trusts as complete). ops are always writeOpSet: the only
-// caller (loadIndexesScan) backfills additions from current node state.
-// stale holds the 0x0A keys present before it: those ops do not set again
-// are deleted, rows an earlier session with the flag wrote and a session
-// without it left stale (PROPDISKTOGGLE).
+// propDiskOpen is an open's plan for the on-disk property indexes
+// (planPropertyIndexDisk).
+type propDiskOpen struct {
+	disk    map[indexpkg.PropertyIndexKey]struct{} // the definitions this open keeps on disk
+	rebuild map[string]struct{}                    // property keys whose 0x0A rows this open writes again
+	ops     []writeOp                              // the rebuilt keys' rows (loadIndexesScan)
+	stale   [][]byte                               // the rebuilt keys' rows before the rebuild
+	mark    []writeOp                              // built markers to set (with the format marker)
+	unmark  [][]byte                               // built markers to delete
+}
+
+func (p *propDiskOpen) writes() bool {
+	return len(p.ops) > 0 || len(p.stale) > 0 || len(p.mark) > 0 || len(p.unmark) > 0
+}
+
+func (p *propDiskOpen) sets() []writeOp { return append(p.ops, p.mark...) }
+
+func (p *propDiskOpen) deletes() [][]byte { return append(p.stale, p.unmark...) }
+
+// planPropertyIndexDisk decides at open which property indexes keep their
+// entries on disk and what the open writes for them (PROPDISKTOGGLE,
+// PROPDISKLABEL). A definition whose label wants disk (propIdxOnDiskWanted) is
+// on disk when its rows are trusted: the store-wide built marker
+// (PropertyIndexOnDisk) or its own (PropertyIndexOnDiskLabels) is present, and
+// a marker stays only while every writable open maintains what it covers. An
+// untrusted one is rebuilt by a writable open with a property-key registry,
+// together with every on-disk definition of its property key (they share the
+// rows, and the rebuild drops the key's rows it does not write again);
+// otherwise it stays in RAM for this open. A writable open then leaves the
+// markers of what it maintains: the store-wide one with PropertyIndexOnDisk
+// unless a definition stayed in RAM, a definition's own with
+// PropertyIndexOnDiskLabels (raising the format marker to 12), and deletes the
+// others.
+func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*propDiskOpen, error) {
+	p := &propDiskOpen{disk: make(map[indexpkg.PropertyIndexKey]struct{}), rebuild: make(map[string]struct{})}
+	all, err := metaKeyPresent(txn, storepkg.PropertyIndexOnDiskBuiltKey)
+	if err != nil {
+		return nil, fmt.Errorf("graph: read property-index-on-disk marker: %w", err)
+	}
+	marked := make(map[string]struct{})
+	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: storepkg.PropertyIndexOnDiskDefBuiltPrefix})
+	for it.Rewind(); it.Valid(); it.Next() {
+		marked[string(it.Item().Key())] = struct{}{}
+	}
+	it.Close()
+	canBuild := !bs.readOnly && bs.propKeyReg.Load() != nil
+	inRAM := false // a definition that wants disk stays in RAM this open
+	for _, def := range defs {
+		if !bs.propIdxOnDiskWanted(def.LabelToken) {
+			continue
+		}
+		if def.Elements {
+			// The disk keyspace keys scalars only and is shared by every
+			// label indexing the key: an Elements index would answer
+			// equality. Open it without PropertyIndexOnDisk (or its label in
+			// PropertyIndexOnDiskLabels).
+			return nil, fmt.Errorf("graph: load property index definition label %d property %q: an elements index needs the RAM index, not PropertyIndexOnDisk: %w",
+				def.LabelToken, def.PropertyKey, storecontract.ErrCapabilityNotSupported)
+		}
+		key := indexpkg.PropertyIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
+		_, trusted := marked[string(storepkg.PropertyIndexOnDiskDefBuiltKey(def.LabelToken, def.PropertyKey))]
+		switch {
+		case trusted || all:
+			p.disk[key] = struct{}{}
+		case canBuild:
+			p.disk[key] = struct{}{}
+			p.rebuild[def.PropertyKey] = struct{}{}
+		default:
+			inRAM = true
+		}
+	}
+	if bs.propIdxOnDisk && inRAM {
+		// PropertyIndexOnDisk over rows this open cannot rebuild (read-only,
+		// or no property-key registry): every index stays in RAM, as without
+		// the flag.
+		bs.propIdxOnDisk = false
+		clear(p.disk)
+		clear(p.rebuild)
+	}
+	if bs.readOnly {
+		return p, nil
+	}
+	for propertyKey := range p.rebuild {
+		tok, ok := bs.propKeyTokenFor(propertyKey)
+		if !ok {
+			continue
+		}
+		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: storepkg.PropertyIndexTokenPrefix(tok)})
+		for it.Rewind(); it.Valid(); it.Next() {
+			p.stale = append(p.stale, it.Item().KeyCopy(nil))
+		}
+		it.Close()
+	}
+	switch {
+	case bs.propIdxOnDisk && !all && !inRAM:
+		p.mark = append(p.mark, writeOp{opType: writeOpSet, key: storepkg.PropertyIndexOnDiskBuiltKey, value: []byte{1}})
+	case !bs.propIdxOnDisk && all:
+		p.unmark = append(p.unmark, storepkg.PropertyIndexOnDiskBuiltKey)
+	}
+	keep := make(map[string]struct{}, len(p.disk))
+	for key := range p.disk {
+		k := string(storepkg.PropertyIndexOnDiskDefBuiltKey(key.LabelToken, key.PropertyKey))
+		_, ok := marked[k]
+		switch {
+		case ok:
+			keep[k] = struct{}{}
+		case !bs.propIdxOnDisk: // the store-wide marker covers every definition
+			p.mark = append(p.mark, writeOp{opType: writeOpSet, key: []byte(k), value: []byte{1}})
+		}
+	}
+	for k := range marked {
+		if _, ok := keep[k]; !ok {
+			p.unmark = append(p.unmark, []byte(k))
+		}
+	}
+	if len(p.mark) > 0 && !bs.propIdxOnDisk {
+		v := bs.raisedFormatMarker(storepkg.PropDiskLabelsStoreFormatVersion)
+		p.mark = append(p.mark, writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)})
+	}
+	return p, nil
+}
+
+// commitPropertyIndexOnDiskBackfill writes an open's rebuild of on-disk
+// property index rows and its built markers (planPropertyIndexDisk) in a
+// single WriteBatch, so a crash mid-rebuild leaves either none of it (the next
+// open plans it again) or all of it (never a half-built keyspace that a later
+// open trusts as complete). stale holds keys to delete: the rebuilt keys' rows
+// present before it, those ops do not set again (rows an earlier session with
+// the flag wrote and a session without it left stale, PROPDISKTOGGLE), and
+// markers.
 func (bs *Store) commitPropertyIndexOnDiskBackfill(ops []writeOp, stale [][]byte) error {
 	wb := bs.db.NewWriteBatch()
 	defer wb.Cancel()
@@ -858,9 +1016,6 @@ func (bs *Store) commitPropertyIndexOnDiskBackfill(ops []writeOp, stale [][]byte
 		if err := wb.Delete(key); err != nil {
 			return fmt.Errorf("graph: property-index-on-disk backfill: drop stale entry: %w", err)
 		}
-	}
-	if err := wb.SetEntry(badgerv4.NewEntry(storepkg.PropertyIndexOnDiskBuiltKey, []byte{1})); err != nil {
-		return fmt.Errorf("graph: property-index-on-disk backfill: mark built: %w", err)
 	}
 	// Guard against blocking forever: Badger v4's WriteBatch.Flush() hangs
 	// when called after db.Close() (WaitForMark blocks on a stopped oracle) —

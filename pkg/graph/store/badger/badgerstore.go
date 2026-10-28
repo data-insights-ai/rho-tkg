@@ -136,6 +136,19 @@ type Config struct {
 	// CreatePropertyIndex fails with ErrInvalidStoreMutation. Ignored when Store is
 	// provided explicitly.
 	PropertyIndexOnDisk bool
+	// PropertyIndexOnDiskLabels is PropertyIndexOnDisk for the property indexes of
+	// the listed labels only (PROPDISKLABEL); every other label keeps its entries in
+	// RAM. A definition's place is fixed when the open loads it or CreatePropertyIndex
+	// makes it. A built marker per definition (storeutil.PropertyIndexOnDiskDefBuiltKey)
+	// lets the list change between opens: a definition whose label joins is rebuilt
+	// by the next writable open (a read-only open keeps it in RAM), and one whose
+	// label leaves loses its marker. The first marker raises the store format marker
+	// to 12. Ignored with PropertyIndexOnDisk (every label).
+	PropertyIndexOnDiskLabels []string
+	// LabelNames names the labels of PropertyIndexOnDiskLabels while the store opens
+	// (tiered passes its registry); nil reads the registry this store persisted
+	// (SaveRegistries). Once the graph installs its registry, that one names them.
+	LabelNames *registrypkg.LabelRegistry
 	// TemporalIndexOnDisk is a rebuild-at-open accelerator, not a RAM-vs-disk trade:
 	// the temporal index stays resident at runtime. On, a compact row per (labelToken,
 	// entity) is kept beside the node row (badgerstore_temporal_disk.go) and
@@ -380,6 +393,8 @@ type Store struct {
 	labelOnDisk               bool                                          // answer label snapshots from the persisted keyspace
 	adjOnDisk                 bool                                          // answer adjacency snapshots from the persisted keyspaces
 	propIdxOnDisk             bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
+	propDiskLabels            map[string]struct{}                           // PropertyIndexOnDiskLabels: these labels' property indexes too
+	propDiskNames             *registrypkg.LabelRegistry                    // names propDiskLabels while the store opens (Config.LabelNames or the persisted registry)
 	propIDs                   propIDBounds                                  // bounds of the node IDs the 0x0A entries carry (PROPBOUNDS)
 	formatMarker              uint16                                        // store-level format marker (raiseFormatMarkerPendingLocked; guarded by wbMu)
 	temporalIdxOnDisk         bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
@@ -1129,6 +1144,22 @@ func New(cfg Config) (*Store, error) {
 	if reg := bs.propKeyReg.Load(); reg != nil {
 		bs.persistedKeyLen.Store(int64(reg.Len()))
 	}
+	if len(cfg.PropertyIndexOnDiskLabels) > 0 && !cfg.PropertyIndexOnDisk {
+		bs.propDiskLabels = make(map[string]struct{}, len(cfg.PropertyIndexOnDiskLabels))
+		for _, label := range cfg.PropertyIndexOnDiskLabels {
+			bs.propDiskLabels[label] = struct{}{}
+		}
+		bs.propDiskNames = cfg.LabelNames
+		if bs.propDiskNames == nil {
+			reg := registrypkg.NewLabelRegistry()
+			if found, err := bs.LoadLabelRegistry(reg); err != nil {
+				_ = db.Close() // best-effort cleanup
+				return nil, fmt.Errorf("graph: load label registry for PropertyIndexOnDiskLabels: %w", err)
+			} else if found {
+				bs.propDiskNames = reg
+			}
+		}
+	}
 
 	// Write-ahead registry hook (tiered store: commits the shared registry to the
 	// reference shard; standalone: own meta). flush() calls it before the row
@@ -1285,20 +1316,10 @@ func (bs *Store) openLabelMembers(txn *badgerv4.Txn, tok uint16, lazy bool) (map
 var openWalkTestHook func(prefix byte)
 
 func (bs *Store) loadIndexesScan(img *openImage) error {
-	// propIdxNeedsBuild / propIdxBackfillOps: one-time backfill of the new 0x0A
-	// keyspace for a directory with property-index definitions when PropertyIndexOnDisk
-	// is first enabled. Computed in the View closure below, committed via WriteBatch
-	// after it, guarded by storeutil.PropertyIndexOnDiskBuiltKey.
-	var propIdxNeedsBuild bool
-	var propIdxBackfillOps []writeOp
-	// propIdxStale: the 0x0A keys present before a backfill, which may hold
-	// rows a session without the flag left behind (PROPDISKTOGGLE); the
-	// backfill deletes those it does not write again. propIdxUnmark: this
-	// writable open runs without the flag over a built keyspace, which its
-	// writes will not maintain, so the marker goes.
-	var propIdxStale [][]byte
-	var propIdxUnmark bool
-	propIdxDefined := false // any property index definition persisted
+	// propDisk: which property indexes this open keeps on disk, the 0x0A rows it
+	// rebuilds and the built markers it sets and clears (planPropertyIndexDisk),
+	// planned in the View closure below and committed in one WriteBatch after it.
+	var propDisk *propDiskOpen
 	// temporalIdxNeedsBuild / temporalIdxBackfillOps mirror the above for the 0x0B
 	// temporal-index keyspace, guarded by storeutil.TemporalIndexOnDiskBuiltKey.
 	var temporalIdxNeedsBuild bool
@@ -1311,26 +1332,6 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 
-		propIdxBuilt, err := metaKeyPresent(txn, storepkg.PropertyIndexOnDiskBuiltKey)
-		if err != nil {
-			return fmt.Errorf("graph: read property-index-on-disk marker: %w", err)
-		}
-		switch {
-		case !bs.propIdxOnDisk:
-			propIdxUnmark = propIdxBuilt && !bs.readOnly
-		case !propIdxBuilt && bs.readOnly:
-			// A read-only open cannot write the backfill: it keeps this
-			// open's entries in RAM, as an open without the flag does.
-			bs.propIdxOnDisk = false
-		case !propIdxBuilt:
-			propIdxNeedsBuild = true
-			prefix := []byte{storepkg.KeyPropertyIndex}
-			it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: prefix})
-			for it.Rewind(); it.Valid(); it.Next() {
-				propIdxStale = append(propIdxStale, it.Item().KeyCopy(nil))
-			}
-			it.Close()
-		}
 		if bs.temporalIdxOnDisk {
 			// Trusted only when built under the TxFrom start (v2 marker) and no
 			// older release rebuilt it since (that rebuild writes the v1 marker
@@ -1804,15 +1805,21 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		}
 
 		// Load property index definitions and rebuild index data.
+		var propDefs []propIdxDef
 		item, err := txn.Get(storepkg.PropIndexDefsKey)
 		if err == nil {
-			var defs []propIdxDef
 			if e := item.Value(func(val []byte) error {
-				return storepkg.SafeUnmarshal(val, &defs)
+				return storepkg.SafeUnmarshal(val, &propDefs)
 			}); e != nil {
 				return fmt.Errorf("graph: load property index definitions: %w", e)
 			}
-			propIdxDefined = len(defs) > 0
+		}
+		// badgerv4.ErrKeyNotFound is OK — no indexes defined yet.
+		if propDisk, err = bs.planPropertyIndexDisk(txn, propDefs); err != nil {
+			return err
+		}
+		{
+			defs := propDefs
 			seenProperty := make(map[indexpkg.PropertyIndexKey]struct{}, len(defs))
 			for _, def := range defs {
 				if err := storecontract.ValidateLabelToken(def.LabelToken); err != nil {
@@ -1823,20 +1830,18 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					return fmt.Errorf("graph: load property index definition label %d property %q: %w",
 						def.LabelToken, def.PropertyKey, err)
 				}
-				if def.Elements && bs.propIdxOnDisk {
-					// The disk keyspace keys scalars only and is shared by
-					// every label indexing the key: an Elements index would
-					// answer equality. Open it without PropertyIndexOnDisk.
-					return fmt.Errorf("graph: load property index definition label %d property %q: an elements index needs the RAM index, not PropertyIndexOnDisk: %w",
-						def.LabelToken, def.PropertyKey, storecontract.ErrCapabilityNotSupported)
-				}
 				key := indexpkg.PropertyIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
 				if _, exists := seenProperty[key]; exists {
 					continue
 				}
 				seenProperty[key] = struct{}{}
+				_, onDisk := propDisk.disk[key]
+				_, rebuild := propDisk.rebuild[def.PropertyKey]
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
-				if entries, ok := img.takeNodeProp(key); ok && !bs.propIdxOnDisk {
+				if onDisk {
+					idx = indexpkg.NewPropertyIndexOnDisk()
+				}
+				if entries, ok := img.takeNodeProp(key); ok && !onDisk {
 					installValueIDsKept(entries, func(id int64) bool { return bs.keepNodeEntry(img, id) }, idx.AddKey)
 					if img.delta() {
 						build := indexpkg.NewPostingsBuild(def.Elements)
@@ -1845,7 +1850,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						})
 						fillFromBuild(build, idx.AddKey)
 					}
-				} else if bs.propIdxOnDisk && !propIdxNeedsBuild {
+				} else if onDisk && !rebuild {
 					// Disk mode keeps the entries in the 0x0A keyspace, already
 					// built: nothing to read from the rows.
 				} else if nodeIDs, ok := bs.openLabelMembers(txn, def.LabelToken, lazyLabels); ok {
@@ -1862,18 +1867,16 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							}
 							continue
 						}
-						if !bs.propIdxOnDisk {
+						if !onDisk {
 							build.AddEntityKeys(rawID, def.PropertyKey, n.ForEachPropertyIndexKey)
 							continue
 						}
 						// Disk mode: do NOT populate idx.Entries/numBuckets (entries stay
-						// off the RAM heap); collect the one-time backfill op instead,
-						// only when this directory has not been backfilled before
-						// (propIdxNeedsBuild).
-						valueKey, found := n.IndexablePropertyValueKey(def.PropertyKey)
-						if found && propIdxNeedsBuild {
+						// off the RAM heap); collect the rebuild's op instead (the
+						// definition's key is rebuilt: rebuild).
+						if valueKey, found := n.IndexablePropertyValueKey(def.PropertyKey); found {
 							if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, rawID, writeOpSet); ok {
-								propIdxBackfillOps = append(propIdxBackfillOps, op)
+								propDisk.ops = append(propDisk.ops, op)
 							}
 						}
 					}
@@ -1883,7 +1886,6 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				bs.restoreNodePropTx(img, key)
 			}
 		}
-		// badgerv4.ErrKeyNotFound is OK — no indexes defined yet.
 
 		// Load rel property index definitions and rebuild the RAM value maps from current
 		// relationship state (mirrors the non-disk node rebuild above).
@@ -2247,20 +2249,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 
 	bs.commitKeyRepair(kr)
 
-	if bs.propIdxOnDisk && propIdxNeedsBuild {
-		if bs.propKeyReg.Load() == nil && propIdxDefined {
-			// No property-key registry wired (direct badger.Store user): skip the backfill and
-			// leave the marker unset so a later open retries. With no definition there is nothing
-			// to backfill: mark it built, or every open re-walks the rows (backlog 54).
-		} else if err := bs.commitPropertyIndexOnDiskBackfill(propIdxBackfillOps, propIdxStale); err != nil {
+	if propDisk.writes() {
+		if err := bs.commitPropertyIndexOnDiskBackfill(propDisk.sets(), propDisk.deletes()); err != nil {
 			return err
-		}
-	}
-	if propIdxUnmark {
-		if err := bs.db.Update(func(txn *badgerv4.Txn) error {
-			return txn.Delete(storepkg.PropertyIndexOnDiskBuiltKey)
-		}); err != nil {
-			return fmt.Errorf("graph: clear property-index-on-disk marker: %w", err)
 		}
 	}
 	if bs.temporalIdxOnDisk && temporalIdxNeedsBuild && !bs.readOnly {

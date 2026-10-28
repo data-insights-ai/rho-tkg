@@ -27,8 +27,9 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 
 // CreatePropertyIndexWithOptions is CreatePropertyIndex with
 // storecontract.PropertyIndexOptions, persisted with the definition. RangeCounts and
-// Elements need the RAM index: with PropertyIndexOnDisk they return
-// ErrCapabilityNotSupported (the disk keyspace is shared by every label indexing the key).
+// Elements need the RAM index: with PropertyIndexOnDisk (or the label in
+// PropertyIndexOnDiskLabels) they return ErrCapabilityNotSupported (the disk keyspace
+// is shared by every label indexing the key).
 func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -42,13 +43,14 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	if err := storecontract.ValidatePropertyIndexOptions(opts); err != nil {
 		return err
 	}
-	if bs.propIdxOnDisk && opts.RangeCounts {
+	onDisk := bs.propIdxOnDiskWanted(labelToken)
+	if onDisk && opts.RangeCounts {
 		return fmt.Errorf("graph: create property index: range counts need the RAM index, not PropertyIndexOnDisk: %w", storecontract.ErrCapabilityNotSupported)
 	}
-	if bs.propIdxOnDisk && opts.Elements {
+	if onDisk && opts.Elements {
 		return fmt.Errorf("graph: create property index: an elements index needs the RAM index, not PropertyIndexOnDisk: %w", storecontract.ErrCapabilityNotSupported)
 	}
-	if bs.propIdxOnDisk {
+	if onDisk {
 		if _, ok := bs.propKeyTokenFor(propertyKey); !ok {
 			return fmt.Errorf("graph: create property index: property-key registry required for PropertyIndexOnDisk: %w", ErrInvalidStoreMutation)
 		}
@@ -63,6 +65,9 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		return ErrIndexExists
 	}
 	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts, opts.Elements)
+	if onDisk {
+		liveIdx = indexpkg.NewPropertyIndexOnDisk()
+	}
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.propertyIndexes[key] = liveIdx
 	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
@@ -92,7 +97,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: create property index: %w", err)
 		}
-		if bs.propIdxOnDisk {
+		if onDisk {
 			if valueKey, found := n.IndexablePropertyValueKey(propertyKey); found {
 				if op, ok := bs.propertyIndexDiskOp(propertyKey, valueKey, nid.SnowflakeID(), writeOpSet); ok {
 					diskOps = append(diskOps, op)
@@ -109,7 +114,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		bs.idxMu.Unlock()
 		return err
 	}
-	if bs.propIdxOnDisk {
+	if onDisk {
 		var ops []writeOp
 		for _, op := range diskOps {
 			id := storepkg.PropertyIndexNodeIDFromKey(op.key)
@@ -123,7 +128,14 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		}
 		liveIdx.Mutated = nil // stop tracking — index creation complete
 		bs.persistPropertyIndexDefs()
-		bs.appendOps(ops...)
+		if bs.propIdxOnDisk {
+			bs.appendOps(ops...)
+		} else {
+			// Its rows are built: its marker, so the next open trusts them
+			// (planPropertyIndexDisk).
+			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.PropertyIndexOnDiskDefBuiltKey(labelToken, propertyKey), value: []byte{1}})
+			bs.appendOpsRaising(storepkg.PropDiskLabelsStoreFormatVersion, ops...)
+		}
 		bs.idxMu.Unlock()
 		return bs.flushIfNeeded()
 	}
@@ -156,26 +168,31 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 		bs.idxMu.Unlock()
 		return ErrIndexNotFound
 	}
+	dropped := bs.propertyIndexes[key]
 	delete(bs.propertyIndexes, key)
 	if _, ok := bs.nodePropTx[key]; ok {
 		delete(bs.nodePropTx, key) // its membership sidecar goes with it (backlog 8)
 		bs.propTxGen++
 	}
 
-	// Disk mode: rows are shared by every definition indexing the same PropertyKey
-	// (see badgerstore_property_disk.go), so purge only when no other definition uses it.
+	// Disk mode: rows are shared by every on-disk definition indexing the same
+	// PropertyKey (see badgerstore_property_disk.go), so purge only when no other
+	// one uses it. Its built marker goes (planPropertyIndexDisk).
 	var purgeOps []writeOp
 	var purgeErr error
-	if bs.propIdxOnDisk {
+	if dropped.OnDisk() {
+		purgeOps = append(purgeOps, writeOp{opType: writeOpDelete, key: storepkg.PropertyIndexOnDiskDefBuiltKey(labelToken, propertyKey)})
 		stillReferenced := false
-		for k := range bs.propertyIndexes {
-			if k.PropertyKey == propertyKey {
+		for k, idx := range bs.propertyIndexes {
+			if k.PropertyKey == propertyKey && idx.OnDisk() {
 				stillReferenced = true
 				break
 			}
 		}
 		if !stillReferenced {
-			purgeOps, purgeErr = bs.purgePropertyKeyDiskEntriesLocked(propertyKey)
+			var rows []writeOp
+			rows, purgeErr = bs.purgePropertyKeyDiskEntriesLocked(propertyKey)
+			purgeOps = append(purgeOps, rows...)
 		}
 	}
 	bs.persistPropertyIndexDefs()

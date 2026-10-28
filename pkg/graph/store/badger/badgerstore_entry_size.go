@@ -59,14 +59,14 @@ func (bs *Store) checkChangePayload(payload []byte) error {
 // property_index_key.go). Caller holds idxMu. It interns no token: a token is
 // always 2 bytes, so a placeholder gives the key's length.
 func (bs *Store) checkNodeIndexKeysLocked(n *types.Node, id snowflake.ID) error {
-	if !bs.propIdxOnDisk || len(bs.propertyIndexes) == 0 {
+	if (!bs.propIdxOnDisk && len(bs.propDiskLabels) == 0) || len(bs.propertyIndexes) == 0 {
 		return nil
 	}
 	var tooLarge error
 	for i := 0; i < n.LabelTokenCount() && tooLarge == nil; i++ {
 		label := n.LabelTokenRawAt(i)
 		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
-			if _, ok := bs.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}]; !ok {
+			if !bs.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}].OnDisk() {
 				return true
 			}
 			payload, ok := storepkg.PropertyIndexValueBytes(valueKey)

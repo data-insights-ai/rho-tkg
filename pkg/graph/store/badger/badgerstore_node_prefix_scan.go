@@ -33,7 +33,7 @@ func (bs *Store) ForEachNodeByLabelPropertyPrefix(token uint16, propKey, prefix 
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: token, PropertyKey: propKey}
 
-	if bs.propIdxOnDisk {
+	if bs.nodePropIndexOnDisk(key) {
 		return bs.forEachNodePrefixDisk(token, propKey, key, prefix, desc, fn)
 	}
 	return bs.forEachNodePrefixRAM(token, key, prefix, desc, fn)

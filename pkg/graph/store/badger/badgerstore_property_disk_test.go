@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -582,18 +585,6 @@ func TestPropertyIndexOnDisk_OffThenOnAgain(t *testing.T) {
 		return fmt.Sprint(nodeIDsVia(t, bs, label, "age", int64(20)), nodeIDsVia(t, bs, label, "age", int64(30)),
 			nodeIDsVia(t, bs, label, "age", int64(40)))
 	}
-	rows := func(bs *Store) int {
-		n := 0
-		_ = bs.DBForTest().View(func(txn *badgerv4.Txn) error {
-			it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyPropertyIndex}})
-			defer it.Close()
-			for it.Rewind(); it.Valid(); it.Next() {
-				n++
-			}
-			return nil
-		})
-		return n
-	}
 
 	bs := open(Config{PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
 	if err := bs.CreatePropertyIndex(label, "age"); err != nil {
@@ -616,7 +607,7 @@ func TestPropertyIndexOnDisk_OffThenOnAgain(t *testing.T) {
 	if got, want := answers(bs), "[2] [1] [5]"; got != want {
 		t.Fatalf("on again: age 20, 30, 40 = %s, want %s", got, want)
 	}
-	if got := rows(bs); got != 3 {
+	if got := propIndexDiskRows(bs); got != 3 {
 		t.Fatalf("on again: %d 0x0A rows, want 3 (stale ones dropped)", got)
 	}
 	closeStore(bs)
@@ -814,6 +805,278 @@ func TestPropertyIndexOnDisk_UpdateInBufferKeepsScans(t *testing.T) {
 	collect("prefix a", func(fn func(*types.Node) bool) error {
 		return bs.ForEachNodeByLabelPropertyPrefix(label, "s", "a", false, fn)
 	})
+}
+
+// propIndexDiskRows counts the persisted 0x0A rows.
+func propIndexDiskRows(bs *Store) int {
+	n := 0
+	_ = bs.DBForTest().View(func(txn *badgerv4.Txn) error {
+		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyPropertyIndex}})
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			n++
+		}
+		return nil
+	})
+	return n
+}
+
+// TestPropertyIndexOnDiskLabels (PROPDISKLABEL): with label D listed, D's
+// property index keeps its entries in the 0x0A keyspace and R's, on the same
+// property key, in RAM; both answer, a node carrying both labels included.
+// The list may change between opens: a label that leaves stays correct in
+// RAM, one that joins (or rejoins) is rebuilt with the key's stale rows
+// dropped, a read-only open keeps an unbuilt one in RAM, and the first
+// marker raises the format marker to 12.
+func TestPropertyIndexOnDiskLabels(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	names := registrypkg.NewLabelRegistry()
+	r, _ := names.GetOrCreate("R")
+	d, _ := names.GetOrCreate("D")
+	keys := registrypkg.NewPropertyKeyRegistry()
+	open := func(readOnly bool, labels ...string) *Store {
+		t.Helper()
+		bs, err := New(Config{Dir: dir, PropertyKeyRegistry: keys, PropertyIndexOnDiskLabels: labels, LabelNames: names, ReadOnly: readOnly})
+		if err != nil {
+			t.Fatalf("open %v: %v", labels, err)
+		}
+		return bs
+	}
+	closeStore := func(bs *Store) {
+		t.Helper()
+		if !bs.readOnly {
+			if err := bs.Flush(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := bs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(bs *Store, id, h int64, replace bool, labels ...uint16) {
+		t.Helper()
+		n := types.NewNode(types.NodeID(id), labels[0], nil)
+		for _, l := range labels[1:] {
+			n.AddLabelTokenRaw(l)
+		}
+		if err := n.SetProperty("h", h); err != nil {
+			t.Fatal(err)
+		}
+		do := bs.PutNode
+		if replace {
+			do = bs.ReplaceNode
+		}
+		if err := do(n); err != nil {
+			t.Fatalf("write %d: %v", id, err)
+		}
+	}
+	// answers renders D's and R's matches for h = 1, 3, 5.
+	answers := func(bs *Store) string {
+		t.Helper()
+		var out []any
+		for _, label := range []uint16{d, r} {
+			for _, h := range []int64{1, 3, 5} {
+				out = append(out, nodeIDsVia(t, bs, label, "h", h))
+			}
+		}
+		return fmt.Sprint(out...)
+	}
+	marked := func(bs *Store, label uint16) bool {
+		return badgerHasKey(bs, storepkg.PropertyIndexOnDiskDefBuiltKey(label, "h"))
+	}
+	onDisk := func(bs *Store, label uint16) bool {
+		bs.idxMu.RLock()
+		defer bs.idxMu.RUnlock()
+		return bs.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: "h"}].OnDisk()
+	}
+
+	bs := open(false, "D")
+	if err := bs.CreatePropertyIndexWithOptions(d, "h", storecontract.PropertyIndexOptions{RangeCounts: true}); !errors.Is(err, storecontract.ErrCapabilityNotSupported) {
+		t.Fatalf("range counts on a listed label: %v, want ErrCapabilityNotSupported", err)
+	}
+	for _, label := range []uint16{d, r} {
+		if err := bs.CreatePropertyIndex(label, "h"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(bs, 1, 1, false, d)
+	write(bs, 2, 1, false, r)
+	write(bs, 3, 2, false, d, r)
+	write(bs, 3, 3, true, d, r)
+	if got, want := answers(bs), "[1] [3] [] [2] [3] []"; got != want {
+		t.Fatalf("listed D: %s, want %s", got, want)
+	}
+	if !onDisk(bs, d) || onDisk(bs, r) {
+		t.Fatalf("on disk: D %v, R %v; want D only", onDisk(bs, d), onDisk(bs, r))
+	}
+	bs.idxMu.RLock()
+	entries := len(bs.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: d, PropertyKey: "h"}].Entries)
+	bs.idxMu.RUnlock()
+	if entries != 0 {
+		t.Fatalf("D's index holds %d values in RAM, want none", entries)
+	}
+	// A value whose on-disk key would pass badger's limit: refused for D, kept
+	// in RAM for R.
+	big := types.NewNode(90, d, nil)
+	_ = big.SetProperty("h", strings.Repeat("y", 64_990))
+	if err := bs.PutNode(big); !errors.Is(err, ErrEntryTooLarge) {
+		t.Fatalf("an oversized key for D: %v, want ErrEntryTooLarge", err)
+	}
+	big = types.NewNode(90, r, nil)
+	_ = big.SetProperty("h", strings.Repeat("y", 64_990))
+	if err := bs.PutNode(big); err != nil {
+		t.Fatalf("an oversized key for R in RAM: %v", err)
+	}
+	if err := bs.DeleteNode(90); err != nil {
+		t.Fatal(err)
+	}
+	if _, exact, err := bs.NodeEqualCount(d, "h", int64(1)); err != nil || exact {
+		t.Fatalf("D's equal count exact=%v (%v), want a decline", exact, err)
+	}
+	if c, exact, err := bs.NodeEqualCount(r, "h", int64(1)); err != nil || !exact || c != 1 {
+		t.Fatalf("R's equal count %d exact=%v (%v), want 1 exact", c, exact, err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if got := propIndexDiskRows(bs); got != 2 {
+		t.Fatalf("%d 0x0A rows, want 2 (D's nodes 1 and 3)", got)
+	}
+	if !marked(bs, d) || marked(bs, r) {
+		t.Fatalf("markers after create: D %v, R %v; want D only", marked(bs, d), marked(bs, r))
+	}
+	closeStore(bs)
+	if got, ok := readRawMarker(t, dir); !ok || got != storepkg.PropDiskLabelsStoreFormatVersion {
+		t.Fatalf("format marker %d (present %v), want %d", got, ok, storepkg.PropDiskLabelsStoreFormatVersion)
+	}
+
+	bs = open(false) // D leaves: in RAM, its marker goes
+	if marked(bs, d) || onDisk(bs, d) {
+		t.Fatalf("D left the list: marker %v, on disk %v", marked(bs, d), onDisk(bs, d))
+	}
+	write(bs, 4, 1, false, d)
+	write(bs, 1, 5, true, d)
+	if got, want := answers(bs), "[4] [3] [1] [2] [3] []"; got != want {
+		t.Fatalf("D in RAM: %s, want %s", got, want)
+	}
+	closeStore(bs)
+
+	bs = open(true, "D") // read-only: D unbuilt, kept in RAM
+	if onDisk(bs, d) {
+		t.Fatal("a read-only open put an unbuilt index on disk")
+	}
+	if got, want := answers(bs), "[4] [3] [1] [2] [3] []"; got != want {
+		t.Fatalf("read-only, D listed: %s, want %s", got, want)
+	}
+	closeStore(bs)
+
+	bs = open(false, "D") // D rejoins: rebuilt, stale rows dropped
+	if !onDisk(bs, d) || !marked(bs, d) {
+		t.Fatalf("D rejoined: on disk %v, marker %v", onDisk(bs, d), marked(bs, d))
+	}
+	if got, want := answers(bs), "[4] [3] [1] [2] [3] []"; got != want {
+		t.Fatalf("D rejoined: %s, want %s", got, want)
+	}
+	if got := propIndexDiskRows(bs); got != 3 {
+		t.Fatalf("D rejoined: %d 0x0A rows, want 3 (nodes 1, 3, 4)", got)
+	}
+	closeStore(bs)
+
+	bs = open(false, "R") // R joins, D leaves: the key's rows are R's
+	if onDisk(bs, d) || marked(bs, d) || !onDisk(bs, r) || !marked(bs, r) {
+		t.Fatalf("R listed: D on disk %v marker %v, R on disk %v marker %v", onDisk(bs, d), marked(bs, d), onDisk(bs, r), marked(bs, r))
+	}
+	if got, want := answers(bs), "[4] [3] [1] [2] [3] []"; got != want {
+		t.Fatalf("R listed: %s, want %s", got, want)
+	}
+	if got := propIndexDiskRows(bs); got != 2 {
+		t.Fatalf("R listed: %d 0x0A rows, want 2 (nodes 2 and 3)", got)
+	}
+	if err := bs.DropPropertyIndex(r, "h"); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if marked(bs, r) || propIndexDiskRows(bs) != 0 {
+		t.Fatalf("R dropped: marker %v, %d rows", marked(bs, r), propIndexDiskRows(bs))
+	}
+	closeStore(bs)
+}
+
+// TestPropertyIndexOnDiskLabels_JoinRaisesFormat: a store whose property
+// index was made in RAM gets its first per-definition marker from the open
+// that rebuilds it on disk, which raises the format marker to 12 there.
+func TestPropertyIndexOnDiskLabels_JoinRaisesFormat(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	names := registrypkg.NewLabelRegistry()
+	d, _ := names.GetOrCreate("D")
+	keys := registrypkg.NewPropertyKeyRegistry()
+	bs, err := New(Config{Dir: dir, PropertyKeyRegistry: keys})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.CreatePropertyIndex(d, "h"); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := readRawMarker(t, dir); got >= storepkg.PropDiskLabelsStoreFormatVersion {
+		t.Fatalf("format marker %d before any label is listed", got)
+	}
+	bs, err = New(Config{Dir: dir, PropertyKeyRegistry: keys, PropertyIndexOnDiskLabels: []string{"D"}, LabelNames: names})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := readRawMarker(t, dir); got != storepkg.PropDiskLabelsStoreFormatVersion {
+		t.Fatalf("format marker %d after D joined, want %d", got, storepkg.PropDiskLabelsStoreFormatVersion)
+	}
+}
+
+// TestPropertyIndexOnDisk_NoRegistryStaysInRAM: PropertyIndexOnDisk over an
+// index whose rows the open cannot build (no property-key registry) keeps
+// every index in RAM for that open, maintained by its writes.
+func TestPropertyIndexOnDisk_NoRegistryStaysInRAM(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	const label = uint16(1)
+	put := func(bs *Store, id int64) {
+		t.Helper()
+		n := types.NewNode(types.NodeID(id), label, nil)
+		_ = n.SetProperty("h", int64(1))
+		if err := bs.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bs, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.CreatePropertyIndex(label, "h"); err != nil {
+		t.Fatal(err)
+	}
+	put(bs, 1)
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	bs, err = New(Config{Dir: dir, PropertyIndexOnDisk: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	if bs.propKeyReg.Load() != nil {
+		t.Skip("the store persisted a property-key registry: the open can build")
+	}
+	put(bs, 2)
+	if got := fmt.Sprint(nodeIDsVia(t, bs, label, "h", int64(1))); got != "[1 2]" {
+		t.Fatalf("h=1: %s, want [1 2]", got)
+	}
 }
 
 // --- overlay set-then-delete-then-set (lesson 57) ---

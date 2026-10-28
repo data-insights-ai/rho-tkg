@@ -27,7 +27,7 @@ func (bs *Store) NodePropertyBounds(labelToken uint16, propertyKey string) (stor
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return storecontract.PropertyBounds{}, false, err
 	}
-	if bs.propIdxOnDisk || bs.disablePlannerStats {
+	if bs.disablePlannerStats {
 		return storecontract.PropertyBounds{}, false, nil
 	}
 	if err := bs.ensurePlannerStats(); err != nil {
@@ -104,7 +104,8 @@ func loadTypeClassCounts(c *typeClassCounters) storecontract.PropertyTypeClassCo
 
 // StatesPropertyBounds implements store.PropertyBoundsStatedCapability: the
 // configuration that switches the bounds off (planner statistics disabled;
-// for nodes also the on-disk property index).
+// for nodes also the on-disk property index). A label in
+// PropertyIndexOnDiskLabels declines per call (its index states none).
 func (bs *Store) StatesPropertyBounds() (nodes, rels bool) {
 	if bs == nil {
 		return false, false

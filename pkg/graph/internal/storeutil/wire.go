@@ -107,7 +107,7 @@ const StagedFlushStoreFormatVersion = 9
 
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = ValueDictStoreFormatVersion
+const MaxReadableStoreFormatVersion = PropDiskLabelsStoreFormatVersion
 
 // OpenVoidStoreFormatVersion is the store-level marker of a directory that
 // holds an open-ended void piece (OPENEXCISE, OpenVoidWireFormatVersion rows).
@@ -122,6 +122,14 @@ const OpenVoidStoreFormatVersion = 10
 // store at open: it would skip a property's token and read a nil value.
 // Raised with the first entry; 4 to 10 are taken, so this is 11.
 const ValueDictStoreFormatVersion = 11
+
+// PropDiskLabelsStoreFormatVersion is the store-level marker of a directory
+// with a per-definition on-disk property index marker (PROPDISKLABEL,
+// PropertyIndexOnDiskDefBuiltKey). A binary that predates it neither
+// maintains a listed label's 0x0A rows nor deletes the marker, so a newer
+// binary would then trust rows it missed: it must refuse the store. Raised
+// with the first marker; 4 to 11 are taken, so this is 12.
+const PropDiskLabelsStoreFormatVersion = 12
 
 // writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every

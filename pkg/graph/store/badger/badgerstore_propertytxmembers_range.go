@@ -171,13 +171,10 @@ func membersAll[ID cmp.Ordered](m *indexpkg.PropertyTxMembers[ID]) ([]indexpkg.T
 
 // NodePropertyValueStats returns the value statistics of the property index
 // on (labelToken, propertyKey) (round 9); exact=false without an index,
-// while it is built, for an Elements index or with PropertyIndexOnDisk.
+// while it is built, for an Elements index or one kept on disk.
 func (bs *Store) NodePropertyValueStats(labelToken uint16, propertyKey string) (indexpkg.ValueStats, bool, error) {
 	if err := bs.checkOpen(); err != nil {
 		return indexpkg.ValueStats{}, false, err
-	}
-	if bs.propIdxOnDisk {
-		return indexpkg.ValueStats{}, false, nil
 	}
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()

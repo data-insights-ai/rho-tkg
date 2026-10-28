@@ -257,6 +257,21 @@ var HistoryAnchorIntervalKey = MetaKey("history_anchor_interval")
 // already kept in sync).
 var PropertyIndexOnDiskBuiltKey = MetaKey("property_index_on_disk_built")
 
+// PropertyIndexOnDiskDefBuiltPrefix starts the per-definition built markers
+// of PropertyIndexOnDiskLabels (PROPDISKLABEL): one per property index whose
+// label is listed, present while every open since its rebuild kept the
+// definition on disk (a writable open that keeps it in RAM deletes it).
+var PropertyIndexOnDiskDefBuiltPrefix = MetaKey("property_index_on_disk_def_built/")
+
+// PropertyIndexOnDiskDefBuiltKey is the built marker of the property index on
+// (labelToken, propertyKey): the prefix, the token big-endian, the key.
+func PropertyIndexOnDiskDefBuiltKey(labelToken uint16, propertyKey string) []byte {
+	b := make([]byte, 0, len(PropertyIndexOnDiskDefBuiltPrefix)+2+len(propertyKey))
+	b = append(b, PropertyIndexOnDiskDefBuiltPrefix...)
+	b = append(b, byte(labelToken>>8), byte(labelToken))
+	return append(b, propertyKey...)
+}
+
 // TemporalIndexOnDiskBuiltKey marks that the persisted 0x0B temporal-index
 // raw-entry keyspace has been backfilled from current node state at least
 // once (a single byte, value irrelevant — presence is the signal). Absent

@@ -414,15 +414,13 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 		}
 		return b
 	}
-	if !bs.propIdxOnDisk {
-		for key, idx := range bs.propertyIndexes {
-			if idx.Mutated != nil {
-				continue
-			}
-			b := binary.BigEndian.AppendUint16(nil, key.LabelToken)
-			b = appendImgString(b, key.PropertyKey)
-			section(imgSecNodeProp, appendValueIDs(b, idx.Entries))
+	for key, idx := range bs.propertyIndexes {
+		if idx.Mutated != nil || idx.OnDisk() {
+			continue
 		}
+		b := binary.BigEndian.AppendUint16(nil, key.LabelToken)
+		b = appendImgString(b, key.PropertyKey)
+		section(imgSecNodeProp, appendValueIDs(b, idx.Entries))
 	}
 	for key, idx := range bs.relPropertyIndexes {
 		if idx.Mutated != nil {

@@ -68,7 +68,7 @@ func prefixValuePage(prefix string, desc bool) valuePage {
 // value order (descending when desc), ties by ID ascending, from the RAM
 // property index alone: no row is decoded (round 7 request 5). Pages of 256
 // under idxMu's read lock; fn runs with no lock held. ErrIndexNotFound with
-// PropertyIndexOnDisk (no RAM index), without an index on (label, propKey),
+// an index kept on disk (no RAM entries), without an index on (label, propKey),
 // or where it cannot answer exactly (Elements, being built, an integer past
 // 2^53).
 func (bs *Store) ForEachNodeIDByLabelPropertyRangeOrdered(token uint16, propKey string, min, max float64, inclMin, inclMax, desc bool, fn func(types.NodeID, any) bool) error {
@@ -121,9 +121,6 @@ func (bs *Store) nodeValueIndex(token uint16, propKey string) (func() (*indexpkg
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propKey); err != nil {
 		return nil, err
-	}
-	if bs.propIdxOnDisk {
-		return nil, storecontract.ErrIndexNotFound
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: token, PropertyKey: propKey}
 	return func() (*indexpkg.PropertyIndex, bool) { idx, ok := bs.propertyIndexes[key]; return idx, ok }, nil

@@ -44,6 +44,11 @@ type PropertyIndex struct {
 	// a key. No ordered views: range and prefix accessors report supported=false.
 	elements bool
 
+	// onDisk (PROPDISKLABEL, fixed at creation): badger keeps the entries in
+	// its on-disk keyspace and this index holds none; the maintenance helpers
+	// below skip it and no door reads it (serves).
+	onDisk bool
+
 	// valueStats caches ValueStats until the next mutation (round 9).
 	valueStats atomic.Pointer[ValueStats]
 }
@@ -63,6 +68,19 @@ func NewPropertyIndexWith(rangeCounts, elements bool) *PropertyIndex {
 	pi.rangeCounts = rangeCounts
 	pi.elements = elements
 	return pi
+}
+
+// NewPropertyIndexOnDisk creates the RAM handle of an index whose entries the
+// store keeps on disk (badger PropertyIndexOnDisk, PropertyIndexOnDiskLabels).
+func NewPropertyIndexOnDisk() *PropertyIndex {
+	pi := NewPropertyIndex()
+	pi.onDisk = true
+	return pi
+}
+
+// OnDisk reports whether the store keeps the index's entries on disk.
+func (pi *PropertyIndex) OnDisk() bool {
+	return pi != nil && pi.onDisk
 }
 
 // RangeCounts reports whether the index was created with range counts.
@@ -219,7 +237,7 @@ func AddNodeToPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *ty
 		labelToken := n.LabelTokenRawAt(i)
 		n.ForEachIndexKey(ElementsOf(indexes, labelToken), func(propertyKey, valueKey string) bool {
 			key := PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
-			if idx, ok := indexes[key]; ok {
+			if idx, ok := indexes[key]; ok && !idx.onDisk {
 				idx.AddKey(id, valueKey)
 			}
 			return true
@@ -258,7 +276,7 @@ func RemoveNodeFromPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, 
 		labelToken := n.LabelTokenRawAt(i)
 		n.ForEachIndexKey(ElementsOf(indexes, labelToken), func(propertyKey, valueKey string) bool {
 			key := PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
-			if idx, ok := indexes[key]; ok {
+			if idx, ok := indexes[key]; ok && !idx.onDisk {
 				idx.removeKey(id, valueKey)
 			}
 			return true

@@ -40,12 +40,12 @@ func (pi *PropertyIndex) RangeOrderedPage(min, max float64, desc bool, after Ran
 
 // serves reports whether the index answers the doors that read it as a
 // whole (ordered walks, range and equality counts, bounds, value
-// statistics): a plain index, built. A nil index, an Elements index (a
-// list's elements are no row value) and one being built (Mutated set: its
-// entries are partial) decline, so no door answers from a partial index.
-// The one usability rule of those doors.
+// statistics): a plain index, built, in RAM. A nil index, an Elements index
+// (a list's elements are no row value), one being built (Mutated set: its
+// entries are partial) and one kept on disk (no entries here) decline, so no
+// door answers from a partial index. The one usability rule of those doors.
 func (pi *PropertyIndex) serves() bool {
-	return pi != nil && !pi.elements && pi.Mutated == nil
+	return pi != nil && !pi.elements && pi.Mutated == nil && !pi.onDisk
 }
 
 // rangeOrderedPage is RangeOrderedPage; a non-nil keys receives each ID's

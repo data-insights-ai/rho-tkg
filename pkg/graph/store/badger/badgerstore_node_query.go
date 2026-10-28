@@ -377,7 +377,7 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 	if idx, ok := bs.propertyIndexes[key]; ok && idx.Mutated == nil {
 		// Indexed path.
 		elements := idx.Elements()
-		if !bs.propIdxOnDisk {
+		if !idx.OnDisk() {
 			// The keys' sorted posting lists, paged from opts.After in
 			// batches (backlog 72): no copy or sort of the whole key.
 			ids := idx.PostingsOfKeys(targetKeys)

@@ -270,7 +270,7 @@ Every create validates names and keys (`ErrEmptyName`, `ErrKeyTooLong`, `types.E
 #### Property index options
 
 `CreatePropertyWithOptions(label, key, graph.PropertyIndexOptions{RangeCounts, Elements})` / `CreateRelPropertyWithOptions`, read back by `PropertyOptions` / `RelPropertyOptions`. Zero options = `CreateProperty`. Fixed at creation; persisted with the definition on badger and sharded (memory keeps it per process); not replicated (index DDL never is).
-- `RangeCounts`: `RangeCardinality` becomes two prefix sums (cost: ~42 ns per indexed write, 8 B per distinct value). Refused with `ErrCapabilityNotSupported` on tiered, badger `PropertyIndexOnDisk`, wrapper stores.
+- `RangeCounts`: `RangeCardinality` becomes two prefix sums (cost: ~42 ns per indexed write, 8 B per distinct value). Refused with `ErrCapabilityNotSupported` on tiered, badger `PropertyIndexOnDisk` (or the label in `PropertyIndexOnDiskLabels`), wrapper stores.
 
 #### Elements index
 
