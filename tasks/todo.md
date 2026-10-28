@@ -49,7 +49,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Bench (one indexed key, eight 4 KB unindexed strings): RAM 33 KB / 9.5 us per write, listed 66 KB / 16 us; after,
   ~0.5 KB / <1 us in every mode. Fix: walk the indexes on the row's labels. Built on branch idxkeylazy (15 of 16
   mutations caught, the 16th equivalent; the patch gate refused two exported helpers, now unexported). Released
-  v4.91.1: ci-fast green, consumers clean but sigma (its tree mid-edit, asked); done when kpdl re-runs on it.
+  v4.91.1: ci-fast, tag CI and CodeQL green, consumers clean (sigma's checkout was mid-cherry-pick; it gates
+  v4.91.1 after its release); done when kpdl re-runs on it.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
