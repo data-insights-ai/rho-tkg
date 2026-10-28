@@ -69,7 +69,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   for René's verdict): node tiering exists (event-class labels go to their mint-time shard; ai-soc lists every label
   as reference). Proposed PURGECURSOR (patch): the label purge resumes from a cursor instead of copying the label's
   whole ID list per 256-node call (quadratic at 10 M); with a retention pin it bounds the reference shard. Waits for
-  René's word (STORECFG).
+  René's word (STORECFG). Valid-time design follow-up (28 Oct): placement by valid time needs no rho change (a
+  caller-minted ID, ImportNodeWithID); proposed DELRESIDUE (patch: a deleted entity with history leaves an `unknown`
+  presence/stamps map entry until probed, ~30-50 B per ID on an open shard; confirm with a test first) and TIMEWINDOW
+  reads (minor: a mint-time range on QueryOpts so reads consult only the shards whose window meets it). Wait for
+  René's word.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
