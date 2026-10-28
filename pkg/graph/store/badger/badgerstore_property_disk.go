@@ -254,23 +254,20 @@ func (bs *Store) propertyIndexDiskMaintain(n *types.Node, id snowflake.ID, opTyp
 		return nil
 	}
 	var ops []writeOp
-	labelCount := n.LabelTokenCount()
-	for i := 0; i < labelCount; i++ {
-		labelToken := n.LabelTokenRawAt(i)
-		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
-			key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
-			idx, exists := bs.propertyIndexes[key]
-			if !exists || !idx.OnDisk() {
-				return true
-			}
-			if op, ok := bs.propertyIndexDiskOp(propertyKey, valueKey, id, opType); ok {
-				ops = append(ops, op)
-			}
-			if idx.Mutated != nil {
-				idx.Mutated[id] = struct{}{}
-			}
-			return true
-		})
+	for key, idx := range bs.propertyIndexes { // a value key for an indexed property only (IDXKEYLAZY)
+		if !idx.OnDisk() || !n.HasLabelTokenRaw(key.LabelToken) {
+			continue
+		}
+		valueKey, _ := n.IndexablePropertyValueKey(key.PropertyKey)
+		if valueKey == "" {
+			continue
+		}
+		if op, ok := bs.propertyIndexDiskOp(key.PropertyKey, valueKey, id, opType); ok {
+			ops = append(ops, op)
+		}
+		if idx.Mutated != nil {
+			idx.Mutated[id] = struct{}{}
+		}
 	}
 	return ops
 }

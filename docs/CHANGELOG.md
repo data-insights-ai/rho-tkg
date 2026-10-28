@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.91.1] - 2026-10-28
+
+### Fixed
+
+- **IDXKEYLAZY** (SCALE; ai-soc's BO A/B kpdl on v4.91.0 with DerivedPage's index on disk: push +2.8 %, live heap
+  -381 MB, GC mark 97.7 -> 118.1 s). Property-index maintenance (the RAM indexes of nodes and relationships, the
+  on-disk index's write path and key-size check, the property membership sidecars) built a value key for every
+  property of the row, once per label, indexed or not: for a string, a copy of the value, dropped unless that
+  (label, key) had an index. With a label in `PropertyIndexOnDiskLabels` the RAM and disk passes both ran, so the
+  copies doubled. It now walks the indexes on the row's labels and builds the keys of indexed properties only.
+  One indexed key and eight unindexed 4 KB strings per write: RAM 33 KB / 9.5 us to 0.6 KB / under 1 us, a label
+  listed 66 KB / 16 us to 0.5 KB, every label on disk 33 KB to 0.5 KB (`TestIndexMaintenanceBuildsIndexedKeysOnly`,
+  `TestPropertyIndexOnDisk_BuildsIndexedKeysOnly`, `TestRelElementsIndexKeysEachElement`; 11 of 12 mutations
+  caught, the 12th equivalent: an empty value key, which the index ignores anyway).
+
 ## [4.91.0] - 2026-10-28
 
 ### Added

@@ -227,22 +227,37 @@ func (pi *PropertyIndex) AddEntityKeys(id snowflake.ID, propertyKey string, keys
 	})
 }
 
-// AddNodeToPropertyIndexes indexes a node's properties into all matching property indexes.
-// Caller must hold the store's write lock.
-func AddNodeToPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *types.Node, id snowflake.ID) {
-	if len(indexes) == 0 {
-		return
-	}
-	for i := 0; i < n.LabelTokenCount(); i++ {
-		labelToken := n.LabelTokenRawAt(i)
-		n.ForEachIndexKey(ElementsOf(indexes, labelToken), func(propertyKey, valueKey string) bool {
-			key := PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
-			if idx, ok := indexes[key]; ok && !idx.onDisk {
-				idx.AddKey(id, valueKey)
+// ForEachNodeIndexKey calls fn with each index of indexes on a label n
+// carries and each value key n has under it (an Elements index: each element's
+// key). A value key is built for an indexed property only (IDXKEYLAZY: walking
+// n's properties built one per property and label, a copy of every value per
+// write).
+func ForEachNodeIndexKey(indexes map[PropertyIndexKey]*PropertyIndex, n *types.Node, fn func(key PropertyIndexKey, idx *PropertyIndex, valueKey string)) {
+	for key, idx := range indexes {
+		if !n.HasLabelTokenRaw(key.LabelToken) {
+			continue
+		}
+		if !idx.Elements() {
+			if vk, _ := n.IndexablePropertyValueKey(key.PropertyKey); vk != "" {
+				fn(key, idx, vk)
 			}
+			continue
+		}
+		n.ForEachPropertyIndexKey(key.PropertyKey, true, func(vk string) bool {
+			fn(key, idx, vk)
 			return true
 		})
 	}
+}
+
+// AddNodeToPropertyIndexes indexes a node's properties into all matching property indexes
+// in RAM. Caller must hold the store's write lock.
+func AddNodeToPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *types.Node, id snowflake.ID) {
+	ForEachNodeIndexKey(indexes, n, func(_ PropertyIndexKey, idx *PropertyIndex, valueKey string) {
+		if !idx.onDisk {
+			idx.AddKey(id, valueKey)
+		}
+	})
 }
 
 // PurgeNodeFromAllPropertyIndexes removes a node ID from every property index.
@@ -266,20 +281,12 @@ func PurgeNodeFromAllPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex
 	}
 }
 
-// RemoveNodeFromPropertyIndexes removes a node's properties from all matching property indexes.
-// Caller must hold the store's write lock.
+// RemoveNodeFromPropertyIndexes removes a node's properties from all matching property indexes
+// in RAM. Caller must hold the store's write lock.
 func RemoveNodeFromPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *types.Node, id snowflake.ID) {
-	if len(indexes) == 0 {
-		return
-	}
-	for i := 0; i < n.LabelTokenCount(); i++ {
-		labelToken := n.LabelTokenRawAt(i)
-		n.ForEachIndexKey(ElementsOf(indexes, labelToken), func(propertyKey, valueKey string) bool {
-			key := PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
-			if idx, ok := indexes[key]; ok && !idx.onDisk {
-				idx.removeKey(id, valueKey)
-			}
-			return true
-		})
-	}
+	ForEachNodeIndexKey(indexes, n, func(_ PropertyIndexKey, idx *PropertyIndex, valueKey string) {
+		if !idx.onDisk {
+			idx.removeKey(id, valueKey)
+		}
+	})
 }

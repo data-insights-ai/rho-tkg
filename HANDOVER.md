@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-28: latest tag v4.91.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-28: latest tag v4.91.1; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,7 +7,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-28 Oct:** v4.75.0 to v4.91.0 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND, v4.90.0 VOIDPROPS, v4.90.1 TXMEMBERS, v4.90.2 PROPDISKTOGGLE, v4.90.3 PROPOVERLAY, v4.91.0 PROPDISKLABEL), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
+- **Released 24-28 Oct:** v4.75.0 to v4.91.1 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND, v4.90.0 VOIDPROPS, v4.90.1 TXMEMBERS, v4.90.2 PROPDISKTOGGLE, v4.90.3 PROPOVERLAY, v4.91.0 PROPDISKLABEL, v4.91.1 IDXKEYLAZY), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
 - **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
   "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
@@ -64,7 +64,12 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   label holding a value whose key would pass 65,000 bytes cannot join (the open fails, the store reopens unchanged
   without it). ci-docker: gosec flagged G115 on the new marker key's byte conversions (now AppendUint16, same
   bytes), the steps from security on rerun green; tag CI and main CodeQL green, consumers build and vet clean;
-  done when ai-soc's BO A/B and reduced BA run on it are in.
+  ai-soc's BO A/B kpdl: answers equal, push +2.8 % (every label on disk +7.0 %), live heap -381 MB, GC mark +20 s
+  (IDXKEYLAZY); ai-soc lists DerivedPage in the product; the reduced BA run waits for René's word.
+- **v4.91.1** (IDXKEYLAZY, a patch from kpdl's GC term): index maintenance built a value key for every property of
+  the row per label, indexed or not (a copy of each string value; twice with a label listed); now only for indexed
+  properties: 33-66 KB to ~0.5 KB per write in the bench. 11 of 12 mutations caught, the 12th equivalent. Gate
+  pending.
 - **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): tag CI and ci-fast green, consumers build and vet clean; a history read finds its
   entity's buffered rows by key prefix instead of walking the write buffer (sigma's bench: last ten cuts 15-20 ->
   10 ms, run 1.30 -> 0.81 s); 7 mutations caught, the unreachable length guard removed.

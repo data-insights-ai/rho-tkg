@@ -85,14 +85,12 @@ func (bs *Store) recordRelPropTxLocked(r *types.Relationship, current bool) {
 	if len(bs.relPropTx) == 0 || r == nil {
 		return
 	}
-	tok := r.TypeToken().Value()
 	id := r.ID()
 	ri := indexpkg.RelRowInfo(bs.validAxis.Get(), r)
-	r.ForEachIndexKey(indexpkg.RelElementsOf(bs.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
-		if sc := bs.relPropTx[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; sc != nil {
+	indexpkg.ForEachRelIndexKey(bs.relPropertyIndexes, r, func(key indexpkg.RelPropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+		if sc := bs.relPropTx[key]; sc != nil {
 			sc.members.RecordRow(valueKey, id, ri, current)
 		}
-		return true
 	})
 }
 
@@ -104,15 +102,11 @@ func (bs *Store) recordNodePropTxLocked(n *types.Node, current bool) {
 	}
 	id := n.ID()
 	ri := indexpkg.NodeRowInfo(bs.validAxis.Get(), n)
-	for i := 0; i < n.LabelTokenCount(); i++ {
-		label := n.LabelTokenRawAt(i)
-		n.ForEachIndexKey(indexpkg.ElementsOf(bs.propertyIndexes, label), func(propertyKey, valueKey string) bool {
-			if sc := bs.nodePropTx[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}]; sc != nil {
-				sc.members.RecordRow(valueKey, id, ri, current)
-			}
-			return true
-		})
-	}
+	indexpkg.ForEachNodeIndexKey(bs.propertyIndexes, n, func(key indexpkg.PropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+		if sc := bs.nodePropTx[key]; sc != nil {
+			sc.members.RecordRow(valueKey, id, ri, current)
+		}
+	})
 }
 
 // recordRelReplacedLocked records prev, the copy of a current row an update
@@ -123,14 +117,12 @@ func (bs *Store) recordRelReplacedLocked(prev, next *types.Relationship) {
 	if len(bs.relPropTx) == 0 || prev == nil || next == nil {
 		return
 	}
-	tok := prev.TypeToken().Value()
 	id := prev.ID()
 	old, nx := indexpkg.RelRowInfo(bs.validAxis.Get(), prev), indexpkg.RelRowInfo(bs.validAxis.Get(), next)
-	prev.ForEachIndexKey(indexpkg.RelElementsOf(bs.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
-		if sc := bs.relPropTx[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; sc != nil {
+	indexpkg.ForEachRelIndexKey(bs.relPropertyIndexes, prev, func(key indexpkg.RelPropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+		if sc := bs.relPropTx[key]; sc != nil {
 			sc.members.RecordReplaced(valueKey, id, old, nx)
 		}
-		return true
 	})
 }
 
@@ -142,15 +134,11 @@ func (bs *Store) recordNodeReplacedLocked(prev, next *types.Node) {
 	}
 	id := prev.ID()
 	old, nx := indexpkg.NodeRowInfo(bs.validAxis.Get(), prev), indexpkg.NodeRowInfo(bs.validAxis.Get(), next)
-	for i := 0; i < prev.LabelTokenCount(); i++ {
-		label := prev.LabelTokenRawAt(i)
-		prev.ForEachIndexKey(indexpkg.ElementsOf(bs.propertyIndexes, label), func(propertyKey, valueKey string) bool {
-			if sc := bs.nodePropTx[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}]; sc != nil {
-				sc.members.RecordReplaced(valueKey, id, old, nx)
-			}
-			return true
-		})
-	}
+	indexpkg.ForEachNodeIndexKey(bs.propertyIndexes, prev, func(key indexpkg.PropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+		if sc := bs.nodePropTx[key]; sc != nil {
+			sc.members.RecordReplaced(valueKey, id, old, nx)
+		}
+	})
 }
 
 // forgetRelPropTxCurrentLocked notes that a delete door removed r's ID's
@@ -161,13 +149,11 @@ func (bs *Store) forgetRelPropTxCurrentLocked(r *types.Relationship) {
 	if len(bs.relPropTx) == 0 || r == nil {
 		return
 	}
-	tok := r.TypeToken().Value()
 	id := r.ID()
-	r.ForEachIndexKey(indexpkg.RelElementsOf(bs.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
-		if sc := bs.relPropTx[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; sc != nil {
+	indexpkg.ForEachRelIndexKey(bs.relPropertyIndexes, r, func(key indexpkg.RelPropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+		if sc := bs.relPropTx[key]; sc != nil {
 			sc.members.ForgetCurrent(valueKey, id)
 		}
-		return true
 	})
 }
 
@@ -177,15 +163,11 @@ func (bs *Store) forgetNodePropTxCurrentLocked(n *types.Node) {
 		return
 	}
 	id := n.ID()
-	for i := 0; i < n.LabelTokenCount(); i++ {
-		label := n.LabelTokenRawAt(i)
-		n.ForEachIndexKey(indexpkg.ElementsOf(bs.propertyIndexes, label), func(propertyKey, valueKey string) bool {
-			if sc := bs.nodePropTx[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}]; sc != nil {
-				sc.members.ForgetCurrent(valueKey, id)
-			}
-			return true
-		})
-	}
+	indexpkg.ForEachNodeIndexKey(bs.propertyIndexes, n, func(key indexpkg.PropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+		if sc := bs.nodePropTx[key]; sc != nil {
+			sc.members.ForgetCurrent(valueKey, id)
+		}
+	})
 }
 
 // dropPropertyTxMembersLocked discards every property sidecar and moves the

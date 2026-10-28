@@ -1079,6 +1079,44 @@ func TestPropertyIndexOnDisk_NoRegistryStaysInRAM(t *testing.T) {
 	}
 }
 
+// TestPropertyIndexOnDisk_BuildsIndexedKeysOnly (IDXKEYLAZY): the on-disk
+// index's write path and key-size check, with a label listed or every label on
+// disk, build the value key of an indexed property only; before, every
+// property of the row got one per label, indexed or not.
+func TestPropertyIndexOnDisk_BuildsIndexedKeysOnly(t *testing.T) {
+	const unindexed = 20
+	names := registrypkg.NewLabelRegistry()
+	d, _ := names.GetOrCreate("D")
+	for _, cfg := range []Config{{PropertyIndexOnDiskLabels: []string{"D"}, LabelNames: names}, {PropertyIndexOnDisk: true}} {
+		cfg.InMemory, cfg.PropertyKeyRegistry, cfg.FlushInterval = true, registrypkg.NewPropertyKeyRegistry(), time.Hour
+		bs, err := New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := bs.CreatePropertyIndex(d, "k"); err != nil {
+			t.Fatal(err)
+		}
+		n := types.NewNode(1, d, nil)
+		_ = n.SetProperty("k", "indexed")
+		for i := range unindexed {
+			_ = n.SetProperty(fmt.Sprintf("p%02d", i), "a value nobody indexes")
+		}
+		var ops []writeOp
+		for name, run := range map[string]func(){
+			"write path": func() { ops = bs.propertyIndexDiskMaintain(n, 1, writeOpSet) },
+			"key size":   func() { _ = bs.checkNodeIndexKeysLocked(n, 1) },
+		} {
+			if allocs := testing.AllocsPerRun(50, run); allocs >= unindexed/2 {
+				t.Errorf("%v %s: %.0f allocations with %d unindexed properties", cfg.PropertyIndexOnDiskLabels, name, allocs, unindexed)
+			}
+		}
+		if len(ops) != 1 {
+			t.Errorf("%v: %d ops for one indexed property", cfg.PropertyIndexOnDiskLabels, len(ops))
+		}
+		_ = bs.Close()
+	}
+}
+
 // --- overlay set-then-delete-then-set (lesson 57) ---
 
 // TestPropertyIndexOnDisk_OverlaySetThenDeleteThenSetPending drives a

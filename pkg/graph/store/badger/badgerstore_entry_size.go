@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -62,25 +61,20 @@ func (bs *Store) checkNodeIndexKeysLocked(n *types.Node, id snowflake.ID) error 
 	if (!bs.propIdxOnDisk && len(bs.propDiskLabels) == 0) || len(bs.propertyIndexes) == 0 {
 		return nil
 	}
-	var tooLarge error
-	for i := 0; i < n.LabelTokenCount() && tooLarge == nil; i++ {
-		label := n.LabelTokenRawAt(i)
-		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
-			if !bs.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}].OnDisk() {
-				return true
-			}
-			payload, ok := storepkg.PropertyIndexValueBytes(valueKey)
-			if !ok {
-				return true
-			}
-			if l := len(storepkg.PropertyIndexEntryKey(0, payload, id)); l > bs.maxEntryKey {
-				tooLarge = fmt.Errorf("%w: property index key for %q of %d bytes, the store holds at most %d", ErrEntryTooLarge, propertyKey, l, bs.maxEntryKey)
-				return false
-			}
-			return true
-		})
+	for key, idx := range bs.propertyIndexes { // a value key for an indexed property only (IDXKEYLAZY)
+		if !idx.OnDisk() || !n.HasLabelTokenRaw(key.LabelToken) {
+			continue
+		}
+		valueKey, _ := n.IndexablePropertyValueKey(key.PropertyKey)
+		payload, ok := storepkg.PropertyIndexValueBytes(valueKey)
+		if !ok {
+			continue
+		}
+		if l := len(storepkg.PropertyIndexEntryKey(0, payload, id)); l > bs.maxEntryKey {
+			return fmt.Errorf("%w: property index key for %q of %d bytes, the store holds at most %d", ErrEntryTooLarge, key.PropertyKey, l, bs.maxEntryKey)
+		}
 	}
-	return tooLarge
+	return nil
 }
 
 // cascadeCheckBelow: a cascade record can reach a store limit below this only
