@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-28 Oct: v4.75.0 to v4.92.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
+Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
 Its first ci-docker failed on gosec G115 at v4.89.3's `propIDs.widen(uint64(id))` (ci-fast runs no gosec): annotated, no
 behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after René's three-agent checkpoint):
@@ -109,7 +109,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   memory, badger, sharded (per slot), tiered (per open shard), `store.PropertyIndexStatsByScope`; estimate
   calibrated against the heap (nine index shapes 0.85-1.06, maps per growth band 0.89-1.00, ordered views 0.92);
   54 of 55 mutations caught. ci-docker green, consumers build and vet clean, scale probe unchanged (e45b54ba).
-  Next: merge, tag, push, notify.
+  Released v4.93.0 (316081b1): tag CI and main green, ai-soc and sigma notified.
 - **RELDISK phase 2** (door, minor v4.94.0, after IDXSTATS; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
