@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-28 Oct: v4.75.0 to v4.91.2 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
+Released 24-28 Oct: v4.75.0 to v4.92.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
 Its first ci-docker failed on gosec G115 at v4.89.3's `propIDs.widen(uint64(id))` (ci-fast runs no gosec): annotated, no
 behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after René's three-agent checkpoint):
@@ -97,7 +97,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   temporal peek equivalent and kept, six equivalents removed); the sweep found the range door's one-ulp and NaN-bound
   bounds and an unreadable row's purge leaving member entries (both fixed on the branch, red in
   `tasks/evidence/RELDISK/`). ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean,
-  scale probe unchanged without the option (70869fd3). Next: release, tags to ai-soc and sigma.
+  scale probe unchanged without the option. Released v4.92.0 (759ce062): tag CI and main green, ai-soc and sigma
+  notified. Waits for ai-soc's kit numbers; phase 2 (composite rel index on disk, ByTypeAndProperties at a pin) next.
 - **VALIDTOPURGE** (found 28 Oct by RELDISK's race test; fix, patch) — badger `PurgeNodesByLabelValidToBefore`
   dereferences `n.Temporal()` of every node of the label and panics on a node stored without temporal metadata
   (badgerstore_retention_purge.go:81). Through pkg/graph every row is stamped; a direct badger caller panics. Fix: an

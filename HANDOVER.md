@@ -79,8 +79,10 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   `0x0C` member entries too, so no membership sidecar is built in RAM for either. Format marker 13: a store with
   an on-disk property index built by v4.92.0 is refused by v4.91.x. 123 of 124 mutations caught (the 124th
   equivalent, kept). Found on the way: the range door's bounds (fixed before release); a pre-existing panic in
-  `PurgeNodesByLabelValidToBefore` on a node without temporal metadata (todo, a patch). Phase 2 (the composite
-  relationship index on disk, `ByTypeAndProperties` at a pin, for NETWORK) is the next minor.
+  `PurgeNodesByLabelValidToBefore` on a node without temporal metadata (todo, a patch). ci-docker green, sigma,
+  ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged without the option; tag CI and
+  main green; ai-soc and sigma notified (ai-soc measures on the kit). Phase 2 (the composite relationship index on
+  disk, `ByTypeAndProperties` at a pin, for NETWORK) is the next minor.
 - **v4.91.1** (IDXKEYLAZY, a patch from kpdl's GC term): index maintenance built a value key for every property of
   the row per label, indexed or not (a copy of each string value; twice with a label listed); now only for indexed
   properties: 33-66 KB to ~0.5 KB per write in the bench. 15 of 16 mutations caught, the 16th equivalent. The patch
