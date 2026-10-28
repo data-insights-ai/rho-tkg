@@ -71,8 +71,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   properties: 33-66 KB to ~0.5 KB per write in the bench. 15 of 16 mutations caught, the 16th equivalent. The patch
   gate refused two exported helpers in internal/index (unexported since); ci-fast, memory, tiered, core and graph
   short tests green; ai-soc, ai-soc engine and bookkeeping build and vet clean, sigma's working tree did not build
-  on its own (its checkout mid-cherry-pick, PAGEAFTER3; sigma gates v4.91.1 after its release). Tag CI and main
-  CodeQL green.
+  on its own (its checkout mid-cherry-pick, PAGEAFTER3); sigma v0.11.126 ships on v4.91.1 (its gate and CI green)
+  and my recheck builds and vets clean. Tag CI and main CodeQL green.
 - **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): tag CI and ci-fast green, consumers build and vet clean; a history read finds its
   entity's buffered rows by key prefix instead of walking the write buffer (sigma's bench: last ten cuts 15-20 ->
   10 ms, run 1.30 -> 0.81 s); 7 mutations caught, the unreachable length guard removed.
