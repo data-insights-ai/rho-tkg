@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.91.2] - 2026-10-28
+
+### Fixed
+
+- **DISKDEFS** (SCALE; ai-soc's BO A/B k11 on v4.91.1 with DerivedPage's index on disk: push +3.8 %, live heap
+  -446 MB, `checkNodeIndexKeysLocked` +4.0 s and `maintainPropertyIndexesAdd` +2.6 s of CPU). With an on-disk
+  index, every node write walked every property-index definition of the store twice, once for the key-size
+  check and once for the disk rows, to find the few on disk; the key-size check also built the entry key of every
+  indexed value just to measure it. The store now keeps the on-disk definitions in a list refreshed at create,
+  drop, clear and open, and measures the key from the value key's length, building it only near the limit.
+  Per write: the check 225 ns / 4 allocations to 70 ns / 1 with one definition, 1,650 to 45 ns with 200; the
+  disk pass 950 to 400 ns with 50 (`TestPropertyIndexOnDisk_DefsFollowCreateDropClear`,
+  `TestPropertyIndexOnDisk_BuildsIndexedKeysOnly`: the check allocates no more than the value key;
+  `TestIndexKeyTooLargeRefusedAtEveryNodeDoor`: a key one byte over the limit refused; 8 of 8 mutations caught).
+
 ## [4.91.1] - 2026-10-28
 
 ### Fixed

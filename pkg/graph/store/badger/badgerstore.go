@@ -737,6 +737,10 @@ type Store struct {
 
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
+	// propDiskDefs: the on-disk definitions of propertyIndexes, so a node write
+	// walks those only, not every definition (DISKDEFS). Guarded by idxMu;
+	// refreshPropDiskDefsLocked after each change of propertyIndexes.
+	propDiskDefs []propDiskDef
 
 	// Relationship property indexes: RAM-only value maps keyed by rel-type token.
 	// Definitions persist under RelPropIndexDefsKey; data is rebuilt at open. Guarded by
@@ -1885,6 +1889,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				bs.propertyIndexes[key] = idx
 				bs.restoreNodePropTx(img, key)
 			}
+			bs.refreshPropDiskDefsLocked()
 		}
 
 		// Load rel property index definitions and rebuild the RAM value maps from current
@@ -2489,6 +2494,7 @@ func (bs *Store) Clear() (err error) {
 	// CreateHighFrequencyIndex / CreateVectorIndex report "already exists" on an empty
 	// store and leave stale vector entries in SearchNearestNodes.
 	bs.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
+	bs.refreshPropDiskDefsLocked()
 	bs.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
 	// The wipe below may drop the format marker: the next Elements definition
 	// re-raises it rather than trusting the cached value.

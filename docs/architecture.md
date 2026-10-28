@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.91.1)
+# Architecture — tkg/v4 (v4.91.2)
 
 rho-tkg is a pure Go library for temporal knowledge graphs: typed nodes and relationships whose every version is
 kept, stamped in two time dimensions and hash-chained. It is a library, not a database: no binary, no server, no

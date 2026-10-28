@@ -198,6 +198,7 @@ func TestIndexKeyTooLargeRefusedAtEveryNodeDoor(t *testing.T) {
 	payload1, _ := storepkg.PropertyIndexValueBytes(types.IndexablePropertyValueKey("z"))
 	overhead := len(storepkg.PropertyIndexEntryKey(0, payload1, snowflake.ID(30))) - 1
 	fits := strings.Repeat("z", bs.maxEntryKey-overhead)
+	esAfter(t, bs, "PutNode one byte over", bs.PutNode(esNode(31, 7, map[string]string{"body": fits + "z"})), absent(31))
 	if err := bs.PutNode(esNode(30, 7, map[string]string{"body": fits})); err != nil {
 		t.Fatalf("a string just under the key limit: %v", err)
 	}

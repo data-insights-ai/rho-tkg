@@ -250,26 +250,41 @@ func (bs *Store) maintainPropertyIndexesRemove(n *types.Node, id snowflake.ID) [
 }
 
 func (bs *Store) propertyIndexDiskMaintain(n *types.Node, id snowflake.ID, opType writeOpType) []writeOp {
-	if len(bs.propertyIndexes) == 0 {
-		return nil
-	}
 	var ops []writeOp
-	for key, idx := range bs.propertyIndexes { // a value key for an indexed property only (IDXKEYLAZY)
-		if !idx.OnDisk() || !n.HasLabelTokenRaw(key.LabelToken) {
+	for _, def := range bs.propDiskDefs { // a value key for an indexed property only (IDXKEYLAZY)
+		if !n.HasLabelTokenRaw(def.key.LabelToken) {
 			continue
 		}
-		valueKey, _ := n.IndexablePropertyValueKey(key.PropertyKey)
+		valueKey, _ := n.IndexablePropertyValueKey(def.key.PropertyKey)
 		if valueKey == "" {
 			continue
 		}
-		if op, ok := bs.propertyIndexDiskOp(key.PropertyKey, valueKey, id, opType); ok {
+		if op, ok := bs.propertyIndexDiskOp(def.key.PropertyKey, valueKey, id, opType); ok {
 			ops = append(ops, op)
 		}
-		if idx.Mutated != nil {
-			idx.Mutated[id] = struct{}{}
+		if def.idx.Mutated != nil {
+			def.idx.Mutated[id] = struct{}{}
 		}
 	}
 	return ops
+}
+
+// propDiskDef is one on-disk definition of Store.propDiskDefs.
+type propDiskDef struct {
+	key indexpkg.PropertyIndexKey
+	idx *indexpkg.PropertyIndex
+}
+
+// refreshPropDiskDefsLocked rebuilds propDiskDefs from propertyIndexes.
+// Caller holds idxMu.
+func (bs *Store) refreshPropDiskDefsLocked() {
+	var defs []propDiskDef
+	for key, idx := range bs.propertyIndexes {
+		if idx.OnDisk() {
+			defs = append(defs, propDiskDef{key, idx})
+		}
+	}
+	bs.propDiskDefs = defs
 }
 
 // maintainPropertyIndexesPurge is the corruption-path brute-force fallback

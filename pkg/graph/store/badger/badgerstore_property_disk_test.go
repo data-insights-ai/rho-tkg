@@ -1113,7 +1113,69 @@ func TestPropertyIndexOnDisk_BuildsIndexedKeysOnly(t *testing.T) {
 		if len(ops) != 1 {
 			t.Errorf("%v: %d ops for one indexed property", cfg.PropertyIndexOnDiskLabels, len(ops))
 		}
+		// DISKDEFS: a key within the limit is measured, not built.
+		valueKey := testing.AllocsPerRun(50, func() { _, _ = n.IndexablePropertyValueKey("k") })
+		if allocs := testing.AllocsPerRun(50, func() { _ = bs.checkNodeIndexKeysLocked(n, 1) }); allocs > valueKey {
+			t.Errorf("%v key size: %.0f allocations, the value key alone %.0f", cfg.PropertyIndexOnDiskLabels, allocs, valueKey)
+		}
 		_ = bs.Close()
+	}
+}
+
+// TestPropertyIndexOnDisk_DefsFollowCreateDropClear (DISKDEFS): a node write
+// maintains the on-disk definitions the store holds now: none after the
+// definition is dropped or the store cleared, and one created after a clear.
+// Mutation: no refresh of the on-disk definitions after a create, drop or
+// clear.
+func TestPropertyIndexOnDisk_DefsFollowCreateDropClear(t *testing.T) {
+	t.Parallel()
+	names := registrypkg.NewLabelRegistry()
+	d, _ := names.GetOrCreate("D")
+	bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), PropertyIndexOnDiskLabels: []string{"D"}, LabelNames: names})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	next := 0
+	rowsAfterPut := func() int {
+		t.Helper()
+		next++
+		n := types.NewNode(types.NodeID(snowflake.ID(next)), d, nil)
+		_ = n.SetProperty("k", "v")
+		if err := bs.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+		if err := bs.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		return propIndexDiskRows(bs)
+	}
+	if err := bs.CreatePropertyIndex(d, "k"); err != nil {
+		t.Fatal(err)
+	}
+	if got := rowsAfterPut(); got != 1 {
+		t.Errorf("after create: %d rows, want 1", got)
+	}
+	if err := bs.DropPropertyIndex(d, "k"); err != nil {
+		t.Fatal(err)
+	}
+	if got := rowsAfterPut(); got != 0 {
+		t.Errorf("after drop: %d rows, want 0", got)
+	}
+	if err := bs.CreatePropertyIndex(d, "k"); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.Clear(); err != nil {
+		t.Fatal(err)
+	}
+	if got := rowsAfterPut(); got != 0 {
+		t.Errorf("after clear: %d rows, want 0", got)
+	}
+	if err := bs.CreatePropertyIndex(d, "k"); err != nil {
+		t.Fatal(err)
+	}
+	if got := rowsAfterPut(); got != 2 {
+		t.Errorf("created after clear: %d rows, want 2", got)
 	}
 }
 

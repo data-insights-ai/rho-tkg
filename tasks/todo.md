@@ -9,7 +9,7 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-28 Oct: v4.75.0 to v4.91.1 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
+Released 24-28 Oct: v4.75.0 to v4.91.2 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
 Its first ci-docker failed on gosec G115 at v4.89.3's `propIDs.widen(uint64(id))` (ci-fast runs no gosec): annotated, no
 behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after René's three-agent checkpoint):
@@ -49,8 +49,14 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Bench (one indexed key, eight 4 KB unindexed strings): RAM 33 KB / 9.5 us per write, listed 66 KB / 16 us; after,
   ~0.5 KB / <1 us in every mode. Fix: walk the indexes on the row's labels. Built on branch idxkeylazy (15 of 16
   mutations caught, the 16th equivalent; the patch gate refused two exported helpers, now unexported). Released
-  v4.91.1: ci-fast, tag CI and CodeQL green, consumers clean (sigma v0.11.126 ships on it, recheck clean); ai-soc pinned v4.91.1 (kit answers equal), BO A/B k11 running (a no list, b
-  [DerivedPage], c b with sigma's PageState 1); done when its a/b numbers are in against kpdl.
+  v4.91.1: ci-fast, tag CI and CodeQL green, consumers clean (sigma v0.11.126 ships on it, recheck clean); ai-soc pinned v4.91.1 (kit answers equal), BO A/B k11 (a no list, b
+  [DerivedPage]): push +3.8 % (inside ai-soc's 5 % gate, DerivedPage stays on disk), heap -446 MB, GC mark +19.2 s
+  (IDXKEYLAZY's copies gone); the rest went to DISKDEFS.
+- **DISKDEFS** (ai-soc's k11 profile, 28 Oct; SCALE; fix, patch v4.91.2) — putNodeRouted +14.6 s on b: flushIfNeeded
+  +6.4 s (badger writing the extra rows, the price of the disk index), checkNodeIndexKeysLocked +4.0 s and
+  maintainPropertyIndexesAdd +2.6 s (each walked every definition to find the on-disk ones; the check built every
+  entry key to measure it). Fix on branch diskdefs: a list of the on-disk definitions, a length bound; check 225 ns /
+  4 allocations to 70 ns / 1, 8 of 8 mutations caught. Done when released and ai-soc's next A/B has its numbers.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node

@@ -58,20 +58,23 @@ func (bs *Store) checkChangePayload(payload []byte) error {
 // property_index_key.go). Caller holds idxMu. It interns no token: a token is
 // always 2 bytes, so a placeholder gives the key's length.
 func (bs *Store) checkNodeIndexKeysLocked(n *types.Node, id snowflake.ID) error {
-	if (!bs.propIdxOnDisk && len(bs.propDiskLabels) == 0) || len(bs.propertyIndexes) == 0 {
-		return nil
-	}
-	for key, idx := range bs.propertyIndexes { // a value key for an indexed property only (IDXKEYLAZY)
-		if !idx.OnDisk() || !n.HasLabelTokenRaw(key.LabelToken) {
+	for _, def := range bs.propDiskDefs { // a value key for an indexed property only (IDXKEYLAZY)
+		if !n.HasLabelTokenRaw(def.key.LabelToken) {
 			continue
 		}
-		valueKey, _ := n.IndexablePropertyValueKey(key.PropertyKey)
+		valueKey, _ := n.IndexablePropertyValueKey(def.key.PropertyKey)
+		// The key is 11 bytes and the payload: a domain byte and the value key
+		// for a raw value (a number's is 18 bytes, its key far under any
+		// limit). Within that neither is built (DISKDEFS).
+		if 3+1+len(valueKey)+8 <= bs.maxEntryKey {
+			continue
+		}
 		payload, ok := storepkg.PropertyIndexValueBytes(valueKey)
 		if !ok {
 			continue
 		}
 		if l := len(storepkg.PropertyIndexEntryKey(0, payload, id)); l > bs.maxEntryKey {
-			return fmt.Errorf("%w: property index key for %q of %d bytes, the store holds at most %d", ErrEntryTooLarge, key.PropertyKey, l, bs.maxEntryKey)
+			return fmt.Errorf("%w: property index key for %q of %d bytes, the store holds at most %d", ErrEntryTooLarge, def.key.PropertyKey, l, bs.maxEntryKey)
 		}
 	}
 	return nil

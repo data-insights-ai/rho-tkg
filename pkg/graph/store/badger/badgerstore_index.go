@@ -76,6 +76,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		bs.idxMu.Unlock()
 		return idErr
 	}
+	bs.refreshPropDiskDefsLocked()
 	bs.idxMu.Unlock()
 	if propertyCreatePhase2Hook != nil {
 		propertyCreatePhase2Hook()
@@ -170,6 +171,7 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 	}
 	dropped := bs.propertyIndexes[key]
 	delete(bs.propertyIndexes, key)
+	bs.refreshPropDiskDefsLocked()
 	if _, ok := bs.nodePropTx[key]; ok {
 		delete(bs.nodePropTx, key) // its membership sidecar goes with it (backlog 8)
 		bs.propTxGen++
