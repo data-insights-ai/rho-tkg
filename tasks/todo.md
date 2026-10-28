@@ -84,8 +84,16 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   intersects whole per-key member sets. Per live rel, 8 + 9 B (relIDs, typeIdx) stays per open shard. Plan sent:
   phase 1 minor, keyspace 0x0C `type|propTok|payload|relID` in two kinds, current (deleted on change) and member
   (append-only, TxFrom suffix, min per rel), written with the row, serving the membership doors from disk, no RAM
-  sidecar for an on-disk definition; phase 2 minor, the rel composite + RelOps.ByTypeAndProperties. Waits for
-  ai-soc: is `device` an endpoint (then adjacency, not a composite), nodes in phase 1 too?
+  sidecar for an on-disk definition; phase 2 minor, the rel composite + RelOps.ByTypeAndProperties. ai-soc's go
+  (28 Oct): NETWORK's device and local_port are edge properties (composite needed; PROCESS/REGISTRY
+  (device, tkg_valid_from) too); FILE probes its File node's incoming adjacency (no index); nodes in phase 1 too
+  (sigma's `ending`, `voided`); 2b edges are on event shards (closed by mint time). Phase 1 building on branch
+  `reldisk` (v4.92.0). Raw payloads in 0x0C are escaped and terminated (an exact lookup walks its own value only;
+  a prefix scan seeks the unterminated prefix). Done when: a pinned read through an on-disk definition (rel or
+  node) builds no membership sidecar (RelPostings = NodePostings = 0), the on-disk rel handle holds no entries, a
+  reopen and a reopen without the option answer as memory at four pins, every membership door agrees with the
+  sidecar it replaces; cost: two keys per indexed rel row (current + member), one per node row (member), no RAM
+  per entity.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
