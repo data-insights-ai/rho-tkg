@@ -78,7 +78,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   DurableCommit, 500 B facts, one writer, batches of 1000): 64 k/s against the goal's 46 k/s sustained. Items, in
   order: EXISTMAP (a compact ID set saved in the open image and a bounded striped revision table instead of the two
   maps: RAM and open time no longer grow per entity), then WRITERATE (peak headroom, several writers), then
-  COMPOSITEDISK (postings out of RAM; small today). EXISTMAP shipped in v4.84.0: ~8 B per node in an open shard,
+  COMPOSITEDISK (postings out of RAM; small today: ai-soc's BA k10272220, AddNodeToCompositeIndexes 44.2 MB at
+  900 s, +31.1 MB from 300 s, 0.9 % of the growth; ai-soc lists it in every BA heap diff). EXISTMAP shipped in v4.84.0: ~8 B per node in an open shard,
   clean reopen ~0.25 s per 1 M (`tasks/evidence/EXISTMAP/results.txt`); a read that misses a listed row is now
   `ErrCorruptWire`. OPENWALK (v4.87.0): with the label and adjacency indexes on disk a clean open walks no key per
   entity and an open shard keeps ~16 B per rel (the rel ID set and the rel-type index as ID sets). Next walls found
