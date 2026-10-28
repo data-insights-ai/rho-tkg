@@ -76,6 +76,16 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   purges today) and TIMEWINDOW
   reads (minor: a mint-time range on QueryOpts so reads consult only the shards whose window meets it). Wait for
   René's word.
+- **RELDISK** (ai-soc 28 Oct, goal 2, for sigma 2b SRCMASK: edge source rows read back at the read pin; BA k10281507
+  NETWORK +46 MB in 300 s). Asked: rel property indexes on disk (`RelPropertyIndexOnDiskTypes`) and a rel composite on
+  disk (NETWORK device+local_port, 2.1 rows a key). Found: a TxPin lookup takes its candidates from the RAM membership
+  sidecar (temporal.go:1220-1245; append-only, history included, 25-100 B a posting), for on-disk node indexes too,
+  so the current index on disk alone doesn't stop growth; no rel multi-key door; the node multi-key pinned path
+  intersects whole per-key member sets. Per live rel, 8 + 9 B (relIDs, typeIdx) stays per open shard. Plan sent:
+  phase 1 minor, keyspace 0x0C `type|propTok|payload|relID` in two kinds, current (deleted on change) and member
+  (append-only, TxFrom suffix, min per rel), written with the row, serving the membership doors from disk, no RAM
+  sidecar for an on-disk definition; phase 2 minor, the rel composite + RelOps.ByTypeAndProperties. Waits for
+  ai-soc: is `device` an endpoint (then adjacency, not a composite), nodes in phase 1 too?
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
