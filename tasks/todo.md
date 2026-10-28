@@ -56,7 +56,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   +6.4 s (badger writing the extra rows, the price of the disk index), checkNodeIndexKeysLocked +4.0 s and
   maintainPropertyIndexesAdd +2.6 s (each walked every definition to find the on-disk ones; the check built every
   entry key to measure it). Fix on branch diskdefs: a list of the on-disk definitions, a length bound; check 225 ns /
-  4 allocations to 70 ns / 1, 8 of 8 mutations caught. Done when released and ai-soc's next A/B has its numbers.
+  4 allocations to 70 ns / 1, 8 of 8 mutations caught. Released v4.91.2 (tag CI and CodeQL green); done when ai-soc's A/B on it is in.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node

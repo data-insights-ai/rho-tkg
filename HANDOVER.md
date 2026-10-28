@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-28: latest tag v4.91.1, v4.91.2 in release; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-28: latest tag v4.91.2; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -71,7 +71,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   entry key to measure it; now a list of the on-disk definitions and a length bound (check 225 ns / 4 allocations
   to 70 ns / 1). 8 of 8 mutations caught (a ninth, a numeric term in the bound, was equivalent and is removed).
   ci-fast, memory, tiered, core and graph short tests green; sigma, ai-soc, ai-soc engine and bookkeeping build and
-  vet clean.
+  vet clean. Tag CI and main CodeQL green; ai-soc asked for the k11 A/B on it.
 - **v4.91.1** (IDXKEYLAZY, a patch from kpdl's GC term): index maintenance built a value key for every property of
   the row per label, indexed or not (a copy of each string value; twice with a label listed); now only for indexed
   properties: 33-66 KB to ~0.5 KB per write in the bench. 15 of 16 mutations caught, the 16th equivalent. The patch
