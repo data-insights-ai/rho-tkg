@@ -56,8 +56,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   +6.4 s (badger writing the extra rows, the price of the disk index), checkNodeIndexKeysLocked +4.0 s and
   maintainPropertyIndexesAdd +2.6 s (each walked every definition to find the on-disk ones; the check built every
   entry key to measure it). Fix on branch diskdefs: a list of the on-disk definitions, a length bound; check 225 ns /
-  4 allocations to 70 ns / 1, 8 of 8 mutations caught. Released v4.91.2 (tag CI and CodeQL green); ai-soc pinned it (aaf69ed4), k12 a/b on BO after its PageAfter A/B (DerivedPage
-  carries 3 + one per mask, about 10-20 node definitions); done when k12's numbers are in.
+  4 allocations to 70 ns / 1, 8 of 8 mutations caught. Released v4.91.2 (tag CI and CodeQL green); ai-soc pinned it (aaf69ed4), k12 BO a/b (DerivedPage carries 3 + one per mask,
+  about 10-20 node definitions): push +3.3 % (k11 +3.8 %), heap -395 MB, checkNodeIndexKeysLocked gone from the gap,
+  maintainPropertyIndexesAdd +2.6 to +0.8 s, putNodeRouted +14.6 to +10.7 s; the rest is badger writing the rows
+  (flush ~7 s, GC on its write path ~17 s). Closed; badger knobs (MemTableSize, MaxPendingWrites, jemalloc tag) left to
+  ai-soc's own A/B.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
