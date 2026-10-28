@@ -268,7 +268,7 @@ var PropertyIndexOnDiskDefBuiltPrefix = MetaKey("property_index_on_disk_def_buil
 func PropertyIndexOnDiskDefBuiltKey(labelToken uint16, propertyKey string) []byte {
 	b := make([]byte, 0, len(PropertyIndexOnDiskDefBuiltPrefix)+2+len(propertyKey))
 	b = append(b, PropertyIndexOnDiskDefBuiltPrefix...)
-	b = append(b, byte(labelToken>>8), byte(labelToken))
+	b = binary.BigEndian.AppendUint16(b, labelToken)
 	return append(b, propertyKey...)
 }
 
