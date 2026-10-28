@@ -104,8 +104,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   128 MB (composites 49, single-key 35.5) stay in RAM.
 - **IDXSTATS** (ai-soc 28 Oct; door, minor v4.93.0, before RELDISK phase 2) — ai-soc cannot size its next request: no
   door reports index entries per definition. `PropertyIndexStats()` per definition: label or type, key(s), composite,
-  on disk, distinct values, postings, estimated RAM bytes; badger, tiered (per shard and total), memory. Shape
-  proposed to ai-soc; build unless it asks otherwise.
+  on disk, distinct values, postings, estimated RAM bytes; badger, tiered (per shard and total), memory. ai-soc
+  confirmed the shape (RAM bytes, on disk, per label or type). Committed on branch `idxstats` (85bdc962):
+  memory, badger, sharded (per slot), tiered (per open shard), `store.PropertyIndexStatsByScope`; estimate
+  calibrated against the heap (nine index shapes 0.85-1.06, maps per growth band 0.89-1.00, ordered views 0.92);
+  54 of 55 mutations caught. Next: ci-docker, scale probe, consumers, release.
 - **RELDISK phase 2** (door, minor v4.94.0, after IDXSTATS; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
