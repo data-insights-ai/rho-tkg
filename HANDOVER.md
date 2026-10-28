@@ -68,8 +68,10 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   (IDXKEYLAZY); ai-soc lists DerivedPage in the product; the reduced BA run waits for René's word.
 - **v4.91.1** (IDXKEYLAZY, a patch from kpdl's GC term): index maintenance built a value key for every property of
   the row per label, indexed or not (a copy of each string value; twice with a label listed); now only for indexed
-  properties: 33-66 KB to ~0.5 KB per write in the bench. 15 of 16 mutations caught, the 16th equivalent. Gate
-  pending.
+  properties: 33-66 KB to ~0.5 KB per write in the bench. 15 of 16 mutations caught, the 16th equivalent. The patch
+  gate refused two exported helpers in internal/index (unexported since); ci-fast, memory, tiered, core and graph
+  short tests green; ai-soc, ai-soc engine and bookkeeping build and vet clean, sigma's working tree did not build
+  on its own (undefined identifiers in its sessions package, none of rho's); sigma asked to recheck.
 - **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): tag CI and ci-fast green, consumers build and vet clean; a history read finds its
   entity's buffered rows by key prefix instead of walking the write buffer (sigma's bench: last ten cuts 15-20 ->
   10 ms, run 1.30 -> 0.81 s); 7 mutations caught, the unreachable length guard removed.
