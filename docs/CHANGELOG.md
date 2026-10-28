@@ -18,8 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   copies doubled. It now walks the indexes on the row's labels and builds the keys of indexed properties only.
   One indexed key and eight unindexed 4 KB strings per write: RAM 33 KB / 9.5 us to 0.6 KB / under 1 us, a label
   listed 66 KB / 16 us to 0.5 KB, every label on disk 33 KB to 0.5 KB (`TestIndexMaintenanceBuildsIndexedKeysOnly`,
-  `TestPropertyIndexOnDisk_BuildsIndexedKeysOnly`, `TestRelElementsIndexKeysEachElement`; 11 of 12 mutations
-  caught, the 12th equivalent: an empty value key, which the index ignores anyway).
+  `TestPropertyIndexOnDisk_BuildsIndexedKeysOnly`, `TestRelElementsIndexKeysEachElement`,
+  `TestElementsIndexPinnedReads`: Elements indexes read at past pins on badger as on memory, an element gained after
+  the sidecars' build and lost again included; 15 of 16 mutations caught, the 16th equivalent: an empty value key,
+  which the index ignores anyway).
 
 ## [4.91.0] - 2026-10-28
 

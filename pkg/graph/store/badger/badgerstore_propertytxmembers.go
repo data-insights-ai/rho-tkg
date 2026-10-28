@@ -87,11 +87,41 @@ func (bs *Store) recordRelPropTxLocked(r *types.Relationship, current bool) {
 	}
 	id := r.ID()
 	ri := indexpkg.RelRowInfo(bs.validAxis.Get(), r)
-	indexpkg.ForEachRelIndexKey(bs.relPropertyIndexes, r, func(key indexpkg.RelPropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+	bs.relIndexKeysLocked(r, func(key indexpkg.RelPropertyIndexKey, valueKey string) {
 		if sc := bs.relPropTx[key]; sc != nil {
 			sc.members.RecordRow(valueKey, id, ri, current)
 		}
 	})
+}
+
+// nodeIndexKeysLocked calls fn with each property index on a label n carries
+// and each value key n has under it, built for indexed properties only
+// (IDXKEYLAZY, as indexpkg's maintenance walks). Caller holds idxMu.
+func (bs *Store) nodeIndexKeysLocked(n *types.Node, fn func(key indexpkg.PropertyIndexKey, valueKey string)) {
+	for key, idx := range bs.propertyIndexes {
+		if !n.HasLabelTokenRaw(key.LabelToken) {
+			continue
+		}
+		n.ForEachPropertyIndexKey(key.PropertyKey, idx.Elements(), func(valueKey string) bool {
+			fn(key, valueKey)
+			return true
+		})
+	}
+}
+
+// relIndexKeysLocked is nodeIndexKeysLocked for a relationship: the indexes
+// on its type.
+func (bs *Store) relIndexKeysLocked(r *types.Relationship, fn func(key indexpkg.RelPropertyIndexKey, valueKey string)) {
+	tok := r.TypeToken().Value()
+	for key, idx := range bs.relPropertyIndexes {
+		if key.RelTypeToken != tok {
+			continue
+		}
+		r.ForEachPropertyIndexKey(key.PropertyKey, idx.Elements(), func(valueKey string) bool {
+			fn(key, valueKey)
+			return true
+		})
+	}
 }
 
 // recordNodePropTxLocked records n's indexable values into the tracking node
@@ -102,7 +132,7 @@ func (bs *Store) recordNodePropTxLocked(n *types.Node, current bool) {
 	}
 	id := n.ID()
 	ri := indexpkg.NodeRowInfo(bs.validAxis.Get(), n)
-	indexpkg.ForEachNodeIndexKey(bs.propertyIndexes, n, func(key indexpkg.PropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+	bs.nodeIndexKeysLocked(n, func(key indexpkg.PropertyIndexKey, valueKey string) {
 		if sc := bs.nodePropTx[key]; sc != nil {
 			sc.members.RecordRow(valueKey, id, ri, current)
 		}
@@ -119,7 +149,7 @@ func (bs *Store) recordRelReplacedLocked(prev, next *types.Relationship) {
 	}
 	id := prev.ID()
 	old, nx := indexpkg.RelRowInfo(bs.validAxis.Get(), prev), indexpkg.RelRowInfo(bs.validAxis.Get(), next)
-	indexpkg.ForEachRelIndexKey(bs.relPropertyIndexes, prev, func(key indexpkg.RelPropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+	bs.relIndexKeysLocked(prev, func(key indexpkg.RelPropertyIndexKey, valueKey string) {
 		if sc := bs.relPropTx[key]; sc != nil {
 			sc.members.RecordReplaced(valueKey, id, old, nx)
 		}
@@ -134,7 +164,7 @@ func (bs *Store) recordNodeReplacedLocked(prev, next *types.Node) {
 	}
 	id := prev.ID()
 	old, nx := indexpkg.NodeRowInfo(bs.validAxis.Get(), prev), indexpkg.NodeRowInfo(bs.validAxis.Get(), next)
-	indexpkg.ForEachNodeIndexKey(bs.propertyIndexes, prev, func(key indexpkg.PropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+	bs.nodeIndexKeysLocked(prev, func(key indexpkg.PropertyIndexKey, valueKey string) {
 		if sc := bs.nodePropTx[key]; sc != nil {
 			sc.members.RecordReplaced(valueKey, id, old, nx)
 		}
@@ -150,7 +180,7 @@ func (bs *Store) forgetRelPropTxCurrentLocked(r *types.Relationship) {
 		return
 	}
 	id := r.ID()
-	indexpkg.ForEachRelIndexKey(bs.relPropertyIndexes, r, func(key indexpkg.RelPropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+	bs.relIndexKeysLocked(r, func(key indexpkg.RelPropertyIndexKey, valueKey string) {
 		if sc := bs.relPropTx[key]; sc != nil {
 			sc.members.ForgetCurrent(valueKey, id)
 		}
@@ -163,7 +193,7 @@ func (bs *Store) forgetNodePropTxCurrentLocked(n *types.Node) {
 		return
 	}
 	id := n.ID()
-	indexpkg.ForEachNodeIndexKey(bs.propertyIndexes, n, func(key indexpkg.PropertyIndexKey, _ *indexpkg.PropertyIndex, valueKey string) {
+	bs.nodeIndexKeysLocked(n, func(key indexpkg.PropertyIndexKey, valueKey string) {
 		if sc := bs.nodePropTx[key]; sc != nil {
 			sc.members.ForgetCurrent(valueKey, id)
 		}

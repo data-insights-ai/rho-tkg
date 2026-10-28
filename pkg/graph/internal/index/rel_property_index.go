@@ -40,14 +40,14 @@ func AddRelToPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyIndex, r *
 	if len(indexes) == 0 || r == nil {
 		return
 	}
-	ForEachRelIndexKey(indexes, r, func(_ RelPropertyIndexKey, idx *PropertyIndex, valueKey string) {
+	forEachRelIndexKey(indexes, r, func(_ RelPropertyIndexKey, idx *PropertyIndex, valueKey string) {
 		idx.AddKey(id, valueKey)
 	})
 }
 
-// ForEachRelIndexKey is ForEachNodeIndexKey for a relationship: the indexes
+// forEachRelIndexKey is forEachNodeIndexKey for a relationship: the indexes
 // on its type.
-func ForEachRelIndexKey(indexes map[RelPropertyIndexKey]*PropertyIndex, r *types.Relationship, fn func(key RelPropertyIndexKey, idx *PropertyIndex, valueKey string)) {
+func forEachRelIndexKey(indexes map[RelPropertyIndexKey]*PropertyIndex, r *types.Relationship, fn func(key RelPropertyIndexKey, idx *PropertyIndex, valueKey string)) {
 	if len(indexes) == 0 || r == nil {
 		return
 	}
@@ -76,7 +76,7 @@ func RemoveRelFromPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyIndex
 	if len(indexes) == 0 || r == nil {
 		return
 	}
-	ForEachRelIndexKey(indexes, r, func(_ RelPropertyIndexKey, idx *PropertyIndex, valueKey string) {
+	forEachRelIndexKey(indexes, r, func(_ RelPropertyIndexKey, idx *PropertyIndex, valueKey string) {
 		idx.removeKey(id, valueKey)
 	})
 }

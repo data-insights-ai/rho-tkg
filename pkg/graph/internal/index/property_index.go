@@ -227,12 +227,12 @@ func (pi *PropertyIndex) AddEntityKeys(id snowflake.ID, propertyKey string, keys
 	})
 }
 
-// ForEachNodeIndexKey calls fn with each index of indexes on a label n
+// forEachNodeIndexKey calls fn with each index of indexes on a label n
 // carries and each value key n has under it (an Elements index: each element's
 // key). A value key is built for an indexed property only (IDXKEYLAZY: walking
 // n's properties built one per property and label, a copy of every value per
 // write).
-func ForEachNodeIndexKey(indexes map[PropertyIndexKey]*PropertyIndex, n *types.Node, fn func(key PropertyIndexKey, idx *PropertyIndex, valueKey string)) {
+func forEachNodeIndexKey(indexes map[PropertyIndexKey]*PropertyIndex, n *types.Node, fn func(key PropertyIndexKey, idx *PropertyIndex, valueKey string)) {
 	for key, idx := range indexes {
 		if !n.HasLabelTokenRaw(key.LabelToken) {
 			continue
@@ -253,7 +253,7 @@ func ForEachNodeIndexKey(indexes map[PropertyIndexKey]*PropertyIndex, n *types.N
 // AddNodeToPropertyIndexes indexes a node's properties into all matching property indexes
 // in RAM. Caller must hold the store's write lock.
 func AddNodeToPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *types.Node, id snowflake.ID) {
-	ForEachNodeIndexKey(indexes, n, func(_ PropertyIndexKey, idx *PropertyIndex, valueKey string) {
+	forEachNodeIndexKey(indexes, n, func(_ PropertyIndexKey, idx *PropertyIndex, valueKey string) {
 		if !idx.onDisk {
 			idx.AddKey(id, valueKey)
 		}
@@ -284,7 +284,7 @@ func PurgeNodeFromAllPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex
 // RemoveNodeFromPropertyIndexes removes a node's properties from all matching property indexes
 // in RAM. Caller must hold the store's write lock.
 func RemoveNodeFromPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *types.Node, id snowflake.ID) {
-	ForEachNodeIndexKey(indexes, n, func(_ PropertyIndexKey, idx *PropertyIndex, valueKey string) {
+	forEachNodeIndexKey(indexes, n, func(_ PropertyIndexKey, idx *PropertyIndex, valueKey string) {
 		if !idx.onDisk {
 			idx.removeKey(id, valueKey)
 		}
