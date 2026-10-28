@@ -51,7 +51,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   build and vet clean, tag CI and main CodeQL green.
 - **PROPDISKLABEL** (ai-soc 28 Oct; SCALE, goal 2; door, minor v4.91.0 after PROPDISKTOGGLE and PROPOVERLAY; built
   30 of 30 mutations caught; released v4.91.0, ci-docker green after a gosec G115 fix, consumers build and vet clean;
-  tag CI watched next) — the on-disk property
+  tag CI and main CodeQL green; waits for ai-soc's BO A/B and reduced BA run) — the on-disk property
   index chosen per label: `PropertyIndexOnDiskLabels []string` in badger and tiered Config; ai-soc sets ["DerivedPage"].
   BA k10272220 (v4.90.1): live heap +3,587 MB from 300 to 900 s, rho +1,969 MB of it, PropertyIndex.AddKey +1,720 MB,
   1.66 GB from sigma's paging (RowPage/StatePage -> GraphDerivedWriter.publish, DerivedPage nodes). All-on-disk cost

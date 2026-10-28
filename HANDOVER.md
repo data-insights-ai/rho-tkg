@@ -63,7 +63,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   others stay in RAM; per-definition built markers, format marker 12. 30 of 30 mutations caught. Known limit: a
   label holding a value whose key would pass 65,000 bytes cannot join (the open fails, the store reopens unchanged
   without it). ci-docker: gosec flagged G115 on the new marker key's byte conversions (now AppendUint16, same
-  bytes), the steps from security on rerun green; done when ai-soc's BO A/B and reduced BA run on it are in.
+  bytes), the steps from security on rerun green; tag CI and main CodeQL green, consumers build and vet clean;
+  done when ai-soc's BO A/B and reduced BA run on it are in.
 - **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): tag CI and ci-fast green, consumers build and vet clean; a history read finds its
   entity's buffered rows by key prefix instead of walking the write buffer (sigma's bench: last ten cuts 15-20 ->
   10 ms, run 1.30 -> 0.81 s); 7 mutations caught, the unreachable length guard removed.
