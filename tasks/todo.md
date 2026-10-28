@@ -98,7 +98,17 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   bounds and an unreadable row's purge leaving member entries (both fixed on the branch, red in
   `tasks/evidence/RELDISK/`). ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean,
   scale probe unchanged without the option. Released v4.92.0 (759ce062): tag CI and main green, ai-soc and sigma
-  notified. Waits for ai-soc's kit numbers; phase 2 (composite rel index on disk, ByTypeAndProperties at a pin) next.
+  notified. ai-soc pinned it (b3310c24; seven rel types listed, AisocEnded and AisocVoided join DerivedPage on disk):
+  kit answers equal, heap too small to show, push 56.8 -> 60.9 s (+7 %, three changes at once: A/B (a) DerivedPage
+  only, (b) + rel types, (c) + labels asked); BA k10281507 at 900 s: rel indexes 20.6 MB (now on disk), node indexes
+  128 MB (composites 49, single-key 35.5) stay in RAM.
+- **IDXSTATS** (ai-soc 28 Oct; door, minor v4.93.0, before RELDISK phase 2) — ai-soc cannot size its next request: no
+  door reports index entries per definition. `PropertyIndexStats()` per definition: label or type, key(s), composite,
+  on disk, distinct values, postings, estimated RAM bytes; badger, tiered (per shard and total), memory. Shape
+  proposed to ai-soc; build unless it asks otherwise.
+- **RELDISK phase 2** (door, minor v4.94.0, after IDXSTATS; sigma's 2b, after its COUNTROWS) — the composite rel
+  index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
+  at a pin.
 - **VALIDTOPURGE** (found 28 Oct by RELDISK's race test; fix, patch) — badger `PurgeNodesByLabelValidToBefore`
   dereferences `n.Temporal()` of every node of the label and panics on a node stored without temporal metadata
   (badgerstore_retention_purge.go:81). Through pkg/graph every row is stamped; a direct badger caller panics. Fix: an
