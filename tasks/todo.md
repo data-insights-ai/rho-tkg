@@ -343,8 +343,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   builder bursts bounded only by NumCompactors x (8 + splits) builders x 2-3 table sizes per DB (BaseTableSize and
   TableSizeMultiplier not exposed). Asked ai-soc for pprof -peek callers of sortedChunks add/insert and of
   decodePropertyWireShared, the temporal-indexed labels with node counts, badger vs tiered. Candidates once the
-  data is in: fold posByID into byID (~-40 B a node), a disk form for the temporal index, a door for the badger
-  table sizes.
+  data is in: fold posByID into byID (~-40 B a node), a disk form for the temporal index. ai-soc's callers (tiered):
+  the postings are Derived's (KEYDISK and COMPDISK take them); the decoded values are rels held by each open
+  shard's rel cache (prefetchRel -> LoadCleanAt; 10,000 a cache, no byte budget): told to set CacheBudgetBytes.
+  No builder door (ai-soc fixes the one-cut day, COVHOLD). Waiting: temporal-indexed labels and counts next run.
 - **ASOFREAD** (SCALE, sigma 27 Oct, BenchmarkStateRefOwnersRewritten at 500 cuts: 5 -> 40 ms a cut, 70 % of the CPU in
   StatePage.LoadWritten -> NodeEffectiveTimelines -> badger NodeHistoryTemporalMeta, which decodes every version of a
   node rewritten every cut). rho's record door `NodeAsOf` walks history newest-first only down to the pin (500
