@@ -13,11 +13,19 @@ import (
 // Layout: KeyEntityIndex(1B) | kind(1B) | scopeToken(2B BE) | propKeyToken(2B BE)
 // | payload | entityID(8B BE) [| txFrom(8B BE), member kinds]
 //
+// A composite node definition's head names every key (COMPDISK): KeyEntityIndex
+// | EntityIndexNodeComposite | label(2B BE) | first key's token(2B BE) | key
+// count(1B) | the other keys' tokens (2B BE each), so two composites of a label
+// never share a prefix; its payload is the tuple's value key (index.
+// NodeCompositeValueKey) escaped and terminated as a raw value.
+//
 // scopeToken is the relationship type or the label of the definition, so a
 // definition owns its prefix (its head) whole. Kinds:
 //
 //   - EntityIndexRelCurrent: one entry per relationship and current value,
 //     deleted when the value changes (the relationship mirror of 0x0A).
+//   - EntityIndexNodeComposite: one entry per node and current tuple of a
+//     composite node index kept on disk, deleted when the tuple changes.
 //   - EntityIndexRelMember / EntityIndexNodeMember: one entry per value a row
 //     of the entity ever carried and per transaction time of such a row,
 //     append-only. A reader takes, per entity, the lowest transaction time
@@ -37,6 +45,9 @@ const (
 	EntityIndexRelCurrent byte = 0x01
 	EntityIndexRelMember  byte = 0x02
 	EntityIndexNodeMember byte = 0x03
+	// EntityIndexNodeComposite (COMPDISK) is a composite node index's current
+	// entry.
+	EntityIndexNodeComposite byte = 0x04
 )
 
 // EntityIndexBuiltPrefix starts the built markers of the definitions kept in
@@ -63,10 +74,27 @@ const EntityIndexHeadLen = 1 + 1 + 2 + 2
 // EntityIndexTailLen is the length of what follows an entry's value prefix:
 // the entity ID, and for a member kind its transaction time.
 func EntityIndexTailLen(kind byte) int {
-	if kind == EntityIndexRelCurrent {
+	if kind == EntityIndexRelCurrent || kind == EntityIndexNodeComposite {
 		return 8
 	}
 	return 16
+}
+
+// AppendEntityIndexCompositeHead appends the head of a composite node
+// definition's entries over keyTokens (2..4, declared order).
+func AppendEntityIndexCompositeHead(dst []byte, label uint16, keyTokens []uint16) []byte {
+	dst = AppendEntityIndexHead(dst, EntityIndexNodeComposite, label, keyTokens[0])
+	dst = append(dst, byte(len(keyTokens))) // #nosec G115 -- 2..4 keys
+	for _, tok := range keyTokens[1:] {
+		dst = binary.BigEndian.AppendUint16(dst, tok)
+	}
+	return dst
+}
+
+// AppendEntityIndexCompositeValue appends a composite tuple's payload: its
+// value key escaped as a raw value, terminated.
+func AppendEntityIndexCompositeValue(dst []byte, tupleKey string) []byte {
+	return append(escapeEntityIndexRaw(dst, tupleKey), 0x00)
 }
 
 // AppendEntityIndexHead appends the head of a definition's entries of kind.
@@ -120,7 +148,7 @@ func escapeEntityIndexRaw(dst []byte, s string) []byte {
 // entity ID, and for a member kind the row's transaction time.
 func AppendEntityIndexEntry(prefix []byte, kind byte, id snowflake.ID, txFrom int64) []byte {
 	prefix = binary.BigEndian.AppendUint64(prefix, uint64(id)) // #nosec G115 -- int64 bits as uint64, the key order of IDs
-	if kind == EntityIndexRelCurrent {
+	if kind == EntityIndexRelCurrent || kind == EntityIndexNodeComposite {
 		return prefix
 	}
 	return binary.BigEndian.AppendUint64(prefix, uint64(txFrom)) // #nosec G115 -- int64 bits as uint64; readers take the minimum, not the key order

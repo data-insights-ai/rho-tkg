@@ -5,6 +5,12 @@ import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 )
 
+// idPager is a sorted ID set read in keyset pages: an index.Postings, or a
+// composite tuple's entries on disk (compositeDiskPostings).
+type idPager interface {
+	AppendAfter(dst []snowflake.ID, after snowflake.ID, limit int) []snowflake.ID
+}
+
 // postingsBatchCap bounds one batch of walkPostings after the first.
 const postingsBatchCap = 1 << 14
 
@@ -21,7 +27,7 @@ const postingsBatchCap = 1 << 14
 // batch, as a later read would see it; every row is re-checked against the
 // current row by visit, so a moved ID is dropped.
 // visit must not keep batch.
-func (bs *Store) walkPostings(p indexpkg.Postings, after snowflake.ID, limit int, visit func(batch []snowflake.ID) (need int, err error)) error {
+func (bs *Store) walkPostings(p idPager, after snowflake.ID, limit int, visit func(batch []snowflake.ID) (need int, err error)) error {
 	size := limit
 	var batch []snowflake.ID
 	for {
@@ -45,7 +51,7 @@ func (bs *Store) walkPostings(p indexpkg.Postings, after snowflake.ID, limit int
 // into the rows that pass the door's filters, at most page.Limit of them
 // (page is opts with After cleared and Limit the rows still needed). nil when
 // empty, as the doors return.
-func pagePostings[T any](bs *Store, p indexpkg.Postings, opts QueryOpts, fetch func(batch []snowflake.ID, page QueryOpts) ([]T, error)) ([]T, error) {
+func pagePostings[T any](bs *Store, p idPager, opts QueryOpts, fetch func(batch []snowflake.ID, page QueryOpts) ([]T, error)) ([]T, error) {
 	var out []T
 	page := opts
 	page.After = 0

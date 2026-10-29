@@ -556,19 +556,22 @@ func (bs *Store) relCurrentCandidatesLocked(relTypeToken uint16, propertyKey str
 }
 
 // entityBuildTarget is one definition an entity-index build fills: a
-// relationship definition (rel, scope its type) or a node definition's
-// member entries (scope its label).
+// relationship definition (rel, scope its type), a node definition's member
+// entries (scope its label), or a composite node definition's current entries
+// (composite its keys, head its entries' head; COMPDISK).
 type entityBuildTarget struct {
 	rel         bool
 	scope       uint16
 	propertyKey string
+	composite   []string
+	head        []byte
 }
 
 // scanEntityIndexEntries reads every stored row of the targets' kind, current
 // and history (the write buffer first, then a badger view: scanPropTxRows),
 // and hands fn the set op of each entry the rows give the targets: a
-// relationship definition's current entries from current rows, and every
-// target's member entries from every row. The targets are all relationship
+// relationship definition's current entries from current rows, a composite's
+// from current rows, and every other target's member entries from every row. The targets are all relationship
 // or all node definitions. It holds no store lock.
 func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op writeOp) error) error {
 	if len(targets) == 0 {
@@ -627,6 +630,14 @@ func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op 
 		txFrom, _, _ := n.TxStamps()
 		for i := 0; i < n.LabelTokenCount(); i++ {
 			for _, t := range byScope[n.LabelTokenRawAt(i)] {
+				if t.composite != nil {
+					if vk, ok := indexpkg.NodeCompositeValueKey(t.composite, n); ok && !hist {
+						if err := fn(compositeDiskEntry(t.head, vk, id, writeOpSet)); err != nil {
+							return err
+						}
+					}
+					continue
+				}
 				if valueKey, _ := n.IndexablePropertyValueKey(t.propertyKey); valueKey != "" {
 					if err := emit(t, valueKey, id, txFrom, !hist); err != nil {
 						return err
@@ -763,6 +774,7 @@ type entityIndexOpen struct {
 	targets  []entityBuildTarget // the definitions this open builds
 	stale    [][]byte            // their entries before the build
 	mark     []writeOp           // built markers to set (with the format marker)
+	level    uint16              // the format marker the marks raise to
 }
 
 // planEntityIndexOpen reads the 0x0C built markers at open. A definition
@@ -804,6 +816,30 @@ func (p *entityIndexOpen) place(bs *Store, txn *badgerv4.Txn, rel bool, scope ui
 	}
 	p.targets = append(p.targets, entityBuildTarget{rel: rel, scope: scope, propertyKey: propertyKey})
 	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{1}})
+	p.level = max(p.level, storepkg.EntityIndexStoreFormatVersion)
+	return true
+}
+
+// placeComposite is place for a composite node definition of a label kept on
+// disk (COMPDISK): true when its entries answer from 0x0C this open.
+func (p *entityIndexOpen) placeComposite(bs *Store, txn *badgerv4.Txn, key indexpkg.CompositeIndexKey, keys []string) bool {
+	k := compositeDiskBuiltKey(key)
+	if _, ok := p.marked[string(k)]; ok {
+		p.keep[string(k)] = struct{}{}
+		return true
+	}
+	if !p.canBuild {
+		return false
+	}
+	head, _ := bs.compositeDiskHead(key.LabelToken, keys) // canBuild: a registry
+	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: head})
+	for it.Rewind(); it.Valid(); it.Next() {
+		p.stale = append(p.stale, it.Item().KeyCopy(nil))
+	}
+	it.Close()
+	p.targets = append(p.targets, entityBuildTarget{scope: key.LabelToken, composite: keys, head: head})
+	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{1}})
+	p.level = storepkg.CompositeDiskStoreFormatVersion
 	return true
 }
 
@@ -847,7 +883,7 @@ func (bs *Store) commitEntityIndexOpen(p *entityIndexOpen) error {
 		}
 	}
 	if len(p.mark) > 0 {
-		v := bs.raisedFormatMarker(storepkg.EntityIndexStoreFormatVersion)
+		v := bs.raisedFormatMarker(p.level)
 		p.mark = append(p.mark, writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)})
 	}
 	for _, op := range p.mark {

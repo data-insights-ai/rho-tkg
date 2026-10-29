@@ -16,12 +16,11 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// Composite property indexes — RAM-only (no on-disk mode, unlike
-// PropertyIndexOnDisk; see docs/query-planners.md "Composite property
-// indexes" for the documented follow-up and planner guidance). Definitions
-// are persisted (compositeIdxDef below) so a reopen rebuilds the SAME
-// definitions and re-scans current node state; entries themselves never
-// touch Badger.
+// Composite property indexes. Definitions are persisted (compositeIdxDef
+// below) so a reopen rebuilds the SAME definitions and re-scans current node
+// state; a label whose property indexes are kept on disk keeps its
+// composites' entries in 0x0C instead (COMPDISK,
+// badgerstore_composite_disk.go), every other label's stay in RAM.
 //
 // Maintenance shares the single-key property index's maintenance seam
 // (maintainPropertyIndexesAdd/Remove/Purge in badgerstore_property_disk.go)
@@ -66,6 +65,11 @@ func (bs *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 	if _, exists := bs.compositeIndexes[key]; exists {
 		bs.idxMu.Unlock()
 		return ErrIndexExists
+	}
+	if bs.propIdxOnDiskWanted(labelToken) {
+		if _, ok := bs.compositeDiskHead(labelToken, keys); ok {
+			return bs.createCompositePropertyIndexOnDiskLocked(key, keys)
+		}
 	}
 	liveIdx := indexpkg.NewCompositePropertyIndex(keys)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
@@ -140,11 +144,21 @@ func (bs *Store) DropCompositePropertyIndex(labelToken uint16, keys []string) er
 
 	bs.idxMu.Lock()
 	key := indexpkg.CompositeIndexKey{LabelToken: labelToken, Keys: indexpkg.EncodeCompositeKeyTuple(keys)}
-	if _, exists := bs.compositeIndexes[key]; !exists {
+	idx, exists := bs.compositeIndexes[key]
+	if !exists {
 		bs.idxMu.Unlock()
 		return ErrIndexNotFound
 	}
+	if def, onDisk := bs.compositeDiskDefLocked(idx); onDisk {
+		ops, err := bs.compositeDiskDropOpsLocked(def)
+		if err != nil {
+			bs.idxMu.Unlock()
+			return err
+		}
+		bs.appendOps(ops...)
+	}
 	indexpkg.UnregisterCompositeIndex(bs.compositeIndexes, bs.compositeIndexesByLabel, key)
+	bs.refreshCompositeDiskDefsLocked()
 	bs.persistCompositeIndexDefs()
 	bs.idxMu.Unlock()
 	return bs.flushIfNeeded()
@@ -213,6 +227,22 @@ func (bs *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 	// Snapshot matching IDs under RLock, then release before entity I/O.
 	bs.idxMu.RLock()
 	idx, found := indexpkg.FindCompositeIndexForQuery(bs.compositeIndexes, bs.compositeIndexesByLabel, labelToken, values)
+	if def, onDisk := bs.compositeDiskDefLocked(idx); found && idx.Mutated == nil && onDisk {
+		prefix, ok := compositeDiskPrefix(def.head, idx.Keys, values)
+		bs.idxMu.RUnlock()
+		if !ok {
+			return nil, nil
+		}
+		ids := &compositeDiskPostings{bs: bs, prefix: prefix}
+		nodes, err := pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Node, error) {
+			nids := bs.filterNodeIDsByTemporalPeek(storepkg.ToNodeIDs(batch), page)
+			return bs.fetchNodesByLabelPropertiesIDs(labelToken, values, nids, page)
+		})
+		if ids.err != nil {
+			return nil, ids.err
+		}
+		return nodes, err
+	}
 	if found && idx.Mutated == nil {
 		vk, ok := indexpkg.QueryCompositeValueKey(idx.Keys, values)
 		if !ok {
@@ -328,6 +358,24 @@ func (bs *Store) NodeIDsByLabelAndPropertiesPage(labelToken uint16, values map[s
 	if !found || idx.Mutated != nil {
 		bs.idxMu.RUnlock()
 		return nil, false, false, nil
+	}
+	if def, onDisk := bs.compositeDiskDefLocked(idx); onDisk {
+		prefix, ok := compositeDiskPrefix(def.head, idx.Keys, values)
+		if !ok {
+			bs.idxMu.RUnlock()
+			return nil, false, true, nil
+		}
+		ids := &compositeDiskPostings{bs: bs, prefix: prefix}
+		raw := ids.AppendAfter(nil, after.SnowflakeID(), n+1) // one more than asked tells whether more follow
+		bs.idxMu.RUnlock()
+		if ids.err != nil {
+			return nil, false, false, ids.err
+		}
+		more := len(raw) > n
+		if more {
+			raw = raw[:n]
+		}
+		return storepkg.ToNodeIDs(raw), more, true, nil
 	}
 	vk, ok := indexpkg.QueryCompositeValueKey(idx.Keys, values)
 	if !ok {

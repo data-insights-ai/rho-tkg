@@ -431,7 +431,7 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 		section(imgSecRelProp, appendValueIDs(b, idx.Entries))
 	}
 	for key, idx := range bs.compositeIndexes {
-		if idx.Mutated != nil {
+		if idx.Mutated != nil || idx.OnDisk() { // on disk: its entries are in 0x0C (COMPDISK)
 			continue
 		}
 		b := binary.BigEndian.AppendUint16(nil, key.LabelToken)

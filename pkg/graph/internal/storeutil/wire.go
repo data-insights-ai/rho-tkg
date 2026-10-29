@@ -107,7 +107,7 @@ const StagedFlushStoreFormatVersion = 9
 
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = ValidEndStoreFormatVersion
+const MaxReadableStoreFormatVersion = CompositeDiskStoreFormatVersion
 
 // OpenVoidStoreFormatVersion is the store-level marker of a directory that
 // holds an open-ended void piece (OPENEXCISE, OpenVoidWireFormatVersion rows).
@@ -146,6 +146,14 @@ const EntityIndexStoreFormatVersion = 13
 // refuse the store. Raised with the first marker; 4 to 13 are taken, so this
 // is 14.
 const ValidEndStoreFormatVersion = 14
+
+// CompositeDiskStoreFormatVersion is the store-level marker of a directory
+// with a composite node index kept on disk (COMPDISK, 0x0C kind
+// EntityIndexNodeComposite and its built marker). A binary that predates it
+// holds the composite in RAM and neither maintains the entries nor deletes the
+// marker, so a newer binary would then trust entries it missed: it must refuse
+// the store. Raised with the first marker; 4 to 14 are taken, so this is 15.
+const CompositeDiskStoreFormatVersion = 15
 
 // writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every

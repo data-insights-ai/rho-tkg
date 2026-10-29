@@ -1,0 +1,16 @@
+COMPDISK red (29 Oct, branch compdisk before the implementation; the format constant written as its value 15):
+a composite of a label in PropertyIndexOnDiskLabels stays in RAM.
+
+--- FAIL: TestCompositeIndexOnDisk (0.85s)
+    --- FAIL: TestCompositeIndexOnDisk/badger (0.28s)
+        compdisk_test.go:167: created: D's composite on disk false with 783 B in RAM, want on disk true
+        compdisk_test.go:182: reopened: D's composite on disk false with 783 B in RAM, want on disk true
+        compdisk_test.go:195: listed again: D's composite on disk false with 780 B in RAM, want on disk true
+        compdisk_test.go:199: format marker 7, want 15
+    --- FAIL: TestCompositeIndexOnDisk/tiered (0.57s)
+        compdisk_test.go:167: created: D's composite on disk false with 783 B in RAM, want on disk true
+        compdisk_test.go:182: reopened: D's composite on disk false with 783 B in RAM, want on disk true
+        compdisk_test.go:195: listed again: D's composite on disk false with 780 B in RAM, want on disk true
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.885s
+FAIL

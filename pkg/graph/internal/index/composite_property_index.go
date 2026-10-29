@@ -42,7 +42,21 @@ type CompositePropertyIndex struct {
 	// while a creation is in flight; a query must not trust the index while
 	// Mutated != nil (mirrors PropertyIndex's identical convention).
 	Mutated map[snowflake.ID]struct{}
+
+	// onDisk: the store keeps the entries on disk (COMPDISK); the maps stay
+	// nil and the RAM maintenance helpers skip the index.
+	onDisk bool
 }
+
+// NewCompositePropertyIndexOnDisk creates a composite index whose entries the
+// store keeps on disk (COMPDISK): it holds the declared keys only.
+func NewCompositePropertyIndexOnDisk(keys []string) *CompositePropertyIndex {
+	return &CompositePropertyIndex{Keys: append([]string(nil), keys...), onDisk: true}
+}
+
+// OnDisk reports whether the store keeps the index's entries on disk (false
+// for nil).
+func (ci *CompositePropertyIndex) OnDisk() bool { return ci != nil && ci.onDisk }
 
 // NewCompositePropertyIndex creates an empty composite index declared over
 // keys (2..4, caller already validated — see storepkg.ValidateCompositeIndexKeys).
@@ -336,7 +350,7 @@ func AddNodeToCompositeIndexes(indexes map[CompositeIndexKey]*CompositePropertyI
 			}
 			seen[defKey] = struct{}{}
 			idx, ok := indexes[defKey]
-			if !ok || idx == nil {
+			if !ok || idx == nil || idx.onDisk {
 				continue
 			}
 			vk, ok := NodeCompositeValueKey(idx.Keys, n)
@@ -367,7 +381,7 @@ func RemoveNodeFromCompositeIndexes(indexes map[CompositeIndexKey]*CompositeProp
 			}
 			seen[defKey] = struct{}{}
 			idx, ok := indexes[defKey]
-			if !ok || idx == nil {
+			if !ok || idx == nil || idx.onDisk {
 				continue
 			}
 			vk, ok := NodeCompositeValueKey(idx.Keys, n)

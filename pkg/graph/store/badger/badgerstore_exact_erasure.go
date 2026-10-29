@@ -410,7 +410,11 @@ func (bs *Store) exactErasurePropertyIndexOpsLocked(id snowflake.ID) ([]writeOp,
 	if err != nil {
 		return nil, fmt.Errorf("graph: exact erasure property-index scan: %w", err)
 	}
-	return ops, nil
+	composite, err := bs.compositeDiskResidueOpsLocked(id, nil) // COMPDISK: every composite entry of id
+	if err != nil {
+		return nil, err
+	}
+	return append(ops, composite...), nil
 }
 
 func (bs *Store) exactErasureTemporalIndexOpsLocked(id snowflake.ID) ([]writeOp, error) {

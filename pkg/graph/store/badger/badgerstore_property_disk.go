@@ -170,10 +170,10 @@ func (b *propIDBounds) bounds(txn *badgerv4.Txn) (lo, hi uint64) {
 // see the call sites in badgerstore_node.go / badgerstore_history_node.go /
 // badgerstore_node_batch.go).
 //
-// Composite property indexes (v1) are ALWAYS RAM-only (no on-disk mode, see
-// badgerstore_composite_index.go), so their maintenance runs unconditionally
-// here — the ONE seam every node-mutation door already funnels through —
-// rather than at each of those door call sites individually.
+// Composite property indexes are maintained here too — the ONE seam every
+// node-mutation door already funnels through — rather than at each of those
+// door call sites individually: the RAM ones by the index helper, those kept
+// on disk by their entries (COMPDISK, compositeDiskOpsLocked).
 func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []writeOp {
 	// Every door that writes a current node row calls Add, so it also records
 	// the row into the property membership sidecars (backlog 8).
@@ -185,7 +185,8 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 			return nil
 		}
 	}
-	return append(bs.propertyIndexDiskMaintain(n, id, writeOpSet), bs.nodeMemberOpsLocked(n, id)...)
+	ops := append(bs.propertyIndexDiskMaintain(n, id, writeOpSet), bs.nodeMemberOpsLocked(n, id)...)
+	return append(ops, bs.compositeDiskOpsLocked(n, id, writeOpSet)...)
 }
 
 // maintainPropertyIndexesUpdate is maintainPropertyIndexesAdd for the new node
@@ -224,8 +225,8 @@ func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, old, n *types.Node
 	bounded := bs.validEndEntryKeysLocked(n, id) // written again, unknown (VALIDENDPRUNE)
 	for _, op := range ops[from:] {              // the on-disk entry sets
 		k := op.key
-		if k[0] == storepkg.KeyEntityIndex {
-			k = k[:len(k)-8]
+		if k[0] == storepkg.KeyEntityIndex && k[1] == storepkg.EntityIndexNodeMember {
+			k = k[:len(k)-8] // a member entry by value prefix and ID
 		}
 		if _, reset := bounded[string(op.key)]; reset {
 			continue
@@ -237,7 +238,7 @@ func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, old, n *types.Node
 			unchanged[string(op.key)] = struct{}{}
 		}
 	}
-	if unchanged == nil || bs.propertyIndexBuildingLocked() {
+	if unchanged == nil || bs.propertyIndexBuildingLocked() || bs.compositeDiskBuildingLocked() {
 		return ops
 	}
 	kept := ops[:0]
@@ -270,7 +271,7 @@ func (bs *Store) maintainPropertyIndexesRemove(n *types.Node, id snowflake.ID) [
 			return nil
 		}
 	}
-	return bs.propertyIndexDiskMaintain(n, id, writeOpDelete)
+	return append(bs.propertyIndexDiskMaintain(n, id, writeOpDelete), bs.compositeDiskOpsLocked(n, id, writeOpDelete)...)
 }
 
 func (bs *Store) propertyIndexDiskMaintain(n *types.Node, id snowflake.ID, opType writeOpType) []writeOp {
@@ -332,18 +333,25 @@ func (bs *Store) refreshPropDiskDefsLocked() {
 // O(index size) per distinct key — corruption-only path, same complexity
 // class as the RAM-mode brute-force sweep it mirrors. Caller holds idxMu.
 //
-// Composite indexes are always RAM-only (v1), so their purge runs
-// unconditionally here too.
+// The composite indexes are purged here too: the RAM ones by the index
+// helper, those kept on disk by a scan of their entries (COMPDISK).
 func (bs *Store) maintainPropertyIndexesPurge(id snowflake.ID) []writeOp {
 	indexpkg.PurgeNodeFromAllCompositeIndexes(bs.compositeIndexes, id)
 	if !bs.propIdxOnDisk {
 		indexpkg.PurgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
 	}
+	var ops []writeOp
+	if len(bs.compositeDiskDefs) > 0 {
+		heads := make([][]byte, len(bs.compositeDiskDefs))
+		for i, def := range bs.compositeDiskDefs {
+			heads[i] = def.head
+		}
+		ops, _ = bs.compositeDiskResidueOpsLocked(id, heads) // as the scan below, best effort
+	}
 	tokens := bs.distinctPropertyKeyTokensLocked()
 	if len(tokens) == 0 {
-		return nil
+		return ops
 	}
-	var ops []writeOp
 	// Purge any unflushed SET for this ID under a purged token FIRST — before the
 	// Badger scan. A concurrent flush() commits a parked index SET to Badger and
 	// THEN clears `flushing`, so a scan-first purge that read Badger before the

@@ -763,6 +763,9 @@ type Store struct {
 	// exactErasureFlushedTestHook runs in ExactErase after its preliminary flush,
 	// before its locks: a write there is buffered when the plan reads. Test-only.
 	exactErasureFlushedTestHook func()
+	// compositeDiskCreateTestHook runs in a composite create kept on disk
+	// after its scan of the rows, before the merge (tests only).
+	compositeDiskCreateTestHook func()
 
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
@@ -789,6 +792,7 @@ type Store struct {
 	// maintainPropertyIndexesAdd/Remove/Purge seam.
 	compositeIndexes        map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex
 	compositeIndexesByLabel map[uint16][]indexpkg.CompositeIndexKey
+	compositeDiskDefs       []compositeDiskDef // the composites kept on disk (COMPDISK); under idxMu
 
 	// Temporal indexes — in-memory only. Label tokens persisted, data rebuilt on startup.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
@@ -2044,8 +2048,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		}
 		// badgerv4.ErrKeyNotFound is OK — no rel property indexes defined yet.
 
-		// Load composite property index definitions and rebuild index data.
-		// RAM-only — v1 has no on-disk mode, unlike PropertyIndexOnDisk.
+		// Load composite property index definitions and rebuild index data: a
+		// label kept on disk keeps its composites' entries in 0x0C (COMPDISK),
+		// built or built after this View.
 		item, err = txn.Get(storepkg.CompositeIndexDefsKey)
 		if err == nil {
 			var compositeDefs []compositeIdxDef
@@ -2068,7 +2073,10 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 				seenComposite[key] = struct{}{}
 				idx := indexpkg.NewCompositePropertyIndex(def.Keys)
-				if entries, ok := img.takeComposite(key); ok {
+				if bs.propIdxOnDiskWanted(def.LabelToken) && entityDisk.placeComposite(bs, txn, key, def.Keys) {
+					img.takeComposite(key) // an image of an earlier open in RAM
+					idx = indexpkg.NewCompositePropertyIndexOnDisk(def.Keys)
+				} else if entries, ok := img.takeComposite(key); ok {
 					installValueIDsKept(entries, func(id int64) bool { return bs.keepNodeEntry(img, id) }, idx.AddKey)
 					bs.touchedNodeMembers(txn, img, decodedNodeLabels, lazyLabels, def.LabelToken, &bs.indexRebuildCompositeSkips, func(id snowflake.ID, n *types.Node) {
 						if vk, found := indexpkg.NodeCompositeValueKey(idx.Keys, n); found {
@@ -2097,6 +2105,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 				indexpkg.RegisterCompositeIndex(bs.compositeIndexes, bs.compositeIndexesByLabel, key, idx)
 			}
+			bs.refreshCompositeDiskDefsLocked()
 		}
 		// badgerv4.ErrKeyNotFound is OK — no composite indexes defined yet.
 
@@ -2610,6 +2619,7 @@ func (bs *Store) Clear() (err error) {
 	defer bs.vdict.reappend(bs)
 	bs.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
 	bs.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
+	bs.compositeDiskDefs = nil
 	bs.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	bs.relTypeTemporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	bs.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)

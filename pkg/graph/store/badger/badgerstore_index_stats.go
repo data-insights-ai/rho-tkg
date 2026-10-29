@@ -26,7 +26,7 @@ func (bs *Store) PropertyIndexStats() ([]storecontract.PropertyIndexStat, error)
 		out = append(out, indexStat(0, key.RelTypeToken, []string{key.PropertyKey}, false, idx.OnDisk(), idx.Footprint(), sidecarFootprint(bs.relPropTx[key])))
 	}
 	for key, idx := range bs.compositeIndexes {
-		out = append(out, indexStat(key.LabelToken, 0, append([]string(nil), idx.Keys...), true, false, idx.Footprint(), indexpkg.Footprint{}))
+		out = append(out, indexStat(key.LabelToken, 0, append([]string(nil), idx.Keys...), true, idx.OnDisk(), idx.Footprint(), indexpkg.Footprint{}))
 	}
 	storepkg.SortPropertyIndexStats(out)
 	return out, nil
