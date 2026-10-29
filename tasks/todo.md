@@ -116,15 +116,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   upper bound on each node's valid end in its on-disk entries (reset by writes, refined by reads); stats via
   g.Index().PropertyIndexValidEndStats(); format marker 14 once opened with the listing. Waits for sigma's
   Pruned / UnknownRead numbers from the reduced BA.
-- **VALIDENDLISTED** (sigma 29 Oct, René's standing yes; door, minor v4.95.0) — sigma's bench on v4.94.0: listed,
-  the pager takes 1.56 ms (node) / 6.2 ms (reach6h); unlisted, ValidEndAfter's exact filter reads every
-  candidate's timeline (47 / 51 ms), slower than sigma's own skip (~19 ms). So sigma passes the bound only where
-  it prunes and needs a public check: g.Index().PropertyIndexValidEndListed(label, key) (bool, error), true when
-  the definition's bounds are trusted (listed, on disk, marked; tiered: reference shard), false (no error)
-  otherwise. sigma asked for a patch; a door is a minor, told sigma; sigma agreed and asked for no I/O (it is a
-  map look under idxMu). Branch validendlisted 1b648195: built, tiered true only for reference labels, 10 of 10
-  mutations caught, docs and CHANGELOG 4.95.0. Gate: ci-docker green, consumers build and vet clean, scale probe
-  unchanged. Tagged v4.95.0; waits for tag CI and main, then notify sigma.
+- **VALIDENDLISTED** (sigma 29 Oct, René's standing yes; door, minor) — Released v4.95.0 (3de1304a): tag CI and
+  main green; sigma and ai-soc notified. g.Index().PropertyIndexValidEndListed(label, key): true where a
+  ValidEndAfter lookup prunes (listed, on disk, trusted; tiered: reference labels), false without an error
+  elsewhere, no I/O; a true goes stale only by a drop, Clear or Reset (then a lookup is slow, never an error).
 - **COMPDISK** (ai-soc 29 Oct, René's standing yes; door, minor) — composite node property indexes of a label
   in PropertyIndexOnDiskLabels answered from disk like single-key ones (current entries, members for pinned reads,
   no RAM sidecar; built marker, rebuilt at the next writable open; format raise fine). ai-soc's BA k10282355 with

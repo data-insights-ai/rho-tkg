@@ -91,8 +91,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   slower than sigma's own skip, so sigma passes the bound only where it prunes):
   `g.Index().PropertyIndexValidEndListed(label, key)`, true where a ValidEndAfter lookup prunes (listed, on disk,
   trusted; tiered: reference labels), false without an error elsewhere; no I/O. 10 of 10 mutations caught.
-  ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged.
-  Next: COMPDISK (v4.96.0, ai-soc: DerivedPage's composite 253 MB in RAM), then RELDISK phase 2 (v4.97.0).
+  ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged; tag
+  CI and main green; sigma and ai-soc notified. Next: COMPDISK (v4.96.0, ai-soc: DerivedPage's composite 253 MB in RAM), then RELDISK phase 2 (v4.97.0).
 - **v4.92.0** (RELDISK phase 1, a minor for SCALE goal 2, ai-soc's request for sigma's 2b edges):
   `RelPropertyIndexOnDiskTypes` keeps the listed relationship types' property indexes in a new `0x0C` keyspace
   (current entries for lookups, member entries for pinned reads); node indexes on disk answer pinned reads from
