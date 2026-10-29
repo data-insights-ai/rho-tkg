@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.97.2] - 2026-10-29
+
 ### Fixed
 
 - **ITERTOMB** (SCALE, `docs/badger.md` rule 12), the property range walks. The on-disk numeric range scan and
