@@ -11,6 +11,7 @@ import (
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -138,6 +139,16 @@ func (bs *Store) RelCacheMisses() int64 {
 		return 0
 	}
 	return bs.relCache.Misses()
+}
+
+// EntityCacheUsage returns the node and relationship caches' entries and
+// estimated bytes, clean and dirty apart (CACHESTATS). It walks both caches,
+// O(entries), under the index read lock (Clear replaces the caches).
+func (bs *Store) EntityCacheUsage() (nodes, rels storecontract.EntityCacheUsage) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	return storecontract.EntityCacheUsage(bs.nodeCache.Usage(func(n *types.Node) int64 { return int64(n.ApproxHeapBytes()) })),
+		storecontract.EntityCacheUsage(bs.relCache.Usage(func(r *types.Relationship) int64 { return int64(r.ApproxHeapBytes()) }))
 }
 
 // SaveRegistries persists both the label and relationship-type registries

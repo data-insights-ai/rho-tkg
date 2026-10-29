@@ -31,6 +31,7 @@ type EntityCache[V any] interface {
 	Len() int
 	CleanCount() int
 	Bytes() int64
+	Usage(size func(V) int64) CacheUsage
 	Budget() int64
 	Hits() int64
 	Misses() int64
@@ -331,6 +332,19 @@ func (s *ShardedCache[V]) Bytes() int64 {
 		b += sh.Bytes()
 	}
 	return b
+}
+
+// Usage sums every shard's Usage.
+func (s *ShardedCache[V]) Usage(size func(V) int64) CacheUsage {
+	var u CacheUsage
+	for _, sh := range s.shards {
+		su := sh.Usage(size)
+		u.CleanEntries += su.CleanEntries
+		u.DirtyEntries += su.DirtyEntries
+		u.CleanBytes += su.CleanBytes
+		u.DirtyBytes += su.DirtyBytes
+	}
+	return u
 }
 
 // Budget returns the aggregate budget (sum of per-shard budgets ~= the

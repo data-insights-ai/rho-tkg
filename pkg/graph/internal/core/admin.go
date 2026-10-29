@@ -196,6 +196,22 @@ func (a *AdminOps) ShardAccessStats() (tiered.ShardAccessStats, error) {
 	return tiered.ShardAccessStats{}, ErrNotTieredStore
 }
 
+// EntityCacheStats returns a tiered store's decoded-entity caches per open
+// shard (tiered.ShardCacheStats). It takes no graph lock: it walks the caches
+// under their own locks and opens nothing. Only available with tiered.Store.
+func (a *AdminOps) EntityCacheStats() ([]tiered.ShardCacheStats, error) {
+	c := a.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if ts, ok := c.store.(interface {
+		EntityCacheStats() ([]tiered.ShardCacheStats, error)
+	}); ok {
+		return ts.EntityCacheStats()
+	}
+	return nil, ErrNotTieredStore
+}
+
 // RebuildCatalog reconstructs the shard catalog from live state.
 // Only available with tiered.Store.
 //

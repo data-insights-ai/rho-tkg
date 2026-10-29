@@ -42,6 +42,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if st, err := api.ShardAccessStats(); err != nil || st.Cold != 7 || st.ColdOpens != 2 {
 		t.Fatalf("ShardAccessStats = %+v, %v; want the ops' {Cold 7, ColdOpens 2}", st, err)
 	}
+	if rows, err := api.EntityCacheStats(); err != nil || len(rows) != 1 || rows[0].Name != "reference" {
+		t.Fatalf("EntityCacheStats = %+v, %v; want the ops' one reference row", rows, err)
+	}
 	if err := api.MoveShard(context.Background(), "2026-W43", "warm"); err != nil {
 		t.Fatalf("MoveShard: %v", err)
 	}
@@ -91,6 +94,10 @@ type tierOpsSpy struct {
 	verifyShardCalls    int
 	moveShardCalls      int
 	accessStatsCalls    int
+}
+
+func (s *tierOpsSpy) EntityCacheStats() ([]tiered.ShardCacheStats, error) {
+	return []tiered.ShardCacheStats{{Name: "reference"}}, nil
 }
 
 func (s *tierOpsSpy) ShardAccessStats() (tiered.ShardAccessStats, error) {

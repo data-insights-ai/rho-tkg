@@ -27,6 +27,7 @@ type Ops interface {
 	ForceRotate() error
 	ListShards() ([]tiered.ShardInfo, error)
 	ShardAccessStats() (tiered.ShardAccessStats, error)
+	EntityCacheStats() ([]tiered.ShardCacheStats, error)
 	MoveShard(ctx context.Context, name, volume string) error
 	RebuildCatalog() error
 	Repair() (*tiered.RepairResult, error)
@@ -105,6 +106,22 @@ func (a *API) ShardAccessStats() (tiered.ShardAccessStats, error) {
 		return tiered.ShardAccessStats{}, err
 	}
 	return ops.ShardAccessStats()
+}
+
+// EntityCacheStats returns a row per open shard of a tiered store (the
+// reference shard, the archive when open, each open event shard): its node and
+// relationship caches' entries and estimated heap bytes, clean (evictable) and
+// dirty (not yet flushed) apart. Each open shard has its own pair of caches,
+// so their sum is the store's decoded-entity heap; Config.CacheBudgetBytes
+// bounds each cache's clean part. It walks every cache (O(cached entries)),
+// counts no shard access and opens nothing. ErrNotTieredStore on another
+// store.
+func (a *API) EntityCacheStats() ([]tiered.ShardCacheStats, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.EntityCacheStats()
 }
 
 // MoveShard moves the event shard name to volume ("hot", "warm" or "cold",

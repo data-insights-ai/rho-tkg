@@ -1,0 +1,10 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/tier [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/tier.test]
+pkg/graph/tier/api_test.go:45:22: api.EntityCacheStats undefined (type *API has no field or method EntityCacheStats)
+pkg/graph/tier/api_test.go:99:51: undefined: tiered.ShardCacheStats
+pkg/graph/tier/api_test.go:100:18: undefined: tiered.ShardCacheStats
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index]
+vet: pkg/graph/internal/index/lru_usage_test.go:22:21: c.Usage undefined (type EntityCache[string] has no field or method Usage)
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered]
+vet: pkg/graph/store/tiered/entity_cache_stats_test.go:33:30: undefined: ShardCacheStats

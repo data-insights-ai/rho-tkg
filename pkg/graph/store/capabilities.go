@@ -429,6 +429,15 @@ type PropertyTxMembershipStatsCapability interface {
 	PropertyTxMembershipStats() (PropertyTxMembershipStats, error)
 }
 
+// EntityCacheUsage is one decoded-entity cache's resident entries and their
+// estimated heap bytes (ApproxHeapBytes plus the cache's per-entry overhead),
+// clean (evictable) and dirty (written or deleted, not yet flushed; never
+// evicted) apart. CacheBudgetBytes bounds the clean part (CACHESTATS).
+type EntityCacheUsage struct {
+	CleanEntries, DirtyEntries int
+	CleanBytes, DirtyBytes     int64
+}
+
 // PropertyIndexStat is what one declared property index holds in RAM
 // (IDXSTATS): a node definition (LabelToken, Keys of one property, or of a
 // composite's two to four) or a relationship definition (RelTypeToken). Values

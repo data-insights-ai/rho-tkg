@@ -522,6 +522,34 @@ func (c *Cache[V]) Bytes() int64 {
 	return c.totalBytes
 }
 
+// CacheUsage is a cache's resident entries and their estimated bytes (the
+// value's size plus perEntryOverhead), clean
+// (evictable) and dirty (written or deleted, not yet flushed) apart.
+type CacheUsage struct {
+	CleanEntries, DirtyEntries int
+	CleanBytes, DirtyBytes     int64
+}
+
+// Usage walks the cache under its lock and sizes each entry with size, so it
+// reports bytes with byte budgeting off too (CACHESTATS). O(entries).
+func (c *Cache[V]) Usage(size func(V) int64) CacheUsage {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var u CacheUsage
+	for _, el := range c.items {
+		e := el.Value.(*Entry[V])
+		b := perEntryOverhead + size(e.Value) // a tombstone holds the zero value
+		if e.DirtyVer != 0 {
+			u.DirtyEntries++
+			u.DirtyBytes += b
+		} else {
+			u.CleanEntries++
+			u.CleanBytes += b
+		}
+	}
+	return u
+}
+
 // Budget returns the configured byte budget (0 = byte budgeting off).
 func (c *Cache[V]) Budget() int64 {
 	c.mu.Lock()
