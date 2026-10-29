@@ -342,8 +342,10 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 - **BRANCHES** (René via ai-soc, 29 Oct: "clean this also up") — step 1 done: origin/archive/unmerged-2026-10-27
   now at 93c43a64 (was 6554d8ad; tree unchanged, one commit with the 5 codex tips added as parents). Each tip
-  verified with `git merge-base --is-ancestor`. Deleting the remote branches waits for René's explicit word on
-  this table:
+  verified with `git merge-base --is-ancestor`. Step 2, René 29 Oct ("delete the temporary and old parts"):
+  ancestry rechecked; my `git push origin --delete` of the seven was refused by the session's permission check,
+  so René runs it (command in the chat). Scratch (12G, compbench 12G) put in ~/cleanup.sh's rho section for René
+  to run (rm is denied here); probe/, consumers/ and mut/mut.py stay. Table:
 
   | branch | tip | commits not in main | archived |
   |---|---|---|---|
