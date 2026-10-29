@@ -9,8 +9,8 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 - **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
-  tagged v4.96.2 (9904fd3b) and v4.97.0 (bad01e13), tag CI running; then holding again until ai-soc says the run
-  ships. ITERTOMB waits on its branch.
+  Released v4.96.2 (9904fd3b) and v4.97.0 (bad01e13): tag CI and main green, ai-soc and sigma notified. Holding
+  again until ai-soc says the run ships. ITERTOMB waits on its branch.
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
@@ -137,14 +137,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   The NETWORK (device, local_port) ask was ai-soc's own (28 Oct, RELDISK) and predates sigma's SRCMASK door. Resume
   only if ai-soc's Flux run shows a lazy edge source with many candidates per kept row and real read volume; sigma
   then asks with the numbers.
-- **VALIDTOPURGE** (found 28 Oct by RELDISK's race test; fix, patch) — badger `PurgeNodesByLabelValidToBefore`
-  dereferenced `n.Temporal()` and panicked on a node stored without temporal metadata. Fixed on branch validtopurge
-  (cf0cbdaa): an unstamped node is open, never purged by validity (as memory's purge). Red in
-  tasks/evidence/VALIDTOPURGE/; 2 of 2 mutations caught; changelog c1a6ed72. ci-docker green; on main untagged (tag hold);
-  tagged as a patch when the hold lifts.
-- **CLEARGAP** (seen 28 Oct building RELDISK; fix, patch) — confirmed: badger's `Clear` left `0x0A` and `0x0B` keys
-  (red in tasks/evidence/CLEARGAP/). Fixed on branch cleargap (e00859ca): both prefixes join Clear's DropPrefix
-  list. 2 of 2 mutations caught. ci-docker green; on main untagged with VALIDTOPURGE (one patch when the hold lifts).
+- **VALIDTOPURGE** — Released v4.96.2 (9904fd3b), 29 Oct; tag CI and main green, ai-soc and sigma notified.
+- **CLEARGAP** — Released v4.96.2 (9904fd3b), 29 Oct; tag CI and main green, ai-soc and sigma notified.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
@@ -264,15 +258,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   (entityIndexDropOpsLocked). Chunking the merge needs care: the member scan's propTxGen retry assumes one merge
   under the lock. Rare (definitions are created at startup); scope when a consumer creates on a big store.
 
-- **CACHESTATS** (ai-soc 29 Oct, TEMPIDX; door, minor v4.97.0) — `g.Tier().EntityCacheStats()`: a row per open
-  shard (reference, archive when open, each open event shard) with its node and rel caches' entries and estimated
-  bytes (ApproxHeapBytes + 160 B per entry), clean and dirty apart; walks the caches (O(entries)), counts no shard
-  access, opens nothing. Branch cachestats 0105b146: 19 of 19 mutations caught; the tombstone check (equivalent)
-  and a name sort of event rows (unobservable on small maps; rows documented unordered) removed. Kept on its branch
-  during the tag hold: after the hold, v4.96.2 (VALIDTOPURGE + CLEARGAP) is tagged on main first, then CACHESTATS
-  merges as v4.97.0. api.md and changelog 8795bdb3. ci-docker red once on fuzz-smoke FuzzWireToRelChecked "context
-  deadline exceeded" at load 48 (no crasher; the target passes alone), green on the rerun; sigma, ai-soc, ai-soc
-  engine and bookkeeping build and vet clean. Ready; waits for the hold to lift (then scale probe, tag).
+- **CACHESTATS** — Released v4.97.0 (bad01e13), 29 Oct: `g.Tier().EntityCacheStats()`. Tag CI and main green;
+  ai-soc (sizes CacheBudgetBytes on the next BA run) and sigma notified.
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Steps 1-8 shipped (v4.76.1, v4.78.0; MOVEREAD v4.78.2, COLDRO v4.78.3). Step 10

@@ -108,9 +108,12 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   and ai-soc notified. Next: RELDISK phase 2 (v4.97.0), CACHESTATS; CREATEPEAK later.
 - **v4.96.2** (VALIDTOPURGE + CLEARGAP, a patch): badger's validity purge keeps a node stored without temporal
   metadata instead of panicking; `Clear` drops the `0x0A` and `0x0B` keyspaces it left. 2 + 2 mutations caught.
+  Consumers clean, scale probe unchanged; tag CI and main green; ai-soc and sigma notified.
 - **v4.97.0** (CACHESTATS, a minor; ai-soc, to size `CacheBudgetBytes`): `g.Tier().EntityCacheStats()`, a row per
   open shard with its node and relationship caches' entries and estimated bytes, clean and dirty apart; no shard
-  access counted, nothing opened. 19 of 19 mutations caught.
+  access counted, nothing opened. 19 of 19 mutations caught. ci-docker green, consumers clean, scale probe
+  unchanged; tag CI and main green; ai-soc (pins it for the Flux run) and sigma notified. Tags held again until
+  ai-soc's run ships; ITERTOMB (adjacency fixed) waits on its branch.
 - **v4.92.0** (RELDISK phase 1, a minor for SCALE goal 2, ai-soc's request for sigma's 2b edges):
   `RelPropertyIndexOnDiskTypes` keeps the listed relationship types' property indexes in a new `0x0C` keyspace
   (current entries for lookups, member entries for pinned reads); node indexes on disk answer pinned reads from
