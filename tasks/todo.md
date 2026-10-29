@@ -11,7 +11,7 @@ Each item: one sentence, then when it is done and what it waits for.
 - **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
   Released v4.96.2 (9904fd3b), v4.97.0 (bad01e13) and, on ai-soc's ask, v4.97.1 ITERTOMB (0e11125b): tag CI and
   main green, ai-soc and sigma notified. FREEZE (René, 29 Oct) ended: Flux k10291501 shipped. Released v4.97.2
-  ITERTOMB part 2 (702843ea). FROZEN for the night run (ai-soc, René's go): v4.97.2 is the round's tag; no tag, ci-docker or race suite until ai-soc lifts it (kit and gate ~20:00-21:30).
+  ITERTOMB part 2 (702843ea). FROZEN for the night run on v4.97.2 + sigma v0.11.152 (ai-soc, René's go); no tag, ci-docker or race suite until ai-soc lifts it (kit and gate ~20:00-21:30).
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
@@ -501,6 +501,14 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   shared store suite.
 
 ## Parked
+
+- **PUSHSLOW** (ai-soc 29 Oct; René: RAM first, performance later) — BA push 13,747 s on rho v4.97.1 (k10291501)
+  against 9,004 s on the pre-COMPDISK rho (k10282355): sigma's Advance 1.60 -> 2.44 s per cut with less CPU; badger
+  DB.get 6.1 -> 10.4 s and tiered GetNode 1.9 -> 5.5 s per 60 s profile. Ruled out from code: write-path reads,
+  composite over-selection (tuple keys exact), the ID+value doors (decline on tiered both nights). Candidates:
+  ai-soc's KEYDISK point reads against rho's GetNode, badger L0 stalls from the extra composite writes, entity-cache
+  fill. Done when: the cause is measured and fixed or handed to its owner. Waits for: René's word and ai-soc's
+  -peek callers.
 
 - **CACHE** — Every open badger shard keeps its own memtable arena, block cache and 4 compactors: 88 MB of heap and
   18 goroutines per writable shard (rho probe, 26 Oct; read-only 3.3 MB). ai-soc's k10260011 heap (26 Oct): 30.0 GB
