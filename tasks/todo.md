@@ -275,7 +275,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   `KeyCopy` per key, badgerstore_entity_index.go:818 member, :846 composite): 875 MB of slice plus 1.4 GB of key
   copies at 31 M stale entries (a store toggled RAM -> disk -> RAM -> disk). Stream the deletes in
   commitEntityIndexOpen instead. Same shape: createCompositePropertyIndexOnDiskLocked collects every entry of a
-  populated label before writing (~120 B a posting). A first conversion has no stale entries; measuring its peak.
+  populated label before writing (~120 B a posting). A first conversion has no stale entries: 145.5 s, peak RSS
+  7.1 GB vs 2.4 GB plain (tiered, 30.8 M; badger's write path), in the v4.96.0 notes (ce0f3ce7).
 - **CACHESTATS** (ai-soc 29 Oct, TEMPIDX; door, minor, after COMPDISK and RELDISK phase 2) — a per-shard
   entity-cache bytes stat (nodes and rels, clean and dirty apart), readable like `ShardAccessStats`, so ai-soc sizes
   `CacheBudgetBytes` from a measurement. ai-soc sets no CacheCapacity/CacheBudgetBytes today (BlockCacheSize 64 MB).
