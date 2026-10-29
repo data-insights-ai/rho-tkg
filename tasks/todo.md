@@ -340,6 +340,23 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **BRANCHES** (René via ai-soc, 29 Oct: "clean this also up") — step 1 done: origin/archive/unmerged-2026-10-27
+  now at 93c43a64 (was 6554d8ad; tree unchanged, one commit with the 5 codex tips added as parents). Each tip
+  verified with `git merge-base --is-ancestor`. Deleting the remote branches waits for René's explicit word on
+  this table:
+
+  | branch | tip | commits not in main | archived |
+  |---|---|---|---|
+  | codex/compact-reverse-buffered-prefix-20261012 | f0e7a5a0 | 24 | yes |
+  | codex/disk-entity-identity-20261011 | 11a11064 | 20 | yes |
+  | codex/legal-native-endpoint-presence-20261011 | e3075796 | 11 | yes |
+  | codex/pending-overlay-prefix-20261012 | fc57e1bc | 21 | yes |
+  | codex/scalable-legal-indexes-20261011 | 3aeccb62 | 16 | yes |
+  | v5 | 91426024 | 723 | yes |
+  | round10 | f5827c3b | 0 | yes |
+
+  The untracked `warm` file (10 B, 21 Oct) stays: René's own; ai-soc asked to move it, listed for René instead.
+
 - **TEMPIDX** (ai-soc 29 Oct, SCALE; analysis, no work plan yet) — BA k10282355 on v4.93.0: live heap 1,691 ->
   2,600 MB from 3,000 to 7,500 s. Answered from code (no Flux read): the RAM property-index frames (AddKey,
   addOrdered, IDPostings sortedChunks add/insert) leave RAM per listed label (KEYDISK) and composite (COMPDISK);
