@@ -231,9 +231,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   days in a few wall hours never demotes a shard (k10291501: 122 M hot checkouts, 0 warm, 0 cold) and every day
   shard's sets stay resident. Asks: confirm from code; name the clock (commit pin or the host's valid time).
   Read (sent 29 Oct): rotation and demotion use time.Now(); routing uses the ID's snowflake timestamp and falls
-  back to the hot shard, so a fast replay puts every day in one hot shard. Proposed Config.Now (host's valid-time
-  cursor, monotonic) for rotation and demotion; works only if event IDs are minted from that clock. Waits for:
-  ai-soc on how event IDs are minted. Done when: a replay rotates as live data would.
+  back to the hot shard, so a fast replay puts every day in one hot shard. ai-soc: every ID is minted by rho at
+  write time (wall clock). Design ADR-0013 on branch tierclock (6ce23fc0, docs/architecture.md): MintAtValidFrom
+  (a node's ID at its ValidFrom, a rel's clamped into its start node's window; a windowed generator on a reserved
+  node field keeps IDs unique), Config.Clock for rotation and demotion, window shards made on demand. Steps 1-4
+  there. Waits for: ai-soc's read and René's go. Done when: a replay rotates as live data would.
 - **IDTABLE** (ai-soc 29 Oct, goal 2) — badger idTable 41 -> 80 -> 160 MB live over the run. Asks: what it maps,
   per shard or not, its bound, whether it leaves with a cold shard. Read (sent 29 Oct): four per store (history
   presence 12 B and stamps 28 B a slot, nodes and rels), ID -> top version (+ stamp fold), lazily built, no cap,
