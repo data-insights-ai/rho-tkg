@@ -230,10 +230,15 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 - **TIERCLOCK** (ai-soc 29 Oct, goal 2) — tier rotation reads the wall clock (ColdAfter), so a replay of 33 valid
   days in a few wall hours never demotes a shard (k10291501: 122 M hot checkouts, 0 warm, 0 cold) and every day
   shard's sets stay resident. Asks: confirm from code; name the clock (commit pin or the host's valid time).
-  Done when: the clock is named, and a replay rotates as live data would.
+  Read (sent 29 Oct): rotation and demotion use time.Now(); routing uses the ID's snowflake timestamp and falls
+  back to the hot shard, so a fast replay puts every day in one hot shard. Proposed Config.Now (host's valid-time
+  cursor, monotonic) for rotation and demotion; works only if event IDs are minted from that clock. Waits for:
+  ai-soc on how event IDs are minted. Done when: a replay rotates as live data would.
 - **IDTABLE** (ai-soc 29 Oct, goal 2) — badger idTable 41 -> 80 -> 160 MB live over the run. Asks: what it maps,
-  per shard or not, its bound, whether it leaves with a cold shard. Done when: each is read from code, and the
-  table bounded if it is not.
+  per shard or not, its bound, whether it leaves with a cold shard. Read (sent 29 Oct): four per store (history
+  presence 12 B and stamps 28 B a slot, nodes and rels), ID -> top version (+ stamp fold), lazily built, no cap,
+  doubling (41 -> 80 -> 160 MB); a cold shard (probe-only) never builds them, a closing shard drops them. Bounded
+  per valid day once TIERCLOCK rotates. Done when: bounded by the open shards (TIERCLOCK) or probe-only for warm.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
