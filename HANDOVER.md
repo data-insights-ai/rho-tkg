@@ -103,7 +103,9 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   and ai-soc notified.
 - **v4.96.1** (STALEBUILD, a patch): a build at open over stale entries streams their deletes instead of
   collecting every key (2.2 GB at 31 M stale entries); peak RSS of that open at 30.8 M 6.8 GB, was 11.3-12.6 GB.
-  5 of 5 mutations caught. Next: RELDISK phase 2 (v4.97.0), CACHESTATS; CREATEPEAK later.
+  5 of 5 mutations caught. ci-docker green (after a lint fix: the placement no longer reads its txn), sigma,
+  ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged; tag CI and main green; sigma
+  and ai-soc notified. Next: RELDISK phase 2 (v4.97.0), CACHESTATS; CREATEPEAK later.
 - **v4.92.0** (RELDISK phase 1, a minor for SCALE goal 2, ai-soc's request for sigma's 2b edges):
   `RelPropertyIndexOnDiskTypes` keeps the listed relationship types' property indexes in a new `0x0C` keyspace
   (current entries for lookups, member entries for pinned reads); node indexes on disk answer pinned reads from
