@@ -160,7 +160,8 @@ type Config struct {
 	PropertyIndexOnDisk bool
 	// PropertyIndexOnDiskLabels is PropertyIndexOnDisk for the listed labels'
 	// property indexes only, every other label's stay in RAM (badger.Config;
-	// PROPDISKLABEL). Passed to every shard with the registry naming the labels.
+	// PROPDISKLABEL), composite indexes included (COMPDISK). Passed to every shard
+	// with the registry naming the labels.
 	PropertyIndexOnDiskLabels []string
 	// RelPropertyIndexOnDiskTypes keeps the listed relationship types' property
 	// indexes on disk (badger.Config; RELDISK). Passed to every shard with the

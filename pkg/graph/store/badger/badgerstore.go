@@ -144,7 +144,9 @@ type Config struct {
 	// lets the list change between opens: a definition whose label joins is rebuilt
 	// by the next writable open (a read-only open keeps it in RAM), and one whose
 	// label leaves loses its marker. The first marker raises the store format marker
-	// to 12. Ignored with PropertyIndexOnDisk (every label).
+	// to 12. Ignored with PropertyIndexOnDisk (every label). With either option a
+	// composite index of a label kept on disk keeps its entries in 0x0C as well
+	// (COMPDISK, badgerstore_composite_disk.go; format marker 15).
 	PropertyIndexOnDiskLabels []string
 	// LabelNames names the labels of PropertyIndexOnDiskLabels while the store opens
 	// (tiered passes its registry); nil reads the registry this store persisted

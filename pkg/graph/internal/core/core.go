@@ -891,8 +891,9 @@ type Config struct {
 	// when Store is provided explicitly.
 	PropertyIndexOnDisk bool
 	// PropertyIndexOnDiskLabels is PropertyIndexOnDisk for the listed labels'
-	// property indexes only; the others stay in RAM (badger.Config). Ignored
-	// with PropertyIndexOnDisk and when Store is provided explicitly.
+	// property indexes only, composite indexes included (COMPDISK); the others
+	// stay in RAM (badger.Config). Ignored with PropertyIndexOnDisk and when
+	// Store is provided explicitly.
 	PropertyIndexOnDiskLabels []string
 	// RelPropertyIndexOnDiskTypes keeps the listed relationship types' property
 	// indexes on disk (badger.Config; RELDISK); the others stay in RAM. Ignored
