@@ -212,9 +212,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   lookups (ids and endpoints), the label-index scan and the property prefix scan: 1,066x / 655x / 301x before,
   0.4-1.4x now; 4 of 4 mutations caught; tag CI and main green, ai-soc and sigma notified. On branch itertomb2
   (3578b253, untagged during the hold): the property range walks (propertyIndexDiskRange*) take PROPSEEK's
-  AllVersions shape: 424x / 442x before, 0.7-0.9x now, 4 of 4 mutations caught. Open, each with a test: the purge's
-  adjacency walk per purged node (purgedRelsForNodeLocked), history truncate/trim (badgerstore_history.go),
-  relationshipIndexKeysForRel, the purge token walks (maintainPropertyIndexesPurge, maintainTemporalIndexDiskPurge),
+  AllVersions shape: 424x / 442x before, 0.7-0.9x now, 4 of 4 mutations caught; ef16a690: the history walks
+  (truncate, trim, compact, and the purge and erasure that collect history) share one with Prefix: 594x / 787x /
+  543x before, 0.9-1.0x now, 2 of 2 caught. Open, each with a test: the purge's adjacency walk per purged node
+  (purgedRelsForNodeLocked), relationshipIndexKeysForRel, the purge token walks (maintainPropertyIndexesPurge, maintainTemporalIndexDiskPurge),
   rel purge candidates. Listed, not changed: whole-keyspace walks by design (nodeLabelTokensFromKeyspaceLocked on
   the error path, incomingIndexEntriesFromKeyspaceLocked repair, open-time loads, erasure).
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
