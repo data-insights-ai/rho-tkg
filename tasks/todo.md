@@ -210,9 +210,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   `AllVersions` pay for the deleted entries past it. Done when: each is listed with its cost or fixed. ai-soc asked
   for it in the Flux run (retention purges). Released v4.97.1 (0e11125b): `IteratorOptions.Prefix` on the adjacency
   lookups (ids and endpoints), the label-index scan and the property prefix scan: 1,066x / 655x / 301x before,
-  0.4-1.4x now; 4 of 4 mutations caught; tag CI and main green, ai-soc and sigma notified. Open after the hold,
-  each with a test:
-  the property range walks (propertyIndexDiskRange*: an upper bound, PROPSEEK's AllVersions shape), the purge's
+  0.4-1.4x now; 4 of 4 mutations caught; tag CI and main green, ai-soc and sigma notified. On branch itertomb2
+  (3578b253, untagged during the hold): the property range walks (propertyIndexDiskRange*) take PROPSEEK's
+  AllVersions shape: 424x / 442x before, 0.7-0.9x now, 4 of 4 mutations caught. Open, each with a test: the purge's
   adjacency walk per purged node (purgedRelsForNodeLocked), history truncate/trim (badgerstore_history.go),
   relationshipIndexKeysForRel, the purge token walks (maintainPropertyIndexesPurge, maintainTemporalIndexDiskPurge),
   rel purge candidates. Listed, not changed: whole-keyspace walks by design (nodeLabelTokensFromKeyspaceLocked on
