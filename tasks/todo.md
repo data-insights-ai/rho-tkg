@@ -214,10 +214,13 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   (3578b253, untagged during the hold): the property range walks (propertyIndexDiskRange*) take PROPSEEK's
   AllVersions shape: 424x / 442x before, 0.7-0.9x now, 4 of 4 mutations caught; ef16a690: the history walks
   (truncate, trim, compact, and the purge and erasure that collect history) share one with Prefix: 594x / 787x /
-  543x before, 0.9-1.0x now, 2 of 2 caught. Open, each with a test: the purge's adjacency walk per purged node
-  (purgedRelsForNodeLocked), relationshipIndexKeysForRel, the purge token walks (maintainPropertyIndexesPurge, maintainTemporalIndexDiskPurge),
-  rel purge candidates. Listed, not changed: whole-keyspace walks by design (nodeLabelTokensFromKeyspaceLocked on
-  the error path, incomingIndexEntriesFromKeyspaceLocked repair, open-time loads, erasure).
+  543x before, 0.9-1.0x now, 2 of 2 caught; 126a55c4: the purge's type-index walk (relPurgeCandidates) and
+  per-node adjacency walk (purgedRelsForNodeLocked) with Prefix: 735x / 1,293x before, 0.9-1.1x now, 2 of 2
+  caught. Listed, not changed: whole-keyspace walks by design (relationshipIndexKeysForRel for orphan repair and
+  erasure, the corruption-path token purges maintainPropertyIndexesPurge / maintainTemporalIndexDiskPurge,
+  nodeLabelTokensFromKeyspaceLocked on the error path, incomingIndexEntriesFromKeyspaceLocked repair, open-time
+  loads). All walks fixed or listed; next: ci-docker on itertomb2, then onto main untagged; tagged as the next
+  patch when ai-soc lifts the hold.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
