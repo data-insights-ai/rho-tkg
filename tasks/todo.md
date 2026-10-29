@@ -248,7 +248,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   -> disk). Branch stalebuild 0d4b5e18: the plan keeps the heads, commitEntityIndexOpen streams the deletes into
   its batch. Red at 200 k nodes: +28 MB live heap as the build writes over the first build's; green -9 to +3 MB.
   5 of 5 mutations caught. badger, core, tiered green. At 30.8 M stale entries (tiered): peak RSS 6.8 GB, was
-  11.3-12.6. Release notes 6ec50e1b; ci-docker, consumer checks, tag next.
+  11.3-12.6. Release notes 6ec50e1b; consumers clean; ci-docker red on lint (unparam: place and placeComposite
+  no longer read their txn), fixed 380a2973; ci-docker again, then tag.
 - **CREATEPEAK** (fix, later; same family, not in STALEBUILD) — the on-disk creates collect every entry of a
   populated label before writing (single-key: diskOps and memberOps, badgerstore_index.go; composite:
   createCompositePropertyIndexOnDiskLocked, ~120 B a posting), and a drop collects every key of a definition
