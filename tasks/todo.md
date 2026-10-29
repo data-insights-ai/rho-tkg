@@ -206,14 +206,16 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
-- **ITERTOMB** (SCALE, `docs/badger.md` rule 12) — rho's other per-call walks that stop at their own end bound
-  without `AllVersions` pay for the deleted entries past it (range and prefix scans, label and adjacency disk
-  lookups, `nodeRowIDBounds` at a purged low end). Done when: each is listed with its cost or fixed. 29 Oct, branch
-  itertomb b1accc18: none of the disk lookups set `IteratorOptions.Prefix`. Adjacency (adjacentRelIDs/Metas): 200
-  lookups 1,066x slower after the 20,000 following entries were deleted (red in tasks/evidence/ITERTOMB/), 0.9x with
-  `Prefix`. Listed, not changed: nodeLabelTokensFromKeyspaceLocked and incomingIndexEntriesFromKeyspaceLocked walk a
-  whole keyspace by design (error path, repair). Next: the label scan, the property prefix scan, the two range
-  walks (an upper bound `Prefix` cannot express: PROPSEEK's AllVersions shape), the purge's token walk.
+- **ITERTOMB** (SCALE, `docs/badger.md` rule 12) — rho's per-call walks that stop at their own end bound without
+  `AllVersions` pay for the deleted entries past it. Done when: each is listed with its cost or fixed. ai-soc asked
+  for it in the Flux run (retention purges): v4.97.1 on branch itertomb 6a964b85 sets `IteratorOptions.Prefix` on
+  the adjacency lookups (ids and endpoints), the label-index scan and the property prefix scan: 1,066x / 655x /
+  301x before, 0.4-1.4x now; 4 of 4 mutations caught; ci-docker running. Open after the hold, each with a test:
+  the property range walks (propertyIndexDiskRange*: an upper bound, PROPSEEK's AllVersions shape), the purge's
+  adjacency walk per purged node (purgedRelsForNodeLocked), history truncate/trim (badgerstore_history.go),
+  relationshipIndexKeysForRel, the purge token walks (maintainPropertyIndexesPurge, maintainTemporalIndexDiskPurge),
+  rel purge candidates. Listed, not changed: whole-keyspace walks by design (nodeLabelTokensFromKeyspaceLocked on
+  the error path, incomingIndexEntriesFromKeyspaceLocked repair, open-time loads, erasure).
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
