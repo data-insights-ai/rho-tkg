@@ -1896,7 +1896,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		entityDisk = bs.planEntityIndexOpen(txn)
 		bs.nodeMemberDisk = make(map[indexpkg.PropertyIndexKey]struct{})
 		for key := range propDisk.disk {
-			if entityDisk.place(bs, txn, false, key.LabelToken, key.PropertyKey) {
+			if entityDisk.place(bs, false, key.LabelToken, key.PropertyKey) {
 				bs.nodeMemberDisk[key] = struct{}{} // its member entries answer its pinned reads
 			}
 		}
@@ -2006,7 +2006,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						return fmt.Errorf("graph: load relationship property index definition type %d property %q: an elements index needs the RAM index, not RelPropertyIndexOnDiskTypes: %w",
 							def.RelTypeToken, def.PropertyKey, storecontract.ErrCapabilityNotSupported)
 					}
-					onDisk = entityDisk.place(bs, txn, true, def.RelTypeToken, def.PropertyKey)
+					onDisk = entityDisk.place(bs, true, def.RelTypeToken, def.PropertyKey)
 				}
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if onDisk {
@@ -2075,7 +2075,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 				seenComposite[key] = struct{}{}
 				idx := indexpkg.NewCompositePropertyIndex(def.Keys)
-				if bs.propIdxOnDiskWanted(def.LabelToken) && entityDisk.placeComposite(bs, txn, key, def.Keys) {
+				if bs.propIdxOnDiskWanted(def.LabelToken) && entityDisk.placeComposite(bs, key, def.Keys) {
 					idx = indexpkg.NewCompositePropertyIndexOnDisk(def.Keys)
 				} else if entries, ok := img.takeComposite(key); ok {
 					installValueIDsKept(entries, func(id int64) bool { return bs.keepNodeEntry(img, id) }, idx.AddKey)

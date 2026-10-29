@@ -799,7 +799,7 @@ func (bs *Store) planEntityIndexOpen(txn *badgerv4.Txn) *entityIndexOpen {
 }
 
 // place decides one definition: true when it answers from 0x0C this open.
-func (p *entityIndexOpen) place(bs *Store, txn *badgerv4.Txn, rel bool, scope uint16, propertyKey string) bool {
+func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey string) bool {
 	kind := storepkg.EntityIndexNodeMember
 	if rel {
 		kind = storepkg.EntityIndexRelMember
@@ -822,7 +822,7 @@ func (p *entityIndexOpen) place(bs *Store, txn *badgerv4.Txn, rel bool, scope ui
 // placeComposite is place for a composite node definition of a label kept on
 // disk (COMPDISK): true when its entries answer from 0x0C this open, never
 // without a property-key registry (no head).
-func (p *entityIndexOpen) placeComposite(bs *Store, txn *badgerv4.Txn, key indexpkg.CompositeIndexKey, keys []string) bool {
+func (p *entityIndexOpen) placeComposite(bs *Store, key indexpkg.CompositeIndexKey, keys []string) bool {
 	head, ok := bs.compositeDiskHead(key.LabelToken, keys)
 	if !ok {
 		return false
