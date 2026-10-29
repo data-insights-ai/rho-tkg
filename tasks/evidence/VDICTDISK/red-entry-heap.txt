@@ -1,0 +1,6 @@
+--- FAIL: TestValueDictEntryHeap (0.42s)
+    badgerstore_value_dict_test.go:451: 666 B live per entry of a 51 B value
+    badgerstore_value_dict_test.go:453: 666 B live per entry of a 51 B value, want at most 180
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.437s
+FAIL

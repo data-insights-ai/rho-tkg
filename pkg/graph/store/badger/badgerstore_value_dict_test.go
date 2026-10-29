@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -412,5 +413,43 @@ func TestValueDict_ConcurrentWritersAndReaders(t *testing.T) {
 		if got := vdRelAction(t, reopened, id); got != v {
 			t.Fatalf("after reopen rel %d action = %#v, want %q", id, got, v)
 		}
+	}
+}
+
+// TestValueDictEntryHeap (VDICTDISK): a dictionary entry added while rows are
+// written keeps one copy of its value and its map and slice slots, about 118 B
+// for a 51 B value: neither the caller's string (a row's decode buffer) nor an
+// interned handle (unique, ~214 B more) stays live.
+func TestValueDictEntryHeap(t *testing.T) {
+	const n = 100_000
+	bs := vdOpen(t, t.TempDir(), vdDicts(n))
+	defer bs.Close()
+	if err := bs.vdict.ensureLoaded(bs.db); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := bs.vdict.plan.Index("folder")
+	live := func() uint64 {
+		var m runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&m)
+		return m.HeapAlloc
+	}
+	before := live()
+	for i := range n {
+		row := fmt.Sprintf(`C:\Users\user%07d\AppData\Local\Temp\file-%07d.tmp%250s`, i, i, "the rest of the row")
+		if _, ok := bs.vdict.token(bs, d, row[:51]); !ok { // the value shares the row's ~300 B buffer
+			t.Fatal("no token")
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	per := float64(live()-before) / n
+	t.Logf("%.0f B live per entry of a 51 B value", per)
+	if per > 180 {
+		t.Fatalf("%.0f B live per entry of a 51 B value, want at most 180", per)
 	}
 }

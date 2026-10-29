@@ -4,9 +4,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
-	"unique"
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
@@ -54,12 +54,11 @@ type valueDict struct {
 
 	snap atomic.Pointer[dictSnap] // published under mu; read lock-free
 
-	mu      sync.Mutex // assignment; nests wbMu
-	handles []unique.Handle[string]
-	names   []string // persisted names, index = name id
-	nameOf  []int    // plan index -> name id, -1 when not yet persisted
-	byValue []map[string]uint32
-	size    []int // plan index -> entries of that dictionary in this store
+	mu      sync.Mutex          // assignment; nests wbMu
+	names   []string            // persisted names, index = name id
+	nameOf  []int               // plan index -> name id, -1 when not yet persisted
+	byValue []map[string]uint32 // keyed by the value in vals: one copy of its bytes
+	size    []int               // plan index -> entries of that dictionary in this store
 }
 
 func newValueDict(plan *valuedict.Plan) *valueDict {
@@ -72,7 +71,6 @@ func newValueDict(plan *valuedict.Plan) *valueDict {
 // loadMu and mu, or owns vd.
 func (vd *valueDict) resetLocked() {
 	vd.snap.Store(&dictSnap{})
-	vd.handles = nil
 	vd.names = nil
 	n := 0
 	if vd.plan != nil {
@@ -207,7 +205,6 @@ func (vd *valueDict) ensureLoaded(db *badgerv4.DB) error {
 	}
 	vals := make([]string, maxTok)
 	var gaps map[uint32]struct{}
-	vd.handles = make([]unique.Handle[string], maxTok)
 	for tok := uint32(1); tok <= maxTok; tok++ {
 		e, ok := byTok[tok]
 		if !ok || e.name >= uint64(len(names)) {
@@ -217,8 +214,7 @@ func (vd *valueDict) ensureLoaded(db *badgerv4.DB) error {
 			gaps[tok] = struct{}{}
 			continue
 		}
-		h := unique.Make(e.val)
-		vd.handles[tok-1], vals[tok-1] = h, h.Value()
+		vals[tok-1] = e.val // its own copy, read out of the item
 		if vd.plan != nil {
 			if i, ok := vd.plan.Index(names[e.name]); ok {
 				vd.byValue[i][vals[tok-1]] = tok
@@ -270,11 +266,10 @@ func (vd *valueDict) token(bs *Store, d int, s string) (uint32, bool) {
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.MetaKey(vdictNamesMeta), value: data})
 	}
 	tok := uint32(len(sn.vals) + 1) // #nosec G115 -- bounded by vdictMaxEntries above
-	h := unique.Make(s)
-	ops = append(ops, vdictEntryOp(tok, vd.nameOf[d], s))
-	vd.snap.Store(&dictSnap{vals: append(sn.vals, h.Value()), gaps: sn.gaps})
-	vd.handles = append(vd.handles, h)
-	vd.byValue[d][s] = tok
+	v := strings.Clone(s)           // s may share a row's decode buffer; the entry keeps only its bytes
+	ops = append(ops, vdictEntryOp(tok, vd.nameOf[d], v))
+	vd.snap.Store(&dictSnap{vals: append(sn.vals, v), gaps: sn.gaps})
+	vd.byValue[d][v] = tok
 	vd.size[d]++
 	vd.plan.NoteNewEntry(d)
 	vd.plan.NoteCoded(d)

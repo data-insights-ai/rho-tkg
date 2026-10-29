@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **VDICTDISK** step 1 (goal 2 RAM; ai-soc, BA k10291501: 422 MB live for 1,166,109 entries). A badger value
+  dictionary entry held its value through `unique.Make` (~214 B of handle and map nodes per entry) and keyed its
+  lookup map by the caller's string, which shares a row's decode buffer and so kept the whole row live. An entry
+  now holds one copy of its value, shared by the token table and the lookup map. A 51 B value: 410 B live per
+  entry (666 B when it is a slice of a ~300 B row) before, 130 B now; loading 200,000 entries at open 413 -> 200 B
+  each, badger's read caches included (badger `TestValueDictEntryHeap`). 3 of 3 mutations caught.
+
 ## [4.97.2] - 2026-10-29
 
 ### Fixed
