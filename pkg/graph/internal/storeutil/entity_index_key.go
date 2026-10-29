@@ -17,7 +17,8 @@ import (
 // | EntityIndexNodeComposite | label(2B BE) | first key's token(2B BE) | key
 // count(1B) | the other keys' tokens (2B BE each), so two composites of a label
 // never share a prefix; its payload is the tuple's value key (index.
-// NodeCompositeValueKey) escaped and terminated as a raw value.
+// NodeCompositeValueKey) as is: its parts are length-prefixed, so no tuple's
+// key begins another's and a tuple's entries are its prefix and an ID.
 //
 // scopeToken is the relationship type or the label of the definition, so a
 // definition owns its prefix (its head) whole. Kinds:
@@ -89,12 +90,6 @@ func AppendEntityIndexCompositeHead(dst []byte, label uint16, keyTokens []uint16
 		dst = binary.BigEndian.AppendUint16(dst, tok)
 	}
 	return dst
-}
-
-// AppendEntityIndexCompositeValue appends a composite tuple's payload: its
-// value key escaped as a raw value, terminated.
-func AppendEntityIndexCompositeValue(dst []byte, tupleKey string) []byte {
-	return append(escapeEntityIndexRaw(dst, tupleKey), 0x00)
 }
 
 // AppendEntityIndexHead appends the head of a definition's entries of kind.

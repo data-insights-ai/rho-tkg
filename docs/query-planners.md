@@ -505,7 +505,7 @@ cheaper to maintain (composite index entries also cost RAM), and answers the
 same query with the same big-O once the candidate set from the first key is
 already small.
 
-### v1 scope (equality-only, RAM-only, node-only)
+### v1 scope (equality-only, node-only; on disk with its label's property indexes)
 
 - **Equality-only.** `values` must supply an exact value for EVERY key the
   matching definition declares — there is no partial-prefix lookup (querying
@@ -513,15 +513,16 @@ already small.
   A query whose key SET does not exactly match any registered definition
   still answers correctly (see "Mandatory fallback" below) — it just isn't
   accelerated.
-- **RAM-only.** Composite index ENTRIES always live in memory on every
-  in-tree store (`memory`, `badger`, and the badger shards of `tiered` and
-  `sharded`) — there is no on-disk mode analogous to
-  `badger.Config.PropertyIndexOnDisk`. DEFINITIONS (label + declared key
-  list) are persisted on `badger.Store` so a reopen rebuilds the same
-  definitions by re-scanning current node state (same shape as the
-  single-key property index's own RAM-mode rebuild). A store with many
-  large composite indexes should budget RAM accordingly; on-disk composite
-  entries are a documented follow-up.
+- **RAM, or on disk with its label (since v4.96.0).** On badger (and the
+  badger shards of `tiered` and `sharded`) a composite of a label whose
+  property indexes are kept on disk (`PropertyIndexOnDisk`, or the label in
+  `PropertyIndexOnDiskLabels`) keeps one current entry per node in the
+  `0x0C` keyspace (COMPDISK, `docs/persistence.md` "Composite node indexes on
+  disk"); a current lookup seeks to its cursor there. Every other composite,
+  and every composite on the `memory` store, keeps its entries in RAM (about
+  8 B a posting): DEFINITIONS are persisted on `badger.Store` so a reopen
+  rebuilds them by re-scanning current node state (same shape as the
+  single-key property index's own RAM-mode rebuild).
 - **Node-only.** There is no composite index over relationship properties.
   (Single-key relationship property indexes do exist —
   `RelPropertyIndexCapability`, `g.Index().CreateRelProperty` — and back the

@@ -615,7 +615,7 @@ func nodeWireHasTarget(w *storepkg.NodeWire, byLabel map[uint16][]*nodePropTxTar
 }
 
 // scanPropTxRows visits every stored row of one entity kind: current rows (curKind)
-// and history rows (histKind). The write-buffer overlay is captured FIRST, then the
+// and history rows (histKind; 0 reads none). The write-buffer overlay is captured FIRST, then the
 // badger view opened (lessons 64, 74); a buffered op masks its committed key. A
 // history delta resolves its anchor from the overlay, then earlier committed rows
 // of the same entity, then the view.
@@ -627,7 +627,7 @@ func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.
 		}
 		switch {
 		case k[0] == curKind && len(k) == storepkg.SizeNodeKey:
-		case k[0] == histKind && len(k) == storepkg.SizeHistKey:
+		case k[0] == histKind && len(k) == storepkg.SizeHistKey: // no key starts with 0, so histKind 0 matches none
 		default:
 			return
 		}
@@ -668,47 +668,50 @@ func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.
 		}
 		it.Close()
 
-		// Committed history rows, one entity's versions after another.
-		var groupID snowflake.ID
-		anchors := make(map[uint64][]byte)
-		committedLocal := func(id snowflake.ID) localAnchorFunc {
-			return func(av uint64) ([]byte, bool) {
-				if op, ok := overlay[histKey(id, av)]; ok {
-					return op.value, op.opType != writeOpDelete
+		// Committed history rows, one entity's versions after another (none for
+		// histKind 0).
+		if histKind != 0 {
+			var groupID snowflake.ID
+			anchors := make(map[uint64][]byte)
+			committedLocal := func(id snowflake.ID) localAnchorFunc {
+				return func(av uint64) ([]byte, bool) {
+					if op, ok := overlay[histKey(id, av)]; ok {
+						return op.value, op.opType != writeOpDelete
+					}
+					b, ok := anchors[av]
+					return b, ok
 				}
-				b, ok := anchors[av]
-				return b, ok
 			}
-		}
-		prefix = []byte{histKind}
-		opts.Prefix = prefix
-		it = txn.NewIterator(opts)
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			k := item.Key()
-			if len(k) != storepkg.SizeHistKey {
-				continue
-			}
-			id := storepkg.ParseIDFromKey(k, 1)
-			if id != groupID {
-				groupID = id
-				clear(anchors)
-			}
-			if _, buffered := overlay[string(k)]; buffered {
-				continue
-			}
-			version := historyVersionFromKey(k)
-			if err := item.Value(func(val []byte) error {
-				if storepkg.IsAnchorVersion(version, bs.historyAnchorInterval) && storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
-					anchors[version] = append([]byte(nil), val...)
+			prefix = []byte{histKind}
+			opts.Prefix = prefix
+			it = txn.NewIterator(opts)
+			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+				item := it.Item()
+				k := item.Key()
+				if len(k) != storepkg.SizeHistKey {
+					continue
 				}
-				return visit(id, true, version, val, committedLocal(id))
-			}); err != nil {
-				it.Close()
-				return err
+				id := storepkg.ParseIDFromKey(k, 1)
+				if id != groupID {
+					groupID = id
+					clear(anchors)
+				}
+				if _, buffered := overlay[string(k)]; buffered {
+					continue
+				}
+				version := historyVersionFromKey(k)
+				if err := item.Value(func(val []byte) error {
+					if storepkg.IsAnchorVersion(version, bs.historyAnchorInterval) && storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
+						anchors[version] = append([]byte(nil), val...)
+					}
+					return visit(id, true, version, val, committedLocal(id))
+				}); err != nil {
+					it.Close()
+					return err
+				}
 			}
+			it.Close()
 		}
-		it.Close()
 
 		// Buffered rows (strictly newer than anything committed).
 		for k, op := range overlay {

@@ -65,7 +65,7 @@ func (bs *Store) refreshCompositeDiskDefsLocked() {
 		if !idx.OnDisk() {
 			continue
 		}
-		head, _ := bs.compositeDiskHead(key.LabelToken, idx.Keys) // placed on disk only with a registry
+		head, _ := bs.compositeDiskHead(key.LabelToken, idx.Keys) // on disk only with a registry (placeComposite, the create)
 		defs = append(defs, compositeDiskDef{key: key, idx: idx, head: head})
 	}
 	bs.compositeDiskDefs = defs
@@ -73,8 +73,7 @@ func (bs *Store) refreshCompositeDiskDefsLocked() {
 
 // compositeDiskEntry is the op of id's entry for the tuple tupleKey under head.
 func compositeDiskEntry(head []byte, tupleKey string, id snowflake.ID, opType writeOpType) writeOp {
-	k := append(make([]byte, 0, len(head)+len(tupleKey)+10), head...)
-	k = storepkg.AppendEntityIndexCompositeValue(k, tupleKey)
+	k := append(append(make([]byte, 0, len(head)+len(tupleKey)+8), head...), tupleKey...)
 	return writeOp{opType: opType, key: storepkg.AppendEntityIndexEntry(k, storepkg.EntityIndexNodeComposite, id, 0)}
 }
 
@@ -130,8 +129,8 @@ func (bs *Store) compositeDiskResidueOpsLocked(id snowflake.ID, heads [][]byte) 
 }
 
 // compositeDiskPostings reads a tuple's entries on disk as a sorted posting
-// list (walkPostings, pagePostings): prefix is the tuple's value prefix. A
-// read error ends the list; err holds it.
+// list (walkPostings, pagePostings): prefix is the tuple's value prefix, every
+// key under it the prefix and an ID. A read error ends the list; err holds it.
 type compositeDiskPostings struct {
 	bs     *Store
 	prefix []byte
@@ -145,7 +144,6 @@ func (p *compositeDiskPostings) AppendAfter(dst []snowflake.ID, after snowflake.
 	if p.err != nil {
 		return dst
 	}
-	entryLen := len(p.prefix) + 8
 	idOf := func(key []byte) snowflake.ID {
 		return snowflake.ID(binary.BigEndian.Uint64(key[len(p.prefix):])) // #nosec G115 -- the key's ID bits back to int64
 	}
@@ -164,9 +162,6 @@ func (p *compositeDiskPostings) AppendAfter(dst []snowflake.ID, after snowflake.
 		for it.Seek(lo); it.ValidForPrefix(p.prefix); it.Next() {
 			item := it.Item()
 			key := item.Key()
-			if len(key) != entryLen {
-				break // a longer tuple (0x00 0xFF after the prefix): its entries sort after
-			}
 			if bytes.Equal(key, prev) {
 				continue // an older version of the key just decided
 			}
@@ -204,7 +199,7 @@ func compositeDiskPrefix(head []byte, keys []string, values map[string]any) ([]b
 	if !ok {
 		return nil, false
 	}
-	return storepkg.AppendEntityIndexCompositeValue(bytes.Clone(head), vk), true
+	return append(bytes.Clone(head), vk...), true
 }
 
 // compositeDiskDefLocked is the definition kept on disk for idx. Caller holds
@@ -221,10 +216,10 @@ func (bs *Store) compositeDiskDefLocked(idx *indexpkg.CompositePropertyIndex) (c
 // createCompositePropertyIndexOnDiskLocked is CreateCompositePropertyIndex for
 // a label kept on disk, entered under idxMu.Lock with key absent (released
 // here). It installs the definition, so every door writes its entries from now
-// on (Mutated records the nodes written), deletes the entries an earlier
-// definition left, reads the label's current rows without a lock and merges
-// under the lock an entry for each node alive and not written meanwhile, with
-// the built marker (format marker 15).
+// on (Mutated records the nodes written or removed), deletes the entries an
+// earlier definition left, reads the label's current rows without a lock and
+// merges under the lock an entry for each node not written or removed
+// meanwhile, with the built marker (format marker 15).
 func (bs *Store) createCompositePropertyIndexOnDiskLocked(key indexpkg.CompositeIndexKey, keys []string) error {
 	liveIdx := indexpkg.NewCompositePropertyIndexOnDisk(keys)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
@@ -280,10 +275,7 @@ func (bs *Store) createCompositePropertyIndexOnDiskLocked(key indexpkg.Composite
 	for _, op := range ops {
 		_, id, _, _ := storepkg.EntityIndexEntryOf(op.key, storepkg.EntityIndexNodeComposite)
 		if _, mutated := liveIdx.Mutated[id]; mutated {
-			continue // written or deleted during the scan: its door wrote the entry
-		}
-		if !bs.nodeIDs.Has(int64(types.NodeID(id))) {
-			continue // deleted during the scan
+			continue // written, deleted, purged or erased during the scan: its door wrote the entry or none
 		}
 		kept = append(kept, op)
 	}

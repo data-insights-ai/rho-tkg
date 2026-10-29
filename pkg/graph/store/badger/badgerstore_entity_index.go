@@ -571,8 +571,9 @@ type entityBuildTarget struct {
 // and history (the write buffer first, then a badger view: scanPropTxRows),
 // and hands fn the set op of each entry the rows give the targets: a
 // relationship definition's current entries from current rows, a composite's
-// from current rows, and every other target's member entries from every row. The targets are all relationship
-// or all node definitions. It holds no store lock.
+// from current rows, and every other target's member entries from every row
+// (no history row is read when every target is a composite). The targets are
+// all relationship or all node definitions. It holds no store lock.
 func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op writeOp) error) error {
 	if len(targets) == 0 {
 		return nil
@@ -622,7 +623,13 @@ func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op 
 		has := func(label int) bool { return label > 0 && label <= 0xFFFF && len(byScope[uint16(label)]) > 0 } // #nosec G115 -- range checked
 		return has(w.PrimaryLabel) || slices.ContainsFunc(w.ExtraLabels, has)
 	}
-	return bs.scanPropTxRows(storepkg.KeyNode, storepkg.KeyHistNode, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+	histKind := byte(0) // composites only: current rows give every entry, so no history row is read
+	for _, t := range targets {
+		if t.composite == nil {
+			histKind = storepkg.KeyHistNode
+		}
+	}
+	return bs.scanPropTxRows(storepkg.KeyNode, histKind, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
 		n, err := bs.decodeScannedNode(want, id, hist, version, raw, local)
 		if n == nil || err != nil {
 			return err
@@ -636,9 +643,7 @@ func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op 
 							return err
 						}
 					}
-					continue
-				}
-				if valueKey, _ := n.IndexablePropertyValueKey(t.propertyKey); valueKey != "" {
+				} else if valueKey, _ := n.IndexablePropertyValueKey(t.propertyKey); valueKey != "" {
 					if err := emit(t, valueKey, id, txFrom, !hist); err != nil {
 						return err
 					}
@@ -821,8 +826,13 @@ func (p *entityIndexOpen) place(bs *Store, txn *badgerv4.Txn, rel bool, scope ui
 }
 
 // placeComposite is place for a composite node definition of a label kept on
-// disk (COMPDISK): true when its entries answer from 0x0C this open.
+// disk (COMPDISK): true when its entries answer from 0x0C this open, never
+// without a property-key registry (no head).
 func (p *entityIndexOpen) placeComposite(bs *Store, txn *badgerv4.Txn, key indexpkg.CompositeIndexKey, keys []string) bool {
+	head, ok := bs.compositeDiskHead(key.LabelToken, keys)
+	if !ok {
+		return false
+	}
 	k := compositeDiskBuiltKey(key)
 	if _, ok := p.marked[string(k)]; ok {
 		p.keep[string(k)] = struct{}{}
@@ -831,7 +841,6 @@ func (p *entityIndexOpen) placeComposite(bs *Store, txn *badgerv4.Txn, key index
 	if !p.canBuild {
 		return false
 	}
-	head, _ := bs.compositeDiskHead(key.LabelToken, keys) // canBuild: a registry
 	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: head})
 	for it.Rewind(); it.Valid(); it.Next() {
 		p.stale = append(p.stale, it.Item().KeyCopy(nil))

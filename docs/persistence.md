@@ -153,8 +153,9 @@ Purpose: an older binary must refuse data it cannot read, instead of misdecoding
 | 12 | v4.91.0 on, only with `PropertyIndexOnDiskLabels` and a first listed definition built | the store holds a per-definition on-disk property index marker (PROPDISKLABEL, "Persistent property index" below); raised with the first marker, by its create or the open that rebuilds it | unchanged |
 | 13 | v4.92.0 on, only with an on-disk property index (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`, `RelPropertyIndexOnDiskTypes`) and a first definition built | the store holds `0x0C` entries and their built markers (RELDISK, "Persistent relationship property index" below), which an older release would neither maintain nor clear; raised with the first marker, by its create or the open that builds it | unchanged |
 | 14 | v4.94.0 on, only with `PropertyIndexValidEnd` listing an on-disk definition | the store's `0x0A` entries of a listed definition carry valid-end bounds that every write must reset (VALIDENDPRUNE, "Valid-end bounds" below), which an older release would not do; raised with the definition's valid-end marker, by its create or the writable open that lists it | unchanged |
+| 15 | v4.96.0 on, only with a composite node index of a label kept on disk (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`) built | the store holds composite entries in `0x0C` (kind 4) and their built markers (COMPDISK, "Composite node indexes on disk" below), which an older release would neither maintain nor clear; raised with the first marker, by its create or the writable open that builds it | unchanged |
 
-One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7), or in the batch of the open that writes the entry needing it (marker 12 and 14, `planPropertyIndexDisk`; marker 13, `commitEntityIndexOpen`). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features keeps its marker (3 or 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: "Row wire format" below; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
+One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7), or in the batch of the open that writes the entry needing it (marker 12 and 14, `planPropertyIndexDisk`; markers 13 and 15, `commitEntityIndexOpen`). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features keeps its marker (3 or 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: "Row wire format" below; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
 
 ## Value dictionaries
 
@@ -330,7 +331,7 @@ the LSM. Every prefix from `0x01` to `0x0F` is in use.
 | `0x09` `KeyChangeLog` | `<8B LSN>` | `tag(1B) ‖ msgpack(body)` | 9B | change-log record (`ChangeLog`) |
 | `0x0A` `KeyPropertyIndex` | `<2B propKeyToken>/<payload>/<8B nodeID>` | empty, or an 8B big-endian valid-end bound (`PropertyIndexValidEnd`) | var | property index (`PropertyIndexOnDisk`) |
 | `0x0B` `KeyTemporalIndex` | `<2B labelToken>/<8B from>/<8B nodeID>` | 8B big-endian TO | 19B | temporal-index rebuild rows (`TemporalIndexOnDisk`) |
-| `0x0C` `KeyEntityIndex` | `<1B kind>/<2B scope token>/<2B propKeyToken>/<payload>/<8B ID>[/<8B txFrom>]` | empty | var | relationship property index and node membership entries (`RelPropertyIndexOnDiskTypes`, on-disk node indexes; RELDISK) |
+| `0x0C` `KeyEntityIndex` | `<1B kind>/<2B scope token>/<2B propKeyToken>/<payload>/<8B ID>[/<8B txFrom>]` | empty | var | relationship property index and node membership entries (`RelPropertyIndexOnDiskTypes`, on-disk node indexes; RELDISK), composite node index entries (kind 4, COMPDISK) |
 | `0x0D` `KeyExAdj` | `<8B nodeID>/<1B dir>/<8B relID>` | empty | 18B | ex-adjacency (`ExAdjacencyCapability`, backlog 50) |
 | `0x0E` `KeyFlushStage` | `<8B staging sequence>/<the entry's own key>` | `op(1B) ‖ value` | var | a staged flush, between its start and its clean-up (FLUSHPART); no reader iterates it |
 | `0x0F` `KeyMeta` | `<name>` | per key (below) | var | metadata |
@@ -350,18 +351,22 @@ Value encodings:
   on two labels over one property key share rows ("Persistent property index").
 - Temporal index (`0x0B`): `from` is sign-bit flipped, so a prefix scan yields (From ASC, ID ASC).
 - Entity index (`0x0C`, `entity_index_key.go`): kind 1 a relationship's current entry (no `txFrom`), kind 2 a
-  relationship's member entry, kind 3 a node's member entry; the scope token is the type or label, so a definition
-  owns its prefix. Numeric payload as `0x0A`; raw `0x02 | value-key bytes with 0x00 written 0x00 0xFF | 0x00`, so
-  an equality walk stops at the first key longer than its value's prefix ID and tail ("Persistent relationship
-  property index").
+  relationship's member entry, kind 3 a node's member entry, kind 4 a composite node index's current entry (no
+  `txFrom`); the scope token is the type or label, so a definition owns its prefix. Numeric payload as `0x0A`; raw
+  `0x02 | value-key bytes with 0x00 written 0x00 0xFF | 0x00`, so an equality walk stops at the first key longer
+  than its value's prefix ID and tail ("Persistent relationship property index"). A kind-4 head names every key:
+  `<2B label>/<2B first key token>/<1B key count>/<2B per other key>`, so two composites of a label never share a
+  prefix; its payload is the tuple's value key as is, whose parts are length-prefixed, so no tuple's key begins
+  another's and the walk needs no terminator ("Composite node indexes on disk").
 
 On disk vs RAM: label and adjacency keys (`0x03`–`0x06`) are always written; `LabelIndexOnDisk` /
 `AdjacencyIndexOnDisk` answer reads from them instead of RAM maps (both also on `tiered.Config`, passed to every shard;
 label since v4.79.0). With the label index on disk, doc-values columns decline and their callers read per node. `PropertyIndexOnDisk` moves property-index
 entries into `0x0A`; `TemporalIndexOnDisk` keeps `0x0B` only as a rebuild accelerator (the index stays resident);
 each is backfilled from current rows once, under its build marker. `RelPropertyIndexOnDiskTypes` moves the listed types' relationship property indexes into `0x0C`.
-Every other index (vector, relationship property of an unlisted type, relationship-type temporal, high-frequency,
-composite) persists only its definition; its contents come
+Composite node indexes of a label kept on disk move their entries into `0x0C` (COMPDISK). Every other index (vector,
+relationship property of an unlisted type, relationship-type temporal, high-frequency, composite of a label in RAM)
+persists only its definition; its contents come
 from the open image after a clean `Close`, else from the rows ("Clean reopen"). RAM sidecars (history presence,
 history stamps, label / rel-type / property tx-membership) have no keys; the property tx-membership sidecars travel
 in the open image ("History rows: versions, lives and RAM sidecars").
@@ -604,6 +609,36 @@ no membership sidecar.
   any mutation.
 - **Cost.** A paged member lookup (`...After`) walks its whole value, then pages; a history truncate leaves member
   entries, which only widen a candidate set the reader filters by the rows.
+
+## Composite node indexes on disk (since v4.96.0, COMPDISK)
+
+Purpose (SCALE goal 2: RAM does not grow with data). A composite node index (`g.Index().CreateComposite`) held
+every node's tuple in RAM, about 8 B a posting: on ai-soc's BA store DerivedPage's (ov_namespace, ov_rel) held
+253 MB (287 tuples, 30.9 M postings) and grows with valid time. A composite of a label whose property indexes are
+kept on disk (`PropertyIndexOnDisk`, or the label in `PropertyIndexOnDiskLabels`) keeps its entries in `0x0C`
+instead; no new option.
+
+- **Current entries only** (kind 4): one per node and current tuple, written in the batch of the row and deleted
+  when the tuple changes or the node goes; an update that keeps the tuple writes no entry. The RAM index holds its
+  declared keys only (`PropertyIndexStats`: `OnDisk`, 0 bytes).
+- **Reads.** A current `ByLabelAndProperties` and the ID page behind the composite page doors seek to the tuple's
+  first entry above the cursor (`QueryOpts.After`) and read up to the page's limit, the write buffer merged; the
+  rows are read per page as with the RAM index. A pinned or valid-time read keeps its path: the current matches
+  (read from these entries) with the single-key member sets of its keys, or else the label's history, each
+  candidate rechecked against its rows, so it needs no member entries.
+- **Places and markers.** As for the single-key definitions ("Persistent relationship property index"): each
+  composite kept on disk has a built marker (`entity_index_built/` + kind 4 + label token + the encoded key tuple),
+  set by its create or the writable open that builds it, deleted by a writable open that keeps it in RAM or by its
+  drop. A label that joins the list is built at the next writable open from current rows, its stale entries
+  deleted in the same `WriteBatch`; a read-only open, or an open without a property-key registry, keeps an
+  unmarked definition in RAM. A create reads the label's rows without the index lock and then merges an entry for
+  each node not written meanwhile (a write during the scan writes its own entry).
+- **Format.** The first marker raises the format marker to 15: once a store built a composite on disk, v4.95.x and
+  older refuse it, and there is no rollback; a store with no composite of a listed label keeps its format.
+- **Removal.** A drop deletes its entries and marker, a retention purge and an exact erasure the removed node's
+  entries, `Clear` the keyspace.
+- **Cost.** The build at an open scans the label's rows once, inside `New`. An entry key is the head (8 to 12 B),
+  the tuple key and the ID: a few dozen bytes of disk per node where RAM held about 8 B.
 
 ## Persistent temporal-index rebuild accelerator (opt-in, `TemporalIndexOnDisk`)
 

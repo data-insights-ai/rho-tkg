@@ -221,7 +221,8 @@ cache at most 64 K entries, the label and rel-type tx-membership sidecars only t
 (TXMEMBERS). With the label and adjacency indexes on disk a clean open walks no key per entity. A property
 index kept on disk (nodes: `PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`; relationships:
 `RelPropertyIndexOnDiskTypes`) answers its pinned reads from member entries on disk too, so it builds no
-membership sidecar in RAM (RELDISK).
+membership sidecar in RAM (RELDISK); a composite node index of such a label keeps its current entries on disk
+(COMPDISK).
 `docs/persistence.md` owns the key layout, the wire format, the durability guarantees and recovery.
 
 ### tiered.Store (`pkg/graph/store/tiered/`)

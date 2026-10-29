@@ -37,6 +37,12 @@ func compositeOracle(t *testing.T, g *Core, label string, values map[string]any)
 	return out
 }
 
+// sorted is ids in ascending order.
+func sorted(ids []types.NodeID) []types.NodeID {
+	slices.Sort(ids)
+	return ids
+}
+
 // compositeStat is the IDXSTATS row of label's composite on keys (summed over
 // tiered's shards: on disk only when every shard keeps it there).
 func compositeStat(t *testing.T, g *Core, label string, keys []string) (onDisk bool, ramBytes int64) {
@@ -62,8 +68,8 @@ func compositeStat(t *testing.T, g *Core, label string, keys []string) (onDisk b
 
 // TestCompositeIndexOnDisk (COMPDISK): a composite node index of a label kept
 // on disk (PropertyIndexOnDiskLabels) holds its entries on disk, not in RAM,
-// and answers current ByLabelAndProperties, paged by After and Limit, as the
-// RAM index does: across creates, updates of the tuple and of other keys,
+// and answers current ByLabelAndProperties, paged by After and Limit, and one
+// at a valid time (its current part read from the entries), as the RAM index does: across creates, updates of the tuple and of other keys,
 // deletes, reopens, the label leaving the list and joining again. A label not
 // listed keeps its composite in RAM.
 func TestCompositeIndexOnDisk(t *testing.T) {
@@ -135,6 +141,14 @@ func TestCompositeIndexOnDisk(t *testing.T) {
 						}
 						if !slices.Equal(nodeIDs(got), want) {
 							t.Errorf("%s %s %s: got %v, want %v", step, label, ns, nodeIDs(got), want)
+						}
+						later := storepkg.QueryOpts{ValidAt: types.InstantFromTime(time.Now().Add(time.Hour))} // every current row valid
+						got, err = g.Nodes.ByLabelAndProperties(label, values, later)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if ids := nodeIDs(got); !slices.Equal(sorted(ids), want) {
+							t.Errorf("%s %s %s valid an hour later: got %v, want %v", step, label, ns, ids, want)
 						}
 						var paged []types.NodeID
 						for page := (storepkg.QueryOpts{Limit: 4}); ; {

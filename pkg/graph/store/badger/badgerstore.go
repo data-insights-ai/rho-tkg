@@ -2074,7 +2074,6 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				seenComposite[key] = struct{}{}
 				idx := indexpkg.NewCompositePropertyIndex(def.Keys)
 				if bs.propIdxOnDiskWanted(def.LabelToken) && entityDisk.placeComposite(bs, txn, key, def.Keys) {
-					img.takeComposite(key) // an image of an earlier open in RAM
 					idx = indexpkg.NewCompositePropertyIndexOnDisk(def.Keys)
 				} else if entries, ok := img.takeComposite(key); ok {
 					installValueIDsKept(entries, func(id int64) bool { return bs.keepNodeEntry(img, id) }, idx.AddKey)
