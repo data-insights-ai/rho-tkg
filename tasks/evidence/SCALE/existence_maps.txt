@@ -144,3 +144,13 @@ v4.97.0 from the module cache):
   v4.97.0   insert 9.3 / 9.7 / 9.5 / 12.6 / 12.7 s   clean reopen 0.11 / 0.11 / 0.11 / 0.12 / 0.15 s
             heap after reopen +175.0 / +176.7 / +177.6 / +176.9 / +177.4 MB
 Reading: no change (the probe deletes nothing; ITERTOMB changes only walks past deleted entries).
+
+v4.97.2 release scale probe (ITERTOMB part 2, Derived, 1 M nodes + 1 M rels (-rels), load average 11 at the end, ai-soc's gate
+sharing the PC; alternated with v4.97.1 from the module cache):
+  v4.97.2   insert 12.9 / 14.9 / 11.8 / 9.9 / 9.9 s   clean reopen 0.19 / 0.16 / 0.12 / 0.12 / 0.12 s
+            heap after reopen +175.6 / +177.0 / +176.9 / +176.1 / +173.5 MB
+  v4.97.1   insert 11.0 / 13.0 / 10.2 / 9.8 / 10.2 s   clean reopen 0.14 / 0.12 / 0.12 / 0.15 / 0.13 s
+            heap after reopen +174.9 / +175.7 / +174.8 / +175.9 / +174.2 MB
+Reading: no change. The first three pairs ran under load and new ran first in each; the last two are level
+(9.9 vs 9.8 and 10.2 s). The probe deletes nothing, and v4.97.2 changes only the walks past deleted entries
+(range scans, history truncation, the retention purge).
