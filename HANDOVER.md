@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-29: latest tag v4.95.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-29: latest tag v4.96.0; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,7 +7,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-29 Oct:** v4.75.0 to v4.95.0 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND, v4.90.0 VOIDPROPS, v4.90.1 TXMEMBERS, v4.90.2 PROPDISKTOGGLE, v4.90.3 PROPOVERLAY, v4.91.0 PROPDISKLABEL, v4.91.1 IDXKEYLAZY, v4.91.2 DISKDEFS, v4.92.0 RELDISK, v4.93.0 IDXSTATS, v4.94.0 VALIDENDPRUNE, v4.95.0 VALIDENDLISTED), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
+- **Released 24-29 Oct:** v4.75.0 to v4.96.0 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND, v4.90.0 VOIDPROPS, v4.90.1 TXMEMBERS, v4.90.2 PROPDISKTOGGLE, v4.90.3 PROPOVERLAY, v4.91.0 PROPDISKLABEL, v4.91.1 IDXKEYLAZY, v4.91.2 DISKDEFS, v4.92.0 RELDISK, v4.93.0 IDXSTATS, v4.94.0 VALIDENDPRUNE, v4.95.0 VALIDENDLISTED, v4.96.0 COMPDISK), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
 - **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
   "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
@@ -92,7 +92,14 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   `g.Index().PropertyIndexValidEndListed(label, key)`, true where a ValidEndAfter lookup prunes (listed, on disk,
   trusted; tiered: reference labels), false without an error elsewhere; no I/O. 10 of 10 mutations caught.
   ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged; tag
-  CI and main green; sigma and ai-soc notified. Next: COMPDISK (v4.96.0, ai-soc: DerivedPage's composite 253 MB in RAM), then RELDISK phase 2 (v4.97.0).
+  CI and main green; sigma and ai-soc notified.
+- **v4.96.0** (COMPDISK, a minor; ai-soc: DerivedPage's composite 253 MB in RAM at 30.9 M postings): a composite
+  node index of a label kept on disk keeps its current entries in 0x0C kind 4 (no member entries), built at the
+  next writable open (inside New); format marker 15, no rollback. At 30.8 M postings: listing 7.6 us a node on
+  disk vs 6.8 in RAM (tiered, DepthHot); build open 136-153 s once, peak RSS 12.6 GB (tiered) / 15.7 GB (badger)
+  vs 2.6-3.8 GB plain; composite RAM 249 MB -> 0. 57 of 60 mutations caught (3 performance guards). A fresh store
+  builds nothing (ai-soc's Flux run pins it). Next: a patch for the conversion peak (the open build and a create
+  on a populated label hold more than they need), RELDISK phase 2 (v4.97.0), CACHESTATS.
 - **v4.92.0** (RELDISK phase 1, a minor for SCALE goal 2, ai-soc's request for sigma's 2b edges):
   `RelPropertyIndexOnDiskTypes` keeps the listed relationship types' property indexes in a new `0x0C` keyspace
   (current entries for lookups, member entries for pinned reads); node indexes on disk answer pinned reads from

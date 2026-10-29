@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.96.0] - 2026-10-29
+
+### Added
+
+- **COMPDISK** (ai-soc's IDXSTATS on BA k10282355: DerivedPage's composite (ov_namespace, ov_rel) held 252.9 MB of
+  RAM for 30.9 M postings and grew with valid time). A composite node property index of a label kept on disk
+  (`PropertyIndexOnDiskLabels`, or store-wide `PropertyIndexOnDisk`) keeps its current entries in the 0x0C entity
+  index (kind 4: `0x0C|0x04|label|first key|key count|other keys|tuple|ID`), written in the row's batch, instead
+  of RAM. No member entries: a pinned or valid-time composite read keeps today's path (the current part from the
+  store, the rest from single-key member sets or the label history). A built marker per definition; the entries
+  are built at the next writable open (inside `New`), a read-only open or one without a registry keeps the
+  composite in RAM. Composite-only builds read no history rows.
+- **Format marker 15** (`CompositeDiskStoreFormatVersion`): written by the first open that builds a composite on
+  disk. **No rollback:** a release before v4.96.0 refuses a store at marker 15.
+- Measured (scratch harness, 80 B rows, one relation of n nodes plus n/10 over 286 more; ByLabelAndProperties whole
+  and in pages of 1024, tiered at `DepthHot`): listing RAM vs disk at 1 M 4.7 / 4.7 us a node (badger), 5.1-5.7 /
+  5.0-7.3 (tiered); at 10 M 6.2 / 6.7 (badger), 6.0 / 7.2-8.5 (tiered, noisy host); at 28 M (30.8 M postings) 6.8 /
+  7.6 (tiered). The build at open: 3.9 s at 1.1 M postings, 52 s at 11 M, 136-153 s at 30.8 M; peak RSS of that
+  one open 12.6 GB (tiered) and 15.7 GB (badger) vs 2.6-3.8 GB for an open without it; the composite's RAM goes
+  from 249 MB to 0.
+- Tests: badger `TestCompositeDisk_Lifecycle`, `_CreateMerge`, `_CreateAbort`, `_ScanErrors`, `_Removal`, `_Opens`;
+  core `TestCompositeIndexOnDisk` (badger and tiered, current, paged and valid-time reads). 57 of 60 mutations
+  caught; the three survivors are performance guards (the page limit break, two history-skip checks); seven
+  equivalent pieces of code a mutant showed are removed. One bug found by the sweep and fixed before release: an
+  open without a registry placed a composite on disk it could not key.
+
 ## [4.95.0] - 2026-10-29
 
 ### Added
