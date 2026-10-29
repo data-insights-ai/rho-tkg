@@ -127,7 +127,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   stays is DerivedPage (ov_namespace, ov_rel) 253 MB at 7,500 s (120 MB at 3,000 s) and Derived's 10 MB, growing
   with valid time. Readers: sigma's pager, exact values at a pin. Node counterpart of RELDISK phase 2 (same
   on-disk composite key layout). Order settled from ai-soc's data: NETWORK's composite does not exist yet (0 RAM),
-  DerivedPage's is 253 MB and growing, so COMPDISK first as v4.96.0. Next: design to ai-soc before building.
+  DerivedPage's is 253 MB and growing, so COMPDISK first as v4.96.0. Scoping: a pinned composite read takes its
+  candidates from the single-key member sets (temporal.go forEachNodePropertyCandidateID); the composite serves
+  the current part and the ID pages only, so the disk form may need current entries alone. Asked ai-soc for
+  DerivedPage's IDXSTATS rows (single-key ov_namespace / ov_rel indexes? tuples vs postings) and sigma for the
+  doors and opts its pager calls. Then design to ai-soc and sigma before building.
 - **RELDISK phase 2** (door, minor v4.97.0, after COMPDISK; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
