@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.97.0] - 2026-10-29
+
+### Added
+
+- **CACHESTATS** (ai-soc 29 Oct, from TEMPIDX: decoded rels held by each open shard's cache grew 74 -> 148 MB on BA
+  k10282355, with no byte budget set). `g.Tier().EntityCacheStats() ([]tiered.ShardCacheStats, error)`: a row per
+  open shard (reference, archive when open, each open event shard) with its node and relationship caches' entries
+  and estimated bytes, clean and dirty apart (`store.EntityCacheUsage`), so `CacheBudgetBytes` can be sized from a
+  measurement. Walks the caches, counts no shard access, opens nothing; `ErrNotTieredStore` elsewhere. Tests: index
+  `TestCacheUsage`, tiered `TestEntityCacheStatsPerShard`, graph `TestTierEntityCacheStats`, the tier API's
+  delegation. 19 of 19 mutations caught; an equivalent tombstone check removed.
+- Gates: ci-docker green (one rerun: fuzz-smoke's FuzzWireToRelChecked stopped on "context deadline exceeded" at
+  load 48, no crasher); sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean; scale probe unchanged.
+
 ## [4.96.2] - 2026-10-29
 
 ### Fixed
