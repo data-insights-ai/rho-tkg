@@ -43,7 +43,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and its read is a race guard no test reaches, kept. Five more were equivalent or unreachable; their code is
   removed. Found on the way: tiered with store-wide
   `PropertyIndexOnDisk` and a listing opened its shards without label names and lost its bounds at every reopen
-  (fixed before release). GATES
+  (fixed before release). ci-docker green; sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean;
+  scale probe unchanged (a store without the listing pays one atomic load per buffered batch and per node update).
 
 ## [4.93.0] - 2026-10-28
 

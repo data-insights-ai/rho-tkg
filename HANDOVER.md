@@ -85,7 +85,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   ({Label, KeyPrefix}, sigma's {DerivedPage, "ov_h"}) keeps an upper bound on each node's valid end in its on-disk
   entries, reset by every write, refined by reads; `g.Index().PropertyIndexValidEndStats()`. Format marker 14 once
   a store is opened with the listing (no rollback). 80 of 82 mutations caught (two kept: performance guards).
-  GATES. RELDISK phase 2 (v4.95.0) is next.
+  ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged.
+  RELDISK phase 2 (v4.95.0) is next.
 - **v4.92.0** (RELDISK phase 1, a minor for SCALE goal 2, ai-soc's request for sigma's 2b edges):
   `RelPropertyIndexOnDiskTypes` keeps the listed relationship types' property indexes in a new `0x0C` keyspace
   (current entries for lookups, member entries for pinned reads); node indexes on disk answer pinned reads from
