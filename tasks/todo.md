@@ -131,7 +131,13 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   the rebase. Follow-up: STALEBUILD (Next).
 - **RELDISK phase 2** (door, minor v4.97.0, after COMPDISK; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
-  at a pin.
+  at a pin. No rel composite or multi-key rel door exists today; intersecting single-key member sets reads every rel
+  of a device and every rel on a port (NETWORK ~2.1 rows a key). Design sent to ai-soc and sigma (29 Oct): index
+  doors CreateRelComposite/Delete/Has/List; Rels().ByTypeAndProperties (current, TxPin/TxAt, ValidAt, Limit/After
+  current, tiered Depth; ErrIndexNotFound without a composite); disk: 0x0C kind 5 current + kind 6 member (txFrom
+  suffix, append-only), with the row, built marker, build streamed, format 16; RAM: composite + tuple-keyed sidecar.
+  Asked: pins and paging used, keys planned, rows a day per type; sigma: prefix (device only) needed? Waiting for
+  acceptance. Lands on main untagged during the tag hold.
 - **VALIDTOPURGE** (found 28 Oct by RELDISK's race test; fix, patch) — badger `PurgeNodesByLabelValidToBefore`
   dereferences `n.Temporal()` of every node of the label and panics on a node stored without temporal metadata
   (badgerstore_retention_purge.go:81). Through pkg/graph every row is stamped; a direct badger caller panics. Fix: an
