@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.96.2] - 2026-10-29
+
 ### Fixed
 
 - **VALIDTOPURGE** (found 28 Oct by RELDISK's race test). badger's `PurgeNodesByLabelValidToBefore` panicked on a
@@ -16,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `PropertyIndexOnDisk`) and the temporal-index rebuild rows (`0x0B`, `TemporalIndexOnDisk`) in the store; it now
   drops both keyspaces with the rest of the data. Test: badger `TestClearDropsDiskIndexEntries`. 2 of 2 mutations
   caught.
+- Gates: ci-docker green on each fix's branch; sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean;
+  scale probe unchanged.
 
 ## [4.96.1] - 2026-10-29
 

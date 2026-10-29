@@ -120,3 +120,11 @@ average 16-25 from other sessions; alternated with v4.96.0 from the module cache
             heap after reopen +177.4 / +176.5 / +176.1 / +176.5 / +175.5 MB
 Reading: no change (the 21.4 s is one run under a load spike; the fix touches only a build at open, which a clean
 reopen does not run).
+
+v4.96.2 release scale probe (VALIDTOPURGE + CLEARGAP, Derived, 1 M nodes + 1 M rels (-rels), load average 10-17;
+alternated with v4.96.1 from the module cache):
+  v4.96.2   insert 10.7 / 11.3 / 11.8 / 13.2 / 12.9 s   clean reopen 0.11 / 0.12 / 0.12 / 0.12 / 0.12 s
+            heap after reopen +177.1 / +177.9 / +176.7 / +176.7 / +177.0 MB
+  v4.96.1   insert 10.8 / 10.9 / 12.9 / 13.1 / 13.6 s   clean reopen 0.12 / 0.12 / 0.12 / 0.16 / 0.14 s
+            heap after reopen +176.8 / +175.0 / +175.2 / +177.8 / +176.4 MB
+Reading: no change (the fixes touch a validity purge and Clear only).
