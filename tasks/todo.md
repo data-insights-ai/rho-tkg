@@ -116,7 +116,13 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   upper bound on each node's valid end in its on-disk entries (reset by writes, refined by reads); stats via
   g.Index().PropertyIndexValidEndStats(); format marker 14 once opened with the listing. Waits for sigma's
   Pruned / UnknownRead numbers from the reduced BA.
-- **RELDISK phase 2** (door, minor v4.95.0, after VALIDENDPRUNE; sigma's 2b, after its COUNTROWS) — the composite rel
+- **VALIDENDLISTED** (sigma 29 Oct, René's standing yes; door, minor v4.95.0) — sigma's bench on v4.94.0: listed,
+  the pager takes 1.56 ms (node) / 6.2 ms (reach6h); unlisted, ValidEndAfter's exact filter reads every
+  candidate's timeline (47 / 51 ms), slower than sigma's own skip (~19 ms). So sigma passes the bound only where
+  it prunes and needs a public check: g.Index().PropertyIndexValidEndListed(label, key) (bool, error), true when
+  the definition's bounds are trusted (listed, on disk, marked; tiered: reference shard), false (no error)
+  otherwise. sigma asked for a patch; a door is a minor, told sigma. Next: branch, red, build, gate, release.
+- **RELDISK phase 2** (door, minor v4.96.0, after VALIDENDLISTED; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
 - **VALIDTOPURGE** (found 28 Oct by RELDISK's race test; fix, patch) — badger `PurgeNodesByLabelValidToBefore`
