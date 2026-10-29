@@ -235,7 +235,13 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   write time (wall clock). Design ADR-0013 on branch tierclock (6ce23fc0, docs/architecture.md): MintAtValidFrom
   (a node's ID at its ValidFrom, a rel's clamped into its start node's window; a windowed generator on a reserved
   node field keeps IDs unique), Config.Clock for rotation and demotion, window shards made on demand. Steps 1-4
-  there. Waits for: ai-soc's read and René's go. Done when: a replay rotates as live data would.
+  there. ai-soc agreed the direction (BA 22 Jul-23 Aug 2026, BO 2 Jun, XE 19 Sep: all after the epoch); my review
+  of its four points revised it (a2b275a9: rels at the window's next free ID with a low cursor, leased cursors so a
+  crash reuses no ID, ColdAfter above lateness + a window, ErrWindowDropped by a retention watermark). Build 1-4
+  after the freeze. Waits for: René's word on an independent Fable review. Done when: a replay rotates as live
+  data would.
+- **PREEPOCH** (ai-soc 29 Oct, product question, later) — a customer backfill with valid times before the
+  2026-01-01 snowflake epoch: ADR-0013 refuses it with ErrValidFromBeforeEpoch. Done when: René decides.
 - **IDTABLE** (ai-soc 29 Oct, goal 2) — badger idTable 41 -> 80 -> 160 MB live over the run. Asks: what it maps,
   per shard or not, its bound, whether it leaves with a cold shard. Read (sent 29 Oct): four per store (history
   presence 12 B and stamps 28 B a slot, nodes and rels), ID -> top version (+ stamp fold), lazily built, no cap,
