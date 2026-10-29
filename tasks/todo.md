@@ -11,7 +11,7 @@ Each item: one sentence, then when it is done and what it waits for.
 - **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
   Released v4.96.2 (9904fd3b), v4.97.0 (bad01e13) and, on ai-soc's ask, v4.97.1 ITERTOMB (0e11125b): tag CI and
   main green, ai-soc and sigma notified. FREEZE (René, 29 Oct) ended: Flux k10291501 shipped. Released v4.97.2
-  ITERTOMB part 2 (702843ea). Holding again until ai-soc says the next run ships.
+  ITERTOMB part 2 (702843ea). Tags held until ai-soc names the next release round.
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
