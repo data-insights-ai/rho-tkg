@@ -10,7 +10,7 @@ Each item: one sentence, then when it is done and what it waits for.
 
 - **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
   Released v4.96.2 (9904fd3b), v4.97.0 (bad01e13) and, on ai-soc's ask, v4.97.1 ITERTOMB (0e11125b): tag CI and
-  main green, ai-soc and sigma notified. Holding again until ai-soc says the run ships.
+  main green, ai-soc and sigma notified. Lifted again by ai-soc for v4.97.2 ITERTOMB (in progress); hold after it.
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
@@ -219,9 +219,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   caught. Listed, not changed: whole-keyspace walks by design (relationshipIndexKeysForRel for orphan repair and
   erasure, the corruption-path token purges maintainPropertyIndexesPurge / maintainTemporalIndexDiskPurge,
   nodeLabelTokensFromKeyspaceLocked on the error path, incomingIndexEntriesFromKeyspaceLocked repair, open-time
-  loads). All walks fixed or listed; consumers build and vet against it. ci-docker on itertomb2 PAUSED at
-  ai-soc's ask (load 13, their final Flux gate): rerun when ai-soc says the run has shipped, then onto main;
-  tagged as the next patch when the hold lifts.
+  loads). All walks fixed or listed; consumers build and vet against it. ai-soc lifted the hold for it (René:
+  every finished item into the run; the purge walks hit BA's purges): v4.97.2 named (d8b2ae8e), ci-docker
+  running; then scale probe, main, tag, notify; hold again after.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
