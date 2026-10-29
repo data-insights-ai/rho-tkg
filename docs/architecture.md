@@ -408,3 +408,44 @@ that test.
     once per durable shard flush (`badger.Config.BeforeFlushRows`), not per claim. Measured: about 18 B a key on
     disk; a hit 2.3-3.1 us however many shards; a keyed create in a transaction 19 us against 12 us on the reference
     shard without SyncWrites (`tasks/evidence/UNIQIDX/`).
+
+- **ADR-0013 Valid-time placement** (TIERCLOCK; designed 2026-10-29 for ai-soc's full BA archive, 33 valid days;
+  not built, each step marked here when released). *Problem.* Placement and tiering follow the wall clock: core
+  mints every ID from its generators at write time, an event entity lives in the shard whose window holds its ID's
+  time (no window: the hot shard), rotation and the `ColdAfter` demotion compare `time.Now()`. A replay of 33 days
+  in a few wall hours therefore lands in one hot shard that never rotates (k10291501: 122 M hot checkouts, none warm
+  or cold), so every per-shard RAM structure (existence sets, TemporalIndex, value dictionaries, history idTables)
+  grows with the whole archive instead of the open days; late data (ai-soc's lateness is 24 h) lands in today's
+  shard, not its day's. Live data hides it: wall time is close to valid time.
+  - *Decision: the ID carries the valid time* (ai-soc's option a). `Config.MintAtValidFrom` (graph and tiered;
+    default off): core mints an event node's ID at its `ValidFrom` (none: the clock below), so the ID still routes
+    itself and every read by ID finds the valid day's shard. A relationship lives with its start node, and a
+    lookup by rel ID probes the shard its ID's time names before every other shard (cold ones too), so an event
+    relationship's ID is minted at its `ValidFrom` clamped into its start node's window: it routes to the shard
+    that holds it. A relationship stored on its mint shard (reference start node, `RelsByMint`) is minted at its
+    `ValidFrom`. Rejected,
+    option b (route by a shard key beside the ID): a read by ID carries no key, so it needs an ID -> shard map, one
+    more posting per entity and one more lookup per read, the cost ADR-0012's global index keeps for a measured need.
+  - *Uniqueness.* Valid-time IDs come from their own generator on a reserved node field, so they never meet a
+    wall-time ID. Instants repeat (two events in one microsecond, late data into a day already written), so that
+    generator mints `max(instant, last minted in the instant's window + 1 step)` per window: strictly increasing
+    within a window, never a collision. A window's floor is read once per process (the highest node and rel key of
+    its shard, two reverse seeks) and then kept, one value per window written. A window cannot fill (a day holds
+    86.4 G microseconds x 1,024 steps).
+  - *Clock.* `Config.Clock` (tiered; default `time.Now`) drives rotation and demotion: the hot shard is the
+    window holding the clock, older windows warm, and windows ending before `Clock() - ColdAfter` cold. A host
+    replaying sets it to its valid-time cursor (monotonic; a step back is ignored, the hot shard stays). Idle close
+    and access stamps keep the wall clock: they measure real idleness.
+  - *A window without a shard is made on demand.* An ID whose window no shard holds no longer falls back to the hot
+    shard: its window's shard is created, tiered by the clock (hot if it holds the clock, warm if it ends after
+    `Clock() - ColdAfter`, else cold, opened writable for the write and closed by the idle sweep). A replay that
+    jumps several windows makes only the windows its data reaches. A read of such an ID with no shard answers
+    not-found, as today. A write into a window retention already dropped is refused (`ErrRetentionExpired`).
+  - *Consequences.* The ID's time becomes the entity's valid start, which is also its `idlayout.MintInstantMillis`
+    fallback start (more right than the write time). ID order within a window is valid-time order, not arrival
+    order; nothing orders by ID as arrival (the change log orders by LSN, `TxFrom` comes from the commit clock).
+    The snowflake epoch (2026-01-01 UTC) bounds it: an earlier `ValidFrom` cannot be minted and is refused
+    (`ErrValidFromBeforeEpoch`). Realtime with both options off is unchanged, byte for byte.
+  - *Steps.* 1 `Config.Clock` for rotation and demotion; 2 on-demand window shards; 3 `MintAtValidFrom` with the
+    windowed generator; 4 a replay test of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`,
+    resident sets flat) and ai-soc's BA replay as the measurement.
