@@ -258,9 +258,13 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   (entityIndexDropOpsLocked). Chunking the merge needs care: the member scan's propTxGen retry assumes one merge
   under the lock. Rare (definitions are created at startup); scope when a consumer creates on a big store.
 
-- **CACHESTATS** (ai-soc 29 Oct, TEMPIDX; door, minor, after COMPDISK and RELDISK phase 2) — a per-shard
-  entity-cache bytes stat (nodes and rels, clean and dirty apart), readable like `ShardAccessStats`, so ai-soc sizes
-  `CacheBudgetBytes` from a measurement. ai-soc sets no CacheCapacity/CacheBudgetBytes today (BlockCacheSize 64 MB).
+- **CACHESTATS** (ai-soc 29 Oct, TEMPIDX; door, minor v4.97.0) — `g.Tier().EntityCacheStats()`: a row per open
+  shard (reference, archive when open, each open event shard) with its node and rel caches' entries and estimated
+  bytes (ApproxHeapBytes + 160 B per entry), clean and dirty apart; walks the caches (O(entries)), counts no shard
+  access, opens nothing. Branch cachestats 0105b146: 19 of 19 mutations caught; the tombstone check (equivalent)
+  and a name sort of event rows (unobservable on small maps; rows documented unordered) removed. Kept on its branch
+  during the tag hold: after the hold, v4.96.2 (VALIDTOPURGE + CLEARGAP) is tagged on main first, then CACHESTATS
+  merges as v4.97.0. Next: api.md, CHANGELOG, ci-docker.
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Steps 1-8 shipped (v4.76.1, v4.78.0; MOVEREAD v4.78.2, COLDRO v4.78.3). Step 10
