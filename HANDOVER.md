@@ -117,7 +117,9 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **v4.97.1** (ITERTOMB, a patch; ai-soc asked for it in the Flux run, retention purges): the on-disk adjacency
   lookups, the label-index scan and the property prefix scan set their prefix as the iterator's `Prefix`, so they
   no longer walk the deleted entries after their keys (1,066x / 655x / 301x before, 0.4-1.4x now). 4 of 4
-  mutations caught. Open: the range walks, the purge's adjacency walk, history truncation, erasure and repair.
+  mutations caught. ci-docker green, consumers clean, scale probe unchanged; tag CI and main green; ai-soc (pins it
+  for the Flux run) and sigma notified. Open: the range walks, the purge's adjacency walk, history truncation,
+  the purge token walks, rel purge candidates (todo ITERTOMB). Tags held until ai-soc's run ships.
 - **v4.92.0** (RELDISK phase 1, a minor for SCALE goal 2, ai-soc's request for sigma's 2b edges):
   `RelPropertyIndexOnDiskTypes` keeps the listed relationship types' property indexes in a new `0x0C` keyspace
   (current entries for lookups, member entries for pinned reads); node indexes on disk answer pinned reads from

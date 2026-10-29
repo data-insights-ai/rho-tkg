@@ -9,8 +9,8 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 - **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
-  Released v4.96.2 (9904fd3b) and v4.97.0 (bad01e13): tag CI and main green, ai-soc and sigma notified. Holding
-  again until ai-soc says the run ships. ITERTOMB waits on its branch.
+  Released v4.96.2 (9904fd3b), v4.97.0 (bad01e13) and, on ai-soc's ask, v4.97.1 ITERTOMB (0e11125b): tag CI and
+  main green, ai-soc and sigma notified. Holding again until ai-soc says the run ships.
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
@@ -208,9 +208,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   target, so ingest grows with the hardware.
 - **ITERTOMB** (SCALE, `docs/badger.md` rule 12) — rho's per-call walks that stop at their own end bound without
   `AllVersions` pay for the deleted entries past it. Done when: each is listed with its cost or fixed. ai-soc asked
-  for it in the Flux run (retention purges): v4.97.1 on branch itertomb 6a964b85 sets `IteratorOptions.Prefix` on
-  the adjacency lookups (ids and endpoints), the label-index scan and the property prefix scan: 1,066x / 655x /
-  301x before, 0.4-1.4x now; 4 of 4 mutations caught; ci-docker running. Open after the hold, each with a test:
+  for it in the Flux run (retention purges). Released v4.97.1 (0e11125b): `IteratorOptions.Prefix` on the adjacency
+  lookups (ids and endpoints), the label-index scan and the property prefix scan: 1,066x / 655x / 301x before,
+  0.4-1.4x now; 4 of 4 mutations caught; tag CI and main green, ai-soc and sigma notified. Open after the hold,
+  each with a test:
   the property range walks (propertyIndexDiskRange*: an upper bound, PROPSEEK's AllVersions shape), the purge's
   adjacency walk per purged node (purgedRelsForNodeLocked), history truncate/trim (badgerstore_history.go),
   relationshipIndexKeysForRel, the purge token walks (maintainPropertyIndexesPurge, maintainTemporalIndexDiskPurge),
