@@ -128,3 +128,11 @@ alternated with v4.96.1 from the module cache):
   v4.96.1   insert 10.8 / 10.9 / 12.9 / 13.1 / 13.6 s   clean reopen 0.12 / 0.12 / 0.12 / 0.16 / 0.14 s
             heap after reopen +176.8 / +175.0 / +175.2 / +177.8 / +176.4 MB
 Reading: no change (the fixes touch a validity purge and Clear only).
+
+v4.97.0 release scale probe (CACHESTATS, Derived, 1 M nodes + 1 M rels (-rels), load average 15-17; alternated with
+v4.96.2 from the module cache):
+  v4.97.0   insert 12.4 / 12.4 / 13.8 / 11.3 / 11.4 s   clean reopen 0.12 / 0.18 / 0.12 / 0.12 / 0.11 s
+            heap after reopen +176.8 / +177.8 / +176.8 / +177.6 / +177.3 MB
+  v4.96.2   insert 12.1 / 15.4 / 10.8 / 16.4 / 10.8 s   clean reopen 0.14 / 0.27 / 0.12 / 0.12 / 0.11 s
+            heap after reopen +177.4 / +178.4 / +173.9 / +174.0 / +177.0 MB
+Reading: no change (CACHESTATS adds a read-only stat door; the write path is untouched).
