@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.96.1] - 2026-10-29
+
+### Fixed
+
+- **STALEBUILD** (found profiling v4.96.0's build at open, 30.8 M postings). An entity-index build at open over
+  the entries an earlier build left (a label kept on disk, then in RAM, then on disk again) collected every stale
+  key before deleting them: 875 MB of slice plus 1.4 GB of key copies at 31 M stale composite entries. The plan now
+  keeps the definitions' heads and `commitEntityIndexOpen` streams the deletes into its batch. Peak RSS of that
+  open at 30.8 M (tiered): 6.8 GB, was 11.3-12.6 GB; a first conversion is 7.1 GB. Test: badger
+  `TestEntityIndexOpenStaleStreamed` (200,000 nodes; live heap as the build starts writing, over the first build's:
+  +28 MB before, -9 to +3 MB now). 5 of 5 mutations caught. A create on a populated label and a drop still collect
+  their entries (CREATEPEAK, later).
+
 ## [4.96.0] - 2026-10-29
 
 ### Added
