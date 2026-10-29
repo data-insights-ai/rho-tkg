@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **VALIDTOPURGE** (found 28 Oct by RELDISK's race test). badger's `PurgeNodesByLabelValidToBefore` panicked on a
+  node stored without temporal metadata (a direct badger caller; through `pkg/graph` every row is stamped). Such a
+  node is open and never purged by validity, as in memory's purge. Test: badger `TestBadgerPurgeValidToUnstamped`.
+  2 of 2 mutations caught.
+
 ## [4.96.1] - 2026-10-29
 
 ### Fixed
