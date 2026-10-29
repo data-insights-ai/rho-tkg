@@ -143,7 +143,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   tagged as a patch when the hold lifts.
 - **CLEARGAP** (seen 28 Oct building RELDISK; fix, patch) — confirmed: badger's `Clear` left `0x0A` and `0x0B` keys
   (red in tasks/evidence/CLEARGAP/). Fixed on branch cleargap (e00859ca): both prefixes join Clear's DropPrefix
-  list. 2 of 2 mutations caught. ci-docker, then main untagged with VALIDTOPURGE (one patch when the hold lifts).
+  list. 2 of 2 mutations caught. ci-docker green; on main untagged with VALIDTOPURGE (one patch when the hold lifts).
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
