@@ -19,6 +19,7 @@ type Ops interface {
 	DeleteProperty(label, propertyKey string) error
 	HasProperty(label, propertyKey string) (bool, error)
 	PropertyIndexStats() ([]storepkg.PropertyIndexStat, error)
+	PropertyIndexValidEndStats() (storepkg.PropertyIndexValidEndStats, error)
 	CreateRelProperty(typeName, propertyKey string) error
 	DeleteRelProperty(typeName, propertyKey string) error
 	HasRelProperty(typeName, propertyKey string) (bool, error)
@@ -114,6 +115,20 @@ func (a *API) PropertyIndexStats() ([]storepkg.PropertyIndexStat, error) {
 		return nil, err
 	}
 	return ops.PropertyIndexStats()
+}
+
+// PropertyIndexValidEndStats counts the store's valid-end pruning since it
+// opened (VALIDENDPRUNE, since v4.94.0): entries a QueryOpts.ValidEndAfter
+// lookup left out (Pruned), entries it read without a bound (UnknownRead),
+// bounds reads wrote (Refined), refines skipped because the node was written
+// after the lookup or the store was cleared (RefineSkipped). Badger and tiered
+// (its reference shard); other backends return store.ErrCapabilityNotSupported.
+func (a *API) PropertyIndexValidEndStats() (storepkg.PropertyIndexValidEndStats, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyIndexValidEndStats{}, err
+	}
+	return ops.PropertyIndexValidEndStats()
 }
 
 // CreateRelProperty creates a relationship property index on the given rel type

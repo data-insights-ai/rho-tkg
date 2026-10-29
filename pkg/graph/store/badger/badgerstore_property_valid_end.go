@@ -40,9 +40,10 @@ var _ storecontract.PropertyIndexValidEndCapability = (*Store)(nil)
 // A definition's bounds are trusted with its built marker
 // (PropertyIndexValidEndBuiltKey): set by its create or by the writable open
 // that lists it (after writing its key's bounded entries unknown), deleted by
-// a writable open that does not list it or by its drop. The first raises the
-// format marker to 14: a release that does not reset the bounds refuses the
-// store.
+// a writable open that does not list it or no longer holds it on disk (a
+// dropped definition is no longer trusted from its drop on). The first raises
+// the format marker to 14: a release that does not reset the bounds refuses
+// the store.
 
 // validEndStripeCount is the number of write-sequence stripes a refine
 // checks; two nodes sharing a stripe only skip a refine.
@@ -67,9 +68,6 @@ func validEndStripe(id snowflake.ID) int {
 // validEndListed reports whether the property index on key is listed in
 // PropertyIndexValidEnd, its label named as propIdxOnDiskWanted names it.
 func (bs *Store) validEndListed(key indexpkg.PropertyIndexKey) bool {
-	if len(bs.validEnd.listing) == 0 {
-		return false
-	}
 	reg := bs.labelNames.Load()
 	if reg == nil {
 		reg = bs.propDiskNames
@@ -105,7 +103,8 @@ func (bs *Store) refreshValidEndDefsLocked() {
 }
 
 // validEndEntryOps are the set ops of n's entries in the trusted definitions,
-// each with value (empty: unknown), one per entry key.
+// each with value (empty: unknown); definitions sharing a key give the entry
+// twice.
 func (bs *Store) validEndEntryOps(defs []indexpkg.PropertyIndexKey, n *types.Node, id snowflake.ID, value []byte) []writeOp {
 	var ops []writeOp
 	for _, def := range defs {
@@ -113,15 +112,10 @@ func (bs *Store) validEndEntryOps(defs []indexpkg.PropertyIndexKey, n *types.Nod
 			continue
 		}
 		valueKey, _ := n.IndexablePropertyValueKey(def.PropertyKey)
-		if valueKey == "" {
-			continue
+		if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, id, writeOpSet); ok {
+			op.value = value
+			ops = append(ops, op)
 		}
-		op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, id, writeOpSet)
-		if !ok || slices.ContainsFunc(ops, func(o writeOp) bool { return string(o.key) == string(op.key) }) {
-			continue
-		}
-		op.value = value
-		ops = append(ops, op)
 	}
 	return ops
 }
@@ -156,7 +150,6 @@ func (bs *Store) noteValidEndPruneLocked(ops []writeOp) []writeOp {
 		return ops
 	}
 	var current, history []snowflake.ID
-	var opKeys map[string]struct{}
 	for _, op := range ops {
 		key := op.key
 		switch {
@@ -174,42 +167,17 @@ func (bs *Store) noteValidEndPruneLocked(ops []writeOp) []writeOp {
 		if slices.Contains(current, id) {
 			continue
 		}
-		n := bs.validEndCurrentRow(id)
-		if n == nil {
-			continue
+		if n := bs.validEndCurrentRow(id); n != nil {
+			extra = append(extra, bs.validEndEntryOps(*defs, n, id, nil)...)
 		}
-		if opKeys == nil {
-			opKeys = make(map[string]struct{}, len(ops))
-			for _, op := range ops {
-				opKeys[string(op.key)] = struct{}{}
-			}
-		}
-		for _, op := range bs.validEndEntryOps(*defs, n, id, nil) {
-			if _, dup := opKeys[string(op.key)]; !dup {
-				opKeys[string(op.key)] = struct{}{}
-				extra = append(extra, op)
-			}
-		}
-	}
-	if extra == nil {
-		return ops
 	}
 	return append(ops[:len(ops):len(ops)], extra...)
 }
 
-// validEndCurrentRow is id's current row: the write buffer's, the flush's in
-// progress, the cache's, else badger's; nil without one or on a read error.
-// Takes no store lock but the cache's. Caller holds wbMu.
+// validEndCurrentRow is id's current row: the cache's (a row not yet flushed is
+// never evicted), else badger's; nil without one or on a read error. Takes no
+// store lock but the cache's.
 func (bs *Store) validEndCurrentRow(id snowflake.ID) *types.Node {
-	key := storepkg.NodeKey(id)
-	for _, buf := range []map[string]writeOp{bs.pending, bs.flushing} {
-		if op, ok := buf[string(key)]; ok {
-			if op.opType == writeOpDelete {
-				return nil
-			}
-			return bs.validEndDecodeRow(id, op.value)
-		}
-	}
 	switch n, status := bs.nodeCache.GetNoPromote(id); status {
 	case indexpkg.CacheHit:
 		return n
@@ -218,7 +186,7 @@ func (bs *Store) validEndCurrentRow(id snowflake.ID) *types.Node {
 	}
 	var n *types.Node
 	_ = bs.view(func(txn *badgerv4.Txn) error {
-		item, err := txn.Get(key)
+		item, err := txn.Get(storepkg.NodeKey(id))
 		if err != nil {
 			return err
 		}
@@ -272,9 +240,7 @@ func (bs *Store) NodesByLabelAndPropertyKeysValidEnd(labelToken uint16, propKey 
 	seq := bs.validEnd.seq.Load() // before any row is read
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propKey}
 	bs.idxMu.RLock()
-	idx, ok := bs.propertyIndexes[key]
-	_, trusted := bs.validEnd.trusted[key]
-	if !ok || !trusted || !idx.OnDisk() || idx.Mutated != nil {
+	if _, trusted := bs.validEnd.trusted[key]; !trusted { // trusted: on disk, built
 		bs.idxMu.RUnlock()
 		nodes, err := bs.NodesByLabelAndPropertyKeys(labelToken, propKey, valueKeys, opts)
 		return nodes, nil, err
@@ -285,14 +251,11 @@ func (bs *Store) NodesByLabelAndPropertyKeysValidEnd(labelToken uint16, propKey 
 	if err != nil || len(nids) == 0 {
 		return nil, nil, err
 	}
-	storepkg.SortNodeIDs(nids)
-	nids = slices.Compact(nids)
+	storepkg.SortNodeIDs(nids) // one entry per node and key: no repeats
 	kept := nids[:0]
 	for _, nid := range nids {
 		if b, known := bounds[nid]; known && b < bound {
-			if types.EntityID(nid) > opts.After {
-				bs.validEnd.pruned.Add(1)
-			}
+			bs.validEnd.pruned.Add(1)
 			continue
 		}
 		kept = append(kept, nid)
@@ -356,10 +319,7 @@ func (bs *Store) PropertyIndexValidEndStats() storecontract.PropertyIndexValidEn
 // validEndResetOps writes unknown every entry of propertyKey that carries a
 // bound: a definition listed again trusts none it did not maintain.
 func (bs *Store) validEndResetOps(txn *badgerv4.Txn, propertyKey string) []writeOp {
-	tok, ok := bs.propKeyTokenFor(propertyKey)
-	if !ok {
-		return nil
-	}
+	tok, _ := bs.propKeyTokenFor(propertyKey) // 0 without a registry: no entry has it
 	var ops []writeOp
 	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: storepkg.PropertyIndexTokenPrefix(tok)})
 	defer it.Close()

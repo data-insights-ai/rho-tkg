@@ -1,0 +1,7 @@
+# TestTieredValidEndStoreWide before the fix: tiered with PropertyIndexOnDisk (store-wide) and a listing opens its shards
+# without label names, so a writable open unmarks the listed definition and the bounds are not trusted after a reopen.
+--- FAIL: TestTieredValidEndStoreWide (0.29s)
+    validendprune_test.go:511: reopened: {Pruned:0 UnknownRead:0 Refined:0 RefineSkipped:0}, want the 4 closed nodes pruned from the bounds the last open refined
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.298s
+FAIL

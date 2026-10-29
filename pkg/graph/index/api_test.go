@@ -63,6 +63,9 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	if _, err := api.PropertyIndexStats(); !errors.Is(err, wantErr) {
 		t.Fatalf("PropertyIndexStats = %v, want %v", err, wantErr)
 	}
+	if st, err := api.PropertyIndexValidEndStats(); !errors.Is(err, wantErr) || st.Pruned != 7 {
+		t.Fatalf("PropertyIndexValidEndStats = %+v, %v, want Pruned 7, %v", st, err, wantErr)
+	}
 	if _, err := api.HasRelProperty("KNOWS", "weight"); !errors.Is(err, wantErr) {
 		t.Fatalf("HasRelProperty = %v, want %v", err, wantErr)
 	}
@@ -85,7 +88,7 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 		"CreateProperty", "DropProperty", "CreateComposite", "DeleteComposite", "CreateHighFrequency", "DropHighFrequency",
 		"CreateTemporal", "DropTemporal", "CreateRelTemporal", "DeleteRelTemporal", "CreateVector", "CreateVectorWithOptions", "DropVector",
 		"RegisterProvider", "UnregisterProvider",
-		"SearchNearest", "SearchNearestScored", "HasProperty", "PropertyIndexStats", "HasRelProperty", "HasTemporal", "VectorIndexInfo", "Providers", "Providers",
+		"SearchNearest", "SearchNearestScored", "HasProperty", "PropertyIndexStats", "PropertyIndexValidEndStats", "HasRelProperty", "HasTemporal", "VectorIndexInfo", "Providers", "Providers",
 	}
 	if len(ops.calls) != len(wantCalls) {
 		t.Fatalf("calls = %v, want %v", ops.calls, wantCalls)
@@ -148,6 +151,11 @@ func (s *indexOpsSpy) HasProperty(label, propertyKey string) (bool, error) {
 func (s *indexOpsSpy) PropertyIndexStats() ([]storepkg.PropertyIndexStat, error) {
 	s.record("PropertyIndexStats")
 	return nil, s.err
+}
+
+func (s *indexOpsSpy) PropertyIndexValidEndStats() (storepkg.PropertyIndexValidEndStats, error) {
+	s.record("PropertyIndexValidEndStats")
+	return storepkg.PropertyIndexValidEndStats{Pruned: 7}, s.err
 }
 
 func (s *indexOpsSpy) CreateRelProperty(typeName, propertyKey string) error {

@@ -61,14 +61,14 @@ func (c *Core) nodesByLabelAndPropertyFormsValidEnd(label, key string, forms []a
 		pin := c.peekNow()
 		for i, n := range nodes {
 			segs, err := c.nodeEffectiveTimelineLocked(n.ID(), pin)
-			if errors.Is(err, storepkg.ErrNodeNotFound) {
+			if errors.Is(err, storepkg.ErrNodeNotFound) { // purged since the lookup
 				continue
 			}
 			if err != nil {
 				return nil, err
 			}
 			end := segmentsEnd(c.axis(), segs, nodeSegTo)
-			if probes != nil && (!probes[i].Known || probes[i].Bound != end) {
+			if probes != nil && !probes[i].Known { // a write leaves a bound unknown: a known one is the end
 				c.validEndQuery.RefineNodePropertyValidEnd(n, probes[i], end)
 			}
 			if end >= bound { // ValidEndOpen is the largest instant
@@ -86,14 +86,11 @@ func (c *Core) nodesByLabelAndPropertyFormsValidEnd(label, key string, forms []a
 }
 
 // validEndCandidates is one page of the current matches, with a probe per node
-// where the store prunes (nil probes: every match read). A tiered event
-// label's unique key reads its owner index (nodesByLabelAndPropertyFormKeys).
+// where the store prunes (nil probes: every match read).
 func (c *Core) validEndCandidates(tok uint16, key string, forms []any, keys equalKeys, opts storepkg.QueryOpts, bound types.Instant) ([]*types.Node, []storepkg.ValidEndProbe, error) {
 	if c.validEndQuery != nil {
-		if _, owner := c.readyOwnerIndex(tok, key); !owner || opts.Depth != storepkg.DepthAll {
-			opts.ValidEndAfter, opts.ValidEndAfterSet = bound, true
-			return c.validEndQuery.NodesByLabelAndPropertyKeysValidEnd(tok, key, keys, opts)
-		}
+		opts.ValidEndAfter, opts.ValidEndAfterSet = bound, true
+		return c.validEndQuery.NodesByLabelAndPropertyKeysValidEnd(tok, key, keys, opts)
 	}
 	nodes, err := c.nodesByLabelAndPropertyFormKeys(tok, key, forms, keys, opts)
 	return nodes, nil, err

@@ -19,14 +19,9 @@ const validEndSrcRef = 1
 func (ts *Store) NodesByLabelAndPropertyKeysValidEnd(labelToken uint16, key string, valueKeys []string, opts QueryOpts) ([]*types.Node, []storecontract.ValidEndProbe, error) {
 	var refProbes map[types.NodeID]storecontract.ValidEndProbe
 	nodes, err := ts.nodesByLabelPropertyKeysWith(labelToken, key, opts, func() ([]string, error) { return valueKeys, nil },
-		func(ref *BadgerStore, elements bool, match storeutil.IndexKeyMatch, shardOpts QueryOpts) ([]*types.Node, error) {
-			have, has, err := ref.PropertyIndexOptions(labelToken, key)
-			if err != nil {
-				return nil, err
-			}
-			if !shardPropertyDoor(have, has, elements) {
-				return shardNodesByLabelAndProperty(ref, elements, labelToken, key, match, shardOpts)
-			}
+		// The reference shard's own index options decide elements, so its
+		// index always answers (shardPropertyDoor).
+		func(ref *BadgerStore, _ bool, match storeutil.IndexKeyMatch, shardOpts QueryOpts) ([]*types.Node, error) {
 			nodes, probes, err := ref.NodesByLabelAndPropertyKeysValidEnd(labelToken, key, match.Keys(), shardOpts)
 			if err != nil || probes == nil {
 				return nodes, err

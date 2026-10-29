@@ -253,8 +253,7 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 	var purgeOps []writeOp
 	var purgeErr error
 	if dropped.OnDisk() {
-		purgeOps = append(purgeOps, writeOp{opType: writeOpDelete, key: storepkg.PropertyIndexOnDiskDefBuiltKey(labelToken, propertyKey)},
-			writeOp{opType: writeOpDelete, key: storepkg.PropertyIndexValidEndBuiltKey(labelToken, propertyKey)})
+		purgeOps = append(purgeOps, writeOp{opType: writeOpDelete, key: storepkg.PropertyIndexOnDiskDefBuiltKey(labelToken, propertyKey)})
 		// Its member entries and their marker (RELDISK).
 		var memberOps []writeOp
 		memberOps, purgeErr = bs.entityIndexDropOpsLocked(false, labelToken, propertyKey)

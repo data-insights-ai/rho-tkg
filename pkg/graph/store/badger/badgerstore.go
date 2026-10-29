@@ -1193,10 +1193,10 @@ func New(cfg Config) (*Store, error) {
 	}
 	bs.validEnd.listing = slices.Clone(cfg.PropertyIndexValidEnd)
 	bs.validEnd.trusted = make(map[indexpkg.PropertyIndexKey]struct{})
-	// A probe read on an earlier open of the directory lies below this one's
-	// sequence: its refine is skipped (VALIDENDPRUNE).
+	// Every write of this open bumps its node's stripe above a probe read on
+	// an earlier open of the directory, so that probe's refine is skipped
+	// (VALIDENDPRUNE).
 	bs.validEnd.seq.Store(uint64(time.Now().UnixNano())) // #nosec G115 -- a positive clock reading
-	bs.validEnd.floor.Store(bs.validEnd.seq.Load())
 	if len(bs.propDiskLabels) > 0 || len(bs.validEnd.listing) > 0 {
 		bs.propDiskNames = cfg.LabelNames
 		if bs.propDiskNames == nil {

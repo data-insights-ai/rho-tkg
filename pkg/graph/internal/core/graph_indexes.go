@@ -342,6 +342,23 @@ func (i *IndexOps) PropertyIndexStats() ([]storepkg.PropertyIndexStat, error) {
 	return out, nil
 }
 
+// PropertyIndexValidEndStats counts the store's valid-end pruning since it
+// opened (VALIDENDPRUNE): entries a QueryOpts.ValidEndAfter lookup left out,
+// entries it read without a bound, bounds reads wrote, refines skipped.
+// Backends without it return storepkg.ErrCapabilityNotSupported.
+func (i *IndexOps) PropertyIndexValidEndStats() (storepkg.PropertyIndexValidEndStats, error) {
+	c := i.c
+	var out storepkg.PropertyIndexValidEndStats
+	err := c.readUnderRLock(func() error {
+		if c.validEndQuery == nil {
+			return fmt.Errorf("%w: PropertyIndexValidEndCapability", storepkg.ErrCapabilityNotSupported)
+		}
+		out = c.validEndQuery.PropertyIndexValidEndStats()
+		return nil
+	})
+	return out, err
+}
+
 // HasTemporal reports whether a temporal interval index exists on label (backlog
 // 21b); a high-frequency index does not count. Unregistered labels return false;
 // backends without introspection return storepkg.ErrCapabilityNotSupported.

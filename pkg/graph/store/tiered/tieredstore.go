@@ -411,7 +411,7 @@ type Store struct {
 	cacheBudgetBytes      int64                                 // per-shard entity-cache byte budget; 0 = off
 	propertyIndexOnDisk   bool                                  // reference-shard-only scope unchanged; changes RAM vs disk representation
 	propDiskLabels        []string                              // PropertyIndexOnDiskLabels
-	openLabelNames        *registrypkg.LabelRegistry            // names propDiskLabels for shards opened before the graph installs its registry
+	openLabelNames        *registrypkg.LabelRegistry            // names propDiskLabels and validEndDefs for shards opened before the graph installs its registry
 	relDiskTypes          []string                              // RelPropertyIndexOnDiskTypes
 	validEndDefs          []storecontract.PropertyIndexValidEnd // PropertyIndexValidEnd
 	openRelTypeNames      *registrypkg.RelTypeRegistry          // names relDiskTypes for shards opened before the graph installs its registry
@@ -699,7 +699,7 @@ func New(cfg Config) (*Store, error) {
 			}
 		}
 		ts.regFile = filepath.Join(cfg.DataDir, "meta", "registry.msgpack")
-		if len(cfg.PropertyIndexOnDiskLabels) > 0 {
+		if len(cfg.PropertyIndexOnDiskLabels) > 0 || len(cfg.PropertyIndexValidEnd) > 0 {
 			labels, _, err := loadRegistryFile(ts.regFile)
 			if err != nil {
 				return nil, err
@@ -707,7 +707,7 @@ func New(cfg Config) (*Store, error) {
 			if labels != nil {
 				reg := registrypkg.NewLabelRegistry()
 				if err := reg.ImportNames(labels); err != nil {
-					return nil, fmt.Errorf("graph: label registry for PropertyIndexOnDiskLabels: %w", err)
+					return nil, fmt.Errorf("graph: label registry for PropertyIndexOnDiskLabels or PropertyIndexValidEnd: %w", err)
 				}
 				ts.openLabelNames = reg
 			}
@@ -1797,7 +1797,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		// group's hold (rotation, lazy open) starts held.
 		SharedFlushHold: &ts.flushHold,
 	}
-	if len(ts.propDiskLabels) > 0 {
+	if len(ts.propDiskLabels) > 0 || len(ts.validEndDefs) > 0 {
 		cfg.LabelNames = ts.labelNames.Load()
 		if cfg.LabelNames == nil {
 			cfg.LabelNames = ts.openLabelNames

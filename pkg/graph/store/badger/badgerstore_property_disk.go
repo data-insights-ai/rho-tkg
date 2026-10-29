@@ -570,7 +570,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 					if b, ok := pendingBounds[string(key)]; ok {
 						bounds[nid] = b
 					}
-				} else if bounds != nil && item.ValueSize() == 8 {
+				} else if bounds != nil {
 					if err := item.Value(func(v []byte) error {
 						if b, ok := storepkg.DecodeValidEndBound(v); ok {
 							bounds[nid] = b
@@ -1029,10 +1029,7 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 		clear(p.disk)
 		clear(p.rebuild)
 	}
-	veMark, veUnmark, err := bs.planValidEnd(txn, p, canBuild)
-	if err != nil {
-		return nil, err
-	}
+	veMark, veUnmark := bs.planValidEnd(txn, p)
 	if bs.readOnly {
 		return p, nil
 	}
@@ -1087,11 +1084,11 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 
 // planValidEnd decides which on-disk definitions of p this open trusts for
 // valid-end bounds (VALIDENDPRUNE): a listed one with its marker; a listed one
-// without, when the open is writable and can build, after writing its key's
+// without, when the open is writable, after writing its key's
 // bounded entries unknown (unless the open rebuilds the key, which writes them
 // fresh), with its marker to set. It returns the markers to set and those of
 // definitions no longer listed or on disk, to delete.
-func (bs *Store) planValidEnd(txn *badgerv4.Txn, p *propDiskOpen, canBuild bool) (mark []writeOp, unmark [][]byte, err error) {
+func (bs *Store) planValidEnd(txn *badgerv4.Txn, p *propDiskOpen) (mark []writeOp, unmark [][]byte) {
 	marked := make(map[string]struct{})
 	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: storepkg.PropertyIndexValidEndBuiltPrefix})
 	for it.Rewind(); it.Valid(); it.Next() {
@@ -1111,7 +1108,7 @@ func (bs *Store) planValidEnd(txn *badgerv4.Txn, p *propDiskOpen, canBuild bool)
 			keep[k] = struct{}{}
 			continue
 		}
-		if bs.readOnly || !canBuild {
+		if bs.readOnly {
 			continue
 		}
 		_, rebuilt := p.rebuild[key.PropertyKey]
@@ -1127,7 +1124,7 @@ func (bs *Store) planValidEnd(txn *badgerv4.Txn, p *propDiskOpen, canBuild bool)
 			unmark = append(unmark, []byte(k))
 		}
 	}
-	return mark, unmark, nil
+	return mark, unmark
 }
 
 // commitPropertyIndexOnDiskBackfill writes an open's rebuild of on-disk

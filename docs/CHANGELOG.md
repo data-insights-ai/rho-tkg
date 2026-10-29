@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.94.0] - 2026-10-29
+
+### Added
+
+- **VALIDENDPRUNE** (SCALE; sigma's request: on BA day 3 its paged-row probes spent 30 % of CPU reading DerivedPage
+  rows, 10 M and more, only to drop those whose validity ended before the page's window). `QueryOpts.ValidEndAfter`
+  (`ValidEndAfterSet` makes 0 a bound): a current `g.Nodes().ByLabelAndProperty` / `ByLabelAndPropertyValues` keeps
+  the matches whose effective timeline has a segment ending at or after the bound, or an open one; `Limit` and
+  `After` page the kept nodes. With a time filter or pin, or on any other door, it is refused with the new
+  `ErrValidEndAfterUnsupported`. Every store answers by reading each match's timeline. `PropertyIndexValidEnd
+  []store.PropertyIndexValidEnd` (`{Label, KeyPrefix}`) on `badger.Config`, `tiered.Config` and `graph.Config`
+  lists on-disk definitions whose `0x0A` entries carry an upper bound on their node's valid end (8 bytes, empty
+  for unknown), so the lookup leaves out the matches bounded below the bound without reading their rows. Every
+  write of a node row writes its listed entries unknown in the row's batch; a read sets a bound, the end it
+  resolved, unless a row of the node was buffered after the lookup (4,096 write-sequence stripes) or the store was
+  cleared. A refine writes index entries only: no transaction, version, history, change-log record or event, and
+  `TxPin` / `TxAt` reads never see it. `g.Index().PropertyIndexValidEndStats()` counts entries pruned, unknown
+  entries read, bounds refined and refines skipped since open (badger; tiered, its reference shard, where a listed
+  label must live: `RefLabels`). **Migration:** each listed definition gets a valid-end marker, and the first
+  raises the store format marker to **14**. Once a store has been opened with the listing, v4.93.x and older
+  refuse it, and there is no rollback. A store never opened with the listing keeps its format. A writable open
+  without the listing deletes the markers; the next open that lists the definition again writes its bounds
+  unknown first. Tests: core `TestValidEndAfter` (memory, badger and tiered against an oracle of the effective
+  timelines: nodes ending before, at and after the bound, open, extended, excised, updated; both doors, paging, a
+  listed label on event shards, the refusals; reads move no change-log LSN or version), `TestValidEndAfterAcrossOpens` (bounds trusted across
+  opens, the marker raised by the open that first lists the definition, reset after an unlisted open, read-only
+  opens), `TestValidEndAfterConcurrent` (four readers refining the same entries while a writer extends the closed nodes,
+  under `-race`: every extended node is read at the end),
+  `TestTieredValidEndStoreWide`, `TestTieredValidEndEventShardNode`; badger `TestPropertyIndexValidEnd_RefineGuards`
+  (stale refines skipped after a write, `Clear`, a drop; a history row alone resets, one with its row leaves the
+  row's write to decide), `_ProbeFromEarlierOpen`, `_Buffers` (the write buffer, the buffer being flushed and
+  disk), `_NoRegistry`, `_PersistedNames`, `_Rejoin`. 80 of 82 mutations caught. The two left are
+  performance guards, kept: with no trusted definition the write funnel skips its walk, and an open that lists a
+  definition again rewrites only the entries that carry a bound. Core's skip of a node purged between the lookup
+  and its read is a race guard no test reaches, kept. Five more were equivalent or unreachable; their code is
+  removed. Found on the way: tiered with store-wide
+  `PropertyIndexOnDisk` and a listing opened its shards without label names and lost its bounds at every reopen
+  (fixed before release). GATES
+
 ## [4.93.0] - 2026-10-28
 
 ### Added
