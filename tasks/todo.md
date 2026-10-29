@@ -139,8 +139,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 - **VALIDTOPURGE** (found 28 Oct by RELDISK's race test; fix, patch) — badger `PurgeNodesByLabelValidToBefore`
   dereferenced `n.Temporal()` and panicked on a node stored without temporal metadata. Fixed on branch validtopurge
   (cf0cbdaa): an unstamped node is open, never purged by validity (as memory's purge). Red in
-  tasks/evidence/VALIDTOPURGE/; 2 of 2 mutations caught. Lands on main untagged (tag hold); tagged as a patch when the
-  hold lifts.
+  tasks/evidence/VALIDTOPURGE/; 2 of 2 mutations caught; changelog c1a6ed72. ci-docker, then main untagged (tag hold);
+  tagged as a patch when the hold lifts.
 - **CLEARGAP** (seen 28 Oct building RELDISK; unconfirmed) — `Clear`'s DropPrefix list omits `0x0A` and `0x0B`, so
   on-disk property and temporal index entries may survive a `Clear`. First a red test; a patch if it holds.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
