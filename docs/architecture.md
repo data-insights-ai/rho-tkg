@@ -409,59 +409,76 @@ that test.
     disk; a hit 2.3-3.1 us however many shards; a keyed create in a transaction 19 us against 12 us on the reference
     shard without SyncWrites (`tasks/evidence/UNIQIDX/`).
 
-- **ADR-0013 Valid-time placement** (TIERCLOCK; designed 2026-10-29 for ai-soc's full BA archive, 33 valid days;
-  not built, each step marked here when released). *Problem.* Placement and tiering follow the wall clock: core
-  mints every ID from its generators at write time, an event entity lives in the shard whose window holds its ID's
-  time (no window: the hot shard), rotation and the `ColdAfter` demotion compare `time.Now()`. A replay of 33 days
-  in a few wall hours therefore lands in one hot shard that never rotates (k10291501: 122 M hot checkouts, none warm
-  or cold), so every per-shard RAM structure (existence sets, TemporalIndex, value dictionaries, history idTables)
-  grows with the whole archive instead of the open days; late data (ai-soc's lateness is 24 h) lands in today's
-  shard, not its day's. Live data hides it: wall time is close to valid time.
-  - *Decision: the ID carries the valid time* (ai-soc's option a). `Config.MintAtValidFrom` (graph and tiered;
-    default off): core mints an event node's ID at its `ValidFrom` (none: the clock below), so the ID still routes
-    itself and every read by ID finds the valid day's shard. A relationship lives with its start node, and a
-    lookup by rel ID probes the shard its ID's time names before every other shard (cold ones too), so an event
-    relationship's ID is minted inside its start node's window: at its `ValidFrom` when that falls in the window,
-    else at the window's next free ID (below). The start node's window comes from its ID, so no shard opens to mint;
-    the write itself goes to the start node's shard as today, reopening it writable when it is cold (a
-    relationship from an old node to a new one writes into the old day). A relationship stored on its mint shard
-    (reference start node, `RelsByMint`) is minted at its `ValidFrom`. Rejected,
-    option b (route by a shard key beside the ID): a read by ID carries no key, so it needs an ID -> shard map, one
-    more posting per entity and one more lookup per read, the cost ADR-0012's global index keeps for a measured need.
-  - *Uniqueness.* Valid-time IDs come from their own generator on a reserved node field, so they never meet a
-    wall-time ID. Instants repeat (two events in one microsecond, late data into a day already written), so that
-    generator keeps per window a high cursor and mints `max(instant, high + 1 step)`: strictly increasing within a
-    window, never a collision. When that would leave the window (instants crowding its last microsecond, or
-    relationships placed at the next free ID), it mints from a low cursor walking down from the window's lowest
-    ID toward its start; a window fills only when both meet (a day holds 86.4 G microseconds x 1,024 steps).
-  - *Restart and crash.* The cursors must never hand out an ID twice, also not an ID the host received before a
-    crash lost its row (the wall-time generator never reuses one: its clock moved on). So each window's cursors
-    are leased, like badger's `Sequence`: the shard stores the cursor's lease end (a meta key) and syncs it before
-    any ID from the lease is returned; a lease spans 1 M steps, one synced write per million IDs. A process starts
-    each cursor at its persisted lease end, read once per window it writes (a crash skips at most one lease, which
-    costs nothing: the IDs are sparse).
-  - *Clock.* `Config.Clock` (tiered; default `time.Now`) drives rotation and demotion: the hot shard is the
-    window holding the clock, older windows warm, and windows ending before `Clock() - ColdAfter` cold. A host
-    replaying sets it to its valid-time cursor (monotonic; a step back is ignored, the hot shard stays). Idle close
-    and access stamps keep the wall clock: they measure real idleness.
-  - *A window without a shard is made on demand.* An ID whose window no shard holds no longer falls back to the hot
-    shard: its window's shard is created, tiered by the clock (hot if it holds the clock, warm if it ends after
-    `Clock() - ColdAfter`, else cold, opened writable for the write and closed by the idle sweep). A replay that
-    jumps several windows makes only the windows its data reaches. A read of such an ID with no shard answers
-    not-found, as today. Late data needs `ColdAfter` above the host's lateness plus one window (ai-soc: 24 h late,
-    day windows, so `ColdAfter` of 2 days or more): its day is then still warm, and no late write reopens a cold
-    shard; a later one does, writable, and the idle sweep closes it again.
-  - *Retention.* The catalog keeps the end of the newest window retention dropped (a watermark), so a dropped
-    window is told apart from one that never had data. A write whose ID falls at or below it is refused with
-    `ErrWindowDropped` (named, so the host can count and report its too-late records); making the shard again would
-    bring back a day the host asked to drop. With retention longer than the lateness, the late-data path never
-    meets it.
-  - *Consequences.* The ID's time becomes the entity's valid start, which is also its `idlayout.MintInstantMillis`
-    fallback start (more right than the write time). ID order within a window is valid-time order, not arrival
-    order; nothing orders by ID as arrival (the change log orders by LSN, `TxFrom` comes from the commit clock).
-    The snowflake epoch (2026-01-01 UTC) bounds it: an earlier `ValidFrom` cannot be minted and is refused
-    (`ErrValidFromBeforeEpoch`, named so the host can report it; ai-soc's BA, BO and XE data all lie after it, a
-    customer backfill before 2026 is a later decision). Realtime with both options off is unchanged, byte for byte.
-  - *Steps.* 1 `Config.Clock` for rotation and demotion; 2 on-demand window shards and the retention watermark;
-    3 `MintAtValidFrom` with the leased windowed generator; 4 a replay test of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`,
-    resident sets flat) and ai-soc's BA replay as the measurement.
+- **ADR-0013 Valid-time placement** (TIERCLOCK; designed 2026-10-29 for ai-soc's full BA archive, 33 valid days,
+  revised the same day after an independent review; not built, each step marked here when released). *Problem.*
+  Placement and tiering follow the wall clock: core mints every ID from its generators before any store call, an
+  event entity lives in the shard whose window holds its ID's time (no window: the hot shard), rotation and the
+  `ColdAfter` demotion compare `time.Now()`, and `New` opens the hot shard for the wall-clock window. A replay of 33
+  days in a few wall hours therefore lands in one hot shard that never rotates (k10291501: 122 M hot checkouts,
+  none warm or cold), so every per-shard RAM structure (existence sets, TemporalIndex, value dictionaries, history
+  idTables) grows with the whole archive instead of the open days; late data (ai-soc: 24 h) lands in today's shard.
+  Live data hides it: wall time is close to valid time. Everything below is behind one option, `MintAtValidFrom`
+  (tiered; default off), plus `Config.Clock`; with both off, behaviour and bytes are unchanged.
+  - *Decision: the ID carries the valid day* (ai-soc's option a). Rejected, option b (route by a shard key beside
+    the ID): a read by ID carries no key, so it needs an ID -> shard map and one more lookup per read.
+  - *The store mints, not core.* Core mints before it knows a shard, and the catalog's windows are not calendar
+    windows today (rotation cuts the old hot shard at the moment it runs). So with the option on, core asks the
+    tiered store for event IDs (a store capability, as `PutNodeGeneratedID` already carries a minted ID): the store
+    classifies the label (reference nodes keep today's generator), maps the instant to its catalog window and mints
+    there. An event node's instant is its `ValidFrom`; an untimed node (no `ValidFrom`, or the untimed axis's
+    literal 0) takes `Clock()`. A relationship lives with its start node, and a lookup by rel ID probes the
+    reference shard, the archive, the ID-time shard, then every other shard (cold ones too), so an event
+    relationship is minted inside its start node's window: at its `ValidFrom` when that falls there, else at the
+    window's next free ID; a relationship on its mint shard (reference start node, `RelsByMint`) at its
+    `ValidFrom`. Minting needs only the catalog, never a shard open.
+  - *Calendar windows and rotation.* With the option on, windows are calendar windows (`ShardWindow` aligned in
+    `ShardLocation`) and never overlap: rotation makes the window holding `Clock()` hot (creating its shard, or
+    promoting it when data reached it first) and ends the old hot shard at its calendar end, not at the rotation
+    instant; a clock jump over several windows leaves them without a shard until data reaches them; `New` picks
+    the hot window by `Clock()` too (after a crash mid-replay the host's clock, not the wall's). A manual rotation
+    inside a window (`RotateHotShard`, `ForceRotate`) is refused with the option on: it would cut a window under
+    rows already minted past the cut. `Clock` must be monotonic; a step back is ignored. Idle close and access
+    stamps keep the wall clock: they measure real idleness.
+  - *Uniqueness.* The valid-time IDs use one node field reserved for them, the highest (31): `IngestLanes` is capped
+    at 29 with the option (`New` fails closed above), and the option is refused on `sharded.Store`, whose slots
+    must cover every minting field. Per window the store keeps a high cursor and mints `max(instant, high + 1 step)`;
+    when that would leave the window (instants crowding its last microsecond, or relationships placed at the next
+    free ID) a low cursor walks down from the window's lowest ID; a window fills only when both meet (86.4 G
+    microseconds x 1,024 steps a day). One mutex per window serializes its mints (producer lanes share it; a mint
+    is a few comparisons). IDs are unique per store, as today's are per generator field.
+  - *Restart and crash.* No ID may be handed out twice, also not one the host received before a crash lost its row
+    (the wall-time generator never reuses one: its clock moved on). The cursors are leased, like badger's
+    `Sequence`: the lease ends live in the reference shard's meta (always open and durable, beside the change-log
+    watermark and the commit floor), keyed by window start, synced before any ID of a lease is returned; a lease
+    spans 1 M steps, one synced write per million IDs. A restart starts each cursor at its lease end; a crash skips
+    at most one lease. A window's lease keys are reaped with its shard (retention drop) and kept by `Clear`.
+  - *A window without a shard is made on demand* (with the option on only; off, a concrete ID with no window still
+    goes to the hot shard, as imports and replicas do today). The write path makes it under the lifecycle gate and
+    `ts.mu.Lock`, saving the catalog before the topology changes (rotation's discipline); reads use a non-creating
+    lookup and answer not-found. Its tier follows the clock (warm if it ends after `Clock() - ColdAfter`, else
+    cold); it is made on the hot volume and the mover takes it to its tier's volume. Late data needs `ColdAfter`
+    above the lateness plus one window (ai-soc: 24 h, day windows: 2 days or more): its day is then still warm.
+  - *Relationship writes into cold days.* A relationship write pins its endpoints through the read checkout, which
+    opens a cold shard writable and closes it again at check-in unless `MaxOpenColdShards` has room: every edge
+    from an older-than-`ColdAfter` start node pays an open (~28 ms) and a close. The option requires
+    `MaxOpenColdShards > 0`, and the endpoint checkout of a write keeps the handle for the idle sweep instead.
+    Question for ai-soc: how often a new edge starts at a node older than `ColdAfter`.
+  - *Retention.* With the option, `ByAge` purges by valid day: the ID's time is the valid day, by design the
+    same immutable field it reads today. The catalog keeps a watermark, the largest `before` of any `ByAge` run
+    (shard drops and row purges alike), set in memory and saved before a drop unlinks its shard; a write whose ID
+    falls below it is refused with `ErrWindowDropped` (named, so the host can count its too-late records), checked
+    under `ts.mu` where on-demand creation runs, so a write cannot remake a shard a drop is removing. The field
+    raises the catalog's format sentinel (an older release refuses the catalog rather than dropping the field).
+  - *Consequences.* The ID's time lies within the entity's valid day; it equals `ValidFrom` only for data minted in
+    valid order (a record behind the window's cursor takes the cursor). It is also `idlayout.MintInstantMillis`,
+    the last fallback of an entity's start time and of `tkg_created_at`: that fallback becomes the valid day.
+    ID order within a window is mint order on the cursor, not arrival order across windows; nothing orders by ID
+    as arrival (the change log orders by LSN, `TxFrom` comes from the commit clock). The snowflake epoch (2026-01-01
+    UTC) bounds it: an earlier `ValidFrom` is refused with `ErrValidFromBeforeEpoch` (ai-soc's BA, BO and XE data
+    lie after it; a customer backfill before 2026 is a later decision). `RelsByMint` falls back to the reference
+    shard when the mint shard is cold; with the option it uses the window's shard, made or reopened.
+  - *Steps.* 1 calendar windows and `Config.Clock` (rotation, demotion, `New`), manual rotation refused under the
+    option; 2 the store's minting capability with the reserved field, windowed cursors and leases in the
+    reference shard; 3 on-demand window shards, the retention watermark and `ErrWindowDropped`; 4 a replay test
+    of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
+    replay as the measurement.
