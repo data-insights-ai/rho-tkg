@@ -121,7 +121,17 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   candidate's timeline (47 / 51 ms), slower than sigma's own skip (~19 ms). So sigma passes the bound only where
   it prunes and needs a public check: g.Index().PropertyIndexValidEndListed(label, key) (bool, error), true when
   the definition's bounds are trusted (listed, on disk, marked; tiered: reference shard), false (no error)
-  otherwise. sigma asked for a patch; a door is a minor, told sigma. Next: branch, red, build, gate, release.
+  otherwise. sigma asked for a patch; a door is a minor, told sigma; sigma agreed and asked for no I/O (it is a
+  map look under idxMu). Branch validendlisted 1b648195: built, tiered true only for reference labels, 10 of 10
+  mutations caught, docs and CHANGELOG 4.95.0. Next: gate, release, tell sigma a drop makes a lookup slow, never
+  an error.
+- **COMPDISK** (ai-soc 29 Oct, René's standing yes; door, minor) — composite node property indexes of a label
+  in PropertyIndexOnDiskLabels answered from disk like single-key ones (current entries, members for pinned reads,
+  no RAM sidecar; built marker, rebuilt at the next writable open; format raise fine). ai-soc's BA k10282355 with
+  IDXSTATS: property-index RAM 423 MB at 3,000 s, 808 MB at 7,500 s; after moving single-key indexes to disk what
+  stays is DerivedPage (ov_namespace, ov_rel) 253 MB at 7,500 s (120 MB at 3,000 s) and Derived's 10 MB, growing
+  with valid time. Readers: sigma's pager, exact values at a pin. Node counterpart of RELDISK phase 2 (same
+  on-disk composite key layout). Order against RELDISK phase 2: asked ai-soc for NETWORK's composite RAM.
 - **RELDISK phase 2** (door, minor v4.96.0, after VALIDENDLISTED; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
