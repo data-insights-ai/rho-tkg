@@ -111,3 +111,12 @@ v4.96.0 release scale probe (COMPDISK, branch compdisk ce0f3ce7, Derived, 1 M no
             heap after reopen +172.9 / +177.3 / +176.5 / +177.8 / +177.2 MB
 Reading: no change beyond the load's drift (each pair within 1.5 s, both sides slowing with the load). The probe
 has no composite index; without one the write seam adds a loop over an empty slice.
+
+v4.96.1 release scale probe (STALEBUILD, branch stalebuild 380a2973, Derived, 1 M nodes + 1 M rels (-rels), load
+average 16-25 from other sessions; alternated with v4.96.0 from the module cache):
+  v4.96.1   insert 11.7 / 12.3 / 21.4 / 11.0 / 11.9 s   clean reopen 0.14 / 0.15 / 0.17 / 0.11 / 0.11 s
+            heap after reopen +178.1 / +177.2 / +177.9 / +173.6 / +176.0 MB
+  v4.96.0   insert 12.0 / 13.7 / 13.8 / 11.7 / 11.9 s   clean reopen 0.12 / 0.20 / 0.12 / 0.11 / 0.12 s
+            heap after reopen +177.4 / +176.5 / +176.1 / +176.5 / +175.5 MB
+Reading: no change (the 21.4 s is one run under a load spike; the fix touches only a build at open, which a clean
+reopen does not run).
