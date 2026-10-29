@@ -238,7 +238,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   there. ai-soc agreed the direction (BA 22 Jul-23 Aug 2026, BO 2 Jun, XE 19 Sep: all after the epoch); my review
   of its four points revised it (a2b275a9: rels at the window's next free ID with a low cursor, leased cursors so a
   crash reuses no ID, ColdAfter above lateness + a window, ErrWindowDropped by a retention watermark). Build 1-4
-  after the freeze. René's go (29 Oct): an independent read-only Fable review is running. Done when: a replay rotates as live
+  after the freeze. Fable review (René's go): 2 blockers, 5 majors, 4 minors, verified; ADR rewritten (fb596de3: the store
+  mints in calendar windows, leases in the reference shard, field 31 reserved, all gated). Done when: a replay rotates as live
   data would.
 - **PREEPOCH** (ai-soc 29 Oct, product question, later) — a customer backfill with valid times before the
   2026-01-01 snowflake epoch: ADR-0013 refuses it with ErrValidFromBeforeEpoch. Done when: René decides.
