@@ -441,7 +441,8 @@ that test.
     stamps keep the wall clock: they measure real idleness.
   - *Uniqueness.* The valid-time IDs use one node field reserved for them, the highest (31): `IngestLanes` is capped
     at 29 with the option (`New` fails closed above), and the option is refused on `sharded.Store`, whose slots
-    must cover every minting field. Per window the store keeps a high cursor and mints `max(instant, high + 1 step)`;
+    must cover every minting field. Per window the store keeps one high cursor for nodes and relationships alike (a
+    value is never handed out twice, to either kind) and mints `max(instant, high + 1 step)`;
     when that would leave the window (instants crowding its last microsecond, or relationships placed at the next
     free ID) a low cursor walks down from the window's lowest ID; a window fills only when both meet (86.4 G
     microseconds x 1,024 steps a day). One mutex per window serializes its mints (producer lanes share it; a mint
