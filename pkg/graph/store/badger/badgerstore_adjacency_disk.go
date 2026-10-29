@@ -84,6 +84,7 @@ func (bs *Store) adjacentRelIDsSnapshotLocked(nid types.NodeID, typeToken uint16
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
+		opts.Prefix = prefix // stops the skip of deleted entries at the prefix's end (ITERTOMB)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
@@ -163,6 +164,7 @@ func (bs *Store) adjacentRelMetasSnapshotLocked(nid types.NodeID, typeToken uint
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
+		opts.Prefix = prefix // stops the skip of deleted entries at the prefix's end (ITERTOMB)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {

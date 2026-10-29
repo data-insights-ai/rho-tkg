@@ -1,0 +1,6 @@
+--- FAIL: TestIterTombAdjacencyLookupDoesNotWalkDeletedEntries (1.86s)
+    itertomb_test.go:75: 200 lookups: 246.689µs before the deletes, 413.534775ms after (1676.3x)
+    itertomb_test.go:77: 200 lookups take 413.534775ms after 20,000 following entries were deleted, 246.689µs before: they walk the deleted entries
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.871s
+FAIL
