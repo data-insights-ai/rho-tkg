@@ -888,6 +888,7 @@ func (bs *Store) propertyIndexDiskPrefixEntriesLocked(keyPrefix []byte) ([]diskS
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
+		opts.Prefix = keyPrefix // stops the skip of deleted entries at the prefix's end (ITERTOMB)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(keyPrefix); it.ValidForPrefix(keyPrefix); it.Next() {

@@ -76,11 +76,12 @@ func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error
 
 	var nids []types.NodeID
 	err := bs.view(func(txn *badgerv4.Txn) error {
+		prefix := labelIndexPrefix(token)
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
+		opts.Prefix = prefix // stops the skip of deleted entries at the prefix's end (ITERTOMB)
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		prefix := labelIndexPrefix(token)
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
 			if len(key) != storepkg.SizeLabelIdx {

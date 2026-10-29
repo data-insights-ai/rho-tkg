@@ -1,0 +1,6 @@
+--- FAIL: TestIterTombPropertyPrefixScanDoesNotWalkDeletedEntries (1.03s)
+    itertomb_test.go:190: 200 scans: 495.108µs before the deletes, 196.305277ms after (396.5x)
+    itertomb_test.go:192: 200 scans take 196.305277ms after 20,000 following entries were deleted, 495.108µs before: they walk the deleted entries
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.044s
+FAIL

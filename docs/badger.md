@@ -252,7 +252,12 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
     leave the one version the create wrote, before 21). A seek to the first or last live key of a keyspace skips
     the same way, so the lookup keeps the node ID bounds of its string walk in memory instead of seeking both ends of
     the node keyspace per call (PROPBOUNDS, v4.89.3: 200 lookups beside 19,999 deleted node rows took 3,150x their
-    time without them, now 0.7-0.8x, `TestPropBoundsLookupDoesNotWalkDeletedRows`). Gap: ITERTOMB (rho's other walks with their own end bound).
+    time without them, now 0.7-0.8x, `TestPropBoundsLookupDoesNotWalkDeletedRows`). A walk bounded by a key prefix sets
+    that prefix as `IteratorOptions.Prefix` (ITERTOMB, v4.97.1): 200 on-disk adjacency lookups beside 20,000 deleted
+    entries after the node's took 1,066x their time without it, the label-index scan 655x, the property prefix scan
+    301x; now 0.4-1.4x (`TestIterTomb*`). Gap: the property range walks (an upper bound `Prefix` cannot express),
+    the retention purge's adjacency walk per purged node, history truncation and the erasure and repair walks
+    (ITERTOMB in tasks/todo.md).
 
 ## 8. The complete API
 

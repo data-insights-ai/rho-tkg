@@ -1,0 +1,6 @@
+--- FAIL: TestIterTombLabelScanDoesNotWalkDeletedEntries (1.59s)
+    itertomb_test.go:131: 200 scans: 248.949µs before the deletes, 190.929169ms after (766.9x)
+    itertomb_test.go:133: 200 scans take 190.929169ms after 20,000 following entries were deleted, 248.949µs before: they walk the deleted entries
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.597s
+FAIL

@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.97.1] - 2026-10-29
+
+### Fixed
+
+- **ITERTOMB** (SCALE, `docs/badger.md` rule 12; matters after retention purges). badger's iterator skips deleted
+  entries until it holds the next live key, and only `IteratorOptions.Prefix` stops that skip; the on-disk
+  adjacency lookups, the label-index scan and the property prefix scan stopped at their prefix by their own check
+  only, so each call walked every deleted entry after its keys (a purged range of later nodes). 200 calls beside
+  20,000 such entries: adjacency 1,066x, label scan 655x, property prefix scan 301x their time before the deletes;
+  now 0.4-1.4x (badger `TestIterTombAdjacencyLookupDoesNotWalkDeletedEntries`, `...LabelScan...`,
+  `...PropertyPrefixScan...`). 4 of 4 mutations caught. Still open (todo ITERTOMB): the property range walks, the
+  retention purge's adjacency walk, history truncation, erasure and repair walks.
+
 ## [4.97.0] - 2026-10-29
 
 ### Added
