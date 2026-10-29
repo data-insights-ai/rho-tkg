@@ -9,7 +9,8 @@ Each item: one sentence, then when it is done and what it waits for.
 ## Now
 
 - **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
-  tagging v4.96.2 (VALIDTOPURGE, CLEARGAP) and v4.97.0 (CACHESTATS) now, then holding again until the run ships.
+  tagged v4.96.2 (9904fd3b) and v4.97.0 (bad01e13), tag CI running; then holding again until ai-soc says the run
+  ships. ITERTOMB waits on its branch.
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
