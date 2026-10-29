@@ -144,8 +144,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   vs disk, badger and tiered (sigma), and the build at the first open at 31 M nodes (ai-soc: it delays /ready).
   Branch compdisk: built (e53141e0); sweep done (085089ef): 57 of 60 mutants caught, 3 performance guards, 7
   equivalent pieces removed; an open without a registry keeps a marked composite in RAM; the tuple payload is
-  stored raw (length-prefixed parts); a composite-only open build skips history rows. Docs drafted. Next the
-  measurements (sigma: tiered at DepthHot), CHANGELOG, release.
+  stored raw (length-prefixed parts); a composite-only open build skips history rows. Docs drafted; config
+  comments (4803ed7d). Measured at 1 M (badger and tiered at DepthHot): listing RAM vs disk within noise, 4.4-6.5
+  us a node against sigma's 13; disk build at open 3.9 s (badger), 4.4 s (tiered). 10 M loaded (967 MB each);
+  measure rerun running. Next the build at 31 M, CHANGELOG, release.
 - **RELDISK phase 2** (door, minor v4.97.0, after COMPDISK; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
