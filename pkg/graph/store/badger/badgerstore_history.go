@@ -39,23 +39,7 @@ func (bs *Store) truncateHistoryByPrefixRouted(prefix []byte, keepVersions int, 
 	// overlay first closes the window. See lesson 64.
 	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
-	// Collect all keys from Badger.
-	var allKeys []string
-	err := bs.view(func(txn *badgerv4.Txn) error {
-		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().KeyCopy(nil)
-			if len(key) != storepkg.SizeHistKey {
-				continue
-			}
-			allKeys = append(allKeys, string(key))
-		}
-		return nil
-	})
+	allKeys, err := bs.persistedHistoryKeys(prefix, prefix)
 	if err != nil {
 		return err
 	}
@@ -119,6 +103,28 @@ func (bs *Store) truncateHistoryByPrefixRouted(prefix []byte, keepVersions int, 
 	return bs.flushIfNeeded()
 }
 
+// persistedHistoryKeys returns the committed version keys under an entity's
+// history prefix, from from on, in key order. The walk sets the prefix as
+// IteratorOptions.Prefix: badger skips deleted entries until the next live key,
+// and only Prefix stops that skip at the prefix's end, so the history the
+// purge deleted after the entity's no longer walks (ITERTOMB, docs/badger.md
+// rule 12).
+func (bs *Store) persistedHistoryKeys(prefix, from []byte) ([]string, error) {
+	var keys []string
+	err := bs.view(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		opts.Prefix = prefix
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(from); it.ValidForPrefix(prefix); it.Next() {
+			keys = append(keys, string(it.Item().Key())) // every key here is a version key (HistNodeKey, HistRelKey)
+		}
+		return nil
+	})
+	return keys, err
+}
+
 // historyTruncateDeleteKeys computes the history keys that a keepVersions
 // truncation would delete for prefix (keeping the newest keepVersions versions)
 // AND the keys it would keep, merging the pre-scan write-buffer overlay exactly
@@ -134,21 +140,7 @@ func (bs *Store) historyTruncateDeleteKeys(prefix []byte, keepVersions int) (del
 	}
 	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
-	var allKeys []string
-	scanErr := bs.view(func(txn *badgerv4.Txn) error {
-		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().KeyCopy(nil)
-			if len(key) != storepkg.SizeHistKey {
-				continue
-			}
-			allKeys = append(allKeys, string(key))
-		}
-		return nil
-	})
+	allKeys, scanErr := bs.persistedHistoryKeys(prefix, prefix)
 	if scanErr != nil {
 		return nil, nil, scanErr
 	}
@@ -259,22 +251,7 @@ func (bs *Store) trimHistoryFromPrefixRouted(prefix []byte, minVersion uint32, l
 	// close the commit-window drop — see truncateHistoryByPrefix / lesson 64.
 	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, minVersion)
 
-	var persisted []string
-	err := bs.view(func(txn *badgerv4.Txn) error {
-		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Seek(startKey); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().KeyCopy(nil)
-			if len(key) != storepkg.SizeHistKey {
-				continue
-			}
-			persisted = append(persisted, string(key))
-		}
-		return nil
-	})
+	persisted, err := bs.persistedHistoryKeys(prefix, startKey)
 	if err != nil {
 		return err
 	}

@@ -15,6 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   time before the deletes, now 0.7-0.9x (badger `TestIterTombPropertyRangeScanDoesNotWalkDeletedEntries`;
   `...PropertyRangeReadsNewestVersion` holds a key moved out of the range and one moved out and back). 4 of 4
   mutations caught.
+- **ITERTOMB**, the history walks. Truncating, trimming and compacting an entity's history, and the retention
+  purge and erasure that collect it, walked its prefix with their own check only, so each call walked every deleted
+  version of the entities after it. The walks share one, which sets the prefix as `IteratorOptions.Prefix`; it drops
+  a length check no key under the prefix fails. 200 calls beside 20,000 deleted versions: truncate 594x, trim 787x,
+  compact 543x their time before the deletes, now 0.9-1.0x (badger `TestIterTombHistoryWalksDoNotWalkDeletedEntries`).
+  2 of 2 mutations caught.
 
 ## [4.97.1] - 2026-10-29
 

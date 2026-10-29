@@ -316,3 +316,72 @@ func TestIterTombPropertyRangeReadsNewestVersion(t *testing.T) {
 		t.Fatalf("range scan = %v, ordered = %v; want %v", got, ordered, want)
 	}
 }
+
+// TestIterTombHistoryWalksDoNotWalkDeletedEntries: truncating, trimming and
+// compacting the history of a node whose versions are followed by 20,000
+// deleted ones (the history of the nodes after it truncated) costs what it
+// cost before. Each call keeps every version, so it deletes nothing.
+func TestIterTombHistoryWalksDoNotWalkDeletedEntries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("10,000 nodes")
+	}
+	const n, probes = 10_000, 200 // two versions each
+	bs, err := New(Config{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	versions := func(id types.NodeID) {
+		for v := uint32(1); v <= 2; v++ {
+			nd := types.NewNode(id, 1, nil)
+			nd.SetVersion(v)
+			if err := bs.PutNodeVersion(id, v, nd); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	a := types.NodeID(existMapBase)
+	versions(a)
+	for i := range n {
+		versions(types.NodeID(existMapBase + 10 + int64(i)))
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	walks := map[string]func() error{
+		"TruncateNodeHistory": func() error { return bs.TruncateNodeHistory(a, 10) },
+		"TrimNodeHistoryFrom": func() error { return bs.TrimNodeHistoryFrom(a, 3) },
+		"CompactNodeHistory":  func() error { return bs.CompactNodeHistory(a, 10, nil) },
+	}
+	timed := func(walk func() error) time.Duration {
+		return bestOf3(func() {
+			for range probes {
+				if err := walk(); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+	before := map[string]time.Duration{}
+	for name, walk := range walks {
+		before[name] = timed(walk)
+	}
+	for i := range n {
+		if err := bs.TruncateNodeHistory(types.NodeID(existMapBase+10+int64(i)), 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	for name, walk := range walks {
+		after := timed(walk)
+		t.Logf("%d %s: %v before the deletes, %v after (%.1fx)", probes, name, before[name], after, float64(after)/float64(before[name]))
+		if after > 10*before[name] {
+			t.Errorf("%d %s take %v after 20,000 following entries were deleted, %v before: they walk the deleted entries", probes, name, after, before[name])
+		}
+	}
+	if vs, err := bs.GetNodeHistory(a); err != nil || len(vs) != 2 {
+		t.Fatalf("NodeHistory = %d versions, %v; want 2", len(vs), err)
+	}
+}

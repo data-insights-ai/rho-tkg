@@ -1,0 +1,10 @@
+--- FAIL: TestIterTombHistoryWalksDoNotWalkDeletedEntries (2.07s)
+    itertomb_test.go:379: 200 TruncateNodeHistory: 415.029µs before the deletes, 202.74926ms after (488.5x)
+    itertomb_test.go:381: 200 TruncateNodeHistory take 202.74926ms after 20,000 following entries were deleted, 415.029µs before: they walk the deleted entries
+    itertomb_test.go:379: 200 TrimNodeHistoryFrom: 229.83µs before the deletes, 207.993417ms after (905.0x)
+    itertomb_test.go:381: 200 TrimNodeHistoryFrom take 207.993417ms after 20,000 following entries were deleted, 229.83µs before: they walk the deleted entries
+    itertomb_test.go:379: 200 CompactNodeHistory: 340.236µs before the deletes, 199.808966ms after (587.3x)
+    itertomb_test.go:381: 200 CompactNodeHistory take 199.808966ms after 20,000 following entries were deleted, 340.236µs before: they walk the deleted entries
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.078s
+FAIL
