@@ -265,7 +265,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   and a name sort of event rows (unobservable on small maps; rows documented unordered) removed. Kept on its branch
   during the tag hold: after the hold, v4.96.2 (VALIDTOPURGE + CLEARGAP) is tagged on main first, then CACHESTATS
   merges as v4.97.0. api.md and changelog 8795bdb3. ci-docker red once on fuzz-smoke FuzzWireToRelChecked "context
-  deadline exceeded" at load 48 (no crasher; the target passes alone): rerunning.
+  deadline exceeded" at load 48 (no crasher; the target passes alone), green on the rerun; sigma, ai-soc, ai-soc
+  engine and bookkeeping build and vet clean. Ready; waits for the hold to lift (then scale probe, tag).
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Steps 1-8 shipped (v4.76.1, v4.78.0; MOVEREAD v4.78.2, COLDRO v4.78.3). Step 10
