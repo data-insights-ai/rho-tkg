@@ -141,8 +141,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   (cf0cbdaa): an unstamped node is open, never purged by validity (as memory's purge). Red in
   tasks/evidence/VALIDTOPURGE/; 2 of 2 mutations caught; changelog c1a6ed72. ci-docker green; on main untagged (tag hold);
   tagged as a patch when the hold lifts.
-- **CLEARGAP** (seen 28 Oct building RELDISK; unconfirmed) — `Clear`'s DropPrefix list omits `0x0A` and `0x0B`, so
-  on-disk property and temporal index entries may survive a `Clear`. First a red test; a patch if it holds.
+- **CLEARGAP** (seen 28 Oct building RELDISK; fix, patch) — confirmed: badger's `Clear` left `0x0A` and `0x0B` keys
+  (red in tasks/evidence/CLEARGAP/). Fixed on branch cleargap (e00859ca): both prefixes join Clear's DropPrefix
+  list. 2 of 2 mutations caught. ci-docker, then main untagged with VALIDTOPURGE (one patch when the hold lifts).
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
   plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
   the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
