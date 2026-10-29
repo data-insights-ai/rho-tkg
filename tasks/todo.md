@@ -110,32 +110,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   calibrated against the heap (nine index shapes 0.85-1.06, maps per growth band 0.89-1.00, ordered views 0.92);
   54 of 55 mutations caught. ci-docker green, consumers build and vet clean, scale probe unchanged (e45b54ba).
   Released v4.93.0 (316081b1): tag CI and main green, ai-soc and sigma notified.
-- **VALIDENDPRUNE** (sigma 29 Oct, René's standing yes; door, minor) — sigma's paged-row probes by property value
-  (ByLabelAndPropertyValues on DerivedPage) are 30 % of CPU on BA day 3 and grow with the days: each probe fetches
-  every node the value ever had (~100 per value at cut 300 when it uses 1); 95 % of the read is
-  fetchNodesByLabelPropertyIDs, and the valid-time filter resolves every candidate. Ask: QueryOpts.ValidEndAfter,
-  only nodes with a current segment ending after the bound (open counts), decided without fetching. sigma proposes
-  the max ValidTo per posting (0x0C value on disk). Alternative without a format change or write amplification:
-  prune the candidates through the existing RAM valid-end index (NodeValidEndCandidates: per entity an
-  upper bound and a stamp; ~32 B per entity plus 32 B per tracked label). sigma's answers: current reads,
-  DerivedPage 10 M+ nodes and growing (RAM index out; it also rebuilds after each open), >= is fine, build it
-  before RELDISK phase 2. Design accepted by sigma (29 Oct): config list {Label, KeyPrefix} for on-disk (0x0A)
-  definitions ({DerivedPage, "ov_h"}); posting value = upper bound on the effective valid end, empty = unknown; any
-  write of a listed node resets its listed postings to unknown in the row's batch; a current read that resolved a
-  candidate's exact end refines the posting under wbMu if the current row is still the version it read; built
-  marker per definition, format marker 14. sigma's requirements: the refine is invisible (no tx, version, history,
-  change-log or subscriber event, no effect on pinned reads); reader-reader races tested under -race; counters
-  (pruned, unknown fetched, refines written, refines skipped) in a stats call; the release note says an older rho
-  refuses a store opened with the listing, and a store without it keeps its format. Branch `validendprune`:
-  implemented (ed312498): core filters exactly on every store with a paging loop; badger and tiered's reference
-  shard prune and refine (write-sequence stripes, history-only writes reset in their batch, Clear and reopen
-  make old probes stale). Tests green: TestValidEndAfter (memory, badger, tiered), ...AcrossOpens (persisted
-  bounds, format 14, relisting resets, read-only), ...Concurrent (-race), badger RefineGuards. 35af3ba7: the
-  stats door g.Index().PropertyIndexValidEndStats(); the sweep found tiered with store-wide PropertyIndexOnDisk
-  opening its shards without label names (bounds lost at every reopen; red kept, fixed); 80 of 82 mutations
-  caught (two performance guards kept), five equivalent or unreachable pieces removed; docs and CHANGELOG
-  4.94.0. Gate: ci-docker green; sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean; scale probe
-  unchanged (2e419ef2). Next: release v4.94.0, send sigma the version.
+- **VALIDENDPRUNE** (sigma 29 Oct, René's standing yes; door, minor) — Released v4.94.0 (7094bc5b): tag CI and
+  main green; sigma (bumps its three go.mod files, passes {DerivedPage, "ov_h"} and the bound) and ai-soc notified.
+  QueryOpts.ValidEndAfter on current ByLabelAndProperty / ByLabelAndPropertyValues; PropertyIndexValidEnd keeps an
+  upper bound on each node's valid end in its on-disk entries (reset by writes, refined by reads); stats via
+  g.Index().PropertyIndexValidEndStats(); format marker 14 once opened with the listing. Waits for sigma's
+  Pruned / UnknownRead numbers from the reduced BA.
 - **RELDISK phase 2** (door, minor v4.95.0, after VALIDENDPRUNE; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
