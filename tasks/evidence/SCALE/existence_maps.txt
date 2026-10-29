@@ -83,3 +83,14 @@ average 14-47; alternated with v4.92.0 from the module cache, five runs each):
   The heap after the insert is bimodal on both (v4.92.0 358-477 MB, v4.93.0 373-492 MB): it holds badger's
   memtables when the GC runs before they flush.
 Reading: no change (IDXSTATS adds a read-only door; the write path is untouched).
+
+v4.94.0 release scale probe (VALIDENDPRUNE, branch validendprune 35af3ba7, Derived, 1 M nodes + 1 M rels (-rels),
+load average 43 falling to ~20 over the runs; alternated with v4.93.0 from the module cache; the probe sets no
+listing):
+  v4.94.0   insert 11.8 / 13.3 / 11.6 / 9.4 / 9.5 s   clean reopen 0.14 / 0.12 / 0.12 / 0.11 / 0.12 s
+            heap after reopen +176.5 / +176.1 / +177.1 / +176.7 / +173.2 MB
+  v4.93.0   insert 10.9 / 12.0 / 9.6 / 9.6 / 9.6 s   clean reopen 0.13 / 0.12 / 0.12 / 0.12 / 0.13 s
+            heap after reopen +177.1 / +174.8 / +176.4 / +176.6 / +175.7 MB
+Reading: no change once the load settled (the last two pairs 9.4 / 9.5 against 9.6 / 9.6 s); the first three ran
+under a falling load of 43. Without a listing the write path adds one atomic load per buffered batch and one per
+node update.
