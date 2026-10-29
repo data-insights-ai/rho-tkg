@@ -23,9 +23,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Measured (scratch harness, 80 B rows, one relation of n nodes plus n/10 over 286 more; ByLabelAndProperties whole
   and in pages of 1024, tiered at `DepthHot`): listing RAM vs disk at 1 M 4.7 / 4.7 us a node (badger), 5.1-5.7 /
   5.0-7.3 (tiered); at 10 M 6.2 / 6.7 (badger), 6.0 / 7.2-8.5 (tiered, noisy host); at 28 M (30.8 M postings) 6.8 /
-  7.6 (tiered). The build at open: 3.9 s at 1.1 M postings, 52 s at 11 M, 136-153 s at 30.8 M; peak RSS of that
-  one open 12.6 GB (tiered) and 15.7 GB (badger) vs 2.6-3.8 GB for an open without it; the composite's RAM goes
-  from 249 MB to 0.
+  7.6 (tiered). The build at open: 3.9 s at 1.1 M postings, 52 s at 11 M, 136-153 s at 30.8 M; peak RSS of a first
+  conversion at 30.8 M 7.1 GB (tiered) vs 2.4 GB for a later open (badger's write path absorbing the entries); a
+  rebuild over stale entries (a store switched back to RAM and again to disk) holds their keys as well, 11-15.7 GB
+  (a patch follows); the composite's RAM goes from 249 MB to 0. A store whose composite was created on disk builds
+  nothing.
 - Tests: badger `TestCompositeDisk_Lifecycle`, `_CreateMerge`, `_CreateAbort`, `_ScanErrors`, `_Removal`, `_Opens`;
   core `TestCompositeIndexOnDisk` (badger and tiered, current, paged and valid-time reads). 57 of 60 mutations
   caught; the three survivors are performance guards (the page limit break, two history-skip checks); seven

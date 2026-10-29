@@ -96,10 +96,10 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **v4.96.0** (COMPDISK, a minor; ai-soc: DerivedPage's composite 253 MB in RAM at 30.9 M postings): a composite
   node index of a label kept on disk keeps its current entries in 0x0C kind 4 (no member entries), built at the
   next writable open (inside New); format marker 15, no rollback. At 30.8 M postings: listing 7.6 us a node on
-  disk vs 6.8 in RAM (tiered, DepthHot); build open 136-153 s once, peak RSS 12.6 GB (tiered) / 15.7 GB (badger)
-  vs 2.6-3.8 GB plain; composite RAM 249 MB -> 0. 57 of 60 mutations caught (3 performance guards). A fresh store
-  builds nothing (ai-soc's Flux run pins it). Next: a patch for the conversion peak (the open build and a create
-  on a populated label hold more than they need), RELDISK phase 2 (v4.97.0), CACHESTATS.
+  disk vs 6.8 in RAM (tiered, DepthHot); build open 136-153 s once, peak RSS of a first conversion 7.1 GB vs 2.4
+  GB plain (a rebuild over stale entries 11-15.7 GB: STALEBUILD); composite RAM 249 MB -> 0. 57 of 60 mutations
+  caught (3 performance guards). A fresh store builds nothing (ai-soc's Flux run pins it). Next: STALEBUILD
+  (patch), RELDISK phase 2 (v4.97.0), CACHESTATS.
 - **v4.92.0** (RELDISK phase 1, a minor for SCALE goal 2, ai-soc's request for sigma's 2b edges):
   `RelPropertyIndexOnDiskTypes` keeps the listed relationship types' property indexes in a new `0x0C` keyspace
   (current entries for lookups, member entries for pinned reads); node indexes on disk answer pinned reads from
