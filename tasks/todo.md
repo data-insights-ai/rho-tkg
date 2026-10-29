@@ -126,7 +126,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   marker per definition, format marker 14. sigma's requirements: the refine is invisible (no tx, version, history,
   change-log or subscriber event, no effect on pinned reads); reader-reader races tested under -race; counters
   (pruned, unknown fetched, refines written, refines skipped) in a stats call; the release note says an older rho
-  refuses a store opened with the listing, and a store without it keeps its format. Branch `validendprune`.
+  refuses a store opened with the listing, and a store without it keeps its format. Branch `validendprune`:
+  implemented (ed312498): core filters exactly on every store with a paging loop; badger and tiered's reference
+  shard prune and refine (write-sequence stripes, history-only writes reset in their batch, Clear and reopen
+  make old probes stale). Tests green: TestValidEndAfter (memory, badger, tiered), ...AcrossOpens (persisted
+  bounds, format 14, relisting resets, read-only), ...Concurrent (-race), badger RefineGuards. Next: mutation
+  sweep, docs, gate, release.
 - **RELDISK phase 2** (door, minor v4.94.0, after IDXSTATS; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
