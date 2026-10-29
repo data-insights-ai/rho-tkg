@@ -175,6 +175,12 @@ rows decode without the configuration. `Clear` stores the in-memory entries agai
 wipe may reach a row after it). The change log, exports and replica rows carry the plain value; reads, filters and
 property indexes see it.
 
+RAM: a loaded store keeps every entry of its dictionaries resident, one copy of the value shared by the token
+table and the lookup map: about the value's length plus 80 bytes an entry (130 bytes live for a 51-byte value,
+VDICTDISK, measured by badger `TestValueDictEntryHeap`), at most `Cap` entries a dictionary a store, so a tiered
+store holds up to `Cap` per open shard. `ValueDictionaryStats` reports them: `Entries` and `Bytes` (that estimate),
+summed over a tiered store's open shards; a closed shard holds none, and the call opens no shard.
+
 ## Integrity hashes
 
 Purpose: a row's hashes (`h`, `ph`, and on a relationship `fnh`, `tnh`) chain its versions; they cost bytes, and a development store may not want them.

@@ -144,6 +144,10 @@ func TestValueDict_CodesMembersAndReadsPlain(t *testing.T) {
 		stats[1].Coded != 2 || stats[1].NewEntries != 1 || stats[0].InlineFull+stats[1].InlineFull != 0 {
 		t.Fatalf("stats %+v, want action coded 2 / 1 entry, folder coded 2 / 1 entry, none inline-full", stats)
 	}
+	if a, f := stats[0], stats[1]; a.Entries != 1 || a.Bytes != int64(len(vdAction))+vdictEntryOverhead ||
+		f.Entries != 1 || f.Bytes != int64(len(vdFolder))+vdictEntryOverhead {
+		t.Fatalf("stats %+v, want one resident entry each, its value's length plus %d bytes", stats, vdictEntryOverhead)
+	}
 	if err := bs.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -422,7 +426,8 @@ func TestValueDict_ConcurrentWritersAndReaders(t *testing.T) {
 // interned handle (unique, ~214 B more) stays live.
 func TestValueDictEntryHeap(t *testing.T) {
 	const n = 100_000
-	bs := vdOpen(t, t.TempDir(), vdDicts(n))
+	dir := t.TempDir()
+	bs := vdOpen(t, dir, vdDicts(n))
 	defer bs.Close()
 	if err := bs.vdict.ensureLoaded(bs.db); err != nil {
 		t.Fatal(err)
@@ -451,5 +456,28 @@ func TestValueDictEntryHeap(t *testing.T) {
 	t.Logf("%.0f B live per entry of a 51 B value", per)
 	if per > 180 {
 		t.Fatalf("%.0f B live per entry of a 51 B value, want at most 180", per)
+	}
+	// The stats' estimate is the measured heap within a fifth.
+	s := bs.ValueDictionaryStats()[d]
+	if est := float64(s.Bytes) / n; s.Entries != n || est < 0.8*per || est > 1.2*per {
+		t.Fatalf("stats %+v: %.0f B an entry estimated, %.0f B measured; want %d entries, the estimate within a fifth", s, est, per, n)
+	}
+	// Reopened, the store counts no entry until it loads them, then all.
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	re, err := New(Config{Dir: dir, ValueDictionaries: vdDicts(n)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer re.Close()
+	if got := re.ValueDictionaryStats()[d]; got.Entries != 0 || got.Bytes != 0 {
+		t.Fatalf("stats %+v before the load; want none resident", got)
+	}
+	if err := re.vdict.ensureLoaded(re.db); err != nil {
+		t.Fatal(err)
+	}
+	if got := re.ValueDictionaryStats()[d]; got.Entries != s.Entries || got.Bytes != s.Bytes {
+		t.Fatalf("stats %+v after the load; want %+v as before the close", got, s)
 	}
 }

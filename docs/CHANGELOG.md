@@ -36,6 +36,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (358.6 -> 359.0 MB), every edge reads back, no reference fallback. Catches a rotation that ignores the clock
   and a lost warm-to-cold demotion.
 
+- **VDICTDISK** step 2 (ai-soc's ask 1, to size the dictionaries): `store.ValueDictionaryStats` gains `Entries`,
+  the entries resident now, and `Bytes`, their estimated heap (each value's length plus 80 bytes; within a fifth
+  of the measured heap, badger `TestValueDictEntryHeap`). A badger store reports its own; tiered sums the reference
+  shard, the archive when open and each open event shard, opening none (tiered `TestValueDictStats_OpenShards`,
+  `TestValueDict_TieredShards`). 9 of 9 mutations of the door caught. `docs/persistence.md` "Value dictionaries".
+
 ## [4.97.3] - 2026-10-30
 
 ### Fixed

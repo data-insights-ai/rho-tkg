@@ -36,6 +36,10 @@ const (
 	vdictNamesMeta  = "vdict_names"
 	vdictEntryMeta  = "vdict/"
 	vdictMaxEntries = math.MaxUint32 - 1
+	// vdictEntryOverhead is an entry's heap beyond its value's length: its
+	// token slot, its lookup map slot and allocation rounding (51 B values
+	// measure 130 B live an entry, TestValueDictEntryHeap).
+	vdictEntryOverhead = 80
 )
 
 // dictSnap is what a reader resolves against: vals is append-only (a later
@@ -59,6 +63,7 @@ type valueDict struct {
 	nameOf  []int               // plan index -> name id, -1 when not yet persisted
 	byValue []map[string]uint32 // keyed by the value in vals: one copy of its bytes
 	size    []int               // plan index -> entries of that dictionary in this store
+	bytes   []int64             // plan index -> its entries' value bytes
 }
 
 func newValueDict(plan *valuedict.Plan) *valueDict {
@@ -85,6 +90,7 @@ func (vd *valueDict) resetLocked() {
 		vd.byValue[i] = map[string]uint32{}
 	}
 	vd.size = make([]int, n)
+	vd.bytes = make([]int64, n)
 	vd.loaded.Store(false)
 }
 
@@ -219,6 +225,7 @@ func (vd *valueDict) ensureLoaded(db *badgerv4.DB) error {
 			if i, ok := vd.plan.Index(names[e.name]); ok {
 				vd.byValue[i][vals[tok-1]] = tok
 				vd.size[i]++
+				vd.bytes[i] += int64(len(e.val))
 			}
 		}
 	}
@@ -271,6 +278,7 @@ func (vd *valueDict) token(bs *Store, d int, s string) (uint32, bool) {
 	vd.snap.Store(&dictSnap{vals: append(sn.vals, v), gaps: sn.gaps})
 	vd.byValue[d][v] = tok
 	vd.size[d]++
+	vd.bytes[d] += int64(len(v))
 	vd.plan.NoteNewEntry(d)
 	vd.plan.NoteCoded(d)
 	bs.appendOpsRaising(storepkg.ValueDictStoreFormatVersion, ops...)
@@ -400,8 +408,15 @@ func (bs *Store) SetNameRegistries(labels *registrypkg.LabelRegistry, relTypes *
 }
 
 // ValueDictionaryStats returns each configured value dictionary's counters
-// since open (shared by every shard of a tiered store); nil without
-// dictionaries.
+// since open (shared by every shard of a tiered store) and this store's
+// resident entries; nil without dictionaries.
 func (bs *Store) ValueDictionaryStats() []storecontract.ValueDictionaryStats {
-	return bs.vdict.plan.Stats()
+	st := bs.vdict.plan.Stats()
+	bs.vdict.mu.Lock()
+	defer bs.vdict.mu.Unlock()
+	for i := range st {
+		st[i].Entries = bs.vdict.size[i]
+		st[i].Bytes = bs.vdict.bytes[i] + int64(bs.vdict.size[i])*vdictEntryOverhead
+	}
+	return st
 }

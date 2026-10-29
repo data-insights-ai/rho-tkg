@@ -1228,9 +1228,39 @@ func (ts *Store) SetNameRegistries(labels *registrypkg.LabelRegistry, relTypes *
 }
 
 // ValueDictionaryStats returns each value dictionary's counters since open,
-// summed over the shards; nil without dictionaries.
+// summed over the shards, and its resident entries summed over the open shards
+// (a closed shard holds none); nil without dictionaries. It opens no shard and
+// counts no shard access.
 func (ts *Store) ValueDictionaryStats() []storecontract.ValueDictionaryStats {
-	return ts.vdPlan.Stats()
+	st := ts.vdPlan.Stats()
+	if st == nil {
+		return nil
+	}
+	add := func(s *BadgerStore) {
+		for i, r := range s.ValueDictionaryStats() {
+			st[i].Entries += r.Entries
+			st[i].Bytes += r.Bytes
+		}
+	}
+	add(ts.refShard)
+	if archive := ts.refArchive.Load(); archive != nil {
+		add(archive)
+	}
+	ts.mu.RLock()
+	shards := make([]*EventShard, 0, len(ts.eventShards))
+	for _, es := range ts.eventShards {
+		shards = append(shards, es)
+	}
+	ts.mu.RUnlock()
+	for _, es := range shards {
+		es.shardMu.Lock()
+		s := es.store
+		es.shardMu.Unlock()
+		if s != nil {
+			add(s)
+		}
+	}
+	return st
 }
 
 func (ts *Store) SetPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) {

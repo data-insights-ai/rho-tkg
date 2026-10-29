@@ -34,7 +34,8 @@ type ValueDictionaryMember struct {
 }
 
 // ValueDictionaryStats counts one value dictionary's work since the store
-// opened, summed over a tiered store's shards.
+// opened, summed over a tiered store's shards, and the entries it holds in RAM,
+// summed over a tiered store's open shards.
 type ValueDictionaryStats struct {
 	Name string
 	// Coded counts property values written as a token.
@@ -44,4 +45,11 @@ type ValueDictionaryStats struct {
 	InlineFull uint64
 	// NewEntries counts values added to a dictionary.
 	NewEntries uint64
+	// Entries counts the entries resident now: every entry of a store whose
+	// dictionaries are loaded (the first coded row read or written loads them),
+	// at most Cap a store.
+	Entries int
+	// Bytes estimates those entries' heap: each value's length plus a fixed
+	// per-entry cost (its token and lookup slots and allocation rounding).
+	Bytes int64
 }

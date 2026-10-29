@@ -1,0 +1,22 @@
+# red: Entries and Bytes not filled (badger), shards not summed (tiered)
+--- FAIL: TestValueDictEntryHeap (0.44s)
+    badgerstore_value_dict_test.go:456: 125 B live per entry of a 51 B value
+    badgerstore_value_dict_test.go:463: stats {Name:folder Coded:100000 InlineFull:0 NewEntries:100000 Entries:0 Bytes:13100000}: 131 B an entry estimated, 125 B measured; want 100000 entries, the estimate within a fifth
+--- FAIL: TestValueDict_CodesMembersAndReadsPlain (0.05s)
+    badgerstore_value_dict_test.go:149: stats [{Name:action Coded:2 InlineFull:0 NewEntries:1 Entries:0 Bytes:99} {Name:folder Coded:2 InlineFull:0 NewEntries:1 Entries:0 Bytes:99}], want one resident entry each, its value's length plus 80 bytes
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.751s
+--- FAIL: TestValueDict_TieredShards (0.20s)
+    value_dict_test.go:49: stats [{Name:action Coded:2 InlineFull:0 NewEntries:2 Entries:0 Bytes:198}]; want 2 coded, one entry in each of the two shards, 198 bytes
+--- FAIL: TestValueDictStats_OpenShards (0.23s)
+    value_dict_test.go:124: the reference shard's: stats [{Name:action Coded:1 InlineFull:0 NewEntries:1 Entries:0 Bytes:99}]; want 1 entries
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.242s
+FAIL
+--- FAIL: TestValueDict_TieredShards (0.20s)
+    value_dict_test.go:49: stats [{Name:action Coded:2 InlineFull:0 NewEntries:2 Entries:0 Bytes:0}]; want 2 coded, one entry in each of the two shards, 198 bytes
+--- FAIL: TestValueDictStats_OpenShards (0.28s)
+    value_dict_test.go:130: and the hot shard's: stats [{Name:action Coded:3 InlineFull:0 NewEntries:3 Entries:2 Bytes:198}]; want 3 entries
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.290s
+FAIL
