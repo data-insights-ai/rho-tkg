@@ -221,8 +221,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   nodeLabelTokensFromKeyspaceLocked on the error path, incomingIndexEntriesFromKeyspaceLocked repair, open-time
   loads). All walks fixed or listed; consumers build and vet against it. v4.97.2 named on the branch (d8b2ae8e);
   the FREEZE ended (ai-soc 29 Oct: Flux k10291501 shipped on sigma v0.11.151 + rho v4.97.1). Release resumed:
-  rebased (00e0f2b6), ci-docker running; then scale probe, main, tag v4.97.2, notify; it goes into the next
-  run's release round.
+  ci-docker green, consumers clean, scale probe unchanged (b050c497); next: main, tag v4.97.2, notify; it goes
+  into the next run's release round.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
