@@ -114,8 +114,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   main green; sigma (bumps its three go.mod files, passes {DerivedPage, "ov_h"} and the bound) and ai-soc notified.
   QueryOpts.ValidEndAfter on current ByLabelAndProperty / ByLabelAndPropertyValues; PropertyIndexValidEnd keeps an
   upper bound on each node's valid end in its on-disk entries (reset by writes, refined by reads); stats via
-  g.Index().PropertyIndexValidEndStats(); format marker 14 once opened with the listing. Waits for sigma's
-  Pruned / UnknownRead numbers from the reduced BA.
+  g.Index().PropertyIndexValidEndStats(); format marker 14 once opened with the listing. ai-soc's kit (sigma
+  v0.11.144, v4.95.0, tiered listing; BA slice, 20-min cold start, without vs with): answers byte-equal (XE 8/8,
+  BA 32/32, /bars 31/31); pruned 15,605, unknown_read 36,496, refined 36,496, refine_skipped 0; pager 4.32 →
+  5.42 s (cold-start warm-up: every bound read once); push 80 → 82 s; heap 734 → 620 MB. Steady state waits for
+  the BA days (next Flux run, on René's word); sigma passes them on.
 - **VALIDENDLISTED** (sigma 29 Oct, René's standing yes; door, minor) — Released v4.95.0 (3de1304a): tag CI and
   main green; sigma and ai-soc notified. g.Index().PropertyIndexValidEndListed(label, key): true where a
   ValidEndAfter lookup prunes (listed, on disk, trusted; tiered: reference labels), false without an error
