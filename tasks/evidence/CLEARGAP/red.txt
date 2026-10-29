@@ -1,0 +1,6 @@
+--- FAIL: TestClearDropsDiskIndexEntries (0.01s)
+    badgerstore_clear_gap_test.go:69: after Clear: 1 keys under 0x0A
+    badgerstore_clear_gap_test.go:69: after Clear: 1 keys under 0x0B
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.012s
+FAIL

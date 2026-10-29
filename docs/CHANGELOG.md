@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   node stored without temporal metadata (a direct badger caller; through `pkg/graph` every row is stamped). Such a
   node is open and never purged by validity, as in memory's purge. Test: badger `TestBadgerPurgeValidToUnstamped`.
   2 of 2 mutations caught.
+- **CLEARGAP** (seen 28 Oct building RELDISK). badger's `Clear` left the on-disk property index entries (`0x0A`,
+  `PropertyIndexOnDisk`) and the temporal-index rebuild rows (`0x0B`, `TemporalIndexOnDisk`) in the store; it now
+  drops both keyspaces with the rest of the data. Test: badger `TestClearDropsDiskIndexEntries`. 2 of 2 mutations
+  caught.
 
 ## [4.96.1] - 2026-10-29
 
