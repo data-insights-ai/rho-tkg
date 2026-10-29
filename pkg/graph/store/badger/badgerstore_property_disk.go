@@ -194,7 +194,9 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 // dropped: writing it again only added a version that every lookup of the
 // value visits until compaction drops it (PROPREWRITE, sigma's rewritten
 // state units). So is a member entry for a value old carried under the same
-// label (old's entry, as low or lower, stays), unless n lowers the bound.
+// label (old's entry, as low or lower, stays), unless n lowers the bound. An
+// entry of a trusted valid-end definition is written again, unknown: n may
+// extend the node's validity past the bound it carried (VALIDENDPRUNE).
 // Not while a property index builds: its backfill skips a node the write path
 // marked, so the write path writes the entry itself.
 func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, old, n *types.Node, id snowflake.ID) []writeOp {
@@ -219,10 +221,14 @@ func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, old, n *types.Node
 			}
 		}
 	}
-	for _, op := range ops[from:] { // the on-disk entry sets
+	bounded := bs.validEndEntryKeysLocked(n, id) // written again, unknown (VALIDENDPRUNE)
+	for _, op := range ops[from:] {              // the on-disk entry sets
 		k := op.key
 		if k[0] == storepkg.KeyEntityIndex {
 			k = k[:len(k)-8]
+		}
+		if _, reset := bounded[string(op.key)]; reset {
+			continue
 		}
 		if _, ok := removed[string(k)]; ok {
 			if unchanged == nil {
@@ -296,8 +302,9 @@ type propDiskDef struct {
 }
 
 // refreshPropDiskDefsLocked rebuilds propDiskDefs from propertyIndexes and
-// nodeMemberDisk, dropping the member mark of a definition gone or in RAM.
-// Caller holds idxMu.
+// nodeMemberDisk, dropping the member mark of a definition gone or in RAM, and
+// the trusted valid-end definitions (refreshValidEndDefsLocked). Caller holds
+// idxMu.
 func (bs *Store) refreshPropDiskDefsLocked() {
 	var defs []propDiskDef
 	bs.nodeMembersOnDisk = false
@@ -314,6 +321,7 @@ func (bs *Store) refreshPropDiskDefsLocked() {
 		}
 	}
 	bs.propDiskDefs = defs
+	bs.refreshValidEndDefsLocked()
 }
 
 // maintainPropertyIndexesPurge is the corruption-path brute-force fallback
@@ -439,7 +447,7 @@ func nodeRowIDBounds(txn *badgerv4.Txn) (lo, hi uint64) {
 // lookup on the on-disk property index visits.
 var propertyDiskVisitTestHook func()
 
-func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string) ([]types.NodeID, error) {
+func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant) ([]types.NodeID, error) {
 	tok, ok := bs.propKeyTokenFor(propertyKey)
 	if !ok {
 		return nil, nil
@@ -475,6 +483,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	}
 
 	var adds, dels map[string]types.NodeID
+	var pendingBounds map[string]types.Instant // bounds != nil: the pending sets' bounds
 	bs.rangePendingPrefixes(prefixes, func(k string, op writeOp) {
 		nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey([]byte(k)))
 		if op.opType == writeOpSet {
@@ -483,6 +492,16 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 			}
 			adds[k] = nid
 			delete(dels, k)
+			if bounds != nil {
+				if pendingBounds == nil {
+					pendingBounds = make(map[string]types.Instant)
+				}
+				if b, ok := storepkg.DecodeValidEndBound(op.value); ok {
+					pendingBounds[k] = b
+				} else {
+					delete(pendingBounds, k)
+				}
+			}
 		} else {
 			if dels == nil {
 				dels = make(map[string]types.NodeID)
@@ -546,8 +565,23 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 				if _, del := dels[string(key)]; del {
 					continue
 				}
+				nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey(key))
+				if _, pending := adds[string(key)]; pending && bounds != nil { // the pending set decides
+					if b, ok := pendingBounds[string(key)]; ok {
+						bounds[nid] = b
+					}
+				} else if bounds != nil && item.ValueSize() == 8 {
+					if err := item.Value(func(v []byte) error {
+						if b, ok := storepkg.DecodeValidEndBound(v); ok {
+							bounds[nid] = b
+						}
+						return nil
+					}); err != nil {
+						return err
+					}
+				}
 				delete(adds, string(key))
-				nids = append(nids, types.NodeID(storepkg.PropertyIndexNodeIDFromKey(key)))
+				nids = append(nids, nid)
 			}
 		}
 		return nil
@@ -555,8 +589,11 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	if err != nil {
 		return nil, fmt.Errorf("graph: property index equality scan: %w", err)
 	}
-	for _, nid := range adds {
+	for k, nid := range adds {
 		nids = append(nids, nid)
+		if b, ok := pendingBounds[k]; ok {
+			bounds[nid] = b
+		}
 	}
 	return nids, nil
 }
@@ -919,6 +956,9 @@ type propDiskOpen struct {
 	stale   [][]byte                               // the rebuilt keys' rows before the rebuild
 	mark    []writeOp                              // built markers to set (with the format marker)
 	unmark  [][]byte                               // built markers to delete
+	// validEnd: the on-disk definitions whose entries' valid-end bounds this
+	// open trusts (VALIDENDPRUNE: listed, and marked or reset by this open).
+	validEnd map[indexpkg.PropertyIndexKey]struct{}
 }
 
 func (p *propDiskOpen) writes() bool {
@@ -989,9 +1029,14 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 		clear(p.disk)
 		clear(p.rebuild)
 	}
+	veMark, veUnmark, err := bs.planValidEnd(txn, p, canBuild)
+	if err != nil {
+		return nil, err
+	}
 	if bs.readOnly {
 		return p, nil
 	}
+	p.unmark = append(p.unmark, veUnmark...)
 	for propertyKey := range p.rebuild {
 		tok, ok := bs.propKeyTokenFor(propertyKey)
 		if !ok {
@@ -1025,11 +1070,64 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 			p.unmark = append(p.unmark, []byte(k))
 		}
 	}
+	var level uint16
 	if len(p.mark) > 0 && !bs.propIdxOnDisk {
-		v := bs.raisedFormatMarker(storepkg.PropDiskLabelsStoreFormatVersion)
+		level = storepkg.PropDiskLabelsStoreFormatVersion
+	}
+	if len(veMark) > 0 {
+		p.mark = append(p.mark, veMark...)
+		level = storepkg.ValidEndStoreFormatVersion
+	}
+	if level > 0 {
+		v := bs.raisedFormatMarker(level)
 		p.mark = append(p.mark, writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)})
 	}
 	return p, nil
+}
+
+// planValidEnd decides which on-disk definitions of p this open trusts for
+// valid-end bounds (VALIDENDPRUNE): a listed one with its marker; a listed one
+// without, when the open is writable and can build, after writing its key's
+// bounded entries unknown (unless the open rebuilds the key, which writes them
+// fresh), with its marker to set. It returns the markers to set and those of
+// definitions no longer listed or on disk, to delete.
+func (bs *Store) planValidEnd(txn *badgerv4.Txn, p *propDiskOpen, canBuild bool) (mark []writeOp, unmark [][]byte, err error) {
+	marked := make(map[string]struct{})
+	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: storepkg.PropertyIndexValidEndBuiltPrefix})
+	for it.Rewind(); it.Valid(); it.Next() {
+		marked[string(it.Item().Key())] = struct{}{}
+	}
+	it.Close()
+	p.validEnd = make(map[indexpkg.PropertyIndexKey]struct{})
+	keep := make(map[string]struct{})
+	reset := make(map[string]struct{})
+	for key := range p.disk {
+		if !bs.validEndListed(key) {
+			continue
+		}
+		k := string(storepkg.PropertyIndexValidEndBuiltKey(key.LabelToken, key.PropertyKey))
+		if _, ok := marked[k]; ok {
+			p.validEnd[key] = struct{}{}
+			keep[k] = struct{}{}
+			continue
+		}
+		if bs.readOnly || !canBuild {
+			continue
+		}
+		_, rebuilt := p.rebuild[key.PropertyKey]
+		if _, done := reset[key.PropertyKey]; !rebuilt && !done {
+			reset[key.PropertyKey] = struct{}{}
+			p.ops = append(p.ops, bs.validEndResetOps(txn, key.PropertyKey)...)
+		}
+		mark = append(mark, writeOp{opType: writeOpSet, key: []byte(k), value: []byte{1}})
+		p.validEnd[key] = struct{}{}
+	}
+	for k := range marked {
+		if _, ok := keep[k]; !ok {
+			unmark = append(unmark, []byte(k))
+		}
+	}
+	return mark, unmark, nil
 }
 
 // commitPropertyIndexOnDiskBackfill writes an open's rebuild of on-disk

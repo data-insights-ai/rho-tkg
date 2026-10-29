@@ -34,7 +34,11 @@ var (
 	ErrInvalidTimeRange           = errors.New("graph: invalid time range")
 	ErrInvalidQueryLimit          = errors.New("graph: invalid query limit")
 	ErrInvalidQueryCursor         = errors.New("graph: invalid query cursor")
-	ErrInvalidStoreMutation       = errors.New("graph: invalid store mutation")
+	// ErrValidEndAfterUnsupported refuses QueryOpts.ValidEndAfter on a door
+	// other than a current ByLabelAndProperty / ByLabelAndPropertyValues, or
+	// with a time filter (VALIDENDPRUNE).
+	ErrValidEndAfterUnsupported = errors.New("graph: QueryOpts.ValidEndAfter is taken only by a current ByLabelAndProperty / ByLabelAndPropertyValues")
+	ErrInvalidStoreMutation     = errors.New("graph: invalid store mutation")
 	// ErrEntryTooLarge is returned before any mutation when a write would hand
 	// the store an entry it cannot persist (a badger key above 65,000 bytes or
 	// a value above the value-log file size; in memory, 1 MB), staging overhead

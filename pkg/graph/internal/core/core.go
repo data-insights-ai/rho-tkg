@@ -78,15 +78,18 @@ type Core struct {
 	// nil = one store lookup per form.
 	propertyKeysQuery    storepkg.PropertyKeysLookupCapability
 	relPropertyKeysQuery storepkg.RelPropertyKeysLookupCapability
-	compositeQuery       storepkg.CompositePropertyIndexCapability
-	compositeIDPage      storepkg.CompositeIndexIDPageCapability
-	storedSizes          storepkg.NodeStoredSizeCapability
-	compositeQueryTrust  bool
-	filteredVector       storepkg.FilteredVectorSearchCapability
-	vectorIndexOptions   storepkg.VectorIndexOptionsCapability
-	depthHistory         storepkg.DepthHistoryIterationCapability
-	relCreateUndo        storepkg.RelCreateUndoCapability       // undoRelationshipCreate
-	scopedRelCreateUndo  storepkg.ScopedRelCreateUndoCapability // undoRelationshipCreate
+	// validEndQuery: the pruning lookup behind QueryOpts.ValidEndAfter
+	// (VALIDENDPRUNE); nil = every match's timeline is read.
+	validEndQuery       storepkg.PropertyIndexValidEndCapability
+	compositeQuery      storepkg.CompositePropertyIndexCapability
+	compositeIDPage     storepkg.CompositeIndexIDPageCapability
+	storedSizes         storepkg.NodeStoredSizeCapability
+	compositeQueryTrust bool
+	filteredVector      storepkg.FilteredVectorSearchCapability
+	vectorIndexOptions  storepkg.VectorIndexOptionsCapability
+	depthHistory        storepkg.DepthHistoryIterationCapability
+	relCreateUndo       storepkg.RelCreateUndoCapability       // undoRelationshipCreate
+	scopedRelCreateUndo storepkg.ScopedRelCreateUndoCapability // undoRelationshipCreate
 	// exAdj is the store's ex-adjacency (backlog 50) once it covers every
 	// relationship (backfillExAdjacencyBestEffort); nil = the adjacency doors
 	// fold every relationship with history instead (forEachRelExAdjacentID).
@@ -895,6 +898,11 @@ type Config struct {
 	// indexes on disk (badger.Config; RELDISK); the others stay in RAM. Ignored
 	// when Store is provided explicitly.
 	RelPropertyIndexOnDiskTypes []string
+	// PropertyIndexValidEnd lists on-disk property index definitions whose
+	// entries bound their node's valid end, so QueryOpts.ValidEndAfter prunes
+	// them without reading rows (badger.Config; VALIDENDPRUNE). Ignored when
+	// Store is provided explicitly.
+	PropertyIndexValidEnd []storepkg.PropertyIndexValidEnd
 	// TemporalIndexOnDisk is a rebuild-at-open accelerator for the
 	// maxTo-augmented temporal interval index (g.Index().CreateTemporalIndex)
 	// on the badger-backed store — NOT a RAM-vs-disk trade-off like
@@ -2145,6 +2153,7 @@ func New(config Config) (*Core, error) {
 				PropertyIndexOnDisk:         config.PropertyIndexOnDisk,
 				PropertyIndexOnDiskLabels:   config.PropertyIndexOnDiskLabels,
 				RelPropertyIndexOnDiskTypes: config.RelPropertyIndexOnDiskTypes,
+				PropertyIndexValidEnd:       config.PropertyIndexValidEnd,
 				TemporalIndexOnDisk:         config.TemporalIndexOnDisk,
 				DisablePlannerStats:         config.DisablePlannerStats,
 				HistoryDeltaEncoding:        config.HistoryDeltaEncoding,
@@ -2234,6 +2243,7 @@ func New(config Config) (*Core, error) {
 	c.relPropertyQueryTrust = isExactNativeStore(store)
 	c.propertyKeysQuery = nativeCapability[storepkg.PropertyKeysLookupCapability](store, "NodesByLabelAndPropertyKeys")
 	c.relPropertyKeysQuery = nativeCapability[storepkg.RelPropertyKeysLookupCapability](store, "RelationshipsByTypeAndPropertyKeys")
+	c.validEndQuery = nativeCapability[storepkg.PropertyIndexValidEndCapability](store, "NodesByLabelAndPropertyKeysValidEnd", "RefineNodePropertyValidEnd")
 	c.compositeQuery = compositeQueryCapability(store)
 	c.compositeQueryTrust = isExactNativeStore(store)
 	c.compositeIDPage = nativeCapability[storepkg.CompositeIndexIDPageCapability](store, "NodeIDsByLabelAndPropertiesPage")

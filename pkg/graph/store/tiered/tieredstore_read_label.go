@@ -194,6 +194,15 @@ func (ts *Store) NodesByLabelAndPropertyKeys(labelToken uint16, key string, valu
 // nodesByLabelPropertyKeys is the body of both doors; keysOf runs after the
 // store, token and option checks (a single value is validated there).
 func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts QueryOpts, keysOf func() ([]string, error)) ([]*types.Node, error) {
+	return ts.nodesByLabelPropertyKeysWith(labelToken, key, opts, keysOf, func(ref *BadgerStore, elements bool, match storeutil.IndexKeyMatch, shardOpts QueryOpts) ([]*types.Node, error) {
+		return shardNodesByLabelAndProperty(ref, elements, labelToken, key, match, shardOpts)
+	})
+}
+
+// nodesByLabelPropertyKeysWith is nodesByLabelPropertyKeys reading the
+// reference shard's part with refPart (the pruning lookup's, VALIDENDPRUNE).
+func (ts *Store) nodesByLabelPropertyKeysWith(labelToken uint16, key string, opts QueryOpts, keysOf func() ([]string, error),
+	refPart func(ref *BadgerStore, elements bool, match storeutil.IndexKeyMatch, shardOpts QueryOpts) ([]*types.Node, error)) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -224,7 +233,7 @@ func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts Qu
 	elemOpts, _, err := ref.PropertyIndexOptions(labelToken, key)
 	var refNodes []*types.Node
 	if err == nil {
-		refNodes, err = shardNodesByLabelAndProperty(ref, elemOpts.Elements, labelToken, key, match, stripDepth(opts))
+		refNodes, err = refPart(ref, elemOpts.Elements, match, stripDepth(opts))
 	}
 	refCheckin()
 	if err != nil {

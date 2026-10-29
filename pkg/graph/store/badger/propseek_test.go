@@ -124,7 +124,7 @@ func TestPropSeekNewestVersionDecides(t *testing.T) {
 	candidates := func(v string) []int64 {
 		bs.idxMu.RLock()
 		defer bs.idxMu.RUnlock()
-		nids, err := bs.propertyIndexDiskKeysCandidatesLocked("k", []string{types.IndexablePropertyValueKey(v)})
+		nids, err := bs.propertyIndexDiskKeysCandidatesLocked("k", []string{types.IndexablePropertyValueKey(v)}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

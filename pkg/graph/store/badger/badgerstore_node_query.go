@@ -391,7 +391,7 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 				return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, match, elements, nids, page)
 			})
 		}
-		nids, dErr := bs.propertyIndexDiskKeysCandidatesLocked(propKey, targetKeys)
+		nids, dErr := bs.propertyIndexDiskKeysCandidatesLocked(propKey, targetKeys, nil)
 		bs.idxMu.RUnlock()
 		if dErr != nil {
 			return nil, dErr

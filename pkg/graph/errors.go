@@ -77,6 +77,7 @@ var (
 	ErrInvalidShardDepth          = storepkg.ErrInvalidShardDepth
 	ErrInvalidQueryLimit          = storepkg.ErrInvalidQueryLimit
 	ErrInvalidQueryCursor         = storepkg.ErrInvalidQueryCursor
+	ErrValidEndAfterUnsupported   = storepkg.ErrValidEndAfterUnsupported
 	ErrIndexProviderExists        = indexpkg.ErrIndexProviderExists
 	ErrIndexProviderNotFound      = indexpkg.ErrIndexProviderNotFound
 	ErrIndexProviderEmptyName     = indexpkg.ErrIndexProviderEmptyName

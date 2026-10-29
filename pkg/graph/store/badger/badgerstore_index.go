@@ -197,7 +197,16 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		// format marker past 12.
 		ops = append(ops, memberOps...)
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.EntityIndexBuiltKey(storepkg.EntityIndexNodeMember, labelToken, propertyKey), value: []byte{1}})
-		bs.appendOpsRaising(storepkg.EntityIndexStoreFormatVersion, ops...)
+		marker := uint16(storepkg.EntityIndexStoreFormatVersion)
+		if bs.validEndListed(key) {
+			// Its entries were all written unknown: its valid-end marker, which
+			// raises the format marker to 14 (VALIDENDPRUNE).
+			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.PropertyIndexValidEndBuiltKey(labelToken, propertyKey), value: []byte{1}})
+			marker = storepkg.ValidEndStoreFormatVersion
+			bs.validEnd.trusted[key] = struct{}{}
+			bs.refreshValidEndDefsLocked()
+		}
+		bs.appendOpsRaising(marker, ops...)
 		bs.idxMu.Unlock()
 		return bs.flushIfNeeded()
 	}
@@ -244,7 +253,8 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 	var purgeOps []writeOp
 	var purgeErr error
 	if dropped.OnDisk() {
-		purgeOps = append(purgeOps, writeOp{opType: writeOpDelete, key: storepkg.PropertyIndexOnDiskDefBuiltKey(labelToken, propertyKey)})
+		purgeOps = append(purgeOps, writeOp{opType: writeOpDelete, key: storepkg.PropertyIndexOnDiskDefBuiltKey(labelToken, propertyKey)},
+			writeOp{opType: writeOpDelete, key: storepkg.PropertyIndexValidEndBuiltKey(labelToken, propertyKey)})
 		// Its member entries and their marker (RELDISK).
 		var memberOps []writeOp
 		memberOps, purgeErr = bs.entityIndexDropOpsLocked(false, labelToken, propertyKey)

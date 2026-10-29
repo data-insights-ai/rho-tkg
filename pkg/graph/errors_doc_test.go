@@ -44,6 +44,7 @@ var storeIndexSentinels = []string{
 	"ErrInvalidShardDepth",
 	"ErrInvalidQueryLimit",
 	"ErrInvalidQueryCursor",
+	"ErrValidEndAfterUnsupported",
 }
 
 // Index provider sentinels

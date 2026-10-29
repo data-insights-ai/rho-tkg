@@ -116,6 +116,23 @@ type QueryOpts struct {
 	// After == 0: keyset pagination (After > 0) requires sorted order, so a
 	// paginated query keeps the sort regardless of this flag.
 	NoSort bool
+
+	// ValidEndAfter (VALIDENDPRUNE, since v4.94.0) keeps only the nodes whose
+	// effective timeline (the segments NodeEffectiveTimeline gives at the read)
+	// has a segment ending at or after it, or an open one. Only the graph's
+	// ByLabelAndProperty and ByLabelAndPropertyValues take it, as a current read:
+	// with a time filter or on any other door it is refused. ValidEndAfterSet
+	// makes 0 a bound; unset, 0 is no bound (HasValidEndAfter). A definition
+	// listed in the store's PropertyIndexValidEnd prunes from its entries
+	// without reading the rows; every other answers by reading them.
+	ValidEndAfter    types.Instant
+	ValidEndAfterSet bool
+}
+
+// HasValidEndAfter reports whether ValidEndAfter is a bound: ValidEndAfterSet,
+// or a non-zero ValidEndAfter.
+func (o QueryOpts) HasValidEndAfter() bool {
+	return o.ValidEndAfterSet || o.ValidEndAfter != 0
 }
 
 // The Has* methods are the one presence rule for the time filters: every door

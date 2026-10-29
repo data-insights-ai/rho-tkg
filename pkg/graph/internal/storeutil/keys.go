@@ -9,6 +9,8 @@ import (
 	"encoding/binary"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Chokepoint invariant for raw snowflake.ID: this file (binary key encoding)
@@ -270,6 +272,37 @@ func PropertyIndexOnDiskDefBuiltKey(labelToken uint16, propertyKey string) []byt
 	b = append(b, PropertyIndexOnDiskDefBuiltPrefix...)
 	b = binary.BigEndian.AppendUint16(b, labelToken)
 	return append(b, propertyKey...)
+}
+
+// PropertyIndexValidEndBuiltPrefix starts the valid-end built markers
+// (VALIDENDPRUNE): one per on-disk property index listed in
+// PropertyIndexValidEnd whose entries' bounds are trusted, present while every
+// writable open since kept it listed (one that does not deletes it).
+var PropertyIndexValidEndBuiltPrefix = MetaKey("property_index_valid_end_built/")
+
+// PropertyIndexValidEndBuiltKey is the valid-end built marker of the property
+// index on (labelToken, propertyKey): the prefix, the token big-endian, the key.
+func PropertyIndexValidEndBuiltKey(labelToken uint16, propertyKey string) []byte {
+	b := make([]byte, 0, len(PropertyIndexValidEndBuiltPrefix)+2+len(propertyKey))
+	b = append(b, PropertyIndexValidEndBuiltPrefix...)
+	b = binary.BigEndian.AppendUint16(b, labelToken)
+	return append(b, propertyKey...)
+}
+
+// EncodeValidEndBound is a 0x0A entry's value carrying bound, an upper bound on
+// its node's effective valid end (store.ValidEndOpen, store.ValidEndNone
+// included): eight bytes, big-endian. An empty value is no bound.
+func EncodeValidEndBound(bound types.Instant) []byte {
+	return binary.BigEndian.AppendUint64(make([]byte, 0, 8), uint64(bound)) // #nosec G115 -- the instant's bits
+}
+
+// DecodeValidEndBound reads an entry value EncodeValidEndBound wrote; ok is
+// false for any other length (no bound).
+func DecodeValidEndBound(v []byte) (bound types.Instant, ok bool) {
+	if len(v) != 8 {
+		return 0, false
+	}
+	return types.Instant(binary.BigEndian.Uint64(v)), true // #nosec G115 -- the instant's bits
 }
 
 // TemporalIndexOnDiskBuiltKey marks that the persisted 0x0B temporal-index

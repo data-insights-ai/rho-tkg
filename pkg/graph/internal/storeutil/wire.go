@@ -107,7 +107,7 @@ const StagedFlushStoreFormatVersion = 9
 
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = EntityIndexStoreFormatVersion
+const MaxReadableStoreFormatVersion = ValidEndStoreFormatVersion
 
 // OpenVoidStoreFormatVersion is the store-level marker of a directory that
 // holds an open-ended void piece (OPENEXCISE, OpenVoidWireFormatVersion rows).
@@ -137,6 +137,15 @@ const PropDiskLabelsStoreFormatVersion = 12
 // binary would then trust entries it missed: it must refuse the store. Raised
 // with the first marker; 4 to 12 are taken, so this is 13.
 const EntityIndexStoreFormatVersion = 13
+
+// ValidEndStoreFormatVersion is the store-level marker of a directory with a
+// valid-end built marker (VALIDENDPRUNE, PropertyIndexValidEndBuiltKey): its
+// definition's 0x0A entries may carry a bound on their node's valid end. A
+// binary that predates it writes a node's rows without resetting the bound,
+// so a newer binary would prune a node whose validity it extended: it must
+// refuse the store. Raised with the first marker; 4 to 13 are taken, so this
+// is 14.
+const ValidEndStoreFormatVersion = 14
 
 // writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every

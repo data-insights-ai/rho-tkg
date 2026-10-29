@@ -1481,6 +1481,9 @@ func validateTemporalQueryOpts(opts storepkg.QueryOpts) error {
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return err
 	}
+	if opts.HasValidEndAfter() { // the doors that take it clear it first (takeValidEndAfter)
+		return storepkg.ErrValidEndAfterUnsupported
+	}
 	if opts.HasTxPin() && (opts.HasValidAt() || opts.HasValidBound() || opts.HasTxAt()) {
 		return ErrConflictingTemporalOpts
 	}

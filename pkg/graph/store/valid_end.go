@@ -13,6 +13,50 @@ const (
 	ValidEndNone = types.Instant(math.MinInt64)
 )
 
+// PropertyIndexValidEnd lists the on-disk property index definitions whose
+// entries carry an upper bound on their node's effective valid end
+// (VALIDENDPRUNE): label Label, property keys starting with KeyPrefix ("" every
+// key of the label).
+type PropertyIndexValidEnd struct {
+	Label     string
+	KeyPrefix string
+}
+
+// ValidEndProbe is what a pruning lookup knew of one node it returned: Bound,
+// the stored upper bound on its effective valid end when Known, Seq, the
+// store's write sequence read before the node's row, and Src, the store's own
+// routing tag. RefineNodePropertyValidEnd takes Seq and Src back.
+type ValidEndProbe struct {
+	Bound types.Instant
+	Known bool
+	Seq   uint64
+	Src   uint32
+}
+
+// PropertyIndexValidEndStats counts a store's pruning since open: entries
+// pruned without reading their row, entries without a bound whose row was read,
+// bounds refined, and refines skipped because the node was written since.
+type PropertyIndexValidEndStats struct {
+	Pruned        uint64
+	UnknownRead   uint64
+	Refined       uint64
+	RefineSkipped uint64
+}
+
+// PropertyIndexValidEndCapability is OPTIONAL (VALIDENDPRUNE): the pruning
+// lookup behind QueryOpts.ValidEndAfter. NodesByLabelAndPropertyKeysValidEnd
+// is NodesByLabelAndPropertyKeys (opts.ValidEndAfter set, no time filter)
+// minus the nodes a listed definition's entries bound below the bound, with a
+// probe per node returned. The caller decides each node from its timeline and
+// hands back its exact end (ValidEndOpen, ValidEndNone) with
+// RefineNodePropertyValidEnd, which stores it unless the node was written since
+// Seq; a refine writes index entries only, no row, stamp or change record.
+type PropertyIndexValidEndCapability interface {
+	NodesByLabelAndPropertyKeysValidEnd(labelToken uint16, key string, valueKeys []string, opts QueryOpts) ([]*types.Node, []ValidEndProbe, error)
+	RefineNodePropertyValidEnd(n *types.Node, probe ValidEndProbe, end types.Instant)
+	PropertyIndexValidEndStats() PropertyIndexValidEndStats
+}
+
 // ValidEndCandidate is one entity a valid-end bounded effective scan reads
 // (store.RelValidEndCapability): its ID (a types.RelID or types.NodeID value),
 // the index's write generation for it, Stamp — every transaction stamp of its

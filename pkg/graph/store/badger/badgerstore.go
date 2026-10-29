@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -160,6 +161,13 @@ type Config struct {
 	// PropertyIndexOnDiskLabels. An Elements index stays in RAM: on a listed type it
 	// is refused. Requires a property-key registry (always present via pkg/graph).
 	RelPropertyIndexOnDiskTypes []string
+	// PropertyIndexValidEnd lists on-disk property index definitions (label,
+	// property-key prefix) whose 0x0A entries carry an upper bound on their
+	// node's effective valid end, so a lookup with QueryOpts.ValidEndAfter prunes
+	// without reading the rows (VALIDENDPRUNE). A definition in RAM is not
+	// pruned. A built marker per definition; the first raises the format marker
+	// to 14.
+	PropertyIndexValidEnd []storecontract.PropertyIndexValidEnd
 	// RelTypeNames names the types of RelPropertyIndexOnDiskTypes while the store
 	// opens (tiered passes its registry); nil reads the registry this store
 	// persisted. Once the graph installs its registry, that one names them.
@@ -409,7 +417,8 @@ type Store struct {
 	adjOnDisk                 bool                                          // answer adjacency snapshots from the persisted keyspaces
 	propIdxOnDisk             bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
 	propDiskLabels            map[string]struct{}                           // PropertyIndexOnDiskLabels: these labels' property indexes too
-	propDiskNames             *registrypkg.LabelRegistry                    // names propDiskLabels while the store opens (Config.LabelNames or the persisted registry)
+	propDiskNames             *registrypkg.LabelRegistry                    // names propDiskLabels and PropertyIndexValidEnd's labels while the store opens (Config.LabelNames or the persisted registry)
+	validEnd                  validEndState                                 // PropertyIndexValidEnd (VALIDENDPRUNE)
 	relDiskTypes              map[string]struct{}                           // RelPropertyIndexOnDiskTypes
 	relDiskNames              *registrypkg.RelTypeRegistry                  // names relDiskTypes while the store opens (Config.RelTypeNames or the persisted registry)
 	propIDs                   propIDBounds                                  // bounds of the node IDs the 0x0A entries carry (PROPBOUNDS)
@@ -1181,6 +1190,14 @@ func New(cfg Config) (*Store, error) {
 		for _, label := range cfg.PropertyIndexOnDiskLabels {
 			bs.propDiskLabels[label] = struct{}{}
 		}
+	}
+	bs.validEnd.listing = slices.Clone(cfg.PropertyIndexValidEnd)
+	bs.validEnd.trusted = make(map[indexpkg.PropertyIndexKey]struct{})
+	// A probe read on an earlier open of the directory lies below this one's
+	// sequence: its refine is skipped (VALIDENDPRUNE).
+	bs.validEnd.seq.Store(uint64(time.Now().UnixNano())) // #nosec G115 -- a positive clock reading
+	bs.validEnd.floor.Store(bs.validEnd.seq.Load())
+	if len(bs.propDiskLabels) > 0 || len(bs.validEnd.listing) > 0 {
 		bs.propDiskNames = cfg.LabelNames
 		if bs.propDiskNames == nil {
 			reg := registrypkg.NewLabelRegistry()
@@ -1946,6 +1963,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					bs.restoreNodePropTx(img, key)
 				}
 			}
+			bs.validEnd.trusted = propDisk.validEnd
 			bs.refreshPropDiskDefsLocked()
 		}
 
@@ -2551,6 +2569,7 @@ func (bs *Store) Clear() (err error) {
 	bs.commitGen.Add(1) // read snapshots re-pin after the wipe
 	bs.wbMu.Lock()
 	bs.pending = make(map[string]writeOp)
+	bs.validEnd.floor.Store(bs.validEnd.seq.Add(1)) // a refine read before Clear writes nothing (VALIDENDPRUNE)
 	bs.pendingByPrefix = nil
 	bs.pendingLog = nil
 	bs.pendingBytes = 0

@@ -36,6 +36,7 @@ Coverage spans three sources:
 | `ErrInvalidShardDepth` | store | Shard depth is out of valid range | Any query door with an unknown `QueryOpts.Depth` (`g.Nodes().ByLabel()` / `All()`, `g.Rels().ByType()` / `All()`, index searches) |
 | `ErrInvalidQueryLimit` | store | Query limit is negative (`0` = unbounded; there is no upper cap) | Scan/query paths with limits |
 | `ErrInvalidQueryCursor` | store | Pagination cursor is invalid | Paginated query paths |
+| `ErrValidEndAfterUnsupported` | store | `QueryOpts.ValidEndAfter` outside a current `ByLabelAndProperty` / `ByLabelAndPropertyValues` (another door, or with a time filter or pin) | Every `QueryOpts` door |
 
 ## Indexes — Provider Registration
 

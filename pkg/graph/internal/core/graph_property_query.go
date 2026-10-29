@@ -24,8 +24,14 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	bound, bounded := takeValidEndAfter(&opts)
 	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
+	}
+	if bounded {
+		if err := checkValidEndAfterCurrent(opts); err != nil {
+			return nil, err
+		}
 	}
 	if err := c.validateIndexLabel(label); err != nil {
 		return nil, err
@@ -39,7 +45,11 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 	var result []*types.Node
 	err := c.readUnderRLock(func() error {
 		var err error
-		result, err = c.nodesByLabelAndPropertyLocked(label, key, value, opts)
+		if bounded {
+			result, err = c.nodesByLabelAndPropertyFormsValidEnd(label, key, types.EqualIndexValues(value), opts, bound)
+		} else {
+			result, err = c.nodesByLabelAndPropertyLocked(label, key, value, opts)
+		}
 		return err
 	})
 	if err != nil {
@@ -62,8 +72,14 @@ func (n *NodeOps) ByLabelAndPropertyValues(label, key string, values []any, opts
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	bound, bounded := takeValidEndAfter(&opts)
 	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
+	}
+	if bounded {
+		if err := checkValidEndAfterCurrent(opts); err != nil {
+			return nil, err
+		}
 	}
 	if err := c.validateIndexLabel(label); err != nil {
 		return nil, err
@@ -80,7 +96,11 @@ func (n *NodeOps) ByLabelAndPropertyValues(label, key string, values []any, opts
 	var result []*types.Node
 	err := c.readUnderRLock(func() error {
 		var err error
-		result, err = c.nodesByLabelAndPropertyFormsLocked(label, key, forms, opts)
+		if bounded {
+			result, err = c.nodesByLabelAndPropertyFormsValidEnd(label, key, forms, opts, bound)
+		} else {
+			result, err = c.nodesByLabelAndPropertyFormsLocked(label, key, forms, opts)
+		}
 		return err
 	})
 	if err != nil {

@@ -28,6 +28,7 @@ func (bs *Store) appendOps(ops ...writeOp) {
 // marker (0: none) in the same wbMu section (raiseFormatMarkerPendingLocked).
 func (bs *Store) appendOpsRaising(marker uint16, ops ...writeOp) {
 	bs.wbMu.Lock()
+	ops = bs.noteValidEndPruneLocked(ops)
 	for _, op := range ops {
 		bs.putPendingLocked(op)
 		bs.noteHistoryKey(op)

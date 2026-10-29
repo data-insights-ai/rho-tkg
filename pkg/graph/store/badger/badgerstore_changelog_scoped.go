@@ -145,6 +145,7 @@ func (bs *Store) appendOpsLoggedRouted(tag storecontract.ChangeTag, payload []by
 // appends ops (raiseFormatMarkerPendingLocked).
 func (bs *Store) appendOpsLoggedRoutedRaising(marker uint16, tag storecontract.ChangeTag, payload []byte, token uint64, ops ...writeOp) error {
 	bs.wbMu.Lock()
+	ops = bs.noteValidEndPruneLocked(ops)
 	for _, op := range ops {
 		bs.putPendingLocked(op)
 		bs.noteHistoryKey(op)
