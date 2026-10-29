@@ -8,8 +8,8 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-- **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): ai-soc pins v4.96.1 for the Flux run; no new tag until
-  ai-soc says the run is shipped (a few hours). RELDISK phase 2 may land on main untagged.
+- **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
+  tagging v4.96.2 (VALIDTOPURGE, CLEARGAP) and v4.97.0 (CACHESTATS) now, then holding again until the run ships.
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
@@ -213,7 +213,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   target, so ingest grows with the hardware.
 - **ITERTOMB** (SCALE, `docs/badger.md` rule 12) — rho's other per-call walks that stop at their own end bound
   without `AllVersions` pay for the deleted entries past it (range and prefix scans, label and adjacency disk
-  lookups, `nodeRowIDBounds` at a purged low end). Done when: each is listed with its cost or fixed.
+  lookups, `nodeRowIDBounds` at a purged low end). Done when: each is listed with its cost or fixed. 29 Oct, branch
+  itertomb b1accc18: none of the disk lookups set `IteratorOptions.Prefix`. Adjacency (adjacentRelIDs/Metas): 200
+  lookups 1,066x slower after the 20,000 following entries were deleted (red in tasks/evidence/ITERTOMB/), 0.9x with
+  `Prefix`. Listed, not changed: nodeLabelTokensFromKeyspaceLocked and incomingIndexEntriesFromKeyspaceLocked walk a
+  whole keyspace by design (error path, repair). Next: the label scan, the property prefix scan, the two range
+  walks (an upper bound `Prefix` cannot express: PROPSEEK's AllVersions shape), the purge's token walk.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
