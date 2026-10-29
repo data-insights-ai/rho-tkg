@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **ITERTOMB** (SCALE, `docs/badger.md` rule 12), the property range walks. The on-disk numeric range scan and
+  its ordered form end at a value, which `IteratorOptions.Prefix` cannot express, so each call walked every deleted
+  entry after its upper bound. They now iterate with `AllVersions`, let each key's newest version decide and stop at
+  the bound (PROPSEEK's shape). 200 scans of [0, 10] beside 20,000 deleted entries above it: 424x and 442x their
+  time before the deletes, now 0.7-0.9x (badger `TestIterTombPropertyRangeScanDoesNotWalkDeletedEntries`;
+  `...PropertyRangeReadsNewestVersion` holds a key moved out of the range and one moved out and back). 4 of 4
+  mutations caught.
+
 ## [4.97.1] - 2026-10-29
 
 ### Fixed

@@ -630,22 +630,10 @@ func (bs *Store) propertyIndexDiskRangeCandidatesLocked(propKeyToken uint16, lo,
 	})
 
 	var nids []types.NodeID
-	err := bs.view(func(txn *badgerv4.Txn) error {
-		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-		for it.Seek(lo); it.ValidForPrefix(domainPrefix); it.Next() {
-			key := it.Item().Key()
-			if bytes.Compare(key[:boundLen], hi) > 0 {
-				break
-			}
-			if ov.overrides(key) {
-				continue
-			}
+	err := bs.walkNumericRange(domainPrefix, lo, hi, func(key []byte) {
+		if !ov.overrides(key) {
 			nids = append(nids, types.NodeID(storepkg.PropertyIndexNodeIDFromKey(key)))
 		}
-		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("graph: property index range scan: %w", err)
@@ -654,6 +642,39 @@ func (bs *Store) propertyIndexDiskRangeCandidatesLocked(propKeyToken uint16, lo,
 		nids = append(nids, nid)
 	}
 	return nids, nil
+}
+
+// walkNumericRange calls fn with each live persisted key of the numeric
+// domain whose sort-key lies within the widened [lo,hi] byte bounds, in key
+// order. The iterator returns every version and deleted entry (AllVersions),
+// so the walk stops at hi: without, badger skips the deleted entries after hi
+// inside Next until it holds a live key, and the bound never stopped that walk
+// (ITERTOMB, docs/badger.md rule 12). The newest version of each key decides.
+func (bs *Store) walkNumericRange(domainPrefix, lo, hi []byte, fn func(key []byte)) error {
+	boundLen := len(lo)
+	return bs.view(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		opts.AllVersions = true
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		var prev []byte
+		for it.Seek(lo); it.ValidForPrefix(domainPrefix); it.Next() {
+			item := it.Item()
+			key := item.Key()
+			if bytes.Compare(key[:boundLen], hi) > 0 {
+				break
+			}
+			if bytes.Equal(key, prev) {
+				continue // an older version of the key just decided
+			}
+			prev = append(prev[:0], key...)
+			if !item.IsDeletedOrExpired() {
+				fn(key)
+			}
+		}
+		return nil
+	})
 }
 
 // pendingKeyOverlay resolves the buffered 0x0A writes a scan visits PER KEY
@@ -769,22 +790,10 @@ func (bs *Store) propertyIndexDiskRangeOrderedEntriesLocked(propKeyToken uint16,
 	})
 
 	var entries []diskOrderedEntry
-	err := bs.view(func(txn *badgerv4.Txn) error {
-		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-		for it.Seek(lo); it.ValidForPrefix(domainPrefix); it.Next() {
-			key := it.Item().Key()
-			if bytes.Compare(key[:boundLen], hi) > 0 {
-				break
-			}
-			if ov.overrides(key) {
-				continue
-			}
+	err := bs.walkNumericRange(domainPrefix, lo, hi, func(key []byte) {
+		if !ov.overrides(key) {
 			entries = append(entries, diskOrderedEntry{sortBits: sortBitsFromKey(key), id: storepkg.PropertyIndexNodeIDFromKey(key)})
 		}
-		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("graph: property index ordered range scan: %w", err)

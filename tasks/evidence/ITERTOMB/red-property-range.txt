@@ -1,0 +1,8 @@
+--- FAIL: TestIterTombPropertyRangeScanDoesNotWalkDeletedEntries (2.06s)
+    itertomb_test.go:271: 200 ForEachNodeByLabelPropertyRange: 619.46µs before the deletes, 244.525432ms after (394.7x)
+    itertomb_test.go:273: 200 ForEachNodeByLabelPropertyRange take 244.525432ms after 20,000 following entries were deleted, 619.46µs before: they walk the deleted entries
+    itertomb_test.go:271: 200 ForEachNodeByLabelPropertyRangeOrdered: 644.602µs before the deletes, 236.693402ms after (367.2x)
+    itertomb_test.go:273: 200 ForEachNodeByLabelPropertyRangeOrdered take 236.693402ms after 20,000 following entries were deleted, 644.602µs before: they walk the deleted entries
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.078s
+FAIL
