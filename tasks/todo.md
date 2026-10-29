@@ -263,6 +263,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 
 ## Next
 
+- **CACHESTATS** (ai-soc 29 Oct, TEMPIDX; door, minor, after COMPDISK and RELDISK phase 2) — a per-shard
+  entity-cache bytes stat (nodes and rels, clean and dirty apart), readable like `ShardAccessStats`, so ai-soc sizes
+  `CacheBudgetBytes` from a measurement. ai-soc sets no CacheCapacity/CacheBudgetBytes today (BlockCacheSize 64 MB).
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Steps 1-8 shipped (v4.76.1, v4.78.0; MOVEREAD v4.78.2, COLDRO v4.78.3). Step 10
