@@ -136,3 +136,11 @@ v4.96.2 from the module cache):
   v4.96.2   insert 12.1 / 15.4 / 10.8 / 16.4 / 10.8 s   clean reopen 0.14 / 0.27 / 0.12 / 0.12 / 0.11 s
             heap after reopen +177.4 / +178.4 / +173.9 / +174.0 / +177.0 MB
 Reading: no change (CACHESTATS adds a read-only stat door; the write path is untouched).
+
+v4.97.1 release scale probe (ITERTOMB, Derived, 1 M nodes + 1 M rels (-rels), load average 17-22; alternated with
+v4.97.0 from the module cache):
+  v4.97.1   insert 9.5 / 9.5 / 9.6 / 10.7 / 11.6 s   clean reopen 0.11 / 0.11 / 0.11 / 0.10 / 0.13 s
+            heap after reopen +176.7 / +176.1 / +177.7 / +176.3 / +176.9 MB
+  v4.97.0   insert 9.3 / 9.7 / 9.5 / 12.6 / 12.7 s   clean reopen 0.11 / 0.11 / 0.11 / 0.12 / 0.15 s
+            heap after reopen +175.0 / +176.7 / +177.6 / +176.9 / +177.4 MB
+Reading: no change (the probe deletes nothing; ITERTOMB changes only walks past deleted entries).
