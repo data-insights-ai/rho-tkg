@@ -124,8 +124,9 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   range walks take every version and stop at their upper bound (424x / 442x before, 0.7-0.9x now); the history
   truncate, trim and compact walks, which the purge and erasure share, and the purge's type-index and per-node
   adjacency walks set their prefix (543-787x and 735x / 1,293x before, 0.9-1.1x now). 8 of 8 mutations caught.
-  Every ITERTOMB walk is fixed or listed as a whole-keyspace walk by design. Tags held again until ai-soc's run
-  ships.
+  Every ITERTOMB walk is fixed or listed as a whole-keyspace walk by design. ci-docker green, consumers clean,
+  scale probe unchanged; tag CI and main green; ai-soc (next run's release round) and sigma notified. Tags held
+  again until ai-soc's next run ships.
 - **v4.92.0** (RELDISK phase 1, a minor for SCALE goal 2, ai-soc's request for sigma's 2b edges):
   `RelPropertyIndexOnDiskTypes` keeps the listed relationship types' property indexes in a new `0x0C` keyspace
   (current entries for lookups, member entries for pinned reads); node indexes on disk answer pinned reads from

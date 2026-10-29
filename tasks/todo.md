@@ -10,7 +10,8 @@ Each item: one sentence, then when it is done and what it waits for.
 
 - **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
   Released v4.96.2 (9904fd3b), v4.97.0 (bad01e13) and, on ai-soc's ask, v4.97.1 ITERTOMB (0e11125b): tag CI and
-  main green, ai-soc and sigma notified. FREEZE (René, 29 Oct) ended: Flux k10291501 shipped; v4.97.2 in release.
+  main green, ai-soc and sigma notified. FREEZE (René, 29 Oct) ended: Flux k10291501 shipped. Released v4.97.2
+  ITERTOMB part 2 (702843ea). Holding again until ai-soc says the next run ships.
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
@@ -206,23 +207,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
-- **ITERTOMB** (SCALE, `docs/badger.md` rule 12) — rho's per-call walks that stop at their own end bound without
-  `AllVersions` pay for the deleted entries past it. Done when: each is listed with its cost or fixed. ai-soc asked
-  for it in the Flux run (retention purges). Released v4.97.1 (0e11125b): `IteratorOptions.Prefix` on the adjacency
-  lookups (ids and endpoints), the label-index scan and the property prefix scan: 1,066x / 655x / 301x before,
-  0.4-1.4x now; 4 of 4 mutations caught; tag CI and main green, ai-soc and sigma notified. On branch itertomb2
-  (3578b253, untagged during the hold): the property range walks (propertyIndexDiskRange*) take PROPSEEK's
-  AllVersions shape: 424x / 442x before, 0.7-0.9x now, 4 of 4 mutations caught; ef16a690: the history walks
-  (truncate, trim, compact, and the purge and erasure that collect history) share one with Prefix: 594x / 787x /
-  543x before, 0.9-1.0x now, 2 of 2 caught; 126a55c4: the purge's type-index walk (relPurgeCandidates) and
-  per-node adjacency walk (purgedRelsForNodeLocked) with Prefix: 735x / 1,293x before, 0.9-1.1x now, 2 of 2
-  caught. Listed, not changed: whole-keyspace walks by design (relationshipIndexKeysForRel for orphan repair and
-  erasure, the corruption-path token purges maintainPropertyIndexesPurge / maintainTemporalIndexDiskPurge,
-  nodeLabelTokensFromKeyspaceLocked on the error path, incomingIndexEntriesFromKeyspaceLocked repair, open-time
-  loads). All walks fixed or listed; consumers build and vet against it. v4.97.2 named on the branch (d8b2ae8e);
-  the FREEZE ended (ai-soc 29 Oct: Flux k10291501 shipped on sigma v0.11.151 + rho v4.97.1). Release resumed:
-  ci-docker green, consumers clean, scale probe unchanged (b050c497); next: main, tag v4.97.2, notify; it goes
-  into the next run's release round.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
