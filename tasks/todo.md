@@ -215,14 +215,25 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   + handles + vals, so a dictionary's RAM is a budget. Step 1 on branch vdictdisk (9bae51fa, a patch): the
   entry's unique.Make handle (~214 B) and the caller's row buffer (byValue keyed by the caller's string) are gone;
   a 51 B value 410 B (666 B as a slice of a row) -> 130 B live, 3 of 3 mutations caught. BA's 422 MB -> ~150 MB
-  ESTIMATE. Next: (1) the stats door (a minor, after the patch); (2) the budget/LRU only if BA's re-measure still
-  asks for it. Done when: an entry's resident cost is measured and bounded, with the stats to size it.
+  ESTIMATE. Step 2 on branch vdictstats (965a22a1, on top; a minor, released after the patch): ValueDictionaryStats
+  Entries and Bytes (value length + 80 B, within a fifth of the heap), summed over open shards; 9 of 9 caught.
+  Next: (2) the budget/LRU, decided from the next run's re-measure (ai-soc: at Cap 1,048,576 a 'row' dictionary is
+  still ~136 MB per open day shard). Done when: an entry's resident cost is measured and bounded, with the stats.
 - **TEMPIDX-2** (ai-soc 29 Oct, goal 2 RAM, same run) — the node TemporalIndex is setByID 299 + setPos 131 +
   Extend 124 = 554 MB live at the end (~120 B a node), resident for hot and warm shards (TemporalIndexOnDisk only
   speeds the open); sortedChunks.add is 389 MB (8 B a member, ~49 M members: postings not on the disk lists,
   numKeys/strKeys, numeric buckets, IDSet; never spilled). Asks: fold posByID into byID; a disk form for warm shards
-  (the hot day in RAM); numeric buckets and IDSet behind PropertyIndexOnDisk. Tonight's run prints the labels not on
-  disk and their node counts. Done when: each part is measured and fixed or listed with its cost.
+  (the hot day in RAM); numeric buckets and IDSet behind PropertyIndexOnDisk. ai-soc's -peek of sortedChunks.add:
+  388 of 389 MB are existence sets (nodeIDs 305 MB EXISTMAP, typeIdx 44 MB OPENWALK, relIDs 38 MB), ~38 M node
+  IDs over the open shards; property postings are 11 MB. Scope: existence answered by badger for warm shards (hot
+  day in RAM), typeIdx on disk. Done when: each part is measured and fixed or listed with its cost.
+- **TIERCLOCK** (ai-soc 29 Oct, goal 2) — tier rotation reads the wall clock (ColdAfter), so a replay of 33 valid
+  days in a few wall hours never demotes a shard (k10291501: 122 M hot checkouts, 0 warm, 0 cold) and every day
+  shard's sets stay resident. Asks: confirm from code; name the clock (commit pin or the host's valid time).
+  Done when: the clock is named, and a replay rotates as live data would.
+- **IDTABLE** (ai-soc 29 Oct, goal 2) — badger idTable 41 -> 80 -> 160 MB live over the run. Asks: what it maps,
+  per shard or not, its bound, whether it leaves with a cold shard. Done when: each is read from code, and the
+  table bounded if it is not.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
