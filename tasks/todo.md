@@ -153,7 +153,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   badger's memtables and builders). 28 M nodes (30.8 M postings): listing 6.8 RAM / 7.6 disk (tiered); build
   open 136-153 s; peak RSS of that open 12.6 GB (tiered) / 15.7 GB (badger) vs 2.6-3.8 GB plain; composite RAM
   249 MB -> 0. ai-soc (René's close-and-run word, 29 Oct) pins v4.96.0 on a fresh store (builds nothing; confirmed
-  in code). Release notes committed (aa35d0fd); ci-docker, consumer checks, tag next. After the tag: a patch for
+  in code). Release notes committed (aa35d0fd, ce0f3ce7); ci-docker green; scale probe unchanged (3fb352c0, load
+  27-31); consumer checks, tag next. After the tag: a patch for
   the conversion peak (profiling the build open; a create on a populated label holds every entry, ~120 B each).
 - **RELDISK phase 2** (door, minor v4.97.0, after COMPDISK; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
