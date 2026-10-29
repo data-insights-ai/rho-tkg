@@ -139,7 +139,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   restore listing per reopen; Derived's republish voids per program switch (up to ~450 k nodes) and ListDerived
   pages (Limit 1024, After) at restore; none per cut. Before the tag: time the listing at 1 M and 10 M nodes, RAM
   vs disk, badger and tiered (sigma), and the build at the first open at 31 M nodes (ai-soc: it delays /ready).
-  Branch compdisk.
+  Branch compdisk: built (e53141e0), short suite green; next the mutation sweep, the measurements, docs.
 - **RELDISK phase 2** (door, minor v4.97.0, after COMPDISK; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
