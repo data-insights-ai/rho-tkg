@@ -129,19 +129,18 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   entries in 0x0C kind 4, format 15 (no rollback). Tag CI and main green; sigma (bumps to v4.96.0, sigma
   v0.11.148) and ai-soc (pins it for the Flux run, fresh store) notified. Scale probe b98da824 -> ab66d670 after
   the rebase. Follow-up: STALEBUILD (Next).
-- **RELDISK phase 2** (door, minor v4.97.0, after COMPDISK; sigma's 2b, after its COUNTROWS) — the composite rel
-  index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
-  at a pin. No rel composite or multi-key rel door exists today; intersecting single-key member sets reads every rel
-  of a device and every rel on a port (NETWORK ~2.1 rows a key). Design sent to ai-soc and sigma (29 Oct): index
-  doors CreateRelComposite/Delete/Has/List; Rels().ByTypeAndProperties (current, TxPin/TxAt, ValidAt, Limit/After
-  current, tiered Depth; ErrIndexNotFound without a composite); disk: 0x0C kind 5 current + kind 6 member (txFrom
-  suffix, append-only), with the row, built marker, build streamed, format 16; RAM: composite + tuple-keyed sidecar.
-  Asked: pins and paging used, keys planned, rows a day per type; sigma: prefix (device only) needed? Waiting for
-  acceptance. Lands on main untagged during the tag hold.
+- **RELDISK phase 2** (door, minor; ON HOLD 29 Oct, ai-soc and sigma) — a composite rel index and
+  Rels().ByTypeAndProperties. Design sent 29 Oct; sigma accepted the shape (reads: TxAt plus the whole valid window,
+  unpaged, like ByTypeAndProperty; no prefix reads), then both asked to hold: nothing reads a multi-key rel probe
+  today (sigma's doors read one selective single-key index and filter; ai-soc declares single-key rel indexes only).
+  The NETWORK (device, local_port) ask was ai-soc's own (28 Oct, RELDISK) and predates sigma's SRCMASK door. Resume
+  only if ai-soc's Flux run shows a lazy edge source with many candidates per kept row and real read volume; sigma
+  then asks with the numbers.
 - **VALIDTOPURGE** (found 28 Oct by RELDISK's race test; fix, patch) — badger `PurgeNodesByLabelValidToBefore`
-  dereferences `n.Temporal()` of every node of the label and panics on a node stored without temporal metadata
-  (badgerstore_retention_purge.go:81). Through pkg/graph every row is stamped; a direct badger caller panics. Fix: an
-  unstamped node is open (never purged by validity). After v4.92.0.
+  dereferenced `n.Temporal()` and panicked on a node stored without temporal metadata. Fixed on branch validtopurge
+  (cf0cbdaa): an unstamped node is open, never purged by validity (as memory's purge). Red in
+  tasks/evidence/VALIDTOPURGE/; 2 of 2 mutations caught. Lands on main untagged (tag hold); tagged as a patch when the
+  hold lifts.
 - **CLEARGAP** (seen 28 Oct building RELDISK; unconfirmed) — `Clear`'s DropPrefix list omits `0x0A` and `0x0B`, so
   on-disk property and temporal index entries may survive a `Clear`. First a red test; a patch if it holds.
 - **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
