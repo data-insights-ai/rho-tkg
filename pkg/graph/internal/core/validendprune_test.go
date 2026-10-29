@@ -345,6 +345,9 @@ func TestValidEndAfterAcrossOpens(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe(g, "read-only")
+	if ok, err := g.Index.PropertyIndexValidEndListed("D", "ov_h1"); err != nil || !ok {
+		t.Errorf("read-only over a marked definition: listed %v, %v, want true", ok, err)
+	}
 	if st := probe(g, "read-only, read again"); st.Refined != 0 || st.Pruned == 0 {
 		t.Errorf("read-only: %+v, want pruned from the bounds the last open refined, none refined", st)
 	}
@@ -362,6 +365,9 @@ func TestValidEndAfterAcrossOpens(t *testing.T) {
 	}
 	if st := probe(g, "read-only after an unlisted open"); st.Pruned != 0 {
 		t.Errorf("read-only after an unlisted open: %+v, want nothing pruned (the bounds are not trusted)", st)
+	}
+	if ok, err := g.Index.PropertyIndexValidEndListed("D", "ov_h1"); err != nil || ok {
+		t.Errorf("read-only after an unlisted open: listed %v, %v, want false", ok, err)
 	}
 	_ = g.Close()
 }
@@ -568,5 +574,96 @@ func TestTieredValidEndEventShardNode(t *testing.T) {
 	want := storepkg.PropertyIndexValidEndStats{Pruned: 2, UnknownRead: 2, Refined: 2}
 	if st, err := g.Index.PropertyIndexValidEndStats(); err != nil || st != want {
 		t.Errorf("%+v, %v: want %+v (the 2 reference nodes read, refined, then pruned; the event shard's node never refined there)", st, err, want)
+	}
+}
+
+// TestPropertyIndexValidEndListed (VALIDENDLISTED): the check answers true
+// exactly where a ValidEndAfter lookup prunes from the index entries: a listed
+// definition on disk whose bounds are trusted; on tiered, a reference label's.
+// Everywhere else false, without an error.
+func TestPropertyIndexValidEndListed(t *testing.T) {
+	t.Parallel()
+	listing := []storepkg.PropertyIndexValidEnd{{Label: "D", KeyPrefix: "ov_h"}, {Label: "E", KeyPrefix: "ov_h"}, {Label: "R", KeyPrefix: "ov_h"}}
+	onDisk := []string{"D", "E"} // R's indexes stay in RAM
+	open := map[string]func() *Core{
+		"memory": func() *Core {
+			g, err := New(Config{Store: memory.New()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return g
+		},
+		"badger": func() *Core {
+			g, err := New(Config{BadgerInMemory: true, PropertyIndexOnDiskLabels: onDisk, PropertyIndexValidEnd: listing})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return g
+		},
+		"badger unlisted": func() *Core {
+			g, err := New(Config{BadgerInMemory: true, PropertyIndexOnDiskLabels: onDisk})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return g
+		},
+		"tiered": func() *Core { // E is an event label
+			ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), ShardWindow: time.Hour, RefLabels: []string{"D", "R"},
+				PropertyIndexOnDiskLabels: onDisk, PropertyIndexValidEnd: listing})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ts.PropertyIndexValidEndListed(1, "ov_h1") { // no label names before a graph installs them
+				t.Error("tiered without label names: listed")
+			}
+			g, err := New(Config{Store: ts})
+			if err != nil {
+				_ = ts.Close()
+				t.Fatal(err)
+			}
+			return g
+		},
+	}
+	for name, mk := range open {
+		g := mk()
+		t.Cleanup(func() { _ = g.Close() })
+		listed := func(label, key string) bool {
+			t.Helper()
+			ok, err := g.Index.PropertyIndexValidEndListed(label, key)
+			if err != nil {
+				t.Fatalf("%s %s/%s: %v", name, label, key, err)
+			}
+			return ok
+		}
+		if listed("D", "ov_h1") || listed("Nope", "ov_h1") {
+			t.Errorf("%s: listed before any index or label exists", name)
+		}
+		for _, def := range [][2]string{{"D", "ov_h1"}, {"D", "other"}, {"E", "ov_h1"}, {"R", "ov_h1"}} {
+			if err := g.Index.CreateProperty(def[0], def[1]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want := map[string]bool{"badger": true, "tiered": true}[name]
+		if got := listed("D", "ov_h1"); got != want {
+			t.Errorf("%s: D/ov_h1 listed %v, want %v", name, got, want)
+		}
+		if got := listed("E", "ov_h1"); got != (name == "badger") {
+			t.Errorf("%s: E/ov_h1 listed %v, want %v (on tiered E's nodes live on event shards)", name, got, name == "badger")
+		}
+		if listed("D", "other") || listed("R", "ov_h1") {
+			t.Errorf("%s: a key not listed, or a listed label's index in RAM, reported listed", name)
+		}
+		if err := g.Index.DeleteProperty("D", "ov_h1"); err != nil {
+			t.Fatal(err)
+		}
+		if listed("D", "ov_h1") {
+			t.Errorf("%s: dropped D/ov_h1 still listed", name)
+		}
+		if _, err := g.Index.PropertyIndexValidEndListed("", "ov_h1"); err == nil {
+			t.Errorf("%s: empty label: no error", name)
+		}
+		if _, err := g.Index.PropertyIndexValidEndListed("D", "tkg_valid_from"); !errors.Is(err, types.ErrReservedPrefix) {
+			t.Errorf("%s: reserved key: %v, want ErrReservedPrefix", name, err)
+		}
 	}
 }

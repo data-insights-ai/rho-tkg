@@ -187,8 +187,14 @@ func TestPropertyIndexValidEnd_RefineGuards(t *testing.T) {
 	}
 
 	nodes, probes = lookup(50)
+	if !bs.PropertyIndexValidEndListed(d, "ov_h") {
+		t.Error("before Clear: D/ov_h not listed")
+	}
 	if err := bs.Clear(); err != nil {
 		t.Fatal(err)
+	}
+	if bs.PropertyIndexValidEndListed(d, "ov_h") {
+		t.Error("after Clear: D/ov_h still listed")
 	}
 	if err := bs.CreatePropertyIndex(d, "ov_h"); err != nil {
 		t.Fatal(err)

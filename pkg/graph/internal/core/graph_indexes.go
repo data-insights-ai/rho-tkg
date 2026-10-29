@@ -342,6 +342,30 @@ func (i *IndexOps) PropertyIndexStats() ([]storepkg.PropertyIndexStat, error) {
 	return out, nil
 }
 
+// PropertyIndexValidEndListed reports whether a QueryOpts.ValidEndAfter lookup
+// on (label, propertyKey) prunes from the index entries without reading rows
+// (VALIDENDLISTED): the definition is listed in PropertyIndexValidEnd, on disk
+// and its bounds trusted; on tiered, a reference label's. False, without an
+// error, everywhere else (no listing, no index, an index in RAM, a store
+// without pruning). In memory, no I/O.
+func (i *IndexOps) PropertyIndexValidEndListed(label, propertyKey string) (bool, error) {
+	c := i.c
+	var out bool
+	err := c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+			return err
+		}
+		cap, ok := c.store.(storepkg.PropertyIndexValidEndListedCapability)
+		tok, _ := c.labels.Lookup(label) // 0 for an unknown label: no definition has it
+		out = ok && cap.PropertyIndexValidEndListed(tok, propertyKey)
+		return nil
+	})
+	return out, err
+}
+
 // PropertyIndexValidEndStats counts the store's valid-end pruning since it
 // opened (VALIDENDPRUNE): entries a QueryOpts.ValidEndAfter lookup left out,
 // entries it read without a bound, bounds reads wrote, refines skipped.

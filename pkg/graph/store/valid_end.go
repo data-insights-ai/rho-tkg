@@ -57,6 +57,15 @@ type PropertyIndexValidEndCapability interface {
 	PropertyIndexValidEndStats() PropertyIndexValidEndStats
 }
 
+// PropertyIndexValidEndListedCapability is OPTIONAL (VALIDENDLISTED): whether a
+// ValidEndAfter lookup on the property index (labelToken, key) prunes from its
+// entries without reading rows (the definition is listed, on disk and its
+// bounds trusted). In memory, no I/O; false for every other definition. A
+// create of the index can turn it true, a drop or Clear false.
+type PropertyIndexValidEndListedCapability interface {
+	PropertyIndexValidEndListed(labelToken uint16, key string) bool
+}
+
 // ValidEndCandidate is one entity a valid-end bounded effective scan reads
 // (store.RelValidEndCapability): its ID (a types.RelID or types.NodeID value),
 // the index's write generation for it, Stamp — every transaction stamp of its

@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.95.0] - 2026-10-29
+
+### Added
+
+- **VALIDENDLISTED** (sigma's request after v4.94.0). sigma's bench (BenchmarkPagedProbeDays, 150 keys, cut 300):
+  with a listed definition its pager takes 1.56 ms (node) and 6.2 ms (reach6h); without one, `ValidEndAfter`'s
+  exact filter reads every candidate's timeline, 47 and 51 ms, slower than sigma's own skip (~19 ms). So sigma
+  passes the bound only where it prunes. `g.Index().PropertyIndexValidEndListed(label, key) (bool, error)` is true
+  when a `ValidEndAfter` lookup on (label, key) prunes from the index entries without reading rows: the definition
+  is listed, on disk and its bounds trusted; on tiered, a reference label's (an event label's nodes are read whole
+  on their shards). False, without an error, everywhere else; errors only for a closed graph and an invalid label
+  or a reserved key. A look at memory under the index read lock, no I/O. New optional capability
+  `store.PropertyIndexValidEndListedCapability` on badger and tiered. Tests: core `TestPropertyIndexValidEndListed`
+  (memory, badger with and without the listing, tiered: before the index, listed, another key, a listed label in
+  RAM, an event label, after a drop, a bare tiered store without label names, the refusals),
+  `TestValidEndAfterAcrossOpens` (read-only over a marked and an unmarked definition), badger
+  `TestPropertyIndexValidEnd_RefineGuards` (after `Clear`), the index API's delegation. 10 of 10 mutations caught;
+  one equivalent check (a known label before the store call: an unknown label's token is 0, held by no
+  definition) is removed. GATES
+
 ## [4.94.0] - 2026-10-29
 
 ### Added

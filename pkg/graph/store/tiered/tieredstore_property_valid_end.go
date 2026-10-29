@@ -6,7 +6,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-var _ storecontract.PropertyIndexValidEndCapability = (*Store)(nil)
+var (
+	_ storecontract.PropertyIndexValidEndCapability       = (*Store)(nil)
+	_ storecontract.PropertyIndexValidEndListedCapability = (*Store)(nil)
+)
 
 // validEndSrcRef tags a probe of the reference shard: the only shard a
 // pruning lookup prunes and refines (VALIDENDPRUNE: sigma's derived rows live
@@ -57,6 +60,23 @@ func (ts *Store) RefineNodePropertyValidEnd(n *types.Node, probe storecontract.V
 	}
 	defer checkin()
 	ref.RefineNodePropertyValidEnd(n, probe, end)
+}
+
+// PropertyIndexValidEndListed implements
+// store.PropertyIndexValidEndListedCapability: a reference label's definition
+// the reference shard trusts (an event label's nodes are read whole on their
+// shards).
+func (ts *Store) PropertyIndexValidEndListed(labelToken uint16, key string) bool {
+	names := ts.labelNames.Load()
+	if names == nil || !ts.IsReferenceLabel(names.Resolve(labelToken)) {
+		return false
+	}
+	ref, checkin, err := ts.checkoutRefShard()
+	if err != nil {
+		return false
+	}
+	defer checkin()
+	return ref.PropertyIndexValidEndListed(labelToken, key)
 }
 
 // PropertyIndexValidEndStats implements store.PropertyIndexValidEndCapability:

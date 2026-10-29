@@ -20,6 +20,7 @@ type Ops interface {
 	HasProperty(label, propertyKey string) (bool, error)
 	PropertyIndexStats() ([]storepkg.PropertyIndexStat, error)
 	PropertyIndexValidEndStats() (storepkg.PropertyIndexValidEndStats, error)
+	PropertyIndexValidEndListed(label, propertyKey string) (bool, error)
 	CreateRelProperty(typeName, propertyKey string) error
 	DeleteRelProperty(typeName, propertyKey string) error
 	HasRelProperty(typeName, propertyKey string) (bool, error)
@@ -129,6 +130,21 @@ func (a *API) PropertyIndexValidEndStats() (storepkg.PropertyIndexValidEndStats,
 		return storepkg.PropertyIndexValidEndStats{}, err
 	}
 	return ops.PropertyIndexValidEndStats()
+}
+
+// PropertyIndexValidEndListed reports whether a QueryOpts.ValidEndAfter lookup
+// on (label, propertyKey) prunes from the index entries without reading rows
+// (VALIDENDLISTED, since v4.95.0): the definition is listed in
+// PropertyIndexValidEnd, on disk and its bounds trusted; on tiered, a
+// reference label's. False, without an error, everywhere else. In memory, no
+// I/O. A create of the index can turn it true; a drop, Clear or Reset false
+// (a lookup then reads every match: slower, never an error).
+func (a *API) PropertyIndexValidEndListed(label, propertyKey string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.PropertyIndexValidEndListed(label, propertyKey)
 }
 
 // CreateRelProperty creates a relationship property index on the given rel type

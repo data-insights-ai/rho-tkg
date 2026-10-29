@@ -13,7 +13,10 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-var _ storecontract.PropertyIndexValidEndCapability = (*Store)(nil)
+var (
+	_ storecontract.PropertyIndexValidEndCapability       = (*Store)(nil)
+	_ storecontract.PropertyIndexValidEndListedCapability = (*Store)(nil)
+)
 
 // Valid-end bounds in on-disk property index entries (VALIDENDPRUNE, sigma's
 // paged-row probes).
@@ -304,6 +307,15 @@ func (bs *Store) RefineNodePropertyValidEnd(n *types.Node, probe storecontract.V
 	}
 	bs.wbMu.Unlock()
 	bs.validEnd.refined.Add(1)
+}
+
+// PropertyIndexValidEndListed implements
+// store.PropertyIndexValidEndListedCapability: the definition is trusted.
+func (bs *Store) PropertyIndexValidEndListed(labelToken uint16, key string) bool {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	_, trusted := bs.validEnd.trusted[indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: key}]
+	return trusted
 }
 
 // PropertyIndexValidEndStats implements store.PropertyIndexValidEndCapability.

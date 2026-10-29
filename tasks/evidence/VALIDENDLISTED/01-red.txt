@@ -1,0 +1,5 @@
+VALIDENDLISTED red (29 Oct, branch validendlisted before the implementation): the check does not exist.
+
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core]
+vet: pkg/graph/internal/core/validendprune_test.go:623:23: g.Index.PropertyIndexValidEndListed undefined (type *IndexOps has no field or method PropertyIndexValidEndListed)
