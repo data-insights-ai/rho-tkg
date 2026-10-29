@@ -207,6 +207,20 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
+- **VDICTDISK** (ai-soc 29 Oct, goal 2 RAM, BA k10291501 on v4.97.1; for the next round, no tag in the freeze) —
+  valueDict.token holds 422 MB live for 1,166,109 entries (~360 B each); the 'row' dictionary sat at its Cap
+  1,048,576 from a third of the run on. Every entry is resident per open shard (ensureLoaded, reappend never
+  shrinks): ~4 open day shards, ~1.5 GB steady ESTIMATE. Asks: (1) ValueDictionaryStats gains Entries and Bytes per
+  dictionary; (2) value -> token through the shard's vdict/ keys with a bounded LRU instead of the resident byValue
+  + handles + vals, so a dictionary's RAM is a budget. First: measure the per-entry cost; token() keys byValue by
+  the caller's string, not the interned copy, so a runtime entry may hold its bytes twice. Done when: an entry's
+  resident cost is measured and bounded by a budget, with the stats to size it.
+- **TEMPIDX-2** (ai-soc 29 Oct, goal 2 RAM, same run) — the node TemporalIndex is setByID 299 + setPos 131 +
+  Extend 124 = 554 MB live at the end (~120 B a node), resident for hot and warm shards (TemporalIndexOnDisk only
+  speeds the open); sortedChunks.add is 389 MB (8 B a member, ~49 M members: postings not on the disk lists,
+  numKeys/strKeys, numeric buckets, IDSet; never spilled). Asks: fold posByID into byID; a disk form for warm shards
+  (the hot day in RAM); numeric buckets and IDSet behind PropertyIndexOnDisk. Tonight's run prints the labels not on
+  disk and their node counts. Done when: each part is measured and fixed or listed with its cost.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
