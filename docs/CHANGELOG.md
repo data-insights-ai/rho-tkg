@@ -24,7 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestValidEndAfterAcrossOpens` (read-only over a marked and an unmarked definition), badger
   `TestPropertyIndexValidEnd_RefineGuards` (after `Clear`), the index API's delegation. 10 of 10 mutations caught;
   one equivalent check (a known label before the store call: an unknown label's token is 0, held by no
-  definition) is removed. GATES
+  definition) is removed. ci-docker green; sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean;
+  scale probe unchanged.
 
 ## [4.94.0] - 2026-10-29
 

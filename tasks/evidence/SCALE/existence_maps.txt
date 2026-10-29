@@ -94,3 +94,11 @@ listing):
 Reading: no change once the load settled (the last two pairs 9.4 / 9.5 against 9.6 / 9.6 s); the first three ran
 under a falling load of 43. Without a listing the write path adds one atomic load per buffered batch and one per
 node update.
+
+v4.95.0 release scale probe (VALIDENDLISTED, branch validendlisted 1b648195, Derived, 1 M nodes + 1 M rels (-rels),
+load average ~9; alternated with v4.94.0 from the module cache):
+  v4.95.0   insert 9.1 / 9.1 / 9.0 / 9.3 / 9.1 s   clean reopen 0.10 / 0.11 / 0.11 / 0.11 / 0.11 s
+            heap after reopen +176.0 / +176.8 / +176.5 / +176.5 / +176.6 MB
+  v4.94.0   insert 9.2 / 9.1 / 9.2 / 9.1 / 9.1 s   clean reopen 0.10 / 0.11 / 0.11 / 0.11 / 0.11 s
+            heap after reopen +173.7 / +174.1 / +175.3 / +173.6 / +176.8 MB
+Reading: no change (VALIDENDLISTED adds a read-only door; the write path is untouched).
