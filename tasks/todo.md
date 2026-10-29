@@ -134,7 +134,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   stats door g.Index().PropertyIndexValidEndStats(); the sweep found tiered with store-wide PropertyIndexOnDisk
   opening its shards without label names (bounds lost at every reopen; red kept, fixed); 80 of 82 mutations
   caught (two performance guards kept), five equivalent or unreachable pieces removed; docs and CHANGELOG
-  4.94.0. Next: ci-docker, scale probe, consumers, release v4.94.0, send sigma the version.
+  4.94.0. Gate: ci-docker green; sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean; scale probe
+  unchanged (2e419ef2). Next: release v4.94.0, send sigma the version.
 - **RELDISK phase 2** (door, minor v4.95.0, after VALIDENDPRUNE; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
