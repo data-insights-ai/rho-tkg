@@ -183,6 +183,7 @@ func (bs *Store) relPurgeCandidates(typeToken uint16, before types.Instant, chun
 	if err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
+		opts.Prefix = prefix // stops the skip of deleted entries at the type's end (ITERTOMB)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(storepkg.RelTypeIndexKey(typeToken, cur.live.SnowflakeID()+1)); it.ValidForPrefix(prefix); it.Next() {

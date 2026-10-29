@@ -21,6 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a length check no key under the prefix fails. 200 calls beside 20,000 deleted versions: truncate 594x, trim 787x,
   compact 543x their time before the deletes, now 0.9-1.0x (badger `TestIterTombHistoryWalksDoNotWalkDeletedEntries`).
   2 of 2 mutations caught.
+- **ITERTOMB**, the retention purge's walks. The walk of a relationship type's index for purge candidates and the
+  walk of a purged node's adjacency keys set their prefix as `IteratorOptions.Prefix`. 200 calls beside 20,000
+  deleted entries after them: 735x and 1,293x their time before the deletes, now 0.9-1.1x (badger
+  `TestIterTombPurgeWalksDoNotWalkDeletedEntries`). 2 of 2 mutations caught. Listed, not changed, as whole-keyspace
+  walks by design: the orphan-relationship repair and erasure's walk for a relationship's index keys (its endpoints
+  are unknown), and the corruption-path purges of the property and temporal index tokens.
 
 ## [4.97.1] - 2026-10-29
 

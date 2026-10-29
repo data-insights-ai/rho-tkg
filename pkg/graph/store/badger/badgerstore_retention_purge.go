@@ -313,6 +313,7 @@ func (bs *Store) purgedRelsForNodeLocked(nid types.NodeID) []storecontract.Purge
 		_ = bs.view(func(txn *badgerv4.Txn) error {
 			opts := badgerv4.DefaultIteratorOptions
 			opts.PrefetchValues = false
+			opts.Prefix = prefix // stops the skip of deleted entries at the node's end (ITERTOMB)
 			it := txn.NewIterator(opts)
 			defer it.Close()
 			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {

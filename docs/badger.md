@@ -257,9 +257,10 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
     entries after the node's took 1,066x their time without it, the label-index scan 655x, the property prefix scan
     301x; now 0.4-1.4x (`TestIterTomb*`). The property range walks end at a value, which `Prefix` cannot express,
     so they take PROPSEEK's `AllVersions` shape (ITERTOMB, unreleased: 424x and 442x, now 0.7-0.9x); the history
-    walks of truncation, trim, compaction, purge and erasure set their prefix (594x, 787x and 543x, now 0.9-1.0x).
-    Gap: the retention purge's adjacency walk per purged node and the erasure and repair walks (ITERTOMB in
-    tasks/todo.md).
+    walks of truncation, trim, compaction, purge and erasure set their prefix (594x, 787x and 543x, now 0.9-1.0x),
+    and so do the retention purge's walks of a type's index and a purged node's adjacency (735x and 1,293x, now
+    0.9-1.1x). The walks of a whole keyspace pay for every deleted entry in it by design: the orphan-relationship
+    repair and erasure's walk for a relationship's index keys, and the corruption-path purges of the index tokens.
 
 ## 8. The complete API
 

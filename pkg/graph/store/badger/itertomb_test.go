@@ -385,3 +385,80 @@ func TestIterTombHistoryWalksDoNotWalkDeletedEntries(t *testing.T) {
 		t.Fatalf("NodeHistory = %d versions, %v; want 2", len(vs), err)
 	}
 }
+
+// TestIterTombPurgeWalksDoNotWalkDeletedEntries: the retention purge's walks
+// of one relationship type's index and of one node's adjacency, followed by
+// 20,000 deleted entries (the relationships of the next type, which start at
+// the nodes after it), cost what they cost before.
+func TestIterTombPurgeWalksDoNotWalkDeletedEntries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("20,000 nodes")
+	}
+	const n, probes = 20_000, 200
+	bs, err := New(Config{Dir: t.TempDir(), AdjacencyIndexOnDisk: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	a, b := types.NodeID(existMapBase), types.NodeID(existMapBase+1)
+	nodes := []*types.Node{types.NewNode(a, 1, nil), types.NewNode(b, 1, nil)}
+	for i := range n {
+		nodes = append(nodes, types.NewNode(types.NodeID(existMapBase+10+int64(i)), 1, nil))
+	}
+	if err := bs.PutNodesBatch(nodes); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutRelationship(types.NewRelationship(types.RelID(existMapBase+100_000), 1, a, b)); err != nil {
+		t.Fatal(err)
+	}
+	for i := range n {
+		r := types.NewRelationship(types.RelID(existMapBase+100_001+int64(i)), 2, types.NodeID(existMapBase+10+int64(i)), b)
+		if err := bs.PutRelationship(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	walks := map[string]func(){
+		"relPurgeCandidates": func() {
+			if ids, more, err := bs.relPurgeCandidates(1, types.Instant(1<<62), 100); err != nil || more || len(ids) != 1 {
+				t.Fatalf("relPurgeCandidates = %v, %v, %v; want the type-1 relationship", ids, more, err)
+			}
+		},
+		"purgedRelsForNodeLocked": func() {
+			bs.idxMu.RLock()
+			got := bs.purgedRelsForNodeLocked(a)
+			bs.idxMu.RUnlock()
+			if len(got) != 1 {
+				t.Fatalf("purgedRelsForNodeLocked = %v; want a's relationship", got)
+			}
+		},
+	}
+	timed := func(walk func()) time.Duration {
+		return bestOf3(func() {
+			for range probes {
+				walk()
+			}
+		})
+	}
+	before := map[string]time.Duration{}
+	for name, walk := range walks {
+		before[name] = timed(walk)
+	}
+	for i := range n {
+		if err := bs.DeleteRelationship(types.RelID(existMapBase + 100_001 + int64(i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	for name, walk := range walks {
+		after := timed(walk)
+		t.Logf("%d %s: %v before the deletes, %v after (%.1fx)", probes, name, before[name], after, float64(after)/float64(before[name]))
+		if after > 10*before[name] {
+			t.Errorf("%d %s take %v after 20,000 following entries were deleted, %v before: they walk the deleted entries", probes, name, after, before[name])
+		}
+	}
+}

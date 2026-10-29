@@ -1,0 +1,8 @@
+--- FAIL: TestIterTombPurgeWalksDoNotWalkDeletedEntries (6.25s)
+    itertomb_test.go:459: 200 relPurgeCandidates: 777.749µs before the deletes, 693.085335ms after (891.1x)
+    itertomb_test.go:461: 200 relPurgeCandidates take 693.085335ms after 20,000 following entries were deleted, 777.749µs before: they walk the deleted entries
+    itertomb_test.go:459: 200 purgedRelsForNodeLocked: 625.594µs before the deletes, 984.560667ms after (1573.8x)
+    itertomb_test.go:461: 200 purgedRelsForNodeLocked take 984.560667ms after 20,000 following entries were deleted, 625.594µs before: they walk the deleted entries
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	6.268s
+FAIL
