@@ -10,7 +10,7 @@ Each item: one sentence, then when it is done and what it waits for.
 
 - **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
   Released v4.96.2 (9904fd3b), v4.97.0 (bad01e13) and, on ai-soc's ask, v4.97.1 ITERTOMB (0e11125b): tag CI and
-  main green, ai-soc and sigma notified. FREEZE (René, 29 Oct): no tag until ai-soc says "run shipped".
+  main green, ai-soc and sigma notified. FREEZE (René, 29 Oct) ended: Flux k10291501 shipped; v4.97.2 in release.
 Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
@@ -220,9 +220,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   erasure, the corruption-path token purges maintainPropertyIndexesPurge / maintainTemporalIndexDiskPurge,
   nodeLabelTokensFromKeyspaceLocked on the error path, incomingIndexEntriesFromKeyspaceLocked repair, open-time
   loads). All walks fixed or listed; consumers build and vet against it. v4.97.2 named on the branch (d8b2ae8e);
-  its release STOPPED (René via ai-soc, 29 Oct: FREEZE, this run pairs sigma v0.11.151 with rho v4.97.1; no tag,
-  no ci-docker or race suite until ai-soc says "run shipped"). After that: ci-docker, scale probe, main, tag
-  v4.97.2, notify; it rides the next run's one release round.
+  the FREEZE ended (ai-soc 29 Oct: Flux k10291501 shipped on sigma v0.11.151 + rho v4.97.1). Release resumed:
+  rebased (00e0f2b6), ci-docker running; then scale probe, main, tag v4.97.2, notify; it goes into the next
+  run's release round.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
