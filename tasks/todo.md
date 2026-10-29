@@ -130,9 +130,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   implemented (ed312498): core filters exactly on every store with a paging loop; badger and tiered's reference
   shard prune and refine (write-sequence stripes, history-only writes reset in their batch, Clear and reopen
   make old probes stale). Tests green: TestValidEndAfter (memory, badger, tiered), ...AcrossOpens (persisted
-  bounds, format 14, relisting resets, read-only), ...Concurrent (-race), badger RefineGuards. Next: mutation
-  sweep, docs, gate, release.
-- **RELDISK phase 2** (door, minor v4.94.0, after IDXSTATS; sigma's 2b, after its COUNTROWS) — the composite rel
+  bounds, format 14, relisting resets, read-only), ...Concurrent (-race), badger RefineGuards. 35af3ba7: the
+  stats door g.Index().PropertyIndexValidEndStats(); the sweep found tiered with store-wide PropertyIndexOnDisk
+  opening its shards without label names (bounds lost at every reopen; red kept, fixed); 80 of 82 mutations
+  caught (two performance guards kept), five equivalent or unreachable pieces removed; docs and CHANGELOG
+  4.94.0. Next: ci-docker, scale probe, consumers, release v4.94.0, send sigma the version.
+- **RELDISK phase 2** (door, minor v4.95.0, after VALIDENDPRUNE; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
 - **VALIDTOPURGE** (found 28 Oct by RELDISK's race test; fix, patch) — badger `PurgeNodesByLabelValidToBefore`
