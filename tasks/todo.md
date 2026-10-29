@@ -242,13 +242,18 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 
 ## Next
 
-- **STALEBUILD** (fix, patch after v4.96.0; found profiling COMPDISK's build open at 30.8 M postings) — an
-  entity-index build at open collects every stale entry key before deleting them (`entityIndexOpen.stale`,
-  `KeyCopy` per key, badgerstore_entity_index.go:818 member, :846 composite): 875 MB of slice plus 1.4 GB of key
-  copies at 31 M stale entries (a store toggled RAM -> disk -> RAM -> disk). Stream the deletes in
-  commitEntityIndexOpen instead. Same shape: createCompositePropertyIndexOnDiskLocked collects every entry of a
-  populated label before writing (~120 B a posting). A first conversion has no stale entries: 145.5 s, peak RSS
-  7.1 GB vs 2.4 GB plain (tiered, 30.8 M; badger's write path), in the v4.96.0 notes (ce0f3ce7).
+- **STALEBUILD** (fix, patch v4.96.1; found profiling COMPDISK's build open at 30.8 M postings) — an entity-index
+  build at open collected every stale entry key before deleting them (`entityIndexOpen.stale`, member and
+  composite): 875 MB of slice plus 1.4 GB of key copies at 31 M stale entries (a store toggled RAM -> disk -> RAM
+  -> disk). Branch stalebuild 0d4b5e18: the plan keeps the heads, commitEntityIndexOpen streams the deletes into
+  its batch. Red at 200 k nodes: +28 MB live heap as the build writes over the first build's; green -9 to +3 MB.
+  5 of 5 mutations caught. badger, core, tiered green. Measuring at 31 M, then release.
+- **CREATEPEAK** (fix, later; same family, not in STALEBUILD) — the on-disk creates collect every entry of a
+  populated label before writing (single-key: diskOps and memberOps, badgerstore_index.go; composite:
+  createCompositePropertyIndexOnDiskLocked, ~120 B a posting), and a drop collects every key of a definition
+  (entityIndexDropOpsLocked). Chunking the merge needs care: the member scan's propTxGen retry assumes one merge
+  under the lock. Rare (definitions are created at startup); scope when a consumer creates on a big store.
+
 - **CACHESTATS** (ai-soc 29 Oct, TEMPIDX; door, minor, after COMPDISK and RELDISK phase 2) — a per-shard
   entity-cache bytes stat (nodes and rels, clean and dirty apart), readable like `ShardAccessStats`, so ai-soc sizes
   `CacheBudgetBytes` from a measurement. ai-soc sets no CacheCapacity/CacheBudgetBytes today (BlockCacheSize 64 MB).
