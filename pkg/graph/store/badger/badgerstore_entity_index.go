@@ -777,7 +777,7 @@ type entityIndexOpen struct {
 	keep     map[string]struct{} // the markers this open keeps
 	canBuild bool
 	targets  []entityBuildTarget // the definitions this open builds
-	stale    [][]byte            // their entries before the build
+	stale    [][]byte            // the heads of their entries before the build
 	mark     []writeOp           // built markers to set (with the format marker)
 	level    uint16              // the format marker the marks raise to
 }
@@ -812,13 +812,7 @@ func (p *entityIndexOpen) place(bs *Store, txn *badgerv4.Txn, rel bool, scope ui
 	if !p.canBuild {
 		return false
 	}
-	for _, head := range bs.entityIndexHeads(rel, scope, propertyKey) {
-		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: head})
-		for it.Rewind(); it.Valid(); it.Next() {
-			p.stale = append(p.stale, it.Item().KeyCopy(nil))
-		}
-		it.Close()
-	}
+	p.stale = append(p.stale, bs.entityIndexHeads(rel, scope, propertyKey)...)
 	p.targets = append(p.targets, entityBuildTarget{rel: rel, scope: scope, propertyKey: propertyKey})
 	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{1}})
 	p.level = max(p.level, storepkg.EntityIndexStoreFormatVersion)
@@ -841,16 +835,16 @@ func (p *entityIndexOpen) placeComposite(bs *Store, txn *badgerv4.Txn, key index
 	if !p.canBuild {
 		return false
 	}
-	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: head})
-	for it.Rewind(); it.Valid(); it.Next() {
-		p.stale = append(p.stale, it.Item().KeyCopy(nil))
-	}
-	it.Close()
+	p.stale = append(p.stale, head)
 	p.targets = append(p.targets, entityBuildTarget{scope: key.LabelToken, composite: keys, head: head})
 	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{1}})
 	p.level = storepkg.CompositeDiskStoreFormatVersion
 	return true
 }
+
+// entityIndexOpenCommitHook, set only by tests, runs as commitEntityIndexOpen
+// starts writing.
+var entityIndexOpenCommitHook func()
 
 // commitEntityIndexOpen builds the planned definitions' entries from every
 // row and writes them, after deleting the entries they had, with their
@@ -870,12 +864,32 @@ func (bs *Store) commitEntityIndexOpen(p *entityIndexOpen) error {
 	if len(p.targets) == 0 && len(unmark) == 0 {
 		return nil
 	}
+	if entityIndexOpenCommitHook != nil {
+		entityIndexOpenCommitHook()
+	}
 	wb := bs.db.NewWriteBatch()
 	defer wb.Cancel()
-	for _, key := range append(p.stale, unmark...) {
+	for _, key := range unmark {
 		if err := wb.Delete(key); err != nil {
 			return fmt.Errorf("graph: entity-index build at open: %w", err)
 		}
+	}
+	// The planned definitions' earlier entries, streamed into the batch: one
+	// key at a time, never all of them (STALEBUILD).
+	if err := bs.view(func(txn *badgerv4.Txn) error {
+		for _, head := range p.stale {
+			it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: head})
+			for it.Rewind(); it.Valid(); it.Next() {
+				if err := wb.Delete(it.Item().KeyCopy(nil)); err != nil {
+					it.Close()
+					return err
+				}
+			}
+			it.Close()
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("graph: entity-index build at open: %w", err)
 	}
 	set := func(op writeOp) error { return wb.SetEntry(badgerv4.NewEntry(op.key, op.value)) }
 	var rels, nodes []entityBuildTarget

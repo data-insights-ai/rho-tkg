@@ -1,0 +1,5 @@
+--- FAIL: TestEntityIndexOpenStaleStreamed (8.71s)
+    badgerstore_entity_index_stale_test.go:82: live heap as the build writes 28 MB over the first build's: the stale keys are held
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	8.739s
+FAIL
