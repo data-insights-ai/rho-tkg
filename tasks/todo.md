@@ -219,8 +219,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   caught. Listed, not changed: whole-keyspace walks by design (relationshipIndexKeysForRel for orphan repair and
   erasure, the corruption-path token purges maintainPropertyIndexesPurge / maintainTemporalIndexDiskPurge,
   nodeLabelTokensFromKeyspaceLocked on the error path, incomingIndexEntriesFromKeyspaceLocked repair, open-time
-  loads). All walks fixed or listed; next: ci-docker on itertomb2, then onto main untagged; tagged as the next
-  patch when ai-soc lifts the hold.
+  loads). All walks fixed or listed; consumers build and vet against it. ci-docker on itertomb2 PAUSED at
+  ai-soc's ask (load 13, their final Flux gate): rerun when ai-soc says the run has shipped, then onto main;
+  tagged as the next patch when the hold lifts.
 - **BADGER** (René 24 Oct, the next milestone) — rho fully understands badger, verifies its own badger use by tests,
   then optimises badger for the multi-tier storage. Done when: the three steps below are ticked.
 
