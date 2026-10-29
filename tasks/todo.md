@@ -123,39 +123,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   main green; sigma and ai-soc notified. g.Index().PropertyIndexValidEndListed(label, key): true where a
   ValidEndAfter lookup prunes (listed, on disk, trusted; tiered: reference labels), false without an error
   elsewhere, no I/O; a true goes stale only by a drop, Clear or Reset (then a lookup is slow, never an error).
-- **COMPDISK** (ai-soc 29 Oct, René's standing yes; door, minor) — composite node property indexes of a label
-  in PropertyIndexOnDiskLabels answered from disk like single-key ones (current entries, members for pinned reads,
-  no RAM sidecar; built marker, rebuilt at the next writable open; format raise fine). ai-soc's BA k10282355 with
-  IDXSTATS: property-index RAM 423 MB at 3,000 s, 808 MB at 7,500 s; after moving single-key indexes to disk what
-  stays is DerivedPage (ov_namespace, ov_rel) 253 MB at 7,500 s (120 MB at 3,000 s) and Derived's 10 MB, growing
-  with valid time. Readers: sigma's pager, exact values at a pin. Node counterpart of RELDISK phase 2 (same
-  on-disk composite key layout). Order settled from ai-soc's data: NETWORK's composite does not exist yet (0 RAM),
-  DerivedPage's is 253 MB and growing, so COMPDISK first as v4.96.0. Scoping: a pinned composite read takes its
-  candidates from the single-key member sets (temporal.go forEachNodePropertyCandidateID); the composite serves
-  the current part and the ID pages only, so the disk form may need current entries alone. Asked ai-soc for
-  DerivedPage's IDXSTATS rows and sigma for its doors. Answers: no single-key ov_namespace / ov_rel index;
-  DerivedPage composite 287 tuples, 30.9 M postings, 252.9 MB (8.2 B a posting); Derived's 30 tuples, 1.24 M,
-  10.2 MB. sigma reads it once per paged relation at restore, current only (ByLabelAndProperties, Depth RefDepth),
-  never per cut, never pinned. Design sent to both: 0x0C kind 4, one current entry per node (head names every
-  key), written in the row's batch, built marker per definition, build at the next writable open, format 15, no
-  member entries (pinned reads keep today's path). Accepted by both (29 Oct). Readers (sigma): DerivedPage's
-  restore listing per reopen; Derived's republish voids per program switch (up to ~450 k nodes) and ListDerived
-  pages (Limit 1024, After) at restore; none per cut. Before the tag: time the listing at 1 M and 10 M nodes, RAM
-  vs disk, badger and tiered (sigma), and the build at the first open at 31 M nodes (ai-soc: it delays /ready).
-  Branch compdisk: built (e53141e0); sweep done (085089ef): 57 of 60 mutants caught, 3 performance guards, 7
-  equivalent pieces removed; an open without a registry keeps a marked composite in RAM; the tuple payload is
-  stored raw (length-prefixed parts); a composite-only open build skips history rows. Docs drafted; config
-  comments (4803ed7d). Measured at 1 M (badger and tiered at DepthHot): listing RAM vs disk within noise, 4.4-6.5
-  us a node against sigma's 13; disk build at open 3.9 s (badger), 4.4 s (tiered). 10 M (11 M postings): listing
-  RAM 6.2 / disk 6.7 us (badger), RAM 6.0 / disk 7.2-8.5 (tiered, RAM again 8.1: noise); build open 52.6 s
-  (badger), 51.3 s (tiered); live heap right after the building open 2.3 / 2.0 GB vs 0.64 / 0.45 GB for a plain
-  disk open, back to 0.9 / 0.7 GB after the listings (transient; the build streams into a WriteBatch, so likely
-  badger's memtables and builders). 28 M nodes (30.8 M postings): listing 6.8 RAM / 7.6 disk (tiered); build
-  open 136-153 s; peak RSS of that open 12.6 GB (tiered) / 15.7 GB (badger) vs 2.6-3.8 GB plain; composite RAM
-  249 MB -> 0. ai-soc (René's close-and-run word, 29 Oct) pins v4.96.0 on a fresh store (builds nothing; confirmed
-  in code). Release notes committed (aa35d0fd, ce0f3ce7); ci-docker green; scale probe unchanged (3fb352c0, load
-  27-31); consumer checks, tag next. After the tag: a patch for
-  the conversion peak (profiling the build open; a create on a populated label holds every entry, ~120 B each).
+- **COMPDISK** — Released v4.96.0 (ab66d670), 29 Oct: composite node indexes of an on-disk label keep current
+  entries in 0x0C kind 4, format 15 (no rollback). Tag CI and main green; sigma (bumps to v4.96.0, sigma
+  v0.11.148) and ai-soc (pins it for the Flux run, fresh store) notified. Scale probe b98da824 -> ab66d670 after
+  the rebase. Follow-up: STALEBUILD (Next).
 - **RELDISK phase 2** (door, minor v4.97.0, after COMPDISK; sigma's 2b, after its COUNTROWS) — the composite rel
   index on disk (NETWORK device+local_port; PROCESS, REGISTRY device+tkg_valid_from) and RelOps.ByTypeAndProperties
   at a pin.
