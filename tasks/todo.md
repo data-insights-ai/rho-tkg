@@ -334,6 +334,17 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **TEMPIDX** (ai-soc 29 Oct, SCALE; analysis, no work plan yet) — BA k10282355 on v4.93.0: live heap 1,691 ->
+  2,600 MB from 3,000 to 7,500 s. Answered from code (no Flux read): the RAM property-index frames (AddKey,
+  addOrdered, IDPostings sortedChunks add/insert) leave RAM per listed label (KEYDISK) and composite (COMPDISK);
+  the TemporalIndex is one envelope a node (~110-130 B: Entries, subMax, byID, posByID), resident at runtime
+  (TemporalIndexOnDisk only speeds up the open rebuild), freed per cold shard on tiered; decodePropertyWireShared
+  is decoded nodes held (entity caches, dirty entries, caller); valueDict bounded by each dictionary's Cap; badger
+  builder bursts bounded only by NumCompactors x (8 + splits) builders x 2-3 table sizes per DB (BaseTableSize and
+  TableSizeMultiplier not exposed). Asked ai-soc for pprof -peek callers of sortedChunks add/insert and of
+  decodePropertyWireShared, the temporal-indexed labels with node counts, badger vs tiered. Candidates once the
+  data is in: fold posByID into byID (~-40 B a node), a disk form for the temporal index, a door for the badger
+  table sizes.
 - **ASOFREAD** (SCALE, sigma 27 Oct, BenchmarkStateRefOwnersRewritten at 500 cuts: 5 -> 40 ms a cut, 70 % of the CPU in
   StatePage.LoadWritten -> NodeEffectiveTimelines -> badger NodeHistoryTemporalMeta, which decodes every version of a
   node rewritten every cut). rho's record door `NodeAsOf` walks history newest-first only down to the pin (500
