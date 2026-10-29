@@ -157,3 +157,31 @@ func TestBadgerPurgeNodesByLabelBefore(t *testing.T) {
 		t.Fatalf("re-purge not a no-op: %+v", res)
 	}
 }
+
+// TestBadgerPurgeValidToUnstamped: a node stored without temporal metadata is
+// open, never purged by validity (as memory's purge), and the purge does not
+// panic on it; a closed node beside it is purged (VALIDTOPURGE).
+func TestBadgerPurgeValidToUnstamped(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+	const label = uint16(10)
+	bare := types.NodeID(idAtTimeField(1000, 1))
+	if err := bs.PutNode(types.NewNode(bare, label, nil)); err != nil {
+		t.Fatal(err)
+	}
+	closed := types.NewNode(types.NodeID(idAtTimeField(1000, 2)), label, nil)
+	closed.SetTemporal(&types.TemporalMetadata{ValidFrom: 10, ValidTo: 50})
+	if err := bs.PutNode(closed); err != nil {
+		t.Fatal(err)
+	}
+	res, err := bs.PurgeNodesByLabelValidToBefore(label, 100, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.NodesPurged != 1 {
+		t.Fatalf("purged %d, want the closed node only", res.NodesPurged)
+	}
+	if _, err := bs.GetNode(bare); err != nil {
+		t.Fatalf("the unstamped node: %v", err)
+	}
+}

@@ -78,8 +78,8 @@ func (bs *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 		if err != nil {
 			return false, err
 		}
-		vt := n.Temporal().ValidTo
-		return !bs.validAxis.Get().Open(vt) && vt < before, nil
+		tm := n.Temporal() // nil: stored without temporal metadata, open
+		return tm != nil && !bs.validAxis.Get().Open(tm.ValidTo) && tm.ValidTo < before, nil
 	})
 }
 

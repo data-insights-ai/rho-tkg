@@ -1,0 +1,25 @@
+--- FAIL: TestBadgerPurgeValidToUnstamped (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x8 pc=0xa47284]
+
+goroutine 21 [running]:
+testing.tRunner.func1.2({0xdc6e80, 0x16ffa40})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:1974 +0x232
+testing.tRunner.func1()
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:1977 +0x349
+panic({0xdc6e80?, 0x16ffa40?})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/runtime/panic.go:860 +0x13a
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).PurgeNodesByLabelValidToBefore.func1(0x36287a7ff628?)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/pkg/graph/store/badger/badgerstore_retention_purge.go:81 +0x144
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).purgeNodesByLabel(0x36287a5e0000, 0xa, 0x0, 0x36287a7ffd50)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/pkg/graph/store/badger/badgerstore_retention_purge.go:124 +0x4ff
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).PurgeNodesByLabelValidToBefore(0x0?, 0x1018?, 0x16b24e0?, 0xe8?)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/pkg/graph/store/badger/badgerstore_retention_purge.go:73 +0xa5
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.TestBadgerPurgeValidToUnstamped(0x36287a284b48)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/pkg/graph/store/badger/badgerstore_retention_purge_test.go:177 +0x1a8
+testing.tRunner(0x36287a284b48, 0xf1f4f8)
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0xea
+created by testing.(*T).Run in goroutine 1
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x4c5
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.010s
+FAIL
