@@ -209,6 +209,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   target, so ingest grows with the hardware.
 - **FREEZE** (ai-soc 30 Oct): the pair is sigma v0.11.153 + rho v4.98.3 (released: tag CI and main green, no race suite or
   probe, ai-soc's cycle equal). No tag and no race suite on the PC until ai-soc says the run shipped. Work on main untagged is fine.
+- **COLDEDGE** (ai-soc 30 Oct, SCALE; next round; blocks its 7-10 day run) — Outgoing of a reference node under
+  RelsByMint opens every cold shard per call: 1.65 s at 30 cold shards, cap 0 (TestRelsByMint_ColdEdgeOutgoingCost).
+  ai-soc's cap is 2, 64 MB block cache per open shard; a larger cap grows RAM with the archive. Done when: Outgoing cost is flat
+  in the number of cold shards, shown by a red test.
 - **RELEASE ROUND 30 Oct** (ai-soc, relaying René) — v4.97.3 (VDICTDISK) first, then v4.98.0 with TIERCLOCK and
   ValueDictionaryStats; name the version to ai-soc and sigma; sigma tags on it, then the freeze. Two asks, to be
   answered from the code with file:line: **STATEREC** (does an as-of-tx read cover sigma's page nodes across the reference and
