@@ -213,7 +213,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   day shards, on one read path, at what cost per lookup) and **PROJREAD** (can a label and property lookup return ids
   plus named properties, for sigma's GraphDerivedWriter.find).
   v4.97.3: ci-docker, consumers and the scale probe clean; tag CI and main green. v4.98.0 tagged, tag CI red on a test
-  measuring a shared process heap (and a proxy error); v4.98.1, the test in its own process, tagged: ci-docker clean, consumer check and probe skipped (test only), GitHub runs in progress.
+  measuring a shared process heap (and a proxy error); v4.98.1, the test in its own process: tag CI and main green, ai-soc and sigma notified (consumer check and probe
+  skipped, test only). Sigma tags on it after RESTARTDIFF, then the freeze. Next here: ASOFWALK's TxFrom check.
   Sent 30 Oct to ai-soc and sigma, unmeasured: STATEREC covers page nodes on one path with cost growing with
   versions; PROJREAD has no door yet (a later minor, no tag). Next to build on word: an as-of read walking back from
   the newest version, once TxFrom's rise with version is checked.
