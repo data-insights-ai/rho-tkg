@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.98.2] - 2026-10-30
+
+### Fixed
+
+- **PURGEDROP** (found on ai-soc's RESULTPURGE question; no consumer calls the purge in production). A ByAge node
+  label purge with the change-log off dropped any wholly aged-out shard holding no other node label, with every row
+  on it. A `RelsByMint` shard holding relationships and no node went with them, whatever the label, reporting 0
+  purged; so did a relationship's or a deleted node's history. A shard now goes only when each of those rows is the
+  purged label's; otherwise the row scan purges the label and the rows stay (tiered
+  `TestFastDropKeepsEdgesOnlyShard`, `TestFastDropKeepsForeignRowsBesideLabel`). 6 of 6 mutations caught.
+
 ## [4.98.1] - 2026-10-30
 
 ### Fixed

@@ -19,7 +19,8 @@ import (
 // layer's os.RemoveAll). When onlyLabel is false the shard carries other labels and is
 // NOT droppable by a single-label purge — nodeIDs/rels are empty and the caller falls
 // back to the row-scan purge. Deciding onlyLabel is CONSERVATIVE: any foreign label
-// token present forces false (a safe over-decline).
+// token, or any row that is neither those nodes' nor those relationships'
+// (hasForeignRowsLocked), forces false (a safe over-decline).
 //
 // BACKLOG 18p: genuinely read-only (checkOpen, idxMu.RLock), matching the doc claims
 // above — a caller may run this against a read-only-opened Store (e.g. a
@@ -63,7 +64,74 @@ func (bs *Store) CollectShardDropResidue(labelToken uint16) (onlyLabel bool, nod
 			touched = append(touched, pr)
 		}
 	}
+	foreign, ferr = bs.hasForeignRowsLocked(ids, seen)
+	if ferr != nil {
+		return false, nil, nil, ferr
+	}
+	if foreign {
+		return false, nil, nil, nil // rows that are not this label's: not droppable
+	}
 	return true, ids, touched, nil
+}
+
+// hasForeignRowsLocked reports whether the shard holds a relationship row,
+// current or history, outside rels, or a node history row outside ids (a live
+// node always has a label entry, which the label check reads). Such a row goes
+// with the directory but is not this purge's: a RelsByMint shard holds
+// relationships between reference nodes, and a deleted entity keeps its history
+// with no label entry. Walks the three keyspaces' keys, stopping at the first;
+// a drop is rare and already lists the label. Caller holds idxMu.
+func (bs *Store) hasForeignRowsLocked(ids []types.NodeID, rels map[types.RelID]struct{}) (bool, error) {
+	nodes := make(map[types.NodeID]struct{}, len(ids))
+	for _, id := range ids {
+		nodes[id] = struct{}{}
+	}
+	foreignKey := func(k []byte) bool {
+		switch {
+		case k[0] == storepkg.KeyHistNode && len(k) == storepkg.SizeHistKey:
+			_, ok := nodes[types.NodeID(storepkg.ParseIDFromKey(k, 1))]
+			return !ok
+		case k[0] == storepkg.KeyRel && len(k) == storepkg.SizeRelKey,
+			k[0] == storepkg.KeyHistRel && len(k) == storepkg.SizeHistKey:
+			_, ok := rels[types.RelID(storepkg.ParseIDFromKey(k, 1))]
+			return !ok
+		}
+		return false
+	}
+	foreign := false
+	bs.rangePending(func(k string, op writeOp) {
+		if !foreign && len(k) > 0 && op.opType == writeOpSet {
+			foreign = foreignKey([]byte(k))
+		}
+	})
+	if foreign {
+		return true, nil
+	}
+	err := bs.view(func(txn *badgerv4.Txn) error {
+		for _, tag := range [...]byte{storepkg.KeyRel, storepkg.KeyHistNode, storepkg.KeyHistRel} {
+			opts := badgerv4.DefaultIteratorOptions
+			opts.PrefetchValues = false
+			opts.Prefix = []byte{tag}
+			if done := func() bool {
+				it := txn.NewIterator(opts)
+				defer it.Close()
+				for it.Seek(opts.Prefix); it.ValidForPrefix(opts.Prefix); it.Next() {
+					if foreignKey(it.Item().Key()) {
+						return true
+					}
+				}
+				return false
+			}(); done {
+				foreign = true
+				return nil
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("graph: shard row scan: %w", err)
+	}
+	return foreign, nil
 }
 
 // hasForeignLabelTokensLocked reports whether the shard's label index holds any label
