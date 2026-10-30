@@ -212,7 +212,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 - **COLDEDGE** (ai-soc 30 Oct, SCALE; next round; blocks its 7-10 day run) — Outgoing of a reference node under
   RelsByMint opens every cold shard per call: 1.65 s at 30 cold shards, cap 0 (TestRelsByMint_ColdEdgeOutgoingCost).
   ai-soc's cap is 2, 64 MB block cache per open shard; a larger cap grows RAM with the archive. Done when: Outgoing cost is flat
-  in the number of cold shards, shown by a red test.
+  in the number of cold shards, shown by a red test. Also skip empty shards in the DepthAll fan-out: on ai-soc's 3-day run the
+  empty January shard of a fresh store took 571,286 cold checkouts and holds one of its two cold slots for good.
 - **STATEREC asks** (sigma's design review, 30 Oct; no hurry, after the freeze) — (1) WHOLEROW, blocking for S5: replace a page
   node's current row whole as a new version, any validity, TxFrom and belief kept, indexes following, every backend, listed
   labels only. Today's Update refuses a closed row. Needs a design: what the effective timeline shows of the older pieces.
