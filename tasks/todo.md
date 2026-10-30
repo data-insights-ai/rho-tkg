@@ -228,6 +228,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Fan-out: ai-soc prefers a declared, enforced only-ever-primary guarantee; ask sigma whether its page nodes carry a
   second label when the round is designed. Sigma 30 Oct: its writer sets one label, always primary, no PageState label;
   ai-soc's own writer still to confirm. RESTARTDIFF is sigma's, cause unknown; rho asked for the door and counts.
+- **PURGEDROP** (found 30 Oct on ai-soc's RESULTPURGE question; data loss; fix, patch v4.98.2) — a node label ByAge purge
+  with the change-log off drops a RelsByMint day shard holding edges and no node, with those edges, reporting 0 purged.
+  Red test on branch purgedropedges. ai-soc warned, no live exposure known. Done when: released.
 - **VDICTDISK** (ai-soc 29 Oct, goal 2 RAM, BA k10291501 on v4.97.1; for the next round, no tag in the freeze) —
   valueDict.token holds 422 MB live for 1,166,109 entries (~360 B each); the 'row' dictionary sat at its Cap
   1,048,576 from a third of the run on. Every entry is resident per open shard (ensureLoaded, reappend never
