@@ -242,11 +242,13 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   after the freeze. Fable review (René's go): 2 blockers, 5 majors, 4 minors, verified; ADR rewritten (fb596de3: the store
   mints in calendar windows, leases in the reference shard, field 31 reserved, all gated; f2fc2183: one cursor a
   window for both kinds, as told to sigma for MARKFROMRHO). Building on branch tierclock: step 1 (eb3a50ea,
-  Config.Clock + calendar windows + ErrManualRotation; 10 of 10 caught); next step 2 (the store mints: field 31,
-  windowed cursors, leases in the reference shard). Done when: a replay rotates as live
-  data would.
+  Config.Clock + calendar windows + ErrManualRotation; 10 of 10 caught); step 2 (97da4c0a, the store mints
+  on field 31 with leased window cursors, every generated-ID create in core asks it; ErrValidFromOutsideIDRange,
+  also past 2034-12-02; graph.New refuses SnowflakeNodeID 15 or IngestLanes > 29 on it; mutants 26 of 26 and
+  22 of 23 killed, 1 equivalent); next step 3 (on-demand window shards, retention watermark, ErrWindowDropped).
+  Done when: a replay rotates as live data would.
 - **PREEPOCH** (ai-soc 29 Oct, product question, later) — a customer backfill with valid times before the
-  2026-01-01 snowflake epoch: ADR-0013 refuses it with ErrValidFromBeforeEpoch. Done when: René decides.
+  2026-01-01 snowflake epoch: ADR-0013 refuses it with ErrValidFromOutsideIDRange. Done when: René decides.
 - **IDTABLE** (ai-soc 29 Oct, goal 2) — badger idTable 41 -> 80 -> 160 MB live over the run. Asks: what it maps,
   per shard or not, its bound, whether it leaves with a cold shard. Read (sent 29 Oct): four per store (history
   presence 12 B and stamps 28 B a slot, nodes and rels), ID -> top version (+ stamp fold), lazily built, no cap,
