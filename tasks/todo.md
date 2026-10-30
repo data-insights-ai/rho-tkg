@@ -212,10 +212,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   1,048,576 from a third of the run on. Every entry is resident per open shard (ensureLoaded, reappend never
   shrinks): ~4 open day shards, ~1.5 GB steady ESTIMATE. Asks: (1) ValueDictionaryStats gains Entries and Bytes per
   dictionary; (2) value -> token through the shard's vdict/ keys with a bounded LRU instead of the resident byValue
-  + handles + vals, so a dictionary's RAM is a budget. Step 1 on branch vdictdisk (9bae51fa, a patch): the
+  + handles + vals, so a dictionary's RAM is a budget. Step 1 on main untagged (17f5133b, a patch; ci-docker green,
+  consumers clean; tag v4.97.3 in the next round): the
   entry's unique.Make handle (~214 B) and the caller's row buffer (byValue keyed by the caller's string) are gone;
   a 51 B value 410 B (666 B as a slice of a row) -> 130 B live, 3 of 3 mutations caught. BA's 422 MB -> ~150 MB
-  ESTIMATE. Step 2 on branch vdictstats (965a22a1, on top; a minor, released after the patch): ValueDictionaryStats
+  ESTIMATE. Step 2 on branch vdictstats (rebased on main; a minor, released after the patch): ValueDictionaryStats
   Entries and Bytes (value length + 80 B, within a fifth of the heap), summed over open shards; 9 of 9 caught.
   Next: (2) the budget/LRU, decided from the next run's re-measure (ai-soc: at Cap 1,048,576 a 'row' dictionary is
   still ~136 MB per open day shard). Done when: an entry's resident cost is measured and bounded, with the stats.
