@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (TIERCLOCK, ADR-0013; released together when its steps are built)
+
+- **TIERCLOCK** step 1 (ai-soc, René's goal of the full BA archive replayed in valid time): `tiered.Config.Clock`
+  (default `time.Now`) drives the hot window at open, rotation and the `ColdAfter` demotion at rotation and at
+  open; idle close keeps the wall clock. `tiered.Config.MintAtValidFrom` makes the windows calendar windows:
+  rotation makes the window holding the clock hot from its start, the old hot shard ends at its own window's end
+  (cold at once when the clock passed it by `ColdAfter`), a clock jump makes no shard for the skipped days, and a
+  manual rotation returns `ErrManualRotation`. Both off: unchanged. Tiered `TestTierClock_*`; 10 of 10 mutations
+  caught (the two rotation checks jointly: each alone is covered by the other).
+
 ## [4.97.3] - 2026-10-30
 
 ### Fixed

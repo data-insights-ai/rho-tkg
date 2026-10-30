@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"time"
 
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 )
@@ -20,12 +19,20 @@ import (
 // is closed and removed, and the topology is untouched (no split-brain between
 // the live hot shard and the durable catalog). See docs/architecture.md (Shard
 // Lifecycle).
+// ErrManualRotation is returned by RotateHotShard (and ForceRotate) on a store
+// with Config.MintAtValidFrom: its windows are calendar windows, and a cut
+// inside one would strand the rows already minted past the cut.
+var ErrManualRotation = errors.New("graph: manual rotation refused: shard windows follow the clock (MintAtValidFrom)")
+
 func (ts *Store) RotateHotShard() error {
 	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
 	if err != nil {
 		return err
 	}
 	defer releaseLifecycle()
+	if ts.calendar {
+		return ErrManualRotation
+	}
 
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
@@ -37,7 +44,7 @@ func (ts *Store) rotateHotShardLocked() error {
 		return err
 	}
 	oldHot := ts.hotShard
-	now := time.Now().In(ts.shardLoc)
+	now := ts.clock().In(ts.shardLoc)
 
 	// Flush pending writes to the old hot shard. Failure here is benign:
 	// no live state has changed yet.
@@ -52,7 +59,17 @@ func (ts *Store) rotateHotShardLocked() error {
 	// suffix.
 	newName, windowStart, windowEnd := rotationWindow(now, ts.shardWindow)
 	boundary := windowStart
-	if _, exists := ts.eventShards[newName]; exists {
+	if ts.calendar {
+		// Calendar windows (ADR-0013): the new hot shard is the window holding
+		// the clock, from its start; the old one keeps its own window's end, so
+		// a clock jump leaves the skipped windows without a shard instead of
+		// stretching the old one over them.
+		newName, windowStart, windowEnd = shardWindowName(now, ts.shardWindow), shardWindowStart(now, ts.shardWindow), shardWindowEnd(now, ts.shardWindow)
+		boundary = oldHot.timeEnd
+		if _, exists := ts.eventShards[newName]; exists {
+			return fmt.Errorf("graph: rotation to window %s: it already has a shard", newName)
+		}
+	} else if _, exists := ts.eventShards[newName]; exists {
 		newName = fmt.Sprintf("%s-%d", newName, now.UnixNano())
 	}
 	newDir := newName
@@ -101,7 +118,13 @@ func (ts *Store) rotateHotShardLocked() error {
 	}
 
 	// Tentative catalog mutations (in-memory only).
-	ts.catalog.UpdateShardTier(oldHot.name, TierWarm)
+	// The old hot shard turns warm, or straight cold when the clock jumped past
+	// its end plus ColdAfter (a replay's clock, ADR-0013).
+	oldTier := TierWarm
+	if ts.coldAfter > 0 && boundary.Before(now.Add(-ts.coldAfter)) {
+		oldTier = TierCold
+	}
+	ts.catalog.UpdateShardTier(oldHot.name, oldTier)
 	ts.catalog.UpdateShardTimeEnd(oldHot.name, boundary)
 	ts.catalog.AddShard(ShardEntry{
 		Name:      newName,
@@ -133,7 +156,7 @@ func (ts *Store) rotateHotShardLocked() error {
 	}
 
 	// Catalog persisted. From here we commit the live in-memory topology.
-	oldHot.setTier(TierWarm)
+	oldHot.setTier(oldTier)
 	oldHot.readOnly = true
 	oldHot.timeEnd = boundary
 
@@ -190,7 +213,7 @@ func (ts *Store) checkRotation() error {
 	hotEnd := ts.hotShard.timeEnd
 	ts.mu.RUnlock()
 
-	if time.Now().Before(hotEnd) {
+	if ts.clock().Before(hotEnd) {
 		return nil // fast path: within window
 	}
 
@@ -208,7 +231,7 @@ func (ts *Store) checkRotation() error {
 	}
 
 	// Double-check after acquiring write lock.
-	if time.Now().Before(ts.hotShard.timeEnd) {
+	if ts.clock().Before(ts.hotShard.timeEnd) {
 		return nil // another goroutine already rotated
 	}
 

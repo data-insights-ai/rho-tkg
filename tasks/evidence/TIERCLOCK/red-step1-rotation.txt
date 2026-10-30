@@ -1,0 +1,9 @@
+2026/10/30 07:05:50 INFO graph: tiered store opened duration=76.393302ms reference=29.96204ms hot=26.236092ms warm=720ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestTierClock_RotationFollowsClockInCalendarWindows (0.14s)
+    tierclock_test.go:48: hot shard "2026-10-30" at open, want the clock's day 2026-07-22
+2026/10/30 07:05:50 INFO graph: tiered store opened duration=72.530917ms reference=26.146928ms hot=26.258192ms warm=830ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestTierClock_ManualRotationRefused (0.24s)
+    tierclock_test.go:83: RotateHotShard = <nil>, want ErrManualRotation
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.387s
+FAIL

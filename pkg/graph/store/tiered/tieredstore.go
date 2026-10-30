@@ -66,6 +66,17 @@ type Config struct {
 	// ColdAfter demotes warm shards to cold after this duration. 0 = never demote.
 	// Must not be negative.
 	ColdAfter time.Duration
+	// Clock is the host's clock for placement in time (ADR-0013, TIERCLOCK):
+	// the hot window at open, rotation and the ColdAfter demotion read it. A
+	// host replaying old data sets it to its valid-time cursor; it must not go
+	// back (a step back is ignored). Idle close keeps the wall clock: it
+	// measures real idleness. nil: time.Now.
+	Clock func() time.Time
+	// MintAtValidFrom places event data by valid time (ADR-0013): windows are
+	// calendar windows of ShardWindow in ShardWindowLocation, rotation makes
+	// the window holding Clock hot and ends the old hot shard at its calendar
+	// end, and a manual rotation is refused (ErrManualRotation).
+	MintAtValidFrom bool
 	// PromoteColdShardsAtOpen promotes EVERY cold event shard back to warm when
 	// the store opens, and persists that. It is the way back from ColdAfter:
 	// nothing else promotes a shard, so a store that has been demoted would
@@ -383,9 +394,11 @@ type Store struct {
 	archiveVolume    string                  // catalog volume a new archive is made on
 	inMemory         bool
 	shardWindow      time.Duration
-	shardLoc         *time.Location // Config.ShardWindowLocation, time.Local when nil
-	openStats        OpenStats      // New's open (open_stats.go)
-	walTruncations   atomic.Int64   // shards opened by cutting an unclean WAL
+	shardLoc         *time.Location   // Config.ShardWindowLocation, time.Local when nil
+	clock            func() time.Time // Config.Clock, time.Now when nil (ADR-0013)
+	calendar         bool             // Config.MintAtValidFrom: calendar windows, rotation by the clock
+	openStats        OpenStats        // New's open (open_stats.go)
+	walTruncations   atomic.Int64     // shards opened by cutting an unclean WAL
 	cacheCap         int
 	flushInt         time.Duration
 	coldAfter        time.Duration
@@ -632,7 +645,13 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: Config.IdleTimeout must be a whole millisecond, got %v", idleTimeout)
 	}
 
+	clock := cfg.Clock
+	if clock == nil {
+		clock = time.Now
+	}
 	ts := &Store{
+		clock:                 clock,
+		calendar:              cfg.MintAtValidFrom,
 		vdPlan:                vdPlan,
 		eventShards:           make(map[string]*EventShard),
 		ontology:              NewOntologyMapping(cfg.RefLabels),
@@ -818,7 +837,7 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	// Open hot event shard.
-	now := time.Now().In(ts.shardLoc)
+	now := ts.clock().In(ts.shardLoc)
 	hotName := shardWindowName(now, window)
 	windowStart := shardWindowStart(now, window)
 	windowEnd := shardWindowEnd(now, window)
@@ -891,7 +910,7 @@ func New(cfg Config) (*Store, error) {
 	// opened and demoted afterwards.
 	coldCutoff := time.Time{}
 	if cfg.ColdAfter > 0 {
-		coldCutoff = time.Now().Add(-cfg.ColdAfter)
+		coldCutoff = ts.clock().Add(-cfg.ColdAfter)
 	}
 	demotedAtOpen := 0
 

@@ -479,7 +479,7 @@ that test.
     lie after it; a customer backfill before 2026 is a later decision). `RelsByMint` falls back to the reference
     shard when the mint shard is cold; with the option it uses the window's shard, made or reopened.
   - *Steps.* 1 calendar windows and `Config.Clock` (rotation, demotion, `New`), manual rotation refused under the
-    option; 2 the store's minting capability with the reserved field, windowed cursors and leases in the
+    option (built, unreleased); 2 the store's minting capability with the reserved field, windowed cursors and leases in the
     reference shard; 3 on-demand window shards, the retention watermark and `ErrWindowDropped`; 4 a replay test
     of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
     replay as the measurement.
