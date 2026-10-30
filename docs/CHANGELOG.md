@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.98.1] - 2026-10-30
+
+### Fixed
+
+- v4.98.0's tag CI failed on `TestValueDictEntryHeap` (131 B estimated, 105 B measured): the test measured the heap of
+  a process that had run other tests. It now runs in its own process (125-133 B). Only the test changed: the library
+  is v4.98.0's. 2 of 2 mutations caught. Pin v4.98.1, not v4.98.0.
+
 ## [4.98.0] - 2026-10-30
 
 ### Added (TIERCLOCK, ADR-0013)

@@ -1,0 +1,4 @@
+2026-10-30T12:19:23.4944870Z --- FAIL: TestValueDictEntryHeap (0.50s)
+2026-10-30T12:19:23.4945513Z     badgerstore_value_dict_test.go:456: 105 B live per entry of a 51 B value
+2026-10-30T12:19:23.4946819Z     badgerstore_value_dict_test.go:463: stats {Name:folder Coded:100000 InlineFull:0 NewEntries:100000 Entries:100000 Bytes:13100000}: 131 B an entry estimated, 105 B measured; want 100000 entries, the
+Local, full package -short, GOMAXPROCS=2: 130 and 111 B; alone, 30 runs: 130-133 B.

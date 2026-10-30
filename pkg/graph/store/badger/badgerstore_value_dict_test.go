@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
 	"runtime"
 	"sync"
 	"testing"
@@ -420,11 +422,24 @@ func TestValueDict_ConcurrentWritersAndReaders(t *testing.T) {
 	}
 }
 
+const vdictHeapChildEnv = "RHO_TEST_VDICT_HEAP_CHILD"
+
 // TestValueDictEntryHeap (VDICTDISK): a dictionary entry added while rows are
 // written keeps one copy of its value and its map and slice slots, about 118 B
 // for a 51 B value: neither the caller's string (a row's decode buffer) nor an
-// interned handle (unique, ~214 B more) stays live.
+// interned handle (unique, ~214 B more) stays live. It runs in its own process:
+// the heap it measures is the process's, and memory an earlier test leaves to
+// be freed moved the figure by a fifth (tasks/evidence/VDICTDISK/red-heap-flake.txt).
 func TestValueDictEntryHeap(t *testing.T) {
+	if os.Getenv(vdictHeapChildEnv) == "" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestValueDictEntryHeap$", "-test.v") // #nosec G204 -- this test binary
+		cmd.Env = append(os.Environ(), vdictHeapChildEnv+"=1")
+		out, err := cmd.CombinedOutput()
+		if t.Log(string(out)); err != nil {
+			t.Fatalf("own process: %v", err)
+		}
+		return
+	}
 	const n = 100_000
 	dir := t.TempDir()
 	bs := vdOpen(t, dir, vdDicts(n))
