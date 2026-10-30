@@ -246,7 +246,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   on field 31 with leased window cursors, every generated-ID create in core asks it; ErrValidFromOutsideIDRange,
   also past 2034-12-02; graph.New refuses SnowflakeNodeID 15 or IngestLanes > 29 on it; mutants 26 of 26 and
   22 of 23 killed, 1 equivalent); ai-soc: all its labels are reference, RelsByMint on, so
-  every edge is minted and placed at its own ValidFrom; event-start alternative closed (5c6f7f15). Next step 3
+  every edge is minted and placed at its own ValidFrom; event-start alternative closed (44a3e8a1). Next step 3
   (on-demand window shards, the RelsByMint write first; retention watermark, ErrWindowDropped).
   Done when: a replay rotates as live data would.
 - **PREEPOCH** (ai-soc 29 Oct, product question, later) — a customer backfill with valid times before the
