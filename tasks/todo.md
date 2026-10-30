@@ -214,7 +214,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   plus named properties, for sigma's GraphDerivedWriter.find).
   v4.97.3: ci-docker, consumers and the scale probe clean; tag CI and main green. v4.98.0 tagged, tag CI red on a test
   measuring a shared process heap (and a proxy error); v4.98.1, the test in its own process: tag CI and main green, ai-soc and sigma notified (consumer check and probe
-  skipped, test only). Sigma tags on it after RESTARTDIFF, then the freeze. Next here: ASOFWALK's TxFrom check.
+  skipped, test only). Sigma tags on it after RESTARTDIFF, then the freeze.
+  ASOFWALK, read 30 Oct, not built: TxPin's rule (storeutil/asof_select.go:130) already walks newest version first and
+  stops at the first row with TxFrom <= pin, so it needs no rising TxFrom. A walk must also read the run sharing that
+  TxFrom (openInWrite) and the row carrying the next TxTo (lifeEndedAtTxTime), and skip voids. TxAt resolves valid time
+  over the whole chain (chain_resolver.go), so its walk is the open design question.
   Sent 30 Oct to ai-soc and sigma, unmeasured: STATEREC covers page nodes on one path with cost growing with
   versions; PROJREAD has no door yet (a later minor, no tag). Next to build on word: an as-of read walking back from
   the newest version, once TxFrom's rise with version is checked.
