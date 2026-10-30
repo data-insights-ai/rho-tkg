@@ -209,6 +209,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   target, so ingest grows with the hardware.
 - **FREEZE** (ai-soc 30 Oct): the pair is sigma v0.11.153 + rho v4.98.1. No tag and no race suite on the PC until ai-soc
   says the run shipped. Work on main untagged is fine; v4.98.2 goes in the next round.
+- **PREEPOCHREL** (ai-soc 30 Oct, pin blocker with MintAtValidFrom on) — sigma's About edges between reference nodes carry
+  tkg_valid_from 1 ms; MintRelIDAt refuses them, so a Derived write-back fails. Proposed: a reference or archive start
+  outside the ID range mints at the clock (patch; event nodes still refuse, PREEPOCH). Waits for: ai-soc naming who fixes it.
 - **RELEASE ROUND 30 Oct** (ai-soc, relaying René) — v4.97.3 (VDICTDISK) first, then v4.98.0 with TIERCLOCK and
   ValueDictionaryStats; name the version to ai-soc and sigma; sigma tags on it, then the freeze. Two asks, to be
   answered from the code with file:line: **STATEREC** (does an as-of-tx read cover sigma's page nodes across the reference and
