@@ -216,6 +216,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 - **STATEREC asks** (sigma's design review, 30 Oct; no hurry, after the freeze) — (1) WHOLEROW, blocking for S5: replace a page
   node's current row whole as a new version, any validity, TxFrom and belief kept, indexes following, every backend, listed
   labels only. Today's Update refuses a closed row. Needs a design: what the effective timeline shows of the older pieces.
+  Sigma's five tests, tiered and badger: a pin at or after the replace returns that version's validity only, no older piece
+  (else sigma's rows stay in pieces and S5 stops); a pin before it reads as before; the current row from an index read is the
+  newest version with its TxFrom; TxFrom rises with version across a crash, a closed row and an equal or earlier start accepted;
+  ov_k, ov_h and the validity-end index follow the new version, an older pin still finds the node. Other labels' reads unchanged.
   (2) the TxPin walk and batch, as planned. (3) DEPTHLOOK: a TxPin property lookup below DepthAll takes the label-wide fold.
 - **RELEASE ROUND 30 Oct** (ai-soc, relaying René) — v4.97.3 (VDICTDISK) first, then v4.98.0 with TIERCLOCK and
   ValueDictionaryStats; name the version to ai-soc and sigma; sigma tags on it, then the freeze. Two asks, to be
