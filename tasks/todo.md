@@ -213,6 +213,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   day shards, on one read path, at what cost per lookup) and **PROJREAD** (can a label and property lookup return ids
   plus named properties, for sigma's GraphDerivedWriter.find).
   v4.97.3 named on branch rel4973; ci-docker runs.
+  Sent 30 Oct to ai-soc and sigma, unmeasured: STATEREC covers page nodes on one path with cost growing with
+  versions; PROJREAD has no door yet (a later minor, no tag). Next to build on word: an as-of read walking back from
+  the newest version, once TxFrom's rise with version is checked.
 - **VDICTDISK** (ai-soc 29 Oct, goal 2 RAM, BA k10291501 on v4.97.1; for the next round, no tag in the freeze) —
   valueDict.token holds 422 MB live for 1,166,109 entries (~360 B each); the 'row' dictionary sat at its Cap
   1,048,576 from a third of the run on. Every entry is resident per open shard (ensureLoaded, reappend never
