@@ -30,6 +30,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   late `RelsByMint` relationship writes into its cold day instead of falling back to the reference shard. A
   retention drop keeps its shard's name until its directory is gone (a late write into the day takes a new
   name). Tiered `TestTierClock_*`; mutations caught 22 of 22, plus one equivalent: the unlocked fast path.
+- **TIERCLOCK** step 4: graph `TestTierClockGraph_Replay33Days` replays ai-soc's shape (reference entities,
+  `RelsByMint` edges with `tkg_valid_from`, a tenth a day late) over 33 valid days with the host clock at each
+  day: 33 day shards, at most 3 open after an idle sweep (`ColdAfter` 48 h), heap flat from day 9 to day 33
+  (358.6 -> 359.0 MB), every edge reads back, no reference fallback. Catches a rotation that ignores the clock
+  and a lost warm-to-cold demotion.
 
 ## [4.97.3] - 2026-10-30
 

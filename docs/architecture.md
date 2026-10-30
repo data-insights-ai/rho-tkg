@@ -490,6 +490,6 @@ that test.
     until the directory is gone, so a late write into the day makes a new one), the retention watermark and
     `ErrWindowDropped` (deferred: ai-soc makes no retention calls, so it would never fire; when built, keyed per
     node label and per relationship type, since `ByAge` purges run per label and per type, and never tied to
-    `ColdAfter`); 4 a replay test
+    `ColdAfter`); 4 (built, unreleased) a replay test
     of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
     replay as the measurement.

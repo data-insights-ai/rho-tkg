@@ -3,6 +3,8 @@ package graph_test
 import (
 	"context"
 	"errors"
+	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -214,5 +216,103 @@ func TestTierClockGraph_NewRefusesField31(t *testing.T) {
 		} else {
 			_ = ts.Close()
 		}
+	}
+}
+
+// TestTierClockGraph_Replay33Days (TIERCLOCK step 4): ai-soc's shape replayed
+// in valid time, 33 days (22 Jul - 23 Aug 2026) in seconds. Reference
+// entities, edges between them with tkg_valid_from, RelsByMint, the host
+// clock at each replayed day, a tenth of the edges a day late. Each day gets
+// its own shard, at most the hot day and the two warm ones hold a handle after
+// an idle sweep (ColdAfter 48 h), so every per-shard resident set is bounded
+// by the open days, not by the archive; every edge reads back and none falls
+// back to the reference shard.
+func TestTierClockGraph_Replay33Days(t *testing.T) {
+	if testing.Short() {
+		t.Skip("replays 33 days")
+	}
+	ctx := context.Background()
+	first := time.Date(2026, 7, 22, 0, 0, 0, 0, time.UTC)
+	var clock atomic.Int64
+	clock.Store(first.Add(12 * time.Hour).UnixMilli())
+	ts, err := tieredpkg.New(tieredpkg.Config{DataDir: t.TempDir(), RefLabels: []string{"Device"}, ShardWindow: 24 * time.Hour,
+		ShardWindowLocation: time.UTC, ColdAfter: 48 * time.Hour, IdleTimeout: time.Millisecond, FlushInterval: 1<<63 - 1,
+		MintAtValidFrom: true, RelsByMint: true, Clock: func() time.Time { return time.UnixMilli(clock.Load()).UTC() }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := graphpkg.New(graphpkg.Config{Store: ts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = g.Close() }()
+	const entities, edgesPerDay, days = 50, 300, 33
+	devices := make([]types.NodeID, entities)
+	for i := range devices {
+		n, err := g.Nodes().Add(ctx, []string{"Device"}, map[string]any{"i": int64(i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		devices[i] = n.ID()
+	}
+	var edges []types.RelID
+	var ms runtime.MemStats
+	var heapDay9 uint64
+	for d := range days {
+		day := first.AddDate(0, 0, d)
+		clock.Store(day.Add(12 * time.Hour).UnixMilli())
+		for e := range edgesPerDay {
+			at := day.Add(time.Duration(e) * 4 * time.Minute)
+			if d > 0 && e%10 == 0 {
+				at = at.Add(-20 * time.Hour) // late: the previous day
+			}
+			r, err := g.Rels().AddByID(ctx, "SEEN", devices[e%entities], devices[(e%entities+1+(e+d)%(entities-1))%entities],
+				map[string]any{"tkg_valid_from": types.Instant(at.UnixMilli())})
+			if err != nil {
+				t.Fatalf("day %d edge %d: %v", d, e, err)
+			}
+			edges = append(edges, r.ID())
+		}
+		time.Sleep(2 * time.Millisecond) // past IdleTimeout on the wall clock idle close keeps
+		ts.CloseIdleShardsForTest()
+		shards, err := ts.ListShards()
+		if err != nil {
+			t.Fatal(err)
+		}
+		open, events := 0, 0
+		for _, s := range shards {
+			if s.Kind != tieredpkg.ShardEvent {
+				continue
+			}
+			events++
+			if s.Open {
+				open++
+			}
+		}
+		if events != d+1 || open > 3 {
+			t.Fatalf("day %d: %d event shards (%d open), want %d shards, at most 3 open", d+1, events, open, d+1)
+		}
+		runtime.GC()
+		runtime.ReadMemStats(&ms)
+		if d%8 == 0 || d == days-1 {
+			t.Logf("day %2d: %d event shards, %d open, heap %d KB", d+1, events, open, ms.HeapAlloc>>10)
+		}
+		if d == 8 {
+			heapDay9 = ms.HeapAlloc
+		}
+	}
+	if ms.HeapAlloc > heapDay9+heapDay9/10 { // flat once the open days are full: the archive does not stay resident
+		t.Fatalf("heap %d KB on day %d, %d KB on day 9: it grows with the replayed days", ms.HeapAlloc>>10, days, heapDay9>>10)
+	}
+	for i, id := range edges {
+		if i%7 != 0 {
+			continue
+		}
+		if _, err := g.Rels().Get(ctx, id); err != nil {
+			t.Fatalf("edge %d (%d) does not read back: %v", i, id, err)
+		}
+	}
+	if n := ts.RelsByMintFallbacks(); n != 0 {
+		t.Fatalf("RelsByMintFallbacks = %d, want 0", n)
 	}
 }
