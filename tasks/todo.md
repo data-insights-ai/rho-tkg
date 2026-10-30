@@ -226,7 +226,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   under TxPin and TxAt; sigma benches 50+ cuts of worst churn), a lookup on a reference label asking fewer shards,
   PROJREAD (ids plus named properties). Checkpoint pins stay above the compaction and retention floors.
   Fan-out: ai-soc prefers a declared, enforced only-ever-primary guarantee; ask sigma whether its page nodes carry a
-  second label when the round is designed.
+  second label when the round is designed. Sigma 30 Oct: its writer sets one label, always primary, no PageState label;
+  ai-soc's own writer still to confirm. RESTARTDIFF is sigma's, cause unknown; rho asked for the door and counts.
 - **VDICTDISK** (ai-soc 29 Oct, goal 2 RAM, BA k10291501 on v4.97.1; for the next round, no tag in the freeze) —
   valueDict.token holds 422 MB live for 1,166,109 entries (~360 B each); the 'row' dictionary sat at its Cap
   1,048,576 from a third of the run on. Every entry is resident per open shard (ensureLoaded, reappend never
