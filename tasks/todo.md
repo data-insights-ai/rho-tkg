@@ -245,7 +245,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Config.Clock + calendar windows + ErrManualRotation; 10 of 10 caught); step 2 (97da4c0a, the store mints
   on field 31 with leased window cursors, every generated-ID create in core asks it; ErrValidFromOutsideIDRange,
   also past 2034-12-02; graph.New refuses SnowflakeNodeID 15 or IngestLanes > 29 on it; mutants 26 of 26 and
-  22 of 23 killed, 1 equivalent); next step 3 (on-demand window shards, retention watermark, ErrWindowDropped).
+  22 of 23 killed, 1 equivalent); edge placement at its own ValidFrom open until ai-soc's EDGEAGE counts (76a0c456;
+  asked whether its entity labels are RefLabels and RelsByMint is on); next step 3 (on-demand window shards, retention watermark, ErrWindowDropped).
   Done when: a replay rotates as live data would.
 - **PREEPOCH** (ai-soc 29 Oct, product question, later) — a customer backfill with valid times before the
   2026-01-01 snowflake epoch: ADR-0013 refuses it with ErrValidFromOutsideIDRange. Done when: René decides.
