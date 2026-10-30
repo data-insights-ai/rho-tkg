@@ -219,6 +219,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   stops at the first row with TxFrom <= pin, so it needs no rising TxFrom. A walk must also read the run sharing that
   TxFrom (openInWrite) and the row carrying the next TxTo (lifeEndedAtTxTime), and skip voids. TxAt resolves valid time
   over the whole chain (chain_resolver.go), so its walk is the open design question.
+  Fable analysis on René's word, 30 Oct, unmeasured; its main claims checked against the code. The walk exists on badger
+  (badgerstore_txtime.go selectAsOfScan) and tiered never reaches it, having no NodeAsOf: step 1 delegates to the owner
+  shard when only it holds history rows. Reverse scan lacks Prefix (rule 12): fix with it. TxAt stays the skeleton walk;
+  a tiered belief watermark gives its pin-at-or-after-current case O(1). Then a batch door, then a cross-shard merge.
+  Fan-out: both listings open closed cold shards. Option: PrimaryOnlyLabels, enforced at writes, verified per shard
+  on enable, RefLabels not compared across opens today. Order: ASOFWALK step 1 and Prefix first (small, no config).
   Sent 30 Oct to ai-soc and sigma, unmeasured: STATEREC covers page nodes on one path with cost growing with
   versions; PROJREAD has no door yet (a later minor, no tag). Next to build on word: an as-of read walking back from
   the newest version, once TxFrom's rise with version is checked.
