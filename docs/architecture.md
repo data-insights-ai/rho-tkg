@@ -464,12 +464,11 @@ that test.
     opens a cold shard writable and closes it again at check-in unless `MaxOpenColdShards` has room: every edge
     from an older-than-`ColdAfter` start node pays an open (~28 ms) and a close. The option requires
     `MaxOpenColdShards > 0`, and the endpoint checkout of a write keeps the handle for the idle sweep instead.
-    Question for ai-soc: how often a new edge starts at a node older than `ColdAfter`. Open (ai-soc, 30 Oct:
-    its edges run between long-lived entities, the event is the edge; counted as EDGEAGE): an edge whose start
-    is event-class could live at its own `ValidFrom` instead, `RelsByMint` widened to event starts (row and both
-    legs on the edge's day; the start node's adjacency then spans its later days, a read cost, no cold write).
-    A reference start already mints there. Placement stays as above until the counts decide; step 3 does not
-    depend on it.
+    ai-soc (30 Oct): its edges run between long-lived entities and the event is the edge, but every label it
+    writes is a reference label and `RelsByMint` is on, so each edge is minted at its own `ValidFrom` and placed
+    on that day's shard, with no cold write. Its event-class start count is 0 by construction. Widening
+    `RelsByMint` to event-class starts is therefore not pursued. For such a host the event shards hold edges
+    only, so step 3's on-demand window shard serves the `RelsByMint` write first.
   - *Retention.* With the option, `ByAge` purges by valid day: the ID's time is the valid day, by design the
     same immutable field it reads today. The catalog keeps a watermark, the largest `before` of any `ByAge` run
     (shard drops and row purges alike), set in memory and saved before a drop unlinks its shard; a write whose ID
