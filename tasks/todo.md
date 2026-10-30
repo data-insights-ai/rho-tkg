@@ -213,6 +213,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   RelsByMint opens every cold shard per call: 1.65 s at 30 cold shards, cap 0 (TestRelsByMint_ColdEdgeOutgoingCost).
   ai-soc's cap is 2, 64 MB block cache per open shard; a larger cap grows RAM with the archive. Done when: Outgoing cost is flat
   in the number of cold shards, shown by a red test.
+- **STATEREC asks** (sigma's design review, 30 Oct; no hurry, after the freeze) — (1) WHOLEROW, blocking for S5: replace a page
+  node's current row whole as a new version, any validity, TxFrom and belief kept, indexes following, every backend, listed
+  labels only. Today's Update refuses a closed row. Needs a design: what the effective timeline shows of the older pieces.
+  (2) the TxPin walk and batch, as planned. (3) DEPTHLOOK: a TxPin property lookup below DepthAll takes the label-wide fold.
 - **RELEASE ROUND 30 Oct** (ai-soc, relaying René) — v4.97.3 (VDICTDISK) first, then v4.98.0 with TIERCLOCK and
   ValueDictionaryStats; name the version to ai-soc and sigma; sigma tags on it, then the freeze. Two asks, to be
   answered from the code with file:line: **STATEREC** (does an as-of-tx read cover sigma's page nodes across the reference and
