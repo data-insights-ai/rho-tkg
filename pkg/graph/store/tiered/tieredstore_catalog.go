@@ -12,6 +12,11 @@ import (
 
 // --- Rotation and depth helpers ---
 
+// ErrManualRotation is returned by RotateHotShard (and ForceRotate) on a store
+// with Config.MintAtValidFrom: its windows are calendar windows, and a cut
+// inside one would strand the rows already minted past the cut.
+var ErrManualRotation = errors.New("graph: manual rotation refused: shard windows follow the clock (MintAtValidFrom)")
+
 // RotateHotShard demotes the current hot shard to warm and creates a new hot
 // shard. The catalog is persisted BEFORE any live topology mutation
 // (hotShard switch, eventShards insert, tier flips, warm->cold demotions); on
@@ -19,11 +24,6 @@ import (
 // is closed and removed, and the topology is untouched (no split-brain between
 // the live hot shard and the durable catalog). See docs/architecture.md (Shard
 // Lifecycle).
-// ErrManualRotation is returned by RotateHotShard (and ForceRotate) on a store
-// with Config.MintAtValidFrom: its windows are calendar windows, and a cut
-// inside one would strand the rows already minted past the cut.
-var ErrManualRotation = errors.New("graph: manual rotation refused: shard windows follow the clock (MintAtValidFrom)")
-
 func (ts *Store) RotateHotShard() error {
 	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
 	if err != nil {
