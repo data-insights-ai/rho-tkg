@@ -251,8 +251,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   retention drop reserves its shard name (the race hung a test without it); 22 of 22 mutants killed. Watermark
   and ErrWindowDropped deferred (ai-soc makes no retention calls; per label and type when built). Step 4
   (7857906e): 33-day replay in ai-soc's shape, 33 day shards, at most 3 open, heap flat day 9 -> 33. All four
-  steps built on branch tierclock, untagged: a minor in ai-soc's next release round; then ai-soc's BA replay as
-  the measurement.
+  steps built on branch tierclock, untagged: a minor in ai-soc's next release round, which opens after k10300635
+  is analysed (ai-soc announces it to rho and sigma); then ai-soc's BA replay as the measurement. ai-soc's pin:
+  Clock = newest committed valid time, ColdAfter 3 d, RelsByMint on, no production manual rotation.
   Done when: a replay rotates as live data would.
 - **PREEPOCH** (ai-soc 29 Oct, product question, later) — a customer backfill with valid times before the
   2026-01-01 snowflake epoch: ADR-0013 refuses it with ErrValidFromOutsideIDRange. Done when: René decides.
