@@ -227,7 +227,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   on enable, RefLabels not compared across opens today. Order: ASOFWALK step 1 and Prefix first (small, no config).
   Sigma's S5 (30 Oct): state units fit TxPin, so the walk and a TxPin batch by ids come first; ov_sref can use it. Paged
   rows and facts need the effective timeline at a pin, which cannot stop early (every row by the pin, floor N pieces):
-  told sigma, who decides whether a grown row is written whole. Restore design waits for RESTARTDIFF.
+  told sigma, who decides whether a grown row is written whole. RESTARTDIFF was ai-soc's test harness (30 Oct). v4.98.2
+  PURGEDROP released, for ai-soc's next round; results-purge design waits until after STATEREC.
   Sent 30 Oct to ai-soc and sigma, unmeasured: STATEREC covers page nodes on one path with cost growing with
   versions; PROJREAD has no door yet (a later minor, no tag). Next to build on word: an as-of read walking back from
   the newest version, once TxFrom's rise with version is checked.
@@ -237,10 +238,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Fan-out: ai-soc prefers a declared, enforced only-ever-primary guarantee; ask sigma whether its page nodes carry a
   second label when the round is designed. Sigma 30 Oct: its writer sets one label, always primary, no PageState label;
   ai-soc's own writer still to confirm. RESTARTDIFF is sigma's, cause unknown; rho asked for the door and counts.
-- **PURGEDROP** (found 30 Oct on ai-soc's RESULTPURGE question; data loss; fix, patch v4.98.2) — a node label ByAge purge
-  with the change-log off drops a RelsByMint day shard holding edges and no node, with those edges, reporting 0 purged.
-  Fix tagged v4.98.2: ci-docker, consumers and the scale probe clean, GitHub runs in progress. ai-soc has no such call in production and takes it next
-  round; this round's pair stays on v4.98.1. Results-purge design waits until after STATEREC. Done when: released.
 - **VDICTDISK** (ai-soc 29 Oct, goal 2 RAM, BA k10291501 on v4.97.1; for the next round, no tag in the freeze) —
   valueDict.token holds 422 MB live for 1,166,109 entries (~360 B each); the 'row' dictionary sat at its Cap
   1,048,576 from a third of the run on. Every entry is resident per open shard (ensureLoaded, reappend never
