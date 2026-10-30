@@ -154,3 +154,10 @@ sharing the PC; alternated with v4.97.1 from the module cache):
 Reading: no change. The first three pairs ran under load and new ran first in each; the last two are level
 (9.9 vs 9.8 and 10.2 s). The probe deletes nothing, and v4.97.2 changes only the walks past deleted entries
 (range scans, history truncation, the retention purge).
+
+v4.97.3 release scale probe (VDICTDISK step 1, Derived, 1 M nodes + 1 M rels (-rels), alternated with v4.97.2 from the module cache):
+  v4.97.3   insert 12.1 / 11.3 / 9.6 / 9.9 / 9.6 s   clean reopen 0.12 / 0.11 / 0.11 / 0.11 / 0.12 s
+            heap after reopen +177.2 / +176.8 / +174.4 / +176.3 / +177.0 MB
+  v4.97.2   insert 13.6 / 9.7 / 9.7 / 9.7 / 9.5 s   clean reopen 0.14 / 0.11 / 0.11 / 0.11 / 0.11 s
+            heap after reopen +176.7 / +178.0 / +177.1 / +174.6 / +175.8 MB
+Reading: no change. The probe's store has no value dictionary pressure; the first runs of each ran under load.
