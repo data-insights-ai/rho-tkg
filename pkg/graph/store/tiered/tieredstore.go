@@ -394,11 +394,13 @@ type Store struct {
 	archiveVolume    string                  // catalog volume a new archive is made on
 	inMemory         bool
 	shardWindow      time.Duration
-	shardLoc         *time.Location   // Config.ShardWindowLocation, time.Local when nil
-	clock            func() time.Time // Config.Clock, time.Now when nil (ADR-0013)
-	calendar         bool             // Config.MintAtValidFrom: calendar windows, rotation by the clock
-	openStats        OpenStats        // New's open (open_stats.go)
-	walTruncations   atomic.Int64     // shards opened by cutting an unclean WAL
+	shardLoc         *time.Location      // Config.ShardWindowLocation, time.Local when nil
+	clock            func() time.Time    // Config.Clock, time.Now when nil (ADR-0013)
+	calendar         bool                // Config.MintAtValidFrom: calendar windows, rotation by the clock
+	vtMu             sync.Mutex          // guards vtWindows
+	vtWindows        map[int64]*vtWindow // valid-time mint cursors by window start (ms)
+	openStats        OpenStats           // New's open (open_stats.go)
+	walTruncations   atomic.Int64        // shards opened by cutting an unclean WAL
 	cacheCap         int
 	flushInt         time.Duration
 	coldAfter        time.Duration

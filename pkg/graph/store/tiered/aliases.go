@@ -97,6 +97,7 @@ var (
 	ErrTemporalIndexNotFound      = storecontract.ErrTemporalIndexNotFound
 	ErrInvalidTemporalIndexConfig = storecontract.ErrInvalidTemporalIndexConfig
 	ErrStoreClosed                = storecontract.ErrStoreClosed
+	ErrValidFromOutsideIDRange    = storecontract.ErrValidFromOutsideIDRange
 	ErrVectorIndexExists          = storecontract.ErrVectorIndexExists
 	ErrVectorIndexNotFound        = storecontract.ErrVectorIndexNotFound
 	ErrDimensionMismatch          = storecontract.ErrDimensionMismatch

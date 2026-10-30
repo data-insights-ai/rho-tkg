@@ -98,7 +98,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 // reflect the committed endpoint state at creation time, not whatever the
 // caller happened to hold.
 //
-// mintID mints the new relationship's ID (normally c.nextRelID) — called
+// mintID mints the new relationship's ID (normally c.mintRelIDAt) — called
 // LAZILY, only once every endpoint-existence check this ladder performs has
 // already passed, so a failed create (missing endpoint) never burns a
 // generated ID (Design Rules: "Validate before generating IDs" — the same
@@ -109,7 +109,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 // delegated to the store write (endpointHashWrite capability available and
 // no constraints configured) — in that case the returned hashes are empty
 // and the kernel refreshes them from the store's reply.
-func (c *Core) relEndpointHashLadder(mintID func() types.RelID, startID, endID types.NodeID, validFrom types.Instant, vfSet bool, validTo, createdAt types.Instant) (id types.RelID, fromHash, toHash string, useEndpointHashWrite bool, err error) {
+func (c *Core) relEndpointHashLadder(mintID func() (types.RelID, error), startID, endID types.NodeID, validFrom types.Instant, vfSet bool, validTo, createdAt types.Instant) (id types.RelID, fromHash, toHash string, useEndpointHashWrite bool, err error) {
 	if c.constraints.Len() > 0 {
 		// Fetch live endpoints from the store under the endpoint locks so
 		// hash refresh and temporal-constraint checks see the current state.
@@ -117,7 +117,9 @@ func (c *Core) relEndpointHashLadder(mintID func() types.RelID, startID, endID t
 		if err != nil {
 			return 0, "", "", false, err
 		}
-		id = mintID()
+		if id, err = mintID(); err != nil {
+			return 0, "", "", false, err
+		}
 		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, vfSet, validTo, createdAt)
 		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
 			return 0, "", "", false, err
@@ -125,13 +127,19 @@ func (c *Core) relEndpointHashLadder(mintID func() types.RelID, startID, endID t
 		return id, nodeIntegrityHash(liveStart), nodeIntegrityHash(liveEnd), false, nil
 	}
 	if c.endpointHashWrite != nil {
-		return mintID(), "", "", true, nil
+		if id, err = mintID(); err != nil {
+			return 0, "", "", false, err
+		}
+		return id, "", "", true, nil
 	}
 	fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
 	if err != nil {
 		return 0, "", "", false, err
 	}
-	return mintID(), fromHash, toHash, false, nil
+	if id, err = mintID(); err != nil {
+		return 0, "", "", false, err
+	}
+	return id, fromHash, toHash, false, nil
 }
 
 // relCreateSpec carries everything the standalone build closure needs to

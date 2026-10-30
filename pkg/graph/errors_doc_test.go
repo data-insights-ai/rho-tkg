@@ -121,6 +121,7 @@ var foreignEndpointSentinels = []string{
 // alias; it now has one, like ErrNodeExists before it.
 var temporalSentinels = []string{
 	"ErrValidFromBeforePrevious",
+	"ErrValidFromOutsideIDRange",
 	"ErrEntityDeleted",
 	"ErrNoVersionAsOf",
 	"ErrConflictingTemporalOpts",

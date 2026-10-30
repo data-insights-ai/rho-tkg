@@ -141,7 +141,10 @@ func (c *Core) addRelationshipsInternal(ctx context.Context, typeName string, re
 
 	built = make([]*types.Relationship, 0, len(specs))
 	for i := range specs {
-		specs[i].id = c.nextRelID()
+		if specs[i].id, err = c.mintRelIDAt(0, specs[i].startID, specs[i].validFrom); err != nil {
+			built = nil
+			return nil, finish(err)
+		}
 		r, _, err := c.buildRelFromSpec(ctx, specs[i])(typeToken)
 		if err != nil {
 			built = nil

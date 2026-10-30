@@ -1,0 +1,5 @@
+--- FAIL: TestTierClockGraph_GeneratedIDsCarryValidTime (0.25s)
+    tierclock_mint_test.go:70: Nodes().Add: ID 855789270424682496 (field 0, time 2026-10-30 06:36:55.918 +0000 UTC), want field 31 at 2026-07-22 12:00:00 +0000 UTC
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.163s
+FAIL

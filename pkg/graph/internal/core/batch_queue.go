@@ -100,7 +100,13 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 		results = make([]*types.Node, 0, count)
 	}
 	for i := 0; i < count; i++ {
-		id := b.g.nextNodeIDForLane(b.genLane)
+		// A label new in this batch has a probe token the store cannot
+		// classify yet: it mints the node as an event (a reference node then
+		// carries a valid-time ID; it still lives in the reference shard).
+		id, err := b.g.mintNodeIDAt(b.genLane, labelTokens.primary, validFrom)
+		if err != nil {
+			return nil, fmt.Errorf("graph: batch node ID: %w", err)
+		}
 		n := types.NewNode(id, labelTokens.primary, labelTokens.extras)
 		if keepResults {
 			// The returned skeleton is caller-mutable, so each node needs its own
@@ -283,7 +289,10 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		return nil, fmt.Errorf("graph: batch relationship type: %w", err)
 	}
 
-	id := b.g.nextRelIDForLane(b.genLane)
+	id, err := b.g.mintRelIDAt(b.genLane, startID, validFrom)
+	if err != nil {
+		return nil, fmt.Errorf("graph: batch relationship ID: %w", err)
+	}
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, fmt.Errorf("graph: batch relationship properties: %w", err)

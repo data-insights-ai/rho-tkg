@@ -58,9 +58,9 @@ func TestRelEndpointHashLadder_DoesNotMintIDWhenEndpointMissing(t *testing.T) {
 	missingEnd := types.NodeID(999_999_999) // never created
 
 	mintCalls := 0
-	mint := func() types.RelID {
+	mint := func() (types.RelID, error) {
 		mintCalls++
-		return types.RelID(12345)
+		return types.RelID(12345), nil
 	}
 
 	_, _, _, _, err = g.relEndpointHashLadder(mint, start.ID(), missingEnd, 0, false, 0, 0)
@@ -88,9 +88,9 @@ func TestRelEndpointHashLadder_MintsIDAfterValidationPasses(t *testing.T) {
 
 	mintCalls := 0
 	const wantID = types.RelID(777)
-	mint := func() types.RelID {
+	mint := func() (types.RelID, error) {
 		mintCalls++
-		return wantID
+		return wantID, nil
 	}
 
 	id, _, _, _, err := g.relEndpointHashLadder(mint, start.ID(), end.ID(), 0, false, 0, 0)
@@ -126,9 +126,9 @@ func TestRelEndpointHashLadder_ConstraintsBranch_DoesNotMintIDWhenEndpointMissin
 	missingEnd := types.NodeID(999_999_998)
 
 	mintCalls := 0
-	mint := func() types.RelID {
+	mint := func() (types.RelID, error) {
 		mintCalls++
-		return types.RelID(1)
+		return types.RelID(1), nil
 	}
 
 	_, _, _, _, err = g.relEndpointHashLadder(mint, start.ID(), missingEnd, 0, false, 0, 0)

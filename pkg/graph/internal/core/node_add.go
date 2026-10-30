@@ -173,7 +173,10 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 		}
 	}()
 
-	id := c.nextNodeID()
+	id, err := c.mintNodeIDAt(0, primaryToken, validFrom)
+	if err != nil {
+		return nil, finishLabels(err)
+	}
 	n = types.NewNode(id, primaryToken, extraTokens)
 	if err := n.SetOwnedProperties(ps); err != nil {
 		return nil, finishLabels(fmt.Errorf("graph: node properties: %w", err))

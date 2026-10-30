@@ -1,0 +1,12 @@
+2026/10/30 07:16:13 INFO graph: tiered store opened duration=75.291724ms reference=28.836727ms hot=26.155148ms warm=940ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestTierClock_MintsNodesAtValidFrom (0.08s)
+    tierclock_test.go:172: MintNodeIDAt(1784721600000) = 0, false, <nil>
+2026/10/30 07:16:13 INFO graph: tiered store opened duration=73.615676ms reference=26.474091ms hot=26.724601ms warm=360ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestTierClock_MintsRelsInStartNodeWindow (0.13s)
+    tierclock_test.go:237: rel at its ValidFrom inside the start node's day: 0 (1970-01-01 00:00:00 +0000 UTC), false, <nil>
+2026/10/30 07:16:13 INFO graph: tiered store opened duration=72.73928ms reference=26.098716ms hot=26.277552ms warm=370ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestTierClock_WindowEndUsesLowCursor (0.13s)
+    tierclock_test.go:274: mint 0: false, <nil>
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.354s
+FAIL

@@ -49,6 +49,12 @@ var ErrWireFormatVersionUnsupported = storepkg.ErrWireFormatVersionUnsupported
 // history. Aliases store.ErrHistoryAnchorIntervalMismatch.
 var ErrHistoryAnchorIntervalMismatch = storepkg.ErrHistoryAnchorIntervalMismatch
 
+// ErrValidFromOutsideIDRange is returned by a create on a store that mints IDs
+// at valid time (tiered Config.MintAtValidFrom, ADR-0013) when the ValidFrom
+// lies before the ID epoch 2026-01-01 UTC or past the ID's last instant
+// (2034-12-02 19:29 UTC). Aliases store.ErrValidFromOutsideIDRange.
+var ErrValidFromOutsideIDRange = storepkg.ErrValidFromOutsideIDRange
+
 // Store entity sentinels re-exported for public Graph API callers.
 // Graph methods return ErrNodeNotFound / ErrRelNotFound for missing current
 // entities (including bulk GetByIDs requests with any missing explicit ID),

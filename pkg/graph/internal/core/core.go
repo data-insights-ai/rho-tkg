@@ -56,6 +56,7 @@ type Core struct {
 	// for diagnostics / docs (the sharded store routes an ID to a shard by this
 	// slot). Same length as laneGenerators.
 	laneSlots             []uint8
+	validTimeMint         storepkg.ValidTimeMintCapability // the store mints event IDs at valid time (ADR-0013); nil: the generators do
 	store                 storepkg.MandatoryStore
 	relDegrees            relDegreeCache   // StatOps.RelTypeDegreeStats, keyed on the relationship epochs
 	memberTime            memberTimeCache  // StatOps.LabelTimeStats / RelTypeTimeStats explicit-valid counts, keyed on the mutation epochs
@@ -2062,8 +2063,12 @@ func New(config Config) (*Core, error) {
 	// must not be validated (a replica's SnowflakeNodeID is commonly a
 	// deliberately-different value from the primary's, precisely to prove
 	// its own identity doesn't matter).
+	var validTimeMint storepkg.ValidTimeMintCapability
 	if !config.ReadOnlyReplica {
 		if err := validateShardedSlotCoverage(config.Store, config.SnowflakeNodeID, laneSlots); err != nil {
+			return nil, err
+		}
+		if validTimeMint, err = validTimeMinter(config.Store, config.SnowflakeNodeID, laneSlots); err != nil {
 			return nil, err
 		}
 	}
@@ -2102,6 +2107,7 @@ func New(config Config) (*Core, error) {
 		relIDGen:            relGen,
 		laneGenerators:      laneGens,
 		laneSlots:           laneSlots,
+		validTimeMint:       validTimeMint,
 		entityLocks:         locks.NewManager(),
 		valueLocks:          locks.NewValueManager(),
 		validation:          v,

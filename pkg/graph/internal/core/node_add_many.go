@@ -95,7 +95,11 @@ func (c *Core) addNodesInternal(ctx context.Context, labels []string, props []ma
 	var canonicalLabels []string
 	for i := range prepared {
 		pn := &prepared[i]
-		n := types.NewNode(c.nextNodeID(), primaryToken, extraTokens)
+		id, err := c.mintNodeIDAt(0, primaryToken, pn.validFrom)
+		if err != nil {
+			return nil, finish(err)
+		}
+		n := types.NewNode(id, primaryToken, extraTokens)
 		if err := n.SetOwnedProperties(pn.props); err != nil {
 			return nil, finish(fmt.Errorf("graph: node properties: %w", err))
 		}

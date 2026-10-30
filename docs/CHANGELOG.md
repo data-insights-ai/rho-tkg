@@ -15,6 +15,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (cold at once when the clock passed it by `ColdAfter`), a clock jump makes no shard for the skipped days, and a
   manual rotation returns `ErrManualRotation`. Both off: unchanged. Tiered `TestTierClock_*`; 10 of 10 mutations
   caught (the two rotation checks jointly: each alone is covered by the other).
+- **TIERCLOCK** step 2: with `MintAtValidFrom` the tiered store mints the IDs of event nodes and relationships
+  (`store.ValidTimeMintCapability`), and every generated-ID create in core asks it first: a node's ID carries its
+  `ValidFrom` (untimed: the clock), a relationship's lies in its start node's window (a reference or archived
+  start node: at its `ValidFrom`), on node field 31, reserved for it. Per window one cursor pair hands out no
+  value twice; its ends are leased in the reference shard's meta, synced once per 1 M IDs, so a restart or a
+  crash never reuses an ID. `graph.New` refuses `SnowflakeNodeID` 15 or `IngestLanes` above 29 on such a store;
+  a `ValidFrom` an ID cannot carry returns `ErrValidFromOutsideIDRange`. Reference labels keep the generators.
+  Tiered `TestTierClock_Mint*`, graph `TestTierClockGraph_*`; mutations caught: tiered 26 of 26, core 22 of 23
+  (the other is equivalent: `2k+2 >= 31` and `2k+1 >= 31` agree on integers).
 
 ## [4.97.3] - 2026-10-30
 

@@ -439,9 +439,10 @@ that test.
     inside a window (`RotateHotShard`, `ForceRotate`) is refused with the option on: it would cut a window under
     rows already minted past the cut. `Clock` must be monotonic; a step back is ignored. Idle close and access
     stamps keep the wall clock: they measure real idleness.
-  - *Uniqueness.* The valid-time IDs use one node field reserved for them, the highest (31): `IngestLanes` is capped
-    at 29 with the option (`New` fails closed above), and the option is refused on `sharded.Store`, whose slots
-    must cover every minting field. Per window the store keeps one high cursor for nodes and relationships alike (a
+  - *Uniqueness.* The valid-time IDs use one node field reserved for them, the highest (31): with the option
+    `graph.New` fails closed when a generator of its own would draw it (`SnowflakeNodeID` 15, whose pair is 30
+    and 31, or `IngestLanes` above 29), and `sharded.Store`, whose slots must cover every minting field, opens
+    badger shards only, so it has no such option. Per window the store keeps one high cursor for nodes and relationships alike (a
     value is never handed out twice, to either kind) and mints `max(instant, high + 1 step)`;
     when that would leave the window (instants crowding its last microsecond, or relationships placed at the next
     free ID) a low cursor walks down from the window's lowest ID; a window fills only when both meet (86.4 G
@@ -475,11 +476,12 @@ that test.
     the last fallback of an entity's start time and of `tkg_created_at`: that fallback becomes the valid day.
     ID order within a window is mint order on the cursor, not arrival order across windows; nothing orders by ID
     as arrival (the change log orders by LSN, `TxFrom` comes from the commit clock). The snowflake epoch (2026-01-01
-    UTC) bounds it: an earlier `ValidFrom` is refused with `ErrValidFromBeforeEpoch` (ai-soc's BA, BO and XE data
-    lie after it; a customer backfill before 2026 is a later decision). `RelsByMint` falls back to the reference
+    UTC) and the end of the 48-bit microsecond field (2034-12-02 19:29 UTC) bound it: a `ValidFrom` outside is
+    refused with `ErrValidFromOutsideIDRange` (ai-soc's BA, BO and XE data lie after the epoch; a customer
+    backfill before 2026 is a later decision). `RelsByMint` falls back to the reference
     shard when the mint shard is cold; with the option it uses the window's shard, made or reopened.
   - *Steps.* 1 calendar windows and `Config.Clock` (rotation, demotion, `New`), manual rotation refused under the
     option (built, unreleased); 2 the store's minting capability with the reserved field, windowed cursors and leases in the
-    reference shard; 3 on-demand window shards, the retention watermark and `ErrWindowDropped`; 4 a replay test
+    reference shard, used by every generated-ID create in core (built, unreleased); 3 on-demand window shards, the retention watermark and `ErrWindowDropped`; 4 a replay test
     of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
     replay as the measurement.
