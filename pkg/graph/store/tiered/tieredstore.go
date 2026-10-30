@@ -375,6 +375,8 @@ type Store struct {
 	drainSpinsForTest atomic.Int64                // test-only: lowers coldShardDrainSpinLimit for this store (drainSpinLimit); 0 = the constant
 	archiveActiveReqs atomic.Int64                // refcount for refArchive — Close spin-waits on this before archive.Close()
 	eventShards       map[string]*EventShard      // name -> event shard
+	droppingShards    map[string]struct{}         // names a retention drop unlinked and has not removed yet (dropOneShard); guarded by mu
+	dropRemoveHook    func()                      // test-only: dropOneShard runs it after its catalog commit, before it removes the directory
 	shardIndex        []*EventShard               // eventShards sorted by timeStart; rebuilt by reindexShardsLocked on every insert/delete; guarded by mu
 	hotShard          *EventShard                 // convenience pointer to current hot shard
 	ontology          *OntologyMapping

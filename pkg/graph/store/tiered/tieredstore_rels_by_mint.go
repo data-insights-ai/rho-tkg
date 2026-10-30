@@ -93,7 +93,7 @@ func (ts *Store) relMintPlacement(r *types.Relationship, start, end *BadgerStore
 		return nil, false
 	}
 	es = ts.timestampToEventShardEntry(r.ID().SnowflakeID())
-	if es.currentTier() == TierCold {
+	if es.currentTier() == TierCold && !ts.calendar { // valid-time days take their late rels: the write reopens the shard
 		if count {
 			ts.relsByMint.fallbacks.Add(1)
 		}

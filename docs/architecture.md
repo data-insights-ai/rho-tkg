@@ -486,6 +486,10 @@ that test.
     shard when the mint shard is cold; with the option it uses the window's shard, made or reopened.
   - *Steps.* 1 calendar windows and `Config.Clock` (rotation, demotion, `New`), manual rotation refused under the
     option (built, unreleased); 2 the store's minting capability with the reserved field, windowed cursors and leases in the
-    reference shard, used by every generated-ID create in core (built, unreleased); 3 on-demand window shards, the retention watermark and `ErrWindowDropped`; 4 a replay test
+    reference shard, used by every generated-ID create in core (built, unreleased); 3 on-demand window shards (built, unreleased; a retention drop keeps its shard's name and directory
+    until the directory is gone, so a late write into the day makes a new one), the retention watermark and
+    `ErrWindowDropped` (deferred: ai-soc makes no retention calls, so it would never fire; when built, keyed per
+    node label and per relationship type, since `ByAge` purges run per label and per type, and never tied to
+    `ColdAfter`); 4 a replay test
     of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
     replay as the measurement.

@@ -59,6 +59,7 @@ func (ts *Store) rotateHotShardLocked() error {
 	// suffix.
 	newName, windowStart, windowEnd := rotationWindow(now, ts.shardWindow)
 	boundary := windowStart
+	var promote *EventShard // the window's shard, made when data reached it first (ADR-0013)
 	if ts.calendar {
 		// Calendar windows (ADR-0013): the new hot shard is the window holding
 		// the clock, from its start; the old one keeps its own window's end, so
@@ -66,8 +67,8 @@ func (ts *Store) rotateHotShardLocked() error {
 		// stretching the old one over them.
 		newName, windowStart, windowEnd = shardWindowName(now, ts.shardWindow), shardWindowStart(now, ts.shardWindow), shardWindowEnd(now, ts.shardWindow)
 		boundary = oldHot.timeEnd
-		if _, exists := ts.eventShards[newName]; exists {
-			return fmt.Errorf("graph: rotation to window %s: it already has a shard", newName)
+		if promote = ts.eventShards[newName]; promote != nil && promote.currentTier() != TierWarm {
+			return fmt.Errorf("graph: rotation to window %s: its shard is %v, not warm", newName, promote.currentTier())
 		}
 	} else if _, exists := ts.eventShards[newName]; exists {
 		newName = fmt.Sprintf("%s-%d", newName, now.UnixNano())
@@ -79,27 +80,12 @@ func (ts *Store) rotateHotShardLocked() error {
 
 	// Open the new shard's badger store. Failure here is also benign:
 	// the catalog has not been mutated yet.
-	newStore, err := ts.openBadgerStore(newDir)
-	if err != nil {
-		return fmt.Errorf("graph: open new hot shard: %w", err)
-	}
-
-	// Set up tracked temporal indexes on the new hot shard before it begins
-	// accepting writes.
-	err = ts.applyTrackedTemporalIndexes(newStore)
-	if err == nil {
-		err = ts.syncAnchoredIndexes(newStore, true)
-	}
-	if err != nil {
-		if cerr := newStore.Close(); cerr != nil {
-			slog.Error("graph: rollback close new hot shard after index setup failure", "shard", newName, "error", cerr)
+	var newStore *BadgerStore
+	if promote == nil {
+		var err error
+		if newStore, err = ts.openNewEventShard(newName, newDir); err != nil {
+			return err
 		}
-		if !ts.inMemory {
-			if rerr := os.RemoveAll(ts.shardDir(newDir)); rerr != nil {
-				slog.Error("graph: rollback remove new hot shard after index setup failure", "dir", newDir, "error", rerr)
-			}
-		}
-		return fmt.Errorf("graph: create temporal indexes on new hot shard: %w", err)
 	}
 
 	// Snapshot the catalog before any mutation for rollback if Save() fails.
@@ -126,14 +112,18 @@ func (ts *Store) rotateHotShardLocked() error {
 	}
 	ts.catalog.UpdateShardTier(oldHot.name, oldTier)
 	ts.catalog.UpdateShardTimeEnd(oldHot.name, boundary)
-	ts.catalog.AddShard(ShardEntry{
-		Name:      newName,
-		Kind:      ShardEvent,
-		Tier:      TierHot,
-		Path:      newDir,
-		TimeStart: windowStart,
-		TimeEnd:   windowEnd,
-	})
+	if promote != nil {
+		ts.catalog.UpdateShardTier(newName, TierHot)
+	} else {
+		ts.catalog.AddShard(ShardEntry{
+			Name:      newName,
+			Kind:      ShardEvent,
+			Tier:      TierHot,
+			Path:      newDir,
+			TimeStart: windowStart,
+			TimeEnd:   windowEnd,
+		})
+	}
 	for _, es := range coldDemotions {
 		ts.catalog.UpdateShardTier(es.name, TierCold)
 	}
@@ -143,13 +133,8 @@ func (ts *Store) rotateHotShardLocked() error {
 	if !ts.inMemory {
 		if err := ts.catalog.Save(); err != nil {
 			ts.catalog.restoreShards(catalogSnapshot)
-			if cerr := newStore.Close(); cerr != nil {
-				slog.Error("graph: rollback close new hot shard", "shard", newName, "error", cerr)
-			}
-			if !ts.inMemory {
-				if rerr := os.RemoveAll(ts.shardDir(newDir)); rerr != nil {
-					slog.Error("graph: rollback remove new hot shard files", "dir", newDir, "error", rerr)
-				}
+			if newStore != nil {
+				ts.discardNewEventShard(newStore, newName, newDir)
 			}
 			return fmt.Errorf("graph: save catalog after rotation: %w", err)
 		}
@@ -160,19 +145,25 @@ func (ts *Store) rotateHotShardLocked() error {
 	oldHot.readOnly = true
 	oldHot.timeEnd = boundary
 
-	newES := &EventShard{
-		name:      newName,
-		store:     newStore,
-		tier:      TierHot,
-		timeStart: windowStart,
-		timeEnd:   windowEnd,
-		readOnly:  false,
-		path:      newDir,
+	if promote != nil {
+		promote.setTier(TierHot)
+		promote.readOnly = false
+		ts.hotShard = promote
+	} else {
+		newES := &EventShard{
+			name:      newName,
+			store:     newStore,
+			tier:      TierHot,
+			timeStart: windowStart,
+			timeEnd:   windowEnd,
+			readOnly:  false,
+			path:      newDir,
+		}
+		newES.initTier(TierHot)
+		ts.eventShards[newName] = newES
+		ts.reindexShardsLocked()
+		ts.hotShard = newES
 	}
-	newES.initTier(TierHot)
-	ts.eventShards[newName] = newES
-	ts.reindexShardsLocked()
-	ts.hotShard = newES
 
 	for _, es := range coldDemotions {
 		es.setTier(TierCold)
@@ -184,23 +175,59 @@ func (ts *Store) rotateHotShardLocked() error {
 		freeColdRelTemporalIndexes(es.store, es.name)
 	}
 
-	// BACKLOG 19h: a rotation triggered mid-scope (checkRotation in a tx/batch)
-	// hands the new shard into the open change-log scope IMMEDIATELY, so even the
-	// triggering write is buffered instead of self-committing outside the scope
-	// (unreachable by DiscardLogScope). ts.scopeMu is a leaf lock, safe under
-	// ts.mu.Lock.
+	if newStore != nil {
+		ts.handNewShardToLogScope(newStore, newName)
+	}
+	return nil
+}
+
+// openNewEventShard opens a new event shard's badger store at dir and sets up
+// the tracked temporal and anchored indexes before it takes writes. On failure
+// it removes what it made; the catalog is not touched.
+func (ts *Store) openNewEventShard(name, dir string) (*BadgerStore, error) {
+	store, err := ts.openBadgerStore(dir)
+	if err != nil {
+		return nil, fmt.Errorf("graph: open new event shard %s: %w", name, err)
+	}
+	err = ts.applyTrackedTemporalIndexes(store)
+	if err == nil {
+		err = ts.syncAnchoredIndexes(store, true)
+	}
+	if err != nil {
+		ts.discardNewEventShard(store, name, dir)
+		return nil, fmt.Errorf("graph: create temporal indexes on new event shard %s: %w", name, err)
+	}
+	return store, nil
+}
+
+// discardNewEventShard closes and removes a new shard the catalog never took.
+func (ts *Store) discardNewEventShard(store *BadgerStore, name, dir string) {
+	if cerr := store.Close(); cerr != nil {
+		slog.Error("graph: rollback close new event shard", "shard", name, "error", cerr)
+	}
+	if !ts.inMemory {
+		if rerr := os.RemoveAll(ts.shardDir(dir)); rerr != nil {
+			slog.Error("graph: rollback remove new event shard files", "dir", dir, "error", rerr)
+		}
+	}
+}
+
+// handNewShardToLogScope (BACKLOG 19h): a shard made mid-scope (a rotation or
+// an on-demand window shard triggered in a tx/batch) joins the open change-log
+// scope IMMEDIATELY, so even the triggering write is buffered instead of
+// self-committing outside the scope (unreachable by DiscardLogScope).
+// ts.scopeMu is a leaf lock, safe under ts.mu.Lock.
+func (ts *Store) handNewShardToLogScope(store *BadgerStore, name string) {
 	ts.scopeMu.Lock()
 	scopeOpen, scopeDivertOn := ts.scopeOpen, ts.scopeDivertOn
 	ts.scopeMu.Unlock()
 	if scopeOpen {
-		if err := newStore.BeginLogScope(); err != nil {
-			slog.Error("graph: begin change-log scope on newly-rotated shard", "shard", newName, "error", err)
+		if err := store.BeginLogScope(); err != nil {
+			slog.Error("graph: begin change-log scope on a new shard", "shard", name, "error", err)
 		} else if scopeDivertOn {
-			newStore.SetLogDivert(true)
+			store.SetLogDivert(true)
 		}
 	}
-
-	return nil
 }
 
 // checkRotation checks if the hot shard's time window has expired and rotates if needed.

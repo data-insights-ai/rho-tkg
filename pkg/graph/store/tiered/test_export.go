@@ -36,6 +36,10 @@ func (ts *Store) RefArchiveForTest() *atomic.Pointer[BadgerStore] { return &ts.r
 // ArchiveActiveReqsForTest returns the refcount on the reference archive.
 func (ts *Store) ArchiveActiveReqsForTest() *atomic.Int64 { return &ts.archiveActiveReqs }
 
+// OpenColdShardsForTest is the count of cold shards holding a handle, which
+// MaxOpenColdShards caps.
+func (ts *Store) OpenColdShardsForTest() int64 { return ts.openColdShards.Load() }
+
 // HotShardForTest returns the current hot event shard.
 func (ts *Store) HotShardForTest() *EventShard { return ts.hotShard }
 

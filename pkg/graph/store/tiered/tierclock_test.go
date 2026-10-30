@@ -2,6 +2,9 @@ package tiered
 
 import (
 	"errors"
+	"path/filepath"
+	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -219,6 +222,16 @@ func TestTierClock_MintsNodesAtValidFrom(t *testing.T) {
 	}
 	defer func() { _ = plain.Close() }()
 	plain.SetLabelRegistry(reg)
+	past := types.NodeID(vtID(vtCounter(julDay(22, 12))))
+	if err := plain.PutNode(types.NewNode(past, ev, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if got := tierClockShards(t, plain); len(got) != 1 {
+		t.Fatalf("store without MintAtValidFrom made a shard for a past ID: %v", got)
+	}
+	if _, err := plain.GetNode(past); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok, err := plain.MintNodeIDAt(ev, at, true); ok || err != nil {
 		t.Fatalf("store without MintAtValidFrom minted: ok %v, %v", ok, err)
 	}
@@ -337,5 +350,355 @@ func TestTierClock_WindowEndUsesLowCursor(t *testing.T) {
 			t.Fatalf("mint %d: %d not below %d: the low cursor did not take over", i, id, prev)
 		}
 		prev = id
+	}
+}
+
+// tierClockShards maps each event shard's name to its listing.
+func tierClockShards(t *testing.T, ts *Store) map[string]ShardInfo {
+	t.Helper()
+	list, err := ts.ListShards()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]ShardInfo{}
+	for _, s := range list {
+		if s.Kind == ShardEvent {
+			out[s.Name] = s
+		}
+	}
+	return out
+}
+
+// TestTierClock_WindowShardMadeOnDemand (TIERCLOCK step 3): a node minted in
+// a window without a shard makes that window's shard, its tier by the clock
+// (cold past ColdAfter, else warm), kept in the catalog across a reopen; a
+// rotation into a window data reached first makes that shard hot.
+func TestTierClock_WindowShardMadeOnDemand(t *testing.T) {
+	dir := t.TempDir()
+	clock := &tierClock{}
+	clock.set(julDay(25, 9))
+	ts, err := New(tierClockCfg(dir, clock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	ev, _ := reg.GetOrCreate("Signal")
+	put := func(at time.Time) types.NodeID {
+		t.Helper()
+		id, ok, err := ts.MintNodeIDAt(ev, ms(at), true)
+		if err != nil || !ok {
+			t.Fatalf("mint at %v: %v, %v", at, ok, err)
+		}
+		if err := ts.PutNode(types.NewNode(id, ev, nil)); err != nil {
+			t.Fatalf("PutNode at %v: %v", at, err)
+		}
+		return id
+	}
+	old, recent, ahead := put(julDay(22, 12)), put(julDay(24, 12)), put(julDay(26, 3))
+	// Reference nodes, and a relationship between them without RelsByMint,
+	// live on the reference shard: they make no shard.
+	refTok, _ := reg.GetOrCreate("Case")
+	a, b := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), refTok, nil), types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), refTok, nil)
+	for _, n := range []*types.Node{a, b} {
+		if err := ts.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rid, _, err := ts.MintRelIDAt(a.ID(), ms(julDay(20, 1)), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutRelationship(types.NewRelationship(rid, 1, a.ID(), b.ID())); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]ShardTier{"2026-07-22": TierCold, "2026-07-24": TierWarm, "2026-07-25": TierHot, "2026-07-26": TierWarm}
+	check := func(when string) {
+		t.Helper()
+		got := tierClockShards(t, ts)
+		for name, tier := range want {
+			if s, ok := got[name]; !ok || s.Tier != tier {
+				t.Fatalf("%s: shard %s = %+v (listed %v), want tier %v", when, name, s, ok, tier)
+			}
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%s: %d event shards %v, want %d", when, len(got), got, len(want))
+		}
+		for _, id := range []types.NodeID{old, recent, ahead} {
+			if _, err := ts.GetNode(id); err != nil {
+				t.Fatalf("%s: GetNode(%d): %v", when, id, err)
+			}
+		}
+	}
+	check("after the writes")
+	saved := NewShardCatalog(filepath.Join(dir, "meta", "shard_catalog.json"))
+	if err := saved.Load(); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"2026-07-22", "2026-07-24", "2026-07-26"} {
+		if _, ok := saved.GetShard(name); !ok {
+			t.Fatalf("shard %s not in the saved catalog before Close: made shards are saved first", name)
+		}
+	}
+	if err := ts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if ts, err = New(tierClockCfg(dir, clock)); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ts.Close() }()
+	ts.SetLabelRegistry(reg)
+	check("after a reopen")
+	clock.set(julDay(26, 9))
+	put(julDay(26, 10)) // the rotation runs first and must promote 2026-07-26
+	want["2026-07-25"], want["2026-07-26"] = TierWarm, TierHot
+	check("after the rotation into a shard data made first")
+	if err := ts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if ts, err = New(tierClockCfg(dir, clock)); err != nil {
+		t.Fatalf("reopen after the promotion: %v", err)
+	}
+	ts.SetLabelRegistry(reg)
+	check("after a reopen after the promotion")
+}
+
+// TestTierClock_RelsByMintMakesAndReopensItsDay: a relationship between two
+// reference nodes goes to its own day's shard (RelsByMint), made on demand,
+// and to that shard also when it is cold; nothing falls back to the
+// reference shard.
+func TestTierClock_RelsByMintMakesAndReopensItsDay(t *testing.T) {
+	clock := &tierClock{}
+	clock.set(julDay(25, 9))
+	cfg := tierClockCfg(t.TempDir(), clock)
+	cfg.RelsByMint = true
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ts.Close() }()
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	refTok, _ := reg.GetOrCreate("Case")
+	a := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), refTok, nil)
+	b := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), refTok, nil)
+	for _, n := range []*types.Node{a, b} {
+		if err := ts.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, at := range []time.Time{julDay(21, 4), julDay(21, 5), julDay(24, 6), julDay(20, 7)} {
+		id, ok, err := ts.MintRelIDAt(a.ID(), ms(at), true)
+		if err != nil || !ok {
+			t.Fatalf("MintRelIDAt(%v): %v, %v", at, ok, err)
+		}
+		if err := ts.PutRelationship(types.NewRelationship(id, 1, a.ID(), b.ID())); err != nil {
+			t.Fatalf("PutRelationship at %v: %v", at, err)
+		}
+		if _, err := ts.GetRelationship(id); err != nil {
+			t.Fatalf("GetRelationship at %v: %v", at, err)
+		}
+		if ts.RefShardForTest().HasRelID(id.SnowflakeID()) {
+			t.Fatalf("relationship at %v on the reference shard, want its day's shard", at)
+		}
+	}
+	got := tierClockShards(t, ts)
+	if s, ok := got["2026-07-21"]; !ok || s.Tier != TierCold {
+		t.Fatalf("shard 2026-07-21 = %+v (listed %v), want cold", s, ok)
+	}
+	if s := got["2026-07-24"]; s.Tier != TierWarm || s.Rels != 1 {
+		t.Fatalf("shard 2026-07-24 = %+v, want warm with its relationship", s)
+	}
+	if n := ts.RelsByMintFallbacks(); n != 0 {
+		t.Fatalf("RelsByMintFallbacks = %d, want 0", n)
+	}
+	open := 0
+	for _, s := range got {
+		if s.Tier == TierCold && s.Open {
+			open++
+		}
+	}
+	if n := ts.OpenColdShardsForTest(); open != 2 || n != 2 {
+		t.Fatalf("%d cold shards open, %d counted against MaxOpenColdShards; want both made cold shards, counted", open, n)
+	}
+	// A relationship from a reference node to an event node lives with its
+	// start, on the reference shard: no shard for its day.
+	ev, _ := reg.GetOrCreate("Signal")
+	sigID, _, err := ts.MintNodeIDAt(ev, ms(julDay(24, 1)), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutNode(types.NewNode(sigID, ev, nil)); err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := ts.MintRelIDAt(a.ID(), ms(julDay(19, 2)), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutRelationship(types.NewRelationship(id, 1, a.ID(), sigID)); err != nil {
+		t.Fatal(err)
+	}
+	got = tierClockShards(t, ts)
+	if _, ok := got["2026-07-19"]; ok || len(got) != 4 {
+		t.Fatalf("event shards %v, want 2026-07-20, -21, -24 and the hot -25 only", got)
+	}
+}
+
+// TestTierClock_WindowShardFillsAGap: windows that do not line up with the
+// stored shards (a reopen under another ShardWindowLocation) are cut to the
+// gap between their neighbours, and a name already taken gets a suffix.
+func TestTierClock_WindowShardFillsAGap(t *testing.T) {
+	dir := t.TempDir()
+	clock := &tierClock{}
+	clock.set(julDay(25, 9))
+	ts, err := New(tierClockCfg(dir, clock)) // hot 2026-07-25 [25 00:00Z, 26 00:00Z)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cfg := tierClockCfg(dir, clock)
+	cfg.ShardWindowLocation = time.FixedZone("UTC+1", 3600) // days [d-1 23:00Z, d 23:00Z)
+	if ts, err = New(cfg); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ts.Close() }()
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	ev, _ := reg.GetOrCreate("Signal")
+	for _, at := range []time.Time{julDay(24, 23).Add(30 * time.Minute), julDay(26, 0).Add(30 * time.Minute), julDay(28, 12), julDay(22, 12)} {
+		id, _, err := ts.MintNodeIDAt(ev, ms(at), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ts.PutNode(types.NewNode(id, ev, nil)); err != nil {
+			t.Fatalf("PutNode at %v: %v", at, err)
+		}
+		if _, err := ts.GetNode(id); err != nil {
+			t.Fatalf("GetNode at %v: %v", at, err)
+		}
+	}
+	want := map[string][2]time.Time{
+		"2026-07-25": {julDay(25, 0), julDay(26, 0)},
+		"2026-07-25-" + itoa(julDay(24, 23).UnixMilli()): {julDay(24, 23), julDay(25, 0)}, // local 25 Jul, before the hot shard
+		"2026-07-26": {julDay(26, 0), julDay(26, 23)},  // local 26 Jul, after it
+		"2026-07-28": {julDay(27, 23), julDay(28, 23)}, // no neighbour inside: the whole window
+		"2026-07-22": {julDay(21, 23), julDay(22, 23)},
+	}
+	got := tierClockShards(t, ts)
+	if len(got) != len(want) {
+		t.Fatalf("event shards %v, want %v", got, want)
+	}
+	for name, w := range want {
+		s, ok := got[name]
+		if !ok || !s.TimeStart.Equal(w[0]) || !s.TimeEnd.Equal(w[1]) {
+			t.Fatalf("shard %s = %+v (listed %v), want [%v, %v)", name, s, ok, w[0], w[1])
+		}
+	}
+}
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// TestTierClock_RacingCreatesMakeOneShard: creates racing into one window
+// without a shard make one shard between them.
+func TestTierClock_RacingCreatesMakeOneShard(t *testing.T) {
+	clock := &tierClock{}
+	clock.set(julDay(25, 9))
+	ts, err := New(tierClockCfg(t.TempDir(), clock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ts.Close() }()
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	ev, _ := reg.GetOrCreate("Signal")
+	const writers = 16
+	ids := make([]types.NodeID, writers)
+	for i := range ids {
+		if ids[i], _, err = ts.MintNodeIDAt(ev, ms(julDay(23, 12)), true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var start, done sync.WaitGroup
+	start.Add(1)
+	errs := make([]error, writers)
+	for i := range ids {
+		done.Add(1)
+		go func() {
+			defer done.Done()
+			start.Wait()
+			errs[i] = ts.PutNode(types.NewNode(ids[i], ev, nil))
+		}()
+	}
+	start.Done()
+	done.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("PutNode %d: %v", i, err)
+		}
+	}
+	if got := tierClockShards(t, ts); len(got) != 2 {
+		t.Fatalf("event shards %v, want the hot one and one for 2026-07-23", got)
+	}
+}
+
+// TestTierClock_LateWriteIntoADroppingDay: a late create into a day whose
+// shard a retention drop is removing makes a shard under another name and
+// directory, so the drop's removal of its directory cannot take the new row.
+func TestTierClock_LateWriteIntoADroppingDay(t *testing.T) {
+	clock := &tierClock{}
+	clock.set(julDay(25, 9))
+	ts, err := New(tierClockCfg(t.TempDir(), clock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ts.Close() }()
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	ev, _ := reg.GetOrCreate("Signal")
+	alert, _ := reg.GetOrCreate("Alert") // not purged: the late row outlives the drop
+	put := func(tok uint16, at time.Time) types.NodeID {
+		t.Helper()
+		id, _, err := ts.MintNodeIDAt(tok, ms(at), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ts.PutNode(types.NewNode(id, tok, nil)); err != nil {
+			t.Fatalf("PutNode at %v: %v", at, err)
+		}
+		return id
+	}
+	old := put(ev, julDay(22, 12))
+	var late types.NodeID
+	ts.dropRemoveHook = func() { late = put(alert, julDay(22, 13)) }
+	res, err := ts.PurgeNodesByLabelBefore(ev, ms(julDay(23, 0)), 8)
+	ts.dropRemoveHook = nil
+	if err != nil || res.NodesPurged != 1 {
+		t.Fatalf("purge: %+v, %v; want the day's one node dropped", res, err)
+	}
+	if _, err := ts.GetNode(old); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("purged node: %v, want ErrNodeNotFound", err)
+	}
+	if late == 0 {
+		t.Fatal("the drop did not reach its directory removal")
+	}
+	if _, err := ts.GetNode(late); err != nil {
+		t.Fatalf("late node written during the drop: %v", err)
+	}
+	got := tierClockShards(t, ts)
+	if _, reused := got["2026-07-22"]; reused {
+		t.Fatalf("event shards %v: the dropped day's name was reused", got)
+	}
+	if _, ok := got["2026-07-22-"+itoa(julDay(22, 0).UnixMilli())]; !ok {
+		t.Fatalf("event shards %v: no shard for the late row under a new name", got)
+	}
+	// A finished drop frees its name again.
+	if _, err := ts.PurgeNodesByLabelBefore(alert, ms(julDay(23, 0)), 8); err != nil {
+		t.Fatal(err)
+	}
+	put(ev, julDay(22, 14))
+	if got := tierClockShards(t, ts); len(got) != 2 || got["2026-07-22"].Name == "" {
+		t.Fatalf("event shards %v after both drops, want the hot one and 2026-07-22 again", got)
 	}
 }

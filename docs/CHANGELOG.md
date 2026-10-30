@@ -24,6 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a `ValidFrom` an ID cannot carry returns `ErrValidFromOutsideIDRange`. Reference labels keep the generators.
   Tiered `TestTierClock_Mint*`, graph `TestTierClockGraph_*`; mutations caught: tiered 26 of 26, core 22 of 23
   (the other is equivalent: `2k+2 >= 31` and `2k+1 >= 31` agree on integers).
+- **TIERCLOCK** step 3: with `MintAtValidFrom` a create whose ID falls in a window without a shard (an event
+  node, or a `RelsByMint` relationship) makes that window's shard first, cut to the gap its neighbours leave,
+  saved to the catalog, warm or cold by `Clock()` and `ColdAfter`; a rotation into such a window makes it hot; a
+  late `RelsByMint` relationship writes into its cold day instead of falling back to the reference shard. A
+  retention drop keeps its shard's name until its directory is gone (a late write into the day takes a new
+  name). Tiered `TestTierClock_*`; mutations caught 22 of 22, plus one equivalent: the unlocked fast path.
 
 ## [4.97.3] - 2026-10-30
 

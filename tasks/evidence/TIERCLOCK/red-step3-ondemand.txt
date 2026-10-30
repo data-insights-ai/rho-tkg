@@ -1,0 +1,7 @@
+--- FAIL: TestTierClock_WindowShardMadeOnDemand (0.08s)
+    tierclock_test.go:404: after the writes: shard 2026-07-26 = {Name: Kind: Tier: TimeStart:0001-01-01 00:00:00 +0000 UTC TimeEnd:0001-01-01 00:00:00 +0000 UTC Nodes:0 Rels:0 Open:false Verified:false Volume: Path: DiskBytes:0 ColdOpens:0} (listed false), want tier warm
+--- FAIL: TestTierClock_RelsByMintMakesAndReopensItsDay (0.14s)
+    tierclock_test.go:458: shard 2026-07-21 = {Name: Kind: Tier: TimeStart:0001-01-01 00:00:00 +0000 UTC TimeEnd:0001-01-01 00:00:00 +0000 UTC Nodes:0 Rels:0 Open:false Verified:false Volume: Path: DiskBytes:0 ColdOpens:0}, want cold with both relationships
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.227s
+FAIL

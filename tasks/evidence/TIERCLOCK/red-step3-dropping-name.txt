@@ -1,0 +1,6 @@
+TestTierClock_LateWriteIntoADroppingDay without the dropping-name guard (makeWindowShardLocked reuses the dropped day's name and directory):
+panic: test timed out after 10m0s
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).gcLoop(0xd78dc0e8000)
+created by github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New in goroutine 5304
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).flushLoop(0xd78dc0e8000)
+created by github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New in goroutine 5304

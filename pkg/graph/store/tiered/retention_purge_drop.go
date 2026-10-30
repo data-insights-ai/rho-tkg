@@ -125,7 +125,18 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	}
 	delete(ts.eventShards, es.name)
 	ts.reindexShardsLocked()
+	// The name and directory stay reserved until the directory is gone: a
+	// window shard made meanwhile (ADR-0013) takes another (makeWindowShardLocked).
+	if ts.droppingShards == nil {
+		ts.droppingShards = make(map[string]struct{})
+	}
+	ts.droppingShards[es.name] = struct{}{}
 	ts.mu.Unlock()
+	defer func() {
+		ts.mu.Lock()
+		delete(ts.droppingShards, es.name)
+		ts.mu.Unlock()
+	}()
 
 	// (3) Drain in-flight requests. No new checkouts can arrive (unlinked), so
 	// activeReqs only decreases. On timeout, RE-LINK and fall back to row-scan.
@@ -214,6 +225,9 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		return zero, false, serr
 	}
 	ts.foldDroppedAccesses(es)
+	if h := ts.dropRemoveHook; h != nil {
+		h()
+	}
 	if rerr := os.RemoveAll(dir); rerr != nil {
 		return zero, false, rerr
 	}

@@ -36,6 +36,9 @@ func (ts *Store) PutRelationship(r *types.Relationship) error {
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
+	if err := ts.ensureRelWindowShards(r); err != nil {
+		return err
+	}
 	id := r.ID().SnowflakeID()
 	ts.relCreateLocks.LockEntity(id)
 	defer ts.relCreateLocks.UnlockEntity(id)
@@ -105,6 +108,9 @@ func (ts *Store) PutRelationshipGeneratedID(r *types.Relationship, proof generat
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
+	if err := ts.ensureRelWindowShards(r); err != nil {
+		return err
+	}
 	id := r.ID().SnowflakeID()
 	ts.relCreateLocks.LockEntity(id)
 	defer ts.relCreateLocks.UnlockEntity(id)
@@ -130,6 +136,9 @@ func (ts *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 		return "", "", err
 	}
 	if err := ts.checkRotation(); err != nil {
+		return "", "", err
+	}
+	if err := ts.ensureRelWindowShards(r); err != nil {
 		return "", "", err
 	}
 	id := r.ID().SnowflakeID()
@@ -460,6 +469,9 @@ func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreat
 		return nil
 	}
 	if err := ts.checkRotation(); err != nil {
+		return err
+	}
+	if err := ts.ensureRelWindowShards(rels...); err != nil {
 		return err
 	}
 	batchIDs := make([]snowflake.ID, len(rels))

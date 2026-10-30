@@ -103,6 +103,9 @@ func (ts *Store) putNode(n *types.Node, checkGlobalDuplicate bool) error {
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
+	if err := ts.ensureNodeWindowShards(n); err != nil {
+		return err
+	}
 	id := n.ID().SnowflakeID()
 	ts.nodeCreateLocks.LockEntity(id)
 	defer ts.nodeCreateLocks.UnlockEntity(id)
@@ -439,6 +442,9 @@ func (ts *Store) putNodesBatch(nodes []*types.Node, checkGlobalDuplicate bool) e
 		return nil
 	}
 	if err := ts.checkRotation(); err != nil {
+		return err
+	}
+	if err := ts.ensureNodeWindowShards(nodes...); err != nil {
 		return err
 	}
 	batchIDs := make([]snowflake.ID, len(nodes))
