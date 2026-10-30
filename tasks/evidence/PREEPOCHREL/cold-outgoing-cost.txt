@@ -1,0 +1,7 @@
+MaxOpenColdShards 0, 30 cold shards, call 0: 1.649184022s, 0 left open
+MaxOpenColdShards 0, 30 cold shards, call 1: 1.744881863s, 0 left open
+MaxOpenColdShards 0, 30 cold shards, call 2: 1.65709946s, 0 left open
+MaxOpenColdShards 30, 30 cold shards, call 0: 1.151403557s, 30 left open
+MaxOpenColdShards 30, 30 cold shards, call 1: 28.381µs, 30 left open
+MaxOpenColdShards 30, 30 cold shards, call 2: 4.02µs, 30 left open
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	11.550s

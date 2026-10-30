@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.98.3] - 2026-10-30
+
+### Fixed
+
+- **PREEPOCHREL** (ai-soc's pin with `MintAtValidFrom`: sigma's About and DERIVED_IN edges). A relationship with a
+  reference or archived start node and a `ValidFrom` an ID cannot carry (a "valid from forever" stamp of 1 ms) was
+  refused with `ErrValidFromOutsideIDRange`, failing the write. Its ID is now minted at the clock and its stored
+  `ValidFrom` answers every valid-time read. Event nodes still refuse. Under `RelsByMint` such an edge sits on the
+  clock's day shard and ages with that day under a ByAge purge (graph
+  `TestTierClockGraph_ForeverEdgeBetweenReferenceNodes`, tiered `TestTierClock_MintsRelsInStartNodeWindow`). 4 of 5
+  mutations caught; the fifth, the top bound off by one microsecond, is equivalent: valid times are milliseconds.
+- Known cost, unchanged: `Outgoing` of a reference node under `RelsByMint` opens every cold shard per call. 30 cold
+  shards, empty: 1.65 s a call; `MaxOpenColdShards` 30: 1.15 s once, then 4-28 us (tiered
+  `TestRelsByMint_ColdEdgeOutgoingCost`, `tasks/evidence/PREEPOCHREL/`).
+
 ## [4.98.2] - 2026-10-30
 
 ### Fixed

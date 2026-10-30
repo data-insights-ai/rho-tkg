@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.98.2)
+# Architecture — tkg/v4 (v4.98.3)
 
 rho-tkg is a pure Go library for temporal knowledge graphs: typed nodes and relationships whose every version is
 kept, stamped in two time dimensions and hash-chained. It is a library, not a database: no binary, no server, no
@@ -481,7 +481,7 @@ that test.
     ID order within a window is mint order on the cursor, not arrival order across windows; nothing orders by ID
     as arrival (the change log orders by LSN, `TxFrom` comes from the commit clock). The snowflake epoch (2026-01-01
     UTC) and the end of the 48-bit microsecond field (2034-12-02 19:29 UTC) bound it: a `ValidFrom` outside is
-    refused with `ErrValidFromOutsideIDRange` (ai-soc's BA, BO and XE data lie after the epoch; a customer
+    refused with `ErrValidFromOutsideIDRange` (a reference or archived start's relationship mints at the clock, v4.98.3) (ai-soc's BA, BO and XE data lie after the epoch; a customer
     backfill before 2026 is a later decision). `RelsByMint` falls back to the reference
     shard when the mint shard is cold; with the option it uses the window's shard, made or reopened.
   - *Steps.* 1 calendar windows and `Config.Clock` (rotation, demotion, `New`), manual rotation refused under the

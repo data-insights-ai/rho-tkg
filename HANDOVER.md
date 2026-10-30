@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-30: latest tag v4.98.2; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-10-30: latest tag v4.98.3; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,7 +7,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **Released 24-30 Oct:** v4.75.0 to v4.98.2 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND, v4.90.0 VOIDPROPS, v4.90.1 TXMEMBERS, v4.90.2 PROPDISKTOGGLE, v4.90.3 PROPOVERLAY, v4.91.0 PROPDISKLABEL, v4.91.1 IDXKEYLAZY, v4.91.2 DISKDEFS, v4.92.0 RELDISK, v4.93.0 IDXSTATS, v4.94.0 VALIDENDPRUNE, v4.95.0 VALIDENDLISTED, v4.96.0 COMPDISK, v4.96.1 STALEBUILD, v4.96.2 VALIDTOPURGE + CLEARGAP, v4.97.0 CACHESTATS, v4.97.1 ITERTOMB, v4.97.2 ITERTOMB), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
+- **Released 24-30 Oct:** v4.75.0 to v4.98.3 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND, v4.90.0 VOIDPROPS, v4.90.1 TXMEMBERS, v4.90.2 PROPDISKTOGGLE, v4.90.3 PROPOVERLAY, v4.91.0 PROPDISKLABEL, v4.91.1 IDXKEYLAZY, v4.91.2 DISKDEFS, v4.92.0 RELDISK, v4.93.0 IDXSTATS, v4.94.0 VALIDENDPRUNE, v4.95.0 VALIDENDLISTED, v4.96.0 COMPDISK, v4.96.1 STALEBUILD, v4.96.2 VALIDTOPURGE + CLEARGAP, v4.97.0 CACHESTATS, v4.97.1 ITERTOMB, v4.97.2 ITERTOMB), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
 - **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
   "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
@@ -120,6 +120,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   mutations caught. ci-docker green, consumers clean, scale probe unchanged; tag CI and main green; ai-soc (pins it
   for the Flux run) and sigma notified. Open: the range walks, the purge's adjacency walk, history truncation,
   the purge token walks, rel purge candidates (todo ITERTOMB). Tags held until ai-soc's run ships.
+- **v4.98.3** (PREEPOCHREL, a patch; ai-soc pins it beside sigma v0.11.153): a reference or archived start with a `ValidFrom` outside the ID range mints at the clock instead of refusing.
 - **v4.98.2** (PURGEDROP, a patch): a node label purge no longer drops a shard holding relationships or history that are not that label's. ai-soc and sigma stay on v4.98.1 this round; ai-soc takes it next round.
 - **v4.98.1** (a patch, test only): `TestValueDictEntryHeap` runs in its own process; v4.98.0's tag CI is red on it, so pin v4.98.1.
 - **v4.98.0** (TIERCLOCK, ADR-0013, a minor; ai-soc, René's goal of the BA archive replayed): `tiered.Config.Clock` drives

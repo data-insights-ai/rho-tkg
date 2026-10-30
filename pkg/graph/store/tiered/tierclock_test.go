@@ -314,12 +314,25 @@ func TestTierClock_MintsRelsInStartNodeWindow(t *testing.T) {
 	if err != nil || !ok || day(id) != julDay(24, 7) {
 		t.Fatalf("rel of a reference start node: ID time %v, %v, %v; want its ValidFrom", day(id), ok, err)
 	}
+	for _, at := range []time.Time{time.UnixMilli(1), time.Date(2040, 1, 1, 0, 0, 0, 0, time.UTC)} {
+		id, ok, err := ts.MintRelIDAt(refNode.ID(), ms(at), true)
+		if err != nil || !ok || !day(id).Equal(ts.clock().UTC()) {
+			t.Fatalf("rel of a reference start valid from %v: ID time %v, %v, %v; want the clock", at, day(id), ok, err)
+		}
+	}
 	if err := ts.ArchiveNode(refNode.ID()); err != nil {
 		t.Fatal(err)
 	}
 	id, ok, err = ts.MintRelIDAt(refNode.ID(), ms(julDay(24, 8)), true)
 	if err != nil || !ok || day(id) != julDay(24, 8) {
 		t.Fatalf("rel of an archived start node: ID time %v, %v, %v; want its ValidFrom", day(id), ok, err)
+	}
+	// Outside the ID range (PREEPOCHREL), an archived start mints at the clock.
+	for _, at := range []time.Time{time.UnixMilli(1), time.Date(2040, 1, 1, 0, 0, 0, 0, time.UTC)} {
+		id, ok, err = ts.MintRelIDAt(refNode.ID(), ms(at), true)
+		if err != nil || !ok || !day(id).Equal(ts.clock().UTC()) {
+			t.Fatalf("rel of an archived start valid from %v: ID time %v, %v, %v; want the clock", at, day(id), ok, err)
+		}
 	}
 }
 

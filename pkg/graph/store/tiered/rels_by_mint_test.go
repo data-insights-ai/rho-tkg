@@ -852,3 +852,51 @@ func TestRelsByMint_DeleteNodeCascadeNoDangling(t *testing.T) {
 		t.Fatalf("repair after cascade = %+v, want no findings", res)
 	}
 }
+
+// TestRelsByMint_ColdEdgeOutgoingCost (PREEPOCHREL, sigma's question): Outgoing
+// of a reference node finds an edge on a closed cold shard, and opens every
+// cold shard to do so, per call: the read cannot tell which shards hold its
+// node's edges. MaxOpenColdShards keeps the handles for the next call.
+func TestRelsByMint_ColdEdgeOutgoingCost(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
+	const days = 30
+	for _, keep := range []int{0, days} {
+		cfg := mintCfg(t.TempDir(), true)
+		cfg.MaxOpenColdShards = keep
+		ng, rg := tieredNodeGen(t), tieredRelGen(t)
+		ts := openMintStore(t, cfg)
+		a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
+		b := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
+		r := types.RelID(rg.Generate())
+		putMintRel(t, ts, r, 1, a, b)
+		var names []string
+		for range days {
+			names = append(names, hotShardName(ts))
+			rotate(t, ts)
+		}
+		for _, n := range names {
+			demoteToCold(ts, n)
+		}
+		closeColdStores(t, ts)
+		if n := coldShardsWithOpenStore(ts); n != 0 {
+			t.Fatalf("setup: %d cold shards open", n)
+		}
+		for call := range 3 {
+			start := time.Now()
+			got, err := ts.OutgoingRelationships(a, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantRelIDs(t, "cold edge: Outgoing", got, r)
+			t.Logf("MaxOpenColdShards %d, %d cold shards, call %d: %v, %d left open", keep, days, call, time.Since(start), coldShardsWithOpenStore(ts))
+		}
+		if got := coldShardsWithOpenStore(ts); keep > 0 && got == 0 {
+			t.Fatalf("MaxOpenColdShards %d: no cold handle kept", keep)
+		}
+		if err := ts.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

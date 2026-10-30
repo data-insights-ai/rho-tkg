@@ -52,6 +52,11 @@ type vtWindow struct {
 // vtCounter is t's counter at step 0.
 func vtCounter(t time.Time) int64 { return t.Sub(idlayout.Epoch).Microseconds() << vtStepBits }
 
+// vtInIDRange reports whether an ID can carry t.
+func vtInIDRange(t time.Time) bool {
+	return !t.Before(idlayout.Epoch) && t.Sub(idlayout.Epoch).Microseconds() <= vtMaxMicros
+}
+
 func vtID(c int64) int64 {
 	return (c>>vtStepBits)<<vtTimeShift | vtField<<vtNodeShift | c&(1<<vtStepBits-1)
 }
@@ -75,9 +80,10 @@ func (ts *Store) MintNodeIDAt(primaryLabel uint16, at types.Instant, set bool) (
 
 // MintRelIDAt mints a relationship's ID inside its start node's window, where
 // the relationship lives: at its valid time when that falls in the window,
-// else at the window's next free ID. A reference or archived start node keeps
-// its relationship on the reference side, found there before any event shard,
-// so that ID is minted at its valid time.
+// else at the window's next free ID. A reference or archived start node's
+// relationship is minted at its valid time, or at the clock when an ID cannot
+// carry that (a "valid from forever" stamp): its stored ValidFrom answers
+// every valid-time read, the ID's time only places it.
 func (ts *Store) MintRelIDAt(start types.NodeID, at types.Instant, set bool) (types.RelID, bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return 0, false, err
@@ -87,11 +93,11 @@ func (ts *Store) MintRelIDAt(start types.NodeID, at types.Instant, set bool) (ty
 	}
 	t := ts.validInstant(at, set)
 	raw := start.SnowflakeID()
-	if ts.refShard.HasNodeID(raw) {
-		id, err := ts.mintAt(t, nil)
-		return types.RelID(id), err == nil, err
-	}
-	if archive := ts.refArchive.Load(); archive != nil && archive.HasNodeID(raw) {
+	archive := ts.refArchive.Load()
+	if ts.refShard.HasNodeID(raw) || (archive != nil && archive.HasNodeID(raw)) {
+		if !vtInIDRange(t) {
+			t = ts.clock().In(ts.shardLoc)
+		}
 		id, err := ts.mintAt(t, nil)
 		return types.RelID(id), err == nil, err
 	}
@@ -117,7 +123,7 @@ func (ts *Store) mintAt(t time.Time, home *time.Time) (int64, error) {
 	}
 	ws, we := shardWindowStart(anchor, ts.shardWindow), shardWindowEnd(anchor, ts.shardWindow)
 	c := vtCounter(t)
-	if home == nil && (t.Before(idlayout.Epoch) || c>>vtStepBits > vtMaxMicros) {
+	if home == nil && !vtInIDRange(t) {
 		return 0, fmt.Errorf("%w (%s)", ErrValidFromOutsideIDRange, t.UTC().Format(time.RFC3339))
 	}
 	w, err := ts.vtWindowFor(ws, we)

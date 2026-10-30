@@ -39,8 +39,9 @@ func tierClockAt(day, hour int) map[string]any {
 // event IDs from the store: a node's at its ValidFrom (untimed: the store's
 // clock), a relationship's inside its start node's day (a reference start
 // node: at its ValidFrom), all on the reserved node field 31; a reference
-// node keeps the generator; a ValidFrom outside the ID range is refused; and
-// graph.New refuses generators that would draw field 31.
+// node keeps the generator; a ValidFrom outside the ID range is refused on a
+// node and minted at the clock on a reference start; and graph.New refuses
+// generators that would draw field 31.
 func TestTierClockGraph_GeneratedIDsCarryValidTime(t *testing.T) {
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{Store: tierClockStore(t)})
@@ -96,9 +97,11 @@ func TestTierClockGraph_GeneratedIDsCarryValidTime(t *testing.T) {
 	if _, err := g.Nodes().Add(ctx, []string{"Signal"}, before); !errors.Is(err, graphpkg.ErrValidFromOutsideIDRange) {
 		t.Fatalf("node before the epoch: %v, want ErrValidFromOutsideIDRange", err)
 	}
-	if _, err := g.Rels().Add(ctx, "OF", kase, sig, before); !errors.Is(err, graphpkg.ErrValidFromOutsideIDRange) {
-		t.Fatalf("rel before the epoch: %v, want ErrValidFromOutsideIDRange", err)
+	r, err = g.Rels().Add(ctx, "OF", kase, sig, before)
+	if err != nil {
+		t.Fatalf("reference start before the epoch: %v", err)
 	}
+	inDay("Rels().Add, reference start before the epoch", int64(r.ID()), when(r.ID()), 25)
 
 	var txNodes []*types.Node
 	var txRels []*types.Relationship
@@ -121,12 +124,13 @@ func TestTierClockGraph_GeneratedIDsCarryValidTime(t *testing.T) {
 	exact("tx.AddRelationships, event start", int64(txRels[0].ID()), when(txRels[0].ID()), tierClockDay(20, 3))
 	exact("tx.AddRelationships, reference start", int64(txRels[1].ID()), when(txRels[1].ID()), tierClockDay(21, 4))
 	err = g.Tx().Run(func(tx *graphpkg.GraphTx) error {
-		_, err := tx.AddRelationships("OF", []graphpkg.RelCreate{{StartID: kase.ID(), EndID: sig.ID(), Props: before}})
+		txRels, err = tx.AddRelationships("OF", []graphpkg.RelCreate{{StartID: kase.ID(), EndID: sig.ID(), Props: before}})
 		return err
 	})
-	if !errors.Is(err, graphpkg.ErrValidFromOutsideIDRange) {
-		t.Fatalf("tx rel before the epoch: %v, want ErrValidFromOutsideIDRange", err)
+	if err != nil {
+		t.Fatalf("tx reference start before the epoch: %v", err)
 	}
+	inDay("tx.AddRelationships, reference start before the epoch", int64(txRels[0].ID()), when(txRels[0].ID()), 25)
 	err = g.Tx().Run(func(tx *graphpkg.GraphTx) error {
 		_, err := tx.AddNodes([]string{"Signal"}, []map[string]any{before})
 		return err
@@ -164,14 +168,20 @@ func TestTierClockGraph_GeneratedIDsCarryValidTime(t *testing.T) {
 	if n18 != 2 {
 		t.Fatalf("batch AddNodes: %d nodes minted at their ValidFrom, want 2", n18)
 	}
-	for _, add := range []func(b *graphpkg.BatchBuilder) error{
-		func(b *graphpkg.BatchBuilder) error { _, err := b.AddNode([]string{"Signal"}, before); return err },
-		func(b *graphpkg.BatchBuilder) error { _, err := b.AddRelationship("OF", kase, sig, before); return err },
-	} {
-		if _, err := g.Batch().Run(add); !errors.Is(err, graphpkg.ErrValidFromOutsideIDRange) {
-			t.Fatalf("batch create before the epoch: %v, want ErrValidFromOutsideIDRange", err)
-		}
+	if _, err := g.Batch().Run(func(b *graphpkg.BatchBuilder) error {
+		_, err := b.AddNode([]string{"Signal"}, before)
+		return err
+	}); !errors.Is(err, graphpkg.ErrValidFromOutsideIDRange) {
+		t.Fatalf("batch node before the epoch: %v, want ErrValidFromOutsideIDRange", err)
 	}
+	if _, err := g.Batch().Run(func(b *graphpkg.BatchBuilder) error {
+		var err error
+		bRel, err = b.AddRelationship("OF", kase, sig, before)
+		return err
+	}); err != nil {
+		t.Fatalf("batch reference start before the epoch: %v", err)
+	}
+	inDay("batch AddRelationship, reference start before the epoch", int64(bRel.ID()), when(bRel.ID()), 25)
 
 	// The constraint branch of the relationship kernel mints too.
 	if err := g.Constraints().Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}); err != nil {
@@ -182,8 +192,58 @@ func TestTierClockGraph_GeneratedIDsCarryValidTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	inDay("Rels().Add under a temporal constraint", int64(r.ID()), when(r.ID()), 22)
-	if _, err := g.Rels().Add(ctx, "OF", kase, sig, before); !errors.Is(err, graphpkg.ErrValidFromOutsideIDRange) {
-		t.Fatalf("rel before the epoch under a temporal constraint: %v, want ErrValidFromOutsideIDRange", err)
+}
+
+// TestTierClockGraph_ForeverEdgeBetweenReferenceNodes (PREEPOCHREL): an edge
+// between reference nodes stamped valid from 1 ms, visible at any valid time,
+// is written with an ID at the clock and keeps its stamp: every valid-time read
+// answers from the stamp, not the ID's time. With RelsByMint it lands on the
+// clock's day. Past the ID range likewise.
+func TestTierClockGraph_ForeverEdgeBetweenReferenceNodes(t *testing.T) {
+	ctx := context.Background()
+	g, err := graphpkg.New(graphpkg.Config{Store: tierClockStore(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = g.Close() }()
+	a, err := g.Nodes().Add(ctx, []string{"Case"}, map[string]any{"tkg_valid_from": types.Instant(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.Nodes().Add(ctx, []string{"Case"}, map[string]any{"tkg_valid_from": types.Instant(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	far := types.Instant(time.Date(2040, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli())
+	for _, stamp := range []types.Instant{1, far} {
+		r, err := g.Rels().Add(ctx, "ABOUT", a, b, map[string]any{"tkg_valid_from": stamp})
+		if err != nil {
+			t.Fatalf("ValidFrom %d: %v", stamp, err)
+		}
+		at := time.UnixMilli(int64(r.ID().MintInstant())).UTC()
+		if at.Before(tierClockDay(25, 0)) || !at.Before(tierClockDay(26, 0)) {
+			t.Fatalf("ValidFrom %d: ID time %v, want the clock's day 2026-07-25", stamp, at)
+		}
+		got, err := g.Temporal().RelAt(r.ID(), stamp)
+		if err != nil {
+			t.Fatalf("ValidFrom %d: RelAt its own start: %v", stamp, err)
+		}
+		if tm := got.Temporal(); tm == nil || tm.ValidFrom != stamp {
+			t.Fatalf("ValidFrom %d: stored %+v", stamp, tm)
+		}
+		if stamp == far {
+			if _, err := g.Temporal().RelAt(r.ID(), types.Instant(tierClockDay(25, 9).UnixMilli())); err == nil {
+				t.Fatal("an edge valid from 2040 answers at the clock: the read used its ID's time")
+			}
+		}
+	}
+	// An edge valid from 1 ms answers before the epoch and on any later day.
+	out, err := g.Rels().ByType("ABOUT", storepkg.QueryOpts{ValidAt: types.Instant(time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC).UnixMilli()), ValidAtSet: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("ByType at 2025-06-01: %d edges, want the one valid from 1 ms", len(out))
 	}
 }
 

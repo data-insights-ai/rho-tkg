@@ -1,0 +1,7 @@
+--- FAIL: TestTierClockGraph_GeneratedIDsCarryValidTime (0.28s)
+    tierclock_mint_test.go:102: reference start before the epoch: graph: ValidFrom outside the ID time range 2026-01-01 to 2034-12-02 cannot be minted (2025-12-31T00:00:0
+--- FAIL: TestTierClockGraph_ForeverEdgeBetweenReferenceNodes (0.19s)
+    tierclock_mint_test.go:221: ValidFrom 1: graph: ValidFrom outside the ID time range 2026-01-01 to 2034-12-02 cannot be minted (1970-01-01T00:00:00Z)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.489s
+FAIL
