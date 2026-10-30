@@ -246,8 +246,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   on field 31 with leased window cursors, every generated-ID create in core asks it; ErrValidFromOutsideIDRange,
   also past 2034-12-02; graph.New refuses SnowflakeNodeID 15 or IngestLanes > 29 on it; mutants 26 of 26 and
   22 of 23 killed, 1 equivalent); ai-soc: all its labels are reference, RelsByMint on, so
-  every edge is minted and placed at its own ValidFrom; event-start alternative closed (44a3e8a1). Next step 3
-  (on-demand window shards, the RelsByMint write first; retention watermark, ErrWindowDropped).
+  every edge is minted and placed at its own ValidFrom; event-start alternative closed (44a3e8a1). Step 3
+  (39057bf1): window shards made on demand, rotation promotes them, late RelsByMint rels write into cold days, a
+  retention drop reserves its shard name (the race hung a test without it); 22 of 22 mutants killed. Watermark
+  and ErrWindowDropped deferred (ai-soc makes no retention calls; per label and type when built). Next step 4
+  (33-day replay test), then ai-soc's BA replay.
   Done when: a replay rotates as live data would.
 - **PREEPOCH** (ai-soc 29 Oct, product question, later) — a customer backfill with valid times before the
   2026-01-01 snowflake epoch: ADR-0013 refuses it with ErrValidFromOutsideIDRange. Done when: René decides.
