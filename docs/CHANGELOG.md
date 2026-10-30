@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.97.3] - 2026-10-30
+
 ### Fixed
 
 - **VDICTDISK** step 1 (goal 2 RAM; ai-soc, BA k10291501: 422 MB live for 1,166,109 entries). A badger value
