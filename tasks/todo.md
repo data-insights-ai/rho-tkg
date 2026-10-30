@@ -241,7 +241,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   crash reuses no ID, ColdAfter above lateness + a window, ErrWindowDropped by a retention watermark). Build 1-4
   after the freeze. Fable review (René's go): 2 blockers, 5 majors, 4 minors, verified; ADR rewritten (fb596de3: the store
   mints in calendar windows, leases in the reference shard, field 31 reserved, all gated; f2fc2183: one cursor a
-  window for both kinds, as told to sigma for MARKFROMRHO). Done when: a replay rotates as live
+  window for both kinds, as told to sigma for MARKFROMRHO). Building on branch tierclock: step 1 (eb3a50ea,
+  Config.Clock + calendar windows + ErrManualRotation; 10 of 10 caught); next step 2 (the store mints: field 31,
+  windowed cursors, leases in the reference shard). Done when: a replay rotates as live
   data would.
 - **PREEPOCH** (ai-soc 29 Oct, product question, later) — a customer backfill with valid times before the
   2026-01-01 snowflake epoch: ADR-0013 refuses it with ErrValidFromBeforeEpoch. Done when: René decides.
