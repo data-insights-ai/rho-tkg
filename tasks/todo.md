@@ -212,7 +212,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   answered from the code with file:line: **STATEREC** (does an as-of-tx read cover sigma's page nodes across the reference and
   day shards, on one read path, at what cost per lookup) and **PROJREAD** (can a label and property lookup return ids
   plus named properties, for sigma's GraphDerivedWriter.find).
-  v4.97.3: ci-docker, consumers and the scale probe clean; tagging.
+  v4.97.3: ci-docker, consumers and the scale probe clean; tagged, GitHub runs in progress. v4.98.0 named on branch
+  tierclock (f52dfb57), rebased with ValueDictionaryStats; ci-docker runs.
   Sent 30 Oct to ai-soc and sigma, unmeasured: STATEREC covers page nodes on one path with cost growing with
   versions; PROJREAD has no door yet (a later minor, no tag). Next to build on word: an as-of read walking back from
   the newest version, once TxFrom's rise with version is checked.
