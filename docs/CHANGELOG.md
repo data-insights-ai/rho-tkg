@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added (TIERCLOCK, ADR-0013; released together when its steps are built)
+## [4.98.0] - 2026-10-30
+
+### Added (TIERCLOCK, ADR-0013)
 
 - **TIERCLOCK** step 1 (ai-soc, René's goal of the full BA archive replayed in valid time): `tiered.Config.Clock`
   (default `time.Now`) drives the hot window at open, rotation and the `ColdAfter` demotion at rotation and at

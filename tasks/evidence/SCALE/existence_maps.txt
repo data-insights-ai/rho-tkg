@@ -160,4 +160,4 @@ v4.97.3 release scale probe (VDICTDISK step 1, Derived, 1 M nodes + 1 M rels (-r
             heap after reopen +177.2 / +176.8 / +174.4 / +176.3 / +177.0 MB
   v4.97.2   insert 13.6 / 9.7 / 9.7 / 9.7 / 9.5 s   clean reopen 0.14 / 0.11 / 0.11 / 0.11 / 0.11 s
             heap after reopen +176.7 / +178.0 / +177.1 / +174.6 / +175.8 MB
-Reading: no change. The probe's store has no value dictionary pressure; the first runs of each ran under load.
+Reading: no change. The first pair differs most (12.1 vs 13.6 s); the other runs are level. Why the first pair differs was not checked.
