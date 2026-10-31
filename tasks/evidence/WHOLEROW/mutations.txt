@@ -39,3 +39,7 @@ M14 TxFrom not moved past the current row's belief (now := c.now()): SURVIVED, n
     supersede's, which the Update door carries without its own test either. Recorded as a gap, not hidden.
 
 Summary: 24 mutants, 21 killed, 1 equivalent (removed), 1 not killed (M14, stated), 1 rewritten and killed (M6).
+
+Shrunk replace paired with excise (sigma's question):
+S1 the pair skips the excise: CAUGHT by TestReplaceVersionShrunkWithExciseReadsTheNewVersionOnly, TestReplaceVersionShrunkRepeatedCorrections
+S2 tx excise writes nothing: CAUGHT by the above and TestReplaceVersionShrunkThenExciseRefusesAndRollsBack

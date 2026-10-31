@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -576,5 +577,184 @@ func TestReplaceVersionRefusalsAndTxTwin(t *testing.T) {
 		if _, err := g.Nodes().ReplaceVersion(ctx, f.id, pageNewProps(), pageNewVF, pageNewVT); !errors.Is(err, storepkg.ErrNodeNotFound) {
 			t.Fatalf("deleted: %v, want ErrNodeNotFound", err)
 		}
+	})
+}
+
+// segment is one expected piece of an effective timeline.
+type segment struct {
+	vf, vt types.Instant
+	props  string // ov_h3 of the version answering there
+}
+
+func wantTimeline(t *testing.T, what string, g *graphpkg.Graph, id types.NodeID, pin types.Instant, want []segment) {
+	t.Helper()
+	segs, err := g.Temporal().NodeEffectiveTimeline(id, pin)
+	if err != nil {
+		t.Fatalf("%s: %v", what, err)
+	}
+	got := make([]segment, 0, len(segs))
+	for _, s := range segs {
+		h3, _ := s.Node.PropertiesMap()["ov_h3"].(string)
+		got = append(got, segment{s.ValidFrom, s.ValidTo, h3})
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("%s: timeline %+v, want %+v", what, got, want)
+	}
+}
+
+// exciseThenReplace is the correction of a row whose range shrinks: every
+// piece of the current range the new one leaves is excised first, then the new
+// version replaces the row, all in one transaction.
+func exciseThenReplace(g *graphpkg.Graph, id types.NodeID, left [][2]types.Instant, props map[string]any, vf, vt types.Instant) (*types.Node, error) {
+	var rep *types.Node
+	err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+		for _, p := range left {
+			if err := tx.ExciseNodeValidity(id, p[0], p[1]); err != nil {
+				return err
+			}
+		}
+		var err error
+		rep, err = tx.ReplaceNodeVersion(id, props, vf, vt)
+		return err
+	})
+	return rep, err
+}
+
+// The old row is [1000, 2000). shrinkShapes names each new range, what the
+// older version keeps answering when the replace runs alone, and the pieces a
+// correction excises for what left.
+var shrinkShapes = []struct {
+	name   string
+	vf, vt types.Instant
+	alone  []segment
+	left   [][2]types.Instant
+}{
+	{"later start earlier end", 1200, 1800,
+		[]segment{{1000, 1200, "h-old"}, {1200, 1800, "h-new"}},
+		[][2]types.Instant{{1000, 1200}, {1800, 2000}}},
+	{"later start same end", 1200, 2000,
+		[]segment{{1000, 1200, "h-old"}, {1200, 2000, "h-new"}},
+		[][2]types.Instant{{1000, 1200}}},
+	{"same start earlier end", 1000, 1800,
+		[]segment{{1000, 1800, "h-new"}},
+		[][2]types.Instant{{1800, 2000}}},
+	{"earlier start earlier end", 500, 1800,
+		[]segment{{500, 1800, "h-new"}, {1800, 2000, "h-old"}},
+		[][2]types.Instant{{1800, 2000}}},
+	{"later start later end", 1200, 3000,
+		[]segment{{1000, 1200, "h-old"}, {1200, 3000, "h-new"}},
+		[][2]types.Instant{{1000, 1200}}},
+	{"disjoint after", 3000, 4000,
+		[]segment{{1000, 2000, "h-old"}, {3000, 4000, "h-new"}},
+		[][2]types.Instant{{1000, 2000}}},
+	{"disjoint before", 100, 500,
+		[]segment{{100, 500, "h-new"}, {1000, 2000, "h-old"}},
+		[][2]types.Instant{{1000, 2000}}},
+}
+
+// A replace alone keeps the older version where it does not cover (ADR-0014).
+func TestReplaceVersionShrunkAloneKeepsTheOlderVersion(t *testing.T) {
+	for _, c := range shrinkShapes {
+		t.Run(c.name, func(t *testing.T) {
+			forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
+				f := writePage(t, g)
+				rep, err := g.Nodes().ReplaceVersion(context.Background(), f.id, pageNewProps(), c.vf, c.vt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantTimeline(t, "alone", g, f.id, rep.Temporal().TxFrom, c.alone)
+			})
+		})
+	}
+}
+
+// Excise for what left, then replace, in one transaction: every read pinned at
+// or after it sees the new version with its validity only; a pin before reads
+// as before.
+func TestReplaceVersionShrunkWithExciseReadsTheNewVersionOnly(t *testing.T) {
+	for _, c := range shrinkShapes {
+		t.Run(c.name, func(t *testing.T) {
+			forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
+				f := writePage(t, g)
+				rep, err := exciseThenReplace(g, f.id, c.left, pageNewProps(), c.vf, c.vt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				now, err := g.Temporal().NowTx()
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, pin := range []types.Instant{rep.Temporal().TxFrom, now} {
+					n, err := g.Temporal().NodeAsOf(f.id, pin)
+					if err != nil {
+						t.Fatal(err)
+					}
+					wantRow(t, "NodeAsOf", n, rep.Version(), c.vf, c.vt, pageNewProps())
+					ns, err := g.Nodes().ByLabel(pageLabel, storepkg.QueryOpts{TxPin: pin})
+					wantRow(t, "ByLabel TxPin", onlyNode(t, "ByLabel TxPin", ns, err, f.id), rep.Version(), c.vf, c.vt, pageNewProps())
+					ns, err = g.Temporal().NodesAsOf(pin)
+					wantRow(t, "NodesAsOf", onlyNode(t, "NodesAsOf", ns, err, f.id), rep.Version(), c.vf, c.vt, pageNewProps())
+					wantTimeline(t, "pin at or after", g, f.id, pin, []segment{{c.vf, c.vt, "h-new"}})
+					opts := storepkg.QueryOpts{TxPin: pin}
+					ns, err = g.Nodes().ByLabelAndProperty(pageLabel, "ov_h3", "h-new", opts)
+					wantRow(t, "index h-new", onlyNode(t, "index h-new", ns, err, f.id), rep.Version(), c.vf, c.vt, pageNewProps())
+					if ns, err = g.Nodes().ByLabelAndProperty(pageLabel, "ov_h3", "h-old", opts); err != nil || len(ns) != 0 {
+						t.Fatalf("index h-old at pin %d: %d rows, err %v", pin, len(ns), err)
+					}
+				}
+				n, err := g.Temporal().NodeAsOf(f.id, f.before)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantRow(t, "NodeAsOf before", n, f.old.Version(), pageOldVF, pageOldVT, f.old.PropertiesMap())
+				wantTimeline(t, "pin before", g, f.id, f.before, []segment{{pageOldVF, pageOldVT, "h-old"}})
+			})
+		})
+	}
+}
+
+// Repeated corrections on one row: each sees the last row's range, and the
+// timeline stays one piece.
+func TestReplaceVersionShrunkRepeatedCorrections(t *testing.T) {
+	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
+		f := writePage(t, g)
+		for i, step := range []struct {
+			vf, vt types.Instant
+			left   [][2]types.Instant
+		}{
+			{1200, 1800, [][2]types.Instant{{1000, 1200}, {1800, 2000}}},
+			{1000, 2000, nil},
+			{1300, 1700, [][2]types.Instant{{1000, 1300}, {1700, 2000}}},
+			{3000, 4000, [][2]types.Instant{{1300, 1700}}},
+			{1400, 1600, [][2]types.Instant{{3000, 4000}}},
+		} {
+			rep, err := exciseThenReplace(g, f.id, step.left, pageNewProps(), step.vf, step.vt)
+			if err != nil {
+				t.Fatalf("step %d: %v", i, err)
+			}
+			wantTimeline(t, fmt.Sprintf("step %d", i), g, f.id, rep.Temporal().TxFrom, []segment{{step.vf, step.vt, "h-new"}})
+		}
+	})
+}
+
+// The other order refuses when the replace ended before the old end: nothing
+// answers past it any more. The transaction rolls back whole.
+func TestReplaceVersionShrunkThenExciseRefusesAndRollsBack(t *testing.T) {
+	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
+		f := writePage(t, g)
+		err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+			if _, err := tx.ReplaceNodeVersion(f.id, pageNewProps(), 1200, 1800); err != nil {
+				return err
+			}
+			return tx.ExciseNodeValidity(f.id, 1800, 2000)
+		})
+		if !errors.Is(err, graphpkg.ErrNoVersionValidAt) {
+			t.Fatalf("err %v, want ErrNoVersionValidAt", err)
+		}
+		cur, err := g.Nodes().Get(context.Background(), f.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantRow(t, "after rollback", cur, f.old.Version(), pageOldVF, pageOldVT, f.old.PropertiesMap())
 	})
 }

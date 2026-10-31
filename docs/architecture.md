@@ -530,10 +530,14 @@ that test.
     is not retracted). The state doors and the effective timeline resolve the chain by own bounds once it no
     longer tiles (an earlier or equal start): at every valid instant the new version covers, the newer belief wins;
     the older version answers only valid instants the new one does not cover, before the new start when that is
-    later than the old (the old belief ends at the new start, `supersessionCaps`) and after the new end when that
-    is earlier than the old. A replace that covers the old interval (sigma's: equal or earlier start, equal or later
-    end) therefore leaves nothing older at any pin at or after it, on the record doors and the timeline alike.
-    Sigma reads record doors only; the timeline rule is stated so the shrunk case is not a surprise.
+    later than the old (the old belief ends at the new start, `supersessionCaps`), and after the new end only when
+    the new start is earlier than the old; with an equal or later start the old belief answers nothing past the new
+    end. A replace that covers the old interval (sigma's: equal or earlier start, equal or later end) therefore
+    leaves nothing older at any pin at or after it, on the record doors and the timeline alike. A correction that
+    shrinks the range excises each piece of the current range the new one leaves, in the same transaction, excises
+    first, then replaces: the timeline then matches the record doors in every shape, at 2 to 4 rows per correction.
+    The other order is refused when nothing answers a piece any more (`ErrNoVersionValidAt`), and the transaction
+    rolls back whole. Sigma reads record doors only.
   - *Compaction and retention.* The superseded row is an ordinary history row: `CompactHistory*` folds it into a
     stub like any superseded version, after which a pin before the replace fails `ErrHistoryCompacted` instead of
     answering partially; retention purges by the ID's time and label, unchanged; `History()` returns the chain in
