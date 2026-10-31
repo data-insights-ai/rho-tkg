@@ -53,6 +53,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "UpdateWithContext", run: func() error { _, err := api.Update(ctx, id, nil); return err }},
 		{name: "UpdateInPlace", run: func() error { _, err := api.UpdateInPlace(context.Background(), id, nil); return err }},
 		{name: "UpdateInPlaceWithContext", run: func() error { _, err := api.UpdateInPlace(ctx, id, nil); return err }},
+		{name: "ReplaceVersion", run: func() error { _, err := api.ReplaceVersion(ctx, id, nil, 1, 2); return err }},
 		{name: "Delete", run: func() error { return api.Delete(context.Background(), id) }},
 		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, id) }},
 		{name: "DeleteWithTx", run: func() error { return api.DeleteWithTx(ctx, id, 1000) }},
@@ -130,7 +131,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "LendByIDs", "GetByIDs",
-		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
+		"Update", "Update", "UpdateInPlace", "UpdateInPlace", "ReplaceVersion",
 		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "EndValidity", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "GetOrCreateByKeyOpts", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndPropertyValues", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
@@ -246,6 +247,12 @@ func (s *nodeOpsSpy) UpdateWithContext(ctx context.Context, id types.NodeID, upd
 
 func (s *nodeOpsSpy) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	s.record("UpdateInPlace")
+	s.lastID = id
+	return nil, s.err
+}
+
+func (s *nodeOpsSpy) ReplaceVersion(ctx context.Context, id types.NodeID, props map[string]any, validFrom, validTo types.Instant) (*types.Node, error) {
+	s.record("ReplaceVersion")
 	s.lastID = id
 	return nil, s.err
 }

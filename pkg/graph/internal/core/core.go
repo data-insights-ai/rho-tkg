@@ -295,6 +295,10 @@ type Core struct {
 	// allowExactErasure gates the bounded legal-erasure admin door. Off by
 	// default; unlike Reset, scope is explicit and fail-closed.
 	allowExactErasure bool
+	// replaceVersionLabels lists the primary labels whose nodes
+	// Nodes().ReplaceVersion may replace whole (ADR-0014). Wired from
+	// Config.ReplaceVersionLabels; nil refuses every node.
+	replaceVersionLabels map[string]struct{}
 	// durableFlush is set when Config.DurableCommit is on: every commit group
 	// (GraphTx.Commit, Batch.Execute) calls it once before returning success
 	// (flushDurableCommit). Nil = off, no flush on commit.
@@ -553,6 +557,11 @@ var (
 	// rejected. Bitemporally correct backdating must use Phase 3's cascade
 	// edit (SetVersionInterval) instead.
 	ErrValidFromBeforePrevious = errors.New("graph: tkg_valid_from must be greater than previous version's effective ValidFrom")
+
+	// ErrReplaceVersionNotListed is returned by Nodes().ReplaceVersion and
+	// GraphTx.ReplaceNodeVersion for a node whose primary label is not in
+	// Config.ReplaceVersionLabels (ADR-0014); nothing is written.
+	ErrReplaceVersionNotListed = errors.New("graph: node's label is not listed in Config.ReplaceVersionLabels")
 
 	// ErrConflictingTemporalOpts is returned by a generic query door
 	// (ByLabel / ByType / All and their property/vector siblings) when
@@ -1021,6 +1030,13 @@ type Config struct {
 	// TxTo are not part of the integrity hash, so such a row still verifies and
 	// replicates verbatim.
 	AllowTxBackfill bool
+
+	// ReplaceVersionLabels lists the labels whose nodes Nodes().ReplaceVersion
+	// (and GraphTx.ReplaceNodeVersion) may replace whole as a new version with
+	// any validity (ADR-0014): a node whose primary label is not listed is
+	// refused with ErrReplaceVersionNotListed. Empty by default: the door is
+	// closed for every label.
+	ReplaceVersionLabels []string
 
 	// AllowRetentionPurge enables the ADR-0008 R2 retention-purge admin door
 	// (g.Admin().PurgeExpiredNodes), which HARD-removes whole aged-out nodes of a
@@ -2131,8 +2147,18 @@ func New(config Config) (*Core, error) {
 		allowRetentionPurge: config.AllowRetentionPurge,
 		allowReset:          config.AllowReset,
 		allowExactErasure:   config.AllowExactErasure,
-		hashesOff:           config.DisableIntegrityHashes,
-		replSource:          config.ReplicationSource,
+		replaceVersionLabels: func() map[string]struct{} {
+			if len(config.ReplaceVersionLabels) == 0 {
+				return nil
+			}
+			m := make(map[string]struct{}, len(config.ReplaceVersionLabels))
+			for _, l := range config.ReplaceVersionLabels {
+				m[l] = struct{}{}
+			}
+			return m
+		}(),
+		hashesOff:  config.DisableIntegrityHashes,
+		replSource: config.ReplicationSource,
 	}
 	c.Nodes = &NodeOps{c: c}
 	c.Rels = &RelOps{c: c}

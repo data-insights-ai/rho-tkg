@@ -72,6 +72,7 @@ var entitySentinels = []string{
 	"ErrVersionOverflow",
 	"ErrNotTieredStore",
 	"ErrAlreadyClosed",
+	"ErrReplaceVersionNotListed",
 	"ErrGraphClosed",
 	"ErrReadOnlyReplica",
 	"ErrNilGraph",
