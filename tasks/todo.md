@@ -161,6 +161,8 @@ Status: fetch fixed on main, 306-445 s down to about 8 s on the 12 GB masked sto
 Fixed: the on-disk member page seeks from the cursor and stops at its limit (walk steps bounded by a count test, rel and node doors); a fetch nothing passes doubles up to `pageChunkMax`.
 
 Left, not page-bound yet: members on shards tiered cold carry no envelope (cold shards keep no temporal index), so each is one row read, at about 8 s per page on this store whatever the instant. A larger read batch measured no gain: each tiered row read opens its own view. Direction: FIXED-MEMORY's rel record gives cold shards an envelope on NVMe; decide there, or sooner if 8 s isn't enough.
+- **WHOLEROW gaps** (review 31 Oct, before merge): M14 survived, TxFrom past the row's belief; try a row stamped ahead of the clock through AllowTxBackfill, else remove the guard's claim. Tests on memory and sharded (the ask says every backend) and a replica replay. Race suite. Reopen cycle on masked rows once sigma wires the door. Done when these hold and the branch is merged. Waits for the next round.
+- **DURABLEVIS** (found 31 Oct) — under DurableCommit, with or without SyncWrites, a group is visible to readers before its fsync (`durable_commit.go`, persistence.md), against René's word of 26 Oct that readers never see a fact before its fsync. ai-soc runs this config; a crash can lose a group a reader saw. Changing it holds readers behind the fsync, which costs throughput. Done when René decides. Waits for René; no change on the pinned pair.
 
 ### FIXED-MEMORY model plan (René 31 Oct; starts next week, not this weekend; badger stays, it is not replaced)
 
@@ -281,7 +283,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   The NETWORK (device, local_port) ask was ai-soc's own (28 Oct, RELDISK) and predates sigma's SRCMASK door. Resume
   only if ai-soc's Flux run shows a lazy edge source with many candidates per kept row and real read volume; sigma
   then asks with the numbers.
-- **FABLEBUILD** (René's yes in chat, 31 Oct): a one-off trial with Fable as builder on the next state-restore item, from a brief naming the host's call path. Done when the trial is reported. Badger claims in its work are checked against source or a measurement (René ruled Fable out for badger, 24 Oct). Waits for the next state-restore item, and for the masked sample from ai-soc when that item changes a reopen read.
+- **FABLEBUILD** (René's yes in chat, 31 Oct): Fable built WHOLEROW on branch `wholerow`: 5 of 5 sigma tests on badger and tiered, 22 of 24 mutants killed, one equivalent removed, gates green, its badger claims cited. Reviewed by the main session; report to René given. Done when the branch merges. Waits for the gaps in STATEREC.
 
 - **BRANCHES** (René via ai-soc, 29 Oct: "clean this also up") — step 1 done: origin/archive/unmerged-2026-10-27
   now at 93c43a64 (was 6554d8ad; tree unchanged, one commit with the 5 codex tips added as parents). Each tip
