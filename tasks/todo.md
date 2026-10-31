@@ -347,6 +347,14 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 
 ## Next
 
+- **LISTREAD** (sigma 31 Oct; later round, no rush, sigma goes on without it; changes no answer) — sigma's restore pages
+  ByLabelAndProperties and asks HasHistory per node; ai-soc's store: index 8.1 s, HasHistory 6.4 s of 23.3 s on 1,048,294
+  nodes. From the code, not measured: (a) each shard answers a full page, every row decoded, and the merge keeps one page,
+  so a page decodes up to shards x limit rows: first measure, then page IDs across shards and fetch only the winners
+  (patch). (b) tiered HasNodeHistory re-reads the current row for its stamps, and the listing fills no cache; a cold shard
+  also probes with an iterator. Batch door HasHistory(ids), one route per shard, liveness known (a minor). (c) a no-copy
+  read-only page only if (a) and (b) leave it worth a door. Measure on a store reopened cold, not sigma's synthetic.
+
 - **STALEBUILD** — Released v4.96.1 (3f0af2b9), 29 Oct: a build at open streams its stale entries' deletes (peak
   RSS at 30.8 M stale entries 6.8 GB, was 11.3-12.6). Tag CI and main green; ai-soc and sigma notified.
 - **CREATEPEAK** (fix, later; same family, not in STALEBUILD) — the on-disk creates collect every entry of a
