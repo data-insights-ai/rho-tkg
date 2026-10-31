@@ -3,8 +3,10 @@ package graph_test
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,12 +17,36 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	"golang.org/x/sys/unix"
 )
 
 // TestFirstTouchCost reports what sigma's live page reads cost right after a
 // clean reopen: per batch one ByLabelAndPropertyValues at DepthHot, then per
 // node HasHistory, then the timeline for nodes with history (a unit load).
-// It asserts nothing about time; set FIRSTTOUCH_NODES to run it.
+// It asserts nothing about time; set FIRSTTOUCH_NODES to run it, and
+// FIRSTTOUCH_COLD to drop the store's files from the OS page cache before the
+// reopen.
+func dropPageCache(t *testing.T, dir string) {
+	t.Helper()
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := f.Sync(); err != nil {
+			return err
+		}
+		return unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_DONTNEED)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFirstTouchCost(t *testing.T) {
 	n, _ := strconv.Atoi(os.Getenv("FIRSTTOUCH_NODES"))
 	if n == 0 {
@@ -75,6 +101,9 @@ func TestFirstTouchCost(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if os.Getenv("FIRSTTOUCH_COLD") != "" {
+		dropPageCache(t, dir)
+	}
 	start = time.Now()
 	g, _ = open()
 	defer func() { _ = g.Close() }()

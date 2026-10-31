@@ -1,0 +1,6 @@
+    first_touch_cost_test.go:99: built 2000000 nodes, 200000 with history, in 34.976s
+    first_touch_cost_test.go:110: reopen 5.032s
+    first_touch_cost_test.go:124: first HasHistory (presence build): 338.647ms, 2 read txns
+    first_touch_cost_test.go:167: batch 64 x20, 1280 nodes: per node index 85.359µs (1.00 txns), HasHistory 7.392µs (1.00), timeline, averaged over all 5.12µs (0.60)
+    first_touch_cost_test.go:167: batch 1024 x20, 20474 nodes: per node index 16.047µs (1.00 txns), HasHistory 6.669µs (1.00), timeline, averaged over all 4.459µs (0.57)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	43.884s
