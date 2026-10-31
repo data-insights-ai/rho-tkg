@@ -141,7 +141,7 @@ func (ts *Store) forEachMintShard(depth ShardDepth, fn func(*BadgerStore) error)
 	shards := ts.eventShardsToRead(depth)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		s, release, err := es.checkoutStoreForRead(ts)
+		s, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return err
 		}

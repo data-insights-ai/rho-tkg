@@ -20,13 +20,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// TestFirstTouchCost reports what sigma's live page reads cost right after a
-// clean reopen: per batch one ByLabelAndPropertyValues at DepthHot, then per
-// node HasHistory, then the timeline for nodes with history (a unit load).
-// It asserts nothing about time; set FIRSTTOUCH_NODES to run it, and
-// FIRSTTOUCH_COLD to drop the store's files from the OS page cache before the
-// reopen.
-func dropPageCache(t *testing.T, dir string) {
+func dropPageCache(t testing.TB, dir string) {
 	t.Helper()
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -47,7 +41,13 @@ func dropPageCache(t *testing.T, dir string) {
 	}
 }
 
-func TestFirstTouchCost(t *testing.T) {
+// BenchmarkFirstTouchCost reports what sigma's live page reads cost right after a
+// clean reopen: per batch one ByLabelAndPropertyValues at DepthHot, then per
+// node HasHistory, then the timeline for nodes with history (a unit load).
+// One pass reports the costs (-benchtime=1x -v); set FIRSTTOUCH_NODES to run it, and
+// FIRSTTOUCH_COLD to drop the store's files from the OS page cache before the
+// reopen.
+func BenchmarkFirstTouchCost(t *testing.B) {
 	n, _ := strconv.Atoi(os.Getenv("FIRSTTOUCH_NODES"))
 	if n == 0 {
 		t.Skip("set FIRSTTOUCH_NODES")

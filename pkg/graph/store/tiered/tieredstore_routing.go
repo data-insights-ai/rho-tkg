@@ -199,7 +199,7 @@ func (ts *Store) routeRelShardFor(id types.RelID, readOnly bool) (store *BadgerS
 	ts.mu.RLock()
 	probe := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
-		if es == candidateEntry {
+		if es == candidateEntry || es.noRows.Load() {
 			continue
 		}
 		probe = append(probe, es)

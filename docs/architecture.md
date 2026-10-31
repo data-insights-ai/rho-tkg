@@ -493,13 +493,11 @@ that test.
     `ColdAfter`); 4 (built, unreleased) a replay test
     of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
     replay as the measurement.
-- **COLDEDGE flat adjacency (proposed, not built).** Adjacency of a reference node with `RelsByMint` opens every event
-  shard of the depth (`forEachMintShard`), though few hold its legs. A sealed shard is to be read only for the nodes that
-  have legs on it. A shard's adjacency keys are already on disk (`putRelationship`), so seal needs no write-path key: it walks
-  them, seeking past each node, keeps the nodes the reference shard holds, and writes them durably to a per-node shard list on
-  the reference shard, then sets a catalog flag on the shard, in that order. A writable open clears the flag durably first, as
-  the empty-shard wake does. A read asks every unflagged shard of the depth, plus the flagged ones its node lists. The list may
-  name too much (a deleted rel, a dropped shard), which costs a probe and never an answer; it may never name too little. A
-  crash before the flag leaves the shard probed. A shard sealed before this build gets a list at its next seal. No RAM grows
-  with shards or nodes. To measure first: seal time, one seek per distinct node on the shard, event nodes included. If that is
-  too slow, each mint-placed rel's batch writes a key per endpoint instead, at a cost on every write.
+- **COLDEDGE flat adjacency (on hold, not built).** Adjacency of a reference node with `RelsByMint` opens every event shard
+  of the depth (`forEachMintShard`), though few hold its legs. Those opens are now read-only: 30 cold shards holding rows,
+  2.9 s to about 0.5 s a call (one run). Build a per-node shard list only if ai-soc's run still shows them dominating. Then: walk
+  0x05, 0x06 and 0x0D, because a deleted rel's legs live only in 0x0D; keep an endpoint unless its ID's time lies in the shard's
+  window, because a reference filter would drop archived and deleted nodes that still fan out; build lazily on a shard's first
+  probe, not under `shardMu` at close; store append-only `(node|shard)` keys in the global index, reaped on a shard drop. The
+  list may name too much, never too little. A hub with legs every day still opens every day: only a time bound on the read
+  (TIMEWINDOW) answers that.

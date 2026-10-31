@@ -105,7 +105,7 @@ func (ts *Store) foldNodePropertySketches(labelToken uint16, propertyKey string,
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 
 	type result struct {
