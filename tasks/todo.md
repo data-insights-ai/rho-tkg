@@ -354,6 +354,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   (patch). (b) tiered HasNodeHistory re-reads the current row for its stamps, and the listing fills no cache; a cold shard
   also probes with an iterator. Batch door HasHistory(ids), one route per shard, liveness known (a minor). (c) a no-copy
   read-only page only if (a) and (b) leave it worth a door. Measure on a store reopened cold, not sigma's synthetic.
+  Sigma 31 Oct: restore reads at DepthHot, row nodes on the reference shard. So (a) and the cold probe don't explain its
+  times. Measure first: uncached rows on the reference shard, the stamps re-read, the archive ask, and the one-time build of
+  the reference shard's presence set on the first HasHistory (a whole-keyspace scan, possibly inside the 6.4 s).
 
 - **STALEBUILD** — Released v4.96.1 (3f0af2b9), 29 Oct: a build at open streams its stale entries' deletes (peak
   RSS at 30.8 M stale entries 6.8 GB, was 11.3-12.6). Tag CI and main green; ai-soc and sigma notified.
