@@ -24,10 +24,10 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Commit with explicit paths, never `git commit -a`: a docs commit swept unreviewed step code onto main (2026-10-23).
 - Work order (René 2026-10-23): (1) the request's `tasks/todo.md` item first, before any other action; (2) the red test;
   (3) the implementation; (4) the tests green; (5) the review; (6) when finished, the item leaves `tasks/todo.md` and its
-  `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` and the HANDOVER brief are updated and committed on main at
-  every event (a step done, a review verdict, a decision, a request queued, a claim found false), from the main worktree
-  `../rho-tkg-main` while a branch is checked out, never deferred to the branch's end (todo went a day stale, 2026-10-24);
+  `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` and the HANDOVER brief get one commit on main per item end (René 2026-10-31: 298 of 545 commits in 7 days
+  were todo commits), from the main worktree `../rho-tkg-main` while a branch is checked out;
   `scripts/check-ledger.sh` before every such commit.
+- Peers (René 2026-10-31): one message per item each way to sigma-tkgd and ai-soc; status goes in the todo.
 - Who works (René 2026-10-23): the main session does the work itself, analysis and code alike, and runs every test, lint
   and gate, and reviews its own work (§ Review); the Fable reviewer was deleted (René 2026-10-24). No subagents unless
   René asks for them.
@@ -239,7 +239,7 @@ Index (`→` names where the rule lives now):
 77. → 78
 78. Red break-the-code test first; mutation sweep for crash safety → digest (Code); `tasks/evidence/FLUSHPART/mutations.txt`
 79. Fix = patch, door = minor → digest (Process); `scripts/patchgate`
-80. Keep todo and HANDOVER current, on main, at every event → digest (Process); `scripts/check-ledger.sh`
+80. One todo and HANDOVER commit on main per item end → digest (Process); `scripts/check-ledger.sh`
 81. Act, do not offer → digest (Process)
 82. A release is green only when the tag's GitHub CI is green → Release checklist
 83. → 78
