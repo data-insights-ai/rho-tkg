@@ -221,6 +221,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Measured, k10302100 reopen, 60 CPU windows: buildHistoryPresence 3.04 s in all; committedRowStamps about 231 s CPU, window 17's
   stacks all HasHistory through nodeCurrentStampsRow. So the stamps patch ranks above the Prefix test, if a corrupt row
   keeps its answer. Benchmark assumes batches 64 and 1024, 10 % with history; nobody has BA's numbers.
+  Checked 31 Oct: the stamps patch fails. Liveness from the ID index turns a corrupt row's error into false with no error, so
+  no such patch; pinned by a test on branch histlive. Cutting the re-read needs a door handing over the decoded row (LISTREAD).
   reopen comes before goal 2. Order changed again 31 Oct (sigma plans a clean-stop image; rows come in on touch): asofwalk to main untagged after CI,
   FIRSTTOUCH (live page read after a reopen: measure once sigma names its doors, no fix before a cause), committedRowStamps
   patch if a corrupt row keeps its answer, then TxPin batch by IDs, then the WHOLEROW record
