@@ -122,6 +122,30 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
+### FIXED-MEMORY model plan (René 31 Oct; starts next week, not this weekend; badger stays, it is not replaced)
+
+Goal: at about 2 TB a day and beyond, per-entity answers leave the Go heap: Go heap stays a fixed amount, data grows on NVMe and block, RAM is page cache you add. The direction comes from read-only Fable analysis on main (31 Oct, inferred from code unless marked measured).
+
+Measured (standalone program, 16 GB sorted file of 2 G IDs, mapped, one thread, one run, no rho code): all in RAM 0.4-0.7 µs p50; recent 1 % stays 0.4 µs with RAM capped at 256 MB; uniform capped 145-180 µs p50; 44 MB heap. Not tested: writes, sealing, merges, parallel readers, a real store. An on-disk hash file (René's question) was not finished; the expectation that it loses time locality without saving a page read is untested, so step 0 measures it.
+
+0. Prototypes, standalone, before any store code. Sorted file against a hash file under a RAM cap. Run files: seal at least 20 M entries/s, merge at least 10 M entries/s, hot lookup p50 at most 1 µs, against a badger Get. Segment: 20 M rels between 2 M nodes; refuted if a hot row read is under 3x a badger Get, hub adjacency under 5x an iterator, or 64 readers with pread under 50 k lookups/s. Compare page faults with pread: a fault may hold the Go P.
+
+Path (a), run files: immutable files per shard under `DataDir/idx` on NVMe, not in badger, with a bounded delta in heap (about 64 MB), sealed by bytes and merged. Badger stays the truth: a stale, torn or missing file is rebuilt at open, a store without files keeps working, and the file answers presence only, so a corrupt row still errors. Own readers use SetPanicOnFault against SIGBUS. No consumer change; each step a minor, with a red test.
+1. Existence (nodeIDs, relIDs, type membership) on the reference shard and archive, about 2-3 B per ID. It frees the growth that never ends. Refuted if ai-soc's push loses over 5 %.
+2. Rel record with envelope (52 B), rel temporal index reduced to the delta; the index stays on all types. Refuted if ai-soc's RelsEffectivePage p99 rises over 20 %.
+3. Entity record (36 B) for history presence, stamps and belief watermark. Refuted if sigma's restore pass passes 1.5x today.
+4. Hot shard sealed by bytes; heap flat through a 10x write replay.
+5. Image ID sections retired; cold shards answer existence from NVMe without opening badger.
+
+Path (b), the direction after (a): the hot shard stays on badger; a sealed shard converts once to mapped segments (row records, version chains, CSR adjacency, sorted runs) behind a store at `EventShard.store`. Cold reads through pread. Expected, unmeasured: field reads 0.5-1 µs with no allocation, restart near constant in store size, write cost 2-3x against about 10x; doors returning full nodes gain perhaps 2-3x only; disk unchanged. No API change for consumers; each step a minor, door-agreement tests against the badger shard.
+6. Point reads by ID, behind a config.
+7. Adjacency CSR and a per-node segment list (replaces COLDEDGE's fan-out).
+8. History, TxPin walk and prune from records.
+9. Label and type membership, property indexes.
+10. Drop the badger directory of a verified sealed shard (a one-way catalog kind).
+
+Done when: a test holds reopen heap of 10 N entities within 0.1 B per entity of N, and a long ai-soc run shows RAM flat with data. Waits for next week, then step 0's numbers and René's decision on (b). Inputs: ai-soc's per-label audit; a run longer than ColdAfter for the event-shard plateau (about 750 MB, estimate). TEMPIDX-2 and IDTABLE fold into this plan when it starts; until then rho takes only what stabilises ai-soc for goal 2.
+
 - **LISTREAD** (sigma 31 Oct; later round, no rush, sigma goes on without it; changes no answer) — sigma's restore pages
   ByLabelAndProperties and asks HasHistory per node; ai-soc's store: index 8.1 s, HasHistory 6.4 s of 23.3 s on 1,048,294
   nodes. From the code, not measured: (a) each shard answers a full page, every row decoded, and the merge keeps one page,
