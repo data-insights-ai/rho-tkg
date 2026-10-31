@@ -1,0 +1,14 @@
+--- PASS: TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly (0.20s)
+--- PASS: TestReplaceVersionPinBeforeReadsAsBefore (0.17s)
+--- PASS: TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom (0.18s)
+--- SKIP: TestReplaceVersionCrashChild (0.00s)
+--- PASS: TestReplaceVersionTxFromRisesWithVersionAcrossCrash (0.47s)
+--- PASS: TestReplaceVersionIndexesFollowTheNewVersion (0.16s)
+--- PASS: TestReplaceVersionRefusalsAndTxTwin (0.21s)
+--- PASS: TestReplaceVersionShrunkAloneKeepsTheOlderVersion (1.24s)
+--- PASS: TestReplaceVersionShrunkWithExciseReadsTheNewVersionOnly (1.32s)
+--- PASS: TestReplaceVersionShrunkRepeatedCorrections (0.18s)
+--- PASS: TestReplaceVersionShrunkThenExciseRefusesAndRollsBack (0.19s)
+--- PASS: TestReplaceVersionOpenRowWithExcise (2.08s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	6.426s

@@ -758,3 +758,156 @@ func TestReplaceVersionShrunkThenExciseRefusesAndRollsBack(t *testing.T) {
 		wantRow(t, "after rollback", cur, f.old.Version(), pageOldVF, pageOldVT, f.old.PropertiesMap())
 	})
 }
+
+// writeOpenPage is writePage without the close: the row is [1000, open).
+func writeOpenPage(t *testing.T, g *graphpkg.Graph) pageFixture {
+	t.Helper()
+	ctx := context.Background()
+	for _, k := range []string{"ov_k", "ov_h3"} {
+		if err := g.Index().CreateProperty(pageLabel, k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := g.Nodes().Add(ctx, []string{pageLabel}, map[string]any{"ov_k": "k1", "ov_h3": "h-old", "tkg_valid_from": pageOldVF})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := pageFixture{id: n.ID(), old: n}
+	if f.before, err = g.Temporal().NowTx(); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// An open row corrected: closed by the new version, moved, or kept open. The
+// tail the new range leaves is excised with an open end.
+func TestReplaceVersionOpenRowWithExcise(t *testing.T) {
+	const open = types.Instant(0)
+	for _, c := range []struct {
+		name   string
+		vf, vt types.Instant
+		left   [][2]types.Instant
+	}{
+		{"closes at same start", 1000, 1800, [][2]types.Instant{{1800, open}}},
+		{"closes at earlier start", 500, 1800, [][2]types.Instant{{1800, open}}},
+		{"closes at later start", 1200, 1800, [][2]types.Instant{{1000, 1200}, {1800, open}}},
+		{"stays open at later start", 1200, open, [][2]types.Instant{{1000, 1200}}},
+		{"stays open at earlier start", 500, open, nil},
+		{"moves wholly before", 100, 500, [][2]types.Instant{{1000, open}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
+				f := writeOpenPage(t, g)
+				rep, err := exciseThenReplace(g, f.id, c.left, pageNewProps(), c.vf, c.vt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				pin := rep.Temporal().TxFrom
+				n, err := g.Temporal().NodeAsOf(f.id, pin)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantRow(t, "NodeAsOf", n, rep.Version(), c.vf, c.vt, pageNewProps())
+				ns, err := g.Nodes().ByLabel(pageLabel, storepkg.QueryOpts{TxPin: pin})
+				wantRow(t, "ByLabel TxPin", onlyNode(t, "ByLabel TxPin", ns, err, f.id), rep.Version(), c.vf, c.vt, pageNewProps())
+				ns, err = g.Nodes().ByLabelAndProperty(pageLabel, "ov_h3", "h-new", storepkg.QueryOpts{TxPin: pin})
+				wantRow(t, "index h-new", onlyNode(t, "index h-new", ns, err, f.id), rep.Version(), c.vf, c.vt, pageNewProps())
+				if ns, err = g.Nodes().ByLabelAndProperty(pageLabel, "ov_h3", "h-old", storepkg.QueryOpts{TxPin: pin}); err != nil || len(ns) != 0 {
+					t.Fatalf("index h-old: %d rows, err %v", len(ns), err)
+				}
+				wantTimeline(t, "pin at", g, f.id, pin, []segment{{c.vf, c.vt, "h-new"}})
+				wantTimeline(t, "pin before", g, f.id, f.before, []segment{{pageOldVF, open, "h-old"}})
+			})
+		})
+	}
+	// Sigma closes its open run in place: tkg_valid_to through UpdateNode in a
+	// transaction, keeping the row's stamp.
+	closeInPlace := func(tx *graphpkg.GraphTx, id types.NodeID, vt types.Instant) error {
+		_, err := tx.UpdateNode(id, map[string]any{"tkg_valid_to": vt})
+		return err
+	}
+	t.Run("closed in place then shrunk in one tx", func(t *testing.T) {
+		forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
+			f := writeOpenPage(t, g)
+			var rep *types.Node
+			if err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+				if err := closeInPlace(tx, f.id, pageOldVT); err != nil {
+					return err
+				}
+				if err := tx.ExciseNodeValidity(f.id, 1800, pageOldVT); err != nil {
+					return err
+				}
+				var err error
+				rep, err = tx.ReplaceNodeVersion(f.id, pageNewProps(), 1000, 1800)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			wantTimeline(t, "pin at", g, f.id, rep.Temporal().TxFrom, []segment{{1000, 1800, "h-new"}})
+		})
+	})
+	// After a replace with an earlier start, a close in place shortens the new
+	// version and the older belief answers past it on the timeline (ADR-0014).
+	// An excise of the tail alone closes the timeline, not the record doors'
+	// row. Excise and replace again closes both.
+	t.Run("replaced open at earlier start then closed", func(t *testing.T) {
+		for _, c := range []struct {
+			name  string
+			close func(tx *graphpkg.GraphTx, id types.NodeID) error
+			want  []segment
+			rowVT types.Instant
+		}{
+			{"in place", func(tx *graphpkg.GraphTx, id types.NodeID) error { return closeInPlace(tx, id, 1800) },
+				[]segment{{500, 1800, "h-new"}, {1800, open, "h-old"}}, 1800},
+			{"by excise", func(tx *graphpkg.GraphTx, id types.NodeID) error { return tx.ExciseNodeValidity(id, 1800, open) },
+				[]segment{{500, 1800, "h-new"}}, open},
+			{"by excise and replace", func(tx *graphpkg.GraphTx, id types.NodeID) error {
+				if err := tx.ExciseNodeValidity(id, 1800, open); err != nil {
+					return err
+				}
+				_, err := tx.ReplaceNodeVersion(id, pageNewProps(), 500, 1800)
+				return err
+			}, []segment{{500, 1800, "h-new"}}, 1800},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
+					f := writeOpenPage(t, g)
+					if _, err := exciseThenReplace(g, f.id, nil, pageNewProps(), 500, open); err != nil {
+						t.Fatal(err)
+					}
+					if err := g.Tx().Run(func(tx *graphpkg.GraphTx) error { return c.close(tx, f.id) }); err != nil {
+						t.Fatal(err)
+					}
+					pin, err := g.Temporal().NowTx()
+					if err != nil {
+						t.Fatal(err)
+					}
+					wantTimeline(t, "pin after the close", g, f.id, pin, c.want)
+					n, err := g.Temporal().NodeAsOf(f.id, pin)
+					if err != nil {
+						t.Fatal(err)
+					}
+					tm := n.Temporal()
+					if tm.ValidFrom != 500 || tm.ValidTo != c.rowVT || n.PropertiesMap()["ov_h3"] != "h-new" {
+						t.Fatalf("NodeAsOf [%d, %d) %v, want the new version [500, %d)", tm.ValidFrom, tm.ValidTo, n.PropertiesMap(), c.rowVT)
+					}
+				})
+			})
+		}
+	})
+	// An open row closed by CloseVersion first, then shrunk: the excise sees
+	// the closed range.
+	t.Run("closed then shrunk", func(t *testing.T) {
+		forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
+			f := writeOpenPage(t, g)
+			if err := g.Nodes().CloseVersion(context.Background(), f.id, pageOldVT); err != nil {
+				t.Fatal(err)
+			}
+			rep, err := exciseThenReplace(g, f.id, [][2]types.Instant{{1800, pageOldVT}}, pageNewProps(), 1000, 1800)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantTimeline(t, "pin at", g, f.id, rep.Temporal().TxFrom, []segment{{1000, 1800, "h-new"}})
+		})
+	})
+}

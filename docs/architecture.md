@@ -537,7 +537,9 @@ that test.
     shrinks the range excises each piece of the current range the new one leaves, in the same transaction, excises
     first, then replaces: the timeline then matches the record doors in every shape, at 2 to 4 rows per correction.
     The other order is refused when nothing answers a piece any more (`ErrNoVersionValidAt`), and the transaction
-    rolls back whole. Sigma reads record doors only.
+    rolls back whole. A later close of a row replaced at an earlier start follows the same rule: closed in place
+    the older belief answers past the close on the timeline, an excise of the tail alone leaves the record doors'
+    row open; excise and replace in one transaction closes both. Sigma reads record doors only.
   - *Compaction and retention.* The superseded row is an ordinary history row: `CompactHistory*` folds it into a
     stub like any superseded version, after which a pin before the replace fails `ErrHistoryCompacted` instead of
     answering partially; retention purges by the ID's time and label, unchanged; `History()` returns the chain in

@@ -43,3 +43,10 @@ Summary: 24 mutants, 21 killed, 1 equivalent (removed), 1 not killed (M14, state
 Shrunk replace paired with excise (sigma's question):
 S1 the pair skips the excise: CAUGHT by TestReplaceVersionShrunkWithExciseReadsTheNewVersionOnly, TestReplaceVersionShrunkRepeatedCorrections
 S2 tx excise writes nothing: CAUGHT by the above and TestReplaceVersionShrunkThenExciseRefusesAndRollsBack
+
+Open rows (sigma's follow-up):
+O1 open excise end treated as closed: CAUGHT by closes_at_same_start, closes_at_earlier_start, closes_at_later_start, moves_wholly_before
+O2 the pair skips the excise: CAUGHT by closes_at_earlier_start, closes_at_later_start, stays_open_at_later_start, moves_wholly_before
+O3 by-excise arm closes in place: CAUGHT by by_excise on badger and tiered
+O4 last arm drops its excise: replaced_open_at_earlier_start_then_closed/by_excise_and_replace/badger replaced_open_at_earlier_start_then_closed/by_excise_and_replace/tiered 
+O5 last arm drops its replace: replaced_open_at_earlier_start_then_closed/by_excise_and_replace/badger replaced_open_at_earlier_start_then_closed/by_excise_and_replace/tiered 
