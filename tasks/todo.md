@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.86.0 (2026-10-26). René's open decisions are the items that wait for
+What rho does next, in order. Last release: v4.98.3 (2026-10-30). René's open decisions are the items that wait for
 him, each with my default. State, consumers and the numbered backlog: `HANDOVER.md`; rules: `docs/CONTRIBUTING.md`
 § Rules digest. Done work: `docs/CHANGELOG.md`, under the same tag.
 
@@ -10,162 +10,32 @@ Each item: one sentence, then when it is done and what it waits for.
 
 - **CIGATES** (René via ai-soc, 31 Oct, "fix all agents ci pipeline"): the guard, patchgate fixes, hook script and gate log are on main; the hook is installed (René's go, 31 Oct); one step waits for Markus as org admin: René's run of the switch got HTTP 422, the setting is org-controlled (31 Oct). `codeql.yml` run 41221392670 analysed all three languages; only its upload was refused, because default setup is on. Done when CodeQL's default setup is off and `codeql.yml`'s first run is green. Waits for Markus: `gh api -X PATCH repos/{owner}/{repo}/code-scanning/default-setup -f state=not-configured` (default setup cannot drop its push trigger, so `.github/workflows/codeql.yml` replaces it, weekly; until the switch that workflow's upload is expected to be refused). Hook runs no package suite, because red tests are committed first on a branch. Guard not on `test-race.sh` shards: their names come from `go test -list`. Seen, not fixed: patchgate misses a new exported struct field or interface method. `make ci-fast` refuses until the next tag: ASOFWALK on main is a door, so that round is a minor.
 
-- **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
-  Released v4.96.2 (9904fd3b), v4.97.0 (bad01e13) and, on ai-soc's ask, v4.97.1 ITERTOMB (0e11125b): tag CI and
-  main green, ai-soc and sigma notified. FREEZE (René, 29 Oct) ended: Flux k10291501 shipped. Released v4.97.2
-  ITERTOMB part 2 (702843ea). FREEZE ended (ai-soc 30 Oct: Flux k10300635 on v4.97.2 + sigma v0.11.152 shipped); tags go to the next release round.
-Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
-Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
-labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
-Its first ci-docker failed on gosec G115 at v4.89.3's `propIDs.widen(uint64(id))` (ci-fast runs no gosec): annotated, no
-behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after René's three-agent checkpoint):
-ai-soc's P4BSTORE A/B k10271117 on v4.89.2 (disk index 518 s against 453 s in RAM) gave PROPBOUNDS, v4.89.3. Its re-run
-k10271211: disk lookup CPU 48.5 -> 18.25 s, push 454 vs 481 s (+6 %, was +14 %); left: badger Seek across the LSM tables
-per key (11.7 s), NewIterator 2.8 s. sigma's counts: misses under 1 %, one key per
-call, 2.53M of ~2.64M lookups re-evict an unchanged row; sigma's CLEANEVICT drops those (about 96 %), no rho change.
-A/B after CLEANEVICT, BO k10271955 on v4.90.0: disk +7.0 % push (435.1 -> 465.5 s, ai-soc's gate 5 %), live heap
--779 MB (maintainPropertyIndexesAdd 714.5 MB -> 0); the cost is the equality lookups (DB.View 12.7 -> 31.4 s, sigma's
-DerivedPage ov_k/ov_sh, ai-soc's ByLabelAndProperty). ai-soc asks for a bounded RAM hot part (recent keys, or a presence
-filter per label/property answering misses without a seek): PROPHOT. ai-soc's split: 15.6 of the 20.8 s are sigma's
-write-back lookup (GraphDerivedWriter derivedByHash, one per Derived fact); sigma v0.11.118 counts Found / Missing /
-Fresh, and if misses dominate sigma skips the lookup for facts it knows are new (as WRITEFAST), no rho change. The
-split (ai-soc 28 Oct, BA k10272220): found 17,731 (11.7 %), missing 133,292 (88.3 %); BO cold start all missed. A
-presence filter, then, but only if Derived's index goes to disk; with PROPDISKLABEL (DerivedPage only) PROPHOT waits.
-sigma's FoldInputs rows8
-profile gave HISTPEND, v4.89.4 (a history read walked the whole write buffer; bench last ten cuts 15-20 -> 10 ms; sigma confirmed: WriteRows 34 -> 21 % of CPU; ai-soc BO probe
-k10271336: push 489.7 -> 488.9 s, no BO effect, as BO has few history reads). Before it, PARKED (René 27 Oct, relayed by ai-soc): every agent
-works on goal 1, the 134.7 MB k10270301's BA store writes twice by two code paths; ai-soc's meter (ANALYSIS 5) classes
-no item as rho's (STATEREF sigma's, ROWDICT and PAGELEAN sigma's or ai-soc's). rho parks goal-2 work (ITERTOMB, the
-ASOFREAD carry, OPENIMAGE step 3) and takes only a goal-1 item ai-soc sends; a possible question: can an edge
-property be stored as a reference to another edge's property. Before that: SCALE, then BADGER step 3's last pieces (R37,
-rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc's re-measure). Ranked by the goal in the rules digest
-(realtime at about 2 TB a day): a wall to it ranks above a constant-factor win.
-
-- **PROPDISKTOGGLE** (found 28 Oct scoping PROPDISKLABEL; fix, patch v4.90.2) — badger's `PropertyIndexOnDisk` turned
-  off for one open and on again loses every write made while it was off: the 0x0A build marker stays set, so the next
-  open trusts a keyspace nothing maintained (probe: a node created and a value changed while off are both missed by
-  ByLabelAndProperty). Fix: a writable open without the flag clears the marker; the rebuild drops the stale rows.
-  Also: a read-only open with the flag over an unbuilt keyspace failed; it now keeps its entries in RAM. Built on
-  branch propdisktoggle, 6 of 6 mutations caught. Released v4.90.2 (03222aca): ci-fast, tiered and graph short
-  tests, tag CI and main CodeQL green, consumers build and vet clean.
-- **IDXKEYLAZY** (ai-soc's BO A/B kpdl on v4.91.0, 28 Oct; SCALE; fix, patch v4.91.1) — DerivedPage on disk: answers
-  equal, push 451.1 -> 463.7 s (+2.8 %, all labels +7.0 %), live heap -381 MB (PropertyIndex.AddKey 666 -> 260 MB),
-  but GC mark 97.7 -> 118.1 s. Cause: every index maintenance pass built a value key (a copy of a string value) for
-  every property of the row per label, indexed or not, and with a label listed the RAM and disk passes both ran.
-  Bench (one indexed key, eight 4 KB unindexed strings): RAM 33 KB / 9.5 us per write, listed 66 KB / 16 us; after,
-  ~0.5 KB / <1 us in every mode. Fix: walk the indexes on the row's labels. Built on branch idxkeylazy (15 of 16
-  mutations caught, the 16th equivalent; the patch gate refused two exported helpers, now unexported). Released
-  v4.91.1: ci-fast, tag CI and CodeQL green, consumers clean (sigma v0.11.126 ships on it, recheck clean); ai-soc pinned v4.91.1 (kit answers equal), BO A/B k11 (a no list, b
-  [DerivedPage]): push +3.8 % (inside ai-soc's 5 % gate, DerivedPage stays on disk), heap -446 MB, GC mark +19.2 s
-  (IDXKEYLAZY's copies gone); the rest went to DISKDEFS.
-- **DISKDEFS** (ai-soc's k11 profile, 28 Oct; SCALE; fix, patch v4.91.2) — putNodeRouted +14.6 s on b: flushIfNeeded
-  +6.4 s (badger writing the extra rows, the price of the disk index), checkNodeIndexKeysLocked +4.0 s and
-  maintainPropertyIndexesAdd +2.6 s (each walked every definition to find the on-disk ones; the check built every
-  entry key to measure it). Fix on branch diskdefs: a list of the on-disk definitions, a length bound; check 225 ns /
-  4 allocations to 70 ns / 1, 8 of 8 mutations caught. Released v4.91.2 (tag CI and CodeQL green); ai-soc pinned it (aaf69ed4), k12 BO a/b (DerivedPage carries 3 + one per mask,
-  about 10-20 node definitions): push +3.3 % (k11 +3.8 %), heap -395 MB, checkNodeIndexKeysLocked gone from the gap,
-  maintainPropertyIndexesAdd +2.6 to +0.8 s, putNodeRouted +14.6 to +10.7 s; the rest is badger writing the rows
-  (flush ~7 s, GC on its write path ~17 s). Closed. ai-soc's MemTableSize A/B (BO, 64 -> 128 MB): push -2.9 %, GC mark
-  -20.4 s, alloc_space -19.5 GB, heap +170 MB; ai-soc holds it until BA shows how many shards take writes at once
-  (only a writable shard holds a memtable arena, up to NumMemtables 5). A per-tier MemTableSize would be a minor, on
-  ai-soc's ask only. ai-soc's goal-2 RAM review (28 Oct) answered from the code: every
-  index is per live entity, not per version; open doors for later, each a minor on ai-soc's ask with BA numbers:
-  a listed label keeps its Elements definitions in RAM and moves its scalar ones to disk (Derived today fails to list
-  because of ov_support), Elements rows on disk (bigger), COMPOSITEDISK. Architecture question (28 Oct,
-  for René's verdict): node tiering exists (event-class labels go to their mint-time shard; ai-soc lists every label
-  as reference). Proposed PURGECURSOR (patch): the label purge resumes from a cursor instead of copying the label's
-  whole ID list per 256-node call (quadratic at 10 M); with a retention pin it bounds the reference shard. Waits for
-  René's word (STORECFG). Valid-time design follow-up (28 Oct): placement by valid time needs no rho change (a
-  caller-minted ID, ImportNodeWithID); PURGERESIDUE confirmed by a scratch test (patch, rho's own: a purge or history truncate
-  drops an ID's presence slot but records it in the `unknown` map until probed: 1,000 purged IDs -> 1,000 entries,
-  ~30-50 B each, on a shard that stays open; a plain delete keeps history and its one slot, by design; no consumer
-  purges today) and TIMEWINDOW
-  reads (minor: a mint-time range on QueryOpts so reads consult only the shards whose window meets it). Wait for
-  René's word.
-- **RELDISK** (ai-soc 28 Oct, goal 2, for sigma 2b SRCMASK: edge source rows read back at the read pin; BA k10281507
-  NETWORK +46 MB in 300 s). Asked: rel property indexes on disk (`RelPropertyIndexOnDiskTypes`) and a rel composite on
-  disk (NETWORK device+local_port, 2.1 rows a key). Found: a TxPin lookup takes its candidates from the RAM membership
-  sidecar (temporal.go:1220-1245; append-only, history included, 25-100 B a posting), for on-disk node indexes too,
-  so the current index on disk alone doesn't stop growth; no rel multi-key door; the node multi-key pinned path
-  intersects whole per-key member sets. Per live rel, 8 + 9 B (relIDs, typeIdx) stays per open shard. Plan sent:
-  phase 1 minor, keyspace 0x0C `type|propTok|payload|relID` in two kinds, current (deleted on change) and member
-  (append-only, TxFrom suffix, min per rel), written with the row, serving the membership doors from disk, no RAM
-  sidecar for an on-disk definition; phase 2 minor, the rel composite + RelOps.ByTypeAndProperties. ai-soc's go
-  (28 Oct): NETWORK's device and local_port are edge properties (composite needed; PROCESS/REGISTRY
-  (device, tkg_valid_from) too); FILE probes its File node's incoming adjacency (no index); nodes in phase 1 too
-  (sigma's `ending`, `voided`); 2b edges are on event shards (closed by mint time). Phase 1 building on branch
-  `reldisk` (v4.92.0). Raw payloads in 0x0C are escaped and terminated (an exact lookup walks its own value only;
-  a prefix scan seeks the unterminated prefix). Done when: a pinned read through an on-disk definition (rel or
-  node) builds no membership sidecar (RelPostings = NodePostings = 0), the on-disk rel handle holds no entries, a
-  reopen and a reopen without the option answer as memory at four pins, every membership door agrees with the
-  sidecar it replaces; cost: two keys per indexed rel row (current + member), one per node row (member), no RAM
-  per entity. Built (2b49e59f on `reldisk`): all of "done when" holds; 123 of 124 mutations caught (the lookup's
-  temporal peek equivalent and kept, six equivalents removed); the sweep found the range door's one-ulp and NaN-bound
-  bounds and an unreadable row's purge leaving member entries (both fixed on the branch, red in
-  `tasks/evidence/RELDISK/`). ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean,
-  scale probe unchanged without the option. Released v4.92.0 (759ce062): tag CI and main green, ai-soc and sigma
-  notified. ai-soc pinned it (b3310c24; seven rel types listed, AisocEnded and AisocVoided join DerivedPage on disk):
-  kit answers equal, heap too small to show, push 56.8 -> 60.9 s (+7 %, three changes at once: A/B (a) DerivedPage
-  only, (b) + rel types, (c) + labels asked); BA k10281507 at 900 s: rel indexes 20.6 MB (now on disk), node indexes
-  128 MB (composites 49, single-key 35.5) stay in RAM.
-- **IDXSTATS** (ai-soc 28 Oct; door, minor v4.93.0, before RELDISK phase 2) — ai-soc cannot size its next request: no
-  door reports index entries per definition. `PropertyIndexStats()` per definition: label or type, key(s), composite,
-  on disk, distinct values, postings, estimated RAM bytes; badger, tiered (per shard and total), memory. ai-soc
-  confirmed the shape (RAM bytes, on disk, per label or type). Committed on branch `idxstats` (85bdc962):
-  memory, badger, sharded (per slot), tiered (per open shard), `store.PropertyIndexStatsByScope`; estimate
-  calibrated against the heap (nine index shapes 0.85-1.06, maps per growth band 0.89-1.00, ordered views 0.92);
-  54 of 55 mutations caught. ci-docker green, consumers build and vet clean, scale probe unchanged (e45b54ba).
-  Released v4.93.0 (316081b1): tag CI and main green, ai-soc and sigma notified.
-- **VALIDENDPRUNE** (sigma 29 Oct, René's standing yes; door, minor) — Released v4.94.0 (7094bc5b): tag CI and
-  main green; sigma (bumps its three go.mod files, passes {DerivedPage, "ov_h"} and the bound) and ai-soc notified.
-  QueryOpts.ValidEndAfter on current ByLabelAndProperty / ByLabelAndPropertyValues; PropertyIndexValidEnd keeps an
-  upper bound on each node's valid end in its on-disk entries (reset by writes, refined by reads); stats via
-  g.Index().PropertyIndexValidEndStats(); format marker 14 once opened with the listing. ai-soc's kit (sigma
-  v0.11.144, v4.95.0, tiered listing; BA slice, 20-min cold start, without vs with): answers byte-equal (XE 8/8,
-  BA 32/32, /bars 31/31); pruned 15,605, unknown_read 36,496, refined 36,496, refine_skipped 0; pager 4.32 →
-  5.42 s (cold-start warm-up: every bound read once); push 80 → 82 s; heap 734 → 620 MB. Steady state waits for
-  the BA days (next Flux run, on René's word); sigma passes them on.
-- **VALIDENDLISTED** (sigma 29 Oct, René's standing yes; door, minor) — Released v4.95.0 (3de1304a): tag CI and
-  main green; sigma and ai-soc notified. g.Index().PropertyIndexValidEndListed(label, key): true where a
-  ValidEndAfter lookup prunes (listed, on disk, trusted; tiered: reference labels), false without an error
-  elsewhere, no I/O; a true goes stale only by a drop, Clear or Reset (then a lookup is slow, never an error).
-- **COMPDISK** — Released v4.96.0 (ab66d670), 29 Oct: composite node indexes of an on-disk label keep current
-  entries in 0x0C kind 4, format 15 (no rollback). Tag CI and main green; sigma (bumps to v4.96.0, sigma
-  v0.11.148) and ai-soc (pins it for the Flux run, fresh store) notified. Scale probe b98da824 -> ab66d670 after
-  the rebase. Follow-up: STALEBUILD (Next).
-- **RELDISK phase 2** (door, minor; ON HOLD 29 Oct, ai-soc and sigma) — a composite rel index and
-  Rels().ByTypeAndProperties. Design sent 29 Oct; sigma accepted the shape (reads: TxAt plus the whole valid window,
-  unpaged, like ByTypeAndProperty; no prefix reads), then both asked to hold: nothing reads a multi-key rel probe
-  today (sigma's doors read one selective single-key index and filter; ai-soc declares single-key rel indexes only).
-  The NETWORK (device, local_port) ask was ai-soc's own (28 Oct, RELDISK) and predates sigma's SRCMASK door. Resume
-  only if ai-soc's Flux run shows a lazy edge source with many candidates per kept row and real read volume; sigma
-  then asks with the numbers.
-- **VALIDTOPURGE** — Released v4.96.2 (9904fd3b), 29 Oct; tag CI and main green, ai-soc and sigma notified.
-- **CLEARGAP** — Released v4.96.2 (9904fd3b), 29 Oct; tag CI and main green, ai-soc and sigma notified.
-- **PROPOVERLAY** (found 28 Oct by PROPDISKLABEL's parity test; fix, patch v4.90.3) — badger's on-disk ordered range,
-  plain range and prefix scans resolve buffered 0x0A writes per node ID, not per key (lesson 57): an update buffers
-  the old value's delete and the new value's set for one node, and whichever the merge visits last wins, so the node
-  can vanish from the scan until the flush (probe, PropertyIndexOnDisk: a node updated 2 -> 1 is missing from
-  ForEachByLabelPropertyRangeOrdered [1,2], equality finds it). Fix: resolve per key. Built on branch propoverlay
-  (9 of 9 mutations caught). Released v4.90.3 (ff710b52): ci-fast, tiered and graph short tests green, consumers
-  build and vet clean, tag CI and main CodeQL green.
-- **PROPDISKLABEL** (ai-soc 28 Oct; SCALE, goal 2; door, minor v4.91.0 after PROPDISKTOGGLE and PROPOVERLAY; built
-  30 of 30 mutations caught; released v4.91.0, ci-docker green after a gosec G115 fix, consumers build and vet clean;
-  tag CI and main CodeQL green; waits for ai-soc's BO A/B and reduced BA run) — the on-disk property
-  index chosen per label: `PropertyIndexOnDiskLabels []string` in badger and tiered Config; ai-soc sets ["DerivedPage"].
-  BA k10272220 (v4.90.1): live heap +3,587 MB from 300 to 900 s, rho +1,969 MB of it, PropertyIndex.AddKey +1,720 MB,
-  1.66 GB from sigma's paging (RowPage/StatePage -> GraphDerivedWriter.publish, DerivedPage nodes). All-on-disk cost
-  +7.0 % push, mostly Derived's derivedByHash, not DerivedPage. The 0x0A keys carry no label and every reader rechecks
-  label and value, so one shard serves both modes; per-label build markers. Done when ai-soc's BO A/B and reduced BA
-  run on it are in.
-- **TXMEMBERS** (ai-soc 27 Oct, René's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars held one RAM
-  entry per id that ever carried the token (k10271800, v4.89.4: recordLabelMemberLocked +127 MB of live heap from 300
-  to 900 s on the reference shard; ai-soc runs LabelIndexOnDisk, entities never lose a label, deletes only in crash
-  recovery; neither consumer calls the capabilities directly). Released v4.90.1 (e8e3dfec, tag CI and CodeQL green): the
-  sidecars hold only former members, the label/type index the current ones; pinned reads equal memory's (badger RAM
-  and disk labels, tiered ref), 15 of 16 mutations caught (the 16th equivalent); consumers clean, sigma takes it in
-  v0.11.118, ai-soc pins it. Done: confirmed on BA k10272220 (28 Oct), recordLabelMemberLocked gone from the heap at
-  300 and 900 s (v4.89.4: 45.3 -> 172.0 MB).
+- **NEXT ROUND** (ai-soc's release round; a minor, as ASOFWALK adds exported API) — ASOFWALK step 1 is on main, untagged (`589a8fbd`, 199 rows per read to 0), with COLDEDGE's patch to follow. Before the tag: consumer check, scale probe, full race suite (v4.98.3 went without it or the probe). Tags only in ai-soc's round; v5.1.0 shipped on v4.98.3 + sigma v0.11.155 (31 Oct).
+- **COLDEDGE** (ai-soc 30 Oct, SCALE; blocks its 7-10 day run) — a reference node's Outgoing under RelsByMint opens cold shards per call. On local branch `coldedge`, unmerged: empty cold shards leave the fan-out (30 shards, 29 empty: 1.65 s to about 90 ms), mint fan-out opens read-only (30 shards with rows: 2.9 s to about 0.5 s, one run), changelog, property stats and rel misses skip empty shards. `TestFlatAdjacency_OnlyListedShardOpens` stays red on purpose and must leave the branch before it ships. Done when Outgoing's cost is flat in the number of cold shards, or a run shows it no longer matters. Waits for the release round; cold-open counts come from the first run after that tag.
+- **REOPEN** (René via ai-soc, 31 Oct: "it should mostly be read from rho for sigma chases and traces") — ai-soc runs the reopen proof on the pinned pair; no rho door or tag waited on. Measured (FIRSTTOUCH, `tasks/evidence/FIRSTTOUCH/`, one run each, synthetic): per node index 8-12 µs, HasHistory 4-7 µs, timeline 4-5 µs at 200 k and 2 M nodes; presence build 31 and 319 ms; open 193 ms and 3.7 s; page cache dropped, first batch 85 µs a node, then 16 µs, open 5.0 s. k10302100: committedRowStamps about 231 s CPU, presence build 3 s; cutting the re-read needs LISTREAD, since liveness from the ID index would hide a corrupt row (pinned by `has_history_live_test.go`). Done when ai-soc's reopen is in; a fix only if it shows slow first cuts. Waits for ai-soc's run. Open look: what sigma's type scans and property probes open across cold shards at default depth; open-time growth (19x for 10x nodes, one run).
+- **TIMEWINDOW** (minor, deferred) — reads bounded by a mint-time range. Serves one-shot evaluation only (ForEachRelEffectiveAtNodes, no time bound, no Depth); a session's maintainer does not reach it. If built: half-open mint range, window intersected with Depth, hot shard always included, caller translates valid to mint. Done when ai-soc and sigma say whether one-shots matter. Waits for the first run after COLDEDGE is in a tag; metric lead `aisoc_sigma_edge_shard_checkouts_total`. Sigma's other candidate: a ValidEndAfter-style bound on ByTypeAndProperty.
+- **ASOFWALK later steps** (STATEREC round) — step 1 delegates to the owner shard; next a TxPin batch by IDs, then a cross-shard merge; TxAt stays the skeleton walk with an O(1) belief watermark for a pin at or after current. Done when sigma's 50+ cuts of worst churn bench flat. Waits for the round; parked on the crash path with WHOLEROW and DEPTHLOOK.
+- **PROJREAD** (ai-soc, sigma 30 Oct; a later minor) — a label and property lookup returning IDs plus named properties, for sigma's GraphDerivedWriter.find; no door today. Done when the door ships. Waits for the STATEREC round.
+- **VDICTDISK step 3** (ai-soc 29 Oct, goal 2 RAM) — steps 1-2 shipped (v4.97.3, v4.98.0); a budget/LRU in place of resident value tokens, decided from the next run's re-measure (at Cap 1,048,576 a 'row' dictionary is about 136 MB per open day shard). Done when an entry's resident cost is measured and bounded. Waits for ai-soc's next run.
+- **TIERCLOCK measurement** (ai-soc 29 Oct, goal 2) — released in v4.98.0; ai-soc's pin: Clock = newest committed valid time, ColdAfter 3 d, RelsByMint on. Done when ai-soc's BA replay rotates as live data would. Waits for that run.
+- **PURGECURSOR, PURGERESIDUE** (28 Oct; patches) — a label purge resumes from a cursor instead of copying the label's whole ID list per 256-node call (quadratic at 10 M); a purge or history truncate leaves about 30-50 B per ID in the `unknown` map of a shard that stays open. No consumer purges today. Done when each is fixed or dropped. Waits for René's word (STORECFG).
+- **PERTIER, RAM doors** (28 Oct; each a minor, on ai-soc's ask with BA numbers) — per-tier MemTableSize (64 to 128 MB on BO: push -2.9 %, GC mark -20.4 s, heap +170 MB); a listed label keeps Elements definitions in RAM and moves scalar ones to disk; Elements rows on disk; COMPOSITEDISK; PROPHOT (only if Derived's index goes to disk). Done when ai-soc asks or drops them. Waits for ai-soc.
+- **STATEREC asks** (sigma's design review, 30 Oct; no hurry, after the freeze) — (1) WHOLEROW, blocking for S5: replace a page
+  node's current row whole as a new version, any validity, TxFrom and belief kept, indexes following, every backend, listed
+  labels only. Today's Update refuses a closed row. Needs a design: what the effective timeline shows of the older pieces.
+  Sigma's five tests, tiered and badger: a pin at or after the replace returns that version's validity only, no older piece
+  (else sigma's rows stay in pieces and S5 stops); a pin before it reads as before; the current row from an index read is the
+  newest version with its TxFrom; TxFrom rises with version across a crash, a closed row and an equal or earlier start accepted;
+  ov_k, ov_h and the validity-end index follow the new version, an older pin still finds the node. Other labels' reads unchanged.
+  (2) the TxPin walk and batch, as planned. (3) DEPTHLOOK: a TxPin property lookup below DepthAll takes the label-wide fold.
+- **TEMPIDX-2** (ai-soc 29 Oct, goal 2 RAM, same run) — the node TemporalIndex is setByID 299 + setPos 131 +
+  Extend 124 = 554 MB live at the end (~120 B a node), resident for hot and warm shards (TemporalIndexOnDisk only
+  speeds the open); sortedChunks.add is 389 MB (8 B a member, ~49 M members: postings not on the disk lists,
+  numKeys/strKeys, numeric buckets, IDSet; never spilled). Asks: fold posByID into byID; a disk form for warm shards
+  (the hot day in RAM); numeric buckets and IDSet behind PropertyIndexOnDisk. ai-soc's -peek of sortedChunks.add:
+  388 of 389 MB are existence sets (nodeIDs 305 MB EXISTMAP, typeIdx 44 MB OPENWALK, relIDs 38 MB), ~38 M node
+  IDs over the open shards; property postings are 11 MB. Scope: existence answered by badger for warm shards (hot
+  day in RAM), typeIdx on disk. Done when: each part is measured and fixed or listed with its cost.
 - **SCALE** (René 26 Oct, the standing goal) — rho holds realtime ingest at about 2 TB a day (about 23 MB/s
   sustained, peaks higher; about 4 billion 500-byte facts a day) and grows only by more RAM, NVMe and block storage.
   Done when: architecture.md lists what grows with total volume instead of per shard (RAM structures that grow with
@@ -209,146 +79,6 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   BA slice at most 18.7 writes per input row, 15.3 of them sigma's paged rows, an upper bound until sigma's
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
-- **REOPEN first** (ai-soc relaying René, 31 Oct: "it should mostly be read from rho for sigma chases and traces") — the
-  Trimmed 31 Oct (ai-soc): sigma's image needs no rho door, no rho tag waited on. Rho: asofwalk to main if CI is green,
-  FIRSTTOUCH benchmark (doors from sigma: ByLabelAndPropertyValues at DepthHot in batches, HasHistory, NodeEffectiveTimeline;
-  first the presence-set build on the first HasHistory), a fix only if ai-soc's reopen shows slow first cuts. Then the
-  cold-shard weak-pointer test (goal 2). Parked, crash path: WHOLEROW, TxPin batch, DEPTHLOOK.
-  FIRSTTOUCH measures, cold, batches of 64 and 1024: index read; first HasHistory's presence build with and without Prefix on
-  its iterators (badgerstore_history_presence.go:398-407); stamps Gets and archive checkouts; timeline Gets and decodes;
-  total against rebuild + listing. Read from code: at most 3 Gets and 2 decodes per touched node. Told sigma CommittedTx equality can
-  never match. Asked ai-soc: archive shard? BA batch size, history share?
-  Sigma 31 Oct: took the dirty marker, no rho door. Rows skip HasHistory except under a lower bound; units ask it first and
-  skip the timeline without history. So 3 Gets is the unit with history and the bounded row; most no-history units 2.
-  Measured, k10302100 reopen, 60 CPU windows: buildHistoryPresence 3.04 s in all; committedRowStamps about 231 s CPU, window 17's
-  stacks all HasHistory through nodeCurrentStampsRow. So the stamps patch ranks above the Prefix test, if a corrupt row
-  keeps its answer. Benchmark assumes batches 64 and 1024, 10 % with history; nobody has BA's numbers.
-  Checked 31 Oct: the stamps patch fails. Liveness from the ID index turns a corrupt row's error into false with no error, so
-  no such patch; pinned by a test on branch histlive. Cutting the re-read needs a door handing over the decoded row (LISTREAD).
-  FIRSTTOUCH measured, one run each, 200,000 and 2,000,000 reference nodes, clean reopen, warm OS page cache, idle: per node
-  index 8-12 µs, HasHistory 4-7 µs, timeline 4-5 µs averaged; presence build 31 ms and 319 ms; open 193 ms and 3.7 s. No fix
-  called for; waits on ai-soc's reopen. Files dropped from the page cache, 2 M nodes, one run: first batch of 64 index 85 µs a node,
-  then 1024 at 16 µs; open 5.0 s. Not measured: ingest running, ai-soc's store. Weak-pointer test: a closed cold shard's store is
-  released (presence table, dictionary, temporal index loaded), mutant killed. coldedge rebased; flat adjacency red test on it, build next.
-  Fable review 31 Oct: the flat list as recorded could name too few shards, and the walk is minutes under shardMu at 2 TB/day; on hold,
-  record rewritten. Instead: mint fan-out read-only, 30 cold shards with rows 2.9 s to about 0.5 s (one run); changelog, property stats,
-  rel misses skip empty shards. All on coldedge with the flat red test, which must leave the branch before a patch ships.
-  ai-soc's run decides whether the list is still needed. For hubs only TIMEWINDOW helps: René's word pending.
-  TIMEWINDOW, Fable's analysis 31 Oct: defer until a run on the read-only fan-out shows cold adjacency opens past ColdAfter on the chase path;
-  DepthWarm already keeps a recent chase off cold shards. If built, a minor: a half-open mint range, window intersection with Depth, hot shard
-  always included (an ID with no window lands there), caller translates valid to mint. Asked sigma and ai-soc for their chase shape. René decides.
-  ai-soc agrees to defer: MintAtValidFrom on, /tkg/asof takes one instant, no range. Its next run is the reopen proof on the pinned pair, no rho change.
-  Cold-open counts come only from the first run after coldedge is in a tag, so that patch ships first.
-  Sigma 31 Oct: Tyla's chase does not walk adjacency: it scans by type (ForEachRelEffective, From) and probes ByTypeAndProperty, with no Depth seen, so rho's
-  default. TIMEWINDOW and the flat list don't serve it; ai-soc's own traces are still to be asked. Next to look at: what those type scans and probes open across
-  cold shards, a bound like ValidEndAfter on ByTypeAndProperty. Fable reviewed 254f5914, no defect; two small follow-ups on coldedge.
-  ai-soc 31 Oct: its one adjacency read is EntityEvents, ForEachRelEffectiveAtNodes on one seed, /api/v1/tkg/entity, no time bound, an analyst request, not part of cuts.
-  Sigma's correction, from code, no run traced: its one-shot evaluation reaches that door (seek on an edge endpoint, door scan, endpoint push-down), no time bound, no Depth; a session's maintainer does not in what it read, a rebuild not ruled out. TIMEWINDOW's case now waits on whether one-shots matter, which is René's open question with ai-soc. Checkout metric lead: aisoc_sigma_edge_shard_checkouts_total.
-  reopen comes before goal 2. Order changed again 31 Oct (sigma plans a clean-stop image; rows come in on touch): asofwalk to main untagged after CI,
-  FIRSTTOUCH (live page read after a reopen: measure once sigma names its doors, no fix before a cause), committedRowStamps
-  patch if a corrupt row keeps its answer, then TxPin batch by IDs, then the WHOLEROW record
-  (ai-soc answered: record door holds, state door and write door don't), then flat Outgoing. Profile (Flux, 60 s): View 18.28 s
-  of 66.39 s, rows 8.50 s, committedRowStamps 4.21 s (LISTREAD (b), callers not yet traced), transactions 0.78 s, block 4.15 s.
-  ai-soc tested BlockCacheSize 64 MiB vs 1 GiB: 1.9 s for 1.9 GB of peak, dropped.
-  WHOLEROW (sigma 31 Oct, not urgent, crash path): guarantee 1 reads by TxPin plus the current row, never the effective
-  timeline, so the state-door change is out; the record covers only the write door and tests 2-5, and test 1 on TxPin.
-- **NEXT ROUND** (ai-soc 31 Oct: k10302100 shipped on sigma v0.11.154 + rho v4.98.3, freeze over) — ASOFWALK, WHOLEROW, COLDEDGE
-  with the empty-shard skip. ASOFWALK step 1 built on branch asofwalk (0cdbccd5), a patch, untagged: 199 rows loaded per read to 0.
-  Tags only in ai-soc's release round. Race suite on the first release: v4.98.3 went without it or the probe.
-- **COLDEDGE** (ai-soc 30 Oct, SCALE; next round; blocks its 7-10 day run) — flat adjacency decision record on branch coldedge, red test next; legacy shards stay probed until a backfill. Outgoing of a reference node under
-  RelsByMint opens every cold shard per call: 1.65 s at 30 cold shards, cap 0 (TestRelsByMint_ColdEdgeOutgoingCost).
-  ai-soc's cap is 2, 64 MB block cache per open shard; a larger cap grows RAM with the archive. Done when: Outgoing cost is flat
-  in the number of cold shards, shown by a red test. Empty-shard skip built on branch coldedge (77f04c35), a patch, untagged: 30 shards, 29
-  empty, 1.65 s to about 90 ms per call. Not flat yet: a cold shard holding rows still opens. Open design, not built: each
-  event shard records the reference nodes with mint legs in the rel's own batch; at seal they go to a per-node shard list on the
-  reference shard, and a sealed shard with the list is read only for its nodes. Needs a decision record.
-- **STATEREC asks** (sigma's design review, 30 Oct; no hurry, after the freeze) — (1) WHOLEROW, blocking for S5: replace a page
-  node's current row whole as a new version, any validity, TxFrom and belief kept, indexes following, every backend, listed
-  labels only. Today's Update refuses a closed row. Needs a design: what the effective timeline shows of the older pieces.
-  Sigma's five tests, tiered and badger: a pin at or after the replace returns that version's validity only, no older piece
-  (else sigma's rows stay in pieces and S5 stops); a pin before it reads as before; the current row from an index read is the
-  newest version with its TxFrom; TxFrom rises with version across a crash, a closed row and an equal or earlier start accepted;
-  ov_k, ov_h and the validity-end index follow the new version, an older pin still finds the node. Other labels' reads unchanged.
-  (2) the TxPin walk and batch, as planned. (3) DEPTHLOOK: a TxPin property lookup below DepthAll takes the label-wide fold.
-- **RELEASE ROUND 30 Oct** (ai-soc, relaying René) — v4.97.3 (VDICTDISK) first, then v4.98.0 with TIERCLOCK and
-  ValueDictionaryStats; name the version to ai-soc and sigma; sigma tags on it, then the freeze. Two asks, to be
-  answered from the code with file:line: **STATEREC** (does an as-of-tx read cover sigma's page nodes across the reference and
-  day shards, on one read path, at what cost per lookup) and **PROJREAD** (can a label and property lookup return ids
-  plus named properties, for sigma's GraphDerivedWriter.find).
-  v4.97.3: ci-docker, consumers and the scale probe clean; tag CI and main green. v4.98.0 tagged, tag CI red on a test
-  measuring a shared process heap (and a proxy error); v4.98.1, the test in its own process: tag CI and main green, ai-soc and sigma notified (consumer check and probe
-  skipped, test only). Sigma tags on it after RESTARTDIFF, then the freeze.
-  ASOFWALK, read 30 Oct, not built: TxPin's rule (storeutil/asof_select.go:130) already walks newest version first and
-  stops at the first row with TxFrom <= pin, so it needs no rising TxFrom. A walk must also read the run sharing that
-  TxFrom (openInWrite) and the row carrying the next TxTo (lifeEndedAtTxTime), and skip voids. TxAt resolves valid time
-  over the whole chain (chain_resolver.go), so its walk is the open design question.
-  Fable analysis on René's word, 30 Oct, unmeasured; its main claims checked against the code. The walk exists on badger
-  (badgerstore_txtime.go selectAsOfScan) and tiered never reaches it, having no NodeAsOf: step 1 delegates to the owner
-  shard when only it holds history rows. Reverse scan lacks Prefix (rule 12): fix with it. TxAt stays the skeleton walk;
-  a tiered belief watermark gives its pin-at-or-after-current case O(1). Then a batch door, then a cross-shard merge.
-  Fan-out: both listings open closed cold shards. Option: PrimaryOnlyLabels, enforced at writes, verified per shard
-  on enable, RefLabels not compared across opens today. Order: ASOFWALK step 1 and Prefix first (small, no config).
-  Sigma's S5 (30 Oct): state units fit TxPin, so the walk and a TxPin batch by ids come first; ov_sref can use it. Paged
-  rows and facts need the effective timeline at a pin, which cannot stop early (every row by the pin, floor N pieces):
-  told sigma, who decides whether a grown row is written whole. RESTARTDIFF was ai-soc's test harness (30 Oct). v4.98.2
-  PURGEDROP released, for ai-soc's next round; results-purge design waits until after STATEREC.
-  Sent 30 Oct to ai-soc and sigma, unmeasured: STATEREC covers page nodes on one path with cost growing with
-  versions; PROJREAD has no door yet (a later minor, no tag). Next to build on word: an as-of read walking back from
-  the newest version, once TxFrom's rise with version is checked.
-  ai-soc's requests for the STATEREC round, after the freeze: ASOFWALK (that read, for label and property lookups
-  under TxPin and TxAt; sigma benches 50+ cuts of worst churn), a lookup on a reference label asking fewer shards,
-  PROJREAD (ids plus named properties). Checkpoint pins stay above the compaction and retention floors.
-  Fan-out: ai-soc prefers a declared, enforced only-ever-primary guarantee; ask sigma whether its page nodes carry a
-  second label when the round is designed. Sigma 30 Oct: its writer sets one label, always primary, no PageState label;
-  ai-soc's own writer still to confirm. RESTARTDIFF is sigma's, cause unknown; rho asked for the door and counts.
-- **VDICTDISK** (ai-soc 29 Oct, goal 2 RAM, BA k10291501 on v4.97.1; for the next round, no tag in the freeze) —
-  valueDict.token holds 422 MB live for 1,166,109 entries (~360 B each); the 'row' dictionary sat at its Cap
-  1,048,576 from a third of the run on. Every entry is resident per open shard (ensureLoaded, reappend never
-  shrinks): ~4 open day shards, ~1.5 GB steady ESTIMATE. Asks: (1) ValueDictionaryStats gains Entries and Bytes per
-  dictionary; (2) value -> token through the shard's vdict/ keys with a bounded LRU instead of the resident byValue
-  + handles + vals, so a dictionary's RAM is a budget. Step 1 on main untagged (17f5133b, a patch; ci-docker green,
-  consumers clean; tag v4.97.3 in the next round): the
-  entry's unique.Make handle (~214 B) and the caller's row buffer (byValue keyed by the caller's string) are gone;
-  a 51 B value 410 B (666 B as a slice of a row) -> 130 B live, 3 of 3 mutations caught. BA's 422 MB -> ~150 MB
-  ESTIMATE. Step 2 on branch vdictstats (rebased on main; a minor, released after the patch): ValueDictionaryStats
-  Entries and Bytes (value length + 80 B, within a fifth of the heap), summed over open shards; 9 of 9 caught.
-  Next: (2) the budget/LRU, decided from the next run's re-measure (ai-soc: at Cap 1,048,576 a 'row' dictionary is
-  still ~136 MB per open day shard). Done when: an entry's resident cost is measured and bounded, with the stats.
-- **TEMPIDX-2** (ai-soc 29 Oct, goal 2 RAM, same run) — the node TemporalIndex is setByID 299 + setPos 131 +
-  Extend 124 = 554 MB live at the end (~120 B a node), resident for hot and warm shards (TemporalIndexOnDisk only
-  speeds the open); sortedChunks.add is 389 MB (8 B a member, ~49 M members: postings not on the disk lists,
-  numKeys/strKeys, numeric buckets, IDSet; never spilled). Asks: fold posByID into byID; a disk form for warm shards
-  (the hot day in RAM); numeric buckets and IDSet behind PropertyIndexOnDisk. ai-soc's -peek of sortedChunks.add:
-  388 of 389 MB are existence sets (nodeIDs 305 MB EXISTMAP, typeIdx 44 MB OPENWALK, relIDs 38 MB), ~38 M node
-  IDs over the open shards; property postings are 11 MB. Scope: existence answered by badger for warm shards (hot
-  day in RAM), typeIdx on disk. Done when: each part is measured and fixed or listed with its cost.
-- **TIERCLOCK** (ai-soc 29 Oct, goal 2) — tier rotation reads the wall clock (ColdAfter), so a replay of 33 valid
-  days in a few wall hours never demotes a shard (k10291501: 122 M hot checkouts, 0 warm, 0 cold) and every day
-  shard's sets stay resident. Asks: confirm from code; name the clock (commit pin or the host's valid time).
-  Read (sent 29 Oct): rotation and demotion use time.Now(); routing uses the ID's snowflake timestamp and falls
-  back to the hot shard, so a fast replay puts every day in one hot shard. ai-soc: every ID is minted by rho at
-  write time (wall clock). Design ADR-0013 on branch tierclock (6ce23fc0, docs/architecture.md): MintAtValidFrom
-  (a node's ID at its ValidFrom, a rel's clamped into its start node's window; a windowed generator on a reserved
-  node field keeps IDs unique), Config.Clock for rotation and demotion, window shards made on demand. Steps 1-4
-  there. ai-soc agreed the direction (BA 22 Jul-23 Aug 2026, BO 2 Jun, XE 19 Sep: all after the epoch); my review
-  of its four points revised it (a2b275a9: rels at the window's next free ID with a low cursor, leased cursors so a
-  crash reuses no ID, ColdAfter above lateness + a window, ErrWindowDropped by a retention watermark). Build 1-4
-  after the freeze. Fable review (René's go): 2 blockers, 5 majors, 4 minors, verified; ADR rewritten (fb596de3: the store
-  mints in calendar windows, leases in the reference shard, field 31 reserved, all gated; f2fc2183: one cursor a
-  window for both kinds, as told to sigma for MARKFROMRHO). Building on branch tierclock: step 1 (eb3a50ea,
-  Config.Clock + calendar windows + ErrManualRotation; 10 of 10 caught); step 2 (97da4c0a, the store mints
-  on field 31 with leased window cursors, every generated-ID create in core asks it; ErrValidFromOutsideIDRange,
-  also past 2034-12-02; graph.New refuses SnowflakeNodeID 15 or IngestLanes > 29 on it; mutants 26 of 26 and
-  22 of 23 killed, 1 equivalent); ai-soc: all its labels are reference, RelsByMint on, so
-  every edge is minted and placed at its own ValidFrom; event-start alternative closed (44a3e8a1). Step 3
-  (39057bf1): window shards made on demand, rotation promotes them, late RelsByMint rels write into cold days, a
-  retention drop reserves its shard name (the race hung a test without it); 22 of 22 mutants killed. Watermark
-  and ErrWindowDropped deferred (ai-soc makes no retention calls; per label and type when built). Step 4
-  (7857906e): 33-day replay in ai-soc's shape, 33 day shards, at most 3 open, heap flat day 9 -> 33. All four
-  steps built on branch tierclock, untagged: a minor in ai-soc's next release round, which opens after k10300635
-  is analysed (ai-soc announces it to rho and sigma); then ai-soc's BA replay as the measurement. ai-soc's pin:
-  Clock = newest committed valid time, ColdAfter 3 d, RelsByMint on, no production manual rotation.
-  Done when: a replay rotates as live data would.
 - **PREEPOCH** (ai-soc 29 Oct, product question, later) — a customer backfill with valid times before the
   2026-01-01 snowflake epoch: ADR-0013 refuses it with ErrValidFromOutsideIDRange. Done when: René decides.
 - **IDTABLE** (ai-soc 29 Oct, goal 2) — badger idTable 41 -> 80 -> 160 MB live over the run. Asks: what it maps,
@@ -403,16 +133,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   times. Measure first: uncached rows on the reference shard, the stamps re-read, the archive ask, and the one-time build of
   the reference shard's presence set on the first HasHistory (a whole-keyspace scan, possibly inside the 6.4 s).
 
-- **STALEBUILD** — Released v4.96.1 (3f0af2b9), 29 Oct: a build at open streams its stale entries' deletes (peak
-  RSS at 30.8 M stale entries 6.8 GB, was 11.3-12.6). Tag CI and main green; ai-soc and sigma notified.
 - **CREATEPEAK** (fix, later; same family, not in STALEBUILD) — the on-disk creates collect every entry of a
   populated label before writing (single-key: diskOps and memberOps, badgerstore_index.go; composite:
   createCompositePropertyIndexOnDiskLocked, ~120 B a posting), and a drop collects every key of a definition
   (entityIndexDropOpsLocked). Chunking the merge needs care: the member scan's propTxGen retry assumes one merge
   under the lock. Rare (definitions are created at startup); scope when a consumer creates on a big store.
 
-- **CACHESTATS** — Released v4.97.0 (bad01e13), 29 Oct: `g.Tier().EntityCacheStats()`. Tag CI and main green;
-  ai-soc (sizes CacheBudgetBytes on the next BA run) and sigma notified.
 - **SHARD** — René wants three storage tiers on three volumes (hot on fast NVMe, warm on SSD, cold on block devices)
   built while ai-soc cleans up its data waste; the design is ADR-0012 in `docs/architecture.md`. Done when: the steps
   below are ticked and released. Steps 1-8 shipped (v4.76.1, v4.78.0; MOVEREAD v4.78.2, COLDRO v4.78.3). Step 10
@@ -484,6 +210,13 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **RELDISK phase 2** (door, minor; ON HOLD 29 Oct, ai-soc and sigma) — a composite rel index and
+  Rels().ByTypeAndProperties. Design sent 29 Oct; sigma accepted the shape (reads: TxAt plus the whole valid window,
+  unpaged, like ByTypeAndProperty; no prefix reads), then both asked to hold: nothing reads a multi-key rel probe
+  today (sigma's doors read one selective single-key index and filter; ai-soc declares single-key rel indexes only).
+  The NETWORK (device, local_port) ask was ai-soc's own (28 Oct, RELDISK) and predates sigma's SRCMASK door. Resume
+  only if ai-soc's Flux run shows a lazy edge source with many candidates per kept row and real read volume; sigma
+  then asks with the numbers.
 - **FABLEBUILD** (René's yes in chat, 31 Oct): a one-off trial with Fable as builder on the next state-restore item, from a brief naming the host's call path. Done when the trial is reported. Badger claims in its work are checked against source or a measurement (René ruled Fable out for badger, 24 Oct). Waits for the next state-restore item, and for the masked sample from ai-soc when that item changes a reopen read.
 
 - **BRANCHES** (René via ai-soc, 29 Oct: "clean this also up") — step 1 done: origin/archive/unmerged-2026-10-27

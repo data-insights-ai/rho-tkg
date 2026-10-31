@@ -195,18 +195,16 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **Consumers and their agents** (ask the agent for runs and data, never browse their repos; answer a request the same
   day with its todo item first; agent names change per session, `ListAgents`; if neither resolves at a release, put
   the release note here and tell René in one line):
-  - ai-soc, agent `ai-soc-main-45`: pins rho v4.83.0 (26 Oct; v4.84.0 and v4.84.1 notified: pins v4.84.1 at its next bump, PIN) with sigma v0.11.65. Tiered
+  - ai-soc (31 Oct: released v5.1.0 on rho v4.98.3 + sigma v0.11.155). Tiered
     main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2; HistoryDeltaEncoding, SyncWrites, DurableCommit,
     RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk (PropertyIndexOnDisk switched on 26 Oct, P4BSTORE 77d7fb7c,
     and off again 27 Oct until PROPSTR: string lookups walk every longer string), ValueDictionaries, UntimedUnbounded, AllowRetentionPurge;
     `DepthWarm` on windowed reads; `CreateRelTemporal` on its 29 estate-indexed rel types; unique keys on reference
-    labels only; Derived (and its composite index) on the reference shard. Pins rho v4.88.0 with sigma v0.11.94 (27 Oct);
+    labels only; Derived (and its composite index) on the reference shard;
     its /metrics exports `aisoc_store_shard_access_total{tier}` from ShardAccessStats (kit BA slice: warm, cold and
     cold opens 0). Event times UTC (Check Point CSV in the
     operator's zone, BO: America/Bogota); Flux runs Europe/Berlin.
-  - sigma-tkgd, agent `sigma-tkgd-bb`: bumps to rho v4.85.0 and merges ROWPROBE on the door (26 Oct); PAGEREF/PAGESTATS
-    next, on TIERSTATS. v0.11.80 (26 Oct: KEYDICT; v0.11.79 pins rho v4.84.1 in every module, full
-    gate under race passed, no test adapted for EXISTMAP's ErrCorruptWire) (VALUES and TKGID not wired yet); its
+  - sigma-tkgd (31 Oct: v0.11.155 on rho v4.98.3); its
     test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired` below); its
     store analysis tool is `projects/derived-writeback` (cmd/wbscan).
   - agent-bookkeeping (`~/Work/2026/bds421/sigma/agent-bookkeeping`): build check only.
