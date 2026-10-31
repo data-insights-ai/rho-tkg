@@ -7,6 +7,22 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
+- **Session of 31 Oct, read this first** (next steps: `tasks/todo.md`, REOPEN entry). Priority: the reopen, René: "it should mostly be read from
+  rho for sigma chases and traces". Sigma's clean-stop image needs no rho door or tag; sigma took a dirty marker for staleness.
+  - **Fable agent:** René wants one permanent Fable agent for analysis and review, and on 31 Oct a read-only review after each batch of changes.
+    It does not survive a session: check with René, then start one from `docs/architecture.md` and `tasks/todo.md`, given the code, not my
+    conclusions. Its results are not in this file unless written below.
+  - **Pending at this note:** Fable's TIMEWINDOW analysis (a time range on adjacency reads; René has not decided, nothing built) and its review of
+    `254f5914`. If they did not reach `tasks/todo.md`, run them again.
+  - **On main, untagged:** ASOFWALK step 1 (`589a8fbd`, ci-docker with race and GitHub CI green; consumer check and scale probe still due before a
+    tag), a corrupt-row guard, the cold-shard release test.
+  - **Branch `coldedge`, not merged:** empty closed shards leave the fan-out; mint fan-out opens cold shards read-only (30 shards with rows, 2.9 s to
+    about 0.5 s, one run); first-touch benchmark. `TestFlatAdjacency_OnlyListedShardOpens` is red on purpose and must leave the branch before a patch
+    ships. The flat shard list is on hold, its record rewritten after Fable found it could name too few shards.
+  - **Measured:** first touch, 2 M synthetic nodes, about 20 µs a node warm, first batches 85 µs for the index read after dropping the page cache; no
+    fix called for until ai-soc's reopen shows slow first cuts. Reopen `k10302100`: presence build about 3 s CPU, `committedRowStamps` about 231 s CPU.
+    Deciding liveness from the ID index is refused: a corrupt row would answer false with no error.
+  - **Parked, crash path:** WHOLEROW (write door only), TxPin batch, DEPTHLOOK.
 - **Released 24-30 Oct:** v4.75.0 to v4.98.3 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND, v4.90.0 VOIDPROPS, v4.90.1 TXMEMBERS, v4.90.2 PROPDISKTOGGLE, v4.90.3 PROPOVERLAY, v4.91.0 PROPDISKLABEL, v4.91.1 IDXKEYLAZY, v4.91.2 DISKDEFS, v4.92.0 RELDISK, v4.93.0 IDXSTATS, v4.94.0 VALIDENDPRUNE, v4.95.0 VALIDENDLISTED, v4.96.0 COMPDISK, v4.96.1 STALEBUILD, v4.96.2 VALIDTOPURGE + CLEARGAP, v4.97.0 CACHESTATS, v4.97.1 ITERTOMB, v4.97.2 ITERTOMB), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
 - **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
   notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
