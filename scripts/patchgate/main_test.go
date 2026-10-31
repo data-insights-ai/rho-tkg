@@ -2,6 +2,9 @@ package main
 
 import (
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -32,6 +35,10 @@ func TestPlan(t *testing.T) {
 		"pkg/e/help_test.go": {"package e\nvar x = 1\n", "package e\nvar x = 2\n"},
 		"pkg/f/new_test.go":  {"", "package f\nfunc TestNew(t *testing.T) {}\n"},
 		"scripts/t/main.go":  {"", "package main\nfunc main() {}\n"},
+		"pkg/i/tag.go":       {"//go:build linux\n\npackage i\n", "//go:build !linux\n\npackage i\n"},
+		"pkg/m/old.go":       {"// +build linux\n\npackage m\n", "// +build !linux\n\npackage m\n"},
+		"pkg/j/j_test.go": {"package j\nfunc helper() int { return 1 }\nfunc TestJ(t *testing.T) {}\n",
+			"package j\nfunc helper() int { return 2 }\nfunc TestJ(t *testing.T) {}\n"},
 	}
 	cases := []struct {
 		name    string
@@ -50,6 +57,11 @@ func TestPlan(t *testing.T) {
 		{"dev tool", []change{{'A', "scripts/t/main.go"}}, "race ./scripts/t/"},
 		{"deleted test file", []change{{'D', "pkg/g/gone_test.go"}}, ""},
 		{"new shipped file", []change{{'A', "pkg/h/n.go"}}, "short ./pkg/h/"},
+		{"hidden: a build constraint is no comment", []change{{'M', "pkg/i/tag.go"}}, "short ./pkg/i/"},
+		{"hidden: an old build line is no comment", []change{{'M', "pkg/m/old.go"}}, "short ./pkg/m/"},
+		{"hidden: a helper beside a test runs the package", []change{{'M', "pkg/j/j_test.go"}}, "race ./pkg/j/"},
+		{"hidden: a deleted shipped file", []change{{'D', "pkg/k/gone.go"}}, "short ./pkg/k/"},
+		{"hidden: a changed fixture runs its package", []change{{'M', "pkg/l/testdata/x.json"}}, "race ./pkg/l/"},
 		{"go.mod is CI's job (security)", []change{{'M', "go.mod"}, {'M', "go.sum"}}, ""},
 		{"mixed, sorted, deduplicated", []change{{'M', "pkg/a/code.go"}, {'M', "pkg/a/doc.go"}, {'M', "pkg/d/d_test.go"}, {'M', "go.sum"}},
 			"race ./pkg/d/ ^(TestD|FuzzD)$; short ./pkg/a/"},
@@ -92,6 +104,88 @@ func TestNewExportedAPI(t *testing.T) {
 		if got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+// TestTestNamedScript: a named test that did not run fails the gate, though go
+// test exits 0 on a regex matching nothing. Mutations: dropping the name check
+// passes the "gone" row; dropping the rerun leaves the "short skip" row unrun.
+func TestTestNamedScript(t *testing.T) {
+	script, err := filepath.Abs("../test-named.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	src := "package m\nimport (\"os\"; \"testing\")\n" +
+		"func TestA(t *testing.T) {}\n" +
+		"func TestLong(t *testing.T) { if testing.Short() { t.Skip() }; os.WriteFile(\"long.ran\", nil, 0o600) }\n" +
+		"func TestSub(t *testing.T) { t.Run(\"TestInner\", func(t *testing.T) {}) }\n" +
+		"func TestBad(t *testing.T) { t.Fail() }\n" +
+		"func FuzzF(f *testing.F) { f.Fuzz(func(t *testing.T, b []byte) {}) }\n"
+	for name, body := range map[string]string{"go.mod": "module m\n\ngo 1.21\n", "m_test.go": src} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := func(args ...string) error {
+		cmd := exec.Command(script, args...) // #nosec G204 -- the repo's own script, fixed test arguments
+		cmd.Dir = dir
+		return cmd.Run()
+	}
+	for _, c := range []struct {
+		name string
+		args []string
+		ok   bool
+	}{
+		{"ran", []string{"./", "TestA", "--"}, true},
+		{"gone", []string{"./", "TestA|TestGone", "--"}, false},
+		{"only a subtest of that name", []string{"./", "TestInner", "--", "-run", "TestSub"}, false},
+		{"failing", []string{"./", "TestBad", "--"}, false},
+		{"fuzz seed run", []string{"./", "FuzzF", "--"}, true},
+		{"short skip", []string{"./", "TestLong", "--", "-short"}, true},
+	} {
+		if err := run(c.args...); (err == nil) != c.ok {
+			t.Errorf("%s: err %v, want ok %v", c.name, err, c.ok)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "long.ran")); err != nil {
+		t.Errorf("a test skipped under -short must rerun without it: %v", err)
+	}
+}
+
+// TestGateTimeScript: a gate's cost is logged and its exit status survives.
+// Mutation: exiting 0 fails the status check; not appending fails the line count.
+func TestGateTimeScript(t *testing.T) {
+	script, err := filepath.Abs("../gate-time.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"}} {
+		cmd := exec.Command("git", args...) // #nosec G204 -- fixed arguments
+		cmd.Dir = dir
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct {
+		command string
+		status  int
+	}{{"true", 0}, {"false", 1}} {
+		cmd := exec.Command(script, "g", c.command) // #nosec G204 -- the repo's own script, fixed arguments
+		cmd.Dir = dir
+		_ = cmd.Run()
+		if got := cmd.ProcessState.ExitCode(); got != c.status {
+			t.Errorf("%s: exit %d, want %d", c.command, got, c.status)
+		}
+	}
+	log, err := os.ReadFile(filepath.Join(dir, ".git", "gate-times.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(log)), "\n")
+	if len(lines) != 2 || !strings.Contains(lines[0], " g ") || !strings.Contains(lines[0], "exit=0") || !strings.Contains(lines[1], "exit=1") {
+		t.Errorf("log %q", log)
 	}
 }
 

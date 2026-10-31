@@ -1,0 +1,11 @@
+killed named check does not fail
+killed no rerun without -short
+killed subtest counts as the name
+killed gate-time hides status
+killed gate-time no log
+killed go directive as comment
+killed +build as comment
+killed deleted shipped ignored
+killed helper beside test named only
+killed test bodies count as helpers
+killed fixture ignored

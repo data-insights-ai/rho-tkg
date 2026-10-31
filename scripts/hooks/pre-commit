@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Pre-commit gate, under 30 s; `make hooks` installs it. Build, vet, gofmt, the doc checks and patchgate's own tests;
+# a commit of only .md files runs the doc checks. No package's test suite: a red test is committed first on its branch.
+# Compiling happens only in rho-tkg (machine rule), so the git-only worktree runs the ledger and takes no Go file.
+set -u
+cd "$(git rev-parse --show-toplevel)" || exit 2
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -n "$staged" ] || exit 0
+go_files=$(printf '%s\n' "$staged" | grep -E '\.go$')
+code=$(printf '%s\n' "$staged" | grep -vE '\.md$')
+if [ "$(basename "$PWD")" != rho-tkg ]; then
+  if [ -n "$go_files" ]; then
+    echo "pre-commit: commit Go code in rho-tkg, this worktree does not compile:"
+    printf '%s\n' "$go_files"
+    exit 1
+  fi
+  exec scripts/check-ledger.sh
+fi
+fail=0
+for f in $go_files; do
+  if [ -n "$(git show ":$f" | gofmt -l)" ]; then
+    echo "pre-commit: not gofmt-clean: $f"
+    fail=1
+  fi
+done
+[ "$fail" -eq 0 ] || exit 1
+if [ -n "$code" ]; then
+  go build ./... || exit 1
+  go vet ./... || exit 1
+  go test ./scripts/patchgate/ >/dev/null || { echo "pre-commit: patchgate tests failed"; exit 1; }
+fi
+go test -run 'Docs|Consistency|MD|Errors' ./... >/dev/null || { echo "pre-commit: docs tests failed"; exit 1; }
+exec scripts/check-ledger.sh

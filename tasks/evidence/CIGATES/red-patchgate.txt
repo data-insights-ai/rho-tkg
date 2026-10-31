@@ -1,0 +1,13 @@
+--- FAIL: TestPlan (0.00s)
+    main_test.go:70: hidden: a build constraint is no comment: plan "", want "short ./pkg/i/"
+    main_test.go:70: hidden: a helper beside a test runs the package: plan "race ./pkg/j/ ^(TestJ)$", want "race ./pkg/j/"
+    main_test.go:70: hidden: a deleted shipped file: plan "", want "short ./pkg/k/"
+    main_test.go:70: hidden: a changed fixture runs its package: plan "", want "race ./pkg/l/"
+--- FAIL: TestTestNamedScript (0.00s)
+    main_test.go:146: ran: err fork/exec /home/renework2023/Work/2026/datainsights/rho-tkg/scripts/test-named.sh: no such file or directory, want ok true
+    main_test.go:146: fuzz seed run: err fork/exec /home/renework2023/Work/2026/datainsights/rho-tkg/scripts/test-named.sh: no such file or directory, want ok true
+    main_test.go:146: short skip: err fork/exec /home/renework2023/Work/2026/datainsights/rho-tkg/scripts/test-named.sh: no such file or directory, want ok true
+    main_test.go:150: a test skipped under -short must rerun without it: stat /tmp/TestTestNamedScript1419386087/001/long.ran: no such file or directory
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/scripts/patchgate	0.003s
+FAIL

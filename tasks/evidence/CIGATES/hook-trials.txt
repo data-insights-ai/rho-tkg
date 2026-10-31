@@ -1,0 +1,5 @@
+code commit, staged tree:
+exit=0 4s
+badly formatted Go staged:
+pre-commit: not gofmt-clean: scripts/hookbad/bad.go
+exit=1

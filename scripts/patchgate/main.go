@@ -9,7 +9,9 @@
 //	race <pkg> [<regex>] its test or dev-tool code changed: go test -short -race,
 //	                     only the named Test/Fuzz functions when the regex is set
 //
-// A change only in comments compiles to identical code and runs nothing.
+// A change only in comments compiles to identical code and runs nothing; a
+// //go: directive or // +build line is code. A deleted shipped file runs its
+// package, a changed testdata file the package that owns it.
 // gosec, govulncheck and the full race suite run in GitHub CI on the push.
 //
 // Usage: go run ./scripts/patchgate <base-ref>
@@ -75,12 +77,15 @@ func codeChanged(c change, readOld, readNew func(string) ([]byte, error)) bool {
 func tokens(src []byte) string {
 	fset := token.NewFileSet()
 	var s scanner.Scanner
-	s.Init(fset.AddFile("", fset.Base(), len(src)), src, nil, 0)
+	s.Init(fset.AddFile("", fset.Base(), len(src)), src, nil, scanner.ScanComments)
 	var out strings.Builder
 	for {
 		_, tok, lit := s.Scan()
 		if tok == token.EOF {
 			return out.String()
+		}
+		if tok == token.COMMENT && !strings.HasPrefix(lit, "//go:") && !strings.HasPrefix(lit, "// +build") {
+			continue
 		}
 		if tok == token.SEMICOLON {
 			lit = ";"
@@ -98,19 +103,32 @@ func plan(changes []change, readOld, readNew func(string) ([]byte, error)) []str
 	whole := map[string]bool{}
 	names := map[string][]string{}
 	for _, c := range changes {
-		if !strings.HasSuffix(c.path, ".go") || c.status == 'D' || !codeChanged(c, readOld, readNew) {
+		if owner, _, found := strings.Cut("/"+c.path, "/testdata/"); found {
+			whole["."+owner+"/"] = true
+			continue
+		}
+		if !strings.HasSuffix(c.path, ".go") {
 			continue
 		}
 		dir := "./" + path.Dir(c.path) + "/"
+		if c.status == 'D' {
+			if shipped(c.path) {
+				short[dir] = true
+			}
+			continue
+		}
+		if !codeChanged(c, readOld, readNew) {
+			continue
+		}
 		switch {
 		case shipped(c.path):
 			short[dir] = true
 		case !strings.HasSuffix(c.path, "_test.go"):
-			whole[dir] = true // dev-tool or testdata code
+			whole[dir] = true // dev-tool code
 		default:
 			src, err := readNew(c.path)
 			n := testNames(src)
-			if err != nil || len(n) == 0 {
+			if err != nil || len(n) == 0 || helpersChanged(c.path, src, readOld) {
 				whole[dir] = true // a changed helper: its users are unknown
 			} else {
 				names[dir] = append(names[dir], n...)
@@ -131,6 +149,34 @@ func plan(changes []change, readOld, readNew func(string) ([]byte, error)) []str
 	}
 	sort.Strings(out)
 	return out
+}
+
+// helpersChanged reports whether a test file's code outside its Test and Fuzz
+// functions differs from the base; a new file has no users to miss yet.
+func helpersChanged(p string, src []byte, readOld func(string) ([]byte, error)) bool {
+	old, err := readOld(p)
+	if err != nil {
+		return false
+	}
+	return tokens(withoutTests(old)) != tokens(withoutTests(src))
+}
+
+// withoutTests cuts a file's Test and Fuzz functions; unparsable source stays whole.
+func withoutTests(src []byte) []byte {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "", src, parser.SkipObjectResolution)
+	if err != nil {
+		return src
+	}
+	var out []byte
+	at := 0
+	for _, d := range f.Decls {
+		if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && isTestName(fn.Name.Name) {
+			out = append(out, src[at:fset.Position(fn.Pos()).Offset]...)
+			at = fset.Position(fn.End()).Offset
+		}
+	}
+	return append(out, src[at:]...)
 }
 
 // newExportedAPI lists exported top-level names and methods that shipped files
@@ -233,18 +279,21 @@ func testNames(src []byte) []string {
 	}
 	var out []string
 	for _, d := range f.Decls {
-		fn, ok := d.(*ast.FuncDecl)
-		if !ok || fn.Recv != nil {
-			continue
-		}
-		for _, prefix := range []string{"Test", "Fuzz"} {
-			rest, found := strings.CutPrefix(fn.Name.Name, prefix)
-			if found && (rest == "" || !unicode.IsLower([]rune(rest)[0])) {
-				out = append(out, fn.Name.Name)
-			}
+		if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && isTestName(fn.Name.Name) {
+			out = append(out, fn.Name.Name)
 		}
 	}
 	return out
+}
+
+func isTestName(name string) bool {
+	for _, prefix := range []string{"Test", "Fuzz"} {
+		rest, found := strings.CutPrefix(name, prefix)
+		if found && (rest == "" || !unicode.IsLower([]rune(rest)[0])) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseNameStatus reads `git diff --name-status` output; a rename keeps its new path.

@@ -28,6 +28,8 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   were todo commits), from the main worktree `../rho-tkg-main` while a branch is checked out;
   `scripts/check-ledger.sh` before every such commit.
 - Peers (René 2026-10-31): one message per item each way to sigma-tkgd and ai-soc; status goes in the todo.
+- By hand, `go test` without `-count=1` unless a flake or a timing is the question: 9.3 h across 1,009 calls (ai-soc's
+  audit, 24-31 Oct). Gates keep `-count=1`.
 - Who works (René 2026-10-23): the main session does the work itself, analysis and code alike, and runs every test, lint
   and gate, and reviews its own work (§ Review); the Fable reviewer was deleted (René 2026-10-24). No subagents unless
   René asks for them.
@@ -87,6 +89,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 |---|---|
 | `make ci-fast` | **Patch gate** (~30 s for docs, 1–2 min for a fix): fmt, vet, build, lint, `scripts/patchgate` (refuses new exported API), `-short` of changed packages, `-race` of changed tests, docs tests, check-ledger |
 | `make ci-docker` | **Minor gate**: fmt, vet, lint, build, full `test-race`, `test-long` (the tests a plain `testing.Short()` skips), gosec, govulncheck, cover-gate (80 %), metakv-reap check, `fuzz-smoke` (each trust-boundary fuzz harness for `FUZZTIME`, default 20 s), check-ledger |
+| `make hooks` | Installs `scripts/hooks/pre-commit`, under 30 s: gofmt, build, vet, patchgate's tests, docs tests, check-ledger; `.md` only: docs tests and check-ledger; the git-only worktree: check-ledger, and it refuses Go files |
 | `make test` / `make test-race` | short tests / race detector |
 | `make cover` | coverage report (`coverage.html`) |
 | `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable" |

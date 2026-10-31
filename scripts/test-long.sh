@@ -23,6 +23,6 @@ fail=0
 for pkg in $(printf '%s\n' "$list" | cut -f1 | sort -u); do
   re=$(printf '%s\n' "$list" | awk -F'\t' -v p="$pkg" '$1 == p { print $2 }' | paste -sd'|')
   echo "test-long: ./$pkg: $re"
-  go test -count=1 -timeout 30m -run "^(${re})\$" "./$pkg/" || fail=1
+  scripts/test-named.sh "./$pkg/" "$re" -- -timeout 30m || fail=1
 done
 exit $fail

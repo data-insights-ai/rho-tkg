@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-fast fuzz-smoke check ci clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-docker-run ci-fast ci-fast-run hooks fuzz-smoke check ci clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -152,7 +152,11 @@ vet:
 # explicit reap-vs-preserve classification for Admin.Reset/ChangeClear — see
 # metakv_reap_policy.go and metakv_reap_policy_check_test.go.
 check-metakv-reap:
-	go test -count=1 -run '^TestMetaKVReapPolicyCoversEveryKey$$' ./pkg/graph/internal/core/
+	scripts/test-named.sh ./pkg/graph/internal/core/ TestMetaKVReapPolicyCoversEveryKey --
+
+# Install the pre-commit gate (scripts/hooks/pre-commit) for every worktree of this clone.
+hooks:
+	git config core.hooksPath scripts/hooks
 
 # Format code
 fmt:
@@ -204,7 +208,10 @@ vulncheck-docker:
 # short tests): the dockerized lint/gosec/govulncheck, the full race suite,
 # coverage, the meta-key reap policy, a short fuzz of every trust-boundary
 # harness, the long tier and the ledger check.
-ci-docker: fmt-check vet lint-docker build test-race test-long security-docker vulncheck-docker cover-gate check-metakv-reap fuzz-smoke
+ci-docker:
+	@scripts/gate-time.sh ci-docker $(MAKE) ci-docker-run
+
+ci-docker-run: fmt-check vet lint-docker build test-race test-long security-docker vulncheck-docker cover-gate check-metakv-reap fuzz-smoke
 	scripts/check-ledger.sh
 
 # fuzz-smoke runs each trust-boundary fuzz harness for FUZZTIME (nothing runs
@@ -212,6 +219,8 @@ ci-docker: fmt-check vet lint-docker build test-race test-long security-docker v
 # its fix.
 FUZZTIME ?= 20s
 fuzz-smoke:
+	scripts/test-named.sh ./pkg/graph/internal/core/ 'FuzzImport|FuzzApplyChange' --
+	scripts/test-named.sh ./pkg/graph/internal/storeutil/ 'FuzzWireToNodeChecked|FuzzWireToRelChecked|FuzzUnmarshalNodeWireWithKeys' --
 	go test -run '^$$' -fuzz=FuzzImport -fuzztime=$(FUZZTIME) ./pkg/graph/internal/core/
 	go test -run '^$$' -fuzz=FuzzApplyChange -fuzztime=$(FUZZTIME) ./pkg/graph/internal/core/
 	go test -run '^$$' -fuzz=FuzzWireToNodeChecked -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
@@ -222,7 +231,10 @@ fuzz-smoke:
 # last release tag and refuses new exported API (a door = a minor). Runs fmt-check, vet, build, lint, -short of
 # packages whose shipped code changed, -race of only the changed tests (whole package for a changed helper or
 # tool), the docs tests and the ledger check.
-ci-fast: fmt-check vet build lint-docker
+ci-fast:
+	@scripts/gate-time.sh ci-fast $(MAKE) ci-fast-run
+
+ci-fast-run: fmt-check vet build lint-docker
 	@base=$$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1); \
 	echo "ci-fast: batch $$base..work tree"; \
 	targets=$$(go run ./scripts/patchgate "$$base") || exit 1; \
@@ -230,9 +242,14 @@ ci-fast: fmt-check vet build lint-docker
 	if [ -n "$$short" ]; then go test -short -count=1 $$short || exit 1; fi; \
 	echo "$$targets" | while read -r kind pkg run; do \
 	  [ "$$kind" = race ] || continue; \
-	  go test -short -race -count=1 $${run:+-run "$$run"} "$$pkg" || exit 1; \
+	  if [ -n "$$run" ]; then \
+	    names=$${run#^(}; scripts/test-named.sh "$$pkg" "$${names%)\$$}" -- -short -race || exit 1; \
+	  else \
+	    go test -short -race -count=1 "$$pkg" || exit 1; \
+	  fi; \
 	done || exit 1; \
 	go test -count=1 -run 'Docs|Consistency|MD|Errors' ./... >/dev/null || { echo "ci-fast: docs tests failed"; exit 1; }; \
+	scripts/test-named.sh ./pkg/graph/internal/core/ 'TestNoMDFileOutsideTheDocumentation|TestDocsMetadataMatchesSourceOfTruth' -- >/dev/null || exit 1; \
 	scripts/check-ledger.sh && echo "ci-fast: ok"
 
 # Quick pre-commit check
