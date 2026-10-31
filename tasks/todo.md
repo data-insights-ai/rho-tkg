@@ -208,9 +208,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   WRITEWHY; BA's peak minute 2,789 rows/s is then at most ~52 k writes/s); LANES is the later item for the 2 TB/day
   target, so ingest grows with the hardware.
 - **REOPEN first** (ai-soc relaying René, 31 Oct: "it should mostly be read from rho for sigma chases and traces") — the
-  reopen comes before goal 2. Order now: asofwalk to main untagged after CI, TxPin batch by IDs, then the WHOLEROW record
+  reopen comes before goal 2. Order changed again 31 Oct (sigma plans a clean-stop image; rows come in on touch): asofwalk to main untagged after CI,
+  FIRSTTOUCH (live page read after a reopen: measure once sigma names its doors, no fix before a cause), committedRowStamps
+  patch if a corrupt row keeps its answer, then TxPin batch by IDs, then the WHOLEROW record
   (ai-soc answered: record door holds, state door and write door don't), then flat Outgoing. Profile (Flux, 60 s): View 18.28 s
   of 66.39 s, rows 8.50 s, committedRowStamps 4.21 s (LISTREAD (b), callers not yet traced), transactions 0.78 s, block 4.15 s.
+  ai-soc tested BlockCacheSize 64 MiB vs 1 GiB: 1.9 s for 1.9 GB of peak, dropped.
 - **NEXT ROUND** (ai-soc 31 Oct: k10302100 shipped on sigma v0.11.154 + rho v4.98.3, freeze over) — ASOFWALK, WHOLEROW, COLDEDGE
   with the empty-shard skip. ASOFWALK step 1 built on branch asofwalk (0cdbccd5), a patch, untagged: 199 rows loaded per read to 0.
   Tags only in ai-soc's release round. Race suite on the first release: v4.98.3 went without it or the probe.
