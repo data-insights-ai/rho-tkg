@@ -17,8 +17,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   - **On main, untagged:** ASOFWALK step 1 (`589a8fbd`, ci-docker with race and GitHub CI green; consumer check and scale probe still due before a
     tag), a corrupt-row guard, the cold-shard release test.
   - **Branch `coldedge`, not merged:** empty closed shards leave the fan-out; mint fan-out opens cold shards read-only (30 shards with rows, 2.9 s to
-    about 0.5 s, one run); first-touch benchmark. `TestFlatAdjacency_OnlyListedShardOpens` is red on purpose and must leave the branch before a patch
-    ships. The flat shard list is on hold, its record rewritten after Fable found it could name too few shards.
+    about 0.5 s, one run); first-touch benchmark. The flat-list red test left the branch (red output: `tasks/evidence/COLDEDGE/red-flat.txt`). The flat shard list is on hold, its record rewritten after Fable found it could name too few shards.
   - **Measured:** first touch, 2 M synthetic nodes, about 20 µs a node warm, first batches 85 µs for the index read after dropping the page cache; no
     fix called for until ai-soc's reopen shows slow first cuts. Reopen `k10302100`: presence build about 3 s CPU, `committedRowStamps` about 231 s CPU.
     Deciding liveness from the ID index is refused: a corrupt row would answer false with no error.
