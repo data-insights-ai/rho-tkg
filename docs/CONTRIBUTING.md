@@ -21,6 +21,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
 - Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc (their agents: HANDOVER § State) without asking. `git fetch` + merge origin/main
   before a gate; never force-push, never push `origin/v5`. Follow the release checklist below.
+- Item work happens on a branch named after the item; main stays green, and a red test reaches it only with its fix.
 - Commit with explicit paths, never `git commit -a`: a docs commit swept unreviewed step code onto main (2026-10-23).
 - Work order (René 2026-10-23): (1) the request's `tasks/todo.md` item first, before any other action; (2) the red test;
   (3) the implementation; (4) the tests green; (5) the review; (6) when finished, the item leaves `tasks/todo.md` and its
