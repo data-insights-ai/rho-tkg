@@ -228,7 +228,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   called for; waits on ai-soc's reopen. Files dropped from the page cache, 2 M nodes, one run: first batch of 64 index 85 µs a node,
   then 1024 at 16 µs; open 5.0 s. Not measured: ingest running, ai-soc's store. Weak-pointer test: a closed cold shard's store is
   released (presence table, dictionary, temporal index loaded), mutant killed. coldedge rebased; flat adjacency red test on it, build next.
-  Flat adjacency record revised: seal walks the adjacency keys already on disk, no write-path key. Measure seal time first.
+  Fable review 31 Oct: the flat list as recorded could name too few shards, and the walk is minutes under shardMu at 2 TB/day; on hold,
+  record rewritten. Instead: mint fan-out read-only, 30 cold shards with rows 2.9 s to about 0.5 s (one run); changelog, property stats,
+  rel misses skip empty shards. All on coldedge with the flat red test, which must leave the branch before a patch ships.
+  ai-soc's run decides whether the list is still needed. For hubs only TIMEWINDOW helps: René's word pending.
   reopen comes before goal 2. Order changed again 31 Oct (sigma plans a clean-stop image; rows come in on touch): asofwalk to main untagged after CI,
   FIRSTTOUCH (live page read after a reopen: measure once sigma names its doors, no fix before a cause), committedRowStamps
   patch if a corrupt row keeps its answer, then TxPin batch by IDs, then the WHOLEROW record
