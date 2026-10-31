@@ -210,7 +210,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
 - **NEXT ROUND** (ai-soc 31 Oct: k10302100 shipped on sigma v0.11.154 + rho v4.98.3, freeze over) — ASOFWALK, WHOLEROW, COLDEDGE
   with the empty-shard skip. ASOFWALK step 1 built on branch asofwalk (0cdbccd5), a patch, untagged: 199 rows loaded per read to 0.
   Tags only in ai-soc's release round. Race suite on the first release: v4.98.3 went without it or the probe.
-- **COLDEDGE** (ai-soc 30 Oct, SCALE; next round; blocks its 7-10 day run) — Outgoing of a reference node under
+- **COLDEDGE** (ai-soc 30 Oct, SCALE; next round; blocks its 7-10 day run) — flat adjacency decision record on branch coldedge, red test next; legacy shards stay probed until a backfill. Outgoing of a reference node under
   RelsByMint opens every cold shard per call: 1.65 s at 30 cold shards, cap 0 (TestRelsByMint_ColdEdgeOutgoingCost).
   ai-soc's cap is 2, 64 MB block cache per open shard; a larger cap grows RAM with the archive. Done when: Outgoing cost is flat
   in the number of cold shards, shown by a red test. Empty-shard skip built on branch coldedge (77f04c35), a patch, untagged: 30 shards, 29
