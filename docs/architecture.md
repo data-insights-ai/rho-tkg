@@ -493,3 +493,58 @@ that test.
     `ColdAfter`); 4 (built, unreleased) a replay test
     of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
     replay as the measurement.
+
+- **ADR-0014 Whole-row replace** (WHOLEROW; designed 2026-10-31 for sigma-tkgd's paged-row writer, which rewrites a
+  grown page row whole as one version with its full validity and reads it by `TxPin` plus the current row; built on
+  branch `wholerow`, a minor, unreleased). *Problem.* A page row is closed (its end is known) and grows: its end
+  moves later, its start may move earlier, or only its properties change. Every update door refuses one of these:
+  `ErrAlreadyClosed` on a closed row, `ErrValidFromBeforePrevious` on a start at or before the previous one, a
+  bare `tkg_valid_to` is a close (one per version), and `UpdateInPlace` rewrites the row with no new `TxFrom` and no
+  history row, so a pin before it reads the rewritten row. `SetNodeVersionInterval` is a patch split along the old
+  pieces, so a pin after it still reads several rows for one page.
+  - *The door.* `g.Nodes().ReplaceVersion(ctx, id, props, validFrom, validTo)` (`GraphTx.ReplaceNodeVersion` the
+    twin; no batch, ingest or `WithTx` twin, no relationship mirror) replaces the node's current row whole: `props`
+    is the new version's complete property set (not a patch; shadow `tkg_*` keys are refused, limits as a create),
+    `validFrom` the new start (a claim: on the legacy axes 0 is unset and `ErrInvalidTimeRange`), `validTo` the new
+    end (the axis's open end, 0 on the legacy axes, for an open row; a closed end must follow the start, else
+    `ErrInvalidTimeRange`). Any relation to the current version is accepted: a closed current row, an equal, earlier
+    or later start, a grown, shrunk or opened end, a change of properties alone. A call that changes nothing
+    (equal properties and validity) writes nothing and returns the current row. The node must be listed (below),
+    live (`ErrNodeNotFound`, a deleted ID also `ErrEntityDeleted`) and under `math.MaxUint32` versions.
+  - *Listing.* `Config.ReplaceVersionLabels` names the labels whose nodes the door may replace; a node whose primary
+    label is not listed is refused with `ErrReplaceVersionNotListed`, nothing written. The door relaxes the one
+    start rule for these nodes only; every other label's reads and writes run unchanged code.
+  - *Stamps.* The new row takes the next version of the chain (`nextNodeVersion`: one above the highest version,
+    history included), `TxFrom = UpdatedAt` = the commit clock moved past the current row's belief (`supersede`'s
+    tx rule, so the superseded row's `TxTo` never precedes its `TxFrom`), `ValidFrom`/`ValidTo` exactly as given,
+    `PrevHash` the current row's hash (the chain verifies). The current row moves to history with `TxTo` at that
+    instant: the old belief is kept, not rewritten. The write is the ordinary update seam,
+    `ReplaceNodeWithHistory`, in every backend: property index entries (sigma's `ov_k`, `ov_h<mask>`), the label,
+    temporal and tx-membership indexes and the valid-end entries (a listed entry is written unknown again with the
+    row, `maintainPropertyIndexesUpdate`, and never lowered, since the new `TxFrom` is not below the old) follow
+    the new version in the row's own batch. Unique constraints and the unique-key owner index are enforced as by
+    `Update`, under the entity lock and the value stripes.
+  - *What reads show.* Record doors (`NodeAsOf`, `QueryOpts.TxPin`, index reads at a pin) answer the newest row
+    recorded by the pin (`storeutil.SelectAsOfWithCurrent`): at or after the replace that is the new version alone,
+    with its full validity and its `TxFrom`; before it, the old row as before (its `TxTo` hides nothing: superseded
+    is not retracted). The state doors and the effective timeline resolve the chain by own bounds once it no
+    longer tiles (an earlier or equal start): at every valid instant the new version covers, the newer belief wins;
+    the older version answers only valid instants the new one does not cover, before the new start when that is
+    later than the old (the old belief ends at the new start, `supersessionCaps`) and after the new end when that
+    is earlier than the old. A replace that covers the old interval (sigma's: equal or earlier start, equal or later
+    end) therefore leaves nothing older at any pin at or after it, on the record doors and the timeline alike.
+    Sigma reads record doors only; the timeline rule is stated so the shrunk case is not a surprise.
+  - *Compaction and retention.* The superseded row is an ordinary history row: `CompactHistory*` folds it into a
+    stub like any superseded version, after which a pin before the replace fails `ErrHistoryCompacted` instead of
+    answering partially; retention purges by the ID's time and label, unchanged; `History()` returns the chain in
+    version order with the superseded row's `TxTo`.
+  - *Crash.* One store call appends the current row, the history row and every index op as one op set to the write
+    buffer, so a flush commits them in one badger transaction (`Txn.Commit`: one WAL record set ending in a finish
+    entry, replay applies all or none, `memtable.go:433-530`) or one staged flush (FLUSHPART, `docs/badger.md` § 7
+    rule 1): after a crash the node holds either the whole new version with its indexes or the old one, never a
+    current row without its history row or an index entry naming a version that is not there. A standalone call is
+    durable at the next flush, the `GraphTx` twin at `Commit` under `DurableCommit`, as for every write.
+  - *The ASOFWALK walk.* Badger's `NodeAsOf` walks history newest first and stops at the first row recorded by the
+    pin; the tiered store answers from the owner shard when every row is there. The walk is sound only while
+    `TxFrom` never falls as the version rises on a chain. The door keeps that: its version is the chain's top plus
+    one and its `TxFrom` is at or after the current row's. A test pins it across a reopen after a crash.
