@@ -161,6 +161,7 @@ func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix
 	opts := badgerv4.DefaultIteratorOptions
 	opts.PrefetchValues = false
 	opts.Reverse = true
+	opts.Prefix = prefix
 	it := txn.NewIterator(opts)
 	defer it.Close()
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -124,7 +125,7 @@ func pdrEntityDoors(e *ccEnt, pin types.Instant) map[string]func(id int64) (stri
 // in neither read). The as-of door on badger is the store's own NodeAsOf /
 // RelAsOf, which reads the current row and then scans history in two
 // lock-free reads inside the store: the move lands there through the store's
-// asOfAfterCurrentTestHook. Only memory's native as-of door reads both under
+// asOfAfterCurrentTestHook, as on tiered's NodeAsOfWalk. Only memory's native as-of door reads both under
 // one store lock and has no window; the test asserts a hook fired everywhere
 // else.
 func TestPointDoorRace_MoveBetweenChainReads(t *testing.T) {
@@ -173,10 +174,17 @@ func TestPointDoorRace_MoveBetweenChainReads(t *testing.T) {
 					if native && nativeBadger {
 						bs.SetAsOfAfterCurrentTestHookForTest(move)
 					}
+					ts, isTiered := e.g.store.(*tiered.Store)
+					if isTiered && strings.HasSuffix(door, "AsOf") && !e.rel {
+						ts.SetAsOfAfterCurrentTestHookForTest(move)
+					}
 					got, err := eval(id)
 					e.g.chainReadHook = nil
 					if nativeBadger {
 						bs.SetAsOfAfterCurrentTestHookForTest(nil)
+					}
+					if isTiered {
+						ts.SetAsOfAfterCurrentTestHookForTest(nil)
 					}
 					if werr != nil {
 						t.Fatalf("%s %s: %v", door, op, werr)

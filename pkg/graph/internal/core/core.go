@@ -69,6 +69,7 @@ type Core struct {
 	nodeHash              storepkg.NodeIntegrityHashCapability
 	txTimeQuery           storepkg.TransactionTimeQueryCapability
 	txTimeQueryCopy       bool
+	nodeAsOfWalk          storepkg.NodeAsOfWalkCapability
 	historyTrim           storepkg.HistoryRollbackTrimCapability
 	propertyQuery         storepkg.PropertyIndexCapability
 	propertyQueryTrust    bool
@@ -1564,6 +1565,15 @@ func nativeTransactionTimeQuery(store storepkg.MandatoryStore) storepkg.Transact
 	}
 }
 
+// nativeNodeAsOfWalk is native-only for nativeTransactionTimeQuery's reason.
+func nativeNodeAsOfWalk(store storepkg.MandatoryStore) storepkg.NodeAsOfWalkCapability {
+	cap, ok := store.(storepkg.NodeAsOfWalkCapability)
+	if !ok || embedsNativeCapability(store, reflect.TypeOf((*storepkg.NodeAsOfWalkCapability)(nil)).Elem(), "NodeAsOfWalk") {
+		return nil
+	}
+	return cap
+}
+
 func nativeHistoryRollbackTrim(store storepkg.MandatoryStore) storepkg.HistoryRollbackTrimCapability {
 	cap, ok := store.(storepkg.HistoryRollbackTrimCapability)
 	if !ok {
@@ -2241,6 +2251,7 @@ func New(config Config) (*Core, error) {
 	c.foreignIncomingRel, _ = store.(generatedcreate.ForeignIncomingRelCapability)
 	c.nodeHash = nativeNodeIntegrityHash(store)
 	c.txTimeQuery = nativeTransactionTimeQuery(store)
+	c.nodeAsOfWalk = nativeNodeAsOfWalk(store)
 	_, txTimeQueryIsNativeMemory := store.(*memory.Store)
 	c.txTimeQueryCopy = c.txTimeQuery != nil && !txTimeQueryIsNativeMemory
 	c.historyTrim = nativeHistoryRollbackTrim(store)

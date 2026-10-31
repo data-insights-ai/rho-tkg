@@ -67,6 +67,21 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 		}
 		return c.nodeCapabilityVisibleAtTxTime(n, txTime), nil
 	}
+	if c.nodeAsOfWalk != nil {
+		n, ok, err := c.nodeAsOfWalk.NodeAsOfWalk(id, txTime)
+		if errors.Is(err, storepkg.ErrVersionNotFound) {
+			return nil, ErrNoVersionAsOf
+		}
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			if err := storepkg.ValidateNodeHistorySnapshot(id, n); err != nil {
+				return nil, err
+			}
+			return nodeVisibleAtTxTime(c.axis(), n.DeepCopy(), txTime), nil
+		}
+	}
 
 	// Try current node first.
 	current, err := c.getCurrentNode(id)

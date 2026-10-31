@@ -1,0 +1,16 @@
+2026/10/31 02:09:36 INFO graph: tiered store opened duration=3.632261ms reference=2.471039ms hot=1.081118ms warm=890ns warm_shards
+2026/10/31 02:09:36 INFO graph: tiered store opened duration=3.698964ms reference=2.384606ms hot=1.155492ms warm=560ns warm_shards
+--- FAIL: TestTieredNodeAsOf_NoChainLoad (0.01s)
+    --- FAIL: TestTieredNodeAsOf_NoChainLoad/Event (0.00s)
+        asof_walk_tiered_test.go:76: pin 1793408976326: NodeAsOf loaded 199 history rows, want no chain load
+        asof_walk_tiered_test.go:76: pin 1793408976626: NodeAsOf loaded 199 history rows, want no chain load
+    --- FAIL: TestTieredNodeAsOf_NoChainLoad/Case (0.00s)
+        asof_walk_tiered_test.go:76: pin 1793408976924: NodeAsOf loaded 199 history rows, want no chain load
+        asof_walk_tiered_test.go:76: pin 1793408977224: NodeAsOf loaded 199 history rows, want no chain load
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.022s
+FAIL
+
+Step 1 result: TestTieredNodeAsOf_NoChainLoad, 200-version node, event and reference: 199 history rows loaded per as-of read
+before, 0 after. Mutants killed: archive rows ignored, no lives route, not live still walks, no re-check after the read.
+Prefix on the reverse scan: no result change to test; table pruning is badger iterator.go:332-345 (pickTable), not measured here.

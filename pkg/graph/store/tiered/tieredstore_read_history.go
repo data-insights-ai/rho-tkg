@@ -142,6 +142,51 @@ func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	return mergeNodeHistorySources(sources), nil
 }
 
+// NodeAsOfWalk answers from the owner shard's newest-first walk when a node live
+// there has every row there (store.NodeAsOfWalkCapability). Otherwise ok is
+// false: an archived node, a node live nowhere, or a reference node with rows
+// left in the archive reads its whole chain, as does a node archived during the
+// walk (the shard's read may have missed its current row).
+func (ts *Store) NodeAsOfWalk(nid types.NodeID, txTime types.Instant) (*types.Node, bool, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, false, err
+	}
+	store, checkin, isArchive, err := ts.shardForNodeIDReadWithArchive(nid)
+	if err != nil {
+		return nil, false, err
+	}
+	defer checkin()
+	liveHere, err := nodeRowLive(store, nid)
+	if err != nil {
+		return nil, false, err
+	}
+	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
+	if !liveHere || isArchive {
+		return nil, false, nil
+	}
+	if store == ts.refShard {
+		archive, archiveCheckin, err := ts.checkoutArchive()
+		if err != nil {
+			return nil, false, err
+		}
+		defer archiveCheckin()
+		if archive != nil {
+			has, err := archive.HasNodeHistory(nid)
+			if err != nil || has {
+				return nil, false, err
+			}
+		}
+	}
+	if ts.asOfWalkGapHook != nil {
+		ts.asOfWalkGapHook()
+	}
+	n, asOfErr := store.NodeAsOf(nid, txTime)
+	if liveHere, err = nodeRowLive(store, nid); err != nil || !liveHere {
+		return nil, false, err
+	}
+	return n, true, asOfErr
+}
+
 func (ts *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, limit int) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err

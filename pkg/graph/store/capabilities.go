@@ -279,6 +279,14 @@ type TransactionTimeQueryCapability interface {
 	RelsAsOf(txTime types.Instant) ([]*types.Relationship, error)
 }
 
+// NodeAsOfWalkCapability is OPTIONAL: one node's as-of read for a store that
+// has no TransactionTimeQueryCapability, walking the node's versions newest
+// first when it can. ok false says this node needs the whole chain (its rows may
+// span parts of the store); with ok true, a miss returns ErrVersionNotFound.
+type NodeAsOfWalkCapability interface {
+	NodeAsOfWalk(id types.NodeID, txTime types.Instant) (n *types.Node, ok bool, err error)
+}
+
 // LabelTxMembershipCapability is OPTIONAL: enumerates the node IDs that carried
 // a label in a stored version and are not among its current members (the
 // label index), each with firstTxFrom, a lower bound on the transaction time of

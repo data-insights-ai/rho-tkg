@@ -27,6 +27,17 @@ func (ts *Store) RefShardForTest() *BadgerStore { return ts.refShard }
 // observer (nil removes it). Set it before the reads it observes.
 func (ts *Store) SetTypeScanHookForTest(fn func(door string)) { ts.typeScanHook = fn }
 
+// SetAsOfAfterCurrentTestHookForTest installs fn on the reference and hot
+// shards, between NodeAsOfWalk's current-row read and its history scan.
+func (ts *Store) SetAsOfAfterCurrentTestHookForTest(fn func()) {
+	ts.refShard.SetAsOfAfterCurrentTestHookForTest(fn)
+	ts.hotShard.store.SetAsOfAfterCurrentTestHookForTest(fn)
+}
+
+// SetAsOfWalkGapHookForTest installs fn between NodeAsOfWalk's liveness check
+// and its read of the shard.
+func (ts *Store) SetAsOfWalkGapHookForTest(fn func()) { ts.asOfWalkGapHook = fn }
+
 // RefActiveReqsForTest returns the refcount on the reference shard.
 func (ts *Store) RefActiveReqsForTest() *atomic.Int64 { return &ts.refActiveReqs }
 
