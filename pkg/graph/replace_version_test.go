@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -295,9 +296,11 @@ func TestReplaceVersionCrashChild(t *testing.T) {
 		fmt.Fprintln(os.Stderr, "write:", err)
 		os.Exit(4)
 	}
-	fmt.Println(int64(n.ID()))
-	os.Exit(0) // crash: no Close
+	fmt.Printf("\n%s%d\n", rvIDMarker, int64(n.ID())) // the store logs to stdout too
+	os.Exit(0)                                        // crash: no Close
 }
+
+const rvIDMarker = "WHOLEROW_ID="
 
 func TestReplaceVersionTxFromRisesWithVersionAcrossCrash(t *testing.T) {
 	for _, backend := range []string{"badger", "tiered"} {
@@ -310,8 +313,12 @@ func TestReplaceVersionTxFromRisesWithVersionAcrossCrash(t *testing.T) {
 				t.Fatalf("crash child failed: %v\n%s", err, out)
 			}
 			var raw int64
-			if _, err := fmt.Sscan(string(out), &raw); err != nil {
-				t.Fatalf("child output %q: %v", out, err)
+			_, marker, found := strings.Cut(string(out), rvIDMarker)
+			if !found {
+				t.Fatalf("child output without %s:\n%s", rvIDMarker, out)
+			}
+			if _, err := fmt.Sscan(marker, &raw); err != nil {
+				t.Fatalf("child output %q: %v", marker, err)
 			}
 			id := types.NodeID(raw)
 			cfg, err := rvCrashConfig(backend, dir)
@@ -328,18 +335,19 @@ func TestReplaceVersionTxFromRisesWithVersionAcrossCrash(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantRow(t, "current after crash", current, 4, pageNewVF, pageNewVT+1000, map[string]any{"ov_k": "k1", "pages": int64(3)})
+			// Versions start at 0: the create, the close, the two replaces.
+			wantRow(t, "current after crash", current, 3, pageNewVF, pageNewVT+1000, map[string]any{"ov_k": "k1", "pages": int64(3)})
 			hist, err := g.Nodes().History(id)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if len(hist) != 3 {
-				t.Fatalf("history after crash: %d rows, want 3 (versions 1-3)", len(hist))
+				t.Fatalf("history after crash: %d rows, want 3 (versions 0-2)", len(hist))
 			}
 			rows := append(hist, current)
 			for i, r := range rows {
-				if r.Version() != uint32(i+1) {
-					t.Fatalf("row %d has version %d, want %d (dense, rising)", i, r.Version(), i+1)
+				if r.Version() != uint32(i) {
+					t.Fatalf("row %d has version %d, want %d (dense, rising)", i, r.Version(), i)
 				}
 				tx, txTo, _ := r.TxStamps()
 				if i > 0 {
@@ -363,7 +371,7 @@ func TestReplaceVersionTxFromRisesWithVersionAcrossCrash(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantRow(t, "NodeAsOf now after crash", asOf, 4, pageNewVF, pageNewVT+1000, nil)
+			wantRow(t, "NodeAsOf now after crash", asOf, 3, pageNewVF, pageNewVT+1000, nil)
 			if ok, err := g.Hash().VerifyNodeChain(id); err != nil || !ok {
 				t.Fatalf("VerifyNodeChain after crash = %v, %v", ok, err)
 			}
@@ -377,16 +385,32 @@ func TestReplaceVersionIndexesFollowTheNewVersion(t *testing.T) {
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		f := writePage(t, g)
 		pastOldEnd := storepkg.QueryOpts{ValidEndAfter: pageOldVT + 500, ValidEndAfterSet: true}
+		pruned := func() uint64 {
+			t.Helper()
+			st, err := g.Index().PropertyIndexValidEndStats()
+			if err != nil {
+				t.Fatal(err)
+			}
+			return st.Pruned
+		}
 		for range 2 { // the first read refines the stored bound to the old end
 			if ns, err := g.Nodes().ByLabelAndProperty(pageLabel, "ov_h3", "h-old", pastOldEnd); err != nil || len(ns) != 0 {
 				t.Fatalf("closed at %d, ValidEndAfter %d: %d rows, %v; want none", pageOldVT, pastOldEnd.ValidEndAfter, len(ns), err)
 			}
 		}
+		if pruned() != 1 {
+			t.Fatalf("the second read pruned %d entries by the refined bound, want 1", pruned())
+		}
 		rep := replacePage(t, g, f)
 		after := rep.Temporal().TxFrom
 
+		// The replace wrote the entry unknown again: the read resolves the row
+		// instead of pruning it by the old bound.
 		ns, err := g.Nodes().ByLabelAndProperty(pageLabel, "ov_h3", "h-new", pastOldEnd)
 		wantRow(t, "ov_h3 h-new past the old end", onlyNode(t, "ov_h3 h-new ValidEndAfter", ns, err, f.id), rep.Version(), pageNewVF, pageNewVT, nil)
+		if pruned() != 1 {
+			t.Fatalf("a read after the replace pruned by the old bound (%d pruned, want 1)", pruned())
+		}
 		ns, err = g.Nodes().ByLabelAndProperty(pageLabel, "ov_k", "k1", pastOldEnd)
 		onlyNode(t, "ov_k past the old end", ns, err, f.id)
 		pastNewEnd := storepkg.QueryOpts{ValidEndAfter: pageNewVT + 1, ValidEndAfterSet: true}

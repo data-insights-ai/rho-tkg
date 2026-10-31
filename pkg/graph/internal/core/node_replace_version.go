@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"maps"
+	"fmt"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -70,24 +70,136 @@ func (tx *GraphTx) ReplaceNodeVersion(id types.NodeID, props map[string]any, val
 // replaceNodeVersionInternal is the lock-free body of ReplaceVersion. Callers
 // hold c.mu.RLock (standalone) or c.mu.Lock (tx).
 //
-// Red starting point (WHOLEROW step 2): the Update kernel with the validity as
-// tkg_valid_from / tkg_valid_to, which refuses a closed row and a start at or
-// before the previous one.
+// Validation runs before the entity lock (shape, validity, properties), the
+// listing and the no-op check under it. The new row is Update's new version
+// with the one start rule relaxed: the chain's next version, TxFrom at the
+// clock past the current row's belief, ValidFrom and ValidTo as given, the
+// whole property set; the current row goes to history with TxTo at that
+// instant, through ReplaceNodeWithHistory, so every index follows in the
+// row's own batch.
 func (c *Core) replaceNodeVersionInternal(ctx context.Context, id types.NodeID, props map[string]any, validFrom, validTo types.Instant) (*types.Node, bool, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, false, err
 	}
-	updates := maps.Clone(props)
-	if updates == nil {
-		updates = map[string]any{}
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
 	}
-	updates["tkg_valid_from"] = validFrom
-	if !c.axis().Open(validTo) {
-		updates["tkg_valid_to"] = validTo
+	a := c.axis()
+	if !a.Claimed(validFrom) {
+		return nil, false, fmt.Errorf("%w: replace node version: valid-from %d is unset on this valid axis", ErrInvalidTimeRange, validFrom)
 	}
-	prov, tmp, updates, err := c.prepareUpdateProperties(updates, "replace node version")
+	if !a.Open(validTo) {
+		if err := checkCloseAfterStart("valid-to", validTo, validFrom, "node"); err != nil {
+			return nil, false, err
+		}
+	}
+	for key := range props {
+		if types.IsShadowKey(key) {
+			return nil, false, fmt.Errorf("graph: replace node version: %w: %q", types.ErrReservedPrefix, key)
+		}
+	}
+	if err := c.validateProperties(props); err != nil {
+		return nil, false, err
+	}
+	newProps, err := types.NewOwnedPropertySlice(props)
+	if err != nil {
+		return nil, false, fmt.Errorf("graph: replace node version: %w", err)
+	}
+
+	c.entityLocks.LockEntity(id.SnowflakeID())
+	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+	current, err := c.getCurrentNode(id)
 	if err != nil {
 		return nil, false, err
 	}
-	return c.updateNodePreparedInternal(ctx, id, prov, tmp, updates)
+	if _, ok := c.replaceVersionLabels[c.labels.Resolve(current.LabelTokenRawAt(0))]; !ok {
+		return nil, false, fmt.Errorf("%w: node %d", ErrReplaceVersionNotListed, id)
+	}
+	if !replaceNodeVersionMutates(a, current, props, validFrom, validTo) {
+		c.opNodeReads.Add(1)
+		return current, false, nil
+	}
+	if err := c.checkpointDirtyRegistriesBeforeMutation("replace node version"); err != nil {
+		return nil, false, err
+	}
+
+	prevVersion := current.Version()
+	nextVersion, err := c.nextNodeVersion(id, current)
+	if err != nil {
+		return nil, false, err
+	}
+	prevState := current.DeepCopy()
+	prevHash := ""
+	if ig := current.Integrity(); ig != nil {
+		prevHash = ig.Hash
+	}
+
+	if err := current.SetOwnedProperties(newProps); err != nil {
+		return nil, false, fmt.Errorf("graph: replace node version: %w", err)
+	}
+	current.SetVersion(nextVersion)
+
+	// The transaction instant: the clock, past the current row's belief, so
+	// the superseded row's TxTo never precedes its TxFrom (supersede's tx
+	// rule); the valid start is the caller's claim, never derived.
+	now := validInstantAfter(c.now(), beliefTx(current.Temporal()))
+	tm := current.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		current.SetTemporal(tm)
+	}
+	tm.ValidFrom, tm.ValidTo = validFrom, validTo
+	stampAppendedRow(tm, now)
+	if ptm := prevState.Temporal(); ptm == nil {
+		prevState.SetTemporal(&types.TemporalMetadata{TxTo: now})
+	} else {
+		ptm.TxTo = now
+	}
+	if err := c.checkNodeRowTemporalConstraints(id, current); err != nil {
+		return nil, false, err
+	}
+
+	hash, err := c.nodeContentHash(current, c.nodeLabelsUnlocked(current))
+	if err != nil {
+		return nil, false, fmt.Errorf("graph: compute node hash: %w", err)
+	}
+	current.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+	uniqueHold, uniqueErr := c.enforceUniqueForNode(current, prevState, id)
+	if uniqueErr != nil {
+		return nil, false, uniqueErr
+	}
+	defer uniqueHold.release()
+
+	if err := c.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
+		return nil, false, uniqueHold.storeWriteFailed(err)
+	}
+	c.opNodeUpdates.Add(1)
+	return current, true, nil
+}
+
+// replaceNodeVersionMutates reports whether a whole-row replace changes the
+// current row: a different property set, or a different start or end (the
+// row's effective start, its end on the axis a).
+func replaceNodeVersionMutates(a types.ValidAxis, current *types.Node, props map[string]any, validFrom, validTo types.Instant) bool {
+	if current.PropertyCount() != len(props) {
+		return true
+	}
+	for key, val := range props {
+		if found, equal := current.PropertyValueEqual(key, val); !found || !equal {
+			return true
+		}
+	}
+	tm := current.Temporal()
+	if tm == nil || tm.ValidFrom != validFrom {
+		return true
+	}
+	return a.End(tm.ValidTo) != a.End(validTo)
 }

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **WHOLEROW** (sigma-tkgd's paged-row writer, STATEREC ask 1; a minor, ADR-0014). `g.Nodes().ReplaceVersion(ctx, id, props,
+  validFrom, validTo)` and `GraphTx.ReplaceNodeVersion` replace a node's current row whole as a new version with any
+  validity: a closed row, an equal or earlier start, a grown end and a change of properties alone, which every update
+  door refused (`ErrAlreadyClosed`, `ErrValidFromBeforePrevious`) or `UpdateInPlace` rewrote without a new `TxFrom`.
+  Listed labels only (`Config.ReplaceVersionLabels`, else `ErrReplaceVersionNotListed`). The old version moves to
+  history with `TxTo` at the new `TxFrom`; property, valid-end and temporal indexes follow in the row's own write. A
+  pin at or after the replace reads the new version alone, a pin before reads as before; `TxFrom` rises with version
+  across a crash (`TestReplaceVersion*`, badger and tiered; `tasks/evidence/WHOLEROW/`).
+
 ## [4.98.4] - 2026-11-01
 
 ### Fixed
