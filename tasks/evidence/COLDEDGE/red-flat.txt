@@ -1,0 +1,5 @@
+--- FAIL: TestFlatAdjacency_OnlyListedShardOpens (1.44s)
+    flat_adjacency_test.go:53: read opened 6 cold shards, want the 1 holding its legs
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.446s
+FAIL
