@@ -27,12 +27,20 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` and the HANDOVER brief get one commit on main per item end (René 2026-10-31: 298 of 545 commits in 7 days
   were todo commits), from the main worktree `../rho-tkg-main` while a branch is checked out;
   `scripts/check-ledger.sh` before every such commit.
-- Peers (René 2026-10-31): one message per item each way to sigma-tkgd and ai-soc; status goes in the todo.
+- Peers (René 2026-10-31): one message per item each way to sigma-tkgd and ai-soc, about 1,500 characters at most, detail
+  in a file; status goes in the todo. A status line is `item | state | next | waits for`, checked against the repo before
+  it is stated.
+- Reopen check (René 2026-10-31): before handing over a commit that changes what sigma or ai-soc read at reopen, run a
+  small reopen cycle with the host's writer, on masked rows only, never a Flux file. Sample: ai-soc's
+  `TestRestartModesOverBARows` (524 rows); ask ai-soc for it. On 30 Oct the About-edge blocker appeared only after the
+  freeze and needed v4.98.3.
 - By hand, `go test` without `-count=1` unless a flake or a timing is the question: 9.3 h across 1,009 calls (ai-soc's
   audit, 24-31 Oct). Gates keep `-count=1`.
 - Who works (René 2026-10-23): the main session does the work itself, analysis and code alike, and runs every test, lint
   and gate, and reviews its own work (§ Review); the Fable reviewer was deleted (René 2026-10-24). No subagents unless
   René asks for them.
+  One trial (René 2026-10-31): Fable builds the next state-restore item, from a brief naming the host's call path; report
+  how it went.
 - Consumer data: ask the consumer's agent for runs and stores, never browse its repo. Flux (ai-soc's run machine) needs
   René's word per run; customer data stays on Flux: copy the store into a new dir under `/srv/fast/rene/` and open only
   the copy, report counts, sizes and relation names only (no row values, hosts, keys or record ids in chat or git), and

@@ -484,6 +484,8 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **FABLEBUILD** (René via ai-soc, 31 Oct): a one-off trial with Fable as builder on the next state-restore item, from a brief naming the host's call path. Done when the trial is reported. Waits for the next state-restore item, and for the masked sample from ai-soc when that item changes a reopen read.
+
 - **BRANCHES** (René via ai-soc, 29 Oct: "clean this also up") — step 1 done: origin/archive/unmerged-2026-10-27
   now at 93c43a64 (was 6554d8ad; tree unchanged, one commit with the 5 codex tips added as parents). Each tip
   verified with `git merge-base --is-ancestor`. Step 2, René 29 Oct ("delete the temporary and old parts"):
