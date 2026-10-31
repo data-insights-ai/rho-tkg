@@ -214,6 +214,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   (ai-soc answered: record door holds, state door and write door don't), then flat Outgoing. Profile (Flux, 60 s): View 18.28 s
   of 66.39 s, rows 8.50 s, committedRowStamps 4.21 s (LISTREAD (b), callers not yet traced), transactions 0.78 s, block 4.15 s.
   ai-soc tested BlockCacheSize 64 MiB vs 1 GiB: 1.9 s for 1.9 GB of peak, dropped.
+  WHOLEROW (sigma 31 Oct, not urgent, crash path): guarantee 1 reads by TxPin plus the current row, never the effective
+  timeline, so the state-door change is out; the record covers only the write door and tests 2-5, and test 1 on TxPin.
 - **NEXT ROUND** (ai-soc 31 Oct: k10302100 shipped on sigma v0.11.154 + rho v4.98.3, freeze over) — ASOFWALK, WHOLEROW, COLDEDGE
   with the empty-shard skip. ASOFWALK step 1 built on branch asofwalk (0cdbccd5), a patch, untagged: 199 rows loaded per read to 0.
   Tags only in ai-soc's release round. Race suite on the first release: v4.98.3 went without it or the probe.
