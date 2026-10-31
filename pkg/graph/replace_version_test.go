@@ -8,10 +8,12 @@ import (
 	"os/exec"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -465,18 +467,52 @@ func TestReplaceVersionRefusalsAndTxTwin(t *testing.T) {
 				t.Fatalf("%s: %v, want %v", c.name, err, c.want)
 			}
 		}
+		// A unique ov_k: the replace may not take another page's key.
+		if err := g.Constraints().CreateUnique(ctx, pageLabel, "ov_k"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := g.Nodes().Add(ctx, []string{pageLabel}, map[string]any{"ov_k": "k2", "tkg_valid_from": pageOldVF}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := g.Nodes().ReplaceVersion(ctx, f.id, map[string]any{"ov_k": "k2"}, pageNewVF, pageNewVT); !errors.Is(err, graphpkg.ErrUniqueViolation) {
+			t.Fatalf("another page's ov_k: %v, want ErrUniqueViolation", err)
+		}
+		// A relationship constrained within its endpoints: the new validity
+		// may not leave the relationship outside the page.
+		if err := g.Constraints().Add(temporal.TemporalConstraint{Kind: temporal.ConstraintRelWithinEndpoints}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := g.Rels().AddByID(ctx, "LINKS", f.id, other.ID(), map[string]any{"tkg_valid_from": types.Instant(1200), "tkg_valid_to": types.Instant(1800)}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := g.Nodes().ReplaceVersion(ctx, f.id, pageNewProps(), pageNewVF, 1500); !errors.Is(err, temporal.ErrTemporalConstraint) {
+			t.Fatalf("an end inside the relationship's validity: %v, want ErrTemporalConstraint", err)
+		}
 		got, err := g.Nodes().Get(ctx, f.id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		wantRow(t, "row after refusals", got, f.old.Version(), pageOldVF, pageOldVT, f.old.PropertiesMap())
 
-		// A no-op: equal properties and validity.
+		// A no-op: equal properties and validity, no event.
+		bus := eventspkg.NewEventBus()
+		var updates atomic.Int64
+		bus.Subscribe(func(e eventspkg.Event) {
+			if e.Type == eventspkg.EventNodeUpdate && e.EntityID == types.EntityID(f.id) {
+				updates.Add(1)
+			}
+		})
+		if err := g.Events().SetSync(bus); err != nil {
+			t.Fatal(err)
+		}
 		same, err := g.Nodes().ReplaceVersion(ctx, f.id, f.old.PropertiesMap(), pageOldVF, pageOldVT)
 		if err != nil {
 			t.Fatal(err)
 		}
 		wantRow(t, "no-op replace", same, f.old.Version(), pageOldVF, pageOldVT, f.old.PropertiesMap())
+		if updates.Load() != 0 {
+			t.Fatalf("a no-op replace published %d update events", updates.Load())
+		}
 
 		// The tx twin: rolled back, every read is as before.
 		rollback := errors.New("roll back")
@@ -511,6 +547,25 @@ func TestReplaceVersionRefusalsAndTxTwin(t *testing.T) {
 			t.Fatal(err)
 		}
 		wantRow(t, "row after tx commit", got, f.old.Version()+1, pageNewVF, pageNewVT, pageNewProps())
+		if updates.Load() != 1 {
+			t.Fatalf("the committed replace published %d update events, want 1 (the rolled-back one none)", updates.Load())
+		}
+		// An end alone, then a dropped property alone, each is a new version
+		// with an event (standalone).
+		if n, err := g.Nodes().ReplaceVersion(ctx, f.id, pageNewProps(), pageNewVF, pageNewVT+100); err != nil || n.Version() != f.old.Version()+2 {
+			t.Fatalf("end-only replace: version %d, %v; want %d", n.Version(), err, f.old.Version()+2)
+		}
+		fewer := pageNewProps()
+		delete(fewer, "pages")
+		if n, err := g.Nodes().ReplaceVersion(ctx, f.id, fewer, pageNewVF, pageNewVT+100); err != nil || n.Version() != f.old.Version()+3 || n.PropertyCount() != len(fewer) {
+			t.Fatalf("dropped-property replace: version %d with %d properties, %v; want %d with %d", n.Version(), n.PropertyCount(), err, f.old.Version()+3, len(fewer))
+		}
+		if n, err := g.Nodes().ReplaceVersion(ctx, f.id, fewer, pageNewVF-100, pageNewVT+100); err != nil || n.Version() != f.old.Version()+4 {
+			t.Fatalf("start-only replace: version %d, %v; want %d", n.Version(), err, f.old.Version()+4)
+		}
+		if updates.Load() != 4 {
+			t.Fatalf("%d update events after three standalone replaces, want 4", updates.Load())
+		}
 		if ok, err := g.Hash().VerifyNodeChain(f.id); err != nil || !ok {
 			t.Fatalf("VerifyNodeChain = %v, %v", ok, err)
 		}

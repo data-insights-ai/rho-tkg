@@ -54,10 +54,7 @@ func (tx *GraphTx) ReplaceNodeVersion(id types.NodeID, props map[string]any, val
 		return nil, err
 	}
 	defer tx.unlockActiveCoreWrite()
-	if err := storepkg.ValidateNodeID(id); err != nil {
-		return nil, err
-	}
-	if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil {
+	if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil { // the store's read validates the ID
 		return nil, err
 	}
 	n, mutated, err := tx.g.replaceNodeVersionInternal(tx.doorCtx(), id, props, validFrom, validTo)

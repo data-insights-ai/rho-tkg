@@ -20,13 +20,14 @@ Each item: one sentence, then when it is done and what it waits for.
 - **TIERCLOCK measurement** (ai-soc 29 Oct, goal 2) — released in v4.98.0; ai-soc's pin: Clock = newest committed valid time, ColdAfter 3 d, RelsByMint on. Done when ai-soc's BA replay rotates as live data would. Waits for that run.
 - **PURGECURSOR, PURGERESIDUE** (28 Oct; patches) — a label purge resumes from a cursor instead of copying the label's whole ID list per 256-node call (quadratic at 10 M); a purge or history truncate leaves about 30-50 B per ID in the `unknown` map of a shard that stays open. No consumer purges today. Done when each is fixed or dropped. Waits for René's word (STORECFG).
 - **PERTIER, RAM doors** (28 Oct; each a minor, on ai-soc's ask with BA numbers) — per-tier MemTableSize (64 to 128 MB on BO: push -2.9 %, GC mark -20.4 s, heap +170 MB); a listed label keeps Elements definitions in RAM and moves scalar ones to disk; Elements rows on disk; COMPOSITEDISK; PROPHOT (only if Derived's index goes to disk). Done when ai-soc asks or drops them. Waits for ai-soc.
-- **STATEREC asks** (sigma's design review, 30 Oct; no hurry, after the freeze) — (1) WHOLEROW, blocking for S5: replace a page
-  node's current row whole as a new version, any validity, TxFrom and belief kept, indexes following, every backend, listed
-  labels only. Today's Update refuses a closed row. Needs a design: what the effective timeline shows of the older pieces.
-  Sigma's five tests, tiered and badger: a pin at or after the replace returns that version's validity only, no older piece
-  (else sigma's rows stay in pieces and S5 stops); a pin before it reads as before; the current row from an index read is the
-  newest version with its TxFrom; TxFrom rises with version across a crash, a closed row and an equal or earlier start accepted;
-  ov_k, ov_h and the validity-end index follow the new version, an older pin still finds the node. Other labels' reads unchanged.
+- **STATEREC asks** (sigma's design review, 30 Oct; no hurry, after the freeze) — (1) WHOLEROW, blocking for S5: built on
+  branch `wholerow` (Fable's trial, 31 Oct; a minor for ai-soc's next round, unmerged, untagged): `g.Nodes().ReplaceVersion(ctx,
+  id, props, validFrom, validTo)` and `GraphTx.ReplaceNodeVersion` replace a page node's current row whole as a new version with
+  any validity, on nodes of `Config.ReplaceVersionLabels` only (`ErrReplaceVersionNotListed`); design ADR-0014 in
+  `docs/architecture.md` (the effective timeline shows an older version only where the new one does not cover). Sigma's five
+  tests pass on badger and tiered (`TestReplaceVersion*`, `tasks/evidence/WHOLEROW/`: red, green, mutations). No batch, ingest or
+  `WithTx` twin, no relationship mirror. Done when the branch is reviewed by the main session, merged and tagged in the round,
+  and sigma's writer runs on it. Waits for the review and ai-soc's round.
   (2) the TxPin walk and batch, as planned. (3) DEPTHLOOK: a TxPin property lookup below DepthAll takes the label-wide fold.
 - **TEMPIDX-2** (ai-soc 29 Oct, goal 2 RAM, same run; sigma 31 Oct, k10302100: live heap +570 MB/day, rho about +300; TIERCLOCK already in that run and bounds event shards only, the reference shard never rotates; idTable joins this scope, unbounded there; only reads from disk go flat, no design yet; waits for sigma's split of sortedChunks.add by caller and whether the temporal index is read) — the node TemporalIndex is setByID 299 + setPos 131 +
   Extend 124 = 554 MB live at the end (~120 B a node), resident for hot and warm shards (TemporalIndexOnDisk only

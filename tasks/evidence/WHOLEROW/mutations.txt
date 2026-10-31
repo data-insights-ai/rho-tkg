@@ -1,0 +1,41 @@
+WHOLEROW mutation sweep, 2026-10-31, branch wholerow (after commit 24e54fa1 plus the test additions of this commit).
+Each mutant changes the code once (a perl substitution on one file, restored by git checkout after the run); each line
+names it and the tests that failed. Tests run per mutant: go test -short -count=1 -run 'TestReplaceVersion|Constraint|CloseVersion'
+./pkg/graph/ ./pkg/graph/internal/core/ (the new tests, the temporal-constraint and close tests that guard the refactored
+checkNodeCloseTemporalConstraints; the crash test TestReplaceVersionTxFromRisesWithVersionAcrossCrash runs a child process on badger
+and tiered). A test timeout would count as caught; none occurred. A mutant that does not build is no kill and was rewritten.
+Files: node_replace_version.go (M1-M21, M24), temporal_constraint.go (M22), core.go (M23).
+
+M1 listing check accepts every label: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M2 unset valid-from accepted: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M3 end at or before the start accepted: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M4 shadow keys accepted: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M5 no-op check inverted (a change is a no-op): CAUGHT by TestReplaceVersionIndexesFollowTheNewVersion, TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom, TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly, TestReplaceVersionRefusalsAndTxTwin, TestReplaceVersionTxFromRisesWithVersionAcrossCrash
+M7 new row TxFrom not stamped: CAUGHT by TestReplaceVersionIndexesFollowTheNewVersion, TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom, TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly, TestReplaceVersionPinBeforeReadsAsBefore, TestReplaceVersionTxFromRisesWithVersionAcrossCrash
+M8 superseded row TxTo not stamped: CAUGHT by TestReplaceVersionTxFromRisesWithVersionAcrossCrash
+M9 validity not written (old kept): CAUGHT by TestReplaceVersionIndexesFollowTheNewVersion, TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom, TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly, TestReplaceVersionRefusalsAndTxTwin, TestReplaceVersionTxFromRisesWithVersionAcrossCrash
+M10 properties not replaced (old kept): CAUGHT by TestReplaceVersionIndexesFollowTheNewVersion, TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom, TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly, TestReplaceVersionRefusalsAndTxTwin, TestReplaceVersionTxFromRisesWithVersionAcrossCrash
+M11 no history row (ReplaceNode): CAUGHT by TestReplaceVersionIndexesFollowTheNewVersion, TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly, TestReplaceVersionPinBeforeReadsAsBefore, TestReplaceVersionRefusalsAndTxTwin, TestReplaceVersionTxFromRisesWithVersionAcrossCrash
+M12 temporal constraints checked on the old row: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M13 PrevHash chain broken: CAUGHT by TestReplaceVersionRefusalsAndTxTwin, TestReplaceVersionTxFromRisesWithVersionAcrossCrash
+M14 TxFrom not moved past the current row's belief: SURVIVED
+M15 unique constraints checked on the old row: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M16 standalone event not published: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M17 tx event not published: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M18 tx snapshot skipped (rollback cannot restore): CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M19 no-op ignores a changed end: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M20 no-op ignores a dropped property: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M22 close constraint checked without the close end (refactor): CAUGHT by TestConstraintRelWithinEndpoints_NodeClosePreservesExistingRelationships
+M23 Config.ReplaceVersionLabels not wired: CAUGHT by TestReplaceVersionIndexesFollowTheNewVersion, TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom, TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly, TestReplaceVersionPinBeforeReadsAsBefore, TestReplaceVersionRefusalsAndTxTwin, TestReplaceVersionTxFromRisesWithVersionAcrossCrash
+M6 version not raised: CAUGHT by TestReplaceVersionRefusalsAndTxTwin, TestReplaceVersionTxFromRisesWithVersionAcrossCrash
+M21 no-op ignores a changed start: CAUGHT by TestReplaceVersionRefusalsAndTxTwin
+M6 first form (SetVersion(prevVersion)) did not build: nextVersion unused; rerun as SetVersion(nextVersion - 1), above.
+M21 survived the first run (no test replaced with the start alone changed); TestReplaceVersionRefusalsAndTxTwin gained a start-only
+    replace and the rerun above kills it.
+M24 tx twin skips the entity-ID check: SURVIVED, equivalent: snapshotNodeLocked reads the node through the store, which validates the
+    ID first (store.ValidateNodeID in GetNode); the redundant check was removed from the twin.
+M14 TxFrom not moved past the current row's belief (now := c.now()): SURVIVED, not killed. validInstantAfter only matters for a current
+    row stamped ahead of the commit clock, which no public door produces (AddWithTx refuses a future instant); the guard mirrors
+    supersede's, which the Update door carries without its own test either. Recorded as a gap, not hidden.
+
+Summary: 24 mutants, 21 killed, 1 equivalent (removed), 1 not killed (M14, stated), 1 rewritten and killed (M6).
