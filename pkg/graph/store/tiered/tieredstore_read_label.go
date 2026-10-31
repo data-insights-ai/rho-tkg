@@ -53,7 +53,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardsToRead(opts.Depth)
 	ts.mu.RUnlock()
 
 	type result struct {
@@ -103,7 +103,7 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		return nil, err
 	}
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardsToRead(opts.Depth)
 	ts.mu.RUnlock()
 
 	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
@@ -258,7 +258,7 @@ func (ts *Store) nodesByLabelPropertyKeysWith(labelToken uint16, key string, opt
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardsToRead(opts.Depth)
 	ts.mu.RUnlock()
 
 	type result struct {

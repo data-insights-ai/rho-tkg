@@ -284,6 +284,8 @@ type EventShard struct {
 	// counts is what this shard held when it was last closed, so counting
 	// questions can be answered without reopening it. See shardCounts.
 	counts atomic.Pointer[shardCounts]
+	// noRows: closed and holding no row, so fan-out reads skip it (emptyshard).
+	noRows atomic.Bool
 }
 
 const (

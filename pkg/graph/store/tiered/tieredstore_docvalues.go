@@ -117,7 +117,7 @@ func (ts *Store) foldDocValuesServingEmpty(tokens []uint16, emptyServes bool, ca
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 
 	for _, es := range shards {

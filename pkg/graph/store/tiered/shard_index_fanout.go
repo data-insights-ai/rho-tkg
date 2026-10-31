@@ -529,7 +529,7 @@ func (ts *Store) PruneRelTypeTemporalCandidates(relType uint16, ids []types.RelI
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(opts.Depth)
+	shards := ts.eventShardsToRead(opts.Depth)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		store, release, open, err := es.checkoutOpenStoreForRead(ts)
@@ -654,7 +654,7 @@ func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardsToRead(opts.Depth)
 	ts.mu.RUnlock()
 	results := make([][]*types.Node, len(eventShards))
 	errs := make([]error, len(eventShards))
@@ -732,7 +732,7 @@ func (ts *Store) NodeIDsByLabelAndPropertiesPage(labelToken uint16, values map[s
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(depth)
+	eventShards := ts.eventShardsToRead(depth)
 	ts.mu.RUnlock()
 	for _, es := range eventShards {
 		store, release, err := es.checkoutStoreReadOnly(ts)

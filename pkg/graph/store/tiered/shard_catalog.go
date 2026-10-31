@@ -67,6 +67,9 @@ type ShardEntry struct {
 	// validated at open, so a token means the same thing across restarts.
 	NodeCountsByLabel map[string]int `json:"node_counts_by_label,omitempty"`
 	RelCountsByType   map[string]int `json:"rel_counts_by_type,omitempty"`
+	// NoRows marks a sealed shard that held no row when it closed. Fan-out reads
+	// skip it. Cleared, and saved, before the shard opens for writing.
+	NoRows bool `json:"no_rows,omitempty"`
 }
 
 // ShardCatalog tracks all shards in a tiered store. It is persisted as JSON.
@@ -550,6 +553,20 @@ func (sc *ShardCatalog) SealShardCounts(name string, nodes, rels int, byLabel, b
 	return false
 }
 
+// SetShardNoRows records whether a sealed shard held no row.
+func (sc *ShardCatalog) SetShardNoRows(name string, none bool) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	for i := range sc.Shards {
+		if sc.Shards[i].Name == name {
+			changed := sc.Shards[i].NoRows != none
+			sc.Shards[i].NoRows = none
+			return changed
+		}
+	}
+	return false
+}
+
 // UnsealShardCounts clears the sealed marker, for a shard that is being opened
 // for writing again and can therefore change.
 func (sc *ShardCatalog) UnsealShardCounts(name string) bool {
@@ -560,6 +577,7 @@ func (sc *ShardCatalog) UnsealShardCounts(name string) bool {
 			continue
 		}
 		sc.Shards[i].CountsSealed = false
+		sc.Shards[i].NoRows = false
 		sc.Shards[i].NodeCountsByLabel = nil
 		sc.Shards[i].RelCountsByType = nil
 		return true

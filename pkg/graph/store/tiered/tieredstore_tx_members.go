@@ -54,7 +54,7 @@ func allShards[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)
 		others = append(others, archived)
 	}
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	results := make([]T, len(shards))
 	errs := make([]error, len(shards))

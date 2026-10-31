@@ -1,0 +1,11 @@
+--- FAIL: TestEmptyColdShard_FanOutSkipsIt (0.44s)
+    empty_shard_skip_test.go:40: empty cold shard opened 6 times
+    empty_shard_skip_test.go:43: empty cold shard checked out 6 times
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.449s
+FAIL
+
+After: an empty closed cold shard is neither opened nor checked out by the fan-out. TestRelsByMint_ColdEdgeOutgoingCost, 30 cold
+shards, cap 0, 29 of them empty: 1.65 s per call before, about 90 ms after (one shard, the edge's, still opens). Same PC, one run.
+Shards holding rows still open: Outgoing is not yet flat. Mutants killed: wake not saved, catalog not restored, no wake, no sweep,
+no adopt, no filter, always marked, no key scan, pending ignored, meta counts as a row.

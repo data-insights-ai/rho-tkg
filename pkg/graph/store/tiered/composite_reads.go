@@ -59,7 +59,7 @@ func foldShards[T any](ts *Store, read func(*BadgerStore) (T, error)) ([]T, erro
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	results := make([]T, len(eventShards))
 	errs := make([]error, len(eventShards))

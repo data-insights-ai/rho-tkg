@@ -355,7 +355,7 @@ func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 
 	// Event shards — sequential checkout/checkin.
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		store, release, err := es.checkoutStoreReadOnly(ts)
@@ -444,7 +444,7 @@ func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, hold *[]func(), fn fu
 	}
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 
 	for _, es := range eventShards {
@@ -573,7 +573,7 @@ func (ts *Store) forEachNodeHistoryIDByDepth(depth ShardDepth, fn func(types.Nod
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(depth)
+	shards := ts.eventShardsToRead(depth)
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
@@ -718,7 +718,7 @@ func (ts *Store) maxNodeHistoryIDByDepth(depth ShardDepth) (types.NodeID, error)
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(depth)
+	shards := ts.eventShardsToRead(depth)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		store, release, err := es.checkoutStoreReadOnly(ts)
@@ -770,7 +770,7 @@ func (ts *Store) maxNodeHistoryIDAll() (types.NodeID, error) {
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		store, release, err := es.checkoutStoreReadOnly(ts)

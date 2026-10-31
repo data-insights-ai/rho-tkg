@@ -512,6 +512,37 @@ func readPropertyKeyRegistryFromMeta(bs *Store) *registrypkg.PropertyKeyRegistry
 	return reg
 }
 
+// HoldsNoRows reports whether the store holds no entity, history, index or
+// change-log row, pending writes included: nothing but meta. A tiered fan-out
+// skips a closed shard this answered true for. Meta sorts last, so the walk stops
+// at the first key of any store that holds a row.
+func (bs *Store) HoldsNoRows() (bool, error) {
+	if err := bs.checkOpen(); err != nil {
+		return false, err
+	}
+	pending := false
+	bs.rangePending(func(k string, _ writeOp) {
+		pending = pending || (len(k) > 0 && k[0] != storepkg.KeyMeta)
+	})
+	if pending {
+		return false, nil
+	}
+	none := true
+	err := bs.view(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		it.Rewind()
+		none = !it.Valid() || it.Item().Key()[0] == storepkg.KeyMeta
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("graph: shard row probe: %w", err)
+	}
+	return none, nil
+}
+
 // CountSnapshot returns every count this store maintains, in one read.
 //
 // It exists so a caller holding an open store can record what it contains

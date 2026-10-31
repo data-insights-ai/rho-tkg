@@ -19,7 +19,7 @@ func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 		return nil, err
 	}
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardsToRead(opts.Depth)
 	ts.mu.RUnlock()
 
 	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
@@ -92,7 +92,7 @@ func (ts *Store) RelationshipCount() (int, error) {
 		return 0, err
 	}
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 
 	total := 0
@@ -162,7 +162,7 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 		return 0, err
 	}
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 
 	total := 0
@@ -234,7 +234,7 @@ func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 		return nil, err
 	}
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardsToRead(opts.Depth)
 	ts.mu.RUnlock()
 
 	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
@@ -354,7 +354,7 @@ func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
