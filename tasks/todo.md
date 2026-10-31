@@ -122,6 +122,16 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
+### RELPAGEVALID: RelsEffectivePage with a valid instant costs the estate, not the page (ai-soc, 1 Nov; next round, no tag before)
+
+ai-soc on v4.98.3, tiered BA demo store (3,472 cuts, about 968k records, reopened from image), limit 10: tx only 0.14 s; with a valid instant over 120 s (cut by its limit), BO (55 cuts) 85 s. Its profile: `propertyTxMemberAnswers` -> `relDiskMembers` -> `entityIndexWalkLocked` 60 %, `foldedTxMembers` sort 31 %.
+
+Checked in the code, not measured: ai-soc's reading holds. `ForEachRelPropertyTxMemberAfter` on an on-disk definition (`badgerstore_propertytxmembers_page.go`) walks and sorts every member of the value, then cuts to the page, on every shard, cold ones opened. Each fetch is 64 members (`pageChunkMin`), and an instant meeting few makes `RelsEffectivePage` keep fetching, so a page costs about members^2 / 64 walked entries. The envelope prune (`pageSource.fill`) runs after the walk, so it saves row reads, not the walk.
+
+1. Red test: many short-lived rels, an instant meeting few, count index entries walked per page; output in `tasks/evidence/RELPAGEVALID/`.
+2. Fetch cost by n: seek from the cursor and stop at n, if the member key sorts by ID under the value (to check; duplicates per tx fold). Patch. Same for the node door. Takes members^2 to linear, not yet the page.
+3. Page cost by the page: with a valid instant, start from the type's envelope candidates at that instant and filter by the row, not from the members. Decide after step 2's numbers; a door-free change stays a patch.
+
 ### FIXED-MEMORY model plan (René 31 Oct; starts next week, not this weekend; badger stays, it is not replaced)
 
 Goal: at about 2 TB a day and beyond, per-entity answers leave the Go heap: Go heap stays a fixed amount, data grows on NVMe and block, RAM is page cache you add. The direction comes from read-only Fable analysis on main (31 Oct, inferred from code unless marked measured).
