@@ -12,8 +12,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   - **Fable agent:** René wants one permanent Fable agent for analysis and review, and on 31 Oct a read-only review after each batch of changes.
     It does not survive a session: check with René, then start one from `docs/architecture.md` and `tasks/todo.md`, given the code, not my
     conclusions. Its results are not in this file unless written below.
-  - **Pending at this note:** Fable's review of `254f5914`; if it did not reach `tasks/todo.md`, run it again. TIMEWINDOW: analysed (todo, REOPEN entry),
-    recommendation defer, René has not decided, nothing built.
+  - **Fable reviewed `254f5914`:** no defect. TIMEWINDOW: analysed (todo, REOPEN entry), recommendation defer, René has not decided, nothing built; sigma's
+    chase scans by type and property, not adjacency, so check those reads next.
   - **On main, untagged:** ASOFWALK step 1 (`589a8fbd`, ci-docker with race and GitHub CI green; consumer check and scale probe still due before a
     tag), a corrupt-row guard, the cold-shard release test.
   - **Branch `coldedge`, not merged:** empty closed shards leave the fan-out; mint fan-out opens cold shards read-only (30 shards with rows, 2.9 s to

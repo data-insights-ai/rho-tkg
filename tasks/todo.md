@@ -237,6 +237,9 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   always included (an ID with no window lands there), caller translates valid to mint. Asked sigma and ai-soc for their chase shape. René decides.
   ai-soc agrees to defer: MintAtValidFrom on, /tkg/asof takes one instant, no range. Its next run is the reopen proof on the pinned pair, no rho change.
   Cold-open counts come only from the first run after coldedge is in a tag, so that patch ships first.
+  Sigma 31 Oct: Tyla's chase does not walk adjacency: it scans by type (ForEachRelEffective, From) and probes ByTypeAndProperty, with no Depth seen, so rho's
+  default. TIMEWINDOW and the flat list don't serve it; ai-soc's own traces are still to be asked. Next to look at: what those type scans and probes open across
+  cold shards, a bound like ValidEndAfter on ByTypeAndProperty. Fable reviewed 254f5914, no defect; two small follow-ups on coldedge.
   reopen comes before goal 2. Order changed again 31 Oct (sigma plans a clean-stop image; rows come in on touch): asofwalk to main untagged after CI,
   FIRSTTOUCH (live page read after a reopen: measure once sigma names its doors, no fix before a cause), committedRowStamps
   patch if a corrupt row keeps its answer, then TxPin batch by IDs, then the WHOLEROW record
