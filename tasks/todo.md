@@ -214,8 +214,10 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   cold-shard weak-pointer test (goal 2). Parked, crash path: WHOLEROW, TxPin batch, DEPTHLOOK.
   FIRSTTOUCH measures, cold, batches of 64 and 1024: index read; first HasHistory's presence build with and without Prefix on
   its iterators (badgerstore_history_presence.go:398-407); stamps Gets and archive checkouts; timeline Gets and decodes;
-  total against rebuild + listing. Read from code: 3 Gets and 2 decodes per touched node. Told sigma CommittedTx equality can
+  total against rebuild + listing. Read from code: at most 3 Gets and 2 decodes per touched node. Told sigma CommittedTx equality can
   never match. Asked ai-soc: archive shard? BA batch size, history share?
+  Sigma 31 Oct: took the dirty marker, no rho door. Rows skip HasHistory except under a lower bound; units ask it first and
+  skip the timeline without history. So 3 Gets is the unit with history and the bounded row; most no-history units 2.
   reopen comes before goal 2. Order changed again 31 Oct (sigma plans a clean-stop image; rows come in on touch): asofwalk to main untagged after CI,
   FIRSTTOUCH (live page read after a reopen: measure once sigma names its doors, no fix before a cause), committedRowStamps
   patch if a corrupt row keeps its answer, then TxPin batch by IDs, then the WHOLEROW record
