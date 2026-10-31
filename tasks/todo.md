@@ -8,7 +8,7 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Now
 
-- **CIGATES** (René via ai-soc, 31 Oct, "fix all agents ci pipeline"): the guard, patchgate fixes, hook script and gate log are on main; the hook is installed (René's go, 31 Oct); one step waits for René. Done when CodeQL's default setup is off. Waits for René: `gh api -X PATCH repos/{owner}/{repo}/code-scanning/default-setup -f state=not-configured` (default setup cannot drop its push trigger, so `.github/workflows/codeql.yml` replaces it, weekly; until the switch that workflow's upload is expected to be refused). Hook runs no package suite, because red tests are committed first on a branch. Guard not on `test-race.sh` shards: their names come from `go test -list`. Seen, not fixed: patchgate misses a new exported struct field or interface method. `make ci-fast` refuses until the next tag: ASOFWALK on main is a door, so that round is a minor.
+- **CIGATES** (René via ai-soc, 31 Oct, "fix all agents ci pipeline"): the guard, patchgate fixes, hook script and gate log are on main; the hook is installed (René's go, 31 Oct); one step waits for Markus, who manages GitHub (René's call, message drafted 31 Oct). Done when CodeQL's default setup is off and `codeql.yml`'s first run is green. Waits for Markus: `gh api -X PATCH repos/{owner}/{repo}/code-scanning/default-setup -f state=not-configured` (default setup cannot drop its push trigger, so `.github/workflows/codeql.yml` replaces it, weekly; until the switch that workflow's upload is expected to be refused). Hook runs no package suite, because red tests are committed first on a branch. Guard not on `test-race.sh` shards: their names come from `go test -list`. Seen, not fixed: patchgate misses a new exported struct field or interface method. `make ci-fast` refuses until the next tag: ASOFWALK on main is a door, so that round is a minor.
 
 - **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
   Released v4.96.2 (9904fd3b), v4.97.0 (bad01e13) and, on ai-soc's ask, v4.97.1 ITERTOMB (0e11125b): tag CI and
@@ -484,7 +484,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
-- **FABLEBUILD** (René via ai-soc, 31 Oct): a one-off trial with Fable as builder on the next state-restore item, from a brief naming the host's call path. Done when the trial is reported. Waits for the next state-restore item, and for the masked sample from ai-soc when that item changes a reopen read.
+- **FABLEBUILD** (René's yes in chat, 31 Oct): a one-off trial with Fable as builder on the next state-restore item, from a brief naming the host's call path. Done when the trial is reported. Badger claims in its work are checked against source or a measurement (René ruled Fable out for badger, 24 Oct). Waits for the next state-restore item, and for the masked sample from ai-soc when that item changes a reopen read.
 
 - **BRANCHES** (René via ai-soc, 29 Oct: "clean this also up") — step 1 done: origin/archive/unmerged-2026-10-27
   now at 93c43a64 (was 6554d8ad; tree unchanged, one commit with the 5 codex tips added as parents). Each tip
