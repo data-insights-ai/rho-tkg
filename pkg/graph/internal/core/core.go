@@ -139,7 +139,8 @@ type Core struct {
 	chainLoadTestHook func()
 	// scanReadTestHook, when set (tests only), is called before each entity an
 	// effective scan reads, under the graph read lock (streamEntityTimelines).
-	scanReadTestHook func()
+	currentNodeReadTestHook func() // set only by tests: entityReads.currentNode
+	scanReadTestHook        func()
 	// belief watermarks (BACKLOG 10c): a store that maintains, per entity, the
 	// maximum TxFrom ever recorded across its whole version chain lets
 	// nodeAtLockedTx/relAtLockedTx take a SAFE current-row-only fast path for

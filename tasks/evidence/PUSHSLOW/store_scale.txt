@@ -1,0 +1,21 @@
+before plain values=5266 calls=83 nodes=3381290 29.444s per-node=8.7µs
+before plain values=4255 calls=67 nodes=536055 4.174s per-node=7.8µs
+before plain values=2929 calls=46 nodes=289673 2.408s per-node=8.3µs
+before plain values=2769 calls=44 nodes=35038 366ms per-node=10.5µs
+before plain values=2494 calls=39 nodes=2651128 20.256s per-node=7.6µs
+before valid-end values=5266 calls=83 nodes=3322555 1m7.039s per-node=20.2µs
+before valid-end values=4255 calls=67 nodes=535954 11.897s per-node=22.2µs
+before valid-end values=2929 calls=46 nodes=201284 3.433s per-node=17.1µs
+before valid-end values=2769 calls=44 nodes=33893 476ms per-node=14.1µs
+before valid-end values=2494 calls=39 nodes=2537353 47.178s per-node=18.6µs
+after plain values=5266 calls=83 nodes=3381290 28.724s per-node=8.5µs
+after plain values=4255 calls=67 nodes=536055 4.165s per-node=7.8µs
+after plain values=2929 calls=46 nodes=289673 2.369s per-node=8.2µs
+after plain values=2769 calls=44 nodes=35038 375ms per-node=10.7µs
+after plain values=2494 calls=39 nodes=2651128 20.131s per-node=7.6µs
+after valid-end values=5266 calls=83 nodes=3322555 52.115s per-node=15.7µs
+after valid-end values=4255 calls=67 nodes=535954 8.513s per-node=15.9µs
+after valid-end values=2929 calls=46 nodes=201284 2.879s per-node=14.3µs
+after valid-end values=2769 calls=44 nodes=33893 591ms per-node=17.4µs
+after valid-end values=2494 calls=39 nodes=2537353 35.446s per-node=14µs
+Masked BA demo store copy, 5 largest mask keys of a sampled 20,000 DerivedPage rows, at most 100 calls of 64 values per run, one run each, scratch harness.
