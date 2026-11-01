@@ -122,6 +122,12 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
+### PAGECOST (sigma 2 Nov, not urgent, after WHOLEROW and TEMPIDX-2): one value lookup per index definition in a node create
+
+Status: read from ai-soc's profile on v4.98.4, not built; a patch, no door, in a round after those two.
+
+A create searches the sorted properties for each definition up to three times: `checkNodeIndexKeysLocked`, `propertyIndexDiskMaintain`, `nodeMemberOpsLocked` (1.77, 2.04, 2.18 s of the profile's 22.6 s in `putNodeRouted`, 35.5 s in `writePages`). Compute each definition's value key once per create and pass it on: about 4 s, 11 % of `writePages`, an estimate. Done when a benchmark shows one lookup per definition and sigma's `BenchmarkRowsWriteHeads` falls. A merge over sorted properties only if a measurement still shows the search. No known-new door: the duplicate check costs 0.04 s, and KEYSIZE must still refuse an oversized key on a new row, or the flush fails after the ack.
+
 ### PUSHSLOW (ai-soc 29 Oct, unparked 1 Nov on René's word per ai-soc): cost per returned node of the mask read
 
 Status: bounded read 14-17 µs per returned node, was 14-22 µs on the 12 GB masked store (`tasks/evidence/PUSHSLOW/`, one run each); plain read 8-11 µs, unchanged; in v4.98.4, what remains stays open.
