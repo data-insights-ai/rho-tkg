@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-30: latest tag v4.98.3; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-11-01: latest tag v4.98.4; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -120,6 +120,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   mutations caught. ci-docker green, consumers clean, scale probe unchanged; tag CI and main green; ai-soc (pins it
   for the Flux run) and sigma notified. Open: the range walks, the purge's adjacency walk, history truncation,
   the purge token walks, rel purge candidates (todo ITERTOMB). Tags held until ai-soc's run ships.
+- **v4.98.4** (RELPAGEVALID and PUSHSLOW, a patch for ai-soc's BA night run, cut from v4.98.3 and merged back, as main also carries ASOFWALK's exported names for the next minor): a member page seeks from the cursor and stops at its limit; a bounded read does not read a returned row without history again.
 - **v4.98.3** (PREEPOCHREL, a patch; ai-soc pins it beside sigma v0.11.153): a reference or archived start with a `ValidFrom` outside the ID range mints at the clock instead of refusing.
 - **v4.98.2** (PURGEDROP, a patch): a node label purge no longer drops a shard holding relationships or history that are not that label's. ai-soc and sigma stay on v4.98.1 this round; ai-soc takes it next round.
 - **v4.98.1** (a patch, test only): `TestValueDictEntryHeap` runs in its own process; v4.98.0's tag CI is red on it, so pin v4.98.1.

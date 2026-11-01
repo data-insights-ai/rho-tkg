@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.98.4] - 2026-11-01
+
+### Fixed
+
+- **RELPAGEVALID** (ai-soc's slow valid-instant page). An on-disk member page walked and sorted every member of the
+  type before cutting the page. It now seeks past the cursor and stops at its limit, and a fetch nothing passes grows
+  to the page chunk's cap. A valid-instant page on the 12 GB masked store: 306-445 s (ai-soc) to about 8.6-9 s
+  (harness on a copy, one run). Still not bounded by the page: each member on a cold shard costs one row read, as cold
+  shards keep no valid-time envelope (badger `TestRelMemberPageWalkFollowsTheLimit`,
+  `TestRelMemberPageEqualsTheWholeWalk`, `TestNodeMemberPageWalkFollowsTheLimit`, core
+  `TestPageSourceFillGrowsTheFetchWhileNothingPasses`, `tasks/evidence/RELPAGEVALID/`). 8 of 9 mutations caught; the
+  ninth is equivalent.
+- **PUSHSLOW** (ai-soc's mask read). A read with `ValidEndAfter` no longer reads a returned row again when the row has
+  no history: 14-22 to 14-17 us per returned node on the same store, one run each; the plain read is unchanged. Not
+  measured on a BA push (core `TestValidEndReadDoesNotReadAReturnedRowAgain`, `tasks/evidence/PUSHSLOW/`). 2 of 3
+  mutations caught; the third, a store without the history capability, has no in-tree store to run on.
+
 ## [4.98.3] - 2026-10-30
 
 ### Fixed
