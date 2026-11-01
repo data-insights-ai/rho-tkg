@@ -1,0 +1,7 @@
+--- FAIL: TestRelMemberPageWalkFollowsTheLimit (0.04s)
+    badgerstore_member_page_test.go:88: after 0: page of 10 walked 2000 steps of a value with 2000 members
+    badgerstore_member_page_test.go:88: after 1500: page of 10 walked 2000 steps of a value with 2000 members
+    badgerstore_member_page_test.go:88: after 2900: page of 10 walked 2000 steps of a value with 2000 members
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.051s
+FAIL

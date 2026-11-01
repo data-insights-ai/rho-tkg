@@ -3,6 +3,7 @@ package badger
 import (
 	"bytes"
 	"cmp"
+	"encoding/binary"
 	"fmt"
 	"slices"
 
@@ -272,6 +273,9 @@ func (bs *Store) entityIndexWalkLocked(kind byte, prefixes [][]byte, fn func(key
 		var prev []byte
 		for _, p := range prefixes {
 			for it.Seek(p); it.ValidForPrefix(p); it.Next() {
+				if bs.entityIndexWalkTestHook != nil {
+					bs.entityIndexWalkTestHook()
+				}
 				item := it.Item()
 				key := item.Key()
 				if len(key) != len(p)+tail {
@@ -509,6 +513,109 @@ func (bs *Store) nodeDiskMembers(key indexpkg.PropertyIndexKey, q memberQuery) (
 		return nil, true, err
 	}
 	return foldedTxMembers(f, func(id snowflake.ID) types.NodeID { return types.NodeID(id) }), true, nil
+}
+
+// relDiskMembersAfter is relDiskMembers for one value's page: the at most limit
+// lowest members above after, read from the cursor on.
+func (bs *Store) relDiskMembersAfter(key indexpkg.RelPropertyIndexKey, valueKey string, after types.RelID, limit int) (members []indexpkg.TxMember[types.RelID], handled bool, err error) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	idx := bs.relPropertyIndexes[key]
+	if !idx.OnDisk() {
+		return nil, false, nil
+	}
+	if idx.Mutated != nil {
+		return nil, true, ErrIndexNotFound
+	}
+	f, err := bs.diskTxMembersAfterLocked(storepkg.EntityIndexRelMember, key.RelTypeToken, key.PropertyKey, valueKey, snowflake.ID(after), limit)
+	if err != nil {
+		return nil, true, err
+	}
+	return pageTxMembers(foldedTxMembers(f, func(id snowflake.ID) types.RelID { return types.RelID(id) }), after, limit), true, nil
+}
+
+// nodeDiskMembersAfter is relDiskMembersAfter for a node definition whose
+// member entries are on disk (nodeMemberDisk).
+func (bs *Store) nodeDiskMembersAfter(key indexpkg.PropertyIndexKey, valueKey string, after types.NodeID, limit int) (members []indexpkg.TxMember[types.NodeID], handled bool, err error) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	if _, ok := bs.nodeMemberDisk[key]; !ok {
+		return nil, false, nil
+	}
+	if bs.propertyIndexes[key].Mutated != nil {
+		return nil, true, ErrIndexNotFound
+	}
+	f, err := bs.diskTxMembersAfterLocked(storepkg.EntityIndexNodeMember, key.LabelToken, key.PropertyKey, valueKey, after.SnowflakeID(), limit)
+	if err != nil {
+		return nil, true, err
+	}
+	return pageTxMembers(foldedTxMembers(f, func(id snowflake.ID) types.NodeID { return types.NodeID(id) }), after, limit), true, nil
+}
+
+// diskTxMembersAfterLocked folds the member entries of one value from the ID
+// above after on. Entries sort by value, ID, tx, so the walk seeks past the
+// cursor and stops at the limit+1st live ID on disk, its steps about limit
+// times the entries per ID. The fold may hold more than limit members, every
+// buffered one above the cursor: the caller's cut keeps the lowest limit, each
+// complete, since the walk covered every ID up to its last and a buffered ID
+// above that sorts after limit disk members. Caller holds idxMu (R or W).
+func (bs *Store) diskTxMembersAfterLocked(kind byte, scope uint16, propertyKey, valueKey string, after snowflake.ID, limit int) (txMemberFold, error) {
+	f := txMemberFold{}
+	p, ok := bs.entityIndexValuePrefix(kind, scope, propertyKey, valueKey)
+	if !ok || limit <= 0 {
+		return f, nil
+	}
+	tail := storepkg.EntityIndexTailLen(kind)
+	add := f.add(kind)
+	ov := pendingKeyOverlay[struct{}]{}
+	bs.rangePendingPrefixes([][]byte{p}, func(k string, op writeOp) { ov.note(k, op, struct{}{}) })
+	err := bs.view(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		opts.AllVersions = true
+		opts.Prefix = p
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		var prev []byte
+		ids, lastID := 0, snowflake.ID(0)
+		for it.Seek(binary.BigEndian.AppendUint64(slices.Clone(p), uint64(after)+1)); it.ValidForPrefix(p); it.Next() { // #nosec G115 -- the key's ID bits
+			if bs.entityIndexWalkTestHook != nil {
+				bs.entityIndexWalkTestHook()
+			}
+			item := it.Item()
+			key := item.Key()
+			if len(key) != len(p)+tail {
+				break // a longer raw value (0x00 0xFF after p): its entries sort after p's
+			}
+			if bytes.Equal(key, prev) {
+				continue // an older version of the key just decided
+			}
+			prev = append(prev[:0], key...)
+			if item.IsDeletedOrExpired() || ov.overrides(key) {
+				continue
+			}
+			_, id, _, ok := storepkg.EntityIndexEntryOf(key, kind)
+			if !ok {
+				continue
+			}
+			if id != lastID {
+				if ids == limit {
+					return nil
+				}
+				ids++
+				lastID = id
+			}
+			add(key)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("graph: entity index page scan: %w", err)
+	}
+	for k := range ov.sets {
+		add([]byte(k))
+	}
+	return f, nil
 }
 
 // emitTxMembers hands members to fn outside every store lock (fn re-enters

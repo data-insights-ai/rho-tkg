@@ -1,0 +1,9 @@
+open 2.584s
+tx only: 1ms segs=11 more=true err=<nil>
+valid p50: 8.61s segs=3 more=false err=<nil>
+valid p99: 8.962s segs=11 more=true err=<nil>
+valid p1: 8.821s segs=4 more=false err=<nil>
+valid before all: 9.018s segs=0 more=false err=<nil>
+Masked BA demo store copy (12 GB, 3 event shards), one run, limit 11, scratch harness, tiered config as ai-soc's.
+Before: first valid page not done in 170 s here; ai-soc measured 306-445 s. 92 % in the member walk.
+After: row reads dominate (76 %); shards tiered cold carry no envelope, so their members are read one by one.
