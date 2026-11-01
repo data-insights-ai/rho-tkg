@@ -122,6 +122,25 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
+### PUSHSLOW (ai-soc 29 Oct, unparked 1 Nov on René's word per ai-soc): cost per returned node of the mask read
+
+Status: bounded read 14-17 µs per returned node, was 14-22 µs on the 12 GB masked store (`tasks/evidence/PUSHSLOW/`, one run each); plain read 8-11 µs, unchanged; no tag before the next round.
+
+Fixed: a bounded read decides a row without history from the row the lookup returned, no second read (count test). Mutant V3 (a store with no history capability) survives: no in-tree store lacks it.
+
+Left, by share of the bounded read's CPU: the row read and decode, about half: sigma filters on the whole row, so decode-only-what-the-filter-needs needs a door or a batched read in key order, unmeasured; tiered `HasNodeHistory` about a third: it reads the row's stamps once more (`nodeCurrentStampsRow`).
+
+Earlier evidence: BA push 13,747 s on rho v4.97.1 (k10291501)
+  against 9,004 s on the pre-COMPDISK rho (k10282355): sigma's Advance 1.60 -> 2.44 s per cut with less CPU; badger
+  DB.get 6.1 -> 10.4 s and tiered GetNode 1.9 -> 5.5 s per 60 s profile. Ruled out from code: write-path reads,
+  composite over-selection (tuple keys exact), the ID+value doors (decline on tiered both nights). Candidates:
+  ai-soc's KEYDISK point reads against rho's GetNode, badger L0 stalls from the extra composite writes, entity-cache
+  fill. Done when: the cause is measured and fixed or handed to its owner. Waits for: René's word and ai-soc's
+  -peek callers.
+
+
+RHOBATCH: on hold per ai-soc 1 Nov: sigma rejected the key-to-id map, its read stays on the index. Don't build it now.
+
 ### RELPAGEVALID (ai-soc's ASOFVALID, René's first priority per ai-soc, 1 Nov): valid-instant page cost
 
 Status: fetch fixed on main, 306-445 s down to about 8 s on the 12 GB masked store (`tasks/evidence/RELPAGEVALID/`); a page still costs the cold members, not the page; no tag before the next round.
@@ -428,14 +447,6 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
   shared store suite.
 
 ## Parked
-
-- **PUSHSLOW** (ai-soc 29 Oct; René: RAM first, performance later) — BA push 13,747 s on rho v4.97.1 (k10291501)
-  against 9,004 s on the pre-COMPDISK rho (k10282355): sigma's Advance 1.60 -> 2.44 s per cut with less CPU; badger
-  DB.get 6.1 -> 10.4 s and tiered GetNode 1.9 -> 5.5 s per 60 s profile. Ruled out from code: write-path reads,
-  composite over-selection (tuple keys exact), the ID+value doors (decline on tiered both nights). Candidates:
-  ai-soc's KEYDISK point reads against rho's GetNode, badger L0 stalls from the extra composite writes, entity-cache
-  fill. Done when: the cause is measured and fixed or handed to its owner. Waits for: René's word and ai-soc's
-  -peek callers.
 
 - **CACHE** — Every open badger shard keeps its own memtable arena, block cache and 4 compactors: 88 MB of heap and
   18 goroutines per writable shard (rho probe, 26 Oct; read-only 3.3 MB). ai-soc's k10260011 heap (26 Oct): 30.0 GB

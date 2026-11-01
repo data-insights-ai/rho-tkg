@@ -1,0 +1,5 @@
+--- FAIL: TestValidEndReadDoesNotReadAReturnedRowAgain (0.00s)
+    validendprune_reads_internal_test.go:45: 50 point reads of 50 returned rows, want 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.004s
+FAIL
