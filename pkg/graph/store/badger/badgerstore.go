@@ -764,6 +764,7 @@ type Store struct {
 	exactErasureScanTestHook func(stage string, id uint64) error
 	// exactErasureFlushedTestHook runs in ExactErase after its preliminary flush,
 	// before its locks: a write there is buffered when the plan reads. Test-only.
+	entityIndexWalkTestHook     func() // set only by tests: one iterator step of a member walk
 	exactErasureFlushedTestHook func()
 	// compositeDiskCreateTestHook runs in a composite create kept on disk
 	// after its scan of the rows, before the merge (tests only).

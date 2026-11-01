@@ -122,15 +122,13 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
-### RELPAGEVALID: RelsEffectivePage with a valid instant costs the estate, not the page (ai-soc, 1 Nov; next round, no tag before)
+### RELPAGEVALID (ai-soc's ASOFVALID, René's first priority per ai-soc, 1 Nov): valid-instant page cost
 
-ai-soc on v4.98.3, tiered BA demo store (3,472 cuts, about 968k records, reopened from image), limit 10: tx only 0.14 s; with a valid instant over 120 s (cut by its limit), BO (55 cuts) 85 s. Its profile: `propertyTxMemberAnswers` -> `relDiskMembers` -> `entityIndexWalkLocked` 60 %, `foldedTxMembers` sort 31 %.
+Status: fetch fixed on main, 306-445 s down to about 8 s on the 12 GB masked store (`tasks/evidence/RELPAGEVALID/`); a page still costs the cold members, not the page; no tag before the next round.
 
-Checked in the code, not measured: ai-soc's reading holds. `ForEachRelPropertyTxMemberAfter` on an on-disk definition (`badgerstore_propertytxmembers_page.go`) walks and sorts every member of the value, then cuts to the page, on every shard, cold ones opened. Each fetch is 64 members (`pageChunkMin`), and an instant meeting few makes `RelsEffectivePage` keep fetching, so a page costs about members^2 / 64 walked entries. The envelope prune (`pageSource.fill`) runs after the walk, so it saves row reads, not the walk.
+Fixed: the on-disk member page seeks from the cursor and stops at its limit (walk steps bounded by a count test, rel and node doors); a fetch nothing passes doubles up to `pageChunkMax`.
 
-1. Red test: many short-lived rels, an instant meeting few, count index entries walked per page; output in `tasks/evidence/RELPAGEVALID/`.
-2. Fetch cost by n: seek from the cursor and stop at n, the member key sorts by value, ID, tx (`entity_index_key.go`), so one ID's entries are adjacent and fold. Patch. Same for the node door. Takes members^2 to linear, not yet the page.
-3. Page cost by the page: with a valid instant, start from the type's envelope candidates at that instant and filter by the row, not from the members. Decide after step 2's numbers; a door-free change stays a patch.
+Left, not page-bound yet: members on shards tiered cold carry no envelope (cold shards keep no temporal index), so each is one row read, at about 8 s per page on this store whatever the instant. A larger read batch measured no gain: each tiered row read opens its own view. Direction: FIXED-MEMORY's rel record gives cold shards an envelope on NVMe; decide there, or sooner if 8 s isn't enough.
 
 ### FIXED-MEMORY model plan (René 31 Oct; starts next week, not this weekend; badger stays, it is not replaced)
 

@@ -80,6 +80,7 @@ func (s *pageSource[ID]) fill(ctx context.Context, n int) error {
 		if last > s.seen {
 			s.seen = last
 		}
+		n = min(n*2, max(n, pageChunkMax)) // nothing passed: a filter meeting few reads on in larger fetches
 	}
 	return nil
 }
