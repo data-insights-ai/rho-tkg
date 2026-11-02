@@ -62,6 +62,7 @@ type Ops interface {
 
 	// Effective timeline: NodeAtTx / RelAtTx for every valid instant at once.
 	NodeEffectiveTimeline(id types.NodeID, pin types.Instant) ([]NodeSegment, error)
+	NodeEffectiveTimelineFrom(id types.NodeID, validFrom, pin types.Instant) ([]NodeSegment, error)
 	RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]RelSegment, error)
 	NodeEffectiveTimelines(id types.NodeID, pins []types.Instant) ([][]NodeSegment, error)
 	RelEffectiveTimelines(id types.RelID, pins []types.Instant) ([][]RelSegment, error)
@@ -582,6 +583,25 @@ func (a *API) NodeEffectiveTimeline(id types.NodeID, pin types.Instant) ([]NodeS
 		return nil, err
 	}
 	return ops.NodeEffectiveTimeline(id, pin)
+}
+
+// NodeEffectiveTimelineFrom is NodeEffectiveTimeline's tail: the segments
+// that end at or after validFrom, or are open (a segment ending at validFrom
+// counts, as in the From scans), each whole and as NodeEffectiveTimeline
+// returns it; types.UnboundedValidFrom returns the whole timeline. Errors as
+// NodeEffectiveTimeline.
+//
+// Cost: where the timeline's winners are known before their rows are read
+// (the head-pin entry a NodeEffectiveTimeline read keeps; badger's per-version
+// temporal skeletons) only the returned segments' rows are read, so a writer
+// extending a long timeline reads its tail, not its history. Elsewhere the
+// whole chain is read, as NodeEffectiveTimeline does.
+func (a *API) NodeEffectiveTimelineFrom(id types.NodeID, validFrom, pin types.Instant) ([]NodeSegment, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodeEffectiveTimelineFrom(id, validFrom, pin)
 }
 
 // RelEffectiveTimeline is NodeEffectiveTimeline for relationships (the row

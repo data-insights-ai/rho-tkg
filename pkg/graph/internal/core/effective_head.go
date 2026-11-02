@@ -633,15 +633,19 @@ func mergeHeadPieces(out []headPiece) []headPiece {
 	return merged
 }
 
-// nodeHeadSegments answers a head read from a valid entry; ok false falls
-// back to the fold (no entry, a stale one, or a winner gone).
-func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.Node, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, bool) {
+// nodeHeadSegments answers a head read from a valid entry, the segments that
+// reach validFrom, reading only their winners; ok false falls back to the fold
+// (no entry, a stale one, or a winner gone).
+func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.Node, validFrom, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, bool) {
 	e := c.headValid(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), pin)
 	if e == nil || !e.whole() {
 		return nil, false
 	}
 	segs := make([]temporal.NodeSegment, 0, len(e.pieces))
 	for _, p := range e.pieces {
+		if !segmentReaches(c.axis(), p.to, validFrom) {
+			continue
+		}
 		row := current
 		if p.version != current.Version() {
 			full, err := rd.nodeVersion(id, p.version)

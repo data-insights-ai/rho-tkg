@@ -19,6 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   1,000 rows with 8 masks writes in 36 ms, durable (`tasks/evidence/ELEMDISK/`). Relationship types on disk still
   refuse Elements.
 
+- **WRITEGROW** (sigma-tkgd's write-back; a minor). `g.Temporal().NodeEffectiveTimelineFrom(id, validFrom, pin)`
+  returns the effective timeline's segments that end at or after `validFrom`, or are open, and reads only their rows
+  where the winners are known first (the head-pin entry; badger's temporal skeletons): a tail of 2 segments of a
+  200-version row read 199 history rows through `NodeEffectiveTimeline`, now 2 (`TestNodeEffectiveTimelineFrom*`,
+  `tasks/evidence/WRITEGROW/`).
+
 ## [4.98.4] - 2026-11-01
 
 ### Fixed
