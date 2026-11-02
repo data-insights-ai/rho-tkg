@@ -60,3 +60,4 @@ where the store has the valid-end index). graph TestReplaceVersionReplicaReadsAs
 (the replace is a NodePut WithHistory) to a replica that does not list the label. Mutants in apply_record.go, that test only:
 R1 the WithHistory put applied as a plain replace: CAUGHT: "no entity version recorded at the given transaction time".
 R2 the superseded row's TxTo not reproduced: CAUGHT: "replica timeline at 1793626314200: 2 segments, primary 1".
+Race suite, 2026-11-02, branch wholerow at 34f9ca2c: make test-race, 44 packages ok, no race; root race gate: all root packages and core shards passed.
