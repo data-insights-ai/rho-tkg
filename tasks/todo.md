@@ -124,7 +124,7 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ### WRITEGROW (sigma 2 Nov, ai-soc run k11020850): a head timeline read costs one version read per piece
 
-Status: read, not built; a door, so a minor; proposed next after WHOLEROW.
+Status: sigma wants the door, after WHOLEROW (2 Nov): segments ending after instant x at a pin, from the head entry, a miss folds; sigma first bounds its reconcile to the cut's change (its Fable design, after RULEDIGEST), as `voidUncovered` reads the whole history today. Open: sigma's `wholeWrites` mode still ends at 299 segments in its bench, not one; find why while building.
 
 `nodeHeadSegments` (effective_head.go) answers from the head cache but reads each non-current winner with `getNodeVersion`: 4.34 of 4.37 s at ai-soc's cpu-140; sigma's write-back per minute 3.3 to 11.6 s over the run; `BenchmarkDerivedWriteGrows` about 7 µs per segment. Proposed: a timeline door from a valid instant on, cut from the head entry's pieces, reading only the winners it returns: no RAM, O(returned segments). Rejected: props per piece in the cache (up to 1 M pieces of whole rows against TEMPIDX-2), a content digest (a segment returns its own row, versions and stamps differ). Done when sigma's bench is flat in segments for the tail it reads. A version per extension stays: an in-place change would lose the as-of answer.
 
