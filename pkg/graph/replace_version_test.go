@@ -17,6 +17,7 @@ import (
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -42,8 +43,9 @@ func pageNewProps() map[string]any {
 	return map[string]any{"ov_k": "k1", "ov_h3": "h-new", "pages": int64(2)}
 }
 
-// replaceVersionBackends opens badger and tiered graphs with Page listed for
-// ReplaceVersion and its property indexes on disk with ov_h* bounds.
+// replaceVersionBackends opens memory, badger, sharded and tiered graphs with
+// Page listed for ReplaceVersion; on badger and tiered its property indexes
+// are on disk with ov_h* bounds (sigma's shape).
 func replaceVersionBackends() []storeBackend {
 	newGraph := func(t *testing.T, cfg graphpkg.Config) *graphpkg.Graph {
 		t.Helper()
@@ -56,8 +58,18 @@ func replaceVersionBackends() []storeBackend {
 		return g
 	}
 	return []storeBackend{
+		{name: "memory", open: func(t *testing.T) *graphpkg.Graph {
+			return newGraph(t, graphpkg.Config{})
+		}},
 		{name: "badger", open: func(t *testing.T) *graphpkg.Graph {
 			return newGraph(t, graphpkg.Config{BadgerInMemory: true, PropertyIndexOnDiskLabels: []string{pageLabel}, PropertyIndexValidEnd: pageValidEnd})
+		}},
+		{name: "sharded", open: func(t *testing.T) *graphpkg.Graph {
+			st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+			if err != nil {
+				t.Fatalf("sharded.New: %v", err)
+			}
+			return newGraph(t, graphpkg.Config{Store: st})
 		}},
 		{name: "tiered", tiered: true, open: func(t *testing.T) *graphpkg.Graph {
 			ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), RefLabels: []string{pageLabel}, ShardWindow: time.Hour,
@@ -388,21 +400,26 @@ func TestReplaceVersionIndexesFollowTheNewVersion(t *testing.T) {
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		f := writePage(t, g)
 		pastOldEnd := storepkg.QueryOpts{ValidEndAfter: pageOldVT + 500, ValidEndAfterSet: true}
-		pruned := func() uint64 {
+		// The pruned count needs the valid-end index (badger and tiered); memory
+		// and sharded answer the same rows without it.
+		pruned := func() (uint64, bool) {
 			t.Helper()
 			st, err := g.Index().PropertyIndexValidEndStats()
+			if errors.Is(err, graphpkg.ErrCapabilityNotSupported) {
+				return 0, false
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			return st.Pruned
+			return st.Pruned, true
 		}
 		for range 2 { // the first read refines the stored bound to the old end
 			if ns, err := g.Nodes().ByLabelAndProperty(pageLabel, "ov_h3", "h-old", pastOldEnd); err != nil || len(ns) != 0 {
 				t.Fatalf("closed at %d, ValidEndAfter %d: %d rows, %v; want none", pageOldVT, pastOldEnd.ValidEndAfter, len(ns), err)
 			}
 		}
-		if pruned() != 1 {
-			t.Fatalf("the second read pruned %d entries by the refined bound, want 1", pruned())
+		if n, ok := pruned(); ok && n != 1 {
+			t.Fatalf("the second read pruned %d entries by the refined bound, want 1", n)
 		}
 		rep := replacePage(t, g, f)
 		after := rep.Temporal().TxFrom
@@ -411,8 +428,8 @@ func TestReplaceVersionIndexesFollowTheNewVersion(t *testing.T) {
 		// instead of pruning it by the old bound.
 		ns, err := g.Nodes().ByLabelAndProperty(pageLabel, "ov_h3", "h-new", pastOldEnd)
 		wantRow(t, "ov_h3 h-new past the old end", onlyNode(t, "ov_h3 h-new ValidEndAfter", ns, err, f.id), rep.Version(), pageNewVF, pageNewVT, nil)
-		if pruned() != 1 {
-			t.Fatalf("a read after the replace pruned by the old bound (%d pruned, want 1)", pruned())
+		if n, ok := pruned(); ok && n != 1 {
+			t.Fatalf("a read after the replace pruned by the old bound (%d pruned, want 1)", n)
 		}
 		ns, err = g.Nodes().ByLabelAndProperty(pageLabel, "ov_k", "k1", pastOldEnd)
 		onlyNode(t, "ov_k past the old end", ns, err, f.id)
@@ -910,4 +927,75 @@ func TestReplaceVersionOpenRowWithExcise(t *testing.T) {
 			wantTimeline(t, "pin at", g, f.id, rep.Temporal().TxFrom, []segment{{1000, 1800, "h-new"}})
 		})
 	})
+}
+
+// A replica applying the primary's change records reads the replace as the
+// primary does: the new version at and after its TxFrom, the old one before,
+// on a replica that does not list the label (the replica applies, it does not
+// decide).
+func TestReplaceVersionReplicaReadsAsThePrimary(t *testing.T) {
+	t.Parallel()
+	primary, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true,
+		ReplaceVersionLabels: []string{pageLabel}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer primary.Close()
+	replica, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer replica.Close()
+	replica.SetReplicationSource(primary.Replication())
+
+	f := writePage(t, primary)
+	rep := replacePage(t, primary, f)
+	var recs []storepkg.ChangeRecord
+	if err := primary.Replication().ForEachChange(0, func(rec storepkg.ChangeRecord) bool {
+		recs = append(recs, rec)
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
+		t.Fatalf("ApplyChanges: %v", err)
+	}
+
+	after := rep.Temporal().TxFrom
+	cur, err := replica.Nodes().Get(context.Background(), f.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRow(t, "replica current", cur, rep.Version(), pageNewVF, pageNewVT, pageNewProps())
+	if cur.Temporal().TxFrom != after {
+		t.Fatalf("replica current TxFrom %d, primary %d", cur.Temporal().TxFrom, after)
+	}
+	n, err := replica.Temporal().NodeAsOf(f.id, f.before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRow(t, "replica NodeAsOf before", n, f.old.Version(), pageOldVF, pageOldVT, f.old.PropertiesMap())
+	n, err = replica.Temporal().NodeAsOf(f.id, after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRow(t, "replica NodeAsOf after", n, rep.Version(), pageNewVF, pageNewVT, pageNewProps())
+	for _, pin := range []types.Instant{f.before, after} {
+		want, err := primary.Temporal().NodeEffectiveTimeline(f.id, pin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := replica.Temporal().NodeEffectiveTimeline(f.id, pin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != len(want) {
+			t.Fatalf("replica timeline at %d: %d segments, primary %d", pin, len(got), len(want))
+		}
+		for i := range got {
+			if got[i].ValidFrom != want[i].ValidFrom || got[i].ValidTo != want[i].ValidTo || got[i].Node.Version() != want[i].Node.Version() {
+				t.Fatalf("replica timeline at %d: %+v, primary %+v", pin, got[i], want[i])
+			}
+		}
+	}
 }

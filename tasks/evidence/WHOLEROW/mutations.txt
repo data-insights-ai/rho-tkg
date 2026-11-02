@@ -50,3 +50,13 @@ O2 the pair skips the excise: CAUGHT by closes_at_earlier_start, closes_at_later
 O3 by-excise arm closes in place: CAUGHT by by_excise on badger and tiered
 O4 last arm drops its excise: replaced_open_at_earlier_start_then_closed/by_excise_and_replace/badger replaced_open_at_earlier_start_then_closed/by_excise_and_replace/tiered 
 O5 last arm drops its replace: replaced_open_at_earlier_start_then_closed/by_excise_and_replace/badger replaced_open_at_earlier_start_then_closed/by_excise_and_replace/tiered 
+
+M14 rerun, 2026-11-02, after the rebase onto main: core TestReplaceVersionTxFromPassesARowAheadOfTheClock puts the current
+row ahead of the commit clock (a reopen with a malformed watermark seeds no floor; the wall clock behind the row).
+M14 (now := c.now()): CAUGHT: "new version TxFrom 1793626138305, not past the replaced row's 1793629738303".
+
+Backends and replica, 2026-11-02: the TestReplaceVersion* suite runs on memory and sharded as well (valid-end pruned counts only
+where the store has the valid-end index). graph TestReplaceVersionReplicaReadsAsThePrimary applies the primary's change records
+(the replace is a NodePut WithHistory) to a replica that does not list the label. Mutants in apply_record.go, that test only:
+R1 the WithHistory put applied as a plain replace: CAUGHT: "no entity version recorded at the given transaction time".
+R2 the superseded row's TxTo not reproduced: CAUGHT: "replica timeline at 1793626314200: 2 segments, primary 1".
