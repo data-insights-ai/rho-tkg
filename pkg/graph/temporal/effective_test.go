@@ -18,6 +18,12 @@ func (s *temporalOpsSpy) NodeEffectiveTimeline(id types.NodeID, pin types.Instan
 	return s.nodeSegs, s.err
 }
 
+func (s *temporalOpsSpy) NodeEffectiveTimelineFrom(id types.NodeID, validFrom, pin types.Instant) ([]NodeSegment, error) {
+	s.record("NodeEffectiveTimelineFrom")
+	s.lastNodeID, s.lastValidFrom, s.lastPin = id, validFrom, pin
+	return s.nodeSegs, s.err
+}
+
 func (s *temporalOpsSpy) RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]RelSegment, error) {
 	s.record("RelEffectiveTimeline")
 	s.lastRelID, s.lastPin = id, pin
@@ -106,6 +112,28 @@ func TestEffectiveTimelineWrappers(t *testing.T) {
 		if spy.calls[i] != want[i] {
 			t.Fatalf("calls %v, want %v", spy.calls, want)
 		}
+	}
+}
+
+// TestNodeEffectiveTimelineFromWrapper: a nil API and a typed-nil Ops return
+// ErrNilGraph; a ready API forwards id, validFrom and pin in place and returns
+// the Ops' segments and error unchanged.
+func TestNodeEffectiveTimelineFromWrapper(t *testing.T) {
+	t.Parallel()
+	for name, api := range map[string]*API{"nil API": nil, "typed-nil ops": New((*temporalOpsSpy)(nil))} {
+		if _, err := api.NodeEffectiveTimelineFrom(1, 2, 3); !errors.Is(err, grapherr.ErrNilGraph) {
+			t.Fatalf("%s NodeEffectiveTimelineFrom = %v", name, err)
+		}
+	}
+	wantErr := errors.New("ops failed")
+	n := types.NewNode(10, 0, nil)
+	spy := &temporalOpsSpy{err: wantErr, nodeSegs: []NodeSegment{{ValidFrom: 5, ValidTo: 7, Node: n}}}
+	ns, err := New(spy).NodeEffectiveTimelineFrom(10, 6, 99)
+	if !errors.Is(err, wantErr) || len(ns) != 1 || ns[0].Node != n || spy.lastNodeID != 10 || spy.lastValidFrom != 6 || spy.lastPin != 99 {
+		t.Fatalf("NodeEffectiveTimelineFrom = %v, %v; forwarded id %v validFrom %v pin %v", ns, err, spy.lastNodeID, spy.lastValidFrom, spy.lastPin)
+	}
+	if !slices.Equal(spy.calls, []string{"NodeEffectiveTimelineFrom"}) {
+		t.Fatalf("calls %v", spy.calls)
 	}
 }
 
