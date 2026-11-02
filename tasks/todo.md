@@ -276,6 +276,7 @@ is released. The plan moves to `docs/CHANGELOG.md` when the last box is ticked.
 
 ## Waiting
 
+- **PAGEBLOB** (ai-soc cc, René's go, 2 Nov): sigma pages its working state as blocks of about 1,000 rows instead of a rho node per row (AddNode 219 ms/cut of it, 106 ms property indexes). Asked of rho only if sigma needs it: (a) a block store on the tiers if a block does not fit one byte property. A `[]byte` property takes 100,000 bytes by default (`MaxPropertyContainerLength`, raised with `graph.WithValidation`), so sigma asks only past that. (b) batched index inserts in `AddNodes`: not built, as PAGEBLOB removes the per-row nodes it would speed up; reopen if a consumer still writes many indexed nodes per batch with a profile.
 - **RELDISK phase 2** (door, minor; ON HOLD 29 Oct, ai-soc and sigma) — a composite rel index and
   Rels().ByTypeAndProperties. Design sent 29 Oct; sigma accepted the shape (reads: TxAt plus the whole valid window,
   unpaged, like ByTypeAndProperty; no prefix reads), then both asked to hold: nothing reads a multi-key rel probe
