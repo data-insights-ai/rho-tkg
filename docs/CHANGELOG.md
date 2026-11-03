@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **BORROWREAD** (ai-soc for sigma's page blocks; a minor). `types.Node.BorrowProperty(key)` returns a property's
+  stored value without the deep copy `GetProperty` makes; the caller must not modify it. sigma reads each 64 KiB block
+  blob through `GetProperty`, 20.9 GiB of deep copies in ai-soc's 60-minute BA run (147.7 GiB allocated). With `Lend`,
+  a borrowed read allocates nothing on memory and badger; later writes and closing the store leave a borrowed value as
+  it was (`TestBorrowPropertyReadsABlobWithoutACopy`, `tasks/evidence/BORROWREAD/`).
 - **WHOLEROW** (sigma-tkgd's paged-row writer, STATEREC ask 1; a minor, ADR-0014). `g.Nodes().ReplaceVersion(ctx, id, props,
   validFrom, validTo)` and `GraphTx.ReplaceNodeVersion` replace a node's current row whole as a new version with any
   validity: a closed row, an equal or earlier start, a grown end and a change of properties alone, which every update

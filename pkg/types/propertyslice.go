@@ -241,6 +241,15 @@ func (ps PropertySlice) Get(key string) (any, bool) {
 	return nil, false
 }
 
+// borrow returns the stored value for key without a copy.
+func (ps PropertySlice) borrow(key string) (any, bool) {
+	i := ps.searchKey(key)
+	if i < len(ps) && ps[i].Key == key {
+		return ps[i].Value, true
+	}
+	return nil, false
+}
+
 func (ps PropertySlice) propertyValueEqual(key string, expected any) (bool, bool) {
 	i := ps.searchKey(key)
 	if i >= len(ps) || ps[i].Key != key {

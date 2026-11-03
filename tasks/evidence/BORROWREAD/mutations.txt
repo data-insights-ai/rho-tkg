@@ -1,0 +1,5 @@
+B1 borrow copies: killed borrow_property_test.go:55: BorrowProperty of a 64 KiB []byte: 2 allocs, want 0
+B2 BorrowProperty via Get: killed borrow_property_test.go:55: BorrowProperty of a 64 KiB []byte: 2 allocs, want 0
+B3 key match dropped: killed borrow_property_test.go:64: BorrowProperty found a missing key
+B4 nil node found: killed borrow_property_test.go:96: nil node BorrowProperty found a key
+B5 bound check flipped: killed panic: interface conversion: interface {} is nil, not []uint8 [recovered, repanicked]
