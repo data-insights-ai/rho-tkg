@@ -15,7 +15,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   - **Night run (ai-soc, 3 Nov):** Flux full run k11032230 since 22:27 on rho v4.102.0 + sigma v0.11.160 (freeze
     ended). Round 3 (TIERLEND, HISTDECODE, HEADLEND, HISTTRIM) gets ai-soc's combined gate on the PC after the 2-day
     pair; that run is a quiet window here.
-  - **On main, unreleased:** TIERLEND, HISTDECODE (RELHIST P3), HEADLEND, HISTTRIM (RELHIST P1). **On branches** (Opus builders in
+  - **On main, unreleased:** TIERLEND, HISTDECODE (RELHIST P3), HEADLEND, HISTTRIM (RELHIST P1), CASCADEMETA. **On branches** (Opus builders in
     `.claude/worktrees/`, Fable review per branch, René 3 Nov): VALUETHRESH (reviewed, waits for ai-soc's consumer
     number).
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
