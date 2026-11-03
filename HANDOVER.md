@@ -133,8 +133,11 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   for the Flux run) and sigma notified. Open: the range walks, the purge's adjacency walk, history truncation,
   the purge token walks, rel purge candidates (todo ITERTOMB). Tags held until ai-soc's run ships.
 - **v4.102.0** (round 2, a minor: RHOMEMIDS, BATCHIDX and UNIQUELOOK add exported names, UNIQUELOOK format marker 16;
-  BATCHADD, RHOPOST, BATCHFAIL fixes): released from branch `release-v4.102.0` (98ea7d36 + this commit); gate results
-  below when in.
+  BATCHADD, RHOPOST, BATCHFAIL fixes): released from branch `release-v4.102.0` (98ea7d36 + the release commit + a
+  tests-only lint fix); ai-soc's 4-arm gate on 98ea7d36 + sigma d8be171c8 green (260 bars equal in each arm); ci-docker
+  green (first run red only on lint in three round-2 tests); consumers build and vet clean (ai-soc engine needs
+  GOTOOLCHAIN=go1.27.3: its parent module requires it); scale probe level with v4.101.0 (149 B/entity insert, 170 B
+  reopen, `tasks/evidence/SCALE/existence_maps.txt`).
 - **v4.101.0** (COLDEDGE, a minor; REVIEW 3 Nov tests): ci-docker green on a6245ca0 (race, long, gosec, govulncheck,
   cover, fuzz) at load 30-45; one tests-only fix after it (`934b2fba`, a load flake); consumers build and vet clean (ai-soc's
   vet red only in an untracked agent-patch copy inside its checkout, not rho); scale probe in
