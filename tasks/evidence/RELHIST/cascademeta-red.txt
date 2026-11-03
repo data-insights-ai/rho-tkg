@@ -1,0 +1,55 @@
+CASCADEMETA red test, branch cascademeta on main 59e70963, 2026-11-03T22:13:28Z
+go test -short -count=1 -run TestCascadeMetaMissReadsNoHistory ./pkg/graph/internal/core/ -v
+
+    cascade_meta_test.go:260: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:260: memory: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:282: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:282: memory: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:282: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:282: memory: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:260: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:260: memory: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:260: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:260: badger: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:282: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:282: badger: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:282: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:260: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:282: badger: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:260: badger: 1 whole-history reads on a head miss, want 0
+2026/11/03 23:13:29 INFO graph: tiered store opened duration=6.644822ms reference=5.358559ms hot=1.200799ms warm=570ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/03 23:13:29 INFO graph: tiered store opened duration=6.84601ms reference=5.262996ms hot=1.47873ms warm=100ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/03 23:13:29 INFO graph: tiered store opened duration=6.991476ms reference=5.472544ms hot=1.426449ms warm=4.24µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/03 23:13:29 INFO graph: tiered store opened duration=4.692962ms reference=3.045544ms hot=1.525412ms warm=330ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    cascade_meta_test.go:260: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:260: tiered: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:282: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:282: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:282: tiered: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:282: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:282: tiered: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:282: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:260: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:260: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+    cascade_meta_test.go:260: tiered: 1 whole-history reads on a head miss, want 0
+    cascade_meta_test.go:260: 19 history rows, 3 winners: 1 whole-history reads, 0 point reads
+--- FAIL: TestCascadeMetaMissReadsNoHistory (0.00s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/memory/delete/rel (0.00s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/memory/retract/node (0.00s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/memory/delete/node (0.00s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/memory/retract/rel (0.00s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/badger/delete/rel (0.01s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/badger/delete/node (0.01s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/badger/retract/rel (0.01s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/badger/retract/node (0.01s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/tiered/delete/rel (0.01s)
+    --- PASS: TestCascadeMetaMissReadsNoHistory/sharded/delete/node (0.01s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/tiered/retract/node (0.01s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/tiered/delete/node (0.01s)
+    --- PASS: TestCascadeMetaMissReadsNoHistory/sharded/retract/node (0.01s)
+    --- PASS: TestCascadeMetaMissReadsNoHistory/sharded/delete/rel (0.01s)
+    --- FAIL: TestCascadeMetaMissReadsNoHistory/tiered/retract/rel (0.01s)
+    --- PASS: TestCascadeMetaMissReadsNoHistory/sharded/retract/rel (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.027s
+FAIL
