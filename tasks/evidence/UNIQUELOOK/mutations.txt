@@ -1,0 +1,23 @@
+# UNIQUELOOK mutation sweep, 2026-11-03, load average 33-44 (shared machine)
+# Each mutation applied alone, then:
+#   go test -short -count=1 -run 'Unique|GetOrCreate|Replica|Import' ./pkg/graph/
+#   go test -short -count=1 -run 'Unique|Owner|GetOrCreate' ./pkg/graph/internal/core/
+# then reverted (grep "// MUTATION" pkg/ empty after the sweep). M0 = no mutation (baseline).
+# M1 comes from run 1, where it ran first and alone. Run 1's later lines were void: M2's
+# script half-applied (its second anchor matched twice) and stayed in the tree. Run 2 reran M2-M12.
+
+M0-none: SURVIVED (baseline green)
+M1-skip-row-check (claimBacked trusts any live claimant, value and label unchecked): KILLED by TestUniqueLookValueChangeAndDelete TestUniqueLookClaimWithoutRow TestUniqueLookSeedReplacesStrayClaim TestUnique_SupersessionFrees TestUnique_HistoryDuplicatesAreLegal TestUniqueTiered_ReferenceLabel_CreateViolateFree TestUniqueClaims_StoreWriteFailureWithdrawsClaim
+M2-claim-after-row (kernel claim off; claim after putGeneratedNode, its error dropped): KILLED by TestUniqueLookValueChangeAndDelete TestUniqueLookClaimWithoutRow TestUniqueTiered_ReferenceLabel_CreateViolateFree TestUniqueClaims_StoreWriteFailureWithdrawsClaim TestUniqueEventLabelStaleClaims
+M3-keep-reference-gate (no owner index for tiered reference labels): KILLED by TestUniqueLookNoPropertyIndexSeeks TestUniqueLookValueChangeAndDelete
+M4-keep-depth-gate (owner index at DepthAll only): KILLED by TestUniqueLookNoPropertyIndexSeeks
+M5-skip-seeding (mark ready without claims): KILLED by TestUniqueLookSeedsExistingRows TestUniqueLookSeedsAtOpen TestUniqueLookSeedReplacesStrayClaim TestUniqueLookDuplicateStandsDown TestUnique_ReplicaApplyDoesNotEnforce TestUniqueOnTieredEventLabel
+M6-no-batch-claim (partitionBatchNodesByUnique claims nothing): KILLED by TestUniqueLookSeedsExistingRows TestUniqueTiered_BatchAndTxDoors TestUnique_BatchInternalDuplicate TestUniqueClaims_StoreWriteFailureWithdrawsClaim
+M7-no-import-claim (claimOwnerIndexForRow a no-op: import, apply, rollbacks): KILLED by TestUniqueLookImportClaims TestUniqueLookDuplicateStandsDown TestUnique_ReplicaApplyDoesNotEnforce
+M8-no-open-seed (ensureOwnerIndexesAtOpen not called): KILLED by TestUniqueLookSeedsAtOpen
+M9-seed-keeps-unbacked (seed keeps any existing claim): KILLED by TestUniqueLookSeedReplacesStrayClaim TestUniqueLookDuplicateStandsDown
+M10-seed-ignores-duplicate (seed marks ready over two holders): KILLED by TestUniqueLookDuplicateStandsDown
+M11-apply-ignores-duplicate (apply/import keep the index over a second holder): KILLED by TestUniqueLookDuplicateStandsDown TestUnique_ReplicaApplyDoesNotEnforce
+M12-no-cascade-claim (SetNodeVersionInterval claims nothing): SURVIVED in run 2. Added TestUniqueLookCascadeClaims. Rerun: KILLED by TestUniqueLookCascadeClaims (tiered-reference: GetOrCreate(c2) created a second node)
+
+Result: 12 of 12 killed (M12 after the new test).

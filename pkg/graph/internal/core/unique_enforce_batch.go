@@ -181,7 +181,18 @@ func (c *Core) partitionBatchNodesByUnique(nodes []pendingNode) (survivors []pen
 				uniqueSeenKey(ordered[j].labelTok, ordered[j].key, ordered[j].valueKey)
 		})
 		hold := &uniqueHold{c: c, id: pn.node.ID()}
+		// Owner index (UNIQUELOOK): claim before the batch writes the row.
 		for _, tuple := range ordered {
+			if oi, ok := c.ownerIndexFor(tuple.labelTok, tuple.key); ok && vErr == nil {
+				if err := oi.PutUniqueOwner(tuple.labelTok, tuple.key, tuple.valueKey, pn.node.ID()); err != nil {
+					vErr = fmt.Errorf("graph: unique owner claim: %w", err)
+				}
+			}
+		}
+		for _, tuple := range ordered {
+			if vErr != nil {
+				break // a failed owner claim: the node is refused, nothing claimed forever
+			}
 			if tuple.scope != constraintspkg.UniqueForever {
 				continue
 			}

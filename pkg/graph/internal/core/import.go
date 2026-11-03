@@ -786,6 +786,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := rollback.captureNode(n.ID()); err != nil {
 			return fmt.Errorf("import: snapshot node %d: %w", wn.ID, err)
 		}
+		if err := c.claimOwnerIndexForRow(n); err != nil { // before the row (UNIQUELOOK)
+			return err
+		}
 		if err := c.store.PutNode(n); err != nil {
 			if !errors.Is(err, storepkg.ErrNodeExists) {
 				return fmt.Errorf("import: put node %d: %w", wn.ID, err)
@@ -1189,6 +1192,7 @@ func (rb *importRollback) rollback() error {
 				capture(err)
 			}
 		} else {
+			capture(rb.c.claimOwnerIndexForRow(snap.current))
 			if _, err := rb.c.getCurrentNode(id); errors.Is(err, storepkg.ErrNodeNotFound) {
 				capture(rb.c.store.PutNode(snap.current))
 			} else if err != nil {

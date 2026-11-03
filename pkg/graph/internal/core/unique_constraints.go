@@ -249,9 +249,9 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	if err := c.validateIndexPropertyKey(propKey); err != nil {
 		return err
 	}
-	// Tiered: an event-class label keeps its unique key in the owner index
-	// (UNIQIDX, unique_owner_index.go); UniqueForever is refused there.
-	ownerIdx, err := c.tieredEventOwnerIndex(label, scope)
+	// The owner index (UNIQIDX, UNIQUELOOK; unique_owner_index.go): a tiered
+	// event label keeps its key only there and refuses UniqueForever.
+	ownerIdx, eventLabel, err := c.uniqueOwnerIndex(label, scope)
 	if err != nil {
 		return err
 	}
@@ -318,11 +318,12 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	c.mu.Unlock()
 
 	// Auto-ensure a property index as acceleration for enforcement lookups; correct
-	// without it (label scan), so ErrIndexExists is benign. An owner-indexed
+	// without it (label scan), so ErrIndexExists is benign. A tiered event
 	// label needs none: the owner index answers its lookups.
-	if ownerIdx == nil {
+	if !eventLabel {
 		if err := c.Index.CreateProperty(label, propKey); err != nil && !errors.Is(err, storepkg.ErrIndexExists) {
 			c.uninstallPendingConstraint(labelTok, propKey)
+			dropOwner()
 			return fmt.Errorf("graph: unique constraint: ensure property index: %w", err)
 		}
 	}
@@ -746,7 +747,7 @@ func unchangedConstrainedValue(prev, node *types.Node, labelTok uint16, key stri
 
 // IsReferenceLabel reports whether label is reference-class (row 99): on
 // tiered the router's own classifier, (*tiered.Store).IsReferenceLabel, the
-// one tieredEventOwnerIndex asks; on every other store (memory, badger,
+// one uniqueOwnerIndex asks; on every other store (memory, badger,
 // sharded) true, since a store without time shards answers every depth from
 // every node. ErrGraphClosed on a closed graph, ErrEmptyName for a blank label.
 func (a *AdminOps) IsReferenceLabel(label string) (bool, error) {
