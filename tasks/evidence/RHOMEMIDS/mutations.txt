@@ -1,0 +1,26 @@
+RHOMEMIDS mutation sweep, 2026-11-03, pkg/graph/store/memory/memorystore_node_query_ids.go
+Each mutation applied alone; run: go test -short -count=1 ./pkg/graph/store/memory/ (whole package) and
+go test -count=1 -run 'IDsByLabelAndPropertyValues|ByLabelAndPropertyValues' ./pkg/graph/
+
+mutation                                   result    caught by
+drop the Mutated check (!ok only)          KILLED    TestNodeIDsByLabelAndPropertyKeysFromIndex: "during the build: ok [true true true true], want false each time"
+drop the HasTimeCoordinate decline         KILLED    TestNodeIDsByLabelAndPropertyKeysFromIndex: "time coordinate: [1 2 4] ok=true, want [] ok=false"
+After(0) instead of After(opts.After)      KILLED    TestNodeIDsByLabelAndPropertyKeysFromIndex "After and Limit: [1 2], want [2 4]";
+                                                     TestIDsByLabelAndPropertyValuesMemoryFromIndex "After and Limit"
+drop the Limit stop                        KILLED    TestNodeIDsByLabelAndPropertyKeysFromIndex "After and Limit: [2 4 5], want [2 4]";
+                                                     TestIDsByLabelAndPropertyValuesMemoryFromIndex "After and Limit", "Limit"
+drop the label filter (labelIdx)           SURVIVED  (see below)
+
+Graph-level tests do not see the first two: core declines a time coordinate before calling the store
+(core/graph_property_query.go:123) and graph index creation is synchronous, so only the store test reaches them.
+
+Why the label filter survives: the memory store keeps one PropertyIndex per (label, key) and removes a node's postings
+from it in the same write that removes the node from labelIdx[label] (delete, RemoveLabel, an update dropping the
+value), so the index never holds a node the label lacks. The tests cover each of those (graph test: deleted b4, m
+leaves Block, b6 moved to another value; store test: another label's node on the same key and value) and pass with
+the filter dropped. The filter stays as the contract's guard ("a candidate counts when the node carries the label",
+as badger's keepLabelledLocked), one map lookup per posting.
+
+Not mine, seen during the sweep: TestIDsByLabelAndPropertyValuesReadsNoRow (badger/tiered only, untouched) fails
+about 1 run in 3 under load on its "time coordinate" case (ValidAt = time.Now() in ms beside an update in the same
+ms): IDs and rows agree, only its hand-written want differs. Reproduced with the unmutated code (-count=8: 3 failures).
