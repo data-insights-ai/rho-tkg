@@ -1,0 +1,14 @@
+RHOMEMIDS red, main a6245ca0 + the red tests, 2026-11-03T19:04:26+01:00
+$ go test -count=1 -run TestNodeIDsByLabelAndPropertyKeysFromIndex ./pkg/graph/store/memory/
+--- FAIL: TestNodeIDsByLabelAndPropertyKeysFromIndex (0.00s)
+    memorystore_node_query_ids_test.go:19: memory.Store has no NodePropertyKeysIDsCapability
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.003s
+FAIL
+$ go test -count=1 -run TestIDsByLabelAndPropertyValuesMemoryFromIndex ./pkg/graph/
+--- FAIL: TestIDsByLabelAndPropertyValuesMemoryFromIndex (0.00s)
+    ids_by_property_values_memory_test.go:28: memory.Store has no NodePropertyKeysIDsCapability: the door loads rows
+    ids_by_property_values_memory_test.go:135: Long: 919 allocations a call for 10 values, want at most 120 (the rows are walked)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.008s
+FAIL

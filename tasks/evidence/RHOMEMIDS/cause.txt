@@ -1,0 +1,36 @@
+RHOMEMIDS step 0: why IDsByLabelAndPropertyValues on the memory store grows with rows (sigma READBACK, 3 Nov)
+Bench: pkg/graph/ids_by_property_values_bench_test.go BenchmarkIDsByLabelAndPropertyValuesMemory
+(DerivedPage rows, "blocks" list under an Elements index, one posting per value, "page" under a plain index).
+
+1. The index is ready; no label scan, no defect.
+   - memory CreatePropertyIndexWithOptions (pkg/graph/store/memory/memorystore_index.go:88-118) builds in three
+     phases synchronously; Phase 3 calls PropertyIndex.FinishBuild (pkg/graph/internal/index/sorted_postings.go:122-147),
+     which sets Mutated = nil before the merge. core's IndexOps.CreatePropertyWithOptions
+     (pkg/graph/internal/core/graph_indexes.go:26) calls it synchronously; no background build exists.
+   - Measured both orders (indexes declared before the rows, and built over 5k/20k/80k existing rows): identical cost,
+     and the CPU profile (80k rows, 100 values) shows nodesByLabelPropertyKeys taking the indexed branch
+     (memorystore_index.go:1154 -> PostingsOfKeys -> nodesByLabelPropertyFrom), never the label-scan fallback
+     (memorystore_index.go:1164-1185).
+
+2. Core takes the row path because the memory store has no IDs door.
+   - core.IDsByLabelAndPropertyValues (pkg/graph/internal/core/graph_property_query.go:117-170) asks
+     c.propertyIDsQuery (nil for memory: core.go:2293, capability pkg/graph/store/capabilities.go:920) and falls back to
+     ByLabelAndPropertyValues, then copies out the IDs.
+
+3. The cost is the per-candidate row recheck, and it grows with the row's LIST LENGTH, not with the store's row count.
+   - nodesByLabelPropertyFrom (memorystore_index.go:1189-1215) does, per posting ID: ms.nodes map lookup, label check,
+     and match.Node (memorystore_index.go:1198 -> storeutil IndexKeyMatch.Node, pkg/graph/internal/storeutil/property_values.go:112)
+     which walks the node's list with ForEachPropertyIndexKey and formats an index key string per element until a hit.
+   - Measured here (load average 7.9-15.5, shared machine), 4-element lists: 1.4/1.8/2.1 us a value and
+     175/173/138 KB a call (100 values) at 5k/20k/80k rows: flat apart from cache misses.
+     Same bench with 256-element lists, 5k rows: 13.2 us a value, 1.6 MB a call (100 values), 15k allocs.
+     So sigma's 2.3 -> 24.6 us and 2.9 MB a call at 80k fit rows whose lists grow with the dataset: the
+     recheck formats and allocates one key per list element per candidate. In the stated shape (short lists,
+     one posting per value) the memory store does not grow with rows.
+
+Conclusion: not a defect in index readiness. The IDs door (design: NodeIDsByLabelAndPropertyKeys from
+idx.PostingsOfKeys, filtered by labelIdx) removes both the row lookup and the list walk; the in-RAM index holds
+exactly the keys the definition wrote (Elements: each element's key; scalar: the value's key), maintained on every
+write, so the posting set equals the recheck's answer and no element match is needed (badger's element-match
+exclusion is only for an on-disk scalar definition sharing a key with an on-disk Elements one; memory has no shared
+keyspace: one PropertyIndex per (label, key)).
