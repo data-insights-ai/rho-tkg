@@ -376,6 +376,46 @@ func TestEffectiveLentReadsCounted(t *testing.T) {
 	if want := slices.Repeat([]int{1}, headLendVersions-1); !slices.Equal(reads, want) {
 		t.Errorf("rel head read reported history reads %v, want %v", reads, want)
 	}
+	// A failed lend is no read (the seam counts rows returned).
+	reads = nil
+	rd := entityReads{c: g}
+	if _, err := rd.lentNodeVersion(nid, 99); !errors.Is(err, storepkg.ErrVersionNotFound) {
+		t.Fatalf("lentNodeVersion(missing) = %v", err)
+	}
+	if _, err := rd.lentRelVersion(rid, 99); !errors.Is(err, storepkg.ErrVersionNotFound) {
+		t.Fatalf("lentRelVersion(missing) = %v", err)
+	}
+	if len(reads) != 0 {
+		t.Errorf("failed lends reported history reads %v, want none", reads)
+	}
+}
+
+// markSnap is a read snapshot answering every version read with its marker
+// rows (the rest of the interface is never called).
+type markSnap struct {
+	storepkg.ReadSnapshot
+	n *types.Node
+	r *types.Relationship
+}
+
+func (s markSnap) GetNodeVersion(types.NodeID, uint32) (*types.Node, error)       { return s.n, nil }
+func (s markSnap) GetRelVersion(types.RelID, uint32) (*types.Relationship, error) { return s.r, nil }
+
+// TestEffectiveLendReadsThroughSnapshot: a read through a store snapshot
+// takes its versions from the snapshot, not from the store's lending
+// capability (a scan's rows come from one moment). Mutation: lentNodeVersion /
+// lentRelVersion lending from the store while a snapshot is set.
+func TestEffectiveLendReadsThroughSnapshot(t *testing.T) {
+	t.Parallel()
+	g, nid, rid := headLendGraph(t)
+	snap := markSnap{n: types.NewNode(nid, 0, nil), r: types.NewRelationship(rid, 0, 0, 0)}
+	rd := entityReads{c: g, snap: snap}
+	if n, err := rd.lentNodeVersion(nid, 1); err != nil || n != snap.n {
+		t.Errorf("lentNodeVersion through a snapshot = %p, %v; want the snapshot's row", n, err)
+	}
+	if r, err := rd.lentRelVersion(rid, 1); err != nil || r != snap.r {
+		t.Errorf("lentRelVersion through a snapshot = %p, %v; want the snapshot's row", r, err)
+	}
 }
 
 // TestEffectiveHeadReadAllocs: a head-hit read of a node with
