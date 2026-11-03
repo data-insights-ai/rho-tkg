@@ -1,0 +1,18 @@
+HEADLEND red: main ee10a85b + pkg/graph/internal/core/effective_head_lend_test.go only (memory store)
+
+$ go test -count=1 -run 'TestEffectiveDoorsLendHistoryRows|TestEffectiveLentRowsRefuseMutation|TestEffectiveHeadReadAllocs' -v ./pkg/graph/internal/core
+=== RUN   TestEffectiveHeadReadAllocs
+    effective_head_lend_test.go:284: head-hit NodeEffectiveTimeline, 6 versions: 25 allocs/read
+    effective_head_lend_test.go:286: 25 allocs per head read, want <= 5 (a copy per history winner)
+--- FAIL: TestEffectiveHeadReadAllocs
+--- PASS: TestEffectiveLentRowsRefuseMutation   (a guard: the contract the change must keep)
+=== NAME  TestEffectiveDoorsLendHistoryRows
+    effective_head_lend_test.go:174: NodeEffectiveTimeline: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:174: NodeEffectiveTimelineFrom: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:174: NodeEffectiveTimelines: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:174: ForEachNodeEffective: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:216: RelEffectiveTimeline: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:216: RelEffectiveTimelines: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:216: ForEachRelEffective: 5 of 5 history rows copied per read, want lent
+--- FAIL: TestEffectiveDoorsLendHistoryRows
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.028s
