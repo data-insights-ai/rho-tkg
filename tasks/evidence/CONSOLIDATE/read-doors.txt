@@ -1,0 +1,43 @@
+rho read doors for sigma's page-row values (CONSOLIDATE, 3 Nov 2026). Read-only Fable pass; citations spot-checked by
+rho main (nodes/api.go:178/194/213/1023, store/capabilities.go:920, replication/api.go:47). Paths under rho-tkg.
+M = memory, B = badger, T = tiered. Costs: one run each, synthetic or masked BA copies.
+
+1 Node by ID          Nodes().Get nodes/api.go:178 (whole copy, all); Lend :194 + Node.BorrowProperty types/node.go:294
+                      (frozen shared row, no copy); LendByIDs :213 (chunks 4,096, one snapshot, key order on B); GetByIDs :265.
+                      badger Get 4.8 us; row read 8-11 us/node in a 64-value lookup (evidence/PUSHSLOW/store_scale.txt).
+  Rels by ID(s)       Rels().Get/Lend/LendByIDs/GetByIDs rels/api.go:192,204,223,256.
+2 IDs by (label,key,values)  Nodes().IDsByLabelAndPropertyValues nodes/api.go:1023 (ELEMPROBE), IDs, paged. B,T from the index;
+                      M loads every row (RHOMEMIDS). A time coordinate or ValidEndAfter falls back to rows
+                      (core/graph_property_query.go:123). 3.0-4.5 us per Elements lookup (evidence/ELEMDISK/block-cost.txt);
+                      badger 1.5-6.1 us/value at 5k-80k rows (sigma; RHOPOST).
+  Nodes by key/values ByLabelAndProperty :994, ByLabelAndPropertyValues :1009 (+ValidEndAfter): whole. 7.6-10.7 us/node,
+                      valid-end 14-17.4 us/node (PUSHSLOW).
+  Key tuple (2-4)     ByLabelAndProperties :1037 (composite index, else label scan + filter). Unmeasured.
+  Unique key owner    GetOrCreateByKey :154 (owner index for tiered event labels, core/unique_owner_index.go:13-23).
+  Rels by type,key    Rels().ByTypeAndProperty rels/api.go:503. Rel tuple, current state: none (RELDISK phase 2, on hold);
+                      at a pin: Temporal().RelEffectiveTimelinesByProperties temporal/effective_timelines_by.go:60.
+3 Derived fact -> write-back node: no rho notion; the link is sigma's model. Read it as adjacency + properties.
+  Adjacency           Rels().Outgoing/Incoming rels/api.go:747,756; ForEachOutgoing :769; OutgoingForNodes :918; AtTx :957;
+                      AtPin :999 (whole). No decode: ForEachAdjacentEndpoint :826 (relID, other), Ordinal :840, At :859.
+                      T with RelsByMint: reference node fans out over event shards; COLDEDGE (merged 12a9d382, in v4.101.0):
+                      empty cold shards skipped, read-only opens, 30 cold shards 2.9 s -> ~0.5 s a call.
+4 Valid time by ID    Temporal().NodeAt temporal/api.go:151, NodeAtTx :504, NodesAtTxByIDs :542 (256 IDs per lock).
+  by label            NodesByLabelAt :169; ByLabel with ValidAt opts.
+  Effective timeline  NodeEffectiveTimeline :580, ...From :599 (tail only on B), NodeEffectiveTimelines :630. 4.5-5.2 us/node,
+                      cold first batch 85 us (evidence/FIRSTTOUCH/2m.txt, 2m-cold.txt).
+  Effective pages     RelsEffectivePage temporal/effective_page.go:90, NodesEffectivePage :106,
+                      ForEachNodeEffectiveByLabelAndPropertyValues :190 (IDs + segments, 256 a snapshot). Valid-instant page
+                      8.6-9.0 s on a 12 GB masked store, tx-only page 1 ms (evidence/RELPAGEVALID/store_scale.txt).
+  As of tx time       NodeAsOf :351; QueryOpts.TxPin store/opts.go:82-99 on ByLabel/ByType/All; NodesAsOf :434.
+                      ASOFWALK: 199 history rows per read -> 0 (evidence/ASOFWALK/red.txt).
+5 Change feed         Replication().ChangeFeed replication/api.go:47, ForEachChange :60, LastCommittedLSN :70;
+                      ChangeRecord{LSN, Tag, Payload}; kind + ID via replication.DecodeChangeIdentity change_identity.go:128,
+                      then re-read.
+Projection            ForEachDocValues nodes/api.go:811 (M,B,T,sharded), ScanNodeColumns column_scan.go:58 (M,B): whole label.
+
+Missing doors (as of 3 Nov evening)
+- PROJREAD: dropped on sigma's answer (tasks/evidence/PROJREAD/design.txt); TIERLEND instead.
+- RHOPOST, RHOMEMIDS: merged 3 Nov, unreleased.
+- ASOFWALK later steps: TxPin batch by IDs, cross-shard merge. Minor.
+- Rel tuple lookup, current state (RELDISK phase 2, on hold). Batch HasHistory(ids) (LISTREAD). Minor each.
+- Cold-shard envelope for valid-instant pages (FIXED-MEMORY step 2).

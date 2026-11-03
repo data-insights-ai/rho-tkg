@@ -108,18 +108,33 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
+- **Round 2 read items from ai-soc's read-back inventory** (3 Nov, 60-min BA on tiered; ai-soc's estimates, measure
+  each first):
+  - **UNIQUEMISS** — GetOrCreateByKey does a second, identical unique lookup per miss (core/unique_constraints.go:623);
+    claimForever re-marshals the whole owner map per claim (unique_forever.go:266). Lands after UNIQUELOOK.
+  - **EDGEROW** — a relationship create reads each endpoint row 3-4 times (relationship_create_kernel.go:112-143,
+    rel.go:76, write_rel.go:163-212), inside AddRelationshipByID's 14.4 s; hand the row down once. Estimate <= 5 s.
+  - **CASCADEROW** — the temporal cascade reads getCurrentNode 2-3 times plus the chain (temporal_cascade.go:132-154,
+    tx.go:286/346); cascadeNode 5 s (27 s on d2). Estimate 2 s.
+  - **FLOORDECODE** — batchCommitFloor re-decodes every value of a batch (commit_floor.go:68). Measure first.
+- **NOCOMPRESS** (ai-soc 3 Nov, after round 2; a minor) — 2.19 TB of the 3-day run's 9.87 TB allocation (k11020850)
+  is badger's Snappy block decode into Go-heap buffers (z.Calloc is make([]byte) without the jemalloc tag,
+  ristretto z/calloc_nojemalloc.go:18-20); 1.66 TB of it on badger's own goroutines: compaction reads every input block
+  with table.NOCACHE (levels.go:914-920), so the block cache cannot help. rho cannot select no compression today
+  (options.None is Config.Compression's zero value). Build a way to select it; measure CPU, alloc and the disk factor on a
+  real store copy (disk is no constraint, René 28 Oct; RAM and CPU are). jemalloc parked on ai-soc's side (no
+  libjemalloc, needs cgo).
+- **WRITEAMP** (ai-soc 3 Nov, quiet PC, after the tiered d2) — compaction input bytes / flushed bytes per shard for the
+  cut-shaped write; then decide BaseLevelSize, BaseTableSize, MemTableSize per tier (PERTIER).
 - **BATCHFAIL** (fix, later; found by the BATCHIDX review 3 Nov, pre-existing) — a vector-index failure at node i of a
   PutNodes batch leaves the RAM property indexes holding nodes[:i] (badger) or nodes[:i+1] (memory), whose rows were
   never queued (badger keeps them in nodeCache, so RAM answers stay consistent until reopen). Unpinned by any test.
   Done when a failed batch leaves no index entry, with a test on both stores.
-- **RHOPOST bench** (RHOPOST and RHOMEMIDS merged 3 Nov, unreleased; both benches rerun on a quiet PC) (sigma READBACK, 3 Nov; after v4.101.0, nothing in sigma waits) — sigma's paged-row read-back
-  spends 96 % of a block probe in `IDsByLabelAndPropertyValues`, 75 % in `badger.Iterator.Next`: one AllVersions
-  seek-and-walk per value in `propertyIndexDiskKeysCandidatesLocked` (badger 1.5-6.1 us a value at 5k-80k rows).
-  RHOPOST: a posting read per value without the AllVersions walk (seek to the typed key, end bound), first, since
-  badger and tiered are production; check why the walk takes all versions before changing it. RHOMEMIDS: the memory
-  store has no NodePropertyKeysIDsCapability, so the door loads every node to return IDs (memory 2.3-24.6 us a
-  value, 2.9 MB a call at 80k); an IDs path from its index. Bench: sigma's BenchmarkBlockProbe
-  (internal/tyla/application/incremental). Done when both ship with a bench against today.
+- **ROUND2 measure** (René via ai-soc, 3 Nov: "why test each part of rho? Why not a full test with the medium ba example
+  here on the office pc?") — no per-item before/after benches on the PC. ai-soc runs its 4-arm harness (data-60min,
+  158,487 records; memory and tiered, paging off and budget) on rho main's tip with sigma main's tip after W1; first tip
+  3883fa5f (RHOMEMIDS, BATCHADD, RHOPOST, BATCHIDX). Per-item measurement only if the combined run shows a regression
+  or unequal bars, then by bisect. rho's part: merge reviewed items, send the main SHA. Done when the run's bars are in.
 
 ### PAGEBLOB follow-ups (v4.99.0 shipped ELEMDISK and WRITEGROW, 3 Nov, on René's word outside the round, short tests and targeted race only)
 
@@ -407,7 +422,6 @@ beside it. Waits for: René reopening it; then ask ai-soc and sigma whether they
   `row102-pending-ranged`, `f4b27842` in `archive/unmerged-2026-10-27`). Waits for: ai-soc raising its priority, or nothing else open.
 - **RELSIDECAR** — Relationship lookups by several properties may be too slow on BA. Waits for: a BA measurement.
 - **NITS** — Small findings no consumer has hit (backlog 80-82, review nits). Waits for: a consumer hitting one.
-- **NOCOMPRESS** — Compression cannot be turned off, because "none" is the default value. Waits for: a consumer asking.
 - **STALECITE** — Some code comments cite todo sections that no longer exist. Waits for: the next change to that code.
 - **V5** — The v5 line is paused on `v5-takeover` (`3bd4d13a`, in `archive/unmerged-2026-10-27`; state: HANDOVER; open WPs and the breaking API-pass
   candidates: `git show 791c1aa3:tasks/todo.md`). Default: paused; `v5.0.0-alpha.1` at its S2 exit once restarted.
