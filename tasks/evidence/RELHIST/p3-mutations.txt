@@ -1,0 +1,36 @@
+RELHIST P3 mutation sweep, branch histdecode, 3 Nov 2026
+
+Each mutant: one textual change to the implementation, then only the targeted tests
+  go test -short -count=1 -run 'TestHistDecode' ./pkg/graph/store/badger/
+(M13 also -run TestFlushingCommitWindow); a survivor then the whole badger package (-short).
+A build failure counts as no kill and is rewritten. Script kept out of the repo (scratch mutate.py).
+Files: H = badgerstore_history.go (decodeHistoryChain), R = badgerstore_history_rel.go, N = badgerstore_history_node.go.
+
+M1  R  rel chain returns r.DeepCopy() again                      KILLED  TestHistDecodeAllocsPerVersion (rel N=10 33.6 allocs, 2,950 B > 32 / 2,800)
+M2  N  node chain returns n.DeepCopy() again                     KILLED  TestHistDecodeAllocsPerVersion (node N=10 43.6 allocs, 3,395 B > 41 / 3,200)
+M3  H  anchor row kept without its copy (badger's buffer)        KILLED  TestHistDecodeRowsEqualLegacy ("rel history anchor v0 is not a full snapshot":
+                                                                         the item's value buffer was reused by Next)
+M4  H  deferred delta kept without its copy                      KILLED  TestHistDecodeAnchorOutsideChain (truncated msgpack instead of the legacy error)
+M5  H  a buffered set does not replace the committed row         KILLED  TestHistDecodeRowsEqualLegacy (65 rows, want 51)
+M6  H  buffered deletes ignored                                  KILLED  TestHistDecodeRowsEqualLegacy (64 rows, want 51)
+M7  H  buffered rows after the last committed key dropped        KILLED  TestHistDecodeRowsEqualLegacy (0 rows, want 37)
+M8  H  buffered row emitted at an equal committed key (<=)       KILLED  TestHistDecodeRowsEqualLegacy (65 rows, want 51)
+M9  H  local anchor answers any version (v == anchorVer gone)    first cut BUILD-FAIL (anchorVer unused), rewritten:
+                                                                 KILLED  TestHistDecodeAnchorOutsideChain (deltas 13-15 decoded against
+                                                                         anchor v8 without an error; v20's damage reported instead)
+M10 H  every row kept as anchor (a copy each)                    KILLED  TestHistDecodeAllocsPerVersion (rel N=10 41.5 allocs, 4,290 B)
+M11 H  deferred rows placed in reverse                           KILLED  TestHistDecodeAnchorOutsideChain (rows differ)
+M12 H  scan error reported before the deferred rows' errors      KILLED  TestHistDecodeAnchorOutsideChain (v20's error, legacy reports v13's anchor)
+M13 H  scan test hook not called                                 KILLED  TestHistDecodeAnchorOutsideChain (anchor not back after the scan)
+M14 H  write buffer ignored                                      KILLED  TestHistDecodeRowsEqualLegacy (0 rows, want 37; 64, want 51)
+M15 R  RelHistoryVersionsFrom deep-copies again                  KILLED  TestHistDecodeAllocsPerVersion (relpage)
+M16 N  NodeHistoryVersionsFrom deep-copies again                 KILLED  TestHistDecodeAllocsPerVersion (nodepage)
+M17 H  every delta deferred to a point read                      KILLED  TestHistDecodeAllocsPerVersion (rel N=10 41.5 allocs, 4,290 B)
+M18 H  keys of another length under the prefix not skipped      first SURVIVED (no such key in any test); the delta_flushed case now writes
+                                                                 one under each prefix: KILLED TestHistDecodeRowsEqualLegacy (0xc1 decoded)
+M19 H  deferred delta decoded with the scan's local anchor       SURVIVED targeted and the whole badger package (-short, 105 s): EQUIVALENT.
+       instead of nil                                            A delta is deferred only when its anchor A(v) <= v was not the latest
+                                                                 anchor row when it was scanned; every later row has a higher version, so
+                                                                 the local anchor after the scan is never A(v) and the point read runs either way.
+
+Result: 18 of 19 killed, 1 equivalent (kept as nil: the point read is the documented path).

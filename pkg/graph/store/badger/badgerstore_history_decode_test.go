@@ -384,6 +384,14 @@ func TestHistDecodeRowsEqualLegacy(t *testing.T) {
 		if raw, err := bs.readHistoryRelRaw(id, 5); err != nil || storepkg.HistoryValueKindOf(raw) != storepkg.HistoryDelta {
 			t.Fatalf("v5 is not a delta (err %v): the chain tests no reconstruction", err)
 		}
+		// A key under the chain's prefix that is no history key (another
+		// length) is skipped, as before.
+		for _, p := range [][]byte{storepkg.HistRelPrefix(id), storepkg.HistNodePrefix(id)} {
+			foreign := append(append([]byte(nil), p...), 0, 0, 0, 0, 0, 0, 0, 7, 1)
+			if err := bs.db.Update(func(txn *badgerv4.Txn) error { return txn.Set(foreign, []byte{0xc1}) }); err != nil {
+				t.Fatal(err)
+			}
+		}
 		histDecodeCheck(t, bs, id, histDecodeVersions(0, 300))
 	})
 	t.Run("full_flushed", func(t *testing.T) {
@@ -543,6 +551,13 @@ func TestHistDecodeRowsOwnTheirBytes(t *testing.T) {
 var histDecodeAllocLimits = map[string]struct{ allocs, bytes float64 }{
 	"rel":  {allocs: 32, bytes: 2800},
 	"node": {allocs: 41, bytes: 3200},
+	// The paged doors from version 0 (RelHistoryVersionsFrom /
+	// NodeHistoryVersionsFrom), which keep their value copies and lose only the
+	// deep copy: before 34.7 / 44.7 and 32.3 / 42.6 allocations, 3,206 / 3,642
+	// and 2,964 / 3,434 B; after 31.7 / 40.7 and 29.3 / 38.6, 2,899 / 3,271 and
+	// 2,660 / 3,062 B (added after the red commit, measured with the copy back).
+	"relpage":  {allocs: 33, bytes: 3050},
+	"nodepage": {allocs: 42, bytes: 3400},
 }
 
 // TestHistDecodeAllocsPerVersion measures a whole-chain read on badger (rows
@@ -566,21 +581,30 @@ func TestHistDecodeAllocsPerVersion(t *testing.T) {
 		if err := bs.Flush(); err != nil {
 			t.Fatal(err)
 		}
-		for _, kind := range []string{"rel", "node"} {
+		for _, kind := range []string{"rel", "node", "relpage", "nodepage"} {
 			read := func() {
 				var err error
-				if kind == "rel" {
+				var got int
+				switch kind {
+				case "rel":
 					var rows []*types.Relationship
 					rows, err = bs.GetRelHistory(types.RelID(id))
-					if err == nil && len(rows) != int(n) {
-						err = fmt.Errorf("%d rows", len(rows))
-					}
-				} else {
+					got = len(rows)
+				case "node":
 					var rows []*types.Node
 					rows, err = bs.GetNodeHistory(types.NodeID(id))
-					if err == nil && len(rows) != int(n) {
-						err = fmt.Errorf("%d rows", len(rows))
-					}
+					got = len(rows)
+				case "relpage":
+					var rows []*types.Relationship
+					rows, err = bs.RelHistoryVersionsFrom(types.RelID(id), 0, 0)
+					got = len(rows)
+				default:
+					var rows []*types.Node
+					rows, err = bs.NodeHistoryVersionsFrom(types.NodeID(id), 0, 0)
+					got = len(rows)
+				}
+				if err == nil && got != int(n) {
+					err = fmt.Errorf("%d rows", got)
 				}
 				if err != nil {
 					t.Fatal(err)
@@ -607,5 +631,107 @@ func TestHistDecodeAllocsPerVersion(t *testing.T) {
 					kind, n, allocs, perVersion, limit.allocs, limit.bytes)
 			}
 		}
+	}
+}
+
+// TestHistDecodeAnchorOutsideChain: a delta whose anchor is not in the scanned
+// chain is decoded after the scan by a point read of the anchor, in its place
+// in the result. With the anchor key deleted below rho the chain fails with the
+// legacy error; with the key put back inside the scan->decode window
+// (historyScanTestHook) the point read finds it and the rows are the original
+// ones, in order.
+func TestHistDecodeAnchorOutsideChain(t *testing.T) {
+	id := snowflake.ID(44)
+	bs := histDecodeStore(t, Config{InMemory: true, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
+	histDecodePut(t, bs, id, 0, 30, 0)
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	const anchor = 12 // 13, 14, 15 are its deltas
+	rels, nodes := histDecodeCheck(t, bs, id, histDecodeVersions(0, 30))
+	var relWant, nodeWant []string // the chain without the anchor's own row (scanned before it is back)
+	for i, w := range histDecodeRelWires(t, rels) {
+		if rels[i].Version() != anchor {
+			relWant = append(relWant, w)
+		}
+	}
+	for i, w := range histDecodeNodeWires(t, nodes) {
+		if nodes[i].Version() != anchor {
+			nodeWant = append(nodeWant, w)
+		}
+	}
+
+	relKey, nodeKey := storepkg.HistRelKey(id, anchor), storepkg.HistNodeKey(id, anchor)
+	raws := map[string][]byte{}
+	for _, key := range [][]byte{relKey, nodeKey} {
+		raw, err := bs.readHistoryRaw(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if storepkg.HistoryValueKindOf(raw) != storepkg.HistoryFull {
+			t.Fatalf("v%d is not a full anchor", anchor)
+		}
+		raws[string(key)] = raw
+	}
+	setKey := func(key []byte, del bool) {
+		t.Helper()
+		if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+			if del {
+				return txn.Delete(key)
+			}
+			return txn.Set(key, raws[string(key)])
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setKey(relKey, true)
+	setKey(nodeKey, true)
+
+	// A damaged row after the orphaned deltas: the first failure in version
+	// order (v13, the anchor's) is the one reported, as before.
+	damaged := storepkg.HistRelKey(id, 20)
+	good20, err := bs.readHistoryRaw(damaged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raws[string(damaged)] = []byte{0xc1}
+	setKey(damaged, false)
+	_, gotErr := bs.GetRelHistory(types.RelID(id))
+	_, legacyErr := legacyRelHistoryByPrefix(bs, storepkg.HistRelPrefix(id))
+	if gotErr == nil || legacyErr == nil || gotErr.Error() != legacyErr.Error() || !strings.Contains(gotErr.Error(), "anchor v12") {
+		t.Fatalf("missing rel anchor and a damaged row: error %v, legacy %v", gotErr, legacyErr)
+	}
+	if _, err := bs.GetRelVersion(types.RelID(id), 20); err == nil {
+		t.Fatalf("v20 is not damaged: the test proves nothing")
+	}
+	raws[string(damaged)] = good20
+	setKey(damaged, false)
+	_, gotErr = bs.GetRelHistory(types.RelID(id))
+	_, legacyErr = legacyRelHistoryByPrefix(bs, storepkg.HistRelPrefix(id))
+	if gotErr == nil || legacyErr == nil || gotErr.Error() != legacyErr.Error() {
+		t.Fatalf("missing rel anchor: error %v, legacy %v", gotErr, legacyErr)
+	}
+	_, gotErr = bs.GetNodeHistory(types.NodeID(id))
+	_, legacyErr = legacyNodeHistoryByPrefix(bs, storepkg.HistNodePrefix(id))
+	if gotErr == nil || legacyErr == nil || gotErr.Error() != legacyErr.Error() {
+		t.Fatalf("missing node anchor: error %v, legacy %v", gotErr, legacyErr)
+	}
+
+	defer func() { bs.historyScanTestHook = nil }()
+	bs.historyScanTestHook = func() { setKey(relKey, false) }
+	got, err := bs.GetRelHistory(types.RelID(id))
+	if err != nil {
+		t.Fatalf("GetRelHistory, anchor back after the scan: %v", err)
+	}
+	if !reflect.DeepEqual(histDecodeRelWires(t, got), relWant) {
+		t.Fatalf("rel rows, anchor read after the scan, differ")
+	}
+	bs.historyScanTestHook = func() { setKey(nodeKey, false) }
+	gotNodes, err := bs.GetNodeHistory(types.NodeID(id))
+	if err != nil {
+		t.Fatalf("GetNodeHistory, anchor back after the scan: %v", err)
+	}
+	if !reflect.DeepEqual(histDecodeNodeWires(t, gotNodes), nodeWant) {
+		t.Fatalf("node rows, anchor read after the scan, differ")
 	}
 }

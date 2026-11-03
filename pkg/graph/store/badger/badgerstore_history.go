@@ -358,6 +358,147 @@ func (bs *Store) pendingHistoryVersionOverlay(prefix []byte, startVersion uint32
 	return entries, deletes
 }
 
+// decodeHistoryChain reads one entity's whole history chain (prefix: keyspace
+// byte + ID) and decodes each version in key order, which is version order (the
+// version is the key's big-endian tail, storeutil.HistRelKey). The write buffer
+// is captured BEFORE the badger View (lesson 64) and merged in key order: a
+// buffered delete masks a committed row, a buffered set replaces it.
+//
+// A committed value is decoded inside Item.Value: badger's value is valid only
+// there, since the iterator reuses the item and its value buffer at Next
+// (badger v4.9.2 iterator.go:28-29, :139-151, :573-577). The msgpack decoder
+// reads through a bytes.Reader into its own buffers (vmihailenco/msgpack v5.4.1
+// decode.go:56-65, :644-660), so a decoded row holds none of those bytes. The
+// one value kept past Next is the latest row at an anchor version, copied once:
+// an anchor's version is at or below its deltas' (storeutil.AnchorVersionFor),
+// so it is the only one a later delta can need. A delta whose anchor is not in
+// the chain (truncated or masked) is copied and decoded after the View by a
+// point read, as before. RELHIST P3: no map, key strings, sort, per-row value
+// copy or second copy of the decoded row.
+func decodeHistoryChain[T any](bs *Store, prefix []byte, decode func(version uint64, raw []byte, local localAnchorFunc) (T, error)) ([]T, error) {
+	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
+	var overlayKeys []string
+	if len(overlay) > 0 {
+		overlayKeys = make([]string, 0, len(overlay))
+		for k := range overlay {
+			overlayKeys = append(overlayKeys, k)
+		}
+		sort.Strings(overlayKeys)
+	}
+
+	var (
+		out         []T
+		later       []historyRawRow // deltas decoded after the View (anchor point read)
+		laterAt     []int
+		anchorVer   uint64
+		anchorRaw   []byte
+		haveAnchor  bool
+		zero        T
+		interval    = bs.historyAnchorInterval
+		overlayNext int
+	)
+	local := func(v uint64) ([]byte, bool) {
+		if haveAnchor && v == anchorVer {
+			return anchorRaw, true
+		}
+		return nil, false
+	}
+	// row takes one version's value; owned says raw outlives the call (a
+	// buffered value, already the overlay's copy).
+	row := func(version uint64, raw []byte, owned bool) error {
+		if storepkg.IsAnchorVersion(version, interval) {
+			if !owned {
+				raw = append([]byte(nil), raw...)
+				owned = true
+			}
+			anchorVer, anchorRaw, haveAnchor = version, raw, true
+		}
+		if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
+			if _, ok := local(storepkg.AnchorVersionFor(version, interval)); !ok {
+				if !owned {
+					raw = append([]byte(nil), raw...)
+				}
+				later = append(later, historyRawRow{version: version, raw: raw})
+				laterAt = append(laterAt, len(out))
+				out = append(out, zero)
+				return nil
+			}
+		}
+		v, err := decode(version, raw, local)
+		if err != nil {
+			return err
+		}
+		out = append(out, v)
+		return nil
+	}
+	// overlayBefore emits the buffered rows below bound; all = every one left.
+	overlayBefore := func(bound string, all bool) error {
+		for overlayNext < len(overlayKeys) && (all || overlayKeys[overlayNext] < bound) {
+			k := overlayKeys[overlayNext]
+			overlayNext++
+			if err := row(historyVersionFromKey([]byte(k)), overlay[k], true); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	var version uint64 // the scanned row's, for value (one closure, not one a row)
+	value := func(val []byte) error { return row(version, val, false) }
+	scanErr := bs.view(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false // decode happens inside Value(), no staging copy (PREFETCH)
+		opts.Prefix = prefix        // bound the scan to this entity (backlog 20)
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			key := item.Key()
+			if len(key) != storepkg.SizeHistKey {
+				continue
+			}
+			if len(overlayKeys) > 0 || len(overlayDeletes) > 0 {
+				k := string(key)
+				if err := overlayBefore(k, false); err != nil {
+					return err
+				}
+				if overlayNext < len(overlayKeys) && overlayKeys[overlayNext] == k {
+					continue // the buffered set replaces it; the next overlayBefore emits it
+				}
+				if _, deleted := overlayDeletes[k]; deleted {
+					continue
+				}
+			}
+			version = historyVersionFromKey(key)
+			if err := item.Value(value); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if scanErr == nil {
+		scanErr = overlayBefore("", true)
+	}
+
+	if bs.historyScanTestHook != nil {
+		bs.historyScanTestHook()
+	}
+
+	// Deferred deltas first: one of them precedes the row whose error stopped
+	// the scan, and the first failing version in key order is the one reported.
+	for i := range later {
+		v, err := decode(later[i].version, later[i].raw, nil)
+		if err != nil {
+			return nil, err
+		}
+		out[laterAt[i]] = v
+	}
+	if scanErr != nil {
+		return nil, scanErr
+	}
+	return out, nil // nil when the chain is empty
+}
+
 func (bs *Store) maxHistoryID(prefix byte) (snowflake.ID, error) {
 	var maxID snowflake.ID
 
