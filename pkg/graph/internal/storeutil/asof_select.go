@@ -17,6 +17,10 @@ import (
 type TemporalRow interface {
 	Version() uint32
 	Temporal() *types.TemporalMetadata
+	// TemporalByValue is *Temporal() by value (ok false: none); the selection
+	// reads rows through it, as a frozen row's Temporal() allocates a copy
+	// (HEADLEND: memory history rows are frozen).
+	TemporalByValue() (types.TemporalMetadata, bool)
 }
 
 // SelectAsOf is SelectAsOfWithCurrent for an entity without a live current
@@ -86,11 +90,14 @@ func SelectAsOfWithCurrent[T TemporalRow](a types.ValidAxis, history []T, curren
 	// span, not a state of the entity, so it is never an as-of answer (it
 	// never holds the current slot and carries no TxTo or DeletedAt, so no
 	// other rule reads it either).
-	desc := slices.DeleteFunc(slices.Clone(history), func(h T) bool { return IsVoid(h.Temporal()) })
+	desc := slices.DeleteFunc(slices.Clone(history), func(h T) bool {
+		tm, ok := h.TemporalByValue()
+		return ok && tm.Void
+	})
 	slices.SortStableFunc(desc, func(a, b T) int { return cmp.Compare(b.Version(), a.Version()) })
 
 	if hasCurrent {
-		if ctm := current.Temporal(); ctm != nil && ctm.TxFrom > 0 && ctm.TxFrom <= pin && ctm.TxTo == 0 {
+		if ctm, ok := current.TemporalByValue(); ok && ctm.TxFrom > 0 && ctm.TxFrom <= pin && ctm.TxTo == 0 {
 			// seq: the rows above the current version, newest first, then the
 			// current row. The first row recorded at or after the current one
 			// and by the pin outranks it.
@@ -108,17 +115,17 @@ func SelectAsOfWithCurrent[T TemporalRow](a types.ValidAxis, history []T, curren
 			// stored before backlog 38, possibly with a backfilled TxFrom
 			// inside that life).
 			for _, h := range seq[:len(seq)-1] {
-				if tm := h.Temporal(); tm != nil && tm.TxTo != 0 && tm.TxTo >= tm.TxFrom {
+				if tm, ok := h.TemporalByValue(); ok && tm.TxTo != 0 && tm.TxTo >= tm.TxFrom {
 					return current, true
 				}
 			}
 			for i, h := range seq[:len(seq)-1] {
-				tm := h.Temporal()
-				if tm == nil || tm.TxFrom < ctm.TxFrom || tm.TxFrom > pin {
+				tm, ok := h.TemporalByValue()
+				if !ok || tm.TxFrom < ctm.TxFrom || tm.TxFrom > pin {
 					continue
 				}
 				ans := openInWrite(a, seq, i, pin)
-				if retractedAtTxTime(ans.Temporal(), pin) {
+				if rowRetractedAtTxTime(ans, pin) {
 					return zero, false
 				}
 				return ans, true
@@ -128,12 +135,12 @@ func SelectAsOfWithCurrent[T TemporalRow](a types.ValidAxis, history []T, curren
 	}
 
 	for i, h := range desc {
-		tm := h.Temporal()
-		if tm == nil || tm.TxFrom == 0 || tm.TxFrom > pin {
+		tm, ok := h.TemporalByValue()
+		if !ok || tm.TxFrom == 0 || tm.TxFrom > pin {
 			continue
 		}
 		ans := openInWrite(a, desc, i, pin)
-		if retractedAtTxTime(ans.Temporal(), pin) || lifeEndedAtTxTime(desc, i, pin) {
+		if rowRetractedAtTxTime(ans, pin) || lifeEndedAtTxTime(desc, i, pin) {
 			return zero, false
 		}
 		return ans, true
@@ -150,13 +157,14 @@ func SelectAsOfWithCurrent[T TemporalRow](a types.ValidAxis, history []T, curren
 // does) instead of a bounded piece. A cascade written since numbers the slot
 // row last, so the newest row of the write already is it.
 func openInWrite[T TemporalRow](a types.ValidAxis, seq []T, i int, pin types.Instant) T {
-	tx := seq[i].Temporal().TxFrom
+	first, _ := seq[i].TemporalByValue() // a candidate: it has one
+	tx := first.TxFrom
 	for _, r := range seq[i:] {
-		tm := r.Temporal()
-		if tm == nil || tm.TxFrom != tx {
+		tm, ok := r.TemporalByValue()
+		if !ok || tm.TxFrom != tx {
 			break
 		}
-		if OwnOpenAtTxTime(a, tm, pin) {
+		if OwnOpenAtTxTime(a, &tm, pin) {
 			return r
 		}
 	}
@@ -200,10 +208,11 @@ func OwnOpenAtTxTime(a types.ValidAxis, tm *types.TemporalMetadata, pin types.In
 // stamp a cascade written before v4.46 copied from its source row (backlog 14):
 // that row never held the slot, so it is passed over.
 func lifeEndedAtTxTime[T TemporalRow](desc []T, i int, pin types.Instant) bool {
-	newest := desc[i].Temporal().TxFrom
+	top, _ := desc[i].TemporalByValue() // a candidate: it has one
+	newest := top.TxFrom
 	for _, h := range desc[i+1:] {
-		tm := h.Temporal()
-		if tm == nil || tm.TxTo == 0 || tm.TxTo < tm.TxFrom {
+		tm, ok := h.TemporalByValue()
+		if !ok || tm.TxTo == 0 || tm.TxTo < tm.TxFrom {
 			continue
 		}
 		return tm.DeletedAt != 0 && tm.DeletedAt > newest && tm.DeletedAt <= pin
@@ -224,6 +233,13 @@ func retractedAtTxTime(tm *types.TemporalMetadata, pin types.Instant) bool {
 		return true
 	}
 	return tm.DeletedAt != 0 && tm.DeletedAt <= pin
+}
+
+// rowRetractedAtTxTime is retractedAtTxTime of r's temporal block, read by
+// value (no copy of a frozen row's block).
+func rowRetractedAtTxTime[T TemporalRow](r T, pin types.Instant) bool {
+	tm, ok := r.TemporalByValue()
+	return ok && retractedAtTxTime(&tm, pin)
 }
 
 // IsVoid reports whether a row's temporal block marks a void piece of an

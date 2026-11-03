@@ -53,3 +53,47 @@ func (ms *Store) LendRelationship(rid types.RelID) (*types.Relationship, error) 
 	}
 	return r, nil
 }
+
+var _ storecontract.VersionLendCapability = (*Store)(nil)
+
+// LendNodeVersion is GetNodeVersion without the copy: the stored, frozen
+// history row (store.VersionLendCapability). A later write replaces or drops
+// the row and leaves the lent one as it was.
+func (ms *Store) LendNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	n, ok := ms.nodeHistory[nid][version]
+	if !ok {
+		return nil, ErrVersionNotFound
+	}
+	return n, nil
+}
+
+// LendRelVersion is LendNodeVersion for relationships.
+func (ms *Store) LendRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return nil, err
+	}
+	r, ok := ms.relHistory[rid][version]
+	if !ok {
+		return nil, ErrVersionNotFound
+	}
+	return r, nil
+}

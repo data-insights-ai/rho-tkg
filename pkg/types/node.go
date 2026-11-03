@@ -500,6 +500,22 @@ func (n *Node) Temporal() *TemporalMetadata {
 	return n.temporal
 }
 
+// TemporalByValue returns a copy of the node's temporal metadata by value and
+// whether it carries any: what *Temporal() reads, without the heap copy a
+// frozen row's Temporal() makes (HEADLEND: memory history rows are frozen).
+func (n *Node) TemporalByValue() (TemporalMetadata, bool) {
+	if n == nil {
+		return TemporalMetadata{}, false
+	}
+	if m := n.meta; m != nil {
+		return TemporalMetadata{ValidFrom: m.validFrom, ValidTo: m.validTo, TxFrom: m.txFrom}, true
+	}
+	if n.temporal == nil {
+		return TemporalMetadata{}, false
+	}
+	return *n.temporal, true
+}
+
 // ValidRange returns the node's validity bounds and whether it carries temporal
 // metadata at all (a zero ValidTo means open-ended on the legacy ValidAxis;
 // read the end through the store's axis, ValidAxis.Open / End). Prefer it over Temporal()

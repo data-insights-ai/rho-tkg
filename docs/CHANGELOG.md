@@ -8,6 +8,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **TIERLEND** (PROJREAD part (a); a minor: tiered `Store.LendNodesSorted` and `Store.LendRelationshipsSorted` are new
+  exported methods). The tiered store implements `store.EntityLendBatchCapability`, so `LendByIDs` on tiered reads a
+  chunk under one move lock with one pin per shard (reference, archive, each event shard; the relationship probe once
+  more) and one badger batch lend each, instead of a move lock and up to three pins per ID; one pin is held at a
+  time, as before. Answers unchanged: the same rows as `LendNode` /
+  `LendRelationship` per ID, nil for deleted and unknown IDs (tests `TestTieredLendSorted*`,
+  `tasks/evidence/TIERLEND/`).
+- **RELHIST P3** (sigma's GC analysis; a fix, no new exported name). A whole history read on badger
+  (`GetRelHistory`, `GetNodeHistory` and the index builds that read a whole chain) decodes each version inside
+  badger's value callback, in key order, which is version order: no copy of every value into a map, no key strings,
+  no sort, no second deep copy of each decoded row. Only the latest anchor row is copied, once, for the deltas after
+  it; a delta whose anchor is not in the chain is read after the scan, as before. `RelHistoryVersionsFrom` /
+  `NodeHistoryVersionsFrom` drop the deep copy too. Rows, order and errors are those of before. At about 400-byte
+  rows with delta encoding, per version: rel 34.3 -> 28.4 allocations, 2,990 -> 2,410 B (100 versions); node
+  44.6 -> 37.6, 3,460 -> 2,820 B. Tests `TestHistDecode*` (`tasks/evidence/RELHIST/`).
+- **HEADLEND** (sigma, paged read-back: 1.2 GB of a 5.5 GB paging delta on memory; a minor: the optional
+  `store.VersionLendCapability` with memory `Store.LendNodeVersion` / `LendRelVersion`, and `types.Node.TemporalByValue` /
+  `Relationship.TemporalByValue`, the temporal block by value without the copy a frozen row's `Temporal()` makes, are new
+  exported names; the as-of selection reads rows through it, so `NodeAsOf` / `NodesAsOf` / `RelAsOf` / `RelsAsOf` on
+  memory keep main's allocations with frozen history rows: 4 at 20 history rows, 30 without it). On the
+  memory store the effective timeline doors (`NodeEffectiveTimeline`, `...From`, `NodeEffectiveTimelines`, the page
+  and `ForEach...Effective` scans, and the relationship mirrors) hand out each winning history row as the store keeps
+  it instead of a DeepCopy per read, as they already did for the current row (row 120). The segment rows were and stay
+  frozen (`temporal.NodeSegment`); the doors' answers are unchanged, no caller changes anything. Memory history rows are
+  now stored frozen; `GetNodeVersion`, `GetNodeHistory` and the point state doors (`NodeAtTx`, ...) still return the
+  caller's own mutable copy. Badger and tiered are unchanged (they decode per read). A head-hit read of a 6-version
+  node: 25 -> 5 allocations (`tasks/evidence/HEADLEND/`).
 - **RELHIST P1** (sigma's cut-10 profile: copyRelHistory under the tx snapshot 16.1 GB of 160 GB; a fix, no new
   exported name). A `GraphTx` rollback snapshot keeps the entity's current version and copies only the history rows at
   or above it, one page read, on every store that pages history (memory, badger, tiered, sharded). Before, a tx update
@@ -16,7 +43,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   copied at 10 / 100 versions: delete 9 / 99 -> 0, node delete with a relationship 18 / 198 -> 0, update after a
   correction 11 / 101 -> 2. Rollback restores the same state: on memory and badger a trim plus the copied rows, on
   tiered and sharded the rows below read at rollback plus the copied rows. Tests `TestRELHIST*` (tiered reference,
-  event, cold-shard and archive placements; `tasks/evidence/RELHIST/`).
+  event, cold-shard and archive placements, memory, badger with delta encoding, sharded; void rows, a tombstone in
+  the chain, deltas anchored below the trim point; `tasks/evidence/RELHIST/`).
+
+## [4.102.0] - 2026-11-03
+
+### Changed
+
 - **BATCHFAIL** (BATCHIDX review; a fix, no new exported name). A node create whose vector-index apply fails leaves
   the store as before the call, on memory and badger, `PutNodesBatch` and `PutNode` alike: every node's vector entries
   go in before any other mutation and are withdrawn on a failure. Before, a failure at node k of a batch left the
@@ -30,13 +63,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and rechecking each row; a time coordinate or an index still building reads the rows as before. The cost no longer
   grows with list length (64-element lists 5448 -> 1904 allocs a call at 100 values; times void under load, rerun
   pending, `tasks/evidence/RHOMEMIDS/`).
-- **TIERLEND** (PROJREAD part (a); a minor: tiered `Store.LendNodesSorted` and `Store.LendRelationshipsSorted` are new
-  exported methods). The tiered store implements `store.EntityLendBatchCapability`, so `LendByIDs` on tiered reads a
-  chunk under one move lock with one pin per shard (reference, archive, each event shard; the relationship probe once
-  more) and one badger batch lend each, instead of a move lock and up to three pins per ID; one pin is held at a
-  time, as before. Answers unchanged: the same rows as `LendNode` /
-  `LendRelationship` per ID, nil for deleted and unknown IDs (tests `TestTieredLendSorted*`,
-  `tasks/evidence/TIERLEND/`).
 - **BATCHADD** (ai-soc R3; a fix, no new exported name). `GraphTx.AddNodes` keeps its one batch store write when unique
   constraints exist: before, any registered constraint sent every call through `AddNode` one node at a time (ai-soc's
   profile: `core.addNodesOneByOne` +28.9 s CPU). Labels without a constrained key do no unique lookup at all; on a

@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-11-03: latest tag v4.101.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-11-03: latest tag v4.102.0; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,12 +7,14 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **State of 3 Nov evening, read this first** (next steps: `tasks/todo.md`). Latest tag v4.101.0 (COLDEDGE, the
-  REVIEW 3 Nov test gaps); ai-soc pins it with sigma for the PC 3-day run (W3, not before 21:00), then Flux. ai-soc
-  names its quiet windows (W1 gate pair, W3): then no ci-docker, probe, bench or long test here.
-  - **Round 2, on branches, not merged** (Opus builders in `.claude/worktrees/`, René 3 Nov "parallel opus agents for
-    work and fable for design and reviews"; Fable review at the end): RHOPOST, RHOMEMIDS, BATCHADD, VALUETHRESH,
-    UNIQUELOOK. Benches wait for a quiet PC. Designs: `tasks/evidence/*/` per item.
+- **State of 3 Nov evening, read this first** (next steps: `tasks/todo.md`). Latest tag v4.102.0 (round 2: RHOMEMIDS,
+  BATCHADD, RHOPOST, BATCHIDX, BATCHFAIL, UNIQUELOOK; a minor, format marker 16), cut on a release branch from 98ea7d36,
+  the code ai-soc's 4-arm gate ran (René 3 Nov 20:57 via ai-soc: "the newest version for the example and full runs").
+  Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc). ai-soc names its quiet windows: then
+  no ci-docker, probe, bench or long test here.
+  - **On main, unreleased:** TIERLEND, HISTDECODE (RELHIST P3), HEADLEND. **On branches** (Opus builders in
+    `.claude/worktrees/`, Fable review per branch, René 3 Nov): VALUETHRESH (reviewed, waits for ai-soc's consumer
+    number), HISTTRIM (RELHIST, `tasks/evidence/RELHIST/design.txt`).
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Fable agent:** René wants a read-only Fable review after each batch of changes; it does not survive a session:
@@ -130,6 +132,12 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   mutations caught. ci-docker green, consumers clean, scale probe unchanged; tag CI and main green; ai-soc (pins it
   for the Flux run) and sigma notified. Open: the range walks, the purge's adjacency walk, history truncation,
   the purge token walks, rel purge candidates (todo ITERTOMB). Tags held until ai-soc's run ships.
+- **v4.102.0** (round 2, a minor: RHOMEMIDS, BATCHIDX and UNIQUELOOK add exported names, UNIQUELOOK format marker 16;
+  BATCHADD, RHOPOST, BATCHFAIL fixes): released from branch `release-v4.102.0` (98ea7d36 + the release commit + a
+  tests-only lint fix); ai-soc's 4-arm gate on 98ea7d36 + sigma d8be171c8 green (260 bars equal in each arm); ci-docker
+  green (first run red only on lint in three round-2 tests); consumers build and vet clean (ai-soc engine needs
+  GOTOOLCHAIN=go1.27.3: its parent module requires it); scale probe level with v4.101.0 (149 B/entity insert, 170 B
+  reopen, `tasks/evidence/SCALE/existence_maps.txt`).
 - **v4.101.0** (COLDEDGE, a minor; REVIEW 3 Nov tests): ci-docker green on a6245ca0 (race, long, gosec, govulncheck,
   cover, fuzz) at load 30-45; one tests-only fix after it (`934b2fba`, a load flake); consumers build and vet clean (ai-soc's
   vet red only in an untracked agent-patch copy inside its checkout, not rho); scale probe in

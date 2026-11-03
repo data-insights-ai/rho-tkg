@@ -543,6 +543,16 @@ type NodeVersionSharingCapability interface {
 	GetNodeVersionSharing(id types.NodeID, version uint32, share *types.Node) (*types.Node, error)
 }
 
+// VersionLendCapability is OPTIONAL: GetNodeVersion / GetRelVersion WITHOUT
+// the defensive copy, the stored history row itself, FROZEN (mutators fail as
+// EntityLendCapability's; DeepCopy thaws). The store never mutates a lent row
+// (a write replaces it). Errors as GetNodeVersion / GetRelVersion. HEADLEND:
+// the effective timelines hand out their winning history rows frozen.
+type VersionLendCapability interface {
+	LendNodeVersion(id types.NodeID, version uint32) (*types.Node, error)
+	LendRelVersion(id types.RelID, version uint32) (*types.Relationship, error)
+}
+
 // VersionTemporalMeta is one history version's selection-scope temporal skeleton
 // (version plus numeric instants). Temporal is nil when the row had no temporal
 // block. CreatedBy/UpdatedBy/BaseEntityID are absent: hydrate the full row

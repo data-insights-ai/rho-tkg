@@ -656,7 +656,7 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 		if full, ok := hydrated[p.src]; ok {
 			return full, true
 		}
-		full, err := rd.nodeVersion(id, metas[p.src].Version)
+		full, err := rd.lentNodeVersion(id, metas[p.src].Version)
 		if err != nil {
 			return nil, false
 		}
@@ -721,7 +721,7 @@ func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, curre
 		if full, ok := hydrated[p.src]; ok {
 			return full, true
 		}
-		full, err := rd.relVersion(id, metas[p.src].Version)
+		full, err := rd.lentRelVersion(id, metas[p.src].Version)
 		if err != nil {
 			return nil, false
 		}

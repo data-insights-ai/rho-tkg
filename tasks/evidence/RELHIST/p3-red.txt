@@ -1,0 +1,22 @@
+RELHIST P3 red test, branch histdecode on main befdf434 (implementation unchanged), 3 Nov 2026
+go test -short -count=1 -run 'TestHistDecode' -v ./pkg/graph/store/badger/
+
+--- PASS: TestHistDecodeRowsEqualLegacy (0.48s)
+    --- PASS: TestHistDecodeRowsEqualLegacy/delta_flushed (0.10s)
+    --- PASS: TestHistDecodeRowsEqualLegacy/full_flushed (0.04s)
+    --- PASS: TestHistDecodeRowsEqualLegacy/delta_pending_only (0.01s)
+    --- PASS: TestHistDecodeRowsEqualLegacy/delta_overlay_over_committed (0.08s)
+    --- PASS: TestHistDecodeRowsEqualLegacy/delta_anchor_in_older_table (0.24s)
+--- PASS: TestHistDecodeRowsOwnTheirBytes (0.16s)
+    badgerstore_history_decode_test.go:604: rel N=10: 36.2 allocs/version, 3178 B/version
+    badgerstore_history_decode_test.go:606: rel N=10: 36.2 allocs and 3178 B per version, limit 32 and 2800
+    badgerstore_history_decode_test.go:604: node N=10: 46.2 allocs/version, 3616 B/version
+    badgerstore_history_decode_test.go:606: node N=10: 46.2 allocs and 3616 B per version, limit 41 and 3200
+    badgerstore_history_decode_test.go:604: rel N=100: 34.3 allocs/version, 2990 B/version
+    badgerstore_history_decode_test.go:606: rel N=100: 34.3 allocs and 2990 B per version, limit 32 and 2800
+    badgerstore_history_decode_test.go:604: node N=100: 44.6 allocs/version, 3460 B/version
+    badgerstore_history_decode_test.go:606: node N=100: 44.6 allocs and 3460 B per version, limit 41 and 3200
+--- FAIL: TestHistDecodeAllocsPerVersion (0.18s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.827s
+FAIL

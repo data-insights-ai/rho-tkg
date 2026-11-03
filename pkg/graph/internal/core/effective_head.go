@@ -648,7 +648,7 @@ func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.
 		}
 		row := current
 		if p.version != current.Version() {
-			full, err := rd.nodeVersion(id, p.version)
+			full, err := rd.lentNodeVersion(id, p.version) // handed out frozen: no copy needed
 			if err != nil {
 				return nil, false
 			}
@@ -674,7 +674,7 @@ func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Re
 	for _, p := range e.pieces {
 		row := current
 		if p.version != current.Version() {
-			full, err := rd.relVersion(id, p.version)
+			full, err := rd.lentRelVersion(id, p.version) // handed out frozen: no copy needed
 			if err != nil {
 				return nil, false
 			}

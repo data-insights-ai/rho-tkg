@@ -31,7 +31,8 @@ func (ms *Store) GetNodeHistoryEntry(id types.NodeID, version uint32) *types.Nod
 }
 
 // SetNodeHistoryEntryForTest replaces the stored history entry for the given
-// node ID and version with a deep copy of n. No-op if the entry doesn't exist.
+// node ID and version with a frozen deep copy of n (as every stored history
+// row). No-op if the entry doesn't exist.
 //
 // Exported solely so package graph tests can inject tampered history entries
 // to verify integrity-chain detection. Not for production use.
@@ -48,7 +49,9 @@ func (ms *Store) SetNodeHistoryEntryForTest(id types.NodeID, version uint32, n *
 	if _, exists := hist[version]; !exists {
 		return
 	}
-	hist[version] = n.DeepCopy()
+	h := n.DeepCopy()
+	h.Freeze() // history rows are stored frozen (LendNodeVersion hands them out)
+	hist[version] = h
 	ms.invalidateNodeHistStampsLocked(id)
 }
 
