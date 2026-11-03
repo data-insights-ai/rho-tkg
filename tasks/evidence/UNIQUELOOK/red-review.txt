@@ -1,0 +1,21 @@
+# UNIQUELOOK review round (Fable on f14a1668): red for F1, F2, F4, on 38f1a4f7 + the red tests, 2026-11-03
+$ go test -short -count=1 -run 'TestOwnerIndexSyncedBeforeDurableReferenceRows|TestOwnerIndexDeclarationRefusedByOlderRelease' ./pkg/graph/store/tiered/
+--- FAIL: TestOwnerIndexDeclarationRefusedByOlderRelease (0.37s)
+    owner_index_ref_test.go:79: a release reading markers up to 15 opened a tiered store with an owner index
+--- FAIL: TestOwnerIndexSyncedBeforeDurableReferenceRows (0.49s)
+    owner_index_ref_test.go:47: SyncWrites=false: 0 owner-index syncs before the reference row became durable, want 1
+    owner_index_ref_test.go:50: SyncWrites=false: the claim is unsynced after its reference row's durable flush
+    owner_index_ref_test.go:47: SyncWrites=true: 0 owner-index syncs before the reference row became durable, want 1
+    owner_index_ref_test.go:50: SyncWrites=true: the claim is unsynced after its reference row's durable flush
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.900s
+FAIL
+$ go test -short -count=1 -run TestOwnerIndexSeed ./pkg/graph/internal/core/
+--- FAIL: TestOwnerIndexSeedPagesAndLogs (0.07s)
+    unique_owner_seed_test.go:65: 0 progress lines for 4 pages of 3, want at least 4:
+    unique_owner_seed_test.go:68: no final line with rows=10 pages=4:
+--- FAIL: TestOwnerIndexSeedFailureAtOpenLogged (0.11s)
+    unique_owner_seed_test.go:115: the open's failed seed was not logged:
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.187s
+FAIL
