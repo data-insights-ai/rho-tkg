@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment"
@@ -289,6 +290,10 @@ type Store struct {
 	sealedRowBuilds atomic.Uint64          // Relationships built from sealed rows (measurement)
 	segDir          *segdir.Dir            // ADR-0011 S3: the segment directory (nil = in-RAM segments)
 	segCommitFloor  types.Instant          // newest transaction stamp of the rows loaded from segDir (memorystore_commit_floor.go)
+
+	// vectorAddTestErr (tests only, nil in production) fails a created node's
+	// vector-index apply after its entries are in (BATCHFAIL).
+	vectorAddTestErr func(id snowflake.ID) error
 }
 
 // bumpNodeEpoch invalidates every cached DocValues column and poisons the

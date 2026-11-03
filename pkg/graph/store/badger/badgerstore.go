@@ -699,6 +699,11 @@ type Store struct {
 	relPropertyKeyCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*atomic.Int64
 	relPropertyStats     map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator
 
+	// vectorAddTestErr (tests only, nil in production) fails a created node's
+	// vector-index apply after its entries are in, as a failure on its last
+	// index would (BATCHFAIL).
+	vectorAddTestErr func(id snowflake.ID) error
+
 	// rescanTestHook runs in NodePropertyStats between the unlocked collection and the
 	// write-generation re-check, once per attempt. Test-only.
 	rescanTestHook func(attempt int)

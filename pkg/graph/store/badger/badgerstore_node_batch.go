@@ -648,7 +648,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 
 		// Apply this node's vector-index entries first (lesson 4, BACKLOG 18e): a failure
 		// must not leave other indexes reflecting a node whose write was never queued.
-		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], nd.id); err != nil {
+		if err := bs.addNodeVectorsLocked(vectorUpdates[i], nd.id); err != nil {
 			bs.maintainPropertyIndexesAddBatch(nodes[:i], ids[:i]) // as the per-node adds left the nodes before
 			bs.idxMu.Unlock()
 			return err
@@ -687,6 +687,18 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()
+}
+
+// addNodeVectorsLocked applies a created node's prepared vector-index entries
+// (vectorAddTestErr: see Store). Caller holds idxMu.
+func (bs *Store) addNodeVectorsLocked(updates []indexpkg.NodeVectorIndexUpdate, id snowflake.ID) error {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(updates, id); err != nil {
+		return err
+	}
+	if h := bs.vectorAddTestErr; h != nil {
+		return h(id)
+	}
+	return nil
 }
 
 // DeleteNodesBatch deletes nodes atomically in two phases: all IDs exist (pre-read

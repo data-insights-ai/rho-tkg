@@ -70,7 +70,7 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	ms.addNodeToCompositeIndexesLocked(n, rawID)
 	ms.addNodeToTemporalIndexesLocked(n, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
-	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
+	if err := ms.addNodeVectorsLocked(vectorUpdates, rawID); err != nil {
 		return err
 	}
 	if err := ms.logNodePutRoutedLocked(n, false, token); err != nil {
@@ -572,7 +572,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		ms.addNodeToCompositeIndexesLocked(n, rawID)
 		ms.addNodeToTemporalIndexesLocked(n, rawID)
 		indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
-		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], rawID); err != nil {
+		if err := ms.addNodeVectorsLocked(vectorUpdates[i], rawID); err != nil {
 			indexpkg.AddNodesToPropertyIndexes(ms.propertyIndexes, nodes[:i+1], rawIDs[:i+1])
 			return err
 		}
@@ -583,6 +583,18 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 	}
 	indexpkg.AddNodesToPropertyIndexes(ms.propertyIndexes, nodes, rawIDs)
 
+	return nil
+}
+
+// addNodeVectorsLocked applies a created node's prepared vector-index entries
+// (vectorAddTestErr: see Store). Caller holds ms.mu.
+func (ms *Store) addNodeVectorsLocked(updates []indexpkg.NodeVectorIndexUpdate, id snowflake.ID) error {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(updates, id); err != nil {
+		return err
+	}
+	if h := ms.vectorAddTestErr; h != nil {
+		return h(id)
+	}
 	return nil
 }
 

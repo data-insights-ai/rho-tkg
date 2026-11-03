@@ -71,7 +71,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	// Apply the vector-index mutation right after its own prepare step, before other
 	// RAM state commits (lesson 4, BACKLOG 18e): a failure must not leave other
 	// indexes reflecting a node that was never queued for durable write.
-	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
+	if err := bs.addNodeVectorsLocked(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
