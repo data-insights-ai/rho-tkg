@@ -350,7 +350,7 @@ Wire format and backup naming: [persistence.md](persistence.md).
 
 ### Badger value threshold
 
-`ValueThreshold` (since v4.101.0, VALUETHRESH) on `graph.Config` (with `BadgerDir`), `badger.Config`, `tiered.Config` and `sharded.Config` sends every badger value of at least that many bytes (a row, a history row, a change-log record) to the value log instead of the LSM. 0 keeps badger's 1 MB; otherwise [1 KB, 1 MB] and at most 15 % of `MemTableSize`, refused by name at `New`. For rows of about 100 KB rewritten whole (`ReplaceVersion`), 64 KB cut CPU about 90 % with reads as fast or faster, at the price of uncompressed value-log space that the value-log GC rarely frees ([badger.md](badger.md) section 6, rule 9). In memory every value stays in the LSM and the largest value becomes `ValueThreshold` - 1 (`ErrEntryTooLarge`).
+`ValueThreshold` (VALUETHRESH) on `graph.Config` (with `BadgerDir`), `badger.Config`, `tiered.Config` and `sharded.Config` sends every badger value of at least that many bytes (a row, a history row, a change-log record) to the value log instead of the LSM. 0 keeps badger's 1 MB; otherwise [1 KB, 1 MB] and at most 15 % of `MemTableSize`, refused by name at `New`. For rows of about 100 KB rewritten whole (`ReplaceVersion`), 64 KB cut CPU about 90 % with reads as fast or faster, at the price of uncompressed value-log space that the value-log GC rarely frees ([badger.md](badger.md) section 6, rule 9). In memory every value stays in the LSM and the largest value becomes `ValueThreshold` - 1 (`ErrEntryTooLarge`).
 
 ### Lifecycle
 

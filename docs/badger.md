@@ -27,7 +27,7 @@ Dir/
 - **Values live in the LSM, not the value log.** A value of at least `ValueThreshold` goes to the value log and the LSM
   holds a pointer; smaller values are inline (`structs.go:147-162`). The default and maximum threshold is 1 MB
   (`options.go:170`, `:201`), so every rho row under 1 MB is inline (open-image chunks are 512 KB) unless
-  `Config.ValueThreshold` lowers it (section 6, VALUETHRESH v4.101.0). rho's default limits allow
+  `Config.ValueThreshold` lowers it (section 6, VALUETHRESH). rho's default limits allow
   a row of up to about 64 MB (1,000 properties of 64 KB, `core.go:795-797`): a row of 1 MB or more goes to the value
   log. A single row fits one transaction's size limit, but badger refuses a value above `ValueLogFileSize` and, in
   memory, one at or above `ValueThreshold` (section 2, "One entry and its limits").
