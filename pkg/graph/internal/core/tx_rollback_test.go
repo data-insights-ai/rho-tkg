@@ -890,22 +890,44 @@ func TestGraphTx_DeleteRollbackMaterializesWhenCurrentVersionHistoryExists(t *te
 	if err := tx.DeleteNode(a.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
+	// RELHIST P1: the snapshot keeps the trim point and copies the row at
+	// the current version (the rows at or above it), never the whole chain.
 	nodeSnap := tx.deletedNodes[0]
-	if nodeSnap.useHistoryTrim {
-		t.Fatal("current-version node history used trim; want materialized history")
+	if !nodeSnap.useHistoryTrim || len(nodeSnap.nodeHistory) != 0 {
+		t.Fatalf("node snapshot: trim %v, %d whole-chain rows; want the trim point", nodeSnap.useHistoryTrim, len(nodeSnap.nodeHistory))
 	}
-	if len(nodeSnap.nodeHistory) != 1 {
-		t.Fatalf("node history snapshot length = %d, want 1", len(nodeSnap.nodeHistory))
+	if len(nodeSnap.nodeAbove) != 1 || nodeSnap.nodeAbove[0].Version() != a.Version() {
+		t.Fatalf("node snapshot above = %d rows, want the row at the current version %d", len(nodeSnap.nodeAbove), a.Version())
 	}
 	relSnap := nodeSnap.rels[0]
-	if relSnap.useHistoryTrim {
-		t.Fatal("current-version rel history used trim; want materialized history")
+	if !relSnap.useHistoryTrim || len(relSnap.history) != 0 {
+		t.Fatalf("rel snapshot: trim %v, %d whole-chain rows; want the trim point", relSnap.useHistoryTrim, len(relSnap.history))
 	}
-	if len(relSnap.history) != 1 {
-		t.Fatalf("rel history snapshot length = %d, want 1", len(relSnap.history))
+	if len(relSnap.above) != 1 || relSnap.above[0].Version() != r.Version() {
+		t.Fatalf("rel snapshot above = %d rows, want the row at the current version %d", len(relSnap.above), r.Version())
 	}
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("Rollback: %v", err)
+	}
+	nodeHistory, err := g.store.GetNodeHistory(a.ID())
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	if len(nodeHistory) != 1 || nodeHistory[0].Version() != a.Version() {
+		t.Fatalf("node history after rollback = %d rows, want the row at version %d", len(nodeHistory), a.Version())
+	}
+	if got, _ := nodeHistory[0].GetProperty("name"); got != "Alice" {
+		t.Fatalf("node history name after rollback = %v, want Alice", got)
+	}
+	relHistory, err := g.store.GetRelHistory(r.ID())
+	if err != nil {
+		t.Fatalf("GetRelHistory: %v", err)
+	}
+	if len(relHistory) != 1 || relHistory[0].Version() != r.Version() {
+		t.Fatalf("rel history after rollback = %d rows, want the row at version %d", len(relHistory), r.Version())
+	}
+	if got, _ := relHistory[0].GetProperty("state"); got != "before" {
+		t.Fatalf("rel history state after rollback = %v, want before", got)
 	}
 }
 
@@ -947,20 +969,15 @@ func TestGraphTx_UpdateRollbackMaterializesWhenCurrentVersionHistoryExists(t *te
 	if len(tx.updatedNodes) != 1 {
 		t.Fatalf("updated node snapshots = %d, want 1", len(tx.updatedNodes))
 	}
-	if tx.updatedNodes[0].useHistoryTrim {
-		t.Fatal("current-version node history used trim on update; want materialized history")
-	}
-	if len(tx.updatedNodes[0].history) != 1 {
-		t.Fatalf("node history snapshot length = %d, want 1", len(tx.updatedNodes[0].history))
+	// RELHIST P1: the trim point and the row at the current version only.
+	if ns := tx.updatedNodes[0]; !ns.useHistoryTrim || len(ns.history) != 0 || len(ns.above) != 1 || ns.above[0].Version() != a.Version() {
+		t.Fatalf("node snapshot: trim %v, %d whole-chain rows, %d above; want the trim point and the row at version %d", ns.useHistoryTrim, len(ns.history), len(ns.above), a.Version())
 	}
 	if len(tx.updatedRels) != 1 {
 		t.Fatalf("updated rel snapshots = %d, want 1", len(tx.updatedRels))
 	}
-	if tx.updatedRels[0].useHistoryTrim {
-		t.Fatal("current-version rel history used trim on update; want materialized history")
-	}
-	if len(tx.updatedRels[0].history) != 1 {
-		t.Fatalf("rel history snapshot length = %d, want 1", len(tx.updatedRels[0].history))
+	if rs := tx.updatedRels[0]; !rs.useHistoryTrim || len(rs.history) != 0 || len(rs.above) != 1 || rs.above[0].Version() != r.Version() {
+		t.Fatalf("rel snapshot: trim %v, %d whole-chain rows, %d above; want the trim point and the row at version %d", rs.useHistoryTrim, len(rs.history), len(rs.above), r.Version())
 	}
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("Rollback: %v", err)

@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **RELHIST P1** (sigma's cut-10 profile: copyRelHistory under the tx snapshot 16.1 GB of 160 GB; a fix, no new
+  exported name). A `GraphTx` rollback snapshot keeps the entity's current version and copies only the history rows at
+  or above it, one page read, on every store that pages history (memory, badger, tiered, sharded). Before, a tx update
+  of an entity with rows above its current version (left by a correction or a whole-axis update, no head entry)
+  copied its whole history on every store, and on tiered every tx delete of a node or relationship did too. Rows
+  copied at 10 / 100 versions: delete 9 / 99 -> 0, node delete with a relationship 18 / 198 -> 0, update after a
+  correction 11 / 101 -> 2. Rollback restores the same state: on memory and badger a trim plus the copied rows, on
+  tiered and sharded the rows below read at rollback plus the copied rows. Tests `TestRELHIST*` (tiered reference,
+  event, cold-shard and archive placements; `tasks/evidence/RELHIST/`).
 - **BATCHFAIL** (BATCHIDX review; a fix, no new exported name). A node create whose vector-index apply fails leaves
   the store as before the call, on memory and badger, `PutNodesBatch` and `PutNode` alike: every node's vector entries
   go in before any other mutation and are withdrawn on a failure. Before, a failure at node k of a batch left the

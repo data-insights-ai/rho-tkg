@@ -72,7 +72,7 @@ func relhistBuild(t *testing.T, g *Core, ts *tiered.Store, label string, version
 func (f *relhistFixture) correct(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	n, err := f.ts.GetNode(f.a)
+	n, err := f.g.store.GetNode(f.a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func (f *relhistFixture) correct(t *testing.T) {
 	if _, err := f.g.Temporal.SetNodeVersionInterval(ctx, f.a, vf-1000, vf-500, map[string]any{"k": int64(-7)}); err != nil {
 		t.Fatal(err)
 	}
-	r, err := f.ts.GetRelationship(f.rel)
+	r, err := f.g.store.GetRelationship(f.rel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,30 +104,30 @@ func (f *relhistFixture) dump(t *testing.T) string {
 	}
 	for _, id := range []types.NodeID{f.a, f.b} {
 		fmt.Fprintf(&sb, "\nnode %v:", id)
-		if n, err := f.ts.GetNode(id); err != nil {
+		if n, err := f.g.store.GetNode(id); err != nil {
 			fmt.Fprintf(&sb, " current %v", err)
 		} else {
 			fmt.Fprintf(&sb, " current v%d %s", n.Version(), enc(storeutil.MarshalNodeWire(n)))
 		}
-		hist, err := f.ts.GetNodeHistory(id)
+		hist, err := f.g.store.GetNodeHistory(id)
 		if err != nil {
 			fmt.Fprintf(&sb, " history %v", err)
 		}
 		for _, h := range hist {
 			fmt.Fprintf(&sb, "\n  v%d %s", h.Version(), enc(storeutil.MarshalNodeWire(h)))
 		}
-		out, err := f.ts.OutgoingRelationships(id, 0)
+		out, err := f.g.store.OutgoingRelationships(id, 0)
 		fmt.Fprintf(&sb, "\n  out %s %v", relhistRelIDs(out), err)
-		in, err := f.ts.IncomingRelationships(id, 0)
+		in, err := f.g.store.IncomingRelationships(id, 0)
 		fmt.Fprintf(&sb, "\n  in %s %v", relhistRelIDs(in), err)
 	}
 	fmt.Fprintf(&sb, "\nrel %v:", f.rel)
-	if r, err := f.ts.GetRelationship(f.rel); err != nil {
+	if r, err := f.g.store.GetRelationship(f.rel); err != nil {
 		fmt.Fprintf(&sb, " current %v", err)
 	} else {
 		fmt.Fprintf(&sb, " current v%d %s", r.Version(), enc(storeutil.MarshalRelWire(r)))
 	}
-	hist, err := f.ts.GetRelHistory(f.rel)
+	hist, err := f.g.store.GetRelHistory(f.rel)
 	if err != nil {
 		fmt.Fprintf(&sb, " history %v", err)
 	}
@@ -138,7 +138,7 @@ func (f *relhistFixture) dump(t *testing.T) string {
 	fmt.Fprintf(&sb, "\nlabel %s %v", relhistNodeIDs(byLabel), err)
 	byType, err := f.g.Rels.ByType("OBSERVES", storepkg.QueryOpts{})
 	fmt.Fprintf(&sb, "\ntype %s %v", relhistRelIDs(byType), err)
-	n, err := f.ts.GetNode(f.a)
+	n, err := f.g.store.GetNode(f.a)
 	if err == nil {
 		k, _ := n.GetProperty("k")
 		byProp, err := f.g.Nodes.ByLabelAndProperty(f.label, "k", k, storepkg.QueryOpts{})
@@ -215,6 +215,13 @@ func relhistOps() []relhistOp {
 				return err
 			}
 			_, err = tx.ImportRelationshipWithID(context.Background(), f.rel, "OBSERVES", a, b, map[string]any{"w": int64(5000)})
+			return err
+		}},
+		{"delete then re-import node", func(tx *GraphTx, f *relhistFixture) error {
+			if err := tx.DeleteNode(f.a); err != nil {
+				return err
+			}
+			_, err := tx.ImportNodeWithID(context.Background(), f.a, []string{f.label}, map[string]any{"k": int64(5000)})
 			return err
 		}},
 	}
@@ -323,8 +330,9 @@ func relhistArchiveFixture(t *testing.T, above bool) *relhistFixture {
 
 // TestRELHISTTxRollbackRestoresTiered: a rolled-back GraphTx leaves every
 // row, history row, adjacency entry and index answer as before the tx, on
-// every tiered placement, with and without history rows above the current
-// version. Guards the snapshot change; passes before it.
+// every tiered placement (rewrite at rollback) and on memory and badger (the
+// rollback trim), with and without history rows above the current version.
+// Guards the snapshot change; passes before it.
 func TestRELHISTTxRollbackRestoresTiered(t *testing.T) {
 	t.Parallel()
 	placements := []struct {
@@ -342,6 +350,22 @@ func TestRELHISTTxRollbackRestoresTiered(t *testing.T) {
 		}},
 		{"cold shard", true, relhistColdFixture},
 		{"archive", false, relhistArchiveFixture},
+		// The rollback-trim stores: one trim plus the copied rows. Without a
+		// head entry (evicted, or a chain it refuses) every update snapshot
+		// takes that path; with one, an update keeps the 68b shape.
+		{"memory", false, func(t *testing.T, above bool) *relhistFixture {
+			return relhistBuild(t, newTxTestGraph(t), nil, "Signal", 4, above)
+		}},
+		{"memory without head entries", false, func(t *testing.T, above bool) *relhistFixture {
+			g := newTxTestGraph(t)
+			g.headCacheOff = true
+			return relhistBuild(t, g, nil, "Signal", 4, above)
+		}},
+		{"badger without head entries", false, func(t *testing.T, above bool) *relhistFixture {
+			g, _ := newBadgerCoreForIndexes(t)
+			g.headCacheOff = true
+			return relhistBuild(t, g, nil, "Signal", 4, above)
+		}},
 	}
 	for _, p := range placements {
 		for _, above := range []bool{false, true} {

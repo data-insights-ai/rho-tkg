@@ -27,6 +27,10 @@ type nodeSnapshot struct {
 	// above historyKeepTo. At or below historyTrimFrom: none kept.
 	historyKeepTo  uint32
 	useHistoryTrim bool
+	// above (RELHIST P1): the rows at or above historyTrimFrom before the tx,
+	// copied when there were any (historyKeepTo 0). Rollback removes every row
+	// from historyTrimFrom on and puts these back.
+	above []*types.Node
 }
 
 // relSnapshot captures pre-mutation state for rollback.
@@ -37,6 +41,7 @@ type relSnapshot struct {
 	historyTrimFrom uint32                // First history version written by this tx for the entity
 	historyKeepTo   uint32                // see nodeSnapshot
 	useHistoryTrim  bool
+	above           []*types.Relationship // see nodeSnapshot
 }
 
 // deletedNodeSnapshot captures a deleted node and its cascade-deleted relationships.
@@ -45,6 +50,7 @@ type deletedNodeSnapshot struct {
 	nodeHistory     []*types.Node
 	historyTrimFrom uint32
 	useHistoryTrim  bool
+	nodeAbove       []*types.Node        // the rows at or above historyTrimFrom before the tx (see nodeSnapshot.above)
 	rels            []deletedRelSnapshot // cascade-deleted rels
 }
 
@@ -53,6 +59,7 @@ type deletedRelSnapshot struct {
 	history         []*types.Relationship
 	historyTrimFrom uint32
 	useHistoryTrim  bool
+	above           []*types.Relationship // see deletedNodeSnapshot.nodeAbove
 }
 
 type opCounterSnapshot struct {
@@ -324,12 +331,26 @@ func (tx *GraphTx) snapshotCurrentNodeLocked(node *types.Node) error {
 		})
 		return nil
 	}
-	// No history row at or above the current row: the tx's rows are the
-	// current row moved into history and those above it, so the snapshot keeps
-	// the trim point only. A store without the rollback trim (tiered, sharded)
-	// rewrites the pre-tx rows at rollback (removeNodeTxRows) instead of every
-	// first write copying the chain (TXSNAP: sigma's session stamp on tiered,
-	// O(versions) per Tx).
+	// No head entry: the snapshot keeps the trim point and the rows at or
+	// above it (RELHIST P1: one page, empty unless a bounded correction left
+	// rows above the current one; the tx writes no row below it). A store
+	// without the rollback trim (tiered, sharded) rewrites the pre-tx rows at
+	// rollback instead of every first write copying the chain (TXSNAP:
+	// sigma's session stamp on tiered, O(versions) per Tx; RELHIST: sigma's
+	// cut 10, the copy after a correction).
+	if above, paged, err := tx.g.snapshotNodeHistoryFrom(types.NodeID(id), node.Version()); err != nil {
+		return err
+	} else if paged {
+		tx.snapshotSet[key] = true
+		tx.updatedNodes = append(tx.updatedNodes, nodeSnapshot{
+			id:              id,
+			prev:            prev,
+			historyTrimFrom: node.Version(),
+			useHistoryTrim:  true,
+			above:           above,
+		})
+		return nil
+	}
 	if found, err := tx.nodeHistoryAtOrAbove(types.NodeID(id), node.Version()); err != nil {
 		return err
 	} else if !found {
@@ -389,7 +410,22 @@ func (tx *GraphTx) snapshotCurrentRelLocked(rel *types.Relationship) error {
 		})
 		return nil
 	}
-	// No history row at or above the current row — see snapshotCurrentNodeLocked.
+	// The trim point and the rows at or above it — see snapshotCurrentNodeLocked.
+	// (A Model-A foreign-incoming stub, ADR-0010, never gets here: its
+	// slot-routed current-row read fails with ErrSlotNotLocal first.)
+	if above, paged, err := tx.g.snapshotRelHistoryFrom(types.RelID(id), rel.Version()); err != nil {
+		return err
+	} else if paged {
+		tx.snapshotSet[key] = true
+		tx.updatedRels = append(tx.updatedRels, relSnapshot{
+			id:              id,
+			prev:            prev,
+			historyTrimFrom: rel.Version(),
+			useHistoryTrim:  true,
+			above:           above,
+		})
+		return nil
+	}
 	if found, err := tx.relHistoryAtOrAbove(types.RelID(id), rel.Version()); err != nil {
 		return err
 	} else if !found {
@@ -422,6 +458,46 @@ func (c *Core) copyNodeHistory(id types.NodeID) ([]*types.Node, error) {
 		c.historyCopy(len(history))
 	}
 	return copyNodeHistoryRows(history), nil
+}
+
+// snapshotNodeHistoryFrom copies node id's history rows at or above version for a
+// rollback snapshot: one page read. paged is false when the store pages no
+// history; the caller then decides from the whole chain.
+func (c *Core) snapshotNodeHistoryFrom(id types.NodeID, version uint32) (rows []*types.Node, paged bool, err error) {
+	pager := historyVersionPageCapability(c.store)
+	if pager == nil {
+		return nil, false, nil
+	}
+	page, err := c.nodeHistoryVersionsFrom(pager, id, version, 0)
+	if err != nil {
+		return nil, false, err
+	}
+	if c.historyCopy != nil {
+		c.historyCopy(len(page))
+	}
+	if len(page) == 0 {
+		return nil, true, nil
+	}
+	return copyNodeHistoryRows(page), true, nil
+}
+
+// snapshotRelHistoryFrom mirrors snapshotNodeHistoryFrom for relationships.
+func (c *Core) snapshotRelHistoryFrom(id types.RelID, version uint32) (rows []*types.Relationship, paged bool, err error) {
+	pager := historyVersionPageCapability(c.store)
+	if pager == nil {
+		return nil, false, nil
+	}
+	page, err := c.relHistoryVersionsFrom(pager, id, version, 0)
+	if err != nil {
+		return nil, false, err
+	}
+	if c.historyCopy != nil {
+		c.historyCopy(len(page))
+	}
+	if len(page) == 0 {
+		return nil, true, nil
+	}
+	return copyRelHistoryRows(page), true, nil
 }
 
 func copyNodeHistoryRows(history []*types.Node) []*types.Node {
@@ -1252,19 +1328,22 @@ func (tx *GraphTx) restoreRelHistory(id types.RelID, history []*types.Relationsh
 
 func (tx *GraphTx) restoreDeletedNodeHistory(snap deletedNodeSnapshot) error {
 	if snap.useHistoryTrim {
-		return tx.g.trimNodeHistoryFromScopedAware(tx.scopeToken, snap.node.ID(), snap.historyTrimFrom)
+		return tx.restoreNodeHistoryFrom(snap.node.ID(), snap.historyTrimFrom, snap.nodeAbove)
 	}
 	return tx.restoreNodeHistory(snap.node.ID(), snap.nodeHistory)
 }
 
 func (tx *GraphTx) restoreDeletedRelHistory(snap deletedRelSnapshot) error {
 	if snap.useHistoryTrim {
-		return tx.g.trimRelHistoryFromScopedAware(tx.scopeToken, snap.rel.ID(), snap.historyTrimFrom)
+		return tx.restoreRelHistoryFrom(snap.rel.ID(), snap.historyTrimFrom, snap.above)
 	}
 	return tx.restoreRelHistory(snap.rel.ID(), snap.history)
 }
 
 func (tx *GraphTx) restoreNodeSnapshotHistory(id types.NodeID, snap nodeSnapshot) error {
+	if snap.useHistoryTrim && len(snap.above) > 0 {
+		return tx.restoreNodeHistoryFrom(id, snap.historyTrimFrom, snap.above)
+	}
 	if snap.useHistoryTrim {
 		return tx.removeNodeTxRows(id, snap.historyTrimFrom, snap.historyKeepTo)
 	}
@@ -1272,10 +1351,57 @@ func (tx *GraphTx) restoreNodeSnapshotHistory(id types.NodeID, snap nodeSnapshot
 }
 
 func (tx *GraphTx) restoreRelSnapshotHistory(id types.RelID, snap relSnapshot) error {
+	if snap.useHistoryTrim && len(snap.above) > 0 {
+		return tx.restoreRelHistoryFrom(id, snap.historyTrimFrom, snap.above)
+	}
 	if snap.useHistoryTrim {
 		return tx.removeRelTxRows(id, snap.historyTrimFrom, snap.historyKeepTo)
 	}
 	return tx.restoreRelHistory(id, snap.history)
+}
+
+// restoreNodeHistoryFrom gives node id its pre-tx history back from a trim
+// snapshot: every row at or above from removed, then the copied rows that were
+// there (above, ascending) put back; the rows below from are the pre-tx ones.
+// With the rollback trim that is one trim and len(above) puts; without it
+// (tiered, sharded) the chain is rewritten from the rows below from read now.
+func (tx *GraphTx) restoreNodeHistoryFrom(id types.NodeID, from uint32, above []*types.Node) error {
+	if tx.g.historyTrim == nil {
+		history, err := tx.g.getNodeHistory(id)
+		if err != nil {
+			return err
+		}
+		return tx.restoreNodeHistory(id, append(nodeHistoryBeforeVersion(history, from), above...))
+	}
+	if err := tx.g.trimNodeHistoryFromScopedAware(tx.scopeToken, id, from); err != nil {
+		return err
+	}
+	for _, n := range above {
+		if err := tx.g.putNodeVersionScopedAwareToken(tx.scopeToken, id, n.Version(), n); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// restoreRelHistoryFrom mirrors restoreNodeHistoryFrom for relationships.
+func (tx *GraphTx) restoreRelHistoryFrom(id types.RelID, from uint32, above []*types.Relationship) error {
+	if tx.g.historyTrim == nil {
+		history, err := tx.g.getRelHistory(id)
+		if err != nil {
+			return err
+		}
+		return tx.restoreRelHistory(id, append(relHistoryBeforeVersion(history, from), above...))
+	}
+	if err := tx.g.trimRelHistoryFromScopedAware(tx.scopeToken, id, from); err != nil {
+		return err
+	}
+	for _, r := range above {
+		if err := tx.g.putRelVersionScopedAwareToken(tx.scopeToken, id, r.Version(), r); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // removeNodeTxRows removes the history rows the tx wrote for id: the row at

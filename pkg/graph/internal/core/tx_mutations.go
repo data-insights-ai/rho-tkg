@@ -416,11 +416,11 @@ func (tx *GraphTx) deleteNodeAt(id types.NodeID, spec tombstoneSpec) error {
 		}
 		return err
 	}
-	nodeCopy := node.DeepCopy()
-	nodeHistory, nodeHistoryTrimFrom, useNodeHistoryTrim, err := tx.deletedNodeHistorySnapshot(id, node)
+	nodeSnap, err := tx.deletedNodeHistorySnapshot(id, node)
 	if err != nil {
 		return err
 	}
+	nodeSnap.node = node.DeepCopy()
 
 	// Snapshot all connected relationships before cascade deletion.
 	outRels, err := tx.g.store.OutgoingRelationships(id, 0)
@@ -452,16 +452,12 @@ func (tx *GraphTx) deleteNodeAt(id types.NodeID, spec tombstoneSpec) error {
 			continue
 		}
 		seen[rid] = true
-		history, historyTrimFrom, useHistoryTrim, err := tx.deletedRelHistorySnapshot(r.ID(), r)
+		relSnap, err := tx.deletedRelHistorySnapshot(r.ID(), r)
 		if err != nil {
 			return err
 		}
-		relCopies = append(relCopies, deletedRelSnapshot{
-			rel:             r.DeepCopy(),
-			history:         history,
-			historyTrimFrom: historyTrimFrom,
-			useHistoryTrim:  useHistoryTrim,
-		})
+		relSnap.rel = r.DeepCopy()
+		relCopies = append(relCopies, relSnap)
 	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
@@ -475,13 +471,8 @@ func (tx *GraphTx) deleteNodeAt(id types.NodeID, spec tombstoneSpec) error {
 	for _, r := range relCopies {
 		tx.trackDeletedRelLocked(r.rel.ID().SnowflakeID())
 	}
-	tx.deletedNodes = append(tx.deletedNodes, deletedNodeSnapshot{
-		node:            nodeCopy,
-		nodeHistory:     nodeHistory,
-		historyTrimFrom: nodeHistoryTrimFrom,
-		useHistoryTrim:  useNodeHistoryTrim,
-		rels:            relCopies,
-	})
+	nodeSnap.rels = relCopies
+	tx.deletedNodes = append(tx.deletedNodes, nodeSnap)
 
 	return nil
 }
@@ -516,11 +507,11 @@ func (tx *GraphTx) deleteRelationshipAtLocked(id types.RelID, spec tombstoneSpec
 		}
 		return err
 	}
-	relCopy := rel.DeepCopy()
-	history, historyTrimFrom, useHistoryTrim, err := tx.deletedRelHistorySnapshot(id, rel)
+	relSnap, err := tx.deletedRelHistorySnapshot(id, rel)
 	if err != nil {
 		return err
 	}
+	relSnap.rel = rel.DeepCopy()
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
 	if err := tx.g.deleteRelationshipInternal(tx.doorCtx(), id, spec); err != nil {
@@ -529,12 +520,7 @@ func (tx *GraphTx) deleteRelationshipAtLocked(id types.RelID, spec tombstoneSpec
 
 	tx.g.publishEventNow(eventspkg.EventRelDelete, types.EntityID(id), eventspkg.PriorityCritical)
 	tx.trackDeletedRelLocked(id.SnowflakeID())
-	tx.deletedRels = append(tx.deletedRels, deletedRelSnapshot{
-		rel:             relCopy,
-		history:         history,
-		historyTrimFrom: historyTrimFrom,
-		useHistoryTrim:  useHistoryTrim,
-	})
+	tx.deletedRels = append(tx.deletedRels, relSnap)
 
 	return nil
 }
@@ -654,47 +640,71 @@ func (tx *GraphTx) UpdateRelationshipWithTx(id types.RelID, updates map[string]a
 
 // --- end of the W4 relationship caller-instant block -----------------------
 
-func (tx *GraphTx) deletedNodeHistorySnapshot(id types.NodeID, node *types.Node) ([]*types.Node, uint32, bool, error) {
+// deletedNodeHistorySnapshot is the history half of a deleted node's rollback
+// snapshot (RELHIST P1). On a store that pages history it keeps only the rows
+// at or above the current version — one page, empty unless a bounded
+// correction left rows above it — and Rollback removes every row from that
+// version on and puts them back (restoreNodeHistoryFrom): the rows below are
+// never written by a tx (corrections append, a delete or update moves the
+// current row in at its own version). Without a pager: the whole chain, or
+// the trim point alone where no row is at or above the current version.
+func (tx *GraphTx) deletedNodeHistorySnapshot(id types.NodeID, node *types.Node) (deletedNodeSnapshot, error) {
+	if above, paged, err := tx.g.snapshotNodeHistoryFrom(id, node.Version()); err != nil {
+		return deletedNodeSnapshot{}, err
+	} else if paged {
+		return deletedNodeSnapshot{historyTrimFrom: node.Version(), useHistoryTrim: true, nodeAbove: above}, nil
+	}
 	if tx.g.historyTrim == nil {
 		history, err := tx.g.copyNodeHistory(id)
-		return history, 0, false, err
+		return deletedNodeSnapshot{nodeHistory: history}, err
 	}
 	if found, err := tx.nodeHistoryAtOrAbove(id, node.Version()); err != nil {
-		return nil, 0, false, err
+		return deletedNodeSnapshot{}, err
 	} else if found {
 		history, err := tx.g.copyNodeHistory(id)
-		return history, 0, false, err
+		return deletedNodeSnapshot{nodeHistory: history}, err
 	}
-	return nil, node.Version(), true, nil
+	return deletedNodeSnapshot{historyTrimFrom: node.Version(), useHistoryTrim: true}, nil
 }
 
-func (tx *GraphTx) deletedRelHistorySnapshot(id types.RelID, rel *types.Relationship) ([]*types.Relationship, uint32, bool, error) {
+// deletedRelHistorySnapshot mirrors deletedNodeHistorySnapshot for
+// relationships.
+func (tx *GraphTx) deletedRelHistorySnapshot(id types.RelID, rel *types.Relationship) (deletedRelSnapshot, error) {
+	above, paged, err := tx.g.snapshotRelHistoryFrom(id, rel.Version())
+	if errors.Is(err, storepkg.ErrSlotNotLocal) {
+		// A Model-A foreign-incoming stub (ADR-0010): adjacency-only, foreign
+		// rel-ID slot, no local history to snapshot for rollback.
+		return deletedRelSnapshot{}, nil
+	} else if err != nil {
+		return deletedRelSnapshot{}, err
+	} else if paged {
+		return deletedRelSnapshot{historyTrimFrom: rel.Version(), useHistoryTrim: true, above: above}, nil
+	}
 	if tx.g.historyTrim == nil {
 		history, err := tx.g.copyRelHistory(id)
 		if errors.Is(err, storepkg.ErrSlotNotLocal) {
-			// A Model-A foreign-incoming stub (ADR-0010): adjacency-only, foreign
-			// rel-ID slot, no local history to snapshot for rollback.
-			return nil, 0, false, nil
+			return deletedRelSnapshot{}, nil // the stub, as above
 		}
-		return history, 0, false, err
+		return deletedRelSnapshot{history: history}, err
 	}
 	if found, err := tx.relHistoryAtOrAbove(id, rel.Version()); err != nil {
-		return nil, 0, false, err
+		return deletedRelSnapshot{}, err
 	} else if found {
 		history, err := tx.g.copyRelHistory(id)
-		return history, 0, false, err
+		return deletedRelSnapshot{history: history}, err
 	}
-	return nil, rel.Version(), true, nil
+	return deletedRelSnapshot{historyTrimFrom: rel.Version(), useHistoryTrim: true}, nil
 }
 
 // nodeHistoryAtOrAbove reports whether node id has a history row at version
 // or above it. The rollback trim (TrimNodeHistoryFrom(version)) removes every
-// row at or above version, so it is a sound snapshot only when there is none:
-// a row at version would be lost, and so would a cascade row above the
-// current version (a bounded SetVersionInterval that left the current row in
-// place, backlog 19) — the snapshot then takes the full-copy path. Exact
-// across a compaction gap above the current row (nodeHasHistoryFrom, backlog
-// 70): one page read of at most one row on the rollback-trim stores.
+// row at or above version, so the trim point alone is a sound snapshot only
+// when there is none: a row at version would be lost, and so would a cascade
+// row above the current version (a bounded SetVersionInterval that left the
+// current row in place, backlog 19). Exact across a compaction gap above the
+// current row (nodeHasHistoryFrom, backlog 70). Used on a store without a
+// history pager; with one the snapshot reads those rows directly
+// (snapshotNodeHistoryFrom).
 func (tx *GraphTx) nodeHistoryAtOrAbove(id types.NodeID, version uint32) (bool, error) {
 	return tx.g.nodeHasHistoryFrom(id, version)
 }
@@ -704,6 +714,10 @@ func (tx *GraphTx) relHistoryAtOrAbove(id types.RelID, version uint32) (bool, er
 	return tx.g.relHasHistoryFrom(id, version)
 }
 
+// materializeDeletedNodeHistoryLocked turns a deleted node's trim snapshot
+// into the full pre-tx chain before the tx re-imports the ID: the rows below
+// the trim point as they are now (the tx wrote none there) plus the copied
+// rows at or above it.
 func (tx *GraphTx) materializeDeletedNodeHistoryLocked(id types.NodeID) error {
 	for i := range tx.deletedNodes {
 		snap := &tx.deletedNodes[i]
@@ -714,7 +728,8 @@ func (tx *GraphTx) materializeDeletedNodeHistoryLocked(id types.NodeID) error {
 		if err != nil {
 			return err
 		}
-		snap.nodeHistory = nodeHistoryBeforeVersion(history, snap.historyTrimFrom)
+		snap.nodeHistory = append(nodeHistoryBeforeVersion(history, snap.historyTrimFrom), snap.nodeAbove...)
+		snap.nodeAbove = nil
 		snap.useHistoryTrim = false
 		return nil
 	}
@@ -745,7 +760,8 @@ func (tx *GraphTx) materializeDeletedRelSnapshotHistoryLocked(snap *deletedRelSn
 	if err != nil {
 		return err
 	}
-	snap.history = relHistoryBeforeVersion(history, snap.historyTrimFrom)
+	snap.history = append(relHistoryBeforeVersion(history, snap.historyTrimFrom), snap.above...)
+	snap.above = nil
 	snap.useHistoryTrim = false
 	return nil
 }
