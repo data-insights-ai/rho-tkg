@@ -3,8 +3,10 @@ package core
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -23,7 +25,12 @@ const headLendVersions = 6
 // every version wins one segment.
 func headLendGraph(t *testing.T) (*Core, types.NodeID, types.RelID) {
 	t.Helper()
-	g, err := New(Config{Store: memory.New()})
+	return headLendGraphOn(t, memory.New())
+}
+
+func headLendGraphOn(t *testing.T, store storepkg.MandatoryStore) (*Core, types.NodeID, types.RelID) {
+	t.Helper()
+	g, err := New(Config{Store: store})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,12 +267,123 @@ func TestEffectiveLentRowsRefuseMutation(t *testing.T) {
 	if k := propK(row.GetProperty("k")); k != 0 {
 		t.Fatalf("a write to GetNodeVersion's copy reached the stored row: k = %v", k)
 	}
+	// The point state doors keep returning the caller's own mutable row.
+	at, err := g.Temporal.NodeAtTx(nid, 1500, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if at == row || at.IsFrozen() || propK(at.GetProperty("k")) != 0 {
+		t.Fatalf("NodeAtTx = %p frozen=%v; want a mutable copy of version 1", at, at.IsFrozen())
+	}
+	_, rid := headLendRel(t, g)
+	rat, err := g.Temporal.RelAtTx(rid, 1500, g.readNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rat.IsFrozen() || propK(rat.GetProperty("k")) != 0 {
+		t.Fatalf("RelAtTx frozen=%v; want a mutable copy of version 1", rat.IsFrozen())
+	}
+}
+
+// headLendRel is headLendGraph's relationship (the first one stored).
+func headLendRel(t *testing.T, g *Core) (*types.Relationship, types.RelID) {
+	t.Helper()
+	var out *types.Relationship
+	if err := g.Temporal.ForEachRelEffective(g.readNow(), func(s temporal.RelSegment) bool {
+		out = s.Rel
+		return false
+	}); err != nil || out == nil {
+		t.Fatal("no relationship", err)
+	}
+	return out, out.ID()
+}
+
+// metaWrapStore is a memory store behind a wrapper: not trusted (its rows
+// are validated and copied), but declaring the skeleton reads so the
+// effective doors take the hydrating path. It inherits LendNodeVersion.
+type metaWrapStore struct{ *memory.Store }
+
+func (s *metaWrapStore) NodeHistoryTemporalMeta(id types.NodeID) ([]storepkg.VersionTemporalMeta, error) {
+	return s.Store.NodeHistoryTemporalMeta(id)
+}
+
+func (s *metaWrapStore) RelHistoryTemporalMeta(id types.RelID) ([]storepkg.VersionTemporalMeta, error) {
+	return s.Store.RelHistoryTemporalMeta(id)
+}
+
+// TestEffectiveUntrustedStoreCopiesVersions: a store the core does not trust
+// lends nothing, even when it offers the lending capability: each read hands
+// out its own validated copy. Mutation: dropping the trust check in
+// lentNodeVersion / lentRelVersion lends the wrapper's rows.
+func TestEffectiveUntrustedStoreCopiesVersions(t *testing.T) {
+	t.Parallel()
+	g, nid, rid := headLendGraphOn(t, &metaWrapStore{memory.New()})
+	if g.storeRowsTrust || g.temporalMetaHistory == nil {
+		t.Fatalf("trust=%v meta=%v: the wrapper does not test the untrusted hydrating path", g.storeRowsTrust, g.temporalMetaHistory != nil)
+	}
+	pin := g.readNow()
+	read := func() []temporal.NodeSegment {
+		s, err := g.Temporal.NodeEffectiveTimelines(nid, []types.Instant{pin})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s[0]
+	}
+	a, b := read(), read()
+	checkNodeSegs(t, "untrusted NodeEffectiveTimelines", a)
+	if n := copiedNodeRows(a, b); n != headLendVersions-1 {
+		t.Errorf("untrusted store: %d of %d history rows copied, want all", n, headLendVersions-1)
+	}
+	readRel := func() []temporal.RelSegment {
+		s, err := g.Temporal.RelEffectiveTimelines(rid, []types.Instant{pin})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s[0]
+	}
+	ra, rb := readRel(), readRel()
+	checkRelSegs(t, "untrusted RelEffectiveTimelines", ra)
+	if n := copiedRelRows(ra, rb); n != headLendVersions-1 {
+		t.Errorf("untrusted store: %d of %d rel history rows copied, want all", n, headLendVersions-1)
+	}
+}
+
+// TestEffectiveLentReadsCounted: a lent version read is a history read of one
+// row (Core.historyRead, the seam the growth tests count folds with): a
+// head-hit read of each entity reports one per history winner.
+func TestEffectiveLentReadsCounted(t *testing.T) {
+	g, nid, rid := headLendGraph(t)
+	pin := g.readNow()
+	if _, err := g.Temporal.NodeEffectiveTimeline(nid, pin); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Temporal.RelEffectiveTimeline(rid, pin); err != nil {
+		t.Fatal(err)
+	}
+	var reads []int
+	g.historyRead = func(rows int) { reads = append(reads, rows) }
+	defer func() { g.historyRead = nil }()
+	if _, err := g.Temporal.NodeEffectiveTimeline(nid, pin); err != nil {
+		t.Fatal(err)
+	}
+	if want := slices.Repeat([]int{1}, headLendVersions-1); !slices.Equal(reads, want) {
+		t.Errorf("node head read reported history reads %v, want %v", reads, want)
+	}
+	reads = nil
+	if _, err := g.Temporal.RelEffectiveTimeline(rid, pin); err != nil {
+		t.Fatal(err)
+	}
+	if want := slices.Repeat([]int{1}, headLendVersions-1); !slices.Equal(reads, want) {
+		t.Errorf("rel head read reported history reads %v, want %v", reads, want)
+	}
 }
 
 // TestEffectiveHeadReadAllocs: a head-hit read of a node with
 // headLendVersions-1 history winners allocates no row. Before HEADLEND each
-// winner's DeepCopy cost >= 3 allocations (row, properties, temporal block);
-// the threshold allows the segment slice and fixed overhead only.
+// winner's DeepCopy cost 4 allocations (row, properties, temporal block,
+// integrity): 25 a read here, 5 after it (the segment slice and fixed
+// overhead, independent of the versions). The threshold leaves 3 of slack
+// and still fails on a single copied winner.
 func TestEffectiveHeadReadAllocs(t *testing.T) {
 	g, nid, _ := headLendGraph(t)
 	pin := g.readNow()
@@ -282,7 +400,7 @@ func TestEffectiveHeadReadAllocs(t *testing.T) {
 		t.Fatal("no head hit")
 	}
 	t.Logf("head-hit NodeEffectiveTimeline, %d versions: %.0f allocs/read", headLendVersions, allocs)
-	if limit := float64(headLendVersions - 1); allocs > limit {
+	if limit := float64(8); allocs > limit {
 		t.Errorf("%.0f allocs per head read, want <= %.0f (a copy per history winner)", allocs, limit)
 	}
 }

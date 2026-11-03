@@ -174,6 +174,38 @@ func (r entityReads) nodeVersion(id types.NodeID, version uint32) (*types.Node, 
 	return r.c.trustedNodeVersion(id, version, n, err)
 }
 
+// lentNodeVersion is nodeVersion without the defensive copy where a trusted
+// store lends its frozen history row (store.VersionLendCapability, HEADLEND):
+// for a reader that only hands the row out frozen, such as an effective
+// timeline. A snapshot read, or a store that decodes the version beside the
+// current row (R37), reads as nodeVersion.
+func (r entityReads) lentNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
+	if r.snap == nil && r.c.storeRowsTrust {
+		if lender, ok := r.c.store.(storepkg.VersionLendCapability); ok {
+			n, err := lender.LendNodeVersion(id, version)
+			if r.c.historyRead != nil && err == nil {
+				r.c.historyRead(1)
+			}
+			return n, err
+		}
+	}
+	return r.nodeVersion(id, version)
+}
+
+// lentRelVersion is lentNodeVersion for relationships.
+func (r entityReads) lentRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
+	if r.snap == nil && r.c.storeRowsTrust {
+		if lender, ok := r.c.store.(storepkg.VersionLendCapability); ok {
+			rel, err := lender.LendRelVersion(id, version)
+			if r.c.historyRead != nil && err == nil {
+				r.c.historyRead(1)
+			}
+			return rel, err
+		}
+	}
+	return r.relVersion(id, version)
+}
+
 func (r entityReads) relVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	if r.snap == nil {
 		return r.c.getRelVersion(id, version)

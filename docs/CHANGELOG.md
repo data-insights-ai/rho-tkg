@@ -30,6 +30,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   value instead of per node: one lookup and one numeric parse a value, IDs sorted once and appended in runs, and on
   disk one token and one value encoding per value. The index state equals the per-node path's (equality tests over
   RAM, 0x0A, 0x0C member and composite entries; `tasks/evidence/BATCHIDX/`; bench pending a quiet machine).
+- **HEADLEND** (sigma, paged read-back: 1.2 GB of a 5.5 GB paging delta on memory; a minor: the optional
+  `store.VersionLendCapability` with memory `Store.LendNodeVersion` / `LendRelVersion` are new exported names). On the
+  memory store the effective timeline doors (`NodeEffectiveTimeline`, `...From`, `NodeEffectiveTimelines`, the page
+  and `ForEach...Effective` scans, and the relationship mirrors) hand out each winning history row as the store keeps
+  it instead of a DeepCopy per read, as they already did for the current row (row 120). The segment rows were and stay
+  frozen (`temporal.NodeSegment`); the doors' answers are unchanged, no caller changes anything. Memory history rows are
+  now stored frozen; `GetNodeVersion`, `GetNodeHistory` and the point state doors (`NodeAtTx`, ...) still return the
+  caller's own mutable copy. Badger and tiered are unchanged (they decode per read). A head-hit read of a 6-version
+  node: 25 -> 5 allocations (`tasks/evidence/HEADLEND/`).
 
 ## [4.101.0] - 2026-11-03
 

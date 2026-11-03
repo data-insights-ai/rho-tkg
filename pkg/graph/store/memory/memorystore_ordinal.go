@@ -115,19 +115,22 @@ func (ms *Store) storedRel(r *types.Relationship) *types.Relationship {
 	return r.CompactFrozenCopyWithOrdinals(ord, start, end)
 }
 
-// historyNode is the history row the store keeps for a version of n.
-// Every history row passes here; see storedNode. by, when not nil, is the
-// current row that replaced n (an update door's demoted row, ledger row 62).
+// historyNode is the frozen history row the store keeps for a version of n
+// (frozen so LendNodeVersion can hand it out; GetNodeVersion copies, which
+// thaws). Every history row passes here; see storedNode. by, when not nil, is
+// the current row that replaced n (an update door's demoted row, ledger row 62).
 func (ms *Store) historyNode(n, by *types.Node) *types.Node {
 	if by != nil {
 		ms.recordNodeReplacedLocked(n, by)
 	} else {
 		ms.recordNodeRowLocked(n, false)
 	}
-	return n.DeepCopyWithOrdinal(ms.nodeOrdinalLocked(n.ID()))
+	h := n.DeepCopyWithOrdinal(ms.nodeOrdinalLocked(n.ID()))
+	h.Freeze()
+	return h
 }
 
-// historyRel is the history row the store keeps for a version of r.
+// historyRel is the frozen history row the store keeps for a version of r.
 // Every history row passes here; see storedRel and historyNode.
 func (ms *Store) historyRel(r, by *types.Relationship) *types.Relationship {
 	if by != nil {
@@ -135,7 +138,9 @@ func (ms *Store) historyRel(r, by *types.Relationship) *types.Relationship {
 	} else {
 		ms.recordRelRowLocked(r, false)
 	}
-	return r.DeepCopyWithOrdinals(ms.relOrdinalLocked(r.ID(), r.TypeToken().Value()), 0, 0)
+	h := r.DeepCopyWithOrdinals(ms.relOrdinalLocked(r.ID(), r.TypeToken().Value()), 0, 0)
+	h.Freeze()
+	return h
 }
 
 // HasOrdinals is true: the memory store numbers every node and every
