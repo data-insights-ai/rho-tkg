@@ -71,10 +71,12 @@ func NewPropertyIndexWith(rangeCounts, elements bool) *PropertyIndex {
 }
 
 // NewPropertyIndexOnDisk creates the RAM handle of an index whose entries the
-// store keeps on disk (badger PropertyIndexOnDisk, PropertyIndexOnDiskLabels).
-func NewPropertyIndexOnDisk() *PropertyIndex {
+// store keeps on disk (badger PropertyIndexOnDisk, PropertyIndexOnDiskLabels),
+// keying each list element with elements (ELEMDISK).
+func NewPropertyIndexOnDisk(elements bool) *PropertyIndex {
 	pi := NewPropertyIndex()
 	pi.onDisk = true
+	pi.elements = elements
 	return pi
 }
 

@@ -9,6 +9,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -265,5 +266,41 @@ func TestMetaSetDurableRaisingTooLargeRefused(t *testing.T) {
 	esAfter(t, bs, "MetaSetDurableRaising", err, func() bool {
 		v, err := bs.MetaGet("zz_big")
 		return err == nil && v == nil
+	})
+}
+
+// ELEMDISK: an Elements index on disk keys each list element, so one element
+// past the key limit refuses the write before the ack, as a scalar does.
+func TestIndexKeyTooLargeRefusedForAListElement(t *testing.T) {
+	bs, err := New(Config{Dir: t.TempDir(), PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	if err := bs.CreatePropertyIndexWithOptions(7, "body", storecontract.PropertyIndexOptions{Elements: true}); err != nil {
+		t.Fatal(err)
+	}
+	n := esNode(10, 7, nil)
+	if err := n.SetProperty("body", []string{"small", strings.Repeat("x", 65_100)}); err != nil {
+		t.Fatal(err)
+	}
+	esAfter(t, bs, "PutNode", bs.PutNode(n), func() bool { _, err := bs.GetNode(n.ID()); return err != nil })
+	// A with-history door writes the member entries of the row it demotes,
+	// the caller's: one of its elements past the limit is refused too.
+	if err := bs.PutNode(esNode(11, 7, map[string]string{"body": "small"})); err != nil {
+		t.Fatal(err)
+	}
+	cur, err := bs.GetNode(types.NodeID(snowflake.ID(11)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := cur.DeepCopy()
+	if err := prev.SetProperty("body", []string{"small", strings.Repeat("x", 65_100)}); err != nil {
+		t.Fatal(err)
+	}
+	esAfter(t, bs, "ReplaceNodeWithHistory", bs.ReplaceNodeWithHistory(esNode(11, 7, map[string]string{"body": "next"}), 0, prev), func() bool {
+		n, err := bs.GetNode(types.NodeID(snowflake.ID(11)))
+		v, _ := n.GetProperty("body")
+		return err == nil && v == "small"
 	})
 }

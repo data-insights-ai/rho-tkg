@@ -162,9 +162,9 @@ func (bs *Store) nodeMemberOpsLocked(n *types.Node, id snowflake.ID) []writeOp {
 		if !def.members || !n.HasLabelTokenRaw(def.key.LabelToken) {
 			continue
 		}
-		if valueKey, _ := n.IndexablePropertyValueKey(def.key.PropertyKey); valueKey != "" {
+		forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
 			ops = bs.entityIndexOp(ops, storepkg.EntityIndexNodeMember, def.key.LabelToken, def.key.PropertyKey, valueKey, id, txFrom, writeOpSet)
-		}
+		})
 	}
 	return ops
 }
@@ -664,12 +664,14 @@ func (bs *Store) relCurrentCandidatesLocked(relTypeToken uint16, propertyKey str
 
 // entityBuildTarget is one definition an entity-index build fills: a
 // relationship definition (rel, scope its type), a node definition's member
-// entries (scope its label), or a composite node definition's current entries
+// entries (scope its label; elements, an Elements definition's per list
+// element, ELEMDISK), or a composite node definition's current entries
 // (composite its keys, head its entries' head; COMPDISK).
 type entityBuildTarget struct {
 	rel         bool
 	scope       uint16
 	propertyKey string
+	elements    bool
 	composite   []string
 	head        []byte
 }
@@ -750,8 +752,14 @@ func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op 
 							return err
 						}
 					}
-				} else if valueKey, _ := n.IndexablePropertyValueKey(t.propertyKey); valueKey != "" {
-					if err := emit(t, valueKey, id, txFrom, !hist); err != nil {
+				} else {
+					var err error
+					forEachDiskValueKey(n, t.propertyKey, t.elements, func(valueKey string) {
+						if err == nil {
+							err = emit(t, valueKey, id, txFrom, !hist)
+						}
+					})
+					if err != nil {
 						return err
 					}
 				}
@@ -818,7 +826,7 @@ func (bs *Store) entityIndexDropOpsLocked(rel bool, scope uint16, propertyKey st
 // written meanwhile, every member entry (a union, sound). A scan that
 // straddled a purge, an erasure or a drop (propTxGen) is redone.
 func (bs *Store) createRelPropertyIndexOnDiskLocked(key indexpkg.RelPropertyIndexKey) error {
-	liveIdx := indexpkg.NewPropertyIndexOnDisk()
+	liveIdx := indexpkg.NewPropertyIndexOnDisk(false)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.relPropertyIndexes[key] = liveIdx
 	bs.refreshRelDiskDefsLocked()
@@ -906,7 +914,7 @@ func (bs *Store) planEntityIndexOpen(txn *badgerv4.Txn) *entityIndexOpen {
 }
 
 // place decides one definition: true when it answers from 0x0C this open.
-func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey string) bool {
+func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey string, elements bool) bool {
 	kind := storepkg.EntityIndexNodeMember
 	if rel {
 		kind = storepkg.EntityIndexRelMember
@@ -920,7 +928,7 @@ func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey s
 		return false
 	}
 	p.stale = append(p.stale, bs.entityIndexHeads(rel, scope, propertyKey)...)
-	p.targets = append(p.targets, entityBuildTarget{rel: rel, scope: scope, propertyKey: propertyKey})
+	p.targets = append(p.targets, entityBuildTarget{rel: rel, scope: scope, propertyKey: propertyKey, elements: elements})
 	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{1}})
 	p.level = max(p.level, storepkg.EntityIndexStoreFormatVersion)
 	return true

@@ -123,17 +123,12 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
-### ELEMDISK (sigma 2 Nov, for PAGEBLOB): an Elements index on disk for labels in PropertyIndexOnDiskLabels
+### PAGEBLOB follow-ups (v4.99.0 shipped ELEMDISK and WRITEGROW, 3 Nov, on René's word outside the round, short tests and targeted race only)
 
-Status: asked, not built; a minor (badger accepts what it refuses today, a new key domain behind a format marker). Next on rho.
-
-sigma's block node lists its rows' keys and salted mask values as `[]int64` properties (`ov_bk`, `ov_bh<mask>`); a probe finds blocks by "list contains x" (`PropertyIndexOptions{Elements: true}`). badger refuses Elements on disk (badgerstore_index.go:50, badgerstore_property_disk.go:1022): the 0x0A keyspace is keyed by property key, shared by every label indexing it, so an element key would answer another label's equality probe. Plan: element entries in the same keyspace under their own payload domain tag (element of a numeric or raw value), one key per distinct element per node, the member entries and as-of reads of the plain index, written with the row. Blocks are written once per cut, never rewritten. The key count per paged row stays about today's (1 + 8-12 masks), without a node per row or RAM per element. Check: a block of 1,000 rows writes about 10,000 index keys; a cut's flush above one txn writes each about 3 times (staged flush), so measure the flush. Done when a disk Elements lookup equals the RAM one at current and as-of pins on badger and tiered, survives a reopen, and holds no RAM per element.
-
-### WRITEGROW (sigma 2 Nov, ai-soc run k11020850): a head timeline read costs one version read per piece
-
-Status: door on main 5ebab967 (2 Nov), tag in the next round (a minor): `Temporal().NodeEffectiveTimelineFrom(id, validFrom, pin)`, segments ending at or after validFrom (the From scans' rule), rows read only for the returned segments from the head entry and badger's skeletons; red 199 history rows for a 2-segment tail of 200 versions, now 2; 7 of 7 mutants killed (`tasks/evidence/WRITEGROW/`). Node only: rel waits for a consumer. Left: sigma's bench on the door, and the 299-segment `wholeWrites` question. Was: sigma wants the door, after WHOLEROW (2 Nov): segments ending after instant x at a pin, from the head entry, a miss folds; sigma first bounds its reconcile to the cut's change (its Fable design, after RULEDIGEST), as `voidUncovered` reads the whole history today. Open: sigma's `wholeWrites` mode still ends at 299 segments in its bench, not one; find why while building.
-
-`nodeHeadSegments` (effective_head.go) answers from the head cache but reads each non-current winner with `getNodeVersion`: 4.34 of 4.37 s at ai-soc's cpu-140; sigma's write-back per minute 3.3 to 11.6 s over the run; `BenchmarkDerivedWriteGrows` about 7 µs per segment. Proposed: a timeline door from a valid instant on, cut from the head entry's pieces, reading only the winners it returns: no RAM, O(returned segments). Rejected: props per piece in the cache (up to 1 M pieces of whole rows against TEMPIDX-2), a content digest (a segment returns its own row, versions and stamps differ). Done when sigma's bench is flat in segments for the tail it reads. A version per extension stays: an in-place change would lose the as-of answer.
+- Skipped at the v4.99.0 tag on René's word: the full ci-docker race suite (gosec, govulncheck, cover-gate, fuzz-smoke included). Run it in the next release round before another minor.
+- Current-only Elements (sigma 3 Nov): no member entries for an append-only label, halving the block write (2 keys per element, about 1.4 us each, `tasks/evidence/ELEMDISK/block-cost.txt`). Needs a defined answer for every pinned door on such an index (refuse or scan; badger, tiered, scan doors). A minor; sigma asks with PAGEBLOB's BA numbers.
+- WRITEGROW: sigma's bench on the door (200 facts x 300 cuts, us per fact at the last cut): extend 1,870 to 60, accumulate 4,288 to 430. Open: why sigma's `wholeWrites` mode ended at 299 segments.
+- Relationship types on disk still refuse Elements; build only on a consumer's ask.
 
 ### PAGECOST (sigma 2 Nov, not urgent, after WHOLEROW and TEMPIDX-2): one value lookup per index definition in a node create
 

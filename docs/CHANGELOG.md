@@ -17,6 +17,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pin at or after the replace reads the new version alone, a pin before reads as before; `TxFrom` rises with version
   across a crash (`TestReplaceVersion*`, badger and tiered; `tasks/evidence/WHOLEROW/`).
 
+## [4.99.0] - 2026-11-03
+
+### Added
+
+- **ELEMDISK** (sigma-tkgd's PAGEBLOB blocks; a minor). An Elements property index (`PropertyIndexOptions{Elements:
+  true}`) on a label whose indexes are on disk (badger and tiered `PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`)
+  keeps one disk entry per distinct list element, current and member, and no RAM per element; it was refused with
+  `ErrCapabilityNotSupported`. It answers as the RAM index at current, `TxPin`, `TxAt`+`ValidAt` and interval reads,
+  across a reopen, on event shards and archive, and when its label joins or leaves the list. An element's entry is
+  keyed as the scalar of the same value, beside other labels' scalar entries on the key; each definition rechecks its
+  own match. Valid-end pruning leaves an Elements definition unpruned. A release before this one refuses such a
+  definition when its label is listed at open. Cost on badger: about 1.4 µs per key, two keys per element; a block of
+  1,000 rows with 8 masks writes in 36 ms, durable (`tasks/evidence/ELEMDISK/`). Relationship types on disk still
+  refuse Elements.
+
 - **WRITEGROW** (sigma-tkgd's write-back; a minor). `g.Temporal().NodeEffectiveTimelineFrom(id, validFrom, pin)`
   returns the effective timeline's segments that end at or after `validFrom`, or are open, and reads only their rows
   where the winners are known first (the head-pin entry; badger's temporal skeletons): a tail of 2 segments of a

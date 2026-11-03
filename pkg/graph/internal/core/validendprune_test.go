@@ -667,3 +667,50 @@ func TestPropertyIndexValidEndListed(t *testing.T) {
 		}
 	}
 }
+
+// ELEMDISK: an Elements index on disk under a valid-end listing answers
+// ValidEndAfter by "the list contains", as without the listing: its element
+// entries bound no row, so the definition is never trusted for pruning, at its
+// create or at a reopen.
+func TestValidEndAfterElementsIndexOnDisk(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	dir := t.TempDir()
+	open := func() *Core {
+		t.Helper()
+		g, err := New(Config{BadgerDir: dir, PropertyIndexOnDiskLabels: []string{"D"},
+			PropertyIndexValidEnd: []storepkg.PropertyIndexValidEnd{{Label: "D", KeyPrefix: "ov_"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return g
+	}
+	g := open()
+	if err := g.Index.CreatePropertyWithOptions("D", "ov_l", storepkg.PropertyIndexOptions{Elements: true}); err != nil {
+		t.Fatal(err)
+	}
+	open1, err := g.Nodes.Add(ctx, []string{"D"}, map[string]any{"ov_l": []int64{5, 6}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Nodes.Add(ctx, []string{"D"}, map[string]any{"ov_l": []int64{5}, "tkg_valid_from": int64(1000), "tkg_valid_to": int64(2000)}); err != nil {
+		t.Fatal(err)
+	}
+	check := func(step string) {
+		t.Helper()
+		got, err := g.Nodes.ByLabelAndProperty("D", "ov_l", int64(5), storepkg.QueryOpts{ValidEndAfter: 3000, ValidEndAfterSet: true})
+		if err != nil {
+			t.Fatalf("%s: %v", step, err)
+		}
+		if len(got) != 1 || got[0].ID() != open1.ID() {
+			t.Fatalf("%s: %d nodes, want the open one", step, len(got))
+		}
+	}
+	check("create")
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	g = open()
+	defer g.Close()
+	check("reopen")
+}
