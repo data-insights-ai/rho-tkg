@@ -1,0 +1,15 @@
+TIERLEND red, branch tierlend on main 14b6879f, 2026-11-03
+$ go test -short -run 'TestTieredLendSorted' -count=1 ./pkg/graph/store/tiered/
+--- FAIL: TestTieredLendSortedAgreesWithLend (0.00s)
+    --- FAIL: TestTieredLendSortedAgreesWithLend/mint=false (0.51s)
+        tieredstore_lend_batch_test.go:178: tiered Store does not implement store.EntityLendBatchCapability
+    --- FAIL: TestTieredLendSortedAgreesWithLend/mint=true (0.56s)
+        tieredstore_lend_batch_test.go:178: tiered Store does not implement store.EntityLendBatchCapability
+--- FAIL: TestTieredLendSortedOneCheckoutPerShard (0.59s)
+    tieredstore_lend_batch_test.go:353: nodes on every shard: checkouts map[archive:10 cold:5 hot:4 ref:12], want map[archive:1 cold:1 hot:1 ref:1]
+    tieredstore_lend_batch_test.go:358: reference nodes: checkouts map[ref:2], want map[ref:1]
+    tieredstore_lend_batch_test.go:363: hot nodes: checkouts map[archive:3 hot:3 ref:3], want map[archive:1 hot:1 ref:1]
+    tieredstore_lend_batch_test.go:368: rels on every shard and the probe: checkouts map[archive:10 cold:7 hot:8 ref:11], want map[archive:1 cold:1 hot:1 ref:1]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.597s
+FAIL

@@ -235,7 +235,18 @@ func (es *EventShard) checkoutStoreReadOnly(ts *Store) (*BadgerStore, func(), er
 	return es.checkoutForRead(ts, true)
 }
 
+// checkoutForRead pins es for a read (checkoutStoreForRead, readOnly false;
+// checkoutStoreReadOnly, true) and reports the pin to the test-only
+// checkoutHook.
 func (es *EventShard) checkoutForRead(ts *Store, readOnly bool) (*BadgerStore, func(), error) {
+	store, release, err := es.pinForRead(ts, readOnly)
+	if err == nil {
+		ts.noteCheckout(es)
+	}
+	return store, release, err
+}
+
+func (es *EventShard) pinForRead(ts *Store, readOnly bool) (*BadgerStore, func(), error) {
 	noop := func() {}
 	if err := ts.backgroundError(); err != nil {
 		return nil, noop, err
@@ -471,6 +482,7 @@ func (ts *Store) checkoutRefShard() (*BadgerStore, func(), error) {
 		return nil, noop, ErrStoreClosed
 	}
 	ts.refAccesses.Add(1)
+	ts.noteCheckout(checkoutKeyRef)
 	return ts.refShard, func() { ts.refActiveReqs.Add(-1) }, nil
 }
 
@@ -528,6 +540,7 @@ func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 		return nil, noop, ErrStoreClosed
 	}
 	ts.archiveAccesses.Add(1)
+	ts.noteCheckout(checkoutKeyArchive)
 	return archive, func() { ts.archiveActiveReqs.Add(-1) }, nil
 }
 

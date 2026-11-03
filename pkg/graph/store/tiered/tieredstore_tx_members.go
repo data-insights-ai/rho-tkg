@@ -105,6 +105,20 @@ func (ts *Store) refArchiveGapHook() {
 	}
 }
 
+// checkoutKeyRef and checkoutKeyArchive name the reference shard and the archive to
+// the test-only checkoutHook; an event shard is named by its *EventShard.
+const (
+	checkoutKeyRef     = "ref"
+	checkoutKeyArchive = "archive"
+)
+
+// noteCheckout reports a read pin of shard to the test-only checkoutHook.
+func (ts *Store) noteCheckout(shard any) {
+	if h := ts.checkoutHook; h != nil {
+		h(shard)
+	}
+}
+
 // noteTypeScan reports a whole-label, whole-type or whole-history scan door to
 // the test-only typeScanHook (a keyed read must never reach one).
 func (ts *Store) noteTypeScan(door string) {
