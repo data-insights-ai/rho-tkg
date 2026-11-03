@@ -16,6 +16,12 @@ type fakeRow struct {
 
 func (f fakeRow) Version() uint32                   { return f.v }
 func (f fakeRow) Temporal() *types.TemporalMetadata { return f.tm }
+func (f fakeRow) TemporalByValue() (types.TemporalMetadata, bool) {
+	if f.tm == nil {
+		return types.TemporalMetadata{}, false
+	}
+	return *f.tm, true
+}
 
 func row(version uint32, txFrom, txTo, deletedAt types.Instant) fakeRow {
 	return fakeRow{

@@ -69,6 +69,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   60 s and a final count and elapsed time; a scan that finds two holders of one value logs it and leaves the lookups on
   the property index. A read-only open does not seed. A `CreateUnique` that fails raises nothing. Tests
   `TestUniqueLook*`, `TestOwnerIndex*` (`tasks/evidence/UNIQUELOOK/`; bench pending a quiet machine).
+- **HEADLEND** (sigma, paged read-back: 1.2 GB of a 5.5 GB paging delta on memory; a minor: the optional
+  `store.VersionLendCapability` with memory `Store.LendNodeVersion` / `LendRelVersion`, and `types.Node.TemporalByValue` /
+  `Relationship.TemporalByValue`, the temporal block by value without the copy a frozen row's `Temporal()` makes, are new
+  exported names; the as-of selection reads rows through it, so `NodeAsOf` / `NodesAsOf` / `RelAsOf` / `RelsAsOf` on
+  memory keep main's allocations with frozen history rows: 4 at 20 history rows, 30 without it). On the
+  memory store the effective timeline doors (`NodeEffectiveTimeline`, `...From`, `NodeEffectiveTimelines`, the page
+  and `ForEach...Effective` scans, and the relationship mirrors) hand out each winning history row as the store keeps
+  it instead of a DeepCopy per read, as they already did for the current row (row 120). The segment rows were and stay
+  frozen (`temporal.NodeSegment`); the doors' answers are unchanged, no caller changes anything. Memory history rows are
+  now stored frozen; `GetNodeVersion`, `GetNodeHistory` and the point state doors (`NodeAtTx`, ...) still return the
+  caller's own mutable copy. Badger and tiered are unchanged (they decode per read). A head-hit read of a 6-version
+  node: 25 -> 5 allocations (`tasks/evidence/HEADLEND/`).
 
 ## [4.101.0] - 2026-11-03
 

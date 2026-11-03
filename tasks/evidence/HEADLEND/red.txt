@@ -1,0 +1,31 @@
+HEADLEND red: main ee10a85b + pkg/graph/internal/core/effective_head_lend_test.go only (memory store)
+
+$ go test -count=1 -run 'TestEffectiveDoorsLendHistoryRows|TestEffectiveLentRowsRefuseMutation|TestEffectiveHeadReadAllocs' -v ./pkg/graph/internal/core
+=== RUN   TestEffectiveHeadReadAllocs
+    effective_head_lend_test.go:284: head-hit NodeEffectiveTimeline, 6 versions: 25 allocs/read
+    effective_head_lend_test.go:286: 25 allocs per head read, want <= 5 (a copy per history winner)
+--- FAIL: TestEffectiveHeadReadAllocs
+--- PASS: TestEffectiveLentRowsRefuseMutation   (a guard: the contract the change must keep)
+=== NAME  TestEffectiveDoorsLendHistoryRows
+    effective_head_lend_test.go:174: NodeEffectiveTimeline: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:174: NodeEffectiveTimelineFrom: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:174: NodeEffectiveTimelines: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:174: ForEachNodeEffective: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:216: RelEffectiveTimeline: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:216: RelEffectiveTimelines: 5 of 5 history rows copied per read, want lent
+    effective_head_lend_test.go:216: ForEachRelEffective: 5 of 5 history rows copied per read, want lent
+--- FAIL: TestEffectiveDoorsLendHistoryRows
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.028s
+
+Review round (Fable, 3 Nov): frozen memory history rows make every Temporal() read of a history row allocate a copy
+(types/node.go:488-495). Red, branch f0bf8d1a + pkg/graph/store/memory/memorystore_asof_allocs_test.go only:
+
+$ go test -count=1 -run TestMemoryAsOfAllocsFlatInHistory -v ./pkg/graph/store/memory
+    memorystore_asof_allocs_test.go:60: allocs k=2 -> k=20: NodeAsOf 11 -> 30, NodesAsOf 12 -> 31, RelAsOf 11 -> 30, RelsAsOf 12 -> 31
+    NodeAsOf: 30 allocs at 20 history rows vs 11 at 2: grows with the history
+    NodesAsOf: 31 allocs at 20 history rows vs 12 at 2: grows with the history
+    RelAsOf: 30 allocs at 20 history rows vs 11 at 2: grows with the history
+    RelsAsOf: 31 allocs at 20 history rows vs 12 at 2: grows with the history
+--- FAIL: TestMemoryAsOfAllocsFlatInHistory
+Main's behaviour (history rows unfrozen, the Freeze removed for one run): NodeAsOf 3 -> 4, NodesAsOf 4 -> 5,
+RelAsOf 3 -> 4, RelsAsOf 4 -> 5 (PASS).

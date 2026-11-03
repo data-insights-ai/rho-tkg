@@ -188,7 +188,7 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 			f, ok := full[src]
 			if !ok {
 				var err error
-				if f, err = rd.nodeVersion(id, metas[src].Version); err != nil {
+				if f, err = rd.lentNodeVersion(id, metas[src].Version); err != nil {
 					return nil, false
 				}
 				full[src] = f
@@ -271,7 +271,7 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 			f, ok := full[src]
 			if !ok {
 				var err error
-				if f, err = rd.relVersion(id, metas[src].Version); err != nil {
+				if f, err = rd.lentRelVersion(id, metas[src].Version); err != nil {
 					return nil, false
 				}
 				full[src] = f

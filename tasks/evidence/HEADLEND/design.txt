@@ -1,0 +1,48 @@
+HEADLEND design (3 Nov, sigma: read-back of a paged Derived fact copies every winning history row on memory)
+Paths: pkg/graph/... unless noted.
+
+Where the copy is
+- Point door NodeEffectiveTimeline / ...From (internal/core/effective_timeline.go:400,430) -> nodeEffectiveTimelineTail
+  (:479) -> head hit nodeHeadSegments (internal/core/effective_head.go:651) or skeleton path
+  nodeEffectiveViaTemporalMeta (effective_timeline.go:659) -> entityReads.nodeVersion
+  (internal/core/effective_scan_reads.go:162) -> c.getNodeVersion (internal/core/store_fetch.go:195) -> memory
+  GetNodeVersion, which DeepCopies the stored row (store/memory/memorystore_history.go:409,431).
+- NodeEffectiveTimelines (internal/core/effective_timelines.go:41) and the page door
+  ForEachNodeEffectiveByLabelAndProperties (internal/core/effective_page_by_props.go:32,115) hydrate winners
+  through the same rd.nodeVersion (effective_timelines.go:191). ForEachNodeEffective(From) (effective_scans.go:90)
+  streams through nodeEffectiveTimelineFrom (effective_scans.go:37) -> the skeleton path above (memory offers
+  no ReadSnapshot, so rd.snap is nil). Relationship mirrors: effective_head.go:677, effective_timeline.go:724,
+  effective_timelines.go:274 -> memory GetRelVersion copy (memorystore_history.go:627,649).
+
+What the doors promise today
+- Every one of these doors returns temporal.NodeSegment / RelSegment, whose row is documented "a shared frozen row
+  like the rows of the other plural reads: it rejects mutation; call DeepCopy" (temporal/segment.go:15-18); the
+  singular door repeats it (effective_timeline.go:389). nodeSegment/relSegment freeze every row they hand out
+  (effective_timeline.go:748-760). The timelines and page doors already hand out the store's own lent current
+  row (effective_timelines.go:127, rd.lentCurrentNode, pinned by effective_timelines_lend_test.go:14, row 120).
+- So the copy is internal only: the caller never got a mutable row. Contract rule: lend in place; no door
+  changes, no lending variant needed. Sigma's switch to "lending variants" is unnecessary: the existing doors
+  become the lending doors. (Answer to the coordinator's 3 Nov message: a variant would return exactly what the
+  door returns; adding one would only duplicate five doors.)
+- A normalized row (delete stamp after the pin) is still a private copy: nodeRowAtTx copies before it
+  normalizes (internal/core/temporal.go:552-562), so a lent row is never written to.
+
+Store side
+- Memory history rows are NOT stored frozen: historyNode/historyRel keep DeepCopyWithOrdinal(s)
+  (store/memory/memorystore_ordinal.go:121-139), every history row passes there
+  (memorystore_history_stamps.go:49,80), and no code writes a stored history row in place (writes replace the
+  map entry; truncation deletes). Change: freeze them there (a flag; DeepCopy thaws, so GetNodeVersion /
+  GetNodeHistory keep returning mutable copies). Freezing in the store, under ms.mu, matters: nodeSegment's
+  Freeze on an unfrozen lent row would be a racy write to a shared row.
+- New optional capability store.VersionLendCapability {LendNodeVersion, LendRelVersion}: the stored frozen row,
+  no copy, errors as GetNodeVersion. Memory implements it. New exported names: a MINOR (patchgate).
+- Core: entityReads.lentNodeVersion / lentRelVersion (beside lentCurrentNode, effective_scan_reads.go:82):
+  trusted store (storeRowsTrust, core.go:2356), no snapshot, store not R37-sharing -> LendNodeVersion; else
+  nodeVersion unchanged. Used only at the six segment sites above; the point state doors
+  (temporal_queries.go:629,769) keep nodeVersion (they return mutable rows).
+- Badger and tiered: unchanged. They decode per read anyway and already take GetNodeVersionSharing where
+  rd.share is set (capabilities.go:534-542, effective_scan_reads.go:164); RELHIST owns their history
+  reconstruction. Sharded is not a trusted store (core.go:1207) and keeps copying.
+
+Cost budget: on memory, a head-hit read of an entity with k history winners allocates no row (was k DeepCopies:
+row + properties + temporal block each). Measured in red.txt / the commit.
