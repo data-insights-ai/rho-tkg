@@ -108,10 +108,6 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
-- **BATCHFAIL** (fix, later; found by the BATCHIDX review 3 Nov, pre-existing) — a vector-index failure at node i of a
-  PutNodes batch leaves the RAM property indexes holding nodes[:i] (badger) or nodes[:i+1] (memory), whose rows were
-  never queued (badger keeps them in nodeCache, so RAM answers stay consistent until reopen). Unpinned by any test.
-  Done when a failed batch leaves no index entry, with a test on both stores.
 - **RHOPOST bench** (RHOPOST and RHOMEMIDS merged 3 Nov, unreleased; both benches rerun on a quiet PC) (sigma READBACK, 3 Nov; after v4.101.0, nothing in sigma waits) — sigma's paged-row read-back
   spends 96 % of a block probe in `IDsByLabelAndPropertyValues`, 75 % in `badger.Iterator.Next`: one AllVersions
   seek-and-walk per value in `propertyIndexDiskKeysCandidatesLocked` (badger 1.5-6.1 us a value at 5k-80k rows).
