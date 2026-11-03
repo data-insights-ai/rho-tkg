@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.100.0] - 2026-11-03
+
 ### Added
 
 - **ELEMPROBE** (ai-soc for sigma's page-block probe; a minor). `g.Nodes().IDsByLabelAndPropertyValues(label, key,

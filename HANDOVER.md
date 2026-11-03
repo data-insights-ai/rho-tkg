@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-11-03: latest tag v4.99.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-11-03: latest tag v4.100.0; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -136,6 +136,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   mutations caught. ci-docker green, consumers clean, scale probe unchanged; tag CI and main green; ai-soc (pins it
   for the Flux run) and sigma notified. Open: the range walks, the purge's adjacency walk, history truncation,
   the purge token walks, rel purge candidates (todo ITERTOMB). Tags held until ai-soc's run ships.
+- **v4.100.0** (ELEMPROBE, BORROWREAD, WHOLEROW and ASOFWALK step 1, a minor in ai-soc's release round on René's word): `Nodes().IDsByLabelAndPropertyValues` answers from the index without loading rows; `Node.BorrowProperty` reads without the deep copy; `Nodes().ReplaceVersion` replaces the current row whole as a new version; a tiered as-of read of a node on its owner shard walks that shard. ci-docker green (1,676 s, coverage 87.8 %), sigma, ai-soc, ai-soc engine (go1.27.3) and bookkeeping build and vet clean, scale probe unchanged.
 - **v4.99.0** (ELEMDISK and WRITEGROW, a minor for sigma's PAGEBLOB blocks and write-back on René's word outside the release round, cut from v4.98.4 and merged back, as main also carries WHOLEROW and ASOFWALK for the next round): an Elements index keeps its entries on disk with its label's; `Temporal().NodeEffectiveTimelineFrom` reads only the tail it returns.
 - **v4.98.4** (RELPAGEVALID and PUSHSLOW, a patch for ai-soc's BA night run, cut from v4.98.3 and merged back, as main also carries ASOFWALK's exported names for the next minor): a member page seeks from the cursor and stops at its limit; a bounded read does not read a returned row without history again.
 - **v4.98.3** (PREEPOCHREL, a patch; ai-soc pins it beside sigma v0.11.153): a reference or archived start with a `ValidFrom` outside the ID range mints at the clock instead of refusing.

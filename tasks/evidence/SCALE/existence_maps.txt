@@ -182,3 +182,10 @@ v4.99.0 release scale probe (ELEMDISK + WRITEGROW, Derived, 1 M nodes + 1 M rels
   v4.98.4   insert 9.8 / 9.5 / 9.5 / 9.6 / 9.4 s   clean reopen 0.10 / 0.11 / 0.11 / 0.11 / 0.11 s
             heap after reopen +175.7 / +176.6 / +175.6 / +174.3 / +176.4 MB
 Reading: no change. The probe declares no Elements index on disk and reads no timeline tail.
+
+v4.100.0 release scale probe (ELEMPROBE, BORROWREAD, WHOLEROW, ASOFWALK step 1; Derived, 1 M nodes + 1 M rels (-rels), alternated with v4.99.0 from the module cache, load 14 falling to 6):
+  v4.100.0  insert 9.8 / 9.2 / 9.4 / 10.2 / 9.5 s   clean reopen 0.11 / 0.11 / 0.11 / 0.11 / 0.11 s
+            heap after reopen +173.3 / +175.3 / +174.0 / +173.8 / +177.7 MB
+  v4.99.0   insert 9.5 / 9.3 / 9.8 / 9.6 / 9.4 s   clean reopen 0.11 / 0.11 / 0.11 / 0.11 / 0.11 s
+            heap after reopen +177.5 / +176.8 / +177.3 / +173.8 / +175.3 MB
+Reading: no change. The probe reads no index IDs, borrows nothing, replaces no version and reads no as-of.
