@@ -1,7 +1,10 @@
 package badger
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -114,6 +117,11 @@ func TestValueLogGCKeepsTheFileOfAnOpenRead(t *testing.T) {
 	}
 	if n := <-gcDone; n == 0 {
 		t.Fatal("the GC rewrote no file: the test proves nothing")
+	}
+	// Once the read ended the pass deleted the files it rewrote: node 1's
+	// original file is gone.
+	if _, err := os.Stat(filepath.Join(bs.db.Opts().Dir, "000001.vlog")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the rewritten value-log file is still there after the pass: %v", err)
 	}
 	n, err := bs.GetNode(types.NodeID(snowflake.ID(1)))
 	if err != nil {

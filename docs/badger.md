@@ -182,7 +182,7 @@ Dir/
 | `NumMemtables` | 5 | default | Up to 5 arenas under write load. |
 | `BlockCacheSize` | 256 MB | `Config.BlockCacheSize` (0 = default) | Per DB, required with Snappy; resizable at runtime (`CacheMaxCost`). |
 | `IndexCacheSize` | 0 | `Config.IndexCacheSize` | Required with encryption only. |
-| `ValueThreshold` | 1 MB | `Config.ValueThreshold` (0 = default; [1 KB, 1 MB], at most 15 % of `MemTableSize`) | Values under it are inline. badger refuses above 1 MB or `maxBatchSize` (`db.go:146-157`) and accepts any smaller, negative included; rho's 1 KB floor keeps counters, meta and index values inline, since a failed value-log read comes back empty (`iterator.go:158-187`). Measured (`tasks/evidence/VALUETHRESH/measure.txt`, 9,600 `ReplaceVersion`s of 100 KB rows, change log on): 64 KB cut process CPU 88-104 s to 7-9 s (compaction 18.9 s and s2 encode 31.3 s to 0), writes 1.1-2.3x faster, cold `Get` 4-20x and `NodeAsOf` 1.5-5x faster. Cost: the value log is not compressed (2,972 MB against 1,068-1,105 MB of Snappy tables for 2.6x-compressible text), and its GC freed nothing (rule 9). |
+| `ValueThreshold` | 1 MB | `Config.ValueThreshold` (0 = default; [1 KB, 1 MB], at most 15 % of `MemTableSize`) | Values under it are inline. badger refuses above 1 MB or `maxBatchSize` (`db.go:146-157`) and accepts any smaller, negative included; rho's 1 KB floor keeps counters, meta and index values inline, since a failed value-log read comes back empty (`iterator.go:158-187`). Measured (`tasks/evidence/VALUETHRESH/measure.txt`, 9,600 `ReplaceVersion`s of 100 KB rows, change log on): 64 KB cut process CPU 88-104 s to 7-9 s (compaction 18.9 s and s2 encode 31.3 s to 0), writes 1.1-2.3x faster, cold `Get` 4-20x and `NodeAsOf` 1.5-5x faster. Cost: the value log is not compressed (2,972 MB against 1,068-1,105 MB of Snappy tables for 2.6x-compressible text), and its GC freed nothing in the run (rule 9: no compaction had run yet). |
 | `Compression` | Snappy | `Config.Compression` | `options.None` is the zero value, so rho cannot turn it off. |
 | `SyncWrites` | false | `Config.SyncWrites` | Two msyncs per write request (section 2). |
 | `NumVersionsToKeep` | 1 | default | Right for rho (history is rho's own keyspace). |
@@ -228,16 +228,26 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
    writable open of the same directory (the flock), and a shard left with `.mem` files needs one writable open to
    recover before it opens read-only. Gap: SHARD step 4a.
 6. **Badger creates a missing directory; rho must refuse it** for a shard it already knows. Gap: SHARD step 1.
-7. **Hold read transactions briefly.** A read transaction pins versions from compaction and the value log; release it
-   before user callbacks (the read snapshot does, per chunk).
+7. **Hold read transactions briefly.** A read transaction pins versions from compaction and, through rho's GC pass
+   (rule 9), the value-log files rewritten while it is open; release it before user callbacks (the read snapshot
+   does, per chunk). A transaction badger alone pins nothing in the value log unless an iterator is open.
 8. **Size caches per shard role.** Defaults give every open DB a 256 MB block cache and a 75 MB arena. Gap: CACHE.
 9. **The value-log GC loop has work only for values at or above `ValueThreshold`** (`badgerstore_flush.go` gcLoop:
-   rows of 1 MB or more by default); without such values a pass costs 28 ns. It reclaims a dead value only after
-   compaction has dropped it (discard statistics): measured 114 MB to 32 MB once deletes were compacted, nothing
+   rows of 1 MB or more by default); without such values a pass costs 28 ns. It picks a file only from discard
+   statistics, which only LSM compaction writes when it drops a version pointing into the value log
+   (`value.go:1003-1016`, `levels.go` compaction): measured 114 MB to 32 MB once deletes were compacted, nothing
    before; a value kept by history is never garbage (`tasks/evidence/VLOGGC/`, VLOGGC: measured, no change). With
-   `ValueThreshold` 64 KB and rows rewritten by `ReplaceVersion`, each replace leaves a history row and a
-   change-log record live beside the replaced current row, so at most a third of a file is garbage, under the 0.5
-   ratio: 10 s of the loop at 200 ms freed nothing of 2,972 MB (`tasks/evidence/VALUETHRESH/measure.txt`).
+   `ValueThreshold` 64 KB and rows rewritten whole by `ReplaceVersion`, 10 s of the loop at 200 ms freed nothing of
+   2,972 MB (`tasks/evidence/VALUETHRESH/measure.txt`): the LSM of 24-byte pointers had not flushed a memtable, so
+   no compaction had written a discard statistic. Even once compacted, a full-row replace leaves a history row and
+   a change-log record live beside the replaced current row, so at most a third of such a file is garbage, under the
+   0.5 ratio (a delta history row or a trimmed change log changes that share).
+   **A rewritten file is deleted under open reads unless rho waits** (VALUETHRESH F1): badger deletes it at once
+   when no iterator is open (`value.go:342-355`), and an item a `Get` returned before the rewrite reads empty after
+   it (`iterator.go:155-189`; a `Get` after it finds the moved entry, which keeps its version, `value.go:217-224`).
+   rho's pass (`runValueLogGC`, `badgerstore_vlog_guard.go`) holds an iterator so badger queues the files, and closes
+   it only after every read and update transaction that entered before the pass ended has ended
+   (`TestValueLogGCKeepsTheFileOfAnOpenRead`); readers never wait.
 10. **Batch synced writes.** Under `SyncWrites` every request costs a WAL msync and every write group a value-log msync;
     rho's group commit writes one request per group, which is right, unless the flush is split (rule 1): each part is
     a request of its own.

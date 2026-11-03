@@ -278,6 +278,7 @@ type relBuildSnap struct {
 	epoch      func() uint64
 	pinned     uint64
 	txn        *badgerv4.Txn
+	pin        vlogPin
 	rows, hist *relBuildWalk
 }
 
@@ -287,7 +288,7 @@ func (s *relBuildSnap) current() *relBuildSnap {
 	if e := s.epoch(); s.txn == nil || e != s.pinned {
 		s.close()
 		s.pinned = e
-		s.txn = newReadTxn(s.db)
+		s.txn, s.pin = s.bs.newReadTxn()
 		s.rows = newRelBuildWalk(s.txn, storepkg.KeyRel)
 		s.hist = newRelBuildWalk(s.txn, storepkg.KeyHistRel)
 	}
@@ -300,7 +301,7 @@ func (s *relBuildSnap) close() {
 	}
 	s.rows.it.Close()
 	s.hist.it.Close()
-	endReadTxn(s.txn, !s.bs.isClosingOrClosed()) // after Close without Discard (scanSnapshot.close)
+	s.bs.endReadTxn(s.txn, s.pin, !s.bs.isClosingOrClosed()) // after Close without Discard (scanSnapshot.close)
 	s.txn, s.rows, s.hist = nil, nil, nil
 }
 
@@ -554,7 +555,7 @@ func (bs *Store) discardRelTypeTemporalIndexDefs() error {
 	if bs.readOnly {
 		return nil
 	}
-	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+	if err := bs.update(func(txn *badgerv4.Txn) error {
 		return txn.Delete(storepkg.RelTypeTemporalIndexDefsKey)
 	}); err != nil {
 		return fmt.Errorf("graph: discard relationship temporal index definitions: %w", err)

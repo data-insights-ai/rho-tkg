@@ -34,6 +34,7 @@ type scanSnapshot struct {
 	epoch  func() uint64 // the flush epoch of the cache the reader consults
 	pinned uint64        // epoch read immediately before txn opened
 	txn    *badgerv4.Txn
+	pin    vlogPin
 	it     *badgerv4.Iterator
 	last   []byte // the key seekAfterMiss sought last on it (nil: none yet)
 }
@@ -50,7 +51,7 @@ func (s *scanSnapshot) txnAfterMiss() *badgerv4.Txn {
 	if s.txn == nil || e != s.pinned {
 		s.close()
 		s.pinned = e
-		s.txn = newReadTxn(s.db)
+		s.txn, s.pin = s.bs.newReadTxn()
 	}
 	return s.txn
 }
@@ -62,7 +63,7 @@ func (s *scanSnapshot) txnAfterMiss() *badgerv4.Txn {
 func (s *scanSnapshot) anyTxn() *badgerv4.Txn {
 	if s.txn == nil {
 		s.pinned = s.epoch()
-		s.txn = newReadTxn(s.db)
+		s.txn, s.pin = s.bs.newReadTxn()
 	}
 	return s.txn
 }
@@ -130,7 +131,7 @@ func (s *scanSnapshot) close() {
 	}
 	s.last = nil
 	if s.txn != nil {
-		endReadTxn(s.txn, !s.bs.isClosingOrClosed())
+		s.bs.endReadTxn(s.txn, s.pin, !s.bs.isClosingOrClosed())
 		s.txn = nil
 	}
 }

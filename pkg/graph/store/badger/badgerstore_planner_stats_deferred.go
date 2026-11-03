@@ -58,7 +58,7 @@ func (bs *Store) ensurePlannerStats() error {
 		return nil
 	}
 	bs.statsDeferred.Store(false) // the maintenance doors below must run
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		err := mergeScanCurrent(txn, storepkg.KeyNode, storepkg.SizeNodeKey, sortedIDs[types.NodeID](&bs.nodeIDs),
 			func(id types.NodeID, raw []byte) {
 				var n *types.Node

@@ -142,7 +142,7 @@ func (bs *Store) restampBinaryHashMarker() error {
 		return nil
 	}
 	v := uint16(storepkg.BinaryHashStoreFormatVersion)
-	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+	if err := bs.update(func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.WireFormatVersionKey, formatMarkerValue(v))
 	}); err != nil {
 		return fmt.Errorf("graph: stamp wire format marker after clear: %w", err)

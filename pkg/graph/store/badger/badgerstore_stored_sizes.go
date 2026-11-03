@@ -40,8 +40,9 @@ func (bs *Store) NodeStoredSizes(nid types.NodeID) ([]storecontract.StoredRow, e
 			if err != nil {
 				return err
 			}
-			size = int(item.ValueSize())
-			return nil
+			// The value's own length: ValueSize subtracts an assumed header
+			// from a value-log row (iterator.go:238-252).
+			return item.Value(func(val []byte) error { size = len(val); return nil })
 		}); err != nil {
 			return nil, fmt.Errorf("graph: stored size of node: %w", err)
 		}

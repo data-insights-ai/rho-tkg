@@ -270,7 +270,7 @@ var openImageBeforeHeaderHook func()
 // name, then the header naming it.
 func (bs *Store) writeOpenImageBlob(blob []byte, kind byte, since uint64) error {
 	slot := 0
-	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+	if err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(openImageHeaderKey)
 		if errors.Is(err, badgerv4.ErrKeyNotFound) {
 			return nil
@@ -290,7 +290,7 @@ func (bs *Store) writeOpenImageBlob(blob []byte, kind byte, since uint64) error 
 
 	chunks := (len(blob) + openImageChunkBytes - 1) / openImageChunkBytes
 	var stale [][]byte // the slot's chunks past this image's count
-	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+	if err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.Prefix = storepkg.MetaKey(openImageSlotPrefix(slot))
@@ -332,10 +332,10 @@ func (bs *Store) writeOpenImageBlob(blob []byte, kind byte, since uint64) error 
 	hdr = append(hdr, byte(slot), kind) // #nosec G115 -- slot is 0 or 1
 	hdr = binary.AppendUvarint(hdr, since)
 	hdr = binary.BigEndian.AppendUint32(hdr, crc32.Checksum(blob, crc32cTable))
-	if err := bs.db.Update(func(txn *badgerv4.Txn) error { return txn.Set(openImageHeaderKey, hdr) }); err != nil {
+	if err := bs.update(func(txn *badgerv4.Txn) error { return txn.Set(openImageHeaderKey, hdr) }); err != nil {
 		return err
 	}
-	return bs.db.View(func(txn *badgerv4.Txn) error {
+	return bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(openImageHeaderKey)
 		if err == nil {
 			bs.imageVersion.Store(item.Version())
@@ -623,7 +623,7 @@ func (bs *Store) readOpenImage() *openImage {
 	newest := bs.db.MaxVersion()
 	var img *openImage
 	var since uint64 // the header's version when older than newest: a delta open
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(openImageHeaderKey)
 		if errors.Is(err, badgerv4.ErrKeyNotFound) {
 			return nil // never written, or a release without it closed the store

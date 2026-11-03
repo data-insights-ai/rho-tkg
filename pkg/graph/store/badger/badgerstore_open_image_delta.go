@@ -68,7 +68,7 @@ func (bs *Store) keepRelEntry(img *openImage, id int64) bool {
 // and sidecars). False (the scan failed) sends the open to the full rebuild.
 func (bs *Store) openImageDelta(img *openImage, since uint64) bool {
 	nodes, rels := &indexpkg.IDSet{}, &indexpkg.IDSet{}
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.AllVersions = true // deletes too

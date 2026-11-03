@@ -1,0 +1,32 @@
+VALUETHRESH review F1/F2 mutation sweep, 2026-11-03: each mutant alone, go test -count=1 -run "TestValueLogGCKeepsTheFileOfAnOpenRead|TestNodeStoredSizesExactForValueLogRows" ./pkg/graph/store/badger/;
+6 of 6 caught (F1-e by the 10 min test timeout: drain waits on a negative count).
+
+F1-a no guard iterator (badger deletes the rewritten file at once): CAUGHT
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (1.59s)
+    badgerstore_vlog_gc_read_test.go:116: a read opened before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.881s
+F1-b no drain (guard closed right after the pass): CAUGHT
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (0.97s)
+    badgerstore_vlog_gc_read_test.go:116: a read opened before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.146s
+F1-c view does not enter vlogReaders: CAUGHT
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (0.92s)
+    badgerstore_vlog_gc_read_test.go:116: a read opened before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.123s
+F1-d drain does not wait (returns at once): CAUGHT
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (1.10s)
+    badgerstore_vlog_gc_read_test.go:116: a read opened before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.294s
+F1-e reader enters after taking its timestamp is not modelled; enter counts nothing: CAUGHT
+    pkg/graph/store/badger/badgerstore_vlog_gc_read_test.go:118 +0x265
+    pkg/graph/store/badger/badgerstore_vlog_gc_read_test.go:114 +0x25
+    pkg/graph/store/badger/badgerstore_vlog_gc_read_test.go:114 +0x1c9
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	600.011s
+F2 stored size from Item.ValueSize again: CAUGHT
+    --- FAIL: TestNodeStoredSizesExactForValueLogRows (0.06s)
+    badgerstore_vlog_gc_read_test.go:170: stored sizes [{Version:0 Current:true Bytes:20067 Delta:false Void:false}], want one current row of 20066 bytes
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.969s
+
+
+Gate on the final tree (load 35-37): go vet ./... clean; go test -short -count=1 badger ok (135 s), tiered ok (53 s),
+sharded ok (11 s), pkg/graph ok (91 s).

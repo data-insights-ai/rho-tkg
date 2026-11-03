@@ -859,6 +859,8 @@ type Store struct {
 	flushInt    time.Duration
 	gcInt       time.Duration
 	gcRatio     float64
+	gcMu        sync.Mutex    // one value-log GC pass at a time (runValueLogGC)
+	vlogReaders vlogReaders   // open reads a GC pass waits for (badgerstore_vlog_guard.go)
 	imageInt    time.Duration // Config.OpenImageInterval
 	// imageVersion is the badger version of the newest open image header this
 	// store wrote or trusted whole at open: a periodic image with nothing
@@ -1425,7 +1427,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 	// (badgerstore_index_repair.go); a trusted image needs none.
 	kr := &keyRepair{}
 
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 

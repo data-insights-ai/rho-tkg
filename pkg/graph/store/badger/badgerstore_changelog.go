@@ -294,7 +294,7 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 	//    absent counters make the open count the live rows
 	//    (reconcilePersistedCounter), and the commit puts the store past the
 	//    open-image header, so the old image is not trusted.
-	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+	if err := bs.update(func(txn *badgerv4.Txn) error {
 		for _, k := range [][]byte{counterNodeCountKey, counterRelCountKey} {
 			if err := txn.Delete(k); err != nil {
 				return err

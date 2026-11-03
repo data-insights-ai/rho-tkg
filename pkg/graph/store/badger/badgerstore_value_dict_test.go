@@ -444,7 +444,7 @@ func TestValueDictEntryHeap(t *testing.T) {
 	dir := t.TempDir()
 	bs := vdOpen(t, dir, vdDicts(n))
 	defer bs.Close()
-	if err := bs.vdict.ensureLoaded(bs.db); err != nil {
+	if err := bs.vdict.ensureLoaded(bs.view); err != nil {
 		t.Fatal(err)
 	}
 	if err := bs.Flush(); err != nil {
@@ -489,7 +489,7 @@ func TestValueDictEntryHeap(t *testing.T) {
 	if got := re.ValueDictionaryStats()[d]; got.Entries != 0 || got.Bytes != 0 {
 		t.Fatalf("stats %+v before the load; want none resident", got)
 	}
-	if err := re.vdict.ensureLoaded(re.db); err != nil {
+	if err := re.vdict.ensureLoaded(re.view); err != nil {
 		t.Fatal(err)
 	}
 	if got := re.ValueDictionaryStats()[d]; got.Entries != s.Entries || got.Bytes != s.Bytes {

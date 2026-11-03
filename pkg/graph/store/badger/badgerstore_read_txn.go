@@ -20,6 +20,8 @@ var readTxnsTotal, openReadTxns atomic.Int64
 func (bs *Store) view(fn func(txn *badgerv4.Txn) error) (err error) {
 	readTxnsTotal.Add(1)
 	defer recoverBadgerPanic(&err)
+	pin := bs.vlogReaders.enter() // before the transaction takes its read timestamp
+	defer bs.vlogReaders.exit(pin)
 	return bs.db.View(fn)
 }
 
@@ -34,19 +36,21 @@ func recoverBadgerPanic(err *error) {
 	}
 }
 
-// newReadTxn opens a read transaction, counted; the caller ends it with
-// endReadTxn.
-func newReadTxn(db *badgerv4.DB) *badgerv4.Txn {
+// newReadTxn opens a read transaction, counted and entered in vlogReaders
+// (badgerstore_vlog_guard.go); the caller ends it with endReadTxn and the pin.
+func (bs *Store) newReadTxn() (*badgerv4.Txn, vlogPin) {
 	readTxnsTotal.Add(1)
 	openReadTxns.Add(1)
-	return db.NewTransaction(false)
+	pin := bs.vlogReaders.enter()
+	return bs.db.NewTransaction(false), pin
 }
 
 // endReadTxn ends a transaction newReadTxn opened; discard is false once the
 // database closed (its read mark died with it).
-func endReadTxn(txn *badgerv4.Txn, discard bool) {
+func (bs *Store) endReadTxn(txn *badgerv4.Txn, pin vlogPin, discard bool) {
 	openReadTxns.Add(-1)
 	if discard {
 		txn.Discard()
 	}
+	bs.vlogReaders.exit(pin)
 }

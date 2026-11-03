@@ -564,13 +564,3 @@ func (bs *Store) gcLoop() {
 		}
 	}
 }
-
-// runValueLogGC runs badger's value-log GC until it finds nothing to rewrite
-// and returns the number of files it rewrote.
-func (bs *Store) runValueLogGC() int {
-	n := 0
-	for bs.db.RunValueLogGC(bs.gcRatio) == nil {
-		n++ // Keep running until no more garbage to collect.
-	}
-	return n
-}
