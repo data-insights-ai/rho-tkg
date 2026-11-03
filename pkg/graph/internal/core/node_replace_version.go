@@ -184,7 +184,8 @@ func (c *Core) replaceNodeVersionInternal(ctx context.Context, id types.NodeID, 
 
 // replaceNodeVersionMutates reports whether a whole-row replace changes the
 // current row: a different property set, or a different start or end (the
-// row's effective start, its end on the axis a).
+// stored start: a claim differs from an unclaimed start at the same instant,
+// which follows TxFrom; the end on the axis a).
 func replaceNodeVersionMutates(a types.ValidAxis, current *types.Node, props map[string]any, validFrom, validTo types.Instant) bool {
 	if current.PropertyCount() != len(props) {
 		return true

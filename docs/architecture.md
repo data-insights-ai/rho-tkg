@@ -527,7 +527,7 @@ that test.
     end (the axis's open end, 0 on the legacy axes, for an open row; a closed end must follow the start, else
     `ErrInvalidTimeRange`). Any relation to the current version is accepted: a closed current row, an equal, earlier
     or later start, a grown, shrunk or opened end, a change of properties alone. A call that changes nothing
-    (equal properties and validity) writes nothing and returns the current row. The node must be listed (below),
+    (equal properties and validity) writes nothing and returns the current row; an unclaimed start is not equal to a claim at the same instant (the claim fixes a start that otherwise follows the row's `TxFrom`), so that call writes a version. The node must be listed (below),
     live (`ErrNodeNotFound`, a deleted ID also `ErrEntityDeleted`) and under `math.MaxUint32` versions.
   - *Listing.* `Config.ReplaceVersionLabels` names the labels whose nodes the door may replace; a node whose primary
     label is not listed is refused with `ErrReplaceVersionNotListed`, nothing written. The door relaxes the one
@@ -560,7 +560,7 @@ that test.
     row open; excise and replace in one transaction closes both. Sigma reads record doors only.
   - *Compaction and retention.* The superseded row is an ordinary history row: `CompactHistory*` folds it into a
     stub like any superseded version, after which a pin before the replace fails `ErrHistoryCompacted` instead of
-    answering partially; retention purges by the ID's time and label, unchanged; `History()` returns the chain in
+    answering partially; retention purges by the ID's time and label, unchanged: a replace never moves a node, so on a `MintAtValidFrom` store a start moved to another day leaves the node on the shard (and under the retention day) of its ID, while every read answers from the row's stated validity; `History()` returns the chain in
     version order with the superseded row's `TxTo`.
   - *Crash.* One store call appends the current row, the history row and every index op as one op set to the write
     buffer, so a flush commits them in one badger transaction (`Txn.Commit`: one WAL record set ending in a finish
