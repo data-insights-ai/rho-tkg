@@ -140,7 +140,7 @@ Status: fetch fixed on main, 306-445 s down to about 8 s on the 12 GB masked sto
 Fixed: the on-disk member page seeks from the cursor and stops at its limit (walk steps bounded by a count test, rel and node doors); a fetch nothing passes doubles up to `pageChunkMax`.
 
 Left, not page-bound yet: members on shards tiered cold carry no envelope (cold shards keep no temporal index), so each is one row read, at about 8 s per page on this store whatever the instant. A larger read batch measured no gain: each tiered row read opens its own view. Direction: FIXED-MEMORY's rel record gives cold shards an envelope on NVMe; decide there, or sooner if 8 s isn't enough.
-- **DURABLEVIS** (found 31 Oct) — under DurableCommit, with or without SyncWrites, a group is visible to readers before its fsync (`durable_commit.go`, persistence.md), against René's word of 26 Oct that readers never see a fact before its fsync. ai-soc runs this config; a crash can lose a group a reader saw. Changing it holds readers behind the fsync, which costs throughput. Done when René decides. Waits for René; no change on the pinned pair.
+- **DURABLEVIS** (found 31 Oct) — under DurableCommit, with or without SyncWrites, a group is visible to readers before its fsync (`durable_commit.go`, persistence.md), against René's word of 26 Oct that readers never see a fact before its fsync. ai-soc runs this config; a crash can lose a group a reader saw. Changing it holds readers behind the fsync, which costs throughput. René 3 Nov: measure first. Next: the throughput and read-latency cost of holding readers behind the fsync, on ai-soc's write shape (durable, 3-5 writers, 500 B facts); then René decides. No change on the pinned pair.
 
 ### FIXED-MEMORY model plan (René 31 Oct; step 0 measured 3 Nov; badger stays, it is not replaced)
 
@@ -157,14 +157,14 @@ Path (a), run files: immutable files per shard under `DataDir/idx` on NVMe, not 
 4. Hot shard sealed by bytes; heap flat through a 10x write replay.
 5. Image ID sections retired; cold shards answer existence from NVMe without opening badger.
 
-Path (b), the direction after (a): the hot shard stays on badger; a sealed shard converts once to mapped segments (row records, version chains, CSR adjacency, sorted runs) behind a store at `EventShard.store`. Cold reads through pread. Expected, unmeasured: field reads 0.5-1 µs with no allocation, restart near constant in store size, write cost 2-3x against about 10x; doors returning full nodes gain perhaps 2-3x only; disk unchanged. No API change for consumers; each step a minor, door-agreement tests against the badger shard.
+Path (b), the direction after (a) (René 3 Nov: yes, later, after real-data measurement of (a)): the hot shard stays on badger; a sealed shard converts once to mapped segments (row records, version chains, CSR adjacency, sorted runs) behind a store at `EventShard.store`. Cold reads through pread. Expected, unmeasured: field reads 0.5-1 µs with no allocation, restart near constant in store size, write cost 2-3x against about 10x; doors returning full nodes gain perhaps 2-3x only; disk unchanged. No API change for consumers; each step a minor, door-agreement tests against the badger shard.
 6. Point reads by ID, behind a config.
 7. Adjacency CSR and a per-node segment list (replaces COLDEDGE's fan-out).
 8. History, TxPin walk and prune from records.
 9. Label and type membership, property indexes.
 10. Drop the badger directory of a verified sealed shard (a one-way catalog kind).
 
-Done when: a test holds reopen heap of 10 N entities within 0.1 B per entity of N, and a long ai-soc run shows RAM flat with data. Next: step 1 on a branch, red test first (a minor). Path (b) waits for René's decision. Inputs: ai-soc's per-label audit; a run longer than ColdAfter for the event-shard plateau (about 750 MB, estimate). TEMPIDX-2 and IDTABLE fold into this plan when it starts; until then rho takes only what stabilises ai-soc for goal 2.
+Done when: a test holds reopen heap of 10 N entities within 0.1 B per entity of N, and a long ai-soc run shows RAM flat with data. Next: step 1 on a branch, red test first (a minor). Path (b): René's yes (3 Nov), but later: only after path (a) is measured on real data (ai-soc's BA runs), not on prototypes. Inputs: ai-soc's per-label audit; a run longer than ColdAfter for the event-shard plateau (about 750 MB, estimate). TEMPIDX-2 and IDTABLE fold into this plan when it starts; until then rho takes only what stabilises ai-soc for goal 2.
 
 - **LISTREAD** (sigma 31 Oct; later round, no rush, sigma goes on without it; changes no answer) — sigma's restore pages
   ByLabelAndProperties and asks HasHistory per node; ai-soc's store: index 8.1 s, HasHistory 6.4 s of 23.3 s on 1,048,294
@@ -214,7 +214,7 @@ Steps 1-9 shipped (v4.76.1, v4.78.0-v4.78.3; each under its tag in `docs/CHANGEL
   The NETWORK (device, local_port) ask was ai-soc's own (28 Oct, RELDISK) and predates sigma's SRCMASK door. Resume
   only if ai-soc's Flux run shows a lazy edge source with many candidates per kept row and real read volume; sigma
   then asks with the numbers.
-- **BRANCHES** (René via ai-soc, 29 Oct: "clean this also up") — step 1 done: origin/archive/unmerged-2026-10-27
+- **BRANCHES** (René via ai-soc, 29 Oct: "clean this also up"; René 3 Nov: not now) — step 1 done: origin/archive/unmerged-2026-10-27
   now at 93c43a64 (was 6554d8ad; tree unchanged, one commit with the 5 codex tips added as parents). Each tip
   verified with `git merge-base --is-ancestor`. Step 2, René 29 Oct ("delete the temporary and old parts"):
   ancestry rechecked; my `git push origin --delete` of the seven was refused by the session's permission check,
