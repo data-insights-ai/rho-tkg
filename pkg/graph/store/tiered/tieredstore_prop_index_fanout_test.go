@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -768,5 +769,47 @@ func TestTieredStorePropertyIndex_RetentionDrop(t *testing.T) {
 		if err := ts.ForEachRelPropertyTxMember(relType, "w", vk, func(types.RelID, types.Instant) bool { return true }); err != nil {
 			t.Errorf("rel sidecar after the drop: %v", err)
 		}
+	}
+}
+
+// ELEMPROBE: the ID lookup asks a shard's index only where it answers as the
+// anchor's: a shard holding a stale Elements copy under a plain anchor is read
+// by its rows, so the list holding 9 does not match a plain lookup of 9.
+func TestTieredStoreNodeIDsByPropertyKeys_StaleShardIndex(t *testing.T) {
+	t.Parallel()
+	ts := newTestTieredStore(t)
+	w := newPropIndexWorld(t, ts)
+	if err := ts.CreatePropertyIndex(piSignal, "sev"); err != nil {
+		t.Fatal(err)
+	}
+	ws := eventShardNamed(t, ts, w.first).store
+	if err := ws.DropPropertyIndex(piSignal, "sev"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.CreatePropertyIndexWithOptions(piSignal, "sev", storecontract.PropertyIndexOptions{Elements: true}); err != nil {
+		t.Fatal(err)
+	}
+	names := func(v any) []string {
+		t.Helper()
+		ids, ok, err := ts.NodeIDsByLabelAndPropertyKeys(piSignal, "sev", []string{indexpkg.PropertyValueKey(v)}, QueryOpts{})
+		if err != nil || !ok {
+			t.Fatalf("IDs of %v: ok %v, %v", v, ok, err)
+		}
+		var out []string
+		for _, id := range ids {
+			for name, n := range w.nodes {
+				if n.ID() == id {
+					out = append(out, name)
+				}
+			}
+		}
+		slices.Sort(out)
+		return out
+	}
+	if got := names(int64(9)); len(got) != 0 {
+		t.Errorf("plain lookup of 9 over a stale Elements shard index = %v, want none", got)
+	}
+	if got := names(int64(1)); !slices.Equal(got, []string{"s1", "s3"}) {
+		t.Errorf("plain lookup of 1 = %v, want [s1 s3]", got)
 	}
 }

@@ -191,6 +191,43 @@ func (ts *Store) NodesByLabelAndPropertyKeys(labelToken uint16, key string, valu
 	return ts.nodesByLabelPropertyKeys(labelToken, key, opts, func() ([]string, error) { return valueKeys, nil })
 }
 
+var _ storecontract.NodePropertyKeysIDsCapability = (*Store)(nil)
+
+// NodeIDsByLabelAndPropertyKeys implements
+// storecontract.NodePropertyKeysIDsCapability: NodesByLabelAndPropertyKeys'
+// IDs over the same shards, each shard's from its index without a row read
+// where the shard answers so (badger NodeIDsByLabelAndPropertyKeys), else
+// the IDs of its loaded rows (ELEMPROBE), filtered as there.
+func (ts *Store) NodeIDsByLabelAndPropertyKeys(labelToken uint16, key string, valueKeys []string, opts QueryOpts) ([]types.NodeID, bool, error) {
+	part := func(store *BadgerStore, elements bool, match storeutil.IndexKeyMatch, shardOpts QueryOpts) ([]types.NodeID, error) {
+		if have, has, err := store.PropertyIndexOptions(labelToken, key); err != nil {
+			return nil, err
+		} else if shardPropertyDoor(have, has, elements) {
+			ids, ok, err := store.NodeIDsByLabelAndPropertyKeys(labelToken, key, match.Keys(), shardOpts)
+			if err != nil || ok {
+				return ids, err
+			}
+		}
+		nodes, err := shardNodesByLabelAndProperty(store, elements, labelToken, key, match, shardOpts)
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]types.NodeID, len(nodes))
+		for i, n := range nodes {
+			ids[i] = n.ID()
+		}
+		return ids, nil
+	}
+	ids, err := propertyKeysFanOut(ts, labelToken, key, opts, func() ([]string, error) { return valueKeys, nil }, part, part,
+		func(parts [][]types.NodeID) []types.NodeID {
+			return storeutil.PaginateNodeIDs(mergeNodeIDSlices(parts), opts.After, opts.Limit)
+		})
+	if err != nil {
+		return nil, false, err
+	}
+	return ids, true, nil
+}
+
 // nodesByLabelPropertyKeys is the body of both doors; keysOf runs after the
 // store, token and option checks (a single value is validated there).
 func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts QueryOpts, keysOf func() ([]string, error)) ([]*types.Node, error) {
@@ -203,6 +240,17 @@ func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts Qu
 // reference shard's part with refPart (the pruning lookup's, VALIDENDPRUNE).
 func (ts *Store) nodesByLabelPropertyKeysWith(labelToken uint16, key string, opts QueryOpts, keysOf func() ([]string, error),
 	refPart func(ref *BadgerStore, elements bool, match storeutil.IndexKeyMatch, shardOpts QueryOpts) ([]*types.Node, error)) ([]*types.Node, error) {
+	return propertyKeysFanOut(ts, labelToken, key, opts, keysOf, refPart, func(store *BadgerStore, elements bool, match storeutil.IndexKeyMatch, shardOpts QueryOpts) ([]*types.Node, error) {
+		return shardNodesByLabelAndProperty(store, elements, labelToken, key, match, shardOpts)
+	}, func(parts [][]*types.Node) []*types.Node { return applyNodePagination(mergeNodeSlices(parts), opts) })
+}
+
+// propertyKeysFanOut is the fold of a node property lookup over the
+// reference, archive and event shards: refPart reads the reference shard's
+// part, shardPart the others', merge unites the sorted parts and pages them.
+func propertyKeysFanOut[T any](ts *Store, labelToken uint16, key string, opts QueryOpts, keysOf func() ([]string, error),
+	refPart, shardPart func(store *BadgerStore, elements bool, match storeutil.IndexKeyMatch, shardOpts QueryOpts) ([]T, error),
+	merge func(parts [][]T) []T) ([]T, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -231,7 +279,7 @@ func (ts *Store) nodesByLabelPropertyKeysWith(labelToken uint16, key string, opt
 		return nil, err
 	}
 	elemOpts, _, err := ref.PropertyIndexOptions(labelToken, key)
-	var refNodes []*types.Node
+	var refNodes []T
 	if err == nil {
 		refNodes, err = refPart(ref, elemOpts.Elements, match, stripDepth(opts))
 	}
@@ -240,7 +288,7 @@ func (ts *Store) nodesByLabelPropertyKeysWith(labelToken uint16, key string, opt
 		return nil, err
 	}
 
-	var archiveNodes []*types.Node
+	var archiveNodes []T
 	if opts.Depth == DepthAll {
 		ts.refArchiveGapHook()
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
@@ -248,7 +296,7 @@ func (ts *Store) nodesByLabelPropertyKeysWith(labelToken uint16, key string, opt
 			return nil, archiveErr
 		}
 		if archive != nil {
-			archiveNodes, err = shardNodesByLabelAndProperty(archive, elemOpts.Elements, labelToken, key, match, stripDepth(opts))
+			archiveNodes, err = shardPart(archive, elemOpts.Elements, match, stripDepth(opts))
 			archiveCheckin()
 			if err != nil {
 				return nil, err
@@ -262,7 +310,7 @@ func (ts *Store) nodesByLabelPropertyKeysWith(labelToken uint16, key string, opt
 	ts.mu.RUnlock()
 
 	type result struct {
-		nodes []*types.Node
+		nodes []T
 		err   error
 	}
 	results := make([]result, len(eventShards))
@@ -273,27 +321,26 @@ func (ts *Store) nodesByLabelPropertyKeysWith(labelToken uint16, key string, opt
 			return
 		}
 		defer release()
-		results[i].nodes, results[i].err = shardNodesByLabelAndProperty(store, elemOpts.Elements, labelToken, key, match, stripDepth(opts))
+		results[i].nodes, results[i].err = shardPart(store, elemOpts.Elements, match, stripDepth(opts))
 	})
 
-	var slices [][]*types.Node
+	var parts [][]T
 	if len(refNodes) > 0 {
-		slices = append(slices, refNodes)
+		parts = append(parts, refNodes)
 	}
 	if len(archiveNodes) > 0 {
-		slices = append(slices, archiveNodes)
+		parts = append(parts, archiveNodes)
 	}
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
 		}
 		if len(r.nodes) > 0 {
-			slices = append(slices, r.nodes)
+			parts = append(parts, r.nodes)
 		}
 	}
 
-	merged := mergeNodeSlices(slices)
-	return applyNodePagination(merged, opts), nil
+	return merge(parts), nil
 }
 
 // shardNodesByLabelAndProperty is one shard's part of a node property lookup

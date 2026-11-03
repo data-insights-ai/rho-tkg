@@ -1,0 +1,9 @@
+M1 head filter off -> CAUGHT: effective_timeline_from_test.go:85: closed head from 2001: 20 segments [[1000 2000] [2000 3000] [3000 4000] [4000 5000] [5000 6000] [6000 7000] [7000 8000] [800
+M2 skeleton filter off -> CAUGHT: effective_timeline_from_test.go:84: closed cold from 2001: 20 segments [[1000 2000] [2000 3000] [3000 4000] [4000 5000] [5000 6000] [6000 7000] [7000 8000] [800
+M3 >= to > -> CAUGHT: effective_timeline_from_test.go:84: closed cold from 2000: 19 segments [[2000 3000] [3000 4000] [4000 5000] [5000 6000] [6000 7000] [7000 8000] [8000 9000] [900
+M4 open dropped -> CAUGHT: effective_timeline_from_test.go:84: open cold from 1000: 20 segments [[1000 2000] [2000 3000] [3000 4000] [4000 5000] [5000 6000] [6000 7000] [7000 8000] [8000 
+M5 fold tail off -> CAUGHT: effective_timeline_from_test.go:84: open cold from 2001: 21 segments [[1000 2000] [2000 3000] [3000 4000] [4000 5000] [5000 6000] [6000 7000] [7000 8000] [8000 
+M6 no-history tail off -> CAUGHT: effective_timeline_from_test.go:84: bare cold from 2001: 1 segments [[1000 2000]], want 0 []
+M7 door drops validFrom -> CAUGHT: effective_timeline_from_test.go:84: closed cold from 2001: 20 segments [[1000 2000] [2000 3000] [3000 4000] [4000 5000] [5000 6000] [6000 7000] [7000 8000] [800
+M8 whole timeline bound 0 instead of types.UnboundedValidFrom -> CAUGHT: pkg/graph negative_valid_start_test.go:230 (NodesEffectivePage drops segments ending below 0)
+Red (naive filter after the whole read): tasks/evidence/WRITEGROW/red.txt, 199 history rows

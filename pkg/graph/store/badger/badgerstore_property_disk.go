@@ -16,7 +16,6 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
-	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -280,13 +279,11 @@ func (bs *Store) propertyIndexDiskMaintain(n *types.Node, id snowflake.ID, opTyp
 		if !n.HasLabelTokenRaw(def.key.LabelToken) {
 			continue
 		}
-		valueKey, _ := n.IndexablePropertyValueKey(def.key.PropertyKey)
-		if valueKey == "" {
-			continue
-		}
-		if op, ok := bs.propertyIndexDiskOp(def.key.PropertyKey, valueKey, id, opType); ok {
-			ops = append(ops, op)
-		}
+		forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
+			if op, ok := bs.propertyIndexDiskOp(def.key.PropertyKey, valueKey, id, opType); ok {
+				ops = append(ops, op)
+			}
+		})
 		if def.idx.Mutated != nil {
 			def.idx.Mutated[id] = struct{}{}
 		}
@@ -294,12 +291,34 @@ func (bs *Store) propertyIndexDiskMaintain(n *types.Node, id snowflake.ID, opTyp
 	return ops
 }
 
+// forEachDiskValueKey calls fn with each index key n has under an on-disk
+// definition of propertyKey: the scalar's, or with elements each distinct list
+// element's (ELEMDISK). An element's key is the scalar's of the same value,
+// in the 0x0A keyspace every label indexing propertyKey shares: a lookup
+// rechecks each candidate's row by its own definition's match (the over-select
+// contract above), so a scalar definition never answers an element and an
+// Elements one never answers a whole list.
+func forEachDiskValueKey(n *types.Node, propertyKey string, elements bool, fn func(valueKey string)) {
+	if !elements {
+		if valueKey, _ := n.IndexablePropertyValueKey(propertyKey); valueKey != "" {
+			fn(valueKey)
+		}
+		return
+	}
+	n.ForEachPropertyIndexKey(propertyKey, true, func(valueKey string) bool {
+		fn(valueKey)
+		return true
+	})
+}
+
 // propDiskDef is one on-disk definition of Store.propDiskDefs; members
-// reports whether its member entries are in 0x0C (nodeMemberDisk).
+// reports whether its member entries are in 0x0C (nodeMemberDisk), elements
+// whether it keys each list element (ELEMDISK).
 type propDiskDef struct {
-	key     indexpkg.PropertyIndexKey
-	idx     *indexpkg.PropertyIndex
-	members bool
+	key      indexpkg.PropertyIndexKey
+	idx      *indexpkg.PropertyIndex
+	members  bool
+	elements bool
 }
 
 // refreshPropDiskDefsLocked rebuilds propDiskDefs from propertyIndexes and
@@ -312,7 +331,7 @@ func (bs *Store) refreshPropDiskDefsLocked() {
 	for key, idx := range bs.propertyIndexes {
 		if idx.OnDisk() {
 			_, members := bs.nodeMemberDisk[key]
-			defs = append(defs, propDiskDef{key, idx, members})
+			defs = append(defs, propDiskDef{key, idx, members, idx.Elements()})
 			bs.nodeMembersOnDisk = bs.nodeMembersOnDisk || members
 		}
 	}
@@ -968,12 +987,14 @@ func (bs *Store) purgePropertyKeyDiskEntriesLocked(propertyKey string) ([]writeO
 // propDiskOpen is an open's plan for the on-disk property indexes
 // (planPropertyIndexDisk).
 type propDiskOpen struct {
-	disk    map[indexpkg.PropertyIndexKey]struct{} // the definitions this open keeps on disk
-	rebuild map[string]struct{}                    // property keys whose 0x0A rows this open writes again
-	ops     []writeOp                              // the rebuilt keys' rows (loadIndexesScan)
-	stale   [][]byte                               // the rebuilt keys' rows before the rebuild
-	mark    []writeOp                              // built markers to set (with the format marker)
-	unmark  [][]byte                               // built markers to delete
+	disk     map[indexpkg.PropertyIndexKey]struct{} // the definitions this open keeps on disk
+	elements map[indexpkg.PropertyIndexKey]struct{} // the Elements definitions among those wanting disk (ELEMDISK)
+	rebuild  map[string]struct{}                    // property keys whose 0x0A rows this open writes again
+	ops      []writeOp                              // the rebuilt keys' rows (loadIndexesScan)
+	stale    [][]byte                               // the rebuilt keys' rows before the rebuild
+	mark     []writeOp                              // built markers to set (with the format marker)
+	unmark   [][]byte                               // built markers to delete
+	inexact  map[string]struct{}                    // property keys with an inexact marker this open keeps
 	// validEnd: the on-disk definitions whose entries' valid-end bounds this
 	// open trusts (VALIDENDPRUNE: listed, and marked or reset by this open).
 	validEnd map[indexpkg.PropertyIndexKey]struct{}
@@ -1002,7 +1023,7 @@ func (p *propDiskOpen) deletes() [][]byte { return append(p.stale, p.unmark...) 
 // PropertyIndexOnDiskLabels (raising the format marker to 12), and deletes the
 // others.
 func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*propDiskOpen, error) {
-	p := &propDiskOpen{disk: make(map[indexpkg.PropertyIndexKey]struct{}), rebuild: make(map[string]struct{})}
+	p := &propDiskOpen{disk: make(map[indexpkg.PropertyIndexKey]struct{}), elements: make(map[indexpkg.PropertyIndexKey]struct{}), rebuild: make(map[string]struct{})}
 	all, err := metaKeyPresent(txn, storepkg.PropertyIndexOnDiskBuiltKey)
 	if err != nil {
 		return nil, fmt.Errorf("graph: read property-index-on-disk marker: %w", err)
@@ -1019,15 +1040,10 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 		if !bs.propIdxOnDiskWanted(def.LabelToken) {
 			continue
 		}
-		if def.Elements {
-			// The disk keyspace keys scalars only and is shared by every
-			// label indexing the key: an Elements index would answer
-			// equality. Open it without PropertyIndexOnDisk (or its label in
-			// PropertyIndexOnDiskLabels).
-			return nil, fmt.Errorf("graph: load property index definition label %d property %q: an elements index needs the RAM index, not PropertyIndexOnDisk: %w",
-				def.LabelToken, def.PropertyKey, storecontract.ErrCapabilityNotSupported)
-		}
 		key := indexpkg.PropertyIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
+		if def.Elements {
+			p.elements[key] = struct{}{}
+		}
 		_, trusted := marked[string(storepkg.PropertyIndexOnDiskDefBuiltKey(def.LabelToken, def.PropertyKey))]
 		switch {
 		case trusted || all:
@@ -1048,10 +1064,24 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 		clear(p.rebuild)
 	}
 	veMark, veUnmark := bs.planValidEnd(txn, p)
+	it = txn.NewIterator(badgerv4.IteratorOptions{Prefix: propDiskInexactPrefix})
+	for it.Rewind(); it.Valid(); it.Next() {
+		if p.inexact == nil {
+			p.inexact = make(map[string]struct{})
+		}
+		p.inexact[string(it.Item().Key()[len(propDiskInexactPrefix):])] = struct{}{}
+	}
+	it.Close()
 	if bs.readOnly {
 		return p, nil
 	}
 	p.unmark = append(p.unmark, veUnmark...)
+	for propertyKey := range p.inexact {
+		if _, rebuilt := p.rebuild[propertyKey]; rebuilt { // written again from the rows: exact
+			delete(p.inexact, propertyKey)
+			p.unmark = append(p.unmark, propDiskInexactKey(propertyKey))
+		}
+	}
 	for propertyKey := range p.rebuild {
 		tok, ok := bs.propKeyTokenFor(propertyKey)
 		if !ok {
@@ -1117,7 +1147,7 @@ func (bs *Store) planValidEnd(txn *badgerv4.Txn, p *propDiskOpen) (mark []writeO
 	keep := make(map[string]struct{})
 	reset := make(map[string]struct{})
 	for key := range p.disk {
-		if !bs.validEndListed(key) {
+		if _, elements := p.elements[key]; elements || !bs.validEndListed(key) { // an element's entry bounds no row (ELEMDISK)
 			continue
 		}
 		k := string(storepkg.PropertyIndexValidEndBuiltKey(key.LabelToken, key.PropertyKey))

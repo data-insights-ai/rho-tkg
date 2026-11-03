@@ -1,0 +1,6 @@
+KILLED: door check removed
+KILLED: drop sets no RAM mark
+KILLED: drop persists no marker
+KILLED: open loads no marker
+KILLED: open clears every marker
+KILLED: rebuild keeps the marker

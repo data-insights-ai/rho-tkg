@@ -102,6 +102,7 @@ Coverage spans three sources:
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrGraphClosed` | core | Graph is closed (no operations permitted) | All API calls after `g.Close()` |
+| `ErrReplaceVersionNotListed` | core | The node's primary label is not in `Config.ReplaceVersionLabels`; the whole-row replace is refused, nothing written (ADR-0014) | `g.Nodes().ReplaceVersion()`, `GraphTx.ReplaceNodeVersion()` |
 | `ErrAlreadyClosed` | core | The entity's current version is closed (`ValidTo` set, e.g. by `CloseVersion`); a mutation of it or a second close is refused | `g.Nodes()` / `g.Rels()` `CloseVersion()` (second close), `Update()`, `UpdateWithTx()`, `UpdateInPlace()`, `CompareAndSetProperty()`, and the `GraphTx` update doors on a closed entity |
 | `ErrNotTieredStore` | core | Operation requires a tiered store but a different backend is configured | `g.Tier().Archive()`, `g.Tier().Restore()` on non-tiered backends |
 | `ErrReadOnlyReplica` | core | Write operation on a read-only replica | `g.Nodes().Add*()`, mutations on `ReadOnlyReplica=true` graph |

@@ -1,0 +1,15 @@
+E1 write path keys scalars only -> CAUGHT: property_index_elements_test.go:443: current 101: got [866988687180660736], want [866988687179120640 866988687180431360 866988687180660736]
+E2 member entries scalars only -> CAUGHT: property_index_elements_test.go:321: TxPin 101: got [866988746301474816], want [866988746300786688 866988746301474816]
+E3 member scan scalars only -> CAUGHT: property_index_elements_test.go:357: TxPin 101: got [866988833450854400], want [866988833363003392 866988833450854400]
+E4 open placement drops elements -> CAUGHT: property_index_elements_test.go:382: TxPin 101: got [866989146170591232], want [866989146169640960 866989146170591232]
+E5 create backfill scalars only -> CAUGHT: property_index_elements_test.go:357: current 102: got [], want [866989205184415744 866989205235959808]
+E6 create member target drops elements -> CAUGHT: property_index_elements_test.go:357: TxPin 101: got [866989264532768768], want [866989264480864256 866989264532768768]
+E7 open rebuild scalars only -> CAUGHT: property_index_elements_test.go:382: current 102: got [], want [866989327046412288 866989327047362560]
+E8 open handle not elements -> CAUGHT: property_index_elements_test.go:327: current 102: got [], want [866989356495210496 866989356496455680]
+E9 create handle not elements -> CAUGHT: property_index_elements_test.go:443: current 101: got [866989415096451072], want [866989415095140352 866989415096287232 866989415096451072]
+E10 key check scalars only -> CAUGHT: badgerstore_entry_size_test.go:287: PutNode: err <nil>, want ErrEntryTooLarge
+E11 member key check scalars only -> CAUGHT: badgerstore_entry_size_test.go:301: ReplaceNodeWithHistory: err <nil>, want ErrEntryTooLarge
+E12 open plan forgets elements -> CAUGHT: property_index_elements_test.go:382: TxPin 101: got [866990732051974144], want [866990732051023872 866990732051974144]
+E13 valid-end trust at create -> CAUGHT: validendprune_test.go:709: create: 0 nodes, want the open one
+E14 valid-end trust at open -> CAUGHT: validendprune_test.go:715: reopen: 0 nodes, want the open one
+E15 helper elements ignored -> CAUGHT: property_index_elements_test.go:443: current 101: got [866991701303394304], want [866991701301886976 866991701303164928 866991701303394304]

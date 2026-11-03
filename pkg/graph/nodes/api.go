@@ -30,6 +30,7 @@ type Ops interface {
 	Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
 	UpdateWithTx(ctx context.Context, id types.NodeID, updates map[string]any, txFrom types.Instant) (*types.Node, error)
 	UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
+	ReplaceVersion(ctx context.Context, id types.NodeID, props map[string]any, validFrom, validTo types.Instant) (*types.Node, error)
 	Delete(ctx context.Context, id types.NodeID) error
 	DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error
 	Retract(ctx context.Context, id types.NodeID) error
@@ -72,6 +73,7 @@ type Ops interface {
 	NodeLabelMutationEpoch(label string) uint64
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	ByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error)
+	IDsByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]types.NodeID, error)
 	ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	Count() (int, error)
 	CountByLabel(label string) (int, error)
@@ -308,6 +310,20 @@ func (a *API) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[st
 		return nil, err
 	}
 	return ops.UpdateInPlace(ctx, id, updates)
+}
+
+// ReplaceVersion replaces the node's current row whole as a new version (ADR-0014):
+// props is the complete property set, [validFrom, validTo) its validity (validTo
+// the valid axis's open end for an open row). The current version, closed or not,
+// moves to history with TxTo at the new TxFrom; any start and end are accepted.
+// Only nodes whose primary label is in Config.ReplaceVersionLabels
+// (ErrReplaceVersionNotListed). A call that changes nothing writes nothing.
+func (a *API) ReplaceVersion(ctx context.Context, id types.NodeID, props map[string]any, validFrom, validTo types.Instant) (*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.ReplaceVersion(ctx, id, props, validFrom, validTo)
 }
 
 // Delete deletes the node honoring ctx.
@@ -996,6 +1012,20 @@ func (a *API) ByLabelAndPropertyValues(label, key string, values []any, opts sto
 		return nil, err
 	}
 	return ops.ByLabelAndPropertyValues(label, key, values, opts)
+}
+
+// IDsByLabelAndPropertyValues returns the IDs of the nodes
+// ByLabelAndPropertyValues returns, in ID order and paged the same, without
+// loading their rows where the store answers from its index: badger and
+// tiered with no time coordinate in opts and a published index whose keys
+// are exact for the definition (ELEMPROBE). Otherwise it reads the rows as
+// ByLabelAndPropertyValues does. Errors as ByLabelAndPropertyValues.
+func (a *API) IDsByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.IDsByLabelAndPropertyValues(label, key, values, opts)
 }
 
 // ByLabelAndProperties returns nodes carrying the label whose properties

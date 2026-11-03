@@ -398,6 +398,10 @@ func (c *Core) relEffectivePieces(chain []*types.Relationship, pin types.Instant
 // presence bit; one with history reads per-version temporal skeletons where
 // the store offers them (badger) and decodes only the rows that answer.
 func (t *TempOps) NodeEffectiveTimeline(id types.NodeID, pin types.Instant) ([]temporal.NodeSegment, error) {
+	return t.nodeEffectiveTimeline(id, types.UnboundedValidFrom, pin) // every segment reaches it
+}
+
+func (t *TempOps) nodeEffectiveTimeline(id types.NodeID, validFrom, pin types.Instant) ([]temporal.NodeSegment, error) {
 	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -412,13 +416,19 @@ func (t *TempOps) NodeEffectiveTimeline(id types.NodeID, pin types.Instant) ([]t
 	var out []temporal.NodeSegment
 	err := c.readUnderRLock(func() error {
 		var err error
-		out, err = c.nodeEffectiveTimelineLocked(id, pin)
+		out, err = c.nodeEffectiveTimelineTail(entityReads{c: c}, id, validFrom, pin)
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// NodeEffectiveTimelineFrom is NodeEffectiveTimeline's tail: the segments
+// ending at or after validFrom, or open (WRITEGROW).
+func (t *TempOps) NodeEffectiveTimelineFrom(id types.NodeID, validFrom, pin types.Instant) ([]temporal.NodeSegment, error) {
+	return t.nodeEffectiveTimeline(id, validFrom, pin)
 }
 
 // RelEffectiveTimeline is NodeEffectiveTimeline for relationships (the row
@@ -459,6 +469,14 @@ func (c *Core) nodeEffectiveTimelineLocked(id types.NodeID, pin types.Instant) (
 
 // nodeEffectiveTimelineFrom is the per-entity body reading through rd (c.mu held).
 func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin types.Instant) ([]temporal.NodeSegment, error) {
+	return c.nodeEffectiveTimelineTail(rd, id, types.UnboundedValidFrom, pin)
+}
+
+// nodeEffectiveTimelineTail is nodeEffectiveTimelineFrom keeping the segments
+// that reach validFrom (segmentReaches). The head entry and the temporal
+// skeletons name each segment's winner before its row is read, so those paths
+// read only the rows of the segments kept; the fold reads the whole chain.
+func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validFrom, pin types.Instant) ([]temporal.NodeSegment, error) {
 	// The entity lock makes the current row, the presence bit and the
 	// history one snapshot: a concurrent write (Update, Delete, CloseVersion)
 	// moves the current row into history in more than one store step, and a
@@ -479,7 +497,7 @@ func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin ty
 		if has, known, err := rd.hasNodeHistory(id); err != nil {
 			return nil, err
 		} else if known && !has {
-			return nodeSegments(c.nodeEffectivePieces([]*types.Node{current}, pin), nil), nil
+			return c.tailOf(nodeSegments(c.nodeEffectivePieces([]*types.Node{current}, pin), nil), validFrom), nil
 		}
 	}
 	// The head answer (backlog 68): kept per entity while the store's history
@@ -488,12 +506,12 @@ func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin ty
 	var epoch uint64
 	if rd.snap == nil && !rd.scan && current != nil {
 		epoch = c.nodeHistoryEpoch(id)
-		if segs, ok := c.nodeHeadSegments(rd, id, current, pin, epoch); ok {
+		if segs, ok := c.nodeHeadSegments(rd, id, current, validFrom, pin, epoch); ok {
 			return segs, nil
 		}
 	}
 	if c.temporalMetaHistory != nil {
-		if segs, handled, err := c.nodeEffectiveViaTemporalMeta(rd, id, current, pin, epoch); handled {
+		if segs, handled, err := c.nodeEffectiveViaTemporalMeta(rd, id, current, validFrom, pin, epoch); handled {
 			return segs, err
 		}
 	}
@@ -513,7 +531,19 @@ func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin ty
 	if facts != nil {
 		c.noteNodeHead(id, epoch, current, pieces, facts)
 	}
-	return nodeSegments(pieces, nil), nil
+	return c.tailOf(nodeSegments(pieces, nil), validFrom), nil
+}
+
+// segmentReaches reports whether a segment ending at to reaches validFrom:
+// open, or ending at or after it (the From doors' rule, pickFrom).
+func segmentReaches(a types.ValidAxis, to, validFrom types.Instant) bool {
+	return a.Open(to) || to >= validFrom
+}
+
+// tailOf keeps the segments of segs that reach validFrom.
+func (c *Core) tailOf(segs []temporal.NodeSegment, validFrom types.Instant) []temporal.NodeSegment {
+	a := c.axis()
+	return slices.DeleteFunc(segs, func(s temporal.NodeSegment) bool { return !segmentReaches(a, s.ValidTo, validFrom) })
 }
 
 // relEffectiveTimelineLocked mirrors nodeEffectiveTimelineLocked.
@@ -587,7 +617,7 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 // and given the same TxAt normalization the resolver applies (lesson 60).
 // handled=false (a winner vanished between the reads, e.g. a concurrent trim)
 // falls back to the full-chain fold.
-func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, current *types.Node, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, bool, error) {
+func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, current *types.Node, validFrom, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, bool, error) {
 	metas, err := rd.nodeMeta(id)
 	if err != nil {
 		return nil, true, err
@@ -639,6 +669,9 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 	}
 	segs := make([]temporal.NodeSegment, 0, len(pieces))
 	for _, p := range pieces {
+		if !segmentReaches(c.axis(), p.to, validFrom) {
+			continue
+		}
 		row, ok := hydrate(p)
 		if !ok {
 			return nil, false, nil

@@ -127,6 +127,7 @@ var (
 	ErrNameTooLong             = core.ErrNameTooLong
 	ErrSelfLoop                = core.ErrSelfLoop
 	ErrValidFromBeforePrevious = core.ErrValidFromBeforePrevious
+	ErrReplaceVersionNotListed = core.ErrReplaceVersionNotListed
 	// A cascade (SetNodeVersionInterval / SetRelVersionInterval) on a hard-deleted
 	// entity; also matches ErrNodeNotFound / ErrRelNotFound.
 	ErrEntityDeleted = core.ErrEntityDeleted

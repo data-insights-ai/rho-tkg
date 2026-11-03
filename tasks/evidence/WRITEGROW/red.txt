@@ -1,0 +1,8 @@
+--- FAIL: TestNodeEffectiveTimelineFromReadsOnlyTheTail (0.01s)
+    --- FAIL: TestNodeEffectiveTimelineFromReadsOnlyTheTail/memory (0.00s)
+        effective_timeline_from_test.go:100: 199 history rows read for a tail of 2 segments (one of them current), want at most 1
+    --- FAIL: TestNodeEffectiveTimelineFromReadsOnlyTheTail/badger (0.01s)
+        effective_timeline_from_test.go:100: 199 history rows read for a tail of 2 segments (one of them current), want at most 1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.052s
+FAIL

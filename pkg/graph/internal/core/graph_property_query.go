@@ -109,6 +109,63 @@ func (n *NodeOps) ByLabelAndPropertyValues(label, key string, values []any, opts
 	return result, nil
 }
 
+// IDsByLabelAndPropertyValues returns the IDs of ByLabelAndPropertyValues'
+// nodes, in ID order and paged the same. With no time coordinate, on an
+// exact store with NodePropertyKeysIDsCapability, the store answers from its
+// index without loading rows where it can (ELEMPROBE); otherwise the nodes
+// are read as ByLabelAndPropertyValues reads them.
+func (n *NodeOps) IDsByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if !opts.HasTimeCoordinate() && !opts.ValidEndAfterSet && c.propertyIDsQuery != nil && c.propertyQueryTrust {
+		if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
+			return nil, err
+		}
+		if err := c.validateIndexLabel(label); err != nil {
+			return nil, err
+		}
+		if err := c.validateIndexPropertyKey(key); err != nil {
+			return nil, err
+		}
+		for _, value := range values {
+			if err := types.ValidatePropertyValue(value); err != nil {
+				return nil, fmt.Errorf("graph: node IDs by label and property values: %w", err)
+			}
+		}
+		forms := unionEqualForms(values)
+		var ids []types.NodeID
+		var answered bool
+		err := c.readUnderRLock(func() error {
+			tok, ok := c.labels.Lookup(label)
+			if !ok {
+				return nil
+			}
+			if opts.Depth == storepkg.DepthAll {
+				if _, owner := c.readyOwnerIndex(tok, key); owner {
+					return nil
+				}
+			}
+			var err error
+			ids, answered, err = c.propertyIDsQuery.NodeIDsByLabelAndPropertyKeys(tok, key, keysOf(forms), opts)
+			return err
+		})
+		if err != nil || answered {
+			return ids, err
+		}
+	}
+	nodes, err := n.ByLabelAndPropertyValues(label, key, values, opts)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]types.NodeID, len(nodes))
+	for i, node := range nodes {
+		ids[i] = node.ID()
+	}
+	return ids, nil
+}
+
 // nodesByLabelAndPropertyLocked is the lock-free body of NodeOps.ByLabelAndProperty.
 // Callers must hold c.mu (R or W).
 func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {

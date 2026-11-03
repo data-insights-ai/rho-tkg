@@ -53,6 +53,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "UpdateWithContext", run: func() error { _, err := api.Update(ctx, id, nil); return err }},
 		{name: "UpdateInPlace", run: func() error { _, err := api.UpdateInPlace(context.Background(), id, nil); return err }},
 		{name: "UpdateInPlaceWithContext", run: func() error { _, err := api.UpdateInPlace(ctx, id, nil); return err }},
+		{name: "ReplaceVersion", run: func() error { _, err := api.ReplaceVersion(ctx, id, nil, 1, 2); return err }},
 		{name: "Delete", run: func() error { return api.Delete(context.Background(), id) }},
 		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, id) }},
 		{name: "DeleteWithTx", run: func() error { return api.DeleteWithTx(ctx, id, 1000) }},
@@ -74,6 +75,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "ByLabelAndProperty", run: func() error { _, err := api.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
 		{name: "ByLabelAndPropertyValues", run: func() error {
 			_, err := api.ByLabelAndPropertyValues("Node", "name", []any{"Ada"}, opts)
+			return err
+		}},
+		{name: "IDsByLabelAndPropertyValues", run: func() error {
+			_, err := api.IDsByLabelAndPropertyValues("Node", "name", []any{"Ada"}, opts)
 			return err
 		}},
 		{name: "ByLabelAndProperties", run: func() error {
@@ -130,8 +135,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "LendByIDs", "GetByIDs",
-		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "EndValidity", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "GetOrCreateByKeyOpts", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndPropertyValues", "ByLabelAndProperties",
+		"Update", "Update", "UpdateInPlace", "UpdateInPlace", "ReplaceVersion",
+		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "EndValidity", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "GetOrCreateByKeyOpts", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndPropertyValues", "IDsByLabelAndPropertyValues", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"AddLabel", "RemoveLabel", "CloseVersion", "History", "HasHistory", "VersionAfter", "VersionBefore",
@@ -246,6 +251,12 @@ func (s *nodeOpsSpy) UpdateWithContext(ctx context.Context, id types.NodeID, upd
 
 func (s *nodeOpsSpy) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	s.record("UpdateInPlace")
+	s.lastID = id
+	return nil, s.err
+}
+
+func (s *nodeOpsSpy) ReplaceVersion(ctx context.Context, id types.NodeID, props map[string]any, validFrom, validTo types.Instant) (*types.Node, error) {
+	s.record("ReplaceVersion")
 	s.lastID = id
 	return nil, s.err
 }
@@ -442,6 +453,11 @@ func (s *nodeOpsSpy) ForEachByLabelPropertyPrefix(label, propKey, prefix string,
 
 func (s *nodeOpsSpy) ByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	s.record("ByLabelAndPropertyValues")
+	return nil, s.err
+}
+
+func (s *nodeOpsSpy) IDsByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	s.record("IDsByLabelAndPropertyValues")
 	return nil, s.err
 }
 

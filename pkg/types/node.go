@@ -286,6 +286,18 @@ func (n *Node) GetProperty(key string) (any, bool) {
 	return n.properties.Get(key)
 }
 
+// BorrowProperty returns the stored value for key without copying it: a
+// []byte or other slice aliases the node's own value. The caller must not
+// modify it. A write to the node stores a new value and leaves a borrowed one
+// as it was, so a borrowed value stays valid after the read; GetProperty is
+// the copying read.
+func (n *Node) BorrowProperty(key string) (any, bool) {
+	if n == nil {
+		return nil, false
+	}
+	return n.properties.borrow(key)
+}
+
 // PropertyValueEqual reports whether key exists and whether its stored value
 // equals expected without returning or copying the stored value.
 func (n *Node) PropertyValueEqual(key string, expected any) (found bool, equal bool) {

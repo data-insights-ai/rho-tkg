@@ -6,6 +6,87 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.100.1] - 2026-11-03
+
+### Fixed
+
+- **ELEMPROBE drop** (found by a read-only Fable review, 3 Nov; a patch). On an on-disk property index,
+  `Nodes().IDsByLabelAndPropertyValues` returned nodes whose row did not match after a definition was dropped while
+  another definition still indexed the same property key: the drop leaves the dropped one's entries (an Elements
+  definition's element keys, or a scalar key the node's value no longer has) and the ID door trusted them, before and
+  after a reopen; `ByLabelAndPropertyValues` was right. The drop now writes an inexact marker for the key, and the ID
+  door reads rows for it until the key's entries are purged or rebuilt (`TestIDsByLabelAndPropertyValuesAfterADropOnASharedKey`,
+  badger and tiered; 6 of 6 mutations caught; `tasks/evidence/ELEMPROBE/`).
+
+## [4.100.0] - 2026-11-03
+
+### Added
+
+- **ELEMPROBE** (ai-soc for sigma's page-block probe; a minor). `g.Nodes().IDsByLabelAndPropertyValues(label, key,
+  values, opts)` returns the IDs of `ByLabelAndPropertyValues` without loading rows where the index answers (badger and
+  tiered, no time coordinate, a published index whose keys are exact; capability
+  `store.NodePropertyKeysIDsCapability`); otherwise it reads the rows. In ai-soc's 60-minute BA run on tiered, the
+  probe loaded each 64 KiB block about 14 times (757,551 rows for at most 53,676 blocks): 81 s of the probe's 107 s
+  CPU went to the badger read and decode of rows the caller already held (`TestIDsByLabelAndPropertyValuesReadsNoRow`
+  and three more, `tasks/evidence/ELEMPROBE/`).
+- **BORROWREAD** (ai-soc for sigma's page blocks; a minor). `types.Node.BorrowProperty(key)` returns a property's
+  stored value without the deep copy `GetProperty` makes; the caller must not modify it. sigma reads each 64 KiB block
+  blob through `GetProperty`, 20.9 GiB of deep copies in ai-soc's 60-minute BA run (147.7 GiB allocated). With `Lend`,
+  a borrowed read allocates nothing on memory and badger; later writes and closing the store leave a borrowed value as
+  it was (`TestBorrowPropertyReadsABlobWithoutACopy`, `tasks/evidence/BORROWREAD/`).
+- **WHOLEROW** (sigma-tkgd's paged-row writer, STATEREC ask 1; a minor, ADR-0014). `g.Nodes().ReplaceVersion(ctx, id, props,
+  validFrom, validTo)` and `GraphTx.ReplaceNodeVersion` replace a node's current row whole as a new version with any
+  validity: a closed row, an equal or earlier start, a grown end and a change of properties alone, which every update
+  door refused (`ErrAlreadyClosed`, `ErrValidFromBeforePrevious`) or `UpdateInPlace` rewrote without a new `TxFrom`.
+  Listed labels only (`Config.ReplaceVersionLabels`, else `ErrReplaceVersionNotListed`). The old version moves to
+  history with `TxTo` at the new `TxFrom`; property, valid-end and temporal indexes follow in the row's own write. A
+  pin at or after the replace reads the new version alone, a pin before reads as before; `TxFrom` rises with version
+  across a crash (`TestReplaceVersion*`, badger and tiered; `tasks/evidence/WHOLEROW/`).
+- **ASOFWALK step 1** (sigma's STATEREC as-of reads; a minor). On tiered, `Temporal().NodeAsOf`, `NodesAsOf` and a
+  `TxPin` read of a node whose rows all sit on its live owner shard walk that shard's versions newest first instead of
+  loading the whole chain: 199 history rows per read to 0 for a 200-version node (capability
+  `store.NodeAsOfWalkCapability`). An archived node, one with rows left in the archive, or one archived during the walk
+  reads the chain as before. Badger's reverse history scan sets its iterator `Prefix` (`TestTieredNodeAsOf_*`,
+  `tasks/evidence/ASOFWALK/`).
+
+## [4.99.0] - 2026-11-03
+
+### Added
+
+- **ELEMDISK** (sigma-tkgd's PAGEBLOB blocks; a minor). An Elements property index (`PropertyIndexOptions{Elements:
+  true}`) on a label whose indexes are on disk (badger and tiered `PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`)
+  keeps one disk entry per distinct list element, current and member, and no RAM per element; it was refused with
+  `ErrCapabilityNotSupported`. It answers as the RAM index at current, `TxPin`, `TxAt`+`ValidAt` and interval reads,
+  across a reopen, on event shards and archive, and when its label joins or leaves the list. An element's entry is
+  keyed as the scalar of the same value, beside other labels' scalar entries on the key; each definition rechecks its
+  own match. Valid-end pruning leaves an Elements definition unpruned. A release before this one refuses such a
+  definition when its label is listed at open. Cost on badger: about 1.4 µs per key, two keys per element; a block of
+  1,000 rows with 8 masks writes in 36 ms, durable (`tasks/evidence/ELEMDISK/`). Relationship types on disk still
+  refuse Elements.
+
+- **WRITEGROW** (sigma-tkgd's write-back; a minor). `g.Temporal().NodeEffectiveTimelineFrom(id, validFrom, pin)`
+  returns the effective timeline's segments that end at or after `validFrom`, or are open, and reads only their rows
+  where the winners are known first (the head-pin entry; badger's temporal skeletons): a tail of 2 segments of a
+  200-version row read 199 history rows through `NodeEffectiveTimeline`, now 2 (`TestNodeEffectiveTimelineFrom*`,
+  `tasks/evidence/WRITEGROW/`).
+
+## [4.98.4] - 2026-11-01
+
+### Fixed
+
+- **RELPAGEVALID** (ai-soc's slow valid-instant page). An on-disk member page walked and sorted every member of the
+  type before cutting the page. It now seeks past the cursor and stops at its limit, and a fetch nothing passes grows
+  to the page chunk's cap. A valid-instant page on the 12 GB masked store: 306-445 s (ai-soc) to about 8.6-9 s
+  (harness on a copy, one run). Still not bounded by the page: each member on a cold shard costs one row read, as cold
+  shards keep no valid-time envelope (badger `TestRelMemberPageWalkFollowsTheLimit`,
+  `TestRelMemberPageEqualsTheWholeWalk`, `TestNodeMemberPageWalkFollowsTheLimit`, core
+  `TestPageSourceFillGrowsTheFetchWhileNothingPasses`, `tasks/evidence/RELPAGEVALID/`). 8 of 9 mutations caught; the
+  ninth is equivalent.
+- **PUSHSLOW** (ai-soc's mask read). A read with `ValidEndAfter` no longer reads a returned row again when the row has
+  no history: 14-22 to 14-17 us per returned node on the same store, one run each; the plain read is unchanged. Not
+  measured on a BA push (core `TestValidEndReadDoesNotReadAReturnedRowAgain`, `tasks/evidence/PUSHSLOW/`). 2 of 3
+  mutations caught; the third, a store without the history capability, has no in-tree store to run on.
+
 ## [4.98.3] - 2026-10-30
 
 ### Fixed

@@ -1,0 +1,44 @@
+WHOLEROW red tests, 2026-10-31, branch wholerow, commit after 88f77e03: the door routed through today's Update kernel.
+go test -short -count=1 -run TestReplaceVersion ./pkg/graph/
+
+2026/10/31 18:41:22 INFO graph: tiered store opened duration=79.26573ms reference=27.50034ms hot=31.328289ms warm=540ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly (0.18s)
+    --- FAIL: TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly/badger (0.00s)
+        replace_version_test.go:156: ReplaceVersion on a closed row with an earlier start and a grown end: graph: entity already closed
+    --- FAIL: TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly/tiered (0.17s)
+        replace_version_test.go:156: ReplaceVersion on a closed row with an earlier start and a grown end: graph: entity already closed
+2026/10/31 18:41:23 INFO graph: tiered store opened duration=106.077834ms reference=27.250407ms hot=58.577755ms warm=430ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestReplaceVersionPinBeforeReadsAsBefore (0.20s)
+    --- FAIL: TestReplaceVersionPinBeforeReadsAsBefore/badger (0.00s)
+        replace_version_test.go:190: ReplaceVersion on a closed row with an earlier start and a grown end: graph: entity already closed
+    --- FAIL: TestReplaceVersionPinBeforeReadsAsBefore/tiered (0.19s)
+        replace_version_test.go:190: ReplaceVersion on a closed row with an earlier start and a grown end: graph: entity already closed
+2026/10/31 18:41:23 INFO graph: tiered store opened duration=125.779097ms reference=57.064841ms hot=48.35195ms warm=490ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom (0.24s)
+    --- FAIL: TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom/badger (0.03s)
+        replace_version_test.go:218: ReplaceVersion on a closed row with an earlier start and a grown end: graph: entity already closed
+    --- FAIL: TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom/tiered (0.21s)
+        replace_version_test.go:218: ReplaceVersion on a closed row with an earlier start and a grown end: graph: entity already closed
+--- FAIL: TestReplaceVersionTxFromRisesWithVersionAcrossCrash (0.18s)
+    --- FAIL: TestReplaceVersionTxFromRisesWithVersionAcrossCrash/badger (0.06s)
+        replace_version_test.go:310: crash child failed: exit status 4
+            write: graph: entity already closed
+    --- FAIL: TestReplaceVersionTxFromRisesWithVersionAcrossCrash/tiered (0.12s)
+        replace_version_test.go:310: crash child failed: exit status 4
+            2026/10/31 18:41:23 INFO graph: tiered store opened duration=85.876295ms reference=37.394369ms hot=36.116016ms warm=1.01µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+            write: graph: entity already closed
+2026/10/31 18:41:23 INFO graph: tiered store opened duration=105.40238ms reference=55.21657ms hot=30.089767ms warm=371ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestReplaceVersionIndexesFollowTheNewVersion (0.20s)
+    --- FAIL: TestReplaceVersionIndexesFollowTheNewVersion/badger (0.01s)
+        replace_version_test.go:385: ReplaceVersion on a closed row with an earlier start and a grown end: graph: entity already closed
+    --- FAIL: TestReplaceVersionIndexesFollowTheNewVersion/tiered (0.19s)
+        replace_version_test.go:385: ReplaceVersion on a closed row with an earlier start and a grown end: graph: entity already closed
+2026/10/31 18:41:23 INFO graph: tiered store opened duration=80.697509ms reference=29.289248ms hot=31.251795ms warm=570ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestReplaceVersionRefusalsAndTxTwin (0.19s)
+    --- FAIL: TestReplaceVersionRefusalsAndTxTwin/badger (0.01s)
+        replace_version_test.go:441: unlisted label: graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 500 <= prev 1000, want graph: node's label is not listed in Config.ReplaceVersionLabels
+    --- FAIL: TestReplaceVersionRefusalsAndTxTwin/tiered (0.18s)
+        replace_version_test.go:441: unlisted label: graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 500 <= prev 1000, want graph: node's label is not listed in Config.ReplaceVersionLabels
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.206s
+FAIL

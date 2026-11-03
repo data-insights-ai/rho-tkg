@@ -66,6 +66,9 @@ type entityReads struct {
 }
 
 func (r entityReads) currentNode(id types.NodeID) (*types.Node, error) {
+	if r.c.currentNodeReadTestHook != nil {
+		r.c.currentNodeReadTestHook()
+	}
 	if r.snap == nil {
 		return r.c.getCurrentNode(id)
 	}

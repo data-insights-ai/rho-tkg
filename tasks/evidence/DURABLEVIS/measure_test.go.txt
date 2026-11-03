@@ -1,0 +1,153 @@
+package graph_test
+
+import (
+	"context"
+	"fmt"
+	"math/rand"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// TestDURABLEVISMeasure (measurement only, never merged): durable writers of
+// 500 B facts with concurrent point readers. RHO_DURABLEVIS_HOLD=1 keeps the
+// graph locks through the group's fsync. Run with RHO_DURABLEVIS_RUN=1.
+func TestDURABLEVISMeasure(t *testing.T) {
+	if os.Getenv("RHO_DURABLEVIS_RUN") != "1" {
+		t.Skip("measurement")
+	}
+	backend := os.Getenv("RHO_DURABLEVIS_BACKEND") // badger | tiered | tiered-sync
+	writers, _ := strconv.Atoi(os.Getenv("RHO_DURABLEVIS_WRITERS"))
+	perTx, _ := strconv.Atoi(os.Getenv("RHO_DURABLEVIS_PERTX"))
+	readers := 4
+	dur := 20 * time.Second
+
+	dir := t.TempDir()
+	var g *graphpkg.Graph
+	var err error
+	switch backend {
+	case "badger":
+		g, err = graphpkg.New(graphpkg.Config{BadgerDir: dir, DurableCommit: true})
+	case "tiered", "tiered-sync":
+		ts, terr := tiered.New(tiered.Config{DataDir: dir, SyncWrites: backend == "tiered-sync"})
+		if terr != nil {
+			t.Fatal(terr)
+		}
+		g, err = graphpkg.New(graphpkg.Config{Store: ts, DurableCommit: true})
+	default:
+		t.Fatalf("backend %q", backend)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = g.Close() }()
+	ctx := context.Background()
+	payload := strings.Repeat("x", 500)
+
+	// Seed ids for readers.
+	var idsMu sync.RWMutex
+	ids := make([]types.NodeID, 0, 1<<16)
+	for i := 0; i < 2000; i++ {
+		n, err := g.Nodes().Add(ctx, []string{"Signal"}, map[string]any{"p": payload})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, n.ID())
+	}
+
+	stop := make(chan struct{})
+	var commits, facts atomic.Int64
+	var wg sync.WaitGroup
+	wlat := make([][]time.Duration, writers)
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				var made []types.NodeID
+				t0 := time.Now()
+				err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+					made = made[:0]
+					for j := 0; j < perTx; j++ {
+						n, err := tx.AddNode([]string{"Signal"}, map[string]any{"p": payload})
+						if err != nil {
+							return err
+						}
+						made = append(made, n.ID())
+					}
+					return nil
+				})
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				wlat[w] = append(wlat[w], time.Since(t0))
+				commits.Add(1)
+				facts.Add(int64(perTx))
+				idsMu.Lock()
+				ids = append(ids, made...)
+				idsMu.Unlock()
+			}
+		}(w)
+	}
+	rlat := make([][]time.Duration, readers)
+	for r := 0; r < readers; r++ {
+		wg.Add(1)
+		go func(r int) {
+			defer wg.Done()
+			rng := rand.New(rand.NewSource(int64(r)))
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				idsMu.RLock()
+				id := ids[rng.Intn(len(ids))]
+				idsMu.RUnlock()
+				t0 := time.Now()
+				if _, err := g.Nodes().Get(ctx, id); err != nil {
+					t.Error(err)
+					return
+				}
+				rlat[r] = append(rlat[r], time.Since(t0))
+			}
+		}(r)
+	}
+	time.Sleep(dur)
+	close(stop)
+	wg.Wait()
+
+	pct := func(all [][]time.Duration) (int, string) {
+		var xs []time.Duration
+		for _, a := range all {
+			xs = append(xs, a...)
+		}
+		sort.Slice(xs, func(i, j int) bool { return xs[i] < xs[j] })
+		if len(xs) == 0 {
+			return 0, "-"
+		}
+		at := func(q float64) time.Duration { return xs[int(q*float64(len(xs)-1))] }
+		return len(xs), fmt.Sprintf("p50=%v p99=%v p999=%v max=%v", at(.5), at(.99), at(.999), xs[len(xs)-1])
+	}
+	rn, rs := pct(rlat)
+	_, ws := pct(wlat)
+	fmt.Printf("DURABLEVIS backend=%s hold=%s writers=%d pertx=%d commits/s=%.0f facts/s=%.0f | commit %s | reads/s=%.0f read %s\n",
+		backend, os.Getenv("RHO_DURABLEVIS_HOLD"), writers, perTx,
+		float64(commits.Load())/dur.Seconds(), float64(facts.Load())/dur.Seconds(), ws,
+		float64(rn)/dur.Seconds(), rs)
+}

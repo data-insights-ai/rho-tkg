@@ -1,0 +1,14 @@
+ELEMDISK block cost (3 Nov 2026, office PC, badger on disk, PropertyIndexOnDiskLabels DerivedPage, DurableCommit).
+One block node: a 64 KiB []byte blob (no index) and 1+masks []int64 lists of 1,000 random values, each an Elements
+index on disk. 50 blocks per run, then 1,000 lookups of one ov_bk value (probe: scratchpad zz_elemdisk_probe_test.go).
+  masks 8:  per block add + durable flush 36.4 ms (9,000 elements); lookup 3.0 us
+  masks 12: per block add + durable flush 48.3 ms (13,000 elements); lookup 4.5 us
+Each element writes 2 keys (0x0A current, 0x0C member for pinned reads): about 1.4 us per key.
+CPU profile: badger memtable Put 39 % (skiplist insert), flushIndexLocked 12 %, GC scan 10 %; rho's own key building small.
+Per paged row: 36-48 us on badger with the index on disk. ai-soc's 16 us per row node was on memory rho (indexes in RAM).
+Same footing, today's row node (sigma's question 3): label DerivedPage on disk, DurableCommit, a cut of 1,000 rows
+in one tx (GraphTx.AddNodes), each row 1+masks scalar int64 properties each with an on-disk index, 3 unindexed
+columns and valid stamps; 20 cuts (probe: scratchpad zz_rownode_probe_test.go).
+  masks 8:  per row 50.4 us; lookup 6.9 us
+  masks 12: per row 68.3 us; lookup 7.1 us
+Blocks per row: 36 us (8 masks), 48 us (12): about 28 % less than row nodes on the same store, lookups 2x faster.

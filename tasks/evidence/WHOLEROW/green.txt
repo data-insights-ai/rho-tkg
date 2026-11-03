@@ -1,0 +1,24 @@
+WHOLEROW green run, 2026-10-31, branch wholerow, implementation commit.
+go test -short -count=1 -run TestReplaceVersion -v ./pkg/graph/ (INFO log lines and === RUN lines dropped)
+
+--- PASS: TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly (0.20s)
+    --- PASS: TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly/badger (0.03s)
+    --- PASS: TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly/tiered (0.17s)
+--- PASS: TestReplaceVersionPinBeforeReadsAsBefore (0.17s)
+    --- PASS: TestReplaceVersionPinBeforeReadsAsBefore/badger (0.00s)
+    --- PASS: TestReplaceVersionPinBeforeReadsAsBefore/tiered (0.17s)
+--- PASS: TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom (0.22s)
+    --- PASS: TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom/badger (0.03s)
+    --- PASS: TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom/tiered (0.19s)
+--- SKIP: TestReplaceVersionCrashChild (0.00s)
+--- PASS: TestReplaceVersionTxFromRisesWithVersionAcrossCrash (0.50s)
+    --- PASS: TestReplaceVersionTxFromRisesWithVersionAcrossCrash/badger (0.19s)
+    --- PASS: TestReplaceVersionTxFromRisesWithVersionAcrossCrash/tiered (0.31s)
+--- PASS: TestReplaceVersionIndexesFollowTheNewVersion (0.17s)
+    --- PASS: TestReplaceVersionIndexesFollowTheNewVersion/badger (0.01s)
+    --- PASS: TestReplaceVersionIndexesFollowTheNewVersion/tiered (0.16s)
+--- PASS: TestReplaceVersionRefusalsAndTxTwin (0.20s)
+    --- PASS: TestReplaceVersionRefusalsAndTxTwin/badger (0.01s)
+    --- PASS: TestReplaceVersionRefusalsAndTxTwin/tiered (0.19s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.481s

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -60,7 +61,7 @@ func (c *Core) nodesByLabelAndPropertyFormsValidEnd(label, key string, forms []a
 		}
 		pin := c.peekNow()
 		for i, n := range nodes {
-			segs, err := c.nodeEffectiveTimelineLocked(n.ID(), pin)
+			segs, err := c.nodeTimelineOfReturnedRow(n, pin)
 			if errors.Is(err, storepkg.ErrNodeNotFound) { // purged since the lookup
 				continue
 			}
@@ -83,6 +84,26 @@ func (c *Core) nodesByLabelAndPropertyFormsValidEnd(label, key string, forms []a
 		}
 		page.After = types.EntityID(nodes[len(nodes)-1].ID())
 	}
+}
+
+// nodeTimelineOfReturnedRow is nodeEffectiveTimelineLocked for a row a lookup
+// just returned: without history the row is the whole chain, so it is not read
+// again (a write since the lookup leaves history, or changed a row this read
+// returns as it stood). With history the chain is read, current row included.
+// The caller's pin is now: no compaction or retention refusal can apply to a
+// row without history.
+func (c *Core) nodeTimelineOfReturnedRow(n *types.Node, pin types.Instant) ([]temporal.NodeSegment, error) {
+	id := n.ID()
+	c.entityLocks.LockEntity(id.SnowflakeID())
+	has, known, err := entityReads{c: c}.hasNodeHistory(id)
+	c.entityLocks.UnlockEntity(id.SnowflakeID())
+	if err != nil {
+		return nil, err
+	}
+	if known && !has {
+		return nodeSegments(c.nodeEffectivePieces([]*types.Node{n}, pin), nil), nil
+	}
+	return c.nodeEffectiveTimelineLocked(id, pin)
 }
 
 // validEndCandidates is one page of the current matches, with a probe per node

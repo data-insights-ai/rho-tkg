@@ -1,0 +1,328 @@
+package main
+
+// Prototype 2: run files. A bounded in-heap delta of IDs is sealed (sorted and
+// written with a first-key-per-page index), runs are merged, and a presence
+// lookup goes over the runs newest first with a min/max filter. Compared with
+// a badger Get on the same keys, badger opened as rho opens it.
+
+import (
+	"bufio"
+	"container/heap"
+	"encoding/binary"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"time"
+
+	badger "github.com/dgraph-io/badger/v4"
+	"github.com/dgraph-io/badger/v4/options"
+	"golang.org/x/sys/unix"
+)
+
+// radixSort sorts by the bytes that differ between min and max, 8 bits a pass.
+func radixSort(a, tmp []uint64) {
+	if len(a) < 2 {
+		return
+	}
+	var diff uint64 // bits that vary across a
+	for _, v := range a {
+		diff |= v ^ a[0]
+	}
+	src, dst := a, tmp[:len(a)]
+	for shift := uint(0); shift < 64; shift += 8 {
+		if diff>>shift == 0 {
+			break
+		}
+		if (diff>>shift)&0xff == 0 {
+			continue // this byte is the same in every entry
+		}
+		var cnt [257]int
+		for _, v := range src {
+			cnt[((v>>shift)&0xff)+1]++
+		}
+		for i := 1; i < 257; i++ {
+			cnt[i] += cnt[i-1]
+		}
+		for _, v := range src {
+			b := (v >> shift) & 0xff
+			dst[cnt[b]] = v
+			cnt[b]++
+		}
+		src, dst = dst, src
+	}
+	if &src[0] != &a[0] {
+		copy(a, src)
+	}
+}
+
+type run struct {
+	lo, hi uint64
+	idx    []uint64
+	m      []byte
+	n      int
+}
+
+func writeRun(path string, sorted []uint64, sync bool) {
+	f, err := os.Create(path)
+	must(err)
+	_, err = f.Write(unsafeBytes(sorted))
+	must(err)
+	if sync {
+		must(f.Sync())
+	}
+	must(f.Close())
+}
+
+func openRun(path string) *run {
+	f, err := os.Open(path)
+	must(err)
+	defer f.Close()
+	st, _ := f.Stat()
+	m, err := unix.Mmap(int(f.Fd()), 0, int(st.Size()), unix.PROT_READ, unix.MAP_SHARED)
+	must(err)
+	n := int(st.Size() / 8)
+	r := &run{m: m, n: n}
+	r.lo = binary.LittleEndian.Uint64(m)
+	r.hi = binary.LittleEndian.Uint64(m[8*(n-1):])
+	for i := 0; i < n; i += perPage {
+		r.idx = append(r.idx, binary.LittleEndian.Uint64(m[8*i:]))
+	}
+	return r
+}
+
+func (r *run) has(v uint64) bool {
+	if v < r.lo || v > r.hi {
+		return false
+	}
+	p, found := slices.BinarySearch(r.idx, v)
+	if found {
+		return true
+	}
+	p--
+	off := p * page
+	end := min(off+page, r.n*8)
+	return searchPage(r.m[off:end], v)
+}
+
+type mergeItem struct {
+	v uint64
+	r int
+}
+type mergeHeap []mergeItem
+
+func (h mergeHeap) Len() int           { return len(h) }
+func (h mergeHeap) Less(i, j int) bool { return h[i].v < h[j].v }
+func (h mergeHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *mergeHeap) Push(x any)        { *h = append(*h, x.(mergeItem)) }
+func (h *mergeHeap) Pop() any          { o := *h; x := o[len(o)-1]; *h = o[:len(o)-1]; return x }
+
+// mergeRuns merges sorted runs into one file, dropping duplicates. A run whose
+// range starts after the previous one's end is copied whole.
+func mergeRuns(out string, runs []*run) int {
+	f, err := os.Create(out)
+	must(err)
+	w := bufio.NewWriterSize(f, 4<<20)
+	pos := make([]int, len(runs))
+	h := &mergeHeap{}
+	for i, r := range runs {
+		heap.Push(h, mergeItem{binary.LittleEndian.Uint64(r.m), i})
+	}
+	var b [8]byte
+	n := 0
+	last, have := uint64(0), false
+	for h.Len() > 0 {
+		it := (*h)[0]
+		// fast path: the top run's rest is below every other run's head
+		r := runs[it.r]
+		if h.Len() == 1 || ((*h)[1].v > r.hi && (h.Len() < 3 || (*h)[2].v > r.hi)) {
+			if !have || it.v > last {
+				rest := r.m[8*pos[it.r]:]
+				w.Write(rest)
+				n += len(rest) / 8
+				last, have = r.hi, true
+				heap.Pop(h)
+				continue
+			}
+		}
+		if !have || it.v != last {
+			binary.LittleEndian.PutUint64(b[:], it.v)
+			w.Write(b[:])
+			n++
+			last, have = it.v, true
+		}
+		pos[it.r]++
+		if pos[it.r] < r.n {
+			(*h)[0].v = binary.LittleEndian.Uint64(r.m[8*pos[it.r]:])
+			heap.Fix(h, 0)
+		} else {
+			heap.Pop(h)
+		}
+	}
+	must(w.Flush())
+	must(f.Sync())
+	must(f.Close())
+	return n
+}
+
+func openBadger(dir string) *badger.DB {
+	opts := badger.DefaultOptions(dir).WithDetectConflicts(false).WithLogger(nil).
+		WithChecksumVerificationMode(options.OnBlockRead).WithVerifyValueChecksum(true)
+	db, err := badger.Open(opts)
+	must(err)
+	return db
+}
+
+func pctl(all []time.Duration) (p50, p99 time.Duration) {
+	slices.Sort(all)
+	return all[len(all)/2], all[len(all)*99/100]
+}
+
+func runsBench(args []string) {
+	fs := flag.NewFlagSet("runs", flag.ExitOnError)
+	dir := fs.String("dir", "runs", "")
+	k := fs.Int("delta", 20_000_000, "entries per sealed run")
+	nruns := fs.Int("runs", 8, "")
+	overlap := fs.Bool("overlap", false, "runs interleave over one ID range (late writes) instead of following each other")
+	bk := fs.Bool("badger", true, "")
+	fs.Parse(args)
+	must(os.MkdirAll(*dir, 0o755))
+
+	// Seal: the delta arrives in ID order with local disorder (writers
+	// interleaved within 4096) or, with -overlap, as a random sample of the range.
+	tmp := make([]uint64, *k)
+	delta := make([]uint64, *k)
+	var sealSort, sealStd, sealWrite time.Duration
+	var runs []*run
+	total := uint64(*k) * uint64(*nruns)
+	for r := 0; r < *nruns; r++ {
+		for i := range delta {
+			var j uint64
+			if *overlap {
+				j = uint64(i)*uint64(*nruns) + uint64(r)
+			} else {
+				j = uint64(r)*uint64(*k) + uint64(i)
+			}
+			delta[i] = id(j)
+		}
+		// local disorder: shuffle within blocks of 4096
+		seed := uint64(r + 1)
+		for b := 0; b < len(delta); b += 4096 {
+			e := min(b+4096, len(delta))
+			for i := e - 1; i > b; i-- {
+				seed = mix(seed)
+				j := b + int(seed%uint64(i-b+1))
+				delta[i], delta[j] = delta[j], delta[i]
+			}
+		}
+		if r == 0 {
+			c := slices.Clone(delta)
+			t := time.Now()
+			slices.Sort(c)
+			sealStd = time.Since(t)
+			c = nil
+		}
+		t := time.Now()
+		radixSort(delta, tmp)
+		sealSort += time.Since(t)
+		if !slices.IsSorted(delta) {
+			panic("radix sort")
+		}
+		t = time.Now()
+		p := filepath.Join(*dir, fmt.Sprintf("run%02d.bin", r))
+		writeRun(p, delta, true)
+		sealWrite += time.Since(t)
+		runs = append(runs, openRun(p))
+	}
+	sealed := float64(total)
+	fmt.Printf("seal %d runs x %d: radix sort %.1f M/s, write+fsync %.1f M/s, seal total %.1f M/s (slices.Sort of one delta %.1f M/s)\n",
+		*nruns, *k, sealed/sealSort.Seconds()/1e6, sealed/sealWrite.Seconds()/1e6, sealed/(sealSort+sealWrite).Seconds()/1e6,
+		float64(*k)/sealStd.Seconds()/1e6)
+	delta, tmp = nil, nil
+	runtime.GC()
+
+	// Hot lookup over the runs (cached: just written), newest first.
+	look := func(name string, has func(uint64) bool, warm, count int) time.Duration {
+		seed := uint64(7)
+		for i := 0; i < warm; i++ {
+			seed = mix(seed)
+			has(id(seed % total))
+		}
+		all := make([]time.Duration, 0, count)
+		for i := 0; i < count; i++ {
+			seed = mix(seed)
+			v := id(seed % total)
+			if i%2 == 1 {
+				v = missID(seed % total)
+			}
+			t := time.Now()
+			ok := has(v)
+			all = append(all, time.Since(t))
+			if ok != (i%2 == 0) {
+				panic(name + ": wrong answer")
+			}
+		}
+		p50, p99 := pctl(all)
+		fmt.Printf("%s: p50 %s p99 %s (half hits, half misses)\n", name, p50, p99)
+		return p50
+	}
+	runsHas := func(v uint64) bool {
+		for i := len(runs) - 1; i >= 0; i-- {
+			if runs[i].has(v) {
+				return true
+			}
+		}
+		return false
+	}
+	pRuns := look(fmt.Sprintf("hot lookup over %d runs", len(runs)), runsHas, 1_000_000, 1_000_000)
+
+	t := time.Now()
+	out := filepath.Join(*dir, "merged.bin")
+	n := mergeRuns(out, runs)
+	el := time.Since(t)
+	fmt.Printf("merge %d runs: %d entries, %.1f M/s (with fsync)\n", len(runs), n, float64(n)/el.Seconds()/1e6)
+	merged := openRun(out)
+	look("hot lookup merged", merged.has, 1_000_000, 1_000_000)
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	fmt.Printf("heap in use %.1f MB (run indexes %d entries)\n", float64(ms.HeapInuse)/1e6, len(merged.idx))
+
+	if !*bk {
+		return
+	}
+	// badger: the same IDs as 8-byte keys, no value, through WriteBatch.
+	bdir := filepath.Join(*dir, "badger")
+	os.RemoveAll(bdir)
+	db := openBadger(bdir)
+	t = time.Now()
+	wb := db.NewWriteBatch()
+	var key [8]byte
+	for i := uint64(0); i < total; i++ {
+		binary.BigEndian.PutUint64(key[:], id(i))
+		must(wb.Set(slices.Clone(key[:]), nil))
+	}
+	must(wb.Flush())
+	fmt.Printf("badger load %d keys: %.1f M/s\n", total, float64(total)/time.Since(t).Seconds()/1e6)
+	get := func(v uint64) bool {
+		var kb [8]byte
+		binary.BigEndian.PutUint64(kb[:], v)
+		found := false
+		must(db.View(func(txn *badger.Txn) error {
+			_, err := txn.Get(kb[:])
+			if err == nil {
+				found = true
+				return nil
+			}
+			if err == badger.ErrKeyNotFound {
+				return nil
+			}
+			return err
+		}))
+		return found
+	}
+	pB := look("badger Get (one View each)", get, 1_000_000, 1_000_000)
+	fmt.Printf("ratio badger Get / runs lookup: %.1fx\n", float64(pB)/float64(pRuns))
+	must(db.Close())
+}

@@ -1,0 +1,11 @@
+package main
+
+import "unsafe"
+
+func unsafeBytes(s []uint64) []byte {
+	return unsafe.Slice((*byte)(unsafe.Pointer(unsafe.SliceData(s))), len(s)*8)
+}
+
+func unsafeU64(b []byte) []uint64 {
+	return unsafe.Slice((*uint64)(unsafe.Pointer(unsafe.SliceData(b))), len(b)/8)
+}

@@ -99,18 +99,27 @@ func (c *Core) checkNodeCloseTemporalConstraints(id types.NodeID, current *types
 	if c.constraints.Len() == 0 {
 		return nil
 	}
+	return c.checkNodeRowTemporalConstraints(id, nodeWithValidTo(current, closeAt))
+}
+
+// checkNodeRowTemporalConstraints checks every temporal constraint against
+// node id's relationships with row as the node's version (a close's row, a
+// whole-row replace's new row).
+func (c *Core) checkNodeRowTemporalConstraints(id types.NodeID, row *types.Node) error {
+	if c.constraints.Len() == 0 {
+		return nil
+	}
 	return c.constraints.ForEach(func(constraint temporalpkg.TemporalConstraint) error {
 		switch constraint.Kind {
 		case temporalpkg.ConstraintRelWithinEndpoints:
-			return c.checkNodeCloseRelWithinEndpoints(id, current, closeAt)
+			return c.checkNodeRelsWithinEndpoints(id, row)
 		default:
 			return fmt.Errorf("%w: %w: kind %d", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrInvalidTemporalConstraint, constraint.Kind)
 		}
 	})
 }
 
-func (c *Core) checkNodeCloseRelWithinEndpoints(id types.NodeID, current *types.Node, closeAt types.Instant) error {
-	constrained := nodeWithValidTo(current, closeAt)
+func (c *Core) checkNodeRelsWithinEndpoints(id types.NodeID, constrained *types.Node) error {
 	outRels, err := c.store.OutgoingRelationships(id, 0)
 	if err != nil {
 		return err

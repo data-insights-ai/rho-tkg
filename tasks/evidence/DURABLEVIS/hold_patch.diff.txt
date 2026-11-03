@@ -1,0 +1,73 @@
+diff --git a/pkg/graph/internal/core/batch_execute.go b/pkg/graph/internal/core/batch_execute.go
+index c4b03563..d0483a41 100644
+--- a/pkg/graph/internal/core/batch_execute.go
++++ b/pkg/graph/internal/core/batch_execute.go
+@@ -704,6 +704,10 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
+ 	if held {
+ 		b.g.releaseGroupFlushes()
+ 	}
++	var visErr error
++	if durableVisHold && groupErr == nil {
++		visErr = b.g.flushDurableCommit()
++	}
+ 	b.g.mu.Unlock()
+ 	b.g.txMu.Unlock()
+ 	unlocked = true
+@@ -717,7 +721,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
+ 	// batch (groupApplyError's unowned-error branch).
+ 	var durableErr error
+ 	if groupErr == nil {
+-		if err := b.g.flushDurableCommit(); err != nil {
++		err := visErr
++		if !durableVisHold {
++			err = b.g.flushDurableCommit()
++		}
++		if err != nil {
+ 			durableErr = fmt.Errorf("graph: durable commit: %w", err)
+ 			result.Errors = append(result.Errors, BatchError{Op: "durable-commit", Err: durableErr})
+ 			result.Failed++
+diff --git a/pkg/graph/internal/core/durable_commit.go b/pkg/graph/internal/core/durable_commit.go
+index 038a2056..b5d5f953 100644
+--- a/pkg/graph/internal/core/durable_commit.go
++++ b/pkg/graph/internal/core/durable_commit.go
+@@ -1,6 +1,13 @@
+ package core
+ 
+-import "fmt"
++import (
++	"fmt"
++	"os"
++)
++
++// durableVisHold (DURABLEVIS measurement only): flush before the graph locks
++// are released, so readers never see a group before its fsync.
++var durableVisHold = os.Getenv("RHO_DURABLEVIS_HOLD") == "1"
+ 
+ // flushDurableCommit makes a just-committed group durable under
+ // Config.DurableCommit: one store DurableFlush (pending buffer + WAL fsync on
+diff --git a/pkg/graph/internal/core/tx.go b/pkg/graph/internal/core/tx.go
+index 7fec69b5..18e619bc 100644
+--- a/pkg/graph/internal/core/tx.go
++++ b/pkg/graph/internal/core/tx.go
+@@ -770,6 +770,10 @@ func (tx *GraphTx) Commit() error {
+ 	tx.g.txEventBuffer = nil
+ 	tx.pendingEvents = nil
+ 
++	var durableErr error
++	if durableVisHold {
++		durableErr = tx.g.flushDurableCommit()
++	}
+ 	tx.g.openTxStart.Store(0)
+ 	tx.g.mu.Unlock()
+ 	tx.g.txMu.Unlock()
+@@ -777,7 +781,9 @@ func (tx *GraphTx) Commit() error {
+ 	// Config.DurableCommit: make the group durable before returning success.
+ 	// The tx is already done; a flush error reports a committed-but-not-durable
+ 	// group (ErrCommitNotDurable), whose operations stay pending.
+-	durableErr := tx.g.flushDurableCommit()
++	if !durableVisHold {
++		durableErr = tx.g.flushDurableCommit()
++	}
+ 
+ 	// Publish buffered events outside all locks. PublishBatch is
+ 	// atomic on AsyncEventBus, so all tx events land in priority

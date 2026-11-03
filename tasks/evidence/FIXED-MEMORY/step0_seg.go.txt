@@ -1,0 +1,451 @@
+package main
+
+// Prototype 3: a sealed segment of rels between nodes. rel IDs sorted in a
+// column file with a first-key-per-page index in heap; fixed 52-byte rel
+// records in rank order; adjacency as CSR (per-node offsets, then 16-byte
+// entries: rel ID, other node). Compared with badger: a Get of a 52-byte value
+// by rel ID and a key-only prefix iteration over node|relID|other keys, as
+// rho's adjacency keys are walked.
+
+import (
+	"bufio"
+	"encoding/binary"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"sync"
+	"time"
+
+	badger "github.com/dgraph-io/badger/v4"
+	"golang.org/x/sys/unix"
+)
+
+const recSize = 52
+
+func relID(i uint64) uint64 { return id(i) }
+
+// endpoints: a skewed graph. Node 0 is a hub with 1 % of all rels, nodes 1-99
+// share another 9 %, the rest are uniform.
+func endpoints(i uint64, nodes uint64) (from, to uint64) {
+	h := mix(i ^ 0xabcdef)
+	switch r := h % 100; {
+	case r == 0:
+		from = 0
+	case r < 10:
+		from = 1 + (h>>8)%99
+	default:
+		from = 100 + (h>>8)%(nodes-100)
+	}
+	to = mix(h) % nodes
+	return
+}
+
+func nodeID(n uint64) uint64 { return (uint64(2) << 60) + n*stride }
+
+func segGen(dir string, rels, nodes uint64) {
+	must(os.MkdirAll(dir, 0o755))
+	t := time.Now()
+	idf, _ := os.Create(filepath.Join(dir, "relid.bin"))
+	recf, _ := os.Create(filepath.Join(dir, "rec.bin"))
+	iw := bufio.NewWriterSize(idf, 4<<20)
+	rw := bufio.NewWriterSize(recf, 4<<20)
+	deg := make([]uint32, nodes+1)
+	var rec [recSize]byte
+	var b [8]byte
+	for i := uint64(0); i < rels; i++ {
+		f, to := endpoints(i, nodes)
+		deg[f]++
+		rid := relID(i)
+		binary.LittleEndian.PutUint64(b[:], rid)
+		iw.Write(b[:])
+		binary.LittleEndian.PutUint64(rec[0:], nodeID(f))
+		binary.LittleEndian.PutUint64(rec[8:], nodeID(to))
+		binary.LittleEndian.PutUint32(rec[16:], uint32(i%7)) // type
+		binary.LittleEndian.PutUint64(rec[20:], rid>>22)     // valid from
+		binary.LittleEndian.PutUint64(rec[28:], 1<<62)       // valid to
+		binary.LittleEndian.PutUint64(rec[36:], rid>>22)     // tx from
+		binary.LittleEndian.PutUint64(rec[44:], mix(i))      // props ref
+		rw.Write(rec[:])
+	}
+	must(iw.Flush())
+	must(rw.Flush())
+	idf.Close()
+	recf.Close()
+	// CSR: offsets (nodes+1) x 8, entries (rel ID, other node) sorted by node then rel.
+	off := make([]uint64, nodes+1)
+	for n := uint64(0); n < nodes; n++ {
+		off[n+1] = off[n] + uint64(deg[n])
+	}
+	ent := make([]uint64, 2*rels)
+	fill := slices.Clone(off[:nodes])
+	for i := uint64(0); i < rels; i++ { // i ascending: rel IDs ascending per node
+		f, to := endpoints(i, nodes)
+		p := fill[f]
+		fill[f]++
+		ent[2*p] = relID(i)
+		ent[2*p+1] = nodeID(to)
+	}
+	must(os.WriteFile(filepath.Join(dir, "csr.off"), unsafeBytes(off), 0o644))
+	must(os.WriteFile(filepath.Join(dir, "csr.ent"), unsafeBytes(ent), 0o644))
+	fmt.Printf("segment: %d rels, %d nodes, hub degree %d, %.1fs\n", rels, nodes, deg[0], time.Since(t).Seconds())
+
+	t = time.Now()
+	bdir := filepath.Join(dir, "badger")
+	os.RemoveAll(bdir)
+	db := openBadger(bdir)
+	wb := db.NewWriteBatch()
+	recb, _ := os.ReadFile(filepath.Join(dir, "rec.bin"))
+	for i := uint64(0); i < rels; i++ {
+		rid := relID(i)
+		k := make([]byte, 9)
+		k[0] = 'r'
+		binary.BigEndian.PutUint64(k[1:], rid)
+		must(wb.Set(k, slices.Clone(recb[i*recSize:(i+1)*recSize])))
+		f, to := endpoints(i, nodes)
+		a := make([]byte, 25)
+		a[0] = 'a'
+		binary.BigEndian.PutUint64(a[1:], nodeID(f))
+		binary.BigEndian.PutUint64(a[9:], rid)
+		binary.BigEndian.PutUint64(a[17:], nodeID(to))
+		must(wb.Set(a, nil))
+	}
+	must(wb.Flush())
+	must(db.Close())
+	for _, f := range []string{"relid.bin", "rec.bin", "csr.off", "csr.ent"} {
+		drop(filepath.Join(dir, f))
+	}
+	fmt.Printf("badger: %d rel rows + %d adjacency keys, %.1fs\n", rels, rels, time.Since(t).Seconds())
+}
+
+type segment struct {
+	idx         []uint64
+	idfd, recfd int
+	idm, recm   []byte
+	off, ent    []byte // mmap
+	n           uint64
+	files       []*os.File
+}
+
+func openSeg(dir string, mmapIO bool) *segment {
+	s := &segment{}
+	open := func(name string) (*os.File, []byte) {
+		f, err := os.Open(filepath.Join(dir, name))
+		must(err)
+		s.files = append(s.files, f)
+		st, _ := f.Stat()
+		m, err := unix.Mmap(int(f.Fd()), 0, int(st.Size()), unix.PROT_READ, unix.MAP_SHARED)
+		must(err)
+		must(unix.Madvise(m, unix.MADV_RANDOM))
+		must(unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_RANDOM))
+		return f, m
+	}
+	idf, idm := open("relid.bin")
+	recf, recm := open("rec.bin")
+	_, s.off = open("csr.off")
+	_, s.ent = open("csr.ent")
+	s.idfd, s.recfd = int(idf.Fd()), int(recf.Fd())
+	s.n = uint64(len(idm) / 8)
+	// the index is built from the column once at open; a real file stores it
+	s.idx = make([]uint64, 0, s.n/perPage+1)
+	for i := uint64(0); i < s.n; i += perPage {
+		s.idx = append(s.idx, binary.LittleEndian.Uint64(idm[8*i:]))
+	}
+	if mmapIO {
+		s.idm, s.recm = idm, recm
+	}
+	return s
+}
+
+// row returns the record of rel v (copied into out), false when absent.
+func (s *segment) row(v uint64, scratch, out []byte) bool {
+	p, found := slices.BinarySearch(s.idx, v)
+	var rank uint64
+	if found {
+		rank = uint64(p) * perPage
+	} else {
+		if p == 0 {
+			return false
+		}
+		p--
+		var pg []byte
+		off := uint64(p) * page
+		end := min(off+page, s.n*8)
+		if s.idm != nil {
+			pg = s.idm[off:end]
+		} else {
+			k, err := unix.Pread(s.idfd, scratch, int64(off))
+			must(err)
+			pg = scratch[:k]
+		}
+		i, ok := slices.BinarySearchFunc(unsafeU64(pg), v, func(a, b uint64) int {
+			if a < b {
+				return -1
+			}
+			if a > b {
+				return 1
+			}
+			return 0
+		})
+		if !ok {
+			return false
+		}
+		rank = uint64(p)*perPage + uint64(i)
+	}
+	if s.recm != nil {
+		copy(out, s.recm[rank*recSize:(rank+1)*recSize])
+	} else {
+		_, err := unix.Pread(s.recfd, out[:recSize], int64(rank*recSize))
+		must(err)
+	}
+	return true
+}
+
+func (s *segment) adjacency(node uint64, fn func(rel, other uint64)) {
+	lo := binary.LittleEndian.Uint64(s.off[8*node:])
+	hi := binary.LittleEndian.Uint64(s.off[8*node+8:])
+	e := unsafeU64(s.ent[16*lo : 16*hi])
+	for i := 0; i < len(e); i += 2 {
+		fn(e[i], e[i+1])
+	}
+}
+
+func segBench(args []string) {
+	fs := flag.NewFlagSet("seg", flag.ExitOnError)
+	dir := fs.String("dir", "seg", "")
+	gen := fs.Bool("gen", false, "")
+	rels := fs.Uint64("rels", 20_000_000, "")
+	nodes := fs.Uint64("nodes", 2_000_000, "")
+	mode := fs.String("mode", "hot", "hot: rows and adjacency against badger, files cached; cold: random rows by R readers")
+	ioMode := fs.String("io", "pread", "mmap|pread (cold)")
+	readers := fs.Int("readers", 64, "")
+	cnt := fs.Int("count", 640_000, "")
+	fs.Parse(args)
+	if *gen {
+		segGen(*dir, *rels, *nodes)
+		return
+	}
+	switch *mode {
+	case "hot":
+		segHot(*dir, *nodes)
+	case "cold":
+		segCold(*dir, *ioMode, *readers, *cnt)
+	}
+}
+
+func segHot(dir string, nodes uint64) {
+	s := openSeg(dir, true)
+	n := s.n
+	// warm everything: the hot case
+	for _, m := range [][]byte{s.idm, s.recm, s.off, s.ent} {
+		var x byte
+		for i := 0; i < len(m); i += page {
+			x ^= m[i]
+		}
+		_ = x
+	}
+	scratch := make([]byte, page)
+	out := make([]byte, recSize)
+	const count = 1_000_000
+	seed := uint64(3)
+	all := make([]time.Duration, 0, count)
+	for i := 0; i < 2*count; i++ {
+		seed = mix(seed)
+		v := relID(seed % n)
+		t := time.Now()
+		ok := s.row(v, scratch, out)
+		if i >= count {
+			all = append(all, time.Since(t))
+		}
+		if !ok || binary.LittleEndian.Uint64(out[20:]) != v>>22 {
+			panic("segment row")
+		}
+	}
+	sp50, sp99 := pctl(all)
+	fmt.Printf("segment hot row (mmap, 52 B copy): p50 %s p99 %s\n", sp50, sp99)
+
+	db := openBadger(filepath.Join(dir, "badger"))
+	defer db.Close()
+	get := func(v uint64) bool {
+		k := make([]byte, 9)
+		k[0] = 'r'
+		binary.BigEndian.PutUint64(k[1:], v)
+		ok := false
+		must(db.View(func(txn *badger.Txn) error {
+			it, err := txn.Get(k)
+			if err != nil {
+				return err
+			}
+			_, err = it.ValueCopy(out[:0])
+			ok = err == nil
+			return err
+		}))
+		return ok
+	}
+	all = all[:0]
+	for i := 0; i < 2*count; i++ {
+		seed = mix(seed)
+		v := relID(seed % n)
+		t := time.Now()
+		ok := get(v)
+		if i >= count {
+			all = append(all, time.Since(t))
+		}
+		if !ok {
+			panic("badger row")
+		}
+	}
+	bp50, bp99 := pctl(all)
+	fmt.Printf("badger Get rel row (52 B value copy): p50 %s p99 %s; segment faster %.1fx (bar 3x)\n", bp50, bp99, float64(bp50)/float64(sp50))
+
+	// adjacency of the hub and of a node of 99 sharing 9 %
+	for _, node := range []uint64{0, 1, 1000} {
+		var cntS, cntB int
+		var sum uint64
+		reps := 20
+		t := time.Now()
+		for r := 0; r < reps; r++ {
+			cntS = 0
+			s.adjacency(node, func(rel, other uint64) { sum += other; cntS++ })
+		}
+		segT := time.Since(t) / time.Duration(reps)
+		prefix := make([]byte, 9)
+		prefix[0] = 'a'
+		binary.BigEndian.PutUint64(prefix[1:], nodeID(node))
+		var badT time.Duration
+		for r := 0; r < reps+1; r++ { // first rep warms
+			t = time.Now()
+			cntB = 0
+			must(db.View(func(txn *badger.Txn) error {
+				o := badger.DefaultIteratorOptions
+				o.PrefetchValues = false
+				o.Prefix = prefix
+				it := txn.NewIterator(o)
+				defer it.Close()
+				for it.Seek(prefix); it.Valid(); it.Next() {
+					k := it.Item().Key()
+					sum += binary.BigEndian.Uint64(k[17:])
+					cntB++
+				}
+				return nil
+			}))
+			if r > 0 {
+				badT += time.Since(t)
+			}
+		}
+		badT /= time.Duration(reps)
+		if cntS != cntB {
+			panic(fmt.Sprintf("adjacency %d vs %d", cntS, cntB))
+		}
+		fmt.Printf("adjacency node %d, degree %d: segment %s (%.1f ns/rel), badger iterator %s (%.1f ns/rel); segment faster %.1fx (bar 5x)\n",
+			node, cntS, segT, float64(segT)/float64(max(cntS, 1)), badT, float64(badT)/float64(max(cntB, 1)), float64(badT)/float64(segT))
+	}
+	// ordinary nodes: p50 of one adjacency read over random non-hub nodes
+	var segL, badL []time.Duration
+	degSum := 0
+	for i := 0; i < 2*100_000; i++ {
+		seed = mix(seed)
+		node := 100 + seed%(nodes-100)
+		var sum uint64
+		cs, cb := 0, 0
+		t := time.Now()
+		s.adjacency(node, func(rel, other uint64) { sum += other; cs++ })
+		ds := time.Since(t)
+		prefix := make([]byte, 9)
+		prefix[0] = 'a'
+		binary.BigEndian.PutUint64(prefix[1:], nodeID(node))
+		t = time.Now()
+		must(db.View(func(txn *badger.Txn) error {
+			o := badger.DefaultIteratorOptions
+			o.PrefetchValues = false
+			o.Prefix = prefix
+			it := txn.NewIterator(o)
+			defer it.Close()
+			for it.Seek(prefix); it.Valid(); it.Next() {
+				sum += binary.BigEndian.Uint64(it.Item().Key()[17:])
+				cb++
+			}
+			return nil
+		}))
+		db_ := time.Since(t)
+		if cs != cb {
+			panic("adjacency count")
+		}
+		if i >= 100_000 {
+			segL = append(segL, ds)
+			badL = append(badL, db_)
+			degSum += cs
+		}
+	}
+	s50, s99 := pctl(segL)
+	b50, b99 := pctl(badL)
+	fmt.Printf("adjacency of 100k ordinary nodes (mean degree %.1f): segment p50 %s p99 %s, badger iterator p50 %s p99 %s; segment faster %.1fx at p50 (bar 5x)\n",
+		float64(degSum)/1e5, s50, s99, b50, b99, float64(b50)/float64(s50))
+	runtime.KeepAlive(s.files)
+}
+
+func segCold(dir, ioMode string, readers, count int) {
+	s := openSeg(dir, ioMode == "mmap")
+	n := s.n
+	per := count / readers
+	var wg sync.WaitGroup
+	lat := make([][]time.Duration, readers)
+	var ru0, ru1 unix.Rusage
+	runtime.GC()
+	unix.Getrusage(unix.RUSAGE_SELF, &ru0)
+	t0 := time.Now()
+	for r := 0; r < readers; r++ {
+		wg.Add(1)
+		go func(r int) {
+			defer wg.Done()
+			scratch := make([]byte, page)
+			out := make([]byte, recSize)
+			seed := uint64(r+1) * 0x9e3779b97f4a7c15
+			ls := make([]time.Duration, 0, per)
+			for i := 0; i < per; i++ {
+				seed = mix(seed)
+				v := relID(seed % n)
+				t := time.Now()
+				if !s.row(v, scratch, out) {
+					panic("cold row")
+				}
+				ls = append(ls, time.Since(t))
+			}
+			lat[r] = ls
+		}(r)
+	}
+	// a ticker goroutine: how late does it run while readers fault or block in pread
+	stop := make(chan struct{})
+	var lateMax time.Duration
+	go func() {
+		tk := time.NewTicker(time.Millisecond)
+		defer tk.Stop()
+		last := time.Now()
+		for {
+			select {
+			case <-stop:
+				return
+			case now := <-tk.C:
+				lateMax = max(lateMax, now.Sub(last)-time.Millisecond)
+				last = now
+			}
+		}
+	}()
+	wg.Wait()
+	el := time.Since(t0)
+	close(stop)
+	unix.Getrusage(unix.RUSAGE_SELF, &ru1)
+	var all []time.Duration
+	for _, l := range lat {
+		all = append(all, l...)
+	}
+	p50, p99 := pctl(all)
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	fmt.Printf("segment cold rows %s, %d readers, GOMAXPROCS %d: %.0f rows/s (bar 50k), p50 %s p99 %s, majflt %.2f per row, ticker late at most %s, heap %.1f MB\n",
+		ioMode, readers, runtime.GOMAXPROCS(0), float64(len(all))/el.Seconds(), p50, p99,
+		float64(ru1.Majflt-ru0.Majflt)/float64(len(all)), lateMax, float64(ms.HeapInuse)/1e6)
+	runtime.KeepAlive(s.files)
+}

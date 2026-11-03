@@ -1,0 +1,41 @@
+DURABLEVIS analysis, 3 Nov 2026 (read-only Fable analyst on René's word; key citations checked in the main session).
+Measurement: results.txt in this directory.
+
+1. Today's order (DurableCommit): group applied, locks released, then DurableFlush (core/tx.go:765-780,
+   batch_execute.go:707-720). Direct reads come from the in-memory cache (badgerstore_node.go:126-136), so a reader
+   sees a group before its flush; the change feed reads badger (badgerstore_changelog.go:678-686), not pendingLog.
+
+   crash      | store, SyncWrites | lost                                      | acknowledged? | reader saw it?
+   process    | any               | only groups whose commit had not returned  | no            | direct reads, ~12 ms window
+              |                   | (possibly a subset: a background flush may  |               |
+              |                   | have written part of one)                  |               |
+   power      | SyncWrites off    | the above plus acknowledged rows past a     | yes           | yes, also change feed
+              |                   | memtable/vlog switch (badger db.go:1030-1031,|               |
+              |                   | memtable.go:408-413, badger v4.9.2)         |               |
+   power      | SyncWrites on     | only unreturned groups                     | no            | direct reads
+
+   After restart: LSNs re-seed from LastLSNKey (badgerstore_changelog.go:372-391), so a lost group's LSNs are
+   re-minted for other content; re-ingested facts get new snowflake IDs.
+
+2. A visibility gate (readers see only fsynced groups) adds one guarantee: a direct reader cannot act externally on a
+   group lost in the unlock-to-flush window. Cost measured: reads 90-2,000x fewer, p99 to 6-18 ms. Not recommended.
+
+3. Crash detection instead of a gate. A lost group was never on disk, so nothing can be reread. rho can detect the
+   unclean open today (open-image header version < db.MaxVersion, badgerstore_open_image.go:38-47; used only for the
+   delta open) and knows the last durable LSN X (LastLSNKey, written in the same batch as its records,
+   badgerstore_flush.go:406-418). The LSN allocator is in memory only (badgerstore.go:910-917).
+   Proposal (a minor):
+   a. report at open: unclean, last durable LSN X, commit floor;
+   b. an LSN lease persisted ahead of minting, so a restart never re-mints a returned LSN (not for a store on
+      Config.ChangeLogSeqSource: the consumer owns those LSNs);
+   c. the consumer replays its unacknowledged submits after X and resets cursors above X.
+   Power loss without SyncWrites: rho cannot name the lost acknowledged rows; SyncWrites stays the fix.
+
+4. Cost without a crash: the report is free (the check runs at every open); the lease is one small fsynced write per
+   lease block (block of 1 M: every ~8 min at 2 k facts/s, ~20 s at the 2 TB/day goal); the consumer keeps
+   submits until acknowledged, which a durable commit already makes it wait for.
+   Consequences after a crash, on the consumer: replay must be idempotent (a lost group can be partly on disk, so
+   a plain replay writes duplicates under new IDs); external actions (alerts) can repeat; cursors above X reset;
+   restart takes the replay time.
+
+Open before a design: ask ai-soc and sigma whether they can replay idempotently, dedupe actions, reset cursors.
