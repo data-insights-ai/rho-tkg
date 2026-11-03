@@ -3,6 +3,8 @@ package core
 import (
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -23,16 +25,51 @@ func asOfChainAnswer(g *Core, id types.NodeID, pin types.Instant) (*types.Node, 
 	return g.resolveNodeChain(chainOf(hist, current), chainProbe{kind: probeAsOf, tx: pin, asOfCurrent: current != nil}, nil)
 }
 
+// asOfRender renders the whole as-of answer: the error class (absent by which
+// sentinel, or the error), else the node's ID, labels, every property with its
+// type, version and every temporal field. A walk that answers the wrong row,
+// labels, properties or stamps renders differently from the chain.
 func asOfRender(n *types.Node, err error) string {
-	if errors.Is(err, ErrNoVersionAsOf) || errors.Is(err, storepkg.ErrVersionNotFound) {
-		return "absent"
-	}
-	if err != nil {
+	switch {
+	case errors.Is(err, ErrNoVersionAsOf):
+		return "absent: ErrNoVersionAsOf"
+	case errors.Is(err, storepkg.ErrVersionNotFound):
+		return "absent: ErrVersionNotFound"
+	case err != nil:
 		return "error: " + err.Error()
+	case n == nil:
+		return "nil node, nil error"
 	}
-	x, _ := n.GetProperty("x")
-	return fmt.Sprintf("v%d x=%v", n.Version(), x)
+	var b strings.Builder
+	fmt.Fprintf(&b, "id=%d v%d labels=[", n.ID(), n.Version())
+	for i, tok := range n.AllLabelTokens() {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "%d", tok.Value())
+	}
+	b.WriteString("] props={")
+	props := n.Properties()
+	sort.Slice(props, func(i, j int) bool { return props[i].Key < props[j].Key })
+	for i, p := range props {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "%s=%T(%v)", p.Key, p.Value, p.Value)
+	}
+	b.WriteString("}")
+	if tm := n.Temporal(); tm != nil {
+		fmt.Fprintf(&b, " valid=[%d,%d) tx=[%d,%d) created=%d updated=%d deleted=%d by=%q/%q",
+			tm.ValidFrom, tm.ValidTo, tm.TxFrom, tm.TxTo, tm.CreatedAt, tm.UpdatedAt, tm.DeletedAt, tm.CreatedBy, tm.UpdatedBy)
+	} else {
+		b.WriteString(" temporal=nil")
+	}
+	txFrom, txTo, deletedAt := n.TxStamps()
+	fmt.Fprintf(&b, " stamps=%d/%d/%d", txFrom, txTo, deletedAt)
+	return b.String()
 }
+
+func asOfAbsent(r string) bool { return strings.HasPrefix(r, "absent: ") }
 
 // TestTieredNodeAsOf_NoChainLoad: a TxPin read of a node whose history is all
 // on its owner shard walks that shard and loads no chain, at any pin, on an
@@ -80,6 +117,94 @@ func TestTieredNodeAsOf_NoChainLoad(t *testing.T) {
 	}
 }
 
+// TestTieredNodeAsOf_WholeNodeAgreesWithChain: versions that differ in labels,
+// the property set, property types and stamps, across a delete and a
+// re-create under the same ID, answer the whole node the chain answers at
+// every pin, and every pin walks the live node's owner shard.
+func TestTieredNodeAsOf_WholeNodeAgreesWithChain(t *testing.T) {
+	t.Parallel()
+	ts := newTestTieredStore(t)
+	g, err := New(Config{Store: ts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	ctx := t.Context()
+	for _, label := range []string{"Event", "Case"} {
+		t.Run(label, func(t *testing.T) {
+			type step struct {
+				name string
+				do   func(id types.NodeID) error
+			}
+			n, err := g.Nodes.Add(ctx, []string{label}, map[string]any{"x": int64(0), "s": "a"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := n.ID()
+			steps := []step{
+				{"add props", func(id types.NodeID) error {
+					_, err := g.Nodes.Update(ctx, id, map[string]any{"y": 1.5, "b": true})
+					return err
+				}},
+				{"add label", func(id types.NodeID) error { return g.Nodes.AddLabel(ctx, id, "Hot") }},
+				{"retype x", func(id types.NodeID) error { return g.Nodes.SetProperty(ctx, id, "x", "zero") }},
+				{"drop y", func(id types.NodeID) error { return g.Nodes.DeleteProperty(ctx, id, "y") }},
+				{"remove label", func(id types.NodeID) error { return g.Nodes.RemoveLabel(ctx, id, "Hot") }},
+				{"add label again", func(id types.NodeID) error { return g.Nodes.AddLabel(ctx, id, "Cold") }},
+			}
+			pins := []types.Instant{n.Temporal().TxFrom - 1}
+			now := func() {
+				pin, err := g.Temporal.NowTx()
+				if err != nil {
+					t.Fatal(err)
+				}
+				pins = append(pins, pin)
+			}
+			now()
+			for _, s := range steps {
+				if err := s.do(id); err != nil {
+					t.Fatalf("%s: %v", s.name, err)
+				}
+				now()
+			}
+			if err := g.Nodes.Delete(ctx, id); err != nil {
+				t.Fatal(err)
+			}
+			now()
+			if _, created, err := g.Nodes.AddByIDIfAbsent(ctx, id, []string{label, "Reborn"}, map[string]any{"z": int64(9)}); err != nil || !created {
+				t.Fatalf("re-create: created=%v err=%v", created, err)
+			}
+			now()
+			if err := g.Nodes.SetProperty(ctx, id, "z", int64(10)); err != nil {
+				t.Fatal(err)
+			}
+			now()
+
+			seen := map[string]int{}
+			for i, pin := range pins {
+				want := asOfRender(asOfChainAnswer(g, id, pin))
+				loaded := 0
+				g.historyRead = func(rows int) { loaded += rows }
+				got := asOfRender(g.Temporal.NodeAsOf(id, pin))
+				g.historyRead = nil
+				if got != want {
+					t.Errorf("pin %d (%d): NodeAsOf\n  %s\nchain\n  %s", i, pin, got, want)
+				}
+				if prev, dup := seen[want]; dup && !asOfAbsent(want) {
+					t.Errorf("pins %d and %d answer the same node: the steps do not differ", prev, i)
+				}
+				seen[want] = i
+				if loaded != 0 {
+					t.Errorf("pin %d: NodeAsOf loaded %d history rows, want the owner-shard walk", i, loaded)
+				}
+			}
+			if !asOfAbsent(asOfRender(g.Temporal.NodeAsOf(id, pins[0]))) {
+				t.Error("pin before create answered a node")
+			}
+		})
+	}
+}
+
 // TestTieredNodeAsOf_SplitHistoryAgreesWithChain: where a node's rows do not
 // all sit on its owner shard or it is live nowhere, the answer stays the whole
 // chain's: restored from the archive (its old rows stay there), archived, and
@@ -115,7 +240,7 @@ func TestTieredNodeAsOf_SplitHistoryAgreesWithChain(t *testing.T) {
 			if got != want {
 				t.Errorf("pin %d: NodeAsOf %s, chain %s", pin, got, want)
 			}
-			answered = answered || got != "absent"
+			answered = answered || !asOfAbsent(got)
 		}
 		if wantAnswers && !answered {
 			t.Error("no pin answered: the case tests nothing")
@@ -138,7 +263,7 @@ func TestTieredNodeAsOf_SplitHistoryAgreesWithChain(t *testing.T) {
 	t.Run("restored", func(t *testing.T) {
 		check(t, restored.ID(), pins, true)
 		for i, pin := range pins[:3] {
-			if got, want := asOfRender(g.Temporal.NodeAsOf(restored.ID(), pin)), fmt.Sprintf("x=%d", i); len(got) < len(want) || got[len(got)-len(want):] != want {
+			if got, want := asOfRender(g.Temporal.NodeAsOf(restored.ID(), pin)), fmt.Sprintf("x=int64(%d)", i); !strings.Contains(got, want) {
 				t.Errorf("pin %d: %s, want the row with %s", i, got, want)
 			}
 		}
@@ -191,7 +316,7 @@ func TestTieredNodeAsOf_RowsOffTheOwnerShard(t *testing.T) {
 	check := func(t *testing.T, id types.NodeID, pin types.Instant) {
 		t.Helper()
 		want := asOfRender(asOfChainAnswer(g, id, pin))
-		if want == "absent" {
+		if asOfAbsent(want) {
 			t.Fatal("the chain does not answer: the case tests nothing")
 		}
 		if got := asOfRender(g.Temporal.NodeAsOf(id, pin)); got != want {

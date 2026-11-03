@@ -1,0 +1,28 @@
+REVIEW3NOV ASOFWALK: asOfRender compares only version and one property (review gap, 3 Nov)
+Branch review3nov-asofwalk. Strengthened test: f209e681 (asOfRender renders the whole node;
+TestTieredNodeAsOf_WholeNodeAgreesWithChain added).
+
+Each mutant was applied alone to the ASOFWALK path, built (go build ./pkg/...), then run as
+  go test -short -run 'TestTieredNodeAsOf' ./pkg/graph/internal/core/
+once with the new test file and once with main's old test file (2a60fb4e), then reverted.
+"old" = the test before this item; "new" = this item's test. All mutants built.
+
+mutant  where                                         change                                              old   new
+M0      none (baseline, also after the last revert)    -                                                    PASS  PASS
+M1      core/txtime.go nodeAsOfLocked walk branch      answer keeps only the primary label                  PASS  FAIL (WholeNode/Event, /Case)
+M2      core/txtime.go nodeAsOfLocked walk branch      drop the last property (when more than one)          PASS  FAIL (WholeNode/Event, /Case)
+M3      core/txtime.go nodeAsOfLocked walk branch      TxFrom + 1 on the answer                             PASS  FAIL (WholeNode, SplitHistory/restored, NoChainLoad)
+M4      core/txtime.go nodeAsOfLocked walk branch      ValidTo closed at TxFrom + 1                         PASS  FAIL (WholeNode, SplitHistory/restored, NoChainLoad)
+M5      core/txtime.go nodeAsOfLocked walk branch      absent returns ErrVersionNotFound, not ErrNoVersionAsOf  PASS  FAIL (WholeNode/Event, /Case)
+M6      tiered NodeAsOfWalk                            as-of row carries the current row's labels           PASS  FAIL (WholeNode/Event, /Case)
+M7      tiered NodeAsOfWalk                            as-of row carries the current row's properties       FAIL  FAIL (control: old test saw x)
+M8      tiered NodeAsOfWalk                            int64 properties answered as float64                 PASS  FAIL (WholeNode, SplitHistory/restored, NoChainLoad)
+
+Killed by the new test: 8 of 8 mutants; 7 of them passed the old test.
+Defect found: none; the walk agrees with the whole chain on every field at every pin, including
+the pin before create, label add/remove/swap, a property added, retyped (int64 -> string) and
+removed, a delete, and a re-create under the same ID with new labels and properties. Every pin
+of that test is answered by the owner-shard walk (historyRead counts 0 rows).
+
+Checks: go vet ./pkg/graph/internal/core/ ok; go test -short ./pkg/graph/internal/core/ ok (34.6 s);
+go test -short -race -run TestTieredNodeAsOf ./pkg/graph/internal/core/ ok; scripts/check-ledger.sh ok.
