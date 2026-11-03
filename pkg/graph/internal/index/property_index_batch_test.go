@@ -331,7 +331,7 @@ func checkChunks[T cmpOrdered](o *sortedChunks[T]) error {
 			return fmt.Errorf("chunk %d holds %d keys", i, len(c))
 		}
 		for j, k := range c {
-			if (i > 0 || j > 0) && !(prev < k) {
+			if (i > 0 || j > 0) && prev >= k {
 				return fmt.Errorf("chunk %d key %d: %v after %v", i, j, k, prev)
 			}
 			prev = k

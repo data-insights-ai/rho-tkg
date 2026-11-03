@@ -47,7 +47,7 @@ func batchFailStore(t *testing.T) *Store {
 func batchFailNode(t *testing.T, id int64, v string) *types.Node {
 	t.Helper()
 	n := types.NewNode(types.NodeID(snowflake.ID(id)), 5, []uint16{6})
-	for k, val := range map[string]any{"v": v, "c": int64(id % 3), "l": []any{v, "x"}, "emb": []float32{float32(id), 1}} {
+	for k, val := range map[string]any{"v": v, "c": id % 3, "l": []any{v, "x"}, "emb": []float32{float32(id), 1}} {
 		if err := n.SetProperty(k, val); err != nil {
 			t.Fatal(err)
 		}
