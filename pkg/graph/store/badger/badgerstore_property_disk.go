@@ -157,6 +157,11 @@ func (b *propIDBounds) bounds(txn *badgerv4.Txn) (lo, hi uint64) {
 	return b.lo.Load(), b.hi.Load()
 }
 
+// testHookPropIdxAdd, nil in production, sees each property-index add: one
+// node's (batch false) or a batch's (true) (BATCHIDX).
+// Set only by a test that does not call t.Parallel.
+var testHookPropIdxAdd func(bs *Store, batch bool)
+
 // maintainPropertyIndexesAdd is the write-path maintenance entry point every
 // node-mutation door calls in place of indexpkg.AddNodeToPropertyIndexes.
 // The RAM helper maintains the RAM indexes (it skips the on-disk ones); for
@@ -178,6 +183,9 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 	// the row into the property membership sidecars (backlog 8).
 	bs.recordNodeRowLocked(n, true)
 	indexpkg.AddNodeToCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, id)
+	if testHookPropIdxAdd != nil { // a test setting it must not use t.Parallel (BATCHIDX)
+		testHookPropIdxAdd(bs, false)
+	}
 	if !bs.propIdxOnDisk {
 		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 		if len(bs.propDiskLabels) == 0 {
@@ -186,6 +194,85 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 	}
 	ops := append(bs.propertyIndexDiskMaintain(n, id, writeOpSet), bs.nodeMemberOpsLocked(n, id)...)
 	return append(ops, bs.compositeDiskOpsLocked(n, id, writeOpSet)...)
+}
+
+// maintainPropertyIndexesAddBatch is maintainPropertyIndexesAdd of each new
+// node nodes[i] under ids[i], with the property indexes maintained once for
+// the batch (BATCHIDX, ai-soc's cut: 106 ms of 219 in per-node index
+// inserts): the RAM ones by indexpkg.AddNodesToPropertyIndexes, those on disk
+// by propertyIndexDiskAddBatch. The sidecars, composites and member entries
+// stay per node. Same lock and ops contract as maintainPropertyIndexesAdd.
+func (bs *Store) maintainPropertyIndexesAddBatch(nodes []*types.Node, ids []snowflake.ID) []writeOp {
+	for i, n := range nodes {
+		bs.recordNodeRowLocked(n, true)
+		indexpkg.AddNodeToCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, ids[i])
+	}
+	if testHookPropIdxAdd != nil { // a test setting it must not use t.Parallel (BATCHIDX)
+		testHookPropIdxAdd(bs, true)
+	}
+	if !bs.propIdxOnDisk {
+		indexpkg.AddNodesToPropertyIndexes(bs.propertyIndexes, nodes, ids)
+		if len(bs.propDiskLabels) == 0 {
+			return nil
+		}
+	}
+	ops := bs.propertyIndexDiskAddBatch(nodes, ids)
+	for i, n := range nodes {
+		ops = append(ops, bs.nodeMemberOpsLocked(n, ids[i])...)
+		ops = append(ops, bs.compositeDiskOpsLocked(n, ids[i], writeOpSet)...)
+	}
+	return ops
+}
+
+// propertyIndexDiskAddBatch is propertyIndexDiskMaintain(writeOpSet) of each
+// new node nodes[i] under ids[i], per on-disk definition at once: its
+// property key's token resolved once, each distinct value's bytes built once,
+// the ID bounds widened once by the batch's lowest and highest entry.
+func (bs *Store) propertyIndexDiskAddBatch(nodes []*types.Node, ids []snowflake.ID) []writeOp {
+	var ops []writeOp
+	empty := []byte{}
+	for _, def := range bs.propDiskDefs {
+		var byValue map[string][]snowflake.ID
+		for i, n := range nodes {
+			if !n.HasLabelTokenRaw(def.key.LabelToken) {
+				continue
+			}
+			id := ids[i]
+			forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
+				if byValue == nil {
+					byValue = make(map[string][]snowflake.ID)
+				}
+				byValue[valueKey] = append(byValue[valueKey], id)
+			})
+			if def.idx.Mutated != nil {
+				def.idx.Mutated[id] = struct{}{}
+			}
+		}
+		if len(byValue) == 0 {
+			continue
+		}
+		tok, ok := bs.propKeyTokenFor(def.key.PropertyKey)
+		if !ok {
+			continue
+		}
+		lo, hi := ^uint64(0), uint64(0)
+		for valueKey, vids := range byValue {
+			payload, ok := storepkg.PropertyIndexValueBytes(valueKey)
+			if !ok {
+				continue
+			}
+			for _, id := range vids {
+				ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.PropertyIndexEntryKey(tok, payload, id), value: empty})
+				u := uint64(id) // #nosec G115 — the entry key's ID suffix: int64 bits as uint64, the order nodeRowIDBounds reads
+				lo, hi = min(lo, u), max(hi, u)
+			}
+		}
+		if hi != 0 {
+			bs.propIDs.widen(lo)
+			bs.propIDs.widen(hi)
+		}
+	}
+	return ops
 }
 
 // maintainPropertyIndexesUpdate is maintainPropertyIndexesAdd for the new node
@@ -478,6 +565,10 @@ var propertyDiskVisitTestHook func()
 // index, in every store of the process (tests: PropertyDiskLookupsForTest).
 var propertyDiskLookups atomic.Int64
 
+// propertyDiskSeekTestHook (tests only) is called for each Seek an equality
+// lookup on the on-disk property index makes.
+var propertyDiskSeekTestHook func()
+
 func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant) ([]types.NodeID, error) {
 	propertyDiskLookups.Add(1)
 	tok, ok := bs.propKeyTokenFor(propertyKey)
@@ -558,7 +649,20 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	// until it holds two live keys, wherever those are, and the bound above
 	// never stopped that walk (PROPSEEK, ai-soc's rewritten node keys). The
 	// newest version of each key decides.
+	//
+	// The walks share one run of the iterator (RHOPOST, sigma's block probe:
+	// a seek through every table per value was 75 % of its lookup). A run
+	// that began at start has visited every key below the one the iterator
+	// stands on, so a walk whose from lies between the two goes on from
+	// there: the values of a block, adjacent in the index, cost one Next
+	// each. An invalid iterator stands past every key of the snapshot: the
+	// run has visited all keys from start on, and a walk from there finds
+	// nothing new. Otherwise it seeks. A string that extends another starts its walk
+	// at value||lo, which can sort below the shorter string's start; that
+	// walk seeks back and can visit keys an earlier walk counted, so the
+	// candidates are compacted then.
 	var nids []types.NodeID
+	revisit := false // a walk sought below the start of the run before it
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		lo, hi := bs.propIDs.bounds(txn) // no entry: 0, 0, which no entry carries
 		opts := badgerv4.DefaultIteratorOptions
@@ -566,7 +670,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 		opts.AllVersions = true
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		var last, prev []byte
+		var last, prev, start []byte
 		for _, prefix := range prefixes {
 			seek := storepkg.PropertyIndexValueSeekPrefix(prefix)
 			if last != nil && bytes.Equal(seek, last) {
@@ -578,7 +682,15 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 				from = binary.BigEndian.AppendUint64(slices.Clone(seek), lo)
 				to = binary.BigEndian.AppendUint64(slices.Clone(seek), hi)
 			}
-			for it.Seek(from); it.ValidForPrefix(seek); it.Next() {
+			if start == nil || bytes.Compare(from, start) < 0 || (it.Valid() && bytes.Compare(it.Item().Key(), from) < 0) {
+				if propertyDiskSeekTestHook != nil {
+					propertyDiskSeekTestHook()
+				}
+				revisit = revisit || (start != nil && bytes.Compare(from, start) < 0)
+				it.Seek(from)
+				start = from
+			}
+			for ; it.ValidForPrefix(seek); it.Next() {
 				item := it.Item()
 				key := item.Key()
 				if propertyDiskVisitTestHook != nil {
@@ -620,6 +732,10 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	})
 	if err != nil {
 		return nil, fmt.Errorf("graph: property index equality scan: %w", err)
+	}
+	if revisit {
+		storepkg.SortNodeIDs(nids)
+		nids = slices.Compact(nids)
 	}
 	for k, nid := range adds {
 		nids = append(nids, nid)
