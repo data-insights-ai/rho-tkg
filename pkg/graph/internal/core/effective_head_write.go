@@ -35,7 +35,9 @@ import (
 //
 // Without a valid entry (none kept, a stale one, a correction below a
 // trimmed entry's watermarks, a caller instant the order rule refuses, a
-// base row gone) the correction reads the history as before — and leaves
+// base row gone) the correction plans on the whole chain — on its temporal
+// skeletons with a point read per copied row where the store offers them
+// (CASCADEMETA, cascade_meta.go), else on the history — and leaves
 // the head answer behind (correctionChain.head, row 85), so the next
 // correction at the head is planned from it: a consumer appending versions
 // to a chain of thousands pays the history read once, not per write.

@@ -26,6 +26,9 @@ import (
 type cascadeCountStore struct {
 	storepkg.MandatoryStore
 	nodeHistory, relHistory, nodeVersion, relVersion atomic.Int64
+	// Faults for the gate test: the skeleton read repeats a version, a
+	// relationship point read answers another version.
+	duplicate, wrongVersion atomic.Bool
 }
 
 func (s *cascadeCountStore) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
@@ -45,7 +48,12 @@ func (s *cascadeCountStore) GetNodeVersion(id types.NodeID, v uint32) (*types.No
 
 func (s *cascadeCountStore) GetRelVersion(id types.RelID, v uint32) (*types.Relationship, error) {
 	s.relVersion.Add(1)
-	return s.MandatoryStore.GetRelVersion(id, v)
+	r, err := s.MandatoryStore.GetRelVersion(id, v)
+	if err == nil && s.wrongVersion.Load() {
+		r = r.DeepCopy()
+		r.SetVersion(v + 1000) // a store answering another version
+	}
+	return r, err
 }
 
 func (s *cascadeCountStore) reset() {
@@ -64,7 +72,42 @@ func (s *cascadeCountMetaStore) NodeHistoryTemporalMeta(id types.NodeID) ([]stor
 }
 
 func (s *cascadeCountMetaStore) RelHistoryTemporalMeta(id types.RelID) ([]storepkg.VersionTemporalMeta, error) {
-	return s.MandatoryStore.(storepkg.TemporalMetaHistoryCapability).RelHistoryTemporalMeta(id)
+	metas, err := s.MandatoryStore.(storepkg.TemporalMetaHistoryCapability).RelHistoryTemporalMeta(id)
+	if err == nil && s.duplicate.Load() && len(metas) > 1 {
+		metas = append(metas[:1:1], metas...) // the first version twice
+	}
+	return metas, err
+}
+
+// TestCascadeMetaGateFallsBack: skeletons that cannot stand for the history
+// rows — a version repeated, or a point read that answers another version —
+// send the correction to the whole history, with the same rows as a graph
+// that never plans on skeletons. Mutation: the gate without its ascending
+// check, or hydrate without its version check, plans on the bad skeletons.
+func TestCascadeMetaGateFallsBack(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, fault := range []string{"duplicate", "wrongVersion"} {
+		t.Run(fault, func(t *testing.T) {
+			t.Parallel()
+			be := cascadeCountBackends()[0] // memory
+			g, cs := openCountedGraph(t, be)
+			id := cascadeMetaRelChain(t, g, "delete")
+			if fault == "duplicate" {
+				cs.duplicate.Store(true)
+			} else {
+				cs.wrongVersion.Store(true)
+			}
+			before := g.metaWrites.Load()
+			cs.reset()
+			if _, err := g.Temporal.SetRelVersionInterval(ctx, id, 3050, 3450, map[string]any{"k": int64(99)}); err != nil {
+				t.Fatal(err)
+			}
+			if got := g.metaWrites.Load() - before; got != 0 || cs.relHistory.Load() != 1 {
+				t.Fatalf("%s: %d corrections on skeletons, %d whole-history reads; want 0 and 1 (the fallback)", fault, got, cs.relHistory.Load())
+			}
+		})
+	}
 }
 
 type cascadeCountBackend struct {

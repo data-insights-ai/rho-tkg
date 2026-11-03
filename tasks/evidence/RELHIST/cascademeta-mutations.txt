@@ -1,0 +1,53 @@
+CASCADEMETA mutation sweep (branch cascademeta, 3 Nov 2026). Each mutant applied alone to the fix commit's tree,
+`go build ./pkg/graph/... && go vet` first (a build failure is no kill and was rewritten to compile), then the
+targeted tests (-short -run 'TestCascadeMeta|TestCascadeCorrection85_Oracle'); survivors against the whole core
+package (-short). Restored by `git checkout` after each. Files: cascade_meta.go (META), temporal_cascade.go (CASC).
+
+M1  relMetaPlan never stands (always the whole history)       KILLED  TestCascadeMetaMissReadsNoHistory, ...Twin, ...Cost
+M2  nodeMetaPlan never stands                                  KILLED  TestCascadeMetaMissReadsNoHistory, ...Twin, ...Cost
+M3  gate admits a skeleton at the current version              KILLED  TestCascadeMetaTwin (legacy shared version)
+M4  gate drops the strictly-ascending check                    build failure (unused i), rewritten as M4b
+M4b gate drops the strictly-ascending check (compiles)         survived targeted and whole package (every store
+                                                               returns unique ascending versions); KILLED after
+                                                               TestCascadeMetaGateFallsBack/duplicate was added
+M5  hydrate keeps the segment bases (stubs copied)             KILLED  TestCascadeCorrection85_Oracle, TestCascadeMeta*
+M6  hydrate keeps the resumption source (stub copied)          KILLED  TestCascadeCorrection85_Oracle, ...Twin, ...MissReads
+M7  source read even when no resumption is written             KILLED  TestCascadeMetaMissReadsNoHistory (exact reads)
+M8  no memo: a row read again per segment                      KILLED  TestCascadeMetaMissReadsNoHistory
+M9  a failed point read keeps the skeleton                     KILLED  TestCascadeMetaTwin (compaction between reads)
+M10 point read of the wrong version                            KILLED  TestCascadeMeta* (three tests)
+M11 hydrate does not check the version read                    SURVIVED, equivalent: a native store answers by
+                                                               key, and an untrusted store's point read is
+                                                               validated by trustedRelVersion /
+                                                               ValidateRelationshipHistoryVersionSnapshot, which
+                                                               refuses another version (the read fails, the plan
+                                                               falls back: TestCascadeMetaGateFallsBack/wrongVersion
+                                                               passes with and without it). Kept as defence.
+M12 planMiss voidFree always true                              build failure (unused import), rewritten as M12b
+M12b planMiss voidFree always true (compiles)                  survived targeted and whole package (shared by both
+                                                               plans; no test pinned it before); KILLED after
+                                                               TestCascadeMetaWholeAxisKeepsExcise was added
+M13 planMiss max version from the current row only             KILLED  TestCascadeMetaMissReadsNoHistory, ...Twin
+M14 planMiss without the order rule's stamps                   KILLED  TestCascadeMetaTwin (refused caller instant)
+M15 planMiss without a resumption source                       survived targeted (shared by both twins); KILLED in
+                                                               the package by 13 tests (TestCascade_*Resumption*,
+                                                               TestRound11WholeAxisTwin, TestReImportLifeOracle, ...)
+M16 rel stubs without their temporal block                     KILLED  TestCascadeCorrection85_Oracle, TestCascadeMeta*
+M17 node stubs without their temporal block                    KILLED  TestCascadeCorrection85_Oracle, TestCascadeMeta*
+M18 rel miss leaves no head entry behind                       survived targeted; KILLED in the package by
+                                                               TestCascadeHead85_ConsumerShapeFlat
+M19 node miss leaves no head entry behind                      survived targeted; KILLED in the package by
+                                                               TestCascadeHead85_ConsumerShapeFlat
+M20 node srcCopied tests newVF instead of newVT                KILLED  TestCascadeMetaMissReadsNoHistory
+M21 rel srcCopied tests newVF instead of newVT                 KILLED  TestCascadeCorrection85_Oracle, ...MissReads
+M22 rel kernel keeps the head-chain facts, not the miss plan   KILLED  TestCascadeMeta* (three tests)
+M23 splitGaps not passed on a miss                             survived targeted; KILLED in the package by
+                                                               TestCascadeCorrection85_CostFlat
+M24 rel hydration skipped (stubs planned and written)          KILLED  TestCascadeCorrection85_Oracle, TestCascadeMeta*
+
+Tally: 26 mutants run (2 of them build failures, rewritten); 23 killed (4 only by the whole package, 2 only after a
+new test), 1 equivalent survivor (M11), 0 open survivors.
+
+Final tree: go test -short -count=1 ./pkg/graph/internal/core/ ok; -race on the four new tests ok;
+TestEffectiveHeadWrite_TwinDifferential (HEAD_TWIN_SEEDS=2, long tier) ok: 846 corrections from the entry, 461 on
+skeletons, the old plan on graph B.

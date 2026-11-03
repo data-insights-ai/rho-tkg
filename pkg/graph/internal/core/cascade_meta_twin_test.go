@@ -138,6 +138,108 @@ func (tw *headTwin) metaCorrect(name string, meta uint64, nid types.NodeID, rid 
 		func(g *Core) error { _, err := g.Temporal.SetRelVersionInterval(ctx, rid, vf, vt, p); return err })
 }
 
+// TestCascadeMetaWholeAxisKeepsExcise: a whole-axis untimed update of an
+// entity whose valid time holds an excised hole after its first segment
+// (a void row winning there, a gap for the update) on a head miss, planned
+// on skeletons or on the whole history, keeps the hole: the void flag the
+// plan reads off the chain (wholeAxisSupersession.voidFree) keeps the
+// replaced current row unstamped, so the void row still wins. Mutation: the
+// plan's void flag forced to "no void row" stamps the row and the excised
+// value answers again.
+func TestCascadeMetaWholeAxisKeepsExcise(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, be := range r10WholeAxisBackends(t) {
+		for _, off := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/metaOff=%v", be.name, off), func(t *testing.T) {
+				t.Parallel()
+				g, err := New(be.cfg())
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = g.Close() })
+				g.headWriteOff, g.cascadeMetaOff = true, off
+				p := map[string]any{"tkg_valid_from": int64(1000), "tkg_valid_to": int64(3000), "k": int64(1)}
+				n, err := g.Nodes.Add(ctx, []string{"H"}, p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				e, err := g.Nodes.Add(ctx, []string{"H"}, map[string]any{"tkg_valid_from": int64(10)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				r, err := g.Rels.Add(ctx, "R", n, e, p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := g.Temporal.ExciseNodeValidity(ctx, n.ID(), 2000, 2500); err != nil {
+					t.Fatal(err)
+				}
+				if err := g.Temporal.ExciseRelValidity(ctx, r.ID(), 2000, 2500); err != nil {
+					t.Fatal(err)
+				}
+				// A newer row inside the hole: the update's segment there
+				// starts after the void row's start and would end it.
+				if _, err := g.Temporal.SetNodeVersionInterval(ctx, n.ID(), 2200, 2300, map[string]any{"k": int64(1)}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := g.Temporal.SetRelVersionInterval(ctx, r.ID(), 2200, 2300, map[string]any{"k": int64(1)}); err != nil {
+					t.Fatal(err)
+				}
+				curN, err := g.store.GetNode(n.ID())
+				if err != nil {
+					t.Fatal(err)
+				}
+				curR, err := g.store.GetRelationship(r.ID())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := g.Nodes.Update(ctx, n.ID(), map[string]any{"k": int64(2)}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := g.Rels.Update(ctx, r.ID(), map[string]any{"k": int64(2)}); err != nil {
+					t.Fatal(err)
+				}
+				if !off && g.metaWrites.Load() == 0 && g.temporalMetaHistory != nil {
+					t.Fatal("no correction planned on skeletons")
+				}
+				// The replaced current rows moved to history unstamped (a gap
+				// after a changed segment on a chain with a void row).
+				hn, err := g.store.GetNodeVersion(n.ID(), curN.Version())
+				if err != nil {
+					t.Fatal(err)
+				}
+				hr, err := g.store.GetRelVersion(r.ID(), curR.Version())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if hn.Temporal().TxTo != 0 || hr.Temporal().TxTo != 0 {
+					t.Fatalf("replaced current rows stamped TxTo node %d rel %d, want 0 (the void row must keep winning)", hn.Temporal().TxTo, hr.Temporal().TxTo)
+				}
+				for _, at := range []types.Instant{1500, 2100, 2250, 2400, 2700} {
+					hole := at == 2100 || at == 2400
+					na, nerr := g.Temporal.NodeAt(n.ID(), at)
+					ra, rerr := g.Temporal.RelAt(r.ID(), at)
+					if hole {
+						if nerr == nil || rerr == nil {
+							t.Fatalf("at %d (excised): node %v err %v, rel %v err %v; want no version", at, na, nerr, ra, rerr)
+						}
+						continue
+					}
+					if nerr != nil || rerr != nil {
+						t.Fatalf("at %d: node err %v, rel err %v", at, nerr, rerr)
+					}
+					nk, _ := na.GetProperty("k")
+					rk, _ := ra.GetProperty("k")
+					if fmt.Sprint(nk) != "2" || fmt.Sprint(rk) != "2" {
+						t.Fatalf("at %d: node k=%v rel k=%v, want 2", at, nk, rk)
+					}
+				}
+			})
+		}
+	}
+}
+
 // TestCascadeMetaTwin: the correction planned on skeletons writes
 // byte-for-byte the rows the whole-history plan writes (every appended row,
 // the current row, and the timelines read after it), on memory, badger,
