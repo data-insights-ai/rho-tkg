@@ -1,0 +1,65 @@
+VALUETHRESH step 1 (ai-soc R3): ReplaceVersion of 100 KB page rows, badger's default ValueThreshold (1 MB,
+options.go:170 in badger v4.9.2) against 64 KB. Measured 2026-11-03 on the shared machine (32 cores, /tmp ext4 NVMe),
+runs alternated, load average printed before each pair.
+
+Probe: probe_test.go.txt (pkg/graph, build tag valuethreshprobe) with probe_hook.go.txt and probe_hook.diff.txt (an unexported
+valueThresholdProbe in buildBadgerOptions, set from RHO_VALUETHRESH under the tag; not committed as code).
+Shape: 64 Page rows (a reference label on tiered), each 4 properties of 25 KB of JSON-like text (2,048-word
+dictionary, compressible about 2.6x by badger's Snappy/s2) plus ov_k, ov_h3 (on-disk property indexes, ov_h* valid
+end, sigma's shape) and pages; change log on; 150 rounds of ReplaceVersion over all 64 = 9,600 replaces, about
+940 MB of rows, each replace writing current row + history row + change-log record (~2.8 GB to badger).
+CPU = getrusage over the write phase, a 10 s settle (compactors keep running) and Close; the CPU profile covers
+the same window. Reads after Close + reopen: "cold" = rho caches and badger block cache empty (OS page cache warm,
+no root to drop it), "warm" = the same reads again. Get's warm read is rho's node cache; NodeAsOf reads history
+from badger every time.
+
+  RHO_VALUETHRESH=<0|65536> RHO_VT_ROUNDS=150 RHO_VT_SETTLE=10 RHO_VT_BACKEND=<badger|tiered> \
+    RHO_VT_PROF=<file> go test -tags valuethreshprobe -run TestValueThreshProbe -count=1 -v ./pkg/graph/
+  RHO_VT_GC=1 RHO_VALUETHRESH=<0|65536> RHO_VT_ROUNDS=150 go test -tags valuethreshprobe ... (GC part)
+
+Results (one line per run; order as run)
+
+load 13.10  badger default  write 10.95 s (876/s)   CPU write 67.9 s, total 91.4 s  sst 1,081 MB  vlog 0
+load 11.82  badger 64 KB    write  5.99 s (1,603/s) CPU write  6.5 s, total  6.8 s  sst 0.9 MB    vlog 2,972 MB
+load 10.10  tiered default  write 14.06 s (683/s)   CPU write 88.7 s, total 103.7 s sst 1,105 MB  vlog 0
+load 19.80  tiered 64 KB    write  6.02 s (1,595/s) CPU write  6.5 s, total  6.9 s  sst 1.0 MB    vlog 2,972 MB
+load 13.76  badger 64 KB    write  8.96 s (1,072/s) CPU write  8.2 s, total  8.7 s  sst 0.9 MB    vlog 2,972 MB
+load 19.59  badger default  write  9.68 s (992/s)   CPU write 56.9 s, total 88.6 s  sst 1,068 MB  vlog 0
+
+CPU profile, badger, run 1 vs run 2 (go tool pprof -top -cum):
+                                     default (87.9 s samples)   64 KB (5.9 s samples)
+  s2.EncodeSnappy                     31.3 s                     0 (not in the profile)
+  s2.Decode                            8.9 s                     0
+  levelsController.subcompact         18.9 s                     0
+  DB.handleMemTableFlush               5.2 s                     0
+  DB.writeRequests (write path)        4.7 s                     2.7 s (2.6 s of it valueLog.write)
+  core.NodeOps.ReplaceVersion          4.2 s                     2.7 s
+
+Reads (p50 / p90):
+                        badger default        badger 64 KB          tiered default        tiered 64 KB
+  Get cold              763 / 909 us          40 / 56 us            827 us / 1.16 ms      36 / 64 us
+                        317 / 576 us (run 2)  75 / 99 us (run 2)
+  Get warm (rho cache)  3 / 6 us              2 / 3 us              4 / 11 us             2 / 3 us
+  NodeAsOf cold         7.09 / 7.69 ms        1.28 / 1.70 ms        6.14 / 7.38 ms        1.27 / 1.76 ms
+                        7.11 / 8.11 ms        4.57 / 5.61 ms
+  NodeAsOf warm         4.69 / 6.77 ms        1.00 / 1.26 ms        4.43 / 8.78 ms        0.89 / 0.97 ms
+                        4.39 / 4.92 ms        3.02 / 4.05 ms
+  No read regression: every read is as fast or faster with the blobs in the value log.
+
+Value-log GC (badger, ValueLogFileSize 16 MB, rho's gcLoop every 200 ms at ratio 0.5, 10 s after the writes):
+  64 KB:   vlog 2,970 MB after the writes, 2,972 MB after 10 s of gcLoop, 2,972 MB closed: nothing reclaimed
+  default: sst 1,252 MB after the writes, 1,068 MB after 10 s (compaction), 1,102 MB closed; vlog 0
+
+Findings
+- Clear gain: compaction CPU 18.9 s -> 0 and s2 encode 31.3 s -> 0; process CPU 88-104 s -> 7-9 s (-90 %);
+  write throughput 1.1-2.3x (wall is noisy at load 10-20; CPU is not). No read regression: cold Get 4-20x faster,
+  NodeAsOf 1.5-5x faster.
+- Cost: disk. The value log is not compressed: 2,972 MB against 1,068-1,105 MB of Snappy tables for this
+  2.6x-compressible text (2.7x the space). For incompressible blobs the two would be about equal.
+- The value-log GC reclaims nothing on this shape: of the three values a replace writes, the history row and the
+  change-log record stay live for good (docs/badger.md rule 9: a value kept by history is never garbage), so at
+  most a third of a file is garbage, below the 0.5 discard ratio; and the LSM of 24-byte pointers rarely compacts,
+  so the replaced current rows reach the discard statistics late. Space grows with every replace either way; with
+  the threshold it grows uncompressed.
+Decision: step 2 (Config.ValueThreshold, opt-in, default unchanged); the disk trade-off goes into docs/badger.md and
+the knob's doc comment.

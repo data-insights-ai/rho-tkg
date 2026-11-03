@@ -1,0 +1,16 @@
+//go:build valuethreshprobe
+
+package badger
+
+import (
+	"os"
+	"strconv"
+)
+
+// VALUETHRESH step 1: RHO_VALUETHRESH (bytes) sets badger's ValueThreshold for
+// every store the process opens (tasks/evidence/VALUETHRESH/measure.txt).
+func init() {
+	if v, err := strconv.ParseInt(os.Getenv("RHO_VALUETHRESH"), 10, 64); err == nil {
+		valueThresholdProbe = v
+	}
+}
