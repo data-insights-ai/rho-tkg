@@ -20,7 +20,9 @@ import (
 
 // Backlog 68b on twin graphs: graph A plans corrections and GraphTx
 // rollback snapshots from the head entry (effective_head_write.go), graph B
-// reads the whole history (headWriteOff, the code before 68b). Both run the
+// reads the whole history (headWriteOff, the code before 68b; and
+// cascadeMetaOff: on a head miss A plans on history skeletons, CASCADEMETA,
+// B on the whole history). Both run the
 // same operations — corrections bounded and open (often of one validity), at
 // the clock and at caller instants (accepted and refused), excises, Updates,
 // in-place validity rewrites, CloseVersion, label changes, deletes and
@@ -55,7 +57,7 @@ func TestEffectiveHeadWrite_TwinDifferential(t *testing.T) {
 	if n, err := strconv.Atoi(os.Getenv("HEAD_TWIN_SEEDS")); err == nil && n > 0 {
 		seeds = n
 	}
-	var planned, rollbacks, demotes, gaps uint64
+	var planned, metaPlanned, rollbacks, demotes, gaps uint64
 	for _, be := range append(r10AllBackends(t), r10WholeAxisBackends(t)...) {
 		for s := range seeds {
 			seed := uint64(0x68b0 + s)
@@ -75,18 +77,20 @@ func TestEffectiveHeadWrite_TwinDifferential(t *testing.T) {
 				}
 				t.Logf("ops %v; %d corrections planned from the entry", tw.ops, tw.a.headWrites.Load())
 				planned += tw.a.headWrites.Load()
+				metaPlanned += tw.a.metaWrites.Load()
 				rollbacks += uint64(tw.ops["rollback"])
 				demotes += uint64(tw.ops["tx demote"])
 				gaps += uint64(tw.ops["gap"])
-				if tw.b.headWrites.Load() != 0 {
-					t.Fatalf("graph B planned %d corrections from the entry", tw.b.headWrites.Load())
+				if tw.b.headWrites.Load() != 0 || tw.b.metaWrites.Load() != 0 {
+					t.Fatalf("graph B planned %d corrections from the entry, %d on skeletons", tw.b.headWrites.Load(), tw.b.metaWrites.Load())
 				}
 			})
 		}
 	}
-	t.Logf("%d corrections planned from the entry, %d rollbacks, %d tx demotes", planned, rollbacks, demotes)
-	if planned == 0 || rollbacks == 0 || demotes == 0 || gaps == 0 {
-		t.Fatalf("the generator never exercised the write side: %d planned, %d rollbacks, %d demotes, %d compaction gaps", planned, rollbacks, demotes, gaps)
+	t.Logf("%d corrections planned from the entry, %d on skeletons, %d rollbacks, %d tx demotes", planned, metaPlanned, rollbacks, demotes)
+	if planned == 0 || metaPlanned == 0 || rollbacks == 0 || demotes == 0 || gaps == 0 {
+		t.Fatalf("the generator never exercised the write side: %d planned, %d on skeletons, %d rollbacks, %d demotes, %d compaction gaps",
+			planned, metaPlanned, rollbacks, demotes, gaps)
 	}
 }
 
@@ -120,6 +124,7 @@ func newHeadTwin(t *testing.T, be r10Backend, seed uint64) *headTwin {
 	}
 	tw.a, tw.b = open(), open()
 	tw.b.headWriteOff = true
+	tw.b.cascadeMetaOff = true
 	tw.tieredA, _ = tw.a.store.(*tiered.Store)
 	tw.tieredB, _ = tw.b.store.(*tiered.Store)
 	tw.setup()

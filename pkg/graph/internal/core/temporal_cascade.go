@@ -149,30 +149,20 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 		hc, fromHead = chainFromHead(c, headBefore, current, func(v uint32) (*types.Node, error) { return c.getNodeVersion(id, v) },
 			newVF, newVT, at, void || existing)
 	}
-	var history []*types.Node
+	// A head miss plans on the pre-correction chain: on the history's
+	// skeletons with a point read per row it copies (CASCADEMETA,
+	// cascade_meta.go), else on the whole history; an unknown or
+	// hard-deleted node is refused there (backlog 14).
+	var plan missPlan[*types.Node]
 	if !fromHead {
-		if history, err = c.getNodeHistory(id); err != nil {
+		if plan, err = c.nodeMissPlan(id, current, newVF, newVT, void || existing); err != nil {
 			return nil, err
 		}
-		if current == nil && len(history) == 0 {
-			return nil, storepkg.ErrNodeNotFound
-		}
-		if current == nil {
-			// Hard-deleted: the chain ends in a tombstone. A correction appended
-			// after it would be a belief no door reads consistently (backlog 14).
-			return nil, nodeDeletedErr(id)
-		}
+		hc = plan.hc
 	}
 
 	maxVersion := hc.maxVersion
-	var chainStamps []*types.TemporalMetadata // from the head: the order rule was checked
-	if !fromHead {
-		maxVersion = current.Version()
-		for _, h := range history {
-			maxVersion = max(maxVersion, h.Version())
-		}
-		chainStamps = temporalsOf(history, current)
-	}
+	chainStamps := plan.stamps // nil from the head: the order rule was checked
 	nextVersion, err := nextEntityVersion(maxVersion)
 	if err != nil {
 		return nil, err
@@ -200,10 +190,7 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// (resolveNodeVersionAt). Existing rows therefore reconstruct the
 	// pre-correction belief exactly, and the appended rows the post-correction
 	// belief — no holes, no leaks.
-	var preChain []*types.Node
-	if !fromHead {
-		preChain = preCorrectionChain(history, current) // a deleted entity was refused above
-	}
+	preChain := plan.preChain // a deleted entity was refused above
 
 	// Resumption: re-assert, from newVT onward, whatever value held AT newVT in
 	// the pre-correction belief, so the part of the timeline after the
@@ -232,17 +219,10 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// (the version is hashed), see the allocation step below.
 	appended := make([]*types.Node, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	var prep *correctionChain[*types.Node] // the chain prepared once: every cut and the source (row 85)
-	if !fromHead {
-		prep = prepareCorrection(c, nodeKernel, preChain)
-		if headBefore == nil {
-			headBefore = prep.head(c.nodeHistoryEpoch(id), current) // the head answer this read paid for
-		}
-		if !c.axis().Open(newVT) {
-			if src, ok := prep.winnerAt(newVT); ok {
-				hc.src, hc.hasSrc, hc.srcEnd = src, true, nodeResumptionEnd(c, preChain, newVT)
-			}
-		}
+	// The chain was prepared once: every cut and the source (row 85,
+	// planMiss).
+	if !fromHead && headBefore == nil {
+		headBefore = plan.prep.head(c.nodeHistoryEpoch(id), current) // the head answer this read paid for
 	}
 	// No resumption when src's own interval starts at newVT (RESUME, sigma):
 	// the pieces end there, so every row covering an instant from newVT on
@@ -266,9 +246,6 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// correctionChain.segments). Rows are fully built (patched, bounded, hashed)
 	// before any write — preflight, then apply.
 	segments := hc.segments
-	if !fromHead {
-		segments = prep.segments(template, newVF, newVT, void || existing)
-	}
 	if void {
 		if err := exciseNoVersionErr(segments, newVF, newVT); err != nil {
 			return nil, err
@@ -276,9 +253,6 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	}
 	var newVer *types.Node // the appended row covering newVF — the return value
 	sup := wholeAxisSupersession{voidFree: hc.voidFree}
-	if !fromHead {
-		sup.voidFree = !slices.ContainsFunc(preChain, isVoidRow[*types.Node])
-	}
 	for _, seg := range segments {
 		if (void || existing) && seg.gap {
 			sup.note(true, false)
@@ -1011,29 +985,17 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 		hc, fromHead = chainFromHead(c, headBefore, current, func(v uint32) (*types.Relationship, error) { return c.getRelVersion(id, v) },
 			newVF, newVT, at, void || existing)
 	}
-	var history []*types.Relationship
+	// A head miss plans on the pre-correction chain — see the node cascade.
+	var plan missPlan[*types.Relationship]
 	if !fromHead {
-		if history, err = c.getRelHistory(id); err != nil {
+		if plan, err = c.relMissPlan(id, current, newVF, newVT, void || existing); err != nil {
 			return nil, err
 		}
-		if current == nil && len(history) == 0 {
-			return nil, storepkg.ErrRelNotFound
-		}
-		if current == nil {
-			// Hard-deleted — see the node cascade (backlog 14).
-			return nil, relDeletedErr(id)
-		}
+		hc = plan.hc
 	}
 
 	maxVersion := hc.maxVersion
-	var chainStamps []*types.TemporalMetadata // from the head: the order rule was checked
-	if !fromHead {
-		maxVersion = current.Version()
-		for _, h := range history {
-			maxVersion = max(maxVersion, h.Version())
-		}
-		chainStamps = temporalsOf(history, current)
-	}
+	chainStamps := plan.stamps // nil from the head: the order rule was checked
 	nextVersion, err := nextEntityVersion(maxVersion)
 	if err != nil {
 		return nil, err
@@ -1051,27 +1013,15 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	// Never mutate an existing row's stored interval or transaction stamps;
 	// append fresh-TxFrom rows and let the resolver tile by valid-from with the
 	// newer belief winning on overlap. See the node cascade for the rationale.
-	var preChain []*types.Relationship
-	if !fromHead {
-		preChain = preCorrectionChain(history, current) // a deleted entity was refused above
-	}
+	preChain := plan.preChain // a deleted entity was refused above
 
 	// BACKLOG 10b: explicit resumption ValidTo via relResumptionEnd — see the
 	// node cascade above for the full rationale (own-interval boundary scan,
 	// not "positionally-next row after src").
 	appended := make([]*types.Relationship, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	var prep *correctionChain[*types.Relationship] // see the node cascade (row 85)
-	if !fromHead {
-		prep = prepareCorrection(c, relKernel, preChain)
-		if headBefore == nil {
-			headBefore = prep.head(c.relHistoryEpoch(id), current)
-		}
-		if !c.axis().Open(newVT) {
-			if src, ok := prep.winnerAt(newVT); ok {
-				hc.src, hc.hasSrc, hc.srcEnd = src, true, relResumptionEnd(c, preChain, newVT)
-			}
-		}
+	if !fromHead && headBefore == nil {
+		headBefore = plan.prep.head(c.relHistoryEpoch(id), current) // see the node cascade (row 85)
 	}
 	if hc.hasSrc && !c.relStartsAt(hc.src, newVT) { // RESUME: as for nodes
 		resumption := hc.src.DeepCopy()
@@ -1087,9 +1037,6 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	// cascade (see correctionChain.segments). Endpoints and type are immutable,
 	// so every base row carries the same ones; only properties differ.
 	segments := hc.segments
-	if !fromHead {
-		segments = prep.segments(template, newVF, newVT, void || existing)
-	}
 	if void {
 		if err := exciseNoVersionErr(segments, newVF, newVT); err != nil {
 			return nil, err
@@ -1097,9 +1044,6 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	}
 	var newVer *types.Relationship // the appended row covering newVF — the return value
 	sup := wholeAxisSupersession{voidFree: hc.voidFree}
-	if !fromHead {
-		sup.voidFree = !slices.ContainsFunc(preChain, isVoidRow[*types.Relationship])
-	}
 	for _, seg := range segments {
 		if (void || existing) && seg.gap {
 			sup.note(true, false)

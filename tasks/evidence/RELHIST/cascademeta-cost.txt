@@ -1,0 +1,46 @@
+CASCADEMETA cost, branch cascademeta (3 Nov 2026), TestCascadeMetaCost
+(go test -short -count=1 -run TestCascadeMetaCost -v ./pkg/graph/internal/core/)
+
+Shape: sigma's. A validity [1000, 2000) rewritten at every version (built at the head, planned from the entry),
+then one correction [1500, 2500) on a head miss (headWriteOff), mean of 4 corrections: allocations and bytes of
+the whole call (SetNodeVersionInterval / SetRelVersionInterval), whole-history plan (cascadeMetaOff, the code
+before) against the plan on skeletons. Rows: r10 = seven small properties; blob400 = those plus a 400-byte
+string (sigma's row size). Same graph, same chain, alternating. sharded is not measured: no skeleton door on the
+store, the whole-history plan is unchanged there.
+
+memory r10 versions=64 node:     whole history 319 allocs 52552 B; skeletons 210 allocs 37630 B (1.4x fewer bytes, 1.5x fewer allocs)
+memory r10 versions=64 rel:      whole history 315 allocs 53782 B; skeletons 208 allocs 38052 B (1.4x fewer bytes, 1.5x fewer allocs)
+memory r10 versions=1024 node:   whole history 4159 allocs 734322 B; skeletons 2130 allocs 443772 B (1.7x fewer bytes, 2.0x fewer allocs)
+memory r10 versions=1024 rel:    whole history 4158 allocs 767484 B; skeletons 2128 allocs 444092 B (1.7x fewer bytes, 2.0x fewer allocs)
+memory blob400 versions=64 node:   whole history 319 allocs 55176 B; skeletons 211 allocs 38308 B (1.4x fewer bytes, 1.5x fewer allocs)
+memory blob400 versions=64 rel:    whole history 317 allocs 57544 B; skeletons 209 allocs 38628 B (1.5x fewer bytes, 1.5x fewer allocs)
+memory blob400 versions=1024 node: whole history 4161 allocs 769340 B; skeletons 2131 allocs 444348 B (1.7x fewer bytes, 2.0x fewer allocs)
+memory blob400 versions=1024 rel:  whole history 4158 allocs 793942 B; skeletons 2129 allocs 444668 B (1.8x fewer bytes, 2.0x fewer allocs)
+badger r10 versions=64 node:     whole history 1157 allocs 165444 B; skeletons 423 allocs 90864 B (1.8x fewer bytes, 2.7x fewer allocs)
+badger r10 versions=64 rel:      whole history 1356 allocs 199760 B; skeletons 433 allocs 101856 B (2.0x fewer bytes, 3.1x fewer allocs)
+badger r10 versions=1024 node:   whole history 19607 allocs 2442664 B; skeletons 4280 allocs 1113032 B (2.2x fewer bytes, 4.6x fewer allocs)
+badger r10 versions=1024 rel:    whole history 22686 allocs 2939664 B; skeletons 4291 allocs 1217878 B (2.4x fewer bytes, 5.3x fewer allocs)
+badger blob400 versions=64 node:   whole history 1290 allocs 233932 B; skeletons 423 allocs 123390 B (1.9x fewer bytes, 3.0x fewer allocs)
+badger blob400 versions=64 rel:    whole history 1489 allocs 274700 B; skeletons 438 allocs 140712 B (2.0x fewer bytes, 3.4x fewer allocs)
+badger blob400 versions=1024 node: whole history 21660 allocs 3507660 B; skeletons 4285 allocs 1575184 B (2.2x fewer bytes, 5.1x fewer allocs)
+badger blob400 versions=1024 rel:  whole history 24739 allocs 4074436 B; skeletons 4295 allocs 1717472 B (2.4x fewer bytes, 5.8x fewer allocs)
+tiered r10 versions=64 node:     whole history 1169 allocs 165636 B; skeletons 436 allocs 90678 B (1.8x fewer bytes, 2.7x fewer allocs)
+tiered r10 versions=64 rel:      whole history 1388 allocs 201252 B; skeletons 470 allocs 103448 B (1.9x fewer bytes, 3.0x fewer allocs)
+tiered r10 versions=1024 node:   whole history 19619 allocs 2442844 B; skeletons 4293 allocs 1112846 B (2.2x fewer bytes, 4.6x fewer allocs)
+tiered r10 versions=1024 rel:    whole history 22718 allocs 2941148 B; skeletons 4327 allocs 1219408 B (2.4x fewer bytes, 5.3x fewer allocs)
+tiered blob400 versions=64 node:   whole history 1302 allocs 234124 B; skeletons 445 allocs 124848 B (1.9x fewer bytes, 2.9x fewer allocs)
+tiered blob400 versions=64 rel:    whole history 1521 allocs 276268 B; skeletons 475 allocs 142368 B (1.9x fewer bytes, 3.2x fewer allocs)
+tiered blob400 versions=1024 node: whole history 21672 allocs 3507844 B; skeletons 4302 allocs 1575464 B (2.2x fewer bytes, 5.0x fewer allocs)
+tiered blob400 versions=1024 rel:  whole history 24771 allocs 4076004 B; skeletons 4332 allocs 1719128 B (2.4x fewer bytes, 5.7x fewer allocs)
+
+Asserted bound (TestCascadeMetaCost): bytes and allocations at least 1.2x / 1.3x fewer at 64 versions; at 1,024
+versions 1.4x / 1.7x fewer on memory, 1.8x / 4.0x fewer on badger and tiered.
+
+Reading: allocations fall about 5x at 1,024 versions on badger and tiered (Fable's estimate), bytes only 2.2-2.4x:
+the plan itself is still O(versions) by design (every row's temporal block is needed), and what is left is mostly the
+store's skeleton read. Memory profile of the badger 1,024-version run (-memprofilerate 1, focus relMetaPlan /
+nodeMetaPlan, 4 corrections each): 2.2 MB of 2.3 MB per kind in badger historyTemporalMetaByPrefix
+(storeutil.DecodeWireTemporalMeta 1.7 MB, selectionTemporalMeta 0.9 MB, Item.Value), the stubs 0.39 MB
+(types.NewRelationship / NewNode, about 95 B a version), prepareCorrection 0.33 MB. A cheaper skeleton read is a
+store change and outside this patch. Full-row reads on the miss (TestCascadeMetaMissReadsNoHistory, 19 history rows,
+3 winners): whole-history reads 1 -> 0, point reads 0 -> 3 on memory, badger and tiered; sharded 1 -> 1.

@@ -45,6 +45,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   tiered and sharded the rows below read at rollback plus the copied rows. Tests `TestRELHIST*` (tiered reference,
   event, cold-shard and archive placements, memory, badger with delta encoding, sharded; void rows, a tombstone in
   the chain, deltas anchored below the trim point; `tasks/evidence/RELHIST/`).
+- **CASCADEMETA** (sigma's RELHIST profile; a fix, no new exported name). A valid-time correction, excise or whole-axis
+  untimed update on a head miss (no valid head entry: every chain holding a delete, a retraction or a shared version)
+  no longer reads the entity's whole history. On memory, badger and tiered it plans on the history's temporal
+  skeletons (`store.TemporalMetaHistoryCapability`, as the effective-timeline reads do) and point-reads by version only
+  the rows it copies: each segment base and the resumption source. It reads the whole history as before on a chain
+  stored before backlog 38 (a history row at the current version), when a point read fails (a compaction between the
+  two reads), and on sharded (no skeleton door on the store). Rows written are byte-identical. A correction on a
+  19-row chain with a delete: 1 whole-history read -> 0, 3 point reads; at 1,024 versions about 5x fewer
+  allocations and 2.2-2.4x fewer bytes on badger and tiered, 2x / 1.7x on memory. Tests `TestCascadeMeta*`, the head
+  and row-85 twins with the old plan on graph B (`tasks/evidence/RELHIST/cascademeta-*`).
 
 ## [4.102.0] - 2026-11-03
 

@@ -289,7 +289,8 @@ func breakIntervals[T interface {
 
 // TestCascadeCorrection85_Oracle: on twin graphs, graph A plans corrections
 // from the prepared chain, graph B resolves every cut on a fresh copy (the
-// code before row 85); both read the whole history (headWriteOff). The head
+// code before row 85); both plan on a head miss (headWriteOff), A on
+// history skeletons, B on the whole history (cascadeMetaOff, CASCADEMETA). The head
 // twin's generator drives both (bounded and open interval writes, caller
 // instants, GraphTx commits and rollbacks, excises, Updates, closes,
 // in-place validity rewrites, deletes and re-imports, compaction) on three
@@ -312,6 +313,7 @@ func TestCascadeCorrection85_Oracle(t *testing.T) {
 		mode UntimedValidStart
 	}{{"unbounded", UntimedUnbounded}, {"from-txfrom", UntimedFromTxFrom}, {"whole-axis", UntimedWholeAxis}}
 	var compared, voids, cascades int
+	var metaPlanned uint64
 	for _, m := range modes {
 		for _, be := range r10Backends() {
 			cfg := be.cfg
@@ -322,6 +324,7 @@ func TestCascadeCorrection85_Oracle(t *testing.T) {
 					tw := newHeadTwin(t, be, seed)
 					tw.a.headWriteOff, tw.b.headWriteOff = true, true
 					tw.b.correctionPerCut = true
+					tw.b.cascadeMetaOff = true
 					tw.a.headPieceCap, tw.a.headBoundCap = 3, 4 // trimmed entries on the read side (row 85)
 					for step := range steps {
 						when := fmt.Sprintf("step %d (after %s)", step, tw.last)
@@ -361,13 +364,15 @@ func TestCascadeCorrection85_Oracle(t *testing.T) {
 						tw.check(fmt.Sprintf("step %d (%s)", step, tw.last))
 						checkPointReads(t, tw, fmt.Sprintf("step %d (%s)", step, tw.last))
 					}
+					metaPlanned += tw.a.metaWrites.Load()
 				})
 			}
 		}
 	}
-	t.Logf("%d piece lists compared; %d void chains, %d own-bounds chains", compared, voids, cascades)
-	if compared == 0 || voids == 0 || cascades == 0 {
-		t.Fatalf("the generator missed a shape: %d compared, %d void chains, %d own-bounds chains", compared, voids, cascades)
+	t.Logf("%d piece lists compared; %d void chains, %d own-bounds chains; %d corrections on skeletons", compared, voids, cascades, metaPlanned)
+	if compared == 0 || voids == 0 || cascades == 0 || metaPlanned == 0 {
+		t.Fatalf("the generator missed a shape: %d compared, %d void chains, %d own-bounds chains, %d corrections on skeletons",
+			compared, voids, cascades, metaPlanned)
 	}
 }
 
