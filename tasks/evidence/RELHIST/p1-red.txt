@@ -1,0 +1,51 @@
+RELHIST P1 red (branch histtrim on main befdf434, 3 Nov): a GraphTx rollback snapshot copies the whole history
+
+Seam: Core.historyCopy (tests only, nil in production) counts the rows copyNodeHistory / copyRelHistory copy.
+Fixture: tiered, event label Signal, N versions per entity (N-1 updates). "above current" adds one bounded
+correction per entity: two history rows above the current version and no head entry, sigma's cut-10 shape (the
+found branch of snapshotCurrentRelLocked: relHistoryAtOrAbove true, then copyRelHistory of the whole chain).
+
+$ go test -run TestRELHIST -count=1 -short -v ./pkg/graph/internal/core/
+    RELHIST copy delete rel N=1: 0 rows
+    RELHIST copy delete rel N=10: 9 rows
+    the tx snapshot copied 9 history rows at 10 versions, want at most 0 (the rows at or above the current version)
+    RELHIST copy delete rel N=100: 99 rows
+    the tx snapshot copied 99 history rows at 100 versions, want at most 0 (the rows at or above the current version)
+    RELHIST copy delete node with rel N=1: 0 rows
+    RELHIST copy delete node with rel N=10: 18 rows
+    the tx snapshot copied 18 history rows at 10 versions, want at most 0 (the rows at or above the current version)
+    RELHIST copy delete node with rel N=100: 198 rows
+    the tx snapshot copied 198 history rows at 100 versions, want at most 0 (the rows at or above the current version)
+    RELHIST copy update rel above current N=1: 0 rows
+    RELHIST copy update rel above current N=10: 11 rows
+    the tx snapshot copied 11 history rows at 10 versions, want at most 2 (the rows at or above the current version)
+    RELHIST copy update rel above current N=100: 101 rows
+    the tx snapshot copied 101 history rows at 100 versions, want at most 2 (the rows at or above the current version)
+    RELHIST copy update node above current N=1: 0 rows
+    RELHIST copy update node above current N=10: 11 rows
+    the tx snapshot copied 11 history rows at 10 versions, want at most 2 (the rows at or above the current version)
+    RELHIST copy update node above current N=100: 101 rows
+    the tx snapshot copied 101 history rows at 100 versions, want at most 2 (the rows at or above the current version)
+--- FAIL: TestRELHISTTxSnapshotCopyBounded (0.29s)
+    --- PASS: .../delete_rel/N=1                    --- FAIL: .../delete_rel/N=10, N=100
+    --- PASS: .../delete_node_with_rel/N=1          --- FAIL: .../delete_node_with_rel/N=10, N=100
+    --- PASS: .../update_rel_above_current/N=1      --- FAIL: .../update_rel_above_current/N=10, N=100
+    --- PASS: .../update_node_above_current/N=1     --- FAIL: .../update_node_above_current/N=10, N=100
+--- PASS: TestRELHISTTxRollbackRestoresTiered (short: cold placement skipped)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.323s
+
+Guard on main, long tier (no -short): TestRELHISTTxRollbackRestoresTiered, 7 tx shapes per placement (delete rel,
+delete start node, delete end node, update rel and node, update then delete, correction then delete, delete then
+re-import rel), each rolled back and compared with the state before (current rows, full history wire bytes, both
+nodes' adjacency, label, type and property index answers):
+    --- PASS: TestRELHISTTxRollbackRestoresTiered/event/above=false (0.01s)
+    --- PASS: TestRELHISTTxRollbackRestoresTiered/reference/above=false (0.01s)
+    --- PASS: TestRELHISTTxRollbackRestoresTiered/reference/above=true (0.01s)
+    --- PASS: TestRELHISTTxRollbackRestoresTiered/event/above=true (0.01s)
+    --- PASS: TestRELHISTTxRollbackRestoresTiered/archive/above=false (0.01s)
+    --- PASS: TestRELHISTTxRollbackRestoresTiered/archive/above=true (0.01s)
+    --- PASS: TestRELHISTTxRollbackRestoresTiered/cold_shard/above=false (18.92s)
+    --- PASS: TestRELHISTTxRollbackRestoresTiered/cold_shard/above=true (20.93s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	20.975s
+(The archive placement's history spans the reference shard and the archive; the cold placement's shard is closed by
+the idle sweep before each tx.)

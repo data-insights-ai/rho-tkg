@@ -418,6 +418,9 @@ func (c *Core) copyNodeHistory(id types.NodeID) ([]*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	if c.historyCopy != nil {
+		c.historyCopy(len(history))
+	}
 	return copyNodeHistoryRows(history), nil
 }
 
@@ -433,6 +436,9 @@ func (c *Core) copyRelHistory(id types.RelID) ([]*types.Relationship, error) {
 	history, err := c.getRelHistory(id)
 	if err != nil {
 		return nil, err
+	}
+	if c.historyCopy != nil {
+		c.historyCopy(len(history))
 	}
 	return copyRelHistoryRows(history), nil
 }
