@@ -8,6 +8,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -57,6 +58,12 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	if err != nil {
 		return err
 	}
+	// The vector-index entries go in before any other mutation (lesson 4,
+	// BACKLOG 18e); a failure withdraws them (BATCHFAIL).
+	if err := ms.addNodeVectorsLocked(vectorUpdates, rawID); err != nil {
+		ms.withdrawNodeVectorsLocked([]snowflake.ID{rawID})
+		return err
+	}
 
 	ms.nodes[nid] = ms.storedNode(n)
 	ms.noteNodeCurrentLocked(n)
@@ -70,9 +77,6 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	ms.addNodeToCompositeIndexesLocked(n, rawID)
 	ms.addNodeToTemporalIndexesLocked(n, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
-	if err := ms.addNodeVectorsLocked(vectorUpdates, rawID); err != nil {
-		return err
-	}
 	if err := ms.logNodePutRoutedLocked(n, false, token); err != nil {
 		return err
 	}
@@ -551,13 +555,32 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		}
 		vectorUpdates[i] = updates
 	}
+	var putPayloads [][]byte // change-log bodies, encoded before any mutation
+	if ms.logEnabled {
+		putPayloads = make([][]byte, len(nodes))
+		for i, n := range nodes {
+			p, err := storeutil.NodePutPayload(n, false)
+			if err != nil {
+				return changeLogEncodeErr(err)
+			}
+			putPayloads[i] = p
+		}
+	}
 
-	// Phase 2: apply — all validated, safe to mutate. The property indexes
-	// take the batch at once (BATCHIDX); a failure at node i leaves them as
-	// the per-node adds did, holding nodes[:i+1].
+	// Phase 2: apply. Every node's vector-index entries go in first, before
+	// any other mutation (lesson 4, BACKLOG 18e); a failure withdraws those
+	// applied, so a failed batch leaves the store as before the call
+	// (BATCHFAIL). Nothing after them fails. The property indexes take the
+	// batch at once (BATCHIDX).
 	rawIDs := make([]snowflake.ID, len(nodes))
 	for i, n := range nodes {
 		rawIDs[i] = n.ID().SnowflakeID()
+	}
+	for i := range nodes {
+		if err := ms.addNodeVectorsLocked(vectorUpdates[i], rawIDs[i]); err != nil {
+			ms.withdrawNodeVectorsLocked(rawIDs[:i+1])
+			return err
+		}
 	}
 	for i, n := range nodes {
 		id := n.ID()
@@ -572,13 +595,8 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		ms.addNodeToCompositeIndexesLocked(n, rawID)
 		ms.addNodeToTemporalIndexesLocked(n, rawID)
 		indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
-		if err := ms.addNodeVectorsLocked(vectorUpdates[i], rawID); err != nil {
-			indexpkg.AddNodesToPropertyIndexes(ms.propertyIndexes, nodes[:i+1], rawIDs[:i+1])
-			return err
-		}
-		if err := ms.logNodePutLocked(n, false); err != nil {
-			indexpkg.AddNodesToPropertyIndexes(ms.propertyIndexes, nodes[:i+1], rawIDs[:i+1])
-			return err
+		if putPayloads != nil {
+			ms.logChangeLocked(storecontract.ChangeNodePut, putPayloads[i])
 		}
 	}
 	indexpkg.AddNodesToPropertyIndexes(ms.propertyIndexes, nodes, rawIDs)
@@ -596,6 +614,15 @@ func (ms *Store) addNodeVectorsLocked(updates []indexpkg.NodeVectorIndexUpdate, 
 		return h(id)
 	}
 	return nil
+}
+
+// withdrawNodeVectorsLocked removes the vector-index entries a failed create
+// applied for ids. A created ID held no entry before, so removing it from
+// every index restores them. Caller holds ms.mu.
+func (ms *Store) withdrawNodeVectorsLocked(ids []snowflake.ID) {
+	for _, id := range ids {
+		indexpkg.PurgeNodeFromAllVectorIndexes(ms.vectorIndexes, id)
+	}
 }
 
 // PutNodesBatchPreEncoded satisfies store.PreEncodedPutCapability. Memory

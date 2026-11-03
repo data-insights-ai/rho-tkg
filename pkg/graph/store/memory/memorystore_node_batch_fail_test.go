@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"slices"
@@ -8,6 +9,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -132,8 +134,31 @@ func TestPutNodesFailedVectorLeavesNoTrace(t *testing.T) {
 			if got := batchFailAnswers(t, ms, ids); got != wantAnswers {
 				t.Errorf("answers after the failed call:\n%s\nbefore:\n%s", got, wantAnswers)
 			}
+			ms.mu.RLock()
+			logBefore := len(ms.changeLog)
+			ms.mu.RUnlock()
 			if err := tc.put(ms, nodes); err != nil {
 				t.Fatalf("the same nodes again: %v", err)
+			}
+			// One put record per node stored, in order (encoded before any mutation).
+			ms.mu.RLock()
+			added := slices.Clone(ms.changeLog[logBefore:])
+			ms.mu.RUnlock()
+			stored := nodes
+			if tc.name == "put node" {
+				stored = nodes[:1]
+			}
+			if len(added) != len(stored) {
+				t.Fatalf("%d change records for %d nodes", len(added), len(stored))
+			}
+			for i, n := range stored {
+				want, err := storeutil.NodePutPayload(n, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if added[i].Tag != storecontract.ChangeNodePut || !bytes.Equal(added[i].Payload, want) {
+					t.Errorf("change record %d: tag %v, payload of node %d expected", i, added[i].Tag, n.ID())
+				}
 			}
 		})
 	}
