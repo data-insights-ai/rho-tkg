@@ -200,7 +200,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types
 	ts.mu.RLock()
 	probe := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
-		if es == candidateEntry {
+		if es == candidateEntry || es.noRows.Load() {
 			continue
 		}
 		probe = append(probe, es)
@@ -466,7 +466,7 @@ func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID
 	ts.mu.RLock()
 	probe := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
-		if _, checked := checkedCandidates[es]; checked {
+		if _, checked := checkedCandidates[es]; checked || es.noRows.Load() {
 			continue
 		}
 		probe = append(probe, es)

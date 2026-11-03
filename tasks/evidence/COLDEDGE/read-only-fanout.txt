@@ -1,0 +1,1 @@
+30 cold shards holding rows, Outgoing, cap 0, one run: writable checkout 2.85/3.02/2.86 s; read-only 0.82/0.53/0.51 s

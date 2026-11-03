@@ -28,6 +28,9 @@ func (es *EventShard) countColdStoreLocked(ts *Store) {
 // openColdLocked lazily opens the closed cold shard es, installs and counts
 // it (ShardInfo.ColdOpens) and syncs its indexes. Caller holds es.shardMu.
 func (es *EventShard) openColdLocked(ts *Store) error {
+	if err := es.wakeNoRowsLocked(ts); err != nil {
+		return err
+	}
 	store, err := ts.openColdBadgerStoreWithRecovery(es.path)
 	if err != nil {
 		return fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
@@ -580,7 +583,7 @@ func (ts *Store) closeIdleShards() {
 	sealedAny := false
 	for _, es := range coldShards {
 		es.shardMu.Lock()
-		if es.store != nil && es.activeReqs.Load() == 0 && (nowMs-es.lastAccess.Load()) > thresholdMs {
+		if es.store != nil && es.activeReqs.Load() == 0 && ((nowMs-es.lastAccess.Load()) > thresholdMs || es.openEmptyLocked()) {
 			// Record what it holds BEFORE closing: after this the shard cannot
 			// change, so the snapshot stays true until it is opened again, and
 			// count folds stop reopening it just to add up numbers.
@@ -601,6 +604,14 @@ func (ts *Store) closeIdleShards() {
 	if sealedAny {
 		ts.saveCatalogBestEffort("seal shard counts on idle-close")
 	}
+}
+
+// openEmptyLocked reports whether the open store holds no row. Closing it seals
+// that: fan-out reads keep such a shard's last access fresh and its cap slot
+// taken until they stop visiting it. Caller holds es.shardMu.
+func (es *EventShard) openEmptyLocked() bool {
+	none, err := es.store.HoldsNoRows()
+	return err == nil && none
 }
 
 // saveCatalogBestEffort persists the catalog and logs rather than fails.

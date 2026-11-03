@@ -61,7 +61,30 @@ func (es *EventShard) snapshotCountsLocked(ts *Store) bool {
 		byLabel:   byLabel,
 		byRelType: byRelType,
 	})
-	return ts.catalog.SealShardCounts(es.name, nodes, rels, byLabel, byRelType)
+	sealed := ts.catalog.SealShardCounts(es.name, nodes, rels, byLabel, byRelType)
+	none, err := es.store.HoldsNoRows()
+	if err != nil {
+		none = false // the shard stays in the fan-out
+	}
+	es.noRows.Store(none)
+	return ts.catalog.SetShardNoRows(es.name, none) || sealed
+}
+
+// wakeNoRowsLocked puts a shard that may be written back in the fan-out before
+// it opens. Unlike a sealed count, a stale mark would hide rows after a crash,
+// so the save must succeed. Caller holds es.shardMu.
+func (es *EventShard) wakeNoRowsLocked(ts *Store) error {
+	if !es.noRows.Load() {
+		return nil
+	}
+	if ts.catalog.SetShardNoRows(es.name, false) {
+		if err := ts.catalog.Save(); err != nil {
+			ts.catalog.SetShardNoRows(es.name, true)
+			return fmt.Errorf("graph: save catalog before opening empty shard %s: %w", es.name, err)
+		}
+	}
+	es.noRows.Store(false)
+	return nil
 }
 
 // adoptSealedCounts loads a shard's counts from the catalog, so a shard that has
@@ -80,6 +103,7 @@ func (es *EventShard) adoptSealedCounts(entry ShardEntry) {
 		byLabel:   tokenCountsFromJSON(entry.NodeCountsByLabel),
 		byRelType: tokenCountsFromJSON(entry.RelCountsByType),
 	})
+	es.noRows.Store(entry.NoRows)
 }
 
 // dropCachedCounts forgets the snapshot, in memory and in the catalog. Called

@@ -1,0 +1,40 @@
+FIXED-MEMORY step 1 design draft (ADR-0015 candidate), 3 Nov 2026. Read-only Fable designer on René's word;
+citations spot-checked in the main session (badgerstore.go:412/417/436, badgerstore_rel.go:86-97,
+badgerstore_partial.go:446-451). Not yet in docs/architecture.md: goes there when René approves step 1's build.
+
+1. Replaces: bs.nodeIDs, bs.relIDs (IDSet, ~8 B per ID; measured 6.5-8.4 B per node, EXISTMAP results.txt:4) and
+   bs.typeIdx (~9 B per rel). A rel costs ~17 B heap today, a node ~8 B. Not replaced: labelIdx (empty with
+   LabelIndexOnDisk), nodeRevs/relRevs (fixed striped tables), nodeHashes (capped).
+   Writers: create/delete/purge/erasure/open/Clear paths; typeIdx via addTypeIdxLocked. Readers: 73 Has sites
+   (rel-create endpoint check, rel queries, scans, retention purges, delta open), full ascends, counter reconcile,
+   image encode/decode, HasNodeID/HasRelID used by tiered routing; typeIdx 24 read sites.
+
+2. Files: <shard dir>/idx/MANIFEST + run-<seq>.idx. Sections: node adds/tombstones, rel adds/tombstones, per
+   rel-type adds/tombstones. 64 B header (magic, seq, since = badger version, CRC-32C), section table, 8 B
+   big-endian IDs ascending, 4 KiB aligned, file CRC last. Fence index in heap (first key per 4 KiB page,
+   0.016 B per ID). Write .tmp, fsync, rename, dir fsync; MANIFEST the same way.
+   Delta in heap bounded at 64 MB (8 M IDs); seal at the bound, at each open-image write and at Close (~130 ms).
+   Lookup: delta, then runs newest to oldest; first hit (add or tombstone) wins.
+   Merge: snowflake IDs are mint-ordered, so ingest runs append to the base (write amp ~2x); rewrite only on
+   overlap or tombstones > 10 %, size-tiered fanout 10; backfill/delete worst case unmeasured.
+   Readers: bounded pread pool per tiered store (default 64); never hold idxMu across a pread (HasNodeID does
+   today): take a refcounted run-set snapshot under the lock, then read.
+
+3. Crash consistency: badger rows stay the truth; run set must equal live rows at open (presence drives routing
+   and duplicate checks). Seal inside the flush after the commit, since = db.MaxVersion() under flushMu.
+   Open: since == MaxVersion, CRCs pass, adds-tombstones == persisted counts -> trust, load fences only.
+   since < MaxVersion -> delta open (SinceTs iterator over 0x01/0x02/0x04 keys, as open_image_delta.go).
+   since > MaxVersion (power loss) or a torn/missing/CRC-failed run -> drop it and later runs, delta from the newest
+   kept; none left -> key walk rebuild. Read-only opens load into heap, write nothing.
+   Open image skips the ID sections when runs are on. Step 1 covers reference shard and archive only (they never
+   rotate); event shards keep IDSets until steps 4-5.
+
+4. Red test: TestExistenceRunsReopenHeapPerEntity (shape of TestExistMapResidentBytesPerNode): N and 10 N entities,
+   reopen, (h10N - hN)/(9N) <= 0.1 B. Beside it: door agreement with row liveness under deletes, crash reopens
+   (truncated run, bad CRC, MANIFEST since above/below MaxVersion, counter mismatch), tombstone across a merge,
+   read-only reopen. Bars: ai-soc push loses over 5 % on BA, hot lookup p50 over 1 us.
+
+5. Risks / measure first: write-path lookups (every rel create checks both endpoints, every tiered node write
+   probes reference and archive): a page-cache miss is 48 us, so measure ai-soc's locality (share of probes in the
+   delta or newest run) before building; idxMu across a pread; merge amplification into 100 M and 1 G bases;
+   page cache shared with badger's mmaps; untested: writes beside reads, the /home Kingston disk, reopen time.

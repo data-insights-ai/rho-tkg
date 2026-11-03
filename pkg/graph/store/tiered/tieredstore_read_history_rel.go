@@ -278,7 +278,7 @@ func (ts *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		store, release, err := es.checkoutStoreReadOnly(ts)
@@ -404,7 +404,7 @@ func (ts *Store) forEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelI
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(depth)
+	shards := ts.eventShardsToRead(depth)
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
@@ -549,7 +549,7 @@ func (ts *Store) maxRelHistoryIDByDepth(depth ShardDepth) (types.RelID, error) {
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(depth)
+	shards := ts.eventShardsToRead(depth)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		store, release, err := es.checkoutStoreReadOnly(ts)
@@ -601,7 +601,7 @@ func (ts *Store) maxRelHistoryIDAll() (types.RelID, error) {
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		store, release, err := es.checkoutStoreReadOnly(ts)

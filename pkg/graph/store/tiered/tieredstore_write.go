@@ -289,7 +289,7 @@ func (ts *Store) relsByTypePropertyKeys(relTypeToken uint16, key string, opts Qu
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardsToRead(opts.Depth)
 	ts.mu.RUnlock()
 	results := make([][]*types.Relationship, len(eventShards))
 	errs := make([]error, len(eventShards))

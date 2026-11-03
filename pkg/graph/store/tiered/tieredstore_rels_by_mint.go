@@ -138,10 +138,10 @@ func (ts *Store) mintFanOut(shard *BadgerStore) bool {
 // cold one is opened for the read (Config.MaxOpenColdShards keeps it).
 func (ts *Store) forEachMintShard(depth ShardDepth, fn func(*BadgerStore) error) error {
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(depth)
+	shards := ts.eventShardsToRead(depth)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		s, release, err := es.checkoutStoreForRead(ts)
+		s, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
 			return err
 		}

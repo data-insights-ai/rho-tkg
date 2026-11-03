@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -198,7 +199,7 @@ func (ts *Store) routeRelShardFor(id types.RelID, readOnly bool) (store *BadgerS
 	ts.mu.RLock()
 	probe := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
-		if es == candidateEntry {
+		if es == candidateEntry || es.noRows.Load() {
 			continue
 		}
 		probe = append(probe, es)
@@ -374,6 +375,13 @@ func (ts *Store) eventShardSnapshot(depth ShardDepth) []*EventShard {
 		}
 	}
 	return shards
+}
+
+// eventShardsToRead is eventShardSnapshot for a read of rows: a closed shard
+// that holds none is neither opened nor checked out.
+func (ts *Store) eventShardsToRead(depth ShardDepth) []*EventShard {
+	shards := ts.eventShardSnapshot(depth)
+	return slices.DeleteFunc(shards, func(es *EventShard) bool { return es.noRows.Load() })
 }
 
 // shardWindowName computes the canonical name for a time window.

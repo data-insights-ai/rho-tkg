@@ -22,7 +22,7 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 		return nil, err
 	}
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardsToRead(opts.Depth)
 	ts.mu.RUnlock()
 
 	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
@@ -100,7 +100,7 @@ func (ts *Store) NodeCount() (int, error) {
 		return 0, err
 	}
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 
 	total := 0
@@ -200,7 +200,7 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 
 	type result struct {
@@ -273,7 +273,7 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 
 	type result struct {
@@ -312,7 +312,7 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 		return nil, err
 	}
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardsToRead(opts.Depth)
 	ts.mu.RUnlock()
 
 	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
@@ -436,7 +436,7 @@ func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	}
 
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 
 	for _, es := range shards {

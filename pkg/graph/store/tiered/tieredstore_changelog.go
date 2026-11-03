@@ -550,7 +550,7 @@ func (ts *Store) collectLogShards() []*logShardSource {
 	// source and let page() return nil when absent.
 	sources = append(sources, &logShardSource{kind: logShardArchive})
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		sources = append(sources, &logShardSource{kind: logShardEvent, es: es})
@@ -596,7 +596,7 @@ func (ts *Store) forEachOpenShardNamed(fn func(name string, s *BadgerStore) erro
 		}
 	}
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		store, release, open, err := es.checkoutOpenStoreForRead(ts)
@@ -642,7 +642,7 @@ func (ts *Store) forEachShard(fn func(*BadgerStore) error) error {
 		archiveCheckin()
 	}
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		store, release, err := es.checkoutStoreForRead(ts)
@@ -791,7 +791,7 @@ func (ts *Store) forEachScopeShard(fn func(*BadgerStore) error) error {
 		}
 	}
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
 		store, checkin, ok, cerr := es.checkoutOpenStoreForRead(ts)

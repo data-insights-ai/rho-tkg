@@ -372,6 +372,9 @@ func (idx *ownerIndex) sync() error {
 // claims written so far, which include the claims of those rows (a claim is
 // written before its row enters the flush's snapshot).
 func (ts *Store) syncOwnerIndexBeforeRows(durable bool) error {
+	if h := ts.flushRowsHook; h != nil {
+		h()
+	}
 	if !durable {
 		return nil
 	}

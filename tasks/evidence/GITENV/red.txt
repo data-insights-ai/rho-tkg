@@ -1,0 +1,8 @@
+GITENV, 3 Nov 2026: a commit from a worktree set core.bare=true in the main checkout's .git/config (twice, 18:31
+and 18:34). Cause (found by the ELEMPROBE builder): the pre-commit hook runs go test ./scripts/patchgate/;
+TestGateTimeScript runs `git init` in a temp dir and inherited the hook's GIT_DIR (.git/worktrees/<name>), so the
+init rewrote the common config.
+Repro: scratch repo r2 with a worktree wt; GIT_DIR=r2/.git/worktrees/wt go test -run TestGateTimeScript
+  old test:   FAIL, then `git --git-dir=r2/.git config core.bare` = true
+  fixed test: ok,   core.bare = false
+Fix: the test's git and gate-time.sh commands run with every GIT_* variable removed (envWithoutGit).

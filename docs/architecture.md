@@ -511,6 +511,14 @@ that test.
     `ColdAfter`); 4 (built, unreleased) a replay test
     of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
     replay as the measurement.
+- **COLDEDGE flat adjacency (on hold, not built).** Adjacency of a reference node with `RelsByMint` opens every event shard
+  of the depth (`forEachMintShard`), though few hold its legs. Those opens are now read-only: 30 cold shards holding rows,
+  2.9 s to about 0.5 s a call (one run). Build a per-node shard list only if ai-soc's run still shows them dominating. Then: walk
+  0x05, 0x06 and 0x0D, because a deleted rel's legs live only in 0x0D; keep an endpoint unless its ID's time lies in the shard's
+  window, because a reference filter would drop archived and deleted nodes that still fan out; build lazily on a shard's first
+  probe, not under `shardMu` at close; store append-only `(node|shard)` keys in the global index, reaped on a shard drop. The
+  list may name too much, never too little. A hub with legs every day still opens every day: only a time bound on the read
+  (TIMEWINDOW) answers that.
 
 - **ADR-0014 Whole-row replace** (WHOLEROW; designed 2026-10-31 for sigma-tkgd's paged-row writer, which rewrites a
   grown page row whole as one version with its full validity and reads it by `TxPin` plus the current row; built on
