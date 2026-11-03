@@ -33,4 +33,5 @@ var (
 	_ storecontract.RetentionPurgeByValidToCapability    = (*Store)(nil)
 	_ storecontract.ValidAxisCapability                  = (*Store)(nil)
 	_ storecontract.RangePurgeLogCapability              = (*Store)(nil)
+	_ storecontract.NodePropertyKeysIDsCapability        = (*Store)(nil)
 )

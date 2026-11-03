@@ -1,0 +1,121 @@
+VOID, PENDING A RERUN: taken at load average 33-55 on 32 threads (main session, 3 Nov: numbers at this load are void).
+Rerun the same alternation when the machine is quiet. Kept only as an indication of the direction (the allocation
+counts, which do not depend on load, stand: 64-element lists 5448 -> 1904 allocs and 451 KB -> 134 KB a call at 100 values).
+
+RHOMEMIDS bench, 2026-11-03: BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst (pkg/graph/ids_by_property_values_bench_test.go)
+before = this branch with the memory door disabled (method renamed, capability assertion removed); after = the door.
+5 rounds, each runs before then after (-test.count 1 -test.benchtime 2000x -test.benchmem); AMD 7950X3D, 32 threads, shared.
+
+The 4-element rows gain 15-35 %: the remaining per-value cost is core's, before the store (unionEqualForms, equal numeric
+forms, keysOf, DistinctIndexKeyMatch: about 1.7 KB and 22 allocations a value, alloc profile at 80k/100). The 64-element
+rows show the cause (cause.txt): before, the recheck walks each candidate's list (4.5 KB, 54 allocs a value at 100
+values, 5.0 us); after, the cost does not depend on the list (1.8 us, 1.3 KB a value). sigma's 24.6 us and 2.9 MB a call
+at 80k should fall to the 4-element numbers. Round 1 "before" at 5k (14.5 / 15.7 us) is load noise.
+
+Load average per round:
+round 1  19:14:18 up 34 days, 11:29, 24 users,  load average: 55,63, 49,54, 33,55
+round 2  19:14:29 up 34 days, 11:30, 24 users,  load average: 54,56, 49,54, 33,73
+round 3  19:14:36 up 34 days, 11:30, 24 users,  load average: 49,99, 48,72, 33,63
+round 4  19:14:43 up 34 days, 11:30, 24 users,  load average: 48,87, 48,51, 33,64
+round 5  19:14:51 up 34 days, 11:30, 24 users,  load average: 44,19, 47,52, 33,48
+end  19:15:04 up 34 days, 11:30, 24 users,  load average: 43,06, 47,15, 33,51
+
+case                      us/value before    after  B/op before    after  allocs before  after  (medians of 5)
+rows=5000/list=4/values=1            2.477    1.629          987      886             33     29
+                         us/value runs before [14.51, 2.005, 1.91, 3.168, 2.477] after [1.629, 1.546, 1.576, 2.141, 2.06]
+rows=5000/list=4/values=100            1.505    1.298       174676   171861           2480   2236
+                         us/value runs before [15.65, 1.365, 1.428, 1.505, 2.295] after [1.152, 1.315, 1.227, 1.298, 1.68]
+rows=20000/list=4/values=1            3.196    1.904          971      862             31     28
+                         us/value runs before [4.07, 2.396, 2.4, 4.466, 3.196] after [1.72, 1.904, 1.956, 1.859, 2.446]
+rows=20000/list=4/values=100            1.819    1.396       173422   169862           2333   2089
+                         us/value runs before [3.124, 1.736, 1.819, 1.767, 2.209] after [1.379, 1.347, 1.396, 1.449, 2.555]
+rows=80000/list=4/values=1            3.128    2.720          944      832             30     26
+                         us/value runs before [2.951, 3.794, 3.499, 2.709, 3.128] after [2.72, 2.502, 2.824, 2.532, 2.924]
+rows=80000/list=4/values=100            2.539    1.652       138102   134352           2148   1904
+                         us/value runs before [2.539, 2.277, 2.507, 2.905, 2.541] after [1.614, 1.607, 1.652, 1.822, 1.77]
+rows=5000/list=64/values=1            5.718    1.908         4072      832             63     26
+                         us/value runs before [8.405, 5.718, 6.233, 4.848, 4.988] after [1.825, 1.908, 1.818, 1.979, 2.096]
+rows=5000/list=64/values=100            4.979    1.803       451151   134352           5448   1904
+                         us/value runs before [4.949, 4.576, 4.979, 5.036, 5.527] after [1.635, 1.535, 1.831, 1.803, 2.057]
+-- raw before
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=1-32         	    2000	     14508 ns/op	        14.51 us/value	     987 B/op	      33 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=100-32       	    2000	   1564639 ns/op	        15.65 us/value	  174676 B/op	    2480 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=1-32        	    2000	      4071 ns/op	         4.070 us/value	     971 B/op	      31 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=100-32      	    2000	    312410 ns/op	         3.124 us/value	  173449 B/op	    2333 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=1-32        	    2000	      2951 ns/op	         2.951 us/value	     944 B/op	      30 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=100-32      	    2000	    253903 ns/op	         2.539 us/value	  138102 B/op	    2148 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=1-32        	    2000	      8406 ns/op	         8.405 us/value	    4072 B/op	      63 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=100-32      	    2000	    494879 ns/op	         4.949 us/value	  451151 B/op	    5448 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=1-32         	    2000	      2006 ns/op	         2.005 us/value	     987 B/op	      33 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=100-32       	    2000	    136535 ns/op	         1.365 us/value	  174674 B/op	    2480 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=1-32        	    2000	      2396 ns/op	         2.396 us/value	     971 B/op	      31 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=100-32      	    2000	    173615 ns/op	         1.736 us/value	  173419 B/op	    2333 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=1-32        	    2000	      3794 ns/op	         3.794 us/value	     944 B/op	      30 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=100-32      	    2000	    227701 ns/op	         2.277 us/value	  138102 B/op	    2148 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=1-32        	    2000	      5718 ns/op	         5.718 us/value	    4072 B/op	      63 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=100-32      	    2000	    457622 ns/op	         4.576 us/value	  451151 B/op	    5448 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=1-32         	    2000	      1910 ns/op	         1.910 us/value	     987 B/op	      33 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=100-32       	    2000	    142796 ns/op	         1.428 us/value	  174677 B/op	    2480 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=1-32        	    2000	      2400 ns/op	         2.400 us/value	     971 B/op	      31 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=100-32      	    2000	    181926 ns/op	         1.819 us/value	  173424 B/op	    2333 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=1-32        	    2000	      3500 ns/op	         3.499 us/value	     944 B/op	      30 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=100-32      	    2000	    250746 ns/op	         2.507 us/value	  138102 B/op	    2148 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=1-32        	    2000	      6233 ns/op	         6.233 us/value	    4072 B/op	      63 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=100-32      	    2000	    497901 ns/op	         4.979 us/value	  451151 B/op	    5448 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=1-32         	    2000	      3168 ns/op	         3.168 us/value	     987 B/op	      33 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=100-32       	    2000	    150507 ns/op	         1.505 us/value	  174680 B/op	    2480 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=1-32        	    2000	      4467 ns/op	         4.466 us/value	     971 B/op	      31 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=100-32      	    2000	    176723 ns/op	         1.767 us/value	  173419 B/op	    2333 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=1-32        	    2000	      2709 ns/op	         2.709 us/value	     944 B/op	      30 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=100-32      	    2000	    290539 ns/op	         2.905 us/value	  138102 B/op	    2148 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=1-32        	    2000	      4848 ns/op	         4.848 us/value	    4072 B/op	      63 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=100-32      	    2000	    503649 ns/op	         5.036 us/value	  451151 B/op	    5448 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=1-32         	    2000	      2477 ns/op	         2.477 us/value	     987 B/op	      33 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=100-32       	    2000	    229509 ns/op	         2.295 us/value	  174673 B/op	    2480 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=1-32        	    2000	      3197 ns/op	         3.196 us/value	     971 B/op	      31 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=100-32      	    2000	    220883 ns/op	         2.209 us/value	  173422 B/op	    2333 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=1-32        	    2000	      3128 ns/op	         3.128 us/value	     944 B/op	      30 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=100-32      	    2000	    254133 ns/op	         2.541 us/value	  138102 B/op	    2148 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=1-32        	    2000	      4989 ns/op	         4.988 us/value	    4072 B/op	      63 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=100-32      	    2000	    552655 ns/op	         5.527 us/value	  451154 B/op	    5448 allocs/op
+-- raw after
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=1-32         	    2000	      1630 ns/op	         1.629 us/value	     886 B/op	      29 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=100-32       	    2000	    115244 ns/op	         1.152 us/value	  171861 B/op	    2236 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=1-32        	    2000	      1720 ns/op	         1.720 us/value	     862 B/op	      28 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=100-32      	    2000	    137910 ns/op	         1.379 us/value	  169859 B/op	    2089 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=1-32        	    2000	      2721 ns/op	         2.720 us/value	     832 B/op	      26 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=100-32      	    2000	    161392 ns/op	         1.614 us/value	  134352 B/op	    1904 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=1-32        	    2000	      1826 ns/op	         1.825 us/value	     832 B/op	      26 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=100-32      	    2000	    163495 ns/op	         1.635 us/value	  134352 B/op	    1904 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=1-32         	    2000	      1547 ns/op	         1.546 us/value	     886 B/op	      29 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=100-32       	    2000	    131517 ns/op	         1.315 us/value	  171861 B/op	    2236 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=1-32        	    2000	      1905 ns/op	         1.904 us/value	     862 B/op	      28 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=100-32      	    2000	    134730 ns/op	         1.347 us/value	  169862 B/op	    2089 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=1-32        	    2000	      2502 ns/op	         2.502 us/value	     832 B/op	      26 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=100-32      	    2000	    160715 ns/op	         1.607 us/value	  134352 B/op	    1904 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=1-32        	    2000	      1909 ns/op	         1.908 us/value	     832 B/op	      26 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=100-32      	    2000	    153483 ns/op	         1.535 us/value	  134352 B/op	    1904 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=1-32         	    2000	      1576 ns/op	         1.576 us/value	     886 B/op	      29 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=100-32       	    2000	    122711 ns/op	         1.227 us/value	  171858 B/op	    2236 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=1-32        	    2000	      1957 ns/op	         1.956 us/value	     862 B/op	      28 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=100-32      	    2000	    139565 ns/op	         1.396 us/value	  169862 B/op	    2089 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=1-32        	    2000	      2825 ns/op	         2.824 us/value	     832 B/op	      26 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=100-32      	    2000	    165242 ns/op	         1.652 us/value	  134352 B/op	    1904 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=1-32        	    2000	      1818 ns/op	         1.818 us/value	     832 B/op	      26 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=100-32      	    2000	    183082 ns/op	         1.831 us/value	  134352 B/op	    1904 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=1-32         	    2000	      2142 ns/op	         2.141 us/value	     886 B/op	      29 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=100-32       	    2000	    129818 ns/op	         1.298 us/value	  171861 B/op	    2236 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=1-32        	    2000	      1859 ns/op	         1.859 us/value	     862 B/op	      28 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=100-32      	    2000	    144854 ns/op	         1.449 us/value	  169857 B/op	    2089 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=1-32        	    2000	      2533 ns/op	         2.532 us/value	     832 B/op	      26 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=100-32      	    2000	    182212 ns/op	         1.822 us/value	  134352 B/op	    1904 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=1-32        	    2000	      1979 ns/op	         1.979 us/value	     832 B/op	      26 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=100-32      	    2000	    180284 ns/op	         1.803 us/value	  134352 B/op	    1904 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=1-32         	    2000	      2061 ns/op	         2.060 us/value	     886 B/op	      29 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=4/values=100-32       	    2000	    168004 ns/op	         1.680 us/value	  171861 B/op	    2236 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=1-32        	    2000	      2447 ns/op	         2.446 us/value	     862 B/op	      28 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=20000/list=4/values=100-32      	    2000	    255466 ns/op	         2.555 us/value	  169865 B/op	    2089 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=1-32        	    2000	      2924 ns/op	         2.924 us/value	     832 B/op	      26 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=80000/list=4/values=100-32      	    2000	    176985 ns/op	         1.770 us/value	  134352 B/op	    1904 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=1-32        	    2000	      2096 ns/op	         2.096 us/value	     832 B/op	      26 allocs/op
+BenchmarkIDsByLabelAndPropertyValuesMemory/indexFirst/rows=5000/list=64/values=100-32      	    2000	    205727 ns/op	         2.057 us/value	  134352 B/op	    1904 allocs/op
