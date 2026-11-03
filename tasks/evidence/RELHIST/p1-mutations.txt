@@ -1,0 +1,61 @@
+RELHIST P1 mutation sweep (branch histtrim, 3 Nov). Each mutant applied alone, `go build ./pkg/graph/...` first (a
+build failure would not count as a kill; none failed to build), then only the targeted tests:
+RH = TestRELHIST* (core; cold placement included, no -short), RB = TestGraphTx_(Update|Delete)RollbackMaterializes
+WhenCurrentVersionHistoryExists (core, memory store), MA = TestModelA (pkg/graph, sharded Model-A stubs).
+Whole packages only for survivors.
+
+M1  rel snapshot: no pager path (whole-chain copy back)                  KILLED  RH  TestRELHISTTxSnapshotCopyBounded/delete_rel/N=10,100
+M2  node snapshot: no pager path (whole-chain copy back)                 KILLED  RH  .../delete_node_with_rel/N=10,100
+M3  rel page starts at current version + 1                               KILLED  RB  Delete- and UpdateRollback...CurrentVersionHistoryExists
+M4  node page starts at current version + 1                              KILLED  RB  same
+M5  rel restore without trim drops the copied rows                       KILLED  RH  .../update_rel_above_current/N=10,100
+M6  node restore without trim drops the copied rows                      KILLED  RH  .../update_node_above_current/N=10,100
+M7  rel restore without trim keeps the tx row at the trim point          KILLED  RH  .../delete_rel/N=1,...
+M8  node restore without trim keeps the tx row at the trim point         KILLED  RH  .../delete_node_with_rel/N=1,...
+M9  rel restore with trim skips the puts                                 KILLED  RB
+M10 node restore with trim skips the puts                                KILLED  RB
+M11 rel restore with trim trims from the trim point + 1                  KILLED  RH  TestRELHISTTxRollbackRestoresTiered/memory*, after a fix:
+    first round SURVIVED (targeted RB only; RB's pre-tx row at the current version is put back over the tx's
+    row). Added memory, "memory without head entries" and "badger without head entries" placements to
+    TestRELHISTTxRollbackRestoresTiered (the trim path with rows above the current version); then KILLED.
+M12 node restore with trim trims from the trim point + 1                 KILLED  RH  same as M11 (same round-1 survivor, same fix)
+M13 updated rel snapshot ignores its copied rows at rollback             KILLED  RB, RH
+M14 updated node snapshot ignores its copied rows at rollback            KILLED  RB, RH
+M15 deleted rel restore ignores its copied rows                          KILLED  RB, RH TestRELHISTTxRollbackRestoresTiered
+M16 deleted node restore ignores its copied rows                         KILLED  RB, RH
+M17 updated rel page snapshot records no trim                            KILLED  RB, RH
+M18 updated node page snapshot trims from current version + 1            KILLED  RH  .../update_node_above_current
+M19 deleted rel page snapshot records no trim                            KILLED  RH  .../delete_rel
+M20 deleted node page snapshot trims from current version + 1            KILLED  RH  .../delete_node_with_rel
+M21 rel re-import materialize drops the copied rows                      KILLED  RH  TestRELHISTTxRollbackRestoresTiered/*/above=true ("delete then re-import rel")
+M22 node re-import materialize drops the copied rows                     KILLED  RH  ("delete then re-import node")
+M23 deleted rel snapshot: a stub's ErrSlotNotLocal fails the delete      KILLED  MA  TestModelA_TxRollbackRestoresStub
+M24 updated rel snapshot: a stub's ErrSlotNotLocal fails the update      SURVIVED targeted MA, then whole core and pkg/graph
+    (-short) green. Unreachable: a stub's slot-routed current-row read fails with ErrSlotNotLocal before the
+    snapshot (snapshotRelLocked reads it first; restoreDeletedRelRow documents the same). The mapping was removed
+    from snapshotCurrentRelLocked; a comment states why.
+
+Result: 23 of 23 remaining mutants caught (M24's code removed).
+
+Round 2 (after the Fable review, branch merged with main 620566c1): one mutant per new assertion, targeted -run only.
+S1  sharded: rel rewrite drops the copied rows                           KILLED  TestRELHISTTxRollbackRestoresTiered/sharded/above=true
+S2  sharded: node rewrite keeps the tx row at the trim point             KILLED  .../sharded/above=true, above=false
+V1  rel page snapshot drops void rows                                    KILLED  TestRELHISTTxRollbackRestoresShapes/*/void_rows_above_current
+V2  node page snapshot drops void rows                                   KILLED  same
+T1  rewrite keeps no tombstone below the trim point                      KILLED  .../tiered_event/tombstone_in_the_chain, .../sharded/tombstone_in_the_chain
+D1  badger: a rel delta's anchor is read only from the page              KILLED  .../badger_deltas*/deltas_anchored_below_the_trim_point
+D2  badger: a node delta's anchor is read only from the page             KILLED  same
+    (first run SURVIVED: the fixture's rows were too small, badger stored them full because the delta was not smaller;
+    the shapes now carry a 512-byte pad property and the rows are deltas, then KILLED)
+A2  trim restore trims from the trim point + 1, anchor-aligned point     KILLED  .../badger_deltas*/trim_point_at_an_anchor_version
+A1  badger: a row whose anchor is missing is stored as a delta on an empty anchor
+                                                                         SURVIVED, equivalent: the delta against an empty
+    anchor is never smaller than the full row, so badger keeps the full row (historyRelValueUnchecked); not a defect the
+    shape can show. A2 is the anchor-aligned shape's kill.
+L1  legacy row at the current version, badger: rel page from version+1   KILLED  TestGraphTx_*CurrentVersionHistoryExists/badger
+L2  legacy, badger: trim restore skips the puts                          KILLED  same
+L3  legacy, tiered: node page from version+1                             KILLED  TestGraphTx_*CurrentVersionHistoryExists/tiered
+L4  legacy, tiered: rel rewrite drops the copied rows                    KILLED  same
+Round 2: 12 of 12 non-equivalent mutants caught; A1 equivalent.
+Rerun after the second merge of main (9f596a6d, RELHIST P3's badger history decode): S1, V1, T1, D1, D2, A2, L1, L3
+KILLED again, same tests.

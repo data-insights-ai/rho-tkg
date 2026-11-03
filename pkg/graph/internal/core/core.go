@@ -178,6 +178,7 @@ type Core struct {
 	headWrites       atomic.Uint64  // corrections planned from an entry (backlog 68b)
 	appendWrites     atomic.Uint64  // open appends planned from the current row alone (backlog 67)
 	historyRead      func(rows int) // tests: called with the rows each history read returns
+	historyCopy      func(rows int) // tests: called with the rows each GraphTx rollback snapshot copies (RELHIST)
 	// readSnapshots — effective scans read their timelines through one store
 	// read snapshot (backlog 55, effective_scan_reads.go). nil = per-entity reads.
 	readSnapshots storepkg.ReadSnapshotCapability

@@ -35,6 +35,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   now stored frozen; `GetNodeVersion`, `GetNodeHistory` and the point state doors (`NodeAtTx`, ...) still return the
   caller's own mutable copy. Badger and tiered are unchanged (they decode per read). A head-hit read of a 6-version
   node: 25 -> 5 allocations (`tasks/evidence/HEADLEND/`).
+- **RELHIST P1** (sigma's cut-10 profile: copyRelHistory under the tx snapshot 16.1 GB of 160 GB; a fix, no new
+  exported name). A `GraphTx` rollback snapshot keeps the entity's current version and copies only the history rows at
+  or above it, one page read, on every store that pages history (memory, badger, tiered, sharded). Before, a tx update
+  of an entity with rows above its current version (left by a correction or a whole-axis update, no head entry)
+  copied its whole history on every store, and on tiered every tx delete of a node or relationship did too. Rows
+  copied at 10 / 100 versions: delete 9 / 99 -> 0, node delete with a relationship 18 / 198 -> 0, update after a
+  correction 11 / 101 -> 2. Rollback restores the same state: on memory and badger a trim plus the copied rows, on
+  tiered and sharded the rows below read at rollback plus the copied rows. Tests `TestRELHIST*` (tiered reference,
+  event, cold-shard and archive placements, memory, badger with delta encoding, sharded; void rows, a tombstone in
+  the chain, deltas anchored below the trim point; `tasks/evidence/RELHIST/`).
 
 ## [4.102.0] - 2026-11-03
 

@@ -89,3 +89,59 @@ P4 (ask 2) — per-key reconstructed-history cache keyed (kind, id, history epoc
 - Is the read-back the plural or the singular door, under a scan/snapshot door or not, and does the fact's Update precede it in the
   cut (P2)?
 - How often is one key's history read within one cut (P4)? Can sigma split alloc_space by the parent frame of getRelHistory?
+
+4. P1 as built (branch histtrim, 3 Nov evening) — sigma's cut-10 profile changed the target
+
+Sigma's frames (tiered, cut 10, 160 GB alloc_space): getRelHistory 32.0 GB = copyRelHistory under GraphTx.snapshotCurrentRelLocked
+(the UPDATE snapshot, not deletedRelHistorySnapshot) 16.1 GB + cascadeRelMode 15.9 GB; snapshotCurrentRelLocked's own total 26.9 GB
+(copyRelHistory 17.8, relHistoryAtOrAbove -> RelHistoryVersionsFrom 8.1, DeepCopy 0.4).
+- Which branch copies: snapshotCurrentRelLocked (tx.go:366-417 on main) skips its two cheap shapes when (a) the head entry is invalid
+  and (b) relHistoryAtOrAbove finds a row at or above the current version. (b) is the normal state after a correction or a whole-axis
+  untimed update of an entity with valid-time segments: the cascade appends a row per segment, only one takes the current slot, the
+  others are history rows ABOVE the current version (probe: 4 updates + one bounded correction -> current v4, history v0-v3, v5, v6,
+  no head entry). Then copyRelHistory copies the whole chain on EVERY store, historyTrim or not. So the minor form (b) of section 2,
+  tiered Trim*HistoryFrom, would not have removed the profiled 16.1 GB: the found branch never looks at historyTrim.
+- Why RelHistoryVersionsFrom costs 8.1 GB: the found check pages ONE full row (limit 1): badger value copy, reconstructRelHistoryWire
+  (plus a point read of the anchor when the row is a delta whose anchor lies below the page), decode, DeepCopy
+  (badgerstore_history_rel.go:456-565), and an iterator per table. A key-only probe would answer "any row >= v", but the row is
+  needed anyway: it is exactly what the snapshot must keep.
+- The fix (patch form, no exported name): the snapshot keeps the trim point and COPIES THE ROWS AT OR ABOVE IT, one page read
+  (snapshotNodeHistoryFrom / snapshotRelHistoryFrom, limit 0, replacing relHistoryAtOrAbove + copy*History); empty unless a correction
+  left rows above the current one, then those rows only (bounded by the last cascade's segments, not by versions). Rollback
+  (restoreNodeHistoryFrom / restoreRelHistoryFrom): with the rollback trim (memory, badger) trim from the current version and put the
+  copied rows back; without it (tiered, sharded) read the chain at rollback, keep the rows below the trim point, append the copied
+  rows and rewrite (truncate + put, the old copy path's own restore). Sound because a tx writes no history row below the current
+  version of the entity it snapshots (corrections append; update and delete move the current row in at its own version) — the
+  assumption the trim and the head-entry (68b) snapshots already make — and any row it writes at or above is removed and the
+  pre-tx rows put back. Same for deleted nodes and rels (deletedNode/RelHistorySnapshot) on every store with a pager: on tiered a tx
+  delete no longer copies the chain at all. Re-import after a delete in the tx materializes rows below + the copied rows.
+  ADR-0010: a foreign-incoming stub's ErrSlotNotLocal keeps its old outcome (delete: no history snapshot; update: the trim point).
+- Caveat (pre-existing, recorded as an item): history compaction or a retention purge that runs between a tx's ops (it is
+  not a tx door and does not take the tx's entity snapshot) can trim a row the snapshot copied; rollback then puts that row
+  back. The old whole-chain copy did the same (it restored every copied row), so rollback has never been compaction-aware;
+  the page form narrows it to the copied rows at or above the current version.
+- Review round (Fable found nothing blocking): the equality guard now also runs on sharded (pager, no rollback trim: the
+  rewrite branch), on void rows above the current version (an excise), on a chain holding a tombstone (delete and
+  re-import, then a correction), on delta-encoded badger (anchor interval 4: above-rows that are deltas on an anchor below
+  the trim point, and a trim point at an anchor version), and the legacy row-at-the-current-version case runs on badger
+  and tiered as well as memory (TestRELHISTTxRollbackRestoresShapes, TestGraphTx_*CurrentVersionHistoryExists); each with
+  a mutant it kills (p1-mutations.txt, round 2).
+- Why not the minor form as well: tiered Trim*HistoryFrom (routed like TruncateRelHistory to every source) would only make the
+  ROLLBACK of a tiered tx O(page) instead of O(versions); the write path is already O(page). Two new exported methods for a rollback
+  cost the cut never pays is a door with no consumer request; nativeHistoryRollbackTrim and its wrapper check stay unchanged.
+  Revisit if a consumer rolls back often on tiered.
+- Cost (TestRELHISTTxSnapshotCopyBounded, rows copied by the snapshot, tiered Signal): delete rel N=1/10/100: 0/9/99 -> 0/0/0;
+  delete node with rel: 0/18/198 -> 0/0/0; update rel above current: 0/11/101 -> 0/2/2; update node above current: 0/11/101 -> 0/2/2.
+- cascadeRelMode's whole-history read (15.9 GB, not changed here): on a head miss (chainFromCurrent fails for a multi-segment
+  entity, chainFromHead has no valid entry) temporal_cascade.go:1014-1035 reads every row. It needs full rows only for the bases of the
+  segments it patches (the winners in [newVF, newVT), every winner for a whole-axis update) and for the resumption source; every
+  other row contributes only version, temporal block, void and delete flags (maxVersion, chainStamps, bounds, txOrdered, voidFree),
+  which RelHistoryTemporalMeta gives without decoding properties. The fix is section 2's P2 applied to the write side: on a miss,
+  fold the skeletons into a head entry (prep.head's facts) and plan from it with a point read per winner (chainFromHead), as
+  nodeEffectiveViaTemporalMeta does for reads. Why the entry misses on sigma's keys is not known: a chain with a delete or retraction
+  never qualifies (gatherHeadFacts), the byte cap evicts, any non-cascade write bumps the epoch. Next item, with that question to
+  sigma.
+- NodeHistoryTemporalMeta via historyAcrossShards (10.9 GB): its only core callers are entityReads.nodeMeta from
+  nodeEffectiveTimelinesOf (effective_timelines.go:161, the plural door, every call), nodeEffectiveViaTemporalMeta
+  (effective_timeline.go:621, the singular door on a head miss) and nodeAtViaTemporalMeta (temporal_queries.go:588, node-at reads).
+  Not changed here (P2).
