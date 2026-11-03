@@ -1,0 +1,24 @@
+RHOPOST mutation sweep, 2026-11-03, branch rhopost (the fix in propertyIndexDiskKeysCandidatesLocked).
+Each mutant applied once to pkg/graph/store/badger/badgerstore_property_disk.go, then
+go test -short -count=1 ./pkg/graph/store/badger/ (the whole package's short tier). A mutant that does not build is no kill.
+
+mutant                                                          verdict  failing tests
+M1 drop the guard (seek only for the first walk, else continue) KILLED   TestPropPostSpreadValuesDoNotWalkBetween,
+                                                                         TestPropPostOverlappingStringsAnswerLikeScan,
+                                                                         TestPropertyIndexOnDisk_ManyValuesParityWithMemoryMode
+M2 >= to > (iterator key against from)                          KILLED   TestPropPostBlockProbeSeeksOnce (the block's last
+                                                                         value has the lowest node ID: its entry is from)
+M3 drop AllVersions                                             KILLED   TestPropSeekLookupDoesNotWalkDeletedEntries,
+                                                                         TestPropBoundsLookupDoesNotWalkDeletedRows
+M4 drop the to break                                            first as a deletion: does not build (to unused), no kill;
+   rerun as `if false && to != nil && ...`                      KILLED   TestPropStrLookupIgnoresLongerStrings
+M5 drop prev                                                    KILLED   TestPropSeekNewestVersionDecides,
+                                                                         TestMaintainPropertyIndexesPurge_DiskMode,
+                                                                         TestPropertyIndexValidEnd_{Rejoin,ProbeFromEarlierOpen,Buffers},
+                                                                         TestNodeIDsByLabelAndPropertyKeysFlushInFlight
+M6 drop listed                                                  KILLED   TestPropPostOverlappingStringsAnswerLikeScan
+M7 drop start <= from (continue although the walk starts        KILLED   TestPropPostOverlappingStringsAnswerLikeScan
+   below the run: "x\x00"||2 sorts below "x"||lo)
+M8 drop the compaction after a walk sought back                 KILLED   TestPropPostOverlappingStringsAnswerLikeScan
+
+8 of 8 killed (M4 by its buildable form).
