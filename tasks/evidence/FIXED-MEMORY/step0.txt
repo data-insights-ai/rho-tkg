@@ -1,0 +1,52 @@
+FIXED-MEMORY step 0: standalone prototypes, no rho code (3 Nov 2026, one run each unless noted).
+Sources: step0_*.go.txt (module fm0: golang.org/x/sys v0.44.0, badger v4.9.2 opened as rho opens it:
+DetectConflicts off, checksums OnBlockRead, value checksums on). Disk: Samsung 990 PRO (the scratchpad's /),
+not the Kingston under /home. RAM cap: systemd-run --user --scope -p MemoryMax=256M -p MemorySwapMax=0, files
+dropped from the page cache (fsync + FADV_DONTNEED) before each capped case; MADV_RANDOM / FADV_RANDOM.
+PC: 32 cores, load 5-8 from other sessions. Heap figures include the latency arrays (8 B per measured lookup).
+
+1. Sorted file against hash file, 1 G snowflake-like IDs (step0_main.go.txt, step0_run1.sh.txt)
+   sorted: 8.6 GB, first key per 4 KiB page in heap: 2,097,152 entries, 16.8 MB (0.016 B per ID)
+   hash:   17.2 GB, one 4 KiB bucket per hash (load 0.5, IDs sorted in the bucket), nothing in heap
+   lookups p50 / p99:
+                                 sorted mmap      sorted pread     hash mmap         hash pread
+   all in RAM, no cap            0.81 / 1.95 µs   1.45 / 2.46 µs   0.56 / 1.31 µs    1.14 / 2.14 µs
+   cap 256 MB, recent 1 %, hit   0.40 / 0.86 µs   0.91 / 1.55 µs   48.7 / 232 µs     47.4 / 123 µs
+   cap 256 MB, recent 1 %, miss  0.40 / 0.86 µs   0.94 / 1.80 µs   48.1 / 423 µs     47.3 / 116 µs
+   cap 256 MB, uniform           48.6 / 79 µs     48.1 / 62 µs     48.4 / 67 µs      47.6 / 57 µs
+   cap 256 MB, uniform, 64 rdrs  462 k/s          507 k/s          317 k/s           270 k/s
+   hash recent: 0.98 major faults per lookup through mmap; the recent 1 % (86 MB sorted) is spread over every bucket.
+   (The binary was rebuilt with identical lookup code while the hash recent cases ran; the cases after it link badger.)
+   Reading: the sorted file keeps time locality: recent IDs stay at 0.4 µs under a 256 MB cap; the hash file
+   makes every recent lookup a disk read and saves nothing on a uniform one (one read either way, about 48 µs on
+   this disk; the 31 Oct run's 145-180 µs was another disk). Sorted wins; the hash file is refuted.
+
+2. Run files (step0_runs.go.txt): 8 sealed runs of 20 M IDs, a delta in ID order with disorder within 4096
+   seal: radix sort 97 M/s, write + fsync 167 M/s, seal 61 M/s (bar 20 M/s; slices.Sort alone 28 M/s)
+   merge with fsync: runs that follow each other 181 M/s, runs interleaved over one range 41.5 M/s (bar 10 M/s)
+   hot lookup, half hits half misses: over 8 following runs 0.51 / 1.02 µs, merged 0.53 / 1.10 µs (bar 1 µs);
+   over 8 interleaved runs 1.73 / 3.98 µs, merged 0.50 / 0.98 µs
+   badger, the same 160 M keys (WriteBatch, 1.0 M keys/s): Get p50 4.8 µs, p99 10.0 µs; 9.4x the run lookup
+   heap: 12.1 MB with 312,500 index entries
+   Reading: seal, merge and hot lookup pass. Interleaved runs (late writes) miss the 1 µs bar until merged: they
+   need a merge after a few overlapping runs or a per-run filter.
+
+3. Segment, 20 M rels between 2 M nodes (step0_seg.go.txt): hub with 199,851 rels, 99 nodes with about 18 k,
+   the rest uniform (mean degree 9). rel ID column 153 MB, 52 B records 992 MB, CSR offsets 16 MB, entries
+   306 MB (1.47 GB); badger with the same rows and adjacency keys 1.3 GB (loaded in 61.7 s).
+   hot, files cached, two runs (the first just after the files were written):
+     row by rel ID (52 B copy):       segment 0.51 µs p50, badger Get 5.4-5.5 µs: 10.5-10.8x (bar 3x)
+     adjacency hub (199,851):         run 1 12.3x (2.5 ms vs 31.0 ms), run 2 120x (245 µs vs 29.4 ms) (bar 5x)
+     adjacency node of 18,076:        run 1 9.6x, run 2 127x
+     adjacency, 100 k ordinary nodes: segment p50 0.36 µs p99 57.6 µs, badger iterator p50 12.9 µs p99 23.2 µs:
+                                      35.7x at p50 (run 2; bar 5x). The segment's p99 was not explained.
+   cold, cap 256 MB, 64 readers, random rows (ID page + record):
+     GOMAXPROCS 32: pread 691 k rows/s, p50 57 µs, p99 1.1 ms; mmap 416 k rows/s, 1.29 major faults a row
+     GOMAXPROCS 8:  pread 194 k rows/s, p99 13.4 ms;           mmap 111 k rows/s
+     a 1 ms ticker goroutine ran late at most 10-11 ms beside pread, 20-22 ms beside mmap
+   Reading: the segment passes all three bars (row 10.5x, hub adjacency 9.6x or more, 64 readers 691 k/s against
+   50 k). pread beats mmap faults by 1.7x at 64 readers: a fault holds its P, a blocking pread hands it off.
+   Cold reads go through pread; mmap only for what stays resident (indexes, CSR offsets).
+
+Not tested: writes beside reads, sealing beside merges, a real rho store, the Kingston disk the stores use,
+the step 1 bar (ai-soc's push loses at most 5 %), reopen time.

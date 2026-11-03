@@ -1,0 +1,367 @@
+// fm0: FIXED-MEMORY step 0, prototype 1. Existence lookup of snowflake-like IDs
+// in a sorted file (sparse first-key-per-page index in heap) against a hash file
+// (one 4 KiB bucket per hash, no index), through mmap or pread, under a RAM cap
+// set from outside (systemd-run --user --scope -p MemoryMax=...).
+//
+//	fm0 gen -dir D -n N          write sorted.bin, sorted.idx, hash.bin; drop them from the page cache
+//	fm0 look -dir D -file sorted|hash -io mmap|pread -dist all|recent|uniform -miss -readers R
+package main
+
+import (
+	"bufio"
+	"encoding/binary"
+	"flag"
+	"fmt"
+	"math/bits"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"sync"
+	"time"
+
+	"golang.org/x/sys/unix"
+)
+
+const (
+	page     = 4096
+	perPage  = page / 8 // 512 slots
+	startID  = uint64(1) << 60
+	stride   = 1024
+	idxEvery = perPage // one first key per page
+)
+
+func mix(x uint64) uint64 { // splitmix64
+	x += 0x9e3779b97f4a7c15
+	x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9
+	x = (x ^ (x >> 27)) * 0x94d049bb133111eb
+	return x ^ (x >> 31)
+}
+
+// id i is strictly increasing; startID+i*stride+1023 is never an ID (a miss).
+func id(i uint64) uint64     { return startID + i*stride + mix(i)%1023 }
+func missID(i uint64) uint64 { return startID + i*stride + 1023 }
+
+func hashPages(n uint64) uint64 { return n * 8 * 2 / page } // load 0.5
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "fm0 gen|look ...")
+		os.Exit(2)
+	}
+	switch os.Args[1] {
+	case "gen":
+		gen(os.Args[2:])
+	case "look":
+		look(os.Args[2:])
+	case "seg":
+		segBench(os.Args[2:])
+	case "runs":
+		runsBench(os.Args[2:])
+	case "drop":
+		for _, f := range os.Args[2:] {
+			drop(f)
+		}
+	default:
+		os.Exit(2)
+	}
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func drop(path string) {
+	f, err := os.Open(path)
+	must(err)
+	defer f.Close()
+	must(f.Sync())
+	must(unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_DONTNEED))
+}
+
+func gen(args []string) {
+	fs := flag.NewFlagSet("gen", flag.ExitOnError)
+	dir := fs.String("dir", ".", "")
+	n := fs.Uint64("n", 1<<30, "IDs")
+	fs.Parse(args)
+	must(os.MkdirAll(*dir, 0o755))
+
+	t := time.Now()
+	sf, err := os.Create(filepath.Join(*dir, "sorted.bin"))
+	must(err)
+	w := bufio.NewWriterSize(sf, 1<<20)
+	idx := make([]uint64, 0, *n/idxEvery+1)
+	var b [8]byte
+	for i := uint64(0); i < *n; i++ {
+		v := id(i)
+		if i%idxEvery == 0 {
+			idx = append(idx, v)
+		}
+		binary.LittleEndian.PutUint64(b[:], v)
+		w.Write(b[:])
+	}
+	must(w.Flush())
+	must(sf.Close())
+	xf, err := os.Create(filepath.Join(*dir, "sorted.idx"))
+	must(err)
+	xb := make([]byte, 8*len(idx))
+	for i, v := range idx {
+		binary.LittleEndian.PutUint64(xb[8*i:], v)
+	}
+	_, err = xf.Write(xb)
+	must(err)
+	must(xf.Close())
+	fmt.Printf("sorted: %d IDs, %.1f GB, index %d entries %.1f MB, %.1fs\n", *n, float64(*n*8)/1e9, len(idx), float64(len(xb))/1e6, time.Since(t).Seconds())
+
+	// Hash file: bucket page = mix(id) % pages; slot 0 holds the count, the
+	// rest the bucket's IDs sorted. Built in passes of 1 GiB of pages.
+	t = time.Now()
+	np := hashPages(*n)
+	hf, err := os.Create(filepath.Join(*dir, "hash.bin"))
+	must(err)
+	const passPages = (1 << 30) / page
+	buf := make([]uint64, passPages*perPage)
+	workers := runtime.NumCPU()
+	for lo := uint64(0); lo < np; lo += passPages {
+		hi := min(lo+passPages, np)
+		clear(buf)
+		var mu [64]sync.Mutex
+		var wg sync.WaitGroup
+		chunk := (*n + uint64(workers) - 1) / uint64(workers)
+		for wkr := 0; wkr < workers; wkr++ {
+			wg.Add(1)
+			go func(a, z uint64) {
+				defer wg.Done()
+				for i := a; i < z; i++ {
+					v := id(i)
+					p := mix(v^0x5bd1e995) % np
+					if p < lo || p >= hi {
+						continue
+					}
+					off := (p - lo) * perPage
+					m := &mu[p%64]
+					m.Lock()
+					c := buf[off]
+					if c+1 >= perPage {
+						panic("bucket overflow")
+					}
+					buf[off+1+c] = v
+					buf[off] = c + 1
+					m.Unlock()
+				}
+			}(uint64(wkr)*chunk, min(uint64(wkr+1)*chunk, *n))
+		}
+		wg.Wait()
+		maxc := uint64(0)
+		for p := uint64(0); p < hi-lo; p++ {
+			off := p * perPage
+			c := buf[off]
+			maxc = max(maxc, c)
+			slices.Sort(buf[off+1 : off+1+c])
+		}
+		out := unsafeBytes(buf[:(hi-lo)*perPage])
+		_, err := hf.Write(out)
+		must(err)
+		fmt.Printf("  hash pass pages %d-%d, max bucket %d\n", lo, hi, maxc)
+	}
+	must(hf.Close())
+	fmt.Printf("hash: %d pages, %.1f GB, %.1fs\n", np, float64(np*page)/1e9, time.Since(t).Seconds())
+	for _, f := range []string{"sorted.bin", "sorted.idx", "hash.bin"} {
+		drop(filepath.Join(*dir, f))
+	}
+}
+
+type looker interface {
+	has(v uint64, scratch []byte) bool
+}
+
+type sortedFile struct {
+	idx  []uint64
+	m    []byte // mmap or nil
+	fd   int
+	n    uint64
+}
+
+func (s *sortedFile) has(v uint64, scratch []byte) bool {
+	// last index entry <= v
+	p, found := slices.BinarySearch(s.idx, v)
+	if found {
+		return true
+	}
+	if p == 0 {
+		return false
+	}
+	p--
+	var pg []byte
+	if s.m != nil {
+		off := uint64(p) * page
+		end := min(off+page, s.n*8)
+		pg = s.m[off:end]
+	} else {
+		k, err := unix.Pread(s.fd, scratch, int64(p)*page)
+		must(err)
+		pg = scratch[:k]
+	}
+	return searchPage(pg, v)
+}
+
+func searchPage(pg []byte, v uint64) bool {
+	lo, hi := 0, len(pg)/8
+	for lo < hi {
+		mid := (lo + hi) / 2
+		x := binary.LittleEndian.Uint64(pg[8*mid:])
+		if x == v {
+			return true
+		}
+		if x < v {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return false
+}
+
+type hashFile struct {
+	m  []byte
+	fd int
+	np uint64
+}
+
+func (h *hashFile) has(v uint64, scratch []byte) bool {
+	p := mix(v^0x5bd1e995) % h.np
+	var pg []byte
+	if h.m != nil {
+		pg = h.m[p*page : (p+1)*page]
+	} else {
+		_, err := unix.Pread(h.fd, scratch, int64(p*page))
+		must(err)
+		pg = scratch
+	}
+	c := binary.LittleEndian.Uint64(pg)
+	return searchPage(pg[8:8+8*c], v)
+}
+
+func look(args []string) {
+	fs := flag.NewFlagSet("look", flag.ExitOnError)
+	dir := fs.String("dir", ".", "")
+	file := fs.String("file", "sorted", "sorted|hash")
+	io := fs.String("io", "mmap", "mmap|pread")
+	dist := fs.String("dist", "uniform", "all|recent|uniform (all: preload the file first)")
+	miss := fs.Bool("miss", false, "look up absent IDs")
+	readers := fs.Int("readers", 1, "")
+	warm := fs.Int("warm", 2_000_000, "lookups before measuring (all readers)")
+	cnt := fs.Int("count", 1_000_000, "measured lookups (all readers)")
+	fs.Parse(args)
+
+	sf, err := os.Open(filepath.Join(*dir, "sorted.bin"))
+	must(err)
+	st, _ := sf.Stat()
+	n := uint64(st.Size() / 8)
+	sf.Close()
+
+	path := filepath.Join(*dir, *file+".bin")
+	f, err := os.Open(path)
+	must(err)
+	fi, _ := f.Stat()
+	size := fi.Size()
+	fd := int(f.Fd())
+	var m []byte
+	if *io == "mmap" {
+		m, err = unix.Mmap(fd, 0, int(size), unix.PROT_READ, unix.MAP_SHARED)
+		must(err)
+		must(unix.Madvise(m, unix.MADV_RANDOM))
+	} else {
+		must(unix.Fadvise(fd, 0, 0, unix.FADV_RANDOM))
+	}
+	var l looker
+	if *file == "sorted" {
+		xb, err := os.ReadFile(filepath.Join(*dir, "sorted.idx"))
+		must(err)
+		idx := make([]uint64, len(xb)/8)
+		for i := range idx {
+			idx[i] = binary.LittleEndian.Uint64(xb[8*i:])
+		}
+		l = &sortedFile{idx: idx, m: m, fd: fd, n: n}
+	} else {
+		l = &hashFile{m: m, fd: fd, np: uint64(size) / page}
+	}
+	if *dist == "all" {
+		b := make([]byte, 1<<20)
+		for off := int64(0); off < size; off += int64(len(b)) {
+			unix.Pread(fd, b, off)
+		}
+	}
+	var lo, span uint64
+	switch *dist {
+	case "recent":
+		span = n / 100
+		lo = n - span
+	default:
+		span = n
+	}
+	key := func(r uint64) uint64 {
+		i := lo + r%span
+		if *miss {
+			return missID(i)
+		}
+		return id(i)
+	}
+
+	var ru0, ru1 unix.Rusage
+	run := func(total int, record bool) ([]time.Duration, time.Duration) {
+		per := total / *readers
+		lat := make([][]time.Duration, *readers)
+		var wg sync.WaitGroup
+		t0 := time.Now()
+		for r := 0; r < *readers; r++ {
+			wg.Add(1)
+			go func(r int) {
+				defer wg.Done()
+				scratch := make([]byte, page)
+				seed := uint64(r)*0x9e3779b97f4a7c15 + uint64(time.Now().UnixNano())
+				var ls []time.Duration
+				if record {
+					ls = make([]time.Duration, 0, per)
+				}
+				for k := 0; k < per; k++ {
+					seed = mix(seed)
+					v := key(seed)
+					t := time.Now()
+					ok := l.has(v, scratch)
+					if record {
+						ls = append(ls, time.Since(t))
+					}
+					if ok == *miss {
+						panic(fmt.Sprintf("wrong answer for %d", v))
+					}
+				}
+				lat[r] = ls
+			}(r)
+		}
+		wg.Wait()
+		el := time.Since(t0)
+		var all []time.Duration
+		for _, ls := range lat {
+			all = append(all, ls...)
+		}
+		return all, el
+	}
+	run(*warm, false)
+	runtime.GC()
+	unix.Getrusage(unix.RUSAGE_SELF, &ru0)
+	all, el := run(*cnt, true)
+	unix.Getrusage(unix.RUSAGE_SELF, &ru1)
+	slices.Sort(all)
+	q := func(p float64) time.Duration { return all[int(p*float64(len(all)-1))] }
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	fmt.Printf("%s %s %s miss=%v readers=%d: p50 %s p99 %s p999 %s, %.0f lookups/s, majflt %.2f minflt %.2f per lookup, heap %.1f MB\n",
+		*file, *io, *dist, *miss, *readers, q(.5), q(.99), q(.999), float64(len(all))/el.Seconds(),
+		float64(ru1.Majflt-ru0.Majflt)/float64(len(all)), float64(ru1.Minflt-ru0.Minflt)/float64(len(all)),
+		float64(ms.HeapInuse)/1e6)
+	_ = bits.Len
+	runtime.KeepAlive(f)
+}

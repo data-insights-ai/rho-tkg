@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# FIXED-MEMORY step 0, prototype 1 matrix. Each capped case starts with the files out of the page cache.
+cd "$(dirname "$0")"
+D=big
+cap() { systemd-run --user --scope -q -p MemoryMax=256M -p MemorySwapMax=0 ./fm0 look -dir $D "$@"; }
+dropall() { ./fm0 drop $D/sorted.bin $D/hash.bin $D/sorted.idx; }
+echo "== all in RAM, no cap (file preloaded)"
+for f in sorted hash; do for io in mmap pread; do
+  dropall; ./fm0 look -dir $D -file $f -io $io -dist all
+done; done
+echo "== cap 256 MB, recent 1 %"
+for f in sorted hash; do for io in mmap pread; do
+  w=2000000; c=1000000; [ $f = hash ] && w=300000 c=200000
+  dropall; cap -file $f -io $io -dist recent -warm $w -count $c
+  cap -file $f -io $io -dist recent -miss -warm 100000 -count $c
+done; done
+echo "== cap 256 MB, uniform"
+for f in sorted hash; do for io in mmap pread; do
+  dropall; cap -file $f -io $io -dist uniform -warm 20000 -count 50000
+done; done
+echo "== cap 256 MB, uniform, 64 readers"
+for f in sorted hash; do for io in mmap pread; do
+  dropall; cap -file $f -io $io -dist uniform -readers 64 -warm 64000 -count 640000
+done; done
+dropall
