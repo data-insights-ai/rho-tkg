@@ -141,6 +141,9 @@ type Config struct {
 	BlockCacheSize   int64 // bytes; >= 0
 	IndexCacheSize   int64 // bytes; >= 0
 	NumCompactors    int   // 0 = badger default (4); minimum 2
+	// ValueThreshold sends every shard's values of at least this many bytes to
+	// the value log (badger.Config.ValueThreshold). 0 keeps badger's 1 MB.
+	ValueThreshold int64
 	// EncryptionKey / EncryptionKeyRotation enable AES encryption-at-rest for
 	// EVERY shard (reference, hot, warm, lazy cold/archive, and
 	// rotation-created) — see badger.Config for length validation and the

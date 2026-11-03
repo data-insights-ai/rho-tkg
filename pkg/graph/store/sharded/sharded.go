@@ -196,6 +196,7 @@ type Config struct {
 	BlockCacheSize        int64
 	IndexCacheSize        int64
 	NumCompactors         int
+	ValueThreshold        int64 // badger.Config.ValueThreshold, every slot
 	EncryptionKey         []byte
 	EncryptionKeyRotation time.Duration
 }
