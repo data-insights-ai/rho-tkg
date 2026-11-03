@@ -74,22 +74,9 @@ func ValidEndRowOf(hist bool, version uint32, tm *types.TemporalMetadata) ValidE
 	return row
 }
 
-// validEndRowOfStamps is ValidEndRowOf from the row's value accessors: no
-// copy of a frozen row's temporal block (HEADLEND: memory history rows are
-// frozen, and a frozen row's Temporal() allocates).
-func validEndRowOfStamps(hist bool, version uint32, r interface {
-	TxStamps() (txFrom, txTo, deletedAt types.Instant)
-	ValidRange() (from, to types.Instant, ok bool)
-}) ValidEndRow {
-	row := ValidEndRow{Hist: hist, Version: version}
-	row.TxFrom, row.TxTo, row.DeletedAt = r.TxStamps()
-	_, row.ValidTo, _ = r.ValidRange()
-	return row
-}
-
 // ValidEndRowOfRel describes relationship row r (hist: a history row).
 func ValidEndRowOfRel(r *types.Relationship, hist bool) ValidEndRow {
-	row := validEndRowOfStamps(hist, r.Version(), r)
+	row := ValidEndRowOf(hist, r.Version(), r.Temporal())
 	if tok := r.TypeToken().Value(); tok != 0 {
 		row.Tokens = []uint16{tok}
 	}
@@ -98,7 +85,7 @@ func ValidEndRowOfRel(r *types.Relationship, hist bool) ValidEndRow {
 
 // ValidEndRowOfNode describes node row n (hist: a history row).
 func ValidEndRowOfNode(n *types.Node, hist bool) ValidEndRow {
-	row := validEndRowOfStamps(hist, n.Version(), n)
+	row := ValidEndRowOf(hist, n.Version(), n.Temporal())
 	if k := n.LabelTokenCount(); k > 0 {
 		row.Tokens = make([]uint16, 0, k)
 		for i := 0; i < k; i++ {

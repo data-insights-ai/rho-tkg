@@ -53,4 +53,31 @@ func TestTemporalByValue(t *testing.T) {
 	if _, ok := nilRel.TemporalByValue(); ok {
 		t.Fatal("nil rel: ok")
 	}
+
+	// A row the compact form holds (stamps and hash only) answers from it.
+	simple := TemporalMetadata{ValidFrom: 10, ValidTo: 20, TxFrom: 5}
+	cn := NewNode(NodeID(4), 1, nil)
+	cntm := simple
+	cn.SetTemporal(&cntm)
+	cn.SetIntegrity(&NodeIntegrity{Hash: "h"})
+	cn.Freeze()
+	cnc := cn.CompactFrozenCopy()
+	cr := NewRelationship(RelID(5), 1, NodeID(1), NodeID(3))
+	crtm := simple
+	cr.SetTemporal(&crtm)
+	cr.SetIntegrity(&RelIntegrity{FromNodeHash: "a", ToNodeHash: "b"})
+	cr.Freeze()
+	crc := cr.CompactFrozenCopy()
+	if !cnc.isCompactForTest() || !crc.isCompactForTest() {
+		t.Fatal("the rows are not in the compact form: the meta branch goes untested")
+	}
+	if got, ok := cnc.TemporalByValue(); !ok || got != simple {
+		t.Errorf("compact node: TemporalByValue = %+v, %v; want %+v", got, ok, simple)
+	}
+	if got, ok := crc.TemporalByValue(); !ok || got != simple {
+		t.Errorf("compact rel: TemporalByValue = %+v, %v; want %+v", got, ok, simple)
+	}
 }
+
+func (n *Node) isCompactForTest() bool         { return n.meta != nil && n.temporal == nil }
+func (r *Relationship) isCompactForTest() bool { return r.meta != nil && r.temporal == nil }

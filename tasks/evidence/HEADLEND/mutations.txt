@@ -41,3 +41,46 @@ new tests also under -race; go test -short -p 1 ./pkg/graph/... green on the imp
 Allocation, head-hit NodeEffectiveTimeline of a 6-version memory node (TestEffectiveHeadReadAllocs,
 testing.AllocsPerRun 50): 25 allocs/read before, 5 after (4 per copied winner: row, properties, temporal,
 integrity). Sigma's shape (8 cuts x 680 entities, ~1.2 GB in GetNodeVersion copies) loses that site on memory.
+
+--- Review round (Fable, 3 Nov), after merging main (f0bf8d1a) ---
+
+Finding 1, measured: frozen memory history rows made the as-of selection (storeutil.SelectAsOfWithCurrent, generic:
+its Temporal() calls go through the shape dictionary, not inlined, so each copy escapes) allocate per history row:
+NodeAsOf/NodesAsOf/RelAsOf/RelsAsOf 11-12 -> 30-31 allocs at 2 -> 20 rows (main 3-4 -> 4-5; red.txt). Fixed with
+types.Node/Relationship.TemporalByValue (new exported names, the item is a minor anyway), read in the selection:
+back to 3 -> 4 (4-5). The other sites the review named (memorystore_index.go 467/517/569/648, valid_end.go via
+index.ValidEndRowOf*, retention_purge.go:78, labeltxmembers.go:89/96, history.go:1182/1190) do NOT allocate: there
+Temporal() is inlined and its copy stays on the stack (go build -gcflags=-m: inlined, no "moved to heap" at those
+lines; TestFrozenHistoryRowReadsAllocateNothing measures 0 per row). A first fix switched them to value accessors;
+mutants R8, R9, R13, R15, R15b, R17 (each reverting one site to Temporal()) all SURVIVED their targeted tests,
+showing the change bought nothing, so those sites were restored to main's code and the test kept as the guard.
+
+Targeted tests: TestMemoryAsOfAllocsFlatInHistory, TestMemoryAsOfCurrentArmAllocs, TestFrozenHistoryRowReadsAllocateNothing,
+TestMemoryStoreLendVersion (memory); TestTemporalByValue (types); TestSelectAsOf* (storeutil);
+TestEffectiveLentRowsSurviveOverwriteAndTrim (core, -race).
+
+R1 asof void filter: Temporal() per row | KILLED by TestMemoryAsOfAllocsFlatInHistory
+R2 asof current arm: Temporal() | first SURVIVED (no current row in the alloc test); TestMemoryAsOfCurrentArmAllocs
+   added; rerun: KILLED by TestMemoryAsOfCurrentArmAllocs
+R3 asof candidate loop: Temporal() | KILLED by TestMemoryAsOfAllocsFlatInHistory
+R4 asof openInWrite: Temporal() | KILLED by TestMemoryAsOfAllocsFlatInHistory
+R5 asof lifeEnded: Temporal() | KILLED by TestMemoryAsOfAllocsFlatInHistory
+R6 asof rowRetracted: Temporal() | KILLED by TestMemoryAsOfAllocsFlatInHistory
+R7 asof rowRetracted: always false | KILLED by TestSelectAsOf_Table TestSelectAsOfWithCurrent_Table
+R18 TemporalByValue node: drop the compact branch | first SURVIVED (the test's row did not fit the compact form);
+    a compact row added to TestTemporalByValue; rerun: KILLED by TestTemporalByValue
+R19 TemporalByValue rel: drop the compact branch | as R18: KILLED by TestTemporalByValue
+R20 TemporalByValue node: ok true without a block | KILLED by TestTemporalByValue
+R21 TemporalByValue rel: no nil check | KILLED by TestTemporalByValue
+R22 SetNodeHistoryEntryForTest: not frozen | KILLED by TestMemoryStoreLendVersion
+R23 a history overwrite writes the stored row in place (*old = *new) | KILLED by
+    TestEffectiveLentRowsSurviveOverwriteAndTrim (value check and the race detector)
+M5 (many-pin node lend -> nodeVersion) now also covers ForEachNodeEffectiveByLabelAndProperties, added to the
+   doors of TestEffectiveDoorsLendHistoryRows.
+Withdrawn with their code (sites restored to main): R8 R9 R10 R11 R12 R13 R14 R15 R15b R16 R16b R17.
+
+Finding 2 (SetNodeHistoryEntryForTest stored an unfrozen row): fixed, R22. Finding 3 (lentNodeVersion's comment
+promised an R37 gate): the clause is dropped, not gated: a lent row costs nothing, so a store offering lending and
+R37 sharing should lend; no store offers both today.
+
+Final: 13 of 13 kept mutants of this round caught (R1-R7, R18-R23).

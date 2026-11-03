@@ -62,9 +62,43 @@ func TestMemoryAsOfAllocsFlatInHistory(t *testing.T) {
 	for _, c := range []struct {
 		door      string
 		at2, at20 float64
-	}{{"NodeAsOf", n2, n20}, {"NodesAsOf", ns2, ns20}, {"RelAsOf", r2, r20}, {"RelsAsOf", rs2, rs20}} {
+		main20    float64 // main (history rows unfrozen) at 20 rows
+	}{{"NodeAsOf", n2, n20, 4}, {"NodesAsOf", ns2, ns20, 5}, {"RelAsOf", r2, r20, 4}, {"RelsAsOf", rs2, rs20, 5}} {
 		if c.at20 > c.at2+1 {
 			t.Errorf("%s: %.0f allocs at 20 history rows vs %.0f at 2: grows with the history", c.door, c.at20, c.at2)
 		}
+		// Not beyond main's: a Temporal() copy per read of a frozen row
+		// adds one (the selection reads the newest row's block in four
+		// places).
+		if c.at20 > c.main20 {
+			t.Errorf("%s: %.0f allocs at 20 history rows, main %.0f", c.door, c.at20, c.main20)
+		}
+	}
+}
+
+// TestMemoryAsOfCurrentArmAllocs: an as-of read before a live current row
+// (stored frozen and compact) runs the selection's current arm, which reads
+// the current row's block by value: 20 history rows cost what 2 do, and no
+// more than measured on the branch (reading it through Temporal() costs one
+// copy more).
+func TestMemoryAsOfCurrentArmAllocs(t *testing.T) {
+	measure := func(k int) float64 {
+		ms, nid, _ := asOfAllocStore(t, k)
+		cur := types.NewNode(nid, 1, nil)
+		cur.SetVersion(uint32(k + 1))
+		cur.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(1000 * (k + 1)), TxFrom: types.Instant(100 * (k + 1))})
+		if err := ms.PutNode(cur); err != nil {
+			t.Fatal(err)
+		}
+		pin := types.Instant(100 * k)
+		if n, err := ms.NodeAsOf(nid, pin); err != nil || n.Version() != uint32(k) {
+			t.Fatalf("k=%d: NodeAsOf before the current row = %v, %v; want version %d", k, n, err, k)
+		}
+		return testing.AllocsPerRun(20, func() { _, _ = ms.NodeAsOf(nid, pin) })
+	}
+	a2, a20 := measure(2), measure(20)
+	t.Logf("NodeAsOf before a live current row: k=2 %.0f, k=20 %.0f allocs", a2, a20)
+	if a20 > a2+1 || a20 > 4 {
+		t.Errorf("NodeAsOf before a live current row: %.0f allocs at 20 rows (%.0f at 2), want <= 4", a20, a2)
 	}
 }

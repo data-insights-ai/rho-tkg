@@ -1179,16 +1179,16 @@ func nodeMatchesTxTime(n *types.Node, txTime types.Instant) bool {
 	if n == nil {
 		return false
 	}
-	txFrom, txTo, _ := n.TxStamps() // no copy of a frozen row's block
-	return txFrom > 0 && txFrom <= txTime && txTo == 0
+	tm := n.Temporal()
+	return tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0
 }
 
 func relMatchesTxTime(r *types.Relationship, txTime types.Instant) bool {
 	if r == nil {
 		return false
 	}
-	txFrom, txTo, _ := r.TxStamps()
-	return txFrom > 0 && txFrom <= txTime && txTo == 0
+	tm := r.Temporal()
+	return tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0
 }
 
 func nodeCopyVisibleAtTxTime(a types.ValidAxis, n *types.Node, txTime types.Instant) *types.Node {

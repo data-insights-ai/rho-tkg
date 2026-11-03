@@ -75,8 +75,8 @@ func (ms *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 		// (raw Store interface writes, batch import, and replication apply can
 		// all leave it unset) — so this predicate must not dereference it
 		// unconditionally (BACKLOG 17c).
-		_, validTo, ok := n.ValidRange() // no copy of a frozen row's block
-		return ok && !ms.validAxis.Get().Open(validTo) && validTo < before
+		tm := n.Temporal()
+		return tm != nil && !ms.validAxis.Get().Open(tm.ValidTo) && tm.ValidTo < before
 	})
 }
 

@@ -464,7 +464,7 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 				if hv == nil {
 					continue
 				}
-				hf, ht := nodeTemporalBoundsOf(ms.validAxis.Get(), rawID, hv)
+				hf, ht := indexpkg.NodeTemporalBounds(ms.validAxis.Get(), rawID, hv.Temporal())
 				entry.intervals = append(entry.intervals, interval{hf, ht})
 			}
 		}
@@ -514,7 +514,7 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 func (ms *Store) foldNodeHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.ID) {
 	for _, hv := range ms.nodeHistory[types.NodeID(id)] {
 		if hv != nil {
-			from, to := nodeTemporalBoundsOf(ms.validAxis.Get(), id, hv)
+			from, to := indexpkg.NodeTemporalBounds(ms.validAxis.Get(), id, hv.Temporal())
 			ti.Extend(id, from, to)
 		}
 	}
@@ -566,7 +566,7 @@ func (ms *Store) addRelToTemporalIndexesLocked(r *types.Relationship, id snowfla
 		if _, _, covered := ti.EnvelopeOf(id); !covered {
 			for _, hv := range ms.relHistory[types.RelID(id)] {
 				if hv != nil {
-					from, to := relTemporalBoundsOf(ms.validAxis.Get(), id, hv)
+					from, to := indexpkg.RelTemporalBounds(ms.validAxis.Get(), id, hv.Temporal())
 					ti.Extend(id, from, to)
 				}
 			}
@@ -645,7 +645,7 @@ func (ms *Store) CreateRelTemporalIndex(relType uint16) error {
 			if hv == nil {
 				continue
 			}
-			hf, ht := relTemporalBoundsOf(ms.validAxis.Get(), rawID, hv)
+			hf, ht := indexpkg.RelTemporalBounds(ms.validAxis.Get(), rawID, hv.Temporal())
 			ti.Extend(rawID, hf, ht)
 		}
 		return true
