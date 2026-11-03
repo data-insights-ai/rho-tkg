@@ -1,0 +1,37 @@
+REVIEW 3 Nov, WHOLEROW gaps: mutation sweep of pkg/graph/replace_version_placement_test.go (branch review3nov-wholerow, 2026-11-03)
+
+Tests:
+  T1a TestReplaceVersionEventShardNodeStaysOnItsShard            (gap 1: event shard, warm after rotation)
+  T1b TestReplaceVersionMintAtValidFromColdNodeStaysOnItsIDsDay  (gap 1: MintAtValidFrom + cold shard + reopen)
+  T1c TestReplaceVersionArchivedNodeStaysInTheArchive            (gap 1: archive; replace is supported there, docs/persistence.md: owner shard)
+  T2  TestReplaceVersionValidAtReadAfterAnEarlierStart           (gap 2: memory, badger, sharded, tiered)
+  T3  TestReplaceVersionBesideConcurrentWriters                  (gap 3: memory, badger, sharded, tiered; run under -race)
+
+Each mutant: one edit, go build ./pkg/graph/... green, then
+  go test -short -count=1 [-race] -run 'TestReplaceVersion(EventShard|MintAtValidFrom|Archived|ValidAtRead|BesideConcurrent)' ./pkg/graph/
+then the file restored. Every mutant built.
+
+M1 tiered ReplaceNodeWithHistory moves the node to the event shard of its new valid-from
+   (PutNode there, DeleteNodeCascade on the owner)                                  KILLED
+   T1a: node on [20261103T170000.000Z-...] after replace, want only its shard [20261103T170000.000Z]
+   T1b: node on [2026-07-24] after replace, want only "2026-07-22" (its ID's day)
+M2 tiered: a replace of an archived node writes it to the reference shard and
+   deletes it from the archive                                                      KILLED
+   T1c: archived node on [reference] after replace, want only the archive
+M3 index.TemporalIndex.Extend never lowers the envelope's start                     KILLED
+   T2 memory/badger/sharded: ByLabel ValidAt: 0 rows, want exactly the node
+M4 badger ReplaceNodeWithHistory skips AddNodeToTemporalIndexes for the new row     KILLED
+   T2 badger/sharded: ByLabel ValidAt: 0 rows, want exactly the node
+   (memory has its own write path, untouched by this mutant)
+M5 core replaceNodeVersionInternal keeps the old start when the new one is earlier  KILLED
+   T1b (Get after reopen), T1c (Get after replace), T2 on all four backends, T3
+M6 core replaceNodeVersionInternal drops the entity lock (-race)                    KILLED
+   T3 on all four backends: "invalid store mutation: live node version N does not
+   match previous version M" from a replace or a concurrent Update
+M7 core: TxFrom = c.now() without moving past the current row's belief (-race)      SURVIVED by T1-T3
+   (the commit clock already runs past every row they write); KILLED by the
+   existing TestReplaceVersionTxFromPassesARowAheadOfTheClock (pkg/graph/internal/core)
+   when run with -run TestReplaceVersion over ./pkg/graph/ ./pkg/graph/internal/core/.
+   Outside the three gaps; recorded for completeness.
+
+Defects found: none. All five tests green before and after the sweep.
