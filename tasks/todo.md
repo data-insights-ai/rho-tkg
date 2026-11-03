@@ -111,6 +111,15 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
+- **RHOPOST, RHOMEMIDS** (sigma READBACK, 3 Nov; after v4.101.0, nothing in sigma waits) — sigma's paged-row read-back
+  spends 96 % of a block probe in `IDsByLabelAndPropertyValues`, 75 % in `badger.Iterator.Next`: one AllVersions
+  seek-and-walk per value in `propertyIndexDiskKeysCandidatesLocked` (badger 1.5-6.1 us a value at 5k-80k rows).
+  RHOPOST: a posting read per value without the AllVersions walk (seek to the typed key, end bound), first, since
+  badger and tiered are production; check why the walk takes all versions before changing it. RHOMEMIDS: the memory
+  store has no NodePropertyKeysIDsCapability, so the door loads every node to return IDs (memory 2.3-24.6 us a
+  value, 2.9 MB a call at 80k); an IDs path from its index. Bench: sigma's BenchmarkBlockProbe
+  (internal/tyla/application/incremental). Done when both ship with a bench against today.
+
 ### PAGEBLOB follow-ups (v4.99.0 shipped ELEMDISK and WRITEGROW, 3 Nov, on René's word outside the round, short tests and targeted race only)
 
 - Current-only Elements (sigma 3 Nov): no member entries for an append-only label, halving the block write (2 keys per element, about 1.4 us each, `tasks/evidence/ELEMDISK/block-cost.txt`). Needs a defined answer for every pinned door on such an index (refuse or scan; badger, tiered, scan doors). A minor; sigma asks with PAGEBLOB's BA numbers.
