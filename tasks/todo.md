@@ -185,7 +185,7 @@ Path (b), the direction after (a): the hot shard stays on badger; a sealed shard
 9. Label and type membership, property indexes.
 10. Drop the badger directory of a verified sealed shard (a one-way catalog kind).
 
-Done when: a test holds reopen heap of 10 N entities within 0.1 B per entity of N, and a long ai-soc run shows RAM flat with data. Waits for René's decision on (b) and his go for step 1 (a minor, red test first). Inputs: ai-soc's per-label audit; a run longer than ColdAfter for the event-shard plateau (about 750 MB, estimate). TEMPIDX-2 and IDTABLE fold into this plan when it starts; until then rho takes only what stabilises ai-soc for goal 2.
+Done when: a test holds reopen heap of 10 N entities within 0.1 B per entity of N, and a long ai-soc run shows RAM flat with data. Next: step 1 on a branch, red test first (a minor). Path (b) waits for René's decision. Inputs: ai-soc's per-label audit; a run longer than ColdAfter for the event-shard plateau (about 750 MB, estimate). TEMPIDX-2 and IDTABLE fold into this plan when it starts; until then rho takes only what stabilises ai-soc for goal 2.
 
 - **LISTREAD** (sigma 31 Oct; later round, no rush, sigma goes on without it; changes no answer) — sigma's restore pages
   ByLabelAndProperties and asks HasHistory per node; ai-soc's store: index 8.1 s, HasHistory 6.4 s of 23.3 s on 1,048,294
