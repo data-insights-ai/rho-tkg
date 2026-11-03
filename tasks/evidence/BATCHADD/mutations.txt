@@ -1,0 +1,27 @@
+# BATCHADD mutation sweep, 2026-11-03, on batchadd (fix 6c7503e0 + race test rewrite)
+# Each mutation applied alone, then (one package at a time, load 30-47):
+#   go test -short -count=1 -timeout 300s -run 'TestAddNodes|Unique' ./pkg/graph/internal/core/
+#   go test -short -count=1 -timeout 300s -run 'TestGraphTxAddNodes|TestUniqueClaims' ./pkg/graph/
+# then the file restored from HEAD.
+#
+# M1 skip the in-batch twin check   seen[sk] check disabled (unique_enforce_add_many.go)
+# M2 skip the committed-holder check  matches[:0] (no current holder refuses)
+# M3 leave a claim on failure       drop storeWriteFailed after a failed batch write (node_add_many.go)
+# M4 drop the stripe lock           LockStripes(nil) instead of the call's stripe set
+# M5 keep the old gate              canBatchNodeCreates returns false under any unique constraint
+
+M1-skip-in-batch-twin: KILLED (core exit 1, graph exit 1) by: TestAddNodesUniqueRefusesWholeCall TestGraphTxAddNodesUniqueConstraint
+M2-skip-committed-holder-lookup: KILLED (core exit 1, graph exit 0) by: TestAddNodesUniqueRefusesWholeCall
+M3-leave-claim-on-store-failure: KILLED (core exit 1, graph exit 0) by: TestAddNodesUniqueStoreFailureWithdrawsClaims
+M4-drop-stripe-lock: KILLED (core exit 1, graph exit 0) by: TestAddNodesUniqueConcurrentOneWinner
+M5-keep-old-gate: KILLED (core exit 1, graph exit 1) by: TestAddNodesUniqueKeepsBatch TestAddNodesUniqueRefusesWholeCall TestAddNodesUniqueStoreFailureWithdrawsClaims TestGraphTxAddNodesUniqueConstraint
+
+5 of 5 killed.
+
+# History: the first sweep (race test = six concurrent transactions on one
+# value) let M4 survive: BeginTx serializes transactions (c.txMu), so two
+# AddNodes never overlap. The rewritten test races one AddNodes (raced value
+# first of 500) against four standalone Nodes.Add of the value, started once
+# AddNodes has made its first lookup (the seam's lookup counter); a
+# transaction on memory and badger holds the shared lock, so only the value
+# stripes keep one winner. Under M4: "round 0: 2 winners, want 1" on both.

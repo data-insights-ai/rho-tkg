@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -222,8 +223,12 @@ func TestAddNodesUniqueStoreFailureWithdrawsClaims(t *testing.T) {
 	}
 }
 
-// Concurrent AddNodes on one unique value: exactly one call wins. On memory a
-// transaction holds the shared lock, so only the value stripes serialize.
+// AddNodes racing standalone creates of its unique value: exactly one wins.
+// Transactions serialize with each other (BeginTx), but a transaction on the
+// shared lock (memory) runs beside standalone writers, so only the value
+// stripes, held from the first lookup to the batch write, keep one winner.
+// The raced value is the call's first node, and the standalone writers start
+// once its lookup is done, long before the batch write of all 500.
 func TestAddNodesUniqueConcurrentOneWinner(t *testing.T) {
 	t.Parallel()
 	for _, b := range []addNodesUniqueBackend{
@@ -231,43 +236,58 @@ func TestAddNodesUniqueConcurrentOneWinner(t *testing.T) {
 		{"badger", newBadgerCore},
 	} {
 		t.Run(b.name, func(t *testing.T) {
-			rounds := 100
+			rounds := 60
 			if testing.Short() {
-				rounds = 30
+				rounds = 20
 			}
+			ctx := context.Background()
 			for r := 0; r < rounds; r++ {
 				g := b.open(t)
-				if err := g.Constraints.CreateUnique(context.Background(), "Ref", "k"); err != nil {
+				if err := g.Constraints.CreateUnique(ctx, "Ref", "k"); err != nil {
 					t.Fatal(err)
 				}
-				const writers = 6
+				seam := &nodePutCounts{}
+				g.nodePutSeam = seam
+				const standalone = 4
 				var wg sync.WaitGroup
-				var mu sync.Mutex
-				wins := 0
-				for w := 0; w < writers; w++ {
-					wg.Add(1)
+				var wins atomic.Int32
+				start := make(chan struct{})
+				wg.Add(1 + standalone)
+				go func() {
+					defer wg.Done()
+					props := addNodesKeyed("tx-", 500)
+					props[0] = map[string]any{"k": "same"}
+					<-start
+					err := addNodesInTx(t, g, []string{"Ref"}, props)
+					if err != nil && !errors.Is(err, ErrUniqueViolation) {
+						t.Errorf("AddNodes: %v", err)
+					}
+					if err == nil {
+						wins.Add(1)
+					}
+				}()
+				for w := 0; w < standalone; w++ {
 					go func(w int) {
 						defer wg.Done()
-						props := addNodesKeyed(fmt.Sprintf("w%d-", w), 20)
-						props[w%len(props)] = map[string]any{"k": "same"}
-						err := addNodesInTx(t, g, []string{"Ref"}, props)
+						<-start
+						// Start once AddNodes has looked the raced value up
+						// (bounded wait: a path without the lookup seam).
+						for deadline := time.Now().Add(2 * time.Second); seam.lookups.Load() < 2 && time.Now().Before(deadline); {
+							runtime.Gosched()
+						}
+						_, err := g.Nodes.Add(ctx, []string{"Ref"}, map[string]any{"k": "same"})
 						if err != nil && !errors.Is(err, ErrUniqueViolation) {
-							t.Errorf("writer %d: %v", w, err)
-							return
+							t.Errorf("standalone %d: %v", w, err)
 						}
 						if err == nil {
-							mu.Lock()
-							wins++
-							mu.Unlock()
+							wins.Add(1)
 						}
 					}(w)
 				}
+				close(start)
 				wg.Wait()
-				if wins != 1 {
-					t.Fatalf("round %d: %d winners, want 1", r, wins)
-				}
-				if n := labelCount(t, g, "Ref"); n != 20 {
-					t.Fatalf("round %d: %d Ref nodes, want 20", r, n)
+				if n := wins.Load(); n != 1 {
+					t.Fatalf("round %d: %d winners, want 1", r, n)
 				}
 				_ = g.Close()
 			}
