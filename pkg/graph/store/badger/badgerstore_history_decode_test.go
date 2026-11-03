@@ -735,3 +735,117 @@ func TestHistDecodeAnchorOutsideChain(t *testing.T) {
 		t.Fatalf("node rows, anchor read after the scan, differ")
 	}
 }
+
+// histDecodeSameError asserts GetRelHistory and GetNodeHistory fail with the
+// legacy implementation's error, and that it contains want.
+func histDecodeSameError(t *testing.T, bs *Store, id snowflake.ID, want string) {
+	t.Helper()
+	_, gotErr := bs.GetRelHistory(types.RelID(id))
+	_, legacyErr := legacyRelHistoryByPrefix(bs, storepkg.HistRelPrefix(id))
+	if gotErr == nil || legacyErr == nil || gotErr.Error() != legacyErr.Error() || !strings.Contains(gotErr.Error(), want) {
+		t.Fatalf("rel: error %v, legacy %v, want one containing %q", gotErr, legacyErr, want)
+	}
+	_, gotErr = bs.GetNodeHistory(types.NodeID(id))
+	_, legacyErr = legacyNodeHistoryByPrefix(bs, storepkg.HistNodePrefix(id))
+	if gotErr == nil || legacyErr == nil || gotErr.Error() != legacyErr.Error() || !strings.Contains(gotErr.Error(), want) {
+		t.Fatalf("node: error %v, legacy %v, want one containing %q", gotErr, legacyErr, want)
+	}
+}
+
+// TestHistDecodeOverlayInterleave pins the merge of buffered rows into the
+// committed walk (Fable review of histdecode, 3 Nov): (a) buffered versions
+// without a committed twin between committed keys come out in version order;
+// (b) a buffered delete of an anchor whose deltas stay committed sends those
+// deltas to the point read, which sees the delete and fails as before; (c) with
+// a damaged row on each side of the overlay boundary, the first in version
+// order is the one reported, either way round.
+func TestHistDecodeOverlayInterleave(t *testing.T) {
+	put := func(t *testing.T, bs *Store, id snowflake.ID, vs ...uint32) {
+		t.Helper()
+		for _, v := range vs {
+			if err := bs.PutRelVersion(types.RelID(id), v, histDecodeRel(id, v, 0)); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.PutNodeVersion(types.NodeID(id), v, histDecodeNode(id, v, 0)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	flush := func(t *testing.T, bs *Store) {
+		t.Helper()
+		if err := bs.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keys := func(id snowflake.ID, v uint64) [][]byte {
+		return [][]byte{storepkg.HistRelKey(id, v), storepkg.HistNodeKey(id, v)}
+	}
+	t.Run("a_buffered_between_committed", func(t *testing.T) {
+		id := snowflake.ID(45)
+		bs := histDecodeStore(t, Config{InMemory: true, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
+		var even, odd, all []uint32
+		for v := uint32(0); v <= 20; v++ {
+			all = append(all, v)
+			if v%2 == 0 {
+				even = append(even, v)
+			} else {
+				odd = append(odd, v)
+			}
+		}
+		put(t, bs, id, even...)
+		flush(t, bs)
+		put(t, bs, id, odd...) // buffered, no committed twin
+		for _, k := range keys(id, 7) {
+			if op, ok := bs.lookupPending(string(k)); !ok || op.opType != writeOpSet {
+				t.Fatalf("v7 is not buffered: the case tests no interleave")
+			}
+		}
+		histDecodeCheck(t, bs, id, all)
+	})
+	t.Run("b_buffered_delete_of_committed_anchor", func(t *testing.T) {
+		id := snowflake.ID(46)
+		bs := histDecodeStore(t, Config{InMemory: true, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
+		put(t, bs, id, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+		flush(t, bs)
+		if raw, err := bs.readHistoryRelRaw(id, 5); err != nil || storepkg.HistoryValueKindOf(raw) != storepkg.HistoryDelta {
+			t.Fatalf("v5 is not a committed delta (err %v)", err)
+		}
+		for _, k := range keys(id, 4) {
+			bs.appendOps(writeOp{opType: writeOpDelete, key: k})
+		}
+		histDecodeSameError(t, bs, id, "history anchor v4")
+	})
+	t.Run("c_damage_across_the_overlay_boundary", func(t *testing.T) {
+		damage := func(t *testing.T, bs *Store, id snowflake.ID, v uint64, committed bool, val []byte) {
+			t.Helper()
+			for _, k := range keys(id, v) {
+				if committed {
+					if err := bs.db.Update(func(txn *badgerv4.Txn) error { return txn.Set(k, val) }); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					bs.appendOps(writeOp{opType: writeOpSet, key: k, value: val})
+				}
+			}
+		}
+		committedBad, bufferedBad := []byte{0xc1}, []byte{0x92, 0x01} // two different decode errors
+		for _, tc := range []struct {
+			name             string
+			committedV, bufV uint64
+			want             string
+		}{
+			{"committed_first", 3, 5, "0xc1"},
+			{"buffered_first", 5, 3, "truncated msgpack"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				id := snowflake.ID(47)
+				bs := histDecodeStore(t, Config{InMemory: true})
+				put(t, bs, id, 0, 1, 2, 3, 4, 5, 6, 7)
+				flush(t, bs)
+				damage(t, bs, id, tc.committedV, true, committedBad)
+				damage(t, bs, id, tc.bufV, false, bufferedBad)
+				histDecodeSameError(t, bs, id, tc.want)
+			})
+		}
+	})
+}

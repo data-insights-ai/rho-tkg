@@ -34,3 +34,13 @@ M19 H  deferred delta decoded with the scan's local anchor       SURVIVED target
                                                                  the local anchor after the scan is never A(v) and the point read runs either way.
 
 Result: 18 of 19 killed, 1 equivalent (kept as nil: the point read is the documented path).
+
+Fable review follow-up (TestHistDecodeOverlayInterleave, after merging main 620566c1):
+M20 H  buffered rows emitted only after the committed walk      KILLED  case (a) alone: rows differ from legacy (odd buffered versions
+       (overlayBefore at a committed key skipped)                        come after the even committed ones); case (c) alone: v5's error
+                                                                         reported, legacy v3's; also TestHistDecodeRowsEqualLegacy
+M21 H  a masked (buffered-delete) committed anchor still serves  KILLED  case (b) alone: deltas v5-v7 decode without an error, legacy
+       its committed deltas as local anchor                              fails "read rel history anchor v4: version not found"
+M22 H  every buffered row drained at the first committed key     KILLED  case (a) alone: rows differ; case (c) alone: v5's error before
+                                                                         v3's; also TestHistDecodeRowsEqualLegacy
+Total: 21 of 22 killed, 1 equivalent (M19).

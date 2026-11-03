@@ -443,6 +443,11 @@ func decodeHistoryChain[T any](bs *Store, prefix []byte, decode func(version uin
 		return nil
 	}
 
+	// The decode runs inside bs.view, so a panic out of it that SafeUnmarshal
+	// does not catch (one not from msgpack) becomes ErrCorruptWire through
+	// recoverBadgerPanic and fails the read. Intended: GetNodeVersion decodes a
+	// full row inside its View the same way (badgerstore_history_node.go), as
+	// does the temporal-meta walk (historyTemporalMetaByPrefix).
 	var version uint64 // the scanned row's, for value (one closure, not one a row)
 	value := func(val []byte) error { return row(version, val, false) }
 	scanErr := bs.view(func(txn *badgerv4.Txn) error {
