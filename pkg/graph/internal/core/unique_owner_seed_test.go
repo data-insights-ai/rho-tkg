@@ -92,7 +92,7 @@ func TestOwnerIndexSeedFailureAtOpenLogged(t *testing.T) {
 		t.Fatal(err)
 	}
 	tok := a.LabelTokenRawAt(0)
-	twin := types.NewNode(types.NodeID(a.ID()+1), tok, nil)
+	twin := types.NewNode(a.ID()+1, tok, nil)
 	if err := twin.SetProperty("key", "dup"); err != nil {
 		t.Fatal(err)
 	}

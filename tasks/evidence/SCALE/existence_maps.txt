@@ -197,3 +197,23 @@ cache, load 37-49: five round-2 builders ran beside it, so insert times are nois
   v4.100.1  insert 15.3 / 13.2 / 17.3 / 18.1 / 24.9 s   clean reopen 0.17 / 0.16 / 0.16 / 0.25 / 0.21 s
             heap after reopen +173.1 / +175.1 / +177.6 / +175.4 / +177.3 MB
 Reading: no change in reopen heap; the probe writes the reference shard only and never touches a cold shard.
+
+v4.102.0 scale probe, 2026-11-03 21:55 (release-v4.102.0 vs v4.101.0, alternated, 3 rounds; load 28-50):
+== new 1
+Derived n=1000000 insert 5.6s (178273/s) heap +149.0 MB = 149.0 B/entity
+clean reopen 0.07s, heap +170.4 MB = 170.4 B/entity
+== base 1
+Derived n=1000000 insert 5.5s (182506/s) heap +148.7 MB = 148.7 B/entity
+clean reopen 0.07s, heap +170.9 MB = 170.9 B/entity
+== new 2
+Derived n=1000000 insert 5.1s (197455/s) heap +148.8 MB = 148.8 B/entity
+clean reopen 0.09s, heap +171.1 MB = 171.1 B/entity
+== base 2
+Derived n=1000000 insert 5.7s (176786/s) heap +148.9 MB = 148.9 B/entity
+clean reopen 0.07s, heap +170.9 MB = 170.9 B/entity
+== new 3
+Derived n=1000000 insert 5.6s (178149/s) heap +149.4 MB = 149.4 B/entity
+clean reopen 0.07s, heap +169.8 MB = 169.8 B/entity
+== base 3
+Derived n=1000000 insert 5.7s (175376/s) heap +149.3 MB = 149.3 B/entity
+clean reopen 0.08s, heap +170.5 MB = 170.5 B/entity

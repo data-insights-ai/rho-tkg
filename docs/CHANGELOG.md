@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.102.0] - 2026-11-03
+
 ### Changed
 
 - **BATCHFAIL** (BATCHIDX review; a fix, no new exported name). A node create whose vector-index apply fails leaves
