@@ -140,7 +140,6 @@ Status: fetch fixed on main, 306-445 s down to about 8 s on the 12 GB masked sto
 Fixed: the on-disk member page seeks from the cursor and stops at its limit (walk steps bounded by a count test, rel and node doors); a fetch nothing passes doubles up to `pageChunkMax`.
 
 Left, not page-bound yet: members on shards tiered cold carry no envelope (cold shards keep no temporal index), so each is one row read, at about 8 s per page on this store whatever the instant. A larger read batch measured no gain: each tiered row read opens its own view. Direction: FIXED-MEMORY's rel record gives cold shards an envelope on NVMe; decide there, or sooner if 8 s isn't enough.
-- **DURABLEVIS** (found 31 Oct) — under DurableCommit, with or without SyncWrites, a group is visible to readers before its fsync (`durable_commit.go`, persistence.md), against René's word of 26 Oct that readers never see a fact before its fsync. ai-soc runs this config; a crash can lose a group a reader saw. Changing it holds readers behind the fsync, which costs throughput. René 3 Nov: measure first. Measured 3 Nov (tasks/evidence/DURABLEVIS/results.txt): holding the graph lock through the fsync costs writers 0-20 % but cuts reads 90-2,000x (p99 µs to 6-18 ms, one fsync). Fable analysis 3 Nov (checked here against source): a process crash loses only groups whose commit had not returned (never an acknowledged one), in every variant; a power loss also loses acknowledged rows without SyncWrites (memtable/vlog switch), which no gate fixes. A gate adds one guarantee only: a direct reader cannot act externally on a group lost in the ~12 ms unlock-to-flush window; a lost group's LSNs are re-minted for other content after restart, its re-ingested facts get new IDs. Recommendation: no gate; document the window and the LSN re-mint in persistence.md; if a consumer must act only on durable facts, an opt-in door (DurableLSN / WaitDurable). René 3 Nov: "detect a crash and a restart and reread?" Fable follow-up (checked): the lost group was never on disk, so nothing can be reread; rho can detect the unclean open (open-image header version < db.MaxVersion, badgerstore_open_image.go:38-47, used today only for the delta open) and know the last durable LSN (LastLSNKey). Proposal: (1) report it at open (unclean, last durable LSN, commit floor); (2) an LSN lease persisted ahead of minting so a restart never re-mints a returned LSN (not for a Config.ChangeLogSeqSource store); (3) the consumer replays its submits after that LSN. Power loss without SyncWrites: rho cannot name the lost rows; SyncWrites stays the fix. Next: René decides. No change on the pinned pair.
 
 ### FIXED-MEMORY model plan (René 31 Oct; step 0 measured 3 Nov; badger stays, it is not replaced)
 
@@ -379,6 +378,15 @@ Steps 1-9 shipped (v4.76.1, v4.78.0-v4.78.3; each under its tag in `docs/CHANGEL
   shared store suite.
 
 ## Parked
+
+### DURABLEVIS (parked 3 Nov, René)
+
+Under DurableCommit a reader can see a group before its fsync; a process crash in that ~12 ms window loses the group
+(its commit had not returned), and its LSNs are re-minted after restart. Holding readers behind the fsync was measured
+(3 Nov): writers 0-20 % slower, reads 90-2,000x fewer: not wanted. Alternative, no cost without a crash: report an
+unclean open with the last durable LSN, an LSN lease so no LSN is re-minted, and the consumer replays its
+unacknowledged submits idempotently. Analysis: `tasks/evidence/DURABLEVIS/analysis.txt`; measurement: `results.txt`
+beside it. Waits for: René reopening it; then ask ai-soc and sigma whether they can replay idempotently.
 
 - **CACHE** — Every open badger shard keeps its own memtable arena, block cache and 4 compactors: 88 MB of heap and
   18 goroutines per writable shard (rho probe, 26 Oct; read-only 3.3 MB). ai-soc's k10260011 heap (26 Oct): 30.0 GB
