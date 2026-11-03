@@ -1,0 +1,26 @@
+P1 core fast path off: killed ids_by_property_values_test.go:162: one element: 3 rows read for 3 IDs, want 0
+P2 core time gate dropped: killed ids_by_property_values_test.go:159: TxPin: IDs [867355186350229504 867355186358355968 867355198714415104], rows [867355186350229504 867355186358355968 867355186367268864 867355186372282368], want [867355186350229504 867355186358355968 867355186367268864 867355186372282368]
+P3 core answered ignored: killed ids_by_property_values_test.go:159: another label's key: IDs [], rows [867355473332111360 867355473340303360], want [867355473332111360 867355473340303360]
+P5 core fallback ids wrong: killed ids_by_property_values_test.go:228: IDs [867355776626395137], <nil>; want [867355776626395136] from the rows
+P6 core trust gate dropped: killed ids_by_property_values_test.go:228: IDs [999], <nil>; want [867356057969920000] from the rows
+B1 badger time gate dropped: killed badgerstore_node_query_ids_test.go:65: a time coordinate answered [1 2] from the index, want a refusal
+B2 badger building index answered: killed badgerstore_node_query_ids_test.go:73: a building index answered [1 2], want a refusal
+B3 badger shares check dropped: killed ids_by_property_values_test.go:159: scalar beside Elements: IDs [867357121741359104 867357121746503680], rows [867357121741359104], want [867357121741359104]
+B4 shares ignores Elements flag: killed ids_by_property_values_test.go:162: two scalar definitions: 2 rows read for 1 IDs, want 0
+B6 label RAM filter dropped: killed ids_by_property_values_test.go:159: one element: IDs [867357830948194304 867357830955632640 867357831309068288 867357831313524736 867357833600337920], rows [867357830948194304 867357830955632640 867357833600337920], want [867357830948194304 867357830955632640 867357833600337920]
+B8 label disk pending ignored: killed ids_by_property_values_test.go:159: one element: IDs [867358169949603840 867358169957664768 867358170324109312], rows [867358169949603840 867358169957664768 867358172720859136], want [867358169949603840 867358169957664768 867358172720859136]
+B8b label disk pending delete kept: killed ids_by_property_values_test.go:159: one element: IDs [867358508965627904 867358508972574720 867358509484148736 867358512150939648], rows [867358508965627904 867358508972574720 867358512150939648], want [867358508965627904 867358508972574720 867358512150939648]
+B9 no sort on disk: killed ids_by_property_values_test.go:159: paged: IDs [867358867764447232 867358867764447232], rows [867358867764447232 867358867768838144], want [867358867764447232 867358867768838144]
+B9b no compact on disk: killed ids_by_property_values_test.go:159: paged: IDs [867359208620132352 867359208620132352], rows [867359208620132352 867359208624556032], want [867359208620132352 867359208624556032]
+B10 no paging: killed ids_by_property_values_test.go:159: paged: IDs [867359554231896064 867359554240219136 867359554245396480 867359554260633600 867359557378934784], rows [867359554240219136 867359554245396480], want [867359554240219136 867359554245396480]
+B11 RAM index refused: killed ids_by_property_values_test.go:162: one element: 2 rows read for 3 IDs, want 0
+B13 no index answered: killed badgerstore_node_query_ids_test.go:73: a building index answered [], want a refusal
+T2 tiered never uses shard index: killed ids_by_property_values_test.go:162: one element: 3 rows read for 3 IDs, want 0
+T3 tiered shard not-ok trusted: killed ids_by_property_values_test.go:159: another label's key: IDs [], rows [867360857853233152 867360857858213888], want [867360857853233152 867360857858213888]
+T4 tiered no paging: killed ids_by_property_values_test.go:159: paged: IDs [867361147265386496 867361147271120896 867361147287635968 867361158929057792], rows [867361147265386496 867361147271120896], want [867361147265386496 867361147271120896]
+T5 tiered fallback ids wrong: killed ids_by_property_values_test.go:159: another label's key: IDs [867361448060160001 867361448066058241], rows [867361448060160000 867361448066058240], want [867361448060160000 867361448066058240]
+B7 label disk filter dropped: killed ids_by_property_values_test.go:159: one element: IDs [867361773780502528 867361773787351040 867361774143506432 867361776316352512], rows [867361773780502528 867361773787351040 867361776316352512], want [867361773780502528 867361773787351040 867361776316352512]
+T6 tiered door check ignored: killed tieredstore_prop_index_fanout_test.go:810: plain lookup of 9 over a stale Elements shard index = [sl], want none
+
+Round 1 survivors removed as redundant code: the live-node filter (a deleted node carries no label), the tiered time check (its shards refuse), the unknown-label and empty-keys answers (the fallback answers the same).
+24/24 killed. Tests: TestIDsByLabelAndPropertyValuesReadsNoRow, TestIDsByLabelAndPropertyValuesTrustsOnlyRhoStores (pkg/graph), TestNodeIDsByLabelAndPropertyKeysRefusesAndFilters (badger), TestTieredStoreNodeIDsByPropertyKeys_StaleShardIndex (tiered).

@@ -77,6 +77,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 			_, err := api.ByLabelAndPropertyValues("Node", "name", []any{"Ada"}, opts)
 			return err
 		}},
+		{name: "IDsByLabelAndPropertyValues", run: func() error {
+			_, err := api.IDsByLabelAndPropertyValues("Node", "name", []any{"Ada"}, opts)
+			return err
+		}},
 		{name: "ByLabelAndProperties", run: func() error {
 			_, err := api.ByLabelAndProperties("Node", map[string]any{"name": "Ada"}, opts)
 			return err
@@ -132,7 +136,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "LendByIDs", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace", "ReplaceVersion",
-		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "EndValidity", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "GetOrCreateByKeyOpts", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndPropertyValues", "ByLabelAndProperties",
+		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "EndValidity", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "GetOrCreateByKeyOpts", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndPropertyValues", "IDsByLabelAndPropertyValues", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"AddLabel", "RemoveLabel", "CloseVersion", "History", "HasHistory", "VersionAfter", "VersionBefore",
@@ -449,6 +453,11 @@ func (s *nodeOpsSpy) ForEachByLabelPropertyPrefix(label, propKey, prefix string,
 
 func (s *nodeOpsSpy) ByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	s.record("ByLabelAndPropertyValues")
+	return nil, s.err
+}
+
+func (s *nodeOpsSpy) IDsByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	s.record("IDsByLabelAndPropertyValues")
 	return nil, s.err
 }
 

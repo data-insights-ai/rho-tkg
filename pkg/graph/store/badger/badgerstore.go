@@ -809,6 +809,9 @@ type Store struct {
 	// relTemporalBuilds counts rel temporal index builds, a timing-independent hook for
 	// the tiered cold-shard tests (RelTemporalIndexBuildsForTest).
 	relTemporalBuilds atomic.Int64
+	// nodeRowDecodes counts node rows read and decoded from badger by the
+	// point and scan reads (NodeRowDecodesForTest, ELEMPROBE).
+	nodeRowDecodes atomic.Int64
 
 	// Index-rebuild diagnostics: node entries loadIndexes tolerated as missing/corrupt,
 	// surfaced via IndexRebuildStats.

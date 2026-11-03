@@ -340,3 +340,7 @@ func SetMaxReadableStoreFormatVersionForTest(v uint16) (restore func()) {
 	maxReadableStoreFormatVersion = v
 	return func() { maxReadableStoreFormatVersion = prev }
 }
+
+// NodeRowDecodesForTest returns how many node rows the point and scan reads
+// read from badger (ELEMPROBE).
+func (bs *Store) NodeRowDecodesForTest() int64 { return bs.nodeRowDecodes.Load() }

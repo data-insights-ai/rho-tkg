@@ -911,6 +911,16 @@ type PropertyKeysLookupCapability interface {
 	NodesByLabelAndPropertyKeys(labelToken uint16, key string, valueKeys []string, opts QueryOpts) ([]*types.Node, error)
 }
 
+// NodePropertyKeysIDsCapability answers PropertyKeysLookupCapability's lookup
+// with the matching node IDs alone, from the index without loading rows
+// (ELEMPROBE): sorted, distinct, paged by opts.After / opts.Limit. ok=false
+// means the store cannot answer this lookup exactly without the rows (a
+// time coordinate, an index still building, a definition whose keys are
+// not exact); the caller then loads them through NodesByLabelAndPropertyKeys.
+type NodePropertyKeysIDsCapability interface {
+	NodeIDsByLabelAndPropertyKeys(labelToken uint16, key string, valueKeys []string, opts QueryOpts) (ids []types.NodeID, ok bool, err error)
+}
+
 // RelPropertyKeysLookupCapability is the relationship mirror of
 // PropertyKeysLookupCapability, beside RelPropertyIndexCapability.
 type RelPropertyKeysLookupCapability interface {

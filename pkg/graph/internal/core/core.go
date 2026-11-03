@@ -80,6 +80,9 @@ type Core struct {
 	// nil = one store lookup per form.
 	propertyKeysQuery    storepkg.PropertyKeysLookupCapability
 	relPropertyKeysQuery storepkg.RelPropertyKeysLookupCapability
+	// propertyIDsQuery: the equality lookup's IDs without a row read
+	// (ELEMPROBE); nil = the rows are loaded and their IDs returned.
+	propertyIDsQuery storepkg.NodePropertyKeysIDsCapability
 	// validEndQuery: the pruning lookup behind QueryOpts.ValidEndAfter
 	// (VALIDENDPRUNE); nil = every match's timeline is read.
 	validEndQuery       storepkg.PropertyIndexValidEndCapability
@@ -2287,6 +2290,7 @@ func New(config Config) (*Core, error) {
 	c.relPropertyQuery = relPropertyQueryCapability(store)
 	c.relPropertyQueryTrust = isExactNativeStore(store)
 	c.propertyKeysQuery = nativeCapability[storepkg.PropertyKeysLookupCapability](store, "NodesByLabelAndPropertyKeys")
+	c.propertyIDsQuery = nativeCapability[storepkg.NodePropertyKeysIDsCapability](store, "NodeIDsByLabelAndPropertyKeys")
 	c.relPropertyKeysQuery = nativeCapability[storepkg.RelPropertyKeysLookupCapability](store, "RelationshipsByTypeAndPropertyKeys")
 	c.validEndQuery = nativeCapability[storepkg.PropertyIndexValidEndCapability](store, "NodesByLabelAndPropertyKeysValidEnd", "RefineNodePropertyValidEnd")
 	c.compositeQuery = compositeQueryCapability(store)

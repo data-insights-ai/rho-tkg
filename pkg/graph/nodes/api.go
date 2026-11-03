@@ -73,6 +73,7 @@ type Ops interface {
 	NodeLabelMutationEpoch(label string) uint64
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	ByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error)
+	IDsByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]types.NodeID, error)
 	ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	Count() (int, error)
 	CountByLabel(label string) (int, error)
@@ -1011,6 +1012,20 @@ func (a *API) ByLabelAndPropertyValues(label, key string, values []any, opts sto
 		return nil, err
 	}
 	return ops.ByLabelAndPropertyValues(label, key, values, opts)
+}
+
+// IDsByLabelAndPropertyValues returns the IDs of the nodes
+// ByLabelAndPropertyValues returns, in ID order and paged the same, without
+// loading their rows where the store answers from its index: badger and
+// tiered with no time coordinate in opts and a published index whose keys
+// are exact for the definition (ELEMPROBE). Otherwise it reads the rows as
+// ByLabelAndPropertyValues does. Errors as ByLabelAndPropertyValues.
+func (a *API) IDsByLabelAndPropertyValues(label, key string, values []any, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.IDsByLabelAndPropertyValues(label, key, values, opts)
 }
 
 // ByLabelAndProperties returns nodes carrying the label whose properties

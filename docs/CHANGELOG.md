@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **ELEMPROBE** (ai-soc for sigma's page-block probe; a minor). `g.Nodes().IDsByLabelAndPropertyValues(label, key,
+  values, opts)` returns the IDs of `ByLabelAndPropertyValues` without loading rows where the index answers (badger and
+  tiered, no time coordinate, a published index whose keys are exact; capability
+  `store.NodePropertyKeysIDsCapability`); otherwise it reads the rows. In ai-soc's 60-minute BA run on tiered, the
+  probe loaded each 64 KiB block about 14 times (757,551 rows for at most 53,676 blocks): 81 s of the probe's 107 s
+  CPU went to the badger read and decode of rows the caller already held (`TestIDsByLabelAndPropertyValuesReadsNoRow`
+  and three more, `tasks/evidence/ELEMPROBE/`).
 - **BORROWREAD** (ai-soc for sigma's page blocks; a minor). `types.Node.BorrowProperty(key)` returns a property's
   stored value without the deep copy `GetProperty` makes; the caller must not modify it. sigma reads each 64 KiB block
   blob through `GetProperty`, 20.9 GiB of deep copies in ai-soc's 60-minute BA run (147.7 GiB allocated). With `Lend`,

@@ -284,6 +284,24 @@ All shards draw change-log LSNs from one allocator, giving one total commit orde
 definitions. Property, composite, relationship-property, temporal-interval, high-frequency, unique and vector (HNSW
 or brute force) indexes exist; `docs/query-planners.md` describes how reads choose them.
 
+**ID-only equality lookup** (ELEMPROBE). `Nodes().IDsByLabelAndPropertyValues` returns the IDs that
+`ByLabelAndPropertyValues` would return, without loading rows when the store can answer from its index alone
+(`store.NodePropertyKeysIDsCapability`, badger and tiered). The caller keeps its own decoded rows. In ai-soc's
+60-minute BA run, sigma's page-block probe loaded and decoded each 64 KiB block about 14 times: 81 s of the
+probe's 107 s CPU. A badger shard answers from its index when:
+- the lookup names no time coordinate (valid time, `TxAt`, `TxPin`);
+- the index is published (not building);
+- for an on-disk scalar definition, no on-disk Elements definition shares the property key (its element keys would
+  match a list value the scalar definition does not match).
+
+It keeps an index key's node when the node carries the label (a deleted node carries none): from `labelIdx`, or
+with the label index on disk, from one iterator seeking each candidate's label key, plus the pending writes. An on-disk key is
+the value's canonical key, so it matches under the lookup's equality. Under Elements a scalar matches as a
+one-element list, so another label's scalar key on the same value matches too. Otherwise the shard says it cannot,
+and the core loads rows as `ByLabelAndPropertyValues` does and returns their IDs. Tiered merges the shards' sorted
+IDs, under the same move lock as the row lookup. A shard that cannot answer from its index returns the IDs of its
+loaded rows.
+
 **Change-log** (opt-in, `ChangeLog`): each backend writes one record per public mutation under a monotonic LSN in
 the same `WriteBatch` as the data, so log and data cannot diverge on a crash. `ChangeFeed` / `ExportSince` read it.
 
