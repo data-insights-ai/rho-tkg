@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	badgerv4 "github.com/dgraph-io/badger/v4"
+
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -204,4 +206,54 @@ func TestPropPostOverlappingStringsAnswerLikeScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("flushed")
+}
+
+// TestPropPostWalkToKeyspaceEnd: a walk that runs off the end of the
+// keyspace leaves the iterator invalid; a later walk inside the range it
+// covered counts nothing again. The store's keys after the property index
+// (0x0B..0x0F: temporal, entity, external adjacency, flush stage, meta) are
+// dropped through the test seam, so the index keys are the last ones.
+func TestPropPostWalkToKeyspaceEnd(t *testing.T) {
+	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(),
+		FlushInterval: time.Hour, MaxPendingWrites: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	if err := bs.CreatePropertyIndex(1, "k"); err != nil {
+		t.Fatal(err)
+	}
+	// The lowest ID is 1 and the highest 1<<40: "x\x00\x00\x00\x80"||5
+	// lies inside the walk of "x", and "x"||1<<40 is the last key.
+	rows := map[int64]string{1: "x", 5: "x\x00\x00\x00\x80", 1 << 40: "x"}
+	for _, id := range []int64{1, 5, 1 << 40} {
+		nd := types.NewNode(types.NodeID(id), 1, nil)
+		_ = nd.SetProperty("k", rows[id])
+		if err := bs.PutNode(nd); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	db := bs.DBForTest()
+	if err := db.DropPrefix([]byte{0x0B}, []byte{0x0C}, []byte{0x0D}, []byte{0x0E}, []byte{0x0F}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.AllVersions = true
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		if it.Seek([]byte{0x0B}); it.Valid() {
+			t.Fatalf("a key after the property index is left: %x", it.Item().Key())
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ := propPostCandidates(t, bs, []any{"x", "x\x00\x00\x00\x80"})
+	if want := []int64{1, 5, 1 << 40}; !slices.Equal(got, want) {
+		t.Fatalf("candidates %v, want %v", got, want)
+	}
 }

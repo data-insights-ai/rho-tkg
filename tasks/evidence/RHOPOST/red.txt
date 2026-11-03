@@ -20,3 +20,12 @@ Notes:
 - The overlap failure is older than RHOPOST: the walk of "x\x00" (from "x"||00||lowest ID) starts below the walk
   of "x" and both walks count the entries in their common range ("x"||1 and "x\x00"||0x105). The ID and row doors
   compact the candidates; NodesByLabelAndPropertyKeysValidEnd sorts them without compacting.
+
+Review finding (Fable, 3 Nov), red on 526d5216 (the fix) plus the new test:
+go test -count=1 -run TestPropPostWalkToKeyspaceEnd -v ./pkg/graph/store/badger/
+=== RUN   TestPropPostWalkToKeyspaceEnd
+    proppost_test.go:257: candidates [1 5 5 1099511627776], want [1 5 1099511627776]
+--- FAIL: TestPropPostWalkToKeyspaceEnd (0.01s)
+FAIL
+A walk that runs off the end of the keyspace leaves the iterator invalid; the next walk sought from a from at or
+above the run's start, re-counted "x\x00\x00\x00\x80"||5, and set no revisit, so nothing compacted it.
