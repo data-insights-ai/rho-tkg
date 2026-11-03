@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.100.1] - 2026-11-03
+
 ### Fixed
 
 - **ELEMPROBE drop** (found by a read-only Fable review, 3 Nov; a patch). On an on-disk property index,

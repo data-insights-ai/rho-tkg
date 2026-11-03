@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-11-03: latest tag v4.100.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-11-03: latest tag v4.100.1; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,9 +7,10 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **State of 3 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.100.0 (`d119df00`): ELEMPROBE,
-  BORROWREAD, WHOLEROW, ASOFWALK step 1; nothing unreleased on main but docs and evidence. ai-soc's run pair is rho
-  v4.100.0 + sigma v0.11.159; ai-soc says when the PC is free before a race suite or scale probe.
+- **State of 3 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.100.1 (a patch on v4.100.0: the
+  ID door after a drop on a shared on-disk key, found by Fable's review of 3 Nov); v4.100.0 holds ELEMPROBE,
+  BORROWREAD, WHOLEROW, ASOFWALK step 1. ai-soc's current run stays on rho v4.100.0 + sigma v0.11.159 (neither drops a
+  shared on-disk definition); ai-soc says when the PC is free before a race suite or scale probe.
   - **Branch `coldedge`, not merged:** empty closed shards leave the fan-out; mint fan-out opens cold shards read-only
     (30 shards with rows, 2.9 s to about 0.5 s, one run). `TestFlatAdjacency_OnlyListedShardOpens` is red on purpose and
     must leave the branch before it ships.
@@ -130,6 +131,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   mutations caught. ci-docker green, consumers clean, scale probe unchanged; tag CI and main green; ai-soc (pins it
   for the Flux run) and sigma notified. Open: the range walks, the purge's adjacency walk, history truncation,
   the purge token walks, rel purge candidates (todo ITERTOMB). Tags held until ai-soc's run ships.
+- **v4.100.1** (ELEMPROBE drop, a patch on René's go, 3 Nov): after a drop of an on-disk definition whose property key another definition still indexes, `IDsByLabelAndPropertyValues` reads rows for that key (an inexact marker) instead of the dropped one's entries. Neither consumer drops such a definition (sigma: never; ai-soc: one RAM-open migration). ci-fast green, consumers build and vet clean.
 - **v4.100.0** (ELEMPROBE, BORROWREAD, WHOLEROW and ASOFWALK step 1, a minor in ai-soc's release round on René's word): `Nodes().IDsByLabelAndPropertyValues` answers from the index without loading rows; `Node.BorrowProperty` reads without the deep copy; `Nodes().ReplaceVersion` replaces the current row whole as a new version; a tiered as-of read of a node on its owner shard walks that shard. ci-docker green (1,676 s, coverage 87.8 %), sigma, ai-soc, ai-soc engine (go1.27.3) and bookkeeping build and vet clean, scale probe unchanged.
 - **v4.99.0** (ELEMDISK and WRITEGROW, a minor for sigma's PAGEBLOB blocks and write-back on René's word outside the release round, cut from v4.98.4 and merged back, as main also carries WHOLEROW and ASOFWALK for the next round): an Elements index keeps its entries on disk with its label's; `Temporal().NodeEffectiveTimelineFrom` reads only the tail it returns.
 - **v4.98.4** (RELPAGEVALID and PUSHSLOW, a patch for ai-soc's BA night run, cut from v4.98.3 and merged back, as main also carries ASOFWALK's exported names for the next minor): a member page seeks from the cursor and stops at its limit; a bounded read does not read a returned row without history again.
