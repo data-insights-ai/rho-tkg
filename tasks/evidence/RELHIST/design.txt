@@ -116,6 +116,16 @@ Sigma's frames (tiered, cut 10, 160 GB alloc_space): getRelHistory 32.0 GB = cop
   pre-tx rows put back. Same for deleted nodes and rels (deletedNode/RelHistorySnapshot) on every store with a pager: on tiered a tx
   delete no longer copies the chain at all. Re-import after a delete in the tx materializes rows below + the copied rows.
   ADR-0010: a foreign-incoming stub's ErrSlotNotLocal keeps its old outcome (delete: no history snapshot; update: the trim point).
+- Caveat (pre-existing, recorded as an item): history compaction or a retention purge that runs between a tx's ops (it is
+  not a tx door and does not take the tx's entity snapshot) can trim a row the snapshot copied; rollback then puts that row
+  back. The old whole-chain copy did the same (it restored every copied row), so rollback has never been compaction-aware;
+  the page form narrows it to the copied rows at or above the current version.
+- Review round (Fable found nothing blocking): the equality guard now also runs on sharded (pager, no rollback trim: the
+  rewrite branch), on void rows above the current version (an excise), on a chain holding a tombstone (delete and
+  re-import, then a correction), on delta-encoded badger (anchor interval 4: above-rows that are deltas on an anchor below
+  the trim point, and a trim point at an anchor version), and the legacy row-at-the-current-version case runs on badger
+  and tiered as well as memory (TestRELHISTTxRollbackRestoresShapes, TestGraphTx_*CurrentVersionHistoryExists); each with
+  a mutant it kills (p1-mutations.txt, round 2).
 - Why not the minor form as well: tiered Trim*HistoryFrom (routed like TruncateRelHistory to every source) would only make the
   ROLLBACK of a tiered tx O(page) instead of O(versions); the write path is already O(page). Two new exported methods for a rollback
   cost the cut never pays is a door with no consumer request; nativeHistoryRollbackTrim and its wrapper check stay unchanged.

@@ -859,9 +859,34 @@ func TestGraphTx_DeleteRollbackMaterializesHistoryWithoutNativeTrim(t *testing.T
 	}
 }
 
+// relhistLegacyStores are the stores the legacy duplicate-version shape (a
+// history row at the current version) runs on: memory and badger roll back
+// by trim, tiered by rewrite (RELHIST P1).
+func relhistLegacyStores() []struct {
+	name  string
+	graph func(t *testing.T) *Core
+} {
+	return []struct {
+		name  string
+		graph func(t *testing.T) *Core
+	}{
+		{"memory", newTxTestGraph},
+		{"badger", func(t *testing.T) *Core { g, _ := newBadgerCoreForIndexes(t); return g }},
+		{"tiered", func(t *testing.T) *Core { g, _ := newTestTieredGraph(t); return g }},
+	}
+}
+
 func TestGraphTx_DeleteRollbackMaterializesWhenCurrentVersionHistoryExists(t *testing.T) {
 	t.Parallel()
-	g := newTxTestGraph(t)
+	for _, st := range relhistLegacyStores() {
+		t.Run(st.name, func(t *testing.T) {
+			t.Parallel()
+			testDeleteRollbackCurrentVersionHistory(t, st.graph(t))
+		})
+	}
+}
+
+func testDeleteRollbackCurrentVersionHistory(t *testing.T, g *Core) {
 
 	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
@@ -933,7 +958,15 @@ func TestGraphTx_DeleteRollbackMaterializesWhenCurrentVersionHistoryExists(t *te
 
 func TestGraphTx_UpdateRollbackMaterializesWhenCurrentVersionHistoryExists(t *testing.T) {
 	t.Parallel()
-	g := newTxTestGraph(t)
+	for _, st := range relhistLegacyStores() {
+		t.Run(st.name, func(t *testing.T) {
+			t.Parallel()
+			testUpdateRollbackCurrentVersionHistory(t, st.graph(t))
+		})
+	}
+}
+
+func testUpdateRollbackCurrentVersionHistory(t *testing.T, g *Core) {
 
 	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"state": "before"})
 	if err != nil {

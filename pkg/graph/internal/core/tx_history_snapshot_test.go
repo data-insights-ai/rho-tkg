@@ -11,6 +11,8 @@ import (
 
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -37,18 +39,32 @@ type relhistFixture struct {
 // correction to each, which leaves two history rows above the current
 // version and no head entry.
 func relhistBuild(t *testing.T, g *Core, ts *tiered.Store, label string, versions int, above bool) *relhistFixture {
+	return relhistBuildPadded(t, g, ts, label, versions, above, "")
+}
+
+// relhistBuildPadded is relhistBuild with a constant pad property on every
+// entity: with history delta encoding a row then stores as a delta (smaller
+// than the full row).
+func relhistBuildPadded(t *testing.T, g *Core, ts *tiered.Store, label string, versions int, above bool, pad string) *relhistFixture {
 	t.Helper()
 	ctx := context.Background()
 	f := &relhistFixture{g: g, ts: ts, label: label}
-	a, err := g.Nodes.Add(ctx, []string{label}, map[string]any{"k": int64(0)})
+	props := func(k string, v int64) map[string]any {
+		m := map[string]any{k: v}
+		if pad != "" {
+			m["pad"] = pad
+		}
+		return m
+	}
+	a, err := g.Nodes.Add(ctx, []string{label}, props("k", 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add(ctx, []string{label}, map[string]any{"k": int64(-1)})
+	b, err := g.Nodes.Add(ctx, []string{label}, props("k", -1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add(ctx, "OBSERVES", a, b, map[string]any{"w": int64(0)})
+	r, err := g.Rels.Add(ctx, "OBSERVES", a, b, props("w", 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,6 +382,10 @@ func TestRELHISTTxRollbackRestoresTiered(t *testing.T) {
 			g.headCacheOff = true
 			return relhistBuild(t, g, nil, "Signal", 4, above)
 		}},
+		// Sharded pages history but has no rollback trim: the rewrite branch.
+		{"sharded", false, func(t *testing.T, above bool) *relhistFixture {
+			return relhistBuild(t, relhistShardedGraph(t), nil, "Signal", 4, above)
+		}},
 	}
 	for _, p := range placements {
 		for _, above := range []bool{false, true} {
@@ -436,6 +456,164 @@ func TestRELHISTTxSnapshotCopyBounded(t *testing.T) {
 				t.Logf("RELHIST copy %s N=%d: %d rows", s.name, n, copied)
 				if copied > s.max {
 					t.Fatalf("the tx snapshot copied %d history rows at %d versions, want at most %d (the rows at or above the current version)", copied, n, s.max)
+				}
+			})
+		}
+	}
+}
+
+func relhistShardedGraph(t *testing.T) *Core {
+	t.Helper()
+	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+	if err != nil {
+		t.Fatalf("sharded.New: %v", err)
+	}
+	g, err := New(Config{SnowflakeNodeID: 0, Store: st})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	return g
+}
+
+// relhistDeltaBadgerGraph is badger with history delta encoding at anchor
+// interval 4: a history row whose version is not a multiple of 4 is stored
+// as a delta against the row at the multiple below it.
+func relhistDeltaBadgerGraph(t *testing.T) *Core {
+	t.Helper()
+	bs, err := badger.New(badger.Config{InMemory: true, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
+	if err != nil {
+		t.Fatalf("badger.New: %v", err)
+	}
+	g, err := New(Config{Store: bs})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	return g
+}
+
+// excise voids a bounded interval before each entity's current row: void
+// rows above the current version.
+func (f *relhistFixture) excise(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	n, err := f.g.store.GetNode(f.a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vf := n.Temporal().ValidFrom
+	if err := f.g.Temporal.ExciseNodeValidity(ctx, f.a, vf-1000, vf-500); err != nil {
+		t.Fatal(err)
+	}
+	r, err := f.g.store.GetRelationship(f.rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vf = r.Temporal().ValidFrom
+	if err := f.g.Temporal.ExciseRelValidity(ctx, f.rel, vf-1000, vf-500); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// reimport deletes the rel and imports it again under its ID, then updates
+// it twice: a tombstone in the chain (no head entry ever qualifies).
+func (f *relhistFixture) reimport(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	if err := f.g.Rels.Delete(ctx, f.rel); err != nil {
+		t.Fatal(err)
+	}
+	a, err := f.g.store.GetNode(f.a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := f.g.store.GetNode(f.b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.g.Rels.Import(ctx, f.rel, "OBSERVES", a, b, map[string]any{"w": int64(100)}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 101; i < 103; i++ {
+		if _, err := f.g.Rels.Update(ctx, f.rel, map[string]any{"w": int64(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// relhistVoidAbove fails unless the rel holds a void history row above its
+// current version (the excise shape's premise).
+func (f *relhistFixture) relhistVoidAbove(t *testing.T) {
+	t.Helper()
+	cur, err := f.g.store.GetRelationship(f.rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hist, err := f.g.store.GetRelHistory(f.rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range hist {
+		if h.Version() > cur.Version() && h.Temporal() != nil && h.Temporal().Void {
+			return
+		}
+	}
+	t.Fatal("setup: no void history row above the current version")
+}
+
+// TestRELHISTTxRollbackRestoresShapes: the rollback equality of
+// TestRELHISTTxRollbackRestoresTiered (decoded history rows compared as wire
+// bytes) on chains the copied page must carry as they are: void rows above
+// the current version (an excise), a tombstone in the chain (a delete and
+// re-import before the tx, then a correction), and on delta-encoded badger
+// above-rows that are deltas anchored below the trim point (current version
+// 6: rows 7 and 8, 7 a delta on 4) or a trim point at an anchor version
+// (current version 8: the tx writes the anchor row 8 that rollback must
+// remove). Every entity carries a 512-byte pad so a history row stores as a
+// delta (badger keeps the full row when the delta is not smaller).
+func TestRELHISTTxRollbackRestoresShapes(t *testing.T) {
+	t.Parallel()
+	placements := []struct {
+		name  string
+		graph func(t *testing.T) (*Core, *tiered.Store)
+	}{
+		{"memory without head entries", func(t *testing.T) (*Core, *tiered.Store) {
+			g := newTxTestGraph(t)
+			g.headCacheOff = true
+			return g, nil
+		}},
+		{"badger deltas without head entries", func(t *testing.T) (*Core, *tiered.Store) {
+			g := relhistDeltaBadgerGraph(t)
+			g.headCacheOff = true
+			return g, nil
+		}},
+		{"badger deltas", func(t *testing.T) (*Core, *tiered.Store) { return relhistDeltaBadgerGraph(t), nil }},
+		{"tiered event", func(t *testing.T) (*Core, *tiered.Store) { return newTestTieredGraph(t) }},
+		{"sharded", func(t *testing.T) (*Core, *tiered.Store) { return relhistShardedGraph(t), nil }},
+	}
+	shapes := []struct {
+		name     string
+		versions int
+		prep     func(t *testing.T, f *relhistFixture)
+	}{
+		{"void rows above current", 4, func(t *testing.T, f *relhistFixture) { f.excise(t); f.relhistVoidAbove(t) }},
+		{"tombstone in the chain", 4, func(t *testing.T, f *relhistFixture) { f.reimport(t); f.correct(t) }},
+		{"deltas anchored below the trim point", 7, func(t *testing.T, f *relhistFixture) { f.correct(t) }},
+		{"trim point at an anchor version", 9, func(t *testing.T, f *relhistFixture) { f.correct(t) }},
+	}
+	for _, p := range placements {
+		for _, s := range shapes {
+			t.Run(p.name+"/"+s.name, func(t *testing.T) {
+				t.Parallel()
+				g, ts := p.graph(t)
+				f := relhistBuildPadded(t, g, ts, "Signal", s.versions, false, strings.Repeat("p", 512))
+				s.prep(t, f)
+				if err := f.g.Index.CreateProperty(f.label, "k"); err != nil {
+					t.Fatal(err)
+				}
+				for _, op := range relhistOps() {
+					relhistRollback(t, f, op)
 				}
 			})
 		}

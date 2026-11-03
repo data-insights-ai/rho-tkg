@@ -36,3 +36,26 @@ M24 updated rel snapshot: a stub's ErrSlotNotLocal fails the update      SURVIVE
     from snapshotCurrentRelLocked; a comment states why.
 
 Result: 23 of 23 remaining mutants caught (M24's code removed).
+
+Round 2 (after the Fable review, branch merged with main 620566c1): one mutant per new assertion, targeted -run only.
+S1  sharded: rel rewrite drops the copied rows                           KILLED  TestRELHISTTxRollbackRestoresTiered/sharded/above=true
+S2  sharded: node rewrite keeps the tx row at the trim point             KILLED  .../sharded/above=true, above=false
+V1  rel page snapshot drops void rows                                    KILLED  TestRELHISTTxRollbackRestoresShapes/*/void_rows_above_current
+V2  node page snapshot drops void rows                                   KILLED  same
+T1  rewrite keeps no tombstone below the trim point                      KILLED  .../tiered_event/tombstone_in_the_chain, .../sharded/tombstone_in_the_chain
+D1  badger: a rel delta's anchor is read only from the page              KILLED  .../badger_deltas*/deltas_anchored_below_the_trim_point
+D2  badger: a node delta's anchor is read only from the page             KILLED  same
+    (first run SURVIVED: the fixture's rows were too small, badger stored them full because the delta was not smaller;
+    the shapes now carry a 512-byte pad property and the rows are deltas, then KILLED)
+A2  trim restore trims from the trim point + 1, anchor-aligned point     KILLED  .../badger_deltas*/trim_point_at_an_anchor_version
+A1  badger: a row whose anchor is missing is stored as a delta on an empty anchor
+                                                                         SURVIVED, equivalent: the delta against an empty
+    anchor is never smaller than the full row, so badger keeps the full row (historyRelValueUnchecked); not a defect the
+    shape can show. A2 is the anchor-aligned shape's kill.
+L1  legacy row at the current version, badger: rel page from version+1   KILLED  TestGraphTx_*CurrentVersionHistoryExists/badger
+L2  legacy, badger: trim restore skips the puts                          KILLED  same
+L3  legacy, tiered: node page from version+1                             KILLED  TestGraphTx_*CurrentVersionHistoryExists/tiered
+L4  legacy, tiered: rel rewrite drops the copied rows                    KILLED  same
+Round 2: 12 of 12 non-equivalent mutants caught; A1 equivalent.
+Rerun after the second merge of main (9f596a6d, RELHIST P3's badger history decode): S1, V1, T1, D1, D2, A2, L1, L3
+KILLED again, same tests.
