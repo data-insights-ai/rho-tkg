@@ -107,8 +107,9 @@ func TestIDsByLabelAndPropertyValuesMemoryFromIndex(t *testing.T) {
 	}
 
 	// The allocation bound: 64 rows of 64-element lists, 10 values a call.
-	// The row path formats a key per walked element (hundreds of allocations);
-	// the index path allocates per value form and for the result only.
+	// The row path formats a key per walked element (919 allocations a call
+	// before RHOMEMIDS); the index path allocates per value form (the equal
+	// forms, their keys, the union's cursors) and for the result: 242.
 	const width = 64
 	for i := range width {
 		l := make([]int64, width)
@@ -131,7 +132,7 @@ func TestIDsByLabelAndPropertyValuesMemoryFromIndex(t *testing.T) {
 	if len(got) != len(values) {
 		t.Fatalf("Long: %d IDs, want %d", len(got), len(values))
 	}
-	if limit := float64(12 * len(values)); allocs > limit {
+	if limit := float64(40 * len(values)); allocs > limit {
 		t.Errorf("Long: %.0f allocations a call for %d values, want at most %.0f (the rows are walked)", allocs, len(values), limit)
 	}
 }

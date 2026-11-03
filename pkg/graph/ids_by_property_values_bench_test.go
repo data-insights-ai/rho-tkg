@@ -13,11 +13,14 @@ import (
 // shape on the memory store. DerivedPage rows carry a list "blocks" under an
 // Elements index (one posting per value) and a scalar "page" under a plain
 // index; a call asks the IDs of 1 or 100 block values, at 5k, 20k and 80k
-// rows, with the indexes declared before the rows or built over them.
+// rows of 4-element lists (and 5k rows of 64-element lists: the row path's
+// recheck walks the list), with the indexes declared before the rows or built
+// over them.
 func BenchmarkIDsByLabelAndPropertyValuesMemory(b *testing.B) {
 	ctx := context.Background()
 	for _, setup := range []string{"indexFirst", "indexAfterRows"} {
-		for _, rows := range []int{5_000, 20_000, 80_000} {
+		for _, shape := range []struct{ rows, width int }{{5_000, 4}, {20_000, 4}, {80_000, 4}, {5_000, 64}} {
+			rows, width := shape.rows, shape.width
 			g, err := graphpkg.New(graphpkg.Config{})
 			if err != nil {
 				b.Fatal(err)
@@ -34,9 +37,12 @@ func BenchmarkIDsByLabelAndPropertyValuesMemory(b *testing.B) {
 				declare()
 			}
 			for i := range rows {
-				base := int64(i) * 4
+				list := make([]int64, width)
+				for j := range list {
+					list[j] = int64(i*width + j)
+				}
 				if _, err := g.Nodes().Add(ctx, []string{"DerivedPage"}, map[string]any{
-					"blocks": []int64{base, base + 1, base + 2, base + 3},
+					"blocks": list,
 					"page":   int64(i),
 				}); err != nil {
 					b.Fatal(err)
@@ -46,13 +52,13 @@ func BenchmarkIDsByLabelAndPropertyValuesMemory(b *testing.B) {
 				declare()
 			}
 			for _, perCall := range []int{1, 100} {
-				b.Run(fmt.Sprintf("%s/rows=%d/values=%d", setup, rows, perCall), func(b *testing.B) {
+				b.Run(fmt.Sprintf("%s/rows=%d/list=%d/values=%d", setup, rows, width, perCall), func(b *testing.B) {
 					values := make([]any, perCall)
 					b.ReportAllocs()
 					b.ResetTimer()
 					for i := range b.N {
 						for j := range values {
-							values[j] = int64((i*perCall+j)*7919) % int64(rows*4)
+							values[j] = int64((i*perCall+j)*7919) % int64(rows*width)
 						}
 						ids, err := g.Nodes().IDsByLabelAndPropertyValues("DerivedPage", "blocks", values, storepkg.QueryOpts{})
 						if err != nil {
