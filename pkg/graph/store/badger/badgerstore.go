@@ -699,6 +699,11 @@ type Store struct {
 	relPropertyKeyCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*atomic.Int64
 	relPropertyStats     map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator
 
+	// vectorAddTestErr (tests only, nil in production) fails a created node's
+	// vector-index apply after its entries are in, as a failure on its last
+	// index would (BATCHFAIL).
+	vectorAddTestErr func(id snowflake.ID) error
+
 	// rescanTestHook runs in NodePropertyStats between the unlocked collection and the
 	// write-generation re-check, once per attempt. Test-only.
 	rescanTestHook func(attempt int)
@@ -890,6 +895,9 @@ type Store struct {
 	// through the real requeue path; testHookDurableAfterCheckOpen runs in DurableFlush
 	// after checkOpen so a test can interleave Close.
 	failNextFlush atomic.Pointer[error]
+	// owner is the owner index of unique keys (UNIQUELOOK,
+	// badgerstore_owner_index.go).
+	owner ownerIndexState
 	// stagedFlushFault (tests only) fails a staged flush right after the step
 	// it names (badgerstore_flush_staged.go).
 	stagedFlushFault func(stagedFlushStep) error
@@ -1305,6 +1313,11 @@ func New(cfg Config) (*Store, error) {
 		relTemporalLoad = bs.discardRelTypeTemporalIndexDefs
 	}
 	if err := relTemporalLoad(); err != nil {
+		_ = db.Close() // best-effort cleanup
+		return nil, err
+	}
+
+	if err := bs.loadUniqueOwnerMarks(); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
@@ -2607,6 +2620,8 @@ func (bs *Store) Clear() (err error) {
 	// pre-Clear history keys as phantom IDs.
 	bs.dropFlushingLocked()
 	bs.wbMu.Unlock()
+
+	bs.resetUniqueOwner() // its keyspace was dropped with the data (UNIQUELOOK)
 
 	// Clear all secondary index maps; leftovers would make CreateTemporalIndex /
 	// CreateHighFrequencyIndex / CreateVectorIndex report "already exists" on an empty

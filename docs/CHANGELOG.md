@@ -8,11 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **BATCHFAIL** (BATCHIDX review; a fix, no new exported name). A node create whose vector-index apply fails leaves
+  the store as before the call, on memory and badger, `PutNodesBatch` and `PutNode` alike: every node's vector entries
+  go in before any other mutation and are withdrawn on a failure. Before, a failure at node k of a batch left the
+  earlier nodes (memory: also node k) in the label, property and composite indexes, and on badger in `nodeIDs` and
+  the row cache with no row queued; memory kept their rows and change records, so the same nodes were then refused as
+  existing; the vector entries of the nodes up to k stayed, and on badger survived a reopen. A memory batch encodes
+  its change records before any mutation. Test `TestPutNodesFailedVectorLeavesNoTrace` (memory and badger, badger
+  also after a reopen; `tasks/evidence/BATCHFAIL/`).
 - **RHOMEMIDS** (sigma READBACK; a minor: memory `Store.NodeIDsByLabelAndPropertyKeys` is a new exported method).
   `IDsByLabelAndPropertyValues` on the memory store answers from the (label, key) index's postings instead of loading
   and rechecking each row; a time coordinate or an index still building reads the rows as before. The cost no longer
   grows with list length (64-element lists 5448 -> 1904 allocs a call at 100 values; times void under load, rerun
   pending, `tasks/evidence/RHOMEMIDS/`).
+- **TIERLEND** (PROJREAD part (a); a minor: tiered `Store.LendNodesSorted` and `Store.LendRelationshipsSorted` are new
+  exported methods). The tiered store implements `store.EntityLendBatchCapability`, so `LendByIDs` on tiered reads a
+  chunk under one move lock with one pin per shard (reference, archive, each event shard; the relationship probe once
+  more) and one badger batch lend each, instead of a move lock and up to three pins per ID; one pin is held at a
+  time, as before. Answers unchanged: the same rows as `LendNode` /
+  `LendRelationship` per ID, nil for deleted and unknown IDs (tests `TestTieredLendSorted*`,
+  `tasks/evidence/TIERLEND/`).
 - **BATCHADD** (ai-soc R3; a fix, no new exported name). `GraphTx.AddNodes` keeps its one batch store write when unique
   constraints exist: before, any registered constraint sent every call through `AddNode` one node at a time (ai-soc's
   profile: `core.addNodesOneByOne` +28.9 s CPU). Labels without a constrained key do no unique lookup at all; on a
@@ -30,6 +45,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   value instead of per node: one lookup and one numeric parse a value, IDs sorted once and appended in runs, and on
   disk one token and one value encoding per value. The index state equals the per-node path's (equality tests over
   RAM, 0x0A, 0x0C member and composite entries; `tasks/evidence/BATCHIDX/`; bench pending a quiet machine).
+- **UNIQUELOOK** (ai-soc, 3 Nov: 21.3 s CPU in unique-key lookups; a minor: the badger store implements
+  `UniqueOwnerIndexCapability`, a new store format). `GetOrCreateByKey` and the create-time unique check on a plain
+  badger store and on a tiered reference label read the owner index (one claim, one row read, at any depth) instead of
+  seeking the property index; event labels as before, UniqueForever unchanged. **Store format marker 16, one way:** the
+  first `CreateUnique` (UniqueCurrent) raises a badger store's marker, or a tiered store's reference-shard marker, to 16,
+  and a release before this one then refuses to open the store. Every store with a unique constraint reaches it: the
+  first open by this release of a store whose constraint predates it declares the index (one log line says the marker
+  was raised) and seeds it with a one-time scan of the label, in pages of 10,000 rows, logging progress at least every
+  60 s and a final count and elapsed time; a scan that finds two holders of one value logs it and leaves the lookups on
+  the property index. A read-only open does not seed. A `CreateUnique` that fails raises nothing. Tests
+  `TestUniqueLook*`, `TestOwnerIndex*` (`tasks/evidence/UNIQUELOOK/`; bench pending a quiet machine).
 - **HEADLEND** (sigma, paged read-back: 1.2 GB of a 5.5 GB paging delta on memory; a minor: the optional
   `store.VersionLendCapability` with memory `Store.LendNodeVersion` / `LendRelVersion` are new exported names). On the
   memory store the effective timeline doors (`NodeEffectiveTimeline`, `...From`, `NodeEffectiveTimelines`, the page

@@ -1,0 +1,36 @@
+# BATCHFAIL mutation sweep, 2026-11-03, on batchfail (the fix over red commit cd35eb41)
+# Each mutation applied alone, then one package:
+#   go test -short -count=1 -run 'TestPutNodesFailedVectorLeavesNoTrace|TestPutNodesBatchIndex' ./pkg/graph/store/<badger|memory>/
+# then the file restored. A build failure would count as no kill (none happened). No survivor, so no
+# whole-package run per mutant; memory and badger short ran once on the final tree (ok, 3.0 s / 118.9 s),
+# the new tests once under -race (ok).
+#
+# B1 badger batch: no withdraw on failure
+# B2 badger batch: withdraw ids[:i], not the failing node's own entries
+# B3 badger withdrawNodeVectorsLocked removes nothing (PutNode and batch)
+# B4 badger PutNode: no withdraw on failure
+# B5 badger batch: vector apply back inside the per-node loop, after nodeCache/nodeIDs/rev/watermark
+# M1 memory batch: no withdraw on failure
+# M2 memory batch: withdraw rawIDs[:i], not the failing node's own entries
+# M3 memory withdrawNodeVectorsLocked removes nothing (PutNode and batch)
+# M4 memory PutNode: no withdraw on failure
+# M5 memory PutNode: vector apply back after the row and index mutations (the order before the fix)
+# M6 memory batch: vector apply back inside the per-node loop, after the row and indexes
+# M7 memory batch: the pre-encoded change record not appended
+# M8 memory batch: every change record carries node 0's payload
+
+B1: KILLED (batch_first, batch_middle, batch_last)
+B2: KILLED (batch_first, batch_middle, batch_last)
+B3: KILLED (batch_first, batch_middle, batch_last, put_node)
+B4: KILLED (put_node)
+B5: KILLED (batch_first, batch_middle, batch_last)
+M1: KILLED (batch_first, batch_middle, batch_last)
+M2: KILLED (batch_first, batch_middle, batch_last)
+M3: KILLED (batch_first, batch_middle, batch_last, put_node)
+M4: KILLED (put_node)
+M5: KILLED (put_node)
+M6: KILLED (batch_first, batch_middle, batch_last)
+M7: KILLED (batch_first, batch_middle, batch_last)
+M8: KILLED (batch_first, batch_middle, batch_last)
+
+13 of 13 killed, each by TestPutNodesFailedVectorLeavesNoTrace (subtests named).

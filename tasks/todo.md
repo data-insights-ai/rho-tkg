@@ -13,11 +13,8 @@ Each item: one sentence, then when it is done and what it waits for.
 - **REOPEN** (René via ai-soc, 31 Oct: "it should mostly be read from rho for sigma chases and traces") — ai-soc runs the reopen proof on the pinned pair; no rho door or tag waited on. Measured (FIRSTTOUCH, `tasks/evidence/FIRSTTOUCH/`, one run each, synthetic): per node index 8-12 µs, HasHistory 4-7 µs, timeline 4-5 µs at 200 k and 2 M nodes; presence build 31 and 319 ms; open 193 ms and 3.7 s; page cache dropped, first batch 85 µs a node, then 16 µs, open 5.0 s. k10302100: committedRowStamps about 231 s CPU, presence build 3 s; cutting the re-read needs LISTREAD, since liveness from the ID index would hide a corrupt row (pinned by `has_history_live_test.go`). Done when ai-soc's reopen is in; a fix only if it shows slow first cuts. Waits for ai-soc's run. Open look: what sigma's type scans and property probes open across cold shards at default depth; open-time growth (19x for 10x nodes, one run).
 - **TIMEWINDOW** (minor, deferred) — reads bounded by a mint-time range. Serves one-shot evaluation only (ForEachRelEffectiveAtNodes, no time bound, no Depth); a session's maintainer does not reach it. If built: half-open mint range, window intersected with Depth, hot shard always included, caller translates valid to mint. Done when ai-soc and sigma say whether one-shots matter. Waits for the first run after COLDEDGE is in a tag; metric lead `aisoc_sigma_edge_shard_checkouts_total`. Sigma's other candidate: a ValidEndAfter-style bound on ByTypeAndProperty.
 - **ASOFWALK later steps** (STATEREC round) — step 1 delegates to the owner shard; next a TxPin batch by IDs, then a cross-shard merge; TxAt stays the skeleton walk with an O(1) belief watermark for a pin at or after current. Done when sigma's 50+ cuts of worst churn bench flat. Waits for the round; parked on the crash path with WHOLEROW and DEPTHLOOK.
-- **TIERLEND** (from the PROJREAD design, 3 Nov; a minor if it adds a name) — tiered has no LendNodesSorted, so
-  LendByIDs lends one ID at a time (move lock, routing, shard checkout each, core/lend_batch.go:50-66); build it with one
-  move lock and one checkout per shard. PROJREAD's door dropped on sigma's answer (3 Nov: find is serial, one value a
-  call, about 26 a cut, needs whole rows; sigma may batch find into IDs + LendByIDs, which gains from TIERLEND;
-  `tasks/evidence/PROJREAD/design.txt`). Done when TIERLEND ships.
+- **TIERLEND** merged 3 Nov (unreleased; a minor: tiered `Store.LendNodesSorted`/`LendRelationshipsSorted`). PROJREAD's
+  door dropped on sigma's answer (`tasks/evidence/PROJREAD/design.txt`). Done when released.
 - **VDICTDISK step 3** (ai-soc 29 Oct, goal 2 RAM) — steps 1-2 shipped (v4.97.3, v4.98.0); a budget/LRU in place of resident value tokens, decided from the next run's re-measure (at Cap 1,048,576 a 'row' dictionary is about 136 MB per open day shard). Done when an entry's resident cost is measured and bounded. Waits for ai-soc's next run.
 - **TIERCLOCK measurement** (ai-soc 29 Oct, goal 2) — released in v4.98.0; ai-soc's pin: Clock = newest committed valid time, ColdAfter 3 d, RelsByMint on. Done when ai-soc's BA replay rotates as live data would. Waits for that run.
 - **PURGECURSOR, PURGERESIDUE** (28 Oct; patches) — a label purge resumes from a cursor instead of copying the label's whole ID list per 256-node call (quadratic at 10 M); a purge or history truncate leaves about 30-50 B per ID in the `unknown` map of a shard that stays open. No consumer purges today. Done when each is fixed or dropped. Waits for René's word (STORECFG).
@@ -108,6 +105,18 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
+- **Round 2 read items from ai-soc's read-back inventory** (3 Nov, 60-min BA on tiered; ai-soc's estimates, measure
+  each first):
+  - **UNIQUEMISS** — GetOrCreateByKey does a second, identical unique lookup per miss (core/unique_constraints.go:623);
+    claimForever re-marshals the whole owner map per claim (unique_forever.go:266). Lands after UNIQUELOOK.
+  - **OWNERDROP** (low, UNIQUELOOK re-review) — tiered DropUniqueOwnerIndex uses DropPrefix on the index DB
+    (owner_index.go:196); badger blocks writes to that DB meanwhile (docs/badger.md §2), so a reference-label Add
+    racing a DropUnique of another key can fail with ErrBlockedWrites. Pre-existing for event labels since v4.81.
+  - **EDGEROW** — a relationship create reads each endpoint row 3-4 times (relationship_create_kernel.go:112-143,
+    rel.go:76, write_rel.go:163-212), inside AddRelationshipByID's 14.4 s; hand the row down once. Estimate <= 5 s.
+  - **CASCADEROW** — the temporal cascade reads getCurrentNode 2-3 times plus the chain (temporal_cascade.go:132-154,
+    tx.go:286/346); cascadeNode 5 s (27 s on d2). Estimate 2 s.
+  - **FLOORDECODE** — batchCommitFloor re-decodes every value of a batch (commit_floor.go:68). Measure first.
 - **NOCOMPRESS** (ai-soc 3 Nov, after round 2; a minor) — 2.19 TB of the 3-day run's 9.87 TB allocation (k11020850)
   is badger's Snappy block decode into Go-heap buffers (z.Calloc is make([]byte) without the jemalloc tag,
   ristretto z/calloc_nojemalloc.go:18-20); 1.66 TB of it on badger's own goroutines: compaction reads every input block
@@ -117,18 +126,11 @@ Each item: one sentence, then when it is done and what it waits for.
   libjemalloc, needs cgo).
 - **WRITEAMP** (ai-soc 3 Nov, quiet PC, after the tiered d2) — compaction input bytes / flushed bytes per shard for the
   cut-shaped write; then decide BaseLevelSize, BaseTableSize, MemTableSize per tier (PERTIER).
-- **BATCHFAIL** (fix, later; found by the BATCHIDX review 3 Nov, pre-existing) — a vector-index failure at node i of a
-  PutNodes batch leaves the RAM property indexes holding nodes[:i] (badger) or nodes[:i+1] (memory), whose rows were
-  never queued (badger keeps them in nodeCache, so RAM answers stay consistent until reopen). Unpinned by any test.
-  Done when a failed batch leaves no index entry, with a test on both stores.
-- **RHOPOST bench** (RHOPOST and RHOMEMIDS merged 3 Nov, unreleased; both benches rerun on a quiet PC) (sigma READBACK, 3 Nov; after v4.101.0, nothing in sigma waits) — sigma's paged-row read-back
-  spends 96 % of a block probe in `IDsByLabelAndPropertyValues`, 75 % in `badger.Iterator.Next`: one AllVersions
-  seek-and-walk per value in `propertyIndexDiskKeysCandidatesLocked` (badger 1.5-6.1 us a value at 5k-80k rows).
-  RHOPOST: a posting read per value without the AllVersions walk (seek to the typed key, end bound), first, since
-  badger and tiered are production; check why the walk takes all versions before changing it. RHOMEMIDS: the memory
-  store has no NodePropertyKeysIDsCapability, so the door loads every node to return IDs (memory 2.3-24.6 us a
-  value, 2.9 MB a call at 80k); an IDs path from its index. Bench: sigma's BenchmarkBlockProbe
-  (internal/tyla/application/incremental). Done when both ship with a bench against today.
+- **ROUND2 measure** (René via ai-soc, 3 Nov: "why test each part of rho? Why not a full test with the medium ba example
+  here on the office pc?") — no per-item before/after benches on the PC. ai-soc runs its 4-arm harness (data-60min,
+  158,487 records; memory and tiered, paging off and budget) on rho main's tip with sigma main's tip after W1; first tip
+  3883fa5f (RHOMEMIDS, BATCHADD, RHOPOST, BATCHIDX). Per-item measurement only if the combined run shows a regression
+  or unequal bars, then by bisect. rho's part: merge reviewed items, send the main SHA. Done when the run's bars are in.
 
 ### PAGEBLOB follow-ups (v4.99.0 shipped ELEMDISK and WRITEGROW, 3 Nov, on René's word outside the round, short tests and targeted race only)
 
@@ -416,7 +418,6 @@ beside it. Waits for: René reopening it; then ask ai-soc and sigma whether they
   `row102-pending-ranged`, `f4b27842` in `archive/unmerged-2026-10-27`). Waits for: ai-soc raising its priority, or nothing else open.
 - **RELSIDECAR** — Relationship lookups by several properties may be too slow on BA. Waits for: a BA measurement.
 - **NITS** — Small findings no consumer has hit (backlog 80-82, review nits). Waits for: a consumer hitting one.
-- **NOCOMPRESS** — Compression cannot be turned off, because "none" is the default value. Waits for: a consumer asking.
 - **STALECITE** — Some code comments cite todo sections that no longer exist. Waits for: the next change to that code.
 - **V5** — The v5 line is paused on `v5-takeover` (`3bd4d13a`, in `archive/unmerged-2026-10-27`; state: HANDOVER; open WPs and the breaking API-pass
   candidates: `git show 791c1aa3:tasks/todo.md`). Default: paused; `v5.0.0-alpha.1` at its S2 exit once restarted.

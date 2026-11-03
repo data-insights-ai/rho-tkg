@@ -561,11 +561,16 @@ func nodeRowIDBounds(txn *badgerv4.Txn) (lo, hi uint64) {
 // lookup on the on-disk property index visits.
 var propertyDiskVisitTestHook func()
 
+// propertyDiskLookups counts the equality lookups on the on-disk property
+// index, in every store of the process (tests: PropertyDiskLookupsForTest).
+var propertyDiskLookups atomic.Int64
+
 // propertyDiskSeekTestHook (tests only) is called for each Seek an equality
 // lookup on the on-disk property index makes.
 var propertyDiskSeekTestHook func()
 
 func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant) ([]types.NodeID, error) {
+	propertyDiskLookups.Add(1)
 	tok, ok := bs.propKeyTokenFor(propertyKey)
 	if !ok {
 		return nil, nil

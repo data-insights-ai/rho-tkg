@@ -27,7 +27,8 @@ const lendBatchChunk = 4096
 // The IDs are read in chunks of 4,096 in ascending order, each under one
 // hold of the graph's read lock: badger reads a chunk's rows missing from
 // its cache through one snapshot, its iterator moving forward, and does not
-// cache them; memory reads a chunk under one store lock; other stores lend
+// cache them; memory reads a chunk under one store lock; tiered under one
+// move lock, each shard pinned once and read as badger; other stores lend
 // per ID. Each row is a snapshot at its chunk's read. The context is checked
 // before each chunk. Safe for concurrent calls on any ID sets.
 //

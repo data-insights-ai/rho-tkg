@@ -303,6 +303,18 @@ and the core loads rows as `ByLabelAndPropertyValues` does and returns their IDs
 IDs, under the same move lock as the row lookup. A shard that cannot answer from its index returns the IDs of its
 loaded rows.
 
+**Batch lend on tiered** (TIERLEND). `LendByIDs` reads each chunk through `store.EntityLendBatchCapability`; tiered
+implements it (`LendNodesSorted`, `LendRelationshipsSorted`) under one move read lock per call. The IDs are routed as
+`LendNode` / `LendRelationship` route them: the reference shard, the archive, the event shard of the ID's timestamp
+(a closed cold shard opens read-only), and for a relationship missing there every other event shard holding rows.
+Each shard is pinned once for its IDs and read with its badger batch lend (one read snapshot, cache hits without a
+decode); the relationship probe pins each event shard holding rows once more. Pins are taken one at a time, none
+held while another is taken, as the per-ID lends do: a probe over many cold shards keeps one open handle pinned,
+and no pin waits on a move gate while holding another shard. The answers are the per-ID lends', in the caller's
+order. Before, each ID took the move lock and pinned the reference shard, the archive and its event shard.
+`TestTieredLendSortedAgreesWithLend`, `TestTieredLendSortedOneCheckoutPerShard`,
+`TestTieredLendSortedHoldsOnePinAtATime`.
+
 **Change-log** (opt-in, `ChangeLog`): each backend writes one record per public mutation under a monotonic LSN in
 the same `WriteBatch` as the data, so log and data cannot diverge on a crash. `ChangeFeed` / `ExportSince` read it.
 
@@ -426,7 +438,18 @@ that test.
     (claim before row; readers check the claimant's row, so no replay and no change log needed); claims are synced
     once per durable shard flush (`badger.Config.BeforeFlushRows`), not per claim. Measured: about 18 B a key on
     disk; a hit 2.3-3.1 us however many shards; a keyed create in a transaction 19 us against 12 us on the reference
-    shard without SyncWrites (`tasks/evidence/UNIQIDX/`).
+    shard without SyncWrites (`tasks/evidence/UNIQIDX/`). UNIQUELOOK (ai-soc, 3 Nov: 21.3 s CPU in 2-3 property
+    index seeks per edge) widens it to every UniqueCurrent key: tiered reference labels in the same index, plain
+    badger under its own key byte `0x10` (`badgerstore_owner_index.go`), claims buffered with the rows they back so
+    a flush carries both; GetOrCreateByKey and the create-time check read one claim and one row at any depth on a
+    store or label without time shards (`ownerIndexAnswers`, `unique_owner_index.go`), DepthAll only for an event
+    label. Writers that bypass the kernel (batch pre-check, cascade, replica apply, import) claim too
+    (`claimOwnerIndexForRow`); the seed checks each value under its value lock and keeps only a backed claim, pages
+    the label 10,000 rows at a time and logs progress at least every 60 s; an open seeds a constraint left without
+    a ready index once, and a seed that finds two holders logs and leaves the index unready. The first declaration
+    raises marker 16 (tiered: on the reference shard, whose flushes sync the index first like the event shards'),
+    after the constraint's validation, so a refused `CreateUnique` raises nothing. UniqueForever keeps its ownership
+    map.
 
 - **ADR-0013 Valid-time placement** (TIERCLOCK; designed 2026-10-29 for ai-soc's full BA archive, 33 valid days,
   revised the same day after an independent review; not built, each step marked here when released). *Problem.*
