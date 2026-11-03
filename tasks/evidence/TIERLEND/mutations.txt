@@ -57,3 +57,57 @@ M24 the probe keeps asking IDs already found                KILLED    PassesOnAL
 
 On the final code: 21 killed; M5 survives as equivalent on answers (kept for the contract); M7 and M12 named
 equivalent code that was removed.
+
+Review round (Fable, 3 Nov, on 5a5ee36d): F1 the relationship probe held every event shard pin until the call
+ended (6 pins at once over 5 cold shards, red in red.txt); F2 a held pin while taking another could wait on a move
+gate; F3 releases not deferred; F4 out undefined on error, the ArchiveNode move-race subtests skipped, race output.
+Fix: every pin through withPin (pin, read, deferred release), one at a time; the probe pins each event shard
+holding rows again (OneCheckoutPerShard now expects 2 for cold, cold2 and hot in the probe case). The move-race lend
+entries lend an absent ID beside the moved one, so ArchiveNode reaches the archive read. Sweep of the new code, same
+method (targeted tests, -run as above):
+
+M1  nodes: no shard lists an ID (ref and archive)           KILLED    AgreesWithLend, OneCheckoutPerShard
+M2  nodes: skip the archive                                 KILLED    AgreesWithLend
+M3  event shards grouped per ID                             KILLED    OneCheckoutPerShard
+M4  every ID routed to the hot shard                        KILLED    AgreesWithLend, HoldsOnePinAtATime, OneCheckoutPerShard
+M5  read() does not sort                                    SURVIVED  equivalent on answers, as above; kept
+M6  rels: out not cleared                                   KILLED    AgreesWithLend
+M8  rels: a listed ID lent nil is not passed on             KILLED    PassesOnAListedIDWithoutRow
+M9  rels: no probe                                          KILLED    AgreesWithLend, OneCheckoutPerShard, PassesOnAListedIDWithoutRow
+M10 rels: the probe opens noRows shards                     KILLED    OneCheckoutPerShard
+M13 rels: skip the reference shard                          KILLED    AgreesWithLend, OneCheckoutPerShard
+M14 rels: skip the archive                                  KILLED    AgreesWithLend
+M15 nodes: no move lock                                     KILLED    TestRefArchiveReadersSeeMovedEntityOnce/LendNodesSorted/RestoreNode
+M16 rels: no move lock                                      KILLED    TestRefArchiveReadersSeeMovedEntityOnce/LendRelationshipsSorted/RestoreNode
+M17 nodes: out length not checked                           KILLED    AgreesWithLend
+M18 rels: out length not checked                            KILLED    AgreesWithLend
+M19 the probe stops after its first shard                   KILLED    AgreesWithLend, OneCheckoutPerShard, PassesOnAListedIDWithoutRow
+M20 nodes: no checkOpen                                     KILLED    AgreesWithLend
+M21 seam: event shard pins not reported                     KILLED    OneCheckoutPerShard
+M22 rels: misses dropped                                    KILLED    AgreesWithLend, HoldsOnePinAtATime, OneCheckoutPerShard, PassesOnAListedIDWithoutRow
+M23 rels: no checkOpen                                      KILLED    AgreesWithLend
+M24 lendPending keeps the IDs it asked                      KILLED    OneCheckoutPerShard
+P1  withPin never releases                                  KILLED    AgreesWithLend, HoldsOnePinAtATime
+P3  seam: releases not reported                             KILLED    HoldsOnePinAtATime
+P4  rels: the candidate pass keeps the earlier pending      first run SURVIVED (the probe re-asked found IDs, same
+                                                                      answers); OneCheckoutPerShard gained "rels found
+                                                                      on their event shards: no probe": KILLED
+
+23 of 24 killed; M5 equivalent on answers. The whole tiered package -short passed once on the final code (31.6 s);
+pkg/graph TestLendByIDs|TestLend under -race passed.
+
+The hook-bearing and new tests under -race on the final code:
+$ go test -short -race -run 'TestTieredLendSorted|TestTieredStoreLend|TestRefArchiveReadersSeeMovedEntityOnce/Lend' -count=1 -v ./pkg/graph/store/tiered/
+--- PASS: TestRefArchiveReadersSeeMovedEntityOnce (1.33s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/LendNodesSorted/ArchiveNode (0.30s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/LendNodesSorted/RestoreNode (0.37s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/LendRelationshipsSorted/ArchiveNode (0.31s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/LendRelationshipsSorted/RestoreNode (0.35s)
+--- PASS: TestTieredStoreLend (0.07s)
+--- PASS: TestTieredLendSortedOneCheckoutPerShard (0.97s)
+--- PASS: TestTieredLendSortedPassesOnAListedIDWithoutRow (1.00s)
+--- PASS: TestTieredLendSortedHoldsOnePinAtATime (1.52s)
+--- PASS: TestTieredLendSortedAgreesWithLend (0.00s)
+    --- PASS: TestTieredLendSortedAgreesWithLend/mint=false (1.54s)
+    --- PASS: TestTieredLendSortedAgreesWithLend/mint=true (1.56s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	4.106s

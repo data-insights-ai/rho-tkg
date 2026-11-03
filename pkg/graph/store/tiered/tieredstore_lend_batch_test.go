@@ -338,7 +338,8 @@ func relLendLikeCore(t *testing.T, ts *Store, ids []types.RelID) []*types.Relati
 
 // TestTieredLendSortedOneCheckoutPerShard: a batch lend pins each shard it
 // reads once per call (reference, archive, each event shard), not once per
-// ID, and opens no shard it does not need.
+// ID, and opens no shard it does not need; the relationship probe pins each
+// event shard holding rows once more.
 func TestTieredLendSortedOneCheckoutPerShard(t *testing.T) {
 	t.Parallel()
 	f := newLendBatchFixture(t, false)
@@ -401,11 +402,18 @@ func TestTieredLendSortedOneCheckoutPerShard(t *testing.T) {
 	rids := f.relIDs(append(slices.Clone(f.liveR), f.missing...))
 	slices.Sort(rids)
 	relLendLikeCore(t, f.ts, rids)
-	check("rels on every shard and the probe", all)
+	// The probe holds one pin at a time: each event shard holding rows is
+	// pinned again for the IDs its own read missed.
+	check("rels on every shard and the probe", map[any]int{checkoutKeyRef: 1, checkoutKeyArchive: 1, f.cold: 2, f.cold2: 2, f.hot: 2})
 
 	refRels := f.relIDs([]string{"ref"})
 	relLendLikeCore(t, f.ts, refRels)
 	check("reference rel", map[any]int{checkoutKeyRef: 1})
+
+	found := f.relIDs([]string{"cold", "hot"})
+	slices.Sort(found)
+	relLendLikeCore(t, f.ts, found)
+	check("rels found on their event shards: no probe", map[any]int{checkoutKeyRef: 1, checkoutKeyArchive: 1, f.cold: 1, f.hot: 1})
 }
 
 // TestTieredLendSortedPassesOnAListedIDWithoutRow: a shard that lists a
@@ -450,9 +458,10 @@ func TestTieredLendSortedPassesOnAListedIDWithoutRow(t *testing.T) {
 }
 
 // TestTieredLendSortedHoldsOnePinAtATime: a relationship no shard holds sends
-// the batch's probe over every cold shard with rows; it holds one event shard
-// pin at a time, as LendRelationship does, not every cold shard at once (each
-// a read-only badger open the cold cap cannot close while pinned). Nodes too.
+// the batch's probe over every cold shard with rows; it holds one pin at a
+// time (none while another is taken), as LendRelationship does, not every
+// cold shard at once (each a read-only badger open the cold cap cannot close
+// while pinned). Nodes too.
 func TestTieredLendSortedHoldsOnePinAtATime(t *testing.T) {
 	t.Parallel()
 	cfg := mintCfg(t.TempDir(), false)
@@ -500,8 +509,8 @@ func TestTieredLendSortedHoldsOnePinAtATime(t *testing.T) {
 		if held != 0 {
 			t.Errorf("%s: %d pins left held", what, held)
 		}
-		if peak > 2 {
-			t.Errorf("%s: %d read pins held at once, want at most 2 (%d cold shards)", what, peak, coldShards)
+		if peak > 1 {
+			t.Errorf("%s: %d read pins held at once, want 1, as the per-ID lend (%d cold shards)", what, peak, coldShards)
 		}
 	}
 	measure("a missing relationship", func() error {

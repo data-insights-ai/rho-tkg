@@ -17,7 +17,7 @@ var _ storecontract.EntityLendBatchCapability = (*Store)(nil)
 // call; the IDs are routed as LendNode routes (the reference shard, the
 // archive, the event shard of the ID's timestamp) and each shard is pinned
 // once and read with its badger LendNodesSorted (one read snapshot). ids
-// need not be ascending.
+// need not be ascending. Pins are taken one at a time (withPin).
 func (ts *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -33,42 +33,31 @@ func (ts *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 	// Every position is routed to one shard, whose read sets its slot.
 	l := batchLend[types.NodeID, types.Node]{ids: ids, out: out, lend: (*BadgerStore).LendNodesSorted}
 	pending := l.all()
-
-	ref, refCheckin, err := ts.checkoutRefShard()
-	if err != nil {
-		return err
-	}
-	var here []int
-	here, pending = splitBy(pending, func(i int) bool { return ref.HasNodeID(ids[i].SnowflakeID()) })
-	err = l.read(ref, here)
-	refCheckin()
-	if err != nil || len(pending) == 0 {
-		return err
+	// lendListed reads the pending IDs store lists and keeps the others.
+	lendListed := func(store *BadgerStore) error {
+		var here []int
+		here, pending = splitBy(pending, func(i int) bool { return store.HasNodeID(ids[i].SnowflakeID()) })
+		return l.read(store, here)
 	}
 
+	if err := withPin(ts.checkoutRefShard, lendListed); err != nil || len(pending) == 0 {
+		return err
+	}
 	ts.refArchiveGapHook()
-	archive, archiveCheckin, err := ts.checkoutArchive()
-	if err != nil {
-		return err
-	}
-	if archive != nil {
-		here, pending = splitBy(pending, func(i int) bool { return archive.HasNodeID(ids[i].SnowflakeID()) })
-		err = l.read(archive, here)
-		archiveCheckin()
-		if err != nil || len(pending) == 0 {
-			return err
+	if err := withPin(ts.checkoutArchive, func(archive *BadgerStore) error {
+		if archive == nil {
+			return nil
 		}
+		return lendListed(archive)
+	}); err != nil || len(pending) == 0 {
+		return err
 	}
 
 	shards, groups := groupByEventShard(ts, ids, pending)
 	for k, es := range shards {
-		store, release, err := es.checkoutStoreReadOnly(ts)
-		if err != nil {
-			return err
-		}
-		err = l.read(store, groups[k])
-		release()
-		if err != nil {
+		if err := withPin(es.readOnlyCheckout(ts), func(store *BadgerStore) error {
+			return l.read(store, groups[k])
+		}); err != nil {
 			return err
 		}
 	}
@@ -78,8 +67,9 @@ func (ts *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 // LendRelationshipsSorted is LendNodesSorted for relationships, routed as
 // LendRelationship routes: the reference shard, the archive, the event shard
 // of the ID's timestamp, then every other event shard holding rows; a shard
-// whose row is missing passes the ID on. Each shard is pinned once per call:
-// the event shards stay pinned until the probe of the others is done.
+// whose row is missing passes the ID on. Like LendRelationship it holds one
+// pin at a time, so a probe over many cold shards keeps at most one of them
+// pinned; a shard read for its own IDs is pinned again by the probe.
 func (ts *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relationship) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -95,75 +85,49 @@ func (ts *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relatio
 	defer move.unlock()
 	l := batchLend[types.RelID, types.Relationship]{ids: ids, out: out, lend: (*BadgerStore).LendRelationshipsSorted}
 	pending := l.all()
-	// lendFound reads the pending IDs store lists and keeps those it lent no row.
-	lendFound := func(store *BadgerStore, pending []int) ([]int, error) {
-		here, rest := splitBy(pending, func(i int) bool { return store.HasRelID(ids[i].SnowflakeID()) })
+	// lendFound reads the IDs of ask that store lists and adds to pending
+	// those it does not list or lent no row for.
+	lendFound := func(store *BadgerStore, ask []int) error {
+		here, rest := splitBy(ask, func(i int) bool { return store.HasRelID(ids[i].SnowflakeID()) })
 		if err := l.read(store, here); err != nil {
-			return nil, err
-		}
-		for _, i := range here {
-			if out[i] == nil {
-				rest = append(rest, i)
-			}
-		}
-		return rest, nil
-	}
-
-	ref, refCheckin, err := ts.checkoutRefShard()
-	if err != nil {
-		return err
-	}
-	pending, err = lendFound(ref, pending)
-	refCheckin()
-	if err != nil || len(pending) == 0 {
-		return err
-	}
-
-	ts.refArchiveGapHook()
-	archive, archiveCheckin, err := ts.checkoutArchive()
-	if err != nil {
-		return err
-	}
-	if archive != nil {
-		pending, err = lendFound(archive, pending)
-		archiveCheckin()
-		if err != nil || len(pending) == 0 {
 			return err
 		}
+		pending = append(pending, rest...)
+		for _, i := range here {
+			if out[i] == nil {
+				pending = append(pending, i)
+			}
+		}
+		return nil
+	}
+	// lendPending asks store for every pending ID.
+	lendPending := func(store *BadgerStore) error {
+		ask := pending
+		pending = nil
+		return lendFound(store, ask)
 	}
 
-	pinned := make(map[*EventShard]*BadgerStore)
-	var releases []func()
-	defer func() {
-		for _, release := range releases {
-			release()
+	if err := withPin(ts.checkoutRefShard, lendPending); err != nil || len(pending) == 0 {
+		return err
+	}
+	ts.refArchiveGapHook()
+	if err := withPin(ts.checkoutArchive, func(archive *BadgerStore) error {
+		if archive == nil {
+			return nil
 		}
-	}()
-	pin := func(es *EventShard) (*BadgerStore, error) {
-		if store, ok := pinned[es]; ok {
-			return store, nil
-		}
-		store, release, err := es.checkoutStoreReadOnly(ts)
-		if err != nil {
-			return nil, err
-		}
-		pinned[es] = store
-		releases = append(releases, release)
-		return store, nil
+		return lendPending(archive)
+	}); err != nil || len(pending) == 0 {
+		return err
 	}
 
 	shards, groups := groupByEventShard(ts, ids, pending)
-	pending = pending[:0]
+	pending = nil
 	for k, es := range shards {
-		store, err := pin(es)
-		if err != nil {
+		if err := withPin(es.readOnlyCheckout(ts), func(store *BadgerStore) error {
+			return lendFound(store, groups[k])
+		}); err != nil {
 			return err
 		}
-		missed, err := lendFound(store, groups[k])
-		if err != nil {
-			return err
-		}
-		pending = append(pending, missed...)
 	}
 	if len(pending) == 0 {
 		return nil
@@ -178,17 +142,31 @@ func (ts *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relatio
 	}
 	ts.mu.RUnlock()
 	for _, es := range probe {
-		// An ID's own event shard, which LendRelationship skips here, is
-		// pinned already and misses it again (a set lookup).
-		store, err := pin(es)
-		if err != nil {
-			return err
-		}
-		if pending, err = lendFound(store, pending); err != nil || len(pending) == 0 {
+		// An ID's own event shard, which LendRelationship skips here, misses
+		// it again (a set lookup).
+		if err := withPin(es.readOnlyCheckout(ts), lendPending); err != nil || len(pending) == 0 {
 			return err
 		}
 	}
 	return nil
+}
+
+// withPin pins a shard with checkout, runs read on it and releases the pin,
+// also on a panic. The lend doors take every pin through it, one after the
+// other: no pin is held while another is taken, so a door never waits on a
+// shard's move gate (or a writable upgrade) while holding another shard.
+func withPin(checkout func() (*BadgerStore, func(), error), read func(*BadgerStore) error) error {
+	store, release, err := checkout()
+	if err != nil {
+		return err
+	}
+	defer release()
+	return read(store)
+}
+
+// readOnlyCheckout is checkoutStoreReadOnly as a withPin checkout.
+func (es *EventShard) readOnlyCheckout(ts *Store) func() (*BadgerStore, func(), error) {
+	return func() (*BadgerStore, func(), error) { return es.checkoutStoreReadOnly(ts) }
 }
 
 // batchLend reads positions of ids from one shard into out with the shard's

@@ -15,8 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pending, `tasks/evidence/RHOMEMIDS/`).
 - **TIERLEND** (PROJREAD part (a); a minor: tiered `Store.LendNodesSorted` and `Store.LendRelationshipsSorted` are new
   exported methods). The tiered store implements `store.EntityLendBatchCapability`, so `LendByIDs` on tiered reads a
-  chunk under one move lock with one pin per shard (reference, archive, each event shard) and one badger batch lend
-  each, instead of a move lock and up to three pins per ID. Answers unchanged: the same rows as `LendNode` /
+  chunk under one move lock with one pin per shard (reference, archive, each event shard; the relationship probe once
+  more) and one badger batch lend each, instead of a move lock and up to three pins per ID; one pin is held at a
+  time, as before. Answers unchanged: the same rows as `LendNode` /
   `LendRelationship` per ID, nil for deleted and unknown IDs (tests `TestTieredLendSorted*`,
   `tasks/evidence/TIERLEND/`).
 - **BATCHADD** (ai-soc R3; a fix, no new exported name). `GraphTx.AddNodes` keeps its one batch store write when unique
