@@ -163,7 +163,7 @@ func TestGateTimeScript(t *testing.T) {
 	dir := t.TempDir()
 	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"}} {
 		cmd := exec.Command("git", args...) // #nosec G204 -- fixed arguments
-		cmd.Dir = dir
+		cmd.Dir, cmd.Env = dir, envWithoutGit()
 		if err := cmd.Run(); err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +173,7 @@ func TestGateTimeScript(t *testing.T) {
 		status  int
 	}{{"true", 0}, {"false", 1}} {
 		cmd := exec.Command(script, "g", c.command) // #nosec G204 -- the repo's own script, fixed arguments
-		cmd.Dir = dir
+		cmd.Dir, cmd.Env = dir, envWithoutGit()
 		_ = cmd.Run()
 		if got := cmd.ProcessState.ExitCode(); got != c.status {
 			t.Errorf("%s: exit %d, want %d", c.command, got, c.status)
@@ -187,6 +187,20 @@ func TestGateTimeScript(t *testing.T) {
 	if len(lines) != 2 || !strings.Contains(lines[0], " g ") || !strings.Contains(lines[0], "exit=0") || !strings.Contains(lines[1], "exit=1") {
 		t.Errorf("log %q", log)
 	}
+}
+
+// envWithoutGit is the test's environment without GIT_* variables. Under the
+// pre-commit hook git exports GIT_DIR (and GIT_INDEX_FILE): a git init in a temp
+// dir would then write the committing repo's config (core.bare=true), and from a
+// worktree that config is the main checkout's.
+func envWithoutGit() []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "GIT_") {
+			env = append(env, kv)
+		}
+	}
+	return env
 }
 
 func TestParseNameStatus(t *testing.T) {
