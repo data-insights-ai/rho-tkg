@@ -1,0 +1,7 @@
+--- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (0.96s)
+    badgerstore_vlog_gc_read_test.go:113: a read opened before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+--- FAIL: TestNodeStoredSizesExactForValueLogRows (0.10s)
+    badgerstore_vlog_gc_read_test.go:162: stored sizes [{Version:0 Current:true Bytes:20067 Delta:false Void:false}], want one current row of 20066 bytes
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.078s
+FAIL
