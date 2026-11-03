@@ -1,6 +1,8 @@
 package badger
 
 import (
+	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -51,23 +53,36 @@ func (r *vlogReaders) exit(p vlogPin) {
 	}
 }
 
-// drain returns once every read that entered before it has exited, or false
-// when stop closes first. One caller at a time (gcMu).
-func (r *vlogReaders) drain(stop <-chan struct{}) bool {
-	e := r.epoch.Add(1) - 1
-	for r.active[e&1].Load() != 0 {
+// drain returns once every read that entered before it has exited, or when
+// stop closes first (stopped). It waits while the slot is above zero: a slot
+// below zero (an exit without its enter, a bug) is reported, not waited on,
+// so it cannot stall every later pass. One caller at a time (gcMu).
+func (r *vlogReaders) drain(stop <-chan struct{}) (waited time.Duration, stopped, negative bool) {
+	start := time.Now()
+	slot := &r.active[(r.epoch.Add(1)-1)&1]
+	for slot.Load() > 0 {
 		select {
 		case <-stop:
-			return false
+			return time.Since(start), true, false
 		case <-time.After(time.Millisecond):
 		}
 	}
-	return true
+	return time.Since(start), false, slot.Load() < 0
 }
 
 // vlogGuardPrefix matches no key (rho's keyspaces start below 0x10), so the
 // guard iterator opens no table.
 var vlogGuardPrefix = []byte{0xFF, 'v', 'l', 'o', 'g', 'g', 'c'}
+
+// vlogDrainSlow: a pass whose wait for open reads takes longer is logged. A
+// read transaction held across a caller's callback (the bulk and batch doors)
+// holds the pass up; meanwhile the guard keeps the memtables open when it began and the
+// rewritten files (docs/badger.md rule 9).
+var vlogDrainSlow = 60 * time.Second
+
+// afterVlogRewrite, when set (tests only), runs after the GC rewrote what it
+// would and before the pass waits for open reads.
+var afterVlogRewrite func()
 
 // runValueLogGC runs badger's value-log GC until it finds nothing to rewrite
 // and returns the number of files it rewrote. The rewritten files are deleted
@@ -75,16 +90,39 @@ var vlogGuardPrefix = []byte{0xFF, 'v', 'l', 'o', 'g', 'g', 'c'}
 func (bs *Store) runValueLogGC() int {
 	bs.gcMu.Lock()
 	defer bs.gcMu.Unlock()
+	if bs.readOnly || bs.closing.Load() {
+		// Read-only: badger refuses the GC, and an iterator over no memtable
+		// never releases its count (iterator.go:545-548).
+		return 0
+	}
 	guard := bs.db.NewTransaction(false)
 	it := guard.NewIterator(badgerv4.IteratorOptions{Prefix: vlogGuardPrefix})
 	n := 0
 	for bs.db.RunValueLogGC(bs.gcRatio) == nil {
 		n++ // Keep running until no more garbage to collect.
 	}
-	bs.vlogReaders.drain(bs.stopCh)
+	if afterVlogRewrite != nil {
+		afterVlogRewrite()
+	}
+	waited, stopped, negative := bs.vlogReaders.drain(bs.stopCh)
+	if negative && bs.vlogNegativeLogged.CompareAndSwap(false, true) {
+		bs.warnf("graph: value-log GC found a negative open-read count (an exit without its enter); files it rewrote may be deleted under a read")
+	}
+	if waited > vlogDrainSlow {
+		bs.warnf("graph: value-log GC waited %s for open reads (stopped: %t); a read held across a callback pins the rewritten files and a memtable meanwhile", waited.Round(time.Second), stopped)
+	}
 	it.Close()
 	guard.Discard()
 	return n
+}
+
+// warnf logs a warning to Config.Logger, else to slog.
+func (bs *Store) warnf(format string, args ...any) {
+	if bs.logger != nil {
+		bs.logger.Warningf(format, args...)
+		return
+	}
+	slog.Warn(fmt.Sprintf(format, args...))
 }
 
 // update runs fn in a read-write transaction entered in vlogReaders.

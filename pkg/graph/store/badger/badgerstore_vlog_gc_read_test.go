@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,9 +22,9 @@ import (
 // entry's version (value.go:217-224), so a Get after it finds the new pointer;
 // an item a Get returned before it holds the old one, and its Value after the
 // delete is logged and comes back empty with a nil error (iterator.go:155-189):
-// rho reads it as ErrCorruptWire. Here a read through rho's read seam gets the
-// row's item, waits while rho's GC pass rewrites the file holding it, then
-// reads the value.
+// rho reads it as ErrCorruptWire. Here a read through each of rho's seams gets
+// the row's item, waits until rho's GC pass has rewritten the file holding it,
+// then reads the value.
 
 const vgThreshold = 1 << 10
 
@@ -88,47 +89,169 @@ func vgGarbageStore(t *testing.T) *Store {
 	return bs
 }
 
+// vgSeam opens a transaction through one of rho's seams and runs read in it.
+type vgSeam struct {
+	name string
+	run  func(bs *Store, read func(txn *badgerv4.Txn) error) error
+}
+
+var vgSeams = []vgSeam{
+	{"view", func(bs *Store, read func(txn *badgerv4.Txn) error) error { return bs.view(read) }},
+	{"update", func(bs *Store, read func(txn *badgerv4.Txn) error) error { return bs.update(read) }},
+	{"newReadTxn", func(bs *Store, read func(txn *badgerv4.Txn) error) error {
+		txn, pin := bs.newReadTxn()
+		defer bs.endReadTxn(txn, pin, true)
+		return read(txn)
+	}},
+}
+
+// vgHook makes afterVlogRewrite close the returned channel once.
+func vgHook(t *testing.T) <-chan struct{} {
+	t.Helper()
+	rewritten := make(chan struct{})
+	var once sync.Once
+	afterVlogRewrite = func() { once.Do(func() { close(rewritten) }) }
+	t.Cleanup(func() { afterVlogRewrite = nil })
+	return rewritten
+}
+
+// The read gets its row's item, rho's GC pass rewrites the file holding it
+// (afterVlogRewrite: the rewrite is done, the pass has not waited yet), then
+// the read reads the value. Every seam rho opens transactions through.
 func TestValueLogGCKeepsTheFileOfAnOpenRead(t *testing.T) {
-	bs := vgGarbageStore(t)
-	key := storepkg.NodeKey(snowflake.ID(1))
-	opened, gcDone, readDone := make(chan struct{}), make(chan int, 1), make(chan error, 1)
-	go func() {
-		readDone <- bs.view(func(txn *badgerv4.Txn) error {
-			item, err := txn.Get(key) // the item holds the row's value pointer
-			if err != nil {
-				return err
+	for _, seam := range vgSeams {
+		t.Run(seam.name, func(t *testing.T) {
+			bs := vgGarbageStore(t)
+			rewritten := vgHook(t)
+			key := storepkg.NodeKey(snowflake.ID(1))
+			opened, gcDone, readDone := make(chan struct{}), make(chan int, 1), make(chan error, 1)
+			go func() {
+				readDone <- seam.run(bs, func(txn *badgerv4.Txn) error {
+					item, err := txn.Get(key) // the item holds the row's value pointer
+					if err != nil {
+						return err
+					}
+					close(opened)
+					select {
+					case <-rewritten:
+					case <-time.After(10 * time.Second):
+						return errors.New("the GC pass did not finish its rewrite within 10 s")
+					}
+					return item.Value(func(val []byte) error {
+						var w storepkg.NodeWire
+						return storepkg.SafeUnmarshal(val, &w)
+					})
+				})
+			}()
+			<-opened
+			go func() { gcDone <- bs.runValueLogGC() }()
+			deadline := time.After(20 * time.Second)
+			select {
+			case err := <-readDone:
+				if err != nil {
+					t.Fatalf("a read whose item was taken before the value-log GC rewrote its row's file: %v", err)
+				}
+			case <-deadline:
+				t.Fatal("the read did not end within 20 s")
 			}
-			close(opened)
-			select { // until the GC pass is over, or 300 ms if it waits for this read
+			select {
 			case n := <-gcDone:
-				gcDone <- n
-			case <-time.After(300 * time.Millisecond):
+				if n == 0 {
+					t.Fatal("the GC rewrote no file: the test proves nothing")
+				}
+			case <-deadline:
+				t.Fatal("the GC pass did not end within 20 s of the read's end")
 			}
-			return item.Value(func(val []byte) error {
-				var w storepkg.NodeWire
-				return storepkg.SafeUnmarshal(val, &w)
-			})
+			// Once the read ended the pass deleted the files it rewrote: node 1's
+			// original file is gone.
+			if _, err := os.Stat(filepath.Join(bs.db.Opts().Dir, "000001.vlog")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("the rewritten value-log file is still there after the pass: %v", err)
+			}
+			n, err := bs.GetNode(types.NodeID(snowflake.ID(1)))
+			if err != nil {
+				t.Fatalf("node 1 after the GC: %v", err)
+			}
+			if v, _ := n.GetProperty("p"); v != strings.Repeat("x", 2_000) {
+				t.Fatal("node 1 after the GC: wrong value")
+			}
 		})
-	}()
-	<-opened
+	}
+}
+
+// A slot below zero (an exit without its enter) is reported, never waited on:
+// waiting on it stalled every later pass for the life of the store.
+func TestVlogDrainDoesNotWaitOnANegativeSlot(t *testing.T) {
+	var r vlogReaders
+	p := r.enter()
+	r.exit(p)
+	r.exit(p)
+	done := make(chan bool, 1)
+	go func() { _, _, negative := r.drain(make(chan struct{})); done <- negative }()
+	select {
+	case negative := <-done:
+		if !negative {
+			t.Fatal("drain did not report the negative slot")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("drain waits on a negative slot")
+	}
+}
+
+type vgLogger struct {
+	mu   sync.Mutex
+	warn []string
+}
+
+func (l *vgLogger) Errorf(string, ...any) {}
+func (l *vgLogger) Infof(string, ...any)  {}
+func (l *vgLogger) Debugf(string, ...any) {}
+func (l *vgLogger) Warningf(f string, a ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.warn = append(l.warn, fmt.Sprintf(f, a...))
+}
+
+// A read held open holds the pass up; a wait above vlogDrainSlow is logged
+// with its duration, and Close during the wait returns at once.
+func TestValueLogGCSlowWaitLoggedAndCloseReturns(t *testing.T) {
+	bs := vgGarbageStore(t)
+	rewritten := vgHook(t)
+	log := &vgLogger{}
+	bs.logger = log
+	slow := vlogDrainSlow
+	vlogDrainSlow = 50 * time.Millisecond
+	t.Cleanup(func() { vlogDrainSlow = slow })
+
+	txn, pin := bs.newReadTxn() // held, as across a caller's callback
+	gcDone := make(chan int, 1)
 	go func() { gcDone <- bs.runValueLogGC() }()
-	if err := <-readDone; err != nil {
-		t.Fatalf("a read opened before the value-log GC rewrote its row's file: %v", err)
+	<-rewritten
+	time.Sleep(150 * time.Millisecond) // the pass waits on the held read
+	select {
+	case <-gcDone:
+		t.Fatal("the pass ended while a read that began before it is open")
+	default:
 	}
-	if n := <-gcDone; n == 0 {
-		t.Fatal("the GC rewrote no file: the test proves nothing")
+	closed := make(chan error, 1)
+	go func() { closed <- bs.Close() }()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return within 5 s while the pass waited")
 	}
-	// Once the read ended the pass deleted the files it rewrote: node 1's
-	// original file is gone.
-	if _, err := os.Stat(filepath.Join(bs.db.Opts().Dir, "000001.vlog")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("the rewritten value-log file is still there after the pass: %v", err)
+	select {
+	case <-gcDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the pass did not end at Close")
 	}
-	n, err := bs.GetNode(types.NodeID(snowflake.ID(1)))
-	if err != nil {
-		t.Fatalf("node 1 after the GC: %v", err)
-	}
-	if v, _ := n.GetProperty("p"); v != strings.Repeat("x", 2_000) {
-		t.Fatal("node 1 after the GC: wrong value")
+	bs.endReadTxn(txn, pin, false)
+	log.mu.Lock()
+	defer log.mu.Unlock()
+	if len(log.warn) != 1 || !strings.Contains(log.warn[0], "waited") {
+		t.Fatalf("warnings %q, want one naming the wait", log.warn)
 	}
 }
 

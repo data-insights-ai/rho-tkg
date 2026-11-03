@@ -30,3 +30,61 @@ F2 stored size from Item.ValueSize again: CAUGHT
 
 Gate on the final tree (load 35-37): go vet ./... clean; go test -short -count=1 badger ok (135 s), tiered ok (53 s),
 sharded ok (11 s), pkg/graph ok (91 s).
+
+Second review round (Fable on 57fd4a01), 2026-11-03: each mutant alone, go test -count=1 -timeout 90s -run <the tests aimed at it>
+./pkg/graph/store/badger/; 10 of 10 caught, all in seconds except "drain ignores stop" (its Close test fails at 5 s, then the
+test's cleanup Close waits on the stuck pass: the 90 s timeout).
+
+drain waits while the slot is not zero (a negative slot stalls): CAUGHT
+    --- FAIL: TestVlogDrainDoesNotWaitOnANegativeSlot (2.00s)
+    badgerstore_vlog_gc_read_test.go:196: drain waits on a negative slot
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	3.404s
+enter counts nothing (F1-e): CAUGHT
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (1.46s)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/update (0.40s)
+    badgerstore_vlog_gc_read_test.go:152: a read whose item was taken before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/newReadTxn (0.37s)
+    badgerstore_vlog_gc_read_test.go:152: a read whose item was taken before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.472s
+newReadTxn does not enter: CAUGHT
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (1.51s)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/newReadTxn (0.53s)
+    badgerstore_vlog_gc_read_test.go:152: a read whose item was taken before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.530s
+update does not enter: CAUGHT
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (1.18s)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/update (0.31s)
+    badgerstore_vlog_gc_read_test.go:152: a read whose item was taken before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.194s
+view does not enter: CAUGHT
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (1.62s)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/view (0.39s)
+    badgerstore_vlog_gc_read_test.go:152: a read whose item was taken before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.637s
+no guard iterator: CAUGHT
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (1.42s)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/view (0.48s)
+    badgerstore_vlog_gc_read_test.go:152: a read whose item was taken before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/update (0.59s)
+    badgerstore_vlog_gc_read_test.go:152: a read whose item was taken before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/newReadTxn (0.35s)
+no drain: CAUGHT
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead (1.49s)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/view (0.45s)
+    badgerstore_vlog_gc_read_test.go:152: a read whose item was taken before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/update (0.51s)
+    badgerstore_vlog_gc_read_test.go:152: a read whose item was taken before the value-log GC rewrote its row's file: graph: corrupt wire data: empty value (a badger value-log read that failed returns no bytes; badger's log names the cause)
+    --- FAIL: TestValueLogGCKeepsTheFileOfAnOpenRead/newReadTxn (0.53s)
+drain ignores stop (Close waits for the held read): CAUGHT
+    panic: test timed out after 1m30s
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	90.012s
+slow wait not logged: CAUGHT
+    --- FAIL: TestValueLogGCSlowWaitLoggedAndCloseReturns (0.49s)
+    badgerstore_vlog_gc_read_test.go:254: warnings [], want one naming the wait
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.502s
+F2 stored size from Item.ValueSize: CAUGHT
+    --- FAIL: TestNodeStoredSizesExactForValueLogRows (0.07s)
+    badgerstore_vlog_gc_read_test.go:293: stored sizes [{Version:0 Current:true Bytes:20067 Delta:false Void:false}], want one current row of 20066 bytes
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.076s
+
+Final tree (load 29): go vet ./... clean; go test -short -count=1 badger ok (88 s), tiered ok (40 s).

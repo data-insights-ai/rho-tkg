@@ -230,7 +230,10 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
 6. **Badger creates a missing directory; rho must refuse it** for a shard it already knows. Gap: SHARD step 1.
 7. **Hold read transactions briefly.** A read transaction pins versions from compaction and, through rho's GC pass
    (rule 9), the value-log files rewritten while it is open; release it before user callbacks (the read snapshot
-   does, per chunk). A transaction badger alone pins nothing in the value log unless an iterator is open.
+   does, per chunk). A transaction badger alone pins nothing in the value log unless an iterator is open. Doors
+   that hold one read transaction across the caller's callback (the bulk node and rel walks, `LendNodes`,
+   `LendRels`, the transaction-time scans) hold up a GC pass for as long: meanwhile its guard iterator keeps the
+   rewritten files on disk and the memtables open when the pass began referenced (`iterator.go:468-485`; rule 9).
 8. **Size caches per shard role.** Defaults give every open DB a 256 MB block cache and a 75 MB arena. Gap: CACHE.
 9. **The value-log GC loop has work only for values at or above `ValueThreshold`** (`badgerstore_flush.go` gcLoop:
    rows of 1 MB or more by default); without such values a pass costs 28 ns. It picks a file only from discard
@@ -247,7 +250,10 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
    it (`iterator.go:155-189`; a `Get` after it finds the moved entry, which keeps its version, `value.go:217-224`).
    rho's pass (`runValueLogGC`, `badgerstore_vlog_guard.go`) holds an iterator so badger queues the files, and closes
    it only after every read and update transaction that entered before the pass ended has ended
-   (`TestValueLogGCKeepsTheFileOfAnOpenRead`); readers never wait.
+   (`TestValueLogGCKeepsTheFileOfAnOpenRead`, per seam: `view`, `update`, `newReadTxn`); readers never wait. The
+   cost lands on the pass: a read held across a caller's callback (rule 7) keeps it waiting, and with it the
+   rewritten files and those memtables; a wait above 60 s is logged once per pass with its
+   duration. Close ends the wait at once. A count below zero (an exit without its enter) is logged, not waited on.
 10. **Batch synced writes.** Under `SyncWrites` every request costs a WAL msync and every write group a value-log msync;
     rho's group commit writes one request per group, which is right, unless the flush is split (rule 1): each part is
     a request of its own.

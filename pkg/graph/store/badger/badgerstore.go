@@ -854,14 +854,15 @@ type Store struct {
 	// groupCommit is set between BeginGroupCommit and EndGroupCommit
 	// (store.GroupCommitCapability): flushIfNeeded holds per-mutation flushes and
 	// EndGroupCommit issues one. Atomic so the read needs no lock.
-	groupCommit atomic.Bool
-	maxPending  int // async write-buffer bound; 0 disables (see Config.MaxPendingWrites)
-	flushInt    time.Duration
-	gcInt       time.Duration
-	gcRatio     float64
-	gcMu        sync.Mutex    // one value-log GC pass at a time (runValueLogGC)
-	vlogReaders vlogReaders   // open reads a GC pass waits for (badgerstore_vlog_guard.go)
-	imageInt    time.Duration // Config.OpenImageInterval
+	groupCommit        atomic.Bool
+	maxPending         int // async write-buffer bound; 0 disables (see Config.MaxPendingWrites)
+	flushInt           time.Duration
+	gcInt              time.Duration
+	gcRatio            float64
+	gcMu               sync.Mutex    // one value-log GC pass at a time (runValueLogGC)
+	vlogReaders        vlogReaders   // open reads a GC pass waits for (badgerstore_vlog_guard.go)
+	vlogNegativeLogged atomic.Bool   // the negative open-read count was logged
+	imageInt           time.Duration // Config.OpenImageInterval
 	// imageVersion is the badger version of the newest open image header this
 	// store wrote or trusted whole at open: a periodic image with nothing
 	// committed since writes nothing.
@@ -2688,6 +2689,8 @@ func (bs *Store) Close() error {
 		close(bs.stopCh)
 		<-bs.flushDone // wait for flushLoop exit (or immediate if never started)
 		<-bs.gcDone    // wait for GC exit
+		bs.gcMu.Lock() // a pass outside gcLoop (tests) ends at stopCh too
+		bs.gcMu.Unlock()
 		<-bs.imageDone // wait for a periodic open image in progress
 		// Explicit final flush — ensures pending ops are persisted even when
 		// flushLoop was never spawned. No-op if already drained.
