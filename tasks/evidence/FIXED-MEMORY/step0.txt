@@ -50,3 +50,26 @@ PC: 32 cores, load 5-8 from other sessions. Heap figures include the latency arr
 
 Not tested: writes beside reads, sealing beside merges, a real rho store, the Kingston disk the stores use,
 the step 1 bar (ai-soc's push loses at most 5 %), reopen time.
+
+Review (Fable, read-only, 3 Nov; each point checked by the main session against the code, the Go runtime source or
+badger's source):
+- "merge 181 M/s" is a copy: runs that follow each other take the fast path (step0_runs.go.txt, mergeRuns: the rest
+  of a run below every other head is written in one Write). Such runs need an append and an index extension, no
+  merge. The merge rate is the interleaved 41.5 M/s (heap path). Unmeasured and what step 1 needs: the write
+  amplification of merging into a growing base (a 1 G ID base is 8.6 GB a rewrite).
+- pread hands its P off only at sysmon's retake: with idle Ps and an empty run queue not before 10 ms
+  (go1.26.9 src/runtime/proc.go:6703, `pd.syscallwhen+10*1000*1000 > now`; sysmon sleeps up to 10 ms, :6503), the
+  measured ticker lateness. A fault holds its P (no entersyscall). So the 1.7x at 64 readers is mostly queue depth
+  64 against 32, and plain pread from request goroutines delays other goroutines by about 10 ms: cold reads need a
+  bounded reader pool (or dedicated threads), not pread from every caller.
+- The segment's 9.6x, 12.3x and 35.7x are from a partly cold segment (the ordinary-node p99 of 57.6 µs is a disk
+  read); hot it is about 100x. Bars pass either way.
+- badger ran with rho's options, which keep the stock Snappy blocks and 256 MB block cache (badger options.go:147-148):
+  representative of rho today, not badger's floor; a larger cache or batched Views would narrow the ratios, perhaps 2x.
+- The 52 B row read is fixed fields only; rho's doors return properties too (the plan's 2-3x for full rows stands
+  unmeasured). The cold 64-reader figure is about one IO a row (the 153 MB ID column fits under the cap) on the
+  990 PRO; the Kingston under /home will be slower; the 50 k bar holds with margin.
+- The hash file refuted is the plan's (one bucket per hash); a hash bucketed by ID epoch would keep locality.
+- Heap in part 2 is mostly the latency arrays (index about 5 MB); sub-µs figures include about 50 ns of timer.
+Conclusions that stand: sorted files, seal rate, hot run lookup against a badger Get, the segment's bars. Reworded:
+merge is 41.5 M/s with base rewrite cost unmeasured; cold reads go through a bounded pread pool.
