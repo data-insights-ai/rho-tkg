@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.102.0 (2026-11-03). René's open decisions are the items that wait for
+What rho does next, in order. Last release: v4.103.0 (2026-11-04). René's open decisions are the items that wait for
 him, each with my default. State, consumers and the numbered backlog: `HANDOVER.md`; rules: `docs/CONTRIBUTING.md`
 § Rules digest. Done work: `docs/CHANGELOG.md`, under the same tag.
 

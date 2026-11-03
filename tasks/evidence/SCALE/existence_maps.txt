@@ -217,3 +217,23 @@ clean reopen 0.07s, heap +169.8 MB = 169.8 B/entity
 == base 3
 Derived n=1000000 insert 5.7s (175376/s) heap +149.3 MB = 149.3 B/entity
 clean reopen 0.08s, heap +170.5 MB = 170.5 B/entity
+
+v4.103.0 scale probe, 2026-11-04 00:40 (release-v4.103.0 vs v4.102.0, alternated, 3 rounds; load 20-29):
+== new 1 (load 28.51)
+Derived n=1000000 insert 4.9s (202736/s) heap +149.0 MB = 149.0 B/entity
+clean reopen 0.05s, heap +170.5 MB = 170.5 B/entity
+== base 1 (load 26.39)
+Derived n=1000000 insert 5.0s (199520/s) heap +149.2 MB = 149.2 B/entity
+clean reopen 0.06s, heap +170.3 MB = 170.3 B/entity
+== new 2 (load 24.44)
+Derived n=1000000 insert 4.9s (205880/s) heap +149.0 MB = 149.0 B/entity
+clean reopen 0.06s, heap +170.2 MB = 170.2 B/entity
+== base 2 (load 22.64)
+Derived n=1000000 insert 4.7s (210743/s) heap +148.9 MB = 148.9 B/entity
+clean reopen 0.05s, heap +170.6 MB = 170.6 B/entity
+== new 3 (load 21.07)
+Derived n=1000000 insert 4.8s (208913/s) heap +149.5 MB = 149.5 B/entity
+clean reopen 0.06s, heap +170.1 MB = 170.1 B/entity
+== base 3 (load 19.62)
+Derived n=1000000 insert 4.6s (215305/s) heap +148.8 MB = 148.8 B/entity
+clean reopen 0.06s, heap +170.6 MB = 170.6 B/entity
