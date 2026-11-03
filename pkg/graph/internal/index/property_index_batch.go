@@ -8,7 +8,8 @@ import (
 )
 
 // testHooks counts hot-path work for tests (BATCHIDX); nil in production.
-// Set only by a test that does not run in parallel.
+// Set only by a test that does not call t.Parallel: a parallel test's
+// index work would count in it, and its writes would race.
 var testHooks *hookCounts
 
 type hookCounts struct {

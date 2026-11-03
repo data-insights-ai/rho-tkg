@@ -3,6 +3,7 @@ package badger
 import (
 	"bytes"
 	"fmt"
+	"iter"
 	"math/rand/v2"
 	"slices"
 	"testing"
@@ -17,8 +18,10 @@ import (
 )
 
 // batchIdxStore is a store with property indexes in RAM on label A (plain,
-// range counts, Elements) and on disk on label D (scalar, Elements).
-func batchIdxStore(t *testing.T) (bs *Store, a, d uint16) {
+// range counts, Elements) and on disk on label D (scalar, Elements, member
+// entries in 0x0C), and a composite on (v, c) of each label. allDisk keeps
+// every label's indexes on disk (PropertyIndexOnDisk; scalar ones only).
+func batchIdxStore(t *testing.T, allDisk bool) (bs *Store, a, d uint16) {
 	t.Helper()
 	labels := registrypkg.NewLabelRegistry()
 	a, _ = labels.GetOrCreate("A")
@@ -28,21 +31,35 @@ func batchIdxStore(t *testing.T) (bs *Store, a, d uint16) {
 		cfg.MaxPendingWrites = -1 // every entry stays queued for the comparison
 		cfg.PropertyKeyRegistry = registrypkg.NewPropertyKeyRegistry()
 		cfg.LabelNames = labels
-		cfg.PropertyIndexOnDiskLabels = []string{"D"}
+		if allDisk {
+			cfg.PropertyIndexOnDisk = true
+		} else {
+			cfg.PropertyIndexOnDiskLabels = []string{"D"}
+		}
 	})
-	for _, ix := range []struct {
+	type ixDef struct {
 		label uint16
 		key   string
 		opts  storecontract.PropertyIndexOptions
-	}{
+	}
+	defs := []ixDef{
 		{a, "v", storecontract.PropertyIndexOptions{}},
 		{a, "c", storecontract.PropertyIndexOptions{RangeCounts: true}},
 		{a, "l", storecontract.PropertyIndexOptions{Elements: true}},
 		{d, "v", storecontract.PropertyIndexOptions{}},
 		{d, "l", storecontract.PropertyIndexOptions{Elements: true}},
-	} {
+	}
+	if allDisk {
+		defs = []ixDef{{a, "v", storecontract.PropertyIndexOptions{}}, {a, "c", storecontract.PropertyIndexOptions{}}, {d, "v", storecontract.PropertyIndexOptions{}}}
+	}
+	for _, ix := range defs {
 		if err := bs.CreatePropertyIndexWithOptions(ix.label, ix.key, ix.opts); err != nil {
 			t.Fatalf("index %d/%s: %v", ix.label, ix.key, err)
+		}
+	}
+	for _, label := range []uint16{a, d} {
+		if err := bs.CreateCompositePropertyIndex(label, []string{"v", "c"}); err != nil {
+			t.Fatalf("composite %d: %v", label, err)
 		}
 	}
 	return bs, a, d
@@ -53,7 +70,7 @@ func batchIdxStore(t *testing.T) (bs *Store, a, d uint16) {
 // maintains the property indexes, in RAM and on disk, once for the batch, not
 // once per node. Before: 1,000 per-node adds for 1,000 nodes.
 func TestPutNodesBatchIndexesOnce(t *testing.T) {
-	bs, a, d := batchIdxStore(t)
+	bs, a, d := batchIdxStore(t, false)
 	nodes := make([]*types.Node, 1000)
 	for i := range nodes {
 		label := a
@@ -91,9 +108,10 @@ func TestPutNodesBatchIndexesOnce(t *testing.T) {
 // on-disk ID bounds as PutNode of each node does.
 func TestPutNodesBatchIndexStateEqualsPutNode(t *testing.T) {
 	t.Parallel()
-	for seed := uint64(1); seed <= 6; seed++ {
-		seq, a, d := batchIdxStore(t)
-		bat, _, _ := batchIdxStore(t)
+	for seed := uint64(1); seed <= 8; seed++ {
+		allDisk := seed%2 == 0
+		seq, a, d := batchIdxStore(t, allDisk)
+		bat, _, _ := batchIdxStore(t, allDisk)
 		midBuild := indexpkg.PropertyIndexKey{LabelToken: a, PropertyKey: "c"}
 		midBuildDisk := indexpkg.PropertyIndexKey{LabelToken: d, PropertyKey: "v"}
 		for _, s := range []*Store{seq, bat} {
@@ -154,7 +172,7 @@ func TestPutNodesBatchIndexStateEqualsPutNode(t *testing.T) {
 				t.Fatal(err)
 			}
 			if ws, gs := batchIdxState(seq), batchIdxState(bat); ws != gs {
-				t.Fatalf("seed %d round %d: PutNodesBatch index state differs from PutNode\nPutNode:\n%s\nPutNodesBatch:\n%s", seed, round, ws, gs)
+				t.Fatalf("seed %d (all on disk %v) round %d: PutNodesBatch index state differs from PutNode\nPutNode:\n%s\nPutNodesBatch:\n%s", seed, allDisk, round, ws, gs)
 			}
 		}
 	}
@@ -208,11 +226,31 @@ func batchIdxState(bs *Store) string {
 			fmt.Fprintf(&b, "  range %v %v %v card %d %v\n", rg, ok, ids, c, cok)
 		}
 	}
+	ckeys := make([]indexpkg.CompositeIndexKey, 0, len(bs.compositeIndexes))
+	for k := range bs.compositeIndexes {
+		ckeys = append(ckeys, k)
+	}
+	slices.SortFunc(ckeys, func(x, y indexpkg.CompositeIndexKey) int {
+		return bytes.Compare([]byte(fmt.Sprint(x)), []byte(fmt.Sprint(y)))
+	})
+	for _, k := range ckeys {
+		ci := bs.compositeIndexes[k]
+		var lines []string
+		ci.Range(func(vk string, n int, ids iter.Seq[snowflake.ID]) bool {
+			lines = append(lines, fmt.Sprintf("  C %q %d %v", vk, n, slices.Collect(ids)))
+			return true
+		})
+		slices.Sort(lines)
+		fmt.Fprintf(&b, "composite %v onDisk=%v keys=%d\n", k, ci.OnDisk(), ci.KeyCount())
+		for _, l := range lines {
+			fmt.Fprintln(&b, l)
+		}
+	}
 	bs.wbMu.Lock()
 	var disk []string
 	for k, op := range bs.pending {
-		if len(k) > 0 && k[0] == storepkg.KeyPropertyIndex {
-			disk = append(disk, fmt.Sprintf("%x %d", k, op.opType))
+		if len(k) > 0 && (k[0] == storepkg.KeyPropertyIndex || k[0] == storepkg.KeyEntityIndex) {
+			disk = append(disk, fmt.Sprintf("%x %d %x", k, op.opType, op.value))
 		}
 	}
 	bs.wbMu.Unlock()

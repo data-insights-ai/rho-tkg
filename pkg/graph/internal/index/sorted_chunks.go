@@ -62,7 +62,7 @@ func (o *sortedChunks[T]) chunkIdx(k T) int {
 // few keys holds a few keys, not a full chunk (backlog 72: a posting list per
 // value key, most of them small).
 func (o *sortedChunks[T]) insert(k T) {
-	if testHooks != nil {
+	if testHooks != nil { // a test counting it must not use t.Parallel (BATCHIDX)
 		testHooks.chunkInsert++
 	}
 	o.n++

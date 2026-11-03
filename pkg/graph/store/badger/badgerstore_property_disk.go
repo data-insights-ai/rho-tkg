@@ -159,6 +159,7 @@ func (b *propIDBounds) bounds(txn *badgerv4.Txn) (lo, hi uint64) {
 
 // testHookPropIdxAdd, nil in production, sees each property-index add: one
 // node's (batch false) or a batch's (true) (BATCHIDX).
+// Set only by a test that does not call t.Parallel.
 var testHookPropIdxAdd func(bs *Store, batch bool)
 
 // maintainPropertyIndexesAdd is the write-path maintenance entry point every
@@ -182,7 +183,7 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 	// the row into the property membership sidecars (backlog 8).
 	bs.recordNodeRowLocked(n, true)
 	indexpkg.AddNodeToCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, id)
-	if testHookPropIdxAdd != nil {
+	if testHookPropIdxAdd != nil { // a test setting it must not use t.Parallel (BATCHIDX)
 		testHookPropIdxAdd(bs, false)
 	}
 	if !bs.propIdxOnDisk {
@@ -206,7 +207,7 @@ func (bs *Store) maintainPropertyIndexesAddBatch(nodes []*types.Node, ids []snow
 		bs.recordNodeRowLocked(n, true)
 		indexpkg.AddNodeToCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, ids[i])
 	}
-	if testHookPropIdxAdd != nil {
+	if testHookPropIdxAdd != nil { // a test setting it must not use t.Parallel (BATCHIDX)
 		testHookPropIdxAdd(bs, true)
 	}
 	if !bs.propIdxOnDisk {

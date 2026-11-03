@@ -1,0 +1,38 @@
+# BATCHIDX mutation sweep, 2026-11-03, on batchidx (fix 4acac58b, tests through the review's gap commit)
+# Each mutation applied alone, then, one package at a time:
+#   go test -short -count=1 -run 'TestAddNodesBatch|TestAddKeys' ./pkg/graph/internal/index/
+#   go test -short -count=1 -run 'TestPutNodesBatchIndex' ./pkg/graph/store/memory/
+#   go test -short -count=1 -run 'TestPutNodesBatchIndex' ./pkg/graph/store/badger/
+# then the file restored. M1-M4 ran the three whole packages instead (before the
+# targeted-run rule); every package tier ran once on the final tree.
+#
+# M1  skip sort                  sortedDistinct returns unsorted IDs
+# M2  skip compact               sortedDistinct sorts, keeps repeats
+# M3  append when not above      above() compares with the last chunk's FIRST key
+# M4  new string key not inserted  newStrs never filled (strKeys misses new values)
+# M5  addCount 1 not n           range count moves by 1 per value, not per new ID
+# M6  Mutated unmarked           addKeys marks no ID while an index builds
+# M7  on-disk widen skipped      propertyIndexDiskAddBatch never widens propIDs
+# MB1 member ops skipped         batch drops the 0x0C member entries
+# MB2 composite disk skipped     batch drops the on-disk composite entries
+# MB3 composite RAM skipped      batch skips AddNodeToCompositeIndexes
+# MB4 all-disk branch skipped    PropertyIndexOnDisk: true writes no 0x0A entry
+# MM1 imprecise not noted        addKeys leaves numImpreciseCount (ints past 2^53)
+# MM2 primary label only         AddNodesToPropertyIndexes ignores extra labels
+
+M1-skip-sort: KILLED (index [TestAddKeysRepeatsAndOrder TestAddNodesBatchEqualsSequentialAdds]; memory exit 0; badger [TestPutNodesBatchIndexStateEqualsPutNode])
+M2-skip-compact: KILLED (index [TestAddKeysRepeatsAndOrder]; memory exit 0; badger exit 0)
+M3-append-when-not-above: KILLED (index [TestAddNodesBatchEqualsSequentialAdds]; memory [TestPutNodesBatchIndexStateEqualsPutNode]; badger [TestPutNodesBatchIndexStateEqualsPutNode])
+M4-new-string-not-inserted: KILLED (index [TestAddKeysRepeatsAndOrder TestAddNodesBatchEqualsSequentialAdds]; memory [TestPutNodesBatchIndexStateEqualsPutNode]; badger [TestPutNodesBatchIndexStateEqualsPutNode])
+M5-addCount-1-not-n: KILLED (index [TestAddKeysRepeatsAndOrder TestAddNodesBatchEqualsSequentialAdds]; memory [TestPutNodesBatchIndexStateEqualsPutNode]; badger exit 0)
+M6-Mutated-unmarked: KILLED (index [TestAddNodesBatchEqualsSequentialAdds]; memory [TestPutNodesBatchIndexStateEqualsPutNode]; badger [TestPutNodesBatchIndexStateEqualsPutNode])
+M7-disk-widen-skipped: KILLED (index exit 0; memory exit 0; badger [TestPutNodesBatchIndexStateEqualsPutNode])
+MB1-batch-member-ops-skipped: KILLED (badger [TestPutNodesBatchIndexStateEqualsPutNode])
+MB2-batch-composite-disk-skipped: KILLED (badger [TestPutNodesBatchIndexStateEqualsPutNode])
+MB3-batch-composite-ram-skipped: KILLED (badger [TestPutNodesBatchIndexStateEqualsPutNode])
+MB4-all-disk-branch-skipped: KILLED (badger [TestPutNodesBatchIndexStateEqualsPutNode], the PropertyIndexOnDisk seeds)
+MM1-imprecise-not-noted: KILLED (index [TestAddNodesBatchEqualsSequentialAdds]; memory [TestPutNodesBatchIndexStateEqualsPutNode])
+MM2-primary-label-only: KILLED (index, memory and badger equivalence tests)
+
+13 of 13 killed. M2 is defended only by the direct addKeys test: through the
+store doors a value key never gets one ID twice (Elements lists are deduplicated).
