@@ -21,6 +21,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and rechecking each row; a time coordinate or an index still building reads the rows as before. The cost no longer
   grows with list length (64-element lists 5448 -> 1904 allocs a call at 100 values; times void under load, rerun
   pending, `tasks/evidence/RHOMEMIDS/`).
+- **TIERLEND** (PROJREAD part (a); a minor: tiered `Store.LendNodesSorted` and `Store.LendRelationshipsSorted` are new
+  exported methods). The tiered store implements `store.EntityLendBatchCapability`, so `LendByIDs` on tiered reads a
+  chunk under one move lock with one pin per shard (reference, archive, each event shard; the relationship probe once
+  more) and one badger batch lend each, instead of a move lock and up to three pins per ID; one pin is held at a
+  time, as before. Answers unchanged: the same rows as `LendNode` /
+  `LendRelationship` per ID, nil for deleted and unknown IDs (tests `TestTieredLendSorted*`,
+  `tasks/evidence/TIERLEND/`).
 - **BATCHADD** (ai-soc R3; a fix, no new exported name). `GraphTx.AddNodes` keeps its one batch store write when unique
   constraints exist: before, any registered constraint sent every call through `AddNode` one node at a time (ai-soc's
   profile: `core.addNodesOneByOne` +28.9 s CPU). Labels without a constrained key do no unique lookup at all; on a
