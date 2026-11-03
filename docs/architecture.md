@@ -286,7 +286,8 @@ or brute force) indexes exist; `docs/query-planners.md` describes how reads choo
 
 **ID-only equality lookup** (ELEMPROBE). `Nodes().IDsByLabelAndPropertyValues` returns the IDs that
 `ByLabelAndPropertyValues` would return, without loading rows when the store can answer from its index alone
-(`store.NodePropertyKeysIDsCapability`, badger and tiered). The caller keeps its own decoded rows. In ai-soc's
+(`store.NodePropertyKeysIDsCapability`: memory, badger and tiered; memory answers from a published in-RAM index
+without a time coordinate, RHOMEMIDS). The caller keeps its own decoded rows. In ai-soc's
 60-minute BA run, sigma's page-block probe loaded and decoded each 64 KiB block about 14 times: 81 s of the
 probe's 107 s CPU. A badger shard answers from its index when:
 - the lookup names no time coordinate (valid time, `TxAt`, `TxPin`);

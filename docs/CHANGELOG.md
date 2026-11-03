@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **RHOMEMIDS** (sigma READBACK; a minor: memory `Store.NodeIDsByLabelAndPropertyKeys` is a new exported method).
+  `IDsByLabelAndPropertyValues` on the memory store answers from the (label, key) index's postings instead of loading
+  and rechecking each row; a time coordinate or an index still building reads the rows as before. The cost no longer
+  grows with list length (64-element lists 5448 -> 1904 allocs a call at 100 values; times void under load, rerun
+  pending, `tasks/evidence/RHOMEMIDS/`).
+- **BATCHADD** (ai-soc R3; a fix, no new exported name). `GraphTx.AddNodes` keeps its one batch store write when unique
+  constraints exist: before, any registered constraint sent every call through `AddNode` one node at a time (ai-soc's
+  profile: `core.addNodesOneByOne` +28.9 s CPU). Labels without a constrained key do no unique lookup at all; on a
+  constrained key every value is checked under its value stripe before the write, and a value repeated within the call
+  or held by another node now refuses the whole call with `ErrUniqueViolation`, nothing stored and nothing claimed
+  (before, the earlier nodes of the call were kept until the transaction rolled back). Tests `TestAddNodesUnique*`
+  (badger, tiered reference and event labels, UniqueForever; `tasks/evidence/BATCHADD/`).
+
 ## [4.101.0] - 2026-11-03
 
 ### Changed

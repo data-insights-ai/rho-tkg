@@ -226,9 +226,9 @@ func TestGraphTxAddNodesRejectsBeforeCreating(t *testing.T) {
 	})
 }
 
-// With a unique constraint the call takes AddNode's path per element: a value
-// repeated within the call or taken before is refused with ErrUniqueViolation
-// at that element, the earlier ones exist until the transaction rolls back.
+// With a unique constraint the call stays all or nothing: a value repeated
+// within the call or taken before refuses the whole call with
+// ErrUniqueViolation and creates no node (BATCHADD).
 func TestGraphTxAddNodesUniqueConstraint(t *testing.T) {
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
@@ -252,8 +252,11 @@ func TestGraphTxAddNodesUniqueConstraint(t *testing.T) {
 		if !errors.Is(err, graphpkg.ErrUniqueViolation) {
 			t.Fatalf("err = %v, want ErrUniqueViolation", err)
 		}
-		if len(nodes) != 2 {
-			t.Fatalf("%d nodes before the violation, want 2", len(nodes))
+		if nodes != nil {
+			t.Fatalf("%d nodes returned with the violation, want none", len(nodes))
+		}
+		if n, _ := g.Nodes().Count(); n != 0 {
+			t.Fatalf("%d nodes after the refused call", n)
 		}
 		if err := tx.Rollback(); err != nil {
 			t.Fatal(err)
