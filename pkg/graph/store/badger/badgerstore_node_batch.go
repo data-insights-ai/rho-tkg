@@ -637,23 +637,24 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		}
 	}
 
-	// Phase 2: apply — all validated, safe to mutate.
-	ops := make([]writeOp, 0, len(nodes)*3) // entity + avg ~2 label indexes
+	// Phase 2: apply — all validated, safe to mutate. Every node's vector-index
+	// entries go in first, before any other mutation (lesson 4, BACKLOG 18e); a
+	// failure withdraws those applied, so a failed batch leaves the store as
+	// before the call (BATCHFAIL).
 	ids := make([]snowflake.ID, len(nodes))
 	for i, nd := range serialized {
 		ids[i] = nd.id
 	}
-	for i, n := range nodes {
-		nd := serialized[i]
-
-		// Apply this node's vector-index entries first (lesson 4, BACKLOG 18e): a failure
-		// must not leave other indexes reflecting a node whose write was never queued.
-		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], nd.id); err != nil {
-			bs.maintainPropertyIndexesAddBatch(nodes[:i], ids[:i]) // as the per-node adds left the nodes before
+	for i := range nodes {
+		if err := bs.addNodeVectorsLocked(vectorUpdates[i], ids[i]); err != nil {
+			bs.withdrawNodeVectorsLocked(ids[:i+1])
 			bs.idxMu.Unlock()
 			return err
 		}
-
+	}
+	ops := make([]writeOp, 0, len(nodes)*3) // entity + avg ~2 label indexes
+	for i, n := range nodes {
+		nd := serialized[i]
 		bs.nodeCache.Put(nd.id, nd.frozen)
 		bs.nodeIDs.Add(int64(nd.nid))
 		bs.bumpNodeRevLocked(nd.nid)
@@ -687,6 +688,27 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()
+}
+
+// addNodeVectorsLocked applies a created node's prepared vector-index entries
+// (vectorAddTestErr: see Store). Caller holds idxMu.
+func (bs *Store) addNodeVectorsLocked(updates []indexpkg.NodeVectorIndexUpdate, id snowflake.ID) error {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(updates, id); err != nil {
+		return err
+	}
+	if h := bs.vectorAddTestErr; h != nil {
+		return h(id)
+	}
+	return nil
+}
+
+// withdrawNodeVectorsLocked removes the vector-index entries a failed create
+// applied for ids. A created ID held no entry before, so removing it from
+// every index restores them. Caller holds idxMu.
+func (bs *Store) withdrawNodeVectorsLocked(ids []snowflake.ID) {
+	for _, id := range ids {
+		indexpkg.PurgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
+	}
 }
 
 // DeleteNodesBatch deletes nodes atomically in two phases: all IDs exist (pre-read

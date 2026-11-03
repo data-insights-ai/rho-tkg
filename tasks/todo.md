@@ -126,10 +126,6 @@ Each item: one sentence, then when it is done and what it waits for.
   libjemalloc, needs cgo).
 - **WRITEAMP** (ai-soc 3 Nov, quiet PC, after the tiered d2) — compaction input bytes / flushed bytes per shard for the
   cut-shaped write; then decide BaseLevelSize, BaseTableSize, MemTableSize per tier (PERTIER).
-- **BATCHFAIL** (fix, later; found by the BATCHIDX review 3 Nov, pre-existing) — a vector-index failure at node i of a
-  PutNodes batch leaves the RAM property indexes holding nodes[:i] (badger) or nodes[:i+1] (memory), whose rows were
-  never queued (badger keeps them in nodeCache, so RAM answers stay consistent until reopen). Unpinned by any test.
-  Done when a failed batch leaves no index entry, with a test on both stores.
 - **ROUND2 measure** (René via ai-soc, 3 Nov: "why test each part of rho? Why not a full test with the medium ba example
   here on the office pc?") — no per-item before/after benches on the PC. ai-soc runs its 4-arm harness (data-60min,
   158,487 records; memory and tiered, paging off and budget) on rho main's tip with sigma main's tip after W1; first tip

@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **BATCHFAIL** (BATCHIDX review; a fix, no new exported name). A node create whose vector-index apply fails leaves
+  the store as before the call, on memory and badger, `PutNodesBatch` and `PutNode` alike: every node's vector entries
+  go in before any other mutation and are withdrawn on a failure. Before, a failure at node k of a batch left the
+  earlier nodes (memory: also node k) in the label, property and composite indexes, and on badger in `nodeIDs` and
+  the row cache with no row queued; memory kept their rows and change records, so the same nodes were then refused as
+  existing; the vector entries of the nodes up to k stayed, and on badger survived a reopen. A memory batch encodes
+  its change records before any mutation. Test `TestPutNodesFailedVectorLeavesNoTrace` (memory and badger, badger
+  also after a reopen; `tasks/evidence/BATCHFAIL/`).
 - **RHOMEMIDS** (sigma READBACK; a minor: memory `Store.NodeIDsByLabelAndPropertyKeys` is a new exported method).
   `IDsByLabelAndPropertyValues` on the memory store answers from the (label, key) index's postings instead of loading
   and rechecking each row; a time coordinate or an index still building reads the rows as before. The cost no longer

@@ -90,10 +90,9 @@ func (ms *Store) logChangeScopedLocked(token uint64, tag storecontract.ChangeTag
 	return nil
 }
 
-// logNodePutRoutedLocked is logNodePutLocked's token-aware sibling: token ==
-// 0 takes the exact eager/legacy-scope path logNodePutLocked does; token != 0
-// routes the record into that scope's buffer instead. Used only by the
-// *Scoped create doors.
+// logNodePutRoutedLocked logs a node put: token == 0 takes the eager/legacy-scope
+// path (logChangeLocked); token != 0 routes the record into that scope's buffer
+// instead. Used only by the *Scoped create doors.
 func (ms *Store) logNodePutRoutedLocked(n *types.Node, withHistory bool, token uint64) error {
 	if !ms.logEnabled {
 		return nil
