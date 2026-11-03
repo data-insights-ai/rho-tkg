@@ -160,3 +160,24 @@ sigma, 3 Nov 22:40 (Fable's tiered GC numbers, 40-cut runs, rho v4.102.0, so bef
   interval updates (non-cascade writes bumping the epoch).
 Round 3 on main (HISTDECODE drops the deep copy and the sort in whole-history reads; HISTTRIM the tx snapshot copy)
 addresses part of DeepCopy and reconstructRelHistoryWire; sigma's next 40-cut run on main's tip separates the rest.
+
+CASCADEMETA (next item, Fable design 3 Nov 23:00, key claims checked in source here):
+- Cause on sigma's shape: gatherHeadFacts (effective_head.go:312) refuses a chain with a delete, a retraction or a
+  shared version, so prep.head is nil and every cascade on such a key misses and reads the whole history. A head entry
+  for such chains is the wrong fix: entries serve reads too, and the read fold caps lives and drops retracted ones
+  (chain_resolver.go:260-276) while the cascade resolver uses no caps (temporal_cascade.go:560).
+- Fix (a patch, unexported only): on a miss, when c.temporalMetaHistory != nil, build the stub chain from
+  RelHistoryTemporalMeta / NodeHistoryTemporalMeta (as relEffectiveViaTemporalMeta, effective_timeline.go:685-704) and
+  run preCorrectionChain, prepareCorrection, segments, winnerAt, resumption end, cascadeNewCurrent and prep.head on it
+  unchanged; read full rows (getRelVersion, memoised) only for each segment base and the resumption source; the template
+  is the current row. Fall back to the whole history when versions are not strictly ascending, one equals the current
+  version, or a point read fails. sharded.Store has no skeleton door (only its read snapshot), so sharded keeps the
+  whole-history path; adding the door there would be a minor.
+- Untimed Update of a rel with valid-time segments is cascadeExisting (whole_axis_write.go:81): every winner is a base,
+  so k full rows stay (k distinct winners, not N versions).
+- Corrections to the above: the head cache cap is a weight (pieces + bounds + 1, 16,384 per stripe), not bytes, and a
+  put over the stripe's share drops the whole stripe (effective_head.go:200-206).
+- Tests: red counting test (no GetRelHistory on the miss path, full-row reads <= winners + 1; sharded pins the
+  fallback); twin equivalence with the skeleton path off (bounded, open, excise, whole-axis, retraction + re-import,
+  tombstone in chain, legacy shared version, pre-migration chain, order-rule refusal, compaction between reads); cost
+  bound at 64 and 1,024 versions. Estimate (inference): about 5x less allocation per cascade miss.
