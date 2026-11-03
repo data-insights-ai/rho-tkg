@@ -157,6 +157,10 @@ func (b *propIDBounds) bounds(txn *badgerv4.Txn) (lo, hi uint64) {
 	return b.lo.Load(), b.hi.Load()
 }
 
+// testHookPropIdxAdd, nil in production, sees each property-index add: one
+// node's (batch false) or a batch's (true) (BATCHIDX).
+var testHookPropIdxAdd func(bs *Store, batch bool)
+
 // maintainPropertyIndexesAdd is the write-path maintenance entry point every
 // node-mutation door calls in place of indexpkg.AddNodeToPropertyIndexes.
 // The RAM helper maintains the RAM indexes (it skips the on-disk ones); for
@@ -178,6 +182,9 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 	// the row into the property membership sidecars (backlog 8).
 	bs.recordNodeRowLocked(n, true)
 	indexpkg.AddNodeToCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, id)
+	if testHookPropIdxAdd != nil {
+		testHookPropIdxAdd(bs, false)
+	}
 	if !bs.propIdxOnDisk {
 		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 		if len(bs.propDiskLabels) == 0 {

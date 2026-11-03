@@ -1,0 +1,20 @@
+# BATCHIDX red, on batchidx (batchadd da659e5a + red tests and seams)
+# go test -short -timeout 300s -run 'TestAddNodesBatch' ./pkg/graph/internal/index/
+--- FAIL: TestAddNodesBatchParsesEachValueOnce (0.83s)
+    --- FAIL: TestAddNodesBatchParsesEachValueOnce/number (0.36s)
+        property_index_batch_test.go:54: 1000 nodes of one value: 1000 sort-key parses, 1996 one-by-one inserts; want 1, 0
+    --- FAIL: TestAddNodesBatchParsesEachValueOnce/number/rangeCounts (0.38s)
+        property_index_batch_test.go:54: 1000 nodes of one value: 1000 sort-key parses, 1996 one-by-one inserts; want 1, 0
+    --- FAIL: TestAddNodesBatchParsesEachValueOnce/string (0.09s)
+        property_index_batch_test.go:54: 1000 nodes of one value: 1000 sort-key parses, 998 one-by-one inserts; want 1, 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	3.162s
+FAIL
+# go test -short -timeout 300s -run 'TestPutNodesBatchIndex' ./pkg/graph/store/badger/
+--- FAIL: TestPutNodesBatchIndexesOnce (0.01s)
+    badgerstore_node_batch_index_test.go:84: PutNodesBatch of 1000 nodes: 1000 per-node and 0 batch property-index adds; want 0 and 1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.493s
+FAIL
+# TestAddNodesBatchEqualsSequentialAdds and TestPutNodesBatchIndexStateEqualsPutNode pass here
+# (AddNodesToPropertyIndexes is still a per-node loop; PutNode and PutNodesBatch agree): they guard the fix.
