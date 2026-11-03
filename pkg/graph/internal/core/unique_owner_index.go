@@ -3,6 +3,8 @@ package core
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 
 	constraintspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -25,6 +27,14 @@ import (
 // badger label keep their property index too, and the owner index spares
 // their unique check and GetOrCreateByKey its seeks (ai-soc's admission spent
 // 21.3 s CPU in them, UNIQUELOOK).
+
+// Seed and log seams (tests lower them): the page a seed reads at a time,
+// the interval between its progress lines, and the logger.
+var (
+	ownerSeedPageSize      = 10_000
+	ownerSeedProgressEvery = 60 * time.Second
+	ownerIndexLogger       = slog.Default
+)
 
 // uniqueOwnerIndex returns the owner index a unique constraint on label
 // uses, or nil when it uses none (a store without the index, UniqueForever
