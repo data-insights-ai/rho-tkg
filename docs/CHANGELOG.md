@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **RHOMEMIDS** (sigma READBACK; a minor: memory `Store.NodeIDsByLabelAndPropertyKeys` is a new exported method).
+  `IDsByLabelAndPropertyValues` on the memory store answers from the (label, key) index's postings instead of loading
+  and rechecking each row; a time coordinate or an index still building reads the rows as before. The cost no longer
+  grows with list length (64-element lists 5448 -> 1904 allocs a call at 100 values; times void under load, rerun
+  pending, `tasks/evidence/RHOMEMIDS/`).
+
 ## [4.101.0] - 2026-11-03
 
 ### Changed
