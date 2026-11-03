@@ -432,8 +432,12 @@ that test.
     a flush carries both; GetOrCreateByKey and the create-time check read one claim and one row at any depth on a
     store or label without time shards (`ownerIndexAnswers`, `unique_owner_index.go`), DepthAll only for an event
     label. Writers that bypass the kernel (batch pre-check, cascade, replica apply, import) claim too
-    (`claimOwnerIndexForRow`); the seed checks each value under its value lock and keeps only a backed claim; an
-    open seeds a constraint left without a ready index once. UniqueForever keeps its ownership map.
+    (`claimOwnerIndexForRow`); the seed checks each value under its value lock and keeps only a backed claim, pages
+    the label 10,000 rows at a time and logs progress at least every 60 s; an open seeds a constraint left without
+    a ready index once, and a seed that finds two holders logs and leaves the index unready. The first declaration
+    raises marker 16 (tiered: on the reference shard, whose flushes sync the index first like the event shards'),
+    after the constraint's validation, so a refused `CreateUnique` raises nothing. UniqueForever keeps its ownership
+    map.
 
 - **ADR-0013 Valid-time placement** (TIERCLOCK; designed 2026-10-29 for ai-soc's full BA archive, 33 valid days,
   revised the same day after an independent review; not built, each step marked here when released). *Problem.*

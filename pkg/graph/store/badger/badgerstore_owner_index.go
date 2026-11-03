@@ -37,6 +37,11 @@ type ownerDecl struct {
 }
 
 type ownerIndexState struct {
+	// ddlMu orders Declare and Drop: a drop's claim walk runs under it, not
+	// under mu, so lookups and claims of other indexes never wait on the
+	// walk, and a re-declaration cannot start while the walk could still
+	// delete the new index's claims.
+	ddlMu    sync.Mutex
 	mu       sync.RWMutex // guards declared, ready
 	declared map[ownerDecl]struct{}
 	ready    map[ownerDecl]struct{}
@@ -88,6 +93,8 @@ func (bs *Store) DeclareUniqueOwnerIndex(label uint16, key string) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	bs.owner.ddlMu.Lock()
+	defer bs.owner.ddlMu.Unlock()
 	bs.owner.mu.Lock()
 	defer bs.owner.mu.Unlock()
 	d := ownerDecl{label, key}
@@ -108,10 +115,12 @@ func (bs *Store) DropUniqueOwnerIndex(label uint16, key string) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	bs.owner.ddlMu.Lock()
+	defer bs.owner.ddlMu.Unlock()
 	bs.owner.mu.Lock()
-	defer bs.owner.mu.Unlock()
 	d := ownerDecl{label, key}
 	if _, ok := bs.owner.declared[d]; !ok {
+		bs.owner.mu.Unlock()
 		return nil
 	}
 	// The marks go first, in the buffer: once they are gone nothing trusts
@@ -122,6 +131,11 @@ func (bs *Store) DropUniqueOwnerIndex(label uint16, key string) error {
 	)
 	delete(bs.owner.ready, d)
 	delete(bs.owner.declared, d)
+	// mu is released before the walk (the review's F6): the index is
+	// undeclared from here, so PutUniqueOwner refuses its claims and no
+	// reader trusts one, and ddlMu keeps a re-declaration out until the
+	// walk ends.
+	bs.owner.mu.Unlock()
 	// The claims are deleted through the buffer in chunks, not with
 	// DropPrefix, which blocks every write of the store (docs/badger.md
 	// section 2). A claim queued after the walk is a stray that a

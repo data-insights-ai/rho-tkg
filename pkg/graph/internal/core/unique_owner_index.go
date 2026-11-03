@@ -163,53 +163,89 @@ func (c *Core) nodesByOwnerIndex(oi storepkg.UniqueOwnerIndexCapability, tok uin
 // unless a backed claim exists, then marks the index ready. Runs after the
 // existing-data validation (or at open), beside writers that claim on their
 // own: each value is seeded under its value lock, so a writer's newer claim
-// is either seen as backed or written after the seed's.
-func (c *Core) seedOwnerIndex(oi storepkg.UniqueOwnerIndexCapability, labelTok uint16, key string) error {
-	var nodes []*types.Node
-	if err := c.readUnderRLock(func() error {
-		var err error
-		nodes, err = c.store.NodesByLabel(labelTok, storepkg.QueryOpts{})
-		return err
-	}); err != nil {
-		return fmt.Errorf("graph: seed owner index: %w", err)
-	}
-	for _, n := range nodes {
-		vk, ok := uniqueValueKey(n, key)
-		if !ok || vk == "" {
-			continue
-		}
+// is either seen as backed or written after the seed's. It reads the label
+// in ID-ordered pages of ownerSeedPageSize rows (RAM bounded by a page, not
+// the label), logs progress every ownerSeedProgressEvery and a final count,
+// and returns the rows it read.
+func (c *Core) seedOwnerIndex(oi storepkg.UniqueOwnerIndexCapability, labelTok uint16, key string) (int, error) {
+	label := c.labels.Resolve(labelTok)
+	start := time.Now()
+	lastLog := start
+	rows, pages := 0, 0
+	var after types.EntityID
+	for {
+		var nodes []*types.Node
 		if err := c.readUnderRLock(func() error {
-			ordered := c.valueLocks.LockStripes([]uint8{uniqueValueStripe(labelTok, key, vk)})
-			defer c.valueLocks.UnlockStripes(ordered)
-			if _, backed, err := c.claimBacked(n.ID(), labelTok, key, vk); err != nil || !backed {
-				return err // the row moved on since the scan: its writer claimed
-			}
-			if id, found, err := oi.UniqueOwner(labelTok, key, vk); err != nil {
-				return err
-			} else if found {
-				if _, backed, err := c.claimBacked(id, labelTok, key, vk); err != nil {
-					return err
-				} else if backed && id != n.ID() {
-					// Two holders (a replica's verbatim duplicate): one owner
-					// per value cannot answer; the index stays unready.
-					return fmt.Errorf("%w: label token %d key %q held by nodes %d and %d", ErrUniqueViolation, labelTok, key, id, n.ID())
-				} else if backed {
-					return nil
-				}
-			}
-			return oi.PutUniqueOwner(labelTok, key, vk, n.ID())
+			var err error
+			nodes, err = c.store.NodesByLabel(labelTok, storepkg.QueryOpts{After: after, Limit: ownerSeedPageSize})
+			return err
 		}); err != nil {
-			return fmt.Errorf("graph: seed owner index: %w", err)
+			return rows, fmt.Errorf("graph: seed owner index: %w", err)
+		}
+		if len(nodes) == 0 {
+			break
+		}
+		pages++
+		after = types.EntityID(nodes[len(nodes)-1].ID())
+		for _, n := range nodes {
+			if err := c.seedOwnerRow(oi, labelTok, key, n); err != nil {
+				return rows, fmt.Errorf("graph: seed owner index: %w", err)
+			}
+		}
+		rows += len(nodes)
+		if time.Since(lastLog) >= ownerSeedProgressEvery {
+			lastLog = time.Now()
+			ownerIndexLogger().Info("graph: seeding unique owner index", "label", label, "key", key,
+				"rows", rows, "elapsed", time.Since(start).Round(time.Millisecond))
+		}
+		if len(nodes) < ownerSeedPageSize {
+			break
 		}
 	}
-	return oi.MarkUniqueOwnerIndexReady(labelTok, key)
+	if err := oi.MarkUniqueOwnerIndexReady(labelTok, key); err != nil {
+		return rows, err
+	}
+	ownerIndexLogger().Info("graph: seeded unique owner index", "label", label, "key", key,
+		"rows", rows, "pages", pages, "elapsed", time.Since(start).Round(time.Millisecond))
+	return rows, nil
+}
+
+// seedOwnerRow claims n's value of key unless a backed claim exists; two
+// holders of one value fail the seed.
+func (c *Core) seedOwnerRow(oi storepkg.UniqueOwnerIndexCapability, labelTok uint16, key string, n *types.Node) error {
+	vk, ok := uniqueValueKey(n, key)
+	if !ok || vk == "" {
+		return nil
+	}
+	return c.readUnderRLock(func() error {
+		ordered := c.valueLocks.LockStripes([]uint8{uniqueValueStripe(labelTok, key, vk)})
+		defer c.valueLocks.UnlockStripes(ordered)
+		if _, backed, err := c.claimBacked(n.ID(), labelTok, key, vk); err != nil || !backed {
+			return err // the row moved on since the scan: its writer claimed
+		}
+		if id, found, err := oi.UniqueOwner(labelTok, key, vk); err != nil {
+			return err
+		} else if found {
+			if _, backed, err := c.claimBacked(id, labelTok, key, vk); err != nil {
+				return err
+			} else if backed && id != n.ID() {
+				// Two holders (a replica's verbatim duplicate): one owner
+				// per value cannot answer; the index stays unready.
+				return fmt.Errorf("%w: label token %d key %q held by nodes %d and %d", ErrUniqueViolation, labelTok, key, id, n.ID())
+			} else if backed {
+				return nil
+			}
+		}
+		return oi.PutUniqueOwner(labelTok, key, vk, n.ID())
+	})
 }
 
 // ensureOwnerIndexesAtOpen declares and seeds, once, the owner index of
 // every active constraint that should have one and has none ready: a
 // constraint created by a release before UNIQUELOOK (badger, tiered reference
 // labels), or one whose declaration a crash cut. Best effort: an index left
-// unready (a read-only store) only leaves its lookups on the property index.
+// unready (a read-only store, a failed seed: logged) only leaves its lookups
+// on the property index; a failed seed is tried again at the next open.
 func (c *Core) ensureOwnerIndexesAtOpen() {
 	if _, ok := c.store.(storepkg.UniqueOwnerIndexCapability); !ok {
 		return
@@ -234,10 +270,21 @@ func (c *Core) ensureOwnerIndexesAtOpen() {
 		if err != nil || oi == nil || oi.UniqueOwnerIndexReady(w.tok, w.key) {
 			continue
 		}
-		if oi.DeclareUniqueOwnerIndex(w.tok, w.key) != nil {
+		declared := oi.UniqueOwnerIndexDeclared(w.tok, w.key)
+		if err := oi.DeclareUniqueOwnerIndex(w.tok, w.key); err != nil {
+			ownerIndexLogger().Warn("graph: unique owner index not declared at open; lookups stay on the property index",
+				"label", w.label, "key", w.key, "error", err)
 			continue
 		}
-		_ = c.seedOwnerIndex(oi, w.tok, w.key)
+		if !declared {
+			ownerIndexLogger().Info("graph: unique owner index declared at open; store format marker raised to 16 (older releases refuse the store)",
+				"label", w.label, "key", w.key)
+		}
+		ownerIndexLogger().Info("graph: seeding unique owner index at open", "label", w.label, "key", w.key)
+		if rows, err := c.seedOwnerIndex(oi, w.tok, w.key); err != nil {
+			ownerIndexLogger().Warn("graph: unique owner index left unready; lookups stay on the property index",
+				"label", w.label, "key", w.key, "rows", rows, "error", err)
+		}
 	}
 }
 
@@ -283,6 +330,8 @@ func (c *Core) claimOwnerIndexForRow(n *types.Node) error {
 				if err := oi.DropUniqueOwnerIndex(cl.tok, cl.key); err != nil {
 					return fmt.Errorf("graph: unique owner index: %w", err)
 				}
+				ownerIndexLogger().Warn("graph: unique owner index dropped: a replayed row holds a value another node holds; lookups return to the property index",
+					"label", c.labels.Resolve(cl.tok), "key", cl.key, "values", 1, "holders", 2)
 				continue
 			}
 		}

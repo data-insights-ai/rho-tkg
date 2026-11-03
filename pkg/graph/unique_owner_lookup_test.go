@@ -569,3 +569,271 @@ func TestUniqueLookForeverAndMarker(t *testing.T) {
 		t.Fatal("a release reading markers up to 15 opened a store with an owner index")
 	}
 }
+
+// TestUniqueLookTieredDowngradeRefused (review F2): a tiered store whose
+// reference label has a unique constraint carries marker 16, so a release
+// reading markers up to 15 refuses it; this release reopens it and answers.
+// Not parallel: the readable cap is the process's.
+func TestUniqueLookTieredDowngradeRefused(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	open := func() (*tiered.Store, error) {
+		return tiered.New(tiered.Config{DataDir: dir, RefLabels: []string{"Host"}, ShardWindow: 7 * 24 * time.Hour})
+	}
+	ts, err := open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12, Store: ts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Constraints().CreateUnique(ctx, "Host", "key"); err != nil {
+		t.Fatal(err)
+	}
+	a, err := g.Nodes().Add(ctx, []string{"Host"}, map[string]any{"key": "d"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	restore := badger.SetMaxReadableStoreFormatVersionForTest(storeutil.CompositeDiskStoreFormatVersion)
+	old, err := open()
+	restore()
+	if err == nil {
+		_ = old.Close()
+		t.Fatal("a release reading markers up to 15 opened a tiered store with a unique constraint")
+	}
+	ts, err = open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err = graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12, Store: ts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	n, created, err := g.Nodes().GetOrCreateByKey(ctx, "Host", "key", "d", nil)
+	if err != nil || created || n.ID() != a.ID() {
+		t.Fatalf("GetOrCreate(d) after reopen: id %d created %v err %v; want %d", n.ID(), created, err, a.ID())
+	}
+}
+
+// TestUniqueLookFailedCreateUniqueLeavesMarker (review F3): a CreateUnique
+// refused by existing duplicates declares no owner index, so the store keeps
+// its marker and a release reading markers up to 15 still opens it. Not
+// parallel: the readable cap is the process's.
+func TestUniqueLookFailedCreateUniqueLeavesMarker(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	g, bs := uniqLookBadger(t, dir)
+	var tok uint16
+	for i := 0; i < 2; i++ {
+		n, err := g.Nodes().Add(ctx, []string{"Host"}, map[string]any{"key": "twin"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		tok = n.LabelTokenRawAt(0)
+	}
+	if err := g.Constraints().CreateUnique(ctx, "Host", "key"); err == nil {
+		t.Fatal("CreateUnique over two holders succeeded")
+	}
+	if bs.UniqueOwnerIndexDeclared(tok, "key") {
+		t.Fatal("a failed CreateUnique left an owner index declared")
+	}
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	restore := badger.SetMaxReadableStoreFormatVersionForTest(storeutil.CompositeDiskStoreFormatVersion)
+	old, err := badger.New(badger.Config{Dir: dir})
+	restore()
+	if err != nil {
+		t.Fatalf("a failed CreateUnique raised the marker: a release reading 15 refuses the store: %v", err)
+	}
+	_ = old.Close()
+}
+
+// TestUniqueLookOldStoreReadOnly (review): a store whose constraint has no
+// owner index (made before UNIQUELOOK) opened read-only cannot seed one; its
+// lookups answer from the property index, right, and nothing is declared.
+func TestUniqueLookOldStoreReadOnly(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	g, bs := uniqLookBadger(t, dir)
+	if err := g.Constraints().CreateUnique(ctx, "Host", "key"); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]types.NodeID{}
+	var tok uint16
+	for i := 0; i < 30; i++ {
+		k := fmt.Sprintf("r%d", i)
+		n, err := g.Nodes().Add(ctx, []string{"Host"}, map[string]any{"key": k})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[k], tok = n.ID(), n.LabelTokenRawAt(0)
+	}
+	if err := bs.DropUniqueOwnerIndex(tok, "key"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ro, err := badger.New(badger.Config{Dir: dir, ReadOnly: true, PropertyIndexOnDisk: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err = graphpkg.New(graphpkg.Config{Store: ro})
+	if err != nil {
+		t.Fatalf("graph.New read-only: %v", err)
+	}
+	defer g.Close()
+	if ro.UniqueOwnerIndexDeclared(tok, "key") || ro.UniqueOwnerIndexReady(tok, "key") {
+		t.Fatal("a read-only open declared an owner index")
+	}
+	for k, want := range ids {
+		rows, err := g.Nodes().ByLabelAndProperty("Host", "key", k, storepkg.QueryOpts{})
+		if err != nil || len(rows) != 1 || rows[0].ID() != want {
+			t.Fatalf("ByLabelAndProperty(%s) read-only: %d rows (%v), want %d", k, len(rows), err, want)
+		}
+	}
+	rows, err := g.Nodes().ByLabelAndProperty("Host", "key", "absent", storepkg.QueryOpts{})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("ByLabelAndProperty(absent) read-only: %d rows (%v), want 0", len(rows), err)
+	}
+}
+
+// TestUniqueLookThreeDoorsOneValue (review): GetOrCreateByKey, a batch
+// Execute and a transaction's AddNodes race on one value; exactly one row
+// holds it, every GetOrCreateByKey returns that row, and every other writer
+// is refused with ErrUniqueViolation.
+func TestUniqueLookThreeDoorsOneValue(t *testing.T) {
+	ctx := context.Background()
+	for _, st := range uniqLookStores() {
+		t.Run(st.name, func(t *testing.T) {
+			g := st.open(t, t.TempDir())
+			defer g.Close()
+			if err := g.Constraints().CreateUnique(ctx, "Host", "key"); err != nil {
+				t.Fatal(err)
+			}
+			for round := 0; round < 10; round++ {
+				k := fmt.Sprintf("door%d", round)
+				var wg sync.WaitGroup
+				var mu sync.Mutex
+				writers := 0
+				got := map[types.NodeID]bool{}
+				done := func(id types.NodeID, wrote bool, err error) {
+					mu.Lock()
+					defer mu.Unlock()
+					switch {
+					case err != nil && !errors.Is(err, graphpkg.ErrUniqueViolation):
+						t.Errorf("%s: %v", k, err)
+					case err == nil && wrote:
+						writers++
+					}
+					if err == nil && id != 0 {
+						got[id] = true
+					}
+				}
+				for w := 0; w < 4; w++ {
+					wg.Add(3)
+					go func() {
+						defer wg.Done()
+						n, c, err := g.Nodes().GetOrCreateByKey(ctx, "Host", "key", k, nil)
+						var id types.NodeID
+						if err == nil {
+							id = n.ID()
+						}
+						done(id, c, err)
+					}()
+					go func() {
+						defer wg.Done()
+						b, err := g.Batch().New()
+						if err != nil {
+							done(0, false, err)
+							return
+						}
+						if _, err := b.AddNode([]string{"Host"}, map[string]any{"key": k}); err != nil {
+							done(0, false, err)
+							return
+						}
+						res, err := b.Execute()
+						if res != nil && len(res.Errors) == 1 && res.Created == 0 {
+							err = res.Errors[0].Err // the batch's one refused op
+						}
+						done(0, err == nil, err)
+					}()
+					go func() {
+						defer wg.Done()
+						err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+							_, err := tx.AddNodes([]string{"Host"}, []map[string]any{{"key": k}})
+							return err
+						})
+						done(0, err == nil, err)
+					}()
+				}
+				wg.Wait()
+				rows, err := g.Nodes().ByLabelAndProperty("Host", "key", k, storepkg.QueryOpts{})
+				if err != nil || len(rows) != 1 {
+					t.Fatalf("%s: %d holders (%v), want 1", k, len(rows), err)
+				}
+				if writers != 1 {
+					t.Fatalf("%s: %d writers succeeded, want 1", k, writers)
+				}
+				for id := range got {
+					if id != rows[0].ID() {
+						t.Fatalf("%s: GetOrCreateByKey returned %d, the holder is %d", k, id, rows[0].ID())
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestUniqueLookLongValue (review): a value over 1 KiB is claimed under its
+// SHA-256 (form byte 1); GetOrCreateByKey finds its holder, a second holder
+// is refused, and a long value sharing all but its last byte is a different
+// value. Over a reopen too.
+func TestUniqueLookLongValue(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	g, bs := uniqLookBadger(t, dir)
+	if err := g.Constraints().CreateUnique(ctx, "Host", "key"); err != nil {
+		t.Fatal(err)
+	}
+	long := make([]byte, 2*storeutil.UniqueOwnerVerbatimMax)
+	for i := range long {
+		long[i] = 'a' + byte(i%26)
+	}
+	v1, v2 := string(long)+"1", string(long)+"2"
+	a, created, err := g.Nodes().GetOrCreateByKey(ctx, "Host", "key", v1, nil)
+	if err != nil || !created {
+		t.Fatalf("GetOrCreate(v1): created %v err %v", created, err)
+	}
+	tok := a.LabelTokenRawAt(0)
+	if id, ok, err := bs.UniqueOwner(tok, "key", uniqLookVK(v1)); err != nil || !ok || id != a.ID() {
+		t.Fatalf("claim of v1: %d %v %v, want %d", id, ok, err, a.ID())
+	}
+	check := func(g *graphpkg.Graph) {
+		t.Helper()
+		n, created, err := g.Nodes().GetOrCreateByKey(ctx, "Host", "key", v1, nil)
+		if err != nil || created || n.ID() != a.ID() {
+			t.Fatalf("GetOrCreate(v1): id %d created %v err %v; want %d", n.ID(), created, err, a.ID())
+		}
+		if _, err := g.Nodes().Add(ctx, []string{"Host"}, map[string]any{"key": v1}); !errors.Is(err, graphpkg.ErrUniqueViolation) {
+			t.Fatalf("a second holder of v1: %v, want ErrUniqueViolation", err)
+		}
+	}
+	check(g)
+	b, created, err := g.Nodes().GetOrCreateByKey(ctx, "Host", "key", v2, nil)
+	if err != nil || !created || b.ID() == a.ID() {
+		t.Fatalf("GetOrCreate(v2): id %d created %v err %v; want a new node", b.ID(), created, err)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	g, _ = uniqLookBadger(t, dir)
+	defer g.Close()
+	check(g)
+}

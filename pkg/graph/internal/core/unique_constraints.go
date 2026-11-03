@@ -270,15 +270,10 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	if err != nil {
 		return err
 	}
-	// The owner index first: from here every writer of the label claims there
-	// (writers before the pending install are waited for and seen by the seed).
+	// The owner index is declared only after the existing data validated
+	// (below): a declaration raises the store's format marker for good, so a
+	// create that fails must not make it (UNIQUELOOK review F3).
 	dropOwner := func() {}
-	if ownerIdx != nil {
-		if err := ownerIdx.DeclareUniqueOwnerIndex(labelTok, propKey); err != nil {
-			return err
-		}
-		dropOwner = func() { _ = ownerIdx.DropUniqueOwnerIndex(labelTok, propKey) }
-	}
 
 	// Phase 1: install a PENDING entry so concurrent writers enforce during validation.
 	// The install runs under c.mu.Lock() (BACKLOG 9c): a standalone write holds
@@ -345,10 +340,20 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 		dropOwner()
 		return fmt.Errorf("%w: label %q key %q; offenders %v", ErrUniqueViolationExisting, label, propKey, offenders)
 	}
-	// Seed the owner index from the rows and mark it ready before the
-	// constraint is active: a ready index holds a claim for every holder.
+	// Declare the owner index, wait for every writer that checked before the
+	// declaration (it claimed nothing; c.mu.Lock waits for its row, written
+	// under the same RLock as its check), then seed it from the rows and mark
+	// it ready before the constraint is active: a ready index holds a claim
+	// for every holder.
 	if ownerIdx != nil {
-		if err := c.seedOwnerIndex(ownerIdx, labelTok, propKey); err != nil {
+		if err := ownerIdx.DeclareUniqueOwnerIndex(labelTok, propKey); err != nil {
+			c.uninstallPendingConstraint(labelTok, propKey)
+			return err
+		}
+		dropOwner = func() { _ = ownerIdx.DropUniqueOwnerIndex(labelTok, propKey) }
+		c.mu.Lock()
+		c.mu.Unlock() //nolint:staticcheck // SA2001: a barrier, not a critical section
+		if _, err := c.seedOwnerIndex(ownerIdx, labelTok, propKey); err != nil {
 			c.uninstallPendingConstraint(labelTok, propKey)
 			dropOwner()
 			return err
