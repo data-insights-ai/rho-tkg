@@ -778,6 +778,10 @@ type Store struct {
 	// walks those only, not every definition (DISKDEFS). Guarded by idxMu;
 	// refreshPropDiskDefsLocked after each change of propertyIndexes.
 	propDiskDefs []propDiskDef
+	// propDiskInexact: the property keys whose on-disk entries may hold keys no
+	// live definition wrote (propDiskInexactKey, ELEMPROBE): the ID
+	// door does not answer from them. Guarded by idxMu.
+	propDiskInexact map[string]struct{}
 	// nodeMemberDisk: the on-disk node definitions whose member entries are in
 	// 0x0C (RELDISK, badgerstore_entity_index.go), built by an open or the
 	// create; nodeMembersOnDisk reports whether there is one. relDiskDefs: the
@@ -1977,6 +1981,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 			}
 			bs.validEnd.trusted = propDisk.validEnd
+			bs.propDiskInexact = propDisk.inexact
 			bs.refreshPropDiskDefsLocked()
 		}
 
@@ -2607,6 +2612,7 @@ func (bs *Store) Clear() (err error) {
 	// CreateHighFrequencyIndex / CreateVectorIndex report "already exists" on an empty
 	// store and leave stale vector entries in SearchNearestNodes.
 	bs.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
+	bs.propDiskInexact = nil
 	bs.refreshPropDiskDefsLocked()
 	bs.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
 	bs.refreshRelDiskDefsLocked()

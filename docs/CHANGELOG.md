@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **ELEMPROBE drop** (found by a read-only Fable review, 3 Nov; a patch). On an on-disk property index,
+  `Nodes().IDsByLabelAndPropertyValues` returned nodes whose row did not match after a definition was dropped while
+  another definition still indexed the same property key: the drop leaves the dropped one's entries (an Elements
+  definition's element keys, or a scalar key the node's value no longer has) and the ID door trusted them, before and
+  after a reopen; `ByLabelAndPropertyValues` was right. The drop now writes an inexact marker for the key, and the ID
+  door reads rows for it until the key's entries are purged or rebuilt (`TestIDsByLabelAndPropertyValuesAfterADropOnASharedKey`,
+  badger and tiered; 6 of 6 mutations caught; `tasks/evidence/ELEMPROBE/`).
+
 ## [4.100.0] - 2026-11-03
 
 ### Added

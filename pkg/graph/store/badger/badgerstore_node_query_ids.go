@@ -15,6 +15,17 @@ import (
 
 var _ storecontract.NodePropertyKeysIDsCapability = (*Store)(nil)
 
+// propDiskInexactPrefix starts the inexact markers: one per property key whose
+// on-disk entries may hold keys no live definition wrote, left when a
+// definition was dropped while another one still indexed the key. Present
+// until the key's entries are purged or rebuilt; while it is, only a row
+// recheck answers from those entries, so the ID door declines.
+var propDiskInexactPrefix = storepkg.MetaKey("property_index_on_disk_inexact/")
+
+func propDiskInexactKey(propertyKey string) []byte {
+	return append(append([]byte(nil), propDiskInexactPrefix...), propertyKey...)
+}
+
 // NodeIDsByLabelAndPropertyKeys implements
 // storecontract.NodePropertyKeysIDsCapability: NodesByLabelAndPropertyKeys'
 // IDs from the index, without a row read (ELEMPROBE). It answers when the
@@ -50,6 +61,9 @@ func (bs *Store) NodeIDsByLabelAndPropertyKeys(labelToken uint16, propKey string
 	}
 	if idx.OnDisk() && !idx.Elements() && bs.elementsOnDiskSharesLocked(propKey) {
 		return nil, false, nil
+	}
+	if _, inexact := bs.propDiskInexact[propKey]; idx.OnDisk() && inexact {
+		return nil, false, nil // a dropped definition's entries are among its keys
 	}
 	var nids []types.NodeID
 	if !idx.OnDisk() {

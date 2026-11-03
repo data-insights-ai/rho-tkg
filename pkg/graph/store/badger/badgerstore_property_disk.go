@@ -994,6 +994,7 @@ type propDiskOpen struct {
 	stale    [][]byte                               // the rebuilt keys' rows before the rebuild
 	mark     []writeOp                              // built markers to set (with the format marker)
 	unmark   [][]byte                               // built markers to delete
+	inexact  map[string]struct{}                    // property keys with an inexact marker this open keeps
 	// validEnd: the on-disk definitions whose entries' valid-end bounds this
 	// open trusts (VALIDENDPRUNE: listed, and marked or reset by this open).
 	validEnd map[indexpkg.PropertyIndexKey]struct{}
@@ -1063,10 +1064,24 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 		clear(p.rebuild)
 	}
 	veMark, veUnmark := bs.planValidEnd(txn, p)
+	it = txn.NewIterator(badgerv4.IteratorOptions{Prefix: propDiskInexactPrefix})
+	for it.Rewind(); it.Valid(); it.Next() {
+		if p.inexact == nil {
+			p.inexact = make(map[string]struct{})
+		}
+		p.inexact[string(it.Item().Key()[len(propDiskInexactPrefix):])] = struct{}{}
+	}
+	it.Close()
 	if bs.readOnly {
 		return p, nil
 	}
 	p.unmark = append(p.unmark, veUnmark...)
+	for propertyKey := range p.inexact {
+		if _, rebuilt := p.rebuild[propertyKey]; rebuilt { // written again from the rows: exact
+			delete(p.inexact, propertyKey)
+			p.unmark = append(p.unmark, propDiskInexactKey(propertyKey))
+		}
+	}
 	for propertyKey := range p.rebuild {
 		tok, ok := bs.propKeyTokenFor(propertyKey)
 		if !ok {

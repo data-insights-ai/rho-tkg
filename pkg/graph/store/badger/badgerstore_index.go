@@ -262,10 +262,22 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 				break
 			}
 		}
-		if !stillReferenced && purgeErr == nil {
+		inexact := propDiskInexactKey(propertyKey)
+		switch {
+		case stillReferenced:
+			// The dropped definition's entries stay among the survivors'
+			// (ELEMPROBE): the ID door must not answer from them.
+			purgeOps = append(purgeOps, writeOp{opType: writeOpSet, key: inexact, value: []byte{1}})
+			if bs.propDiskInexact == nil {
+				bs.propDiskInexact = make(map[string]struct{})
+			}
+			bs.propDiskInexact[propertyKey] = struct{}{}
+		case purgeErr == nil:
 			var rows []writeOp
 			rows, purgeErr = bs.purgePropertyKeyDiskEntriesLocked(propertyKey)
 			purgeOps = append(purgeOps, rows...)
+			purgeOps = append(purgeOps, writeOp{opType: writeOpDelete, key: inexact})
+			delete(bs.propDiskInexact, propertyKey)
 		}
 	}
 	bs.persistPropertyIndexDefs()

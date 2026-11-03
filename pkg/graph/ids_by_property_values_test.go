@@ -241,9 +241,32 @@ func TestIDsByLabelAndPropertyValuesAfterADropOnASharedKey(t *testing.T) {
 			if err := g.Close(); err != nil {
 				t.Fatal(err)
 			}
-			g = b.open(t, dir).g
-			defer func() { _ = g.Close() }()
+			o := b.open(t, dir)
+			g = o.g
 			check("after a reopen")
+			if b.name != "badger index on disk" {
+				_ = g.Close()
+				return
+			}
+			// An open without the disk index, then one with it, rebuilds the
+			// key's entries from the rows: exact again, answered from them.
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := openBadgerProbe(t, badger.Config{Dir: dir}).g.Close(); err != nil {
+				t.Fatal(err)
+			}
+			o = b.open(t, dir)
+			g = o.g
+			defer func() { _ = g.Close() }()
+			check("after a rebuild")
+			before := o.decodes()
+			if got, err := g.Nodes().IDsByLabelAndPropertyValues("Solo2", "sk", []any{int64(8)}, storepkg.QueryOpts{}); err != nil || !slices.Equal(got, []types.NodeID{s}) {
+				t.Fatalf("after a rebuild: IDs %v, %v; want [%d]", got, err, s)
+			}
+			if read := o.decodes() - before; read != 0 {
+				t.Errorf("after a rebuild: %d rows read, want the index to answer", read)
+			}
 		})
 	}
 }
