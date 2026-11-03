@@ -2216,6 +2216,7 @@ func New(config Config) (*Core, error) {
 				BlockCacheSize:              config.BlockCacheSize,
 				IndexCacheSize:              config.IndexCacheSize,
 				NumCompactors:               config.NumCompactors,
+				ValueThreshold:              config.ValueThreshold,
 				EncryptionKey:               config.EncryptionKey,
 				EncryptionKeyRotation:       config.EncryptionKeyRotation,
 				ChangeLog:                   config.ChangeLog,

@@ -36,15 +36,18 @@ func entryLimits(cfg Config) (maxKey, maxValue int) {
 	if cfg.ValueLogFileSize > 0 {
 		limit = cfg.ValueLogFileSize
 	}
-	if cfg.InMemory {
+	if cfg.InMemory { // badger refuses a value above the configured threshold (txn.go:370, db.go:245)
 		limit = def.ValueThreshold
+		if cfg.ValueThreshold > 0 {
+			limit = cfg.ValueThreshold
+		}
 	}
 	return badgerMaxKeyBytes - stagedKeyOverhead, int(limit) - stagedValueOverhead
 }
 
 func (bs *Store) checkEntryValue(what string, n int) error {
 	if n > bs.maxEntryValue {
-		return fmt.Errorf("%w: %s of %d bytes, the store holds at most %d (ValueLogFileSize; in memory 1 MB)", ErrEntryTooLarge, what, n, bs.maxEntryValue)
+		return fmt.Errorf("%w: %s of %d bytes, the store holds at most %d (ValueLogFileSize; in memory ValueThreshold, 1 MB by default)", ErrEntryTooLarge, what, n, bs.maxEntryValue)
 	}
 	return nil
 }

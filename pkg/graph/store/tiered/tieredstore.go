@@ -428,6 +428,7 @@ type Store struct {
 	zstdLevel             int
 	valueLogFileSize      int64 // per-shard Badger footprint knobs; 0 = stock default
 	memTableSize          int64
+	valueThreshold        int64
 	blockCacheSize        int64
 	indexCacheSize        int64
 	numCompactors         int
@@ -681,6 +682,7 @@ func New(cfg Config) (*Store, error) {
 		blockCacheSize:        cfg.BlockCacheSize,
 		indexCacheSize:        cfg.IndexCacheSize,
 		numCompactors:         cfg.NumCompactors,
+		valueThreshold:        cfg.ValueThreshold,
 		encryptionKey:         cfg.EncryptionKey,
 		encryptionKeyRotation: cfg.EncryptionKeyRotation,
 		cacheBudgetBytes:      cfg.CacheBudgetBytes,
@@ -1840,6 +1842,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		BlockCacheSize:              ts.blockCacheSize,
 		IndexCacheSize:              ts.indexCacheSize,
 		NumCompactors:               ts.numCompactors,
+		ValueThreshold:              ts.valueThreshold,
 		EncryptionKey:               ts.encryptionKey,
 		EncryptionKeyRotation:       ts.encryptionKeyRotation,
 		PropertyIndexOnDisk:         ts.propertyIndexOnDisk,
