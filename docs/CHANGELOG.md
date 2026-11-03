@@ -20,6 +20,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   or held by another node now refuses the whole call with `ErrUniqueViolation`, nothing stored and nothing claimed
   (before, the earlier nodes of the call were kept until the transaction rolled back). Tests `TestAddNodesUnique*`
   (badger, tiered reference and event labels, UniqueForever; `tasks/evidence/BATCHADD/`).
+- **RHOPOST** (sigma READBACK; a fix, no new exported name). On badger and tiered, the equality walks of one
+  `IDsByLabelAndPropertyValues` call share one iterator run: a block of adjacent values seeks once instead of once a
+  value (sigma's block probe spent 75 % in the per-value seek); a walk below the run's start still seeks. Also fixed: a
+  string value that extends another (`"x"`, `"x\x00"`) could return a node twice. Tests `TestPropPost*`
+  (`tasks/evidence/RHOPOST/`; bench pending a quiet machine).
+- **BATCHIDX** (ai-soc R3, ~106 ms a cut; a minor: `internal/index.AddNodesToPropertyIndexes` is a new exported name).
+  A node batch (`PutNodesBatch` on memory and badger, which `AddNodes` uses) maintains the property indexes per distinct
+  value instead of per node: one lookup and one numeric parse a value, IDs sorted once and appended in runs, and on
+  disk one token and one value encoding per value. The index state equals the per-node path's (equality tests over
+  RAM, 0x0A, 0x0C member and composite entries; `tasks/evidence/BATCHIDX/`; bench pending a quiet machine).
 
 ## [4.101.0] - 2026-11-03
 
