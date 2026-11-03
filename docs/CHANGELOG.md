@@ -38,6 +38,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   value instead of per node: one lookup and one numeric parse a value, IDs sorted once and appended in runs, and on
   disk one token and one value encoding per value. The index state equals the per-node path's (equality tests over
   RAM, 0x0A, 0x0C member and composite entries; `tasks/evidence/BATCHIDX/`; bench pending a quiet machine).
+- **UNIQUELOOK** (ai-soc, 3 Nov: 21.3 s CPU in unique-key lookups; a minor: the badger store implements
+  `UniqueOwnerIndexCapability`, a new store format). `GetOrCreateByKey` and the create-time unique check on a plain
+  badger store and on a tiered reference label read the owner index (one claim, one row read, at any depth) instead of
+  seeking the property index; event labels as before, UniqueForever unchanged. **Store format marker 16, one way:** the
+  first `CreateUnique` (UniqueCurrent) raises a badger store's marker, or a tiered store's reference-shard marker, to 16,
+  and a release before this one then refuses to open the store. Every store with a unique constraint reaches it: the
+  first open by this release of a store whose constraint predates it declares the index (one log line says the marker
+  was raised) and seeds it with a one-time scan of the label, in pages of 10,000 rows, logging progress at least every
+  60 s and a final count and elapsed time; a scan that finds two holders of one value logs it and leaves the lookups on
+  the property index. A read-only open does not seed. A `CreateUnique` that fails raises nothing. Tests
+  `TestUniqueLook*`, `TestOwnerIndex*` (`tasks/evidence/UNIQUELOOK/`; bench pending a quiet machine).
 
 ## [4.101.0] - 2026-11-03
 

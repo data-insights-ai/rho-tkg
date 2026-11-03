@@ -1899,8 +1899,11 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		// Same seam for the commit floor (tieredstore_commit_floor.go): the
 		// reference shard keeps it, ahead of this shard's rows.
 		cfg.OnCommitFloor = ts.persistShardCommitFloor
-		cfg.BeforeFlushRows = ts.syncOwnerIndexBeforeRows
 	}
+	// Every shard, the reference shard too: a reference label's claims live
+	// in the owner index (UNIQUELOOK), which runs without SyncWrites, so they
+	// are synced before the rows they back become durable.
+	cfg.BeforeFlushRows = ts.syncOwnerIndexBeforeRows
 	// Change-log: slave this shard's LSNs to the store-global allocator and, for
 	// non-reference shards, persist the allocator watermark to the reference
 	// shard after each log-bearing flush (the reference shard writes its own

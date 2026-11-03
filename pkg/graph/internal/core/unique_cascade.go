@@ -163,6 +163,15 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, app
 			}
 		}
 	}
+	// Owner index (UNIQUELOOK): claim each value the write makes current
+	// before the row is written; an unbacked claim is ignored by readers.
+	for _, tp := range ordered {
+		if oi, ok := c.ownerIndexFor(tp.labelTok, tp.key); ok {
+			if err := oi.PutUniqueOwner(tp.labelTok, tp.key, tp.valueKey, id); err != nil {
+				return noop, fmt.Errorf("graph: unique owner claim: %w", err)
+			}
+		}
+	}
 	// Pass 2: claim every UniqueForever value; a failed claim withdraws the
 	// ones this pass already made (nothing was written).
 	for _, tp := range ordered {
