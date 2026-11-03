@@ -1,0 +1,98 @@
+PROJREAD design (Fable, read-only, 3 Nov 2026; main 51f4f35d; paths under pkg/ unless noted)
+
+1. Does a new door beat IDs + LendByIDs + BorrowProperty?
+
+Cost of the composition per node today:
+- memory: LendNodesSorted is a map read per ID under one RLock (store/memory/memorystore_lend_batch.go:12-25); the row
+  is a decoded object; BorrowProperty is a binary search in the sorted PropertySlice (types/propertyslice.go:245-251).
+  Nothing to save.
+- badger: a cache hit hands out the frozen pointer, no decode (store/badger/badgerstore_lend_batch.go:26-32). A miss reads
+  the row through one scanSnapshot per chunk of 4,096 (core/lend_batch.go:16, badgerstore_lend_batch.go:22,38) and decodes
+  the whole row: SafeUnmarshal (storeutil/safe_decode.go:48-62: guardMsgpackDepth walks every byte, then msgpack.Unmarshal
+  of the whole NodeWire), then decodeNodeWireForKey (badger/wire_decode.go:25-39: key tokens, value dictionary
+  badgerstore_value_dict.go:388-396, WireToNodeChecked building every Property, wire.go:600-613, 1090-1116). Measured
+  whole-row cost 8.3 us/node (tasks/evidence/PUSHSLOW/store_scale.txt:3), a badger Get ~4.8 us of it
+  (consolidate-read-doors.txt §1): the decode is ~3.5 us.
+- tiered: no EntityLendBatchCapability (only memory and badger implement LendNodesSorted), so LendByIDs lends PER ID
+  (core/lend_batch.go:50-66), each LendNode taking the move lock, routing and a shard checkout
+  (store/tiered/tieredstore_read_entity.go:20-38). The IDs door fans out once under one move lock
+  (tieredstore_read_label.go:201-230, 270). This is the real gap: N move locks and checkouts instead of one per shard.
+
+What the wire format permits. A row is one msgpack map (vmihailenco/msgpack v5, struct tags wire.go:337-380); the
+properties are an array "p" of PropertyWire maps (wire.go:435-448), key as "kt" token or "k", value "v" or dictionary
+token "dt". No offset table: one property means walking the array with Decoder.Skip, and guardMsgpackDepth walks every
+byte anyway (safe_decode.go:56). The id check needs "id" (wire_decode.go:34); a string value needs the value dictionary
+(badgerstore_value_dict.go:392-395); a key token the registry (badgerstore.go:2862-2867). A partial decode saves only the
+allocation and validation of the unrequested values: a bound of ~3 us/node on a cold badger row, 0 on a cache hit, 0 on
+memory. Not worth a second decoder on the trust boundary (CONTRIBUTING: untrusted bytes only through SafeUnmarshal)
+before a measurement shows the decode, not the Get, dominates.
+
+Verdict: near-optimal on memory and badger, wrong-shaped on tiered. Build (a) tiered batch lend and (b) a thin door
+that is the composition inside core, one code path for every backend, plus a value re-check the composition cannot do.
+
+2. API (nodes/api.go, beside IDsByLabelAndPropertyValues :1023)
+
+  // NodeProperties is one node's current values for the keys a projection names: Values[i] is keys[i]'s value, nil
+  // with Present[i] false when absent. Values are borrowed as Node.BorrowProperty borrows: a slice aliases the row.
+  type NodeProperties struct { ID types.NodeID; Values []any; Present []bool }
+
+  func (a *API) PropertiesByLabelAndPropertyValues(ctx context.Context, label, key string, values []any,
+      keys []string, opts storepkg.QueryOpts) ([]NodeProperties, error)
+
+Semantics: the IDs IDsByLabelAndPropertyValues returns (ID order, opts.After/Limit over the union, unionEqualForms,
+deleted nodes absent, core/graph_property_query.go:116-166), each with its current row's named properties. Paging is
+applied to the IDs before any row is read. Errors as IDsByLabelAndPropertyValues plus LendByIDs' (ctx, ErrGraphClosed,
+a corrupt row); empty keys is an error (a new sentinel beside grapherr.ErrNilCallback, errors.go:13). ctx because the
+rows are read in chunks like LendByIDs (:213).
+
+Row consistency: the IDs come from the index under one RLock, the rows under one lock per chunk (lend_batch.go:16-21), so
+a node updated between may no longer match. The door re-checks each lent row with PropertyValueEqual (types/node.go:306)
+against the forms (Elements: any element) and drops one that no longer matches or is gone (nil from LendNodesSorted).
+
+Temporal opts or ValidEndAfter: the IDs door already falls back to rows (graph_property_query.go:122, 157-166); the
+projection takes the values from those rows with GetProperty, no lend. Same answer, whole-row cost, as today.
+
+3. Per-backend implementation
+
+- core: IDsByLabelAndPropertyValues (index path) -> lendByIDs chunks -> re-check -> borrow keys. External stores:
+  c.propertyIDsQuery nil or !propertyQueryTrust (core.go:2292) already takes the row path; lendByIDs lends per ID or
+  copies (lend_batch.go:50-66). No new capability.
+- memory, badger: unchanged.
+- tiered: new LendNodesSorted/LendRelationshipsSorted (EntityLendBatchCapability): one lockMoveRead, the sorted IDs
+  grouped by owning shard (shardForNodeIDRead per run), one checkout and one badger LendNodesSorted (one scanSnapshot)
+  per shard, cache hits as badger's. Every LendByIDs caller on tiered gains it.
+- sharded: no NodePropertyKeysIDsCapability (only property_index.go names the row lookup), stays on the row path.
+
+Locks: c.mu read per chunk, never across fn (lendByIDs); the move lock per chunk on tiered.
+
+4. Red tests first (pkg/graph/properties_by_property_values_test.go), each red on main for a stated reason
+
+1. TestPropertiesByLabelAndPropertyValuesAgreeWithRows (memory, badger RAM and disk index, labels on disk, tiered, a
+   wrapper store): each value equals ByLabelAndPropertyValues' GetProperty, Present false where absent, paging and After
+   as the IDs door, with and without ValidAt/TxPin. Red: no such door (does not compile; a stub fails the agreement).
+2. TestTieredLendByIDsOneCheckoutPerShard: a checkout counter hook on tiered (as refArchiveGapHook,
+   tieredstore_read_entity.go:170); 500 IDs over 3 shards want 3 checkouts, one move lock. Red: lend_batch.go:50-66 lends
+   per ID, 500 checkouts.
+3. TestPropertiesByLabelAndPropertyValuesDropsARowChangedBetweenReads: a hook between the ID read and the chunk read
+   updates one node's key; the row is absent. Red: a stub without the re-check returns it.
+4. TestPropertiesByLabelAndPropertyValuesReadsNoRowOnHit: rowDecodeHook (badger/wire_decode.go:17) counts 0 decodes for
+   cached rows, N for cold. Pins the cost.
+5. TestPropertiesByLabelAndPropertyValuesTrustsOnlyRhoStores, mirroring ids_by_property_values_test.go:331.
+
+Mutation targets: drop the re-check; keep a deleted ID; page after the lend; route a run of IDs to the wrong shard;
+checkout per ID again; copy instead of borrow (AllocsPerRun); Present true on absence; ignore After.
+
+5. Bench (synthetic, after the quiet window): door vs composition on badger (cache warm and cleared) and tiered (3
+shards), 64 values, 2 of 20 keys, 500-byte rows, 100 k nodes; ns/op and B/op per node. Expect memory and badger-warm
+equal within noise, tiered the win; evidence under tasks/evidence/PROJREAD/.
+
+6. Release: a MINOR (new exported door, type and tiered methods). CHANGELOG Unreleased, api.md, architecture.md §6
+ELEMPROBE paragraph; the todo "Done when" names the tiered per-node budget. Open look: partial decode on a cold badger
+row, bounded ~3 us/node, only if find misses the cache.
+
+Open questions for sigma
+1. Backend and shape of find: tiered? values per call, keys per call, properties per row, row bytes.
+2. Are the rows found just written (cache hot) or days old (cold shards)?
+3. Does find ever pass a time coordinate? (It takes the whole-row path.)
+4. Is a borrowed alias acceptable, or must values be copies?
+5. Should a row that stopped matching between index and row read be absent (proposed) or returned as read?

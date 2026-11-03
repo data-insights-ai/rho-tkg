@@ -113,6 +113,9 @@ func (pi *PropertyIndex) rangeOrderedPage(min, max float64, desc bool, after Ran
 // for non-numeric keys and NaN (NaN is unordered — equality lookups still
 // work through the hash entries).
 func numericSortKey(vk string) (float64, bool) {
+	if testHooks != nil { // a test counting it must not use t.Parallel (BATCHIDX)
+		testHooks.numericParse++
+	}
 	colon := strings.IndexByte(vk, ':')
 	if colon < 0 {
 		return 0, false

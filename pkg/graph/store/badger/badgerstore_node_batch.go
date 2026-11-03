@@ -639,12 +639,17 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 
 	// Phase 2: apply — all validated, safe to mutate.
 	ops := make([]writeOp, 0, len(nodes)*3) // entity + avg ~2 label indexes
+	ids := make([]snowflake.ID, len(nodes))
+	for i, nd := range serialized {
+		ids[i] = nd.id
+	}
 	for i, n := range nodes {
 		nd := serialized[i]
 
 		// Apply this node's vector-index entries first (lesson 4, BACKLOG 18e): a failure
 		// must not leave other indexes reflecting a node whose write was never queued.
 		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], nd.id); err != nil {
+			bs.maintainPropertyIndexesAddBatch(nodes[:i], ids[:i]) // as the per-node adds left the nodes before
 			bs.idxMu.Unlock()
 			return err
 		}
@@ -666,11 +671,11 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		}
 		bs.recordNodeLabelMembersLocked(n, n) // transaction-time label membership
 		bs.addNodePropertyKeyCounts(n)
-		ops = append(ops, bs.maintainPropertyIndexesAdd(n, nd.id)...)
 		indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, n, nd.id)
 		ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, nd.id)...)
 		indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, nd.id)
 	}
+	ops = append(ops, bs.maintainPropertyIndexesAddBatch(nodes, ids)...) // once for the batch (BATCHIDX)
 
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(int64(len(nodes)))
