@@ -1,0 +1,14 @@
+#!/bin/bash
+# DURABLEVIS: alternate hold off/on per config, 20 s each.
+S=/tmp/claude-1000/-home-renework2023-Work-2026-datainsights-rho-tkg/fe6fed60-daef-4181-9082-a756f535fca5/scratchpad
+cd /home/renework2023/Work/2026/datainsights/rho-tkg/pkg/graph
+for backend in tiered tiered-sync badger; do
+ for w in 3 5; do
+  for pertx in 1 10; do
+   for hold in 0 1; do
+    RHO_DURABLEVIS_RUN=1 RHO_DURABLEVIS_BACKEND=$backend RHO_DURABLEVIS_WRITERS=$w RHO_DURABLEVIS_PERTX=$pertx RHO_DURABLEVIS_HOLD=$hold \
+      $S/dvis.test -test.run TestDURABLEVISMeasure -test.count 1 -test.timeout 5m 2>&1 | grep -E "DURABLEVIS|FAIL|panic"
+   done
+  done
+ done
+done

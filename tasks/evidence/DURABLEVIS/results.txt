@@ -1,0 +1,42 @@
+DURABLEVIS measurement, 3 Nov 2026, rho-tkg af7af62a + hold_patch.diff.txt (measurement only, never merged).
+hold=0: today (locks released, then DurableFlush). hold=1: DurableFlush with c.mu and txMu held, so no reader
+sees a group before its fsync. Durable commit on, 500 B property per node, 4 point readers (Nodes().Get on
+random existing ids), 20 s per row, hold 0/1 alternated. TempDir on ext4/NVMe (nvme1n1p5), real fsync.
+Noise: sigma's suites ran beside it; load average 4-6 throughout.
+Run: run.sh.txt; test: measure_test.go.txt.
+
+backend=tiered hold=0 writers=3 pertx=1 commits/s=284 facts/s=284 | commit p50=10.590959ms p99=18.33781ms p999=39.692144ms max=131.86953ms | reads/s=4140023 read p50=680ns p99=2.84µs p999=7.821µs max=66.296365ms
+backend=tiered hold=1 writers=3 pertx=1 commits/s=232 facts/s=232 | commit p50=13.888555ms p99=18.13525ms p999=38.131298ms max=55.228295ms | reads/s=4258 read p50=1.33µs p99=10.997115ms p999=21.282171ms max=46.324026ms
+backend=tiered hold=0 writers=3 pertx=10 commits/s=141 facts/s=1410 | commit p50=21.968698ms p99=26.395772ms p999=36.954019ms max=47.902421ms | reads/s=1619920 read p50=1.15µs p99=11.681µs p999=123.505µs max=30.438769ms
+backend=tiered hold=1 writers=3 pertx=10 commits/s=131 facts/s=1311 | commit p50=22.612805ms p99=26.86379ms p999=28.176045ms max=43.75973ms | reads/s=18114 read p50=1.42µs p99=7.477139ms p999=8.23154ms max=20.763339ms
+backend=tiered hold=0 writers=5 pertx=1 commits/s=321 facts/s=321 | commit p50=15.061752ms p99=30.635975ms p999=64.474223ms max=104.953445ms | reads/s=4033302 read p50=690ns p99=2.9µs p999=8.15µs max=52.194676ms
+backend=tiered hold=1 writers=5 pertx=1 commits/s=232 facts/s=232 | commit p50=21.389053ms p99=25.862858ms p999=29.851673ms max=43.444275ms | reads/s=4733 read p50=1.22µs p99=10.942092ms p999=21.245007ms max=35.781837ms
+backend=tiered hold=0 writers=5 pertx=10 commits/s=145 facts/s=1446 | commit p50=36.392121ms p99=50.225272ms p999=82.368528ms max=105.333655ms | reads/s=1988197 read p50=790ns p99=10.09µs p999=117.315µs max=27.102728ms
+backend=tiered hold=1 writers=5 pertx=10 commits/s=132 facts/s=1318 | commit p50=37.626582ms p99=42.43756ms p999=43.535905ms max=57.396638ms | reads/s=17984 read p50=1.34µs p99=7.477198ms p999=7.970709ms max=19.934632ms
+backend=tiered-sync hold=0 writers=3 pertx=1 commits/s=235 facts/s=235 | commit p50=13.757937ms p99=19.317576ms p999=46.305528ms max=56.135153ms | reads/s=3852992 read p50=720ns p99=3.08µs p999=8.33µs max=51.918409ms
+backend=tiered-sync hold=1 writers=3 pertx=1 commits/s=231 facts/s=231 | commit p50=13.956004ms p99=18.330315ms p999=25.145345ms max=27.770364ms | reads/s=1898 read p50=1.8µs p99=18.039533ms p999=28.622489ms max=54.222642ms
+backend=tiered-sync hold=0 writers=3 pertx=10 commits/s=136 facts/s=1358 | commit p50=21.805237ms p99=26.499801ms p999=36.109637ms max=39.327089ms | reads/s=1230335 read p50=790ns p99=6.92µs p999=88.753µs max=10.384158ms
+backend=tiered-sync hold=1 writers=3 pertx=10 commits/s=131 facts/s=1312 | commit p50=22.586629ms p99=27.00106ms p999=59.31605ms max=64.223091ms | reads/s=5784 read p50=5.85µs p99=7.7685ms p999=14.923314ms max=29.712032ms
+backend=tiered-sync hold=0 writers=5 pertx=1 commits/s=236 facts/s=236 | commit p50=21.118388ms p99=29.520293ms p999=64.280342ms max=80.130114ms | reads/s=4292930 read p50=670ns p99=2.731µs p999=7.701µs max=59.431113ms
+backend=tiered-sync hold=1 writers=5 pertx=1 commits/s=234 facts/s=234 | commit p50=21.203341ms p99=25.55718ms p999=26.587233ms max=28.746982ms | reads/s=1923 read p50=1.52µs p99=17.908565ms p999=28.648297ms max=43.067889ms
+backend=tiered-sync hold=0 writers=5 pertx=10 commits/s=136 facts/s=1356 | commit p50=36.302011ms p99=42.165351ms p999=82.023568ms max=106.556455ms | reads/s=1362921 read p50=700ns p99=6.721µs p999=78.544µs max=22.629979ms
+backend=tiered-sync hold=1 writers=5 pertx=10 commits/s=132 facts/s=1317 | commit p50=37.679727ms p99=42.212003ms p999=43.292136ms max=48.850975ms | reads/s=5802 read p50=5.73µs p99=7.757378ms p999=14.787577ms max=29.96407ms
+backend=badger hold=0 writers=3 pertx=1 commits/s=488 facts/s=488 | commit p50=6.900393ms p99=10.416978ms p999=73.6064ms max=127.110435ms | reads/s=7279558 read p50=290ns p99=3.141µs p999=8.611µs max=83.246105ms
+backend=badger hold=1 writers=3 pertx=1 commits/s=391 facts/s=391 | commit p50=8.985679ms p99=10.366175ms p999=22.857477ms max=27.78954ms | reads/s=8376 read p50=960ns p99=7.78647ms p999=13.057736ms max=33.521925ms
+backend=badger hold=0 writers=3 pertx=10 commits/s=188 facts/s=1884 | commit p50=16.784929ms p99=19.624785ms p999=32.470562ms max=36.983637ms | reads/s=2199966 read p50=540ns p99=10.191µs p999=122.955µs max=20.803153ms
+backend=badger hold=1 writers=3 pertx=10 commits/s=170 facts/s=1698 | commit p50=17.453956ms p99=23.794425ms p999=44.400319ms max=45.420221ms | reads/s=23822 read p50=970ns p99=5.590249ms p999=6.033967ms max=28.585811ms
+backend=badger hold=0 writers=5 pertx=1 commits/s=490 facts/s=490 | commit p50=10.699328ms p99=22.623257ms p999=82.587044ms max=177.825187ms | reads/s=6433878 read p50=300ns p99=3.281µs p999=10.181µs max=101.002729ms
+backend=badger hold=1 writers=5 pertx=1 commits/s=393 facts/s=393 | commit p50=12.594496ms p99=15.277386ms p999=22.352666ms max=32.130066ms | reads/s=9625 read p50=850ns p99=7.513017ms p999=12.912259ms max=135.657528ms
+backend=badger hold=0 writers=5 pertx=10 commits/s=188 facts/s=1882 | commit p50=28.007337ms p99=39.860343ms p999=73.258441ms max=91.281889ms | reads/s=2435958 read p50=380ns p99=9.341µs p999=119.934µs max=35.39937ms
+backend=badger hold=1 writers=5 pertx=10 commits/s=170 facts/s=1702 | commit p50=29.185755ms p99=35.822737ms p999=45.880168ms max=47.152311ms | reads/s=25606 read p50=890ns p99=5.593379ms p999=6.09337ms max=38.216565ms
+ 18:09:04 up 34 days, 10:24, 24 users,  load average: 5,02, 5,45, 5,75
+
+Summary (hold=1 vs hold=0):
+- Reads: 1.2-7.3 M/s -> 1.9-26 k/s (about 90-2,000x fewer); read p99 3-12 us -> 5.6-18 ms (one fsync).
+  A reader waits for the fsync in flight and every writer queued before it: the RWMutex makes readers wait behind a waiting writer.
+- Writes: badger -20 % at 1 fact/commit, -10 % at 10; tiered -18 % / -7 %; tiered SyncWrites about 0 %
+  (each mutation already syncs inside the lock).
+- Commit p99.9 and max fall under hold=1 (fewer competing flushes); p50 rises 0-30 %.
+Conclusion: holding the graph lock through the fsync keeps writer throughput within 20 % but makes every read
+wait for a disk sync. Meeting the 26 Oct rule without that cost needs a visibility gate other than c.mu
+(readers see up to the last durable group), a design item, not a flag.
