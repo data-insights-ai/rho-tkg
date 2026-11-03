@@ -20,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   or held by another node now refuses the whole call with `ErrUniqueViolation`, nothing stored and nothing claimed
   (before, the earlier nodes of the call were kept until the transaction rolled back). Tests `TestAddNodesUnique*`
   (badger, tiered reference and event labels, UniqueForever; `tasks/evidence/BATCHADD/`).
+- **RHOPOST** (sigma READBACK; a fix, no new exported name). On badger and tiered, the equality walks of one
+  `IDsByLabelAndPropertyValues` call share one iterator run: a block of adjacent values seeks once instead of once a
+  value (sigma's block probe spent 75 % in the per-value seek); a walk below the run's start still seeks. Also fixed: a
+  string value that extends another (`"x"`, `"x\x00"`) could return a node twice. Tests `TestPropPost*`
+  (`tasks/evidence/RHOPOST/`; bench pending a quiet machine).
 
 ## [4.101.0] - 2026-11-03
 

@@ -104,7 +104,7 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
-- **RHOPOST** (RHOMEMIDS merged 3 Nov, unreleased; its bench rerun on a quiet PC) (sigma READBACK, 3 Nov; after v4.101.0, nothing in sigma waits) — sigma's paged-row read-back
+- **RHOPOST bench** (RHOPOST and RHOMEMIDS merged 3 Nov, unreleased; both benches rerun on a quiet PC) (sigma READBACK, 3 Nov; after v4.101.0, nothing in sigma waits) — sigma's paged-row read-back
   spends 96 % of a block probe in `IDsByLabelAndPropertyValues`, 75 % in `badger.Iterator.Next`: one AllVersions
   seek-and-walk per value in `propertyIndexDiskKeysCandidatesLocked` (badger 1.5-6.1 us a value at 5k-80k rows).
   RHOPOST: a posting read per value without the AllVersions walk (seek to the typed key, end bound), first, since
