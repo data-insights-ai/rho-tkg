@@ -28,6 +28,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   history with `TxTo` at the new `TxFrom`; property, valid-end and temporal indexes follow in the row's own write. A
   pin at or after the replace reads the new version alone, a pin before reads as before; `TxFrom` rises with version
   across a crash (`TestReplaceVersion*`, badger and tiered; `tasks/evidence/WHOLEROW/`).
+- **ASOFWALK step 1** (sigma's STATEREC as-of reads; a minor). On tiered, `Temporal().NodeAsOf`, `NodesAsOf` and a
+  `TxPin` read of a node whose rows all sit on its live owner shard walk that shard's versions newest first instead of
+  loading the whole chain: 199 history rows per read to 0 for a 200-version node (capability
+  `store.NodeAsOfWalkCapability`). An archived node, one with rows left in the archive, or one archived during the walk
+  reads the chain as before. Badger's reverse history scan sets its iterator `Prefix` (`TestTieredNodeAsOf_*`,
+  `tasks/evidence/ASOFWALK/`).
 
 ## [4.99.0] - 2026-11-03
 
