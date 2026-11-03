@@ -120,6 +120,69 @@ func (o *sortedChunks[T]) add(k T) {
 	o.insert(k)
 }
 
+// putSorted is put of each of the ascending distinct keys ks and returns how
+// many were absent: from the first key above every stored key on, the rest
+// are appended (appendRun) instead of put one by one (BATCHIDX).
+func (o *sortedChunks[T]) putSorted(ks []T) int {
+	added := 0
+	for i, k := range ks {
+		if o.above(k) {
+			o.appendRun(ks[i:])
+			return added + len(ks) - i
+		}
+		if !o.has(k) {
+			o.insert(k)
+			added++
+		}
+	}
+	return added
+}
+
+// insertSorted is insert of each of the ascending distinct keys ks, all
+// absent, appending from the first above every stored key on (BATCHIDX).
+func (o *sortedChunks[T]) insertSorted(ks []T) {
+	for i, k := range ks {
+		if o.above(k) {
+			o.appendRun(ks[i:])
+			return
+		}
+		o.insert(k)
+	}
+}
+
+// above reports whether k is greater than every stored key.
+func (o *sortedChunks[T]) above(k T) bool {
+	n := len(o.chunks)
+	if n == 0 {
+		return true
+	}
+	last := o.chunks[n-1]
+	return k > last[len(last)-1]
+}
+
+// appendRun adds the ascending distinct keys ks, all above every stored key,
+// as add would one by one: the last chunk fills to orderedKeyChunk keys, then
+// new chunks of exactly that capacity follow. A first chunk is sized to the
+// run (a small posting list holds its few keys).
+func (o *sortedChunks[T]) appendRun(ks []T) {
+	o.n += len(ks)
+	for len(ks) > 0 {
+		n := len(o.chunks)
+		switch {
+		case n == 0:
+			o.chunks = append(o.chunks, make([]T, 0, min(len(ks), orderedKeyChunk)))
+			n = 1
+		case len(o.chunks[n-1]) >= orderedKeyChunk:
+			o.chunks = append(o.chunks, make([]T, 0, orderedKeyChunk))
+			n++
+		}
+		last := o.chunks[n-1]
+		take := min(orderedKeyChunk-len(last), len(ks))
+		o.chunks[n-1] = append(last, ks[:take]...)
+		ks = ks[take:]
+	}
+}
+
 // has reports whether k is stored. O(log chunks + log chunk size).
 func (o *sortedChunks[T]) has(k T) bool {
 	ci := o.chunkIdx(k)

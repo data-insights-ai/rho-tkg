@@ -195,6 +195,85 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 	return append(ops, bs.compositeDiskOpsLocked(n, id, writeOpSet)...)
 }
 
+// maintainPropertyIndexesAddBatch is maintainPropertyIndexesAdd of each new
+// node nodes[i] under ids[i], with the property indexes maintained once for
+// the batch (BATCHIDX, ai-soc's cut: 106 ms of 219 in per-node index
+// inserts): the RAM ones by indexpkg.AddNodesToPropertyIndexes, those on disk
+// by propertyIndexDiskAddBatch. The sidecars, composites and member entries
+// stay per node. Same lock and ops contract as maintainPropertyIndexesAdd.
+func (bs *Store) maintainPropertyIndexesAddBatch(nodes []*types.Node, ids []snowflake.ID) []writeOp {
+	for i, n := range nodes {
+		bs.recordNodeRowLocked(n, true)
+		indexpkg.AddNodeToCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, ids[i])
+	}
+	if testHookPropIdxAdd != nil {
+		testHookPropIdxAdd(bs, true)
+	}
+	if !bs.propIdxOnDisk {
+		indexpkg.AddNodesToPropertyIndexes(bs.propertyIndexes, nodes, ids)
+		if len(bs.propDiskLabels) == 0 {
+			return nil
+		}
+	}
+	ops := bs.propertyIndexDiskAddBatch(nodes, ids)
+	for i, n := range nodes {
+		ops = append(ops, bs.nodeMemberOpsLocked(n, ids[i])...)
+		ops = append(ops, bs.compositeDiskOpsLocked(n, ids[i], writeOpSet)...)
+	}
+	return ops
+}
+
+// propertyIndexDiskAddBatch is propertyIndexDiskMaintain(writeOpSet) of each
+// new node nodes[i] under ids[i], per on-disk definition at once: its
+// property key's token resolved once, each distinct value's bytes built once,
+// the ID bounds widened once by the batch's lowest and highest entry.
+func (bs *Store) propertyIndexDiskAddBatch(nodes []*types.Node, ids []snowflake.ID) []writeOp {
+	var ops []writeOp
+	empty := []byte{}
+	for _, def := range bs.propDiskDefs {
+		var byValue map[string][]snowflake.ID
+		for i, n := range nodes {
+			if !n.HasLabelTokenRaw(def.key.LabelToken) {
+				continue
+			}
+			id := ids[i]
+			forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
+				if byValue == nil {
+					byValue = make(map[string][]snowflake.ID)
+				}
+				byValue[valueKey] = append(byValue[valueKey], id)
+			})
+			if def.idx.Mutated != nil {
+				def.idx.Mutated[id] = struct{}{}
+			}
+		}
+		if len(byValue) == 0 {
+			continue
+		}
+		tok, ok := bs.propKeyTokenFor(def.key.PropertyKey)
+		if !ok {
+			continue
+		}
+		lo, hi := ^uint64(0), uint64(0)
+		for valueKey, vids := range byValue {
+			payload, ok := storepkg.PropertyIndexValueBytes(valueKey)
+			if !ok {
+				continue
+			}
+			for _, id := range vids {
+				ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.PropertyIndexEntryKey(tok, payload, id), value: empty})
+				u := uint64(id) // #nosec G115 — the entry key's ID suffix: int64 bits as uint64, the order nodeRowIDBounds reads
+				lo, hi = min(lo, u), max(hi, u)
+			}
+		}
+		if hi != 0 {
+			bs.propIDs.widen(lo)
+			bs.propIDs.widen(hi)
+		}
+	}
+	return ops
+}
+
 // maintainPropertyIndexesUpdate is maintainPropertyIndexesAdd for the new node
 // n of an update of old whose ops already hold old's Remove ops. An on-disk
 // entry the update deletes and sets again keeps its value, so the pair is
