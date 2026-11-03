@@ -31,6 +31,10 @@ import (
 
 var errUniqueOwnerIndexNotDeclared = errors.New("graph: no owner index is declared for this label and key")
 
+// ownerDropWalkHook (tests) runs in DropUniqueOwnerIndex after owner.mu is
+// released and before the claim walk.
+var ownerDropWalkHook func()
+
 type ownerDecl struct {
 	label uint16
 	key   string
@@ -136,6 +140,9 @@ func (bs *Store) DropUniqueOwnerIndex(label uint16, key string) error {
 	// reader trusts one, and ddlMu keeps a re-declaration out until the
 	// walk ends.
 	bs.owner.mu.Unlock()
+	if hook := ownerDropWalkHook; hook != nil {
+		hook()
+	}
 	// The claims are deleted through the buffer in chunks, not with
 	// DropPrefix, which blocks every write of the store (docs/badger.md
 	// section 2). A claim queued after the walk is a stray that a
