@@ -303,6 +303,15 @@ and the core loads rows as `ByLabelAndPropertyValues` does and returns their IDs
 IDs, under the same move lock as the row lookup. A shard that cannot answer from its index returns the IDs of its
 loaded rows.
 
+**Batch lend on tiered** (TIERLEND). `LendByIDs` reads each chunk through `store.EntityLendBatchCapability`; tiered
+implements it (`LendNodesSorted`, `LendRelationshipsSorted`) under one move read lock per call. The IDs are routed as
+`LendNode` / `LendRelationship` route them: the reference shard, the archive, the event shard of the ID's timestamp
+(a closed cold shard opens read-only), and for a relationship missing there every other event shard holding rows.
+Each shard is pinned once per call and read with its badger batch lend (one read snapshot, cache hits without a
+decode); the answers are the per-ID lends', in the caller's order. Before, each ID took the move lock and pinned
+the reference shard, the archive and its event shard. `TestTieredLendSortedAgreesWithLend`,
+`TestTieredLendSortedOneCheckoutPerShard`.
+
 **Change-log** (opt-in, `ChangeLog`): each backend writes one record per public mutation under a monotonic LSN in
 the same `WriteBatch` as the data, so log and data cannot diverge on a crash. `ChangeFeed` / `ExportSince` read it.
 

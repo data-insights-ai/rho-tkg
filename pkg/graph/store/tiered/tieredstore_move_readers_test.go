@@ -233,6 +233,20 @@ func TestRefArchiveReadersSeeMovedEntityOnce(t *testing.T) {
 			ids, err := m.ts.AllRelHistoryIDsFrom(0, 0)
 			return countID(ids, m.rel), err
 		})},
+		{"LendNodesSorted", plain(func(m moveRace) (int, error) {
+			out := make([]*types.Node, 1)
+			if err := m.ts.LendNodesSorted([]types.NodeID{m.a}, out); err != nil || out[0] == nil {
+				return 0, err
+			}
+			return countNode(out, m.a), nil
+		})},
+		{"LendRelationshipsSorted", plain(func(m moveRace) (int, error) {
+			out := make([]*types.Relationship, 1)
+			if err := m.ts.LendRelationshipsSorted([]types.RelID{m.rel}, out); err != nil || out[0] == nil {
+				return 0, err
+			}
+			return countRel(out, m.rel), nil
+		})},
 		{"GetRelationship", plain(func(m moveRace) (int, error) {
 			if _, err := m.ts.GetRelationship(m.rel); err != nil {
 				return 0, nil

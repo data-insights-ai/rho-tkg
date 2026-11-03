@@ -12,18 +12,20 @@ import (
 )
 
 // lendBatchFixture is a store whose rows sit on every shard a lend routes to:
-// the reference shard, the archive, a closed cold event shard and the hot
-// shard, with deleted rows on each and IDs no shard holds. rels by name:
-// "ref" between reference nodes, "arch" on the archived node, "cold" and
-// "hot" on their event shards, "cross" minted in the hot window between
-// cold-shard nodes (stored with its start node, found by the probe of the
-// other event shards), "mixed" from a hot node to a reference node.
+// the reference shard, the archive, two closed cold event shards (and an
+// empty one between them) and the hot shard, with deleted rows and IDs no
+// shard holds. rels by name: "ref" between reference nodes, "arch" on the
+// archived node, "cold", "cold2" and "hot" on their event shards, "cross" and
+// "cross2" minted in the hot window between nodes of each cold shard (stored
+// with the start node, found by the probe of the other event shards, one of
+// them only after a miss on the other), "mixed" from a hot node to a
+// reference node.
 type lendBatchFixture struct {
 	ts                *Store
 	nodes             map[string]types.NodeID
 	rels              map[string]types.RelID
-	cold              *EventShard
-	hot               *EventShard
+	cold, empty       *EventShard
+	cold2, hot        *EventShard
 	liveN, liveR      []string // names that must lend a row
 	missingN, missing []string // names that must lend nil (deleted or never written)
 }
@@ -77,6 +79,15 @@ func newLendBatchFixture(t *testing.T, mint bool) *lendBatchFixture {
 	f.rels["coldMissing"] = types.RelID(rg.Generate())
 	coldName := hotShardName(ts)
 	rotate(t, ts)
+	emptyName := hotShardName(ts) // a window without rows: a probe skips it
+	rotate(t, ts)
+
+	// The third window: a second closed cold shard.
+	node("cold2A", mintSignalTok)
+	node("cold2B", mintSignalTok)
+	rel("cold2", "cold2A", "cold2B")
+	cold2Name := hotShardName(ts)
+	rotate(t, ts)
 
 	// The second window: the hot shard.
 	node("hotA", mintSignalTok)
@@ -86,6 +97,7 @@ func newLendBatchFixture(t *testing.T, mint bool) *lendBatchFixture {
 	rel("hot", "hotA", "hotB")
 	rel("hotDel", "hotA", "hotB")
 	rel("cross", "coldA", "coldB")
+	rel("cross2", "cold2A", "cold2B")
 	rel("mixed", "hotA", "refA")
 	f.rels["hotMissing"] = types.RelID(rg.Generate())
 
@@ -101,14 +113,19 @@ func newLendBatchFixture(t *testing.T, mint bool) *lendBatchFixture {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
 	demoteToCold(ts, coldName)
+	demoteToCold(ts, emptyName)
+	demoteToCold(ts, cold2Name)
 	closeColdStores(t, ts)
 	ts.mu.RLock()
-	f.cold, f.hot = ts.eventShards[coldName], ts.hotShard
+	f.cold, f.empty, f.cold2, f.hot = ts.eventShards[coldName], ts.eventShards[emptyName], ts.eventShards[cold2Name], ts.hotShard
 	ts.mu.RUnlock()
+	if !f.empty.noRows.Load() {
+		t.Fatal("the empty cold shard is not marked as holding no rows")
+	}
 
-	f.liveN = []string{"refA", "refB", "refArch", "coldA", "coldB", "hotA", "hotB"}
+	f.liveN = []string{"refA", "refB", "refArch", "coldA", "coldB", "cold2A", "cold2B", "hotA", "hotB"}
 	f.missingN = []string{"refDel", "coldDel", "hotDel", "coldMissing", "hotMissing"}
-	f.liveR = []string{"ref", "cold", "hot", "cross", "mixed"}
+	f.liveR = []string{"ref", "cold", "cold2", "hot", "cross", "cross2", "mixed"}
 	if !mint {
 		f.liveR = append(f.liveR, "arch")
 	}
@@ -251,6 +268,12 @@ func TestTieredLendSortedAgreesWithLend(t *testing.T) {
 				}
 			}
 
+			if err := lb.LendNodesSorted(ids, out[:1]); err == nil {
+				t.Fatal("LendNodesSorted with fewer out slots than IDs: no error")
+			}
+			if err := lb.LendRelationshipsSorted(rids, rout[:1]); err == nil {
+				t.Fatal("LendRelationshipsSorted with fewer out slots than IDs: no error")
+			}
 			if err := lb.LendNodesSorted(nil, nil); err != nil {
 				t.Fatalf("empty LendNodesSorted: %v", err)
 			}
@@ -262,6 +285,12 @@ func TestTieredLendSortedAgreesWithLend(t *testing.T) {
 			}
 			if err := lb.LendRelationshipsSorted(rids, rout); !errors.Is(err, storecontract.ErrStoreClosed) {
 				t.Fatalf("LendRelationshipsSorted after Close: %v", err)
+			}
+			if err := lb.LendNodesSorted(nil, nil); !errors.Is(err, storecontract.ErrStoreClosed) {
+				t.Fatalf("empty LendNodesSorted after Close: %v", err)
+			}
+			if err := lb.LendRelationshipsSorted(nil, nil); !errors.Is(err, storecontract.ErrStoreClosed) {
+				t.Fatalf("empty LendRelationshipsSorted after Close: %v", err)
 			}
 		})
 	}
@@ -330,6 +359,10 @@ func TestTieredLendSortedOneCheckoutPerShard(t *testing.T) {
 				return "cold"
 			case f.hot:
 				return "hot"
+			case f.empty:
+				return "empty"
+			case f.cold2:
+				return "cold2"
 			}
 			return fmt.Sprint(k)
 		}
@@ -346,7 +379,7 @@ func TestTieredLendSortedOneCheckoutPerShard(t *testing.T) {
 		clear(counts)
 	}
 
-	all := map[any]int{checkoutKeyRef: 1, checkoutKeyArchive: 1, f.cold: 1, f.hot: 1}
+	all := map[any]int{checkoutKeyRef: 1, checkoutKeyArchive: 1, f.cold: 1, f.cold2: 1, f.hot: 1}
 	ids := f.nodeIDs(append(slices.Clone(f.liveN), f.missingN...))
 	slices.Sort(ids)
 	lendLikeCore(t, f.ts, ids)
@@ -370,4 +403,45 @@ func TestTieredLendSortedOneCheckoutPerShard(t *testing.T) {
 	refRels := f.relIDs([]string{"ref"})
 	relLendLikeCore(t, f.ts, refRels)
 	check("reference rel", map[any]int{checkoutKeyRef: 1})
+}
+
+// TestTieredLendSortedPassesOnAListedIDWithoutRow: a shard that lists a
+// relationship ID but lends no row for it (here forged: a copy on the hot
+// shard, its cache entry marked deleted) passes the ID on to the next shard,
+// as LendRelationship does.
+func TestTieredLendSortedPassesOnAListedIDWithoutRow(t *testing.T) {
+	t.Parallel()
+	f := newLendBatchFixture(t, false)
+	cross, err := f.ts.GetRelationship(f.rels["cross"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	hot := f.hot.store
+	for _, name := range []string{"coldA", "coldB"} { // the copy's endpoints
+		n, err := f.ts.GetNode(f.nodes[name])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := hot.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := hot.PutRelationship(cross); err != nil {
+		t.Fatalf("forge the copy on the hot shard: %v", err)
+	}
+	hot.RelCacheForTest().MarkDeleted(cross.ID().SnowflakeID())
+	if !hot.HasRelID(cross.ID().SnowflakeID()) {
+		t.Fatal("the hot shard does not list the forged ID")
+	}
+	want, err := f.ts.LendRelationship(cross.ID())
+	if err != nil {
+		t.Fatalf("LendRelationship: %v", err)
+	}
+	out := make([]*types.Relationship, 1)
+	if err := f.ts.LendRelationshipsSorted([]types.RelID{cross.ID()}, out); err != nil {
+		t.Fatal(err)
+	}
+	if got, w := relRowKey(out[0]), relRowKey(want); got != w || out[0] == nil {
+		t.Fatalf("batch %s, LendRelationship %s", got, w)
+	}
 }

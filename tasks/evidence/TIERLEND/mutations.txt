@@ -1,0 +1,59 @@
+TIERLEND mutation sweep, 2026-11-03, branch tierlend (tiered LendNodesSorted / LendRelationshipsSorted,
+pkg/graph/store/tiered/tieredstore_lend_batch.go, and the checkoutHook seam in tieredstore_lifecycle.go).
+Each mutant applied once, `go vet` first (a mutant that does not build is no kill and is rewritten in a buildable
+form), then only the targeted tests:
+  go test -run 'TestTieredLendSorted|TestTieredStoreLend|TestRefArchiveReadersSeeMovedEntityOnce/Lend' -count=1 ./pkg/graph/store/tiered/
+(without -short, so the long-tier move-race test runs). The whole package ran once on the final code (below).
+
+Tests: AgreesWithLend (per-ID LendNode/LendRelationship parity: reference, archive, two closed cold shards opened
+read-only, an empty cold shard, hot, the probe of other event shards, deleted and never-written IDs, sorted input with
+duplicates and an unsorted duplicate-free permutation, stale out slots, length mismatch, closed store; RelsByMint off
+and on), OneCheckoutPerShard (checkoutHook counts), PassesOnAListedIDWithoutRow (a forged listing without a row on the
+candidate shard), TestRefArchiveReadersSeeMovedEntityOnce/Lend* (ArchiveNode / RestoreNode in the ref-archive gap).
+
+mutant                                                      verdict   failing tests
+M1  nodes: the reference shard never owns an ID             KILLED    AgreesWithLend, OneCheckoutPerShard
+M2  nodes: skip the archive                                 KILLED    AgreesWithLend
+M3  event shards grouped per ID (a pin per ID)              KILLED    OneCheckoutPerShard
+M4  every ID routed to the hot shard                        KILLED    AgreesWithLend, OneCheckoutPerShard
+M5  read() does not sort its IDs                            SURVIVED  equivalent on answers: badger's seekAfterMiss
+                                                                      seeks back on a lower key. The sort keeps the
+                                                                      capability's ascending contract and badger's
+                                                                      forward-step cost; kept.
+M6  rels: out not cleared                                   KILLED    AgreesWithLend (stale slot of a missing rel)
+M7  nodes: out not cleared                                  first run SURVIVED (equivalent: every position is
+                                                                      routed to one shard, whose read sets its slot);
+                                                                      the clear was removed from LendNodesSorted.
+M8  rels: an ID a shard lists but lends nil not passed on   first run SURVIVED (no reachable state in the fixture);
+                                                                      PassesOnAListedIDWithoutRow added: KILLED
+M9  rels: no probe of other event shards                    first form `return nil` did not build (unreachable
+                                                                      code), no kill; rerun as `if true || ...`:
+                                                            KILLED    AgreesWithLend, PassesOnAListedIDWithoutRow
+M10 rels: the probe opens shards marked noRows              KILLED    OneCheckoutPerShard (the empty cold shard)
+M11 rels: no pin reuse (a second checkout of a shard)       KILLED    OneCheckoutPerShard
+M12 rels: the probe asks an ID's own event shard again      first run SURVIVED (equivalent: the shard is pinned
+                                                                      and misses again); the candidate map was removed,
+                                                                      the probe asks every shard holding rows.
+M13 rels: skip the reference shard                          first form did not build (self-assignment), no kill;
+                                                                      rerun as `_, err = lendFound(ref, nil)`:
+                                                            KILLED    AgreesWithLend, OneCheckoutPerShard
+M14 rels: skip the archive                                  KILLED    AgreesWithLend
+M15 nodes: no move lock                                     KILLED    TestRefArchiveReadersSeeMovedEntityOnce/LendNodesSorted/RestoreNode
+M16 rels: no move lock                                      KILLED    TestRefArchiveReadersSeeMovedEntityOnce/LendRelationshipsSorted/RestoreNode
+M17 nodes: out length not checked                           KILLED    AgreesWithLend
+M18 rels: out length not checked                            KILLED    AgreesWithLend
+M19 the probe stops after its first shard                   KILLED    AgreesWithLend (cross / cross2: one of them is
+                                                                      on the second probed shard whatever the order)
+M20 nodes: no checkOpen                                     first run SURVIVED (a non-empty call fails closed at
+                                                                      the reference pin); empty call after Close added:
+                                                            KILLED    AgreesWithLend
+M21 seam: event shard pins not reported                     KILLED    OneCheckoutPerShard
+M22 rels: misses on the ID's own event shard dropped        first form (line deleted) did not build (missed
+                                                                      unused), no kill; rerun as `missed[:0]...`:
+                                                            KILLED    AgreesWithLend, PassesOnAListedIDWithoutRow
+M23 rels: no checkOpen                                      KILLED    AgreesWithLend
+M24 the probe keeps asking IDs already found                KILLED    PassesOnAListedIDWithoutRow (a later read of a
+                                                                      listing without a row overwrites the found slot)
+
+On the final code: 21 killed; M5 survives as equivalent on answers (kept for the contract); M7 and M12 named
+equivalent code that was removed.
