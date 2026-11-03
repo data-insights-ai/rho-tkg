@@ -108,6 +108,15 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
+- **Round 2 read items from ai-soc's read-back inventory** (3 Nov, 60-min BA on tiered; ai-soc's estimates, measure
+  each first):
+  - **UNIQUEMISS** — GetOrCreateByKey does a second, identical unique lookup per miss (core/unique_constraints.go:623);
+    claimForever re-marshals the whole owner map per claim (unique_forever.go:266). Lands after UNIQUELOOK.
+  - **EDGEROW** — a relationship create reads each endpoint row 3-4 times (relationship_create_kernel.go:112-143,
+    rel.go:76, write_rel.go:163-212), inside AddRelationshipByID's 14.4 s; hand the row down once. Estimate <= 5 s.
+  - **CASCADEROW** — the temporal cascade reads getCurrentNode 2-3 times plus the chain (temporal_cascade.go:132-154,
+    tx.go:286/346); cascadeNode 5 s (27 s on d2). Estimate 2 s.
+  - **FLOORDECODE** — batchCommitFloor re-decodes every value of a batch (commit_floor.go:68). Measure first.
 - **NOCOMPRESS** (ai-soc 3 Nov, after round 2; a minor) — 2.19 TB of the 3-day run's 9.87 TB allocation (k11020850)
   is badger's Snappy block decode into Go-heap buffers (z.Calloc is make([]byte) without the jemalloc tag,
   ristretto z/calloc_nojemalloc.go:18-20); 1.66 TB of it on badger's own goroutines: compaction reads every input block
@@ -416,7 +425,6 @@ beside it. Waits for: René reopening it; then ask ai-soc and sigma whether they
   `row102-pending-ranged`, `f4b27842` in `archive/unmerged-2026-10-27`). Waits for: ai-soc raising its priority, or nothing else open.
 - **RELSIDECAR** — Relationship lookups by several properties may be too slow on BA. Waits for: a BA measurement.
 - **NITS** — Small findings no consumer has hit (backlog 80-82, review nits). Waits for: a consumer hitting one.
-- **NOCOMPRESS** — Compression cannot be turned off, because "none" is the default value. Waits for: a consumer asking.
 - **STALECITE** — Some code comments cite todo sections that no longer exist. Waits for: the next change to that code.
 - **V5** — The v5 line is paused on `v5-takeover` (`3bd4d13a`, in `archive/unmerged-2026-10-27`; state: HANDOVER; open WPs and the breaking API-pass
   candidates: `git show 791c1aa3:tasks/todo.md`). Default: paused; `v5.0.0-alpha.1` at its S2 exit once restarted.
