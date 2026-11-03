@@ -22,11 +22,12 @@ import (
 // All or nothing: a validation error in any element (labels, provenance or
 // temporal shadow keys, property limits) returns it before an ID is minted, and
 // a failed store write removes the nodes it may have written; the returned slice
-// is then nil. Where a node needs a per-node check the batch cannot make (a
-// unique-property constraint exists, or the transaction runs under a scoped
-// write token), the call runs AddNode's path per element instead: same results,
-// none of the saving, and an error stops at the failing element with the
-// earlier nodes kept (the transaction's rollback removes them).
+// is then nil. Unique constraints keep the batch: every constrained value is
+// checked before the write, and a value repeated within the call or held by
+// another node refuses the whole call with ErrUniqueViolation, nothing stored
+// and nothing claimed. Under a scoped write token the call runs AddNode's path
+// per element instead: an error stops at the failing element with the earlier
+// nodes kept (the transaction's rollback removes them).
 //
 // An empty props creates nothing and returns (nil, nil).
 func (tx *GraphTx) AddNodes(labels []string, props []map[string]any) ([]*types.Node, error) {
@@ -127,8 +128,20 @@ func (c *Core) addNodesInternal(ctx context.Context, labels []string, props []ma
 		nodes = nil
 		return nil, finish(err)
 	}
-	if err := c.putGeneratedNodesBatch(nodes); err != nil {
+	holds, releaseUnique, err := c.enforceUniqueForNodes(nodes)
+	if err != nil {
+		nodes = nil // nothing written
 		return nil, finish(err)
+	}
+	defer releaseUnique() // the value stripes stay held across the write
+	if err := c.putGeneratedNodesBatch(nodes); err != nil {
+		err = finish(err)
+		// After the partial-create cleanup: withdraw the UniqueForever claims
+		// of every node whose row is not stored (item 29).
+		for _, h := range holds {
+			err = h.storeWriteFailed(err)
+		}
+		return nil, err
 	}
 	if err := finish(nil); err != nil {
 		c.opNodeAdds.Add(int64(len(nodes)))
@@ -139,12 +152,9 @@ func (c *Core) addNodesInternal(ctx context.Context, labels []string, props []ma
 }
 
 // canBatchNodeCreates reports whether a node create may skip the per-node
-// store write: no unique-property constraint needs its stripe held across the
-// write, and no scoped write token routes the write.
+// store write: no scoped write token routes the write. Unique constraints do
+// not stop the batch (enforceUniqueForNodes, BATCHADD).
 func (c *Core) canBatchNodeCreates(ctx context.Context) bool {
-	if c.hasUniqueConstraints.Load() {
-		return false
-	}
 	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
 		return false
 	}

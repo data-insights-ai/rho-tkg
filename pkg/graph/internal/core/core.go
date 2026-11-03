@@ -378,6 +378,9 @@ type Core struct {
 	// hasUniqueConstraints is the lock-free fast path: when false, the write
 	// doors skip the uniqueMu.RLock + enforcement entirely.
 	hasUniqueConstraints atomic.Bool
+	// nodePutSeam counts generated-node store writes and AddNodes' unique
+	// lookups for tests; nil in production.
+	nodePutSeam *nodePutCounts
 	// indexEpoch is the index-inventory epoch (round 4 R1): advanced after every
 	// index create/drop that reached the store and after every store Clear
 	// (index_inventory_epoch.go).
