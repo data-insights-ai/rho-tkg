@@ -1,0 +1,14 @@
+--- FAIL: TestIDsByLabelAndPropertyValuesAfterADropOnASharedKey (0.00s)
+    --- FAIL: TestIDsByLabelAndPropertyValuesAfterADropOnASharedKey/badger_index_on_disk (0.22s)
+        ids_by_property_values_test.go:240: after the drops, Other bk=2: IDs [868212199197181952], rows []
+        ids_by_property_values_test.go:240: after the drops, Solo2 sk=7: IDs [868212199199868928], rows []
+        ids_by_property_values_test.go:246: after a reopen, Other bk=2: IDs [868212199197181952], rows []
+        ids_by_property_values_test.go:246: after a reopen, Solo2 sk=7: IDs [868212199199868928], rows []
+    --- FAIL: TestIDsByLabelAndPropertyValuesAfterADropOnASharedKey/tiered_index_on_disk (0.39s)
+        ids_by_property_values_test.go:240: after the drops, Other bk=2: IDs [868212202635233280], rows []
+        ids_by_property_values_test.go:240: after the drops, Solo2 sk=7: IDs [868212202638673920], rows []
+        ids_by_property_values_test.go:246: after a reopen, Other bk=2: IDs [868212202635233280], rows []
+        ids_by_property_values_test.go:246: after a reopen, Solo2 sk=7: IDs [868212202638673920], rows []
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.414s
+FAIL

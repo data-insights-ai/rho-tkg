@@ -166,6 +166,88 @@ func TestIDsByLabelAndPropertyValuesReadsNoRow(t *testing.T) {
 	}
 }
 
+// ELEMPROBE: dropping an on-disk definition while another one indexes the same
+// property key leaves the dropped one's entries in the shared keyspace (a
+// lookup rechecks rows), so the ID door must not answer from it: an Elements
+// definition's element keys under a surviving scalar one, and a scalar key
+// left behind when the node's value changed while no definition covered it.
+// The IDs equal the rows' after the drop and after a reopen.
+func TestIDsByLabelAndPropertyValuesAfterADropOnASharedKey(t *testing.T) {
+	t.Parallel()
+	for _, b := range []struct {
+		name string
+		open func(t *testing.T, dir string) probeGraph
+	}{
+		{"badger index on disk", func(t *testing.T, dir string) probeGraph {
+			return openBadgerProbe(t, badger.Config{Dir: dir, PropertyIndexOnDisk: true})
+		}},
+		{"tiered index on disk", func(t *testing.T, dir string) probeGraph {
+			return openTieredProbe(t, tiered.Config{DataDir: dir, RefLabels: []string{"Block", "Other", "Solo", "Solo2"}, ShardWindow: 7 * 24 * time.Hour, PropertyIndexOnDisk: true})
+		}},
+	} {
+		t.Run(b.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			dir := t.TempDir()
+			g := b.open(t, dir).g
+			for _, def := range []struct {
+				label, key string
+				elements   bool
+			}{{"Other", "bk", false}, {"Block", "bk", true}, {"Solo", "sk", false}, {"Solo2", "sk", false}} {
+				if err := g.Index().CreatePropertyWithOptions(def.label, def.key, storepkg.PropertyIndexOptions{Elements: def.elements}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := g.Nodes().Add(ctx, []string{"Block", "Other"}, map[string]any{"bk": []int64{1, 2}}); err != nil {
+				t.Fatal(err)
+			}
+			sn, err := g.Nodes().Add(ctx, []string{"Solo"}, map[string]any{"sk": int64(7)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := sn.ID()
+			if err := g.Index().DeleteProperty("Block", "bk"); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Index().DeleteProperty("Solo", "sk"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := g.Nodes().Update(ctx, s, map[string]any{"sk": int64(8)}); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Nodes().AddLabel(ctx, s, "Solo2"); err != nil {
+				t.Fatal(err)
+			}
+			check := func(when string) {
+				t.Helper()
+				for _, c := range []struct {
+					label, key string
+					v          any
+				}{{"Other", "bk", int64(2)}, {"Other", "bk", []int64{1, 2}}, {"Solo2", "sk", int64(7)}, {"Solo2", "sk", int64(8)}} {
+					rows, err := g.Nodes().ByLabelAndPropertyValues(c.label, c.key, []any{c.v}, storepkg.QueryOpts{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					got, err := g.Nodes().IDsByLabelAndPropertyValues(c.label, c.key, []any{c.v}, storepkg.QueryOpts{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !slices.Equal(got, nodeIDsOf(rows)) {
+						t.Errorf("%s, %s %s=%v: IDs %v, rows %v", when, c.label, c.key, c.v, got, nodeIDsOf(rows))
+					}
+				}
+			}
+			check("after the drops")
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+			g = b.open(t, dir).g
+			defer func() { _ = g.Close() }()
+			check("after a reopen")
+		})
+	}
+}
+
 // probeGraph is a graph with its row-read counter and, on tiered, the
 // archive move.
 type probeGraph struct {
