@@ -474,6 +474,10 @@ func nodeRowIDBounds(txn *badgerv4.Txn) (lo, hi uint64) {
 // lookup on the on-disk property index visits.
 var propertyDiskVisitTestHook func()
 
+// propertyDiskSeekTestHook (tests only) is called for each Seek an equality
+// lookup on the on-disk property index makes.
+var propertyDiskSeekTestHook func()
+
 func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant) ([]types.NodeID, error) {
 	tok, ok := bs.propKeyTokenFor(propertyKey)
 	if !ok {
@@ -553,7 +557,20 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	// until it holds two live keys, wherever those are, and the bound above
 	// never stopped that walk (PROPSEEK, ai-soc's rewritten node keys). The
 	// newest version of each key decides.
+	//
+	// The walks share one run of the iterator (RHOPOST, sigma's block probe:
+	// a seek through every table per value was 75 % of its lookup). A run
+	// that began at start has visited every key below the one the iterator
+	// stands on, so a walk whose from lies between the two goes on from
+	// there: the values of a block, adjacent in the index, cost one Next
+	// each. An invalid iterator stands past every key of the snapshot: the
+	// run has visited all keys from start on, and a walk from there finds
+	// nothing new. Otherwise it seeks. A string that extends another starts its walk
+	// at value||lo, which can sort below the shorter string's start; that
+	// walk seeks back and can visit keys an earlier walk counted, so the
+	// candidates are compacted then.
 	var nids []types.NodeID
+	revisit := false // a walk sought below the start of the run before it
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		lo, hi := bs.propIDs.bounds(txn) // no entry: 0, 0, which no entry carries
 		opts := badgerv4.DefaultIteratorOptions
@@ -561,7 +578,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 		opts.AllVersions = true
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		var last, prev []byte
+		var last, prev, start []byte
 		for _, prefix := range prefixes {
 			seek := storepkg.PropertyIndexValueSeekPrefix(prefix)
 			if last != nil && bytes.Equal(seek, last) {
@@ -573,7 +590,15 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 				from = binary.BigEndian.AppendUint64(slices.Clone(seek), lo)
 				to = binary.BigEndian.AppendUint64(slices.Clone(seek), hi)
 			}
-			for it.Seek(from); it.ValidForPrefix(seek); it.Next() {
+			if start == nil || bytes.Compare(from, start) < 0 || (it.Valid() && bytes.Compare(it.Item().Key(), from) < 0) {
+				if propertyDiskSeekTestHook != nil {
+					propertyDiskSeekTestHook()
+				}
+				revisit = revisit || (start != nil && bytes.Compare(from, start) < 0)
+				it.Seek(from)
+				start = from
+			}
+			for ; it.ValidForPrefix(seek); it.Next() {
 				item := it.Item()
 				key := item.Key()
 				if propertyDiskVisitTestHook != nil {
@@ -615,6 +640,10 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	})
 	if err != nil {
 		return nil, fmt.Errorf("graph: property index equality scan: %w", err)
+	}
+	if revisit {
+		storepkg.SortNodeIDs(nids)
+		nids = slices.Compact(nids)
 	}
 	for k, nid := range adds {
 		nids = append(nids, nid)
