@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-11-03: latest tag v4.100.1; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-11-03: latest tag v4.101.0; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,13 +7,12 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **State of 3 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.100.1 (a patch on v4.100.0: the
-  ID door after a drop on a shared on-disk key, found by Fable's review of 3 Nov); v4.100.0 holds ELEMPROBE,
-  BORROWREAD, WHOLEROW, ASOFWALK step 1. ai-soc's current run stays on rho v4.100.0 + sigma v0.11.159 (neither drops a
-  shared on-disk definition); ai-soc says when the PC is free before a race suite or scale probe.
-  - **Branch `coldedge`, not merged:** empty closed shards leave the fan-out; mint fan-out opens cold shards read-only
-    (30 shards with rows, 2.9 s to about 0.5 s, one run). `TestFlatAdjacency_OnlyListedShardOpens` is red on purpose and
-    must leave the branch before it ships.
+- **State of 3 Nov evening, read this first** (next steps: `tasks/todo.md`). Latest tag v4.101.0 (COLDEDGE, the
+  REVIEW 3 Nov test gaps); ai-soc pins it with sigma for the PC 3-day run (W3, not before 21:00), then Flux. ai-soc
+  names its quiet windows (W1 gate pair, W3): then no ci-docker, probe, bench or long test here.
+  - **Round 2, on branches, not merged** (Opus builders in `.claude/worktrees/`, René 3 Nov "parallel opus agents for
+    work and fable for design and reviews"; Fable review at the end): RHOPOST, RHOMEMIDS, BATCHADD, VALUETHRESH,
+    UNIQUELOOK. Benches wait for a quiet PC. Designs: `tasks/evidence/*/` per item.
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Fable agent:** René wants a read-only Fable review after each batch of changes; it does not survive a session:
@@ -131,6 +130,10 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   mutations caught. ci-docker green, consumers clean, scale probe unchanged; tag CI and main green; ai-soc (pins it
   for the Flux run) and sigma notified. Open: the range walks, the purge's adjacency walk, history truncation,
   the purge token walks, rel purge candidates (todo ITERTOMB). Tags held until ai-soc's run ships.
+- **v4.101.0** (COLDEDGE, a minor; REVIEW 3 Nov tests): ci-docker green on a6245ca0 (race, long, gosec, govulncheck,
+  cover, fuzz) at load 30-45; one tests-only fix after it (`934b2fba`, a load flake); consumers build and vet clean (ai-soc's
+  vet red only in an untracked agent-patch copy inside its checkout, not rho); scale probe in
+  `tasks/evidence/SCALE/existence_maps.txt`.
 - **v4.100.1** (ELEMPROBE drop, a patch on René's go, 3 Nov): after a drop of an on-disk definition whose property key another definition still indexes, `IDsByLabelAndPropertyValues` reads rows for that key (an inexact marker) instead of the dropped one's entries. Neither consumer drops such a definition (sigma: never; ai-soc: one RAM-open migration). ci-fast green, consumers build and vet clean.
 - **v4.100.0** (ELEMPROBE, BORROWREAD, WHOLEROW and ASOFWALK step 1, a minor in ai-soc's release round on René's word): `Nodes().IDsByLabelAndPropertyValues` answers from the index without loading rows; `Node.BorrowProperty` reads without the deep copy; `Nodes().ReplaceVersion` replaces the current row whole as a new version; a tiered as-of read of a node on its owner shard walks that shard. ci-docker green (1,676 s, coverage 87.8 %), sigma, ai-soc, ai-soc engine (go1.27.3) and bookkeeping build and vet clean, scale probe unchanged.
 - **v4.99.0** (ELEMDISK and WRITEGROW, a minor for sigma's PAGEBLOB blocks and write-back on René's word outside the release round, cut from v4.98.4 and merged back, as main also carries WHOLEROW and ASOFWALK for the next round): an Elements index keeps its entries on disk with its label's; `Temporal().NodeEffectiveTimelineFrom` reads only the tail it returns.

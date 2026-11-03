@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.101.0] - 2026-11-03
+
+### Changed
+
+- **COLDEDGE** (ai-soc, SCALE; blocks its 7-10 day run; a minor: badger `Store.HoldsNoRows` and tiered
+  `ShardCatalog.SetShardNoRows` are new exported names). On a tiered store, a closed cold shard that holds no row leaves
+  the read fan-out and its open-cap slot, and a write wakes it (saved before the write); the change feed, property
+  stats and relationship misses skip empty shards. A reference node's mint fan-out under `RelsByMint` opens cold shards
+  read-only: 30 shards, 29 empty, 1.65 s to about 90 ms a read; 30 shards with rows, 2.9 s to about 0.5 s (one run;
+  `tasks/evidence/COLDEDGE/`). The flat per-node shard list stays on hold (`docs/architecture.md`).
+
+### Tests
+
+- **REVIEW 3 Nov** gaps filled (read-only Fable review; Opus builders): the ID door with a flush in flight (badger and
+  tiered), ASOFWALK compared on the whole row, WHOLEROW replaces on event, cold, archive and `MintAtValidFrom` shards, a
+  `ValidAt` read after an earlier start and concurrent writers; no defect (`tasks/evidence/REVIEW3NOV/`).
+- The patchgate test's `git init` runs without the committing repo's `GIT_*` variables: a commit from a worktree set
+  `core.bare=true` on the main checkout (`tasks/evidence/GITENV/red.txt`).
+- The ID door's time-coordinate case takes its valid instant past the commit clock (failed about 3 runs in 8 under load).
+
 ## [4.100.1] - 2026-11-03
 
 ### Fixed
