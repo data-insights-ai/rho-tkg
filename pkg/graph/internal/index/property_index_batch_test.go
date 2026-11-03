@@ -158,6 +158,51 @@ func TestAddNodesBatchEqualsSequentialAdds(t *testing.T) {
 	}
 }
 
+// TestAddKeysRepeatsAndOrder (BATCHIDX): addKeys given an ID twice, out of
+// order, below and above the index's IDs, and two value keys of one sort key,
+// leaves each index kind as the AddKey calls do.
+func TestAddKeysRepeatsAndOrder(t *testing.T) {
+	t.Parallel()
+	for _, mk := range []func() *PropertyIndex{
+		NewPropertyIndex,
+		func() *PropertyIndex { return NewPropertyIndexWith(true, false) },
+		func() *PropertyIndex { return NewPropertyIndexWith(false, true) },
+	} {
+		seq, bat := mk(), mk()
+		for _, pi := range []*PropertyIndex{seq, bat} {
+			for id := snowflake.ID(10); id <= 2000; id += 2 {
+				pi.AddKey(id, "i:1")
+				pi.AddKey(id, "s:x")
+			}
+		}
+		keys := map[string][]snowflake.ID{
+			"i:1":   {3005, 7, 3001, 7, 3003, 11, 3001},
+			"f64:1": {9, 3002, 9, 5000},
+			"s:x":   {4001, 4000, 4000, 13},
+			"s:new": {2, 1, 2},
+		}
+		for vk, ids := range keys {
+			for _, id := range ids {
+				seq.AddKey(id, vk)
+			}
+		}
+		bat.addKeys(keys)
+		if ws, gs := propertyIndexState(seq), propertyIndexState(bat); ws != gs {
+			t.Fatalf("addKeys state differs from AddKey\nAddKey:\n%s\naddKeys:\n%s", ws, gs)
+		}
+		for vk, p := range bat.Entries {
+			if err := checkChunks(&p.s); err != nil {
+				t.Fatalf("%q: %v", vk, err)
+			}
+		}
+		for k, p := range bat.numBuckets {
+			if err := checkChunks(&p.s); err != nil {
+				t.Fatalf("bucket %v: %v", k, err)
+			}
+		}
+	}
+}
+
 // randomBatchNode is a node of label 10, 11, 12 or none, with random values
 // under v, c (scalars), l (lists) and nx (absent most of the time).
 func randomBatchNode(t *testing.T, r *rand.Rand, id snowflake.ID) *types.Node {
