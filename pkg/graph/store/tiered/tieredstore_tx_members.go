@@ -112,10 +112,18 @@ const (
 	checkoutKeyArchive = "archive"
 )
 
-// noteCheckout reports a read pin of shard to the test-only checkoutHook.
-func (ts *Store) noteCheckout(shard any) {
-	if h := ts.checkoutHook; h != nil {
-		h(shard)
+// noteCheckout reports a read pin of shard to the test-only checkoutHook
+// (held +1) and returns release reporting its end (held -1); without the hook
+// it returns release unchanged.
+func (ts *Store) noteCheckout(shard any, release func()) func() {
+	h := ts.checkoutHook
+	if h == nil {
+		return release
+	}
+	h(shard, 1)
+	return func() {
+		release()
+		h(shard, -1)
 	}
 }
 

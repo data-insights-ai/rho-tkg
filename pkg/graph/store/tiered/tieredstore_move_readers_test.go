@@ -233,19 +233,21 @@ func TestRefArchiveReadersSeeMovedEntityOnce(t *testing.T) {
 			ids, err := m.ts.AllRelHistoryIDsFrom(0, 0)
 			return countID(ids, m.rel), err
 		})},
+		// With an ID no shard holds beside it, the batch reaches its archive
+		// read (and the gap hook) whichever side the moved entity is on.
 		{"LendNodesSorted", plain(func(m moveRace) (int, error) {
-			out := make([]*types.Node, 1)
-			if err := m.ts.LendNodesSorted([]types.NodeID{m.a}, out); err != nil || out[0] == nil {
+			out := make([]*types.Node, 2)
+			if err := m.ts.LendNodesSorted([]types.NodeID{m.a, m.a + 1}, out); err != nil || out[0] == nil || out[1] != nil {
 				return 0, err
 			}
-			return countNode(out, m.a), nil
+			return countNode(out[:1], m.a), nil
 		})},
 		{"LendRelationshipsSorted", plain(func(m moveRace) (int, error) {
-			out := make([]*types.Relationship, 1)
-			if err := m.ts.LendRelationshipsSorted([]types.RelID{m.rel}, out); err != nil || out[0] == nil {
+			out := make([]*types.Relationship, 2)
+			if err := m.ts.LendRelationshipsSorted([]types.RelID{m.rel, m.rel + 1}, out); err != nil || out[0] == nil || out[1] != nil {
 				return 0, err
 			}
-			return countRel(out, m.rel), nil
+			return countRel(out[:1], m.rel), nil
 		})},
 		{"GetRelationship", plain(func(m moveRace) (int, error) {
 			if _, err := m.ts.GetRelationship(m.rel); err != nil {

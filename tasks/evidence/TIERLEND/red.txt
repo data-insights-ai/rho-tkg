@@ -13,3 +13,12 @@ $ go test -short -run 'TestTieredLendSorted' -count=1 ./pkg/graph/store/tiered/
 FAIL
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.597s
 FAIL
+
+TIERLEND review red (Fable F1: the rel probe holds every event shard pin), 2026-11-03, on 6609da9b (5a5ee36d + main)
+$ go test -short -race -run TestTieredLendSortedHoldsOnePinAtATime -count=1 ./pkg/graph/store/tiered/
+--- FAIL: TestTieredLendSortedHoldsOnePinAtATime (0.95s)
+    tieredstore_lend_batch_test.go:507: a missing relationship: 6 read pins held at once, want at most 2 (5 cold shards)
+    tieredstore_lend_batch_test.go:513: rels on every cold shard and a missing one: 6 read pins held at once, want at most 2 (5 cold shards)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.993s
+FAIL

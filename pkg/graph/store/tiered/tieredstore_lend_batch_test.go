@@ -344,7 +344,10 @@ func TestTieredLendSortedOneCheckoutPerShard(t *testing.T) {
 	f := newLendBatchFixture(t, false)
 	var mu sync.Mutex
 	counts := map[any]int{}
-	f.ts.checkoutHook = func(shard any) {
+	f.ts.checkoutHook = func(shard any, held int) {
+		if held < 0 {
+			return
+		}
 		mu.Lock()
 		counts[shard]++
 		mu.Unlock()
@@ -443,5 +446,86 @@ func TestTieredLendSortedPassesOnAListedIDWithoutRow(t *testing.T) {
 	}
 	if got, w := relRowKey(out[0]), relRowKey(want); got != w || out[0] == nil {
 		t.Fatalf("batch %s, LendRelationship %s", got, w)
+	}
+}
+
+// TestTieredLendSortedHoldsOnePinAtATime: a relationship no shard holds sends
+// the batch's probe over every cold shard with rows; it holds one event shard
+// pin at a time, as LendRelationship does, not every cold shard at once (each
+// a read-only badger open the cold cap cannot close while pinned). Nodes too.
+func TestTieredLendSortedHoldsOnePinAtATime(t *testing.T) {
+	t.Parallel()
+	cfg := mintCfg(t.TempDir(), false)
+	cfg.MaxOpenColdShards = 8
+	ts := openMintStore(t, cfg)
+	ng, rg := tieredNodeGen(t), tieredRelGen(t)
+	const coldShards = 5
+	var names []string
+	var nodeIDs []types.NodeID
+	var relIDs []types.RelID
+	for range coldShards {
+		a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintSignalTok)
+		b := putMintNode(t, ts, types.NodeID(ng.Generate()), mintSignalTok)
+		r := types.RelID(rg.Generate())
+		putMintRel(t, ts, r, 1, a, b)
+		nodeIDs = append(nodeIDs, a)
+		relIDs = append(relIDs, r)
+		names = append(names, hotShardName(ts))
+		rotate(t, ts)
+	}
+	for _, name := range names {
+		demoteToCold(ts, name)
+	}
+	closeColdStores(t, ts)
+	missing := types.RelID(rg.Generate())
+
+	var mu sync.Mutex
+	held, peak := 0, 0
+	ts.checkoutHook = func(_ any, d int) {
+		mu.Lock()
+		defer mu.Unlock()
+		held += d
+		peak = max(peak, held)
+	}
+	measure := func(what string, lend func() error) {
+		t.Helper()
+		mu.Lock()
+		held, peak = 0, 0
+		mu.Unlock()
+		if err := lend(); err != nil {
+			t.Fatalf("%s: %v", what, err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if held != 0 {
+			t.Errorf("%s: %d pins left held", what, held)
+		}
+		if peak > 2 {
+			t.Errorf("%s: %d read pins held at once, want at most 2 (%d cold shards)", what, peak, coldShards)
+		}
+	}
+	measure("a missing relationship", func() error {
+		return ts.LendRelationshipsSorted([]types.RelID{missing}, make([]*types.Relationship, 1))
+	})
+	closeColdStores(t, ts)
+	rids := append(slices.Clone(relIDs), missing)
+	rout := make([]*types.Relationship, len(rids))
+	measure("rels on every cold shard and a missing one", func() error {
+		return ts.LendRelationshipsSorted(rids, rout)
+	})
+	for i, r := range rout[:coldShards] {
+		if r == nil || r.ID() != relIDs[i] {
+			t.Errorf("rel %d lent %s", relIDs[i], relRowKey(r))
+		}
+	}
+	closeColdStores(t, ts)
+	nout := make([]*types.Node, len(nodeIDs))
+	measure("nodes on every cold shard", func() error {
+		return ts.LendNodesSorted(nodeIDs, nout)
+	})
+	for i, n := range nout {
+		if n == nil || n.ID() != nodeIDs[i] {
+			t.Errorf("node %d lent %s", nodeIDs[i], nodeRowKey(n))
+		}
 	}
 }
