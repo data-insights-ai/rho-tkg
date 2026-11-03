@@ -108,6 +108,15 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
+- **NOCOMPRESS** (ai-soc 3 Nov, after round 2; a minor) — 2.19 TB of the 3-day run's 9.87 TB allocation (k11020850)
+  is badger's Snappy block decode into Go-heap buffers (z.Calloc is make([]byte) without the jemalloc tag,
+  ristretto z/calloc_nojemalloc.go:18-20); 1.66 TB of it on badger's own goroutines: compaction reads every input block
+  with table.NOCACHE (levels.go:914-920), so the block cache cannot help. rho cannot select no compression today
+  (options.None is Config.Compression's zero value). Build a way to select it; measure CPU, alloc and the disk factor on a
+  real store copy (disk is no constraint, René 28 Oct; RAM and CPU are). jemalloc parked on ai-soc's side (no
+  libjemalloc, needs cgo).
+- **WRITEAMP** (ai-soc 3 Nov, quiet PC, after the tiered d2) — compaction input bytes / flushed bytes per shard for the
+  cut-shaped write; then decide BaseLevelSize, BaseTableSize, MemTableSize per tier (PERTIER).
 - **BATCHFAIL** (fix, later; found by the BATCHIDX review 3 Nov, pre-existing) — a vector-index failure at node i of a
   PutNodes batch leaves the RAM property indexes holding nodes[:i] (badger) or nodes[:i+1] (memory), whose rows were
   never queued (badger keeps them in nodeCache, so RAM answers stay consistent until reopen). Unpinned by any test.
