@@ -168,10 +168,19 @@ func TestAddNodesUniqueRefusesWholeCall(t *testing.T) {
 	}
 }
 
-// failBatchBadger fails PutNodesBatch after writing the batch when fail is set.
+// failBatchBadger fails PutNodesBatch after writing the batch when fail is set,
+// and counts persists of the UniqueForever owner registry.
 type failBatchBadger struct {
 	*badger.Store
-	fail atomic.Bool
+	fail        atomic.Bool
+	ownerWrites atomic.Int64
+}
+
+func (s *failBatchBadger) MetaSet(key string, value []byte) error {
+	if key == uniqueForeverOwnersMeta {
+		s.ownerWrites.Add(1)
+	}
+	return s.Store.MetaSet(key, value)
 }
 
 // NodesByLabelAndProperty is declared here so the graph accepts the wrapper's
@@ -219,6 +228,134 @@ func TestAddNodesUniqueStoreFailureWithdrawsClaims(t *testing.T) {
 		t.Fatalf("%d Ref nodes after the failed write", n)
 	}
 	if err := addNodesInTx(t, g, []string{"Ref"}, addNodesKeyed("f", 3)); err != nil {
+		t.Fatalf("values of the failed call: %v", err)
+	}
+}
+
+// A UniqueForever value whose owner no longer holds it (the owner deleted, or
+// its value changed) is refused in AddNodes' read-only pass: no current row
+// holds it, so only the owner registry refuses, and it must do so before any
+// value of the call is claimed. A claim made and withdrawn is two registry
+// persists, and a crash between them leaves the claim.
+func TestAddNodesUniqueForeverOwnerGone(t *testing.T) {
+	t.Parallel()
+	for _, gone := range []string{"deleted", "value changed"} {
+		t.Run(gone, func(t *testing.T) {
+			ctx := context.Background()
+			bs, err := badger.New(badger.Config{InMemory: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fs := &failBatchBadger{Store: bs}
+			g := newTxTestGraphStore(t, fs)
+			if err := g.Constraints.CreateUniqueForever(ctx, "Ref", "k"); err != nil {
+				t.Fatal(err)
+			}
+			owner, err := g.Nodes.Add(ctx, []string{"Ref"}, map[string]any{"k": "owned"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gone == "deleted" {
+				err = g.Nodes.Delete(ctx, owner.ID())
+			} else {
+				_, err = g.Nodes.Update(ctx, owner.ID(), map[string]any{"k": "other"})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := fs.ownerWrites.Load()
+			props := []map[string]any{{"k": "fresh0"}, {"k": "fresh1"}, {"k": "owned"}}
+			if err := addNodesInTx(t, g, []string{"Ref"}, props); !errors.Is(err, ErrUniqueViolation) {
+				t.Fatalf("reuse of an owned value = %v, want ErrUniqueViolation", err)
+			}
+			if w := fs.ownerWrites.Load() - before; w != 0 {
+				t.Fatalf("the refused call persisted the owner registry %d times, want 0", w)
+			}
+			g.uniqueMu.RLock()
+			_, fresh := g.uniqueOwners[foreverOwnerKey(mustLabel(t, g, "Ref"), "k", types.IndexablePropertyValueKey("fresh0"))]
+			g.uniqueMu.RUnlock()
+			if fresh {
+				t.Fatal("the refused call left a claim on fresh0")
+			}
+			if err := addNodesInTx(t, g, []string{"Ref"}, props[:2]); err != nil {
+				t.Fatalf("the call's other values: %v", err)
+			}
+		})
+	}
+}
+
+func mustLabel(t *testing.T, g *Core, label string) uint16 {
+	t.Helper()
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		t.Fatalf("label %q not registered", label)
+	}
+	return tok
+}
+
+// A unique key on a tiered EVENT label is kept by the store's owner index
+// (UNIQIDX). AddNodes claims there only after every value passed: an in-call
+// twin and a committed holder (created by AddNodes, so found only through its
+// claim) refuse the call with no node stored and no owner claim made; a failed
+// batch write stores nothing and its values stay free.
+func TestAddNodesUniqueTieredEventLabel(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	g := newTieredTestCore(t)
+	seam := &nodePutCounts{}
+	g.nodePutSeam = seam
+	if err := g.Constraints.CreateUnique(ctx, "Ev", "k"); err != nil {
+		t.Fatal(err)
+	}
+	tok := mustLabel(t, g, "Ev")
+	oi, ok := g.ownerIndexFor(tok, "k")
+	if !ok {
+		t.Fatal("no owner index declared for the event label")
+	}
+	owned := func(v string) bool {
+		t.Helper()
+		_, ok, err := oi.UniqueOwner(tok, "k", types.CanonicalIndexKey(types.IndexablePropertyValueKey(v)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if err := addNodesInTx(t, g, []string{"Ev"}, []map[string]any{{"k": "held"}}); err != nil {
+		t.Fatal(err)
+	}
+	if !owned("held") {
+		t.Fatal("AddNodes made no owner claim for its value")
+	}
+	for _, tc := range []struct {
+		name  string
+		props []map[string]any
+	}{
+		{"in-batch twin", []map[string]any{{"k": "a"}, {"k": "b"}, {"k": "a"}}},
+		{"committed holder", []map[string]any{{"k": "a"}, {"k": "b"}, {"k": "held"}}},
+	} {
+		if err := addNodesInTx(t, g, []string{"Ev"}, tc.props); !errors.Is(err, ErrUniqueViolation) {
+			t.Fatalf("%s: err = %v, want ErrUniqueViolation", tc.name, err)
+		}
+		if n := labelCount(t, g, "Ev"); n != 1 {
+			t.Fatalf("%s: %d Ev nodes, want 1", tc.name, n)
+		}
+		if owned("a") || owned("b") {
+			t.Fatalf("%s: the refused call made owner claims", tc.name)
+		}
+	}
+	seam.failBatch = errInjectedBatch
+	err := addNodesInTx(t, g, []string{"Ev"}, []map[string]any{{"k": "a"}, {"k": "b"}})
+	seam.failBatch = nil
+	if !errors.Is(err, errInjectedBatch) {
+		t.Fatalf("err = %v, want the injected error", err)
+	}
+	if n := labelCount(t, g, "Ev"); n != 1 {
+		t.Fatalf("%d Ev nodes after the failed write, want 1", n)
+	}
+	if found, err := g.Nodes.ByLabelAndProperty("Ev", "k", "a", storepkg.QueryOpts{}); err != nil || len(found) != 0 {
+		t.Fatalf("lookup of a failed write's value = %d nodes, %v; want none", len(found), err)
+	}
+	if err := addNodesInTx(t, g, []string{"Ev"}, []map[string]any{{"k": "a"}, {"k": "b"}}); err != nil {
 		t.Fatalf("values of the failed call: %v", err)
 	}
 }

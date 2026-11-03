@@ -90,14 +90,19 @@ func (c *Core) putGeneratedRelationshipsBatch(rels []*types.Relationship) error 
 }
 
 // nodePutCounts is Core.nodePutSeam: store writes of generated nodes, one
-// row (single) or one batch (batch), and AddNodes' unique lookups.
+// row (single) or one batch (batch), and AddNodes' unique lookups. A non-nil
+// failBatch fails the batch write before the store sees it.
 type nodePutCounts struct {
 	single, batch, lookups atomic.Int64
+	failBatch              error
 }
 
 func (c *Core) putGeneratedNodesBatch(nodes []*types.Node) error {
 	if s := c.nodePutSeam; s != nil {
 		s.batch.Add(1)
+		if s.failBatch != nil {
+			return s.failBatch
+		}
 	}
 	if c.generatedCreate != nil {
 		return c.generatedCreate.PutNodesBatchGeneratedID(nodes, generatedcreate.FreshGraphID())
