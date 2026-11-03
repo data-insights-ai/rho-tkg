@@ -12,8 +12,9 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   the code ai-soc's 4-arm gate ran (René 3 Nov 20:57 via ai-soc: "the newest version for the example and full runs").
   Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc). ai-soc names its quiet windows: then
   no ci-docker, probe, bench or long test here.
-  - **Freeze (ai-soc, 3 Nov night):** rho v4.102.0 + sigma v0.11.160 is the pinned pair for the three local BA sets
-    and the Flux full run; no rho tag until ai-soc says the night run has shipped; main work goes on untagged.
+  - **Night run (ai-soc, 3 Nov):** Flux full run k11032230 since 22:27 on rho v4.102.0 + sigma v0.11.160 (freeze
+    ended). Round 3 (TIERLEND, HISTDECODE, HEADLEND, HISTTRIM) gets ai-soc's combined gate on the PC after the 2-day
+    pair; that run is a quiet window here.
   - **On main, unreleased:** TIERLEND, HISTDECODE (RELHIST P3), HEADLEND, HISTTRIM (RELHIST P1). **On branches** (Opus builders in
     `.claude/worktrees/`, Fable review per branch, René 3 Nov): VALUETHRESH (reviewed, waits for ai-soc's consumer
     number).
