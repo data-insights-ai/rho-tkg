@@ -177,8 +177,10 @@ func (r entityReads) nodeVersion(id types.NodeID, version uint32) (*types.Node, 
 // lentNodeVersion is nodeVersion without the defensive copy where a trusted
 // store lends its frozen history row (store.VersionLendCapability, HEADLEND):
 // for a reader that only hands the row out frozen, such as an effective
-// timeline. A snapshot read, or a store that decodes the version beside the
-// current row (R37), reads as nodeVersion.
+// timeline. A snapshot read, an untrusted store or one without the capability
+// reads as nodeVersion (badger and tiered: decoded beside the current row
+// where rd.share is set, R37). A lent row costs nothing, so a store offering
+// both lends.
 func (r entityReads) lentNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	if r.snap == nil && r.c.storeRowsTrust {
 		if lender, ok := r.c.store.(storepkg.VersionLendCapability); ok {

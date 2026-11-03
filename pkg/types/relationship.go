@@ -385,6 +385,23 @@ func (r *Relationship) Temporal() *TemporalMetadata {
 	return r.temporal
 }
 
+// TemporalByValue returns a copy of the relationship's temporal metadata by
+// value and whether it carries any: what *Temporal() reads, without the heap
+// copy a frozen row's Temporal() makes (HEADLEND: memory history rows are
+// frozen).
+func (r *Relationship) TemporalByValue() (TemporalMetadata, bool) {
+	if r == nil {
+		return TemporalMetadata{}, false
+	}
+	if m := r.meta; m != nil {
+		return TemporalMetadata{ValidFrom: m.validFrom, ValidTo: m.validTo, TxFrom: m.txFrom}, true
+	}
+	if r.temporal == nil {
+		return TemporalMetadata{}, false
+	}
+	return *r.temporal, true
+}
+
 // ValidRange returns the validity bounds and whether the relationship carries
 // temporal metadata at all (a zero ValidTo means open-ended on the legacy ValidAxis;
 // read the end through the store's axis, ValidAxis.Open / End). Prefer it over

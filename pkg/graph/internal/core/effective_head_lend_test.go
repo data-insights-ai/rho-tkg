@@ -36,7 +36,12 @@ func headLendGraphOn(t *testing.T, store storepkg.MandatoryStore) (*Core, types.
 	}
 	t.Cleanup(func() { _ = g.Close() })
 	ctx := context.Background()
-	n, err := g.Nodes.Add(ctx, []string{"Fact"}, map[string]any{"tkg_valid_from": types.Instant(1000), "k": int64(0)})
+	// The page door (ForEachNodeEffectiveByLabelAndProperties) reads through
+	// a composite index; only the node n carries its values.
+	if err := g.Index.CreateComposite("Fact", []string{"ns", "grp"}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := g.Nodes.Add(ctx, []string{"Fact"}, map[string]any{"tkg_valid_from": types.Instant(1000), "k": int64(0), "ns": "n", "grp": "g"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,6 +174,25 @@ func TestEffectiveDoorsLendHistoryRows(t *testing.T) {
 				return true
 			}); err != nil {
 				t.Fatal(err)
+			}
+			return out
+		},
+		"ForEachNodeEffectiveByLabelAndProperties": func() []temporal.NodeSegment {
+			var out []temporal.NodeSegment
+			calls := 0
+			if _, err := g.Temporal.ForEachNodeEffectiveByLabelAndProperties(context.Background(), "Fact",
+				map[string]any{"ns": "n", "grp": "g"}, pin, temporal.EffectivePageOpts{},
+				func(id types.NodeID, segs []temporal.NodeSegment) bool {
+					calls++
+					if id == nid {
+						out = segs
+					}
+					return true
+				}); err != nil {
+				t.Fatal(err)
+			}
+			if calls != 1 {
+				t.Fatalf("page door matched %d nodes, want 1", calls)
 			}
 			return out
 		},
@@ -442,5 +466,78 @@ func TestEffectiveHeadReadAllocs(t *testing.T) {
 	t.Logf("head-hit NodeEffectiveTimeline, %d versions: %.0f allocs/read", headLendVersions, allocs)
 	if limit := float64(8); allocs > limit {
 		t.Errorf("%.0f allocs per head read, want <= %.0f (a copy per history winner)", allocs, limit)
+	}
+}
+
+// TestEffectiveLentRowsSurviveOverwriteAndTrim (run it with -race): readers
+// holding lent history rows keep reading them while a writer overwrites one
+// of those versions in the store and then trims the history; the lent rows
+// never change (the store replaces or drops a row, never writes it), and the
+// store answers the overwrite afterwards.
+func TestEffectiveLentRowsSurviveOverwriteAndTrim(t *testing.T) {
+	t.Parallel()
+	g, nid, _ := headLendGraph(t)
+	ms := g.store.(*memory.Store)
+	pin := g.readNow()
+	segs, err := g.Temporal.NodeEffectiveTimeline(nid, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkNodeSegs(t, "before", segs)
+	held := segs[1].Node // version 2, k = 1
+	if lent, err := ms.LendNodeVersion(nid, held.Version()); err != nil || lent != held {
+		t.Fatalf("segment row %p is not the stored row (%p, %v): nothing is lent", held, lent, err)
+	}
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	const readers = 4
+	bad := make(chan string, readers)
+	for range readers {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				for i, s := range segs[:headLendVersions-1] {
+					if k := propK(s.Node.GetProperty("k")); k != int64(i) {
+						bad <- "lent row changed under a write"
+						return
+					}
+					if f, _, ok := s.Node.ValidRange(); !ok || f != types.Instant(1000*(i+1)) {
+						bad <- "lent row's valid start changed under a write"
+						return
+					}
+				}
+			}
+		}()
+	}
+	over := held.DeepCopy()
+	if err := over.SetProperty("k", int64(77)); err != nil {
+		t.Fatal(err)
+	}
+	for range 200 {
+		if err := ms.PutNodeVersion(nid, held.Version(), over); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ms.TrimNodeHistoryFrom(nid, held.Version()); err != nil {
+		t.Fatal(err)
+	}
+	close(stop)
+	for range readers {
+		<-done
+	}
+	select {
+	case msg := <-bad:
+		t.Fatal(msg)
+	default:
+	}
+	checkNodeSegs(t, "held after the writes", segs)
+	if _, err := ms.LendNodeVersion(nid, held.Version()); !errors.Is(err, storepkg.ErrVersionNotFound) {
+		t.Fatalf("trimmed version still lent: %v", err)
 	}
 }

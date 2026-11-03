@@ -1,6 +1,7 @@
 package memory
 
 import (
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -85,18 +86,35 @@ func (ms *Store) recordRelTypeMemberLocked(r *types.Relationship) {
 	}
 }
 
+// nodeTxFrom reads TxStamps: no copy of a frozen row's block (HEADLEND).
 func nodeTxFrom(n *types.Node) types.Instant {
-	if tm := n.Temporal(); tm != nil {
-		return tm.TxFrom
-	}
-	return 0
+	txFrom, _, _ := n.TxStamps()
+	return txFrom
 }
 
 func relTxFrom(r *types.Relationship) types.Instant {
-	if tm := r.Temporal(); tm != nil {
-		return tm.TxFrom
+	txFrom, _, _ := r.TxStamps()
+	return txFrom
+}
+
+// nodeTemporalBoundsOf is indexpkg.NodeTemporalBounds of n's temporal block,
+// read by value: a history row is frozen, and a frozen row's Temporal()
+// allocates a copy (HEADLEND).
+func nodeTemporalBoundsOf(a types.ValidAxis, id snowflake.ID, n *types.Node) (from, to types.Instant) {
+	tm, ok := n.TemporalByValue()
+	if !ok {
+		return indexpkg.NodeTemporalBounds(a, id, nil)
 	}
-	return 0
+	return indexpkg.NodeTemporalBounds(a, id, &tm)
+}
+
+// relTemporalBoundsOf is nodeTemporalBoundsOf for relationships.
+func relTemporalBoundsOf(a types.ValidAxis, id snowflake.ID, r *types.Relationship) (from, to types.Instant) {
+	tm, ok := r.TemporalByValue()
+	if !ok {
+		return indexpkg.RelTemporalBounds(a, id, nil)
+	}
+	return indexpkg.RelTemporalBounds(a, id, &tm)
 }
 
 // ensureLabelTxMembersBuiltLocked builds the label sidecar from the current +

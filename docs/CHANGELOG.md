@@ -57,7 +57,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the property index. A read-only open does not seed. A `CreateUnique` that fails raises nothing. Tests
   `TestUniqueLook*`, `TestOwnerIndex*` (`tasks/evidence/UNIQUELOOK/`; bench pending a quiet machine).
 - **HEADLEND** (sigma, paged read-back: 1.2 GB of a 5.5 GB paging delta on memory; a minor: the optional
-  `store.VersionLendCapability` with memory `Store.LendNodeVersion` / `LendRelVersion` are new exported names). On the
+  `store.VersionLendCapability` with memory `Store.LendNodeVersion` / `LendRelVersion`, and `types.Node.TemporalByValue` /
+  `Relationship.TemporalByValue`, the temporal block by value without the copy a frozen row's `Temporal()` makes, are new
+  exported names; the memory as-of selection, temporal-index, valid-end and sidecar readers use it). On the
   memory store the effective timeline doors (`NodeEffectiveTimeline`, `...From`, `NodeEffectiveTimelines`, the page
   and `ForEach...Effective` scans, and the relationship mirrors) hand out each winning history row as the store keeps
   it instead of a DeepCopy per read, as they already did for the current row (row 120). The segment rows were and stay

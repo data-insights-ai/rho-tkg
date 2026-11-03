@@ -102,6 +102,12 @@ func TestMemoryStoreLendVersion(t *testing.T) {
 	if _, err := ms.LendRelVersion(-1, 1); !errors.Is(err, storecontract.ErrInvalidStoreMutation) {
 		t.Fatalf("LendRelVersion(-1): %v", err)
 	}
+	// The tampering seam stores a history row as every write does: frozen.
+	tampered := a.DeepCopy()
+	ms.SetNodeHistoryEntryForTest(a.ID(), 1, tampered)
+	if got, err := ms.LendNodeVersion(a.ID(), 1); err != nil || got == tampered || !got.IsFrozen() {
+		t.Fatalf("SetNodeHistoryEntryForTest stored %p frozen=%v, %v; want a frozen copy", got, got.IsFrozen(), err)
+	}
 	if err := ms.Close(); err != nil {
 		t.Fatal(err)
 	}
