@@ -125,7 +125,18 @@ func TestIDsByLabelAndPropertyValuesReadsNoRow(t *testing.T) {
 			if o.decodes() == before0 {
 				t.Error("ByLabelAndPropertyValues read no row: the counter does not count")
 			}
+			// The valid instant must not precede the newest version of b5, b6
+			// and m: its start, or for m's label removal (which keeps the start)
+			// its commit stamp, takes the commit clock, which can run ahead of
+			// the wall clock; an older version would still answer.
 			now := types.Instant(time.Now().UnixMilli())
+			for _, id := range []types.NodeID{b5, b6, m} {
+				n, err := g.Nodes().Get(ctx, id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				now = max(now, n.Temporal().ValidFrom, n.Temporal().TxFrom)
+			}
 
 			for _, c := range []struct {
 				name      string
