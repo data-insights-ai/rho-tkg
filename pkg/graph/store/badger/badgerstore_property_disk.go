@@ -474,6 +474,10 @@ func nodeRowIDBounds(txn *badgerv4.Txn) (lo, hi uint64) {
 // lookup on the on-disk property index visits.
 var propertyDiskVisitTestHook func()
 
+// propertyDiskSeekTestHook (tests only) is called for each Seek an equality
+// lookup on the on-disk property index makes.
+var propertyDiskSeekTestHook func()
+
 func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant) ([]types.NodeID, error) {
 	tok, ok := bs.propKeyTokenFor(propertyKey)
 	if !ok {
@@ -572,6 +576,9 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 			if prefix[3] == storepkg.PropIdxDomainRaw {
 				from = binary.BigEndian.AppendUint64(slices.Clone(seek), lo)
 				to = binary.BigEndian.AppendUint64(slices.Clone(seek), hi)
+			}
+			if propertyDiskSeekTestHook != nil {
+				propertyDiskSeekTestHook()
 			}
 			for it.Seek(from); it.ValidForPrefix(seek); it.Next() {
 				item := it.Item()
