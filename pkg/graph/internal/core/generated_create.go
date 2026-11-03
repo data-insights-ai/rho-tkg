@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -20,6 +21,9 @@ import (
 // scope-token-aware — threading the token through internal/generatedcreate is
 // deferred to a later batch.
 func (c *Core) putGeneratedNode(ctx context.Context, n *types.Node) error {
+	if s := c.nodePutSeam; s != nil {
+		s.single.Add(1)
+	}
 	if c.generatedCreate != nil {
 		return c.generatedCreate.PutNodeGeneratedID(n, generatedcreate.FreshGraphID())
 	}
@@ -85,7 +89,16 @@ func (c *Core) putGeneratedRelationshipsBatch(rels []*types.Relationship) error 
 	return c.store.PutRelationshipsBatch(rels)
 }
 
+// nodePutCounts is Core.nodePutSeam: store writes of generated nodes, one
+// row (single) or one batch (batch), and AddNodes' unique lookups.
+type nodePutCounts struct {
+	single, batch, lookups atomic.Int64
+}
+
 func (c *Core) putGeneratedNodesBatch(nodes []*types.Node) error {
+	if s := c.nodePutSeam; s != nil {
+		s.batch.Add(1)
+	}
 	if c.generatedCreate != nil {
 		return c.generatedCreate.PutNodesBatchGeneratedID(nodes, generatedcreate.FreshGraphID())
 	}
