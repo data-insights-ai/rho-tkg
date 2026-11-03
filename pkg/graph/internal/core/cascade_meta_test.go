@@ -206,13 +206,20 @@ func cascadeMetaNodeChain(t *testing.T, g *Core, end string) types.NodeID {
 
 // planWinners is the number of distinct history rows (not the current row)
 // a correction of [vf, vt) copies — every non-gap segment base and the
-// resumption source — planned on the whole chain (the reference).
-func planWinners[T chainRow](c *Core, k *chainKernel[T], history []T, current T, vf, vt types.Instant, splitGaps bool) int {
+// resumption source unless it starts at vt (no resumption is written) —
+// planned on the whole chain (the reference), and whether the winner at vt
+// starts there.
+func planWinners[T chainRow](c *Core, k *chainKernel[T], history []T, current T, vf, vt types.Instant, splitGaps bool) (int, bool) {
 	prep := prepareCorrection(c, k, preCorrectionChain(history, current))
 	seen := map[T]bool{}
+	resumeAt := false
 	if !c.axis().Open(vt) {
 		if src, ok := prep.winnerAt(vt); ok {
-			seen[src] = true
+			if start, _ := k.ownBounds(c, src); start == vt {
+				resumeAt = true
+			} else {
+				seen[src] = true
+			}
 		}
 	}
 	for _, seg := range prep.segments(current, vf, vt, splitGaps) {
@@ -221,73 +228,93 @@ func planWinners[T chainRow](c *Core, k *chainKernel[T], history []T, current T,
 		}
 	}
 	delete(seen, current)
-	return len(seen)
+	return len(seen), resumeAt
 }
 
 // TestCascadeMetaMissReadsNoHistory: a correction on a chain holding a
 // delete or a retraction (a head miss every time) reads no whole history on
-// memory, badger and tiered, and at most one full row per distinct winner
-// plus one; sharded (no skeleton door on the store) keeps the whole-history
-// read. Mutation: the skeleton path off (cascadeMetaOff) or a gate that
-// always falls back reads the history; hydrating every skeleton reads one
-// row per version.
+// memory, badger and tiered, and exactly one full row per distinct history
+// row it copies (at most the distinct winners + 1): a bounded correction
+// with a resumption, and one whose resumption source starts at its end (no
+// resumption: that row is not read); sharded (no skeleton door on the
+// store) keeps the whole-history read. Mutation: the skeleton path off
+// (cascadeMetaOff) or a gate that always falls back reads the history;
+// hydrating every skeleton, the source when no resumption is written, or
+// without the memo reads more rows.
 func TestCascadeMetaMissReadsNoHistory(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	const vf, vt = 3050, 3450 // bounded: several winners and a resumption
+	// [3050, 3450): several winners and a resumption; [3050, 3200): the row
+	// valid at 3200 starts there (no resumption).
+	intervals := [][2]types.Instant{{3050, 3450}, {3050, 3200}}
 	for _, be := range cascadeCountBackends() {
 		for _, end := range []string{"delete", "retract"} {
 			t.Run(be.name+"/"+end+"/rel", func(t *testing.T) {
 				t.Parallel()
 				g, cs := openCountedGraph(t, be)
 				id := cascadeMetaRelChain(t, g, end)
-				cur, err := g.getCurrentRelationship(id)
-				if err != nil {
-					t.Fatal(err)
+				resumeAt := 0
+				for _, iv := range intervals {
+					cur, err := g.getCurrentRelationship(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					hist, err := g.getRelHistory(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					winners, at := planWinners(g, relKernel, hist, cur, iv[0], iv[1], false)
+					if at {
+						resumeAt++
+					}
+					cs.reset()
+					if _, err := g.Temporal.SetRelVersionInterval(ctx, id, iv[0], iv[1], map[string]any{"k": int64(99)}); err != nil {
+						t.Fatal(err)
+					}
+					checkCascadeReads(t, be, iv, len(hist), winners, cs.relHistory.Load(), cs.relVersion.Load())
 				}
-				hist, err := g.getRelHistory(id)
-				if err != nil {
-					t.Fatal(err)
+				if resumeAt != 1 {
+					t.Fatalf("fixture: %d corrections end where their source starts, want 1", resumeAt)
 				}
-				winners := planWinners(g, relKernel, hist, cur, vf, vt, false)
-				if winners < 2 {
-					t.Fatalf("fixture: %d winners over [%d,%d), want a multi-row plan", winners, vf, vt)
-				}
-				cs.reset()
-				if _, err := g.Temporal.SetRelVersionInterval(ctx, id, vf, vt, map[string]any{"k": int64(99)}); err != nil {
-					t.Fatal(err)
-				}
-				checkCascadeReads(t, be, len(hist), winners, cs.relHistory.Load(), cs.relVersion.Load())
 			})
 			t.Run(be.name+"/"+end+"/node", func(t *testing.T) {
 				t.Parallel()
 				g, cs := openCountedGraph(t, be)
 				id := cascadeMetaNodeChain(t, g, end)
-				cur, err := g.getCurrentNode(id)
-				if err != nil {
-					t.Fatal(err)
+				resumeAt := 0
+				for _, iv := range intervals {
+					cur, err := g.getCurrentNode(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					hist, err := g.getNodeHistory(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					winners, at := planWinners(g, nodeKernel, hist, cur, iv[0], iv[1], false)
+					if at {
+						resumeAt++
+					}
+					cs.reset()
+					if _, err := g.Temporal.SetNodeVersionInterval(ctx, id, iv[0], iv[1], map[string]any{"k": int64(99)}); err != nil {
+						t.Fatal(err)
+					}
+					checkCascadeReads(t, be, iv, len(hist), winners, cs.nodeHistory.Load(), cs.nodeVersion.Load())
 				}
-				hist, err := g.getNodeHistory(id)
-				if err != nil {
-					t.Fatal(err)
+				if resumeAt != 1 {
+					t.Fatalf("fixture: %d corrections end where their source starts, want 1", resumeAt)
 				}
-				winners := planWinners(g, nodeKernel, hist, cur, vf, vt, false)
-				if winners < 2 {
-					t.Fatalf("fixture: %d winners over [%d,%d), want a multi-row plan", winners, vf, vt)
-				}
-				cs.reset()
-				if _, err := g.Temporal.SetNodeVersionInterval(ctx, id, vf, vt, map[string]any{"k": int64(99)}); err != nil {
-					t.Fatal(err)
-				}
-				checkCascadeReads(t, be, len(hist), winners, cs.nodeHistory.Load(), cs.nodeVersion.Load())
 			})
 		}
 	}
 }
 
-func checkCascadeReads(t *testing.T, be cascadeCountBackend, versions, winners int, histories, points int64) {
+func checkCascadeReads(t *testing.T, be cascadeCountBackend, iv [2]types.Instant, versions, winners int, histories, points int64) {
 	t.Helper()
-	t.Logf("%d history rows, %d winners: %d whole-history reads, %d point reads", versions, winners, histories, points)
+	t.Logf("[%d,%d): %d history rows, %d rows copied: %d whole-history reads, %d point reads", iv[0], iv[1], versions, winners, histories, points)
+	if winners < 2 {
+		t.Fatalf("fixture: %d rows copied over [%d,%d), want a multi-row plan", winners, iv[0], iv[1])
+	}
 	if !be.meta {
 		if histories != 1 {
 			t.Fatalf("%s: %d whole-history reads, want 1 (no skeleton door: the fallback)", be.name, histories)
@@ -297,7 +324,7 @@ func checkCascadeReads(t *testing.T, be cascadeCountBackend, versions, winners i
 	if histories != 0 {
 		t.Fatalf("%s: %d whole-history reads on a head miss, want 0", be.name, histories)
 	}
-	if points < 1 || points > int64(winners)+1 {
-		t.Fatalf("%s: %d full-row reads, want 1..%d (distinct winners + 1) of %d history rows", be.name, points, winners+1, versions)
+	if points != int64(winners) {
+		t.Fatalf("%s: %d full-row reads, want %d (one per distinct row copied) of %d history rows", be.name, points, winners, versions)
 	}
 }

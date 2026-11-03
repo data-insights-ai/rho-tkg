@@ -177,6 +177,9 @@ type Core struct {
 	headBoundCap     int            //
 	headWrites       atomic.Uint64  // corrections planned from an entry (backlog 68b)
 	appendWrites     atomic.Uint64  // open appends planned from the current row alone (backlog 67)
+	cascadeMetaOff   bool           // tests: a correction on a head miss reads the whole history (CASCADEMETA twin)
+	cascadeMetaHook  func()         // tests: runs between a miss's skeleton read and its point reads (CASCADEMETA)
+	metaWrites       atomic.Uint64  // corrections planned on history skeletons on a head miss (CASCADEMETA)
 	historyRead      func(rows int) // tests: called with the rows each history read returns
 	historyCopy      func(rows int) // tests: called with the rows each GraphTx rollback snapshot copies (RELHIST)
 	// readSnapshots — effective scans read their timelines through one store
