@@ -112,6 +112,9 @@ Each item: one sentence, then when it is done and what it waits for.
   each first):
   - **UNIQUEMISS** — GetOrCreateByKey does a second, identical unique lookup per miss (core/unique_constraints.go:623);
     claimForever re-marshals the whole owner map per claim (unique_forever.go:266). Lands after UNIQUELOOK.
+  - **OWNERDROP** (low, UNIQUELOOK re-review) — tiered DropUniqueOwnerIndex uses DropPrefix on the index DB
+    (owner_index.go:196); badger blocks writes to that DB meanwhile (docs/badger.md §2), so a reference-label Add
+    racing a DropUnique of another key can fail with ErrBlockedWrites. Pre-existing for event labels since v4.81.
   - **EDGEROW** — a relationship create reads each endpoint row 3-4 times (relationship_create_kernel.go:112-143,
     rel.go:76, write_rel.go:163-212), inside AddRelationshipByID's 14.4 s; hand the row down once. Estimate <= 5 s.
   - **CASCADEROW** — the temporal cascade reads getCurrentNode 2-3 times plus the chain (temporal_cascade.go:132-154,
