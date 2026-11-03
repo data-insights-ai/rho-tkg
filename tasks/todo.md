@@ -130,14 +130,11 @@ Each item: one sentence, then when it is done and what it waits for.
   PutNodes batch leaves the RAM property indexes holding nodes[:i] (badger) or nodes[:i+1] (memory), whose rows were
   never queued (badger keeps them in nodeCache, so RAM answers stay consistent until reopen). Unpinned by any test.
   Done when a failed batch leaves no index entry, with a test on both stores.
-- **RHOPOST bench** (RHOPOST and RHOMEMIDS merged 3 Nov, unreleased; both benches rerun on a quiet PC) (sigma READBACK, 3 Nov; after v4.101.0, nothing in sigma waits) — sigma's paged-row read-back
-  spends 96 % of a block probe in `IDsByLabelAndPropertyValues`, 75 % in `badger.Iterator.Next`: one AllVersions
-  seek-and-walk per value in `propertyIndexDiskKeysCandidatesLocked` (badger 1.5-6.1 us a value at 5k-80k rows).
-  RHOPOST: a posting read per value without the AllVersions walk (seek to the typed key, end bound), first, since
-  badger and tiered are production; check why the walk takes all versions before changing it. RHOMEMIDS: the memory
-  store has no NodePropertyKeysIDsCapability, so the door loads every node to return IDs (memory 2.3-24.6 us a
-  value, 2.9 MB a call at 80k); an IDs path from its index. Bench: sigma's BenchmarkBlockProbe
-  (internal/tyla/application/incremental). Done when both ship with a bench against today.
+- **ROUND2 measure** (René via ai-soc, 3 Nov: "why test each part of rho? Why not a full test with the medium ba example
+  here on the office pc?") — no per-item before/after benches on the PC. ai-soc runs its 4-arm harness (data-60min,
+  158,487 records; memory and tiered, paging off and budget) on rho main's tip with sigma main's tip after W1; first tip
+  3883fa5f (RHOMEMIDS, BATCHADD, RHOPOST, BATCHIDX). Per-item measurement only if the combined run shows a regression
+  or unequal bars, then by bisect. rho's part: merge reviewed items, send the main SHA. Done when the run's bars are in.
 
 ### PAGEBLOB follow-ups (v4.99.0 shipped ELEMDISK and WRITEGROW, 3 Nov, on René's word outside the round, short tests and targeted race only)
 
