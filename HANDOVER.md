@@ -12,9 +12,9 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   the code ai-soc's 4-arm gate ran (René 3 Nov 20:57 via ai-soc: "the newest version for the example and full runs").
   Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc). ai-soc names its quiet windows: then
   no ci-docker, probe, bench or long test here.
-  - **On main, unreleased:** TIERLEND, HISTDECODE (RELHIST P3). **On branches** (Opus builders in
+  - **On main, unreleased:** TIERLEND, HISTDECODE (RELHIST P3), HEADLEND. **On branches** (Opus builders in
     `.claude/worktrees/`, Fable review per branch, René 3 Nov): VALUETHRESH (reviewed, waits for ai-soc's consumer
-    number), HEADLEND, HISTTRIM (RELHIST, `tasks/evidence/RELHIST/design.txt`).
+    number), HISTTRIM (RELHIST, `tasks/evidence/RELHIST/design.txt`).
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Fable agent:** René wants a read-only Fable review after each batch of changes; it does not survive a session:
