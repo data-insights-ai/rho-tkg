@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **RHOMEMIDS** (sigma READBACK; a minor: memory `Store.NodeIDsByLabelAndPropertyKeys` is a new exported method).
+  `IDsByLabelAndPropertyValues` on the memory store answers from the (label, key) index's postings instead of loading
+  and rechecking each row; a time coordinate or an index still building reads the rows as before. The cost no longer
+  grows with list length (64-element lists 5448 -> 1904 allocs a call at 100 values; times void under load, rerun
+  pending, `tasks/evidence/RHOMEMIDS/`).
+- **BATCHADD** (ai-soc R3; a fix, no new exported name). `GraphTx.AddNodes` keeps its one batch store write when unique
+  constraints exist: before, any registered constraint sent every call through `AddNode` one node at a time (ai-soc's
+  profile: `core.addNodesOneByOne` +28.9 s CPU). Labels without a constrained key do no unique lookup at all; on a
+  constrained key every value is checked under its value stripe before the write, and a value repeated within the call
+  or held by another node now refuses the whole call with `ErrUniqueViolation`, nothing stored and nothing claimed
+  (before, the earlier nodes of the call were kept until the transaction rolled back). Tests `TestAddNodesUnique*`
+  (badger, tiered reference and event labels, UniqueForever; `tasks/evidence/BATCHADD/`).
+
+## [4.101.0] - 2026-11-03
+
+### Changed
+
+- **COLDEDGE** (ai-soc, SCALE; blocks its 7-10 day run; a minor: badger `Store.HoldsNoRows` and tiered
+  `ShardCatalog.SetShardNoRows` are new exported names). On a tiered store, a closed cold shard that holds no row leaves
+  the read fan-out and its open-cap slot, and a write wakes it (saved before the write); the change feed, property
+  stats and relationship misses skip empty shards. A reference node's mint fan-out under `RelsByMint` opens cold shards
+  read-only: 30 shards, 29 empty, 1.65 s to about 90 ms a read; 30 shards with rows, 2.9 s to about 0.5 s (one run;
+  `tasks/evidence/COLDEDGE/`). The flat per-node shard list stays on hold (`docs/architecture.md`).
+
+### Tests
+
+- **REVIEW 3 Nov** gaps filled (read-only Fable review; Opus builders): the ID door with a flush in flight (badger and
+  tiered), ASOFWALK compared on the whole row, WHOLEROW replaces on event, cold, archive and `MintAtValidFrom` shards, a
+  `ValidAt` read after an earlier start and concurrent writers; no defect (`tasks/evidence/REVIEW3NOV/`).
+- The patchgate test's `git init` runs without the committing repo's `GIT_*` variables: a commit from a worktree set
+  `core.bare=true` on the main checkout (`tasks/evidence/GITENV/red.txt`).
+- The ID door's time-coordinate case takes its valid instant past the commit clock (failed about 3 runs in 8 under load).
+
 ## [4.100.1] - 2026-11-03
 
 ### Fixed

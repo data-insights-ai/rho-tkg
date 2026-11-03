@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.100.1 (2026-11-03). René's open decisions are the items that wait for
+What rho does next, in order. Last release: v4.101.0 (2026-11-03). René's open decisions are the items that wait for
 him, each with my default. State, consumers and the numbered backlog: `HANDOVER.md`; rules: `docs/CONTRIBUTING.md`
 § Rules digest. Done work: `docs/CHANGELOG.md`, under the same tag.
 
@@ -10,13 +10,8 @@ Each item: one sentence, then when it is done and what it waits for.
 
 - **CIGATES** (René via ai-soc, 31 Oct, "fix all agents ci pipeline"): the guard, patchgate fixes, hook script and gate log are on main; the hook is installed (René's go, 31 Oct); one step waits for Markus as org admin: René's run of the switch got HTTP 422, the setting is org-controlled (31 Oct). `codeql.yml` run 41221392670 analysed all three languages; only its upload was refused, because default setup is on. Done when CodeQL's default setup is off and `codeql.yml`'s first run is green. Waits for Markus: `gh api -X PATCH repos/{owner}/{repo}/code-scanning/default-setup -f state=not-configured` (default setup cannot drop its push trigger, so `.github/workflows/codeql.yml` replaces it, weekly; until the switch that workflow's upload is expected to be refused). Hook runs no package suite, because red tests are committed first on a branch. Guard not on `test-race.sh` shards: their names come from `go test -list`. Seen, not fixed: patchgate misses a new exported struct field or interface method.
 
-- **COLDEDGE** (ai-soc 30 Oct, SCALE; blocks its 7-10 day run) — a reference node's Outgoing under RelsByMint opens cold shards per call. On local branch `coldedge`, unmerged: empty cold shards leave the fan-out (30 shards, 29 empty: 1.65 s to about 90 ms), mint fan-out opens read-only (30 shards with rows: 2.9 s to about 0.5 s, one run), changelog, property stats and rel misses skip empty shards. `TestFlatAdjacency_OnlyListedShardOpens` stays red on purpose and must leave the branch before it ships. Done when Outgoing's cost is flat in the number of cold shards, or a run shows it no longer matters. Waits for the release round; cold-open counts come from the first run after that tag.
 - **REOPEN** (René via ai-soc, 31 Oct: "it should mostly be read from rho for sigma chases and traces") — ai-soc runs the reopen proof on the pinned pair; no rho door or tag waited on. Measured (FIRSTTOUCH, `tasks/evidence/FIRSTTOUCH/`, one run each, synthetic): per node index 8-12 µs, HasHistory 4-7 µs, timeline 4-5 µs at 200 k and 2 M nodes; presence build 31 and 319 ms; open 193 ms and 3.7 s; page cache dropped, first batch 85 µs a node, then 16 µs, open 5.0 s. k10302100: committedRowStamps about 231 s CPU, presence build 3 s; cutting the re-read needs LISTREAD, since liveness from the ID index would hide a corrupt row (pinned by `has_history_live_test.go`). Done when ai-soc's reopen is in; a fix only if it shows slow first cuts. Waits for ai-soc's run. Open look: what sigma's type scans and property probes open across cold shards at default depth; open-time growth (19x for 10x nodes, one run).
 - **TIMEWINDOW** (minor, deferred) — reads bounded by a mint-time range. Serves one-shot evaluation only (ForEachRelEffectiveAtNodes, no time bound, no Depth); a session's maintainer does not reach it. If built: half-open mint range, window intersected with Depth, hot shard always included, caller translates valid to mint. Done when ai-soc and sigma say whether one-shots matter. Waits for the first run after COLDEDGE is in a tag; metric lead `aisoc_sigma_edge_shard_checkouts_total`. Sigma's other candidate: a ValidEndAfter-style bound on ByTypeAndProperty.
-- **REVIEW 3 Nov** (Fable, four read-only reviewers on René's word) — done 3 Nov: every named test gap filled by an
-  Opus builder, checked here (one mutant re-run each), no defect: ELEMPROBE flush in flight (`02866fce`), WHOLEROW
-  event/cold/archive/MintAtValidFrom, ValidAt after an earlier start, concurrent writers (`7dff10f1`), ASOFWALK
-  whole-row compare (`a93e0d41`); mutations in `tasks/evidence/REVIEW3NOV/`. Ships in v4.101.0.
 - **ASOFWALK later steps** (STATEREC round) — step 1 delegates to the owner shard; next a TxPin batch by IDs, then a cross-shard merge; TxAt stays the skeleton walk with an O(1) belief watermark for a pin at or after current. Done when sigma's 50+ cuts of worst churn bench flat. Waits for the round; parked on the crash path with WHOLEROW and DEPTHLOOK.
 - **PROJREAD** (ai-soc, sigma 30 Oct; a later minor) — a label and property lookup returning IDs plus named properties, for sigma's GraphDerivedWriter.find; no door today. Done when the door ships. Waits for the STATEREC round.
 - **VDICTDISK step 3** (ai-soc 29 Oct, goal 2 RAM) — steps 1-2 shipped (v4.97.3, v4.98.0); a budget/LRU in place of resident value tokens, decided from the next run's re-measure (at Cap 1,048,576 a 'row' dictionary is about 136 MB per open day shard). Done when an entry's resident cost is measured and bounded. Waits for ai-soc's next run.
@@ -109,7 +104,7 @@ Each item: one sentence, then when it is done and what it waits for.
 
 ## Next
 
-- **RHOPOST, RHOMEMIDS** (sigma READBACK, 3 Nov; after v4.101.0, nothing in sigma waits) — sigma's paged-row read-back
+- **RHOPOST** (RHOMEMIDS merged 3 Nov, unreleased; its bench rerun on a quiet PC) (sigma READBACK, 3 Nov; after v4.101.0, nothing in sigma waits) — sigma's paged-row read-back
   spends 96 % of a block probe in `IDsByLabelAndPropertyValues`, 75 % in `badger.Iterator.Next`: one AllVersions
   seek-and-walk per value in `propertyIndexDiskKeysCandidatesLocked` (badger 1.5-6.1 us a value at 5k-80k rows).
   RHOPOST: a posting read per value without the AllVersions walk (seek to the typed key, end bound), first, since

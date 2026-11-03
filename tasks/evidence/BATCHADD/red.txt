@@ -1,0 +1,26 @@
+# BATCHADD red: go test -short -timeout 240s -run TestAddNodesUnique ./pkg/graph/internal/core/ on main a6245ca0 + red test; INFO lines dropped, writer lines trimmed to 3
+--- FAIL: TestAddNodesUniqueStoreFailureWithdrawsClaims (0.01s)
+    node_add_many_unique_test.go:208: err = <nil>, want the injected error
+--- FAIL: TestAddNodesUniqueRefusesWholeCall (0.07s)
+    --- FAIL: TestAddNodesUniqueRefusesWholeCall/badger/forever=false (0.01s)
+        node_add_many_unique_test.go:153: in-batch twin: err = AddNodes returned 2 nodes with graph: unique constraint violation: label "Ref" key "k" already held by node 868475366380863488 (not all or nothing), want ErrUniqueViolation
+    --- FAIL: TestAddNodesUniqueRefusesWholeCall/badger/forever=true (0.00s)
+        node_add_many_unique_test.go:153: in-batch twin: err = AddNodes returned 2 nodes with graph: unique constraint violation: label "Ref" key "k" already held by node 868475366464421888 (not all or nothing), want ErrUniqueViolation
+    --- FAIL: TestAddNodesUniqueRefusesWholeCall/tiered/forever=false (0.01s)
+        node_add_many_unique_test.go:153: in-batch twin: err = AddNodes returned 2 nodes with graph: unique constraint violation: label "Ref" key "k" already held by node 868475366595264512 (not all or nothing), want ErrUniqueViolation
+    --- FAIL: TestAddNodesUniqueRefusesWholeCall/tiered/forever=true (0.05s)
+        node_add_many_unique_test.go:153: in-batch twin: err = AddNodes returned 2 nodes with graph: unique constraint violation: label "Ref" key "k" already held by node 868475368590770176 (not all or nothing), want ErrUniqueViolation
+--- FAIL: TestAddNodesUniqueKeepsBatch (0.13s)
+    --- FAIL: TestAddNodesUniqueKeepsBatch/badger (0.02s)
+        node_add_many_unique_test.go:107: constrained: 1000 single puts, 0 batch puts, 0 lookups; want 0, 1, 1000
+    --- FAIL: TestAddNodesUniqueKeepsBatch/tiered (0.11s)
+        node_add_many_unique_test.go:107: constrained: 1000 single puts, 0 batch puts, 0 lookups; want 0, 1, 1000
+--- FAIL: TestAddNodesUniqueConcurrentOneWinner (0.47s)
+    --- FAIL: TestAddNodesUniqueConcurrentOneWinner/memory (0.01s)
+        node_add_many_unique_test.go:255: writer 1: AddNodes returned 1 nodes with graph: unique constraint violation: label "Ref" key "k" already held by node 868475366325780480 (not all or nothing)
+        node_add_many_unique_test.go:255: writer 2: AddNodes returned 2 nodes with graph: unique constraint violation: label "Ref" key "k" already held by node 868475366325780480 (not all or nothing)
+        node_add_many_unique_test.go:255: writer 0: AddNodes returned 0 nodes with graph: unique constraint violation: label "Ref" key "k" already held by node 868475366325780480 (not all or nothing)
+    --- FAIL: TestAddNodesUniqueConcurrentOneWinner/badger (0.45s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.525s
+FAIL
