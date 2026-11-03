@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **VALUETHRESH** (ai-soc R3, sigma's 2-day budget run: +900 s of badger compaction on 64 KiB page blocks; a minor:
+  `ValueThreshold` is a new field on `graph.Config`, `badger.Config`, `tiered.Config` and `sharded.Config`). Badger
+  values of at least that many bytes (rows, history rows, change-log records) go to the value log instead of the LSM,
+  so compaction moves 24-byte pointers instead of the values. 0 keeps badger's 1 MB; otherwise [1 KB, 1 MB] and at
+  most 15 % of `MemTableSize`, refused by name at `New`; in memory the largest value becomes `ValueThreshold` - 1.
+  100 KB rows rewritten whole at 64 KB: write CPU 91 -> 7 s, SSTs 1,081 -> 1 MB, reads as fast or faster; the price
+  is uncompressed value-log space. The value-log GC pass now waits for reads that entered before it ended, so it never
+  deletes a rewritten file under an open read (badger `value.go:342-355`), and logs a wait above 60 s
+  (`TestValueLogGCKeepsTheFileOfAnOpenRead`; `tasks/evidence/VALUETHRESH/`, `docs/badger.md` section 6, rule 9).
+
 ## [4.103.0] - 2026-11-04
 
 ### Changed

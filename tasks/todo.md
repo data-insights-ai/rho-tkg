@@ -15,6 +15,9 @@ Each item: one sentence, then when it is done and what it waits for.
 - **ASOFWALK later steps** (STATEREC round) — step 1 delegates to the owner shard; next a TxPin batch by IDs, then a cross-shard merge; TxAt stays the skeleton walk with an O(1) belief watermark for a pin at or after current. Done when sigma's 50+ cuts of worst churn bench flat. Waits for the round; parked on the crash path with WHOLEROW and DEPTHLOOK.
 - **TIERLEND** merged 3 Nov (unreleased; a minor: tiered `Store.LendNodesSorted`/`LendRelationshipsSorted`). PROJREAD's
   door dropped on sigma's answer (`tasks/evidence/PROJREAD/design.txt`). Done when released.
+- **VALUETHRESH** merged 3 Nov after v4.103.0 (unreleased; a minor: `ValueThreshold` on the configs). sigma sets
+  32 KiB on tiered (its 79 k DerivedPage blocks of 64 KiB: +900 s of the 2-day budget run's +2,640 s CPU is badger
+  compacting them). Done when ai-soc's gate and sigma's 2-day budget run on it show the compaction CPU gone.
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — P3 HISTDECODE,
   HEADLEND (a minor) and P1 HISTTRIM (a patch: the tx snapshot copies only rows at or above the current version; 99-198
   copies down to 0-2) merged 3 Nov, unreleased. CASCADEMETA merged 3 Nov (a cascade miss plans from skeletons:
