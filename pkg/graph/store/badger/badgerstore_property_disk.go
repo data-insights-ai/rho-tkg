@@ -563,7 +563,9 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 	// that began at start has visited every key below the one the iterator
 	// stands on, so a walk whose from lies between the two goes on from
 	// there: the values of a block, adjacent in the index, cost one Next
-	// each. Otherwise it seeks. A string that extends another starts its walk
+	// each. An invalid iterator stands past every key of the snapshot: the
+	// run has visited all keys from start on, and a walk from there finds
+	// nothing new. Otherwise it seeks. A string that extends another starts its walk
 	// at value||lo, which can sort below the shorter string's start; that
 	// walk seeks back and can visit keys an earlier walk counted, so the
 	// candidates are compacted then.
@@ -588,7 +590,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 				from = binary.BigEndian.AppendUint64(slices.Clone(seek), lo)
 				to = binary.BigEndian.AppendUint64(slices.Clone(seek), hi)
 			}
-			if !(it.Valid() && bytes.Compare(start, from) <= 0 && bytes.Compare(it.Item().Key(), from) >= 0) {
+			if start == nil || bytes.Compare(from, start) < 0 || (it.Valid() && bytes.Compare(it.Item().Key(), from) < 0) {
 				if propertyDiskSeekTestHook != nil {
 					propertyDiskSeekTestHook()
 				}
