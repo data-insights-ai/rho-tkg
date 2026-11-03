@@ -145,3 +145,18 @@ Sigma's frames (tiered, cut 10, 160 GB alloc_space): getRelHistory 32.0 GB = cop
   nodeEffectiveTimelinesOf (effective_timelines.go:161, the plural door, every call), nodeEffectiveViaTemporalMeta
   (effective_timeline.go:621, the singular door on a head miss) and nodeAtViaTemporalMeta (temporal_queries.go:588, node-at reads).
   Not changed here (P2).
+
+sigma, 3 Nov 22:40 (Fable's tiered GC numbers, 40-cut runs, rho v4.102.0, so before round 3):
+- Paging off, cuts 10-30, 27 GB allocated a cut: badger 37.7 % (z.Calloc 6.9 GB a cut); rho core+types 35.5 %
+  (Relationship.DeepCopy 1.6 GB, hash32.String 1.5, applyRelWireFields 1.2); rho store/badger 13.9 %
+  (getRelHistoryByPrefix 1.9, reconstructRelHistoryWire 1.5); sigma 10.4 %. Rho plus badger 87-89 %.
+- Allocation 13 -> 50 GB a cut over 40 cuts, write-back 25 -> 54 s: every published fact is rewritten each cut
+  (about 12,000 versions a cut) and each relationship read rebuilds and copies the key's whole history: quadratic.
+- Heap after forced GC 854 MB; mid-cut GC scans up to 3 GB of decoded history that dies right after.
+- Asks: (1) a read bounded to the versions asked for, history rebuilt once per cut, not per read; (2) z.Calloc off
+  the Go heap or a block cache that decompresses each block once a cut (NOCOMPRESS). An unreached tiered budget equals
+  paging off within 1 %.
+- Cascade head misses: counts after the Flux run; sigma expects (a) deletes of retracted facts and (c) in-place
+  interval updates (non-cascade writes bumping the epoch).
+Round 3 on main (HISTDECODE drops the deep copy and the sort in whole-history reads; HISTTRIM the tx snapshot copy)
+addresses part of DeepCopy and reconstructRelHistoryWire; sigma's next 40-cut run on main's tip separates the rest.
