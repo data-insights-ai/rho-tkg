@@ -15,12 +15,12 @@ Each item: one sentence, then when it is done and what it waits for.
 - **ASOFWALK later steps** (STATEREC round) — step 1 delegates to the owner shard; next a TxPin batch by IDs, then a cross-shard merge; TxAt stays the skeleton walk with an O(1) belief watermark for a pin at or after current. Done when sigma's 50+ cuts of worst churn bench flat. Waits for the round; parked on the crash path with WHOLEROW and DEPTHLOOK.
 - **TIERLEND** merged 3 Nov (unreleased; a minor: tiered `Store.LendNodesSorted`/`LendRelationshipsSorted`). PROJREAD's
   door dropped on sigma's answer (`tasks/evidence/PROJREAD/design.txt`). Done when released.
-- **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — P3 HISTDECODE and
-  HEADLEND (a minor) merged 3 Nov, unreleased; P1 HISTTRIM (a patch: the tx snapshot copies only rows at or above the
-  current version) is on its branch and closing test gaps. Next: cascadeRelMode's whole-history read (15.9 GB; fold the
+- **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — P3 HISTDECODE,
+  HEADLEND (a minor) and P1 HISTTRIM (a patch: the tx snapshot copies only rows at or above the current version; 99-198
+  copies down to 0-2) merged 3 Nov, unreleased. Next: cascadeRelMode's whole-history read (15.9 GB; fold the
   skeletons into a head entry); P2, the head-cache refresh after Update, built on HEADLEND; NodeHistoryTemporalMeta
-  (10.9 GB, the plural door). Caveat, existing before: compaction against a rollback can bring back a trimmed row;
-  check it with HISTTRIM. Done when sigma's next profile shows getRelHistory below 10 % of alloc_space.
+  (10.9 GB, the plural door). Caveat, existing before (design.txt §4): history compaction between tx ops can trim
+  a row above the current version that rollback then puts back. Done when sigma's next profile shows getRelHistory below 10 % of alloc_space.
 - **VDICTDISK step 3** (ai-soc 29 Oct, goal 2 RAM) — steps 1-2 shipped (v4.97.3, v4.98.0); a budget/LRU in place of resident value tokens, decided from the next run's re-measure (at Cap 1,048,576 a 'row' dictionary is about 136 MB per open day shard). Done when an entry's resident cost is measured and bounded. Waits for ai-soc's next run.
 - **TIERCLOCK measurement** (ai-soc 29 Oct, goal 2) — released in v4.98.0; ai-soc's pin: Clock = newest committed valid time, ColdAfter 3 d, RelsByMint on. Done when ai-soc's BA replay rotates as live data would. Waits for that run.
 - **PURGECURSOR, PURGERESIDUE** (28 Oct; patches) — a label purge resumes from a cursor instead of copying the label's whole ID list per 256-node call (quadratic at 10 M); a purge or history truncate leaves about 30-50 B per ID in the `unknown` map of a shard that stays open. No consumer purges today. Done when each is fixed or dropped. Waits for René's word (STORECFG).
