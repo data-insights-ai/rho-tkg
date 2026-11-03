@@ -1,0 +1,25 @@
+R3 design (Fable, 3 Nov; checked: node_add_many.go:144-152, scope_token.go:18-23, badgerstore_options.go:179-181,
+badger options.go:144-147,170). To tasks/evidence/R3/design.txt after the v4.101.0 tag.
+1. BATCHADD (patch): AddNodes goes one by one only because the graph has a unique constraint (canBatchNodeCreates;
+   the scope-token arm is dead). Lift the gate: run the Batch door's unique pass (partitionBatchNodesByUnique,
+   unique_enforce_batch.go:106-160) over the minted nodes, all-or-nothing, then putGeneratedNodesBatch. Standalone
+   AddNodes: lock all stripes as one sorted set. Red test: 1,000 AddNodes with a unique constraint -> one PutNodesBatch,
+   no PutNode; in-batch twin / committed holder -> ErrUniqueViolation, nothing stored, no orphan claim.
+2. VALUETHRESH (minor, Config.ValueThreshold): blobs (<=100 KB) stay inline in the LSM (default threshold 1 MB), and
+   each replace writes row + history row + change-log record (~3x blob), all s2-compressed at every level move.
+   NumVersionsToKeep is already 1, so dead versions are not the cost. A 64 KB threshold moves blobs to the vlog;
+   cost moves to vlog GC. Red measurement: ReplaceVersion bench over 100 KB blobs, LSM bytes and subcompact+s2 CPU.
+   Risks: vlog GC under long read txns; hundreds of shards each mmapping vlog.
+3. DB.View +41 s: query doors (readUnderRLock), not Get/Lend (those hit the entity cache). Which door: ask sigma.
+   Measure readTxnsTotal per door on one BA run.
+
+RHOPOST / RHOMEMIDS design (Fable, 3 Nov; checked badgerstore_property_disk.go:540-595).
+RHOPOST = SEEKSKIP (patch): AllVersions stays (it keeps the walk's to-bound effective, PROPSEEK). Prefixes are sorted;
+  before prefix j, seek only if the iterator does not already stand at or past from_j: a block of adjacent values costs
+  one Next each instead of a multi-table seek. 80k cost = seeks over L0 tables after the memtable flush, not posting
+  length. Red test TestPropSeekBlockProbeSeeksOnce (64 adjacent values: seeks <= 1, today 64) + a guard test for
+  sparse values; mutants: drop the guard, >= -> >, drop AllVersions/to/prev/listed. Bench per backend 5k/20k/80k.
+  Review point: overlapping raw prefixes (one value a prefix of another) under the skip.
+RHOMEMIDS (minor, new method on memory.Store): NodeIDsByLabelAndPropertyKeys from PropertyIndex.PostingsOfKeys,
+  ok=false on time coordinate / absent or mutating index. Red test: allocs <= 2 + parity. Caveat: sigma's numbers
+  look like the label-scan fallback (no index); asked sigma.
