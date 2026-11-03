@@ -375,6 +375,7 @@ type Store struct {
 	moveMu            sync.RWMutex                // ArchiveNode/RestoreNode hold it; reads of the reference shard and the archive (and point routes) read-hold it (refAndArchive, lockMoveRead); writes do not, so a direct user must not write during a move (the graph fences with c.mu)
 	fanoutRefReadHook func()                      // test-only: refArchiveGapHook runs it between a door's reference shard read and its archive read
 	typeScanHook      func(door string)           // test-only: noteTypeScan reports every whole-label/type/history ID scan door (WP-31 "no type scan" proof)
+	flushRowsHook     func()                      // test-only: an event shard's flush runs it with its rows in flight (syncOwnerIndexBeforeRows)
 	drainSpinsForTest atomic.Int64                // test-only: lowers coldShardDrainSpinLimit for this store (drainSpinLimit); 0 = the constant
 	archiveActiveReqs atomic.Int64                // refcount for refArchive — Close spin-waits on this before archive.Close()
 	eventShards       map[string]*EventShard      // name -> event shard

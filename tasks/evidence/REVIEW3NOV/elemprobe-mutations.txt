@@ -1,0 +1,29 @@
+REVIEW 3 Nov gap "ELEMPROBE: no case with a flush in flight" -- mutation check, 2026-11-03
+
+Tests:
+  badger: TestNodeIDsByLabelAndPropertyKeysFlushInFlight (pkg/graph/store/badger/badgerstore_node_query_ids_flush_test.go)
+  tiered: TestTieredNodeIDsByPropertyKeysFlushInFlight   (pkg/graph/store/tiered/tieredstore_node_ids_flush_test.go)
+Each has 4 subtests: propDisk={false,true} x labelDisk={false,true}.
+Every mutant built and passed go vet on both packages. Each mutant applied alone, then reverted.
+Command per mutant: go test -short -v -run '^<test>$' ./pkg/graph/store/{badger,tiered}/
+
+Mutant                                                    badger subtests failing         tiered subtests failing        Result
+M1 lookupPending skips flushing                           F/T, T/T                         F/T, T/T                       KILLED
+   (in flight: k in [1]: door [3 4], full scan [3 4 5])
+M2 lookupPending: flushing wins over pending              F/T, T/T                         F/T, T/T                       KILLED
+   (pending over flight: k in [1]: door [3 4 6], want [2 3 4 6])
+M3 rangePendingPrefixes skips flushing                    T/F, T/T                         T/F, T/T                       KILLED
+   (in flight: k in [1]: door [1 3 4], want [3 4 5])
+M4 rangePendingPrefixes visits pending before flushing    T/F, T/T                         T/F, T/T                       KILLED
+   (pending over flight: k in [2]: door [1 6], want [1])
+M5 flush does not park its snapshot in flushing           all 4 (state check in hook)      F/T, T/F, T/T                  KILLED
+   (badger: "hook: flushing 0, pending 0"; tiered: in flight: k in [1]: door [1 3 4], want [3 4 5])
+M6 keepLabelledLocked ignores the write buffer            F/T, T/T                         F/T, T/T                       KILLED
+   (in flight: k in [1]: door [3 4], want [3 4 5])
+
+(propDisk/labelDisk: F = false, T = true.)
+Survivor by design: the propDisk=false/labelDisk=false subtests read no write buffer on the door's
+path (RAM postings, RAM label map), so no buffer mutant can reach them; they stay as coverage of
+that configuration (badger's catches M5 through its in-flight state check).
+
+Defect found: none. The door equals the full scan and the literal set in every state.
