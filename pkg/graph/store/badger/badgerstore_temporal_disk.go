@@ -213,7 +213,7 @@ func (bs *Store) commitTemporalIndexOnDiskBackfill(ops []writeOp) error {
 		keep[string(op.key)] = struct{}{}
 	}
 	var stale [][]byte
-	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+	if err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -271,7 +271,7 @@ func (bs *Store) commitTemporalIndexOnDiskBackfill(ops []writeOp) error {
 // New(), after the index definitions are loaded.
 func (bs *Store) purgeUndefinedTemporalDiskRows() error {
 	var dels [][]byte
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)

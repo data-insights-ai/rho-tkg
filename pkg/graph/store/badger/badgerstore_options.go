@@ -85,6 +85,12 @@ const (
 	// (1-15, zero = Badger default 1).
 	minZSTDCompressionLevel = 1
 	maxZSTDCompressionLevel = 15
+	// minValueThreshold keeps rho's small values (counters, meta, index
+	// entries) inline: badger returns an empty value for a value-log read it
+	// cannot do (iterator.go:158-187). maxValueThreshold is badger's own cap
+	// (options.go:201, db.go:146-149).
+	minValueThreshold = 1 << 10
+	maxValueThreshold = 1 << 20
 )
 
 // validateTuningConfig rejects out-of-range per-instance footprint knobs. Zero
@@ -100,6 +106,16 @@ func validateTuningConfig(cfg Config) error {
 	if cfg.MemTableSize != 0 &&
 		(cfg.MemTableSize < minMemTableSize || cfg.MemTableSize > maxMemTableSize) {
 		return fmt.Errorf("graph: MemTableSize %d out of range [8MB, 1GB]", cfg.MemTableSize)
+	}
+	if cfg.ValueThreshold != 0 {
+		// badger also refuses a threshold above its transaction limit, 15% of
+		// MemTableSize (db.go:136, :153-157): at rho's 8 MB floor that is
+		// 1,258,291 bytes, above the cap, but checked against the effective
+		// size all the same.
+		limit := min(int64(maxValueThreshold), effectiveMemTableSize(cfg)*15/100)
+		if cfg.ValueThreshold < minValueThreshold || cfg.ValueThreshold > limit {
+			return fmt.Errorf("graph: ValueThreshold %d out of range [1KB, %d] (1MB, at most 15%% of MemTableSize)", cfg.ValueThreshold, limit)
+		}
 	}
 	if cfg.BlockCacheSize < 0 {
 		return fmt.Errorf("graph: BlockCacheSize %d must not be negative", cfg.BlockCacheSize)
@@ -187,6 +203,9 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
 	}
 	if cfg.MemTableSize > 0 {
 		opts = opts.WithMemTableSize(cfg.MemTableSize)
+	}
+	if cfg.ValueThreshold > 0 {
+		opts = opts.WithValueThreshold(cfg.ValueThreshold)
 	}
 	if cfg.BlockCacheSize > 0 {
 		opts = opts.WithBlockCacheSize(cfg.BlockCacheSize)

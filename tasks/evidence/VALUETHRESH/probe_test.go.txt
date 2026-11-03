@@ -1,0 +1,290 @@
+//go:build valuethreshprobe
+
+package graph_test
+
+import (
+	"context"
+	"fmt"
+	"io/fs"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"runtime/pprof"
+	"sort"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// VALUETHRESH step 1 (ai-soc R3): sigma's page rows of about 100 KB rewritten
+// whole by ReplaceVersion, on a disk badger store or tiered (Page a reference
+// label), change log on, at badger's default ValueThreshold (1 MB) or the one
+// RHO_VALUETHRESH sets (badgerstore_valuethresh_probe.go). Run with
+//
+//	RHO_VALUETHRESH=65536 RHO_VT_BACKEND=badger RHO_VT_PROF=/path/cpu.pprof \
+//	  go test -tags valuethreshprobe -run TestValueThreshProbe -v ./pkg/graph/
+//
+// One line of results; the CPU profile covers the write phase and Close.
+// RHO_VT_GC=1 runs the value-log GC part instead (badger only).
+
+var vtRounds = func() int {
+	if n, err := strconv.Atoi(os.Getenv("RHO_VT_ROUNDS")); err == nil && n > 1 {
+		return n
+	}
+	return 30
+}()
+
+const (
+	vtPages     = 64
+	vtBlobProps = 4
+	vtBlobBytes = 25 << 10 // 4 x 25 KB = 100 KB per row (a property holds at most 64 KB)
+)
+
+var vtWords = func() []string {
+	r := rand.New(rand.NewSource(7))
+	ws := make([]string, 2048)
+	for i := range ws {
+		b := make([]byte, 3+r.Intn(8))
+		for j := range b {
+			b[j] = byte('a' + r.Intn(26))
+		}
+		ws[i] = string(b)
+	}
+	return ws
+}()
+
+// vtBlob is about n bytes of JSON-like text from a 2,048-word dictionary:
+// compressible, as page rows are.
+func vtBlob(r *rand.Rand, n int) string {
+	var sb strings.Builder
+	sb.Grow(n + 16)
+	for sb.Len() < n {
+		fmt.Fprintf(&sb, `{"k":"%s","v":"%s %s","n":%d},`, vtWords[r.Intn(len(vtWords))], vtWords[r.Intn(len(vtWords))], vtWords[r.Intn(len(vtWords))], r.Intn(1_000_000))
+	}
+	return sb.String()[:n]
+}
+
+func vtProps(page, round int) map[string]any {
+	r := rand.New(rand.NewSource(int64(page*1_000 + round)))
+	p := map[string]any{"ov_k": fmt.Sprintf("k%d", page), "ov_h3": fmt.Sprintf("h%d", round), "pages": int64(round)}
+	for i := 0; i < vtBlobProps; i++ {
+		p["body"+strconv.Itoa(i)] = vtBlob(r, vtBlobBytes)
+	}
+	return p
+}
+
+type vtSizes struct{ sst, vlog, mem int64 }
+
+func vtDiskSizes(t *testing.T, dir string) vtSizes {
+	t.Helper()
+	var s vtSizes
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		fi, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		st := fi.Sys().(*syscall.Stat_t)
+		alloc := st.Blocks * 512 // allocated bytes: an open .vlog/.mem is sparse at 2x its size
+		switch filepath.Ext(p) {
+		case ".sst":
+			s.sst += alloc
+		case ".vlog":
+			s.vlog += alloc
+		case ".mem":
+			s.mem += alloc
+		}
+		return nil
+	})
+	return s
+}
+
+func vtCPU() time.Duration {
+	var ru syscall.Rusage
+	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &ru)
+	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
+}
+
+func vtOpen(t *testing.T, backend, dir string, gc time.Duration, vlogFile int64) *graphpkg.Graph {
+	t.Helper()
+	ve := []storepkg.PropertyIndexValidEnd{{Label: "Page", KeyPrefix: "ov_h"}}
+	var st storepkg.Store
+	var err error
+	switch backend {
+	case "badger":
+		st, err = badger.New(badger.Config{Dir: dir, ChangeLog: true, GCInterval: gc, ValueLogFileSize: vlogFile,
+			PropertyIndexOnDiskLabels: []string{"Page"}, PropertyIndexValidEnd: ve})
+	case "tiered":
+		st, err = tiered.New(tiered.Config{DataDir: dir, RefLabels: []string{"Page"}, ShardWindow: time.Hour, ChangeLog: true,
+			PropertyIndexOnDiskLabels: []string{"Page"}, PropertyIndexValidEnd: ve})
+	default:
+		t.Fatalf("RHO_VT_BACKEND %q", backend)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := graphpkg.New(graphpkg.Config{Store: st, ReplaceVersionLabels: []string{"Page"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return g
+}
+
+func vtPercentiles(ds []time.Duration) string {
+	sort.Slice(ds, func(i, j int) bool { return ds[i] < ds[j] })
+	return fmt.Sprintf("p50 %v p90 %v", ds[len(ds)/2].Round(time.Microsecond), ds[len(ds)*9/10].Round(time.Microsecond))
+}
+
+func TestValueThreshProbe(t *testing.T) {
+	backend := os.Getenv("RHO_VT_BACKEND")
+	if backend == "" {
+		backend = "badger"
+	}
+	thr := os.Getenv("RHO_VALUETHRESH")
+	if os.Getenv("RHO_VT_GC") == "1" {
+		vtGC(t, thr)
+		return
+	}
+	ctx := context.Background()
+	dir := t.TempDir()
+	g := vtOpen(t, backend, dir, 0, 0)
+	for _, k := range []string{"ov_k", "ov_h3"} {
+		if err := g.Index().CreateProperty("Page", k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := make([]types.NodeID, vtPages)
+	for p := range ids {
+		props := vtProps(p, 0)
+		props["tkg_valid_from"] = types.Instant(1000)
+		n, err := g.Nodes().Add(ctx, []string{"Page"}, props)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[p] = n.ID()
+	}
+	// The payload of every round, built before the clock starts.
+	payload := make([][]map[string]any, vtRounds+1)
+	for r := 1; r <= vtRounds; r++ {
+		payload[r] = make([]map[string]any, vtPages)
+		for p := range payload[r] {
+			payload[r][p] = vtProps(p, r)
+		}
+	}
+	var midPin types.Instant
+	if prof := os.Getenv("RHO_VT_PROF"); prof != "" {
+		f, err := os.Create(prof)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+	}
+	cpu0, wall0 := vtCPU(), time.Now()
+	for r := 1; r <= vtRounds; r++ {
+		for p, id := range ids {
+			if _, err := g.Nodes().ReplaceVersion(ctx, id, payload[r][p], 500, types.Instant(3000+r)); err != nil {
+				t.Fatalf("round %d page %d: %v", r, p, err)
+			}
+		}
+		if r == vtRounds/2 {
+			var err error
+			if midPin, err = g.Temporal().NowTx(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	writeWall, writeCPU := time.Since(wall0), vtCPU()-cpu0
+	open := vtDiskSizes(t, dir)
+	// Let the compactors work off what the writes left (badger stops them at
+	// Close): RHO_VT_SETTLE seconds, the same for every run.
+	if s, err := strconv.Atoi(os.Getenv("RHO_VT_SETTLE")); err == nil {
+		time.Sleep(time.Duration(s) * time.Second)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	totalWall, totalCPU := time.Since(wall0), vtCPU()-cpu0
+	pprof.StopCPUProfile()
+	closed := vtDiskSizes(t, dir)
+
+	// Reads after a reopen: rho's caches and badger's block cache cold (the page
+	// cache warm), then the same reads again.
+	g = vtOpen(t, backend, dir, 0, 0)
+	defer g.Close()
+	var cur, curWarm, hist, histWarm []time.Duration
+	for pass := 0; pass < 2; pass++ {
+		for _, id := range ids {
+			t0 := time.Now()
+			n, err := g.Nodes().Get(ctx, id)
+			if err != nil || len(n.PropertiesMap()["body0"].(string)) != vtBlobBytes {
+				t.Fatalf("Get %v: %v", id, err)
+			}
+			d := time.Since(t0)
+			t0 = time.Now()
+			h, err := g.Temporal().NodeAsOf(id, midPin)
+			if err != nil || h == nil || h.PropertiesMap()["ov_h3"] != fmt.Sprintf("h%d", vtRounds/2) {
+				t.Fatalf("NodeAsOf %v: %v %v", id, err, h)
+			}
+			dh := time.Since(t0)
+			if pass == 0 {
+				cur, hist = append(cur, d), append(hist, dh)
+			} else {
+				curWarm, histWarm = append(curWarm, d), append(histWarm, dh)
+			}
+		}
+	}
+	n := vtPages * vtRounds
+	fmt.Printf("RESULT backend=%s thr=%s settle=%ss replaces=%d write_wall=%v (%.0f/s, %.1f MB/s of rows) write_cpu=%v total_wall_incl_close=%v total_cpu=%v | open: sst=%.1fMB vlog_alloc=%.1fMB mem=%.1fMB | closed: sst=%.1fMB vlog=%.1fMB | Get cold %s warm %s | NodeAsOf(mid) cold %s warm %s\n",
+		backend, thr, os.Getenv("RHO_VT_SETTLE"), n, writeWall.Round(time.Millisecond), float64(n)/writeWall.Seconds(), float64(n)*100/1024/writeWall.Seconds(),
+		writeCPU.Round(time.Millisecond), totalWall.Round(time.Millisecond), totalCPU.Round(time.Millisecond),
+		float64(open.sst)/1e6, float64(open.vlog)/1e6, float64(open.mem)/1e6, float64(closed.sst)/1e6, float64(closed.vlog)/1e6,
+		vtPercentiles(cur), vtPercentiles(curWarm), vtPercentiles(hist), vtPercentiles(histWarm))
+}
+
+// vtGC: badger store, 16 MB value-log files, rho's gcLoop every 200 ms; vlog
+// bytes after the writes and after GC had 10 s (compaction drops the replaced
+// current rows; history rows and change-log records stay live).
+func vtGC(t *testing.T, thr string) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	g := vtOpen(t, "badger", dir, 200*time.Millisecond, 16<<20)
+	ids := make([]types.NodeID, vtPages)
+	for p := range ids {
+		n, err := g.Nodes().Add(ctx, []string{"Page"}, vtProps(p, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[p] = n.ID()
+	}
+	for r := 1; r <= vtRounds; r++ {
+		for p, id := range ids {
+			if _, err := g.Nodes().ReplaceVersion(ctx, id, vtProps(p, r), 500, types.Instant(3000+r)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	after := vtDiskSizes(t, dir)
+	time.Sleep(10 * time.Second)
+	settled := vtDiskSizes(t, dir)
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	closed := vtDiskSizes(t, dir)
+	fmt.Printf("RESULT-GC thr=%s rows_written=%.0fMB (current+history+changelog ~3x) | after writes: sst=%.1fMB vlog_alloc=%.1fMB | +10s gcLoop: sst=%.1fMB vlog_alloc=%.1fMB | closed: sst=%.1fMB vlog=%.1fMB\n",
+		thr, float64(vtPages*(vtRounds+1))*100/1024*3,
+		float64(after.sst)/1e6, float64(after.vlog)/1e6, float64(settled.sst)/1e6, float64(settled.vlog)/1e6,
+		float64(closed.sst)/1e6, float64(closed.vlog)/1e6)
+}

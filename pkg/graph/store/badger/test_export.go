@@ -131,7 +131,7 @@ func (bs *Store) TemporalIndexOnDiskForTest() bool { return bs.temporalIdxOnDisk
 // production use.
 func (bs *Store) TemporalIndexOnDiskBuiltForTest() bool {
 	found := false
-	_ = bs.db.View(func(txn *badgerv4.Txn) error {
+	_ = bs.view(func(txn *badgerv4.Txn) error {
 		_, err := txn.Get(storepkg.TemporalIndexOnDiskBuiltKey)
 		found = err == nil
 		return nil
@@ -156,7 +156,7 @@ func (bs *Store) TemporalIndexDiskEntryCountForTest(labelToken uint16) int {
 		seen[k] = op.opType == writeOpSet
 	})
 	count := 0
-	_ = bs.db.View(func(txn *badgerv4.Txn) error {
+	_ = bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)

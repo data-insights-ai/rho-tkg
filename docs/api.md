@@ -348,6 +348,10 @@ Wire format and backup naming: [persistence.md](persistence.md).
 
 `Config.Validation` = `ValidationLimits{MaxLabelsPerNode, MaxPropertiesPerEntity, MaxPropertyKeyLength, MaxPropertyValueSize, MaxPropertyContainerLength, MaxNameLength, AllowSelfLoops}`; defaults 50 / 1000 / 256 / 65536 / 100000 / 256 / false; zero values take defaults. `MaxPropertyValueSize` bounds every string inside a value; `MaxPropertyContainerLength` bounds the element count of slice and map values (and `[]byte` length), not a `[]string`'s count. `MaxNameLength` also applies to imported and persisted registries. `AllowSelfLoops=false` makes rel creates refuse self-loops (`ErrSelfLoop`).
 
+### Badger value threshold
+
+`ValueThreshold` (VALUETHRESH) on `graph.Config` (with `BadgerDir`), `badger.Config`, `tiered.Config` and `sharded.Config` sends every badger value of at least that many bytes (a row, a history row, a change-log record) to the value log instead of the LSM. 0 keeps badger's 1 MB; otherwise [1 KB, 1 MB] and at most 15 % of `MemTableSize`, refused by name at `New`. For rows of about 100 KB rewritten whole (`ReplaceVersion`), 64 KB cut CPU about 90 % with reads as fast or faster, at the price of uncompressed value-log space that the value-log GC rarely frees ([badger.md](badger.md) section 6, rule 9). In memory every value stays in the LSM and the largest value becomes `ValueThreshold` - 1 (`ErrEntryTooLarge`).
+
 ### Lifecycle
 
 - `g.Close() error` saves registries and closes the store; idempotent.

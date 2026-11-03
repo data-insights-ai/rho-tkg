@@ -141,6 +141,9 @@ type Config struct {
 	BlockCacheSize   int64 // bytes; >= 0
 	IndexCacheSize   int64 // bytes; >= 0
 	NumCompactors    int   // 0 = badger default (4); minimum 2
+	// ValueThreshold sends every shard's values of at least this many bytes to
+	// the value log (badger.Config.ValueThreshold). 0 keeps badger's 1 MB.
+	ValueThreshold int64
 	// EncryptionKey / EncryptionKeyRotation enable AES encryption-at-rest for
 	// EVERY shard (reference, hot, warm, lazy cold/archive, and
 	// rotation-created) — see badger.Config for length validation and the
@@ -426,6 +429,7 @@ type Store struct {
 	zstdLevel             int
 	valueLogFileSize      int64 // per-shard Badger footprint knobs; 0 = stock default
 	memTableSize          int64
+	valueThreshold        int64
 	blockCacheSize        int64
 	indexCacheSize        int64
 	numCompactors         int
@@ -679,6 +683,7 @@ func New(cfg Config) (*Store, error) {
 		blockCacheSize:        cfg.BlockCacheSize,
 		indexCacheSize:        cfg.IndexCacheSize,
 		numCompactors:         cfg.NumCompactors,
+		valueThreshold:        cfg.ValueThreshold,
 		encryptionKey:         cfg.EncryptionKey,
 		encryptionKeyRotation: cfg.EncryptionKeyRotation,
 		cacheBudgetBytes:      cfg.CacheBudgetBytes,
@@ -1838,6 +1843,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		BlockCacheSize:              ts.blockCacheSize,
 		IndexCacheSize:              ts.indexCacheSize,
 		NumCompactors:               ts.numCompactors,
+		ValueThreshold:              ts.valueThreshold,
 		EncryptionKey:               ts.encryptionKey,
 		EncryptionKeyRotation:       ts.encryptionKeyRotation,
 		PropertyIndexOnDisk:         ts.propertyIndexOnDisk,

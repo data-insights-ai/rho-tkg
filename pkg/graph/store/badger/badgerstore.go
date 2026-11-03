@@ -280,6 +280,18 @@ type Config struct {
 	// NumCompactors sets the compactor goroutine count. 0 keeps the stock
 	// default (4); any non-zero value must be >= 2 (Badger's minimum).
 	NumCompactors int
+	// ValueThreshold sends every badger value of at least this many bytes (a
+	// node or relationship row, its history row, its change-log record) to the
+	// value log, the LSM keeping a 24-byte pointer, instead of inline in the
+	// LSM (badger's default, 1 MB). 0 keeps the default; otherwise [1 KB,
+	// 1 MB] and at most 15% of MemTableSize (badger's transaction limit).
+	// For rows rewritten whole (ReplaceVersion pages of about 100 KB) 64 KB
+	// cut process CPU 90% (compaction and its compression gone) with reads as
+	// fast or faster, but the value log is not compressed and its GC frees a
+	// value only once nothing (history, the change log) keeps it: more disk
+	// for compressible rows (docs/badger.md section 6). In memory every value
+	// stays in the LSM and the value limit becomes ValueThreshold.
+	ValueThreshold int64
 	// ChangeLog enables the durable ordered change-log: every committed mutation
 	// appends a framed record under KeyChangeLog in the same WriteBatch as the data,
 	// tagged with a monotonic LSN. Off by default (write path unchanged). Surfaces
@@ -847,12 +859,15 @@ type Store struct {
 	// groupCommit is set between BeginGroupCommit and EndGroupCommit
 	// (store.GroupCommitCapability): flushIfNeeded holds per-mutation flushes and
 	// EndGroupCommit issues one. Atomic so the read needs no lock.
-	groupCommit atomic.Bool
-	maxPending  int // async write-buffer bound; 0 disables (see Config.MaxPendingWrites)
-	flushInt    time.Duration
-	gcInt       time.Duration
-	gcRatio     float64
-	imageInt    time.Duration // Config.OpenImageInterval
+	groupCommit        atomic.Bool
+	maxPending         int // async write-buffer bound; 0 disables (see Config.MaxPendingWrites)
+	flushInt           time.Duration
+	gcInt              time.Duration
+	gcRatio            float64
+	gcMu               sync.Mutex    // one value-log GC pass at a time (runValueLogGC)
+	vlogReaders        vlogReaders   // open reads a GC pass waits for (badgerstore_vlog_guard.go)
+	vlogNegativeLogged atomic.Bool   // the negative open-read count was logged
+	imageInt           time.Duration // Config.OpenImageInterval
 	// imageVersion is the badger version of the newest open image header this
 	// store wrote or trusted whole at open: a periodic image with nothing
 	// committed since writes nothing.
@@ -1426,7 +1441,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 	// (badgerstore_index_repair.go); a trusted image needs none.
 	kr := &keyRepair{}
 
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 
@@ -2689,6 +2704,8 @@ func (bs *Store) Close() error {
 		close(bs.stopCh)
 		<-bs.flushDone // wait for flushLoop exit (or immediate if never started)
 		<-bs.gcDone    // wait for GC exit
+		bs.gcMu.Lock() // a pass outside gcLoop (tests) ends at stopCh too
+		bs.gcMu.Unlock()
 		<-bs.imageDone // wait for a periodic open image in progress
 		// Explicit final flush — ensures pending ops are persisted even when
 		// flushLoop was never spawned. No-op if already drained.

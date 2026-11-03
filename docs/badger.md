@@ -26,7 +26,8 @@ Dir/
   Compactors merge tables down levels L1..L6 (`memtable.go:179-185` WAL first, then the skiplist; `db.go:1068-1102`).
 - **Values live in the LSM, not the value log.** A value of at least `ValueThreshold` goes to the value log and the LSM
   holds a pointer; smaller values are inline (`structs.go:147-162`). The default and maximum threshold is 1 MB
-  (`options.go:201`), so every rho row under 1 MB is inline (open-image chunks are 512 KB). rho's default limits allow
+  (`options.go:170`, `:201`), so every rho row under 1 MB is inline (open-image chunks are 512 KB) unless
+  `Config.ValueThreshold` lowers it (section 6, VALUETHRESH). rho's default limits allow
   a row of up to about 64 MB (1,000 properties of 64 KB, `core.go:795-797`): a row of 1 MB or more goes to the value
   log. A single row fits one transaction's size limit, but badger refuses a value above `ValueLogFileSize` and, in
   memory, one at or above `ValueThreshold` (section 2, "One entry and its limits").
@@ -62,7 +63,8 @@ Dir/
   (`txn.go:352-371`; measured B10: 1 MB + 1 refused at `ValueLogFileSize` 1 MB and in memory). rho allows property
   values of 65,536 bytes and puts a string value verbatim into an on-disk property index key. Since v4.75.0 every
   write door refuses, before any mutation, an entry above these limits less the staging overhead (key 64,991 bytes,
-  value `ValueLogFileSize` - 1, in memory 1 MB - 1) with `ErrEntryTooLarge` (`badgerstore_entry_size.go`); before, it
+  value `ValueLogFileSize` - 1, in memory `ValueThreshold` - 1: 1 MB - 1 by default; badger reads the configured
+  threshold at `db.go:245` before an in-memory open lifts it at `:308`, and `txn.go:370` compares against it) with `ErrEntryTooLarge` (`badgerstore_entry_size.go`); before, it
   was acknowledged and then failed every flush, and nothing written after it persisted (KEYSIZE, VALUESIZE).
 - **A `WriteBatch` is not atomic.** On `ErrTxnTooBig` it commits the transaction it has so far (`CommitWith`,
   asynchronous, up to 16 in flight: `SetMaxPendingTxns`) and retries the entry in a new one (`batch.go:137-207`); each
@@ -180,7 +182,7 @@ Dir/
 | `NumMemtables` | 5 | default | Up to 5 arenas under write load. |
 | `BlockCacheSize` | 256 MB | `Config.BlockCacheSize` (0 = default) | Per DB, required with Snappy; resizable at runtime (`CacheMaxCost`). |
 | `IndexCacheSize` | 0 | `Config.IndexCacheSize` | Required with encryption only. |
-| `ValueThreshold` | 1 MB | default | Rows under 1 MB are inline; a row of 1 MB or more (rho allows ~64 MB) goes to the value log. |
+| `ValueThreshold` | 1 MB | `Config.ValueThreshold` (0 = default; [1 KB, 1 MB], at most 15 % of `MemTableSize`) | Values under it are inline. badger refuses above 1 MB or `maxBatchSize` (`db.go:146-157`) and accepts any smaller, negative included; rho's 1 KB floor keeps counters, meta and index values inline, since a failed value-log read comes back empty (`iterator.go:158-187`). Measured (`tasks/evidence/VALUETHRESH/measure.txt`, 9,600 `ReplaceVersion`s of 100 KB rows, change log on): 64 KB cut process CPU 88-104 s to 7-9 s (compaction 18.9 s and s2 encode 31.3 s to 0), writes 1.1-2.3x faster, cold `Get` 4-20x and `NodeAsOf` 1.5-5x faster. Cost: the value log is not compressed (2,972 MB against 1,068-1,105 MB of Snappy tables for 2.6x-compressible text), and its GC freed nothing in the run (rule 9: no compaction had run yet). |
 | `Compression` | Snappy | `Config.Compression` | `options.None` is the zero value, so rho cannot turn it off. |
 | `SyncWrites` | false | `Config.SyncWrites` | Two msyncs per write request (section 2). |
 | `NumVersionsToKeep` | 1 | default | Right for rho (history is rho's own keyspace). |
@@ -214,7 +216,7 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
 2. **Read by walking, not by point gets, where IDs come in order.** A `Get` costs about 4x the row and a read
    transaction; a forward walk costs almost nothing. The read snapshot walks; entity point reads on a cache miss,
    history version and anchor reads, and committed-stamp reads still `Get`. Gap: GETWALK.
-3. **No `PrefetchValues`.** Values are inline, so prefetching only adds a goroutine per row (`iterator.go:707-713`).
+3. **No `PrefetchValues`.** Values are inline (unless `ValueThreshold` is set), so prefetching only adds a goroutine per row (`iterator.go:707-713`).
    No iterator of rho's turns it on since v4.78.4 (PREFETCH: 15 did, the full node scan at open without an open image
    among them; that open is 7-18 % faster without, `tasks/evidence/PREFETCH/`); `TestNoIteratorPrefetchesValues`
    guards it.
@@ -226,13 +228,32 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
    writable open of the same directory (the flock), and a shard left with `.mem` files needs one writable open to
    recover before it opens read-only. Gap: SHARD step 4a.
 6. **Badger creates a missing directory; rho must refuse it** for a shard it already knows. Gap: SHARD step 1.
-7. **Hold read transactions briefly.** A read transaction pins versions from compaction and the value log; release it
-   before user callbacks (the read snapshot does, per chunk).
+7. **Hold read transactions briefly.** A read transaction pins versions from compaction and, through rho's GC pass
+   (rule 9), the value-log files rewritten while it is open; release it before user callbacks (the read snapshot
+   does, per chunk). A transaction badger alone pins nothing in the value log unless an iterator is open. Doors
+   that hold one read transaction across the caller's callback (the bulk node and rel walks, `LendNodes`,
+   `LendRels`, the transaction-time scans) hold up a GC pass for as long: meanwhile its guard iterator keeps the
+   rewritten files on disk and the memtables open when the pass began referenced (`iterator.go:468-485`; rule 9).
 8. **Size caches per shard role.** Defaults give every open DB a 256 MB block cache and a 75 MB arena. Gap: CACHE.
-9. **The value-log GC loop has work only for rows of 1 MB or more** (`badgerstore_flush.go` gcLoop); without such rows
-   a pass costs 28 ns. It reclaims a dead value only after compaction has dropped it (discard statistics): measured
-   114 MB to 32 MB once deletes were compacted, nothing before; a value kept by history is never garbage
-   (`tasks/evidence/VLOGGC/`, VLOGGC: measured, no change).
+9. **The value-log GC loop has work only for values at or above `ValueThreshold`** (`badgerstore_flush.go` gcLoop:
+   rows of 1 MB or more by default); without such values a pass costs 28 ns. It picks a file only from discard
+   statistics, which only LSM compaction writes when it drops a version pointing into the value log
+   (`value.go:1003-1016`, `levels.go` compaction): measured 114 MB to 32 MB once deletes were compacted, nothing
+   before; a value kept by history is never garbage (`tasks/evidence/VLOGGC/`, VLOGGC: measured, no change). With
+   `ValueThreshold` 64 KB and rows rewritten whole by `ReplaceVersion`, 10 s of the loop at 200 ms freed nothing of
+   2,972 MB (`tasks/evidence/VALUETHRESH/measure.txt`): the LSM of 24-byte pointers had not flushed a memtable, so
+   no compaction had written a discard statistic. Even once compacted, a full-row replace leaves a history row and
+   a change-log record live beside the replaced current row, so at most a third of such a file is garbage, under the
+   0.5 ratio (a delta history row or a trimmed change log changes that share).
+   **A rewritten file is deleted under open reads unless rho waits** (VALUETHRESH F1): badger deletes it at once
+   when no iterator is open (`value.go:342-355`), and an item a `Get` returned before the rewrite reads empty after
+   it (`iterator.go:155-189`; a `Get` after it finds the moved entry, which keeps its version, `value.go:217-224`).
+   rho's pass (`runValueLogGC`, `badgerstore_vlog_guard.go`) holds an iterator so badger queues the files, and closes
+   it only after every read and update transaction that entered before the pass ended has ended
+   (`TestValueLogGCKeepsTheFileOfAnOpenRead`, per seam: `view`, `update`, `newReadTxn`); readers never wait. The
+   cost lands on the pass: a read held across a caller's callback (rule 7) keeps it waiting, and with it the
+   rewritten files and those memtables; a wait above 60 s is logged once per pass with its
+   duration. Close ends the wait at once. A count below zero (an exit without its enter) is logged, not waited on.
 10. **Batch synced writes.** Under `SyncWrites` every request costs a WAL msync and every write group a value-log msync;
     rho's group commit writes one request per group, which is right, unless the flush is split (rule 1): each part is
     a request of its own.
@@ -350,7 +371,7 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 | `Subscribe(ctx, cb, matches)` | Calls `cb` with batches of written KVs that match `pb.Match` prefixes; published right after the write reaches the LSM, before the writer's `Commit` returns (`db.go:880`), held in memory only (channel of 1,000 lists per subscriber, `publisher.go:112`): lost on a crash, no replay. | - (cannot replace rho's change log) |
 | `GetSequence(key, bandwidth)`, `Sequence.Next`, `Release` | Monotonic integers leased in blocks; panics in managed mode and on a read-only DB (`db.go:1358-1362`). | - (rho has snowflake ids and its LSN allocator) |
 | `GetMergeOperator(key, f, dur)`, `MergeOperator.Add`, `Get`, `Stop` | Appends values merged by `MergeFunc` in a background goroutine. | - |
-| `RunValueLogGC(ratio)` | Rewrites a value-log file when a sample shows `ratio` of it reclaimable; `ErrNoRewrite`, `ErrRejected`; `ErrGCInMemoryMode`, `ErrGCInReadOnlyMode`, and `ErrInvalidRequest` outside (0, 1) (`db.go:1234-1246`). | `gcLoop` (todo VLOGGC: only rows of 1 MB or more reach the value log) |
+| `RunValueLogGC(ratio)` | Rewrites a value-log file when a sample shows `ratio` of it reclaimable; `ErrNoRewrite`, `ErrRejected`; `ErrGCInMemoryMode`, `ErrGCInReadOnlyMode`, and `ErrInvalidRequest` outside (0, 1) (`db.go:1234-1246`). | `gcLoop` (only values at or above `ValueThreshold` reach the value log, rule 9) |
 | `SetDiscardTs(ts)` | Managed mode: versions at or below `ts` may be dropped. | - |
 | `KeyRegistry`, `OpenKeyRegistry`, `WriteKeyRegistry`, `KeyRegistryOptions`, `KeyRegistryFileName` | The encrypted data-key file (`KEYREGISTRY`); `WriteKeyRegistry` rewrites it, the way to change the master key offline. | - (section 9) |
 | `Manifest`, `ReplayManifestFile`, `TableManifest`, `ManifestFilename` | The `MANIFEST` file (table set per level) and its parser. | `ManifestFilename` (`DiscardStagedFlush`) |

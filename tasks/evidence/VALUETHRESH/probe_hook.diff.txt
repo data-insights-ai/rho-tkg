@@ -1,0 +1,26 @@
+diff --git a/pkg/graph/store/badger/badgerstore_options.go b/pkg/graph/store/badger/badgerstore_options.go
+index ad75bb04..704b68d1 100644
+--- a/pkg/graph/store/badger/badgerstore_options.go
++++ b/pkg/graph/store/badger/badgerstore_options.go
+@@ -140,6 +140,11 @@ func validateEncryptionConfig(cfg Config) error {
+ 	return nil
+ }
+ 
++// valueThresholdProbe sets badger's ValueThreshold when positive: the
++// VALUETHRESH step 1 measurement only, set by the valuethreshprobe build tag
++// (badgerstore_valuethresh_probe.go); always 0 in a normal build.
++var valueThresholdProbe int64
++
+ // BadgerOptions is the badger options a store opened with cfg uses (the same
+ // single construction path): for a side index beside the store's shards, such
+ // as tiered's owner index (SHARD step 10), so it checksums, logs, encrypts
+@@ -188,6 +193,9 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
+ 	if cfg.MemTableSize > 0 {
+ 		opts = opts.WithMemTableSize(cfg.MemTableSize)
+ 	}
++	if valueThresholdProbe > 0 {
++		opts = opts.WithValueThreshold(valueThresholdProbe)
++	}
+ 	if cfg.BlockCacheSize > 0 {
+ 		opts = opts.WithBlockCacheSize(cfg.BlockCacheSize)
+ 	}

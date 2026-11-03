@@ -177,7 +177,7 @@ func (bs *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg 
 	if err != nil {
 		return fmt.Errorf("graph: marshal reltype registry: %w", err)
 	}
-	return bs.db.Update(func(txn *badgerv4.Txn) error {
+	return bs.update(func(txn *badgerv4.Txn) error {
 		if err := txn.Set(storepkg.MetaKey("label_tokens"), labelData); err != nil {
 			return err
 		}
@@ -198,7 +198,7 @@ func (bs *Store) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
 	if err != nil {
 		return fmt.Errorf("graph: marshal label registry: %w", err)
 	}
-	return bs.db.Update(func(txn *badgerv4.Txn) error {
+	return bs.update(func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.MetaKey("label_tokens"), data)
 	})
 }
@@ -247,7 +247,7 @@ func (bs *Store) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
 	if err != nil {
 		return fmt.Errorf("graph: marshal reltype registry: %w", err)
 	}
-	return bs.db.Update(func(txn *badgerv4.Txn) error {
+	return bs.update(func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.MetaKey("reltype_tokens"), data)
 	})
 }
@@ -325,7 +325,7 @@ func (bs *Store) MetaSet(key string, value []byte) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	return bs.db.Update(func(txn *badgerv4.Txn) error {
+	return bs.update(func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.MetaKey(key), value)
 	})
 }
@@ -438,7 +438,7 @@ func (bs *Store) SavePropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) e
 	if err != nil {
 		return fmt.Errorf("graph: marshal property-key registry: %w", err)
 	}
-	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+	if err := bs.update(func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.MetaKey("property_keys"), data)
 	}); err != nil {
 		return fmt.Errorf("graph: persist property-key registry: %w", err)

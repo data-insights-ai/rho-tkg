@@ -1,0 +1,35 @@
+VALUETHRESH mutation sweep, 2026-11-03 on 1a50dc95: each mutation applied alone, then
+go test -p 1 -count=1 -run 'TestValueThreshold|TestEntryTooLarge|TestTuning' on the packages named; source restored after each.
+7 of 7 caught.
+
+M1 knob ignored (buildBadgerOptions drops WithValueThreshold): CAUGHT
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM (2.10s)
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM/badger/64KB (0.19s)
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM/tiered/64KB (0.51s)
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM/sharded/64KB (0.37s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.911s
+M2 validation dropped (validateTuningConfig): CAUGHT
+    --- FAIL: TestValueThresholdValidatedBeforeOpen (1.27s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.664s
+M3 floor dropped only: CAUGHT
+    --- FAIL: TestValueThresholdValidatedBeforeOpen (1.10s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.542s
+M4 in-memory limit does not follow (entryLimits): CAUGHT
+    --- FAIL: TestValueThresholdInMemoryLimitFollows (0.00s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.412s
+M5 tiered does not pass it to its shards: CAUGHT
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM (4.94s)
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM/tiered/64KB (0.56s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	6.149s
+M6 sharded does not pass it to its slots: CAUGHT
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM (3.87s)
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM/sharded/64KB (0.69s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	5.127s
+M7 graph.Config does not pass it to badger.New: CAUGHT
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM (4.19s)
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM/badger/64KB (0.40s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	5.619s
+
+Gate on 1a50dc95 (load 38-65): go vet ./... clean; go test -short badger ok (208 s), tiered ok (65 s), sharded ok,
+internal/core ok; pkg/graph FAIL once in TestIDsByLabelAndPropertyValuesReadsNoRow/badger_index_and_labels_on_disk
+(time coordinate, under load 65), then passed -count=3 alone (4.4 s): not touched by this change, a load flake to watch.

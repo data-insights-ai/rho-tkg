@@ -989,6 +989,11 @@ type Config struct {
 	BlockCacheSize   int64
 	IndexCacheSize   int64
 	NumCompactors    int
+	// ValueThreshold sends badger values of at least this many bytes (rows,
+	// history rows, change-log records) to the value log instead of the LSM:
+	// see badger.Config.ValueThreshold. 0 keeps badger's 1 MB; ignored when
+	// Store is supplied explicitly.
+	ValueThreshold int64
 	// EncryptionKey / EncryptionKeyRotation enable AES encryption-at-rest on
 	// the badger-backed store constructed from BadgerDir/BadgerInMemory (see
 	// badger.Config for the length validation and the wrong-key/plaintext-dir
@@ -2218,6 +2223,7 @@ func New(config Config) (*Core, error) {
 				BlockCacheSize:              config.BlockCacheSize,
 				IndexCacheSize:              config.IndexCacheSize,
 				NumCompactors:               config.NumCompactors,
+				ValueThreshold:              config.ValueThreshold,
 				EncryptionKey:               config.EncryptionKey,
 				EncryptionKeyRotation:       config.EncryptionKeyRotation,
 				ChangeLog:                   config.ChangeLog,

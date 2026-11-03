@@ -63,6 +63,7 @@ const snapWalk = 8
 type readSnapshot struct {
 	bs        *Store
 	txn       *badgerv4.Txn
+	pin       vlogPin
 	gen       uint64 // commitGen read before txn opened
 	nodeEpoch uint64 // the caches' flush epochs read before txn opened
 	relEpoch  uint64
@@ -118,7 +119,7 @@ func (s *readSnapshot) pinned() *badgerv4.Txn {
 	if s.txn == nil || gen != s.gen {
 		s.Release()
 		s.gen, s.nodeEpoch, s.relEpoch = gen, bs.nodeCache.FlushEpoch(), bs.relCache.FlushEpoch()
-		s.txn = newReadTxn(bs.db)
+		s.txn, s.pin = bs.newReadTxn()
 	}
 	return s.txn
 }
@@ -135,7 +136,7 @@ func (s *readSnapshot) Release() {
 		s.its[i] = snapIter{}
 	}
 	if s.txn != nil {
-		endReadTxn(s.txn, !s.bs.dbClosed.Load() && !s.bs.closing.Load())
+		s.bs.endReadTxn(s.txn, s.pin, !s.bs.dbClosed.Load() && !s.bs.closing.Load())
 	}
 	s.txn = nil
 	s.memo = histMemo{}

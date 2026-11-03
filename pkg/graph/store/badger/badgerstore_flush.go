@@ -560,9 +560,7 @@ func (bs *Store) gcLoop() {
 		case <-bs.stopCh:
 			return
 		case <-ticker.C:
-			for bs.db.RunValueLogGC(bs.gcRatio) == nil {
-				// Keep running until no more garbage to collect.
-			}
+			bs.runValueLogGC()
 		}
 	}
 }

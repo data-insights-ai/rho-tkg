@@ -141,7 +141,7 @@ func vdictEntryOp(tok uint32, nameID int, v string) writeOp {
 
 // ensureLoaded reads the store's entries once. It takes no lock a writer
 // holds while waiting for wbMu, so a decode under wbMu cannot deadlock.
-func (vd *valueDict) ensureLoaded(db *badgerv4.DB) error {
+func (vd *valueDict) ensureLoaded(view func(func(*badgerv4.Txn) error) error) error {
 	if vd.loaded.Load() {
 		return nil
 	}
@@ -156,7 +156,7 @@ func (vd *valueDict) ensureLoaded(db *badgerv4.DB) error {
 		val  string
 	}{}
 	var maxTok uint32
-	err := db.View(func(txn *badgerv4.Txn) error {
+	err := view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.MetaKey(vdictNamesMeta))
 		switch {
 		case err == badgerv4.ErrKeyNotFound:
@@ -299,7 +299,7 @@ func (bs *Store) codeValues(props []storepkg.PropertyWire, dictOf func(key strin
 		if !ok {
 			continue
 		}
-		if err := bs.vdict.ensureLoaded(bs.db); err != nil {
+		if err := bs.vdict.ensureLoaded(bs.view); err != nil {
 			return err
 		}
 		if tok, ok := bs.vdict.token(bs, d, s); ok {
@@ -389,7 +389,7 @@ func (bs *Store) resolveValueTokens(props []storepkg.PropertyWire, fv uint8) err
 	if fv < storepkg.ValueDictWireFormatVersion {
 		return storepkg.ResolvePropertyValueTokens(props, fv, nil)
 	}
-	if err := bs.vdict.ensureLoaded(bs.db); err != nil {
+	if err := bs.vdict.ensureLoaded(bs.view); err != nil {
 		return err
 	}
 	return storepkg.ResolvePropertyValueTokens(props, fv, bs.vdict)

@@ -196,6 +196,7 @@ type Config struct {
 	BlockCacheSize        int64
 	IndexCacheSize        int64
 	NumCompactors         int
+	ValueThreshold        int64 // badger.Config.ValueThreshold, every slot
 	EncryptionKey         []byte
 	EncryptionKeyRotation time.Duration
 }
@@ -383,6 +384,7 @@ func (s *Store) shardConfig(cfg Config, k uint8, reg *registrypkg.PropertyKeyReg
 		BlockCacheSize:        cfg.BlockCacheSize,
 		IndexCacheSize:        cfg.IndexCacheSize,
 		NumCompactors:         cfg.NumCompactors,
+		ValueThreshold:        cfg.ValueThreshold,
 		EncryptionKey:         cfg.EncryptionKey,
 		EncryptionKeyRotation: cfg.EncryptionKeyRotation,
 		DisablePlannerStats:   cfg.DisablePlannerStats,

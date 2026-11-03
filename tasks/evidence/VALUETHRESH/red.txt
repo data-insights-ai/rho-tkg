@@ -1,0 +1,22 @@
+--- FAIL: TestValueThresholdValidatedBeforeOpen (0.82s)
+    badgerstore_value_threshold_test.go:26: ValueThreshold -1: opened, want refused
+    badgerstore_value_threshold_test.go:26: ValueThreshold 512: opened, want refused
+    badgerstore_value_threshold_test.go:26: ValueThreshold 1023: opened, want refused
+    badgerstore_value_threshold_test.go:26: ValueThreshold 1048577: opened, want refused
+    badgerstore_value_threshold_test.go:26: ValueThreshold 2097152: opened, want refused
+--- FAIL: TestValueThresholdInMemoryLimitFollows (0.03s)
+    badgerstore_value_threshold_test.go:56: in memory at ValueThreshold 64 KB, a 100 KB row: err <nil>, want ErrEntryTooLarge at the door
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.893s
+2026/11/03 19:09:58 INFO graph: tiered store opened duration=199.231395ms reference=62.677338ms hot=97.677356ms warm=720ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/03 19:09:58 INFO graph: tiered store opened duration=131.701843ms reference=43.818921ms hot=47.235236ms warm=540ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM (1.49s)
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM/badger/64KB (0.16s)
+        value_threshold_test.go:106: ValueThreshold 64 KB: 206204 table bytes, 20 value-log bytes; want the 100 KB row in the value log, the LSM under 64 KB
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM/tiered/64KB (0.27s)
+        value_threshold_test.go:106: ValueThreshold 64 KB: 206490 table bytes, 40 value-log bytes; want the 100 KB row in the value log, the LSM under 64 KB
+    --- FAIL: TestValueThresholdKeepsRowsOutOfTheLSM/sharded/64KB (0.28s)
+        value_threshold_test.go:106: ValueThreshold 64 KB: 206568 table bytes, 40 value-log bytes; want the 100 KB row in the value log, the LSM under 64 KB
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.528s
+FAIL

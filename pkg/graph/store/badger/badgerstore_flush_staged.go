@@ -225,7 +225,7 @@ func (bs *Store) commitStaged(entries []flushEntry) (flushState, error) {
 	if bs.syncWrites {
 		marker[16] = stageMarkerSynced
 	}
-	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+	if err := bs.update(func(txn *badgerv4.Txn) error {
 		if err := txn.Set(storepkg.FlushStageMarkerKey, marker); err != nil {
 			return err
 		}
@@ -257,7 +257,7 @@ func (bs *Store) commitStaged(entries []flushEntry) (flushState, error) {
 
 	// 4. Unmark. While the marker stands, the next open re-applies the staged
 	// values, so a failure here fails closed like a failed apply.
-	if err := bs.db.Update(func(txn *badgerv4.Txn) error { return txn.Delete(storepkg.FlushStageMarkerKey) }); err != nil {
+	if err := bs.update(func(txn *badgerv4.Txn) error { return txn.Delete(storepkg.FlushStageMarkerKey) }); err != nil {
 		return flushCommittedNotApplied, fmt.Errorf("unmark: %w", err)
 	}
 
