@@ -61,5 +61,11 @@ Findings
   most a third of a file is garbage, below the 0.5 discard ratio; and the LSM of 24-byte pointers rarely compacts,
   so the replaced current rows reach the discard statistics late. Space grows with every replace either way; with
   the threshold it grows uncompressed.
+Load caveat (main session, 19:15): the machine reached load 33-65 right after these runs (five builders + a
+release ci-docker); the runs above were at load 10-20, already shared. The CPU ratio (10x) is far above the noise,
+the wall times are not reliable; the main session reruns on a quiet machine with the commands above (restore
+probe_hook.go.txt as pkg/graph/store/badger/badgerstore_valuethresh_probe.go plus probe_hook.diff.txt, and
+probe_test.go.txt as pkg/graph/valuethresh_probe_test.go; on the branch the hook can instead be
+Config.ValueThreshold: set badger.Config/tiered.Config ValueThreshold in vtOpen).
 Decision: step 2 (Config.ValueThreshold, opt-in, default unchanged); the disk trade-off goes into docs/badger.md and
 the knob's doc comment.
