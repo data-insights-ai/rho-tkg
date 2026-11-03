@@ -1,0 +1,91 @@
+RELHIST design (read-only trace, main ee10a85b, 3 Nov) — sigma's GC analysis, tiered, paging off
+
+1. Trace: which doors reach the whole relationship history
+
+Sigma's listed doors are node doors; none touches relationship history:
+- NodeEffectiveTimeline: effective_timeline.go:400 -> head cache (nodeHeadSegments, effective_head.go:640-665: current row + one
+  point read per winner), else temporal-meta skeletons (:620-682: a prefix walk of every version's temporal block,
+  badgerstore_temporalmeta.go:54-118, then a point read per winner), else the whole node history.
+- NodeEffectiveTimelines(id, pins): effective_timelines.go:40-213. "The head-pin cache is neither read nor filled" (:39, :114-116):
+  every call walks every version's skeleton (:160-198), O(versions) even at the head pin.
+- NodeEffectiveTimelineFrom, ForEachNodeEffectiveByLabelAndProperties (effective_page_by_props.go:32 -> :124, scan mode),
+  ForEachNodeEffective(From) (effective_scans.go:90; rd.scan: head cache bypassed, effective_scan_reads.go:59-61,
+  effective_timeline.go:583): the same node path. LendByIDs: current rows only.
+
+So getRelHistoryByPrefix / reconstructRelHistoryWire / DeepCopy come from the write side or from rel doors the cut calls itself.
+Runtime callers of core.getRelHistory (store_fetch.go:174):
+a) GraphTx delete of a rel, or of a node with rels, on tiered: tx_mutations.go:455, :520 -> deletedRelHistorySnapshot :671-688:
+   `if tx.g.historyTrim == nil { history, err := tx.g.copyRelHistory(id) }` (:672-673): whole history + DeepCopy per row
+   (tx.go:432-445). nativeHistoryRollbackTrim admits only *memory.Store and *badger.Store (core.go:1608-1610); tiered has no
+   Trim*HistoryFrom, so there historyTrim is nil and EVERY tx delete copies the whole chain; nodes alike (:657-669). The one caller
+   that is O(versions) per write whatever the pin, and DeepCopy-shaped: my prime suspect.
+b) A tx update whose chain has a row at or above the current version (tx.go:391-409): rare; otherwise one page read.
+c) Rel corrections (SetRelVersionInterval / excise) on a head-cache miss: temporal_cascade.go:1015-1016.
+d) Re-import of a deleted rel ID: relLifeStart, version_alloc.go:300-327 (presence bit first).
+e) Rel doors of ai-soc's shape: RelsDuring/RelsDuringTx/RelsRelating/ByTypePropertyDuring and their GraphTx twins
+   (temporal_queries.go:255/379/1624/1649, tx_consistent_reads.go:487/629) -> findRelVersionMatchingDuringTx temporal.go:1672-1690:
+   whole history, no head cache, no skeletons; Rels().History (crud.go:78). ForEachAdjacentRelAt with a temporal filter uses
+   singleVersionAdjacency (adjacency_version.go:159-186: presence bit + point reads), not the history.
+f) RelEffectiveTimeline (effective_timeline.go:555-611), RelsEffectivePage, ForEachRelEffectiveAtNodes: skeletons + point reads;
+   the whole history only when a winner vanished (:594).
+
+Why it grows: every caller is O(versions of the key) per call and sigma's keys gain a version per cut. The head cache does not
+help: (i) the plural door never reads it; (ii) a plain Update bumps the key's history epoch (effective_head.go:28-31, headValid
+:274) and only cascades overlay the entry (relHeadAfterWrite from temporal_cascade.go:1182 only; nodes :409), so a write-then-
+read-back misses per key per cut and folds the skeletons again — invalidation is per key, not per cut; (iii) scan mode bypasses it
+by design ("repeated point reads of a small hot set", effective_scan_reads.go:59-61).
+
+Per version, getRelHistoryByPrefix (badgerstore_history_rel.go:375-454) allocates KeyCopy (:392), a value copy (:398-399), a map
+entry and key string (:382, :396), the sorted key list (:430-434), the wire (SafeUnmarshal :197 or anchor+delta :202-222), the
+decoded row (:447) and a second full row by DeepCopy (:451): about four row-sized copies. The "fresh decode, no second copy" rule
+already holds for GetRelVersion (:301, :328); :451 and :562 contradict it.
+
+z.Calloc (18 %): badger decompresses a block into a fresh buffer on each block-cache miss (table/table.go:785-815, badger v4.9.2;
+badger.md:130-131). A prefix walk touches every block holding one of the key's versions and opens table.NewIterator per table whose
+key range covers the prefix (badger.md:122-125): a key whose versions land in a new table each cut costs one iterator and one block
+per cut of age. Fewer whole-chain walks is rho's only lever; compression itself is NOCOMPRESS (todo).
+
+2. Proposals, ranked by gain/risk (13.1 GB a cut: rebuild 8 % = 1.05 GB, Calloc 18 % = 2.4 GB)
+
+P1 (ask 1, write side) — tiered tx snapshots trim instead of copying. (a) Patch: in deletedRel/NodeHistorySnapshot, when
+  historyTrim is nil but the store pages (historyVersionPageCapability; tiered: tieredstore_read_history_rel.go:126), snapshot only
+  the rows at or above the deleted row's version (one page, usually empty) and roll back by TruncateRelHistory(id, keep) plus a re-put
+  of that page; the rows below are untouched by the delete. (b) Minor: tiered gains Trim*HistoryFrom routed to the owner shard like
+  TruncateRelHistory (tieredstore_write_history.go:234-318), admitted at core.go:1608. Semantics: rollback state identical, reads
+  unchanged. Saving: the whole 8 % where a) is the caller (DeepCopy 0.48 + reconstruct 0.39 + prefix 0.32 GB) plus that walk's share
+  of Calloc and NewIterator. Red test: tiered, a rel with 64 versions, tx Delete then Rollback, history byte-equal; a node with its
+  rels; c.historyRead counts <= 1 page. Mutations: restore the copy branch -> the count fails; drop the truncate -> equality fails.
+
+P2 (ask 1, read side, nodes and rels) — head answer for the plural door and across plain appends. (i) NodeEffectiveTimelines /
+  RelEffectiveTimelines read the head entry when rd.snap == nil, !rd.scan and every pin >= e.maxTx (headValid), and fill it from
+  their fold otherwise (effectivePiecesFacts + noteNodeHead as effective_timeline.go:606-608). Sigma's pin at the round's tx is
+  >= maxTx in the common case: current row + point reads per winner, no skeleton walk. (ii) After a plain Update / ReplaceVersion /
+  CloseVersion, overlay the entry with the appended row as a cascade does (headOverlay, effective_head.go:38-57: the append is the
+  newest belief, replaces nothing, tiles with the old current row's end); where headOverlay refuses, drop as today. Semantics: the
+  differential test (effective_head_test.go) compares the cached answer with the fold at every pin. Saving: removes the O(versions)
+  skeleton walk per read-back; sized against rho core 24 % (paintHeadAll, hash32.String from skeleton decodes), not the 8 %; at 100
+  versions ~99 fewer partial decodes and nearly all block touches of the read. Red tests: c.headHits rises on the second plural call;
+  after Update the entry stays valid; the oracle test with Update-then-plural-read at the head pin. Mutations: skip the overlay ->
+  headHits 0; wrong maxTx -> differential test red. Overlap: HEADLEND's lend applies to the plural door's winners; build on it. Patch.
+
+P3 (ask 3) — decode inside item.Value in getRelHistoryByPrefix (node twin, read snapshot badgerstore_read_snapshot.go:729-745).
+  Badger: the value is valid only inside fn and until the next iteration (iterator.go:28-30, 76-82; badger.md:321-323), which
+  historyTemporalMetaByPrefix honours (badgerstore_temporalmeta.go:73, 88-95). Keys ascend by version and an anchor's version <= its
+  deltas', so keep only the last decoded FULL anchor wire as localAnchor; merge overlay rows in order (:104-116); drop the map, key
+  strings, sort, value copies and the DeepCopy at :451/:562. Rows equal. Saving: ~3 of 4 copies per version, 0.6-0.7 GB of the 1.05 GB
+  (5 %) for every remaining whole-history caller (c, d, e). Red test: bytes per version on a 64-version rel with deltas on, <= 2
+  allocations a row; a delta whose anchor sits in another table. Mutations: reinstate DeepCopy -> bound fails; use the raw anchor
+  after Next -> wrong row. Patch.
+
+P4 (ask 2) — per-key reconstructed-history cache keyed (kind, id, history epoch): the epoch is the head cache's invalidation token
+  (effective_head.go:28-31), no per-cut flush; byte-bounded as headCache (:62-81), e.g. 64 MB, never per entity at 2 TB/day; rows
+  frozen and lent (HEADLEND discipline). Pays only when one key's history is read more than once per epoch; after P1-P3 the remaining
+  readers read a key once per cut. Rank last; needs sigma's per-key read count. Minor if it adds a Config field.
+
+3. Questions for sigma
+- Does the cut delete rels, or nodes with rels, inside a GraphTx on tiered? How many per cut, with how many versions? (P1's size.)
+- Which rel doors does the cut call at all (RelsDuring*, Rels().History, SetRelVersionInterval/excise, Import of an existing rel ID),
+  with what pins?
+- Is the read-back the plural or the singular door, under a scan/snapshot door or not, and does the fact's Update precede it in the
+  cut (P2)?
+- How often is one key's history read within one cut (P4)? Can sigma split alloc_space by the parent frame of getRelHistory?
