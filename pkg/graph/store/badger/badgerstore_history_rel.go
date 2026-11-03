@@ -374,73 +374,10 @@ func (bs *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 
 func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, error) {
 	expectedID := storepkg.ParseIDFromKey(prefix, 1)
-
-	// Snapshot the overlay BEFORE the Badger scan to close the commit-window drop;
-	// mirror of getNodeHistoryByPrefix (lesson 64).
-	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
-
-	entries := make(map[string][]byte)
-	err := bs.view(func(txn *badgerv4.Txn) error {
-		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
-		opts.Prefix = prefix        // bound the scan and the value prefetch to this entity (backlog 20)
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			key := item.KeyCopy(nil)
-			if len(key) != storepkg.SizeHistKey {
-				continue
-			}
-			k := string(key)
-			err := item.Value(func(val []byte) error {
-				cp := make([]byte, len(val))
-				copy(cp, val)
-				entries[k] = cp
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if bs.historyScanTestHook != nil {
-		bs.historyScanTestHook()
-	}
-
-	// Merge the pre-scan overlay snapshot (strictly newer than committed Badger):
-	// a delete masks a scanned row, a set overwrites it.
-	for k := range overlayDeletes {
-		delete(entries, k)
-	}
-	for k, v := range overlay {
-		entries[k] = v
-	}
-
-	if len(entries) == 0 {
-		return nil, nil
-	}
-
-	keys := make([]string, 0, len(entries))
-	for k := range entries {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	localAnchor := func(anchorVer uint64) ([]byte, bool) {
-		b, ok := entries[string(storepkg.HistRelKey(expectedID, anchorVer))]
-		return b, ok
-	}
-	result := make([]*types.Relationship, 0, len(keys))
-	for _, k := range keys {
-		version := historyVersionFromKey([]byte(k))
-		w, err := bs.reconstructRelHistoryWire(expectedID, version, entries[k], localAnchor)
+	// The overlay is captured before the badger View inside (lesson 64); each
+	// row is a fresh decode, the caller's own: no second copy (RELHIST P3).
+	return decodeHistoryChain(bs, prefix, func(version uint64, raw []byte, local localAnchorFunc) (*types.Relationship, error) {
+		w, err := bs.reconstructRelHistoryWire(expectedID, version, raw, local)
 		if err != nil {
 			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
@@ -448,9 +385,8 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode rel version: %w", err)
 		}
-		result = append(result, r.DeepCopy())
-	}
-	return result, nil
+		return r, nil
+	})
 }
 
 func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32, limit int) ([]*types.Relationship, error) {
@@ -559,7 +495,7 @@ func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode rel version: %w", err)
 		}
-		result = append(result, r.DeepCopy())
+		result = append(result, r) // a fresh decode of a private copy: no second copy
 	}
 	return result, nil
 }

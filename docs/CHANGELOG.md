@@ -15,6 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   time, as before. Answers unchanged: the same rows as `LendNode` /
   `LendRelationship` per ID, nil for deleted and unknown IDs (tests `TestTieredLendSorted*`,
   `tasks/evidence/TIERLEND/`).
+- **RELHIST P3** (sigma's GC analysis; a fix, no new exported name). A whole history read on badger
+  (`GetRelHistory`, `GetNodeHistory` and the index builds that read a whole chain) decodes each version inside
+  badger's value callback, in key order, which is version order: no copy of every value into a map, no key strings,
+  no sort, no second deep copy of each decoded row. Only the latest anchor row is copied, once, for the deltas after
+  it; a delta whose anchor is not in the chain is read after the scan, as before. `RelHistoryVersionsFrom` /
+  `NodeHistoryVersionsFrom` drop the deep copy too. Rows, order and errors are those of before. At about 400-byte
+  rows with delta encoding, per version: rel 34.3 -> 28.4 allocations, 2,990 -> 2,410 B (100 versions); node
+  44.6 -> 37.6, 3,460 -> 2,820 B. Tests `TestHistDecode*` (`tasks/evidence/RELHIST/`).
 
 ## [4.102.0] - 2026-11-03
 

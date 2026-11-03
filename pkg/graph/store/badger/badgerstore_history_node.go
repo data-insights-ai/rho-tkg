@@ -792,80 +792,13 @@ func (bs *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 
 func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 	expectedID := storepkg.ParseIDFromKey(prefix, 1)
-
-	// Snapshot the write-buffer overlay (flushing ++ pending) BEFORE opening the
-	// Badger View. flush() commits a row to Badger and only then clears `flushing`;
-	// overlay-after-View could drop a row committed in between from both views
-	// (lesson 64).
-	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
-
-	// Collect from Badger.
-	entries := make(map[string][]byte) // key string -> value bytes
-	err := bs.view(func(txn *badgerv4.Txn) error {
-		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
-		opts.Prefix = prefix        // bound the scan and the value prefetch to this entity (backlog 20)
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			key := item.KeyCopy(nil)
-			if len(key) != storepkg.SizeHistKey {
-				continue
-			}
-			k := string(key)
-			err := item.Value(func(val []byte) error {
-				cp := make([]byte, len(val))
-				copy(cp, val)
-				entries[k] = cp
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if bs.historyScanTestHook != nil {
-		bs.historyScanTestHook()
-	}
-
-	// Merge the pre-scan overlay (authoritative, newer than committed state): a delete
-	// masks a scanned row, a set overwrites it. History version keys are immutable, so
-	// overlay and scan bytes agree for the same key.
-	for k := range overlayDeletes {
-		delete(entries, k)
-	}
-	for k, v := range overlay {
-		entries[k] = v
-	}
-
-	if len(entries) == 0 {
-		return nil, nil
-	}
-
-	// Sort by key (big-endian version in bytes 9-17 gives natural ascending order).
-	keys := make([]string, 0, len(entries))
-	for k := range entries {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	// The whole chain is in `entries`, so a delta's interval anchor is available
-	// in-memory — no extra point read.
-	localAnchor := func(anchorVer uint64) ([]byte, bool) {
-		b, ok := entries[string(storepkg.HistNodeKey(expectedID, anchorVer))]
-		return b, ok
-	}
-	result := make([]*types.Node, 0, len(keys))
-	for _, k := range keys {
-		version := historyVersionFromKey([]byte(k))
-		w, err := bs.reconstructNodeHistoryWire(expectedID, version, entries[k], localAnchor)
+	// The write-buffer overlay (flushing ++ pending) is captured BEFORE the badger
+	// View inside: flush() commits a row to badger and only then clears `flushing`,
+	// so an overlay taken after the View could drop a row committed in between
+	// from both (lesson 64). Each row is a fresh decode, the caller's own: no
+	// second copy (RELHIST P3).
+	return decodeHistoryChain(bs, prefix, func(version uint64, raw []byte, local localAnchorFunc) (*types.Node, error) {
+		w, err := bs.reconstructNodeHistoryWire(expectedID, version, raw, local)
 		if err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
@@ -873,9 +806,8 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode node version: %w", err)
 		}
-		result = append(result, n.DeepCopy())
-	}
-	return result, nil
+		return n, nil
+	})
 }
 
 func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint32, limit int) ([]*types.Node, error) {
@@ -986,7 +918,7 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode node version: %w", err)
 		}
-		result = append(result, n.DeepCopy())
+		result = append(result, n) // a fresh decode of a private copy: no second copy
 	}
 	return result, nil
 }
