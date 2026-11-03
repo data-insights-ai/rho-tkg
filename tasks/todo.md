@@ -30,7 +30,11 @@ Each item: one sentence, then when it is done and what it waits for.
   (the hot day in RAM); numeric buckets and IDSet behind PropertyIndexOnDisk. ai-soc's -peek of sortedChunks.add:
   388 of 389 MB are existence sets (nodeIDs 305 MB EXISTMAP, typeIdx 44 MB OPENWALK, relIDs 38 MB), ~38 M node
   IDs over the open shards; property postings are 11 MB. Scope: existence answered by badger for warm shards (hot
-  day in RAM), typeIdx on disk. Done when: each part is measured and fixed or listed with its cost.
+  day in RAM), typeIdx on disk. From the 31 Oct analysis: the rel-type TemporalIndex to byID only (Entries, subMax,
+  posByID serve nothing there; about 120 to 50-60 B a rel; check the open image's use first, which decides patch or
+  minor; the index stays on all types); and measure badger's z.Calloc on the first-touch shape (200 k nodes, page
+  cache dropped, Compression None against default): per-role compression if alloc_space drops 30 % or more.
+  Done when: each part is measured and fixed or listed with its cost.
 - **SCALE** (René 26 Oct, the standing goal) — rho holds realtime ingest at about 2 TB a day (about 23 MB/s
   sustained, peaks higher; about 4 billion 500-byte facts a day) and grows only by more RAM, NVMe and block storage.
   Done when: architecture.md lists what grows with total volume instead of per shard (RAM structures that grow with
