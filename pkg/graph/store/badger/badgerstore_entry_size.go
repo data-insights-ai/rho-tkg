@@ -62,27 +62,37 @@ func (bs *Store) checkNodeIndexKeysLocked(n *types.Node, id snowflake.ID) error 
 		if !n.HasLabelTokenRaw(def.key.LabelToken) {
 			continue
 		}
-		valueKey, _ := n.IndexablePropertyValueKey(def.key.PropertyKey)
-		if def.members {
-			// Its member entry (RELDISK) is longer than its 0x0A entry.
-			if err := bs.checkEntityIndexKey(storepkg.EntityIndexNodeMember, def.key.PropertyKey, valueKey); err != nil {
-				return err
+		var err error
+		forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
+			if err == nil {
+				err = bs.checkNodeIndexKey(def, valueKey, id)
 			}
-			continue
+		})
+		if err != nil {
+			return err
 		}
-		// The key is 11 bytes and the payload: a domain byte and the value key
-		// for a raw value (a number's is 18 bytes, its key far under any
-		// limit). Within that neither is built (DISKDEFS).
-		if 3+1+len(valueKey)+8 <= bs.maxEntryKey {
-			continue
-		}
-		payload, ok := storepkg.PropertyIndexValueBytes(valueKey)
-		if !ok {
-			continue
-		}
-		if l := len(storepkg.PropertyIndexEntryKey(0, payload, id)); l > bs.maxEntryKey {
-			return fmt.Errorf("%w: property index key for %q of %d bytes, the store holds at most %d", ErrEntryTooLarge, def.key.PropertyKey, l, bs.maxEntryKey)
-		}
+	}
+	return nil
+}
+
+// checkNodeIndexKey checks one value key's entry under def: its member entry
+// (RELDISK), longer than its 0x0A entry, else the 0x0A entry.
+func (bs *Store) checkNodeIndexKey(def propDiskDef, valueKey string, id snowflake.ID) error {
+	if def.members {
+		return bs.checkEntityIndexKey(storepkg.EntityIndexNodeMember, def.key.PropertyKey, valueKey)
+	}
+	// The key is 11 bytes and the payload: a domain byte and the value key
+	// for a raw value (a number's is 18 bytes, its key far under any
+	// limit). Within that neither is built (DISKDEFS).
+	if 3+1+len(valueKey)+8 <= bs.maxEntryKey {
+		return nil
+	}
+	payload, ok := storepkg.PropertyIndexValueBytes(valueKey)
+	if !ok {
+		return nil
+	}
+	if l := len(storepkg.PropertyIndexEntryKey(0, payload, id)); l > bs.maxEntryKey {
+		return fmt.Errorf("%w: property index key for %q of %d bytes, the store holds at most %d", ErrEntryTooLarge, def.key.PropertyKey, l, bs.maxEntryKey)
 	}
 	return nil
 }
@@ -107,8 +117,13 @@ func (bs *Store) checkNodeMemberKeysLocked(n *types.Node) error {
 		if !def.members || !n.HasLabelTokenRaw(def.key.LabelToken) {
 			continue
 		}
-		valueKey, _ := n.IndexablePropertyValueKey(def.key.PropertyKey)
-		if err := bs.checkEntityIndexKey(storepkg.EntityIndexNodeMember, def.key.PropertyKey, valueKey); err != nil {
+		var err error
+		forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
+			if err == nil {
+				err = bs.checkEntityIndexKey(storepkg.EntityIndexNodeMember, def.key.PropertyKey, valueKey)
+			}
+		})
+		if err != nil {
 			return err
 		}
 	}

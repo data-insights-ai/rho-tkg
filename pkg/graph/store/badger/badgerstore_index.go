@@ -26,10 +26,10 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 }
 
 // CreatePropertyIndexWithOptions is CreatePropertyIndex with
-// storecontract.PropertyIndexOptions, persisted with the definition. RangeCounts and
-// Elements need the RAM index: with PropertyIndexOnDisk (or the label in
-// PropertyIndexOnDiskLabels) they return ErrCapabilityNotSupported (the disk keyspace
-// is shared by every label indexing the key).
+// storecontract.PropertyIndexOptions, persisted with the definition. RangeCounts
+// needs the RAM index: with PropertyIndexOnDisk (or the label in
+// PropertyIndexOnDiskLabels) it returns ErrCapabilityNotSupported. An Elements
+// index on disk keeps an entry per list element (ELEMDISK, forEachDiskValueKey).
 func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -47,9 +47,6 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	if onDisk && opts.RangeCounts {
 		return fmt.Errorf("graph: create property index: range counts need the RAM index, not PropertyIndexOnDisk: %w", storecontract.ErrCapabilityNotSupported)
 	}
-	if onDisk && opts.Elements {
-		return fmt.Errorf("graph: create property index: an elements index needs the RAM index, not PropertyIndexOnDisk: %w", storecontract.ErrCapabilityNotSupported)
-	}
 	if onDisk {
 		if _, ok := bs.propKeyTokenFor(propertyKey); !ok {
 			return fmt.Errorf("graph: create property index: property-key registry required for PropertyIndexOnDisk: %w", ErrInvalidStoreMutation)
@@ -66,7 +63,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	}
 	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts, opts.Elements)
 	if onDisk {
-		liveIdx = indexpkg.NewPropertyIndexOnDisk()
+		liveIdx = indexpkg.NewPropertyIndexOnDisk(opts.Elements)
 	}
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.propertyIndexes[key] = liveIdx
@@ -119,17 +116,17 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			return fmt.Errorf("graph: create property index: %w", err)
 		}
 		if onDisk {
-			if valueKey, found := n.IndexablePropertyValueKey(propertyKey); found {
+			forEachDiskValueKey(n, propertyKey, opts.Elements, func(valueKey string) {
 				if op, ok := bs.propertyIndexDiskOp(propertyKey, valueKey, nid.SnowflakeID(), writeOpSet); ok {
 					diskOps = append(diskOps, op)
 				}
-			}
+			})
 			continue
 		}
 		backfill.AddEntityKeys(nid.SnowflakeID(), propertyKey, n.ForEachPropertyIndexKey)
 	}
 	// The member entries of every node row, current and history (RELDISK).
-	memberTarget := []entityBuildTarget{{scope: labelToken, propertyKey: propertyKey}}
+	memberTarget := []entityBuildTarget{{scope: labelToken, propertyKey: propertyKey, elements: opts.Elements}}
 	var memberOps []writeOp
 	scanMembers := func() error {
 		memberOps = memberOps[:0]
@@ -198,7 +195,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		ops = append(ops, memberOps...)
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.EntityIndexBuiltKey(storepkg.EntityIndexNodeMember, labelToken, propertyKey), value: []byte{1}})
 		marker := uint16(storepkg.EntityIndexStoreFormatVersion)
-		if bs.validEndListed(key) {
+		if bs.validEndListed(key) && !opts.Elements { // an element's entry bounds no row (ELEMDISK)
 			// Its entries were all written unknown: its valid-end marker, which
 			// raises the format marker to 14 (VALIDENDPRUNE).
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.PropertyIndexValidEndBuiltKey(labelToken, propertyKey), value: []byte{1}})

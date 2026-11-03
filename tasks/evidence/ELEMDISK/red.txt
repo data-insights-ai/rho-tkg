@@ -1,0 +1,10 @@
+--- FAIL: TestPropertyIndexElementsOnDisk (0.17s)
+    --- FAIL: TestPropertyIndexElementsOnDisk/badger_every_label (0.04s)
+        property_index_elements_test.go:317: Elements on disk: graph: create property index: an elements index needs the RAM index, not PropertyIndexOnDisk: graph: store does not support this capability
+    --- FAIL: TestPropertyIndexElementsOnDisk/badger_label_listed (0.04s)
+        property_index_elements_test.go:317: Elements on disk: graph: create property index: an elements index needs the RAM index, not PropertyIndexOnDisk: graph: store does not support this capability
+    --- FAIL: TestPropertyIndexElementsOnDisk/tiered_label_listed (0.09s)
+        property_index_elements_test.go:317: Elements on disk: graph: create property index on shard "2026-W45": graph: create property index: an elements index needs the RAM index, not PropertyIndexOnDisk: graph: store does not support this capability
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.178s
+FAIL

@@ -146,7 +146,9 @@ type Config struct {
 	// label leaves loses its marker. The first marker raises the store format marker
 	// to 12. Ignored with PropertyIndexOnDisk (every label). With either option a
 	// composite index of a label kept on disk keeps its entries in 0x0C as well
-	// (COMPDISK, badgerstore_composite_disk.go; format marker 15).
+	// (COMPDISK, badgerstore_composite_disk.go; format marker 15). With either
+	// option an Elements index keeps an entry per distinct list element, current
+	// and member, beside the scalars' (ELEMDISK); RangeCounts stays refused.
 	PropertyIndexOnDiskLabels []string
 	// LabelNames names the labels of PropertyIndexOnDiskLabels while the store opens
 	// (tiered passes its registry); nil reads the registry this store persisted
@@ -167,8 +169,8 @@ type Config struct {
 	// property-key prefix) whose 0x0A entries carry an upper bound on their
 	// node's effective valid end, so a lookup with QueryOpts.ValidEndAfter prunes
 	// without reading the rows (VALIDENDPRUNE). A definition in RAM is not
-	// pruned. A built marker per definition; the first raises the format marker
-	// to 14.
+	// pruned, nor is an Elements one (an element's entry bounds no row). A built
+	// marker per definition; the first raises the format marker to 14.
 	PropertyIndexValidEnd []storecontract.PropertyIndexValidEnd
 	// RelTypeNames names the types of RelPropertyIndexOnDiskTypes while the store
 	// opens (tiered passes its registry); nil reads the registry this store
@@ -1897,7 +1899,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		entityDisk = bs.planEntityIndexOpen(txn)
 		bs.nodeMemberDisk = make(map[indexpkg.PropertyIndexKey]struct{})
 		for key := range propDisk.disk {
-			if entityDisk.place(bs, false, key.LabelToken, key.PropertyKey) {
+			_, elements := propDisk.elements[key]
+			if entityDisk.place(bs, false, key.LabelToken, key.PropertyKey, elements) {
 				bs.nodeMemberDisk[key] = struct{}{} // its member entries answer its pinned reads
 			}
 		}
@@ -1922,7 +1925,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				_, rebuild := propDisk.rebuild[def.PropertyKey]
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if onDisk {
-					idx = indexpkg.NewPropertyIndexOnDisk()
+					idx = indexpkg.NewPropertyIndexOnDisk(def.Elements)
 				}
 				if entries, ok := img.takeNodeProp(key); ok && !onDisk {
 					installValueIDsKept(entries, func(id int64) bool { return bs.keepNodeEntry(img, id) }, idx.AddKey)
@@ -1957,11 +1960,11 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						// Disk mode: do NOT populate idx.Entries/numBuckets (entries stay
 						// off the RAM heap); collect the rebuild's op instead (the
 						// definition's key is rebuilt: rebuild).
-						if valueKey, found := n.IndexablePropertyValueKey(def.PropertyKey); found {
+						forEachDiskValueKey(n, def.PropertyKey, def.Elements, func(valueKey string) {
 							if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, rawID, writeOpSet); ok {
 								propDisk.ops = append(propDisk.ops, op)
 							}
-						}
+						})
 					}
 					fillFromBuild(build, idx.AddKey)
 				}
@@ -2007,12 +2010,12 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						return fmt.Errorf("graph: load relationship property index definition type %d property %q: an elements index needs the RAM index, not RelPropertyIndexOnDiskTypes: %w",
 							def.RelTypeToken, def.PropertyKey, storecontract.ErrCapabilityNotSupported)
 					}
-					onDisk = entityDisk.place(bs, true, def.RelTypeToken, def.PropertyKey)
+					onDisk = entityDisk.place(bs, true, def.RelTypeToken, def.PropertyKey, false)
 				}
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if onDisk {
 					// RELDISK: its entries are in 0x0C (built, or built after this View).
-					idx = indexpkg.NewPropertyIndexOnDisk()
+					idx = indexpkg.NewPropertyIndexOnDisk(false)
 					img.takeRelProp(key)
 				} else if entries, ok := img.takeRelProp(key); ok {
 					installValueIDsKept(entries, func(id int64) bool { return bs.keepRelEntry(img, id) }, idx.AddKey)

@@ -3,6 +3,7 @@ package graph_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -270,18 +271,117 @@ func TestPropertyIndexElementsContains(t *testing.T) {
 		})
 	}
 
-	t.Run("on-disk refused", func(t *testing.T) {
-		g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerDir: t.TempDir(), PropertyIndexOnDisk: true})
+}
+
+// ELEMDISK (sigma's PAGEBLOB blocks): an Elements index on a label whose
+// property indexes are on disk answers as the RAM one, at current, TxPin,
+// TxAt+ValidAt and interval reads, before and after a reopen, on badger (every
+// label, or the label listed) and tiered.
+func TestPropertyIndexElementsOnDisk(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, b := range []struct {
+		name  string
+		label string
+		open  func(t *testing.T, dir string) *graphpkg.Graph
+	}{
+		{"badger every label", "Derived", func(t *testing.T, dir string) *graphpkg.Graph {
+			g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerDir: dir, PropertyIndexOnDisk: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return g
+		}},
+		{"badger label listed", "Derived", func(t *testing.T, dir string) *graphpkg.Graph {
+			g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerDir: dir, PropertyIndexOnDiskLabels: []string{"Derived"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return g
+		}},
+		{"tiered label listed", "Ref", func(t *testing.T, dir string) *graphpkg.Graph {
+			ts, err := tiered.New(tiered.Config{DataDir: dir, RefLabels: []string{"Ref"}, ShardWindow: 7 * 24 * time.Hour, PropertyIndexOnDiskLabels: []string{"Ref"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, Store: ts})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return g
+		}},
+	} {
+		t.Run(b.name, func(t *testing.T) {
+			dir := t.TempDir()
+			g := b.open(t, dir)
+			if err := g.Index().CreatePropertyWithOptions(b.label, "ov_support", elementsOpts); err != nil {
+				t.Fatalf("Elements on disk: %v", err)
+			}
+			f := writeElementsFixture(t, g, b.label)
+			checkElementsFixture(t, g, b.label, f)
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+			g = b.open(t, dir)
+			defer g.Close()
+			checkElementsFixture(t, g, b.label, f)
+			d7, err := g.Nodes().Add(ctx, []string{b.label}, map[string]any{"ov_support": []int64{777, 778}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := g.Nodes().ByLabelAndProperty(b.label, "ov_support", int64(778), storepkg.QueryOpts{})
+			if err != nil || !slices.Equal(elemNodeIDs(got), elemWant(d7)) {
+				t.Errorf("after reopen, 778: %v, %v; want [%d]", elemNodeIDs(got), err, d7.ID())
+			}
+			if err := g.Nodes().Delete(ctx, d7.ID()); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := g.Nodes().ByLabelAndProperty(b.label, "ov_support", int64(777), storepkg.QueryOpts{}); err != nil || len(got) != 0 {
+				t.Errorf("after delete, 777: %v, %v; want none", elemNodeIDs(got), err)
+			}
+		})
+	}
+
+	// A definition made on disk after its rows: the create writes every row's
+	// element entries, current and member.
+	t.Run("index after the rows", func(t *testing.T) {
+		g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerDir: t.TempDir(), PropertyIndexOnDiskLabels: []string{"Derived"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer g.Close()
-		if err := g.Index().CreatePropertyWithOptions("Derived", "ov_support", elementsOpts); !errors.Is(err, graphpkg.ErrCapabilityNotSupported) {
-			t.Fatalf("Elements on PropertyIndexOnDisk: %v, want ErrCapabilityNotSupported", err)
+		f := writeElementsFixture(t, g, "Derived")
+		if err := g.Index().CreatePropertyWithOptions("Derived", "ov_support", elementsOpts); err != nil {
+			t.Fatal(err)
 		}
-		if has, _ := g.Index().HasProperty("Derived", "ov_support"); has {
-			t.Fatal("an index was left behind")
+		checkElementsFixture(t, g, "Derived", f)
+	})
+
+	// A definition made in RAM moves to disk when its label joins the list
+	// (the open rebuilds its entries) and back when it leaves.
+	t.Run("label joins and leaves", func(t *testing.T) {
+		dir := t.TempDir()
+		open := func(disk []string) *graphpkg.Graph {
+			t.Helper()
+			g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerDir: dir, PropertyIndexOnDiskLabels: disk})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return g
 		}
+		g := open(nil)
+		if err := g.Index().CreatePropertyWithOptions("Derived", "ov_support", elementsOpts); err != nil {
+			t.Fatal(err)
+		}
+		f := writeElementsFixture(t, g, "Derived")
+		for _, disk := range [][]string{{"Derived"}, nil, {"Derived"}} {
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+			g = open(disk)
+			checkElementsFixture(t, g, "Derived", f)
+		}
+		_ = g.Close()
 	})
 }
 
@@ -290,55 +390,59 @@ func TestPropertyIndexElementsContains(t *testing.T) {
 func TestPropertyIndexElementsTieredEventShardAndArchive(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Ref"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	g, err := graphpkg.New(graphpkg.Config{Store: ts})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer g.Close()
-	if err := g.Index().CreatePropertyWithOptions("Ref", "ov", elementsOpts); err != nil {
-		t.Fatal(err)
-	}
-	ev, err := g.Nodes().Add(ctx, []string{"Ev", "Ref"}, map[string]any{"ov": []int64{101, 102}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ar, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{"ov": []int64{101, 103}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ref, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{"ov": int64(101)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	pin := ref.Temporal().TxFrom
-	time.Sleep(3 * time.Millisecond)
-	if err := ts.ArchiveNode(ar.ID()); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []struct {
-		name  string
-		value any
-		opts  storepkg.QueryOpts
-		want  []types.NodeID
-	}{
-		{"current 101", int64(101), storepkg.QueryOpts{}, elemWant(ev, ar, ref)},
-		{"current 102 (event shard)", int64(102), storepkg.QueryOpts{}, elemWant(ev)},
-		{"current 103 (archive)", int64(103), storepkg.QueryOpts{}, elemWant(ar)},
-		{"hot depth 103", int64(103), storepkg.QueryOpts{Depth: storepkg.DepthHot}, nil},
-		{"TxPin 102", int64(102), storepkg.QueryOpts{TxPin: pin}, elemWant(ev)},
-		{"TxPin 103", int64(103), storepkg.QueryOpts{TxPin: pin}, elemWant(ar)},
-		{"TxPin 101", int64(101), storepkg.QueryOpts{TxPin: pin}, elemWant(ev, ar, ref)},
-	} {
-		got, err := g.Nodes().ByLabelAndProperty("Ref", "ov", c.value, c.opts)
-		if err != nil {
-			t.Fatalf("%s: %v", c.name, err)
-		}
-		if ids := elemNodeIDs(got); !slices.Equal(ids, c.want) {
-			t.Errorf("%s: got %v, want %v", c.name, ids, c.want)
-		}
+	for _, disk := range [][]string{nil, {"Ref"}} { // ELEMDISK: the index on disk too
+		t.Run(fmt.Sprintf("disk %v", disk), func(t *testing.T) {
+			ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Ref"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1, PropertyIndexOnDiskLabels: disk})
+			if err != nil {
+				t.Fatal(err)
+			}
+			g, err := graphpkg.New(graphpkg.Config{Store: ts})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer g.Close()
+			if err := g.Index().CreatePropertyWithOptions("Ref", "ov", elementsOpts); err != nil {
+				t.Fatal(err)
+			}
+			ev, err := g.Nodes().Add(ctx, []string{"Ev", "Ref"}, map[string]any{"ov": []int64{101, 102}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ar, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{"ov": []int64{101, 103}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ref, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{"ov": int64(101)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			pin := ref.Temporal().TxFrom
+			time.Sleep(3 * time.Millisecond)
+			if err := ts.ArchiveNode(ar.ID()); err != nil {
+				t.Fatal(err)
+			}
+			for _, c := range []struct {
+				name  string
+				value any
+				opts  storepkg.QueryOpts
+				want  []types.NodeID
+			}{
+				{"current 101", int64(101), storepkg.QueryOpts{}, elemWant(ev, ar, ref)},
+				{"current 102 (event shard)", int64(102), storepkg.QueryOpts{}, elemWant(ev)},
+				{"current 103 (archive)", int64(103), storepkg.QueryOpts{}, elemWant(ar)},
+				{"hot depth 103", int64(103), storepkg.QueryOpts{Depth: storepkg.DepthHot}, nil},
+				{"TxPin 102", int64(102), storepkg.QueryOpts{TxPin: pin}, elemWant(ev)},
+				{"TxPin 103", int64(103), storepkg.QueryOpts{TxPin: pin}, elemWant(ar)},
+				{"TxPin 101", int64(101), storepkg.QueryOpts{TxPin: pin}, elemWant(ev, ar, ref)},
+			} {
+				got, err := g.Nodes().ByLabelAndProperty("Ref", "ov", c.value, c.opts)
+				if err != nil {
+					t.Fatalf("%s: %v", c.name, err)
+				}
+				if ids := elemNodeIDs(got); !slices.Equal(ids, c.want) {
+					t.Errorf("%s: got %v, want %v", c.name, ids, c.want)
+				}
+			}
+		})
 	}
 }
