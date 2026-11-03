@@ -1,0 +1,41 @@
+# UNIQUELOOK mutation sweep on 084c2195 (main 51f4f35d + red + implementation), 2026-11-03,
+# load average 20-44 (shared machine). Each mutation applied alone, then reverted
+# (grep "// MUTATION" pkg/ empty after every run). "sites" = mutated sites found in the tree.
+# M0-M3, full tier:
+#   go test -short -count=1 -run 'Unique|GetOrCreate|Replica|Import|AddNodes' ./pkg/graph/
+#   go test -short -count=1 -run 'Unique|Owner|GetOrCreate|AddMany|AddNodes' ./pkg/graph/internal/core/
+# M4-M13, targeted first (rule from the main session, 3 Nov; a kill there is enough):
+#   go test -short -count=1 -run 'TestUniqueLook|TestUnique_Replica|TestUnique_Batch|TestUniqueTiered_Batch' ./pkg/graph/
+#   M13 also: go test -short -count=1 -run 'AddMany|AddNodes' ./pkg/graph/internal/core/
+# An earlier run on the pre-rebase base (a6245ca0) agreed, except M12, which survived until
+# TestUniqueLookCascadeClaims was added.
+
+M0-none (sites 0): SURVIVED (baseline green)
+M1-skip-row-check (claimBacked trusts any live claimant, value and label unchecked): KILLED by TestUniqueLookValueChangeAndDelete TestUniqueLookClaimWithoutRow TestUniqueLookSeedReplacesStrayClaim TestUnique_HistoryDuplicatesAreLegal TestUnique_SupersessionFrees TestUniqueTiered_ReferenceLabel_CreateViolateFree TestUniqueClaims_StoreWriteFailureWithdrawsClaim TestUniqueEventLabelStaleClaims
+M2-claim-after-row (kernel claim off; claim after putGeneratedNode, its error dropped): KILLED by TestUniqueLookValueChangeAndDelete TestUniqueLookClaimWithoutRow TestUniqueTiered_ReferenceLabel_CreateViolateFree TestUniqueClaims_StoreWriteFailureWithdrawsClaim TestUniqueEventLabelStaleClaims
+M3-keep-reference-gate (no owner index for tiered reference labels): KILLED by TestUniqueLookNoPropertyIndexSeeks TestUniqueLookValueChangeAndDelete
+M4-keep-depth-gate (owner index at DepthAll only): KILLED by TestUniqueLookNoPropertyIndexSeeks
+M5-skip-seeding (mark ready without claims): KILLED by TestUniqueLookSeedsExistingRows TestUniqueLookSeedsAtOpen TestUniqueLookSeedReplacesStrayClaim TestUniqueLookDuplicateStandsDown TestUnique_ReplicaApplyDoesNotEnforce
+M6-no-batch-claim (partitionBatchNodesByUnique claims nothing): KILLED by TestUniqueLookSeedsExistingRows TestUniqueTiered_BatchAndTxDoors TestUnique_BatchInternalDuplicate
+M7-no-import-claim (claimOwnerIndexForRow a no-op: import, apply, rollbacks): KILLED by TestUniqueLookImportClaims TestUniqueLookDuplicateStandsDown TestUnique_ReplicaApplyDoesNotEnforce
+M8-no-open-seed (ensureOwnerIndexesAtOpen not called): KILLED by TestUniqueLookSeedsAtOpen
+M9-seed-keeps-unbacked (seed keeps any existing claim): KILLED by TestUniqueLookSeedReplacesStrayClaim TestUniqueLookDuplicateStandsDown
+M10-seed-ignores-duplicate (seed marks ready over two holders): KILLED by TestUniqueLookDuplicateStandsDown
+M11-apply-ignores-duplicate (apply/import keep the index over a second holder): KILLED by TestUniqueLookDuplicateStandsDown TestUnique_ReplicaApplyDoesNotEnforce
+M12-no-cascade-claim (SetNodeVersionInterval claims nothing): KILLED by TestUniqueLookCascadeClaims
+M13-no-addnodes-claim (BATCHADD's AddNodes pass claims nothing): KILLED by TestAddNodesUniqueTieredEventLabel TestAddNodesUniqueConcurrentOneWinner TestAddNodesUniqueRefusesWholeCall
+
+Result: 13 of 13 killed.
+
+# Review round (Fable on f14a1668), on 85cb0b91 + the drop-walk test, 2026-11-03, load average 35-50.
+# Targeted tests per mutant (speed rule); the whole tier ran green on 85cb0b91 before the sweep.
+R1-ref-shard-no-sync (BeforeFlushRows on non-reference shards only, F1): KILLED by TestOwnerIndexSyncedBeforeDurableReferenceRows
+R2-tiered-no-marker (tiered declaration raises no marker, F2): KILLED by TestOwnerIndexDeclarationRefusedByOlderRelease
+R3-declare-before-validation (owner index declared before the existing data validated, F3): KILLED by TestUniqueLookFailedCreateUniqueLeavesMarker
+R4-seed-one-page (the seed reads one page only, F4): KILLED by TestOwnerIndexSeedPagesAndLogs
+R5-seed-no-progress-log (no progress line, F4): KILLED by TestOwnerIndexSeedPagesAndLogs
+R6-open-seed-error-silent (the open drops a failed seed's error, F4): KILLED by TestOwnerIndexSeedFailureAtOpenLogged
+R7-seed-error-marks-ready (seed row errors ignored, index marked ready over two holders): KILLED by TestOwnerIndexSeedFailureAtOpenLogged
+R8-drop-no-ddl-order (DropUniqueOwnerIndex without ddlMu, F6): SURVIVED the first sweep; TestOwnerIndexDropWalkHoldsOffRedeclare added; KILLED by it
+
+Result: 8 of 8 killed.

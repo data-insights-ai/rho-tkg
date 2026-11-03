@@ -403,6 +403,9 @@ func (c *Core) applyNodePutLocked(body storeutil.NodePutBody, rec storepkg.Chang
 		return err
 	}
 	c.noteAppliedTxFrom(n.Temporal())
+	if err := c.claimOwnerIndexForRow(n); err != nil { // before the row (UNIQUELOOK)
+		return err
+	}
 	id := n.InternalID()
 	local, gerr := c.store.GetNode(id)
 	if errors.Is(gerr, storepkg.ErrNodeNotFound) {

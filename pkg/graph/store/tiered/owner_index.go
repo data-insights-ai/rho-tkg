@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -30,6 +31,10 @@ import (
 // from the rows that existed at the declaration: lookups may trust it);
 // 'U' label len(key) key value -> the owner's ID (8 bytes, big-endian).
 const ownerIndexDir = "index"
+
+// ownerIndexMarkerMeta is the reference shard's meta entry whose durable
+// write raises its format marker to 16 at the first declaration (UNIQUELOOK).
+const ownerIndexMarkerMeta = "unique_owner_index"
 
 // ErrUniqueOwnerIndexNotDeclared is returned for a claim on a (label, key)
 // without an owner index.
@@ -134,6 +139,17 @@ func (ts *Store) ownerIndexLocked(create bool) (*ownerIndex, error) {
 func (ts *Store) DeclareUniqueOwnerIndex(label uint16, key string) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
+	}
+	if !ts.UniqueOwnerIndexDeclared(label, key) {
+		// A release before UNIQUELOOK writes reference-label rows without
+		// claiming them, so a later open trusting the ready index would miss
+		// their holders: the reference shard's marker goes to 16 first, so
+		// such a release refuses the store. One-way. Raised before
+		// ownerIdxMu: the durable meta flush runs syncOwnerIndexBeforeRows,
+		// which takes it.
+		if err := ts.MetaSetDurableRaising(ownerIndexMarkerMeta, []byte{1}, storeutil.UniqueOwnerStoreFormatVersion); err != nil {
+			return fmt.Errorf("graph: declare owner index: format marker: %w", err)
+		}
 	}
 	ts.ownerIdxMu.Lock()
 	defer ts.ownerIdxMu.Unlock()

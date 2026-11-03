@@ -851,6 +851,9 @@ func restoreMergeNode(c *Core, id types.NodeID, snap mergeNodeSnap) error {
 		}
 	}
 	if snap.current != nil {
+		if err := c.claimOwnerIndexForRow(snap.current); err != nil {
+			return err
+		}
 		if err := c.store.PutNode(snap.current); err != nil {
 			return err
 		}

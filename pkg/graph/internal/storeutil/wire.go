@@ -107,7 +107,7 @@ const StagedFlushStoreFormatVersion = 9
 
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = CompositeDiskStoreFormatVersion
+const MaxReadableStoreFormatVersion = UniqueOwnerStoreFormatVersion
 
 // OpenVoidStoreFormatVersion is the store-level marker of a directory that
 // holds an open-ended void piece (OPENEXCISE, OpenVoidWireFormatVersion rows).

@@ -2472,6 +2472,7 @@ func New(config Config) (*Core, error) {
 	if err := c.loadUniqueForeverOwners(); err != nil {
 		return nil, err
 	}
+	c.ensureOwnerIndexesAtOpen()
 
 	// Rehydrate the history-compaction watermark (ADR-0001). Fail closed on a
 	// corrupt blob — a silently-dropped watermark would let a scan below

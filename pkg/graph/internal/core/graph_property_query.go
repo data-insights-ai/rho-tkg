@@ -142,10 +142,8 @@ func (n *NodeOps) IDsByLabelAndPropertyValues(label, key string, values []any, o
 			if !ok {
 				return nil
 			}
-			if opts.Depth == storepkg.DepthAll {
-				if _, owner := c.readyOwnerIndex(tok, key); owner {
-					return nil
-				}
+			if _, owner := c.ownerIndexAnswers(tok, key, opts); owner {
+				return nil
 			}
 			var err error
 			ids, answered, err = c.propertyIDsQuery.NodeIDsByLabelAndPropertyKeys(tok, key, keysOf(forms), opts)
