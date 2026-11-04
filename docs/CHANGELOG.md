@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.104.0] - 2026-11-04
+
 ### Changed
 
 - **VALUETHRESH** (ai-soc R3, sigma's 2-day budget run: +900 s of badger compaction on 64 KiB page blocks; a minor:
@@ -42,6 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   apart 27-31 -> 17-22 us per call (a `Get` per ID 13-17 us), 64 such IDs 429-503 -> 274-311 us (`Get`s 250-269 us);
   adjacent rows unchanged (64 IDs 103-110 us, `Get`s 191-222 us); 4 adjacent rows with far IDs 13-15 -> 14-16 us
   (`Get` cost). Tests `TestLendSorted*` in `badgerstore_lend_cost_test.go`; `tasks/evidence/LENDCOST/`.
+  ai-soc's round-4 gate (2-day tiered budget arm, with VALUETHRESH): LendByIDs 94.5 s (v4.102.0 115, v4.103.0 629),
+  user CPU 4,302 s (4,921, 5,868), 1,753 bars equal to paging off.
 
 ## [4.103.0] - 2026-11-04
 

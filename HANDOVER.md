@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-11-04: latest tag v4.103.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-11-04: latest tag v4.104.0; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,13 +7,12 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **State of 4 Nov night, read this first** (next steps: `tasks/todo.md`). Latest tag v4.103.0 (round 3: TIERLEND,
-  HEADLEND, HISTDECODE, HISTTRIM, CASCADEMETA; a minor), cut on a release branch from 0156a78c, the code ai-soc's
-  round-3 gate ran green (4 arms, 260 bars equal; reason wall 12-29 % below v4.102.0's gate). Measuring is ai-soc's
+- **State of 4 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.104.0 (round 4: VALUETHRESH,
+  LENDCOST; a minor), tagged on main; ai-soc's round-4 gate on 7e4399c4 + sigma c2ce628f3 green (LendByIDs 94.5 s
+  vs v4.102.0's 115). Measuring is ai-soc's
   combined run on main's tip, not per item (René via ai-soc). ai-soc names its quiet windows: then no ci-docker,
-  probe, bench or long test here. Flux full run k11032230 (since 3 Nov 22:27) runs on v4.102.0 + sigma v0.11.160.
-  - **On main, unreleased:** LENDCOST (fix of TIERLEND's v4.103.0 regression), VALUETHRESH (a minor; reviewed twice; sigma's 2-day number: +900 s of badger compaction
-    on 64 KiB page blocks; sigma sets 32 KiB; next round's lever, waits for ai-soc's gate). No branch open.
+  probe, bench or long test here.
+  - **On main, unreleased:** nothing. No branch open.
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Fable agent:** René wants a read-only Fable review after each batch of changes; it does not survive a session:
@@ -131,6 +130,12 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   mutations caught. ci-docker green, consumers clean, scale probe unchanged; tag CI and main green; ai-soc (pins it
   for the Flux run) and sigma notified. Open: the range walks, the purge's adjacency walk, history truncation,
   the purge token walks, rel purge candidates (todo ITERTOMB). Tags held until ai-soc's run ships.
+- **v4.104.0** (round 4, a minor: VALUETHRESH adds `ValueThreshold` to the configs; LENDCOST fixes v4.103.0's tiered
+  lend regression): tagged on main, which is 7e4399c4 + VLOGCLOSED (the first ci-docker run panicked in VALUETHRESH's
+  GC pass on a DB a crash test closed under the store; the pass now returns) + the release commit. ai-soc's round-4
+  gate on 7e4399c4 + sigma c2ce628f3 green (2-day budget arm: LendByIDs 94.5 s, user CPU 4,302 s, 1,753 bars equal;
+  60-min 4 arms 260 bars equal; masked cycles pass); consumers build and vet clean; ci-docker green on the second run;
+  scale probe level with v4.103.0 (149 B/entity insert, one outlier of 12; 170 B reopen).
 - **v4.103.0** (round 3, a minor: TIERLEND and HEADLEND add exported names; HISTDECODE, HISTTRIM, CASCADEMETA
   fixes): released from branch `release-v4.103.0` (0156a78c + the release commit); ai-soc's round-3 gate on 0156a78c +
   sigma 9e3ff88e8 green; consumers build and vet clean (engine with GOTOOLCHAIN=go1.27.3); ci-docker green;

@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.103.0 (2026-11-04). René's open decisions are the items that wait for
+What rho does next, in order. Last release: v4.104.0 (2026-11-04). René's open decisions are the items that wait for
 him, each with my default. State, consumers and the numbered backlog: `HANDOVER.md`; rules: `docs/CONTRIBUTING.md`
 § Rules digest. Done work: `docs/CHANGELOG.md`, under the same tag.
 
@@ -13,15 +13,10 @@ Each item: one sentence, then when it is done and what it waits for.
 - **REOPEN** (René via ai-soc, 31 Oct: "it should mostly be read from rho for sigma chases and traces") — ai-soc runs the reopen proof on the pinned pair; no rho door or tag waited on. Measured (FIRSTTOUCH, `tasks/evidence/FIRSTTOUCH/`, one run each, synthetic): per node index 8-12 µs, HasHistory 4-7 µs, timeline 4-5 µs at 200 k and 2 M nodes; presence build 31 and 319 ms; open 193 ms and 3.7 s; page cache dropped, first batch 85 µs a node, then 16 µs, open 5.0 s. k10302100: committedRowStamps about 231 s CPU, presence build 3 s; cutting the re-read needs LISTREAD, since liveness from the ID index would hide a corrupt row (pinned by `has_history_live_test.go`). Done when ai-soc's reopen is in; a fix only if it shows slow first cuts. Waits for ai-soc's run. Open look: what sigma's type scans and property probes open across cold shards at default depth; open-time growth (19x for 10x nodes, one run).
 - **TIMEWINDOW** (minor, deferred) — reads bounded by a mint-time range. Serves one-shot evaluation only (ForEachRelEffectiveAtNodes, no time bound, no Depth); a session's maintainer does not reach it. If built: half-open mint range, window intersected with Depth, hot shard always included, caller translates valid to mint. Done when ai-soc and sigma say whether one-shots matter. Waits for the first run after COLDEDGE is in a tag; metric lead `aisoc_sigma_edge_shard_checkouts_total`. Sigma's other candidate: a ValidEndAfter-style bound on ByTypeAndProperty.
 - **ASOFWALK later steps** (STATEREC round) — step 1 delegates to the owner shard; next a TxPin batch by IDs, then a cross-shard merge; TxAt stays the skeleton walk with an O(1) belief watermark for a pin at or after current. Done when sigma's 50+ cuts of worst churn bench flat. Waits for the round; parked on the crash path with WHOLEROW and DEPTHLOOK.
-- **TIERLEND** merged 3 Nov (unreleased; a minor: tiered `Store.LendNodesSorted`/`LendRelationshipsSorted`). PROJREAD's
-  door dropped on sigma's answer (`tasks/evidence/PROJREAD/design.txt`). Done when released.
-- **LENDCOST** (ai-soc 4 Nov; a fix, regression of TIERLEND in v4.103.0) — the tiered 2-day budget arm costs +19 % user
-  CPU: LendByIDs 115 -> 629 s, badger LendNodesSorted Seeking through every level per sparse miss (sigma: about 4.3
-  IDs a call). Merged 4 Nov: tiered fills its caches again; badger Gets sparse misses. Done when no slower than
-  v4.102.0's per-ID path in ai-soc's gate; fallback: that path for misses. Blocks the next tag.
-- **VALUETHRESH** merged 3 Nov after v4.103.0 (unreleased; a minor: `ValueThreshold` on the configs). sigma sets
+- **VALUETHRESH** released in v4.104.0 (`ValueThreshold` on the configs). sigma sets
   32 KiB on tiered (its 79 k DerivedPage blocks of 64 KiB: +900 s of the 2-day budget run's +2,640 s CPU is badger
-  compacting them). Done when ai-soc's gate and sigma's 2-day budget run on it show the compaction CPU gone.
+  compacting them). ai-soc's round-4 gate: 2-day budget arm user CPU 4,302 s (v4.102.0 4,921). Done when sigma's
+  profile of a 2-day budget run on it shows the compaction CPU gone. Waits for sigma.
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — P3 HISTDECODE,
   HEADLEND (a minor) and P1 HISTTRIM (a patch: the tx snapshot copies only rows at or above the current version; 99-198
   copies down to 0-2) merged 3 Nov, unreleased. CASCADEMETA merged 3 Nov (a cascade miss plans from skeletons:
