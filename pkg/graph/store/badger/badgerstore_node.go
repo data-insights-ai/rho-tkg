@@ -967,6 +967,7 @@ func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.No
 	// Node exists in-memory but not in cache (flushed + evicted from LRU).
 	// Read from Badger without holding any lock.
 	bs.nodeRowDecodes.Add(1)
+	bs.nodeRowPointReads.Add(1)
 	err = bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {

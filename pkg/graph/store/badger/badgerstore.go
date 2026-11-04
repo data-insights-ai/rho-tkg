@@ -844,6 +844,10 @@ type Store struct {
 	// nodeRowDecodes counts node rows read and decoded from badger by the
 	// point and scan reads (NodeRowDecodesForTest, ELEMPROBE).
 	nodeRowDecodes atomic.Int64
+	// nodeRowPointReads counts the node rows among them read by a read
+	// transaction and point Get of their own (NodeRowPointReadsForTest,
+	// LISTREAD: a page reads through one forward scan).
+	nodeRowPointReads atomic.Int64
 
 	// Index-rebuild diagnostics: node entries loadIndexes tolerated as missing/corrupt,
 	// surfaced via IndexRebuildStats.

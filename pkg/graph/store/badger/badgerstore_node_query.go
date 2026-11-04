@@ -173,6 +173,7 @@ func (bs *Store) forEachNodeBulk(ids []types.NodeID, fn func(*types.Node) bool) 
 			continue // deleted / orphaned index entry
 		}
 		var decoded *types.Node
+		bs.nodeRowDecodes.Add(1)
 		derr := item.Value(func(val []byte) error {
 			var w storepkg.NodeWire
 			if err := storepkg.SafeUnmarshal(val, &w); err != nil {

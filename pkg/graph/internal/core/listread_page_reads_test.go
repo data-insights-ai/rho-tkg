@@ -13,8 +13,9 @@ import (
 // ByLabelAndProperties or ByLabelAndProperty page reads its rows through the
 // store's forward scan, not a point read and decode per row (sigma's restore:
 // 75 % of a cold page was per-row Gets): the store's per-row point-read count
-// stays 0 while every row of the label comes back, in ID order, once.
-// Mutation: the per-row prefetch loop reads 300 rows by point read.
+// stays 0 while every row of the label is decoded and comes back, in ID
+// order, once. Mutation: the per-row prefetch loop reads 300 rows by point
+// read.
 func TestListReadPagesReadRowsInOneScan(t *testing.T) {
 	dir := t.TempDir()
 	open := func() (*Core, *badgerpkg.Store) {
@@ -58,7 +59,7 @@ func TestListReadPagesReadRowsInOneScan(t *testing.T) {
 		},
 	}
 	for name, page := range doors {
-		before := bs.NodeRowDecodesForTest()
+		before, decoded := bs.NodeRowPointReadsForTest(), bs.NodeRowDecodesForTest()
 		var got []types.NodeID
 		var after types.EntityID
 		for {
@@ -82,8 +83,11 @@ func TestListReadPagesReadRowsInOneScan(t *testing.T) {
 				t.Fatalf("%s: row %d is %d, want %d (ID order, each once)", name, i, got[i], want[i])
 			}
 		}
-		if reads := bs.NodeRowDecodesForTest() - before; reads != 0 {
+		if reads := bs.NodeRowPointReadsForTest() - before; reads != 0 {
 			t.Errorf("%s: %d rows read by point read, want 0 (one forward scan per page)", name, reads)
+		}
+		if d := bs.NodeRowDecodesForTest() - decoded; d != n {
+			t.Errorf("%s: %d rows decoded from badger, want %d (the cache holds none)", name, d, n)
 		}
 	}
 }
