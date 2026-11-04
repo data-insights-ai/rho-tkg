@@ -12,7 +12,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   round-3 gate ran green (4 arms, 260 bars equal; reason wall 12-29 % below v4.102.0's gate). Measuring is ai-soc's
   combined run on main's tip, not per item (René via ai-soc). ai-soc names its quiet windows: then no ci-docker,
   probe, bench or long test here. Flux full run k11032230 (since 3 Nov 22:27) runs on v4.102.0 + sigma v0.11.160.
-  - **On main, unreleased:** VALUETHRESH (a minor; reviewed twice; sigma's 2-day number: +900 s of badger compaction
+  - **On main, unreleased:** LENDCOST (fix of TIERLEND's v4.103.0 regression), VALUETHRESH (a minor; reviewed twice; sigma's 2-day number: +900 s of badger compaction
     on 64 KiB page blocks; sigma sets 32 KiB; next round's lever, waits for ai-soc's gate). No branch open.
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.

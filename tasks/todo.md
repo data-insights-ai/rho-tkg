@@ -17,7 +17,7 @@ Each item: one sentence, then when it is done and what it waits for.
   door dropped on sigma's answer (`tasks/evidence/PROJREAD/design.txt`). Done when released.
 - **LENDCOST** (ai-soc 4 Nov; a fix, regression of TIERLEND in v4.103.0) — the tiered 2-day budget arm costs +19 % user
   CPU: LendByIDs 115 -> 629 s, badger LendNodesSorted Seeking through every level per sparse miss (sigma: about 4.3
-  IDs a call). On a branch with a bench (sparse and dense, L0-L3, against Txn.Get per ID). Done when no slower than
+  IDs a call). Merged 4 Nov: tiered fills its caches again; badger Gets sparse misses. Done when no slower than
   v4.102.0's per-ID path in ai-soc's gate; fallback: that path for misses. Blocks the next tag.
 - **VALUETHRESH** merged 3 Nov after v4.103.0 (unreleased; a minor: `ValueThreshold` on the configs). sigma sets
   32 KiB on tiered (its 79 k DerivedPage blocks of 64 KiB: +900 s of the 2-day budget run's +2,640 s CPU is badger

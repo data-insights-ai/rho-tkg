@@ -25,7 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   lent per ID through badger's `LendNode`, which promotes a hit and keeps a row it reads, and callers lend the same
   rows round after round; TIERLEND moved it onto badger's batch lend, which keeps round 7's scan rule (no promotion,
   no fill). Tiered now reads each pinned shard's IDs with `LendNode` / `LendRelationship` again (routing, one move
-  lock and one pin per shard as TIERLEND); plain badger's batch lend keeps the scan rule. A repeated call of 4 IDs on
+  lock and one pin per shard as TIERLEND); plain badger's batch lend keeps the scan rule. The price is v4.102.0's:
+  a large tiered lend (a full-store pass) fills the caches and may evict hot rows, and a hit takes the cache's write
+  lock to promote, so parallel lends on one shard serialize per hit. A repeated call of 4 IDs on
   the hot shard 6.6-7.7 -> 0.4-0.5 us, of 64 IDs 110-124 -> 3.9-4.1 us; a first call of 64 cold IDs 137-143 ->
   156-171 us (a read transaction per miss) (`BenchmarkTieredLendSortedRepeat`; `TestTieredLendSortedFillsTheCache`,
   `TestTieredLendSortedFillSkipsAFlushDuringTheRead`). (2) Badger's `LendNodesSorted` / `LendRelationshipsSorted` read

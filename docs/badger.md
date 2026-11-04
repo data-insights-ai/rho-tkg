@@ -440,8 +440,10 @@ Badger features rho does not use yet that fit a rho need, and one risk. Each is 
    flush's parts.
 3. **Per-shard caches (CACHE)**: `CacheMaxCost` resizes an open DB's block cache, so the tiered store can share one
    budget across its open shards; `BlockCacheMetrics` shows the hit rate.
-4. **Point reads (GETWALK)**: a forward walk over sorted IDs replaces per-ID `Get`s; `NewKeyIterator` has no bloom
-   advantage over `Get` (both check the filter per table, section 3).
+4. **Point reads (GETWALK)**: a forward walk over sorted IDs replaces per-ID `Get`s only along a run of adjacent rows;
+   a sparse target is a `Get`, since a `Seek` merges every table of every level where `Get` skips tables by bloom
+   filter (LENDCOST: `scanSnapshot.lendAfterMiss`); `NewKeyIterator` has no bloom advantage over `Get` (both check the
+   filter per table, section 3).
 5. **Iterator pruning (ITERPREFIX, PREFETCH)**: `IteratorOptions.Prefix` skips tables outside the prefix;
    `PrefetchValues` false avoids a goroutine per item.
 6. **Admin views**: `Tables()`, `Levels()`, `EstimateSize(prefix)` (table-granular), `Item.EstimatedSize()` (no
