@@ -146,10 +146,17 @@ func (r entityReads) hasRelHistory(id types.RelID) (has, known bool, err error) 
 
 // nodeMeta and relMeta are called only when c.temporalMetaHistory is set.
 func (r entityReads) nodeMeta(id types.NodeID) ([]storepkg.VersionTemporalMeta, error) {
+	var metas []storepkg.VersionTemporalMeta
+	var err error
 	if r.snap == nil {
-		return r.c.temporalMetaHistory.NodeHistoryTemporalMeta(id)
+		metas, err = r.c.temporalMetaHistory.NodeHistoryTemporalMeta(id)
+	} else {
+		metas, err = r.snap.NodeHistoryTemporalMeta(id)
 	}
-	return r.snap.NodeHistoryTemporalMeta(id)
+	if err == nil {
+		r.c.noteNodeMeta(len(metas))
+	}
+	return metas, err
 }
 
 func (r entityReads) relMeta(id types.RelID) ([]storepkg.VersionTemporalMeta, error) {

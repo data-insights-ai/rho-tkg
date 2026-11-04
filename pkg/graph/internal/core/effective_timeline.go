@@ -476,7 +476,7 @@ func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin ty
 // that reach validFrom (segmentReaches). The head entry and the temporal
 // skeletons name each segment's winner before its row is read, so those paths
 // read only the rows of the segments kept; the fold reads the whole chain.
-func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validFrom, pin types.Instant) ([]temporal.NodeSegment, error) {
+func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validFrom, pin types.Instant) (_ []temporal.NodeSegment, err error) {
 	// The entity lock makes the current row, the presence bit and the
 	// history one snapshot: a concurrent write (Update, Delete, CloseVersion)
 	// moves the current row into history in more than one store step, and a
@@ -497,6 +497,7 @@ func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validF
 		if has, known, err := rd.hasNodeHistory(id); err != nil {
 			return nil, err
 		} else if known && !has {
+			c.noteHeadRead(headDoorOne, headCurrentOnly, nil)
 			return c.tailOf(nodeSegments(c.nodeEffectivePieces([]*types.Node{current}, pin), nil), validFrom), nil
 		}
 	}
@@ -504,14 +505,29 @@ func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validF
 	// token and the current row hold (effective_head.go). Only the plain
 	// point read uses it; scans (rd.scan) never read or fill it.
 	var epoch uint64
-	if rd.snap == nil && !rd.scan && current != nil {
-		epoch = c.nodeHistoryEpoch(id)
-		if segs, ok := c.nodeHeadSegments(rd, id, current, validFrom, pin, epoch); ok {
-			return segs, nil
+	reason := headMissScan
+	if rd.snap == nil && !rd.scan {
+		reason = headMissNotQualifying // no current row: the chain ends in a delete
+		if current != nil {
+			epoch = c.nodeHistoryEpoch(id)
+			var segs []temporal.NodeSegment
+			if segs, reason = c.nodeHeadSegments(rd, id, current, validFrom, pin, epoch); reason == headHit {
+				c.noteHeadRead(headDoorOne, headHit, nil)
+				return segs, nil
+			}
 		}
 	}
+	var facts *headFacts
+	if epoch != 0 {
+		facts = &headFacts{}
+	}
+	defer func() {
+		if err == nil { // an error (an unknown ID among them) is no answer
+			c.noteHeadRead(headDoorOne, reason, facts)
+		}
+	}()
 	if c.temporalMetaHistory != nil {
-		if segs, handled, err := c.nodeEffectiveViaTemporalMeta(rd, id, current, validFrom, pin, epoch); handled {
+		if segs, handled, err := c.nodeEffectiveViaTemporalMeta(rd, id, current, validFrom, pin, epoch, facts); handled {
 			return segs, err
 		}
 	}
@@ -523,9 +539,8 @@ func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validF
 		return nil, storepkg.ErrNodeNotFound
 	}
 	chain := chainOf(history, current)
-	var facts *headFacts
-	if epoch != 0 {
-		facts = &headFacts{}
+	if facts != nil {
+		*facts = headFacts{} // the skeleton arm declined: this fold gathers afresh
 	}
 	pieces := effectivePiecesFacts(c, nodeKernel, chain, pin, facts)
 	if facts != nil {
@@ -616,8 +631,9 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 // skeleton never leaves this function; a winner is hydrated by a point read
 // and given the same TxAt normalization the resolver applies (lesson 60).
 // handled=false (a winner vanished between the reads, e.g. a concurrent trim)
-// falls back to the full-chain fold.
-func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, current *types.Node, validFrom, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, bool, error) {
+// falls back to the full-chain fold. facts (nil when epoch is 0) receives the
+// fold's head facts.
+func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, current *types.Node, validFrom, pin types.Instant, epoch uint64, facts *headFacts) ([]temporal.NodeSegment, bool, error) {
 	metas, err := rd.nodeMeta(id)
 	if err != nil {
 		return nil, true, err
@@ -636,10 +652,6 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 	}
 	if current != nil {
 		chain = append(chain, current)
-	}
-	var facts *headFacts
-	if epoch != 0 {
-		facts = &headFacts{}
 	}
 	pieces := effectivePiecesFacts(c, nodeKernel, chain, pin, facts)
 	if facts != nil {

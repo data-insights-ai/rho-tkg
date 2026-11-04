@@ -139,7 +139,7 @@ func (c *Core) nodeEffectiveTimelinesFrom(rd entityReads, id types.NodeID, pins 
 
 // nodeEffectiveTimelinesOf resolves id's timelines from its current row
 // (nil: none) and history (entity lock held).
-func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current *types.Node, pins []types.Instant) ([][]temporal.NodeSegment, error) {
+func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current *types.Node, pins []types.Instant) (_ [][]temporal.NodeSegment, err error) {
 	rd.share = current // versions decode beside it (R37)
 	low := slices.Min(pins)
 	if err := c.checkNodePointCompaction(id, low); err != nil {
@@ -156,21 +156,37 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 				return nodeRowAtTx(c.axis(), current, pin)
 			}
 			out, _ := effectiveTimelinesOver(c, nodeKernel, []*types.Node{nodeSkeleton(current)}, pins, nodeSegment, hydrate, nil)
+			c.noteHeadRead(headDoorMany, headCurrentOnly, nil)
 			return out, nil
 		}
 	}
 	// The head answer (backlog 68, RELHIST P2): the singular door's rule —
 	// plain point reads only, every pin at or above the entry's newest TxFrom.
 	var fill func([]effPiece[*types.Node], *headFacts)
-	if rd.snap == nil && !rd.scan && current != nil {
-		epoch := c.nodeHistoryEpoch(id)
-		if out, ok := c.nodeHeadTimelines(rd, id, current, pins, epoch); ok {
-			return out, nil
-		}
-		if epoch != 0 {
-			fill = func(pieces []effPiece[*types.Node], f *headFacts) { c.noteNodeHead(id, epoch, current, pieces, f) }
+	var facts *headFacts // the fold's head facts, for the read counts
+	reason := headMissScan
+	if rd.snap == nil && !rd.scan {
+		reason = headMissNotQualifying // no current row: the chain ends in a delete
+		if current != nil {
+			epoch := c.nodeHistoryEpoch(id)
+			var out [][]temporal.NodeSegment
+			if out, reason = c.nodeHeadTimelines(rd, id, current, pins, epoch); reason == headHit {
+				c.noteHeadRead(headDoorMany, headHit, nil)
+				return out, nil
+			}
+			if epoch != 0 {
+				fill = func(pieces []effPiece[*types.Node], f *headFacts) {
+					facts = f
+					c.noteNodeHead(id, epoch, current, pieces, f)
+				}
+			}
 		}
 	}
+	defer func() {
+		if err == nil { // an error (an unknown ID among them) is no answer
+			c.noteHeadRead(headDoorMany, reason, facts)
+		}
+	}()
 	if c.temporalMetaHistory != nil {
 		metas, err := rd.nodeMeta(id)
 		if err != nil {

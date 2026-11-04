@@ -538,6 +538,7 @@ func (c *Core) nodeAtFromCurrent(rd entityReads, id types.NodeID, current *types
 	if current != nil && c.nodeCurrentAnswersAt(current, validAt, txAt) {
 		return current, nil
 	}
+	c.headStats.nodeAt.Add(1) // a history read that never consults the head entry (RELHIST P5)
 
 	// Selection-skeleton fast path (valid-time historical resolution): resolve the
 	// point probe on per-version temporal metadata and decode ONLY the winner.
