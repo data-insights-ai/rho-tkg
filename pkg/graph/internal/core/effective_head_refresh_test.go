@@ -20,16 +20,10 @@ import (
 // leaving it stale (headSupersede), so the read-back after the write is a
 // hit, not a skeleton walk of every version.
 
-// relhistP2Backends is memory, badger and tiered (the stores with a history
-// token sigma runs on).
+// relhistP2Backends is every store with a history token: memory, badger,
+// tiered (sigma's) and sharded (Fable review: it admits the token too).
 func relhistP2Backends(tb testing.TB) []r10Backend {
-	var out []r10Backend
-	for _, be := range r10AllBackends(tb) {
-		if be.name != "sharded" {
-			out = append(out, be)
-		}
-	}
-	return out
+	return r10AllBackends(tb)
 }
 
 func relhistP2Graph(tb testing.TB, be r10Backend) *Core {
@@ -469,5 +463,46 @@ func relhistP2EntryAsFold(t *testing.T, g *Core, nid types.NodeID, rid types.Rel
 		check(headKey{rel: true, id: rid.SnowflakeID()}, func() *headEntry {
 			return g.headValid(headKey{rel: true, id: rid.SnowflakeID()}, g.relHistoryEpoch(rid), r.Version(), temporalOf(r), math.MaxInt64)
 		}, func() { _, _ = g.Temporal.RelEffectiveTimeline(rid, head) })
+	}
+}
+
+// A GraphTx Update supersedes the entry like a plain one (the scoped branches
+// of node_update.go and relationship_update.go); its rollback restores the
+// old current row, so the entry it left must not answer: every read after the
+// rollback, and after a committed Update, equals the fold.
+func TestRELHISTP2RolledBackTxUpdate(t *testing.T) {
+	for _, be := range relhistP2Backends(t) {
+		t.Run(be.name, func(t *testing.T) {
+			g := relhistP2Graph(t, be)
+			nid, rid := relhistP2Entities(t, g, 8)
+			before := g.peekNow()
+			relhistP2Plural(t, g, nid, rid, []types.Instant{before}, "fill")
+			tx, err := g.BeginTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tx.UpdateNode(nid, map[string]any{"v": int64(77)}); err != nil {
+				_ = tx.Rollback()
+				t.Fatal(err)
+			}
+			if _, err := tx.UpdateRelationship(rid, map[string]any{"v": int64(77)}); err != nil {
+				_ = tx.Rollback()
+				t.Fatal(err)
+			}
+			relhistP2Plural(t, g, nid, rid, []types.Instant{g.peekNow(), before}, "inside the tx")
+			if err := tx.Rollback(); err != nil {
+				t.Fatal(err)
+			}
+			// Head pins only first: a pin below maxTx would fold and refill, hiding a stale entry.
+			relhistP2Plural(t, g, nid, rid, []types.Instant{g.peekNow(), g.peekNow()}, "after the rollback")
+			relhistP2Plural(t, g, nid, rid, []types.Instant{g.peekNow(), before}, "after the rollback, an older pin")
+			if _, err := g.Nodes.Update(context.Background(), nid, map[string]any{"v": int64(78)}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := g.Rels.Update(context.Background(), rid, map[string]any{"v": int64(78)}); err != nil {
+				t.Fatal(err)
+			}
+			relhistP2Plural(t, g, nid, rid, []types.Instant{g.peekNow(), before}, "after a committed Update")
+		})
 	}
 }

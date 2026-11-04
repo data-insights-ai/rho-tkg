@@ -90,3 +90,12 @@ The rest on badger/tiered is the Update's own write (badger transaction, history
 6. Pre-existing failure, not this item: TestForEachNodeEffectiveByLabelAndPropertiesColdBytes fails on main 7fd75c40
    with the same numbers (2 versions, early pin: 7,581 B per fact, bound 16x of 442 B = 7,072 B); the page door runs in
    scan mode and does not touch the head entry.
+
+Review follow-up (Fable review clean; two coverage gaps closed, 4 Nov):
+- relhistP2Backends now includes sharded (it admits the history token); all P2 tests pass on it.
+- TestRELHISTP2RolledBackTxUpdate: a GraphTx UpdateNode/UpdateRelationship supersedes a valid entry, a plural read
+  inside the tx refills it, Rollback; the first read after it uses head pins only (a lower pin would fold and refill,
+  hiding a stale entry), then an older pin, then a committed Update; each equals the cache-off fold on memory, badger,
+  tiered, sharded. Mutant: headValid without its epoch, curVer and curTM checks -> survives, equivalent here: the
+  stale entry's winner is the rolled-back version v+1, whose row read fails, so the head answer falls back to the
+  fold (a second guard). The test pins the end-to-end answer, not that gate.
