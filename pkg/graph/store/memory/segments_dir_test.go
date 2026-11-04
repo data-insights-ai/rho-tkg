@@ -213,16 +213,16 @@ func TestSegmentDir_S2SuiteOverMappedFiles(t *testing.T) {
 	segTwinOnDisk, segTwinDirRoot = true, t.TempDir()
 	t.Cleanup(func() { segTwinOnDisk, segTwinsOnDisk, segTwinDirRoot = false, nil, "" })
 	for name, fn := range map[string]func(*testing.T){
-		"StoreDifferentialOracle":                     testSegments_StoreDifferentialOracle,
-		"UnsealableRowsStayInMemtable":                testSegments_UnsealableRowsStayInMemtable,
-		"ConcurrentReadsDuringSeal":                   testSegments_ConcurrentReadsDuringSeal,
-		"ClearKeepsDeclaration":                       testSegments_ClearKeepsDeclaration,
-		"WriteDoorsSeeSealedRows":                     testSegments_WriteDoorsSeeSealedRows,
-		"BudgetSealRunsOffTheWriter":                  testSegments_BudgetSealRunsOffTheWriter,
-		"ScanRelSegmentsEqualsTheRowPath":             testSegments_ScanRelSegmentsEqualsTheRowPath,
-		"ScanRelSegmentsIsInIDOrder":                  testSegments_ScanRelSegmentsIsInIDOrder,
+		"StoreDifferentialOracle":                     testSegmentsStoreDifferentialOracle,
+		"UnsealableRowsStayInMemtable":                testSegmentsUnsealableRowsStayInMemtable,
+		"ConcurrentReadsDuringSeal":                   testSegmentsConcurrentReadsDuringSeal,
+		"ClearKeepsDeclaration":                       testSegmentsClearKeepsDeclaration,
+		"WriteDoorsSeeSealedRows":                     testSegmentsWriteDoorsSeeSealedRows,
+		"BudgetSealRunsOffTheWriter":                  testSegmentsBudgetSealRunsOffTheWriter,
+		"ScanRelSegmentsEqualsTheRowPath":             testSegmentsScanRelSegmentsEqualsTheRowPath,
+		"ScanRelSegmentsIsInIDOrder":                  testSegmentsScanRelSegmentsIsInIDOrder,
 		"ScanRelSegmentsHoldsOverlappingSegmentsOnly": TestSegments_ScanRelSegmentsHoldsOverlappingSegmentsOnly,
-		"ScanRelColumnsIsNativeAndEqual":              testSegments_ScanRelColumnsIsNativeAndEqual,
+		"ScanRelColumnsIsNativeAndEqual":              testSegmentsScanRelColumnsIsNativeAndEqual,
 	} {
 		segTwinsOnDisk = nil
 		t.Run(name, func(t *testing.T) {

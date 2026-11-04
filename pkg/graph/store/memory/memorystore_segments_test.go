@@ -450,10 +450,10 @@ func (tw *segTwin) sealedLeftRowMaps() {
 
 func TestSegments_StoreDifferentialOracle(t *testing.T) {
 	t.Parallel()
-	testSegments_StoreDifferentialOracle(t)
+	testSegmentsStoreDifferentialOracle(t)
 }
 
-func testSegments_StoreDifferentialOracle(t *testing.T) {
+func testSegmentsStoreDifferentialOracle(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
@@ -622,10 +622,10 @@ func TestSegments_DeclarationRules(t *testing.T) {
 // in the row store with its answers unchanged; every other row is sealed.
 func TestSegments_UnsealableRowsStayInMemtable(t *testing.T) {
 	t.Parallel()
-	testSegments_UnsealableRowsStayInMemtable(t)
+	testSegmentsUnsealableRowsStayInMemtable(t)
 }
 
-func testSegments_UnsealableRowsStayInMemtable(t *testing.T) {
+func testSegmentsUnsealableRowsStayInMemtable(t *testing.T) {
 	r := rand.New(rand.NewSource(8))
 	tw := newSegTwin(t, 0, 6)
 	for i := 0; i < 50; i++ {
@@ -653,10 +653,10 @@ func testSegments_UnsealableRowsStayInMemtable(t *testing.T) {
 // and updating sealed ones, and the store keeps sealing.
 func TestSegments_ConcurrentReadsDuringSeal(t *testing.T) {
 	t.Parallel()
-	testSegments_ConcurrentReadsDuringSeal(t)
+	testSegmentsConcurrentReadsDuringSeal(t)
 }
 
-func testSegments_ConcurrentReadsDuringSeal(t *testing.T) {
+func testSegmentsConcurrentReadsDuringSeal(t *testing.T) {
 	r := rand.New(rand.NewSource(3))
 	tw := newSegTwin(t, 16<<10, 12)
 	var base []types.RelID
@@ -769,10 +769,10 @@ func testSegments_ConcurrentReadsDuringSeal(t *testing.T) {
 // declaration: new rows seal again.
 func TestSegments_ClearKeepsDeclaration(t *testing.T) {
 	t.Parallel()
-	testSegments_ClearKeepsDeclaration(t)
+	testSegmentsClearKeepsDeclaration(t)
 }
 
-func testSegments_ClearKeepsDeclaration(t *testing.T) {
+func testSegmentsClearKeepsDeclaration(t *testing.T) {
 	r := rand.New(rand.NewSource(6))
 	tw := newSegTwin(t, 0, 5)
 	for i := 0; i < 30; i++ {
@@ -806,10 +806,10 @@ func testSegments_ClearKeepsDeclaration(t *testing.T) {
 // still connected.
 func TestSegments_WriteDoorsSeeSealedRows(t *testing.T) {
 	t.Parallel()
-	testSegments_WriteDoorsSeeSealedRows(t)
+	testSegmentsWriteDoorsSeeSealedRows(t)
 }
 
-func testSegments_WriteDoorsSeeSealedRows(t *testing.T) {
+func testSegmentsWriteDoorsSeeSealedRows(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
@@ -965,10 +965,10 @@ func waitSealsForTest(t *testing.T, ms *Store) {
 // ahead of the sealer blocks until it catches up (ADR-0011 §3.5).
 func TestSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
 	t.Parallel()
-	testSegments_BudgetSealRunsOffTheWriter(t)
+	testSegmentsBudgetSealRunsOffTheWriter(t)
 }
 
-func testSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
+func testSegmentsBudgetSealRunsOffTheWriter(t *testing.T) {
 	r := rand.New(rand.NewSource(51))
 	tw := newSegTwin(t, 12<<10, 8)
 	s := tw.declared
@@ -1109,10 +1109,10 @@ func segRowFact(r *types.Relationship, props []string) string {
 // rows, faulted-in rows and the unsealed memtable.
 func TestSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
 	t.Parallel()
-	testSegments_ScanRelSegmentsEqualsTheRowPath(t)
+	testSegmentsScanRelSegmentsEqualsTheRowPath(t)
 }
 
-func testSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
+func testSegmentsScanRelSegmentsEqualsTheRowPath(t *testing.T) {
 	r := rand.New(rand.NewSource(61))
 	tw := newSegTwin(t, 1<<40, 12)
 	noTemporal := 0
@@ -1277,10 +1277,10 @@ func segScanOrdered(t *testing.T, s *Store, props []string) []string {
 // is then deterministic and equal to the row feed.
 func TestSegments_ScanRelSegmentsIsInIDOrder(t *testing.T) {
 	t.Parallel()
-	testSegments_ScanRelSegmentsIsInIDOrder(t)
+	testSegmentsScanRelSegmentsIsInIDOrder(t)
 }
 
-func testSegments_ScanRelSegmentsIsInIDOrder(t *testing.T) {
+func testSegmentsScanRelSegmentsIsInIDOrder(t *testing.T) {
 	r := rand.New(rand.NewSource(83))
 	tw := newSegTwin(t, 1<<40, 12)
 	base := tw.nextID + 10
@@ -1394,10 +1394,10 @@ func TestSegments_ScanRelSegmentsHoldsOverlappingSegmentsOnly(t *testing.T) {
 // built for a sealed row whose requested values sit in their columns.
 func TestSegments_ScanRelColumnsIsNativeAndEqual(t *testing.T) {
 	t.Parallel()
-	testSegments_ScanRelColumnsIsNativeAndEqual(t)
+	testSegmentsScanRelColumnsIsNativeAndEqual(t)
 }
 
-func testSegments_ScanRelColumnsIsNativeAndEqual(t *testing.T) {
+func testSegmentsScanRelColumnsIsNativeAndEqual(t *testing.T) {
 	r := rand.New(rand.NewSource(71))
 	tw := newSegTwin(t, 1<<40, 10)
 	for i := 0; i < 3000; i++ {
