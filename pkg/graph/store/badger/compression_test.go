@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -190,8 +191,10 @@ func TestNoCompressionRefusedWithCompression(t *testing.T) {
 
 // TestNoCompressionReopenAcrossSetting pins that tables keep their own codec
 // across a change of the setting: Snappy tables written by default read under
-// NoCompression, None tables read under the default, and both survive a
-// compaction that rewrites them.
+// NoCompression, None tables read under the default, and a compaction under
+// NoCompression rewrites both kinds as None. Each session's Close flushes one
+// L0 table; badger compacts L0 only past NumLevelZeroTables (5, levels.go
+// pickCompactLevels), so the test writes more sessions than that.
 func TestNoCompressionReopenAcrossSetting(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -225,14 +228,83 @@ func TestNoCompressionReopenAcrossSetting(t *testing.T) {
 
 	bs = open(false)
 	wantLabelledNodes(t, bs, 21, 22, 31, 32)
+	closeStore(bs)
+
+	all := []int64{21, 22, 31, 32}
+	for i := range 6 { // past NumLevelZeroTables, so Flatten compacts L0
+		id := int64(41 + i)
+		bs = open(true)
+		putLabelledNodes(t, bs, id)
+		closeStore(bs)
+		all = append(all, id)
+	}
+	bs = open(true)
 	if err := bs.DBForTest().Flatten(2); err != nil {
 		t.Fatalf("Flatten: %v", err)
 	}
-	wantLabelledNodes(t, bs, 21, 22, 31, 32)
 	closeStore(bs)
+	if codecs := manifestCodecs(t, dir); codecs[options.Snappy] != 0 || codecs[options.None] == 0 {
+		t.Fatalf("manifest tables by codec after a compaction under NoCompression = %v, want None only", codecs)
+	}
 
-	// Reopen so the reads come from the flattened tables, not the cache.
+	// Reopen under the default so the reads come from the rewritten tables.
 	bs = open(false)
 	defer bs.Close()
-	wantLabelledNodes(t, bs, 21, 22, 31, 32)
+	wantLabelledNodes(t, bs, all...)
+}
+
+// BenchmarkNoCompressionColdRead (NOCOMPRESS) reads every row of a store
+// reopened cold, once with Snappy tables and once with None: allocation per
+// pass (badger's block decode, table.go:792-815, against mmap slices) and the
+// SST bytes on disk. Rows carry compressible text, about 500 B each.
+//
+//	go test ./pkg/graph/store/badger/ -run '^$' -bench NoCompressionColdRead -benchtime 5x
+func BenchmarkNoCompressionColdRead(b *testing.B) {
+	const rows = 20000
+	text := strings.Repeat("process started by service account with arguments ", 10)
+	for _, arm := range []struct {
+		name   string
+		noComp bool
+	}{{"snappy", false}, {"none", true}} {
+		b.Run(arm.name, func(b *testing.B) {
+			dir := b.TempDir()
+			cfg := Config{Dir: dir, NoCompression: arm.noComp, BlockCacheSize: 1 << 20}
+			bs, err := New(cfg)
+			if err != nil {
+				b.Fatal(err)
+			}
+			for i := range rows {
+				n := types.NewNode(types.NodeID(snowflake.ID(i+1)), 7, nil)
+				_ = n.SetProperty("cmd", fmt.Sprintf("%s%d", text, i))
+				if err := bs.PutNode(n); err != nil {
+					b.Fatal(err)
+				}
+			}
+			if err := bs.Close(); err != nil {
+				b.Fatal(err)
+			}
+			var sst int64
+			_ = filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+				if err == nil && strings.HasSuffix(p, ".sst") {
+					sst += fi.Size()
+				}
+				return nil
+			})
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				bs, err := New(cfg)
+				if err != nil {
+					b.Fatal(err)
+				}
+				for i := range rows {
+					if _, err := bs.GetNode(types.NodeID(snowflake.ID(i + 1))); err != nil {
+						b.Fatal(err)
+					}
+				}
+				_ = bs.Close()
+			}
+			b.ReportMetric(float64(sst)/rows, "sst-B/row")
+		})
+	}
 }

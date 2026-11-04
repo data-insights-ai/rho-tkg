@@ -1,0 +1,15 @@
+NOCOMPRESS local measurement (4 Nov, rho main after the merge; René via ai-soc: "no measurements.. lets them develop
+this first", so no consumer run; this host, 32 cores, other sessions running).
+
+BenchmarkNoCompressionColdRead (pkg/graph/store/badger/compression_test.go): 20,000 nodes, one ~520 B text property
+each (a repeated sentence plus the row number, so highly compressible), written, closed; each pass reopens the store
+(BlockCacheSize 1 MB) and reads every node once (cold entity cache, so every row comes from the tables).
+go test ./pkg/graph/store/badger/ -run '^$' -bench NoCompressionColdRead -benchtime 5x -count 3
+
+arm      time/pass    alloc/pass    allocs/pass   SST bytes/row
+snappy   170-172 ms   273-282 MB    806-816 k     85.2
+none     147-151 ms   181.5 MB      707 k         627.8
+
+None: allocation -34 % (the block decode buffers, table.go:792-815), time -13 %, allocs -12 %. Disk 7.4x on this
+text, which compresses far better than real rows (VALUETHRESH measured 2.6x on BA-like text). Compaction input
+decode (1.66 of ai-soc's 2.19 TB) is not in this bench; it decodes the same blocks under table.NOCACHE.

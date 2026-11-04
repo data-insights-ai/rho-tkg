@@ -43,14 +43,6 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Next
 
-- **NOCOMPRESS** (ai-soc 3 Nov, after round 2 by ai-soc's order; a minor) — let a store select no compression: 2.19
-  TB of a 3-day run's 9.87 TB allocation (k11020850) is badger's Snappy block decode into Go-heap buffers (z.Calloc),
-  1.66 TB of it in compaction (table.NOCACHE, so the block cache cannot help); today `options.None` is
-  Config.Compression's zero value (badgerstore_options.go:195), so it cannot be chosen. jemalloc is parked on ai-soc's
-  side (no libjemalloc, needs cgo). Done when CPU, allocation and disk factor are measured on a real store copy (disk
-  is no constraint, René 28 Oct). **rho/sigma:** measured and asked for: sigma's tiered 40-cut profile (v4.102.0) had
-  z.Calloc 6.9 GB a cut (badger 37.7 % of 27 GB; design.txt, sigma 3 Nov) and sigma's ask (2) names it. With
-  ValueThreshold its blocks leave the LSM, so re-measure what row and history block decode still cost sigma.
 - **LISTREAD** (sigma 31 Oct; no rush, sigma goes on without it; changes no answer) — sigma's restore
   (ByLabelAndProperties pages plus HasHistory per node; ai-soc's store: index 8.1 s, HasHistory 6.4 s of 23.3 s on
   1,048,294 nodes) gets cheaper. sigma reads at DepthHot on the reference shard, so cross-shard paging and the cold

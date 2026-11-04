@@ -131,7 +131,7 @@ func validateTuningConfig(cfg Config) error {
 		return fmt.Errorf("graph: ZSTDCompressionLevel %d out of range [1, 15]", cfg.ZSTDCompressionLevel)
 	}
 	if cfg.NoCompression && cfg.Compression != options.None {
-		return fmt.Errorf("graph: NoCompression conflicts with Compression %v; set one of them", cfg.Compression)
+		return fmt.Errorf("graph: NoCompression conflicts with Compression %s; set one of them", compressionName(cfg.Compression))
 	}
 	if cfg.EncryptionKeyRotation < 0 {
 		return fmt.Errorf("graph: EncryptionKeyRotation %s must not be negative", cfg.EncryptionKeyRotation)
@@ -365,4 +365,18 @@ func maxWALFileSize(dir string) (int64, error) {
 		}
 	}
 	return maxWAL, nil
+}
+
+// compressionName names a badger codec for an error (options.CompressionType
+// has no String method).
+func compressionName(c options.CompressionType) string {
+	switch c {
+	case options.None:
+		return "None"
+	case options.Snappy:
+		return "Snappy"
+	case options.ZSTD:
+		return "ZSTD"
+	}
+	return fmt.Sprintf("%d", c)
 }

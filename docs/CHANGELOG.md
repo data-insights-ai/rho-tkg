@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.105.0] - 2026-11-04
+
+### Added
+
+- **NOCOMPRESS** (ai-soc 3 Nov; a minor: `NoCompression bool` on `graph.Config`, `badger.Config`, `tiered.Config` and
+  `sharded.Config`) — a store can write badger's SSTable blocks uncompressed. `Compression` could not select that:
+  `options.None` is its zero value and keeps Snappy. A block is then a slice of the table's mmap instead of a fresh
+  heap buffer decoded on every block-cache miss and compaction input (ai-soc: 2.19 TB of a 3-day run's 9.87 TB
+  allocation). Cold read of 20,000 rows (`BenchmarkNoCompressionColdRead`): allocation 276 -> 181 MB a pass (-34 %),
+  time -13 %; disk 7.4x on that repetitive text (2.6x on BA-like text, the ValueThreshold measurement)
+  (`tasks/evidence/NOCOMPRESS/`). Tables keep their codec until a compaction rewrites them, so the setting may change
+  between opens; NoCompression with a non-zero Compression is refused at `New`.
+
 ## [4.104.8] - 2026-11-04
 
 ### Changed

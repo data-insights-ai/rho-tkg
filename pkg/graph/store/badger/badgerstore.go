@@ -259,10 +259,10 @@ type Config struct {
 	ZSTDCompressionLevel int
 	// NoCompression writes SSTable blocks uncompressed (options.None), which
 	// Compression cannot select because options.None is its zero value and
-	// keeps badger's default (Snappy). A block then reads straight from the
-	// table's mmap with no decode buffer (badger table.go:793-795); with
-	// Snappy or ZSTD every block read and every compaction input block is
-	// decoded into a fresh buffer. Existing tables keep their codec until
+	// keeps badger's default (Snappy). A block then is a slice of the
+	// table's mmap with no decode buffer (badger table.go:407-408, 793-795);
+	// with Snappy or ZSTD every block-cache miss and every compaction input
+	// block is decoded into a fresh buffer. Existing tables keep their codec until
 	// compaction rewrites them (badger records it per table in the manifest,
 	// manifest.go:62-66, levels.go:131-132). Costs disk: compressible rows
 	// take up to ~2.6x the space. Refused at New together with a non-zero
