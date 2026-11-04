@@ -352,6 +352,10 @@ Wire format and backup naming: [persistence.md](persistence.md).
 
 `ValueThreshold` (VALUETHRESH) on `graph.Config` (with `BadgerDir`), `badger.Config`, `tiered.Config` and `sharded.Config` sends every badger value of at least that many bytes (a row, a history row, a change-log record) to the value log instead of the LSM. 0 keeps badger's 1 MB; otherwise [1 KB, 1 MB] and at most 15 % of `MemTableSize`, refused by name at `New`. For rows of about 100 KB rewritten whole (`ReplaceVersion`), 64 KB cut CPU about 90 % with reads as fast or faster, at the price of uncompressed value-log space that the value-log GC rarely frees ([badger.md](badger.md) section 6, rule 9). In memory every value stays in the LSM and the largest value becomes `ValueThreshold` - 1 (`ErrEntryTooLarge`).
 
+### Badger compression
+
+`NoCompression` (NOCOMPRESS) on `graph.Config` (with `BadgerDir` or `BadgerInMemory`), `badger.Config`, `tiered.Config` and `sharded.Config` writes SSTable blocks uncompressed. `Compression` cannot select that: `options.None` is its zero value and keeps badger's Snappy. Uncompressed blocks are read straight from the table's mmap, so block reads and compactions no longer decode every block into a fresh heap buffer; the cost is disk, up to about 2.6x for compressible rows. Existing tables keep their codec until compaction rewrites them, so the setting can change between opens. `NoCompression` with a non-zero `Compression` is refused by name at `New` ([badger.md](badger.md) section 6).
+
 ### Lifecycle
 
 - `g.Close() error` saves registries and closes the store; idempotent.

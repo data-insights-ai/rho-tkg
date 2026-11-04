@@ -130,6 +130,9 @@ func validateTuningConfig(cfg Config) error {
 		(cfg.ZSTDCompressionLevel < minZSTDCompressionLevel || cfg.ZSTDCompressionLevel > maxZSTDCompressionLevel) {
 		return fmt.Errorf("graph: ZSTDCompressionLevel %d out of range [1, 15]", cfg.ZSTDCompressionLevel)
 	}
+	if cfg.NoCompression && cfg.Compression != options.None {
+		return fmt.Errorf("graph: NoCompression conflicts with Compression %v; set one of them", cfg.Compression)
+	}
 	if cfg.EncryptionKeyRotation < 0 {
 		return fmt.Errorf("graph: EncryptionKeyRotation %s must not be negative", cfg.EncryptionKeyRotation)
 	}
@@ -192,7 +195,12 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
 	if cfg.SyncWrites && !cfg.ReadOnly {
 		opts = opts.WithSyncWrites(true)
 	}
-	if cfg.Compression != 0 {
+	// options.None is Compression's zero value and keeps badger's default
+	// (Snappy), so only NoCompression selects it.
+	switch {
+	case cfg.NoCompression:
+		opts = opts.WithCompression(options.None)
+	case cfg.Compression != options.None:
 		opts = opts.WithCompression(cfg.Compression)
 	}
 	if cfg.ZSTDCompressionLevel > 0 {

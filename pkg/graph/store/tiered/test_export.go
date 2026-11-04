@@ -69,6 +69,9 @@ func (ts *Store) MuForTest() *sync.RWMutex { return &ts.mu }
 // CompressionForTest returns the configured compression algorithm.
 func (ts *Store) CompressionForTest() options.CompressionType { return ts.compression }
 
+// NoCompressionForTest reports whether every shard writes uncompressed tables.
+func (ts *Store) NoCompressionForTest() bool { return ts.noCompression }
+
 // ZSTDLevelForTest returns the configured ZSTD compression level.
 func (ts *Store) ZSTDLevelForTest() int { return ts.zstdLevel }
 

@@ -251,12 +251,23 @@ type Config struct {
 	MaxPendingWrites int
 	// Compression sets the SSTable compression algorithm.
 	// options.Snappy or options.ZSTD. options.None is the zero value and so
-	// keeps the Badger default (Snappy): no compression cannot be selected.
+	// keeps the Badger default (Snappy); NoCompression selects no compression.
 	Compression options.CompressionType
 	// ZSTDCompressionLevel sets the ZSTD compression level (1-15).
 	// Only effective when Compression is options.ZSTD.
 	// Zero keeps the Badger default (1).
 	ZSTDCompressionLevel int
+	// NoCompression writes SSTable blocks uncompressed (options.None), which
+	// Compression cannot select because options.None is its zero value and
+	// keeps badger's default (Snappy). A block then reads straight from the
+	// table's mmap with no decode buffer (badger table.go:793-795); with
+	// Snappy or ZSTD every block read and every compaction input block is
+	// decoded into a fresh buffer. Existing tables keep their codec until
+	// compaction rewrites them (badger records it per table in the manifest,
+	// manifest.go:62-66, levels.go:131-132). Costs disk: compressible rows
+	// take up to ~2.6x the space. Refused at New together with a non-zero
+	// Compression.
+	NoCompression bool
 	// ValueLogFileSize / MemTableSize / BlockCacheSize / NumCompactors tune Badger's
 	// per-instance footprint. Zero keeps Badger's stock defaults (1GB vlog / 64MB
 	// memtable / 256MB block cache / 4 compactors); the owner opts in explicitly. One

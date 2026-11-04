@@ -1,10 +1,14 @@
 package badger
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
 )
 
@@ -33,6 +37,8 @@ func TestCompression_ReachesBadgerOptions(t *testing.T) {
 		{"zstd level 3", Config{Compression: options.ZSTD, ZSTDCompressionLevel: 3}, options.ZSTD, 3},
 		{"zero keeps default", Config{}, defaultCodec, 0},
 		{"in-memory zstd", Config{InMemory: true, Compression: options.ZSTD}, options.ZSTD, 0},
+		{"no compression", Config{NoCompression: true}, options.None, 0},
+		{"in-memory no compression", Config{InMemory: true, NoCompression: true}, options.None, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -87,4 +93,146 @@ func TestCompression_ZSTD_DataSurvivesReopen(t *testing.T) {
 	if got.ID() != n.ID() || got.PrimaryLabelToken() != 7 {
 		t.Fatalf("reopened node = id %v label %d, want id %v label 7", got.ID(), got.PrimaryLabelToken(), n.ID())
 	}
+}
+
+// manifestCodecs replays dir's badger MANIFEST and counts its live tables by
+// codec: badger records each table's compression there (manifest.go:62-66).
+func manifestCodecs(t *testing.T, dir string) map[options.CompressionType]int {
+	t.Helper()
+	fp, err := os.Open(filepath.Join(dir, badgerv4.ManifestFilename))
+	if err != nil {
+		t.Fatalf("open MANIFEST: %v", err)
+	}
+	defer fp.Close()
+	m, _, err := badgerv4.ReplayManifestFile(fp, 0, badgerv4.DefaultOptions(dir))
+	if err != nil {
+		t.Fatalf("ReplayManifestFile: %v", err)
+	}
+	out := make(map[options.CompressionType]int)
+	for _, tm := range m.Tables {
+		out[tm.Compression]++
+	}
+	return out
+}
+
+// putLabelledNodes writes ids as nodes with label token 7.
+func putLabelledNodes(t *testing.T, bs *Store, ids ...int64) {
+	t.Helper()
+	for _, id := range ids {
+		if err := bs.PutNode(types.NewNode(types.NodeID(snowflake.ID(id)), 7, nil)); err != nil {
+			t.Fatalf("PutNode %d: %v", id, err)
+		}
+	}
+}
+
+// wantLabelledNodes reads ids back and fails on a missing or wrong row.
+func wantLabelledNodes(t *testing.T, bs *Store, ids ...int64) {
+	t.Helper()
+	for _, id := range ids {
+		want := types.NodeID(snowflake.ID(id))
+		got, err := bs.GetNode(want)
+		if err != nil {
+			t.Fatalf("GetNode %d: %v", id, err)
+		}
+		if got.ID() != want || got.PrimaryLabelToken() != 7 {
+			t.Fatalf("node %d = id %v label %d, want label 7", id, got.ID(), got.PrimaryLabelToken())
+		}
+	}
+}
+
+// TestNoCompressionWritesUncompressedTables pins that NoCompression reaches
+// the tables badger writes: Close flushes the memtable to an L0 table, and
+// the manifest must record every table as options.None. Mutation: dropping
+// the NoCompression case in buildBadgerOptions writes Snappy tables.
+func TestNoCompressionWritesUncompressedTables(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir, NoCompression: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	putLabelledNodes(t, bs, 11, 12, 13)
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	codecs := manifestCodecs(t, dir)
+	total := 0
+	for _, n := range codecs {
+		total += n
+	}
+	if total == 0 {
+		t.Fatal("manifest holds no tables: Close did not flush the memtable")
+	}
+	if codecs[options.None] != total {
+		t.Fatalf("manifest tables by codec = %v, want all %d options.None", codecs, total)
+	}
+}
+
+// TestNoCompressionRefusedWithCompression pins that NoCompression with a
+// non-zero Compression fails at New, on disk and in memory, naming the field.
+func TestNoCompressionRefusedWithCompression(t *testing.T) {
+	t.Parallel()
+	for _, inMem := range []bool{false, true} {
+		cfg := Config{InMemory: inMem, NoCompression: true, Compression: options.ZSTD}
+		if !inMem {
+			cfg.Dir = t.TempDir()
+		}
+		bs, err := New(cfg)
+		if err == nil {
+			_ = bs.Close()
+			t.Fatalf("InMemory=%v: New accepted NoCompression with Compression ZSTD", inMem)
+		}
+		if !strings.Contains(err.Error(), "NoCompression") {
+			t.Fatalf("InMemory=%v: error %q does not name NoCompression", inMem, err)
+		}
+	}
+}
+
+// TestNoCompressionReopenAcrossSetting pins that tables keep their own codec
+// across a change of the setting: Snappy tables written by default read under
+// NoCompression, None tables read under the default, and both survive a
+// compaction that rewrites them.
+func TestNoCompressionReopenAcrossSetting(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	open := func(noComp bool) *Store {
+		t.Helper()
+		bs, err := New(Config{Dir: dir, NoCompression: noComp})
+		if err != nil {
+			t.Fatalf("New(NoCompression=%v): %v", noComp, err)
+		}
+		return bs
+	}
+	closeStore := func(bs *Store) {
+		t.Helper()
+		if err := bs.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	}
+
+	bs := open(false)
+	putLabelledNodes(t, bs, 21, 22)
+	closeStore(bs)
+
+	bs = open(true)
+	wantLabelledNodes(t, bs, 21, 22)
+	putLabelledNodes(t, bs, 31, 32)
+	closeStore(bs)
+
+	if codecs := manifestCodecs(t, dir); codecs[options.Snappy] == 0 || codecs[options.None] == 0 {
+		t.Fatalf("manifest tables by codec = %v, want both Snappy and None", codecs)
+	}
+
+	bs = open(false)
+	wantLabelledNodes(t, bs, 21, 22, 31, 32)
+	if err := bs.DBForTest().Flatten(2); err != nil {
+		t.Fatalf("Flatten: %v", err)
+	}
+	wantLabelledNodes(t, bs, 21, 22, 31, 32)
+	closeStore(bs)
+
+	// Reopen so the reads come from the flattened tables, not the cache.
+	bs = open(false)
+	defer bs.Close()
+	wantLabelledNodes(t, bs, 21, 22, 31, 32)
 }
