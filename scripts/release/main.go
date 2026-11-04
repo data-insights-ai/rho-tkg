@@ -193,6 +193,21 @@ func gitDir() string {
 	return strings.TrimSpace(string(b))
 }
 
+// gitNet runs a git command that talks to origin, up to 5 times with a growing
+// pause: GitHub refuses this host's SSH logins now and then (4 Nov: one in
+// three, the same key), and a release must not die on one refusal.
+func gitNet(args ...string) (string, error) {
+	var out string
+	var err error
+	for try := 1; try <= 5; try++ {
+		if out, err = git(args...); err == nil {
+			return out, nil
+		}
+		time.Sleep(time.Duration(try) * 2 * time.Second)
+	}
+	return out, err
+}
+
 func git(args ...string) (string, error) {
 	out, err := exec.Command("git", args...).CombinedOutput() // #nosec G204 -- fixed git subcommands
 	return strings.TrimSpace(string(out)), err
@@ -284,10 +299,12 @@ func release(k int, dry bool) {
 		if s, _ := git("status", "--porcelain"); s != "" {
 			errs = append(errs, "tree not clean")
 		}
-		if out, err := git("fetch", "-q", "origin", "main", "--tags"); err != nil {
+		if out, err := gitNet("fetch", "-q", "origin", "main", "--tags"); err != nil {
 			errs = append(errs, "git fetch: "+out)
 		} else if _, err := git("merge-base", "--is-ancestor", "origin/main", "HEAD"); err != nil {
 			errs = append(errs, "origin/main is not an ancestor of HEAD")
+		} else if out, err := gitNet("push", "--dry-run", "-q", "origin", "main"); err != nil {
+			errs = append(errs, "cannot push to origin (checked before the gate): "+out)
 		}
 		if _, err := git("rev-parse", "-q", "--verify", "refs/tags/"+next); err == nil {
 			errs = append(errs, next+" exists (a failed push? `git tag -d "+next+"`)")
@@ -345,7 +362,10 @@ func release(k int, dry bool) {
 		return nil
 	})
 	check("push", func() error {
-		if out, err := git("push", "--atomic", "origin", "main", "refs/tags/"+next); err != nil {
+		if out, err := gitNet("push", "--atomic", "origin", "main", "refs/tags/"+next); err != nil {
+			if _, derr := git("tag", "-d", next); derr == nil {
+				return fmt.Errorf("%s\nthe local tag %s is deleted again: fix, run again", out, next)
+			}
 			return fmt.Errorf("%s\nrecover: git tag -d %s, fix, run again", out, next)
 		}
 		return nil
