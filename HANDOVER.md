@@ -11,7 +11,9 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   LENDCOST; a minor), tagged on main; ai-soc's round-4 gate on 7e4399c4 + sigma c2ce628f3 green (LendByIDs 94.5 s
   vs v4.102.0's 115). Measuring is ai-soc's
   combined run on main's tip, not per item (René via ai-soc). ai-soc names its quiet windows: then no ci-docker,
-  probe, bench or long test here.
+  probe, bench or long test here. FREEZE round 4 (ai-soc, 4 Nov): v4.104.0 + sigma v0.11.162 are the pair for
+  ai-soc's pin, its three local sets and the next Flux run; a later tag belongs to the next run, never a re-pin.
+  Main keeps going untagged.
   - **On main, unreleased:** nothing. No branch open.
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
