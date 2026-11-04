@@ -1,3 +1,5 @@
+//go:build measure
+
 package core
 
 import (
@@ -26,6 +28,10 @@ import (
 // With GC the transient cursor state is reclaimed before measurement,
 // so the test reflects "did the exporter leak anything" rather than
 // "what was the peak transient heap during export".
+//
+// Measurement level (MEMGATE, `make measure`): retained heap is process-wide
+// and no count pins "retained nothing past return"; the paging itself is
+// counted in the suite (TestExportGraph_HistoryVersionPagingSplitsDeepEntity).
 func TestExportGraph_HistoryBoundedMemory(t *testing.T) {
 	if testing.Short() {
 		t.Skip("seeding 50K records is slow; skipped in -short")
