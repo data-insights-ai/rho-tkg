@@ -24,6 +24,12 @@ Each item: one sentence, then when it is done and what it waits for.
   NodeHistoryTemporalMeta for the plural door's misses (10.9 GB). Caveat, existing before (design.txt §4): history
   compaction between tx ops can trim a row above the current version that rollback then puts back. Done when sigma's
   next profile shows getRelHistory below 10 % of alloc_space.
+- **MEMGATE** (René 4 Nov: "make a better option") — 42 test files read process-wide `runtime.MemStats`; where one
+  gates pass/fail on allocations, bytes or heap, load moves it (seen 4 Nov: `TestCascadeMetaCost` 3.9x vs 4.0x,
+  `TestExistMapResidentBytesPerNode` 30.8 vs 30 B, `TestForEachNodeEffectiveByLabelAndPropertiesColdBytes` at
+  GOMAXPROCS=2). Convert each gate to a deterministic count (rows read, keys visited, store calls, copies) and keep
+  the bytes as a log or benchmark (CONTRIBUTING, Code). `TestCascadeMetaCost` done (COSTCOUNT). Done when no suite test
+  gates on MemStats or wall time.
 - **VDICTDISK step 3** (ai-soc 29 Oct, goal 2 RAM) — steps 1-2 shipped (v4.97.3, v4.98.0); a budget/LRU in place of resident value tokens, decided from the next run's re-measure (at Cap 1,048,576 a 'row' dictionary is about 136 MB per open day shard). Done when an entry's resident cost is measured and bounded. Waits for ai-soc's next run.
 - **TIERCLOCK measurement** (ai-soc 29 Oct, goal 2) — released in v4.98.0; ai-soc's pin: Clock = newest committed valid time, ColdAfter 3 d, RelsByMint on. Done when ai-soc's BA replay rotates as live data would. Waits for that run.
 - **PURGECURSOR, PURGERESIDUE** (28 Oct; patches) — a label purge resumes from a cursor instead of copying the label's whole ID list per 256-node call (quadratic at 10 M); a purge or history truncate leaves about 30-50 B per ID in the `unknown` map of a shard that stays open. No consumer purges today. Done when each is fixed or dropped. Waits for René's word (STORECFG).
