@@ -290,13 +290,24 @@ func TestRELHISTP2UpdateThenPluralOracle(t *testing.T) {
 					}
 					when := fmt.Sprintf("step %d: %s rel=%v (err %v)", step, what, rel, err)
 					head := g.peekNow()
+					// First the entry the write left against the fold's
+					// (before any read can refill it), then the pins it may
+					// answer: the written row's TxFrom and the instant before
+					// it (at or above the old entry's newest TxFrom, below
+					// the new one's), then a mixed read (a pin below maxTx:
+					// the fold, which refills).
+					relhistP2EntryAsFold(t, g, nid, rid, head, when)
+					wrote, _, _, _ := g.Nodes.LatestStamps(nid)
+					if rel {
+						wrote, _, _, _ = g.Rels.LatestStamps(rid)
+					}
+					relhistP2Plural(t, g, nid, rid, []types.Instant{max(wrote-1, 1), max(wrote, 1), head}, when)
 					pins = append(pins, before, head)
 					read := []types.Instant{head, before, head}
 					for range 3 {
 						read = append(read, pins[rng.IntN(len(pins))])
 					}
 					relhistP2Plural(t, g, nid, rid, read, when)
-					relhistP2EntryAsFold(t, g, nid, rid, head, when)
 				}
 				overlays += g.headOverlays.Load()
 				hits += g.headHits.Load()
