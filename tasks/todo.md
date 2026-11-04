@@ -37,11 +37,6 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Next
 
-- **LISTREAD** (sigma 31 Oct) — label-and-property pages read through one forward scan since v4.105.4 (2.9-6.6 µs
-  per listed node cold, from 6.8-29; `tasks/evidence/LISTREAD/measure.txt`). Left: a batch `HasHistory(ids)` (a
-  minor) that reads tiered's liveness stamps through one scan too (72 % of HasHistory's ~3 µs per node). Done when
-  sigma's restore timing on v4.105.4 shows HasHistory still worth a door, or drops it. **rho/sigma:** restart time:
-  the listing share of 14.5 of 23.3 s per 1 M nodes shrinks; HasHistory's 6.4 s waits on sigma's numbers.
 - **Round 2 read items** (ai-soc's read-back inventory, 3 Nov, 60-min BA on tiered; estimates, measure each first):
   UNIQUEMISS (GetOrCreateByKey looks the key up, then the unique pass again on create, core/unique_constraints.go:628;
   claimForever re-marshals the whole owner map per claim, unique_forever.go:120-132); OWNERDROP (tiered
@@ -83,6 +78,12 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
   sigma's paged rows, so cutting those (WRITEWHY, sigma's side) does more than a rho lever.
 
 ## Waiting
+- **LISTREAD** (sigma 31 Oct) — label-and-property pages read through one forward scan since v4.105.4 (2.9-6.6 µs
+  per listed node cold, from 6.8-29; `tasks/evidence/LISTREAD/measure.txt`). Left: a batch `HasHistory(ids)` (a
+  minor) that reads tiered's liveness stamps through one scan too (72 % of HasHistory's ~3 µs per node). Waits for
+  sigma's restore timing on v4.105.4 (sigma 4 Nov: only on René's word; sigma v0.12.4 tags on v4.105.4). Done when
+  that timing shows HasHistory worth a door, or drops it. **rho/sigma:** restart time:
+  the listing share of 14.5 of 23.3 s per 1 M nodes shrinks; HasHistory's 6.4 s waits on sigma's numbers.
 
 On consumer runs (ai-soc, sigma):
 - **VALUETHRESH** (v4.104.0) — done when sigma's 2-day budget profile with 32 KiB on tiered shows the compaction CPU
