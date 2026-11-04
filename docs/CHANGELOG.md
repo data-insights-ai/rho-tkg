@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The test and release process, remade** (René, 4 Nov: no shell scripts, a short Makefile, Go's own test and
+  release mechanisms). Every check is one Makefile line: `build` (+386), `test` (`go test -short ./...`), `lint`
+  (golangci-lint in Docker, which already runs gofmt, goimports and go vet), `mod`, `gosec`, `vuln`, `fuzz`,
+  `test-major` (cold `-race -count=1 -shuffle=on` with the 80 % coverage floor from the same run), `race`,
+  `test-long` (`go test ./...`), `measure`, `cover`, `presubmit`, `kind`. A gate is `make -j -k` of its checks:
+  patch = build, lint, mod, test; minor adds gosec; major = build, lint, mod, gosec, test-major, fuzz, vuln. Gone:
+  the separate gofmt, vet and docs steps (lint and `go test ./...` run them), the race-plus-coverage double run of
+  the major gate, `scripts/check-ledger.sh` (now `TestLedger` in `internal/docscheck`, in every `go test ./...`),
+  `gate-time.sh`, `test-long.sh`, `test-named.sh`, `measure.sh`, and 23 Makefile targets (`check`, `vet`, `fmt`,
+  `fmt-check`, `test-v`, `test-integration`, `bench-types-footprint`, `check-metakv-reap`, the `*-docker` names,
+  `cover-gate`, `fuzz-smoke`, `tools`, `clean`, the `bench-graph-*` profiles: the production benchmark's defaults are
+  the small profile, the large one is its `TKG_BENCH_*` variables). `scripts/release` keeps only the release
+  mechanics: preconditions, the diff's kind, the CHANGELOG section, `make gate-<kind>`, the annotated tag, the atomic
+  push, then `make race` detached (log `.git/race.out`); plus `kind` and the presubmit `test`. Warm patch gate (load 45-55,
+  a race run beside it): 23 s for a comment change, 65 s for a line in core, 178 s for a line in `pkg/types`.
+
 ## [4.105.3] - 2026-11-04
 
 ### Changed

@@ -1,235 +1,75 @@
 SHELL := /bin/bash
+MAKEFLAGS += --no-print-directory
+.DEFAULT_GOAL := test
 
-.DEFAULT_GOAL := build
+# -trimpath keeps the checkout's path out of Go's cache keys, so every
+# session and gate shares the same test cache (René, 4 Nov: GOFLAGS=-trimpath everywhere).
+export GOFLAGS := -trimpath
 
-.PHONY: tools build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker gate-patch gate-minor gate-major release-patch release-minor release-major kind measure fuzz-smoke check clean check-metakv-reap
-
-BENCH_COUNT ?= 1
-BENCH_TIME ?= 1s
-PROD_BENCH_COUNT ?= 1
+RACE_LOCK ?= $(HOME)/.cache/race-gate.lock   # one -race suite on the host at a time, shared with sigma
+COVER_MIN ?= 80
+FUZZTIME ?= 20s
 GOLANGCI_LINT_VERSION ?= v2.13.2
 GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
+# The pinned tools run in the go.mod toolchain image: Docker is always here, the tools are not.
+# Named volumes keep its module, build and lint caches and the installed binaries.
+DOCKER_GO = docker run --rm -v "$(CURDIR)":/src -w /src -v rho-tkg-gocache:/go \
+	-v rho-tkg-buildcache:/root/.cache/go-build -v rho-tkg-lintcache:/root/.cache/golangci-lint golang:$(shell awk '/^go /{print $$2}' go.mod)
 
-# -trimpath keeps the checkout's path out of Go's cache keys, as in the release
-# gates (scripts/release), so make's tests and the gates share cache entries.
-export GOFLAGS ?= -trimpath
+.PHONY: build test lint mod gosec vuln fuzz test-major test-long race measure cover presubmit kind \
+	gate-patch gate-minor gate-major release-patch release-minor release-major bench bench-baseline bench-check bench-compare
 
-# Build (verify compilation)
-# The library also builds for 32-bit targets (ARM32: DICT broke it unnoticed).
-build:
-	go build ./...
-	GOOS=linux GOARCH=386 go build ./...
-
-# Run unit tests
-test:
-	go test -short ./...
-
-# Run tests with verbose output
-test-v:
-	go test -short -v ./...
-
-# Run tests with race detector (Go's test cache reruns only what changed).
-test-race:
-	go test -race -short -timeout 20m ./...
-
-# The long tier: every test a plain `testing.Short()` skips (no race exception),
-# run without -short or race (scripts/test-long.sh; LONG_TIER=list prints them).
-test-long:
-	$(SHELL) scripts/test-long.sh
-
-# Run integration tests (long-running, not short)
-test-integration:
-	go test -run Integration ./...
-
-# Run the pkg/types memory-footprint / struct-size regression tests (renamed
-# from the historical "bench" target so that name is free for the bench/
-# suite below — these are ordinary `go test` assertions, not `testing.B`
-# benchmarks).
-bench-types-footprint:
-	go test -v -count=1 -run TestBench ./pkg/types/
-
-# Run the bench/ cross-backend performance suite
-# (see docs/CONTRIBUTING.md "Benchmarks").
-# Fixed -benchtime keeps a full run fast and reproducible; -count=1 is the
-# quick local/CI signal (bench-check below runs its own fresh comparison
-# pass under the same flags).
-bench:
-	go test -bench=. -benchmem -benchtime=0.3s -count=1 ./bench
-
-# Capture a per-machine baseline for bench-check. Baselines are never
-# committed (see .gitignore) — machine-specific, re-capture after any
-# hardware/load change or before starting a perf investigation.
-bench-baseline:
-	go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$$' ./bench | tee bench/local-baseline.txt
-
-# Compare bench/local-baseline.txt against a fresh run via benchstat and
-# fail if any scenario regressed time by more than 15% (see
-# bench/bench-check.sh for the threshold logic and its documented rationale).
-bench-check:
-	./bench/bench-check.sh
-
-# Run graph performance baseline benchmarks for benchstat comparisons.
-bench-graph-baseline:
-	go test -run '^$$' -bench 'BenchmarkGraphBaseline|BenchmarkAddNode|BenchmarkAddRelationship|BenchmarkAddNodeLabel|BenchmarkRemoveNodeLabel' -benchmem -benchtime=$(BENCH_TIME) -count=$(BENCH_COUNT) ./pkg/graph/internal/core
-
-# Run the default small production-shaped graph benchmark profile.
-bench-graph-production: bench-graph-production-small
-
-# Run production-shaped graph benchmarks sized for routine benchstat comparisons.
-bench-graph-production-small:
-	TKG_BENCH_NODES=10000 \
-	TKG_BENCH_FANOUT=5 \
-	TKG_BENCH_HUB_DEGREE=1000 \
-	TKG_BENCH_HISTORY_NODES=128 \
-	TKG_BENCH_HISTORY_DAYS=30 \
-	TKG_BENCH_EXPORT_NODES=2000 \
-	TKG_BENCH_EXPORT_FANOUT=2 \
-	TKG_BENCH_BATCH_NODES=256 \
-	TKG_BENCH_TIERED_CASES=1024 \
-	TKG_BENCH_TIERED_WARM_SIGNALS=2048 \
-	TKG_BENCH_TIERED_HOT_SIGNALS=2048 \
-	TKG_BENCH_SURFACE_NODES=2048 \
-	go test -run '^$$' -bench 'BenchmarkGraphProduction' -benchmem -benchtime=$(BENCH_TIME) -count=$(PROD_BENCH_COUNT) ./pkg/graph/internal/core
-
-# Run production-shaped graph benchmarks with large stress fixtures.
-bench-graph-production-large:
-	TKG_BENCH_NODES=100000 \
-	TKG_BENCH_FANOUT=10 \
-	TKG_BENCH_HUB_DEGREE=10000 \
-	TKG_BENCH_HISTORY_NODES=32 \
-	TKG_BENCH_HISTORY_DAYS=3000 \
-	TKG_BENCH_EXPORT_NODES=10000 \
-	TKG_BENCH_EXPORT_FANOUT=3 \
-	TKG_BENCH_BATCH_NODES=1024 \
-	TKG_BENCH_TIERED_CASES=10000 \
-	TKG_BENCH_TIERED_WARM_SIGNALS=20000 \
-	TKG_BENCH_TIERED_HOT_SIGNALS=20000 \
-	TKG_BENCH_SURFACE_NODES=10000 \
-	go test -run '^$$' -bench 'BenchmarkGraphProduction' -benchmem -benchtime=$(BENCH_TIME) -count=$(PROD_BENCH_COUNT) ./pkg/graph/internal/core
-
-# Run both routine baseline and production-shaped benchmark suites.
-bench-graph-all: bench-graph-baseline bench-graph-production-small
-
-# Run both baseline and large production-shaped benchmark suites.
-bench-graph-all-large: bench-graph-baseline bench-graph-production-large
-
-# Compare the common graph micro-benchmarks across revisions (worktree-per-ref).
-# Defaults: HEAD vs v4.27.0 vs v4.26.0. Pass explicit refs to override, e.g.
-#   make bench-compare ARGS='HEAD v4.28.1 v4.25.0'
-# (ARGS is not a Make variable here — call the script directly for custom refs.)
-bench-compare:
-	./bench/bench-compare-revisions.sh
-
-# Run tests with coverage report
-cover:
-	go test -short -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report: coverage.html"
-
-# Coverage gate: fails if total ./pkg/... coverage falls below COVER_MIN
-# (default 80, project rule), so a regression surfaces instead of silently
-# lowering the floor. The sub-API wrappers are covered by their packages' own
-# forwarding tests.
-COVER_MIN ?= 80
-cover-gate:
-	@go test -short -count=1 -coverpkg=./pkg/... -coverprofile=coverage.pkg.out ./pkg/... > coverage.test.log 2>&1 || { grep -E -B2 -A20 -- '--- FAIL|^FAIL|panic:' coverage.test.log | head -200; exit 1; }
-	@total=$$(go tool cover -func=coverage.pkg.out | awk '/^total:/ {gsub("%","",$$3); print $$3}'); \
-	awk -v t=$$total -v min=$(COVER_MIN) 'BEGIN { if (t+0 < min+0) { printf "coverage gate: total=%s%% < min=%s%% — failing\n", t, min; exit 1 } else { printf "coverage gate: total=%s%% >= min=%s%% — ok\n", t, min } }'
-
-# Run go vet
-vet:
-	go vet ./...
-
-# BACKLOG 13l: fails if pkg/graph/internal/core persists a MetaKV key with no
-# explicit reap-vs-preserve classification for Admin.Reset/ChangeClear — see
-# metakv_reap_policy.go and metakv_reap_policy_check_test.go.
-check-metakv-reap:
-	scripts/test-named.sh ./pkg/graph/internal/core/ TestMetaKVReapPolicyCoversEveryKey --
-
-# Format code
-fmt:
-	gofmt -w $$(git ls-files '*.go')
-
-# Verify formatting (fails if any tracked Go source file needs formatting).
-fmt-check:
-	@unformatted=$$(gofmt -l $$(git ls-files '*.go')); \
-		test -z "$$unformatted" || (echo "Files need formatting:"; echo "$$unformatted"; exit 1)
-
-# Run golangci-lint
-lint:
-	golangci-lint run ./...
-
-# Static security analysis
-security:
-	gosec -quiet $$(go list -f '{{.Dir}}' ./...)
-
-# Known vulnerability check
-vulncheck:
-	govulncheck $$(go list ./...)
-
-# Pin security tools so CI results change only when this repository chooses to
-# update the analyzers, rather than whenever an upstream latest tag moves.
-tools:
-	go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
-	go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
-
-# --- Dockerized lint/security/vulncheck ------------------------------------
-# golangci-lint, gosec, and govulncheck are often NOT installed on the host.
-# Docker is always available here, so run them inside the go.mod-matching
-# toolchain image (guarantees Go-version compatibility) with cached named
-# volumes so repeated runs are fast. GO_IMAGE auto-tracks go.mod.
-GO_VERSION := $(shell awk '/^go /{print $$2}' go.mod)
-GO_IMAGE   ?= golang:$(GO_VERSION)
-DOCKER_GO  = docker run --rm -v "$(CURDIR)":/src -w /src \
-	-v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build \
-	-v rho-tkg-lintcache:/root/.cache/golangci-lint $(GO_IMAGE)
-
-# The installed golangci-lint stays in the rho-tkg-gocache volume; reinstalled
-# only when GOLANGCI_LINT_VERSION moves. Its analysis cache: rho-tkg-lintcache.
-lint-docker:
+# --- Checks (each one plain go, or the pinned tool in Docker) -----------------
+build:    ## compiles everything, 32-bit too (ARM32 broke unnoticed once)
+	go build ./... && GOOS=linux GOARCH=386 CGO_ENABLED=0 go build ./...
+test:     ## the short tier, cached: only what a change reaches reruns
+	go test -short -timeout 20m ./...
+lint:     ## golangci-lint (.golangci.yml: gofmt, goimports, go vet and the linters)
 	$(DOCKER_GO) sh -c 'golangci-lint version 2>/dev/null | grep -q " $(GOLANGCI_LINT_VERSION:v%=%) " || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); golangci-lint run ./...'
-
-security-docker:
+mod:      ## go.mod and go.sum are tidy and verified
+	go mod tidy -diff && go mod verify
+gosec:    ## static security analysis
 	$(DOCKER_GO) sh -c 'go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) && gosec -quiet ./...'
-
-vulncheck-docker:
+vuln:     ## known vulnerabilities in the dependencies
 	$(DOCKER_GO) sh -c 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && govulncheck ./...'
+fuzz:     ## the trust-boundary fuzz harnesses (docs/SECURITY.md), FUZZTIME each
+	for f in FuzzImport FuzzApplyChange; do go test -run '^$$' -fuzz=$$f -fuzztime=$(FUZZTIME) ./pkg/graph/internal/core/ || exit 1; done
+	for f in FuzzWireToNodeChecked FuzzWireToRelChecked FuzzUnmarshalNodeWireWithKeys; do go test -run '^$$' -fuzz=$$f -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/ || exit 1; done
+test-major: ## cold, with -race, and the coverage floor on ./pkg/... from the same run
+	flock $(RACE_LOCK) go test -race -count=1 -shuffle=on -timeout 90m -coverpkg=./pkg/... -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out | awk -v min=$(COVER_MIN) '/^total:/ { sub("%","",$$3); print "coverage " $$3 "% (floor " min "%)"; exit $$3+0 < min }'
 
-# fuzz-smoke runs each trust-boundary fuzz harness for FUZZTIME (nothing runs
-# them on a schedule); a crasher lands in testdata/fuzz/ and is committed with
-# its fix.
-FUZZTIME ?= 20s
-fuzz-smoke:
-	scripts/test-named.sh ./pkg/graph/internal/core/ 'FuzzImport|FuzzApplyChange' --
-	scripts/test-named.sh ./pkg/graph/internal/storeutil/ 'FuzzWireToNodeChecked|FuzzWireToRelChecked|FuzzUnmarshalNodeWireWithKeys' --
-	go test -run '^$$' -fuzz=FuzzImport -fuzztime=$(FUZZTIME) ./pkg/graph/internal/core/
-	go test -run '^$$' -fuzz=FuzzApplyChange -fuzztime=$(FUZZTIME) ./pkg/graph/internal/core/
-	go test -run '^$$' -fuzz=FuzzWireToNodeChecked -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
-	go test -run '^$$' -fuzz=FuzzWireToRelChecked -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
-	go test -run '^$$' -fuzz=FuzzUnmarshalNodeWireWithKeys -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
+# --- By hand, never before a tag ----------------------------------------------
+race:     ## -race over the short tier; after a patch or minor push (started by the release) and from cron
+	flock $(RACE_LOCK) go test -race -short -timeout 30m ./...
+test-long: ## the long tier: without -short, without race
+	go test -timeout 60m ./...
+measure:  ## the measurement level (//go:build measure): heap and allocation bounds, on a quiet host
+	for f in $$(grep -rl '^//go:build measure' --include='*_test.go' pkg); do go test -tags measure -count=1 -v -run "^($$(grep -oE '^func Test\w+' $$f | cut -c6- | paste -sd'|'))$$" ./$${f%/*} || exit 1; done
+cover:    ## coverage report of the short tier: coverage.html
+	go test -short -coverpkg=./pkg/... -coverprofile=coverage.out ./pkg/... && go tool cover -html=coverage.out -o coverage.html
+presubmit: ## a builder's check: vet and short tests of the packages a change reaches (scripts/release)
+	go run ./scripts/release test
+kind:     ## the diff's kind since the last tag (patch, minor, major) and why
+	go run ./scripts/release kind
 
-# Measurement level (René 4 Nov): tests behind the `measure` build tag, bounds
-# that load moves; run by hand, never in a gate.
-measure:
-	@scripts/measure.sh
+# --- Gates (steps at once; -k: a red run lists every red step) and releases ---
+gate-patch:
+	$(MAKE) -j -k -O build lint mod test
+gate-minor:
+	$(MAKE) -j -k -O build lint mod test gosec
+gate-major:
+	$(MAKE) -j -k -O build lint mod test-major gosec fuzz vuln
+release-patch release-minor release-major: ## preconditions, kind, CHANGELOG, the gate, tag, atomic push (scripts/release)
+	go run ./scripts/release $(@:release-%=%)
 
-# Release cycle (René, 4 Nov; scripts/release, CONTRIBUTING § Release checklist):
-# gate-* runs a gate alone, release-* runs the release (preconditions, kind,
-# CHANGELOG, gate, tag, atomic push), kind prints the diff's kind.
-gate-patch gate-minor gate-major:
-	@scripts/gate-time.sh $@ go run ./scripts/release gate $(@:gate-%=%)
-
-release-patch release-minor release-major:
-	@scripts/gate-time.sh $@ go run ./scripts/release $(@:release-%=%)
-
-kind:
-	@go run ./scripts/release kind
-
-# Quick check: vet, build, short tests
-check: vet build test
-
-
-# Clean generated files
-clean:
-	rm -f coverage.out coverage.html coverage.pkg.out
+# --- Benchmarks (docs/CONTRIBUTING.md § Benchmarks) ---------------------------
+bench:    ## the cross-backend suite, every scenario briefly
+	go test -bench=. -benchmem -benchtime=0.3s -count=1 ./bench
+bench-baseline: ## this machine's baseline for bench-check (gitignored)
+	go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$$' ./bench | tee bench/local-baseline.txt
+bench-check: ## fails on a regression against the baseline (bench/bench-check.sh)
+	bench/bench-check.sh
+bench-compare: ## the graph micro-benchmarks across revisions (bench/bench-compare-revisions.sh)
+	bench/bench-compare-revisions.sh

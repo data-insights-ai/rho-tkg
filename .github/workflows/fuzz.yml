@@ -16,8 +16,8 @@ name: Fuzz
 # testdata/fuzz/<FuzzName>/ and must be committed as a permanent regression
 # seed once triaged, per the existing seed-corpus discipline.
 
-# Manual only (no schedule, René 2026-10-23); `make fuzz-smoke` runs the same
-# targets briefly in the local minor gate.
+# Manual only (no schedule, René 2026-10-23); `make fuzz` runs the same
+# targets briefly in the local major gate.
 on:
   workflow_dispatch:
     inputs:

@@ -354,14 +354,14 @@ Run any tutorial: `go run ./tutorials/001_basic_graph/`
 ## Building & testing
 
 ```bash
-make check   # vet + build + test
-make test    # unit tests (short mode)
-make gate-patch                 # patch gate, incremental through Go's test cache
-make release-patch              # or release-minor / release-major: gate, tag, push
+make test            # the short tier, cached
+make gate-patch      # build, lint, mod and test at once, incremental through Go's test cache
+make release-patch   # or release-minor / release-major: the gate, the tag, the push
 ```
 
-See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the full build/test/lint workflow,
-including the Docker-based `lint`/`security`/`vulncheck` targets.
+Every check is a plain `go` command or the pinned tool in Docker, one Makefile line each; the release
+mechanics (kind, CHANGELOG, tag, push) are `scripts/release`. The gates and the release checklist:
+[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) § Gates.
 
 ## Version history
 

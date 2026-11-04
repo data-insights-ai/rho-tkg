@@ -30,7 +30,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` and the HANDOVER brief get one commit on main per item end (René 2026-10-31: 298 of 545 commits in 7 days
   were todo commits), in the item's branch so it reaches main with the item; a fact with no branch to ride on goes on
   main in `rho-tkg`, the only checkout (the second worktree was removed, René 2026-10-31);
-  `scripts/check-ledger.sh` before every such commit.
+  `go test ./internal/docscheck/` (`TestLedger`) before every such commit.
 - Peers (René 2026-10-31): one message per item each way to sigma-tkgd and ai-soc, about 1,500 characters at most, detail
   in a file; status goes in the todo. A status line is `item | state | next | waits for`, checked against the repo before
   it is stated.
@@ -93,7 +93,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 - New tests run under `-short` in seconds (one test ≲2 s, a package ≲5 s). A slow test is gated with
   `testing.Short() && !raceEnabled` so it runs in the race run, or with a plain `testing.Short()` when its bounds hold
-  only without race: then the long tier runs it by hand (`make test-long`, which finds every such skip). A cap or
+  only without race: then the long tier runs it by hand (`make test-long`). A cap or
   growth test lowers the cap through a test switch.
 - History-aware code gets two-phase tests: create state X at t0, mutate after t0, query at t0 and assert X.
 - Assert exact sets and negative cases ("must NOT contain Y"), not happy paths. Ask of every test: would it fail if the code
@@ -105,16 +105,15 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 | Command | Use |
 |---|---|
-| `make gate-patch` | **Patch gate** (`go run ./scripts/release gate patch`), every step at once: gofmt, build (+386), vet, lint, `go mod tidy -diff` and `verify`, docs tests (`internal/docscheck`), check-ledger, `go test -short ./...` without race and without `-failfast` (a red run lists every failing test). Incremental through Go's test cache: only the packages a change affects rerun, so no `-count=1` |
-| `go run ./scripts/release test` | **Presubmit** (a builder, before handing a branch back; as sigma's): `go vet` and `go test -short -p 4` of the packages the change reaches: the packages of files changed against `origin/main` (a testdata file counts for its package, `go.mod`/`go.sum` mean all) and every package whose tests depend on one |
-| `go run ./scripts/release race` | **Race run** (René, 4 Nov, as sigma's): `go test -race -short ./...` under `flock ~/.cache/race-gate.lock` (shared with sigma: one -race suite on the host at a time; `RACE_LOCK` overrides), log `.git/gate/race.out`. Not in the patch and minor gates: a patch or minor release starts it in the background after its push, nobody waits on it, and cron runs it every 6 h; a red race run is fixed in the next patch |
-| `make gate-minor` | **Minor gate**: the patch gate and gosec. The long tier (`make test-long`) runs by hand, never before a tag |
-| `make gate-major` | **Major gate**, comprehensive and cold: the minor gate with `-race -count=1 -shuffle=on`, cover-gate, fuzz-smoke, govulncheck |
-| `make release-patch`, `release-minor`, `release-major` | **The release** (below); `make kind` prints the diff's kind and why |
-| `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each runs alone (`scripts/measure.sh`) |
-| `make test` / `make test-race` | short tests / race detector |
-| `make cover` | coverage report (`coverage.html`) |
-| `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable". Named volumes keep the module, build and lint caches and the installed golangci-lint (lint: 1.4 s warm) |
+| `make gate-patch` | **Patch gate**: `make -j -k` of `build` (+386), `lint` (golangci-lint: gofmt, goimports, go vet, the linters), `mod` (`go mod tidy -diff`, `verify`) and `test` (`go test -short ./...`, the docs and ledger tests of `internal/docscheck` included) at once; no race, no `-failfast`: a red run lists every red step and failing test. Incremental through Go's test cache: only the packages a change reaches rerun, so no `-count=1` (warm, 4 Nov, load 45-55 with a race run beside it: 23 s for a docs or comment change, 65 s for a line in core, 178 s for a line in `pkg/types` that reruns 31 packages) |
+| `make gate-minor` | **Minor gate**: the patch gate and `gosec` |
+| `make gate-major` | **Major gate**, comprehensive and cold: build, lint, mod, gosec, `test-major` (`go test -race -count=1 -shuffle=on ./...` under the race lock, with the coverage floor of 80 % on `./pkg/...` from the same run), `fuzz` (each harness for `FUZZTIME`), `vuln` (govulncheck) |
+| `make release-patch`, `release-minor`, `release-major` | **The release** (below): `go run ./scripts/release`, which holds only what make cannot do (the diff's kind, the CHANGELOG section, the tag and the atomic push, the race run started after the push); `make kind` prints the diff's kind and why |
+| `make presubmit` | **A builder's check** before handing a branch back (as sigma's): `go vet` and `go test -short -p 4` of the packages the change reaches: the packages of files changed against `origin/main` (a testdata file counts for its package, `go.mod`/`go.sum` mean all) and every package whose tests depend on one |
+| `make race` | **The race run** (René, 4 Nov, as sigma's): `go test -race -short ./...` under `flock ~/.cache/race-gate.lock` (shared with sigma: one -race suite on the host at a time; `RACE_LOCK` overrides). Not in the patch and minor gates: a patch or minor release starts it detached after its push (log `.git/race.out`), nobody waits on it, and cron runs it every 6 h; a red race run is fixed in the next patch |
+| `make test-long` | **The long tier**, by hand, never before a tag: `go test ./...` without `-short` and without race |
+| `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each file's tests in their own process |
+| `make test`, `build`, `lint`, `mod`, `gosec`, `vuln`, `fuzz`, `cover` | one check alone (`cover`: the short tier's coverage report, `coverage.html`). golangci-lint, gosec and govulncheck are pinned and run in the go.mod toolchain image: Docker is always available, so the gate is never "un-runnable"; named volumes keep their caches (lint: 1.4 s warm) |
 | `go test -run TestFoo ./pkg/...` | one test |
 
 GitHub CI runs only when a `v*` tag is pushed and only
@@ -165,12 +164,12 @@ Every claim about badger cites its source or a measurement.
 CHANGELOG entries go under `[Unreleased]` in the same change as the code. A new public error sentinel needs a row in
 [errors.md](errors.md). The docs tests (`internal/docscheck`, its own package so a doc edit reruns only it, never
 core's cached tests; `TestDocsMetadataMatchesSourceOfTruth`, `TestErrorsDocumentation`,
-`TestNoMDFileOutsideTheDocumentation`) run in every gate, cached: they read the files they check, the layout test
+`TestNoMDFileOutsideTheDocumentation`, `TestLedger`) run in every gate, cached: they read the files they check, the layout test
 walks the directories, so an edit reruns them.
 
 ## Fuzzing
 
-The trust-boundary fuzz harnesses (`make fuzz-smoke` runs them briefly in the major gate and by hand; `.github/workflows/fuzz.yml` on demand) are listed in
+The trust-boundary fuzz harnesses (`make fuzz` runs them briefly in the major gate and by hand; `.github/workflows/fuzz.yml` on demand) are listed in
 [SECURITY.md](SECURITY.md) ("Fuzz harnesses"). Run a deep session when you change a decode or import surface and commit any new
 crasher (under the package's `testdata/fuzz/`) with the fix:
 
@@ -284,7 +283,7 @@ Index (`→` names where the rule lives now):
 77. → 78
 78. Red break-the-code test first; mutation sweep for crash safety → digest (Code); `tasks/evidence/FLUSHPART/mutations.txt`
 79. Fix = patch, door = minor → digest (Process); `scripts/release` (kind.go)
-80. One todo and HANDOVER commit on main per item end → digest (Process); `scripts/check-ledger.sh`
+80. One todo and HANDOVER commit on main per item end → digest (Process); `TestLedger` (`internal/docscheck`)
 81. Act, do not offer → digest (Process)
 82. → Release checklist (the release script's gate decides; a red tag CI is fixed by the next tag)
 83. → 78
