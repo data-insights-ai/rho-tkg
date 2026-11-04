@@ -868,6 +868,11 @@ type Config struct {
 	SyncWrites           bool
 	Compression          options.CompressionType
 	ZSTDCompressionLevel int
+	// NoCompression writes SSTable blocks uncompressed (see
+	// badger.Config.NoCompression); refused with a non-zero Compression.
+	// Applies to the store built from BadgerDir/BadgerInMemory; ignored when
+	// Store is provided explicitly.
+	NoCompression bool
 	// CacheCapacity is the per-entity-cache (nodes, rels) soft limit for the
 	// badger-backed store constructed from BadgerDir/BadgerInMemory.
 	// 0 means the store default (10,000). Size it to the scan working set:
@@ -2205,6 +2210,7 @@ func New(config Config) (*Core, error) {
 				SyncWrites:                  config.SyncWrites,
 				Compression:                 config.Compression,
 				ZSTDCompressionLevel:        config.ZSTDCompressionLevel,
+				NoCompression:               config.NoCompression,
 				CacheCapacity:               config.CacheCapacity,
 				CacheBudgetBytes:            config.CacheBudgetBytes,
 				ResidentCache:               config.ResidentCache,

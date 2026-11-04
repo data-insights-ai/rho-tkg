@@ -185,8 +185,11 @@ type Config struct {
 	OpenImageInterval time.Duration
 
 	// Per-shard badger passthroughs (applied uniformly to every shard).
-	Compression           options.CompressionType
-	ZSTDCompressionLevel  int
+	Compression          options.CompressionType
+	ZSTDCompressionLevel int
+	// NoCompression writes every shard's SSTable blocks uncompressed; see
+	// badger.Config.NoCompression. Refused with a non-zero Compression.
+	NoCompression         bool
 	CacheCapacity         int
 	CacheBudgetBytes      int64
 	SyncWrites            bool
@@ -375,6 +378,7 @@ func (s *Store) shardConfig(cfg Config, k uint8, reg *registrypkg.PropertyKeyReg
 		InMemory:              cfg.InMemory,
 		Compression:           cfg.Compression,
 		ZSTDCompressionLevel:  cfg.ZSTDCompressionLevel,
+		NoCompression:         cfg.NoCompression,
 		CacheCapacity:         cfg.CacheCapacity,
 		CacheBudgetBytes:      cfg.CacheBudgetBytes,
 		SyncWrites:            cfg.SyncWrites,

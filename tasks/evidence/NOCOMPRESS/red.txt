@@ -1,0 +1,14 @@
+--- FAIL: TestNoCompressionWritesUncompressedTables (0.15s)
+    compression_test.go:167: manifest tables by codec = map[1:1], want all 1 options.None
+--- FAIL: TestNoCompressionRefusedWithCompression (0.16s)
+    compression_test.go:183: InMemory=false: New accepted NoCompression with Compression ZSTD
+--- FAIL: TestNoCompressionReopenAcrossSetting (0.22s)
+    compression_test.go:223: manifest tables by codec = map[1:2], want both Snappy and None
+--- FAIL: TestCompression_ReachesBadgerOptions (0.72s)
+    --- FAIL: TestCompression_ReachesBadgerOptions/no_compression (0.11s)
+        compression_test.go:56: Compression reached Badger as 1, want 0
+    --- FAIL: TestCompression_ReachesBadgerOptions/in-memory_no_compression (0.02s)
+        compression_test.go:56: Compression reached Badger as 1, want 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.824s
+FAIL

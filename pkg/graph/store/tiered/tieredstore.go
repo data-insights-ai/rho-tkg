@@ -121,12 +121,15 @@ type Config struct {
 	IdleTimeout time.Duration
 	// Compression sets the SSTable compression algorithm for all shards.
 	// options.Snappy or options.ZSTD. options.None is the zero value and so
-	// keeps the Badger default (Snappy): no compression cannot be selected.
+	// keeps the Badger default (Snappy); NoCompression selects no compression.
 	Compression options.CompressionType
 	// ZSTDCompressionLevel sets the ZSTD compression level (1-15) for all shards.
 	// Only effective when Compression is options.ZSTD.
 	// Zero keeps the Badger default (1).
 	ZSTDCompressionLevel int
+	// NoCompression writes every shard's SSTable blocks uncompressed; see
+	// badger.Config.NoCompression. Refused with a non-zero Compression.
+	NoCompression bool
 	// ValueLogFileSize / MemTableSize / BlockCacheSize / IndexCacheSize /
 	// NumCompactors tune each shard's Badger per-instance footprint. ONE
 	// Badger instance opens per shard, so stock sizes multiply by shard count
@@ -427,6 +430,7 @@ type Store struct {
 	openColdShards        atomic.Int64
 	compression           options.CompressionType
 	zstdLevel             int
+	noCompression         bool
 	valueLogFileSize      int64 // per-shard Badger footprint knobs; 0 = stock default
 	memTableSize          int64
 	valueThreshold        int64
@@ -678,6 +682,7 @@ func New(cfg Config) (*Store, error) {
 		maxOpenColdShards:     maxOpenCold,
 		compression:           cfg.Compression,
 		zstdLevel:             cfg.ZSTDCompressionLevel,
+		noCompression:         cfg.NoCompression,
 		valueLogFileSize:      cfg.ValueLogFileSize,
 		memTableSize:          cfg.MemTableSize,
 		blockCacheSize:        cfg.BlockCacheSize,
@@ -1838,6 +1843,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		ReadOnly:                    readOnly,
 		Compression:                 ts.compression,
 		ZSTDCompressionLevel:        ts.zstdLevel,
+		NoCompression:               ts.noCompression,
 		ValueLogFileSize:            ts.valueLogFileSize,
 		MemTableSize:                ts.memTableSize,
 		BlockCacheSize:              ts.blockCacheSize,
