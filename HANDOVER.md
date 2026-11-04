@@ -74,7 +74,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     below); its store analysis tool is `projects/derived-writeback` (cmd/wbscan).
   - agent-bookkeeping (`~/Work/2026/bds421/sigma/agent-bookkeeping`): build check only.
 - **Housekeeping:** deletions are René's call (`rm` is denied to agents; user-only actions below; finished scratch goes
-  on the RHO_DONE list in `~/cleanup.sh`). Consumer build check: Appendix B.
+  on the RHO_DONE list in `~/cleanup.sh`, run before and after every release). Consumer build check: Appendix B.
 
 ## Glossary
 
@@ -124,8 +124,7 @@ unmerged branches are in `archive/unmerged-2026-10-27` (see Branches).
 
 1. `! rm -rf /dev/shm/sigma-*` (sigma test dirs: 33 dirs, /dev/shm 4.5 GB on 4 Nov; ask sigma first, some may be a
    running test's) and the merged worktrees in `~/Work/2026/datainsights/sigma-tkgd` (`git worktree list`).
-2. `! rm ~/Work/2026/datainsights/rho-tkg/warm` (stray 10-byte file, untracked; agents leave it alone).
-3. gh-dashboard scratchpad (667 MB, path in that session); tell that session directly if wanted.
+2. gh-dashboard scratchpad (667 MB, path in that session); tell that session directly if wanted.
 
 ## Appendix A — origin watch
 

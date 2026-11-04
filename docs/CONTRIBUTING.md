@@ -115,17 +115,22 @@ GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed 
 
 ### Release checklist
 
-1. Merge every branch of the batch; `go test -short` of the touched packages.
-2. Self-review of the merged batch (§ Review); fixes merged.
-3. Gate: `make ci-fast` for a patch, `make ci-docker` for a minor; plus the consumer build/vet (HANDOVER Appendix B). No code
+1. Clean up before (René, 4 Nov: "before a release, always clean up"): finished items' scratch, logs and probe stores go
+   on the rho section of `~/cleanup.sh` (RHO_DONE and named lines; never work in progress, never by age), then
+   `bash ~/cleanup.sh`; merged worktrees and branches removed with git; `git status` shows nothing untracked.
+2. Merge every branch of the batch; `go test -short` of the touched packages.
+3. Self-review of the merged batch (§ Review); fixes merged.
+4. Gate: `make ci-fast` for a patch, `make ci-docker` for a minor; plus the consumer build/vet (HANDOVER Appendix B). No code
    edits while a gate runs (it tests the live work tree). A minor also runs the scale probe (a scratch module from
    `tasks/evidence/SCALE/scaleprobe_main.go.txt`, replace to the release's worktree) and appends its numbers there.
-4. Release commit: CHANGELOG heading, README "Current release", line 1 of `docs/architecture.md`, HANDOVER names the tag, shipped
+5. Release commit: CHANGELOG heading, README "Current release", line 1 of `docs/architecture.md`, HANDOVER names the tag, shipped
    rows leave `tasks/todo.md`; docs tests and `scripts/check-ledger.sh` green.
-5. Push main, `git tag -a vX.Y.Z`, push the tag.
-6. Notify sigma-tkgd and ai-soc: tag, commit, migration notes.
-7. Watch the tag's CI run (`gh run list --workflow CI --limit 1`). A red run is fixed on main and shipped as a new patch tag,
+6. Push main, `git tag -a vX.Y.Z`, push the tag.
+7. Notify sigma-tkgd and ai-soc: tag, commit, migration notes.
+8. Watch the tag's CI run (`gh run list --workflow CI --limit 1`). A red run is fixed on main and shipped as a new patch tag,
    never by re-running the old run.
+9. Clean up after (René, 4 Nov): the release round's own scratch (gate logs, consumer check logs, probe stores, branch and
+   worktree of the release) goes the same way, then `bash ~/cleanup.sh` again.
 
 ## Review
 
