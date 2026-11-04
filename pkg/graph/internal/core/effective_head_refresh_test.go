@@ -138,10 +138,11 @@ func TestRELHISTP2PluralDoorHeadHit(t *testing.T) {
 	}
 }
 
-// A pin below the entry's newest TxFrom folds even where every winner of the
-// entry was recorded by it: an excise appends a void row that wins nothing,
-// so only the pin rule (the lowest pin against maxTx) keeps the post-excise
-// gap out of a read pinned before the excise. Then a CloseVersion in the
+// An excise appends a void row that wins nothing, so a read pinned before the
+// excise must not see the post-excise gap although every winner of the entry
+// was recorded by its pin: the pin rule (the lowest pin against maxTx) keeps
+// it from the newest answer, and the generation the excise kept (RELHIST P5
+// option C) answers it with the pre-excise one. Then a CloseVersion in the
 // own-bounds arm keeps the entry.
 func TestRELHISTP2PluralDoorExciseAndClose(t *testing.T) {
 	ctx := context.Background()
@@ -164,10 +165,10 @@ func TestRELHISTP2PluralDoorExciseAndClose(t *testing.T) {
 			nf, _, _, _ := g.Nodes.LatestStamps(id)
 			rf, _, _, _ := g.Rels.LatestStamps(rid)
 			below := min(nf, rf) - 1 // after every row but the void ones
-			h0 := g.headHits.Load()
+			h0, gh0 := g.headHits.Load(), g.headStats.genHits[headDoorMany].Load()
 			relhistP2Plural(t, g, id, rid, []types.Instant{below, g.peekNow()}, "a pin before the excises")
-			if h := g.headHits.Load(); h != h0 {
-				t.Fatalf("head hits %d -> %d for a call with a pin below maxTx, want +0", h0, h)
+			if h, gh := g.headHits.Load(), g.headStats.genHits[headDoorMany].Load(); h != h0+2 || gh != gh0+1 {
+				t.Fatalf("head hits %d -> %d, node generation hits %d -> %d for a call with a pin before the excises, want +2, +1", h0, h, gh0, gh)
 			}
 			// CloseVersion of an own-bounds chain (an open row from 1000, a
 			// correction [1200, 1400) and its open resumption, then one at
@@ -366,8 +367,9 @@ func TestRELHISTP2UpdateThenPluralOracle(t *testing.T) {
 					// (before any read can refill it), then the pins it may
 					// answer: the written row's TxFrom and the instant before
 					// it (at or above the old entry's newest TxFrom, below
-					// the new one's), then a mixed read (a pin below maxTx:
-					// the fold, which refills).
+					// the new one's: a generation's, option C), then a mixed
+					// read (a pin below maxTx: a generation's, or the fold,
+					// which refills).
 					relhistP2EntryAsFold(t, g, nid, rid, head, when)
 					wrote, _, _, _ := g.Nodes.LatestStamps(nid)
 					if rel {
@@ -435,7 +437,7 @@ func BenchmarkRELHISTP2UpdateReadBack(b *testing.B) {
 }
 
 // relhistP2EntryAsFold checks that each entity's entry, when valid at the
-// head, equals the entry a fold of the chain builds.
+// head, equals the entry a fold of the chain builds, its generations aside.
 func relhistP2EntryAsFold(t *testing.T, g *Core, nid types.NodeID, rid types.RelID, head types.Instant, when string) {
 	t.Helper()
 	check := func(k headKey, valid func() *headEntry, refold func()) {
@@ -449,8 +451,12 @@ func relhistP2EntryAsFold(t *testing.T, g *Core, nid types.NodeID, rid types.Rel
 		if f == nil {
 			t.Fatalf("%s: %+v: the entry is valid but the fold keeps none", when, k)
 		}
-		if !reflect.DeepEqual(e, f) {
-			t.Fatalf("%s: %+v: entry differs from the fold's\n kept %+v\n fold %+v", when, k, *e, *f)
+		// Generations (RELHIST P5 option C) are kept by extensions only, never
+		// by a fold; their answers are checked against the fold by the reads.
+		kept, fold := *e, *f
+		kept.gens, fold.gens = nil, nil
+		if !reflect.DeepEqual(kept, fold) {
+			t.Fatalf("%s: %+v: entry differs from the fold's\n kept %+v\n fold %+v", when, k, kept, fold)
 		}
 	}
 	ctx := context.Background()

@@ -29,7 +29,9 @@ var headReasonNames = [headReasons]string{"hit", "current-only", "no-entry", "to
 // headCounts is a copy of Core.headStats.
 type headCounts struct {
 	reads                                  [headDoors][headReasons]uint64
+	genHits                                [headDoors]uint64 // hits answered from a generation (also in reads)
 	nodeAt, missPlans, metaLists, metaRows uint64
+	gens                                   uint64 // Core.headGens: generations pushed
 }
 
 func headCountsOf(c *Core) headCounts {
@@ -38,7 +40,9 @@ func headCountsOf(c *Core) headCounts {
 		for r := range headReasons {
 			h.reads[d][r] = c.headStats.reads[d][r].Load()
 		}
+		h.genHits[d] = c.headStats.genHits[d].Load()
 	}
+	h.gens = c.headGens.Load()
 	h.nodeAt, h.missPlans = c.headStats.nodeAt.Load(), c.headStats.missPlans.Load()
 	h.metaLists, h.metaRows = c.headStats.metaLists.Load(), c.headStats.metaRows.Load()
 	return h
@@ -49,7 +53,9 @@ func (h headCounts) sub(b headCounts) headCounts {
 		for r := range headReasons {
 			h.reads[d][r] -= b.reads[d][r]
 		}
+		h.genHits[d] -= b.genHits[d]
 	}
+	h.gens -= b.gens
 	h.nodeAt -= b.nodeAt
 	h.missPlans -= b.missPlans
 	h.metaLists -= b.metaLists
@@ -62,7 +68,9 @@ func (h headCounts) add(b headCounts) headCounts {
 		for r := range headReasons {
 			h.reads[d][r] += b.reads[d][r]
 		}
+		h.genHits[d] += b.genHits[d]
 	}
+	h.gens += b.gens
 	h.nodeAt += b.nodeAt
 	h.missPlans += b.missPlans
 	h.metaLists += b.metaLists
@@ -103,9 +111,12 @@ func (h headCounts) String() string {
 			first = false
 			fmt.Fprintf(&b, "%s=%d", headReasonNames[r], v)
 		}
+		if h.genHits[d] != 0 {
+			fmt.Fprintf(&b, " (gen-hits=%d)", h.genHits[d])
+		}
 		b.WriteString("] ")
 	}
-	fmt.Fprintf(&b, "node-at=%d miss-plans=%d skeleton-lists=%d skeletons=%d", h.nodeAt, h.missPlans, h.metaLists, h.metaRows)
+	fmt.Fprintf(&b, "node-at=%d miss-plans=%d skeleton-lists=%d skeletons=%d gens-pushed=%d", h.nodeAt, h.missPlans, h.metaLists, h.metaRows, h.gens)
 	return b.String()
 }
 
@@ -136,26 +147,24 @@ func p5Backends(tb testing.TB) []r10Backend {
 
 // p5Shape is sigma's cut loop, per sigma's and ai-soc's code answers of
 // 4 Nov (tasks/evidence/RELHIST/design.txt, RELHIST P5): one process through
-// every cut; each cut one GraphTx of tx.UpdateNode writes — every live
-// Session node, a share of the Derived nodes — some of which close validity
-// in place (tkg_valid_to at the cut's end), a closed node replaced by a new
-// one; then the cut's reads, routed as sigma's derived_read.go:350-360: one
-// pin at or after the current row's TxFrom through the singular door,
-// several pins or one older pin through the plural door.
-//
-// rho refuses an update of a closed row (ErrAlreadyClosed,
-// rejectClosedNodeMutation), so tx.UpdateNode closes a node once; where
-// sigma moves a Session's valid end every cut, the moveEnds variant closes it
-// once and then extends it by tx.SetNodeVersionInterval each cut.
+// every cut; each cut one GraphTx — every open Session's current row patched
+// over its own interval (tx.SetNodeVersionInterval(id, start, open, ...),
+// sigma overview_graph.go:815), a Session's life ended by one close
+// (tx.UpdateNode setting tkg_valid_to, :793) and reopened the next cut as a
+// new open segment (SetNodeVersionInterval(id, the cut's end, open, ...),
+// :850); a share of the Derived nodes rewritten by tx.UpdateNode, some closed
+// in place (tkg_valid_to at the cut's end) and replaced by a new one; then
+// the cut's reads, routed as sigma's derived_read.go:350-360: one pin at or
+// after the current row's TxFrom through the singular door, several pins or
+// one older pin through the plural door.
 type p5Shape struct {
-	sessions    int // live Session nodes (a closed one is replaced)
+	sessions    int // Session nodes, never replaced: closed and reopened in turn
 	derived     int // Derived nodes at the start
 	cuts        int
-	sessionLife int  // cuts a Session lives before its close (staggered by slot)
-	rewrites    int  // live Derived nodes rewritten per cut
-	closes      int  // live Derived nodes closed per cut, each replaced by a new one
-	reads       int  // nodes read per cut besides the live Sessions: Derived (live or closed) and closed Sessions
-	moveEnds    bool // a Session's valid end moves every cut (see above); Sessions are never replaced
+	sessionLife int // a Session is closed every sessionLife cuts (staggered by slot), reopened the next cut
+	rewrites    int // live Derived nodes rewritten per cut
+	closes      int // live Derived nodes closed per cut, each replaced by a new one
+	reads       int // Derived nodes (live or closed) read per cut besides the Sessions
 }
 
 // p5Result is what one run counted.
@@ -166,9 +175,10 @@ type p5Result struct {
 	singular      int        // reads through the singular door
 	plural        int        // reads through the plural door
 	sessionOneHit int        // see sessionOne: hits
-	sessionOne    int        // Session reads at the cut's pin, the Session updated (not closed) in the cut and read at the previous cut's pin
-	sessionTwoLow int        // see sessionTwo: pin below maxTx
-	sessionTwo    int        // as sessionOne, read at the previous and the cut's pin
+	sessionOne    int        // Session reads at the cut's pin, patched in the cut, entry filled at an earlier cut
+	r1Hit         int        // see r1: plural hits with one pin from a generation
+	r1            int        // R1: Session reads at the previous and the cut's pin, patched in the cut, entry filled at an earlier cut
+	r2Hit, r2     [6]int     // R2 by k: reads at one pin k cuts back of a node whose entry was filled at or before that cut
 	headWrites    uint64     // Core.headWrites, metaWrites, headOverlays at the end
 	metaWrites    uint64
 	overlays      uint64
@@ -212,8 +222,8 @@ func runP5Shape(tb testing.TB, g *Core, sh p5Shape, seed uint64) (res p5Result) 
 		return n.ID()
 	}
 	plainAdd := func(labels []string, p map[string]any) (*types.Node, error) { return g.Nodes.Add(ctx, labels, p) }
-	var sessions, live, pool []types.NodeID // live Sessions; live Derived; every node but the live Sessions
-	start := map[types.NodeID]int64{}
+	var sessions, live, pool []types.NodeID // Sessions; live Derived; every Derived
+	start := map[types.NodeID]int64{}       // a Session's open segment's start
 	for range sh.sessions {
 		id := add(plainAdd, "Session", 0, 500)
 		sessions, start[id] = append(sessions, id), 500
@@ -223,9 +233,11 @@ func runP5Shape(tb testing.TB, g *Core, sh p5Shape, seed uint64) (res p5Result) 
 		live, pool = append(live, id), append(pool, id)
 	}
 	pins := []types.Instant{g.now()}
-	closed := map[types.NodeID]bool{}
-	plainAt := map[types.NodeID]int{}  // the cut whose write was a plain Session update
-	filledAt := map[types.NodeID]int{} // the cut whose read was at that cut's pin
+	open := g.axis().OpenEnd()
+	reopen := map[types.NodeID]bool{}     // a Session closed last cut
+	patchedAt := map[types.NodeID]int{}   // the cut whose write patched the Session's open row
+	filledAt := map[types.NodeID]int{}    // the cut whose read at its pin left an entry
+	filledSince := map[types.NodeID]int{} // the cut whose read filled the entry kept since (a fold at the cut's pin); a close forgets it
 
 	var validEnd int64
 	for cut := 1; cut <= sh.cuts; cut++ {
@@ -240,19 +252,16 @@ func runP5Shape(tb testing.TB, g *Core, sh p5Shape, seed uint64) (res p5Result) 
 		}
 		for slot, id := range sessions {
 			switch {
-			case sh.moveEnds && closed[id]:
-				_, err = tx.SetNodeVersionInterval(id, types.Instant(start[id]), types.Instant(validEnd), map[string]any{"n": int64(cut)})
-			case sh.moveEnds && cut == 1, !sh.moveEnds && (cut+slot)%sh.sessionLife == 0:
+			case reopen[id]: // a new open segment from the cut's end (sigma :850)
+				_, err = tx.SetNodeVersionInterval(id, types.Instant(validEnd), open, map[string]any{"n": int64(cut)})
+				start[id], reopen[id] = validEnd, false
+			case (cut+slot)%sh.sessionLife == 0: // the close (sigma :793)
 				_, err = tx.UpdateNode(id, map[string]any{"n": int64(cut), "tkg_valid_to": validEnd})
-				closed[id] = true
-				if !sh.moveEnds {
-					pool = append(pool, id)
-					sessions[slot] = add(tx.AddNode, "Session", cut, validEnd)
-					start[sessions[slot]] = validEnd
-				}
-			default:
-				_, err = tx.UpdateNode(id, map[string]any{"n": int64(cut)})
-				plainAt[id] = cut
+				reopen[id] = true
+				delete(filledSince, id)
+			default: // the every-cut patch of the open row over its own interval (sigma :815)
+				_, err = tx.SetNodeVersionInterval(id, types.Instant(start[id]), open, map[string]any{"n": int64(cut)})
+				patchedAt[id] = cut
 			}
 			if err != nil {
 				tb.Fatalf("cut %d: session %v: %v", cut, id, err)
@@ -268,7 +277,7 @@ func runP5Shape(tb testing.TB, g *Core, sh p5Shape, seed uint64) (res p5Result) 
 			if _, err := tx.UpdateNode(live[i], map[string]any{"v": int64(cut), "tkg_valid_to": validEnd}); err != nil {
 				tb.Fatalf("cut %d: derived close %v: %v", cut, live[i], err)
 			}
-			closed[live[i]] = true
+			delete(filledSince, live[i])
 			id := add(tx.AddNode, "Derived", cut, validEnd)
 			live[i], pool = id, append(pool, id)
 		}
@@ -280,7 +289,7 @@ func runP5Shape(tb testing.TB, g *Core, sh p5Shape, seed uint64) (res p5Result) 
 		res.headWrites, res.metaWrites, res.overlays = g.headWrites.Load(), g.metaWrites.Load(), g.headOverlays.Load()
 		pins = append(pins, g.now()) // reserved: every later write stamps above it
 
-		// The read phase: every live Session node and a sample of the rest.
+		// The read phase: every Session node and a sample of the Derived.
 		r0, rc0 := rows.Load(), headCountsOf(g)
 		read := slices.Clone(sessions)
 		for _, i := range rng.Perm(len(pool))[:min(sh.reads, len(pool))] {
@@ -289,6 +298,7 @@ func runP5Shape(tb testing.TB, g *Core, sh p5Shape, seed uint64) (res p5Result) 
 		for _, id := range read {
 			var ask []types.Instant
 			var class p5PinClass
+			k := 0 // one older pin: cuts back
 			kind := rng.IntN(100)
 			switch {
 			case kind < 60 || cut < 2:
@@ -296,18 +306,21 @@ func runP5Shape(tb testing.TB, g *Core, sh p5Shape, seed uint64) (res p5Result) 
 			case kind < 85:
 				ask, class = []types.Instant{pins[cut-1], pins[cut]}, p5PinTwo
 			default:
-				ask, class = []types.Instant{pins[max(0, cut-2-rng.IntN(4))]}, p5PinOld
+				back := max(0, cut-2-rng.IntN(4))
+				ask, class, k = []types.Instant{pins[back]}, p5PinOld, cut-back
 			}
 			cur, err := g.getCurrentNode(id)
 			if err != nil {
 				tb.Fatal(err)
 			}
 			before := headCountsOf(g)
+			door := headDoorMany
 			if len(ask) == 1 && ask[0] >= cur.Temporal().TxFrom {
 				if _, err := g.Temporal.NodeEffectiveTimeline(id, ask[0]); err != nil {
 					tb.Fatal(err)
 				}
 				res.singular++
+				door = headDoorOne
 			} else {
 				if _, err := g.Temporal.NodeEffectiveTimelines(id, ask); err != nil {
 					tb.Fatal(err)
@@ -316,6 +329,8 @@ func runP5Shape(tb testing.TB, g *Core, sh p5Shape, seed uint64) (res p5Result) 
 			}
 			got := headCountsOf(g).sub(before)
 			res.byClass[class] = res.byClass[class].add(got)
+			r, one := got.only(door)
+			hit := one && r == headHit
 			if got.reads[headDoorOne][headMissNoEntry]+got.reads[headDoorMany][headMissNoEntry] != 0 {
 				if _, ok := filledAt[id]; ok {
 					res.noEntryAfter++
@@ -323,18 +338,25 @@ func runP5Shape(tb testing.TB, g *Core, sh p5Shape, seed uint64) (res p5Result) 
 					res.noEntryFirst++
 				}
 			}
-			if cut > 1 && plainAt[id] == cut && filledAt[id] == cut-1 {
-				switch {
-				case len(ask) == 1 && ask[0] == pins[cut]:
-					res.sessionOne++
-					if r, ok := got.only(headDoorOne); ok && r == headHit {
-						res.sessionOneHit++
-					}
-				case len(ask) == 2:
-					res.sessionTwo++
-					if r, ok := got.only(headDoorMany); ok && r == headMissPinBelow {
-						res.sessionTwoLow++
-					}
+			f, filled := filledSince[id]
+			switch {
+			case class == p5PinCut && patchedAt[id] == cut && filled && f <= cut-1:
+				res.sessionOne++
+				if hit && door == headDoorOne {
+					res.sessionOneHit++
+				}
+			case class == p5PinTwo && patchedAt[id] == cut && filled && f <= cut-1:
+				// R1: the previous cut's pin lies in the generation the patch kept.
+				res.r1++
+				if hit && door == headDoorMany && got.genHits[headDoorMany] == 1 {
+					res.r1Hit++
+				}
+			case class == p5PinOld && filled && f <= cut-k:
+				// R2: the entry was filled at or before the pin's cut and kept
+				// by every write since (at most one a cut, k <= headMaxGens).
+				res.r2[k]++
+				if hit && (door == headDoorOne || got.genHits[headDoorMany] == 1) {
+					res.r2Hit[k]++
 				}
 			}
 			// A read at the cut's pin of a node with history leaves a valid
@@ -342,6 +364,9 @@ func runP5Shape(tb testing.TB, g *Core, sh p5Shape, seed uint64) (res p5Result) 
 			// answered from its current row and leaves none.
 			if slices.Max(ask) == pins[cut] && got.reads[headDoorOne][headCurrentOnly]+got.reads[headDoorMany][headCurrentOnly] == 0 {
 				filledAt[id] = cut
+				if !hit {
+					filledSince[id] = cut // the fold's fill: no generation below it
+				}
 			}
 		}
 		res.read = res.read.add(headCountsOf(g).sub(rc0))
@@ -358,64 +383,98 @@ func p5DefaultShape() p5Shape {
 	return sh
 }
 
-// TestHeadCountsSigmaShape runs sigma's cut loop on every backend, as is and
-// with Session ends moving every cut (moveEnds), and logs how its node
-// history reads were answered: hits and misses by reason per door, skeleton
-// lists read, history rows read (the RELHIST P5 Phase 0 table). It asserts
-// the deterministic facts only: every read is counted once, at its door; no
-// read meets a chain that cannot qualify or a scan; and, as is, a Session
-// updated in the cut and read at the previous cut's pin hits at the cut's
-// pin (singular door) and misses as pin below maxTx at the previous and the
-// cut's pin (plural door).
-func TestHeadCountsSigmaShape(t *testing.T) {
-	for _, moveEnds := range []bool{false, true} {
-		sh := p5DefaultShape()
-		sh.moveEnds = moveEnds
-		for _, be := range p5Backends(t) {
-			name := be.name
-			if moveEnds {
-				name += "/moveEnds"
-			}
-			t.Run(name, func(t *testing.T) {
-				g, err := New(be.cfg())
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { _ = g.Close() })
-				res := runP5Shape(t, g, sh, 0x5005)
-				t.Logf("%s reads:  %v", name, res.read)
-				t.Logf("%s writes: %v; corrections planned from an entry %d, on skeletons %d; entries extended %d; tx snapshot rows copied %d",
-					name, res.write, res.headWrites, res.metaWrites, res.overlays, res.copied)
-				for cl, h := range res.byClass {
-					t.Logf("%s   %s: %v", name, p5PinClassNames[cl], h)
-				}
-				t.Logf("%s no-entry reads: %d of nodes never left an entry, %d of nodes whose entry was dropped",
-					name, res.noEntryFirst, res.noEntryAfter)
-				t.Logf("%s history rows read: by reads %d, by writes %d; skeletons per read-phase list %.1f",
-					name, res.histRead, res.histWrite, float64(res.read.metaRows)/float64(max(1, res.read.metaLists)))
-				if got := res.read.door(headDoorOne); got != uint64(res.singular) { // #nosec G115 -- test counts
-					t.Errorf("singular door counted %d reads, %d made", got, res.singular)
-				}
-				if got := res.read.door(headDoorMany); got != uint64(res.plural) { // #nosec G115 -- test counts
-					t.Errorf("plural door counted %d reads, %d made", got, res.plural)
-				}
-				for d := range headDoors {
-					if n := res.read.reads[d][headMissNotQualifying] + res.read.reads[d][headMissScan]; n != 0 {
-						t.Errorf("door %d: %d reads counted not-qualifying or scan in a shape with neither", d, n)
-					}
-				}
-				if moveEnds {
-					return
-				}
-				if res.sessionOne == 0 || res.sessionOneHit != res.sessionOne {
-					t.Errorf("Session reads at the cut's pin: %d of %d hit", res.sessionOneHit, res.sessionOne)
-				}
-				if res.sessionTwo == 0 || res.sessionTwoLow != res.sessionTwo {
-					t.Errorf("Session reads at the previous and the cut's pin: %d of %d pin below maxTx",
-						res.sessionTwoLow, res.sessionTwo)
-				}
-			})
+// p5Table is the RELHIST P5 counts table of res: reads by door and pins, by
+// how they were answered.
+func p5Table(res p5Result) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "  %-30s %6s %6s %9s %13s %9s %16s\n", "door / pins", "reads", "hit", "gen-hits", "current-only", "no-entry", "pin-below-maxTx")
+	var tot [6]uint64
+	for _, row := range []struct {
+		name  string
+		door  headDoor
+		class p5PinClass
+	}{
+		{"singular, cut pin", headDoorOne, p5PinCut},
+		{"singular, one older pin", headDoorOne, p5PinOld},
+		{"plural, previous + cut pins", headDoorMany, p5PinTwo},
+		{"plural, one older pin", headDoorMany, p5PinOld},
+	} {
+		h := res.byClass[row.class]
+		v := [6]uint64{h.door(row.door), h.reads[row.door][headHit], h.genHits[row.door], h.reads[row.door][headCurrentOnly],
+			h.reads[row.door][headMissNoEntry], h.reads[row.door][headMissPinBelow]}
+		for i := range v {
+			tot[i] += v[i]
 		}
+		fmt.Fprintf(&b, "  %-30s %6d %6d %9d %13d %9d %16d\n", row.name, v[0], v[1], v[2], v[3], v[4], v[5])
+	}
+	fmt.Fprintf(&b, "  %-30s %6d %6d %9d %13d %9d %16d\n", "total", tot[0], tot[1], tot[2], tot[3], tot[4], tot[5])
+	fmt.Fprintf(&b, "  skeletons read: %d lists, %d skeletons; history rows read %d; generations pushed %d",
+		res.read.metaLists, res.read.metaRows, res.histRead, res.write.gens)
+	return b.String()
+}
+
+// TestHeadCountsSigmaShape runs sigma's cut loop on every backend and logs
+// how its node history reads were answered: hits and misses by reason per
+// door, skeleton lists read, history rows read (the RELHIST P5 table). It
+// asserts the deterministic facts only: every read is counted once, at its
+// door; no read meets a chain that cannot qualify or a scan; a Session
+// patched in the cut whose entry was filled at an earlier cut hits at the
+// cut's pin (singular door) and (R1, option C) at the previous and the cut's
+// pin (plural door, the previous pin from a generation); (R2) a read at one
+// pin k (2..5) cuts back of a node whose entry was filled at or before that
+// cut and kept since hits; (R3) no read at the previous and the cut's pin
+// misses as pin below maxTx.
+func TestHeadCountsSigmaShape(t *testing.T) {
+	sh := p5DefaultShape()
+	for _, be := range p5Backends(t) {
+		t.Run(be.name, func(t *testing.T) {
+			g, err := New(be.cfg())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = g.Close() })
+			res := runP5Shape(t, g, sh, 0x5005)
+			name := be.name
+			t.Logf("%s reads:  %v", name, res.read)
+			t.Logf("%s writes: %v; corrections planned from an entry %d, on skeletons %d; entries extended %d; tx snapshot rows copied %d",
+				name, res.write, res.headWrites, res.metaWrites, res.overlays, res.copied)
+			for cl, h := range res.byClass {
+				t.Logf("%s   %s: %v", name, p5PinClassNames[cl], h)
+			}
+			t.Logf("%s no-entry reads: %d of nodes never left an entry, %d of nodes whose entry was dropped",
+				name, res.noEntryFirst, res.noEntryAfter)
+			t.Logf("%s history rows read: by reads %d, by writes %d; skeletons per read-phase list %.1f",
+				name, res.histRead, res.histWrite, float64(res.read.metaRows)/float64(max(1, res.read.metaLists)))
+			t.Logf("%s counts table:\n%s", name, p5Table(res))
+			if got := res.read.door(headDoorOne); got != uint64(res.singular) { // #nosec G115 -- test counts
+				t.Errorf("singular door counted %d reads, %d made", got, res.singular)
+			}
+			if got := res.read.door(headDoorMany); got != uint64(res.plural) { // #nosec G115 -- test counts
+				t.Errorf("plural door counted %d reads, %d made", got, res.plural)
+			}
+			for d := range headDoors {
+				if n := res.read.reads[d][headMissNotQualifying] + res.read.reads[d][headMissScan]; n != 0 {
+					t.Errorf("door %d: %d reads counted not-qualifying or scan in a shape with neither", d, n)
+				}
+			}
+			if res.sessionOne == 0 || res.sessionOneHit != res.sessionOne {
+				t.Errorf("Session reads at the cut's pin: %d of %d hit", res.sessionOneHit, res.sessionOne)
+			}
+			if res.r1 == 0 || res.r1Hit != res.r1 {
+				t.Errorf("R1: Session reads at the previous and the cut's pin: %d of %d hit with one generation pin", res.r1Hit, res.r1)
+			}
+			for k := 2; k <= 5; k++ {
+				if res.r2Hit[k] != res.r2[k] {
+					t.Errorf("R2: reads at one pin %d cuts back of an entry filled by then: %d of %d hit", k, res.r2Hit[k], res.r2[k])
+				}
+			}
+			if res.r2[5] == 0 {
+				t.Errorf("R2: no read at the K boundary (5 cuts back): %v", res.r2)
+			}
+			if n := res.byClass[p5PinTwo].reads[headDoorMany][headMissPinBelow]; n != 0 {
+				t.Errorf("R3: %d reads at the previous and the cut's pin missed as pin below maxTx", n)
+			}
+		})
 	}
 }
 
@@ -491,6 +550,37 @@ func TestHeadCountsReasons(t *testing.T) {
 				return err
 			})
 			expect("plural below the newest TxFrom", headDoorMany, headMissPinBelow, func() error {
+				_, err := g.Temporal.NodeEffectiveTimelines(id, []types.Instant{pin0, g.peekNow()})
+				return err
+			})
+			// Option C: an Update that extends the entry keeps the entry it
+			// supersedes as a generation for the pins between the two newest
+			// TxFroms; below the lowest generation stays pin below.
+			pin1 := g.now() // reserved: the Update stamps above it
+			gens := g.headGens.Load()
+			if _, err := g.Nodes.Update(ctx, id, map[string]any{"v": int64(5)}); err != nil {
+				t.Fatal(err)
+			}
+			if got := g.headGens.Load() - gens; got != 1 {
+				t.Errorf("an Update extending a valid entry pushed %d generations, want 1", got)
+			}
+			genHit := func(what string, door headDoor, fn func() error) {
+				t.Helper()
+				before := headCountsOf(g)
+				expect(what, door, headHit, fn)
+				if got := headCountsOf(g).sub(before); got.genHits[door] != 1 || got.genHits[1-door] != 0 {
+					t.Errorf("%s: want one generation hit at door %d, got %v", what, door, got)
+				}
+			}
+			genHit("plural between the two newest TxFroms", headDoorMany, func() error {
+				_, err := g.Temporal.NodeEffectiveTimelines(id, []types.Instant{pin1, g.peekNow()})
+				return err
+			})
+			genHit("singular between the two newest TxFroms", headDoorOne, func() error {
+				_, err := g.Temporal.NodeEffectiveTimeline(id, pin1)
+				return err
+			})
+			expect("plural below the lowest generation", headDoorMany, headMissPinBelow, func() error {
 				_, err := g.Temporal.NodeEffectiveTimelines(id, []types.Instant{pin0, g.peekNow()})
 				return err
 			})

@@ -61,6 +61,19 @@ import (
 // folds again. The differential test (effective_head_test.go) checks the
 // cached answer against the fold at every pin on memory, badger, sharded and
 // tiered.
+//
+// Generations (RELHIST P5 option C). An extension also keeps the entry it
+// extends as a generation answering the pins in [its maxTx, the first
+// appended row's TxFrom): there every appended row is unrecorded (visibility
+// is by TxFrom), the supersession cap applies only when the replacing row is
+// in the chain at the pin, and rowAtTx normalizes only DeletedAt, which a
+// qualifying chain lacks; so the fold at such a pin is the superseded
+// entry's answer. sigma's plural read at the previous and the cut's pin, and
+// one pin a few cuts back, is then a hit. A generation is reachable only
+// through the top's validation (token, current row): every write that does
+// not extend drops it with the top. headMaxGens generations at most, their
+// pieces at most headMaxEntryPieces; never pushed from or kept on a trimmed
+// top; a fold's fill keeps none.
 // =============================================================================
 
 // The cache is bounded by pieces, not entries (an entry weighs its pieces
@@ -82,6 +95,9 @@ const (
 	headStripeMaxWeight = headCacheMaxPieces / headCacheStripes
 	headMaxEntryPieces  = headStripeMaxWeight / 8 // 2,048: with its bounds, 3/8 of a stripe at most
 	headMaxEntryBounds  = 2 * headMaxEntryPieces
+	// headMaxGens: generations an entry keeps (option C): sigma's oldest pin
+	// lies five cuts back, one extension a cut.
+	headMaxGens = 5
 )
 
 // headWhole is the watermark of an entry that dropped nothing.
@@ -136,6 +152,61 @@ type headEntry struct {
 	// planned from the entry asks it as one planned from the history asks
 	// the chain (wholeAxisSupersession.voidFree), so both stamp alike.
 	void bool
+	// gens: the answers at pins below maxTx kept by extensions (option C),
+	// oldest first; never mutated in place (an extension clones).
+	gens []headGen
+}
+
+// headGen is a superseded head answer: pieces answers every pin in
+// [maxTx, txEnd). pieces is shared with the entry it was (immutable once put).
+type headGen struct {
+	maxTx, txEnd types.Instant
+	pieces       []headPiece
+}
+
+// piecesAt returns the pieces answering pin: the entry's at or above maxTx,
+// else the generation holding pin; ok false: none does.
+func (e *headEntry) piecesAt(pin types.Instant) ([]headPiece, bool) {
+	if pin >= e.maxTx {
+		return e.pieces, true
+	}
+	for i := len(e.gens) - 1; i >= 0; i-- {
+		if g := e.gens[i]; g.maxTx <= pin && pin < g.txEnd {
+			return g.pieces, true
+		}
+	}
+	return nil, false
+}
+
+// covers reports whether a generation answers pin (below maxTx).
+func (e *headEntry) covers(pin types.Instant) bool {
+	_, ok := e.piecesAt(pin)
+	return ok
+}
+
+// gensAfter is the generations an extension of e whose first appended row
+// has TxFrom lowTx keeps: e's, then e itself (whole, its pieces the answer in
+// [e.maxTx, lowTx)) as the newest, dropping the oldest past headMaxGens or
+// headMaxEntryPieces pieces. lowTx == e.maxTx (same-instant writes): nothing
+// to keep, e's generations stand.
+func (e *headEntry) gensAfter(lowTx types.Instant) []headGen {
+	if !e.whole() || lowTx <= e.maxTx {
+		return e.gens
+	}
+	n := len(e.pieces)
+	for _, g := range e.gens {
+		n += len(g.pieces)
+	}
+	drop := 0 // the oldest of e.gens left out
+	for drop < len(e.gens) && (len(e.gens)+1-drop > headMaxGens || n > headMaxEntryPieces) {
+		n -= len(e.gens[drop].pieces)
+		drop++
+	}
+	if n > headMaxEntryPieces {
+		return nil
+	}
+	gens := make([]headGen, 0, len(e.gens)+1-drop) // a new slice: e.gens is shared
+	return append(append(gens, e.gens[drop:]...), headGen{maxTx: e.maxTx, txEnd: lowTx, pieces: e.pieces})
 }
 
 // openBelief is the newest belief (nodeBeliefNewerThan: higher TxFrom, then
@@ -172,7 +243,16 @@ type headStripe struct {
 	_      [32]byte
 }
 
-func headWeight(e *headEntry) int { return len(e.pieces) + len(e.bounds) + 1 }
+// headWeight is what e holds: its pieces, bounds and generations' pieces
+// (at most headMaxEntryPieces, so an entry weighs at most half a stripe's
+// share) plus one.
+func headWeight(e *headEntry) int {
+	w := len(e.pieces) + len(e.bounds) + 1
+	for _, g := range e.gens {
+		w += len(g.pieces)
+	}
+	return w
+}
 
 func (h *headCache) stripe(k headKey) *headStripe {
 	x := uint64(k.id) * 0x9E3779B97F4A7C15 // #nosec G115 — bit-pattern hash only; Fibonacci hash: snowflake IDs share low bits
@@ -277,7 +357,8 @@ func (c *Core) headValid(k headKey, epoch uint64, curVer uint32, curTM types.Tem
 
 // headLookup is headValid with the reason it found no valid entry (headHit
 // when it found one), checked in this order: no token or no entry, the token
-// moved, the current row changed, the pin below the entry's newest TxFrom.
+// moved, the current row changed, the pin below the entry's newest TxFrom
+// and outside every generation.
 func (c *Core) headLookup(k headKey, epoch uint64, curVer uint32, curTM types.TemporalMetadata, pin types.Instant) (*headEntry, headReason) {
 	if epoch == 0 {
 		return nil, headMissNoEntry
@@ -290,7 +371,7 @@ func (c *Core) headLookup(k headKey, epoch uint64, curVer uint32, curTM types.Te
 		return nil, headMissToken
 	case e.curVer != curVer || e.curTM != curTM:
 		return nil, headMissCurrent
-	case pin < e.maxTx:
+	case pin < e.maxTx && !e.covers(pin):
 		return nil, headMissPinBelow
 	}
 	return e, headHit
@@ -338,10 +419,11 @@ const (
 // headReadStats holds the counts (Core.headStats).
 type headReadStats struct {
 	reads     [headDoors][headReasons]atomic.Uint64
-	nodeAt    atomic.Uint64 // node-at reads that read history (past the current-row shortcut)
-	missPlans atomic.Uint64 // node corrections planned on the history (no valid entry)
-	metaLists atomic.Uint64 // node skeleton lists read
-	metaRows  atomic.Uint64 // skeletons in them
+	genHits   [headDoors]atomic.Uint64 // hits with a pin answered from a generation (RELHIST P5 option C; counted in reads as headHit too)
+	nodeAt    atomic.Uint64            // node-at reads that read history (past the current-row shortcut)
+	missPlans atomic.Uint64            // node corrections planned on the history (no valid entry)
+	metaLists atomic.Uint64            // node skeleton lists read
+	metaRows  atomic.Uint64            // skeletons in them
 }
 
 // noteHeadRead counts one head-door read answered by r. A miss whose fold
@@ -541,7 +623,11 @@ func headOverlay[T interface {
 	}
 	out.pieces = paintHeadAll(a, e.pieces, resolveHeadSpans(a, spans))
 	out.bounds = sortedBounds(bounds)
+	out.gens = e.gensAfter(appended[0].Temporal().TxFrom)
 	out.trim(c.headCaps())
+	if !out.whole() {
+		out.gens = nil // a trimmed top answers no read: neither do its generations
+	}
 	return &out
 }
 
@@ -721,7 +807,8 @@ func mergeHeadPieces(out []headPiece) []headPiece {
 
 // nodeHeadSegments answers a head read from a valid entry, the segments that
 // reach validFrom, reading only their winners; a reason other than headHit
-// falls back to the fold (no entry, a stale one, or a winner gone).
+// falls back to the fold (no entry, a stale one, or a winner gone). A pin
+// below the entry's newest TxFrom is answered by the generation holding it.
 func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.Node, validFrom, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, headReason) {
 	e, r := c.headLookup(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), pin)
 	if e == nil {
@@ -730,8 +817,12 @@ func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.
 	if !e.whole() {
 		return nil, headMissNotWhole
 	}
-	segs := make([]temporal.NodeSegment, 0, len(e.pieces))
-	for _, p := range e.pieces {
+	pieces, ok := e.piecesAt(pin)
+	if !ok {
+		return nil, headMissPinBelow
+	}
+	segs := make([]temporal.NodeSegment, 0, len(pieces))
+	for _, p := range pieces {
 		if !segmentReaches(c.axis(), p.to, validFrom) {
 			continue
 		}
@@ -750,6 +841,9 @@ func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.
 		segs = append(segs, nodeSegment(p.from, p.to, row))
 	}
 	c.headHits.Add(1)
+	if pin < e.maxTx {
+		c.headStats.genHits[headDoorOne].Add(1)
+	}
 	return segs, headHit
 }
 
@@ -759,8 +853,12 @@ func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Re
 	if e == nil || !e.whole() {
 		return nil, false
 	}
-	segs := make([]temporal.RelSegment, 0, len(e.pieces))
-	for _, p := range e.pieces {
+	pieces, ok := e.piecesAt(pin)
+	if !ok {
+		return nil, false
+	}
+	segs := make([]temporal.RelSegment, 0, len(pieces))
+	for _, p := range pieces {
 		row := current
 		if p.version != current.Version() {
 			full, err := rd.lentRelVersion(id, p.version) // handed out frozen: no copy needed
@@ -780,23 +878,28 @@ func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Re
 }
 
 // nodeHeadTimelines answers the plural door (NodeEffectiveTimelines) from a
-// valid entry when every pin is at or above its newest TxFrom (RELHIST P2):
-// each winner is read once and normalized per pin as the fold normalizes
-// it; a reason other than headHit falls back to the fold.
+// valid entry when every pin is at or above its newest TxFrom (RELHIST P2)
+// or inside one of its generations (option C): each winner is read once and
+// normalized per pin as the fold normalizes it; a reason other than headHit
+// falls back to the fold.
 func (c *Core) nodeHeadTimelines(rd entityReads, id types.NodeID, current *types.Node, pins []types.Instant, epoch uint64) ([][]temporal.NodeSegment, headReason) {
-	e, r := c.headLookup(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), slices.Min(pins))
+	low := slices.Min(pins)
+	e, r := c.headLookup(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), low)
 	if e == nil {
 		return nil, r
 	}
 	if !e.whole() {
 		return nil, headMissNotWhole
 	}
-	out, ok := headTimelinesOf(c, nodeKernel, e, current, pins,
+	out, r := headTimelinesOf(c, nodeKernel, e, current, pins,
 		func(v uint32) (*types.Node, error) { return rd.lentNodeVersion(id, v) }, nodeSegment) // lent frozen: no copy needed
-	if !ok {
-		return nil, headMissRowGone
+	if r != headHit {
+		return nil, r
 	}
 	c.headHits.Add(1)
+	if low < e.maxTx {
+		c.headStats.genHits[headDoorMany].Add(1)
+	}
 	return out, headHit
 }
 
@@ -806,49 +909,54 @@ func (c *Core) relHeadTimelines(rd entityReads, id types.RelID, current *types.R
 	if e == nil || !e.whole() {
 		return nil, false
 	}
-	out, ok := headTimelinesOf(c, relKernel, e, current, pins,
+	out, r := headTimelinesOf(c, relKernel, e, current, pins,
 		func(v uint32) (*types.Relationship, error) { return rd.lentRelVersion(id, v) }, relSegment)
-	if ok {
-		c.headHits.Add(1)
+	if r != headHit {
+		return nil, false
 	}
-	return out, ok
+	c.headHits.Add(1)
+	return out, true
 }
 
-// headTimelinesOf is e's answer at every pin: the winner of each piece read
-// once (the current row, or read), then per pin rowAtTx'd into a segment.
-// A pin's answer with no piece is nil, as the plural fold's.
+// headTimelinesOf is e's answer at every pin: per pin the pieces answering it
+// (piecesAt; none: headMissPinBelow), each winner read once by version (the
+// current row, or read; a read error: headMissRowGone), then rowAtTx'd at the
+// pin into a segment. A pin's answer with no piece is nil, as the plural
+// fold's.
 func headTimelinesOf[T interface {
 	comparable
 	storeutil.TemporalRow
-}, S any](c *Core, k *chainKernel[T], e *headEntry, current T, pins []types.Instant, read func(uint32) (T, error), seg func(from, to types.Instant, row T) S) ([][]S, bool) {
-	rows := make([]T, len(e.pieces))
-	for i, p := range e.pieces {
-		if p.version == current.Version() {
-			rows[i] = current
+}, S any](c *Core, k *chainKernel[T], e *headEntry, current T, pins []types.Instant, read func(uint32) (T, error), seg func(from, to types.Instant, row T) S) ([][]S, headReason) {
+	rows := make(map[uint32]T, len(e.pieces))
+	rows[current.Version()] = current
+	out := make([][]S, len(pins))
+	for j, pin := range pins {
+		pieces, ok := e.piecesAt(pin)
+		if !ok {
+			return nil, headMissPinBelow
+		}
+		if len(pieces) == 0 {
 			continue
 		}
-		r, err := read(p.version)
-		if err != nil {
-			return nil, false
-		}
-		rows[i] = r
-	}
-	out := make([][]S, len(pins))
-	if len(e.pieces) == 0 {
-		return out, true
-	}
-	for j, pin := range pins {
-		segs := make([]S, 0, len(e.pieces))
-		for i, p := range e.pieces {
-			row, ok := k.rowAtTx(c.axis(), rows[i], pin)
+		segs := make([]S, 0, len(pieces))
+		for _, p := range pieces {
+			r, ok := rows[p.version]
 			if !ok {
-				return nil, false
+				var err error
+				if r, err = read(p.version); err != nil {
+					return nil, headMissRowGone
+				}
+				rows[p.version] = r
+			}
+			row, ok := k.rowAtTx(c.axis(), r, pin)
+			if !ok {
+				return nil, headMissRowGone
 			}
 			segs = append(segs, seg(p.from, p.to, row))
 		}
 		out[j] = segs
 	}
-	return out, true
+	return out, headHit
 }
 
 // noteNodeHead keeps the head answer a fold produced (no-op unless it qualifies).
@@ -880,6 +988,16 @@ func (c *Core) relHeadBeforeWrite(id types.RelID, current *types.Relationship) *
 	return c.headValid(headKey{rel: true, id: id.SnowflakeID()}, c.relHistoryEpoch(id), current.Version(), temporalOf(current), math.MaxInt64)
 }
 
+// noteHeadExtended counts the extension of before into e, and the
+// generation it pushed: e's newest starts at before's newest TxFrom only when
+// pushed (an older generation ends at or below it).
+func (c *Core) noteHeadExtended(before, e *headEntry) {
+	c.headOverlays.Add(1)
+	if n := len(e.gens); n > 0 && e.gens[n-1].maxTx == before.maxTx {
+		c.headGens.Add(1)
+	}
+}
+
 // nodeHeadAfterWrite extends before by a correction's appended rows once they
 // are written (entity lock still held): the new current row is cur, the token
 // is read now. Without a valid extension the entry is dropped.
@@ -895,7 +1013,7 @@ func (c *Core) nodeHeadAfterWrite(id types.NodeID, before *headEntry, appended [
 	}
 	e.epoch, e.curVer, e.curTM = c.nodeHistoryEpoch(id), cur.Version(), temporalOf(cur)
 	c.heads.put(k, e)
-	c.headOverlays.Add(1)
+	c.noteHeadExtended(before, e)
 }
 
 func (c *Core) relHeadAfterWrite(id types.RelID, before *headEntry, appended []*types.Relationship, cur *types.Relationship) {
@@ -910,7 +1028,7 @@ func (c *Core) relHeadAfterWrite(id types.RelID, before *headEntry, appended []*
 	}
 	e.epoch, e.curVer, e.curTM = c.relHistoryEpoch(id), cur.Version(), temporalOf(cur)
 	c.heads.put(k, e)
-	c.headOverlays.Add(1)
+	c.noteHeadExtended(before, e)
 }
 
 // headSupersede is e extended by a superseding write's new current row n
@@ -971,7 +1089,7 @@ func (c *Core) nodeHeadAfterSupersede(id types.NodeID, before *headEntry, cur *t
 	}
 	e.epoch, e.curVer, e.curTM = c.nodeHistoryEpoch(id), cur.Version(), temporalOf(cur)
 	c.heads.put(k, e)
-	c.headOverlays.Add(1)
+	c.noteHeadExtended(before, e)
 }
 
 // relHeadAfterSupersede mirrors nodeHeadAfterSupersede.
@@ -987,5 +1105,5 @@ func (c *Core) relHeadAfterSupersede(id types.RelID, before *headEntry, cur *typ
 	}
 	e.epoch, e.curVer, e.curTM = c.relHistoryEpoch(id), cur.Version(), temporalOf(cur)
 	c.heads.put(k, e)
-	c.headOverlays.Add(1)
+	c.noteHeadExtended(before, e)
 }

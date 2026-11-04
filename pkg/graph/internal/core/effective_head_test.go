@@ -19,7 +19,9 @@ import (
 
 // The head-answer cache (effective_head.go, backlog 68) against the fold: a
 // random sequence of corrections (SetVersionInterval bounded and open, gaps,
-// at the clock and at a caller instant equal to the newest stamp), excises
+// at the clock and at a caller instant equal to the newest stamp; sigma's
+// patch of the open current row over its own interval, alone and twice in
+// one GraphTx, which keeps generations: RELHIST P5 option C), excises
 // (void rows), Updates (replacing rows: TxTo), in-place validity rewrites,
 // CloseVersion, GraphTx commits and rollbacks followed by rewrites, deletes and
 // re-imports, history compaction, Clear (Admin.Reset), retention purge and, on
@@ -34,7 +36,8 @@ import (
 // Catches: an entry kept across a write the token missed (a rollback trim, a
 // compaction, an Update's TxTo), an overlay that ignores a supersession, a
 // life end, an arm change or an open row's positional end, a winner hydrated
-// from the wrong row, a cached answer served below the chain's newest TxFrom.
+// from the wrong row, a cached answer served below the chain's newest TxFrom
+// outside the generation that holds the pin.
 
 func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
@@ -51,7 +54,7 @@ func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 	if n, err := strconv.Atoi(os.Getenv("HEAD_ORACLE_SEEDS")); err == nil && n > 0 {
 		seeds = n
 	}
-	var hits, overlays, checks uint64
+	var hits, overlays, checks, gens, genHits uint64
 	opsAll := map[string]int{}
 	for _, be := range r10AllBackends(t) {
 		for s := range seeds {
@@ -77,13 +80,16 @@ func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 				}
 				hits += g.headHits.Load()
 				overlays += g.headOverlays.Load()
+				gens += g.headGens.Load()
+				genHits += g.headStats.genHits[headDoorOne].Load() + g.headStats.genHits[headDoorMany].Load()
 				checks += h.checks
 			})
 		}
 	}
-	t.Logf("%d comparisons, %d head reads answered from an entry, %d corrections extended one", checks, hits, overlays)
-	if hits == 0 || overlays == 0 {
-		t.Fatalf("the generator never exercised the cache: %d hits, %d overlays", hits, overlays)
+	t.Logf("%d comparisons, %d head reads answered from an entry, %d corrections extended one; %d generations pushed, %d node reads answered from one",
+		checks, hits, overlays, gens, genHits)
+	if hits == 0 || overlays == 0 || gens == 0 || genHits == 0 {
+		t.Fatalf("the generator never exercised the cache: %d hits, %d overlays, %d generations, %d generation hits", hits, overlays, gens, genHits)
 	}
 	if !testing.Short() && !isRaceEnabled() {
 		for _, k := range []string{"memory purge", "tiered archive", "tiered restore", "tiered rotate", "tiered idle-close"} {
@@ -162,6 +168,26 @@ func (h *headOracle) step(step int) {
 	var err error
 	op := h.rng.IntN(100)
 	switch {
+	case op < 40 && h.rng.IntN(3) == 0: // sigma's every-cut patch (RELHIST P5): the open current row over its own interval
+		if h.rng.IntN(2) == 0 {
+			h.last = fmt.Sprintf("sigma patch rel=%v", rel)
+			err = sigmaPatch(nil, g, rel, nid, rid, h.props())
+			break
+		}
+		commit := h.rng.IntN(4) != 0
+		h.last = fmt.Sprintf("GraphTx two sigma patches commit=%v rel=%v", commit, rel)
+		tx, terr := g.BeginTx()
+		if terr != nil {
+			h.t.Fatal(terr)
+		}
+		if err = sigmaPatch(tx, g, rel, nid, rid, h.props()); err == nil {
+			err = sigmaPatch(tx, g, rel, nid, rid, h.props())
+		}
+		if commit && err == nil {
+			err = tx.Commit()
+		} else {
+			_ = tx.Rollback()
+		}
 	case op < 40: // the R10 shape: a correction, often of one validity
 		if h.rng.IntN(2) == 0 {
 			a, b = 1000, 2000
@@ -312,6 +338,37 @@ func (h *headOracle) step(step int) {
 	}
 	_ = err // refusals (no version valid, deleted, ...) are part of the sequence
 	h.pins = append(h.pins, g.peekNow())
+}
+
+// sigmaPatch is sigma's every-cut write (overview_graph.go:815): a
+// correction of the entity's current row over its own interval from its
+// start to the open end, through tx when not nil.
+func sigmaPatch(tx *GraphTx, g *Core, rel bool, nid types.NodeID, rid types.RelID, p map[string]any) error {
+	open := g.axis().OpenEnd()
+	if rel {
+		r, err := g.store.GetRelationship(rid)
+		if err != nil {
+			return err
+		}
+		start := temporalOf(r).ValidFrom
+		if tx != nil {
+			_, err = tx.SetRelVersionInterval(rid, start, open, p)
+		} else {
+			_, err = g.Temporal.SetRelVersionInterval(context.Background(), rid, start, open, p)
+		}
+		return err
+	}
+	n, err := g.store.GetNode(nid)
+	if err != nil {
+		return err
+	}
+	start := temporalOf(n).ValidFrom
+	if tx != nil {
+		_, err = tx.SetNodeVersionInterval(nid, start, open, p)
+	} else {
+		_, err = g.Temporal.SetNodeVersionInterval(context.Background(), nid, start, open, p)
+	}
+	return err
 }
 
 func (h *headOracle) pickPins() []types.Instant {
