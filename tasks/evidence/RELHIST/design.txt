@@ -214,3 +214,8 @@ memory and badger, no NodeHistoryTemporalMeta on sharded.
    Batch / ingest vs CAS / Delete + re-import / ReplaceVersion) and whether its validity moves each cut; the share of keys with a
    tombstone or retraction; distinct keys read per cut and restarts between cuts; where the facts live on tiered (event, reference,
    neither); whether a key's history is read more than once per cut; alloc_space split by NodeHistoryTemporalMeta's parent frame.
+sigma, 4 Nov evening (from sigma's code only; its data answers are on hold): a cut reads node history through
+derived_read.go:350-360: one pin at or after the current row's start -> singular NodeEffectiveTimeline (head cache);
+several pins, or one older pin -> plural NodeEffectiveTimelines, a whole-history walk. So cause (1), a pin below maxTx,
+is real on sigma's shape: option C (a second generation for pins straddling a cut) moves up beside Phase 1. Questions 3
+and 5 (tombstone share, shard placement) need ai-soc's data.
