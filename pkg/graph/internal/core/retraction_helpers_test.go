@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -152,33 +153,93 @@ func (w *rtWorld) validGrid() []types.Instant {
 	return []types.Instant{w.v0 - 1, w.v0, w.v0 + 1, (w.v0 + w.v1) / 2, w.v1 - 1, w.v1, w.v1 + 1, txbWall()}
 }
 
-func nodeKey(id types.NodeID) string { return fmt.Sprintf("n:%d", id) }
-func relKey(id types.RelID) string   { return fmt.Sprintf("r:%d", id) }
+func nodeKey(id types.NodeID) string { return "n:" + strconv.FormatInt(int64(id), 10) }
+func relKey(id types.RelID) string   { return "r:" + strconv.FormatInt(int64(id), 10) }
+
+// The oracles render every answer row of two worlds, so these helpers write
+// with strconv instead of fmt (4 Nov: fmt and its garbage were half of the
+// retraction oracle's CPU under race). Their output is byte for byte what
+// fmt's %+v and %v print, which the goldens pin; TestRowRenderMatchesFmt
+// holds them to it, a new TemporalMetadata field included.
 
 func fmtTemporal(tm *types.TemporalMetadata) string {
 	if tm == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%+v", *tm)
+	b := make([]byte, 0, 200)
+	b = appendTemporal(b, tm)
+	return string(b)
+}
+
+func appendTemporal(b []byte, tm *types.TemporalMetadata) []byte {
+	i := func(name string, v types.Instant) {
+		b = append(b, name...)
+		b = strconv.AppendInt(b, int64(v), 10)
+	}
+	i("{ValidFrom:", tm.ValidFrom)
+	i(" ValidTo:", tm.ValidTo)
+	i(" TxFrom:", tm.TxFrom)
+	i(" TxTo:", tm.TxTo)
+	i(" CreatedAt:", tm.CreatedAt)
+	i(" UpdatedAt:", tm.UpdatedAt)
+	i(" DeletedAt:", tm.DeletedAt)
+	b = append(append(b, " CreatedBy:"...), tm.CreatedBy...)
+	b = append(append(b, " UpdatedBy:"...), tm.UpdatedBy...)
+	b = strconv.AppendInt(append(b, " baseEntityID:"...), int64(tm.BaseEntityID()), 10)
+	b = strconv.AppendBool(append(b, " Retracted:"...), tm.Retracted)
+	b = strconv.AppendBool(append(b, " Void:"...), tm.Void)
+	b = strconv.AppendBool(append(b, " DeleteKeptValidTo:"...), tm.DeleteKeptValidTo)
+	return append(b, '}')
+}
+
+// fmtValue is %v of a property value: strconv for the kinds the worlds
+// write, fmt for anything else.
+func fmtValue(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case int:
+		return strconv.Itoa(x)
+	case bool:
+		return strconv.FormatBool(x)
+	case float64:
+		return strconv.FormatFloat(x, 'g', -1, 64)
+	}
+	return fmt.Sprint(v)
 }
 
 func fmtProps(ps types.PropertySlice) string {
 	parts := make([]string, 0, len(ps))
 	for _, p := range ps {
-		parts = append(parts, fmt.Sprintf("%s=%v", p.Key, p.Value))
+		parts = append(parts, p.Key+"="+fmtValue(p.Value))
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, ",")
 }
 
+func rowString(version int64, tm *types.TemporalMetadata, ps types.PropertySlice) string {
+	b := make([]byte, 0, 256)
+	b = strconv.AppendInt(append(b, 'v'), version, 10)
+	b = append(b, ' ')
+	if tm == nil {
+		b = append(b, "<nil>"...)
+	} else {
+		b = appendTemporal(b, tm)
+	}
+	b = append(append(append(b, " {"...), fmtProps(ps)...), '}')
+	return string(b)
+}
+
 // nodeRowString is everything a reader sees of a row: version, every temporal
 // stamp (the retraction marker included) and the properties.
 func nodeRowString(n *types.Node) string {
-	return fmt.Sprintf("v%d %s {%s}", n.Version(), fmtTemporal(n.Temporal()), fmtProps(n.Properties()))
+	return rowString(int64(n.Version()), n.Temporal(), n.Properties())
 }
 
 func relRowString(r *types.Relationship) string {
-	return fmt.Sprintf("v%d %s {%s}", r.Version(), fmtTemporal(r.Temporal()), fmtProps(r.Properties()))
+	return rowString(int64(r.Version()), r.Temporal(), r.Properties())
 }
 
 // answer is a door's answer: entity key -> what the reader sees of it.
@@ -192,7 +253,10 @@ func (a answer) String() string {
 	sort.Strings(keys)
 	var b strings.Builder
 	for _, k := range keys {
-		fmt.Fprintf(&b, "\n    %s: %s", k, a[k])
+		b.WriteString("\n    ")
+		b.WriteString(k)
+		b.WriteString(": ")
+		b.WriteString(a[k])
 	}
 	return b.String()
 }
@@ -241,4 +305,33 @@ func relsAnswer(rs []*types.Relationship) answer {
 		out[relKey(r.ID())] = relRowString(r)
 	}
 	return out
+}
+
+// TestRowRenderMatchesFmt holds the strconv row rendering to fmt's: every
+// TemporalMetadata field set to a distinct value (a new field changes %+v and
+// fails here), each property kind the worlds write, and one fmt falls back on.
+func TestRowRenderMatchesFmt(t *testing.T) {
+	t.Parallel()
+	tm := &types.TemporalMetadata{ValidFrom: 1, ValidTo: 2, TxFrom: 3, TxTo: 4, CreatedAt: 5, UpdatedAt: 6, DeletedAt: -7,
+		CreatedBy: "c b", UpdatedBy: "u", Retracted: true, Void: true, DeleteKeptValidTo: true}
+	tm.SetBaseEntityID(8)
+	if got, want := fmtTemporal(tm), fmt.Sprintf("%+v", *tm); got != want {
+		t.Fatalf("fmtTemporal = %s\nfmt %%+v    = %s", got, want)
+	}
+	var zero types.TemporalMetadata
+	if got, want := fmtTemporal(&zero), fmt.Sprintf("%+v", zero); got != want {
+		t.Fatalf("fmtTemporal(zero) = %s, fmt = %s", got, want)
+	}
+	for _, v := range []any{"s", int64(-9), 10, true, 1.5, 1e21, 0.1, []any{int64(1), "a"}, nil} {
+		if got, want := fmtValue(v), fmt.Sprintf("%v", v); got != want {
+			t.Errorf("fmtValue(%#v) = %q, fmt %q", v, got, want)
+		}
+	}
+	ps := types.PropertySlice{{Key: "k", Value: "x"}, {Key: "n", Value: int64(3)}}
+	if got, want := rowString(4, tm, ps), fmt.Sprintf("v%d %+v {%s}", 4, *tm, "k=x,n=3"); got != want {
+		t.Fatalf("rowString = %s\nfmt       = %s", got, want)
+	}
+	if got, want := nodeKey(types.NodeID(12)), fmt.Sprintf("n:%d", types.NodeID(12)); got != want {
+		t.Fatalf("nodeKey = %s, fmt %s", got, want)
+	}
 }

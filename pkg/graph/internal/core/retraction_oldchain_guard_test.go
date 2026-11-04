@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -34,8 +35,22 @@ func TestRetraction_OldChainsAnswerAsBefore(t *testing.T) {
 	}
 	t.Parallel()
 	got := map[string]string{}
-	for _, be := range txbBackends() {
-		got[be.name] = oldChainAnswers(t, be.open(t, true))
+	var mu sync.Mutex
+	// One store per backend, each in its own parallel subtest; the group
+	// returns once all have answered.
+	t.Run("backends", func(t *testing.T) {
+		for _, be := range txbBackends() {
+			t.Run(be.name, func(t *testing.T) {
+				t.Parallel()
+				s := oldChainAnswers(t, be.open(t, true))
+				mu.Lock()
+				got[be.name] = s
+				mu.Unlock()
+			})
+		}
+	})
+	if t.Failed() {
+		return
 	}
 	for name, s := range got {
 		if s != got["memory"] {

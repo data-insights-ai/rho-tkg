@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.104.7] - 2026-11-04
+
+### Changed
+
+- **Core's oracle answers render without fmt** (`retraction_helpers_test.go`): the row string, the temporal stamps and
+  the answer list are written with strconv, byte for byte what fmt's `%+v`/`%v` printed (the goldens are unchanged;
+  `TestRowRenderMatchesFmt` holds the two equal, a new `TemporalMetadata` field included). Race `-short`, alone:
+  `TestRetractionOracle_NeverRecordedWorld` 71 s → 55 s CPU. `TestRetraction_OldChainsAnswerAsBefore` answers its
+  three backends in parallel: 12 s → 6 s wall. Measured and left as is: the bitemporal oracle (its CPU is the doors
+  under test; parallel seeds doubled it) and an 8 MB memtable there (no gain at 90 opens).
+
 ## [4.104.6] - 2026-11-04
 
 ### Changed
