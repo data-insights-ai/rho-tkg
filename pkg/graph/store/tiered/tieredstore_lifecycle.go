@@ -544,9 +544,11 @@ func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 
 // idleCloseLoop periodically checks cold shards and closes those that have been
 // idle longer than IdleTimeout, then moves one shard to its tier's volume.
-// Runs every IdleTimeout/2. Stopped via closeCh.
-func (ts *Store) idleCloseLoop() {
-	tick := time.NewTicker(ts.idleTimeoutValue() / 2)
+// Runs every IdleTimeout/2, the value New checked (SetIdleTimeoutForTest(0)
+// between New and this goroutine's start panicked NewTicker, 4 Nov). Stopped
+// via closeCh.
+func (ts *Store) idleCloseLoop(every time.Duration) {
+	tick := time.NewTicker(every)
 	defer tick.Stop()
 
 	for {

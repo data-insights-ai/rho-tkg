@@ -22,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **A flaky badger test fixed**: `TestPutNodesFailedVectorLeavesNoTrace` compared the write queue before and after a
   failed call while the 100 ms timed flush could drain it in between (seen under race at load 25); its store now has
   no timed flush.
+- **tiered: the idle-close loop ticks at the interval `New` checked**: it read the idle timeout again when its
+  goroutine started, so a test's `SetIdleTimeoutForTest(0)` right after `New` panicked `time.NewTicker` (seen under
+  race at load 25). Config refuses a timeout under 1 ms, so only tests reached it.
 - **Docs match the release cycle** (CONTRIBUTING, HANDOVER, SECURITY: the gates use the test cache, releases go to
   the local git server, fuzz-smoke runs in the major gate, the consumers' pins and how they fetch from the local server);
   the minor gate runs the long tier without race, as its tests' bounds were measured (`make test-long`), next to

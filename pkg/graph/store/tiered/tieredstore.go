@@ -1116,8 +1116,8 @@ func New(cfg Config) (*Store, error) {
 	ts.finishOpenStats(openStart)
 
 	// Start idle-close goroutine for cold shards.
-	if ts.idleTimeoutValue() > 0 {
-		go ts.idleCloseLoop()
+	if every := ts.idleTimeoutValue() / 2; every > 0 {
+		go ts.idleCloseLoop(every)
 	}
 
 	return ts, nil
