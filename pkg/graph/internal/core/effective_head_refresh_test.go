@@ -147,8 +147,9 @@ func TestRELHISTP2PluralDoorHeadHit(t *testing.T) {
 // A pin below the entry's newest TxFrom folds even where every winner of the
 // entry was recorded by it: an excise appends a void row that wins nothing,
 // so only the pin rule (the lowest pin against maxTx) keeps the post-excise
-// gap out of a read pinned before the excise.
-func TestRELHISTP2PluralDoorPinBelowVoidRow(t *testing.T) {
+// gap out of a read pinned before the excise. Then a CloseVersion in the
+// own-bounds arm keeps the entry.
+func TestRELHISTP2PluralDoorExciseAndClose(t *testing.T) {
 	ctx := context.Background()
 	for _, be := range relhistP2Backends(t) {
 		t.Run(be.name, func(t *testing.T) {
@@ -173,6 +174,49 @@ func TestRELHISTP2PluralDoorPinBelowVoidRow(t *testing.T) {
 			relhistP2Plural(t, g, id, rid, []types.Instant{below, g.peekNow()}, "a pin before the excises")
 			if h := g.headHits.Load(); h != h0 {
 				t.Fatalf("head hits %d -> %d for a call with a pin below maxTx, want +0", h0, h)
+			}
+			// CloseVersion of an own-bounds chain (an open row from 1000, a
+			// correction [1200, 1400) and its open resumption, then one at
+			// [1100, 1150) below the newest start): no row starts after the
+			// closed current row, so the entry is extended (the instants
+			// after the close are a gap) and the read-back hits.
+			n, err := g.Nodes.Add(ctx, []string{"P"}, map[string]any{"v": int64(0), "tkg_valid_from": int64(1000)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := g.Nodes.Add(ctx, []string{"P"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := g.Rels.AddByID(ctx, "PR", n.ID(), m.ID(), map[string]any{"v": int64(0), "tkg_valid_from": int64(1000)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id, rid = n.ID(), r.ID()
+			for _, iv := range [][2]types.Instant{{1200, 1400}, {1100, 1150}} {
+				if _, err := g.Temporal.SetNodeVersionInterval(ctx, id, iv[0], iv[1], map[string]any{"v": int64(iv[0])}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := g.Temporal.SetRelVersionInterval(ctx, rid, iv[0], iv[1], map[string]any{"v": int64(iv[0])}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			relhistP2Plural(t, g, id, rid, []types.Instant{g.peekNow()}, "fill")
+			o0 = g.headOverlays.Load()
+			if err := g.Nodes.CloseVersion(ctx, id, 1500); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Rels.CloseVersion(ctx, rid, 1500); err != nil {
+				t.Fatal(err)
+			}
+			if o := g.headOverlays.Load(); o != o0+2 {
+				t.Fatalf("head overlays %d -> %d after two CloseVersion, want +2", o0, o)
+			}
+			h0 = g.headHits.Load()
+			head := g.peekNow()
+			relhistP2Plural(t, g, id, rid, []types.Instant{head, head}, "after CloseVersion")
+			if h := g.headHits.Load(); h != h0+2 {
+				t.Fatalf("head hits %d -> %d on the read-back after CloseVersion, want +2", h0, h)
 			}
 		})
 	}
