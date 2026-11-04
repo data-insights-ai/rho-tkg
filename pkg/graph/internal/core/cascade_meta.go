@@ -130,6 +130,7 @@ func skeletonsAscending(metas []storepkg.VersionTemporalMeta, current uint32) bo
 // store offers them (nodeMetaPlan), else on the whole history, refusing an
 // unknown or hard-deleted node.
 func (c *Core) nodeMissPlan(id types.NodeID, current *types.Node, newVF, newVT types.Instant, splitGaps bool) (missPlan[*types.Node], error) {
+	c.headStats.missPlans.Add(1)
 	if p, ok := c.nodeMetaPlan(id, current, newVF, newVT, splitGaps); ok {
 		return p, nil
 	}
@@ -155,8 +156,11 @@ func (c *Core) nodeMetaPlan(id types.NodeID, current *types.Node, newVF, newVT t
 		return missPlan[*types.Node]{}, false
 	}
 	metas, err := c.temporalMetaHistory.NodeHistoryTemporalMeta(id)
-	if c.skeletonRead != nil && err == nil {
-		c.skeletonRead(len(metas))
+	if err == nil {
+		c.noteNodeMeta(len(metas))
+		if c.skeletonRead != nil {
+			c.skeletonRead(len(metas))
+		}
 	}
 	if err != nil || !skeletonsAscending(metas, current.Version()) {
 		return missPlan[*types.Node]{}, false

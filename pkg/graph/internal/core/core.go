@@ -171,6 +171,7 @@ type Core struct {
 	headCacheOff     bool            // tests: fold every read (the differential oracle)
 	headHits         atomic.Uint64   // head reads answered from an entry
 	headOverlays     atomic.Uint64   // corrections that extended an entry
+	headStats        headReadStats   // node history reads by door and miss reason (RELHIST P5 Phase 0)
 	headWriteOff     bool            // tests: corrections and tx snapshots read the whole history (backlog 68b twin)
 	correctionPerCut bool            // tests: a correction resolves every cut on a fresh chain copy (row 85 twin)
 	headPieceCap     int             // tests: entry caps below headMaxEntryPieces / headMaxEntryBounds (0: the defaults)

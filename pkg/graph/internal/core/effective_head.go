@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -270,20 +271,101 @@ func temporalOf[T storeutil.TemporalRow](r T) types.TemporalMetadata {
 // headValid returns k's entry when it answers for current at pin under the
 // token epoch.
 func (c *Core) headValid(k headKey, epoch uint64, curVer uint32, curTM types.TemporalMetadata, pin types.Instant) *headEntry {
+	e, _ := c.headLookup(k, epoch, curVer, curTM, pin)
+	return e
+}
+
+// headLookup is headValid with the reason it found no valid entry (headHit
+// when it found one), checked in this order: no token or no entry, the token
+// moved, the current row changed, the pin below the entry's newest TxFrom.
+func (c *Core) headLookup(k headKey, epoch uint64, curVer uint32, curTM types.TemporalMetadata, pin types.Instant) (*headEntry, headReason) {
 	if epoch == 0 {
-		return nil
+		return nil, headMissNoEntry
 	}
 	e := c.heads.get(k)
-	if e == nil || e.epoch != epoch || e.curVer != curVer || e.curTM != curTM || pin < e.maxTx {
-		return nil
+	switch {
+	case e == nil:
+		return nil, headMissNoEntry
+	case e.epoch != epoch:
+		return nil, headMissToken
+	case e.curVer != curVer || e.curTM != curTM:
+		return nil, headMissCurrent
+	case pin < e.maxTx:
+		return nil, headMissPinBelow
 	}
-	return e
+	return e, headHit
+}
+
+// =============================================================================
+// Head read counts (RELHIST P5 Phase 0)
+//
+// How each node history read was answered: per head door (the singular
+// NodeEffectiveTimeline family and the plural NodeEffectiveTimelines family,
+// the scans and page doors through them included) a hit or the reason the
+// entry could not answer; the node-at doors (nodeAtFromCurrent past its
+// current-row shortcut) and the correction's miss plan (nodeMissPlan), which
+// never read an entry; and the skeleton lists (NodeHistoryTemporalMeta) all
+// of them read. Tests and the RELHIST bench read the counts to choose among
+// P5's options; nothing branches on them.
+// =============================================================================
+
+// headDoor names a head door family.
+type headDoor int
+
+const (
+	headDoorOne  headDoor = iota // NodeEffectiveTimeline and its tails and scans
+	headDoorMany                 // NodeEffectiveTimelines and the page doors
+	headDoors
+)
+
+// headReason is how one head-door read was answered.
+type headReason int
+
+const (
+	headHit               headReason = iota // answered from the entry
+	headCurrentOnly                         // no history (presence bit): answered from the current row, no entry needed
+	headMissNoEntry                         // no entry kept (never filled, dropped, a stripe cleared), or no token
+	headMissToken                           // the entry's token moved: a history write it was not extended by
+	headMissCurrent                         // the current row is not the one the entry was computed with
+	headMissPinBelow                        // a pin below the entry's newest TxFrom (the plural door tests its lowest)
+	headMissNotWhole                        // the entry was trimmed to its caps: it plans corrections, never answers reads
+	headMissNotQualifying                   // the chain cannot have an entry: a delete, a retraction or a shared version (gatherHeadFacts), or no current row
+	headMissScan                            // a scan or snapshot read: never reads or fills the entry
+	headMissRowGone                         // a winner the entry names could not be read
+	headReasons
+)
+
+// headReadStats holds the counts (Core.headStats).
+type headReadStats struct {
+	reads     [headDoors][headReasons]atomic.Uint64
+	nodeAt    atomic.Uint64 // node-at reads that read history (past the current-row shortcut)
+	missPlans atomic.Uint64 // node corrections planned on the history (no valid entry)
+	metaLists atomic.Uint64 // node skeleton lists read
+	metaRows  atomic.Uint64 // skeletons in them
+}
+
+// noteHeadRead counts one head-door read answered by r. A miss whose fold
+// found the chain not qualifying (f.refused) counts as such whatever the
+// lookup said: a stale or missing entry there is a consequence, not the
+// cause. f nil: no fold facts (no token, or the fold did not gather them).
+func (c *Core) noteHeadRead(door headDoor, r headReason, f *headFacts) {
+	if f != nil && f.refused && r != headHit && r != headMissScan {
+		r = headMissNotQualifying
+	}
+	c.headStats.reads[door][r].Add(1)
+}
+
+// noteNodeMeta counts one node skeleton list of n skeletons.
+func (c *Core) noteNodeMeta(n int) {
+	c.headStats.metaLists.Add(1)
+	c.headStats.metaRows.Add(uint64(n)) // #nosec G115 -- a length, never negative
 }
 
 // headFacts is what an entry needs from its chain, gathered by the fold
 // (effectivePiecesFacts) from the rows it already walks.
 type headFacts struct {
 	ok        bool // the chain qualifies (see gatherHeadFacts)
+	refused   bool // gathered, and the chain does not qualify (head read counts)
 	maxTx     types.Instant
 	maxTxTo   types.Instant
 	maxVer    uint32
@@ -313,6 +395,7 @@ func gatherHeadFacts[T interface {
 	for i, r := range filtered {
 		tm := r.Temporal()
 		if tm == nil || tm.DeletedAt != 0 || tm.Retracted || (i > 0 && filtered[i-1].Version() >= r.Version()) {
+			f.refused = true
 			return
 		}
 		f.txOrdered = f.txOrdered && tm.TxFrom >= f.maxTx
@@ -637,12 +720,15 @@ func mergeHeadPieces(out []headPiece) []headPiece {
 }
 
 // nodeHeadSegments answers a head read from a valid entry, the segments that
-// reach validFrom, reading only their winners; ok false falls back to the fold
-// (no entry, a stale one, or a winner gone).
-func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.Node, validFrom, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, bool) {
-	e := c.headValid(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), pin)
-	if e == nil || !e.whole() {
-		return nil, false
+// reach validFrom, reading only their winners; a reason other than headHit
+// falls back to the fold (no entry, a stale one, or a winner gone).
+func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.Node, validFrom, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, headReason) {
+	e, r := c.headLookup(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), pin)
+	if e == nil {
+		return nil, r
+	}
+	if !e.whole() {
+		return nil, headMissNotWhole
 	}
 	segs := make([]temporal.NodeSegment, 0, len(e.pieces))
 	for _, p := range e.pieces {
@@ -653,18 +739,18 @@ func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.
 		if p.version != current.Version() {
 			full, err := rd.lentNodeVersion(id, p.version) // handed out frozen: no copy needed
 			if err != nil {
-				return nil, false
+				return nil, headMissRowGone
 			}
 			row = full
 		}
 		row, ok := nodeRowAtTx(c.axis(), row, pin)
 		if !ok {
-			return nil, false
+			return nil, headMissRowGone
 		}
 		segs = append(segs, nodeSegment(p.from, p.to, row))
 	}
 	c.headHits.Add(1)
-	return segs, true
+	return segs, headHit
 }
 
 // relHeadSegments mirrors nodeHeadSegments.
@@ -696,18 +782,22 @@ func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Re
 // nodeHeadTimelines answers the plural door (NodeEffectiveTimelines) from a
 // valid entry when every pin is at or above its newest TxFrom (RELHIST P2):
 // each winner is read once and normalized per pin as the fold normalizes
-// it; ok false falls back to the fold.
-func (c *Core) nodeHeadTimelines(rd entityReads, id types.NodeID, current *types.Node, pins []types.Instant, epoch uint64) ([][]temporal.NodeSegment, bool) {
-	e := c.headValid(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), slices.Min(pins))
-	if e == nil || !e.whole() {
-		return nil, false
+// it; a reason other than headHit falls back to the fold.
+func (c *Core) nodeHeadTimelines(rd entityReads, id types.NodeID, current *types.Node, pins []types.Instant, epoch uint64) ([][]temporal.NodeSegment, headReason) {
+	e, r := c.headLookup(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), slices.Min(pins))
+	if e == nil {
+		return nil, r
+	}
+	if !e.whole() {
+		return nil, headMissNotWhole
 	}
 	out, ok := headTimelinesOf(c, nodeKernel, e, current, pins,
 		func(v uint32) (*types.Node, error) { return rd.lentNodeVersion(id, v) }, nodeSegment) // lent frozen: no copy needed
-	if ok {
-		c.headHits.Add(1)
+	if !ok {
+		return nil, headMissRowGone
 	}
-	return out, ok
+	c.headHits.Add(1)
+	return out, headHit
 }
 
 // relHeadTimelines mirrors nodeHeadTimelines.
