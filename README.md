@@ -356,6 +356,8 @@ Run any tutorial: `go run ./tutorials/001_basic_graph/`
 ```bash
 make check   # pre-commit: vet + build + test
 make test    # unit tests (short mode)
+make gate-patch                 # patch gate, incremental through Go's test cache
+make release-patch              # or release-minor / release-major: gate, tag, push
 ```
 
 See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the full build/test/lint workflow,
@@ -366,9 +368,8 @@ including the Docker-based `lint`/`security`/`vulncheck` targets.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the full, dated release history — every
 version back to v3.0.0, with the defect it fixed or the feature it added.
 
-Releases: the git tags (`git tag`, `git tag --contains <commit>`); what each shipped: [docs/CHANGELOG.md](docs/CHANGELOG.md)
-and why; this line is pinned to the changelog's latest entry by
-`TestDocsMetadataMatchesSourceOfTruth` so it cannot go stale silently.
+The version is the git tag (`git tag`; `git tag --contains <commit>` names the releases holding a change); consumers
+get it through `go get` and go.mod.
 
 If you are upgrading from v3.x, see `docs/CHANGELOG.md` `[4.0.0]` for the full
 public-API migration recipe (context-first methods, `g.Tier` split from

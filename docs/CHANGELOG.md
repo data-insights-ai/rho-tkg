@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.104.2] - 2026-11-04
+
 ### Changed
 
 - **Release style and gates** (René, 4 Nov, one style for rho, sigma and ai-soc; no library change). A release is gate, tag,
