@@ -15,5 +15,5 @@ HasHistory profile: 72 % is tiered's liveness re-read of the current row's stamp
 the presence-set lookup itself is a RAM probe. A batch HasHistory(ids) could read those stamps through
 one forward scan as the pages now do: a minor (new door), left for when sigma's restore shows it matters.
 
-Gate: TestListReadPagesReadRowsInOneScan (core), cold badger store, 300 rows, both doors: 0 rows by
-point read (NodeRowDecodesForTest). Old code: 300 of 300 by point read (mutation check).
+Gate: TestListReadPagesReadRowsInOneScan (badger), cold badger store, 300 rows, both doors: 0 rows by
+point read (NodeRowPointReadsForTest, 300 decoded). Old code: 300 of 300 by point read (mutation check).

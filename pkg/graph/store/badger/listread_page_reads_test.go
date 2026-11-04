@@ -1,9 +1,10 @@
-package core
+package badger_test
 
 import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -18,12 +19,12 @@ import (
 // read.
 func TestListReadPagesReadRowsInOneScan(t *testing.T) {
 	dir := t.TempDir()
-	open := func() (*Core, *badgerpkg.Store) {
+	open := func() (*core.Core, *badgerpkg.Store) {
 		bs, err := badgerpkg.New(badgerpkg.Config{Dir: dir, CacheCapacity: 1})
 		if err != nil {
 			t.Fatal(err)
 		}
-		g, err := New(Config{Store: bs})
+		g, err := core.New(core.Config{Store: bs})
 		if err != nil {
 			t.Fatal(err)
 		}

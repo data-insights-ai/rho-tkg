@@ -32,7 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   its rows through one forward scan, the `ByLabel` door's path, instead of a read transaction and point read per row.
   On a tiered store reopened cold (200,000 nodes, pages of 1,000): 6.8-29 µs per listed node before, 2.9-6.6 µs
   after (shared host, load 45-55; `tasks/evidence/LISTREAD/measure.txt`). Same rows, same order, same skips.
-  `TestListReadPagesReadRowsInOneScan` gates it: a cold page reads no row by point read (the old loop: 300 of 300).
+  `TestListReadPagesReadRowsInOneScan` (badger) gates it: a cold page reads no row by point read (the old loop: 300 of 300).
   `HasHistory` stays as it is (about 3 µs per node; 72 % is tiered's liveness read of the current row); a batch
   `HasHistory(ids)` is left for when sigma's restore shows it matters.
 
