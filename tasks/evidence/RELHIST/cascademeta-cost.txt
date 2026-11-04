@@ -54,3 +54,12 @@ skeletons); read versions 1..64 inside hydrate -> caught (66 rows, want <= 2); t
 (1 row, want >= versions); the hydrate memo off, the source read though not copied, gap segments hydrated, the
 current-row shortcut off -> survive, equivalent in this shape (each correction hydrates two distinct non-gap,
 non-current rows). Allocations and bytes stay in the log.
+Review follow-up (Fable, 4 Nov): the gate is per correction, not a mean (a mean of four let one extra row on three
+corrections pass), and counts skeleton reads too (Core.skeletonRead, fired where nodeMetaPlan / relMetaPlan read the
+skeleton list): the skeleton read is O(versions) and reads no full row, so the row count alone missed a second one.
+Per correction: whole history 63-69 rows at 64 versions, 1023-1029 at 1,024 (each correction appends rows), 0
+skeleton lists; skeletons 2 rows, 1 list. Bound: whole history >= versions-1 and no list; skeletons <= 2 rows and one
+list each. Mutants: one extra row on one correction in four -> caught (3 rows); a second skeleton read per node
+correction -> caught (8 lists in 4). Not counted: the cost of one skeleton read per version (a store-side partial vs
+full decode; a badger decode counter on historyTemporalMetaOf would count it; MEMGATE) and a skeleton read added on
+another path without the hook.

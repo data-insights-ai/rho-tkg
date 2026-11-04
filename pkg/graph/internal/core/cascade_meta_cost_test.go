@@ -3,27 +3,40 @@ package core
 import (
 	"context"
 	"fmt"
+	"math"
 	"runtime"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// cascadeMissCost is the mean allocations and bytes of one correction on a
-// head miss of rel (rel true) or node id, planned on skeletons or (off) on
-// the whole history.
-func cascadeMissCost(t *testing.T, g *Core, rel bool, nid types.NodeID, rid types.RelID, off bool) (rows, allocs, bytes uint64) {
+// cascadeMissCost runs four corrections on a head miss of rel (rel true) or
+// node id, planned on skeletons or (off) on the whole history. Per
+// correction it counts the full rows read from the store (Core.historyRead)
+// and the skeleton reads (Core.skeletonRead); allocations and bytes are the
+// mean, for the log only (process-wide counters).
+type cascadeCost struct {
+	minRows, maxRows uint64 // full rows read by one correction
+	skeletons        int    // skeleton reads, all corrections
+	allocs, bytes    uint64 // mean per correction, log only
+}
+
+const cascadeCostRuns = 4
+
+func cascadeMissCost(t *testing.T, g *Core, rel bool, nid types.NodeID, rid types.RelID, off bool) cascadeCost {
 	t.Helper()
 	ctx := context.Background()
-	const runs = 4
 	g.cascadeMetaOff = off
 	var read uint64
+	out := cascadeCost{minRows: math.MaxUint64}
 	g.historyRead = func(n int) { read += uint64(n) }
-	defer func() { g.cascadeMetaOff, g.historyRead = false, nil }()
+	g.skeletonRead = func(int) { out.skeletons++ }
+	defer func() { g.cascadeMetaOff, g.historyRead, g.skeletonRead = false, nil, nil }()
 	var a, b runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&a)
-	for i := range runs {
+	for i := range cascadeCostRuns {
+		read = 0
 		p := map[string]any{"ov_c1": int64(10_000 + i)}
 		var err error
 		if rel {
@@ -34,9 +47,11 @@ func cascadeMissCost(t *testing.T, g *Core, rel bool, nid types.NodeID, rid type
 		if err != nil {
 			t.Fatal(err)
 		}
+		out.minRows, out.maxRows = min(out.minRows, read), max(out.maxRows, read)
 	}
 	runtime.ReadMemStats(&b)
-	return read / runs, (b.Mallocs - a.Mallocs) / runs, (b.TotalAlloc - a.TotalAlloc) / runs
+	out.allocs, out.bytes = (b.Mallocs-a.Mallocs)/cascadeCostRuns, (b.TotalAlloc-a.TotalAlloc)/cascadeCostRuns
+	return out
 }
 
 // cascadeCostShape is a row shape of the cost test: r10's seven small
@@ -112,29 +127,31 @@ func checkCascadeMetaCost(t *testing.T, be r10Backend, shape string, versions in
 	}
 	g.headWriteOff = true // every correction below is a head miss
 	for _, rel := range []bool{false, true} {
-		beforeR, beforeA, beforeB := cascadeMissCost(t, g, rel, nid, r.ID(), true)
+		whole := cascadeMissCost(t, g, rel, nid, r.ID(), true)
 		metaBefore := g.metaWrites.Load()
-		afterR, afterA, afterB := cascadeMissCost(t, g, rel, nid, r.ID(), false)
+		skel := cascadeMissCost(t, g, rel, nid, r.ID(), false)
 		if g.metaWrites.Load() == metaBefore {
 			t.Fatal("no correction was planned on skeletons")
 		}
 		// Information only: allocations and bytes count the whole process,
 		// so badger's background flushes and compactions move them with the
 		// machine's load (ci-docker read 3.9x where a quiet run reads 5.8x).
-		t.Logf("CASCADEMETA cost %s %s versions=%d rel=%v: full rows %d -> %d; allocs %d -> %d (%.1fx); bytes %d -> %d (%.1fx)",
-			be.name, shape, versions, rel, beforeR, afterR, beforeA, afterA, float64(beforeA)/float64(max(afterA, 1)),
-			beforeB, afterB, float64(beforeB)/float64(max(afterB, 1)))
-		// The gate counts full rows read from the store per correction
-		// (Core.historyRead): deterministic, whatever the load. The whole
-		// history plan reads every version; the skeleton plan reads only the
-		// segment bases it hydrates.
-		if beforeR < uint64(versions) {
-			t.Errorf("%s %s versions=%d rel=%v: the whole-history plan read %d full rows, want >= %d (the baseline is not the whole history)",
-				be.name, shape, versions, rel, beforeR, versions)
+		t.Logf("CASCADEMETA cost %s %s versions=%d rel=%v: full rows per correction %d-%d -> %d-%d, skeleton reads %d -> %d; allocs %d -> %d (%.1fx); bytes %d -> %d (%.1fx)",
+			be.name, shape, versions, rel, whole.minRows, whole.maxRows, skel.minRows, skel.maxRows, whole.skeletons, skel.skeletons,
+			whole.allocs, skel.allocs, float64(whole.allocs)/float64(max(skel.allocs, 1)),
+			whole.bytes, skel.bytes, float64(whole.bytes)/float64(max(skel.bytes, 1)))
+		// The gate counts per correction (deterministic, whatever the load):
+		// the whole-history plan reads every older version (the first
+		// correction versions-1, later ones more, as each appends rows) and
+		// no skeletons; the skeleton plan reads one skeleton list and only
+		// the full rows it hydrates.
+		if whole.minRows < uint64(versions-1) || whole.skeletons != 0 {
+			t.Errorf("%s %s versions=%d rel=%v: the whole-history plan read %d full rows (least per correction), %d skeleton lists; want >= %d and 0 (the baseline is not the whole history)",
+				be.name, shape, versions, rel, whole.minRows, whole.skeletons, versions-1)
 		}
-		if afterR > cascadeMetaRowsMax {
-			t.Errorf("%s %s versions=%d rel=%v: the skeleton plan read %d full rows per correction, want <= %d",
-				be.name, shape, versions, rel, afterR, cascadeMetaRowsMax)
+		if skel.maxRows > cascadeMetaRowsMax || skel.skeletons != cascadeCostRuns {
+			t.Errorf("%s %s versions=%d rel=%v: the skeleton plan read up to %d full rows per correction and %d skeleton lists in %d corrections; want <= %d and one each",
+				be.name, shape, versions, rel, skel.maxRows, skel.skeletons, cascadeCostRuns, cascadeMetaRowsMax)
 		}
 	}
 }

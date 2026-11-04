@@ -168,20 +168,21 @@ type Core struct {
 	// (effective_head.go). nil = store declines: every head read folds.
 	historyEpochs    storepkg.HistoryEpochCapability
 	heads            headCache
-	headCacheOff     bool           // tests: fold every read (the differential oracle)
-	headHits         atomic.Uint64  // head reads answered from an entry
-	headOverlays     atomic.Uint64  // corrections that extended an entry
-	headWriteOff     bool           // tests: corrections and tx snapshots read the whole history (backlog 68b twin)
-	correctionPerCut bool           // tests: a correction resolves every cut on a fresh chain copy (row 85 twin)
-	headPieceCap     int            // tests: entry caps below headMaxEntryPieces / headMaxEntryBounds (0: the defaults)
-	headBoundCap     int            //
-	headWrites       atomic.Uint64  // corrections planned from an entry (backlog 68b)
-	appendWrites     atomic.Uint64  // open appends planned from the current row alone (backlog 67)
-	cascadeMetaOff   bool           // tests: a correction on a head miss reads the whole history (CASCADEMETA twin)
-	cascadeMetaHook  func()         // tests: runs between a miss's skeleton read and its point reads (CASCADEMETA)
-	metaWrites       atomic.Uint64  // corrections planned on history skeletons on a head miss (CASCADEMETA)
-	historyRead      func(rows int) // tests: called with the rows each history read returns
-	historyCopy      func(rows int) // tests: called with the rows each GraphTx rollback snapshot copies (RELHIST)
+	headCacheOff     bool            // tests: fold every read (the differential oracle)
+	headHits         atomic.Uint64   // head reads answered from an entry
+	headOverlays     atomic.Uint64   // corrections that extended an entry
+	headWriteOff     bool            // tests: corrections and tx snapshots read the whole history (backlog 68b twin)
+	correctionPerCut bool            // tests: a correction resolves every cut on a fresh chain copy (row 85 twin)
+	headPieceCap     int             // tests: entry caps below headMaxEntryPieces / headMaxEntryBounds (0: the defaults)
+	headBoundCap     int             //
+	headWrites       atomic.Uint64   // corrections planned from an entry (backlog 68b)
+	appendWrites     atomic.Uint64   // open appends planned from the current row alone (backlog 67)
+	cascadeMetaOff   bool            // tests: a correction on a head miss reads the whole history (CASCADEMETA twin)
+	cascadeMetaHook  func()          // tests: runs between a miss's skeleton read and its point reads (CASCADEMETA)
+	metaWrites       atomic.Uint64   // corrections planned on history skeletons on a head miss (CASCADEMETA)
+	historyRead      func(rows int)  // tests: called with the rows each history read returns
+	skeletonRead     func(metas int) // tests: called with the skeletons each cascade skeleton read returns (COSTCOUNT)
+	historyCopy      func(rows int)  // tests: called with the rows each GraphTx rollback snapshot copies (RELHIST)
 	// readSnapshots — effective scans read their timelines through one store
 	// read snapshot (backlog 55, effective_scan_reads.go). nil = per-entity reads.
 	readSnapshots storepkg.ReadSnapshotCapability
