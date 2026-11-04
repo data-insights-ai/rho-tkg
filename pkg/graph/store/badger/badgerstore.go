@@ -2702,11 +2702,11 @@ func (bs *Store) Close() error {
 	bs.closeOnce.Do(func() {
 		bs.closing.Store(true)
 		close(bs.stopCh)
-		<-bs.flushDone // wait for flushLoop exit (or immediate if never started)
-		<-bs.gcDone    // wait for GC exit
-		bs.gcMu.Lock() // a pass outside gcLoop (tests) ends at stopCh too
-		bs.gcMu.Unlock()
-		<-bs.imageDone // wait for a periodic open image in progress
+		<-bs.flushDone   // wait for flushLoop exit (or immediate if never started)
+		<-bs.gcDone      // wait for GC exit
+		bs.gcMu.Lock()   // a pass outside gcLoop (tests) ends at stopCh too
+		bs.gcMu.Unlock() //nolint:staticcheck // SA2001: an empty section on purpose, a barrier for that pass
+		<-bs.imageDone   // wait for a periodic open image in progress
 		// Explicit final flush — ensures pending ops are persisted even when
 		// flushLoop was never spawned. No-op if already drained.
 		e := bs.flush()
