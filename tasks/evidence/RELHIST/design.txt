@@ -262,3 +262,49 @@ interval (overview_graph.go:815; skipped when nothing changed, :811). The end mo
 one tx.UpdateNode setting tkg_valid_to on a still-open row, at most once a session) and at a reopen (:850,
 SetNodeVersionInterval(sid, max(pin,to), OpenEnd, {program}), a new open segment). Build and measure C against that
 shape: per-cut property patches on the open head row; the moveEnds variant is not sigma's shape.
+
+RELHIST P5 option C design (Fable, read-only, main v4.105.1, 4 Nov; the lead checked headLookup :293, headOverlay's
+`out := *e` and maxTx move, headWeight :175). A patch: cache-internal, no exported API, no store format change.
+1. Why a pin below maxTx misses: headLookup refuses pin < e.maxTx (effective_head.go:293); the plural door tests
+   min(pins) (:787), so sigma's {previous, cut} pins fold (effective_timelines.go:190-243) and the fold refills the
+   same top entry (:351-361). A superseding write extends the entry in place: headOverlay (:485-546) copies `*e`,
+   paints the appended rows and moves maxTx to the appended row's TxFrom (:514); headSupersede (:930-957) and
+   nodeHeadAfterWrite/AfterSupersede (:886-899, :962-975) put the new object and drop the old, whose answer is the
+   fold's at every pin in [old.maxTx, newTxFrom): visibility is by TxFrom only (temporal.go:508-519), the supersession
+   cap applies only when the replacing row is in the chain at that pin (chain_supersession.go:36-42), rowAtTx
+   normalizes only DeletedAt (temporal.go:552-562), which a qualifying chain lacks (gatherHeadFacts :397).
+2. C1, generations pushed on the write side. One generation answers {previous, cut}; the 2-5-cuts-back class needs
+   K = 5. Per-piece tx stamps rejected (sigma's patch replaces every piece each cut, so they equal K copies anyway).
+   - `type headGen struct{ maxTx, txEnd types.Instant; pieces []headPiece }` answers pins in [maxTx, txEnd);
+     `headEntry.gens []headGen` oldest first; `const headMaxGens = 5`.
+   - End of headOverlay, before out.trim: if e.whole() && lowTx > e.maxTx { out.gens = append(slices.Clone(e.gens),
+     headGen{e.maxTx, lowTx, e.pieces}) }, lowTx = appended[0].Temporal().TxFrom. lowTx == e.maxTx (same-instant
+     writes): no push, e.gens kept. Drop the oldest while len > headMaxGens or sum of gen pieces > headMaxEntryPieces;
+     after trim, !out.whole() -> out.gens = nil. e.pieces kept by reference (immutable after put). headSupersede
+     inherits it; headFromFold leaves gens nil.
+   - `(e *headEntry) piecesAt(pin) ([]headPiece, bool)`: pin >= maxTx -> e.pieces; else the gen with
+     maxTx <= pin < txEnd (newest to oldest); else false. headLookup: `pin < e.maxTx && !e.covers(pin)` ->
+     headMissPinBelow (below the lowest generation). nodeHeadSegments/relHeadSegments (:725-780) use piecesAt(pin);
+     headTimelinesOf (:820-852) reads winners lazily by version and takes piecesAt per pin, (nil,false) ->
+     headMissPinBelow. nodeHeadBeforeWrite's MaxInt64 pin (:873) unaffected.
+   - headWeight adds the gens' pieces; stripe share and whole-stripe clear stay (worst entry 1/2 of a share).
+   - Counts: headReadStats.genHits per door (reads with a pin answered from a generation; still headHit);
+     Core.headGens (generations pushed); headCounts copies them.
+3. Correctness: generations are reachable only through the top's validation (token, current row), so every write that
+   does not extend drops them with the top (Delete/retraction, CAS, replica apply, UpdateInPlace, rollback,
+   compaction trim, purge, a dropped extension). Rules: never push from a trimmed top; never mutate e.gens in place;
+   gens never raise maxTx/maxVer/bounds. Oracle (effective_head_test.go): add sigma's op (SetNodeVersionInterval over
+   the current row's own interval, open end) in the op<40 arm a third of the time; a GraphTx with two such ops on one
+   node; count headGens and gen hits and fail when zero. Twin: add the op to txStep/step.
+4. Tests (four backends, counts only): TestHeadCountsSigmaShape rewritten to sigma's real shape: drop moveEnds; per
+   cut every live Session gets tx.SetNodeVersionInterval(id, start, 0, {"n": cut}); each Session life ends with a
+   Close (tx.UpdateNode tkg_valid_to) and the next cut a reopen (SetNodeVersionInterval(id, validEnd, 0, ...));
+   Derived as today. Track filledSince. Red today: (R1) Session patched this cut, filled since <= cut-1, pins
+   {prev, cut} -> plural headHit, genHits 1; (R2) one older pin k in 2..5 cuts back, filled since <= cut-k+1, not
+   closed since -> hit (k = 5 is the K boundary); (R3) previous+cut class has 0 pin-below misses.
+   TestHeadCountsReasons: a pin between the two newest TxFroms hits with genHits 1; below the lowest stays pin-below.
+   Cache test: weight counts gens. Mutations: gen used outside [maxTx, txEnd); push when lowTx == maxTx; push from a
+   trimmed top; gens kept on a refill; headMaxGens 4; headWeight without gens.
+5. Risks: entry weight up to 1/2 share; closed nodes read before their close stay pin-below (C2 later: a fill at a
+   lower pin records a generation). Expected: plural previous+cut pin-below 259 -> 0; one older pin 177 -> about a
+   third; skeletons 3959 -> ~1,500-2,000.
