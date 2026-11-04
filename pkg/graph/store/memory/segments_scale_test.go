@@ -425,16 +425,17 @@ func s2PerHOP(r, nodesOnly s2Result) s2Result {
 }
 
 // TestSegmentS2ScaleSmoke keeps the harness compiling and working in the
-// ordinary suite on a tiny workload, with sanity bounds only.
+// ordinary suite on a tiny workload, with sanity bounds only. The graph bytes
+// are live-heap differences, which other tests' heap moves either way, so they
+// are logged, not checked (MEMGATE).
 func TestSegmentS2ScaleSmoke(t *testing.T) {
 	sz := synthhop.Size{Name: "smoke", HOP: 3000, Pairs: 900, VATTR: 10, CATTR: 5, Hosts: 120, Actors: 30}
 	base := runS2(t, sz, synthhop.SchemaP6, "nodes")
-	if base.graphWithTail <= 0 {
-		t.Fatalf("nodes-only run measured no graph bytes: %+v", base)
-	}
+	t.Logf("nodes-only run: %d graph bytes", base.graphWithTail)
 	for _, mode := range []string{"rows", "segments", "nvme"} {
 		res := s2PerHOP(runS2(t, sz, synthhop.SchemaP6, mode), base)
-		if res.hop != sz.HOP || res.byType <= 0 || res.forEach <= 0 || res.point <= 0 || res.graphSealed <= 0 {
+		t.Logf("%s: %d graph bytes after the final seal", mode, res.graphSealed)
+		if res.hop != sz.HOP || res.byType <= 0 || res.forEach <= 0 || res.point <= 0 {
 			t.Fatalf("%s: empty measurement %s", mode, res)
 		}
 		if mode != "rows" && (res.segments == 0 || res.colRate <= 0 || res.segBytes <= 0) {

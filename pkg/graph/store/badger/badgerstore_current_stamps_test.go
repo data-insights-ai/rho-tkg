@@ -8,6 +8,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -44,6 +45,7 @@ type curKind struct {
 	stamps  func(bs *Store, id int64) (storecontract.RowStamps, error)
 	get     func(bs *Store, id int64) (storecontract.RowStamps, error)
 	evict   func(bs *Store, id int64)
+	cached  func(bs *Store, id int64) bool // the entity cache holds the row
 	key     func(id int64) []byte
 	missing error
 }
@@ -66,7 +68,11 @@ func curKinds() []curKind {
 				n, err := bs.GetNode(types.NodeID(snowflake.ID(curID + id)))
 				return storecontract.NodeRowStamps(n), err
 			},
-			evict:   func(bs *Store, id int64) { bs.nodeCache.EvictForTest(snowflake.ID(curID + id)) },
+			evict: func(bs *Store, id int64) { bs.nodeCache.EvictForTest(snowflake.ID(curID + id)) },
+			cached: func(bs *Store, id int64) bool {
+				_, st := bs.nodeCache.GetNoPromote(snowflake.ID(curID + id))
+				return st == indexpkg.CacheHit
+			},
 			key:     func(id int64) []byte { return storeutil.NodeKey(snowflake.ID(curID + id)) },
 			missing: ErrNodeNotFound,
 		},
@@ -86,7 +92,11 @@ func curKinds() []curKind {
 				r, err := bs.GetRelationship(types.RelID(snowflake.ID(curID + id)))
 				return storecontract.RelRowStamps(r), err
 			},
-			evict:   func(bs *Store, id int64) { bs.relCache.EvictForTest(snowflake.ID(curID + id)) },
+			evict: func(bs *Store, id int64) { bs.relCache.EvictForTest(snowflake.ID(curID + id)) },
+			cached: func(bs *Store, id int64) bool {
+				_, st := bs.relCache.GetNoPromote(snowflake.ID(curID + id))
+				return st == indexpkg.CacheHit
+			},
 			key:     func(id int64) []byte { return storeutil.RelKey(snowflake.ID(curID + id)) },
 			missing: ErrRelNotFound,
 		},
@@ -303,51 +313,82 @@ func TestCurrentStamps_StoredRowForms(t *testing.T) {
 	})
 }
 
-// A cache miss reads one key and decodes the temporal block only: a handful
-// of allocations (the badger read transaction), not the full row decode's 20+
-// (properties, labels, hashes). The bound is the backlog-42 target for the
-// whole LatestStamps call.
+// curStampsMissID is the row curStampsMissStore writes.
+const curStampsMissID = 10
+
+// curStampsMissStore stores row curStampsMissID of kind k at version 3,
+// TxFrom 100, with properties and integrity hashes a full decode would build,
+// and flushes it.
+func curStampsMissStore(t *testing.T, k curKind) *Store {
+	t.Helper()
+	bs := newCurStore(t, Config{FlushInterval: time.Hour})
+	const a = curStampsMissID
+	if k.name == "node" {
+		n := curNode(a, 3, 100, 0, 0)
+		n.SetProperties(mustPropertySlice(t, map[string]any{"name": "a fairly long string value", "n": int64(7), "tags": []any{"x", "y", "z"}}))
+		n.SetIntegrity(&types.NodeIntegrity{Hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", PrevHash: "p"})
+		if err := bs.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		r := curRel(a, 3, 100, 0, 0)
+		r.SetProperties(mustPropertySlice(t, map[string]any{"name": "a fairly long string value", "n": int64(7), "tags": []any{"x", "y", "z"}}))
+		r.SetIntegrity(&types.RelIntegrity{Hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", PrevHash: "p"})
+		if err := bs.PutRelationship(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	return bs
+}
+
+// A cache miss reads one key and decodes the temporal block only, not the
+// full row (properties, labels, hashes): no node row decode is counted and
+// the row does not enter the entity cache, which the full read doors fill. A
+// hit answers from the cache, with no decode either. The allocations are
+// logged here (MEMGATE: AllocsPerRun counts the whole process); their bounds,
+// the backlog-42 target for the whole LatestStamps call, are
+// TestCurrentStamps_MissAllocs at the measurement level
+// (badgerstore_current_stamps_measure_test.go).
 func TestCurrentStamps_MissReadsTheTemporalBlockOnly(t *testing.T) {
 	for _, k := range curKinds() {
 		t.Run(k.name, func(t *testing.T) {
-			bs := newCurStore(t, Config{FlushInterval: time.Hour})
-			const a = 10
-			if k.name == "node" {
-				n := curNode(a, 3, 100, 0, 0)
-				n.SetProperties(mustPropertySlice(t, map[string]any{"name": "a fairly long string value", "n": int64(7), "tags": []any{"x", "y", "z"}}))
-				n.SetIntegrity(&types.NodeIntegrity{Hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", PrevHash: "p"})
-				if err := bs.PutNode(n); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				r := curRel(a, 3, 100, 0, 0)
-				r.SetProperties(mustPropertySlice(t, map[string]any{"name": "a fairly long string value", "n": int64(7), "tags": []any{"x", "y", "z"}}))
-				r.SetIntegrity(&types.RelIntegrity{Hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", PrevHash: "p"})
-				if err := bs.PutRelationship(r); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if err := bs.Flush(); err != nil {
-				t.Fatal(err)
-			}
+			bs := curStampsMissStore(t, k)
+			const a = curStampsMissID
+			want := storecontract.RowStamps{TxFrom: 100, Version: 3}
+			decodes := bs.NodeRowDecodesForTest()
 			var got storecontract.RowStamps
 			var err error
 			allocs := testing.AllocsPerRun(200, func() {
 				k.evict(bs, a)
 				got, err = k.stamps(bs, a)
 			})
-			if err != nil || got != (storecontract.RowStamps{TxFrom: 100, Version: 3}) {
+			if err != nil || got != want {
 				t.Fatalf("miss = (%+v, %v)", got, err)
 			}
-			if allocs > 8 {
-				t.Fatalf("a cache miss allocates %.0f per call, want <= 8 (temporal block only)", allocs)
+			if d := bs.NodeRowDecodesForTest() - decodes; d != 0 {
+				t.Fatalf("201 cache misses decoded %d node rows, want 0 (temporal block only)", d)
+			}
+			if k.cached(bs, a) {
+				t.Fatal("the miss path put the row in the entity cache: it read the full row")
 			}
 			if _, err := k.get(bs, a); err != nil { // GetNode fills the cache; the miss path does not
 				t.Fatal(err)
 			}
-			if hit := testing.AllocsPerRun(200, func() { got, err = k.stamps(bs, a) }); hit != 0 {
-				t.Fatalf("a cache hit allocates %.0f per call, want 0", hit)
+			if !k.cached(bs, a) {
+				t.Fatal("the full read did not fill the entity cache: the check above proves nothing")
 			}
+			decodes = bs.NodeRowDecodesForTest()
+			hit := testing.AllocsPerRun(200, func() { got, err = k.stamps(bs, a) })
+			if err != nil || got != want {
+				t.Fatalf("hit = (%+v, %v)", got, err)
+			}
+			if d := bs.NodeRowDecodesForTest() - decodes; d != 0 {
+				t.Fatalf("201 cache hits decoded %d node rows, want 0", d)
+			}
+			t.Logf("allocations per call: miss %.0f, hit %.0f", allocs, hit)
 		})
 	}
 }

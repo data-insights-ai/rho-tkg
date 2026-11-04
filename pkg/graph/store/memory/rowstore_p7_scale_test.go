@@ -239,7 +239,9 @@ func TestRowStoreP7Scale(t *testing.T) {
 }
 
 // TestRowStoreP7ScaleSmoke keeps the harness compiling and working in the
-// ordinary suite on a tiny workload, with sanity bounds only.
+// ordinary suite on a tiny workload, with sanity bounds only. The graph bytes
+// are a live-heap difference, which other tests' heap moves either way, so
+// they are logged, not checked (MEMGATE).
 func TestRowStoreP7ScaleSmoke(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
@@ -247,7 +249,8 @@ func TestRowStoreP7ScaleSmoke(t *testing.T) {
 	sz := synthhop.Size{Name: "smoke", HOP: 2000, Pairs: 600, VATTR: 700, CATTR: 5, Hosts: 100, Actors: 20}
 	for _, rn := range []string{"hop-p6", "mix-legacy"} {
 		r := runP7(t, sz, p7Runs[rn], "")
-		if r.rels == 0 || r.hop != sz.HOP || r.graphBytes <= 0 || r.byType <= 0 || r.forEach <= 0 || r.gets <= 0 {
+		t.Logf("%s: %d graph bytes", rn, r.graphBytes)
+		if r.rels == 0 || r.hop != sz.HOP || r.byType <= 0 || r.forEach <= 0 || r.gets <= 0 {
 			t.Fatalf("%s: empty measurement %+v", rn, r)
 		}
 	}

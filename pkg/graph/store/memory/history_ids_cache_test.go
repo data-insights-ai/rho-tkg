@@ -12,9 +12,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// cursorPageBytes is the heap allocated per 64-ID page of a history-ID cursor
-// walk (after one warm page), averaged over 50 pages from the middle of the set.
-func cursorPageBytes(t *testing.T, page func(after int64, limit int) int) float64 {
+// cursorPageCost walks 50 64-ID pages from the middle of the set (after one
+// warm page) and returns how many of them rebuilt the sorted key set (cached
+// returns the cached slice's pointer: a page that copies and sorts every ID
+// stores a new one) and, as evidence only, the heap allocated per page.
+func cursorPageCost(t *testing.T, page func(after int64, limit int) int, cached func() any) (rebuilds int, bytesPerPage float64) {
 	t.Helper()
 	if got := page(0, 64); got != 64 {
 		t.Fatalf("warm page = %d IDs, want 64", got)
@@ -23,47 +25,48 @@ func cursorPageBytes(t *testing.T, page func(after int64, limit int) int) float6
 	runtime.GC()
 	runtime.ReadMemStats(&before)
 	const pages = 50
+	prev := cached()
 	for i := 0; i < pages; i++ {
 		if got := page(int64(1000+i*64), 64); got != 64 {
 			t.Fatalf("page %d = %d IDs, want 64", i, got)
 		}
+		if cur := cached(); cur != prev {
+			rebuilds++
+			prev = cur
+		}
 	}
 	runtime.ReadMemStats(&after)
-	return float64(after.TotalAlloc-before.TotalAlloc) / pages
+	return rebuilds, float64(after.TotalAlloc-before.TotalAlloc) / pages
 }
 
-// A history-ID cursor page costs O(page + log n), not O(n): the bytes
-// allocated per 64-ID page at 100,000 history IDs stay within 2x of those at
-// 10,000 (copying and sorting every ID per page — the quadratic full walk —
-// allocates 10x more). Node and rel doors.
+// A history-ID cursor page costs O(page + log n), not O(n): a page reads the
+// cached sorted key set and never rebuilds it (copying and sorting every ID
+// per page was the quadratic full walk, 10x the bytes). The rebuild count is
+// the gate; the bytes per page at 10,000 and 100,000 history IDs are logged
+// only (MEMGATE: the process-wide counter moves with other tests). Node and
+// rel doors.
 func TestHistoryIDsCursorPageCostIndependentOfStoreSize(t *testing.T) {
-	perPage := map[string][2]float64{}
-	for i, n := range []int{10_000, 100_000} {
+	for _, n := range []int{10_000, 100_000} {
 		ms := New()
 		seedNodeHistory(t, ms, n)
 		seedRelHistory(t, ms, n)
-		node := cursorPageBytes(t, func(after int64, limit int) int {
+		nodeRebuilds, node := cursorPageCost(t, func(after int64, limit int) int {
 			ids, err := ms.AllNodeHistoryIDsFrom(types.NodeID(snowflake.ID(after)), limit)
 			if err != nil {
 				t.Fatal(err)
 			}
 			return len(ids)
-		})
-		rel := cursorPageBytes(t, func(after int64, limit int) int {
+		}, func() any { return ms.nodeHistoryIDs.Load() })
+		relRebuilds, rel := cursorPageCost(t, func(after int64, limit int) int {
 			ids, err := ms.AllRelHistoryIDsFrom(types.RelID(snowflake.ID(after)), limit)
 			if err != nil {
 				t.Fatal(err)
 			}
 			return len(ids)
-		})
-		nb, rb := perPage["node"], perPage["rel"]
-		nb[i], rb[i] = node, rel
-		perPage["node"], perPage["rel"] = nb, rb
-	}
-	for door, b := range perPage {
-		t.Logf("%s: %.0f B per page at 10 K IDs, %.0f B at 100 K", door, b[0], b[1])
-		if b[1] > 2*b[0]+1024 {
-			t.Errorf("%s history-ID page allocates %.0f B at 100 K IDs vs %.0f B at 10 K: a page costs O(n)", door, b[1], b[0])
+		}, func() any { return ms.relHistoryIDs.Load() })
+		t.Logf("%d IDs: node %.0f B per page, rel %.0f B per page", n, node, rel)
+		if nodeRebuilds != 0 || relRebuilds != 0 {
+			t.Errorf("%d IDs: 50 pages rebuilt the sorted key set %d (node) / %d (rel) times, want 0: a page costs O(n)", n, nodeRebuilds, relRebuilds)
 		}
 	}
 }

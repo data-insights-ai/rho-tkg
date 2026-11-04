@@ -1,7 +1,6 @@
 package badger
 
 import (
-	"runtime"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -46,53 +45,36 @@ func seedAdjOpenDir(t *testing.T, dir string, rels int, withRels bool) {
 	}
 }
 
-// openAllocPerRel returns the bytes allocated during New per rel (the open
-// peak, so it includes any transient map): relDir's open minus the same
-// nodes' open without rels.
-func openAllocPerRel(t *testing.T, relDir, baseDir string, adjOnDisk bool) (float64, *Store) {
+// openAdjStore opens dir as seedAdjOpenDir's shard, adjacency on disk or not.
+func openAdjStore(t *testing.T, dir string, adjOnDisk bool) *Store {
 	t.Helper()
-	open := func(dir string) (*Store, int64) {
-		var m0, m1 runtime.MemStats
-		runtime.ReadMemStats(&m0)
-		s, err := New(Config{Dir: dir, DisableOrdinals: true, MemTableSize: 8 << 20, AdjacencyIndexOnDisk: adjOnDisk})
-		if err != nil {
-			t.Fatalf("open: %v", err)
-		}
-		runtime.ReadMemStats(&m1)
-		return s, int64(m1.TotalAlloc - m0.TotalAlloc)
+	s, err := New(Config{Dir: dir, DisableOrdinals: true, MemTableSize: 8 << 20, AdjacencyIndexOnDisk: adjOnDisk})
+	if err != nil {
+		t.Fatalf("open: %v", err)
 	}
-	b, baseAlloc := open(baseDir)
-	if err := b.Close(); err != nil {
-		t.Fatal(err)
-	}
-	s, relAlloc := open(relDir)
-	return float64(relAlloc-baseAlloc) / adjOpenRels, s
+	return s
 }
 
-// TestLoadIndexes_AdjOnDisk_NoTransientMaps measures per-rel bytes of an
-// opened shard and pins: with the flag, outIdx/inIdx stay empty through the
-// open (no transient build); the revisions are a fixed table (EXISTMAP).
-// Break case: flag off still builds and keeps the maps (the default must not
-// change). The unclean open is the next test.
+// TestLoadIndexes_AdjOnDisk_NoTransientMaps pins: with the flag, outIdx/inIdx
+// hold no entry after the open, and every rel is live; the revisions are a
+// fixed table (EXISTMAP). Break case: flag off still builds and keeps the maps
+// (the default must not change). The bytes the open allocates (no transient
+// build) and the rel maps keep are TestLoadIndexes_AdjOnDisk_OpenBytesPerRel,
+// at the measurement level (badgerstore_adjacency_disk_open_measure_test.go,
+// MEMGATE). The unclean open is the next test.
 func TestLoadIndexes_AdjOnDisk_NoTransientMaps(t *testing.T) {
-	relDir, baseDir := t.TempDir(), t.TempDir()
-	seedAdjOpenDir(t, relDir, adjOpenRels, true)
-	seedAdjOpenDir(t, baseDir, adjOpenRels, false)
+	dir := t.TempDir()
+	seedAdjOpenDir(t, dir, adjOpenRels, true)
 
-	offAlloc, off := openAllocPerRel(t, relDir, baseDir, false)
-	offLive := off.RelMapBytesForTest() / adjOpenRels
+	off := openAdjStore(t, dir, false)
 	off.idxMu.RLock()
 	outOff := len(off.outIdx)
 	off.idxMu.RUnlock()
 	if err := off.Close(); err != nil {
 		t.Fatal(err)
 	}
-	onAlloc, on := openAllocPerRel(t, relDir, baseDir, true)
+	on := openAdjStore(t, dir, true)
 	defer on.Close()
-	onLive := on.RelMapBytesForTest() / adjOpenRels
-	t.Logf("per rel (d=1, %d rels): flag off: open allocates %.0f B, rel maps hold %.0f B; flag on: %.0f B, %.0f B",
-		adjOpenRels, offAlloc, offLive, onAlloc, onLive)
-
 	on.idxMu.RLock()
 	outN, inN, relN := len(on.outIdx), len(on.inIdx), on.relIDs.Len()
 	on.idxMu.RUnlock()
@@ -101,17 +83,6 @@ func TestLoadIndexes_AdjOnDisk_NoTransientMaps(t *testing.T) {
 	}
 	if outN != 0 || inN != 0 {
 		t.Errorf("flag on: outIdx %d / inIdx %d entries after open, want 0", outN, inN)
-	}
-	// The open also allocates badger's reads of the rel keys; the transient
-	// nested adjacency maps alone add > 500 B/rel at d=1.
-	if onAlloc > 0.65*offAlloc {
-		t.Errorf("flag on: open allocates %.0f B/rel vs %.0f flag off, want <= 65 %% (no transient out/in maps)", onAlloc, offAlloc)
-	}
-	// What remains are two ID sets, relIDs and typeIdx: a map[RelID]struct{}
-	// slot is 16 B (the trailing struct{} pads) plus a control byte, ~28 B/rel
-	// each at this load factor, up to ~2x that right after a table doubles.
-	if onLive > 70 {
-		t.Errorf("flag on: rel maps hold %.0f B/rel after open, want <= 70", onLive)
 	}
 
 	// Break: the default keeps building and keeping the maps.
