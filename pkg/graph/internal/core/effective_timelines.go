@@ -36,7 +36,9 @@ import (
 // (ErrHistoryCompacted) or below a retention watermark (ErrRetentionExpired)
 // refuses the whole call with no result. Other errors as the singular door:
 // ErrGraphClosed, ErrInvalidStoreMutation (invalid ID), ErrNodeNotFound.
-// The head-pin cache (backlog 68) is neither read nor filled.
+// When every pin is at or above the node's newest TxFrom, the head-pin
+// cache (backlog 68) answers as it does the singular door; otherwise the
+// fold runs and fills it (RELHIST P2).
 func (t *TempOps) NodeEffectiveTimelines(id types.NodeID, pins []types.Instant) ([][]temporal.NodeSegment, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -110,8 +112,8 @@ func (c *Core) validateEffectivePins(pins []types.Instant) ([]types.Instant, err
 	return mapped, nil
 }
 
-// nodeEffectiveTimelinesLocked is nodeEffectiveTimelineFrom (plain reads, no
-// head cache) at every pin over one chain read (c.mu held).
+// nodeEffectiveTimelinesLocked is nodeEffectiveTimelineFrom (plain reads)
+// at every pin over one chain read (c.mu held).
 func (c *Core) nodeEffectiveTimelinesLocked(id types.NodeID, pins []types.Instant) ([][]temporal.NodeSegment, error) {
 	out, _, err := c.nodeEffectiveTimelinesFrom(entityReads{c: c}, id, pins, nil)
 	return out, err
@@ -153,8 +155,20 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 			hydrate := func(_ int, pin types.Instant, _ *types.Node) (*types.Node, bool) {
 				return nodeRowAtTx(c.axis(), current, pin)
 			}
-			out, _ := effectiveTimelinesOver(c, nodeKernel, []*types.Node{nodeSkeleton(current)}, pins, nodeSegment, hydrate)
+			out, _ := effectiveTimelinesOver(c, nodeKernel, []*types.Node{nodeSkeleton(current)}, pins, nodeSegment, hydrate, nil)
 			return out, nil
+		}
+	}
+	// The head answer (backlog 68, RELHIST P2): the singular door's rule —
+	// plain point reads only, every pin at or above the entry's newest TxFrom.
+	var fill func([]effPiece[*types.Node], *headFacts)
+	if rd.snap == nil && !rd.scan && current != nil {
+		epoch := c.nodeHistoryEpoch(id)
+		if out, ok := c.nodeHeadTimelines(rd, id, current, pins, epoch); ok {
+			return out, nil
+		}
+		if epoch != 0 {
+			fill = func(pieces []effPiece[*types.Node], f *headFacts) { c.noteNodeHead(id, epoch, current, pieces, f) }
 		}
 	}
 	if c.temporalMetaHistory != nil {
@@ -195,7 +209,7 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 			}
 			return nodeRowAtTx(c.axis(), f, pin)
 		}
-		if out, ok := effectiveTimelinesOver(c, nodeKernel, chain, pins, nodeSegment, hydrate); ok {
+		if out, ok := effectiveTimelinesOver(c, nodeKernel, chain, pins, nodeSegment, hydrate, fill); ok {
 			return out, nil
 		}
 		// A winner vanished between the reads (e.g. a concurrent trim): fold
@@ -208,7 +222,7 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 	if current == nil && len(history) == 0 {
 		return nil, storepkg.ErrNodeNotFound
 	}
-	out, _ := effectiveTimelinesOver(c, nodeKernel, chainOf(history, current), pins, nodeSegment, nil)
+	out, _ := effectiveTimelinesOver(c, nodeKernel, chainOf(history, current), pins, nodeSegment, nil, fill)
 	return out, nil
 }
 
@@ -236,8 +250,20 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 			hydrate := func(_ int, pin types.Instant, _ *types.Relationship) (*types.Relationship, bool) {
 				return relRowAtTx(c.axis(), current, pin)
 			}
-			out, _ := effectiveTimelinesOver(c, relKernel, []*types.Relationship{relSkeleton(current)}, pins, relSegment, hydrate)
+			out, _ := effectiveTimelinesOver(c, relKernel, []*types.Relationship{relSkeleton(current)}, pins, relSegment, hydrate, nil)
 			return out, nil
+		}
+	}
+	var fill func([]effPiece[*types.Relationship], *headFacts)
+	if rd.snap == nil && !rd.scan && current != nil {
+		epoch := c.relHistoryEpoch(id)
+		if out, ok := c.relHeadTimelines(rd, id, current, pins, epoch); ok {
+			return out, nil
+		}
+		if epoch != 0 {
+			fill = func(pieces []effPiece[*types.Relationship], f *headFacts) {
+				c.noteRelHead(id, epoch, current, pieces, f)
+			}
 		}
 	}
 	if c.temporalMetaHistory != nil {
@@ -278,7 +304,7 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 			}
 			return relRowAtTx(c.axis(), f, pin)
 		}
-		if out, ok := effectiveTimelinesOver(c, relKernel, chain, pins, relSegment, hydrate); ok {
+		if out, ok := effectiveTimelinesOver(c, relKernel, chain, pins, relSegment, hydrate, fill); ok {
 			return out, nil
 		}
 	}
@@ -289,7 +315,7 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 	if current == nil && len(history) == 0 {
 		return nil, storepkg.ErrRelNotFound
 	}
-	out, _ := effectiveTimelinesOver(c, relKernel, chainOf(history, current), pins, relSegment, nil)
+	out, _ := effectiveTimelinesOver(c, relKernel, chainOf(history, current), pins, relSegment, nil, fill)
 	return out, nil
 }
 
@@ -298,13 +324,26 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 // (its index in chain, the pin, the piece's row) to the row the segment
 // holds: a skeleton winner's stored row normalized at the pin as the resolver
 // normalizes it (rowAtTx, lesson 60); ok is false when one could not be read.
+// fill, when not nil, is handed the fold at the highest pin with its head
+// facts (the singular door's noteNodeHead), before any winner is read.
 func effectiveTimelinesOver[T interface {
 	comparable
 	storeutil.TemporalRow
-}, S any](c *Core, k *chainKernel[T], chain []T, pins []types.Instant, seg func(from, to types.Instant, row T) S, hydrate func(src int, pin types.Instant, row T) (T, bool)) ([][]S, bool) {
+}, S any](c *Core, k *chainKernel[T], chain []T, pins []types.Instant, seg func(from, to types.Instant, row T) S, hydrate func(src int, pin types.Instant, row T) (T, bool), fill func([]effPiece[T], *headFacts)) ([][]S, bool) {
 	out := make([][]S, len(pins))
+	top := -1
+	if fill != nil {
+		top = slices.Index(pins, slices.Max(pins))
+	}
 	for i, pin := range pins {
-		pieces := effectivePieces(c, k, chain, pin)
+		var pieces []effPiece[T]
+		if i == top {
+			facts := &headFacts{}
+			pieces = effectivePiecesFacts(c, k, chain, pin, facts)
+			fill(pieces, facts)
+		} else {
+			pieces = effectivePieces(c, k, chain, pin)
+		}
 		if len(pieces) == 0 {
 			continue // nothing recorded by the pin: nil, as the singular door
 		}

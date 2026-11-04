@@ -145,6 +145,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 		return err
 	}
 
+	headBefore := c.nodeHeadBeforeWrite(id, current) // RELHIST P2
 	prevVersion := current.Version()
 	nextVersion, err := c.nextNodeVersion(id, current)
 	if err != nil {
@@ -187,6 +188,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	if err := c.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
 		return err
 	}
+	c.nodeHeadAfterSupersede(id, headBefore, current, now)
 	c.opNodeUpdates.Add(1)
 	return nil
 }
@@ -367,6 +369,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 		return err
 	}
 
+	headBefore := c.relHeadBeforeWrite(id, current) // RELHIST P2
 	prevVersion := current.Version()
 	nextVersion, err := c.nextRelVersion(id, current)
 	if err != nil {
@@ -409,6 +412,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	if err := c.store.ReplaceRelWithHistory(current, prevVersion, prevState); err != nil {
 		return err
 	}
+	c.relHeadAfterSupersede(id, headBefore, current, now)
 	c.opRelUpdates.Add(1)
 	return nil
 }

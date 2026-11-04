@@ -302,6 +302,7 @@ func TestRELHISTP2UpdateThenPluralOracle(t *testing.T) {
 			})
 		}
 	}
+	t.Logf("%d overlays, %d head hits", overlays, hits)
 	if overlays == 0 || hits == 0 {
 		t.Fatalf("the sequence never exercised the cache: %d overlays, %d hits", overlays, hits)
 	}

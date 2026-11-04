@@ -33,7 +33,10 @@ import (
 // (cascadeNode / cascadeRel, every SetVersionInterval and excise door) that
 // finds a valid entry extends it by its appended rows (headOverlay) instead
 // of dropping it, so sigma's read-then-correct cut stays O(segments) on the
-// read; the write keeps its own cost.
+// read; the write keeps its own cost. A plain Update, ReplaceVersion or
+// CloseVersion that finds a valid entry extends it by its new current row
+// the same way (headSupersede, RELHIST P2), and the plural door
+// (NodeEffectiveTimelines) reads and fills the entry as the singular one.
 //
 // headOverlay is the sweep's answer for the grown chain only where the
 // appended rows provably do not change how older rows resolve: no row of the
@@ -690,6 +693,74 @@ func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Re
 	return segs, true
 }
 
+// nodeHeadTimelines answers the plural door (NodeEffectiveTimelines) from a
+// valid entry when every pin is at or above its newest TxFrom (RELHIST P2):
+// each winner is read once and normalized per pin as the fold normalizes
+// it; ok false falls back to the fold.
+func (c *Core) nodeHeadTimelines(rd entityReads, id types.NodeID, current *types.Node, pins []types.Instant, epoch uint64) ([][]temporal.NodeSegment, bool) {
+	e := c.headValid(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), slices.Min(pins))
+	if e == nil || !e.whole() {
+		return nil, false
+	}
+	out, ok := headTimelinesOf(c, nodeKernel, e, current, pins,
+		func(v uint32) (*types.Node, error) { return rd.lentNodeVersion(id, v) }, nodeSegment) // lent frozen: no copy needed
+	if ok {
+		c.headHits.Add(1)
+	}
+	return out, ok
+}
+
+// relHeadTimelines mirrors nodeHeadTimelines.
+func (c *Core) relHeadTimelines(rd entityReads, id types.RelID, current *types.Relationship, pins []types.Instant, epoch uint64) ([][]temporal.RelSegment, bool) {
+	e := c.headValid(headKey{rel: true, id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), slices.Min(pins))
+	if e == nil || !e.whole() {
+		return nil, false
+	}
+	out, ok := headTimelinesOf(c, relKernel, e, current, pins,
+		func(v uint32) (*types.Relationship, error) { return rd.lentRelVersion(id, v) }, relSegment)
+	if ok {
+		c.headHits.Add(1)
+	}
+	return out, ok
+}
+
+// headTimelinesOf is e's answer at every pin: the winner of each piece read
+// once (the current row, or read), then per pin rowAtTx'd into a segment.
+// A pin's answer with no piece is nil, as the plural fold's.
+func headTimelinesOf[T interface {
+	comparable
+	storeutil.TemporalRow
+}, S any](c *Core, k *chainKernel[T], e *headEntry, current T, pins []types.Instant, read func(uint32) (T, error), seg func(from, to types.Instant, row T) S) ([][]S, bool) {
+	rows := make([]T, len(e.pieces))
+	for i, p := range e.pieces {
+		if p.version == current.Version() {
+			rows[i] = current
+			continue
+		}
+		r, err := read(p.version)
+		if err != nil {
+			return nil, false
+		}
+		rows[i] = r
+	}
+	out := make([][]S, len(pins))
+	if len(e.pieces) == 0 {
+		return out, true
+	}
+	for j, pin := range pins {
+		segs := make([]S, 0, len(e.pieces))
+		for i, p := range e.pieces {
+			row, ok := k.rowAtTx(c.axis(), rows[i], pin)
+			if !ok {
+				return nil, false
+			}
+			segs = append(segs, seg(p.from, p.to, row))
+		}
+		out[j] = segs
+	}
+	return out, true
+}
+
 // noteNodeHead keeps the head answer a fold produced (no-op unless it qualifies).
 func (c *Core) noteNodeHead(id types.NodeID, epoch uint64, current *types.Node, pieces []effPiece[*types.Node], f *headFacts) {
 	if e := headFromFold(c, epoch, current, pieces, f); e != nil {
@@ -743,6 +814,83 @@ func (c *Core) relHeadAfterWrite(id types.RelID, before *headEntry, appended []*
 	}
 	k := headKey{rel: true, id: id.SnowflakeID()}
 	e := headOverlay(c, relKernel, before, appended)
+	if e == nil {
+		c.heads.put(k, nil)
+		return
+	}
+	e.epoch, e.curVer, e.curTM = c.relHistoryEpoch(id), cur.Version(), temporalOf(cur)
+	c.heads.put(k, e)
+	c.headOverlays.Add(1)
+}
+
+// headSupersede is e extended by a superseding write's new current row n
+// (RELHIST P2: a plain Update, ReplaceVersion or CloseVersion moves the
+// current row e was computed with into history with TxTo = superTx and
+// writes n at TxFrom = superTx), or nil where it is not provably the fold's
+// answer. It is headOverlay of n plus the one thing the old current row's
+// TxTo changes: when the grown chain resolves in the own-bounds arm, n is a
+// replacing row (chain_supersession.go) and caps every row starting at or
+// before n at n's start. Where n's own interval is open, n covers all of
+// [start, open) anyway, so the paint stands. Where it ends, the instants
+// after its end lose every row that starts at or before n; when no row of
+// the chain has a bound after n's start, no row is left there and those
+// instants are a gap; otherwise the answer there is not known from the
+// entry and the entry is dropped. The monotonic arm (headOverlay's tiling
+// check) never reads TxTo.
+func headSupersede[T interface {
+	comparable
+	storeutil.TemporalRow
+}](c *Core, k *chainKernel[T], e *headEntry, n T, superTx types.Instant) *headEntry {
+	if e == nil {
+		return nil
+	}
+	tm := n.Temporal()
+	if tm == nil || tm.TxFrom != superTx {
+		return nil
+	}
+	out := headOverlay(c, k, e, []T{n})
+	if out == nil {
+		return nil
+	}
+	if a := c.axis(); out.cascade && !a.Open(tm.ValidTo) {
+		s := k.sortVF(c, n)
+		// n replaces (and so caps) only when the superseded row's TxTo
+		// lies after its TxFrom; then nothing may start after s.
+		if superTx <= e.curTM.TxFrom || e.curTM.DeletedAt != 0 || len(e.bounds) == 0 || e.bounds[len(e.bounds)-1] > s {
+			return nil
+		}
+		end := tm.ValidTo
+		out.pieces = slices.DeleteFunc(out.pieces, func(p headPiece) bool { return p.from >= end })
+	}
+	out.maxTxTo = max(out.maxTxTo, superTx)
+	return out
+}
+
+// nodeHeadAfterSupersede extends before (the node's valid entry read before
+// the write, nil: none) by a superseding write's new current row cur, once
+// written (entity lock still held), or drops the entry.
+func (c *Core) nodeHeadAfterSupersede(id types.NodeID, before *headEntry, cur *types.Node, superTx types.Instant) {
+	if before == nil || c.historyEpochs == nil || c.headCacheOff {
+		return // no entry was valid: whatever is kept is stale by the token
+	}
+	k := headKey{id: id.SnowflakeID()}
+	e := headSupersede(c, nodeKernel, before, cur, superTx)
+	if e == nil {
+		c.heads.put(k, nil)
+		return
+	}
+	e.epoch, e.curVer, e.curTM = c.nodeHistoryEpoch(id), cur.Version(), temporalOf(cur)
+	c.heads.put(k, e)
+	c.headOverlays.Add(1)
+}
+
+// relHeadAfterSupersede mirrors nodeHeadAfterSupersede.
+func (c *Core) relHeadAfterSupersede(id types.RelID, before *headEntry, cur *types.Relationship, superTx types.Instant) {
+	if before == nil || c.historyEpochs == nil || c.headCacheOff {
+		return
+	}
+	k := headKey{rel: true, id: id.SnowflakeID()}
+	e := headSupersede(c, relKernel, before, cur, superTx)
 	if e == nil {
 		c.heads.put(k, nil)
 		return

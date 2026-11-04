@@ -124,6 +124,7 @@ func (c *Core) replaceNodeVersionInternal(ctx context.Context, id types.NodeID, 
 		return nil, false, err
 	}
 
+	headBefore := c.nodeHeadBeforeWrite(id, current) // RELHIST P2
 	prevVersion := current.Version()
 	nextVersion, err := c.nextNodeVersion(id, current)
 	if err != nil {
@@ -178,6 +179,7 @@ func (c *Core) replaceNodeVersionInternal(ctx context.Context, id types.NodeID, 
 	if err := c.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
 		return nil, false, uniqueHold.storeWriteFailed(err)
 	}
+	c.nodeHeadAfterSupersede(id, headBefore, current, now)
 	c.opNodeUpdates.Add(1)
 	return current, true, nil
 }
