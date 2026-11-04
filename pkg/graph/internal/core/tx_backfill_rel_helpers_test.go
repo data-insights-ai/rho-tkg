@@ -25,6 +25,14 @@ type txbBackend struct {
 	open func(t testing.TB, allowBackfill bool) *Core
 }
 
+// txbMemTable is the badger memtable of every backend these tests open: the
+// floor (8 MB) instead of badger's 64 MB stock. The arena is allocated and
+// zeroed per open, and a ccRun test opens a store per case (336 for the
+// rollback test): badger.Open was 63% of that test's CPU at the stock size
+// (4 Nov). The size only sets when badger rotates its memtable; no test here
+// depends on it.
+const txbMemTable = 8 << 20
+
 // txbBackends lists the four backends; mods adjust every backend's Config.
 func txbBackends(mods ...func(*Config)) []txbBackend {
 	newCore := func(t testing.TB, cfg Config) *Core {
@@ -32,6 +40,9 @@ func txbBackends(mods ...func(*Config)) []txbBackend {
 		// The TxFrom start of an untimed create is what these tests pin
 		// (backlog 62); the v4.57.0 default is covered by TestUntimedDefaultFlip.
 		cfg.UntimedValidStart = UntimedFromTxFrom
+		if cfg.BadgerInMemory {
+			cfg.MemTableSize = txbMemTable
+		}
 		for _, m := range mods {
 			m(&cfg)
 		}
@@ -50,7 +61,7 @@ func txbBackends(mods ...func(*Config)) []txbBackend {
 			return newCore(t, Config{BadgerInMemory: true, AllowTxBackfill: allow})
 		}},
 		{"sharded", func(t testing.TB, allow bool) *Core {
-			st, err := shardedpkg.New(shardedpkg.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+			st, err := shardedpkg.New(shardedpkg.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, MemTableSize: txbMemTable})
 			if err != nil {
 				t.Fatalf("sharded.New: %v", err)
 			}
@@ -62,6 +73,7 @@ func txbBackends(mods ...func(*Config)) []txbBackend {
 				RefLabels:     []string{"Ref"},
 				ShardWindow:   7 * 24 * time.Hour,
 				FlushInterval: 1<<63 - 1,
+				MemTableSize:  txbMemTable,
 			})
 			if err != nil {
 				t.Fatalf("tiered.New: %v", err)
