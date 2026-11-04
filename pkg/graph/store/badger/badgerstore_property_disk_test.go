@@ -1079,12 +1079,15 @@ func TestPropertyIndexOnDisk_NoRegistryStaysInRAM(t *testing.T) {
 	}
 }
 
-// TestPropertyIndexOnDisk_BuildsIndexedKeysOnly (IDXKEYLAZY): the on-disk
-// index's write path and key-size check, with a label listed or every label on
-// disk, build the value key of an indexed property only; before, every
-// property of the row got one per label, indexed or not.
-func TestPropertyIndexOnDisk_BuildsIndexedKeysOnly(t *testing.T) {
-	const unindexed = 20
+// indexedKeysOnlyUnindexed is the number of unindexed properties
+// forEachIndexedKeysOnlyCase's node carries.
+const indexedKeysOnlyUnindexed = 20
+
+// forEachIndexedKeysOnlyCase runs fn over an in-memory store with an on-disk
+// index on (D, k), a label listed and every label on disk, and node 1 of D
+// carrying k and indexedKeysOnlyUnindexed unindexed properties.
+func forEachIndexedKeysOnlyCase(t *testing.T, fn func(cfg Config, bs *Store, n *types.Node)) {
+	t.Helper()
 	names := registrypkg.NewLabelRegistry()
 	d, _ := names.GetOrCreate("D")
 	for _, cfg := range []Config{{PropertyIndexOnDiskLabels: []string{"D"}, LabelNames: names}, {PropertyIndexOnDisk: true}} {
@@ -1098,28 +1101,37 @@ func TestPropertyIndexOnDisk_BuildsIndexedKeysOnly(t *testing.T) {
 		}
 		n := types.NewNode(1, d, nil)
 		_ = n.SetProperty("k", "indexed")
-		for i := range unindexed {
+		for i := range indexedKeysOnlyUnindexed {
 			_ = n.SetProperty(fmt.Sprintf("p%02d", i), "a value nobody indexes")
 		}
-		var ops []writeOp
-		for name, run := range map[string]func(){
-			"write path": func() { ops = bs.propertyIndexDiskMaintain(n, 1, writeOpSet) },
-			"key size":   func() { _ = bs.checkNodeIndexKeysLocked(n, 1) },
-		} {
-			if allocs := testing.AllocsPerRun(50, run); allocs >= unindexed/2 {
-				t.Errorf("%v %s: %.0f allocations with %d unindexed properties", cfg.PropertyIndexOnDiskLabels, name, allocs, unindexed)
-			}
-		}
-		if len(ops) != 1 {
-			t.Errorf("%v: %d ops for one indexed property", cfg.PropertyIndexOnDiskLabels, len(ops))
-		}
-		// DISKDEFS: a key within the limit is measured, not built.
-		valueKey := testing.AllocsPerRun(50, func() { _, _ = n.IndexablePropertyValueKey("k") })
-		if allocs := testing.AllocsPerRun(50, func() { _ = bs.checkNodeIndexKeysLocked(n, 1) }); allocs > valueKey {
-			t.Errorf("%v key size: %.0f allocations, the value key alone %.0f", cfg.PropertyIndexOnDiskLabels, allocs, valueKey)
-		}
+		fn(cfg, bs, n)
 		_ = bs.Close()
 	}
+}
+
+// TestPropertyIndexOnDisk_BuildsIndexedKeysOnly (IDXKEYLAZY): the on-disk
+// index's write path and key-size check, with a label listed or every label on
+// disk, search the row once for its one definition and write one op for the
+// one indexed property among 21. That they build the value key of the indexed
+// property only (before, every property of the row got one per label) is
+// TestPropertyIndexOnDisk_BuildsIndexedKeysOnlyAllocs, at the measurement
+// level (badgerstore_property_disk_measure_test.go, MEMGATE). Not parallel: it
+// sets testHookDiskValueKeys.
+func TestPropertyIndexOnDisk_BuildsIndexedKeysOnly(t *testing.T) {
+	searches := 0
+	testHookDiskValueKeys = func() { searches++ }
+	defer func() { testHookDiskValueKeys = nil }()
+	forEachIndexedKeysOnlyCase(t, func(cfg Config, bs *Store, n *types.Node) {
+		searches = 0
+		ops := bs.propertyIndexDiskMaintain(n, 1, writeOpSet)
+		if len(ops) != 1 || searches != 1 {
+			t.Errorf("%v write path: %d ops and %d searches for one indexed property, want 1 and 1", cfg.PropertyIndexOnDiskLabels, len(ops), searches)
+		}
+		searches = 0
+		if err := bs.checkNodeIndexKeysLocked(n, 1); err != nil || searches != 1 {
+			t.Errorf("%v key size: %v, %d searches, want nil and 1", cfg.PropertyIndexOnDiskLabels, err, searches)
+		}
+	})
 }
 
 // TestPropertyIndexOnDisk_WriteSearchesOncePerDefinition (PAGECOST): a node

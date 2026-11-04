@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"runtime"
 	"sync"
 	"testing"
 
@@ -14,42 +13,28 @@ import (
 )
 
 // TestRelPlannerStatsMemoBounded is backlog 53 at the store seam (the graph
-// door cases live in pkg/graph under the same name). "heap" measures the heap
-// the relationship planner statistics retain — stats on minus stats off, same
-// writes, flushed before measuring — at 10 K and 100 K relationships: the
-// growth must be a constant, not an amount per relationship. The door cases
-// reach the store-only delete seams (batch delete, the tiered split-write
-// legs, purge by descriptor, foreign incoming stubs, adjacent purge, cascade,
-// exact erasure, and the batch and cascade re-read fallback after a replace in
-// the prefetch window); after each step every counter equals a full recount
-// of the current relationships.
+// door cases live in pkg/graph under the same name). "entries" counts the
+// entries the relationship planner statistics hold (presence counters,
+// type-class counters, NDV and min/max accumulators) after 1 K and 10 K
+// relationships over the same four keys: one per (type, key), not one per
+// relationship. The retained heap is TestRelPlannerStatsMemoBoundedHeap, at
+// the measurement level (badgerstore_rel_planner_stats_memo_measure_test.go,
+// MEMGATE). The door cases reach the store-only delete seams (batch delete,
+// the tiered split-write legs, purge by descriptor, foreign incoming stubs,
+// adjacent purge, cascade, exact erasure, and the batch and cascade re-read
+// fallback after a replace in the prefetch window); after each step every
+// counter equals a full recount of the current relationships.
 func TestRelPlannerStatsMemoBounded(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
-	t.Run("heap", func(t *testing.T) {
-		// The least of three: the measure is the process heap, and leftover
-		// background work of earlier tests (badger compaction) only ever adds
-		// to one run (130 MB once in the long tier, 25 Oct; LONGTIER).
-		// -short (the race gate) measures at 1K and 10K: the retained
-		// difference is a constant of a few KB at every size (4 Nov: 0.1-18 KB
-		// from 1K to 20K rels), so 9K rels against the 8 B/rel bar leave a
-		// 72 KB margin; the gates without -short keep 10K and 100K.
-		nSmall, nLarge := 10_000, 100_000
-		if testing.Short() {
-			nSmall, nLarge = 1_000, 10_000
-		}
-		var small, large int64
-		perRel := math.Inf(1)
-		for range 3 {
-			s, l := storeRelStatsRetainedHeap(t, nSmall), storeRelStatsRetainedHeap(t, nLarge)
-			if p := float64(l-s) / float64(nLarge-nSmall); p < perRel {
-				small, large, perRel = s, l, p
-			}
-		}
-		t.Logf("planner-stat heap: %d B at %d rels, %d B at %d rels, growth %.1f B per rel", small, nSmall, large, nLarge, perRel)
-		if perRel > 8 {
-			t.Fatalf("planner-stat heap grows %.1f B per relationship written (%d: %d B, %d: %d B); want a constant (≤ 8 B/rel)", perRel, nSmall, small, nLarge, large)
+	t.Run("entries", func(t *testing.T) {
+		const nSmall, nLarge = 1_000, 10_000
+		small, large := storeRelStatsEntries(t, nSmall), storeRelStatsEntries(t, nLarge)
+		// A type-class counter for each of the 4 keys; a presence counter
+		// and an accumulator for the 3 indexable ones (tags is a list).
+		if small != 4+2*3 || large != small {
+			t.Fatalf("planner-stat entries: %d at %d rels, %d at %d rels; want 10 at both", small, nSmall, large, nLarge)
 		}
 	})
 
@@ -222,17 +207,12 @@ func storeRelStatsProps(i int) map[string]any {
 	}
 }
 
-func storeRelStatsRetainedHeap(t *testing.T, n int) int64 {
+// openStoreRelStats opens an in-memory store that never flushes on its own
+// (no periodic flush, no pending bound), with the planner statistics on
+// unless disableStats, writes n relationships of type 3 between two nodes
+// with storeRelStatsProps(i), and flushes.
+func openStoreRelStats(t *testing.T, n int, disableStats bool) *Store {
 	t.Helper()
-	return storeRelRetainedHeap(t, n, false) - storeRelRetainedHeap(t, n, true)
-}
-
-// storeRelRetainedHeap writes n relationships into a store that never flushes
-// (no periodic flush, no pending bound), so the badger engine allocates the
-// same in both modes, and returns the live heap growth.
-func storeRelRetainedHeap(t *testing.T, n int, disableStats bool) int64 {
-	t.Helper()
-	before := storeLiveHeap()
 	bs, err := New(Config{InMemory: true, FlushInterval: 1<<63 - 1, MaxPendingWrites: -1, DisablePlannerStats: disableStats})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -257,20 +237,24 @@ func storeRelRetainedHeap(t *testing.T, n int, disableStats bool) int64 {
 	if err := bs.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
-	after := storeLiveHeap()
-	runtime.KeepAlive(bs)
-	if err := bs.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-	return after - before
+	return bs
 }
 
-func storeLiveHeap() int64 {
-	var ms runtime.MemStats
-	runtime.GC()
-	runtime.GC()
-	runtime.ReadMemStats(&ms)
-	return int64(ms.HeapAlloc) // #nosec G115 -- heap size fits int64
+// storeRelStatsEntries is the number of entries the relationship planner
+// statistics hold after n relationships: presence counters, type-class
+// counters and NDV/min-max accumulators.
+func storeRelStatsEntries(t *testing.T, n int) int {
+	t.Helper()
+	bs := openStoreRelStats(t, n, false)
+	defer func() { _ = bs.Close() }()
+	entries := 0
+	count := func(any, any) bool { entries++; return true }
+	bs.relPropertyKeyCounts.Range(count)
+	bs.relPropertyTypeClassCounts.Range(count)
+	bs.idxMu.RLock()
+	entries += len(bs.relPropertyStats)
+	bs.idxMu.RUnlock()
+	return entries
 }
 
 // assertStoreRelStatsMatchRecount is the oracle: presence count, min/max and

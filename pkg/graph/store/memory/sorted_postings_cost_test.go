@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"runtime"
 	"slices"
 	"testing"
 
@@ -67,33 +66,15 @@ func fillOneKey(tb testing.TB, n int) (*Store, []types.NodeID, []types.RelID) {
 	return ms, nids, rids
 }
 
-// bytesPerCall returns the heap bytes one call of fn allocates, averaged.
-func bytesPerCall(fn func()) uint64 {
-	const calls = 20
-	fn() // warm
-	runtime.GC()
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	for i := 0; i < calls; i++ {
-		fn()
-	}
-	runtime.ReadMemStats(&after)
-	return (after.TotalAlloc - before.TotalAlloc) / calls
-}
-
-func TestPostingsPageCostIndependentOfKeySize(t *testing.T) {
-	n := 200_000
-	if testing.Short() {
-		n = 50_000
-	}
-	ms, nids, rids := fillOneKey(t, n)
-	const limit = 16
-	// The bound is what a page of 16 rows may allocate: the result slice and
-	// iteration state, far below one 8-byte copy of the key (n*8 bytes).
-	const bound = 4 << 10
-	mid := nids[n/2]
-	midRel := rids[n/2]
-	doors := []struct {
+// postingsPageDoors are the equality doors backlog 72 pages, each returning
+// how many rows its page of limit after the key's middle member holds.
+func postingsPageDoors(t *testing.T, ms *Store, nids []types.NodeID, rids []types.RelID, limit int) []struct {
+	name string
+	call func() int
+} {
+	mid := nids[len(nids)/2]
+	midRel := rids[len(rids)/2]
+	return []struct {
 		name string
 		call func() int
 	}{
@@ -119,14 +100,18 @@ func TestPostingsPageCostIndependentOfKeySize(t *testing.T) {
 			return len(out)
 		}},
 	}
-	for _, d := range doors {
+}
+
+// A page after the middle member of a key filled in shuffled ID order holds
+// limit rows on every equality door. The bytes such a page allocates are
+// TestPostingsPageCostIndependentOfKeySize, at the measurement level
+// (sorted_postings_cost_measure_test.go, MEMGATE).
+func TestPostingsPageFromTheMiddleOfAKey(t *testing.T) {
+	ms, nids, rids := fillOneKey(t, 2_000)
+	const limit = 16
+	for _, d := range postingsPageDoors(t, ms, nids, rids, limit) {
 		if got := d.call(); got != limit {
-			t.Fatalf("%s: page holds %d rows, want %d", d.name, got, limit)
-		}
-		b := bytesPerCall(func() { d.call() })
-		t.Logf("%s: %d B per page of %d over a key of %d", d.name, b, limit, n)
-		if b > bound {
-			t.Errorf("%s: one page of %d allocates %d B over a key of %d members (bound %d B): the page copies or sorts the key", d.name, limit, b, n, bound)
+			t.Errorf("%s: page holds %d rows, want %d", d.name, got, limit)
 		}
 	}
 }

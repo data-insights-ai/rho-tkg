@@ -9,13 +9,15 @@ import (
 
 // Columnar scans read the cached snapshot's arrays; allocations must be batch
 // buffers, not a value per row (the rel scan once boxed each row's ID for the
-// valid-time filter). Filtered and unfiltered scans are held to a bound that does
-// not grow with the rows.
+// valid-time filter). Filtered and unfiltered scans are held to a bound that
+// does not grow with the rows: TestScanRelColumns_AllocationsDoNotGrowWithRows
+// and TestScanNodeColumns_AllocationsDoNotGrowWithRows, at the measurement
+// level (badgerstore_column_scan_allocs_measure_test.go, MEMGATE). Here: the
+// scans read every row, and the rel scan takes the columnar path.
 
 const (
-	allocScanRows  = 4096
-	allocScanBound = 64 // batch buffers and the scan's own bookkeeping
-	allocScanBase  = int64(1) << 42
+	allocScanRows = 4096
+	allocScanBase = int64(1) << 42
 )
 
 func newAllocScanStore(t *testing.T) *Store {
@@ -65,74 +67,55 @@ var allocScanOpts = []struct {
 	{"interval", storecontract.QueryOpts{ValidStart: 1, ValidEnd: types.Instant(1 << 62)}},
 }
 
-func TestScanRelColumns_AllocationsDoNotGrowWithRows(t *testing.T) {
-	if raceEnabled {
-		t.Skip("the race detector allocates on its own")
-	}
-	bs := newAllocScanStore(t)
-	for _, props := range [][]string{nil, {"w"}} {
-		for _, o := range allocScanOpts {
-			t.Run(o.name, func(t *testing.T) {
-				rows := 0
-				scan := func() {
-					rows = 0
-					if err := bs.ScanRelColumns(relScanType, props, o.opts, func(b *storecontract.RelColumnBatch) bool {
-						rows += len(b.IDs)
-						return true
-					}); err != nil {
-						t.Fatal(err)
-					}
-				}
-				scan() // builds the snapshot and its ordinals
-				if rows != allocScanRows {
-					t.Fatalf("scan read %d rows, want %d", rows, allocScanRows)
-				}
-				if !bs.scanRelColumnsColumnar(relScanType, props, o.opts, func(*storecontract.RelColumnBatch) bool { return true }) {
-					t.Fatal("the columnar path declined; the bound below would measure the row path")
-				}
-				if a := minAllocsPerRun(scan); a > allocScanBound {
-					t.Fatalf("props %v: %.0f allocations for %d rows, want at most %d", props, a, allocScanRows, allocScanBound)
-				}
-			})
+// relColumnScan returns a ScanRelColumns call over newAllocScanStore's rels
+// that counts the rows it reads into *rows.
+func relColumnScan(t *testing.T, bs *Store, props []string, opts storecontract.QueryOpts, rows *int) func() {
+	return func() {
+		*rows = 0
+		if err := bs.ScanRelColumns(relScanType, props, opts, func(b *storecontract.RelColumnBatch) bool {
+			*rows += len(b.IDs)
+			return true
+		}); err != nil {
+			t.Fatal(err)
 		}
 	}
 }
 
-func TestScanNodeColumns_AllocationsDoNotGrowWithRows(t *testing.T) {
-	if raceEnabled {
-		t.Skip("the race detector allocates on its own")
-	}
-	bs := newAllocScanStore(t)
-	for _, o := range allocScanOpts {
-		t.Run(o.name, func(t *testing.T) {
-			rows := 0
-			scan := func() {
-				rows = 0
-				if err := bs.ScanNodeColumns(relScanType, []string{"w"}, o.opts, func(b *storecontract.ColumnBatch) bool {
-					rows += len(b.IDs)
-					return true
-				}); err != nil {
-					t.Fatal(err)
-				}
-			}
-			scan()
-			if rows != allocScanRows {
-				t.Fatalf("scan read %d rows, want %d", rows, allocScanRows)
-			}
-			if a := minAllocsPerRun(scan); a > allocScanBound {
-				t.Fatalf("%.0f allocations for %d rows, want at most %d", a, allocScanRows, allocScanBound)
-			}
-		})
+// nodeColumnScan is relColumnScan for ScanNodeColumns over property w.
+func nodeColumnScan(t *testing.T, bs *Store, opts storecontract.QueryOpts, rows *int) func() {
+	return func() {
+		*rows = 0
+		if err := bs.ScanNodeColumns(relScanType, []string{"w"}, opts, func(b *storecontract.ColumnBatch) bool {
+			*rows += len(b.IDs)
+			return true
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
-// minAllocsPerRun is the smallest of several testing.AllocsPerRun samples:
-// AllocsPerRun counts every process malloc (leftover badger goroutines add noise
-// under load); the minimum filters that without loosening the bound.
-func minAllocsPerRun(scan func()) float64 {
-	best := testing.AllocsPerRun(5, scan)
-	for i := 0; i < 4 && best > allocScanBound; i++ {
-		best = min(best, testing.AllocsPerRun(5, scan))
+// TestColumnScans_ReadEveryRowColumnar: every filtered and unfiltered scan
+// reads all rows (half without a valid-from), and after the first rel scan
+// builds the snapshot the columnar path serves it.
+func TestColumnScans_ReadEveryRowColumnar(t *testing.T) {
+	bs := newAllocScanStore(t)
+	for _, props := range [][]string{nil, {"w"}} {
+		for _, o := range allocScanOpts {
+			rows := 0
+			relColumnScan(t, bs, props, o.opts, &rows)() // builds the snapshot and its ordinals
+			if rows != allocScanRows {
+				t.Fatalf("rel %v %s: scan read %d rows, want %d", props, o.name, rows, allocScanRows)
+			}
+			if !bs.scanRelColumnsColumnar(relScanType, props, o.opts, func(*storecontract.RelColumnBatch) bool { return true }) {
+				t.Fatalf("rel %v %s: the columnar path declined", props, o.name)
+			}
+		}
 	}
-	return best
+	for _, o := range allocScanOpts {
+		rows := 0
+		nodeColumnScan(t, bs, o.opts, &rows)()
+		if rows != allocScanRows {
+			t.Fatalf("node %s: scan read %d rows, want %d", o.name, rows, allocScanRows)
+		}
+	}
 }
