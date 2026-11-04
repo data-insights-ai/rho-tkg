@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs match the release cycle** (CONTRIBUTING: the gates use the test cache, releases go to the local git server);
+  the minor gate runs the long tier without race, as its tests' bounds were measured (`make test-long`), next to
+  `go test -race -short ./...`.
+
 ## [4.104.4] - 2026-11-04
 
 ### Changed

@@ -11,8 +11,8 @@
 // Gates (steps at once, one PASS/FAIL line each with its seconds):
 //   - patch: gofmt, build (+GOARCH=386), vet, lint, go mod tidy -diff and
 //     verify, the docs tests, go test -race -short ./... (cached);
-//   - minor: the patch gate with go test -race ./... (no -short: the long
-//     tier too, cached), and gosec;
+//   - minor: the patch gate, the long tier (make test-long: the tests a plain
+//     testing.Short() skips, without race), and gosec;
 //   - major: the minor gate cold (-count=1 -shuffle=on), coverage, fuzz-smoke,
 //     govulncheck.
 //
@@ -127,7 +127,9 @@ func gateSteps(k int) []step {
 		steps = append(steps, step{name: "test", cmd: race})
 	case minor:
 		steps = append(steps,
-			step{name: "test", cmd: []string{"go", "test", "-race", "-timeout", "60m", "./..."}},
+			step{name: "test", cmd: race},
+			// The long tier runs without race, at the sizes its bounds were measured at.
+			step{name: "long", cmd: []string{"make", "--no-print-directory", "test-long"}},
 			step{name: "gosec", cmd: []string{"make", "--no-print-directory", "security-docker"}})
 	case major:
 		steps = append(steps,

@@ -38,7 +38,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   `TestRestartModesOverBARows` (524 rows); ask ai-soc for it. On 30 Oct the About-edge blocker appeared only after the
   freeze and needed v4.98.3.
 - By hand, `go test` without `-count=1` unless a flake or a timing is the question: 9.3 h across 1,009 calls (ai-soc's
-  audit, 24-31 Oct). Gates keep `-count=1`.
+  audit, 24-31 Oct). The gates use Go's test cache too: only the docs tests and the major gate run `-count=1`.
 - Who works (René 2026-10-23): the main session does the work itself, analysis and code alike, and runs every test, lint
   and gate, and reviews its own work (§ Review); the Fable reviewer was deleted (René 2026-10-24). No subagents unless
   René asks for them.
@@ -104,7 +104,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 | Command | Use |
 |---|---|
 | `make gate-patch` | **Patch gate** (`go run ./scripts/release gate patch`), every step at once: gofmt, build (+386), vet, lint, `go mod tidy -diff` and `verify`, docs tests, check-ledger, `go test -race -short ./...`. Incremental through Go's test cache: only the packages a change affects rerun, so no `-count=1` |
-| `make gate-minor` | **Minor gate**: the patch gate with `go test -race ./...` (no `-short`: the long tier too, cached) and gosec |
+| `make gate-minor` | **Minor gate**: the patch gate, the long tier (`make test-long`, without race), and gosec |
 | `make gate-major` | **Major gate**, comprehensive and cold: the minor gate with `-count=1 -shuffle=on`, cover-gate, fuzz-smoke, govulncheck |
 | `make release-patch`, `release-minor`, `release-major` | **The release** (below); `make kind` prints the diff's kind and why |
 | `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each runs alone (`scripts/measure.sh`) |
@@ -113,8 +113,9 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 | `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable" |
 | `go test -run TestFoo ./pkg/...` | one test |
 
-GitHub CI runs only when a `v*` tag is pushed and only builds, vets and runs `go test -short ./...`; a push to main without a
-tag runs nothing, and nothing is scheduled. Everything else runs locally in the gate above. Fuzzing and benchmarks run on
+Releases go to the local git server, not GitHub (René, 4 Nov). GitHub CI runs only when a `v*` tag is pushed there and only
+builds, vets and runs `go test -short ./...`; a push to main without a tag runs nothing, and nothing is scheduled.
+Everything else runs locally in the gates above. Fuzzing and benchmarks run on
 GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed only with a reason at the call site.
 
 ### Release checklist
