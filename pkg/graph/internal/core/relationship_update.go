@@ -177,6 +177,10 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 		return nil, false, err
 	}
 
+	// The head entry valid before the write, extended by the new row after it
+	// (RELHIST P2).
+	headBefore := c.relHeadBeforeWrite(id, current)
+
 	// Capture pre-mutation state for version history (deep copy before any mutations).
 	prevVersion := current.Version()
 	nextVersion, err := c.nextRelVersion(id, current)
@@ -296,6 +300,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 			if err := scoped.ReplaceRelWithHistoryScoped(current, prevVersion, prevState, token); err != nil {
 				return nil, false, err
 			}
+			c.relHeadAfterSupersede(id, headBefore, current, now)
 			c.opRelUpdates.Add(1)
 			return current, true, nil
 		}
@@ -303,6 +308,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	if err := c.store.ReplaceRelWithHistory(current, prevVersion, prevState); err != nil {
 		return nil, false, err
 	}
+	c.relHeadAfterSupersede(id, headBefore, current, now)
 
 	c.opRelUpdates.Add(1)
 	return current, true, nil

@@ -181,6 +181,10 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 		return nil, false, err
 	}
 
+	// The head entry valid before the write, extended by the new row after it
+	// (RELHIST P2).
+	headBefore := c.nodeHeadBeforeWrite(id, current)
+
 	// Capture pre-mutation state for version history (deep copy before any mutations).
 	prevVersion := current.Version()
 	nextVersion, err := c.nextNodeVersion(id, current)
@@ -305,6 +309,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 			if err := scoped.ReplaceNodeWithHistoryScoped(current, prevVersion, prevState, token); err != nil {
 				return nil, false, uniqueHold.storeWriteFailed(err)
 			}
+			c.nodeHeadAfterSupersede(id, headBefore, current, now)
 			c.opNodeUpdates.Add(1)
 			return current, true, nil
 		}
@@ -312,6 +317,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	if err := c.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
 		return nil, false, uniqueHold.storeWriteFailed(err)
 	}
+	c.nodeHeadAfterSupersede(id, headBefore, current, now)
 
 	c.opNodeUpdates.Add(1)
 	return current, true, nil

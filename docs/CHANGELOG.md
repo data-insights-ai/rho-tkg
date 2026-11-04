@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **RELHIST P2** (sigma's profile: each fact's read-back after its Update walked every version's skeleton; a fix, no
+  new exported name). Two parts. (1) `NodeEffectiveTimelines` / `RelEffectiveTimelines` now read the head-pin entry
+  as the singular door does (plain point reads, every pin at or above the entry's newest TxFrom: the current row plus
+  one point read per winner) and fill it from their fold at the highest pin otherwise; scan and snapshot doors still
+  neither read nor fill it. (2) A plain `Update`, `ReplaceVersion` or `CloseVersion` that finds a valid entry extends
+  it by its new current row, as a correction already did, instead of leaving it stale: in the monotonic arm as a
+  correction's overlay; in the own-bounds arm the new row replaces the old current one and so caps every row starting
+  at or before it, which the paint matches when the new row is open, and when it is bounded only if no row of the chain
+  starts after it (the instants after its end are then a gap). Any other shape drops the entry as before (e.g. a close
+  of a monotonic chain). Answers unchanged. Update then plural read-back, 64 keys of 100-110 versions
+  (`BenchmarkRELHISTP2UpdateReadBack`, medians of 5): memory 61.4 -> 14.9 kB, 272 -> 55 allocs, 63 -> 22 us; badger
+  node 212 -> 150 kB, 2,169 -> 1,809 allocs, 261 -> 214 us, rel 328 -> 264 kB, 363 -> 270 us; tiered node 206 -> 141
+  kB, 2,283 -> 1,926 allocs, 273 -> 216 us, rel 312 -> 244 kB, 330 -> 254 us (the rest is the Update's own write).
+  Tests `TestRELHISTP2PluralDoorHeadHit`, `TestRELHISTP2PluralDoorExciseAndClose`, `TestRELHISTP2UpdateKeepsHeadEntry`
+  and `TestRELHISTP2UpdateThenPluralOracle` (the plural door against the fold pin by pin and every entry against the
+  one a fold builds, on memory, badger and tiered); `tasks/evidence/RELHIST/p2.txt`.
+
 ## [4.104.0] - 2026-11-04
 
 ### Changed
