@@ -90,9 +90,12 @@ var afterVlogRewrite func()
 func (bs *Store) runValueLogGC() int {
 	bs.gcMu.Lock()
 	defer bs.gcMu.Unlock()
-	if bs.readOnly || bs.closing.Load() {
+	if bs.readOnly || bs.isClosingOrClosed() || bs.db.IsClosed() {
 		// Read-only: badger refuses the GC, and an iterator over no memtable
-		// never releases its count (iterator.go:545-548).
+		// never releases its count (iterator.go:545-548). Closed under the
+		// store (a crash simulation): NewIterator panics (iterator.go:464-466).
+		// A close between this check and NewIterator still panics; only
+		// tests close the DB outside Close, which stops gcLoop first.
 		return 0
 	}
 	guard := bs.db.NewTransaction(false)

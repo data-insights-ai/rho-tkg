@@ -293,3 +293,20 @@ func TestNodeStoredSizesExactForValueLogRows(t *testing.T) {
 		t.Fatalf("stored sizes %+v, want one current row of %d bytes", rows, want)
 	}
 }
+
+// A pass that finds badger closed under the store (a crash simulation closes
+// the DB without Close, and gcLoop keeps ticking) returns 0: opening the
+// guard iterator on a closed DB panics (iterator.go:464-466), which took down
+// the package's race run in ci-docker.
+func TestValueLogGCOnAClosedDBReturns(t *testing.T) {
+	bs, err := New(vgConfig(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.db.Close(); err != nil { // no Close after: as ckCrash, the store is dropped
+		t.Fatal(err)
+	}
+	if n := bs.runValueLogGC(); n != 0 {
+		t.Fatalf("a pass on a closed DB rewrote %d files", n)
+	}
+}

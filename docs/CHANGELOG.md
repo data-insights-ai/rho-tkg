@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   is uncompressed value-log space. The value-log GC pass now waits for reads that entered before it ended, so it never
   deletes a rewritten file under an open read (badger `value.go:342-355`), and logs a wait above 60 s
   (`TestValueLogGCKeepsTheFileOfAnOpenRead`; `tasks/evidence/VALUETHRESH/`, `docs/badger.md` section 6, rule 9).
+  A pass that finds the DB closed under the store returns at once instead of panicking in `NewIterator`
+  (`TestValueLogGCOnAClosedDBReturns`; found by ci-docker's race run, where crash tests leave their loops running).
 
 ### Fixed
 
