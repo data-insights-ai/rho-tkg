@@ -7,14 +7,22 @@
 //	go run ./scripts/release gate <patch|minor|major>
 //	go run ./scripts/release <patch|minor|major> [-dry-run]
 //	go run ./scripts/release kind
+//	go run ./scripts/release race
 //
 // Gates (steps at once, one PASS/FAIL line each with its seconds):
 //   - patch: gofmt, build (+GOARCH=386), vet, lint, go mod tidy -diff and
-//     verify, the docs tests, go test -race -short ./... (cached; no -failfast, so one red run lists every failing test);
-//   - minor: the patch gate, the long tier (make test-long: the tests a plain
-//     testing.Short() skips, without race), and gosec;
-//   - major: the minor gate cold (-count=1 -shuffle=on), coverage, fuzz-smoke,
-//     govulncheck.
+//     verify, the docs tests, go test -short ./... (cached, no -race, no
+//     -failfast: a red run lists every failing test);
+//   - minor: the patch gate and gosec;
+//   - major: the minor gate cold with -race (-count=1 -shuffle=on), coverage,
+//     fuzz-smoke, govulncheck.
+//
+// -race (René, 4 Nov, as sigma's): not in the patch and minor gates. A patch or
+// minor release starts `release race` in the background after its push, and
+// `go run ./scripts/release race` runs it by hand or from cron: one -race
+// suite on the host at a time (the race lock, shared with sigma), nobody
+// waiting on it; its log is .git/gate/race.out. The long tier (make test-long)
+// runs by hand, never before a tag.
 //
 // A release: preconditions (on main, clean, the remote's main an ancestor of
 // HEAD, a push dry-run passes, the next tag absent), the diff's kind is at most the
@@ -33,6 +41,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -54,6 +63,8 @@ func main() {
 		for _, w := range why {
 			fmt.Println("  " + w)
 		}
+	case "race":
+		os.Exit(runRace())
 	case "gate":
 		if len(args) != 2 {
 			usage()
@@ -112,7 +123,7 @@ type step struct {
 func gateSteps(k int) []step {
 	// The race run takes the host's race lock, shared with sigma's (4 Nov):
 	// two -race suites at once starve each other and flake timing tests.
-	race := []string{"flock", raceLock(), "go", "test", "-race", "-short", "-timeout", "20m", "./..."}
+	short := []string{"go", "test", "-short", "-timeout", "20m", "./..."}
 	steps := []step{
 		{name: "gofmt", cmd: []string{"sh", "-c", `out=$(gofmt -l $(git ls-files '*.go')) && [ -z "$out" ] || { echo "$out"; exit 1; }`}},
 		{name: "build", cmd: []string{"go", "build", "./..."}},
@@ -126,16 +137,14 @@ func gateSteps(k int) []step {
 	}
 	switch k {
 	case patch:
-		steps = append(steps, step{name: "test", cmd: race})
+		steps = append(steps, step{name: "test", cmd: short})
 	case minor:
 		steps = append(steps,
-			step{name: "test", cmd: race},
-			// The long tier runs without race, at the sizes its bounds were measured at.
-			step{name: "long", cmd: []string{"make", "--no-print-directory", "test-long"}},
+			step{name: "test", cmd: short},
 			step{name: "gosec", cmd: []string{"make", "--no-print-directory", "security-docker"}})
 	case major:
 		steps = append(steps,
-			step{name: "test", cmd: []string{"go", "test", "-count=1", "-shuffle=on", "-race", "-timeout", "90m", "./..."}},
+			step{name: "test", cmd: []string{"flock", raceLock(), "go", "test", "-count=1", "-shuffle=on", "-race", "-timeout", "90m", "./..."}},
 			step{name: "gosec", cmd: []string{"make", "--no-print-directory", "security-docker"}},
 			step{name: "cover", cmd: []string{"make", "--no-print-directory", "cover-gate"}},
 			step{name: "fuzz", cmd: []string{"make", "--no-print-directory", "fuzz-smoke"}},
@@ -386,6 +395,41 @@ func release(k int, dry bool) {
 		return nil
 	})
 	fmt.Printf("%s, %s gate %s, release %s\n", next, kindNames[k], gateTime, since(start))
+	if k != major {
+		// -race after the tag, in the background (René, 4 Nov).
+		c := exec.Command("go", "run", "./scripts/release", "race") // #nosec G204 -- fixed command
+		c.SysProcAttr = detached()
+		if err := c.Start(); err != nil {
+			fmt.Printf("race: not started: %v (run `go run ./scripts/release race`)\n", err)
+			return
+		}
+		fmt.Printf("race: started in the background (pid %d), log %s/gate/race.out\n", c.Process.Pid, gitDir())
+	}
+}
+
+// raceCmd is the -race suite under the host's race lock.
+func raceCmd() []string {
+	return []string{"flock", raceLock(), "go", "test", "-race", "-short", "-timeout", "30m", "./..."}
+}
+
+// runRace runs raceCmd, writes its output to .git/gate/race.out (with the
+// commit and the result) and returns its exit code.
+func runRace() int {
+	_ = os.MkdirAll(gitDir()+"/gate", 0o750)
+	head, _ := git("rev-parse", "--short", "HEAD")
+	start := time.Now()
+	cmd := raceCmd()
+	c := exec.Command(cmd[0], cmd[1:]...) // #nosec G204 -- fixed command
+	c.Env = append(os.Environ(), "GOFLAGS=-trimpath", "CGO_ENABLED=1")
+	out, err := c.CombinedOutput()
+	code, result := 0, "ok"
+	if err != nil {
+		code, result = 1, "RED"
+	}
+	summary := fmt.Sprintf("race %s at %s: %s, %s\n", result, head, since(start), time.Now().Format(time.RFC3339))
+	_ = os.WriteFile(gitDir()+"/gate/race.out", append(out, summary...), 0o600)
+	fmt.Print(summary)
+	return code
 }
 
 func mustRead(p string) []byte {
@@ -405,3 +449,7 @@ func raceLock() string {
 	home, _ := os.UserHomeDir()
 	return home + "/.cache/race-gate.lock"
 }
+
+// detached starts the background race run in its own session, so it outlives
+// the release and the terminal.
+func detached() *syscall.SysProcAttr { return &syscall.SysProcAttr{Setsid: true} }

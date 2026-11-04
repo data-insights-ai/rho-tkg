@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Release gates without -race** (René, 4 Nov, as sigma's): the patch and minor gates run `go test -short ./...`
+  without race and without `-failfast`; a patch or minor release then starts `go run ./scripts/release race` in the
+  background (one -race suite on the host at a time under `~/.cache/race-gate.lock`, shared with sigma; log
+  `.git/gate/race.out`), and cron runs it every 6 h. The long tier runs by hand, never before a tag. The major gate
+  keeps -race. Warm patch gate: 143 s at load 41 for a core change.
+
 ## [4.105.2] - 2026-11-04
 
 ### Changed

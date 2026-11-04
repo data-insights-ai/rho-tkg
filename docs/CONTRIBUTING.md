@@ -92,8 +92,8 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 **Tests**
 
 - New tests run under `-short` in seconds (one test ≲2 s, a package ≲5 s). A slow test is gated with
-  `testing.Short() && !raceEnabled` so it runs in the race gate, or with a plain `testing.Short()` when its bounds hold
-  only without race: then the minor gate's long tier runs it (`make test-long`, which finds every such skip). A cap or
+  `testing.Short() && !raceEnabled` so it runs in the race run, or with a plain `testing.Short()` when its bounds hold
+  only without race: then the long tier runs it by hand (`make test-long`, which finds every such skip). A cap or
   growth test lowers the cap through a test switch.
 - History-aware code gets two-phase tests: create state X at t0, mutate after t0, query at t0 and assert X.
 - Assert exact sets and negative cases ("must NOT contain Y"), not happy paths. Ask of every test: would it fail if the code
@@ -105,9 +105,10 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 | Command | Use |
 |---|---|
-| `make gate-patch` | **Patch gate** (`go run ./scripts/release gate patch`), every step at once: gofmt, build (+386), vet, lint, `go mod tidy -diff` and `verify`, docs tests (`internal/docscheck`), check-ledger, `go test -race -short ./...` under `flock ~/.cache/race-gate.lock` (shared with sigma: one -race suite on the host at a time; `RACE_LOCK` overrides) and without `-failfast` (a red run lists every failing test). Incremental through Go's test cache: only the packages a change affects rerun, so no `-count=1` |
-| `make gate-minor` | **Minor gate**: the patch gate, the long tier (`make test-long`, without race), and gosec |
-| `make gate-major` | **Major gate**, comprehensive and cold: the minor gate with `-count=1 -shuffle=on`, cover-gate, fuzz-smoke, govulncheck |
+| `make gate-patch` | **Patch gate** (`go run ./scripts/release gate patch`), every step at once: gofmt, build (+386), vet, lint, `go mod tidy -diff` and `verify`, docs tests (`internal/docscheck`), check-ledger, `go test -short ./...` without race and without `-failfast` (a red run lists every failing test). Incremental through Go's test cache: only the packages a change affects rerun, so no `-count=1` |
+| `go run ./scripts/release race` | **Race run** (René, 4 Nov, as sigma's): `go test -race -short ./...` under `flock ~/.cache/race-gate.lock` (shared with sigma: one -race suite on the host at a time; `RACE_LOCK` overrides), log `.git/gate/race.out`. Not in the patch and minor gates: a patch or minor release starts it in the background after its push, nobody waits on it, and cron runs it every 6 h; a red race run is fixed in the next patch |
+| `make gate-minor` | **Minor gate**: the patch gate and gosec. The long tier (`make test-long`) runs by hand, never before a tag |
+| `make gate-major` | **Major gate**, comprehensive and cold: the minor gate with `-race -count=1 -shuffle=on`, cover-gate, fuzz-smoke, govulncheck |
 | `make release-patch`, `release-minor`, `release-major` | **The release** (below); `make kind` prints the diff's kind and why |
 | `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each runs alone (`scripts/measure.sh`) |
 | `make test` / `make test-race` | short tests / race detector |
