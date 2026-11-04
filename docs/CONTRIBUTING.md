@@ -105,7 +105,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 | Command | Use |
 |---|---|
-| `make gate-patch` | **Patch gate** (`go run ./scripts/release gate patch`), every step at once: gofmt, build (+386), vet, lint, `go mod tidy -diff` and `verify`, docs tests (`internal/docscheck`), check-ledger, `go test -race -short -failfast ./...`. Incremental through Go's test cache: only the packages a change affects rerun, so no `-count=1` |
+| `make gate-patch` | **Patch gate** (`go run ./scripts/release gate patch`), every step at once: gofmt, build (+386), vet, lint, `go mod tidy -diff` and `verify`, docs tests (`internal/docscheck`), check-ledger, `go test -race -short ./...` (no `-failfast`: a red run lists every failing test, not the first). Incremental through Go's test cache: only the packages a change affects rerun, so no `-count=1` |
 | `make gate-minor` | **Minor gate**: the patch gate, the long tier (`make test-long`, without race), and gosec |
 | `make gate-major` | **Major gate**, comprehensive and cold: the minor gate with `-count=1 -shuffle=on`, cover-gate, fuzz-smoke, govulncheck |
 | `make release-patch`, `release-minor`, `release-major` | **The release** (below); `make kind` prints the diff's kind and why |

@@ -10,7 +10,7 @@
 //
 // Gates (steps at once, one PASS/FAIL line each with its seconds):
 //   - patch: gofmt, build (+GOARCH=386), vet, lint, go mod tidy -diff and
-//     verify, the docs tests, go test -race -short -failfast ./... (cached);
+//     verify, the docs tests, go test -race -short ./... (cached; no -failfast, so one red run lists every failing test);
 //   - minor: the patch gate, the long tier (make test-long: the tests a plain
 //     testing.Short() skips, without race), and gosec;
 //   - major: the minor gate cold (-count=1 -shuffle=on), coverage, fuzz-smoke,
@@ -110,7 +110,7 @@ type step struct {
 }
 
 func gateSteps(k int) []step {
-	race := []string{"go", "test", "-race", "-short", "-failfast", "-timeout", "20m", "./..."}
+	race := []string{"go", "test", "-race", "-short", "-timeout", "20m", "./..."}
 	steps := []step{
 		{name: "gofmt", cmd: []string{"sh", "-c", `out=$(gofmt -l $(git ls-files '*.go')) && [ -z "$out" ] || { echo "$out"; exit 1; }`}},
 		{name: "build", cmd: []string{"go", "build", "./..."}},
