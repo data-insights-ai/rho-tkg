@@ -321,7 +321,8 @@ func stValids(e *ccEnt) []types.Instant {
 // a retraction, a re-import, a scheduled close then delete, an add and a
 // backfill below the pin; on badger a repeated read decodes no row.
 func TestStateColumnPath_BreakCases(t *testing.T) {
-	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
+	// Serial: the decode count below is process-wide (every badger store).
+	ccRunSerial(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
 		pinA, pinB := stScenario(t, e, stValids(e))
 		if _, isBadger := e.g.store.(*badgerpkg.Store); !isBadger {

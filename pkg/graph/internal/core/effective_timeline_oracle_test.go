@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -432,40 +433,50 @@ func TestEffectiveTimeline_PointwiseOracle(t *testing.T) {
 	}
 	const base uint64 = 0x1C_E7 // "1c effective timeline"
 	x0 := types.Instant(time.Now().Add(time.Hour).UnixMilli()/1_000_000*1_000_000 + 1_000_000)
-	var total etChecker
-	for _, be := range txbBackends() {
-		for i := 0; i < seeds; i++ {
-			seed := base + uint64(i)
-			t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
-				_, _, _, pins, o := txbOracleRun(t, be, seed, nOps, x0, nil, nil)
-				var extra []types.Instant
-				for _, in := range o.intents {
-					extra = append(extra, in.at-1, in.at)
-				}
-				extra = append(extra, pins...)
-				k := &etChecker{t: t, g: o.g, label: be.name}
-				check := func(phase string) {
-					maxPin := o.x
-					k.label = be.name + " " + phase
-					for _, id := range o.allNodeIDs() {
-						k.node(id, extra, maxPin)
+	var (
+		mu    sync.Mutex // guards total across the parallel (backend, seed) subtests
+		total etChecker
+	)
+	// The group returns once every parallel subtest has finished (each holds
+	// only its own graph), so the log below sees the full tallies.
+	t.Run("runs", func(t *testing.T) {
+		for _, be := range txbBackends() {
+			for i := 0; i < seeds; i++ {
+				seed := base + uint64(i)
+				t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
+					t.Parallel()
+					_, _, _, pins, o := txbOracleRun(t, be, seed, nOps, x0, nil, nil)
+					var extra []types.Instant
+					for _, in := range o.intents {
+						extra = append(extra, in.at-1, in.at)
 					}
-					for _, id := range o.relIDs {
-						k.rel(id, extra, maxPin)
+					extra = append(extra, pins...)
+					k := &etChecker{t: t, g: o.g, label: be.name}
+					check := func(phase string) {
+						maxPin := o.x
+						k.label = be.name + " " + phase
+						for _, id := range o.allNodeIDs() {
+							k.node(id, extra, maxPin)
+						}
+						for _, id := range o.relIDs {
+							k.rel(id, extra, maxPin)
+						}
 					}
-				}
-				check("after the oracle sequence")
-				compacted := etTail(o)
-				check("after rollback, re-import, compaction")
-				if compacted && k.errs == 0 {
-					t.Fatalf("compaction trimmed versions but no pin was refused with ErrHistoryCompacted")
-				}
-				total.checks += k.checks
-				total.pins += k.pins
-				total.segs += k.segs
-				total.errs += k.errs
-			})
+					check("after the oracle sequence")
+					compacted := etTail(o)
+					check("after rollback, re-import, compaction")
+					if compacted && k.errs == 0 {
+						t.Fatalf("compaction trimmed versions but no pin was refused with ErrHistoryCompacted")
+					}
+					mu.Lock()
+					total.checks += k.checks
+					total.pins += k.pins
+					total.segs += k.segs
+					total.errs += k.errs
+					mu.Unlock()
+				})
+			}
 		}
-	}
+	})
 	t.Logf("pointwise checks %d at %d (entity, pin) pairs, %d segments, %d refused pins", total.checks, total.pins, total.segs, total.errs)
 }
