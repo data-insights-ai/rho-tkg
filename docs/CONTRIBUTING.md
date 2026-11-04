@@ -156,7 +156,8 @@ Every claim about badger cites its source or a measurement.
 ## Documentation
 
 CHANGELOG entries go under `[Unreleased]` in the same change as the code. A new public error sentinel needs a row in
-[errors.md](errors.md). The docs tests (`TestDocsMetadataMatchesSourceOfTruth`, `TestErrorsDocumentation`,
+[errors.md](errors.md). The docs tests (`internal/docscheck`, its own package so a doc edit reruns only it, never
+core's cached tests; `TestDocsMetadataMatchesSourceOfTruth`, `TestErrorsDocumentation`,
 `TestNoMDFileOutsideTheDocumentation`) run in every gate, with `-count=1` (the layout test lists files with git, which
 the test cache cannot see).
 

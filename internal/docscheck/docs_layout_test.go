@@ -1,4 +1,4 @@
-package core
+package docscheck
 
 // The documentation pin: every MD file in the repository is one README.md "Documentation" names, so a new MD file
 // fails here instead of joining the hundreds that piled up (René 2026-10-22: "do not create new md files on your own"; todo row 110).
@@ -102,7 +102,7 @@ func TestStrayMDNamesOnlyUnlistedMDFiles(t *testing.T) {
 
 func TestNoMDFileOutsideTheDocumentation(t *testing.T) {
 	t.Parallel()
-	root, err := filepath.Abs("../../../..")
+	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
 	}

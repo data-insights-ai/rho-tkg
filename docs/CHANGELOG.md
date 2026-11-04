@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [4.104.3] - 2026-11-04
 
+### Changed
+
+- **Docs tests in their own package** (`internal/docscheck`): Go's test cache tracks the files a test reads, so core's
+  docs tests made every CHANGELOG edit rerun all of core under race (a release's gate went cold). A doc edit now reruns
+  only `internal/docscheck`.
+
 ### Removed
 
 - **The pre-commit hook** (`scripts/hooks/pre-commit`, `make hooks`; René, 4 Nov): the gates check what it checked.

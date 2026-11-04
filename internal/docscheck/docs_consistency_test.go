@@ -1,4 +1,4 @@
-package core
+package docscheck
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 
 func TestDocsMetadataMatchesSourceOfTruth(t *testing.T) {
 	t.Parallel()
-	goMod, err := os.ReadFile("../../../../go.mod")
+	goMod, err := os.ReadFile("../../go.mod")
 	if err != nil {
 		t.Fatalf("read go.mod: %v", err)
 	}
@@ -24,8 +24,8 @@ func TestDocsMetadataMatchesSourceOfTruth(t *testing.T) {
 		path string
 		want []string
 	}{
-		{path: "../../../../README.md", want: []string{"**Go:** " + goVersion}},
-		{path: "../../../../docs/architecture.md", want: []string{"Go:      " + goVersion}},
+		{path: "../../README.md", want: []string{"**Go:** " + goVersion}},
+		{path: "../../docs/architecture.md", want: []string{"Go:      " + goVersion}},
 	}
 
 	for _, check := range checks {
