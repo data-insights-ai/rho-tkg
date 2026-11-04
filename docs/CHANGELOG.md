@@ -8,7 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Docs match the release cycle** (CONTRIBUTING: the gates use the test cache, releases go to the local git server);
+- **Docs match the release cycle** (CONTRIBUTING, HANDOVER, SECURITY: the gates use the test cache, releases go to
+  the local git server, fuzz-smoke runs in the major gate, the consumers' pins and how they fetch from the local server);
   the minor gate runs the long tier without race, as its tests' bounds were measured (`make test-long`), next to
   `go test -race -short ./...`.
 

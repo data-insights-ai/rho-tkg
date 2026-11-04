@@ -20,8 +20,9 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   (`scripts/release`, FLUSHPART, 2026-10-24).
 - Scope: consumer-blocking or wrong-answer/data bugs only, plus ai-soc runtime items (standing go). A backlog item needs a
   consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
-- Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc (their agents: HANDOVER § State) without asking. `git fetch` + merge origin/main
-  before a gate; never force-push, never push `origin/v5`. Follow the release checklist below.
+- Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc (their agents: HANDOVER § State) without asking,
+  through `make release-…` (release checklist below); releases go to the local git server, not GitHub (René, 4 Nov).
+  Never force-push, never push `origin/v5`.
 - Item work happens on a branch named after the item; main stays green, and a red test reaches it only with its fix.
 - Commit with explicit paths, never `git commit -a`: a docs commit swept unreviewed step code onto main (2026-10-23).
 - Work order (René 2026-10-23): (1) the request's `tasks/todo.md` item first, before any other action; (2) the red test;
@@ -129,10 +130,10 @@ the kind of release, run once; it stops at the first red, and a red is fixed on 
 2. Every branch of the batch is merged (each reviewed before its merge, § Review).
 3. CHANGELOG and README commit, before the push (René, 4 Nov: Claude writes the CHANGELOG from the finished items of
    `tasks/todo.md`): `## [X.Y.Z] - date` above the entries, README updated for what the release changes, shipped rows
-   leave `tasks/todo.md`. Not pushed alone: `make release` pushes it with the tag. The tag is the version: no other doc names it
+   leave `tasks/todo.md`. Not pushed alone: `make release-…` pushes it with the tag. The tag is the version: no other doc names it
    (`git tag --contains <commit>` answers which release has a change).
 4. `make release-patch|release-minor|release-major` (`scripts/release`, Go, edits no file): preconditions (main, clean,
-   origin/main an ancestor of HEAD, the tag absent), the diff's kind at most the one asked for (a major: a removed or
+   the remote's main an ancestor of HEAD, the tag absent, a push dry-run passes), the diff's kind at most the one asked for (a major: a removed or
    changed public name, or the module path's /vN; a minor: a new exported name, internal packages included, a store format
    marker or a badger minor bump; else a patch), the CHANGELOG's newest section is the next version and [Unreleased] is
    empty, the gate of that kind, `git tag -a` (message: that section), `git push --atomic` of main and the tag. A major
@@ -166,7 +167,7 @@ the test cache cannot see).
 
 ## Fuzzing
 
-The trust-boundary fuzz harnesses (`make fuzz-smoke` runs them briefly, by hand; `.github/workflows/fuzz.yml` on demand) are listed in
+The trust-boundary fuzz harnesses (`make fuzz-smoke` runs them briefly in the major gate and by hand; `.github/workflows/fuzz.yml` on demand) are listed in
 [SECURITY.md](SECURITY.md) ("Fuzz harnesses"). Run a deep session when you change a decode or import surface and commit any new
 crasher (under the package's `testdata/fuzz/`) with the fix:
 

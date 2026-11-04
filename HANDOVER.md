@@ -7,14 +7,13 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **State of 4 Nov, read this first** (next steps: `tasks/todo.md`). Round 5 (RELHIST P2, a patch) is released.
-  René (4 Nov, via ai-soc): "I want all current versions in the release", which lifted the round-4 freeze;
-  sigma tags on v4.104.1, ai-soc runs its gate (60-min 4 arms + masked cycles), pins and releases ai-soc v5.1.2 on
-  that pair. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc); ai-soc names its quiet
-  windows: then no minor or major gate, probe, bench or long test here.
-  - **Released in v4.104.2 (4 Nov):** COSTCOUNT and the release cycle on Go's facilities (`make release-patch|minor|
-    major`, `scripts/release`; the patch gate 12 s warm, 662 s cold in a fresh checkout). The pre-commit hook is gone
-    (René, 4 Nov). Parked, unmerged: branch `consolidate` (test folding, René stopped it 4 Nov).
+- **State of 4 Nov, read this first** (next steps: `tasks/todo.md`). Round 5 (RELHIST P2) released in v4.104.1;
+  v4.104.2-4 (4 Nov) carry COSTCOUNT and the release cycle on Go's facilities (`make release-patch|minor|major`,
+  `scripts/release`; a patch release 15 s warm, 662 s cold). Releases go to the local git server `~/git/rho-tkg.git`
+  (remote `local`), not GitHub (René, 4 Nov: "let the github alone, work with the local git"); v4.104.3 also reached
+  GitHub, v4.104.4 is local only. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc);
+  ai-soc names its quiet windows: then no minor or major gate, probe, bench or long test here.
+  - **Parked, unmerged:** branch `consolidate` (test folding; René stopped it 4 Nov). No pre-commit hook (René, 4 Nov).
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Reviews:** René (3 Nov, "yes, always"): one read-only Fable review per finished branch, before its merge, given
@@ -37,7 +36,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **Consumers and their agents** (ask the agent for runs and data, never browse their repos; answer a request the same
   day with its todo item first; agent names change per session, `ListAgents`; if neither resolves at a release, put
   the release note here and tell René in one line):
-  - ai-soc (4 Nov: pinned at ea30bfda on rho v4.104.0 + sigma v0.11.162; its v5 data layout work is on its branch
+  - ai-soc (4 Nov: v5.2.2 on rho v4.104.2 + sigma v0.11.165, in its long BA test, then the Flux run; takes v4.104.3
+    in its next release; its v5 data layout work is on its branch
     `v5-new-datalayout`). Tiered main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2;
     HistoryDeltaEncoding, SyncWrites, DurableCommit, RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk,
     ValueDictionaries, UntimedUnbounded, AllowRetentionPurge; DerivedPage's property index on disk
@@ -45,10 +45,13 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     types; unique keys on reference labels only; Derived (and its composite index) on the reference shard; its
     /metrics exports `aisoc_store_shard_access_total{tier}` from ShardAccessStats. Event times UTC (Check Point CSV in
     the operator's zone, BO: America/Bogota); Flux runs Europe/Berlin.
-  - sigma-tkgd (4 Nov: v0.11.162 on rho v4.104.0; plans `ValueThreshold` 32 KiB on tiered for its 64 KiB DerivedPage
+  - sigma-tkgd (4 Nov: v0.11.165 released, bumping to rho v4.104.3; plans `ValueThreshold` 32 KiB on tiered for its 64 KiB DerivedPage
     blocks); its test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired`
     below); its store analysis tool is `projects/derived-writeback` (cmd/wbscan).
   - agent-bookkeeping (`~/Work/2026/bds421/sigma/agent-bookkeeping`): build check only.
+  - Consumers fetch rho from the local server with per-command env, no git config change: `GIT_CONFIG_COUNT=2`,
+    `GIT_CONFIG_KEY_0/1=url./home/renework2023/git/rho-tkg.git.insteadOf` for `https://github.com/data-insights-ai/rho-tkg`
+    and `git@github.com:data-insights-ai/rho-tkg.git`, `GOPROXY=direct`, then `go get …@vX.Y.Z` (tested 4 Nov).
 - **Housekeeping:** deletions are René's call (`rm` is denied to agents; user-only actions below; finished scratch goes
   on the RHO_DONE list in `~/cleanup.sh`, run before and after every release). Consumer build check (diagnosis only): `git show 904fd063:HANDOVER.md`, Appendix B.
 
