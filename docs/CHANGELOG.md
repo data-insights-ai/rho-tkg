@@ -6,13 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Releases to a local git server** (René, 4 Nov): `RELEASE_REMOTE=local make release-…` releases to the bare
+  repository `~/git/rho-tkg.git` (remote `local`) while GitHub refuses this host's SSH logins.
+
 ## [4.104.3] - 2026-11-04
 
 ### Changed
 
 - **The release survives GitHub's intermittent SSH refusals**: `scripts/release` retries fetch and push up to 5 times,
   checks it can push (`git push --dry-run`) before the gate, and deletes its local tag when the push fails.
-  `RELEASE_REMOTE=local` releases to the local server (`~/git/rho-tkg.git`) while GitHub refuses the host's logins.
 - **Docs tests in their own package** (`internal/docscheck`): Go's test cache tracks the files a test reads, so core's
   docs tests made every CHANGELOG edit rerun all of core under race (a release's gate went cold). A doc edit now reruns
   only `internal/docscheck`.
