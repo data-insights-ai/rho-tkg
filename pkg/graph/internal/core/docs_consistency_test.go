@@ -19,22 +19,13 @@ func TestDocsMetadataMatchesSourceOfTruth(t *testing.T) {
 	}
 	goVersion := goMatch[1]
 
-	changelog, err := os.ReadFile("../../../../docs/CHANGELOG.md")
-	if err != nil {
-		t.Fatalf("read docs/CHANGELOG.md: %v", err)
-	}
-	versionMatch := regexp.MustCompile(`(?m)^## \[([0-9]+\.[0-9]+\.[0-9]+)\]`).FindStringSubmatch(string(changelog))
-	if len(versionMatch) != 2 {
-		t.Fatalf("could not parse current version from docs/CHANGELOG.md")
-	}
-	currentVersion := versionMatch[1]
-
+	// The release is the git tag alone: no doc names it (René, 4 Nov).
 	checks := []struct {
 		path string
 		want []string
 	}{
-		{path: "../../../../README.md", want: []string{"**Go:** " + goVersion, "Current release: **v" + currentVersion + "**"}},
-		{path: "../../../../docs/architecture.md", want: []string{"(v" + currentVersion + ")", "Go:      " + goVersion}},
+		{path: "../../../../README.md", want: []string{"**Go:** " + goVersion}},
+		{path: "../../../../docs/architecture.md", want: []string{"Go:      " + goVersion}},
 	}
 
 	for _, check := range checks {

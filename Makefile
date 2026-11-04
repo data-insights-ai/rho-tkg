@@ -2,13 +2,11 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-docker-run ci-fast ci-fast-run measure hooks fuzz-smoke check ci clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker gate-patch gate-minor gate-major release-patch release-minor release-major kind measure hooks fuzz-smoke check clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
 PROD_BENCH_COUNT ?= 1
-# CI opts into four exhaustive core batches; local defaults remain unsplit.
-ROOT_RACE_CORE_SHARDS ?= 4
 GOLANGCI_LINT_VERSION ?= v2.13.2
 GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
@@ -21,29 +19,20 @@ build:
 
 # Run unit tests
 test:
-	go test -short -count=1 ./...
+	go test -short ./...
 
 # Run tests with verbose output
 test-v:
-	go test -short -count=1 -v ./...
+	go test -short -v ./...
 
-# Run tests with race detector. Local default (since v4.76.0): the parts of
-# scripts/test-race.sh in sequence, so each heavy package (core shards, graph,
-# memory, badger) has the machine to itself; one unsplit `go test ./...` ran
-# them in parallel and badger hit its 10-minute timeout on a busy machine.
-# CI: ROOT_RACE_CORE_SHARDS=4 plus RACE_SHARD=<part> runs one matrix part
-# (scripts/test-race.sh; RACE_SHARD=list prints the parts).
+# Run tests with race detector (Go's test cache reruns only what changed).
 test-race:
-	$(SHELL) scripts/test-race.sh "$(ROOT_RACE_CORE_SHARDS)"
+	go test -race -short -timeout 20m ./...
 
 # The long tier: every test a plain `testing.Short()` skips (no race exception),
 # run without -short or race (scripts/test-long.sh; LONG_TIER=list prints them).
 test-long:
 	$(SHELL) scripts/test-long.sh
-
-# Tests of the race-gate script itself (fake go, no toolchain needed).
-test-race-script:
-	$(SHELL) scripts/test-race-test.sh
 
 # Run integration tests (long-running, not short)
 test-integration:
@@ -204,16 +193,6 @@ security-docker:
 vulncheck-docker:
 	$(DOCKER_GO) sh -c 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && govulncheck ./...'
 
-# Minor release gate, local (GitHub CI on a tag only builds, vets and runs the
-# short tests): the dockerized lint/gosec/govulncheck, the full race suite,
-# coverage, the meta-key reap policy, a short fuzz of every trust-boundary
-# harness, the long tier and the ledger check.
-ci-docker:
-	@scripts/gate-time.sh ci-docker $(MAKE) ci-docker-run
-
-ci-docker-run: fmt-check vet lint-docker build test-race test-long security-docker vulncheck-docker cover-gate check-metakv-reap fuzz-smoke
-	scripts/check-ledger.sh
-
 # fuzz-smoke runs each trust-boundary fuzz harness for FUZZTIME (nothing runs
 # them on a schedule); a crasher lands in testdata/fuzz/ and is committed with
 # its fix.
@@ -227,41 +206,26 @@ fuzz-smoke:
 	go test -run '^$$' -fuzz=FuzzWireToRelChecked -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
 	go test -run '^$$' -fuzz=FuzzUnmarshalNodeWireWithKeys -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
 
-# Patch release gate (todo 115/116; minors use ci-docker). scripts/patchgate plans it from the batch since the
-# last release tag and refuses new exported API (a door = a minor). Runs fmt-check, vet, build, lint, -short of
-# packages whose shipped code changed, -race of only the changed tests (whole package for a changed helper or
-# tool), the docs tests and the ledger check.
 # Measurement level (René 4 Nov): tests behind the `measure` build tag, bounds
 # that load moves; run by hand, never in a gate.
 measure:
 	@scripts/measure.sh
 
-ci-fast:
-	@scripts/gate-time.sh ci-fast $(MAKE) ci-fast-run
+# Release cycle (René, 4 Nov; scripts/release, CONTRIBUTING § Release checklist):
+# gate-* runs a gate alone, release-* runs the release (preconditions, kind,
+# CHANGELOG, gate, tag, atomic push), kind prints the diff's kind.
+gate-patch gate-minor gate-major:
+	@scripts/gate-time.sh $@ go run ./scripts/release gate $(@:gate-%=%)
 
-ci-fast-run: fmt-check vet build lint-docker
-	@base=$$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1); \
-	echo "ci-fast: batch $$base..work tree"; \
-	targets=$$(go run ./scripts/patchgate "$$base") || exit 1; \
-	short=$$(echo "$$targets" | awk '$$1=="short"{print $$2}'); \
-	if [ -n "$$short" ]; then go test -short -count=1 $$short || exit 1; fi; \
-	echo "$$targets" | while read -r kind pkg run; do \
-	  [ "$$kind" = race ] || continue; \
-	  if [ -n "$$run" ]; then \
-	    names=$${run#^(}; scripts/test-named.sh "$$pkg" "$${names%)\$$}" -- -short -race || exit 1; \
-	  else \
-	    go test -short -race -count=1 "$$pkg" || exit 1; \
-	  fi; \
-	done || exit 1; \
-	go test -count=1 -run 'Docs|Consistency|MD|Errors' ./... >/dev/null || { echo "ci-fast: docs tests failed"; exit 1; }; \
-	scripts/test-named.sh ./pkg/graph/internal/core/ 'TestNoMDFileOutsideTheDocumentation|TestDocsMetadataMatchesSourceOfTruth' -- >/dev/null || exit 1; \
-	scripts/check-ledger.sh && echo "ci-fast: ok"
+release-patch release-minor release-major:
+	@go run ./scripts/release $(@:release-%=%)
+
+kind:
+	@go run ./scripts/release kind
 
 # Quick pre-commit check
 check: vet build test
 
-# Full CI pipeline
-ci: fmt-check vet lint build test-race security vulncheck cover-gate check-metakv-reap
 
 # Clean generated files
 clean:

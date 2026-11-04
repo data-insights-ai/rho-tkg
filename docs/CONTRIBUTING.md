@@ -16,7 +16,8 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Commits, MRs and PRs carry no agent attribution: no Co-Authored-By, no Claude-Session, no "Generated with".
 - A fix is a PATCH, a new door or option a MINOR. A fix never rides in a minor, a door never in a patch; one round of consumer
   requests ships as one minor or one patch. A new store format marker is a door (older releases refuse the store), and so is
-  any new exported name, internal packages included: `scripts/patchgate` decides (FLUSHPART, 2026-10-24).
+  any new exported name, internal packages included; a removed or changed public name is a MAJOR: `make kind` decides
+  (`scripts/release`, FLUSHPART, 2026-10-24).
 - Scope: consumer-blocking or wrong-answer/data bugs only, plus ai-soc runtime items (standing go). A backlog item needs a
   consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
 - Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc (their agents: HANDOVER § State) without asking. `git fetch` + merge origin/main
@@ -102,10 +103,12 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 | Command | Use |
 |---|---|
-| `make ci-fast` | **Patch gate** (~30 s for docs, 1–2 min for a fix): fmt, vet, build, lint, `scripts/patchgate` (refuses new exported API), `-short` of changed packages, `-race` of changed tests, docs tests, check-ledger |
-| `make ci-docker` | **Minor gate**: fmt, vet, lint, build, full `test-race`, `test-long` (the tests a plain `testing.Short()` skips), gosec, govulncheck, cover-gate (80 %), metakv-reap check, `fuzz-smoke` (each trust-boundary fuzz harness for `FUZZTIME`, default 20 s), check-ledger |
+| `make gate-patch` | **Patch gate** (`go run ./scripts/release gate patch`), every step at once: gofmt, build (+386), vet, lint, `go mod tidy -diff` and `verify`, docs tests, check-ledger, `go test -race -short ./...`. Incremental through Go's test cache: only the packages a change affects rerun, so no `-count=1` |
+| `make gate-minor` | **Minor gate**: the patch gate with `go test -race ./...` (no `-short`: the long tier too, cached) and gosec |
+| `make gate-major` | **Major gate**, comprehensive and cold: the minor gate with `-count=1 -shuffle=on`, cover-gate, fuzz-smoke, govulncheck |
+| `make release-patch`, `release-minor`, `release-major` | **The release** (below); `make kind` prints the diff's kind and why |
 | `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each runs alone (`scripts/measure.sh`) |
-| `make hooks` | Installs `scripts/hooks/pre-commit`, under 30 s: gofmt, build, vet, patchgate's tests, docs tests, check-ledger; `.md` only: docs tests and check-ledger |
+| `make hooks` | Installs `scripts/hooks/pre-commit`, under 30 s: gofmt, build, vet, the release tool's tests, docs tests, check-ledger; `.md` only: docs tests and check-ledger |
 | `make test` / `make test-race` | short tests / race detector |
 | `make cover` | coverage report (`coverage.html`) |
 | `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable" |
@@ -124,19 +127,23 @@ the kind of release, run once; it stops at the first red, and a red is fixed on 
    on the rho section of `~/cleanup.sh` (RHO_DONE and named lines; never work in progress, never by age), then
    `bash ~/cleanup.sh`; merged worktrees and branches removed with git; `git status` shows nothing untracked.
 2. Every branch of the batch is merged (each reviewed before its merge, § Review).
-3. Release commit: CHANGELOG heading, README "Current release", line 1 of `docs/architecture.md`, HANDOVER names the tag,
-   shipped rows leave `tasks/todo.md`.
-4. Gate on that commit: a patch (fixes, tests, docs only) runs `make ci-fast` alone; a minor (new behaviour, a store format
-   marker, any new exported name, internal packages included) runs `make ci-docker`. No code edits while it runs (it tests
-   the live work tree).
-5. `git tag -a vX.Y.Z`, push main and the tag; tell sigma-tkgd and ai-soc the tag and the gate's wall time in one line.
-6. Watch the tag's CI run (`gh run list --workflow CI --limit 1`). A red run is fixed on main and shipped as a new patch tag,
-   never by re-running the old run.
-7. Clean up after (René, 4 Nov): the release round's own scratch (gate logs, branch and worktree of the release) goes the
+3. CHANGELOG and README commit, before the push (René, 4 Nov: Claude writes the CHANGELOG from the finished items of
+   `tasks/todo.md`): `## [X.Y.Z] - date` above the entries, README updated for what the release changes, shipped rows
+   leave `tasks/todo.md`. Not pushed alone: `make release` pushes it with the tag. The tag is the version: no other doc names it
+   (`git tag --contains <commit>` answers which release has a change).
+4. `make release-patch|release-minor|release-major` (`scripts/release`, Go, edits no file): preconditions (main, clean,
+   origin/main an ancestor of HEAD, the tag absent), the diff's kind at most the one asked for (a major: a removed or
+   changed public name, or the module path's /vN; a minor: a new exported name, internal packages included, a store format
+   marker or a badger minor bump; else a patch), the CHANGELOG's newest section is the next version and [Unreleased] is
+   empty, the gate of that kind, `git tag -a` (message: that section), `git push --atomic` of main and the tag. A major
+   moves the module path to /v(N+1) first. A red step stops it; the fix goes on main and the release
+   runs again. A bad tag is never moved: the fix is the next tag, and `retract` in go.mod.
+5. Tell sigma-tkgd and ai-soc in one line: tag, gate, seconds.
+6. Clean up after (René, 4 Nov): the release round's own scratch (gate logs, branch and worktree of the release) goes the
    same way, then `bash ~/cleanup.sh` again.
 
 Not part of a release: the consumers' build and vet (each consumer's own pin commit builds and vets against the tag;
-HANDOVER Appendix B stays for diagnosing a consumer's report), the scale probe (only when it is the item's own measurement),
+for diagnosing a consumer's report: `git show 904fd063:HANDOVER.md`, Appendix B), the scale probe (only when it is the item's own measurement),
 a separate freeze message (the tag names the version; a consumer's tag names its rho), the measurement level (`make
 measure`), and data runs or examples (on René's word only).
 
@@ -151,11 +158,12 @@ Every claim about badger cites its source or a measurement.
 
 CHANGELOG entries go under `[Unreleased]` in the same change as the code. A new public error sentinel needs a row in
 [errors.md](errors.md). The docs tests (`TestDocsMetadataMatchesSourceOfTruth`, `TestErrorsDocumentation`,
-`TestNoMDFileOutsideTheDocumentation`) run in `make ci-fast`.
+`TestNoMDFileOutsideTheDocumentation`) run in every gate, with `-count=1` (the layout test lists files with git, which
+the test cache cannot see).
 
 ## Fuzzing
 
-The trust-boundary fuzz harnesses (`make fuzz-smoke` runs them briefly in the minor gate; `.github/workflows/fuzz.yml` on demand) are listed in
+The trust-boundary fuzz harnesses (`make fuzz-smoke` runs them briefly, by hand; `.github/workflows/fuzz.yml` on demand) are listed in
 [SECURITY.md](SECURITY.md) ("Fuzz harnesses"). Run a deep session when you change a decode or import surface and commit any new
 crasher (under the package's `testdata/fuzz/`) with the fix:
 
@@ -268,10 +276,10 @@ Index (`→` names where the rule lives now):
 76. A type tag covers one level; test every kind at depth → `TestWire_NestedKindsRoundTripExact`
 77. → 78
 78. Red break-the-code test first; mutation sweep for crash safety → digest (Code); `tasks/evidence/FLUSHPART/mutations.txt`
-79. Fix = patch, door = minor → digest (Process); `scripts/patchgate`
+79. Fix = patch, door = minor → digest (Process); `scripts/release` (kind.go)
 80. One todo and HANDOVER commit on main per item end → digest (Process); `scripts/check-ledger.sh`
 81. Act, do not offer → digest (Process)
-82. A release is green only when the tag's GitHub CI is green → Release checklist
+82. → Release checklist (the release script's gate decides; a red tag CI is fixed by the next tag)
 83. → 78
 84. Trace the cause, then consolidate → digest (Process)
 85. Comment trimming is editing → digest (Code)

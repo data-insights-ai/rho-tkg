@@ -25,3 +25,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.42.0 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
 )
+
+// v4.98.0: its tag CI was red; v4.98.1 replaces it (a tag is never moved).
+retract v4.98.0

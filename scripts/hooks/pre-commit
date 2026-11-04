@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-commit gate, under 30 s; `make hooks` installs it. Build, vet, gofmt, the doc checks and patchgate's own tests;
+# Pre-commit gate, under 30 s; `make hooks` installs it. Build, vet, gofmt, the doc checks and the release tool's tests;
 # a commit of only .md files runs the doc checks. No package's test suite: a red test is committed first on its branch.
 set -u
 cd "$(git rev-parse --show-toplevel)" || exit 2
@@ -18,7 +18,7 @@ done
 if [ -n "$code" ]; then
   go build ./... || exit 1
   go vet ./... || exit 1
-  go test ./scripts/patchgate/ >/dev/null || { echo "pre-commit: patchgate tests failed"; exit 1; }
+  go test ./scripts/release/ >/dev/null || { echo "pre-commit: release tool tests failed"; exit 1; }
 fi
 go test -run 'Docs|Consistency|MD|Errors' ./... >/dev/null || { echo "pre-commit: docs tests failed"; exit 1; }
 exec scripts/check-ledger.sh

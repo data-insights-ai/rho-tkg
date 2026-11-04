@@ -2,8 +2,8 @@ name: CI
 
 # Minimal release check (René 2026-10-23): runs only when a release tag is
 # pushed; a push to main without a tag runs nothing, and nothing is scheduled.
-# The thorough gates run locally before the tag: `make ci-fast` for a patch,
-# `make ci-docker` for a minor (race, gosec, govulncheck, coverage, fuzz smoke).
+# The gates run locally before the tag: `make release-patch|release-minor|
+# release-major` (scripts/release; docs/CONTRIBUTING.md § Gates).
 on:
   push:
     tags: ["v*"]
