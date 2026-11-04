@@ -144,6 +144,40 @@ func TestRELHISTP2PluralDoorHeadHit(t *testing.T) {
 	}
 }
 
+// A pin below the entry's newest TxFrom folds even where every winner of the
+// entry was recorded by it: an excise appends a void row that wins nothing,
+// so only the pin rule (the lowest pin against maxTx) keeps the post-excise
+// gap out of a read pinned before the excise.
+func TestRELHISTP2PluralDoorPinBelowVoidRow(t *testing.T) {
+	ctx := context.Background()
+	for _, be := range relhistP2Backends(t) {
+		t.Run(be.name, func(t *testing.T) {
+			g := relhistP2Graph(t, be)
+			id := r10Node(t, g, 4) // four rows of validity [1000, 2000)
+			rid := r10Rel(t, g, 4)
+			relhistP2Plural(t, g, id, rid, []types.Instant{g.peekNow()}, "fill")
+			o0 := g.headOverlays.Load()
+			if err := g.Temporal.ExciseNodeValidity(ctx, id, 1500, 2000); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Temporal.ExciseRelValidity(ctx, rid, 1500, 2000); err != nil {
+				t.Fatal(err)
+			}
+			if o := g.headOverlays.Load(); o != o0+2 {
+				t.Fatalf("head overlays %d -> %d after two excises, want +2", o0, o)
+			}
+			nf, _, _, _ := g.Nodes.LatestStamps(id)
+			rf, _, _, _ := g.Rels.LatestStamps(rid)
+			below := min(nf, rf) - 1 // after every row but the void ones
+			h0 := g.headHits.Load()
+			relhistP2Plural(t, g, id, rid, []types.Instant{below, g.peekNow()}, "a pin before the excises")
+			if h := g.headHits.Load(); h != h0 {
+				t.Fatalf("head hits %d -> %d for a call with a pin below maxTx, want +0", h0, h)
+			}
+		})
+	}
+}
+
 // After a plain Update (with and without a valid start), a ReplaceVersion
 // and a relationship Update, the entry filled before the write is extended,
 // not dropped: the read-back is a hit at both doors.
