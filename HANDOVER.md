@@ -8,228 +8,67 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 ## State
 
 - **State of 4 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.104.0 (round 4: VALUETHRESH,
-  LENDCOST; a minor), tagged on main; ai-soc's round-4 gate on 7e4399c4 + sigma c2ce628f3 green (LendByIDs 94.5 s
-  vs v4.102.0's 115). Measuring is ai-soc's
-  combined run on main's tip, not per item (René via ai-soc). ai-soc names its quiet windows: then no ci-docker,
-  probe, bench or long test here. FREEZE round 4 (ai-soc, 4 Nov): v4.104.0 + sigma v0.11.162 are the pair for
-  ai-soc's pin, its three local sets and the next Flux run; a later tag belongs to the next run, never a re-pin.
-  Main keeps going untagged.
-  - **On main, unreleased:** nothing. No branch open.
+  LENDCOST; a minor). FREEZE round 4 (ai-soc, 4 Nov): rho v4.104.0 + sigma v0.11.162 are the pair for ai-soc's pin
+  (ai-soc ea30bfda), its three local sets and the next Flux run; a later tag belongs to the next run, never a re-pin.
+  Main keeps going untagged. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc); ai-soc
+  names its quiet windows: then no ci-docker, probe, bench or long test here.
+  - **On main, unreleased:** nothing. Open branch: `headrefresh` (RELHIST P2, in a worktree, not merged).
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
-  - **Fable agent:** René wants a read-only Fable review after each batch of changes; it does not survive a session:
-    check with René, then start one from `docs/architecture.md` and `tasks/todo.md`, given the code, not my conclusions.
-- **Released 24-30 Oct:** v4.75.0 to v4.98.3 (v4.83.0 R37, v4.84.0 EXISTMAP, v4.84.1 TXSNAP, v4.85.0 ROWPROBE, v4.86.0 TIERSTATS, v4.86.1 ASYNCSTAGE, v4.87.0 OPENWALK, v4.87.1 EVENTCLOCK + PENDSEEK, v4.87.2 IDLESTAMP, v4.88.0 OPENIMAGE, v4.88.1 PROPSTR, v4.89.0 OPENIMAGE step 2, v4.89.1 PROPSEEK, v4.89.2 PROPREWRITE, v4.89.3 PROPBOUNDS, v4.89.4 HISTPEND, v4.90.0 VOIDPROPS, v4.90.1 TXMEMBERS, v4.90.2 PROPDISKTOGGLE, v4.90.3 PROPOVERLAY, v4.91.0 PROPDISKLABEL, v4.91.1 IDXKEYLAZY, v4.91.2 DISKDEFS, v4.92.0 RELDISK, v4.93.0 IDXSTATS, v4.94.0 VALIDENDPRUNE, v4.95.0 VALIDENDLISTED, v4.96.0 COMPDISK, v4.96.1 STALEBUILD, v4.96.2 VALIDTOPURGE + CLEARGAP, v4.97.0 CACHESTATS, v4.97.1 ITERTOMB, v4.97.2 ITERTOMB), each under its tag in `docs/CHANGELOG.md`. Nothing unreleased on main. Checkpoint before goal 2 (René, 27 Oct, all three agents): nothing open to commit, no new tag (no fix since v4.89.2), main pushed and CI green; ai-soc pins v4.89.2.
-- **v4.85.0** (ROWPROBE) and **v4.86.0** (TIERSTATS): CI green, consumers build and vet clean, sigma and ai-soc
-  notified; scale probes as v4.84.0. v4.85.0's ci-docker passed every step but the ledger (a todo line ending in
-  "Done"); the todo-only fix reran docs tests and the ledger, not the whole gate. Since GATETIER (main, after
-  v4.86.0) ci-docker also runs `make test-long` (~1 min).
-- **v4.86.1** (ASYNCSTAGE, a patch): ci-fast green plus every other package's short tests, consumers build and vet
-  clean; async ingest 1.55-2.0x (`tasks/evidence/WRITERATE/results.txt`).
-- **v4.87.0** (OPENWALK, a minor: the open image gains two sections, an older release rebuilds once): tag CI
-  green; ci-docker green on the second run (the first hit VERIFY V2's multi-block fixture, fixed with the release), consumers build
-  and vet clean; scale probe in `tasks/evidence/SCALE/existence_maps.txt` (reopen with 1 M rels 1.25 s to 0.13 s).
-- **v4.87.1** (EVENTCLOCK + PENDSEEK, a patch for ai-soc's Flux run k10262212 and kit A/B): tag CI and ci-fast green, consumers
-  build and vet clean; a mutation without an event publisher takes no event timestamp, hot and warm checkouts stamp
-  no `lastAccess`, a disk property equality lookup seeks its buffered entries (64 k buffered: 5.2 ms to 3.5 us).
-- **v4.87.2** (IDLESTAMP, a patch: v4.87.1 stamped `lastAccess` at a demotion and turned sigma's TestFoldReadDepthHot
-  red): tag CI and ci-fast green, consumers build and vet clean; sigma's three tests checked on it (two pass, the third is sigma's).
-- **v4.88.0** (OPENIMAGE step 1, a minor: a crash open applies the older open image): tag CI green; ci-docker green on the second
-  run (the first failed six TestIndexRebuildStats tests in test-race, fixed with the release; its ledger step then
-  flagged a todo line ending in "Done", fixed in the release commit), consumers build and vet clean; a crash reopen
-  after one record decodes 1 row at 1 M entities (the full rebuild 1.54 M); 25 delta-open mutations caught.
-- **v4.88.1** (PROPSTR, a patch for ai-soc's BO run on v4.87.2): tag CI and ci-fast green, consumers build and vet clean; an
-  on-disk string equality lookup beside 10,000 longer strings visits 2 keys, before 10,001. The first cut added
-  `IDSet.Bounds`, which the patch gate refuses as a door (exported names in internal packages count, CONTRIBUTING
-  Rules digest); the bounds now come from two seeks on the node keyspace.
-- **v4.89.0** (OPENIMAGE step 2, a minor: `Config.OpenImageInterval` writes a periodic open image, header format 4):
-  tag CI green; ci-docker green on the third run (the first failed fmt-check on `badgerstore.go`, the second two unconvert
-  findings, both fixed on the branch),
-  consumers build and vet clean; at 1 M nodes / 1 M rels a 16 MB image, 31-33 ms encode under the locks, crash
-  reopen 2.7 s (300 rows) against 18.0 s (4.0 M rows) for the full rebuild; 15 checkpoint and 4 pass-through
-  mutations caught.
-- **v4.89.1** (PROPSEEK, a patch for ai-soc's BO run k10270452-p4b on v4.89.0): tag CI and ci-fast green, consumers build and
-  vet clean; the on-disk equality lookup iterates with AllVersions: 200 lookups before 20,000 deleted entries 325x
-  -> 0.9-1.2x their time without them; 4 mutations caught, the fifth's code removed.
-- **v4.90.0** (VOIDPROPS, a minor for goal 1, sigma's TestStateCopiesSplit): tag CI and ci-docker green, consumers build and vet clean;
-  sigma confirmed: removal class 168 -> 0 rows with copies (memory, badger, tiered). The gate also caught gosec G115 from
-  v4.89.3 (annotated). An excise's void piece keeps the
-  voided version's labels (rels: type and endpoints) and stores no properties: 171 instead of 612 bytes on badger for a
-  400-byte property; reads unchanged. sigma and ai-soc read no void-row property (both 27 Oct).
-- **v4.90.1** (TXMEMBERS, a patch for SCALE, ai-soc's k10271800 heap: `recordLabelMemberLocked` 45 -> 172 MB from 300 to
-  900 s on the reference shard): badger's K1 label/rel-type sidecars hold only former members, the label and type
-  index answer the current ones; pinned reads unchanged against memory (badger RAM and disk labels, tiered ref);
-  15 of 16 mutations caught, the 16th equivalent (a current row passing itself saves a cache lookup). ci-fast, tag CI
-  and main CodeQL green, consumers build and vet clean; sigma takes it in v0.11.118, ai-soc pins it;
-  confirmed on ai-soc's reduced BA k10272220 (28 Oct): the sidecar is gone from the heap at 300 and 900 s.
-- **v4.90.2** (PROPDISKTOGGLE, a patch found scoping PROPDISKLABEL): `PropertyIndexOnDisk` off for one open and on
-  again lost the writes made while off (the built marker stayed); a writable open without the flag clears it, the
-  rebuild drops stale rows, a read-only open over an unbuilt keyspace answers from RAM instead of failing. 6 of 6
-  mutations caught. ci-fast, tiered and graph short tests, tag CI and main CodeQL green; consumers build and vet clean.
-- **v4.90.3** (PROPOVERLAY, a patch found by PROPDISKLABEL's parity test): with `PropertyIndexOnDisk` the ordered
-  range, range and prefix scans resolved the write buffer per node ID, so a node updated in the buffer could vanish
-  from them until the flush; now per key, as equality. 9 of 9 mutations caught. ci-fast, tiered and graph short
-  tests, tag CI and main CodeQL green; consumers build and vet clean.
-- **v4.91.0** (PROPDISKLABEL, a minor for SCALE goal 2, ai-soc's BA k10272220: DerivedPage's RAM property index
-  +1.66 GB from 300 to 900 s): `PropertyIndexOnDiskLabels` puts the listed labels' property indexes on disk, the
-  others stay in RAM; per-definition built markers, format marker 12. 30 of 30 mutations caught. Known limit: a
-  label holding a value whose key would pass 65,000 bytes cannot join (the open fails, the store reopens unchanged
-  without it). ci-docker: gosec flagged G115 on the new marker key's byte conversions (now AppendUint16, same
-  bytes), the steps from security on rerun green; tag CI and main CodeQL green, consumers build and vet clean;
-  ai-soc's BO A/B kpdl: answers equal, push +2.8 % (every label on disk +7.0 %), live heap -381 MB, GC mark +20 s
-  (IDXKEYLAZY); ai-soc lists DerivedPage in the product; the reduced BA run waits for René's word.
-- **v4.91.2** (DISKDEFS, a patch from ai-soc's k11 profile: the key-size check +4.0 s, the disk pass +2.6 s):
-  a node write walked every property-index definition twice to find the on-disk ones, and the check built each
-  entry key to measure it; now a list of the on-disk definitions and a length bound (check 225 ns / 4 allocations
-  to 70 ns / 1). 8 of 8 mutations caught (a ninth, a numeric term in the bound, was equivalent and is removed).
-  ci-fast, memory, tiered, core and graph short tests green; sigma, ai-soc, ai-soc engine and bookkeeping build and
-  vet clean. Tag CI and main CodeQL green. ai-soc's k12 BO A/B: push +3.3 % (k11 +3.8 %), the check gone
-  from the gap, the disk pass +0.8 s (k11 +2.6); what remains is badger writing the rows. Closed.
-- **v4.93.0** (IDXSTATS, a minor; ai-soc's request after the v4.92.0 kit run): `g.Index().PropertyIndexStats()`
-  gives one row per declared property index (values, postings, sidecar member postings, estimated RAM bytes, on
-  disk), per open shard on tiered and per slot on sharded; `store.PropertyIndexStatsByScope` sums per label or type.
-  The estimate is calibrated against the measured heap (index shapes, maps per growth band, ordered views) within
-  ±20 %. 54 of 55 mutations caught (the 55th, the directory pointer's 8 B in the measured table constant, is below
-  the calibration's resolution). ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean,
-  scale probe unchanged; tag CI and main green; ai-soc and sigma notified.
-- **v4.94.0** (VALIDENDPRUNE, a minor; sigma's request: paged-row probes 30 % of CPU on BA day 3):
-  `QueryOpts.ValidEndAfter` on current `ByLabelAndProperty` / `ByLabelAndPropertyValues`; `PropertyIndexValidEnd`
-  ({Label, KeyPrefix}, sigma's {DerivedPage, "ov_h"}) keeps an upper bound on each node's valid end in its on-disk
-  entries, reset by every write, refined by reads; `g.Index().PropertyIndexValidEndStats()`. Format marker 14 once
-  a store is opened with the listing (no rollback). 80 of 82 mutations caught (two kept: performance guards).
-  ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged; tag
-  CI and main green; sigma (to bump its three go.mod files) and ai-soc notified.
-- **v4.95.0** (VALIDENDLISTED, a minor; sigma's request after v4.94.0: without a listing the exact filter is
-  slower than sigma's own skip, so sigma passes the bound only where it prunes):
-  `g.Index().PropertyIndexValidEndListed(label, key)`, true where a ValidEndAfter lookup prunes (listed, on disk,
-  trusted; tiered: reference labels), false without an error elsewhere; no I/O. 10 of 10 mutations caught.
-  ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged; tag
-  CI and main green; sigma and ai-soc notified.
-- **v4.96.0** (COMPDISK, a minor; ai-soc: DerivedPage's composite 253 MB in RAM at 30.9 M postings): a composite
-  node index of a label kept on disk keeps its current entries in 0x0C kind 4 (no member entries), built at the
-  next writable open (inside New); format marker 15, no rollback. At 30.8 M postings: listing 7.6 us a node on
-  disk vs 6.8 in RAM (tiered, DepthHot); build open 136-153 s once, peak RSS of a first conversion 7.1 GB vs 2.4
-  GB plain (a rebuild over stale entries 11-15.7 GB: STALEBUILD); composite RAM 249 MB -> 0. 57 of 60 mutations
-  caught (3 performance guards). A fresh store builds nothing (ai-soc's Flux run pins it). ci-docker green, sigma,
-  ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged; tag CI and main green; sigma
-  and ai-soc notified.
-- **v4.96.1** (STALEBUILD, a patch): a build at open over stale entries streams their deletes instead of
-  collecting every key (2.2 GB at 31 M stale entries); peak RSS of that open at 30.8 M 6.8 GB, was 11.3-12.6 GB.
-  5 of 5 mutations caught. ci-docker green (after a lint fix: the placement no longer reads its txn), sigma,
-  ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged; tag CI and main green; sigma
-  and ai-soc notified. Next: RELDISK phase 2 (v4.97.0), CACHESTATS; CREATEPEAK later.
-- **v4.96.2** (VALIDTOPURGE + CLEARGAP, a patch): badger's validity purge keeps a node stored without temporal
-  metadata instead of panicking; `Clear` drops the `0x0A` and `0x0B` keyspaces it left. 2 + 2 mutations caught.
-  Consumers clean, scale probe unchanged; tag CI and main green; ai-soc and sigma notified.
-- **v4.97.0** (CACHESTATS, a minor; ai-soc, to size `CacheBudgetBytes`): `g.Tier().EntityCacheStats()`, a row per
-  open shard with its node and relationship caches' entries and estimated bytes, clean and dirty apart; no shard
-  access counted, nothing opened. 19 of 19 mutations caught. ci-docker green, consumers clean, scale probe
-  unchanged; tag CI and main green; ai-soc (pins it for the Flux run) and sigma notified. Tags held again until
-  ai-soc's run ships; ITERTOMB (adjacency fixed) waits on its branch.
-- **v4.97.1** (ITERTOMB, a patch; ai-soc asked for it in the Flux run, retention purges): the on-disk adjacency
-  lookups, the label-index scan and the property prefix scan set their prefix as the iterator's `Prefix`, so they
-  no longer walk the deleted entries after their keys (1,066x / 655x / 301x before, 0.4-1.4x now). 4 of 4
-  mutations caught. ci-docker green, consumers clean, scale probe unchanged; tag CI and main green; ai-soc (pins it
-  for the Flux run) and sigma notified. Open: the range walks, the purge's adjacency walk, history truncation,
-  the purge token walks, rel purge candidates (todo ITERTOMB). Tags held until ai-soc's run ships.
-- **v4.104.0** (round 4, a minor: VALUETHRESH adds `ValueThreshold` to the configs; LENDCOST fixes v4.103.0's tiered
-  lend regression): tagged on main, which is 7e4399c4 + VLOGCLOSED (the first ci-docker run panicked in VALUETHRESH's
-  GC pass on a DB a crash test closed under the store; the pass now returns) + the release commit. ai-soc's round-4
-  gate on 7e4399c4 + sigma c2ce628f3 green (2-day budget arm: LendByIDs 94.5 s, user CPU 4,302 s, 1,753 bars equal;
-  60-min 4 arms 260 bars equal; masked cycles pass); consumers build and vet clean; ci-docker green on the second run;
-  scale probe level with v4.103.0 (149 B/entity insert, one outlier of 12; 170 B reopen).
-- **v4.103.0** (round 3, a minor: TIERLEND and HEADLEND add exported names; HISTDECODE, HISTTRIM, CASCADEMETA
-  fixes): released from branch `release-v4.103.0` (0156a78c + the release commit); ai-soc's round-3 gate on 0156a78c +
-  sigma 9e3ff88e8 green; consumers build and vet clean (engine with GOTOOLCHAIN=go1.27.3); ci-docker green;
-  scale probe level with v4.102.0 (149 B/entity insert, 170 B reopen, `tasks/evidence/SCALE/existence_maps.txt`).
-- **v4.102.0** (round 2, a minor: RHOMEMIDS, BATCHIDX and UNIQUELOOK add exported names, UNIQUELOOK format marker 16;
-  BATCHADD, RHOPOST, BATCHFAIL fixes): released from branch `release-v4.102.0` (98ea7d36 + the release commit + a
-  tests-only lint fix); ai-soc's 4-arm gate on 98ea7d36 + sigma d8be171c8 green (260 bars equal in each arm); ci-docker
-  green (first run red only on lint in three round-2 tests); consumers build and vet clean (ai-soc engine needs
-  GOTOOLCHAIN=go1.27.3: its parent module requires it); scale probe level with v4.101.0 (149 B/entity insert, 170 B
-  reopen, `tasks/evidence/SCALE/existence_maps.txt`).
-- **v4.101.0** (COLDEDGE, a minor; REVIEW 3 Nov tests): ci-docker green on a6245ca0 (race, long, gosec, govulncheck,
-  cover, fuzz) at load 30-45; one tests-only fix after it (`934b2fba`, a load flake); consumers build and vet clean (ai-soc's
-  vet red only in an untracked agent-patch copy inside its checkout, not rho); scale probe in
-  `tasks/evidence/SCALE/existence_maps.txt`.
-- **v4.100.1** (ELEMPROBE drop, a patch on René's go, 3 Nov): after a drop of an on-disk definition whose property key another definition still indexes, `IDsByLabelAndPropertyValues` reads rows for that key (an inexact marker) instead of the dropped one's entries. Neither consumer drops such a definition (sigma: never; ai-soc: one RAM-open migration). ci-fast green, consumers build and vet clean.
-- **v4.100.0** (ELEMPROBE, BORROWREAD, WHOLEROW and ASOFWALK step 1, a minor in ai-soc's release round on René's word): `Nodes().IDsByLabelAndPropertyValues` answers from the index without loading rows; `Node.BorrowProperty` reads without the deep copy; `Nodes().ReplaceVersion` replaces the current row whole as a new version; a tiered as-of read of a node on its owner shard walks that shard. ci-docker green (1,676 s, coverage 87.8 %), sigma, ai-soc, ai-soc engine (go1.27.3) and bookkeeping build and vet clean, scale probe unchanged.
-- **v4.99.0** (ELEMDISK and WRITEGROW, a minor for sigma's PAGEBLOB blocks and write-back on René's word outside the release round, cut from v4.98.4 and merged back, as main also carries WHOLEROW and ASOFWALK for the next round): an Elements index keeps its entries on disk with its label's; `Temporal().NodeEffectiveTimelineFrom` reads only the tail it returns.
-- **v4.98.4** (RELPAGEVALID and PUSHSLOW, a patch for ai-soc's BA night run, cut from v4.98.3 and merged back, as main also carries ASOFWALK's exported names for the next minor): a member page seeks from the cursor and stops at its limit; a bounded read does not read a returned row without history again.
-- **v4.98.3** (PREEPOCHREL, a patch; ai-soc pins it beside sigma v0.11.153): a reference or archived start with a `ValidFrom` outside the ID range mints at the clock instead of refusing.
-- **v4.98.2** (PURGEDROP, a patch): a node label purge no longer drops a shard holding relationships or history that are not that label's. ai-soc and sigma stay on v4.98.1 this round; ai-soc takes it next round.
-- **v4.98.1** (a patch, test only): `TestValueDictEntryHeap` runs in its own process; v4.98.0's tag CI is red on it, so pin v4.98.1.
-- **v4.98.0** (TIERCLOCK, ADR-0013, a minor; ai-soc, René's goal of the BA archive replayed): `tiered.Config.Clock` drives
-  the hot window and `ColdAfter`; `MintAtValidFrom` mints event IDs at valid time on node field 31, with window shards
-  made on demand. A 33-day replay in ai-soc's shape: one shard a day, at most 3 open, heap flat. Also
-  `ValueDictionaryStats.Entries/Bytes` (VDICTDISK step 2). Not built: the retention watermark, `ErrWindowDropped`.
-- **v4.97.3** (VDICTDISK step 1, a patch; ai-soc, BA k10291501): a badger value dictionary entry holds one copy of
-  its value, 130 B live per entry for a 51 B value (410 B before, 666 B when it was a slice of a row).
-- **v4.97.2** (ITERTOMB, a patch; ai-soc asked for it in the Flux run, BA's retention purges): the on-disk property
-  range walks take every version and stop at their upper bound (424x / 442x before, 0.7-0.9x now); the history
-  truncate, trim and compact walks, which the purge and erasure share, and the purge's type-index and per-node
-  adjacency walks set their prefix (543-787x and 735x / 1,293x before, 0.9-1.1x now). 8 of 8 mutations caught.
-  Every ITERTOMB walk is fixed or listed as a whole-keyspace walk by design. ci-docker green, consumers clean,
-  scale probe unchanged; tag CI and main green; ai-soc (next run's release round) and sigma notified. Tags held
-  again until ai-soc's next run ships.
-- **v4.92.0** (RELDISK phase 1, a minor for SCALE goal 2, ai-soc's request for sigma's 2b edges):
-  `RelPropertyIndexOnDiskTypes` keeps the listed relationship types' property indexes in a new `0x0C` keyspace
-  (current entries for lookups, member entries for pinned reads); node indexes on disk answer pinned reads from
-  `0x0C` member entries too, so no membership sidecar is built in RAM for either. Format marker 13: a store with
-  an on-disk property index built by v4.92.0 is refused by v4.91.x. 123 of 124 mutations caught (the 124th
-  equivalent, kept). Found on the way: the range door's bounds (fixed before release); a pre-existing panic in
-  `PurgeNodesByLabelValidToBefore` on a node without temporal metadata (todo, a patch). ci-docker green, sigma,
-  ai-soc, ai-soc engine and bookkeeping build and vet clean, scale probe unchanged without the option; tag CI and
-  main green; ai-soc and sigma notified (ai-soc measures on the kit). Phase 2 (the composite relationship index on
-  disk, `ByTypeAndProperties` at a pin, for NETWORK) is the next minor.
-- **v4.91.1** (IDXKEYLAZY, a patch from kpdl's GC term): index maintenance built a value key for every property of
-  the row per label, indexed or not (a copy of each string value; twice with a label listed); now only for indexed
-  properties: 33-66 KB to ~0.5 KB per write in the bench. 15 of 16 mutations caught, the 16th equivalent. The patch
-  gate refused two exported helpers in internal/index (unexported since); ci-fast, memory, tiered, core and graph
-  short tests green; ai-soc, ai-soc engine and bookkeeping build and vet clean, sigma's working tree did not build
-  on its own (its checkout mid-cherry-pick, PAGEAFTER3); sigma v0.11.126 ships on v4.91.1 (its gate and CI green)
-  and my recheck builds and vets clean. Tag CI and main CodeQL green.
-- **v4.89.4** (HISTPEND, a patch for sigma's BenchmarkFoldInputs rows8): tag CI and ci-fast green, consumers build and vet clean; a history read finds its
-  entity's buffered rows by key prefix instead of walking the write buffer (sigma's bench: last ten cuts 15-20 ->
-  10 ms, run 1.30 -> 0.81 s); 7 mutations caught, the unreachable length guard removed.
-- **v4.89.3** (PROPBOUNDS, a patch for ai-soc's P4BSTORE A/B k10271117): tag CI and ci-fast green, consumers build and vet clean; the on-disk equality lookup
-  keeps the node ID bounds of its string walk in memory instead of seeking both ends of the node keyspace per call
-  (200 lookups beside 19,999 deleted rows: 0.7-0.8x their time without them, before 3,150x); 6 mutations caught.
-- **v4.89.2** (PROPREWRITE, a patch for sigma's rewritten state units): tag CI and ci-fast green, consumers build and vet clean;
-  an update writes only the on-disk property entries whose value changed (20 updates: 1 version, before 21); 10
-  mutations caught.
-- **Branches:** every merged branch is deleted (René 27 Oct: "delete if everything is merged"): the item branches through
-  histpend (v4.89.4), headparity, openimage (all its patches on main), worktree-agent-aa318165f7465324c, and user-only action 5's
-  `v5` and `worktree-agent-a0d52d5298e44faee`. The checkout `rho-tkg` sits detached at origin/main; item work starts a branch.
-  The 7 unmerged branches live as parents of one commit on `archive/unmerged-2026-10-27` (6554d8ad, pushed; tree = main's, merge
-  strategy ours; René 27 Oct), whose message gives each tip, base and status. Restore one with `git branch <name> <tip>`:
-  row102-pending-ranged f4b27842, tombstone-writer-v4.63 37a1ff56, v5-takeover 3bd4d13a, v5-realstore-harness af75a982,
-  wp-37-import-throughput 392f88e2, worktree-agent-a34d277df6499077d d2cc529f, worktree-agent-a6a166b726378f33b d479f1e1
-  (the last two: uncommitted 22 Oct agent-worktree changes, not reviewed). Their separate branches, local and on origin, are
-  deleted. main is pushed.
-- **v5 PAUSED** (René 2026-10-16, row 61): `v5-takeover` (tip 3bd4d13a, in `archive/unmerged-2026-10-27`; origin/v5 untouched). Do not resume without René.
-  Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk, 157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. The
-  91.8 records/op is a synthetic in-memory probe; options A/B/C are in no committed file: `git show af75a982:tasks/evidence/v5-scale/notes.md`.
-  Gap analysis (file removed 2026-10-22): `git show 7c0a4b74:docs/v5-gap-to-main.md`. Real-store harness: `v5-realstore-harness`
-  (`af75a982`) and `wp-37-import-throughput` (`392f88e2`), in `archive/unmerged-2026-10-27`. The stale local `v5` is deleted (27 Oct; its plan docs are in origin/v5 at `04c7fd4f`, its review file on main at `0622da63`). Since the takeover (row 51) `pkg/graph` + `v5compat` are ours on `v5-takeover` (open WPs in todo; WP history `git show aeb7f8e0:tasks/todo.md`); no posts on GitHub issue #11 (René tells Markus).
+  - **Reviews:** René (3 Nov, "yes, always"): one read-only Fable review per finished branch, before its merge, given
+    the code and the diff, not my conclusions.
+- **Release gates, latest first** (what each release changed: `docs/CHANGELOG.md` under its tag; the gate notes of
+  v4.85.0 to v4.100.1: `git show 7fd75c40:HANDOVER.md`):
+  - **v4.104.0** (round 4, a minor: VALUETHRESH adds `ValueThreshold` to the configs; LENDCOST fixes v4.103.0's tiered
+    lend regression): tagged on main, which is 7e4399c4 + VLOGCLOSED (the first ci-docker run panicked in VALUETHRESH's
+    GC pass on a DB a crash test closed under the store; the pass now returns) + the release commit. ai-soc's round-4
+    gate on 7e4399c4 + sigma c2ce628f3 green (2-day budget arm: LendByIDs 94.5 s, user CPU 4,302 s, 1,753 bars equal;
+    60-min 4 arms 260 bars equal; masked cycles pass); consumers build and vet clean; ci-docker green on the second
+    run; scale probe level with v4.103.0 (149 B/entity insert, one outlier of 12; 170 B reopen); tag CI green.
+  - **v4.103.0** (round 3, a minor: TIERLEND and HEADLEND add exported names; HISTDECODE, HISTTRIM, CASCADEMETA
+    fixes): released from branch `release-v4.103.0` (0156a78c + the release commit); ai-soc's round-3 gate on 0156a78c
+    + sigma 9e3ff88e8 green; consumers build and vet clean; ci-docker green; scale probe level with v4.102.0.
+  - **v4.102.0** (round 2, a minor: RHOMEMIDS, BATCHIDX and UNIQUELOOK add exported names, UNIQUELOOK format marker
+    16; BATCHADD, RHOPOST, BATCHFAIL fixes): released from branch `release-v4.102.0` (98ea7d36 + the release commit +
+    a tests-only lint fix); ai-soc's 4-arm gate on 98ea7d36 + sigma d8be171c8 green; ci-docker green (first run red
+    only on lint in three round-2 tests); consumers build and vet clean; scale probe level with v4.101.0.
+  - **v4.101.0** (COLDEDGE, a minor): ci-docker green on a6245ca0 at load 30-45; one tests-only fix after it
+    (`934b2fba`, a load flake); consumers build and vet clean; scale probe in `tasks/evidence/SCALE/existence_maps.txt`.
+  - **v4.75.0 to v4.100.1** (24 Oct to 3 Nov): each gated as the checklist says (ci-docker or ci-fast, consumers,
+    scale probe, tag CI); exceptions worth knowing: v4.98.0's tag CI is red on `TestValueDictEntryHeap`, so pin
+    v4.98.1; v4.99.0 and v4.98.4 were cut from older tags and merged back.
+- **Checklist facts learned at releases:** the ai-soc engine builds only with GOTOOLCHAIN=go1.27.3 (its parent module
+  requires it); merging a release branch back can move Unreleased CHANGELOG entries under the tag's heading, so check
+  the heading after every such merge; `scripts/patchgate` is a package: `go run ./scripts/patchgate <base>`.
+- **Branches:** every merged branch is deleted (René 27 Oct: "delete if everything is merged"). Item work starts a
+  branch from main in the main checkout or a worktree removed when the item ends. The 7 unmerged branches of 27 Oct
+  live as parents of one commit on `archive/unmerged-2026-10-27` (6554d8ad, pushed; tree = main's, merge strategy
+  ours; René 27 Oct), whose message gives each tip, base and status. Restore one with `git branch <name> <tip>`:
+  row102-pending-ranged f4b27842, tombstone-writer-v4.63 37a1ff56, v5-takeover 3bd4d13a, v5-realstore-harness
+  af75a982, wp-37-import-throughput 392f88e2, worktree-agent-a34d277df6499077d d2cc529f,
+  worktree-agent-a6a166b726378f33b d479f1e1 (the last two: uncommitted 22 Oct agent-worktree changes, not reviewed).
+- **v5 PAUSED** (René 2026-10-16, row 61): `v5-takeover` (tip 3bd4d13a, in `archive/unmerged-2026-10-27`; origin/v5
+  untouched). Do not resume without René. Reason (real ai-soc slice, 14.3 k ops): ~73 records/op, 5.6 KB/op on disk,
+  157-176 ops/s; projected for 5 M ops ~28 GB (11x v4 disk), 8-9 h. Options A/B/C: `git show
+  af75a982:tasks/evidence/v5-scale/notes.md`; gap analysis: `git show 7c0a4b74:docs/v5-gap-to-main.md`; the old
+  `v5` plan docs: origin/v5 at `04c7fd4f`. No posts on GitHub issue #11 (René tells Markus).
 - **Consumers and their agents** (ask the agent for runs and data, never browse their repos; answer a request the same
   day with its todo item first; agent names change per session, `ListAgents`; if neither resolves at a release, put
   the release note here and tell René in one line):
-  - ai-soc (31 Oct: released v5.1.0 on rho v4.98.3 + sigma v0.11.155). Tiered
-    main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2; HistoryDeltaEncoding, SyncWrites, DurableCommit,
-    RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk (PropertyIndexOnDisk switched on 26 Oct, P4BSTORE 77d7fb7c,
-    and off again 27 Oct until PROPSTR: string lookups walk every longer string), ValueDictionaries, UntimedUnbounded, AllowRetentionPurge;
-    `DepthWarm` on windowed reads; `CreateRelTemporal` on its 29 estate-indexed rel types; unique keys on reference
-    labels only; Derived (and its composite index) on the reference shard;
-    its /metrics exports `aisoc_store_shard_access_total{tier}` from ShardAccessStats (kit BA slice: warm, cold and
-    cold opens 0). Event times UTC (Check Point CSV in the
-    operator's zone, BO: America/Bogota); Flux runs Europe/Berlin.
-  - sigma-tkgd (31 Oct: v0.11.155 on rho v4.98.3); its
-    test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired` below); its
-    store analysis tool is `projects/derived-writeback` (cmd/wbscan).
+  - ai-soc (4 Nov: pinned at ea30bfda on rho v4.104.0 + sigma v0.11.162; its v5 data layout work is on its branch
+    `v5-new-datalayout`). Tiered main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2;
+    HistoryDeltaEncoding, SyncWrites, DurableCommit, RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk,
+    ValueDictionaries, UntimedUnbounded, AllowRetentionPurge; DerivedPage's property index on disk
+    (PropertyIndexOnDiskLabels); `DepthWarm` on windowed reads; `CreateRelTemporal` on its 29 estate-indexed rel
+    types; unique keys on reference labels only; Derived (and its composite index) on the reference shard; its
+    /metrics exports `aisoc_store_shard_access_total{tier}` from ShardAccessStats. Event times UTC (Check Point CSV in
+    the operator's zone, BO: America/Bogota); Flux runs Europe/Berlin.
+  - sigma-tkgd (4 Nov: v0.11.162 on rho v4.104.0; plans `ValueThreshold` 32 KiB on tiered for its 64 KiB DerivedPage
+    blocks); its test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired`
+    below); its store analysis tool is `projects/derived-writeback` (cmd/wbscan).
   - agent-bookkeeping (`~/Work/2026/bds421/sigma/agent-bookkeeping`): build check only.
-- **Housekeeping:** deletions are René's call (`rm` is denied to agents; user-only actions below). Consumer build
-  check: Appendix B.
+- **Housekeeping:** deletions are René's call (`rm` is denied to agents; user-only actions below; finished scratch goes
+  on the RHO_DONE list in `~/cleanup.sh`). Consumer build check: Appendix B.
 
 ## Glossary
 
@@ -277,11 +116,10 @@ René's word 26 Oct: the merged item branches are deleted (39, flushpart with -D
 tombstone-writer-v4.63, v5-realstore-harness and wp-37-import-throughput were pushed as backups; since 27 Oct all
 unmerged branches are in `archive/unmerged-2026-10-27` (see Branches).
 
-1. `! rm -rf /dev/shm/sigma-*` (sigma test dirs, ~11 GB) and the merged worktrees in `~/Work/2026/datainsights/sigma-tkgd` (`git worktree list`).
-2. `! rm -rf /tmp/claude-1000/-home-renework2023-Work-2026-datainsights-rho-tkg/aa649ecc-3385-4943-a9bf-f630b51c9f5c/scratchpad/r3` (rho 22 M bench seed, 3.3 GB).
-3. `! rm ~/Work/2026/datainsights/rho-tkg/warm` (stray 10-byte file, untracked).
-4. gh-dashboard scratchpad (667 MB, path in that session). The cleanup message to tts-tests-b6 expired and monitoring-a9's is
-   held (different permission mode); tell them directly if wanted.
+1. `! rm -rf /dev/shm/sigma-*` (sigma test dirs: 33 dirs, /dev/shm 4.5 GB on 4 Nov; ask sigma first, some may be a
+   running test's) and the merged worktrees in `~/Work/2026/datainsights/sigma-tkgd` (`git worktree list`).
+2. `! rm ~/Work/2026/datainsights/rho-tkg/warm` (stray 10-byte file, untracked; agents leave it alone).
+3. gh-dashboard scratchpad (667 MB, path in that session); tell that session directly if wanted.
 
 ## Appendix A — origin watch
 
@@ -293,4 +131,5 @@ pushes by Markus only go to its log. Re-arm after each exit; one instance at a t
 For each consumer `C` in `~/Work/2026/datainsights/sigma-tkgd`, `~/Work/2026/datainsights/ai-soc/ai-soc-main` (and its `engine/`),
 `~/Work/2026/bds421/sigma/agent-bookkeeping`: `mkdir -p $S/<name>; cp C/go.mod C/go.sum $S/<name>/;
 (cd $S/<name> && go mod edit -replace github.com/data-insights-ai/rho-tkg/v4=/home/renework2023/Work/2026/datainsights/rho-tkg go.mod)` (the release under test),
-then `cd C && GOFLAGS=-mod=mod go build -modfile=$S/<name>/go.mod ./... && GOFLAGS=-mod=mod go vet -modfile=$S/<name>/go.mod ./...`.
+then `cd C && GOFLAGS=-mod=mod go build -modfile=$S/<name>/go.mod ./... && GOFLAGS=-mod=mod go vet -modfile=$S/<name>/go.mod ./...`
+(the ai-soc `engine/` with `GOTOOLCHAIN=go1.27.3` in front of both commands).
