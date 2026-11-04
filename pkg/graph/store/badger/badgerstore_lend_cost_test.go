@@ -425,3 +425,37 @@ func TestLendSortedRowMissingOnEveryPath(t *testing.T) {
 		})
 	}
 }
+
+// TestLendSortedBadgerRereadsWithoutFill (LENDCOST round 2): plain badger
+// keeps round 7's scan rule, so a second lend of the same cold IDs reads
+// them again (tiered's lend fills instead, TestTieredLendSortedFillsTheCache).
+func TestLendSortedBadgerRereadsWithoutFill(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+	for i := int64(1); i <= 4000; i++ {
+		putTestNode(t, bs, i, 1, nil)
+		putTestRel(t, bs, 10_000+i, 3, 1, i)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	bs.nodeCache.ResetForTest()
+	bs.relCache.ResetForTest()
+	ids := []int64{1, 1001, 2001, 3001}
+	rids := make([]types.RelID, len(ids))
+	for i, id := range ids {
+		rids[i] = types.RelID(snowflake.ID(10_000 + id))
+	}
+	for call := 1; call <= 2; call++ {
+		counts := countScanReads(t)
+		if err := bs.LendNodesSorted(lendCostNodeIDs(ids...), make([]*types.Node, len(ids))); err != nil {
+			t.Fatal(err)
+		}
+		if err := bs.LendRelationshipsSorted(rids, make([]*types.Relationship, len(rids))); err != nil {
+			t.Fatal(err)
+		}
+		if counts[scanReadGet] != 2*len(ids) || bs.nodeCache.Len() != 0 || bs.relCache.Len() != 0 {
+			t.Fatalf("call %d: %d gets, caches %d nodes %d rels; want %d gets, empty caches",
+				call, counts[scanReadGet], bs.nodeCache.Len(), bs.relCache.Len(), 2*len(ids))
+		}
+	}
+}

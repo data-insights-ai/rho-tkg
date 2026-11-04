@@ -17,3 +17,14 @@ FAIL
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.829s
 FAIL
 (TestLendSortedLayeredAgreesWithPointReads and TestLendSortedRepinsAfterFlushBetweenIDs pass on this code: the equivalence guards the fix must keep.)
+
+LENDCOST round 2 red (tiered's batch lend does not fill the cache; v4.102.0's per-ID path did), on 4cbb92eb, 2026-11-04
+$ go test -p 1 -short -count=1 -run 'TestTieredLendSortedFillsTheCache' ./pkg/graph/store/tiered/
+--- FAIL: TestTieredLendSortedFillsTheCache (0.51s)
+    tieredstore_lend_fill_test.go:61: second node lend of the same IDs decoded 9 rows, want 0 (cache hits)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.518s
+FAIL
+$ go test -p 1 -short -count=1 -run 'TestLendSortedBadgerRereadsWithoutFill' ./pkg/graph/store/badger/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.051s
+(the badger test passes and must keep passing: plain badger keeps round 7's no-fill rule)
