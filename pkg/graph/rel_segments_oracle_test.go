@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
 	"math/rand"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -334,22 +336,90 @@ func (o *segOracle) replicate() {
 
 // --- canonical fingerprints ---
 
+// segRelFP renders every field of a relationship: identity, version, frozen
+// flag, every temporal field (the base ID included), the integrity block and
+// each property as its kind and value hash. Built with strconv, not fmt: the
+// fingerprint ran on every row of every door at every compare and was 43% of
+// the oracle's CPU through fmt's reflection (4 Nov).
 func segRelFP(r *types.Relationship) string {
 	if r == nil {
 		return "<nil>"
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "id=%d tok=%d %d->%d v=%d frozen=%t", r.ID(), r.TypeToken().Value(), r.StartNodeID(), r.EndNodeID(), r.Version(), r.IsFrozen())
+	b := make([]byte, 0, 256)
+	b = append(b, "id="...)
+	b = strconv.AppendInt(b, int64(r.ID()), 10)
+	b = append(b, " tok="...)
+	b = strconv.AppendUint(b, uint64(r.TypeToken().Value()), 10)
+	b = append(b, ' ')
+	b = strconv.AppendInt(b, int64(r.StartNodeID()), 10)
+	b = append(b, "->"...)
+	b = strconv.AppendInt(b, int64(r.EndNodeID()), 10)
+	b = append(b, " v="...)
+	b = strconv.AppendUint(b, uint64(r.Version()), 10)
+	b = append(b, " frozen="...)
+	b = strconv.AppendBool(b, r.IsFrozen())
 	if tm := r.Temporal(); tm != nil {
-		fmt.Fprintf(&b, " tm=%+v base=%d", *tm, tm.BaseEntityID())
+		b = append(b, " tm="...)
+		for _, v := range []types.Instant{tm.ValidFrom, tm.ValidTo, tm.TxFrom, tm.TxTo, tm.CreatedAt, tm.UpdatedAt, tm.DeletedAt} {
+			b = strconv.AppendInt(b, int64(v), 10)
+			b = append(b, ',')
+		}
+		b = append(b, tm.CreatedBy...)
+		b = append(b, ',')
+		b = append(b, tm.UpdatedBy...)
+		b = append(b, ",retracted="...)
+		b = strconv.AppendBool(b, tm.Retracted)
+		b = append(b, ",void="...)
+		b = strconv.AppendBool(b, tm.Void)
+		b = append(b, ",keptValidTo="...)
+		b = strconv.AppendBool(b, tm.DeleteKeptValidTo)
+		b = append(b, " base="...)
+		b = strconv.AppendInt(b, int64(tm.BaseEntityID()), 10)
 	}
 	if ig := r.Integrity(); ig != nil {
-		fmt.Fprintf(&b, " ig=%s|%s|%s|%s|%s|%s|%d|%x", ig.Hash, ig.PrevHash, ig.FromNodeHash, ig.ToNodeHash, ig.AuthorID, ig.AuthorizedBy, ig.AuthorizationLevel, ig.Signature)
+		b = append(b, " ig="...)
+		for _, s := range []string{ig.Hash, ig.PrevHash, ig.FromNodeHash, ig.ToNodeHash, ig.AuthorID, ig.AuthorizedBy} {
+			b = append(b, s...)
+			b = append(b, '|')
+		}
+		b = strconv.AppendUint(b, uint64(ig.AuthorizationLevel), 10)
+		b = append(b, '|')
+		b = hex.AppendEncode(b, ig.Signature)
 	}
+	var hash []byte
 	for _, p := range r.Properties() {
-		fmt.Fprintf(&b, " %s=%T:%x", p.Key, p.Value, types.AppendPropertyValueHashBytes(nil, p.Value))
+		b = append(b, ' ')
+		b = append(b, p.Key...)
+		b = append(b, '=')
+		b = append(b, segValueKind(p.Value)...)
+		b = append(b, ':')
+		hash = types.AppendPropertyValueHashBytes(hash[:0], p.Value)
+		b = hex.AppendEncode(b, hash)
 	}
-	return b.String()
+	return string(b)
+}
+
+// segValueKind names a property value's dynamic type (what %T printed).
+func segValueKind(v any) string {
+	switch v.(type) {
+	case nil:
+		return "<nil>"
+	case string:
+		return "string"
+	case int64:
+		return "int64"
+	case float64:
+		return "float64"
+	case bool:
+		return "bool"
+	case []string:
+		return "[]string"
+	case []any:
+		return "[]interface {}"
+	case map[string]any:
+		return "map[string]interface {}"
+	}
+	return fmt.Sprintf("%T", v)
 }
 
 func segRelsFP(rs []*types.Relationship, err error) string {
