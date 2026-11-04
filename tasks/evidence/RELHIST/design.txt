@@ -219,3 +219,18 @@ derived_read.go:350-360: one pin at or after the current row's start -> singular
 several pins, or one older pin -> plural NodeEffectiveTimelines, a whole-history walk. So cause (1), a pin below maxTx,
 is real on sigma's shape: option C (a second generation for pins straddling a cut) moves up beside Phase 1. Questions 3
 and 5 (tombstone share, shard placement) need ai-soc's data.
+
+ai-soc, 4 Nov evening, from code at its pin (ai-soc v5.2.3 = sigma v0.11.167 + rho v4.104.5), no run (René: "no
+measurements.. lets them develop this first"):
+(1) sigma derived_read.go:350-360: NodeEffectiveTimeline (head cache) only for ONE pin >= the node's current TxFrom;
+    several pins or one older pin take NodeEffectiveTimelines (whole walk). sigma's per-call readWork counters
+    (derived_read.go:291) are not exported, so no run log carries per-cut counts.
+(2) Rewrites are tx.UpdateNode inside sigma's write transaction setting tkg_valid_to: a run is closed in place
+    (overview_graph.go:1260), the Session node's valid end moves to the pin (:793); validity changes on every closing
+    write. No Delete+re-Import or ReplaceVersion in sigma's application layer.
+(3) Tombstone/retraction share: store data, no code answer (rho's bench).
+(4) One process, one session through all cuts: no restart between cuts.
+(5) Tiered: Derived, Session, DerivedPage on the reference shard (RefLabels, aisoc graphmgr/manager.go:707-710).
+(6) Repeat reads per cut: needs sigma's counter, as (1).
+So P5's gain is decided by rho's own benches: Phase 0's miss reasons on a sigma-shaped bench (UpdateNode closing
+validity in a tx, plural door with several and older pins).
