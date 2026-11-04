@@ -25,10 +25,7 @@ import (
 //   - major: an exported name of a public (non-internal) package is removed
 //     or its signature changed (parameter names aside), or go.mod's module
 //     path changes its major;
-//   - minor: a new exported name in any package, internal ones included (a
-//     new method of a public interface without unexported methods is named
-//     as such: Go counts it breaking for outside implementations, rho's
-//     history ships it as a minor since its Ops interfaces are rho's own); a
+//   - minor: a new exported name in any package, internal ones included; a
 //     changed store format marker (a const or var named *FormatVersion*); a
 //     badger minor or major bump; a raised go directive;
 //   - patch: anything else.
@@ -123,13 +120,6 @@ func kindOf(base, head tree) (int, []string) {
 		if strings.Contains("/"+dir+"/", "/internal/") {
 			continue // no consumer imports it
 		}
-		for n, sig := range newAPI[dir] {
-			typ, _, _ := strings.Cut(n, ".")
-			_, existed := a[typ]
-			if _, old := a[n]; existed && !old && strings.HasPrefix(sig, openIface) {
-				raise(minor, "%s: %s is a new method of an interface outside code could implement", dir, n)
-			}
-		}
 		for n, sig := range a {
 			if now, ok := newAPI[dir][n]; !ok {
 				raise(major, "%s: %s is removed", dir, n)
@@ -169,10 +159,6 @@ func goDirective(gomod []byte) string {
 	}
 	return ""
 }
-
-// openIface prefixes the signature of a method of an interface that outside
-// code can implement: adding one breaks every outside implementation.
-const openIface = "open interface method: "
 
 func modulePath(gomod []byte) string {
 	if m := moduleRE.FindSubmatch(gomod); m != nil {
@@ -263,20 +249,11 @@ func exportedAPI(src []byte, out map[string]string, marker func(name, spec strin
 						head += "= "
 					}
 					var fields *ast.FieldList
-					prefix := ""
 					switch t := s.Type.(type) {
 					case *ast.StructType:
 						fields = t.Fields
 					case *ast.InterfaceType:
 						fields = t.Methods
-						prefix = openIface
-						for _, fl := range fields.List {
-							for _, n := range fl.Names {
-								if !n.IsExported() {
-									prefix = "" // sealed: only its own package implements it
-								}
-							}
-						}
 					default:
 						out[s.Name.Name] = head + text(s.Type)
 					}
@@ -286,11 +263,11 @@ func exportedAPI(src []byte, out map[string]string, marker func(name, spec strin
 					out[s.Name.Name] = head
 					for _, fl := range fields.List {
 						if len(fl.Names) == 0 { // embedded: its names are promoted
-							out[s.Name.Name+".("+text(fl.Type)+")"] = prefix + "embedded"
+							out[s.Name.Name+".("+text(fl.Type)+")"] = "embedded"
 						}
 						for _, n := range fl.Names {
 							if n.IsExported() {
-								out[s.Name.Name+"."+n.Name] = prefix + sig(fl.Type)
+								out[s.Name.Name+"."+n.Name] = sig(fl.Type)
 							}
 						}
 					}

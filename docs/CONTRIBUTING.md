@@ -136,8 +136,8 @@ the kind of release, run once; it stops at the first red, and a red is fixed on 
 4. `make release-patch|release-minor|release-major` (`scripts/release`, Go, edits no file): preconditions (main, clean,
    the remote's main an ancestor of HEAD, the tag absent, a push dry-run passes), the diff's kind at most the one asked for (a major: a removed or
    changed public name: a signature's types, type parameters, an embedded field, alias or defined type, a const's type,
-   parameter names aside; or the module path's /vN; a minor: a new exported name, internal packages included, a new
-   method of an open public interface named as such, a store format marker, a badger minor bump or a raised go directive;
+   parameter names aside; or the module path's /vN; a minor: a new exported name, internal packages included, a store
+   format marker, a badger minor bump or a raised go directive;
    else a patch), the CHANGELOG's newest section is the next version and [Unreleased] is
    empty, the gate of that kind, `git tag -a --cleanup=verbatim` (message: that section), `git push --atomic` of main and the tag. A major
    moves the module path to /v(N+1) first. A red step stops it; the fix goes on main and the release
