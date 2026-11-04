@@ -1,0 +1,19 @@
+LISTREAD measurement, 4 Nov 2026 (host load 45-55, shared machine; numbers vary by run)
+Test: pkg/graph/internal/core/listread_measure_test.go (//go:build measure), tiered store on disk,
+RefLabels [Page], 200,000 nodes with a composite index (kind, tenant), a fifth updated (history),
+closed and reopened cold; ByLabelAndProperties pages of 1000, then HasHistory per listed node.
+
+Before (per-row point read: prefetchNodeScan = a read transaction and txn.Get per row)
+  pages      29.3 / 11.2 / 6.8 us per node   CPU profile: 75 % in per-row DB.View + Txn.Get (levelHandler.get, table seek, block decompress)
+  HasHistory  4.7 / 3.4 / 2.9 us per node
+After (forEachNodeBulk: one forward iterator per page, the ByLabel door's path)
+  pages       6.6 / 2.9 / 3.1 us per node    CPU profile: msgpack decode of the rows is now most of it
+  HasHistory 14.0 / 3.0 / 3.9 us per node    (the 14.0 run was I/O-bound at load 50: 2.8 s wall, 1.2 s CPU)
+
+HasHistory profile: 72 % is tiered's liveness re-read of the current row's stamps
+(walkNodeHistoryShards -> nodeCurrentStampsRow -> badger committedRowStamps, a point Get per node);
+the presence-set lookup itself is a RAM probe. A batch HasHistory(ids) could read those stamps through
+one forward scan as the pages now do: a minor (new door), left for when sigma's restore shows it matters.
+
+Gate: TestListReadPagesReadRowsInOneScan (core), cold badger store, 300 rows, both doors: 0 rows by
+point read (NodeRowDecodesForTest). Old code: 300 of 300 by point read (mutation check).

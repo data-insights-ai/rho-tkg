@@ -468,26 +468,19 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey string,
 
 	hasTemporal := opts.HasValidTimeFilter()
 	var result []*types.Node
-	for _, nid := range nids {
-		n, err := bs.prefetchNodeScan(nid)
-		if err != nil {
-			if errors.Is(err, ErrNodeNotFound) {
-				continue // orphaned index entry
-			}
-			return nil, err
+	// One forward iterator for the page's misses (LISTREAD, as the composite door).
+	err := bs.forEachNodeBulk(nids, func(n *types.Node) bool {
+		if !n.HasLabelTokenRaw(labelToken) || !match.Node(n, propKey, elements) {
+			return true
 		}
-		if !n.HasLabelTokenRaw(labelToken) {
-			continue
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), n.ID().SnowflakeID(), n.Temporal(), opts) {
+			return true
 		}
-		if match.Node(n, propKey, elements) {
-			if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), nid.SnowflakeID(), n.Temporal(), opts) {
-				continue
-			}
-			result = append(result, n)
-			if opts.Limit > 0 && len(result) >= opts.Limit {
-				break
-			}
-		}
+		result = append(result, n)
+		return opts.Limit == 0 || len(result) < opts.Limit
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	if len(result) == 0 {

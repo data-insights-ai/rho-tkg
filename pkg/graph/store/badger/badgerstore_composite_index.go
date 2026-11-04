@@ -286,29 +286,21 @@ func (bs *Store) fetchNodesByLabelPropertiesIDs(labelToken uint16, values map[st
 
 	hasTemporal := opts.HasValidTimeFilter()
 	var result []*types.Node
-	for _, nid := range nids {
-		n, err := bs.prefetchNodeScan(nid)
-		if err != nil {
-			if errors.Is(err, ErrNodeNotFound) {
-				continue // orphaned index entry
-			}
-			return nil, err
+	// One forward iterator for the page's misses, not a read transaction and
+	// point Get per row (LISTREAD: 75 % of a cold page was per-row Gets).
+	err := bs.forEachNodeBulk(nids, func(n *types.Node) bool {
+		if !n.HasLabelTokenRaw(labelToken) || !indexpkg.NodeMatchesAllProperties(n, values) {
+			return true
 		}
-		if !n.HasLabelTokenRaw(labelToken) {
-			continue
-		}
-		if !indexpkg.NodeMatchesAllProperties(n, values) {
-			continue
-		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), nid.SnowflakeID(), n.Temporal(), opts) {
-			continue
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), n.ID().SnowflakeID(), n.Temporal(), opts) {
+			return true
 		}
 		result = append(result, n)
-		if opts.Limit > 0 && len(result) >= opts.Limit {
-			break
-		}
+		return opts.Limit == 0 || len(result) < opts.Limit
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	if len(result) == 0 {
 		return nil, nil
 	}
