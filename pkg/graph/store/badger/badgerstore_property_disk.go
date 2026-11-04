@@ -179,6 +179,13 @@ var testHookPropIdxAdd func(bs *Store, batch bool)
 // door call sites individually: the RAM ones by the index helper, those kept
 // on disk by their entries (COMPDISK, compositeDiskOpsLocked).
 func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []writeOp {
+	return bs.maintainPropertyIndexesAddKeys(n, id, nil, false)
+}
+
+// maintainPropertyIndexesAddKeys is maintainPropertyIndexesAdd with n's value
+// keys from the door's KEYSIZE check when built (checkNodeDiskKeysLocked), else
+// built here once for the 0x0A and the member entries (PAGECOST).
+func (bs *Store) maintainPropertyIndexesAddKeys(n *types.Node, id snowflake.ID, keys nodeDiskKeys, built bool) []writeOp {
 	// Every door that writes a current node row calls Add, so it also records
 	// the row into the property membership sidecars (backlog 8).
 	bs.recordNodeRowLocked(n, true)
@@ -192,7 +199,10 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 			return nil
 		}
 	}
-	ops := append(bs.propertyIndexDiskMaintain(n, id, writeOpSet), bs.nodeMemberOpsLocked(n, id)...)
+	if !built {
+		keys = bs.nodeDiskKeysLocked(n)
+	}
+	ops := append(bs.propertyIndexDiskMaintainKeys(n, id, writeOpSet, keys), bs.nodeMemberOpsKeysLocked(n, id, keys)...)
 	return append(ops, bs.compositeDiskOpsLocked(n, id, writeOpSet)...)
 }
 
@@ -202,7 +212,7 @@ func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []wr
 // inserts): the RAM ones by indexpkg.AddNodesToPropertyIndexes, those on disk
 // by propertyIndexDiskAddBatch. The sidecars, composites and member entries
 // stay per node. Same lock and ops contract as maintainPropertyIndexesAdd.
-func (bs *Store) maintainPropertyIndexesAddBatch(nodes []*types.Node, ids []snowflake.ID) []writeOp {
+func (bs *Store) maintainPropertyIndexesAddBatch(nodes []*types.Node, ids []snowflake.ID, keys []nodeDiskKeys) []writeOp {
 	for i, n := range nodes {
 		bs.recordNodeRowLocked(n, true)
 		indexpkg.AddNodeToCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, ids[i])
@@ -216,9 +226,9 @@ func (bs *Store) maintainPropertyIndexesAddBatch(nodes []*types.Node, ids []snow
 			return nil
 		}
 	}
-	ops := bs.propertyIndexDiskAddBatch(nodes, ids)
+	ops := bs.propertyIndexDiskAddBatch(nodes, ids, keys)
 	for i, n := range nodes {
-		ops = append(ops, bs.nodeMemberOpsLocked(n, ids[i])...)
+		ops = append(ops, bs.nodeMemberOpsKeysLocked(n, ids[i], keys[i])...)
 		ops = append(ops, bs.compositeDiskOpsLocked(n, ids[i], writeOpSet)...)
 	}
 	return ops
@@ -228,22 +238,25 @@ func (bs *Store) maintainPropertyIndexesAddBatch(nodes []*types.Node, ids []snow
 // new node nodes[i] under ids[i], per on-disk definition at once: its
 // property key's token resolved once, each distinct value's bytes built once,
 // the ID bounds widened once by the batch's lowest and highest entry.
-func (bs *Store) propertyIndexDiskAddBatch(nodes []*types.Node, ids []snowflake.ID) []writeOp {
+func (bs *Store) propertyIndexDiskAddBatch(nodes []*types.Node, ids []snowflake.ID, keys []nodeDiskKeys) []writeOp {
 	var ops []writeOp
 	empty := []byte{}
-	for _, def := range bs.propDiskDefs {
+	for d, def := range bs.propDiskDefs {
 		var byValue map[string][]snowflake.ID
 		for i, n := range nodes {
 			if !n.HasLabelTokenRaw(def.key.LabelToken) {
 				continue
 			}
 			id := ids[i]
-			forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
+			for _, k := range keys[i] {
+				if k.def != d {
+					continue
+				}
 				if byValue == nil {
 					byValue = make(map[string][]snowflake.ID)
 				}
-				byValue[valueKey] = append(byValue[valueKey], id)
-			})
+				byValue[k.valueKey] = append(byValue[k.valueKey], id)
+			}
 			if def.idx.Mutated != nil {
 				def.idx.Mutated[id] = struct{}{}
 			}
@@ -287,8 +300,14 @@ func (bs *Store) propertyIndexDiskAddBatch(nodes []*types.Node, ids []snowflake.
 // Not while a property index builds: its backfill skips a node the write path
 // marked, so the write path writes the entry itself.
 func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, old, n *types.Node, id snowflake.ID) []writeOp {
+	return bs.maintainPropertyIndexesUpdateKeys(ops, old, n, id, nil, false)
+}
+
+// maintainPropertyIndexesUpdateKeys is maintainPropertyIndexesUpdate with n's
+// value keys from the door's KEYSIZE check (maintainPropertyIndexesAddKeys).
+func (bs *Store) maintainPropertyIndexesUpdateKeys(ops []writeOp, old, n *types.Node, id snowflake.ID, keys nodeDiskKeys, built bool) []writeOp {
 	from := len(ops)
-	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
+	ops = append(ops, bs.maintainPropertyIndexesAddKeys(n, id, keys, built)...)
 	var removed, unchanged map[string]struct{} // removed: the old node's ops, deletes of its entries
 	for _, op := range ops[:from] {
 		if removed == nil {
@@ -361,21 +380,59 @@ func (bs *Store) maintainPropertyIndexesRemove(n *types.Node, id snowflake.ID) [
 }
 
 func (bs *Store) propertyIndexDiskMaintain(n *types.Node, id snowflake.ID, opType writeOpType) []writeOp {
+	return bs.propertyIndexDiskMaintainKeys(n, id, opType, bs.nodeDiskKeysLocked(n))
+}
+
+// propertyIndexDiskMaintainKeys is propertyIndexDiskMaintain with n's value
+// keys already built (nodeDiskKeysLocked).
+func (bs *Store) propertyIndexDiskMaintainKeys(n *types.Node, id snowflake.ID, opType writeOpType, keys nodeDiskKeys) []writeOp {
 	var ops []writeOp
-	for _, def := range bs.propDiskDefs { // a value key for an indexed property only (IDXKEYLAZY)
-		if !n.HasLabelTokenRaw(def.key.LabelToken) {
-			continue
+	for _, k := range keys {
+		if op, ok := bs.propertyIndexDiskOp(bs.propDiskDefs[k.def].key.PropertyKey, k.valueKey, id, opType); ok {
+			ops = append(ops, op)
 		}
-		forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
-			if op, ok := bs.propertyIndexDiskOp(def.key.PropertyKey, valueKey, id, opType); ok {
-				ops = append(ops, op)
-			}
-		})
-		if def.idx.Mutated != nil {
+	}
+	for _, def := range bs.propDiskDefs {
+		if def.idx.Mutated != nil && n.HasLabelTokenRaw(def.key.LabelToken) {
 			def.idx.Mutated[id] = struct{}{}
 		}
 	}
 	return ops
+}
+
+// diskKey is one value key of a node row under propDiskDefs[def].
+type diskKey struct {
+	def      int
+	valueKey string
+}
+
+// nodeDiskKeys holds a node row's value keys under the on-disk definitions,
+// in propDiskDefs order, built once per write and shared by the KEYSIZE check,
+// the 0x0A entries and the member entries (PAGECOST: each searched the row's
+// properties for every definition before, three times per create). Valid only
+// under the idxMu hold that built it: propDiskDefs changes under idxMu.
+type nodeDiskKeys []diskKey
+
+// testHookDiskValueKeys, nil in production, sees each search of a row's
+// properties for one on-disk definition (PAGECOST). Set only by a test that
+// does not call t.Parallel.
+var testHookDiskValueKeys func()
+
+// nodeDiskKeysLocked builds n's nodeDiskKeys. Caller holds idxMu.
+func (bs *Store) nodeDiskKeysLocked(n *types.Node) nodeDiskKeys {
+	if n == nil {
+		return nil
+	}
+	var keys nodeDiskKeys
+	for i, def := range bs.propDiskDefs { // a value key for an indexed property only (IDXKEYLAZY)
+		if !n.HasLabelTokenRaw(def.key.LabelToken) {
+			continue
+		}
+		forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
+			keys = append(keys, diskKey{i, valueKey})
+		})
+	}
+	return keys
 }
 
 // forEachDiskValueKey calls fn with each index key n has under an on-disk
@@ -386,6 +443,9 @@ func (bs *Store) propertyIndexDiskMaintain(n *types.Node, id snowflake.ID, opTyp
 // contract above), so a scalar definition never answers an element and an
 // Elements one never answers a whole list.
 func forEachDiskValueKey(n *types.Node, propertyKey string, elements bool, fn func(valueKey string)) {
+	if testHookDiskValueKeys != nil { // a test setting it must not use t.Parallel
+		testHookDiskValueKeys()
+	}
 	if !elements {
 		if valueKey, _ := n.IndexablePropertyValueKey(propertyKey); valueKey != "" {
 			fn(valueKey)

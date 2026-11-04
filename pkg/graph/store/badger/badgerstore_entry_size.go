@@ -78,6 +78,19 @@ func (bs *Store) checkNodeIndexKeysLocked(n *types.Node, id snowflake.ID) error 
 	return nil
 }
 
+// checkNodeDiskKeysLocked is checkNodeIndexKeysLocked for a write that
+// maintains n's entries under the same idxMu hold: it builds n's value keys
+// once and returns them for that maintenance (PAGECOST).
+func (bs *Store) checkNodeDiskKeysLocked(n *types.Node, id snowflake.ID) (nodeDiskKeys, error) {
+	keys := bs.nodeDiskKeysLocked(n)
+	for _, k := range keys {
+		if err := bs.checkNodeIndexKey(bs.propDiskDefs[k.def], k.valueKey, id); err != nil {
+			return nil, err
+		}
+	}
+	return keys, nil
+}
+
 // checkNodeIndexKey checks one value key's entry under def: its member entry
 // (RELDISK), longer than its 0x0A entry, else the 0x0A entry.
 func (bs *Store) checkNodeIndexKey(def propDiskDef, valueKey string, id snowflake.ID) error {

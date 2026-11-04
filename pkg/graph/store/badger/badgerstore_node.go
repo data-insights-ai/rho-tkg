@@ -55,7 +55,8 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 		bs.idxMu.Unlock()
 		return ErrNodeExists
 	}
-	if err := bs.checkNodeIndexKeysLocked(n, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+	diskKeys, err := bs.checkNodeDiskKeysLocked(n, nid.SnowflakeID()) // KEYSIZE, before any mutation
+	if err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -99,7 +100,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	bs.recordNodeLabelMembersLocked(n, n) // transaction-time label membership
 
 	bs.addNodePropertyKeyCounts(n)
-	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
+	ops = append(ops, bs.maintainPropertyIndexesAddKeys(n, id, diskKeys, true)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, n, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, id)
@@ -563,7 +564,8 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
-	if err := bs.checkNodeIndexKeysLocked(n, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+	diskKeys, err := bs.checkNodeDiskKeysLocked(n, nid.SnowflakeID()) // KEYSIZE, before any mutation
+	if err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -608,7 +610,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(n)
-	ops = bs.maintainPropertyIndexesUpdate(ops, old, n, id)
+	ops = bs.maintainPropertyIndexesUpdateKeys(ops, old, n, id, diskKeys, true)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, n, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, id)
@@ -665,7 +667,8 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
-	if err := bs.checkNodeIndexKeysLocked(updatedNode, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+	diskKeys, err := bs.checkNodeDiskKeysLocked(updatedNode, nid.SnowflakeID()) // KEYSIZE, before any mutation
+	if err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -723,7 +726,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
-	ops = bs.maintainPropertyIndexesUpdate(ops, old, updatedNode, id)
+	ops = bs.maintainPropertyIndexesUpdateKeys(ops, old, updatedNode, id, diskKeys, true)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
@@ -784,7 +787,8 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
-	if err := bs.checkNodeIndexKeysLocked(updatedNode, nid.SnowflakeID()); err != nil { // KEYSIZE, before any mutation
+	diskKeys, err := bs.checkNodeDiskKeysLocked(updatedNode, nid.SnowflakeID()) // KEYSIZE, before any mutation
+	if err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -840,7 +844,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
-	ops = bs.maintainPropertyIndexesUpdate(ops, old, updatedNode, id)
+	ops = bs.maintainPropertyIndexesUpdateKeys(ops, old, updatedNode, id, diskKeys, true)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)

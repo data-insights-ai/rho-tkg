@@ -169,6 +169,23 @@ func (bs *Store) nodeMemberOpsLocked(n *types.Node, id snowflake.ID) []writeOp {
 	return ops
 }
 
+// nodeMemberOpsKeysLocked is nodeMemberOpsLocked with n's value keys already
+// built (nodeDiskKeysLocked, PAGECOST).
+func (bs *Store) nodeMemberOpsKeysLocked(n *types.Node, id snowflake.ID, keys nodeDiskKeys) []writeOp {
+	if !bs.nodeMembersOnDisk || n == nil {
+		return nil
+	}
+	txFrom, _, _ := n.TxStamps()
+	var ops []writeOp
+	for _, k := range keys {
+		def := bs.propDiskDefs[k.def]
+		if def.members {
+			ops = bs.entityIndexOp(ops, storepkg.EntityIndexNodeMember, def.key.LabelToken, def.key.PropertyKey, k.valueKey, id, txFrom, writeOpSet)
+		}
+	}
+	return ops
+}
+
 // relMembersOnDiskLocked reports whether the relationship definition on key
 // answers its membership from 0x0C. Caller holds idxMu.
 func (bs *Store) relMembersOnDiskLocked(key indexpkg.RelPropertyIndexKey) bool {

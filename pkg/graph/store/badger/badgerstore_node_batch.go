@@ -615,11 +615,14 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		}
 		seen[nd.nid] = struct{}{}
 	}
+	diskKeys := make([]nodeDiskKeys, len(nodes))
 	for i, n := range nodes { // KEYSIZE, before any mutation
-		if err := bs.checkNodeIndexKeysLocked(n, serialized[i].id); err != nil {
+		keys, err := bs.checkNodeDiskKeysLocked(n, serialized[i].id)
+		if err != nil {
 			bs.idxMu.Unlock()
 			return err
 		}
+		diskKeys[i] = keys
 	}
 	vectorUpdates := make([][]indexpkg.NodeVectorIndexUpdate, len(nodes))
 	for i, n := range nodes {
@@ -676,7 +679,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, nd.id)...)
 		indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, nd.id)
 	}
-	ops = append(ops, bs.maintainPropertyIndexesAddBatch(nodes, ids)...) // once for the batch (BATCHIDX)
+	ops = append(ops, bs.maintainPropertyIndexesAddBatch(nodes, ids, diskKeys)...) // once for the batch (BATCHIDX)
 
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(int64(len(nodes)))

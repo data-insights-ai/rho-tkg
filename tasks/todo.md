@@ -43,14 +43,6 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Next
 
-- **PAGECOST** (sigma 2 Nov; read from ai-soc's profile on v4.98.4; a patch) — a node create looks each index
-  definition's value up once instead of three times (`checkNodeIndexKeysLocked`, `propertyIndexDiskMaintain`,
-  `nodeMemberOpsLocked`: 1.77, 2.04, 2.18 s of 22.6 s in `putNodeRouted`, 35.5 s in `writePages`; about 4 s, 11 %,
-  estimated). KEYSIZE must still refuse an oversized key on a new row (else the flush fails after the ack); the
-  duplicate check costs 0.04 s, so no known-new door; a merge over sorted properties only if a measurement still shows
-  the search. Done when a benchmark shows one lookup per definition and sigma's `BenchmarkRowsWriteHeads` falls.
-  **rho/sigma:** direct: ~11 % of page write CPU (estimate) on labels with on-disk property indexes (sigma's
-  DerivedPage); small and cheap, so first.
 - **NOCOMPRESS** (ai-soc 3 Nov, after round 2 by ai-soc's order; a minor) — let a store select no compression: 2.19
   TB of a 3-day run's 9.87 TB allocation (k11020850) is badger's Snappy block decode into Go-heap buffers (z.Calloc),
   1.66 TB of it in compaction (table.NOCACHE, so the block cache cannot help); today `options.None` is
@@ -112,7 +104,10 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 On consumer runs (ai-soc, sigma):
 - **VALUETHRESH** (v4.104.0) — done when sigma's 2-day budget profile with 32 KiB on tiered shows the compaction CPU
-  of its 64 KiB DerivedPage blocks gone (+900 s of +2,640 s) and its storage growth is acceptable. Waits for sigma.
+  of its 64 KiB DerivedPage blocks gone (+900 s of +2,640 s) and its storage growth is acceptable. Waits for ai-soc
+  (sigma 4 Nov: the store config and the run are ai-soc's). ai-soc 4 Nov: a small A/B on the 60-min BA lines first
+  (page budget 256 MiB, threshold 32768 against 0); the 3-day run carries the A/B once René says "run", plus a
+  NOCOMPRESS arm if that minor is tagged before the start.
   **rho/sigma:** direct: ~900 of 2,640 extra CPU s; the price is an uncompressed value log (2.7x the bytes on
   compressible text) whose GC reclaims nothing on the replace shape (measure.txt § Findings).
 - **STATEREC** (sigma's design review 30 Oct) — WHOLEROW shipped (v4.100.0; done when sigma's writer runs on it; left:

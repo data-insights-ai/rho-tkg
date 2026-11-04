@@ -1122,6 +1122,63 @@ func TestPropertyIndexOnDisk_BuildsIndexedKeysOnly(t *testing.T) {
 	}
 }
 
+// TestPropertyIndexOnDisk_WriteSearchesOncePerDefinition (PAGECOST): a node
+// create, batch create or replace searches the row's properties once per
+// on-disk definition; before, the KEYSIZE check, the 0x0A entries and the
+// member entries each searched again (three per create), and the entries are
+// the same.
+func TestPropertyIndexOnDisk_WriteSearchesOncePerDefinition(t *testing.T) {
+	names := registrypkg.NewLabelRegistry()
+	d, _ := names.GetOrCreate("D")
+	bs, err := New(Config{InMemory: true, PropertyIndexOnDiskLabels: []string{"D"}, LabelNames: names,
+		PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), FlushInterval: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = bs.Close() }()
+	for _, k := range []string{"a", "b"} {
+		if err := bs.CreatePropertyIndex(d, k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	node := func(id types.NodeID, v string) *types.Node {
+		n := types.NewNode(id, d, nil)
+		_ = n.SetProperty("a", v)
+		_ = n.SetProperty("b", v+"-b")
+		return n
+	}
+	searches := 0
+	testHookDiskValueKeys = func() { searches++ }
+	defer func() { testHookDiskValueKeys = nil }()
+	for _, c := range []struct {
+		name  string
+		write func() error
+		want  int // one per definition and row; a replace also removes the old row's entries (2) and its member entries (2)
+	}{
+		{"create", func() error { return bs.PutNode(node(1, "x")) }, 2},
+		{"batch create", func() error { return bs.PutNodesBatch([]*types.Node{node(2, "y"), node(3, "z")}) }, 4},
+		{"replace", func() error { return bs.ReplaceNode(node(1, "w")) }, 6},
+	} {
+		searches = 0
+		if err := c.write(); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if searches > c.want {
+			t.Errorf("%s: %d searches of the row's properties, want at most %d", c.name, searches, c.want)
+		}
+	}
+	testHookDiskValueKeys = nil
+	for _, v := range []string{"w", "y", "z"} {
+		ids, err := bs.NodesByLabelAndProperty(d, "a", v, storecontract.QueryOpts{})
+		if err != nil || len(ids) != 1 {
+			t.Errorf("a=%s: %v, %v", v, ids, err)
+		}
+	}
+	if ids, _ := bs.NodesByLabelAndProperty(d, "a", "x", storecontract.QueryOpts{}); len(ids) != 0 {
+		t.Errorf("a=x after the replace: %v", ids)
+	}
+}
+
 // TestPropertyIndexOnDisk_DefsFollowCreateDropClear (DISKDEFS): a node write
 // maintains the on-disk definitions the store holds now: none after the
 // definition is dropped or the store cleared, and one created after a clear.

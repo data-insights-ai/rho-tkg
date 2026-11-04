@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **PAGECOST** (sigma 2 Nov; a patch): a node write searches the row's properties once per on-disk index definition.
+  The KEYSIZE check builds the value keys (`checkNodeDiskKeysLocked`) and the same idxMu hold hands them to the
+  0x0A entries and the member entries; before, each of the three searched again (`checkNodeIndexKeysLocked`,
+  `propertyIndexDiskMaintain`, `nodeMemberOpsLocked`: 1.77, 2.04, 2.18 s of 22.6 s in `putNodeRouted` in ai-soc's
+  v4.98.4 profile, about 11 % of sigma's `writePages`, estimated). `TestPropertyIndexOnDisk_WriteSearchesOncePerDefinition`
+  counts the searches with two definitions: create 6 → 2, batch create of two 12 → 4, replace 10 → 6 (the old row's
+  removal and member entries keep theirs). Entries and errors are unchanged. sigma's `BenchmarkRowsWriteHeads` shows the
+  wall gain.
 - **Releases go to GitHub again** (René, 4 Nov: the local git server was temporary): `make release-…` pushes to
   `origin`; the Makefile's `RELEASE_REMOTE=local` default is gone.
 
