@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-docker-run ci-fast ci-fast-run hooks fuzz-smoke check ci clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-docker-run ci-fast ci-fast-run measure hooks fuzz-smoke check ci clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -231,6 +231,11 @@ fuzz-smoke:
 # last release tag and refuses new exported API (a door = a minor). Runs fmt-check, vet, build, lint, -short of
 # packages whose shipped code changed, -race of only the changed tests (whole package for a changed helper or
 # tool), the docs tests and the ledger check.
+# Measurement level (René 4 Nov): tests behind the `measure` build tag, bounds
+# that load moves; run by hand, never in a gate.
+measure:
+	@scripts/measure.sh
+
 ci-fast:
 	@scripts/gate-time.sh ci-fast $(MAKE) ci-fast-run
 
