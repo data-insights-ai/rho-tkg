@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.104.1] - 2026-11-04
+
 ### Fixed
 
 - **RELHIST P2** (sigma's profile: each fact's read-back after its Update walked every version's skeleton; a fix, no

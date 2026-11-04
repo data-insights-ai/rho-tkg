@@ -1,6 +1,6 @@
 # todo
 
-What rho does next, in order. Last release: v4.104.0 (2026-11-04). René's open decisions are the items that wait for
+What rho does next, in order. Last release: v4.104.1 (2026-11-04). René's open decisions are the items that wait for
 him, each with my default. State, consumers and the numbered backlog: `HANDOVER.md`; rules: `docs/CONTRIBUTING.md`
 § Rules digest. Done work: `docs/CHANGELOG.md`, under the same tag.
 
@@ -17,15 +17,13 @@ Each item: one sentence, then when it is done and what it waits for.
   32 KiB on tiered (its 79 k DerivedPage blocks of 64 KiB: +900 s of the 2-day budget run's +2,640 s CPU is badger
   compacting them). ai-soc's round-4 gate: 2-day budget arm user CPU 4,302 s (v4.102.0 4,921). Done when sigma's
   profile of a 2-day budget run on it shows the compaction CPU gone. Waits for sigma.
-- **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — P3 HISTDECODE,
-  HEADLEND (a minor) and P1 HISTTRIM (a patch: the tx snapshot copies only rows at or above the current version; 99-198
-  copies down to 0-2) merged 3 Nov, unreleased. CASCADEMETA merged 3 Nov (a cascade miss plans from skeletons:
-  badger 1,024 versions 2.4x fewer bytes, 5.3x fewer allocs; open: the caller-instant pre-flight and cascadeMissing*Err
-  still read whole histories; the skeleton read itself is O(versions)). P2 HEADREFRESH merged-pending on branch
-  headrefresh (a patch: the plural door reads and fills the head entry; a plain Update / ReplaceVersion / CloseVersion
-  extends it; Update + plural read-back at 100 versions 61 -> 15 kB memory, 212 -> 150 kB badger; `p2.txt`). Next:
-  NodeHistoryTemporalMeta for the plural door's misses (10.9 GB). Caveat, existing before (design.txt §4): history compaction between tx ops can trim
-  a row above the current version that rollback then puts back. Done when sigma's next profile shows getRelHistory below 10 % of alloc_space.
+- **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — released: P3
+  HISTDECODE, HEADLEND, P1 HISTTRIM and CASCADEMETA in v4.103.0, P2 in v4.104.1 (the plural door reads and fills the
+  head entry; a plain Update / ReplaceVersion / CloseVersion extends it; `p2.txt`). Open: the caller-instant
+  pre-flight and cascadeMissing*Err still read whole histories; the skeleton read itself is O(versions). Next:
+  NodeHistoryTemporalMeta for the plural door's misses (10.9 GB). Caveat, existing before (design.txt §4): history
+  compaction between tx ops can trim a row above the current version that rollback then puts back. Done when sigma's
+  next profile shows getRelHistory below 10 % of alloc_space.
 - **VDICTDISK step 3** (ai-soc 29 Oct, goal 2 RAM) — steps 1-2 shipped (v4.97.3, v4.98.0); a budget/LRU in place of resident value tokens, decided from the next run's re-measure (at Cap 1,048,576 a 'row' dictionary is about 136 MB per open day shard). Done when an entry's resident cost is measured and bounded. Waits for ai-soc's next run.
 - **TIERCLOCK measurement** (ai-soc 29 Oct, goal 2) — released in v4.98.0; ai-soc's pin: Clock = newest committed valid time, ColdAfter 3 d, RelsByMint on. Done when ai-soc's BA replay rotates as live data would. Waits for that run.
 - **PURGECURSOR, PURGERESIDUE** (28 Oct; patches) — a label purge resumes from a cursor instead of copying the label's whole ID list per 256-node call (quadratic at 10 M); a purge or history truncate leaves about 30-50 B per ID in the `unknown` map of a shard that stays open. No consumer purges today. Done when each is fixed or dropped. Waits for René's word (STORECFG).

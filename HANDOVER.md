@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-11-04: latest tag v4.104.0; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (2026-11-04: latest tag v4.104.1; every release and what it changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,19 +7,24 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **State of 4 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.104.0 (round 4: VALUETHRESH,
-  LENDCOST; a minor). FREEZE round 4 (ai-soc, 4 Nov): rho v4.104.0 + sigma v0.11.162 are the pair for ai-soc's pin
-  (ai-soc ea30bfda), its three local sets and the next Flux run; a later tag belongs to the next run, never a re-pin.
-  Main keeps going untagged. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc); ai-soc
-  names its quiet windows: then no ci-docker, probe, bench or long test here.
-  - **On main, unreleased:** RELHIST P2 (a patch: the plural timeline doors read and fill the head cache; a plain
-    Update, CloseVersion or ReplaceVersion keeps the entry valid). No branch open.
+- **State of 4 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.104.1 (round 5: RELHIST P2; a
+  patch). René (4 Nov, via ai-soc): "I want all current versions in the release", which lifted the round-4 freeze;
+  sigma tags on v4.104.1, ai-soc runs its gate (60-min 4 arms + masked cycles), pins and releases ai-soc v5.1.2 on
+  that pair. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc); ai-soc names its quiet
+  windows: then no ci-docker, probe, bench or long test here.
+  - **On main, unreleased:** nothing. Open branch: `costcount` (worktree `../rho-tkg-costcount`: cost tests gate on
+    deterministic counts instead of process-wide allocations).
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Reviews:** René (3 Nov, "yes, always"): one read-only Fable review per finished branch, before its merge, given
     the code and the diff, not my conclusions.
 - **Release gates, latest first** (what each release changed: `docs/CHANGELOG.md` under its tag; the gate notes of
   v4.85.0 to v4.100.1: `git show 7fd75c40:HANDOVER.md`):
+  - **v4.104.1** (round 5, a patch: RELHIST P2): tagged on main. Consumers build and vet clean; ci-docker passed
+    every step to the coverage run, where `TestCascadeMetaCost` read 3.9x fewer allocations against a 4.0x bar
+    (process-wide MemStats under load; the same test passed in the run's race step and reads 5.8x alone); the
+    remaining steps (coverage 87.9 %, meta-key reap, fuzz smoke, ledger) were rerun alone, green. No scale probe
+    (a patch). ai-soc's gate runs after the tag.
   - **v4.104.0** (round 4, a minor: VALUETHRESH adds `ValueThreshold` to the configs; LENDCOST fixes v4.103.0's tiered
     lend regression): tagged on main, which is 7e4399c4 + VLOGCLOSED (the first ci-docker run panicked in VALUETHRESH's
     GC pass on a DB a crash test closed under the store; the pass now returns) + the release commit. ai-soc's round-4
