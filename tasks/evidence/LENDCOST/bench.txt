@@ -102,3 +102,18 @@ spread/sparse64/viewperid       299.1-   320.4  247167   1933    288.2-   316.7 
 Note: the first runs (not kept) measured without the block-cache warm-up: the first case of each shape (lend) paid the
 block decompression the later ones skipped (z.Calloc under LendNodesSorted in a memprofile), inflating lend by ~25 %.
 The bench warms every block since.
+
+Round 2 (tiered fill), 2026-11-04. BenchmarkTieredLendSortedRepeat (tieredstore_lend_fill_bench_test.go): an in-memory
+tiered store, 16 Ki flushed nodes of ~512 B on the hot shard, tiered LendNodesSorted of 4 or 64 IDs 100 rows apart.
+cold = the shard caches emptied before every call (untimed); repeat = the same IDs every call (sigma re-lends its
+blocks each round). before = tiered's lend on 268b0569 (badger batch lend per shard: no promotion, no fill);
+after = per-ID LendNode per pinned shard (promote, fill). Alternated, 3 rounds,
+  GOMAXPROCS=2 <bin> -test.run '^$' -test.bench BenchmarkTieredLendSortedRepeat -test.cpu 1 -test.benchtime 1000x
+case                               before us/op    B/op allocs        after us/op    B/op allocs  load
+cold4                            11.1-    12.8   11113     78     11.8-    12.4   10259     80  2.8-2.8
+cold64                          136.8-   142.7  176394   1057    156.0-   171.2  163892   1109  2.8-2.8
+repeat4                           6.6-     7.7   11112     78      0.4-     0.5     240     12  2.8-2.8
+repeat64                        109.9-   124.1  176394   1057      3.9-     4.1    3632     21  2.8-2.8
+A first call pays a read transaction per miss instead of one per shard (cold64 +10-20 %); every later call of
+rows still cached is served without a badger read. Whether that helps sigma's run depends on the shard caches
+holding a round's blocks (CacheCapacity / CacheBudgetBytes per shard).

@@ -2,6 +2,7 @@ package tiered
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -16,8 +17,9 @@ var _ storecontract.EntityLendBatchCapability = (*Store)(nil)
 // row LendNode(ids[i]) lends, nil where none. One move read lock covers the
 // call; the IDs are routed as LendNode routes (the reference shard, the
 // archive, the event shard of the ID's timestamp) and each shard is pinned
-// once and read with its badger LendNodesSorted (one read snapshot). ids
-// need not be ascending. Pins are taken one at a time (withPin).
+// once and read with lendNodesCaching (its badger LendNode per ID: the
+// shard's cache serves and keeps the rows). ids need not be ascending. Pins
+// are taken one at a time (withPin).
 func (ts *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -31,7 +33,7 @@ func (ts *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 	move := ts.lockMoveRead() // route and read see each row on one shard
 	defer move.unlock()
 	// Every position is routed to one shard, whose read sets its slot.
-	l := batchLend[types.NodeID, types.Node]{ids: ids, out: out, lend: (*BadgerStore).LendNodesSorted}
+	l := batchLend[types.NodeID, types.Node]{ids: ids, out: out, lend: lendNodesCaching}
 	pending := l.all()
 	// lendListed reads the pending IDs store lists and keeps the others.
 	lendListed := func(store *BadgerStore) error {
@@ -83,7 +85,7 @@ func (ts *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relatio
 	}
 	move := ts.lockMoveRead() // route and read see each row on one shard
 	defer move.unlock()
-	l := batchLend[types.RelID, types.Relationship]{ids: ids, out: out, lend: (*BadgerStore).LendRelationshipsSorted}
+	l := batchLend[types.RelID, types.Relationship]{ids: ids, out: out, lend: lendRelsCaching}
 	pending := l.all()
 	// lendFound reads the IDs of ask that store lists and adds to pending
 	// those it does not list or lent no row for.
@@ -169,8 +171,47 @@ func (es *EventShard) readOnlyCheckout(ts *Store) func() (*BadgerStore, func(), 
 	return func() (*BadgerStore, func(), error) { return es.checkoutStoreReadOnly(ts) }
 }
 
-// batchLend reads positions of ids from one shard into out with the shard's
-// badger batch lend, which wants its IDs ascending.
+// lendNodesCaching lends each ID with the shard's badger LendNode, as
+// tiered's per-ID lend did up to v4.102.0: a cache hit is promoted, a miss is
+// read in its own transaction and filled into the shard's cache (epoch read
+// before the read, prefetchNode). Callers lend the same rows round after
+// round, and badger's batch lend would read every one from badger each time:
+// it keeps round 7's scan rule (no promotion, no fill; LENDCOST round 2,
+// ai-soc: LendByIDs 115 -> 629 s on v4.103.0). out[i] is nil where the shard
+// holds no row.
+func lendNodesCaching(store *BadgerStore, ids []types.NodeID, out []*types.Node) error {
+	for i, id := range ids {
+		n, err := store.LendNode(id)
+		if errors.Is(err, ErrNodeNotFound) {
+			out[i] = nil
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		out[i] = n
+	}
+	return nil
+}
+
+// lendRelsCaching is lendNodesCaching for relationships (LendRelationship).
+func lendRelsCaching(store *BadgerStore, ids []types.RelID, out []*types.Relationship) error {
+	for i, id := range ids {
+		r, err := store.LendRelationship(id)
+		if errors.Is(err, ErrRelNotFound) {
+			out[i] = nil
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		out[i] = r
+	}
+	return nil
+}
+
+// batchLend reads positions of ids from one shard into out with lend, which
+// gets its IDs ascending.
 type batchLend[ID ~int64, Row any] struct {
 	ids  []ID
 	out  []*Row

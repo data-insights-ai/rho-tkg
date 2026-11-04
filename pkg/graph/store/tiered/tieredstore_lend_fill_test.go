@@ -101,3 +101,76 @@ func TestTieredLendSortedFillsTheCache(t *testing.T) {
 		}
 	}
 }
+
+// TestTieredLendSortedFailsOnACorruptRow: a shard's read error aborts the
+// tiered lend, nodes and rels, as LendNode's does; a corrupt row is never
+// lent as nil.
+func TestTieredLendSortedFailsOnACorruptRow(t *testing.T) {
+	t.Parallel()
+	f := newLendBatchFixture(t, false)
+	hot := f.hot.store
+	corruptTieredNodeRowAfterFlush(t, hot, f.nodes["hotA"])
+	corruptTieredRelRowAfterFlush(t, hot, f.rels["hot"])
+	nids := f.nodeIDs([]string{"refA", "hotA", "hotB"})
+	if err := f.ts.LendNodesSorted(nids, make([]*types.Node, len(nids))); err == nil {
+		t.Fatal("lending a corrupt node row: nil error")
+	}
+	rids := f.relIDs([]string{"ref", "hot"})
+	if err := f.ts.LendRelationshipsSorted(rids, make([]*types.Relationship, len(rids))); err == nil {
+		t.Fatal("lending a corrupt relationship row: nil error")
+	}
+}
+
+// TestTieredLendSortedFillSkipsAFlushDuringTheRead:a flush that lands while
+// the lend reads a row (after its read transaction opened) keeps the row it
+// read out of the cache, since its epoch was read before the read; the
+// next lend reads the flushed version, and a flush between two IDs of one
+// call hands the second ID its new version. Not parallel: the decode hook is
+// process-wide.
+func TestTieredLendSortedFillSkipsAFlushDuringTheRead(t *testing.T) {
+	f := newLendBatchFixture(t, false)
+	resetLendFillCaches(t, f)
+	ids := f.nodeIDs([]string{"hotA", "hotB"})
+	hot := f.hot.store
+	replace := func(name, v string) {
+		n := types.NewNode(f.nodes[name], mintSignalTok, nil)
+		if err := n.SetProperty("v", v); err != nil {
+			t.Error(err)
+		}
+		if err := f.ts.ReplaceNode(n); err != nil {
+			t.Error(err)
+		}
+		if err := f.ts.Flush(); err != nil {
+			t.Error(err)
+		}
+		hot.NodeCacheForTest().EvictForTest(f.nodes[name].SnowflakeID())
+	}
+	fired := false
+	restore := badgerpkg.SetRowDecodeHookForTest(func() {
+		if !fired { // inside hotA's read: rewrite hotA and hotB, flush
+			fired = true
+			replace("hotA", "hotA-2")
+			replace("hotB", "hotB-2")
+		}
+	})
+	out := make([]*types.Node, len(ids))
+	err := f.ts.LendNodesSorted(ids, out)
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := out[0].GetProperty("v"); v != "hotA" {
+		t.Fatalf("hotA lent v %v, want the version its read saw (hotA)", v)
+	}
+	if v, _ := out[1].GetProperty("v"); v != "hotB-2" {
+		t.Fatalf("hotB, read after the flush, lent v %v, want hotB-2", v)
+	}
+	if err := f.ts.LendNodesSorted(ids, out); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"hotA-2", "hotB-2"} {
+		if v, _ := out[i].GetProperty("v"); v != want {
+			t.Fatalf("next lend: node %d v %v, want %s (no stale fill)", i, v, want)
+		}
+	}
+}

@@ -307,13 +307,15 @@ loaded rows.
 implements it (`LendNodesSorted`, `LendRelationshipsSorted`) under one move read lock per call. The IDs are routed as
 `LendNode` / `LendRelationship` route them: the reference shard, the archive, the event shard of the ID's timestamp
 (a closed cold shard opens read-only), and for a relationship missing there every other event shard holding rows.
-Each shard is pinned once for its IDs and read with its badger batch lend (one read snapshot, cache hits without a
-decode); the relationship probe pins each event shard holding rows once more. Pins are taken one at a time, none
+Each shard is pinned once for its IDs and read with its badger `LendNode` / `LendRelationship` per ID, so the
+shard's cache promotes a hit and keeps a row read on a miss, as the per-ID lends up to v4.102.0 did (LENDCOST: callers
+lend the same rows round after round; plain badger's batch lend keeps the scan rule, no promotion and no fill); the
+relationship probe pins each event shard holding rows once more. Pins are taken one at a time, none
 held while another is taken, as the per-ID lends do: a probe over many cold shards keeps one open handle pinned,
 and no pin waits on a move gate while holding another shard. The answers are the per-ID lends', in the caller's
 order. Before, each ID took the move lock and pinned the reference shard, the archive and its event shard.
 `TestTieredLendSortedAgreesWithLend`, `TestTieredLendSortedOneCheckoutPerShard`,
-`TestTieredLendSortedHoldsOnePinAtATime`.
+`TestTieredLendSortedHoldsOnePinAtATime`, `TestTieredLendSortedFillsTheCache`.
 
 **Change-log** (opt-in, `ChangeLog`): each backend writes one record per public mutation under a monotonic LSN in
 the same `WriteBatch` as the data, so log and data cannot diverge on a crash. `ChangeFeed` / `ExportSince` read it.

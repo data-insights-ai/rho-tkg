@@ -36,3 +36,17 @@ M16: Txn.Get returns another error only as ErrDBClosed (a Close racing the lend 
 levels.go:1614) or a table DecrRef failure (levels.go:1627-1629); neither is reachable from a unit test without fault
 injection in badger. Not run against the whole package (the machine was in ai-soc's measured window); the final
 tree's whole-package run is in the branch's last check.
+
+Round 2 (tiered fill), each mutant alone, go build + vet first, then
+  go test -p 1 -short -count=1 -run 'TestTieredLendSorted|TestTieredLend' ./pkg/graph/store/tiered/
+Tally: 7 of 7 killed (R6, R7 after TestTieredLendSortedFailsOnACorruptRow was added).
+R1 tiered node lend back to the badger batch lend (no fill): KILLED (TestTieredLendSortedFillsTheCache)
+R2 tiered rel lend back to the badger batch lend (no fill): KILLED (TestTieredLendSortedFillsTheCache)
+R3 node not-found returned as an error: KILLED (TestTieredLendSortedAgreesWithLend, ...OneCheckoutPerShard)
+R4 rel not-found returned as an error: KILLED (TestTieredLendSortedPassesOnAListedIDWithoutRow)
+R5 prefetchNode reads the epoch after the read (badger, the fill the tiered lend now relies on): KILLED
+   (TestTieredLendSortedFillSkipsAFlushDuringTheRead)
+R6 node lend error swallowed: SURVIVED, then KILLED (TestTieredLendSortedFailsOnACorruptRow)
+R7 rel lend error swallowed: SURVIVED, then KILLED (TestTieredLendSortedFailsOnACorruptRow)
+Not mutated: hit promotion (badger prefetchNodeNoFill's Get vs GetNoPromote, unchanged code; LRU order has no
+answer to assert on).
