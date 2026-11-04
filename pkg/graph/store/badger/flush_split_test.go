@@ -167,6 +167,7 @@ func flushReportsFailure(step stagedFlushStep) bool { return step < stagedStepUn
 // recovery skipped leaves the marked flush unapplied; staging applied without a
 // marker resurrects a flush that never committed.
 func TestStagedFlushCrashMatrix(t *testing.T) {
+	t.Parallel()
 	for _, sync := range []bool{false, true} {
 		for _, step := range stagedFlushSteps {
 			for _, removal := range []bool{false, true} {
@@ -265,6 +266,7 @@ func TestStagedFlushCrashMatrix(t *testing.T) {
 // Mutation: requeue after the marker lets a write through, and the reopen's
 // re-apply of the staged value hides it.
 func TestStagedApplyFailureFailsClosed(t *testing.T) {
+	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
@@ -349,6 +351,7 @@ func wantFlushAbsent(t *testing.T, bs *Store, nodes []*types.Node) {
 // is there; discard it silently; a refusal that DiscardStagedFlush cannot
 // clear.
 func TestStagedFlushRecoveryCountMismatchFailsClosed(t *testing.T) {
+	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	cfg.SyncWrites = true
 	nodes := splitFlushNodes(splitFlushNodeCount)
@@ -382,6 +385,7 @@ func TestStagedFlushRecoveryCountMismatchFailsClosed(t *testing.T) {
 // opens, as it would after losing any unsynced flush. Mutation: refuse it (a
 // power loss would leave a store that does not open).
 func TestStagedTornUnsyncedFlushIsDiscarded(t *testing.T) {
+	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	nodes := splitFlushNodes(splitFlushNodeCount)
 	tornAtMarker(t, cfg, nodes)
@@ -405,6 +409,7 @@ func TestStagedTornUnsyncedFlushIsDiscarded(t *testing.T) {
 // reopen, keep exactly the final state and no staging. Mutation: a reused
 // sequence number lets recovery apply an older attempt's entries.
 func TestStagedFlushAbortedAttemptsDoNotMix(t *testing.T) {
+	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
@@ -444,6 +449,7 @@ func TestStagedFlushAbortedAttemptsDoNotMix(t *testing.T) {
 // writable open); the writable open recovers. Mutation: a read-only open that
 // ignores the marker answers without the committed flush.
 func TestStagedFlushReadOnlyOpenNeedsRecovery(t *testing.T) {
+	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
@@ -478,6 +484,7 @@ func TestStagedFlushReadOnlyOpenNeedsRecovery(t *testing.T) {
 // with and without the change log. Mutation: 0x0E missing from Clear's drop
 // list.
 func TestClearDropsStagingKeys(t *testing.T) {
+	t.Parallel()
 	for _, changeLog := range []bool{true, false} {
 		t.Run(fmt.Sprintf("changeLog=%v", changeLog), func(t *testing.T) {
 			cfg := splitFlushConfig(t.TempDir())
@@ -512,6 +519,7 @@ func TestClearDropsStagingKeys(t *testing.T) {
 // version refuses at open. Mutation: the marker not raised lets an older rho
 // open the store, ignore a pending marker and keep writing.
 func TestStagedFlushFormatMarker(t *testing.T) {
+	// Serial: it lowers the process-wide maxReadableStoreFormatVersion.
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
@@ -557,6 +565,7 @@ func TestStagedFlushFormatMarker(t *testing.T) {
 // release would then open a store whose staged-flush marker it ignores).
 // Mutation: the flush writes the raise's own value instead of the tracker's.
 func TestStagedFlushKeepsFormatMarkerRaisedMidFlush(t *testing.T) {
+	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
@@ -591,6 +600,7 @@ func TestStagedFlushKeepsFormatMarkerRaisedMidFlush(t *testing.T) {
 // Catches a discard that creates an empty store at a mistyped path and
 // answers "nothing to drop", or edits a store this binary cannot read.
 func TestDiscardStagedFlushRefusesWhatIsNotItsStore(t *testing.T) {
+	// Serial: it lowers the process-wide maxReadableStoreFormatVersion.
 	missing := filepath.Join(t.TempDir(), "no-such-store")
 	if _, err := DiscardStagedFlush(splitFlushConfig(missing)); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("missing dir: %v, want fs.ErrNotExist", err)
@@ -628,6 +638,7 @@ func TestDiscardStagedFlushRefusesWhatIsNotItsStore(t *testing.T) {
 // counts the live rows instead of refusing. Catches a discard after which the
 // store still does not open.
 func TestDiscardedFlushLeavesCountersReconcilable(t *testing.T) {
+	t.Parallel()
 	for _, sync := range []bool{true, false} {
 		t.Run(fmt.Sprintf("sync=%v", sync), func(t *testing.T) {
 			cfg := splitFlushConfig(t.TempDir())

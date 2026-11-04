@@ -47,13 +47,17 @@ func TestRangeCardinalityMatchesIteration(t *testing.T) {
 		name string
 		opts graphpkg.PropertyIndexOptions
 	}{{"plain", graphpkg.PropertyIndexOptions{}}, {"rangecounts", graphpkg.PropertyIndexOptions{RangeCounts: true}}} {
-		t.Run(mode.name, func(t *testing.T) { rangeCardinalityMatchesIteration(t, mode.opts) })
+		t.Run(mode.name, func(t *testing.T) {
+			t.Parallel()
+			rangeCardinalityMatchesIteration(t, mode.opts)
+		})
 	}
 }
 
 func rangeCardinalityMatchesIteration(t *testing.T, opts graphpkg.PropertyIndexOptions) {
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
+			t.Parallel() // its own graph
 			g := b.open(t)
 			ctx := context.Background()
 			rng := rand.New(rand.NewSource(0x4242)) //nolint:gosec // deterministic test

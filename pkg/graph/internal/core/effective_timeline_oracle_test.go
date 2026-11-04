@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -260,9 +261,58 @@ func etPins(stamps, extra []types.Instant, maxPin types.Instant) []types.Instant
 	return out
 }
 
+// etPointAnswer is the point door's answer at one (valid, pin) coordinate:
+// the row's key, or none (ErrNoVersionValidAt / not found).
+type etPointAnswer struct {
+	key  string
+	none bool
+}
+
+// etPointCache memoizes the point door per stamp gap. The point door answers
+// from the entity's rows recorded at or before the pin, so every pin between
+// two consecutive stamps of the entity (its rows' tx and valid stamps, the
+// mint instant) sees the same rows and gets the same answer at every valid
+// instant: the door is called once per (gap, valid) and reused for the other
+// pins of the gap (4 Nov: ~110 pins per entity against ~10 gaps; the point
+// door decodes the whole chain per call and was 60% of the test's CPU). A pin
+// below a compaction or retention watermark is never served from the cache:
+// its refusal is per entity, so the door is called every time.
+type etPointCache struct {
+	stamps []types.Instant // sorted
+	floor  int64           // the highest graph-level watermark: pins below call the door
+	hits   map[[2]int64]etPointAnswer
+}
+
+func (k *etChecker) newPointCache(stamps []types.Instant) *etPointCache {
+	sorted := slices.Clone(stamps)
+	slices.Sort(sorted)
+	return &etPointCache{stamps: sorted, hits: map[[2]int64]etPointAnswer{},
+		floor: max(k.g.compactedThroughTx.Load(), k.g.retentionMaxWatermark.Load(), k.g.retentionAnyMax.Load())}
+}
+
+// answer returns the point door's answer at (va, pin); door is called when
+// the gap holding pin has not answered va yet, or pin lies below a watermark.
+func (c *etPointCache) answer(va, pin types.Instant, door func() (etPointAnswer, error)) (etPointAnswer, error) {
+	if int64(pin) < c.floor {
+		return door()
+	}
+	gap, _ := slices.BinarySearch(c.stamps, pin+1) // the number of stamps at or below pin
+	key := [2]int64{int64(gap), int64(va)}
+	if a, ok := c.hits[key]; ok {
+		return a, nil
+	}
+	a, err := door()
+	if err != nil {
+		return a, err
+	}
+	c.hits[key] = a
+	return a, nil
+}
+
 func (k *etChecker) node(id types.NodeID, extraPins []types.Instant, maxPin types.Instant) {
 	k.t.Helper()
 	stamps := k.nodeStamps(id)
+	cache := k.newPointCache(stamps)
 	for _, pin := range etPins(stamps, extraPins, maxPin) {
 		k.pins++
 		segsRaw, err := k.g.Temporal.NodeEffectiveTimeline(id, pin)
@@ -281,21 +331,30 @@ func (k *etChecker) node(id types.NodeID, extraPins []types.Instant, maxPin type
 		}
 		for _, va := range etProbes(stamps, segs) {
 			k.checks++
-			want, perr := k.g.Temporal.NodeAtTx(id, va, pin)
+			want, perr := cache.answer(va, pin, func() (etPointAnswer, error) {
+				n, err := k.g.Temporal.NodeAtTx(id, va, pin)
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+					return etPointAnswer{none: true}, nil
+				}
+				if err != nil {
+					return etPointAnswer{}, err
+				}
+				return etPointAnswer{key: etNodeKey(n)}, nil
+			})
 			got, ok := etAt(segs, va)
 			switch {
-			case errors.Is(perr, storepkg.ErrNoVersionValidAt) || errors.Is(perr, storepkg.ErrNodeNotFound):
-				if ok {
-					k.fail("node %v pin %d valid %d: point door none (%v), timeline %s%s", id, pin, va, perr, got.key, etSegsString(segs))
-				}
 			case perr != nil:
 				k.fail("node %v pin %d valid %d: point door err %v", id, pin, va, perr)
+			case want.none:
+				if ok {
+					k.fail("node %v pin %d valid %d: point door none, timeline %s%s", id, pin, va, got.key, etSegsString(segs))
+				}
 			default:
 				if !ok {
-					k.fail("node %v pin %d valid %d: point door %s, timeline none%s", id, pin, va, etNodeKey(want), etSegsString(segs))
+					k.fail("node %v pin %d valid %d: point door %s, timeline none%s", id, pin, va, want.key, etSegsString(segs))
 				}
-				if w := etNodeKey(want); w != got.key {
-					k.fail("node %v pin %d valid %d:\n  point    %s\n  timeline %s%s", id, pin, va, w, got.key, etSegsString(segs))
+				if want.key != got.key {
+					k.fail("node %v pin %d valid %d:\n  point    %s\n  timeline %s%s", id, pin, va, want.key, got.key, etSegsString(segs))
 				}
 			}
 		}
@@ -305,6 +364,7 @@ func (k *etChecker) node(id types.NodeID, extraPins []types.Instant, maxPin type
 func (k *etChecker) rel(id types.RelID, extraPins []types.Instant, maxPin types.Instant) {
 	k.t.Helper()
 	stamps := k.relStamps(id)
+	cache := k.newPointCache(stamps)
 	for _, pin := range etPins(stamps, extraPins, maxPin) {
 		k.pins++
 		segsRaw, err := k.g.Temporal.RelEffectiveTimeline(id, pin)
@@ -323,21 +383,30 @@ func (k *etChecker) rel(id types.RelID, extraPins []types.Instant, maxPin types.
 		}
 		for _, va := range etProbes(stamps, segs) {
 			k.checks++
-			want, perr := k.g.Temporal.RelAtTx(id, va, pin)
+			want, perr := cache.answer(va, pin, func() (etPointAnswer, error) {
+				r, err := k.g.Temporal.RelAtTx(id, va, pin)
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+					return etPointAnswer{none: true}, nil
+				}
+				if err != nil {
+					return etPointAnswer{}, err
+				}
+				return etPointAnswer{key: etRelKey(r)}, nil
+			})
 			got, ok := etAt(segs, va)
 			switch {
-			case errors.Is(perr, storepkg.ErrNoVersionValidAt) || errors.Is(perr, storepkg.ErrRelNotFound):
-				if ok {
-					k.fail("rel %v pin %d valid %d: point door none (%v), timeline %s%s", id, pin, va, perr, got.key, etSegsString(segs))
-				}
 			case perr != nil:
 				k.fail("rel %v pin %d valid %d: point door err %v", id, pin, va, perr)
+			case want.none:
+				if ok {
+					k.fail("rel %v pin %d valid %d: point door none, timeline %s%s", id, pin, va, got.key, etSegsString(segs))
+				}
 			default:
 				if !ok {
-					k.fail("rel %v pin %d valid %d: point door %s, timeline none%s", id, pin, va, etRelKey(want), etSegsString(segs))
+					k.fail("rel %v pin %d valid %d: point door %s, timeline none%s", id, pin, va, want.key, etSegsString(segs))
 				}
-				if w := etRelKey(want); w != got.key {
-					k.fail("rel %v pin %d valid %d:\n  point    %s\n  timeline %s%s", id, pin, va, w, got.key, etSegsString(segs))
+				if want.key != got.key {
+					k.fail("rel %v pin %d valid %d:\n  point    %s\n  timeline %s%s", id, pin, va, want.key, got.key, etSegsString(segs))
 				}
 			}
 		}
@@ -432,40 +501,50 @@ func TestEffectiveTimeline_PointwiseOracle(t *testing.T) {
 	}
 	const base uint64 = 0x1C_E7 // "1c effective timeline"
 	x0 := types.Instant(time.Now().Add(time.Hour).UnixMilli()/1_000_000*1_000_000 + 1_000_000)
-	var total etChecker
-	for _, be := range txbBackends() {
-		for i := 0; i < seeds; i++ {
-			seed := base + uint64(i)
-			t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
-				_, _, _, pins, o := txbOracleRun(t, be, seed, nOps, x0, nil, nil)
-				var extra []types.Instant
-				for _, in := range o.intents {
-					extra = append(extra, in.at-1, in.at)
-				}
-				extra = append(extra, pins...)
-				k := &etChecker{t: t, g: o.g, label: be.name}
-				check := func(phase string) {
-					maxPin := o.x
-					k.label = be.name + " " + phase
-					for _, id := range o.allNodeIDs() {
-						k.node(id, extra, maxPin)
+	var (
+		mu    sync.Mutex // guards total across the parallel (backend, seed) subtests
+		total etChecker
+	)
+	// The group returns once every parallel subtest has finished (each holds
+	// only its own graph), so the log below sees the full tallies.
+	t.Run("runs", func(t *testing.T) {
+		for _, be := range txbBackends() {
+			for i := 0; i < seeds; i++ {
+				seed := base + uint64(i)
+				t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
+					t.Parallel()
+					_, _, _, pins, o := txbOracleRun(t, be, seed, nOps, x0, nil, nil)
+					var extra []types.Instant
+					for _, in := range o.intents {
+						extra = append(extra, in.at-1, in.at)
 					}
-					for _, id := range o.relIDs {
-						k.rel(id, extra, maxPin)
+					extra = append(extra, pins...)
+					k := &etChecker{t: t, g: o.g, label: be.name}
+					check := func(phase string) {
+						maxPin := o.x
+						k.label = be.name + " " + phase
+						for _, id := range o.allNodeIDs() {
+							k.node(id, extra, maxPin)
+						}
+						for _, id := range o.relIDs {
+							k.rel(id, extra, maxPin)
+						}
 					}
-				}
-				check("after the oracle sequence")
-				compacted := etTail(o)
-				check("after rollback, re-import, compaction")
-				if compacted && k.errs == 0 {
-					t.Fatalf("compaction trimmed versions but no pin was refused with ErrHistoryCompacted")
-				}
-				total.checks += k.checks
-				total.pins += k.pins
-				total.segs += k.segs
-				total.errs += k.errs
-			})
+					check("after the oracle sequence")
+					compacted := etTail(o)
+					check("after rollback, re-import, compaction")
+					if compacted && k.errs == 0 {
+						t.Fatalf("compaction trimmed versions but no pin was refused with ErrHistoryCompacted")
+					}
+					mu.Lock()
+					total.checks += k.checks
+					total.pins += k.pins
+					total.segs += k.segs
+					total.errs += k.errs
+					mu.Unlock()
+				})
+			}
 		}
-	}
+	})
 	t.Logf("pointwise checks %d at %d (entity, pin) pairs, %d segments, %d refused pins", total.checks, total.pins, total.segs, total.errs)
 }

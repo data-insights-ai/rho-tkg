@@ -261,6 +261,7 @@ func TestRefArchiveReadersSeeMovedEntityOnce(t *testing.T) {
 			archived bool
 		}{{"ArchiveNode", false}, {"RestoreNode", true}} {
 			t.Run(tc.name+"/"+mv.name, func(t *testing.T) {
+				t.Parallel() // its own store; the hook below is on that instance
 				m := newMoveRace(t, mv.archived)
 				want, _, err := tc.measure(m)
 				if err != nil {

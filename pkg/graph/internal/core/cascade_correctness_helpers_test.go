@@ -519,8 +519,21 @@ func (e *ccEnt) unchanged(phase string, before, after ccViews, ids ...int64) {
 
 // ccRun runs body for node and relationship on every txbBackend; mk opens a
 // fresh graph (test clock attached) for each subtest, so the exact-set
-// assertions see only that subtest's entities.
+// assertions see only that subtest's entities. The eight backend/kind
+// subtests run in parallel: each holds only its own graphs.
 func ccRun(t *testing.T, allowBackfill bool, body func(t *testing.T, mk func(t *testing.T) *ccEnt)) {
+	t.Helper()
+	ccRunOpt(t, allowBackfill, true, body)
+}
+
+// ccRunSerial is ccRun with the backend/kind subtests one after another, for a
+// body that reads a process-wide counter (badger's row-decode hook).
+func ccRunSerial(t *testing.T, allowBackfill bool, body func(t *testing.T, mk func(t *testing.T) *ccEnt)) {
+	t.Helper()
+	ccRunOpt(t, allowBackfill, false, body)
+}
+
+func ccRunOpt(t *testing.T, allowBackfill, parallel bool, body func(t *testing.T, mk func(t *testing.T) *ccEnt)) {
 	t.Helper()
 	for _, be := range txbBackends() {
 		for _, rel := range []bool{false, true} {
@@ -529,6 +542,9 @@ func ccRun(t *testing.T, allowBackfill bool, body func(t *testing.T, mk func(t *
 				kind = "rel"
 			}
 			t.Run(be.name+"/"+kind, func(t *testing.T) {
+				if parallel {
+					t.Parallel()
+				}
 				body(t, func(t *testing.T) *ccEnt {
 					t.Helper()
 					g := be.open(t, allowBackfill)

@@ -513,9 +513,11 @@ func TestHistoryStamps_RandomizedDifferential(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for _, k := range stampKinds() {
 		for seed := int64(1); seed <= 4; seed++ {
 			t.Run(fmt.Sprintf("%s/seed=%d", k.name, seed), func(t *testing.T) {
+				t.Parallel()                        // its own directory and store
 				r := rand.New(rand.NewSource(seed)) // #nosec G404 -- deterministic test sequence
 				dir := t.TempDir()
 				open := func() *Store {

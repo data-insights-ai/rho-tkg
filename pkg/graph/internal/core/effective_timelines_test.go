@@ -136,6 +136,7 @@ func ccRunWholeAxis(t *testing.T, body func(t *testing.T, mk func(t *testing.T) 
 	for _, be := range txbBackends(func(c *Config) { c.UntimedValidStart = UntimedWholeAxis }) {
 		for _, rel := range []bool{false, true} {
 			t.Run(be.name+"/"+map[bool]string{false: "node", true: "rel"}[rel], func(t *testing.T) {
+				t.Parallel()
 				body(t, func(t *testing.T) *ccEnt {
 					t.Helper()
 					g := be.open(t, false)

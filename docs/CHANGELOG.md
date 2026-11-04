@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.104.6] - 2026-11-04
+
+### Changed
+
+- **Faster race gate** (René, 4 Nov: the slowest tests under `go test -race -short`, same coverage; no library change).
+  Each test alone under race `-short` on the loaded host, user+sys CPU and wall: badger
+  `TestRelPlannerStatsMemoBounded` measures the planner-stat heap at 1K/10K rels under `-short` (the retained
+  difference is a constant of a few KB at every size; the gates without `-short` keep 10K/100K): 208 s → 7 s CPU,
+  189 s → 7 s wall; core `TestEffectiveTimeline_PointwiseOracle` calls the point door (the reference) once per stamp
+  gap instead of once per pin, the timeline door under test still at every pin and probe (541 K checks as before):
+  88 s → 23 s CPU, 25 s → 6 s wall; graph `TestRelSegmentsDifferentialOracle` and `…OnDisk` render their row
+  fingerprint with strconv/hex instead of fmt (same fields): 122 s → 45 s CPU, 34 s → 13 s wall; core's `txbBackends`
+  stores open with an 8 MB memtable (badger zeroes the arena per open; `TestTxRollbackKeepsCascadeRows` opens 336):
+  30 s → 23 s CPU. Parallel where every
+  case holds its own store (wall alone under race `-short`): the 35 `ccRun` tests of core 122 s → 60 s (42 s with the
+  memtable change); the memory
+  segment tests 146 s → 65 s; the graph seed/backend oracles 62 s → 46 s and 34 s → 24 s; the badger staged-flush and
+  randomized-differential set 372 s → 161 s; tiered `TestRefArchiveReadersSeeMovedEntityOnce` 31 s → 19 s. Tests that
+  read a process-wide seam (badger's row-decode counter, `maxReadableStoreFormatVersion`, `recoverStagedFlushFault`,
+  segdir's mapping counter, `MemStats`) stay serial. Covered blocks per package: no block lost that the plain `-short`
+  suite does not hit. The five packages together, as the patch gate runs them, on the loaded host (4 Nov, before the
+  memtable change): badger 731 s → 369 s, graph 292 s → 216 s, memory 205 s → 97 s, tiered ~170 s → 137 s, core
+  340 s → 337 s (CPU-starved by the other packages; its parallel sum fell 2,386 s → 1,613 s).
+
 ## [4.104.5] - 2026-11-04
 
 ### Changed
