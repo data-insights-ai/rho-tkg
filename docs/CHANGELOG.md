@@ -19,6 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`make kind` reads more of the API**: parameter names no longer count (a rename was a false major); type
   parameters, embedded fields, alias against defined type and a const's or var's type do (a change is a major); a
   raised go directive is a minor.
+- **A flaky badger test fixed**: `TestPutNodesFailedVectorLeavesNoTrace` compared the write queue before and after a
+  failed call while the 100 ms timed flush could drain it in between (seen under race at load 25); its store now has
+  no timed flush.
 - **Docs match the release cycle** (CONTRIBUTING, HANDOVER, SECURITY: the gates use the test cache, releases go to
   the local git server, fuzz-smoke runs in the major gate, the consumers' pins and how they fetch from the local server);
   the minor gate runs the long tier without race, as its tests' bounds were measured (`make test-long`), next to

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -20,7 +21,10 @@ var errBatchFailVector = errors.New("injected vector-index failure")
 // vector index on emb of each label.
 func batchFailOpen(t *testing.T, dir string, keys *registrypkg.PropertyKeyRegistry, labels *registrypkg.LabelRegistry, create bool) *Store {
 	t.Helper()
-	bs, err := New(Config{Dir: dir, PropertyKeyRegistry: keys, LabelNames: labels, PropertyIndexOnDiskLabels: []string{"D"}})
+	// No timed flush: the tests compare the write queue before and after a
+	// call, and a 100 ms flush under race at load drained it in between
+	// (4 Nov, 18 queued writes to 0). Close still flushes.
+	bs, err := New(Config{Dir: dir, PropertyKeyRegistry: keys, LabelNames: labels, PropertyIndexOnDiskLabels: []string{"D"}, FlushInterval: time.Hour})
 	if err != nil {
 		t.Fatal(err)
 	}
