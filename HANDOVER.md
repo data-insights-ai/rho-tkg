@@ -12,7 +12,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   (ai-soc ea30bfda), its three local sets and the next Flux run; a later tag belongs to the next run, never a re-pin.
   Main keeps going untagged. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc); ai-soc
   names its quiet windows: then no ci-docker, probe, bench or long test here.
-  - **On main, unreleased:** nothing. Open branch: `headrefresh` (RELHIST P2, in a worktree, not merged).
+  - **On main, unreleased:** RELHIST P2 (a patch: the plural timeline doors read and fill the head cache; a plain
+    Update, CloseVersion or ReplaceVersion keeps the entry valid). No branch open.
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Reviews:** René (3 Nov, "yes, always"): one read-only Fable review per finished branch, before its merge, given
