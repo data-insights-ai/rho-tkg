@@ -137,6 +137,9 @@ the kind of release, run once; it stops at the first red, and a red is fixed on 
    empty, the gate of that kind, `git tag -a` (message: that section), `git push --atomic` of main and the tag. A major
    moves the module path to /v(N+1) first. A red step stops it; the fix goes on main and the release
    runs again. A bad tag is never moved: the fix is the next tag, and `retract` in go.mod.
+   While GitHub refuses this host's SSH logins, `RELEASE_REMOTE=local make release-…` releases to the local server
+   (the bare repository `~/git/rho-tkg.git`, remote `local`); `git push --atomic origin main --tags` carries main and
+   the tags to GitHub once it accepts them again (René, 4 Nov).
 5. Tell sigma-tkgd and ai-soc in one line: tag, gate, seconds.
 6. Clean up after (René, 4 Nov): the release round's own scratch (gate logs, branch and worktree of the release) goes the
    same way, then `bash ~/cleanup.sh` again.

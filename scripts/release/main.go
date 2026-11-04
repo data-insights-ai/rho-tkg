@@ -193,6 +193,16 @@ func gitDir() string {
 	return strings.TrimSpace(string(b))
 }
 
+// remote is where a release fetches from and pushes to: origin (GitHub), or
+// RELEASE_REMOTE, e.g. `local`, the bare repository ~/git/rho-tkg.git that
+// holds the releases while GitHub refuses this host's logins (René, 4 Nov).
+func remote() string {
+	if r := os.Getenv("RELEASE_REMOTE"); r != "" {
+		return r
+	}
+	return "origin"
+}
+
 // gitNet runs a git command that talks to origin, up to 5 times with a growing
 // pause: GitHub refuses this host's SSH logins now and then (4 Nov: one in
 // three, the same key), and a release must not die on one refusal.
@@ -299,11 +309,11 @@ func release(k int, dry bool) {
 		if s, _ := git("status", "--porcelain"); s != "" {
 			errs = append(errs, "tree not clean")
 		}
-		if out, err := gitNet("fetch", "-q", "origin", "main", "--tags"); err != nil {
+		if out, err := gitNet("fetch", "-q", remote(), "main", "--tags"); err != nil {
 			errs = append(errs, "git fetch: "+out)
-		} else if _, err := git("merge-base", "--is-ancestor", "origin/main", "HEAD"); err != nil {
-			errs = append(errs, "origin/main is not an ancestor of HEAD")
-		} else if out, err := gitNet("push", "--dry-run", "-q", "origin", "main"); err != nil {
+		} else if _, err := git("merge-base", "--is-ancestor", remote()+"/main", "HEAD"); err != nil {
+			errs = append(errs, remote()+"/main is not an ancestor of HEAD")
+		} else if out, err := gitNet("push", "--dry-run", "-q", remote(), "main"); err != nil {
 			errs = append(errs, "cannot push to origin (checked before the gate): "+out)
 		}
 		if _, err := git("rev-parse", "-q", "--verify", "refs/tags/"+next); err == nil {
@@ -362,7 +372,7 @@ func release(k int, dry bool) {
 		return nil
 	})
 	check("push", func() error {
-		if out, err := gitNet("push", "--atomic", "origin", "main", "refs/tags/"+next); err != nil {
+		if out, err := gitNet("push", "--atomic", remote(), "main", "refs/tags/"+next); err != nil {
 			if _, derr := git("tag", "-d", next); derr == nil {
 				return fmt.Errorf("%s\nthe local tag %s is deleted again: fix, run again", out, next)
 			}
