@@ -181,3 +181,36 @@ CASCADEMETA (next item, Fable design 3 Nov 23:00, key claims checked in source h
   fallback); twin equivalence with the skeleton path off (bounded, open, excise, whole-axis, retraction + re-import,
   tombstone in chain, legacy shared version, pre-migration chain, order-rule refusal, compaction between reads); cost
   bound at 64 and 1,024 versions. Estimate (inference): about 5x less allocation per cascade miss.
+
+RELHIST P5 design: bounding NodeHistoryTemporalMeta (sigma: 10.9 GB via historyAcrossShards). Fable, read-only, main v4.104.7,
+4 Nov; the lead checked these claims in the source: headValid's lowest-pin rule (effective_head.go:272-281, :701), gatherHeadFacts
+refusing any delete/retraction (:315), a put over the stripe weight clearing the whole stripe (:207-209), NodeBeliefWatermark only on
+memory and badger, no NodeHistoryTemporalMeta on sharded.
+
+1. Callers (four): plural door rd.nodeMeta (effective_timelines.go:174-175); singular door on a head miss (effective_timeline.go:621);
+   node-at doors via nodeAtViaTemporalMeta (temporal_queries.go:588; batched_attx.go:61; temporal.go:1551, :1566); cascade miss plan
+   nodeMetaPlan (cascade_meta.go:157). Per version: badger one block visit + partial decode + one heap TemporalMetadata; tiered walks
+   one shard (event), the reference shard plus the archive, or every history shard (not live), then copies and re-sorts the merge
+   (tieredstore_history_meta.go:73-158); sharded has no skeleton door, so plain reads take the whole history with full rows. Core adds a
+   stub node per version and folds O(V log V) per pin in the plural door.
+   Why sigma's shape reaches it: (1) a plural call with a pin below the newest TxFrom misses (lowest pin tested, highest filled);
+   (2) a chain holding a delete or retraction never qualifies: permanent O(V) per read; (3) the entry survives only Update / GraphTx
+   UpdateNode / Batch / ingest (headSupersede), not property CAS, replica apply, Delete, corrections; (4) a put over the stripe share
+   clears the stripe, an entry whose validity moves each cut weighs ~2V; (5) scan doors never use the entry; (6) node-at doors on
+   tiered have no belief watermark: every NodeAtTx with history walks all skeletons; (7) a restart empties the entries.
+2. Options: A head entries for chains with deletes/retractions (maxTx = max(TxFrom, DeletedAt), A1 reads only, A2 extendable across
+   writes when every delete precedes the appended row; core patch, no format change); B append-only refresh of a stale entry from a
+   version floor (needs a second per-ID token moving only on deletes and on sets at or below the presence top; new capability: minor);
+   C keep the superseded entry as a second generation for pins straddling a cut (core patch); D node-at from the entry (core patch) or
+   a tiered belief watermark (minor); E store-side skeleton cache (last); F cheaper skeletons (constant factor, after the O(V) is gone).
+3. Recommendation: Phase 0 (patch) a miss-reason counter on the head doors (no entry / token moved / current changed / pin below maxTx
+   / not whole / chain not qualifying / scan door / node-at door), then sigma's counts for one cut decide among A-D. Phase 1 (patch)
+   A1+A2: the cause certain from sigma's own words (deletes of retracted facts). Oracle: the head differential test extended with
+   tombstone, retraction, retraction + re-import, delete then Update of the re-imported life, pins between delete and re-import, on all
+   four backends. Cost gate by counts (skeleton lists read, history rows, head hits), not MemStats. Mutations: gatherHeadFacts still
+   refusing deletes, headSupersede refusing extendable=false, maxTx without DeletedAt, A2 extending past a later delete.
+   Phase 2 by the counts: B (token moved without supersede, restarts), C (pin below maxTx), D (node-at doors).
+4. Asks to sigma (cuts 10 and 30): which node doors the cut calls and with which pins; how a rewrite is written (Update / GraphTx /
+   Batch / ingest vs CAS / Delete + re-import / ReplaceVersion) and whether its validity moves each cut; the share of keys with a
+   tombstone or retraction; distinct keys read per cut and restarts between cuts; where the facts live on tiered (event, reference,
+   neither); whether a key's history is read more than once per cut; alloc_space split by NodeHistoryTemporalMeta's parent frame.
