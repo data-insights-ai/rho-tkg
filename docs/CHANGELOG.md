@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   background (one -race suite on the host at a time under `~/.cache/race-gate.lock`, shared with sigma; log
   `.git/gate/race.out`), and cron runs it every 6 h. The long tier runs by hand, never before a tag. The major gate
   keeps -race. Warm patch gate: 143 s at load 41 for a core change.
+- **`release test`**, a builder's presubmit (as sigma's): go vet and `go test -short -p 4` of the packages a change
+  reaches against `origin/main` (changed packages and every package whose tests depend on one).
 
 ## [4.105.2] - 2026-11-04
 

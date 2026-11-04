@@ -8,6 +8,7 @@
 //	go run ./scripts/release <patch|minor|major> [-dry-run]
 //	go run ./scripts/release kind
 //	go run ./scripts/release race
+//	go run ./scripts/release test
 //
 // Gates (steps at once, one PASS/FAIL line each with its seconds):
 //   - patch: gofmt, build (+GOARCH=386), vet, lint, go mod tidy -diff and
@@ -16,6 +17,12 @@
 //   - minor: the patch gate and gosec;
 //   - major: the minor gate cold with -race (-count=1 -shuffle=on), coverage,
 //     fuzz-smoke, govulncheck.
+//
+// test (a builder's presubmit, as sigma's): go vet and go test -short -p 4 of
+// the packages a change reaches: the packages of the files changed against
+// origin/main (committed, staged, unstaged or untracked; a testdata file
+// counts for its package, go.mod or go.sum means all) and every package whose
+// tests depend on one of them.
 //
 // -race (René, 4 Nov, as sigma's): not in the patch and minor gates. A patch or
 // minor release starts `release race` in the background after its push, and
@@ -65,6 +72,8 @@ func main() {
 		}
 	case "race":
 		os.Exit(runRace())
+	case "test":
+		os.Exit(runAffected())
 	case "gate":
 		if len(args) != 2 {
 			usage()
@@ -87,7 +96,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release gate <patch|minor|major> | release <patch|minor|major> [-dry-run] | release kind")
+	fmt.Fprintln(os.Stderr, "usage: release gate <patch|minor|major> | release <patch|minor|major> [-dry-run] | release kind | release race | release test")
 	os.Exit(2)
 }
 
@@ -453,3 +462,103 @@ func raceLock() string {
 // detached starts the background race run in its own session, so it outlives
 // the release and the terminal.
 func detached() *syscall.SysProcAttr { return &syscall.SysProcAttr{Setsid: true} }
+
+// runAffected runs go vet and go test -short -p 4 on the packages a change
+// reaches (see the package comment) and returns the exit code.
+func runAffected() int {
+	pkgs, err := affectedPackages()
+	if err != nil {
+		fmt.Println("test:", err)
+		return 1
+	}
+	if len(pkgs) == 0 {
+		fmt.Println("test: no Go package reached by the change")
+		return 0
+	}
+	fmt.Printf("test: %d packages reached\n", len(pkgs))
+	env := append(os.Environ(), "GOFLAGS=-trimpath", "CGO_ENABLED=1")
+	for _, args := range [][]string{
+		append([]string{"vet"}, pkgs...),
+		append([]string{"test", "-short", "-p", "4", "-timeout", "20m"}, pkgs...),
+	} {
+		c := exec.Command("go", args...) // #nosec G204 -- go with package paths from go list
+		c.Env, c.Stdout, c.Stderr = env, os.Stdout, os.Stderr
+		if err := c.Run(); err != nil {
+			return 1
+		}
+	}
+	return 0
+}
+
+// affectedPackages lists the module's packages whose tests reach a package
+// changed against origin/main.
+func affectedPackages() ([]string, error) {
+	base, err := git("merge-base", "HEAD", remote()+"/main")
+	if err != nil {
+		return nil, fmt.Errorf("merge-base: %s", base)
+	}
+	var files []string
+	for _, args := range [][]string{
+		{"diff", "--name-only", base},
+		{"ls-files", "--others", "--exclude-standard"},
+	} {
+		out, err := git(args...)
+		if err != nil {
+			return nil, fmt.Errorf("git %s: %s", args[0], out)
+		}
+		files = append(files, strings.Fields(out)...)
+	}
+	mod, err := exec.Command("go", "list", "-m").Output()
+	if err != nil {
+		return nil, err
+	}
+	module := strings.TrimSpace(string(mod))
+	all := false
+	changed := map[string]bool{}
+	for _, f := range files {
+		if f == "go.mod" || f == "go.sum" {
+			all = true
+		}
+		if i := strings.Index(f, "/testdata/"); i >= 0 {
+			f = f[:i] + "/x.go"
+		} else if strings.HasPrefix(f, "testdata/") {
+			f = "x.go"
+		}
+		if !strings.HasSuffix(f, ".go") {
+			continue
+		}
+		dir := module
+		if i := strings.LastIndex(f, "/"); i >= 0 {
+			dir += "/" + f[:i]
+		}
+		changed[dir] = true
+	}
+	out, err := exec.Command("go", "list", "-test", "-f", "{{.ImportPath}}|{{join .Deps \" \"}}", "./...").Output()
+	if err != nil {
+		return nil, fmt.Errorf("go list: %v", err)
+	}
+	seen := map[string]bool{}
+	var pkgs []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		path, deps, _ := strings.Cut(line, "|")
+		if strings.Contains(path, " ") || strings.HasSuffix(path, "_test") {
+			continue // a test variant; its .test main carries the same deps
+		}
+		pkg := strings.TrimSuffix(path, ".test")
+		if seen[pkg] {
+			continue
+		}
+		hit := all || changed[pkg]
+		for _, d := range strings.Fields(deps) {
+			if hit {
+				break
+			}
+			hit = changed[d]
+		}
+		if hit {
+			seen[pkg] = true
+			pkgs = append(pkgs, pkg)
+		}
+	}
+	return pkgs, nil
+}
