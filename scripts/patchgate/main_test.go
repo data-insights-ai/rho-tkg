@@ -4,7 +4,9 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -21,88 +23,189 @@ func (f files) side(i int) func(string) ([]byte, error) {
 	}
 }
 
-// TestPlan pins the patch gate (todo 115/116): what a patch batch must run.
-// Mutations it catches: comparing bytes instead of comment-free tokens (the
-// comment-only rows gain targets); dropping the literal value (the string row
-// loses its short target); listing every Go package (comment-only packages run).
-func TestPlan(t *testing.T) {
-	f := files{
-		"pkg/a/doc.go":       {"package a\n// old\nfunc F() int { return 1 }\n", "package a\n// new\n// more\nfunc F() int { return 1 } // tail\n"},
-		"pkg/a/code.go":      {"package a\nfunc g() int { return 1 }\n", "package a\nfunc g() int { return 2 }\n"},
-		"pkg/b/str.go":       {"package b\nconst s = \"x\"\n", "package b\nconst s = \"y\"\n"},
-		"pkg/c/c_test.go":    {"package c\n// a\nfunc TestC(t *testing.T) {}\n", "package c\n// b\nfunc TestC(t *testing.T) {}\n"},
-		"pkg/d/d_test.go":    {"package d\nfunc TestD(t *testing.T) {}\n", "package d\nfunc TestD(t *testing.T) { t.Log() }\nfunc FuzzD(f *testing.F) {}\n"},
-		"pkg/e/help_test.go": {"package e\nvar x = 1\n", "package e\nvar x = 2\n"},
-		"pkg/f/new_test.go":  {"", "package f\nfunc TestNew(t *testing.T) {}\n"},
-		"scripts/t/main.go":  {"", "package main\nfunc main() {}\n"},
-		"pkg/i/tag.go":       {"//go:build linux\n\npackage i\n", "//go:build !linux\n\npackage i\n"},
-		"pkg/m/old.go":       {"// +build linux\n\npackage m\n", "// +build !linux\n\npackage m\n"},
-		"pkg/j/j_test.go": {"package j\nfunc helper() int { return 1 }\nfunc TestJ(t *testing.T) {}\n",
-			"package j\nfunc helper() int { return 2 }\nfunc TestJ(t *testing.T) {}\n"},
-	}
-	cases := []struct {
-		name    string
-		changes []change
-		want    string // plan lines joined by "; "
-	}{
-		{"empty", nil, ""},
-		{"docs only", []change{{'M', "README.md"}, {'D', "docs/x.md"}}, ""},
-		{"comment-only shipped code", []change{{'M', "pkg/a/doc.go"}}, ""},
-		{"comment-only test", []change{{'M', "pkg/c/c_test.go"}}, ""},
-		{"code change", []change{{'M', "pkg/a/code.go"}}, "short ./pkg/a/"},
-		{"string literal change", []change{{'M', "pkg/b/str.go"}}, "short ./pkg/b/"},
-		{"changed tests by name", []change{{'M', "pkg/d/d_test.go"}}, "race ./pkg/d/ ^(TestD|FuzzD)$"},
-		{"changed helper runs the package", []change{{'M', "pkg/e/help_test.go"}}, "race ./pkg/e/"},
-		{"new test file", []change{{'A', "pkg/f/new_test.go"}}, "race ./pkg/f/ ^(TestNew)$"},
-		{"dev tool", []change{{'A', "scripts/t/main.go"}}, "race ./scripts/t/"},
-		{"deleted test file", []change{{'D', "pkg/g/gone_test.go"}}, ""},
-		{"new shipped file", []change{{'A', "pkg/h/n.go"}}, "short ./pkg/h/"},
-		{"hidden: a build constraint is no comment", []change{{'M', "pkg/i/tag.go"}}, "short ./pkg/i/"},
-		{"hidden: an old build line is no comment", []change{{'M', "pkg/m/old.go"}}, "short ./pkg/m/"},
-		{"hidden: a helper beside a test runs the package", []change{{'M', "pkg/j/j_test.go"}}, "race ./pkg/j/"},
-		{"hidden: a deleted shipped file", []change{{'D', "pkg/k/gone.go"}}, "short ./pkg/k/"},
-		{"hidden: a changed fixture runs its package", []change{{'M', "pkg/l/testdata/x.json"}}, "race ./pkg/l/"},
-		{"go.mod is CI's job (security)", []change{{'M', "go.mod"}, {'M', "go.sum"}}, ""},
-		{"mixed, sorted, deduplicated", []change{{'M', "pkg/a/code.go"}, {'M', "pkg/a/doc.go"}, {'M', "pkg/d/d_test.go"}, {'M', "go.sum"}},
-			"race ./pkg/d/ ^(TestD|FuzzD)$; short ./pkg/a/"},
-	}
-	for _, c := range cases {
-		got := strings.Join(plan(c.changes, f.side(0), f.side(1)), "; ")
-		if got != c.want {
-			t.Errorf("%s: plan %q, want %q", c.name, got, c.want)
+// plan runs analyze and the test selection over the fake tree f, as main does.
+func (f files) plan(t *testing.T, changes []change) (string, *result) {
+	t.Helper()
+	prev := globGo
+	globGo = func(dir string) []string {
+		var out []string
+		for p, v := range f {
+			if path.Dir(p) == strings.TrimSuffix(dir, "/") && strings.HasSuffix(p, ".go") && v[1] != "" {
+				out = append(out, p)
+			}
 		}
+		sort.Strings(out)
+		return out
 	}
+	defer func() { globGo = prev }()
+	r := analyze(changes, f.side(0), f.side(1), false)
+	r.selectTests(f.side(1))
+	return strings.Join(r.lines(), "; "), r
 }
 
-// TestNewExportedAPI: a door belongs in a minor, never a patch (lesson 79).
-// Mutation: collecting all names instead of exported ones refuses the private
-// helper row; skipping methods misses the method row.
-func TestNewExportedAPI(t *testing.T) {
+// same is a file present unchanged on both sides.
+func same(src string) [2]string { return [2]string{src, src} }
+
+// TestPlan pins what a patch runs: only new or changed code, by test name.
+// Mutations it catches: comparing bytes instead of comment-free tokens (the
+// comment rows gain targets); dropping helper transitivity (the "through a
+// helper" row loses TestViaHelper); running a struct's every user instead of
+// its changed fields (the field row gains TestOther); keeping a //go:build
+// measure file live (the measure row gains a target); following no renames
+// (the moved rows run nothing or the package).
+func TestPlan(t *testing.T) {
 	f := files{
-		"pkg/a/a.go": {"package a\nfunc F() {}\nfunc (s *S) M() {}\ntype S struct{}\n",
-			"package a\nfunc F() {}\nfunc (s *S) M() {}\nfunc (s *S) N() {}\ntype S struct{}\nfunc G() {}\nfunc helper() {}\nconst K = 1\n"},
-		"pkg/a/priv.go":     {"package a\nfunc f() {}\n", "package a\nfunc f() {}\nfunc g() {}\n"},
-		"pkg/a/new.go":      {"", "package a\ntype T int\n"},
-		"pkg/a/impl.go":     {"", "package a\ntype impl struct{}\nfunc (impl) Errorf() {}\nfunc (p *impl) Warn() {}\n"},
-		"pkg/a/a_test.go":   {"package a\n", "package a\nfunc TestX(t *testing.T) {}\n"},
-		"scripts/t/main.go": {"", "package main\nfunc Exported() {}\n"},
+		// package a: shipped code and its tests.
+		"pkg/a/a.go": {"package a\n// old\nfunc F() int { return 1 }\nfunc g() int { return 1 }\nfunc Outer() int { return deep() }\nfunc deep() int { return 1 }\ntype S struct {\n\tx int\n\ty int\n}\n",
+			"package a\n// new\nfunc F() int { return 1 } // tail\nfunc g() int { return 2 }\nfunc Outer() int { return deep() }\nfunc deep() int { return 2 }\ntype S struct {\n\tx int\n\ty int\n\tz int\n}\n"},
+		"pkg/a/a_test.go": same("package a\nimport \"testing\"\n" +
+			"func TestG(t *testing.T) { _ = g() }\n" +
+			"func helper() int { return g() }\n" +
+			"func outerHelper() int { return helper() }\n" +
+			"func TestViaHelper(t *testing.T) { _ = outerHelper() }\n" +
+			"func TestF(t *testing.T) { _ = F() }\n" +
+			"func TestOuter(t *testing.T) { _ = Outer() }\n" +
+			"func TestZ(t *testing.T) { var s S; _ = s.z }\n" +
+			"func TestOther(t *testing.T) { var s S; _ = s.x }\n"),
+		"pkg/a/comment.go": {"package a\n// a\nfunc c() {}\n", "package a\n// b\nfunc c() {}\n"},
+		// package b: changed tests and test helpers.
+		"pkg/b/b_test.go": {"package b\nfunc TestB(t *testing.T) {}\nfunc TestKeep(t *testing.T) {}\nfunc h() int { return 1 }\nfunc TestH(t *testing.T) { h() }\n",
+			"package b\nfunc TestB(t *testing.T) { t.Log() }\nfunc TestKeep(t *testing.T) {}\nfunc h() int { return 2 }\nfunc TestH(t *testing.T) { h() }\nfunc FuzzNew(f *testing.F) {}\n"},
+		// build constraints.
+		"pkg/c/m_measure_test.go": {"//go:build measure\n\npackage c\nfunc TestM(t *testing.T) {}\n", "//go:build measure\n\npackage c\nfunc TestM(t *testing.T) { t.Log() }\n"},
+		"pkg/c/w_windows.go":      {"package c\nfunc w() int { return 1 }\n", "package c\nfunc w() int { return 2 }\n"},
+		"pkg/c/up_test.go":        {"//go:build measure\n\npackage c\nfunc TestUp(t *testing.T) {}\n", "package c\nfunc TestUp(t *testing.T) {}\n"},
+		// moves.
+		"pkg/d/new_test.go":   {"", "package d\nfunc TestMoved(t *testing.T) {}\n"},
+		"pkg/d/old_test.go":   {"package d\nfunc TestMoved(t *testing.T) {}\n", ""},
+		"pkg/e/there_test.go": {"", "package e\nfunc TestAcross(t *testing.T) {}\n"},
+		"pkg/d/gone_test.go":  {"package d\nfunc TestAcross(t *testing.T) {}\n", ""},
+		"pkg/m/x.go":          {"package m\nfunc moved() int { return 1 }\n", "package m\n"},
+		"pkg/m/y.go":          {"package m\n", "package m\nfunc moved() int { return 1 }\n"},
+		"pkg/m/m_test.go":     same("package m\nfunc TestMovedFunc(t *testing.T) { moved() }\n"),
+		// testdata.
+		"pkg/t/t_test.go": same("package t\nfunc TestReadsGolden(t *testing.T) { load(\"golden.json\") }\nfunc TestNot(t *testing.T) {}\nfunc FuzzX(f *testing.F) {}\n"),
 	}
 	cases := []struct {
 		name    string
 		changes []change
 		want    string
 	}{
-		{"none", nil, ""},
-		{"private helper only", []change{{'M', "pkg/a/priv.go"}}, ""},
-		{"new func, method, const", []change{{'M', "pkg/a/a.go"}}, "pkg/a/a.go: G, K, S.N"},
-		{"new file with a type", []change{{'A', "pkg/a/new.go"}}, "pkg/a/new.go: T"},
-		{"exported methods of an unexported type are not API", []change{{'A', "pkg/a/impl.go"}}, ""},
-		{"tests and tools are not API", []change{{'M', "pkg/a/a_test.go"}, {'A', "scripts/t/main.go"}}, ""},
+		{"empty", nil, ""},
+		{"docs only", []change{{'M', "README.md", "README.md"}, {'D', "docs/x.md", "docs/x.md"}}, ""},
+		{"comment-only code", []change{{'M', "pkg/a/comment.go", "pkg/a/comment.go"}}, ""},
+		{"changed func: its direct and helper users",
+			[]change{{'M', "pkg/a/a.go", "pkg/a/a.go"}},
+			"race ./pkg/a/ ^(TestG|TestOuter|TestViaHelper|TestZ)$"},
+		{"changed tests and a changed test helper", []change{{'M', "pkg/b/b_test.go", "pkg/b/b_test.go"}},
+			"race ./pkg/b/ ^(FuzzNew|TestB|TestH)$"},
+		{"a measure-tagged test is not live", []change{{'M', "pkg/c/m_measure_test.go", "pkg/c/m_measure_test.go"}}, ""},
+		{"a windows file is not live here", []change{{'M', "pkg/c/w_windows.go", "pkg/c/w_windows.go"}}, ""},
+		{"a test that becomes live runs", []change{{'M', "pkg/c/up_test.go", "pkg/c/up_test.go"}}, "race ./pkg/c/ ^(TestUp)$"},
+		{"a renamed test file runs its tests by name", []change{{'R', "pkg/d/new_test.go", "pkg/d/old_test.go"}}, "race ./pkg/d/ ^(TestMoved)$"},
+		{"a test moved across packages", []change{{'R', "pkg/e/there_test.go", "pkg/d/gone_test.go"}}, "race ./pkg/e/ ^(TestAcross)$"},
+		{"an unchanged func moved between files runs nothing",
+			[]change{{'M', "pkg/m/x.go", "pkg/m/x.go"}, {'M', "pkg/m/y.go", "pkg/m/y.go"}}, ""},
+		{"a fuzz corpus entry runs its fuzz test", []change{{'A', "pkg/t/testdata/fuzz/FuzzX/abc", ""}}, "race ./pkg/t/ ^(FuzzX)$"},
+		{"a fixture runs the tests naming it", []change{{'M', "pkg/t/testdata/golden.json", "pkg/t/testdata/golden.json"}}, "race ./pkg/t/ ^(TestReadsGolden)$"},
+		{"an unnamed fixture runs the package's tests", []change{{'M', "pkg/t/testdata/other.bin", "pkg/t/testdata/other.bin"}},
+			"race ./pkg/t/ ^(FuzzX|TestNot|TestReadsGolden)$"},
+		{"a deleted test runs nothing", []change{{'D', "pkg/d/gone_test.go", "pkg/d/gone_test.go"}}, ""},
 	}
 	for _, c := range cases {
-		got := strings.Join(newExportedAPI(c.changes, f.side(0), f.side(1)), "; ")
+		got, r := f.plan(t, c.changes)
 		if got != c.want {
+			t.Errorf("%s: plan %q, want %q", c.name, got, c.want)
+		}
+		if len(r.minor) > 0 {
+			t.Errorf("%s: minor %v", c.name, r.minor)
+		}
+	}
+}
+
+// TestPlanWidensToPackageCode: a changed function no test names runs the
+// tests naming the package code that calls it, one level at a time, and never
+// the whole package. Mutation: stopping at level 0 runs nothing.
+func TestPlanWidensToPackageCode(t *testing.T) {
+	f := files{
+		"pkg/a/a.go": {"package a\nfunc Outer() int { return mid() }\nfunc mid() int { return deep() }\nfunc deep() int { return 1 }\nfunc Unrelated() {}\n",
+			"package a\nfunc Outer() int { return mid() }\nfunc mid() int { return deep() }\nfunc deep() int { return 2 }\nfunc Unrelated() {}\n"},
+		"pkg/a/a_test.go": same("package a\nfunc TestOuter(t *testing.T) { Outer() }\nfunc TestUnrelated(t *testing.T) { Unrelated() }\n"),
+	}
+	got, r := f.plan(t, []change{{'M', "pkg/a/a.go", "pkg/a/a.go"}})
+	if got != "race ./pkg/a/ ^(TestOuter)$" {
+		t.Errorf("plan %q", got)
+	}
+	if len(r.notes) != 1 || !strings.Contains(r.notes[0], "2 levels") {
+		t.Errorf("notes %q", r.notes)
+	}
+}
+
+// TestKind: rho's minor rules on top of gorelease. Mutations: dropping the
+// FormatVersion check passes the marker rows; comparing badger's patch
+// number refuses the patch-bump row; checking public packages refuses the
+// public row (gorelease's job); not honouring the switch refuses the
+// "ignored" row.
+func TestKind(t *testing.T) {
+	f := files{
+		"pkg/s/wire.go":          {"package s\nconst AFormatVersion = 3\n", "package s\nconst AFormatVersion = 3\nconst BFormatVersion = 4\n"},
+		"pkg/s/bump.go":          {"package s\nconst MaxFormatVersion = 3\n", "package s\nconst MaxFormatVersion = 4\n"},
+		"pkg/s/s_test.go":        {"package s\n", "package s\nconst TestFormatVersion = 9\n"},
+		"pkg/internal/i/i.go":    {"package i\nfunc F() {}\n", "package i\nfunc F() {}\nfunc G() {}\n"},
+		"pkg/internal/i/meth.go": {"package i\ntype impl struct{}\n", "package i\ntype impl struct{}\nfunc (impl) Errorf() {}\n"},
+		"pkg/internal/i/x.go":    {"package i\nfunc Moved() {}\n", "package i\n"},
+		"pkg/internal/i/y.go":    {"package i\n", "package i\nfunc Moved() {}\n"},
+		"pkg/pub/p.go":           {"package pub\n", "package pub\nfunc New() {}\n"},
+		"scripts/t/main.go":      {"", "package main\nfunc Exported() {}\n"},
+		"go.mod":                 {"module m\nrequire (\n\tgithub.com/dgraph-io/badger/v4 v4.9.2\n)\n", "module m\nrequire (\n\tgithub.com/dgraph-io/badger/v4 v4.10.0\n)\n"},
+	}
+	patchBump := files{"go.mod": {"module m\nrequire github.com/dgraph-io/badger/v4 v4.9.2\n", "module m\nrequire github.com/dgraph-io/badger/v4 v4.9.3\n"}}
+	cases := []struct {
+		name    string
+		f       files
+		changes []change
+		ignore  bool
+		want    string
+	}{
+		{"a new format marker", f, []change{{'M', "pkg/s/wire.go", "pkg/s/wire.go"}}, false, "pkg/s/wire.go: format marker BFormatVersion is new or changed"},
+		{"a raised format marker", f, []change{{'M', "pkg/s/bump.go", "pkg/s/bump.go"}}, false, "pkg/s/bump.go: format marker MaxFormatVersion is new or changed"},
+		{"a test constant is no marker", f, []change{{'M', "pkg/s/s_test.go", "pkg/s/s_test.go"}}, false, ""},
+		{"a new internal export", f, []change{{'M', "pkg/internal/i/i.go", "pkg/internal/i/i.go"}}, false, "pkg/internal/i/i.go: G is a new exported name in an internal package"},
+		{"internal exports ignored by the switch", f, []change{{'M', "pkg/internal/i/i.go", "pkg/internal/i/i.go"}}, true, ""},
+		{"a method of an unexported type is no API", f, []change{{'M', "pkg/internal/i/meth.go", "pkg/internal/i/meth.go"}}, false, ""},
+		{"an export moved between files is no new API", f, []change{{'M', "pkg/internal/i/x.go", "pkg/internal/i/x.go"}, {'M', "pkg/internal/i/y.go", "pkg/internal/i/y.go"}}, false, ""},
+		{"public API is gorelease's", f, []change{{'M', "pkg/pub/p.go", "pkg/pub/p.go"}}, false, ""},
+		{"tools are not API", f, []change{{'A', "scripts/t/main.go", ""}}, false, ""},
+		{"a badger minor bump", f, []change{{'M', "go.mod", "go.mod"}}, false, "go.mod: badger v4.9 -> v4.10 is a minor or major bump"},
+		{"a badger patch bump", patchBump, []change{{'M', "go.mod", "go.mod"}}, false, ""},
+	}
+	for _, c := range cases {
+		r := analyze(c.changes, c.f.side(0), c.f.side(1), c.ignore)
+		if got := strings.Join(r.minor, "; "); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestLive: build constraints decide what is code. Mutation: treating
+// //go:build lines as comments (or as code) fails the measure row.
+func TestLive(t *testing.T) {
+	for _, c := range []struct {
+		path, src string
+		want      bool
+	}{
+		{"a.go", "package a\n", true},
+		{"a_test.go", "//go:build measure\n\npackage a\n", false},
+		{"a_test.go", "//go:build !measure\n\npackage a\n", true},
+		{"a.go", "//go:build race\n\npackage a\n", true},
+		{"a.go", "//go:build !race\n\npackage a\n", false},
+		{"a.go", "// +build ignore\n\npackage a\n", false},
+		{"a_windows.go", "package a\n", false},
+		{"a_linux_amd64_test.go", "package a\n", true},
+		{"a_plan9_test.go", "package a\n", false},
+	} {
+		if got := live(c.path, []byte(c.src)); got != c.want {
+			t.Errorf("live(%s, %q) = %v, want %v", c.path, c.src, got, c.want)
 		}
 	}
 }
@@ -205,7 +308,7 @@ func envWithoutGit() []string {
 
 func TestParseNameStatus(t *testing.T) {
 	got := parseNameStatus("M\tpkg/a.go\nA\tdocs/x.md\nR100\told.go\tnew.go\nD\tgone.go\n")
-	want := []change{{'M', "pkg/a.go"}, {'A', "docs/x.md"}, {'R', "new.go"}, {'D', "gone.go"}}
+	want := []change{{'M', "pkg/a.go", "pkg/a.go"}, {'A', "docs/x.md", ""}, {'R', "new.go", "old.go"}, {'D', "gone.go", "gone.go"}}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
