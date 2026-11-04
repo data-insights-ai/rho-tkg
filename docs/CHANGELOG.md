@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.105.4] - 2026-11-04
+
 ### Changed
 
 - **The test and release process, remade** (René, 4 Nov: no shell scripts, a short Makefile, Go's own test and
@@ -23,6 +25,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   mechanics: preconditions, the diff's kind, the CHANGELOG section, `make gate-<kind>`, the annotated tag, the atomic
   push, then `make race` detached (log `.git/race.out`); plus `kind` and the presubmit `test`. Warm patch gate (load 45-55,
   a race run beside it): 23 s for a comment change, 65 s for a line in core, 178 s for a line in `pkg/types`.
+
+### Performance
+
+- **LISTREAD** (sigma's restore): a `ByLabelAndProperties` or `ByLabelAndProperty` page on badger and tiered reads
+  its rows through one forward scan, the `ByLabel` door's path, instead of a read transaction and point read per row.
+  On a tiered store reopened cold (200,000 nodes, pages of 1,000): 6.8-29 µs per listed node before, 2.9-6.6 µs
+  after (shared host, load 45-55; `tasks/evidence/LISTREAD/measure.txt`). Same rows, same order, same skips.
+  `TestListReadPagesReadRowsInOneScan` gates it: a cold page reads no row by point read (the old loop: 300 of 300).
+  `HasHistory` stays as it is (about 3 µs per node; 72 % is tiered's liveness read of the current row); a batch
+  `HasHistory(ids)` is left for when sigma's restore shows it matters.
 
 ## [4.105.3] - 2026-11-04
 
