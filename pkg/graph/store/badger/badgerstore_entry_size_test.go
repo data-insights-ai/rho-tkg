@@ -220,6 +220,7 @@ func TestIndexKeyTooLargeRefusedAtEveryNodeDoor(t *testing.T) {
 // store keeps persisting. Mutation: no bound (the record is refused only at
 // flush, after the delete, and every later flush fails).
 func TestCascadeDeleteRecordTooLargeRefused(t *testing.T) {
+	t.Parallel()
 	bs, err := New(Config{InMemory: true, ChangeLog: true})
 	if err != nil {
 		t.Fatal(err)

@@ -121,6 +121,7 @@ func changesOf(t *testing.T, bs *Store) []lsnTag {
 // LastLSNKey left out of the staging (floor, reused LSN); the image trusted
 // after recovery (digest).
 func TestStagedFlushRecoveryMatchesUncrashedStore(t *testing.T) {
+	t.Parallel()
 	h := newStagedHistory()
 	oracle := splitFlushConfig(t.TempDir())
 	h.session1(t, oracle)
@@ -204,6 +205,7 @@ func TestStagedFlushRecoveryMatchesUncrashedStore(t *testing.T) {
 // lost) or that deletes the staging before the unmark (the next open fails
 // the count check).
 func TestStagedRecoveryIsRedoable(t *testing.T) {
+	// Serial: it arms the package-level recoverStagedFlushFault.
 	for _, step := range []stagedFlushStep{stagedStepApplyWritten, stagedStepApplied, stagedStepUnmarked, stagedStepCleanWritten} {
 		t.Run(step.String(), func(t *testing.T) {
 			cfg := splitFlushConfig(t.TempDir())
@@ -255,6 +257,7 @@ func TestStagedRecoveryIsRedoable(t *testing.T) {
 // concurrently with readers. Catches the overlay (bs.flushing) dropped before
 // the apply has written the rows.
 func TestStagedFlushReadersSeeEveryRowThroughout(t *testing.T) {
+	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
@@ -355,6 +358,7 @@ func TestStagedFlushReadersSeeEveryRowThroughout(t *testing.T) {
 // door that skips the check (a write that the reopen's re-apply then
 // overwrites) and a requeue after the marker.
 func TestStagedFailClosedEveryDoor(t *testing.T) {
+	t.Parallel()
 	for _, step := range []stagedFlushStep{stagedStepApplyWritten, stagedStepApplied} {
 		for _, sync := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%v/sync=%v", step, sync), func(t *testing.T) {
@@ -464,6 +468,7 @@ func TestStagedFailClosedEveryDoor(t *testing.T) {
 // and answers the state before the flush; the next writable open deletes it.
 // Catches a read-only open that refuses (or applies) uncommitted staging.
 func TestStagedLeftoverWithoutMarkerReadOnly(t *testing.T) {
+	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
@@ -524,6 +529,7 @@ func crashedAtMarker(t *testing.T, cfg Config, nodes []*types.Node) {
 // DiscardStagedFlush clears it. Catches a recovery that applies whatever it
 // finds, or discards damage it cannot explain.
 func TestStagedRecoveryRefusesDamage(t *testing.T) {
+	t.Parallel()
 	damage := map[string]func(txn *badgerv4.Txn) error{
 		"short marker": func(txn *badgerv4.Txn) error {
 			return txn.Set(storepkg.FlushStageMarkerKey, make([]byte, 15))
@@ -587,6 +593,7 @@ func TestStagedRecoveryRefusesDamage(t *testing.T) {
 // sequence (an aborted attempt) next to the marked one is deleted, never
 // applied. Catches a recovery that applies every 0x0E key.
 func TestStagedRecoveryAppliesOnlyTheMarkedSequence(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := splitFlushConfig(dir)
 	nodes := splitFlushNodes(splitFlushNodeCount)
@@ -616,6 +623,7 @@ func TestStagedRecoveryAppliesOnlyTheMarkedSequence(t *testing.T) {
 // image and decodes no row. Catches a recovery that writes on every open
 // (each open would fall back to the full rebuild).
 func TestStagedFlushCleanReopenTrustsImage(t *testing.T) {
+	// Serial: the decode count below is process-wide (every badger store).
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
@@ -646,6 +654,7 @@ func TestStagedFlushCleanReopenTrustsImage(t *testing.T) {
 // concurrency and increase. Catches a sequence reused by two attempts (their
 // staging would mix under one marker).
 func TestStageSeqNeverRepeats(t *testing.T) {
+	t.Parallel()
 	bs := &Store{}
 	const goroutines, each = 8, 1_000
 	seen := make(chan uint64, goroutines*each)
@@ -706,6 +715,7 @@ func digestDiff(got, want string) string {
 // crash after the marker reopens with the last value instead of a count
 // refusal. Catches a marker that counts entries rather than staged keys.
 func TestStagedFlushDuplicateKeysKeepTheLast(t *testing.T) {
+	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
@@ -749,6 +759,7 @@ func TestStagedFlushDuplicateKeysKeepTheLast(t *testing.T) {
 // the next open applies it. Catches a DurableFlush that reports success
 // before the apply, or a retry that commits after the marker.
 func TestStagedDurableFlushReportsTheFailure(t *testing.T) {
+	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
 	if err != nil {
@@ -781,6 +792,7 @@ func TestStagedDurableFlushReportsTheFailure(t *testing.T) {
 // refuses it (TestEntryTooLargeRefusedAtEveryDoor). Mutation: limits without
 // the staging overhead (the staged flush then fails and is requeued forever).
 func TestStagedFlushEntryAtBadgerLimits(t *testing.T) {
+	t.Parallel()
 	small := func(n int) []flushEntry {
 		e := make([]flushEntry, 0, n+1)
 		for i := 0; i < n; i++ {

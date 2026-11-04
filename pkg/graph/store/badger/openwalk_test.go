@@ -206,6 +206,7 @@ const openWalkChildEnv = "RHO_OPENWALK_CHILD"
 // the slope between two store sizes after a clean reopen, in a fresh process.
 func TestOpenWalkResidentBytesPerRel(t *testing.T) {
 	if os.Getenv(openWalkChildEnv) == "" {
+		t.Parallel() // the measurement below runs in the child process; the parent only waits
 		if testing.Short() && !raceEnabled {
 			t.Skip("builds and reopens two disk stores of 50 k and 250 k rels")
 		}
