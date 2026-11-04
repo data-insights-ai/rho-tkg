@@ -34,13 +34,6 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
   sigma's data answers: on hold (sigma). **rho/sigma:** the largest open item: P5 targets NodeHistoryTemporalMeta,
   10.9 of sigma's 160 GB alloc_space; P1 and CASCADEMETA (v4.103.0) already took the 32 GB getRelHistory share; the
   rest shows in sigma's next profile.
-- **MEMGATE** (René 4 Nov: "make a better option") — no suite test gates pass/fail on process-wide `runtime.MemStats`
-  or wall time: each such gate becomes a deterministic count (rows read, keys visited, store calls, copies) with the
-  bytes kept as a log, or moves to the measurement level (`//go:build measure`, `make measure`). 42 test files read
-  MemStats (about 16 compare bytes against a bound). Done so far: `TestCascadeMetaCost` (counts),
-  `TestExistMapResidentBytesPerNode` and `TestForEachNodeEffectiveByLabelAndPropertiesColdBytes` (measure level).
-  Done when none is left. **rho/sigma:** indirect: no flaky red gate holds back a release sigma waits for; count gates
-  such as `TestCascadeMetaCost` pin sigma's read costs in rho's suite.
 
 ## Next
 

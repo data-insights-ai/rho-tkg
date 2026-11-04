@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.105.3] - 2026-11-04
+
 ### Changed
 
 - **Release gates without -race** (René, 4 Nov, as sigma's): the patch and minor gates run `go test -short ./...`
@@ -15,6 +17,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   keeps -race. Warm patch gate: 143 s at load 41 for a core change.
 - **`release test`**, a builder's presubmit (as sigma's): go vet and `go test -short -p 4` of the packages a change
   reaches against `origin/main` (changed packages and every package whose tests depend on one).
+
+### Tests
+
+- **MEMGATE** (René, 4 Nov): no suite test passes or fails on process-wide `runtime.MemStats`, `AllocsPerRun` or
+  wall time any more. Each such gate became a deterministic count with the bytes logged (rows and history rows read,
+  head hits, store lookups, key searches, buffer and backing-array reuse, cache rebuilds, stats entries), or moved
+  behind `//go:build measure` (`make measure`, by hand on a quiet host). About 100 test files across core, graph,
+  types, index, storeutil, segment, locks, idlayout, bench and the memory and badger stores; mutation checks caught
+  the new count gates. Library code is unchanged.
 
 ## [4.105.2] - 2026-11-04
 
