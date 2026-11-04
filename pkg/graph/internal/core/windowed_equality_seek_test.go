@@ -214,11 +214,11 @@ func TestWindowedEqualitySeekCost(t *testing.T) {
 							}
 						})
 					}
+					// A log, not a gate (MEMGATE): AllocsPerRun counts the whole
+					// process, so parallel tests inflated it under the race gate
+					// (2307 against 286); the chain-load count above is the gate.
 					big, small := allocs("big"), allocs("small")
-					if big > 1.5*small+50 {
-						t.Errorf("allocations grow with the value's history: %d members %.0f allocs, %d members %.0f allocs (same 10 matches)", nBig, big, nSmall, small)
-					}
-					t.Logf("allocs: big %.0f small %.0f", big, small)
+					t.Logf("allocs: %d members %.0f, %d members %.0f (same 10 matches)", nBig, big, nSmall, small)
 				})
 			}
 		}

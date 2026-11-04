@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   516 → 52 (previous + cut pins 288 → 0), skeletons read 8,413 → 1,145, sharded history rows 11,357 → 5,249. The
   differential oracle, the write twin and a per-generation fold check cover it; seven mutations caught
   (`tasks/evidence/RELHIST/c-*.txt`). No API or store format change.
+- **MEMGATE** (`TestWindowedEqualitySeekCost`): its allocation comparison is a log; process-wide `AllocsPerRun`
+  failed the race gate under parallel load (2,307 against 286). Its chain-load count (10 loads for 10 matches) gates.
 
 ## [4.105.1] - 2026-11-04
 
