@@ -9,10 +9,10 @@ fail=0
 for f in $(grep -rl --include='*_test.go' '^//go:build measure' pkg); do
   dir=./$(dirname "$f")
   for t in $(grep -oE '^func (Test[A-Za-z0-9_]+)' "$f" | cut -c6-); do
-    if go test -tags measure -count=1 -run "^${t}\$" "$dir" >/dev/null 2>&1; then
-      echo "ok   $dir $t"
+    if out=$(go test -tags measure -count=1 -v -run "^${t}\$" "$dir" 2>&1); then
+      echo "ok   $dir $t"; echo "$out" | grep -E "_test.go:[0-9]+:" | sed "s/^/       /"
     else
-      echo "FAIL $dir $t"; fail=1
+      echo "FAIL $dir $t"; echo "$out" | grep -E "_test.go:[0-9]+:|FAIL|panic" | sed "s/^/       /"; fail=1
     fi
   done
 done
