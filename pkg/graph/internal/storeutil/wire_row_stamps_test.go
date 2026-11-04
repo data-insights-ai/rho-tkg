@@ -18,7 +18,8 @@ import (
 // version still read), node and relationship rows. A newer format version, a
 // negative version and corrupt bytes fail closed instead of answering zero
 // stamps. Faults it names: zero stamps for the patched-tail or the v1 form, the
-// version not read, a decode error swallowed into zeros.
+// version not read, a decode error swallowed into zeros. That the read
+// allocates nothing is TestDecodeWireStampsNoAllocs, at the measurement level.
 func TestDecodeWireRowStamps(t *testing.T) {
 	fullNode := func(raw []byte) (storepkg.RowStamps, error) {
 		var w NodeWire
@@ -148,10 +149,6 @@ func TestDecodeWireRowStamps(t *testing.T) {
 			t.Fatal(err)
 		}
 		agree("random node", raw, true)
-	}
-
-	if a := testing.AllocsPerRun(50, func() { _, _ = DecodeWireRowStamps(raw) }); a != 0 {
-		t.Fatalf("DecodeWireRowStamps allocates %.0f per row", a)
 	}
 
 	newer := NodeToWire(n)

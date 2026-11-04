@@ -4,7 +4,8 @@ import "testing"
 
 // TestTemporalByValue (HEADLEND): TemporalByValue is *Temporal() by value on a
 // plain, a frozen and a compact frozen row, ok false without a block or on
-// nil, and allocates nothing on a frozen row (where Temporal() copies).
+// nil. That it allocates nothing on a frozen row (where Temporal() copies) is
+// TestTemporalByValueNoAllocs, at the measurement level.
 func TestTemporalByValue(t *testing.T) {
 	tm := TemporalMetadata{ValidFrom: 10, ValidTo: 20, TxFrom: 5, TxTo: 7, DeletedAt: 7, CreatedAt: 3, UpdatedAt: 4, CreatedBy: "c", Void: true}
 
@@ -22,9 +23,6 @@ func TestTemporalByValue(t *testing.T) {
 		if !ok || got != *row.Temporal() {
 			t.Errorf("node %s: TemporalByValue = %+v, %v; want %+v", name, got, ok, *row.Temporal())
 		}
-	}
-	if allocs := testing.AllocsPerRun(10, func() { _, _ = frozen.TemporalByValue() }); allocs != 0 {
-		t.Errorf("frozen node TemporalByValue: %.0f allocs, want 0", allocs)
 	}
 	var nilNode *Node
 	if _, ok := nilNode.TemporalByValue(); ok {
@@ -45,9 +43,6 @@ func TestTemporalByValue(t *testing.T) {
 		if !ok || got != *row.Temporal() {
 			t.Errorf("rel %s: TemporalByValue = %+v, %v; want %+v", name, got, ok, *row.Temporal())
 		}
-	}
-	if allocs := testing.AllocsPerRun(10, func() { _, _ = rfrozen.TemporalByValue() }); allocs != 0 {
-		t.Errorf("frozen rel TemporalByValue: %.0f allocs, want 0", allocs)
 	}
 	var nilRel *Relationship
 	if _, ok := nilRel.TemporalByValue(); ok {

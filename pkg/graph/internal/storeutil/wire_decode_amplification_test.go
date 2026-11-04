@@ -45,6 +45,32 @@ func fixmapNodeWireHostileP(n uint32) []byte {
 	return buf
 }
 
+// fixmapNodeWireArray builds the 1-entry fixmap { key: <array32 of n copies
+// of elem> }: a structurally and semantically valid claim of n elements.
+func fixmapNodeWireArray(key string, n uint32, elem byte) []byte {
+	buf := append([]byte{0x81, 0xa0 | byte(len(key))}, key...) // fixmap(1), fixstr key
+	buf = append(buf, 0xdd, byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
+	for i := uint32(0); i < n; i++ {
+		buf = append(buf, elem)
+	}
+	return buf
+}
+
+// headerReservationCheck is the deterministic gate of the two hostile tests
+// below: a valid array of n > wireArrayPreallocCap elements decodes to all n,
+// grown by append from at most wireArrayPreallocCap reserved, so its capacity
+// is append's growth past n, never exactly n: a decoder that reserves from the
+// header (make(.., n)) hands back a capacity of exactly n.
+func headerReservationCheck(t *testing.T, name string, length, capacity, n int) {
+	t.Helper()
+	if length != n {
+		t.Fatalf("%s: decoded %d of %d valid elements", name, length, n)
+	}
+	if capacity == n {
+		t.Fatalf("%s: capacity %d is exactly the header's count: the decoder reserved from the untrusted header", name, capacity)
+	}
+}
+
 // TestDecodeIntSlice_HostileArrayLenDoesNotAmplifyAllocation is the BACKLOG
 // 15a regression: decodeIntSlice (backing NodeWire's ExtraLabels) previously
 // did make([]int, n) directly from the untrusted msgpack array-length header
@@ -52,11 +78,9 @@ func fixmapNodeWireHostileP(n uint32) []byte {
 // amplification DoS. A payload structurally valid enough to pass
 // SafeUnmarshal's depth pre-scan (so decodeIntSlice actually runs), but that
 // fails semantically on its very FIRST element, must not have already paid
-// for the full N-sized allocation. runtime.TotalAlloc is cumulative (GC never
-// lowers it), so the measured delta is exactly what decoding allocated.
-//
-// Mutation check: reverting decodeIntSlice to make([]int, n) makes the delta
-// jump to ~N*8 bytes (16 MB for N=2M) and fails the ceiling.
+// for the full N-sized allocation. The gate is headerReservationCheck on a
+// valid array; the bytes the hostile decode allocated (process-wide
+// TotalAlloc, ~16 MB with make([]int, n) for N=2M, far less now) are logged.
 func TestDecodeIntSlice_HostileArrayLenDoesNotAmplifyAllocation(t *testing.T) {
 	const hostileN = 2_000_000 // ~2 MB of filler input; pre-fix would allocate ~16 MB immediately
 	data := fixmapNodeWireHostileEL(hostileN)
@@ -72,18 +96,22 @@ func TestDecodeIntSlice_HostileArrayLenDoesNotAmplifyAllocation(t *testing.T) {
 		t.Fatal("decode of an ExtraLabels array with an invalid first element succeeded, want a decode error")
 	}
 
-	const ceiling = 4 << 20 // 4 MiB — far below the ~16 MB an eager make([]int, 2e6) costs
-	if delta := m1.TotalAlloc - m0.TotalAlloc; delta > ceiling {
-		t.Fatalf("decode allocated %d bytes for a %d-element hostile ExtraLabels claim that fails on element 0; want < %d "+
-			"(eager make([]int, n) amplification regression)", delta, hostileN, ceiling)
+	t.Logf("hostile ExtraLabels claim of %d elements: decode allocated %d bytes (process-wide)", hostileN, int64(m1.TotalAlloc)-int64(m0.TotalAlloc)) // #nosec G115 -- heap counters
+
+	const n = 3*wireArrayPreallocCap + 1
+	var v NodeWire
+	if err := SafeUnmarshal(fixmapNodeWireArray("el", n, 0x00), &v); err != nil {
+		t.Fatalf("valid ExtraLabels array of %d: %v", n, err)
 	}
+	headerReservationCheck(t, "ExtraLabels", len(v.ExtraLabels), cap(v.ExtraLabels), n)
 }
 
 // TestDecodePropertyArray_HostileArrayLenDoesNotAmplifyAllocation is the
 // PropertyWire mirror of the above — PropertyWire is a wider struct
 // (~50+ bytes per element per the package doc comment, vs 1 wire byte per
 // empty-fixmap filler element), so the amplification ratio for a hostile "p"
-// array claim is even larger than for ExtraLabels.
+// array claim is even larger than for ExtraLabels (50+ MB eagerly for
+// N=2M; logged, the gate is headerReservationCheck).
 func TestDecodePropertyArray_HostileArrayLenDoesNotAmplifyAllocation(t *testing.T) {
 	const hostileN = 2_000_000 // ~2 MB of filler input; pre-fix would allocate 50+ MB immediately
 	data := fixmapNodeWireHostileP(hostileN)
@@ -99,11 +127,14 @@ func TestDecodePropertyArray_HostileArrayLenDoesNotAmplifyAllocation(t *testing.
 		t.Fatal("decode of a Properties array with an invalid first element succeeded, want a decode error")
 	}
 
-	const ceiling = 8 << 20 // 8 MiB — far below the 50+ MB an eager make([]PropertyWire, 2e6) costs
-	if delta := m1.TotalAlloc - m0.TotalAlloc; delta > ceiling {
-		t.Fatalf("decode allocated %d bytes for a %d-element hostile Properties claim that fails on element 0; want < %d "+
-			"(eager make([]PropertyWire, n) amplification regression)", delta, hostileN, ceiling)
+	t.Logf("hostile Properties claim of %d elements: decode allocated %d bytes (process-wide)", hostileN, int64(m1.TotalAlloc)-int64(m0.TotalAlloc)) // #nosec G115 -- heap counters
+
+	const n = 3*wireArrayPreallocCap + 1
+	var v NodeWire
+	if err := SafeUnmarshal(fixmapNodeWireArray("p", n, 0x80), &v); err != nil {
+		t.Fatalf("valid Properties array of %d: %v", n, err)
 	}
+	headerReservationCheck(t, "Properties", len(v.Properties), cap(v.Properties), n)
 }
 
 // TestDecodeIntSlice_RealisticSizeStillDecodesCorrectly proves the fix does

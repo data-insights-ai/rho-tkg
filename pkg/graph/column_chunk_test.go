@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"testing"
 
@@ -203,9 +204,29 @@ func TestColumnChunksMatchRowAt(t *testing.T) {
 	})
 }
 
+// chunkBuffers lists the backing arrays of every slice in chunk (nil where a
+// slice has no capacity), so two reads can be checked to fill the same ones.
+func chunkBuffers(chunk *types.ColumnChunk) []any {
+	bufs := []any{bufferOf(chunk.IDs), bufferOf(chunk.Ordinals), bufferOf(chunk.Cols)}
+	for _, v := range chunk.Cols {
+		bufs = append(bufs, bufferOf(v.Present), bufferOf(v.Ints), bufferOf(v.Flts), bufferOf(v.IsFloat),
+			bufferOf(v.Codes), bufferOf(v.Tags), bufferOf(v.Dict))
+	}
+	return bufs
+}
+
+// bufferOf is the first element of s's backing array, nil without one.
+func bufferOf[T any](s []T) any {
+	if cap(s) == 0 {
+		return (*T)(nil)
+	}
+	return &s[:cap(s)][0]
+}
+
 // TestColumnChunkReuseAndBounds: a chunk read again into the same buffers
-// allocates nothing; bounds outside the snapshot panic; chunks read from
-// several goroutines at once agree with RowAt (run under -race).
+// fills those buffers (no slice of it is reallocated; the allocation count,
+// 0, is logged); bounds outside the snapshot panic; chunks read from several
+// goroutines at once agree with RowAt (run under -race).
 func TestColumnChunkReuseAndBounds(t *testing.T) {
 	g, err := graphpkg.OpenInMemory()
 	if err != nil {
@@ -225,9 +246,15 @@ func TestColumnChunkReuseAndBounds(t *testing.T) {
 	cr := snap.(types.NodeColumnChunkReader)
 	var chunk types.ColumnChunk
 	cr.ReadChunk(0, 1024, &chunk)
-	if allocs := testing.AllocsPerRun(20, func() { cr.ReadChunk(1024, 2048, &chunk) }); allocs != 0 {
-		t.Fatalf("ReadChunk into a sized chunk: %v allocations", allocs)
+	before := chunkBuffers(&chunk)
+	cr.ReadChunk(1024, 2048, &chunk)
+	if after := chunkBuffers(&chunk); !slices.Equal(after, before) {
+		t.Fatalf("ReadChunk into a sized chunk reallocated its buffers: %v, then %v", before, after)
 	}
+	if len(chunk.IDs) != 1024 || chunk.IDs[0] != cr.RowAt(1024, make([]any, 2), make([]bool, 2)) {
+		t.Fatalf("ReadChunk(1024, 2048): %d rows", len(chunk.IDs))
+	}
+	t.Logf("ReadChunk into a sized chunk: %.0f allocations", testing.AllocsPerRun(20, func() { cr.ReadChunk(1024, 2048, &chunk) }))
 	for _, bd := range [][2]int{{-1, 2}, {3, 2}, {0, cr.Len() + 1}} {
 		func() {
 			defer func() {

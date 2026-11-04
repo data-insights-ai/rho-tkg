@@ -1,3 +1,9 @@
+//go:build measure
+
+// Measurement level (René 4 Nov, `make measure`): TotalAlloc counts every
+// goroutine of the process (badger's flushes and compactions included), so
+// these per-fact byte bounds move with load and run by hand, not in a gate.
+
 package graph_test
 
 import (

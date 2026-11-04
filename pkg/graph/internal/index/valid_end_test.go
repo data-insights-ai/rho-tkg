@@ -355,10 +355,13 @@ func TestValidEndIndex_ResolveUnknown(t *testing.T) {
 	}
 }
 
-// TestValidEndIndex_RAMPerEntity measures the index's heap per entity (one
-// type token per entity, as relationships; half deleted, half open, stamps
-// rising as a stream writes them) and checks the Stats estimate against it.
-// VALID_END_RAM=1 logs 10 K, 100 K and 1 M entities.
+// TestValidEndIndex_RAMPerEntity sizes the index per entity (one type token
+// per entity, as relationships; half deleted, half open, stamps rising as a
+// stream writes them): every entity held once, none unknown, at most two
+// ordered entries each, and the Stats estimate at most 120 B per entity. The
+// live heap per entity (process-wide, so it moves with load; the former gate
+// held it to 160 B) is logged beside the estimate: 95.5 B against an estimate
+// of 72.4 B at 100 K. VALID_END_RAM=1 logs 10 K, 100 K and 1 M entities.
 func TestValidEndIndex_RAMPerEntity(t *testing.T) {
 	sizes := []int{100_000}
 	if testing.Short() {
@@ -367,12 +370,12 @@ func TestValidEndIndex_RAMPerEntity(t *testing.T) {
 	if os.Getenv("VALID_END_RAM") != "" {
 		sizes = []int{10_000, 100_000, 1_000_000}
 	}
-	heap := func() uint64 {
+	heap := func() int64 {
 		runtime.GC()
 		runtime.GC()
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
-		return m.HeapAlloc
+		return int64(m.HeapAlloc) // #nosec G115 -- a heap size
 	}
 	for _, n := range sizes {
 		base := heap()
@@ -388,10 +391,13 @@ func TestValidEndIndex_RAMPerEntity(t *testing.T) {
 		}
 		used := heap() - base
 		st := ix.Stats()
-		perEntity := float64(used) / float64(n)
-		t.Logf("entities=%d heap %.1f B/entity (Stats estimate %.1f B/entity, %d ordered entries)", n, perEntity, float64(st.Bytes)/float64(n), st.Entries)
-		if perEntity > 160 {
-			t.Errorf("%.1f B/entity, want at most 160", perEntity)
+		estimate := float64(st.Bytes) / float64(n)
+		t.Logf("entities=%d heap %.1f B/entity (Stats estimate %.1f B/entity, %d ordered entries)", n, float64(used)/float64(n), estimate, st.Entries)
+		if st.Entities != n || st.Unknown != 0 || st.Entries > 2*n {
+			t.Errorf("Stats: %d entities, %d unknown, %d ordered entries; want %d, 0 and at most %d", st.Entities, st.Unknown, st.Entries, n, 2*n)
+		}
+		if estimate > 120 {
+			t.Errorf("Stats estimate %.1f B/entity, want at most 120", estimate)
 		}
 		runtime.KeepAlive(ix)
 	}

@@ -13,7 +13,8 @@ import (
 // TxFrom / TxTo / DeletedAt the full decode does, for full node and
 // relationship rows, delta rows of both kinds, and rows without a temporal
 // block (zeros); a newer format version and a corrupt value fail. Distinct
-// values per field catch a decoder that reads the wrong field.
+// values per field catch a decoder that reads the wrong field. That the read
+// allocates nothing is TestDecodeWireStampsNoAllocs, at the measurement level.
 func TestHistoryValueTxStamps(t *testing.T) {
 	tm := &types.TemporalMetadata{ValidFrom: 1, ValidTo: 2, TxFrom: 30, TxTo: 40, DeletedAt: 50, UpdatedAt: 60}
 
@@ -60,9 +61,6 @@ func TestHistoryValueTxStamps(t *testing.T) {
 	}
 	if f, to, da, err := DecodeWireTxStamps(full); err != nil || f != 30 || to != 40 || da != 50 {
 		t.Fatalf("DecodeWireTxStamps = (%d, %d, %d, %v)", f, to, da, err)
-	}
-	if a := testing.AllocsPerRun(50, func() { _, _, _, _ = DecodeWireTxStamps(full) }); a != 0 {
-		t.Fatalf("DecodeWireTxStamps allocates %.0f per full row", a)
 	}
 
 	bare := types.NewNode(types.NodeID(snowflake.ID(8)), 1, nil)

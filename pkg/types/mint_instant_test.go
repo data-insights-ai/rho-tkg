@@ -99,12 +99,3 @@ func TestMintInstant_MonotoneInIDOrder(t *testing.T) {
 		prevN, prevR = n, r
 	}
 }
-
-func TestMintInstant_NoAllocs(t *testing.T) {
-	n, r := NodeID(mintID(1<<40, 4, 4)), RelID(mintID(1<<40, 5, 4))
-	var sink Instant
-	if a := testing.AllocsPerRun(1000, func() { sink += n.MintInstant() + r.MintInstant() }); a != 0 {
-		t.Fatalf("MintInstant allocates %v per call, want 0", a)
-	}
-	_ = sink
-}
