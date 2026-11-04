@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: tools build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker gate-patch gate-minor gate-major release-patch release-minor release-major kind measure hooks fuzz-smoke check clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker gate-patch gate-minor gate-major release-patch release-minor release-major kind measure fuzz-smoke check clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -143,10 +143,6 @@ vet:
 check-metakv-reap:
 	scripts/test-named.sh ./pkg/graph/internal/core/ TestMetaKVReapPolicyCoversEveryKey --
 
-# Install the pre-commit gate (scripts/hooks/pre-commit) for every worktree of this clone.
-hooks:
-	git config core.hooksPath scripts/hooks
-
 # Format code
 fmt:
 	gofmt -w $$(git ls-files '*.go')
@@ -223,7 +219,7 @@ release-patch release-minor release-major:
 kind:
 	@go run ./scripts/release kind
 
-# Quick pre-commit check
+# Quick check: vet, build, short tests
 check: vet build test
 
 

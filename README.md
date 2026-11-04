@@ -354,7 +354,7 @@ Run any tutorial: `go run ./tutorials/001_basic_graph/`
 ## Building & testing
 
 ```bash
-make check   # pre-commit: vet + build + test
+make check   # vet + build + test
 make test    # unit tests (short mode)
 make gate-patch                 # patch gate, incremental through Go's test cache
 make release-patch              # or release-minor / release-major: gate, tag, push

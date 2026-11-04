@@ -12,11 +12,9 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   sigma tags on v4.104.1, ai-soc runs its gate (60-min 4 arms + masked cycles), pins and releases ai-soc v5.1.2 on
   that pair. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc); ai-soc names its quiet
   windows: then no minor or major gate, probe, bench or long test here.
-  - **On main, unreleased:** COSTCOUNT (tests only, plus a test hook: `TestCascadeMetaCost` gates on full rows and
-    skeleton reads per correction instead of process-wide allocations; next: MEMGATE); the release style
-    (`make release`, the patch gate in 2 min; CONTRIBUTING § Release checklist). Parked, unmerged: branch
-    `consolidate` (test folding, René stopped it 4 Nov) and the TestGate draft
-    (session scratch only, not in git).
+  - **Released in v4.104.2 (4 Nov):** COSTCOUNT and the release cycle on Go's facilities (`make release-patch|minor|
+    major`, `scripts/release`; the patch gate 12 s warm, 662 s cold in a fresh checkout). The pre-commit hook is gone
+    (René, 4 Nov). Parked, unmerged: branch `consolidate` (test folding, René stopped it 4 Nov).
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Reviews:** René (3 Nov, "yes, always"): one read-only Fable review per finished branch, before its merge, given

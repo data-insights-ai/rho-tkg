@@ -108,7 +108,6 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 | `make gate-major` | **Major gate**, comprehensive and cold: the minor gate with `-count=1 -shuffle=on`, cover-gate, fuzz-smoke, govulncheck |
 | `make release-patch`, `release-minor`, `release-major` | **The release** (below); `make kind` prints the diff's kind and why |
 | `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each runs alone (`scripts/measure.sh`) |
-| `make hooks` | Installs `scripts/hooks/pre-commit`, under 30 s: gofmt, build, vet, the release tool's tests, docs tests, check-ledger; `.md` only: docs tests and check-ledger |
 | `make test` / `make test-race` | short tests / race detector |
 | `make cover` | coverage report (`coverage.html`) |
 | `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable" |
