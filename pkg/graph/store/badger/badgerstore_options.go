@@ -222,8 +222,16 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
 	if cfg.EncryptionKeyRotation > 0 {
 		opts = opts.WithEncryptionKeyRotationDuration(cfg.EncryptionKeyRotation)
 	}
+	if badgerOptionsHook != nil {
+		opts = badgerOptionsHook(opts)
+	}
 	return opts
 }
+
+// badgerOptionsHook, nil outside tests, adjusts the options of every open
+// last: the lend cost bench and test (LENDCOST) shrink the level sizes so a
+// small store spreads its rows over L0 to L3.
+var badgerOptionsHook func(badgerv4.Options) badgerv4.Options
 
 // MigrateOversizedWAL one-time flushes WAL files written under a LARGER
 // MemTableSize than cfg now configures, so a subsequent open at the smaller

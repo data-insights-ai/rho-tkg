@@ -84,9 +84,11 @@ func (s *scanSnapshot) seekAfterMiss(key []byte) *badgerv4.Item {
 		iopts := badgerv4.DefaultIteratorOptions
 		iopts.PrefetchValues = false
 		s.it = txn.NewIterator(iopts)
+		noteScanRead(scanReadIter)
 	}
 	if s.last == nil || bytes.Compare(key, s.last) < 0 || !s.stepTo(key) {
 		s.it.Seek(key)
+		noteScanRead(scanReadSeek)
 	}
 	s.last = append(s.last[:0], key...)
 	if !s.it.Valid() {
@@ -113,8 +115,29 @@ func (s *scanSnapshot) stepTo(key []byte) bool {
 			return true
 		}
 		s.it.Next()
+		noteScanRead(scanReadNext)
 	}
 	return s.it.Valid() && bytes.Compare(s.it.Item().Key(), key) >= 0
+}
+
+// scanReadHook, nil outside tests, sees each badger operation a scanSnapshot
+// makes for a row the cache missed: the seam of the lend cost test (LENDCOST).
+var scanReadHook func(scanRead)
+
+// scanRead names one badger operation of a scanSnapshot read.
+type scanRead uint8
+
+const (
+	scanReadIter scanRead = iota // an iterator created
+	scanReadSeek                 // an iterator Seek
+	scanReadNext                 // an iterator Next
+	scanReadGet                  // a point Txn.Get
+)
+
+func noteScanRead(r scanRead) {
+	if scanReadHook != nil {
+		scanReadHook(r)
+	}
 }
 
 // seekSteps bounds stepTo: past it a Seek is cheaper than more Next calls.

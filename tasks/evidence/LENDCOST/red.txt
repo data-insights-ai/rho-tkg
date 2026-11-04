@@ -1,0 +1,19 @@
+LENDCOST red, branch lendcost on main 7cb2a6e7, 2026-11-04
+$ go test -short -run 'TestLendSorted(SparseMissesGetNotSeek|LayeredAgreesWithPointReads|RepinsAfterFlushBetweenIDs)' -count=1 ./pkg/graph/store/badger/
+--- FAIL: TestLendSortedSparseMissesGetNotSeek (0.05s)
+    --- FAIL: TestLendSortedSparseMissesGetNotSeek/sparse/nodes (0.00s)
+        badgerstore_lend_cost_test.go:101: 4 misses: 1 iterators, 4 seeks, 12 nexts, 0 gets; want 0 iterators, 0 seeks, at most 0 nexts, 4 gets
+    --- FAIL: TestLendSortedSparseMissesGetNotSeek/sparse/rels (0.00s)
+        badgerstore_lend_cost_test.go:101: 4 misses: 1 iterators, 4 seeks, 12 nexts, 0 gets; want 0 iterators, 0 seeks, at most 0 nexts, 4 gets
+    --- FAIL: TestLendSortedSparseMissesGetNotSeek/dense_then_sparse/nodes (0.00s)
+        badgerstore_lend_cost_test.go:101: 11 misses: 1 iterators, 4 seeks, 19 nexts, 0 gets; want 1 iterators, 1 seeks, at most 11 nexts, 3 gets
+    --- FAIL: TestLendSortedSparseMissesGetNotSeek/dense_then_sparse/rels (0.00s)
+        badgerstore_lend_cost_test.go:101: 11 misses: 1 iterators, 4 seeks, 19 nexts, 0 gets; want 1 iterators, 1 seeks, at most 11 nexts, 3 gets
+    --- FAIL: TestLendSortedSparseMissesGetNotSeek/sparse_then_dense/nodes (0.00s)
+        badgerstore_lend_cost_test.go:101: 9 misses: 1 iterators, 2 seeks, 11 nexts, 0 gets; want 1 iterators, 1 seeks, at most 7 nexts, 1 gets
+    --- FAIL: TestLendSortedSparseMissesGetNotSeek/sparse_then_dense/rels (0.00s)
+        badgerstore_lend_cost_test.go:101: 9 misses: 1 iterators, 2 seeks, 11 nexts, 0 gets; want 1 iterators, 1 seeks, at most 7 nexts, 1 gets
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.829s
+FAIL
+(TestLendSortedLayeredAgreesWithPointReads and TestLendSortedRepinsAfterFlushBetweenIDs pass on this code: the equivalence guards the fix must keep.)
