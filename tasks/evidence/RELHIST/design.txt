@@ -234,3 +234,31 @@ measurements.. lets them develop this first"):
 (6) Repeat reads per cut: needs sigma's counter, as (1).
 So P5's gain is decided by rho's own benches: Phase 0's miss reasons on a sigma-shaped bench (UpdateNode closing
 validity in a tx, plural door with several and older pins).
+
+Phase 0 result (4 Nov, v4.105.1; TestHeadCountsSigmaShape, pkg/graph/internal/core/effective_head_counts_test.go):
+40 Session + 260 Derived nodes, 30 cuts, one process; per cut one GraphTx (UpdateNode on live Sessions, a Session
+closed after 10 cuts and replaced; 26 Derived rewritten, 5 closed and replaced); reads routed by sigma's rule
+(derived_read.go:350-360): 60 % at the cut's pin, 25 % previous + cut pins, 15 % one pin 2-5 cuts back. Counts are
+identical on memory, badger, tiered and sharded:
+  door / pins                       reads  hit   current-only  no-entry  pin-below-maxTx
+  singular, cut pin                 2177   1247  482           448       0
+  singular, one older pin           261    155   72            34        0
+  plural, previous + cut pins       874    275   179           161       259
+  plural, one older pin             288    0     29            82        177
+  total                             3600   1677  762           725       436
+Zero: token moved, current changed, not whole, not qualifying (no delete/retraction), scan, node-at, miss plans.
+Skeletons read: 1161 lists, 3959 skeletons (72 % on the pin-below classes); history rows 9203 (sharded 9776).
+no-entry: 560 first reads (current-only reads leave no entry), 165 entries dropped by a close (UpdateNode closing an
+open row fails headTilingKept). A variant moving each Session's end per cut (SetNodeVersionInterval): 73 skeletons a
+list, 99 % in the pin-below classes.
+Verdict: option C (a second generation for pins straddling a cut) is the next step; A (deletes/retractions), B and
+D measure zero on sigma's shape. Fable review: answer-neutral, race- and allocation-free; low notes: a scan read of a
+history-less node counts current-only; validendprune's internal point reads count at the singular door in write
+phases; token/current/not-whole/row-gone reasons are not asserted one by one.
+
+sigma, 4 Nov late (from code, main ae8ada8e1): no door moves a Session's valid end each cut. The every-cut write is
+SetNodeVersionInterval(sid, NodeStart, to, {ov_through, program, coverage}) on the OPEN current row over its own
+interval (overview_graph.go:815; skipped when nothing changed, :811). The end moves only at Close (closeSession :793,
+one tx.UpdateNode setting tkg_valid_to on a still-open row, at most once a session) and at a reopen (:850,
+SetNodeVersionInterval(sid, max(pin,to), OpenEnd, {program}), a new open segment). Build and measure C against that
+shape: per-cut property patches on the open head row; the moveEnds variant is not sigma's shape.

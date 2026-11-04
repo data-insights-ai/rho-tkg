@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.105.1] - 2026-11-04
+
+### Changed
+
+- **RELHIST P5 Phase 0** (a patch): node history reads carry unexported counts on the core graph: per head door
+  (singular and plural NodeEffectiveTimeline) a hit, or why the head entry could not answer (no entry, token moved,
+  current row changed, pin below maxTx, not whole, chain not qualifying, scan, row gone); node-at history reads,
+  corrections planned on a head miss, skeleton lists read. `TestHeadCountsSigmaShape` runs sigma's read and write
+  shape on memory, badger, tiered and sharded: misses are "pin below maxTx" (plural door, 15 % of reads needing history,
+  72 % of skeletons read) and "no entry"; none from deletes, retractions, stale tokens or node-at doors, so option C
+  comes next (`tasks/evidence/RELHIST/design.txt`). No answer changes.
+
 ## [4.105.0] - 2026-11-04
 
 ### Added
