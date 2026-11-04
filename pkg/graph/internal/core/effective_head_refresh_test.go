@@ -100,8 +100,9 @@ func relhistP2Plural(t *testing.T, g *Core, nid types.NodeID, rid types.RelID, p
 	}
 }
 
-// The plural door fills the entry on its first call and answers the second
-// from it; a pin below the chain's newest TxFrom folds.
+// The plural door fills the entry on its first call (from its fold at the
+// highest pin, though another pin lies below the chain's newest TxFrom) and
+// answers the second from it; a pin below the newest TxFrom folds.
 func TestRELHISTP2PluralDoorHeadHit(t *testing.T) {
 	for _, be := range relhistP2Backends(t) {
 		t.Run(be.name, func(t *testing.T) {
@@ -128,7 +129,7 @@ func TestRELHISTP2PluralDoorHeadHit(t *testing.T) {
 					}
 				}
 				h0 := g.headHits.Load()
-				read([]types.Instant{head, head})
+				read([]types.Instant{old, head}) // a pin below maxTx: the fold, which fills at the highest pin
 				h1 := g.headHits.Load()
 				read([]types.Instant{head, head})
 				h2 := g.headHits.Load()
