@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   counts the searches with two definitions: create 6 → 2, batch create of two 12 → 4, replace 10 → 6 (the old row's
   removal and member entries keep theirs). Entries and errors are unchanged. sigma's `BenchmarkRowsWriteHeads` shows the
   wall gain.
+- **Gate fix** (`TestEffectiveTimelinesBytesPerExtraVersion`): its per-version byte slope is signed; tiered allocated
+  1 B less at 8 versions than at 2 and the unsigned difference wrapped to 3e18, failing the release gate.
 - **Releases go to GitHub again** (René, 4 Nov: the local git server was temporary): `make release-…` pushes to
   `origin`; the Makefile's `RELEASE_REMOTE=local` default is gone.
 

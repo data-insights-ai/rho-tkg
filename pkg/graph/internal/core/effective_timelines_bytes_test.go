@@ -87,7 +87,9 @@ func TestEffectiveTimelinesBytesPerExtraVersion(t *testing.T) {
 		}
 		// badger and tiered pay a fixed iterator cost once any history
 		// exists (todo 120 follow-up); every further version stays cheap.
-		if perVersion := (eight - two) / 6; perVersion > 1024 {
+		// Signed: eight versions can allocate a byte less than two (the
+		// gate saw 273 then 272), which unsigned wrapped to 3e18.
+		if perVersion := (int64(eight) - int64(two)) / 6; perVersion > 1024 {
 			t.Errorf("%s: each further version adds %d B per call, want < 1 kB", name, perVersion)
 		}
 	}
