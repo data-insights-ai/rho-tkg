@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
@@ -39,14 +40,19 @@ func TestRelSegmentsDifferentialOracleOnDisk(t *testing.T) {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
-	var dirs []string
+	var (
+		mu   sync.Mutex // the seeds run in parallel
+		dirs []string
+	)
 	root := t.TempDir() // outlives the per-seed subtests: checked below
 	runSegOracle(t, func(t *testing.T) string {
 		d, err := os.MkdirTemp(root, "segments-")
 		if err != nil {
 			t.Fatal(err)
 		}
+		mu.Lock()
 		dirs = append(dirs, d)
+		mu.Unlock()
 		return d
 	})
 	for _, d := range dirs {

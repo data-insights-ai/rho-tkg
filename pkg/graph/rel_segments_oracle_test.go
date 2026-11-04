@@ -703,6 +703,7 @@ func runSegOracle(t *testing.T, segDir func(*testing.T) string) {
 	}
 	for _, seed := range seeds {
 		t.Run(fmt.Sprint("seed", seed), func(t *testing.T) {
+			t.Parallel() // each seed has its own primary and replicas
 			r := rand.New(rand.NewSource(seed))
 			o := newSegOracleDir(t, 48<<10, segDir(t)) // ~60 HOP rows per seal
 			o.seed(r, 24)

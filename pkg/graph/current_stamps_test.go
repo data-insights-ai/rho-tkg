@@ -219,6 +219,7 @@ func TestCurrentStampsDifferential(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel() // every seed opens its own store in its own directory
 	steps := 300
 	if testing.Short() {
 		steps = 100

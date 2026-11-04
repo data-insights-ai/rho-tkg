@@ -367,6 +367,7 @@ func TestRound10WindowDoorsMatchOracle(t *testing.T) {
 	_, _, seeds := r10Size()
 	for _, b := range r10Backends() {
 		t.Run(b.name, func(t *testing.T) {
+			t.Parallel() // every seed opens its own graph on this backend
 			ops := map[string]int{}
 			defer func() { r10CheckCoverage(t, b, ops) }()
 			for _, seed := range seeds {

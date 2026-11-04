@@ -243,15 +243,29 @@ func TestLatestStampsDifferential(t *testing.T) {
 		steps = 70
 	}
 	for _, b := range latestStampsBackends() {
+		var mu sync.Mutex // guards the tallies across the parallel seeds
 		total := map[string]int{}
 		cov := &stampsCoverage{}
-		for _, seed := range hasHistorySeeds() {
-			t.Run(fmt.Sprintf("%s/seed=%d", b.name, seed), func(t *testing.T) {
-				for k, v := range runLatestStampsDifferential(t, b, seed, steps, cov) {
-					total[k] += v
-				}
-			})
-		}
+		// The group returns once every parallel seed (its own store and
+		// directory) has finished, so the checks below see the full tallies.
+		t.Run(b.name, func(t *testing.T) {
+			for _, seed := range hasHistorySeeds() {
+				t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
+					t.Parallel()
+					local := &stampsCoverage{}
+					ok := runLatestStampsDifferential(t, b, seed, steps, local)
+					mu.Lock()
+					defer mu.Unlock()
+					for k, v := range ok {
+						total[k] += v
+					}
+					cov.aboveHead += local.aboveHead
+					cov.deleted += local.deleted
+					cov.revived += local.revived
+					cov.histTo += local.histTo
+				})
+			}
+		})
 		// Every door the sequence draws must have succeeded on this backend
 		// (summed over the seeds), and the states where a head-only or
 		// history-blind door is wrong must have been reached.

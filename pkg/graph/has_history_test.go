@@ -143,6 +143,7 @@ func TestHasHistoryDifferential(t *testing.T) {
 	for _, b := range hasHistoryBackends() {
 		for _, seed := range hasHistorySeeds() {
 			t.Run(fmt.Sprintf("%s/seed=%d", b.name, seed), func(t *testing.T) {
+				t.Parallel() // its own store and directory
 				runHasHistoryDifferential(t, b, seed, steps)
 			})
 		}
