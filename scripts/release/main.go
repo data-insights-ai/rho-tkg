@@ -197,8 +197,7 @@ func gitDir() string {
 }
 
 // remote is where a release fetches from and pushes to: origin (GitHub), or
-// RELEASE_REMOTE, e.g. `local`, the bare repository ~/git/rho-tkg.git that
-// holds the releases while GitHub refuses this host's logins (René, 4 Nov).
+// RELEASE_REMOTE when set.
 func remote() string {
 	if r := os.Getenv("RELEASE_REMOTE"); r != "" {
 		return r

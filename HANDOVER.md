@@ -9,9 +9,9 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 - **State of 4 Nov, read this first** (next steps: `tasks/todo.md`). Round 5 (RELHIST P2) released in v4.104.1;
   v4.104.2-4 (4 Nov) carry COSTCOUNT and the release cycle on Go's facilities (`make release-patch|minor|major`,
-  `scripts/release`; a patch release 15 s warm, 662 s cold). Releases go to the local git server `~/git/rho-tkg.git`
-  (remote `local`), not GitHub (René, 4 Nov: "let the github alone, work with the local git"); v4.104.3 also reached
-  GitHub, v4.104.4 is local only. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc);
+  `scripts/release`; a patch release 15 s warm, 662 s cold). Releases go to GitHub (René, 4 Nov: the
+  local git server `~/git/rho-tkg.git` was temporary, while GitHub refused this host's logins; it holds v4.104.4-7 too).
+  v4.104.5-7: the release-cycle audit, two flaky tests fixed, the race gate's slowest tests reworked. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc);
   ai-soc names its quiet windows: then no minor or major gate, probe, bench or long test here.
   - **Parked, unmerged:** branch `consolidate` (test folding; René stopped it 4 Nov). No pre-commit hook (René, 4 Nov).
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
@@ -49,9 +49,6 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     blocks); its test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired`
     below); its store analysis tool is `projects/derived-writeback` (cmd/wbscan).
   - agent-bookkeeping (`~/Work/2026/bds421/sigma/agent-bookkeeping`): build check only.
-  - Consumers fetch rho from the local server with per-command env, no git config change: `GIT_CONFIG_COUNT=2`,
-    `GIT_CONFIG_KEY_0/1=url./home/renework2023/git/rho-tkg.git.insteadOf` for `https://github.com/data-insights-ai/rho-tkg`
-    and `git@github.com:data-insights-ai/rho-tkg.git`, `GOPROXY=direct`, then `go get …@vX.Y.Z` (tested 4 Nov).
 - **Housekeeping:** deletions are René's call (`rm` is denied to agents; user-only actions below; finished scratch goes
   on the RHO_DONE list in `~/cleanup.sh`, run before and after every release). Consumer build check (diagnosis only): `git show 904fd063:HANDOVER.md`, Appendix B.
 

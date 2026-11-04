@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Releases go to GitHub again** (René, 4 Nov: the local git server was temporary): `make release-…` pushes to
+  `origin`; the Makefile's `RELEASE_REMOTE=local` default is gone.
+
 ## [4.104.7] - 2026-11-04
 
 ### Changed

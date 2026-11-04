@@ -21,7 +21,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Scope: consumer-blocking or wrong-answer/data bugs only, plus ai-soc runtime items (standing go). A backlog item needs a
   consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
 - Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc (their agents: HANDOVER § State) without asking,
-  through `make release-…` (release checklist below); releases go to the local git server, not GitHub (René, 4 Nov).
+  through `make release-…` (release checklist below), to GitHub.
   Never force-push, never push `origin/v5`.
 - Item work happens on a branch named after the item; main stays green, and a red test reaches it only with its fix.
 - Commit with explicit paths, never `git commit -a`: a docs commit swept unreviewed step code onto main (2026-10-23).
@@ -115,7 +115,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 | `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable". Named volumes keep the module, build and lint caches and the installed golangci-lint (lint: 1.4 s warm) |
 | `go test -run TestFoo ./pkg/...` | one test |
 
-Releases go to the local git server, not GitHub (René, 4 Nov). GitHub CI runs only when a `v*` tag is pushed there and only
+GitHub CI runs only when a `v*` tag is pushed and only
 builds, vets and runs `go test -short ./...`; a push to main without a tag runs nothing, and nothing is scheduled.
 Everything else runs locally in the gates above. Fuzzing and benchmarks run on
 GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed only with a reason at the call site.
@@ -142,8 +142,6 @@ the kind of release, run once; it stops at the first red, and a red is fixed on 
    empty, the gate of that kind, `git tag -a --cleanup=verbatim` (message: that section), `git push --atomic` of main and the tag. A major
    moves the module path to /v(N+1) first. A red step stops it; the fix goes on main and the release
    runs again. A bad tag is never moved: the fix is the next tag, and `retract` in go.mod.
-   Releases go to the local git server (René, 4 Nov: "let the github alone, work with the local git"): the bare
-   repository `~/git/rho-tkg.git`, remote `local`, the Makefile's default (`RELEASE_REMOTE=origin` for GitHub).
 5. Tell sigma-tkgd and ai-soc in one line: tag, gate, seconds.
 6. Clean up after (René, 4 Nov): the release round's own scratch (gate logs, branch and worktree of the release) goes the
    same way, then `bash ~/cleanup.sh` again.
