@@ -1,0 +1,25 @@
+RELHIST P5 option C mutation sweep (4 Nov): each mutation applied once to effective_head.go, then
+go test -run 'Head|EffectiveTimelines' ./pkg/graph/internal/core/ (long tier, no -short); the failing tests and their first lines.
+Every mutation caught.
+
+M1a gen used below its maxTx: exit 1; failed ['TestEffectiveHeadWrite_TwinDifferential', 'TestEffectiveHead_DifferentialOracle', 'TestEffectiveTimelinesManyPins_OneChainWalk', 'TestHeadCountsReasons', 'TestHeadCountsSigmaShape', 'TestHeadOverlay_MatchesFold']
+    effective_head_counts_test.go:438: memory reads:  singular 2453 [hit=1504 current-only=594 no-entry=355] plural 1147 [hit=604 current-only=189 no-entry=151 pin-below-maxTx=21 row-gone=182 (gen-hits=313)] node-at=0 miss-plans=0 skeleton-lists=709 skeletons=3769 gens-pushed=0
+    effective_head_counts_test.go:439: memory writes: singular 0 [] plural 0 [] node-at=0 miss-plans=5 skeleton-lists=5 skeletons=19 gens-pushed=1503; corrections planned from an entry 111, on skeletons 5; entries extended 1503; tx snapshot rows copied 0
+    effective_head_counts_test.go:442: memory   cut pin: singular 2213 [hit=1380 current-only=501 no-entry=332] plural 0 [] node-at=0 miss-plans=0 skeleton-lists=332 skeletons=637 gens-pushed=0
+M1b gen used at or above its txEnd: exit 1; failed ['TestHeadOverlay_MatchesFold']
+    effective_head_overlay_test.go:146: iter 1: pin 10012 answered outside [10011, 10012) below maxTx 10013
+M2 push when lowTx == maxTx: exit 1; failed ['TestHeadCache_Generations', 'TestHeadOverlay_MatchesFold']
+    effective_head_cache_test.go:79: a write at the newest TxFrom pushed a generation: 5, was 5
+    effective_head_overlay_test.go:135: iter 7: 1 generations after an extension from TxFrom 10014 (entry maxTx 10014), want 0
+M3 push from a trimmed top: exit 1; failed ['TestHeadCache_Generations']
+    effective_head_cache_test.go:86: a trimmed entry pushed a generation: 1
+M4 gens kept on a refill: exit 1; failed ['TestEffectiveHeadWrite_TwinDifferential', 'TestEffectiveHead_DifferentialOracle']
+    effective_head_test.go:399: step 116 (Update rel=false): node 871258663551598592 pin 1793814304722 (head 1793814304850):
+    effective_head_test.go:399: step 89 (UpdateInPlace valid_to 2900 rel=false): node 871258706736283648 pin 1793814305858 (head 1793814305941):
+    effective_head_test.go:399: step 116 (Update rel=false): node 871258812511027200 pin 1793814309662 (head 1793814309836):
+M5 headMaxGens 4: exit 1; failed ['TestHeadCountsSigmaShape']
+    effective_head_counts_test.go:438: memory reads:  singular 2453 [hit=1504 current-only=594 no-entry=355] plural 1147 [hit=719 current-only=189 no-entry=151 pin-below-maxTx=88 (gen-hits=428)] node-at=0 miss-plans=0 skeleton-lists=594 skeletons=1822 gens-pushed=0
+    effective_head_counts_test.go:439: memory writes: singular 0 [] plural 0 [] node-at=0 miss-plans=5 skeleton-lists=5 skeletons=19 gens-pushed=1503; corrections planned from an entry 111, on skeletons 5; entries extended 1503; tx snapshot rows copied 0
+    effective_head_counts_test.go:442: memory   cut pin: singular 2213 [hit=1380 current-only=501 no-entry=332] plural 0 [] node-at=0 miss-plans=0 skeleton-lists=332 skeletons=637 gens-pushed=0
+M6 headWeight without gens: exit 1; failed ['TestHeadCache_Generations']
+    effective_head_cache_test.go:50: weight 6, want 15: the generations' pieces are not counted

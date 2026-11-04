@@ -16,7 +16,10 @@ import (
 // replaced row's TxTo or below the newest TxFrom, a bounded row after an open
 // newest row, an appended row starting before the newest one, rows with a
 // delete, void rows): an entry must equal the fold, and wherever the overlay
-// answers, its pieces must equal the fold of the grown chain.
+// answers, its pieces must equal the fold of the grown chain, and its new
+// generation (RELHIST P5 option C) the grown chain's fold at every pin in
+// [the entry's newest TxFrom, the first appended TxFrom) and nowhere else
+// below the new newest TxFrom; a write at the entry's newest TxFrom keeps none.
 func TestHeadOverlay_MatchesFold(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
@@ -56,7 +59,7 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 		}
 		return out
 	}
-	answered, declined, entries, corrections := 0, 0, 0, 0
+	answered, declined, entries, corrections, gens := 0, 0, 0, 0, 0
 	for iter := range 20000 {
 		n := 2 + rng.IntN(5)
 		chain := make([]*types.Node, 0, n+3)
@@ -124,6 +127,31 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 		if got, want := ov.pieces, toHead(g.nodeEffectivePieces(grown, gpin)); !slices.Equal(got, want) {
 			t.Fatalf("iter %d: overlay %v, fold %v\nchain%s\nappended%s", iter, got, want, headRows(chain), headRows(appended))
 		}
+		// Option C: the extended entry is kept as a generation answering
+		// [e.maxTx, the first appended TxFrom), the grown chain's fold there;
+		// a write at e.maxTx itself keeps none.
+		lowTx := appended[0].Temporal().TxFrom
+		if want := min(1, int(lowTx-e.maxTx)); len(ov.gens) != want { // #nosec G115 -- small test instants
+			t.Fatalf("iter %d: %d generations after an extension from TxFrom %d (entry maxTx %d), want %d", iter, len(ov.gens), lowTx, e.maxTx, want)
+		}
+		for _, p := range []types.Instant{e.maxTx - 1, e.maxTx, (e.maxTx + lowTx) / 2, lowTx - 1, lowTx} {
+			got, ok := ov.piecesAt(p)
+			if !ok {
+				if p >= e.maxTx && p < lowTx {
+					t.Fatalf("iter %d: pin %d in [%d, %d) not answered", iter, p, e.maxTx, lowTx)
+				}
+				continue
+			}
+			if p < e.maxTx || (p >= lowTx && p < ov.maxTx) {
+				t.Fatalf("iter %d: pin %d answered outside [%d, %d) below maxTx %d", iter, p, e.maxTx, lowTx, ov.maxTx)
+			}
+			if want := toHead(g.nodeEffectivePieces(grown, p)); !slices.Equal(got, want) {
+				t.Fatalf("iter %d: pin %d: generation %v, fold %v\nchain%s\nappended%s", iter, p, got, want, headRows(chain), headRows(appended))
+			}
+			if p < ov.maxTx {
+				gens++
+			}
+		}
 		// The overlay keeps the correction facts (backlog 68b) the fold of
 		// the grown chain gathers.
 		var gf headFacts
@@ -133,9 +161,9 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 				ov.bounds, ov.open, ov.maxVer, gf.bounds, gf.open, gf.maxVer, gf.ok, headRows(chain), headRows(appended))
 		}
 	}
-	t.Logf("%d entries, %d overlays checked, %d declined, %d corrections planned", entries, answered, declined, corrections)
-	if answered < 1000 || declined < 1000 || corrections < 1000 {
-		t.Fatalf("generator coverage: %d answered, %d declined, %d corrections", answered, declined, corrections)
+	t.Logf("%d entries, %d overlays checked, %d declined, %d corrections planned, %d generation pins checked", entries, answered, declined, corrections, gens)
+	if answered < 1000 || declined < 1000 || corrections < 1000 || gens < 1000 {
+		t.Fatalf("generator coverage: %d answered, %d declined, %d corrections, %d generation pins", answered, declined, corrections, gens)
 	}
 }
 

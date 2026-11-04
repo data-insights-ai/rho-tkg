@@ -1,0 +1,78 @@
+RELHIST P5 option C green (4 Nov): TestHeadCountsSigmaShape on sigma's real write shape after C1 (generations).
+Before (c-red.txt, same shape and seed, every backend): pin-below 516 (previous+cut 288, one older pin 228), hits 1795,
+skeletons 1022 lists / 8413, history rows read 4762 (sharded 11357).
+go test -short -run TestHeadCountsSigmaShape -v ./pkg/graph/internal/core/
+
+=== RUN   TestHeadCountsSigmaShape
+=== RUN   TestHeadCountsSigmaShape/memory
+    effective_head_counts_test.go:438: memory reads:  singular 2453 [hit=1504 current-only=594 no-entry=355] plural 1147 [hit=755 current-only=189 no-entry=151 pin-below-maxTx=52 (gen-hits=464)] node-at=0 miss-plans=0 skeleton-lists=558 skeletons=1145 gens-pushed=0
+    effective_head_counts_test.go:439: memory writes: singular 0 [] plural 0 [] node-at=0 miss-plans=5 skeleton-lists=5 skeletons=19 gens-pushed=1503; corrections planned from an entry 111, on skeletons 5; entries extended 1503; tx snapshot rows copied 0
+    effective_head_counts_test.go:442: memory   cut pin: singular 2213 [hit=1380 current-only=501 no-entry=332] plural 0 [] node-at=0 miss-plans=0 skeleton-lists=332 skeletons=637 gens-pushed=0
+    effective_head_counts_test.go:442: memory   previous+cut pins: singular 0 [] plural 862 [hit=579 current-only=171 no-entry=112 (gen-hits=288)] node-at=0 miss-plans=0 skeleton-lists=112 skeletons=198 gens-pushed=0
+    effective_head_counts_test.go:442: memory   one older pin: singular 240 [hit=124 current-only=93 no-entry=23] plural 285 [hit=176 current-only=18 no-entry=39 pin-below-maxTx=52 (gen-hits=176)] node-at=0 miss-plans=0 skeleton-lists=114 skeletons=310 gens-pushed=0
+    effective_head_counts_test.go:444: memory no-entry reads: 400 of nodes never left an entry, 106 of nodes whose entry was dropped
+    effective_head_counts_test.go:446: memory history rows read: by reads 4762, by writes 0; skeletons per read-phase list 2.1
+    effective_head_counts_test.go:448: memory counts table:
+          door / pins                     reads    hit  gen-hits  current-only  no-entry  pin-below-maxTx
+          singular, cut pin                2213   1380         0           501       332                0
+          singular, one older pin           240    124         0            93        23                0
+          plural, previous + cut pins       862    579       288           171       112                0
+          plural, one older pin             285    176       176            18        39               52
+          total                            3600   2259       464           783       506               52
+          skeletons read: 558 lists, 1145 skeletons; history rows read 4762; generations pushed 1503
+=== RUN   TestHeadCountsSigmaShape/badger
+    effective_head_counts_test.go:438: badger reads:  singular 2453 [hit=1504 current-only=594 no-entry=355] plural 1147 [hit=755 current-only=189 no-entry=151 pin-below-maxTx=52 (gen-hits=464)] node-at=0 miss-plans=0 skeleton-lists=558 skeletons=1145 gens-pushed=0
+    effective_head_counts_test.go:439: badger writes: singular 0 [] plural 0 [] node-at=0 miss-plans=5 skeleton-lists=5 skeletons=19 gens-pushed=1503; corrections planned from an entry 111, on skeletons 5; entries extended 1503; tx snapshot rows copied 0
+    effective_head_counts_test.go:442: badger   cut pin: singular 2213 [hit=1380 current-only=501 no-entry=332] plural 0 [] node-at=0 miss-plans=0 skeleton-lists=332 skeletons=637 gens-pushed=0
+    effective_head_counts_test.go:442: badger   previous+cut pins: singular 0 [] plural 862 [hit=579 current-only=171 no-entry=112 (gen-hits=288)] node-at=0 miss-plans=0 skeleton-lists=112 skeletons=198 gens-pushed=0
+    effective_head_counts_test.go:442: badger   one older pin: singular 240 [hit=124 current-only=93 no-entry=23] plural 285 [hit=176 current-only=18 no-entry=39 pin-below-maxTx=52 (gen-hits=176)] node-at=0 miss-plans=0 skeleton-lists=114 skeletons=310 gens-pushed=0
+    effective_head_counts_test.go:444: badger no-entry reads: 400 of nodes never left an entry, 106 of nodes whose entry was dropped
+    effective_head_counts_test.go:446: badger history rows read: by reads 4762, by writes 0; skeletons per read-phase list 2.1
+    effective_head_counts_test.go:448: badger counts table:
+          door / pins                     reads    hit  gen-hits  current-only  no-entry  pin-below-maxTx
+          singular, cut pin                2213   1380         0           501       332                0
+          singular, one older pin           240    124         0            93        23                0
+          plural, previous + cut pins       862    579       288           171       112                0
+          plural, one older pin             285    176       176            18        39               52
+          total                            3600   2259       464           783       506               52
+          skeletons read: 558 lists, 1145 skeletons; history rows read 4762; generations pushed 1503
+=== RUN   TestHeadCountsSigmaShape/sharded
+    effective_head_counts_test.go:438: sharded reads:  singular 2453 [hit=1504 current-only=594 no-entry=355] plural 1147 [hit=755 current-only=189 no-entry=151 pin-below-maxTx=52 (gen-hits=464)] node-at=0 miss-plans=0 skeleton-lists=0 skeletons=0 gens-pushed=0
+    effective_head_counts_test.go:439: sharded writes: singular 0 [] plural 0 [] node-at=0 miss-plans=5 skeleton-lists=0 skeletons=0 gens-pushed=1503; corrections planned from an entry 111, on skeletons 0; entries extended 1503; tx snapshot rows copied 0
+    effective_head_counts_test.go:442: sharded   cut pin: singular 2213 [hit=1380 current-only=501 no-entry=332] plural 0 [] node-at=0 miss-plans=0 skeleton-lists=0 skeletons=0 gens-pushed=0
+    effective_head_counts_test.go:442: sharded   previous+cut pins: singular 0 [] plural 862 [hit=579 current-only=171 no-entry=112 (gen-hits=288)] node-at=0 miss-plans=0 skeleton-lists=0 skeletons=0 gens-pushed=0
+    effective_head_counts_test.go:442: sharded   one older pin: singular 240 [hit=124 current-only=93 no-entry=23] plural 285 [hit=176 current-only=18 no-entry=39 pin-below-maxTx=52 (gen-hits=176)] node-at=0 miss-plans=0 skeleton-lists=0 skeletons=0 gens-pushed=0
+    effective_head_counts_test.go:444: sharded no-entry reads: 400 of nodes never left an entry, 106 of nodes whose entry was dropped
+    effective_head_counts_test.go:446: sharded history rows read: by reads 5249, by writes 19; skeletons per read-phase list 0.0
+    effective_head_counts_test.go:448: sharded counts table:
+          door / pins                     reads    hit  gen-hits  current-only  no-entry  pin-below-maxTx
+          singular, cut pin                2213   1380         0           501       332                0
+          singular, one older pin           240    124         0            93        23                0
+          plural, previous + cut pins       862    579       288           171       112                0
+          plural, one older pin             285    176       176            18        39               52
+          total                            3600   2259       464           783       506               52
+          skeletons read: 0 lists, 0 skeletons; history rows read 5249; generations pushed 1503
+=== RUN   TestHeadCountsSigmaShape/tiered
+2026/11/04 18:48:42 INFO graph: tiered store opened duration=14.640102ms reference=2.359594ms hot=12.101861ms warm=691ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    effective_head_counts_test.go:438: tiered reads:  singular 2453 [hit=1504 current-only=594 no-entry=355] plural 1147 [hit=755 current-only=189 no-entry=151 pin-below-maxTx=52 (gen-hits=464)] node-at=0 miss-plans=0 skeleton-lists=558 skeletons=1145 gens-pushed=0
+    effective_head_counts_test.go:439: tiered writes: singular 0 [] plural 0 [] node-at=0 miss-plans=5 skeleton-lists=5 skeletons=19 gens-pushed=1503; corrections planned from an entry 111, on skeletons 5; entries extended 1503; tx snapshot rows copied 0
+    effective_head_counts_test.go:442: tiered   cut pin: singular 2213 [hit=1380 current-only=501 no-entry=332] plural 0 [] node-at=0 miss-plans=0 skeleton-lists=332 skeletons=637 gens-pushed=0
+    effective_head_counts_test.go:442: tiered   previous+cut pins: singular 0 [] plural 862 [hit=579 current-only=171 no-entry=112 (gen-hits=288)] node-at=0 miss-plans=0 skeleton-lists=112 skeletons=198 gens-pushed=0
+    effective_head_counts_test.go:442: tiered   one older pin: singular 240 [hit=124 current-only=93 no-entry=23] plural 285 [hit=176 current-only=18 no-entry=39 pin-below-maxTx=52 (gen-hits=176)] node-at=0 miss-plans=0 skeleton-lists=114 skeletons=310 gens-pushed=0
+    effective_head_counts_test.go:444: tiered no-entry reads: 400 of nodes never left an entry, 106 of nodes whose entry was dropped
+    effective_head_counts_test.go:446: tiered history rows read: by reads 4762, by writes 0; skeletons per read-phase list 2.1
+    effective_head_counts_test.go:448: tiered counts table:
+          door / pins                     reads    hit  gen-hits  current-only  no-entry  pin-below-maxTx
+          singular, cut pin                2213   1380         0           501       332                0
+          singular, one older pin           240    124         0            93        23                0
+          plural, previous + cut pins       862    579       288           171       112                0
+          plural, one older pin             285    176       176            18        39               52
+          total                            3600   2259       464           783       506               52
+          skeletons read: 558 lists, 1145 skeletons; history rows read 4762; generations pushed 1503
+--- PASS: TestHeadCountsSigmaShape (0.36s)
+    --- PASS: TestHeadCountsSigmaShape/memory (0.05s)
+    --- PASS: TestHeadCountsSigmaShape/badger (0.10s)
+    --- PASS: TestHeadCountsSigmaShape/sharded (0.11s)
+    --- PASS: TestHeadCountsSigmaShape/tiered (0.10s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.378s

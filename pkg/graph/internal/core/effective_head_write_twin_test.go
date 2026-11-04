@@ -24,7 +24,8 @@ import (
 // cascadeMetaOff: on a head miss A plans on history skeletons, CASCADEMETA,
 // B on the whole history). Both run the
 // same operations — corrections bounded and open (often of one validity), at
-// the clock and at caller instants (accepted and refused), excises, Updates,
+// the clock and at caller instants (accepted and refused), sigma's patch of
+// the open current row over its own interval (RELHIST P5), excises, Updates,
 // in-place validity rewrites, CloseVersion, label changes, deletes and
 // re-imports of nodes and relationships, GraphTx commits and rollbacks with
 // several mutations of one entity (a correction that moves the current row
@@ -244,6 +245,9 @@ func (tw *headTwin) step(step int) {
 	p := tw.props()
 	op := tw.rng.IntN(100)
 	switch {
+	case op < 30 && tw.rng.IntN(3) == 0: // sigma's every-cut patch (RELHIST P5)
+		tw.last = fmt.Sprintf("sigma patch rel=%v", rel)
+		_ = tw.both(func(g *Core) error { return sigmaPatch(nil, g, rel, nid, rid, p) })
 	case op < 30:
 		tw.last = fmt.Sprintf("SetVersionInterval [%d,%d) rel=%v", a, b, rel)
 		_ = tw.both(func(g *Core) error {
@@ -363,7 +367,7 @@ func (tw *headTwin) txStep(rel bool, nid types.NodeID, rid types.RelID, appendsO
 	for range n {
 		a, b := tw.sigmaInterval()
 		p := tw.props()
-		k := tw.rng.IntN(13)
+		k := tw.rng.IntN(15)
 		if appendsOnly {
 			k = 5 + 6*tw.rng.IntN(2) // Update, or a close by tkg_valid_to
 		}
@@ -419,6 +423,10 @@ func (tw *headTwin) txStep(rel bool, nid types.NodeID, rid types.RelID, appendsO
 				_, err := tx.UpdateNode(nid, end)
 				return err
 			}})
+		case k >= 13:
+			// sigma's every-cut patch (RELHIST P5): the current row as the tx
+			// sees it, over its own interval to the open end.
+			ops = append(ops, txOp{"sigma patch", func(tx *GraphTx) error { return sigmaPatch(tx, tx.g, rel, nid, rid, p) }})
 		default:
 			ops = append(ops, txOp{fmt.Sprintf("other entity SetVersionInterval [%d,%d)", a, b), func(tx *GraphTx) error {
 				if rel {
