@@ -1,3 +1,10 @@
+//go:build measure
+
+// Measurement level (René 4 Nov, `make measure`): TotalAlloc counts every
+// goroutine of the process (badger's flushes included), so this bound moves
+// with load (7,581 B per fact at GOMAXPROCS=2 against 7,072) and runs by hand,
+// not in a gate.
+
 package core
 
 import (

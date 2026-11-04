@@ -133,6 +133,9 @@ pushes by Markus only go to its log. Re-arm after each exit; one instance at a t
 
 ## Appendix B — consumer build check (recreate if /tmp is gone)
 
+Not a release step since 4 Nov (René, one release style for all three repos: each consumer's own pin commit builds and
+vets against rho's tag). Use it to diagnose a consumer's report, or before a change to an exported signature.
+
 For each consumer `C` in `~/Work/2026/datainsights/sigma-tkgd`, `~/Work/2026/datainsights/ai-soc/ai-soc-main` (and its `engine/`),
 `~/Work/2026/bds421/sigma/agent-bookkeeping`: `mkdir -p $S/<name>; cp C/go.mod C/go.sum $S/<name>/;
 (cd $S/<name> && go mod edit -replace github.com/data-insights-ai/rho-tkg/v4=/home/renework2023/Work/2026/datainsights/rho-tkg go.mod)` (the release under test),

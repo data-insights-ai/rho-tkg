@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Release style and gates** (René, 4 Nov, one style for rho, sigma and ai-soc; no library change). A release is gate, tag,
+  push: a patch runs `make ci-fast` alone, a minor `make ci-docker`, once, stopping at the first red. The consumers' build
+  and vet, the scale probe and a freeze message are no longer release steps (each consumer's pin commit builds against
+  the tag). Cleanup runs before and after each release (`~/cleanup.sh`). New measurement level `make measure`
+  (`scripts/measure.sh`): tests behind the `measure` build tag, run by hand, one per process.
+- **Load-proof cost tests** (COSTCOUNT, MEMGATE). `TestCascadeMetaCost` gated on process-wide allocation ratios and read
+  3.9x against a 4.0x bar under ci-docker's load (5.8x alone); it now gates per correction on full rows read
+  (`Core.historyRead`: 2 on skeletons, every version on the whole history) and skeleton reads (a new test hook,
+  `Core.skeletonRead`: one per correction), and logs allocations and bytes. `TestExistMapResidentBytesPerNode` (live heap)
+  and `TestForEachNodeEffectiveByLabelAndPropertiesColdBytes` (TotalAlloc) move to the measurement level. Rule in
+  CONTRIBUTING (Code): a suite test gates on counts no load moves (`tasks/evidence/RELHIST/cascademeta-cost.txt`).
+
 ## [4.104.1] - 2026-11-04
 
 ### Fixed
