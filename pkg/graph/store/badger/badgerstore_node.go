@@ -100,7 +100,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	bs.recordNodeLabelMembersLocked(n, n) // transaction-time label membership
 
 	bs.addNodePropertyKeyCounts(n)
-	ops = append(ops, bs.maintainPropertyIndexesAddKeys(n, id, diskKeys, true)...)
+	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id, diskKeys, true)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, n, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, id)

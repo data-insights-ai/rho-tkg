@@ -178,14 +178,11 @@ var testHookPropIdxAdd func(bs *Store, batch bool)
 // node-mutation door already funnels through — rather than at each of those
 // door call sites individually: the RAM ones by the index helper, those kept
 // on disk by their entries (COMPDISK, compositeDiskOpsLocked).
-func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []writeOp {
-	return bs.maintainPropertyIndexesAddKeys(n, id, nil, false)
-}
-
-// maintainPropertyIndexesAddKeys is maintainPropertyIndexesAdd with n's value
-// keys from the door's KEYSIZE check when built (checkNodeDiskKeysLocked), else
-// built here once for the 0x0A and the member entries (PAGECOST).
-func (bs *Store) maintainPropertyIndexesAddKeys(n *types.Node, id snowflake.ID, keys nodeDiskKeys, built bool) []writeOp {
+//
+// keys are n's value keys from the door's KEYSIZE check when built
+// (checkNodeDiskKeysLocked), else built here once for the 0x0A and the member
+// entries (PAGECOST).
+func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID, keys nodeDiskKeys, built bool) []writeOp {
 	// Every door that writes a current node row calls Add, so it also records
 	// the row into the property membership sidecars (backlog 8).
 	bs.recordNodeRowLocked(n, true)
@@ -304,10 +301,10 @@ func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, old, n *types.Node
 }
 
 // maintainPropertyIndexesUpdateKeys is maintainPropertyIndexesUpdate with n's
-// value keys from the door's KEYSIZE check (maintainPropertyIndexesAddKeys).
+// value keys from the door's KEYSIZE check (maintainPropertyIndexesAdd).
 func (bs *Store) maintainPropertyIndexesUpdateKeys(ops []writeOp, old, n *types.Node, id snowflake.ID, keys nodeDiskKeys, built bool) []writeOp {
 	from := len(ops)
-	ops = append(ops, bs.maintainPropertyIndexesAddKeys(n, id, keys, built)...)
+	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id, keys, built)...)
 	var removed, unchanged map[string]struct{} // removed: the old node's ops, deletes of its entries
 	for _, op := range ops[:from] {
 		if removed == nil {
