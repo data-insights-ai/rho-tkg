@@ -55,6 +55,7 @@ import (
 type baselineResult struct {
 	size, mode, workload string
 	rels, hop            int
+	feRows               int // rows ForEachByType("HOP") visited
 	graphBytes           uint64
 	objects              uint64
 	diskBytes            int64
@@ -191,6 +192,7 @@ func runBaseline(tb testing.TB, sz synthhop.Size, mode string, wl synthhop.Workl
 		tb.Fatalf("ForEachByType: %v", err)
 	}
 	res.feRate = float64(n) / time.Since(t0).Seconds()
+	res.feRows = n
 	// The analysis read every type and every node back before its heap
 	// reading (which fills the badger entity caches the same way); do the same.
 	for _, typ := range []string{"ORIGIN", "VATTR", "CATTR"} {
@@ -277,7 +279,9 @@ func TestSegmentBaseline(t *testing.T) {
 }
 
 // TestSegmentBaselineSmoke keeps the harness compiling and working in the
-// ordinary suite: a tiny workload on every mode, with sanity bounds only.
+// ordinary suite: a tiny workload on every mode, with sanity bounds on counts
+// only (rows written, scanned and bytes on disk); the heap and the scan rates,
+// which move with load, are logged.
 func TestSegmentBaselineSmoke(t *testing.T) {
 	sz := synthhop.Size{Name: "smoke", HOP: 400, Pairs: 100, VATTR: 120, CATTR: 5, Hosts: 30, Actors: 6}
 	for _, mode := range []string{"memory", "badger", "lean"} {
@@ -289,9 +293,10 @@ func TestSegmentBaselineSmoke(t *testing.T) {
 		if res.rels != sz.Rels() || res.hop != sz.HOP {
 			t.Fatalf("%s: wrote %d rels / %d HOP, want %d / %d", mode, res.rels, res.hop, sz.Rels(), sz.HOP)
 		}
-		if res.graphBytes == 0 || res.byTypeRate <= 0 || res.feRate <= 0 {
-			t.Fatalf("%s: empty measurement %s", mode, res)
+		if res.feRows != sz.HOP {
+			t.Fatalf("%s: ForEachByType visited %d HOP, want %d", mode, res.feRows, sz.HOP)
 		}
+		t.Log(res.String())
 		if mode != "memory" && res.diskBytes <= 0 {
 			t.Fatalf("%s: no on-disk bytes measured", mode)
 		}

@@ -2,6 +2,7 @@ package segment
 
 import (
 	"encoding/binary"
+	"flag"
 	"hash/crc32"
 	"runtime"
 	"testing"
@@ -9,9 +10,30 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+// fuzzing reports whether `go test -fuzz` drives this process (the
+// coordinator or a worker, which gets the same flags). A plain test run only
+// replays the seed corpus.
+func fuzzing() bool {
+	fl := flag.Lookup("test.fuzz")
+	return fl != nil && fl.Value.String() != ""
+}
+
+// checkOpenAllocs fails when Open allocated more than its input bound, while
+// fuzzing only: TotalAlloc counts every goroutine of the process, so in the
+// suite's seed-corpus replay (beside parallel tests and the race detector) the
+// bound would move with load (René 4 Nov). A fuzzing run is a measurement by
+// hand.
+func checkOpenAllocs(t *testing.T, before, after *runtime.MemStats, n int) {
+	t.Helper()
+	if d := after.TotalAlloc - before.TotalAlloc; fuzzing() && d > 1<<16+32*uint64(n) {
+		t.Fatalf("Open allocated %d bytes for %d input bytes", d, n)
+	}
+}
+
 // FuzzOpen feeds arbitrary bytes to the decode boundary (lessons 47, 48):
 // Open and every reader door must return a value or an error, never panic,
-// and Open must not allocate in proportion to a count the bytes only claim.
+// and, while fuzzing, Open must not allocate in proportion to a count the
+// bytes only claim.
 func FuzzOpen(f *testing.F) {
 	for i, n := range []int{0, 1, 7, 70} {
 		rows := corpus(f, n, uint64(100+i))
@@ -30,9 +52,7 @@ func FuzzOpen(f *testing.F) {
 		runtime.ReadMemStats(&before)
 		seg, err := Open(data)
 		runtime.ReadMemStats(&after)
-		if d := after.TotalAlloc - before.TotalAlloc; d > 1<<16+32*uint64(len(data)) {
-			t.Fatalf("Open allocated %d bytes for %d input bytes", d, len(data))
-		}
+		checkOpenAllocs(t, &before, &after, len(data))
 		if err != nil {
 			return
 		}
@@ -72,9 +92,7 @@ func FuzzOpenResealed(f *testing.F) {
 		runtime.ReadMemStats(&before)
 		seg, err := Open(data)
 		runtime.ReadMemStats(&after)
-		if d := after.TotalAlloc - before.TotalAlloc; d > 1<<16+32*uint64(len(data)) {
-			t.Fatalf("Open allocated %d bytes for %d input bytes", d, len(data))
-		}
+		checkOpenAllocs(t, &before, &after, len(data))
 		if err != nil {
 			return
 		}

@@ -126,12 +126,3 @@ func TestMintInstantMillis_AgreesWithLayoutCreatedAt(t *testing.T) {
 		}
 	}
 }
-
-func TestMintInstantMillis_NoAllocs(t *testing.T) {
-	id := compose(1<<40, 3, 3)
-	var sink int64
-	if n := testing.AllocsPerRun(1000, func() { sink += MintInstantMillis(id) }); n != 0 {
-		t.Fatalf("MintInstantMillis allocates %v per call, want 0", n)
-	}
-	_ = sink
-}

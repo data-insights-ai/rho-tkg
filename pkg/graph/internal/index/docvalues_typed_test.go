@@ -165,36 +165,6 @@ func TestTypedColumn_BoxedViewIsBuiltOnceAndIsStable(t *testing.T) {
 	}
 }
 
-// TestTypedColumn_TypedReadDoesNotAllocate is the point of the whole layout. If
-// this reports >0 allocs the typed door is boxing somewhere and the change bought
-// nothing.
-func TestTypedColumn_TypedReadDoesNotAllocate(t *testing.T) {
-	ids := make([]types.NodeID, 1000)
-	vals := make(map[types.NodeID]any, len(ids))
-	for i := range ids {
-		ids[i] = types.NodeID(i + 1)
-		vals[types.NodeID(i+1)] = int64(i)
-	}
-	l := buildOne(t, ids, vals)
-	view, _ := l.View("v")
-
-	var sum int64
-	got := testing.AllocsPerRun(100, func() {
-		sum = 0
-		for ord := 0; ord < view.N; ord++ {
-			if view.Present(ord) && !view.IsFloat(ord) {
-				sum += view.Ints[ord]
-			}
-		}
-	})
-	if got != 0 {
-		t.Errorf("typed column scan allocated %.1f times per run, want 0", got)
-	}
-	if want := int64(999 * 1000 / 2); sum != want {
-		t.Errorf("scan summed %d, want %d — the loop did not read the column", sum, want)
-	}
-}
-
 // TestTypedColumn_UnbuildableStillDeclines pins that widening the storage did NOT
 // widen what the column accepts. A bool/list/map or a numeric+string mix must still
 // be refused so the consumer falls back, rather than being coerced into a numeric

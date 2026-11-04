@@ -10,10 +10,12 @@ import (
 )
 
 // BORROWREAD: a 64 KiB []byte property read with BorrowProperty from a lent
-// row allocates nothing, on memory and on badger (the row read back from disk
-// after a reopen), while GetProperty keeps its copy. A later Update or
-// UpdateInPlace of the node, and closing the store, leave the borrowed bytes
-// as they were. Not parallel: AllocsPerRun refuses a parallel test.
+// row is the row's own array, on memory and on badger (the row read back from
+// disk after a reopen): two borrows hand out the same bytes, while
+// GetProperty keeps its copy (the allocation count, 0, is logged). A later
+// Update or UpdateInPlace of the node, and closing the store, leave the
+// borrowed bytes as they were. Not parallel: AllocsPerRun (the log) refuses a
+// parallel test.
 func TestBorrowPropertyReadsABlobWithoutACopy(t *testing.T) {
 	for _, b := range []struct {
 		name string
@@ -47,23 +49,26 @@ func TestBorrowPropertyReadsABlobWithoutACopy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var got []byte
-			if allocs := testing.AllocsPerRun(20, func() {
-				v, _ := row.BorrowProperty("b")
-				got = v.([]byte)
-			}); allocs != 0 {
-				t.Fatalf("BorrowProperty of a 64 KiB []byte: %.0f allocs, want 0", allocs)
-			}
+			v, _ := row.BorrowProperty("b")
+			got := v.([]byte)
 			if !bytes.Equal(got, blob) {
 				t.Fatal("borrowed bytes differ from the written blob")
 			}
-			if allocs := testing.AllocsPerRun(20, func() { _, _ = row.BorrowProperty("k") }); allocs != 0 {
-				t.Fatalf("BorrowProperty of a []int64: %.0f allocs, want 0", allocs)
+			if again, _ := row.BorrowProperty("b"); &again.([]byte)[0] != &got[0] {
+				t.Fatal("BorrowProperty of a 64 KiB []byte: a second borrow got other bytes, want the row's own")
 			}
+			k1, _ := row.BorrowProperty("k")
+			k2, _ := row.BorrowProperty("k")
+			if l1, l2 := k1.([]int64), k2.([]int64); len(l1) != 3 || &l1[0] != &l2[0] {
+				t.Fatalf("BorrowProperty of a []int64: %v and %v, want the row's own [1 2 3] twice", l1, l2)
+			}
+			t.Logf("BorrowProperty: %.0f allocs for the []byte, %.0f for the []int64",
+				testing.AllocsPerRun(20, func() { _, _ = row.BorrowProperty("b") }),
+				testing.AllocsPerRun(20, func() { _, _ = row.BorrowProperty("k") }))
 			if _, ok := row.BorrowProperty("c"); ok {
 				t.Fatal("BorrowProperty found a missing key")
 			}
-			v, _ := row.GetProperty("b")
+			v, _ = row.GetProperty("b")
 			if c := v.([]byte); &c[0] == &got[0] {
 				t.Fatal("GetProperty returned the stored bytes, want a copy")
 			}

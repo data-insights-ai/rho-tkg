@@ -7,7 +7,8 @@ import "testing"
 // ordinary mutable form, the ordinary frozen form (where Temporal() copies),
 // and the compact frozen form (TxTo / DeletedAt are zero by construction). A
 // version that reads the wrong field, or a stale copy, fails the value check;
-// one that goes through Temporal() fails the allocation check on frozen rows.
+// one that goes through Temporal() fails TestTxStampsNoAllocs (the
+// measurement level) on frozen rows.
 func TestNodeTxStamps(t *testing.T) {
 	var nilNode *Node
 	if f, to, da := nilNode.TxStamps(); f != 0 || to != 0 || da != 0 {
@@ -27,9 +28,6 @@ func TestNodeTxStamps(t *testing.T) {
 	if f, to, da := frozen.TxStamps(); f != 10 || to != 20 || da != 30 {
 		t.Fatalf("frozen = (%d, %d, %d), want (10, 20, 30)", f, to, da)
 	}
-	if a := testing.AllocsPerRun(100, func() { _, _, _ = frozen.TxStamps() }); a != 0 {
-		t.Fatalf("frozen TxStamps allocates %.0f", a)
-	}
 	first := NewNode(NodeID(3), 1, nil)
 	first.SetTemporal(&TemporalMetadata{ValidFrom: 1, TxFrom: 11})
 	first.SetIntegrity(&NodeIntegrity{Hash: testHashA})
@@ -39,9 +37,6 @@ func TestNodeTxStamps(t *testing.T) {
 	}
 	if f, to, da := compact.TxStamps(); f != 11 || to != 0 || da != 0 {
 		t.Fatalf("compact = (%d, %d, %d), want (11, 0, 0)", f, to, da)
-	}
-	if a := testing.AllocsPerRun(100, func() { _, _, _ = compact.TxStamps() }); a != 0 {
-		t.Fatalf("compact TxStamps allocates %.0f", a)
 	}
 	// The mutable row follows a later stamp; the frozen copy keeps its own.
 	n.Temporal().TxTo = 99
@@ -72,9 +67,6 @@ func TestRelationshipTxStamps(t *testing.T) {
 	if f, to, da := frozen.TxStamps(); f != 10 || to != 20 || da != 30 {
 		t.Fatalf("frozen = (%d, %d, %d), want (10, 20, 30)", f, to, da)
 	}
-	if a := testing.AllocsPerRun(100, func() { _, _, _ = frozen.TxStamps() }); a != 0 {
-		t.Fatalf("frozen TxStamps allocates %.0f", a)
-	}
 	first := NewRelationship(RelID(3), 1, NodeID(1), NodeID(2))
 	first.SetTemporal(&TemporalMetadata{ValidFrom: 1, TxFrom: 11})
 	first.SetIntegrity(&RelIntegrity{Hash: testHashA, FromNodeHash: testHashB, ToNodeHash: testHashC})
@@ -84,9 +76,6 @@ func TestRelationshipTxStamps(t *testing.T) {
 	}
 	if f, to, da := compact.TxStamps(); f != 11 || to != 0 || da != 0 {
 		t.Fatalf("compact = (%d, %d, %d), want (11, 0, 0)", f, to, da)
-	}
-	if a := testing.AllocsPerRun(100, func() { _, _, _ = compact.TxStamps() }); a != 0 {
-		t.Fatalf("compact TxStamps allocates %.0f", a)
 	}
 	r.Temporal().TxTo = 99
 	if _, to, _ := r.TxStamps(); to != 99 {

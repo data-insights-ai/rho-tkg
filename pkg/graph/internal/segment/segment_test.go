@@ -11,7 +11,6 @@ import (
 	"math"
 	"math/rand/v2"
 	"reflect"
-	"runtime"
 	"sort"
 	"testing"
 
@@ -717,32 +716,29 @@ func TestVersion_UnknownFormatAndFooterVersionsFailClosed(t *testing.T) {
 	}
 }
 
-func TestAlloc_LyingCountsDoNotAllocate(t *testing.T) {
-	data := mustEncode(t, corpus(t, 40, 12), Options{}, PageRows)
+// TestCorrupt_LyingCountsAreRejected: a header whose row or node count claims
+// 2^32-1 fails closed with ErrCorrupt. That the claim allocates nothing on the
+// way is TestAlloc_LyingCountsDoNotAllocate, at the measurement level.
+func TestCorrupt_LyingCountsAreRejected(t *testing.T) {
 	for _, patch := range []struct {
 		name string
 		off  int
 	}{{"rowCount", 16}, {"nodeCount", 20}} {
-		bad := append([]byte(nil), data...)
-		binary.LittleEndian.PutUint32(bad[patch.off:], math.MaxUint32)
-		binary.LittleEndian.PutUint32(bad[56:], crc32.Checksum(bad[:56], castagnoli))
-		var before, after runtime.MemStats
-		runtime.ReadMemStats(&before)
-		seg, err := Open(bad)
-		if err == nil {
-			_ = seg.Scan(func(int, *types.Relationship) bool { return true })
-		}
-		runtime.ReadMemStats(&after)
-		if err == nil {
-			t.Fatalf("%s = 2^32-1 accepted", patch.name)
-		}
-		if !errors.Is(err, ErrCorrupt) {
-			t.Fatalf("%s: %v, want ErrCorrupt", patch.name, err)
-		}
-		if d := after.TotalAlloc - before.TotalAlloc; d > 1<<20 {
-			t.Fatalf("%s: lying count allocated %d bytes", patch.name, d)
+		bad := lyingCount(t, patch.off)
+		if _, err := Open(bad); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("%s = 2^32-1: %v, want ErrCorrupt", patch.name, err)
 		}
 	}
+}
+
+// lyingCount is a valid segment whose header count at off claims 2^32-1, the
+// header CRC resealed.
+func lyingCount(t *testing.T, off int) []byte {
+	t.Helper()
+	bad := mustEncode(t, corpus(t, 40, 12), Options{}, PageRows)
+	binary.LittleEndian.PutUint32(bad[off:], math.MaxUint32)
+	binary.LittleEndian.PutUint32(bad[56:], crc32.Checksum(bad[:56], castagnoli))
+	return bad
 }
 
 // --- test helpers over the byte layout ---

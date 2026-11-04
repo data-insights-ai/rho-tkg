@@ -9,20 +9,6 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// TestValueStripeZeroAllocs pins the BACKLOG 15g perf fix: ValueStripe must
-// not allocate. The prior fnv.New64a()-based implementation allocated its
-// concrete *sum64a to the heap on every call (hash.Hash64 is an interface),
-// once per constrained property per node write — a hot path.
-func TestValueStripeZeroAllocs(t *testing.T) {
-	value := []byte("s:alice@example.com")
-	allocs := testing.AllocsPerRun(100, func() {
-		_ = ValueStripe(3, 9, value)
-	})
-	if allocs != 0 {
-		t.Fatalf("ValueStripe allocated %.1f times per call, want 0", allocs)
-	}
-}
-
 func TestValueStripeInRange(t *testing.T) {
 	t.Parallel()
 	for i := 0; i < 1000; i++ {

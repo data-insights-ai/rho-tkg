@@ -18,10 +18,11 @@ import (
 // returns: two labels on one key (an Elements and a plain definition), three
 // values, a deleted node, a node moved to another value, a node that left the
 // label, equal numeric forms, a label with no index, After+Limit, and a time
-// coordinate (rows, whose versions answer; parity only). The allocation bound fails while each candidate's
-// 64-element list is walked (one key string per element).
+// coordinate (rows, whose versions answer; parity only), and a label of 64
+// rows of 64-element lists. The allocation bound that fails while each
+// candidate's list is walked (one key string per element) is
+// TestIDsByLabelAndPropertyValuesMemoryAllocs, at the measurement level.
 func TestIDsByLabelAndPropertyValuesMemoryFromIndex(t *testing.T) {
-	// Not parallel: testing.AllocsPerRun.
 	ctx := context.Background()
 	ms := memory.New()
 	if _, ok := any(ms).(storepkg.NodePropertyKeysIDsCapability); !ok {
@@ -106,10 +107,7 @@ func TestIDsByLabelAndPropertyValuesMemoryFromIndex(t *testing.T) {
 		}
 	}
 
-	// The allocation bound: 64 rows of 64-element lists, 10 values a call.
-	// The row path formats a key per walked element (919 allocations a call
-	// before RHOMEMIDS); the index path allocates per value form (the equal
-	// forms, their keys, the union's cursors) and for the result: 242.
+	// 64 rows of 64-element lists, 10 values a call, each row's last element.
 	const width = 64
 	for i := range width {
 		l := make([]int64, width)
@@ -122,17 +120,11 @@ func TestIDsByLabelAndPropertyValuesMemoryFromIndex(t *testing.T) {
 	for i := range values {
 		values[i] = int64(1000 + i*width + width - 1) // each row's last element
 	}
-	var got []types.NodeID
-	allocs := testing.AllocsPerRun(20, func() {
-		var err error
-		if got, err = g.Nodes().IDsByLabelAndPropertyValues("Long", "lk", values, storepkg.QueryOpts{}); err != nil {
-			t.Fatal(err)
-		}
-	})
+	got, err := g.Nodes().IDsByLabelAndPropertyValues("Long", "lk", values, storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != len(values) {
 		t.Fatalf("Long: %d IDs, want %d", len(got), len(values))
-	}
-	if limit := float64(40 * len(values)); allocs > limit {
-		t.Errorf("Long: %.0f allocations a call for %d values, want at most %.0f (the rows are walked)", allocs, len(values), limit)
 	}
 }
