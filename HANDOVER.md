@@ -12,8 +12,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   sigma tags on v4.104.1, ai-soc runs its gate (60-min 4 arms + masked cycles), pins and releases ai-soc v5.1.2 on
   that pair. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc); ai-soc names its quiet
   windows: then no ci-docker, probe, bench or long test here.
-  - **On main, unreleased:** nothing. Open branch: `costcount` (worktree `../rho-tkg-costcount`: cost tests gate on
-    deterministic counts instead of process-wide allocations).
+  - **On main, unreleased:** COSTCOUNT (tests only, plus a test hook: `TestCascadeMetaCost` gates on full rows and
+    skeleton reads per correction instead of process-wide allocations; next: MEMGATE). No branch open.
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Reviews:** René (3 Nov, "yes, always"): one read-only Fable review per finished branch, before its merge, given
