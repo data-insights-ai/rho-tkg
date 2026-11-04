@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.104.3] - 2026-11-04
+
 ### Removed
 
 - **The pre-commit hook** (`scripts/hooks/pre-commit`, `make hooks`; René, 4 Nov): the gates check what it checked.
