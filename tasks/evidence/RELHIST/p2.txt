@@ -27,3 +27,66 @@ GOMAXPROCS=2 go test -p 1 -cpu 1 -short -run 'TestRELHISTP2' ./pkg/graph/interna
     effective_head_refresh_test.go:306: the sequence never exercised the cache: 84 overlays, 0 hits
 FAIL
 (The oracle's answers already agree on main: the plural door folds every call; it fails only on its exercise floor.)
+
+3. What was built
+- (i) effective_timelines.go: after the no-history shortcut, a plain read (rd.snap == nil, !rd.scan, a current row)
+  asks nodeHeadTimelines / relHeadTimelines (effective_head.go): headValid at the LOWEST pin (every pin >= maxTx), a
+  whole entry, each winner read once (lent), rowAtTx per pin, one headHits per call. Otherwise effectiveTimelinesOver
+  folds every pin and hands the fold at the HIGHEST pin with its facts to noteNodeHead / noteRelHead (skeleton path and
+  whole-history path alike; the facts qualify only when every row is recorded by that pin, as for the singular door).
+- (ii) headSupersede (effective_head.go) = headOverlay of the new current row n, plus the old current row's TxTo:
+  - monotonic arm (out.cascade false): TxTo is not read by the positional tiling; headOverlay's tiling check stands.
+  - own-bounds arm (kept, or switched by armSwitches): n replaces the old current row (TxTo == n.TxFrom > its TxFrom)
+    and so caps every row starting at or before n at n's start (supersessionCaps: any newer replacing row). n open:
+    the paint covers [start, open) already. n bounded: after its end every row starting at or before n is gone; with
+    no bound of the entry after n's start no row starts later, so those instants are a gap (pieces from n's end on
+    dropped); otherwise the entry is dropped.
+  - maxTxTo raised to the supersession instant (the fold's maxTxTo).
+  Called from updateNodePreparedInternal / updateRelationshipPreparedInternal (both store branches),
+  closeNodeVersionInternal / closeRelVersionInternal, replaceNodeVersionInternal, with the entry read before the
+  current row is mutated (nodeHeadBeforeWrite). No valid entry before the write: nothing is touched (stale by the token
+  as before). Refused: the entry is dropped (as a correction's refusal).
+- Not covered, by design: CloseVersion or a bounded Update of a MONOTONIC chain (same start, earlier end makes the
+  chain non-monotonic; armSwitches needs every row bounded) drops the entry; property CAS, UpdateInPlace (no history
+  write), batch/ingest doors that do not reach these internals: unchanged (stale by the token).
+- Oracle coverage (one run, 2 seeds x 60 steps x memory/badger/tiered): 219 overlays, 741 head hits; supersede kept in
+  the monotonic arm 15x, own-bounds arm 114x, of which the bounded gap rule 21x (counted with a temporary print).
+
+4. Mutation sweep (each mutant alone; targeted run
+   GOMAXPROCS=2 go test -p 1 -cpu 1 -short -run 'TestRELHISTP2' ./pkg/graph/internal/core/ ; file restored by git checkout)
+M1  headSupersede always refuses (if e == nil -> if true)            KILLED  UpdateKeepsHeadEntry: overlays +0
+M2  wrong maxTx: out.maxTx = e.maxTx after the overlay                KILLED  UpdateThenPluralOracle: entry differs from
+    the fold's (first run survived: the oracle's mixed read refolded and overwrote the entry before the check, and the
+    per-pin rowAtTx guard makes the door fall back on the new winner; the oracle now checks the entry first, f39efd9c)
+M3  bounded own-bounds case keeps pieces after n's end (no DeleteFunc) KILLED  Oracle (entry), ExciseAndClose (answer
+    after CloseVersion)
+M4  drop "no bound after n's start" (> s && false)                    KILLED  Oracle: entry differs (ReplaceVersion)
+M5  maxTxTo not raised                                                KILLED  Oracle: entry differs
+M6  plural head check at the highest pin (Min -> Max)                 KILLED  ExciseAndClose: wrong answer at a pin before
+    the excise (the void row wins nothing, so every winner is recorded by the pin; survived the first tests; test
+    added in 000b0608)
+M7  plural door never fills (epoch != 0 && false)                     KILLED  PluralDoorHeadHit, UpdateKeepsHeadEntry
+M8  fill from the lowest pin (Max -> Min in effectiveTimelinesOver)   KILLED  PluralDoorHeadHit (fill call has a pin
+    below maxTx)
+M9  headTimelinesOf skips rowAtTx (row, ok := rows[i], pin > 0)       SURVIVED targeted and whole core package (-short;
+    only the pre-existing ColdBytes failure). Equivalent under the entry's invariant: every pin >= maxTx, no delete in
+    the chain, so rowAtTx returns the row unchanged; kept as the second guard nodeHeadSegments also has (see M2).
+M10 rel Update reads no entry before the write (headBefore nil)       KILLED  UpdateKeepsHeadEntry: rel Update overlays +0
+M11 ReplaceVersion skips the after-write call                         KILLED  UpdateKeepsHeadEntry: node ReplaceVersion
+M12 node CloseVersion skips the after-write call                      KILLED  ExciseAndClose: overlays +1, want +2
+
+5. Benchmark (BenchmarkRELHISTP2UpdateReadBack: Update then plural read-back at the head pin, 64 keys of 100 versions
+   written round-robin, -benchtime 640x so each key ends at 110 versions; GOMAXPROCS=2 -cpu 1 -count 5; before = main's
+   implementation files with the same benchmark; medians of 5)
+                    before                          after
+memory node     63,154 ns  61,399 B  272 allocs   21,714 ns  14,922 B   55 allocs
+memory rel      58,253 ns  61,879 B  274 allocs   25,283 ns  15,401 B   57 allocs
+badger node    260,826 ns 211,735 B 2,169 allocs  213,525 ns 149,894 B 1,809 allocs
+badger rel     362,588 ns 328,415 B 2,827 allocs  269,685 ns 264,172 B 2,455 allocs
+tiered node    273,262 ns 205,860 B 2,283 allocs  216,114 ns 140,780 B 1,926 allocs
+tiered rel     330,263 ns 312,045 B 2,794 allocs  253,969 ns 244,140 B 2,438 allocs
+The rest on badger/tiered is the Update's own write (badger transaction, history row, indexes), not the read.
+
+6. Pre-existing failure, not this item: TestForEachNodeEffectiveByLabelAndPropertiesColdBytes fails on main 7fd75c40
+   with the same numbers (2 versions, early pin: 7,581 B per fact, bound 16x of 442 B = 7,072 B); the page door runs in
+   scan mode and does not touch the head entry.

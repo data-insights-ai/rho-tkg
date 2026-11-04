@@ -398,6 +398,48 @@ func TestRELHISTP2UpdateThenPluralOracle(t *testing.T) {
 	}
 }
 
+// BenchmarkRELHISTP2UpdateReadBack is sigma's cut on one fact: a plain Update,
+// then the plural read-back at the head pin. 64 keys of 100 versions each,
+// written round-robin, so run it with -benchtime 640x (each key ends at 110
+// versions); before RELHIST P2 every read-back walked every version's
+// skeleton (badger, tiered) or the whole history (memory).
+func BenchmarkRELHISTP2UpdateReadBack(b *testing.B) {
+	const keys, versions = 64, 100
+	ctx := context.Background()
+	for _, be := range relhistP2Backends(b) {
+		for _, rel := range []bool{false, true} {
+			b.Run(fmt.Sprintf("%s/rel=%v", be.name, rel), func(b *testing.B) {
+				g := relhistP2Graph(b, be)
+				nids := make([]types.NodeID, keys)
+				rids := make([]types.RelID, keys)
+				for i := range keys {
+					nids[i], rids[i] = relhistP2Entities(b, g, versions)
+				}
+				pins := []types.Instant{0}
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := range b.N {
+					k := i % keys
+					p := map[string]any{"v": int64(i)}
+					var err error
+					if rel {
+						if _, err = g.Rels.Update(ctx, rids[k], p); err == nil {
+							pins[0] = g.peekNow()
+							_, err = g.Temporal.RelEffectiveTimelines(rids[k], pins)
+						}
+					} else if _, err = g.Nodes.Update(ctx, nids[k], p); err == nil {
+						pins[0] = g.peekNow()
+						_, err = g.Temporal.NodeEffectiveTimelines(nids[k], pins)
+					}
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
 // relhistP2EntryAsFold checks that each entity's entry, when valid at the
 // head, equals the entry a fold of the chain builds.
 func relhistP2EntryAsFold(t *testing.T, g *Core, nid types.NodeID, rid types.RelID, head types.Instant, when string) {
