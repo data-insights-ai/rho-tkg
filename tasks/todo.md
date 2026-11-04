@@ -15,6 +15,10 @@ Each item: one sentence, then when it is done and what it waits for.
 - **ASOFWALK later steps** (STATEREC round) — step 1 delegates to the owner shard; next a TxPin batch by IDs, then a cross-shard merge; TxAt stays the skeleton walk with an O(1) belief watermark for a pin at or after current. Done when sigma's 50+ cuts of worst churn bench flat. Waits for the round; parked on the crash path with WHOLEROW and DEPTHLOOK.
 - **TIERLEND** merged 3 Nov (unreleased; a minor: tiered `Store.LendNodesSorted`/`LendRelationshipsSorted`). PROJREAD's
   door dropped on sigma's answer (`tasks/evidence/PROJREAD/design.txt`). Done when released.
+- **LENDCOST** (ai-soc 4 Nov; a fix, regression of TIERLEND in v4.103.0) — the tiered 2-day budget arm costs +19 % user
+  CPU: LendByIDs 115 -> 629 s, badger LendNodesSorted Seeking through every level per sparse miss (sigma: about 4.3
+  IDs a call). On a branch with a bench (sparse and dense, L0-L3, against Txn.Get per ID). Done when no slower than
+  v4.102.0's per-ID path in ai-soc's gate; fallback: that path for misses. Blocks the next tag.
 - **VALUETHRESH** merged 3 Nov after v4.103.0 (unreleased; a minor: `ValueThreshold` on the configs). sigma sets
   32 KiB on tiered (its 79 k DerivedPage blocks of 64 KiB: +900 s of the 2-day budget run's +2,640 s CPU is badger
   compacting them). Done when ai-soc's gate and sigma's 2-day budget run on it show the compaction CPU gone.
