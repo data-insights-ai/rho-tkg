@@ -126,10 +126,11 @@ the kind of release, run once; it stops at the first red, and a red is fixed on 
    on the rho section of `~/cleanup.sh` (RHO_DONE and named lines; never work in progress, never by age), then
    `bash ~/cleanup.sh`; merged worktrees and branches removed with git; `git status` shows nothing untracked.
 2. Every branch of the batch is merged (each reviewed before its merge, § Review).
-3. CHANGELOG commit (René, 4 Nov: Claude writes it from the finished items of `tasks/todo.md`): `## [X.Y.Z] - date` above
-   the entries, shipped rows leave `tasks/todo.md`; pushed to main. The tag is the version: no other doc names it
+3. CHANGELOG and README commit, before the push (René, 4 Nov: Claude writes the CHANGELOG from the finished items of
+   `tasks/todo.md`): `## [X.Y.Z] - date` above the entries, README updated for what the release changes, shipped rows
+   leave `tasks/todo.md`. Not pushed alone: `make release` pushes it with the tag. The tag is the version: no other doc names it
    (`git tag --contains <commit>` answers which release has a change).
-4. `make release` (`scripts/release.sh`, edits no file): preconditions (main, clean, equal to origin/main), the kind from the
+4. `make release` (`scripts/release.sh`, edits no file): preconditions (main, clean, origin/main an ancestor of HEAD), the kind from the
    diff (`scripts/patchgate -kind`: a minor is a new exported name, internal packages included, a store format marker or a
    badger minor bump; else a patch), the CHANGELOG heading is the next version, the gate (`ci-fast` for a patch,
    `ci-docker` for a minor), `git tag -a`, `git push --atomic`. A red step stops it; the fix goes on main and the release

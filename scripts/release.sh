@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # release.sh [--dry-run] — rho's one release process (`make release`), René 4 Nov:
-#   1 preconditions: on main, clean (nothing untracked), equal to origin/main;
+#   1 preconditions: on main, clean (nothing untracked), origin/main an ancestor
+#     of HEAD (the release's CHANGELOG and README commit is pushed with the tag);
 #   2 kind from the diff since the last tag (scripts/patchgate -kind): a patch,
 #     or a minor (a new exported name, internal packages included; a store
 #     format marker; a badger minor bump);
 #   3 docs/CHANGELOG.md's newest heading is the next version (written by hand,
-#     from the finished todo items, in the commit before the release);
+#     from the finished todo items, with README, in a commit before the release,
+#     not yet pushed: René, 4 Nov, "changelog and readme BEFORE the push");
 #   4 the gate: `make ci-fast` for a patch, `make ci-docker` for a minor;
 #   5 `git tag -a` (message: that CHANGELOG section), `git push --atomic`.
 # The tag is the version: the script edits no file. One PASS/FAIL line per step
@@ -47,8 +49,8 @@ pre() {
 	local st=0
 	[ "$(git branch --show-current)" = main ] || { echo "not on main"; st=1; }
 	[ -z "$(git status --porcelain)" ] || { echo "tree not clean"; st=1; }
-	git fetch -q origin main && [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] ||
-		{ echo "HEAD differs from origin/main"; st=1; }
+	git fetch -q origin main && git merge-base --is-ancestor origin/main HEAD ||
+		{ echo "origin/main is not an ancestor of HEAD"; st=1; }
 	return $st
 }
 if [ -n "$dry" ]; then
