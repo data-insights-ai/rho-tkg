@@ -58,6 +58,10 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   shared seam. No "known limitation" unless the sound fix was shown impossible. A crash-safety change also gets a mutation
   sweep: each defended property broken once in the code must fail a test; the sweep runs every test that guards the code (the
   long tier too, not only the new tests), counts a timeout as caught, and a fault hook fires once (a requeue re-runs it).
+- A cost test gates on a count no load moves: rows read (`Core.historyRead`), store calls, keys visited, versions copied.
+  Process-wide `runtime.MemStats` (allocations, bytes, heap) and wall time count every goroutine, badger's flushes and
+  compactions included, so they are logged as evidence, never a pass/fail bound in the suite (4 Nov: `TestCascadeMetaCost`
+  read 3.9x under ci-docker's load against a 4.0x bar, 5.8x alone). Allocation and time claims live in benchmarks.
 - Validate before any side effect: IDs, decoded bytes and property values at every entry, before an ID is minted, a token
   interned, a snapshot taken or an op queued. Decode untrusted bytes only through `storeutil.SafeUnmarshal`; allocate by bytes
   delivered, never by a declared count; verify imported hashes.

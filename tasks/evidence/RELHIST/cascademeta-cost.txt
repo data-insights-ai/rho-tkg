@@ -44,3 +44,22 @@ nodeMetaPlan, 4 corrections each): 2.2 MB of 2.3 MB per kind in badger historyTe
 (types.NewRelationship / NewNode, about 95 B a version), prepareCorrection 0.33 MB. A cheaper skeleton read is a
 store change and outside this patch. Full-row reads on the miss (TestCascadeMetaMissReadsNoHistory, 19 history rows,
 3 winners): whole-history reads 1 -> 0, point reads 0 -> 3 on memory, badger and tiered; sharded 1 -> 1.
+
+COSTCOUNT (4 Nov): the gate is now full rows read per correction (Core.historyRead), not the allocation and byte
+ratios. v4.104.1's ci-docker coverage step read 3.9x fewer allocs on badger blob400 1,024 rel against the 4.0x bar
+(6,335 skeleton allocs; alone 4,295, 5.8x): MemStats counts the whole process, badger's background goroutines included.
+Rows per correction, every backend (memory, badger, tiered), shape and size: whole history = versions + 2, skeletons 2.
+Bound: skeletons <= 2, whole history >= versions. Mutants: skeleton path off -> caught (no correction planned on
+skeletons); read versions 1..64 inside hydrate -> caught (66 rows, want <= 2); the baseline run on skeletons -> caught
+(1 row, want >= versions); the hydrate memo off, the source read though not copied, gap segments hydrated, the
+current-row shortcut off -> survive, equivalent in this shape (each correction hydrates two distinct non-gap,
+non-current rows). Allocations and bytes stay in the log.
+Review follow-up (Fable, 4 Nov): the gate is per correction, not a mean (a mean of four let one extra row on three
+corrections pass), and counts skeleton reads too (Core.skeletonRead, fired where nodeMetaPlan / relMetaPlan read the
+skeleton list): the skeleton read is O(versions) and reads no full row, so the row count alone missed a second one.
+Per correction: whole history 63-69 rows at 64 versions, 1023-1029 at 1,024 (each correction appends rows), 0
+skeleton lists; skeletons 2 rows, 1 list. Bound: whole history >= versions-1 and no list; skeletons <= 2 rows and one
+list each. Mutants: one extra row on one correction in four -> caught (3 rows); a second skeleton read per node
+correction -> caught (8 lists in 4). Not counted: the cost of one skeleton read per version (a store-side partial vs
+full decode; a badger decode counter on historyTemporalMetaOf would count it; MEMGATE) and a skeleton read added on
+another path without the hook.

@@ -155,6 +155,9 @@ func (c *Core) nodeMetaPlan(id types.NodeID, current *types.Node, newVF, newVT t
 		return missPlan[*types.Node]{}, false
 	}
 	metas, err := c.temporalMetaHistory.NodeHistoryTemporalMeta(id)
+	if c.skeletonRead != nil && err == nil {
+		c.skeletonRead(len(metas))
+	}
 	if err != nil || !skeletonsAscending(metas, current.Version()) {
 		return missPlan[*types.Node]{}, false
 	}
@@ -204,6 +207,9 @@ func (c *Core) relMetaPlan(id types.RelID, current *types.Relationship, newVF, n
 		return missPlan[*types.Relationship]{}, false
 	}
 	metas, err := c.temporalMetaHistory.RelHistoryTemporalMeta(id)
+	if c.skeletonRead != nil && err == nil {
+		c.skeletonRead(len(metas))
+	}
 	if err != nil || !skeletonsAscending(metas, current.Version()) {
 		return missPlan[*types.Relationship]{}, false
 	}
