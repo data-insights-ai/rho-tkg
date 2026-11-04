@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.104.4] - 2026-11-04
+
 ### Changed
 
 - **Releases to a local git server** (René, 4 Nov): `make release-…` releases to the bare repository
