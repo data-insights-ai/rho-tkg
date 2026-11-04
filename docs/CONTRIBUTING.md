@@ -102,8 +102,10 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 | Command | Use |
 |---|---|
-| `make ci-fast` | **Patch gate** (~30 s for docs, 1–2 min for a fix): fmt, vet, build, lint, `scripts/patchgate` (refuses new exported API), `-short` of changed packages, `-race` of changed tests, docs tests, check-ledger |
-| `make ci-docker` | **Minor gate**: fmt, vet, lint, build, full `test-race`, `test-long` (the tests a plain `testing.Short()` skips), gosec, govulncheck, cover-gate (80 %), metakv-reap check, `fuzz-smoke` (each trust-boundary fuzz harness for `FUZZTIME`, default 20 s), check-ledger |
+| `make ci-fast` | **Patch gate** (`scripts/ci-fast.sh`, 2 min for a core fix, 4 Nov): every step at once: fmt, vet, build, lint, docs tests, and by name under `-race` only the tests that reach the code changed since the last tag (`scripts/patchgate`: changed tests, moved test files, tests naming a changed declaration directly or through helpers); then check-ledger |
+| `make ci-docker` | **Minor gate**: fmt, vet, lint, build, full `test-race`, gosec, check-ledger |
+| `make release` | **The release** (`scripts/release.sh`, below) |
+| `make test-long`, `cover-gate`, `fuzz-smoke`, `vulncheck-docker` | by hand (René, 4 Nov: not release steps) |
 | `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each runs alone (`scripts/measure.sh`) |
 | `make hooks` | Installs `scripts/hooks/pre-commit`, under 30 s: gofmt, build, vet, patchgate's tests, docs tests, check-ledger; `.md` only: docs tests and check-ledger |
 | `make test` / `make test-race` | short tests / race detector |
@@ -124,19 +126,20 @@ the kind of release, run once; it stops at the first red, and a red is fixed on 
    on the rho section of `~/cleanup.sh` (RHO_DONE and named lines; never work in progress, never by age), then
    `bash ~/cleanup.sh`; merged worktrees and branches removed with git; `git status` shows nothing untracked.
 2. Every branch of the batch is merged (each reviewed before its merge, § Review).
-3. Release commit: CHANGELOG heading, README "Current release", line 1 of `docs/architecture.md`, HANDOVER names the tag,
-   shipped rows leave `tasks/todo.md`.
-4. Gate on that commit: a patch (fixes, tests, docs only) runs `make ci-fast` alone; a minor (new behaviour, a store format
-   marker, any new exported name, internal packages included) runs `make ci-docker`. No code edits while it runs (it tests
-   the live work tree).
-5. `git tag -a vX.Y.Z`, push main and the tag; tell sigma-tkgd and ai-soc the tag and the gate's wall time in one line.
-6. Watch the tag's CI run (`gh run list --workflow CI --limit 1`). A red run is fixed on main and shipped as a new patch tag,
-   never by re-running the old run.
-7. Clean up after (René, 4 Nov): the release round's own scratch (gate logs, branch and worktree of the release) goes the
+3. CHANGELOG commit (René, 4 Nov: Claude writes it from the finished items of `tasks/todo.md`): `## [X.Y.Z] - date` above
+   the entries, shipped rows leave `tasks/todo.md`; pushed to main. The tag is the version: no other doc names it
+   (`git tag --contains <commit>` answers which release has a change).
+4. `make release` (`scripts/release.sh`, edits no file): preconditions (main, clean, equal to origin/main), the kind from the
+   diff (`scripts/patchgate -kind`: a minor is a new exported name, internal packages included, a store format marker or a
+   badger minor bump; else a patch), the CHANGELOG heading is the next version, the gate (`ci-fast` for a patch,
+   `ci-docker` for a minor), `git tag -a`, `git push --atomic`. A red step stops it; the fix goes on main and the release
+   runs again. A bad tag is never moved: the fix is the next tag, and `retract` in go.mod.
+5. Tell sigma-tkgd and ai-soc in one line: tag, gate, seconds.
+6. Clean up after (René, 4 Nov): the release round's own scratch (gate logs, branch and worktree of the release) goes the
    same way, then `bash ~/cleanup.sh` again.
 
 Not part of a release: the consumers' build and vet (each consumer's own pin commit builds and vets against the tag;
-HANDOVER Appendix B stays for diagnosing a consumer's report), the scale probe (only when it is the item's own measurement),
+for diagnosing a consumer's report: `git show 904fd063:HANDOVER.md`, Appendix B), the scale probe (only when it is the item's own measurement),
 a separate freeze message (the tag names the version; a consumer's tag names its rho), the measurement level (`make
 measure`), and data runs or examples (on René's word only).
 
@@ -155,7 +158,7 @@ CHANGELOG entries go under `[Unreleased]` in the same change as the code. A new 
 
 ## Fuzzing
 
-The trust-boundary fuzz harnesses (`make fuzz-smoke` runs them briefly in the minor gate; `.github/workflows/fuzz.yml` on demand) are listed in
+The trust-boundary fuzz harnesses (`make fuzz-smoke` runs them briefly, by hand; `.github/workflows/fuzz.yml` on demand) are listed in
 [SECURITY.md](SECURITY.md) ("Fuzz harnesses"). Run a deep session when you change a decode or import surface and commit any new
 crasher (under the package's `testdata/fuzz/`) with the fix:
 
@@ -271,7 +274,7 @@ Index (`→` names where the rule lives now):
 79. Fix = patch, door = minor → digest (Process); `scripts/patchgate`
 80. One todo and HANDOVER commit on main per item end → digest (Process); `scripts/check-ledger.sh`
 81. Act, do not offer → digest (Process)
-82. A release is green only when the tag's GitHub CI is green → Release checklist
+82. → Release checklist (the release script's gate decides; a red tag CI is fixed by the next tag)
 83. → 78
 84. Trace the cause, then consolidate → digest (Process)
 85. Comment trimming is editing → digest (Code)

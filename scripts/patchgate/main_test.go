@@ -38,7 +38,7 @@ func (f files) plan(t *testing.T, changes []change) (string, *result) {
 		return out
 	}
 	defer func() { globGo = prev }()
-	r := analyze(changes, f.side(0), f.side(1), false)
+	r := analyze(changes, f.side(0), f.side(1))
 	r.selectTests(f.side(1))
 	return strings.Join(r.lines(), "; "), r
 }
@@ -164,23 +164,21 @@ func TestKind(t *testing.T) {
 		name    string
 		f       files
 		changes []change
-		ignore  bool
 		want    string
 	}{
-		{"a new format marker", f, []change{{'M', "pkg/s/wire.go", "pkg/s/wire.go"}}, false, "pkg/s/wire.go: format marker BFormatVersion is new or changed"},
-		{"a raised format marker", f, []change{{'M', "pkg/s/bump.go", "pkg/s/bump.go"}}, false, "pkg/s/bump.go: format marker MaxFormatVersion is new or changed"},
-		{"a test constant is no marker", f, []change{{'M', "pkg/s/s_test.go", "pkg/s/s_test.go"}}, false, ""},
-		{"a new internal export", f, []change{{'M', "pkg/internal/i/i.go", "pkg/internal/i/i.go"}}, false, "pkg/internal/i/i.go: G is a new exported name in an internal package"},
-		{"internal exports ignored by the switch", f, []change{{'M', "pkg/internal/i/i.go", "pkg/internal/i/i.go"}}, true, ""},
-		{"a method of an unexported type is no API", f, []change{{'M', "pkg/internal/i/meth.go", "pkg/internal/i/meth.go"}}, false, ""},
-		{"an export moved between files is no new API", f, []change{{'M', "pkg/internal/i/x.go", "pkg/internal/i/x.go"}, {'M', "pkg/internal/i/y.go", "pkg/internal/i/y.go"}}, false, ""},
-		{"public API is gorelease's", f, []change{{'M', "pkg/pub/p.go", "pkg/pub/p.go"}}, false, ""},
-		{"tools are not API", f, []change{{'A', "scripts/t/main.go", ""}}, false, ""},
-		{"a badger minor bump", f, []change{{'M', "go.mod", "go.mod"}}, false, "go.mod: badger v4.9 -> v4.10 is a minor or major bump"},
-		{"a badger patch bump", patchBump, []change{{'M', "go.mod", "go.mod"}}, false, ""},
+		{"a new format marker", f, []change{{'M', "pkg/s/wire.go", "pkg/s/wire.go"}}, "pkg/s/wire.go: format marker BFormatVersion is new or changed; pkg/s/wire.go: BFormatVersion is a new exported name"},
+		{"a raised format marker", f, []change{{'M', "pkg/s/bump.go", "pkg/s/bump.go"}}, "pkg/s/bump.go: format marker MaxFormatVersion is new or changed"},
+		{"a test constant is no marker", f, []change{{'M', "pkg/s/s_test.go", "pkg/s/s_test.go"}}, ""},
+		{"a new internal export", f, []change{{'M', "pkg/internal/i/i.go", "pkg/internal/i/i.go"}}, "pkg/internal/i/i.go: G is a new exported name"},
+		{"a method of an unexported type is no API", f, []change{{'M', "pkg/internal/i/meth.go", "pkg/internal/i/meth.go"}}, ""},
+		{"an export moved between files is no new API", f, []change{{'M', "pkg/internal/i/x.go", "pkg/internal/i/x.go"}, {'M', "pkg/internal/i/y.go", "pkg/internal/i/y.go"}}, ""},
+		{"a new public export", f, []change{{'M', "pkg/pub/p.go", "pkg/pub/p.go"}}, "pkg/pub/p.go: New is a new exported name"},
+		{"tools are not API", f, []change{{'A', "scripts/t/main.go", ""}}, ""},
+		{"a badger minor bump", f, []change{{'M', "go.mod", "go.mod"}}, "go.mod: badger v4.9 -> v4.10 is a minor or major bump"},
+		{"a badger patch bump", patchBump, []change{{'M', "go.mod", "go.mod"}}, ""},
 	}
 	for _, c := range cases {
-		r := analyze(c.changes, c.f.side(0), c.f.side(1), c.ignore)
+		r := analyze(c.changes, c.f.side(0), c.f.side(1))
 		if got := strings.Join(r.minor, "; "); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}

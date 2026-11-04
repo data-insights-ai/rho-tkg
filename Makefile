@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-docker-run ci-fast ci-fast-run measure hooks fuzz-smoke check ci clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-docker-run ci-fast ci-fast-run release measure hooks fuzz-smoke check ci clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -205,13 +205,12 @@ vulncheck-docker:
 	$(DOCKER_GO) sh -c 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && govulncheck ./...'
 
 # Minor release gate, local (GitHub CI on a tag only builds, vets and runs the
-# short tests): the dockerized lint/gosec/govulncheck, the full race suite,
-# coverage, the meta-key reap policy, a short fuzz of every trust-boundary
-# harness, the long tier and the ledger check.
+# short tests): lint, the full race suite, gosec and the ledger check. The long
+# tier, coverage, fuzz-smoke and govulncheck are hand targets (René 4 Nov).
 ci-docker:
 	@scripts/gate-time.sh ci-docker $(MAKE) ci-docker-run
 
-ci-docker-run: fmt-check vet lint-docker build test-race test-long security-docker vulncheck-docker cover-gate check-metakv-reap fuzz-smoke
+ci-docker-run: fmt-check vet lint-docker build test-race security-docker
 	scripts/check-ledger.sh
 
 # fuzz-smoke runs each trust-boundary fuzz harness for FUZZTIME (nothing runs
@@ -227,35 +226,24 @@ fuzz-smoke:
 	go test -run '^$$' -fuzz=FuzzWireToRelChecked -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
 	go test -run '^$$' -fuzz=FuzzUnmarshalNodeWireWithKeys -fuzztime=$(FUZZTIME) ./pkg/graph/internal/storeutil/
 
-# Patch release gate (todo 115/116; minors use ci-docker). scripts/patchgate plans it from the batch since the
-# last release tag and refuses new exported API (a door = a minor). Runs fmt-check, vet, build, lint, -short of
-# packages whose shipped code changed, -race of only the changed tests (whole package for a changed helper or
-# tool), the docs tests and the ledger check.
 # Measurement level (René 4 Nov): tests behind the `measure` build tag, bounds
 # that load moves; run by hand, never in a gate.
 measure:
 	@scripts/measure.sh
 
+# Patch release gate (minors use ci-docker): scripts/ci-fast.sh runs fmt, vet,
+# build, lint, the docs tests and, by name under -race, only the tests that reach
+# the code changed since the last tag (scripts/patchgate), all at once.
 ci-fast:
 	@scripts/gate-time.sh ci-fast $(MAKE) ci-fast-run
 
-ci-fast-run: fmt-check vet build lint-docker
-	@base=$$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1); \
-	echo "ci-fast: batch $$base..work tree"; \
-	targets=$$(go run ./scripts/patchgate "$$base") || exit 1; \
-	short=$$(echo "$$targets" | awk '$$1=="short"{print $$2}'); \
-	if [ -n "$$short" ]; then go test -short -count=1 $$short || exit 1; fi; \
-	echo "$$targets" | while read -r kind pkg run; do \
-	  [ "$$kind" = race ] || continue; \
-	  if [ -n "$$run" ]; then \
-	    names=$${run#^(}; scripts/test-named.sh "$$pkg" "$${names%)\$$}" -- -short -race || exit 1; \
-	  else \
-	    go test -short -race -count=1 "$$pkg" || exit 1; \
-	  fi; \
-	done || exit 1; \
-	go test -count=1 -run 'Docs|Consistency|MD|Errors' ./... >/dev/null || { echo "ci-fast: docs tests failed"; exit 1; }; \
-	scripts/test-named.sh ./pkg/graph/internal/core/ 'TestNoMDFileOutsideTheDocumentation|TestDocsMetadataMatchesSourceOfTruth' -- >/dev/null || exit 1; \
-	scripts/check-ledger.sh && echo "ci-fast: ok"
+ci-fast-run:
+	scripts/ci-fast.sh
+
+# One release: preconditions, kind from the diff, CHANGELOG heading check, the
+# gate, tag, push (scripts/release.sh; it edits no file).
+release:
+	@scripts/release.sh
 
 # Quick pre-commit check
 check: vet build test

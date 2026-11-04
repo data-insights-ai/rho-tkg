@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-11-04: latest tag v4.104.1; every release and what it changed: `docs/CHANGELOG.md`)
+# HANDOVER — rho-tkg v4 line (releases: `git tag`; what each changed: `docs/CHANGELOG.md`)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). This file holds state only: releases, branches, consumers, glossary, the numbered backlog, user-only actions.
@@ -7,42 +7,20 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **State of 4 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.104.1 (round 5: RELHIST P2; a
-  patch). René (4 Nov, via ai-soc): "I want all current versions in the release", which lifted the round-4 freeze;
+- **State of 4 Nov, read this first** (next steps: `tasks/todo.md`). Round 5 (RELHIST P2, a patch) is released.
+  René (4 Nov, via ai-soc): "I want all current versions in the release", which lifted the round-4 freeze;
   sigma tags on v4.104.1, ai-soc runs its gate (60-min 4 arms + masked cycles), pins and releases ai-soc v5.1.2 on
   that pair. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc); ai-soc names its quiet
   windows: then no ci-docker, probe, bench or long test here.
   - **On main, unreleased:** COSTCOUNT (tests only, plus a test hook: `TestCascadeMetaCost` gates on full rows and
-    skeleton reads per correction instead of process-wide allocations; next: MEMGATE). No branch open.
+    skeleton reads per correction instead of process-wide allocations; next: MEMGATE); the release style
+    (`make release`, the patch gate in 2 min; CONTRIBUTING § Release checklist). Parked, unmerged: branch
+    `consolidate` (test folding, René stopped it 4 Nov) and the TestGate draft
+    (session scratch only, not in git).
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Reviews:** René (3 Nov, "yes, always"): one read-only Fable review per finished branch, before its merge, given
     the code and the diff, not my conclusions.
-- **Release gates, latest first** (what each release changed: `docs/CHANGELOG.md` under its tag; the gate notes of
-  v4.85.0 to v4.100.1: `git show 7fd75c40:HANDOVER.md`):
-  - **v4.104.1** (round 5, a patch: RELHIST P2): tagged on main. Consumers build and vet clean; ci-docker passed
-    every step to the coverage run, where `TestCascadeMetaCost` read 3.9x fewer allocations against a 4.0x bar
-    (process-wide MemStats under load; the same test passed in the run's race step and reads 5.8x alone); the
-    remaining steps (coverage 87.9 %, meta-key reap, fuzz smoke, ledger) were rerun alone, green. No scale probe
-    (a patch). ai-soc's gate runs after the tag.
-  - **v4.104.0** (round 4, a minor: VALUETHRESH adds `ValueThreshold` to the configs; LENDCOST fixes v4.103.0's tiered
-    lend regression): tagged on main, which is 7e4399c4 + VLOGCLOSED (the first ci-docker run panicked in VALUETHRESH's
-    GC pass on a DB a crash test closed under the store; the pass now returns) + the release commit. ai-soc's round-4
-    gate on 7e4399c4 + sigma c2ce628f3 green (2-day budget arm: LendByIDs 94.5 s, user CPU 4,302 s, 1,753 bars equal;
-    60-min 4 arms 260 bars equal; masked cycles pass); consumers build and vet clean; ci-docker green on the second
-    run; scale probe level with v4.103.0 (149 B/entity insert, one outlier of 12; 170 B reopen); tag CI green.
-  - **v4.103.0** (round 3, a minor: TIERLEND and HEADLEND add exported names; HISTDECODE, HISTTRIM, CASCADEMETA
-    fixes): released from branch `release-v4.103.0` (0156a78c + the release commit); ai-soc's round-3 gate on 0156a78c
-    + sigma 9e3ff88e8 green; consumers build and vet clean; ci-docker green; scale probe level with v4.102.0.
-  - **v4.102.0** (round 2, a minor: RHOMEMIDS, BATCHIDX and UNIQUELOOK add exported names, UNIQUELOOK format marker
-    16; BATCHADD, RHOPOST, BATCHFAIL fixes): released from branch `release-v4.102.0` (98ea7d36 + the release commit +
-    a tests-only lint fix); ai-soc's 4-arm gate on 98ea7d36 + sigma d8be171c8 green; ci-docker green (first run red
-    only on lint in three round-2 tests); consumers build and vet clean; scale probe level with v4.101.0.
-  - **v4.101.0** (COLDEDGE, a minor): ci-docker green on a6245ca0 at load 30-45; one tests-only fix after it
-    (`934b2fba`, a load flake); consumers build and vet clean; scale probe in `tasks/evidence/SCALE/existence_maps.txt`.
-  - **v4.75.0 to v4.100.1** (24 Oct to 3 Nov): each gated as the checklist says (ci-docker or ci-fast, consumers,
-    scale probe, tag CI); exceptions worth knowing: v4.98.0's tag CI is red on `TestValueDictEntryHeap`, so pin
-    v4.98.1; v4.99.0 and v4.98.4 were cut from older tags and merged back.
 - **Checklist facts learned at releases:** the ai-soc engine builds only with GOTOOLCHAIN=go1.27.3 (its parent module
   requires it); merging a release branch back can move Unreleased CHANGELOG entries under the tag's heading, so check
   the heading after every such merge; `scripts/patchgate` is a package: `go run ./scripts/patchgate <base>`.
@@ -74,7 +52,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     below); its store analysis tool is `projects/derived-writeback` (cmd/wbscan).
   - agent-bookkeeping (`~/Work/2026/bds421/sigma/agent-bookkeeping`): build check only.
 - **Housekeeping:** deletions are René's call (`rm` is denied to agents; user-only actions below; finished scratch goes
-  on the RHO_DONE list in `~/cleanup.sh`, run before and after every release). Consumer build check: Appendix B.
+  on the RHO_DONE list in `~/cleanup.sh`, run before and after every release). Consumer build check (diagnosis only): `git show 904fd063:HANDOVER.md`, Appendix B.
 
 ## Glossary
 
@@ -130,14 +108,3 @@ unmerged branches are in `archive/unmerged-2026-10-27` (see Branches).
 
 `scripts/watch-origin.sh` exits only on a push by someone else to main/tags/other branches or a real PR/issue change; routine v5
 pushes by Markus only go to its log. Re-arm after each exit; one instance at a time. `origin/codex/*` (5 branches) and `origin/round10` are Markus's; their md is not ours.
-
-## Appendix B — consumer build check (recreate if /tmp is gone)
-
-Not a release step since 4 Nov (René, one release style for all three repos: each consumer's own pin commit builds and
-vets against rho's tag). Use it to diagnose a consumer's report, or before a change to an exported signature.
-
-For each consumer `C` in `~/Work/2026/datainsights/sigma-tkgd`, `~/Work/2026/datainsights/ai-soc/ai-soc-main` (and its `engine/`),
-`~/Work/2026/bds421/sigma/agent-bookkeeping`: `mkdir -p $S/<name>; cp C/go.mod C/go.sum $S/<name>/;
-(cd $S/<name> && go mod edit -replace github.com/data-insights-ai/rho-tkg/v4=/home/renework2023/Work/2026/datainsights/rho-tkg go.mod)` (the release under test),
-then `cd C && GOFLAGS=-mod=mod go build -modfile=$S/<name>/go.mod ./... && GOFLAGS=-mod=mod go vet -modfile=$S/<name>/go.mod ./...`
-(the ai-soc `engine/` with `GOTOOLCHAIN=go1.27.3` in front of both commands).

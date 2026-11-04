@@ -13,6 +13,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and vet, the scale probe and a freeze message are no longer release steps (each consumer's pin commit builds against
   the tag). Cleanup runs before and after each release (`~/cleanup.sh`). New measurement level `make measure`
   (`scripts/measure.sh`): tests behind the `measure` build tag, run by hand, one per process.
+- **Fast release cycle** (René, 4 Nov). `make release` (`scripts/release.sh`) runs the preconditions, the kind from the
+  diff, the CHANGELOG heading check, the gate, `git tag -a` and `git push --atomic`; it edits no file, and the tag is the
+  version: README, `docs/architecture.md`, HANDOVER and todo no longer name it. The patch gate (`scripts/ci-fast.sh`)
+  runs every step at once and, under `-race` by name, only the tests that reach the code changed since the last tag:
+  `scripts/patchgate` now reads build constraints (a `measure`-tagged file is no code), follows renames (a moved test
+  runs by name, never its package) and maps a changed declaration to the tests naming it, directly or through helpers;
+  a new exported name anywhere is a minor, as is a new format marker or a badger minor bump. 2 min for a core fix (4 Nov,
+  load 13), against 15+ min before. The minor gate drops test-long, cover-gate, fuzz-smoke and govulncheck (hand
+  targets now). go.mod retracts v4.98.0 (its tag CI was red; v4.98.1 replaced it).
 - **Load-proof cost tests** (COSTCOUNT, MEMGATE). `TestCascadeMetaCost` gated on process-wide allocation ratios and read
   3.9x against a 4.0x bar under ci-docker's load (5.8x alone); it now gates per correction on full rows read
   (`Core.historyRead`: 2 on skeletons, every version on the whole history) and skeleton reads (a new test hook,

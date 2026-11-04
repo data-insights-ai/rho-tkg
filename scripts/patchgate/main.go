@@ -1,6 +1,6 @@
 // Command patchgate plans the patch gate (`make ci-fast`) for the diff
 // between a base ref (the last release tag) and the work tree, and applies
-// rho's own minor rules on top of gorelease's verdict (scripts/release.sh).
+// rho's minor rules (scripts/release.sh).
 //
 // Plan: the patch gate tests only new or changed code, with go/ast alone (no
 // type checking, well under a second). It prints one line per package,
@@ -22,13 +22,12 @@
 // A changed testdata file runs the owning package's tests that name it (a fuzz
 // corpus entry: its Fuzz function), else every test of that package.
 //
-// Minor rules (gorelease classifies exported API of the public packages):
+// Minor rules:
 //   - a new or changed store or wire format marker: a const or var of shipped
 //     code whose name contains FormatVersion (older releases refuse the store);
 //   - a minor or major bump of github.com/dgraph-io/badger/v4 in go.mod;
-//   - a new exported name in an internal package (gorelease ignores internal
-//     packages), while PATCHGATE_INTERNAL_EXPORTS is not "ignore" (René's open
-//     question; one switch).
+//   - a new exported name in any shipped package, internal ones included
+//     (René, 4 Nov).
 //
 // Usage:
 //
@@ -72,11 +71,10 @@ type changed struct {
 
 // result is what a diff asks of a release.
 type result struct {
-	minor                 []string                   // why this is a minor by rho's rules (empty: a patch)
-	tests                 map[string]map[string]bool // package dir -> test names to run by name
-	decls                 map[string][]changed       // package dir -> changed non-test declarations
-	notes                 []string                   // what was decided and why (stderr)
-	ignoreInternalExports bool
+	minor []string                   // why this is a minor by rho's rules (empty: a patch)
+	tests map[string]map[string]bool // package dir -> test names to run by name
+	decls map[string][]changed       // package dir -> changed non-test declarations
+	notes []string                   // what was decided and why (stderr)
 }
 
 func (r *result) addTest(dir, name string) {
@@ -87,8 +85,8 @@ func (r *result) addTest(dir, name string) {
 }
 
 // analyze classifies the diff: readOld reads a base path, readNew a work-tree path.
-func analyze(changes []change, readOld, readNew reader, ignoreInternalExports bool) *result {
-	r := &result{tests: map[string]map[string]bool{}, decls: map[string][]changed{}, ignoreInternalExports: ignoreInternalExports}
+func analyze(changes []change, readOld, readNew reader) *result {
+	r := &result{tests: map[string]map[string]bool{}, decls: map[string][]changed{}}
 	oldFiles := map[pkgKey]map[string][]byte{}
 	newFiles := map[pkgKey]map[string][]byte{}
 	put := func(m map[pkgKey]map[string][]byte, k pkgKey, p string, src []byte) {
@@ -208,9 +206,6 @@ func (r *result) pkg(k pkgKey, oldF, newF map[string][]byte) {
 			}
 		}
 	}
-	if r.ignoreInternalExports || !strings.Contains(k.dir, "/internal/") {
-		return
-	}
 	var added []string
 	for n, p := range newAPI {
 		if !oldAPI[n] {
@@ -219,7 +214,7 @@ func (r *result) pkg(k pkgKey, oldF, newF map[string][]byte) {
 	}
 	sort.Strings(added)
 	for _, a := range added {
-		r.minor = append(r.minor, a+" is a new exported name in an internal package")
+		r.minor = append(r.minor, a+" is a new exported name")
 	}
 }
 
@@ -507,7 +502,7 @@ func main() {
 		changes = append(changes, change{status: 'A', path: p})
 	}
 	readOld := func(p string) ([]byte, error) { return git("show", base+":"+p) }
-	r := analyze(changes, readOld, os.ReadFile, os.Getenv("PATCHGATE_INTERNAL_EXPORTS") == "ignore")
+	r := analyze(changes, readOld, os.ReadFile)
 	if kindOnly {
 		if len(r.minor) > 0 {
 			fmt.Println("minor")

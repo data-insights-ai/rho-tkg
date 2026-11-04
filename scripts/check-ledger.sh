@@ -5,16 +5,13 @@ set -u
 cd "$(dirname "$0")/.." || exit 2
 fail=0
 latest=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-grep -q "${latest}" HANDOVER.md || { echo "ledger: HANDOVER.md does not name ${latest}"; fail=1; }
-# docs/CHANGELOG.md's newest heading (first "## [x.y.z]" after [Unreleased]) is the latest tag, or, in a release
-# commit before its tag (lesson 82 step 4), an untagged version above it that HANDOVER already names.
+# The tag is the version: no doc names it. docs/CHANGELOG.md's newest heading (first "## [x.y.z]" after
+# [Unreleased]) is the latest tag, or, written before scripts/release.sh tags it, an untagged version above it.
 top=$(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' docs/CHANGELOG.md | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 if [ "v${top}" != "${latest}" ]; then
   newest=$(printf '%s\n%s\n' "${latest#v}" "${top}" | sort -V | tail -1)
   if git rev-parse -q --verify "refs/tags/v${top}" >/dev/null || [ "${newest}" != "${top}" ]; then
     echo "ledger: docs/CHANGELOG.md top release heading [${top}] is neither ${latest} nor a pending newer release"; fail=1
-  elif ! grep -q "v${top}" HANDOVER.md; then
-    echo "ledger: pending release v${top}: HANDOVER.md does not name it"; fail=1
   fi
 fi
 # todo.md holds open work only, in order (sigma's format): Now, Next, Waiting, Later, Parked, each item a tag, one
