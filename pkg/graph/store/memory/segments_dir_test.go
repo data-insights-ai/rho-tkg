@@ -213,16 +213,16 @@ func TestSegmentDir_S2SuiteOverMappedFiles(t *testing.T) {
 	segTwinOnDisk, segTwinDirRoot = true, t.TempDir()
 	t.Cleanup(func() { segTwinOnDisk, segTwinsOnDisk, segTwinDirRoot = false, nil, "" })
 	for name, fn := range map[string]func(*testing.T){
-		"StoreDifferentialOracle":                     TestSegments_StoreDifferentialOracle,
-		"UnsealableRowsStayInMemtable":                TestSegments_UnsealableRowsStayInMemtable,
-		"ConcurrentReadsDuringSeal":                   TestSegments_ConcurrentReadsDuringSeal,
-		"ClearKeepsDeclaration":                       TestSegments_ClearKeepsDeclaration,
-		"WriteDoorsSeeSealedRows":                     TestSegments_WriteDoorsSeeSealedRows,
-		"BudgetSealRunsOffTheWriter":                  TestSegments_BudgetSealRunsOffTheWriter,
-		"ScanRelSegmentsEqualsTheRowPath":             TestSegments_ScanRelSegmentsEqualsTheRowPath,
-		"ScanRelSegmentsIsInIDOrder":                  TestSegments_ScanRelSegmentsIsInIDOrder,
+		"StoreDifferentialOracle":                     testSegments_StoreDifferentialOracle,
+		"UnsealableRowsStayInMemtable":                testSegments_UnsealableRowsStayInMemtable,
+		"ConcurrentReadsDuringSeal":                   testSegments_ConcurrentReadsDuringSeal,
+		"ClearKeepsDeclaration":                       testSegments_ClearKeepsDeclaration,
+		"WriteDoorsSeeSealedRows":                     testSegments_WriteDoorsSeeSealedRows,
+		"BudgetSealRunsOffTheWriter":                  testSegments_BudgetSealRunsOffTheWriter,
+		"ScanRelSegmentsEqualsTheRowPath":             testSegments_ScanRelSegmentsEqualsTheRowPath,
+		"ScanRelSegmentsIsInIDOrder":                  testSegments_ScanRelSegmentsIsInIDOrder,
 		"ScanRelSegmentsHoldsOverlappingSegmentsOnly": TestSegments_ScanRelSegmentsHoldsOverlappingSegmentsOnly,
-		"ScanRelColumnsIsNativeAndEqual":              TestSegments_ScanRelColumnsIsNativeAndEqual,
+		"ScanRelColumnsIsNativeAndEqual":              testSegments_ScanRelColumnsIsNativeAndEqual,
 	} {
 		segTwinsOnDisk = nil
 		t.Run(name, func(t *testing.T) {
@@ -256,6 +256,7 @@ func TestSegmentDir_ReopenEqualsTheOracle(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	r := rand.New(rand.NewSource(101))
 	dir := t.TempDir()
 	tw := newSegTwin(t, 24<<10, 16)
@@ -329,6 +330,7 @@ func TestSegmentDir_ReopenEqualsTheOracle(t *testing.T) {
 // between the manifest write and the row removal; another version of the
 // row stays and shadows the sealed copy.
 func TestSegmentDir_ReopenMovesRowStoreDuplicatesOut(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewSource(103))
 	dir := t.TempDir()
 	tw := newSegTwin(t, 1<<40, 8)
@@ -406,6 +408,7 @@ func TestSegmentDir_FailedSealStepKeepsStoreAndDirectory(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for _, step := range []string{segdir.StepSegmentWritten, segdir.StepSegmentSynced, segdir.StepManifestWritten} {
 		t.Run(step, func(t *testing.T) {
 			r := rand.New(rand.NewSource(107))
@@ -558,6 +561,7 @@ func TestSegmentDir_DamageFailsClosed(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	for _, blockRows := range []int{1, 64, 4096} {
 		t.Run(fmt.Sprint("IntegrityBlockRows=", blockRows), func(t *testing.T) {
 			r := rand.New(rand.NewSource(109))
@@ -670,6 +674,7 @@ func TestSegmentDir_DamageFailsClosed(t *testing.T) {
 // Reopen removes .tmp files and segment files the manifest does not list —
 // what a crash before the manifest write leaves — and nothing else.
 func TestSegmentDir_ReopenRemovesTmpAndOrphans(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewSource(113))
 	dir := t.TempDir()
 	tw := newSegTwin(t, 1<<40, 6)
@@ -724,6 +729,7 @@ func TestSegmentDir_ReopenRemovesTmpAndOrphans(t *testing.T) {
 // directory is locked while a store has it open; the capability's call
 // order is enforced.
 func TestSegmentDir_DeclarationAndLockRules(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewSource(127))
 	dir := t.TempDir()
 	tw := newSegTwin(t, 1<<40, 4)
@@ -827,6 +833,7 @@ func TestSegmentDir_DeclarationAndLockRules(t *testing.T) {
 // Clear drops the directory's segments as well (files and manifest
 // entries): a reopen after Clear holds nothing, and new seals continue.
 func TestSegmentDir_ClearEmptiesTheDirectory(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewSource(131))
 	dir := t.TempDir()
 	tw := newSegTwin(t, 1<<40, 5)
@@ -875,6 +882,7 @@ func TestSegmentDir_ScanPinsMappingsAcrossClose(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	// Not parallel: segdir.LiveMappings counts every mapping of the process.
 	for _, closer := range []string{"Close", "Clear"} {
 		t.Run(closer, func(t *testing.T) {
 			r := rand.New(rand.NewSource(137))
@@ -973,6 +981,7 @@ func TestSegmentDir_ConcurrentReadersAndReopen(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	r := rand.New(rand.NewSource(139))
 	dir := t.TempDir()
 	tw := newSegTwin(t, 16<<10, 12)
@@ -1089,6 +1098,7 @@ func TestSegments_AnswersDoNotDependOnSealBoundaries(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	type layout struct {
 		name      string
 		budget    int64

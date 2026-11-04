@@ -449,6 +449,11 @@ func (tw *segTwin) sealedLeftRowMaps() {
 }
 
 func TestSegments_StoreDifferentialOracle(t *testing.T) {
+	t.Parallel()
+	testSegments_StoreDifferentialOracle(t)
+}
+
+func testSegments_StoreDifferentialOracle(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
@@ -501,6 +506,7 @@ func TestSegments_StoreDifferentialOracle(t *testing.T) {
 }
 
 func TestSegments_SealOfEmptyTypeIsNoOp(t *testing.T) {
+	t.Parallel()
 	s := New()
 	if err := s.DeclareRelSegment(segTestDecl(0)); err != nil {
 		t.Fatal(err)
@@ -518,6 +524,7 @@ func TestSegments_SealOfEmptyTypeIsNoOp(t *testing.T) {
 }
 
 func TestSegments_DeclarationAfterRowsExist(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewSource(5))
 	tw := &segTwin{t: t, plain: New(), declared: New(), nextID: 1 << 40, clock: 1_700_000_000_000}
 	for i := 0; i < 10; i++ {
@@ -545,6 +552,7 @@ func TestSegments_DeclarationAfterRowsExist(t *testing.T) {
 }
 
 func TestSegments_DeclarationRules(t *testing.T) {
+	t.Parallel()
 	s := New()
 	d := segTestDecl(1 << 20)
 	if err := s.DeclareRelSegment(d); err != nil {
@@ -613,6 +621,11 @@ func TestSegments_DeclarationRules(t *testing.T) {
 // match its content — e.g. a tampered row a VerifyRelChain test plants) stays
 // in the row store with its answers unchanged; every other row is sealed.
 func TestSegments_UnsealableRowsStayInMemtable(t *testing.T) {
+	t.Parallel()
+	testSegments_UnsealableRowsStayInMemtable(t)
+}
+
+func testSegments_UnsealableRowsStayInMemtable(t *testing.T) {
 	r := rand.New(rand.NewSource(8))
 	tw := newSegTwin(t, 0, 6)
 	for i := 0; i < 50; i++ {
@@ -639,6 +652,11 @@ func TestSegments_UnsealableRowsStayInMemtable(t *testing.T) {
 // full, unchanged baseline on every read while a writer keeps adding HOP rows
 // and updating sealed ones, and the store keeps sealing.
 func TestSegments_ConcurrentReadsDuringSeal(t *testing.T) {
+	t.Parallel()
+	testSegments_ConcurrentReadsDuringSeal(t)
+}
+
+func testSegments_ConcurrentReadsDuringSeal(t *testing.T) {
 	r := rand.New(rand.NewSource(3))
 	tw := newSegTwin(t, 16<<10, 12)
 	var base []types.RelID
@@ -750,6 +768,11 @@ func TestSegments_ConcurrentReadsDuringSeal(t *testing.T) {
 // Clear drops every segment (the store is empty again) but keeps the
 // declaration: new rows seal again.
 func TestSegments_ClearKeepsDeclaration(t *testing.T) {
+	t.Parallel()
+	testSegments_ClearKeepsDeclaration(t)
+}
+
+func testSegments_ClearKeepsDeclaration(t *testing.T) {
 	r := rand.New(rand.NewSource(6))
 	tw := newSegTwin(t, 0, 5)
 	for i := 0; i < 30; i++ {
@@ -782,6 +805,11 @@ func TestSegments_ClearKeepsDeclaration(t *testing.T) {
 // row's ID is a duplicate, and a node whose only relationships are sealed is
 // still connected.
 func TestSegments_WriteDoorsSeeSealedRows(t *testing.T) {
+	t.Parallel()
+	testSegments_WriteDoorsSeeSealedRows(t)
+}
+
+func testSegments_WriteDoorsSeeSealedRows(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
@@ -832,6 +860,7 @@ func TestSegments_NodeBytesDoNotGrowWithSegmentCount(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	const endpoints, rows, perSeal = 150, 2400, 300
 	build := func(sealEvery int) (*segTwin, int, int) {
 		r := rand.New(rand.NewSource(31))
@@ -876,6 +905,7 @@ func TestSegments_StringColumnBytesDoNotGrowWithSegmentCount(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
 	}
+	t.Parallel()
 	// -short runs only under -race (the race gate): half the rows, still 8
 	// segments with more distinct values than a dictionary keeps per segment.
 	values, rows, perSeal := 400, 9600, 1200
@@ -934,6 +964,11 @@ func waitSealsForTest(t *testing.T, ms *Store) {
 // during the seal answer like the twin, and a writer that gets a full budget
 // ahead of the sealer blocks until it catches up (ADR-0011 §3.5).
 func TestSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
+	t.Parallel()
+	testSegments_BudgetSealRunsOffTheWriter(t)
+}
+
+func testSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
 	r := rand.New(rand.NewSource(51))
 	tw := newSegTwin(t, 12<<10, 8)
 	s := tw.declared
@@ -1005,6 +1040,7 @@ func TestSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
 // Close waits for a background seal in flight, and the seal's segment is
 // discarded (the store is closed); nothing outlives Close.
 func TestSegments_CloseWaitsForTheBackgroundSealer(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewSource(52))
 	tw := newSegTwin(t, 8<<10, 6)
 	s := tw.declared
@@ -1072,6 +1108,11 @@ func segRowFact(r *types.Relationship, props []string) string {
 // or from Row(k) where the column says Other — over sealed rows, dead sealed
 // rows, faulted-in rows and the unsealed memtable.
 func TestSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
+	t.Parallel()
+	testSegments_ScanRelSegmentsEqualsTheRowPath(t)
+}
+
+func testSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
 	r := rand.New(rand.NewSource(61))
 	tw := newSegTwin(t, 1<<40, 12)
 	noTemporal := 0
@@ -1235,6 +1276,11 @@ func segScanOrdered(t *testing.T, s *Store, props []string) []string {
 // tail. A consumer that builds output in scan order (sigma's edge @source)
 // is then deterministic and equal to the row feed.
 func TestSegments_ScanRelSegmentsIsInIDOrder(t *testing.T) {
+	t.Parallel()
+	testSegments_ScanRelSegmentsIsInIDOrder(t)
+}
+
+func testSegments_ScanRelSegmentsIsInIDOrder(t *testing.T) {
 	r := rand.New(rand.NewSource(83))
 	tw := newSegTwin(t, 1<<40, 12)
 	base := tw.nextID + 10
@@ -1347,6 +1393,11 @@ func TestSegments_ScanRelSegmentsHoldsOverlappingSegmentsOnly(t *testing.T) {
 // in ID order and equal to the row path (the twin), with no Relationship
 // built for a sealed row whose requested values sit in their columns.
 func TestSegments_ScanRelColumnsIsNativeAndEqual(t *testing.T) {
+	t.Parallel()
+	testSegments_ScanRelColumnsIsNativeAndEqual(t)
+}
+
+func testSegments_ScanRelColumnsIsNativeAndEqual(t *testing.T) {
 	r := rand.New(rand.NewSource(71))
 	tw := newSegTwin(t, 1<<40, 10)
 	for i := 0; i < 3000; i++ {
