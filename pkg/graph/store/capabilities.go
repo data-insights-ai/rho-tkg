@@ -76,8 +76,10 @@ type EntityLendCapability interface {
 // error aborts the call, and out is then undefined (some slots set, others
 // stale). Badger serves a call from one read snapshot (rows missing from its
 // cache are read in key order and not cached); memory under one read lock;
-// tiered under one move read lock, each shard pinned in turn and read as
-// badger. LendRelationshipsSorted is the relationship mirror.
+// tiered under one move read lock, each shard pinned in turn and read with
+// the shard's per-ID LendNode, so its cache promotes the hits and keeps the
+// rows it reads (callers lend the same rows again). LendRelationshipsSorted
+// is the relationship mirror.
 type EntityLendBatchCapability interface {
 	LendNodesSorted(ids []types.NodeID, out []*types.Node) error
 	LendRelationshipsSorted(ids []types.RelID, out []*types.Relationship) error

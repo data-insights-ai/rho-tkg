@@ -1,0 +1,52 @@
+LENDCOST mutation sweep, 2026-11-04, on the fix (lendAfterMiss, lendRunAhead, the two lend callers).
+Each mutant alone (scratch mutate.py): go build + go vet first (a build failure is no kill), then
+  go test -p 1 -short -count=1 -run 'TestLendSorted' ./pkg/graph/store/badger/
+Tally: 15 of 16 killed; M16 survives (see below).
+
+Run 1 (before TestLendSortedRowMissingOnEveryPath and the duplicates/descending count cases existed):
+M1 lendRunAhead always false: KILLED (TestLendSortedSparseMissesGetNotSeek dense then sparse, sparse then dense)
+M2 lendRunAhead too wide (d <= 1000): KILLED (TestLendSortedSparseMissesGetNotSeek sparse, dense then sparse)
+M3 lendRunAhead accepts d <= 0: SURVIVED
+M4 a failed step keeps the run (parked iterator steps every key): KILLED (SparseMissesGetNotSeek dense then sparse, sparse probed once)
+M5 no probe backoff: KILLED (SparseMissesGetNotSeek sparse probed once, spread sparse probe backs off)
+M6 probe at any batch length: KILLED (SparseMissesGetNotSeek sparse, sparse then dense)
+M7 no probe: KILLED (SparseMissesGetNotSeek sparse probed once, spread run probed)
+M8 stepped item without the exact-key check: SURVIVED
+M9 sought item without the exact-key check: SURVIVED
+M10 Get's ErrKeyNotFound returned as an error: SURVIVED
+M11 step without the ascending check: KILLED (TestLendSortedLayeredAgreesWithPointReads descending nodes, rels)
+M12 a Seek starts no run: KILLED (SparseMissesGetNotSeek dense, dense then sparse)
+M13 no re-pin after a flush (txnAfterMiss): KILLED (TestLendSortedRepinsAfterFlushBetweenIDs [1 2 60], [1 30 60])
+M14 left counts the whole batch (nodes): KILLED (SparseMissesGetNotSeek spread sparse probe backs off/nodes)
+M15 left counts the whole batch (rels): KILLED (SparseMissesGetNotSeek spread sparse probe backs off/rels)
+M16 Get error other than ErrKeyNotFound swallowed as absent: SURVIVED
+
+M8-M10 survived because the lend reads only IDs its live set lists, so an absent key is reached only for a listed
+row missing under the store; TestLendSortedRowMissingOnEveryPath (a row deleted under the store, read by Get, step,
+Seek and probe) was added, and M3 got the count cases "duplicates" and "descending".
+
+Run 2, the survivors with those tests:
+M3 lendRunAhead accepts d <= 0: KILLED (SparseMissesGetNotSeek duplicates, descending)
+M8 stepped item without the exact-key check: KILLED (TestLendSortedRowMissingOnEveryPath/step)
+M9 sought item without the exact-key check: KILLED (TestLendSortedRowMissingOnEveryPath/seek, /probe)
+M10 Get's ErrKeyNotFound returned as an error: KILLED (TestLendSortedRowMissingOnEveryPath/get)
+M16 Get error swallowed as absent: SURVIVED
+
+M16: Txn.Get returns another error only as ErrDBClosed (a Close racing the lend after checkOpen; db.go:756,
+levels.go:1614) or a table DecrRef failure (levels.go:1627-1629); neither is reachable from a unit test without fault
+injection in badger. Not run against the whole package (the machine was in ai-soc's measured window); the final
+tree's whole-package run is in the branch's last check.
+
+Round 2 (tiered fill), each mutant alone, go build + vet first, then
+  go test -p 1 -short -count=1 -run 'TestTieredLendSorted|TestTieredLend' ./pkg/graph/store/tiered/
+Tally: 7 of 7 killed (R6, R7 after TestTieredLendSortedFailsOnACorruptRow was added).
+R1 tiered node lend back to the badger batch lend (no fill): KILLED (TestTieredLendSortedFillsTheCache)
+R2 tiered rel lend back to the badger batch lend (no fill): KILLED (TestTieredLendSortedFillsTheCache)
+R3 node not-found returned as an error: KILLED (TestTieredLendSortedAgreesWithLend, ...OneCheckoutPerShard)
+R4 rel not-found returned as an error: KILLED (TestTieredLendSortedPassesOnAListedIDWithoutRow)
+R5 prefetchNode reads the epoch after the read (badger, the fill the tiered lend now relies on): KILLED
+   (TestTieredLendSortedFillSkipsAFlushDuringTheRead)
+R6 node lend error swallowed: SURVIVED, then KILLED (TestTieredLendSortedFailsOnACorruptRow)
+R7 rel lend error swallowed: SURVIVED, then KILLED (TestTieredLendSortedFailsOnACorruptRow)
+Not mutated: hit promotion (badger prefetchNodeNoFill's Get vs GetNoPromote, unchanged code; LRU order has no
+answer to assert on).

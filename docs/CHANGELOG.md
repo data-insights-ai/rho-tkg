@@ -18,6 +18,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   deletes a rewritten file under an open read (badger `value.go:342-355`), and logs a wait above 60 s
   (`TestValueLogGCKeepsTheFileOfAnOpenRead`; `tasks/evidence/VALUETHRESH/`, `docs/badger.md` section 6, rule 9).
 
+### Fixed
+
+- **LENDCOST** (ai-soc's 2-day tiered budget run: LendByIDs 115 -> 629 s on v4.103.0; a fix, no new exported name).
+  Two causes. (1) Tiered's batch lend no longer filled the shard caches (a v4.103.0 regression): up to v4.102.0 tiered
+  lent per ID through badger's `LendNode`, which promotes a hit and keeps a row it reads, and callers lend the same
+  rows round after round; TIERLEND moved it onto badger's batch lend, which keeps round 7's scan rule (no promotion,
+  no fill). Tiered now reads each pinned shard's IDs with `LendNode` / `LendRelationship` again (routing, one move
+  lock and one pin per shard as TIERLEND); plain badger's batch lend keeps the scan rule. A repeated call of 4 IDs on
+  the hot shard 6.6-7.7 -> 0.4-0.5 us, of 64 IDs 110-124 -> 3.9-4.1 us; a first call of 64 cold IDs 137-143 ->
+  156-171 us (a read transaction per miss) (`BenchmarkTieredLendSortedRepeat`; `TestTieredLendSortedFillsTheCache`,
+  `TestTieredLendSortedFillSkipsAFlushDuringTheRead`). (2) Badger's `LendNodesSorted` / `LendRelationshipsSorted` read
+  each sparse cache miss with an iterator `Seek`, which merges every table of every level, where a `Txn.Get` skips
+  tables by their bloom filters. A miss is now a `Get` on the call's pinned read transaction unless a run is evident:
+  the next ID lies within 4 of this one (a forward step reaches it), or at least 32 IDs are left and a probe `Seek`
+  tries a run (rows written in different milliseconds lie next to each other with far IDs); a run steps forward and
+  ends at the first row it cannot reach in 4 steps, and probes back off. Answers, re-pin after a flush, row-missing
+  classification and no cache fill unchanged. On a store spanning L0..L3 (`BenchmarkLendSorted`): 4 IDs 1,000 rows
+  apart 27-31 -> 17-22 us per call (a `Get` per ID 13-17 us), 64 such IDs 429-503 -> 274-311 us (`Get`s 250-269 us);
+  adjacent rows unchanged (64 IDs 103-110 us, `Get`s 191-222 us); 4 adjacent rows with far IDs 13-15 -> 14-16 us
+  (`Get` cost). Tests `TestLendSorted*` in `badgerstore_lend_cost_test.go`; `tasks/evidence/LENDCOST/`.
+
 ## [4.103.0] - 2026-11-04
 
 ### Changed

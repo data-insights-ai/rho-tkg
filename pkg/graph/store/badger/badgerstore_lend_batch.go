@@ -14,8 +14,10 @@ var _ storecontract.EntityLendBatchCapability = (*Store)(nil)
 
 // LendNodesSorted implements store.EntityLendBatchCapability: the cache
 // answers its hits (no promotion), and the misses the store still lists are
-// read through one forward-seeking iterator of a scanSnapshot, which re-pins
-// after a flush (see its doc comment), and are not filled into the cache.
+// read from one scanSnapshot, which re-pins after a flush (see its doc
+// comment): a Get per sparse ID, a forward-stepping iterator over a run of
+// close IDs or a run a long batch probes for (lendAfterMiss); they are not
+// filled into the cache.
 func (bs *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
@@ -37,7 +39,10 @@ func (bs *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 		if rev == 0 {
 			continue
 		}
-		item := snap.seekAfterMiss(storepkg.NodeKey(id))
+		item, err := snap.lendAfterMiss(storepkg.NodeKey(id), len(ids)-i, lendRunAhead(ids, i))
+		if err != nil {
+			return err
+		}
 		if item == nil {
 			if err := bs.nodeRowMissing(nid, rev); !errors.Is(err, ErrNodeNotFound) {
 				return err // a damaged table, not a delete
@@ -85,7 +90,10 @@ func (bs *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relatio
 		if rev == 0 {
 			continue
 		}
-		item := snap.seekAfterMiss(storepkg.RelKey(id))
+		item, err := snap.lendAfterMiss(storepkg.RelKey(id), len(ids)-i, lendRunAhead(ids, i))
+		if err != nil {
+			return err
+		}
 		if item == nil {
 			if err := bs.relRowMissing(rid, rev); !errors.Is(err, ErrRelNotFound) {
 				return err // a damaged table, not a delete
