@@ -110,7 +110,9 @@ type step struct {
 }
 
 func gateSteps(k int) []step {
-	race := []string{"go", "test", "-race", "-short", "-timeout", "20m", "./..."}
+	// The race run takes the host's race lock, shared with sigma's (4 Nov):
+	// two -race suites at once starve each other and flake timing tests.
+	race := []string{"flock", raceLock(), "go", "test", "-race", "-short", "-timeout", "20m", "./..."}
 	steps := []step{
 		{name: "gofmt", cmd: []string{"sh", "-c", `out=$(gofmt -l $(git ls-files '*.go')) && [ -z "$out" ] || { echo "$out"; exit 1; }`}},
 		{name: "build", cmd: []string{"go", "build", "./..."}},
@@ -392,4 +394,14 @@ func mustRead(p string) []byte {
 		fail(err)
 	}
 	return bytes.TrimSpace(b)
+}
+
+// raceLock is the host-wide lock every -race suite on this host takes
+// (RACE_LOCK overrides it).
+func raceLock() string {
+	if p := os.Getenv("RACE_LOCK"); p != "" {
+		return p
+	}
+	home, _ := os.UserHomeDir()
+	return home + "/.cache/race-gate.lock"
 }
