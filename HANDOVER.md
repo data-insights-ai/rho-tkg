@@ -11,7 +11,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   René (4 Nov, via ai-soc): "I want all current versions in the release", which lifted the round-4 freeze;
   sigma tags on v4.104.1, ai-soc runs its gate (60-min 4 arms + masked cycles), pins and releases ai-soc v5.1.2 on
   that pair. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc); ai-soc names its quiet
-  windows: then no ci-docker, probe, bench or long test here.
+  windows: then no minor or major gate, probe, bench or long test here.
   - **On main, unreleased:** COSTCOUNT (tests only, plus a test hook: `TestCascadeMetaCost` gates on full rows and
     skeleton reads per correction instead of process-wide allocations; next: MEMGATE); the release style
     (`make release`, the patch gate in 2 min; CONTRIBUTING § Release checklist). Parked, unmerged: branch
@@ -23,7 +23,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     the code and the diff, not my conclusions.
 - **Checklist facts learned at releases:** the ai-soc engine builds only with GOTOOLCHAIN=go1.27.3 (its parent module
   requires it); merging a release branch back can move Unreleased CHANGELOG entries under the tag's heading, so check
-  the heading after every such merge; `scripts/patchgate` is a package: `go run ./scripts/patchgate <base>`.
+  the heading after every such merge; the release tool is `go run ./scripts/release` (`make kind`, `gate-*`, `release-*`).
 - **Branches:** every merged branch is deleted (René 27 Oct: "delete if everything is merged"). Item work starts a
   branch from main in the main checkout or a worktree removed when the item ends. The 7 unmerged branches of 27 Oct
   live as parents of one commit on `archive/unmerged-2026-10-27` (6554d8ad, pushed; tree = main's, merge strategy

@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.." || exit 2
 fail=0
 latest=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
 # The tag is the version: no doc names it. docs/CHANGELOG.md's newest heading (first "## [x.y.z]" after
-# [Unreleased]) is the latest tag, or, written before scripts/release.sh tags it, an untagged version above it.
+# [Unreleased]) is the latest tag, or, written before scripts/release tags it, an untagged version above it.
 top=$(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' docs/CHANGELOG.md | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 if [ "v${top}" != "${latest}" ]; then
   newest=$(printf '%s\n%s\n' "${latest#v}" "${top}" | sort -V | tail -1)

@@ -16,7 +16,8 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Commits, MRs and PRs carry no agent attribution: no Co-Authored-By, no Claude-Session, no "Generated with".
 - A fix is a PATCH, a new door or option a MINOR. A fix never rides in a minor, a door never in a patch; one round of consumer
   requests ships as one minor or one patch. A new store format marker is a door (older releases refuse the store), and so is
-  any new exported name, internal packages included: `scripts/patchgate` decides (FLUSHPART, 2026-10-24).
+  any new exported name, internal packages included; a removed or changed public name is a MAJOR: `make kind` decides
+  (`scripts/release`, FLUSHPART, 2026-10-24).
 - Scope: consumer-blocking or wrong-answer/data bugs only, plus ai-soc runtime items (standing go). A backlog item needs a
   consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
 - Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc (their agents: HANDOVER § State) without asking. `git fetch` + merge origin/main
@@ -102,12 +103,12 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 | Command | Use |
 |---|---|
-| `make ci-fast` | **Patch gate** (`scripts/ci-fast.sh`, 2 min for a core fix, 4 Nov): every step at once: fmt, vet, build, lint, docs tests, and by name under `-race` only the tests that reach the code changed since the last tag (`scripts/patchgate`: changed tests, moved test files, tests naming a changed declaration directly or through helpers); then check-ledger |
-| `make ci-docker` | **Minor gate**: fmt, vet, lint, build, full `test-race`, gosec, check-ledger |
-| `make release` | **The release** (`scripts/release.sh`, below) |
-| `make test-long`, `cover-gate`, `fuzz-smoke`, `vulncheck-docker` | by hand (René, 4 Nov: not release steps) |
+| `make gate-patch` | **Patch gate** (`go run ./scripts/release gate patch`), every step at once: gofmt, build (+386), vet, lint, `go mod tidy -diff` and `verify`, docs tests, check-ledger, `go test -race -short ./...`. Incremental through Go's test cache: only the packages a change affects rerun, so no `-count=1` |
+| `make gate-minor` | **Minor gate**: the patch gate with `go test -race ./...` (no `-short`: the long tier too, cached) and gosec |
+| `make gate-major` | **Major gate**, comprehensive and cold: the minor gate with `-count=1 -shuffle=on`, cover-gate, fuzz-smoke, govulncheck |
+| `make release-patch`, `release-minor`, `release-major` | **The release** (below); `make kind` prints the diff's kind and why |
 | `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each runs alone (`scripts/measure.sh`) |
-| `make hooks` | Installs `scripts/hooks/pre-commit`, under 30 s: gofmt, build, vet, patchgate's tests, docs tests, check-ledger; `.md` only: docs tests and check-ledger |
+| `make hooks` | Installs `scripts/hooks/pre-commit`, under 30 s: gofmt, build, vet, the release tool's tests, docs tests, check-ledger; `.md` only: docs tests and check-ledger |
 | `make test` / `make test-race` | short tests / race detector |
 | `make cover` | coverage report (`coverage.html`) |
 | `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable" |
@@ -130,10 +131,12 @@ the kind of release, run once; it stops at the first red, and a red is fixed on 
    `tasks/todo.md`): `## [X.Y.Z] - date` above the entries, README updated for what the release changes, shipped rows
    leave `tasks/todo.md`. Not pushed alone: `make release` pushes it with the tag. The tag is the version: no other doc names it
    (`git tag --contains <commit>` answers which release has a change).
-4. `make release` (`scripts/release.sh`, edits no file): preconditions (main, clean, origin/main an ancestor of HEAD), the kind from the
-   diff (`scripts/patchgate -kind`: a minor is a new exported name, internal packages included, a store format marker or a
-   badger minor bump; else a patch), the CHANGELOG heading is the next version, the gate (`ci-fast` for a patch,
-   `ci-docker` for a minor), `git tag -a`, `git push --atomic`. A red step stops it; the fix goes on main and the release
+4. `make release-patch|release-minor|release-major` (`scripts/release`, Go, edits no file): preconditions (main, clean,
+   origin/main an ancestor of HEAD, the tag absent), the diff's kind at most the one asked for (a major: a removed or
+   changed public name, or the module path's /vN; a minor: a new exported name, internal packages included, a store format
+   marker or a badger minor bump; else a patch), the CHANGELOG's newest section is the next version and [Unreleased] is
+   empty, the gate of that kind, `git tag -a` (message: that section), `git push --atomic` of main and the tag. A major
+   moves the module path to /v(N+1) first. A red step stops it; the fix goes on main and the release
    runs again. A bad tag is never moved: the fix is the next tag, and `retract` in go.mod.
 5. Tell sigma-tkgd and ai-soc in one line: tag, gate, seconds.
 6. Clean up after (René, 4 Nov): the release round's own scratch (gate logs, branch and worktree of the release) goes the
@@ -155,7 +158,8 @@ Every claim about badger cites its source or a measurement.
 
 CHANGELOG entries go under `[Unreleased]` in the same change as the code. A new public error sentinel needs a row in
 [errors.md](errors.md). The docs tests (`TestDocsMetadataMatchesSourceOfTruth`, `TestErrorsDocumentation`,
-`TestNoMDFileOutsideTheDocumentation`) run in `make ci-fast`.
+`TestNoMDFileOutsideTheDocumentation`) run in every gate, with `-count=1` (the layout test lists files with git, which
+the test cache cannot see).
 
 ## Fuzzing
 
@@ -272,7 +276,7 @@ Index (`→` names where the rule lives now):
 76. A type tag covers one level; test every kind at depth → `TestWire_NestedKindsRoundTripExact`
 77. → 78
 78. Red break-the-code test first; mutation sweep for crash safety → digest (Code); `tasks/evidence/FLUSHPART/mutations.txt`
-79. Fix = patch, door = minor → digest (Process); `scripts/patchgate`
+79. Fix = patch, door = minor → digest (Process); `scripts/release` (kind.go)
 80. One todo and HANDOVER commit on main per item end → digest (Process); `scripts/check-ledger.sh`
 81. Act, do not offer → digest (Process)
 82. → Release checklist (the release script's gate decides; a red tag CI is fixed by the next tag)

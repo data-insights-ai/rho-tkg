@@ -2,13 +2,11 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker ci-docker-run ci-fast ci-fast-run release measure hooks fuzz-smoke check ci clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker gate-patch gate-minor gate-major release-patch release-minor release-major kind measure hooks fuzz-smoke check clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
 PROD_BENCH_COUNT ?= 1
-# CI opts into four exhaustive core batches; local defaults remain unsplit.
-ROOT_RACE_CORE_SHARDS ?= 4
 GOLANGCI_LINT_VERSION ?= v2.13.2
 GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
@@ -21,29 +19,20 @@ build:
 
 # Run unit tests
 test:
-	go test -short -count=1 ./...
+	go test -short ./...
 
 # Run tests with verbose output
 test-v:
-	go test -short -count=1 -v ./...
+	go test -short -v ./...
 
-# Run tests with race detector. Local default (since v4.76.0): the parts of
-# scripts/test-race.sh in sequence, so each heavy package (core shards, graph,
-# memory, badger) has the machine to itself; one unsplit `go test ./...` ran
-# them in parallel and badger hit its 10-minute timeout on a busy machine.
-# CI: ROOT_RACE_CORE_SHARDS=4 plus RACE_SHARD=<part> runs one matrix part
-# (scripts/test-race.sh; RACE_SHARD=list prints the parts).
+# Run tests with race detector (Go's test cache reruns only what changed).
 test-race:
-	$(SHELL) scripts/test-race.sh "$(ROOT_RACE_CORE_SHARDS)"
+	go test -race -short -timeout 20m ./...
 
 # The long tier: every test a plain `testing.Short()` skips (no race exception),
 # run without -short or race (scripts/test-long.sh; LONG_TIER=list prints them).
 test-long:
 	$(SHELL) scripts/test-long.sh
-
-# Tests of the race-gate script itself (fake go, no toolchain needed).
-test-race-script:
-	$(SHELL) scripts/test-race-test.sh
 
 # Run integration tests (long-running, not short)
 test-integration:
@@ -204,15 +193,6 @@ security-docker:
 vulncheck-docker:
 	$(DOCKER_GO) sh -c 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && govulncheck ./...'
 
-# Minor release gate, local (GitHub CI on a tag only builds, vets and runs the
-# short tests): lint, the full race suite, gosec and the ledger check. The long
-# tier, coverage, fuzz-smoke and govulncheck are hand targets (René 4 Nov).
-ci-docker:
-	@scripts/gate-time.sh ci-docker $(MAKE) ci-docker-run
-
-ci-docker-run: fmt-check vet lint-docker build test-race security-docker
-	scripts/check-ledger.sh
-
 # fuzz-smoke runs each trust-boundary fuzz harness for FUZZTIME (nothing runs
 # them on a schedule); a crasher lands in testdata/fuzz/ and is committed with
 # its fix.
@@ -231,25 +211,21 @@ fuzz-smoke:
 measure:
 	@scripts/measure.sh
 
-# Patch release gate (minors use ci-docker): scripts/ci-fast.sh runs fmt, vet,
-# build, lint, the docs tests and, by name under -race, only the tests that reach
-# the code changed since the last tag (scripts/patchgate), all at once.
-ci-fast:
-	@scripts/gate-time.sh ci-fast $(MAKE) ci-fast-run
+# Release cycle (René, 4 Nov; scripts/release, CONTRIBUTING § Release checklist):
+# gate-* runs a gate alone, release-* runs the release (preconditions, kind,
+# CHANGELOG, gate, tag, atomic push), kind prints the diff's kind.
+gate-patch gate-minor gate-major:
+	@scripts/gate-time.sh $@ go run ./scripts/release gate $(@:gate-%=%)
 
-ci-fast-run:
-	scripts/ci-fast.sh
+release-patch release-minor release-major:
+	@go run ./scripts/release $(@:release-%=%)
 
-# One release: preconditions, kind from the diff, CHANGELOG heading check, the
-# gate, tag, push (scripts/release.sh; it edits no file).
-release:
-	@scripts/release.sh
+kind:
+	@go run ./scripts/release kind
 
 # Quick pre-commit check
 check: vet build test
 
-# Full CI pipeline
-ci: fmt-check vet lint build test-race security vulncheck cover-gate check-metakv-reap
 
 # Clean generated files
 clean:

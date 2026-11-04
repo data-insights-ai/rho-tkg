@@ -13,15 +13,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and vet, the scale probe and a freeze message are no longer release steps (each consumer's pin commit builds against
   the tag). Cleanup runs before and after each release (`~/cleanup.sh`). New measurement level `make measure`
   (`scripts/measure.sh`): tests behind the `measure` build tag, run by hand, one per process.
-- **Fast release cycle** (René, 4 Nov). `make release` (`scripts/release.sh`) runs the preconditions, the kind from the
-  diff, the CHANGELOG heading check, the gate, `git tag -a` and `git push --atomic`; it edits no file, and the tag is the
-  version: README, `docs/architecture.md`, HANDOVER and todo no longer name it. The patch gate (`scripts/ci-fast.sh`)
-  runs every step at once and, under `-race` by name, only the tests that reach the code changed since the last tag:
-  `scripts/patchgate` now reads build constraints (a `measure`-tagged file is no code), follows renames (a moved test
-  runs by name, never its package) and maps a changed declaration to the tests naming it, directly or through helpers;
-  a new exported name anywhere is a minor, as is a new format marker or a badger minor bump. 2 min for a core fix (4 Nov,
-  load 13), against 15+ min before. The minor gate drops test-long, cover-gate, fuzz-smoke and govulncheck (hand
-  targets now). go.mod retracts v4.98.0 (its tag CI was red; v4.98.1 replaced it).
+- **Release cycle on Go's own facilities** (René, 4 Nov: "a professional release cycle: very fast patch, fast minor,
+  comprehensive major"; "use all of go facilities"). One Go command, `scripts/release`, with `make gate-patch|minor|major`
+  and `make release-patch|minor|major`. Gates run every step at once and are incremental through Go's test cache (no
+  `-count=1`): patch `go test -race -short ./...` with gofmt, build (+386), vet, lint, `go mod tidy -diff`/`verify`, docs
+  and ledger checks; minor adds the long tier (`-race` without `-short`) and gosec; major runs cold (`-count=1
+  -shuffle=on`) with coverage, fuzz-smoke and govulncheck. The release checks preconditions, that the diff's kind (Go
+  API by go/build and go/ast: a new exported name is a minor, internal packages included; a removed or changed public
+  name or a new module major is a major; a format marker or a badger minor bump is a minor) is at most the one asked for,
+  that the CHANGELOG's newest section is the next version, then gates, tags and pushes main and the tag atomically. It
+  edits no file: the tag is the version, and README, `docs/architecture.md`, HANDOVER and todo no longer name it.
+  Removed: scripts/patchgate (hand-made test selection), ci-fast, ci-docker, test-race.sh and its sharding. go.mod
+  retracts v4.98.0 (its tag CI was red; v4.98.1 replaced it).
 - **Load-proof cost tests** (COSTCOUNT, MEMGATE). `TestCascadeMetaCost` gated on process-wide allocation ratios and read
   3.9x against a 4.0x bar under ci-docker's load (5.8x alone); it now gates per correction on full rows read
   (`Core.historyRead`: 2 on skeletons, every version on the whole history) and skeleton reads (a new test hook,
