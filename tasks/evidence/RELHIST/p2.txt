@@ -1,0 +1,29 @@
+RELHIST P2 (branch headrefresh on main 7fd75c40), 4 Nov 2026 — head answer for the plural door and across plain appends
+
+1. What was already there (main 7fd75c40)
+- Neither part. NodeEffectiveTimelines / RelEffectiveTimelines (effective_timelines.go) neither read nor filled the head
+  entry ("The head-pin cache (backlog 68) is neither read nor filled"); HEADLEND only lends their winners.
+- Only cascades overlaid an entry (nodeHeadAfterWrite / relHeadAfterWrite from temporal_cascade.go); a plain Update,
+  ReplaceVersion or CloseVersion left it stale by the history token, so the next head read folded again.
+
+2. Red (tests committed alone, implementation unchanged)
+GOMAXPROCS=2 go test -p 1 -cpu 1 -short -run 'TestRELHISTP2' ./pkg/graph/internal/core/
+
+--- FAIL: TestRELHISTP2PluralDoorHeadHit (0.01s)
+    --- FAIL: TestRELHISTP2PluralDoorHeadHit/memory (0.00s)
+        effective_head_refresh_test.go:138: node: head hits 0 -> 0 (fill) -> 0 (second call) -> 0 (a pin below maxTx); want +0, +1, +0
+    --- FAIL: TestRELHISTP2PluralDoorHeadHit/badger (0.00s)
+        effective_head_refresh_test.go:138: node: head hits 0 -> 0 (fill) -> 0 (second call) -> 0 (a pin below maxTx); want +0, +1, +0
+    --- FAIL: TestRELHISTP2PluralDoorHeadHit/tiered (0.01s)
+        effective_head_refresh_test.go:138: node: head hits 0 -> 0 (fill) -> 0 (second call) -> 0 (a pin below maxTx); want +0, +1, +0
+--- FAIL: TestRELHISTP2UpdateKeepsHeadEntry (0.04s)
+    --- FAIL: TestRELHISTP2UpdateKeepsHeadEntry/memory (0.00s)
+        effective_head_refresh_test.go:186: node Update: head overlays 0 -> 0, want +1 (the entry was dropped)
+    --- FAIL: TestRELHISTP2UpdateKeepsHeadEntry/badger (0.00s)
+        effective_head_refresh_test.go:186: node Update: head overlays 0 -> 0, want +1 (the entry was dropped)
+    --- FAIL: TestRELHISTP2UpdateKeepsHeadEntry/tiered (0.03s)
+        effective_head_refresh_test.go:186: node Update: head overlays 0 -> 0, want +1 (the entry was dropped)
+--- FAIL: TestRELHISTP2UpdateThenPluralOracle (0.52s)
+    effective_head_refresh_test.go:306: the sequence never exercised the cache: 84 overlays, 0 hits
+FAIL
+(The oracle's answers already agree on main: the plural door folds every call; it fails only on its exercise floor.)
