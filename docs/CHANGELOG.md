@@ -8,8 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Releases to a local git server** (René, 4 Nov): `RELEASE_REMOTE=local make release-…` releases to the bare
-  repository `~/git/rho-tkg.git` (remote `local`) while GitHub refuses this host's SSH logins.
+- **Releases to a local git server** (René, 4 Nov): `make release-…` releases to the bare repository
+  `~/git/rho-tkg.git` (remote `local`), not GitHub; `RELEASE_REMOTE=origin` releases to GitHub.
 
 ## [4.104.3] - 2026-11-04
 

@@ -213,8 +213,10 @@ measure:
 gate-patch gate-minor gate-major:
 	@scripts/gate-time.sh $@ go run ./scripts/release gate $(@:gate-%=%)
 
+# René, 4 Nov: releases go to the local git server (~/git/rho-tkg.git), not GitHub.
+RELEASE_REMOTE ?= local
 release-patch release-minor release-major:
-	@go run ./scripts/release $(@:release-%=%)
+	@RELEASE_REMOTE=$(RELEASE_REMOTE) go run ./scripts/release $(@:release-%=%)
 
 kind:
 	@go run ./scripts/release kind
