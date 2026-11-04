@@ -6,8 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.104.5] - 2026-11-04
+
 ### Changed
 
+- **Release cycle audit fixed** (Fable, 4 Nov): the gates and the Makefile build with `-trimpath`, so the checkout's
+  path is out of Go's cache keys; the race step stops at a package's first failure (`-failfast`); the docs step runs
+  only `internal/docscheck`, cached: its layout test walks the directories instead of calling `git ls-files`, and
+  `TestErrorsDocumentation` moved there from `pkg/graph`, so a docs/errors.md edit no longer reruns pkg/graph's tests;
+  the tag message keeps the CHANGELOG section verbatim; lint keeps golangci-lint and its cache in Docker volumes
+  (1.4 s warm); `make release-…` logs its time to gate-times.log; `make test-integration` uses the test cache.
+- **`make kind` reads more of the API**: parameter names no longer count (a rename was a false major); type
+  parameters, embedded fields, alias against defined type and a const's or var's type do (a change is a major); a
+  raised go directive is a minor; a new method of a public interface without unexported methods is named as such
+  (still a minor, as rho's Ops interfaces have always shipped).
 - **Docs match the release cycle** (CONTRIBUTING, HANDOVER, SECURITY: the gates use the test cache, releases go to
   the local git server, fuzz-smoke runs in the major gate, the consumers' pins and how they fetch from the local server);
   the minor gate runs the long tier without race, as its tests' bounds were measured (`make test-long`), next to

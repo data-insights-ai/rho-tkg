@@ -39,7 +39,8 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   `TestRestartModesOverBARows` (524 rows); ask ai-soc for it. On 30 Oct the About-edge blocker appeared only after the
   freeze and needed v4.98.3.
 - By hand, `go test` without `-count=1` unless a flake or a timing is the question: 9.3 h across 1,009 calls (ai-soc's
-  audit, 24-31 Oct). The gates use Go's test cache too: only the docs tests and the major gate run `-count=1`.
+  audit, 24-31 Oct). The gates use Go's test cache too, with `-trimpath` (the Makefile exports it) so the checkout's
+  path stays out of the keys; only the major gate runs `-count=1`.
 - Who works (René 2026-10-23): the main session does the work itself, analysis and code alike, and runs every test, lint
   and gate, and reviews its own work (§ Review); the Fable reviewer was deleted (René 2026-10-24). No subagents unless
   René asks for them.
@@ -104,14 +105,14 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 | Command | Use |
 |---|---|
-| `make gate-patch` | **Patch gate** (`go run ./scripts/release gate patch`), every step at once: gofmt, build (+386), vet, lint, `go mod tidy -diff` and `verify`, docs tests, check-ledger, `go test -race -short ./...`. Incremental through Go's test cache: only the packages a change affects rerun, so no `-count=1` |
+| `make gate-patch` | **Patch gate** (`go run ./scripts/release gate patch`), every step at once: gofmt, build (+386), vet, lint, `go mod tidy -diff` and `verify`, docs tests (`internal/docscheck`), check-ledger, `go test -race -short -failfast ./...`. Incremental through Go's test cache: only the packages a change affects rerun, so no `-count=1` |
 | `make gate-minor` | **Minor gate**: the patch gate, the long tier (`make test-long`, without race), and gosec |
 | `make gate-major` | **Major gate**, comprehensive and cold: the minor gate with `-count=1 -shuffle=on`, cover-gate, fuzz-smoke, govulncheck |
 | `make release-patch`, `release-minor`, `release-major` | **The release** (below); `make kind` prints the diff's kind and why |
 | `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each runs alone (`scripts/measure.sh`) |
 | `make test` / `make test-race` | short tests / race detector |
 | `make cover` | coverage report (`coverage.html`) |
-| `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable" |
+| `make lint-docker`, `security-docker`, `vulncheck-docker` | the pinned tools in the go.mod toolchain image; Docker is always available, so the gate is never "un-runnable". Named volumes keep the module, build and lint caches and the installed golangci-lint (lint: 1.4 s warm) |
 | `go test -run TestFoo ./pkg/...` | one test |
 
 Releases go to the local git server, not GitHub (René, 4 Nov). GitHub CI runs only when a `v*` tag is pushed there and only
@@ -134,9 +135,11 @@ the kind of release, run once; it stops at the first red, and a red is fixed on 
    (`git tag --contains <commit>` answers which release has a change).
 4. `make release-patch|release-minor|release-major` (`scripts/release`, Go, edits no file): preconditions (main, clean,
    the remote's main an ancestor of HEAD, the tag absent, a push dry-run passes), the diff's kind at most the one asked for (a major: a removed or
-   changed public name, or the module path's /vN; a minor: a new exported name, internal packages included, a store format
-   marker or a badger minor bump; else a patch), the CHANGELOG's newest section is the next version and [Unreleased] is
-   empty, the gate of that kind, `git tag -a` (message: that section), `git push --atomic` of main and the tag. A major
+   changed public name: a signature's types, type parameters, an embedded field, alias or defined type, a const's type,
+   parameter names aside; or the module path's /vN; a minor: a new exported name, internal packages included, a new
+   method of an open public interface named as such, a store format marker, a badger minor bump or a raised go directive;
+   else a patch), the CHANGELOG's newest section is the next version and [Unreleased] is
+   empty, the gate of that kind, `git tag -a --cleanup=verbatim` (message: that section), `git push --atomic` of main and the tag. A major
    moves the module path to /v(N+1) first. A red step stops it; the fix goes on main and the release
    runs again. A bad tag is never moved: the fix is the next tag, and `retract` in go.mod.
    Releases go to the local git server (René, 4 Nov: "let the github alone, work with the local git"): the bare
@@ -162,8 +165,8 @@ Every claim about badger cites its source or a measurement.
 CHANGELOG entries go under `[Unreleased]` in the same change as the code. A new public error sentinel needs a row in
 [errors.md](errors.md). The docs tests (`internal/docscheck`, its own package so a doc edit reruns only it, never
 core's cached tests; `TestDocsMetadataMatchesSourceOfTruth`, `TestErrorsDocumentation`,
-`TestNoMDFileOutsideTheDocumentation`) run in every gate, with `-count=1` (the layout test lists files with git, which
-the test cache cannot see).
+`TestNoMDFileOutsideTheDocumentation`) run in every gate, cached: they read the files they check, the layout test
+walks the directories, so an edit reruns them.
 
 ## Fuzzing
 

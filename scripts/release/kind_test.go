@@ -11,7 +11,9 @@ const gomod = "module github.com/x/y/v4\n\nrequire github.com/dgraph-io/badger/v
 // constraints (the measure row turns minor), skipping fields or interface
 // methods (those rows turn patch), comparing names but not signatures (the
 // signature row turns patch), treating internal removals as breaking (the
-// internal row turns major).
+// internal row turns major), keeping parameter names in signatures (the rename
+// row turns major), and dropping embedded fields, type parameters, the alias
+// "=", const types or the go directive (their rows turn patch).
 func TestKindOf(t *testing.T) {
 	base := tree{
 		"go.mod":                   []byte(gomod),
@@ -34,6 +36,14 @@ func TestKindOf(t *testing.T) {
 		return t
 	}
 	aWith := func(extra string) string { return string(base["pkg/a/a.go"]) + extra }
+	// editFrom compares pkg/a/a.go as before against as after, both on base.
+	type pair struct{ before, after tree }
+	var pairs = map[string]pair{}
+	editFrom := func(before, after string) tree {
+		h := edit("pkg/a/a.go", after)
+		pairs[after] = pair{edit("pkg/a/a.go", before), h}
+		return h
+	}
 	cases := []struct {
 		name string
 		head tree
@@ -46,7 +56,15 @@ func TestKindOf(t *testing.T) {
 		{"a measure-only export", edit("pkg/a/measure_helpers.go", "//go:build measure\n\npackage a\n\nfunc Measured() {}\n\nfunc More() {}\n"), patch, ""},
 		{"a new func", edit("pkg/a/a.go", aWith("\nfunc G() {}\n")), minor, "G is a new exported name"},
 		{"a new field", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "A int }", "A int; B bool }", 1)), minor, "S.B is a new"},
-		{"a new interface method", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "M() }", "M(); N() }", 1)), minor, "I.N is a new"},
+		{"a new interface method", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "M() }", "M(); N() }", 1)), minor, "I.N is a new method of an interface"},
+		{"a new method of a sealed interface", edit("pkg/a/a.go", aWith("\ntype J interface{ M(); seal() }\n")+"\n"), minor, "J is a new"},
+		{"a parameter renamed", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "F(x int) int { return x }", "F(y int) int { return y }", 1)), patch, ""},
+		{"an embedded field", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "A int }", "A int; io.Reader }", 1)), minor, "S.(io.Reader) is a new"},
+		{"a removed embedded field", editFrom(aWith("\ntype E struct{ S }\n"), aWith("\ntype E struct{}\n")), major, "E.(S) is removed"},
+		{"a type parameter", editFrom(aWith("\ntype G[T any] struct{}\n"), aWith("\ntype G[T comparable] struct{}\n")), major, "G changed"},
+		{"a defined type to an alias", editFrom(aWith("\ntype N int\n"), aWith("\ntype N = int\n")), major, "N changed"},
+		{"a const's type", editFrom(aWith("\nconst C = 1\n"), aWith("\nconst C = \"1\"\n")), major, "C changed"},
+		{"a go directive bump", edit("go.mod", strings.Replace(gomod, "\n\n", "\n\ngo 1.26\n", 1)), minor, "go.mod: go"},
 		{"an internal export", edit("pkg/internal/i/i.go", "package i\n\nfunc Old() {}\n\nfunc New() {}\n"), minor, "New is a new"},
 		{"an internal removal", edit("pkg/internal/i/i.go", "package i\n"), patch, ""},
 		{"a format marker", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "= 3", "= 4", 1)), minor, "format marker"},
@@ -57,7 +75,11 @@ func TestKindOf(t *testing.T) {
 		{"a new module major", edit("go.mod", strings.Replace(gomod, "/v4\n", "/v5\n", 1)), major, "module"},
 	}
 	for _, c := range cases {
-		got, why := kindOf(base, c.head)
+		b := base
+		if p, ok := pairs[string(c.head["pkg/a/a.go"])]; ok {
+			b = p.before
+		}
+		got, why := kindOf(b, c.head)
 		all := strings.Join(why, "; ")
 		if got != c.want || (c.why != "" && !strings.Contains(all, c.why)) || (c.want == patch && all != "") {
 			t.Errorf("%s: got %s (%s), want %s with %q", c.name, kindNames[got], all, kindNames[c.want], c.why)

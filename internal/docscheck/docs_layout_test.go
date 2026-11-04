@@ -5,8 +5,8 @@ package docscheck
 
 import (
 	"errors"
+	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -114,12 +114,28 @@ func TestNoMDFileOutsideTheDocumentation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// tracked and untracked-but-not-ignored files: a new MD file fails before it is committed
-	out, err := exec.Command("git", "-C", root, "ls-files", "-z", "-co", "--exclude-standard", "--", "*.md").Output()
+	// A walk, not git ls-files: Go's test cache sees the directories a test
+	// reads, so a new MD file reruns this test and anything else leaves it
+	// cached. Skipped: dot directories (.git, .claude worktrees, editors) and
+	// data/, which .gitignore leaves out. A new MD file fails before its commit.
+	var files []string
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && p != root && (strings.HasPrefix(d.Name(), ".") || d.Name() == "data") {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && strings.HasSuffix(p, ".md") {
+			rel, err := filepath.Rel(root, p)
+			files = append(files, filepath.ToSlash(rel))
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("git ls-files: %v", err)
+		t.Fatal(err)
 	}
-	files := strings.Split(strings.TrimRight(string(out), "\x00"), "\x00")
 	for _, f := range strayMD(files, allowed) {
 		t.Errorf("%s: not in README.md \"Documentation\"; put its facts into the owner listed there", f)
 	}

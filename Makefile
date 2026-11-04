@@ -11,6 +11,10 @@ GOLANGCI_LINT_VERSION ?= v2.13.2
 GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
 
+# -trimpath keeps the checkout's path out of Go's cache keys, as in the release
+# gates (scripts/release), so make's tests and the gates share cache entries.
+export GOFLAGS ?= -trimpath
+
 # Build (verify compilation)
 # The library also builds for 32-bit targets (ARM32: DICT broke it unnoticed).
 build:
@@ -36,7 +40,7 @@ test-long:
 
 # Run integration tests (long-running, not short)
 test-integration:
-	go test -count=1 -run Integration ./...
+	go test -run Integration ./...
 
 # Run the pkg/types memory-footprint / struct-size regression tests (renamed
 # from the historical "bench" target so that name is free for the bench/
@@ -178,10 +182,13 @@ tools:
 GO_VERSION := $(shell awk '/^go /{print $$2}' go.mod)
 GO_IMAGE   ?= golang:$(GO_VERSION)
 DOCKER_GO  = docker run --rm -v "$(CURDIR)":/src -w /src \
-	-v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build $(GO_IMAGE)
+	-v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build \
+	-v rho-tkg-lintcache:/root/.cache/golangci-lint $(GO_IMAGE)
 
+# The installed golangci-lint stays in the rho-tkg-gocache volume; reinstalled
+# only when GOLANGCI_LINT_VERSION moves. Its analysis cache: rho-tkg-lintcache.
 lint-docker:
-	$(DOCKER_GO) sh -c 'go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) && golangci-lint run ./...'
+	$(DOCKER_GO) sh -c 'golangci-lint version 2>/dev/null | grep -q " $(GOLANGCI_LINT_VERSION:v%=%) " || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); golangci-lint run ./...'
 
 security-docker:
 	$(DOCKER_GO) sh -c 'go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) && gosec -quiet ./...'
@@ -216,7 +223,7 @@ gate-patch gate-minor gate-major:
 # René, 4 Nov: releases go to the local git server (~/git/rho-tkg.git), not GitHub.
 RELEASE_REMOTE ?= local
 release-patch release-minor release-major:
-	@RELEASE_REMOTE=$(RELEASE_REMOTE) go run ./scripts/release $(@:release-%=%)
+	@RELEASE_REMOTE=$(RELEASE_REMOTE) scripts/gate-time.sh $@ go run ./scripts/release $(@:release-%=%)
 
 kind:
 	@go run ./scripts/release kind

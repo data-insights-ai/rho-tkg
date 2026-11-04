@@ -10,14 +10,14 @@
 //
 // Gates (steps at once, one PASS/FAIL line each with its seconds):
 //   - patch: gofmt, build (+GOARCH=386), vet, lint, go mod tidy -diff and
-//     verify, the docs tests, go test -race -short ./... (cached);
+//     verify, the docs tests, go test -race -short -failfast ./... (cached);
 //   - minor: the patch gate, the long tier (make test-long: the tests a plain
 //     testing.Short() skips, without race), and gosec;
 //   - major: the minor gate cold (-count=1 -shuffle=on), coverage, fuzz-smoke,
 //     govulncheck.
 //
-// A release: preconditions (on main, clean, origin/main an ancestor of HEAD,
-// the next tag absent here and on origin), the diff's kind is at most the
+// A release: preconditions (on main, clean, the remote's main an ancestor of
+// HEAD, a push dry-run passes, the next tag absent), the diff's kind is at most the
 // requested one (kind.go), docs/CHANGELOG.md's newest section is the next
 // version and [Unreleased] is empty, the gate, git tag -a (message: that
 // section), git push --atomic of main and the tag. The tag is the version: it
@@ -110,7 +110,7 @@ type step struct {
 }
 
 func gateSteps(k int) []step {
-	race := []string{"go", "test", "-race", "-short", "-timeout", "20m", "./..."}
+	race := []string{"go", "test", "-race", "-short", "-failfast", "-timeout", "20m", "./..."}
 	steps := []step{
 		{name: "gofmt", cmd: []string{"sh", "-c", `out=$(gofmt -l $(git ls-files '*.go')) && [ -z "$out" ] || { echo "$out"; exit 1; }`}},
 		{name: "build", cmd: []string{"go", "build", "./..."}},
@@ -118,8 +118,8 @@ func gateSteps(k int) []step {
 		{name: "vet", cmd: []string{"go", "vet", "./..."}},
 		{name: "lint", cmd: []string{"make", "--no-print-directory", "lint-docker"}},
 		{name: "mod", cmd: []string{"sh", "-c", "go mod tidy -diff && go mod verify"}},
-		// The docs layout test lists files with git, which the test cache cannot see.
-		{name: "docs", cmd: []string{"go", "test", "-count=1", "-run", "Docs|Consistency|MD|Errors", "./..."}},
+		// Cached: the docs tests read the files they check, so an edit reruns them.
+		{name: "docs", cmd: []string{"go", "test", "./internal/docscheck/"}},
 		{name: "ledger", cmd: []string{"scripts/check-ledger.sh"}},
 	}
 	switch k {
@@ -155,8 +155,9 @@ func gate(k int) bool {
 			defer wg.Done()
 			start := time.Now()
 			c := exec.Command(s.cmd[0], s.cmd[1:]...) // #nosec G204 -- fixed commands
-			// A session's GOFLAGS (-count=1, -tags) would change results and cache keys.
-			c.Env = append(append(os.Environ(), "GOFLAGS=", "CGO_ENABLED=1"), s.env...)
+			// A session's GOFLAGS (-count=1, -tags) would change results and cache
+			// keys; -trimpath keeps the checkout's path out of them (Makefile too).
+			c.Env = append(append(os.Environ(), "GOFLAGS=-trimpath", "CGO_ENABLED=1"), s.env...)
 			out, err := c.CombinedOutput()
 			_ = os.WriteFile(logDir+"/"+s.name+".out", out, 0o600)
 			mu.Lock()
@@ -316,7 +317,7 @@ func release(k int, dry bool) {
 		} else if _, err := git("merge-base", "--is-ancestor", remote()+"/main", "HEAD"); err != nil {
 			errs = append(errs, remote()+"/main is not an ancestor of HEAD")
 		} else if out, err := gitNet("push", "--dry-run", "-q", remote(), "main"); err != nil {
-			errs = append(errs, "cannot push to origin (checked before the gate): "+out)
+			errs = append(errs, "cannot push to "+remote()+" (checked before the gate): "+out)
 		}
 		if _, err := git("rev-parse", "-q", "--verify", "refs/tags/"+next); err == nil {
 			errs = append(errs, next+" exists (a failed push? `git tag -d "+next+"`)")
@@ -368,7 +369,8 @@ func release(k int, dry bool) {
 		return
 	}
 	check("tag", func() error {
-		if out, err := git("tag", "-a", next, "-m", next+"\n\n"+section); err != nil {
+		// verbatim: the CHANGELOG section keeps its lines as written (no # stripped).
+		if out, err := git("tag", "-a", "--cleanup=verbatim", next, "-m", next+"\n\n"+section); err != nil {
 			return fmt.Errorf("%s", out)
 		}
 		return nil

@@ -1,4 +1,4 @@
-package graph_test
+package docscheck
 
 import (
 	"bufio"
@@ -472,7 +472,7 @@ func TestErrorsDocumentation(t *testing.T) {
 // check and only ever being caught by a human noticing a missing doc row.
 func TestGraphErrorsFileInventoryComplete(t *testing.T) {
 	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, "errors.go", nil, 0)
+	astFile, err := parser.ParseFile(fset, filepath.Join("..", "..", "pkg", "graph", "errors.go"), nil, 0)
 	if err != nil {
 		t.Fatalf("failed to parse errors.go: %v", err)
 	}

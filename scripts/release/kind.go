@@ -23,10 +23,14 @@ import (
 
 // The kind of a diff, by Go's rules plus René's (4 Nov):
 //   - major: an exported name of a public (non-internal) package is removed
-//     or its signature changed, or go.mod's module path changes its major;
-//   - minor: a new exported name in any package, internal ones included; a
+//     or its signature changed (parameter names aside), or go.mod's module
+//     path changes its major;
+//   - minor: a new exported name in any package, internal ones included (a
+//     new method of a public interface without unexported methods is named
+//     as such: Go counts it breaking for outside implementations, rho's
+//     history ships it as a minor since its Ops interfaces are rho's own); a
 //     changed store format marker (a const or var named *FormatVersion*); a
-//     badger minor or major bump;
+//     badger minor or major bump; a raised go directive;
 //   - patch: anything else.
 // Each package's live files are chosen by go/build (build constraints and
 // GOOS/GOARCH suffixes) on both sides, so a measure-tagged file is no API.
@@ -119,6 +123,13 @@ func kindOf(base, head tree) (int, []string) {
 		if strings.Contains("/"+dir+"/", "/internal/") {
 			continue // no consumer imports it
 		}
+		for n, sig := range newAPI[dir] {
+			typ, _, _ := strings.Cut(n, ".")
+			_, existed := a[typ]
+			if _, old := a[n]; existed && !old && strings.HasPrefix(sig, openIface) {
+				raise(minor, "%s: %s is a new method of an interface outside code could implement", dir, n)
+			}
+		}
 		for n, sig := range a {
 			if now, ok := newAPI[dir][n]; !ok {
 				raise(major, "%s: %s is removed", dir, n)
@@ -138,6 +149,9 @@ func kindOf(base, head tree) (int, []string) {
 	if a, b := badgerMinor(base["go.mod"]), badgerMinor(head["go.mod"]); a != "" && b != "" && a != b {
 		raise(minor, "go.mod: badger v%s -> v%s", a, b)
 	}
+	if a, b := goDirective(base["go.mod"]), goDirective(head["go.mod"]); a != b {
+		raise(minor, "go.mod: go %s -> %s", a, b)
+	}
 	sort.Strings(why)
 	return kind, why
 }
@@ -146,7 +160,19 @@ var (
 	moduleRE = regexp.MustCompile(`(?m)^module\s+(\S+)`)
 	badgerRE = regexp.MustCompile(`(?m)^\s*(?:require\s+)?github\.com/dgraph-io/badger/v4\s+v(\d+\.\d+)\.`)
 	markerRE = regexp.MustCompile(`FormatVersion`)
+	goRE     = regexp.MustCompile(`(?m)^go\s+(\S+)`)
 )
+
+func goDirective(gomod []byte) string {
+	if m := goRE.FindSubmatch(gomod); m != nil {
+		return string(m[1])
+	}
+	return ""
+}
+
+// openIface prefixes the signature of a method of an interface that outside
+// code can implement: adding one breaks every outside implementation.
+const openIface = "open interface method: "
 
 func modulePath(gomod []byte) string {
 	if m := moduleRE.FindSubmatch(gomod); m != nil {
@@ -163,10 +189,13 @@ func badgerMinor(gomod []byte) string {
 }
 
 // exportedAPI adds a file's exported API to out: top-level funcs, types,
-// consts and vars, methods of exported types as "Recv.Name", exported fields
-// and interface methods as "Type.Name", each with its signature ("" for a
-// const or var), so a changed signature is told from a new name. marker gets
-// every const or var spec whose name matches markerRE, with its text.
+// consts and vars, methods of exported types as "Recv.Name", exported and
+// embedded fields and interface methods as "Type.Name", each with its
+// signature, so a changed signature is told from a new name. A signature
+// holds types, not parameter names (renaming one breaks no caller); a type's
+// holds its type parameters and "=" for an alias; a const's or var's its
+// declared type, or the kind of an untyped literal. marker gets every const or
+// var spec whose name matches markerRE, with its text.
 func exportedAPI(src []byte, out map[string]string, marker func(name, spec string)) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "", src, parser.SkipObjectResolution)
@@ -178,6 +207,37 @@ func exportedAPI(src []byte, out map[string]string, marker func(name, spec strin
 		_ = printer.Fprint(&b, fset, n)
 		return b.String()
 	}
+	types := func(l *ast.FieldList) string {
+		if l == nil {
+			return ""
+		}
+		var ts []string
+		for _, fl := range l.List {
+			for range max(1, len(fl.Names)) {
+				ts = append(ts, text(fl.Type))
+			}
+		}
+		return strings.Join(ts, ", ")
+	}
+	tparams := func(l *ast.FieldList) string { // printer prints no bare FieldList
+		if l == nil {
+			return ""
+		}
+		var ps []string
+		for _, fl := range l.List {
+			for _, n := range fl.Names {
+				ps = append(ps, n.Name+" "+text(fl.Type))
+			}
+		}
+		return "[" + strings.Join(ps, ", ") + "]"
+	}
+	sig := func(e ast.Expr) string {
+		ft, ok := e.(*ast.FuncType)
+		if !ok {
+			return text(e)
+		}
+		return "func" + tparams(ft.TypeParams) + "(" + types(ft.Params) + ") (" + types(ft.Results) + ")"
+	}
 	for _, d := range f.Decls {
 		switch d := d.(type) {
 		case *ast.FuncDecl:
@@ -185,11 +245,11 @@ func exportedAPI(src []byte, out map[string]string, marker func(name, spec strin
 				continue
 			}
 			if d.Recv == nil || len(d.Recv.List) == 0 {
-				out[d.Name.Name] = text(d.Type)
+				out[d.Name.Name] = sig(d.Type)
 			} else if recv := recvName(d.Recv.List[0].Type); ast.IsExported(recv) {
 				// A method of an unexported type is no API of rho's (only an
 				// interface it satisfies, e.g. badger.Logger, reaches it).
-				out[recv+"."+d.Name.Name] = text(d.Type)
+				out[recv+"."+d.Name.Name] = sig(d.Type)
 			}
 		case *ast.GenDecl:
 			for _, s := range d.Specs {
@@ -198,30 +258,57 @@ func exportedAPI(src []byte, out map[string]string, marker func(name, spec strin
 					if !s.Name.IsExported() {
 						continue
 					}
+					head := tparams(s.TypeParams)
+					if s.Assign.IsValid() {
+						head += "= "
+					}
 					var fields *ast.FieldList
+					prefix := ""
 					switch t := s.Type.(type) {
 					case *ast.StructType:
 						fields = t.Fields
 					case *ast.InterfaceType:
 						fields = t.Methods
+						prefix = openIface
+						for _, fl := range fields.List {
+							for _, n := range fl.Names {
+								if !n.IsExported() {
+									prefix = "" // sealed: only its own package implements it
+								}
+							}
+						}
 					default:
-						out[s.Name.Name] = text(s.Type)
+						out[s.Name.Name] = head + text(s.Type)
 					}
 					if fields == nil {
 						continue
 					}
-					out[s.Name.Name] = ""
+					out[s.Name.Name] = head
 					for _, fl := range fields.List {
+						if len(fl.Names) == 0 { // embedded: its names are promoted
+							out[s.Name.Name+".("+text(fl.Type)+")"] = prefix + "embedded"
+						}
 						for _, n := range fl.Names {
 							if n.IsExported() {
-								out[s.Name.Name+"."+n.Name] = text(fl.Type)
+								out[s.Name.Name+"."+n.Name] = prefix + sig(fl.Type)
 							}
 						}
 					}
 				case *ast.ValueSpec:
-					for _, n := range s.Names {
+					for i, n := range s.Names {
 						if n.IsExported() {
-							out[n.Name] = ""
+							switch {
+							case s.Type != nil:
+								out[n.Name] = text(s.Type)
+							case i < len(s.Values):
+								if lit, ok := s.Values[i].(*ast.BasicLit); ok {
+									out[n.Name] = "untyped " + lit.Kind.String()
+								} else {
+									out[n.Name] = ""
+								}
+							default:
+								out[n.Name] = ""
+							}
 						}
 						if markerRE.MatchString(n.Name) {
 							marker(n.Name, text(s))
