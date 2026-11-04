@@ -244,8 +244,8 @@ type headStripe struct {
 }
 
 // headWeight is what e holds: its pieces, bounds and generations' pieces
-// (at most headMaxEntryPieces, so an entry weighs at most half a stripe's
-// share) plus one.
+// (at most headMaxEntryPieces, so an entry fits in one stripe's share) plus
+// one.
 func headWeight(e *headEntry) int {
 	w := len(e.pieces) + len(e.bounds) + 1
 	for _, g := range e.gens {

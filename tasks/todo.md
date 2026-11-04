@@ -25,9 +25,10 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
   stop rebuilding a key's whole history. Released: P3 HISTDECODE, HEADLEND, P1 HISTTRIM, CASCADEMETA (v4.103.0), P2
   (v4.104.1: the plural door reads and fills the head entry; `p2.txt`). Next, P5 (design.txt § P5, checked): bound
   NodeHistoryTemporalMeta (10.9 GB). Phase 0 shipped (v4.105.1): on sigma's shape the misses are pins below the
-  entry's maxTx (plural door) and no entry; deletes, retractions, stale tokens and node-at doors count zero. Next:
-  option C, a second entry generation for pins straddling a cut, measured against sigma's every-cut write
-  (SetNodeVersionInterval patching the open head row); Phase 1 (deletes and retractions) only if a store shows them. Also open: the caller-instant pre-flight and cascadeMissing*Err read whole histories; the skeleton read
+  entry's maxTx (plural door) and no entry; deletes, retractions, stale tokens and node-at doors count zero. Option C
+  shipped (v4.105.2): pin-below misses 516 -> 52 on sigma's shape, skeletons read 8,413 -> 1,145. Left: the 52 pins
+  below the lowest generation (C2: a fill at a lower pin records a generation) and first-read "no entry" misses;
+  Phase 1 (deletes and retractions) only if a store shows them. Also open: the caller-instant pre-flight and cascadeMissing*Err read whole histories; the skeleton read
   itself is O(versions) (option F). Caveat (design.txt §4): compaction between tx ops can trim a row above the current
   version that rollback puts back. Done when sigma's next profile shows history reads below 10 % of alloc_space.
   sigma's data answers: on hold (sigma). **rho/sigma:** the largest open item: P5 targets NodeHistoryTemporalMeta,

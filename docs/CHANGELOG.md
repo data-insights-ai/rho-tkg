@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.105.2] - 2026-11-04
+
+### Changed
+
+- **RELHIST P5 option C** (a patch): when a write extends a node or relationship head entry (Update, a correction,
+  ReplaceVersion, CloseVersion, sigma's SetNodeVersionInterval patch), the superseded entry stays as a generation that
+  answers pins in [its maxTx, the write's TxFrom): up to 5 and 2,048 pieces, counted in the cache weight. sigma's
+  plural read at the previous and the cut's pin, and a pin up to five cuts back, now hit the head cache instead of
+  walking the whole history. On sigma's write shape (`TestHeadCountsSigmaShape`, every backend): pin-below misses
+  516 → 52 (previous + cut pins 288 → 0), skeletons read 8,413 → 1,145, sharded history rows 11,357 → 5,249. The
+  differential oracle, the write twin and a per-generation fold check cover it; seven mutations caught
+  (`tasks/evidence/RELHIST/c-*.txt`). No API or store format change.
+
 ## [4.105.1] - 2026-11-04
 
 ### Changed
