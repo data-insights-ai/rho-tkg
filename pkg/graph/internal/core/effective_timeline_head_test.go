@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"math"
 	"runtime"
 	"testing"
 	"time"
@@ -87,32 +86,30 @@ func TestR10HeadTimelineCostIndependentOfHistory(t *testing.T) {
 			small := r10Node(t, g, 2)
 			big := r10Node(t, g, 300)
 			bigRel := r10Rel(t, g, 300)
-			// The minimum of five samples: mallocs counts the whole process,
-			// so another goroutine's allocations (a badger flush, a parallel
-			// test) can land in one sample (minAllocsPerRun in the badger
-			// column-scan alloc tests).
-			nodeAllocs := func(id any) uint64 {
-				best := uint64(math.MaxUint64)
-				for i := range 5 {
-					if i > 0 {
-						time.Sleep(5 * time.Millisecond) // a burst after a commit (badger, -race) outlasts back-to-back samples
-					}
-					best = min(best, nodeAllocsOnce(t, g, id))
-				}
-				return best
-			}
 			// Warm: the first head read of an entity may fold its history.
-			_ = nodeAllocs(nodeIDArg{small})
-			_ = nodeAllocs(nodeIDArg{big})
-			_ = nodeAllocs(relIDArg{bigRel})
-			base := nodeAllocs(nodeIDArg{small})
-			limit := base + 30
-			if got := nodeAllocs(nodeIDArg{big}); got > limit {
-				t.Errorf("node, 300 versions: %d allocs per head read, 2 versions: %d (limit %d): the read folds the history", got, base, limit)
+			_ = headReadsCost(t, g, nodeIDArg{small})
+			_ = headReadsCost(t, g, nodeIDArg{big})
+			_ = headReadsCost(t, g, relIDArg{bigRel})
+			base := headReadsCost(t, g, nodeIDArg{small})
+			// The gate counts (deterministic, whatever the load): every read
+			// is answered from the head entry, and a 300-version entity reads
+			// no more history rows than a 2-version one. Allocations count
+			// the whole process and are logged only (MEMGATE).
+			check := func(what string, id any) {
+				t.Helper()
+				c := headReadsCost(t, g, id)
+				t.Logf("%s: %d/%d head hits, %d history rows (2 versions: %d); %d allocs per read (2 versions: %d; process-wide, log only)",
+					what, c.hits, headCostReads, c.rows, base.rows, c.allocs, base.allocs)
+				if c.hits != headCostReads || c.rows > base.rows {
+					t.Errorf("%s: %d of %d reads from the head entry, %d history rows read (2 versions: %d): the read folds the history",
+						what, c.hits, headCostReads, c.rows, base.rows)
+				}
 			}
-			if got := nodeAllocs(relIDArg{bigRel}); got > limit {
-				t.Errorf("rel, 300 versions: %d allocs per head read (limit %d)", got, limit)
+			if base.hits != headCostReads {
+				t.Fatalf("2 versions: %d of %d reads from the head entry", base.hits, headCostReads)
 			}
+			check("node, 300 versions", nodeIDArg{big})
+			check("rel, 300 versions", relIDArg{bigRel})
 			// sigma's cut: write one more version of the same validity in a
 			// GraphTx, then read. The read after the write stays cheap.
 			for i := range 3 {
@@ -129,18 +126,12 @@ func TestR10HeadTimelineCostIndependentOfHistory(t *testing.T) {
 				if err := tx.Commit(); err != nil {
 					t.Fatal(err)
 				}
-				if got := nodeAllocs(nodeIDArg{big}); got > limit {
-					t.Errorf("node after correction %d: %d allocs per head read (limit %d)", i, got, limit)
-				}
-				if got := nodeAllocs(relIDArg{bigRel}); got > limit {
-					t.Errorf("rel after correction %d: %d allocs per head read (limit %d)", i, got, limit)
-				}
+				check(fmt.Sprintf("node after correction %d", i), nodeIDArg{big})
+				check(fmt.Sprintf("rel after correction %d", i), relIDArg{bigRel})
 				if _, err := g.Temporal.SetNodeVersionInterval(ctx, big, 1000, 2000, map[string]any{"ov_c2": int64(i)}); err != nil {
 					t.Fatal(err)
 				}
-				if got := nodeAllocs(nodeIDArg{big}); got > limit {
-					t.Errorf("node after standalone correction %d: %d allocs per head read (limit %d)", i, got, limit)
-				}
+				check(fmt.Sprintf("node after standalone correction %d", i), nodeIDArg{big})
 			}
 			segs, err := g.Temporal.NodeEffectiveTimeline(big, g.peekNow())
 			if err != nil || len(segs) != 1 || fmt.Sprint(segs[0].Node.PropertiesMap()["ov_c2"]) != "2" {
@@ -150,12 +141,33 @@ func TestR10HeadTimelineCostIndependentOfHistory(t *testing.T) {
 	}
 }
 
+// headCostReads is the head reads headReadsCost samples.
+const headCostReads = 10
+
+// headReadCost is what headCostReads head reads of one entity cost: the reads
+// answered from the head entry and the full history rows read
+// (Core.historyRead), both counts, and the allocations per read (log only:
+// the whole process).
+type headReadCost struct{ hits, rows, allocs uint64 }
+
+// headReadsCost reads id (nodeIDArg or relIDArg) headCostReads times.
+func headReadsCost(t *testing.T, g *Core, id any) headReadCost {
+	t.Helper()
+	var c headReadCost
+	g.historyRead = func(n int) { c.rows += uint64(n) } // #nosec G115 -- a length, never negative
+	defer func() { g.historyRead = nil }()
+	hits := g.headHits.Load()
+	c.allocs = nodeAllocsOnce(t, g, id)
+	c.hits = g.headHits.Load() - hits
+	return c
+}
+
 // nodeAllocsOnce is one sample of the allocations per head read of id
-// (nodeIDArg or relIDArg), over ten reads.
+// (nodeIDArg or relIDArg), over headCostReads reads.
 func nodeAllocsOnce(t *testing.T, g *Core, id any) uint64 {
 	t.Helper()
 	return mallocs(func() {
-		for range 10 {
+		for range headCostReads {
 			var err error
 			switch x := id.(type) {
 			case nodeIDArg:
@@ -167,5 +179,5 @@ func nodeAllocsOnce(t *testing.T, g *Core, id any) uint64 {
 				t.Fatal(err)
 			}
 		}
-	}) / 10
+	}) / headCostReads
 }

@@ -446,27 +446,32 @@ func TestEffectiveLendReadsThroughSnapshot(t *testing.T) {
 // headLendVersions-1 history winners allocates no row. Before HEADLEND each
 // winner's DeepCopy cost 4 allocations (row, properties, temporal block,
 // integrity): 25 a read here, 5 after it (the segment slice and fixed
-// overhead, independent of the versions). The threshold leaves 3 of slack
-// and still fails on a single copied winner.
+// overhead, independent of the versions). The gate counts the copies: two
+// head-hit reads hand out the same row for every history winner (no copy).
+// AllocsPerRun counts the whole process, so it is logged only (MEMGATE).
+// Not parallel: testing.AllocsPerRun refuses a parallel test.
 func TestEffectiveHeadReadAllocs(t *testing.T) {
 	g, nid, _ := headLendGraph(t)
 	pin := g.readNow()
-	if _, err := g.Temporal.NodeEffectiveTimeline(nid, pin); err != nil { // fills the head entry
-		t.Fatal(err)
-	}
-	hits := g.headHits.Load()
-	allocs := testing.AllocsPerRun(50, func() {
-		if _, err := g.Temporal.NodeEffectiveTimeline(nid, pin); err != nil {
+	read := func() []temporal.NodeSegment {
+		s, err := g.Temporal.NodeEffectiveTimeline(nid, pin)
+		if err != nil {
 			t.Fatal(err)
 		}
-	})
-	if g.headHits.Load() == hits {
-		t.Fatal("no head hit")
+		return s
 	}
-	t.Logf("head-hit NodeEffectiveTimeline, %d versions: %.0f allocs/read", headLendVersions, allocs)
-	if limit := float64(8); allocs > limit {
-		t.Errorf("%.0f allocs per head read, want <= %.0f (a copy per history winner)", allocs, limit)
+	read() // fills the head entry
+	hits := g.headHits.Load()
+	a, b := read(), read()
+	if got := g.headHits.Load() - hits; got != 2 {
+		t.Fatalf("%d head hits in 2 reads, want 2", got)
 	}
+	checkNodeSegs(t, "head-hit NodeEffectiveTimeline", a)
+	if n := copiedNodeRows(a, b); n != 0 {
+		t.Errorf("head-hit reads copied %d of %d history winners, want none", n, headLendVersions-1)
+	}
+	allocs := testing.AllocsPerRun(50, func() { read() })
+	t.Logf("head-hit NodeEffectiveTimeline, %d versions: %.0f allocs/read (process-wide, log only)", headLendVersions, allocs)
 }
 
 // TestEffectiveLentRowsSurviveOverwriteAndTrim (run it with -race): readers
