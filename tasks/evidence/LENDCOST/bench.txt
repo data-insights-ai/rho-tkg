@@ -1,0 +1,104 @@
+LENDCOST bench, 2026-11-04, AMD Ryzen 9 7950X3D, shared with ai-soc's measured run (load in the last column).
+BenchmarkLendSorted (badgerstore_lend_cost_bench_test.go): a read-only store of 64 Ki nodes of ~512 B (incompressible),
+written in 8 rounds under shrunk levels (layeredOptions(128 KiB, 4)) so its tables span L0..L3; badger's block cache warmed
+with every block before the cases; every row out of the entity cache. One op = one call of 4 or 64 IDs; sparse = rows
+1,000 apart, dense = adjacent rows. "ids": row j has ID 1+j (adjacent rows, adjacent IDs); "spread": ID 1+j<<22 (adjacent
+rows one snowflake millisecond apart). lend = LendNodesSorted; get1txn = Txn.Get + Item.Value + decode per ID in one read
+txn; viewperid = the same in a DB.View per ID (v4.102.0's lend path).
+before = the red commit's lend (one iterator, stepTo or Seek per miss); after = the fix (lendAfterMiss).
+Binaries built once each (go test -c), run alternately, 3 rounds:
+  GOMAXPROCS=2 <bin> -test.run '^$' -test.bench BenchmarkLendSorted -test.cpu 1 -test.benchtime 1000x -test.count 1
+(scratch script bench.sh; ranges = min-max of the 3 rounds; B/op and allocs = mean.)
+Tables per level L0..L3 printed by each run (all four populated in every run):
+  [1 13 8 21] load 2.87
+  [2 4 8 20] load 3.12
+  [2 6 11 16] load 2.95
+  [2 5 7 20] load 2.87
+  [2 5 13 15] load 2.95
+  [2 5 9 19] load 3.12
+  [2 7 11 15] load 3.19
+  [2 7 12 15] load 3.17
+  [2 5 10 18] load 3.23
+  [1 14 7 19] load 3.21
+  [2 3 7 19] load 3.27
+  [2 4 10 20] load 3.24
+
+1. Final: before vs after (the fix as committed)
+case                               before us/op    B/op allocs        after us/op    B/op allocs  load
+ids/dense4/get1txn               14.0-    16.2   15049    117     14.1-    15.4   15069    117  2.9-3.2
+ids/dense4/lend                  13.5-    14.1   10940     91     14.6-    14.9   11074     94  2.9-3.2
+ids/dense4/viewperid             17.1-    18.9   15435    120     14.6-    19.9   15456    120  2.9-3.2
+ids/dense64/get1txn             191.3-   213.5  238670   1868    203.8-   215.1  239085   1876  2.9-3.2
+ids/dense64/lend                106.9-   109.4   78759    586    109.2-   116.4   78897    589  2.9-3.2
+ids/dense64/viewperid           218.5-   240.5  246987   1931    228.7-   237.2  247439   1940  2.9-3.2
+ids/sparse4/get1txn              14.9-    17.2   15049    117     14.3-    15.2   15078    118  2.9-3.3
+ids/sparse4/lend                 30.2-    31.3   15402    138     17.0-    20.9   15103    119  2.9-3.3
+ids/sparse4/viewperid            15.3-    16.8   15436    120     12.1-    17.2   15465    121  2.9-3.3
+ids/sparse64/get1txn            251.5-   255.1  238706   1869    262.2-   268.6  239112   1878  2.9-3.2
+ids/sparse64/lend               428.9-   502.8  185076   1581    274.1-   295.3  242294   1915  2.9-3.3
+ids/sparse64/viewperid          262.8-   280.5  247236   1933    273.9-   287.5  247569   1942  2.9-3.2
+spread/dense4/get1txn            13.4-    14.4   15035    117     13.3-    16.9   15069    117  3.1-3.2
+spread/dense4/lend               13.4-    14.9   10906     91     14.4-    15.7   15093    118  3.1-3.2
+spread/dense4/viewperid          14.3-    17.9   15422    120     14.2-    18.4   15455    120  3.1-3.2
+spread/dense64/get1txn          214.2-   221.8  238506   1861    207.0-   216.7  239025   1873  3.1-3.2
+spread/dense64/lend             102.9-   109.6   78725    586    113.2-   115.1   78910    589  3.1-3.2
+spread/dense64/viewperid        232.8-   245.3  246848   1924    214.0-   254.7  247366   1936  3.1-3.2
+spread/sparse4/get1txn           12.6-    14.5   15034    117     13.5-    17.4   15071    117  2.9-3.2
+spread/sparse4/lend              27.0-    29.9   15355    138     17.4-    22.3   15095    118  2.9-3.2
+spread/sparse4/viewperid         14.5-    19.9   15420    120     14.7-    23.7   15458    120  2.9-3.2
+spread/sparse64/get1txn         262.9-   268.8  238514   1862    249.5-   267.6  239030   1875  3.1-3.2
+spread/sparse64/lend            445.3-   502.7  184707   1575    292.5-   311.0  242237   1913  2.9-3.2
+spread/sparse64/viewperid       267.9-   283.9  246847   1926    273.8-   292.5  247423   1938  3.1-3.2
+
+2. Dense lend recheck (3000x), before vs after
+case                               before us/op    B/op allocs        after us/op    B/op allocs  load
+ids/dense4/lend                  15.3-    15.8   11082     94     14.9-    15.0   11155     94  3.1-3.7
+ids/dense64/lend                102.9-   104.5   78897    589    101.3-   103.2   78972    589  3.1-3.7
+spread/dense4/lend               16.3-    17.2   11090     94     17.2-    18.9   15068    118  3.2-3.6
+spread/dense64/lend              98.2-   140.9   78908    589     98.8-   111.8   78791    586  3.2-3.6
+
+3. The policy choice, 64-ID batches: afterget = Get unless the next ID is within seekSteps (no probe); after = plus the
+   probe (a run tried by Seek when >= lendProbeMin=32 IDs are left, backing off after a run ends at once). Without the
+   probe, adjacent rows with far IDs (spread/dense64) fall to Get cost, 2.1x v4.103.0's walk; the probe restores the walk
+   for ~1 Seek + 4 Nexts per sparse batch of 64 (sparse64 lend vs get1txn: +0-12 %, within this machine's noise band;
+   +3-4 KB/op for the iterator). Batches under 32 IDs never probe (sigma: ~4.3 IDs per call).
+case                             afterget us/op    B/op allocs        after us/op    B/op allocs  load
+ids/dense64/get1txn             196.7-   212.6  238256   1864    208.4-   222.2  239032   1872  3.5-3.8
+ids/dense64/lend                 87.3-    99.3   78589    583     96.2-   110.7   78903    588  3.5-3.8
+ids/sparse64/get1txn            246.2-   272.0  238297   1866    249.9-   280.7  239087   1874  3.5-3.8
+ids/sparse64/lend               267.7-   290.8  238323   1867    273.3-   303.1  242285   1912  3.5-3.9
+spread/dense64/get1txn          208.6-   217.9  239128   1879    214.1-   218.3  238671   1870  3.6-3.9
+spread/dense64/lend             216.3-   248.6  239152   1880     92.5-   106.8   78774    586  3.6-3.9
+spread/sparse64/get1txn         267.7-   309.0  239142   1880    241.0-   334.1  238680   1872  3.6-3.9
+spread/sparse64/lend            268.3-   315.6  239164   1881    292.0-   323.0  241760   1908  3.6-3.9
+
+4. First policy run (no probe; named "after" there), before vs after, 1000x:
+case                               before us/op    B/op allocs        after us/op    B/op allocs  load
+ids/dense4/get1txn               15.7-    16.1   15068    118     14.1-    14.8   14994    116  7.2-10.9
+ids/dense4/lend                  13.6-    18.2   11126     94     13.5-    14.1   10647     86  7.2-10.9
+ids/dense4/viewperid             15.1-    18.6   15455    121     16.4-    17.0   15379    119  7.2-10.9
+ids/dense64/get1txn             223.5-   300.4  239136   1877    209.0-   212.7  237827   1856  7.2-10.9
+ids/dense64/lend                109.6-   116.6   78947    589    105.0-   108.7   78464    580  7.2-10.9
+ids/dense64/viewperid           241.6-   285.3  247468   1941    227.1-   290.4  246197   1919  7.2-10.9
+ids/sparse4/get1txn              13.5-    16.0   15081    118     14.5-    17.0   14999    117  7.6-10.9
+ids/sparse4/lend                 29.0-    35.1   15590    143     17.6-    18.8   15024    118  7.6-10.9
+ids/sparse4/viewperid            17.5-    18.9   15467    121     15.5-    19.3   15385    120  7.6-10.9
+ids/sparse64/get1txn            274.2-   320.4  239175   1879    265.1-   275.6  237871   1858  7.2-10.9
+ids/sparse64/lend               499.4-   553.8  185237   1626    285.5-   288.6  237895   1859  7.2-10.9
+ids/sparse64/viewperid          291.8-   305.8  247490   1943    276.3-   292.4  246314   1922  7.2-10.9
+spread/dense4/get1txn            13.5-    18.4   15048    117     13.8-    17.4   15073    118  6.9-10.4
+spread/dense4/lend               12.8-    15.6   10942     91     15.0-    16.6   15097    119  6.9-10.4
+spread/dense4/viewperid          14.6-    17.0   15435    120     17.2-    19.2   15460    121  6.9-10.4
+spread/dense64/get1txn          211.5-   244.3  238629   1868    220.3-   250.2  239117   1878  6.9-10.4
+spread/dense64/lend             105.2-   117.8   78763    586    235.3-   245.3  239143   1879  6.9-10.4
+spread/dense64/viewperid        242.6-   321.3  246995   1932    249.9-   289.8  247448   1941  6.9-10.4
+spread/sparse4/get1txn           15.9-    17.5   15043    117     14.6-    15.7   15076    118  6.9-10.4
+spread/sparse4/lend              30.5-    34.9   15413    138     15.8-    18.5   15100    119  6.9-10.4
+spread/sparse4/viewperid         18.5-    20.8   15430    120     16.8-    20.1   15463    121  6.9-10.4
+spread/sparse64/get1txn         265.2-   289.7  238639   1869    258.2-   294.7  239123   1879  6.9-10.4
+spread/sparse64/lend            469.4-   536.2  185197   1584    289.5-   302.1  239149   1880  6.9-10.4
+spread/sparse64/viewperid       299.1-   320.4  247167   1933    288.2-   316.7  247542   1942  6.9-10.4
+
+Note: the first runs (not kept) measured without the block-cache warm-up: the first case of each shape (lend) paid the
+block decompression the later ones skipped (z.Calloc under LendNodesSorted in a memprofile), inflating lend by ~25 %.
+The bench warms every block since.

@@ -176,6 +176,23 @@ func BenchmarkLendSorted(b *testing.B) {
 					b.Fatalf("level %d holds no table: %v", l, levels)
 				}
 			}
+			// Warm badger's block cache with every block of every table, so
+			// the first method measured pays no decompression the later
+			// ones skip.
+			if err := bs.view(func(txn *badgerv4.Txn) error {
+				iopts := badgerv4.DefaultIteratorOptions
+				iopts.PrefetchValues = false
+				it := txn.NewIterator(iopts)
+				defer it.Close()
+				for it.Rewind(); it.Valid(); it.Next() {
+					if err := it.Item().Value(func([]byte) error { return nil }); err != nil {
+						return err
+					}
+				}
+				return nil
+			}); err != nil {
+				b.Fatal(err)
+			}
 			bs.nodeCache.ResetForTest()
 			for _, shape := range []struct {
 				name string

@@ -1,11 +1,15 @@
 package badger
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
 // countScanReads installs scanReadHook for the test and returns its counts,
@@ -36,15 +40,34 @@ func lendCostRange(from, to int64) []int64 {
 
 // TestLendSortedSparseMissesGetNotSeek (LENDCOST, ai-soc 4 Nov: LendByIDs
 // 115 -> 629 s on v4.103.0): a lent row the cache missed is read by a point
-// Get unless the next ID lies within seekSteps of it; only such a dense run
-// creates and seeks the iterator, which then steps, and a target it cannot
-// step to costs at most seekSteps Next calls before the run ends.
+// Get unless the next ID lies within seekSteps of it or, with lendProbeMin
+// IDs left, a probe tries a run; only a run creates and seeks the iterator,
+// which then steps, and a target it cannot step to costs at most seekSteps
+// Next calls before the run ends and the probes back off.
 func TestLendSortedSparseMissesGetNotSeek(t *testing.T) {
 	bs := newTestBadgerStoreInMemory(t)
 	const n = 4096
 	for i := int64(1); i <= n; i++ {
 		putTestNode(t, bs, i, 1, nil)
 		putTestRel(t, bs, 1_000_000+i, 3, 1, i)
+	}
+	// Spread rows: adjacent keys 1,000 IDs apart (rows of different
+	// milliseconds).
+	spread := func(k int64) int64 { return 1_000_000 + 1000*k }
+	spreadIDs := func(from, to, every int64) []int64 {
+		var ids []int64
+		for k := from; k < to; k += every {
+			ids = append(ids, spread(k))
+		}
+		return ids
+	}
+	for k := int64(0); k < 600; k++ {
+		putTestNode(t, bs, spread(k), 1, nil)
+		putTestRel(t, bs, 1_000_000+spread(k), 3, 1, spread(k))
+	}
+	sparse40 := make([]int64, 40)
+	for i := range sparse40 {
+		sparse40[i] = 1 + 100*int64(i)
 	}
 	if err := bs.Flush(); err != nil {
 		t.Fatal(err)
@@ -60,6 +83,12 @@ func TestLendSortedSparseMissesGetNotSeek(t *testing.T) {
 		{"dense then sparse", append(lendCostRange(1, 8), 2000, 3000, 4000), want{1, 1, 7 + seekSteps, 3}},
 		{"sparse then dense", append([]int64{100}, lendCostRange(2000, 2007)...), want{1, 1, 7, 1}},
 		{"two dense runs", append(lendCostRange(10, 13), lendCostRange(3000, 3003)...), want{1, 2, 6 + seekSteps, 0}},
+		{"sparse, probed once", sparse40, want{1, 1, seekSteps, 39}},
+		{"spread run, probed", spreadIDs(0, 40, 1), want{1, 1, 39, 0}},
+		{"spread sparse, probe backs off", spreadIDs(0, 600, 6), want{1, 2, 2 * seekSteps, 98}},
+		{"duplicates", []int64{1, 1, 2001, 2001}, want{0, 0, 0, 4}},
+		{"descending", []int64{3000, 2000, 1999, 1000}, want{0, 0, 0, 4}},
+		{"spread sparse below lendProbeMin", spreadIDs(0, 6*(lendProbeMin-1), 6), want{0, 0, 0, lendProbeMin - 1}},
 	}
 	for _, c := range cases {
 		for _, kind := range []string{"nodes", "rels"} {
@@ -334,6 +363,64 @@ func TestLendSortedRepinsAfterFlushBetweenIDs(t *testing.T) {
 			}
 			if p, _ := rout[len(ids)-1].GetProperty("p"); p != "new" {
 				t.Fatalf("rel %d lent p %v after the flush, want new", 1000+last, p)
+			}
+		})
+	}
+}
+
+// TestLendSortedRowMissingOnEveryPath: a listed row removed under the store
+// (as badger reports a block that fails its checksum) is ErrCorruptWire on
+// each read path of lendAfterMiss, never another row's or "not found": by
+// Get, by a step in a run, by the Seek that starts a run and by a probe.
+func TestLendSortedRowMissingOnEveryPath(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+	for i := int64(1); i <= 400; i++ {
+		putTestNode(t, bs, i, 1, nil)
+		putTestRel(t, bs, 1000+i, 3, 1, i)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	const gone = 200
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		if err := txn.Delete(storepkg.NodeKey(snowflake.ID(gone))); err != nil {
+			return err
+		}
+		return txn.Delete(storepkg.RelKey(snowflake.ID(1000 + gone)))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	probe := make([]int64, lendProbeMin)
+	for i := range probe {
+		probe[i] = gone + 5*int64(i)
+	}
+	for name, c := range map[string]struct {
+		ids  []int64
+		path scanRead // the read that reaches gone
+	}{
+		"get":   {[]int64{100, gone, 300}, scanReadGet},
+		"step":  {[]int64{gone - 2, gone - 1, gone, gone + 1}, scanReadNext},
+		"seek":  {[]int64{100, gone, gone + 1}, scanReadSeek},
+		"probe": {probe, scanReadSeek},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bs.nodeCache.ResetForTest()
+			bs.relCache.ResetForTest()
+			counts := countScanReads(t)
+			err := bs.LendNodesSorted(lendCostNodeIDs(c.ids...), make([]*types.Node, len(c.ids)))
+			if !errors.Is(err, storecontract.ErrCorruptWire) {
+				t.Fatalf("nodes: got %v, want ErrCorruptWire", err)
+			}
+			if counts[c.path] == 0 {
+				t.Fatalf("nodes: no read of kind %d: %v", c.path, *counts)
+			}
+			rids := make([]types.RelID, len(c.ids))
+			for i, id := range c.ids {
+				rids[i] = types.RelID(snowflake.ID(1000 + id))
+			}
+			err = bs.LendRelationshipsSorted(rids, make([]*types.Relationship, len(rids)))
+			if !errors.Is(err, storecontract.ErrCorruptWire) {
+				t.Fatalf("rels: got %v, want ErrCorruptWire", err)
 			}
 		})
 	}

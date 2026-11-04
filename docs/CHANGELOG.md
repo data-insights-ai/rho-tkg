@@ -18,6 +18,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   deletes a rewritten file under an open read (badger `value.go:342-355`), and logs a wait above 60 s
   (`TestValueLogGCKeepsTheFileOfAnOpenRead`; `tasks/evidence/VALUETHRESH/`, `docs/badger.md` section 6, rule 9).
 
+### Fixed
+
+- **LENDCOST** (ai-soc's 2-day tiered budget run: LendByIDs 115 -> 629 s on v4.103.0; a fix, no new exported name).
+  Badger's `LendNodesSorted` / `LendRelationshipsSorted` (and through them tiered's) read each sparse cache miss with
+  an iterator `Seek`, which merges every table of every level, where a `Txn.Get` skips tables by their bloom filters.
+  A miss is now a `Get` on the call's pinned read transaction unless a run is evident: the next ID lies within 4 of
+  this one (a forward step reaches it), or at least 32 IDs are left and a probe `Seek` tries a run (rows written in
+  different milliseconds lie next to each other with far IDs); a run steps forward and ends at the first row it
+  cannot reach in 4 steps, and probes back off. Answers, re-pin after a flush, row-missing classification and no
+  cache fill unchanged. On a store spanning L0..L3 (`BenchmarkLendSorted`): 4 IDs 1,000 rows apart 27-31 -> 17-22 us
+  per call (a `Get` per ID 13-17 us), 64 such IDs 429-503 -> 274-311 us (`Get`s 250-269 us); adjacent rows unchanged
+  (64 IDs 103-110 us, `Get`s 191-222 us); 4 adjacent rows with far IDs 13-15 -> 14-16 us (`Get` cost). Tests
+  `TestLendSorted*` in `badgerstore_lend_cost_test.go`; `tasks/evidence/LENDCOST/`.
+
 ## [4.103.0] - 2026-11-04
 
 ### Changed
