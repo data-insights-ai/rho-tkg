@@ -299,11 +299,13 @@ func TestNodeStoredSizesExactForValueLogRows(t *testing.T) {
 // guard iterator on a closed DB panics (iterator.go:464-466), which took down
 // the package's race run in ci-docker.
 func TestValueLogGCOnAClosedDBReturns(t *testing.T) {
-	bs := vgGarbageStore(t)
-	if err := bs.db.Close(); err != nil {
+	bs, err := New(vgConfig(t.TempDir()))
+	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = bs.Close() })
+	if err := bs.db.Close(); err != nil { // no Close after: as ckCrash, the store is dropped
+		t.Fatal(err)
+	}
 	if n := bs.runValueLogGC(); n != 0 {
 		t.Fatalf("a pass on a closed DB rewrote %d files", n)
 	}
