@@ -132,6 +132,13 @@ On consumer runs (ai-soc, sigma):
   **rho/sigma:** none measured.
 
 On René:
+- **CONTRACT** (5 Nov analysis, 5a) — run ai-soc's tests against the rho commit before rho's tag. sigma's guard set
+  (7 tests via `-modfile`) is ~15 s warm but would not have caught REFFANOUT's break (ai-soc's
+  `TestTieredDerivedReadOpensNoColdShard`, only in its full short suite, 5-8 min at load 30-50). Default: skip; ai-soc's
+  own gate catches such a break before it pins. **rho/sigma:** none (release process).
+- **RACEAFTER** (René 5 Nov: "it creates load on the PC") — the release starts `make race` detached after each patch or
+  minor push, and cron runs it every 6 h. Options: cron only; `nice` it; cap it at `-p 2`. Default: unchanged until
+  René says. **rho/sigma:** none (shared PC load).
 - **ASOFVALID** (ai-soc 5 Nov) — a `valid=` page costs ~8 s on the masked copy (v4.98.4), 76 % one point row read
   per member of a cold shard, which carries no relationship temporal index (shard_index_fanout.go:240-244, :486-490).
   Either (b) a cold checkout loads the rel-type envelope (byID, ~50-60 B a rel, bounded by MaxOpenColdShards; ~2

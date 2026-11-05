@@ -33,6 +33,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Reviews:** one read-only Fable review per finished branch, before its merge, given the code and the diff.
+  - **Next work** (`tasks/todo.md`): Now RELHIST (waits for sigma's next profile); Next Round 2 read items (wait for
+    ai-soc's combined run), FIXED-MEMORY step 1, WRITERATE; On René ASOFVALID, CONTRACT, RACEAFTER.
 - **Checklist facts learned at releases:** the ai-soc engine builds only with GOTOOLCHAIN=go1.27.3 (its parent module
   requires it); merging a release branch back can move Unreleased CHANGELOG entries under the tag's heading, so check
   the heading after every such merge; the release tool is `go run ./scripts/release` (`make kind`, `gate-*`, `release-*`).
