@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.105.6] - 2026-11-05
+
 ### Fixed
 
 - **CLOSERACE**: badger's Close and the periodic open image read the store version from a fresh read transaction
