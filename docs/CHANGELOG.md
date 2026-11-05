@@ -18054,6 +18054,107 @@ All in `pkg/graph/v3056_fixes_test.go`.
 - Shadow property protection (`tkg_` prefix rejection).
 - Defensive copying on all slice accessors.
 
+## Folded from tasks/todo.md, 5 Nov 2026
+
+Items with no current work, verbatim, so the todo holds current work only (René 5 Nov). Later and Parked items
+(with three Waiting items that had no live trigger: PERTIER, PUSHSLOW leftovers, SHARD step 10) reopen on their
+trigger as a new todo item; the closed list says why each closed.
+
+### Later
+
+- **PURGEIDS** (sigma, for PAGEGC) — a hard purge by id. Waits for sigma's answers (nodes/rels, history, id reuse,
+  batch size, stores). **rho/sigma:** direct once sigma garbage-collects pages: dead pages leave the store.
+- **TIMEWINDOW** (a minor) — reads bounded by a mint-time range, for one-shot evaluation only (half-open mint range,
+  hot shard always included); sigma's other candidate: a ValidEndAfter-style bound on ByTypeAndProperty. Done when
+  ai-soc and sigma say whether one-shots matter (metric lead `aisoc_sigma_edge_shard_checkouts_total`).
+  **rho/sigma:** only if sigma runs one-shot evaluations or asks for the ValidEndAfter bound.
+- **DICTMERGE**, **PROPPOS** (after DICT) — merge per-shard dictionaries on the cold move; a positional property form
+  (~7 B less per property, a new row format). Done when measured as a share of stored bytes on a real store.
+  **rho/sigma:** storage only, by CHAIN's storage split; sigma's blob pages carry few properties, so little.
+- **GETWALK** — point gets on hot read paths (about 45-52 `Txn.Get` sites in badger and tiered, ~4x the row each)
+  become forward walks. Done when measured on the hot paths. **rho/sigma:** possible on sigma's as-of reads;
+  unmeasured.
+- **DEVREF** (ai-soc 23 Oct) — find a node's edges by its endpoint in one index read, so edges drop the `device`
+  text property. Waits for ai-soc. **rho/sigma:** none.
+- **COLDWRITE** — a test writes into a cold shard with DurableCommit, drops the store without Close and reads it back
+  (a write can land in a cold shard; ai-soc's writes never do). **rho/sigma:** none (a test).
+- **METASYNCRIG** — a power-loss rig (LazyFS or dm-flakey) shows METASYNC's loss without `SyncWrites` and the guard.
+  **rho/sigma:** none (proof of an existing guard).
+- **COLDSTART** — a fresh agent works from the docs alone; every gap it finds is fixed in its owner file.
+  **rho/sigma:** none (rho's docs).
+- **GUARDS** — each rule the docs no longer state has a test that fails on a planted violation. **rho/sigma:** none.
+
+### Parked
+
+Each reopens on a consumer request, a measurement, or René:
+- **PERTIER, RAM doors** (each a minor) — per-tier MemTableSize (64 to 128 MB on BO: push -2.9 %, GC mark -20.4 s,
+  heap +170 MB); a listed label keeps Elements definitions in RAM and moves scalar ones to disk; Elements rows on
+  disk; COMPOSITEDISK; PROPHOT (only if Derived's index goes to disk). Waits for ai-soc's ask with numbers.
+  **rho/sigma:** none unless sigma asks.
+- **PUSHSLOW, RELPAGEVALID leftovers** (ai-soc 29 Oct, 1 Nov) — the mask read is 14-17 µs per returned node, half of
+  it the row read and decode (sigma filters on the whole row), a third tiered HasNodeHistory's stamps re-read; the
+  valid-instant fetch fell 306-445 s -> ~8 s on the 12 GB masked store, but a page still costs ~8 s on cold shards (no
+  envelope there; FIXED-MEMORY step 2; a larger read batch measured no gain, each tiered row read opens its own view).
+  Reopen when ai-soc says either still matters. RHOBATCH: not to be built (sigma rejected the key-to-id map).
+  PUSHSLOW's push wall is gone (ai-soc 5 Nov: BA push 4,142 s on v4.105.3, k11050630, against 9,004 and 14,616).
+  **rho/sigma:** small: the stamps re-read is LISTREAD's; fixed there, it falls here too.
+- **SHARD step 10, later slices** — label and property postings and the rel owner map on the fast volume (slice 1,
+  UNIQIDX, shipped v4.81.0). Sizing data (ai-soc 25 Oct, k10251802, 3 data days): 1,038,092 keyed nodes (Process
+  632,653 at 40.6 B a key, File 229,863 at 110.9 B, RegValue 74,934 at 125.2 B); ~1.9 M BA + 1.0 M BO edges;
+  reference shard 828 MB, day shard 1.2 GB. Waits for a measured need.
+  **rho/sigma:** none measured.
+- **R37** — a cold listing below 4x a fact's values needs a column door with sigma's segment-based joined(); v4.83.0
+  cut rho's part (warm 8.5x -> 4.0x, cold 14.9x -> 10.5x). sigma: not now.
+- **TOMBSTONE** — a delete keeps the believed end of validity (backlog 4, 7, 25); branch `tombstone-writer-v4.63`
+  (37a1ff56, archived), ~½ day. No consumer needs it (sigma excises validity).
+- **RELDISK phase 2** — a composite rel index and Rels().ByTypeAndProperties; held by ai-soc and sigma (nothing reads
+  a multi-key rel probe).
+- **PAGEBLOB** — a block store on the tiers and batched index inserts, only if sigma's blocks outgrow one byte
+  property (100,000 B default). Separately: current-only Elements (a minor; no member entries for an append-only
+  label, half the block write, `tasks/evidence/ELEMDISK/block-cost.txt`; needs a defined answer for every pinned door;
+  sigma asks with PAGEBLOB's BA numbers); relationship types on disk refuse Elements (build on an ask); WRITEGROW's
+  open question: why sigma's `wholeWrites` mode ended at 299 segments.
+- **CREATEPEAK** — on-disk index creates and drops collect every entry before writing (~120 B a posting); rare.
+- **SUITE** — fold the near-copy memory and badger tests into the shared store suite (René stopped it 4 Nov; branch
+  `consolidate`).
+- **DURABLEVIS** (René 3 Nov) — a reader can see a DurableCommit group before its fsync; holding readers measured too
+  costly; alternative: report the last durable LSN, an LSN lease, idempotent replay by the consumer
+  (`tasks/evidence/DURABLEVIS/`).
+- **CACHE** — per-shard memtable, block cache and compactors (88 MB a writable shard); under 1 GB to save today.
+  Also holds BADGER step 3's leftover (per-tier caches and compactors).
+- **PENDING** — reading one entity walks badger's whole write buffer (half built, `row102-pending-ranged`, archived).
+- **RELSIDECAR** — multi-property rel lookups may be slow on BA; waits for a measurement.
+- **NITS** — small findings no consumer has hit (backlog 80-82, review findings).
+- **STALECITE** — comments citing removed todo sections; fixed with the next change to that code.
+- **V5** — paused on `v5-takeover` (3bd4d13a, archived; HANDOVER); waits for the consumers' use of it.
+- **BACKLOG** — 26 numbered items without a requester (HANDOVER), cited by code.
+- **BADGERPANIC** — badger parses a damaged block trailer before its checksum and panics in its own goroutines
+  (table.go:575-604; `tasks/evidence/VERIFY/trailer_test.go.txt`); René 24 Oct: no fork; rho recovers what it can.
+
+### Closed 4 Nov (René: "are they still necessary"), and 5 Nov on ai-soc's data
+
+- **ASOFREAD**: covered by RELHIST (P2 read the head entry in the plural door; P5 bounds the rest).
+- **REOPEN**: ai-soc's own reopen proof; no rho work waited on it.
+- **PROPSTR**: all three fixes shipped (v4.88.1, PROPSEEK v4.89.1, PROPREWRITE v4.89.2); reopen if a BO run stalls.
+- **OPENIMAGE**: steps 1-2 shipped (v4.88.0, v4.89.0); reopen if a crash reopen is not bounded by recent writes.
+- **SCALEPROFILE**: superseded by ai-soc's round runs on main's tip and FIXED-MEMORY.
+- **FOLDS**: today's documented behaviour kept; no consumer reported a problem.
+- **REVIEWS**: carried by NITS (same rule).
+- **WRITTENAT**: withdrawn by ai-soc 26 Oct (sigma's PUBIDS).
+- **AISOC**: a rule, not an item: each ai-soc request becomes its own item (CONTRIBUTING line 22).
+- **UNIQIDX adoption**: ai-soc's own data work; rho's part shipped in v4.81.0.
+- **ITERPREFIX**: measured 25 Oct, no change; reopen on an L0 pile-up.
+- **ROUND2 measure**: folded into Round 2 read items (one combined ai-soc run).
+- **TEMPIDX-2, IDTABLE**: folded into FIXED-MEMORY.
+- **ASOFWALK later steps, REPORT**: folded into STATEREC.
+- **VDICTDISK step 3**: ai-soc 5 Nov (k11050630): 221,104 dictionary entries in all, ~29 MB at ~130 B; nothing to bound.
+- **COLDEDGE flat list**: ai-soc 5 Nov (k11050630): 0 cold opens on BA with step 1 (v4.101.0); the design stays in
+  `docs/architecture.md` for a store that shows them.
+- **CHAIN-2**: folded into CHAIN.
+- **PAGEBLOB follow-ups, WRITEGROW**: folded into PAGEBLOB (parked); WRITEGROW shipped in v4.99.0.
+- **BADGER step 3**: steps 1-2 done 24 Oct; shipped COLDRO (v4.78.3), PREFETCH (v4.78.4); measured, no change:
+  ITERPREFIX, VLOGGC, CompactL0OnClose, the mover's copy. Left: GETWALK (Later), per-tier caches (CACHE, parked).
+
 ## Folded from tasks/todo.md, 31 Oct 2026
 
 The todo's narrative and post-release measurements of shipped items, verbatim, so the todo holds open work only.

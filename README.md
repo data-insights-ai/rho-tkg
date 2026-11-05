@@ -331,7 +331,7 @@ This list is the complete documentation set; there are no other `.md` files. Put
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security policy and reporting |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Every release, dated: what shipped and why |
 | `HANDOVER.md` | State only: releases, branches, consumers and their agents, glossary, the numbered backlog, user-only actions |
-| `tasks/todo.md` | Open work only, in order: Now, Next, Waiting, Later, Parked; René's open decisions are the items waiting for him, each with a default |
+| `tasks/todo.md` | Current work only, in order: Now, Next, Waiting; René's open decisions are the items waiting for him, each with a default. Later, parked and closed items are folded into the changelog (§ Folded from tasks/todo.md) |
 | `CLAUDE.md`, `AGENTS.md` | Entry points for Claude Code and Codex: pointers into this list (CLAUDE imports AGENTS); they send an agent to the badger file above before any badger work |
 
 Measurement data (`.txt`, `.json`) lives under `tasks/evidence/`, explained by the todo row or changelog entry that cites it.

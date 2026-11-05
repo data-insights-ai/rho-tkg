@@ -1,0 +1,21 @@
+RELHIST P5 on ai-soc's workload: heap alloc_space, run k11050630 (5 Nov 06:30-08:48; ai-soc v5.3.1 f3ca3a1c,
+rho v4.105.3 + sigma v0.12.3, paging on, reduced BA 1,464,138 rows, 5,597 cuts). Profiles read on Flux, read-only
+(René 5 Nov), go tool pprof -sample_index=alloc_space; function names and byte shares only.
+Files: fast-archive-20261105/fluxkit-1105/runs/ba-k11050630/heap-end.pprof (end of push), heap-bars.pprof (after /bars).
+
+                                         heap-end (4.35 TB total)   heap-bars (6.29 TB total)
+tiered NodeHistoryTemporalMeta (cum)        23.5 GB  0.54 %           498.6 GB  7.93 %
+  of which DecodeNodeHistoryDelta                -                    489.2 GB  7.78 %
+core nodeEffectiveViaTemporalMeta           41.6 GB  0.96 %                -
+core nodeEffectiveTimelinesFrom                  -                    634.5 GB 10.09 %
+core nodesByLabelAndPropertyForms               -                     898.4 GB 14.28 %
+core getNodeHistory                              -                    228.8 GB  3.64 %
+
+So the push phase spends 0.5 % on it; the /bars phase (1.94 TB between the two snapshots) spends ~475 GB, ~24 % of
+its allocation. Caller chain in heap-bars: aisoc graphmgr readBatches -> HistoryAfter -> DerivedRowsAt (1.11 TB,
+17.7 %) -> sigma tyla.ReadDerivedAt (1.106 TB) -> rho nodesByLabelAndPropertyForms -> nodeEffectiveTimelinesFrom ->
+entityReads.nodeMeta (99.8 % of NodeHistoryTemporalMeta's bytes) -> tiered/badger NodeHistoryTemporalMeta ->
+historyTemporalMetaByPrefix -> DecodeNodeHistoryDelta.
+Done-when (history reads below 10 % of alloc_space): not met on /bars (timelines 10.1 % + getNodeHistory 3.6 %).
+Next: the red test is a label-and-property form read at a pin over nodes with many delta versions, counting
+history rows decoded per returned node (storeutil.DecodeNodeHistoryDelta calls), against the head entry's answer.

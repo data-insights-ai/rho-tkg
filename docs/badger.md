@@ -28,7 +28,7 @@ Dir/
   holds a pointer; smaller values are inline (`structs.go:147-162`). The default and maximum threshold is 1 MB
   (`options.go:170`, `:201`), so every rho row under 1 MB is inline (open-image chunks are 512 KB) unless
   `Config.ValueThreshold` lowers it (section 6, VALUETHRESH). rho's default limits allow
-  a row of up to about 64 MB (1,000 properties of 64 KB, `core.go:795-797`): a row of 1 MB or more goes to the value
+  a row of up to about 64 MB (1,000 properties of 64 KB, `internal/core/core.go:819-821`): a row of 1 MB or more goes to the value
   log. A single row fits one transaction's size limit, but badger refuses a value above `ValueLogFileSize` and, in
   memory, one at or above `ValueThreshold` (section 2, "One entry and its limits").
 - **Versions.** Every key carries a commit timestamp (`y/y.go:113-121`). A read sees the newest version at or below its
@@ -199,14 +199,14 @@ Dir/
 Each rule says what rho does; a gap is a `tasks/todo.md` item.
 
 1. **A flush is atomic or self-consistent per part.** A `WriteBatch` above the limits is several transactions, so a
-   crash keeps a prefix of it. rho's flush (`badgerstore_flush.go:296-355`) adds its write buffer's ops in map order
-   (`pending` is a map, `badgerstore.go:549`), then the counters, then the change-log records and `LastLSNKey`, and its
-   comments call that atomic. A crash after the first part keeps a random subset of the flush's rows and keys (a
+   crash keeps a prefix of it. Before FLUSHPART, rho's flush (`flushIndexLocked`) added its write buffer's ops in map
+   order (`pending` is a map, `badgerstore.go:658`), then the counters, then the change-log records and `LastLSNKey`,
+   and its comments called that atomic. A crash after the first part kept a random subset of the flush's rows and keys (a
    current row without its history row, an index key without its row), the old counters, and none of the change-log
    records: replicas and the feed miss those mutations for good (LSNs are not reused, `seedLogLSN` takes the highest
-   record, `badgerstore_changelog.go:346-368`). An undercount heals at open; a flush that removed rows (purge, erasure)
+   record, `badgerstore_changelog.go:373`). An undercount heals at open; a flush that removed rows (purge, erasure)
    reopens with counters above the live rows and the store refuses to open (`reconcilePersistedCounter`,
-   `badgerstore.go:1947-1966`). A torn entity is not detected at open. Trigger: a flush above about 10 MB of entries
+   `badgerstore.go:2446`). A torn entity is not detected at open. Trigger: a flush above about 10 MB of entries
    (about 6,000-10,000 rows of 1 KB with their index keys) or 104,855 entries: bulk imports, large batches, purge
    chunks, fast ingest without `SyncWrites`. Closed by FLUSHPART (v4.75.0): a flush that fits commits as one `Txn`,
    a larger one is staged under `0x0E` and committed by a marker that `New` re-applies
@@ -231,8 +231,8 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
 7. **Hold read transactions briefly.** A read transaction pins versions from compaction and, through rho's GC pass
    (rule 9), the value-log files rewritten while it is open; release it before user callbacks (the read snapshot
    does, per chunk). A transaction badger alone pins nothing in the value log unless an iterator is open. Doors
-   that hold one read transaction across the caller's callback (the bulk node and rel walks, `LendNodes`,
-   `LendRels`, the transaction-time scans) hold up a GC pass for as long: meanwhile its guard iterator keeps the
+   that hold one read transaction across the caller's callback (the bulk node and rel walks and the transaction-time scans;
+   not `LendByIDs`, which calls back after each chunk's snapshot is closed) hold up a GC pass for as long: meanwhile its guard iterator keeps the
    rewritten files on disk and the memtables open when the pass began referenced (`iterator.go:468-485`; rule 9).
 8. **Size caches per shard role.** Defaults give every open DB a 256 MB block cache and a 75 MB arena. Gap: CACHE.
 9. **The value-log GC loop has work only for values at or above `ValueThreshold`** (`badgerstore_flush.go` gcLoop:
@@ -326,7 +326,7 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 | `Txn.Commit()` | Conflict check (a transaction that read nothing never conflicts, `txn.go:128`; with `DetectConflicts` false nothing is tracked), then one write request: one WAL record set ending in a finish entry, so replay applies all or none of it (`memtable.go:433-530`). | flush path A, `Update` |
 | `Txn.CommitWith(cb)` | `Commit` that returns at once and runs `cb` after the write. | - |
 | `Txn.CommitAt(ts, cb)` | Managed mode. | - |
-| `Txn.Discard()` | Releases the transaction; idempotent; required. Panics while an iterator of the transaction is open (`txn.go:512-513`); after `db.Close` it can block, since the read mark is sent to a stopped watermark's 100-slot channel (`y/watermark.go:60`, `:77-79`). | deferred; the read snapshot, the scan snapshot and the rel-type build walk skip it once the store is closing or closed (`badgerstore_read_snapshot.go:126`, `badgerstore_scan_snapshot.go:133`, `badgerstore_reltype_temporal_index.go:303`; DISCARDCLOSE, v4.78.1) |
+| `Txn.Discard()` | Releases the transaction; idempotent; required. Panics while an iterator of the transaction is open (`txn.go:512-513`); after `db.Close` it can block, since the read mark is sent to a stopped watermark's 100-slot channel (`y/watermark.go:60`, `:77-79`). | deferred; the read snapshot, the scan snapshot and the rel-type build walk skip it once the store is closing or closed (`badgerstore_read_snapshot.go:139`, `badgerstore_scan_snapshot.go:239`, `badgerstore_reltype_temporal_index.go:304`; DISCARDCLOSE, v4.78.1) |
 | `Txn.ReadTs()` | The read timestamp. | - |
 | `Txn.NewIterator(opt)` | Iterator over the snapshot (8.3). | 71 call sites |
 | `Txn.NewKeyIterator(key, opt)` | All versions of one key; uses the bloom filter on the exact key to skip tables (`iterator.go:496-504`, `:348`). | - (section 9) |

@@ -466,7 +466,7 @@ that test.
   - *Decision: the ID carries the valid day* (ai-soc's option a). Rejected, option b (route by a shard key beside
     the ID): a read by ID carries no key, so it needs an ID -> shard map and one more lookup per read.
   - *The store mints, not core.* Core mints before it knows a shard, and the catalog's windows are not calendar
-    windows today (rotation cuts the old hot shard at the moment it runs). So with the option on, core asks the
+    windows without the option (rotation cuts the old hot shard at the moment it runs). So with the option on, core asks the
     tiered store for event IDs (a store capability, as `PutNodeGeneratedID` already carries a minted ID): the store
     classifies the label (reference nodes keep today's generator), maps the instant to its catalog window and mints
     there. An event node's instant is its `ValidFrom`; an untimed node (no `ValidFrom`, or the untimed axis's
@@ -476,7 +476,7 @@ that test.
     window's next free ID; a relationship on its mint shard (reference start node, `RelsByMint`) at its
     `ValidFrom`. Minting needs only the catalog, never a shard open.
   - *Calendar windows and rotation.* With the option on, windows are calendar windows (`ShardWindow` aligned in
-    `ShardLocation`) and never overlap: rotation makes the window holding `Clock()` hot (creating its shard, or
+    `ShardWindowLocation`) and never overlap: rotation makes the window holding `Clock()` hot (creating its shard, or
     promoting it when data reached it first) and ends the old hot shard at its calendar end, not at the rotation
     instant; a clock jump over several windows leaves them without a shard until data reaches them; `New` picks
     the hot window by `Clock()` too (after a crash mid-replay the host's clock, not the wall's). A manual rotation
@@ -513,12 +513,12 @@ that test.
     on that day's shard, with no cold write. Its event-class start count is 0 by construction. Widening
     `RelsByMint` to event-class starts is therefore not pursued. For such a host the event shards hold edges
     only, so step 3's on-demand window shard serves the `RelsByMint` write first.
-  - *Retention.* With the option, `ByAge` purges by valid day: the ID's time is the valid day, by design the
-    same immutable field it reads today. The catalog keeps a watermark, the largest `before` of any `ByAge` run
+  - *Retention (watermark designed, not built: step 3).* With the option, `ByAge` purges by valid day: the ID's time is the valid day, by design the
+    same immutable field it reads today. The design: the catalog keeps a watermark, the largest `before` of any `ByAge` run
     (shard drops and row purges alike), set in memory and saved before a drop unlinks its shard; a write whose ID
-    falls below it is refused with `ErrWindowDropped` (named, so the host can count its too-late records), checked
+    falls below it would be refused with `ErrWindowDropped` (named, so the host can count its too-late records), checked
     under `ts.mu` where on-demand creation runs, so a write cannot remake a shard a drop is removing. The field
-    raises the catalog's format sentinel (an older release refuses the catalog rather than dropping the field).
+    would raise the catalog's format sentinel (an older release refuses the catalog rather than dropping the field).
   - *Consequences.* The ID's time lies within the entity's valid day; it equals `ValidFrom` only for data minted in
     valid order (a record behind the window's cursor takes the cursor). It is also `idlayout.MintInstantMillis`,
     the last fallback of an entity's start time and of `tkg_created_at`: that fallback becomes the valid day.
@@ -529,12 +529,12 @@ that test.
     backfill before 2026 is a later decision). `RelsByMint` falls back to the reference
     shard when the mint shard is cold; with the option it uses the window's shard, made or reopened.
   - *Steps.* 1 calendar windows and `Config.Clock` (rotation, demotion, `New`), manual rotation refused under the
-    option (built, unreleased); 2 the store's minting capability with the reserved field, windowed cursors and leases in the
-    reference shard, used by every generated-ID create in core (built, unreleased); 3 on-demand window shards (built, unreleased; a retention drop keeps its shard's name and directory
+    option (v4.98.0); 2 the store's minting capability with the reserved field, windowed cursors and leases in the
+    reference shard, used by every generated-ID create in core (v4.98.0); 3 on-demand window shards (v4.98.0; a retention drop keeps its shard's name and directory
     until the directory is gone, so a late write into the day makes a new one), the retention watermark and
     `ErrWindowDropped` (deferred: ai-soc makes no retention calls, so it would never fire; when built, keyed per
     node label and per relationship type, since `ByAge` purges run per label and per type, and never tied to
-    `ColdAfter`); 4 (built, unreleased) a replay test
+    `ColdAfter`); 4 (v4.98.0) a replay test
     of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
     replay as the measurement.
 - **COLDEDGE flat adjacency (on hold, not built).** Adjacency of a reference node with `RelsByMint` opens every event shard

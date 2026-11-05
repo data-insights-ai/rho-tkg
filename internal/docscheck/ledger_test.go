@@ -12,8 +12,8 @@ import (
 // TestLedger (lesson 80): tasks/todo.md and HANDOVER.md do not lag behind
 // the repo. The tag is the version, no doc names it: docs/CHANGELOG.md's
 // newest version heading is the latest tag or a newer release written before
-// `make release-…` tags it; tasks/todo.md has its sections and holds open
-// work only (shipped work is docs/CHANGELOG.md's); a todo item cites only a
+// `make release-…` tags it; tasks/todo.md has its sections and holds current
+// work only (shipped, later and parked work is docs/CHANGELOG.md's); a todo item cites only a
 // backlog number still listed in HANDOVER.md § Backlog. Cached like the other
 // docs tests: it reads the three files, so an edit to one reruns it.
 func TestLedger(t *testing.T) {
@@ -30,7 +30,7 @@ func TestLedger(t *testing.T) {
 		t.Errorf("docs/CHANGELOG.md's newest heading [%s] is older than the latest tag v%s", top[1], latest)
 	}
 
-	for _, sec := range []string{"Now", "Next", "Waiting", "Later", "Parked"} {
+	for _, sec := range []string{"Now", "Next", "Waiting"} {
 		if !strings.Contains(todo, "\n## "+sec+"\n") {
 			t.Errorf("tasks/todo.md lacks a '## %s' section", sec)
 		}
