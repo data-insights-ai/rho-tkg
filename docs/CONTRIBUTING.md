@@ -41,11 +41,12 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - By hand, `go test` without `-count=1` unless a flake or a timing is the question: 9.3 h across 1,009 calls (ai-soc's
   audit, 24-31 Oct). The gates use Go's test cache too, with `-trimpath` (the Makefile exports it) so the checkout's
   path stays out of the keys; only the major gate runs `-count=1`.
-- Who works (René 2026-10-23): the main session does the work itself, analysis and code alike, and runs every test, lint
-  and gate, and reviews its own work (§ Review); the Fable reviewer was deleted (René 2026-10-24). No subagents unless
-  René asks for them.
-  One trial (René 2026-10-31): Fable builds the next state-restore item, from a brief naming the host's call path; report
-  how it went.
+- Who works (René 2026-10-23, 2026-11-03): the main session does the work itself, analysis and code alike, and runs every
+  test, lint and gate. Each finished branch gets one read-only Fable review before merge (René 3 Nov); builders and
+  designers run only on René's word for that task, with one spec frozen at launch.
+- Process changes remove (René 2026-11-05): a change answering "too slow" or "too hard" deletes a step or a script, or
+  turns on a Go facility (test cache, `-trimpath`, `go list -deps`), with wall time before and after. It adds no hook,
+  script or workflow without René's word.
 - Consumer data: ask the consumer's agent for runs and stores, never browse its repo. Flux (ai-soc's run machine) needs
   René's word per run; customer data stays on Flux: copy the store into a new dir under `/srv/fast/rene/` and open only
   the copy, report counts, sizes and relation names only (no row values, hosts, keys or record ids in chat or git), and
@@ -124,7 +125,8 @@ GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed 
 ### Release checklist
 
 Release style of all three repos (René, 4 Nov, via ai-soc): a release is gate, tag, push. One gate per release, chosen by
-the kind of release, run once; it stops at the first red, and a red is fixed on main before the gate runs again.
+the kind of release, run once; it runs every step to the end and lists every red, and a red is fixed on main before the
+gate runs again.
 
 1. Clean up before (René, 4 Nov: "before a release, always clean up"): finished items' scratch, logs and probe stores go
    on the rho section of `~/cleanup.sh` (RHO_DONE and named lines; never work in progress, never by age), then
