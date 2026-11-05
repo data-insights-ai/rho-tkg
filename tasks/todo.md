@@ -37,6 +37,18 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Next
 
+- **ai-soc's five, 5 Nov** (ranked by a read-only Fable design on René's word, checked here against source). Start
+  now: **RELTEMPID** (RHORAM): badger reads a relationship type's TemporalIndex only through `EnvelopeOf`
+  (badgerstore_reltype_temporal_index.go:621), so it keeps byID alone, ~120 -> 50-60 B a rel; a minor (the open
+  image writes its entries, badgerstore_open_image.go:467); done when a red footprint test passes.
+  **REFFANOUT** (RHOREAD): a listing or member page of a reference label still opens every cold shard holding rows
+  (tieredstore_member_page.go:13-20); a per-shard "no rows of label L" recorded at seal, like step 1's no-rows flag,
+  lets it skip them; a minor; done when that listing opens 0 cold shards. Then, on others' data: PUSHSLOW (below),
+  ASOFVALID (On René), COLDEDGE's flat list (on hold, design and red test ready: `docs/architecture.md`; waits for
+  ai-soc's cold opens per Outgoing call on v4.101.0+), FIXED-MEMORY steps 1 and 3 and VDICTDISK step 3 (RHORAM's
+  rest). Stale in the ask: ASOFVALID's 306-445 s fix shipped in v4.98.4, COLDEDGE step 1 in v4.101.0, PROJREAD's
+  door was dropped on sigma's answer (TIERLEND took part (a)); ASOFWALK's later steps stay in STATEREC.
+  **rho/sigma:** REFFANOUT is direct for sigma's restore listings on tiered; RELTEMPID is heap per rel.
 - **Round 2 read items** (ai-soc's read-back inventory, 3 Nov, 60-min BA on tiered; estimates, measure each first):
   UNIQUEMISS (GetOrCreateByKey looks the key up, then the unique pass again on create, core/unique_constraints.go:628;
   claimForever re-marshals the whole owner map per claim, unique_forever.go:120-132); OWNERDROP (tiered
@@ -126,6 +138,10 @@ On consumer runs (ai-soc, sigma):
   valid-instant fetch fell 306-445 s -> ~8 s on the 12 GB masked store, but a page still costs ~8 s on cold shards (no
   envelope there; FIXED-MEMORY step 2; a larger read batch measured no gain, each tiered row read opens its own view).
   Reopen when ai-soc says either still matters. RHOBATCH: not to be built (sigma rejected the key-to-id map).
+  ai-soc 5 Nov reopened PUSHSLOW: push 9,004 -> 13,747 s (k10291501, v4.97.1) after COMPDISK v4.96.0 moved
+  DerivedPage's composite index to disk (a84f59c3: DB.get 6.1 -> 10.4 s, GetNode 1.9 -> 5.5 s a profile, I/O wait).
+  Likely cause: per-row DB.View + Txn.Get on disk-index pages, which LISTREAD v4.105.4 made one scan. Next: ai-soc's
+  push on v4.105.4; if still slow, one A/B arm with DerivedPage's index back in RAM. No rho change before that run.
   **rho/sigma:** small: the stamps re-read is LISTREAD's; fixed there, it falls here too.
 - **SHARD step 10, later slices** — label and property postings and the rel owner map on the fast volume (slice 1,
   UNIQIDX, shipped v4.81.0). Sizing data (ai-soc 25 Oct, k10251802, 3 data days): 1,038,092 keyed nodes (Process
@@ -134,6 +150,12 @@ On consumer runs (ai-soc, sigma):
   **rho/sigma:** none measured.
 
 On René:
+- **ASOFVALID** (ai-soc 5 Nov) — a `valid=` page costs ~8 s on the masked copy (v4.98.4), 76 % one point row read
+  per member of a cold shard, which carries no relationship temporal index (shard_index_fanout.go:240-244, :486-490).
+  Either (b) a cold checkout loads the rel-type envelope (byID, ~50-60 B a rel, bounded by MaxOpenColdShards; ~2
+  days) or (a) FIXED-MEMORY step 2's rel record (zero heap, ~3 days after step 1). Default: (b) first, the only
+  wall-time item rho can act on alone. Red test: a valid page of limit L over a cold shard reads at most L+k rows.
+  **rho/sigma:** none direct (ai-soc's /tkg/asof door).
 - **CHAIN** — which layer (ai-soc, sigma, rho) wastes how much of the 3-4x storage and memory; memory split known
   (26 Oct, k10260011: heap 30 GB, sigma 89 %, rho 3.3 GB, badger 0.77), storage split open. Then each layer decides
   its share; rho's options: believed row stays current, excise without a row copy, delta anchor decoded once per read,
