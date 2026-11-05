@@ -49,14 +49,21 @@ type IntervalEntry struct {
 // Add/Remove run under the store's write lock; QueryAt/QueryOverlap under the
 // read lock. sortMu guards the lazy sort/augmentation for concurrent readers.
 //
-// Cost: Add and Remove O(n) (Add replaces via Remove); AddKnownAbsent and
-// Extend O(1) amortized (posByID); first query after a mutation pays
-// O(n log n) sort + O(n) augmentation, then O(log n + k).
+// byID is the truth. Entries, subMax and posByID are the stabbing structure,
+// built from byID by the first QueryAt or QueryOverlap and kept from then on
+// (queried): an index read only by EnvelopeOf (badger's relationship-type
+// envelopes) holds one map slot an id instead of ~120 B (RELTEMPID).
+//
+// Cost: unqueried, every mutator is O(1). Queried: Add and Remove O(n) (Add
+// replaces via Remove); AddKnownAbsent and Extend O(1) amortized (posByID);
+// first query after a mutation pays O(n log n) sort + O(n) augmentation, then
+// O(log n + k).
 type TemporalIndex struct {
 	sortMu   sync.Mutex      // serialises concurrent sort/augmentation transitions under RLock
-	Entries  []IntervalEntry // sorted by (From ASC, ID ASC) when not dirty
+	Entries  []IntervalEntry // sorted by (From ASC, ID ASC) when not dirty; nil until queried
 	subMax   []types.Instant // subMax[i] = max effective To over the implicit subtree rooted at i
 	dirty    bool            // true when entries changed but slice not yet sorted/augmented
+	queried  bool            // Entries, subMax and posByID are built (first stabbing query)
 	Building bool            // true while CreateTemporalIndex is still backfilling
 	Mutated  map[snowflake.ID]struct{}
 	// DiskWritten, non-nil only while a disk-backed create backfills, holds the IDs
@@ -65,9 +72,9 @@ type TemporalIndex struct {
 	// fetch). Mutated cannot stand in for it (PutNodeVersion marks without a disk
 	// row; label removal writes a disk delete without marking).
 	DiskWritten map[snowflake.ID]struct{}
-	// byID mirrors each id's envelope bounds for O(1) EnvelopeOf; bounds, not slice
+	// byID holds each id's envelope bounds for O(1) EnvelopeOf; bounds, not slice
 	// positions, so re-sorts never invalidate it. Kept by every entry mutator.
-	byID map[snowflake.ID]IntervalEntry
+	byID map[snowflake.ID]envelope
 	// posByID mirrors each id's CURRENT slice position so Extend finds an existing
 	// entry in O(1) (a linear scan made N Extends O(n^2)). Unlike byID it must be
 	// rebuilt after every re-sort and after Remove shifts entries (backlog 16h).
@@ -86,15 +93,37 @@ func (ti *TemporalIndex) EnvelopeOf(id snowflake.ID) (from, to types.Instant, ok
 	if !present {
 		return 0, 0, false
 	}
-	return e.From, e.To, true
+	return e.from, e.to, true
 }
+
+// envelope is one id's bounds in byID; the map key is the id.
+type envelope struct{ from, to types.Instant }
 
 // setByID records id's current envelope bounds for EnvelopeOf.
 func (ti *TemporalIndex) setByID(id snowflake.ID, from, to types.Instant) {
 	if ti.byID == nil {
-		ti.byID = make(map[snowflake.ID]IntervalEntry)
+		ti.byID = make(map[snowflake.ID]envelope)
 	}
-	ti.byID[id] = IntervalEntry{From: from, To: to, ID: id}
+	ti.byID[id] = envelope{from: from, to: to}
+}
+
+// extendByID unions [from, to) into id's bounds (Extend's rule) and records them.
+func (ti *TemporalIndex) extendByID(id snowflake.ID, from, to types.Instant) {
+	if e, ok := ti.byID[id]; ok {
+		from, to = min(from, e.from), unionTo(e.to, to)
+	}
+	ti.setByID(id, from, to)
+}
+
+// materialize builds the stabbing structure from byID (first query). Caller
+// holds sortMu; the store's lock keeps writers out.
+func (ti *TemporalIndex) materialize() {
+	ti.Entries = make([]IntervalEntry, 0, len(ti.byID))
+	for id, e := range ti.byID {
+		ti.Entries = append(ti.Entries, IntervalEntry{From: e.from, To: e.to, ID: id})
+	}
+	ti.queried = true
+	ti.dirty = true
 }
 
 // NewTemporalIndex allocates an empty temporal index.
@@ -108,6 +137,12 @@ func NewTemporalIndex() *TemporalIndex {
 // Must be called under the store's write lock.
 func (ti *TemporalIndex) Add(id snowflake.ID, from, to types.Instant) {
 	if ti == nil {
+		return
+	}
+	if !ti.queried {
+		ti.setByID(id, from, to)
+		ti.markMutated(id)
+		ti.dirty = true
 		return
 	}
 	// Remove any existing entry for id first.
@@ -143,6 +178,12 @@ func (ti *TemporalIndex) Extend(id snowflake.ID, from, to types.Instant) {
 	if ti == nil {
 		return
 	}
+	if !ti.queried {
+		ti.extendByID(id, from, to)
+		ti.markMutated(id)
+		ti.dirty = true
+		return
+	}
 	if i, ok := ti.posByID[id]; ok {
 		if from < ti.Entries[i].From {
 			ti.Entries[i].From = from
@@ -161,10 +202,16 @@ func (ti *TemporalIndex) Extend(id snowflake.ID, from, to types.Instant) {
 }
 
 // AddKnownAbsent appends an entry without scanning for an existing ID.
-// Caller must prove id is not already present in this index.
-// Must be called under the store's write lock.
+// Caller must prove id is not already present in this index (unqueried, a
+// present id is unioned, a sound superset). Must be called under the store's
+// write lock.
 func (ti *TemporalIndex) AddKnownAbsent(id snowflake.ID, from, to types.Instant) {
 	if ti == nil {
+		return
+	}
+	if !ti.queried {
+		ti.extendByID(id, from, to)
+		ti.dirty = true
 		return
 	}
 	ti.Entries = append(ti.Entries, IntervalEntry{From: from, To: to, ID: id})
@@ -212,6 +259,9 @@ func (ti *TemporalIndex) sortIfDirty() {
 	}
 	ti.sortMu.Lock()
 	defer ti.sortMu.Unlock()
+	if !ti.queried {
+		ti.materialize()
+	}
 	if !ti.dirty {
 		return
 	}
@@ -272,6 +322,11 @@ func (ti *TemporalIndex) Remove(id snowflake.ID) {
 		return
 	}
 	ti.markMutated(id)
+	if !ti.queried {
+		delete(ti.byID, id)
+		ti.dirty = true
+		return
+	}
 	out := ti.Entries[:0]
 	for _, e := range ti.Entries {
 		if e.ID == id {
@@ -290,7 +345,9 @@ func (ti *TemporalIndex) Remove(id snowflake.ID) {
 // QueryAt returns the sorted IDs of entries valid at instant t
 // (from <= t AND (to == 0 OR to > t)). O(log n + k).
 func (ti *TemporalIndex) QueryAt(t types.Instant) []snowflake.ID {
-	if ti == nil || len(ti.Entries) == 0 {
+	// byID, not Len: only writers (write lock) change it, while a concurrent
+	// reader may be building Entries under sortMu.
+	if ti == nil || len(ti.byID) == 0 {
 		return nil
 	}
 	ti.sortIfDirty()
@@ -329,7 +386,7 @@ func (ti *TemporalIndex) stabAt(lo, hi int, t types.Instant, out *[]snowflake.ID
 // QueryOverlap returns the sorted IDs of entries overlapping [start, end)
 // (from < end AND (to == 0 OR to > start)). O(log n + k).
 func (ti *TemporalIndex) QueryOverlap(start, end types.Instant) []snowflake.ID {
-	if ti == nil || len(ti.Entries) == 0 || start >= end {
+	if ti == nil || len(ti.byID) == 0 || start >= end {
 		return nil
 	}
 	ti.sortIfDirty()
@@ -368,6 +425,11 @@ func (ti *TemporalIndex) stabOverlap(lo, hi int, start, end types.Instant, out *
 func (ti *TemporalIndex) Len() int {
 	if ti == nil {
 		return 0
+	}
+	ti.sortMu.Lock()
+	defer ti.sortMu.Unlock()
+	if !ti.queried {
+		return len(ti.byID)
 	}
 	return len(ti.Entries)
 }

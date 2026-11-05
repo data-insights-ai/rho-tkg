@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Performance
+
+- **RELTEMPID** (ai-soc's RHORAM): a temporal index keeps only its per-id envelope map until its first `QueryAt` or
+  `QueryOverlap`, which builds the sorted stabbing entries from it. Badger reads a relationship type's index only
+  through `EnvelopeOf`, so it never builds them: 55.8 B an id instead of 125.6 (1 M ids;
+  `tasks/evidence/RELTEMPID/measure.txt`), and its writes and purges are O(1). Same answers, same open image format.
+  `TestRelTypeTemporalIndexHoldsOnlyEnvelopes` (badger: writes, clean reopen, pruning) and
+  `TestTemporalIndexUnqueriedKeepsOnlyEnvelopes` gate it.
+
 ## [4.105.4] - 2026-11-04
 
 ### Changed

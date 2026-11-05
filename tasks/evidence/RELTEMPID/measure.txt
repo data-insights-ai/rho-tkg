@@ -1,0 +1,13 @@
+RELTEMPID, 5 Nov: a TemporalIndex read only by EnvelopeOf keeps byID alone; the first QueryAt/QueryOverlap builds
+Entries, subMax and posByID from it and keeps them from then on.
+
+go test -tags measure -run TestTemporalIndexHeapPerEntry -v ./pkg/graph/internal/index/ (1 M ids, Extend, live heap):
+  envelopes only   55.8 B an id
+  queried         125.6 B an id   (the old cost: every index paid this from its first write)
+
+Who stays unqueried: badger's relationship-type indexes (badger reads them only through EnvelopeOf,
+badgerstore_reltype_temporal_index.go:621, PruneRelTypeTemporalCandidates), and a node label index no
+NodesByLabel valid-time read touches. The memory store's rel-type and label indexes are stabbed and build on first query.
+Gates: TestTemporalIndexUnqueriedKeepsOnlyEnvelopes (index), TestRelTypeTemporalIndexHoldsOnlyEnvelopes (badger:
+writes, clean reopen from the open image, pruning); both red on the old code. Open image format unchanged (id, from, to
+per entry, loaded by AddKnownAbsent in any order).

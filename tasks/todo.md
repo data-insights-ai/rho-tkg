@@ -37,18 +37,12 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Next
 
-- **ai-soc's five, 5 Nov** (ranked by a read-only Fable design on René's word, checked here against source). Start
-  now: **RELTEMPID** (RHORAM): badger reads a relationship type's TemporalIndex only through `EnvelopeOf`
-  (badgerstore_reltype_temporal_index.go:621), so it keeps byID alone, ~120 -> 50-60 B a rel; a minor (the open
-  image writes its entries, badgerstore_open_image.go:467); done when a red footprint test passes.
-  **REFFANOUT** (RHOREAD): a listing or member page of a reference label still opens every cold shard holding rows
-  (tieredstore_member_page.go:13-20); a per-shard "no rows of label L" recorded at seal, like step 1's no-rows flag,
-  lets it skip them; a minor; done when that listing opens 0 cold shards. Then, on others' data: PUSHSLOW (below),
-  ASOFVALID (On René), COLDEDGE's flat list (on hold, design and red test ready: `docs/architecture.md`; waits for
-  ai-soc's cold opens per Outgoing call on v4.101.0+), FIXED-MEMORY steps 1 and 3 and VDICTDISK step 3 (RHORAM's
-  rest). Stale in the ask: ASOFVALID's 306-445 s fix shipped in v4.98.4, COLDEDGE step 1 in v4.101.0, PROJREAD's
-  door was dropped on sigma's answer (TIERLEND took part (a)); ASOFWALK's later steps stay in STATEREC.
-  **rho/sigma:** REFFANOUT is direct for sigma's restore listings on tiered; RELTEMPID is heap per rel.
+- **REFFANOUT** (ai-soc 5 Nov, RHOREAD; ranked by a read-only Fable design on René's word) — a listing or member page
+  of a reference label still opens every cold shard holding rows (tieredstore_member_page.go:13-20); a per-shard "no
+  rows of label L" recorded at seal, like COLDEDGE step 1's no-rows flag, lets it skip them; the reference tier takes
+  80.8 M of BA's 119 M checkouts (ai-soc k11050630). A minor; done when that listing opens 0 cold shards. Then
+  ASOFVALID (On René). Stale in ai-soc's ask: PROJREAD's door was dropped on sigma's answer (TIERLEND took part (a));
+  ASOFWALK's later steps stay in STATEREC. **rho/sigma:** direct for sigma's restore listings on tiered.
 - **Round 2 read items** (ai-soc's read-back inventory, 3 Nov, 60-min BA on tiered; estimates, measure each first):
   UNIQUEMISS (GetOrCreateByKey looks the key up, then the unique pass again on create, core/unique_constraints.go:628;
   claimForever re-marshals the whole owner map per claim, unique_forever.go:120-132); OWNERDROP (tiered
@@ -121,9 +115,6 @@ On consumer runs (ai-soc, sigma):
   reopen and crash, with the listed exceptions). Waits for ai-soc's RESTART item (after goal 2) and René's word before
   rho reads profiles on Flux. **rho/sigma:** direct for restart: sigma reopens the same tiered stores and its two
   asks are open here.
-- **VDICTDISK step 3** — a budget/LRU in place of resident value tokens (a 'row' dictionary ~136 MB per open day
-  shard at Cap 1 M). Done when an entry's resident cost is measured and bounded. Waits for ai-soc's next run.
-  **rho/sigma:** unverified: applies only if sigma's stores set ValueDictionaries (HANDOVER lists ai-soc's).
 - **TIERCLOCK** (v4.98.0) — done when ai-soc's BA replay rotates shards as live data would (pin: Clock = newest
   committed valid time). Waits for that run. **rho/sigma:** none (ai-soc's replay).
 - **PERTIER, RAM doors** (each a minor) — per-tier MemTableSize (64 to 128 MB on BO: push -2.9 %, GC mark -20.4 s,
@@ -138,10 +129,7 @@ On consumer runs (ai-soc, sigma):
   valid-instant fetch fell 306-445 s -> ~8 s on the 12 GB masked store, but a page still costs ~8 s on cold shards (no
   envelope there; FIXED-MEMORY step 2; a larger read batch measured no gain, each tiered row read opens its own view).
   Reopen when ai-soc says either still matters. RHOBATCH: not to be built (sigma rejected the key-to-id map).
-  ai-soc 5 Nov reopened PUSHSLOW: push 9,004 -> 13,747 s (k10291501, v4.97.1) after COMPDISK v4.96.0 moved
-  DerivedPage's composite index to disk (a84f59c3: DB.get 6.1 -> 10.4 s, GetNode 1.9 -> 5.5 s a profile, I/O wait).
-  Likely cause: per-row DB.View + Txn.Get on disk-index pages, which LISTREAD v4.105.4 made one scan. Next: ai-soc's
-  push on v4.105.4; if still slow, one A/B arm with DerivedPage's index back in RAM. No rho change before that run.
+  PUSHSLOW's push wall is gone (ai-soc 5 Nov: BA push 4,142 s on v4.105.3, k11050630, against 9,004 and 14,616).
   **rho/sigma:** small: the stamps re-read is LISTREAD's; fixed there, it falls here too.
 - **SHARD step 10, later slices** — label and property postings and the rel owner map on the fast volume (slice 1,
   UNIQIDX, shipped v4.81.0). Sizing data (ai-soc 25 Oct, k10251802, 3 data days): 1,038,092 keyed nodes (Process
@@ -238,7 +226,7 @@ Each reopens on a consumer request, a measurement, or René:
 - **BADGERPANIC** — badger parses a damaged block trailer before its checksum and panics in its own goroutines
   (table.go:575-604; `tasks/evidence/VERIFY/trailer_test.go.txt`); René 24 Oct: no fork; rho recovers what it can.
 
-## Closed 4 Nov (René: "are they still necessary")
+## Closed 4 Nov (René: "are they still necessary"), and 5 Nov on ai-soc's data
 
 - **ASOFREAD**: covered by RELHIST (P2 read the head entry in the plural door; P5 bounds the rest).
 - **REOPEN**: ai-soc's own reopen proof; no rho work waited on it.
@@ -254,6 +242,9 @@ Each reopens on a consumer request, a measurement, or René:
 - **ROUND2 measure**: folded into Round 2 read items (one combined ai-soc run).
 - **TEMPIDX-2, IDTABLE**: folded into FIXED-MEMORY.
 - **ASOFWALK later steps, REPORT**: folded into STATEREC.
+- **VDICTDISK step 3**: ai-soc 5 Nov (k11050630): 221,104 dictionary entries in all, ~29 MB at ~130 B; nothing to bound.
+- **COLDEDGE flat list**: ai-soc 5 Nov (k11050630): 0 cold opens on BA with step 1 (v4.101.0); the design stays in
+  `docs/architecture.md` for a store that shows them.
 - **CHAIN-2**: folded into CHAIN.
 - **PAGEBLOB follow-ups, WRITEGROW**: folded into PAGEBLOB (parked); WRITEGROW shipped in v4.99.0.
 - **BADGER step 3**: steps 1-2 done 24 Oct; shipped COLDRO (v4.78.3), PREFETCH (v4.78.4); measured, no change:

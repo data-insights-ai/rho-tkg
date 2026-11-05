@@ -45,6 +45,12 @@ func (ti *TemporalIndex) ForEachEntry(fn func(e IntervalEntry)) {
 	}
 	ti.sortMu.Lock()
 	defer ti.sortMu.Unlock()
+	if !ti.queried {
+		for id, e := range ti.byID {
+			fn(IntervalEntry{From: e.from, To: e.to, ID: id})
+		}
+		return
+	}
 	for _, e := range ti.Entries {
 		fn(e)
 	}

@@ -117,14 +117,14 @@ func (bs *Store) IndexStateDigestForTest() string {
 		})
 	}
 	for tok, ti := range bs.temporalIndexes {
-		for _, e := range ti.Entries {
+		ti.ForEachEntry(func(e indexpkg.IntervalEntry) {
 			add("temporal %d %d %d %d", tok, e.ID, e.From, e.To)
-		}
+		})
 	}
 	for tok, ti := range bs.relTypeTemporalIndexes {
-		for _, e := range ti.Entries {
+		ti.ForEachEntry(func(e indexpkg.IntervalEntry) {
 			add("reltemporal %d %d %d %d", tok, e.ID, e.From, e.To)
-		}
+		})
 	}
 	for tok, hfi := range bs.hfIndexes {
 		ids := hfi.CandidatesUpTo(types.Instant(math.MaxInt64))
