@@ -62,6 +62,18 @@ func buildLayeredLendStore(tb testing.TB, dir string, sh layeredShape, readOnly 
 	tb.Helper()
 	rng := rand.New(rand.NewPCG(uint64(sh.n), uint64(sh.stride)))
 	for r := int64(0); r < layeredRounds; r++ {
+		if r == layeredRounds-1 {
+			// The last round stays in L0: no compactor runs while it is written
+			// (on a loaded host one moved it before the close).
+			hook := badgerOptionsHook
+			badgerOptionsHook = func(o badgerv4.Options) badgerv4.Options {
+				if hook != nil {
+					o = hook(o)
+				}
+				return o.WithNumCompactors(0)
+			}
+			defer func() { badgerOptionsHook = hook }()
+		}
 		bs, err := New(layeredLendConfig(dir, sh.valueThreshold, false))
 		if err != nil {
 			tb.Fatal(err)

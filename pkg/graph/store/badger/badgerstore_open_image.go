@@ -205,6 +205,19 @@ func (bs *Store) persistOpenImageLocked() {
 	}
 }
 
+// committedVersion is the badger version every finished commit is at or below
+// (a fresh read transaction's timestamp, which waits for commits in flight).
+// A running store reads it, not db.MaxVersion: MaxVersion reads the memtable's
+// maxVersion, which badger's writer goroutine sets without the lock it reads
+// under (memtable.go:195 against db.go:425), a data race with any commit in
+// flight. An image's since only bounds a delta open, so a lower value only
+// rescans more keys.
+func (bs *Store) committedVersion() uint64 {
+	txn := bs.db.NewTransaction(false)
+	defer txn.Discard()
+	return txn.ReadTs()
+}
+
 func (bs *Store) writeOpenImage() error {
 	bs.idxMu.RLock()
 	bs.wbMu.Lock()
@@ -216,7 +229,7 @@ func (bs *Store) writeOpenImage() error {
 		bs.idxMu.RUnlock()
 		return errors.New("write buffer not drained at close")
 	}
-	since := bs.db.MaxVersion()
+	since := bs.committedVersion()
 	blob := bs.encodeOpenImageLocked()
 	bs.idxMu.RUnlock()
 	if openImageAfterEncodeHook != nil {
@@ -243,7 +256,7 @@ func (bs *Store) checkpointOpenImage() error {
 		bs.wbMu.Lock()
 		drained := len(bs.pending) == 0 && len(bs.pendingLog) == 0 && len(bs.flushing) == 0
 		bs.wbMu.Unlock()
-		since = bs.db.MaxVersion()
+		since = bs.committedVersion()
 		switch {
 		case !drained:
 			err = errors.New("write buffer not drained after the flush")

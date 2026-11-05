@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **CLOSERACE**: badger's Close and the periodic open image read the store version from a fresh read transaction
+  instead of `db.MaxVersion`, which reads the memtable's version without the lock badger's writer sets it under: a
+  data race with a commit in flight (v4.105.5's race run, `TestDurableCommit_CommitRacingCloseNeverPanics`). The
+  image's version only bounds a delta open, so the same image is trusted as before.
+
+### Tests
+
+- `TestLendSortedLayeredAgreesWithPointReads` builds its last round with no compactor, so the L0 layer it needs
+  survives a loaded host (v4.105.5's race run found L0 empty).
+
 ## [4.105.5] - 2026-11-05
 
 ### Performance
