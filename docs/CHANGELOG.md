@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.105.5] - 2026-11-05
+
 ### Performance
 
 - **RELTEMPID** (ai-soc's RHORAM): a temporal index keeps only its per-id envelope map until its first `QueryAt` or
