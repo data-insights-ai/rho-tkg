@@ -12,8 +12,8 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   badger's rel-type index 125.6 -> 55.8 B an id) + REFFANOUT (tiered label and type doors skip cold shards sealed with
   none of the label or type) + its Fable-review fix 497bca49 (every writable cold open unseals the saved counts first);
   v4.105.6 = CLOSERACE (Close and the periodic image read the version from a read transaction, not `db.MaxVersion`) +
-  the layered lend test fix. sigma v0.14.0 is tagged on v4.105.5. ai-soc pins rho only through sigma's tag (its
-  release.sh:30; order rho, sigma, ai-soc), so v4.105.6 waits for sigma's next tag (none planned) or René's word.
+  the layered lend test fix. sigma v0.15.0, v0.16.0 and v0.16.1 pin v4.105.6; ai-soc-main's go.mod pins sigma v0.16.0
+  and rho v4.105.6 (order rho, sigma, ai-soc; its release.sh pins both), so both consumers have CLOSERACE (5 Nov).
   - **ai-soc's five of 5 Nov** (ranked by a read-only Fable design): RELTEMPID and REFFANOUT shipped; PUSHSLOW,
     COLDEDGE's flat list and VDICTDISK step 3 closed on ai-soc's run k11050630 (BA push 4,142 s; 0 cold opens; 221 k
     dictionary entries ~29 MB). Left: **ASOFVALID** (todo "On René"): René picks the cold-shard envelope's form, (b)
@@ -33,7 +33,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
   - **Reviews:** one read-only Fable review per finished branch, before its merge, given the code and the diff.
-  - **Next work** (`tasks/todo.md`): Now RELHIST (waits for sigma's next profile); Next Round 2 read items (wait for
+  - **Next work** (`tasks/todo.md`): Now RELHIST (waits for ai-soc's profile); Next Round 2 read items (wait for
     ai-soc's combined run), FIXED-MEMORY step 1, WRITERATE; On René ASOFVALID, CONTRACT, RACEAFTER.
 - **Checklist facts learned at releases:** the ai-soc engine builds only with GOTOOLCHAIN=go1.27.3 (its parent module
   requires it); merging a release branch back can move Unreleased CHANGELOG entries under the tag's heading, so check
@@ -53,16 +53,15 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **Consumers and their agents** (ask the agent for runs and data, never browse their repos; answer a request the same
   day with its todo item first; agent names change per session, `ListAgents`; if neither resolves at a release, put
   the release note here and tell René in one line):
-  - ai-soc (5 Nov: BA reduced run k11050630 on v5.3.1 = rho v4.105.3 + sigma v0.12.3; pins sigma v0.14.0 / rho
-    v4.105.5 next; its v5 data layout work is on its branch `v5-new-datalayout`). Tiered main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2;
+  - ai-soc (5 Nov: BA reduced run k11050630 on v5.3.1 = rho v4.105.3 + sigma v0.12.3; pins sigma v0.16.0 / rho
+    v4.105.6, release v5.6.0 planned with no rho change; its v5 data layout work is on its branch `v5-new-datalayout`). Tiered main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2;
     HistoryDeltaEncoding, SyncWrites, DurableCommit, RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk,
     ValueDictionaries, UntimedUnbounded, AllowRetentionPurge; DerivedPage's property index on disk
     (PropertyIndexOnDiskLabels); `DepthWarm` on windowed reads; `CreateRelTemporal` on its 29 estate-indexed rel
     types; unique keys on reference labels only; Derived (and its composite index) on the reference shard; its
     /metrics exports `aisoc_store_shard_access_total{tier}` from ShardAccessStats. Event times UTC (Check Point CSV in
     the operator's zone, BO: America/Bogota); Flux runs Europe/Berlin.
-  - sigma-tkgd (5 Nov: v0.14.0 on rho v4.105.5, PERIODICIMAGE parts 0-2 and P4 opt-in; next item decided by its
-    image-cost analysis; its guard stage runs 7 ai-soc tests via `-modfile`, ~15 s warm); its test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired`
+  - sigma-tkgd (5 Nov: latest v0.16.1; v0.15.0 and later pin rho v4.105.6; in flight IMAGEQUERYOUT; its guard stage runs 7 ai-soc tests via `-modfile`, ~15 s warm); its test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired`
     below); its store analysis tool is `projects/derived-writeback` (cmd/wbscan).
   - agent-bookkeeping (`~/Work/2026/bds421/sigma/agent-bookkeeping`): build check only.
 - **Housekeeping:** deletions are René's call (`rm` is denied to agents; user-only actions below; finished scratch goes

@@ -30,10 +30,10 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
   below the lowest generation (C2: a fill at a lower pin records a generation) and first-read "no entry" misses;
   Phase 1 (deletes and retractions) only if a store shows them. Also open: the caller-instant pre-flight and cascadeMissing*Err read whole histories; the skeleton read
   itself is O(versions) (option F). Caveat (design.txt §4): compaction between tx ops can trim a row above the current
-  version that rollback puts back. Done when sigma's next profile shows history reads below 10 % of alloc_space.
-  sigma's data answers: on hold (sigma). **rho/sigma:** the largest open item: P5 targets NodeHistoryTemporalMeta,
+  version that rollback puts back. Done when the next profile of ai-soc's workload shows history reads below 10 % of alloc_space
+  (sigma 5 Nov: the profile is ai-soc's; asked ai-soc 5 Nov for a stored one on v4.105.x). **rho/sigma:** the largest open item: P5 targets NodeHistoryTemporalMeta,
   10.9 of sigma's 160 GB alloc_space; P1 and CASCADEMETA (v4.103.0) already took the 32 GB getRelHistory share; the
-  rest shows in sigma's next profile.
+  rest shows in the next profile of ai-soc's workload.
 
 ## Next
 
