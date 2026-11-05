@@ -17,9 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **REFFANOUT** (ai-soc's RHOREAD): tiered's label and type doors (`NodesByLabel`, `NodeIDsByLabel`, the
   property-key and composite listings, `NodeIDsByLabelAndPropertiesPage`, `RelationshipsByType`, `RelIDsByType`)
   skip a cold shard whose sealed counts hold no current node of the label (no rel of the type), as COLDEDGE step 1
-  skips a shard with no row: a reference label's listing opens no cold shard. A writable open drops the sealed counts
-  before any write, so a shard that may have gained one is read. `TestRefLabelListingSkipsColdShardsWithoutIt` gates
-  it (before: two opens and two checkouts of a cold shard without the label for two listings).
+  skips a shard with no row: a reference label's listing opens no cold shard. Every writable open of a cold shard now
+  unseals its counts in the saved catalog before it opens (a read pin that may write left them sealed, so a write
+  through that handle followed by a close or crash kept stale counts; a Fable review found it), and a sealed count
+  that cannot be parsed is not adopted. `TestRefLabelListingSkipsColdShardsWithoutIt` (before: two opens and two
+  checkouts of a cold shard without the label for two listings) and `TestWritableReadPinUnsealsTheSavedCatalog` gate it.
 
 ## [4.105.4] - 2026-11-04
 

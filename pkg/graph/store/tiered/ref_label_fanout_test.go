@@ -1,6 +1,8 @@
 package tiered
 
 import (
+	"encoding/json"
+	"os"
 	"slices"
 	"testing"
 
@@ -46,5 +48,55 @@ func TestRefLabelListingSkipsColdShardsWithoutIt(t *testing.T) {
 	ids, err = ts.NodeIDsByLabel(mintSignalTok)
 	if err != nil || !slices.Equal(ids, []types.NodeID{signal}) {
 		t.Fatalf("NodeIDsByLabel(Signal) = %v, %v; want [%d]: the cold shard holds it", ids, err, signal)
+	}
+}
+
+// TestWritableReadPinUnsealsTheSavedCatalog (REFFANOUT review): a read pin that
+// may write opens a cold shard writable, and a write can then reach it through
+// that handle without a further open; so the open itself must unseal the
+// counts in the saved catalog, or a close or crash after the write leaves the
+// next start skipping the shard for the label the write added.
+func TestWritableReadPinUnsealsTheSavedCatalog(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := mintCfg(dir, false)
+	ts := openMintStore(t, cfg)
+	ng := tieredNodeGen(t)
+	name := hotShardName(ts)
+	putMintNode(t, ts, types.NodeID(ng.Generate()), mintSignalTok)
+	rotate(t, ts)
+	demoteToCold(ts, name)
+	closeColdStores(t, ts)
+	ts.mu.RLock()
+	es := ts.eventShards[name]
+	ts.mu.RUnlock()
+	savedSealed := func() bool {
+		t.Helper()
+		raw, err := os.ReadFile(ts.catalog.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var saved ShardCatalog
+		if err := json.Unmarshal(raw, &saved); err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range saved.Shards {
+			if e.Name == name {
+				return e.CountsSealed
+			}
+		}
+		t.Fatalf("no catalog entry %s", name)
+		return false
+	}
+	if !savedSealed() {
+		t.Fatal("setup: closing the cold shard did not seal its counts")
+	}
+	_, release, err := es.checkoutStoreForRead(ts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if savedSealed() {
+		t.Fatal("a writable read pin left the shard's counts sealed in the saved catalog")
 	}
 }

@@ -596,20 +596,20 @@ func tokenCountsToJSON(in map[uint16]int) map[string]int {
 	return out
 }
 
-// tokenCountsFromJSON is the inverse. An unparsable key is skipped rather than
-// failing the open: a count that cannot be read is recomputed, which is slow,
-// where a failed open is fatal.
-func tokenCountsFromJSON(in map[string]int) map[uint16]int {
+// tokenCountsFromJSON is the inverse; ok is false on an unparsable key, and
+// the caller then does not adopt the counts (the shard is opened and counted,
+// slow where a failed open would be fatal, and a missing key never reads as 0).
+func tokenCountsFromJSON(in map[string]int) (map[uint16]int, bool) {
 	if len(in) == 0 {
-		return nil
+		return nil, true
 	}
 	out := make(map[uint16]int, len(in))
 	for k, n := range in {
 		tok, err := strconv.ParseUint(k, 10, 16)
 		if err != nil {
-			continue
+			return nil, false
 		}
 		out[uint16(tok)] = n
 	}
-	return out
+	return out, true
 }

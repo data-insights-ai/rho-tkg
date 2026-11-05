@@ -25,11 +25,19 @@ func (es *EventShard) countColdStoreLocked(ts *Store) {
 	}
 }
 
-// openColdLocked lazily opens the closed cold shard es, installs and counts
-// it (ShardInfo.ColdOpens) and syncs its indexes. Caller holds es.shardMu.
+// openColdLocked lazily opens the closed cold shard es writable, installs and
+// counts it (ShardInfo.ColdOpens) and syncs its indexes. A writable shard can
+// gain rows, so before it opens its no-rows mark and sealed counts leave the
+// saved catalog (label and type doors skip a shard by them). Caller holds
+// es.shardMu.
 func (es *EventShard) openColdLocked(ts *Store) error {
 	if err := es.wakeNoRowsLocked(ts); err != nil {
 		return err
+	}
+	if es.dropCachedCounts(ts) {
+		if err := ts.catalog.Save(); err != nil {
+			return fmt.Errorf("graph: save catalog before opening sealed shard %s: %w", es.name, err)
+		}
 	}
 	store, err := ts.openColdBadgerStoreWithRecovery(es.path)
 	if err != nil {
@@ -161,14 +169,6 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 					es.shardMu.Unlock()
 					return nil, err
 				}
-				// The general checkout, which write paths use. A shard that is
-				// open can be written to, so a sealed count must not outlive
-				// the close it described — persist the unseal, or a crash
-				// before the next close would leave the next start adopting
-				// counts from before the write.
-				if es.dropCachedCounts(ts) {
-					ts.saveCatalogBestEffort("unseal shard counts on open")
-				}
 			}
 			es.readTransientOpen = false
 			store := es.store
@@ -192,9 +192,6 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		if err := es.openColdWritableLocked(ts, 0); err != nil {
 			es.shardMu.Unlock()
 			return nil, err
-		}
-		if es.dropCachedCounts(ts) {
-			ts.saveCatalogBestEffort("unseal shard counts on open")
 		}
 	}
 	es.readTransientOpen = false
@@ -309,10 +306,10 @@ func (es *EventShard) pinForRead(ts *Store, readOnly bool) (*BadgerStore, func()
 			return nil, noop, err
 		}
 		es.readTransientOpen = true
-		// READ-ONLY checkout: the shard cannot change through it, so the
-		// sealed catalog entry stays valid and is left alone. Only the
-		// in-memory copy is dropped, because while the store is open it is the
-		// more direct answer.
+		// A read-only open leaves the sealed catalog entry alone (the shard
+		// cannot change through it); a writable one unsealed it in
+		// openColdLocked. The in-memory copy goes either way: while the store
+		// is open it is the more direct answer.
 		es.counts.Store(nil)
 	}
 	es.activeReqs.Add(1)

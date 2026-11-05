@@ -109,16 +109,21 @@ func (es *EventShard) wakeNoRowsLocked(ts *Store) error {
 // at every boot, and the first fold reopens every cold shard to rebuild numbers
 // that were settled when the shard closed.
 func (es *EventShard) adoptSealedCounts(entry ShardEntry) {
+	es.noRows.Store(entry.CountsSealed && entry.NoRows)
 	if !entry.CountsSealed {
 		return
+	}
+	byLabel, okLabels := tokenCountsFromJSON(entry.NodeCountsByLabel)
+	byRelType, okTypes := tokenCountsFromJSON(entry.RelCountsByType)
+	if !okLabels || !okTypes {
+		return // a count that cannot be read must not read as 0: the shard is opened and counted
 	}
 	es.counts.Store(&shardCounts{
 		nodes:     entry.ApproxNodes,
 		rels:      entry.ApproxRels,
-		byLabel:   tokenCountsFromJSON(entry.NodeCountsByLabel),
-		byRelType: tokenCountsFromJSON(entry.RelCountsByType),
+		byLabel:   byLabel,
+		byRelType: byRelType,
 	})
-	es.noRows.Store(entry.NoRows)
 }
 
 // dropCachedCounts forgets the snapshot, in memory and in the catalog. Called
