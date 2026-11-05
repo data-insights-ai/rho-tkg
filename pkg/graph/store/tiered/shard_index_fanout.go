@@ -654,7 +654,7 @@ func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardsToRead(opts.Depth)
+	eventShards := ts.eventShardsWithLabel(opts.Depth, labelToken)
 	ts.mu.RUnlock()
 	results := make([][]*types.Node, len(eventShards))
 	errs := make([]error, len(eventShards))
@@ -732,7 +732,7 @@ func (ts *Store) NodeIDsByLabelAndPropertiesPage(labelToken uint16, values map[s
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardsToRead(depth)
+	eventShards := ts.eventShardsWithLabel(depth, labelToken)
 	ts.mu.RUnlock()
 	for _, es := range eventShards {
 		store, release, err := es.checkoutStoreReadOnly(ts)

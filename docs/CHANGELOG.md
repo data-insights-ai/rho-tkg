@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `tasks/evidence/RELTEMPID/measure.txt`), and its writes and purges are O(1). Same answers, same open image format.
   `TestRelTypeTemporalIndexHoldsOnlyEnvelopes` (badger: writes, clean reopen, pruning) and
   `TestTemporalIndexUnqueriedKeepsOnlyEnvelopes` gate it.
+- **REFFANOUT** (ai-soc's RHOREAD): tiered's label and type doors (`NodesByLabel`, `NodeIDsByLabel`, the
+  property-key and composite listings, `NodeIDsByLabelAndPropertiesPage`, `RelationshipsByType`, `RelIDsByType`)
+  skip a cold shard whose sealed counts hold no current node of the label (no rel of the type), as COLDEDGE step 1
+  skips a shard with no row: a reference label's listing opens no cold shard. A writable open drops the sealed counts
+  before any write, so a shard that may have gained one is read. `TestRefLabelListingSkipsColdShardsWithoutIt` gates
+  it (before: two opens and two checkouts of a cold shard without the label for two listings).
 
 ## [4.105.4] - 2026-11-04
 

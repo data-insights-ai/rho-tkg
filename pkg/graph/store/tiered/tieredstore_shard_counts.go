@@ -33,6 +33,21 @@ func (es *EventShard) cachedCounts() *shardCounts {
 	return es.counts.Load()
 }
 
+// sealedWithoutLabel reports that the shard's sealed counts hold no current
+// node of the label: its label doors would answer nothing. A writable open
+// drops the counts before any write (dropCachedCounts), so a shard that may
+// have gained one is read.
+func (es *EventShard) sealedWithoutLabel(token uint16) bool {
+	c := es.cachedCounts()
+	return c != nil && c.byLabel[token] == 0
+}
+
+// sealedWithoutRelType is sealedWithoutLabel for one relationship type.
+func (es *EventShard) sealedWithoutRelType(token uint16) bool {
+	c := es.cachedCounts()
+	return c != nil && c.byRelType[token] == 0
+}
+
 // snapshotCountsLocked records what the shard contains, for answering count
 // queries after it is closed. Caller must hold es.shardMu and es.store must be
 // non-nil; call it immediately before closing, so nothing can change between

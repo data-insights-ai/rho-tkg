@@ -384,6 +384,18 @@ func (ts *Store) eventShardsToRead(depth ShardDepth) []*EventShard {
 	return slices.DeleteFunc(shards, func(es *EventShard) bool { return es.noRows.Load() })
 }
 
+// eventShardsWithLabel is eventShardsToRead for a read of one label's current
+// members: a cold shard sealed with no node of the label is neither opened nor
+// checked out (REFFANOUT; a reference label's nodes live on the reference shard).
+func (ts *Store) eventShardsWithLabel(depth ShardDepth, token uint16) []*EventShard {
+	return slices.DeleteFunc(ts.eventShardsToRead(depth), func(es *EventShard) bool { return es.sealedWithoutLabel(token) })
+}
+
+// eventShardsWithRelType is eventShardsWithLabel for one relationship type.
+func (ts *Store) eventShardsWithRelType(depth ShardDepth, token uint16) []*EventShard {
+	return slices.DeleteFunc(ts.eventShardsToRead(depth), func(es *EventShard) bool { return es.sealedWithoutRelType(token) })
+}
+
 // shardWindowName computes the canonical name for a time window.
 func shardWindowName(t time.Time, window time.Duration) string {
 	switch {

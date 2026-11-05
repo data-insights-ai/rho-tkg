@@ -37,12 +37,6 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Next
 
-- **REFFANOUT** (ai-soc 5 Nov, RHOREAD; ranked by a read-only Fable design on René's word) — a listing or member page
-  of a reference label still opens every cold shard holding rows (tieredstore_member_page.go:13-20); a per-shard "no
-  rows of label L" recorded at seal, like COLDEDGE step 1's no-rows flag, lets it skip them; the reference tier takes
-  80.8 M of BA's 119 M checkouts (ai-soc k11050630). A minor; done when that listing opens 0 cold shards. Then
-  ASOFVALID (On René). Stale in ai-soc's ask: PROJREAD's door was dropped on sigma's answer (TIERLEND took part (a));
-  ASOFWALK's later steps stay in STATEREC. **rho/sigma:** direct for sigma's restore listings on tiered.
 - **Round 2 read items** (ai-soc's read-back inventory, 3 Nov, 60-min BA on tiered; estimates, measure each first):
   UNIQUEMISS (GetOrCreateByKey looks the key up, then the unique pass again on create, core/unique_constraints.go:628;
   claimForever re-marshals the whole owner map per claim, unique_forever.go:120-132); OWNERDROP (tiered

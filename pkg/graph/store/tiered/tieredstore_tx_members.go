@@ -2,6 +2,7 @@ package tiered
 
 import (
 	"errors"
+	"slices"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -43,6 +44,11 @@ var (
 // between the two reads can hide a node from both (RestoreNode writes the
 // reference shard, then hard-deletes from the archive without a tombstone).
 func allShards[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)) (ref T, others []T, err error) {
+	return allShardsBut(ts, nil, read)
+}
+
+// allShardsBut is allShards without the event shards skip reports (nil: none).
+func allShardsBut[T any](ts *Store, skip func(*EventShard) bool, read func(bs *BadgerStore, ref bool) (T, error)) (ref T, others []T, err error) {
 	if err = ts.checkOpen(); err != nil {
 		return ref, nil, err
 	}
@@ -56,6 +62,9 @@ func allShards[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)
 	ts.mu.RLock()
 	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
+	if skip != nil {
+		shards = slices.DeleteFunc(shards, skip)
+	}
 	results := make([]T, len(shards))
 	errs := make([]error, len(shards))
 	queryEventShards(shards, func(i int, es *EventShard) {

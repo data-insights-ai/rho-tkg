@@ -96,7 +96,8 @@ func (ts *Store) NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error) {
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return nil, err
 	}
-	ref, others, err := allShards(ts, func(bs *BadgerStore, _ bool) ([]types.NodeID, error) {
+	skip := func(es *EventShard) bool { return es.sealedWithoutLabel(labelToken) }
+	ref, others, err := allShardsBut(ts, skip, func(bs *BadgerStore, _ bool) ([]types.NodeID, error) {
 		return bs.NodeIDsByLabel(labelToken)
 	})
 	if err != nil {
@@ -113,7 +114,8 @@ func (ts *Store) RelIDsByType(typeToken uint16) ([]types.RelID, error) {
 	if err := storecontract.ValidateRelTypeToken(typeToken); err != nil {
 		return nil, err
 	}
-	ref, others, err := allShards(ts, func(bs *BadgerStore, _ bool) ([]types.RelID, error) {
+	skip := func(es *EventShard) bool { return es.sealedWithoutRelType(typeToken) }
+	ref, others, err := allShardsBut(ts, skip, func(bs *BadgerStore, _ bool) ([]types.RelID, error) {
 		return bs.RelIDsByType(typeToken)
 	})
 	if err != nil {

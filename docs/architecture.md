@@ -544,7 +544,10 @@ that test.
   window, because a reference filter would drop archived and deleted nodes that still fan out; build lazily on a shard's first
   probe, not under `shardMu` at close; store append-only `(node|shard)` keys in the global index, reaped on a shard drop. The
   list may name too much, never too little. A hub with legs every day still opens every day: only a time bound on the read
-  (TIMEWINDOW) answers that.
+  (TIMEWINDOW) answers that. ai-soc's BA run of 5 Nov (k11050630) shows 0 cold opens, so it stays unbuilt.
+- **Label and type doors skip sealed shards without them** (REFFANOUT). A cold shard's sealed counts (`shardCounts`)
+  say how many current nodes of each label and rels of each type it holds; a label or type door skips a shard sealed
+  with none (`eventShardsWithLabel`, `eventShardsWithRelType`), so a reference label's listing opens no cold shard.
 
 - **ADR-0014 Whole-row replace** (WHOLEROW; designed 2026-10-31 for sigma-tkgd's paged-row writer, which rewrites a
   grown page row whole as one version with its full validity and reads it by `TxPin` plus the current row; built on

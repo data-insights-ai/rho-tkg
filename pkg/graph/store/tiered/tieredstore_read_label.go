@@ -53,7 +53,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardsToRead(opts.Depth)
+	eventShards := ts.eventShardsWithLabel(opts.Depth, token)
 	ts.mu.RUnlock()
 
 	type result struct {
@@ -103,7 +103,7 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		return nil, err
 	}
 	ts.mu.RLock()
-	eventShards := ts.eventShardsToRead(opts.Depth)
+	eventShards := ts.eventShardsWithRelType(opts.Depth, token)
 	ts.mu.RUnlock()
 
 	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
@@ -306,7 +306,7 @@ func propertyKeysFanOut[T any](ts *Store, labelToken uint16, key string, opts Qu
 	move.unlock()
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardsToRead(opts.Depth)
+	eventShards := ts.eventShardsWithLabel(opts.Depth, labelToken)
 	ts.mu.RUnlock()
 
 	type result struct {
