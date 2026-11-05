@@ -7,17 +7,32 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **State of 4 Nov, read this first** (next steps: `tasks/todo.md`). Round 5 (RELHIST P2) released in v4.104.1;
-  v4.104.2-4 (4 Nov) carry COSTCOUNT and the release cycle on Go's facilities (`make release-patch|minor|major`,
-  `scripts/release`; a patch release 15 s warm, 662 s cold). Releases go to GitHub (René, 4 Nov: the
-  local git server `~/git/rho-tkg.git` was temporary, while GitHub refused this host's logins; it holds v4.104.4-7 too).
-  v4.104.5-7: the release-cycle audit, two flaky tests fixed, the race gate's slowest tests reworked. Measuring is ai-soc's combined run on main's tip, not per item (René via ai-soc);
-  ai-soc names its quiet windows: then no minor or major gate, probe, bench or long test here.
-  - **Parked, unmerged:** branch `consolidate` (test folding; René stopped it 4 Nov). No pre-commit hook (René, 4 Nov).
+- **State of 5 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.105.6, main clean and pushed.
+  5 Nov tags: v4.105.5 = RELTEMPID (a temporal index keeps only its envelope map until its first stabbing query;
+  badger's rel-type index 125.6 -> 55.8 B an id) + REFFANOUT (tiered label and type doors skip cold shards sealed with
+  none of the label or type) + its Fable-review fix 497bca49 (every writable cold open unseals the saved counts first);
+  v4.105.6 = CLOSERACE (Close and the periodic image read the version from a read transaction, not `db.MaxVersion`) +
+  the layered lend test fix. sigma v0.14.0 is tagged on v4.105.5. ai-soc pins rho only through sigma's tag (its
+  release.sh:30; order rho, sigma, ai-soc), so v4.105.6 waits for sigma's next tag (none planned) or René's word.
+  - **ai-soc's five of 5 Nov** (ranked by a read-only Fable design): RELTEMPID and REFFANOUT shipped; PUSHSLOW,
+    COLDEDGE's flat list and VDICTDISK step 3 closed on ai-soc's run k11050630 (BA push 4,142 s; 0 cold opens; 221 k
+    dictionary entries ~29 MB). Left: **ASOFVALID** (todo "On René"): René picks the cold-shard envelope's form, (b)
+    load at cold checkout (recommended, ~2 days) or (a) FIXED-MEMORY step 2.
+  - **Open with René:** a consumer contract step before rho's tag (5a of the 5 Nov analysis): sigma's ai-soc guard set
+    is ~15 s warm but would not have caught REFFANOUT's break (ai-soc's `TestTieredDerivedReadOpensNoColdShard`, in
+    its full suite, 5-8 min); recommendation: skip. Also whether the release keeps starting `make race` detached
+    (cron runs it every 6 h; options offered: cron only, `nice`, `-p 2`); no change without his word.
+  - **Working rules changed 5 Nov** (René approved the analysis of 30 Oct-5 Nov): memory (orders vs questions, a green
+    agreed item tags at once, René's decisions quoted by a peer apply, a piecewise spec is collected before building,
+    agents only on his word with a frozen spec) and CONTRIBUTING 4412c9c6 (Who works, process changes remove steps,
+    the gate lists every red). Never start a race or heavy test run by hand; answer a why from the log first.
+  - **Release mechanics:** write the `[x.y.z]` CHANGELOG section in its own commit, then `make release-patch` (gate,
+    tag, atomic push to GitHub, `make race` detached into `.git/race.out`, ~15-25 s); a green, agreed item needs no go.
+  - **Worktrees:** `consolidate` (agent-ae6b1d60…, parked test folding, 68 uncommitted files: possible WIP, leave);
+    four merged agent worktrees (a3263c8c, a7ff819f, a9e4dcbc, ae78649d) are harness-locked; remove when unlocked.
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the
     reference shard and archive) is next, on a branch, red test first. Path (b) waits for René.
-  - **Reviews:** René (3 Nov, "yes, always"): one read-only Fable review per finished branch, before its merge, given
-    the code and the diff, not my conclusions.
+  - **Reviews:** one read-only Fable review per finished branch, before its merge, given the code and the diff.
 - **Checklist facts learned at releases:** the ai-soc engine builds only with GOTOOLCHAIN=go1.27.3 (its parent module
   requires it); merging a release branch back can move Unreleased CHANGELOG entries under the tag's heading, so check
   the heading after every such merge; the release tool is `go run ./scripts/release` (`make kind`, `gate-*`, `release-*`).
@@ -36,17 +51,16 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 - **Consumers and their agents** (ask the agent for runs and data, never browse their repos; answer a request the same
   day with its todo item first; agent names change per session, `ListAgents`; if neither resolves at a release, put
   the release note here and tell René in one line):
-  - ai-soc (4 Nov: v5.2.2 on rho v4.104.2 + sigma v0.11.165, in its long BA test, then the Flux run; takes v4.104.3
-    in its next release; its v5 data layout work is on its branch
-    `v5-new-datalayout`). Tiered main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2;
+  - ai-soc (5 Nov: BA reduced run k11050630 on v5.3.1 = rho v4.105.3 + sigma v0.12.3; pins sigma v0.14.0 / rho
+    v4.105.5 next; its v5 data layout work is on its branch `v5-new-datalayout`). Tiered main store: ShardWindow 24h, ColdAfter 3 d, MaxOpenColdShards 2;
     HistoryDeltaEncoding, SyncWrites, DurableCommit, RelsByMint, AdjacencyIndexOnDisk, LabelIndexOnDisk,
     ValueDictionaries, UntimedUnbounded, AllowRetentionPurge; DerivedPage's property index on disk
     (PropertyIndexOnDiskLabels); `DepthWarm` on windowed reads; `CreateRelTemporal` on its 29 estate-indexed rel
     types; unique keys on reference labels only; Derived (and its composite index) on the reference shard; its
     /metrics exports `aisoc_store_shard_access_total{tier}` from ShardAccessStats. Event times UTC (Check Point CSV in
     the operator's zone, BO: America/Bogota); Flux runs Europe/Berlin.
-  - sigma-tkgd (4 Nov: v0.11.165 released, bumping to rho v4.104.3; plans `ValueThreshold` 32 KiB on tiered for its 64 KiB DerivedPage
-    blocks); its test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired`
+  - sigma-tkgd (5 Nov: v0.14.0 on rho v4.105.5, PERIODICIMAGE parts 0-2 and P4 opt-in; next item decided by its
+    image-cost analysis; its guard stage runs 7 ai-soc tests via `-modfile`, ~15 s warm); its test confirms rho's retention-purge contract (null at or above the watermark, `ErrRetentionExpired`
     below); its store analysis tool is `projects/derived-writeback` (cmd/wbscan).
   - agent-bookkeeping (`~/Work/2026/bds421/sigma/agent-bookkeeping`): build check only.
 - **Housekeeping:** deletions are René's call (`rm` is denied to agents; user-only actions below; finished scratch goes
