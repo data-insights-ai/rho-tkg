@@ -7,7 +7,11 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
 
 ## State
 
-- **State of 5 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.105.6, main clean and pushed.
+- **State of 6 Nov, read this first** (next steps: `tasks/todo.md`). Latest tag v4.105.7, main pushed, CI green.
+  6 Nov: v4.105.7 = DOCAUDIT (every doc checked against the code before sigma v1.0.0; IDsByLabelAndPropertyValues takes a
+  bare ValidEndAfter; import and apply wrap the decode cause with %w; the last raw msgpack decodes go through
+  SafeUnmarshal) + VULNZSTD (klauspost/compress v1.20.2, ai-soc's govulncheck). sigma v0.17.3 pins v4.105.7; ai-soc
+  told (it overrides compress itself until it pins). CodeQL stays red until the org default setup is off (CIGATES).
   5 Nov tags: v4.105.5 = RELTEMPID (a temporal index keeps only its envelope map until its first stabbing query;
   badger's rel-type index 125.6 -> 55.8 B an id) + REFFANOUT (tiered label and type doors skip cold shards sealed with
   none of the label or type) + its Fable-review fix 497bca49 (every writable cold open unseals the saved counts first);
