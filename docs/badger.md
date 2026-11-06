@@ -321,7 +321,7 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 |---|---|---|
 | `NewTransaction(update)` | A transaction at the current read timestamp; must be `Discard`ed. Not safe for concurrent use. | flush path A (`commitFlushEntries`), the read transactions (`badgerstore_read_txn.go`), the value-log guard, the open image |
 | `NewTransactionAt(readTs, update)` | Managed mode. | - |
-| `Update(fn)`, `View(fn)` | Run `fn` in a read-write / read-only transaction and commit / discard it. | 11 / 10 call sites (most reads go through `bs.view`) |
+| `Update(fn)`, `View(fn)` | Run `fn` in a read-write / read-only transaction and commit / discard it. | 11 / 8 call sites (most reads go through `bs.view`) |
 | `Txn.Get(key)` | Point read, `ErrKeyNotFound` if absent; probes memtables then levels with bloom filters (section 3). | everywhere |
 | `Txn.Set`, `SetEntry`, `Delete` | Buffer a write; return `ErrTxnTooBig` when the transaction would pass `MaxBatchCount`/`MaxBatchSize` (section 2). Keep a reference to the slices until commit. | flush, meta writes |
 | `Txn.Commit()` | Conflict check (a transaction that read nothing never conflicts, `txn.go:128`; with `DetectConflicts` false nothing is tracked), then one write request: one WAL record set ending in a finish entry, so replay applies all or none of it (`memtable.go:433-530`). | flush path A, `Update` |

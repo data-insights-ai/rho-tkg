@@ -134,7 +134,7 @@ Coverage spans three sources:
 | `ErrNilWriter` | io | Export writer is nil | `g.IO().Export()` |
 | `ErrIncompatibleExport` | io | Export stream format version is not supported by this binary | `g.IO().Import()` with data from newer release |
 | `ErrIncompatibleRegistry` | io | Imported registry conflicts with existing registry (e.g., diverged label tokens) | `g.IO().Import()` when registries are out of sync |
-| `ErrCorruptExport` | io | Export record is corrupted or malformed | `g.IO().Import()` with truncated or corrupted stream. Wraps `store.ErrCorruptWire` (and `store.ErrWireFormatVersionUnsupported`) when the underlying cause is a decode-boundary rejection (see Integrity & Wire below; since v4.105.7, before it the cause was in the message only) |
+| `ErrCorruptExport` | io | Export record is corrupted or malformed | `g.IO().Import()` with truncated or corrupted stream. Wraps `store.ErrCorruptWire` (and `store.ErrWireFormatVersionUnsupported`) when the underlying cause is a decode-boundary rejection (see Integrity & Wire below; since v4.105.7, before it the cause was in the message only). The cause can also be the decoder's `io.EOF` / `io.ErrUnexpectedEOF` on a truncated record: test `ErrCorruptExport` before `io.EOF` |
 | `ErrImportSizeLimit` | io | Import staging buffer exceeds maximum allowed size | `g.IO().Import()` with very large export streams |
 
 ## Delta Export & Merge
