@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **DOCAUDIT** (every doc checked against the code before sigma v1.0.0):
+  - `Nodes().IDsByLabelAndPropertyValues` takes a non-zero `ValidEndAfter` without `ValidEndAfterSet` as
+    `ByLabelAndPropertyValues` does; it refused it with `ErrValidEndAfterUnsupported` (the index path tested the flag,
+    not `HasValidEndAfter`). `TestValidEndAfter` reads the ID door both ways.
+  - Import, `ImportMerge` and replica apply wrap the decode cause with `%w`, so `errors.Is(err, store.ErrCorruptWire)`
+    and `errors.Is(err, store.ErrWireFormatVersionUnsupported)` hold beside `ErrCorruptExport`, as errors.md states;
+    the cause was formatted with `%v`. `TestImportGraph_RejectsMalformedMsgpackRecordsWithCorruptSentinel` checks it.
+
 ## [4.105.6] - 2026-11-05
 
 ### Fixed

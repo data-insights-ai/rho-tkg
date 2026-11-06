@@ -394,7 +394,7 @@ func (c *Core) applyNodePutLocked(body storeutil.NodePutBody, rec storepkg.Chang
 	}
 	n, err := storeutil.WireToNodeChecked(body.Wire)
 	if err != nil {
-		return fmt.Errorf("graph: apply: node %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
+		return fmt.Errorf("graph: apply: node %d: %w: %w", body.Wire.ID, ErrCorruptExport, err)
 	}
 	if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 		return err
@@ -513,7 +513,7 @@ func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeR
 	}
 	r, err := storeutil.WireToRelChecked(body.Wire)
 	if err != nil {
-		return fmt.Errorf("graph: apply: relationship %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
+		return fmt.Errorf("graph: apply: relationship %d: %w: %w", body.Wire.ID, ErrCorruptExport, err)
 	}
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
@@ -567,7 +567,7 @@ func (c *Core) applyForeignIncomingLocked(body storeutil.RelPutBody, rec storepk
 	}
 	r, err := storeutil.WireToRelChecked(body.Wire)
 	if err != nil {
-		return fmt.Errorf("graph: apply: foreign-incoming relationship %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
+		return fmt.Errorf("graph: apply: foreign-incoming relationship %d: %w: %w", body.Wire.ID, ErrCorruptExport, err)
 	}
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
@@ -636,7 +636,7 @@ func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 	}
 	nodeTomb, err := storeutil.WireToNodeChecked(*body.Tombstone)
 	if err != nil {
-		return fmt.Errorf("graph: apply: node delete tombstone %d: %w: %v", body.ID, ErrCorruptExport, err)
+		return fmt.Errorf("graph: apply: node delete tombstone %d: %w: %w", body.ID, ErrCorruptExport, err)
 	}
 	clamped := closeClamped(c.axis(), local.Temporal(), nodeTomb.Temporal())
 	relTombs := make([]storepkg.RelTombstone, 0, len(body.RelTombstones))
@@ -644,7 +644,7 @@ func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 		rw := body.RelTombstones[i]
 		rt, err := storeutil.WireToRelChecked(rw)
 		if err != nil {
-			return fmt.Errorf("graph: apply: cascade tombstone rel %d: %w: %v", rw.ID, ErrCorruptExport, err)
+			return fmt.Errorf("graph: apply: cascade tombstone rel %d: %w: %w", rw.ID, ErrCorruptExport, err)
 		}
 		localRel, rerr := c.store.GetRelationship(types.RelID(rw.ID))
 		if rerr != nil {
@@ -705,7 +705,7 @@ func (c *Core) applyRelDeleteLocked(body storeutil.RelDeleteBody) error {
 	}
 	tomb, err := storeutil.WireToRelChecked(*body.Tombstone)
 	if err != nil {
-		return fmt.Errorf("graph: apply: rel delete tombstone %d: %w: %v", body.ID, ErrCorruptExport, err)
+		return fmt.Errorf("graph: apply: rel delete tombstone %d: %w: %w", body.ID, ErrCorruptExport, err)
 	}
 	clamped := closeClamped(c.axis(), local.Temporal(), tomb.Temporal())
 	if err := c.store.DeleteRelWithHistory(id, local.Version(), tomb); err != nil {
@@ -722,7 +722,7 @@ func (c *Core) applyNodeHistoryVersionLocked(body storeutil.HistoryVersionNodeBo
 	}
 	n, err := storeutil.WireToNodeChecked(body.Wire)
 	if err != nil {
-		return fmt.Errorf("graph: apply: node version %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
+		return fmt.Errorf("graph: apply: node version %d: %w: %w", body.Wire.ID, ErrCorruptExport, err)
 	}
 	if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 		return err
@@ -740,7 +740,7 @@ func (c *Core) applyRelHistoryVersionLocked(body storeutil.HistoryVersionRelBody
 	}
 	r, err := storeutil.WireToRelChecked(body.Wire)
 	if err != nil {
-		return fmt.Errorf("graph: apply: relationship version %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
+		return fmt.Errorf("graph: apply: relationship version %d: %w: %w", body.Wire.ID, ErrCorruptExport, err)
 	}
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err

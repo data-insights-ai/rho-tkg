@@ -122,6 +122,17 @@ func TestValidEndAfter(t *testing.T) {
 			if !slices.Equal(nodeIDs(got), want) {
 				t.Errorf("%s %s: got %v, want %v", name, step, nodeIDs(got), want)
 			}
+			// The ID door takes the bound as the row door does, with or without
+			// its Set flag (a non-zero bound is present either way).
+			for _, o := range []storepkg.QueryOpts{opts, {ValidEndAfter: bound}} {
+				ids, err := g.Nodes.IDsByLabelAndPropertyValues("D", "ov_h1", values, o)
+				if err != nil {
+					t.Fatalf("%s %s: IDs %+v: %v", name, step, o, err)
+				}
+				if !slices.Equal(ids, want) {
+					t.Errorf("%s %s: IDs %+v: got %v, want %v", name, step, o, ids, want)
+				}
+			}
 			var paged []types.NodeID
 			for page := opts; ; {
 				page.Limit = 3

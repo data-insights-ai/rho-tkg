@@ -261,7 +261,7 @@ func readImportStageRecord(r io.Reader, staged, cap int64) (tag byte, data []byt
 			// Partial header: the stream was cut mid-record — structural
 			// corruption, not a clean end-of-stream (io.EOF stays untouched
 			// as the caller's termination signal).
-			return 0, nil, 0, fmt.Errorf("%w: truncated record header: %v", ErrCorruptExport, err)
+			return 0, nil, 0, fmt.Errorf("%w: truncated record header: %w", ErrCorruptExport, err)
 		}
 		return 0, nil, 0, err
 	}
@@ -314,7 +314,7 @@ func (c *Core) verifyImportedNodeHash(n *types.Node, id int64, kind string) erro
 	}
 	hash, err := integrity.ComputeNodeHashChecked(n, c.nodeLabelsUnlocked(n))
 	if err != nil {
-		return fmt.Errorf("import: %s %d: %w: recompute hash: %v", kind, id, ErrCorruptExport, err)
+		return fmt.Errorf("import: %s %d: %w: recompute hash: %w", kind, id, ErrCorruptExport, err)
 	}
 	if hash != ig.Hash {
 		return fmt.Errorf("import: %s %d: %w: content does not match its integrity hash", kind, id, ErrCorruptExport)
@@ -333,7 +333,7 @@ func (c *Core) verifyImportedRelHash(r *types.Relationship, id int64, kind strin
 	}
 	hash, err := integrity.ComputeRelHashChecked(r, c.relTypeUnlocked(r))
 	if err != nil {
-		return fmt.Errorf("import: %s %d: %w: recompute hash: %v", kind, id, ErrCorruptExport, err)
+		return fmt.Errorf("import: %s %d: %w: recompute hash: %w", kind, id, ErrCorruptExport, err)
 	}
 	if hash != ig.Hash {
 		return fmt.Errorf("import: %s %d: %w: content does not match its integrity hash", kind, id, ErrCorruptExport)
@@ -485,7 +485,7 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			}
 			var hdr exportHeader
 			if err := storeutil.SafeUnmarshal(data, &hdr); err != nil {
-				return fmt.Errorf("%w: unmarshal header: %v", ErrCorruptExport, err)
+				return fmt.Errorf("%w: unmarshal header: %w", ErrCorruptExport, err)
 			}
 			if hdr.Version < exportFormatVersionMin || hdr.Version > exportFormatVersionMax {
 				return fmt.Errorf("%w: got %d, want %d..%d", ErrIncompatibleExport, hdr.Version, exportFormatVersionMin, exportFormatVersionMax)
@@ -521,7 +521,7 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			}
 			var reg tiered.RegistryFileData
 			if err := storeutil.SafeUnmarshal(data, &reg); err != nil {
-				return fmt.Errorf("%w: unmarshal registry: %v", ErrCorruptExport, err)
+				return fmt.Errorf("%w: unmarshal registry: %w", ErrCorruptExport, err)
 			}
 			if err := c.validateRegistryNames("label", reg.Labels); err != nil {
 				return fmt.Errorf("%w: label registry: %w", ErrCorruptExport, err)
@@ -762,14 +762,14 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 	case exportTagNode:
 		var wn storeutil.NodeWire
 		if err := storeutil.SafeUnmarshal(data, &wn); err != nil {
-			return fmt.Errorf("%w: unmarshal node: %v", ErrCorruptExport, err)
+			return fmt.Errorf("%w: unmarshal node: %w", ErrCorruptExport, err)
 		}
 		if err := c.checkImportedStamp(nodeWireCommitStamp(wn)); err != nil {
 			return err
 		}
 		n, err := storeutil.WireToNodeChecked(wn)
 		if err != nil {
-			return fmt.Errorf("import: node %d: %w: %v", wn.ID, ErrCorruptExport, err)
+			return fmt.Errorf("import: node %d: %w: %w", wn.ID, ErrCorruptExport, err)
 		}
 		if err := validateNodeTokensInRegistry(&wn, c.labels); err != nil {
 			return fmt.Errorf("import: node %d: %w", wn.ID, err)
@@ -814,14 +814,14 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 	case exportTagNodeHist:
 		var wn storeutil.NodeWire
 		if err := storeutil.SafeUnmarshal(data, &wn); err != nil {
-			return fmt.Errorf("%w: unmarshal node history: %v", ErrCorruptExport, err)
+			return fmt.Errorf("%w: unmarshal node history: %w", ErrCorruptExport, err)
 		}
 		if err := c.checkImportedStamp(nodeWireCommitStamp(wn)); err != nil {
 			return err
 		}
 		n, err := storeutil.WireToNodeChecked(wn)
 		if err != nil {
-			return fmt.Errorf("import: node history %d: %w: %v", wn.ID, ErrCorruptExport, err)
+			return fmt.Errorf("import: node history %d: %w: %w", wn.ID, ErrCorruptExport, err)
 		}
 		if err := validateNodeTokensInRegistry(&wn, c.labels); err != nil {
 			return fmt.Errorf("import: node history %d: %w", wn.ID, err)
@@ -864,14 +864,14 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 	case exportTagRel:
 		var wr storeutil.RelWire
 		if err := storeutil.SafeUnmarshal(data, &wr); err != nil {
-			return fmt.Errorf("%w: unmarshal rel: %v", ErrCorruptExport, err)
+			return fmt.Errorf("%w: unmarshal rel: %w", ErrCorruptExport, err)
 		}
 		if err := c.checkImportedStamp(relWireCommitStamp(wr)); err != nil {
 			return err
 		}
 		rel, err := storeutil.WireToRelChecked(wr)
 		if err != nil {
-			return fmt.Errorf("import: rel %d: %w: %v", wr.ID, ErrCorruptExport, err)
+			return fmt.Errorf("import: rel %d: %w: %w", wr.ID, ErrCorruptExport, err)
 		}
 		if err := validateRelTokensInRegistry(&wr, c.relTypes); err != nil {
 			return fmt.Errorf("import: rel %d: %w", wr.ID, err)
@@ -906,14 +906,14 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 	case exportTagRelHist:
 		var wr storeutil.RelWire
 		if err := storeutil.SafeUnmarshal(data, &wr); err != nil {
-			return fmt.Errorf("%w: unmarshal rel history: %v", ErrCorruptExport, err)
+			return fmt.Errorf("%w: unmarshal rel history: %w", ErrCorruptExport, err)
 		}
 		if err := c.checkImportedStamp(relWireCommitStamp(wr)); err != nil {
 			return err
 		}
 		rel, err := storeutil.WireToRelChecked(wr)
 		if err != nil {
-			return fmt.Errorf("import: rel history %d: %w: %v", wr.ID, ErrCorruptExport, err)
+			return fmt.Errorf("import: rel history %d: %w: %w", wr.ID, ErrCorruptExport, err)
 		}
 		if err := validateRelTokensInRegistry(&wr, c.relTypes); err != nil {
 			return fmt.Errorf("import: rel history %d: %w", wr.ID, err)

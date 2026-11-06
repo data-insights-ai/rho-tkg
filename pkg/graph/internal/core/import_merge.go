@@ -137,7 +137,7 @@ func (c *Core) importMergeReplayRecordsLocked(readRecord func() (byte, []byte, e
 			}
 			var hdr exportHeader
 			if err := storeutil.SafeUnmarshal(data, &hdr); err != nil {
-				return fmt.Errorf("%w: unmarshal header: %v", ErrCorruptExport, err)
+				return fmt.Errorf("%w: unmarshal header: %w", ErrCorruptExport, err)
 			}
 			if hdr.Version < exportFormatVersionMin || hdr.Version > exportFormatVersionMax {
 				return fmt.Errorf("%w: got %d, want %d..%d", ErrIncompatibleExport, hdr.Version, exportFormatVersionMin, exportFormatVersionMax)
@@ -172,7 +172,7 @@ func (c *Core) importMergeReplayRecordsLocked(readRecord func() (byte, []byte, e
 			}
 			var reg tiered.RegistryFileData
 			if err := storeutil.SafeUnmarshal(data, &reg); err != nil {
-				return fmt.Errorf("%w: unmarshal registry: %v", ErrCorruptExport, err)
+				return fmt.Errorf("%w: unmarshal registry: %w", ErrCorruptExport, err)
 			}
 			if err := c.validateRegistryNames("label", reg.Labels); err != nil {
 				return fmt.Errorf("%w: label registry: %w", ErrCorruptExport, err)
@@ -205,7 +205,7 @@ func (c *Core) importMergeReplayRecordsLocked(readRecord func() (byte, []byte, e
 			}
 			var crw changeRecordWire
 			if err := storeutil.SafeUnmarshal(data, &crw); err != nil {
-				return fmt.Errorf("%w: unmarshal change record: %v", ErrCorruptExport, err)
+				return fmt.Errorf("%w: unmarshal change record: %w", ErrCorruptExport, err)
 			}
 			ctag := storepkg.ChangeTag(crw.Tag)
 			if !ctag.Valid() {
@@ -467,7 +467,7 @@ func (c *Core) captureMergeRecord(mrb *mergeRollback, rec storepkg.ChangeRecord,
 }
 
 func corruptDelta(rec storepkg.ChangeRecord, what string, err error) error {
-	return fmt.Errorf("import merge: decode %s (change LSN %d): %w: %v", what, rec.LSN, ErrCorruptExport, err)
+	return fmt.Errorf("import merge: decode %s (change LSN %d): %w: %w", what, rec.LSN, ErrCorruptExport, err)
 }
 
 // mergeRegistryNamesLocked reconciles a delta's registry names with the base's.

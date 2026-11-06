@@ -119,7 +119,7 @@ func (n *NodeOps) IDsByLabelAndPropertyValues(label, key string, values []any, o
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if !opts.HasTimeCoordinate() && !opts.ValidEndAfterSet && c.propertyIDsQuery != nil && c.propertyQueryTrust {
+	if !opts.HasTimeCoordinate() && !opts.HasValidEndAfter() && c.propertyIDsQuery != nil && c.propertyQueryTrust {
 		if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 			return nil, err
 		}

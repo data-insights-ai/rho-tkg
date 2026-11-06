@@ -173,6 +173,9 @@ func TestImportGraph_RejectsMalformedMsgpackRecordsWithCorruptSentinel(t *testin
 			if !errors.Is(importErr, ErrCorruptExport) {
 				t.Fatalf("ImportGraph malformed %s: got %v, want ErrCorruptExport", name, importErr)
 			}
+			if !errors.Is(importErr, storepkg.ErrCorruptWire) { // the decode cause stays matchable (errors.md)
+				t.Fatalf("ImportGraph malformed %s: got %v, want it to wrap store.ErrCorruptWire", name, importErr)
+			}
 		})
 	}
 }
