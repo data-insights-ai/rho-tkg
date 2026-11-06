@@ -45,7 +45,7 @@ hash chains, transactions and rollback. It talks to the store only through the `
 
 **Store** is pure persistence over tokens and IDs. It never sees a label string and makes no temporal decision of
 its own beyond the shared predicates in `internal/storeutil`. `MandatoryStore` (lifecycle, CRUD, adjacency, bulk
-reads, batch, history, stats, iteration) is what core requires; about 90 optional `*Capability` interfaces
+reads, batch, history, stats, iteration) is what core requires; about 130 optional `*Capability` interfaces
 (indexes, change feed, history compaction, retention purge, durable flush, …) are type-asserted where needed, and a
 door whose capability is missing fails with `ErrCapabilityNotSupported` or takes a correct generic path.
 `pkg/graph/store/capabilities.go` and its siblings are the authority for the capability list.
@@ -60,7 +60,7 @@ door whose capability is missing fails with `ErrCapabilityNotSupported` or takes
   plus the hashes of both endpoints at write time.
 - **Entities are pure data.** `types.Node` / `types.Relationship` hold tokens, not strings, and no reference to the
   graph; core resolves names (`g.Nodes().Labels`, `g.Rels().Type`, `g.Resolve()`). No public door returns a token.
-  Rows a store hands to scans are frozen and shared (mutating one fails with `ErrFrozenNode`); point reads return
+  Rows a store hands to scans are frozen and shared (mutating one fails with `ErrFrozenNode` / `ErrFrozenRelationship`); point reads return
   mutable copies.
 - **Properties** are an allowlist: scalars, string/number/byte/bool slices, `map[string]any`,
   `map[string]string`, `types.TemporalValue` (and `time.Time`, stored as one), and registered structs.
@@ -102,8 +102,9 @@ A writer must never default valid-from to "now": that leaks recording latency in
 
 **Versions are append-only.** An update writes a new version and moves the old one to history; a delete writes a
 tombstone; a correction of the past (`SetNodeVersionInterval`, excise, `UpdateWithTx` / `DeleteWithTx` with a
-caller instant under `AllowTxBackfill`) appends rows at a new `TxFrom`. No ordinary door rewrites or removes a
-stored row. Only opt-in admin doors remove history: `CompactHistory*`, `PurgeExpiredNodes/Rels`, `ExactErase` and
+caller instant under `AllowTxBackfill`) appends rows at a new `TxFrom`. No ordinary door removes a stored row,
+and one rewrites the current row: `Nodes()` / `Rels().UpdateInPlace` (no new `TxFrom`, no history row; a pin before
+it reads the rewritten row). Only opt-in admin doors remove history: `CompactHistory*`, `PurgeExpiredNodes/Rels`, `ExactErase` and
 `Reset`; a read pinned before compacted knowledge fails with `ErrHistoryCompacted` instead of answering partially.
 
 **The valid axis and untimed writes.** A write without a valid time stores a start chosen by the store's persisted
@@ -168,8 +169,9 @@ properties are enforced at the finalized-state seam, not per door.
   and sees them vanish after `Rollback`.
 - Entity locks are taken per call, not held to commit: a standalone write between two tx calls can be overwritten
   by `Rollback` (lost update).
-- A crash before `Commit` can leave part of a transaction on disk, unless `Config.DurableCommit` is on; then
-  `Commit` returns only after one durable flush of the whole group.
+- A crash before `Commit` can leave part of a transaction on disk, in every mode. `Config.DurableCommit` makes
+  `Commit` return only after one durable flush of the whole group: durable on return, not atomic (persistence.md,
+  Durability).
 - The change-log is scoped: a rolled-back transaction emits no records.
 
 Use `g.Batch()` when readers must never see a partial group; serialize writers yourself when a tx must not lose
@@ -242,8 +244,9 @@ DataDir/
 
 Tiers are catalog states, not places. Each catalog entry names its shard's volume: hot (`DataDir`, fast NVMe), warm
 (`WarmDir`, SSD) or cold (`ColdDir`, block devices); a new store makes its reference shard on `ReferenceVolume` (hot or
-warm) and its archive on `ArchiveVolume`, everything else starts on hot. Moving shards between volumes and a global
-index on the fast volume are being built: ADR-0012.
+warm) and its archive on `ArchiveVolume`, everything else starts on hot. Shards move between volumes
+(`MoveShard`, `MoveShardOffline`, v4.78.0) and a global unique-owner index lives on the reference shard (v4.81.0):
+ADR-0012.
 
 - **Routing.** A node's label decides its *class* (reference or event) at creation. An event entity lives in the
   shard whose time window contains its ID's mint time. Lookup goes reference shard → archive → event shard by ID
@@ -293,7 +296,9 @@ probe's 107 s CPU. A badger shard answers from its index when:
 - the lookup names no time coordinate (valid time, `TxAt`, `TxPin`);
 - the index is published (not building);
 - for an on-disk scalar definition, no on-disk Elements definition shares the property key (its element keys would
-  match a list value the scalar definition does not match).
+  match a list value the scalar definition does not match);
+- for an on-disk definition, no definition dropped on that key while another one still indexed it (the key is
+  marked inexact: the dropped definition's entries stay until the key's next rebuild).
 
 It keeps an index key's node when the node carries the label (a deleted node carries none): from `labelIdx`, or
 with the label index on disk, from one iterator seeking each candidate's label key, plus the pending writes. An on-disk key is
@@ -337,7 +342,7 @@ that test.
 
 | # | Invariant | Pinned by |
 |---|---|---|
-| 1 | History is append-only; no ordinary door rewrites or deletes a stored row. | `TestBitemporalOracleHarness` |
+| 1 | History is append-only; no ordinary door deletes a stored row, and only `UpdateInPlace` rewrites the current one. | `TestBitemporalOracleHarness` (the doors' answers against an oracle; no test compares prior rows byte for byte) |
 | 2 | Every temporal read resolves through one seam; named, generic and per-ID doors agree. | `TestTemporalTwoDoorsAgreeOnLabelQueries` |
 | 3 | Superseded is not retracted: a `TxAt` pin sees every row recorded by then. | `bitemporal_supersession_test.go` |
 | 4 | A retracted life vanishes from every later pin; earlier pins answer as before. | `TestRetraction_OldChainsAnswerAsBefore`, `TestRetractionOracle_NeverRecordedWorld` |
@@ -350,10 +355,10 @@ that test.
 | 11 | A version's history row is published before its new current row. | `TestWithHistoryDoorsPublishHistoryBeforeCurrent` |
 | 12 | Readers see buffered and in-flight writes consistently across doors. | `TestFlushingOverlay_PendingDeleteMasksMax_NodeDoorsAgree` |
 | 13 | Every in-memory structure is rebuilt identically on reopen. | `TestCleanReopenMatchesFullRebuild` |
-| 14 | Every persisted meta key has a reap policy. | `TestMetaKVReapPolicyCoversEveryKey` |
-| 15 | Persisted counters must match the rows (an undercount heals, anything else fails closed). | `TestBadgerStoreLoadRejectsMismatchedPersistedCounters` |
+| 14 | Every meta key core persists through `MetaSet` has a reap policy (store-owned keys such as tiered's `vtmint/` are the store's). | `TestMetaKVReapPolicyCoversEveryKey` |
+| 15 | Persisted counters must match the rows (an undercount heals, anything else fails closed). | `TestBadgerStoreLoadRejectsMismatchedPersistedCounters`, `TestBadgerStoreLoadHealsUndercountedPersistedCounters` |
 | 16 | Persisted and imported bytes are untrusted: no decode panics or unbounded allocation. | `FuzzImport`, `FuzzWireToNodeChecked`, `TestSafeUnmarshalRejectsDeepNesting` |
-| 17 | The change-log has exactly one record per public mutation door, in every backend. | `TestMemoryChangeLog_AllDoorsEmit` |
+| 17 | The change-log has exactly one record per public mutation door, in every backend. | `TestMemoryChangeLog_AllDoorsEmit` (memory), `TestChangeFeedParity_BadgerVsMemory` (badger against memory) |
 | 18 | A replica converges, re-applies idempotently and resumes after a restart. | `TestReplicaConvergence_IdempotentReapply`, `TestReplicaConvergence_DurableRestartResume` |
 | 19 | A cascade delete applies nothing if its preflight fails. | `TestCascadeDeleteFatalPreflightAppliesNothing` |
 | 20 | Tiered rotation persists the catalog before changing the topology. | `TestRotateHotShard_CatalogSaveFailure_RollsBackInMemory` |
@@ -375,16 +380,18 @@ that test.
   Apply owns `TxFrom`, LSNs, hashes, events and unique arbitration. Concurrent mode applies on the caller thread
   under the standalone locking discipline.
 - **ADR-0007 Sharded store.** Slot topology routed by the ID's node field (section 5).
-- **ADR-0008 Retention.** Whole expired event shards are dropped as files when they hold only the purged label;
-  a shard with other labels is purged row by row.
+- **ADR-0008 Retention.** Whole expired event shards are dropped as files when they hold only the purged label,
+  the change-log is off and the boundary is a `PurgeByAge` instant above 0 (never the hot shard); any other shard
+  is purged row by row.
 - **ADR-0010 Foreign endpoints.** A relationship may name an end node on another machine (`AddByIDForeignEnd`,
   sharded store only).
-- **ADR-0011 Column segments** (memory store, `Config.RelSegments`, shipped v4.37–v4.40). Bulk relationship types
+- **ADR-0011 Column segments** (memory store, `Config.RelSegments`; S1-S3 shipped v4.37-v4.40, S4 merge, S6 and S7 open). Bulk relationship types
   declared by the consumer are stored as immutable column segments (CSR adjacency, bit-packed integer pages,
   dictionary or plain string columns, SHA-256 group roots) instead of one row per relationship, within a RAM
   budget (default 256 MiB) and optionally as sealed files (`SegmentDir`). `ScanRelSegments` reads them column-wise.
-- **ADR-0012 Three storage volumes and a global index** (tiered; designed 2026-10-23, Fable; built in the steps of
-  `tasks/todo.md` SHARD, each marked here when released: steps 1 in v4.76.1, 2-8 in v4.78.0).
+- **ADR-0012 Three storage volumes and a global index** (tiered; designed 2026-10-23, Fable; built in
+  steps: 1 in v4.76.1, 2-8 in v4.78.0, the owner index in v4.81.0; step 10 is parked, docs/CHANGELOG.md § Folded
+  from tasks/todo.md).
   - *Volumes.* A volume is a directory on a device: `hot` = `DataDir` (fast NVMe), `warm` = `Config.WarmDir` (SSD),
     `cold` = `Config.ColdDir` (block devices). Tier (catalog state) and volume are separate: rotation flips tiers at
     once, as today; a shard's volume follows its tier later, through the mover. Placement: `meta/` and the hot shard
@@ -454,7 +461,7 @@ that test.
     map.
 
 - **ADR-0013 Valid-time placement** (TIERCLOCK; designed 2026-10-29 for ai-soc's full BA archive, 33 valid days,
-  revised the same day after an independent review; not built, each step marked here when released). *Problem.*
+  revised the same day after an independent review; built in v4.98.0 except the retention watermark, step 3). *Problem.*
   Placement and tiering follow the wall clock: core mints every ID from its generators before any store call, an
   event entity lives in the shard whose window holds its ID's time (no window: the hot shard), rotation and the
   `ColdAfter` demotion compare `time.Now()`, and `New` opens the hot shard for the wall-clock window. A replay of 33
@@ -497,7 +504,7 @@ that test.
     `Sequence`: the lease ends live in the reference shard's meta (always open and durable, beside the change-log
     watermark and the commit floor), keyed by window start, synced before any ID of a lease is returned; a lease
     spans 1 M steps, one synced write per million IDs. A restart starts each cursor at its lease end; a crash skips
-    at most one lease. A window's lease keys are reaped with its shard (retention drop) and kept by `Clear`.
+    at most one lease. A window's lease keys (`vtmint/` on the reference shard) are never reaped, not by a retention drop either, and `Clear` keeps them.
   - *A window without a shard is made on demand* (with the option on only; off, a concrete ID with no window still
     goes to the hot shard, as imports and replicas do today). The write path makes it under the lifecycle gate and
     `ts.mu.Lock`, saving the catalog before the topology changes (rotation's discipline); reads use a non-creating
@@ -506,8 +513,9 @@ that test.
     above the lateness plus one window (ai-soc: 24 h, day windows: 2 days or more): its day is then still warm.
   - *Relationship writes into cold days.* A relationship write pins its endpoints through the read checkout, which
     opens a cold shard writable and closes it again at check-in unless `MaxOpenColdShards` has room: every edge
-    from an older-than-`ColdAfter` start node pays an open (~28 ms) and a close. The option requires
-    `MaxOpenColdShards > 0`, and the endpoint checkout of a write keeps the handle for the idle sweep instead.
+    from an older-than-`ColdAfter` start node pays an open (~28 ms) and a close. Designed, not built:
+    the option would require `MaxOpenColdShards > 0` (today `New` only clamps a negative value to 0), and the endpoint
+    checkout of a write would keep the handle for the idle sweep.
     ai-soc (30 Oct): its edges run between long-lived entities and the event is the edge, but every label it
     writes is a reference label and `RelsByMint` is on, so each edge is minted at its own `ValidFrom` and placed
     on that day's shard, with no cold write. Its event-class start count is 0 by construction. Widening
@@ -550,8 +558,8 @@ that test.
   with none (`eventShardsWithLabel`, `eventShardsWithRelType`), so a reference label's listing opens no cold shard.
 
 - **ADR-0014 Whole-row replace** (WHOLEROW; designed 2026-10-31 for sigma-tkgd's paged-row writer, which rewrites a
-  grown page row whole as one version with its full validity and reads it by `TxPin` plus the current row; built on
-  branch `wholerow`, a minor, unreleased). *Problem.* A page row is closed (its end is known) and grows: its end
+  grown page row whole as one version with its full validity and reads it by `TxPin` plus the current row; shipped in
+  v4.100.0). *Problem.* A page row is closed (its end is known) and grows: its end
   moves later, its start may move earlier, or only its properties change. Every update door refuses one of these:
   `ErrAlreadyClosed` on a closed row, `ErrValidFromBeforePrevious` on a start at or before the previous one, a
   bare `tkg_valid_to` is a close (one per version), and `UpdateInPlace` rewrites the row with no new `TxFrom` and no

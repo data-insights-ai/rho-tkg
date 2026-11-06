@@ -484,7 +484,7 @@ func (a *API) InventoryEpoch() uint64 {
 // numeric value's multiplicity and per-chunk prefix sums, so
 // g.Nodes().RangeCardinality on it is two prefix sums — O(log chunks) plus at
 // most 512 per-value counts each, independent of the range's width — instead
-// of a walk over the range's distinct values. It costs about 35 ns more per
+// of a walk over the range's distinct values. It costs about 42 ns more per
 // index add or remove of a numeric value and 8 B per distinct value; an index
 // created without it has exactly the plain index's structure and write cost.
 // The options are fixed at creation and persist with the definition (badger,

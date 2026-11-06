@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -161,7 +162,7 @@ func loadRegistryFile(path string) (labels, relTypes []string, err error) {
 	}
 
 	var rfd RegistryFileData
-	if err := msgpack.Unmarshal(data, &rfd); err != nil {
+	if err := storeutil.SafeUnmarshal(data, &rfd); err != nil {
 		return nil, nil, fmt.Errorf("registry file: unmarshal: %w", err)
 	}
 	if err := validateRegistryFileNames("label", rfd.Labels); err != nil {

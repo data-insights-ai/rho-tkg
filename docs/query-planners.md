@@ -4,8 +4,8 @@ This page is the single reference for query-layer authors (e.g. a
 Cypher planner) building cost-based decisions on top of rho-tkg — cardinality
 estimates, index-usability checks, and staleness detection. Every primitive
 below is reachable from `g.Stats()`, `g.Nodes()`, `g.Rels()`, `g.Index()` or
-`g.Temporal()`; call signatures and the full list of `g.Stats()` doors are in
-`docs/api.md`.
+`g.Temporal()`; call signatures of the other sub-APIs are in `docs/api.md`; this file owns the
+`g.Stats()` doors (`go doc ./pkg/graph/stats` lists them all).
 
 All complexities below are for the in-tree backends (`memory.Store`,
 `badger.Store`, `tiered.Store`, `sharded.Store`). An out-of-tree `Store`
@@ -18,14 +18,14 @@ backend answers and which declines.
 
 | Primitive | Accessor(s) | Complexity (memory / badger) | Complexity (tiered / sharded) | Declines when |
 |---|---|---|---|---|
-| Total node count | `g.Stats().NodeCount()` | O(1) | O(open shards) | never (mandatory capability) |
-| Total relationship count | `g.Stats().RelCount()` | O(1) | O(open shards) | never (mandatory capability) |
-| Node count by label | `g.Stats().NodeCountByLabel(label)` | O(1) | O(open shards) | unregistered label → 0, not an error |
-| Relationship count by type | `g.Stats().RelCountByType(typeName)` | O(1) | O(open shards) | unregistered type → 0, not an error |
+| Total node count | `g.Stats().NodeCount()` | O(1) | O(shards) | never (mandatory capability) |
+| Total relationship count | `g.Stats().RelCount()` | O(1) | O(shards) | never (mandatory capability) |
+| Node count by label | `g.Stats().NodeCountByLabel(label)` | O(1) | O(shards) | unregistered label → 0, not an error |
+| Relationship count by type | `g.Stats().RelCountByType(typeName)` | O(1) | O(shards) | unregistered type → 0, not an error |
 | All label counts | `g.Stats().AllLabelCounts()` | O(distinct registered labels) | O(labels × open shards) | zero-count labels omitted from the map |
 | All rel-type counts | `g.Stats().AllRelTypeCounts()` | O(distinct registered types) | O(types × open shards) | zero-count types omitted from the map |
-| Node count by label + property-key presence | `g.Stats().NodeCountByLabelAndPropertyKey(label, key)` | O(1) | O(open shards) | `ErrCapabilityNotSupported` on a store without the optional capability |
-| NDV + exact min/max + count | `g.Stats().PropertyStats(label, key)` | O(1) amortized; O(nodes carrying label) on a rescan after the current min/max holder is deleted | O(open shards) — per-shard HyperLogLog register-max merge, plus each shard's own independent Min/Max rescan on extremum deletion (see "Tiered NDV fold") | `ErrCapabilityNotSupported` on a store without the optional capability (sharded; also a graph-opened store when `Config.DisablePlannerStats` is set) |
+| Node count by label + property-key presence | `g.Stats().NodeCountByLabelAndPropertyKey(label, key)` | O(1) | O(shards) | `ErrCapabilityNotSupported` on a store without the optional capability |
+| NDV + exact min/max + count | `g.Stats().PropertyStats(label, key)` | O(1) amortized; O(nodes carrying label) on a rescan after the current min/max holder is deleted | O(shards) — per-shard HyperLogLog register-max merge, plus each shard's own independent Min/Max rescan on extremum deletion (see "Tiered NDV fold") | `ErrCapabilityNotSupported` on a store without the optional capability (sharded; also a graph-opened store when `Config.DisablePlannerStats` is set) |
 | NDV + count, no min/max | `g.Stats().PropertyNDV(label, key)` / `RelPropertyNDV(typeName, key)` | O(1) plus the sketch's estimate (about 12 us on a dense sketch, CHANGELOG `[4.51.0]`); never rescans | tiered merges the shards' node sketches without their rescans; sharded, and tiered relationships, decline | `ErrCapabilityNotSupported` as for `PropertyStats` |
 | Numeric range cardinality | `g.Nodes().RangeCardinality(...)` / `g.Stats().RangeCardinality(...)` (alias) | O(distinct values in range), no node scan | both sum their parts' counts; exact only when every shard / slot is | `exact=false` (not an error) — see "RangeCardinality decline conditions" |
 | **Relationship-side mirrors** | `g.Stats().RelPropertyStats(typeName, key)`, `g.Stats().RelPropertyTypeClassCounts(typeName, key)`, `g.Stats().RelRangeCardinality(...)` / `g.Rels().RangeCardinality(...)` (same operation), `g.Rels().ForEachByTypePropertyRangeOrdered(...)` | same shapes as their node siblings, over the REL property index | `RelPropertyStats` declines on both; `RelPropertyTypeClassCounts` and `RelRangeCardinality` sum the parts (a relationship's row lives on one shard / slot); the ordered scan merges the parts' walks | `ErrCapabilityNotSupported` for the two stats doors (an unpopulated `(relType, key)` pair is a zero value, not an error); `exact=false` for `RelRangeCardinality`; `ErrIndexNotFound` for the non-temporal ordered scan |
@@ -34,13 +34,17 @@ backend answers and which declines.
 | Outgoing / incoming degree | `g.Rels().OutgoingDegree(id, type)` / `IncomingDegree(id, type)` | O(1) via `DegreeCapability`, else O(degree) | tiered O(1) — single-shard lookup on the node's owning shard; sharded has no `DegreeCapability`, so it takes the O(degree) fallback | never — always answers (fast path or fallback) |
 | Node / relationship mutation epoch | `g.Nodes().NodeMutationEpoch()` / `g.Rels().RelMutationEpoch()` | O(1) | O(1) | returns 0 (not an error) when the backend lacks the DocValues capability; the per-label `NodeLabelMutationEpoch` is badger and sharded only (0 on memory and tiered) |
 | Equality lookup (one key) | `g.Nodes().ByLabelAndProperty(label, key, value, opts)` / `g.Rels().ByTypeAndProperty(type, key, value, opts)` without a temporal filter | with a property index: O(log matches + page) per keyset page (`After`, `Limit`), O(matches) unpaged; the value's IDs are a posting list kept sorted at write time (backlog 72; before, every call copied and sorted all matches); badger `PropertyIndexOnDisk` (nodes) still collects and sorts the value's IDs; else O(label size) scan+filter | each shard / slot answers the same page from its own index copy, the merge is cut to it; a tiered shard without a usable copy scans+filters | never errors |
-| Composite (multi-key) equality lookup | `g.Nodes().ByLabelAndProperties(label, values, opts)` | O(log matches + page) per keyset page with a matching `g.Index().CreateComposite` definition (sorted posting lists, backlog 72), O(matches) unpaged; else O(label size) scan+filter | each shard answers the same page with its own definition (every shard builds one) and the merge is cut to it; else scan+filter per shard | never errors; falls back to scan+filter when no exact-key-set definition exists (see "Composite property indexes" below) |
+| Composite (multi-key) equality lookup | `g.Nodes().ByLabelAndProperties(label, values, opts)` | O(log matches + page) per keyset page with a matching `g.Index().CreateComposite` definition when every value is single-form (sorted posting lists, backlog 72), O(matches) unpaged; a number in the query reads through the single-key index of the pair with the fewest forms ("Numbers and floats"); else O(label size) scan+filter | each shard answers the same page with its own definition (every shard builds one) and the merge is cut to it; else scan+filter per shard | never errors; falls back to scan+filter when no exact-key-set definition exists (see "Composite property indexes" below) |
 | Temporal property lookup | `g.Rels().ByTypeAndProperty` / `g.Nodes().ByLabelAndProperty(ies)` with a temporal filter, the named `*PropertyAt` / `*PropertyDuring` doors | O(the value's ever-members) with a declared index (property membership sidecar, built lazily once); else O(all history) | sharded unions its slots' sidecars; tiered unions its shards' (DepthAll) and takes the full-history fold while any shard lacks a finished copy of the anchor's index | never — without the sidecar the full-history fold answers the same |
 | Pinned adjacency — bitemporal (TxAt) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter); **valid-at-now filter — drops past-valid edges**, see below |
 | Pinned adjacency — belief-state (TxPin) | `g.Rels().OutgoingForNodesAtPin(nodeIDs, type, pin)` / `IncomingForNodesAtPin(...)` | adjacency index + O(deleted rels) fold; agrees with `ByType{TxPin}` filtered by endpoint by construction | same adjacency-index push-down per shard | `pin == 0` delegates to `OutgoingForNodes`/`IncomingForNodes`; a seed absent from the belief state at the pin is skipped silently (no `ErrNodeNotFound`) |
 
-In the tiered / sharded column, "O(open shards)" is O(slots) on sharded, which
-sums its slots' counters.
+In the tiered / sharded column, "O(shards)" on tiered asks the reference
+shard, the archive and every event shard of the depth (DepthAll: all): a
+closed shard answers the counters from the counts it sealed when it closed,
+else it is opened read-only; the NDV, `PropertyStats` and
+`NodeCountByLabelAndPropertyKey` folds open cold shards. On sharded it is
+O(slots), which sums its slots' counters.
 
 ## Cardinality counters — `NodeCount` / `RelCount` / `AllLabelCounts` / `NodeCountByLabel` / `RelCountByType`
 
@@ -54,7 +58,7 @@ O(nodes).
 
 `g.Stats().NodeCountByLabel(label)` / `RelCountByType(typeName)` are the
 per-label / per-type siblings — same O(1) per-shard cost (a maintained
-counter keyed by label/rel-type token), same O(open shards) tiered fold. An
+counter keyed by label/rel-type token), same O(shards) tiered fold. An
 unregistered label or type name is not an error: the count is 0.
 
 `g.Stats().AllLabelCounts()` / `AllRelTypeCounts()` return a `map[string]int`
@@ -90,7 +94,7 @@ backend implements it (memory / badger maintain a counter per
 `(label token, property key)` pair, updated on every node-mutation door and
 rebuilt at index load so the count survives a restart — after a clean badger
 close restored from the open image (`docs/persistence.md` "Clean reopen"); tiered folds
-reference + archive + open event shards, same O(open shards) shape as the
+reference + archive + open event shards, same O(shards) shape as the
 other counters; sharded sums its slots). Fold test:
 `TestTieredStoreNodeCountByLabelAndPropertyKey`. A store that omits the capability declines with
 `store.ErrCapabilityNotSupported` (re-exported as `graph.ErrCapabilityNotSupported`)
@@ -534,14 +538,15 @@ already small.
 ### Proving the accelerated path exists — `HasComposite` / `ListComposites`
 
 `g.Index().HasComposite(label, keys) (bool, error)` is an ORDER-INSENSITIVE
-key-SET match, exactly the rule `ByLabelAndProperties` uses to choose index over
-scan, so a planner can check BEFORE routing a multi-property equality through
+key-SET match, the rule `ByLabelAndProperties` uses to choose index over
+scan when every value is single-form (a number routes through a single-key
+index, "Numbers and floats" below), so a planner can check BEFORE routing a multi-property equality through
 the door (routing blindly regresses the single-key-index case to a scan plus
 post-filter). `ListComposites(label) ([][]string, error)` returns every declared
 tuple in its declared order (distinct orderings of one key set are distinct
-definitions and are both listed). O(definitions on the label); there is no
-DDL-epoch signal, so call per plan rather than caching across DDL you do not
-control. Backed by `store.CompositeIndexIntrospectionCapability` (every
+definitions and are both listed). O(definitions on the label); cache the answer while
+`g.Index().InventoryEpoch()` is unchanged (it advances on every index create
+or drop). Backed by `store.CompositeIndexIntrospectionCapability` (every
 in-tree backend); a store without it declines with
 `ErrCapabilityNotSupported`.
 
@@ -573,18 +578,17 @@ two distinct ordered lists can ever collide. See
 `pkg/graph/internal/index/composite_property_index_test.go` for adversarial
 inputs chosen so a naive scheme WOULD collide.
 
-### Float equality semantics
+### Numbers and floats
 
-Composite equality SUPPORTS floats, using the exact same lesson-25
-bit-pattern semantics `types.IndexablePropertyValueKey` already applies to
-the single-key property index (`+0`/`-0` collapse to one key, `NaN` is
-pinned to one key, `float32` and `float64` holding the same magnitude stay
-distinct types). This is a deliberate departure from the unique-constraint
-precedent (`ErrUniqueUnsupportedType` for float keys/values) — a composite
-index is an EQUALITY accelerator, not a business-identity constraint, so
-exact bit-pattern equality is a sound, unsurprising definition; unique
-constraints have the additional (here irrelevant) concern that two writers
-might mean "the same value" despite differing bit patterns.
+Composite equality is property equality (`types.EqualIndexValues`, api.md
+"Property equality", since v4.57.1): a number equals every stored number of
+the same value in any width, NaN equals nothing. A number has several index
+forms (one per width it can be stored in), so when any value of the query is
+a number the door does not use the composite index: it reads the candidates
+of the pair with the fewest forms through its single-key path and keeps the
+rows carrying every other pair (`nodesByLabelAndProperties`,
+`internal/core/store_capabilities.go`). The composite index answers queries
+whose values are all single-form (strings, booleans, temporal values).
 
 ### Mandatory fallback — correctness without the capability
 
@@ -593,9 +597,9 @@ interface (unlike the single-key `PropertyIndexCapability`, which IS
 embedded) — a backend can satisfy `MandatoryStore`/`Store` fully while
 omitting it entirely. `g.Nodes().ByLabelAndProperties` therefore has a
 graph-layer fallback (mirroring `ByLabelAndProperty`'s own fallback) that
-scans `NodesByLabel` and applies `indexpkg.NodeMatchesAllProperties` — the
-SAME AND-conjunction predicate the backend's own internal scan-and-filter
-and the accelerated index path all agree on — as a pure post-filter. Every
+scans `NodesByLabel` and keeps the rows matching every pair under property
+equality (`nodeMatchesAllEqual`) — the same answer the accelerated path
+gives — as a pure post-filter. Every
 in-tree backend ALSO applies this same fallback
 internally whenever no composite index exists for the requested key set, so
 the query is correct on every backend at every point, with or without an
@@ -719,7 +723,7 @@ graph".
 
 Which in-tree backend answers a primitive natively and which declines. Read from
 the method sets of `memory.Store`, `badger.Store`, `tiered.Store` and
-`sharded.Store` (checked at v4.70.0); "no" is a decline or a slower fallback as
+`sharded.Store` (checked at v4.105.6); "no" is a decline or a slower fallback as
 stated in the primitive's own section. `store.CapabilitiesOf(s).IndexAcceleration`
 states the index-served doors per store at run time.
 
@@ -731,7 +735,7 @@ states the index-served doors per store at run time.
 | `RelPropertyTypeClassCounts` | yes | yes | yes | yes |
 | `RangeCardinality`, `RelRangeCardinality` | yes | yes | yes | yes |
 | Ordered / prefix scans, non-temporal (node and rel); `PropertyBounds` / `RelPropertyBounds` | yes | yes | yes | yes |
-| ID-only ordered walks (`ForEachIDBy...Ordered` / `...Prefix`) | yes | yes | no | no |
+| ID-only ordered walks (`ForEachIDByLabelPropertyRangeOrdered` / `ForEachIDByLabelPropertyPrefix`, `Rels()` `ForEachIDByTypeProperty…`) | yes | yes | no | no |
 | `CountByLabelPropertyValue` / `CountByTypePropertyValue` exact | yes | yes | no | yes |
 | O(1) degree (`DegreeCapability`) | yes | yes | yes | no (O(degree)) |
 | Composite index, introspection | yes | yes | yes | yes |
@@ -746,7 +750,7 @@ states the index-served doors per store at run time.
 | `ScanKeepsOrder` true | yes | yes (RAM label index) | no | no |
 | DocValues snapshots | yes | yes | yes | yes |
 | `NodeLabelMutationEpoch` | no (0) | yes | no (0) | yes |
-| Valid-end index (`ForEach...EffectiveBy...From`) | yes | yes | yes (union, cold shards opened) | no (unbounded door's candidates) |
+| Valid-end index (`ForEachRelEffectiveByTypeFrom` / `ForEachNodeEffectiveByLabelsFrom`) | yes | yes | yes (union, cold shards opened) | no (unbounded door's candidates) |
 | `RelTypeDegreeStats` from the adjacency index | no (streams once) | yes | no (streams once) | no (streams once) |
 
 A wrapper store that embeds an in-tree store inherits most optional
@@ -760,8 +764,8 @@ the full-history fold or declines. A store that implements the methods itself
 ## How temporal options are answered
 
 Every door below takes `QueryOpts`. The coordinates are `ValidAt`,
-`ValidStart`+`ValidEnd` (an interval filter only when both are positive; a lone
-bound is no filter), `TxAt` and `TxPin`. `TxPin` is a pure belief-state pin: it
+`ValidStart`+`ValidEnd` (an interval filter when both are non-zero, negatives
+being real instants, or with `ValidWindowSet`; a lone bound is no filter), `TxAt` and `TxPin`. `TxPin` is a pure belief-state pin: it
 answers "the newest row recorded by the pin" (after a bounded cascade the
 corrected slice, not the current row), filters no valid
 time, and combined with any valid-time coordinate or `TxAt` is refused with
@@ -790,14 +794,14 @@ while their current row lacks it; the current members are the label and type
 index's, which the read unites (TXMEMBERS, v4.90.1: its RAM grows with label
 removals and deletes, not with every entity ever labelled). A member with an
 unset (0) first `TxFrom` is never pruned. Sharded and wrapper stores
-take the full fold, O(everything that ever had history). Tiered unions its shards' sidecars for DepthAll reads and keeps the depth fold for a depth-scoped read (`docs/architecture.md` tiered "Tx-membership sidecars"). Its point form
+take the full fold, O(everything that ever had history). Tiered unions its shards' sidecars for DepthAll reads and keeps the depth fold for a depth-scoped read (`docs/architecture.md` § 5, "tiered.Store"). Its point form
 (`store.LabelTxMemberLookupCapability` / `RelTypeTxMemberLookupCapability`)
 scopes a temporal property lookup without a declared index to the history IDs
 that ever carried the label (type): O(history IDs) map lookups instead of a
 version chain per history ID (on badger with the label index on disk, one walk of
 the label's keys per call); a current member comes with a first `TxFrom` of 0.
 
-Tiered builds the relationship temporal index per shard, bounded to the reference, hot and warm shards (a cold shard's relationships are never pruned, so answers are unchanged); anchoring, cost and the build: `docs/architecture.md` tiered "Composite, property and relationship temporal indexes".
+Tiered builds the relationship temporal index per shard, bounded to the reference, hot and warm shards (a cold shard's relationships are never pruned, so answers are unchanged); anchoring, cost and the build: `docs/architecture.md` § 5, "tiered.Store".
 
 ## Further planner doors
 
@@ -810,7 +814,7 @@ Tiered builds the relationship temporal index per shard, bounded to the referenc
 | `g.Stats().RelHistoryCountByType(type)` | how many relationships of one type have history rows: lets a planner bound one type's valid-time window by its current adjacency while another type has history | O(relationships with history) map lookups; memory, badger, tiered (DepthAll history-ID fold plus a per-shard membership lookup, opening closed cold shards); `ok=false` elsewhere |
 | `g.Nodes().HasHistory(id)` / `g.Rels().HasHistory(id)` | whether an entity has a history row, equal to `len(History(id)) > 0` at every moment, without reading rows; an effective-state read uses it to skip `History` when the current row answers | memory map; badger RAM set built once by a key-only scan; tiered and sharded route; a store without the capability falls back to `History` |
 | `g.Nodes().LatestStamps(id)` / `g.Rels().LatestStamps(id)` `(txFrom, txTo, deleted, err)` | the entity's newest transaction stamps over ALL rows (current, every history row, the tombstone): the largest `TxFrom`, the largest `TxTo` or `DeletedAt` (0 when no row was ended), and whether the entity has rows but no current row. Equals the fold of `Get` + `History` at every moment. Unknown ID: `ErrNodeNotFound` / `ErrRelNotFound` | measured at 4.49.0 (32-core x86, `tasks/evidence/latest-stamps/`): 31-83 ns, 0 allocs on memory and badger against 6.4 ms (memory) and 36 ms (badger) for the `History` scan at 10,000 versions; sharded and tiered allocate per call (0.45-1.6 us); a store without `store.HistoryStampsCapability` is folded from `History`. Badger builds a RAM sidecar lazily (66-85 B per ID with history) |
-| `g.Temporal().NodeEffectiveTimeline(id, pin)` / `RelEffectiveTimeline(id, pin)` | the entity's state over valid time as recorded at the pin: ascending, half-open, non-overlapping segments, gaps omitted; for every instant t the segment containing t holds the row `NodeAtTx(id, t, pin)` returns. `ValidFrom` is the effective start (never 0); a deleted entity's last segment ends at the delete instant; created after the pin returns `nil, nil`. DECLARED view (not masked by endpoint validity). Errors include `ErrInvalidTimeRange` (pin <= 0), `ErrTxPinTooNew`, `ErrHistoryCompacted`, `ErrRetentionExpired` | one resolution per entity instead of `Get` + `History` + `RelAtTx` per row bound |
+| `g.Temporal().NodeEffectiveTimeline(id, pin)` / `RelEffectiveTimeline(id, pin)` | the entity's state over valid time as recorded at the pin: ascending, half-open, non-overlapping segments, gaps omitted; for every instant t the segment containing t holds the row `NodeAtTx(id, t, pin)` returns. `ValidFrom` is the effective start (never 0); a deleted entity's last segment ends at the delete instant; created after the pin returns `nil, nil`. DECLARED view (not masked by endpoint validity). Errors include `ErrTxPinTooNew`, `ErrHistoryCompacted`, `ErrRetentionExpired` | one resolution per entity instead of `Get` + `History` + `RelAtTx` per row bound |
 | `g.Temporal().ForEachNodeEffectiveByLabel(label, pin, fn)` / `ForEachRelEffectiveByType(type, pin, fn)` | the same segments for every entity that carried the label (type) in a row recorded by the pin, deleted-before-the-pin entities included (which `ByLabel{TxPin}` drops); at every instant t the segments containing t equal `ByLabel(label, {ValidAt: t, TxAt: pin})`. Entity order unspecified, one entity's segments contiguous and ascending | one scan; `fn` runs without graph locks |
 | `g.Temporal().ForEachNodeEffective(pin, fn)` / `ForEachRelEffective(pin, fn)`, `ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, fn)`, `NodesEffectiveByIDs(ids, pin, fn)` / `RelsEffectiveByIDs(ids, pin, fn)`, `ForEachNodeEffectiveByLabels(labels, pin, fn)` | the same segments for every entity, for the relationships with a seed at one endpoint (`temporal.Outgoing` / `Incoming`, optional types; each relationship once), for a batch of IDs (input order, repeats once, unknown skipped), for several labels (each node once) | one call per evaluation or batch; per entity the per-entity door's body |
 | `g.Temporal().ForEachRelEffectiveByTypeFrom(type, pin, validFrom, fn)` / `ForEachNodeEffectiveByLabelsFrom(labels, pin, validFrom, fn)` (backlog 51) | `ForEachRelEffectiveByType` / `ForEachNodeEffectiveByLabels` restricted to the entities still effective at or after `validFrom`: an entity streams its whole (type- or label-limited) timeline iff one of those segments has `ValidTo >= validFrom` (a segment ending exactly at `validFrom` counts) or is open. Untimed and never deleted: always; deleted: ends at the delete instant; retracted: never. `validFrom` at or below every end equals the unbounded door | memory and badger: reads the type's (labels') entities whose valid end, folded from their rows, is at or after `validFrom`, plus those written after `pin` — 5 read with 1,000 or 10,000 retired (`TestEffectiveByTypeValidFromCostFollowsResult`), 5 on the first call after a badger reopen with 100,000 retired (`TestEffectiveValidFrom_BadgerReopenFirstCall`). Per queried type / label: the first call tracks it (K1 ever-members, each read once, temporal fields only, about 2-4 µs per row on badger, plus the K1 build when no pinned scan built it: about 1 s at 100,000 on a loaded host vs 2-3 s for the first unbounded call); then writes of tracked types fold their rows, writes of untracked types cost a map lookup, a kind with nothing tracked an atomic load. An entity ended only by a valid-time close is read once, then its exact end is kept until its next write or a reopen. RAM about 96-133 B per tracked entity, not persisted (a badger open is linear in the history anyway). Tiered (backlog 58): the same per shard, candidates unioned, closed cold shards opened, an entity ended by a valid-time close read on every call (no refine). Sharded: same answers through the unbounded door's candidates, not accelerated |
@@ -843,10 +847,11 @@ There is exactly ONE decline shape for a genuinely MISSING capability:
 `store.ErrCapabilityNotSupported` (re-exported as `graph.ErrCapabilityNotSupported`),
 checked with `errors.Is(err, graph.ErrCapabilityNotSupported)` — never a
 string comparison on the error message, which is diagnostic-only and may be
-wrapped with the missing capability's name. `NodeCountByLabelAndPropertyKey`
-and `PropertyStats` are the two primitives on this page that surface this
-sentinel directly (`core.nodeCountByLabelAndPropertyKey` /
-`core.nodePropertyStats` return it verbatim on a failed type assertion) —
+wrapped with the missing capability's name. `NodeCountByLabelAndPropertyKey`,
+`PropertyStats`, `PropertyNDV`, `RelPropertyStats`, `RelPropertyNDV`,
+`PropertyTypeClassCounts` / `RelPropertyTypeClassCounts`, `HasComposite` /
+`ListComposites` and `HasProperty` surface this sentinel on a store without
+the capability (wrapped with the capability's name, `internal/core/stats.go`) —
 unlike `RangeCardinality`/degree below, `PropertyStats` has no graceful
 fallback, so an external `Store` implementation that omits
 `NodePropertyStatsCapability` sees this sentinel outright rather than a
@@ -862,9 +867,11 @@ costs more (the sharded store takes the degree fallback).
 `Config.DisablePlannerStats` (default false) is a RUNTIME decline of the same
 sentinel on a store that implements the capabilities: it stops the per-write
 maintenance of the presence counter, the NDV/min/max accumulator and the exact
-type-class partition (the node `PropertyStats`,
-`NodeCountByLabelAndPropertyKey` and node `PropertyTypeClassCounts` doors then
-return `ErrCapabilityNotSupported`), and skips the rebuild at open. No
+type-class partition (the node `PropertyStats`, `PropertyNDV`,
+`NodeCountByLabelAndPropertyKey` and node `PropertyTypeClassCounts` doors and
+the relationship `RelPropertyStats`, `RelPropertyNDV` and
+`RelPropertyTypeClassCounts` then return `ErrCapabilityNotSupported`;
+`PropertyBounds` / `RelPropertyBounds` answer `ok=false`), and skips the rebuild at open. No
 correctness path reads those counters, and `RangeCardinality` is NOT declined
 (it reads the property index). A planner must therefore treat the sentinel as
 "statistics unavailable", not as "backend too old". Which shape a given primitive uses is called out explicitly in

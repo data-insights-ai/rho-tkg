@@ -261,7 +261,7 @@ github.com/data-insights-ai/rho-tkg/v4
 <details>
 <summary>All 36 modules of <code>go list -m all</code> and their licenses</summary>
 
-Every license is one of Apache-2.0, BSD-2-Clause, BSD-3-Clause, MIT, ISC (ISC: permissive, MIT-equivalent). Licenses were read from each module's LICENSE file in the module cache (2026-10-10); the module list and versions were re-checked against `go list -m all` on 2026-10-22 (v4.70.0), unchanged.
+Every license is one of Apache-2.0, BSD-2-Clause, BSD-3-Clause, MIT, ISC (ISC: permissive, MIT-equivalent). Licenses were read from each module's LICENSE file in the module cache (2026-10-10); the module list and versions were re-checked against `go list -m all` on 2026-11-06 (v4.105.7), unchanged.
 
 | Module | Version | License |
 |--------|---------|---------|
@@ -280,7 +280,7 @@ Every license is one of Apache-2.0, BSD-2-Clause, BSD-3-Clause, MIT, ISC (ISC: p
 | github.com/google/go-cmp | v0.7.0 | BSD-3-Clause |
 | github.com/google/uuid | v1.6.0 | BSD-3-Clause |
 | github.com/inconshreveable/mousetrap | v1.1.0 | Apache-2.0 |
-| github.com/klauspost/compress | v1.18.7 | BSD-3-Clause |
+| github.com/klauspost/compress | v1.20.2 | BSD-3-Clause |
 | github.com/kr/pretty | v0.3.1 | MIT |
 | github.com/kr/text | v0.2.0 | MIT |
 | github.com/pmezard/go-difflib | v1.0.0 | BSD-3-Clause |

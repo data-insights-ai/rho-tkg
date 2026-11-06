@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -146,7 +147,7 @@ func loadTemporalIndexFile(path string) (temporalIndexFileData, error) {
 		return temporalIndexFileData{}, fmt.Errorf("temporal index file: read: %w", err)
 	}
 	var out temporalIndexFileData
-	if err := msgpack.Unmarshal(data, &out); err != nil {
+	if err := storeutil.SafeUnmarshal(data, &out); err != nil {
 		return temporalIndexFileData{}, fmt.Errorf("temporal index file: unmarshal: %w", err)
 	}
 	if err := validateTemporalIndexFileData(out); err != nil {

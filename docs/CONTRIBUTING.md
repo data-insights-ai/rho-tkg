@@ -117,8 +117,9 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 | `make test`, `build`, `lint`, `mod`, `gosec`, `vuln`, `fuzz`, `cover` | one check alone (`cover`: the short tier's coverage report, `coverage.html`). golangci-lint, gosec and govulncheck are pinned and run in the go.mod toolchain image: Docker is always available, so the gate is never "un-runnable"; named volumes keep their caches (lint: 1.4 s warm) |
 | `go test -run TestFoo ./pkg/...` | one test |
 
-GitHub CI runs only when a `v*` tag is pushed and only
-builds, vets and runs `go test -short ./...`; a push to main without a tag runs nothing, and nothing is scheduled.
+GitHub CI (`ci.yml`) runs when a `v*` tag is pushed, or by hand on a branch before its tag (`gh workflow run ci.yml --ref
+<branch>`), and only builds, vets and runs `go test -short ./...`; a push to main without a tag runs nothing. CodeQL runs
+weekly from `codeql.yml` (it fails while the org's CodeQL default setup is on: todo CIGATES).
 Everything else runs locally in the gates above. Fuzzing and benchmarks run on
 GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed only with a reason at the call site.
 
@@ -143,7 +144,7 @@ gate runs again.
    format marker, a badger minor bump or a raised go directive;
    else a patch), the CHANGELOG's newest section is the next version and [Unreleased] is
    empty, the gate of that kind, `git tag -a --cleanup=verbatim` (message: that section), `git push --atomic` of main and the tag. A major
-   moves the module path to /v(N+1) first. A red step stops it; the fix goes on main and the release
+   needs go.mod's module path, and every import, moved to /v(N+1) before it runs (the script refuses it otherwise). A red step stops it; the fix goes on main and the release
    runs again. A bad tag is never moved: the fix is the next tag, and `retract` in go.mod.
 5. Tell sigma-tkgd and ai-soc in one line: tag, gate, seconds.
 6. Clean up after (René, 4 Nov): the release round's own scratch (gate logs, branch and worktree of the release) goes the
@@ -193,9 +194,9 @@ make bench-check                                   # fail on >15 % time or >10 %
 make bench-compare                                 # compare revisions (bench/bench-compare-revisions.sh)
 ```
 
-Baselines are per machine and gitignored; never compare across machines. CI (`.github/workflows/bench.yml`) benchmarks the
-merge-base and HEAD of a pull request on the same runner and fails a core scenario that regresses beyond 30 % (time) or an
-allocs-gated scenario beyond 10 %; the workflow file holds the scenario filters. Measurements belong in CHANGELOG entries, not
+Baselines are per machine and gitignored; never compare across machines. `.github/workflows/bench.yml` runs only by hand: it
+benchmarks the merge-base and HEAD of the dispatched branch (informational). Its per-PR gate job (30 % time, 10 % allocs,
+the scenario filters in the file) is dormant without a pull-request trigger. Measurements belong in CHANGELOG entries, not
 here.
 
 ## Lessons

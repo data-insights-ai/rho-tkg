@@ -30,7 +30,7 @@ Dir/
   `Config.ValueThreshold` lowers it (section 6, VALUETHRESH). rho's default limits allow
   a row of up to about 64 MB (1,000 properties of 64 KB, `internal/core/core.go:819-821`): a row of 1 MB or more goes to the value
   log. A single row fits one transaction's size limit, but badger refuses a value above `ValueLogFileSize` and, in
-  memory, one at or above `ValueThreshold` (section 2, "One entry and its limits").
+  memory, one above `ValueThreshold` (section 2, "One entry and its limits").
 - **Versions.** Every key carries a commit timestamp (`y/y.go:113-121`). A read sees the newest version at or below its
   read timestamp (`iterator.go:629`).
 - **A cleanly closed directory** holds `MANIFEST`, `KEYREGISTRY`, `DISCARD`, the `.sst` files and a tiny `.vlog`: no
@@ -59,7 +59,7 @@ Dir/
   rho's smallest `MemTableSize` (8 MB: limit 1,258,291 bytes) the margin over the largest inline value is 209,715
   bytes. Measured (B3, B4): a 20 MB value and a 1 MB - 1 inline value each commit in one transaction at 8 MB; at 4 MB
   the open fails. So the size accounting never rejects one entry. But `Txn.modify` refuses outright a key above
-  65,000 bytes, a value above `ValueLogFileSize`, and in memory a value at or above `ValueThreshold`
+  65,000 bytes, a value above `ValueLogFileSize`, and in memory a value above `ValueThreshold`
   (`txn.go:352-371`; measured B10: 1 MB + 1 refused at `ValueLogFileSize` 1 MB and in memory). rho allows property
   values of 65,536 bytes and puts a string value verbatim into an on-disk property index key. Since v4.75.0 every
   write door refuses, before any mutation, an entry above these limits less the staging overhead (key 64,991 bytes,
@@ -82,7 +82,7 @@ Dir/
   last value (B8).
 - **The commit pipeline.** One transaction is one write request, stored contiguously (`db.go:888-912`). Requests queue
   on one channel; `doWrites` collects the requests waiting and hands them as one group to `writeRequests`, one group at
-  a time; it writes the value log (values above the threshold only), then each request's entries into the memtable and
+  a time; it writes the value log (values at or above the threshold only, `structs.go:163`), then each request's entries into the memtable and
   its WAL (`db.go` doWrites, writeRequests, writeToLSM; `memtable.go` Put). Conflict detection is off in rho
   (`WithDetectConflicts(false)`).
 - **Stalls.** A full memtable is queued for flushing and a new one allocated; with `NumMemtables` (5) waiting, writers
@@ -168,9 +168,9 @@ Dir/
 - **Read-only** opens allocate no new memtable and run no compactors, so a read-only shard never compacts; they still
   replay every leftover `.mem` into a full arena (a cleanly closed directory has none: the 2 MB measured), refuse a torn
   WAL, and refuse a missing directory. On a read-only mount only a read-only open works.
-- **No integrity check of data.** With `ChecksumVerificationMode` off, a changed byte in a table's data block reaches
-  the reader undetected (the table index alone is checksummed at open); rho's decoder fails closed only on a malformed
-  row, and only `VerifyShard` sees a silently changed value.
+- **No integrity check of data by default.** With `ChecksumVerificationMode` off (badger's default), a changed byte
+  in a table's data block reaches the reader undetected (the table index alone is checksummed at open). rho turns
+  both checks on (`OnBlockRead`, `VerifyValueChecksum`, v4.75.2), so a damaged block or value is `ErrCorruptWire`.
 - **Mappings.** Every `.sst`, `.mem` and `.vlog` is a separate mmap; a 1 GB shard of 2 MB base tables is about 500,
   well under Linux's default `vm.max_map_count`.
 
@@ -189,14 +189,15 @@ Dir/
 | `DetectConflicts` | true | false | Right: rho serialises its own writes. |
 | `NumCompactors` | 4 | `Config.NumCompactors` | 4 goroutines with 50 ms tickers per writable DB. |
 | `CompactL0OnClose` | false | default | Close leaves L0 as it is. |
-| `ChecksumVerificationMode` | none | default | Block data is not verified; table indexes are verified at open regardless. |
-| `EncryptionKey`, `...RotationDuration` | off, 10 days | `Config.EncryptionKey*` | Needs both caches (validated by rho). |
+| `ChecksumVerificationMode` | none | `OnBlockRead` (v4.75.2) | Every block is verified as it is read; table indexes are verified at open regardless. |
+| `VerifyValueChecksum` | false | true (v4.75.2) | Every value-log value is verified as it is read. |
+| `EncryptionKey`, `EncryptionKeyRotationDuration` | off, 10 days | `Config.EncryptionKey*` | Needs both caches (validated by rho). |
 | `ReadOnly` | false | `Config.ReadOnly` | The cheap way to read a shard (section 5). |
 | `BypassLockGuard` | false | default | Must stay false. |
 
 ## 7. Rules for rho
 
-Each rule says what rho does; a gap is a `tasks/todo.md` item.
+Each rule says what rho does; an open gap is a `tasks/todo.md` item, a closed one is in the changelog (§ Folded from tasks/todo.md).
 
 1. **A flush is atomic or self-consistent per part.** A `WriteBatch` above the limits is several transactions, so a
    crash keeps a prefix of it. Before FLUSHPART, rho's flush (`flushIndexLocked`) added its write buffer's ops in map
@@ -221,20 +222,20 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
    among them; that open is 7-18 % faster without, `tasks/evidence/PREFETCH/`); `TestNoIteratorPrefetchesValues`
    guards it.
 4. **Every iterator gets the narrowest `Prefix`**, at least its keyspace byte, so other keyspaces' tables are not
-   merged. 49 of rho's 71 iterators set none, the read-snapshot and scan-snapshot walkers included
-   (`tasks/evidence/USAGE/usage-map.txt`). Gap: ITERPREFIX.
+   merged. ITERPREFIX (closed) set it on the walkers that lacked one (`tasks/evidence/USAGE/usage-map.txt` is the
+   map before it).
 5. **Open read-only when no write follows.** A writable open of a cleanly closed directory costs 83 MB and 6 more
    goroutines than a read-only one; cold shards open writable for reads. A read-only handle must be closed before a
    writable open of the same directory (the flock), and a shard left with `.mem` files needs one writable open to
-   recover before it opens read-only. Gap: SHARD step 4a.
-6. **Badger creates a missing directory; rho must refuse it** for a shard it already knows. Gap: SHARD step 1.
+   recover before it opens read-only. Done for cold reads: COLDRO, v4.78.3 (`checkoutStoreReadOnly`).
+6. **Badger creates a missing directory; rho must refuse it** for a shard it already knows. Done: SHARD step 1, v4.76.1.
 7. **Hold read transactions briefly.** A read transaction pins versions from compaction and, through rho's GC pass
    (rule 9), the value-log files rewritten while it is open; release it before user callbacks (the read snapshot
    does, per chunk). A transaction badger alone pins nothing in the value log unless an iterator is open. Doors
    that hold one read transaction across the caller's callback (the bulk node and rel walks and the transaction-time scans;
    not `LendByIDs`, which calls back after each chunk's snapshot is closed) hold up a GC pass for as long: meanwhile its guard iterator keeps the
    rewritten files on disk and the memtables open when the pass began referenced (`iterator.go:468-485`; rule 9).
-8. **Size caches per shard role.** Defaults give every open DB a 256 MB block cache and a 75 MB arena. Gap: CACHE.
+8. **Size caches per shard role.** Defaults give every open DB a 256 MB block cache and an 83 MiB arena (87,241,465 B, `db.go:1043-1045`). CACHE is closed (changelog).
 9. **The value-log GC loop has work only for values at or above `ValueThreshold`** (`badgerstore_flush.go` gcLoop:
    rows of 1 MB or more by default); without such values a pass costs 28 ns. It picks a file only from discard
    statistics, which only LSM compaction writes when it drops a version pointing into the value log
@@ -258,7 +259,7 @@ Each rule says what rho does; a gap is a `tasks/todo.md` item.
     rho's group commit writes one request per group, which is right, unless the flush is split (rule 1): each part is
     a request of its own.
 11. **Store-wide operations pause writes, not reads.** `DropPrefix` / `DropAll` refuse concurrent writes; rho calls
-    only `DropPrefix`, only in `Clear`, under its own locks, while cache-miss reads still run
+    only `DropPrefix`: in `Clear`, and on tiered's owner index (`DropUniqueOwnerIndex`, its clear; `owner_index.go:198`, `:366`), under its own locks, while cache-miss reads still run
     (`badgerstore_node.go:132-143`). `DropAll` would delete the value-log files under such a read, whose value then
     comes back empty; `DropPrefix` leaves them to the value-log GC (DROPALL, v4.78.1).
 12. **A walk with its own end bound sees every version.** Without `AllVersions` an iterator skips older versions and
@@ -299,7 +300,7 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 | `DefaultOptions(dir)` / `LSMOnlyOptions(dir)` | Defaults (table in 8.6); LSM-only sets `ValueThreshold` to its maximum (1 MB, the same as the default in v4.9.2). | `DefaultOptions` |
 | `(Options).FromSuperFlag(s)` | Parses `"key=value; ..."` into the fields it names. | - |
 | `Close()` | Pushes a non-empty memtable to L0 (`db.go:561-573`), stops compactors, closes files; idempotent. With `CompactL0OnClose` it then compacts L0 (`db.go:597`). | `Store.Close` |
-| `IsClosed()` | Whether `Close` ran. | - (rho keeps `dbClosed`) |
+| `IsClosed()` | Whether `Close` ran. | the value-log guard (`badgerstore_vlog_guard.go`) |
 | `Opts()` | A copy of the options. | - |
 | `Sync()` | msyncs the **active** memtable's WAL and the value log only (`db.go:673`); a rotated memtable's WAL is not synced (`ensureRoomForWrite`, `db.go:1015-1041`). | `DurableFlush`, durable meta writes |
 | `Size()` | LSM and value-log bytes from expvar counters that a goroutine refreshes **once a minute** by walking the directory (`db.go:1148-1262`); always 0 when `MetricsEnabled` is false. | - (rho reports sizes itself) |
@@ -307,7 +308,7 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 | `Levels()`, `LevelsToString()`, `Tables()` | Per-level and per-table info (`LevelInfo`, `TableInfo`: key count, on-disk, stale and uncompressed size, max version, index and bloom size). | - |
 | `Ranges(prefix, n)` | Rough key ranges from the last level's tables, to split an iteration. | - |
 | `MaxVersion()` | The highest version held by a memtable or a table (`db.go:415-434`; a table records only the keys it holds, `table/builder.go:212-213`). It can FALL: compaction that drops the store's newest version, a tombstone with no overlap below, lowers it (measured R5: 4 to 2). The commit marker never counts: it is written to the WAL only (`memtable.go:187-190`). | open-image trust rule: sound, since the header is a live key and every flush after it writes live counters; a periodic image's since version (read under the flush lock): every later commit, also after a reopen, is above the header, which is above since and live |
-| `MaxBatchCount()`, `MaxBatchSize()` | The per-transaction limits (section 2). | - (section 9) |
+| `MaxBatchCount()`, `MaxBatchSize()` | The per-transaction limits (section 2). | the pending-write bound, half of each (`badgerstore.go:1201-1202`) |
 | `BlockCacheMetrics()`, `IndexCacheMetrics()` | ristretto metrics of the two caches. | - |
 | `CacheMaxCost(cache, cost)` | Resizes the block or index cache at runtime; a negative cost reads it (`db.go:2042`). | - (section 9) |
 | `PrintHistogram(prefix)` | Prints a key/value size histogram to the logger. | - |
@@ -318,17 +319,17 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 
 | Symbol | What it does | rho |
 |---|---|---|
-| `NewTransaction(update)` | A transaction at the current read timestamp; must be `Discard`ed. Not safe for concurrent use. | flush path A (`commitFlushEntries`) |
+| `NewTransaction(update)` | A transaction at the current read timestamp; must be `Discard`ed. Not safe for concurrent use. | flush path A (`commitFlushEntries`), the read transactions (`badgerstore_read_txn.go`), the value-log guard, the open image |
 | `NewTransactionAt(readTs, update)` | Managed mode. | - |
-| `Update(fn)`, `View(fn)` | Run `fn` in a read-write / read-only transaction and commit / discard it. | 15 / 16 call sites |
+| `Update(fn)`, `View(fn)` | Run `fn` in a read-write / read-only transaction and commit / discard it. | 11 / 10 call sites (most reads go through `bs.view`) |
 | `Txn.Get(key)` | Point read, `ErrKeyNotFound` if absent; probes memtables then levels with bloom filters (section 3). | everywhere |
 | `Txn.Set`, `SetEntry`, `Delete` | Buffer a write; return `ErrTxnTooBig` when the transaction would pass `MaxBatchCount`/`MaxBatchSize` (section 2). Keep a reference to the slices until commit. | flush, meta writes |
 | `Txn.Commit()` | Conflict check (a transaction that read nothing never conflicts, `txn.go:128`; with `DetectConflicts` false nothing is tracked), then one write request: one WAL record set ending in a finish entry, so replay applies all or none of it (`memtable.go:433-530`). | flush path A, `Update` |
 | `Txn.CommitWith(cb)` | `Commit` that returns at once and runs `cb` after the write. | - |
 | `Txn.CommitAt(ts, cb)` | Managed mode. | - |
 | `Txn.Discard()` | Releases the transaction; idempotent; required. Panics while an iterator of the transaction is open (`txn.go:512-513`); after `db.Close` it can block, since the read mark is sent to a stopped watermark's 100-slot channel (`y/watermark.go:60`, `:77-79`). | deferred; the read snapshot, the scan snapshot and the rel-type build walk skip it once the store is closing or closed (`badgerstore_read_snapshot.go:139`, `badgerstore_scan_snapshot.go:239`, `badgerstore_reltype_temporal_index.go:304`; DISCARDCLOSE, v4.78.1) |
-| `Txn.ReadTs()` | The read timestamp. | - |
-| `Txn.NewIterator(opt)` | Iterator over the snapshot (8.3). | 71 call sites |
+| `Txn.ReadTs()` | The read timestamp. | the open image's version (`badgerstore_open_image.go`) |
+| `Txn.NewIterator(opt)` | Iterator over the snapshot (8.3). | 92 call sites |
 | `Txn.NewKeyIterator(key, opt)` | All versions of one key; uses the bloom filter on the exact key to skip tables (`iterator.go:496-504`, `:348`). | - (section 9) |
 | `NewEntry(k, v)`, `WithMeta`, `WithTTL`, `WithDiscard` | An entry with a user-meta byte, an expiry, or "older versions may be dropped". | `NewEntry` only |
 | `Entry` fields | `Key`, `Value`, `ExpiresAt`, `UserMeta`. | - |
@@ -337,15 +338,15 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 
 | Symbol | What it does | rho |
 |---|---|---|
-| `IteratorOptions` | `PrefetchValues`/`PrefetchSize` (a goroutine per item, section 3), `Reverse`, `AllVersions`, `Prefix` (skips tables outside it), `SinceTs` (skips tables whose max version is below it and versions at or below it, `iterator.go:334-361`, `:629`), `InternalAccess`. | `Prefix` rarely set (todo ITERPREFIX), prefetch in 13 places (todo PREFETCH) |
-| `DefaultIteratorOptions` | Prefetch on, 100 items. | 59 call sites |
+| `IteratorOptions` | `PrefetchValues`/`PrefetchSize` (a goroutine per item, section 3), `Reverse`, `AllVersions`, `Prefix` (skips tables outside it), `SinceTs` (skips tables whose max version is below it and versions at or below it, `iterator.go:334-361`, `:629`), `InternalAccess`. | `PrefetchValues` false everywhere; `Prefix` on most walkers; `AllVersions` in 7 places; `SinceTs` in the open image's delta (`badgerstore_open_image_delta.go`) |
+| `DefaultIteratorOptions` | Prefetch on, 100 items. | 71 call sites (rho turns prefetch off) |
 | `Iterator.Rewind`, `Seek`, `Next`, `Valid`, `ValidForPrefix`, `Item`, `Close` | Cursor over keys in order; `Item` is valid until `Next`. `ThreadId` and `Alloc` serve `Stream`. | everywhere |
-| `Item.Key`, `KeyCopy` | The key (valid until `Next`) or a copy. | 26 `KeyCopy` |
+| `Item.Key`, `KeyCopy` | The key (valid until `Next`) or a copy. | 25 `KeyCopy` |
 | `Item.Value(fn)`, `ValueCopy` | The value inside the transaction, or a copy. **A value-log read error is logged and swallowed: the value comes back empty with a nil error** (`iterator.go:158-187`); measured after `DropAll` (`tasks/evidence/USAGE/`). Inline values cannot fail this way. | everywhere |
 | `Item.Version()` | The commit timestamp. | open image |
 | `Item.EstimatedSize()` | Key + inline value, or the value-log record length for a value-log value (`iterator.go:216`): no value read. | - (section 9) |
 | `Item.KeySize()`, `ValueSize()` | The key's length without its timestamp (`iterator.go:230-232`; badger's comment says + 8, the code does not add it); the value's length (approximate for value-log values, `iterator.go:238`). | `ValueSize` once |
-| `Item.UserMeta()`, `ExpiresAt()`, `IsDeletedOrExpired()`, `DiscardEarlierVersions()`, `String()` | Entry metadata. | - |
+| `Item.UserMeta()`, `ExpiresAt()`, `IsDeletedOrExpired()`, `DiscardEarlierVersions()`, `String()` | Entry metadata. | `IsDeletedOrExpired` at 6 sites (the entity and on-disk property indexes) |
 
 ### 8.4 Batches, bulk load and copy
 
@@ -358,10 +359,10 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 | `Load(r, maxPending)` | Restores a `Backup` into a DB that runs nothing else. | - |
 | `NewStream()`, `NewStreamAt(ts)` | Concurrent snapshot iteration (`NumGo`, default 8) over key ranges, `ChooseKey`, `KeyToList` / `KeyToListWithThreadId` + `FinishThread`, `Send` (serial), `Prefix`, `SinceTs`, `MaxSize`; keys are NOT in order. `Orchestrate(ctx)` runs it, `ToList` is the default `KeyToList`, `SendDoneMarkers`. | - |
 | `NewStreamWriter()` | Writes sorted, non-overlapping streams straight into SSTables, no WAL and no compaction: `Prepare` (deletes all existing data through `dropAll`, `stream_writer.go:65`), `PrepareIncremental`, `Write(buf)`, `Flush` (syncs directories), `Cancel`. Only for bootstrapping a DB. | - |
-| `StreamDB(outOptions)` | Copies a snapshot of every key into a new DB at `outOptions.Dir`: `OpenManaged` + `StreamWriter.Prepare` + `NewStreamAt(MaxUint64)` + `Flush` (`db.go:1996-2024`). The copy is compacted SSTables only (no WAL, no value log). | - (section 9) |
+| `StreamDB(outOptions)` | Copies a snapshot of every key into a new DB at `outOptions.Dir`: `OpenManaged` + `StreamWriter.Prepare` + `NewStreamAt(MaxUint64)` + `Flush` (`db.go:1996-2024`). The copy is compacted SSTables and no WAL; values at or above `ValueThreshold` go to a value log (`stream_writer.go:205-208`). | - (section 9) |
 | `Flatten(workers)` | Compacts all tables onto one level (after a restore). | - |
 | `DropAll()` | Deletes every table and value-log file; blocks writes (`ErrBlockedWrites`); **concurrent reads may panic** (doc comment). | - (`Clear` of a never-logged store until v4.78.1; DROPALL) |
-| `DropPrefix(prefixes...)` | Flushes memtables skipping the prefixes, compacts them away; blocks writes meanwhile. | `Clear` paths |
+| `DropPrefix(prefixes...)` | Flushes memtables skipping the prefixes, compacts them away; blocks writes meanwhile. | `Clear` paths, tiered's owner index |
 | `BufferToKVList`, `KVToBuffer` | Convert between `z.Buffer` and `pb.KVList` (Stream framing). | - |
 
 ### 8.5 Other services
@@ -376,7 +377,7 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 | `KeyRegistry`, `OpenKeyRegistry`, `WriteKeyRegistry`, `KeyRegistryOptions`, `KeyRegistryFileName` | The encrypted data-key file (`KEYREGISTRY`); `WriteKeyRegistry` rewrites it, the way to change the master key offline. | - (section 9) |
 | `Manifest`, `ReplayManifestFile`, `TableManifest`, `ManifestFilename` | The `MANIFEST` file (table set per level) and its parser. | `ManifestFilename` (`DiscardStagedFlush`) |
 | `InitDiscardStats` | Value-log discard statistics file. | - |
-| `Logger`, `DEBUG`...`ERROR`, `WithLoggingLevel` | Logging interface and the default logger's level. | `Config.Logger` (nil = silent) |
+| `Logger`, `DEBUG`...`ERROR`, `WithLoggingLevel` | Logging interface and the default logger's level. | `Config.Logger` (nil = rho's slog adapter, `badgerLogger`) |
 | `KVList` (= `pb.KVList`), `CacheType` (`BlockCache`, `IndexCache`), `LevelInfo`, `TableInfo` | Types of the calls above. | - |
 | `ValueThresholdLimit` | 65,520: dead in v4.9.2, read by nothing; the effective maximum is `maxValueThreshold`, 1 MB (`options.go:201`, `db.go:140`). | - |
 
@@ -401,7 +402,7 @@ Section 6 judges the ones rho sets; these are all of them, with the v4.9.2 defau
 | `ValueLogMaxEntries` | 1,000,000 | `NumCompactors` | 4 |
 | `CompactL0OnClose` | false (forced off read-only) | `LmaxCompaction` | false |
 | `ZSTDCompressionLevel` | 1 | `VerifyValueChecksum` | false |
-| `EncryptionKey` / `...RotationDuration` | none / 10 days | `BypassLockGuard` | false |
+| `EncryptionKey` / `EncryptionKeyRotationDuration` | none / 10 days | `BypassLockGuard` | false |
 | `ChecksumVerificationMode` | `NoVerification` (`OnTableRead`, `OnBlockRead`, `OnTableAndBlockRead`) | `DetectConflicts` | true |
 | `NamespaceOffset` | -1 (off) | `ExternalMagicVersion` | 0 (checked against the MANIFEST at open, `manifest.go:122-158`) |
 
@@ -429,7 +430,7 @@ table indexes) are badger's internals: exported, not meant for applications, unu
 
 ## 9. Integration findings
 
-Badger features rho does not use yet that fit a rho need, and one risk. Each is a todo item; none is built.
+Badger features that fit a rho need, and one risk. Built: 1 (the shard mover), 2 (the batch limits); the others are not built.
 
 1. **Moving shards between volumes (SHARD)**: `StreamDB` (or `Stream` + `StreamWriter`) copies a snapshot into a
    new directory as compacted SSTables, without a WAL; `ToList` keeps the newest version and drops deleted keys
@@ -449,9 +450,9 @@ Badger features rho does not use yet that fit a rho need, and one risk. Each is 
 6. **Admin views**: `Tables()`, `Levels()`, `EstimateSize(prefix)` (table-granular), `Item.EstimatedSize()` (no
    value read) and `VerifyChecksum()` (every block of every table, beyond the blocks reads touch) can back size and
    integrity reports per shard.
-7. **Backups**: `Backup(w, since)` with the returned version makes incremental dumps; `Load` restores them. rho
-   has no backup door; a store-level one would be thin.
-8. **Changed since a version (WRITTENAT)**: `IteratorOptions.SinceTs` skips whole tables older than a badger
+7. **Backups**: `Backup(w, since)` with the returned version makes incremental dumps; `Load` restores them. rho's
+   backup doors (`g.IO().BackupTo` / `BackupDeltaTo`, `graph.RestoreInto`) are its own; a badger-level one would be thin.
+8. **Changed since a version (WRITTENAT, withdrawn by ai-soc 26 Oct)**: `IteratorOptions.SinceTs` skips whole tables older than a badger
    version. Badger versions are commit timestamps, not rho transaction times, so it serves "changed since a
    badger version", not "written at a rho tx".
 9. **Master-key change**: `WriteKeyRegistry` rewrites the key registry under a new master key offline; rho has no

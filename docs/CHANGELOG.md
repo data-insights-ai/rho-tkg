@@ -16,6 +16,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     and `errors.Is(err, store.ErrWireFormatVersionUnsupported)` hold beside `ErrCorruptExport`, as errors.md states;
     the cause was formatted with `%v`. `TestImportGraph_RejectsMalformedMsgpackRecordsWithCorruptSentinel` checks it.
 
+### Security
+
+- **VULNZSTD** (ai-soc's govulncheck): `github.com/klauspost/compress` v1.18.7 → v1.20.2 (GO-2026-6865, a panic on
+  two-block zstd frames, reached through `tiered.New` → badger's table compression). govulncheck v1.7.0 on rho: no
+  vulnerability called (GO-2026-6809, `crypto/x509` of Go 1.26.9, is imported, not called).
+- The last four raw msgpack decodes go through `storeutil.SafeUnmarshal`, as docs/SECURITY.md requires of every one:
+  the delta export header (`io.HeaderOf`) and tiered's registry, temporal-index and vector-index files. A malformed
+  file now fails with `store.ErrCorruptWire` inside the same error.
+
+### CI
+
+- `ci.yml` also runs by hand (`workflow_dispatch`), so a branch can be checked before its tag; `bench.yml` says its
+  per-PR gate is dormant (the workflow takes no pull-request trigger since 23 Oct).
+
+### Docs
+
+- DOCAUDIT: every doc checked against the code (a Fable review, each finding re-checked before the edit). Fixed among
+  others: api.md (`NewSession` returns an error, `NodeAt` takes no context, an open excise end, 22 shadow keys, the
+  deprecated symbols, the format-change rule, the release kinds, missing doors and Config fields); errors.md (twelve
+  wrong door lists, `ErrUniqueOwnerIndexNotDeclared`, the typed batch errors); architecture.md (`UpdateInPlace` as the
+  one row rewrite, ADR statuses, durability); persistence.md (markers 1-2 and 12-16 in the upgrade table, the other
+  format versions, metadata keys, staged-flush recovery in the open sequence); badger.md (the checksum options rho
+  sets, the rules' closed gaps, section 8's rho column); query-planners.md (composite equality is property equality,
+  and a number in the query bypasses the composite index; tiered counts; the planner-stats declines); CONTRIBUTING
+  (what CI runs). `RangeCounts`' godoc cost is the measured 42 ns.
+
 ## [4.105.6] - 2026-11-05
 
 ### Fixed

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"github.com/vmihailenco/msgpack/v5"
@@ -136,7 +137,7 @@ func loadVectorIndexFile(path string) ([]vectorIdxDef, error) {
 		return nil, fmt.Errorf("vector index file: read: %w", err)
 	}
 	var defs []vectorIdxDef
-	if err := msgpack.Unmarshal(data, &defs); err != nil {
+	if err := storeutil.SafeUnmarshal(data, &defs); err != nil {
 		return nil, fmt.Errorf("vector index file: unmarshal: %w", err)
 	}
 	if err := validateVectorIndexFileDefs(defs); err != nil {

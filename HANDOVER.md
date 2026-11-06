@@ -40,7 +40,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
   the heading after every such merge; the release tool is `go run ./scripts/release` (`make kind`, `gate-*`, `release-*`).
 - **Branches:** every merged branch is deleted (René 27 Oct: "delete if everything is merged"). Item work starts a
   branch from main in the main checkout or a worktree removed when the item ends. The 7 unmerged branches of 27 Oct
-  live as parents of one commit on `archive/unmerged-2026-10-27` (6554d8ad, pushed; tree = main's, merge strategy
+  live as parents of one commit on `archive/unmerged-2026-10-27` (93c43a64, pushed, which added the five `codex/*` tips as parents to 6554d8ad; tree = main's, merge strategy
   ours; René 27 Oct), whose message gives each tip, base and status. Restore one with `git branch <name> <tip>`:
   row102-pending-ranged f4b27842, tombstone-writer-v4.63 37a1ff56, v5-takeover 3bd4d13a, v5-realstore-harness
   af75a982, wp-37-import-throughput 392f88e2, worktree-agent-a34d277df6499077d d2cc529f,

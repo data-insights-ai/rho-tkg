@@ -2,7 +2,12 @@ name: Bench
 
 # Two jobs, one comparator (bench/bench-compare.sh):
 #
-#  - bench-gate (pull_request, BLOCKING): the wired-up flip-to-blocking plan
+# Manual only since René 2026-10-23 (see the trigger below): bench-gate runs
+# only on a pull_request event, which this workflow no longer takes, so it is
+# DORMANT; it is kept so the per-PR gate can be switched back on by adding the
+# trigger. bench-compare is what a manual run does.
+#
+#  - bench-gate (pull_request, BLOCKING when enabled): the flip-to-blocking plan
 #    from docs/CONTRIBUTING.md "Benchmarks". Benchmarks the PR's merge-base and
 #    HEAD on the SAME runner (same noise environment) with -count=3 (5 for
 #    PinnedRelPropertyLookup, which is allocs-gated, not time-gated) — benchstat then

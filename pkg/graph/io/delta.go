@@ -7,7 +7,7 @@ import (
 	"io"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
-	"github.com/vmihailenco/msgpack/v5"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 )
 
 // Delta export / merge surface.
@@ -182,11 +182,11 @@ func HeaderOf(r io.Reader) (DeltaHeader, error) {
 	if _, err := io.ReadFull(r, body); err != nil {
 		return DeltaHeader{}, fmt.Errorf("%w: truncated header body: %v", ErrCorruptExport, err)
 	}
-	// The header is a flat struct with no interface-typed or deeply-nestable
-	// field, so a plain decode cannot hit the msgpack panic class (lesson 47).
+	// SafeUnmarshal, as every untrusted decode (docs/SECURITY.md): the flat
+	// header cannot hit the msgpack panic class today, a later field could.
 	var hw headerWire
-	if err := msgpack.Unmarshal(body, &hw); err != nil {
-		return DeltaHeader{}, fmt.Errorf("%w: malformed header: %v", ErrCorruptExport, err)
+	if err := storeutil.SafeUnmarshal(body, &hw); err != nil {
+		return DeltaHeader{}, fmt.Errorf("%w: malformed header: %w", ErrCorruptExport, err)
 	}
 	if hw.Version < exportFormatVersionMin || hw.Version > exportFormatVersionMax {
 		return DeltaHeader{}, fmt.Errorf("%w: got %d, want %d..%d", ErrIncompatibleExport, hw.Version, exportFormatVersionMin, exportFormatVersionMax)

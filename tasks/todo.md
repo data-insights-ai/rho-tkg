@@ -40,7 +40,7 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 ## Next
 
 - **Round 2 read items** (ai-soc's read-back inventory, 3 Nov, 60-min BA on tiered; estimates, measure each first):
-  UNIQUEMISS (GetOrCreateByKey looks the key up, then the unique pass again on create, core/unique_constraints.go:628;
+  UNIQUEMISS (GetOrCreateByKey looks the key up, then the unique pass again on create, core/node_getorcreate.go:123 creates through `addNodeInternal`, whose unique pass is `enforceUniqueForNodeHeld` at node_add.go:236;
   claimForever re-marshals the whole owner map per claim, unique_forever.go:120-132); OWNERDROP (tiered
   DropUniqueOwnerIndex's DropPrefix, owner_index.go:198, blocks writes, so a racing Add can get ErrBlockedWrites);
   EDGEROW (a rel create reads each endpoint row 3-4 times, est. <= 5 s of 14.4 s); CASCADEROW (the cascade reads the
