@@ -22,7 +22,9 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
 - Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc (their agents: HANDOVER § State) without asking,
   through `make release-…` (release checklist below), to GitHub.
-  Never force-push, never push `origin/v5`.
+  Never force-push, never push `origin/v5`. Release budget (René 2026-11-07): gate warm ≤ 60 s, cold after a Go or
+  dependency bump ≤ 5 min, the whole release warm ≤ 2 min; the per-tag line to the peers carries the release time; over
+  budget is a todo row the same day naming the slow step. Race, long and fuzz never run on a patch tag's path.
 - Item work happens on a branch named after the item; main stays green, and a red test reaches it only with its fix.
 - Commit with explicit paths, never `git commit -a`: a docs commit swept unreviewed step code onto main (2026-10-23).
 - Work order (René 2026-10-23): (1) the request's `tasks/todo.md` item first, before any other action; (2) the red test;
@@ -30,7 +32,8 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` and the HANDOVER brief get one commit on main per item end (René 2026-10-31: 298 of 545 commits in 7 days
   were todo commits), in the item's branch so it reaches main with the item; a fact with no branch to ride on goes on
   main in `rho-tkg`, the only checkout (the second worktree was removed, René 2026-10-31);
-  `go test ./internal/docscheck/` (`TestLedger`) before every such commit.
+  `go test ./internal/docscheck/` (`TestLedger`) before every such commit. A todo- or HANDOVER-only commit only at a
+  session handover (René 2026-11-07: 95 of 291 commits since 1 Nov were todo-only); `TestDocSizes` caps both files.
 - Peers (René 2026-10-31): one message per item each way to sigma-tkgd and ai-soc, about 1,500 characters at most, detail
   in a file; status goes in the todo. A status line is `item | state | next | waits for`, checked against the repo before
   it is stated.
@@ -43,14 +46,16 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   path stays out of the keys; only the major gate runs `-count=1`.
 - Who works (René 2026-10-23, 2026-11-03): the main session does the work itself, analysis and code alike, and runs every
   test, lint and gate. Each finished branch gets one read-only Fable review before merge (René 3 Nov); builders and
-  designers run only on René's word for that task, with one spec frozen at launch.
+  designers run only on René's word for that task, with one spec frozen at launch. One session per checkout (the
+  SessionStart hook names a live sibling); at an item end after about 3 compactions: HANDOVER, tell René, fresh session.
 - Process changes remove (René 2026-11-05): a change answering "too slow" or "too hard" deletes a step or a script, or
   turns on a Go facility (test cache, `-trimpath`, `go list -deps`), with wall time before and after. It adds no hook,
-  script or workflow without René's word.
+  script or workflow without René's word. A correction from René changes the rule it corrects; it never adds a second one.
 - Consumer data: ask the consumer's agent for runs and stores, never browse its repo. Flux (ai-soc's run machine) needs
   René's word per run; customer data stays on Flux: copy the store into a new dir under `/srv/fast/rene/` and open only
   the copy, report counts, sizes and relation names only (no row values, hosts, keys or record ids in chat or git), and
   never touch the other `aisoc serve` there.
+- A question from René gets an answer from the evidence, then a stop; only an order starts work (René 2026-11-07).
 - Act, do not offer: open work with a clear next step is started. Before asking René a design question, trace its cause in
   the code and try to remove it; ask only the remainder.
 - Behaviour changes go through the deprecation ritual (`docs/api.md` § Stability and deprecation).

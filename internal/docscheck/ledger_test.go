@@ -116,3 +116,24 @@ func TestVersionLessOrdersNumerically(t *testing.T) {
 		}
 	}
 }
+
+// TestDocSizes (René 2026-11-07): tasks/todo.md and HANDOVER.md stay short. The
+// caps are the 7 Nov line counts plus 10 %; a row longer than 400 characters is
+// split or moved to the file that owns the detail.
+func TestDocSizes(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		path     string
+		maxLines int
+	}{{"tasks/todo.md", 175}, {"HANDOVER.md", 140}} {
+		lines := strings.Split(strings.TrimRight(readRepo(t, c.path), "\n"), "\n")
+		if len(lines) > c.maxLines {
+			t.Errorf("%s has %d lines, cap %d: consolidate", c.path, len(lines), c.maxLines)
+		}
+		for i, l := range lines {
+			if n := len([]rune(l)); n > 400 {
+				t.Errorf("%s:%d is %d characters, cap 400", c.path, i+1, n)
+			}
+		}
+	}
+}
