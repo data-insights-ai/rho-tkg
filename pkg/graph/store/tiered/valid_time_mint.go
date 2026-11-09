@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -24,16 +25,23 @@ var _ storecontract.ValidTimeMintCapability = (*Store)(nil)
 // relationships share the cursors). The cursors are leased: the lease ends
 // live in the reference shard's meta (vtmint/<window start ms>, low and high,
 // 8 bytes each), written durably before an ID of a lease is returned, so a
-// restart starts past every ID a crash may have handed out.
+// restart starts past every ID a crash may have handed out. A lease grows
+// geometrically (VTLEASE: twice the last extension, at most vtLeaseCap and
+// half the room left in the window), so a time-ordered stream saves a few
+// leases per window, not one per new millisecond; a clean Close saves the
+// exact cursors, so only a crash forfeits IDs, and those cost placement only.
 const (
 	vtField     = storecontract.ValidTimeMintField
-	vtLease     = 1 << 20 // steps a lease covers past the ID that takes it
+	vtLease     = 1 << 20 // the first extension: steps past the ID that takes it
 	vtMetaKey   = "vtmint/"
 	vtStepBits  = 10
 	vtNodeShift = 10
 	vtTimeShift = 15
 	vtMaxMicros = 1<<48 - 1
 )
+
+// vtLeaseCap bounds one lease extension: an hour of valid time.
+const vtLeaseCap = int64(time.Hour/time.Microsecond) << vtStepBits
 
 // errWindowFull is the impossible case of a window whose cursors met.
 var errWindowFull = errors.New("graph: valid-time window has no free ID")
@@ -47,6 +55,15 @@ type vtWindow struct {
 	start, end       int64 // the window in counter units, end exclusive
 	lo, hi           int64
 	leaseLo, leaseHi int64
+	span             int64 // the last lease extension; the next one doubles it
+}
+
+// leaseSpan is the next lease extension toward an edge room steps away: twice
+// the last, at least vtLease, at most vtLeaseCap and half the room, so a crash
+// never forfeits the window's last free half.
+func (w *vtWindow) leaseSpan(room int64) int64 {
+	w.span = min(max(vtLease, 2*w.span), vtLeaseCap, max(room/2, vtLease))
+	return w.span
 }
 
 // vtCounter is t's counter at step 0.
@@ -153,12 +170,12 @@ func (ts *Store) mintAt(t time.Time, home *time.Time) (int64, error) {
 			lo, hi = c, c
 		}
 		if c >= hi {
-			hi = min(c+vtLease, w.end-1)
+			hi = min(c+w.leaseSpan(w.end-1-c), w.end-1)
 		}
 		if c <= lo {
-			lo = max(c-vtLease, w.start)
+			lo = max(c-w.leaseSpan(c-w.start), w.start)
 		}
-		if err := ts.saveVTLease(ws, lo, hi); err != nil {
+		if err := ts.saveVTLease(ws.UnixMilli(), lo, hi); err != nil {
 			return 0, err
 		}
 		w.leaseLo, w.leaseHi = lo, hi
@@ -191,7 +208,9 @@ func (ts *Store) vtWindowFor(ws, we time.Time) (*vtWindow, error) {
 	return w, nil
 }
 
-func vtLeaseKey(ws time.Time) string { return fmt.Sprintf("%s%d", vtMetaKey, ws.UnixMilli()) }
+func vtLeaseKey(ws time.Time) string { return vtLeaseKeyMs(ws.UnixMilli()) }
+
+func vtLeaseKeyMs(wsMs int64) string { return fmt.Sprintf("%s%d", vtMetaKey, wsMs) }
 
 // loadVTWindow reads the window's lease: every ID inside it may have been
 // handed out before the last close or crash, so the whole lease counts as used.
@@ -212,12 +231,37 @@ func (ts *Store) loadVTWindow(ws time.Time, w *vtWindow) error {
 	return nil
 }
 
-// saveVTLease stores the window's lease durably before an ID of it is returned.
-func (ts *Store) saveVTLease(ws time.Time, lo, hi int64) error {
+// saveVTLease stores the lease of the window starting at wsMs durably before
+// an ID of it is returned.
+func (ts *Store) saveVTLease(wsMs, lo, hi int64) error {
 	v := binary.BigEndian.AppendUint64(make([]byte, 0, 16), uint64(lo)) // #nosec G115 -- counters are non-negative
 	v = binary.BigEndian.AppendUint64(v, uint64(hi))                    // #nosec G115 -- counters are non-negative
-	if err := ts.refShard.MetaSetDurable(vtLeaseKey(ws), v); err != nil {
+	ts.vtLeaseSaves.Add(1)
+	if err := ts.refShard.MetaSetDurable(vtLeaseKeyMs(wsMs), v); err != nil {
 		return fmt.Errorf("graph: save valid-time mint lease: %w", err)
 	}
 	return nil
+}
+
+// saveExactVTLeases shrinks every used window's lease to its minted bounds at
+// a clean Close, so a reopen forfeits no ID. A mint racing Close still saves
+// its own lease first, so the persisted lease keeps covering every ID.
+func (ts *Store) saveExactVTLeases() error {
+	ts.vtMu.Lock()
+	windows := make(map[int64]*vtWindow, len(ts.vtWindows))
+	maps.Copy(windows, ts.vtWindows)
+	ts.vtMu.Unlock()
+	var errs error
+	for wsMs, w := range windows {
+		w.mu.Lock()
+		if w.loaded && w.used && (w.leaseLo != w.lo || w.leaseHi != w.hi) {
+			if err := ts.saveVTLease(wsMs, w.lo, w.hi); err != nil {
+				errs = errors.Join(errs, err)
+			} else {
+				w.leaseLo, w.leaseHi = w.lo, w.hi
+			}
+		}
+		w.mu.Unlock()
+	}
+	return errs
 }

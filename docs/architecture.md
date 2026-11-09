@@ -502,9 +502,11 @@ that test.
   - *Restart and crash.* No ID may be handed out twice, also not one the host received before a crash lost its row
     (the wall-time generator never reuses one: its clock moved on). The cursors are leased, like badger's
     `Sequence`: the lease ends live in the reference shard's meta (always open and durable, beside the change-log
-    watermark and the commit floor), keyed by window start, synced before any ID of a lease is returned; a lease
-    spans 1 M steps, one synced write per million IDs. A restart starts each cursor at its lease end; a crash skips
-    at most one lease. A window's lease keys (`vtmint/` on the reference shard) are never reaped, not by a retention drop either, and `Clear` keeps them.
+    watermark and the commit floor), keyed by window start, synced before any ID of a lease is returned. A
+    lease extension doubles the last one, from 1 M steps (about 1 ms of valid time) up to an hour and half the room
+    left in the window (VTLEASE, v4.105.8), so a time-ordered stream syncs a few dozen leases per window, not one per
+    new millisecond. A clean `Close` saves the exact cursors; a restart starts each cursor at its lease end, so a
+    crash skips at most an hour of a window's IDs (placement only: the stored ValidFrom answers every read). A window's lease keys (`vtmint/` on the reference shard) are never reaped, not by a retention drop either, and `Clear` keeps them.
   - *A window without a shard is made on demand* (with the option on only; off, a concrete ID with no window still
     goes to the hot shard, as imports and replicas do today). The write path makes it under the lifecycle gate and
     `ts.mu.Lock`, saving the catalog before the topology changes (rotation's discipline); reads use a non-creating

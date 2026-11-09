@@ -412,6 +412,7 @@ type Store struct {
 	calendar         bool                // Config.MintAtValidFrom: calendar windows, rotation by the clock
 	vtMu             sync.Mutex          // guards vtWindows
 	vtWindows        map[int64]*vtWindow // valid-time mint cursors by window start (ms)
+	vtLeaseSaves     atomic.Int64        // durable valid-time lease writes (VTLEASE gate)
 	openStats        OpenStats           // New's open (open_stats.go)
 	walTruncations   atomic.Int64        // shards opened by cutting an unclean WAL
 	cacheCap         int
@@ -1392,6 +1393,9 @@ func (ts *Store) Close() error {
 			closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref shard: %w (checkin leak?)", ErrDrainTimeout))
 		}
 		if ts.refShard != nil {
+			if err := ts.saveExactVTLeases(); err != nil { // VTLEASE: a reopen forfeits no ID
+				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save exact valid-time leases on close: %w", err))
+			}
 			if err := ts.refShard.Close(); err != nil {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref shard: %w", err))
 			}

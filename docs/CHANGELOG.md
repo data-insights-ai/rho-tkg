@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Performance
+
+- **VTLEASE** (ai-soc, the batch path of the raw BA run): with `MintAtValidFrom`, the valid-time ID lease doubles
+  with each extension (from about 1 ms of valid time up to an hour, and at most half the room left in the window),
+  and a clean `Close` saves the exact cursors. A lease covered about 1 ms, so nearly every new millisecond of data
+  cost a synced write on the reference shard: 63,826 saves for 131,478 records on ai-soc's twin, 112 s blocked in
+  the ingest commit. `TestVTLease_TimeOrderedStreamSavesFewLeases`: a time-ordered stream of 20,000 records over a
+  day saves 43 leases (20,000 before, 56 s → 0.4 s); the persisted lease covers every ID handed out; a crash
+  forfeits at most an hour of IDs (placement only); a clean `Close` leaves the lease at the minted bounds.
+
 ## [4.105.7] - 2026-11-06
 
 ### Fixed
