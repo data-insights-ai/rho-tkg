@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.105.8] - 2026-11-09
+
 ### Performance
 
 - **VTLEASE** (ai-soc, the batch path of the raw BA run): with `MintAtValidFrom`, the valid-time ID lease doubles
