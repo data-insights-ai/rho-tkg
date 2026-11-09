@@ -626,6 +626,10 @@ var propertyDiskLookups atomic.Int64
 // lookup on the on-disk property index makes.
 var propertyDiskSeekTestHook func()
 
+// propertyDiskIterOptsTestHook (tests only) sees the iterator options of an
+// equality lookup on the on-disk property index.
+var propertyDiskIterOptsTestHook func(badgerv4.IteratorOptions)
+
 func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant) ([]types.NodeID, error) {
 	propertyDiskLookups.Add(1)
 	tok, ok := bs.propKeyTokenFor(propertyKey)
@@ -725,6 +729,14 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.AllVersions = true
+		// Every prefix shares the key byte and the property token: badger then
+		// opens and seeks only the tables overlapping the token's range
+		// (PROPPREFIX, ai-soc's twin: 321 s of Seek; -30 % per absent lookup on
+		// an LSM of 151 tables, more on larger ones).
+		opts.Prefix = prefixes[0][:3]
+		if propertyDiskIterOptsTestHook != nil {
+			propertyDiskIterOptsTestHook(opts)
+		}
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		var last, prev, start []byte

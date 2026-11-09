@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.105.9] - 2026-11-09
+
+### Performance
+
+- **PROPPREFIX** (ai-soc's 2-day twin: 380 s in the on-disk property index lookup, 321 s of it in badger's
+  `Iterator.Seek`): an equality lookup (`IDsByLabelAndPropertyValues`, `ByLabelAndProperty` and the valid-end door)
+  restricts its iterator to the property token's key range, so badger opens and seeks only the tables overlapping
+  it. Measured on a 10 M-node store (813 MB, 151 tables, `TestPropDiskAbsentLookupCost`, `-tags measure`): 9.7 →
+  6.8 µs per absent-value lookup; 5.8 → 5.6 µs on a 32-table store, so the gain grows with the LSM.
+  `TestPropPrefixLookupIteratesTokenRangeOnly` checks the iterator's range and the answers.
+
 ## [4.105.8] - 2026-11-09
 
 ### Performance
