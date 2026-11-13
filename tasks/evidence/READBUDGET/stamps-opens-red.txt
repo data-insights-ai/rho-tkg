@@ -1,0 +1,3 @@
+        read_budget_shard_opens_test.go:197: LatestStamps under ShardOpens 1 = "1794562388008 1794562388010 true", <nil> (work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}); want a shard-opens refusal and no rows
+        read_budget_shard_opens_test.go:197: HasHistory under ShardOpens 1 = "has", <nil> (work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}); want a shard-opens refusal and no rows
+FAIL

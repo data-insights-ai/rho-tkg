@@ -26,6 +26,13 @@ import (
 // Errors: ErrNodeNotFound for an ID without any row, ErrGraphClosed, an
 // invalid ID (ErrInvalidStoreMutation), a store error.
 func (n *NodeOps) LatestStamps(id types.NodeID) (txFrom, txTo types.Instant, deleted bool, err error) {
+	return n.latestStampsTallied(id, nil)
+}
+
+// latestStampsTallied is LatestStamps reading through a store's metered
+// stamp doors under t (store.NodeStampsMeteredCapability; nil: the plain
+// reads), READBUDGET.
+func (n *NodeOps) latestStampsTallied(id types.NodeID, t *storepkg.ReadTally) (txFrom, txTo types.Instant, deleted bool, err error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return 0, 0, false, err
@@ -42,14 +49,14 @@ func (n *NodeOps) LatestStamps(id types.NodeID) (txFrom, txTo types.Instant, del
 	// moved row to history before it replaces or removes the current row
 	// (badger publishMoveLocked; memory writes both under one lock), so a row
 	// is never in neither read.
-	cur, live, err := c.nodeCurrentStamps(id)
+	cur, live, err := c.nodeCurrentStampsTallied(id, t)
 	if err != nil {
 		return 0, 0, false, err
 	}
 	if live {
 		txFrom, txTo = storepkg.FoldTxStamps(0, 0, cur.TxFrom, cur.TxTo, cur.DeletedAt)
 	}
-	hf, ht, has, err := c.nodeHistoryStamps(id)
+	hf, ht, has, err := c.nodeHistoryStampsTallied(id, t)
 	if err != nil {
 		return 0, 0, false, err
 	}
@@ -63,6 +70,15 @@ func (n *NodeOps) LatestStamps(id types.NodeID) (txFrom, txTo types.Instant, del
 // nodeHistoryStamps is the history half: the store capability, or the fold of
 // the history rows for a store without it. Caller holds c.mu (read).
 func (c *Core) nodeHistoryStamps(id types.NodeID) (txFrom, txTo types.Instant, has bool, err error) {
+	return c.nodeHistoryStampsTallied(id, nil)
+}
+
+// nodeHistoryStampsTallied is nodeHistoryStamps through the store's metered
+// door under t (nil: the plain read).
+func (c *Core) nodeHistoryStampsTallied(id types.NodeID, t *storepkg.ReadTally) (txFrom, txTo types.Instant, has bool, err error) {
+	if m, ok := c.store.(storepkg.NodeStampsMeteredCapability); ok && t != nil {
+		return m.NodeHistoryStampsMetered(id, t)
+	}
 	if p, ok := c.store.(storepkg.HistoryStampsCapability); ok {
 		return p.NodeHistoryStamps(id)
 	}
@@ -155,9 +171,17 @@ func currentStampsCapability(store storepkg.MandatoryStore) storepkg.CurrentStam
 // the store offers it, else the current row (lent on a trusted store, the
 // validated row otherwise). Caller holds c.mu (read).
 func (c *Core) nodeCurrentStamps(id types.NodeID) (storepkg.RowStamps, bool, error) {
+	return c.nodeCurrentStampsTallied(id, nil)
+}
+
+// nodeCurrentStampsTallied is nodeCurrentStamps through the store's metered
+// door under t (nil: the plain read).
+func (c *Core) nodeCurrentStampsTallied(id types.NodeID, t *storepkg.ReadTally) (storepkg.RowStamps, bool, error) {
 	var s storepkg.RowStamps
 	var err error
-	if c.currentStamps != nil {
+	if m, ok := c.store.(storepkg.NodeStampsMeteredCapability); ok && t != nil && c.currentStamps != nil {
+		s, err = m.NodeCurrentStampsMetered(id, t)
+	} else if c.currentStamps != nil {
 		s, err = c.currentStamps.NodeCurrentStamps(id)
 	} else {
 		var cur *types.Node

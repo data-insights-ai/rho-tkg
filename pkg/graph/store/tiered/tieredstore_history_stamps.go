@@ -39,13 +39,21 @@ func shardAnswer(f, t types.Instant, has bool, err error) (shardStamps, error) {
 // same rows, exact on every shape, paid only by entities whose history spans
 // shards.
 func (ts *Store) NodeHistoryStamps(nid types.NodeID) (types.Instant, types.Instant, bool, error) {
+	return ts.NodeHistoryStampsMetered(nid, nil)
+}
+
+// NodeHistoryStampsMetered is NodeHistoryStamps charging each closed shard's
+// open to t before it, the whole-chain fold included (through a metered read
+// snapshot, which counts its decodes too; store.NodeStampsMeteredCapability;
+// nil: none).
+func (ts *Store) NodeHistoryStampsMetered(nid types.NodeID, t *storecontract.ReadTally) (types.Instant, types.Instant, bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return 0, 0, false, err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return 0, 0, false, err
 	}
-	got, err := walkNodeHistoryShards(ts, nid, nil, func(s *BadgerStore) (shardStamps, error) {
+	got, err := walkNodeHistoryShards(ts, nid, t, func(s *BadgerStore) (shardStamps, error) {
 		return shardAnswer(s.NodeHistoryStamps(nid))
 	}, mergeShardStamps)
 	if err != nil {
@@ -54,7 +62,15 @@ func (ts *Store) NodeHistoryStamps(nid types.NodeID) (types.Instant, types.Insta
 	if got.shards <= 1 {
 		return got.from, got.to, got.shards == 1, nil
 	}
-	rows, err := ts.GetNodeHistory(nid)
+	var rows []*types.Node
+	if t == nil {
+		rows, err = ts.GetNodeHistory(nid)
+	} else {
+		snap := ts.NewReadSnapshot()
+		snap.(storecontract.ReadSnapshotMeterCapability).MeterReads(t)
+		rows, err = snap.GetNodeHistory(nid)
+		snap.Close()
+	}
 	if err != nil {
 		return 0, 0, false, err
 	}

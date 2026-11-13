@@ -19,6 +19,14 @@ func (ts *Store) HasNodeHistory(nid types.NodeID) (bool, error) {
 	return ts.hasNodeHistoryVia(nid, directReads, nil)
 }
 
+var _ storecontract.NodeStampsMeteredCapability = (*Store)(nil)
+
+// HasNodeHistoryMetered is HasNodeHistory charging each closed shard's open
+// to t before it (store.NodeStampsMeteredCapability; nil: none).
+func (ts *Store) HasNodeHistoryMetered(nid types.NodeID, t *storecontract.ReadTally) (bool, error) {
+	return ts.hasNodeHistoryVia(nid, directReads, t)
+}
+
 // hasNodeHistoryVia is HasNodeHistory asking each shard through via, charging
 // each closed shard's open to opens before it (nil: none; READBUDGET step 6).
 func (ts *Store) hasNodeHistoryVia(nid types.NodeID, via shardVia, opens *storecontract.ReadTally) (bool, error) {

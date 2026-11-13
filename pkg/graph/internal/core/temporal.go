@@ -8,6 +8,7 @@ import (
 
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -1412,6 +1413,13 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 	// resolved.
 	metered, _ := opts.ReadMeter()
 	fold := func() error {
+		// The fold walks the label's history IDs and members over every
+		// shard, opening closed tiered shards it does not count: under a
+		// ShardOpens budget it refuses before the walk (READBUDGET).
+		if _, opensShards := c.store.(*tiered.Store); opensShards && metered != nil && metered.BoundsShardOpens() {
+			_, door := opts.ReadMeter()
+			return &storepkg.ReadBudgetError{Door: door, Limit: "unsupported", Work: metered.Work()}
+		}
 		currentIDs, err := current()
 		if err != nil {
 			return err

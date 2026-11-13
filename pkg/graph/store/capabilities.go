@@ -319,6 +319,18 @@ type TransactionTimeQueryMeteredCapability interface {
 	RelAsOfMetered(id types.RelID, txTime types.Instant, t *ReadTally) (*types.Relationship, error)
 }
 
+// NodeStampsMeteredCapability is OPTIONAL (RH list R2): the node presence and
+// stamp reads behind HasHistoryCtx and LatestStampsCtx under a read budget.
+// The answers are HasNodeHistory's, NodeCurrentStamps' and
+// NodeHistoryStamps'; each closed shard the read is about to open counts in t
+// first (ShardOpens) and a read past the budget returns the
+// *ReadBudgetError. Tiered offers it (the other stores open no shard).
+type NodeStampsMeteredCapability interface {
+	HasNodeHistoryMetered(id types.NodeID, t *ReadTally) (bool, error)
+	NodeCurrentStampsMetered(id types.NodeID, t *ReadTally) (RowStamps, error)
+	NodeHistoryStampsMetered(id types.NodeID, t *ReadTally) (txFrom, txTo types.Instant, has bool, err error)
+}
+
 // NodeAsOfWalkCapability is OPTIONAL: one node's as-of read for a store that
 // has no TransactionTimeQueryCapability, walking the node's versions newest
 // first when it can. ok false says this node needs the whole chain (its rows may

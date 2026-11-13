@@ -157,6 +157,20 @@ func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
 			}
 			return fmt.Sprintf("%d v%d", n.ID(), n.Version()), err
 		}},
+		{"LatestStamps", "LatestStamps", func(c context.Context) (string, error) {
+			f, to, del, err := g.Nodes.LatestStampsCtx(c, gone)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("%d %d %t", f, to, del), nil
+		}},
+		{"HasHistory", "HasHistory", func(c context.Context) (string, error) {
+			has, err := g.Nodes.HasHistoryCtx(c, gone)
+			if err != nil || !has {
+				return "", err
+			}
+			return "has", nil
+		}},
 		{"RelEffectiveTimelinesByProperties", "RelEffectiveTimelinesByProperties", func(c context.Context) (string, error) {
 			got, err := g.Temporal.RelEffectiveTimelinesByProperties(c, rtbType, rtbKeys, [][]any{{"e1", "d1"}}, temporal.Pin{Tx: pin})
 			if got == nil {
@@ -201,5 +215,42 @@ func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
 				t.Fatalf("%s unlimited opened %d closed shards, counted %d; want >= 2, all counted", d.name, opened, meter.Work().ShardOpens)
 			}
 		})
+	}
+}
+
+// TestReadBudget_ShardOpens_TieredFoldRefused: a temporal property read with
+// no usable index folds the label's history over every shard, opening closed
+// tiered shards it does not count; under a ShardOpens budget it refuses before
+// the walk (Limit "unsupported") instead of opening them unbounded, and
+// without one it answers.
+func TestReadBudget_ShardOpens_TieredFoldRefused(t *testing.T) {
+	t.Parallel()
+	ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1, MaxOpenColdShards: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := New(Config{Store: ts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = g.Close(); _ = ts.Close() })
+	ctx := context.Background()
+	if _, err := g.Nodes.Add(ctx, []string{"Ev"}, map[string]any{"u": int64(1)}); err != nil {
+		t.Fatal(err)
+	}
+	pin, err := g.Temporal.NowTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := storepkg.QueryOpts{TxPin: pin}
+	bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{ShardOpens: 100})
+	got, err := g.Nodes.ByLabelAndPropertyCtx(bctx, "Ev", "u", int64(1), opts)
+	var rb *storepkg.ReadBudgetError
+	if !errors.As(err, &rb) || rb.Limit != "unsupported" || got != nil {
+		t.Fatalf("fold under ShardOpens = %d rows, %v (%+v); want an unsupported refusal", len(got), err, meter.Work())
+	}
+	bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 100})
+	if got, err := g.Nodes.ByLabelAndPropertyCtx(bctx, "Ev", "u", int64(1), opts); err != nil || len(got) != 1 {
+		t.Fatalf("fold under Candidates = %d rows, %v; want 1", len(got), err)
 	}
 }

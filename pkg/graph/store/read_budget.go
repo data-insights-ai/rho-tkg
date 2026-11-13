@@ -129,6 +129,17 @@ func (m *ReadMeter) BoundsStoreWork() bool {
 	return false
 }
 
+// BoundsShardOpens reports whether this meter or an outer one bounds
+// ShardOpens.
+func (m *ReadMeter) BoundsShardOpens() bool {
+	for r := m; r != nil; r = r.parent {
+		if r.budget.ShardOpens != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // Work returns the counters so far.
 func (m *ReadMeter) Work() ReadWork {
 	if m == nil {

@@ -58,10 +58,30 @@ func (n *NodeOps) HasHistoryCtx(ctx context.Context, id types.NodeID) (bool, err
 	if err := checkCtx(ctx); err != nil {
 		return false, err
 	}
-	if err := storepkg.ReadMeterFrom(ctx).AddCandidates("HasHistory", 1); err != nil {
+	meter := storepkg.ReadMeterFrom(ctx)
+	if err := meter.AddCandidates("HasHistory", 1); err != nil {
 		return false, err
 	}
-	return n.HasHistory(id)
+	m, ok := n.c.store.(storepkg.NodeStampsMeteredCapability)
+	if meter == nil || !ok {
+		return n.HasHistory(id)
+	}
+	// A store that opens shards counts each closed one before it opens
+	// (ShardOpens, READBUDGET).
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return false, err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return false, err
+	}
+	var has bool
+	err := c.readUnderRLock(func() error {
+		var err error
+		has, err = m.HasNodeHistoryMetered(id, meter.Tally("HasHistory"))
+		return err
+	})
+	return has, err
 }
 
 // LatestStampsCtx is LatestStamps under ctx's read budget.
@@ -69,8 +89,12 @@ func (n *NodeOps) LatestStampsCtx(ctx context.Context, id types.NodeID) (txFrom,
 	if err := checkCtx(ctx); err != nil {
 		return 0, 0, false, err
 	}
-	if err := storepkg.ReadMeterFrom(ctx).AddCandidates("LatestStamps", 1); err != nil {
+	meter := storepkg.ReadMeterFrom(ctx)
+	if err := meter.AddCandidates("LatestStamps", 1); err != nil {
 		return 0, 0, false, err
 	}
-	return n.LatestStamps(id)
+	if _, ok := n.c.store.(storepkg.NodeStampsMeteredCapability); !ok || meter == nil {
+		return n.LatestStamps(id)
+	}
+	return n.latestStampsTallied(id, meter.Tally("LatestStamps"))
 }

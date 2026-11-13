@@ -14,6 +14,13 @@ var _ storecontract.CurrentStampsCapability = (*Store)(nil)
 // (shardForNodeIDChecked), without row decode or copy. Only that shard is
 // asked: a stale copy left on another shard by a move is not folded in.
 func (ts *Store) NodeCurrentStamps(nid types.NodeID) (storecontract.RowStamps, error) {
+	return ts.NodeCurrentStampsMetered(nid, nil)
+}
+
+// NodeCurrentStampsMetered is NodeCurrentStamps charging the open of a closed
+// shard the route reaches to t before it (store.NodeStampsMeteredCapability;
+// nil: none).
+func (ts *Store) NodeCurrentStampsMetered(nid types.NodeID, t *storecontract.ReadTally) (storecontract.RowStamps, error) {
 	if err := ts.checkOpen(); err != nil {
 		return storecontract.RowStamps{}, err
 	}
@@ -22,7 +29,7 @@ func (ts *Store) NodeCurrentStamps(nid types.NodeID) (storecontract.RowStamps, e
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	store, checkin, err := ts.shardForNodeIDRead(nid)
+	store, checkin, _, err := ts.shardForNodeIDReadCharged(nid, t)
 	if err != nil {
 		return storecontract.RowStamps{}, err
 	}
