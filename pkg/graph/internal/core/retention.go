@@ -275,17 +275,12 @@ func (c *Core) checkNodePointRetentionRd(rd entityReads, id types.NodeID, pin ty
 	return nil
 }
 
-// nodeRetentionFloor is the node point retention gate as a floor (row 104):
+// nodeRetentionFloorRd is the node point retention gate as a floor (row 104):
 // a pin (not 0) is refused exactly when pin < floor, floor = min(graph max,
 // the highest watermark of the node's labels); 0 when no label of the node
 // (current row, else newest history row) has a watermark, or the node has
-// neither.
-func (c *Core) nodeRetentionFloor(id types.NodeID) (int64, error) {
-	return c.nodeRetentionFloorRd(entityReads{c: c}, id)
-}
-
-// nodeRetentionFloorRd is nodeRetentionFloor reading the node's rows through rd
-// (a budgeted read's metered snapshot counts them, RH list R2).
+// neither. It reads the node's rows through rd (a budgeted read's metered
+// snapshot counts them, RH list R2).
 func (c *Core) nodeRetentionFloorRd(rd entityReads, id types.NodeID) (int64, error) {
 	graphMax := c.retentionMaxWatermark.Load()
 	if graphMax == 0 {

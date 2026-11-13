@@ -228,18 +228,15 @@ func (c *Core) checkRelTypePointRetentionRd(rd entityReads, id types.RelID, pin 
 	return nil
 }
 
-// relTypeRetentionFloor is checkRelTypePointRetention as a floor (row 104): a
+// relTypeRetentionFloorRd is checkRelTypePointRetention as a floor (row 104): a
 // pin (not 0) is refused exactly when gated and pin < floor. Not gated: a
 // relationship minted at or after every relationship watermark (never a
 // purge candidate: a purge takes mint < Before <= the max). Gated: the
 // relationship max when the relationship is gone (its type is unknown), else
 // min(max, its type's watermark).
-func (c *Core) relTypeRetentionFloor(id types.RelID) (floor int64, gated bool, err error) {
-	return c.relTypeRetentionFloorRd(entityReads{c: c}, id)
-}
-
-// relTypeRetentionFloorRd is relTypeRetentionFloor reading the relationship's
-// rows through rd (a budgeted read's metered snapshot counts them, RH list R2).
+//
+// It reads the relationship's rows through rd (a budgeted read's metered
+// snapshot counts them, RH list R2).
 func (c *Core) relTypeRetentionFloorRd(rd entityReads, id types.RelID) (floor int64, gated bool, err error) {
 	relMax := c.retentionRelMaxWatermark.Load()
 	if int64(id.MintInstant()) >= relMax {
