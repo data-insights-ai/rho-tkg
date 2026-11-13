@@ -1,0 +1,21 @@
+R3 B1 red (13 Nov 2026): go test -v -run 'TestHandleSweep_' ./pkg/graph/store/tiered/ with the
+tests, hooks and hotArena in place and sweepHandles returning at once (no sweep). T-g passes: it
+guards that the sweep stays a no-op in memory. T-c and T-d fail at their 30 s hang guard (the
+sweep never reaches its gate). Mutations after the fix, each caught: the sweep skips cold shards
+(T-b: "the demoted shard's handle is still open after the sweep"); the warm swap skips its reopen
+(T-a, T-c, T-d, T-h fail: no handle, swaps 0).
+
+--- PASS: TestHandleSweep_InMemoryNoOp (0.01s)
+    handle_sweep_test.go:70: the warm shard kept its hot-size handle after the sweep
+    handle_sweep_test.go:268: after the scope: swaps 0 (hot-size true), want 1
+    handle_sweep_test.go:127: the demoted shard's handle is still open after the sweep
+--- FAIL: TestHandleSweep_WarmReopensAtWarmSize (0.42s)
+--- FAIL: TestHandleSweep_ScopeDefers (0.48s)
+--- FAIL: TestHandleSweep_DemotedHandleCloses (0.54s)
+    handle_sweep_test.go:207: the sweep never reached "closed"
+--- FAIL: TestHandleSweep_HotWriteDuringSwap (30.29s)
+    handle_sweep_test.go:167: the sweep never reached "gated"
+--- FAIL: TestHandleSweep_PinDefersSwap (35.79s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	35.818s
+FAIL

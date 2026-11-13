@@ -265,3 +265,40 @@ func (ts *Store) SetMoveFaultForTest(fault func(step string) error) { ts.moveFau
 
 // ClosingForTest reports whether Close has begun.
 func (ts *Store) ClosingForTest() bool { return ts.closing.Load() }
+
+// SweepHandlesForTest runs one pass of the handle sweep (handle_sweep.go) on
+// the calling goroutine. A swap the sweep goroutine has in progress is waited
+// for (the shard's move gate), so on return every shard was visited.
+func (ts *Store) SweepHandlesForTest() { ts.sweepHandles() }
+
+// SetSweepFaultForTest installs fault as the handle sweep's step hook ("gated"
+// once a swap holds the shard's gate, "closed" between a warm swap's close and
+// its reopen); a non-nil error ends the swap there. nil removes it.
+func (ts *Store) SetSweepFaultForTest(fault func(step string) error) {
+	if fault == nil {
+		ts.sweep.fault.Store(nil)
+		return
+	}
+	ts.sweep.fault.Store(&fault)
+}
+
+// HandleSweepCountsForTest returns the warm handles the sweep reopened and the
+// demoted handles it closed.
+func (ts *Store) HandleSweepCountsForTest() (swaps, closes int64) {
+	return ts.sweep.swaps.Load(), ts.sweep.closes.Load()
+}
+
+// HotArenaForTest reports whether the shard's handle was opened as a hot one.
+func (es *EventShard) HotArenaForTest() bool {
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+	return es.hotArena
+}
+
+// StoreStateForTest returns the shard's handle and whether it is read-only,
+// under shardMu.
+func (es *EventShard) StoreStateForTest() (*BadgerStore, bool) {
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+	return es.store, es.storeRO
+}

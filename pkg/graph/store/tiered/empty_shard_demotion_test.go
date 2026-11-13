@@ -328,6 +328,7 @@ func TestEmptyShardDemotion_ProbeFailureRetainsHandle(t *testing.T) {
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	ts := openMintStore(t, tierClockCfg(t.TempDir(), clock))
+	holdHandleSweep(ts) // the handle the failed probe keeps is the rotation's to keep
 	old, handle := ts.hotShard, ts.hotShard.store
 	clock.set(julDay(23, 12))
 	if err := ts.checkRotation(); err != nil {

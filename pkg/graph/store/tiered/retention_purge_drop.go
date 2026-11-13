@@ -192,6 +192,10 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	// and catalog untouched (retryable); one after it leaves only an orphaned
 	// directory, never a catalog entry for a missing directory (BACKLOG 19b).
 	es.shardMu.Lock()
+	// A handle swap (the sweep, a move) that began before the unlink reopens
+	// the store outside shardMu: wait for it, so its handle is the one closed
+	// here and not one installed after the directory is gone.
+	es.waitMoveLocked()
 	if es.store != nil {
 		if closeErr := es.store.Close(); closeErr != nil {
 			es.shardMu.Unlock()

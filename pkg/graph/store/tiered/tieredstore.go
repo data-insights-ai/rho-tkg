@@ -304,6 +304,7 @@ type EventShard struct {
 	coldOpens         atomic.Int64     // lazy opens of the closed cold shard since New (ShardInfo.ColdOpens)
 	moveFailedAt      atomic.Int64     // when the idle sweep's last move of the shard failed (unix ns; 0 = never): it retries the others first
 	coldCounted       bool             // shardMu-protected: this shard's open store is counted in Store.openColdShards
+	hotArena          bool             // shardMu-protected: store was opened at MemTableSize as a hot handle; the handle sweep reopens it at WarmMemTableSize once warm (handle_sweep.go)
 
 	// counts is what this shard held when it was last closed, so counting
 	// questions can be answered without reopening it. See shardCounts.
@@ -477,6 +478,7 @@ type Store struct {
 	adjacencyIndexOnDisk  bool                                  // every shard answers adjacency from its out/in keys, no RAM maps
 	labelIndexOnDisk      bool                                  // every shard answers label reads from its label keys, no RAM map
 	closeCh               chan struct{}                         // signals idle-close goroutine to stop
+	sweep                 handleSweep                           // the handle sweep goroutine (handle_sweep.go)
 	closeOnce             sync.Once
 	lifecycleMu           sync.RWMutex // blocks Close while long sequential store-wide operations release per-shard pins
 	closed                atomic.Bool  // set under archiveMu inside Close before tearing the archive down;
@@ -609,6 +611,7 @@ func (ts *Store) openWarmShards(cfg Config, entries []ShardEntry, warmIdx []int,
 					timeEnd:   entry.TimeEnd,
 					readOnly:  true,
 					path:      entry.Path,
+					hotArena:  cfg.InMemory, // openBadgerStore: the hot size
 				}
 				es.initTier(TierWarm)
 				shards[i] = es
@@ -916,6 +919,7 @@ func New(cfg Config) (*Store, error) {
 		timeEnd:   windowEnd,
 		readOnly:  false,
 		path:      hotDir,
+		hotArena:  true,
 	}
 	es.initTier(TierHot)
 	ts.eventShards[hotName] = es
@@ -1146,7 +1150,8 @@ func New(cfg Config) (*Store, error) {
 	ts.openStats.Demoted, ts.openStats.Promoted = demotedAtOpen, promotedAtOpen
 	ts.finishOpenStats(openStart)
 
-	// Start idle-close goroutine for cold shards.
+	// Start the handle sweep and the idle-close goroutine for cold shards.
+	ts.startHandleSweep()
 	if every := ts.idleTimeoutValue() / 2; every > 0 {
 		go ts.idleCloseLoop(every)
 	}
@@ -1376,8 +1381,10 @@ func (ts *Store) Close() error {
 		ts.refArchive.Store(nil)
 		ts.archiveMu.Unlock()
 
-		// Stop the idle-close goroutine.
+		// Stop the idle-close goroutine and the handle sweep (closing, set
+		// above, ends a swap before its reopen).
 		close(ts.closeCh)
+		ts.stopHandleSweep()
 
 		// Save catalog.
 		if !ts.inMemory && ts.catalog != nil {

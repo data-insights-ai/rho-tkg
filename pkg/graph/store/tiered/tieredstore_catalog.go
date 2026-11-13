@@ -158,6 +158,7 @@ func (ts *Store) rotateHotShardLocked() error {
 			timeEnd:   windowEnd,
 			readOnly:  false,
 			path:      newDir,
+			hotArena:  true,
 		}
 		newES.initTier(TierHot)
 		ts.eventShards[newName] = newES
@@ -170,14 +171,20 @@ func (ts *Store) rotateHotShardLocked() error {
 		// Count the demoted handle before cleanup; pinned readers retain it.
 		es.shardMu.Lock()
 		es.countColdStoreLocked(ts)
+		// es.store under shardMu: the handle sweep swaps it. A swap in
+		// progress (moving) leaves the shard closed; its next open drops
+		// the indexes.
+		if es.store != nil && !es.moving.Load() {
+			freeColdRelTemporalIndexes(es.store, es.name)
+		}
 		es.shardMu.Unlock()
-		freeColdRelTemporalIndexes(es.store, es.name)
 	}
 
 	if newStore != nil {
 		ts.handNewShardToLogScope(newStore, newName)
 	}
 	ts.closeEmptyDemotedShardsLocked(oldHot, coldDemotions)
+	ts.kickHandleSweep() // the old hot shard's handle and the demoted ones (handle_sweep.go)
 	return nil
 }
 

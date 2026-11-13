@@ -12,6 +12,7 @@ import (
 // holds es.shardMu.
 func (es *EventShard) setStoreLocked(ts *Store, store *BadgerStore) {
 	es.store = store
+	es.hotArena = false // every install but a hot open is warm-size or read-only
 	es.countColdStoreLocked(ts)
 	es.noteHandle()
 }
@@ -112,6 +113,7 @@ func (es *EventShard) openColdWritableLocked(ts *Store, own int64) error {
 // Caller holds es.shardMu.
 func (es *EventShard) clearStoreLocked(ts *Store) {
 	es.store = nil
+	es.hotArena = false
 	es.storeRO = false
 	es.readTransientOpen = false
 	es.noteHandle()
@@ -611,6 +613,7 @@ func (ts *Store) idleCloseLoop(every time.Duration) {
 			// scan across a years-old store from holding every shard open.
 			ts.enforceColdShardCap()
 			ts.sweepMoveOne()
+			ts.kickHandleSweep() // retry the swaps a scope or Close deferred
 		}
 	}
 }

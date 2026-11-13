@@ -38,6 +38,7 @@ func coldCapStore(t *testing.T, shards, cap int) (*Store, uint16) {
 		t.Fatalf("create: %v", err)
 	}
 	t.Cleanup(func() { _ = ts.Close() })
+	holdHandleSweep(ts) // the premise: demoted shards keep their stores
 
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)

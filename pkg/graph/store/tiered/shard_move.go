@@ -72,9 +72,7 @@ func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
 	es.shardMu.Unlock()
 	defer func() {
 		es.shardMu.Lock()
-		es.moveDone = nil
-		es.moving.Store(false)
-		close(done)
+		ts.endHandleGateLocked(es, done) // the reopened handle takes a registry set during the move
 		es.shardMu.Unlock()
 	}()
 

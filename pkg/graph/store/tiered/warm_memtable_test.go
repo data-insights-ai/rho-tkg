@@ -215,6 +215,7 @@ func TestWarmMemTable_OversizedWALMigratedAtWarmOpen(t *testing.T) {
 	}
 	reg := registrypkg.NewLabelRegistry()
 	ts1.SetLabelRegistry(reg)
+	holdHandleSweep(ts1) // the copy is of a warm shard on its hot-size handle, as a crash before its swap leaves it
 	tok, _ := reg.GetOrCreate("Signal")
 	pad := strings.Repeat("y", 30<<10)
 	var ids []types.NodeID
