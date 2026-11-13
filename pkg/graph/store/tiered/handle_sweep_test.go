@@ -86,12 +86,11 @@ func TestHandleSweep_WarmReopensAtWarmSize(t *testing.T) {
 	}
 }
 
-// TestHandleSweep_DemotedHandleCloses pins R3 T-b: a shard demoted to cold by
-// a rotation has its handle closed by the sweep with its counts sealed; a read
-// opens it read-only (no writable handle), a late write upgrades it. Catches
-// a sweep that leaves demoted shards open.
-func TestHandleSweep_DemotedHandleCloses(t *testing.T) {
-	t.Parallel()
+// demotedSweepFixture is a calendar store (ColdAfter 48 h, MaxOpenColdShards
+// 4) whose day-20 shard went hot, warm and then cold by rotation, still on its
+// hot-size handle, holding n.
+func demotedSweepFixture(t *testing.T) (*Store, *types.Node, *EventShard) {
+	t.Helper()
 	clock := &tierClock{}
 	clock.set(julDay(20, 8))
 	cfg := tierClockCfg(t.TempDir(), clock)
@@ -100,7 +99,7 @@ func TestHandleSweep_DemotedHandleCloses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = ts.Close() }()
+	t.Cleanup(func() { _ = ts.Close() })
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	tok, _ := reg.GetOrCreate("Signal")
@@ -124,6 +123,40 @@ func TestHandleSweep_DemotedHandleCloses(t *testing.T) {
 	if day20.Tier() != TierCold {
 		t.Fatalf("day 20 is %s, want cold", day20.Tier())
 	}
+	return ts, n, day20
+}
+
+// TestHandleSweep_LateWriteHandleStaysOpen: a cold shard a late write opened
+// writable (at the warm size, hotArena false) keeps its handle across a sweep;
+// IdleTimeout closes it, as before R3, so a shard with steady late writes is
+// not reopened on every kick. Catches a sweep that closes every writable cold
+// handle (the hotArena check dropped).
+func TestHandleSweep_LateWriteHandleStaysOpen(t *testing.T) {
+	t.Parallel()
+	ts, n, day20 := demotedSweepFixture(t)
+	ts.SweepHandlesForTest() // closes the demoted hot-size handle
+	lateWrite(t, ts, n, "late")
+	opened, ro := day20.StoreStateForTest()
+	if opened == nil || ro || day20.HotArenaForTest() {
+		t.Fatalf("after the late write: open %v read-only %v hot-size %v; want a writable warm-size handle", opened != nil, ro, day20.HotArenaForTest())
+	}
+	ts.SweepHandlesForTest()
+	if s, _ := day20.StoreStateForTest(); s != opened {
+		t.Fatal("the sweep closed the handle a late write opened")
+	}
+	if _, closes := ts.HandleSweepCountsForTest(); closes != 1 {
+		t.Fatalf("sweep closed %d handles, want 1 (the demoted one only)", closes)
+	}
+}
+
+// TestHandleSweep_DemotedHandleCloses pins R3 T-b: a shard demoted to cold by
+// a rotation has its handle closed by the sweep with its counts sealed; a read
+// opens it read-only (no writable handle), a late write upgrades it. Catches
+// a sweep that leaves demoted shards open.
+func TestHandleSweep_DemotedHandleCloses(t *testing.T) {
+	t.Parallel()
+	ts, n, day20 := demotedSweepFixture(t)
+	id := n.ID()
 	ts.SweepHandlesForTest()
 	if s, _ := day20.StoreStateForTest(); s != nil {
 		t.Fatal("the demoted shard's handle is still open after the sweep")

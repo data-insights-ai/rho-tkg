@@ -19,3 +19,16 @@ sweep never reaches its gate). Mutations after the fix, each caught: the sweep s
 FAIL
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	35.818s
 FAIL
+
+Correction (late write, 13 Nov): go test -v -run 'TestHandleSweep_' with the sweep closing every writable cold handle (before the hotArena check):
+--- PASS: TestHandleSweep_InMemoryNoOp (0.01s)
+--- PASS: TestHandleSweep_ScopeDefers (0.50s)
+--- PASS: TestHandleSweep_PinDefersSwap (0.52s)
+--- PASS: TestHandleSweep_WarmReopensAtWarmSize (0.54s)
+    handle_sweep_test.go:145: the sweep closed the handle a late write opened
+--- PASS: TestHandleSweep_HotWriteDuringSwap (0.56s)
+--- PASS: TestHandleSweep_DemotedHandleCloses (0.70s)
+--- FAIL: TestHandleSweep_LateWriteHandleStaysOpen (0.73s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.756s
+FAIL
