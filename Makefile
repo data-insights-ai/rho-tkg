@@ -20,10 +20,13 @@ build: ## compile everything, 32-bit too
 	go build ./... && GOOS=linux GOARCH=386 CGO_ENABLED=0 go build ./...
 test: ## the short tier, cached: only what a change reaches reruns
 	go test -short -timeout 20m ./...
-new: ## the new code's tests: make new PKG=./pkg/x RUN='TestA|TestB'; red when RUN matches nothing or a test skips
-	$(if $(and $(PKG),$(RUN)),,$(error usage: make new PKG=./pkg/x RUN='TestA|TestB'))
-	go test -timeout 10m -v -run '$(RUN)' $(PKG) | tee .git/make-new.out | grep -E '^(--- |ok|FAIL|panic:)|_test\.go:[0-9]+:'
-	! grep -E 'no tests to run|^--- SKIP' .git/make-new.out
+new: ## the new code's tests, without -short: make new PKG=./pkg/x RUN='TestA|TestB'; red when RUN matches nothing or a test skips
+	@if [ -z "$(PKG)" ] || [ -z "$(RUN)" ]; then echo "usage: make new PKG=./pkg/x RUN='TestA|TestB'"; exit 2; fi
+	@rc=0; go test -timeout 10m -v -run '$(RUN)' $(PKG) > .git/make-new.out 2>&1 || rc=$$?; \
+	grep -E '^(--- |ok|FAIL|panic:)|_test\.go:[0-9]+:' .git/make-new.out || true; \
+	if [ $$rc -ne 0 ]; then exit $$rc; fi; \
+	if grep -q 'no tests to run' .git/make-new.out; then echo "make new: RUN='$(RUN)' matches no test in a package"; exit 1; fi; \
+	if grep -q '^--- SKIP' .git/make-new.out; then echo "make new: a test skipped (above)"; exit 1; fi
 old: ## two old tests: the public API surface, a tiered clean reopen equals a full rebuild
 	go test -timeout 10m -run '^TestGraphAccessor_StoreOpsConsumerSurfaceWorks$$' ./pkg/graph
 	go test -timeout 10m -run '^TestTieredCleanReopenMatchesFullRebuild$$' ./pkg/graph/store/tiered
