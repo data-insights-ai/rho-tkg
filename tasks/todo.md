@@ -32,7 +32,10 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
   itself is O(versions) (option F). Caveat (design.txt §4): compaction between tx ops can trim a row above the current
   version that rollback puts back. ai-soc's profile (k11050630 on v4.105.3, `k11050630-heap.txt`): NodeHistoryTemporalMeta is 0.5 % of the push but
   ~24 % of the /bars phase (499 GB), all via nodesByLabelAndPropertyForms -> nodeEffectiveTimelinesFrom -> nodeMeta
-  under sigma's ReadDerivedAt; next, P5's red test on that path. Done when the next profile of ai-soc's workload
+  under sigma's ReadDerivedAt (the page doors: scan reads under a snapshot, never the head entry); next, P5's red test on
+  that path. 9 Nov: ai-soc's 2-day twin (sigma v0.17.14 + v4.105.9, CPU): 0 samples in these frames, ReadDerivedAt 2.6 %;
+  serve on the 6-h twin (sigma v0.17.16): warm /bars 0.03 % of alloc_space (JSON encoding 69 %); within the one view
+  build, the page door 40 %, NodeHistoryTemporalMeta 1.7 %. Waits for ai-soc's cold-build arm (reopen cycles). Done when the next profile of ai-soc's workload
   shows history reads below 10 % of alloc_space. **rho/sigma:** the largest open item: P5 targets NodeHistoryTemporalMeta,
   10.9 of sigma's 160 GB alloc_space; P1 and CASCADEMETA (v4.103.0) already took the 32 GB getRelHistory share; the
   rest shows in the next profile of ai-soc's workload.
@@ -80,6 +83,19 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
   sigma's paged rows, so cutting those (WRITEWHY, sigma's side) does more than a rho lever.
 
 ## Waiting
+- **RHLIST** (René's RH list, 13 Nov; "start work") — R1 (3aa53bc3 + no-write-failure fix) in v4.105.10; R0 waits for
+  René's decision 2; R2 waits for H2 and sigma's door list (received 13 Nov); R3 for B0.
+- **APPENDLIST** (ai-soc V1r, 10 Nov; question) — append-only list per node with a header. A list append via
+  nodes.Update rewrites the list twice (wire_history_delta.go:115). Possible: write-once entry keys (node, list, tx,
+  seq) plus a header record per tx; as-of = last header ≤ tx; O(1), ~100-150 B per append. Cost is integrations
+  (tiered, purge, export, integrity, rollback): 5-8 days, a minor. Needs ai-soc's spec and René's word.
+- **COLDLRU** (ai-soc RHOCOLD a, 9-10 Nov) — one advance reads every cold day shard (cap 2/3 thrash, cap 5 → 2 opens,
+  cap 64 badger heap +640 MB), so LRU eviction at check-in does not help: the cap grows with the archive unless
+  sigma's read-back stops reaching old days (ai-soc asked sigma). Not proposed. Open: the empty 1 Jan shard reopens
+  though NoRows skips sealed empty shards (tieredstore_routing.go:384); waits for its catalog mark and an open stack.
+- **COLDHEAP** (ai-soc RHOCOLD b) — +970 MB over 3 days; never cold: reference shard, hot/warm, demoted open handles,
+  degree tracker. Decoded rows (224 MB) sit in per-shard entity caches, 10,000 entries each (CacheBudgetBytes bounds
+  bytes). Waits for ai-soc's retainer view.
 - **LISTREAD** (sigma 31 Oct) — label-and-property pages read through one forward scan since v4.105.4 (2.9-6.6 µs
   per listed node cold, from 6.8-29; `tasks/evidence/LISTREAD/measure.txt`). Left: a batch `HasHistory(ids)` (a
   minor) that reads tiered's liveness stamps through one scan too (72 % of HasHistory's ~3 µs per node). Waits for

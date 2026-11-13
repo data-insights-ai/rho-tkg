@@ -167,8 +167,7 @@ func (ts *Store) rotateHotShardLocked() error {
 
 	for _, es := range coldDemotions {
 		es.setTier(TierCold)
-		// Do NOT close here: idle-close handles it (in-flight reads may hold
-		// pointers). The open handle now counts against MaxOpenColdShards.
+		// Count the demoted handle before cleanup; pinned readers retain it.
 		es.shardMu.Lock()
 		es.countColdStoreLocked(ts)
 		es.shardMu.Unlock()
@@ -178,6 +177,7 @@ func (ts *Store) rotateHotShardLocked() error {
 	if newStore != nil {
 		ts.handNewShardToLogScope(newStore, newName)
 	}
+	ts.closeEmptyDemotedShardsLocked(oldHot, coldDemotions)
 	return nil
 }
 

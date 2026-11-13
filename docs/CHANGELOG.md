@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.105.10] - 2026-11-13
+
+### Fixed
+
+- **RH02EMPTY** (ai-soc RH-02, René's RH list R1): rotation closes a newly demoted disk shard at once when
+  `HoldsNoRows` proves it empty, instead of keeping its writable handle (and its memtable arena) until the idle sweep.
+  Pinned, moving and legacy-log-scope shards keep their handles; history-only shards are not empty; a late write
+  clears the no-rows seal before it reopens the shard. The cleanup fails no write: a failed probe keeps the handle, a
+  failed close sets the background-error fence as a failed idle close does. ai-soc's 128-key fixture: live heap after
+  input release 276.8 → 187.6 MB, three open handles → two. Tests: `TestEmptyShardDemotion_*` (incl. a shard holding
+  only uniqueness claims).
+
 ## [4.105.9] - 2026-11-09
 
 ### Performance

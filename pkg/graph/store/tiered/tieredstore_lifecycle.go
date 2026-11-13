@@ -570,6 +570,60 @@ func (ts *Store) idleCloseLoop(every time.Duration) {
 // close would only free by dropping the data).
 func (ts *Store) coldShardsClosable() bool { return !ts.inMemory }
 
+// closeEmptyDemotedShardsLocked follows committed rotation under lifecycleMu.RLock
+// and ts.mu.Lock, closing the demoted disk shards HoldsNoRows proves empty. It
+// never waits for a pin: retained handles use normal idle cleanup.
+//
+// It runs on the write path (checkRotation) after the rotation committed, so
+// it returns nothing: a failed probe keeps the handle for the idle sweep and is
+// logged; a failed close records the background-error fence exactly as a
+// failed idle close does (checkinReadStore). Neither fails the triggering write
+// by itself.
+func (ts *Store) closeEmptyDemotedShardsLocked(oldHot *EventShard, demoted []*EventShard) {
+	ts.scopeMu.Lock()
+	scopeOpen := ts.scopeOpen
+	ts.scopeMu.Unlock()
+	sealedAny := false
+	closeEmpty := func(es *EventShard) {
+		es.shardMu.Lock()
+		defer es.shardMu.Unlock()
+		if es.currentTier() != TierCold {
+			return
+		}
+		es.countColdStoreLocked(ts)
+		// A legacy scope may hold log records outside HoldsNoRows' keyspace.
+		if !ts.coldShardsClosable() || scopeOpen || es.moving.Load() || es.store == nil || es.activeReqs.Load() != 0 {
+			return
+		}
+		// The cold tier is already published: stale warm checkouts recheck it
+		// after pinning and must take shardMu before accessing the handle.
+		empty, err := es.store.HoldsNoRows()
+		if err != nil {
+			slog.Warn("graph: probe demoted shard; handle kept for the idle sweep", "shard", es.name, "err", err)
+			return
+		}
+		if !empty {
+			return
+		}
+		sealedAny = es.snapshotCountsLocked(ts) || sealedAny
+		err = es.store.Close()
+		es.clearStoreLocked(ts)
+		if err != nil {
+			// Close may have closed the DB despite its error: detach, and fence
+			// later access; the committed topology is not rolled back.
+			ts.recordBackgroundError(fmt.Errorf("graph: close empty demoted shard %s: %w", es.name, err))
+			slog.Error("tiered empty demoted shard close failed", "shard", es.name, "err", err)
+		}
+	}
+	closeEmpty(oldHot)
+	for _, es := range demoted {
+		closeEmpty(es)
+	}
+	if sealedAny {
+		ts.saveCatalogBestEffort("seal empty shard counts on demotion")
+	}
+}
+
 // idleTimeoutValue returns the cold-shard idle timeout.
 func (ts *Store) idleTimeoutValue() time.Duration { return time.Duration(ts.idleTimeout.Load()) }
 

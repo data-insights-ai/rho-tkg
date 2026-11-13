@@ -255,15 +255,19 @@ ADR-0012.
 - **`RelsByMint`** puts a relationship between reference nodes on its mint shard instead, so reference-heavy graphs
   do not pile every edge into the reference shard.
 - **Rotation** opens the next hot shard, saves the catalog, and only then flips the old hot shard to warm.
-  Shards older than `ColdAfter` become cold; a demoted shard keeps its handle until the idle sweep closes it after
-  `IdleTimeout` unused, counted from its last cold access (a demoted shard no cold read touched closes at the next
+  Shards older than `ColdAfter` become cold. A newly demoted disk shard that `HoldsNoRows` proves empty (no entity,
+  history, index or change-log key, pending writes included; uniqueness claims alone count as empty, since no reader
+  trusts a claim without its row) closes at once and is sealed no-rows, unless a pin, a move or an open legacy log
+  scope holds it (RH02EMPTY). That cleanup runs on the write path after the rotation committed and fails no write: a
+  failed probe keeps the handle, a failed close sets the background-error fence as a failed idle close does. Every
+  other demoted shard keeps its handle until the idle sweep closes it after `IdleTimeout` unused, counted from its last cold access (a demoted shard no cold read touched closes at the next
   sweep; hot and warm reads stamp no access). A read reopens a cold shard read-only (COLDRO: 1.3 ms against 27.6 ms writable), a write or a
   checkout that may write reopens it writable (replacing a read-only handle once its readers finish), and at most
   `MaxOpenColdShards` stay open.
 - **No RAM tier.** `DurableCommit` / `SyncWrites` need every write on a disk with a write-ahead log; RAM is each
   shard's cache (`MemTableSize`, `BlockCacheSize`, `CacheBudgetBytes`).
-- **Shard pinning.** Every access pins a shard (`checkoutStore` / `checkinStore`); `Close` and the idle sweep wait
-  for pins to drain, so no reader ever holds a closed database.
+- **Shard pinning.** Every access pins a shard (`checkoutStore` / `checkinStore`); `Close` waits for pins to
+  drain and the idle sweep and demotion cleanup skip pinned handles, so no reader ever holds a closed database.
 - **Old entities stay writable** on their own shard after rotation; there is no read-only tier.
 - **Retention** drops whole expired shards where possible and purges rows otherwise.
 - **The reference shard** also holds the change-log watermark, the commit floor and the property-key registry.
