@@ -1014,9 +1014,10 @@ func TestEntityIndex_KeyLimitBoundary(t *testing.T) {
 	}
 	// A value of one 0x00 byte and q's: its member key is the head (6), the
 	// domain tag (1), "s:" (2), the value, the 0x00's escape (1), the
-	// terminator (1) and the tail (20: ID, transaction time and version, RELDISKWIN).
-	value := func(keyLen int) string { return "\x00" + strings.Repeat("q", keyLen-6-1-2-1-1-1-20) }
-	if l := storepkg.EntityIndexHeadLen + storepkg.EntityIndexValueLen(types.IndexablePropertyValueKey(value(100))) + 20; l != 100 {
+	// terminator (1) and the tail of its longest entry (37: axis, t1, from, ID,
+	// transaction time and version, the time-ordered entry of RELDISKWIN option B).
+	value := func(keyLen int) string { return "\x00" + strings.Repeat("q", keyLen-6-1-2-1-1-1-37) }
+	if l := storepkg.EntityIndexHeadLen + storepkg.EntityIndexValueLen(types.IndexablePropertyValueKey(value(100))) + 37; l != 100 {
 		t.Fatalf("the test's value makes a %d-byte key, want 100", l)
 	}
 	over, at := value(bs.maxEntryKey+1), value(bs.maxEntryKey)

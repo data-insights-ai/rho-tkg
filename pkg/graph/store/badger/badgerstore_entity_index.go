@@ -307,7 +307,7 @@ func dropHeldOps(ops []writeOp, from int, have []writeOp) []writeOp {
 	}
 	kept := ops[:from]
 	for _, op := range ops[from:] {
-		if op.opType == writeOpSet && op.key[0] == storepkg.KeyEntityIndex && storepkg.EntityIndexIsSpan(op.key[1]) {
+		if op.opType == writeOpSet && op.key[0] == storepkg.KeyEntityIndex && (storepkg.EntityIndexIsSpan(op.key[1]) || storepkg.EntityIndexIsTime(op.key[1])) {
 			if _, ok := held[string(op.key)]; ok {
 				continue
 			}
@@ -580,8 +580,10 @@ func (bs *Store) diskTxMembersLocked(kind byte, scope uint16, propertyKey string
 
 // purgedNodeMemberOpsLocked returns deletes of the member entries of nid's
 // rows, current and history: a retention purge removes them all, and an
-// entry left would name a value of a row that no longer exists. Caller holds
-// idxMu.Lock.
+// entry left would name a value of a row that no longer exists. A row's
+// time-ordered entries (option B) are found by every end the row may have
+// been written with (purgeLateTos): its own, the one a replacing row gave it,
+// the one before a delete. Caller holds idxMu.Lock.
 func (bs *Store) purgedNodeMemberOpsLocked(nid types.NodeID) ([]writeOp, error) {
 	if !bs.nodeMembersOnDisk {
 		return nil, nil
@@ -594,13 +596,38 @@ func (bs *Store) purgedNodeMemberOpsLocked(nid types.NodeID) ([]writeOp, error) 
 	if n, err := bs.getNodeLocked(nid); err == nil {
 		rows = append(rows, n)
 	}
-	var ops []writeOp
-	for _, n := range rows {
-		for _, op := range bs.nodeMemberOpsLocked(n, id) {
-			ops = append(ops, writeOp{opType: writeOpDelete, key: op.key})
+	axis := bs.validAxis.Get()
+	infos := make([]indexpkg.RowInfo, len(rows))
+	for i, n := range rows {
+		infos[i] = indexpkg.NodeRowInfo(axis, n)
+	}
+	var keys [][]byte
+	for i, n := range rows {
+		row, lateTos := memberRowOf(infos[i], infos[i].Span), purgeLateTos(infos, i)
+		for _, def := range bs.propDiskDefs {
+			if !def.members || !n.HasLabelTokenRaw(def.key.LabelToken) {
+				continue
+			}
+			forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
+				keys = append(keys, bs.memberPurgeKeys(storepkg.EntityIndexNodeSpan, def.key.LabelToken, def.key.PropertyKey, valueKey, id, row, lateTos)...)
+			})
 		}
 	}
-	return ops, nil
+	return purgeDeletes(keys), nil
+}
+
+// purgeDeletes returns the deletes of keys, each once.
+func purgeDeletes(keys [][]byte) []writeOp {
+	seen := make(map[string]struct{}, len(keys))
+	ops := make([]writeOp, 0, len(keys))
+	for _, k := range keys {
+		if _, dup := seen[string(k)]; dup {
+			continue
+		}
+		seen[string(k)] = struct{}{}
+		ops = append(ops, writeOp{opType: writeOpDelete, key: k})
+	}
+	return ops
 }
 
 // purgedRelMemberOpsLocked is purgedNodeMemberOpsLocked for a relationship
@@ -618,13 +645,25 @@ func (bs *Store) purgedRelMemberOpsLocked(rid types.RelID, relType uint16) ([]wr
 	if r, err := bs.getRelLocked(rid); err == nil {
 		rows = append(rows, r)
 	}
-	var ops []writeOp
-	for _, r := range rows {
-		for _, op := range bs.relIndexDiskOpsLocked(r, id, writeOpSet, false) {
-			ops = append(ops, writeOp{opType: writeOpDelete, key: op.key})
+	axis := bs.validAxis.Get()
+	infos := make([]indexpkg.RowInfo, len(rows))
+	for i, r := range rows {
+		infos[i] = indexpkg.RelRowInfo(axis, r)
+	}
+	var keys [][]byte
+	for i, r := range rows {
+		row, lateTos := memberRowOf(infos[i], infos[i].Span), purgeLateTos(infos, i)
+		tok := r.TypeToken().Value()
+		for _, def := range bs.relDiskDefs {
+			if def.key.RelTypeToken != tok {
+				continue
+			}
+			if valueKey, _ := r.IndexablePropertyValueKey(def.key.PropertyKey); valueKey != "" {
+				keys = append(keys, bs.memberPurgeKeys(storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, valueKey, id, row, lateTos)...)
+			}
 		}
 	}
-	return ops, nil
+	return purgeDeletes(keys), nil
 }
 
 // relDiskMembers answers a membership lookup of the relationship definition
@@ -1428,39 +1467,51 @@ func (bs *Store) commitEntityIndexOpen(p *entityIndexOpen) error {
 // with-history door demotes, written again as next, the row that replaces it,
 // ends it (RELDISKWIN: lateTo is next's start for a row replaced open, last
 // the demoted row's TxTo). The entry exists, the row's own key, written when
-// the row was; this is its rewrite, one set per value, no read. A value prev
-// carries that old, the current row it replaces, did not still gets its entry,
-// and an entry of old that prev does not give (a demoted row that is not old's
-// copy: another value, version or transaction time) is deleted: no row carries
-// it any more, and a retention purge finds an entry by the rows it removes.
-// Caller holds idxMu.Lock.
+// the row was; this is its rewrite, one set per value, no read. Its
+// time-ordered entries move with it (option B): the late axis's entry at old's
+// end is deleted when the end changed, and a widened row gains its recent
+// axis's entry. A value prev carries that old, the current row it replaces,
+// did not still gets its entry, and an entry of old that prev does not give (a
+// demoted row that is not old's copy: another value, version or transaction
+// time) is deleted with its time-ordered entries: no row carries it any more,
+// and a retention purge finds an entry by the rows it removes. Caller holds
+// idxMu.Lock.
 func (bs *Store) nodeReplacedMemberOpsLocked(old, prev, next *types.Node, id snowflake.ID) []writeOp {
-	return append(bs.nodeOrphanedMemberOpsLocked(old, prev, id), bs.nodeMemberOpsNextLocked(prev, id, next)...)
-}
-
-// nodeOrphanedMemberOpsLocked returns the deletes of old's member entries that
-// prev, the row stored in history in old's place, does not give.
-func (bs *Store) nodeOrphanedMemberOpsLocked(old, prev *types.Node, id snowflake.ID) []writeOp {
-	if !bs.nodeMembersOnDisk || old == nil || prev == nil {
+	if !bs.nodeMembersOnDisk || prev == nil {
 		return nil
 	}
-	oldTx, _, _ := old.TxStamps()
-	prevTx, _, _ := prev.TxStamps()
-	sameRow := oldTx == prevTx && old.Version() == prev.Version()
+	row := bs.nodeMemberRow(prev, next)
+	var oldRow memberRow
+	sameRow := false
+	if old != nil {
+		oldRow = bs.nodeMemberRow(old, nil)
+		sameRow = oldRow.txFrom == row.txFrom && oldRow.version == row.version
+	}
 	var ops []writeOp
 	for _, def := range bs.propDiskDefs {
-		if !def.members || !old.HasLabelTokenRaw(def.key.LabelToken) {
+		if !def.members {
 			continue
 		}
 		var kept []string // the value keys prev gives under def
-		if sameRow && prev.HasLabelTokenRaw(def.key.LabelToken) {
+		if prev.HasLabelTokenRaw(def.key.LabelToken) {
 			forEachDiskValueKey(prev, def.key.PropertyKey, def.elements, func(valueKey string) { kept = append(kept, valueKey) })
 		}
-		forEachDiskValueKey(old, def.key.PropertyKey, def.elements, func(valueKey string) {
-			if !slices.Contains(kept, valueKey) {
-				ops = bs.entityMemberDelOp(ops, storepkg.EntityIndexNodeSpan, def.key.LabelToken, def.key.PropertyKey, valueKey, id, oldTx, old.Version())
+		var had []string // the value keys old gave under def
+		if old != nil && old.HasLabelTokenRaw(def.key.LabelToken) {
+			forEachDiskValueKey(old, def.key.PropertyKey, def.elements, func(valueKey string) { had = append(had, valueKey) })
+		}
+		for _, valueKey := range had {
+			if !sameRow || !slices.Contains(kept, valueKey) {
+				ops = bs.entityMemberDelOp(ops, storepkg.EntityIndexNodeSpan, def.key.LabelToken, def.key.PropertyKey, valueKey, id, oldRow)
 			}
-		})
+		}
+		for _, valueKey := range kept {
+			if sameRow && slices.Contains(had, valueKey) {
+				ops = bs.entityMemberOp(ops, storepkg.EntityIndexNodeSpan, def.key.LabelToken, def.key.PropertyKey, valueKey, id, row, oldRow)
+			} else {
+				ops = bs.entityMemberOp(ops, storepkg.EntityIndexNodeSpan, def.key.LabelToken, def.key.PropertyKey, valueKey, id, row)
+			}
+		}
 	}
 	return ops
 }
@@ -1472,26 +1523,134 @@ func (bs *Store) relReplacedMemberOpsLocked(old, prev, next *types.Relationship,
 		return nil
 	}
 	tok := prev.TypeToken().Value()
-	oldTx, _, _ := old.TxStamps()
-	prevTx, _, _ := prev.TxStamps()
-	sameRow := oldTx == prevTx && old.Version() == prev.Version()
+	row := bs.relMemberRow(prev, next)
+	var oldRow memberRow
+	sameRow := false
+	if old != nil {
+		oldRow = bs.relMemberRow(old, nil)
+		sameRow = oldRow.txFrom == row.txFrom && oldRow.version == row.version
+	}
 	var ops []writeOp
-	var row memberRow
-	built := false
 	for _, def := range bs.relDiskDefs {
 		if def.key.RelTypeToken != tok {
 			continue
 		}
 		prevValue, _ := prev.IndexablePropertyValueKey(def.key.PropertyKey)
-		if oldValue, _ := old.IndexablePropertyValueKey(def.key.PropertyKey); oldValue != "" && (!sameRow || oldValue != prevValue) {
-			ops = bs.entityMemberDelOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, oldValue, id, oldTx, old.Version())
+		oldValue := ""
+		if old != nil {
+			oldValue, _ = old.IndexablePropertyValueKey(def.key.PropertyKey)
+		}
+		if oldValue != "" && (!sameRow || oldValue != prevValue) {
+			ops = bs.entityMemberDelOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, oldValue, id, oldRow)
 		}
 		if prevValue != "" {
-			if !built {
-				row, built = bs.relMemberRow(prev, next), true
+			if sameRow && oldValue == prevValue {
+				ops = bs.entityMemberOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, prevValue, id, row, oldRow)
+			} else {
+				ops = bs.entityMemberOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, prevValue, id, row)
 			}
-			ops = bs.entityMemberOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, prevValue, id, row)
 		}
+	}
+	return ops
+}
+
+// relTombMemberOpsLocked returns the member entries of tomb, the tombstone of
+// a deleted relationship row, as its delete stamps it: the same span entry
+// with the tombstone's span, its late axis's entry moved from the row's end
+// before the delete (a delete that wrote ValidTo ended an open row) and, for a
+// widened tombstone, its recent axis's entry (option B). Caller holds
+// idxMu.Lock.
+func (bs *Store) relTombMemberOpsLocked(tomb *types.Relationship, id snowflake.ID) []writeOp {
+	if len(bs.relDiskDefs) == 0 || tomb == nil {
+		return nil
+	}
+	tok := tomb.TypeToken().Value()
+	row := bs.relMemberRow(tomb, nil)
+	var ops []writeOp
+	for _, def := range bs.relDiskDefs {
+		if def.key.RelTypeToken != tok {
+			continue
+		}
+		if valueKey, _ := tomb.IndexablePropertyValueKey(def.key.PropertyKey); valueKey != "" {
+			ops = bs.entityMemberOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, valueKey, id, row, preDeleteRow(row))
+		}
+	}
+	return ops
+}
+
+// nodeTombMemberOpsLocked is relTombMemberOpsLocked for a node's tombstone.
+func (bs *Store) nodeTombMemberOpsLocked(tomb *types.Node, id snowflake.ID) []writeOp {
+	if !bs.nodeMembersOnDisk || tomb == nil {
+		return nil
+	}
+	row := bs.nodeMemberRow(tomb, nil)
+	var ops []writeOp
+	for _, def := range bs.propDiskDefs {
+		if !def.members || !tomb.HasLabelTokenRaw(def.key.LabelToken) {
+			continue
+		}
+		forEachDiskValueKey(tomb, def.key.PropertyKey, def.elements, func(valueKey string) {
+			ops = bs.entityMemberOp(ops, storepkg.EntityIndexNodeSpan, def.key.LabelToken, def.key.PropertyKey, valueKey, id, row, preDeleteRow(row))
+		})
+	}
+	return ops
+}
+
+// relRewrittenTimeOpsLocked returns the deletes of the time-ordered entries of
+// old that r, the row an update writes in old's place with old's transaction
+// time and version (an in-place rewrite), replaces with other keys: r's span
+// entry overwrote old's (the same key), so old's time-ordered entries name a
+// row that is gone, and a retention purge, which finds entries by the rows it
+// removes, would miss them (option B). Caller holds idxMu.Lock.
+func (bs *Store) relRewrittenTimeOpsLocked(old, r *types.Relationship, id snowflake.ID) []writeOp {
+	if len(bs.relDiskDefs) == 0 || old == nil || r == nil || old.TypeToken() != r.TypeToken() {
+		return nil
+	}
+	oldRow, row := bs.relMemberRow(old, nil), bs.relMemberRow(r, nil)
+	if oldRow == row || oldRow.txFrom != row.txFrom || oldRow.version != row.version {
+		return nil
+	}
+	tok := r.TypeToken().Value()
+	var ops []writeOp
+	for _, def := range bs.relDiskDefs {
+		if def.key.RelTypeToken != tok {
+			continue
+		}
+		valueKey, _ := r.IndexablePropertyValueKey(def.key.PropertyKey)
+		if oldValue, _ := old.IndexablePropertyValueKey(def.key.PropertyKey); valueKey == "" || oldValue != valueKey {
+			continue
+		}
+		if p, ok := bs.entityIndexValuePrefix(storepkg.EntityIndexRelTime, tok, def.key.PropertyKey, valueKey); ok {
+			ops = memberTimeDelOps(ops, p, id, oldRow, &row)
+		}
+	}
+	return ops
+}
+
+// nodeRewrittenTimeOpsLocked is relRewrittenTimeOpsLocked for a node.
+func (bs *Store) nodeRewrittenTimeOpsLocked(old, n *types.Node, id snowflake.ID) []writeOp {
+	if !bs.nodeMembersOnDisk || old == nil || n == nil {
+		return nil
+	}
+	oldRow, row := bs.nodeMemberRow(old, nil), bs.nodeMemberRow(n, nil)
+	if oldRow == row || oldRow.txFrom != row.txFrom || oldRow.version != row.version {
+		return nil
+	}
+	var ops []writeOp
+	for _, def := range bs.propDiskDefs {
+		if !def.members || !old.HasLabelTokenRaw(def.key.LabelToken) || !n.HasLabelTokenRaw(def.key.LabelToken) {
+			continue
+		}
+		var had []string
+		forEachDiskValueKey(old, def.key.PropertyKey, def.elements, func(valueKey string) { had = append(had, valueKey) })
+		forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
+			if !slices.Contains(had, valueKey) {
+				return
+			}
+			if p, ok := bs.entityIndexValuePrefix(storepkg.EntityIndexNodeTime, def.key.LabelToken, def.key.PropertyKey, valueKey); ok {
+				ops = memberTimeDelOps(ops, p, id, oldRow, &row)
+			}
+		})
 	}
 	return ops
 }

@@ -388,6 +388,7 @@ func (bs *Store) maintainRelPropertyIndexesUpdate(ops []writeOp, old, r *types.R
 	from := len(ops)
 	ops = append(ops, bs.maintainRelPropertyIndexesAdd(r, id)...)
 	ops = bs.dropSameRelMemberOps(ops, from, old, r, id)
+	ops = append(ops, bs.relRewrittenTimeOpsLocked(old, r, id)...) // an in-place rewrite moves the row's time-ordered entries
 	return bs.dropUnchangedEntityOps(ops, from)
 }
 

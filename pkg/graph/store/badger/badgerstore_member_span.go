@@ -1,6 +1,13 @@
 package badger
 
 import (
+	"bytes"
+	"fmt"
+	"math"
+	"slices"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -104,25 +111,132 @@ func memberEntry(prefix []byte, kind byte, id snowflake.ID, row memberRow) (key,
 	return key, value
 }
 
+// widened reports whether row answers a wider span at pins before its last
+// stamp than after (allTo > lateTo: an open row an update demoted, a tombstone
+// whose delete wrote ValidTo): such a row has an entry on the recent axis too.
+func (row memberRow) widened() bool { return row.allTo > row.lateTo }
+
+// timePrefix returns the value prefix of the time-ordered kind that goes with
+// the span kind's value prefix p (the same payload under its own head).
+func timePrefix(p []byte) []byte {
+	tp := slices.Clone(p)
+	tp[1] = storepkg.EntityIndexTimeKind(tp[1])
+	return tp
+}
+
+// memberTimeKeys returns row's time-ordered keys under the time kind's value
+// prefix tp: the late axis's, and the recent axis's for a widened row (nil
+// otherwise).
+func memberTimeKeys(tp []byte, id snowflake.ID, row memberRow) (late, recent []byte) {
+	late = storepkg.AppendEntityIndexTimeEntry(slices.Clip(tp), storepkg.EntityIndexAxisLate, int64(row.lateTo), int64(row.from), id, int64(row.txFrom), row.version)
+	if row.widened() {
+		recent = storepkg.AppendEntityIndexTimeEntry(slices.Clip(tp), storepkg.EntityIndexAxisRecent, int64(row.last), int64(row.from), id, int64(row.txFrom), row.version)
+	}
+	return late, recent
+}
+
+// memberTimeOps appends the sets of row's time-ordered entries (value the span
+// entry's) to ops.
+func memberTimeOps(ops []writeOp, tp []byte, id snowflake.ID, row memberRow, value []byte) []writeOp {
+	late, recent := memberTimeKeys(tp, id, row)
+	ops = append(ops, writeOp{opType: writeOpSet, key: late, value: value})
+	if recent != nil {
+		ops = append(ops, writeOp{opType: writeOpSet, key: recent, value: value})
+	}
+	return ops
+}
+
+// memberTimeDelOps appends the deletes of was's time-ordered entries, except
+// the keys of row (nil: none), which the caller sets.
+func memberTimeDelOps(ops []writeOp, tp []byte, id snowflake.ID, was memberRow, row *memberRow) []writeOp {
+	wl, wr := memberTimeKeys(tp, id, was)
+	var late, recent []byte
+	if row != nil {
+		late, recent = memberTimeKeys(tp, id, *row)
+	}
+	for _, k := range [][]byte{wl, wr} {
+		if k != nil && !bytes.Equal(k, late) && !bytes.Equal(k, recent) {
+			ops = append(ops, writeOp{opType: writeOpDelete, key: k})
+		}
+	}
+	return ops
+}
+
 // entityMemberOp appends the set of row's member entry of kind (a span kind)
-// for valueKey to ops.
-func (bs *Store) entityMemberOp(ops []writeOp, kind byte, scope uint16, propertyKey, valueKey string, id snowflake.ID, row memberRow) []writeOp {
+// for valueKey to ops, with its time-ordered entries (option B); was are rows
+// of the same entity and value whose time-ordered entries row's replace (the
+// row before a demotion, a delete or an in-place rewrite): their keys that row
+// does not write again are deleted.
+func (bs *Store) entityMemberOp(ops []writeOp, kind byte, scope uint16, propertyKey, valueKey string, id snowflake.ID, row memberRow, was ...memberRow) []writeOp {
 	prefix, ok := bs.entityIndexValuePrefix(kind, scope, propertyKey, valueKey)
 	if !ok {
 		return ops
 	}
 	key, value := memberEntry(prefix, kind, id, row)
-	return append(ops, writeOp{opType: writeOpSet, key: key, value: value})
+	ops = append(ops, writeOp{opType: writeOpSet, key: key, value: value})
+	tp := timePrefix(prefix)
+	for _, w := range was {
+		ops = memberTimeDelOps(ops, tp, id, w, &row)
+	}
+	return memberTimeOps(ops, tp, id, row, value)
 }
 
-// entityMemberDelOp appends the delete of the member entry of kind (a span
-// kind) of the row (txFrom, version) of id for valueKey.
-func (bs *Store) entityMemberDelOp(ops []writeOp, kind byte, scope uint16, propertyKey, valueKey string, id snowflake.ID, txFrom types.Instant, version uint32) []writeOp {
+// entityMemberDelOp appends the delete of row's member entry of kind (a span
+// kind) of id for valueKey, and of its time-ordered entries.
+func (bs *Store) entityMemberDelOp(ops []writeOp, kind byte, scope uint16, propertyKey, valueKey string, id snowflake.ID, row memberRow) []writeOp {
 	prefix, ok := bs.entityIndexValuePrefix(kind, scope, propertyKey, valueKey)
 	if !ok {
 		return ops
 	}
-	return append(ops, writeOp{opType: writeOpDelete, key: storepkg.AppendEntityIndexEntry(prefix, kind, id, int64(txFrom), version)})
+	ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.AppendEntityIndexEntry(prefix, kind, id, int64(row.txFrom), row.version)})
+	return memberTimeDelOps(ops, timePrefix(prefix), id, row, nil)
+}
+
+// preDeleteRow returns the row a tombstone's row was before its delete: a
+// delete that wrote ValidTo ended an open row (lateTo was allTo), any other
+// left the span as it was.
+func preDeleteRow(tomb memberRow) memberRow {
+	row := tomb
+	row.lateTo = row.allTo
+	return row
+}
+
+// memberPurgeKeys returns every key a row's entries for valueKey may hold
+// (option B, a retention purge, which must leave none): the span entry, the
+// late axis's entry at each of lateTos (the row's standing end, its end as
+// a replacing row ended it, its end before a delete) and the recent axis's.
+func (bs *Store) memberPurgeKeys(kind byte, scope uint16, propertyKey, valueKey string, id snowflake.ID, row memberRow, lateTos []types.Instant) [][]byte {
+	prefix, ok := bs.entityIndexValuePrefix(kind, scope, propertyKey, valueKey)
+	if !ok {
+		return nil
+	}
+	keys := [][]byte{storepkg.AppendEntityIndexEntry(slices.Clone(prefix), kind, id, int64(row.txFrom), row.version)}
+	tp := timePrefix(prefix)
+	for _, to := range lateTos {
+		keys = append(keys, storepkg.AppendEntityIndexTimeEntry(slices.Clip(tp), storepkg.EntityIndexAxisLate, int64(to), int64(row.from), id, int64(row.txFrom), row.version))
+	}
+	return append(keys, storepkg.AppendEntityIndexTimeEntry(slices.Clip(tp), storepkg.EntityIndexAxisRecent, int64(row.last), int64(row.from), id, int64(row.txFrom), row.version))
+}
+
+// purgeLateTos returns the ends a member entry of rows[i] may have been
+// written with: its stored end, its any-pin end (before a delete that wrote
+// ValidTo) and its end as each other row of the entity may have ended it
+// (RowInfo.EndedBy), distinct.
+func purgeLateTos(rows []indexpkg.RowInfo, i int) []types.Instant {
+	ri := rows[i]
+	tos := []types.Instant{ri.Span.To}
+	add := func(to types.Instant) {
+		if !slices.Contains(tos, to) {
+			tos = append(tos, to)
+		}
+	}
+	add(ri.AnyPinSpan().To)
+	for j, next := range rows {
+		if j != i {
+			add(ri.EndedBy(next).To)
+		}
+	}
+	return tos
 }
 
 // memberWindow is a windowed membership lookup: the valid-time window [start,
@@ -132,121 +246,163 @@ type memberWindow struct {
 }
 
 // diskWindowMembersLocked answers a windowed lookup of the definition (kind, a
-// span kind, scope, propertyKey) for valueKey from its member entries: the
-// members whose rows may be valid somewhere in the window, each with its lowest
-// transaction time. It streams: a value's entries sort by entity, so it folds
-// the entries of one entity at a time (indexpkg.DiskMember, as the membership
-// doors fold the first transaction time), keeps the entity if its envelope
-// meets the window and goes on, holding the members it answers and the write
-// buffer's entries for the value (pending writes), never every member of the
-// value. An entry without a span makes its member meet every window. An empty
-// or reversed window answers nothing without reading. The walk still visits
-// each entry of the value: work counts them (IteratorSteps, DiskEntriesEmitted).
-// Caller holds idxMu (R or W).
+// span kind, scope, propertyKey) for valueKey from its time-ordered entries
+// (RELDISKWIN option B): the members with a row that may be valid somewhere in
+// the window at the pin, each with the lowest transaction time of those rows.
+// Two seeks, as the membership sidecar's two views (late, recent):
+//
+//   - the late axis from the window's start on: the rows whose lateTo is past
+//     the start, each kept when it meets the window at the pin
+//     (indexpkg.RowMeets);
+//   - with a pin (0 < pin < MaxInt64), the recent axis from its newest row down
+//     to the first whose last stamp is at or before the pin: the widened rows
+//     written after the pin, each kept when its any-pin span meets the window.
+//
+// A row that meets is on one of them: at pins at or after its last stamp it
+// answers its late span, which ends past the start; at an earlier pin its
+// any-pin span, the late span unless the row is widened (then it is on the
+// recent axis). The rows of a member are judged one at a time, so the answer
+// is a subset of the sidecar's (which joins a member's rows into one envelope)
+// and a superset of what a resolver matches. The walk never visits a row that
+// ended before the window, nor an unwidened one written after the pin; it
+// visits the rows that start after the window's end (the late axis is
+// ordered by end, not start), the widened rows written after an old pin, and
+// the open rows (genuine candidates whose start the read checks). The write
+// buffer's entries under each axis are judged the same way. An empty or
+// reversed window answers nothing without reading. Caller holds idxMu (R or W).
 func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, valueKey string, w memberWindow, work *storecontract.PropertyMemberWork) (txMemberFold, error) {
 	out := txMemberFold{}
 	if w.start >= w.end {
 		return out, nil
 	}
-	p, ok := bs.entityIndexValuePrefix(kind, scope, propertyKey, valueKey)
+	p, ok := bs.entityIndexValuePrefix(storepkg.EntityIndexTimeKind(kind), scope, propertyKey, valueKey)
 	if !ok {
 		return out, nil
 	}
-	type entry struct {
-		tx   types.Instant
-		span [4]types.Instant
-		ok   bool
-	}
-	entryOf := func(key, val []byte) (snowflake.ID, entry, bool) {
-		_, id, tx, ok := storepkg.EntityIndexEntryOf(key, kind)
+	judge := func(key, val []byte) {
+		_, _, _, id, tx, _, ok := storepkg.EntityIndexTimeEntryOf(key)
 		if !ok {
-			return 0, entry{}, false
+			return
 		}
-		e := entry{tx: types.Instant(tx)}
-		var from, allTo, lateTo, last int64
-		if from, allTo, lateTo, last, e.ok = storepkg.ParseEntityIndexSpanValue(val); e.ok {
-			e.span = [4]types.Instant{types.Instant(from), types.Instant(allTo), types.Instant(lateTo), types.Instant(last)}
+		from, allTo, lateTo, last, ok := storepkg.ParseEntityIndexSpanValue(val)
+		if ok && !indexpkg.RowMeets(types.Instant(from), types.Instant(allTo), types.Instant(lateTo), types.Instant(last), w.start, w.end, w.pin) {
+			return
 		}
-		return id, e, true
-	}
-	add := func(m *indexpkg.DiskMember, e entry) {
-		if e.ok {
-			m.AddEntry(e.tx, e.span[0], e.span[1], e.span[2], e.span[3])
+		if prev, seen := out[id]; seen {
+			out[id] = indexpkg.MergeFirstTx(prev, types.Instant(tx))
 		} else {
-			m.AddWild(e.tx)
+			out[id] = types.Instant(tx)
 		}
 	}
-	// The buffer's entries by entity: pending writes only, few.
-	var pending map[snowflake.ID][]entry
-	held := uint64(0)
-	peak := func(open uint64) {
-		if work != nil {
-			work.FoldMembersPeak = max(work.FoldMembersPeak, held+open)
-		}
-	}
-	var cur indexpkg.DiskMember
-	var curID snowflake.ID
-	open := false
-	finish := func() {
-		if open && cur.Meets(w.start, w.end, w.pin) {
-			out[curID] = cur.FirstTx()
-		}
-		open = false
-	}
-	err := bs.entityIndexWalkValuesLocked(kind, [][]byte{p},
-		func(key, val []byte) {
-			if id, e, ok := entryOf(key, val); ok {
-				if pending == nil {
-					pending = make(map[snowflake.ID][]entry)
-				}
-				if len(pending[id]) == 0 {
-					held++
-					peak(0)
-				}
-				pending[id] = append(pending[id], e)
-			}
-		},
-		func(key, val []byte) {
-			id, e, ok := entryOf(key, val)
-			if !ok {
-				return
-			}
-			if !open || id != curID {
-				finish()
-				cur, curID, open = indexpkg.NewDiskMember(), id, true
-				for _, b := range pending[id] { // the buffer's entries of this entity
-					add(&cur, b)
-				}
-				if _, buffered := pending[id]; buffered {
-					delete(pending, id)
-					held--
-				}
-				peak(1)
-			}
-			add(&cur, e)
-		}, work)
-	finish()
-	if err != nil {
+	// The late axis: lateTo > start.
+	late := append(slices.Clip(p), storepkg.EntityIndexAxisLate)
+	seek := storepkg.AppendEntityIndexTimeSeek(slices.Clip(p), storepkg.EntityIndexAxisLate, int64(w.start)+1)
+	if err := bs.entityIndexSeekLocked(late, seek, nil, judge, work); err != nil {
 		return nil, err
 	}
-	for id, es := range pending { // entities the disk holds no entry of
-		m := indexpkg.NewDiskMember()
-		for _, e := range es {
-			add(&m, e)
+	if w.pin != 0 && w.pin < math.MaxInt64 {
+		// The recent axis: last > pin, newest first.
+		recent := append(slices.Clip(p), storepkg.EntityIndexAxisRecent)
+		past := func(key []byte) bool {
+			_, last, _, _, _, _, ok := storepkg.EntityIndexTimeEntryOf(key)
+			return ok && types.Instant(last) <= w.pin
 		}
-		if m.Meets(w.start, w.end, w.pin) {
-			out[id] = m.FirstTx()
+		if err := bs.entityIndexSeekLocked(recent, recent, past, judge, work); err != nil {
+			return nil, err
 		}
 	}
 	if work != nil {
+		work.FoldMembersPeak = uint64(len(out))
 		work.MemberSliceLen = uint64(len(out))
 		work.MemberSliceCap = uint64(len(out))
 	}
 	return out, nil
 }
 
-// memberHeads returns the heads of both kinds of a definition's member
-// entries, the span kind and the one before RELDISKWIN, for the deletes of a
+// entityIndexSeekLocked visits once each live time-ordered entry under prefix
+// (a value prefix and axis) from seek on, up to the first key past reports
+// (nil: the prefix's end), with its value: the persisted keys' newest version
+// and the write buffer's, resolved per key (lesson 57); a buffered entry
+// outside [seek, past) is not visited. The walk takes every version
+// (AllVersions) and counts each loop entry (IteratorSteps, the boundary
+// included), its seek (IteratorSeeks) and each live persisted entry it hands
+// on (DiskEntriesEmitted). Caller holds idxMu (R or W).
+func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork) error {
+	tail := storepkg.EntityIndexTimeTailLen - 1 // after the axis
+	in := func(k []byte) bool {
+		return len(k) == len(prefix)+tail && bytes.Compare(k, seek) >= 0 && (past == nil || !past(k))
+	}
+	ov := pendingKeyOverlay[[]byte]{}
+	bs.rangePendingPrefixes([][]byte{prefix}, func(k string, op writeOp) {
+		if work != nil {
+			work.OverlayOpsInspected++
+		}
+		var val []byte
+		if op.opType == writeOpSet {
+			val = slices.Clone(op.value)
+		}
+		noteMemberOverlay(&ov, k, op, val, work)
+	})
+	err := bs.view(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		opts.AllVersions = true
+		opts.Prefix = prefix
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		if work != nil {
+			work.IteratorSeeks++
+		}
+		var prev []byte
+		for it.Seek(seek); it.ValidForPrefix(prefix); it.Next() {
+			if work != nil {
+				work.IteratorSteps++
+			}
+			if bs.entityIndexWalkTestHook != nil {
+				bs.entityIndexWalkTestHook()
+			}
+			item := it.Item()
+			key := item.Key()
+			if len(key) != len(prefix)+tail {
+				continue // not an entry of this layout: skipped, never decoded
+			}
+			if past != nil && past(key) {
+				break
+			}
+			if bytes.Equal(key, prev) {
+				continue // an older version of the key just decided
+			}
+			prev = append(prev[:0], key...)
+			if item.IsDeletedOrExpired() || ov.overrides(key) {
+				continue
+			}
+			if work != nil {
+				work.DiskEntriesEmitted++
+			}
+			if err := item.Value(func(val []byte) error { fn(key, val); return nil }); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("graph: entity index seek: %w", err)
+	}
+	for k, val := range ov.sets {
+		if !in([]byte(k)) {
+			continue
+		}
+		if work != nil {
+			work.OverlaySetsEmitted++
+		}
+		fn([]byte(k), val)
+	}
+	return nil
+}
+
+// memberHeads returns the heads of every kind of a definition's member
+// entries, the span kind, its time-ordered kind (option B) and the one before
+// RELDISKWIN, for the deletes of a
 // drop, a rebuild and the corruption-path walk (entityIndexHeads adds a
 // relationship definition's current head).
 func (bs *Store) memberHeads(rel bool, scope uint16, propertyKey string) [][]byte {
@@ -254,9 +410,9 @@ func (bs *Store) memberHeads(rel bool, scope uint16, propertyKey string) [][]byt
 	if !ok {
 		return nil
 	}
-	kinds := []byte{storepkg.EntityIndexNodeSpan, storepkg.EntityIndexNodeMember}
+	kinds := []byte{storepkg.EntityIndexNodeSpan, storepkg.EntityIndexNodeTime, storepkg.EntityIndexNodeMember}
 	if rel {
-		kinds = []byte{storepkg.EntityIndexRelSpan, storepkg.EntityIndexRelMember}
+		kinds = []byte{storepkg.EntityIndexRelSpan, storepkg.EntityIndexRelTime, storepkg.EntityIndexRelMember}
 	}
 	heads := make([][]byte, 0, len(kinds))
 	for _, k := range kinds {

@@ -511,10 +511,11 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		ops = append(ops, writeOp{opType: writeOpSet, key: e.key, value: e.data})
 	}
 	// RELDISKWIN: each deleted row's member entries again, as its tombstone
-	// stamps it (the same keys: a tombstone is the row it deletes).
-	ops = append(ops, bs.nodeMemberOpsLocked(nodeTombstone, id)...)
+	// stamps it (the same keys: a tombstone is the row it deletes; its
+	// time-ordered entries move with its end).
+	ops = append(ops, bs.nodeTombMemberOpsLocked(nodeTombstone, id)...)
 	for _, rt := range relTombstones {
-		ops = append(ops, bs.relIndexDiskOpsLocked(rt.Tombstone, rt.ID.SnowflakeID(), writeOpSet, false)...)
+		ops = append(ops, bs.relTombMemberOpsLocked(rt.Tombstone, rt.ID.SnowflakeID())...)
 	}
 	marker := historyRowMarker(nodeTombstone.Temporal())
 	for _, rt := range relTombstones {

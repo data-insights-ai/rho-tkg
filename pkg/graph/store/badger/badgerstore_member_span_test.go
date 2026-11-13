@@ -17,6 +17,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -228,22 +229,106 @@ var (
 	spanPins    = []types.Instant{0, 10, 25, 99, 100, 150, 200, 250, 300, 350, 400, 450, 500, 501, 550, 1 << 40}
 )
 
-// agree fails for every window and pin on which the two stores answer
-// differently (members and first transaction times).
+// agree fails for every window and pin on which the disk store's windowed
+// door answers other than the per-row oracle (rowOracle, from the RAM store's
+// rows), and for every member it answers that the RAM sidecar does not: the
+// time-ordered read (RELDISKWIN option B) judges a member's rows one at a time,
+// a subset of the sidecar's envelope, with the lowest transaction time of the
+// rows that meet.
 func (w *spanWorld) agree(ram, disk *Store, phase string) {
 	w.t.Helper()
 	for _, win := range spanWindows {
 		for _, pin := range spanPins {
-			wr, wn := w.windowOf(ram, win[0], win[1], pin)
-			gr, gn := w.windowOf(disk, win[0], win[1], pin)
-			if !maps.Equal(wr, gr) {
-				w.t.Errorf("%s: rel window [%d,%d)@%d: disk %v, RAM %v", phase, win[0], win[1], pin, memberIDs(gr), memberIDs(wr))
+			w.agreeAt(ram, disk, phase, win[0], win[1], pin)
+		}
+	}
+}
+
+// agreeAt is agree at one window and pin.
+func (w *spanWorld) agreeAt(ram, disk *Store, phase string, start, end, pin types.Instant) {
+	w.t.Helper()
+	wr, wn := w.windowOf(ram, start, end, pin)
+	gr, gn := w.windowOf(disk, start, end, pin)
+	or, on := w.rowOracle(ram, start, end, pin)
+	if !maps.Equal(or, gr) {
+		w.t.Errorf("%s: rel window [%d,%d)@%d: disk %v, per-row oracle %v (%v / %v)", phase, start, end, pin, memberIDs(gr), memberIDs(or), gr, or)
+	}
+	if !maps.Equal(on, gn) {
+		w.t.Errorf("%s: node window [%d,%d)@%d: disk %v, per-row oracle %v (%v / %v)", phase, start, end, pin, memberIDs(gn), memberIDs(on), gn, on)
+	}
+	for id := range gr {
+		if _, ok := wr[id]; !ok {
+			w.t.Errorf("%s: rel window [%d,%d)@%d: disk answers %d, RAM does not", phase, start, end, pin, id)
+		}
+	}
+	for id := range gn {
+		if _, ok := wn[id]; !ok {
+			w.t.Errorf("%s: node window [%d,%d)@%d: disk answers %d, RAM does not", phase, start, end, pin, id)
+		}
+	}
+}
+
+// rowOracle answers a window from bs's stored rows, not its index entries:
+// for every relationship and node that ever carried seat=1, each row that
+// carries it, with its span as the sidecar derives it (RowInfo.LateSpan over
+// the entity's later rows, AnyPinSpan, Last), is judged alone
+// (indexpkg.RowMeets); a member meets with its first meeting row's
+// transaction time, the lowest.
+func (w *spanWorld) rowOracle(bs *Store, start, end, pin types.Instant) (rels, nodes map[int64]types.Instant) {
+	w.t.Helper()
+	rels, nodes = map[int64]types.Instant{}, map[int64]types.Instant{}
+	if start >= end {
+		return rels, nodes
+	}
+	axis := bs.validAxis.Get()
+	judge := func(out map[int64]types.Instant, key int64, infos []indexpkg.RowInfo, carries []bool) {
+		for i, ri := range infos {
+			if !carries[i] {
+				continue
 			}
-			if !maps.Equal(wn, gn) {
-				w.t.Errorf("%s: node window [%d,%d)@%d: disk %v, RAM %v", phase, win[0], win[1], pin, memberIDs(gn), memberIDs(wn))
+			late := ri.LateSpan(infos[i+1:])
+			if !indexpkg.RowMeets(ri.Span.From, ri.AnyPinSpan().To, late.To, ri.Last(), start, end, pin) {
+				continue
+			}
+			if prev, ok := out[key]; !ok || ri.TxFrom < prev {
+				out[key] = ri.TxFrom
 			}
 		}
 	}
+	var relIDs, nodeIDs []int64
+	must(w.t, "members", bs.ForEachRelPropertyTxMember(w.r, "seat", w.vk, func(id types.RelID, _ types.Instant) bool { relIDs = append(relIDs, int64(id)); return true }))
+	must(w.t, "members", bs.ForEachNodePropertyTxMember(w.d, "seat", w.vk, func(id types.NodeID, _ types.Instant) bool { nodeIDs = append(nodeIDs, int64(id)); return true }))
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	for _, id := range relIDs {
+		rows, err := bs.getRelHistoryByPrefix(storepkg.HistRelPrefix(snowflake.ID(id)))
+		must(w.t, "history", err)
+		if r, err := bs.getRelLocked(types.RelID(snowflake.ID(id))); err == nil {
+			rows = append(rows, r)
+		}
+		infos, carries := make([]indexpkg.RowInfo, len(rows)), make([]bool, len(rows))
+		for i, r := range rows {
+			infos[i] = indexpkg.RelRowInfo(axis, r)
+			vk, _ := r.IndexablePropertyValueKey("seat")
+			carries[i] = vk == w.vk
+		}
+		judge(rels, id, infos, carries)
+	}
+	for _, id := range nodeIDs {
+		rows, err := bs.getNodeHistoryByPrefix(storepkg.HistNodePrefix(snowflake.ID(id)))
+		must(w.t, "history", err)
+		if n, err := bs.getNodeLocked(types.NodeID(snowflake.ID(id))); err == nil {
+			rows = append(rows, n)
+		}
+		infos, carries := make([]indexpkg.RowInfo, len(rows)), make([]bool, len(rows))
+		for i, n := range rows {
+			infos[i] = indexpkg.NodeRowInfo(axis, n)
+			vk, _ := n.IndexablePropertyValueKey("seat")
+			carries[i] = vk == w.vk && n.HasLabelTokenRaw(w.d)
+		}
+		judge(nodes, id-nodeBase, infos, carries)
+	}
+	return rels, nodes
 }
 
 func memberIDs(m map[int64]types.Instant) []int64 {
@@ -399,6 +484,9 @@ func TestMemberSpan_SameMillisecondKeepsBothEntries(t *testing.T) {
 	if want := []string{fmt.Sprint(500, int64(math.MaxInt64), int64(math.MaxInt64), 500), fmt.Sprint(510, 520, 520, 500)}; !slices.Equal(spans, want) {
 		t.Fatalf("spans %v, want %v", spans, want)
 	}
+	if late, recent := w.timeEntries(disk); late != 2 || recent != 0 {
+		t.Fatalf("%d late-axis and %d recent-axis entries, want 2 and 0 (one per version; neither row widened)", late, recent)
+	}
 	got, _ := w.windowOf(disk, 1000, math.MaxInt64, 0)
 	if _, ok := got[17]; !ok {
 		t.Fatal("17 does not meet [1000, inf): its open first row was overwritten by the narrow second")
@@ -425,6 +513,10 @@ func downgradeMembersToLegacy(t *testing.T, dir string) (entries int) {
 		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyEntityIndex}})
 		for it.Rewind(); it.Valid(); it.Next() {
 			k := it.Item().KeyCopy(nil)
+			if storepkg.EntityIndexIsTime(k[1]) { // the legacy layout had no time-ordered entries
+				del = append(del, k)
+				continue
+			}
 			if !storepkg.EntityIndexIsSpan(k[1]) {
 				continue
 			}
@@ -537,6 +629,10 @@ func TestMemberSpan_LegacyDefinitionBroadThenRebuilt(t *testing.T) {
 	// The write path of the new layout and the rebuild's scan wrote alike.
 	fresh, rebuilt := w.open(copyDir, true, false), w.open(copyStoreDir(t, dir), true, true)
 	w.agree(ram, fresh, "the new layout as written")
+	fl, fr := w.timeEntries(fresh)
+	if rl, rr := w.timeEntries(rebuilt); fl != rl || fr != rr || fl == 0 || fr == 0 {
+		t.Errorf("time-ordered entries: written %d late-axis %d recent-axis, rebuilt %d and %d", fl, fr, rl, rr)
+	}
 	for _, win := range spanWindows {
 		for _, pin := range spanPins {
 			ar, an := w.windowOf(fresh, win[0], win[1], pin)
@@ -756,12 +852,8 @@ func TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates(t *testing.T) {
 				t.Helper()
 				for _, win := range [][2]types.Instant{{1000, 1010}, {1005, 1006}, {2000, 2010}, {0, 500}} {
 					for _, pin := range []types.Instant{0, 150, 250, 350, 1 << 40} {
-						wr, wn := w.windowOf(ram, win[0], win[1], pin)
 						for _, bs := range stores {
-							gr, gn := w.windowOf(bs, win[0], win[1], pin)
-							if !maps.Equal(wr, gr) || !maps.Equal(wn, gn) {
-								t.Errorf("%s: window [%d,%d)@%d: disk rels %v nodes %v, RAM %v %v", phase, win[0], win[1], pin, memberIDs(gr), memberIDs(gn), memberIDs(wr), memberIDs(wn))
-							}
+							w.agreeAt(ram, bs, phase, win[0], win[1], pin)
 						}
 					}
 				}
@@ -887,6 +979,59 @@ func TestMemberSpan_WriteOverhead(t *testing.T) {
 		}
 		lines = append(lines, fmt.Sprintf("disk=%t: %d creates %.2f us each, %d updates %.2f us each; %d span entries, %d key bytes + %d value bytes (%.1f B each)",
 			disk, n, float64(create)/n/1000, n, float64(update)/n/1000, entries, keyBytes, valBytes, float64(keyBytes+valBytes)/float64(max(entries, 1))))
+		if disk {
+			late, recent := w.timeEntries(bs)
+			lines = append(lines, fmt.Sprintf("disk=true after the updates: %d late-axis and %d recent-axis entries (option B)", late, recent))
+		}
+	}
+	// What one door writes to 0x0C (option B against the span entries alone,
+	// which is what the door wrote before it): the buffered member ops of each
+	// door on a flushed store, by kind, with their key and value bytes.
+	bs := w.open("", true, false)
+	w.create(bs)
+	const doors = 100
+	type tally struct{ sets, dels, bytes int }
+	count := func(do func(i int64)) (span, timed tally) {
+		for i := int64(0); i < doors; i++ {
+			must(t, "flush", bs.Flush())
+			do(i)
+			bs.wbMu.Lock()
+			for k, op := range bs.pending {
+				if k[0] != storepkg.KeyEntityIndex || len(k) < 2 || k[1] == storepkg.EntityIndexRelCurrent {
+					continue
+				}
+				c := &span
+				if storepkg.EntityIndexIsTime(k[1]) {
+					c = &timed
+				}
+				if op.opType == writeOpSet {
+					c.sets++
+				} else {
+					c.dels++
+				}
+				c.bytes += len(k) + len(op.value)
+			}
+			bs.wbMu.Unlock()
+		}
+		return span, timed
+	}
+	for _, d := range []struct {
+		name string
+		do   func(i int64)
+	}{
+		{"create", func(i int64) {
+			must(t, "put", bs.PutRelationship(w.rel(100+i, 1, 0, 100, 0, 1000+types.Instant(i), 0)))
+		}},
+		{"update of an open row", func(i int64) {
+			must(t, "replace", bs.ReplaceRelWithHistory(w.rel(100+i, 1, 1, 200, 0, 2000+types.Instant(i), 0), 0, w.rel(100+i, 1, 0, 100, 200, 1000+types.Instant(i), 0)))
+		}},
+		{"delete writing ValidTo", func(i int64) {
+			must(t, "delete", bs.DeleteRelWithHistory(types.RelID(snowflake.ID(100+i)), 1, tomb(w.rel(100+i, 1, 1, 200, 0, 2000+types.Instant(i), 0), 9000, tombWrite)))
+		}},
+	} {
+		span, timed := count(d.do)
+		lines = append(lines, fmt.Sprintf("%s: before (span entries) %.1f sets %.1f deletes %.1f B; option B adds %.1f sets %.1f deletes %.1f B (per door, %d doors)",
+			d.name, float64(span.sets)/doors, float64(span.dels)/doors, float64(span.bytes)/doors, float64(timed.sets)/doors, float64(timed.dels)/doors, float64(timed.bytes)/doors, doors))
 	}
 	t.Log("\n" + strings.Join(lines, "\n"))
 }

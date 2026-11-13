@@ -393,7 +393,11 @@ type NodePropertyTxMembershipCapability interface {
 // validEnd answers nothing. Same contract otherwise (append-only sound
 // superset, firstTxFrom 0 = unknown, store.ErrIndexNotFound before fn when no
 // index is declared, each member once, order unspecified); fn runs outside
-// store locks.
+// store locks. firstTxFrom is a lower bound on the earliest row that carries
+// the value and may meet the window at txAt (a store that judges a member's
+// rows one at a time, the badger store's definitions kept on disk, gives the
+// lowest of the rows that meet, not of every row: the graph prunes by it only
+// against the same txAt).
 type RelPropertyTxMemberWindowCapability interface {
 	ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }

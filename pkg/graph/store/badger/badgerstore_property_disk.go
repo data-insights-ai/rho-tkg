@@ -309,7 +309,8 @@ func (bs *Store) maintainPropertyIndexesUpdateKeys(ops []writeOp, old, n *types.
 	if bs.nodeMembersOnDisk && old != nil && !bs.propertyIndexBuildingLocked() && bs.nodeMemberRow(old, nil) == bs.nodeMemberRow(n, nil) {
 		ops = dropHeldOps(ops, from, bs.nodeMemberOpsLocked(old, id)) // n is old's row again: its member entries stand
 	}
-	var removed, unchanged map[string]struct{} // removed: the old node's ops, deletes of its entries
+	ops = append(ops, bs.nodeRewrittenTimeOpsLocked(old, n, id)...) // an in-place rewrite moves the row's time-ordered entries
+	var removed, unchanged map[string]struct{}                      // removed: the old node's ops, deletes of its entries
 	for _, op := range ops[:from] {
 		if removed == nil {
 			removed = make(map[string]struct{})
@@ -318,7 +319,7 @@ func (bs *Store) maintainPropertyIndexesUpdateKeys(ops []writeOp, old, n *types.
 	}
 	bounded := bs.validEndEntryKeysLocked(n, id) // written again, unknown (VALIDENDPRUNE)
 	for _, op := range ops[from:] {              // the on-disk entry sets
-		if op.key[0] == storepkg.KeyEntityIndex && op.key[1] == storepkg.EntityIndexNodeSpan {
+		if op.key[0] == storepkg.KeyEntityIndex && (op.key[1] == storepkg.EntityIndexNodeSpan || op.key[1] == storepkg.EntityIndexNodeTime) {
 			continue // a member entry is the new row's own (its version in the key, its span in the value): never unchanged (RELDISKWIN)
 		}
 		if _, reset := bounded[string(op.key)]; reset {

@@ -19,9 +19,8 @@ import (
 
 // TestMemberWorkEmptyWindowReadsNothing: a definition on disk (span entries,
 // RELDISKWIN) answers an empty or reversed window without reading a key; a
-// window that meets the 6 members of the value walks its 6 entries one entity
-// at a time (the fold holds one member, not the value's every member) and
-// hands them on.
+// window that meets the 6 members of the value seeks once (its late axis, no
+// pin: option B), walks their 6 entries and holds the 6 it answers.
 func TestMemberWorkEmptyWindowReadsNothing(t *testing.T) {
 	bs, r := memberPageStore(t, 8)
 	for _, end := range []types.Instant{0, -1, math.MaxInt64} {
@@ -34,12 +33,12 @@ func TestMemberWorkEmptyWindowReadsNothing(t *testing.T) {
 			t.Fatalf("work: %+v", got)
 		}
 		if end <= 0 {
-			if calls != 0 || got.CallbackStopped || got.IteratorSteps != 0 || got.DiskEntriesEmitted != 0 || got.FoldMembersPeak != 0 {
+			if calls != 0 || got.CallbackStopped || got.IteratorSteps != 0 || got.IteratorSeeks != 0 || got.DiskEntriesEmitted != 0 || got.FoldMembersPeak != 0 {
 				t.Fatalf("empty window read: %+v calls %d", got, calls)
 			}
 			continue
 		}
-		if calls != 1 || !got.CallbackStopped || got.MembersEmitted != 1 || got.IteratorSteps != 6 || got.FoldMembersPeak != 1 || got.MemberSliceLen != 6 {
+		if calls != 1 || !got.CallbackStopped || got.MembersEmitted != 1 || got.IteratorSteps != 6 || got.IteratorSeeks != 1 || got.FoldMembersPeak != 6 || got.MemberSliceLen != 6 {
 			t.Fatalf("stopped: %+v", got)
 		}
 	}
@@ -68,7 +67,7 @@ func TestMemberWorkNodeAndRelCounts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !got.Supported || !got.Completed || got.IteratorSteps != uint64(n) || got.FoldMembersPeak != 1 || got.MemberSliceLen != uint64(n) || got.MembersEmitted != uint64(n) {
+			if !got.Supported || !got.Completed || got.IteratorSteps != uint64(n) || got.IteratorSeeks != 1 || got.FoldMembersPeak != uint64(n) || got.MemberSliceLen != uint64(n) || got.MembersEmitted != uint64(n) {
 				t.Fatalf("node: %+v", got)
 			}
 			rel, r := memberPageStore(t, int64(n))
@@ -87,7 +86,7 @@ func TestMemberWorkNodeAndRelCounts(t *testing.T) {
 				t.Fatalf("ordinary/diagnostic IDs: %v vs %v", normal, diagnosed)
 			}
 			want := uint64(n - n/3)
-			if got.FoldMembersPeak != 1 || got.MemberSliceLen != want || got.MembersEmitted != want {
+			if got.FoldMembersPeak != want || got.MemberSliceLen != want || got.MembersEmitted != want {
 				t.Fatalf("rel: %+v", got)
 			}
 		})
@@ -119,7 +118,7 @@ func TestMemberWorkNestedConcurrentAndErrors(t *testing.T) {
 			if k == "w" {
 				want = 2
 			}
-			if e != nil || got.MembersEmitted != want || got.FoldMembersPeak != 1 {
+			if e != nil || got.MembersEmitted != want || got.FoldMembersPeak != want {
 				t.Errorf("concurrent: %+v %v", got, e)
 			}
 		}(k)
@@ -248,7 +247,7 @@ func TestMemberWorkOverlayCounts(t *testing.T) {
 }
 
 func TestMemberWorkResultSize(t *testing.T) {
-	t.Logf("PropertyMemberWork sizeof=%d bytes; eleven uint64 counters and three bools, constant per invocation, no fields added to Store or retained entity/index records", unsafe.Sizeof(storecontract.PropertyMemberWork{}))
+	t.Logf("PropertyMemberWork sizeof=%d bytes; twelve uint64 counters and three bools, constant per invocation, no fields added to Store or retained entity/index records", unsafe.Sizeof(storecontract.PropertyMemberWork{}))
 }
 
 func memberWorkNode(id types.NodeID) *types.Node {

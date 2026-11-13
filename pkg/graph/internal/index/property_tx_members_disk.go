@@ -58,3 +58,17 @@ func (m DiskMember) Meets(start, end, pin types.Instant) bool {
 	}
 	return ok && sp.meets(start, end)
 }
+
+// RowMeets reports whether one row's entry (from, allTo, lateTo, last: a
+// span entry's value) may be valid somewhere in [start, end) at transaction
+// time pin (0, or math.MaxInt64: no pin): Meets of a member with that one
+// entry. The time-ordered read of the on-disk membership (RELDISKWIN option
+// B) judges each row so; a member meets when one of its rows does, a subset of
+// what Meets answers for the member's rows together (their envelopes join
+// spans no single row holds) and a superset of the rows a resolver can match.
+func RowMeets(from, allTo, lateTo, last, start, end, pin types.Instant) bool {
+	if pin != 0 && pin < math.MaxInt64 && last > pin {
+		return Span{From: from, To: allTo}.meets(start, end)
+	}
+	return from < lateTo && Span{From: from, To: lateTo}.meets(start, end)
+}

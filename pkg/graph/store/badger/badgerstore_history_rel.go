@@ -188,8 +188,9 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 	// The tombstone first, then the removal (appends its delete ops to pending
 	// under the lock; no record — emitted here).
 	// RELDISKWIN: the deleted row's member entries again, as its tombstone
-	// stamps it (the same keys: a tombstone is the row it deletes).
-	tombOps := append([]writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, bs.relIndexDiskOpsLocked(tombstone, id, writeOpSet, false)...)
+	// stamps it (the same keys: a tombstone is the row it deletes; its
+	// time-ordered entries move with its end).
+	tombOps := append([]writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, bs.relTombMemberOpsLocked(tombstone, id)...)
 	bs.publishMoveLocked(historyRowMarker(tombstone.Temporal()), tombOps, func() { bs.deleteRelByInfo(info, r) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, delPayload, token)
 	bs.idxMu.Unlock()
