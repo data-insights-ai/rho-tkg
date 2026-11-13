@@ -1,0 +1,14 @@
+// Red run (13 Nov): Config.WarmMemTableSize present, its wiring (nonHotCfg, openNonHotBadgerStore) switched off, no range check yet.
+--- FAIL: TestWarmMemTable_SizesNonHotWritableOpens (0.30s)
+    warm_memtable_test.go:83: window shard made on demand: WAL 33554432, want 2 x WarmMemTableSize 16777216
+--- FAIL: TestWarmMemTable_RowsBeyondTheWarmMemtableSurviveReopen (0.34s)
+    warm_memtable_test.go:165: on-demand shard WAL 33554432, want 2 x WarmMemTableSize 16777216
+--- FAIL: TestWarmMemTable_OversizedWALMigratedAtWarmOpen (1.12s)
+    warm_memtable_test.go:249: warm shard WAL 41943040 after the open, want 2 x WarmMemTableSize 16777216
+--- FAIL: TestWarmMemTable_RangeChecked (1.97s)
+    warm_memtable_test.go:267: WarmMemTableSize 8388607: New = <nil>, want ok false
+    warm_memtable_test.go:267: WarmMemTableSize 1073741825: New = <nil>, want ok false
+    warm_memtable_test.go:267: WarmMemTableSize -1: New = <nil>, want ok false
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	3.784s
+FAIL

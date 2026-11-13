@@ -144,6 +144,22 @@ type Config struct {
 	BlockCacheSize   int64 // bytes; >= 0
 	IndexCacheSize   int64 // bytes; >= 0
 	NumCompactors    int   // 0 = badger default (4); minimum 2
+	// WarmMemTableSize is the MemTableSize of a shard opened writable in a
+	// non-hot role (WARMMEM): a warm shard at New, a window shard made on demand
+	// (MintAtValidFrom), a cold shard a write opens, a shard reopened after
+	// MoveShard or Clear. The hot shard, the reference shard, the archive and the
+	// owner index keep MemTableSize. Every writable open allocates an arena of about
+	// 1.3 x its memtable size on the Go heap whatever its role (83 MB at 64 MB, 10 MB
+	// at 8 MB), so this is what a late write, a backfill or a restart costs per
+	// shard, and the room to raise MemTableSize for the hot shard alone. 0 keeps
+	// MemTableSize for every role. Valid [8MB, 1GB] and at most MemTableSize (the
+	// stock 64 MB when that is 0), refused by name at New. A shard keeps the size
+	// it opened with until its handle closes: a rotation that turns a hot shard
+	// warm does not reopen it, and a window shard made on demand that rotation
+	// later makes hot keeps the smaller memtable. Bulk writes into a non-hot shard
+	// flush in pieces of this size, and one transaction holds at most 15% of it
+	// (docs/badger.md).
+	WarmMemTableSize int64
 	// ValueThreshold sends every shard's values of at least this many bytes to
 	// the value log (badger.Config.ValueThreshold). 0 keeps badger's 1 MB.
 	ValueThreshold int64
@@ -434,6 +450,7 @@ type Store struct {
 	noCompression         bool
 	valueLogFileSize      int64 // per-shard Badger footprint knobs; 0 = stock default
 	memTableSize          int64
+	warmMemTableSize      int64
 	valueThreshold        int64
 	blockCacheSize        int64
 	indexCacheSize        int64
@@ -649,6 +666,9 @@ func New(cfg Config) (*Store, error) {
 	if maxOpenCold < 0 {
 		maxOpenCold = 0
 	}
+	if err := validateWarmMemTableSize(cfg); err != nil {
+		return nil, err
+	}
 	idleTimeout := cfg.IdleTimeout
 	if idleTimeout == 0 && (cfg.ColdAfter > 0 || cfg.WarmDir != "" || cfg.ColdDir != "") {
 		idleTimeout = 5 * time.Minute
@@ -686,6 +706,7 @@ func New(cfg Config) (*Store, error) {
 		noCompression:         cfg.NoCompression,
 		valueLogFileSize:      cfg.ValueLogFileSize,
 		memTableSize:          cfg.MemTableSize,
+		warmMemTableSize:      cfg.WarmMemTableSize,
 		blockCacheSize:        cfg.BlockCacheSize,
 		indexCacheSize:        cfg.IndexCacheSize,
 		numCompactors:         cfg.NumCompactors,
@@ -1959,7 +1980,7 @@ func (ts *Store) shardCfg(name string, readOnly, cold bool) BadgerStoreConfig {
 	// A cold shard is often opened for one read: answer HasHistory by a per-ID
 	// key probe instead of a scan of its whole history keyspace.
 	cfg.HistoryPresenceProbeOnly = cold
-	return cfg
+	return ts.nonHotCfg(cfg)
 }
 
 func (ts *Store) openShardStoreWithRecovery(name string, cold bool) (*BadgerStore, error) {

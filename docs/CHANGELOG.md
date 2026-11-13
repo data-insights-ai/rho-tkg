@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **WARMMEM** (René's RH list R3, cheaper writable and inactive shards): `tiered.Config.WarmMemTableSize` sizes the
+  memtable of a shard opened writable in a non-hot role: a warm shard at `New`, a window shard made on demand, a cold
+  shard a late write opens, a shard reopened after `MoveShard` or `Clear`. The hot, reference and archive shards and
+  the owner index keep `MemTableSize`. Every writable open allocates an arena of about 1.3 x its memtable on the Go
+  heap (measured 86.5 MB live per handle at 64 MB, 13 MB at 8 MB): with 8 MB under 64 MB a restart over two warm shards
+  holds 200 MB of live heap instead of 346 (GC goal 401 instead of 692 MB), a window shard made on demand allocates
+  13 MB instead of 86 and a late write into a cold shard 17 instead of 90 (`tasks/evidence/R3/measure.txt`). Valid
+  [8 MB, 1 GB] and at most `MemTableSize`, refused by name at `New` (`badger.ValidateMemTableSize`); 0 changes
+  nothing. Not built, measured: reopening a demoted shard read-only, or the old hot shard at the warm size, at the
+  rotation (+11 to +25 MB of allocation per rotation and a write stall under `ts.mu` that grows with the shard).
+
 ## [4.107.1] - 2026-11-13
 
 ### Added

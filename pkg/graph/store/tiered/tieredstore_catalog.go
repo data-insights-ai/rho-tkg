@@ -83,7 +83,7 @@ func (ts *Store) rotateHotShardLocked() error {
 	var newStore *BadgerStore
 	if promote == nil {
 		var err error
-		if newStore, err = ts.openNewEventShard(newName, newDir); err != nil {
+		if newStore, err = ts.openNewEventShard(newName, newDir, true); err != nil {
 			return err
 		}
 	}
@@ -184,8 +184,12 @@ func (ts *Store) rotateHotShardLocked() error {
 // openNewEventShard opens a new event shard's badger store at dir and sets up
 // the tracked temporal and anchored indexes before it takes writes. On failure
 // it removes what it made; the catalog is not touched.
-func (ts *Store) openNewEventShard(name, dir string) (*BadgerStore, error) {
-	store, err := ts.openBadgerStore(dir)
+func (ts *Store) openNewEventShard(name, dir string, hot bool) (*BadgerStore, error) {
+	open := ts.openBadgerStore
+	if !hot {
+		open = ts.openNonHotBadgerStore
+	}
+	store, err := open(dir)
 	if err != nil {
 		return nil, fmt.Errorf("graph: open new event shard %s: %w", name, err)
 	}

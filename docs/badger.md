@@ -178,7 +178,7 @@ Dir/
 
 | Option | Default | rho | Verdict |
 |---|---|---|---|
-| `MemTableSize` | 64 MB | `Config.MemTableSize` (0 = default) | Sets the arena (`MemTableSize` + `maxBatchSize` + `maxBatchCount` x 96, `db.go:1043-1045`: ~84 MB at defaults, measured +83 MB per writable DB) and the batch limit. |
+| `MemTableSize` | 64 MB | `Config.MemTableSize` (0 = default) | Sets the arena (`MemTableSize` + `maxBatchSize` + `maxBatchCount` x 96, `db.go:1043-1045`: ~84 MB at defaults, measured +83 MB per writable DB) and the batch limit. A tiered store sizes a writable open in a non-hot role with `tiered.Config.WarmMemTableSize` (WARMMEM; 10 MB of arena at 8 MB, `tasks/evidence/R3/measure.txt`). |
 | `NumMemtables` | 5 | default | Up to 5 arenas under write load. |
 | `BlockCacheSize` | 256 MB | `Config.BlockCacheSize` (0 = default) | Per DB, required with Snappy; resizable at runtime (`CacheMaxCost`). |
 | `IndexCacheSize` | 0 | `Config.IndexCacheSize` | Required with encryption only. |

@@ -93,6 +93,13 @@ const (
 	maxValueThreshold = 1 << 20
 )
 
+// ValidateMemTableSize reports whether size is a MemTableSize New accepts: 0
+// (badger's stock) or within [8MB, 1GB]. The tiered store checks its
+// WarmMemTableSize with it at New.
+func ValidateMemTableSize(size int64) error {
+	return validateTuningConfig(Config{MemTableSize: size})
+}
+
 // validateTuningConfig rejects out-of-range per-instance footprint knobs. Zero
 // means "keep Badger's stock default" for every knob and always validates.
 func validateTuningConfig(cfg Config) error {
