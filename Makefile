@@ -25,10 +25,14 @@ build:    ## compiles everything, 32-bit too (ARM32 broke unnoticed once)
 	go build ./... && GOOS=linux GOARCH=386 CGO_ENABLED=0 go build ./...
 test:     ## the short tier, cached: only what a change reaches reruns
 	go test -short -timeout 20m ./...
-new:      ## the new code's few tests: make new PKG=./pkg/graph/store/tiered RUN='TestA|TestB' (cached)
+new:      ## the new code's few tests, without -short (cached): make new PKG=./pkg/graph/store/tiered RUN='TestA|TestB'
 	@test -n "$(PKG)" -a -n "$(RUN)" || { echo "usage: make new PKG=./pkg/... RUN='TestA|TestB'"; exit 2; }
-	go test -short -timeout 10m -run '$(RUN)' $(PKG)
-old:      ## two old tests that nothing broke: the public API surface, and a tiered clean reopen equals a full rebuild (cached)
+	@go test -timeout 10m -v -run '$(RUN)' $(PKG) > .git/make-new.out 2>&1; rc=$$?; \
+	grep -E '^(--- |ok|FAIL|panic:)|_test\.go:[0-9]+:' .git/make-new.out; \
+	test $$rc -eq 0 || exit $$rc; \
+	! grep -q 'no tests to run' .git/make-new.out || { echo "make new: RUN='$(RUN)' matches no test in a package"; exit 1; }; \
+	! grep -q '^--- SKIP' .git/make-new.out || { echo "make new: a test skipped (above)"; exit 1; }
+old:      ## two old tests that nothing broke, without -short: the public API surface, and a tiered clean reopen equals a full rebuild (cached)
 	go test -timeout 10m -run '^TestGraphAccessor_StoreOpsConsumerSurfaceWorks$$' ./pkg/graph
 	go test -timeout 10m -run '^TestTieredCleanReopenMatchesFullRebuild$$' ./pkg/graph/store/tiered
 lint:     ## golangci-lint (.golangci.yml: gofmt, goimports, go vet and the linters)
