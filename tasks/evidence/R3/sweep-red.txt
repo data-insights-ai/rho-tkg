@@ -56,3 +56,13 @@ hot shard). Held at the gate, the swap's recheck already sees the hot tier, so t
 FAIL
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.654s
 FAIL
+
+Review finding 5a (13 Nov): T-e strengthened (the sweep held at the gate over the rotation, 20 MB of late day-20 rows
+after the flush, only in the hot-size WAL, then the crash). Mutation "WAL migration off" in the tiered warm open alone
+(openShardStoreWithRecovery) survives: badger.New migrates every writable open itself (badgerstore.go:1073), so it is an
+equivalent mutant. With both migrations off, the old T-e passes (its WAL is empty) and the new one fails:
+=== RUN   TestHandleSweep_CrashMidSwapKeepsRows/crash_at_gated
+2026/11/13 14:55:39 WARN graph: recovering corrupt WAL by truncation shard=events/2026-07-20
+2026/11/13 14:55:39 Arena too small, toWrite:262217 newTotal:11017495 limit:10905171
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	7.934s
+FAIL
