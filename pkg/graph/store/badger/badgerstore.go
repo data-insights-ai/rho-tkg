@@ -850,6 +850,9 @@ type Store struct {
 	// nodeRowDecodes counts node rows read and decoded from badger by the
 	// point and scan reads (NodeRowDecodesForTest, ELEMPROBE).
 	nodeRowDecodes atomic.Int64
+	// relRowDecodes counts relationship rows read and decoded from badger by
+	// the point and scan reads (RelRowDecodesForTest, RH list R2).
+	relRowDecodes atomic.Int64
 	// nodeRowPointReads counts the node rows among them read by a read
 	// transaction and point Get of their own (NodeRowPointReadsForTest,
 	// LISTREAD: a page reads through one forward scan).

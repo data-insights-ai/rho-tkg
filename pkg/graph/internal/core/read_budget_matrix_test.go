@@ -52,6 +52,7 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 			w := newRTBWorld(t, g)
 			w.index(t, rtbType, rtbKeys...)
 			groups := map[int][]types.NodeID{}
+			relGroups := map[int][]types.RelID{}
 			var all []types.NodeID
 			var rels []types.RelID
 			for _, size := range sizes {
@@ -70,6 +71,7 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 						}
 					}
 					groups[size], all, rels = append(groups[size], n.ID()), append(all, n.ID()), append(rels, r)
+					relGroups[size] = append(relGroups[size], r)
 				}
 			}
 			pinTx := w.pin(t)
@@ -82,37 +84,42 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 					}
 				}
 				for _, size := range sizes {
-					ids := groups[size]
+					ids, relIDs := groups[size], relGroups[size]
 					doors := []struct {
 						name string
+						rel  bool // reads relationship rows (the badger decode counter of the other kind stays 0)
 						call func(ctx context.Context) (int, error)
 					}{
-						{"LendByIDs", func(ctx context.Context) (int, error) {
+						{"LendByIDs", false, func(ctx context.Context) (int, error) {
 							n := 0
 							err := g.Nodes.LendByIDs(ctx, ids, func(int, *types.Node) bool { n++; return true })
 							return n, err
 						}},
-						{"GetByIDs", func(ctx context.Context) (int, error) {
+						{"GetByIDs", false, func(ctx context.Context) (int, error) {
 							r, err := g.Nodes.GetByIDsCtx(ctx, ids)
 							return len(r), err
 						}},
-						{"property current", func(ctx context.Context) (int, error) {
+						{"rel GetByIDs", true, func(ctx context.Context) (int, error) {
+							r, err := g.Rels.GetByIDsCtx(ctx, relIDs)
+							return len(r), err
+						}},
+						{"property current", false, func(ctx context.Context) (int, error) {
 							r, err := g.Nodes.ByLabelAndPropertyCtx(ctx, "D", "k", int64(size), storepkg.QueryOpts{})
 							return len(r), err
 						}},
-						{"composite current", func(ctx context.Context) (int, error) {
+						{"composite current", false, func(ctx context.Context) (int, error) {
 							r, err := g.Nodes.ByLabelAndPropertiesCtx(ctx, "D", map[string]any{"c": "x", "e": fmt.Sprintf("e%d", size)}, storepkg.QueryOpts{}) // strings: one form each, the composite index
 							return len(r), err
 						}},
-						{"property TxPin", func(ctx context.Context) (int, error) {
+						{"property TxPin", false, func(ctx context.Context) (int, error) {
 							r, err := g.Nodes.ByLabelAndPropertyCtx(ctx, "D", "k", int64(size), storepkg.QueryOpts{TxPin: pinTx})
 							return len(r), err
 						}},
-						{"property ValidAt", func(ctx context.Context) (int, error) {
+						{"property ValidAt", false, func(ctx context.Context) (int, error) {
 							r, err := g.Nodes.ByLabelAndPropertyCtx(ctx, "D", "k", int64(size), storepkg.QueryOpts{ValidAt: pinTx, ValidAtSet: true})
 							return len(r), err
 						}},
-						{"rel timelines", func(ctx context.Context) (int, error) {
+						{"rel timelines", false, func(ctx context.Context) (int, error) {
 							r, err := g.Temporal.RelEffectiveTimelinesByProperties(ctx, rtbType, rtbKeys, [][]any{{fmt.Sprintf("e%d", size), fmt.Sprintf("d%d", size)}}, pin)
 							n := 0
 							for _, segs := range r {
@@ -134,6 +141,9 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							t.Fatalf("%s: unlimited = %d, %v; want %d", what, n, err, plain)
 						}
 						total := full.Work()
+						if flushed && d.rel && total.DecodedBytes == 0 { // cold rows decode: the door must count them
+							t.Fatalf("%s: unlimited counted 0 decoded bytes over cold rows", what)
+						}
 						switch d.name {
 						case "property current", "composite current", "property TxPin", "property ValidAt":
 							if total.Candidates < uint64(size) { // an index lookup counts each match
@@ -147,9 +157,15 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							cold()
 							var b storepkg.ReadBudget
 							c.set(&b)
+							rowDecodes := func(bs *badger.Store) int64 {
+								if d.rel {
+									return bs.RelRowDecodesForTest()
+								}
+								return bs.NodeRowDecodesForTest()
+							}
 							var before int64
 							if bs, ok := g.store.(*badger.Store); ok {
-								before = bs.NodeRowDecodesForTest()
+								before = rowDecodes(bs)
 							}
 							pctx, meter := storepkg.WithReadBudget(ctx, b)
 							n, err := d.call(pctx)
@@ -158,11 +174,11 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							if n != 0 || got != rb.Work {
 								t.Fatalf("%s, %s 1: %d rows, error work %+v, meter %+v; want no rows and the meter's work", what, c.limit, n, rb.Work, got)
 							}
-							// No node row decoded uncounted: on badger the store's own
-							// decode counter moves by at most about one row.
+							// No row decoded uncounted: on badger the store's own decode
+							// counter (node or relationship rows) moves by at most about one row.
 							if bs, ok := g.store.(*badger.Store); ok && flushed && d.name != "rel timelines" {
-								if decoded := bs.NodeRowDecodesForTest() - before; decoded > 2 {
-									t.Fatalf("%s, %s 1: %d node rows decoded before the refusal", what, c.limit, decoded)
+								if decoded := rowDecodes(bs) - before; decoded > 2 {
+									t.Fatalf("%s, %s 1: %d rows decoded before the refusal", what, c.limit, decoded)
 								}
 							}
 							// About one row decoded at most, whatever the matches.

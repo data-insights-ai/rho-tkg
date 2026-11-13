@@ -1,0 +1,42 @@
+READBUDGET / R2 Sigma budgeted read doors, group A (13 Nov): red evidence, what is counted, results
+
+Red method: each new Ctx door first existed as a thin wrapper that checks ctx, counts the candidates (one per ID, or the
+matches the core can count) and calls the plain door, with no metering below it. Under that form the new tests were red;
+every failure is the plain door doing the work the budget should have bounded. The metering was then added.
+Counts only: never MemStats or time.
+
+== Group 1: Rels().GetByIDsCtx, HasHistoryCtx, LatestStampsCtx (+ store.RelStampsMeteredCapability, store.RelsByIDsMeteredCapability) ==
+
+RED (candidates-only wrappers), go test -run 'TestReadBudget_RelByIDDoors|TestReadBudget_DecodedBytes_Rel|
+TestReadBudget_ShardOpens_TieredDoors|TestReadBudget_ProbeMatrix' ./pkg/graph/internal/core (abridged):
+
+  --- FAIL: TestReadBudget_ProbeMatrix/{badger,sharded,tiered}/flushed
+      read_budget_matrix_test.go:145: rel GetByIDs over 8 matches: unlimited counted 0 decoded bytes over cold rows
+  --- FAIL: TestReadBudget_DecodedBytes_RelGetByIDs/{badger,sharded,tiered}
+      read_budget_rel_doors_test.go:187: rel GetByIDs many: cold counted 0 decoded bytes, want at least 600
+  --- FAIL: TestReadBudget_ShardOpens_TieredDoors/Rels_LatestStamps
+      Rels LatestStamps under ShardOpens 1 = "<stamps>", <nil> (work {Candidates:1 ... ShardOpens:0 ...}, 3 closed shards opened); want a shard-opens refusal and no rows
+  --- FAIL: TestReadBudget_ShardOpens_TieredDoors/Rels_HasHistory
+      Rels HasHistory under ShardOpens 1 = "has", <nil> (work {Candidates:1 ... ShardOpens:0 ...}, 3 closed shards opened); want a shard-opens refusal and no rows
+  --- FAIL: TestReadBudget_ShardOpens_TieredDoors/Rels_GetByIDs
+      Rels GetByIDs under ShardOpens 1 = "[3 ids]", <nil> (work {Candidates:3 ... ShardOpens:0 ...}, 3 closed shards opened); want a shard-opens refusal and no rows
+
+  (TestReadBudget_RelByIDDoors and TestReadBudget_DecodedBytes_RelPresenceAndStampsDecodeNoRow were green on the wrapper:
+  the candidate contract and "no decoded bytes for presence and stamps" hold from the start.)
+
+What is counted (green):
+  GetByIDsCtx    Candidates: one per ID, before any read. DecodedBytes: the stored bytes of each row decoded on a cache
+                 miss, before the decode (badger prefetchRelTallied; sharded passes the tally to each shard; tiered reads
+                 each shard through a metered shard read). ShardOpens (tiered): the archive and every closed event shard
+                 the batch reaches, before the open (checkoutArchiveCharged, checkoutForReadCharged).
+  HasHistoryCtx  Candidates: 1. ShardOpens (tiered): every closed shard the presence walk opens, before the open.
+  LatestStampsCtx Candidates: 1. ShardOpens (tiered): the route of the current-row stamps, and the history walk including
+                 the whole-chain fold of a history that spans shards (read through a metered snapshot, which counts decodes).
+  A wrapper store embedding a native one refuses a DecodedBytes or ShardOpens budget ("unsupported") and, under a budget
+  that bounds only Candidates, reads through its own overrides (the metered capabilities are taken only on an exact native
+  store, c.storeCountsReads).
+
+GREEN: same command, all pass (badger, sharded, tiered x pending, flushed; memory for the candidate contract).
+Mutations caught: tiered getUniqueRelationshipsByIDs reading a candidate shard uncharged -> ShardOpens_TieredDoors/Rels_GetByIDs
+red; badger GetRelationshipsByIDsMetered reading through the untallied prefetch -> DecodedBytes_RelGetByIDs (badger,
+sharded) and ProbeMatrix (badger, sharded, flushed) red.

@@ -45,6 +45,14 @@ func (ts *Store) HasRelHistory(rid types.RelID) (bool, error) {
 	return ts.hasRelHistoryCharged(rid, nil)
 }
 
+var _ storecontract.RelStampsMeteredCapability = (*Store)(nil)
+
+// HasRelHistoryMetered is HasRelHistory charging each closed shard's open to t
+// before it (store.RelStampsMeteredCapability; nil: none).
+func (ts *Store) HasRelHistoryMetered(rid types.RelID, t *storecontract.ReadTally) (bool, error) {
+	return ts.hasRelHistoryCharged(rid, t)
+}
+
 // hasRelHistoryCharged is HasRelHistory charging each closed shard's open to
 // opens before it (nil: none; READBUDGET step 6).
 func (ts *Store) hasRelHistoryCharged(rid types.RelID, opens *storecontract.ReadTally) (bool, error) {

@@ -350,6 +350,15 @@ func (ts *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID, t *stor
 }
 
 func (ts *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
+	return ts.GetRelationshipsByIDsMetered(ids, nil)
+}
+
+var _ storecontract.RelsByIDsMeteredCapability = (*Store)(nil)
+
+// GetRelationshipsByIDsMetered is GetRelationshipsByIDs counting in t (nil:
+// nothing) the bytes of each row a shard decodes on a cache miss, before the
+// decode, and charging each closed shard's open to t before it (RH list R2).
+func (ts *Store) GetRelationshipsByIDsMetered(ids []types.RelID, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -362,7 +371,13 @@ func (ts *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 		}
 	}
 	if len(ids) == 1 {
-		r, err := ts.GetRelationship(ids[0])
+		var r *types.Relationship
+		var err error
+		if t == nil {
+			r, err = ts.GetRelationship(ids[0])
+		} else {
+			r, err = ts.getRelationshipVia(ids[0], func(s *BadgerStore) shardRelReads { return meteredShard{s, t} }, t, false)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", ids[0], err)
 		}
@@ -372,7 +387,7 @@ func (ts *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
 	unique := uniqueRelIDsPreserveOrder(ids)
-	found, err := ts.getUniqueRelationshipsByIDs(unique)
+	found, err := ts.getUniqueRelationshipsByIDs(unique, t)
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +458,14 @@ func uniqueRelIDsPreserveOrder(ids []types.RelID) []types.RelID {
 	return unique
 }
 
-func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID]*types.Relationship, error) {
+// getUniqueRelationshipsByIDs reads each ID's row from the shard holding it.
+// t (nil: none) counts the bytes of each row decoded and is charged each
+// closed shard's open before it (RH list R2).
+func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID, t *storecontract.ReadTally) (map[types.RelID]*types.Relationship, error) {
+	via := directRelReads
+	if t != nil {
+		via = func(s *BadgerStore) shardRelReads { return meteredShard{s, t} }
+	}
 	found := make(map[types.RelID]*types.Relationship, len(ids))
 	pending := make(map[types.RelID]struct{}, len(ids))
 	for _, id := range ids {
@@ -454,7 +476,7 @@ func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID
 	if err != nil {
 		return nil, err
 	}
-	err = collectRelationshipsFromStore(ref, ids, found, pending)
+	err = collectRelationshipsFromStore(ref, ids, found, pending, via)
 	refCheckin()
 	if err != nil {
 		return nil, err
@@ -463,12 +485,12 @@ func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID
 		return found, nil
 	}
 
-	archive, archiveCheckin, err := ts.checkoutArchive()
+	archive, archiveCheckin, err := ts.checkoutArchiveCharged(t)
 	if err != nil {
 		return nil, err
 	}
 	if archive != nil {
-		err = collectRelationshipsFromStore(archive, ids, found, pending)
+		err = collectRelationshipsFromStore(archive, ids, found, pending, via)
 		archiveCheckin()
 		if err != nil {
 			return nil, err
@@ -489,11 +511,11 @@ func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID
 			continue // proven empty: its IDs stay pending for the other shards
 		}
 		checkedCandidates[es] = struct{}{}
-		store, release, err := es.checkoutStoreReadOnly(ts)
+		store, release, err := es.checkoutForReadCharged(ts, true, t)
 		if err != nil {
 			return nil, err
 		}
-		err = collectRelationshipsFromStore(store, bucket, found, pending)
+		err = collectRelationshipsFromStore(store, bucket, found, pending, via)
 		release()
 		if err != nil {
 			return nil, err
@@ -514,11 +536,11 @@ func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID
 	ts.mu.RUnlock()
 
 	for _, es := range probe {
-		store, release, err := es.checkoutStoreReadOnly(ts)
+		store, release, err := es.checkoutForReadCharged(ts, true, t)
 		if err != nil {
 			return nil, err
 		}
-		err = collectPendingRelationshipsFromStore(store, found, pending)
+		err = collectPendingRelationshipsFromStore(store, found, pending, via)
 		release()
 		if err != nil {
 			return nil, err
@@ -530,12 +552,12 @@ func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID
 	return found, nil
 }
 
-func collectRelationshipsFromStore(store *BadgerStore, ids []types.RelID, found map[types.RelID]*types.Relationship, pending map[types.RelID]struct{}) error {
+func collectRelationshipsFromStore(store *BadgerStore, ids []types.RelID, found map[types.RelID]*types.Relationship, pending map[types.RelID]struct{}, via relVia) error {
 	for _, id := range ids {
 		if _, want := pending[id]; !want {
 			continue
 		}
-		rel, ok, err := relationshipRow(store, id)
+		rel, ok, err := relationshipRowVia(store, id, via)
 		if err != nil {
 			return fmt.Errorf("graph: get relationships by IDs %d: %w", id, err)
 		}
@@ -551,9 +573,9 @@ func collectRelationshipsFromStore(store *BadgerStore, ids []types.RelID, found 
 	return nil
 }
 
-func collectPendingRelationshipsFromStore(store *BadgerStore, found map[types.RelID]*types.Relationship, pending map[types.RelID]struct{}) error {
+func collectPendingRelationshipsFromStore(store *BadgerStore, found map[types.RelID]*types.Relationship, pending map[types.RelID]struct{}, via relVia) error {
 	for id := range pending {
-		rel, ok, err := relationshipRow(store, id)
+		rel, ok, err := relationshipRowVia(store, id, via)
 		if err != nil {
 			return fmt.Errorf("graph: get relationships by IDs %d: %w", id, err)
 		}
@@ -853,7 +875,7 @@ func (ts *Store) IncomingRelationshipsByDepth(nid types.NodeID, typeToken uint16
 	for _, relID := range relIDs {
 		typedRelIDs = append(typedRelIDs, types.RelID(relID))
 	}
-	found, err := ts.getUniqueRelationshipsByIDs(typedRelIDs)
+	found, err := ts.getUniqueRelationshipsByIDs(typedRelIDs, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -961,7 +983,7 @@ func (ts *Store) IncomingRelationshipsForNodesByDepth(typedNodeIDs []types.NodeI
 	for _, ref := range refs {
 		relIDs = append(relIDs, ref.relID)
 	}
-	found, err := ts.getUniqueRelationshipsByIDs(relIDs)
+	found, err := ts.getUniqueRelationshipsByIDs(relIDs, nil)
 	if err != nil {
 		return nil, err
 	}

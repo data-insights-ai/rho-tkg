@@ -145,6 +145,15 @@ func (s *Store) GetNodesByIDsMetered(ids []types.NodeID, t *storecontract.ReadTa
 // GetRelationshipsByIDs mirrors GetNodesByIDs's parallel per-shard-bucket read
 // (BACKLOG 20l).
 func (s *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
+	return s.GetRelationshipsByIDsMetered(ids, nil)
+}
+
+var _ storecontract.RelsByIDsMeteredCapability = (*Store)(nil)
+
+// GetRelationshipsByIDsMetered is GetRelationshipsByIDs counting in t (nil:
+// nothing) the bytes of each row a slot decodes on a cache miss, before the
+// decode (RH list R2).
+func (s *Store) GetRelationshipsByIDsMetered(ids []types.RelID, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -170,7 +179,7 @@ func (s *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship,
 	errs := make([]error, len(bucketIdx))
 	runShardPool(len(bucketIdx), func(i int) {
 		idx := bucketIdx[i]
-		slices[i], errs[i] = s.shards[idx].GetRelationshipsByIDs(buckets[idx])
+		slices[i], errs[i] = s.shards[idx].GetRelationshipsByIDsMetered(buckets[idx], t)
 	})
 	if err := errors.Join(errs...); err != nil {
 		return nil, err

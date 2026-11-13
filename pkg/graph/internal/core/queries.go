@@ -2081,7 +2081,20 @@ func (r *RelOps) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 
 // relsByIDsLocked is the lock-free body of RelOps.GetByIDs.
 func (c *Core) relsByIDsLocked(ids []types.RelID) ([]*types.Relationship, error) {
-	rels, err := c.store.GetRelationshipsByIDs(ids)
+	return c.relsByIDsTalliedLocked(ids, nil)
+}
+
+// relsByIDsTalliedLocked is relsByIDsLocked counting in tally (nil: nothing)
+// the bytes the store decodes and the shards it opens
+// (store.RelsByIDsMeteredCapability, RH list R2).
+func (c *Core) relsByIDsTalliedLocked(ids []types.RelID, tally *storepkg.ReadTally) ([]*types.Relationship, error) {
+	read := c.store.GetRelationshipsByIDs
+	if m, ok := c.store.(storepkg.RelsByIDsMeteredCapability); ok && tally != nil && c.meterableStore() {
+		read = func(ids []types.RelID) ([]*types.Relationship, error) {
+			return m.GetRelationshipsByIDsMetered(ids, tally)
+		}
+	}
+	rels, err := read(ids)
 	if err != nil {
 		return nil, err
 	}

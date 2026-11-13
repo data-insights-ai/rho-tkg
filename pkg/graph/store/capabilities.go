@@ -120,6 +120,16 @@ type NodesByIDsMeteredCapability interface {
 	GetNodesByIDsMetered(ids []types.NodeID, t *ReadTally) ([]*types.Node, error)
 }
 
+// RelsByIDsMeteredCapability is OPTIONAL (RH list R2): GetRelationshipsByIDs
+// counting in t the stored bytes of each row the store decodes, before the
+// decode (ReadWork.DecodedBytes), each closed shard it is about to open
+// (ShardOpens, tiered) and returning the budget error instead of the rows past
+// a limit. A row the entity cache serves decodes nothing and counts nothing. A
+// nil t is GetRelationshipsByIDs. Badger, sharded and tiered.
+type RelsByIDsMeteredCapability interface {
+	GetRelationshipsByIDsMetered(ids []types.RelID, t *ReadTally) ([]*types.Relationship, error)
+}
+
 // ScanOrderCapability is OPTIONAL: whether the streaming label and type scans
 // (ForEachNodeByLabel, ForEachRelByType) walk members in ascending ID order from
 // a list kept between scans (true: no per-scan collect or sort) or collect and
@@ -339,6 +349,18 @@ type NodeStampsMeteredCapability interface {
 	HasNodeHistoryMetered(id types.NodeID, t *ReadTally) (bool, error)
 	NodeCurrentStampsMetered(id types.NodeID, t *ReadTally) (RowStamps, error)
 	NodeHistoryStampsMetered(id types.NodeID, t *ReadTally) (txFrom, txTo types.Instant, has bool, err error)
+}
+
+// RelStampsMeteredCapability is OPTIONAL (RH list R2): NodeStampsMeteredCapability
+// for relationships, behind Rels().HasHistoryCtx and LatestStampsCtx. The
+// answers are HasRelHistory's, RelCurrentStamps' and RelHistoryStamps'; each
+// closed shard the read is about to open counts in t first (ShardOpens) and a
+// read past the budget returns the *ReadBudgetError. Tiered offers it (the
+// other stores open no shard).
+type RelStampsMeteredCapability interface {
+	HasRelHistoryMetered(id types.RelID, t *ReadTally) (bool, error)
+	RelCurrentStampsMetered(id types.RelID, t *ReadTally) (RowStamps, error)
+	RelHistoryStampsMetered(id types.RelID, t *ReadTally) (txFrom, txTo types.Instant, has bool, err error)
 }
 
 // NodeAsOfWalkCapability is OPTIONAL: one node's as-of read for a store that

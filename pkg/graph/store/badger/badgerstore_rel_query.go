@@ -559,6 +559,15 @@ func (bs *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 // GetRelationshipsByIDs returns relationships for every requested ID.
 // Missing IDs return ErrRelNotFound. Results are sorted by snowflake.ID.
 func (bs *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
+	return bs.GetRelationshipsByIDsMetered(ids, nil)
+}
+
+var _ storecontract.RelsByIDsMeteredCapability = (*Store)(nil)
+
+// GetRelationshipsByIDsMetered is GetRelationshipsByIDs counting in t (nil:
+// nothing) the bytes of each row it decodes on a cache miss, before the decode
+// (RH list R2).
+func (bs *Store) GetRelationshipsByIDsMetered(ids []types.RelID, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -572,12 +581,12 @@ func (bs *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 	}
 
 	if unique, ok := uniqueRelIDsPreserveOrderIfDuplicate(ids); ok {
-		return bs.getRelationshipsByIDsWithDuplicates(ids, unique)
+		return bs.getRelationshipsByIDsWithDuplicates(ids, unique, t)
 	}
 
 	rels := make([]*types.Relationship, 0, len(ids))
 	for _, id := range ids {
-		r, err := bs.prefetchRel(id)
+		r, err := bs.prefetchRelTallied(id, t)
 		if err != nil {
 			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, err)
 		}
@@ -591,10 +600,10 @@ func (bs *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 	return rels, nil
 }
 
-func (bs *Store) getRelationshipsByIDsWithDuplicates(ids, unique []types.RelID) ([]*types.Relationship, error) {
+func (bs *Store) getRelationshipsByIDsWithDuplicates(ids, unique []types.RelID, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	found := make(map[types.RelID]*types.Relationship, len(unique))
 	for _, id := range unique {
-		r, err := bs.prefetchRel(id)
+		r, err := bs.prefetchRelTallied(id, t)
 		if err != nil {
 			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, err)
 		}

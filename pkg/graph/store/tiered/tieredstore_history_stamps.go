@@ -85,13 +85,21 @@ func (ts *Store) NodeHistoryStampsMetered(nid types.NodeID, t *storecontract.Rea
 // RelHistoryStamps is NodeHistoryStamps for relationships, walking the shards
 // GetRelHistory reads and folding GetRelHistory when two or more hold rows.
 func (ts *Store) RelHistoryStamps(rid types.RelID) (types.Instant, types.Instant, bool, error) {
+	return ts.RelHistoryStampsMetered(rid, nil)
+}
+
+// RelHistoryStampsMetered is RelHistoryStamps charging each closed shard's open
+// to t before it, the whole-chain fold included (through a metered read
+// snapshot, which counts its decodes too; store.RelStampsMeteredCapability;
+// nil: none).
+func (ts *Store) RelHistoryStampsMetered(rid types.RelID, t *storecontract.ReadTally) (types.Instant, types.Instant, bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return 0, 0, false, err
 	}
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return 0, 0, false, err
 	}
-	got, err := walkRelHistoryShards(ts, rid, nil, func(s *BadgerStore) (shardStamps, error) {
+	got, err := walkRelHistoryShards(ts, rid, t, func(s *BadgerStore) (shardStamps, error) {
 		return shardAnswer(s.RelHistoryStamps(rid))
 	}, mergeShardStamps)
 	if err != nil {
@@ -100,7 +108,15 @@ func (ts *Store) RelHistoryStamps(rid types.RelID) (types.Instant, types.Instant
 	if got.shards <= 1 {
 		return got.from, got.to, got.shards == 1, nil
 	}
-	rows, err := ts.GetRelHistory(rid)
+	var rows []*types.Relationship
+	if t == nil {
+		rows, err = ts.GetRelHistory(rid)
+	} else {
+		snap := ts.NewReadSnapshot()
+		snap.(storecontract.ReadSnapshotMeterCapability).MeterReads(t)
+		rows, err = snap.GetRelHistory(rid)
+		snap.Close()
+	}
 	if err != nil {
 		return 0, 0, false, err
 	}

@@ -48,6 +48,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the door that counts them; `badger.Store` now implements `store.PropertyTxMemberMeteredCapability` (tiered had it
   for shard opens), so the core reads a budgeted membership through the store on badger too. Test seam:
   `badger.CountIndexEntriesVisitedForTest` counts the iterator steps of every on-disk index walk in the process.
+- **R2, Sigma doors, group A: the relationship by-ID doors under a read budget.** `Rels().GetByIDsCtx`,
+  `Rels().HasHistoryCtx` and `Rels().LatestStampsCtx` take the node doors' contract: ctx checked first, one candidate
+  per ID counted before any read, `*store.ReadBudgetError` and no answer past a limit, the plain door's answer without
+  a budget. `GetByIDsCtx` also counts the stored bytes of each row the store decodes (`DecodedBytes`: new
+  `store.RelsByIDsMeteredCapability` on badger, sharded and tiered) and, on tiered, charges each closed shard's open
+  before it (`ShardOpens`); the two stamp doors charge the closed shards of the route and the history walk before
+  they open (new `store.RelStampsMeteredCapability`, tiered: `HasRelHistoryMetered`, `RelCurrentStampsMetered`,
+  `RelHistoryStampsMetered`), as the node doors do. A wrapper store that embeds a native one refuses a
+  `DecodedBytes` or `ShardOpens` budget (`"unsupported"`) and otherwise reads through its own overrides. Test seam:
+  `badger.Store.RelRowDecodesForTest`. Red: with the doors counting candidates only, `GetByIDsCtx` counted 0 decoded
+  bytes over cold rows on badger, sharded and tiered, and under `ShardOpens` 1 all three doors answered after opening
+  3 closed shards (`tasks/evidence/READBUDGET/sigma-doors-a.txt`).
 
 ### Changed
 

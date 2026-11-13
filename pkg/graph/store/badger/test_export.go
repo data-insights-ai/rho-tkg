@@ -345,6 +345,10 @@ func SetMaxReadableStoreFormatVersionForTest(v uint16) (restore func()) {
 // read from badger (ELEMPROBE).
 func (bs *Store) NodeRowDecodesForTest() int64 { return bs.nodeRowDecodes.Load() }
 
+// RelRowDecodesForTest returns how many relationship rows the point and scan
+// reads read from badger (RH list R2).
+func (bs *Store) RelRowDecodesForTest() int64 { return bs.relRowDecodes.Load() }
+
 // PropertyDiskLookupsForTest returns how many equality lookups the on-disk
 // property index answered in this process (UNIQUELOOK). Not for production use.
 func PropertyDiskLookupsForTest() int64 { return propertyDiskLookups.Load() }

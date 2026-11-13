@@ -97,6 +97,13 @@ func (c *Core) nodeHistoryStampsTallied(id types.NodeID, t *storepkg.ReadTally) 
 // ErrRelNotFound for an ID without any row, ErrGraphClosed, an invalid ID
 // (ErrInvalidStoreMutation), a store error.
 func (r *RelOps) LatestStamps(id types.RelID) (txFrom, txTo types.Instant, deleted bool, err error) {
+	return r.latestStampsTallied(id, nil)
+}
+
+// latestStampsTallied is LatestStamps reading through a store's metered stamp
+// doors under t (store.RelStampsMeteredCapability; nil: the plain reads),
+// RH list R2.
+func (r *RelOps) latestStampsTallied(id types.RelID, t *storepkg.ReadTally) (txFrom, txTo types.Instant, deleted bool, err error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return 0, 0, false, err
@@ -109,14 +116,14 @@ func (r *RelOps) LatestStamps(id types.RelID) (txFrom, txTo types.Instant, delet
 	if c.closed.Load() {
 		return 0, 0, false, ErrGraphClosed
 	}
-	cur, live, err := c.relCurrentStamps(id)
+	cur, live, err := c.relCurrentStampsTallied(id, t)
 	if err != nil {
 		return 0, 0, false, err
 	}
 	if live {
 		txFrom, txTo = storepkg.FoldTxStamps(0, 0, cur.TxFrom, cur.TxTo, cur.DeletedAt)
 	}
-	hf, ht, has, err := c.relHistoryStamps(id)
+	hf, ht, has, err := c.relHistoryStampsTallied(id, t)
 	if err != nil {
 		return 0, 0, false, err
 	}
@@ -129,6 +136,16 @@ func (r *RelOps) LatestStamps(id types.RelID) (txFrom, txTo types.Instant, delet
 
 // relHistoryStamps mirrors nodeHistoryStamps for relationships.
 func (c *Core) relHistoryStamps(id types.RelID) (txFrom, txTo types.Instant, has bool, err error) {
+	return c.relHistoryStampsTallied(id, nil)
+}
+
+// relHistoryStampsTallied is relHistoryStamps through the store's metered door
+// under t (nil: the plain read). Only an exact native store takes the metered
+// door: a wrapper embedding one keeps its overrides as the read.
+func (c *Core) relHistoryStampsTallied(id types.RelID, t *storepkg.ReadTally) (txFrom, txTo types.Instant, has bool, err error) {
+	if m, ok := c.store.(storepkg.RelStampsMeteredCapability); ok && t != nil && c.storeCountsReads {
+		return m.RelHistoryStampsMetered(id, t)
+	}
 	if p, ok := c.store.(storepkg.HistoryStampsCapability); ok {
 		return p.RelHistoryStamps(id)
 	}
@@ -198,9 +215,17 @@ func (c *Core) nodeCurrentStampsTallied(id types.NodeID, t *storepkg.ReadTally) 
 
 // relCurrentStamps is nodeCurrentStamps for relationships.
 func (c *Core) relCurrentStamps(id types.RelID) (storepkg.RowStamps, bool, error) {
+	return c.relCurrentStampsTallied(id, nil)
+}
+
+// relCurrentStampsTallied is relCurrentStamps through the store's metered door
+// under t (nil: the plain read), as nodeCurrentStampsTallied.
+func (c *Core) relCurrentStampsTallied(id types.RelID, t *storepkg.ReadTally) (storepkg.RowStamps, bool, error) {
 	var s storepkg.RowStamps
 	var err error
-	if c.currentStamps != nil {
+	if m, ok := c.store.(storepkg.RelStampsMeteredCapability); ok && t != nil && c.currentStamps != nil && c.storeCountsReads {
+		s, err = m.RelCurrentStampsMetered(id, t)
+	} else if c.currentStamps != nil {
 		s, err = c.currentStamps.RelCurrentStamps(id)
 	} else {
 		var cur *types.Relationship

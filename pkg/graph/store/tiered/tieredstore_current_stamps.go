@@ -40,6 +40,13 @@ func (ts *Store) NodeCurrentStampsMetered(nid types.NodeID, t *storecontract.Rea
 // RelCurrentStamps is NodeCurrentStamps for relationships, routed like
 // GetRelationship (routeRelRow); the first shard holding the row answers.
 func (ts *Store) RelCurrentStamps(rid types.RelID) (storecontract.RowStamps, error) {
+	return ts.RelCurrentStampsMetered(rid, nil)
+}
+
+// RelCurrentStampsMetered is RelCurrentStamps charging the open of each closed
+// shard the route reaches to t before it (store.RelStampsMeteredCapability;
+// nil: none).
+func (ts *Store) RelCurrentStampsMetered(rid types.RelID, t *storecontract.ReadTally) (storecontract.RowStamps, error) {
 	if err := ts.checkOpen(); err != nil {
 		return storecontract.RowStamps{}, err
 	}
@@ -48,7 +55,7 @@ func (ts *Store) RelCurrentStamps(rid types.RelID) (storecontract.RowStamps, err
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	return routeRelRow(ts, rid, nil, relCurrentStampsRow)
+	return routeRelRow(ts, rid, t, relCurrentStampsRow)
 }
 
 // nodeCurrentStampsRow is nodeRowLive returning the row's stamps without

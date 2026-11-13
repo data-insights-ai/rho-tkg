@@ -784,6 +784,7 @@ func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool, t *storecontra
 		return nil, false, ErrRelNotFound
 	}
 
+	bs.relRowDecodes.Add(1)
 	err = bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {

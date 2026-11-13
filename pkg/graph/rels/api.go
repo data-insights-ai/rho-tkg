@@ -1133,6 +1133,66 @@ func (a *API) VersionBefore(id types.RelID, version uint32) (*types.Relationship
 	return ops.VersionBefore(id, version)
 }
 
+// budgetedIDOps is the read-budget form of the by-ID doors; the graph's own
+// Ops implement it.
+type budgetedIDOps interface {
+	GetByIDsCtx(ctx context.Context, ids []types.RelID) ([]*types.Relationship, error)
+	HasHistoryCtx(ctx context.Context, id types.RelID) (bool, error)
+	LatestStampsCtx(ctx context.Context, id types.RelID) (txFrom, txTo types.Instant, deleted bool, err error)
+}
+
+// GetByIDsCtx is GetByIDs under ctx's read budget (store.WithReadBudget): one
+// candidate per ID, counted before any read, then the stored bytes of every
+// row the store decodes (DecodedBytes) and, on tiered, each closed shard it is
+// about to open (ShardOpens); past a limit *store.ReadBudgetError
+// (store.ErrReadBudget) and no rows. Without a budget in ctx it is GetByIDs
+// after a ctx check. An Ops without the budgeted doors answers unmetered.
+func (a *API) GetByIDsCtx(ctx context.Context, ids []types.RelID) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedIDOps); ok {
+		return b.GetByIDsCtx(ctx, ids)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.GetByIDs(ids)
+}
+
+// HasHistoryCtx is HasHistory under ctx's read budget: one candidate, and on
+// tiered each closed shard the presence walk is about to open (ShardOpens).
+func (a *API) HasHistoryCtx(ctx context.Context, id types.RelID) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	if b, ok := ops.(budgetedIDOps); ok {
+		return b.HasHistoryCtx(ctx, id)
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return ops.HasHistory(id)
+}
+
+// LatestStampsCtx is LatestStamps under ctx's read budget: one candidate, and
+// on tiered each closed shard the stamp reads are about to open (ShardOpens).
+func (a *API) LatestStampsCtx(ctx context.Context, id types.RelID) (txFrom, txTo types.Instant, deleted bool, err error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if b, ok := ops.(budgetedIDOps); ok {
+		return b.LatestStampsCtx(ctx, id)
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, 0, false, err
+	}
+	return ops.LatestStamps(id)
+}
+
 // NextID generates and returns the next relationship ID.
 func (a *API) NextID() types.RelID {
 	if a == nil || !a.ok {

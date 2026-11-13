@@ -19,8 +19,10 @@ import (
 // count each closed shard they open (ShardOpens) before they open it: the
 // current index fan-out of ByLabelAndPropertyCtx, its membership fan-out
 // (TxPin and ValidAt), the whole
-// chain history search of NodeAsOfCtx for a node live nowhere, and
-// RelEffectiveTimelinesByProperties. A budget of 1 refuses with no rows and
+// chain history search of NodeAsOfCtx for a node live nowhere,
+// RelEffectiveTimelinesByProperties, and the relationship by-ID doors
+// (Rels().GetByIDsCtx over rows in three shards, HasHistoryCtx and
+// LatestStampsCtx of a relationship live nowhere). A budget of 1 refuses with no rows and
 // opens at most one shard (the store's ColdOpens counter); unlimited, the
 // answer is the unbudgeted one and the meter counts exactly the opens.
 func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
@@ -49,6 +51,8 @@ func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
 
 	const shards = 3
 	var gone types.NodeID // deleted in the first shard: live nowhere
+	var goneRel types.RelID
+	var liveRels []types.RelID // one per shard
 	var beforeDelete types.Instant
 	for i := range shards {
 		n, err := g.Nodes.Add(ctx, []string{"Ev"}, map[string]any{"k": int64(1)})
@@ -71,7 +75,12 @@ func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
 		if _, err := g.Rels.Update(ctx, r, map[string]any{"v": int64(i)}); err != nil {
 			t.Fatal(err)
 		}
+		liveRels = append(liveRels, r)
 		if i == 0 {
+			goneRel = w.add(t, "gone", rtbType, map[string]any{"estate": "gone", "device": "gone"})
+			if err := g.Rels.Delete(ctx, goneRel); err != nil {
+				t.Fatal(err)
+			}
 			d, err := g.Nodes.Add(ctx, []string{"Ev"}, map[string]any{"k": int64(2)})
 			if err != nil {
 				t.Fatal(err)
@@ -171,6 +180,31 @@ func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
 			}
 			return "has", nil
 		}},
+		{"Rels LatestStamps", "LatestStamps", func(c context.Context) (string, error) {
+			f, to, del, err := g.Rels.LatestStampsCtx(c, goneRel)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("%d %d %t", f, to, del), nil
+		}},
+		{"Rels HasHistory", "HasHistory", func(c context.Context) (string, error) {
+			has, err := g.Rels.HasHistoryCtx(c, goneRel)
+			if err != nil || !has {
+				return "", err
+			}
+			return "has", nil
+		}},
+		{"Rels GetByIDs", "GetByIDs", func(c context.Context) (string, error) {
+			r, err := g.Rels.GetByIDsCtx(c, liveRels)
+			if err != nil {
+				return "", err
+			}
+			var ids []int64
+			for _, row := range r {
+				ids = append(ids, int64(row.ID()))
+			}
+			return fmt.Sprint(ids), nil
+		}},
 		{"RelEffectiveTimelinesByProperties", "RelEffectiveTimelinesByProperties", func(c context.Context) (string, error) {
 			got, err := g.Temporal.RelEffectiveTimelinesByProperties(c, rtbType, rtbKeys, [][]any{{"e1", "d1"}}, temporal.Pin{Tx: pin})
 			if got == nil {
@@ -194,7 +228,7 @@ func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
 			opened := ts.ShardAccessStats().ColdOpens - opens
 			var rb *storepkg.ReadBudgetError
 			if !errors.Is(err, storepkg.ErrReadBudget) || !errors.As(err, &rb) || rb.Limit != "shard opens" || got != "" {
-				t.Fatalf("%s under ShardOpens 1 = %q, %v (work %+v); want a shard-opens refusal and no rows", d.name, got, err, meter.Work())
+				t.Fatalf("%s under ShardOpens 1 = %q, %v (work %+v, %d closed shards opened); want a shard-opens refusal and no rows", d.name, got, err, meter.Work(), opened)
 			}
 			if rb.Door != d.door {
 				t.Errorf("%s refused by door %q, want %q", d.name, rb.Door, d.door)
