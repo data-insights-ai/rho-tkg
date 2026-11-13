@@ -12,7 +12,7 @@ import (
 // TestLedger (lesson 80): tasks/todo.md and HANDOVER.md do not lag behind
 // the repo. The tag is the version, no doc names it: docs/CHANGELOG.md's
 // newest version heading is the latest tag or a newer release written before
-// `make release-…` tags it; tasks/todo.md has its sections and holds current
+// `make release` tags it; tasks/todo.md has its sections and holds current
 // work only (shipped, later and parked work is docs/CHANGELOG.md's); a todo item cites only a
 // backlog number still listed in HANDOVER.md § Backlog. Cached like the other
 // docs tests: it reads the three files, so an edit to one reruns it.
