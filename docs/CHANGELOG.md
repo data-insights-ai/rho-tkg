@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.0] - 2026-11-13
+
+### Added
+
+- **READBUDGET** (René's RH list R2, sigma's selective doors; first doors): `store.WithReadBudget(ctx,
+  store.ReadBudget{Candidates, Segments, ShardOpens})` bounds a selective read's internal work. At a limit the door
+  returns `*store.ReadBudgetError` (`ErrReadBudget`, naming door and field, with the counters) and no rows;
+  `ReadMeter.Work()` counts under the limit too; meters are cumulative and nest. Doors so far:
+  `RelEffectiveTimelinesByProperties` (ai-soc's case: an on-disk index hands on all 40 members for 2 in the window,
+  now refused instead of read) and `LendByIDs` (a candidate per ID; tiered counts and refuses closed-shard opens,
+  `EntityLendBatchMeteredCapability`). Without a budget nothing changes. More doors follow.
+
 ## [4.106.0] - 2026-11-13
 
 ### Added
