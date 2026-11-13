@@ -14,5 +14,5 @@ sigma, then ai-soc). Each step: a few new tests for the new code, then 1-2 old t
 `make old`). Go's test cache reruns only what changed, so never `-count=1`; only a release runs everything. Unfinished
 code is normal until the next release, but keep main building: sigma and ai-soc build on this checkout
 (`make dev-pin RHO=..`). This checkout stays on `dev`, the working branch; `main` is the released state and
-equals `origin/main`. A green `make gate` pushes `dev` to GitHub (no tag); `make release`, only when René calls one,
-merges `dev` into `main` and tags it.
+equals `origin/main`. After a green `make gate`, push `dev` by hand (`git fetch origin`, then `git push origin dev`; no tag, `main`
+untouched); `make release`, only when René calls one, merges `dev` into `main` and tags it.
