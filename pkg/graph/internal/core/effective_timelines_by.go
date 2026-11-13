@@ -300,6 +300,7 @@ func (c *Core) relTupleMembers(tok uint16, key string, valueKeys []string, opts 
 		var (
 			ids     []types.RelID
 			invalid error
+			prune   types.Instant
 		)
 		member := func(id types.RelID, firstTx types.Instant) bool {
 			if !c.storeRowsTrust {
@@ -307,7 +308,7 @@ func (c *Core) relTupleMembers(tok uint16, key string, valueKeys []string, opts 
 					return false
 				}
 			}
-			if firstTx == 0 || firstTx <= pinTx {
+			if prune == 0 || firstTx == 0 || firstTx <= prune {
 				ids = append(ids, id)
 			}
 			return true
@@ -316,6 +317,7 @@ func (c *Core) relTupleMembers(tok uint16, key string, valueKeys []string, opts 
 		if windowed {
 			window = &memberWindow{start, end, 0}
 		}
+		prune = window.prunePin(pinTx)
 		err := c.forEachRelPropTxMemberOfKeys(tok, key, valueKeys, window, member)
 		if invalid != nil {
 			return nil, invalid

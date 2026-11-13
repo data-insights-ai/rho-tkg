@@ -644,7 +644,9 @@ no membership sidecar.
   with `last <= P`; each row met is judged alone (`index.RowMeets`: its `[from, allTo)` when `last > P`, else its
   `[from, lateTo)`), and a member answers with the lowest `TxFrom` of its rows that meet. Judging rows one at a time
   answers a subset of the sidecar's members (which joins a member's rows into one envelope) and a superset of what a
-  resolver matches; the graph prunes by that `TxFrom` only against the same `TxAt` (`store/capabilities.go`). The
+  resolver matches; the graph prunes by that `TxFrom` only against the pin the window was judged at
+  (`memberWindow.prunePin`: `RelEffectiveTimelinesByProperties` pins by `TxPin` with the window judged at every row,
+  so it does not prune; before the review fix it dropped a member updated after the pin). The
   write buffer's entries of each axis are judged the same way. Not bounded: rows that start after `E` (axis 1 is
   ordered by end), widened rows written after an old pin, open rows that start before `E` (genuine candidates), and
   until compaction the deleted versions a move leaves (an update of an open row deletes its axis-1 entry at
@@ -676,7 +678,9 @@ no membership sidecar.
   a writable open).
 - **Removal.** A drop deletes the definition's entries; a retention purge and an exact erasure delete every
   entry of the entities they remove, history included (a member entry holds a value verbatim); `Clear` drops the
-  keyspace.
+  keyspace. A row replaced in place without a history row leaves its span and time-ordered entries behind: a
+  retention purge, which deletes the entries of the rows it finds, does not reach them; an exact erasure does. They
+  stay sound (stale members the resolver rejects) but keep the old value on disk until an erasure or a drop.
 - **Refused or declined.** `RangeCounts` and `Elements` on a listed type (`ErrCapabilityNotSupported`, also an
   Elements definition loaded at open). A time-ordered member key (kinds 7 and 8) is 33 bytes longer than the `0x0A` key
   (axis, `t1`, `from`, the transaction time and the version), so the largest value an on-disk index accepts shrinks by

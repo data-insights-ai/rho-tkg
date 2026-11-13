@@ -1,0 +1,5 @@
+--- FAIL: TestPropertyIndexOnDiskTxPinWindowKeepsLaterUpdated (0.08s)
+    reldisk_prune_test.go:90: rel timelines: on disk 1 0, memory 1 1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.089s
+FAIL
