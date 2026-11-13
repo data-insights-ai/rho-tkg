@@ -292,6 +292,8 @@ type EventShard struct {
 	shardMu           sync.Mutex       // protects lazy open/close
 	activeReqs        atomic.Int64     // outstanding read requests; blocks idle-close
 	accesses          [3]atomic.Uint64 // checkouts while hot, warm, cold (ShardAccessStats); beside activeReqs, whose cache line a checkout already writes
+	writes            [3]atomic.Uint64 // writable checkouts while hot, warm, cold (ShardAccessStats)
+	handle            atomic.Uint32    // kind of store: handleClosed, handleWritable, handleReadOnly (ShardAccessStats; noteHandle)
 	lastAccess        atomic.Int64     // unix ms, idle-close tracking
 	readTransientOpen bool             // shardMu-protected: cold store was opened only for transient read fanout
 	moveDone          chan struct{}    // shardMu-protected: non-nil while MoveShard moves the shard; closed when it ends
@@ -346,6 +348,7 @@ func eventShardTierFromCode(code uint32) ShardTier {
 func (es *EventShard) initTier(t ShardTier) {
 	es.tier = t
 	es.tierCode.Store(eventShardTierCode(t))
+	es.noteHandle()
 }
 
 func (es *EventShard) setTier(t ShardTier) {
@@ -390,6 +393,7 @@ type Store struct {
 	archiveAccesses   atomic.Uint64               // checkouts of refArchive (ShardAccessStats)
 	droppedAccesses   [3]atomic.Uint64            // accesses of event shards a retention drop removed (ShardAccessStats)
 	droppedColdOpens  atomic.Uint64               // their cold opens
+	droppedWrites     [3]atomic.Uint64            // their writable checkouts
 	refArchive        atomic.Pointer[BadgerStore] // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu         sync.Mutex                  // serializes lazy-open of refArchive (single-flight)
 	migrateMu         sync.Mutex                  // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)

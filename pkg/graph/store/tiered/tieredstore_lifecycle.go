@@ -13,6 +13,7 @@ import (
 func (es *EventShard) setStoreLocked(ts *Store, store *BadgerStore) {
 	es.store = store
 	es.countColdStoreLocked(ts)
+	es.noteHandle()
 }
 
 // countColdStoreLocked counts es's open store in ts.openColdShards once while
@@ -71,6 +72,7 @@ func (es *EventShard) openColdReadOnlyLocked(ts *Store) error {
 	es.coldOpens.Add(1)
 	es.setStoreLocked(ts, store)
 	es.storeRO = true
+	es.noteHandle()
 	return nil
 }
 
@@ -112,6 +114,7 @@ func (es *EventShard) clearStoreLocked(ts *Store) {
 	es.store = nil
 	es.storeRO = false
 	es.readTransientOpen = false
+	es.noteHandle()
 	if es.coldCounted {
 		es.coldCounted = false
 		ts.openColdShards.Add(-1)
@@ -175,9 +178,11 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 			es.readTransientOpen = false
 			store := es.store
 			es.shardMu.Unlock()
+			es.countWrite()
 			es.countAccess()
 			return store, nil
 		}
+		es.countWrite()
 		es.countAccess()
 		return es.store, nil
 	}
@@ -206,6 +211,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 	es.lastAccess.Store(time.Now().UnixMilli())
 	store := es.store
 	es.shardMu.Unlock()
+	es.countWrite()
 	es.countAccess()
 	return store, nil
 }
@@ -351,6 +357,9 @@ func (es *EventShard) pinForRead(ts *Store, readOnly bool, opens *storecontract.
 	es.lastAccess.Store(time.Now().UnixMilli())
 	store := es.store
 	es.shardMu.Unlock()
+	if !readOnly {
+		es.countWrite()
+	}
 	es.countAccess()
 
 	// The open-handle cap is NOT enforced here. This checkout is reached from

@@ -170,6 +170,7 @@ func (es *EventShard) SetStoreForTest(bs *BadgerStore) {
 	if bs == nil {
 		es.readTransientOpen = false
 	}
+	es.noteHandle()
 }
 
 // LockShardMuForTest / UnlockShardMuForTest expose the lazy-open mutex.

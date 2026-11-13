@@ -104,3 +104,82 @@ func TestShardAccessStatsKeepsADroppedShardsCounts(t *testing.T) {
 		t.Fatalf("totals decreased across the drop: %+v then %+v", before, after)
 	}
 }
+
+// TestShardAccessStatsCountsHandlesAndWritesPerTier pins R3's record (B3):
+// the open handles per tier, writable and read-only, and the writable
+// checkouts per tier, through a shard's life: hot, warm after a rotation (a
+// late write reaches it), cold after demotion with its handle still open,
+// closed, opened read-only by a read, upgraded writable by a late write.
+// Catches a handle install or clear not recorded, a read-only open counted
+// writable, and a write counted under the wrong tier or not at all.
+func TestShardAccessStatsCountsHandlesAndWritesPerTier(t *testing.T) {
+	t.Parallel()
+	cfg := volumeCfg(t.TempDir(), t.TempDir(), "")
+	cfg.MaxOpenColdShards = 1
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	tok, _ := reg.GetOrCreate("Signal")
+	w := TierHandles{Writable: 1}
+	type want struct {
+		hot, warm, cold    TierHandles
+		hotW, warmW, coldW uint64
+	}
+	last := ts.ShardAccessStats()
+	check := func(step string, wt want) {
+		t.Helper()
+		st := ts.ShardAccessStats()
+		got := want{st.HotHandles, st.WarmHandles, st.ColdHandles,
+			st.HotWrites - last.HotWrites, st.WarmWrites - last.WarmWrites, st.ColdWrites - last.ColdWrites}
+		if got != wt || st.ReferenceHandles != w || st.ArchiveHandles != (TierHandles{}) {
+			t.Errorf("%s: handles hot %+v warm %+v cold %+v, writes hot %d warm %d cold %d, reference %+v archive %+v; want %+v, reference %+v, no archive",
+				step, got.hot, got.warm, got.cold, got.hotW, got.warmW, got.coldW, st.ReferenceHandles, st.ArchiveHandles, wt, w)
+		}
+		last = st
+	}
+	check("new", want{hot: w})
+	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), tok, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	check("hot write", want{hot: w, hotW: 1})
+	old := ts.HotShardForTest().Name()
+	forceRotation(t, ts)
+	check("rotated", want{hot: w, warm: w})
+	write := func(v int64) {
+		t.Helper()
+		u := types.NewNode(n.ID(), tok, nil)
+		if err := u.SetProperty("seen", v); err != nil {
+			t.Fatal(err)
+		}
+		if err := ts.ReplaceNode(u); err != nil {
+			t.Fatalf("ReplaceNode: %v", err)
+		}
+	}
+	write(1)
+	check("late write to warm", want{hot: w, warm: w, warmW: 1})
+	demoteToCold(ts, old)
+	check("demoted, handle open", want{hot: w, cold: w})
+	es := ts.EventShardsForTest()[old]
+	es.LockShardMuForTest()
+	if err := es.Store().Close(); err != nil {
+		es.UnlockShardMuForTest()
+		t.Fatalf("close cold store: %v", err)
+	}
+	es.clearStoreLocked(ts)
+	es.UnlockShardMuForTest()
+	check("demoted, closed", want{hot: w})
+	if _, err := ts.GetNode(n.ID()); err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	check("cold read", want{hot: w, cold: TierHandles{ReadOnly: 1}})
+	write(2)
+	check("late write to cold", want{hot: w, cold: w, coldW: 1})
+	if a, b := ts.ShardAccessStats(), ts.ShardAccessStats(); a != b {
+		t.Fatalf("two snapshots differ: %+v then %+v", a, b)
+	}
+}
