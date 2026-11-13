@@ -589,6 +589,15 @@ that test.
 - **Label and type doors skip sealed shards without them** (REFFANOUT). A cold shard's sealed counts (`shardCounts`)
   say how many current nodes of each label and rels of each type it holds; a label or type door skips a shard sealed
   with none (`eventShardsWithLabel`, `eventShardsWithRelType`), so a reference label's listing opens no cold shard.
+- **A closed shard proven empty is not opened by any read or probe** (COLDEDGE, EMPTYBYID). The `noRows` mark (set when
+  a shard closes holding no row, saved in the catalog, cleared and saved before a write opens the shard) takes the shard
+  out of every fan-out (`eventShardsToRead`) and out of the probes for an ID. A read of an ID the shard's window owns
+  asks the hot shard instead (`readableOwner`, the route of an ID no window covers): node and relationship by ID, history,
+  stamps, adjacency and the batched forms; a batch of relationship IDs and `LendRelationshipsSorted` leave those IDs
+  pending for the other shards, so a relationship minted in the window but stored on its start node's shard is still found.
+  The create-existence probes of a reference node and of a relationship ID read, so they skip it too. A write into the
+  window, or a write that names an ID the shard would own (a delete or an update of an ID that is not there, a
+  relationship to an endpoint that is not there), still opens and wakes it.
 
 - **ADR-0014 Whole-row replace** (WHOLEROW; designed 2026-10-31 for sigma-tkgd's paged-row writer, which rewrites a
   grown page row whole as one version with its full validity and reads it by `TxPin` plus the current row; shipped in

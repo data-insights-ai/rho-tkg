@@ -19,6 +19,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite`, `_FencedStoreMakesNothingForAWrite`,
   `_FenceStopsWindowShardMaking` (`tasks/evidence/R1/`).
 
+- **EMPTYBYID** (ai-soc RH-02, René's RH list R1: "an early close alone does not solve the repeated reopens"): a closed
+  cold shard that `HoldsNoRows` proved empty stays closed under every read and probe that names an ID in its window.
+  The fan-outs skipped it since COLDEDGE (v4.101.0) and RH02EMPTY closes it at demotion, but a by-ID read opened it to
+  miss, once per idle sweep: `GetNode`, `LendNode`, `GetRelationship` and the relationship found on its start node's
+  shard, node and relationship history, presence, stamps, temporal meta and `NodeAsOfWalk`, adjacency and degree of an
+  ID the window owns, `GetNodesByIDs`, `GetRelationshipsByIDs`, `LendNodesSorted`, `LendRelationshipsSorted`,
+  `OutgoingRelationshipsForNodes`, `IncomingRelationshipsForNodes`, `ForEachExAdjacentRelID`, and the create-existence
+  probes of a reference node, a batch of them and a relationship ID. Now such a read asks the hot shard (the route of an
+  ID no window covers), a batch leaves a relationship ID pending for the other shards, and a probe skips the shard: the
+  answers are unchanged (each path is compared with the shard read), a relationship minted in the window and stored on
+  its start node's shard is still found, and a write into the window still wakes the shard, saved before the write. One
+  round of 47 by-ID probes opened the empty shard 46 times (`ColdOpens`); now 0, also across idle sweeps and a restart
+  (`tasks/evidence/EMPTYBYID/`). Left: a write that names an ID the shard would own (a delete or update of an ID that is
+  not there, a relationship to a missing endpoint) still opens and wakes it. Tests: `TestEmptyByID_*`.
+
 ## [4.107.3] - 2026-11-13
 
 ### Added
