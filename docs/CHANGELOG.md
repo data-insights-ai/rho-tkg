@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.106.0] - 2026-11-13
+
+### Added
+
+- **RH02OBS** (ai-soc RH-02, René's RH list R0: "both now" with R1): opt-in per-call work counters for badger's window
+  membership doors. `DiagnoseNodePropertyTxMembersDuring` / `DiagnoseRelPropertyTxMembersDuring` run the same worker
+  as their ordinary twins and return `store.PropertyMemberWork` (iterator steps, overlay ops, emitted entries, peak
+  map sizes, slice length/cap, `Completed`, `CallbackStopped`; partial counters on error). Logical work only, not
+  physical I/O or heap. The ordinary doors pass no counter and are unchanged. Badger only; no tiered aggregation
+  (R2's read budgets build on this). Tests: `badgerstore_member_work_test.go`.
+
 ## [4.105.10] - 2026-11-13
 
 ### Fixed

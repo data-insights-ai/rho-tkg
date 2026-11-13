@@ -24,6 +24,10 @@ var (
 // ForEachRelPropertyTxMemberDuring implements
 // store.RelPropertyTxMemberWindowCapability.
 func (bs *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return bs.forEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, valueKey, validStart, validEnd, txAt, fn, nil)
+}
+
+func (bs *Store) forEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool, work *storecontract.PropertyMemberWork) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -37,13 +41,13 @@ func (bs *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyK
 		return err
 	}
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
-	if members, ok, err := bs.relDiskMembers(key, memberQuery{valueKeys: []string{valueKey}}); ok {
+	if members, ok, err := bs.relDiskMembers(key, memberQuery{valueKeys: []string{valueKey}, work: work}); ok {
 		if validStart >= validEnd {
 			members = nil // an empty window answers nothing
 		}
-		return emitTxMembers(members, err, fn) // RELDISK: every member of the value, a sound superset
+		return emitTxMembers(members, err, memberWorkCallback(fn, work)) // RELDISK: every member of the value, a sound superset
 	}
-	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, fn,
+	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, memberWorkCallback(fn, work),
 		func() (*propTxSidecar[types.RelID], bool) {
 			return bs.relPropTx[key], bs.relPropIndexUsableLocked(key)
 		},
@@ -53,6 +57,10 @@ func (bs *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyK
 // ForEachNodePropertyTxMemberDuring implements
 // store.NodePropertyTxMemberWindowCapability.
 func (bs *Store) ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return bs.forEachNodePropertyTxMemberDuring(labelToken, propertyKey, valueKey, validStart, validEnd, txAt, fn, nil)
+}
+
+func (bs *Store) forEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool, work *storecontract.PropertyMemberWork) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -66,13 +74,13 @@ func (bs *Store) ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKe
 		return err
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
-	if members, ok, err := bs.nodeDiskMembers(key, memberQuery{valueKeys: []string{valueKey}}); ok {
+	if members, ok, err := bs.nodeDiskMembers(key, memberQuery{valueKeys: []string{valueKey}, work: work}); ok {
 		if validStart >= validEnd {
 			members = nil // an empty window answers nothing
 		}
-		return emitTxMembers(members, err, fn) // RELDISK: every member of the value, a sound superset
+		return emitTxMembers(members, err, memberWorkCallback(fn, work)) // RELDISK: every member of the value, a sound superset
 	}
-	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, fn,
+	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, memberWorkCallback(fn, work),
 		func() (*propTxSidecar[types.NodeID], bool) {
 			return bs.nodePropTx[key], bs.nodePropIndexUsableLocked(key)
 		},

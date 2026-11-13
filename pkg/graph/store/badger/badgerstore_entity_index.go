@@ -12,6 +12,7 @@ import (
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -272,6 +273,10 @@ func memberCurrentPrefix(key []byte) []byte {
 // deleted entries outside the prefixes are never walked (docs/badger.md rule
 // 12). Caller holds idxMu (R or W).
 func (bs *Store) entityIndexWalkLocked(kind byte, prefixes [][]byte, fn func(key []byte)) error {
+	return bs.entityIndexWalkLockedWork(kind, prefixes, fn, nil)
+}
+
+func (bs *Store) entityIndexWalkLockedWork(kind byte, prefixes [][]byte, fn func(key []byte), work *storecontract.PropertyMemberWork) error {
 	if len(prefixes) == 0 {
 		return nil
 	}
@@ -279,7 +284,12 @@ func (bs *Store) entityIndexWalkLocked(kind byte, prefixes [][]byte, fn func(key
 	prefixes = slices.CompactFunc(prefixes, bytes.Equal)
 	tail := storepkg.EntityIndexTailLen(kind)
 	ov := pendingKeyOverlay[struct{}]{}
-	bs.rangePendingPrefixes(prefixes, func(k string, op writeOp) { ov.note(k, op, struct{}{}) })
+	bs.rangePendingPrefixes(prefixes, func(k string, op writeOp) {
+		if work != nil {
+			work.OverlayOpsInspected++
+		}
+		noteMemberOverlay(&ov, k, op, work)
+	})
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
@@ -290,6 +300,9 @@ func (bs *Store) entityIndexWalkLocked(kind byte, prefixes [][]byte, fn func(key
 		var prev []byte
 		for _, p := range prefixes {
 			for it.Seek(p); it.ValidForPrefix(p); it.Next() {
+				if work != nil {
+					work.IteratorSteps++
+				}
 				if bs.entityIndexWalkTestHook != nil {
 					bs.entityIndexWalkTestHook()
 				}
@@ -305,6 +318,9 @@ func (bs *Store) entityIndexWalkLocked(kind byte, prefixes [][]byte, fn func(key
 				if item.IsDeletedOrExpired() || ov.overrides(key) {
 					continue
 				}
+				if work != nil {
+					work.DiskEntriesEmitted++
+				}
 				fn(key)
 			}
 		}
@@ -314,6 +330,9 @@ func (bs *Store) entityIndexWalkLocked(kind byte, prefixes [][]byte, fn func(key
 		return fmt.Errorf("graph: entity index scan: %w", err)
 	}
 	for k := range ov.sets {
+		if work != nil {
+			work.OverlaySetsEmitted++
+		}
 		fn([]byte(k))
 	}
 	return nil
@@ -323,6 +342,10 @@ func (bs *Store) entityIndexWalkLocked(kind byte, prefixes [][]byte, fn func(key
 // len(lo) bytes lie in [lo, hi] (hi nil: every entry under within), resolved
 // with the write buffer per key. Caller holds idxMu (R or W).
 func (bs *Store) entityIndexRangeLocked(within, lo, hi []byte, fn func(key []byte)) error {
+	return bs.entityIndexRangeLockedWork(within, lo, hi, fn, nil)
+}
+
+func (bs *Store) entityIndexRangeLockedWork(within, lo, hi []byte, fn func(key []byte), work *storecontract.PropertyMemberWork) error {
 	in := func(k []byte) bool {
 		if !bytes.HasPrefix(k, within) || len(k) < len(lo) || bytes.Compare(k[:len(lo)], lo) < 0 {
 			return false
@@ -331,8 +354,11 @@ func (bs *Store) entityIndexRangeLocked(within, lo, hi []byte, fn func(key []byt
 	}
 	ov := pendingKeyOverlay[struct{}]{}
 	bs.rangePending(func(k string, op writeOp) {
+		if work != nil {
+			work.OverlayOpsInspected++
+		}
 		if in([]byte(k)) {
-			ov.note(k, op, struct{}{})
+			noteMemberOverlay(&ov, k, op, work)
 		}
 	})
 	err := bs.view(func(txn *badgerv4.Txn) error {
@@ -344,6 +370,9 @@ func (bs *Store) entityIndexRangeLocked(within, lo, hi []byte, fn func(key []byt
 		defer it.Close()
 		var prev []byte
 		for it.Seek(lo); it.ValidForPrefix(within); it.Next() {
+			if work != nil {
+				work.IteratorSteps++
+			}
 			item := it.Item()
 			key := item.Key()
 			if hi != nil && bytes.Compare(key[:min(len(hi), len(key))], hi) > 0 {
@@ -356,6 +385,9 @@ func (bs *Store) entityIndexRangeLocked(within, lo, hi []byte, fn func(key []byt
 			if item.IsDeletedOrExpired() || ov.overrides(key) {
 				continue
 			}
+			if work != nil {
+				work.DiskEntriesEmitted++
+			}
 			fn(key)
 		}
 		return nil
@@ -364,6 +396,9 @@ func (bs *Store) entityIndexRangeLocked(within, lo, hi []byte, fn func(key []byt
 		return fmt.Errorf("graph: entity index range scan: %w", err)
 	}
 	for k := range ov.sets {
+		if work != nil {
+			work.OverlaySetsEmitted++
+		}
 		fn([]byte(k))
 	}
 	return nil
@@ -401,6 +436,7 @@ func foldedTxMembers[ID cmp.Ordered](f txMemberFold, conv func(snowflake.ID) ID)
 // every value), or with numeric every value whose magnitude lies in [lo, hi]
 // and NaN (index.PropertyTxMembers.MembersInRange).
 type memberQuery struct {
+	work      *storecontract.PropertyMemberWork
 	valueKeys []string
 	numeric   bool
 	lo, hi    float64
@@ -410,6 +446,9 @@ type memberQuery struct {
 // scope, propertyKey) from its member entries. Caller holds idxMu (R or W).
 func (bs *Store) diskTxMembersLocked(kind byte, scope uint16, propertyKey string, q memberQuery) (txMemberFold, error) {
 	f := txMemberFold{}
+	if q.work != nil {
+		defer func() { q.work.FoldMembersPeak = uint64(len(f)) }()
+	}
 	tok, ok := bs.propKeyTokenFor(propertyKey)
 	if !ok {
 		return f, nil
@@ -419,16 +458,16 @@ func (bs *Store) diskTxMembersLocked(kind byte, scope uint16, propertyKey string
 	case q.numeric:
 		if q.lo <= q.hi { // else (an empty range or a NaN bound) the NaN values only
 			lo, hi := storepkg.EntityIndexNumericBounds(head, q.lo, q.hi)
-			if err := bs.entityIndexRangeLocked(head, lo, hi, f.add(kind)); err != nil {
+			if err := bs.entityIndexRangeLockedWork(head, lo, hi, f.add(kind), q.work); err != nil {
 				return nil, err
 			}
 		}
 		nan := storepkg.EntityIndexNaNBound(head)
-		if err := bs.entityIndexRangeLocked(head, nan, nan, f.add(kind)); err != nil {
+		if err := bs.entityIndexRangeLockedWork(head, nan, nan, f.add(kind), q.work); err != nil {
 			return nil, err
 		}
 	case q.valueKeys == nil:
-		if err := bs.entityIndexRangeLocked(head, head, nil, f.add(kind)); err != nil {
+		if err := bs.entityIndexRangeLockedWork(head, head, nil, f.add(kind), q.work); err != nil {
 			return nil, err
 		}
 	default:
@@ -438,7 +477,7 @@ func (bs *Store) diskTxMembersLocked(kind byte, scope uint16, propertyKey string
 				prefixes = append(prefixes, p)
 			}
 		}
-		if err := bs.entityIndexWalkLocked(kind, prefixes, f.add(kind)); err != nil {
+		if err := bs.entityIndexWalkLockedWork(kind, prefixes, f.add(kind), q.work); err != nil {
 			return nil, err
 		}
 	}
@@ -504,6 +543,9 @@ func (bs *Store) relDiskMembers(key indexpkg.RelPropertyIndexKey, q memberQuery)
 	if !idx.OnDisk() {
 		return nil, false, nil
 	}
+	if q.work != nil {
+		q.work.Supported = true
+	}
 	if idx.Mutated != nil {
 		return nil, true, ErrIndexNotFound
 	}
@@ -511,7 +553,12 @@ func (bs *Store) relDiskMembers(key indexpkg.RelPropertyIndexKey, q memberQuery)
 	if err != nil {
 		return nil, true, err
 	}
-	return foldedTxMembers(f, func(id snowflake.ID) types.RelID { return types.RelID(id) }), true, nil
+	members = foldedTxMembers(f, func(id snowflake.ID) types.RelID { return types.RelID(id) })
+	if q.work != nil {
+		q.work.MemberSliceLen = uint64(len(members))
+		q.work.MemberSliceCap = uint64(cap(members))
+	}
+	return members, true, nil
 }
 
 // nodeDiskMembers is relDiskMembers for a node definition whose member
@@ -522,6 +569,9 @@ func (bs *Store) nodeDiskMembers(key indexpkg.PropertyIndexKey, q memberQuery) (
 	if _, ok := bs.nodeMemberDisk[key]; !ok {
 		return nil, false, nil
 	}
+	if q.work != nil {
+		q.work.Supported = true
+	}
 	if bs.propertyIndexes[key].Mutated != nil {
 		return nil, true, ErrIndexNotFound
 	}
@@ -529,7 +579,12 @@ func (bs *Store) nodeDiskMembers(key indexpkg.PropertyIndexKey, q memberQuery) (
 	if err != nil {
 		return nil, true, err
 	}
-	return foldedTxMembers(f, func(id snowflake.ID) types.NodeID { return types.NodeID(id) }), true, nil
+	members = foldedTxMembers(f, func(id snowflake.ID) types.NodeID { return types.NodeID(id) })
+	if q.work != nil {
+		q.work.MemberSliceLen = uint64(len(members))
+		q.work.MemberSliceCap = uint64(cap(members))
+	}
+	return members, true, nil
 }
 
 // relDiskMembersAfter is relDiskMembers for one value's page: the at most limit
