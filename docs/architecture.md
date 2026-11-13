@@ -262,8 +262,9 @@ ADR-0012.
   history, index or change-log key, pending writes included; uniqueness claims alone count as empty, since no reader
   trusts a claim without its row) closes at once and is sealed no-rows, unless a pin, a move or an open legacy log
   scope holds it (RH02EMPTY). That cleanup runs on the write path after the rotation committed and fails no write: a
-  failed probe keeps the handle, a failed close sets the background-error fence as a failed idle close does. Every
-  other demoted shard keeps its handle until the idle sweep closes it after `IdleTimeout` unused, counted from its last cold access (a demoted shard no cold read touched closes at the next
+  failed probe keeps the handle, a failed close sets the background-error fence as a failed idle close does. A
+  demoted shard still on the handle it opened hot has it closed by the handle sweep (below); every other demoted shard
+  keeps its handle until the idle sweep closes it after `IdleTimeout` unused, counted from its last cold access (a demoted shard no cold read touched closes at the next
   sweep; hot and warm reads stamp no access). A read reopens a cold shard read-only (COLDRO: 1.3 ms against 27.6 ms writable), a write or a
   checkout that may write reopens it writable (replacing a read-only handle once its readers finish), and at most
   `MaxOpenColdShards` stay open.
@@ -274,11 +275,18 @@ ADR-0012.
   (R3, `tasks/evidence/R3/measure.txt`). `WarmMemTableSize` sizes the memtable of a shard opened writable in a non-hot
   role (a warm shard at `New`, a window shard made on demand, a cold shard a late write opens, a shard reopened after a
   move or `Clear`; 8 MB against 64 MB: a restart over two warm shards 346 to 200 MB of live heap, a window shard made on
-  demand 86 to 13 MB of allocation). It does not shrink the handles a running store already holds: the old hot shard
-  keeps its hot-size handle through warm and demotion until the idle close, and reopening it at rotation
-  (read-only at demotion, or writable at the warm size at the hot-to-warm rotation) was measured and not built: each
-  adds 11 to 25 MB of allocation per rotation and a write stall under `ts.mu` that grows with the shard (45-55 ms at
-  5,000 rows, 150-213 ms at 150,000).
+  demand 86 to 13 MB of allocation).
+- **The handle sweep** (R3, `handle_sweep.go`) shrinks the handles a rotation leaves: a goroutine started by `New`,
+  kicked at the end of each rotation and on the idle tick, reopens the old hot shard, now warm, writable at
+  `WarmMemTableSize` (when set), and closes a demoted shard's handle while it still carries the hot arena
+  (`EventShard.hotArena`, set only by a hot open); a warm-size handle (its own reopen, a late write's) is left to
+  `IdleTimeout`, so a shard with steady late writes is not reopened on every kick. A swap is `MoveShard` without the
+  copy: it takes the shard's move gate, waits for its pins to drain outside `ts.mu`, closes, reopens, and re-applies
+  the store's registries as the gate drops; writers to other shards never wait, the swapping shard's wait one swap
+  (47-61 ms at 5,000 rows a shard, 150-193 ms at 50,000), and the rotation itself does not wait. It skips a shard
+  while a change-log scope is open, stops at `Close` (which waits for it) and does nothing in memory. Day 6 of the
+  measure test at 64 MB hot and 8 MB warm: 245 MB of live heap against 610 before (`tasks/evidence/R3/measure.txt`
+  section F). A crash mid-swap leaves a hot-size WAL that the next writable open migrates, or a cleanly closed shard.
 - **Shard pinning.** Every access pins a shard (`checkoutStore` / `checkinStore`); `Close` waits for pins to
   drain and the idle sweep and demotion cleanup skip pinned handles, so no reader ever holds a closed database.
 - **Old entities stay writable** on their own shard after rotation; there is no read-only tier.

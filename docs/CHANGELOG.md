@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **WARMMEM, the handle sweep** (R3): a tiered store reopens the old hot shard writable at `WarmMemTableSize` after its
+  rotation and closes a demoted shard's handle while it still carries the hot arena, on a goroutine that `New` starts
+  and `Close` waits for, kicked by each rotation and the idle tick. A swap takes the shard's move gate and waits for
+  its pins outside `ts.mu`: only that shard's readers and writers wait, 47-61 ms at 5,000 rows a shard and 150-193 ms
+  at 50,000; the rotation does not. A warm-size handle (a late write's) is left to `IdleTimeout`; a shard is skipped
+  while a change-log scope is open; in memory nothing changes. Day 6 of the measure test (64 MB hot, 8 MB warm, three
+  demoted shards): 245 MB of live heap instead of 610, 273 instead of 639 at 50,000 rows a day; without
+  `WarmMemTableSize` 350 instead of 610 (`tasks/evidence/R3/measure.txt` section F).
+- **Handles and writes per tier** (R3): `ShardAccessStats` reports the open handles per tier (`ReferenceHandles`,
+  `ArchiveHandles`, `HotHandles`, `WarmHandles`, `ColdHandles`, each `TierHandles{Writable, ReadOnly}`) and the
+  writable checkouts per tier since `New` (`HotWrites`, `WarmWrites`, `ColdWrites`, kept across a retention drop).
+
+### Fixed
+
+- **Registries during a handle swap** (R3): `SetNameRegistries` and `SetPropertyKeyRegistry` read each event shard's
+  handle under its shard mutex (they read it under `ts.mu` alone, racing `MoveShard`'s close and reopen), and a
+  moving shard's reopened handle takes the registry a set made while it moved.
+- **Retention drop beside a move** (R3): the drop of a whole expired shard waits for a move or swap of that shard
+  before it closes it, so no handle is installed on a directory the drop removes.
+
 ## [4.107.2] - 2026-11-13
 
 ### Added
