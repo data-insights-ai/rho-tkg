@@ -818,6 +818,12 @@ type Store struct {
 	nodeMemberDisk    map[indexpkg.PropertyIndexKey]struct{}
 	nodeMembersOnDisk bool
 	relDiskDefs       []relDiskDef
+	// memberLegacy: the definitions a read-only open found built in the member
+	// layout before RELDISKWIN (built marker value 1): read as they are, a
+	// windowed lookup answers every member of the value. Set while the store
+	// opens, never changed after; empty for a writable store (its open builds a
+	// legacy definition again).
+	memberLegacy map[memberDef]struct{}
 
 	// Relationship property indexes: RAM-only value maps keyed by rel-type token.
 	// Definitions persist under RelPropIndexDefsKey; data is rebuilt at open. Guarded by
@@ -1946,7 +1952,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		if propDisk, err = bs.planPropertyIndexDisk(txn, propDefs); err != nil {
 			return err
 		}
-		entityDisk = bs.planEntityIndexOpen(txn)
+		if entityDisk, err = bs.planEntityIndexOpen(txn); err != nil {
+			return err
+		}
 		bs.nodeMemberDisk = make(map[indexpkg.PropertyIndexKey]struct{})
 		for key := range propDisk.disk {
 			_, elements := propDisk.elements[key]

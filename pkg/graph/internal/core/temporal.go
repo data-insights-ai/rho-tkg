@@ -1252,6 +1252,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 		seen := make(map[types.RelID]struct{})
 		declined := false
 		var invalid error
+		var prune types.Instant
 		member := func(id types.RelID, firstTx types.Instant) bool {
 			if !c.storeRowsTrust {
 				if verr := storepkg.ValidateRelID(id); verr != nil {
@@ -1259,7 +1260,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 					return false
 				}
 			}
-			if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+			if prune != 0 && firstTx != 0 && firstTx > prune {
 				return true // first carried the value after the pin: cannot match
 			}
 			seen[id] = struct{}{}
@@ -1269,6 +1270,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 		if windowed {
 			window = &memberWindow{start, end, txAtOf(opts)}
 		}
+		prune = window.prunePin(pinTx)
 		err := c.forEachRelPropTxMemberOfKeys(tok, key, valueKeys, window, opts.ReadTally(), member)
 		if invalid != nil {
 			return invalid
@@ -1316,6 +1318,19 @@ func (w *memberWindow) store() *storepkg.PropertyTxMemberWindow {
 		return nil
 	}
 	return &storepkg.PropertyTxMemberWindow{ValidStart: w.start, ValidEnd: w.end, TxAt: w.txAt}
+}
+
+// prunePin is the pin a member's firstTxFrom may be pruned against: pin for a
+// whole-value enumeration, and for a windowed one only when the window was
+// judged at that pin (a store judging rows one at a time gives the lowest
+// firstTxFrom of the rows that meet the window at w.txAt, not of every row, so
+// against another pin it may be too high: RELDISKWIN review finding 1). 0: no
+// pruning.
+func (w *memberWindow) prunePin(pin types.Instant) types.Instant {
+	if w != nil && w.txAt != pin {
+		return 0
+	}
+	return pin
 }
 
 // forEachRelPropTxMemberOfKeys enumerates the rel property membership sidecar
@@ -1457,6 +1472,7 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 		}
 		set := make(map[types.NodeID]struct{})
 		var invalid error
+		var prune types.Instant
 		member := func(id types.NodeID, firstTx types.Instant) bool {
 			if metered != nil {
 				if err := opts.AddCandidates(1); err != nil {
@@ -1480,7 +1496,7 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 					return false
 				}
 			}
-			if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+			if prune != 0 && firstTx != 0 && firstTx > prune {
 				return true
 			}
 			if cands != nil {
@@ -1494,6 +1510,7 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 		if windowed {
 			window = &memberWindow{start, end, txAtOf(opts)}
 		}
+		prune = window.prunePin(pinTx)
 		err := c.forEachNodePropTxMemberOfKeys(tok, key, vks, window, opts.ReadTally(), member)
 		if invalid != nil {
 			return invalid

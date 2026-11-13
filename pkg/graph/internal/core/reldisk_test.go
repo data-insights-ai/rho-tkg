@@ -492,16 +492,24 @@ func TestPropertyIndexOnDiskMembershipDoors(t *testing.T) {
 			}
 		}
 		for k, sub := range ramWindows {
-			// A window answers a sound superset: on disk, every member of the value.
-			value := strings.Split(k, " window")[0]
-			if got, all := diskWindows[k], disk[value+" all"]; got != all {
-				t.Errorf("%s: %s = %s on disk, want the value's members %s", phase, k, got, all)
-			}
-			for _, name := range strings.Fields(strings.Trim(sub, "[]")) {
-				if !strings.Contains(" "+strings.Trim(diskWindows[k], "[]")+" ", " "+name+" ") {
-					t.Errorf("%s: %s on disk %s misses %s (RAM %s)", phase, k, diskWindows[k], name, sub)
+			// A window answers a subset of what the sidecar answers (RELDISKWIN
+			// option B: the time-ordered entries judge each row alone, where the
+			// sidecar joins a member's rows into one envelope), not every member of
+			// the value; TestPropertyIndexOnDiskPinnedReads holds the graph's
+			// answers equal.
+			ramSet := strings.Fields(strings.Trim(sub, "[]"))
+			for _, name := range strings.Fields(strings.Trim(diskWindows[k], "[]")) {
+				if !slices.Contains(ramSet, name) {
+					t.Errorf("%s: %s = %s on disk, %s in RAM: %s is not a RAM member", phase, k, diskWindows[k], sub, name)
 				}
 			}
+		}
+		// r1 and a carried x, then y and z at pin 1, then x again after it: at
+		// pin 1 their x rows meet no instant of [pin1, pin1+1) (the first ended
+		// before, the last starts after), so the disk drops them; the sidecar's
+		// envelope of both rows keeps them.
+		if diskWindows["R k=x window1"] != "[r3]" || diskWindows["D k=x window1"] != "[c]" {
+			t.Errorf("%s: window1 of x = %s and %s on disk, want [r3] and [c]", phase, diskWindows["R k=x window1"], diskWindows["D k=x window1"])
 		}
 		if ram["R k=x empty window"] != "[]" || disk["R k=x empty window"] != "[]" {
 			t.Errorf("%s: an empty window answered %s in RAM, %s on disk", phase, ram["R k=x empty window"], disk["R k=x empty window"])

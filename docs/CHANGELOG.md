@@ -58,6 +58,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`tasks/evidence/READBUDGET/shardopens-red.txt`).
   Not charged yet: a temporal property door's history fold without a usable index, `HasHistoryCtx`, `LatestStampsCtx`.
 
+### Changed
+
+- **RELDISKWIN** (R2's second half, ai-soc's native_test case: 40 rows carry the value, 2 meet the window; René's RH
+  list, widened 13 Nov to nodes and relationships alike). The windowed membership doors
+  (`ForEachRelPropertyTxMemberDuring`, `ForEachNodePropertyTxMemberDuring`) of a definition kept on disk
+  (`RelPropertyIndexOnDiskTypes`, `PropertyIndexOnDiskLabels`, `PropertyIndexOnDisk`) now hand on only the members whose
+  valid-time envelope meets the window, as the RAM sidecar does, where they handed on every member of the value (and
+  so a read budget refused them). Each member entry carries its row's envelope: a 32-byte value (`from`, `allTo`,
+  `lateTo`, `last`) and its version in the key (new `0x0C` kinds 5 and 6; `Instant` is ms, so a create and an
+  update of one entity in one ms would have overwritten a wider entry). A create and a history version add nothing
+  to the entry they wrote; an update writes the demoted row's entry again (one set, no read), a delete the deleted
+  row's. The door seeks a second, time-ordered copy of the entries (option B, new `0x0C` kinds 7 and 8: per row
+  one entry ordered by `lateTo`, and one ordered by `last` newest first for a row an update or a delete widened):
+  the rows ending before the window and the unwidened rows written after the pin are never visited (2 iterator
+  steps for 8, 32 and 128 unrelated rows, 13, 45 and 173 by walking the value), each row is judged alone, and a
+  member answers with the lowest transaction time of its rows that meet (a subset of the sidecar's members, a lower
+  bound the graph prunes by only at the same `TxAt`). Not bounded: rows starting after the window, widened rows
+  written after an old pin, open rows starting before the window's end, and until compaction the deleted version
+  an update of an open row leaves at `MaxInt64` (`docs/persistence.md`). `PropertyMemberWork.IteratorSeeks`
+  (new) counts its seeks; its `FoldMembersPeak` is the members it answers. Cost: 76 B a span entry against 40 B,
+  and an update that keeps its value writes the new row's entry (it wrote none); option B adds per create one
+  93-B set, per update of an open row 3 sets and a delete (340 B), per delete that writes `ValidTo` 2 sets and a
+  delete (247 B). **Store format marker 17, a minor:** a definition built before
+  (built marker value 1) is built again by the next writable open (one `WriteBatch`, the value-2 marker last; a crash
+  keeps no trusted marker), and a read-only open answers it broad as before; releases before refuse the store.
+  `TestPropTxWindow_DiskNarrowsLikeRAM` and `TestReadBudget_SelectiveDoorRefusesBroadRead` (the disk case now answers
+  within 10 candidates) and `TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates` (the steps) hold the gain;
+  `TestMemberSpan_*` hold the answer equal to a per-row oracle and within the sidecar's at every window and pin.
+
 ## [4.107.1] - 2026-11-13
 
 ### Added

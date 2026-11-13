@@ -286,16 +286,17 @@ func (bs *Store) propertyIndexDiskAddBatch(nodes []*types.Node, ids []snowflake.
 }
 
 // maintainPropertyIndexesUpdate is maintainPropertyIndexesAdd for the new node
-// n of an update of old whose ops already hold old's Remove ops. An on-disk
+// n of an update of a node whose ops already hold its Remove ops. An on-disk
 // entry the update deletes and sets again keeps its value, so the pair is
 // dropped: writing it again only added a version that every lookup of the
 // value visits until compaction drops it (PROPREWRITE, sigma's rewritten
-// state units). So is a member entry for a value old carried under the same
-// label (old's entry, as low or lower, stays), unless n lowers the bound. An
-// entry of a trusted valid-end definition is written again, unknown: n may
-// extend the node's validity past the bound it carried (VALIDENDPRUNE).
-// Not while a property index builds: its backfill skips a node the write path
-// marked, so the write path writes the entry itself.
+// state units). A member entry is n's own, its version in the key and its
+// span in the value (RELDISKWIN): it is written, unless n is old's row again,
+// same key and same value (an in-place rewrite that changed nothing). An entry
+// of a trusted valid-end definition is written again, unknown: n may extend
+// the node's validity past the bound it carried (VALIDENDPRUNE). Not while a
+// property index builds: its backfill skips a node the write path marked, so
+// the write path writes the entry itself.
 func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, old, n *types.Node, id snowflake.ID) []writeOp {
 	return bs.maintainPropertyIndexesUpdateKeys(ops, old, n, id, nil, false)
 }
@@ -305,35 +306,26 @@ func (bs *Store) maintainPropertyIndexesUpdate(ops []writeOp, old, n *types.Node
 func (bs *Store) maintainPropertyIndexesUpdateKeys(ops []writeOp, old, n *types.Node, id snowflake.ID, keys nodeDiskKeys, built bool) []writeOp {
 	from := len(ops)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id, keys, built)...)
-	var removed, unchanged map[string]struct{} // removed: the old node's ops, deletes of its entries
+	if bs.nodeMembersOnDisk && old != nil && !bs.propertyIndexBuildingLocked() && bs.nodeMemberRow(old, nil) == bs.nodeMemberRow(n, nil) {
+		ops = dropHeldOps(ops, from, bs.nodeMemberOpsLocked(old, id)) // n is old's row again: its member entries stand
+	}
+	ops = append(ops, bs.nodeRewrittenTimeOpsLocked(old, n, id)...) // an in-place rewrite moves the row's time-ordered entries
+	var removed, unchanged map[string]struct{}                      // removed: the old node's ops, deletes of its entries
 	for _, op := range ops[:from] {
 		if removed == nil {
 			removed = make(map[string]struct{})
 		}
 		removed[string(op.key)] = struct{}{}
 	}
-	if bs.nodeMembersOnDisk && old != nil {
-		oldTx, _, _ := old.TxStamps()
-		newTx, _, _ := n.TxStamps()
-		if newTx >= oldTx { // n does not lower the bound (0, unknown, is lowest)
-			for _, op := range bs.nodeMemberOpsLocked(old, id) { // old's member entries, by value prefix and ID
-				if removed == nil {
-					removed = make(map[string]struct{})
-				}
-				removed[string(op.key[:len(op.key)-8])] = struct{}{}
-			}
-		}
-	}
 	bounded := bs.validEndEntryKeysLocked(n, id) // written again, unknown (VALIDENDPRUNE)
 	for _, op := range ops[from:] {              // the on-disk entry sets
-		k := op.key
-		if k[0] == storepkg.KeyEntityIndex && k[1] == storepkg.EntityIndexNodeMember {
-			k = k[:len(k)-8] // a member entry by value prefix and ID
+		if op.key[0] == storepkg.KeyEntityIndex && (op.key[1] == storepkg.EntityIndexNodeSpan || op.key[1] == storepkg.EntityIndexNodeTime) {
+			continue // a member entry is the new row's own (its version in the key, its span in the value): never unchanged (RELDISKWIN)
 		}
 		if _, reset := bounded[string(op.key)]; reset {
 			continue
 		}
-		if _, ok := removed[string(k)]; ok {
+		if _, ok := removed[string(op.key)]; ok {
 			if unchanged == nil {
 				unchanged = make(map[string]struct{})
 			}

@@ -1,0 +1,33 @@
+RELDISKWIN option B red (13 Nov, before the time-ordered entries): go test -v -run TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates ./pkg/graph/store/badger
+The flushed window [1000,1010) walks every entry of the value (13/45/173 for n = 8/32/128); option B wants <= 4 at pin 0, <= 6 at pin 350.
+    badgerstore_member_span_test.go:810: n=8 flushed rel window [1000,1010)@0: 13 iterator steps, want at most 4 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=8 flushed rel window [1000,1010)@0: iterator steps 13, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=8 flushed node window [1000,1010)@0: 13 iterator steps, want at most 4 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=8 flushed node window [1000,1010)@0: iterator steps 13, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=8 flushed rel window [1000,1010)@350: 13 iterator steps, want at most 6 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=8 flushed rel window [1000,1010)@350: iterator steps 13, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=8 flushed node window [1000,1010)@350: 13 iterator steps, want at most 6 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=8 flushed node window [1000,1010)@350: iterator steps 13, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=32 flushed rel window [1000,1010)@0: 45 iterator steps, want at most 4 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=32 flushed rel window [1000,1010)@0: iterator steps 45, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=32 flushed node window [1000,1010)@0: 45 iterator steps, want at most 4 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=32 flushed node window [1000,1010)@0: iterator steps 45, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=32 flushed rel window [1000,1010)@350: 45 iterator steps, want at most 6 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=32 flushed rel window [1000,1010)@350: iterator steps 45, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=32 flushed node window [1000,1010)@350: 45 iterator steps, want at most 6 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=32 flushed node window [1000,1010)@350: iterator steps 45, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=128 flushed rel window [1000,1010)@0: 173 iterator steps, want at most 4 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=128 flushed rel window [1000,1010)@0: iterator steps 173, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=128 flushed node window [1000,1010)@0: 173 iterator steps, want at most 4 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=128 flushed node window [1000,1010)@0: iterator steps 173, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=128 flushed rel window [1000,1010)@350: 173 iterator steps, want at most 6 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=128 flushed rel window [1000,1010)@350: iterator steps 173, held peak 1, emitted 2
+    badgerstore_member_span_test.go:810: n=128 flushed node window [1000,1010)@350: 173 iterator steps, want at most 6 (the unrelated history is walked)
+    badgerstore_member_span_test.go:812: n=128 flushed node window [1000,1010)@350: iterator steps 173, held peak 1, emitted 2
+--- FAIL: TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates (0.00s)
+    --- FAIL: TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates/n=8 (0.24s)
+    --- FAIL: TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates/n=32 (0.24s)
+    --- FAIL: TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates/n=128 (0.26s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.300s
+FAIL

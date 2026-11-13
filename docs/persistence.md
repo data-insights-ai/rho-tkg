@@ -156,6 +156,7 @@ Purpose: an older binary must refuse data it cannot read, instead of misdecoding
 | 14 | v4.94.0 on, only with `PropertyIndexValidEnd` listing an on-disk definition | the store's `0x0A` entries of a listed definition carry valid-end bounds that every write must reset (VALIDENDPRUNE, "Valid-end bounds" below), which an older release would not do; raised with the definition's valid-end marker, by its create or the writable open that lists it | unchanged |
 | 15 | v4.96.0 on, only with a composite node index of a label kept on disk (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`) built | the store holds composite entries in `0x0C` (kind 4) and their built markers (COMPDISK, "Composite node indexes on disk" below), which an older release would neither maintain nor clear; raised with the first marker, by its create or the writable open that builds it | unchanged |
 | 16 | v4.102.0 on (UNIQUELOOK), only after a first `CreateUnique` (UniqueCurrent) on a plain badger store or a tiered store (its reference shard), or the writable open that seeds a constraint made before; a `CreateUnique` that fails raises nothing | the store holds an owner index (badger: under `0x10`, `KeyUniqueOwner`, "Key layout" below; tiered: `data/index/`), which an older release would not claim into, so a newer one trusting its ready mark would miss holders; raised with the first declaration (`DeclareUniqueOwnerIndex`; tiered: the reference shard's `MetaSetDurableRaising`); the open that raises it logs one line | unchanged |
+| 17 | RELDISKWIN (the minor that raised it), only with an on-disk property index (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`, `RelPropertyIndexOnDiskTypes`) and a first definition built in the span layout | the store holds member entries of kinds 5 and 6 (a row's valid-time envelope in the value, its version in the key; "Persistent relationship property index" below) and built markers of value 2, which an older release would neither maintain nor rewrite when an update or a delete moves the row, so a newer one would trust spans it let go stale; raised with the first such marker, by its create or the writable open that builds it | unchanged |
 
 One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7), or in the batch of the open that writes the entry needing it (marker 12 and 14, `planPropertyIndexDisk`; markers 13 and 15, `commitEntityIndexOpen`). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features carries the writer's base marker (a writable open raises 3 to 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: "Row wire format" below; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
 
@@ -217,6 +218,7 @@ A store is opened by a release that reads its marker (the table above). Opening 
 | 14 | v4.94.0 and later | v4.93.x and earlier (valid-end bounds it would not reset) |
 | 15 | v4.96.0 and later | v4.95.x and earlier (on-disk composite entries it would not maintain) |
 | 16 | v4.102.0 and later | v4.101.x and earlier (unique-owner keys it would not maintain) |
+| 17 | RELDISKWIN and later | the release before it (member entries it would neither write with a span nor rewrite on an update or a delete) |
 
 Other formats, each refused by name by a release that does not read it: export streams (full `Export` 2, `ExportSince` delta 3, whole-axis store 4; `Import` / `ImportMerge` accept 1 to 4); the tiered catalog's `catalog/2` entry `__format__` (v4.78.0: a store with a shard off the hot volume; earlier releases refuse it at load); the sharded slot catalog (`catalogFormatVersion` 1); column segment files and their `MANIFEST` (`TKGSMANI`, version 1).
 
@@ -348,7 +350,7 @@ the LSM. Every prefix from `0x01` to `0x10` is in use.
 | `0x09` `KeyChangeLog` | `<8B LSN>` | `tag(1B) ‖ msgpack(body)` | 9B | change-log record (`ChangeLog`) |
 | `0x0A` `KeyPropertyIndex` | `<2B propKeyToken>/<payload>/<8B nodeID>` | empty, or an 8B big-endian valid-end bound (`PropertyIndexValidEnd`) | var | property index (`PropertyIndexOnDisk`) |
 | `0x0B` `KeyTemporalIndex` | `<2B labelToken>/<8B from>/<8B nodeID>` | 8B big-endian TO | 19B | temporal-index rebuild rows (`TemporalIndexOnDisk`) |
-| `0x0C` `KeyEntityIndex` | `<1B kind>/<2B scope token>/<2B propKeyToken>/<payload>/<8B ID>[/<8B txFrom>]` | empty | var | relationship property index and node membership entries (`RelPropertyIndexOnDiskTypes`, on-disk node indexes; RELDISK), composite node index entries (kind 4, COMPDISK) |
+| `0x0C` `KeyEntityIndex` | `<1B kind>/<2B scope token>/<2B propKeyToken>/<payload>/<8B ID>[/<8B txFrom>[/<4B version>]]`; kinds 7 and 8: `.../<payload>/<1B axis>/<8B t1>/<8B from>/<8B ID>/<8B txFrom>/<4B version>` | empty; 32 B (from, allTo, lateTo, last) for kinds 5 to 8 | var | relationship property index and node membership entries (`RelPropertyIndexOnDiskTypes`, on-disk node indexes; RELDISK), composite node index entries (kind 4, COMPDISK) |
 | `0x0D` `KeyExAdj` | `<8B nodeID>/<1B dir>/<8B relID>` | empty | 18B | ex-adjacency (`ExAdjacencyCapability`, backlog 50) |
 | `0x0E` `KeyFlushStage` | `<8B staging sequence>/<the entry's own key>` | `op(1B) ‖ value` | var | a staged flush, between its start and its clean-up (FLUSHPART); no reader iterates it |
 | `0x0F` `KeyMeta` | `<name>` | per key (below) | var | metadata |
@@ -369,8 +371,12 @@ Value encodings:
   on two labels over one property key share rows ("Persistent property index").
 - Temporal index (`0x0B`): `from` is sign-bit flipped, so a prefix scan yields (From ASC, ID ASC).
 - Entity index (`0x0C`, `entity_index_key.go`): kind 1 a relationship's current entry (no `txFrom`), kind 2 a
-  relationship's member entry, kind 3 a node's member entry, kind 4 a composite node index's current entry (no
-  `txFrom`); the scope token is the type or label, so a definition owns its prefix. Numeric payload as `0x0A`; raw
+  relationship's member entry, kind 3 a node's member entry (kinds 2 and 3: the layout of format markers 13 to 16, no
+  value), kind 4 a composite node index's current entry (no `txFrom`), kind 5 a relationship's and kind 6 a node's
+  member entry with a span (format marker 17: `version` ends the key, the 32-byte value is `from | allTo | lateTo |
+  last`, big-endian int64 each; "Persistent relationship property index"), kind 7 a relationship's and kind 8 a
+  node's time-ordered member entry (the same rows and value in a second order, RELDISKWIN option B: axis 1 `t1` =
+  `lateTo` sign-flipped, ascending; axis 2 `t1` = the complement of `last` sign-flipped, descending); the scope token is the type or label, so a definition owns its prefix. Numeric payload as `0x0A`; raw
   `0x02 | value-key bytes with 0x00 written 0x00 0xFF | 0x00`, so an equality walk stops at the first key longer
   than its value's prefix ID and tail ("Persistent relationship property index"). A kind-4 head names every key:
   `<2B label>/<2B first key token>/<1B key count>/<2B per other key>`, so two composites of a label never share a
@@ -610,30 +616,88 @@ no membership sidecar.
 
 - **Current entries** (kind 1): one per relationship and indexed value, deleted when the value changes or the
   relationship goes; equality lookups (`ByTypeAndProperty`, its multi-value form) read them, then the rows.
-- **Member entries** (kind 2): one per value a row of the relationship carried and per transaction time of such a
-  row, history rows included; never deleted by an update. A reader folds them per relationship to the lowest
-  transaction time (0, unknown, lowest of all): the membership sidecar's answer (`ForEachRelPropertyTxMember` and
-  its window, page, range and any-value doors), read from disk. An update that keeps a value writes no entry again
-  unless its row lowers the relationship's bound.
-- **Node member entries** (kind 3): every node definition kept on disk (`PropertyIndexOnDisk` or a label in
-  `PropertyIndexOnDiskLabels`) answers its pinned reads from member entries too, so neither index kind builds a
+- **Member entries** (kind 5; kind 2 before RELDISKWIN): one per value a row of the relationship carried, keyed by
+  the row's transaction time and version (`Instant` is ms: a create and an update of one entity in one ms share value,
+  ID and time, and the newer entry would overwrite a wider one), history rows included. A reader folds them per
+  relationship to the lowest transaction time (0, unknown, lowest of all): the membership sidecar's answer
+  (`ForEachRelPropertyTxMember` and its window, page, range and any-value doors), read from disk. An update that
+  writes a row of the same key and value again (an in-place rewrite that changes nothing) writes no entry.
+- **Span (RELDISKWIN).** The 32-byte value is the row's valid-time envelope as the sidecar keeps it
+  (`index.PropertyTxMembers`, `index.DiskMember`): `[from, allTo)` the row's span at every pin (a tombstone whose delete
+  wrote the `ValidTo` reopens to `math.MaxInt64`), `[from, lateTo)` its span at pins at or after `last` (its stored end;
+  for a row an update replaced while open, the replacing row's start), `last` the newest of its `TxFrom`, `TxTo` and
+  `DeletedAt`. The windowed door (`ForEachRelPropertyTxMemberDuring`, `ForEachNodePropertyTxMemberDuring`) walks the
+  value's entries in key order, folds one entity's entries at a time (union of the `[from, allTo)`, the `[from, lateTo)`
+  and the largest `last`) and hands on the entities whose envelope meets the window: the `late` envelope when `last` is
+  at or before the pin (or there is none), the `all` one otherwise; it holds the entities it answers and the write
+  buffer's entries for the value, not every member of the value. Writes add no operation to a create or a history
+  version (the value rides the entry already written); an update writes one more set, the demoted row's entry again
+  with `lateTo` the new row's start and `last` its `TxTo` (no read), and a delete one set, the deleted row's entry
+  as its tombstone stamps it; they ride the row's batch. A value of another length (never written) makes its member
+  meet every window.
+- **Time-ordered entries (kinds 7 and 8, RELDISKWIN option B).** The windowed door reads a second ordering of the
+  same rows, kept beside kinds 5 and 6 (the whole-value, paged, numeric-range and any-value doors keep reading those;
+  a read-only open of a value-1 definition stays broad). Per row one entry on axis 1, ordered by `lateTo`, and, for a
+  widened row (`allTo > lateTo`: an open row an update demoted, a tombstone whose delete wrote `ValidTo`), one on axis
+  2, ordered by `last` newest first: the sidecar's two views (`late`, `recent`). A window `[S, E)` at pin `P` seeks
+  axis 1 at `lateTo > S` to the axis's end and, with `0 < P < MaxInt64`, axis 2 from its start down to the first row
+  with `last <= P`; each row met is judged alone (`index.RowMeets`: its `[from, allTo)` when `last > P`, else its
+  `[from, lateTo)`), and a member answers with the lowest `TxFrom` of its rows that meet. Judging rows one at a time
+  answers a subset of the sidecar's members (which joins a member's rows into one envelope) and a superset of what a
+  resolver matches; the graph prunes by that `TxFrom` only against the pin the window was judged at
+  (`memberWindow.prunePin`: `RelEffectiveTimelinesByProperties` pins by `TxPin` with the window judged at every row,
+  so it does not prune; before the review fix it dropped a member updated after the pin). The
+  write buffer's entries of each axis are judged the same way. Not bounded: rows that start after `E` (axis 1 is
+  ordered by end), widened rows written after an old pin, open rows that start before `E` (genuine candidates), and
+  until compaction the deleted versions a move leaves (an update of an open row deletes its axis-1 entry at
+  `MaxInt64`, past every window's start: `docs/badger.md` rule 12; `TestMemberSpan_SeekShapes`). Writes ride the
+  row's batch without a read: a create, put or history version sets the axis-1 entry (and the axis-2 one for a widened
+  row); a demotion, a delete and an in-place rewrite of a row move its entries (the old keys deleted unless the same);
+  a retention purge deletes, per row of the entity, the span entry, the axis-1 entries at each end the row may have
+  been written with (its stored end, its any-pin end, the end each other row of the entity gives it) and the axis-2
+  entry; an exact erasure, a drop, a rebuild and `Clear` treat kinds 7 and 8 as 5 and 6. No new marker: the value-2
+  built marker means kinds 5 to 8 (kinds 7 and 8 came before any release of format 17).
+- **Node member entries** (kind 6; kind 3 before): every node definition kept on disk (`PropertyIndexOnDisk` or a label
+  in `PropertyIndexOnDiskLabels`) answers its pinned reads from member entries too, so neither index kind builds a
   membership sidecar in RAM. Its `0x0A` entries keep the current lookups.
 - **Places and markers.** The type is named at open by `badger.Config.RelTypeNames` (tiered passes its registry
   file) or the registry the store persisted. Each definition kept in `0x0C` has a built marker
   (`entity_index_built/` + kind + scope token + key), set by its create or the open that builds it, deleted by a
   writable open that keeps it in RAM or by its drop: a type that joins the list is built at the next writable open,
   with its stale entries deleted in the same `WriteBatch` and the markers last; a read-only open keeps an unbuilt
-  definition in RAM. The first marker raises the format marker to 13: a store with any on-disk property index
-  built by v4.92.0 is refused by v4.91.x.
+  definition in RAM. The first marker raised the format marker to 13 (v4.92.0), and raises it to 17 since RELDISKWIN.
+  A marker's value is the layout of its member entries: 1 (kinds 2 and 3, built before RELDISKWIN), 2 (kinds 5 and 6).
+  A writable open with a property-key registry that finds a value-1 marker builds the definition again as the span
+  layout: it deletes the definition's entries of both layouts and its marker first, writes the rebuilt entries (a
+  history row's `lateTo` from the row that replaced it among the next 8 rows of its entity, the current row read once
+  per entity when the window runs past the history rows) and the value-2 marker last, in one `WriteBatch`
+  (`docs/badger.md` rule 1: a crash keeps a prefix without the marker, and the next open builds again). A
+  read-only open that finds a value-1 marker reads the definition as it is: its windowed lookups answer every member
+  of the value, the broad answer of before; the rest of its doors answer as always. Tiered needs nothing: it unites
+  the members of its shards, each opened and rebuilt on its own (a cold shard opened read-only stays broad until
+  a writable open).
 - **Removal.** A drop deletes the definition's entries; a retention purge and an exact erasure delete every
   entry of the entities they remove, history included (a member entry holds a value verbatim); `Clear` drops the
-  keyspace.
+  keyspace. A row replaced in place without a history row leaves its span and time-ordered entries behind: a
+  retention purge, which deletes the entries of the rows it finds, does not reach them; an exact erasure does. They
+  stay sound (stale members the resolver rejects) but keep the old value on disk until an erasure or a drop.
 - **Refused or declined.** `RangeCounts` and `Elements` on a listed type (`ErrCapabilityNotSupported`, also an
-  Elements definition loaded at open). A member key is 12 bytes longer than the `0x0A` key, so the largest value an
-  on-disk index accepts shrinks by 12 bytes; every write door refuses a longer one with `ErrEntryTooLarge` before
+  Elements definition loaded at open). A time-ordered member key (kinds 7 and 8) is 33 bytes longer than the `0x0A` key
+  (axis, `t1`, `from`, the transaction time and the version), so the largest value an on-disk index accepts shrinks by
+  33 bytes; every write door refuses a longer one with `ErrEntryTooLarge` before
   any mutation.
 - **Cost.** A paged member lookup (`...After`) walks its whole value, then pages; a history truncate leaves member
-  entries, which only widen a candidate set the reader filters by the rows.
+  entries, which only widen a candidate set the reader filters by the rows. A row costs one entry per value it
+  carries, 76 B with its span (44 B of key, 32 B of value; 40 B before), written with the row (measured,
+  `tasks/evidence/RELDISKWIN/green.txt`, `TestMemberSpan_WriteOverhead`, 5,000 creates and 5,000 updates with history
+  on an in-memory badger, load moves the times: a create 3.7 us with the index in RAM, 4.0 us on disk; an update 4.5 us
+  against 6.4 us, the demoted row's entry written again); an update that keeps its value still writes the new row's
+  entry (before RELDISKWIN it wrote none), so an entity updated k times with history has k+1 entries per value.
+  Option B adds per door (`TestMemberSpan_WriteOverhead`, key + value bytes): a create 1 set of 93 B to the span
+  entry's 76 B; an update of an open row 3 sets and 1 delete, 340 B, to the span entries' 2 sets, 152 B; a delete
+  that writes `ValidTo` 2 sets and 1 delete, 247 B, to 76 B. The windowed door's flushed walk of 8, 32 and 128
+  unrelated rows ending before the window is 2 steps at pin 0 and pin 350 (13, 45 and 173 before option B: the
+  value's every entry; `tasks/evidence/RELDISKWIN/green-seek.txt`), the same 2 members handed on.
 
 ## Composite node indexes on disk (since v4.96.0, COMPDISK)
 

@@ -317,6 +317,7 @@ func (c *Core) relTupleMembers(meter *storepkg.ReadMeter, tok uint16, key string
 		var (
 			ids     []types.RelID
 			invalid error
+			prune   types.Instant
 		)
 		member := func(id types.RelID, firstTx types.Instant) bool {
 			if invalid = meter.AddCandidates("RelEffectiveTimelinesByProperties", 1); invalid != nil {
@@ -327,7 +328,7 @@ func (c *Core) relTupleMembers(meter *storepkg.ReadMeter, tok uint16, key string
 					return false
 				}
 			}
-			if firstTx == 0 || firstTx <= pinTx {
+			if prune == 0 || firstTx == 0 || firstTx <= prune {
 				if invalid = meter.AddBufferBytes("RelEffectiveTimelinesByProperties", bufSliceRef); invalid != nil {
 					return false
 				}
@@ -339,6 +340,7 @@ func (c *Core) relTupleMembers(meter *storepkg.ReadMeter, tok uint16, key string
 		if windowed {
 			window = &memberWindow{start, end, 0}
 		}
+		prune = window.prunePin(pinTx)
 		err := c.forEachRelPropTxMemberOfKeys(tok, key, valueKeys, window, meter.Tally("RelEffectiveTimelinesByProperties"), member)
 		if invalid != nil {
 			return nil, invalid

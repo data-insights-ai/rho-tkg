@@ -1,0 +1,56 @@
+RELDISKWIN option B green (13 Nov): go test -v -run 'TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates|TestMemberSpan_WriteOverhead|TestMemberSpan_SeekShapes|TestMemberSpan_TimeEntriesPerRow|TestMemberSpan_PurgeErasure' ./pkg/graph/store/badger
+Flushed window [1000,1010): 2 iterator steps for n = 8/32/128 at pin 0 and 350 (red: 13/45/173). Times are logged under load (load average ~48), not asserted.
+    badgerstore_member_span_test.go:1036: 
+        disk=false: 5000 creates 7.06 us each, 5000 updates 8.00 us each; 0 span entries, 0 key bytes + 0 value bytes (0.0 B each)
+        disk=true: 5000 creates 12.65 us each, 5000 updates 14.96 us each; 10000 span entries, 440000 key bytes + 320000 value bytes (76.0 B each)
+        disk=true after the updates: 10000 late-axis and 5000 recent-axis entries (option B)
+        create: before (span entries) 1.0 sets 0.0 deletes 76.0 B; option B adds 1.0 sets 0.0 deletes 93.0 B (per door, 100 doors)
+        update of an open row: before (span entries) 2.0 sets 0.0 deletes 152.0 B; option B adds 3.0 sets 1.0 deletes 340.0 B (per door, 100 doors)
+        delete writing ValidTo: before (span entries) 1.0 sets 0.0 deletes 76.0 B; option B adds 2.0 sets 1.0 deletes 247.0 B (per door, 100 doors)
+--- PASS: TestMemberSpan_WriteOverhead (0.46s)
+    badgerstore_member_seek_test.go:204: ends at start n=8 window [1000,1010)@0: iterator steps 2, seeks 1, disk entries 2, members 2
+    badgerstore_member_seek_test.go:204: old pin n=8 window [1000,1010)@150: iterator steps 18, seeks 2, disk entries 10, members 10
+    badgerstore_member_seek_test.go:77: 30 span entries, 30 late-axis entries, 10 recent-axis entries
+    badgerstore_member_seek_test.go:204: ends at start n=32 window [1000,1010)@0: iterator steps 2, seeks 1, disk entries 2, members 2
+    badgerstore_member_seek_test.go:204: future n=32 window [1000,1010)@0: iterator steps 34, seeks 1, disk entries 34, members 2
+    badgerstore_member_seek_test.go:144: purge: 16 member entries left, none of a removed entity
+    badgerstore_member_seek_test.go:144: erasure: 0 member entries left, none of a removed entity
+    badgerstore_member_seek_test.go:204: open n=32 window [1000,1010)@0: iterator steps 34, seeks 1, disk entries 34, members 34
+    badgerstore_member_seek_test.go:204: open n=8 window [1000,1010)@0: iterator steps 10, seeks 1, disk entries 10, members 10
+    badgerstore_member_seek_test.go:204: ends at start n=128 window [1000,1010)@0: iterator steps 2, seeks 1, disk entries 2, members 2
+    badgerstore_member_seek_test.go:204: future n=8 window [1000,1010)@0: iterator steps 10, seeks 1, disk entries 10, members 2
+    badgerstore_member_seek_test.go:204: open n=128 window [1000,1010)@0: iterator steps 130, seeks 1, disk entries 130, members 130
+    badgerstore_member_seek_test.go:204: future n=128 window [1000,1010)@0: iterator steps 130, seeks 1, disk entries 130, members 2
+--- PASS: TestMemberSpan_TimeEntriesPerRow (0.03s)
+    badgerstore_member_seek_test.go:204: old pin n=128 window [1000,1010)@150: iterator steps 258, seeks 2, disk entries 130, members 130
+--- PASS: TestMemberSpan_PurgeErasureDropLeaveNoTimeEntries (0.00s)
+    --- PASS: TestMemberSpan_PurgeErasureDropLeaveNoTimeEntries/drop (0.02s)
+    --- PASS: TestMemberSpan_PurgeErasureDropLeaveNoTimeEntries/erasure (0.03s)
+    --- PASS: TestMemberSpan_PurgeErasureDropLeaveNoTimeEntries/purge (0.03s)
+    badgerstore_member_seek_test.go:204: old pin n=32 window [1000,1010)@150: iterator steps 66, seeks 2, disk entries 34, members 34
+--- PASS: TestMemberSpan_SeekShapes (0.00s)
+    badgerstore_member_span_test.go:904: n=32 flushed rel window [1000,1010)@0: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=32 flushed node window [1000,1010)@0: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=32 flushed node window [1000,1010)@350: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=32 flushed rel window [1000,1010)@350: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=8 flushed rel window [1000,1010)@0: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=8 flushed node window [1000,1010)@0: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=8 flushed rel window [1000,1010)@350: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=8 flushed node window [1000,1010)@350: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=128 flushed rel window [1000,1010)@0: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=128 flushed node window [1000,1010)@0: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=128 flushed rel window [1000,1010)@350: iterator steps 2, held peak 2, emitted 2
+    badgerstore_member_span_test.go:904: n=128 flushed node window [1000,1010)@350: iterator steps 2, held peak 2, emitted 2
+--- PASS: TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.184s
+
+Mutation sweep (each applied alone, then TestMemberSpan|TestRowMeets|TestMemberWork|TestPropTxWindow):
+  axis-2 entry skipped on demotion: killed (HandCheckedWindows, TimeEntriesPerRow, SeekShapes, DiskMatchesSidecar, LegacyDefinitionBroadThenRebuilt)
+  old axis-1 delete skipped: killed (TimeEntriesPerRow, HandCheckedWindows, DiskMatchesSidecar, LegacyDefinitionBroadThenRebuilt)
+  recent axis scans while last >= pin (break at last < pin): survived first (cost only, same answers); killed by SeekShapes' step count at pin 200 (748f36f5)
+  RowMeets last >= pin: killed (RowMeets_IsOneEntryMember, DiskMatchesSidecar, LegacyDefinitionBroadThenRebuilt)
+  seek at S instead of S+1: killed (SeekShapes 'ends at start')
+  from <= E: killed (RowMeets_IsOneEntryMember, RebuildCrashLeavesNoTrustedMarker)
+  built marker before the entries: killed (RebuildCrashLeavesNoTrustedMarker)
+  purge without the EndedBy end: killed (PurgeErasureDropLeaveNoTimeEntries/purge)
+-race on TestMemberSpan|TestRowMeets|TestMemberWork|TestPropTxWindow|TestEntityIndex: ok

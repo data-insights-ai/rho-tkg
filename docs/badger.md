@@ -213,7 +213,9 @@ Each rule says what rho does; an open gap is a `tasks/todo.md` item, a closed on
    a larger one is staged under `0x0E` and committed by a marker that `New` re-applies
    (`badgerstore_flush_staged.go`, `docs/persistence.md` § Durability). The index backfills
    (`badgerstore_property_disk.go`, `badgerstore_temporal_disk.go`) stay one `WriteBatch` with their built marker
-   last: a crash keeps a prefix without the marker, and the backfill runs again.
+   last: a crash keeps a prefix without the marker, and the backfill runs again. So does the rebuild of an on-disk
+   definition's member entries as the span layout (RELDISKWIN, `commitEntityIndexOpen`; the old marker is deleted in
+   the first part, the new one set last; `TestMemberSpan_RebuildCrashLeavesNoTrustedMarker`).
 2. **Read by walking, not by point gets, where IDs come in order.** A `Get` costs about 4x the row and a read
    transaction; a forward walk costs almost nothing. The read snapshot walks; entity point reads on a cache miss,
    history version and anchor reads, and committed-stamp reads still `Get`. Gap: GETWALK.

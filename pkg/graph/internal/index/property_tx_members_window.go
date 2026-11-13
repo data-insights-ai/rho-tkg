@@ -116,6 +116,21 @@ func (ri RowInfo) endedBy(next RowInfo) Span {
 	return ri.Span
 }
 
+// Last returns the row's newest stamp: TxFrom, TxTo or DeletedAt, the latest
+// (the span entries of the on-disk membership keep it, DiskMember).
+func (ri RowInfo) Last() types.Instant { return ri.last() }
+
+// AnyPinSpan returns the row's span as read at any pin (anyPinSpan).
+func (ri RowInfo) AnyPinSpan() Span { return ri.anyPinSpan() }
+
+// EndedBy returns what ri still answers at pins where next is visible
+// (endedBy).
+func (ri RowInfo) EndedBy(next RowInfo) Span { return ri.endedBy(next) }
+
+// Replaced reports whether ri is a row a later row replaced while it was
+// believed (replaced).
+func (ri RowInfo) Replaced() bool { return ri.replaced() }
+
 const (
 	postAll   uint8 = 1 << iota // all holds the any-pin envelope
 	postLate                    // late holds the history part of the late envelope
@@ -706,6 +721,28 @@ type replacer[ID cmp.Ordered] struct {
 // next versions of its entity (it is the next one on every write path); a row
 // whose replacing row is not found keeps its own span (sound).
 const replacingRowWindow = 8
+
+// ReplacingRowWindow is RowScan's bound on the search for a row's replacing
+// row, for a scan that streams (LateSpan).
+const ReplacingRowWindow = replacingRowWindow
+
+// LateSpan returns the span ri answers at pins at or after its last stamp, as
+// RowScan.Into derives it for a history row: ri's stored span, or, for a row
+// an update replaced while it was believed, what EndedBy gives for the row
+// among the next ReplacingRowWindow rows of its entity (after, in version
+// order, whatever they carry) that was recorded at ri's TxTo. A row whose
+// replacing row is not found keeps its own span (sound).
+func (ri RowInfo) LateSpan(after []RowInfo) Span {
+	if !ri.replaced() {
+		return ri.Span
+	}
+	for k := 0; k < len(after) && k < replacingRowWindow; k++ {
+		if after[k].TxFrom == ri.TxTo && after[k].Version > ri.Version {
+			return ri.endedBy(after[k])
+		}
+	}
+	return ri.Span
+}
 
 // Add notes one scanned row. vks is retained.
 func (s *RowScan[ID]) Add(id ID, ri RowInfo, current bool, vks []string) {

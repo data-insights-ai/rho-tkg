@@ -459,8 +459,8 @@ func TestCompositeDisk_Opens(t *testing.T) {
 	if !onDisk(bs) || compositeIDs(t, bs, d, y, QueryOpts{}) != "[1 2 3]" {
 		t.Errorf("listed: on disk %v, %s, want on disk, [1 2 3]", onDisk(bs), compositeIDs(t, bs, d, y, QueryOpts{}))
 	}
-	if v := storedFormatMarker(t, bs); v != storepkg.CompositeDiskStoreFormatVersion {
-		t.Errorf("format marker %d after the build, want %d", v, storepkg.CompositeDiskStoreFormatVersion)
+	if v := storedFormatMarker(t, bs); v != storepkg.MemberSpanStoreFormatVersion { // a property index of D built in the same open raises it past 15 (RELDISKWIN)
+		t.Errorf("format marker %d after the build, want %d", v, storepkg.MemberSpanStoreFormatVersion)
 	}
 	closeStore(bs)
 	closeStore(open(true, false)) // marked: kept
@@ -495,8 +495,8 @@ func TestCompositeDisk_Opens(t *testing.T) {
 	}
 	tokA, _ := bs.propKeyTokenFor("a")
 	var members int
-	for _, k := range entityKeys(t, bs, storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeMember, d, tokA)) {
-		if _, id, _, _ := storepkg.EntityIndexEntryOf(k, storepkg.EntityIndexNodeMember); id == 3 {
+	for _, k := range entityKeys(t, bs, storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeSpan, d, tokA)) {
+		if _, id, _, _ := storepkg.EntityIndexEntryOf(k, storepkg.EntityIndexNodeSpan); id == 3 {
 			members++
 		}
 	}

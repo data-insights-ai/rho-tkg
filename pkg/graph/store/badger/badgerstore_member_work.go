@@ -35,8 +35,8 @@ func memberWorkCallback[ID any](fn func(ID, types.Instant) bool, work *storecont
 	}
 }
 
-func noteMemberOverlay(ov *pendingKeyOverlay[struct{}], key string, op writeOp, work *storecontract.PropertyMemberWork) {
-	ov.note(key, op, struct{}{})
+func noteMemberOverlay[E any](ov *pendingKeyOverlay[E], key string, op writeOp, e E, work *storecontract.PropertyMemberWork) {
+	ov.note(key, op, e)
 	if work != nil {
 		work.OverlayOpsMatched++
 		work.OverlaySetsPeak = max(work.OverlaySetsPeak, uint64(len(ov.sets)))

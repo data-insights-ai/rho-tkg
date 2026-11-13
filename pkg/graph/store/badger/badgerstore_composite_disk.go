@@ -74,7 +74,7 @@ func (bs *Store) refreshCompositeDiskDefsLocked() {
 // compositeDiskEntry is the op of id's entry for the tuple tupleKey under head.
 func compositeDiskEntry(head []byte, tupleKey string, id snowflake.ID, opType writeOpType) writeOp {
 	k := append(append(make([]byte, 0, len(head)+len(tupleKey)+8), head...), tupleKey...)
-	return writeOp{opType: opType, key: storepkg.AppendEntityIndexEntry(k, storepkg.EntityIndexNodeComposite, id, 0)}
+	return writeOp{opType: opType, key: storepkg.AppendEntityIndexEntry(k, storepkg.EntityIndexNodeComposite, id, 0, 0)}
 }
 
 // compositeDiskOpsLocked returns n's entries in the composite definitions kept

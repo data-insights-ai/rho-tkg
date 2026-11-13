@@ -627,7 +627,16 @@ func TestUniqueLookTieredDowngradeRefused(t *testing.T) {
 func TestUniqueLookFailedCreateUniqueLeavesMarker(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	g, bs := uniqLookBadger(t, dir)
+	// The property index stays in RAM: one kept on disk writes member entries,
+	// which raise the marker to 17 (RELDISKWIN) and hide a raise to 16.
+	bs, err := badger.New(badger.Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 12, Store: bs})
+	if err != nil {
+		t.Fatal(err)
+	}
 	var tok uint16
 	for i := 0; i < 2; i++ {
 		n, err := g.Nodes().Add(ctx, []string{"Host"}, map[string]any{"key": "twin"})

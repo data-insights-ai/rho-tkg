@@ -117,7 +117,7 @@ func TestRelPropertyIndexOnDisk_Lifecycle(t *testing.T) {
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: r, PropertyKey: "k"}
 	tok, _ := keys.GetOrCreate("k")
 	current := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelCurrent, r, tok)
-	member := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelMember, r, tok)
+	member := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelSpan, r, tok)
 	marker := storepkg.EntityIndexBuiltKey(storepkg.EntityIndexRelMember, r, "k")
 	onDisk := func(bs *Store) bool {
 		bs.idxMu.RLock()
@@ -178,8 +178,9 @@ func TestRelPropertyIndexOnDisk_Lifecycle(t *testing.T) {
 	if err := bs.ReplaceRelationship(rel(10, "y")); err != nil { // x -> y
 		t.Fatal(err)
 	}
-	// An unchanged value writes no entry again, unless the row lowers its
-	// bound (5 -> 3, 3 -> 0: unknown is lowest).
+	// Each transaction time of a row is an entry of its own (RELDISKWIN: its
+	// key holds the time and the version, its value the row's span); a row
+	// that is the one stored again writes nothing.
 	for _, tx := range []types.Instant{7, 3, 4, 0} {
 		if err := bs.ReplaceRelationship(stamped(rel(11, "x"), tx)); err != nil {
 			t.Fatal(err)
@@ -200,8 +201,8 @@ func TestRelPropertyIndexOnDisk_Lifecycle(t *testing.T) {
 	if got := entityIDs(t, bs, storepkg.EntityIndexRelCurrent, current); got != "[10 11 12 13]" {
 		t.Fatalf("current entries of %s, want one per relationship", got)
 	}
-	if got := entityIDs(t, bs, storepkg.EntityIndexRelMember, member); got != "[10 10 11 11 11 12 13 13]" {
-		t.Fatalf("member entries of %s, want one per value a row carried and bound it lowered (10: x, y; 11: x at 5, 3, 0; 13: z, w)", got)
+	if got := entityIDs(t, bs, storepkg.EntityIndexRelSpan, member); got != "[10 10 11 11 11 11 11 12 13 13]" {
+		t.Fatalf("member entries of %s, want one per value and transaction time of a row (10: x, y; 11: x at 5, 7, 3, 4, 0; 13: z, w)", got)
 	}
 	if err := bs.ForEachRelPropertyTxMember(r, "k", types.IndexablePropertyValueKey("x"), func(id types.RelID, tx types.Instant) bool {
 		if id == 11 && tx != 0 {
@@ -286,8 +287,8 @@ func TestRelPropertyIndexOnDisk_Lifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	closeStore(bs)
-	if got, ok := readRawMarker(t, dir); !ok || got != storepkg.EntityIndexStoreFormatVersion {
-		t.Fatalf("format marker %d (present %v), want %d", got, ok, storepkg.EntityIndexStoreFormatVersion)
+	if got, ok := readRawMarker(t, dir); !ok || got != storepkg.MemberSpanStoreFormatVersion {
+		t.Fatalf("format marker %d (present %v), want %d", got, ok, storepkg.MemberSpanStoreFormatVersion)
 	}
 
 	bs = open(false, "R") // trusted: nothing rebuilt
@@ -449,18 +450,18 @@ func TestEntityIndex_PurgeAndErasureRemoveEntries(t *testing.T) {
 		}
 	}
 	tok, _ := keys.GetOrCreate("k")
-	nodeHead := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeMember, d, tok)
-	relHead := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelMember, r, tok)
+	nodeHead := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeSpan, d, tok)
+	relHead := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelSpan, r, tok)
 	curHead := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelCurrent, r, tok)
-	if got := entityIDs(t, bs, storepkg.EntityIndexNodeMember, nodeHead); got != "[1 1 2 2 3 3 4 4]" {
-		t.Fatalf("node member entries %s, want two per node", got)
+	if got := entityIDs(t, bs, storepkg.EntityIndexNodeSpan, nodeHead); got != "[1 1 2 2 3 3 4 4]" {
+		t.Fatalf("node member entries %s, want two per node (2: v2 of its current row and old2 of the demoted one; the entry of the row the demoted one replaced is gone)", got)
 	}
 
 	// A relationship purged by its info: its entries go, history included.
 	if err := bs.PurgeRelationshipByInfo(storecontract.PurgedRel{ID: 12, TypeToken: r, StartID: 2, EndID: 3}); err != nil {
 		t.Fatal(err)
 	}
-	if got := entityIDs(t, bs, storepkg.EntityIndexRelMember, relHead); got != "[10 10 11 11 14 14]" {
+	if got := entityIDs(t, bs, storepkg.EntityIndexRelSpan, relHead); got != "[10 10 11 11 14 14]" {
 		t.Fatalf("rel member entries %s after purging 12", got)
 	}
 	// An exact erasure of node 1 and relationship 10, 10's new value written
@@ -474,14 +475,14 @@ func TestEntityIndex_PurgeAndErasureRemoveEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	bs.exactErasureFlushedTestHook = nil
-	if got := entityIDs(t, bs, storepkg.EntityIndexNodeMember, nodeHead); got != "[2 2 3 3 4 4]" {
+	if got := entityIDs(t, bs, storepkg.EntityIndexNodeSpan, nodeHead); got != "[2 2 3 3 4 4]" {
 		t.Fatalf("node member entries %s after erasing 1", got)
 	}
 	// A cross-shard sweep of node 2's relationships (14).
 	if n, err := bs.PurgeAdjacentRelsForNode(2); err != nil || n != 1 {
 		t.Fatalf("PurgeAdjacentRelsForNode(2): %d, %v; want 1", n, err)
 	}
-	if got := entityIDs(t, bs, storepkg.EntityIndexRelMember, relHead) + entityIDs(t, bs, storepkg.EntityIndexRelCurrent, curHead); got != "[11 11][11]" {
+	if got := entityIDs(t, bs, storepkg.EntityIndexRelSpan, relHead) + entityIDs(t, bs, storepkg.EntityIndexRelCurrent, curHead); got != "[11 11][11]" {
 		t.Fatalf("rel entries %s after erasing 10 and sweeping 14, want only 11's", got)
 	}
 	for _, k := range entityKeys(t, bs, []byte{storepkg.KeyEntityIndex}) {
@@ -494,8 +495,8 @@ func TestEntityIndex_PurgeAndErasureRemoveEntries(t *testing.T) {
 	if _, err := bs.PurgeNodesByLabelBefore(d, types.Instant(1<<62), 0); err != nil {
 		t.Fatal(err)
 	}
-	if n := len(entityKeys(t, bs, []byte{storepkg.KeyEntityIndex})); n != 0 {
-		t.Fatalf("%d entries after purging every node, want none", n)
+	if left := entityKeys(t, bs, []byte{storepkg.KeyEntityIndex}); len(left) != 0 {
+		t.Fatalf("%d entries after purging every node, want none: %q", len(left), left)
 	}
 }
 
@@ -750,8 +751,8 @@ func TestEntityIndex_CreateRacesWrites(t *testing.T) {
 	if got := entityIDs(t, bs, storepkg.EntityIndexRelCurrent, current); got != "[10 13]" {
 		t.Fatalf("current entries of %s, want [10 13] (one each, of the value it ends with)", got)
 	}
-	member := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelMember, r, tok)
-	if got := entityIDs(t, bs, storepkg.EntityIndexRelMember, member); strings.Contains(got, "14") {
+	member := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelSpan, r, tok)
+	if got := entityIDs(t, bs, storepkg.EntityIndexRelSpan, member); strings.Contains(got, "14") {
 		t.Fatalf("member entries of %s: 14, purged during the scan, kept one (the scan is redone)", got)
 	}
 	for k, want := range map[string]string{"x": "[13]", "y": "[10]"} {
@@ -796,8 +797,8 @@ func TestEntityIndex_CreateRacesWrites(t *testing.T) {
 	if hooked == 0 {
 		t.Fatal("the node create's scan never ran the hook")
 	}
-	nodeHead := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeMember, d, tok)
-	if got := entityIDs(t, bs, storepkg.EntityIndexNodeMember, nodeHead); got != "[1 2 3]" {
+	nodeHead := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeSpan, d, tok)
+	if got := entityIDs(t, bs, storepkg.EntityIndexNodeSpan, nodeHead); got != "[1 2 3]" {
 		t.Fatalf("node member entries of %s, want [1 2 3] (3 carries D as an extra label, 4 purged during the scan)", got)
 	}
 	bs.propTxScanTestHook = nil
@@ -906,7 +907,7 @@ func TestNodeMemberEntries_Lifecycle(t *testing.T) {
 		}
 		return n
 	}
-	head := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeMember, d, tok)
+	head := storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeSpan, d, tok)
 	marker := storepkg.EntityIndexBuiltKey(storepkg.EntityIndexNodeMember, d, "k")
 	members := func(bs *Store, k string) string {
 		t.Helper()
@@ -941,8 +942,8 @@ func TestNodeMemberEntries_Lifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := entityIDs(t, bs, storepkg.EntityIndexNodeMember, head); got != "[5 5 6]" {
-		t.Fatalf("member entries of %s, want [5 5 6] (5: x at 5 and 3)", got)
+	if got := entityIDs(t, bs, storepkg.EntityIndexNodeSpan, head); got != "[5 5 5 5 6]" {
+		t.Fatalf("member entries of %s, want [5 5 5 5 6] (5: x at 5, 7, 3 and 4)", got)
 	}
 	before := entityVersions(t, bs)
 	if err := bs.ReplaceNode(node(6, "y", 0)); err != nil { // unchanged, unstamped
@@ -1013,9 +1014,10 @@ func TestEntityIndex_KeyLimitBoundary(t *testing.T) {
 	}
 	// A value of one 0x00 byte and q's: its member key is the head (6), the
 	// domain tag (1), "s:" (2), the value, the 0x00's escape (1), the
-	// terminator (1) and the tail (16).
-	value := func(keyLen int) string { return "\x00" + strings.Repeat("q", keyLen-6-1-2-1-1-1-16) }
-	if l := storepkg.EntityIndexHeadLen + storepkg.EntityIndexValueLen(types.IndexablePropertyValueKey(value(100))) + 16; l != 100 {
+	// terminator (1) and the tail of its longest entry (37: axis, t1, from, ID,
+	// transaction time and version, the time-ordered entry of RELDISKWIN option B).
+	value := func(keyLen int) string { return "\x00" + strings.Repeat("q", keyLen-6-1-2-1-1-1-37) }
+	if l := storepkg.EntityIndexHeadLen + storepkg.EntityIndexValueLen(types.IndexablePropertyValueKey(value(100))) + 37; l != 100 {
 		t.Fatalf("the test's value makes a %d-byte key, want 100", l)
 	}
 	over, at := value(bs.maxEntryKey+1), value(bs.maxEntryKey)

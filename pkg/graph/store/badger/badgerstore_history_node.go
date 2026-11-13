@@ -134,8 +134,8 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
 	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
+	ops = append(ops, bs.nodeReplacedMemberOpsLocked(old, prevState, updatedNode, id)...) // RELDISKWIN: the demoted row's entries again, ended by updatedNode
 	ops = bs.maintainPropertyIndexesUpdate(ops, old, updatedNode, id)
-	ops = append(ops, bs.nodeReplacedMemberOpsLocked(prevState, old, id)...) // RELDISK: what only the demoted row carries
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
@@ -276,8 +276,8 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
 	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
+	ops = append(ops, bs.nodeReplacedMemberOpsLocked(old, prevState, updatedNode, id)...) // RELDISKWIN: the demoted row's entries again, ended by updatedNode
 	ops = bs.maintainPropertyIndexesUpdate(ops, old, updatedNode, id)
-	ops = append(ops, bs.nodeReplacedMemberOpsLocked(prevState, old, id)...) // RELDISK: what only the demoted row carries
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
@@ -402,8 +402,8 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c — the demoted history row
 	bs.recordNodeReplacedLocked(prevState, current)              // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(current)
+	ops = append(ops, bs.nodeReplacedMemberOpsLocked(old, prevState, current, id)...) // RELDISKWIN: the demoted row's entries again, ended by current
 	ops = bs.maintainPropertyIndexesUpdate(ops, old, current, id)
-	ops = append(ops, bs.nodeReplacedMemberOpsLocked(prevState, old, id)...) // RELDISK: what only the demoted row carries
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, current, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(current, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, current, id)
@@ -509,6 +509,13 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	ops = append(ops, writeOp{opType: writeOpSet, key: nodeHistKey, value: nodeData})
 	for _, e := range relEntries {
 		ops = append(ops, writeOp{opType: writeOpSet, key: e.key, value: e.data})
+	}
+	// RELDISKWIN: each deleted row's member entries again, as its tombstone
+	// stamps it (the same keys: a tombstone is the row it deletes; its
+	// time-ordered entries move with its end).
+	ops = append(ops, bs.nodeTombMemberOpsLocked(nodeTombstone, id)...)
+	for _, rt := range relTombstones {
+		ops = append(ops, bs.relTombMemberOpsLocked(rt.Tombstone, rt.ID.SnowflakeID())...)
 	}
 	marker := historyRowMarker(nodeTombstone.Temporal())
 	for _, rt := range relTombstones {

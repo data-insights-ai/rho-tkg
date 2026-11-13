@@ -6,6 +6,9 @@ type PropertyMemberWork struct {
 	// IteratorSteps counts loop entries before filtering, including older MVCC versions
 	// and the first longer-prefix or beyond-range boundary item examined.
 	IteratorSteps uint64
+	// IteratorSeeks counts iterator seeks of a time-ordered windowed read
+	// (RELDISKWIN option B: one per axis read); 0 for the other walks.
+	IteratorSeeks uint64
 	// OverlayOpsInspected counts flushing then pending operations enumerated: prefix
 	// walks visit matching prefixes only; range walks inspect all buffered operations.
 	OverlayOpsInspected uint64
