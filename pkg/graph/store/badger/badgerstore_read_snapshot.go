@@ -84,8 +84,9 @@ type readSnapshot struct {
 // MeterReads implements store.ReadSnapshotMeterCapability: every row this
 // snapshot decodes from now on counts its stored bytes in t first, and a
 // refusal (*store.ReadBudgetError) replaces the row. A row the entity cache
-// serves decodes nothing and counts nothing; neither does a skeleton read
-// from the memo of the entity read last (nothing is decoded again).
+// serves decodes nothing and counts nothing; neither does a skeleton the
+// memo of the entity read last already holds decoded (s.metas). Re-decoding
+// the memo's stored rows counts again.
 func (s *readSnapshot) MeterReads(t *storecontract.ReadTally) { s.tally = t }
 
 // snapIter is one keyspace's iterator and the key it last sought, the
