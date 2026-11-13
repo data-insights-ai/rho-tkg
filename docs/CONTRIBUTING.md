@@ -118,6 +118,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 | `make race` | **The race run** (René, 4 Nov, as sigma's): `go test -race -short ./...` under `flock ~/.cache/race-gate.lock` (shared with sigma: one -race suite on the host at a time; `RACE_LOCK` overrides). Not in the patch and minor gates: a patch or minor release starts it detached after its push (log `.git/race.out`), nobody waits on it, and cron runs it every 6 h; a red race run is fixed in the next patch |
 | `make test-long` | **The long tier**, by hand, never before a tag: `go test ./...` without `-short` and without race |
 | `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each file's tests in their own process |
+| `make new PKG=.. RUN=..`, `make old` | **The development loop** (AGENTS.md): the new code's few tests, then two old ones (the public API surface, a tiered clean reopen against a full rebuild; 5.4 s first, 0.7 s cached). Both on Go's test cache, no `-count=1` |
 | `make test`, `build`, `lint`, `mod`, `gosec`, `vuln`, `fuzz`, `cover` | one check alone (`cover`: the short tier's coverage report, `coverage.html`). golangci-lint, gosec and govulncheck are pinned and run in the go.mod toolchain image: Docker is always available, so the gate is never "un-runnable"; named volumes keep their caches (lint: 1.4 s warm) |
 | `go test -run TestFoo ./pkg/...` | one test |
 

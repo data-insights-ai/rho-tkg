@@ -17,7 +17,7 @@ GOVULNCHECK_VERSION ?= v1.7.0
 DOCKER_GO = docker run --rm -v "$(CURDIR)":/src -w /src -v rho-tkg-gocache:/go \
 	-v rho-tkg-buildcache:/root/.cache/go-build -v rho-tkg-lintcache:/root/.cache/golangci-lint golang:$(shell awk '/^go /{print $$2}' go.mod)
 
-.PHONY: build test lint mod gosec vuln fuzz test-major test-long race measure cover presubmit kind \
+.PHONY: build test new old lint mod gosec vuln fuzz test-major test-long race measure cover presubmit kind \
 	gate-patch gate-minor gate-major release-patch release-minor release-major bench bench-baseline bench-check bench-compare
 
 # --- Checks (each one plain go, or the pinned tool in Docker) -----------------
@@ -25,6 +25,12 @@ build:    ## compiles everything, 32-bit too (ARM32 broke unnoticed once)
 	go build ./... && GOOS=linux GOARCH=386 CGO_ENABLED=0 go build ./...
 test:     ## the short tier, cached: only what a change reaches reruns
 	go test -short -timeout 20m ./...
+new:      ## the new code's few tests: make new PKG=./pkg/graph/store/tiered RUN='TestA|TestB' (cached)
+	@test -n "$(PKG)" -a -n "$(RUN)" || { echo "usage: make new PKG=./pkg/... RUN='TestA|TestB'"; exit 2; }
+	go test -short -timeout 10m -run '$(RUN)' $(PKG)
+old:      ## two old tests that nothing broke: the public API surface, and a tiered clean reopen equals a full rebuild (cached)
+	go test -timeout 10m -run '^TestGraphAccessor_StoreOpsConsumerSurfaceWorks$$' ./pkg/graph
+	go test -timeout 10m -run '^TestTieredCleanReopenMatchesFullRebuild$$' ./pkg/graph/store/tiered
 lint:     ## golangci-lint (.golangci.yml: gofmt, goimports, go vet and the linters)
 	$(DOCKER_GO) sh -c 'golangci-lint version 2>/dev/null | grep -q " $(GOLANGCI_LINT_VERSION:v%=%) " || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); golangci-lint run ./...'
 mod:      ## go.mod and go.sum are tidy and verified
