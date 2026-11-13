@@ -34,7 +34,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   member handed on (3 or 4 entries instead of 192 for the node doors, 2 instead of 96 for the relationship timelines, on
   badger and on tiered). Counts and answers do not
   change; the held fold is added to `Work.Candidates` at a refusal. Still open: the entries a window walk visits and
-  rejects, a label scan fallback's ID snapshot and the `ValidEndAfter` pruning door are not bounded yet. Red:
+  rejects, a label scan fallback's ID snapshot, the `ValidEndAfter` pruning door and the ID-only lookup
+  (`NodeIDsByLabelAndPropertyKeys`, which still folds whole keys per shard) are not bounded yet; after one tiered shard
+  refuses, the others still fold up to the room each. Red:
   `tasks/evidence/READBUDGET/admit-red.txt`; tests: `TestReadBudget_DiskReadsAdmitAsProduced`,
   `TestReadBudget_DiskRelMembershipAdmitsAsProduced`, `TestMemberWalkFoldStopsAtTheCandidateRoom`,
   `TestPropertyDiskLookupAdmitsCandidatesAsProduced`, `TestReadTally_CandidateRoomAndAhead`.
