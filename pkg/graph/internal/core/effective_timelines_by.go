@@ -91,7 +91,7 @@ func (t *TempOps) RelEffectiveTimelinesByProperties(ctx context.Context, typeNam
 	// timeline is decoded, when the index handed on more candidates than it
 	// allows (an on-disk index cannot narrow by the valid window).
 	meter := storepkg.ReadMeterFrom(ctx)
-	if err := meter.AddCandidates(len(ids)); err != nil {
+	if err := meter.AddCandidates("RelEffectiveTimelinesByProperties", len(ids)); err != nil {
 		return nil, err
 	}
 	route := make(map[string][]int) // driver value key -> tuples
@@ -134,7 +134,7 @@ func (t *TempOps) RelEffectiveTimelinesByProperties(ctx context.Context, typeNam
 		for _, segs := range out {
 			segments += len(segs)
 		}
-		if err := meter.AddSegments(segments); err != nil {
+		if err := meter.AddSegments("RelEffectiveTimelinesByProperties", segments); err != nil {
 			return nil, err
 		}
 	}

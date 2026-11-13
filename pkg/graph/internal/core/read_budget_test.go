@@ -65,7 +65,7 @@ func TestReadBudget_SelectiveDoorRefusesBroadRead(t *testing.T) {
 			if !errors.Is(err, storepkg.ErrReadBudget) || !errors.As(err, &be) || got != nil {
 				t.Fatalf("disk under budget %d = %s, %v; want ErrReadBudget", limit, rtbRender(w, got), err)
 			}
-			if be.Limit != "candidates" || be.Work.Candidates != rows || be.Work.Segments != 0 || work != be.Work {
+			if be.Door != "RelEffectiveTimelinesByProperties" || be.Limit != "candidates" || be.Work.Candidates != rows || be.Work.Segments != 0 || work != be.Work {
 				t.Fatalf("budget error %+v (meter %+v), want candidates limit at %d candidates, 0 segments", be, work, rows)
 			}
 
