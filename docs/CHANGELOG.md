@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **READBUDGET** (R2, the two gaps ai-soc's plan still named): `store.ReadTally.CandidateRoom` and `CandidatesAhead`,
+  how many more candidates a meter admits and the refusal for a store walk that holds more members than that ahead of
+  the door that counts them; `badger.Store` now implements `store.PropertyTxMemberMeteredCapability` (tiered had it
+  for shard opens), so the core reads a budgeted membership through the store on badger too. Test seam:
+  `badger.CountIndexEntriesVisitedForTest` counts the iterator steps of every on-disk index walk in the process.
+
+### Changed
+
+- **READBUDGET, gap A** (a budgeted indexed read built and sorted the whole disk candidate list before it admitted a
+  candidate): the on-disk property index's equality walk (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`; the
+  current lookup of `ByLabelAndPropertyCtx` and its temporal doors, on badger and on every tiered shard) admits each
+  candidate as it produces it, so a `Candidates` budget of 1 over a key of 96 matches visits 2 index entries on badger
+  and 3 over three tiered shards, not 96 (red: 96 on badger, 32 per shard on tiered). A budget now counts the entries the walk produces: one a later walk of the
+  same lookup visits again, or a node an Elements index lists under two looked-up values, counts again (high, never
+  low); answers and unbudgeted reads are unchanged.
+- **READBUDGET, gap B** (exact and window membership): checked on dev first. The doors already counted them (`TxPin`,
+  `ValidAt` and the interval of `ByLabelAndPropertyCtx`, `RelEffectiveTimelinesByProperties`: candidates per member,
+  shard opens on tiered, decoded bytes and history examined of the candidates they resolve, the typed refusal and no
+  rows), and `NodeAsOfCtx` / `RelAsOfCtx` cover the historical node reads; what stayed late was the store's own work
+  before its first member: a member list kept on disk was folded, sorted and, on tiered, united across shards before the
+  door's first callback counted one (192 member entries visited under a budget of 1 over 96 matches, on badger and
+  tiered). On badger and tiered the exact and window walks now admit their fold as it grows, under the same tally on every
+  shard, and stop at the member that passes the meter's room with `*store.ReadBudgetError` at `"candidates"` and no
+  member handed on (3 or 4 entries instead of 192 for the node doors, 2 instead of 96 for the relationship timelines, on
+  badger and on tiered). Counts and answers do not
+  change; the held fold is added to `Work.Candidates` at a refusal. Still open: the entries a window walk visits and
+  rejects, a label scan fallback's ID snapshot and the `ValidEndAfter` pruning door are not bounded yet. Red:
+  `tasks/evidence/READBUDGET/admit-red.txt`; tests: `TestReadBudget_DiskReadsAdmitAsProduced`,
+  `TestReadBudget_DiskRelMembershipAdmitsAsProduced`, `TestMemberWalkFoldStopsAtTheCandidateRoom`,
+  `TestPropertyDiskLookupAdmitsCandidatesAsProduced`, `TestReadTally_CandidateRoomAndAhead`.
+
 ### Fixed
 
 - **R1** (ai-soc's RH list, the cleanup failure contract at the public writer): the empty-shard demotion of RH02EMPTY
