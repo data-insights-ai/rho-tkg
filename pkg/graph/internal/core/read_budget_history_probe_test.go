@@ -90,3 +90,90 @@ func TestReadBudget_DecodedBytes_TemporalPropertyLongHistory(t *testing.T) {
 		})
 	}
 }
+
+// TestReadBudget_HistoryExamined_LongHistory (READBUDGET step 2): the history
+// versions a temporal property read looks at count as HistoryExamined before
+// they are looked at. With 16 versions per match, a budget of 1 stops the read
+// at its first version, whatever the number of matches (8, 32), on every
+// backend (memory counts a chain before walking it); unlimited, the count
+// grows with matches x versions and the answer is unchanged.
+func TestReadBudget_HistoryExamined_LongHistory(t *testing.T) {
+	t.Parallel()
+	const versions = 16
+	type open func(t *testing.T) (*Core, func())
+	backends := []struct {
+		name string
+		open open
+	}{{"memory", func(t *testing.T) (*Core, func()) { g := txbBackends()[0].open(t, false); return g, func() {} }}}
+	for _, be := range rbdBackends() {
+		backends = append(backends, struct {
+			name string
+			open open
+		}{be.name, func(t *testing.T) (*Core, func()) { return be.open(t, t.TempDir()) }})
+	}
+	for _, be := range backends {
+		t.Run(be.name, func(t *testing.T) {
+			g, shut := be.open(t)
+			defer shut()
+			ctx := context.Background()
+			if err := g.Index.CreateProperty("H", "k"); err != nil {
+				t.Fatal(err)
+			}
+			var all []types.NodeID
+			for _, size := range []int{8, 32} {
+				for i := range size {
+					n, err := g.Nodes.Add(ctx, []string{"H"}, map[string]any{"k": int64(size), "pad": fmt.Sprintf("%0*d", 50, i)})
+					if err != nil {
+						t.Fatal(err)
+					}
+					all = append(all, n.ID())
+				}
+			}
+			// The pin sits in the middle of every node's history, so each
+			// resolution walks the versions above it.
+			var pin types.Instant
+			for v := range versions {
+				if v == versions/2 {
+					p, err := g.Temporal.NowTx()
+					if err != nil {
+						t.Fatal(err)
+					}
+					pin = p
+				}
+				for _, id := range all {
+					if _, err := g.Nodes.Update(ctx, id, map[string]any{"v": int64(v)}); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			for _, size := range []int{8, 32} {
+				for _, o := range []struct {
+					name string
+					opts storepkg.QueryOpts
+				}{
+					{"TxPin", storepkg.QueryOpts{TxPin: pin}},
+					{"ValidAt", storepkg.QueryOpts{ValidAt: pin, TxAt: pin}},
+				} {
+					uctx, all := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
+					want, err := g.Nodes.ByLabelAndPropertyCtx(uctx, "H", "k", int64(size), o.opts)
+					if err != nil || len(want) != size || all.Work().HistoryExamined < uint64(size*versions/2) {
+						t.Fatalf("%d %s unlimited = %d rows, %v, %+v; want %d rows and the versions above the pin counted", size, o.name, len(want), err, all.Work(), size)
+					}
+					bctx, one := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: 1})
+					got, err := g.Nodes.ByLabelAndPropertyCtx(bctx, "H", "k", int64(size), o.opts)
+					be := rbdBudgetErr(t, err, "history examined")
+					// memory charges one chain (versions) at once; the disk
+					// stores one version at a time.
+					if got != nil || be.Work.HistoryExamined > versions+1 || one.Work() != be.Work {
+						t.Fatalf("%d %s budget 1: rows %d, work %+v (unlimited %+v); want none, stopped at the first chain", size, o.name, len(got), be.Work, all.Work())
+					}
+					bctx, exact := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: all.Work().HistoryExamined})
+					got, err = g.Nodes.ByLabelAndPropertyCtx(bctx, "H", "k", int64(size), o.opts)
+					if err != nil || fmt.Sprint(nodeIDsOf(got)) != fmt.Sprint(nodeIDsOf(want)) || exact.Work().HistoryExamined != all.Work().HistoryExamined {
+						t.Fatalf("%d %s at its own count: %d rows, %v, %+v", size, o.name, len(got), err, exact.Work())
+					}
+				}
+			}
+		})
+	}
+}

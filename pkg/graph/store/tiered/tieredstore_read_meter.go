@@ -71,6 +71,12 @@ func (m meteredShard) GetNodeVersion(id types.NodeID, version uint32) (*types.No
 	return s.GetNodeVersion(id, version)
 }
 
+func (m meteredShard) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
+	s := m.snap()
+	defer s.Close()
+	return s.GetNodeHistory(id)
+}
+
 func (m meteredShard) GetRelationship(id types.RelID) (*types.Relationship, error) {
 	s := m.snap()
 	defer s.Close()

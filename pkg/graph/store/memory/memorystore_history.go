@@ -1312,12 +1312,29 @@ var _ storecontract.TransactionTimeQueryMeteredCapability = (*Store)(nil)
 
 // NodeAsOfMetered is NodeAsOf (store.TransactionTimeQueryMeteredCapability):
 // the memory store keeps its rows decoded, so it decodes nothing and counts 0
-// bytes in t.
-func (ms *Store) NodeAsOfMetered(nid types.NodeID, txTime types.Instant, _ *storecontract.ReadTally) (*types.Node, error) {
+// bytes in t; it counts the versions of the node's history chain as examined
+// before it walks them.
+func (ms *Store) NodeAsOfMetered(nid types.NodeID, txTime types.Instant, t *storecontract.ReadTally) (*types.Node, error) {
+	if t != nil && ms != nil {
+		ms.mu.RLock()
+		n := len(ms.nodeHistory[nid])
+		ms.mu.RUnlock()
+		if err := t.History(n); err != nil {
+			return nil, err
+		}
+	}
 	return ms.NodeAsOf(nid, txTime)
 }
 
 // RelAsOfMetered is RelAsOf, as NodeAsOfMetered.
-func (ms *Store) RelAsOfMetered(rid types.RelID, txTime types.Instant, _ *storecontract.ReadTally) (*types.Relationship, error) {
+func (ms *Store) RelAsOfMetered(rid types.RelID, txTime types.Instant, t *storecontract.ReadTally) (*types.Relationship, error) {
+	if t != nil && ms != nil {
+		ms.mu.RLock()
+		n := len(ms.relHistory[rid])
+		ms.mu.RUnlock()
+		if err := t.History(n); err != nil {
+			return nil, err
+		}
+	}
 	return ms.RelAsOf(rid, txTime)
 }

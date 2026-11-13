@@ -29,6 +29,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ValidAt`, the valid interval: each candidate's current row, skeleton and winning version through a metered read
   snapshot; badger's `TxPin` through the new `store.TransactionTimeQueryMeteredCapability`, same pin, same answer; red:
   8 and 32 matches x 16 versions answered under a 1-byte budget, `tasks/evidence/READBUDGET/temporal-history-red.txt`).
+  `ReadBudget.HistoryExamined` / `ReadWork.HistoryExamined` (limit `"history examined"`): each history version a read
+  looks at (skeleton entry, as-of walk peek, decode), counted before the look; memory counts a chain before resolving
+  it. Fixed with it: tiered's metered read snapshot read a node's whole history unmetered (`GetNodeHistory`).
   Not counted: `ValidEndAfter`, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
   a nil check per decoded row and answers as before.
 

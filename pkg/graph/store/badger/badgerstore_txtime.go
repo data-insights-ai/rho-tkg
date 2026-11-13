@@ -632,7 +632,7 @@ func (bs *Store) NodeAsOfMetered(nid types.NodeID, txTime types.Instant, t *stor
 	id := nid.SnowflakeID()
 	prefix := storepkg.HistNodePrefix(id)
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
-		return bs.reverseScanHistoryVersion(prefix, consider)
+		return bs.reverseScanHistoryVersion(prefix, talliedConsider(t, consider))
 	}
 	has, err := bs.HasNodeHistory(nid)
 	above := bs.liveHistoryAbove(&bs.histNodePresence, id, has, err, func(v uint64) []byte { return storepkg.HistNodeKey(id, v) })
@@ -724,7 +724,7 @@ func (bs *Store) RelAsOfMetered(rid types.RelID, txTime types.Instant, t *storec
 	id := rid.SnowflakeID()
 	prefix := storepkg.HistRelPrefix(id)
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
-		return bs.reverseScanHistoryVersion(prefix, consider)
+		return bs.reverseScanHistoryVersion(prefix, talliedConsider(t, consider))
 	}
 	has, err := bs.HasRelHistory(rid)
 	above := bs.liveHistoryAbove(&bs.histRelPresence, id, has, err, func(v uint64) []byte { return storepkg.HistRelKey(id, v) })
@@ -992,4 +992,18 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	}
 	storepkg.SortRelsByID(result)
 	return result, nil
+}
+
+// talliedConsider counts each history version an as-of walk looks at in t
+// (HistoryExamined, before the look; RH list R2). A nil t is consider.
+func talliedConsider(t *storecontract.ReadTally, consider func(version uint64, val []byte) (bool, error)) func(version uint64, val []byte) (bool, error) {
+	if t == nil {
+		return consider
+	}
+	return func(version uint64, val []byte) (bool, error) {
+		if err := t.History(1); err != nil {
+			return true, err
+		}
+		return consider(version, val)
+	}
 }

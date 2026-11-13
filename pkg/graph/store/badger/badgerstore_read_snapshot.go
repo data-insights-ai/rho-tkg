@@ -250,7 +250,7 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 	metas := []keyedMeta{}
 	if s.memo.rows != nil && s.memo.prefix == string(prefix) {
 		for _, k := range sortedKeys(s.memo.rows) {
-			if err := s.tally.Decoded(len(s.memo.rows[k])); err != nil {
+			if err := s.tally.DecodedHistory(len(s.memo.rows[k])); err != nil {
 				return nil, err
 			}
 			m, err := historyTemporalMetaOf(s.memo.rows[k], node)
@@ -267,7 +267,7 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 			}
 			var m storecontract.VersionTemporalMeta
 			if err := item.Value(func(val []byte) error {
-				if err := s.tally.Decoded(len(val)); err != nil {
+				if err := s.tally.DecodedHistory(len(val)); err != nil {
 					return err
 				}
 				var err error
@@ -307,7 +307,7 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 		}
 	}
 	for k, raw := range overlay {
-		if err := s.tally.Decoded(len(raw)); err != nil {
+		if err := s.tally.DecodedHistory(len(raw)); err != nil {
 			return nil, err
 		}
 		m, err := historyTemporalMetaOf(raw, i == snapNodeHist)
@@ -709,7 +709,7 @@ func (s *readSnapshot) decodeNodeVersion(id snowflake.ID, version uint64, raw, p
 		share = s.lent
 	}
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
-		if err := s.tally.Decoded(len(raw)); err != nil {
+		if err := s.tally.DecodedHistory(len(raw)); err != nil {
 			return nil, err
 		}
 		return s.bs.decodeHistoryNodeValueSharing(id, version, raw, share) // no anchor: the pooled full-row decode

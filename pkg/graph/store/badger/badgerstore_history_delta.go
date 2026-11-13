@@ -164,7 +164,7 @@ func (bs *Store) reconstructNodeHistoryWire(id snowflake.ID, version uint64, raw
 // t (RH list R2; nil counts nothing) the bytes it decodes, before each decode:
 // the row, and for a delta its anchor.
 func (bs *Store) reconstructNodeHistoryWireTallied(id snowflake.ID, version uint64, raw []byte, local localAnchorFunc, t *storecontract.ReadTally) (storepkg.NodeWire, error) {
-	if err := t.Decoded(len(raw)); err != nil {
+	if err := t.DecodedHistory(len(raw)); err != nil {
 		return storepkg.NodeWire{}, err
 	}
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
@@ -210,7 +210,7 @@ func (bs *Store) reconstructRelHistoryWire(id snowflake.ID, version uint64, raw 
 
 // reconstructRelHistoryWireTallied mirrors reconstructNodeHistoryWireTallied.
 func (bs *Store) reconstructRelHistoryWireTallied(id snowflake.ID, version uint64, raw []byte, local localAnchorFunc, t *storecontract.ReadTally) (storepkg.RelWire, error) {
-	if err := t.Decoded(len(raw)); err != nil {
+	if err := t.DecodedHistory(len(raw)); err != nil {
 		return storepkg.RelWire{}, err
 	}
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {

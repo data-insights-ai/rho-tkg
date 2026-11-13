@@ -41,19 +41,27 @@ type ReadBudget struct {
 	// RelEffectiveTimelinesByProperties, LendByIDs, the node property doors'
 	// time-free reads and GetByIDsCtx (docs/api.md, Read budgets).
 	DecodedBytes uint64
+	// HistoryExamined bounds the history versions the doors' reads look at:
+	// each history row the store hands to a reader (a skeleton entry, a
+	// temporal peek of an as-of walk, a decode), counted before it is looked
+	// at, so a long history stops at the version that passes the limit. A
+	// version read twice (skeleton, then winner) counts twice. The memory
+	// store counts the versions of an entity's chain before it walks them.
+	HistoryExamined uint64
 }
 
 // ReadWork is what the reads made with one context did, counted by the doors
 // that support budgets (fields a door does not count stay 0).
 type ReadWork struct {
-	Candidates   uint64
-	Segments     uint64
-	ShardOpens   uint64
-	DecodedBytes uint64
+	Candidates      uint64
+	Segments        uint64
+	ShardOpens      uint64
+	DecodedBytes    uint64
+	HistoryExamined uint64
 }
 
 // ReadBudgetError is a read stopped by Door at Limit ("candidates",
-// "segments", "shard opens" or "decoded bytes") of Budget, the budget whose limit it passed;
+// "segments", "shard opens", "decoded bytes" or "history examined") of Budget, the budget whose limit it passed;
 // Work is that budget's meter, the work past the limit included.
 type ReadBudgetError struct {
 	Door   string
@@ -77,6 +85,7 @@ type ReadMeter struct {
 	budget                                         ReadBudget
 	parent                                         *ReadMeter
 	candidates, segments, shardOpens, decodedBytes atomic.Uint64
+	historyExamined                                atomic.Uint64
 }
 
 type readMeterKey struct{}
@@ -103,7 +112,7 @@ func (m *ReadMeter) Work() ReadWork {
 	if m == nil {
 		return ReadWork{}
 	}
-	return ReadWork{Candidates: m.candidates.Load(), Segments: m.segments.Load(), ShardOpens: m.shardOpens.Load(), DecodedBytes: m.decodedBytes.Load()}
+	return ReadWork{Candidates: m.candidates.Load(), Segments: m.segments.Load(), ShardOpens: m.shardOpens.Load(), DecodedBytes: m.decodedBytes.Load(), HistoryExamined: m.historyExamined.Load()}
 }
 
 // AddCandidates counts n candidates door examined, here and in every outer
@@ -131,6 +140,12 @@ func (m *ReadMeter) AddDecodedBytes(door string, n int) error {
 	return m.add(door, "decoded bytes", n, func(r *ReadMeter) (*atomic.Uint64, uint64) { return &r.decodedBytes, r.budget.DecodedBytes })
 }
 
+// AddHistoryExamined counts n history versions door looks at, as
+// AddCandidates.
+func (m *ReadMeter) AddHistoryExamined(door string, n int) error {
+	return m.add(door, "history examined", n, func(r *ReadMeter) (*atomic.Uint64, uint64) { return &r.historyExamined, r.budget.HistoryExamined })
+}
+
 // ReadTally is a meter bound to the door that reads: what a store receives
 // (store.ReadSnapshotMeterCapability, QueryOpts, the metered lend doors) to
 // count the bytes it decodes. A nil tally counts nothing and refuses nothing:
@@ -155,6 +170,27 @@ func (t *ReadTally) Decoded(n int) error {
 		return nil
 	}
 	return t.meter.AddDecodedBytes(t.door, n)
+}
+
+// History counts n history versions about to be looked at, returning the
+// budget error past a limit. A nil tally counts nothing.
+func (t *ReadTally) History(n int) error {
+	if t == nil {
+		return nil
+	}
+	return t.meter.AddHistoryExamined(t.door, n)
+}
+
+// DecodedHistory counts one history version and its n stored bytes about to
+// be decoded (History(1), then Decoded(n)).
+func (t *ReadTally) DecodedHistory(n int) error {
+	if t == nil {
+		return nil
+	}
+	if err := t.History(1); err != nil {
+		return err
+	}
+	return t.Decoded(n)
 }
 
 func (m *ReadMeter) add(door, limit string, n int, field func(*ReadMeter) (*atomic.Uint64, uint64)) error {

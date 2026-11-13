@@ -96,6 +96,12 @@ func (ts *Store) getNodeVersionVia(nid types.NodeID, version uint32, via shardVi
 }
 
 func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
+	return ts.getNodeHistoryVia(nid, directReads)
+}
+
+// getNodeHistoryVia is GetNodeHistory reading each shard's rows through via
+// (a metered read snapshot's counting reads, RH list R2).
+func (ts *Store) getNodeHistoryVia(nid types.NodeID, via shardVia) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -107,7 +113,7 @@ func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 		return nil, err
 	}
 	defer checkin()
-	history, err := store.GetNodeHistory(nid)
+	history, err := via(store).GetNodeHistory(nid)
 	if err != nil {
 		return nil, err
 	}
@@ -119,17 +125,17 @@ func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if store == ts.refShard {
-			return ts.nodeHistoryWithArchive(nid, store, history)
+			return ts.nodeHistoryWithArchive(nid, store, history, via)
 		}
 		return history, nil
 	}
 	if isArchive {
-		return ts.nodeHistoryWithReference(nid, store, history)
+		return ts.nodeHistoryWithReference(nid, store, history, via)
 	}
 
 	sources := nodeHistorySourcesFrom(store, history)
 	searchErr := ts.forEachHistoryShard(store, func(candidate *BadgerStore) (bool, error) {
-		history, err := candidate.GetNodeHistory(nid)
+		history, err := via(candidate).GetNodeHistory(nid)
 		if err != nil {
 			return false, err
 		}
@@ -819,7 +825,7 @@ func appendNodeHistorySource(sources *[]nodeHistorySource, store *BadgerStore, h
 	*sources = append(*sources, nodeHistorySource{store: store, history: history})
 }
 
-func (ts *Store) nodeHistoryWithArchive(nid types.NodeID, skip *BadgerStore, history []*types.Node) ([]*types.Node, error) {
+func (ts *Store) nodeHistoryWithArchive(nid types.NodeID, skip *BadgerStore, history []*types.Node, via shardVia) ([]*types.Node, error) {
 	sources := nodeHistorySourcesFrom(skip, history)
 	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
@@ -827,7 +833,7 @@ func (ts *Store) nodeHistoryWithArchive(nid types.NodeID, skip *BadgerStore, his
 		return nil, err
 	}
 	if archive != nil && archive != skip {
-		archiveHistory, err := archive.GetNodeHistory(nid)
+		archiveHistory, err := via(archive).GetNodeHistory(nid)
 		archiveCheckin()
 		if err != nil {
 			return nil, err
@@ -839,14 +845,14 @@ func (ts *Store) nodeHistoryWithArchive(nid types.NodeID, skip *BadgerStore, his
 	return mergeNodeHistorySources(sources), nil
 }
 
-func (ts *Store) nodeHistoryWithReference(nid types.NodeID, skip *BadgerStore, history []*types.Node) ([]*types.Node, error) {
+func (ts *Store) nodeHistoryWithReference(nid types.NodeID, skip *BadgerStore, history []*types.Node, via shardVia) ([]*types.Node, error) {
 	sources := nodeHistorySourcesFrom(skip, history)
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
 	}
 	if ref != skip {
-		refHistory, err := ref.GetNodeHistory(nid)
+		refHistory, err := via(ref).GetNodeHistory(nid)
 		refCheckin()
 		if err != nil {
 			return nil, err

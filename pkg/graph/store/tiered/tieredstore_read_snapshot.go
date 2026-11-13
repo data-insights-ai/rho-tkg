@@ -30,6 +30,7 @@ type shardNodeReads interface {
 	HasNodeHistory(types.NodeID) (bool, error)
 	NodeHistoryTemporalMeta(types.NodeID) ([]storecontract.VersionTemporalMeta, error)
 	GetNodeVersion(types.NodeID, uint32) (*types.Node, error)
+	GetNodeHistory(types.NodeID) ([]*types.Node, error)
 }
 
 // shardVia maps a routed shard to what reads it: the shard itself, or in a
@@ -116,8 +117,12 @@ func (r *readSnapshot) GetNodeVersion(id types.NodeID, version uint32) (*types.N
 	return r.ts.getNodeVersionVia(id, version, r.via)
 }
 
-// GetNodeHistory and the relationship reads are the store's own.
+// GetNodeHistory is the store's own; a metered snapshot reads each shard's
+// rows through its counting reads (RH list R2).
 func (r *readSnapshot) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
+	if r.tally != nil {
+		return r.ts.getNodeHistoryVia(id, r.via)
+	}
 	return r.ts.GetNodeHistory(id)
 }
 

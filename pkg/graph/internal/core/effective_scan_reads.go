@@ -175,6 +175,9 @@ func (r entityReads) nodeMeta(id types.NodeID) ([]storepkg.VersionTemporalMeta, 
 	var err error
 	if r.snap == nil {
 		metas, err = r.c.temporalMetaHistory.NodeHistoryTemporalMeta(id)
+		if err == nil {
+			err = r.unsnappedHistory(len(metas))
+		}
 	} else {
 		metas, err = r.snap.NodeHistoryTemporalMeta(id)
 	}
@@ -186,7 +189,11 @@ func (r entityReads) nodeMeta(id types.NodeID) ([]storepkg.VersionTemporalMeta, 
 
 func (r entityReads) relMeta(id types.RelID) ([]storepkg.VersionTemporalMeta, error) {
 	if r.snap == nil {
-		return r.c.temporalMetaHistory.RelHistoryTemporalMeta(id)
+		metas, err := r.c.temporalMetaHistory.RelHistoryTemporalMeta(id)
+		if err == nil {
+			err = r.unsnappedHistory(len(metas))
+		}
+		return metas, err
 	}
 	return r.snap.RelHistoryTemporalMeta(id)
 }
@@ -248,9 +255,27 @@ func (r entityReads) relVersion(id types.RelID, version uint32) (*types.Relation
 	return r.c.trustedRelVersion(id, version, rel, err)
 }
 
+// unsnappedHistory counts n history versions read without a metered snapshot
+// (the memory store, which decodes nothing) in the run's tally, before they
+// are resolved; past the budget the read returns its error instead (RH list
+// R2). Without a tally it counts nothing.
+func (r entityReads) unsnappedHistory(n int) error {
+	if r.tally == nil {
+		return nil
+	}
+	return r.tally.History(n)
+}
+
 func (r entityReads) nodeHistory(id types.NodeID) ([]*types.Node, error) {
 	if r.snap == nil {
-		return r.c.getNodeHistory(id)
+		h, err := r.c.getNodeHistory(id)
+		if err == nil {
+			err = r.unsnappedHistory(len(h))
+		}
+		if err != nil {
+			return nil, err
+		}
+		return h, nil
 	}
 	h, err := r.snap.GetNodeHistory(id)
 	return r.c.trustedNodeHistory(id, h, err)
@@ -258,7 +283,14 @@ func (r entityReads) nodeHistory(id types.NodeID) ([]*types.Node, error) {
 
 func (r entityReads) relHistory(id types.RelID) ([]*types.Relationship, error) {
 	if r.snap == nil {
-		return r.c.getRelHistory(id)
+		h, err := r.c.getRelHistory(id)
+		if err == nil {
+			err = r.unsnappedHistory(len(h))
+		}
+		if err != nil {
+			return nil, err
+		}
+		return h, nil
 	}
 	h, err := r.snap.GetRelHistory(id)
 	return r.c.trustedRelHistory(id, h, err)

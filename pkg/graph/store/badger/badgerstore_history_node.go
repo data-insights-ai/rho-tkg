@@ -740,7 +740,7 @@ func (bs *Store) decodeHistoryNodeValueTallied(id snowflake.ID, version uint64, 
 		return bs.decodeHistoryNodeValue(id, version, raw)
 	}
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
-		if err := t.Decoded(len(raw)); err != nil {
+		if err := t.DecodedHistory(len(raw)); err != nil {
 			return nil, err
 		}
 		return bs.decodeHistoryNodeValue(id, version, raw)
