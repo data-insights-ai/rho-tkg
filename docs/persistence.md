@@ -678,8 +678,9 @@ no membership sidecar.
   entry of the entities they remove, history included (a member entry holds a value verbatim); `Clear` drops the
   keyspace.
 - **Refused or declined.** `RangeCounts` and `Elements` on a listed type (`ErrCapabilityNotSupported`, also an
-  Elements definition loaded at open). A member key is 16 bytes longer than the `0x0A` key (the transaction time and the version),
-  so the largest value an on-disk index accepts shrinks by 16 bytes; every write door refuses a longer one with `ErrEntryTooLarge` before
+  Elements definition loaded at open). A time-ordered member key (kinds 7 and 8) is 33 bytes longer than the `0x0A` key
+  (axis, `t1`, `from`, the transaction time and the version), so the largest value an on-disk index accepts shrinks by
+  33 bytes; every write door refuses a longer one with `ErrEntryTooLarge` before
   any mutation.
 - **Cost.** A paged member lookup (`...After`) walks its whole value, then pages; a history truncate leaves member
   entries, which only widen a candidate set the reader filters by the rows. A row costs one entry per value it
