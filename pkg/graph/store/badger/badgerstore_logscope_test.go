@@ -135,3 +135,46 @@ func TestLogScope_NonDivertedWriteEmitsEagerly(t *testing.T) {
 	}
 	_ = bs.DiscardLogScope()
 }
+
+// EnsureLogScope is BeginLogScope for a hand-off that can race its own begin
+// (the tiered store hands an installed handle to an open scope): it opens a
+// closed scope, leaves an open one and its buffered records alone, and does
+// not weaken BeginLogScope, which still refuses a second begin.
+func TestLogScope_EnsureOpensOnceAndKeepsTheBuffer(t *testing.T) {
+	t.Parallel()
+	bs := newScopeStore(t)
+	putTestNode(t, bs, 1, 10, nil)
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	before, _ := bs.LastCommittedLSN()
+
+	if !bs.EnsureLogScope() {
+		t.Fatal("EnsureLogScope on a closed scope did not open it")
+	}
+	if bs.EnsureLogScope() {
+		t.Fatal("EnsureLogScope on an open scope reported opening it")
+	}
+	if err := bs.BeginLogScope(); err == nil {
+		t.Fatal("BeginLogScope on a scope EnsureLogScope opened succeeded")
+	}
+	bs.SetLogDivert(true)
+	putTestNode(t, bs, 2, 10, nil)
+	if bs.EnsureLogScope() {
+		t.Fatal("EnsureLogScope inside a diverting scope reported opening it")
+	}
+	putTestNode(t, bs, 3, 10, nil) // still buffered: the ensure did not reset the scope
+	bs.SetLogDivert(false)
+	if lsn, _ := bs.LastCommittedLSN(); lsn != before {
+		t.Fatalf("watermark moved to %d during the open scope, want %d", lsn, before)
+	}
+	if _, err := bs.CommitLogScope(); err != nil {
+		t.Fatalf("CommitLogScope: %v", err)
+	}
+	if recs, _ := bs.ChangeFeed(before, 0); len(recs) != 2 {
+		t.Fatalf("the committed scope emitted %d records, want the 2 buffered ones", len(recs))
+	}
+	if !bs.EnsureLogScope() {
+		t.Fatal("EnsureLogScope after the commit did not open a new scope")
+	}
+}

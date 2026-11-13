@@ -99,3 +99,16 @@ FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered
 After the fix all five pass. Mutations, each caught: no hot-size reopen for a promoted shard the swap left without a handle (4 of
 the 5 red: no handle, no store fault); no catalog restore (ThenPromotion: "the catalog names the promoted shard cold, want
 hot"); the failed swap demotes any tier but cold (KeepsPromotedShardHot x2 and FaultsStore: "day 20 is cold").
+
+WARMMEM follow-up 3 (13 Nov 2026): a swap installing between BeginLogScope's flag and its fold gives a double begin. A test hook
+(SetScopeFlagHookForTest: BeginLogScope runs it after the flag, before the fold) lets the held swap reopen and install there;
+the install hands the handle to the open scope, then the fold begins the scope on it again. go test -v -run
+'TestHandleSweep_SwapInstallingMidBegin|TestHandleSweep_BeginLogScopeTwice' ./pkg/graph/store/tiered/ before the fix:
+    handle_sweep_scope_test.go:40: BeginLogScope with a swap installing between its flag and its fold: graph: graph: invalid store mutation: change-log scope already open
+--- FAIL: TestHandleSweep_SwapInstallingMidBeginJoinsScopeOnce (0.48s)
+--- PASS: TestHandleSweep_BeginLogScopeTwiceStillFails (0.27s)   (the guard: a caller's own double begin must stay refused)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered
+After the fix (badger.Store.EnsureLogScope: open the scope unless open; the install hand-off and the begin fold both use it; the
+tiered BeginLogScope itself refuses a scope already open) both pass. Mutations, each caught: the fold back to BeginLogScope (the
+same "change-log scope already open" from the fold); no tiered-level refusal (TestHandleSweep_BeginLogScopeTwiceStillFails: "a
+second BeginLogScope inside an open scope succeeded").

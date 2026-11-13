@@ -39,6 +39,12 @@ type handleSweep struct {
 	passes  atomic.Int64                            // passes finished (a test waits on it)
 	visited atomic.Int64                            // shards the passes looked at (a test counts what a pass costs)
 
+	// afterScopeFlag is a test hook: BeginLogScope runs it between setting the
+	// scope's flag and folding the begin over the open shards, where a swap
+	// can install a handle and hand it to the scope (set before the store is
+	// used by other goroutines).
+	afterScopeFlag func()
+
 	// passMu keeps one pass at a time, the goroutine's and a test's: a pass
 	// returns once the shards before it are settled.
 	passMu sync.Mutex

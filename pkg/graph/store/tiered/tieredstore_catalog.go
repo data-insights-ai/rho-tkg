@@ -255,9 +255,11 @@ func (ts *Store) handNewShardToLogScope(store *BadgerStore, name string) {
 	scopeOpen, scopeDivertOn := ts.scopeOpen, ts.scopeDivertOn
 	ts.scopeMu.Unlock()
 	if scopeOpen {
-		if err := store.BeginLogScope(); err != nil {
-			slog.Error("graph: begin change-log scope on a new shard", "shard", name, "error", err)
-		} else if scopeDivertOn {
+		// Idempotent: a handle a swap or a move installs while BeginLogScope
+		// is folding its begin over the open shards may be reached by both.
+		opened := store.EnsureLogScope()
+		slog.Debug("graph: change-log scope handed to an installed handle", "shard", name, "opened", opened)
+		if scopeDivertOn {
 			store.SetLogDivert(true)
 		}
 	}

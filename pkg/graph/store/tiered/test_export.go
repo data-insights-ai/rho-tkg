@@ -303,6 +303,11 @@ func (ts *Store) SweepPassCountsForTest() (passes, visited int64) {
 	return ts.sweep.passes.Load(), ts.sweep.visited.Load()
 }
 
+// SetScopeFlagHookForTest installs fn to run inside BeginLogScope after the
+// store-wide scope flag is set and before the begin reaches the open shards;
+// nil removes it. Call it before other goroutines use the store.
+func (ts *Store) SetScopeFlagHookForTest(fn func()) { ts.sweep.afterScopeFlag = fn }
+
 // HotArenaForTest reports whether the shard's handle was opened as a hot one.
 func (es *EventShard) HotArenaForTest() bool {
 	es.shardMu.Lock()

@@ -440,6 +440,27 @@ func (bs *Store) BeginLogScope() error {
 	return nil
 }
 
+// EnsureLogScope opens the per-tx record buffer unless one is open already,
+// and leaves an open one, buffered records included, as it is. It is for a
+// caller whose scope hand-off can race its own begin: the tiered store hands a
+// handle it installs while a scope is open (a swapped or moved shard) to that
+// scope, and its BeginLogScope can reach the same handle a moment later, so
+// whichever comes second must not fail with "already open". A caller that
+// wants a second begin refused uses BeginLogScope. No-op when the change-log
+// is off. It reports whether it opened the scope (false: one was open).
+func (bs *Store) EnsureLogScope() (opened bool) {
+	if !bs.logEnabled.Load() {
+		return false
+	}
+	bs.wbMu.Lock()
+	defer bs.wbMu.Unlock()
+	if bs.scopeLog != nil || bs.scopeActive {
+		return false
+	}
+	bs.scopeLog = make([][]byte, 0, 8)
+	return true
+}
+
 // SetLogDivert toggles record diversion into the open scope buffer for the
 // duration of a single tx mutation. The core calls SetLogDivert(true) after it
 // takes the exclusive c.mu.Lock that guards the mutation and SetLogDivert(false)

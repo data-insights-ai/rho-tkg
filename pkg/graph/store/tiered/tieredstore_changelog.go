@@ -696,16 +696,30 @@ func (ts *Store) forEachShard(fn func(*BadgerStore) error) error {
 
 // BeginLogScope opens a per-shard record buffer on every currently-open shard and
 // records store-wide scope state (BACKLOG 19h) so a shard created mid-scope by
-// rotation can be brought in. No-op when the change-log is off/fenced.
+// rotation can be brought in. No-op when the change-log is off/fenced. A scope
+// already open is refused (the caller's double begin); a handle the handle
+// sweep installs between the flag below and the fold reaching its shard has
+// the scope already from handNewShardToLogScope, so the fold begins
+// idempotently (badger.Store.EnsureLogScope) and the shard is in the scope once.
 func (ts *Store) BeginLogScope() error {
 	if !ts.ChangeLogEnabled() {
 		return nil
 	}
 	ts.scopeMu.Lock()
+	if ts.scopeOpen {
+		ts.scopeMu.Unlock()
+		return fmt.Errorf("graph: %w: change-log scope already open", storecontract.ErrInvalidStoreMutation)
+	}
 	ts.scopeOpen = true
 	ts.scopeDivertOn = false
 	ts.scopeMu.Unlock()
-	return ts.forEachScopeShard(func(bs *BadgerStore) error { return bs.BeginLogScope() })
+	if h := ts.sweep.afterScopeFlag; h != nil {
+		h()
+	}
+	return ts.forEachScopeShard(func(bs *BadgerStore) error {
+		bs.EnsureLogScope()
+		return nil
+	})
 }
 
 // SetLogDivert is the ONE divert seam on tiered. It toggles record diversion into
