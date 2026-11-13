@@ -333,19 +333,13 @@ func (c *Core) relEffectiveAtNodesGates(nodeIDs []types.NodeID, dir temporal.Dir
 	return c.checkRelTypesRetention(relTypes, pin)
 }
 
-// nodeLabelsCandidatesAt is nodeLabelCandidatesAt (TxPin: pin) for several
-// distinct label tokens, each candidate once (c.mu held). One label: its
+// nodeLabelsCandidatesAtOpts is nodeLabelCandidatesAt for several distinct
+// label tokens at opts, each candidate once (c.mu held). One label: its
 // candidates as they are. Several on a store without the label-membership
 // sidecar: the labels' current members united with ONE fold of the node
 // history (not one fold per label). With the sidecar: the labels' candidate
-// sets united.
-func (c *Core) nodeLabelsCandidatesAt(toks []uint16, pin types.Instant) ([]types.NodeID, error) {
-	return c.nodeLabelsCandidatesAtOpts(toks, storepkg.QueryOpts{TxPin: pin})
-}
-
-// nodeLabelsCandidatesAtOpts is nodeLabelsCandidatesAt at opts, which may carry
-// a read meter (a budgeted scan: the member enumerations charge their shard
-// opens to it).
+// sets united. opts may carry a read meter (a budgeted scan: the member
+// enumerations charge their shard opens to it).
 func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts) ([]types.NodeID, error) {
 	switch {
 	case len(toks) == 0:

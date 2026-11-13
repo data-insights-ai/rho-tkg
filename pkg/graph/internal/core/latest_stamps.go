@@ -213,13 +213,8 @@ func (c *Core) nodeCurrentStampsTallied(id types.NodeID, t *storepkg.ReadTally) 
 	return s, true, nil
 }
 
-// relCurrentStamps is nodeCurrentStamps for relationships.
-func (c *Core) relCurrentStamps(id types.RelID) (storepkg.RowStamps, bool, error) {
-	return c.relCurrentStampsTallied(id, nil)
-}
-
-// relCurrentStampsTallied is relCurrentStamps through the store's metered door
-// under t (nil: the plain read), as nodeCurrentStampsTallied.
+// relCurrentStampsTallied is nodeCurrentStampsTallied for relationships: the
+// store's metered door under t (nil: the plain read).
 func (c *Core) relCurrentStampsTallied(id types.RelID, t *storepkg.ReadTally) (storepkg.RowStamps, bool, error) {
 	var s storepkg.RowStamps
 	var err error
