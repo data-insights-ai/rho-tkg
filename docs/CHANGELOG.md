@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **R2 budgeted doors for Sigma, group C, step 2**, the point reads: `Nodes().GetCtx` is `Get` under the context's read
+  budget (one candidate, then the stored bytes of the row it decodes and, on tiered, each closed shard it opens, each
+  counted before it is done; a row the entity cache serves counts 0, a refused read leaves the row undecoded and uncached)
+  and `Temporal().NodeAtCtx` is `NodeAt` under it (`NodeAtTxCtx` with no transaction filter: one candidate, the rows
+  decoded, the history versions looked at and, on tiered, the shards opened, a node live nowhere searched on every
+  shard). `NodeAtTxCtx` and `NodeAtCtx` share one body. Red: stubbed to the plain doors, 11 failing subtests, the plain
+  `NodeAt` of a 24-update node looking at its whole chain and of a node deleted in a cold shard opening all 3 cold
+  shards, with no budget to stop either (`tasks/evidence/READBUDGET/sigma-doors-c.txt`); tests: `TestReadBudget_SigmaC_Get`, `_GetGates`, `_GetShardOpens`,
+  `_NodeAt`, `_NodeAtShardOpens`, `TestReadBudgetPublicPointDoors`, `TestReadBudgetPointWrappers`, and the wrapper store
+  test `TestReadBudget_UnsupportedStoreRefusesBeforeReading`.
 - **R2 budgeted doors for Sigma, group C, step 1**, the entity history: `Nodes().HistoryCtx` and `Rels().HistoryCtx`
   return the plain `History` rows in their order or `*store.ReadBudgetError` and no rows: one candidate (the ID) before
   the read, then through the metered read snapshot the history versions looked at (`HistoryExamined`, one per version),

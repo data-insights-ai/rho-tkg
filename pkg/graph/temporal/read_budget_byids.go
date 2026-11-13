@@ -66,6 +66,33 @@ func (a *API) NodeAtTxCtx(ctx context.Context, id types.NodeID, validAt, txAt ty
 	return ops.NodeAtTx(id, validAt, txAt)
 }
 
+// nodeAtCtxOps is the optional part of Ops NodeAtCtx reaches (the graph's own
+// ops implement it; Ops itself stays unchanged).
+type nodeAtCtxOps interface {
+	NodeAtCtx(ctx context.Context, id types.NodeID, at types.Instant) (*types.Node, error)
+}
+
+// NodeAtCtx is NodeAt under ctx's read budget: the same row at the same valid
+// instant, or *store.ReadBudgetError and no row, with NodeAtTxCtx's counts and
+// no transaction filter: one candidate (the ID), and the rows decoded
+// (DecodedBytes), the history versions looked at (HistoryExamined) and, on
+// tiered, the closed shards opened (ShardOpens: a node live nowhere is searched
+// on every shard), each before it is done. The checks, gates and errors are
+// NodeAt's. Without a budget it is NodeAt.
+func (a *API) NodeAtCtx(ctx context.Context, id types.NodeID, at types.Instant) (*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := ops.(nodeAtCtxOps); ok {
+		return m.NodeAtCtx(ctx, id, at)
+	}
+	if err := asOfWithoutBudget(ctx, "NodeAt"); err != nil {
+		return nil, err
+	}
+	return ops.NodeAt(id, at)
+}
+
 // NodesAtTxByIDsCtx is NodesAtTxByIDs under ctx's read budget: the same
 // aligned answer, or *store.ReadBudgetError and no rows. It validates as
 // NodesAtTxByIDs does, then counts one candidate per ID and 8 buffer bytes per

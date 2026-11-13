@@ -32,14 +32,25 @@ func (t *TempOps) NodesEffectiveByIDsCtx(ctx context.Context, ids []types.NodeID
 // rows decoded, history versions looked at and closed shards opened by the
 // read, each counted before it happens (the point read of NodeAsOfCtx).
 func (t *TempOps) NodeAtTxCtx(ctx context.Context, id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
-	const door = "NodeAtTx"
+	return t.nodeAtCtx(ctx, "NodeAtTx", id, validAt, txAt, func() (*types.Node, error) { return t.NodeAtTx(id, validAt, txAt) })
+}
+
+// NodeAtCtx is NodeAt under ctx's read budget: NodeAtTxCtx with no transaction
+// filter (NodeAt reads at txAt 0), counted under the door name "NodeAt".
+func (t *TempOps) NodeAtCtx(ctx context.Context, id types.NodeID, at types.Instant) (*types.Node, error) {
+	return t.nodeAtCtx(ctx, "NodeAt", id, at, 0, func() (*types.Node, error) { return t.NodeAt(id, at) })
+}
+
+// nodeAtCtx is the body of the node point-read Ctx doors; plain is the door's
+// plain form, which a context without a budget reads as.
+func (t *TempOps) nodeAtCtx(ctx context.Context, door string, id types.NodeID, validAt, txAt types.Instant, plain func() (*types.Node, error)) (*types.Node, error) {
 	c := t.c
 	meter, err := c.beginTimeline(ctx, door)
 	if err != nil {
 		return nil, err
 	}
 	if meter == nil {
-		return t.NodeAtTx(id, validAt, txAt)
+		return plain()
 	}
 	if err := c.checkOpen(); err != nil {
 		return nil, err

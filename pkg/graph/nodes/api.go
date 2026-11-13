@@ -1407,3 +1407,27 @@ func (a *API) HistoryCtx(ctx context.Context, id types.NodeID) ([]*types.Node, e
 	}
 	return ops.History(id)
 }
+
+// budgetedGetOps is the read-budget form of the point read; the graph's own
+// Ops implement it.
+type budgetedGetOps interface {
+	GetCtx(ctx context.Context, id types.NodeID) (*types.Node, error)
+}
+
+// GetCtx is Get under ctx's read budget (store.WithReadBudget): the same row
+// or error as Get, or *store.ReadBudgetError and no row. It counts one
+// candidate (the ID) and, each before it is done, the stored bytes of the row
+// it decodes (DecodedBytes: a row served from the entity cache decodes nothing
+// and counts 0) and, on tiered, each closed shard it is about to open
+// (ShardOpens). Without a budget in ctx it is Get. An Ops without the budgeted
+// doors answers unmetered.
+func (a *API) GetCtx(ctx context.Context, id types.NodeID) (*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedGetOps); ok {
+		return b.GetCtx(ctx, id)
+	}
+	return ops.Get(ctx, id)
+}

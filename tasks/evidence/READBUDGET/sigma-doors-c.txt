@@ -51,3 +51,51 @@ rows evicted from the cache first:
 
   Mutation checked: the node door reading through a nil tally (meteredEntityReads(nil)) fails
   TestReadBudget_SigmaC_History on every backend (unlimited work all 0).
+
+=== GROUP 2: Nodes().GetCtx, Temporal().NodeAtCtx ===
+
+Red (both Ctx doors stubbed to the plain door after one candidate), `go test -run 'TestReadBudget_SigmaC_(Get|NodeAt)'
+./pkg/graph/internal/core`, 11 failing subtests:
+
+  TestReadBudget_SigmaC_NodeAt/{badger,sharded,tiered}/{pending,flushed}
+    unlimited work {Candidates:1 ... all else 0}; want 1 candidate and the chain looked at
+    (the plain NodeAt of a node with 24 updates looks at its whole chain, 25 skeleton and full rows by headStats.metaRows
+     and Core.historyRead, asserted before that line; nothing counts it)
+  TestReadBudget_SigmaC_Get/{badger,sharded,tiered}/flushed/live
+    unlimited work {Candidates:1 ... DecodedBytes:0}; want 1 candidate, no history, no opens and true decoded bytes
+    (the plain Get of a cold row decodes it and leaves it in the entity cache, asserted: the row is cached afterwards)
+  TestReadBudget_SigmaC_GetShardOpens, TestReadBudget_SigmaC_NodeAtShardOpens
+    error <nil>, want ErrReadBudget at "shard opens"
+    (before that line the plain reads were measured: three Gets of nodes in three cold shards opened 3 shards; the plain
+     NodeAt of a node deleted in a cold shard opened all 3)
+
+Green (`go test -v -run TestReadBudget_SigmaC_Get/badger/flushed`, `-run TestReadBudget_SigmaC_NodeAt/badger/flushed`),
+12 nodes of 3 versions (GetCtx), a node with 24 updates (NodeAtCtx), rows evicted from the cache first:
+
+  GetCtx, unlimited:      {Candidates:1 DecodedBytes:260}   (a deleted node and an unknown ID: ErrNodeNotFound as Get, 0 bytes)
+  DecodedBytes 1:         refused after {Candidates:1 DecodedBytes:260}, door Get, the row not decoded: it is not in the
+                          entity cache afterwards (the plain Get leaves it there); exactly 260 answers, 259 refuses
+  warm (row cached):      DecodedBytes 1 answers with 0 bytes counted
+  Candidates 2 over 3 calls on one meter: the third is refused before it reads (its row stays out of the cache)
+  NodeAtCtx, unlimited:   {Candidates:1 DecodedBytes:6637 HistoryExamined:25}   (the plain door looked at 25 history rows)
+  HistoryExamined 1:      refused after {Candidates:1 DecodedBytes:445 HistoryExamined:2}
+  DecodedBytes 1:         refused after {Candidates:1 DecodedBytes:258}
+  exactly the unlimited count answers with the plain row, one under refuses; a time before the node existed answers
+  NodeAt's error with its candidate counted. Pending and flushed rows, on badger, sharded and tiered.
+
+  Tiered shard opens, cold shards closed before each read:
+    GetCtx (`TestReadBudget_SigmaC_GetShardOpens`): three live nodes in three cold shards: the plain Gets opened 3; one
+      meter with ShardOpens 1 over the three calls opened 1 and refused the second call before its shard opened;
+      unlimited they opened 3 and counted 3. A deleted node: the plain Get opened 1 shard and answers not-found; the Ctx
+      door counts the same open.
+    NodeAtCtx (`TestReadBudget_SigmaC_NodeAtShardOpens`): a node deleted in a cold shard: the plain read opened 3 cold
+      shards; under ShardOpens 1 it opened 1 and refused (no row); unlimited it opened 3 and counted 3.
+  Wrapper store (`TestReadBudget_UnsupportedStoreRefusesBeforeReading`, extended with Get and NodeAt): DecodedBytes and
+    ShardOpens budgets are refused ("unsupported") before any read; under Candidates both answer.
+  Public API (`TestReadBudgetPublicPointDoors`, every backend incl. memory): rows equal the plain doors', a second call on a
+    spent Candidates 1 is refused, NodeAtCtx under HistoryExamined 1 refused from NodeAt with no row.
+  Wrappers (`TestReadBudgetPointWrappers`): an Ops without the door answers a context without a budget and refuses a
+    budgeted one ("unsupported", door NodeAt); a cancelled context and a nil API are refused first.
+
+  Mutation checked: GetCtx reading through a nil tally (meteredEntityReads(nil)) fails TestReadBudget_SigmaC_Get on every
+  backend (unlimited work: no decoded bytes) and GetShardOpens.

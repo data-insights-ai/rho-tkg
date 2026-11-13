@@ -104,3 +104,41 @@ func (n *NodeOps) LatestStampsCtx(ctx context.Context, id types.NodeID) (txFrom,
 	}
 	return n.latestStampsTallied(id, meter.Tally("LatestStamps"))
 }
+
+// GetCtx is Get under ctx's read budget.
+func (n *NodeOps) GetCtx(ctx context.Context, id types.NodeID) (*types.Node, error) {
+	const door = "Get"
+	c := n.c
+	meter, err := c.beginTimeline(ctx, door)
+	if err != nil {
+		return nil, err
+	}
+	if meter == nil {
+		return n.Get(ctx, id)
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := meter.AddCandidates(door, 1); err != nil {
+		return nil, err
+	}
+	var node *types.Node
+	err = c.readUnderRLock(func() error {
+		rd, release := c.meteredEntityReads(meter.Tally(door))
+		defer release()
+		var err error
+		node, err = rd.currentNode(id)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := checkCtx(ctx); err != nil { // as Get: a context cancelled during the read
+		return nil, err
+	}
+	c.opNodeReads.Add(1)
+	return node, nil
+}
