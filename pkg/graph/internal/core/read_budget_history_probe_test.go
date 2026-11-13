@@ -318,11 +318,26 @@ func TestReadBudget_UnsupportedStoreRefusesBeforeReading(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	m, err := g.Nodes.Add(ctx, []string{"U"}, map[string]any{"k": int64(2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := g.Rels.AddByID(ctx, "UR", n.ID(), m.ID(), map[string]any{"k": int64(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
 	pin, err := g.Temporal.NowTx()
 	if err != nil {
 		t.Fatal(err)
 	}
 	doors := map[string]func(ctx context.Context) error{
+		"History": func(ctx context.Context) error {
+			if _, err := g.Rels.HistoryCtx(ctx, rel.ID()); err != nil {
+				return err
+			}
+			_, err := g.Nodes.HistoryCtx(ctx, n.ID())
+			return err
+		},
 		"ByLabelAndProperty": func(ctx context.Context) error {
 			_, err := g.Nodes.ByLabelAndPropertyCtx(ctx, "U", "k", int64(1), storepkg.QueryOpts{})
 			return err

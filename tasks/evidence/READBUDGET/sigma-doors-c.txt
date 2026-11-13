@@ -1,0 +1,53 @@
+R2 budgeted read doors for Sigma, group C (ai-soc RH list R2, 13 Nov): Nodes().HistoryCtx, Rels().HistoryCtx,
+Nodes().GetCtx, Temporal().NodeAtCtx, Temporal().RelsLowestAnsweredPinsCtx.
+Counts only (rows decoded, history looked at, shard opens, rows the plain door read): never MemStats or time.
+Backends: badger, sharded, tiered (rbdBackends; pending and flushed) and, through the public API, memory.
+Red method as groups A and B: each Ctx door first existed as a thin wrapper that checks ctx, counts the candidate
+and calls the plain door, with nothing counted below it; the new tests were red on that form, then the metering was added.
+
+=== GROUP 1: Nodes().HistoryCtx, Rels().HistoryCtx ===
+
+Red (the Ctx doors stubbed to the plain History after one candidate), `go test -run 'TestReadBudget_SigmaC_' ./pkg/graph/internal/core`,
+14 failing subtests (badger, sharded, tiered x pending, flushed x node, rel history; the two tiered shard-open subtests):
+
+  TestReadBudget_SigmaC_History/badger/pending/node_history (and rel_history, flushed, sharded, tiered)
+    unlimited work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0};
+    want 1 candidate, 24 history versions, decoded bytes and no shard opens
+    (the plain door reads all 24 versions, asserted through Core.historyRead before that line: plainRows == 24, and
+     the stub, which calls it, counts nothing: no history limit can stop it)
+  TestReadBudget_SigmaC_HistoryShardOpens/node_history, /rel_history
+    error <nil>, want ErrReadBudget at "shard opens"
+    (the plain History of a node and of a relationship deleted in a cold shard, live nowhere, had opened all 3 cold shards)
+
+Green: a node and a relationship with 24 updates (24 history rows), `go test -v -run 'TestReadBudget_SigmaC_History/badger/flushed'`,
+rows evicted from the cache first:
+
+  node history, unlimited:     {Candidates:1 DecodedBytes:6121 HistoryExamined:24}   (the plain door read 24 rows)
+  HistoryExamined 1:           refused after {Candidates:1 DecodedBytes:187 HistoryExamined:2}
+  DecodedBytes 1:              refused after {Candidates:1 DecodedBytes:187 HistoryExamined:1}
+  rel history, unlimited:      {Candidates:1 DecodedBytes:8473 HistoryExamined:24}
+  HistoryExamined 1:           refused after {Candidates:1 DecodedBytes:285 HistoryExamined:2}
+  DecodedBytes 1:              refused after {Candidates:1 DecodedBytes:285 HistoryExamined:1}
+  A limit of exactly the unlimited count answers with the plain rows (same order, same versions, same intervals and
+  properties); one under refuses with no rows; half the count refuses within two versions of it. Pending (unflushed)
+  rows obey the same meter (the write buffer's rows are counted by their stored bytes), on all three backends.
+
+  Tiered shard opens (`TestReadBudget_SigmaC_HistoryShardOpens`, cold shards closed before each read, a node and a
+  relationship deleted in the first of three shards):
+    the plain read opened 3 cold shards; under ShardOpens 1 the read opened 1 and refused (no rows); unlimited it
+    opened 3 and counted 3 (rows equal the plain door's).
+
+  Gates (`TestReadBudget_SigmaC_HistoryGates`): a cancelled context is refused before anything is counted; an invalid ID
+  and a closed graph before a candidate is counted; an unknown valid ID answers the plain door's empty history and
+  counts one candidate; a second call under Candidates 1 is refused before any version is looked at.
+  Wrapper store (`TestReadBudget_UnsupportedStoreRefusesBeforeReading`, extended with History): a budget bounding
+  DecodedBytes or ShardOpens is refused ("unsupported") before any read; under Candidates it answers.
+  Memory (public API, `TestReadBudgetPublicHistoryDoors`, every backend): 6 updates, unlimited counts 1 candidate and 6
+  versions (the memory store counts the chain when it reads it, all at once); HistoryExamined 5 refuses with no rows.
+
+  What is not bounded: the badger read snapshot copies an entity's stored history rows into the snapshot before it
+  decodes and counts the first (as for NodeAtTxCtx and the timelines), so a limit bounds the decode and the shard
+  opens, not the copy of the stored rows. Segments and BufferBytes are not counted by this door.
+
+  Mutation checked: the node door reading through a nil tally (meteredEntityReads(nil)) fails
+  TestReadBudget_SigmaC_History on every backend (unlimited work all 0).

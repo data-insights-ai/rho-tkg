@@ -1378,3 +1378,32 @@ func (a *API) LatestStampsCtx(ctx context.Context, id types.NodeID) (txFrom, txT
 	}
 	return ops.LatestStamps(id)
 }
+
+// budgetedHistoryOps is the read-budget form of the history door; the graph's
+// own Ops implement it.
+type budgetedHistoryOps interface {
+	HistoryCtx(ctx context.Context, id types.NodeID) ([]*types.Node, error)
+}
+
+// HistoryCtx is History under ctx's read budget (store.WithReadBudget): the
+// same rows in the same order, or *store.ReadBudgetError (store.ErrReadBudget)
+// and no rows. It counts one candidate (the ID) and, each before it is done,
+// the history versions the read looks at (HistoryExamined, one per version, a
+// delta version and its anchor as one), the stored bytes it decodes
+// (DecodedBytes) and, on tiered, each closed shard it is about to open
+// (ShardOpens: a node live nowhere is searched on every shard). Without a
+// budget in ctx it is History after a ctx check. An Ops without the budgeted
+// doors answers unmetered.
+func (a *API) HistoryCtx(ctx context.Context, id types.NodeID) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedHistoryOps); ok {
+		return b.HistoryCtx(ctx, id)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.History(id)
+}

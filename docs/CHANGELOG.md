@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **R2 budgeted doors for Sigma, group C, step 1**, the entity history: `Nodes().HistoryCtx` and `Rels().HistoryCtx`
+  return the plain `History` rows in their order or `*store.ReadBudgetError` and no rows: one candidate (the ID) before
+  the read, then through the metered read snapshot the history versions looked at (`HistoryExamined`, one per version),
+  the stored bytes decoded (`DecodedBytes`) and, on tiered, each closed shard opened (`ShardOpens`: an entity live
+  nowhere is searched on every shard), each counted before it is done (the badger snapshot still copies the entity's
+  stored rows before it counts the first, so a limit bounds the decode and the opens, not that copy). Red: stubbed to
+  the plain door, 14 failing subtests, the plain History of a node and a relationship deleted in a cold shard opening
+  all 3 cold shards and counting nothing (`tasks/evidence/READBUDGET/sigma-doors-c.txt`); tests:
+  `TestReadBudget_SigmaC_History`, `_HistoryGates`, `_HistoryShardOpens`, `TestReadBudgetPublicHistoryDoors`, the wrapper
+  store test `TestReadBudget_UnsupportedStoreRefusesBeforeReading`.
 - **R2 budgeted doors for Sigma, group B, step 3**, the by-ID and bitemporal point doors: `Temporal().NodesEffectiveByIDsCtx`
   (a stream: one candidate per distinct ID before its read, callbacks before a refusal stand), `NodeAtTxCtx`,
   `NodesAtTxByIDsCtx` (one candidate and 8 buffer bytes per ID before any ID is read, then the reads' decodes, history
