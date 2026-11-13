@@ -276,10 +276,29 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 		}
 	}()
 	ids := map[int][]types.NodeID{}
+	// idleTick is one tick of the idle loop (idleCloseLoop's body) a day after
+	// the last: the clock moved a day, far past IdleTimeout (5 min), but the
+	// idle sweep reads the wall clock, so the cold shards' last access moves
+	// back a day first. It closes the demoted warm-size handles the handle
+	// sweep leaves to IdleTimeout, as a running process does between days.
+	idleTick := func() {
+		ts.mu.RLock()
+		for _, es := range ts.eventShards {
+			if es.currentTier() == TierCold {
+				es.lastAccess.Add(-(24 * time.Hour).Milliseconds())
+			}
+		}
+		ts.mu.RUnlock()
+		ts.closeIdleShards()
+		ts.enforceColdShardCap()
+		ts.sweepMoveOne()
+		ts.sweepHandles()
+	}
 	// writeDay moves the clock, rotates (timed alone), waits for the handle
 	// sweep the rotation kicked (timed from the rotation's return: the swaps
 	// run on the sweep goroutine, the pass here waits for a swap in progress),
-	// and writes the day. The settled state does not depend on timing.
+	// runs an idle tick and writes the day. The settled state does not depend
+	// on timing.
 	var rot, swp time.Duration
 	writeDay := func(day int) {
 		clock.set(julDay(day, 8))
@@ -291,6 +310,7 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 		t1 := time.Now()
 		ts.SweepHandlesForTest()
 		swp = time.Since(t1)
+		idleTick()
 		for i := 0; i < perDay; i++ {
 			id, ok, err := ts.MintNodeIDAt(tok, ms(julDay(day, 1+i%7)), true)
 			if err != nil || !ok {
