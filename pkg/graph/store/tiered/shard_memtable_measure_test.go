@@ -7,7 +7,7 @@
 // ReadOnly), so each hot, warm or demoted-but-open shard holds one until its
 // handle closes. The run is by hand: heap numbers move with the host's load.
 //
-//	go test -tags measure -count=1 -v -run TestShardMemTableStates ./pkg/graph/store/tiered/
+//	go test -tags measure -v -run TestShardMemTableStates ./pkg/graph/store/tiered/
 
 package tiered
 
@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -92,66 +93,122 @@ func (s *memSample) finish() (heapAlloc, heapInuse, sys, rss uint64) {
 type memRow struct {
 	state                                  string
 	writable, readOnly                     int
+	roles                                  roleCounts
 	live, sys, nextGC                      uint64 // after two GCs
 	dTotalAlloc                            uint64 // allocated during the step
 	peakAlloc, peakInuse, peakSys, peakRSS uint64
 	took                                   time.Duration
+	userCPU, sysCPU                        time.Duration // process CPU during the step (getrusage)
+	rotate                                 time.Duration // the step's rotation call alone; -1 when it has none
+}
+
+// roleCounts splits the writable handles by the shard's state: hot, warm,
+// demoted-open (a cold shard whose handle has stayed open since it was hot or
+// warm), cold-writable (a cold shard opened writable later: a late write or a
+// window shard made on demand) and the reference shard.
+type roleCounts struct {
+	hot, warm, demoted, coldW, ref int
+}
+
+// handleTracker remembers which shards held a writable handle as hot, warm or
+// demoted-open at the previous count, so a cold writable shard is demoted-open
+// when its handle has been open since then and cold-writable otherwise.
+type handleTracker struct {
+	lineage map[string]bool
 }
 
 // handleCounts counts the open badger handles: the reference shard and the
-// event shards, writable and read-only.
-func handleCounts(ts *Store) (writable, readOnly int) {
+// event shards, writable and read-only, and the writable ones per role.
+func (h *handleTracker) handleCounts(ts *Store) (writable, readOnly int, rc roleCounts) {
+	next := map[string]bool{}
+	defer func() { h.lineage = next }()
 	if ts == nil {
-		return 0, 0
+		return 0, 0, rc
 	}
 	writable = 1 // the reference shard
+	rc.ref = 1
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	for _, es := range ts.eventShards {
+	for name, es := range ts.eventShards {
 		es.shardMu.Lock()
 		if es.store != nil {
 			if es.storeRO {
 				readOnly++
 			} else {
 				writable++
+				switch es.currentTier() {
+				case TierHot:
+					rc.hot++
+					next[name] = true
+				case TierWarm:
+					rc.warm++
+					next[name] = true
+				default:
+					if h.lineage[name] {
+						rc.demoted++
+						next[name] = true
+					} else {
+						rc.coldW++
+					}
+				}
 			}
 		}
 		es.shardMu.Unlock()
 	}
-	return writable, readOnly
+	return writable, readOnly, rc
 }
 
-// measureStep runs f under the sampler and records the settled state.
-func measureStep(ts func() *Store, rows *[]memRow, state string, f func()) {
+// rusageCPU is the process's user and system CPU time so far.
+func rusageCPU() (user, sys time.Duration) {
+	var ru syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
+		return 0, 0
+	}
+	return time.Duration(ru.Utime.Nano()), time.Duration(ru.Stime.Nano())
+}
+
+// measureStep runs f under the sampler and records the settled state. CPU is
+// the process's user and system time across f (the 2 ms sampler included).
+func measureStep(h *handleTracker, ts func() *Store, rows *[]memRow, state string, f func()) {
 	var before runtime.MemStats
 	runtime.ReadMemStats(&before)
 	smp := startSample()
+	u0, s0 := rusageCPU()
 	t0 := time.Now()
 	f()
 	took := time.Since(t0)
+	u1, s1 := rusageCPU()
 	pa, pi, ps, pr := smp.finish()
 	runtime.GC()
 	runtime.GC()
 	var after runtime.MemStats
 	runtime.ReadMemStats(&after)
-	w, r := handleCounts(ts())
-	*rows = append(*rows, memRow{state: state, writable: w, readOnly: r,
+	w, r, rc := h.handleCounts(ts())
+	*rows = append(*rows, memRow{state: state, writable: w, readOnly: r, roles: rc,
 		live: after.HeapAlloc, sys: after.Sys, nextGC: after.NextGC,
 		dTotalAlloc: after.TotalAlloc - before.TotalAlloc,
-		peakAlloc:   pa, peakInuse: pi, peakSys: ps, peakRSS: pr, took: took})
+		peakAlloc:   pa, peakInuse: pi, peakSys: ps, peakRSS: pr, took: took,
+		userCPU: u1 - u0, sysCPU: s1 - s0, rotate: -1})
 }
 
 func printMemRows(t *testing.T, title string, rows []memRow) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n%s\n", title)
-	fmt.Fprintf(&b, "%-34s %3s %3s | %8s %8s %8s | %9s %9s %9s %9s %9s | %8s\n",
-		"state", "rw", "ro", "live MB", "sys MB", "goal MB", "alloc MB", "peakAl MB", "peakIn MB", "peakSy MB", "peakRSS", "step ms")
+	fmt.Fprintf(&b, "%-34s %3s %3s | %8s %8s %8s | %9s %9s %9s %9s %9s | %8s | %6s %6s | %6s | %3s %4s %3s %5s %3s\n",
+		"state", "rw", "ro", "live MB", "sys MB", "goal MB", "alloc MB", "peakAl MB", "peakIn MB", "peakSy MB", "peakRSS", "step ms",
+		"usr ms", "sys ms", "rot ms", "hot", "warm", "dem", "coldW", "ref")
 	for _, r := range rows {
-		fmt.Fprintf(&b, "%-34s %3d %3d | %8.1f %8.1f %8.1f | %9.1f %9.1f %9.1f %9.1f %9.1f | %8.1f\n",
+		rot := "-"
+		if r.rotate >= 0 {
+			rot = fmt.Sprintf("%.1f", float64(r.rotate.Microseconds())/1000)
+		}
+		fmt.Fprintf(&b, "%-34s %3d %3d | %8.1f %8.1f %8.1f | %9.1f %9.1f %9.1f %9.1f %9.1f | %8.1f | %6.0f %6.0f | %6s | %3d %4d %3d %5d %3d\n",
 			r.state, r.writable, r.readOnly,
 			float64(r.live)/mib, float64(r.sys)/mib, float64(r.nextGC)/mib,
 			float64(r.dTotalAlloc)/mib, float64(r.peakAlloc)/mib, float64(r.peakInuse)/mib, float64(r.peakSys)/mib, float64(r.peakRSS)/mib,
-			float64(r.took.Microseconds())/1000)
+			float64(r.took.Microseconds())/1000,
+			float64(r.userCPU.Microseconds())/1000, float64(r.sysCPU.Microseconds())/1000, rot,
+			r.roles.hot, r.roles.warm, r.roles.demoted, r.roles.coldW, r.roles.ref)
 	}
 	fmt.Print(b.String())
 	t.Log(b.String())
@@ -164,8 +221,11 @@ type memVariant struct {
 
 // TestShardMemTableStates writes rows across six day shards of a tiered store
 // whose clock moves a day at a time (ShardWindow 24 h, ColdAfter 48 h) and
-// records, per lifecycle state, the writable handles, the settled heap and the
-// peak while the state was reached.
+// records, per lifecycle state, the writable handles (in all and per role), the
+// settled heap, the peak while the state was reached, the process CPU of the
+// step and the wall time of the step's rotation call alone (checkRotation,
+// called right after the clock moves and before the day's writes; "-" = the
+// step has no rotation call).
 func TestShardMemTableStates(t *testing.T) {
 	if testing.Short() || raceEnabled {
 		t.Skip("measurement: not in -short, no race detector")
@@ -192,11 +252,13 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 	var ts *Store
 	cur := func() *Store { return ts }
 	var rows []memRow
+	h := &handleTracker{}
+	step := func(state string, f func()) { measureStep(h, cur, &rows, state, f) }
 	runtime.GC()
 	var err error
 	reg := registrypkg.NewLabelRegistry()
 	tok, _ := reg.GetOrCreate("Signal")
-	measureStep(cur, &rows, "open: reference + hot", func() {
+	step("open: reference + hot", func() {
 		if ts, err = New(cfg); err != nil {
 			t.Fatal(err)
 		}
@@ -208,8 +270,15 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 		}
 	}()
 	ids := map[int][]types.NodeID{}
+	// writeDay moves the clock, rotates (timed alone) and writes the day.
+	var rot time.Duration
 	writeDay := func(day int) {
 		clock.set(julDay(day, 8))
+		t0 := time.Now()
+		if err := ts.CheckRotationForTest(); err != nil {
+			t.Fatalf("rotation: %v", err)
+		}
+		rot = time.Since(t0)
 		for i := 0; i < perDay; i++ {
 			id, ok, err := ts.MintNodeIDAt(tok, ms(julDay(day, 1+i%7)), true)
 			if err != nil || !ok {
@@ -237,9 +306,10 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 		{24, "day 5: steady"},
 		{25, "day 6: steady"},
 	} {
-		measureStep(cur, &rows, d.state, func() { writeDay(d.day) })
+		step(d.state, func() { writeDay(d.day) })
+		rows[len(rows)-1].rotate = rot
 	}
-	measureStep(cur, &rows, "backfill: on-demand cold window", func() {
+	step("backfill: on-demand cold window", func() {
 		for i := 0; i < 50; i++ {
 			id, ok, err := ts.MintNodeIDAt(tok, ms(julDay(10, 1+i%7)), true)
 			if err != nil || !ok {
@@ -251,39 +321,40 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 			ids[10] = append(ids[10], id)
 		}
 	})
-	measureStep(cur, &rows, "idle sweep closes demoted", func() {
+	step("idle sweep closes demoted", func() {
 		ts.SetIdleTimeoutForTest(time.Millisecond)
 		time.Sleep(5 * time.Millisecond)
 		ts.CloseIdleShardsForTest()
 	})
-	measureStep(cur, &rows, "cold read (read-only open)", func() {
+	step("cold read (read-only open)", func() {
 		for _, id := range ids[20] {
 			if _, err := ts.GetNode(id); err != nil {
 				t.Fatalf("cold read: %v", err)
 			}
 		}
 	})
-	measureStep(cur, &rows, "late write into cold (writable)", func() {
+	step("late write into cold (writable)", func() {
 		id, _, _ := ts.MintNodeIDAt(tok, ms(julDay(20, 3)), true)
 		if err := ts.PutNode(types.NewNode(id, tok, nil)); err != nil {
 			t.Fatalf("late write: %v", err)
 		}
 		ids[20] = append(ids[20], id)
 	})
-	measureStep(cur, &rows, "close", func() {
+	step("close", func() {
 		if err := ts.Close(); err != nil {
 			t.Fatal(err)
 		}
 		ts = nil
 	})
-	measureStep(cur, &rows, "restart: warm shards open", func() {
+	step("restart: warm shards open", func() {
 		if ts, err = New(cfg); err != nil {
 			t.Fatal(err)
 		}
 		ts.SetLabelRegistry(reg)
 	})
 	// A rotation after the restart: the shard the restart opened as hot turns warm.
-	measureStep(cur, &rows, "day 7 rotation after restart", func() { writeDay(26) })
+	step("day 7 rotation after restart", func() { writeDay(26) })
+	rows[len(rows)-1].rotate = rot
 	for day, list := range ids {
 		for _, id := range list {
 			if _, err := ts.GetNode(id); err != nil {

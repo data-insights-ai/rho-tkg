@@ -210,3 +210,128 @@ ro-at-demotion:                    164.7 171.7 191.5 75.3
 warm-8+ro-at-demotion:             180.1 154.1 160.7 77.7
 warm-8+reopen-warm-at-rotation:    200.0 203.3 199.9 213.3 203.2 153.2
 warm-8+reopen-warm+ro-at-demotion: 238.9 252.6 275.0 112.2 231.2 97.7 254.7 96.5 157.1 92.0
+
+=== E. Baseline with CPU, handles per state and rotation stall (13 Nov, main 2663ccca = v4.107.2) ===
+(Lettered E: the file already has a section D.) Same test and variants as section A, with more columns. usr ms, sys ms =
+the process's user and system CPU across the step (getrusage RUSAGE_SELF before and after; it includes the 2 ms memory
+sampler and badger's background goroutines, and usr can exceed step ms on several cores). rot ms = the wall time of the
+step's rotation call alone (checkRotation, called right after the clock moves and before the day's writes: it takes
+ts.mu.Lock, flushes the old hot shard, opens the new one, demotes; "-" = no rotation call in the step); step ms still
+includes it. hot, warm, dem, coldW, ref = the writable handles (rw) by state: dem = a cold shard whose handle has been
+open since it was hot or warm, coldW = a cold shard opened writable later (window shard made on demand, late write).
+Go 1.26.9, badger v4.9.2, host with other sessions running.
+
+Findings:
+ 1. Day 6, every variant: 7 writable handles = 1 hot + 2 warm + 3 demoted-open + 1 reference, 0 cold-writable; live
+    609.7-610.0 MB at 5,000 rows a day, 638.9-639.2 MB at 50,000. WarmMemTableSize touches none of the seven: the warm
+    and demoted handles all opened hot. Only coldW (backfill, late write) and the restart's opens get the small arena.
+ 2. Rotation stall: 47-83 ms at 5,000 rows a shard, 105-141 ms at 50,000 (it grows with the shard: the old hot
+    memtable's flush), and 36 ms after a restart (a shard with few rows). At 5,000 rows it is 60-75 % of the day step's
+    wall time. WarmMemTableSize does not change it: no handle reopens at rotation.
+ 3. CPU per day step (days 2-6): 26-43 ms user and 1-38 ms system at 5,000 rows; 281-353 ms user and 53-103 ms system at
+    50,000 (about 6 us user a row). Day 1, with no rotation, uses 19-23 ms user at 5,000, so the 47-83 ms rotation adds
+    only about 10-15 ms user: the stall is mostly waiting (flush and sync), not CPU (inferred, not traced).
+ 4. Surprise: at 50,000 rows a day the cold read (100 GetNode on the closed day-1 shard, read-only open) takes 2.5-2.9 s,
+    allocates 707 MB and uses 1.2-1.4 s user CPU, against 155-178 ms and 35 MB at 5,000 rows. Not investigated here.
+ 5. sys MB and peakRSS still carry over between the variants (one process, three variants in sequence; section A,
+    finding 4); compare them only within the first variant.
+
+--- E.1 R3_PER_DAY unset (5,000 rows a day; 8.0 s) ---
+variant baseline-64 (MemTableSize 64 MB, WarmMemTableSize 0 MB)
+state                               rw  ro |  live MB   sys MB  goal MB |  alloc MB peakAl MB peakIn MB peakSy MB   peakRSS |  step ms | usr ms sys ms | rot ms | hot warm dem coldW ref
+open: reference + hot                2   0 |    172.7    188.0    345.7 |     172.2     172.8     173.5     187.7      22.4 |     77.1 |      6      5 |      - |   1    0   0     0   1
+day 1: hot                           2   0 |    177.1    200.8    354.6 |      10.8     183.5     184.5     196.2      34.6 |     36.0 |     23      5 |    0.0 |   1    0   0     0   1
+day 2: hot + warm                    3   0 |    263.7    296.8    527.6 |     103.0     280.1     281.6     292.8      49.9 |     82.6 |     34      5 |   51.4 |   1    1   0     0   1
+day 3: hot + 2 warm                  4   0 |    350.2    385.0    700.7 |     103.0     366.6     368.0     381.0     139.3 |    111.1 |     31     38 |   82.7 |   1    2   0     0   1
+day 4: + 1 demoted, open             5   0 |    436.7    469.1    873.7 |     103.0     453.2     454.6     469.1     226.8 |    110.2 |     37     31 |   79.8 |   1    2   1     0   1
+day 5: steady                        6   0 |    523.2    557.1   1046.8 |     102.8     539.5     541.0     553.1     230.2 |     79.1 |     30      7 |   50.7 |   1    2   2     0   1
+day 6: steady                        7   0 |    609.7    645.5   1219.8 |     103.0     626.2     627.6     641.5     318.8 |    110.4 |     35     33 |   80.8 |   1    2   3     0   1
+backfill: on-demand cold window      8   0 |    695.7    729.7   1391.8 |      86.2     695.9     700.0     729.7     403.4 |     84.6 |      6     31 |      - |   1    2   3     1   1
+idle sweep closes demoted            4   0 |    350.3    753.7    701.0 |      29.9     725.6     729.7     753.7     410.5 |    133.6 |     14      7 |      - |   1    2   0     0   1
+cold read (read-only open)           4   0 |    350.4    753.7    701.1 |      34.5     384.9     387.9     753.7     420.1 |    178.3 |     21     19 |      - |   1    2   0     0   1
+late write into cold (writable)      5   0 |    436.6    753.7    873.7 |      90.2     440.5     444.2     753.7     392.4 |     54.2 |      7     38 |      - |   1    2   0     1   1
+close                                0   0 |      1.1    753.7      4.0 |      42.9     479.6     482.5     753.7     361.6 |    178.1 |     29     19 |      - |   0    0   0     0   0
+restart: warm shards open            4   0 |    345.8    753.9    692.0 |     352.9     351.7     353.1     753.9     414.2 |    113.5 |     32     87 |      - |   1    2   0     0   1
+day 7 rotation after restart         5   0 |    436.2    753.9    872.8 |      96.9     442.7     443.9     753.9     410.7 |     73.9 |     24      1 |   36.1 |   1    2   1     0   1
+variant warm-16 (MemTableSize 64 MB, WarmMemTableSize 16 MB)
+state                               rw  ro |  live MB   sys MB  goal MB |  alloc MB peakAl MB peakIn MB peakSy MB   peakRSS |  step ms | usr ms sys ms | rot ms | hot warm dem coldW ref
+open: reference + hot                2   0 |    173.0    754.3    346.3 |     172.1     350.3     357.2     754.3     616.4 |     81.9 |      9      3 |      - |   1    0   0     0   1
+day 1: hot                           2   0 |    177.4    754.3    355.2 |      10.8     183.8     185.3     754.3     614.8 |     30.0 |     19      6 |    0.0 |   1    0   0     0   1
+day 2: hot + warm                    3   0 |    263.9    754.3    528.2 |     103.0     280.4     282.2     754.3     540.5 |     89.0 |     43     18 |   57.1 |   1    1   0     0   1
+day 3: hot + 2 warm                  4   0 |    350.4    754.3    701.2 |     102.9     366.9     368.6     754.3     380.3 |     78.5 |     32      9 |   49.9 |   1    2   0     0   1
+day 4: + 1 demoted, open             5   0 |    436.9    838.5    874.2 |     103.0     453.4     455.1     838.5     318.5 |     79.0 |     34      1 |   49.6 |   1    2   1     0   1
+day 5: steady                        6   0 |    523.4    922.7   1047.4 |     102.8     539.8     541.5     922.7     323.3 |     76.8 |     30      4 |   49.0 |   1    2   2     0   1
+day 6: steady                        7   0 |    610.0   1006.8   1220.3 |     103.0     626.4     628.1    1006.8     328.8 |     81.2 |     35      2 |   50.7 |   1    2   3     0   1
+backfill: on-demand cold window      8   0 |    633.5   1006.9   1267.5 |      23.8     633.7     638.8    1006.8     350.8 |     61.0 |      5      9 |      - |   1    2   3     1   1
+idle sweep closes demoted            4   0 |    350.5   1006.9    701.4 |      29.9     663.4     668.2    1006.9     355.0 |    140.0 |     19      6 |      - |   1    2   0     0   1
+cold read (read-only open)           4   0 |    350.5   1006.9    701.4 |      34.6     385.1     388.7    1006.9     350.6 |    155.3 |     25     19 |      - |   1    2   0     0   1
+late write into cold (writable)      5   0 |    374.4   1006.9    749.1 |      27.7     378.2     382.6    1006.9     177.8 |     22.4 |      5      4 |      - |   1    2   0     1   1
+close                                0   0 |      1.2   1006.9      4.0 |      42.8     417.2     420.7    1006.9     180.9 |    168.3 |     23     11 |      - |   0    0   0     0   0
+restart: warm shards open            4   0 |    221.1   1006.9    442.6 |     228.0     229.0     230.5    1006.9     192.5 |     63.0 |     20     15 |      - |   1    2   0     0   1
+day 7 rotation after restart         5   0 |    311.5   1006.9    623.4 |      96.8     318.0     319.4    1006.9     192.5 |     71.9 |     18      2 |   35.8 |   1    2   1     0   1
+variant warm-8 (MemTableSize 64 MB, WarmMemTableSize 8 MB)
+state                               rw  ro |  live MB   sys MB  goal MB |  alloc MB peakAl MB peakIn MB peakSy MB   peakRSS |  step ms | usr ms sys ms | rot ms | hot warm dem coldW ref
+open: reference + hot                2   0 |    173.1   1006.9    346.4 |     172.1     350.3     357.1    1006.9     492.0 |    111.0 |     16     29 |      - |   1    0   0     0   1
+day 1: hot                           2   0 |    177.5   1006.9    355.3 |      10.8     183.8     185.3    1006.9     489.5 |     27.9 |     19      5 |    0.0 |   1    0   0     0   1
+day 2: hot + warm                    3   0 |    264.0   1006.9    528.3 |     102.9     280.5     282.2    1006.9     401.0 |     80.0 |     32     22 |   49.0 |   1    1   0     0   1
+day 3: hot + 2 warm                  4   0 |    350.5   1006.9    701.4 |     103.0     367.0     368.6    1006.9     314.6 |    110.5 |     36     32 |   79.4 |   1    2   0     0   1
+day 4: + 1 demoted, open             5   0 |    437.0   1006.9    874.4 |     103.0     453.5     455.2    1006.9     318.9 |     76.7 |     31      2 |   47.2 |   1    2   1     0   1
+day 5: steady                        6   0 |    523.5   1006.9   1047.4 |     102.8     539.8     541.6    1006.9     323.8 |     76.1 |     26      7 |   48.8 |   1    2   2     0   1
+day 6: steady                        7   0 |    610.0   1091.0   1220.4 |     103.0     626.5     628.1    1091.0     329.1 |     78.0 |     31      3 |   49.5 |   1    2   3     0   1
+backfill: on-demand cold window      8   0 |    623.2   1091.0   1246.8 |      13.4     623.4     628.6    1091.0     340.5 |     57.0 |      2      7 |      - |   1    2   3     1   1
+idle sweep closes demoted            4   0 |    350.6   1091.0    701.5 |      29.7     652.9     657.9    1091.0     344.5 |    127.3 |     15      7 |      - |   1    2   0     0   1
+cold read (read-only open)           4   0 |    350.6   1091.0    701.5 |      34.5     385.1     388.9    1091.0     339.4 |    169.2 |     26     18 |      - |   1    2   0     0   1
+late write into cold (writable)      5   0 |    364.0   1091.0    728.4 |      17.3     367.9     372.5    1091.0     171.2 |     19.8 |      4      2 |      - |   1    2   0     1   1
+close                                0   0 |      1.3   1091.3      4.0 |      43.0     407.0     410.5    1091.3     179.8 |    171.5 |     23     20 |      - |   0    0   0     0   0
+restart: warm shards open            4   0 |    200.4   1091.3    401.2 |     207.2     208.3     210.1    1091.3     175.0 |     66.0 |     17     12 |      - |   1    2   0     0   1
+day 7 rotation after restart         5   0 |    290.8   1091.3    581.9 |      96.8     297.3     298.7    1091.3     172.4 |     71.7 |     19      1 |   35.9 |   1    2   1     0   1
+
+--- E.2 R3_PER_DAY=50000 (44.9 s) ---
+variant baseline-64 (MemTableSize 64 MB, WarmMemTableSize 0 MB)
+state                               rw  ro |  live MB   sys MB  goal MB |  alloc MB peakAl MB peakIn MB peakSy MB   peakRSS |  step ms | usr ms sys ms | rot ms | hot warm dem coldW ref
+open: reference + hot                2   0 |    172.7    187.4    345.7 |     172.2     172.8     173.5     187.4      21.6 |     75.2 |      5      6 |      - |   1    0   0     0   1
+day 1: hot                           2   0 |    193.5    327.3    387.3 |     129.3     301.9     305.9     322.0     165.1 |    302.4 |    244     55 |    0.0 |   1    0   0     0   1
+day 2: hot + warm                    3   0 |    282.5    416.4    565.4 |     244.1     383.0     386.4     416.4     187.9 |    398.0 |    339     57 |  117.8 |   1    1   0     0   1
+day 3: hot + 2 warm                  4   0 |    371.6    553.1    743.6 |     244.6     527.1     531.9     549.1     343.3 |    450.8 |    323    103 |  140.6 |   1    2   0     0   1
+day 4: + 1 demoted, open             5   0 |    460.7    641.6    922.1 |     244.2     615.9     620.6     641.6     363.4 |    422.0 |    328     76 |  122.9 |   1    2   1     0   1
+day 5: steady                        6   0 |    549.8    734.0   1100.0 |     244.1     704.8     709.5     729.7     389.4 |    398.5 |    294     84 |  117.6 |   1    2   2     0   1
+day 6: steady                        7   0 |    638.9    822.4   1278.1 |     244.2     794.0     798.7     818.4     414.8 |    456.3 |    352     82 |  133.7 |   1    2   3     0   1
+backfill: on-demand cold window      8   0 |    724.9    906.4   1450.1 |      86.2     725.0     735.4     906.4     415.1 |     64.9 |      3     21 |      - |   1    2   3     1   1
+idle sweep closes demoted            4   0 |    371.8    998.8    744.0 |     112.2     837.0     846.7     998.8     323.0 |    211.3 |     78     60 |      - |   1    2   0     0   1
+cold read (read-only open)           4   0 |    371.8    999.1    744.0 |     707.9     823.6     830.6     998.8     568.9 |   2924.2 |   1380    338 |      - |   1    2   0     0   1
+late write into cold (writable)      5   0 |    460.5    999.3    921.4 |      97.3     469.2     478.3     999.3     569.4 |     39.9 |     29     13 |      - |   1    2   0     1   1
+close                                0   0 |      1.1    999.6      4.0 |     148.7     609.2     616.3     999.6     459.8 |    368.9 |    210     99 |      - |   0    0   0     0   0
+restart: warm shards open            4   0 |    353.0    999.6    706.4 |     371.0     362.7     364.3     999.6     253.9 |    115.5 |     84     53 |      - |   1    2   0     0   1
+day 7 rotation after restart         5   0 |    459.7    999.6    919.8 |     215.4     568.4     572.5     999.6     279.2 |    360.4 |    254     67 |   37.4 |   1    2   1     0   1
+variant warm-16 (MemTableSize 64 MB, WarmMemTableSize 16 MB)
+state                               rw  ro |  live MB   sys MB  goal MB |  alloc MB peakAl MB peakIn MB peakSy MB   peakRSS |  step ms | usr ms sys ms | rot ms | hot warm dem coldW ref
+open: reference + hot                2   0 |    173.1   1442.5    346.5 |     172.1     173.2     175.5    1442.5    1090.3 |    104.8 |     13     58 |      - |   1    0   0     0   1
+day 1: hot                           2   0 |    193.9   1442.5    388.0 |     129.6     302.7     307.1    1442.5     795.3 |    262.9 |    225     80 |    0.0 |   1    0   0     0   1
+day 2: hot + warm                    3   0 |    282.9   1442.5    566.2 |     244.1     383.2     386.9    1442.5     356.5 |    409.8 |    353     59 |  108.2 |   1    1   0     0   1
+day 3: hot + 2 warm                  4   0 |    372.0   1442.5    744.3 |     244.5     527.4     532.5    1442.5     434.0 |    421.8 |    323     73 |  122.0 |   1    2   0     0   1
+day 4: + 1 demoted, open             5   0 |    461.0   1442.5    922.4 |     241.6     613.6     618.7    1442.5     456.9 |    404.7 |    301     81 |  122.5 |   1    2   1     0   1
+day 5: steady                        6   0 |    550.1   1526.7   1100.6 |     244.4     705.5     710.5    1526.7     485.5 |    382.2 |    281     76 |  113.8 |   1    2   2     0   1
+day 6: steady                        7   0 |    639.1   1610.7   1278.7 |     244.1     794.2     799.3    1610.7     509.7 |    417.5 |    309     88 |  115.5 |   1    2   3     0   1
+backfill: on-demand cold window      8   0 |    662.7   1610.7   1325.8 |      23.8     662.9     674.7    1610.7     510.1 |     54.9 |      5     13 |      - |   1    2   3     1   1
+idle sweep closes demoted            4   0 |    372.0   1610.7    744.3 |     112.1     774.8     785.9    1610.7     447.7 |    213.4 |    107     43 |      - |   1    2   0     0   1
+cold read (read-only open)           4   0 |    372.0   1610.7    744.3 |     707.3     823.4     830.6    1610.7     661.6 |   2680.6 |   1242    296 |      - |   1    2   0     0   1
+late write into cold (writable)      5   0 |    398.2   1610.7    796.8 |      35.0     407.0     417.1    1610.7     662.0 |     43.2 |     23     14 |      - |   1    2   0     1   1
+close                                0   0 |      1.3   1610.7      4.0 |     148.6     546.9     554.7    1610.7     511.3 |    310.6 |    154     84 |      - |   0    0   0     0   0
+restart: warm shards open            4   0 |    228.4   1610.7    457.1 |     246.2     247.3     249.2    1610.7     306.1 |     82.8 |     77     10 |      - |   1    2   0     0   1
+day 7 rotation after restart         5   0 |    335.1   1610.7    670.5 |     215.3     443.7     448.0    1610.7     285.9 |    304.7 |    203     68 |   36.1 |   1    2   1     0   1
+variant warm-8 (MemTableSize 64 MB, WarmMemTableSize 8 MB)
+state                               rw  ro |  live MB   sys MB  goal MB |  alloc MB peakAl MB peakIn MB peakSy MB   peakRSS |  step ms | usr ms sys ms | rot ms | hot warm dem coldW ref
+open: reference + hot                2   0 |    173.2   1611.2    346.7 |     172.1     173.3     176.1    1611.2     847.4 |    109.8 |     19     60 |      - |   1    0   0     0   1
+day 1: hot                           2   0 |    193.9   1611.2    388.2 |     129.2     302.4     306.8    1611.2     579.7 |    275.9 |    238     65 |    0.0 |   1    0   0     0   1
+day 2: hot + warm                    3   0 |    283.0   1611.2    566.3 |     244.2     383.5     387.2    1611.2     356.6 |    389.8 |    346     53 |  105.1 |   1    1   0     0   1
+day 3: hot + 2 warm                  4   0 |    372.1   1611.2    744.5 |     244.5     527.5     532.5    1611.2     434.4 |    395.3 |    297     74 |  109.2 |   1    2   0     0   1
+day 4: + 1 demoted, open             5   0 |    461.1   1611.2    922.6 |     244.2     616.2     621.3    1611.2     460.4 |    389.4 |    283     88 |  111.5 |   1    2   1     0   1
+day 5: steady                        6   0 |    550.2   1611.2   1100.7 |     244.1     705.2     710.3    1611.2     486.3 |    417.8 |    322     78 |  123.7 |   1    2   2     0   1
+day 6: steady                        7   0 |    639.2   1695.3   1278.8 |     244.1     794.3     799.4    1695.3     510.9 |    407.8 |    313     77 |  121.5 |   1    2   3     0   1
+backfill: on-demand cold window      8   0 |    652.4   1695.3   1305.2 |      13.4     652.6     664.7    1695.3     511.2 |     54.1 |      3     14 |      - |   1    2   3     1   1
+idle sweep closes demoted            4   0 |    372.1   1695.3    744.9 |     112.1     764.5     775.9    1695.3     458.9 |    211.2 |     87     59 |      - |   1    2   0     0   1
+cold read (read-only open)           4   0 |    372.1   1695.3    744.6 |     707.1     823.2     830.5    1695.3     661.7 |   2534.6 |   1194    286 |      - |   1    2   0     0   1
+late write into cold (writable)      5   0 |    388.0   1695.3    776.3 |      24.5     396.7     407.1    1695.3     662.2 |     46.9 |     29     17 |      - |   1    2   0     1   1
+close                                0   0 |      1.4   1695.3      4.0 |     148.7     536.7     544.7    1695.3     483.3 |    316.4 |    162     82 |      - |   0    0   0     0   0
+restart: warm shards open            4   0 |    207.7   1695.3    415.7 |     225.4     226.7     228.8    1695.3     336.4 |     93.5 |     70     26 |      - |   1    2   0     0   1
+day 7 rotation after restart         5   0 |    314.4   1695.3    629.1 |     215.3     387.6     391.0    1695.3     352.9 |    318.8 |    242     63 |   36.8 |   1    2   1     0   1
