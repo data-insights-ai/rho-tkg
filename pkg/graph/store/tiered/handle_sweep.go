@@ -28,6 +28,21 @@ type handleSweep struct {
 	swaps  atomic.Int64                            // warm handles reopened at WarmMemTableSize
 	closes atomic.Int64                            // demoted handles closed
 	fault  atomic.Pointer[func(step string) error] // test hook (sweepFaultAt)
+	drain  atomic.Int64                            // test hook: the pin drain deadline in ns; 0 is sweepDrainTimeout
+}
+
+// sweepDrainTimeout bounds how long a swap waits for its shard's pins to
+// drain. New checkouts of the shard wait on the gate meanwhile, so one long
+// pin (an open iterator) would stall every reader and writer of the shard; the
+// swap gives up instead and the shard is retried on the next kick.
+const sweepDrainTimeout = time.Second
+
+func (ts *Store) sweepDrainDeadline() time.Time {
+	d := time.Duration(ts.sweep.drain.Load())
+	if d <= 0 {
+		d = sweepDrainTimeout
+	}
+	return time.Now().Add(d)
 }
 
 // sweepAction is what the sweep owes a shard's handle.
@@ -84,7 +99,8 @@ func (ts *Store) handleSweepLoop() {
 }
 
 // sweepHandles runs one pass: every event shard but the hot one, one at a
-// time. A shard skipped (a scope open, a pin that outlived Close's start) is
+// time. A shard skipped (a scope open, a pin past the drain deadline or one
+// that outlived Close's start) is
 // retried on the next kick.
 func (ts *Store) sweepHandles() {
 	if ts.inMemory {
@@ -199,10 +215,12 @@ func (ts *Store) sweepShard(es *EventShard) (sealed bool) {
 }
 
 // sweepClose closes es's handle once its pins drain (new checkouts wait on the
-// gate), deciding again under shardMu what the shard owes: a scope opened or a
-// promotion meanwhile leaves the handle as it is (ok false). A cold shard's
-// counts are sealed first, as on its idle close.
+// gate), or gives up when they have not drained by the deadline
+// (sweepDrainTimeout; ok false). It decides again under shardMu what the
+// shard owes: a scope opened or a promotion meanwhile leaves the handle as it
+// is (ok false). A cold shard's counts are sealed first, as on its idle close.
 func (ts *Store) sweepClose(es *EventShard) (act sweepAction, sealed, ok bool) {
+	deadline := ts.sweepDrainDeadline()
 	for {
 		es.shardMu.Lock()
 		if es.activeReqs.Load() == 0 {
@@ -210,6 +228,13 @@ func (ts *Store) sweepClose(es *EventShard) (act sweepAction, sealed, ok bool) {
 		}
 		es.shardMu.Unlock()
 		if ts.closing.Load() {
+			return sweepNone, false, false
+		}
+		if time.Now().After(deadline) {
+			// A long pin: give up and drop the gate (the caller's defer);
+			// the shard is retried on the next kick.
+			slog.Info("tiered: handle sweep: pins did not drain, swap retried later", "shard", es.name, "pins", es.activeReqs.Load())
+			_ = ts.sweepFaultAt("abandoned")
 			return sweepNone, false, false
 		}
 		time.Sleep(time.Millisecond)

@@ -375,3 +375,46 @@ func TestHandleSweep_ScopeOpenedMidSwapReachesReopenedHandle(t *testing.T) {
 		t.Fatalf("change feed %d records after a discarded scope, want %d: the reopened handle missed the scope", len(after), len(before))
 	}
 }
+
+// TestHandleSweep_LongPinAbandonsSwap: a pin held past the drain deadline
+// makes the swap give up (no swap, the gate dropped, so a write to the shard
+// proceeds while the pin is still held); after the checkin the next pass swaps
+// it. Catches a drain with no deadline: the swap waits on the pin forever and
+// every new reader and writer of the shard waits behind its gate.
+func TestHandleSweep_LongPinAbandonsSwap(t *testing.T) {
+	t.Parallel()
+	ts, n, _ := handleSweepFixture(t, nil)
+	es := ts.HotShardForTest()
+	ts.SetSweepDrainTimeoutForTest(time.Millisecond)
+	abandoned := make(chan struct{}, 16)
+	ts.SetSweepFaultForTest(func(step string) error {
+		if step == "abandoned" {
+			select {
+			case abandoned <- struct{}{}:
+			default:
+			}
+		}
+		return nil
+	})
+	pinned, err := es.CheckoutStoreForTest(ts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkin := sync.OnceFunc(es.CheckinStoreForTest)
+	defer checkin()
+	forceRotation(t, ts) // kicks the sweep goroutine, which outwaits its deadline
+	awaitSweepStep(t, abandoned, "abandoned")
+	lateWrite(t, ts, n, "under-pin") // waits on the gate unless the swap dropped it
+	if swaps, _ := ts.HandleSweepCountsForTest(); swaps != 0 {
+		t.Fatalf("swapped %d times under a pin", swaps)
+	}
+	if s, _ := es.StoreStateForTest(); s != pinned {
+		t.Fatal("the pinned handle was replaced under its pin")
+	}
+	checkin()
+	ts.SweepHandlesForTest()
+	if swaps, _ := ts.HandleSweepCountsForTest(); swaps != 1 || es.HotArenaForTest() {
+		t.Fatalf("after the checkin: swaps %d (hot-size %v), want 1", swaps, es.HotArenaForTest())
+	}
+	lateWrite(t, ts, n, "after-pin")
+}

@@ -37,3 +37,8 @@ Finding 1 (scope opened mid-swap, 13 Nov): go test -run TestHandleSweep_ScopeOpe
 --- FAIL: TestHandleSweep_ScopeOpenedMidSwapReachesReopenedHandle (0.30s)
     handle_sweep_test.go:375: change feed 2 records after a discarded scope, want 1: the reopened handle missed the scope
 FAIL
+
+Finding 2 (drain with no deadline, 13 Nov): go test -run TestHandleSweep_LongPin with sweepClose draining the pins without a deadline:
+--- FAIL: TestHandleSweep_LongPinAbandonsSwap (30.30s)
+    handle_sweep_test.go:406: the sweep never reached "abandoned"
+FAIL
