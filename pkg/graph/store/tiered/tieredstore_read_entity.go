@@ -206,7 +206,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, opens *storecontract.ReadTal
 		}
 	}
 
-	candidateEntry := ts.timestampToEventShardEntry(rid.SnowflakeID())
+	candidateEntry := ts.readableOwner(ts.timestampToEventShardEntry(rid.SnowflakeID()))
 	candidate, candidateRelease, err := candidateEntry.checkoutForReadCharged(ts, true, opens)
 	if err != nil {
 		return zero, err
@@ -485,6 +485,9 @@ func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID
 	}
 	checkedCandidates := make(map[*EventShard]struct{}, len(candidateBuckets))
 	for es, bucket := range candidateBuckets {
+		if es.noRows.Load() {
+			continue // proven empty: its IDs stay pending for the other shards
+		}
 		checkedCandidates[es] = struct{}{}
 		store, release, err := es.checkoutStoreReadOnly(ts)
 		if err != nil {
@@ -614,7 +617,7 @@ func (ts *Store) groupNodeIDsByShard(ids []types.NodeID, opens *storecontract.Re
 
 		es := ts.timestampToEventShardEntry(raw)
 		add(es, func() (*BadgerStore, func(), error) {
-			return es.checkoutForReadCharged(ts, true, opens)
+			return ts.readableOwner(es).checkoutForReadCharged(ts, true, opens)
 		}, id)
 	}
 	return batches, nil

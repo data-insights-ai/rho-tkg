@@ -59,6 +59,9 @@ func (ts *Store) nodeIDExistsForCreate(n *types.Node) (bool, error) {
 		return hot.HasNodeID(raw), nil
 	}
 
+	if ts.timestampToEventShardEntry(raw).noRows.Load() {
+		return false, nil // the ID's event shard is closed and holds no row: the probe must not open it
+	}
 	eventOwner, eventCheckin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return false, err

@@ -209,6 +209,9 @@ func (ts *Store) RestoreNode(nid types.NodeID) error {
 func (ts *Store) archiveRefMissError(nid types.NodeID) error {
 	id := nid.SnowflakeID()
 	eventShard := ts.timestampToEventShardEntry(id)
+	if eventShard.noRows.Load() {
+		return fmt.Errorf("graph: archive: %w", ErrNodeNotFound) // closed and empty: no node of this ID is there
+	}
 	eventStore, eventCheckin, err := eventShard.checkoutStoreForRead(ts)
 	if err != nil {
 		return err

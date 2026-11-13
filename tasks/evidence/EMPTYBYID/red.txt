@@ -1,0 +1,187 @@
+# EMPTYBYID red (13 Nov): go test -v -run TestEmptyByID ./pkg/graph/store/tiered/ on dev 2663ccca, before the skip.
+# A FAIL line is one by-ID read path (or probe) that opened the proven-empty cold shard: ShardAccessStats().ColdOpens +1.
+# PASS lines: paths that already skipped it (fan-outs, a read of the hot shard's own node), and the late-write wake tests.
+# INFO log lines removed.
+
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNode_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/LendNode_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeIntegrityHash_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/EndpointIntegrityHashes_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeCurrentStamps_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "{0 0 0 0} graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeStoredSizes_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[] <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNodeHistory_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]<nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/HasNodeHistory_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNodeVersion_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false graph: version not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryStamps_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "0 0 false <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryTemporalMeta_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[] <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryVersionsFrom_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]<nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeAsOfWalk_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false false <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelationship_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false graph: relationship not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/LendRelationship_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false graph: relationship not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/RelCurrentStamps_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "{0 0 0 0} graph: relationship not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelationship_cross-shard_rel
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "found896449719259759617")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/LendRelationship_cross-shard_rel
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "found896449719259759617")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/RelCurrentStamps_cross-shard_rel
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "{0 0 0 0} <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelHistory_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]<nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/HasRelHistory_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelVersion_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false graph: version not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryStamps_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "0 0 false <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryTemporalMeta_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[] <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryVersionsFrom_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]<nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelHistory_cross-shard_rel
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]<nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/HasRelHistory_cross-shard_rel
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationships_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationships_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/OutgoingDegree_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "0 graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/IncomingDegree_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "0 graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/ForEachExAdjacentRelID_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[] <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/ForEachExAdjacentRelID_incoming_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[] <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationships_of_the_event_node_sig
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationships_of_the_reference_node_a
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[896449719259759617]<nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_with_a_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]graph: get nodes by IDs: graph: get nodes by IDs 896449719259725824: graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_of_misses_only
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]graph: get nodes by IDs: graph: get nodes by IDs 896449719259725824: graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_with_a_duplicate_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]graph: get nodes by IDs: graph: get nodes by IDs 896449719259725824: graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelationshipsByIDs_with_a_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]graph: get relationships by IDs 896449719259759616: graph: relationship not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelationshipsByIDs_of_cross-shard_and_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[]graph: get relationships by IDs 896449719259759616: graph: relationship not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/LendNodesSorted_with_a_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[896449732642045952  896449732649975808 ]<nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/LendRelationshipsSorted_with_a_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "[896449732650861568  896449719259759617 ]<nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationshipsForNodes_with_a_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationshipsForNodes_with_a_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationshipsForNodes_of_misses_only
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "graph: node not found")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/relIDExists_miss
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "false <nil>")
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/relIDExists_cross-shard_rel
+    empty_by_id_test.go:296: opened the empty shard 1 times (answer "true <nil>")
+--- FAIL: TestEmptyByID_ReadsKeepTheShardClosed (12.96s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetNode_miss (0.20s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/LendNode_miss (0.16s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/NodeIntegrityHash_miss (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/EndpointIntegrityHashes_miss (0.24s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/NodeCurrentStamps_miss (0.24s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/NodeStoredSizes_miss (0.22s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetNodeHistory_miss (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/HasNodeHistory_miss (0.21s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetNodeVersion_miss (0.22s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryStamps_miss (0.20s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryTemporalMeta_miss (0.18s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryVersionsFrom_miss (0.21s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/NodeAsOfWalk_miss (0.17s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetRelationship_miss (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/LendRelationship_miss (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/RelCurrentStamps_miss (0.29s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetRelationship_cross-shard_rel (0.27s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/LendRelationship_cross-shard_rel (0.34s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/RelCurrentStamps_cross-shard_rel (0.31s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetRelHistory_miss (0.27s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/HasRelHistory_miss (0.32s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetRelVersion_miss (0.30s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryStamps_miss (0.23s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryTemporalMeta_miss (0.18s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryVersionsFrom_miss (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetRelHistory_cross-shard_rel (0.22s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/HasRelHistory_cross-shard_rel (0.24s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationships_miss (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationships_miss (0.22s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/OutgoingDegree_miss (0.21s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/IncomingDegree_miss (0.18s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/ForEachExAdjacentRelID_miss (0.64s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/ForEachExAdjacentRelID_incoming_miss (0.87s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationships_of_the_event_node_sig (0.00s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationships_of_the_reference_node_a (0.35s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_with_a_miss (0.20s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_of_misses_only (0.20s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_with_a_duplicate_miss (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetRelationshipsByIDs_with_a_miss (0.18s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/GetRelationshipsByIDs_of_cross-shard_and_miss (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/LendNodesSorted_with_a_miss (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/LendRelationshipsSorted_with_a_miss (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationshipsForNodes_with_a_miss (0.16s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationshipsForNodes_with_a_miss (0.17s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationshipsForNodes_of_misses_only (0.19s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/relIDExists_miss (0.69s)
+    --- FAIL: TestEmptyByID_ReadsKeepTheShardClosed/relIDExists_cross-shard_rel (0.63s)
+=== RUN   TestEmptyByID_MissAnswersAreTheMissContract
+--- PASS: TestEmptyByID_MissAnswersAreTheMissContract (2.97s)
+=== RUN   TestEmptyByID_RepeatedSweepsAndMissesOpenNothing
+    empty_by_id_test.go:358: round 0: the empty shard was opened 46 times
+--- FAIL: TestEmptyByID_RepeatedSweepsAndMissesOpenNothing (6.50s)
+=== RUN   TestEmptyByID_CreateExistenceProbesOpenNothing
+    empty_by_id_test.go:383: the create-existence probes opened the empty shard 2 times
+--- FAIL: TestEmptyByID_CreateExistenceProbesOpenNothing (1.98s)
+=== RUN   TestEmptyByID_BatchCreateExistenceProbesOpenNothing
+    empty_by_id_test.go:415: the batched create-existence probes opened the empty shard 2 times
+--- FAIL: TestEmptyByID_BatchCreateExistenceProbesOpenNothing (1.49s)
+=== RUN   TestEmptyByID_LateWriteWakesTheShardForEveryRead
+--- PASS: TestEmptyByID_LateWriteWakesTheShardForEveryRead (2.16s)
+=== RUN   TestEmptyByID_WakeFindsTheReadAfterAMarkedMiss
+--- PASS: TestEmptyByID_WakeFindsTheReadAfterAMarkedMiss (1.80s)
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/NodeCountByLabel
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodeIDs
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/AllRelationships
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/NodesByLabel
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/RelationshipsByType
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodeHistoryIDs
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/AllRelHistoryIDs
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/OutgoingRelationships_of_a_reference_node_(mint_fan-out)
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/IncomingRelationships_of_a_reference_node_(mint_fan-out)
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodes
+--- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine (1.36s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/NodeCountByLabel (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodeIDs (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/AllRelationships (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/NodesByLabel (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/RelationshipsByType (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodeHistoryIDs (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/AllRelHistoryIDs (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/OutgoingRelationships_of_a_reference_node_(mint_fan-out) (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/IncomingRelationships_of_a_reference_node_(mint_fan-out) (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodes (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	31.323s
+FAIL

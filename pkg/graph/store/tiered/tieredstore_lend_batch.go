@@ -68,7 +68,10 @@ func (ts *Store) LendNodesSortedMetered(ids []types.NodeID, out []*types.Node, m
 		return err
 	}
 
-	shards, groups := groupByEventShard(ts, ids, pending)
+	shards, groups, empty := groupByEventShard(ts, ids, pending)
+	for _, i := range empty {
+		out[i] = nil // its shard holds no row
+	}
 	for k, es := range shards {
 		if err := es.meterOpen(meter, "LendNodesSorted"); err != nil {
 			return err
@@ -164,8 +167,8 @@ func (ts *Store) LendRelationshipsSortedMetered(ids []types.RelID, out []*types.
 		return err
 	}
 
-	shards, groups := groupByEventShard(ts, ids, pending)
-	pending = nil
+	shards, groups, empty := groupByEventShard(ts, ids, pending)
+	pending = empty // the probe below asks the other shards for them
 	for k, es := range shards {
 		if err := es.meterOpen(meter, "LendRelationshipsSorted"); err != nil {
 			return err
@@ -313,13 +316,17 @@ func splitBy(pos []int, in func(i int) bool) (yes, no []int) {
 }
 
 // groupByEventShard groups pos by the event shard of each ID's timestamp, the
-// shards in first-seen order, each group in pos's order.
-func groupByEventShard[ID ~int64](ts *Store, ids []ID, pos []int) ([]*EventShard, [][]int) {
-	var shards []*EventShard
-	var groups [][]int
+// shards in first-seen order, each group in pos's order. A position whose shard
+// is closed and proven empty (noRows) joins no group and is returned in empty:
+// the shard holds no row to lend and is not opened (EMPTYBYID).
+func groupByEventShard[ID ~int64](ts *Store, ids []ID, pos []int) (shards []*EventShard, groups [][]int, empty []int) {
 	at := make(map[*EventShard]int)
 	for _, i := range pos {
 		es := ts.timestampToEventShardEntry(snowflake.ID(ids[i]))
+		if es.noRows.Load() {
+			empty = append(empty, i)
+			continue
+		}
 		k, ok := at[es]
 		if !ok {
 			k = len(shards)
@@ -329,5 +336,5 @@ func groupByEventShard[ID ~int64](ts *Store, ids []ID, pos []int) ([]*EventShard
 		}
 		groups[k] = append(groups[k], i)
 	}
-	return shards, groups
+	return shards, groups, empty
 }

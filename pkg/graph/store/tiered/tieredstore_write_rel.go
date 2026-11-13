@@ -17,8 +17,11 @@ import (
 // to correctly handle E→E cross-shard relationships, and pin cold owners for the
 // duration of the write.
 
+// relIDExists is the create-existence probe of a relationship ID. It only
+// reads, so it takes the read route, which leaves a closed shard proven empty
+// closed (readableOwner); the write route would open it and wake its mark.
 func (ts *Store) relIDExists(id types.RelID) (bool, error) {
-	shard, checkin, err := ts.shardForRelIDChecked(id)
+	shard, checkin, _, err := ts.shardForRelIDReadWithArchive(id)
 	if err != nil {
 		return false, err
 	}

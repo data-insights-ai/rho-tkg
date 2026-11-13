@@ -279,15 +279,16 @@ func (ts *Store) noteNodeEarlierLives(nid types.NodeID, owner *BadgerStore) erro
 	}
 	found := false
 	if owner == ts.refShard {
-		es := ts.timestampToEventShardEntry(id)
-		s, release, err := es.checkoutStoreForRead(ts)
-		if err != nil {
-			return err
-		}
-		found, err = ask(s)
-		release()
-		if err != nil {
-			return err
+		if es := ts.timestampToEventShardEntry(id); !es.noRows.Load() { // an empty one holds no history
+			s, release, err := es.checkoutStoreForRead(ts)
+			if err != nil {
+				return err
+			}
+			found, err = ask(s)
+			release()
+			if err != nil {
+				return err
+			}
 		}
 	} else {
 		ref, refCheckin, err := ts.checkoutRefShard()

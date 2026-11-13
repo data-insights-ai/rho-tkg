@@ -50,7 +50,11 @@ func (ts *Store) exAdjShards(nid types.NodeID, withEvent bool) (shards []*Badger
 	if !withEvent {
 		return shards, release, nil
 	}
-	event, eventCheckin, err := ts.timestampToEventShardEntry(nid.SnowflakeID()).checkoutStoreForRead(ts)
+	es := ts.timestampToEventShardEntry(nid.SnowflakeID())
+	if es.noRows.Load() {
+		return shards, release, nil // closed and empty: it holds no leg, and is not opened
+	}
+	event, eventCheckin, err := es.checkoutStoreForRead(ts)
 	if err != nil {
 		return nil, release, err
 	}

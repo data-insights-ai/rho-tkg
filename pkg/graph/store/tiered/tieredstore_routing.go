@@ -67,6 +67,25 @@ func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
 	return ts.hotShard // fallback: newest shard (always open)
 }
 
+// readableOwner is the event shard a read of an ID that es's window owns asks:
+// es, unless es is closed and proven to hold no row (noRows), where no row of
+// the ID can lie and opening it only to miss is the repeated empty-shard reopen
+// of EMPTYBYID. That read asks the hot shard, as the read of an ID no window
+// covers does (window_shard.go: reads route to the hot shard and answer
+// not-found): the hot shard is open, so nothing opens, and it answers what the
+// empty shard would, since an ID's row lies on its window's shard, the reference
+// shard or the archive, and a relationship with its start node, which the
+// by-ID probes of the other shards still find. A write never takes this route:
+// a write into es's window must open and wake it (wakeNoRowsLocked).
+func (ts *Store) readableOwner(es *EventShard) *EventShard {
+	if !es.noRows.Load() {
+		return es
+	}
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.hotShard
+}
+
 // reindexShardsLocked rebuilds shardIndex from eventShards, sorted by
 // timeStart. Caller holds ts.mu.Lock (or owns the Store, as New does); run it
 // after every insert into or delete from eventShards. Rotation changes timeEnd in
@@ -197,6 +216,9 @@ func (ts *Store) routeRelShardFor(id types.RelID, readOnly bool, opens *storecon
 	}
 
 	candidateEntry := ts.timestampToEventShardEntry(raw)
+	if readOnly {
+		candidateEntry = ts.readableOwner(candidateEntry)
+	}
 	candidate, candidateRelease, err := candidateEntry.checkoutForReadCharged(ts, readOnly, opens)
 	if err != nil {
 		return nil, nil, false, relRowProbe{}, err
@@ -384,6 +406,9 @@ func (ts *Store) routeNodeShard(id types.NodeID, readOnly bool, opens *storecont
 	// Event shard: resolve via timestamp, then checkout to prevent idle-close
 	// races. Cold shards opened only for this operation close again on checkin.
 	es := ts.timestampToEventShardEntry(raw)
+	if readOnly {
+		es = ts.readableOwner(es)
+	}
 	store, checkin, err = es.checkoutForReadCharged(ts, readOnly, opens)
 	if err != nil {
 		return nil, nil, false, err

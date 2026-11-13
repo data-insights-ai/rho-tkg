@@ -1,0 +1,140 @@
+# EMPTYBYID green (13 Nov): the same command after the skip (readableOwner on the by-ID routes, skipped candidate
+# buckets in the batch doors, read-only create-existence probes). Every probe: 0 ColdOpens, same answer as the shard read.
+# Mutations checked: wakeNoRowsLocked off (late-write tests red), LendRelationshipsSorted's skipped IDs dropped
+# instead of left pending (the cross-shard rel is lost: red). Full package: go test ./pkg/graph/store/tiered/ ok 106.8 s.
+# INFO log lines removed.
+
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNode_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/LendNode_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeIntegrityHash_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/EndpointIntegrityHashes_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeCurrentStamps_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeStoredSizes_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNodeHistory_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/HasNodeHistory_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNodeVersion_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryStamps_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryTemporalMeta_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryVersionsFrom_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/NodeAsOfWalk_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelationship_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/LendRelationship_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/RelCurrentStamps_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelationship_cross-shard_rel
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/LendRelationship_cross-shard_rel
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/RelCurrentStamps_cross-shard_rel
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelHistory_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/HasRelHistory_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelVersion_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryStamps_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryTemporalMeta_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryVersionsFrom_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelHistory_cross-shard_rel
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/HasRelHistory_cross-shard_rel
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationships_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationships_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/OutgoingDegree_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/IncomingDegree_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/ForEachExAdjacentRelID_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/ForEachExAdjacentRelID_incoming_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationships_of_the_event_node_sig
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationships_of_the_reference_node_a
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_with_a_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_of_misses_only
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_with_a_duplicate_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelationshipsByIDs_with_a_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/GetRelationshipsByIDs_of_cross-shard_and_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/LendNodesSorted_with_a_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/LendRelationshipsSorted_with_a_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationshipsForNodes_with_a_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationshipsForNodes_with_a_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationshipsForNodes_of_misses_only
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/relIDExists_miss
+=== RUN   TestEmptyByID_ReadsKeepTheShardClosed/relIDExists_cross-shard_rel
+--- PASS: TestEmptyByID_ReadsKeepTheShardClosed (1.40s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetNode_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/LendNode_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/NodeIntegrityHash_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/EndpointIntegrityHashes_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/NodeCurrentStamps_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/NodeStoredSizes_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetNodeHistory_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/HasNodeHistory_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetNodeVersion_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryStamps_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryTemporalMeta_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/NodeHistoryVersionsFrom_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/NodeAsOfWalk_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetRelationship_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/LendRelationship_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/RelCurrentStamps_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetRelationship_cross-shard_rel (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/LendRelationship_cross-shard_rel (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/RelCurrentStamps_cross-shard_rel (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetRelHistory_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/HasRelHistory_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetRelVersion_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryStamps_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryTemporalMeta_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/RelHistoryVersionsFrom_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetRelHistory_cross-shard_rel (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/HasRelHistory_cross-shard_rel (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationships_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationships_miss (0.03s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/OutgoingDegree_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/IncomingDegree_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/ForEachExAdjacentRelID_miss (0.05s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/ForEachExAdjacentRelID_incoming_miss (0.07s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationships_of_the_event_node_sig (0.00s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationships_of_the_reference_node_a (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_with_a_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_of_misses_only (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetNodesByIDs_with_a_duplicate_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetRelationshipsByIDs_with_a_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/GetRelationshipsByIDs_of_cross-shard_and_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/LendNodesSorted_with_a_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/LendRelationshipsSorted_with_a_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationshipsForNodes_with_a_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/IncomingRelationshipsForNodes_with_a_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/OutgoingRelationshipsForNodes_of_misses_only (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/relIDExists_miss (0.02s)
+    --- PASS: TestEmptyByID_ReadsKeepTheShardClosed/relIDExists_cross-shard_rel (0.02s)
+=== RUN   TestEmptyByID_MissAnswersAreTheMissContract
+--- PASS: TestEmptyByID_MissAnswersAreTheMissContract (0.26s)
+=== RUN   TestEmptyByID_RepeatedSweepsAndMissesOpenNothing
+--- PASS: TestEmptyByID_RepeatedSweepsAndMissesOpenNothing (0.29s)
+=== RUN   TestEmptyByID_CreateExistenceProbesOpenNothing
+--- PASS: TestEmptyByID_CreateExistenceProbesOpenNothing (0.29s)
+=== RUN   TestEmptyByID_BatchCreateExistenceProbesOpenNothing
+--- PASS: TestEmptyByID_BatchCreateExistenceProbesOpenNothing (0.28s)
+=== RUN   TestEmptyByID_LateWriteWakesTheShardForEveryRead
+--- PASS: TestEmptyByID_LateWriteWakesTheShardForEveryRead (0.49s)
+=== RUN   TestEmptyByID_WakeFindsTheReadAfterAMarkedMiss
+--- PASS: TestEmptyByID_WakeFindsTheReadAfterAMarkedMiss (0.31s)
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodeIDs
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/NodesByLabel
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodeHistoryIDs
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/AllRelHistoryIDs
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/NodeCountByLabel
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/IncomingRelationships_of_a_reference_node_(mint_fan-out)
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodes
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/AllRelationships
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/RelationshipsByType
+=== RUN   TestEmptyByID_FanOutReadsAreAlreadyFine/OutgoingRelationships_of_a_reference_node_(mint_fan-out)
+--- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine (0.24s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodeIDs (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/NodesByLabel (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodeHistoryIDs (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/AllRelHistoryIDs (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/NodeCountByLabel (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/IncomingRelationships_of_a_reference_node_(mint_fan-out) (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/AllNodes (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/AllRelationships (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/RelationshipsByType (0.00s)
+    --- PASS: TestEmptyByID_FanOutReadsAreAlreadyFine/OutgoingRelationships_of_a_reference_node_(mint_fan-out) (0.00s)
+=== RUN   TestEmptyByID_MarkSurvivesAReopenAndAWriteClearsItForGood
+--- PASS: TestEmptyByID_MarkSurvivesAReopenAndAWriteClearsItForGood (0.63s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	4.238s
