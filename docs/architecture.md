@@ -281,18 +281,28 @@ ADR-0012.
   move or `Clear`; 8 MB against 64 MB: a restart over two warm shards 346 to 200 MB of live heap, a window shard made on
   demand 86 to 13 MB of allocation).
 - **The handle sweep** (R3, `handle_sweep.go`) shrinks the handles a rotation leaves: a goroutine started by `New`,
-  kicked at the end of each rotation and on the idle tick, reopens the old hot shard, now warm, writable at
-  `WarmMemTableSize` (when set; `EventShard.hotArena`, set only by a hot open, marks the handles owed a reopen), and
-  closes a cold shard's handle unless a cold read or late write opened it (`EventShard.coldOpened`): the demoted chain
-  is closed whatever its size, a cold read's or late write's handle is left to `IdleTimeout`, so a shard with steady
-  late writes is not reopened on every kick. A swap is `MoveShard` without the copy: it takes the shard's move gate,
-  waits for its pins to drain outside `ts.mu` (at most 1 s: a longer pin makes it give up and drop the gate, the shard
-  retried on the next kick), closes, reopens (joining a change-log scope opened meanwhile), and re-applies
-  the store's registries as the gate drops; writers to other shards never wait, the swapping shard's wait one swap
-  (47-61 ms at 5,000 rows a shard, 150-193 ms at 50,000), and the rotation itself does not wait. It skips a shard
-  while a change-log scope is open, stops at `Close` (which waits for it) and does nothing in memory. Day 6 of the
-  measure test at 64 MB hot and 8 MB warm: 204.5 MB of live heap at 5,000 rows a day and 225.8 MB at 50,000,
-  against 610 before (`tasks/evidence/R3/measure.txt` section G). A crash mid-swap leaves a hot-size WAL that the next writable open migrates, or a cleanly closed shard.
+  kicked at the end of each rotation and on the idle tick. It visits only the shards that owe work, a pending set that
+  a rotation fills with the old hot shard and the shards it demotes (a cold window shard made open joins it too) and
+  that keeps a shard a pass could not settle (a scope open, a pin past the deadline); a pass costs the work, not the
+  shards the store retains (counted: one shard looked at among 10, 100 or 1,000 retained). It reopens the old hot
+  shard, now warm, writable at `WarmMemTableSize` (when set; `EventShard.hotArena`, set only by a hot open, marks the
+  handles owed a reopen), and closes a cold shard's handle unless a cold read or late write opened it
+  (`EventShard.coldOpened`): the demoted chain is closed whatever its size, a cold read's or late write's handle is
+  left to `IdleTimeout`, so a shard with steady late writes is not reopened on every kick. A swap is `MoveShard`
+  without the copy: it takes the shard's move gate, waits for its pins to drain outside `ts.mu` (at most 1 s: a
+  longer pin makes it give up and drop the gate, the shard retried on the next kick; a shard with pins held is left to
+  the end of the pass, so a pin delays only its own shard), closes, reopens and re-applies the store's registries as
+  the gate drops. The reopened handle joins a change-log scope opened meanwhile: `badger.Store.EnsureLogScope` is the
+  begin of that hand-off and of the scope's own fold, so a swap installing between `BeginLogScope`'s flag and its fold
+  gives no double begin (a caller's second begin is still refused). A swap whose reopen fails demotes a warm shard to
+  cold (its next access opens it) and never changes the tier of a shard a rotation promoted meanwhile: that shard gets
+  a hot-size handle before the gate drops, or, when even that open fails, the store's sticky fault, and the catalog
+  keeps naming it hot. Writers to other shards never wait, the swapping shard's wait one swap (47-61 ms at 5,000 rows
+  a shard, 150-193 ms at 50,000), and the rotation itself does not wait. It skips a shard while a change-log scope
+  is open, stops at `Close` (which waits for it) and does nothing in memory. Day 6 of the measure test at 64 MB hot
+  and 8 MB warm: 204.5 MB of live heap at 5,000 rows a day and 225.8 MB at 50,000, against 610 before
+  (`tasks/evidence/R3/measure.txt` section G). A crash mid-swap leaves a hot-size WAL that the next writable open
+  migrates, or a cleanly closed shard.
 - **Shard pinning.** Every access pins a shard (`checkoutStore` / `checkinStore`); `Close` waits for pins to
   drain and the idle sweep and demotion cleanup skip pinned handles, so no reader ever holds a closed database.
 - **Old entities stay writable** on their own shard after rotation; there is no read-only tier.

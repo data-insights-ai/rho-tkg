@@ -82,6 +82,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   waits for its swap, and the shard keeps, or gets, a hot-size handle. Day 6 of the measure test (64 MB hot, 8 MB warm, three demoted shards, all
   closed): 204.5 MB of live heap instead of 610, 225.8 instead of 639 at 50,000 rows a day, flat from day 3 at four
   writable handles; without `WarmMemTableSize` 350 instead of 610 (`tasks/evidence/R3/measure.txt` section G).
+  A pass visits only the shards that owe work (a rotation adds the old hot shard and the shards it demotes to a pending
+  set, a shard a pass could not settle stays in it) instead of every retained event shard: one rotation among 10, 100
+  and 1,000 closed cold shards made the passes look at 11, 101 and 1,001 shards, now one, and an idle pass none. A shard
+  with pins held is left to the end of the pass, so one long pin no longer delays the shards behind it.
+  A swap whose reopen fails no longer demotes a shard a rotation promoted meanwhile to cold: it stays hot, gets a
+  hot-size handle before the gate drops, and the catalog keeps naming it hot (the store's sticky fault when even that
+  open fails); a warm shard is still demoted to cold. A swap installing between `BeginLogScope`'s flag and its fold no
+  longer makes it fail with "change-log scope already open": the hand-off and the fold begin idempotently with the new
+  `badger.Store.EnsureLogScope`, so the shard is in the scope once, and a caller's second `BeginLogScope` on an open
+  scope is still refused (tiered, `tasks/evidence/R3/sweep-red.txt`).
 - **Handles and writes per tier** (R3): `ShardAccessStats` reports the open handles per tier (`ReferenceHandles`,
   `ArchiveHandles`, `HotHandles`, `WarmHandles`, `ColdHandles`, each `TierHandles{Writable, ReadOnly}`) and the
   writable checkouts per tier since `New` (`HotWrites`, `WarmWrites`, `ColdWrites`, kept across a retention drop).
