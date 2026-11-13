@@ -12,4 +12,6 @@ Waiting). Read `docs/architecture.md`, a lesson or another doc section when the 
 Development loop (René, 13 Nov, the same in rho, sigma and ai-soc): fix a gap in the repo that owns it (rho, then
 sigma, then ai-soc). Each step: a few new tests for the new code, then 1-2 old tests (`make new PKG=.. RUN=..`,
 `make old`). Go's test cache reruns only what changed, so never `-count=1`; only a release runs everything. Unfinished
-code is normal until the next release, but keep main building: sigma and ai-soc build on this checkout.
+code is normal until the next release, but keep main building: sigma and ai-soc build on this checkout
+(`make dev-pin RHO=..`), so finished work only needs to be on local main: no tag and no push until René calls a
+release.
