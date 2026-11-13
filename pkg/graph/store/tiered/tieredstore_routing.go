@@ -94,6 +94,18 @@ func (ts *Store) readableOwner(es *EventShard) *EventShard {
 	return ts.hotShard
 }
 
+// relReadableOwner is readableOwner for a read of relationship id: also the
+// hot shard when es is closed and its sealed range misses id
+// (sealedWithoutRelID), since no row of id lies there.
+func (ts *Store) relReadableOwner(es *EventShard, id snowflake.ID) *EventShard {
+	if es.sealedWithoutRelID(id) {
+		ts.mu.RLock()
+		defer ts.mu.RUnlock()
+		return ts.hotShard
+	}
+	return ts.readableOwner(es)
+}
+
 // reindexShardsLocked rebuilds shardIndex from eventShards, sorted by
 // timeStart. Caller holds ts.mu.Lock (or owns the Store, as New does); run it
 // after every insert into or delete from eventShards. Rotation changes timeEnd in
@@ -225,7 +237,7 @@ func (ts *Store) routeRelShardFor(id types.RelID, readOnly bool, opens *storecon
 
 	candidateEntry := ts.timestampToEventShardEntry(raw)
 	if readOnly {
-		candidateEntry = ts.readableOwner(candidateEntry)
+		candidateEntry = ts.relReadableOwner(candidateEntry, raw)
 	}
 	candidate, candidateRelease, err := candidateEntry.checkoutForReadCharged(ts, readOnly, opens)
 	if err != nil {
@@ -241,7 +253,7 @@ func (ts *Store) routeRelShardFor(id types.RelID, readOnly bool, opens *storecon
 	ts.mu.RLock()
 	probe := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
-		if es == candidateEntry || es.noRows.Load() {
+		if es == candidateEntry || es.noRows.Load() || es.sealedWithoutRelID(raw) {
 			continue
 		}
 		probe = append(probe, es)

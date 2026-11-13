@@ -1,0 +1,5 @@
+--- FAIL: TestRelIDRange_DeletedRelOpensOnlyItsShard (0.81s)
+    rel_id_range_test.go:83: HasRelHistory opened 11 cold shards, want at most 1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.825s
+FAIL

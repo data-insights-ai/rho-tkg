@@ -1,6 +1,8 @@
 package tiered
 
 import (
+	snowflake "github.com/bds421/rho-snowflake-2026"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -70,6 +72,22 @@ type ShardEntry struct {
 	// NoRows marks a sealed shard that held no row when it closed. Fan-out reads
 	// skip it. Cleared, and saved, before the shard opens for writing.
 	NoRows bool `json:"no_rows,omitempty"`
+	// RelIDs marks a sealed shard whose relationship ID range is recorded:
+	// RelIDLo..RelIDHi spans every relationship ID it holds a current or
+	// history row of, and RelIDNone says it holds none. By-ID reads of a
+	// relationship outside it skip the shard. Cleared with the seal.
+	RelIDs    bool  `json:"rel_ids,omitempty"`
+	RelIDNone bool  `json:"rel_id_none,omitempty"`
+	RelIDLo   int64 `json:"rel_id_lo,omitempty"`
+	RelIDHi   int64 `json:"rel_id_hi,omitempty"`
+}
+
+// relIDRange is the entry's recorded relationship ID range, nil when none is.
+func (e ShardEntry) relIDRange() *relIDRange {
+	if !e.RelIDs {
+		return nil
+	}
+	return &relIDRange{lo: snowflake.ID(e.RelIDLo), hi: snowflake.ID(e.RelIDHi), any: !e.RelIDNone}
 }
 
 // ShardCatalog tracks all shards in a tiered store. It is persisted as JSON.
@@ -553,6 +571,29 @@ func (sc *ShardCatalog) SealShardCounts(name string, nodes, rels int, byLabel, b
 	return false
 }
 
+// SetShardRelIDRange records a sealed shard's relationship ID range (nil: not
+// known). Returns true if the entry changed.
+func (sc *ShardCatalog) SetShardRelIDRange(name string, r *relIDRange) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	for i := range sc.Shards {
+		e := &sc.Shards[i]
+		if e.Name != name {
+			continue
+		}
+		before := *e
+		e.RelIDs, e.RelIDNone, e.RelIDLo, e.RelIDHi = false, false, 0, 0
+		if r != nil {
+			e.RelIDs, e.RelIDNone = true, !r.any
+			if r.any {
+				e.RelIDLo, e.RelIDHi = int64(r.lo), int64(r.hi)
+			}
+		}
+		return e.RelIDs != before.RelIDs || e.RelIDNone != before.RelIDNone || e.RelIDLo != before.RelIDLo || e.RelIDHi != before.RelIDHi
+	}
+	return false
+}
+
 // SetShardNoRows records whether a sealed shard held no row.
 func (sc *ShardCatalog) SetShardNoRows(name string, none bool) bool {
 	sc.mu.Lock()
@@ -578,6 +619,7 @@ func (sc *ShardCatalog) UnsealShardCounts(name string) bool {
 		}
 		sc.Shards[i].CountsSealed = false
 		sc.Shards[i].NoRows = false
+		sc.Shards[i].RelIDs, sc.Shards[i].RelIDNone, sc.Shards[i].RelIDLo, sc.Shards[i].RelIDHi = false, false, 0, 0
 		sc.Shards[i].NodeCountsByLabel = nil
 		sc.Shards[i].RelCountsByType = nil
 		return true

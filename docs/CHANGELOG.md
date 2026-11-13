@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **A deleted relationship's reads open only its own shard (Sigma RH-S7 retraction)**: on tiered, a closed cold
+  shard's sealed counts now carry the range of relationship IDs it holds a current or history row of
+  (`BadgerStore.RelIDRange`, saved in the catalog, dropped before a write opens the shard), and every by-ID
+  relationship read skips a sealed shard whose range misses the ID: the route and row probes, history and version
+  reads, `HasRelHistory`, `RelHistoryStamps` (so `Rels().LatestStampsCtx` and the timelines), temporal meta,
+  `TruncateRelHistory` and the caller-ID create probe. `Close` now seals the open cold shards as the idle close does.
+  A deleted relationship minted on a cold day, with six cold days, opened 11 cold shards for `HasRelHistory` and now
+  opens 1 (red: `tasks/evidence/RELIDRANGE/red.txt`); tests: `TestRelIDRange_DeletedRelOpensOnlyItsShard` (also a late
+  write into a sealed shard, found before and after a reopen), `TestRelIDRange_RowsHistoryAndPending` (badger). A shard
+  sealed by an older version has no range and is opened as before until its next close.
 - **Reference relationship types (Sigma RH-S7)**: `tiered.Config.RefTypes` lists relationship types that are
   reference-class. One of them between two reference nodes is placed on the reference shard whatever its ID's mint
   instant, as without `RelsByMint`, so its create (also batched or with a generated ID), a new version and its reads

@@ -605,6 +605,14 @@ that test.
 - **Label and type doors skip sealed shards without them** (REFFANOUT). A cold shard's sealed counts (`shardCounts`)
   say how many current nodes of each label and rels of each type it holds; a label or type door skips a shard sealed
   with none (`eventShardsWithLabel`, `eventShardsWithRelType`), so a reference label's listing opens no cold shard.
+- **A relationship read by ID skips sealed shards whose ID range misses it** (Sigma RH-S7). The sealed counts also
+  carry the lowest and highest relationship ID the shard holds a current or history row of (`BadgerStore.RelIDRange`,
+  four seeks; catalog `rel_ids`, `rel_id_lo`, `rel_id_hi`, `rel_id_none`), dropped with the seal before a write opens
+  the shard. The by-ID route, the row probes and every relationship history walk (history, versions, stamps, presence,
+  temporal meta, truncation, the caller-ID create probe) skip such a shard, so a deleted relationship, which has no
+  current row anywhere, opens only the shards whose range holds its ID: under `MintAtValidFrom` its own day. `Close`
+  now seals its open cold shards too (the idle close always did). A shard sealed before the range existed has none and
+  is still opened, once; its next close records it.
 - **A closed shard proven empty is not opened by any read or probe** (COLDEDGE, EMPTYBYID). The `noRows` mark (set when
   a shard closes holding no row, saved in the catalog, cleared and saved before a write opens the shard) takes the shard
   out of every fan-out (`eventShardsToRead`) and out of the probes for an ID. A read of an ID the shard's window owns

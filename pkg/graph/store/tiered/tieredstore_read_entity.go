@@ -206,7 +206,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, opens *storecontract.ReadTal
 		}
 	}
 
-	candidateEntry := ts.readableOwner(ts.timestampToEventShardEntry(rid.SnowflakeID()))
+	candidateEntry := ts.relReadableOwner(ts.timestampToEventShardEntry(rid.SnowflakeID()), rid.SnowflakeID())
 	candidate, candidateRelease, err := candidateEntry.checkoutForReadCharged(ts, true, opens)
 	if err != nil {
 		return zero, err
@@ -223,7 +223,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, opens *storecontract.ReadTal
 	ts.mu.RLock()
 	probe := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
-		if es == candidateEntry || es.noRows.Load() {
+		if es == candidateEntry || es.noRows.Load() || es.sealedWithoutRelID(rid.SnowflakeID()) {
 			continue
 		}
 		probe = append(probe, es)

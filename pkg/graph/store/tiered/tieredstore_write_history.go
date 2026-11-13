@@ -299,7 +299,7 @@ func (ts *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 			unpin()
 		}
 	}()
-	err = ts.forEachHistoryShardFor(shard, &pins, nil, func(candidate *BadgerStore) (bool, error) {
+	err = ts.forEachHistoryShardKeep(shard, &pins, nil, relHistoryKeep(rid), func(candidate *BadgerStore) (bool, error) {
 		history, err := candidate.GetRelHistory(rid)
 		if err != nil {
 			return false, err

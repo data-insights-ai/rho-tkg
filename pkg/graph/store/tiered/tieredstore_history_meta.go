@@ -40,7 +40,7 @@ func (ts *Store) nodeHistoryTemporalMetaVia(nid types.NodeID, via shardVia, open
 		return nil, err
 	}
 	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
-	return historyAcrossShards(ts, store, liveHere, isArchive, opens, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
+	return historyAcrossShards(ts, store, liveHere, isArchive, opens, nil, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
 		return via(s).NodeHistoryTemporalMeta(nid)
 	}, mergeHistoryMeta)
 }
@@ -68,7 +68,7 @@ func (ts *Store) relHistoryTemporalMetaVia(rid types.RelID, via relVia, opens *s
 		return nil, err
 	}
 	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
-	return historyAcrossShards(ts, shard, liveHere, isArchive, opens, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
+	return historyAcrossShards(ts, shard, liveHere, isArchive, opens, relHistoryKeep(rid), func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
 		return via(s).RelHistoryTemporalMeta(rid)
 	}, mergeHistoryMeta)
 }
@@ -78,7 +78,7 @@ func (ts *Store) relHistoryTemporalMetaVia(rid types.RelID, via relVia, opens *s
 // archived adds the reference shard; otherwise every history shard is asked.
 // merge folds the per-shard answers, the owner's first. opens (nil: none) is
 // charged each closed shard's open before it (READBUDGET step 6).
-func historyAcrossShards[T any](ts *Store, owner *BadgerStore, liveHere, isArchive bool, opens *storecontract.ReadTally,
+func historyAcrossShards[T any](ts *Store, owner *BadgerStore, liveHere, isArchive bool, opens *storecontract.ReadTally, keep func(*EventShard) bool,
 	fetch func(*BadgerStore) ([]T, error), merge func([][]T) []T) ([]T, error) {
 	own, err := fetch(owner)
 	if err != nil {
@@ -126,7 +126,7 @@ func historyAcrossShards[T any](ts *Store, owner *BadgerStore, liveHere, isArchi
 			return nil, err
 		}
 	default:
-		if err := ts.forEachHistoryShardCharged(owner, opens, func(candidate *BadgerStore) (bool, error) {
+		if err := ts.forEachHistoryShardKeep(owner, nil, opens, keep, func(candidate *BadgerStore) (bool, error) {
 			got, err := fetch(candidate)
 			if err != nil {
 				return false, err

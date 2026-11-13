@@ -406,6 +406,25 @@ func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (b
 	return ts.forEachHistoryShardFor(skip, nil, nil, fn)
 }
 
+// forEachRelHistoryShard is forEachHistoryShard for relationship rid: a closed
+// event shard whose sealed range misses rid holds none of its rows and is not
+// opened (sealedWithoutRelID, Sigma RH-S7).
+func (ts *Store) forEachRelHistoryShard(rid types.RelID, skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
+	return ts.forEachHistoryShardKeep(skip, nil, nil, relHistoryKeep(rid), fn)
+}
+
+// forEachRelHistoryShardCharged is forEachHistoryShardCharged for
+// relationship rid, skipping as forEachRelHistoryShard.
+func (ts *Store) forEachRelHistoryShardCharged(rid types.RelID, skip *BadgerStore, opens *storecontract.ReadTally, fn func(*BadgerStore) (bool, error)) error {
+	return ts.forEachHistoryShardKeep(skip, nil, opens, relHistoryKeep(rid), fn)
+}
+
+// relHistoryKeep keeps the event shards that may hold a row of rid.
+func relHistoryKeep(rid types.RelID) func(*EventShard) bool {
+	id := rid.SnowflakeID()
+	return func(es *EventShard) bool { return !es.sealedWithoutRelID(id) }
+}
+
 // forEachHistoryShardCharged is forEachHistoryShard for a read under a budget
 // (READBUDGET step 6): the open of a closed archive or event shard is charged
 // to opens before it, and a refusal stops the walk with the budget error.
@@ -419,6 +438,12 @@ func (ts *Store) forEachHistoryShardCharged(skip *BadgerStore, opens *storecontr
 // cold shard opened for the walk stays open until the caller wrote to it and
 // ran the releases.
 func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, hold *[]func(), opens *storecontract.ReadTally, fn func(*BadgerStore) (bool, error)) error {
+	return ts.forEachHistoryShardKeep(skip, hold, opens, nil, fn)
+}
+
+// forEachHistoryShardKeep is forEachHistoryShardFor visiting only the event
+// shards keep accepts (nil: all).
+func (ts *Store) forEachHistoryShardKeep(skip *BadgerStore, hold *[]func(), opens *storecontract.ReadTally, keep func(*EventShard) bool, fn func(*BadgerStore) (bool, error)) error {
 	done := func(release func()) {
 		if hold != nil {
 			*hold = append(*hold, release)
@@ -465,6 +490,9 @@ func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, hold *[]func(), opens
 	ts.mu.RUnlock()
 
 	for _, es := range eventShards {
+		if keep != nil && !keep(es) {
+			continue
+		}
 		store, release, err := es.checkoutForReadCharged(ts, hold == nil, opens)
 		if err != nil {
 			return err

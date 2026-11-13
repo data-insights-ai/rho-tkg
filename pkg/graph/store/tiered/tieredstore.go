@@ -1431,15 +1431,27 @@ func (ts *Store) Close() error {
 		// Close all event shards. Cold shards may have nil stores. Use the
 		// shard mutex because closeIdleShards also closes cold stores and
 		// clears es.store under this lock.
+		// A cold one is sealed first, as the idle close seals it, so the next
+		// open counts it and skips it for relationship IDs outside its range
+		// without opening it (Sigma RH-S7).
+		sealedAny := false
 		for _, es := range ts.eventShards {
 			es.shardMu.Lock()
 			if es.store != nil {
+				if !ts.inMemory && es.currentTier() == TierCold && es.activeReqs.Load() == 0 {
+					sealedAny = es.snapshotCountsLocked(ts) || sealedAny
+				}
 				if err := es.store.Close(); err != nil {
 					closeErr = errors.Join(closeErr, fmt.Errorf("graph: close event shard %s: %w", es.name, err))
 				}
 				es.clearStoreLocked(ts)
 			}
 			es.shardMu.Unlock()
+		}
+		if sealedAny {
+			if err := ts.catalog.Save(); err != nil {
+				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save catalog on close: %w", err))
+			}
 		}
 
 		// Close reference archive if it was open at close time. Drain

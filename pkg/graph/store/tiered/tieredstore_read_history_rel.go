@@ -62,7 +62,7 @@ func (ts *Store) getRelVersionVia(rid types.RelID, version uint32, via relVia, o
 	}
 
 	var found *types.Relationship
-	searchErr := ts.forEachHistoryShardCharged(shard, opens, func(candidate *BadgerStore) (bool, error) {
+	searchErr := ts.forEachRelHistoryShardCharged(rid, shard, opens, func(candidate *BadgerStore) (bool, error) {
 		r, err := via(candidate).GetRelVersion(rid, version)
 		if errors.Is(err, ErrVersionNotFound) {
 			return false, nil
@@ -121,7 +121,7 @@ func (ts *Store) getRelHistoryVia(rid types.RelID, via relVia, opens *storecontr
 	}
 
 	sources := relHistorySourcesFrom(shard, history)
-	searchErr := ts.forEachHistoryShardCharged(shard, opens, func(candidate *BadgerStore) (bool, error) {
+	searchErr := ts.forEachRelHistoryShardCharged(rid, shard, opens, func(candidate *BadgerStore) (bool, error) {
 		history, err := via(candidate).GetRelHistory(rid)
 		if err != nil {
 			return false, err
@@ -201,7 +201,7 @@ func (ts *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 	}
 
 	sources := relHistorySourcesFrom(shard, history)
-	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+	searchErr := ts.forEachRelHistoryShard(rid, shard, func(candidate *BadgerStore) (bool, error) {
 		history, err := candidate.RelHistoryVersionsFrom(rid, startVersion, limit)
 		if err != nil {
 			return false, err

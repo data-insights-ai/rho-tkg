@@ -2,6 +2,8 @@ package tiered
 
 import (
 	"fmt"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	"log/slog"
 	"sort"
 	"sync/atomic"
@@ -25,6 +27,28 @@ type shardCounts struct {
 	rels      int
 	byLabel   map[uint16]int
 	byRelType map[uint16]int
+	relIDs    *relIDRange // nil: not recorded (sealed before v4.108, or the probe failed)
+}
+
+// relIDRange is the span of relationship IDs a sealed shard holds a current
+// or history row of (BadgerStore.RelIDRange); any false: none.
+type relIDRange struct {
+	lo, hi snowflake.ID
+	any    bool
+}
+
+// sealedWithoutRelID reports that the closed shard holds no current or
+// history row of id: its sealed range misses it. A by-ID read of a
+// relationship found nowhere else (a deleted one's history, Sigma RH-S7)
+// skips such a shard instead of opening it. A writable open drops the counts
+// before any write (dropCachedCounts), so a shard that may have gained the ID
+// is read.
+func (es *EventShard) sealedWithoutRelID(id snowflake.ID) bool {
+	c := es.cachedCounts()
+	if c == nil || c.relIDs == nil {
+		return false
+	}
+	return !c.relIDs.any || id < c.relIDs.lo || id > c.relIDs.hi
 }
 
 // cachedCounts returns the counts recorded when this shard was last closed, or
@@ -70,13 +94,19 @@ func (es *EventShard) snapshotCountsLocked(ts *Store) bool {
 		// failed close.
 		return false
 	}
+	var ids *relIDRange
+	if lo, hi, any, err := es.store.RelIDRange(); err == nil {
+		ids = &relIDRange{lo: lo, hi: hi, any: any}
+	}
 	es.counts.Store(&shardCounts{
 		nodes:     nodes,
 		rels:      rels,
 		byLabel:   byLabel,
 		byRelType: byRelType,
+		relIDs:    ids,
 	})
 	sealed := ts.catalog.SealShardCounts(es.name, nodes, rels, byLabel, byRelType)
+	sealed = ts.catalog.SetShardRelIDRange(es.name, ids) || sealed
 	none, err := es.store.HoldsNoRows()
 	if err != nil {
 		none = false // the shard stays in the fan-out
@@ -123,6 +153,7 @@ func (es *EventShard) adoptSealedCounts(entry ShardEntry) {
 		rels:      entry.ApproxRels,
 		byLabel:   byLabel,
 		byRelType: byRelType,
+		relIDs:    entry.relIDRange(),
 	})
 }
 

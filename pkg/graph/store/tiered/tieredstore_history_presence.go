@@ -102,7 +102,7 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, opens *storecontr
 	if isArchive {
 		return historyWalkWithReference(ts, store, acc, ask, merge)
 	}
-	return historyWalkAnywhere(ts, store, opens, acc, ask, merge)
+	return historyWalkAnywhere(ts, store, opens, nil, acc, ask, merge)
 }
 
 // walkRelHistoryShards is walkNodeHistoryShards for relationships. No moveMu
@@ -132,7 +132,7 @@ func walkRelHistoryShards[T any](ts *Store, rid types.RelID, opens *storecontrac
 	if isArchive {
 		return historyWalkWithReference(ts, shard, acc, ask, merge)
 	}
-	return historyWalkAnywhere(ts, shard, opens, acc, ask, merge)
+	return historyWalkAnywhere(ts, shard, opens, relHistoryKeep(rid), acc, ask, merge)
 }
 
 // historyWalkWithArchive mirrors nodeHistoryWithArchive /
@@ -181,9 +181,9 @@ func historyWalkWithReference[T any](ts *Store, skip *BadgerStore, acc T, ask fu
 // historyWalkAnywhere mirrors the deleted-entity fan-out of GetNodeHistory /
 // GetRelHistory: every shard is asked, no early stop, so errors surface as in
 // History.
-func historyWalkAnywhere[T any](ts *Store, skip *BadgerStore, opens *storecontract.ReadTally, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+func historyWalkAnywhere[T any](ts *Store, skip *BadgerStore, opens *storecontract.ReadTally, keep func(*EventShard) bool, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
-	err := ts.forEachHistoryShardCharged(skip, opens, func(candidate *BadgerStore) (bool, error) {
+	err := ts.forEachHistoryShardKeep(skip, nil, opens, keep, func(candidate *BadgerStore) (bool, error) {
 		other, err := ask(candidate)
 		if err != nil {
 			return false, err
