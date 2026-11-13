@@ -29,7 +29,7 @@ func (ts *Store) NodeStoredSizes(nid types.NodeID) ([]storecontract.StoredRow, e
 		return nil, err
 	}
 	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
-	return historyAcrossShards(ts, store, liveHere, isArchive, func(s *BadgerStore) ([]storecontract.StoredRow, error) {
+	return historyAcrossShards(ts, store, liveHere, isArchive, nil, func(s *BadgerStore) ([]storecontract.StoredRow, error) {
 		return s.NodeStoredSizes(nid)
 	}, mergeStoredRows)
 }

@@ -339,7 +339,7 @@ func (c *Core) relTupleMembers(meter *storepkg.ReadMeter, tok uint16, key string
 		if windowed {
 			window = &memberWindow{start, end, 0}
 		}
-		err := c.forEachRelPropTxMemberOfKeys(tok, key, valueKeys, window, member)
+		err := c.forEachRelPropTxMemberOfKeys(tok, key, valueKeys, window, meter.Tally("RelEffectiveTimelinesByProperties"), member)
 		if invalid != nil {
 			return nil, invalid
 		}

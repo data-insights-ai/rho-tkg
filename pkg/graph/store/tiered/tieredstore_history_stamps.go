@@ -45,7 +45,7 @@ func (ts *Store) NodeHistoryStamps(nid types.NodeID) (types.Instant, types.Insta
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return 0, 0, false, err
 	}
-	got, err := walkNodeHistoryShards(ts, nid, func(s *BadgerStore) (shardStamps, error) {
+	got, err := walkNodeHistoryShards(ts, nid, nil, func(s *BadgerStore) (shardStamps, error) {
 		return shardAnswer(s.NodeHistoryStamps(nid))
 	}, mergeShardStamps)
 	if err != nil {
@@ -75,7 +75,7 @@ func (ts *Store) RelHistoryStamps(rid types.RelID) (types.Instant, types.Instant
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return 0, 0, false, err
 	}
-	got, err := walkRelHistoryShards(ts, rid, func(s *BadgerStore) (shardStamps, error) {
+	got, err := walkRelHistoryShards(ts, rid, nil, func(s *BadgerStore) (shardStamps, error) {
 		return shardAnswer(s.RelHistoryStamps(rid))
 	}, mergeShardStamps)
 	if err != nil {

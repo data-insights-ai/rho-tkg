@@ -44,15 +44,19 @@ var (
 // between the two reads can hide a node from both (RestoreNode writes the
 // reference shard, then hard-deletes from the archive without a tombstone).
 func allShards[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)) (ref T, others []T, err error) {
-	return allShardsBut(ts, nil, read)
+	return allShardsBut(ts, nil, nil, read)
 }
 
-// allShardsBut is allShards without the event shards skip reports (nil: none).
-func allShardsBut[T any](ts *Store, skip func(*EventShard) bool, read func(bs *BadgerStore, ref bool) (T, error)) (ref T, others []T, err error) {
+// allShardsBut is allShards without the event shards skip reports (nil:
+// none). Under a read budget (opens set, READBUDGET step 6) the open of a
+// closed archive or event shard is charged to opens before it; a worker
+// checks opens' meter first, so once one refused the others stop at their
+// next shard, and the errors join (errors.Is store.ErrReadBudget).
+func allShardsBut[T any](ts *Store, skip func(*EventShard) bool, opens *storecontract.ReadTally, read func(bs *BadgerStore, ref bool) (T, error)) (ref T, others []T, err error) {
 	if err = ts.checkOpen(); err != nil {
 		return ref, nil, err
 	}
-	ref, archived, hasArchive, err := refAndArchive(ts, read)
+	ref, archived, hasArchive, err := refAndArchive(ts, opens, read)
 	if err != nil {
 		return ref, nil, err
 	}
@@ -68,7 +72,7 @@ func allShardsBut[T any](ts *Store, skip func(*EventShard) bool, read func(bs *B
 	results := make([]T, len(shards))
 	errs := make([]error, len(shards))
 	queryEventShards(shards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreReadOnly(ts)
+		store, release, err := es.checkoutBudgeted(ts, opens)
 		if err != nil {
 			errs[i] = err
 			return
@@ -83,8 +87,9 @@ func allShardsBut[T any](ts *Store, skip func(*EventShard) bool, read func(bs *B
 }
 
 // refAndArchive reads the reference shard, then the archive (when one
-// exists), under moveMu's read lock (see allShards).
-func refAndArchive[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)) (ref, archived T, hasArchive bool, err error) {
+// exists), under moveMu's read lock (see allShards), charging a closed
+// archive's open to opens before it (nil: none).
+func refAndArchive[T any](ts *Store, opens *storecontract.ReadTally, read func(bs *BadgerStore, ref bool) (T, error)) (ref, archived T, hasArchive bool, err error) {
 	ts.moveMu.RLock()
 	defer ts.moveMu.RUnlock()
 	refStore, refCheckin, err := ts.checkoutRefShard()
@@ -97,7 +102,7 @@ func refAndArchive[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, er
 		return ref, archived, false, err
 	}
 	ts.refArchiveGapHook()
-	archive, archiveCheckin, err := ts.checkoutArchive()
+	archive, archiveCheckin, err := ts.checkoutArchiveCharged(opens)
 	if err != nil || archive == nil {
 		return ref, archived, false, err
 	}
@@ -297,7 +302,7 @@ var (
 // shard enumerating every key (unionPropertyTxMembers unites across shards
 // and keys).
 func (ts *Store) ForEachNodePropertyTxMemberKeys(labelToken uint16, propertyKey string, valueKeys []string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
-	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+	return unionPropertyTxMembers(ts, nil, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
 		return bs.PropertyIndexOptions(labelToken, propertyKey)
 	}, eachKey(valueKeys, func(bs *BadgerStore, vk string, f func(types.NodeID, types.Instant) bool) error {
 		return bs.ForEachNodePropertyTxMember(labelToken, propertyKey, vk, f)
@@ -308,7 +313,7 @@ func (ts *Store) ForEachNodePropertyTxMemberKeys(labelToken uint16, propertyKey 
 // store.RelPropertyTxMemberKeysCapability (see
 // ForEachNodePropertyTxMemberKeys).
 func (ts *Store) ForEachRelPropertyTxMemberKeys(relTypeToken uint16, propertyKey string, valueKeys []string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
-	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+	return unionPropertyTxMembers(ts, nil, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
 		return bs.RelPropertyIndexOptions(relTypeToken, propertyKey)
 	}, eachKey(valueKeys, func(bs *BadgerStore, vk string, f func(types.RelID, types.Instant) bool) error {
 		return bs.ForEachRelPropertyTxMember(relTypeToken, propertyKey, vk, f)
@@ -318,7 +323,7 @@ func (ts *Store) ForEachRelPropertyTxMemberKeys(relTypeToken uint16, propertyKey
 // ForEachNodePropertyTxMemberKeysDuring implements
 // store.NodePropertyTxMemberKeysCapability's windowed form.
 func (ts *Store) ForEachNodePropertyTxMemberKeysDuring(labelToken uint16, propertyKey string, valueKeys []string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
-	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+	return unionPropertyTxMembers(ts, nil, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
 		return bs.PropertyIndexOptions(labelToken, propertyKey)
 	}, eachKey(valueKeys, func(bs *BadgerStore, vk string, f func(types.NodeID, types.Instant) bool) error {
 		return bs.ForEachNodePropertyTxMemberDuring(labelToken, propertyKey, vk, validStart, validEnd, txAt, f)
@@ -328,11 +333,43 @@ func (ts *Store) ForEachNodePropertyTxMemberKeysDuring(labelToken uint16, proper
 // ForEachRelPropertyTxMemberKeysDuring implements
 // store.RelPropertyTxMemberKeysCapability's windowed form.
 func (ts *Store) ForEachRelPropertyTxMemberKeysDuring(relTypeToken uint16, propertyKey string, valueKeys []string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
-	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+	return unionPropertyTxMembers(ts, nil, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
 		return bs.RelPropertyIndexOptions(relTypeToken, propertyKey)
 	}, eachKey(valueKeys, func(bs *BadgerStore, vk string, f func(types.RelID, types.Instant) bool) error {
 		return bs.ForEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, vk, validStart, validEnd, txAt, f)
 	}), fn)
+}
+
+var _ storecontract.PropertyTxMemberMeteredCapability = (*Store)(nil) // READBUDGET step 6
+
+// ForEachNodePropertyTxMemberMetered implements
+// store.PropertyTxMemberMeteredCapability: ForEachNodePropertyTxMemberKeys
+// (window nil) or its windowed form, the open of each closed shard of the
+// fan-out charged to t before it (allShardsBut).
+func (ts *Store) ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyKey string, valueKeys []string, window *storecontract.PropertyTxMemberWindow, t *storecontract.ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	one := func(bs *BadgerStore, vk string, f func(types.NodeID, types.Instant) bool) error {
+		if window != nil {
+			return bs.ForEachNodePropertyTxMemberDuring(labelToken, propertyKey, vk, window.ValidStart, window.ValidEnd, window.TxAt, f)
+		}
+		return bs.ForEachNodePropertyTxMember(labelToken, propertyKey, vk, f)
+	}
+	return unionPropertyTxMembers(ts, t, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+		return bs.PropertyIndexOptions(labelToken, propertyKey)
+	}, eachKey(valueKeys, one), fn)
+}
+
+// ForEachRelPropertyTxMemberMetered is ForEachNodePropertyTxMemberMetered for
+// a relationship (type, key) sidecar.
+func (ts *Store) ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *storecontract.PropertyTxMemberWindow, t *storecontract.ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	one := func(bs *BadgerStore, vk string, f func(types.RelID, types.Instant) bool) error {
+		if window != nil {
+			return bs.ForEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, vk, window.ValidStart, window.ValidEnd, window.TxAt, f)
+		}
+		return bs.ForEachRelPropertyTxMember(relTypeToken, propertyKey, vk, f)
+	}
+	return unionPropertyTxMembers(ts, t, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+		return bs.RelPropertyIndexOptions(relTypeToken, propertyKey)
+	}, eachKey(valueKeys, one), fn)
 }
 
 // eachKey is one shard's enumeration over every key of valueKeys (the union
@@ -357,14 +394,14 @@ func eachKey[ID comparable](valueKeys []string, one func(*BadgerStore, string, f
 // finished copy with the anchor's options; otherwise store.ErrIndexNotFound
 // (cheapest test first: the anchor) and the core takes the history fold —
 // sound while a DDL, a repair or a backfill is in flight.
-func unionPropertyTxMembers[ID comparable](ts *Store, options func(*BadgerStore) (storecontract.PropertyIndexOptions, bool, error), each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
+func unionPropertyTxMembers[ID comparable](ts *Store, opens *storecontract.ReadTally, options func(*BadgerStore) (storecontract.PropertyIndexOptions, bool, error), each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
 	if fn == nil {
 		if err := ts.checkOpen(); err != nil {
 			return err
 		}
 		return errNilIterationCallback()
 	}
-	ref, others, err := propertyTxMemberAnswers(ts, options, each)
+	ref, others, err := propertyTxMemberAnswers(ts, opens, options, each)
 	if err != nil {
 		return err
 	}
@@ -381,7 +418,7 @@ func unionPropertyTxMembers[ID comparable](ts *Store, options func(*BadgerStore)
 // reference shard's first, under the anchor rule of unionPropertyTxMembers:
 // store.ErrIndexNotFound unless the reference shard declares the index and
 // every other shard carries a finished copy with its options.
-func propertyTxMemberAnswers[ID comparable](ts *Store, options func(*BadgerStore) (storecontract.PropertyIndexOptions, bool, error), each func(*BadgerStore, func(ID, types.Instant) bool) error) ([]txMember[ID], [][]txMember[ID], error) {
+func propertyTxMemberAnswers[ID comparable](ts *Store, opens *storecontract.ReadTally, options func(*BadgerStore) (storecontract.PropertyIndexOptions, bool, error), each func(*BadgerStore, func(ID, types.Instant) bool) error) ([]txMember[ID], [][]txMember[ID], error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, nil, err
 	}
@@ -402,7 +439,7 @@ func propertyTxMemberAnswers[ID comparable](ts *Store, options func(*BadgerStore
 		has     bool
 		members []txMember[ID]
 	}
-	refAnswer, others, err := allShards(ts, func(bs *BadgerStore, _ bool) (answer, error) {
+	refAnswer, others, err := allShardsBut(ts, nil, opens, func(bs *BadgerStore, _ bool) (answer, error) {
 		var a answer
 		var err error
 		if a.opts, a.has, err = options(bs); err != nil || !a.has {

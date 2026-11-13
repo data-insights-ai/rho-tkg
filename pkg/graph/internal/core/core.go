@@ -138,6 +138,10 @@ type Core struct {
 	// on tiered and sharded); nil = one call per key, same candidates.
 	relPropTxKeys  storepkg.RelPropertyTxMemberKeysCapability
 	nodePropTxKeys storepkg.NodePropertyTxMemberKeysCapability
+	// propTxMetered is the keys enumeration under a read budget (READBUDGET
+	// step 6: tiered charges each closed shard's open before it); nil = the
+	// unmetered forms, which open no shard on the other stores.
+	propTxMetered storepkg.PropertyTxMemberMeteredCapability
 	// chainLoadTestHook, when set (tests only), is called once per candidate a
 	// generic temporal door hands to the per-entity resolver
 	// (findNodeVersionForOpts / findRelVersionForOpts), and once per entity a
@@ -2347,6 +2351,7 @@ func New(config Config) (*Core, error) {
 	c.nodePropTxWindow = nativeCapability[storepkg.NodePropertyTxMemberWindowCapability](store, "ForEachNodePropertyTxMemberDuring")
 	c.relPropTxKeys = nativeCapability[storepkg.RelPropertyTxMemberKeysCapability](store, "ForEachRelPropertyTxMemberKeys", "ForEachRelPropertyTxMemberKeysDuring")
 	c.nodePropTxKeys = nativeCapability[storepkg.NodePropertyTxMemberKeysCapability](store, "ForEachNodePropertyTxMemberKeys", "ForEachNodePropertyTxMemberKeysDuring")
+	c.propTxMetered = nativeCapability[storepkg.PropertyTxMemberMeteredCapability](store, "ForEachNodePropertyTxMemberMetered", "ForEachRelPropertyTxMemberMetered")
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)

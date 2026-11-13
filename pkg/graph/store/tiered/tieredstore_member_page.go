@@ -52,7 +52,7 @@ func pagePropertyTxMembers[ID ~int64](ts *Store, options func(*BadgerStore) (sto
 		}
 		return errNilIterationCallback()
 	}
-	ref, others, err := propertyTxMemberAnswers(ts, options, page)
+	ref, others, err := propertyTxMemberAnswers(ts, nil, options, page)
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func (ts *Store) NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error) {
 		return nil, err
 	}
 	skip := func(es *EventShard) bool { return es.sealedWithoutLabel(labelToken) }
-	ref, others, err := allShardsBut(ts, skip, func(bs *BadgerStore, _ bool) ([]types.NodeID, error) {
+	ref, others, err := allShardsBut(ts, skip, nil, func(bs *BadgerStore, _ bool) ([]types.NodeID, error) {
 		return bs.NodeIDsByLabel(labelToken)
 	})
 	if err != nil {
@@ -115,7 +115,7 @@ func (ts *Store) RelIDsByType(typeToken uint16) ([]types.RelID, error) {
 		return nil, err
 	}
 	skip := func(es *EventShard) bool { return es.sealedWithoutRelType(typeToken) }
-	ref, others, err := allShardsBut(ts, skip, func(bs *BadgerStore, _ bool) ([]types.RelID, error) {
+	ref, others, err := allShardsBut(ts, skip, nil, func(bs *BadgerStore, _ bool) ([]types.RelID, error) {
 		return bs.RelIDsByType(typeToken)
 	})
 	if err != nil {

@@ -45,6 +45,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `DecodedBytes` or `ShardOpens` before any read (`Limit` `"unsupported"`); it read unbounded and reported 0.
   Not counted: `ValidEndAfter`, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
   a nil check per decoded row and answers as before.
+  `ShardOpens` on tiered: every budgeted read counts each closed shard (cold event shard, or the archive before its
+  first open) before it opens it, refusing at `"shard opens"` with the shard left closed: the metered read snapshot
+  (routed checkouts and the whole-chain history search: the property doors with a time coordinate, `NodeAsOfCtx`,
+  `RelAsOfCtx`, `RelEffectiveTimelinesByProperties`, `GetByIDsCtx`), the current index and label-scan fan-outs of the
+  node property doors, and the membership enumeration through the new optional
+  `store.PropertyTxMemberMeteredCapability` (tiered); parallel workers stop at their next shard once one refused
+  (`ReadMeter.Exceeded`, new; `ReadTally.ShardOpen`, new). Red: `ByLabelAndPropertyCtx` (TxPin, ValidAt), `NodeAsOfCtx`
+  and `RelEffectiveTimelinesByProperties` answered over 3 closed shards under `ShardOpens: 1`, counting 0
+  (`tasks/evidence/READBUDGET/shardopens-red.txt`).
+  Not charged yet: a temporal property door's history fold without a usable index, `HasHistoryCtx`, `LatestStampsCtx`.
 
 ## [4.107.1] - 2026-11-13
 

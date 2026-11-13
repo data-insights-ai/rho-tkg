@@ -1,0 +1,28 @@
+=== RUN   TestReadBudget_ShardOpens_TieredDoors
+=== PAUSE TestReadBudget_ShardOpens_TieredDoors
+=== CONT  TestReadBudget_ShardOpens_TieredDoors
+=== RUN   TestReadBudget_ShardOpens_TieredDoors/ByLabelAndProperty_TxPin
+    read_budget_shard_opens_test.go:175: ByLabelAndProperty TxPin under ShardOpens 1 = "[895740065120944128 895740066489368576 895740067822010368]", <nil> (work {Candidates:6 Segments:0 ShardOpens:0 DecodedBytes:555 HistoryExamined:0 BufferBytes:168}); want a shard-opens refusal and no rows
+=== RUN   TestReadBudget_ShardOpens_TieredDoors/ByLabelAndProperty_ValidAt
+    read_budget_shard_opens_test.go:175: ByLabelAndProperty ValidAt under ShardOpens 1 = "[895740065120944128 895740066489368576 895740067822010368]", <nil> (work {Candidates:3 Segments:0 ShardOpens:0 DecodedBytes:933 HistoryExamined:3 BufferBytes:96}); want a shard-opens refusal and no rows
+=== RUN   TestReadBudget_ShardOpens_TieredDoors/NodeAsOf
+    read_budget_shard_opens_test.go:175: NodeAsOf under ShardOpens 1 = "895740065127464960 v0", <nil> (work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:150 HistoryExamined:1 BufferBytes:0}); want a shard-opens refusal and no rows
+=== RUN   TestReadBudget_ShardOpens_TieredDoors/RelEffectiveTimelinesByProperties
+    read_budget_shard_opens_test.go:175: RelEffectiveTimelinesByProperties under ShardOpens 1 = "\n  0: r0[-9223372036854775808,1794561417423)v0 r0[1794561417423,0)v1 r1[-9223372036854775808,1794561417464)v0 r1[1794561417464,0)v1 r2[-9223372036854775808,1794561417505)v0 r2[1794561417505,0)v1", <nil> (work {Candidates:3 Segments:6 ShardOpens:0 DecodedBytes:2283 HistoryExamined:6 BufferBytes:168}); want a shard-opens refusal and no rows
+--- FAIL: TestReadBudget_ShardOpens_TieredDoors (0.53s)
+    --- FAIL: TestReadBudget_ShardOpens_TieredDoors/ByLabelAndProperty_TxPin (0.12s)
+    --- FAIL: TestReadBudget_ShardOpens_TieredDoors/ByLabelAndProperty_ValidAt (0.04s)
+    --- FAIL: TestReadBudget_ShardOpens_TieredDoors/NodeAsOf (0.04s)
+    --- FAIL: TestReadBudget_ShardOpens_TieredDoors/RelEffectiveTimelinesByProperties (0.03s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.542s
+FAIL
+
+# After the fix, with the time-free fan-out's charge removed again (checkoutBudgeted -> checkoutStoreReadOnly in
+# tieredstore_read_label.go), the "current" door added with the fix fails:
+    read_budget_shard_opens_test.go:183: ByLabelAndProperty current under ShardOpens 1 = "[895756302946992128 895756304306143232 895756305611194368]", <nil> (work {Candidates:3 Segments:0 ShardOpens:0 ...
+--- FAIL: TestReadBudget_ShardOpens_TieredDoors (0.70s)
+    --- FAIL: TestReadBudget_ShardOpens_TieredDoors/ByLabelAndProperty_current (0.18s)
+
+# And with checkoutArchiveCharged's charge removed, the tiered archive test fails:
+    read_budget_shard_opens_test.go:61: spent budget = &{895752659317293056 ...}, <nil>; want a shard-opens refusal

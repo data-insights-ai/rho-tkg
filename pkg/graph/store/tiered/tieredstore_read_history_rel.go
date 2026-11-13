@@ -14,17 +14,19 @@ import (
 // Mirror layout of the node-history methods in tieredstore_read_history.go.
 
 func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
-	return ts.getRelVersionVia(rid, version, directRelReads)
+	return ts.getRelVersionVia(rid, version, directRelReads, nil)
 }
 
-func (ts *Store) getRelVersionVia(rid types.RelID, version uint32, via relVia) (*types.Relationship, error) {
+// getRelVersionVia is GetRelVersion reading through via, charging each closed
+// shard's open to opens before it (nil: none; READBUDGET step 6).
+func (ts *Store) getRelVersionVia(rid types.RelID, version uint32, via relVia, opens *storecontract.ReadTally) (*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	shard, checkin, isArchive, err := ts.shardForRelIDReadWithArchive(rid)
+	shard, checkin, isArchive, err := ts.shardForRelIDReadCharged(rid, opens)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +46,7 @@ func (ts *Store) getRelVersionVia(rid types.RelID, version uint32, via relVia) (
 	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
-			archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+			archive, archiveCheckin, archiveErr := ts.checkoutArchiveCharged(opens)
 			if archiveErr != nil {
 				return nil, archiveErr
 			}
@@ -60,7 +62,7 @@ func (ts *Store) getRelVersionVia(rid types.RelID, version uint32, via relVia) (
 	}
 
 	var found *types.Relationship
-	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+	searchErr := ts.forEachHistoryShardCharged(shard, opens, func(candidate *BadgerStore) (bool, error) {
 		r, err := via(candidate).GetRelVersion(rid, version)
 		if errors.Is(err, ErrVersionNotFound) {
 			return false, nil
@@ -81,17 +83,19 @@ func (ts *Store) getRelVersionVia(rid types.RelID, version uint32, via relVia) (
 }
 
 func (ts *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
-	return ts.getRelHistoryVia(rid, directRelReads)
+	return ts.getRelHistoryVia(rid, directRelReads, nil)
 }
 
-func (ts *Store) getRelHistoryVia(rid types.RelID, via relVia) ([]*types.Relationship, error) {
+// getRelHistoryVia is GetRelHistory reading through via, charging each closed
+// shard's open to opens before it (nil: none; READBUDGET step 6).
+func (ts *Store) getRelHistoryVia(rid types.RelID, via relVia, opens *storecontract.ReadTally) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	shard, checkin, isArchive, err := ts.shardForRelIDReadWithArchive(rid)
+	shard, checkin, isArchive, err := ts.shardForRelIDReadCharged(rid, opens)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +112,7 @@ func (ts *Store) getRelHistoryVia(rid types.RelID, via relVia) ([]*types.Relatio
 	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
-			return ts.relHistoryWithArchive(rid, shard, history, via)
+			return ts.relHistoryWithArchive(rid, shard, history, via, opens)
 		}
 		return history, nil
 	}
@@ -117,7 +121,7 @@ func (ts *Store) getRelHistoryVia(rid types.RelID, via relVia) ([]*types.Relatio
 	}
 
 	sources := relHistorySourcesFrom(shard, history)
-	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+	searchErr := ts.forEachHistoryShardCharged(shard, opens, func(candidate *BadgerStore) (bool, error) {
 		history, err := via(candidate).GetRelHistory(rid)
 		if err != nil {
 			return false, err
@@ -658,9 +662,9 @@ func appendRelHistorySource(sources *[]relHistorySource, store *BadgerStore, his
 	*sources = append(*sources, relHistorySource{store: store, history: history})
 }
 
-func (ts *Store) relHistoryWithArchive(rid types.RelID, skip *BadgerStore, history []*types.Relationship, via relVia) ([]*types.Relationship, error) {
+func (ts *Store) relHistoryWithArchive(rid types.RelID, skip *BadgerStore, history []*types.Relationship, via relVia, opens *storecontract.ReadTally) ([]*types.Relationship, error) {
 	sources := relHistorySourcesFrom(skip, history)
-	archive, archiveCheckin, err := ts.checkoutArchive()
+	archive, archiveCheckin, err := ts.checkoutArchiveCharged(opens)
 	if err != nil {
 		return nil, err
 	}

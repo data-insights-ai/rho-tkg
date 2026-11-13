@@ -25,7 +25,7 @@ func (ts *Store) NodeHistoryEpoch(nid types.NodeID) (uint64, error) {
 		return 0, err
 	}
 	topo := ts.histTopoEpoch.Load()
-	e, err := walkNodeHistoryShards(ts, nid, func(s *BadgerStore) (uint64, error) { return s.NodeHistoryEpoch(nid) }, maxEpoch)
+	e, err := walkNodeHistoryShards(ts, nid, nil, func(s *BadgerStore) (uint64, error) { return s.NodeHistoryEpoch(nid) }, maxEpoch)
 	return max(topo, e), err
 }
 
@@ -38,7 +38,7 @@ func (ts *Store) RelHistoryEpoch(rid types.RelID) (uint64, error) {
 		return 0, err
 	}
 	topo := ts.histTopoEpoch.Load()
-	e, err := walkRelHistoryShards(ts, rid, func(s *BadgerStore) (uint64, error) { return s.RelHistoryEpoch(rid) }, maxEpoch)
+	e, err := walkRelHistoryShards(ts, rid, nil, func(s *BadgerStore) (uint64, error) { return s.RelHistoryEpoch(rid) }, maxEpoch)
 	return max(topo, e), err
 }
 

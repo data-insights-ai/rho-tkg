@@ -41,7 +41,7 @@ func (ts *Store) RelCurrentStamps(rid types.RelID) (storecontract.RowStamps, err
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	return routeRelRow(ts, rid, relCurrentStampsRow)
+	return routeRelRow(ts, rid, nil, relCurrentStampsRow)
 }
 
 // nodeCurrentStampsRow is nodeRowLive returning the row's stamps without

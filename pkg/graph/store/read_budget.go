@@ -95,6 +95,7 @@ type ReadMeter struct {
 	parent                                         *ReadMeter
 	candidates, segments, shardOpens, decodedBytes atomic.Uint64
 	historyExamined, bufferBytes                   atomic.Uint64
+	exceeded                                       atomic.Pointer[ReadBudgetError] // the first refusal, for Exceeded
 }
 
 type readMeterKey struct{}
@@ -173,6 +174,19 @@ func (m *ReadMeter) AddBufferBytes(door string, n int) error {
 	return m.add(door, "buffer bytes", n, func(r *ReadMeter) (*atomic.Uint64, uint64) { return &r.bufferBytes, r.budget.BufferBytes })
 }
 
+// Exceeded returns the first budget error this meter or an outer one gave
+// (nil while every count is within its limits): parallel workers of one read
+// check it before their next unit, so a refusal stops them all. A nil meter
+// returns nil.
+func (m *ReadMeter) Exceeded() error {
+	for r := m; r != nil; r = r.parent {
+		if e := r.exceeded.Load(); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
 // ReadTally is a meter bound to the door that reads: what a store receives
 // (store.ReadSnapshotMeterCapability, QueryOpts, the metered lend doors) to
 // count the bytes it decodes. A nil tally counts nothing and refuses nothing:
@@ -208,6 +222,24 @@ func (t *ReadTally) History(n int) error {
 	return t.meter.AddHistoryExamined(t.door, n)
 }
 
+// ShardOpen counts one closed shard about to be opened (ShardOpens),
+// returning the budget error past a limit, before the open. A nil tally
+// counts nothing.
+func (t *ReadTally) ShardOpen() error {
+	if t == nil {
+		return nil
+	}
+	return t.meter.AddShardOpens(t.door, 1)
+}
+
+// Exceeded is the tally's meter's Exceeded. A nil tally returns nil.
+func (t *ReadTally) Exceeded() error {
+	if t == nil {
+		return nil
+	}
+	return t.meter.Exceeded()
+}
+
 // DecodedHistory counts one history version and its n stored bytes about to
 // be decoded (History(1), then Decoded(n)).
 func (t *ReadTally) DecodedHistory(n int) error {
@@ -226,7 +258,9 @@ func (m *ReadMeter) add(door, limit string, n int, field func(*ReadMeter) (*atom
 		c, bound := field(r)
 		total := c.Add(uint64(n)) // #nosec G115 -- a count, never negative
 		if over == nil && bound != 0 && total > bound {
-			over = &ReadBudgetError{Door: door, Limit: limit, Budget: r.budget, Work: r.Work()}
+			e := &ReadBudgetError{Door: door, Limit: limit, Budget: r.budget, Work: r.Work()}
+			r.exceeded.CompareAndSwap(nil, e)
+			over = e
 		}
 	}
 	return over

@@ -38,7 +38,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	var archiveNodes []*types.Node
 	if opts.Depth == DepthAll {
 		ts.refArchiveGapHook()
-		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		archive, archiveCheckin, archiveErr := ts.checkoutArchiveCharged(opts.ReadTally()) // a budget's shard opens (READBUDGET step 6)
 		if archiveErr != nil {
 			return nil, archiveErr
 		}
@@ -62,7 +62,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreReadOnly(ts)
+		store, release, err := es.checkoutBudgeted(ts, opts.ReadTally())
 		if err != nil {
 			results[i].err = err
 			return
@@ -291,7 +291,7 @@ func propertyKeysFanOut[T any](ts *Store, labelToken uint16, key string, opts Qu
 	var archiveNodes []T
 	if opts.Depth == DepthAll {
 		ts.refArchiveGapHook()
-		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		archive, archiveCheckin, archiveErr := ts.checkoutArchiveCharged(opts.ReadTally()) // a budget's shard opens (READBUDGET step 6)
 		if archiveErr != nil {
 			return nil, archiveErr
 		}
@@ -315,7 +315,7 @@ func propertyKeysFanOut[T any](ts *Store, labelToken uint16, key string, opts Qu
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreReadOnly(ts)
+		store, release, err := es.checkoutBudgeted(ts, opts.ReadTally())
 		if err != nil {
 			results[i].err = err
 			return

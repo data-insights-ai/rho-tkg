@@ -441,6 +441,27 @@ type RelPropertyTxMemberKeysCapability interface {
 	ForEachRelPropertyTxMemberKeysDuring(relTypeToken uint16, propertyKey string, valueKeys []string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
+// PropertyTxMemberWindow is the valid-time window and pin of a windowed
+// membership enumeration (the KeysDuring forms' validStart, validEnd, txAt).
+type PropertyTxMemberWindow struct {
+	ValidStart, ValidEnd, TxAt types.Instant
+}
+
+// PropertyTxMemberMeteredCapability is OPTIONAL (RH list R2, READBUDGET step
+// 6): the KeysCapability enumerations (window nil: ForEach...TxMemberKeys;
+// set: ...KeysDuring, same answer) under a read budget. A store that opens
+// closed shards to answer (tiered) charges each open to t before it
+// (store.ReadTally.ShardOpen) and returns the *ReadBudgetError, before fn,
+// past the ShardOpens limit; workers reading shards in parallel stop at their
+// next charge once one refused (ReadMeter.Exceeded), and their errors join
+// (errors.Is ErrReadBudget). A nil t is the unmetered form. The graph uses it
+// for a budgeted property door when the store offers it; a store that opens
+// no shard (badger, sharded, memory) need not.
+type PropertyTxMemberMeteredCapability interface {
+	ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+	ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
+
 // RelPropertyTxMemberPageCapability is OPTIONAL (backlog 69): the members
 // RelPropertyTxMembershipCapability enumerates for one value, in ascending ID
 // order and resumed above a cursor — at most limit members with ID > after —

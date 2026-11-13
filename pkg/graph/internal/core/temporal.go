@@ -1268,7 +1268,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 		if windowed {
 			window = &memberWindow{start, end, txAtOf(opts)}
 		}
-		err := c.forEachRelPropTxMemberOfKeys(tok, key, valueKeys, window, member)
+		err := c.forEachRelPropTxMemberOfKeys(tok, key, valueKeys, window, opts.ReadTally(), member)
 		if invalid != nil {
 			return invalid
 		}
@@ -1309,14 +1309,27 @@ type memberWindow struct {
 	start, end, txAt types.Instant
 }
 
+// store is w as the metered capability's window (nil: none).
+func (w *memberWindow) store() *storepkg.PropertyTxMemberWindow {
+	if w == nil {
+		return nil
+	}
+	return &storepkg.PropertyTxMemberWindow{ValidStart: w.start, ValidEnd: w.end, TxAt: w.txAt}
+}
+
 // forEachRelPropTxMemberOfKeys enumerates the rel property membership sidecar
 // of (tok, key) over every key of valueKeys (a value's equal keys): one call
 // where the store has the several-key form (round 11; one fan-out on tiered
 // and sharded), else one call per key, stopping at the first error or
 // ErrIndexNotFound (fn may see an entity once per key; the keys form merges
 // them, the lowest first tx, which prunes alike). window selects the windowed
-// form.
-func (c *Core) forEachRelPropTxMemberOfKeys(tok uint16, key string, valueKeys []string, window *memberWindow, fn func(types.RelID, types.Instant) bool) error {
+// form. Under a read budget (t set) a store with the metered form
+// (store.PropertyTxMemberMeteredCapability, tiered) answers it, charging each
+// closed shard it opens to t before the open (READBUDGET step 6).
+func (c *Core) forEachRelPropTxMemberOfKeys(tok uint16, key string, valueKeys []string, window *memberWindow, t *storepkg.ReadTally, fn func(types.RelID, types.Instant) bool) error {
+	if t != nil && c.propTxMetered != nil {
+		return c.propTxMetered.ForEachRelPropertyTxMemberMetered(tok, key, valueKeys, window.store(), t, fn)
+	}
 	if c.relPropTxKeys != nil {
 		if window != nil {
 			return c.relPropTxKeys.ForEachRelPropertyTxMemberKeysDuring(tok, key, valueKeys, window.start, window.end, window.txAt, fn)
@@ -1339,7 +1352,10 @@ func (c *Core) forEachRelPropTxMemberOfKeys(tok uint16, key string, valueKeys []
 
 // forEachNodePropTxMemberOfKeys is forEachRelPropTxMemberOfKeys for a node
 // (label, key) sidecar.
-func (c *Core) forEachNodePropTxMemberOfKeys(tok uint16, key string, valueKeys []string, window *memberWindow, fn func(types.NodeID, types.Instant) bool) error {
+func (c *Core) forEachNodePropTxMemberOfKeys(tok uint16, key string, valueKeys []string, window *memberWindow, t *storepkg.ReadTally, fn func(types.NodeID, types.Instant) bool) error {
+	if t != nil && c.propTxMetered != nil {
+		return c.propTxMetered.ForEachNodePropertyTxMemberMetered(tok, key, valueKeys, window.store(), t, fn)
+	}
 	if c.nodePropTxKeys != nil {
 		if window != nil {
 			return c.nodePropTxKeys.ForEachNodePropertyTxMemberKeysDuring(tok, key, valueKeys, window.start, window.end, window.txAt, fn)
@@ -1470,7 +1486,7 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 		if windowed {
 			window = &memberWindow{start, end, txAtOf(opts)}
 		}
-		err := c.forEachNodePropTxMemberOfKeys(tok, key, vks, window, member)
+		err := c.forEachNodePropTxMemberOfKeys(tok, key, vks, window, opts.ReadTally(), member)
 		if invalid != nil {
 			return invalid
 		}

@@ -638,7 +638,7 @@ func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 
 	if opts.Depth == DepthAll {
 		ts.refArchiveGapHook()
-		archive, archiveCheckin, err := ts.checkoutArchive()
+		archive, archiveCheckin, err := ts.checkoutArchiveCharged(opts.ReadTally()) // a budget's shard opens (READBUDGET step 6)
 		if err != nil {
 			return nil, err
 		}
@@ -659,7 +659,7 @@ func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 	results := make([][]*types.Node, len(eventShards))
 	errs := make([]error, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreReadOnly(ts)
+		store, release, err := es.checkoutBudgeted(ts, opts.ReadTally())
 		if err != nil {
 			errs[i] = err
 			return

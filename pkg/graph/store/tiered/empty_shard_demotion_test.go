@@ -81,7 +81,7 @@ func TestEmptyShardDemotion_RetainsProtectedHandles(t *testing.T) {
 				held, err = old.checkoutStore(ts)
 				release = old.checkinStore
 			case "read-pin":
-				held, release, err = old.pinForRead(ts, true)
+				held, release, err = old.pinForRead(ts, true, nil)
 			case "open-read-pin":
 				var ok bool
 				held, release, ok, err = old.checkoutOpenStoreForRead(ts)

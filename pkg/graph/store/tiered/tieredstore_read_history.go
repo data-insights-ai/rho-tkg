@@ -13,13 +13,13 @@ import (
 // --- History reads ---
 
 func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
-	return ts.getNodeVersionVia(nid, version, directReads)
+	return ts.getNodeVersionVia(nid, version, directReads, nil)
 }
 
 // GetNodeVersionSharing is GetNodeVersion decoded beside share
 // (store.NodeVersionSharingCapability) on whichever shard holds the version.
 func (ts *Store) GetNodeVersionSharing(nid types.NodeID, version uint32, share *types.Node) (*types.Node, error) {
-	return ts.getNodeVersionVia(nid, version, func(s *BadgerStore) shardNodeReads { return sharingReads{s, share} })
+	return ts.getNodeVersionVia(nid, version, func(s *BadgerStore) shardNodeReads { return sharingReads{s, share} }, nil)
 }
 
 // sharingReads reads a shard directly, its versions decoded beside share.
@@ -32,14 +32,17 @@ func (r sharingReads) GetNodeVersion(nid types.NodeID, version uint32) (*types.N
 	return r.GetNodeVersionSharing(nid, version, r.share)
 }
 
-func (ts *Store) getNodeVersionVia(nid types.NodeID, version uint32, via shardVia) (*types.Node, error) {
+// getNodeVersionVia is GetNodeVersion reading each shard through via and
+// charging each closed shard's open to opens before it (nil: none; READBUDGET
+// step 6).
+func (ts *Store) getNodeVersionVia(nid types.NodeID, version uint32, via shardVia, opens *storecontract.ReadTally) (*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	shard, checkin, isArchive, err := ts.shardForNodeIDReadWithArchive(nid)
+	shard, checkin, isArchive, err := ts.shardForNodeIDReadCharged(nid, opens)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +62,7 @@ func (ts *Store) getNodeVersionVia(nid types.NodeID, version uint32, via shardVi
 	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
-			archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+			archive, archiveCheckin, archiveErr := ts.checkoutArchiveCharged(opens)
 			if archiveErr != nil {
 				return nil, archiveErr
 			}
@@ -75,7 +78,7 @@ func (ts *Store) getNodeVersionVia(nid types.NodeID, version uint32, via shardVi
 	}
 
 	var found *types.Node
-	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+	searchErr := ts.forEachHistoryShardCharged(shard, opens, func(candidate *BadgerStore) (bool, error) {
 		n, err := via(candidate).GetNodeVersion(nid, version)
 		if errors.Is(err, ErrVersionNotFound) {
 			return false, nil
@@ -96,19 +99,20 @@ func (ts *Store) getNodeVersionVia(nid types.NodeID, version uint32, via shardVi
 }
 
 func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
-	return ts.getNodeHistoryVia(nid, directReads)
+	return ts.getNodeHistoryVia(nid, directReads, nil)
 }
 
 // getNodeHistoryVia is GetNodeHistory reading each shard's rows through via
-// (a metered read snapshot's counting reads, RH list R2).
-func (ts *Store) getNodeHistoryVia(nid types.NodeID, via shardVia) ([]*types.Node, error) {
+// (a metered read snapshot's counting reads, RH list R2), charging each closed
+// shard's open to opens before it (nil: none; READBUDGET step 6).
+func (ts *Store) getNodeHistoryVia(nid types.NodeID, via shardVia, opens *storecontract.ReadTally) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	store, checkin, isArchive, err := ts.shardForNodeIDReadWithArchive(nid)
+	store, checkin, isArchive, err := ts.shardForNodeIDReadCharged(nid, opens)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +129,7 @@ func (ts *Store) getNodeHistoryVia(nid types.NodeID, via shardVia) ([]*types.Nod
 	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if store == ts.refShard {
-			return ts.nodeHistoryWithArchive(nid, store, history, via)
+			return ts.nodeHistoryWithArchive(nid, store, history, via, opens)
 		}
 		return history, nil
 	}
@@ -134,7 +138,7 @@ func (ts *Store) getNodeHistoryVia(nid types.NodeID, via shardVia) ([]*types.Nod
 	}
 
 	sources := nodeHistorySourcesFrom(store, history)
-	searchErr := ts.forEachHistoryShard(store, func(candidate *BadgerStore) (bool, error) {
+	searchErr := ts.forEachHistoryShardCharged(store, opens, func(candidate *BadgerStore) (bool, error) {
 		history, err := via(candidate).GetNodeHistory(nid)
 		if err != nil {
 			return false, err
@@ -399,7 +403,14 @@ func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 // (checkoutStoreReadOnly). A caller that writes to the stores it collects uses
 // forEachHistoryShardFor with hold.
 func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
-	return ts.forEachHistoryShardFor(skip, nil, fn)
+	return ts.forEachHistoryShardFor(skip, nil, nil, fn)
+}
+
+// forEachHistoryShardCharged is forEachHistoryShard for a read under a budget
+// (READBUDGET step 6): the open of a closed archive or event shard is charged
+// to opens before it, and a refusal stops the walk with the budget error.
+func (ts *Store) forEachHistoryShardCharged(skip *BadgerStore, opens *storecontract.ReadTally, fn func(*BadgerStore) (bool, error)) error {
+	return ts.forEachHistoryShardFor(skip, nil, opens, fn)
 }
 
 // forEachHistoryShardFor is forEachHistoryShard for a caller that writes to
@@ -407,7 +418,7 @@ func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (b
 // writable and its release appended to *hold instead of run after fn, so a
 // cold shard opened for the walk stays open until the caller wrote to it and
 // ran the releases.
-func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, hold *[]func(), fn func(*BadgerStore) (bool, error)) error {
+func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, hold *[]func(), opens *storecontract.ReadTally, fn func(*BadgerStore) (bool, error)) error {
 	done := func(release func()) {
 		if hold != nil {
 			*hold = append(*hold, release)
@@ -435,7 +446,7 @@ func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, hold *[]func(), fn fu
 	// Pin via checkoutArchive (lazy-opens on cold start) so the callback sees a
 	// stable handle despite Close / closeIdleShards; checkin wraps the callback on
 	// every exit path.
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchiveCharged(opens)
 	if archiveErr != nil {
 		return archiveErr
 	}
@@ -454,7 +465,7 @@ func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, hold *[]func(), fn fu
 	ts.mu.RUnlock()
 
 	for _, es := range eventShards {
-		store, release, err := es.checkoutForRead(ts, hold == nil)
+		store, release, err := es.checkoutForReadCharged(ts, hold == nil, opens)
 		if err != nil {
 			return err
 		}
@@ -825,10 +836,10 @@ func appendNodeHistorySource(sources *[]nodeHistorySource, store *BadgerStore, h
 	*sources = append(*sources, nodeHistorySource{store: store, history: history})
 }
 
-func (ts *Store) nodeHistoryWithArchive(nid types.NodeID, skip *BadgerStore, history []*types.Node, via shardVia) ([]*types.Node, error) {
+func (ts *Store) nodeHistoryWithArchive(nid types.NodeID, skip *BadgerStore, history []*types.Node, via shardVia, opens *storecontract.ReadTally) ([]*types.Node, error) {
 	sources := nodeHistorySourcesFrom(skip, history)
 	ts.refArchiveGapHook()
-	archive, archiveCheckin, err := ts.checkoutArchive()
+	archive, archiveCheckin, err := ts.checkoutArchiveCharged(opens)
 	if err != nil {
 		return nil, err
 	}

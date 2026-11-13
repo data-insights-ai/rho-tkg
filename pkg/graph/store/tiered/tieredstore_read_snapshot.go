@@ -97,70 +97,74 @@ func (r *readSnapshot) relVia(s *BadgerStore) shardRelReads {
 	return r.refSnapshot(s).(shardRelReads)
 }
 
+// A metered snapshot's reads charge each closed shard's open to its tally
+// before the open (READBUDGET step 6, ShardOpens): every routed checkout and
+// the whole-chain history search; an unmetered one (nil tally) charges nothing.
+
 func (r *readSnapshot) GetNode(id types.NodeID) (*types.Node, error) {
-	return r.ts.getNodeVia(id, r.via, false)
+	return r.ts.getNodeVia(id, r.via, r.tally, false)
 }
 
 func (r *readSnapshot) LendNode(id types.NodeID) (*types.Node, error) {
-	return r.ts.getNodeVia(id, r.via, true)
+	return r.ts.getNodeVia(id, r.via, r.tally, true)
 }
 
 func (r *readSnapshot) HasNodeHistory(id types.NodeID) (bool, error) {
-	return r.ts.hasNodeHistoryVia(id, r.via)
+	return r.ts.hasNodeHistoryVia(id, r.via, r.tally)
 }
 
 func (r *readSnapshot) NodeHistoryTemporalMeta(id types.NodeID) ([]storecontract.VersionTemporalMeta, error) {
-	return r.ts.nodeHistoryTemporalMetaVia(id, r.via)
+	return r.ts.nodeHistoryTemporalMetaVia(id, r.via, r.tally)
 }
 
 func (r *readSnapshot) GetNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
-	return r.ts.getNodeVersionVia(id, version, r.via)
+	return r.ts.getNodeVersionVia(id, version, r.via, r.tally)
 }
 
 // GetNodeHistory is the store's own; a metered snapshot reads each shard's
 // rows through its counting reads (RH list R2).
 func (r *readSnapshot) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
 	if r.tally != nil {
-		return r.ts.getNodeHistoryVia(id, r.via)
+		return r.ts.getNodeHistoryVia(id, r.via, r.tally)
 	}
 	return r.ts.GetNodeHistory(id)
 }
 
 func (r *readSnapshot) GetRelationship(id types.RelID) (*types.Relationship, error) {
 	if r.tally != nil {
-		return r.ts.getRelationshipVia(id, r.relVia, false)
+		return r.ts.getRelationshipVia(id, r.relVia, r.tally, false)
 	}
 	return r.ts.GetRelationship(id)
 }
 
 func (r *readSnapshot) LendRelationship(id types.RelID) (*types.Relationship, error) {
 	if r.tally != nil {
-		return r.ts.getRelationshipVia(id, r.relVia, true)
+		return r.ts.getRelationshipVia(id, r.relVia, r.tally, true)
 	}
 	return r.ts.LendRelationship(id)
 }
 
 func (r *readSnapshot) HasRelHistory(id types.RelID) (bool, error) {
-	return r.ts.HasRelHistory(id)
+	return r.ts.hasRelHistoryCharged(id, r.tally)
 }
 
 func (r *readSnapshot) RelHistoryTemporalMeta(id types.RelID) ([]storecontract.VersionTemporalMeta, error) {
 	if r.tally != nil {
-		return r.ts.relHistoryTemporalMetaVia(id, r.relVia)
+		return r.ts.relHistoryTemporalMetaVia(id, r.relVia, r.tally)
 	}
 	return r.ts.RelHistoryTemporalMeta(id)
 }
 
 func (r *readSnapshot) GetRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	if r.tally != nil {
-		return r.ts.getRelVersionVia(id, version, r.relVia)
+		return r.ts.getRelVersionVia(id, version, r.relVia, r.tally)
 	}
 	return r.ts.GetRelVersion(id, version)
 }
 
 func (r *readSnapshot) GetRelHistory(id types.RelID) ([]*types.Relationship, error) {
 	if r.tally != nil {
-		return r.ts.getRelHistoryVia(id, r.relVia)
+		return r.ts.getRelHistoryVia(id, r.relVia, r.tally)
 	}
 	return r.ts.GetRelHistory(id)
 }

@@ -18,17 +18,19 @@ var _ storecontract.TemporalMetaHistoryCapability = (*Store)(nil)
 // NodeHistoryTemporalMeta returns the temporal skeleton of every history
 // version of nid, ascending by version.
 func (ts *Store) NodeHistoryTemporalMeta(nid types.NodeID) ([]storecontract.VersionTemporalMeta, error) {
-	return ts.nodeHistoryTemporalMetaVia(nid, directReads)
+	return ts.nodeHistoryTemporalMetaVia(nid, directReads, nil)
 }
 
-func (ts *Store) nodeHistoryTemporalMetaVia(nid types.NodeID, via shardVia) ([]storecontract.VersionTemporalMeta, error) {
+// nodeHistoryTemporalMetaVia reads through via, charging each closed shard's
+// open to opens before it (nil: none; READBUDGET step 6).
+func (ts *Store) nodeHistoryTemporalMetaVia(nid types.NodeID, via shardVia, opens *storecontract.ReadTally) ([]storecontract.VersionTemporalMeta, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	store, checkin, isArchive, err := ts.shardForNodeIDReadWithArchive(nid)
+	store, checkin, isArchive, err := ts.shardForNodeIDReadCharged(nid, opens)
 	if err != nil {
 		return nil, err
 	}
@@ -38,24 +40,25 @@ func (ts *Store) nodeHistoryTemporalMetaVia(nid types.NodeID, via shardVia) ([]s
 		return nil, err
 	}
 	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
-	return historyAcrossShards(ts, store, liveHere, isArchive, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
+	return historyAcrossShards(ts, store, liveHere, isArchive, opens, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
 		return via(s).NodeHistoryTemporalMeta(nid)
 	}, mergeHistoryMeta)
 }
 
 // RelHistoryTemporalMeta mirrors NodeHistoryTemporalMeta for relationships.
 func (ts *Store) RelHistoryTemporalMeta(rid types.RelID) ([]storecontract.VersionTemporalMeta, error) {
-	return ts.relHistoryTemporalMetaVia(rid, directRelReads)
+	return ts.relHistoryTemporalMetaVia(rid, directRelReads, nil)
 }
 
-func (ts *Store) relHistoryTemporalMetaVia(rid types.RelID, via relVia) ([]storecontract.VersionTemporalMeta, error) {
+// relHistoryTemporalMetaVia is nodeHistoryTemporalMetaVia for relationships.
+func (ts *Store) relHistoryTemporalMetaVia(rid types.RelID, via relVia, opens *storecontract.ReadTally) ([]storecontract.VersionTemporalMeta, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	shard, checkin, isArchive, err := ts.shardForRelIDReadWithArchive(rid)
+	shard, checkin, isArchive, err := ts.shardForRelIDReadCharged(rid, opens)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +68,7 @@ func (ts *Store) relHistoryTemporalMetaVia(rid types.RelID, via relVia) ([]store
 		return nil, err
 	}
 	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
-	return historyAcrossShards(ts, shard, liveHere, isArchive, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
+	return historyAcrossShards(ts, shard, liveHere, isArchive, opens, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
 		return via(s).RelHistoryTemporalMeta(rid)
 	}, mergeHistoryMeta)
 }
@@ -73,8 +76,9 @@ func (ts *Store) relHistoryTemporalMetaVia(rid types.RelID, via relVia) ([]store
 // historyAcrossShards follows GetNodeHistory's routing: a row live on an
 // event shard answers alone; live on the reference shard adds the archive;
 // archived adds the reference shard; otherwise every history shard is asked.
-// merge folds the per-shard answers, the owner's first.
-func historyAcrossShards[T any](ts *Store, owner *BadgerStore, liveHere, isArchive bool,
+// merge folds the per-shard answers, the owner's first. opens (nil: none) is
+// charged each closed shard's open before it (READBUDGET step 6).
+func historyAcrossShards[T any](ts *Store, owner *BadgerStore, liveHere, isArchive bool, opens *storecontract.ReadTally,
 	fetch func(*BadgerStore) ([]T, error), merge func([][]T) []T) ([]T, error) {
 	own, err := fetch(owner)
 	if err != nil {
@@ -96,7 +100,7 @@ func historyAcrossShards[T any](ts *Store, owner *BadgerStore, liveHere, isArchi
 			return own, nil
 		}
 		ts.refArchiveGapHook()
-		archive, release, err := ts.checkoutArchive()
+		archive, release, err := ts.checkoutArchiveCharged(opens)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +126,7 @@ func historyAcrossShards[T any](ts *Store, owner *BadgerStore, liveHere, isArchi
 			return nil, err
 		}
 	default:
-		if err := ts.forEachHistoryShard(owner, func(candidate *BadgerStore) (bool, error) {
+		if err := ts.forEachHistoryShardCharged(owner, opens, func(candidate *BadgerStore) (bool, error) {
 			got, err := fetch(candidate)
 			if err != nil {
 				return false, err

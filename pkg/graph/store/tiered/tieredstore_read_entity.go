@@ -12,12 +12,13 @@ import (
 // O(1) shard resolution: ref probe + timestamp extraction.
 
 func (ts *Store) GetNode(nid types.NodeID) (*types.Node, error) {
-	return ts.getNodeVia(nid, directReads, false)
+	return ts.getNodeVia(nid, directReads, nil, false)
 }
 
 // getNodeVia is GetNode (lend false) or LendNode (lend true) reading the
-// routed shard through via.
-func (ts *Store) getNodeVia(nid types.NodeID, via shardVia, lend bool) (*types.Node, error) {
+// routed shard through via, charging each closed shard's open to opens
+// before it (nil: none; READBUDGET step 6).
+func (ts *Store) getNodeVia(nid types.NodeID, via shardVia, opens *storecontract.ReadTally, lend bool) (*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -26,7 +27,7 @@ func (ts *Store) getNodeVia(nid types.NodeID, via shardVia, lend bool) (*types.N
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	store, checkin, err := ts.shardForNodeIDRead(nid)
+	store, checkin, _, err := ts.shardForNodeIDReadCharged(nid, opens)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +126,7 @@ var _ storecontract.EntityLendCapability = (*Store)(nil)
 // shard (store.EntityLendCapability); it stays valid after checkin or
 // idle-close.
 func (ts *Store) LendNode(nid types.NodeID) (*types.Node, error) {
-	return ts.getNodeVia(nid, directReads, true)
+	return ts.getNodeVia(nid, directReads, nil, true)
 }
 
 // LendRelationship is LendNode for relationships, routed as GetRelationship
@@ -139,12 +140,12 @@ func (ts *Store) LendRelationship(rid types.RelID) (*types.Relationship, error) 
 	}
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	return routeRelRow(ts, rid, lendRelationshipRow)
+	return routeRelRow(ts, rid, nil, lendRelationshipRow)
 }
 
 // getRelationshipVia is GetRelationship (lend: LendRelationship) reading each
 // routed shard through via: a read snapshot's metered read (RH list R2).
-func (ts *Store) getRelationshipVia(rid types.RelID, via relVia, lend bool) (*types.Relationship, error) {
+func (ts *Store) getRelationshipVia(rid types.RelID, via relVia, opens *storecontract.ReadTally, lend bool) (*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -154,11 +155,11 @@ func (ts *Store) getRelationshipVia(rid types.RelID, via relVia, lend bool) (*ty
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
 	if lend {
-		return routeRelRow(ts, rid, func(s *BadgerStore, id types.RelID) (*types.Relationship, bool, error) {
+		return routeRelRow(ts, rid, opens, func(s *BadgerStore, id types.RelID) (*types.Relationship, bool, error) {
 			return lendRelationshipRowVia(s, id, via)
 		})
 	}
-	return routeRelRow(ts, rid, func(s *BadgerStore, id types.RelID) (*types.Relationship, bool, error) {
+	return routeRelRow(ts, rid, opens, func(s *BadgerStore, id types.RelID) (*types.Relationship, bool, error) {
 		return relationshipRowVia(s, id, via)
 	})
 }
@@ -167,13 +168,14 @@ func (ts *Store) getRelationshipVia(rid types.RelID, via relVia, lend bool) (*ty
 // owning rid, keeping shardForRelIDChecked's stale-index guard and reading the
 // row only once.
 func (ts *Store) getRelationshipChecked(rid types.RelID) (*types.Relationship, error) {
-	return routeRelRow(ts, rid, relationshipRow)
+	return routeRelRow(ts, rid, nil, relationshipRow)
 }
 
 // routeRelRow finds the shard holding rid's row and reads it with row (copy,
 // lent row or stamps): reference, archive, the ID's event shard, then every
-// other event shard; the first hit answers.
-func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types.RelID) (T, bool, error)) (T, error) {
+// other event shard; the first hit answers. opens (nil: none) is charged
+// each closed shard's open before it (READBUDGET step 6).
+func routeRelRow[T any](ts *Store, rid types.RelID, opens *storecontract.ReadTally, row func(*BadgerStore, types.RelID) (T, bool, error)) (T, error) {
 	var zero T
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
@@ -189,7 +191,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types
 	}
 
 	ts.refArchiveGapHook()
-	archive, archiveCheckin, err := ts.checkoutArchive()
+	archive, archiveCheckin, err := ts.checkoutArchiveCharged(opens)
 	if err != nil {
 		return zero, err
 	}
@@ -205,7 +207,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types
 	}
 
 	candidateEntry := ts.timestampToEventShardEntry(rid.SnowflakeID())
-	candidate, candidateRelease, err := candidateEntry.checkoutStoreReadOnly(ts)
+	candidate, candidateRelease, err := candidateEntry.checkoutForReadCharged(ts, true, opens)
 	if err != nil {
 		return zero, err
 	}
@@ -229,7 +231,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types
 	ts.mu.RUnlock()
 
 	for _, es := range probe {
-		store, release, err := es.checkoutStoreReadOnly(ts)
+		store, release, err := es.checkoutForReadCharged(ts, true, opens)
 		if err != nil {
 			return zero, err
 		}
@@ -271,7 +273,7 @@ func (ts *Store) GetNodesByIDsMetered(ids []types.NodeID, t *storecontract.ReadT
 		if t == nil {
 			n, err = ts.GetNode(ids[0])
 		} else {
-			n, err = ts.getNodeVia(ids[0], func(s *BadgerStore) shardNodeReads { return meteredShard{s, t} }, false)
+			n, err = ts.getNodeVia(ids[0], func(s *BadgerStore) shardNodeReads { return meteredShard{s, t} }, t, false)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", ids[0], err)
@@ -285,7 +287,7 @@ func (ts *Store) GetNodesByIDsMetered(ids []types.NodeID, t *storecontract.ReadT
 		return ts.getNodesByIDsWithDuplicates(ids, unique, t)
 	}
 
-	batches, err := ts.groupNodeIDsByShard(ids)
+	batches, err := ts.groupNodeIDsByShard(ids, t)
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +313,7 @@ func (ts *Store) GetNodesByIDsMetered(ids []types.NodeID, t *storecontract.ReadT
 }
 
 func (ts *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID, t *storecontract.ReadTally) ([]*types.Node, error) {
-	batches, err := ts.groupNodeIDsByShard(unique)
+	batches, err := ts.groupNodeIDsByShard(unique, t)
 	if err != nil {
 		return nil, err
 	}
@@ -568,7 +570,10 @@ type nodeShardIDBatch struct {
 	checkout func() (*BadgerStore, func(), error)
 }
 
-func (ts *Store) groupNodeIDsByShard(ids []types.NodeID) ([]nodeShardIDBatch, error) {
+// groupNodeIDsByShard groups ids by the shard that holds each; opens (nil:
+// none) is charged a closed archive's open before it, and each closed event
+// shard's open when its batch is checked out (READBUDGET step 6).
+func (ts *Store) groupNodeIDsByShard(ids []types.NodeID, opens *storecontract.ReadTally) ([]nodeShardIDBatch, error) {
 	batches := make([]nodeShardIDBatch, 0, 2)
 	byKey := make(map[any]int, 2)
 
@@ -590,7 +595,7 @@ func (ts *Store) groupNodeIDsByShard(ids []types.NodeID) ([]nodeShardIDBatch, er
 	}
 	defer refCheckin()
 
-	archive, archiveCheckin, err := ts.checkoutArchive()
+	archive, archiveCheckin, err := ts.checkoutArchiveCharged(opens)
 	if err != nil {
 		return nil, err
 	}
@@ -609,7 +614,7 @@ func (ts *Store) groupNodeIDsByShard(ids []types.NodeID) ([]nodeShardIDBatch, er
 
 		es := ts.timestampToEventShardEntry(raw)
 		add(es, func() (*BadgerStore, func(), error) {
-			return es.checkoutStoreReadOnly(ts)
+			return es.checkoutForReadCharged(ts, true, opens)
 		}, id)
 	}
 	return batches, nil
@@ -689,7 +694,7 @@ func (ts *Store) OutgoingRelationshipsForNodesByDepth(nodeIDs []types.NodeID, ty
 		queryNodeIDs = unique
 	}
 
-	batches, err := ts.groupNodeIDsByShard(queryNodeIDs)
+	batches, err := ts.groupNodeIDsByShard(queryNodeIDs, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -908,7 +913,7 @@ func (ts *Store) IncomingRelationshipsForNodesByDepth(typedNodeIDs []types.NodeI
 
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	batches, err := ts.groupNodeIDsByShard(uniqueNodeIDs)
+	batches, err := ts.groupNodeIDsByShard(uniqueNodeIDs, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // setStoreLocked installs store on es and counts it when es is cold. Caller
@@ -236,14 +238,34 @@ func (es *EventShard) checkoutStoreReadOnly(ts *Store) (*BadgerStore, func(), er
 // checkoutStoreReadOnly, true) and reports the pin to the test-only
 // checkoutHook.
 func (es *EventShard) checkoutForRead(ts *Store, readOnly bool) (*BadgerStore, func(), error) {
-	store, release, err := es.pinForRead(ts, readOnly)
+	return es.checkoutForReadCharged(ts, readOnly, nil)
+}
+
+// checkoutForReadCharged is checkoutForRead for a read under a budget (RH
+// list R2, READBUDGET step 6): when es is closed, the open is charged to opens
+// (store.ReadTally.ShardOpen) under the shard's lock, before the open, and a
+// refusal returns the budget error with the shard left closed. An open shard
+// charges nothing. A nil opens charges nothing.
+func (es *EventShard) checkoutForReadCharged(ts *Store, readOnly bool, opens *storecontract.ReadTally) (*BadgerStore, func(), error) {
+	store, release, err := es.pinForRead(ts, readOnly, opens)
 	if err == nil {
 		release = ts.noteCheckout(es, release)
 	}
 	return store, release, err
 }
 
-func (es *EventShard) pinForRead(ts *Store, readOnly bool) (*BadgerStore, func(), error) {
+// checkoutBudgeted is checkoutStoreReadOnly for one worker of a parallel
+// fan-out under a budget (READBUDGET step 6): once the read's meter refused
+// (store.ReadMeter.Exceeded), the worker stops before its shard; otherwise
+// checkoutForReadCharged. A nil opens is checkoutStoreReadOnly.
+func (es *EventShard) checkoutBudgeted(ts *Store, opens *storecontract.ReadTally) (*BadgerStore, func(), error) {
+	if err := opens.Exceeded(); err != nil {
+		return nil, func() {}, err
+	}
+	return es.checkoutForReadCharged(ts, true, opens)
+}
+
+func (es *EventShard) pinForRead(ts *Store, readOnly bool, opens *storecontract.ReadTally) (*BadgerStore, func(), error) {
 	noop := func() {}
 	if err := ts.backgroundError(); err != nil {
 		return nil, noop, err
@@ -286,6 +308,14 @@ func (es *EventShard) pinForRead(ts *Store, readOnly bool) (*BadgerStore, func()
 	if ts.closed.Load() {
 		es.shardMu.Unlock()
 		return nil, noop, ErrStoreClosed
+	}
+	if es.store == nil || es.storeRO && !readOnly {
+		// Every open below (a closed shard, or a read-only handle reopened
+		// writable) is charged first; a refusal leaves the shard as it is.
+		if err := opens.ShardOpen(); err != nil {
+			es.shardMu.Unlock()
+			return nil, noop, err
+		}
 	}
 	if es.store != nil && es.storeRO && !readOnly {
 		// A caller that may write: the read-only handle gives way to a
@@ -501,6 +531,16 @@ func (ts *Store) checkoutRefShard() (*BadgerStore, func(), error) {
 // closed re-check closes the window where Close already advanced past
 // the spin-wait between our load and our increment.
 func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
+	return ts.checkoutArchiveCharged(nil)
+}
+
+// checkoutArchiveCharged is checkoutArchive for a read under a budget (RH list
+// R2, READBUDGET step 6): when the catalog has an archive not yet opened, the
+// open is charged to opens before it, and a refusal returns the budget error
+// with the archive left closed. An archive opened by another read in between
+// is charged all the same (the count errs high, never low). A nil opens
+// charges nothing.
+func (ts *Store) checkoutArchiveCharged(opens *storecontract.ReadTally) (*BadgerStore, func(), error) {
 	noop := func() {}
 	if err := ts.checkOpen(); err != nil {
 		return nil, noop, err
@@ -515,6 +555,9 @@ func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 		// a racing Close still surfaces the right error.
 		if !ts.hasArchiveShard() {
 			return nil, noop, nil
+		}
+		if err := opens.ShardOpen(); err != nil {
+			return nil, noop, err
 		}
 		if err := ts.ensureRefArchive(); err != nil {
 			return nil, noop, err
