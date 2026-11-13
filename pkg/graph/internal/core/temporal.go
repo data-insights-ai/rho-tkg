@@ -1406,6 +1406,9 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 				if err := opts.AddCandidates(1); err != nil {
 					return err
 				}
+				if err := opts.AddBufferBytes(bufSetEntry); err != nil { // the fold's seen entry
+					return err
+				}
 				return fn(id)
 			}
 		}
@@ -1437,6 +1440,16 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 					return false
 				}
 			}
+			keep := func() bool {
+				if metered != nil {
+					if err := opts.AddBufferBytes(bufSetEntry); err != nil {
+						invalid = err
+						return false
+					}
+				}
+				set[id] = struct{}{}
+				return true
+			}
 			if !c.storeRowsTrust {
 				if verr := storepkg.ValidateNodeID(id); verr != nil {
 					invalid = verr
@@ -1447,12 +1460,11 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 				return true
 			}
 			if cands != nil {
-				if _, keep := cands[id]; !keep {
+				if _, in := cands[id]; !in {
 					return true
 				}
 			}
-			set[id] = struct{}{}
-			return true
+			return keep()
 		}
 		var window *memberWindow
 		if windowed {
@@ -1479,6 +1491,9 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 			return err
 		}
 		if err := opts.AddCandidates(len(currentIDs)); err != nil {
+			return err
+		}
+		if err := opts.AddBufferBytes(len(currentIDs) * bufSetEntry); err != nil {
 			return err
 		}
 		for _, id := range currentIDs {
@@ -1874,3 +1889,10 @@ func (c *Core) forEachRelHistoryCandidateOfType(tok uint16, currentIDs []types.R
 	}
 	return nil
 }
+
+// Logical buffer-entry sizes a read budget's BufferBytes charges (RH list R2):
+// a set entry (map key and bucket share) and an ID or row pointer in a slice.
+const (
+	bufSetEntry = 24
+	bufSliceRef = 8
+)

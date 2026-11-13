@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -232,6 +233,59 @@ func TestReadBudget_Candidates_DenseKeyCountsBeforeFilter(t *testing.T) {
 			be := rbdBudgetErr(t, err, "candidates")
 			if got != nil || be.Work.Candidates != 11 || ten.Work() != be.Work {
 				t.Fatalf("budget 10 = %d rows, %+v; want no rows, stopped at the 11th entry", len(got), be.Work)
+			}
+		})
+	}
+}
+
+// TestReadBudget_BufferAndSegmentsChargedBeforeGrowth (READBUDGET step 5): a
+// read's temporary buffers (BufferBytes) and the segments it collects
+// (Segments) are charged before each entry joins them. BufferBytes 1 stops a
+// dense temporal property read before its candidate set holds an entry;
+// Segments 1 stops the tuple timelines at the second kept segment, with no
+// rows, on every disk backend.
+func TestReadBudget_BufferAndSegmentsChargedBeforeGrowth(t *testing.T) {
+	t.Parallel()
+	for _, be := range rbdBackends() {
+		t.Run(be.name, func(t *testing.T) {
+			g, shut := be.open(t, t.TempDir())
+			defer shut()
+			ctx := context.Background()
+			if err := g.Index.CreateProperty("D", "a"); err != nil {
+				t.Fatal(err)
+			}
+			for range 128 {
+				if _, err := g.Nodes.Add(ctx, []string{"D"}, map[string]any{"a": int64(1)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			w := newRTBWorld(t, g)
+			w.index(t, rtbType, rtbKeys...)
+			for i := range 4 {
+				w.add(t, fmt.Sprintf("r%d", i), rtbType, map[string]any{"estate": "e1", "device": "d1"})
+			}
+			pin, err := g.Temporal.NowTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts := storepkg.QueryOpts{TxPin: pin}
+			uctx, all := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
+			if got, err := g.Nodes.ByLabelAndPropertyCtx(uctx, "D", "a", int64(1), opts); err != nil || len(got) != 128 || all.Work().BufferBytes < 128*(bufSetEntry+bufSliceRef) {
+				t.Fatalf("unlimited = %d rows, %v, %+v; want 128 rows and their buffers counted", len(got), err, all.Work())
+			}
+			bctx, one := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{BufferBytes: 1})
+			got, err := g.Nodes.ByLabelAndPropertyCtx(bctx, "D", "a", int64(1), opts)
+			be := rbdBudgetErr(t, err, "buffer bytes")
+			if got != nil || be.Work.BufferBytes != bufSetEntry || be.Work.Candidates != 1 || one.Work() != be.Work {
+				t.Fatalf("BufferBytes 1 = %d rows, %+v; want none, stopped before the first set entry", len(got), be.Work)
+			}
+
+			tp := temporal.Pin{Tx: w.pin(t)}
+			bctx, seg := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Segments: 1})
+			segs, err := g.Temporal.RelEffectiveTimelinesByProperties(bctx, rtbType, rtbKeys, [][]any{{"e1", "d1"}}, tp)
+			be = rbdBudgetErr(t, err, "segments")
+			if segs != nil || be.Work.Segments != 2 || seg.Work() != be.Work {
+				t.Fatalf("Segments 1 = %v, %+v; want no rows, stopped at the second segment", segs, be.Work)
 			}
 		})
 	}

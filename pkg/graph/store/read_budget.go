@@ -48,6 +48,14 @@ type ReadBudget struct {
 	// version read twice (skeleton, then winner) counts twice. The memory
 	// store counts the versions of an entity's chain before it walks them.
 	HistoryExamined uint64
+	// BufferBytes bounds the bytes a read holds in its temporary buffers
+	// (candidate sets and member lists, the rows and segments it collects
+	// before it returns them), a logical estimate per entry (8 per ID or row
+	// pointer, 24 per set entry, a segment's struct size), charged before each
+	// entry is added, so a read stops before the buffer grows past the limit.
+	// It is not the Go heap: the stores' own buffers (badger blocks, caches)
+	// are not counted.
+	BufferBytes uint64
 }
 
 // ReadWork is what the reads made with one context did, counted by the doors
@@ -58,10 +66,11 @@ type ReadWork struct {
 	ShardOpens      uint64
 	DecodedBytes    uint64
 	HistoryExamined uint64
+	BufferBytes     uint64
 }
 
 // ReadBudgetError is a read stopped by Door at Limit ("candidates",
-// "segments", "shard opens", "decoded bytes" or "history examined") of Budget, the budget whose limit it passed;
+// "segments", "shard opens", "decoded bytes", "history examined" or "buffer bytes") of Budget, the budget whose limit it passed;
 // Work is that budget's meter, the work past the limit included.
 type ReadBudgetError struct {
 	Door   string
@@ -85,7 +94,7 @@ type ReadMeter struct {
 	budget                                         ReadBudget
 	parent                                         *ReadMeter
 	candidates, segments, shardOpens, decodedBytes atomic.Uint64
-	historyExamined                                atomic.Uint64
+	historyExamined, bufferBytes                   atomic.Uint64
 }
 
 type readMeterKey struct{}
@@ -112,7 +121,7 @@ func (m *ReadMeter) Work() ReadWork {
 	if m == nil {
 		return ReadWork{}
 	}
-	return ReadWork{Candidates: m.candidates.Load(), Segments: m.segments.Load(), ShardOpens: m.shardOpens.Load(), DecodedBytes: m.decodedBytes.Load(), HistoryExamined: m.historyExamined.Load()}
+	return ReadWork{Candidates: m.candidates.Load(), Segments: m.segments.Load(), ShardOpens: m.shardOpens.Load(), DecodedBytes: m.decodedBytes.Load(), HistoryExamined: m.historyExamined.Load(), BufferBytes: m.bufferBytes.Load()}
 }
 
 // AddCandidates counts n candidates door examined, here and in every outer
@@ -144,6 +153,12 @@ func (m *ReadMeter) AddDecodedBytes(door string, n int) error {
 // AddCandidates.
 func (m *ReadMeter) AddHistoryExamined(door string, n int) error {
 	return m.add(door, "history examined", n, func(r *ReadMeter) (*atomic.Uint64, uint64) { return &r.historyExamined, r.budget.HistoryExamined })
+}
+
+// AddBufferBytes counts n bytes door is about to add to a temporary buffer,
+// as AddCandidates.
+func (m *ReadMeter) AddBufferBytes(door string, n int) error {
+	return m.add(door, "buffer bytes", n, func(r *ReadMeter) (*atomic.Uint64, uint64) { return &r.bufferBytes, r.budget.BufferBytes })
 }
 
 // ReadTally is a meter bound to the door that reads: what a store receives

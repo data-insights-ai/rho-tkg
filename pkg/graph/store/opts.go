@@ -152,6 +152,9 @@ func (o QueryOpts) ReadTally() *ReadTally { return o.meter.Tally(o.meterDoor) }
 // the budget error past a limit.
 func (o QueryOpts) AddCandidates(n int) error { return o.meter.AddCandidates(o.meterDoor, n) }
 
+// AddBufferBytes counts n buffer bytes in o's meter, as AddCandidates.
+func (o QueryOpts) AddBufferBytes(n int) error { return o.meter.AddBufferBytes(o.meterDoor, n) }
+
 // HasValidEndAfter reports whether ValidEndAfter is a bound: ValidEndAfterSet,
 // or a non-zero ValidEndAfter.
 func (o QueryOpts) HasValidEndAfter() bool {

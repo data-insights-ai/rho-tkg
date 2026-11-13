@@ -38,6 +38,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `RelEffectiveTimelinesByProperties` is handed, before the pin and intersection filters, so a refusal comes at the
   entry that passes the limit (a dense key intersected with a sparse one counted only the intersection: red in
   `tasks/evidence/READBUDGET/dense-key-red.txt`). A budget that answered on 4.107.1 may refuse now.
+  `ReadBudget.BufferBytes` / `ReadWork.BufferBytes` (limit `"buffer bytes"`): a read's temporary buffers, a logical
+  estimate charged before each entry is added (24 B a set entry, 8 B an ID or row pointer, a segment's size).
+  Segments are counted as each is kept, before it joins the answer (they were counted after the whole answer).
   Not counted: `ValidEndAfter`, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
   a nil check per decoded row and answers as before.
 

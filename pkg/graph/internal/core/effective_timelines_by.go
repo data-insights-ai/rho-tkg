@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -98,13 +99,24 @@ func (t *TempOps) RelEffectiveTimelinesByProperties(ctx context.Context, typeNam
 	}
 	validOK := pageValidKeep(c.axis(), opts)
 	var hit []int
+	// A read budget counts each segment as it is kept, before it joins out
+	// (Segments, and its size as BufferBytes), so a refusal leaves no buffer
+	// past the limit.
+	var segErr error
+	segSize := int(reflect.TypeFor[temporal.RelSegment]().Size()) // #nosec G115 -- a struct size
 	err = streamEntityTimelinesMetered(c, meter.Tally("RelEffectiveTimelinesByProperties"), ids, func(rd entityReads, id types.RelID) ([]temporal.RelSegment, error) {
 		if err := checkCtx(ctx); err != nil {
 			return nil, err
 		}
 		segs, err := c.relEffectiveTimelineFrom(rd, id, pin.Tx)
+		if err != nil && segErr == nil && errors.Is(err, storepkg.ErrReadBudget) {
+			segErr = err // the stream emits the entities read before it: count none of them
+		}
 		return skipUnknown(segs, err, storepkg.ErrRelNotFound)
 	}, func(_ types.RelID, segs []temporal.RelSegment) bool {
+		if segErr != nil {
+			return false
+		}
 		for _, s := range segs {
 			if !validOK(s.ValidFrom, s.ValidTo) || !s.Rel.HasTypeTokenRaw(tok) {
 				continue
@@ -116,23 +128,25 @@ func (t *TempOps) RelEffectiveTimelinesByProperties(ctx context.Context, typeNam
 			})
 			for _, i := range firstOccurrences(hit) {
 				if rowCarriesTuple(s.Rel, keys, tupleKeys[i], driver) {
+					if meter != nil {
+						if segErr = meter.AddSegments("RelEffectiveTimelinesByProperties", 1); segErr == nil {
+							segErr = meter.AddBufferBytes("RelEffectiveTimelinesByProperties", segSize)
+						}
+						if segErr != nil {
+							return false
+						}
+					}
 					out[i] = append(out[i], s)
 				}
 			}
 		}
 		return true
 	})
+	if segErr != nil {
+		return nil, segErr
+	}
 	if err != nil {
 		return nil, err
-	}
-	if meter != nil {
-		segments := 0
-		for _, segs := range out {
-			segments += len(segs)
-		}
-		if err := meter.AddSegments("RelEffectiveTimelinesByProperties", segments); err != nil {
-			return nil, err
-		}
 	}
 	return out, nil
 }
@@ -311,6 +325,9 @@ func (c *Core) relTupleMembers(meter *storepkg.ReadMeter, tok uint16, key string
 				}
 			}
 			if firstTx == 0 || firstTx <= pinTx {
+				if invalid = meter.AddBufferBytes("RelEffectiveTimelinesByProperties", bufSliceRef); invalid != nil {
+					return false
+				}
 				ids = append(ids, id)
 			}
 			return true

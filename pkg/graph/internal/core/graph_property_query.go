@@ -219,6 +219,9 @@ func (c *Core) nodesByLabelAndPropertyFormsLocked(label, key string, forms []any
 			}
 			return err
 		}
+		if err := opts.AddBufferBytes(bufSliceRef); err != nil {
+			return err
+		}
 		result = append(result, n)
 		return nil
 	}); err != nil {
@@ -332,6 +335,9 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
 			}
+			return err
+		}
+		if err := opts.AddBufferBytes(bufSliceRef); err != nil {
 			return err
 		}
 		result = append(result, n)
