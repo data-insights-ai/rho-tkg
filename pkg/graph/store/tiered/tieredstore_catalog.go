@@ -259,10 +259,25 @@ func (ts *Store) handNewShardToLogScope(store *BadgerStore, name string) {
 	}
 }
 
-// checkRotation checks if the hot shard's time window has expired and rotates if needed.
+// checkRotation is the first step of every create door (PutNode, PutNodesBatch,
+// the relationship creates and their generated-ID twins). It checks if the hot
+// shard's time window has expired and rotates if needed.
 // Fast path: single time comparison (~1ns). Slow path: acquire Lock, double-check, rotate.
+//
+// It also carries the fence's contract for the write (R1): a store with a
+// sticky background error (recordBackgroundError) refuses the write here,
+// before a rotation, a window shard or a checkout; and when the rotation this
+// call ran fenced the store (a failed Close of an empty demoted shard,
+// closeEmptyDemotedShardsLocked) it returns that error. The rotation stays
+// committed (the catalog is saved, the new hot shard is live); the write that
+// triggered it is refused with the fault and commits nothing: no row, no
+// change-log record, no shard made for it. Rows committed before stay readable
+// (reopen, or RecoverBackgroundError).
 func (ts *Store) checkRotation() error {
 	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if err := ts.backgroundError(); err != nil {
 		return err
 	}
 	ts.mu.RLock()
@@ -291,7 +306,10 @@ func (ts *Store) checkRotation() error {
 		return nil // another goroutine already rotated
 	}
 
-	return ts.rotateHotShardLocked()
+	if err := ts.rotateHotShardLocked(); err != nil {
+		return err
+	}
+	return ts.backgroundError()
 }
 
 // --- Registry file integration ---

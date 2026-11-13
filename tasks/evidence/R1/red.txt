@@ -1,0 +1,37 @@
+R1: the cleanup failure contract at the public writer (ai-soc RH list R1)
+
+Command, on the code before the fix (base 2663ccca), log lines filtered:
+  go test -run 'TestEmptyShardDemotion_(CloseFailureFailsTriggeringWrite|FencedStoreMakesNothingForAWrite|CloseFailureDetachesAndFences)' ./pkg/graph/store/tiered
+
+What the red run shows
+- The new test drives six public doors (PutNode event, PutNode reference, PutNodesBatch, PutRelationship,
+  PutRelationshipsBatch, PutNode backfill into a window without a shard) with a close fault injected on the empty
+  demoted shard (the existing hooks: FailNextFlushForTest, LockFlushMuForTest, GCDoneForTest, SetDBClosedForTest).
+- Five of the six doors already behaved: the write returned the sticky fault (it failed at the shard checkout, after
+  checkRotation had returned nil), committed nothing, and every row committed before was readable after a reopen with
+  the same change-log LSNs. So the code held the contract there; only the docs ("fails no write") were wrong.
+- The backfill door was red: the refused write made the shard of its window (a catalog write and an opened handle)
+  before it failed, because ensureWindowShard does not look at the fence. The same hole is a fenced store rotating
+  and making window shards for writes it refuses.
+- The existing helper test expected checkRotation to return nil after a failed close; it now expects the fault.
+
+Red output:
+--- FAIL: TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite (5.50s)
+    --- FAIL: TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite/PutNode_backfill_into_a_window_without_a_shard (0.71s)
+        empty_shard_close_fault_write_test.go:194: event shards = [2026-07-22 2026-07-23 2026-07-25 2026-07-27], want [2026-07-22 2026-07-23 2026-07-27]: the refused write made a shard
+--- FAIL: TestEmptyShardDemotion_FencedStoreMakesNothingForAWrite (0.79s)
+    empty_shard_close_fault_write_test.go:271: backfill window: shards = [2026-07-22 2026-07-23 2026-07-25 2026-07-27] (hot 2026-07-27), want [2026-07-22 2026-07-23 2026-07-27] unchanged
+--- FAIL: TestEmptyShardDemotion_CloseFailureDetachesAndFences (0.59s)
+    empty_shard_demotion_test.go:291: rotation error = <nil>, want the demotion Close failure
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	6.953s
+FAIL
+
+Green after the fix: checkRotation refuses a fenced store before it rotates and returns the fence its own rotation
+set; ensureWindowShard refuses to make a shard under the fence (a fault recorded after checkRotation passed).
+
+Mutation sweep (each defended line broken once, TestEmptyShardDemotion_* run):
+- checkRotation's first fence check removed: FencedStoreMakesNothingForAWrite fails (the store rotated under the fence).
+- checkRotation's return of the fence after its rotation removed (return nil): CloseFailureDetachesAndFences fails
+  (rotation error = nil).
+- ensureWindowShard's fence check removed: FenceStopsWindowShardMaking fails.

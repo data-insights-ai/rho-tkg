@@ -635,9 +635,11 @@ func (ts *Store) coldShardsClosable() bool { return !ts.inMemory }
 //
 // It runs on the write path (checkRotation) after the rotation committed, so
 // it returns nothing: a failed probe keeps the handle for the idle sweep and is
-// logged; a failed close records the background-error fence exactly as a
-// failed idle close does (checkinReadStore). Neither fails the triggering write
-// by itself.
+// logged and fails no write; a failed close detaches the handle and records the
+// background-error fence exactly as a failed idle close does (checkinReadStore),
+// never keeping a half-closed handle. checkRotation then returns that fence to
+// the write that triggered the rotation: it is refused with the fault and
+// commits nothing, and the committed rotation is not rolled back (R1).
 func (ts *Store) closeEmptyDemotedShardsLocked(oldHot *EventShard, demoted []*EventShard) {
 	ts.scopeMu.Lock()
 	scopeOpen := ts.scopeOpen

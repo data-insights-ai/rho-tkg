@@ -261,8 +261,12 @@ ADR-0012.
   Shards older than `ColdAfter` become cold. A newly demoted disk shard that `HoldsNoRows` proves empty (no entity,
   history, index or change-log key, pending writes included; uniqueness claims alone count as empty, since no reader
   trusts a claim without its row) closes at once and is sealed no-rows, unless a pin, a move or an open legacy log
-  scope holds it (RH02EMPTY). That cleanup runs on the write path after the rotation committed and fails no write: a
-  failed probe keeps the handle, a failed close sets the background-error fence as a failed idle close does. A
+  scope holds it (RH02EMPTY). That cleanup runs on the write path after the rotation committed. A failed probe keeps
+  the handle and fails no write. A failed close detaches the handle (a half-closed handle is never kept) and sets the
+  background-error fence as a failed idle close does, and the write that triggered the rotation is refused with that
+  fault: it commits nothing (no row, no change-log record, no shard made for it), the committed rotation stays, and
+  every row committed before stays readable after a reopen or `RecoverBackgroundError` (R1). A fenced store refuses
+  every later write at its first step, before a rotation or a window shard. A
   demoted shard still on the handle it had while hot or warm has it closed by the handle sweep (below); every other demoted shard
   keeps its handle until the idle sweep closes it after `IdleTimeout` unused, counted from its last cold access (a demoted shard no cold read touched closes at the next
   sweep; hot and warm reads stamp no access). A read reopens a cold shard read-only (COLDRO: 1.3 ms against 27.6 ms writable), a write or a

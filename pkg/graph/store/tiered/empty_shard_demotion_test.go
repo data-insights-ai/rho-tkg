@@ -284,11 +284,11 @@ func TestEmptyShardDemotion_CloseFailureDetachesAndFences(t *testing.T) {
 	locked = false
 	select {
 	case err := <-rotated:
-		// The rotation is committed: the write that triggered it does not
-		// report the cleanup's fault; the fence below does, as after a failed
-		// idle close.
-		if err != nil {
-			t.Fatalf("rotation error = %v, want nil (the fault goes to the fence)", err)
+		// The rotation is committed, and the write that triggered it is refused
+		// with the cleanup's fault (R1): checkRotation returns the fence it set.
+		// The public doors are in empty_shard_close_fault_write_test.go.
+		if !errors.Is(err, badgerv4.ErrDBClosed) || !strings.Contains(err.Error(), "close empty demoted shard") {
+			t.Fatalf("rotation error = %v, want the demotion Close failure", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("faulted rotation did not finish")

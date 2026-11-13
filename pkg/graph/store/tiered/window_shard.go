@@ -42,6 +42,11 @@ func (ts *Store) ensureWindowShard(raw snowflake.ID) error {
 	if shardWindowFor(ts.shardIndex, created) != nil {
 		return nil // another write made it
 	}
+	// A fenced store makes no shard for a write it will refuse (R1); checkRotation
+	// refuses first, this covers a fault recorded since.
+	if err := ts.backgroundError(); err != nil {
+		return err
+	}
 	return ts.makeWindowShardLocked(created.In(ts.shardLoc))
 }
 

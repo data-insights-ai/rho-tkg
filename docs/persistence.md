@@ -462,7 +462,7 @@ Where a new version of a long-lived node lands on tiered (backlog 21): on its OW
 
 ## Tiered background-error recovery
 
-Idle/transient cold-shard close failures set a sticky background error and the tiered store fails closed on every subsequent path. `tiered.Store.RecoverBackgroundError()` re-probes the persistence path with an atomic catalog save once the operator has fixed the underlying condition; on success the gate clears in place (no close/re-open). It clears the lifecycle gate only — run `VerifyShard`/`RunRepair` before trusting affected shards for critical reads.
+Idle/transient cold-shard close failures, and the close of an empty demoted shard at rotation, set a sticky background error and the tiered store fails closed on every subsequent path: the write whose rotation ran the failed close returns that error and commits nothing (the rotation itself stays committed), and a later write is refused before it rotates or makes a window shard. `tiered.Store.RecoverBackgroundError()` re-probes the persistence path with an atomic catalog save once the operator has fixed the underlying condition; on success the gate clears in place (no close/re-open). It clears the lifecycle gate only — run `VerifyShard`/`RunRepair` before trusting affected shards for critical reads.
 
 ## Change-log / op-log (opt-in, `ChangeLog`)
 
