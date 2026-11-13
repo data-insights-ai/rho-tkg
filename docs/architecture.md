@@ -225,7 +225,8 @@ index kept on disk (nodes: `PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`; r
 `RelPropertyIndexOnDiskTypes`) answers its pinned reads from member entries on disk too, so it builds no
 membership sidecar in RAM (RELDISK); each entry carries its row's valid-time envelope, so the windowed
 membership door hands on the members whose envelope meets the window, as the RAM sidecar does, and holds no
-more than the members it answers (RELDISKWIN; it still walks every entry of the value); a composite node index of such a label keeps its current entries on disk
+more than the members it answers (RELDISKWIN); a second, time-ordered copy of the entries lets that door seek to the
+window instead of walking every entry of the value (RELDISKWIN option B, kinds 7 and 8); a composite node index of such a label keeps its current entries on disk
 (COMPDISK).
 `docs/persistence.md` owns the key layout, the wire format, the durability guarantees and recovery.
 

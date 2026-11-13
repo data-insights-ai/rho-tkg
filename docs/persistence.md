@@ -350,7 +350,7 @@ the LSM. Every prefix from `0x01` to `0x10` is in use.
 | `0x09` `KeyChangeLog` | `<8B LSN>` | `tag(1B) ‖ msgpack(body)` | 9B | change-log record (`ChangeLog`) |
 | `0x0A` `KeyPropertyIndex` | `<2B propKeyToken>/<payload>/<8B nodeID>` | empty, or an 8B big-endian valid-end bound (`PropertyIndexValidEnd`) | var | property index (`PropertyIndexOnDisk`) |
 | `0x0B` `KeyTemporalIndex` | `<2B labelToken>/<8B from>/<8B nodeID>` | 8B big-endian TO | 19B | temporal-index rebuild rows (`TemporalIndexOnDisk`) |
-| `0x0C` `KeyEntityIndex` | `<1B kind>/<2B scope token>/<2B propKeyToken>/<payload>/<8B ID>[/<8B txFrom>[/<4B version>]]` | empty; 32 B (from, allTo, lateTo, last) for kinds 5 and 6 | var | relationship property index and node membership entries (`RelPropertyIndexOnDiskTypes`, on-disk node indexes; RELDISK), composite node index entries (kind 4, COMPDISK) |
+| `0x0C` `KeyEntityIndex` | `<1B kind>/<2B scope token>/<2B propKeyToken>/<payload>/<8B ID>[/<8B txFrom>[/<4B version>]]`; kinds 7 and 8: `.../<payload>/<1B axis>/<8B t1>/<8B from>/<8B ID>/<8B txFrom>/<4B version>` | empty; 32 B (from, allTo, lateTo, last) for kinds 5 to 8 | var | relationship property index and node membership entries (`RelPropertyIndexOnDiskTypes`, on-disk node indexes; RELDISK), composite node index entries (kind 4, COMPDISK) |
 | `0x0D` `KeyExAdj` | `<8B nodeID>/<1B dir>/<8B relID>` | empty | 18B | ex-adjacency (`ExAdjacencyCapability`, backlog 50) |
 | `0x0E` `KeyFlushStage` | `<8B staging sequence>/<the entry's own key>` | `op(1B) ‖ value` | var | a staged flush, between its start and its clean-up (FLUSHPART); no reader iterates it |
 | `0x0F` `KeyMeta` | `<name>` | per key (below) | var | metadata |
@@ -374,7 +374,9 @@ Value encodings:
   relationship's member entry, kind 3 a node's member entry (kinds 2 and 3: the layout of format markers 13 to 16, no
   value), kind 4 a composite node index's current entry (no `txFrom`), kind 5 a relationship's and kind 6 a node's
   member entry with a span (format marker 17: `version` ends the key, the 32-byte value is `from | allTo | lateTo |
-  last`, big-endian int64 each; "Persistent relationship property index"); the scope token is the type or label, so a definition owns its prefix. Numeric payload as `0x0A`; raw
+  last`, big-endian int64 each; "Persistent relationship property index"), kind 7 a relationship's and kind 8 a
+  node's time-ordered member entry (the same rows and value in a second order, RELDISKWIN option B: axis 1 `t1` =
+  `lateTo` sign-flipped, ascending; axis 2 `t1` = the complement of `last` sign-flipped, descending); the scope token is the type or label, so a definition owns its prefix. Numeric payload as `0x0A`; raw
   `0x02 | value-key bytes with 0x00 written 0x00 0xFF | 0x00`, so an equality walk stops at the first key longer
   than its value's prefix ID and tail ("Persistent relationship property index"). A kind-4 head names every key:
   `<2B label>/<2B first key token>/<1B key count>/<2B per other key>`, so two composites of a label never share a
@@ -632,8 +634,27 @@ no membership sidecar.
   version (the value rides the entry already written); an update writes one more set, the demoted row's entry again
   with `lateTo` the new row's start and `last` its `TxTo` (no read), and a delete one set, the deleted row's entry
   as its tombstone stamps it; they ride the row's batch. A value of another length (never written) makes its member
-  meet every window. The walk still visits every entry of the value: it is sequential, 76 B per entry (44 B of key,
-  32 B of value) against 40 B before, and the door's work counters (`PropertyMemberWork.IteratorSteps`) count it.
+  meet every window.
+- **Time-ordered entries (kinds 7 and 8, RELDISKWIN option B).** The windowed door reads a second ordering of the
+  same rows, kept beside kinds 5 and 6 (the whole-value, paged, numeric-range and any-value doors keep reading those;
+  a read-only open of a value-1 definition stays broad). Per row one entry on axis 1, ordered by `lateTo`, and, for a
+  widened row (`allTo > lateTo`: an open row an update demoted, a tombstone whose delete wrote `ValidTo`), one on axis
+  2, ordered by `last` newest first: the sidecar's two views (`late`, `recent`). A window `[S, E)` at pin `P` seeks
+  axis 1 at `lateTo > S` to the axis's end and, with `0 < P < MaxInt64`, axis 2 from its start down to the first row
+  with `last <= P`; each row met is judged alone (`index.RowMeets`: its `[from, allTo)` when `last > P`, else its
+  `[from, lateTo)`), and a member answers with the lowest `TxFrom` of its rows that meet. Judging rows one at a time
+  answers a subset of the sidecar's members (which joins a member's rows into one envelope) and a superset of what a
+  resolver matches; the graph prunes by that `TxFrom` only against the same `TxAt` (`store/capabilities.go`). The
+  write buffer's entries of each axis are judged the same way. Not bounded: rows that start after `E` (axis 1 is
+  ordered by end), widened rows written after an old pin, open rows that start before `E` (genuine candidates), and
+  until compaction the deleted versions a move leaves (an update of an open row deletes its axis-1 entry at
+  `MaxInt64`, past every window's start: `docs/badger.md` rule 12; `TestMemberSpan_SeekShapes`). Writes ride the
+  row's batch without a read: a create, put or history version sets the axis-1 entry (and the axis-2 one for a widened
+  row); a demotion, a delete and an in-place rewrite of a row move its entries (the old keys deleted unless the same);
+  a retention purge deletes, per row of the entity, the span entry, the axis-1 entries at each end the row may have
+  been written with (its stored end, its any-pin end, the end each other row of the entity gives it) and the axis-2
+  entry; an exact erasure, a drop, a rebuild and `Clear` treat kinds 7 and 8 as 5 and 6. No new marker: the value-2
+  built marker means kinds 5 to 8 (kinds 7 and 8 came before any release of format 17).
 - **Node member entries** (kind 6; kind 3 before): every node definition kept on disk (`PropertyIndexOnDisk` or a label
   in `PropertyIndexOnDiskLabels`) answers its pinned reads from member entries too, so neither index kind builds a
   membership sidecar in RAM. Its `0x0A` entries keep the current lookups.
@@ -667,9 +688,11 @@ no membership sidecar.
   on an in-memory badger, load moves the times: a create 3.7 us with the index in RAM, 4.0 us on disk; an update 4.5 us
   against 6.4 us, the demoted row's entry written again); an update that keeps its value still writes the new row's
   entry (before RELDISKWIN it wrote none), so an entity updated k times with history has k+1 entries per value.
-  The windowed door's walk is the value's entries (`tasks/evidence/RELDISKWIN/green.txt`: 13, 45 and 173 steps for
-  8, 32 and 128 unrelated rows, the same 2 members handed on and 1 held at a time once flushed; with writes still
-  buffered it holds the buffer's entities, which grow with n).
+  Option B adds per door (`TestMemberSpan_WriteOverhead`, key + value bytes): a create 1 set of 93 B to the span
+  entry's 76 B; an update of an open row 3 sets and 1 delete, 340 B, to the span entries' 2 sets, 152 B; a delete
+  that writes `ValidTo` 2 sets and 1 delete, 247 B, to 76 B. The windowed door's flushed walk of 8, 32 and 128
+  unrelated rows ending before the window is 2 steps at pin 0 and pin 350 (13, 45 and 173 before option B: the
+  value's every entry; `tasks/evidence/RELDISKWIN/green-seek.txt`), the same 2 members handed on.
 
 ## Composite node indexes on disk (since v4.96.0, COMPDISK)
 

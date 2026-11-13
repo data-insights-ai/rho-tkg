@@ -39,14 +39,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `lateTo`, `last`) and its version in the key (new `0x0C` kinds 5 and 6; `Instant` is ms, so a create and an
   update of one entity in one ms would have overwritten a wider entry). A create and a history version add nothing
   to the entry they wrote; an update writes the demoted row's entry again (one set, no read), a delete the deleted
-  row's; the reader folds one entity at a time and holds the members it answers, not every member of the value,
-  but it still walks every entry of the value (the work counters show the entries walked; a walk that skips unrelated
-  history needs a second sort order, not built). Cost: 76 B an entry against 40 B, and an update that keeps its
-  value writes the new row's entry (it wrote none). **Store format marker 17, a minor:** a definition built before
+  row's. The door seeks a second, time-ordered copy of the entries (option B, new `0x0C` kinds 7 and 8: per row
+  one entry ordered by `lateTo`, and one ordered by `last` newest first for a row an update or a delete widened):
+  the rows ending before the window and the unwidened rows written after the pin are never visited (2 iterator
+  steps for 8, 32 and 128 unrelated rows, 13, 45 and 173 by walking the value), each row is judged alone, and a
+  member answers with the lowest transaction time of its rows that meet (a subset of the sidecar's members, a lower
+  bound the graph prunes by only at the same `TxAt`). Not bounded: rows starting after the window, widened rows
+  written after an old pin, open rows starting before the window's end, and until compaction the deleted version
+  an update of an open row leaves at `MaxInt64` (`docs/persistence.md`). `PropertyMemberWork.IteratorSeeks`
+  (new) counts its seeks; its `FoldMembersPeak` is the members it answers. Cost: 76 B a span entry against 40 B,
+  and an update that keeps its value writes the new row's entry (it wrote none); option B adds per create one
+  93-B set, per update of an open row 3 sets and a delete (340 B), per delete that writes `ValidTo` 2 sets and a
+  delete (247 B). **Store format marker 17, a minor:** a definition built before
   (built marker value 1) is built again by the next writable open (one `WriteBatch`, the value-2 marker last; a crash
   keeps no trusted marker), and a read-only open answers it broad as before; releases before refuse the store.
   `TestPropTxWindow_DiskNarrowsLikeRAM` and `TestReadBudget_SelectiveDoorRefusesBroadRead` (the disk case now answers
-  within 10 candidates) hold the gain; `TestMemberSpan_*` the equivalence with the sidecar at every window and pin.
+  within 10 candidates) and `TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates` (the steps) hold the gain;
+  `TestMemberSpan_*` hold the answer equal to a per-row oracle and within the sidecar's at every window and pin.
 
 ## [4.107.1] - 2026-11-13
 
