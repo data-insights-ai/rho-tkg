@@ -549,13 +549,6 @@ func downgradeMembersToLegacy(t *testing.T, dir string) (entries int) {
 	return len(set)
 }
 
-// membersOfValue returns every relationship and node that ever carried seat=1
-// (the legacy answer of every window: the value's members).
-func (w *spanWorld) membersOfValue(bs *Store) (rels, nodes map[int64]types.Instant) {
-	w.t.Helper()
-	return w.windowOf(bs, types.UnboundedValidFrom, math.MaxInt64, 0)
-}
-
 // TestMemberSpan_LegacyDefinitionBroadThenRebuilt: a store whose built markers
 // say value 1 (the member entries before RELDISKWIN, here made from a store
 // the new code wrote) answers a windowed lookup with every member of the value

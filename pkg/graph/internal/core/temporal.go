@@ -1441,9 +1441,15 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 		}
 		resolve := fn
 		if metered != nil {
+			counted := make(map[types.NodeID]struct{}, len(currentIDs)) // the lookup counted them (currentOpts)
+			for _, id := range currentIDs {
+				counted[id] = struct{}{}
+			}
 			resolve = func(id types.NodeID) error {
-				if err := opts.AddCandidates(1); err != nil {
-					return err
+				if _, ok := counted[id]; !ok {
+					if err := opts.AddCandidates(1); err != nil {
+						return err
+					}
 				}
 				if err := opts.AddBufferBytes(bufSetEntry); err != nil { // the fold's seen entry
 					return err
@@ -1527,11 +1533,8 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 		return fold()
 	}
 	if !windowed {
-		currentIDs, err := current()
+		currentIDs, err := current() // counts its matches (currentOpts)
 		if err != nil {
-			return err
-		}
-		if err := opts.AddCandidates(len(currentIDs)); err != nil {
 			return err
 		}
 		if err := opts.AddBufferBytes(len(currentIDs) * bufSetEntry); err != nil {

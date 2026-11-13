@@ -258,8 +258,10 @@ func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts
 		return storeutil.PaginateNodes(out, opts.After, opts.Limit), nil
 	}
 	if c.compositeQuery != nil {
+		_, storeCounts := c.store.(storepkg.PropertyQueryCandidatesMeteredCapability)
+		storeCounts = storeCounts && c.storeCountsReads // it counts its matches or its label before the decode
 		indexed := c.compositeDeclared(tok, values)
-		if !indexed {
+		if !indexed && !storeCounts {
 			// The store scans the label without a definition (its fallback).
 			if err := c.meterLabelScan(tok, opts); err != nil {
 				return nil, err
@@ -269,7 +271,7 @@ func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts
 		if err != nil {
 			return nil, err
 		}
-		if indexed {
+		if indexed && !storeCounts {
 			if err := opts.AddCandidates(len(nodes)); err != nil {
 				return nil, err
 			}

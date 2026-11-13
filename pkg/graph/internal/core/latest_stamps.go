@@ -165,17 +165,12 @@ func currentStampsCapability(store storepkg.MandatoryStore) storepkg.CurrentStam
 	return cap
 }
 
-// nodeCurrentStamps is the current-row half of NodeOps.LatestStamps: the
-// current row's stamps and whether there is one (live false, err nil for an
-// ID without a current row). It reads store.CurrentStampsCapability where
-// the store offers it, else the current row (lent on a trusted store, the
-// validated row otherwise). Caller holds c.mu (read).
-func (c *Core) nodeCurrentStamps(id types.NodeID) (storepkg.RowStamps, bool, error) {
-	return c.nodeCurrentStampsTallied(id, nil)
-}
-
-// nodeCurrentStampsTallied is nodeCurrentStamps through the store's metered
-// door under t (nil: the plain read).
+// nodeCurrentStampsTallied is the current-row half of NodeOps.LatestStamps:
+// the current row's stamps and whether there is one (live false, err nil for
+// an ID without a current row). It reads store.CurrentStampsCapability where
+// the store offers it (its metered door under t; nil: the plain read), else
+// the current row (lent on a trusted store, the validated row otherwise).
+// Caller holds c.mu (read).
 func (c *Core) nodeCurrentStampsTallied(id types.NodeID, t *storepkg.ReadTally) (storepkg.RowStamps, bool, error) {
 	var s storepkg.RowStamps
 	var err error

@@ -42,7 +42,7 @@ type meteredShard struct {
 
 // snap opens the throwaway snapshot; the caller closes it.
 func (m meteredShard) snap() storecontract.ReadSnapshot {
-	s := m.BadgerStore.NewReadSnapshot()
+	s := m.NewReadSnapshot()
 	s.(storecontract.ReadSnapshotMeterCapability).MeterReads(m.t)
 	return s
 }

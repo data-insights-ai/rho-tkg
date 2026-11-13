@@ -1313,7 +1313,9 @@ var _ storecontract.TransactionTimeQueryMeteredCapability = (*Store)(nil)
 // NodeAsOfMetered is NodeAsOf (store.TransactionTimeQueryMeteredCapability):
 // the memory store keeps its rows decoded, so it decodes nothing and counts 0
 // bytes in t; it counts the versions of the node's history chain as examined
-// before it walks them.
+// before it walks them. The count and the walk take the lock apart, so a write
+// in between can make the walked chain differ from the count by its versions;
+// the answer is NodeAsOf's either way.
 func (ms *Store) NodeAsOfMetered(nid types.NodeID, txTime types.Instant, t *storecontract.ReadTally) (*types.Node, error) {
 	if t != nil && ms != nil {
 		ms.mu.RLock()

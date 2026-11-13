@@ -338,6 +338,18 @@ func TestReadBudget_UnsupportedStoreRefusesBeforeReading(t *testing.T) {
 			_, err := g.Temporal.NodeAsOfCtx(ctx, n.ID(), pin)
 			return err
 		},
+		"HasHistory": func(ctx context.Context) error {
+			_, err := g.Nodes.HasHistoryCtx(ctx, n.ID())
+			return err
+		},
+		"LatestStamps": func(ctx context.Context) error {
+			_, _, _, err := g.Nodes.LatestStampsCtx(ctx, n.ID())
+			return err
+		},
+		"ByLabelAndProperties": func(ctx context.Context) error {
+			_, err := g.Nodes.ByLabelAndPropertiesCtx(ctx, "U", map[string]any{"k": int64(1), "z": int64(1)}, storepkg.QueryOpts{})
+			return err
+		},
 	}
 	for door, call := range doors {
 		for _, b := range []storepkg.ReadBudget{{DecodedBytes: 1 << 30}, {ShardOpens: 100}} {

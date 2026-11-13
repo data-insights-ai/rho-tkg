@@ -160,10 +160,12 @@ func TestReadBudget_NodePropertyDoors(t *testing.T) {
 					r, err := g.Nodes.ByLabelAndPropertiesCtx(c, "D", map[string]any{"u": int64(7), "v": int64(1)}, storepkg.QueryOpts{})
 					return len(r), err
 				}, 1, nodes},
-				{"ByLabelAndProperty", func(c context.Context) (int, error) { // temporal, no index on u: every history ID
+				// Temporal, no index on u: the current lookup scans the label (30),
+				// then the fold resolves every history ID but the current match (29).
+				{"ByLabelAndProperty", func(c context.Context) (int, error) {
 					r, err := g.Nodes.ByLabelAndPropertyCtx(c, "D", "u", int64(7), storepkg.QueryOpts{TxAt: tx})
 					return len(r), err
-				}, 1, nodes},
+				}, 1, 2*nodes - 1},
 			}
 			for i, d := range doors {
 				if n, err := d.call(ctx); err != nil || n != d.want {

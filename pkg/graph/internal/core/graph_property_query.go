@@ -188,7 +188,7 @@ func (c *Core) nodesByLabelAndPropertyFormsLocked(label, key string, forms []any
 	}
 	keys := keysOf(forms)
 	currentIDs := func() ([]types.NodeID, error) {
-		currentMatching, err := c.nodesByLabelAndPropertyForms(tok, key, forms, storepkg.QueryOpts{Depth: opts.Depth})
+		currentMatching, err := c.nodesByLabelAndPropertyForms(tok, key, forms, currentOpts(opts))
 		if err != nil {
 			return nil, err
 		}
@@ -311,7 +311,7 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 		return c.nodesByLabelAndProperties(tok, values, opts)
 	}
 	currentIDs := func() ([]types.NodeID, error) {
-		currentMatching, err := c.nodesByLabelAndProperties(tok, values, storepkg.QueryOpts{Depth: opts.Depth})
+		currentMatching, err := c.nodesByLabelAndProperties(tok, values, currentOpts(opts))
 		if err != nil {
 			return nil, err
 		}
@@ -388,4 +388,12 @@ func (n *NodeOps) ByLabelAndPropertiesCtx(ctx context.Context, label string, val
 		return nil, err
 	}
 	return n.ByLabelAndProperties(label, values, opts.WithReadMeter(storepkg.ReadMeterFrom(ctx), "ByLabelAndProperties"))
+}
+
+// currentOpts is the current-match lookup's options of a temporal property
+// read: its depth and its read meter, so the lookup counts its matches (and on
+// a store that counts reads its decodes and shard opens) before it reads them.
+func currentOpts(opts storepkg.QueryOpts) storepkg.QueryOpts {
+	m, door := opts.ReadMeter()
+	return storepkg.QueryOpts{Depth: opts.Depth}.WithReadMeter(m, door)
 }

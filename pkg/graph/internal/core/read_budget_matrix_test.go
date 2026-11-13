@@ -6,18 +6,22 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // TestReadBudget_ProbeMatrix (READBUDGET step 8, René's done criterion): for
-// every budgeted door at 8, 32 and 128 matches, each with a history of 3
+// every budgeted door (the composite lookup too) at 8, 32 and 128 matches, each with a history of 3
 // versions, on badger, sharded and tiered, with the rows pending (as written)
 // and flushed (after a reopen), a budget of 1 on any counter the unlimited read
 // passes stops the read: ErrReadBudget at that limit, no rows, the meter equal
 // to the error's work, and at most about one row decoded (the check runs before
 // the work, nothing runs after the refusal). Without a budget the answer is the
-// unbudgeted one. Shard opens, dense keys and unsupported stores have their own
+// unbudgeted one, an index lookup counts each match, and on badger a refused
+// read has decoded at most about one node row by the store's own counter (the
+// temporal doors' current lookup decoded every match uncounted before the
+// review fix). Shard opens, dense keys and unsupported stores have their own
 // tests (read_budget_shard_opens_test.go, read_budget_history_probe_test.go).
 func TestReadBudget_ProbeMatrix(t *testing.T) {
 	t.Parallel()
@@ -42,6 +46,9 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 			if err := g.Index.CreateProperty("D", "k"); err != nil {
 				t.Fatal(err)
 			}
+			if err := g.Index.CreateComposite("D", []string{"c", "e"}); err != nil {
+				t.Fatal(err)
+			}
 			w := newRTBWorld(t, g)
 			w.index(t, rtbType, rtbKeys...)
 			groups := map[int][]types.NodeID{}
@@ -49,7 +56,7 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 			var rels []types.RelID
 			for _, size := range sizes {
 				for i := range size {
-					n, err := g.Nodes.Add(ctx, []string{"D"}, map[string]any{"k": int64(size), "pad": fmt.Sprintf("%0*d", 100, i)})
+					n, err := g.Nodes.Add(ctx, []string{"D"}, map[string]any{"k": int64(size), "c": "x", "e": fmt.Sprintf("e%d", size), "pad": fmt.Sprintf("%0*d", 100, i)})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -93,6 +100,10 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							r, err := g.Nodes.ByLabelAndPropertyCtx(ctx, "D", "k", int64(size), storepkg.QueryOpts{})
 							return len(r), err
 						}},
+						{"composite current", func(ctx context.Context) (int, error) {
+							r, err := g.Nodes.ByLabelAndPropertiesCtx(ctx, "D", map[string]any{"c": "x", "e": fmt.Sprintf("e%d", size)}, storepkg.QueryOpts{}) // strings: one form each, the composite index
+							return len(r), err
+						}},
 						{"property TxPin", func(ctx context.Context) (int, error) {
 							r, err := g.Nodes.ByLabelAndPropertyCtx(ctx, "D", "k", int64(size), storepkg.QueryOpts{TxPin: pinTx})
 							return len(r), err
@@ -123,6 +134,12 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							t.Fatalf("%s: unlimited = %d, %v; want %d", what, n, err, plain)
 						}
 						total := full.Work()
+						switch d.name {
+						case "property current", "composite current", "property TxPin", "property ValidAt":
+							if total.Candidates < uint64(size) { // an index lookup counts each match
+								t.Fatalf("%s: unlimited counted %d candidates, want at least %d", what, total.Candidates, size)
+							}
+						}
 						for _, c := range counters {
 							if c.get(total) <= 1 {
 								continue // the door does not pass this counter's limit of 1
@@ -130,12 +147,23 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							cold()
 							var b storepkg.ReadBudget
 							c.set(&b)
+							var before int64
+							if bs, ok := g.store.(*badger.Store); ok {
+								before = bs.NodeRowDecodesForTest()
+							}
 							pctx, meter := storepkg.WithReadBudget(ctx, b)
 							n, err := d.call(pctx)
 							rb := rbdBudgetErr(t, err, c.limit)
 							got := meter.Work()
 							if n != 0 || got != rb.Work {
 								t.Fatalf("%s, %s 1: %d rows, error work %+v, meter %+v; want no rows and the meter's work", what, c.limit, n, rb.Work, got)
+							}
+							// No node row decoded uncounted: on badger the store's own
+							// decode counter moves by at most about one row.
+							if bs, ok := g.store.(*badger.Store); ok && flushed && d.name != "rel timelines" {
+								if decoded := bs.NodeRowDecodesForTest() - before; decoded > 2 {
+									t.Fatalf("%s, %s 1: %d node rows decoded before the refusal", what, c.limit, decoded)
+								}
 							}
 							// About one row decoded at most, whatever the matches.
 							if total.DecodedBytes > 0 && got.DecodedBytes > 3*total.DecodedBytes/uint64(size) {

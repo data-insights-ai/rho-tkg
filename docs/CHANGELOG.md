@@ -43,13 +43,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Segments are counted as each is kept, before it joins the answer (they were counted after the whole answer).
   A store that cannot count decodes or shard opens (a wrapper around a native store) refuses a budget bounding
   `DecodedBytes` or `ShardOpens` before any read (`Limit` `"unsupported"`); it read unbounded and reported 0.
-  The node property doors' index lookups count their matches before they decode them (they decoded every match
-  first), and `RelEffectiveTimelinesByProperties` under a `Segments` or `BufferBytes` bound reads one entity at a
+  The node property doors' index and composite lookups count their matches before they decode them, and a temporal
+  property door's current lookup runs under the budget (it decoded every match first, uncounted); `HasHistoryCtx` and
+  `LatestStampsCtx` refuse an uncountable budget on a wrapper store (review fixes), and `RelEffectiveTimelinesByProperties` under a `Segments` or `BufferBytes` bound reads one entity at a
   time (it decoded up to 256 ahead of the refusal); `TestReadBudget_ProbeMatrix` checks every door at 8/32/128
   matches under a budget of 1 on each counter, pending and flushed.
   `HasHistoryCtx` and `LatestStampsCtx` count tiered's shard opens (`store.NodeStampsMeteredCapability`); a
   temporal property read with no usable index refuses a `ShardOpens` budget on tiered before its uncounted fold.
-  Not counted: `ValidEndAfter`, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
+  No decoded bytes: `ValidEndAfter`, unique-key owner lookups; `HasHistoryCtx` and `LatestStampsCtx` decode a row only in
+  tiered's whole-chain fold (counted). A read without a budget pays
   a nil check per decoded row and answers as before.
   `ShardOpens` on tiered: every budgeted read counts each closed shard (cold event shard, or the archive before its
   first open) before it opens it, refusing at `"shard opens"` with the shard left closed: the metered read snapshot
@@ -60,7 +62,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`ReadMeter.Exceeded`, new; `ReadTally.ShardOpen`, new). Red: `ByLabelAndPropertyCtx` (TxPin, ValidAt), `NodeAsOfCtx`
   and `RelEffectiveTimelinesByProperties` answered over 3 closed shards under `ShardOpens: 1`, counting 0
   (`tasks/evidence/READBUDGET/shardopens-red.txt`).
-  Not charged yet: a temporal property door's history fold without a usable index, `HasHistoryCtx`, `LatestStampsCtx`.
+  A temporal property door's history fold without a usable index refuses a `ShardOpens` budget on tiered (it cannot
+  count its opens); `HasHistoryCtx` and `LatestStampsCtx` charge theirs (below).
 
 ### Changed
 
@@ -84,7 +87,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (new) counts its seeks; its `FoldMembersPeak` is the members it answers. Cost: 76 B a span entry against 40 B,
   and an update that keeps its value writes the new row's entry (it wrote none); option B adds per create one
   93-B set, per update of an open row 3 sets and a delete (340 B), per delete that writes `ValidTo` 2 sets and a
-  delete (247 B). **Store format marker 17, a minor:** a definition built before
+  delete (247 B). **Store format marker 17 (shipped as a patch):** a definition built before
   (built marker value 1) is built again by the next writable open (one `WriteBatch`, the value-2 marker last; a crash
   keeps no trusted marker), and a read-only open answers it broad as before; releases before refuse the store.
   `TestPropTxWindow_DiskNarrowsLikeRAM` and `TestReadBudget_SelectiveDoorRefusesBroadRead` (the disk case now answers

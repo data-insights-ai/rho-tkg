@@ -348,11 +348,11 @@ func uniqueNodeIDsPreserveOrder(ids []types.NodeID) []types.NodeID {
 	return unique
 }
 
-// NodesByLabelAndProperty returns nodes with the label token and property value,
-// applying temporal/depth options before cursor pagination.
 // CountsPropertyQueryCandidates marks store.PropertyQueryCandidatesMeteredCapability.
 func (bs *Store) CountsPropertyQueryCandidates() {}
 
+// NodesByLabelAndProperty returns nodes with the label token and property value,
+// applying temporal/depth options before cursor pagination.
 func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
 	return bs.nodesByLabelPropertyKeys(labelToken, propKey, opts, func() ([]string, error) {
 		return storepkg.ValueIndexKeys(value, "nodes by label and property")

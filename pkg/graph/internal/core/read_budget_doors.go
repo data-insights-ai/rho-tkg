@@ -58,6 +58,9 @@ func (n *NodeOps) HasHistoryCtx(ctx context.Context, id types.NodeID) (bool, err
 	if err := checkCtx(ctx); err != nil {
 		return false, err
 	}
+	if err := n.c.budgetSupported(ctx, "HasHistory"); err != nil { // a wrapper store cannot count its opens
+		return false, err
+	}
 	meter := storepkg.ReadMeterFrom(ctx)
 	if err := meter.AddCandidates("HasHistory", 1); err != nil {
 		return false, err
@@ -87,6 +90,9 @@ func (n *NodeOps) HasHistoryCtx(ctx context.Context, id types.NodeID) (bool, err
 // LatestStampsCtx is LatestStamps under ctx's read budget.
 func (n *NodeOps) LatestStampsCtx(ctx context.Context, id types.NodeID) (txFrom, txTo types.Instant, deleted bool, err error) {
 	if err := checkCtx(ctx); err != nil {
+		return 0, 0, false, err
+	}
+	if err := n.c.budgetSupported(ctx, "LatestStamps"); err != nil { // a wrapper store cannot count its opens
 		return 0, 0, false, err
 	}
 	meter := storepkg.ReadMeterFrom(ctx)

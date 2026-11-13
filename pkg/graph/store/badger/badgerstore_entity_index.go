@@ -331,17 +331,6 @@ func (bs *Store) entityIndexWalkLockedWork(kind byte, prefixes [][]byte, fn func
 	return bs.entityIndexWalkCore(kind, prefixes, func(key, _ []byte) { fn(key) }, false, nil, work)
 }
 
-// entityIndexWalkValuesLocked is entityIndexWalkLockedWork with each entry's
-// value too (a span entry's envelope): the write buffer's sets go to buffered
-// first, all of them, before the walk reads the disk, and the disk's entries
-// to disk in key order (the keys the buffer decides are left out), so a
-// caller that folds per entity streams the disk's entries and meets each
-// entity's buffered entries as it comes. Both are valid only during the call.
-// Caller holds idxMu (R or W).
-func (bs *Store) entityIndexWalkValuesLocked(kind byte, prefixes [][]byte, buffered, disk func(key, val []byte), work *storecontract.PropertyMemberWork) error {
-	return bs.entityIndexWalkCore(kind, prefixes, disk, true, buffered, work)
-}
-
 func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, val []byte), values bool, buffered func(key, val []byte), work *storecontract.PropertyMemberWork) error {
 	if len(prefixes) == 0 {
 		return nil

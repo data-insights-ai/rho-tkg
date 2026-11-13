@@ -235,6 +235,9 @@ func (bs *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 		}
 		ids := &compositeDiskPostings{bs: bs, prefix: prefix}
 		nodes, err := pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Node, error) {
+			if err := opts.AddCandidates(len(batch)); err != nil { // each match before its filter and decode
+				return nil, err
+			}
 			nids := bs.filterNodeIDsByTemporalPeek(storepkg.ToNodeIDs(batch), page)
 			return bs.fetchNodesByLabelPropertiesIDs(labelToken, values, nids, page)
 		})
@@ -258,6 +261,9 @@ func (bs *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 			return nil, nil
 		}
 		return pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Node, error) {
+			if err := opts.AddCandidates(len(batch)); err != nil {
+				return nil, err
+			}
 			nids := bs.filterNodeIDsByTemporalPeek(storepkg.ToNodeIDs(batch), page)
 			return bs.fetchNodesByLabelPropertiesIDs(labelToken, values, nids, page)
 		})
@@ -273,6 +279,9 @@ func (bs *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 	}
 	if len(nids) == 0 {
 		return nil, nil
+	}
+	if err := opts.AddCandidates(len(nids)); err != nil { // the label's every node, before the scan reads one
+		return nil, err
 	}
 	storepkg.SortNodeIDs(nids)
 	return bs.fetchNodesByLabelPropertiesIDs(labelToken, values, nids, opts)

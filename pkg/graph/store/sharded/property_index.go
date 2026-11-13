@@ -70,15 +70,15 @@ func (s *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error {
 	})
 }
 
+// CountsPropertyQueryCandidates marks store.PropertyQueryCandidatesMeteredCapability:
+// every shard is a badger store that counts.
+func (s *Store) CountsPropertyQueryCandidates() {}
+
 // NodesByLabelAndProperty folds each shard's accelerated equality matches into
 // one globally ID-sorted, paginated result. Each shard answers the same page
 // (After, Limit): the global first Limit IDs above After are among the union of
 // every shard's first Limit, so the merge is cut to the page again and no shard
 // returns its whole key (backlog 72).
-// CountsPropertyQueryCandidates marks store.PropertyQueryCandidatesMeteredCapability:
-// every shard is a badger store that counts.
-func (s *Store) CountsPropertyQueryCandidates() {}
-
 func (s *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
