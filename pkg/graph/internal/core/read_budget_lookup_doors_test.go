@@ -24,9 +24,8 @@ import (
 // a key without an index falls back to the type's every relationship, counted
 // before the scan reads a row; within a budget as wide as that count the
 // answer is the plain door's; one less refuses with no rows; a read at a time
-// coordinate, which this door does not budget, is refused under a budget and
-// answers without one; a cancelled context is refused before the budget
-// counts.
+// coordinate answers as the plain door within a budget and refuses past a
+// limit; a cancelled context is refused before the budget counts.
 func TestReadBudget_RelByTypeAndPropertyCtx(t *testing.T) {
 	t.Parallel()
 	for _, be := range txbBackends() {
@@ -86,8 +85,9 @@ func TestReadBudget_RelByTypeAndPropertyCtx(t *testing.T) {
 				}
 			}
 
-			// A time coordinate: the plain answer without a budget, a typed
-			// refusal (no rows, nothing counted) under one.
+			// A time coordinate (group D, door 1): the plain answer without a
+			// budget and within one, counted; no longer refused as "unsupported"
+			// (read_budget_rel_time_test.go has the full contract).
 			for _, opts := range []storepkg.QueryOpts{{TxAt: tx}, {TxPin: tx}, {ValidAt: tx, ValidAtSet: true}} {
 				want, err := g.Rels.ByTypeAndProperty("R", "k", int64(1), opts)
 				if err != nil || len(want) != 2 {
@@ -98,9 +98,13 @@ func TestReadBudget_RelByTypeAndPropertyCtx(t *testing.T) {
 				}
 				bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1000})
 				got, err := g.Rels.ByTypeAndPropertyCtx(bctx, "R", "k", int64(1), opts)
-				berr := rbdBudgetErr(t, err, "unsupported")
-				if len(got) != 0 || berr.Door != "ByTypeAndProperty" || meter.Work() != (storepkg.ReadWork{}) {
-					t.Fatalf("at %+v under a budget = %d rows, %+v, work %+v; want a refusal before any work", opts, len(got), berr, meter.Work())
+				if err != nil || !slices.Equal(relIDsOf(got), relIDsOf(want)) || meter.Work().Candidates < 2 {
+					t.Fatalf("at %+v under a budget = %d rows, %v, work %+v; want the plain answer and its candidates counted", opts, len(got), err, meter.Work())
+				}
+				bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1})
+				got, err = g.Rels.ByTypeAndPropertyCtx(bctx, "R", "k", int64(1), opts)
+				if rb := rbdBudgetErr(t, err, "candidates"); got != nil || rb.Door != "ByTypeAndProperty" || meter.Work() != rb.Work {
+					t.Fatalf("at %+v under candidates 1 = %d rows, %+v, work %+v; want ErrReadBudget at candidates and no rows", opts, len(got), rb, meter.Work())
 				}
 			}
 
@@ -256,7 +260,8 @@ func TestReadBudget_DecodedBytes_RelByTypeAndProperty(t *testing.T) {
 // candidates as the index produces them and refuses at the one that passes the
 // limit, before it collects, sorts or reads the rest of the key: the ID-only
 // node lookup (badger, and tiered over three event shards) and the
-// relationship lookup (RelPropertyIndexOnDiskTypes). The gate is the count of
+// relationship lookup (RelPropertyIndexOnDiskTypes), current and at a
+// transaction pin and a valid instant (group D). The gate is the count of
 // on-disk index entries the process visited
 // (badger.CountIndexEntriesVisitedForTest), never time or MemStats: unbudgeted
 // the read visits at least every match; under a Candidates budget of 1 a
@@ -320,6 +325,7 @@ func TestReadBudget_DiskLookupDoorsAdmitAsProduced(t *testing.T) {
 					}
 				}
 			}
+			pin := w.pin(t)
 			shut()
 			g, shut = be.open(t, dir) // every entry is on disk, the write buffer empty
 			defer shut()
@@ -328,6 +334,14 @@ func TestReadBudget_DiskLookupDoorsAdmitAsProduced(t *testing.T) {
 				name string
 				call func(ctx context.Context) (int, error)
 			}{
+				{"rel property TxPin", func(ctx context.Context) (int, error) {
+					r, err := g.Rels.ByTypeAndPropertyCtx(ctx, rtbType, "device", "d1", storepkg.QueryOpts{TxPin: pin})
+					return len(r), err
+				}},
+				{"rel property ValidAt", func(ctx context.Context) (int, error) {
+					r, err := g.Rels.ByTypeAndPropertyCtx(ctx, rtbType, "device", "d1", storepkg.QueryOpts{ValidAt: pin, ValidAtSet: true})
+					return len(r), err
+				}},
 				{"IDs current", func(ctx context.Context) (int, error) {
 					r, err := g.Nodes.IDsByLabelAndPropertyValuesCtx(ctx, "D", "k", []any{int64(7)}, storepkg.QueryOpts{})
 					return len(r), err

@@ -1235,12 +1235,43 @@ func (c *Core) memberIDsAt(depth storepkg.ShardDepth) storepkg.MemberIDsCapabili
 // the sidecar paths load only chains that can carry the value. current is
 // called at most once, only by the paths that need it.
 func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys equalKeys, current func() ([]types.RelID, error), opts storepkg.QueryOpts, fn func(types.RelID) error) error {
+	// A read budget (RH list R2, Sigma doors group D) counts the entries
+	// examined, as the node twin does: each member a sidecar hands on (before
+	// the pin filter, so a dense value stops at the member that passes the
+	// limit), each current match added (counted by its own lookup, currentOpts),
+	// and on the fold each candidate before it is resolved.
+	metered, _ := opts.ReadMeter()
 	fold := func() error {
+		// The fold walks the history IDs of every shard, opening closed tiered
+		// shards it does not count: under a ShardOpens budget it refuses
+		// before the walk (READBUDGET).
+		if _, opensShards := c.store.(*tiered.Store); opensShards && metered != nil && metered.BoundsShardOpens() {
+			_, door := opts.ReadMeter()
+			return &storepkg.ReadBudgetError{Door: door, Limit: "unsupported", Work: metered.Work()}
+		}
 		currentIDs, err := current()
 		if err != nil {
 			return err
 		}
-		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
+		resolve := fn
+		if metered != nil {
+			counted := make(map[types.RelID]struct{}, len(currentIDs)) // the lookup counted them (currentOpts)
+			for _, id := range currentIDs {
+				counted[id] = struct{}{}
+			}
+			resolve = func(id types.RelID) error {
+				if _, ok := counted[id]; !ok {
+					if err := opts.AddCandidates(1); err != nil {
+						return err
+					}
+				}
+				if err := opts.AddBufferBytes(bufSetEntry); err != nil { // the fold's seen entry
+					return err
+				}
+				return fn(id)
+			}
+		}
+		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, resolve)
 	}
 	if c.relPropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
 		return fold()
@@ -1254,6 +1285,12 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 		var invalid error
 		var prune types.Instant
 		member := func(id types.RelID, firstTx types.Instant) bool {
+			if metered != nil {
+				if err := opts.AddCandidates(1); err != nil {
+					invalid = err
+					return false
+				}
+			}
 			if !c.storeRowsTrust {
 				if verr := storepkg.ValidateRelID(id); verr != nil {
 					invalid = verr
@@ -1263,7 +1300,15 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 			if prune != 0 && firstTx != 0 && firstTx > prune {
 				return true // first carried the value after the pin: cannot match
 			}
-			seen[id] = struct{}{}
+			if _, dup := seen[id]; !dup {
+				if metered != nil {
+					if err := opts.AddBufferBytes(bufSetEntry); err != nil {
+						invalid = err
+						return false
+					}
+				}
+				seen[id] = struct{}{}
+			}
 			return true
 		}
 		var window *memberWindow
@@ -1288,8 +1333,11 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 			return fold()
 		}
 		if !windowed {
-			currentIDs, err := current()
+			currentIDs, err := current() // counts its matches (currentOpts)
 			if err != nil {
+				return err
+			}
+			if err := opts.AddBufferBytes(len(currentIDs) * bufSetEntry); err != nil {
 				return err
 			}
 			for _, id := range currentIDs {
@@ -1667,13 +1715,20 @@ func (c *Core) findNodeVersionForOptsRd(rd entityReads, id types.NodeID, opts st
 
 // findRelVersionForOpts is the relationship counterpart of findNodeVersionForOpts.
 func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+	return c.findRelVersionForOptsRd(entityReads{c: c}, id, opts, pred)
+}
+
+// findRelVersionForOptsRd is findRelVersionForOpts reading through rd (a
+// budgeted run's metered reads, RH list R2, Sigma doors group D); the rule and
+// the answer are the same.
+func (c *Core) findRelVersionForOptsRd(rd entityReads, id types.RelID, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	if c.chainLoadTestHook != nil {
 		c.chainLoadTestHook()
 	}
 	if opts.HasTxPin() {
 		// Belief-state pin — see findNodeVersionForOpts. Delegates to the same
 		// relAsOfLocked the named RelAsOf / RelsAsOf door uses.
-		r, err := c.relAsOfLocked(id, txPinOf(opts))
+		r, err := c.relAsOfLockedRd(rd, id, txPinOf(opts))
 		if err != nil {
 			if errors.Is(err, ErrNoVersionAsOf) {
 				return nil, storepkg.ErrNoVersionValidAt
@@ -1686,7 +1741,7 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 		return r, nil
 	}
 	if opts.HasValidAt() {
-		r, err := c.relAtLockedTx(id, opts.ValidAt, txAtOf(opts))
+		r, err := c.relAtLockedTxRd(rd, id, opts.ValidAt, txAtOf(opts))
 		if err != nil {
 			return nil, err
 		}
@@ -1696,10 +1751,10 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 		return r, nil
 	}
 	if opts.HasValidInterval() {
-		return c.findRelVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, txAtOf(opts), pred)
+		return c.findRelVersionMatchingDuringTxRd(rd, id, opts.ValidStart, opts.ValidEnd, txAtOf(opts), pred)
 	}
 	if opts.HasTxAt() {
-		r, err := c.relAtLockedTx(id, c.readNow(), txAtOf(opts))
+		r, err := c.relAtLockedTxRd(rd, id, c.readNow(), txAtOf(opts))
 		if err != nil {
 			return nil, err
 		}
@@ -1708,7 +1763,7 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 		}
 		return r, nil
 	}
-	return c.findRelVersionMatchingDuring(id, opts.ValidStart, opts.ValidEnd, pred)
+	return c.findRelVersionMatchingDuringTxRd(rd, id, opts.ValidStart, opts.ValidEnd, 0, pred)
 }
 
 // findNodeVersionMatchingDuring iterates versions of node id whose validity
@@ -1766,13 +1821,19 @@ func (c *Core) findRelVersionMatchingDuring(id types.RelID, start, end types.Ins
 
 // findRelVersionMatchingDuringTx is the bitemporal variant. See findNodeVersionMatchingDuringTx.
 func (c *Core) findRelVersionMatchingDuringTx(id types.RelID, start, end, txAt types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
-	current, err := c.getCurrentRelationship(id)
+	return c.findRelVersionMatchingDuringTxRd(entityReads{c: c}, id, start, end, txAt, pred)
+}
+
+// findRelVersionMatchingDuringTxRd is findRelVersionMatchingDuringTx reading
+// through rd (RH list R2, Sigma doors group D).
+func (c *Core) findRelVersionMatchingDuringTxRd(rd entityReads, id types.RelID, start, end, txAt types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+	current, err := rd.currentRel(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
 	c.afterCurrentRead(int64(id))
 
-	history, err := c.getRelHistory(id)
+	history, err := rd.relHistory(id)
 	if err != nil {
 		return nil, err
 	}

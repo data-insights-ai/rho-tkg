@@ -689,6 +689,12 @@ func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationshi
 // and nodeCurrentAnswersAt for the BACKLOG 10b/10c gate on the
 // current-row-alone shortcut (relCurrentAnswersAt).
 func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
+	return c.relAtLockedTxRd(entityReads{c: c}, id, validAt, txAt)
+}
+
+// relAtLockedTxRd is relAtLockedTx reading through rd (RH list R2, Sigma doors
+// group D), as nodeAtLockedTxRd.
+func (c *Core) relAtLockedTxRd(rd entityReads, id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
@@ -698,11 +704,11 @@ func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*type
 	if err := c.checkRelPointRetention(txAt); err != nil {
 		return nil, err
 	}
-	current, err := c.getCurrentRelationship(id)
+	current, err := rd.currentRel(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
-	return c.relAtFromCurrent(entityReads{c: c}, id, current, validAt, txAt)
+	return c.relAtFromCurrent(rd, id, current, validAt, txAt)
 }
 
 // relAtFromCurrent mirrors nodeAtFromCurrent for relationships.

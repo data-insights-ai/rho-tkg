@@ -1,0 +1,86 @@
+READBUDGET / R2 Sigma budgeted read doors, group D (13 Nov): red evidence, what is counted, results
+(ai-soc RH list R2, "more read doors for Sigma": the relationship lookup at a time coordinate, the label's current members)
+Counts only (rows decoded, candidates, history looked at, index entries visited, shard opens): never MemStats or time.
+Backends: memory (through txbBackends), badger, sharded, tiered (rbdBackends: pending and flushed).
+
+== Door 1: Rels().ByTypeAndPropertyCtx at a time coordinate (TxAt, TxPin, ValidAt, ValidAt+TxAt, a valid interval) ==
+
+Before: Limit "unsupported" for every time coordinate under any budget, nothing counted, no rows (its history resolver in
+temporal.go, findRelVersionForOpts, read through the unmetered getCurrentRelationship / getRelHistory / relAtLockedTx). Not
+a partial answer, but the door a budget cannot use: Sigma's relationship lazy and passive probes read at a pin.
+
+RED (the new tests against the unchanged door), go test -short -run 'TestReadBudget_RelByTypeAndPropertyTime|
+TestReadBudget_DecodedBytes_RelByTypeAndPropertyTime|TestReadBudget_HistoryExamined_RelByTypeAndPropertyLongHistory|
+TestReadBudget_RelByTypeAndPropertyCtx|TestReadBudget_ShardOpens_Tiered|TestReadBudget_DiskLookupDoorsAdmitAsProduced|
+TestReadBudget_UnsupportedStore|TestReadBudget_ProbeMatrix' ./pkg/graph/internal/core (abridged; every failure is the same refusal):
+
+  --- FAIL: TestReadBudget_RelByTypeAndPropertyTime/{memory,badger,sharded,tiered}/{TxPin,TxAt,ValidAt,ValidAt+TxAt,interval}
+      read_budget_rel_time_test.go: unlimited = [], graph: read budget exceeded: ByTypeAndProperty at unsupported
+      (budget {all 0}, work {all 0}); want the plain door's rels
+  --- FAIL: TestReadBudget_ProbeMatrix/{badger,sharded,tiered}/{pending,flushed}
+      rel property TxPin over 8 matches: unlimited = 0, graph: read budget exceeded: ByTypeAndProperty at unsupported
+      (work {Candidates:0 ... all 0})
+  --- FAIL: TestReadBudget_ShardOpens_TieredDoors/Rels_ByTypeAndProperty_{TxPin,ValidAt}
+      under ShardOpens 1 = "", ... at unsupported ...; want a shard-opens refusal and no rows
+  --- FAIL: TestReadBudget_DiskLookupDoorsAdmitAsProduced/{badger,tiered}/rel_property_{TxPin,ValidAt}
+      unlimited = 0, ... at unsupported; want 96
+  --- FAIL: TestReadBudget_DecodedBytes_RelByTypeAndPropertyTime/{badger,sharded,tiered}
+      8 TxPin unlimited = 0 rels, ... at unsupported
+  --- FAIL: TestReadBudget_UnsupportedStoreRefusesBeforeReading
+      ByTypeAndProperty under a Candidates budget: ... at unsupported; want an answer
+  --- FAIL: TestReadBudgetPublicLookupDoors/{memory,badger,sharded,tiered}  (pkg/graph, the public Rels().ByTypeAndPropertyCtx)
+  --- FAIL: TestReadBudget_RelByTypeAndPropertyCtx/*, _TimeNoIndexFold/*, _TimeCountsBeforePinFilter/*,
+      _HistoryExamined_RelByTypeAndPropertyLongHistory/*, _ShardOpens_TieredFoldRefused
+
+Unbounded work: without a budget the plain door at TxPin decodes every match, by badger's own relationship-row counter
+(rbtBadgerDecodes, rows evicted first): 8 rows over 8 matches, 32 over 32 (TxPin, TxAt). Counted today: nothing.
+
+What is counted (green), Rels().ByTypeAndPropertyCtx with a time coordinate:
+  Candidates   each membership entry the index hands on, as the walk produces it and before the pin filter
+               (forEachRelPropertyCandidateID's member callback; a membership kept on disk, RelPropertyIndexOnDiskTypes, is
+               admitted as its fold grows through the tally, store.ReadTally.CandidateRoom/CandidatesAhead, on badger and on
+               every tiered shard); the current lookup's matches (currentOpts carries the meter; the store counts them
+               before its decode); on the fold (no usable index) each candidate the current lookup did not count, before it
+               is resolved. 128 members of which one survives the pin: a budget of 10 refuses at the 11th entry on every
+               backend (TestReadBudget_RelByTypeAndPropertyTimeCountsBeforePinFilter).
+  HistoryExamined / DecodedBytes
+               the current row, history skeleton and winning version of each candidate read through a metered read snapshot
+               (meteredEntityReads; the rel twins findRelVersionForOptsRd, relAtLockedTxRd, findRelVersionMatchingDuringTxRd,
+               relAsOfLockedRd: TxPin on badger and memory through store.TransactionTimeQueryMeteredCapability); the memory
+               store counts a chain's versions when it reads them.
+  ShardOpens   tiered: the membership fan-out (PropertyTxMemberMeteredCapability, ForEachRelPropertyTxMemberMetered), the current
+               lookup's fan-out and the metered snapshot's checkouts, each closed shard before it opens. A fold with no usable
+               index (the history-ID walk) cannot count its opens: on tiered under a ShardOpens budget it refuses before the
+               walk, Limit "unsupported", as the node twin (TestReadBudget_ShardOpens_TieredFoldRefused).
+  BufferBytes  24 per candidate-set entry (a duplicate entry is charged once), 24 per current match added, 8 per result row.
+  A store that cannot count (a wrapper embedding a native store) refuses a DecodedBytes or ShardOpens budget ("unsupported",
+  before any work) and answers under a Candidates-only budget through its own reads.
+
+GREEN: the same command, all pass (badger, sharded, tiered x pending, flushed; memory for the core counters).
+  Counts on badger (8 members at the pin, 3 versions each, 2 more members now; rows in the cache):
+    unlimited {Candidates:16 DecodedBytes:1268 HistoryExamined:12 BufferBytes:400}
+    Candidates 1         refused after Candidates:2   (no row decoded)
+    HistoryExamined 1    refused after HistoryExamined:2
+    BufferBytes 1        refused after BufferBytes:24
+  Cold, 8 or 32 matches with 16 versions each (TestReadBudget_DecodedBytes_RelByTypeAndPropertyTime): candidates 1 decodes
+  0 relationship rows (the plain door 8 or 32); a limit of exactly the cold decoded count answers, one byte under refuses
+  with no rows (rbdExact); a budget of 1 decoded byte stops within 4,096 bytes whatever matches x versions.
+  Disk membership (TestReadBudget_DiskLookupDoorsAdmitAsProduced, rel property TxPin and ValidAt): budget 1 over 96 matches
+  visits 2 index entries on badger and on tiered (3 shards); an unbudgeted read visits 96 to 192.
+  Exactness at every coordinate on all four backends: a limit at the unlimited count answers with the same count, one under
+  it refuses (candidates, history examined, buffer bytes); the meter equals the error's work.
+
+Mutations caught (each by the tests named):
+  member callback not counting                 -> RelByTypeAndPropertyTime, RelByTypeAndPropertyCtx, DiskLookupDoorsAdmitAsProduced
+  membership walk handed a nil tally           -> DiskLookupDoorsAdmitAsProduced (badger, tiered), ShardOpens_TieredDoors (TxPin, ValidAt)
+  candidates resolved through the unmetered    -> RelByTypeAndPropertyTime, ProbeMatrix (3 backends), HistoryExamined_RelByTypeAndPropertyLongHistory
+  findRelVersionForOpts
+  current lookup without the meter             -> RelByTypeAndPropertyTimeNoIndexFold, ProbeMatrix (badger)
+  fold not counting history candidates         -> RelByTypeAndPropertyTimeNoIndexFold (survived until the deleted-rels phase
+                                                  was added: the type scan covers every live relationship)
+  fold on tiered not refusing a ShardOpens     -> ShardOpens_TieredFoldRefused
+  read snapshot not metered (MeterReads)       -> RelByTypeAndPropertyTime (badger, sharded, tiered), ProbeMatrix, HistoryExamined_*
+  memory chain versions not counted            -> RelByTypeAndPropertyTime/memory/interval
+
+Left open for this door: a fold's own history-ID walk (the IDs are listed before the first candidate counts, as the node
+twin's), and the pending-write overlay held before a membership walk.

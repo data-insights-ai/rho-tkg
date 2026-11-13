@@ -197,6 +197,12 @@ func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
 			slices.Sort(ids)
 			return fmt.Sprint(ids), nil
 		}},
+		{"Rels ByTypeAndProperty TxPin", "ByTypeAndProperty", func(c context.Context) (string, error) {
+			return relIDsString(g.Rels.ByTypeAndPropertyCtx(c, rtbType, "estate", "e1", storepkg.QueryOpts{TxPin: pin}))
+		}},
+		{"Rels ByTypeAndProperty ValidAt", "ByTypeAndProperty", func(c context.Context) (string, error) {
+			return relIDsString(g.Rels.ByTypeAndPropertyCtx(c, rtbType, "estate", "e1", storepkg.QueryOpts{ValidAt: pin, ValidAtSet: true}))
+		}},
 		{"IDsByLabelAndPropertyValues current", "IDsByLabelAndPropertyValues", func(c context.Context) (string, error) {
 			ids, err := g.Nodes.IDsByLabelAndPropertyValuesCtx(c, "Ev", "k", []any{int64(1)}, storepkg.QueryOpts{})
 			if err != nil {
@@ -279,11 +285,29 @@ func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
 	}
 }
 
+// relIDsString renders a relationship door's answer as its sorted IDs; an
+// empty answer is an error, so the doors above never compare two empty reads.
+func relIDsString(r []*types.Relationship, err error) (string, error) {
+	if err != nil {
+		return "", err
+	}
+	if len(r) == 0 {
+		return "", errors.New("no rows")
+	}
+	var ids []int64
+	for _, row := range r {
+		ids = append(ids, int64(row.ID()))
+	}
+	slices.Sort(ids)
+	return fmt.Sprint(ids), nil
+}
+
 // TestReadBudget_ShardOpens_TieredFoldRefused: a temporal property read with
 // no usable index folds the label's history over every shard, opening closed
 // tiered shards it does not count; under a ShardOpens budget it refuses before
 // the walk (Limit "unsupported") instead of opening them unbounded, and
-// without one it answers.
+// without one it answers; so does the relationship lookup of a type with no
+// index.
 func TestReadBudget_ShardOpens_TieredFoldRefused(t *testing.T) {
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1, MaxOpenColdShards: 4})
@@ -313,5 +337,33 @@ func TestReadBudget_ShardOpens_TieredFoldRefused(t *testing.T) {
 	bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 100})
 	if got, err := g.Nodes.ByLabelAndPropertyCtx(bctx, "Ev", "u", int64(1), opts); err != nil || len(got) != 1 {
 		t.Fatalf("fold under Candidates = %d rows, %v; want 1", len(got), err)
+	}
+
+	// The relationship twin (R2, Sigma doors group D): a type with no index
+	// folds every shard's history, so it refuses a ShardOpens budget the same
+	// way and answers under a Candidates one.
+	s, err := g.Nodes.Add(ctx, []string{"Ev"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := g.Nodes.Add(ctx, []string{"Ev"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Rels.AddByID(ctx, "FOLD", s.ID(), e.ID(), map[string]any{"u": int64(1)}); err != nil {
+		t.Fatal(err)
+	}
+	if pin, err = g.Temporal.NowTx(); err != nil {
+		t.Fatal(err)
+	}
+	opts = storepkg.QueryOpts{TxPin: pin}
+	bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{ShardOpens: 100})
+	rels, err := g.Rels.ByTypeAndPropertyCtx(bctx, "FOLD", "u", int64(1), opts)
+	if !errors.As(err, &rb) || rb.Limit != "unsupported" || rb.Door != "ByTypeAndProperty" || rels != nil {
+		t.Fatalf("rel fold under ShardOpens = %d rels, %v (%+v); want an unsupported refusal", len(rels), err, meter.Work())
+	}
+	bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 100})
+	if got, err := g.Rels.ByTypeAndPropertyCtx(bctx, "FOLD", "u", int64(1), opts); err != nil || len(got) != 1 {
+		t.Fatalf("rel fold under Candidates = %d rows, %v; want 1", len(got), err)
 	}
 }

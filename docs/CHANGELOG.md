@@ -45,6 +45,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   all 3 cold shards and counting nothing (`tasks/evidence/READBUDGET/sigma-doors-c.txt`); tests:
   `TestReadBudget_SigmaC_History`, `_HistoryGates`, `_HistoryShardOpens`, `TestReadBudgetPublicHistoryDoors`, the wrapper
   store test `TestReadBudget_UnsupportedStoreRefusesBeforeReading`.
+
+- **R2 budgeted doors for Sigma, group D, step 1**: `Rels().ByTypeAndPropertyCtx` at a time coordinate (`TxAt`, `TxPin`,
+  `ValidAt`, a valid interval), for Sigma's relationship lazy and passive probes. A budget refused it with `Limit`
+  `"unsupported"` because its history resolver counted nothing; it now counts as the node twin
+  `ByLabelAndPropertyCtx` does: each membership candidate as the index hands it on, before the pin filter (a membership
+  kept on disk is admitted as its fold grows, so a budget of 1 over 96 matches visits 2 entries, not 96), the current
+  lookup's matches and decodes, and per candidate the current row, history skeleton and winning version through a
+  metered read snapshot (`DecodedBytes`, `HistoryExamined`, on tiered each closed shard's open before it), the candidate
+  set and the rows as `BufferBytes`; a type with no usable membership index folds its history and counts each candidate
+  before it is resolved, and on tiered a `ShardOpens` budget refuses before that walk (`"unsupported"`, as the node
+  twin). The answer and its order are the plain door's; the resolver is the plain one reading through a metered
+  `entityReads` (`findRelVersionForOptsRd`, `relAtLockedTxRd`, `findRelVersionMatchingDuringTxRd`). Red: every time
+  coordinate under any budget refused with `"unsupported"`, nothing counted (20 subtests of
+  `TestReadBudget_RelByTypeAndPropertyTime`, the probe matrix's two new doors on badger, sharded and tiered, pending
+  and flushed, and `Rels ByTypeAndProperty TxPin` / `ValidAt` of the tiered shard-opens test); the plain door decodes
+  every match (8 and 32 relationship rows on badger) where a budget of 1 candidate decodes none
+  (`tasks/evidence/READBUDGET/sigma-doors-d.txt`). Tests: `TestReadBudget_RelByTypeAndPropertyTime`,
+  `_RelByTypeAndPropertyTimeCountsBeforePinFilter`, `_RelByTypeAndPropertyTimeNoIndexFold`,
+  `_DecodedBytes_RelByTypeAndPropertyTime`, `_HistoryExamined_RelByTypeAndPropertyLongHistory`, and the new doors in
+  `TestReadBudget_ProbeMatrix`, `_ShardOpens_TieredDoors`, `_ShardOpens_TieredFoldRefused`,
+  `_DiskLookupDoorsAdmitAsProduced`, `_UnsupportedStoreRefusesBeforeReading`, `TestReadBudgetPublicLookupDoors`.
 - **R2 budgeted doors for Sigma, group B, step 3**, the by-ID and bitemporal point doors: `Temporal().NodesEffectiveByIDsCtx`
   (a stream: one candidate per distinct ID before its read, callbacks before a refusal stand), `NodeAtTxCtx`,
   `NodesAtTxByIDsCtx` (one candidate and 8 buffer bytes per ID before any ID is read, then the reads' decodes, history
@@ -102,8 +123,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   row is decoded (RAM index, on-disk index admitted as its walk produces it, and for a key without an index the type's
   every relationship before the scan), then the bytes of each row decoded and, on tiered, the archive's and each closed
   event shard's open before it (new `store.RelPropertyQueryCandidatesMeteredCapability` on badger, sharded and tiered; a
-  tiered type scan under a budget decodes through the same meter). A read at a time coordinate is refused under a budget
-  (`"unsupported"`): its history resolver counts nothing; without a budget it is the plain door. The ID-only lookup
+  tiered type scan under a budget decodes through the same meter). A read at a time coordinate was refused under a budget
+  (`"unsupported"`) in this step, its history resolver counting nothing (group D, below, counts it); without a budget it
+  is the plain door. The ID-only lookup
   (`NodeIDsByLabelAndPropertyKeys` on badger and tiered) now counts each posting as it walks, RAM or disk, before it
   collects it: badger called the unadmitted `propertyIndexDiskKeysCandidatesLocked`, so a budget of 1 over 96 matches
   visits all 96 index entries when the count comes after the walk; it visits 2 on badger and on tiered (three shards).

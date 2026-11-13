@@ -85,7 +85,7 @@ func TestReadBudgetPublicRelByIDDoors(t *testing.T) {
 // lookups on every backend: without a budget the plain door's answer, an
 // index's matches counted as candidates, a budget smaller than the matches
 // refused with ErrReadBudget and no rows, and a relationship read at a time
-// coordinate (not budgeted) refused under a budget.
+// coordinate answered as the plain door, counted, and refused past a limit.
 func TestReadBudgetPublicLookupDoors(t *testing.T) {
 	t.Parallel()
 	for _, b := range allStoreBackends() {
@@ -126,9 +126,26 @@ func TestReadBudgetPublicLookupDoors(t *testing.T) {
 			if !errors.Is(err, store.ErrReadBudget) || gotRels != nil || meter.Work().Candidates < 3 {
 				t.Fatalf("ByTypeAndPropertyCtx of 3 under 2 = %d rows, %v, %+v; want ErrReadBudget and no rows", len(gotRels), err, meter.Work())
 			}
-			tctx, _ := store.WithReadBudget(ctx, store.ReadBudget{Candidates: 100})
-			if _, err := g.Rels().ByTypeAndPropertyCtx(tctx, "R", "k", int64(7), store.QueryOpts{TxAt: 1 << 60}); !errors.Is(err, store.ErrReadBudget) {
-				t.Fatalf("ByTypeAndPropertyCtx at a time coordinate under a budget = %v; want ErrReadBudget (unsupported)", err)
+			// A time coordinate (group D) answers as the plain door, counted, and
+			// refuses past a limit.
+			pin, err := g.Temporal().NowTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, opts := range []store.QueryOpts{{TxAt: pin}, {TxPin: pin}, {ValidAt: pin, ValidAtSet: true}} {
+				wantAt, err := g.Rels().ByTypeAndProperty("R", "k", int64(7), opts)
+				if err != nil || len(wantAt) != 3 {
+					t.Fatalf("plain rel lookup at %+v = %d, %v; want 3", opts, len(wantAt), err)
+				}
+				tctx, tmeter := store.WithReadBudget(ctx, store.ReadBudget{Candidates: 100})
+				gotAt, err := g.Rels().ByTypeAndPropertyCtx(tctx, "R", "k", int64(7), opts)
+				if err != nil || len(gotAt) != 3 || tmeter.Work().Candidates < 3 {
+					t.Fatalf("ByTypeAndPropertyCtx at %+v = %d rows, %v, %+v; want 3 rows and their candidates counted", opts, len(gotAt), err, tmeter.Work())
+				}
+				tctx, _ = store.WithReadBudget(ctx, store.ReadBudget{Candidates: 1})
+				if gotAt, err = g.Rels().ByTypeAndPropertyCtx(tctx, "R", "k", int64(7), opts); !errors.Is(err, store.ErrReadBudget) || gotAt != nil {
+					t.Fatalf("ByTypeAndPropertyCtx at %+v of 3 under 1 = %d rows, %v; want ErrReadBudget and no rows", opts, len(gotAt), err)
+				}
 			}
 
 			wantIDs, err := g.Nodes().IDsByLabelAndPropertyValues("D", "k", []any{int64(7)}, store.QueryOpts{})

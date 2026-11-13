@@ -21,12 +21,15 @@ import (
 // counts as a candidate inside the store before its row is decoded, then the
 // stored bytes of every row decoded and, on tiered, each closed shard opened.
 //
-// A read at a time coordinate (TxAt, TxPin, ValidAt, the valid interval) walks
-// the history candidates through the unmetered resolver of the declared view
-// (temporal.go), which counts no history or decode: under a budget it is
-// refused before any work (Limit "unsupported") instead of reading unbounded;
-// the budgeted time reads are Temporal().RelEffectiveTimelinesByProperties and
-// the node property doors.
+// A read at a time coordinate (TxAt, TxPin, ValidAt, the valid interval) counts
+// as the node twin, ByLabelAndPropertyCtx, does (Sigma doors group D): each
+// membership candidate as the index produces it (a disk membership admitted as
+// its fold grows), the current lookup's matches, the history versions looked at
+// and the stored bytes decoded to resolve each candidate, on tiered each closed
+// shard before it opens; a fold with no usable index counts each candidate
+// before it is resolved and, on tiered, refuses a ShardOpens budget before its
+// walk (Limit "unsupported", it cannot count the opens). The answer is the
+// plain door's, in its order.
 func (r *RelOps) ByTypeAndPropertyCtx(ctx context.Context, typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -34,11 +37,7 @@ func (r *RelOps) ByTypeAndPropertyCtx(ctx context.Context, typeName, key string,
 	if err := r.c.budgetSupported(ctx, "ByTypeAndProperty"); err != nil {
 		return nil, err
 	}
-	meter := storepkg.ReadMeterFrom(ctx)
-	if meter != nil && hasTemporalFilter(opts) {
-		return nil, &storepkg.ReadBudgetError{Door: "ByTypeAndProperty", Limit: "unsupported", Work: meter.Work()}
-	}
-	return r.ByTypeAndProperty(typeName, key, value, opts.WithReadMeter(meter, "ByTypeAndProperty"))
+	return r.ByTypeAndProperty(typeName, key, value, opts.WithReadMeter(storepkg.ReadMeterFrom(ctx), "ByTypeAndProperty"))
 }
 
 // IDsByLabelAndPropertyValuesCtx is IDsByLabelAndPropertyValues under ctx's

@@ -326,6 +326,13 @@ func TestReadBudget_UnsupportedStoreRefusesBeforeReading(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	other, err := g.Nodes.Add(ctx, []string{"U"}, nil) // the wrapper declares no rel property index: the lookup folds
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Rels.AddByID(ctx, "U", n.ID(), other.ID(), map[string]any{"k": int64(1)}); err != nil {
+		t.Fatal(err)
+	}
 	pin, err := g.Temporal.NowTx()
 	if err != nil {
 		t.Fatal(err)
@@ -352,6 +359,16 @@ func TestReadBudget_UnsupportedStoreRefusesBeforeReading(t *testing.T) {
 				return err
 			}
 			_, err := g.Nodes.HistoryCtx(ctx, n.ID())
+			return err
+		},
+		// The relationship lookup at a pin (group D) counts like the node twin: a
+		// store that cannot count its decodes or opens refuses it, one that
+		// bounds only Candidates answers.
+		"ByTypeAndProperty": func(ctx context.Context) error {
+			got, err := g.Rels.ByTypeAndPropertyCtx(ctx, "U", "k", int64(1), storepkg.QueryOpts{TxPin: pin})
+			if err == nil && len(got) != 1 {
+				return fmt.Errorf("%d rels, want 1", len(got))
+			}
 			return err
 		},
 		"ByLabelAndProperty": func(ctx context.Context) error {

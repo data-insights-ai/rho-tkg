@@ -69,7 +69,9 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 		return nil, nil
 	}
 	currentIDs := func() ([]types.RelID, error) {
-		currentMatching, err := c.relsByTypeAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
+		// Under a read budget the lookup counts its matches and decodes as the
+		// node twin's does (currentOpts).
+		currentMatching, err := c.relsByTypeAndProperty(tok, key, value, currentOpts(opts))
 		if err != nil {
 			return nil, err
 		}
@@ -86,12 +88,20 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 		return r.HasTypeTokenRaw(tok) && match.Rel(r, key, elements)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
+	// Under a read budget each candidate resolves through a metered read
+	// snapshot, so the rows and history versions it decodes count before
+	// their decode (RH list R2, Sigma doors group D).
+	rd, release := c.meteredEntityReads(opts.ReadTally())
+	defer release()
 	if err := c.forEachRelPropertyCandidateID(tok, key, keys, currentIDs, opts, func(id types.RelID) error {
-		rel, err := c.findRelVersionForOpts(id, resolveOpts, pred)
+		rel, err := c.findRelVersionForOptsRd(rd, id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
 			}
+			return err
+		}
+		if err := opts.AddBufferBytes(bufSliceRef); err != nil {
 			return err
 		}
 		result = append(result, rel)

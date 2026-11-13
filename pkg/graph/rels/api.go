@@ -1146,10 +1146,11 @@ type budgetedPropertyOps interface {
 // every row decoded (DecodedBytes) and, on tiered, each closed shard it is
 // about to open (ShardOpens); past a limit *store.ReadBudgetError
 // (store.ErrReadBudget) and no rows. A read at a time coordinate (TxAt,
-// TxPin, ValidAt, the valid interval) is not budgeted yet and is refused
-// under a budget (Limit "unsupported"); without a budget in ctx every read is
-// ByTypeAndProperty after a ctx check. An Ops without the budgeted doors
-// answers unmetered.
+// TxPin, ValidAt, the valid interval) counts as the node twin
+// ByLabelAndPropertyCtx does: each membership candidate, the history
+// versions looked at and the rows decoded to resolve it, and on tiered the
+// shards opened; without a budget in ctx every read is ByTypeAndProperty
+// after a ctx check. An Ops without the budgeted doors answers unmetered.
 func (a *API) ByTypeAndPropertyCtx(ctx context.Context, typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
