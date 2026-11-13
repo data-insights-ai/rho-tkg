@@ -21,24 +21,10 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Now
 
-- **READBUDGET (R2: stop work before spending the budget)** — Enforce one cumulative operation budget inside
-  native enumeration, candidate buffers/unions, row/history decoding and shard checkout, including pending overlays,
-  misses, fallbacks and parallel workers; count entries examined before filtering, not only returned matches.
-  Cover indexed/composite node queries, tuple timelines, ID reads, `ForEachNodePropertyTxMember` and its window/key
-  variants, and `NodeAsOf` through budgeted equivalents that preserve the exact historical pin.
-  Account separately for examined history, decoded wire bytes, temporary/retained buffer bytes and shard opens;
-  returned segments and decoded wire bytes alone are not bounds on native memory or total work.
-  Done when the budget-1 host probe stops before decoding beyond its allowance at 8/32/128 matches, dense keys,
-  long histories, cold shards, pending writes and unsupported paths all obey the same meter, and refusal preserves
-  exact-or-refused results without a silent unbounded fallback. No larger limit substitutes for removing broad work.
-  Waits for the existing decoded-byte candidate and rho's review; the current host call list above is actionable now.
-  **rho/sigma:** bounds failure cost before allocation and decode; acceptance still requires useful selective reads.
-- **RELDISKWIN (select only relevant disk-index history)** — Complete disk membership window pruning for nodes and
-  relationships without collecting every same-key historical member first; meter iterator and overlay work as well
-  as emitted IDs. Done when fixed-window tests at 8/32/128 unrelated history entries preserve exact old/new-pin
-  answers through correction, deletion, pending writes and copied reopen, while unrelated history no longer forces
-  a full-key walk or growing candidate union; report write/storage overhead too. **rho/sigma:** removes wasted reads,
-  rather than replacing their results with budget refusals; complements READBUDGET.
+- **READBUDGET, RELDISKWIN follow-ups** (both ship in v4.107.2) — wire the on-disk member walk's iterator steps into
+  the read budget; RELDISKWIN's stale late-axis deletes are visited until compaction (an old pin over many updated open
+  rows). Done when a budget bounds the steps and the stale entries are measured on a consumer store. **rho/sigma:**
+  bounds the last uncounted disk-index work of sigma's pinned reads.
 - **WARMMEM (R3: cheaper writable and inactive shards)** — Finish measured sizing and ownership of writable arenas
   across hot, warm, reference, demoted and late-write handles; separately account for already-open demoted handles
   that a smaller warm-open setting does not shrink. Done when allocation, live heap, peak RSS and CPU improve on
@@ -52,22 +38,13 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — reads and writes
   stop rebuilding a key's whole history. Released: P3 HISTDECODE, HEADLEND, P1 HISTTRIM, CASCADEMETA (v4.103.0), P2
-  (v4.104.1: the plural door reads and fills the head entry; `p2.txt`). Next, P5 (design.txt § P5, checked): bound
-  NodeHistoryTemporalMeta (10.9 GB). Phase 0 shipped (v4.105.1): on sigma's shape the misses are pins below the
-  entry's maxTx (plural door) and no entry; deletes, retractions, stale tokens and node-at doors count zero. Option C
-  shipped (v4.105.2): pin-below misses 516 -> 52 on sigma's shape, skeletons read 8,413 -> 1,145. Left: the 52 pins
-  below the lowest generation (C2: a fill at a lower pin records a generation) and first-read "no entry" misses;
-  Phase 1 (deletes and retractions) only if a store shows them. Also open: the caller-instant pre-flight and cascadeMissing*Err read whole histories; the skeleton read
-  itself is O(versions) (option F). Caveat (design.txt §4): compaction between tx ops can trim a row above the current
-  version that rollback puts back. ai-soc's profile (k11050630 on v4.105.3, `k11050630-heap.txt`): NodeHistoryTemporalMeta is 0.5 % of the push but
-  ~24 % of the /bars phase (499 GB), all via nodesByLabelAndPropertyForms -> nodeEffectiveTimelinesFrom -> nodeMeta
-  under sigma's ReadDerivedAt (the page doors: scan reads under a snapshot, never the head entry); next, P5's red test on
-  that path. 9 Nov: ai-soc's 2-day twin (sigma v0.17.14 + v4.105.9, CPU): 0 samples in these frames, ReadDerivedAt 2.6 %;
-  serve on the 6-h twin (sigma v0.17.16): warm /bars 0.03 % of alloc_space (JSON encoding 69 %); within the one view
-  build, the page door 40 %, NodeHistoryTemporalMeta 1.7 %. Waits for ai-soc's cold-build arm (reopen cycles). Done when the next profile of ai-soc's workload
-  shows history reads below 10 % of alloc_space. **rho/sigma:** the largest open item: P5 targets NodeHistoryTemporalMeta,
-  10.9 of sigma's 160 GB alloc_space; P1 and CASCADEMETA (v4.103.0) already took the 32 GB getRelHistory share; the
-  rest shows in the next profile of ai-soc's workload.
+  (v4.104.1), P5 phase 0 (v4.105.1) and option C (v4.105.2: pin-below misses 516 -> 52, skeletons 8,413 -> 1,145).
+  Left: C2 (a fill at a lower pin records a generation), first-read "no entry" misses, the caller-instant pre-flight
+  and cascadeMissing*Err whole-history reads, option F (the skeleton read is O(versions)); caveat design.txt §4.
+  ai-soc 9 Nov (sigma v0.17.14-16 + v4.105.9): history frames 0 samples, the page door 40 % of a view build,
+  NodeHistoryTemporalMeta 1.7 %. Waits for ai-soc's cold-build arm (reopen cycles). Done when the next profile of
+  ai-soc's workload shows history reads below 10 % of alloc_space. **rho/sigma:** P5 targets NodeHistoryTemporalMeta,
+  10.9 of sigma's 160 GB alloc_space.
 
 ## Next
 
@@ -116,19 +93,15 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
   nodes.Update rewrites the list twice (wire_history_delta.go:115). Possible: write-once entry keys (node, list, tx,
   seq) plus a header record per tx; as-of = last header ≤ tx; O(1), ~100-150 B per append. Cost is integrations
   (tiered, purge, export, integrity, rollback): 5-8 days, a minor. Needs ai-soc's spec and René's word.
-- **COLDLRU** (ai-soc RHOCOLD a, 9-10 Nov) — one advance reads every cold day shard (cap 2/3 thrash, cap 5 → 2 opens,
-  cap 64 badger heap +640 MB), so LRU eviction at check-in does not help: the cap grows with the archive unless
-  sigma's read-back stops reaching old days (sigma's COLDSET). Raising the handle cap is not the correction;
-  READBUDGET bounds the remaining opens and EMPTYBYID owns the empty-shard reopen correction.
+- **COLDLRU** (ai-soc RHOCOLD a, 9-10 Nov) — one advance reads every cold day shard (cap 2/3 thrash, cap 64 badger
+  heap +640 MB): the cap grows with the archive unless sigma's read-back stops reaching old days (sigma's COLDSET).
+  A larger cap is no correction; READBUDGET bounds the remaining opens, EMPTYBYID the empty-shard reopens.
 - **COLDHEAP** (ai-soc RHOCOLD b) — +970 MB over 3 days; never cold: reference shard, hot/warm, demoted open handles,
   degree tracker. Decoded rows (224 MB) sit in per-shard entity caches, 10,000 entries each (CacheBudgetBytes bounds
   bytes). Waits for ai-soc's retainer view.
-- **LISTREAD** (sigma 31 Oct) — label-and-property pages read through one forward scan since v4.105.4 (2.9-6.6 µs
-  per listed node cold, from 6.8-29; `tasks/evidence/LISTREAD/measure.txt`). Left: a batch `HasHistory(ids)` (a
-  minor) that reads tiered's liveness stamps through one scan too (72 % of HasHistory's ~3 µs per node). Waits for
-  sigma's restore timing on v4.105.4 (sigma 4 Nov: only on René's word; sigma v0.12.4 tags on v4.105.4). Done when
-  that timing shows HasHistory worth a door, or drops it. **rho/sigma:** restart time:
-  the listing share of 14.5 of 23.3 s per 1 M nodes shrinks; HasHistory's 6.4 s waits on sigma's numbers.
+- **LISTREAD** (sigma 31 Oct) — label-and-property pages read through one forward scan since v4.105.4
+  (`tasks/evidence/LISTREAD/measure.txt`). Left: a batch `HasHistory(ids)` through one scan (72 % of HasHistory's ~3 µs
+  a node). Waits for sigma's restore timing on v4.105.4 (only on René's word). **rho/sigma:** restart time.
 
 On consumer runs (ai-soc, sigma):
 - **VALUETHRESH** (v4.104.0) — done when sigma's 2-day budget profile with 32 KiB on tiered shows the compaction CPU

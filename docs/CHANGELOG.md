@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.2] - 2026-11-13
+
 ### Added
 
 - **WARMMEM** (René's RH list R3, cheaper writable and inactive shards): `tiered.Config.WarmMemTableSize` sizes the
