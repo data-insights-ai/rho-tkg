@@ -112,3 +112,7 @@ After the fix (badger.Store.EnsureLogScope: open the scope unless open; the inst
 tiered BeginLogScope itself refuses a scope already open) both pass. Mutations, each caught: the fold back to BeginLogScope (the
 same "change-log scope already open" from the fold); no tiered-level refusal (TestHandleSweep_BeginLogScopeTwiceStillFails: "a
 second BeginLogScope inside an open scope succeeded").
+Part 1 after the fix (13 Nov 2026): the pending set and the two-round pass; the final TestHandleSweep_PinnedShardDoesNotBlockOthers
+runs 3 free and 3 pinned shards (1.4 s; the red above ran 5 and 5). Mutation, caught 4 of 4 runs (0 or 1 of the 3 free shards
+swapped while 3 are pinned): every visit patient (the pass waits for a pinned shard where it meets it). Visits: 1 shard looked
+at among 10, 100 and 1000 retained, 0 for a pass with nothing owed (was retained + 1).
