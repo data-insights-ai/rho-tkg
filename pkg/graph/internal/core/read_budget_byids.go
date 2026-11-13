@@ -113,8 +113,13 @@ func (t *TempOps) NodesAtTxByIDsCtx(ctx context.Context, ids []types.NodeID, val
 }
 
 // NodesLowestAnsweredPinsCtx is NodesLowestAnsweredPins under ctx's read
-// budget: it reads no row, so it counts one candidate and 8 buffer bytes per ID
-// before computing any answer, and nothing else.
+// budget: it counts one candidate and 8 buffer bytes per ID before computing any
+// answer, then the rows its retention gate reads: with a retention watermark set
+// (below the pins' reach no row is read) each node's current row and, for a
+// deleted one, its history, through the metered read snapshot (decoded bytes,
+// history versions and, on tiered, closed shards opened), each counted before
+// it is done. The compaction stubs and the watermarks are small meta reads,
+// not counted.
 func (t *TempOps) NodesLowestAnsweredPinsCtx(ctx context.Context, ids []types.NodeID) ([]types.Instant, error) {
 	const door = "NodesLowestAnsweredPins"
 	c := t.c
@@ -139,5 +144,37 @@ func (t *TempOps) NodesLowestAnsweredPinsCtx(ctx context.Context, ids []types.No
 	if err := meter.AddBufferBytes(door, len(ids)*bufSliceRef); err != nil {
 		return nil, err
 	}
-	return t.NodesLowestAnsweredPins(ids)
+	return t.nodesLowestAnsweredPins(ids, meter.Tally(door))
+}
+
+// RelsLowestAnsweredPinsCtx is RelsLowestAnsweredPins under ctx's read budget,
+// as NodesLowestAnsweredPinsCtx: one candidate and 8 buffer bytes per ID before
+// any answer, then, with a retention watermark set, each relationship's current
+// row and a deleted one's history through the metered read snapshot, each
+// counted before it is done.
+func (t *TempOps) RelsLowestAnsweredPinsCtx(ctx context.Context, ids []types.RelID) ([]types.Instant, error) {
+	const door = "RelsLowestAnsweredPins"
+	c := t.c
+	meter, err := c.beginTimeline(ctx, door)
+	if err != nil {
+		return nil, err
+	}
+	if meter == nil {
+		return t.RelsLowestAnsweredPins(ids)
+	}
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		if err := storepkg.ValidateRelID(id); err != nil {
+			return nil, err
+		}
+	}
+	if err := meter.AddCandidates(door, len(ids)); err != nil {
+		return nil, err
+	}
+	if err := meter.AddBufferBytes(door, len(ids)*bufSliceRef); err != nil {
+		return nil, err
+	}
+	return t.relsLowestAnsweredPins(ids, meter.Tally(door))
 }

@@ -331,6 +331,14 @@ func TestReadBudget_UnsupportedStoreRefusesBeforeReading(t *testing.T) {
 		t.Fatal(err)
 	}
 	doors := map[string]func(ctx context.Context) error{
+		"NodesLowestAnsweredPins": func(ctx context.Context) error {
+			_, err := g.Temporal.NodesLowestAnsweredPinsCtx(ctx, []types.NodeID{n.ID()})
+			return err
+		},
+		"RelsLowestAnsweredPins": func(ctx context.Context) error {
+			_, err := g.Temporal.RelsLowestAnsweredPinsCtx(ctx, []types.RelID{rel.ID()})
+			return err
+		},
 		"Get": func(ctx context.Context) error {
 			_, err := g.Nodes.GetCtx(ctx, n.ID())
 			return err

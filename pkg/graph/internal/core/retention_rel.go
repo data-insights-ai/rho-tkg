@@ -228,11 +228,17 @@ func (c *Core) checkRelTypePointRetention(id types.RelID, pin types.Instant) err
 // relationship max when the relationship is gone (its type is unknown), else
 // min(max, its type's watermark).
 func (c *Core) relTypeRetentionFloor(id types.RelID) (floor int64, gated bool, err error) {
+	return c.relTypeRetentionFloorRd(entityReads{c: c}, id)
+}
+
+// relTypeRetentionFloorRd is relTypeRetentionFloor reading the relationship's
+// rows through rd (a budgeted read's metered snapshot counts them, RH list R2).
+func (c *Core) relTypeRetentionFloorRd(rd entityReads, id types.RelID) (floor int64, gated bool, err error) {
 	relMax := c.retentionRelMaxWatermark.Load()
 	if int64(id.MintInstant()) >= relMax {
 		return 0, false, nil
 	}
-	tok, ok, err := c.relTypeTokenForRetention(id)
+	tok, ok, err := c.relTypeTokenForRetention(rd, id)
 	if err != nil {
 		return 0, false, err
 	}
@@ -244,14 +250,14 @@ func (c *Core) relTypeRetentionFloor(id types.RelID) (floor int64, gated bool, e
 
 // relTypeTokenForRetention reads the relationship's type from its current row
 // or, when deleted, from its history (the type is immutable). ok is false when
-// neither exists.
-func (c *Core) relTypeTokenForRetention(id types.RelID) (uint16, bool, error) {
-	r, err := c.getCurrentRelationship(id)
+// neither exists. The rows are read through rd.
+func (c *Core) relTypeTokenForRetention(rd entityReads, id types.RelID) (uint16, bool, error) {
+	r, err := rd.currentRel(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return 0, false, err
 	}
 	if r == nil {
-		history, herr := c.getRelHistory(id)
+		history, herr := rd.relHistory(id)
 		if herr != nil {
 			return 0, false, herr
 		}

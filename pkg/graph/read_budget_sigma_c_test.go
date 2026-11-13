@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -216,6 +217,74 @@ func TestReadBudgetPublicPointDoors(t *testing.T) {
 			}
 			if _, err := tp.NodeAtCtx(cctx, live.ID(), early); !errors.Is(err, context.Canceled) {
 				t.Fatalf("NodeAtCtx cancelled ctx = %v", err)
+			}
+		})
+	}
+}
+
+// TestReadBudgetPublicRelsLowestAnsweredPins (RH list R2, Sigma doors group C):
+// Temporal().RelsLowestAnsweredPinsCtx reaches the graph's budgeted door on every
+// backend (memory included): the plain door's aligned pins without a budget and
+// under an unlimited one, one candidate and 8 buffer bytes counted per ID, a
+// limit one under either refused with ErrReadBudget, no answer and nothing read,
+// and a cancelled context refused first.
+func TestReadBudgetPublicRelsLowestAnsweredPins(t *testing.T) {
+	t.Parallel()
+	for _, b := range allStoreBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			g := b.open(t)
+			ctx := context.Background()
+			a, err := g.Nodes().Add(ctx, []string{"Ev"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			z, err := g.Nodes().Add(ctx, []string{"Ev"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var ids []types.RelID
+			for i := range 4 {
+				r, err := g.Rels().Add(ctx, "R", a, z, map[string]any{"v": int64(i)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				ids = append(ids, r.ID())
+			}
+			if err := g.Rels().Delete(ctx, ids[3]); err != nil {
+				t.Fatal(err)
+			}
+			ids = append(ids, ids[0]) // a repeated ID
+			tp := g.Temporal()
+			want, err := tp.RelsLowestAnsweredPins(ids)
+			if err != nil || len(want) != len(ids) {
+				t.Fatalf("plain = %v, %v", want, err)
+			}
+			if got, err := tp.RelsLowestAnsweredPinsCtx(ctx, ids); err != nil || !slices.Equal(got, want) {
+				t.Fatalf("no budget = %v, %v; want %v", got, err, want)
+			}
+			uctx, meter := store.WithReadBudget(ctx, store.ReadBudget{})
+			if got, err := tp.RelsLowestAnsweredPinsCtx(uctx, ids); err != nil || !slices.Equal(got, want) {
+				t.Fatalf("unlimited = %v, %v; want %v", got, err, want)
+			}
+			n := uint64(len(ids)) // #nosec G115 -- a count
+			if w := meter.Work(); w != (store.ReadWork{Candidates: n, BufferBytes: 8 * n}) {
+				t.Fatalf("unlimited work %+v; want %d candidates and %d buffer bytes only (no retention watermark, no row read)", w, n, 8*n)
+			}
+			for _, c := range []struct {
+				limit string
+				b     store.ReadBudget
+			}{{"candidates", store.ReadBudget{Candidates: n - 1}}, {"buffer bytes", store.ReadBudget{BufferBytes: 8*n - 1}}} {
+				bctx, meter := store.WithReadBudget(ctx, c.b)
+				got, err := tp.RelsLowestAnsweredPinsCtx(bctx, ids)
+				var rb *store.ReadBudgetError
+				if !errors.Is(err, store.ErrReadBudget) || !errors.As(err, &rb) || rb.Limit != c.limit || rb.Door != "RelsLowestAnsweredPins" || got != nil || meter.Work() != rb.Work || meter.Work().HistoryExamined != 0 || meter.Work().DecodedBytes != 0 {
+					t.Fatalf("%s: %v, %v, work %+v; want ErrReadBudget %q from RelsLowestAnsweredPins, no answer and nothing read", c.limit, got, err, meter.Work(), c.limit)
+				}
+			}
+			cctx, cancel := context.WithCancel(ctx)
+			cancel()
+			if _, err := tp.RelsLowestAnsweredPinsCtx(cctx, ids); !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancelled ctx = %v", err)
 			}
 		})
 	}

@@ -44,6 +44,13 @@ func (t *TempOps) NodeLowestAnsweredPin(id types.NodeID) (types.Instant, error) 
 // graph read lock. Every id is validated first; one invalid id refuses the
 // whole call with no result. Empty ids: an empty result.
 func (t *TempOps) NodesLowestAnsweredPins(ids []types.NodeID) ([]types.Instant, error) {
+	return t.nodesLowestAnsweredPins(ids, nil)
+}
+
+// nodesLowestAnsweredPins is NodesLowestAnsweredPins reading the retention
+// gate's rows (each node's current row, a deleted one's history) through tally's
+// metered read snapshot (nil: the store's own reads, RH list R2).
+func (t *TempOps) nodesLowestAnsweredPins(ids []types.NodeID, tally *storepkg.ReadTally) ([]types.Instant, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -55,8 +62,10 @@ func (t *TempOps) NodesLowestAnsweredPins(ids []types.NodeID) ([]types.Instant, 
 	}
 	out := make([]types.Instant, len(ids))
 	err := c.readUnderRLock(func() error {
+		rd, release := c.meteredEntityReads(tally)
+		defer release()
 		for i, id := range ids {
-			f, err := c.nodeLowestAnsweredPinLocked(id)
+			f, err := c.nodeLowestAnsweredPinLocked(rd, id)
 			if err != nil {
 				return err
 			}
@@ -87,6 +96,13 @@ func (t *TempOps) RelLowestAnsweredPin(id types.RelID) (types.Instant, error) {
 
 // RelsLowestAnsweredPins is NodesLowestAnsweredPins for relationships.
 func (t *TempOps) RelsLowestAnsweredPins(ids []types.RelID) ([]types.Instant, error) {
+	return t.relsLowestAnsweredPins(ids, nil)
+}
+
+// relsLowestAnsweredPins is RelsLowestAnsweredPins reading the retention gate's
+// rows (each relationship's current row, a deleted one's history) through
+// tally's metered read snapshot (nil: the store's own reads, RH list R2).
+func (t *TempOps) relsLowestAnsweredPins(ids []types.RelID, tally *storepkg.ReadTally) ([]types.Instant, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -98,8 +114,10 @@ func (t *TempOps) RelsLowestAnsweredPins(ids []types.RelID) ([]types.Instant, er
 	}
 	out := make([]types.Instant, len(ids))
 	err := c.readUnderRLock(func() error {
+		rd, release := c.meteredEntityReads(tally)
+		defer release()
 		for i, id := range ids {
-			f, err := c.relLowestAnsweredPinLocked(id)
+			f, err := c.relLowestAnsweredPinLocked(rd, id)
 			if err != nil {
 				return err
 			}
@@ -114,8 +132,8 @@ func (t *TempOps) RelsLowestAnsweredPins(ids []types.RelID) ([]types.Instant, er
 }
 
 // nodeLowestAnsweredPinLocked reads the node's gates under its entity lock,
-// as the timeline door does (c.mu held).
-func (c *Core) nodeLowestAnsweredPinLocked(id types.NodeID) (types.Instant, error) {
+// as the timeline door does (c.mu held), its labels read through rd.
+func (c *Core) nodeLowestAnsweredPinLocked(rd entityReads, id types.NodeID) (types.Instant, error) {
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 	comp, gated, err := c.compactionFloor(func() (compactionStub, bool, error) { return c.loadNodeCompactionStub(id) })
@@ -125,7 +143,7 @@ func (c *Core) nodeLowestAnsweredPinLocked(id types.NodeID) (types.Instant, erro
 	if !gated {
 		comp = 0
 	}
-	ret, err := c.nodeRetentionFloor(id)
+	ret, err := c.nodeRetentionFloorRd(rd, id)
 	if err != nil {
 		return 0, err
 	}
@@ -133,8 +151,8 @@ func (c *Core) nodeLowestAnsweredPinLocked(id types.NodeID) (types.Instant, erro
 }
 
 // relLowestAnsweredPinLocked mirrors nodeLowestAnsweredPinLocked with the
-// relationship gates (c.mu held).
-func (c *Core) relLowestAnsweredPinLocked(id types.RelID) (types.Instant, error) {
+// relationship gates (c.mu held), its type read through rd.
+func (c *Core) relLowestAnsweredPinLocked(rd entityReads, id types.RelID) (types.Instant, error) {
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 	var floor int64
@@ -145,7 +163,7 @@ func (c *Core) relLowestAnsweredPinLocked(id types.RelID) (types.Instant, error)
 	if gated {
 		floor = max(floor, comp)
 	}
-	typ, gated, err := c.relTypeRetentionFloor(id)
+	typ, gated, err := c.relTypeRetentionFloorRd(rd, id)
 	if err != nil {
 		return 0, err
 	}

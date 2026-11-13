@@ -274,11 +274,17 @@ func (c *Core) checkNodePointRetention(id types.NodeID, pin types.Instant) error
 // (current row, else newest history row) has a watermark, or the node has
 // neither.
 func (c *Core) nodeRetentionFloor(id types.NodeID) (int64, error) {
+	return c.nodeRetentionFloorRd(entityReads{c: c}, id)
+}
+
+// nodeRetentionFloorRd is nodeRetentionFloor reading the node's rows through rd
+// (a budgeted read's metered snapshot counts them, RH list R2).
+func (c *Core) nodeRetentionFloorRd(rd entityReads, id types.NodeID) (int64, error) {
 	graphMax := c.retentionMaxWatermark.Load()
 	if graphMax == 0 {
 		return 0, nil
 	}
-	tokens, err := c.nodeLabelTokensForRetention(id)
+	tokens, err := c.nodeLabelTokensForRetention(rd, id)
 	if err != nil {
 		return 0, err
 	}
@@ -325,14 +331,14 @@ func (c *Core) relNodeFamilyFloor() (floor int64, gated bool) {
 // nodeLabelTokensForRetention returns the node's label tokens from its current
 // row, falling back to the most recent history version when the current row is
 // gone (a deleted-but-not-purged entity still answers historical reads). Returns
-// nil (no error) when the node has neither.
-func (c *Core) nodeLabelTokensForRetention(id types.NodeID) ([]uint16, error) {
-	node, err := c.getCurrentNode(id)
+// nil (no error) when the node has neither. The rows are read through rd.
+func (c *Core) nodeLabelTokensForRetention(rd entityReads, id types.NodeID) ([]uint16, error) {
+	node, err := rd.currentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
 	if node == nil {
-		history, herr := c.getNodeHistory(id)
+		history, herr := rd.nodeHistory(id)
 		if herr != nil {
 			return nil, herr
 		}

@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **R2 budgeted doors for Sigma, group C, step 3**: `Temporal().RelsLowestAnsweredPinsCtx`, the twin of
+  `NodesLowestAnsweredPinsCtx`. Both count one candidate and 8 buffer bytes per ID before any answer and, when a
+  retention watermark is set, the rows the retention gate reads (a node's or relationship's current row, a deleted
+  one's history for its labels or type) through the metered read snapshot: decoded bytes, history versions and, on
+  tiered, shard opens, each before it is done. Found on the way and fixed in `NodesLowestAnsweredPinsCtx` (the group B
+  door below counted only candidates and buffer bytes, "it reads no row"): with a retention watermark the
+  plain door reads each entity's row and each deleted entity's history, so under such a graph a `DecodedBytes`,
+  `HistoryExamined` or `ShardOpens` budget did not bound it (the tiered plain read opened 3 cold shards; under
+  `ShardOpens` 1 the old door still answered). A budget that only bounds candidates or the buffer, or a graph with no
+  retention watermark, reads as before. The retention floors take an `entityReads` (`nodeRetentionFloorRd`,
+  `relTypeRetentionFloorRd`; the old names stay as the unmetered wrappers). Red: the new door stubbed to the old
+  Nodes door's form, both doors red on every backend (`tasks/evidence/READBUDGET/sigma-doors-c.txt`); tests:
+  `TestReadBudget_SigmaC_LowestAnsweredPins`, `_LowestAnsweredPinsGates`, `_LowestAnsweredPinsShardOpens`,
+  `_LowestAnsweredPinsMemory`, `TestReadBudgetPublicRelsLowestAnsweredPins`, `TestReadBudgetPointWrappers`, and the
+  wrapper store test. Still open: the retention gate's row reads inside `NodeAtTxCtx`, `NodesAtTxByIDsCtx`, the
+  timelines and the scans (a pin below the retention maximum) are not counted (`NodeAtTxCtx` under `DecodedBytes` 1
+  answered with 0 counted, the gate having decoded the node's row).
 - **R2 budgeted doors for Sigma, group C, step 2**, the point reads: `Nodes().GetCtx` is `Get` under the context's read
   budget (one candidate, then the stored bytes of the row it decodes and, on tiered, each closed shard it opens, each
   counted before it is done; a row the entity cache serves counts 0, a refused read leaves the row undecoded and uncached)

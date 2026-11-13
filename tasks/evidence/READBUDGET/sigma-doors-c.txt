@@ -99,3 +99,62 @@ Green (`go test -v -run TestReadBudget_SigmaC_Get/badger/flushed`, `-run TestRea
 
   Mutation checked: GetCtx reading through a nil tally (meteredEntityReads(nil)) fails TestReadBudget_SigmaC_Get on every
   backend (unlimited work: no decoded bytes) and GetShardOpens.
+
+=== GROUP 3: Temporal().RelsLowestAnsweredPinsCtx (and the correction of NodesLowestAnsweredPinsCtx) ===
+
+Finding first. The group B note says NodesLowestAnsweredPinsCtx "reads no row (the compaction boundaries and retention
+watermarks are in memory)", so a ShardOpens or DecodedBytes budget never bounds it. Read from the source it is true only
+without a retention watermark: with one, nodeRetentionFloor reads the node's current row for its labels and, for a deleted
+node, its whole history (retention.go nodeLabelTokensForRetention); relTypeRetentionFloor does the same for a
+relationship's type (retention_rel.go). ai-soc runs with AllowRetentionPurge. The twin could not honestly be built on the
+node door's form, so both were tested against the form "candidates and buffer bytes, then the plain door".
+
+Red (RelsLowestAnsweredPinsCtx stubbed to exactly NodesLowestAnsweredPinsCtx's form, which the Nodes door still had),
+`go test -run 'TestReadBudget_SigmaC_LowestAnsweredPins' ./pkg/graph/internal/core`, 14 failing subtests, the nodes door
+as red as the rels door:
+
+  TestReadBudget_SigmaC_LowestAnsweredPins/{badger,sharded,tiered}/{pending,flushed}/{nodes,rels}
+    unlimited work {Candidates:14 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:112};
+    want 14 candidates, 112 buffer bytes, the history of the deleted entities and no shard opens
+    (before that line the plain door was measured: it read 9 history rows, the 3 deleted entities' versions, through
+     Core.historyRead, and answered the retention floors; the Ctx door counted none of it)
+  TestReadBudget_SigmaC_LowestAnsweredPinsShardOpens/nodes, /rels
+    error <nil>, want ErrReadBudget at "shard opens"
+    (the plain doors, tiered with the cold shards closed, opened 3 cold shards: a live entity's own shard each, the
+     deleted one's history on every shard; ShardOpens 1 changed nothing)
+  The gates test and the candidate and buffer-bytes limits were green on the stub: with no watermark nothing else is read.
+
+Green (`go test -v -run TestReadBudget_SigmaC_LowestAnsweredPins/badger/flushed`), 12 nodes of 3 versions, 3 deleted, a
+retention watermark on the label D and the type NET, ids = every entity, the first again and an unknown ID (14):
+
+  nodes, unlimited:     {Candidates:14 DecodedBytes:4539 HistoryExamined:9 BufferBytes:112}
+  HistoryExamined 1:    refused after {Candidates:14 DecodedBytes:969 HistoryExamined:2 BufferBytes:112}
+  DecodedBytes 1:       refused after {Candidates:14 DecodedBytes:260 HistoryExamined:0 BufferBytes:112}
+  rels, unlimited:      {Candidates:14 DecodedBytes:6309 HistoryExamined:9 BufferBytes:112}
+  HistoryExamined 1:    refused after {Candidates:14 DecodedBytes:1361 HistoryExamined:2 BufferBytes:112}
+  DecodedBytes 1:       refused after {Candidates:14 DecodedBytes:358 HistoryExamined:0 BufferBytes:112}
+  Candidates 13 and BufferBytes 111: refused with nothing read (no history, no byte). The answer is the plain door's
+  aligned pins (the retention floors, non-zero); exactly the unlimited count answers, one under refuses. Pending and
+  flushed rows, badger, sharded and tiered; memory (`_LowestAnsweredPinsMemory`) counts a deleted entity's versions when
+  it reads them and no decoded bytes.
+
+  Tiered shard opens (`TestReadBudget_SigmaC_LowestAnsweredPinsShardOpens`, cold shards closed before each read, ids = the
+  live entity of each of three shards and one deleted in the first):
+    nodes and rels: the plain read opened 3 cold shards; under ShardOpens 1 the read opened 1 and refused (no answer);
+    unlimited it opened 3 and counted 3.
+  Without a watermark (`_LowestAnsweredPinsGates`, `TestReadBudgetPublicRelsLowestAnsweredPins`, every backend incl.
+  memory): the unlimited meter holds exactly {Candidates: n, BufferBytes: 8n}, as before.
+  Wrapper store: DecodedBytes and ShardOpens budgets are refused ("unsupported") for both doors.
+
+  Mutation checked: RelsLowestAnsweredPinsCtx passing a nil tally fails the rels subtests on every backend (and the memory
+  test).
+
+Still open (found while checking, not fixed here): the retention gate's own row reads in the other budgeted point doors
+(checkNodePointRetention and checkRelTypePointRetention, taken when the pin is below the retention maximum) go through the
+store uncounted. Reproduced with a throwaway test (kept outside the repo; flushed badger, node of label L with watermark
+at the pin and a second label's watermark above it, node row evicted):
+  NodeAtTxCtx(node, pin, pin) under ReadBudget{DecodedBytes: 1} = row returned, error nil,
+  work {Candidates:1 DecodedBytes:0 HistoryExamined:0}, and the node's row in the entity cache afterwards
+(the gate decoded the row uncounted and the point read was then served from the cache). NodeAtCtx reads at pin 0, which
+skips the gate, so the new door is not affected. The fix is the Rd form used here applied at those call sites
+(nodeAtLockedTxRd, batched_attx.go, effective_timeline.go, effective_timelines.go, read_budget_timelines.go, txtime.go).

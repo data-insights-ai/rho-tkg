@@ -17,6 +17,7 @@ type pointCtxSpy struct {
 	gotCtx  context.Context
 	gotAt   types.Instant
 	nodeRow *types.Node
+	gotRels []types.RelID
 }
 
 func (s *pointCtxSpy) NodeAtCtx(ctx context.Context, id types.NodeID, at types.Instant) (*types.Node, error) {
@@ -25,20 +26,29 @@ func (s *pointCtxSpy) NodeAtCtx(ctx context.Context, id types.NodeID, at types.I
 	return s.nodeRow, s.err
 }
 
+func (s *pointCtxSpy) RelsLowestAnsweredPinsCtx(ctx context.Context, ids []types.RelID) ([]types.Instant, error) {
+	s.record("RelsLowestAnsweredPinsCtx")
+	s.gotCtx, s.gotRels = ctx, ids
+	return []types.Instant{4}, s.err
+}
+
 // pointCtxCalls runs every group C Ctx wrapper of api under ctx.
 func pointCtxCalls(api *API, ctx context.Context) map[string]timelineResult {
 	out := map[string]timelineResult{}
 	n, err := api.NodeAtCtx(ctx, 3, 6)
 	out["NodeAt"] = timelineResult{err, n != nil}
+	ps, err := api.RelsLowestAnsweredPinsCtx(ctx, []types.RelID{3, 5})
+	out["RelsLowestAnsweredPins"] = timelineResult{err, ps != nil}
 	return out
 }
 
-// TestReadBudgetPointWrappers: NodeAtCtx forwards the context and arguments to
-// an Ops that has the Ctx door and returns its answer and error unchanged; for
-// an Ops without it a context with no budget reads as the plain door and a
-// context with a budget is refused (Limit "unsupported", the door's name)
-// before any call; a cancelled context and a nil API are refused before
-// anything is called. Not parallel: the spies record into package variables.
+// TestReadBudgetPointWrappers: the group C Ctx wrappers (NodeAtCtx,
+// RelsLowestAnsweredPinsCtx) forward the context and arguments to an Ops that
+// has the Ctx doors and return its answer and error unchanged; for an Ops
+// without them a context with no budget reads as the plain door and a context
+// with a budget is refused (Limit "unsupported", the door's name) before any
+// call; a cancelled context and a nil API are refused before anything is
+// called. Not parallel: the spies record into package variables.
 func TestReadBudgetPointWrappers(t *testing.T) {
 	type ctxKey struct{}
 	ctx := context.WithValue(context.Background(), ctxKey{}, 1)
@@ -55,11 +65,13 @@ func TestReadBudgetPointWrappers(t *testing.T) {
 	spy := &pointCtxSpy{nodeRow: types.NewNode(3, 0, nil)}
 	for door, r := range pointCtxCalls(New(spy), bctx) {
 		if r.err != nil || !r.got {
-			t.Fatalf("%s = %v, row %v; want the Ops' answer", door, r.err, r.got)
+			t.Fatalf("%s = %v, result %v; want the Ops' answer", door, r.err, r.got)
 		}
 	}
-	if !slices.Equal(spy.calls, []string{"NodeAtCtx"}) || spy.gotCtx != bctx || spy.lastNodeID != 3 || spy.gotAt != 6 {
-		t.Fatalf("forwarded %v (ctx kept %v, node %d, at %d); want NodeAtCtx unchanged", spy.calls, spy.gotCtx == bctx, spy.lastNodeID, spy.gotAt)
+	got := slices.Clone(spy.calls)
+	slices.Sort(got)
+	if want := []string{"NodeAtCtx", "RelsLowestAnsweredPinsCtx"}; !slices.Equal(got, want) || spy.gotCtx != bctx || spy.lastNodeID != 3 || spy.gotAt != 6 || !slices.Equal(spy.gotRels, []types.RelID{3, 5}) {
+		t.Fatalf("forwarded %v (ctx kept %v, node %d, at %d, rels %v); want %v unchanged", got, spy.gotCtx == bctx, spy.lastNodeID, spy.gotAt, spy.gotRels, want)
 	}
 	boom := errors.New("boom")
 	for door, r := range pointCtxCalls(New(&pointCtxSpy{temporalOpsSpy: temporalOpsSpy{err: boom}}), ctx) {
@@ -74,8 +86,10 @@ func TestReadBudgetPointWrappers(t *testing.T) {
 			t.Fatalf("%s with no budget = %v; want the plain door", door, r.err)
 		}
 	}
-	if !slices.Equal(plain.calls, []string{"NodeAt"}) {
-		t.Fatalf("plain doors called %v; want NodeAt", plain.calls)
+	gotPlain := slices.Clone(plain.calls)
+	slices.Sort(gotPlain)
+	if want := []string{"NodeAt", "RelsLowestAnsweredPins"}; !slices.Equal(gotPlain, want) {
+		t.Fatalf("plain doors called %v; want %v", gotPlain, want)
 	}
 
 	plain = &temporalOpsSpy{}

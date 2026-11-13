@@ -115,10 +115,12 @@ func (a *API) NodesAtTxByIDsCtx(ctx context.Context, ids []types.NodeID, validAt
 }
 
 // NodesLowestAnsweredPinsCtx is NodesLowestAnsweredPins under ctx's read
-// budget: the same aligned answer, or *store.ReadBudgetError and no result. The
-// door reads no row (it consults the compaction boundaries and retention
-// watermarks held in memory), so it counts one candidate per ID and 8 buffer
-// bytes per ID for the result before it computes any, and nothing else.
+// budget: the same aligned answer, or *store.ReadBudgetError and no result. It
+// counts one candidate and 8 buffer bytes per ID (the result) before it computes
+// any answer; with a retention watermark set it then reads each node's current
+// row and a deleted one's history for the retention gate, and counts those
+// reads (DecodedBytes, HistoryExamined and, on tiered, ShardOpens) before they
+// are done; without a watermark it reads no row and counts nothing else.
 func (a *API) NodesLowestAnsweredPinsCtx(ctx context.Context, ids []types.NodeID) ([]types.Instant, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -131,4 +133,29 @@ func (a *API) NodesLowestAnsweredPinsCtx(ctx context.Context, ids []types.NodeID
 		return nil, err
 	}
 	return ops.NodesLowestAnsweredPins(ids)
+}
+
+// relsLowestPinsCtxOps is the optional part of Ops RelsLowestAnsweredPinsCtx
+// reaches (the graph's own ops implement it; Ops itself stays unchanged).
+type relsLowestPinsCtxOps interface {
+	RelsLowestAnsweredPinsCtx(ctx context.Context, ids []types.RelID) ([]types.Instant, error)
+}
+
+// RelsLowestAnsweredPinsCtx is RelsLowestAnsweredPins under ctx's read budget,
+// as NodesLowestAnsweredPinsCtx: the same aligned answer, or
+// *store.ReadBudgetError and no result; one candidate and 8 buffer bytes per ID,
+// and with a retention watermark set each relationship's current row and a
+// deleted one's history, counted before they are read.
+func (a *API) RelsLowestAnsweredPinsCtx(ctx context.Context, ids []types.RelID) ([]types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := ops.(relsLowestPinsCtxOps); ok {
+		return m.RelsLowestAnsweredPinsCtx(ctx, ids)
+	}
+	if err := asOfWithoutBudget(ctx, "RelsLowestAnsweredPins"); err != nil {
+		return nil, err
+	}
+	return ops.RelsLowestAnsweredPins(ids)
 }
