@@ -1,0 +1,24 @@
+# R2 gaps A and B, red on dev 2663ccca (13 Nov)
+# go test -run TestReadBudget_DiskReadsAdmitAsProduced ./pkg/graph/internal/core
+# A Candidates budget of 1 over a key of 96 matches kept on disk (badger PropertyIndexOnDisk, and tiered over three
+# event shards): the read visits the whole key (96 index entries for the current lookup, 192 member entries for the
+# TxPin and ValidAt membership: two rows per node) before it refuses. The count is badger's own index-entry counter
+# (CountIndexEntriesVisitedForTest), not time or MemStats. The refusal itself is already typed and exact (no rows,
+# meter equal to the error's work): the work before it is the gap.
+--- FAIL: TestReadBudget_DiskReadsAdmitAsProduced (1.79s)
+    --- FAIL: TestReadBudget_DiskReadsAdmitAsProduced/badger (0.46s)
+        --- FAIL: TestReadBudget_DiskReadsAdmitAsProduced/badger/current (0.00s)
+            read_budget_admit_test.go:152: budget 1 visited 96 index entries (an unbudgeted read 96, 96 matches); want at most 6: the read built the whole candidate list before it admitted one
+        --- FAIL: TestReadBudget_DiskReadsAdmitAsProduced/badger/TxPin_membership (0.00s)
+            read_budget_admit_test.go:152: budget 1 visited 192 index entries (an unbudgeted read 288, 96 matches); want at most 6: the read built the whole candidate list before it admitted one
+        --- FAIL: TestReadBudget_DiskReadsAdmitAsProduced/badger/ValidAt_membership (0.00s)
+            read_budget_admit_test.go:152: budget 1 visited 192 index entries (an unbudgeted read 192, 96 matches); want at most 6: the read built the whole candidate list before it admitted one
+    --- FAIL: TestReadBudget_DiskReadsAdmitAsProduced/tiered (1.32s)
+        --- FAIL: TestReadBudget_DiskReadsAdmitAsProduced/tiered/current (0.00s)
+            read_budget_admit_test.go:152: budget 1 visited 32 index entries (an unbudgeted read 96, 96 matches); want at most 18: the read built the whole candidate list before it admitted one
+        --- FAIL: TestReadBudget_DiskReadsAdmitAsProduced/tiered/TxPin_membership (0.00s)
+            read_budget_admit_test.go:152: budget 1 visited 192 index entries (an unbudgeted read 288, 96 matches); want at most 18: the read built the whole candidate list before it admitted one
+        --- FAIL: TestReadBudget_DiskReadsAdmitAsProduced/tiered/ValidAt_membership (0.00s)
+            read_budget_admit_test.go:152: budget 1 visited 192 index entries (an unbudgeted read 192, 96 matches); want at most 18: the read built the whole candidate list before it admitted one
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core

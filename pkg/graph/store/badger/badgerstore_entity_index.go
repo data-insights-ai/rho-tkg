@@ -381,6 +381,7 @@ func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, 
 				if bytes.Equal(key, prev) {
 					continue // an older version of the key just decided
 				}
+				noteIndexEntryVisited()
 				prev = append(prev[:0], key...)
 				if item.IsDeletedOrExpired() || ov.overrides(key) {
 					continue
@@ -480,6 +481,7 @@ func (bs *Store) entityIndexRangeLockedWork(within, lo, hi []byte, fn func(key [
 	return nil
 }
 
+			noteIndexEntryVisited()
 // txMemberFold folds member entries: each entity once, with the lowest
 // transaction time of its entries (indexpkg.MergeFirstTx).
 type txMemberFold map[snowflake.ID]types.Instant
@@ -820,6 +822,7 @@ func emitTxMembers[ID cmp.Ordered](members []indexpkg.TxMember[ID], err error, f
 	}
 	for _, m := range members {
 		if !fn(m.ID, m.FirstTx) {
+			noteIndexEntryVisited()
 			return nil
 		}
 	}

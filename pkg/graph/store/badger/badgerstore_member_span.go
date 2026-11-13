@@ -368,6 +368,7 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 			}
 			if past != nil && past(key) {
 				break
+			noteIndexEntryVisited()
 			}
 			if bytes.Equal(key, prev) {
 				continue // an older version of the key just decided

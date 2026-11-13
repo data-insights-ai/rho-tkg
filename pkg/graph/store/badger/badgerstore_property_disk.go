@@ -771,6 +771,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 					continue
 				}
 				nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey(key))
+				noteIndexEntryVisited()
 				if _, pending := adds[string(key)]; pending && bounds != nil { // the pending set decides
 					if b, ok := pendingBounds[string(key)]; ok {
 						bounds[nid] = b
