@@ -202,6 +202,15 @@ func TestMemberSpan_SeekShapes(t *testing.T) {
 					t.Errorf("%s n=%d: %d members, %d steps; want %d and %d", shape, n, work.MembersEmitted, work.IteratorSteps, wantMembers, wantSteps)
 				}
 				t.Logf("%s n=%d window [1000,1010)@%d: iterator steps %d, seeks %d, disk entries %d, members %d", shape, n, pin, work.IteratorSteps, work.IteratorSeeks, work.DiskEntriesEmitted, work.MembersEmitted)
+				if shape == "old pin" {
+					// At the pin of the demotions (every widened row's last stamp) the
+					// recent axis stops at its first entry: the boundary is one step.
+					work, err = bs.DiagnoseRelPropertyTxMembersDuring(w.r, "seat", w.vk, 1000, 1010, 200, func(types.RelID, types.Instant) bool { return true })
+					must(t, "diagnose at 200", err)
+					if work.MembersEmitted != 2 || work.IteratorSteps != uint64(3+n) {
+						t.Errorf("old pin n=%d @200: %d members, %d steps; want 2 and %d", n, work.MembersEmitted, work.IteratorSteps, 3+n)
+					}
+				}
 			})
 		}
 	}
