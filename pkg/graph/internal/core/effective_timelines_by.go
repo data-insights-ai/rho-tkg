@@ -107,7 +107,13 @@ func (t *TempOps) RelEffectiveTimelinesByProperties(ctx context.Context, typeNam
 	// past the limit.
 	var segErr error
 	segSize := int(reflect.TypeFor[temporal.RelSegment]().Size()) // #nosec G115 -- a struct size
-	err = streamEntityTimelinesMetered(c, meter.Tally("RelEffectiveTimelinesByProperties"), ids, func(rd entityReads, id types.RelID) ([]temporal.RelSegment, error) {
+	// Under a bound on what is kept, one entity per read: its segments count
+	// before the next entity is decoded.
+	chunk := effScanChunk
+	if meter.BoundsOutput() {
+		chunk = 1
+	}
+	err = streamEntityTimelinesMetered(c, meter.Tally("RelEffectiveTimelinesByProperties"), chunk, ids, func(rd entityReads, id types.RelID) ([]temporal.RelSegment, error) {
 		if err := checkCtx(ctx); err != nil {
 			return nil, err
 		}

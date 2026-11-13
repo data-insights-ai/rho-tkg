@@ -139,8 +139,13 @@ func (c *Core) nodesByLabelAndPropertyFormKeys(tok uint16, key string, forms []a
 	if lookup || perForm {
 		// Under a read budget a key without an index is the store's own label
 		// scan: the label counts before it, the index's matches after.
-		scanned := false
-		if m, _ := opts.ReadMeter(); m != nil {
+		// A native store that counts its examined nodes itself
+		// (PropertyQueryCandidatesMeteredCapability) counts both, before it
+		// decodes a row.
+		_, storeCounts := c.store.(storepkg.PropertyQueryCandidatesMeteredCapability)
+		storeCounts = storeCounts && c.storeCountsReads
+		scanned := storeCounts
+		if m, _ := opts.ReadMeter(); m != nil && !storeCounts {
 			indexed, err := c.nodePropertyIndexed(tok, key)
 			if err != nil {
 				return nil, err

@@ -140,6 +140,19 @@ func (m *ReadMeter) BoundsShardOpens() bool {
 	return false
 }
 
+// BoundsOutput reports whether this meter or an outer one bounds what a read
+// keeps (Segments, BufferBytes): a read that decodes ahead of what it keeps
+// then reads one entity at a time, so a refusal stops it before the next
+// entity's decode.
+func (m *ReadMeter) BoundsOutput() bool {
+	for r := m; r != nil; r = r.parent {
+		if r.budget.Segments != 0 || r.budget.BufferBytes != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // Work returns the counters so far.
 func (m *ReadMeter) Work() ReadWork {
 	if m == nil {

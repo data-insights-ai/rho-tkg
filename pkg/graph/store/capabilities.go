@@ -101,6 +101,15 @@ type RelLendBatchMeteredCapability interface {
 	LendRelationshipsSortedMetered(ids []types.RelID, out []*types.Relationship, meter *ReadMeter) error
 }
 
+// PropertyQueryCandidatesMeteredCapability is OPTIONAL: the store's
+// NodesByLabelAndProperty and NodesByLabelAndPropertyKeys count, under the
+// read meter in opts, each node they examine (an index's matches, or a label
+// scan's every node) as a candidate before they filter or decode it, so the
+// graph counts none after (READBUDGET step 8). Native badger, sharded, tiered.
+type PropertyQueryCandidatesMeteredCapability interface {
+	CountsPropertyQueryCandidates()
+}
+
 // NodesByIDsMeteredCapability is OPTIONAL (RH list R2): GetNodesByIDs counting
 // in t the stored bytes of each row the store decodes, before the decode
 // (ReadWork.DecodedBytes), and returning the budget error instead of the rows

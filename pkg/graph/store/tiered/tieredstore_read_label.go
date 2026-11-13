@@ -174,6 +174,11 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 
 // --- Property indexes ---
 
+// CountsPropertyQueryCandidates marks store.PropertyQueryCandidatesMeteredCapability:
+// each shard counts its index's matches (badger) or its label (the fallback
+// scan) before it reads a row.
+func (ts *Store) CountsPropertyQueryCandidates() {}
+
 func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
 	return ts.nodesByLabelPropertyKeys(labelToken, key, opts, func() ([]string, error) {
 		return storeutil.ValueIndexKeys(value, "nodes by label and property")
@@ -356,6 +361,15 @@ func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken 
 	}
 	if shardPropertyDoor(have, has, elements) {
 		return store.NodesByLabelAndPropertyKeys(labelToken, key, match.Keys(), opts)
+	}
+	if m, _ := opts.ReadMeter(); m != nil { // the shard's label counts before the fallback scan reads a row
+		n, err := store.NodeCountByLabel(labelToken)
+		if err != nil {
+			return nil, err
+		}
+		if err := opts.AddCandidates(n); err != nil {
+			return nil, err
+		}
 	}
 	nodes, err := store.NodesByLabel(labelToken, QueryOpts{After: opts.After}.WithReadMeter(opts.ReadMeter())) // the fallback scan decodes under the same budget
 	if err != nil {

@@ -1,0 +1,15 @@
+READBUDGET step 8, TestReadBudget_ProbeMatrix before the fixes (13 Nov). The pending variant first evicted pending
+rows from the cache (a test error: a pending row lives only in the cache; it no longer evicts while rows are pending).
+
+1. The current property index door decoded every match before it counted candidates:
+   badger/flushed: property current over 8 matches, candidates 1: decoded 2400 bytes before the refusal (unlimited 2400 over 8 matches)
+   sharded/pending, sharded/flushed, tiered/flushed: the same.
+   Fix: badger counts an index's matches (and a fallback scan's label) before the temporal peek and the decode, tiered a
+   shard's label before its fallback scan (store.PropertyQueryCandidatesMeteredCapability); the core counts none after.
+
+2. RelEffectiveTimelinesByProperties decoded a chunk of 256 entities before the first segment counted:
+   badger/pending: rel timelines over 8 matches, segments 1: decoded 8240 bytes before the refusal (unlimited 8240 over 8 matches)
+   badger/flushed 10584 of 10584; sharded 4120/6464 of the same; tiered 174192 and 223704 of the same.
+   Fix: under a Segments or BufferBytes bound (ReadMeter.BoundsOutput) the stream reads one entity at a time.
+
+After: ok (8/32/128 matches x 6 doors x 5 counters x badger, sharded, tiered x pending, flushed).

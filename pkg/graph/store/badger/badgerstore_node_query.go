@@ -350,6 +350,9 @@ func uniqueNodeIDsPreserveOrder(ids []types.NodeID) []types.NodeID {
 
 // NodesByLabelAndProperty returns nodes with the label token and property value,
 // applying temporal/depth options before cursor pagination.
+// CountsPropertyQueryCandidates marks store.PropertyQueryCandidatesMeteredCapability.
+func (bs *Store) CountsPropertyQueryCandidates() {}
+
 func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
 	return bs.nodesByLabelPropertyKeys(labelToken, propKey, opts, func() ([]string, error) {
 		return storepkg.ValueIndexKeys(value, "nodes by label and property")
@@ -407,6 +410,9 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 				return nil, nil
 			}
 			return pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Node, error) {
+				if err := opts.AddCandidates(len(batch)); err != nil { // each match before its filter and decode
+					return nil, err
+				}
 				nids := bs.filterNodeIDsByTemporalPeek(storepkg.ToNodeIDs(batch), page)
 				return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, match, elements, nids, page)
 			})
@@ -422,6 +428,9 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 
 		storepkg.SortNodeIDs(nids)
 		nids = slices.Compact(nids)
+		if err := opts.AddCandidates(len(nids)); err != nil {
+			return nil, err
+		}
 
 		// Temporal pre-filter via Peek.
 		nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
@@ -443,7 +452,10 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 		return nil, nil
 	}
 
-	// Sorted scan for property matches.
+	// Sorted scan for property matches; the label's every node counts first.
+	if err := opts.AddCandidates(len(nids)); err != nil {
+		return nil, err
+	}
 	storepkg.SortNodeIDs(nids)
 	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, match, scanElements, nids, opts)
 }

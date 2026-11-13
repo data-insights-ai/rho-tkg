@@ -43,6 +43,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Segments are counted as each is kept, before it joins the answer (they were counted after the whole answer).
   A store that cannot count decodes or shard opens (a wrapper around a native store) refuses a budget bounding
   `DecodedBytes` or `ShardOpens` before any read (`Limit` `"unsupported"`); it read unbounded and reported 0.
+  The node property doors' index lookups count their matches before they decode them (they decoded every match
+  first), and `RelEffectiveTimelinesByProperties` under a `Segments` or `BufferBytes` bound reads one entity at a
+  time (it decoded up to 256 ahead of the refusal); `TestReadBudget_ProbeMatrix` checks every door at 8/32/128
+  matches under a budget of 1 on each counter, pending and flushed.
   `HasHistoryCtx` and `LatestStampsCtx` count tiered's shard opens (`store.NodeStampsMeteredCapability`); a
   temporal property read with no usable index refuses a `ShardOpens` budget on tiered before its uncounted fold.
   Not counted: `ValidEndAfter`, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays

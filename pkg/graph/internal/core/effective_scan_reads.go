@@ -301,7 +301,7 @@ func (r entityReads) relHistory(id types.RelID) ([]*types.Relationship, error) {
 // lock is released; emit returning false stops. A read error stops the scan
 // once the entities read before it are emitted.
 func streamEntityTimelines[ID any, S any](c *Core, ids []ID, read func(entityReads, ID) ([]S, error), emit func(ID, []S) bool) error {
-	return streamEntityTimelinesMetered(c, nil, ids, read, emit)
+	return streamEntityTimelinesMetered(c, nil, effScanChunk, ids, read, emit)
 }
 
 // streamEntityTimelinesMetered is streamEntityTimelines under a read budget
@@ -309,7 +309,7 @@ func streamEntityTimelines[ID any, S any](c *Core, ids []ID, read func(entityRea
 // decodes in tally, before the decode (store.ReadSnapshotMeterCapability), and
 // a read past the budget stops the scan with the *store.ReadBudgetError. A nil
 // tally, or a store without a meter-aware snapshot, counts nothing.
-func streamEntityTimelinesMetered[ID any, S any](c *Core, tally *storepkg.ReadTally, ids []ID, read func(entityReads, ID) ([]S, error), emit func(ID, []S) bool) error {
+func streamEntityTimelinesMetered[ID any, S any](c *Core, tally *storepkg.ReadTally, chunkSize int, ids []ID, read func(entityReads, ID) ([]S, error), emit func(ID, []S) bool) error {
 	rd := entityReads{c: c, scan: true}
 	if c.readSnapshots != nil {
 		rd.snap = c.readSnapshots.NewReadSnapshot()
@@ -324,9 +324,9 @@ func streamEntityTimelinesMetered[ID any, S any](c *Core, tally *storepkg.ReadTa
 		id   ID
 		segs []S
 	}
-	buf := make([]entry, 0, min(len(ids), effScanChunk))
-	for start := 0; start < len(ids); start += effScanChunk {
-		chunk := ids[start:min(start+effScanChunk, len(ids))]
+	buf := make([]entry, 0, min(len(ids), chunkSize))
+	for start := 0; start < len(ids); start += chunkSize {
+		chunk := ids[start:min(start+chunkSize, len(ids))]
 		buf = buf[:0]
 		var readErr error
 		if err := c.readUnderRLock(func() error {
