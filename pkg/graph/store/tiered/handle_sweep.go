@@ -247,6 +247,10 @@ func (ts *Store) installSweptLocked(es *EventShard, store *BadgerStore) {
 		return
 	}
 	es.setStoreLocked(ts, store)
+	// A scope opened between the close and now skipped the closed shard
+	// (forEachScopeShard): the reopened handle joins it, or its writes
+	// self-commit records the scope's discard cannot reach.
+	ts.handNewShardToLogScope(store, es.name)
 	ts.sweep.swaps.Add(1)
 }
 

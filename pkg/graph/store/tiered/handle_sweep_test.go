@@ -322,3 +322,56 @@ func awaitSweepStep[T any](t *testing.T, ch <-chan T, step string) {
 		t.Fatalf("the sweep never reached %q", step)
 	}
 }
+
+// TestHandleSweep_ScopeOpenedMidSwapReachesReopenedHandle: a change-log scope
+// opened while a warm swap is held between its close and its reopen (the
+// scope's fold skips the closed shard) is handed to the reopened handle, so a
+// diverted write to that shard is buffered and a DiscardLogScope drops it.
+// Catches an install that skips the scope hand-off: the write self-commits a
+// change-log record no rollback can reach.
+func TestHandleSweep_ScopeOpenedMidSwapReachesReopenedHandle(t *testing.T) {
+	t.Parallel()
+	ts, n, _ := handleSweepFixture(t, func(c *Config) { c.ChangeLog = true })
+	old := ts.HotShardForTest()
+	reached, release := make(chan struct{}), make(chan struct{})
+	unhold := sync.OnceFunc(func() { close(release) })
+	defer unhold()
+	var once sync.Once
+	ts.SetSweepFaultForTest(func(step string) error {
+		if step == "closed" {
+			once.Do(func() { close(reached) })
+			<-release
+		}
+		return nil
+	})
+	forceRotation(t, ts)
+	awaitSweepStep(t, reached, "closed")
+	if err := ts.BeginLogScope(); err != nil {
+		t.Fatal(err)
+	}
+	ts.SetLogDivert(true)
+	unhold()
+	ts.SweepHandlesForTest() // waits for the held swap's reopen
+	if swaps, _ := ts.HandleSweepCountsForTest(); swaps != 1 || old.HotArenaForTest() {
+		t.Fatalf("swaps %d (hot-size %v), want 1", swaps, old.HotArenaForTest())
+	}
+	before, err := ts.ChangeFeed(0, 0) // the gated shard's feed waits for the swap
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = n.SetProperty("late", "rolled-back")
+	if err := ts.ReplaceNode(n); err != nil {
+		t.Fatalf("diverted write to the reopened shard: %v", err)
+	}
+	ts.SetLogDivert(false)
+	if err := ts.DiscardLogScope(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := ts.ChangeFeed(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("change feed %d records after a discarded scope, want %d: the reopened handle missed the scope", len(after), len(before))
+	}
+}

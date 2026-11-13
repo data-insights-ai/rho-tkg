@@ -217,6 +217,7 @@ func (ts *Store) reopenMovedShard(es *EventShard) error {
 		return fmt.Errorf("graph: MoveShard: reopen shard %s: %w", es.name, err)
 	}
 	es.setStoreLocked(ts, store)
+	ts.handNewShardToLogScope(store, es.name) // a scope opened during the move skipped the closed shard
 	return nil
 }
 

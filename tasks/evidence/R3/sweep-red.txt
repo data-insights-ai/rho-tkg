@@ -32,3 +32,8 @@ Correction (late write, 13 Nov): go test -v -run 'TestHandleSweep_' with the swe
 FAIL
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.756s
 FAIL
+
+Finding 1 (scope opened mid-swap, 13 Nov): go test -run TestHandleSweep_ScopeOpenedMidSwap with installSweptLocked not handing the reopened handle to the open scope:
+--- FAIL: TestHandleSweep_ScopeOpenedMidSwapReachesReopenedHandle (0.30s)
+    handle_sweep_test.go:375: change feed 2 records after a discarded scope, want 1: the reopened handle missed the scope
+FAIL
