@@ -1,0 +1,422 @@
+2026/11/13 14:02:17 INFO graph: tiered store opened duration=120.262272ms reference=62.857829ms hot=34.174763ms warm=310ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+==================
+WARNING: DATA RACE
+Write at 0x00c000000510 by goroutine 9:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*EventShard).clearStoreLocked()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore_lifecycle.go:112 +0x35
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).closeForMove()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:135 +0x384
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).MoveShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:91 +0x8c5
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:74 +0xf97
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Previous read at 0x00c000000510 by goroutine 219:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).SetPropertyKeyRegistry()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1316 +0x1c8
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4.1()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:60 +0x484
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:68 +0x106
+
+Goroutine 9 (running) created at:
+  testing.(*T).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0xb12
+  testing.runTests.func1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2585 +0x84
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.runTests()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2583 +0x9e9
+  testing.(*M).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2443 +0xf4b
+  main.main()
+      _testmain.go:1710 +0x164
+
+Goroutine 219 (running) created at:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:55 +0xe92
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+==================
+==================
+WARNING: DATA RACE
+Write at 0x00c000000510 by goroutine 9:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*EventShard).setStoreLocked()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore_lifecycle.go:14 +0x464
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).reopenMovedShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:221 +0x45d
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).MoveShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:100 +0xa7c
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:74 +0xf97
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Previous read at 0x00c000000510 by goroutine 219:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).SetPropertyKeyRegistry()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1316 +0x1c8
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4.1()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:60 +0x484
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:68 +0x106
+
+Goroutine 9 (running) created at:
+  testing.(*T).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0xb12
+  testing.runTests.func1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2585 +0x84
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.runTests()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2583 +0x9e9
+  testing.(*M).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2443 +0xf4b
+  main.main()
+      _testmain.go:1710 +0x164
+
+Goroutine 219 (running) created at:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:55 +0xe92
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+==================
+==================
+WARNING: DATA RACE
+Write at 0x00c0087f5ac8 by goroutine 219:
+  sync/atomic.StoreInt64()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/runtime/race_amd64.s:237 +0xb
+  sync/atomic.StorePointer()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/runtime/atomic_pointer.go:92 +0x44
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).SetNameRegistries()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1258 +0x244
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4.1()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:59 +0x464
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:68 +0x106
+
+Previous write at 0x00c0087f5ac8 by goroutine 9:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/badger/badgerstore.go:1157 +0x1656
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.NewBadgerStore()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/aliases.go:84 +0x8b
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).newShardStore()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1232 +0x32
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).openShardStoreWithRecovery()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:2011 +0x82b
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).openBadgerStoreWithRecovery()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1965 +0x84
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).reopenMovedShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:211 +0x40
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).MoveShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:100 +0xa7c
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:74 +0xf97
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Goroutine 219 (running) created at:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:55 +0xe92
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Goroutine 9 (running) created at:
+  testing.(*T).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0xb12
+  testing.runTests.func1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2585 +0x84
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.runTests()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2583 +0x9e9
+  testing.(*M).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2443 +0xf4b
+  main.main()
+      _testmain.go:1710 +0x164
+==================
+==================
+WARNING: DATA RACE
+Write at 0x00c0087f5ab8 by goroutine 219:
+  sync/atomic.StoreInt64()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/runtime/race_amd64.s:237 +0xb
+  sync/atomic.StorePointer()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/runtime/atomic_pointer.go:92 +0x44
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).SetPropertyKeyRegistry()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1317 +0x1fb
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4.1()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:60 +0x484
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:68 +0x106
+
+Previous write at 0x00c0087f5ab8 by goroutine 9:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/badger/badgerstore.go:1157 +0x1656
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.NewBadgerStore()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/aliases.go:84 +0x8b
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).newShardStore()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1232 +0x32
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).openShardStoreWithRecovery()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:2011 +0x82b
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).openBadgerStoreWithRecovery()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1965 +0x84
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).reopenMovedShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:211 +0x40
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).MoveShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:100 +0xa7c
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:74 +0xf97
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Goroutine 219 (running) created at:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:55 +0xe92
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Goroutine 9 (running) created at:
+  testing.(*T).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0xb12
+  testing.runTests.func1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2585 +0x84
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.runTests()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2583 +0x9e9
+  testing.(*M).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2443 +0xf4b
+  main.main()
+      _testmain.go:1710 +0x164
+==================
+==================
+WARNING: DATA RACE
+Write at 0x00c0087f5ae8 by goroutine 219:
+  sync/atomic.CompareAndSwapInt32()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/runtime/race_amd64.s:361 +0xb
+  sync/atomic.CompareAndSwapInt32()
+      <autogenerated>:1 +0x18
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).SetPropertyKeyRegistry()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1317 +0x1fb
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4.1()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:60 +0x484
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:68 +0x106
+
+Previous write at 0x00c0087f5ae8 by goroutine 9:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/badger/badgerstore.go:1157 +0x1656
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.NewBadgerStore()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/aliases.go:84 +0x8b
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).newShardStore()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1232 +0x32
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).openShardStoreWithRecovery()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:2011 +0x82b
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).openBadgerStoreWithRecovery()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1965 +0x84
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).reopenMovedShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:211 +0x40
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).MoveShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:100 +0xa7c
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:74 +0xf97
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Goroutine 219 (running) created at:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:55 +0xe92
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Goroutine 9 (running) created at:
+  testing.(*T).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0xb12
+  testing.runTests.func1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2585 +0x84
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.runTests()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2583 +0x9e9
+  testing.(*M).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2443 +0xf4b
+  main.main()
+      _testmain.go:1710 +0x164
+==================
+==================
+WARNING: DATA RACE
+Write at 0x00c0087f5ae0 by goroutine 219:
+  sync/atomic.StoreInt64()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/runtime/race_amd64.s:237 +0xb
+  sync/atomic.StoreInt64()
+      <autogenerated>:1 +0x15
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).SetPropertyKeyRegistry()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1317 +0x1fb
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4.1()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:60 +0x484
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:68 +0x106
+
+Previous write at 0x00c0087f5ae0 by goroutine 9:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/badger/badgerstore.go:1157 +0x1656
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.NewBadgerStore()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/aliases.go:84 +0x8b
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).newShardStore()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1232 +0x32
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).openShardStoreWithRecovery()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:2011 +0x82b
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).openBadgerStoreWithRecovery()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1965 +0x84
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).reopenMovedShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:211 +0x40
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).MoveShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:100 +0xa7c
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:74 +0xf97
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Goroutine 219 (running) created at:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:55 +0xe92
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Goroutine 9 (running) created at:
+  testing.(*T).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0xb12
+  testing.runTests.func1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2585 +0x84
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.runTests()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2583 +0x9e9
+  testing.(*M).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2443 +0xf4b
+  main.main()
+      _testmain.go:1710 +0x164
+==================
+==================
+WARNING: DATA RACE
+Write at 0x00c000000510 by goroutine 9:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*EventShard).clearStoreLocked()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore_lifecycle.go:112 +0x35
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).closeForMove()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:135 +0x384
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).MoveShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:91 +0x8c5
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:74 +0xf97
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Previous read at 0x00c000000510 by goroutine 219:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).SetNameRegistries()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1257 +0x208
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4.1()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:59 +0x464
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:68 +0x106
+
+Goroutine 9 (running) created at:
+  testing.(*T).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0xb12
+  testing.runTests.func1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2585 +0x84
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.runTests()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2583 +0x9e9
+  testing.(*M).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2443 +0xf4b
+  main.main()
+      _testmain.go:1710 +0x164
+
+Goroutine 219 (running) created at:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:55 +0xe92
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+==================
+==================
+WARNING: DATA RACE
+Write at 0x00c000000510 by goroutine 9:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*EventShard).setStoreLocked()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore_lifecycle.go:14 +0x464
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).reopenMovedShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:221 +0x45d
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).MoveShard()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/shard_move.go:100 +0xa7c
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:74 +0xf97
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+
+Previous read at 0x00c000000510 by goroutine 219:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.(*Store).SetNameRegistries()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/tieredstore.go:1257 +0x208
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4.1()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:59 +0x464
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle.func4()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:68 +0x106
+
+Goroutine 9 (running) created at:
+  testing.(*T).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0xb12
+  testing.runTests.func1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2585 +0x84
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.runTests()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2583 +0x9e9
+  testing.(*M).Run()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2443 +0xf4b
+  main.main()
+      _testmain.go:1710 +0x164
+
+Goroutine 219 (running) created at:
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.TestRegistrySetDuringHandleSwapReachesNewHandle()
+      /home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ae5f1265485ae95a2/pkg/graph/store/tiered/registry_swap_test.go:55 +0xe92
+  testing.tRunner()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x38
+==================
+--- FAIL: TestRegistrySetDuringHandleSwapReachesNewHandle (1.63s)
+    testing.go:1712: race detected during execution of test
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.711s
+FAIL

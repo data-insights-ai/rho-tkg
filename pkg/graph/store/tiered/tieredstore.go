@@ -1252,13 +1252,24 @@ func (ts *Store) SetNameRegistries(labels *registrypkg.LabelRegistry, relTypes *
 	if ts.refShard != nil {
 		ts.refShard.SetNameRegistries(labels, relTypes)
 	}
+	// es.store under its shardMu, as ValueDictionaryStats reads it (a move
+	// or the sweep swaps the handle); a shard being moved, or opened after
+	// the snapshot, takes the registry stored above when its handle opens.
 	ts.mu.RLock()
+	shards := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
-		if es != nil && es.store != nil {
-			es.store.SetNameRegistries(labels, relTypes)
+		if es != nil {
+			shards = append(shards, es)
 		}
 	}
 	ts.mu.RUnlock()
+	for _, es := range shards {
+		es.shardMu.Lock()
+		if es.store != nil && !es.moving.Load() {
+			es.store.SetNameRegistries(labels, relTypes)
+		}
+		es.shardMu.Unlock()
+	}
 	if arc := ts.refArchive.Load(); arc != nil {
 		arc.SetNameRegistries(labels, relTypes)
 	}
@@ -1311,13 +1322,24 @@ func (ts *Store) SetPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) {
 	if ts.refShard != nil {
 		ts.refShard.SetPropertyKeyRegistry(reg)
 	}
+	// es.store under its shardMu, as ValueDictionaryStats reads it (a move
+	// or the sweep swaps the handle); a shard being moved, or opened after
+	// the snapshot, takes the registry stored above when its handle opens.
 	ts.mu.RLock()
+	shards := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
-		if es != nil && es.store != nil {
-			es.store.SetPropertyKeyRegistry(reg)
+		if es != nil {
+			shards = append(shards, es)
 		}
 	}
 	ts.mu.RUnlock()
+	for _, es := range shards {
+		es.shardMu.Lock()
+		if es.store != nil && !es.moving.Load() {
+			es.store.SetPropertyKeyRegistry(reg)
+		}
+		es.shardMu.Unlock()
+	}
 	if arc := ts.refArchive.Load(); arc != nil {
 		arc.SetPropertyKeyRegistry(reg)
 	}
