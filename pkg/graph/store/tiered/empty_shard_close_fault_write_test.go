@@ -196,6 +196,9 @@ func TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite(t *testing.T) {
 			for name, bs := range map[string]*BadgerStore{
 				"reference": f.ts.refShard, "2026-07-23": eventShardStoreLocked(f.ts, "2026-07-23"), "2026-07-27": f.ts.hotShard.store,
 			} {
+				if bs == nil {
+					continue // closed (the handle sweep closes a demoted shard): nothing buffered
+				}
 				if n := bs.PendingWriteCount(); n != 0 {
 					t.Fatalf("shard %s buffers %d writes of the refused write", name, n)
 				}

@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -267,8 +268,10 @@ func TestHandleSweep_FailedSwapOfPromotedShardFaultsStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.release()
-	if err := <-rotated; err != nil {
-		t.Fatalf("promotion: %v", err)
+	// The rotation waited for the swap, whose failed open fenced the store: the
+	// write that rotated is refused with that fault (R1's contract).
+	if err := <-rotated; err == nil || !strings.Contains(err.Error(), "reopen promoted shard") {
+		t.Fatalf("promotion = %v, want the store fault of the failed reopen", err)
 	}
 	r.ts.SweepHandlesForTest()
 	if r.day20.Tier() != TierHot || catalogTier(t, r.ts, r.day20.name) != TierHot {
