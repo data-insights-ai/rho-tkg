@@ -9,10 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **WARMMEM, the handle sweep** (R3): a tiered store reopens the old hot shard writable at `WarmMemTableSize` after its
-  rotation and closes a demoted shard's handle while it still carries the hot arena, on a goroutine that `New` starts
-  and `Close` waits for, kicked by each rotation and the idle tick. A swap takes the shard's move gate and waits for
-  its pins outside `ts.mu`: only that shard's readers and writers wait, 47-61 ms at 5,000 rows a shard and 150-193 ms
-  at 50,000; the rotation does not. A warm-size handle (a late write's) is left to `IdleTimeout`; a shard is skipped
+  rotation and closes a demoted shard's handle, whatever its size, unless a cold read or late write opened it, on a
+  goroutine that `New` starts and `Close` waits for, kicked by each rotation and the idle tick. A swap takes the
+  shard's move gate and waits for its pins outside `ts.mu`, at most 1 s (a longer pin makes it give up, retried on the
+  next kick): only that shard's readers and writers wait, 47-61 ms at 5,000 rows a shard and 150-193 ms at 50,000; the
+  rotation does not. A handle a cold read or late write opened is left to `IdleTimeout`; a reopened handle joins a
+  change-log scope opened during the swap (as one reopened after `MoveShard` now does); a shard is skipped
   while a change-log scope is open; in memory nothing changes. Day 6 of the measure test (64 MB hot, 8 MB warm, three
   demoted shards): 245 MB of live heap instead of 610, 273 instead of 639 at 50,000 rows a day; without
   `WarmMemTableSize` 350 instead of 610 (`tasks/evidence/R3/measure.txt` section F).

@@ -12,10 +12,10 @@ import (
 // arena of about 1.3 x MemTableSize) and a demotion leaves a cold shard on the
 // handle it had while warm. The sweep, a goroutine off the write path, swaps
 // those handles: a warm shard's hot-size handle is closed and reopened
-// writable at WarmMemTableSize, a demoted shard still on its hot-size handle
-// has it closed (its next read opens it read-only, a late write upgrades it);
-// a warm-size handle, a late write's or one the sweep reopened before the
-// demotion, is left to IdleTimeout. A swap is a move to the
+// writable at WarmMemTableSize, a demoted shard still on the handle it had
+// while hot or warm (either size) has it closed (its next read opens it
+// read-only, a late write upgrades it); a handle a cold read or late write
+// opened (coldOpened) is left to IdleTimeout. A swap is a move to the
 // same volume without the copy: it takes the shard's move gate (MoveShard),
 // waits for the pins to drain, closes, and reopens, holding only the shard's
 // shardMu and never ts.mu, so writers to other shards never wait and writers
@@ -51,7 +51,7 @@ type sweepAction int
 const (
 	sweepNone   sweepAction = iota
 	sweepReopen             // warm on a hot-size handle: reopen at WarmMemTableSize
-	sweepClose              // cold on a hot-size handle (the demoted hot chain): close
+	sweepClose              // cold on the handle it had while hot or warm (the demoted chain): close
 )
 
 // startHandleSweep starts the sweep goroutine; Close stops it (closeCh) and
@@ -145,10 +145,11 @@ func (ts *Store) sweepActionLocked(es *EventShard) sweepAction {
 			return sweepReopen
 		}
 	case TierCold:
-		// Only the demoted hot chain: a handle a late write opened (warm
-		// size) is left to IdleTimeout, or a shard with steady late writes
+		// Only the demoted chain (the handle the shard had while hot or
+		// warm, whatever its size): a handle a cold read or late write
+		// opened is left to IdleTimeout, or a shard with steady late writes
 		// would reopen on every kick.
-		if es.hotArena {
+		if !es.coldOpened {
 			return sweepClose
 		}
 	}

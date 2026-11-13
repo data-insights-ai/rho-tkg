@@ -263,7 +263,7 @@ ADR-0012.
   trusts a claim without its row) closes at once and is sealed no-rows, unless a pin, a move or an open legacy log
   scope holds it (RH02EMPTY). That cleanup runs on the write path after the rotation committed and fails no write: a
   failed probe keeps the handle, a failed close sets the background-error fence as a failed idle close does. A
-  demoted shard still on the handle it opened hot has it closed by the handle sweep (below); every other demoted shard
+  demoted shard still on the handle it had while hot or warm has it closed by the handle sweep (below); every other demoted shard
   keeps its handle until the idle sweep closes it after `IdleTimeout` unused, counted from its last cold access (a demoted shard no cold read touched closes at the next
   sweep; hot and warm reads stamp no access). A read reopens a cold shard read-only (COLDRO: 1.3 ms against 27.6 ms writable), a write or a
   checkout that may write reopens it writable (replacing a read-only handle once its readers finish), and at most
@@ -278,10 +278,12 @@ ADR-0012.
   demand 86 to 13 MB of allocation).
 - **The handle sweep** (R3, `handle_sweep.go`) shrinks the handles a rotation leaves: a goroutine started by `New`,
   kicked at the end of each rotation and on the idle tick, reopens the old hot shard, now warm, writable at
-  `WarmMemTableSize` (when set), and closes a demoted shard's handle while it still carries the hot arena
-  (`EventShard.hotArena`, set only by a hot open); a warm-size handle (its own reopen, a late write's) is left to
-  `IdleTimeout`, so a shard with steady late writes is not reopened on every kick. A swap is `MoveShard` without the
-  copy: it takes the shard's move gate, waits for its pins to drain outside `ts.mu`, closes, reopens, and re-applies
+  `WarmMemTableSize` (when set; `EventShard.hotArena`, set only by a hot open, marks the handles owed a reopen), and
+  closes a cold shard's handle unless a cold read or late write opened it (`EventShard.coldOpened`): the demoted chain
+  is closed whatever its size, a cold read's or late write's handle is left to `IdleTimeout`, so a shard with steady
+  late writes is not reopened on every kick. A swap is `MoveShard` without the copy: it takes the shard's move gate,
+  waits for its pins to drain outside `ts.mu` (at most 1 s: a longer pin makes it give up and drop the gate, the shard
+  retried on the next kick), closes, reopens (joining a change-log scope opened meanwhile), and re-applies
   the store's registries as the gate drops; writers to other shards never wait, the swapping shard's wait one swap
   (47-61 ms at 5,000 rows a shard, 150-193 ms at 50,000), and the rotation itself does not wait. It skips a shard
   while a change-log scope is open, stops at `Close` (which waits for it) and does nothing in memory. Day 6 of the

@@ -127,10 +127,10 @@ func demotedSweepFixture(t *testing.T) (*Store, *types.Node, *EventShard) {
 }
 
 // TestHandleSweep_LateWriteHandleStaysOpen: a cold shard a late write opened
-// writable (at the warm size, hotArena false) keeps its handle across a sweep;
+// writable (at the warm size, coldOpened) keeps its handle across a sweep;
 // IdleTimeout closes it, as before R3, so a shard with steady late writes is
 // not reopened on every kick. Catches a sweep that closes every writable cold
-// handle (the hotArena check dropped).
+// handle (the coldOpened check dropped).
 func TestHandleSweep_LateWriteHandleStaysOpen(t *testing.T) {
 	t.Parallel()
 	ts, n, day20 := demotedSweepFixture(t)
@@ -417,4 +417,59 @@ func TestHandleSweep_LongPinAbandonsSwap(t *testing.T) {
 		t.Fatalf("after the checkin: swaps %d (hot-size %v), want 1", swaps, es.HotArenaForTest())
 	}
 	lateWrite(t, ts, n, "after-pin")
+}
+
+// TestHandleSweep_DemotedWarmSizeHandleCloses: a shard the sweep reopened at
+// WarmMemTableSize while warm, then demoted to cold by a rotation, has that
+// warm-size handle closed at the next pass: the sweep closes every demoted
+// handle a cold read or late write did not open, whatever its size. Catches a
+// close rule keyed on the hot-size arena (the demoted warm-size handle stays
+// open until IdleTimeout).
+func TestHandleSweep_DemotedWarmSizeHandleCloses(t *testing.T) {
+	t.Parallel()
+	clock := &tierClock{}
+	clock.set(julDay(20, 8))
+	cfg := tierClockCfg(t.TempDir(), clock)
+	cfg.WarmMemTableSize = 8 << 20
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	tok, _ := reg.GetOrCreate("Signal")
+	id, ok, err := ts.MintNodeIDAt(tok, ms(julDay(20, 3)), true)
+	if err != nil || !ok {
+		t.Fatalf("MintNodeIDAt: %v %v", ok, err)
+	}
+	if err := ts.PutNode(types.NewNode(id, tok, nil)); err != nil {
+		t.Fatal(err)
+	}
+	day20 := ts.HotShardForTest()
+	clock.set(julDay(21, 8))
+	if err := ts.CheckRotationForTest(); err != nil {
+		t.Fatal(err)
+	}
+	ts.SweepHandlesForTest()
+	if day20.Tier() != TierWarm || day20.HotArenaForTest() {
+		t.Fatalf("day 20 is %s (hot-size %v), want warm on a warm-size handle", day20.Tier(), day20.HotArenaForTest())
+	}
+	clock.set(julDay(23, 8))
+	if err := ts.CheckRotationForTest(); err != nil {
+		t.Fatal(err)
+	}
+	if day20.Tier() != TierCold {
+		t.Fatalf("day 20 is %s, want cold", day20.Tier())
+	}
+	ts.SweepHandlesForTest()
+	if s, _ := day20.StoreStateForTest(); s != nil {
+		t.Fatal("the demoted shard's warm-size handle is still open after the sweep")
+	}
+	if _, closes := ts.HandleSweepCountsForTest(); closes != 1 {
+		t.Fatalf("sweep closed %d demoted handles, want 1", closes)
+	}
+	if _, err := ts.GetNode(id); err != nil {
+		t.Fatalf("read of the demoted shard: %v", err)
+	}
 }

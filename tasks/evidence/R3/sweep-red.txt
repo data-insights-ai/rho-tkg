@@ -42,3 +42,8 @@ Finding 2 (drain with no deadline, 13 Nov): go test -run TestHandleSweep_LongPin
 --- FAIL: TestHandleSweep_LongPinAbandonsSwap (30.30s)
     handle_sweep_test.go:406: the sweep never reached "abandoned"
 FAIL
+
+Finding 4 (close rule, 13 Nov): go test -run TestHandleSweep_DemotedWarmSize with the sweep closing only a cold shard on its hot-size handle (hotArena):
+--- FAIL: TestHandleSweep_DemotedWarmSizeHandleCloses (0.64s)
+    handle_sweep_test.go:467: the demoted shard's warm-size handle is still open after the sweep
+FAIL

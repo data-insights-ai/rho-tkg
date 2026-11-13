@@ -305,6 +305,7 @@ type EventShard struct {
 	moveFailedAt      atomic.Int64     // when the idle sweep's last move of the shard failed (unix ns; 0 = never): it retries the others first
 	coldCounted       bool             // shardMu-protected: this shard's open store is counted in Store.openColdShards
 	hotArena          bool             // shardMu-protected: store was opened at MemTableSize as a hot handle; the handle sweep reopens it at WarmMemTableSize once warm (handle_sweep.go)
+	coldOpened        bool             // shardMu-protected: store was opened by a cold read or late write (openColdLocked, openColdReadOnlyLocked); the handle sweep closes a cold shard's other handles, the demoted chain (handle_sweep.go)
 
 	// counts is what this shard held when it was last closed, so counting
 	// questions can be answered without reopening it. See shardCounts.

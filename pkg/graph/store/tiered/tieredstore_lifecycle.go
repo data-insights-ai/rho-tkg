@@ -12,7 +12,8 @@ import (
 // holds es.shardMu.
 func (es *EventShard) setStoreLocked(ts *Store, store *BadgerStore) {
 	es.store = store
-	es.hotArena = false // every install but a hot open is warm-size or read-only
+	es.hotArena = false   // every install but a hot open is warm-size or read-only
+	es.coldOpened = false // every install but a cold open (the callers set it after)
 	es.countColdStoreLocked(ts)
 	es.noteHandle()
 }
@@ -49,6 +50,7 @@ func (es *EventShard) openColdLocked(ts *Store) error {
 	}
 	es.coldOpens.Add(1)
 	es.setStoreLocked(ts, store)
+	es.coldOpened = true
 	ts.syncColdShardIndexes(store, es.name)
 	return nil
 }
@@ -72,6 +74,7 @@ func (es *EventShard) openColdReadOnlyLocked(ts *Store) error {
 	}
 	es.coldOpens.Add(1)
 	es.setStoreLocked(ts, store)
+	es.coldOpened = true
 	es.storeRO = true
 	es.noteHandle()
 	return nil
@@ -114,6 +117,7 @@ func (es *EventShard) openColdWritableLocked(ts *Store, own int64) error {
 func (es *EventShard) clearStoreLocked(ts *Store) {
 	es.store = nil
 	es.hotArena = false
+	es.coldOpened = false
 	es.storeRO = false
 	es.readTransientOpen = false
 	es.noteHandle()
