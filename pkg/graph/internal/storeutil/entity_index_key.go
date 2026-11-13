@@ -49,6 +49,17 @@ import (
 //     replacing row's start), last the newest stamp of the row. A reader folds
 //     them per entity (index.DiskMember) and a windowed lookup answers the
 //     members whose envelope meets the window, as the sidecar does.
+//   - EntityIndexRelTime / EntityIndexNodeTime (RELDISKWIN option B, the same
+//     format marker and built marker): the span entries again in a second
+//     order, so a windowed lookup seeks to its window. Tail: axis(1) | t1(8) |
+//     from(8) | entityID(8) | txFrom(8) | version(4), all big-endian, value the
+//     span entry's 32 bytes. Axis EntityIndexAxisLate holds one entry per row,
+//     t1 the order-preserving bits of lateTo (late-end order); axis
+//     EntityIndexAxisRecent holds an entry only for a widened row (allTo >
+//     lateTo: an open row an update demoted, a tombstone whose delete wrote
+//     ValidTo), t1 the complement of last's order-preserving bits (newest
+//     first). The membership sidecar keeps the same two views per value
+//     (index.PropertyTxMembers.MembersDuring: late, recent).
 //
 // payload is 0x0A's numeric payload (PropIdxDomainNumeric, 18 bytes, ordered
 // by magnitude) or, for a string, bool or temporal value, PropIdxDomainRaw
@@ -73,7 +84,89 @@ const (
 	// entries that carry a row's valid-time envelope.
 	EntityIndexRelSpan  byte = 0x05
 	EntityIndexNodeSpan byte = 0x06
+	// EntityIndexRelTime and EntityIndexNodeTime (RELDISKWIN option B) are the
+	// span entries in time order: the windowed lookup's seek.
+	EntityIndexRelTime  byte = 0x07
+	EntityIndexNodeTime byte = 0x08
 )
+
+// The axes of a time-ordered entry (EntityIndexRelTime, EntityIndexNodeTime).
+const (
+	// EntityIndexAxisLate orders a row's entry by its lateTo, ascending.
+	EntityIndexAxisLate byte = 0x01
+	// EntityIndexAxisRecent orders a widened row's entry by its last stamp,
+	// descending.
+	EntityIndexAxisRecent byte = 0x02
+)
+
+// EntityIndexTimeTailLen is the tail of a time-ordered entry after its value
+// prefix: axis, t1, from, entity ID, transaction time, version.
+const EntityIndexTimeTailLen = 1 + 8 + 8 + 8 + 8 + 4
+
+// EntityIndexTimeKind returns the time-ordered kind of a span kind (or of its
+// member kind before RELDISKWIN); any other kind as it is.
+func EntityIndexTimeKind(kind byte) byte {
+	switch kind {
+	case EntityIndexRelSpan, EntityIndexRelMember:
+		return EntityIndexRelTime
+	case EntityIndexNodeSpan, EntityIndexNodeMember:
+		return EntityIndexNodeTime
+	}
+	return kind
+}
+
+// EntityIndexIsTime reports whether kind is a time-ordered kind.
+func EntityIndexIsTime(kind byte) bool {
+	return kind == EntityIndexRelTime || kind == EntityIndexNodeTime
+}
+
+// EntityIndexTimeT1 returns an entry's t1 on axis: lateTo's order-preserving
+// bits on the late axis, the complement of last's on the recent axis.
+func EntityIndexTimeT1(axis byte, at int64) uint64 {
+	if axis == EntityIndexAxisRecent {
+		return ^orderPreservingInt64Bits(at)
+	}
+	return orderPreservingInt64Bits(at)
+}
+
+// AppendEntityIndexTimeSeek appends axis and t1 of at to a time kind's value
+// prefix: the first key of the axis at or after at (the late axis), or at or
+// before it (the recent axis).
+func AppendEntityIndexTimeSeek(prefix []byte, axis byte, at int64) []byte {
+	prefix = append(prefix, axis)
+	return binary.BigEndian.AppendUint64(prefix, EntityIndexTimeT1(axis, at))
+}
+
+// AppendEntityIndexTimeEntry appends a time-ordered entry's tail to its value
+// prefix: axis, t1 of at (lateTo or last, by axis), from, id, txFrom, version.
+func AppendEntityIndexTimeEntry(prefix []byte, axis byte, at, from int64, id snowflake.ID, txFrom int64, version uint32) []byte {
+	prefix = AppendEntityIndexTimeSeek(prefix, axis, at)
+	prefix = binary.BigEndian.AppendUint64(prefix, uint64(from))   // #nosec G115 -- int64 bits as uint64
+	prefix = binary.BigEndian.AppendUint64(prefix, uint64(id))     // #nosec G115 -- int64 bits as uint64
+	prefix = binary.BigEndian.AppendUint64(prefix, uint64(txFrom)) // #nosec G115 -- int64 bits as uint64
+	return binary.BigEndian.AppendUint32(prefix, version)
+}
+
+// EntityIndexTimeEntryOf splits a time-ordered entry: its axis, the instant t1
+// encodes (lateTo or last), from, entity ID, transaction time and version;
+// ok=false when key is too short to be one.
+func EntityIndexTimeEntryOf(key []byte) (axis byte, at, from int64, id snowflake.ID, txFrom int64, version uint32, ok bool) {
+	if len(key) < EntityIndexHeadLen+1+EntityIndexTimeTailLen {
+		return 0, 0, 0, 0, 0, 0, false
+	}
+	t := key[len(key)-EntityIndexTimeTailLen:]
+	axis = t[0]
+	bits := binary.BigEndian.Uint64(t[1:])
+	if axis == EntityIndexAxisRecent {
+		bits = ^bits
+	}
+	at = orderPreservingInt64Value(bits)
+	from = int64(binary.BigEndian.Uint64(t[9:]))       // #nosec G115 -- the key's instant bits back to int64
+	id = snowflake.ID(binary.BigEndian.Uint64(t[17:])) // #nosec G115 -- the key's ID bits back to int64
+	txFrom = int64(binary.BigEndian.Uint64(t[25:]))    // #nosec G115 -- the key's instant bits back to int64
+	version = binary.BigEndian.Uint32(t[33:])
+	return axis, at, from, id, txFrom, version, true
+}
 
 // The value of a definition's built marker: the layout of its member entries.
 const (
@@ -103,7 +196,7 @@ func EntityIndexIsSpan(kind byte) bool {
 // EntityIndexIsNodeMember reports whether kind is a node member kind (either
 // layout).
 func EntityIndexIsNodeMember(kind byte) bool {
-	return kind == EntityIndexNodeMember || kind == EntityIndexNodeSpan
+	return kind == EntityIndexNodeMember || kind == EntityIndexNodeSpan || kind == EntityIndexNodeTime
 }
 
 // EntityIndexSpanValueLen is the length of a span entry's value.
@@ -164,6 +257,8 @@ func EntityIndexTailLen(kind byte) int {
 		return 8
 	case EntityIndexRelSpan, EntityIndexNodeSpan:
 		return 20
+	case EntityIndexRelTime, EntityIndexNodeTime:
+		return EntityIndexTimeTailLen
 	}
 	return 16
 }
@@ -243,13 +338,19 @@ func AppendEntityIndexEntry(prefix []byte, kind byte, id snowflake.ID, txFrom in
 
 // EntityIndexEntryOf splits an entry of kind into its value prefix, entity ID
 // and transaction time (0 for the current kind; a span kind's version is the
-// last 4 bytes of the key); ok=false when key is too short to be one.
+// last 4 bytes of the key; a time kind's prefix is its value prefix, without
+// the axis: EntityIndexTimeEntryOf has the rest); ok=false when key is too
+// short to be one.
 func EntityIndexEntryOf(key []byte, kind byte) (prefix []byte, id snowflake.ID, txFrom int64, ok bool) {
 	tail := EntityIndexTailLen(kind)
 	if len(key) < EntityIndexHeadLen+1+tail {
 		return nil, 0, 0, false
 	}
 	end := len(key) - tail
+	if EntityIndexIsTime(kind) {
+		_, _, _, id, txFrom, _, ok = EntityIndexTimeEntryOf(key)
+		return key[:end], id, txFrom, ok
+	}
 	id = snowflake.ID(binary.BigEndian.Uint64(key[end:])) // #nosec G115 -- the key's ID bits back to int64
 	if tail >= 16 {
 		txFrom = int64(binary.BigEndian.Uint64(key[end+8:])) // #nosec G115 -- the key's instant bits back to int64
