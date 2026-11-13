@@ -13,5 +13,6 @@ Development loop (René, 13 Nov, the same in rho, sigma and ai-soc): fix a gap i
 sigma, then ai-soc). Each step: a few new tests for the new code, then 1-2 old tests (`go test -run 'TestA|TestB' ./pkg/x`,
 `make old`). Go's test cache reruns only what changed, so never `-count=1`; only a release runs everything. Unfinished
 code is normal until the next release, but keep main building: sigma and ai-soc build on this checkout
-(`make dev-pin RHO=..`). Finished work goes to local main and, once `make gate` is green, to GitHub's `dev`
-(`git push origin main:dev`, no tag). `origin/main` and a tag only when René calls a release.
+(`make dev-pin RHO=..`). This checkout stays on `dev`, the working branch; `main` is the released state and
+equals `origin/main`. A green `make gate` pushes `dev` to GitHub (no tag); `make release`, only when René calls one,
+merges `dev` into `main` and tags it.

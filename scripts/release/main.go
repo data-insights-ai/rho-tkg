@@ -7,11 +7,12 @@
 //	go run ./scripts/release kind
 //	go run ./scripts/release test
 //
-// A release: preconditions (on main, clean, the remote's main an ancestor of
+// A release: preconditions (on dev, clean, the remote's main an ancestor of
 // HEAD, a push dry-run passes, the next tag absent), the diff's kind is at
 // most the requested one (kind.go), docs/CHANGELOG.md's newest section is the
 // next version and [Unreleased] is empty, `make gate` (a major: scripts/gate-major.sh), git tag -a
-// (message: that section), git push --atomic of main and the tag. The tag is
+// (message: that section), git push --atomic of dev as main and dev, and the
+// tag; local main then moves to the tag (dev is merged into main). The tag is
 // the version: it edits no file. -dry-run: everything but the tag and the
 // push. After a patch or minor push it starts scripts/race.sh detached (log
 // .git/race.out): -race runs after the tag, nobody waits on it, and a red
@@ -207,8 +208,8 @@ func release(k int, dry bool) {
 	fmt.Printf("release: %s -> %s (%s)\n", tag, next, kindNames[k])
 	check("preconditions", func() error {
 		var errs []string
-		if b, _ := git("branch", "--show-current"); b != "main" {
-			errs = append(errs, "not on main")
+		if b, _ := git("branch", "--show-current"); b != "dev" {
+			errs = append(errs, "not on dev (the working branch; main is the released state)")
 		}
 		if s, _ := git("status", "--porcelain"); s != "" {
 			errs = append(errs, "tree not clean")
@@ -217,7 +218,7 @@ func release(k int, dry bool) {
 			errs = append(errs, "git fetch: "+out)
 		} else if _, err := git("merge-base", "--is-ancestor", remote()+"/main", "HEAD"); err != nil {
 			errs = append(errs, remote()+"/main is not an ancestor of HEAD")
-		} else if out, err := gitNet("push", "--dry-run", "-q", remote(), "main"); err != nil {
+		} else if out, err := gitNet("push", "--dry-run", "-q", remote(), "HEAD:main"); err != nil {
 			errs = append(errs, "cannot push to "+remote()+" (checked before the gate): "+out)
 		}
 		if _, err := git("rev-parse", "-q", "--verify", "refs/tags/"+next); err == nil {
@@ -282,11 +283,14 @@ func release(k int, dry bool) {
 		return nil
 	})
 	check("push", func() error {
-		if out, err := gitNet("push", "--atomic", remote(), "main", "refs/tags/"+next); err != nil {
+		if out, err := gitNet("push", "--atomic", remote(), "HEAD:main", "HEAD:dev", "refs/tags/"+next); err != nil {
 			if _, derr := git("tag", "-d", next); derr == nil {
 				return fmt.Errorf("%s\nthe local tag %s is deleted again: fix, run again", out, next)
 			}
 			return fmt.Errorf("%s\nrecover: git tag -d %s, fix, run again", out, next)
+		}
+		if out, err := git("branch", "-f", "main", "HEAD"); err != nil {
+			return fmt.Errorf("pushed, but local main did not move to %s: %s", next, out)
 		}
 		return nil
 	})

@@ -28,7 +28,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Commit with explicit paths, never `git commit -a`: a docs commit swept unreviewed step code onto main (2026-10-23).
 - Work order (René 2026-10-23): (1) the request's `tasks/todo.md` item first, before any other action; (2) the red test;
   (3) the implementation; (4) the tests green; (5) the review; (6) when finished, the item leaves `tasks/todo.md` and its
-  `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` and the HANDOVER brief get one commit on main per item end (René 2026-10-31: 298 of 545 commits in 7 days
+  `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` and the HANDOVER brief get one commit on dev per item end (René 2026-10-31: 298 of 545 commits in 7 days
   were todo commits), in the item's branch so it reaches main with the item; a fact with no branch to ride on goes on
   main in `rho-tkg`, the only checkout (the second worktree was removed, René 2026-10-31);
   `go test ./internal/docscheck/` (`TestLedger`) before every such commit. A todo- or HANDOVER-only commit only at a
@@ -130,7 +130,7 @@ GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed 
 ### Release checklist
 
 Release style of all three repos (René, 4 Nov, via ai-soc): a release is gate, tag, push. One gate per release, chosen by
-the kind of release, run once; it runs every step to the end and lists every red, and a red is fixed on main before the
+the kind of release, run once; it runs every step to the end and lists every red, and a red is fixed on dev before the
 gate runs again.
 
 1. Clean up before (René, 4 Nov: "before a release, always clean up"): finished items' scratch, logs and probe stores go
@@ -141,12 +141,12 @@ gate runs again.
    `tasks/todo.md`): `## [X.Y.Z] - date` above the entries, README updated for what the release changes, shipped rows
    leave `tasks/todo.md`. Not pushed alone: `make release-…` pushes it with the tag. The tag is the version: no other doc names it
    (`git tag --contains <commit>` answers which release has a change).
-4. `make release` (a major: `go run ./scripts/release major`; `scripts/release`, Go, edits no file): preconditions (main, clean,
+4. `make release` (a major: `go run ./scripts/release major`; `scripts/release`, Go, edits no file): preconditions (on `dev`, clean,
    the remote's main an ancestor of HEAD, the tag absent, a push dry-run passes), the diff's kind at most the one asked for (a major: a removed or
    changed public name: a signature's types, type parameters, an embedded field, alias or defined type, a const's type,
    parameter names aside; or the module path's /vN; else a patch, a new exported name, a store format marker, a badger
    minor bump or a raised go directive included), the CHANGELOG's newest section is the next version and [Unreleased] is
-   empty, the gate of that kind, `git tag -a --cleanup=verbatim` (message: that section), `git push --atomic` of main and the tag. A major
+   empty, the gate of that kind, `git tag -a --cleanup=verbatim` (message: that section), `git push --atomic` of dev as main and dev and the tag; local main moves to the tag. A major
    needs go.mod's module path, and every import, moved to /v(N+1) before it runs (the script refuses it otherwise). A red step stops it; the fix goes on main and the release
    runs again. A bad tag is never moved: the fix is the next tag, and `retract` in go.mod.
 5. Tell sigma-tkgd and ai-soc in one line: tag, gate, seconds.
@@ -289,7 +289,7 @@ Index (`→` names where the rule lives now):
 77. → 78
 78. Red break-the-code test first; mutation sweep for crash safety → digest (Code); `tasks/evidence/FLUSHPART/mutations.txt`
 79. Every non-major release is a patch, format markers included (René, 13 Nov) → digest (Process); `scripts/release` (kind.go)
-80. One todo and HANDOVER commit on main per item end → digest (Process); `TestLedger` (`internal/docscheck`)
+80. One todo and HANDOVER commit on dev per item end → digest (Process); `TestLedger` (`internal/docscheck`)
 81. Act, do not offer → digest (Process)
 82. → Release checklist (the release script's gate decides; a red tag CI is fixed by the next tag)
 83. → 78
