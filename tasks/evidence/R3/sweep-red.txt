@@ -116,3 +116,13 @@ Part 1 after the fix (13 Nov 2026): the pending set and the two-round pass; the 
 runs 3 free and 3 pinned shards (1.4 s; the red above ran 5 and 5). Mutation, caught 4 of 4 runs (0 or 1 of the 3 free shards
 swapped while 3 are pinned): every visit patient (the pass waits for a pinned shard where it meets it). Visits: 1 shard looked
 at among 10, 100 and 1000 retained, 0 for a pass with nothing owed (was retained + 1).
+
+Fable review of the follow-ups, finding 1 (and EMPTYBYID review finding 1), red before the fix:
+  go test -run 'TestEmptyByID_WriteToAMarkedOpenHandleWakesTheShard|TestColdOpen_LateWriteJoinsOpenLogScope' ./pkg/graph/store/tiered
+--- FAIL: TestColdOpen_LateWriteJoinsOpenLogScope (0.32s)
+    cold_open_scope_test.go:50: change feed 1 records after a discarded scope, want 0: the cold-opened shard missed the scope
+--- FAIL: TestEmptyByID_WriteToAMarkedOpenHandleWakesTheShard (0.33s)
+    empty_by_id_test.go:608: the write left the shard marked empty
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.677s
+FAIL

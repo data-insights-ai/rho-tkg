@@ -582,3 +582,32 @@ func TestEmptyByID_MarkSurvivesAReopenAndAWriteClearsItForGood(t *testing.T) {
 		t.Errorf("GetNode(late) after the second restart = %v", err)
 	}
 }
+
+// A marked shard that gets a writable handle without the cold open (the
+// retention drop's rollback reopens it with setStoreLocked) is still woken by
+// the next write, so the row is not hidden behind the mark (EMPTYBYID review,
+// finding 1).
+func TestEmptyByID_WriteToAMarkedOpenHandleWakesTheShard(t *testing.T) {
+	f := newEmptyByID(t)
+	f.es.shardMu.Lock()
+	store, err := f.ts.openShardStoreWithRecovery(f.es.path, true)
+	if err == nil {
+		f.es.setStoreLocked(f.ts, store)
+	}
+	f.es.shardMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.es.noRows.Load() {
+		t.Fatal("setup: the reopened shard lost its mark")
+	}
+	if err := f.ts.PutNode(types.NewNode(f.lateNode, mintSignalTok, nil)); err != nil {
+		t.Fatalf("late PutNode: %v", err)
+	}
+	if f.es.noRows.Load() {
+		t.Fatal("the write left the shard marked empty")
+	}
+	if n, err := f.ts.GetNode(f.lateNode); err != nil || n.ID() != f.lateNode {
+		t.Fatalf("GetNode(late) after the write = %v: the mark hid the row", err)
+	}
+}

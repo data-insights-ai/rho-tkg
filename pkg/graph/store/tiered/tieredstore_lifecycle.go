@@ -52,6 +52,9 @@ func (es *EventShard) openColdLocked(ts *Store) error {
 	es.setStoreLocked(ts, store)
 	es.coldOpened = true
 	ts.syncColdShardIndexes(store, es.name)
+	// A change-log scope opened while the shard was closed skipped it: the
+	// writable handle joins it, as a reopened swap or move does.
+	ts.handNewShardToLogScope(store, es.name)
 	return nil
 }
 
@@ -181,6 +184,11 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 					return nil, err
 				}
 			}
+			if err := es.wakeNoRowsLocked(ts); err != nil {
+				es.activeReqs.Add(-1)
+				es.shardMu.Unlock()
+				return nil, err
+			}
 			es.readTransientOpen = false
 			store := es.store
 			es.shardMu.Unlock()
@@ -206,6 +214,12 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 			es.shardMu.Unlock()
 			return nil, err
 		}
+	}
+	// A handle installed past the cold open (the retention drop's rollback)
+	// may still carry the no-rows mark: a write wakes it first (EMPTYBYID).
+	if err := es.wakeNoRowsLocked(ts); err != nil {
+		es.shardMu.Unlock()
+		return nil, err
 	}
 	es.readTransientOpen = false
 	es.activeReqs.Add(1)

@@ -54,6 +54,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `badger.Store.EnsureLogScope`, so the shard is in the scope once, and a caller's second `BeginLogScope` on an open
   scope is still refused (tiered, `tasks/evidence/R3/sweep-red.txt`).
 
+- **Cold open inside a change-log scope** (R3 sweep review): a closed cold shard a late write opens while a scope is
+  open joins the scope, so its record is buffered and `DiscardLogScope` drops it; it self-committed before (the sweep
+  closing every demoted handle made the path common). A write to a shard proven empty wakes its no-rows mark whatever
+  handle it finds (a retention drop's rollback reopens one past the cold open), so the row is not hidden from by-ID
+  reads (EMPTYBYID review). Red: `tasks/evidence/R3/sweep-red.txt`; tests: `TestColdOpen_LateWriteJoinsOpenLogScope`,
+  `TestEmptyByID_WriteToAMarkedOpenHandleWakesTheShard`.
+
 - **R1** (ai-soc's RH list, the cleanup failure contract at the public writer): the empty-shard demotion of RH02EMPTY
   detaches a handle whose close failed and fences the store, and its 4.105.10 entry said the cleanup fails no write; the
   write that triggers the rotation does fail, with the fence's error. The contract is now explicit and tested through
