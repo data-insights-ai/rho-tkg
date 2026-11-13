@@ -768,3 +768,22 @@ func (a *AdminOps) IsReferenceLabel(label string) (bool, error) {
 	}
 	return ts.IsReferenceLabel(label), nil
 }
+
+// IsReferenceType reports whether relType is listed in tiered.Config.RefTypes
+// (Sigma RH-S7): one of it between two reference nodes lives on the reference
+// shard whatever its mint instant. On every other store (memory, badger,
+// sharded) true, as IsReferenceLabel: there is no time shard. ErrGraphClosed
+// on a closed graph, ErrEmptyName for a blank type.
+func (a *AdminOps) IsReferenceType(relType string) (bool, error) {
+	if err := a.c.checkOpen(); err != nil {
+		return false, err
+	}
+	if isBlankName(relType) {
+		return false, ErrEmptyName
+	}
+	ts, ok := a.c.store.(*tiered.Store)
+	if !ok {
+		return true, nil
+	}
+	return ts.IsReferenceType(relType), nil
+}

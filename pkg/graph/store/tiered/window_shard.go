@@ -125,8 +125,9 @@ func (ts *Store) ensureNodeWindowShards(nodes ...*types.Node) error {
 }
 
 // ensureRelWindowShards makes the window shards that relationship creates
-// placed by mint (RelsByMint: both endpoints on the reference shard) land on.
-// Every other relationship lives with its start node.
+// placed by mint (RelsByMint: both endpoints on the reference shard, a type
+// not in Config.RefTypes) land on. Every other relationship lives with its
+// start node.
 func (ts *Store) ensureRelWindowShards(rels ...*types.Relationship) error {
 	if !ts.calendar || !ts.relsByMint.enabled {
 		return nil
@@ -137,7 +138,7 @@ func (ts *Store) ensureRelWindowShards(rels ...*types.Relationship) error {
 	}
 	var byMint []snowflake.ID
 	for _, r := range rels {
-		if ref.HasNodeID(r.StartNodeID().SnowflakeID()) && ref.HasNodeID(r.EndNodeID().SnowflakeID()) {
+		if !ts.refTyped(r) && ref.HasNodeID(r.StartNodeID().SnowflakeID()) && ref.HasNodeID(r.EndNodeID().SnowflakeID()) {
 			byMint = append(byMint, r.ID().SnowflakeID())
 		}
 	}

@@ -67,6 +67,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if ok, err := api.IsReferenceLabel("Ref"); err != nil || !ok || ops.refLabel != "Ref" {
 		t.Fatalf("IsReferenceLabel through the API: %v %v, spy got %q; want true, nil, \"Ref\"", ok, err, ops.refLabel)
 	}
+	if ok, err := api.IsReferenceType("ABOUT"); err != nil || !ok || ops.refType != "ABOUT" {
+		t.Fatalf("IsReferenceType through the API: %v %v, spy got %q; want true, nil, \"ABOUT\"", ok, err, ops.refType)
+	}
 
 	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.purgeCalls != 1 || ops.relPurgeCalls != 1 ||
 		ops.resolveExactEraseCalls != 1 || ops.exactEraseCalls != 1 || ops.segmentCalls != 2 {
@@ -87,6 +90,12 @@ type adminOpsSpy struct {
 	storedDepth            store.ShardDepth
 	untimedMode            UntimedValidStart
 	refLabel               string
+	refType                string
+}
+
+func (s *adminOpsSpy) IsReferenceType(relType string) (bool, error) {
+	s.refType = relType
+	return true, nil
 }
 
 func (s *adminOpsSpy) IsReferenceLabel(label string) (bool, error) {

@@ -78,10 +78,24 @@ func (ts *Store) RelsByMintFallbacks() uint64 {
 	return ts.relsByMint.fallbacks.Load()
 }
 
-// relsByMintCandidate reports whether a new rel with endpoints on start and
-// end goes by mint under this open's option.
-func (ts *Store) relsByMintCandidate(start, end *BadgerStore) bool {
-	return ts.relsByMint.enabled && start == ts.refShard && end == ts.refShard
+// relsByMintCandidate reports whether a new rel r with endpoints on start and
+// end goes by mint under this open's option. A Config.RefTypes type does not:
+// it stays on the reference shard (Sigma RH-S7).
+func (ts *Store) relsByMintCandidate(r *types.Relationship, start, end *BadgerStore) bool {
+	return ts.relsByMint.enabled && start == ts.refShard && end == ts.refShard && !ts.refTyped(r)
+}
+
+// refTyped reports whether r's type is listed in Config.RefTypes. The type is
+// named by the graph's registry; before one is installed no type is listed.
+func (ts *Store) refTyped(r *types.Relationship) bool {
+	if len(ts.refTypes) == 0 {
+		return false
+	}
+	reg := ts.relTypeNames.Load()
+	if reg == nil {
+		return false
+	}
+	return ts.IsReferenceType(reg.Resolve(r.TypeToken().Value()))
 }
 
 // relMintPlacement returns the event shard a new rel r with endpoints on
@@ -89,7 +103,7 @@ func (ts *Store) relsByMintCandidate(start, end *BadgerStore) bool {
 // mint shard is ok=false, counted when count is set (the write, not its
 // preflight).
 func (ts *Store) relMintPlacement(r *types.Relationship, start, end *BadgerStore, count bool) (es *EventShard, ok bool) {
-	if !ts.relsByMintCandidate(start, end) {
+	if !ts.relsByMintCandidate(r, start, end) {
 		return nil, false
 	}
 	es = ts.timestampToEventShardEntry(r.ID().SnowflakeID())

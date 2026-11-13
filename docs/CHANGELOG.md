@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Reference relationship types (Sigma RH-S7)**: `tiered.Config.RefTypes` lists relationship types that are
+  reference-class. One of them between two reference nodes is placed on the reference shard whatever its ID's mint
+  instant, as without `RelsByMint`, so its create (also batched or with a generated ID), a new version and its reads
+  by ID open no event shard and, with `MintAtValidFrom`, make none; its rows are the legacy same-shard rows. Other
+  types, and a listed type with an event endpoint, place as before. `g.Admin().IsReferenceType(relType)` reports it
+  (true on every non-tiered backend, as `IsReferenceLabel`); `tiered.Store.IsReferenceType` is the classifier. A
+  blank entry is refused at `New`. An edge placed by mint before its type was listed stays on its mint shard and is
+  read there; adjacency reads of a reference node still fan out over the event shards `QueryOpts.Depth` selects.
+  Red: the create of a `DERIVED_IN` edge minted on a cold day placed it on that day's shard
+  (`tasks/evidence/REFTYPES/red.txt`); tests: `TestRefTypes_StayOnReferenceShard`, `TestRefTypes_ConfigRejectsBlank`,
+  the admin API spy.
 - **R2 budgeted doors for Sigma, group C, step 3**: `Temporal().RelsLowestAnsweredPinsCtx`, the twin of
   `NodesLowestAnsweredPinsCtx`. Both count one candidate and 8 buffer bytes per ID before any answer and, when a
   retention watermark is set, the rows the retention gate reads (a node's or relationship's current row, a deleted

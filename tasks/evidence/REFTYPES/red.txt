@@ -1,0 +1,6 @@
+2026/11/14 00:11:27 INFO graph: tiered store opened duration=77.218645ms reference=29.28667ms hot=26.232985ms warm=300ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestRefTypes_StayOnReferenceShard (0.41s)
+    ref_types_test.go:77: reference-typed relationship 569534054400031744 not on the reference shard
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.412s
+FAIL

@@ -256,7 +256,9 @@ ADR-0012.
   time. A relationship lives with its start node; when its end node is on another shard, its incoming leg is
   split-written there (the incoming leg first for event→reference, the entity first otherwise).
 - **`RelsByMint`** puts a relationship between reference nodes on its mint shard instead, so reference-heavy graphs
-  do not pile every edge into the reference shard.
+  do not pile every edge into the reference shard. A type listed in `RefTypes` stays on the reference shard: a
+  late write of an old fact's edge (Sigma's `DERIVED_IN`, `ABOUT`, minted at the fact's valid-from) would otherwise
+  open, writable, one cold shard per fact day. An edge placed by mint before its type was listed stays where it is.
 - **Rotation** opens the next hot shard, saves the catalog, and only then flips the old hot shard to warm.
   Shards older than `ColdAfter` become cold. A newly demoted disk shard that `HoldsNoRows` proves empty (no entity,
   history, index or change-log key, pending writes included; uniqueness claims alone count as empty, since no reader

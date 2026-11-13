@@ -104,6 +104,7 @@ type Ops interface {
 	UntimedValidStart() (mode UntimedValidStart, complete bool, err error)
 	ValidAxis() (types.ValidAxis, error)
 	IsReferenceLabel(label string) (bool, error)
+	IsReferenceType(relType string) (bool, error)
 }
 
 // API is the admin sub-API accessor.
@@ -198,6 +199,21 @@ func (a *API) IsReferenceLabel(label string) (bool, error) {
 		return false, err
 	}
 	return ops.IsReferenceLabel(label)
+}
+
+// IsReferenceType reports whether relType is reference-class: on tiered,
+// listed in tiered.Config.RefTypes, so one of it between two reference nodes
+// lives on the reference shard whatever its mint instant and opens no event
+// shard on create, version or read by ID. On a single-shard store (memory,
+// badger) and on sharded it is true for every type: there is no time shard.
+// ErrEmptyName for a blank type, ErrGraphClosed on a closed graph. See
+// core.AdminOps.
+func (a *API) IsReferenceType(relType string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.IsReferenceType(relType)
 }
 
 // DecomposeNodeID extracts time/node/step from a node ID.

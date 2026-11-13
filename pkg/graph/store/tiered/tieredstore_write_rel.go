@@ -554,7 +554,7 @@ func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreat
 			return err
 		}
 
-		if startShard != endShard || ts.relsByMintCandidate(startShard, endShard) {
+		if startShard != endShard || ts.relsByMintCandidate(r, startShard, endShard) {
 			// Cross-shard (and rels-by-mint) writes run after partitioning
 			// through putRelationshipLocked. Release these classification
 			// pins now; the helper pins endpoints again for the actual write.
@@ -624,7 +624,7 @@ func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreat
 		startCheckin()
 		endCheckin()
 
-		if startShard == endShard && !ts.relsByMintCandidate(startShard, endShard) {
+		if startShard == endShard && !ts.relsByMintCandidate(r, startShard, endShard) {
 			continue
 		}
 		if err := ts.putRelationshipLocked(r, relCreateGenerated); err != nil {

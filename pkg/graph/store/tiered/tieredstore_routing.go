@@ -42,6 +42,14 @@ func (ts *Store) IsReferenceLabel(name string) bool {
 	return ts.ontology.ClassifyByName(name) == ClassReference
 }
 
+// IsReferenceType reports whether the relationship type NAME is listed in
+// Config.RefTypes: one of it between two reference nodes lives on the
+// reference shard whatever its mint instant.
+func (ts *Store) IsReferenceType(name string) bool {
+	_, ok := ts.refTypes[name]
+	return ok
+}
+
 // shardForNodeID resolves which shard owns a node ID. It preserves the legacy
 // unpinned return contract for tests; production paths use shardForNodeIDChecked.
 func (ts *Store) shardForNodeID(id types.NodeID) (*BadgerStore, error) {

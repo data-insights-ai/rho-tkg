@@ -49,6 +49,12 @@ type Config struct {
 	// RefLabels are entity labels classified as reference (long-lived).
 	// All other labels default to event classification.
 	RefLabels []string
+	// RefTypes are relationship types classified as reference: one of them
+	// between two reference nodes is placed on the reference shard, as
+	// without RelsByMint, whatever its ID's mint instant, so its create, its
+	// versions and its reads by ID open no event shard (Sigma RH-S7). Other
+	// types, and every type with an event endpoint, place as before.
+	RefTypes []string
 	// ShardWindow is the time window for event shards. Default: 1 week.
 	ShardWindow time.Duration
 	// ShardWindowLocation is the zone whose calendar days a daily or weekly
@@ -432,6 +438,7 @@ type Store struct {
 	shardLoc         *time.Location      // Config.ShardWindowLocation, time.Local when nil
 	clock            func() time.Time    // Config.Clock, time.Now when nil (ADR-0013)
 	calendar         bool                // Config.MintAtValidFrom: calendar windows, rotation by the clock
+	refTypes         map[string]struct{} // Config.RefTypes; read-only after New
 	vtMu             sync.Mutex          // guards vtWindows
 	vtWindows        map[int64]*vtWindow // valid-time mint cursors by window start (ms)
 	vtLeaseSaves     atomic.Int64        // durable valid-time lease writes (VTLEASE gate)
@@ -643,6 +650,13 @@ func New(cfg Config) (*Store, error) {
 			return nil, fmt.Errorf("graph: Config.RefLabels[%d] must not be empty", i)
 		}
 	}
+	refTypes := make(map[string]struct{}, len(cfg.RefTypes))
+	for i, name := range cfg.RefTypes {
+		if strings.TrimSpace(name) == "" {
+			return nil, fmt.Errorf("graph: Config.RefTypes[%d] must not be empty", i)
+		}
+		refTypes[name] = struct{}{}
+	}
 
 	window := cfg.ShardWindow
 	if window == 0 {
@@ -698,6 +712,7 @@ func New(cfg Config) (*Store, error) {
 	ts := &Store{
 		clock:                 clock,
 		calendar:              cfg.MintAtValidFrom,
+		refTypes:              refTypes,
 		vdPlan:                vdPlan,
 		eventShards:           make(map[string]*EventShard),
 		ontology:              NewOntologyMapping(cfg.RefLabels),
