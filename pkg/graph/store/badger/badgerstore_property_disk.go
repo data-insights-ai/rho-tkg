@@ -6,6 +6,7 @@ package badger
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -571,15 +573,6 @@ func (bs *Store) distinctPropertyKeyTokensLocked() map[uint16]struct{} {
 	return tokens
 }
 
-// propertyIndexDiskKeysCandidatesLocked resolves propertyKey and its value
-// keys to the (unsorted, possibly repeated) on-disk candidate node IDs in one
-// pending-write overlay pass and one iterator, seeking once per numeric
-// magnitude (its typed keys share a seek prefix) or raw value (ROWPROBE: a
-// lookup per value key cost a read txn, an iterator and an overlay pass
-// each). Set and delete resolve PER KEY over the persisted keyspace (lesson
-// 57): a node moved from one listed value to another keeps the new entry. A
-// property key with no token or a non-indexable value matches nothing, the
-// RAM path's silent-empty contract. Caller holds idxMu (R or W).
 // nodeRowIDBounds returns the smallest and the largest ID of a node row in
 // txn's snapshot (0, 0 when there is none): one seek from each end of the
 // node keyspace.
@@ -622,7 +615,28 @@ var propertyDiskSeekTestHook func()
 // equality lookup on the on-disk property index.
 var propertyDiskIterOptsTestHook func(badgerv4.IteratorOptions)
 
+// propertyIndexDiskKeysCandidatesLocked resolves propertyKey and its value
+// keys to the (unsorted, possibly repeated) on-disk candidate node IDs in one
+// pending-write overlay pass and one iterator, seeking once per numeric
+// magnitude (its typed keys share a seek prefix) or raw value (ROWPROBE: a
+// lookup per value key cost a read txn, an iterator and an overlay pass
+// each). Set and delete resolve PER KEY over the persisted keyspace (lesson
+// 57): a node moved from one listed value to another keeps the new entry. A
+// property key with no token or a non-indexable value matches nothing, the
+// RAM path's silent-empty contract. Caller holds idxMu (R or W).
 func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant) ([]types.NodeID, error) {
+	return bs.propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey, valueKeys, bounds, nil)
+}
+
+// propertyIndexDiskKeysCandidatesAdmitLocked is propertyIndexDiskKeysCandidatesLocked
+// with a read budget's candidate admission (R2). admit (nil: none) is called
+// with 1 for each candidate before the walk collects it, and its error stops
+// the walk there, so a read past its limit has visited the entries up to the
+// one that passed it, not the whole key. An entry a later walk of the same
+// lookup visits again counts again, and so does a node listed under two of the
+// looked-up values (an Elements index). A pending set that no disk entry
+// matched counts too, before it is added.
+func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant, admit func(n int) error) ([]types.NodeID, error) {
 	propertyDiskLookups.Add(1)
 	tok, ok := bs.propKeyTokenFor(propertyKey)
 	if !ok {
@@ -757,6 +771,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 				if propertyDiskVisitTestHook != nil {
 					propertyDiskVisitTestHook()
 				}
+				noteIndexEntryVisited()
 				if to != nil && bytes.Compare(key, to) > 0 {
 					break
 				}
@@ -771,7 +786,6 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 					continue
 				}
 				nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey(key))
-				noteIndexEntryVisited()
 				if _, pending := adds[string(key)]; pending && bounds != nil { // the pending set decides
 					if b, ok := pendingBounds[string(key)]; ok {
 						bounds[nid] = b
@@ -787,12 +801,20 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 					}
 				}
 				delete(adds, string(key))
+				if admit != nil {
+					if err := admit(1); err != nil {
+						return err // the candidate that passes the limit: nothing after it is walked
+					}
+				}
 				nids = append(nids, nid)
 			}
 		}
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, storecontract.ErrReadBudget) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("graph: property index equality scan: %w", err)
 	}
 	if revisit {
@@ -800,6 +822,11 @@ func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, value
 		nids = slices.Compact(nids)
 	}
 	for k, nid := range adds {
+		if admit != nil {
+			if err := admit(1); err != nil {
+				return nil, err
+			}
+		}
 		nids = append(nids, nid)
 		if b, ok := pendingBounds[k]; ok {
 			bounds[nid] = b

@@ -417,7 +417,14 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 				return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, match, elements, nids, page)
 			})
 		}
-		nids, dErr := bs.propertyIndexDiskKeysCandidatesLocked(propKey, targetKeys, nil)
+		// Each candidate is admitted as the walk produces it (R2): a read past
+		// its Candidates limit stops at the entry that passes it, before it
+		// collects, sorts or compacts the rest of the key.
+		var admit func(int) error
+		if m, _ := opts.ReadMeter(); m != nil {
+			admit = opts.AddCandidates
+		}
+		nids, dErr := bs.propertyIndexDiskKeysCandidatesAdmitLocked(propKey, targetKeys, nil, admit)
 		bs.idxMu.RUnlock()
 		if dErr != nil {
 			return nil, dErr
@@ -428,9 +435,6 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 
 		storepkg.SortNodeIDs(nids)
 		nids = slices.Compact(nids)
-		if err := opts.AddCandidates(len(nids)); err != nil {
-			return nil, err
-		}
 
 		// Temporal pre-filter via Peek.
 		nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
