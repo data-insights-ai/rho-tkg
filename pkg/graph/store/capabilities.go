@@ -308,6 +308,17 @@ type TransactionTimeQueryCapability interface {
 	RelsAsOf(txTime types.Instant) ([]*types.Relationship, error)
 }
 
+// TransactionTimeQueryMeteredCapability is OPTIONAL (RH list R2): NodeAsOf
+// and RelAsOf under a read budget. The answer is the plain door's at the same
+// pin; every row the store decodes to reach it counts its stored bytes in t
+// before the decode, and a read past the budget returns the *ReadBudgetError
+// instead of the row. A nil t is the plain door. Badger and memory (which
+// decodes nothing) offer it.
+type TransactionTimeQueryMeteredCapability interface {
+	NodeAsOfMetered(id types.NodeID, txTime types.Instant, t *ReadTally) (*types.Node, error)
+	RelAsOfMetered(id types.RelID, txTime types.Instant, t *ReadTally) (*types.Relationship, error)
+}
+
 // NodeAsOfWalkCapability is OPTIONAL: one node's as-of read for a store that
 // has no TransactionTimeQueryCapability, walking the node's versions newest
 // first when it can. ok false says this node needs the whole chain (its rows may

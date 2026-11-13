@@ -600,6 +600,18 @@ func selectAsOfScan(a types.ValidAxis, scan func(consider func(version uint64, v
 // NodeAsOf returns the node version visible at txTime without materializing the
 // node's full history. See the file header and selectAsOfScan for the rule.
 func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, error) {
+	return bs.NodeAsOfMetered(nid, txTime, nil)
+}
+
+var _ storecontract.TransactionTimeQueryMeteredCapability = (*Store)(nil)
+
+// NodeAsOfMetered is NodeAsOf under a read budget (RH list R2,
+// store.TransactionTimeQueryMeteredCapability): the current row read on a
+// cache miss and the winning history row (with a delta's anchor) count their
+// stored bytes in t before they are decoded, and a read past the budget
+// returns the *store.ReadBudgetError instead of the row. The rule and the
+// answer are NodeAsOf's; a nil t is NodeAsOf.
+func (bs *Store) NodeAsOfMetered(nid types.NodeID, txTime types.Instant, t *storecontract.ReadTally) (*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -612,7 +624,7 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 	// Read it BEFORE the history scan: a with-history door publishes the moved
 	// row to history before it changes the cache (publishMoveLocked), so this
 	// order sees the row at least once (backlog 32).
-	current, err := bs.GetNode(nid)
+	current, err := bs.asOfCurrentNode(nid, t)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
 	}
@@ -624,7 +636,33 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 	}
 	has, err := bs.HasNodeHistory(nid)
 	above := bs.liveHistoryAbove(&bs.histNodePresence, id, has, err, func(v uint64) []byte { return storepkg.HistNodeKey(id, v) })
-	return bs.nodeAsOfPick(id, current, txTime, scan, above)
+	return bs.nodeAsOfPickTallied(id, current, txTime, scan, above, t)
+}
+
+// asOfCurrentNode is the current-row read of a point as-of door: GetNode, or
+// under a tally the metered lend (counted before its decode on a cache miss)
+// copied as GetNode copies.
+func (bs *Store) asOfCurrentNode(nid types.NodeID, t *storecontract.ReadTally) (*types.Node, error) {
+	if t == nil {
+		return bs.GetNode(nid)
+	}
+	n, err := bs.prefetchNodeTallied(nid, t)
+	if err != nil || n == nil {
+		return nil, err
+	}
+	return n.DeepCopy(), nil
+}
+
+// asOfCurrentRel mirrors asOfCurrentNode for relationships.
+func (bs *Store) asOfCurrentRel(rid types.RelID, t *storecontract.ReadTally) (*types.Relationship, error) {
+	if t == nil {
+		return bs.GetRelationship(rid)
+	}
+	r, err := bs.prefetchRelTallied(rid, t)
+	if err != nil || r == nil {
+		return nil, err
+	}
+	return r.DeepCopy(), nil
 }
 
 // afterAsOfCurrentRead runs asOfAfterCurrentTestHook (tests only) between a
@@ -640,6 +678,12 @@ func (bs *Store) afterAsOfCurrentRead() {
 // winning history row, fully reconstructed (its anchor point-read if it is a
 // delta).
 func (bs *Store) nodeAsOfPick(id snowflake.ID, current *types.Node, txTime types.Instant, scan func(consider func(version uint64, val []byte) (bool, error)) error, above func(v uint64) (bool, error)) (*types.Node, error) {
+	return bs.nodeAsOfPickTallied(id, current, txTime, scan, above, nil)
+}
+
+// nodeAsOfPickTallied is nodeAsOfPick counting the winning history row's
+// stored bytes (and a delta's anchor) in t before its decode.
+func (bs *Store) nodeAsOfPickTallied(id snowflake.ID, current *types.Node, txTime types.Instant, scan func(consider func(version uint64, val []byte) (bool, error)) error, above func(v uint64) (bool, error), t *storecontract.ReadTally) (*types.Node, error) {
 	var cur *types.TemporalMetadata
 	var curVersion uint32
 	if current != nil {
@@ -655,11 +699,16 @@ func (bs *Store) nodeAsOfPick(id snowflake.ID, current *types.Node, txTime types
 	case pick.fromCurrent:
 		return current, nil
 	}
-	return bs.decodeHistoryNodeValue(id, pick.version, pick.raw)
+	return bs.decodeHistoryNodeValueTallied(id, pick.version, pick.raw, t)
 }
 
 // RelAsOf returns the relationship version visible at txTime. Mirrors NodeAsOf.
 func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relationship, error) {
+	return bs.RelAsOfMetered(rid, txTime, nil)
+}
+
+// RelAsOfMetered is NodeAsOfMetered for relationships.
+func (bs *Store) RelAsOfMetered(rid types.RelID, txTime types.Instant, t *storecontract.ReadTally) (*types.Relationship, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -667,7 +716,7 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 		return nil, err
 	}
 
-	current, err := bs.GetRelationship(rid)
+	current, err := bs.asOfCurrentRel(rid, t)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
 	}
@@ -679,11 +728,16 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	}
 	has, err := bs.HasRelHistory(rid)
 	above := bs.liveHistoryAbove(&bs.histRelPresence, id, has, err, func(v uint64) []byte { return storepkg.HistRelKey(id, v) })
-	return bs.relAsOfPick(id, current, txTime, scan, above)
+	return bs.relAsOfPickTallied(id, current, txTime, scan, above, t)
 }
 
 // relAsOfPick mirrors nodeAsOfPick for relationships.
 func (bs *Store) relAsOfPick(id snowflake.ID, current *types.Relationship, txTime types.Instant, scan func(consider func(version uint64, val []byte) (bool, error)) error, above func(v uint64) (bool, error)) (*types.Relationship, error) {
+	return bs.relAsOfPickTallied(id, current, txTime, scan, above, nil)
+}
+
+// relAsOfPickTallied mirrors nodeAsOfPickTallied for relationships.
+func (bs *Store) relAsOfPickTallied(id snowflake.ID, current *types.Relationship, txTime types.Instant, scan func(consider func(version uint64, val []byte) (bool, error)) error, above func(v uint64) (bool, error), t *storecontract.ReadTally) (*types.Relationship, error) {
 	var cur *types.TemporalMetadata
 	var curVersion uint32
 	if current != nil {
@@ -699,7 +753,7 @@ func (bs *Store) relAsOfPick(id snowflake.ID, current *types.Relationship, txTim
 	case pick.fromCurrent:
 		return current, nil
 	}
-	return bs.decodeHistoryRelValue(id, pick.version, pick.raw)
+	return bs.decodeHistoryRelValueTallied(id, pick.version, pick.raw, t)
 }
 
 // nodeAsOfInTxn is NodeAsOf's body reading through an ALREADY-OPEN read

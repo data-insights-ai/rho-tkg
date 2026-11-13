@@ -1536,6 +1536,13 @@ func (c *Core) normalizeTxAtOnlyOpts(opts storepkg.QueryOpts) storepkg.QueryOpts
 // matches. Returns storepkg.ErrNoVersionValidAt if no overlapping version satisfies
 // pred. pred==nil means "any overlapping version".
 func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
+	return c.findNodeVersionForOptsRd(entityReads{c: c}, id, opts, pred)
+}
+
+// findNodeVersionForOptsRd is findNodeVersionForOpts reading through rd (a
+// budgeted run's metered reads, RH list R2); the rule and the answer are the
+// same.
+func (c *Core) findNodeVersionForOptsRd(rd entityReads, id types.NodeID, opts storepkg.QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
 	if c.chainLoadTestHook != nil {
 		c.chainLoadTestHook()
 	}
@@ -1545,7 +1552,7 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 		// (nodeAsOfLocked feeds NodeAsOf / NodesAsOf) so the two doors agree by
 		// construction — the version-ordered retraction rule (lesson 62) is
 		// inherited, never re-implemented. Absent → the loop's skip sentinel.
-		n, err := c.nodeAsOfLocked(id, txPinOf(opts))
+		n, err := c.nodeAsOfLockedRd(rd, id, txPinOf(opts))
 		if err != nil {
 			if errors.Is(err, ErrNoVersionAsOf) {
 				return nil, storepkg.ErrNoVersionValidAt
@@ -1558,7 +1565,7 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 		return n, nil
 	}
 	if opts.HasValidAt() {
-		n, err := c.nodeAtLockedTx(id, opts.ValidAt, txAtOf(opts))
+		n, err := c.nodeAtLockedTxRd(rd, id, opts.ValidAt, txAtOf(opts))
 		if err != nil {
 			return nil, err
 		}
@@ -1568,12 +1575,12 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 		return n, nil
 	}
 	if opts.HasValidInterval() {
-		return c.findNodeVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, txAtOf(opts), pred)
+		return c.findNodeVersionMatchingDuringTxRd(rd, id, opts.ValidStart, opts.ValidEnd, txAtOf(opts), pred)
 	}
 	if opts.HasTxAt() {
 		// TX-only filter: return version visible at txAt as of "now" valid time
 		// — i.e. whatever was current-or-most-recent at txAt.
-		n, err := c.nodeAtLockedTx(id, c.readNow(), txAtOf(opts))
+		n, err := c.nodeAtLockedTxRd(rd, id, c.readNow(), txAtOf(opts))
 		if err != nil {
 			return nil, err
 		}
@@ -1653,13 +1660,19 @@ func (c *Core) findNodeVersionMatchingDuring(id types.NodeID, start, end types.I
 // Callers must resolve end == 0 to a concrete bound via resolveOpenEndInstant
 // before invoking.
 func (c *Core) findNodeVersionMatchingDuringTx(id types.NodeID, start, end, txAt types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
-	current, err := c.getCurrentNode(id)
+	return c.findNodeVersionMatchingDuringTxRd(entityReads{c: c}, id, start, end, txAt, pred)
+}
+
+// findNodeVersionMatchingDuringTxRd is findNodeVersionMatchingDuringTx reading
+// through rd (RH list R2).
+func (c *Core) findNodeVersionMatchingDuringTxRd(rd entityReads, id types.NodeID, start, end, txAt types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
+	current, err := rd.currentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
 	c.afterCurrentRead(int64(id))
 
-	history, err := c.getNodeHistory(id)
+	history, err := rd.nodeHistory(id)
 	if err != nil {
 		return nil, err
 	}

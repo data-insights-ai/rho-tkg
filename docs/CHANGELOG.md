@@ -25,8 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   earlier chunks were handed out). A row the entity cache serves decodes nothing and counts
   0; the memory store counts 0. Counted in `RelEffectiveTimelinesByProperties` (`store.ReadSnapshotMeterCapability`:
   badger, sharded, tiered across every shard), `Nodes()` and `Rels()` `LendByIDs`, `GetByIDsCtx`
-  (`store.NodesByIDsMeteredCapability`) and the node property doors' time-free reads. Not counted: the property doors
-  with a time coordinate, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
+  (`store.NodesByIDsMeteredCapability`) and the node property doors, with a time coordinate too (`TxAt`, `TxPin`,
+  `ValidAt`, the valid interval: each candidate's current row, skeleton and winning version through a metered read
+  snapshot; badger's `TxPin` through the new `store.TransactionTimeQueryMeteredCapability`, same pin, same answer; red:
+  8 and 32 matches x 16 versions answered under a 1-byte budget, `tasks/evidence/READBUDGET/temporal-history-red.txt`).
+  Not counted: `ValidEndAfter`, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
   a nil check per decoded row and answers as before.
 
 ## [4.107.1] - 2026-11-13

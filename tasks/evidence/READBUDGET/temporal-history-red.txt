@@ -1,0 +1,8 @@
+# READBUDGET red: temporal property doors decode history uncounted (2026-11-13, branch readbudget at 8a0ad34e)
+    read_budget_history_probe_test.go:70: 8 matches x 16 versions, TxPin: answered 8 rows under a 1-byte budget, work {Candidates:8 Segments:0 ShardOpens:0 DecodedBytes:0}; want ErrReadBudget "decoded bytes"
+    read_budget_history_probe_test.go:70: 8 matches x 16 versions, TxPin: answered 8 rows under a 1-byte budget, work {Candidates:8 Segments:0 ShardOpens:0 DecodedBytes:0}; want ErrReadBudget "decoded bytes"
+    read_budget_history_probe_test.go:70: 8 matches x 16 versions, TxPin: answered 8 rows under a 1-byte budget, work {Candidates:8 Segments:0 ShardOpens:0 DecodedBytes:0}; want ErrReadBudget "decoded bytes"
+--- FAIL: TestReadBudget_DecodedBytes_TemporalPropertyLongHistory (0.95s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.981s
+FAIL

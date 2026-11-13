@@ -1307,3 +1307,17 @@ func (ms *Store) trimRelHistoryFromRouted(rid types.RelID, minVersion uint32, to
 	}
 	return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), true, int64(minVersion), token)
 }
+
+var _ storecontract.TransactionTimeQueryMeteredCapability = (*Store)(nil)
+
+// NodeAsOfMetered is NodeAsOf (store.TransactionTimeQueryMeteredCapability):
+// the memory store keeps its rows decoded, so it decodes nothing and counts 0
+// bytes in t.
+func (ms *Store) NodeAsOfMetered(nid types.NodeID, txTime types.Instant, _ *storecontract.ReadTally) (*types.Node, error) {
+	return ms.NodeAsOf(nid, txTime)
+}
+
+// RelAsOfMetered is RelAsOf, as NodeAsOfMetered.
+func (ms *Store) RelAsOfMetered(rid types.RelID, txTime types.Instant, _ *storecontract.ReadTally) (*types.Relationship, error) {
+	return ms.RelAsOf(rid, txTime)
+}

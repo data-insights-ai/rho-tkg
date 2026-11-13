@@ -63,6 +63,31 @@ type entityReads struct {
 	// snapshot is decoded beside it (store.NodeVersionSharingCapability; a
 	// snapshot shares its own lent row). R37.
 	share *types.Node
+	// tally is the read budget's meter bound to the door (RH list R2; nil:
+	// none): with it, the point as-of read takes the store's metered door and
+	// snap (when set) counts the bytes it decodes.
+	tally *storepkg.ReadTally
+}
+
+// meteredEntityReads returns the reads of one budgeted point resolution run
+// (RH list R2): with a tally, a read snapshot that counts every row it decodes
+// in t before the decode (store.ReadSnapshotMeterCapability), and release,
+// which must run before the graph read lock is released. Without a tally, or
+// on a store without a meter-aware snapshot, the plain reads.
+func (c *Core) meteredEntityReads(t *storepkg.ReadTally) (rd entityReads, release func()) {
+	rd = entityReads{c: c, tally: t}
+	if t == nil || c.readSnapshots == nil {
+		return rd, func() {}
+	}
+	snap := c.readSnapshots.NewReadSnapshot()
+	m, ok := snap.(storepkg.ReadSnapshotMeterCapability)
+	if !ok {
+		snap.Close()
+		return rd, func() {}
+	}
+	m.MeterReads(t)
+	rd.snap = snap
+	return rd, snap.Close
 }
 
 func (r entityReads) currentNode(id types.NodeID) (*types.Node, error) {

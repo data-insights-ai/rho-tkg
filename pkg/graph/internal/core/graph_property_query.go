@@ -206,8 +206,13 @@ func (c *Core) nodesByLabelAndPropertyFormsLocked(label, key string, forms []any
 		return n.HasLabelTokenRaw(tok) && match.Node(n, key, elements)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
+	// Under a read budget each candidate resolves through a metered read
+	// snapshot, so the rows and history versions it decodes count before
+	// their decode (RH list R2, READBUDGET).
+	rd, release := c.meteredEntityReads(opts.ReadTally())
+	defer release()
 	if err := c.forEachNodePropertyCandidateID(tok, valueKeys, currentIDs, opts, func(id types.NodeID) error {
-		n, err := c.findNodeVersionForOpts(id, resolveOpts, pred)
+		n, err := c.findNodeVersionForOptsRd(rd, id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
@@ -316,8 +321,13 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 		return n.HasLabelTokenRaw(tok) && nodeMatchesAllEqual(n, valueKeys)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
+	// Under a read budget each candidate resolves through a metered read
+	// snapshot, so the rows and history versions it decodes count before
+	// their decode (RH list R2, READBUDGET).
+	rd, release := c.meteredEntityReads(opts.ReadTally())
+	defer release()
 	if err := c.forEachNodePropertyCandidateID(tok, valueKeys, currentIDs, opts, func(id types.NodeID) error {
-		n, err := c.findNodeVersionForOpts(id, resolveOpts, pred)
+		n, err := c.findNodeVersionForOptsRd(rd, id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil

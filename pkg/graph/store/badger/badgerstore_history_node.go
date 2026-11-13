@@ -732,6 +732,33 @@ func (bs *Store) decodeHistoryNodeValue(id snowflake.ID, version uint64, raw []b
 	return bs.decodeHistoryNodeValueSharing(id, version, raw, nil)
 }
 
+// decodeHistoryNodeValueTallied is decodeHistoryNodeValue counting in t (RH
+// list R2; nil counts nothing) the stored bytes it decodes, before the decode:
+// the row, and for a delta its anchor.
+func (bs *Store) decodeHistoryNodeValueTallied(id snowflake.ID, version uint64, raw []byte, t *storecontract.ReadTally) (*types.Node, error) {
+	if t == nil {
+		return bs.decodeHistoryNodeValue(id, version, raw)
+	}
+	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
+		if err := t.Decoded(len(raw)); err != nil {
+			return nil, err
+		}
+		return bs.decodeHistoryNodeValue(id, version, raw)
+	}
+	w, err := bs.reconstructNodeHistoryWireTallied(id, version, raw, nil, t)
+	if err != nil {
+		if errors.Is(err, storecontract.ErrReadBudget) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
+	}
+	n, err := bs.decodeNodeHistoryWireForKey(w, id, version)
+	if err != nil {
+		return nil, fmt.Errorf("graph: decode node version: %w", err)
+	}
+	return n, nil
+}
+
 // decodeHistoryNodeValueSharing is decodeHistoryNodeValue whose full-row
 // decode takes the string values equal to share's from share (the node's
 // current row, lent beside it: R37); nil shares none.

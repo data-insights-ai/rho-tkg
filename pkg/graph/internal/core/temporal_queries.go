@@ -511,6 +511,11 @@ func (c *Core) relCurrentAnswersAt(current *types.Relationship, validAt, txAt ty
 // before resolving the valid-time match. txAt == 0 returns the same chain as
 // nodeAtLocked (no TX filter).
 func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
+	return c.nodeAtLockedTxRd(entityReads{c: c}, id, validAt, txAt)
+}
+
+// nodeAtLockedTxRd is nodeAtLockedTx reading through rd (RH list R2).
+func (c *Core) nodeAtLockedTxRd(rd entityReads, id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
@@ -520,11 +525,11 @@ func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*ty
 	if err := c.checkNodePointRetention(id, txAt); err != nil {
 		return nil, err
 	}
-	current, err := c.getCurrentNode(id)
+	current, err := rd.currentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
-	return c.nodeAtFromCurrent(entityReads{c: c}, id, current, validAt, txAt)
+	return c.nodeAtFromCurrent(rd, id, current, validAt, txAt)
 }
 
 // nodeAtFromCurrent is nodeAtLockedTx after its gates and its current-row

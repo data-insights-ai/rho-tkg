@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -331,7 +332,16 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 // decodeHistoryRelValue reconstructs (full-or-delta) then decodes one rel history
 // value to a *types.Relationship. Point-reads the interval anchor for a delta.
 func (bs *Store) decodeHistoryRelValue(id snowflake.ID, version uint64, raw []byte) (*types.Relationship, error) {
-	w, err := bs.reconstructRelHistoryWire(id, version, raw, nil)
+	return bs.decodeHistoryRelValueTallied(id, version, raw, nil)
+}
+
+// decodeHistoryRelValueTallied is decodeHistoryRelValue counting in t (RH
+// list R2; nil counts nothing) the row and a delta's anchor before the decode.
+func (bs *Store) decodeHistoryRelValueTallied(id snowflake.ID, version uint64, raw []byte, t *storecontract.ReadTally) (*types.Relationship, error) {
+	w, err := bs.reconstructRelHistoryWireTallied(id, version, raw, nil, t)
+	if errors.Is(err, storecontract.ErrReadBudget) {
+		return nil, err
+	}
 	if err != nil {
 		return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 	}

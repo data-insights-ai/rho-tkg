@@ -42,6 +42,14 @@ func (t *TempOps) NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, 
 }
 
 func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Node, error) {
+	return c.nodeAsOfLockedRd(entityReads{c: c}, id, txTime)
+}
+
+// nodeAsOfLockedRd is nodeAsOfLocked reading through rd (RH list R2). Under a
+// tally the store's as-of door is taken only in its metered form
+// (store.TransactionTimeQueryMeteredCapability); a store without it resolves
+// through rd's metered reads, by the same rule.
+func (c *Core) nodeAsOfLockedRd(rd entityReads, id types.NodeID, txTime types.Instant) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
@@ -51,8 +59,15 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	if err := c.checkNodePointRetention(id, txTime); err != nil {
 		return nil, err
 	}
-	if c.txTimeQuery != nil {
-		n, err := c.txTimeQuery.NodeAsOf(id, txTime)
+	metered, _ := c.txTimeQuery.(storepkg.TransactionTimeQueryMeteredCapability)
+	if c.txTimeQuery != nil && (rd.tally == nil || metered != nil) {
+		var n *types.Node
+		var err error
+		if rd.tally != nil {
+			n, err = metered.NodeAsOfMetered(id, txTime, rd.tally)
+		} else {
+			n, err = c.txTimeQuery.NodeAsOf(id, txTime)
+		}
 		if errors.Is(err, storepkg.ErrVersionNotFound) {
 			return nil, ErrNoVersionAsOf
 		}
@@ -67,7 +82,7 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 		}
 		return c.nodeCapabilityVisibleAtTxTime(n, txTime), nil
 	}
-	if c.nodeAsOfWalk != nil {
+	if c.nodeAsOfWalk != nil && rd.tally == nil {
 		n, ok, err := c.nodeAsOfWalk.NodeAsOfWalk(id, txTime)
 		if errors.Is(err, storepkg.ErrVersionNotFound) {
 			return nil, ErrNoVersionAsOf
@@ -84,7 +99,7 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	}
 
 	// Try current node first.
-	current, err := c.getCurrentNode(id)
+	current, err := rd.currentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
@@ -107,7 +122,7 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	// the as-of rule (storeutil.SelectAsOfWithCurrent: newest row recorded by
 	// the pin, retraction, tombstone life end) that resolveNodeChain
 	// concentrates, over history ‖ current with the current row flagged.
-	hist, err := c.getNodeHistory(id)
+	hist, err := rd.nodeHistory(id)
 	if err != nil {
 		return nil, err
 	}
