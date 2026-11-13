@@ -28,6 +28,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with a time coordinate, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
   a nil check per decoded row and answers as before.
 
+### Changed
+
+- **RELDISKWIN** (R2's second half, ai-soc's native_test case: 40 rows carry the value, 2 meet the window; René's RH
+  list, widened 13 Nov to nodes and relationships alike). The windowed membership doors
+  (`ForEachRelPropertyTxMemberDuring`, `ForEachNodePropertyTxMemberDuring`) of a definition kept on disk
+  (`RelPropertyIndexOnDiskTypes`, `PropertyIndexOnDiskLabels`, `PropertyIndexOnDisk`) now hand on only the members whose
+  valid-time envelope meets the window, as the RAM sidecar does, where they handed on every member of the value (and
+  so a read budget refused them). Each member entry carries its row's envelope: a 32-byte value (`from`, `allTo`,
+  `lateTo`, `last`) and its version in the key (new `0x0C` kinds 5 and 6; `Instant` is ms, so a create and an
+  update of one entity in one ms would have overwritten a wider entry). A create and a history version add nothing
+  to the entry they wrote; an update writes the demoted row's entry again (one set, no read), a delete the deleted
+  row's; the reader folds one entity at a time and holds the members it answers, not every member of the value,
+  but it still walks every entry of the value (the work counters show the entries walked; a walk that skips unrelated
+  history needs a second sort order, not built). Cost: 76 B an entry against 40 B, and an update that keeps its
+  value writes the new row's entry (it wrote none). **Store format marker 17, a minor:** a definition built before
+  (built marker value 1) is built again by the next writable open (one `WriteBatch`, the value-2 marker last; a crash
+  keeps no trusted marker), and a read-only open answers it broad as before; releases before refuse the store.
+  `TestPropTxWindow_DiskNarrowsLikeRAM` and `TestReadBudget_SelectiveDoorRefusesBroadRead` (the disk case now answers
+  within 10 candidates) hold the gain; `TestMemberSpan_*` the equivalence with the sidecar at every window and pin.
+
 ## [4.107.1] - 2026-11-13
 
 ### Added

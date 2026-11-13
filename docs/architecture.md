@@ -223,7 +223,9 @@ cache at most 64 K entries, the label and rel-type tx-membership sidecars only t
 (TXMEMBERS). With the label and adjacency indexes on disk a clean open walks no key per entity. A property
 index kept on disk (nodes: `PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`; relationships:
 `RelPropertyIndexOnDiskTypes`) answers its pinned reads from member entries on disk too, so it builds no
-membership sidecar in RAM (RELDISK); a composite node index of such a label keeps its current entries on disk
+membership sidecar in RAM (RELDISK); each entry carries its row's valid-time envelope, so the windowed
+membership door hands on the members whose envelope meets the window, as the RAM sidecar does, and holds no
+more than the members it answers (RELDISKWIN; it still walks every entry of the value); a composite node index of such a label keeps its current entries on disk
 (COMPDISK).
 `docs/persistence.md` owns the key layout, the wire format, the durability guarantees and recovery.
 

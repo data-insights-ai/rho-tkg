@@ -1,0 +1,36 @@
+    badgerstore_member_span_test.go:670: after the failed rebuild: marker [], 4104 span entries of the batch's committed parts
+--- PASS: TestMemberSpan_RebuildCrashLeavesNoTrustedMarker (0.69s)
+    badgerstore_member_span_test.go:873: 
+        disk=false: 5000 creates 3.71 us each, 5000 updates 4.51 us each; 0 span entries, 0 key bytes + 0 value bytes (0.0 B each)
+        disk=true: 5000 creates 3.99 us each, 5000 updates 6.39 us each; 10000 span entries, 440000 key bytes + 320000 value bytes (76.0 B each)
+--- PASS: TestMemberSpan_WriteOverhead (0.24s)
+--- PASS: TestMemberWorkEmptyWindowReadsNothing (0.03s)
+--- PASS: TestMemberWorkNodeAndRelCounts (0.09s)
+--- PASS: TestMemberWorkNestedConcurrentAndErrors (0.01s)
+--- PASS: TestMemberWorkScannerVersionsBoundaryAndPartialError (0.01s)
+--- PASS: TestMemberWorkOverlayCounts (0.01s)
+    badgerstore_member_work_test.go:251: PropertyMemberWork sizeof=96 bytes; eleven uint64 counters and three bools, constant per invocation, no fields added to Store or retained entity/index records
+--- PASS: TestMemberWorkResultSize (0.00s)
+--- PASS: TestMemberSpan_HandCheckedWindows (0.01s)
+--- PASS: TestMemberSpan_SameMillisecondKeepsBothEntries (0.02s)
+--- PASS: TestPropTxWindow_DiskNarrowsLikeRAM (0.00s)
+    badgerstore_member_span_test.go:787: n=32 node window [1000,1010): emitted 2, held peak 34, iterator steps 0, disk entries 0, buffered ops matched 45
+    badgerstore_member_span_test.go:787: n=32 rel window [1000,1010): emitted 2, held peak 34, iterator steps 0, disk entries 0, buffered ops matched 45
+    badgerstore_member_span_test.go:787: n=128 rel window [1000,1010): emitted 2, held peak 130, iterator steps 0, disk entries 0, buffered ops matched 173
+    badgerstore_member_span_test.go:787: n=128 node window [1000,1010): emitted 2, held peak 130, iterator steps 0, disk entries 0, buffered ops matched 173
+    badgerstore_member_span_test.go:796: n=32 flushed rel window [1000,1010): iterator steps 45 (the value's span entries), held peak 1, emitted 2
+    badgerstore_member_span_test.go:796: n=128 flushed rel window [1000,1010): iterator steps 173 (the value's span entries), held peak 1, emitted 2
+    badgerstore_member_span_test.go:787: n=8 rel window [1000,1010): emitted 2, held peak 10, iterator steps 0, disk entries 0, buffered ops matched 13
+    badgerstore_member_span_test.go:787: n=8 node window [1000,1010): emitted 2, held peak 10, iterator steps 0, disk entries 0, buffered ops matched 13
+    badgerstore_member_span_test.go:796: n=8 flushed rel window [1000,1010): iterator steps 13 (the value's span entries), held peak 1, emitted 2
+--- PASS: TestMemberSpan_DiskMatchesSidecar (0.24s)
+--- PASS: TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates (0.00s)
+--- PASS: TestMemberSpan_LegacyDefinitionBroadThenRebuilt (0.40s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.548s
+--- PASS: TestReadBudget_SelectiveDoorRefusesBroadRead (0.23s)
+    --- PASS: TestReadBudget_SelectiveDoorRefusesBroadRead/disk=false (0.13s)
+    --- PASS: TestReadBudget_SelectiveDoorRefusesBroadRead/disk=true (0.10s)
+--- PASS: TestPropertyIndexOnDiskMembershipDoors (0.56s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.627s
