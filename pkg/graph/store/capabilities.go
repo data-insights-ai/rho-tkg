@@ -496,6 +496,24 @@ type PropertyTxMemberMeteredCapability interface {
 	ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
+// MemberGatherMeteredCapability is OPTIONAL (RH list R2, sigma's group B): the
+// member enumerations an effective label or type scan gathers its candidates
+// from (MemberIDsCapability's NodeIDsByLabel / RelIDsByType, the K1
+// LabelTxMembershipCapability / RelTypeTxMembershipCapability
+// ForEach...TxMember) under a read budget, with the same answers. A store that
+// opens closed shards to answer (tiered) charges each open to t before it
+// (ReadTally.ShardOpen) and returns the *ReadBudgetError, before any member is
+// handed on, past the ShardOpens limit; workers reading shards in parallel stop
+// at their next charge once one refused (ReadMeter.Exceeded). A nil t is the
+// unmetered form. A store that opens no shard (badger, sharded, memory) need
+// not implement it.
+type MemberGatherMeteredCapability interface {
+	NodeIDsByLabelMetered(labelToken uint16, t *ReadTally) ([]types.NodeID, error)
+	RelIDsByTypeMetered(typeToken uint16, t *ReadTally) ([]types.RelID, error)
+	ForEachLabelTxMemberMetered(token uint16, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+	ForEachRelTypeTxMemberMetered(token uint16, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
+
 // RelPropertyTxMemberPageCapability is OPTIONAL (backlog 69): the members
 // RelPropertyTxMembershipCapability enumerates for one value, in ascending ID
 // order and resumed above a cursor — at most limit members with ID > after —

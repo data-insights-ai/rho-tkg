@@ -1,0 +1,52 @@
+R2 budgeted read doors for Sigma, group B (ai-soc RH list R2, "complete Sigma propagation").
+Counts only (rows decoded, history looked at, shard opens, callbacks): never MemStats or time.
+Backends: badger, sharded, tiered (rbdBackends; pending and flushed) and, through the public API, memory.
+
+=== GROUP 1: the effective scans (ForEachNodeEffectiveByLabelCtx, ...ByLabelsCtx, ...ByLabelsFromCtx,
+    ForEachRelEffectiveByTypeCtx, ...ByTypeFromCtx) ===
+
+Red (the Ctx doors stubbed to read as their plain doors: the plain scan has no budget to refuse at).
+`go test -run 'TestReadBudget_SigmaB_Scan' ./pkg/graph/internal/core` (50 failing subtests):
+
+  TestReadBudget_SigmaB_Scans/badger/pending/node_by_label
+    unlimited work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0};
+    want 12 candidates, 36 segments, 96 buffer bytes
+    (the plain scan streams all 12 entities and 36 segments and counts nothing; same for the 5 doors x 3 backends
+     x pending/flushed)
+  TestReadBudget_SigmaB_ScanGates/badger: a stopping callback = <nil> after 1 calls, work {all 0}
+  TestReadBudget_SigmaB_ScanShardOpens/node_by_label
+    error <nil>, want ErrReadBudget at "shard opens"
+    (before that line the test checked the plain scan: it opens all 3 cold shards of the tiered store,
+     the member enumeration and the entity reads both fan out)
+
+Green, after the doors (`go test -v -run 'TestReadBudget_SigmaB_Scans/badger/flushed/node_by_label$'`), 12 entities,
+3 versions each, 4 of them deleted, rows evicted from the cache first:
+
+  unlimited:             {Candidates:12 Segments:36 DecodedBytes:14820 HistoryExamined:54 BufferBytes:96}
+  Candidates 5:          refused after {Candidates:6 Segments:15 DecodedBytes:6098 HistoryExamined:22}  (5 entities read)
+  Segments 3:            refused after {Candidates:2 Segments:4 DecodedBytes:2316 HistoryExamined:8}    (3 callbacks)
+  HistoryExamined 1:     refused after {Candidates:1 Segments:0 DecodedBytes:449 HistoryExamined:2}
+  DecodedBytes 1:        refused after {Candidates:1 Segments:0 DecodedBytes:260 HistoryExamined:0}
+  BufferBytes 1:         refused after {Candidates:0 ...BufferBytes:96}                                (no entity read)
+
+  The refused scan has handed out a prefix of the plain scan's segments (asserted: callbacks == the first K
+  entities' segments for Candidates K), none after the refusal. The segments of the entities read before the
+  refusal are handed out after it (a chunk reads its entities under the graph lock, fn runs outside it), so the
+  error's Work lacks their Segments; the refused counter agrees with the meter.
+
+  Tiered shard opens (`TestReadBudget_SigmaB_ScanShardOpens`, cold shards closed before each read), all 5 doors:
+    the plain scan opened 3 cold shards; under ShardOpens 1 the scan opened 1 and refused after 0 callbacks;
+    unlimited it opened 3 and counted 3.
+  `TestReadBudget_SigmaB_MemberGatherMeteredOpens`: each of the four member enumerations the scans gather from
+    (NodeIDsByLabelMetered, RelIDsByTypeMetered, ForEachLabelTxMemberMetered, ForEachRelTypeTxMemberMetered) alone:
+    ShardOpens 1 opens at most 1 and refuses with no member; unlimited counts exactly the shards it opened.
+    Mutation: ForEachLabelTxMember's fan-out passing a nil tally fails the test on both TxMember enumerations (the
+    scans alone do not show it: the first enumeration opens the shards the second then finds open).
+
+Mutations checked: chunk() ignoring BoundsOutput fails every Segments case (12 entities read, want <= 2);
+  the memory store's entity reads without the tally (rd.tally) fail TestReadBudgetPublicScans/memory (history
+  examined 0); the gather without metered opens fails the member test above.
+
+Found on the way: the memory store has no read snapshot, so streamEntityTimelinesMetered never gave the entity
+  reads their tally and RelEffectiveTimelinesByProperties counted no history versions on memory (a HistoryExamined
+  budget never refused there). Fixed with the tally on the scan's reads: TestReadBudget_SigmaB_MemoryCountsHistory.

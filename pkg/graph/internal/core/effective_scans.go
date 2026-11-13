@@ -34,7 +34,20 @@ var ErrInvalidDirection = errors.New("graph: invalid relationship direction")
 // (keep nil: every segment); fn returning false stops. The timelines are read
 // through streamEntityTimelines (one store snapshot per scan, backlog 55).
 func (c *Core) streamNodeTimelines(ids []types.NodeID, pin types.Instant, keep func(*types.Node) bool, fn func(temporal.NodeSegment) bool) error {
-	return streamEntityTimelines(c, ids, func(rd entityReads, id types.NodeID) ([]temporal.NodeSegment, error) {
+	return c.streamNodeTimelinesRun(nil, ids, pin, keep, fn)
+}
+
+// streamNodeTimelinesRun is streamNodeTimelines under a read budget (run, RH
+// list R2: nil is the plain scan): one candidate counts before each entity is
+// read, each segment before it is handed to fn, and the first refusal ends the
+// scan with its *store.ReadBudgetError, after fn has seen the entities read
+// before it.
+func (c *Core) streamNodeTimelinesRun(run *scanRun, ids []types.NodeID, pin types.Instant, keep func(*types.Node) bool, fn func(temporal.NodeSegment) bool) error {
+	fn = scanSegments(run, fn)
+	err := streamEntityTimelinesMetered(c, run.tally(), run.chunk(), ids, func(rd entityReads, id types.NodeID) ([]temporal.NodeSegment, error) {
+		if err := run.admit(); err != nil {
+			return nil, err
+		}
 		segs, err := c.nodeEffectiveTimelineFrom(rd, id, pin)
 		return skipUnknown(segs, err, storepkg.ErrNodeNotFound)
 	}, func(_ types.NodeID, segs []temporal.NodeSegment) bool {
@@ -45,11 +58,21 @@ func (c *Core) streamNodeTimelines(ids []types.NodeID, pin types.Instant, keep f
 		}
 		return true
 	})
+	return run.result(err)
 }
 
 // streamRelTimelines is streamNodeTimelines for relationships.
 func (c *Core) streamRelTimelines(ids []types.RelID, pin types.Instant, keep func(*types.Relationship) bool, fn func(temporal.RelSegment) bool) error {
-	return streamEntityTimelines(c, ids, func(rd entityReads, id types.RelID) ([]temporal.RelSegment, error) {
+	return c.streamRelTimelinesRun(nil, ids, pin, keep, fn)
+}
+
+// streamRelTimelinesRun is streamNodeTimelinesRun for relationships.
+func (c *Core) streamRelTimelinesRun(run *scanRun, ids []types.RelID, pin types.Instant, keep func(*types.Relationship) bool, fn func(temporal.RelSegment) bool) error {
+	fn = scanSegments(run, fn)
+	err := streamEntityTimelinesMetered(c, run.tally(), run.chunk(), ids, func(rd entityReads, id types.RelID) ([]temporal.RelSegment, error) {
+		if err := run.admit(); err != nil {
+			return nil, err
+		}
 		segs, err := c.relEffectiveTimelineFrom(rd, id, pin)
 		return skipUnknown(segs, err, storepkg.ErrRelNotFound)
 	}, func(_ types.RelID, segs []temporal.RelSegment) bool {
@@ -60,6 +83,7 @@ func (c *Core) streamRelTimelines(ids []types.RelID, pin types.Instant, keep fun
 		}
 		return true
 	})
+	return run.result(err)
 }
 
 // firstOccurrences returns ids without repeats, in the order of their first
@@ -309,7 +333,13 @@ func (c *Core) relEffectiveAtNodesGates(nodeIDs []types.NodeID, dir temporal.Dir
 // history (not one fold per label). With the sidecar: the labels' candidate
 // sets united.
 func (c *Core) nodeLabelsCandidatesAt(toks []uint16, pin types.Instant) ([]types.NodeID, error) {
-	opts := storepkg.QueryOpts{TxPin: pin}
+	return c.nodeLabelsCandidatesAtOpts(toks, storepkg.QueryOpts{TxPin: pin})
+}
+
+// nodeLabelsCandidatesAtOpts is nodeLabelsCandidatesAt at opts, which may carry
+// a read meter (a budgeted scan: the member enumerations charge their shard
+// opens to it).
+func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts) ([]types.NodeID, error) {
 	switch {
 	case len(toks) == 0:
 		return nil, nil
@@ -322,6 +352,9 @@ func (c *Core) nodeLabelsCandidatesAt(toks []uint16, pin types.Instant) ([]types
 		return nil
 	}
 	if c.labelTxMembers == nil {
+		if err := c.foldOpensRefused(opts); err != nil {
+			return nil, err
+		}
 		var current []types.NodeID
 		for _, tok := range toks {
 			cur, err := c.nodeLabelCurrentIDs(tok)
@@ -422,6 +455,12 @@ func (t *TempOps) ForEachNodeEffectiveByLabels(labels []string, pin types.Instan
 
 // forEachNodeEffectiveByLabels is the body of ForEachNodeEffectiveByLabel(s).
 func (c *Core) forEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(temporal.NodeSegment) bool) error {
+	return c.forEachNodeEffectiveByLabelsRun(nil, labels, pin, fn)
+}
+
+// forEachNodeEffectiveByLabelsRun is forEachNodeEffectiveByLabels under a read
+// budget (run nil: none, the plain scan).
+func (c *Core) forEachNodeEffectiveByLabelsRun(run *scanRun, labels []string, pin types.Instant, fn func(temporal.NodeSegment) bool) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
@@ -447,12 +486,15 @@ func (c *Core) forEachNodeEffectiveByLabels(labels []string, pin types.Instant, 
 			}
 		}
 		var err error
-		ids, err = c.nodeLabelsCandidatesAt(toks, pin)
+		ids, err = c.nodeLabelsCandidatesAtOpts(toks, run.opts(storepkg.QueryOpts{TxPin: pin}))
 		return err
 	}); err != nil {
 		return err
 	}
-	return c.streamNodeTimelines(ascending(ids), pin, func(n *types.Node) bool {
+	if err := run.holdList(len(ids)); err != nil {
+		return err
+	}
+	return c.streamNodeTimelinesRun(run, ascending(ids), pin, func(n *types.Node) bool {
 		return slices.ContainsFunc(toks, n.HasLabelTokenRaw)
 	}, fn)
 }

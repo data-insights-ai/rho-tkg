@@ -32,6 +32,7 @@ var (
 	_ storecontract.RelPropertyTxMemberWindowCapability  = (*Store)(nil)
 	_ storecontract.RelValidEndCapability                = (*Store)(nil)
 	_ storecontract.NodeValidEndCapability               = (*Store)(nil)
+	_ storecontract.MemberGatherMeteredCapability        = (*Store)(nil) // sigma group B
 )
 
 // allShards runs read on the reference shard, the archive (when one exists)
@@ -209,6 +210,12 @@ func (u *txMemberUnion[ID]) emit(fn func(ID, types.Instant) bool) {
 
 // unionTxMembers fans each shard's enumeration out and streams the union.
 func unionTxMembers[ID comparable](ts *Store, each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
+	return unionTxMembersMetered(ts, nil, each, fn)
+}
+
+// unionTxMembersMetered is unionTxMembers with the open of each closed shard
+// charged to opens before it (nil: none).
+func unionTxMembersMetered[ID comparable](ts *Store, opens *storecontract.ReadTally, each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
 	if fn == nil {
 		return errNilIterationCallback()
 	}
@@ -220,7 +227,7 @@ func unionTxMembers[ID comparable](ts *Store, each func(*BadgerStore, func(ID, t
 		})
 		return out, err
 	}
-	ref, others, err := allShards(ts, read)
+	ref, others, err := allShardsBut(ts, nil, opens, read)
 	if err != nil {
 		return err
 	}
@@ -236,16 +243,29 @@ func unionTxMembers[ID comparable](ts *Store, each func(*BadgerStore, func(ID, t
 // ForEachLabelTxMember implements store.LabelTxMembershipCapability: the
 // union of every shard's ever-members of token.
 func (ts *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return ts.ForEachLabelTxMemberMetered(token, nil, fn)
+}
+
+// ForEachLabelTxMemberMetered implements store.MemberGatherMeteredCapability:
+// ForEachLabelTxMember with the open of each closed shard charged to t before
+// it.
+func (ts *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	ts.noteTypeScan("ForEachLabelTxMember")
-	return unionTxMembers(ts, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
+	return unionTxMembersMetered(ts, t, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
 		return bs.ForEachLabelTxMember(token, f)
 	}, fn)
 }
 
 // ForEachRelTypeTxMember implements store.RelTypeTxMembershipCapability.
 func (ts *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return ts.ForEachRelTypeTxMemberMetered(token, nil, fn)
+}
+
+// ForEachRelTypeTxMemberMetered is ForEachLabelTxMemberMetered for a
+// relationship type.
+func (ts *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
 	ts.noteTypeScan("ForEachRelTypeTxMember")
-	return unionTxMembers(ts, func(bs *BadgerStore, f func(types.RelID, types.Instant) bool) error {
+	return unionTxMembersMetered(ts, t, func(bs *BadgerStore, f func(types.RelID, types.Instant) bool) error {
 		return bs.ForEachRelTypeTxMember(token, f)
 	}, fn)
 }

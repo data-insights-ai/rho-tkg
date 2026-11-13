@@ -823,8 +823,12 @@ func (t *TempOps) ForEachNodeEffectiveByLabel(label string, pin types.Instant, f
 // relationship's type never changes, so each listed relationship streams its
 // whole timeline). DECLARED view: not masked by endpoint validity.
 func (t *TempOps) ForEachRelEffectiveByType(typeName string, pin types.Instant, fn func(temporal.RelSegment) bool) error {
-	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
-	c := t.c
+	return t.c.forEachRelEffectiveByTypeRun(nil, typeName, recordedPin(pin), fn) // a pin <= 0: nothing recorded yet (round 11)
+}
+
+// forEachRelEffectiveByTypeRun is ForEachRelEffectiveByType's body under a
+// read budget (run nil: none, the plain scan); pin is already recordedPin's.
+func (c *Core) forEachRelEffectiveByTypeRun(run *scanRun, typeName string, pin types.Instant, fn func(temporal.RelSegment) bool) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
@@ -848,12 +852,15 @@ func (t *TempOps) ForEachRelEffectiveByType(typeName string, pin types.Instant, 
 			return nil
 		}
 		var err error
-		ids, err = c.relTypeCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin})
+		ids, err = c.relTypeCandidateIDsAt(tok, run.opts(storepkg.QueryOpts{TxPin: pin}))
 		return err
 	}); err != nil {
 		return err
 	}
-	return c.streamRelTimelines(ascending(ids), pin, func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }, fn)
+	if err := run.holdList(len(ids)); err != nil {
+		return err
+	}
+	return c.streamRelTimelinesRun(run, ascending(ids), pin, func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }, fn)
 }
 
 // validateEffectiveScanPin is validateEffectivePin plus the scan doors'

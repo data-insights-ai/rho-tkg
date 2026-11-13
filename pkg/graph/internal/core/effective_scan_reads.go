@@ -310,7 +310,7 @@ func streamEntityTimelines[ID any, S any](c *Core, ids []ID, read func(entityRea
 // a read past the budget stops the scan with the *store.ReadBudgetError. A nil
 // tally, or a store without a meter-aware snapshot, counts nothing.
 func streamEntityTimelinesMetered[ID any, S any](c *Core, tally *storepkg.ReadTally, chunkSize int, ids []ID, read func(entityReads, ID) ([]S, error), emit func(ID, []S) bool) error {
-	rd := entityReads{c: c, scan: true}
+	rd := entityReads{c: c, scan: true, tally: tally} // a store without a snapshot (memory) counts the versions it reads in tally
 	if c.readSnapshots != nil {
 		rd.snap = c.readSnapshots.NewReadSnapshot()
 		defer rd.snap.Close()

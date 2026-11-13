@@ -436,7 +436,7 @@ func (c *Core) nodeLabelCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]t
 		_, ids, err := c.nodeLabelCandidatesAt(tok, opts)
 		return ids, err
 	}
-	currentIDs, err := members.NodeIDsByLabel(tok)
+	currentIDs, err := nodeIDsByLabelUnder(members, tok, opts.ReadTally())
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +504,7 @@ func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, 
 	}
 	if c.labelTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
 		pinTx := effectiveTxPin(opts)
-		if err := c.labelTxMembers.ForEachLabelTxMember(tok, func(id types.NodeID, firstTx types.Instant) bool {
+		if err := forEachLabelTxMemberUnder(c.labelTxMembers, tok, opts.ReadTally(), func(id types.NodeID, firstTx types.Instant) bool {
 			if pinTx == 0 || firstTx == 0 || firstTx <= pinTx {
 				add(id)
 			}
@@ -512,6 +512,8 @@ func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, 
 		}); err != nil {
 			return nil, err
 		}
+	} else if err := c.foldOpensRefused(opts); err != nil {
+		return nil, err
 	} else if err := c.forEachNodeHistoryIDByDepth(opts.Depth, func(id types.NodeID) bool {
 		add(id)
 		return true
@@ -598,7 +600,7 @@ func (c *Core) relTypeCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]typ
 		_, ids, err := c.relTypeCandidatesAt(tok, opts)
 		return ids, err
 	}
-	currentIDs, err := members.RelIDsByType(tok)
+	currentIDs, err := relIDsByTypeUnder(members, tok, opts.ReadTally())
 	if err != nil {
 		return nil, err
 	}
@@ -649,7 +651,7 @@ func (c *Core) relTypeCandidatesSorted(tok uint16, currentIDs []types.RelID, opt
 	}
 	if c.relTypeTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
 		pinTx := effectiveTxPin(opts)
-		if err := c.relTypeTxMembers.ForEachRelTypeTxMember(tok, func(id types.RelID, firstTx types.Instant) bool {
+		if err := forEachRelTypeTxMemberUnder(c.relTypeTxMembers, tok, opts.ReadTally(), func(id types.RelID, firstTx types.Instant) bool {
 			if pinTx == 0 || firstTx == 0 || firstTx <= pinTx {
 				add(id)
 			}
@@ -657,6 +659,8 @@ func (c *Core) relTypeCandidatesSorted(tok uint16, currentIDs []types.RelID, opt
 		}); err != nil {
 			return nil, err
 		}
+	} else if err := c.foldOpensRefused(opts); err != nil {
+		return nil, err
 	} else if err := c.forEachRelHistoryIDByDepth(opts.Depth, func(id types.RelID) bool {
 		add(id)
 		return true

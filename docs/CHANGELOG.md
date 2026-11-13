@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **R2 budgeted doors for Sigma, group B** (ai-soc RH list R2, "complete Sigma propagation"), step 1, the effective
+  scans: `Temporal().ForEachNodeEffectiveByLabelCtx`, `ForEachNodeEffectiveByLabelsCtx`,
+  `ForEachNodeEffectiveByLabelsFromCtx`, `ForEachRelEffectiveByTypeCtx` and `ForEachRelEffectiveByTypeFromCtx` stream
+  the plain scans' segments in their order under the context's read budget: one candidate before each entity read,
+  its history, decoded bytes and (tiered) shard opens through the metered read snapshot, each segment before `fn`, and
+  on tiered the gather's member enumerations charge each closed shard before they open it
+  (`store.MemberGatherMeteredCapability`, new, tiered; `tiered.Store.NodeIDsByLabelMetered`, `RelIDsByTypeMetered`,
+  `ForEachLabelTxMemberMetered`, `ForEachRelTypeTxMemberMetered`). A scan has no partial answer: the callbacks made
+  before the refusal stand, none follows it (docs/api.md, Read budgets). Under a budget the From doors skip the
+  valid-end index (its first call per token reads every ever-member's temporal fields, work no budget bounds) and read
+  the unbounded scan's candidates; without a budget every door is its plain door. Red: the Ctx doors stubbed to their
+  plain doors, 50 failing subtests, the plain scan opening all 3 cold shards and counting nothing
+  (`tasks/evidence/READBUDGET/sigma-doors-b.txt`); tests: `TestReadBudget_SigmaB_Scans`, `_ScanGates`,
+  `_ScanShardOpens`, `_MemberGatherMeteredOpens`, `TestReadBudgetPublicScans`, `TestReadBudgetScanWrappers`.
+
 - **READBUDGET** (R2, the two gaps ai-soc's plan still named): `store.ReadTally.CandidateRoom` and `CandidatesAhead`,
   how many more candidates a meter admits and the refusal for a store walk that holds more members than that ahead of
   the door that counts them; `badger.Store` now implements `store.PropertyTxMemberMeteredCapability` (tiered had it
@@ -42,6 +57,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestPropertyDiskLookupAdmitsCandidatesAsProduced`, `TestReadTally_CandidateRoomAndAhead`.
 
 ### Fixed
+
+- **A history budget on the memory store** (found by group B's scan tests): the memory store has no read snapshot, so a
+  scan's per-entity reads never carried the budget's tally and `RelEffectiveTimelinesByProperties` counted no history
+  versions there (a `HistoryExamined` budget never refused on memory); the scan reads now count them.
+  `TestReadBudget_SigmaB_MemoryCountsHistory`.
 
 - **WARMMEM sweep follow-ups** (R3 review): a pass visits only the shards that owe work (a rotation adds the old hot shard and the shards it demotes to a pending
   set, a shard a pass could not settle stays in it) instead of every retained event shard: one rotation among 10, 100

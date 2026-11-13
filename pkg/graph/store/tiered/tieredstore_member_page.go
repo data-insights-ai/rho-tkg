@@ -92,12 +92,20 @@ func mergeMemberPages[ID ~int64](lists [][]txMember[ID], limit int, fn func(ID, 
 // members on every shard (NodesByLabel at DepthAll), ascending, each once,
 // without reading a row.
 func (ts *Store) NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error) {
+	return ts.NodeIDsByLabelMetered(labelToken, nil)
+}
+
+// NodeIDsByLabelMetered implements store.MemberGatherMeteredCapability:
+// NodeIDsByLabel with the open of each closed shard of the fan-out charged to
+// t before it (allShardsBut); a shard sealed with none of the label is skipped
+// and opens nothing.
+func (ts *Store) NodeIDsByLabelMetered(labelToken uint16, t *storecontract.ReadTally) ([]types.NodeID, error) {
 	ts.noteTypeScan("NodeIDsByLabel")
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return nil, err
 	}
 	skip := func(es *EventShard) bool { return es.sealedWithoutLabel(labelToken) }
-	ref, others, err := allShardsBut(ts, skip, nil, func(bs *BadgerStore, _ bool) ([]types.NodeID, error) {
+	ref, others, err := allShardsBut(ts, skip, t, func(bs *BadgerStore, _ bool) ([]types.NodeID, error) {
 		return bs.NodeIDsByLabel(labelToken)
 	})
 	if err != nil {
@@ -110,12 +118,17 @@ func (ts *Store) NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error) {
 // members on every shard (RelationshipsByType at DepthAll), ascending, each
 // once, without reading a row.
 func (ts *Store) RelIDsByType(typeToken uint16) ([]types.RelID, error) {
+	return ts.RelIDsByTypeMetered(typeToken, nil)
+}
+
+// RelIDsByTypeMetered is NodeIDsByLabelMetered for a relationship type.
+func (ts *Store) RelIDsByTypeMetered(typeToken uint16, t *storecontract.ReadTally) ([]types.RelID, error) {
 	ts.noteTypeScan("RelIDsByType")
 	if err := storecontract.ValidateRelTypeToken(typeToken); err != nil {
 		return nil, err
 	}
 	skip := func(es *EventShard) bool { return es.sealedWithoutRelType(typeToken) }
-	ref, others, err := allShardsBut(ts, skip, nil, func(bs *BadgerStore, _ bool) ([]types.RelID, error) {
+	ref, others, err := allShardsBut(ts, skip, t, func(bs *BadgerStore, _ bool) ([]types.RelID, error) {
 		return bs.RelIDsByType(typeToken)
 	})
 	if err != nil {
