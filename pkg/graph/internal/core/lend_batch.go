@@ -48,6 +48,9 @@ func (n *NodeOps) LendByIDs(ctx context.Context, ids []types.NodeID, fn func(i i
 	}
 	// A read budget (storepkg.WithReadBudget) counts one candidate per ID
 	// and refuses before any row is read; the store counts its shard opens.
+	if err := c.budgetSupported(ctx, "LendByIDs"); err != nil {
+		return err
+	}
 	meter := storepkg.ReadMeterFrom(ctx)
 	if err := meter.AddCandidates("LendByIDs", len(ids)); err != nil {
 		return err
@@ -115,6 +118,9 @@ func (r *RelOps) LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int
 		if err := storepkg.ValidateRelID(id); err != nil {
 			return err
 		}
+	}
+	if err := c.budgetSupported(ctx, "LendByIDs"); err != nil {
+		return err
 	}
 	meter := storepkg.ReadMeterFrom(ctx)
 	if err := meter.AddCandidates("LendByIDs", len(ids)); err != nil {

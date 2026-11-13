@@ -116,6 +116,18 @@ func ReadMeterFrom(ctx context.Context) *ReadMeter {
 	return m
 }
 
+// BoundsStoreWork reports whether this meter or an outer one bounds work only
+// the store itself can count (DecodedBytes, ShardOpens): a store that cannot
+// count it must refuse such a budget rather than read unbounded.
+func (m *ReadMeter) BoundsStoreWork() bool {
+	for r := m; r != nil; r = r.parent {
+		if r.budget.DecodedBytes != 0 || r.budget.ShardOpens != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // Work returns the counters so far.
 func (m *ReadMeter) Work() ReadWork {
 	if m == nil {

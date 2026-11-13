@@ -55,19 +55,23 @@ type Core struct {
 	// laneSlots[i] is the node-field (slot) carried by laneGenerators[i] — kept
 	// for diagnostics / docs (the sharded store routes an ID to a shard by this
 	// slot). Same length as laneGenerators.
-	laneSlots             []uint8
-	validTimeMint         storepkg.ValidTimeMintCapability // the store mints event IDs at valid time (ADR-0013); nil: the generators do
-	store                 storepkg.MandatoryStore
-	relDegrees            relDegreeCache   // StatOps.RelTypeDegreeStats, keyed on the relationship epochs
-	memberTime            memberTimeCache  // StatOps.LabelTimeStats / RelTypeTimeStats explicit-valid counts, keyed on the mutation epochs
-	relDegreeTrack        relDegreeTracker // StatOps.TrackRelTypeDegrees: maintained counts of opted-in types
-	generatedCreate       generatedcreate.Capability
-	endpointHash          storepkg.EndpointIntegrityHashCapability
-	endpointHashWrite     generatedcreate.RelationshipEndpointHashCapability
-	foreignEndpointRel    generatedcreate.ForeignEndpointRelCapability
-	foreignIncomingRel    generatedcreate.ForeignIncomingRelCapability
-	nodeHash              storepkg.NodeIntegrityHashCapability
-	txTimeQuery           storepkg.TransactionTimeQueryCapability
+	laneSlots          []uint8
+	validTimeMint      storepkg.ValidTimeMintCapability // the store mints event IDs at valid time (ADR-0013); nil: the generators do
+	store              storepkg.MandatoryStore
+	relDegrees         relDegreeCache   // StatOps.RelTypeDegreeStats, keyed on the relationship epochs
+	memberTime         memberTimeCache  // StatOps.LabelTimeStats / RelTypeTimeStats explicit-valid counts, keyed on the mutation epochs
+	relDegreeTrack     relDegreeTracker // StatOps.TrackRelTypeDegrees: maintained counts of opted-in types
+	generatedCreate    generatedcreate.Capability
+	endpointHash       storepkg.EndpointIntegrityHashCapability
+	endpointHashWrite  generatedcreate.RelationshipEndpointHashCapability
+	foreignEndpointRel generatedcreate.ForeignEndpointRelCapability
+	foreignIncomingRel generatedcreate.ForeignIncomingRelCapability
+	nodeHash           storepkg.NodeIntegrityHashCapability
+	txTimeQuery        storepkg.TransactionTimeQueryCapability
+	// storeCountsReads: the store is a native one that counts the work a read
+	// budget bounds below the core (decoded bytes, shard opens); a wrapper
+	// store does not, and a budget bounding that work is refused (RH list R2).
+	storeCountsReads      bool
 	txTimeQueryCopy       bool
 	nodeAsOfWalk          storepkg.NodeAsOfWalkCapability
 	historyTrim           storepkg.HistoryRollbackTrimCapability
@@ -2303,6 +2307,10 @@ func New(config Config) (*Core, error) {
 	c.foreignIncomingRel, _ = store.(generatedcreate.ForeignIncomingRelCapability)
 	c.nodeHash = nativeNodeIntegrityHash(store)
 	c.txTimeQuery = nativeTransactionTimeQuery(store)
+	switch store.(type) {
+	case *memory.Store, *badger.Store, *sharded.Store, *tiered.Store:
+		c.storeCountsReads = true // RH list R2: the native stores count their decodes and opens
+	}
 	c.nodeAsOfWalk = nativeNodeAsOfWalk(store)
 	_, txTimeQueryIsNativeMemory := store.(*memory.Store)
 	c.txTimeQueryCopy = c.txTimeQuery != nil && !txTimeQueryIsNativeMemory

@@ -47,6 +47,9 @@ func (t *TempOps) RelEffectiveTimelinesByProperties(ctx context.Context, typeNam
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
+	if err := c.budgetSupported(ctx, "RelEffectiveTimelinesByProperties"); err != nil {
+		return nil, err
+	}
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return nil, err
 	}

@@ -359,6 +359,9 @@ func (n *NodeOps) ByLabelAndPropertyCtx(ctx context.Context, label, key string, 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
+	if err := n.c.budgetSupported(ctx, "ByLabelAndProperty"); err != nil {
+		return nil, err
+	}
 	return n.ByLabelAndProperty(label, key, value, opts.WithReadMeter(storepkg.ReadMeterFrom(ctx), "ByLabelAndProperty"))
 }
 
@@ -366,6 +369,9 @@ func (n *NodeOps) ByLabelAndPropertyCtx(ctx context.Context, label, key string, 
 // budget, as ByLabelAndPropertyCtx.
 func (n *NodeOps) ByLabelAndPropertyValuesCtx(ctx context.Context, label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	if err := n.c.budgetSupported(ctx, "ByLabelAndPropertyValues"); err != nil {
 		return nil, err
 	}
 	return n.ByLabelAndPropertyValues(label, key, values, opts.WithReadMeter(storepkg.ReadMeterFrom(ctx), "ByLabelAndPropertyValues"))
@@ -376,6 +382,9 @@ func (n *NodeOps) ByLabelAndPropertyValuesCtx(ctx context.Context, label, key st
 // the label scan counts before it reads.
 func (n *NodeOps) ByLabelAndPropertiesCtx(ctx context.Context, label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	if err := n.c.budgetSupported(ctx, "ByLabelAndProperties"); err != nil {
 		return nil, err
 	}
 	return n.ByLabelAndProperties(label, values, opts.WithReadMeter(storepkg.ReadMeterFrom(ctx), "ByLabelAndProperties"))

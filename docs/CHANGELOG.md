@@ -41,6 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ReadBudget.BufferBytes` / `ReadWork.BufferBytes` (limit `"buffer bytes"`): a read's temporary buffers, a logical
   estimate charged before each entry is added (24 B a set entry, 8 B an ID or row pointer, a segment's size).
   Segments are counted as each is kept, before it joins the answer (they were counted after the whole answer).
+  A store that cannot count decodes or shard opens (a wrapper around a native store) refuses a budget bounding
+  `DecodedBytes` or `ShardOpens` before any read (`Limit` `"unsupported"`); it read unbounded and reported 0.
   Not counted: `ValidEndAfter`, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
   a nil check per decoded row and answers as before.
 

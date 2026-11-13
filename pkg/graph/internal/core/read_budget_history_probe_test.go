@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -288,5 +289,68 @@ func TestReadBudget_BufferAndSegmentsChargedBeforeGrowth(t *testing.T) {
 				t.Fatalf("Segments 1 = %v, %+v; want no rows, stopped at the second segment", segs, be.Work)
 			}
 		})
+	}
+}
+
+// rbWrapStore wraps a native badger store: the core cannot tell what it
+// counts, so a budget bounding store-side work is refused on it.
+type rbWrapStore struct{ *badger.Store }
+
+// TestReadBudget_UnsupportedStoreRefusesBeforeReading (READBUDGET step 7): on a
+// store that does not count decodes or shard opens (a wrapper around a native
+// store), every budgeted door refuses a budget bounding them before any read,
+// with ErrReadBudget and Limit "unsupported", instead of reading unbounded and
+// reporting 0; a budget bounding only what the core counts (Candidates) still
+// answers, and the native store answers both.
+func TestReadBudget_UnsupportedStoreRefusesBeforeReading(t *testing.T) {
+	t.Parallel()
+	bs, err := badger.New(badger.Config{InMemory: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := New(Config{Store: rbWrapStore{bs}, UntimedValidStart: UntimedFromTxFrom})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = g.Close(); _ = bs.Close() })
+	ctx := context.Background()
+	n, err := g.Nodes.Add(ctx, []string{"U"}, map[string]any{"k": int64(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin, err := g.Temporal.NowTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	doors := map[string]func(ctx context.Context) error{
+		"ByLabelAndProperty": func(ctx context.Context) error {
+			_, err := g.Nodes.ByLabelAndPropertyCtx(ctx, "U", "k", int64(1), storepkg.QueryOpts{})
+			return err
+		},
+		"GetByIDs": func(ctx context.Context) error {
+			_, err := g.Nodes.GetByIDsCtx(ctx, []types.NodeID{n.ID()})
+			return err
+		},
+		"LendByIDs": func(ctx context.Context) error {
+			return g.Nodes.LendByIDs(ctx, []types.NodeID{n.ID()}, func(int, *types.Node) bool { return true })
+		},
+		"NodeAsOf": func(ctx context.Context) error {
+			_, err := g.Temporal.NodeAsOfCtx(ctx, n.ID(), pin)
+			return err
+		},
+	}
+	for door, call := range doors {
+		for _, b := range []storepkg.ReadBudget{{DecodedBytes: 1 << 30}, {ShardOpens: 100}} {
+			bctx, meter := storepkg.WithReadBudget(ctx, b)
+			err := call(bctx)
+			be := rbdBudgetErr(t, err, "unsupported")
+			if be.Door != door || meter.Work() != (storepkg.ReadWork{}) {
+				t.Fatalf("%s under %+v: %+v, work %+v; want a refusal from %s before any work", door, b, be, meter.Work(), door)
+			}
+		}
+		bctx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 100})
+		if err := call(bctx); err != nil {
+			t.Fatalf("%s under a Candidates budget: %v; want an answer", door, err)
+		}
 	}
 }

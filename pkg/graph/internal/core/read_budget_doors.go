@@ -17,6 +17,9 @@ func (n *NodeOps) GetByIDsCtx(ctx context.Context, ids []types.NodeID) ([]*types
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
+	if err := n.c.budgetSupported(ctx, "GetByIDs"); err != nil {
+		return nil, err
+	}
 	meter := storepkg.ReadMeterFrom(ctx)
 	if err := meter.AddCandidates("GetByIDs", len(ids)); err != nil {
 		return nil, err

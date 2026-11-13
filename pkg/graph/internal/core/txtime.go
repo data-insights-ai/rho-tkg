@@ -140,6 +140,9 @@ func (t *TempOps) NodeAsOfCtx(ctx context.Context, id types.NodeID, txTime types
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
+	if err := t.c.budgetSupported(ctx, "NodeAsOf"); err != nil {
+		return nil, err
+	}
 	tally := storepkg.ReadMeterFrom(ctx).Tally("NodeAsOf")
 	if tally == nil {
 		return t.NodeAsOf(id, txTime)
@@ -168,6 +171,9 @@ func (t *TempOps) NodeAsOfCtx(ctx context.Context, id types.NodeID, txTime types
 // RelAsOfCtx is RelAsOf under ctx's read budget, as NodeAsOfCtx.
 func (t *TempOps) RelAsOfCtx(ctx context.Context, id types.RelID, txTime types.Instant) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	if err := t.c.budgetSupported(ctx, "RelAsOf"); err != nil {
 		return nil, err
 	}
 	tally := storepkg.ReadMeterFrom(ctx).Tally("RelAsOf")

@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -703,4 +704,20 @@ func authLevelFromFloat(v float64) (uint8, error) {
 		return 0, fmt.Errorf("graph: tkg_auth_level %g out of range [0, 255]", v)
 	}
 	return uint8(v), nil
+}
+
+// budgetSupported refuses, before any read, a read budget that bounds work
+// only the store can count (decoded bytes, shard opens) when the store does not
+// count it (a wrapper around a native store): such a budget would otherwise
+// read unbounded and report 0 (RH list R2, READBUDGET). door names the error's
+// door; the error is a *store.ReadBudgetError with Limit "unsupported".
+func (c *Core) budgetSupported(ctx context.Context, door string) error {
+	if c.storeCountsReads {
+		return nil
+	}
+	m := storepkg.ReadMeterFrom(ctx)
+	if m == nil || !m.BoundsStoreWork() {
+		return nil
+	}
+	return &storepkg.ReadBudgetError{Door: door, Limit: "unsupported", Work: m.Work()}
 }
