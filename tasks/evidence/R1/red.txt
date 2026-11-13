@@ -14,6 +14,9 @@ What the red run shows
   before it failed, because ensureWindowShard does not look at the fence. The same hole is a fenced store rotating
   and making window shards for writes it refuses.
 - The existing helper test expected checkRotation to return nil after a failed close; it now expects the fault.
+- The core/graph public door (pkg/graph TestTieredEmptyShardCloseFault_PublicAddFailsAndCommitsNothing, g.Nodes().Add)
+  is green on the code before the fix too: Add returned the sticky fault from the shard checkout, committed nothing,
+  and the row committed before survived the reopen with the same number of change-log records. It stays as the guard.
 
 Red output:
 --- FAIL: TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite (5.50s)
