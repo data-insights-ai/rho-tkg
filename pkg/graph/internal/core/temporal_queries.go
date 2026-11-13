@@ -522,7 +522,7 @@ func (c *Core) nodeAtLockedTxRd(rd entityReads, id types.NodeID, validAt, txAt t
 	if err := c.checkNodePointCompaction(id, txAt); err != nil {
 		return nil, err
 	}
-	if err := c.checkNodePointRetention(id, txAt); err != nil {
+	if err := c.checkNodePointRetentionRd(rd, id, txAt); err != nil {
 		return nil, err
 	}
 	current, err := rd.currentNode(id)

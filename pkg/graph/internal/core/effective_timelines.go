@@ -145,7 +145,7 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 	if err := c.checkNodePointCompaction(id, low); err != nil {
 		return nil, err
 	}
-	if err := c.checkNodePointRetention(id, low); err != nil {
+	if err := c.checkNodePointRetentionRd(rd, id, low); err != nil {
 		return nil, err
 	}
 	if current != nil {

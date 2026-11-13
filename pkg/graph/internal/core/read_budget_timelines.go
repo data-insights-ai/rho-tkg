@@ -131,11 +131,11 @@ func (t *TempOps) RelEffectiveTimelineCtx(ctx context.Context, id types.RelID, p
 	}
 	var out []temporal.RelSegment
 	err = c.readUnderRLock(func() error {
-		if err := c.checkRelTypePointRetention(id, pin); err != nil {
-			return err
-		}
 		rd, release := c.meteredEntityReads(meter.Tally(door))
 		defer release()
+		if err := c.checkRelTypePointRetentionRd(rd, id, pin); err != nil {
+			return err
+		}
 		var err error
 		out, err = c.relEffectiveTimelineFrom(rd, id, pin)
 		return err
@@ -227,11 +227,11 @@ func (t *TempOps) RelEffectiveTimelinesCtx(ctx context.Context, id types.RelID, 
 	}
 	var out [][]temporal.RelSegment
 	err = c.readUnderRLock(func() error {
-		if err := c.checkRelTypePointRetention(id, slices.Min(mapped)); err != nil {
-			return err
-		}
 		rd, release := c.meteredEntityReads(meter.Tally(door))
 		defer release()
+		if err := c.checkRelTypePointRetentionRd(rd, id, slices.Min(mapped)); err != nil {
+			return err
+		}
 		var err error
 		out, err = c.relEffectiveTimelinesFrom(rd, id, mapped)
 		return err

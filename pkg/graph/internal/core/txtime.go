@@ -57,7 +57,7 @@ func (c *Core) nodeAsOfLockedRd(rd entityReads, id types.NodeID, txTime types.In
 	if err := c.checkNodePointCompaction(id, txTime); err != nil {
 		return nil, err
 	}
-	if err := c.checkNodePointRetention(id, txTime); err != nil {
+	if err := c.checkNodePointRetentionRd(rd, id, txTime); err != nil {
 		return nil, err
 	}
 	metered, _ := c.txTimeQuery.(storepkg.TransactionTimeQueryMeteredCapability)
@@ -189,11 +189,11 @@ func (t *TempOps) RelAsOfCtx(ctx context.Context, id types.RelID, txTime types.I
 	}
 	var result *types.Relationship
 	err := c.readUnderRLock(func() error {
-		if err := c.checkRelTypePointRetention(id, txTime); err != nil {
-			return err
-		}
 		rd, release := c.meteredEntityReads(tally)
 		defer release()
+		if err := c.checkRelTypePointRetentionRd(rd, id, txTime); err != nil {
+			return err
+		}
 		r, err := c.relAsOfLockedRd(rd, id, txTime)
 		result = r
 		return err

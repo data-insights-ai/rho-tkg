@@ -208,10 +208,17 @@ func (c *Core) reapRelRetentionForReset() error {
 // (a relationship purge may have removed it, so its type is unknown). One
 // atomic load when no relationship purge ever ran.
 func (c *Core) checkRelTypePointRetention(id types.RelID, pin types.Instant) error {
+	return c.checkRelTypePointRetentionRd(entityReads{c: c}, id, pin)
+}
+
+// checkRelTypePointRetentionRd is checkRelTypePointRetention reading the
+// relationship's rows through rd: a budgeted read's metered snapshot counts the
+// gate's reads before they happen (RH list R2).
+func (c *Core) checkRelTypePointRetentionRd(rd entityReads, id types.RelID, pin types.Instant) error {
 	if pin == 0 || int64(pin) >= c.retentionRelMaxWatermark.Load() {
 		return nil
 	}
-	floor, gated, err := c.relTypeRetentionFloor(id)
+	floor, gated, err := c.relTypeRetentionFloorRd(rd, id)
 	if err != nil {
 		return err
 	}

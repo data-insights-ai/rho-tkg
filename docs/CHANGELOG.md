@@ -155,6 +155,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Retention gate under a read budget** (R2): the point retention gate (a pin below the retention max) read the
+  node's current row, or a deleted entity's history, uncounted and into the entity cache, so `NodeAtTxCtx`,
+  `NodesAtTxByIDsCtx`, `NodeAsOfCtx`, `RelAsOfCtx` and the effective timelines answered past a `DecodedBytes` budget
+  with 0 bytes counted (and on tiered opened shards uncharged). The gate now reads through the read's metered snapshot.
+  Red: `TestReadBudget_RetentionGateReadsAreCounted` (`tasks/evidence/READBUDGET/sigma-doors-c.txt`).
+
 - **A history budget on the memory store** (found by group B's scan tests): the memory store has no read snapshot, so a
   scan's per-entity reads never carried the budget's tally and `RelEffectiveTimelinesByProperties` counted no history
   versions there (a `HistoryExamined` budget never refused on memory); the scan reads now count them.

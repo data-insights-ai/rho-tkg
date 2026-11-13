@@ -252,13 +252,20 @@ func (c *Core) checkScanRetentionAt(pin types.Instant, scope retentionScope) err
 // consult — the door's own ErrNodeNotFound stands (R1: the scan gate is the
 // whole-graph guard; the point gate protects surviving entities).
 func (c *Core) checkNodePointRetention(id types.NodeID, pin types.Instant) error {
+	return c.checkNodePointRetentionRd(entityReads{c: c}, id, pin)
+}
+
+// checkNodePointRetentionRd is checkNodePointRetention reading the node's rows
+// through rd: a budgeted read's metered snapshot counts the gate's reads before
+// they happen (RH list R2).
+func (c *Core) checkNodePointRetentionRd(rd entityReads, id types.NodeID, pin types.Instant) error {
 	if pin == 0 {
 		return nil
 	}
 	if graphMax := c.retentionMaxWatermark.Load(); graphMax == 0 || int64(pin) >= graphMax {
 		return nil
 	}
-	floor, err := c.nodeRetentionFloor(id)
+	floor, err := c.nodeRetentionFloorRd(rd, id)
 	if err != nil {
 		return err
 	}

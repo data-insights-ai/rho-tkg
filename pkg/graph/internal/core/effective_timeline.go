@@ -486,7 +486,7 @@ func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validF
 	if err := c.checkNodePointCompaction(id, pin); err != nil {
 		return nil, err
 	}
-	if err := c.checkNodePointRetention(id, pin); err != nil {
+	if err := c.checkNodePointRetentionRd(rd, id, pin); err != nil {
 		return nil, err
 	}
 	current, err := rd.currentNode(id)

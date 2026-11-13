@@ -158,3 +158,12 @@ at the pin and a second label's watermark above it, node row evicted):
 (the gate decoded the row uncounted and the point read was then served from the cache). NodeAtCtx reads at pin 0, which
 skips the gate, so the new door is not affected. The fix is the Rd form used here applied at those call sites
 (nodeAtLockedTxRd, batched_attx.go, effective_timeline.go, effective_timelines.go, read_budget_timelines.go, txtime.go).
+
+Retention gate under a budget (group C review's open hole), red before the fix:
+  go test -run 'TestReadBudget_RetentionGateReadsAreCounted' ./pkg/graph/internal/core
+    --- FAIL: TestReadBudget_RetentionGateReadsAreCounted/badger (0.11s)
+        read_budget_retention_gate_test.go:59: NodeAtTxCtx under DecodedBytes 1 = true, <nil> (work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}); want a refusal: the gate's row read went uncounted
+    --- FAIL: TestReadBudget_RetentionGateReadsAreCounted/sharded (0.22s)
+        read_budget_retention_gate_test.go:62: the refused read left the node in the entity cache
+    --- FAIL: TestReadBudget_RetentionGateReadsAreCounted/tiered (0.40s)
+        read_budget_retention_gate_test.go:62: the refused read left the node in the entity cache
