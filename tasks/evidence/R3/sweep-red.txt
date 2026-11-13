@@ -46,4 +46,13 @@ FAIL
 Finding 4 (close rule, 13 Nov): go test -run TestHandleSweep_DemotedWarmSize with the sweep closing only a cold shard on its hot-size handle (hotArena):
 --- FAIL: TestHandleSweep_DemotedWarmSizeHandleCloses (0.64s)
     handle_sweep_test.go:467: the demoted shard's warm-size handle is still open after the sweep
+Review finding 3 (13 Nov): go test -v -run TestHandleSweep_PromotionMidSwapKeepsHotHandle before the fix (the rotation
+flips a promoted shard to hot without its shardMu or gate; a swap past its recheck installs its warm-size handle on the
+hot shard). Held at the gate, the swap's recheck already sees the hot tier, so that subtest passes on the old code:
+    handle_sweep_test.go:418: promoted day 20: open true read-only false hot-size false; want a writable hot-size handle
+--- FAIL: TestHandleSweep_PromotionMidSwapKeepsHotHandle (0.00s)
+    --- FAIL: TestHandleSweep_PromotionMidSwapKeepsHotHandle/held_at_closed (0.60s)
+    --- PASS: TestHandleSweep_PromotionMidSwapKeepsHotHandle/held_at_gated (0.65s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.654s
 FAIL

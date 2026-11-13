@@ -473,3 +473,110 @@ func TestHandleSweep_DemotedWarmSizeHandleCloses(t *testing.T) {
 		t.Fatalf("read of the demoted shard: %v", err)
 	}
 }
+
+// TestHandleSweep_PromotionMidSwapKeepsHotHandle (R3 review finding 3): a
+// calendar rotation promotes day 20 back to hot (the clock moved back a
+// window) while the sweep holds day 20's gate to swap its hot-size handle,
+// at the gate (before its recheck) or between its close and its reopen. The
+// shard ends hot on a hot-size handle, open and writable, and keeps every
+// row: the rows before the promotion and a write after it. Catches a
+// promotion that flips the tier without the shard's gate (the swap reopens
+// the now-hot shard at WarmMemTableSize).
+func TestHandleSweep_PromotionMidSwapKeepsHotHandle(t *testing.T) {
+	t.Parallel()
+	for _, step := range []string{"gated", "closed"} {
+		t.Run("held at "+step, func(t *testing.T) {
+			t.Parallel()
+			clock := &tierClock{}
+			clock.set(julDay(20, 8))
+			cfg := tierClockCfg(t.TempDir(), clock)
+			cfg.WarmMemTableSize = 8 << 20
+			ts, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = ts.Close() })
+			reg := registrypkg.NewLabelRegistry()
+			ts.SetLabelRegistry(reg)
+			tok, _ := reg.GetOrCreate("Signal")
+			put := func(h int) types.NodeID {
+				t.Helper()
+				id, ok, err := ts.MintNodeIDAt(tok, ms(julDay(20, h)), true)
+				if err != nil || !ok {
+					t.Fatalf("MintNodeIDAt: %v %v", ok, err)
+				}
+				if err := ts.PutNode(types.NewNode(id, tok, nil)); err != nil {
+					t.Fatalf("PutNode: %v", err)
+				}
+				return id
+			}
+			ids := []types.NodeID{put(3)}
+			day20 := ts.HotShardForTest()
+
+			reached, release := make(chan struct{}), make(chan struct{})
+			unhold := sync.OnceFunc(func() { close(release) })
+			defer unhold()
+			var once sync.Once
+			ts.SetSweepFaultForTest(func(s string) error {
+				if s == step {
+					once.Do(func() { close(reached); <-release })
+				}
+				return nil
+			})
+			clock.set(julDay(21, 8))
+			if err := ts.CheckRotationForTest(); err != nil { // day 20 warm on its hot-size handle; kicks the sweep
+				t.Fatal(err)
+			}
+			awaitSweepStep(t, reached, step)
+
+			// The clock moves back to day 20 and day 21's window is cut to
+			// [20 08:00, 20 09:00), in memory and in the catalog, so the next
+			// rotation promotes day 20, the window holding the clock.
+			clock.set(julDay(20, 9))
+			ts.MuForTest().Lock()
+			day21 := ts.HotShardForTest()
+			day21.timeStart = julDay(20, 8)
+			day21.SetTimeEndForTest(julDay(20, 9))
+			cat := ts.CatalogForTest()
+			cat.mu.Lock()
+			for i := range cat.Shards {
+				if cat.Shards[i].Name == day21.name {
+					cat.Shards[i].TimeStart, cat.Shards[i].TimeEnd = julDay(20, 8), julDay(20, 9)
+				}
+			}
+			cat.mu.Unlock()
+			ts.MuForTest().Unlock()
+			rotated := make(chan error, 1)
+			go func() { rotated <- ts.CheckRotationForTest() }()
+			// Release the swap once the promotion flipped day 20's tier: at
+			// the gate the swap's recheck then sees a hot shard; after the
+			// close it reopens a shard that turned hot meanwhile.
+			for deadline := time.Now().Add(30 * time.Second); day20.Tier() != TierHot; time.Sleep(time.Millisecond) {
+				if time.Now().After(deadline) {
+					t.Fatal("the promotion never flipped day 20 to hot")
+				}
+			}
+			unhold()
+			if err := <-rotated; err != nil {
+				t.Fatalf("promotion: %v", err)
+			}
+			ts.SweepHandlesForTest() // waits for the goroutine's swap
+
+			if ts.HotShardForTest() != day20 || day20.Tier() != TierHot {
+				t.Fatalf("day 20 is %s (hot shard %v), want the hot shard", day20.Tier(), ts.HotShardForTest() == day20)
+			}
+			if s, ro := day20.StoreStateForTest(); s == nil || ro || !day20.HotArenaForTest() {
+				t.Fatalf("promoted day 20: open %v read-only %v hot-size %v; want a writable hot-size handle", s != nil, ro, day20.HotArenaForTest())
+			}
+			ids = append(ids, put(10))
+			for _, id := range ids {
+				if _, err := ts.GetNode(id); err != nil {
+					t.Fatalf("GetNode(%d) after the promotion: %v", id, err)
+				}
+			}
+			if ns, err := ts.NodesByLabel(tok, QueryOpts{}); err != nil || len(ns) != len(ids) {
+				t.Fatalf("NodesByLabel: %d rows (err %v), want %d", len(ns), err, len(ids))
+			}
+		})
+	}
+}

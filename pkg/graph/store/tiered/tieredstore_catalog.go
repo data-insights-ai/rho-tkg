@@ -47,9 +47,16 @@ func (ts *Store) rotateHotShardLocked() error {
 	now := ts.clock().In(ts.shardLoc)
 
 	// Flush pending writes to the old hot shard. Failure here is benign:
-	// no live state has changed yet.
-	if err := oldHot.store.Flush(); err != nil {
-		return fmt.Errorf("graph: flush hot shard before rotation: %w", err)
+	// no live state has changed yet. es.store under shardMu: a hot shard is
+	// never mid-swap (a promotion waits for the sweep's gate below), but a
+	// shard left without a handle has nothing to flush.
+	oldHot.shardMu.Lock()
+	oldStore := oldHot.store
+	oldHot.shardMu.Unlock()
+	if oldStore != nil {
+		if err := oldStore.Flush(); err != nil {
+			return fmt.Errorf("graph: flush hot shard before rotation: %w", err)
+		}
 	}
 
 	// New shard name and window (rotationWindow): it starts at the boundary,
@@ -146,7 +153,18 @@ func (ts *Store) rotateHotShardLocked() error {
 	oldHot.timeEnd = boundary
 
 	if promote != nil {
+		// The handle sweep may hold promote's gate (a warm shard on its
+		// hot-size handle, handle_sweep.go). The tier flips under shardMu, so
+		// a swap that has not rechecked yet leaves the handle as it is, and a
+		// swap past its recheck installs a hot-size handle instead of the warm
+		// one; then the rotation waits for the gate, so the hot shard is never
+		// mid-swap (no nil store) once it is ts.hotShard, and no later swap
+		// starts (the sweep skips a hot shard). ts.mu -> shardMu; the sweep
+		// takes no ts.mu behind the gate.
+		promote.shardMu.Lock()
 		promote.setTier(TierHot)
+		promote.waitMoveLocked()
+		promote.shardMu.Unlock()
 		promote.readOnly = false
 		ts.hotShard = promote
 	} else {

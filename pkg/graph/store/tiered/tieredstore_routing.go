@@ -24,9 +24,12 @@ func (ts *Store) shardForNode(primaryLabel uint16) *BadgerStore {
 		return ts.refShard
 	}
 	ts.mu.RLock()
-	s := ts.hotShard.store
+	hot := ts.hotShard
 	ts.mu.RUnlock()
-	return s
+	// es.store under shardMu: the handle sweep swaps a shard's store under it.
+	hot.shardMu.Lock()
+	defer hot.shardMu.Unlock()
+	return hot.store
 }
 
 // IsReferenceLabel reports whether the label NAME is reference-class (routed

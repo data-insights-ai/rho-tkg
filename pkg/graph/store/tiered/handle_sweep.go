@@ -174,7 +174,10 @@ func (ts *Store) sweepShard(es *EventShard) (sealed bool) {
 	var store *BadgerStore // the reopened handle, installed with the gate's release
 	defer func() {
 		es.shardMu.Lock()
-		if store != nil {
+		switch {
+		case store != nil && es.currentTier() == TierHot && !ts.closing.Load():
+			ts.installPromotedLocked(es, store)
+		case store != nil:
 			ts.installSweptLocked(es, store)
 		}
 		ts.endHandleGateLocked(es, done)
@@ -278,6 +281,31 @@ func (ts *Store) installSweptLocked(es *EventShard, store *BadgerStore) {
 	// self-commit records the scope's discard cannot reach.
 	ts.handNewShardToLogScope(store, es.name)
 	ts.sweep.swaps.Add(1)
+}
+
+// installPromotedLocked replaces the warm-size handle a swap reopened with a
+// hot-size one: a rotation promoted es to hot after the swap's recheck (it
+// flips the tier under shardMu and then waits for this gate), and a hot shard
+// takes the store's writes. When the hot open fails the shard keeps a
+// warm-size handle. Caller holds es.shardMu; the gate is still up.
+func (ts *Store) installPromotedLocked(es *EventShard, warm *BadgerStore) {
+	if err := warm.Close(); err != nil {
+		slog.Error("tiered: handle sweep: close the warm handle of a promoted shard", "shard", es.name, "err", err)
+	}
+	hot, err := ts.openExistingBadgerStore(es.path)
+	hotSize := err == nil
+	if err != nil {
+		slog.Error("tiered: handle sweep: promoted shard did not reopen at the hot size", "shard", es.name, "err", err)
+		if hot, err = ts.openBadgerStoreWithRecovery(es.path); err != nil {
+			ts.recordBackgroundError(fmt.Errorf("graph: handle sweep: reopen promoted shard %s: %w", es.name, err))
+			return
+		}
+	}
+	es.setStoreLocked(ts, hot)
+	es.hotArena = hotSize
+	// A scope opened between the swap's close and now skipped the closed
+	// shard, as in installSweptLocked: the new handle joins it.
+	ts.handNewShardToLogScope(hot, es.name)
 }
 
 // endHandleGateLocked releases a shard's move gate, first bringing its handle
