@@ -87,6 +87,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Adjacency scan errors** (R2, Sigma doors group A): a failed on-disk adjacency scan now returns its error from
+  the plain `Incoming`/`Outgoing` reads on tiered and sharded, where it was logged and read as no entries (a silent
+  empty answer).
+
 - **READBUDGET, gap A** (a budgeted indexed read built and sorted the whole disk candidate list before it admitted a
   candidate): the on-disk property index's equality walk (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`; the
   current lookup of `ByLabelAndPropertyCtx` and its temporal doors, on badger and on every tiered shard) admits each
