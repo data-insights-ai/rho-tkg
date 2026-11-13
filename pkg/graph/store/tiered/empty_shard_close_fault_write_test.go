@@ -304,3 +304,26 @@ func eventShardStoreLocked(ts *Store, name string) *BadgerStore {
 	defer es.shardMu.Unlock()
 	return es.store
 }
+
+// A manual rotation (RotateHotShard, ForceRotate) on a fenced store refuses
+// with the fault and rotates nothing, as a write's checkRotation does: a
+// rotation's catalog save and new shard are writes too (R1 review, finding 3).
+func TestEmptyShardDemotion_FencedStoreRefusesManualRotation(t *testing.T) {
+	t.Parallel()
+	ts, err := New(Config{DataDir: t.TempDir(), ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+	fault := errors.New("recorded before the manual rotation")
+	ts.recordBackgroundError(fault)
+	before := ts.HotShardForTest().Name()
+	for name, rotate := range map[string]func() error{"RotateHotShard": ts.RotateHotShard, "ForceRotate": ts.ForceRotate} {
+		if err := rotate(); !errors.Is(err, fault) {
+			t.Fatalf("%s under the fence = %v, want the fault", name, err)
+		}
+		if got := ts.HotShardForTest().Name(); got != before {
+			t.Fatalf("%s under the fence rotated: hot %s, want %s", name, got, before)
+		}
+	}
+}

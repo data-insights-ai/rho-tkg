@@ -38,3 +38,9 @@ Mutation sweep (each defended line broken once, TestEmptyShardDemotion_* run):
 - checkRotation's return of the fence after its rotation removed (return nil): CloseFailureDetachesAndFences fails
   (rotation error = nil).
 - ensureWindowShard's fence check removed: FenceStopsWindowShardMaking fails.
+
+Fable review, finding 3: a manual rotation ignored the fence (RotateHotShard / ForceRotate called
+rotateHotShardLocked directly and returned nil after a cleanup that fenced). Red, before the fix:
+  go test -run 'TestEmptyShardDemotion_FencedStoreRefusesManualRotation' ./pkg/graph/store/tiered
+--- FAIL: TestEmptyShardDemotion_FencedStoreRefusesManualRotation (0.23s)
+    empty_shard_close_fault_write_test.go:323: RotateHotShard under the fence = <nil>, want the fault

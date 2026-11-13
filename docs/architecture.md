@@ -265,8 +265,12 @@ ADR-0012.
   the handle and fails no write. A failed close detaches the handle (a half-closed handle is never kept) and sets the
   background-error fence as a failed idle close does, and the write that triggered the rotation is refused with that
   fault: it commits nothing (no row, no change-log record, no shard made for it), the committed rotation stays, and
-  every row committed before stays readable after a reopen or `RecoverBackgroundError` (R1). A fenced store refuses
-  every later write at its first step, before a rotation or a window shard. A
+  every row committed before stays readable after a reopen or `RecoverBackgroundError` (R1). A uniqueness claim the
+  graph layer wrote before the refused row stays (no reader trusts it without its row), but a `UniqueForever` claim's
+  withdrawal is a write the fence refuses too, so its value stays barred to other entities until
+  `Constraints().ReleaseOwnership`. A fenced store refuses every later write at its first step, before a rotation or a
+  window shard, and a manual `RotateHotShard` / `ForceRotate` likewise; a write already past its checkout when the
+  fault lands still commits. A
   demoted shard still on the handle it had while hot or warm has it closed by the handle sweep (below); every other demoted shard
   keeps its handle until the idle sweep closes it after `IdleTimeout` unused, counted from its last cold access (a demoted shard no cold read touched closes at the next
   sweep; hot and warm reads stamp no access). A read reopens a cold shard read-only (COLDRO: 1.3 ms against 27.6 ms writable), a write or a

@@ -34,9 +34,17 @@ func (ts *Store) RotateHotShard() error {
 		return ErrManualRotation
 	}
 
+	// A fenced store rotates nothing, and a rotation whose cleanup fenced it
+	// returns that fault, as checkRotation does for a write (R1).
+	if err := ts.backgroundError(); err != nil {
+		return err
+	}
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	return ts.rotateHotShardLocked()
+	if err := ts.rotateHotShardLocked(); err != nil {
+		return err
+	}
+	return ts.backgroundError()
 }
 
 func (ts *Store) rotateHotShardLocked() error {
