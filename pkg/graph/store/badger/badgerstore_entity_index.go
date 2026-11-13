@@ -448,12 +448,6 @@ func (bs *Store) entityIndexRangeLocked(within, lo, hi []byte, fn func(key []byt
 }
 
 func (bs *Store) entityIndexRangeLockedWork(within, lo, hi []byte, fn func(key []byte), work *storecontract.PropertyMemberWork) error {
-	return bs.entityIndexRangeAdmitLocked(within, lo, hi, fn, work, nil)
-}
-
-// entityIndexRangeAdmitLocked is entityIndexRangeLockedWork with a read
-// budget's admission (see entityIndexWalkAdmitLocked).
-func (bs *Store) entityIndexRangeAdmitLocked(within, lo, hi []byte, fn func(key []byte), work *storecontract.PropertyMemberWork, admit func() error) error {
 	in := func(k []byte) bool {
 		if !bytes.HasPrefix(k, within) || len(k) < len(lo) || bytes.Compare(k[:len(lo)], lo) < 0 {
 			return false
@@ -498,27 +492,17 @@ func (bs *Store) entityIndexRangeAdmitLocked(within, lo, hi []byte, fn func(key 
 				work.DiskEntriesEmitted++
 			}
 			fn(key)
-			if admit != nil {
-				if err := admit(); err != nil {
-					return err
-				}
-			}
 		}
 		return nil
 	})
 	if err != nil {
-		return walkError("entity index range scan", err)
+		return fmt.Errorf("graph: entity index range scan: %w", err)
 	}
 	for k := range ov.sets {
 		if work != nil {
 			work.OverlaySetsEmitted++
 		}
 		fn([]byte(k))
-		if admit != nil {
-			if err := admit(); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }

@@ -297,7 +297,7 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 	// The late axis: lateTo > start.
 	late := append(slices.Clip(p), storepkg.EntityIndexAxisLate)
 	seek := storepkg.AppendEntityIndexTimeSeek(slices.Clip(p), storepkg.EntityIndexAxisLate, int64(w.start)+1)
-	if err := bs.entityIndexSeekAdmitLocked(late, seek, nil, judge, work, admit); err != nil {
+	if err := bs.entityIndexSeekLocked(late, seek, nil, judge, work, admit); err != nil {
 		return nil, err
 	}
 	if w.pin != 0 && w.pin < math.MaxInt64 {
@@ -307,7 +307,7 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 			_, last, _, _, _, _, ok := storepkg.EntityIndexTimeEntryOf(key)
 			return ok && types.Instant(last) <= w.pin
 		}
-		if err := bs.entityIndexSeekAdmitLocked(recent, recent, past, judge, work, admit); err != nil {
+		if err := bs.entityIndexSeekLocked(recent, recent, past, judge, work, admit); err != nil {
 			return nil, err
 		}
 	}
@@ -326,15 +326,10 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 // outside [seek, past) is not visited. The walk takes every version
 // (AllVersions) and counts each loop entry (IteratorSteps, the boundary
 // included), its seek (IteratorSeeks) and each live persisted entry it hands
-// on (DiskEntriesEmitted). Caller holds idxMu (R or W).
-func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork) error {
-	return bs.entityIndexSeekAdmitLocked(prefix, seek, past, fn, work, nil)
-}
-
-// entityIndexSeekAdmitLocked is entityIndexSeekLocked with a read budget's
-// admission (R2): admit (nil: none) runs after each entry handed to fn, disk or
-// buffered, and its error stops the walk there.
-func (bs *Store) entityIndexSeekAdmitLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork, admit func() error) error {
+// on (DiskEntriesEmitted). admit (nil: none) is a read budget's admission
+// (R2): it runs after each entry handed to fn, disk or buffered, and its error
+// stops the walk there. Caller holds idxMu (R or W).
+func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork, admit func() error) error {
 	tail := storepkg.EntityIndexTimeTailLen - 1 // after the axis
 	in := func(k []byte) bool {
 		return len(k) == len(prefix)+tail && bytes.Compare(k, seek) >= 0 && (past == nil || !past(k))
