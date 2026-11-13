@@ -21,14 +21,15 @@ import (
 	"time"
 )
 
-// The kind of a diff, by Go's rules plus René's (4 Nov):
+// The kind of a diff, by Go's rules plus René's (4 Nov; 13 Nov: a new API is
+// no minor):
 //   - major: an exported name of a public (non-internal) package is removed
 //     or its signature changed (parameter names aside), or go.mod's module
 //     path changes its major;
-//   - minor: a new exported name in any package, internal ones included; a
-//     changed store format marker (a const or var named *FormatVersion*); a
-//     badger minor or major bump; a raised go directive;
-//   - patch: anything else.
+//   - minor: a changed store format marker (a const or var named
+//     *FormatVersion*); a badger minor or major bump; a raised go directive;
+//   - patch: anything else, new exported names included (listed as the
+//     reasons of a patch).
 // Each package's live files are chosen by go/build (build constraints and
 // GOOS/GOARCH suffixes) on both sides, so a measure-tagged file is no API.
 
@@ -112,7 +113,7 @@ func kindOf(base, head tree) (int, []string) {
 	for dir, a := range newAPI {
 		for n := range a {
 			if _, ok := oldAPI[dir][n]; !ok {
-				raise(minor, "%s: %s is a new exported name", dir, n)
+				raise(patch, "%s: %s is a new exported name", dir, n)
 			}
 		}
 	}

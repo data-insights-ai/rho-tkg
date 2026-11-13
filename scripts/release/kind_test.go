@@ -54,17 +54,17 @@ func TestKindOf(t *testing.T) {
 		{"a body change", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "return x", "return x + 1", 1)), patch, ""},
 		{"a test or a tool", edit("scripts/tool/main.go", "package main\n\nfunc main() {}\n\nfunc New() {}\n"), patch, ""},
 		{"a measure-only export", edit("pkg/a/measure_helpers.go", "//go:build measure\n\npackage a\n\nfunc Measured() {}\n\nfunc More() {}\n"), patch, ""},
-		{"a new func", edit("pkg/a/a.go", aWith("\nfunc G() {}\n")), minor, "G is a new exported name"},
-		{"a new field", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "A int }", "A int; B bool }", 1)), minor, "S.B is a new"},
-		{"a new interface method", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "M() }", "M(); N() }", 1)), minor, "I.N is a new"},
+		{"a new func", edit("pkg/a/a.go", aWith("\nfunc G() {}\n")), patch, "G is a new exported name"},
+		{"a new field", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "A int }", "A int; B bool }", 1)), patch, "S.B is a new"},
+		{"a new interface method", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "M() }", "M(); N() }", 1)), patch, "I.N is a new"},
 		{"a parameter renamed", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "F(x int) int { return x }", "F(y int) int { return y }", 1)), patch, ""},
-		{"an embedded field", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "A int }", "A int; io.Reader }", 1)), minor, "S.(io.Reader) is a new"},
+		{"an embedded field", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "A int }", "A int; io.Reader }", 1)), patch, "S.(io.Reader) is a new"},
 		{"a removed embedded field", editFrom(aWith("\ntype E struct{ S }\n"), aWith("\ntype E struct{}\n")), major, "E.(S) is removed"},
 		{"a type parameter", editFrom(aWith("\ntype G[T any] struct{}\n"), aWith("\ntype G[T comparable] struct{}\n")), major, "G changed"},
 		{"a defined type to an alias", editFrom(aWith("\ntype N int\n"), aWith("\ntype N = int\n")), major, "N changed"},
 		{"a const's type", editFrom(aWith("\nconst C = 1\n"), aWith("\nconst C = \"1\"\n")), major, "C changed"},
 		{"a go directive bump", edit("go.mod", strings.Replace(gomod, "\n\n", "\n\ngo 1.26\n", 1)), minor, "go.mod: go"},
-		{"an internal export", edit("pkg/internal/i/i.go", "package i\n\nfunc Old() {}\n\nfunc New() {}\n"), minor, "New is a new"},
+		{"an internal export", edit("pkg/internal/i/i.go", "package i\n\nfunc Old() {}\n\nfunc New() {}\n"), patch, "New is a new"},
 		{"an internal removal", edit("pkg/internal/i/i.go", "package i\n"), patch, ""},
 		{"a format marker", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "= 3", "= 4", 1)), minor, "format marker"},
 		{"a badger minor bump", edit("go.mod", strings.Replace(gomod, "v4.9.2", "v4.10.0", 1)), minor, "badger v4.9 -> v4.10"},
@@ -80,7 +80,7 @@ func TestKindOf(t *testing.T) {
 		}
 		got, why := kindOf(b, c.head)
 		all := strings.Join(why, "; ")
-		if got != c.want || (c.why != "" && !strings.Contains(all, c.why)) || (c.want == patch && all != "") {
+		if got != c.want || (c.why != "" && !strings.Contains(all, c.why)) || (c.want == patch && c.why == "" && all != "") {
 			t.Errorf("%s: got %s (%s), want %s with %q", c.name, kindNames[got], all, kindNames[c.want], c.why)
 		}
 	}

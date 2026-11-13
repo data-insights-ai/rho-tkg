@@ -14,10 +14,9 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   above a constant-factor win (todo SCALE, `tasks/evidence/SCALE/`).
 - Never create a new .md file; fold new facts into the owning file (README § Documentation). One fact, one place.
 - Commits, MRs and PRs carry no agent attribution: no Co-Authored-By, no Claude-Session, no "Generated with".
-- A fix is a PATCH, a new door or option a MINOR. A fix never rides in a minor, a door never in a patch; one round of consumer
-  requests ships as one minor or one patch. A new store format marker is a door (older releases refuse the store), and so is
-  any new exported name, internal packages included; a removed or changed public name is a MAJOR: `make kind` decides
-  (`scripts/release`, FLUSHPART, 2026-10-24).
+- A fix or a new door or option is a PATCH (René, 13 Nov: a new API is no minor). A MINOR is a new store format marker
+  (older releases refuse the store), a badger minor bump or a raised go directive; a removed or changed public name is a
+  MAJOR: `make kind` decides (`scripts/release`, FLUSHPART, 2026-10-24).
 - Scope: consumer-blocking or wrong-answer/data bugs only, plus ai-soc runtime items (standing go). A backlog item needs a
   consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
 - Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc (their agents: HANDOVER § State) without asking,
@@ -145,8 +144,8 @@ gate runs again.
 4. `make release-patch|release-minor|release-major` (`scripts/release`, Go, edits no file): preconditions (main, clean,
    the remote's main an ancestor of HEAD, the tag absent, a push dry-run passes), the diff's kind at most the one asked for (a major: a removed or
    changed public name: a signature's types, type parameters, an embedded field, alias or defined type, a const's type,
-   parameter names aside; or the module path's /vN; a minor: a new exported name, internal packages included, a store
-   format marker, a badger minor bump or a raised go directive;
+   parameter names aside; or the module path's /vN; a minor: a store format marker, a badger minor bump or a raised go
+   directive (a new exported name is a patch);
    else a patch), the CHANGELOG's newest section is the next version and [Unreleased] is
    empty, the gate of that kind, `git tag -a --cleanup=verbatim` (message: that section), `git push --atomic` of main and the tag. A major
    needs go.mod's module path, and every import, moved to /v(N+1) before it runs (the script refuses it otherwise). A red step stops it; the fix goes on main and the release
@@ -290,7 +289,7 @@ Index (`→` names where the rule lives now):
 76. A type tag covers one level; test every kind at depth → `TestWire_NestedKindsRoundTripExact`
 77. → 78
 78. Red break-the-code test first; mutation sweep for crash safety → digest (Code); `tasks/evidence/FLUSHPART/mutations.txt`
-79. Fix = patch, door = minor → digest (Process); `scripts/release` (kind.go)
+79. Fix or door = patch, format marker = minor → digest (Process); `scripts/release` (kind.go)
 80. One todo and HANDOVER commit on main per item end → digest (Process); `TestLedger` (`internal/docscheck`)
 81. Act, do not offer → digest (Process)
 82. → Release checklist (the release script's gate decides; a red tag CI is fixed by the next tag)
