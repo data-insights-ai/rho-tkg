@@ -202,7 +202,11 @@ func (ts *Store) rotateHotShardLocked() error {
 		ts.handNewShardToLogScope(newStore, newName)
 	}
 	ts.closeEmptyDemotedShardsLocked(oldHot, coldDemotions)
-	ts.kickHandleSweep() // the old hot shard's handle and the demoted ones (handle_sweep.go)
+	// The old hot shard's handle and the demoted ones are the sweep's work
+	// (handle_sweep.go): they enter its pending set, which a pass visits.
+	ts.sweepPend(oldHot)
+	ts.sweepPend(coldDemotions...)
+	ts.kickHandleSweep()
 	return nil
 }
 

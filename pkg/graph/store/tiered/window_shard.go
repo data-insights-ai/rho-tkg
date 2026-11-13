@@ -101,6 +101,7 @@ func (ts *Store) makeWindowShardLocked(t time.Time) error {
 		es.countColdStoreLocked(ts)
 		es.shardMu.Unlock()
 		freeColdRelTemporalIndexes(store, name)
+		ts.sweepPend(es) // on the demoted chain: the handle sweep's next pass closes it
 	}
 	ts.handNewShardToLogScope(store, name)
 	return nil

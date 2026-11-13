@@ -66,3 +66,19 @@ equivalent mutant. With both migrations off, the old T-e passes (its WAL is empt
 2026/11/13 14:55:39 Arena too small, toWrite:262217 newTotal:11017495 limit:10905171
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	7.934s
 FAIL
+
+WARMMEM follow-ups on the sweep (13 Nov 2026), part 1: what a pass costs. A test counter (SweepPassCountsForTest: passes
+finished, shards looked at) on the old pass, which copies every event shard but the hot one into a slice and takes each
+one's shardMu. One rotation leaves ONE shard owing a swap among 10, 100 and 1000 closed cold shards; the passes after it
+look at retained + 1 shards, the work stays 1 (counts, no MemStats, no time):
+go test -v -run 'TestHandleSweep_VisitsBoundedByShardsNeedingWork' ./pkg/graph/store/tiered/
+    handle_sweep_pending_test.go:71: the passes after one rotation looked at 11 shards among 10 retained, want at most the 1 that needed work
+    handle_sweep_pending_test.go:71: the passes after one rotation looked at 101 shards among 100 retained, want at most the 1 that needed work
+    handle_sweep_pending_test.go:71: the passes after one rotation looked at 1001 shards among 1000 retained, want at most the 1 that needed work
+--- FAIL: TestHandleSweep_VisitsBoundedByShardsNeedingWork (10_retained, 100_retained, 1000_retained)
+Part 1b: a pinned shard holds up the shards behind it. Five warm shards pinned, five not, a drain deadline of a minute; the
+old pass waits on the first pinned shard it meets (the shard map's order), so the free shards behind it wait too. 8 runs
+of go test -count=8 -run TestHandleSweep_PinnedShardDoesNotBlockOthers, 8 red (the free shards swapped while the pins are
+held: 1, 0, 3, 0, 0, 0, 2, 0 of 5):
+    handle_sweep_pending_test.go:126: 0 of the 5 free shards swapped while 5 others are pinned: a pinned shard holds up the pass
+--- FAIL: TestHandleSweep_PinnedShardDoesNotBlockOthers (13.31s)

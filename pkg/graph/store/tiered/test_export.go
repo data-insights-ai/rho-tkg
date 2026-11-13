@@ -267,8 +267,9 @@ func (ts *Store) SetMoveFaultForTest(fault func(step string) error) { ts.moveFau
 func (ts *Store) ClosingForTest() bool { return ts.closing.Load() }
 
 // SweepHandlesForTest runs one pass of the handle sweep (handle_sweep.go) on
-// the calling goroutine. A swap the sweep goroutine has in progress is waited
-// for (the shard's move gate), so on return every shard was visited.
+// the calling goroutine. A pass the sweep goroutine has in progress is waited
+// for (passes do not overlap), so on return every shard that owed work when
+// the call began was visited.
 func (ts *Store) SweepHandlesForTest() { ts.sweepHandles() }
 
 // SetSweepFaultForTest installs fault as the handle sweep's step hook ("gated"
@@ -291,6 +292,12 @@ func (ts *Store) SetSweepDrainTimeoutForTest(d time.Duration) { ts.sweep.drain.S
 // demoted handles it closed.
 func (ts *Store) HandleSweepCountsForTest() (swaps, closes int64) {
 	return ts.sweep.swaps.Load(), ts.sweep.closes.Load()
+}
+
+// SweepPassCountsForTest returns the handle sweep's passes finished and the
+// shards those passes looked at, since New.
+func (ts *Store) SweepPassCountsForTest() (passes, visited int64) {
+	return ts.sweep.passes.Load(), ts.sweep.visited.Load()
 }
 
 // HotArenaForTest reports whether the shard's handle was opened as a hot one.

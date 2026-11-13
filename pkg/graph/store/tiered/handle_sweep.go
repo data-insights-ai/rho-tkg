@@ -3,6 +3,7 @@ package tiered
 import (
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -20,15 +21,34 @@ import (
 // waits for the pins to drain, closes, and reopens, holding only the shard's
 // shardMu and never ts.mu, so writers to other shards never wait and writers
 // to the swapping shard wait one swap.
+//
+// A pass visits only the shards that owe work (handleSweep.pending), so its
+// cost follows the work and not the shards the store retains: a shard enters
+// the set when a rotation leaves it on a handle the sweep owes a swap or a
+// close (sweepPend), and stays in it while a scope, a pin or a hold defers
+// the swap.
 
 // handleSweep is the sweep goroutine's state.
 type handleSweep struct {
-	kick   chan struct{}                           // buffered (1): a rotation or the idle tick wakes the sweep
-	done   chan struct{}                           // closed when the loop returns; nil when it never started
-	swaps  atomic.Int64                            // warm handles reopened at WarmMemTableSize
-	closes atomic.Int64                            // demoted handles closed
-	fault  atomic.Pointer[func(step string) error] // test hook (sweepFaultAt)
-	drain  atomic.Int64                            // test hook: the pin drain deadline in ns; 0 is sweepDrainTimeout
+	kick    chan struct{}                           // buffered (1): a rotation or the idle tick wakes the sweep
+	done    chan struct{}                           // closed when the loop returns; nil when it never started
+	swaps   atomic.Int64                            // warm handles reopened at WarmMemTableSize
+	closes  atomic.Int64                            // demoted handles closed
+	fault   atomic.Pointer[func(step string) error] // test hook (sweepFaultAt)
+	drain   atomic.Int64                            // test hook: the pin drain deadline in ns; 0 is sweepDrainTimeout
+	passes  atomic.Int64                            // passes finished (a test waits on it)
+	visited atomic.Int64                            // shards the passes looked at (a test counts what a pass costs)
+
+	// passMu keeps one pass at a time, the goroutine's and a test's: a pass
+	// returns once the shards before it are settled.
+	passMu sync.Mutex
+	// mu guards pending; a leaf lock, taken under ts.mu and shardMu.
+	mu sync.Mutex
+	// pending holds the shards that owe a swap or a close: the shard a
+	// rotation turned warm on its hot-size handle or demoted with its handle
+	// open, a cold window shard made open, and any shard a pass could not
+	// settle (a scope open, a pin that outlasted the drain deadline).
+	pending map[*EventShard]struct{}
 }
 
 // sweepDrainTimeout bounds how long a swap waits for its shard's pins to
@@ -86,6 +106,41 @@ func (ts *Store) kickHandleSweep() {
 	}
 }
 
+// sweepPend adds the shards that owe a handle swap or close to the set the
+// next pass visits. Any lock may be held. A store without a sweep (in memory)
+// keeps nothing.
+func (ts *Store) sweepPend(shards ...*EventShard) {
+	if ts.sweep.kick == nil {
+		return
+	}
+	ts.sweep.mu.Lock()
+	defer ts.sweep.mu.Unlock()
+	if ts.sweep.pending == nil {
+		ts.sweep.pending = make(map[*EventShard]struct{}, len(shards))
+	}
+	for _, es := range shards {
+		if es != nil {
+			ts.sweep.pending[es] = struct{}{}
+		}
+	}
+}
+
+// takeSweepPending hands the pending shards to a pass and empties the set; a
+// shard the pass cannot settle goes back with sweepPend.
+func (ts *Store) takeSweepPending() []*EventShard {
+	ts.sweep.mu.Lock()
+	defer ts.sweep.mu.Unlock()
+	if len(ts.sweep.pending) == 0 {
+		return nil
+	}
+	shards := make([]*EventShard, 0, len(ts.sweep.pending))
+	for es := range ts.sweep.pending {
+		shards = append(shards, es)
+	}
+	clear(ts.sweep.pending)
+	return shards
+}
+
 func (ts *Store) handleSweepLoop() {
 	defer close(ts.sweep.done)
 	for {
@@ -98,51 +153,60 @@ func (ts *Store) handleSweepLoop() {
 	}
 }
 
-// sweepHandles runs one pass: every event shard but the hot one, one at a
-// time. A shard skipped (a scope open, a pin past the drain deadline or one
-// that outlived Close's start) is
-// retried on the next kick.
+// sweepHandles runs one pass over the pending shards (sweepPend), one at a
+// time. A shard with pins held is left to the end of the pass, so it does not
+// delay the others; a shard that still owes work after the pass (a scope open,
+// a pin past the drain deadline, a swap a test holds) goes back to the set for
+// the next kick. Passes do not overlap.
 func (ts *Store) sweepHandles() {
 	if ts.inMemory {
 		return
 	}
-	ts.mu.RLock()
-	shards := make([]*EventShard, 0, len(ts.eventShards))
-	for _, es := range ts.eventShards {
-		if es != nil && es != ts.hotShard {
-			shards = append(shards, es)
-		}
-	}
-	ts.mu.RUnlock()
+	ts.sweep.passMu.Lock()
+	defer ts.sweep.passMu.Unlock()
+	defer ts.sweep.passes.Add(1)
 	sealed := false
-	for _, es := range shards {
+	var pinned []*EventShard
+	for _, es := range ts.takeSweepPending() {
 		if ts.closing.Load() {
 			break
 		}
-		sealed = ts.sweepShard(es) || sealed
+		ts.sweep.visited.Add(1)
+		res := ts.sweepShard(es, false)
+		sealed = res.sealed || sealed
+		switch {
+		case res.pinned:
+			pinned = append(pinned, es)
+		case res.retry:
+			ts.sweepPend(es)
+		}
+	}
+	for _, es := range pinned {
+		if ts.closing.Load() {
+			break
+		}
+		res := ts.sweepShard(es, true)
+		sealed = res.sealed || sealed
+		if res.retry {
+			ts.sweepPend(es)
+		}
 	}
 	if sealed {
 		ts.saveCatalogBestEffort("seal shard counts on a demoted handle's close")
 	}
 }
 
-// sweepActionLocked is what the sweep owes es now. Caller holds es.shardMu.
-func (ts *Store) sweepActionLocked(es *EventShard) sweepAction {
+// sweepActionLocked is what the sweep owes es now; deferred reports a swap or
+// close owed but not allowed yet (a scope is open), so the shard stays
+// pending. Caller holds es.shardMu.
+func (ts *Store) sweepActionLocked(es *EventShard) (act sweepAction, deferred bool) {
 	if ts.inMemory || ts.closing.Load() || es.store == nil || es.storeRO {
-		return sweepNone
-	}
-	// A scoped shard must not change its handle mid-scope (as
-	// closeEmptyDemotedShardsLocked): its buffered records live on the handle.
-	ts.scopeMu.Lock()
-	scopeOpen := ts.scopeOpen
-	ts.scopeMu.Unlock()
-	if scopeOpen {
-		return sweepNone
+		return sweepNone, false
 	}
 	switch es.currentTier() {
 	case TierWarm:
 		if es.hotArena && ts.warmMemTableSize > 0 {
-			return sweepReopen
+			act = sweepReopen
 		}
 	case TierCold:
 		// Only the demoted chain (the handle the shard had while hot or
@@ -150,21 +214,47 @@ func (ts *Store) sweepActionLocked(es *EventShard) sweepAction {
 		// opened is left to IdleTimeout, or a shard with steady late writes
 		// would reopen on every kick.
 		if !es.coldOpened {
-			return sweepClose
+			act = sweepClose
 		}
 	}
-	return sweepNone
+	if act == sweepNone {
+		return sweepNone, false
+	}
+	// A scoped shard must not change its handle mid-scope (as
+	// closeEmptyDemotedShardsLocked): its buffered records live on the handle.
+	ts.scopeMu.Lock()
+	scopeOpen := ts.scopeOpen
+	ts.scopeMu.Unlock()
+	if scopeOpen {
+		return sweepNone, true
+	}
+	return act, false
+}
+
+// sweepResult is what a visit of one shard left behind.
+type sweepResult struct {
+	sealed bool // the close sealed the shard's counts (the pass saves the catalog once)
+	retry  bool // the shard still owes work: a scope, a long pin or a held swap deferred it
+	pinned bool // pins are held and the visit was not patient: the pass comes back at its end
 }
 
 // sweepShard swaps es's handle when it owes a swap, behind the shard's move
-// gate. It reports whether the close sealed the shard's counts (the caller
-// saves the catalog once per pass).
-func (ts *Store) sweepShard(es *EventShard) (sealed bool) {
+// gate. A patient visit waits for the pins to drain up to the deadline; the
+// first visit of a pass does not wait: a shard with pins held is reported
+// (pinned) before it takes its gate, and the pass settles the others first.
+func (ts *Store) sweepShard(es *EventShard, patient bool) (res sweepResult) {
 	es.shardMu.Lock()
 	es.waitMoveLocked()
-	if ts.sweepActionLocked(es) == sweepNone {
+	act, deferred := ts.sweepActionLocked(es)
+	if act == sweepNone {
 		es.shardMu.Unlock()
-		return false
+		res.retry = deferred
+		return res
+	}
+	if !patient && es.activeReqs.Load() != 0 {
+		es.shardMu.Unlock()
+		res.pinned = true
+		return res
 	}
 	done := make(chan struct{})
 	es.moveDone = done
@@ -185,15 +275,24 @@ func (ts *Store) sweepShard(es *EventShard) (sealed bool) {
 	}()
 
 	if err := ts.sweepFaultAt("gated"); err != nil {
-		return false
+		res.retry = true // held: the shard owes its swap still
+		return res
 	}
-	act, sealed, ok := ts.sweepClose(es)
-	if !ok {
-		return false
+	act, sealed, st := ts.sweepClose(es, patient)
+	res.sealed = sealed
+	switch st {
+	case closePinned:
+		res.pinned, res.retry = !patient, patient
+		return res
+	case closeDeferred:
+		res.retry = true
+		return res
+	case closeSettled:
+		return res
 	}
 	if act == sweepClose {
 		ts.sweep.closes.Add(1)
-		return sealed
+		return res
 	}
 	if err := ts.sweepFaultAt("closed"); err != nil || ts.closing.Load() {
 		// Not reopened: cold in memory (the catalog keeps warm), so until
@@ -202,7 +301,7 @@ func (ts *Store) sweepShard(es *EventShard) (sealed bool) {
 		es.shardMu.Lock()
 		es.setTier(TierCold)
 		es.shardMu.Unlock()
-		return sealed
+		return res
 	}
 	s, err := ts.openBadgerStoreWithRecovery(es.path)
 	if err != nil {
@@ -212,19 +311,34 @@ func (ts *Store) sweepShard(es *EventShard) (sealed bool) {
 		es.shardMu.Unlock()
 		ts.saveCatalogBestEffort("demote a swept shard that did not reopen")
 		slog.Error("tiered: swept shard did not reopen; demoted to cold", "shard", es.name, "err", err)
-		return sealed
+		return res
 	}
 	store = s
-	return sealed
+	return res
 }
 
+// closeStatus is how sweepClose ended.
+type closeStatus int
+
+const (
+	closeDone     closeStatus = iota // the handle is closed
+	closeSettled                     // nothing is owed any more (a promotion, Close, a shard without a handle)
+	closeDeferred                    // owed, but a scope opened meanwhile
+	closePinned                      // the pins did not drain
+)
+
 // sweepClose closes es's handle once its pins drain (new checkouts wait on the
-// gate), or gives up when they have not drained by the deadline
-// (sweepDrainTimeout; ok false). It decides again under shardMu what the
-// shard owes: a scope opened or a promotion meanwhile leaves the handle as it
-// is (ok false). A cold shard's counts are sealed first, as on its idle close.
-func (ts *Store) sweepClose(es *EventShard) (act sweepAction, sealed, ok bool) {
-	deadline := ts.sweepDrainDeadline()
+// gate). A patient close waits for them up to the deadline (sweepDrainTimeout)
+// and then gives up (closePinned, the "abandoned" step, the gate dropped by
+// the caller's defer); an impatient one looks once. It decides again under
+// shardMu what the shard owes: a scope opened (closeDeferred) or a promotion
+// meanwhile leaves the handle as it is. A cold shard's counts are sealed
+// first, as on its idle close.
+func (ts *Store) sweepClose(es *EventShard, patient bool) (act sweepAction, sealed bool, st closeStatus) {
+	var deadline time.Time
+	if patient {
+		deadline = ts.sweepDrainDeadline()
+	}
 	for {
 		es.shardMu.Lock()
 		if es.activeReqs.Load() == 0 {
@@ -232,20 +346,27 @@ func (ts *Store) sweepClose(es *EventShard) (act sweepAction, sealed, ok bool) {
 		}
 		es.shardMu.Unlock()
 		if ts.closing.Load() {
-			return sweepNone, false, false
+			return sweepNone, false, closeSettled
+		}
+		if !patient {
+			return sweepNone, false, closePinned
 		}
 		if time.Now().After(deadline) {
 			// A long pin: give up and drop the gate (the caller's defer);
 			// the shard is retried on the next kick.
 			slog.Info("tiered: handle sweep: pins did not drain, swap retried later", "shard", es.name, "pins", es.activeReqs.Load())
 			_ = ts.sweepFaultAt("abandoned")
-			return sweepNone, false, false
+			return sweepNone, false, closePinned
 		}
 		time.Sleep(time.Millisecond)
 	}
 	defer es.shardMu.Unlock()
-	if act = ts.sweepActionLocked(es); act == sweepNone {
-		return sweepNone, false, false
+	act, deferred := ts.sweepActionLocked(es)
+	if act == sweepNone {
+		if deferred {
+			return sweepNone, false, closeDeferred
+		}
+		return sweepNone, false, closeSettled
 	}
 	sealed = es.currentTier() == TierCold && es.snapshotCountsLocked(ts)
 	err := es.store.Close()
@@ -257,7 +378,7 @@ func (ts *Store) sweepClose(es *EventShard) (act sweepAction, sealed, ok bool) {
 		ts.recordBackgroundError(fmt.Errorf("graph: handle sweep: close shard %s: %w", es.name, err))
 		slog.Error("tiered: handle sweep close failed", "shard", es.name, "err", err)
 	}
-	return act, sealed, true
+	return act, sealed, closeDone
 }
 
 // installSweptLocked installs the reopened handle on es, unless the store
