@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **R1** (ai-soc's RH list, the cleanup failure contract at the public writer): the empty-shard demotion of RH02EMPTY
+  detaches a handle whose close failed and fences the store, and its 4.105.10 entry said the cleanup fails no write; the
+  write that triggers the rotation does fail, with the fence's error. The contract is now explicit and tested through
+  the public doors (`PutNode`, `PutNodesBatch`, the relationship creates): that write returns the sticky fault and
+  commits nothing (no row, no change-log record), the rotation stays committed, and rows committed before stay readable
+  after a reopen. A failed probe still fails no write. `checkRotation`, the first step of every create door, returns
+  the fence (before it also refused a fenced store only at the checkout, after a rotation or a window shard it had
+  already made); a fenced store no longer rotates or makes a window shard for a write it will refuse. Tests:
+  `TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite`, `_FencedStoreMakesNothingForAWrite`,
+  `_FenceStopsWindowShardMaking` (`tasks/evidence/R1/`).
+
+## [4.107.3] - 2026-11-13
+
 ### Added
 
 - **WARMMEM, the handle sweep** (R3): a tiered store reopens the old hot shard writable at `WarmMemTableSize` after its
@@ -30,16 +45,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   moving shard's reopened handle takes the registry a set made while it moved.
 - **Retention drop beside a move** (R3): the drop of a whole expired shard waits for a move or swap of that shard
   before it closes it, so no handle is installed on a directory the drop removes.
-- **R1** (ai-soc's RH list, the cleanup failure contract at the public writer): the empty-shard demotion of RH02EMPTY
-  detaches a handle whose close failed and fences the store, and its entry above said the cleanup fails no write; the
-  write that triggers the rotation does fail, with the fence's error. The contract is now explicit and tested through
-  the public doors (`PutNode`, `PutNodesBatch`, the relationship creates): that write returns the sticky fault and
-  commits nothing (no row, no change-log record), the rotation stays committed, and rows committed before stay readable
-  after a reopen. A failed probe still fails no write. `checkRotation`, the first step of every create door, returns
-  the fence (before it also refused a fenced store only at the checkout, after a rotation or a window shard it had
-  already made); a fenced store no longer rotates or makes a window shard for a write it will refuse. Tests:
-  `TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite`, `_FencedStoreMakesNothingForAWrite`,
-  `_FenceStopsWindowShardMaking` (`tasks/evidence/R1/`).
 
 ## [4.107.2] - 2026-11-13
 
