@@ -137,11 +137,18 @@ func (ts *Store) mintFanOut(shard *BadgerStore) bool {
 // forEachMintShard calls fn with every event shard depth selects, pinned. A
 // cold one is opened for the read (Config.MaxOpenColdShards keeps it).
 func (ts *Store) forEachMintShard(depth ShardDepth, fn func(*BadgerStore) error) error {
+	return ts.forEachMintShardCharged(depth, nil, fn)
+}
+
+// forEachMintShardCharged is forEachMintShard under a read budget (RH list
+// R2): each closed shard's open is charged to opens before it (nil: none), and
+// once the read's meter refused no further shard is opened.
+func (ts *Store) forEachMintShardCharged(depth ShardDepth, opens *storecontract.ReadTally, fn func(*BadgerStore) error) error {
 	ts.mu.RLock()
 	shards := ts.eventShardsToRead(depth)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		s, release, err := es.checkoutStoreReadOnly(ts)
+		s, release, err := es.checkoutBudgeted(ts, opens)
 		if err != nil {
 			return err
 		}
@@ -163,14 +170,39 @@ func mintLegIDs(s *BadgerStore, nid types.NodeID, typeToken uint16, incoming boo
 	return s.OutgoingRelIDsOfType(nid.SnowflakeID(), typeToken)
 }
 
+// mintLegIDsTallied is mintLegIDs counting in t (nil: nothing) the entries it
+// examines before it collects them, and returning the scan's error.
+func mintLegIDsTallied(s *BadgerStore, nid types.NodeID, typeToken uint16, incoming bool, t *storecontract.ReadTally) ([]snowflake.ID, error) {
+	if incoming {
+		return s.IncomingRelIDsMetered(nid.SnowflakeID(), typeToken, t)
+	}
+	return s.OutgoingRelIDsOfTypeMetered(nid.SnowflakeID(), typeToken, t)
+}
+
 // mintRels returns the mint-placed rels of nids on the event shards depth
 // selects, resolved on the shard holding their legs.
 func (ts *Store) mintRels(nids []types.NodeID, typeToken uint16, incoming bool, depth ShardDepth) (map[types.NodeID][]*types.Relationship, error) {
+	return ts.mintRelsTallied(nids, typeToken, incoming, depth, nil)
+}
+
+// mintRelsTallied is mintRels under a read budget (RH list R2): each event
+// shard's open is charged to t before it, each shard's legs count before they
+// are collected, and the bytes of each row decoded before the decode (nil t:
+// none).
+func (ts *Store) mintRelsTallied(nids []types.NodeID, typeToken uint16, incoming bool, depth ShardDepth, t *storecontract.ReadTally) (map[types.NodeID][]*types.Relationship, error) {
 	out := make(map[types.NodeID][]*types.Relationship)
-	err := ts.forEachMintShard(depth, func(s *BadgerStore) error {
+	via := directRelReads
+	if t != nil {
+		via = func(s *BadgerStore) shardRelReads { return meteredShard{s, t} }
+	}
+	err := ts.forEachMintShardCharged(depth, t, func(s *BadgerStore) error {
 		for _, nid := range nids {
-			for _, id := range mintLegIDs(s, nid, typeToken, incoming) {
-				r, ok, err := relationshipRow(s, types.RelID(id))
+			legs, err := mintLegIDsTallied(s, nid, typeToken, incoming, t)
+			if err != nil {
+				return err
+			}
+			for _, id := range legs {
+				r, ok, err := relationshipRowVia(s, types.RelID(id), via)
 				if err != nil {
 					return fmt.Errorf("graph: read relationship %d: %w", id, err)
 				}

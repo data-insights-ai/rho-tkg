@@ -72,6 +72,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   visits all 96 index entries when the count comes after the walk; it visits 2 on badger and on tiered (three shards).
   Red (count after the walk): 96 entries on badger for both doors, on tiered 32 for the ID door and 96 for the
   relationship door (`tasks/evidence/READBUDGET/sigma-doors-a.txt`).
+- **R2, Sigma doors, group A: the adjacency of one node under a read budget.** `Rels().OutgoingCtx` and
+  `Rels().IncomingCtx` (`Nodes()` has no adjacency door). The node's adjacency entries count as candidates before they
+  are collected: a RAM index counts the node's whole set before the list is built (a type filter costs the whole set),
+  the on-disk adjacency index (`AdjacencyIndexOnDisk`) each entry as the iterator produces it (a type filter costs only
+  the type's entries), so a budget of 1 over a hub of 96 on disk visits 2 entries, not 96; then the bytes of each row
+  decoded and, on tiered, each closed shard's open before it, a reference node's mint-placed rels (`RelsByMint`)
+  included (new `store.AdjacencyMeteredCapability` on badger, sharded and tiered, `store.ReadTally.Candidates`; the
+  mint walk and a sharded fold stop at the first refusal). The memory store and a wrapper that cannot count have the
+  node's degree counted before the read (`store.DegreeCapability`), else the rows after. Red: with the doors reading
+  through the plain adjacency and counting the rows after, a budget of 1 over a hub of 96 on disk read all 96
+  entries before it refused (work 96, want 2), `OutgoingCtx` counted 0 decoded bytes over cold rows on badger, sharded and tiered, and under `ShardOpens` 1 a
+  reference node's read opened 3 closed shards (`tasks/evidence/READBUDGET/sigma-doors-a.txt`).
 
 ### Changed
 

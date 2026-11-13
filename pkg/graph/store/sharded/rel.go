@@ -3,6 +3,8 @@ package sharded
 import (
 	"errors"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -282,6 +284,16 @@ func (s *Store) requireNodeLive(id types.NodeID) error {
 // --- Adjacency (parallel folds over all shards) ---
 
 func (s *Store) OutgoingRelationships(nodeID types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	return s.OutgoingRelationshipsMetered(nodeID, typeToken, nil)
+}
+
+var _ storecontract.AdjacencyMeteredCapability = (*Store)(nil)
+
+// OutgoingRelationshipsMetered is OutgoingRelationships under a read budget
+// (store.AdjacencyMeteredCapability): each shard counts the adjacency entries
+// it examines in t before it collects them and the bytes of each row it decodes
+// before the decode. A nil t is the plain door.
+func (s *Store) OutgoingRelationshipsMetered(nodeID types.NodeID, typeToken uint16, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -291,10 +303,16 @@ func (s *Store) OutgoingRelationships(nodeID types.NodeID, typeToken uint16) ([]
 	if err := s.requireNodeLive(nodeID); err != nil {
 		return nil, err
 	}
-	return s.foldAdjacency(nodeID, typeToken, true)
+	return s.foldAdjacency(nodeID, typeToken, true, t)
 }
 
 func (s *Store) IncomingRelationships(nodeID types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	return s.IncomingRelationshipsMetered(nodeID, typeToken, nil)
+}
+
+// IncomingRelationshipsMetered is IncomingRelationships under a read budget, as
+// OutgoingRelationshipsMetered.
+func (s *Store) IncomingRelationshipsMetered(nodeID types.NodeID, typeToken uint16, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -304,7 +322,7 @@ func (s *Store) IncomingRelationships(nodeID types.NodeID, typeToken uint16) ([]
 	if err := s.requireNodeLive(nodeID); err != nil {
 		return nil, err
 	}
-	return s.foldAdjacency(nodeID, typeToken, false)
+	return s.foldAdjacency(nodeID, typeToken, false, t)
 }
 
 // foldAdjacency collects a node's outgoing (or incoming) relationships across
@@ -328,29 +346,42 @@ func (s *Store) IncomingRelationships(nodeID types.NodeID, typeToken uint16) ([]
 // this WIP backend, not a hardening-pass fix — deliberately not attempted
 // here. Operators choosing SlotCount for an adjacency-traversal-heavy
 // workload should weigh this cost explicitly.
-func (s *Store) foldAdjacency(nodeID types.NodeID, typeToken uint16, outgoing bool) ([]*types.Relationship, error) {
+func (s *Store) foldAdjacency(nodeID types.NodeID, typeToken uint16, outgoing bool, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	sid := nodeID.SnowflakeID()
 	per := make([][]*types.Relationship, len(s.shards))
 	err := s.forEachShardErr(func(idx int, shard *badgerShard) error {
-		var ids []types.RelID
+		// Under a read budget each shard counts the entries it examines before
+		// it collects them (a refusal stops this shard and, through the shared
+		// meter, the next ones) and the rows it decodes (RH list R2).
+		if err := t.Exceeded(); err != nil {
+			return err
+		}
+		var raw []snowflake.ID
+		var serr error
 		if outgoing {
-			for _, id := range shard.OutgoingRelIDs(sid) {
-				ids = append(ids, types.RelID(id))
-			}
+			raw, serr = shard.OutgoingRelIDsOfTypeMetered(sid, 0, t)
 		} else {
-			for _, id := range shard.IncomingRelIDs(sid, typeToken) {
-				ids = append(ids, types.RelID(id))
-			}
+			raw, serr = shard.IncomingRelIDsMetered(sid, typeToken, t)
+		}
+		if serr != nil {
+			return serr
+		}
+		ids := make([]types.RelID, 0, len(raw))
+		for _, id := range raw {
+			ids = append(ids, types.RelID(id))
 		}
 		if len(ids) == 0 {
 			return nil
 		}
-		rels, gerr := shard.GetRelationshipsByIDs(ids)
+		rels, gerr := shard.GetRelationshipsByIDsMetered(ids, t)
 		if gerr != nil {
 			// Tolerate index orphans (an adjacency entry whose entity was
 			// concurrently removed): skip missing rather than failing the fold.
 			if errors.Is(gerr, ErrRelNotFound) {
-				rels = resolveRelsTolerant(shard, ids)
+				rels, gerr = resolveRelsTolerant(shard, ids, t)
+				if gerr != nil {
+					return gerr
+				}
 			} else {
 				return gerr
 			}
@@ -375,17 +406,21 @@ func (s *Store) foldAdjacency(nodeID types.NodeID, typeToken uint16, outgoing bo
 }
 
 // resolveRelsTolerant resolves rel IDs one at a time, skipping any that are
-// missing (index orphan / tombstone).
-func resolveRelsTolerant(shard *badgerShard, ids []types.RelID) []*types.Relationship {
+// missing (index orphan / tombstone). Under a read budget (t) the rows count
+// their decoded bytes, and a refusal is returned, never skipped.
+func resolveRelsTolerant(shard *badgerShard, ids []types.RelID, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	var out []*types.Relationship
 	for _, id := range ids {
-		r, err := shard.GetRelationship(id)
-		if err != nil {
+		rows, err := shard.GetRelationshipsByIDsMetered([]types.RelID{id}, t)
+		if errors.Is(err, storecontract.ErrReadBudget) {
+			return nil, err
+		}
+		if err != nil || len(rows) == 0 {
 			continue
 		}
-		out = append(out, r)
+		out = append(out, rows[0])
 	}
-	return out
+	return out, nil
 }
 
 func relationshipMatches(r *types.Relationship, nodeID types.NodeID, typeToken uint16, outgoing bool) bool {
@@ -437,7 +472,7 @@ func (s *Store) foldAdjacencyForNodes(nodeIDs []types.NodeID, typeToken uint16, 
 	}
 	result := make(map[types.NodeID][]*types.Relationship)
 	for id := range seen {
-		rels, err := s.foldAdjacency(id, typeToken, outgoing)
+		rels, err := s.foldAdjacency(id, typeToken, outgoing, nil)
 		if err != nil {
 			return nil, err
 		}

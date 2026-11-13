@@ -148,3 +148,63 @@ func TestReadBudgetPublicLookupDoors(t *testing.T) {
 		})
 	}
 }
+
+// TestReadBudgetPublicAdjacencyDoors (RH list R2): Rels().OutgoingCtx and
+// IncomingCtx reach the graph's budgeted adjacency reads on every backend:
+// without a budget the plain doors' answers, the node's adjacency counted as
+// candidates, a budget smaller than the adjacency refused with ErrReadBudget and
+// no rows.
+func TestReadBudgetPublicAdjacencyDoors(t *testing.T) {
+	t.Parallel()
+	for _, b := range allStoreBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			g := b.open(t)
+			ctx := context.Background()
+			a, err := g.Nodes().Add(ctx, []string{"Ev"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			z, err := g.Nodes().Add(ctx, []string{"Ev"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			const rels = 5
+			for range rels {
+				if _, err := g.Rels().Add(ctx, "R", a, z, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, d := range []struct {
+				name  string
+				plain func() ([]*types.Relationship, error)
+				call  func(ctx context.Context) ([]*types.Relationship, error)
+			}{
+				{"outgoing",
+					func() ([]*types.Relationship, error) { return g.Rels().Outgoing(a.ID(), "R") },
+					func(ctx context.Context) ([]*types.Relationship, error) {
+						return g.Rels().OutgoingCtx(ctx, a.ID(), "R")
+					}},
+				{"incoming",
+					func() ([]*types.Relationship, error) { return g.Rels().Incoming(z.ID(), "R") },
+					func(ctx context.Context) ([]*types.Relationship, error) {
+						return g.Rels().IncomingCtx(ctx, z.ID(), "R")
+					}},
+			} {
+				want, err := d.plain()
+				if err != nil || len(want) != rels {
+					t.Fatalf("%s: plain = %d rels, %v", d.name, len(want), err)
+				}
+				uctx, meter := store.WithReadBudget(ctx, store.ReadBudget{})
+				got, err := d.call(uctx)
+				if err != nil || len(got) != rels || meter.Work().Candidates != rels {
+					t.Fatalf("%s: Ctx = %d rels, %v, %+v; want %d rels and %d candidates", d.name, len(got), err, meter.Work(), rels, rels)
+				}
+				bctx, meter := store.WithReadBudget(ctx, store.ReadBudget{Candidates: rels - 1})
+				got, err = d.call(bctx)
+				if !errors.Is(err, store.ErrReadBudget) || got != nil || meter.Work().Candidates < rels {
+					t.Fatalf("%s: Ctx under %d = %d rels, %v, %+v; want ErrReadBudget and no rows", d.name, rels-1, len(got), err, meter.Work())
+				}
+			}
+		})
+	}
+}

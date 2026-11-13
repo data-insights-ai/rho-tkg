@@ -1164,6 +1164,51 @@ func (a *API) ByTypeAndPropertyCtx(ctx context.Context, typeName, key string, va
 	return ops.ByTypeAndProperty(typeName, key, value, opts)
 }
 
+// budgetedAdjacencyOps is the read-budget form of the adjacency doors; the
+// graph's own Ops implement it.
+type budgetedAdjacencyOps interface {
+	OutgoingCtx(ctx context.Context, nodeID types.NodeID, typeName string) ([]*types.Relationship, error)
+	IncomingCtx(ctx context.Context, nodeID types.NodeID, typeName string) ([]*types.Relationship, error)
+}
+
+// OutgoingCtx is Outgoing under ctx's read budget (store.WithReadBudget): the
+// node's adjacency entries count as candidates before they are collected (a
+// RAM index: the node's whole set, before the list is built; a disk index:
+// each entry as the walk produces it), then the stored bytes of each row
+// decoded (DecodedBytes) and, on tiered, each closed shard it is about to open
+// (ShardOpens), a reference node's mint-placed rels included; past a limit
+// *store.ReadBudgetError (store.ErrReadBudget) and no rows. Without a budget
+// in ctx it is Outgoing after a ctx check. An Ops without the budgeted doors
+// answers unmetered.
+func (a *API) OutgoingCtx(ctx context.Context, nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedAdjacencyOps); ok {
+		return b.OutgoingCtx(ctx, nodeID, typeName)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.Outgoing(nodeID, typeName)
+}
+
+// IncomingCtx is OutgoingCtx for the incoming adjacency.
+func (a *API) IncomingCtx(ctx context.Context, nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedAdjacencyOps); ok {
+		return b.IncomingCtx(ctx, nodeID, typeName)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.Incoming(nodeID, typeName)
+}
+
 // budgetedIDOps is the read-budget form of the by-ID doors; the graph's own
 // Ops implement it.
 type budgetedIDOps interface {

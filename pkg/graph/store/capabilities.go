@@ -225,6 +225,20 @@ type AdjacencyCapability interface {
 	IncomingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error)
 }
 
+// AdjacencyMeteredCapability is OPTIONAL (RH list R2): OutgoingRelationships
+// and IncomingRelationships under a read budget. Each adjacency entry the read
+// examines counts in t as a candidate before it is collected (RAM: the node's
+// set, counted before the list is built; on disk: each entry as the iterator
+// produces it), each row it decodes counts its stored bytes before the decode
+// (ReadWork.DecodedBytes) and, on tiered, each closed shard it is about to open
+// counts first (ShardOpens, the mint-placed rels of a reference node
+// included); a read past the budget returns the *ReadBudgetError instead of
+// the rows. A nil t is the plain door. Badger, sharded and tiered.
+type AdjacencyMeteredCapability interface {
+	OutgoingRelationshipsMetered(nodeID types.NodeID, typeToken uint16, t *ReadTally) ([]*types.Relationship, error)
+	IncomingRelationshipsMetered(nodeID types.NodeID, typeToken uint16, t *ReadTally) ([]*types.Relationship, error)
+}
+
 // DegreeCapability is OPTIONAL: a node's type-filtered relationship count from
 // the adjacency index, without materializing. Equals the length of the matching
 // AdjacencyCapability result except for transient crash-induced orphan index

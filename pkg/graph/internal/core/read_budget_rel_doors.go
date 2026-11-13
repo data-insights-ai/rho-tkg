@@ -109,3 +109,60 @@ func (r *RelOps) LatestStampsCtx(ctx context.Context, id types.RelID) (txFrom, t
 	}
 	return r.latestStampsTallied(id, meter.Tally("LatestStamps"))
 }
+
+// OutgoingCtx is Outgoing under ctx's read budget: the node's adjacency
+// entries count as candidates before they are collected (a RAM index: the
+// node's whole set, before the list is built; a disk index: each entry as the
+// walk produces it), then the stored bytes of each row decoded and, on tiered,
+// each closed shard opened (a reference node's mint-placed rels included),
+// counted before the open (store.AdjacencyMeteredCapability). A store that
+// cannot count its own reads has the node's degree counted before the read
+// where it has one, else the rows after. Past a limit
+// *storepkg.ReadBudgetError and no rows; without a budget it is Outgoing.
+func (r *RelOps) OutgoingCtx(ctx context.Context, nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
+	return r.adjacentCtx(ctx, nodeID, typeName, false)
+}
+
+// IncomingCtx is OutgoingCtx for the incoming adjacency.
+func (r *RelOps) IncomingCtx(ctx context.Context, nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
+	return r.adjacentCtx(ctx, nodeID, typeName, true)
+}
+
+func (r *RelOps) adjacentCtx(ctx context.Context, nodeID types.NodeID, typeName string, incoming bool) ([]*types.Relationship, error) {
+	door := "Outgoing"
+	if incoming {
+		door = "Incoming"
+	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	if err := r.c.budgetSupported(ctx, door); err != nil {
+		return nil, err
+	}
+	meter := storepkg.ReadMeterFrom(ctx)
+	if meter == nil {
+		if incoming {
+			return r.Incoming(nodeID, typeName)
+		}
+		return r.Outgoing(nodeID, typeName)
+	}
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return nil, err
+		}
+	}
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return nil, err
+	}
+	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.adjacentRelsTalliedLocked(nodeID, typeName, incoming, storepkg.DepthAll, meter.Tally(door))
+		return err
+	})
+	return result, err
+}

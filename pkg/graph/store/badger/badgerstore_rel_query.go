@@ -80,6 +80,22 @@ func (bs *Store) fetchRelationshipsByTypeIDs(token uint16, ids []types.RelID, op
 // If typeToken is 0, returns all outgoing; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
 func (bs *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	return bs.OutgoingRelationshipsMetered(nid, typeToken, nil)
+}
+
+var _ storecontract.AdjacencyMeteredCapability = (*Store)(nil)
+
+// OutgoingRelationshipsMetered is OutgoingRelationships under a read budget
+// (store.AdjacencyMeteredCapability): the adjacency entries count in t before
+// they are collected, the bytes of each row decoded on a cache miss before the
+// decode. A nil t is the plain door.
+func (bs *Store) OutgoingRelationshipsMetered(nid types.NodeID, typeToken uint16, t *storecontract.ReadTally) ([]*types.Relationship, error) {
+	return bs.adjacentRelationshipsTallied(nid, typeToken, false, t)
+}
+
+// adjacentRelationshipsTallied is the body of the outgoing and incoming
+// adjacency doors, counting in t (nil: nothing).
+func (bs *Store) adjacentRelationshipsTallied(nid types.NodeID, typeToken uint16, incoming bool, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -94,7 +110,7 @@ func (bs *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 		bs.idxMu.RUnlock()
 		return nil, ErrNodeNotFound
 	}
-	rids, idErr := bs.adjacentRelIDsSnapshotLocked(nid, typeToken, false)
+	rids, idErr := bs.adjacentRelIDsSnapshotTalliedLocked(nid, typeToken, incoming, t)
 	bs.idxMu.RUnlock()
 	if idErr != nil {
 		return nil, idErr
@@ -106,14 +122,14 @@ func (bs *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 
 	rels := make([]*types.Relationship, 0, len(rids))
 	for _, rid := range rids {
-		r, err := bs.prefetchRel(rid)
+		r, err := bs.prefetchRelTallied(rid, t)
 		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
 				continue // index orphan or tombstone
 			}
 			return nil, fmt.Errorf("graph: query relationship %d: %w", rid.SnowflakeID(), err)
 		}
-		if relationshipMatchesOutgoing(r, nid, typeToken) {
+		if incoming && relationshipMatchesIncoming(r, nid, typeToken) || !incoming && relationshipMatchesOutgoing(r, nid, typeToken) {
 			rels = append(rels, r)
 		}
 	}
@@ -282,46 +298,13 @@ func (bs *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error)
 // If typeToken is 0, returns all incoming; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
 func (bs *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
-	if err := bs.checkOpen(); err != nil {
-		return nil, err
-	}
-	if err := storecontract.ValidateNodeID(nid); err != nil {
-		return nil, err
-	}
-	if err := bs.ensureNodeRowLive(nid); err != nil {
-		return nil, err
-	}
-	bs.idxMu.RLock()
-	if !bs.nodeIDs.Has(int64(nid)) {
-		bs.idxMu.RUnlock()
-		return nil, ErrNodeNotFound
-	}
-	rids, idErr := bs.adjacentRelIDsSnapshotLocked(nid, typeToken, true)
-	bs.idxMu.RUnlock()
-	if idErr != nil {
-		return nil, idErr
-	}
+	return bs.IncomingRelationshipsMetered(nid, typeToken, nil)
+}
 
-	if len(rids) == 0 {
-		return nil, nil
-	}
-
-	rels := make([]*types.Relationship, 0, len(rids))
-	for _, rid := range rids {
-		r, err := bs.prefetchRel(rid)
-		if err != nil {
-			if errors.Is(err, ErrRelNotFound) {
-				continue // index orphan or tombstone
-			}
-			return nil, fmt.Errorf("graph: query relationship %d: %w", rid.SnowflakeID(), err)
-		}
-		if relationshipMatchesIncoming(r, nid, typeToken) {
-			rels = append(rels, r)
-		}
-	}
-
-	storepkg.SortRelsByID(rels)
-	return rels, nil
+// IncomingRelationshipsMetered is IncomingRelationships under a read budget,
+// as OutgoingRelationshipsMetered.
+func (bs *Store) IncomingRelationshipsMetered(nid types.NodeID, typeToken uint16, t *storecontract.ReadTally) ([]*types.Relationship, error) {
+	return bs.adjacentRelationshipsTallied(nid, typeToken, true, t)
 }
 
 // IncomingRelationshipsForNodes returns incoming relationships for multiple nodes

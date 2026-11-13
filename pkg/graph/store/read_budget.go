@@ -229,6 +229,16 @@ func (m *ReadMeter) Tally(door string) *ReadTally {
 	return &ReadTally{meter: m, door: door}
 }
 
+// Candidates counts n entries a door is about to examine before it filters or
+// reads them (an adjacency entry, an index match), returning the budget error
+// past a limit. A nil tally counts nothing.
+func (t *ReadTally) Candidates(n int) error {
+	if t == nil {
+		return nil
+	}
+	return t.meter.AddCandidates(t.door, n)
+}
+
 // Decoded counts n bytes about to be decoded, returning the budget error past
 // a limit. A nil tally counts nothing.
 func (t *ReadTally) Decoded(n int) error {

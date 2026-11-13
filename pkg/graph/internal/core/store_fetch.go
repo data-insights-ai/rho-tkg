@@ -479,6 +479,50 @@ func (c *Core) trustedRelVisit(fn func(*types.Relationship) bool) (func(*types.R
 // the shard tiers depth selects when the store scopes adjacency by depth
 // (store.AdjacencyDepthCapability) and depth is not DepthAll.
 func (c *Core) storeAdjacentRels(nodeID types.NodeID, typeToken uint16, incoming bool, depth storepkg.ShardDepth) ([]*types.Relationship, error) {
+	return c.storeAdjacentRelsTallied(nodeID, typeToken, incoming, depth, nil)
+}
+
+// storeAdjacentRelsTallied is storeAdjacentRels under a read budget (tally
+// nil: none; RH list R2). An exact native store counts what it examines itself
+// through store.AdjacencyMeteredCapability: the adjacency entries before they
+// are collected, the bytes of each row it decodes and, on tiered, each closed
+// shard it opens. A store that cannot (memory, a wrapper around a native one)
+// has the node's degree counted before the read where it offers one
+// (store.DegreeCapability: an index count, no rows), else the rows after; the
+// rows of such a store are not decoded by the store's own count, which the
+// budget refuses where it bounds DecodedBytes (budgetSupported).
+func (c *Core) storeAdjacentRelsTallied(nodeID types.NodeID, typeToken uint16, incoming bool, depth storepkg.ShardDepth, tally *storepkg.ReadTally) ([]*types.Relationship, error) {
+	if tally != nil {
+		if m, ok := c.store.(storepkg.AdjacencyMeteredCapability); ok && c.meterableStore() && depth == storepkg.DepthAll {
+			if incoming {
+				return m.IncomingRelationshipsMetered(nodeID, typeToken, tally)
+			}
+			return m.OutgoingRelationshipsMetered(nodeID, typeToken, tally)
+		}
+		counted := false
+		if d, ok := c.store.(storepkg.DegreeCapability); ok {
+			degree := d.OutgoingDegree
+			if incoming {
+				degree = d.IncomingDegree
+			}
+			if n, err := degree(nodeID, typeToken); err == nil {
+				if err := tally.Candidates(n); err != nil {
+					return nil, err
+				}
+				counted = true
+			}
+		}
+		rels, err := c.storeAdjacentRels(nodeID, typeToken, incoming, depth)
+		if err != nil {
+			return nil, err
+		}
+		if !counted {
+			if err := tally.Candidates(len(rels)); err != nil {
+				return nil, err
+			}
+		}
+		return rels, nil
+	}
 	if byDepth, ok := c.store.(storepkg.AdjacencyDepthCapability); ok && depth != storepkg.DepthAll {
 		if incoming {
 			return byDepth.IncomingRelationshipsByDepth(nodeID, typeToken, depth)

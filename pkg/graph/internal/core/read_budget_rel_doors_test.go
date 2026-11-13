@@ -245,7 +245,8 @@ func TestReadBudget_DecodedBytes_RelPresenceAndStampsDecodeNoRow(t *testing.T) {
 
 // TestReadBudget_UnsupportedStoreRefusesRelDoors: on a wrapper around a native
 // store, which does not count decodes or shard opens, the relationship doors
-// (and the two property lookups Sigma reads) refuse a budget bounding them before any work (ErrReadBudget, Limit
+// (the two property lookups and the adjacency doors Sigma reads included)
+// refuse a budget bounding them before any work (ErrReadBudget, Limit
 // "unsupported"), and answer under a budget bounding only the candidates the
 // core counts, through the wrapper's own reads.
 func TestReadBudget_UnsupportedStoreRefusesRelDoors(t *testing.T) {
@@ -269,6 +270,14 @@ func TestReadBudget_UnsupportedStoreRefusesRelDoors(t *testing.T) {
 		t.Fatal(err)
 	}
 	doors := map[string]func(ctx context.Context) error{
+		"Outgoing": func(ctx context.Context) error {
+			_, err := g.Rels.OutgoingCtx(ctx, s, "R")
+			return err
+		},
+		"Incoming": func(ctx context.Context) error {
+			_, err := g.Rels.IncomingCtx(ctx, e, "R")
+			return err
+		},
 		"ByTypeAndProperty": func(ctx context.Context) error {
 			_, err := g.Rels.ByTypeAndPropertyCtx(ctx, "R", "k", int64(1), storepkg.QueryOpts{})
 			return err

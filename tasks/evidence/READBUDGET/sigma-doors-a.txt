@@ -92,3 +92,43 @@ doors. Mutations caught: the rel RAM lookup not counting its batch -> RelByTypeA
 ProbeMatrix red; the tiered event-shard fan-out checkoutStoreReadOnly instead of checkoutBudgeted -> ShardOpens_TieredDoors/
 Rels_ByTypeAndProperty_current red; the lookup's decode through the untallied prefetch -> DecodedBytes_RelByTypeAndProperty
 and ProbeMatrix red.
+
+== Group 3: Rels().OutgoingCtx, IncomingCtx (the adjacency of one node; Nodes() has no adjacency door) ==
+
+RED (the Ctx doors read through the plain adjacency, a node's metered capability bypassed, and count the answer's rows after:
+the form a store without the capability takes), go test -run 'TestReadBudget_AdjacencyDoors|TestReadBudget_DecodedBytes_Adjacency|
+TestReadBudget_AdjacencyProbeStopsEarly|TestReadBudget_DiskAdjacencyAdmitsAsProduced|TestReadBudget_ShardOpens_TieredAdjacency'
+./pkg/graph/internal/core, abridged:
+
+  --- FAIL: TestReadBudget_DiskAdjacencyAdmitsAsProduced/{outgoing,incoming}
+      budget 1 = 0 rows, ... Outgoing at candidates (... work {Candidates:96 ...}); want ErrReadBudget at candidates, no rows, work 2
+      (the adjacency index on disk was read whole, 96 entries, before anything was refused)
+  --- FAIL: TestReadBudget_DecodedBytes_Adjacency/{badger,sharded,tiered}
+      outgoing: cold counted 0 decoded bytes, want at least 600
+  --- FAIL: TestReadBudget_AdjacencyProbeStopsEarly/{badger,sharded,tiered}
+      outgoing over 8 relationships: unlimited counted {Candidates:8 ... DecodedBytes:0 ...}, want at least 8 candidates and 800 decoded bytes
+  --- FAIL: TestReadBudget_ShardOpens_TieredAdjacency/{outgoing,incoming}
+      outgoing under ShardOpens 1 = 3 rows, <nil> (work {Candidates:3 ... ShardOpens:0 ...}, 3 closed shards opened); want a shard-opens refusal and no rows
+
+What is counted (green):
+  Candidates   RAM adjacency: len of the node's out (or in) set before the list is built (a typed read examines the whole
+               set: 40 for 30 typed + 10 other); on-disk adjacency (AdjacencyIndexOnDisk): each iterator entry and each
+               pending add, before it is collected; sharded: the same per shard before its rows are read, every shard asked;
+               tiered: the node's shard, and for a reference node each event shard's mint legs; memory and wrappers: the
+               node's degree before the read (DegreeCapability), else the rows after.
+  DecodedBytes each row decoded on a cache miss (badger prefetchRelTallied; sharded GetRelationshipsByIDsMetered per shard;
+               tiered: the node's shard, the mint rows through a metered shard read, an incoming read's cross-shard
+               resolver getUniqueRelationshipsByIDs under the tally).
+  ShardOpens   tiered: the node's shard (shardForNodeIDReadCharged), each mint event shard (forEachMintShardCharged, which
+               stops once the meter refused) and the cross-shard row resolver, before the open.
+GREEN: same command, all pass. Budget 1 over 96 entries on the on-disk adjacency visits 2 entries (outgoing and incoming); a
+budget of 1 on candidates or decoded bytes over hubs of 8, 32 and 128 (flushed, badger sharded tiered) refuses with the typed
+error and no rows, badger's relationship decode counter moves by at most 2 and the bytes counted stay about one row's.
+Mutations caught: RAM adjacency not counted -> AdjacencyDoors (badger, sharded, tiered) and AdjacencyProbeStopsEarly (badger);
+tiered mint shards opened uncharged -> ShardOpens_TieredAdjacency (outgoing, incoming); sharded fold decoding uncounted and
+tiered incoming rows resolved uncounted -> DecodedBytes_Adjacency (sharded; tiered); the disk walk admitting nothing per entry
+-> DiskAdjacencyAdmitsAsProduced (outgoing, incoming).
+
+Test results (13 Nov, this branch): go test -short ./pkg/graph/store/... ok; go test -short ./pkg/graph/internal/core
+./pkg/graph ./pkg/graph/rels ./pkg/graph/nodes ok; the old tests (TestReadBudget_ProbeMatrix, TestReadBudget_ShardOpens_TieredDoors,
+make old), go vet ./..., go test ./internal/docscheck/ ok.

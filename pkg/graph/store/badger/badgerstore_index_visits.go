@@ -16,7 +16,8 @@ func noteIndexEntryVisited() {
 
 // CountIndexEntriesVisitedForTest starts counting the iterator steps of every
 // on-disk index walk in this process (the property index equality lookup, the
-// member entry walks, the paged member walk) and returns the count so far and
+// member entry walks, the paged member walk, the on-disk adjacency walk of a
+// node's snapshot) and returns the count so far and
 // the function that stops counting. Not concurrency-safe across tests: call it
 // from a test that runs alone. Not for production use.
 func CountIndexEntriesVisitedForTest() (visited func() int64, stop func()) {

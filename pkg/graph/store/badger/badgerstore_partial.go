@@ -468,17 +468,34 @@ func (bs *Store) IncomingRelIDs(nodeID snowflake.ID, typeToken uint16) []snowfla
 	if bs == nil || bs.dbClosed.Load() {
 		return nil
 	}
-	bs.idxMu.RLock()
-	rids, err := bs.adjacentRelIDsSnapshotLocked(types.NodeID(nodeID), typeToken, true)
-	bs.idxMu.RUnlock()
+	ids, err := bs.IncomingRelIDsMetered(nodeID, typeToken, nil)
 	if err != nil {
 		// The signature cannot surface errors; an empty result makes the repair caller
 		// re-derive from entity rows. Log loudly: silent nil would read as "no incoming entries".
 		slog.Error("graph: IncomingRelIDs adjacency scan failed", "node", nodeID, "err", err)
 		return nil
 	}
-	if len(rids) == 0 {
-		return nil
+	return ids
+}
+
+// IncomingRelIDsMetered is IncomingRelIDs counting in t (nil: nothing) the
+// adjacency entries it examines before it collects them (RH list R2) and
+// returning the scan's error, a read budget's refusal included.
+func (bs *Store) IncomingRelIDsMetered(nodeID snowflake.ID, typeToken uint16, t *storecontract.ReadTally) ([]snowflake.ID, error) {
+	return bs.adjacentSnowflakeIDsMetered(nodeID, typeToken, true, t)
+}
+
+// adjacentSnowflakeIDsMetered is the sorted adjacency snapshot of nodeID as
+// snowflake IDs, counting in t.
+func (bs *Store) adjacentSnowflakeIDsMetered(nodeID snowflake.ID, typeToken uint16, incoming bool, t *storecontract.ReadTally) ([]snowflake.ID, error) {
+	if bs == nil || bs.dbClosed.Load() {
+		return nil, nil
+	}
+	bs.idxMu.RLock()
+	rids, err := bs.adjacentRelIDsSnapshotTalliedLocked(types.NodeID(nodeID), typeToken, incoming, t)
+	bs.idxMu.RUnlock()
+	if err != nil || len(rids) == 0 {
+		return nil, err
 	}
 
 	ids := make([]snowflake.ID, 0, len(rids))
@@ -486,7 +503,7 @@ func (bs *Store) IncomingRelIDs(nodeID snowflake.ID, typeToken uint16) []snowfla
 		ids = append(ids, rid.SnowflakeID())
 	}
 	storepkg.SortSnowflakeIDs(ids)
-	return ids
+	return ids, nil
 }
 
 // IncomingIndexEntries returns a sorted snapshot of all incoming adjacency
@@ -536,21 +553,18 @@ func (bs *Store) OutgoingRelIDsOfType(nodeID snowflake.ID, typeToken uint16) []s
 	if bs == nil || bs.dbClosed.Load() {
 		return nil
 	}
-	bs.idxMu.RLock()
-	rids, err := bs.adjacentRelIDsSnapshotLocked(types.NodeID(nodeID), typeToken, false)
-	bs.idxMu.RUnlock()
+	ids, err := bs.OutgoingRelIDsOfTypeMetered(nodeID, typeToken, nil)
 	if err != nil {
 		// See IncomingRelIDs: error-free signature predates the disk arm.
 		slog.Error("graph: OutgoingRelIDs adjacency scan failed", "node", nodeID, "err", err)
 		return nil
 	}
-	if len(rids) == 0 {
-		return nil
-	}
-	ids := make([]snowflake.ID, 0, len(rids))
-	for _, rid := range rids {
-		ids = append(ids, rid.SnowflakeID())
-	}
-	storepkg.SortSnowflakeIDs(ids)
 	return ids
+}
+
+// OutgoingRelIDsOfTypeMetered is OutgoingRelIDsOfType counting in t (nil:
+// nothing) the adjacency entries it examines before it collects them (RH list
+// R2) and returning the scan's error, a read budget's refusal included.
+func (bs *Store) OutgoingRelIDsOfTypeMetered(nodeID snowflake.ID, typeToken uint16, t *storecontract.ReadTally) ([]snowflake.ID, error) {
+	return bs.adjacentSnowflakeIDsMetered(nodeID, typeToken, false, t)
 }

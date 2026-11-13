@@ -1116,6 +1116,13 @@ func (c *Core) outgoingRelsLocked(nodeID types.NodeID, typeName string) ([]*type
 // outgoingRelsAtDepthLocked is outgoingRelsLocked over the shard tiers depth
 // selects (storeAdjacentRels).
 func (c *Core) outgoingRelsAtDepthLocked(nodeID types.NodeID, typeName string, depth storepkg.ShardDepth) ([]*types.Relationship, error) {
+	return c.adjacentRelsTalliedLocked(nodeID, typeName, false, depth, nil)
+}
+
+// adjacentRelsTalliedLocked is the body of the outgoing and incoming
+// adjacency doors over the shard tiers depth selects, counting in tally (nil:
+// nothing; storeAdjacentRelsTallied, RH list R2). Callers must hold c.mu (R or W).
+func (c *Core) adjacentRelsTalliedLocked(nodeID types.NodeID, typeName string, incoming bool, depth storepkg.ShardDepth, tally *storepkg.ReadTally) ([]*types.Relationship, error) {
 	var tok uint16
 	if typeName != "" {
 		t, ok := c.lookupRelTypeQueryToken(typeName)
@@ -1129,12 +1136,17 @@ func (c *Core) outgoingRelsAtDepthLocked(nodeID types.NodeID, typeName string, d
 			return nil, err
 		}
 	}
-	rels, err := c.storeAdjacentRels(nodeID, tok, false, depth)
+	rels, err := c.storeAdjacentRelsTallied(nodeID, tok, incoming, depth, tally)
 	if err != nil {
 		return nil, err
 	}
 	if !c.storeRowsTrust {
-		if err := c.validateOutgoingRelationshipRows(nodeID, tok, rels); err != nil {
+		if incoming {
+			err = c.validateIncomingRelationshipRows(nodeID, tok, rels)
+		} else {
+			err = c.validateOutgoingRelationshipRows(nodeID, tok, rels)
+		}
+		if err != nil {
 			return nil, err
 		}
 		rels = copyRelationshipRows(rels)
@@ -1733,30 +1745,7 @@ func (c *Core) incomingRelsLocked(nodeID types.NodeID, typeName string) ([]*type
 // incomingRelsAtDepthLocked is incomingRelsLocked over the shard tiers depth
 // selects (storeAdjacentRels).
 func (c *Core) incomingRelsAtDepthLocked(nodeID types.NodeID, typeName string, depth storepkg.ShardDepth) ([]*types.Relationship, error) {
-	var tok uint16
-	if typeName != "" {
-		t, ok := c.lookupRelTypeQueryToken(typeName)
-		if !ok {
-			return nil, c.validateRequestedNodesExist([]types.NodeID{nodeID})
-		}
-		tok = t
-	}
-	if !c.storeRowsTrust {
-		if err := c.validateRequestedNodesExist([]types.NodeID{nodeID}); err != nil {
-			return nil, err
-		}
-	}
-	rels, err := c.storeAdjacentRels(nodeID, tok, true, depth)
-	if err != nil {
-		return nil, err
-	}
-	if !c.storeRowsTrust {
-		if err := c.validateIncomingRelationshipRows(nodeID, tok, rels); err != nil {
-			return nil, err
-		}
-		rels = copyRelationshipRows(rels)
-	}
-	return rels, nil
+	return c.adjacentRelsTalliedLocked(nodeID, typeName, true, depth, nil)
 }
 
 // Count returns the number of nodes in the store.

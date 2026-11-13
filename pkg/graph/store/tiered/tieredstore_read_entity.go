@@ -655,6 +655,23 @@ func (ts *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 // OutgoingRelationships with a reference-side node's mint-placed rels
 // (Config.RelsByMint) read from the event shards depth selects.
 func (ts *Store) OutgoingRelationshipsByDepth(nid types.NodeID, typeToken uint16, depth ShardDepth) ([]*types.Relationship, error) {
+	return ts.outgoingRelationshipsTallied(nid, typeToken, depth, nil)
+}
+
+var _ storecontract.AdjacencyMeteredCapability = (*Store)(nil)
+
+// OutgoingRelationshipsMetered is OutgoingRelationships under a read budget
+// (store.AdjacencyMeteredCapability): the node's shard and, for a reference
+// node, each event shard holding its mint-placed rels charge their open to t
+// before it, the adjacency entries count before they are collected and the
+// bytes of each row decoded before the decode. A nil t is the plain door.
+func (ts *Store) OutgoingRelationshipsMetered(nid types.NodeID, typeToken uint16, t *storecontract.ReadTally) ([]*types.Relationship, error) {
+	return ts.outgoingRelationshipsTallied(nid, typeToken, DepthAll, t)
+}
+
+// outgoingRelationshipsTallied is OutgoingRelationshipsByDepth counting in t
+// (nil: nothing).
+func (ts *Store) outgoingRelationshipsTallied(nid types.NodeID, typeToken uint16, depth ShardDepth, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -668,7 +685,7 @@ func (ts *Store) OutgoingRelationshipsByDepth(nid types.NodeID, typeToken uint16
 	// resolver so a cold owner stays pinned for the duration of the read.
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	shard, checkin, err := ts.shardForNodeIDRead(nid)
+	shard, checkin, _, err := ts.shardForNodeIDReadCharged(nid, t)
 	if err != nil {
 		return nil, err
 	}
@@ -676,11 +693,11 @@ func (ts *Store) OutgoingRelationshipsByDepth(nid types.NodeID, typeToken uint16
 	if !shard.HasNodeID(nid.SnowflakeID()) {
 		return nil, ErrNodeNotFound
 	}
-	rels, err := shard.OutgoingRelationships(nid, typeToken)
+	rels, err := shard.OutgoingRelationshipsMetered(nid, typeToken, t)
 	if err != nil || !ts.mintFanOut(shard) {
 		return rels, err
 	}
-	extra, err := ts.mintRels([]types.NodeID{nid}, typeToken, false, depth)
+	extra, err := ts.mintRelsTallied([]types.NodeID{nid}, typeToken, false, depth, t)
 	if err != nil {
 		return nil, err
 	}
@@ -826,6 +843,19 @@ func (ts *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 // IncomingRelationships with a reference-side node's mint-placed rels read
 // from the event shards depth selects.
 func (ts *Store) IncomingRelationshipsByDepth(nid types.NodeID, typeToken uint16, depth ShardDepth) ([]*types.Relationship, error) {
+	return ts.incomingRelationshipsTallied(nid, typeToken, depth, nil)
+}
+
+// IncomingRelationshipsMetered is IncomingRelationships under a read budget, as
+// OutgoingRelationshipsMetered; the rel rows of the node's incoming entries may
+// lie on other shards, each charged before its open.
+func (ts *Store) IncomingRelationshipsMetered(nid types.NodeID, typeToken uint16, t *storecontract.ReadTally) ([]*types.Relationship, error) {
+	return ts.incomingRelationshipsTallied(nid, typeToken, DepthAll, t)
+}
+
+// incomingRelationshipsTallied is IncomingRelationshipsByDepth counting in t
+// (nil: nothing).
+func (ts *Store) incomingRelationshipsTallied(nid types.NodeID, typeToken uint16, depth ShardDepth, t *storecontract.ReadTally) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -839,7 +869,7 @@ func (ts *Store) IncomingRelationshipsByDepth(nid types.NodeID, typeToken uint16
 	// cold node shard cannot be closed mid-read.
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
-	shard, checkin, err := ts.shardForNodeIDRead(nid)
+	shard, checkin, _, err := ts.shardForNodeIDReadCharged(nid, t)
 	if err != nil {
 		return nil, err
 	}
@@ -852,10 +882,14 @@ func (ts *Store) IncomingRelationshipsByDepth(nid types.NodeID, typeToken uint16
 		checkin()
 		return nil, ErrNodeNotFound
 	}
-	relIDs := shard.IncomingRelIDs(nid.SnowflakeID(), typeToken)
+	relIDs, err := shard.IncomingRelIDsMetered(nid.SnowflakeID(), typeToken, t)
+	if err != nil {
+		checkin()
+		return nil, err
+	}
 	var mint []*types.Relationship
 	if ts.mintFanOut(shard) {
-		extra, err := ts.mintRels([]types.NodeID{nid}, typeToken, true, depth)
+		extra, err := ts.mintRelsTallied([]types.NodeID{nid}, typeToken, true, depth, t)
 		if err != nil {
 			checkin()
 			return nil, err
@@ -875,7 +909,7 @@ func (ts *Store) IncomingRelationshipsByDepth(nid types.NodeID, typeToken uint16
 	for _, relID := range relIDs {
 		typedRelIDs = append(typedRelIDs, types.RelID(relID))
 	}
-	found, err := ts.getUniqueRelationshipsByIDs(typedRelIDs, nil)
+	found, err := ts.getUniqueRelationshipsByIDs(typedRelIDs, t)
 	if err != nil {
 		return nil, err
 	}

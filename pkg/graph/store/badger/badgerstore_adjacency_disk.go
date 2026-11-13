@@ -8,6 +8,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -35,7 +36,26 @@ import (
 // (idxMu → wbMu is the flush cycle's established lock order). The caller
 // is responsible for the node-exists check, mirroring the map paths.
 func (bs *Store) adjacentRelIDsSnapshotLocked(nid types.NodeID, typeToken uint16, incoming bool) ([]types.RelID, error) {
+	return bs.adjacentRelIDsSnapshotTalliedLocked(nid, typeToken, incoming, nil)
+}
+
+// adjacentRelIDsSnapshotTalliedLocked is adjacentRelIDsSnapshotLocked counting
+// in t (nil: nothing) the entries it examines before it collects them (RH list
+// R2): the node's whole set in RAM mode, counted before the list is built, and
+// on disk each entry as the iterator produces it and each pending add, so a
+// read past its Candidates limit has visited the entries up to the one that
+// passed it, not the node's whole adjacency.
+func (bs *Store) adjacentRelIDsSnapshotTalliedLocked(nid types.NodeID, typeToken uint16, incoming bool, t *storecontract.ReadTally) ([]types.RelID, error) {
 	if !bs.adjOnDisk {
+		if t != nil {
+			n := len(bs.outIdx[nid])
+			if incoming {
+				n = len(bs.inIdx[nid])
+			}
+			if err := t.Candidates(n); err != nil {
+				return nil, err
+			}
+		}
 		return bs.adjacentRelIDsFromMapsLocked(nid, typeToken, incoming), nil
 	}
 
@@ -88,6 +108,7 @@ func (bs *Store) adjacentRelIDsSnapshotLocked(nid types.NodeID, typeToken uint16
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			noteIndexEntryVisited()
 			key := it.Item().Key()
 			if len(key) != storepkg.SizeAdjacency {
 				continue
@@ -97,14 +118,20 @@ func (bs *Store) adjacentRelIDsSnapshotLocked(nid types.NodeID, typeToken uint16
 				continue
 			}
 			delete(adds, rid) // already committed; don't double-count
+			if err := t.Candidates(1); err != nil {
+				return err
+			}
 			rids = append(rids, rid)
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("graph: adjacency index scan: %w", err)
+		return nil, walkError("adjacency index scan", err)
 	}
 	for rid := range adds {
+		if err := t.Candidates(1); err != nil {
+			return nil, err
+		}
 		rids = append(rids, rid)
 	}
 	return rids, nil
