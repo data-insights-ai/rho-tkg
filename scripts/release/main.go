@@ -1,7 +1,7 @@
 // Command release holds the release mechanics make and go cannot do (René,
 // 4 Nov: "just a makefile and just go test and release mechanisms"). The
 // checks themselves are Makefile targets; the gates run them at once
-// (`make gate-patch|minor|major`).
+// (`make gate`, a major `make gate-major`).
 //
 //	go run ./scripts/release <patch|minor|major> [-dry-run]
 //	go run ./scripts/release kind
@@ -10,7 +10,7 @@
 // A release: preconditions (on main, clean, the remote's main an ancestor of
 // HEAD, a push dry-run passes, the next tag absent), the diff's kind is at
 // most the requested one (kind.go), docs/CHANGELOG.md's newest section is the
-// next version and [Unreleased] is empty, `make gate-<kind>`, git tag -a
+// next version and [Unreleased] is empty, `make gate` (a major: `make gate-major`), git tag -a
 // (message: that section), git push --atomic of main and the tag. The tag is
 // the version: it edits no file. -dry-run: everything but the tag and the
 // push. After a patch or minor push it starts `make race` detached (log
@@ -260,7 +260,11 @@ func release(k int, dry bool) {
 		return nil
 	})
 	gateStart := time.Now()
-	gate := exec.Command("make", "gate-"+kindNames[k]) // #nosec G204 -- a fixed target name
+	target := "gate"
+	if kindNames[k] == "major" {
+		target = "gate-major"
+	}
+	gate := exec.Command("make", target) // #nosec G204 -- a fixed target name
 	gate.Stdout, gate.Stderr = os.Stdout, os.Stderr
 	if err := gate.Run(); err != nil {
 		fmt.Printf("release: red at the gate, %s\n", since(start))

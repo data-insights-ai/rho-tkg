@@ -16,7 +16,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Commits, MRs and PRs carry no agent attribution: no Co-Authored-By, no Claude-Session, no "Generated with".
 - Every release is a PATCH (René, 13 Nov: "PATCH release.. this is the last time i say this"): a fix, a new door or
   option, a new store format marker, a badger minor bump, a raised go directive. Only a removed or changed public name
-  is a MAJOR: `make kind` decides (`scripts/release`, FLUSHPART, 2026-10-24).
+  is a MAJOR: `go run ./scripts/release kind` decides (`scripts/release`, FLUSHPART, 2026-10-24).
 - Scope: consumer-blocking or wrong-answer/data bugs only, plus ai-soc runtime items (standing go). A backlog item needs a
   consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
 - Release authority: merge, gate, tag, push and notify sigma-tkgd + ai-soc (their agents: HANDOVER § State) without asking,
@@ -98,7 +98,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 - New tests run under `-short` in seconds (one test ≲2 s, a package ≲5 s). A slow test is gated with
   `testing.Short() && !raceEnabled` so it runs in the race run, or with a plain `testing.Short()` when its bounds hold
-  only without race: then the long tier runs it by hand (`make test-long`). A cap or
+  only without race: then the long tier runs it by hand (`go test ./...`). A cap or
   growth test lowers the cap through a test switch.
 - History-aware code gets two-phase tests: create state X at t0, mutate after t0, query at t0 and assert X.
 - Assert exact sets and negative cases ("must NOT contain Y"), not happy paths. Ask of every test: would it fail if the code
@@ -110,16 +110,15 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 
 | Command | Use |
 |---|---|
-| `make gate-patch` | **Patch gate**: `make -j -k` of `build` (+386), `lint` (golangci-lint: gofmt, goimports, go vet, the linters), `mod` (`go mod tidy -diff`, `verify`) and `test` (`go test -short ./...`, the docs and ledger tests of `internal/docscheck` included) at once; no race, no `-failfast`: a red run lists every red step and failing test. Incremental through Go's test cache: only the packages a change reaches rerun, so no `-count=1` (warm, 4 Nov, load 45-55 with a race run beside it: 23 s for a docs or comment change, 65 s for a line in core, 178 s for a line in `pkg/types` that reruns 31 packages) |
-| `make gate-minor` | **Minor gate**: the patch gate and `gosec` |
-| `make gate-major` | **Major gate**, comprehensive and cold: build, lint, mod, gosec, `test-major` (`go test -race -count=1 -shuffle=on ./...` under the race lock, with the coverage floor of 80 % on `./pkg/...` from the same run), `fuzz` (each harness for `FUZZTIME`), `vuln` (govulncheck) |
-| `make release-patch`, `release-minor`, `release-major` | **The release** (below): `go run ./scripts/release`, which holds only what make cannot do (the diff's kind, the CHANGELOG section, the tag and the atomic push, the race run started after the push); `make kind` prints the diff's kind and why |
-| `make presubmit` | **A builder's check** before handing a branch back (as sigma's): `go vet` and `go test -short -p 4` of the packages the change reaches: the packages of files changed against `origin/main` (a testdata file counts for its package, `go.mod`/`go.sum` mean all) and every package whose tests depend on one |
+| `make gate` | **Patch gate**: `make -j -k` of `build` (+386), `lint` (golangci-lint: gofmt, goimports, go vet, the linters), `tidy` (`go mod tidy -diff`, `verify`) and `test` (`go test -short ./...`, the docs and ledger tests of `internal/docscheck` included) at once; no race, no `-failfast`: a red run lists every red step and failing test. Incremental through Go's test cache: only the packages a change reaches rerun, so no `-count=1` (warm, 4 Nov, load 45-55 with a race run beside it: 23 s for a docs or comment change, 65 s for a line in core, 178 s for a line in `pkg/types` that reruns 31 packages) |
+| `make gate-major` | **Major gate** (only `go run ./scripts/release major` runs it), comprehensive and cold: build, lint, tidy, gosec, `test-major` (`go test -race -count=1 -shuffle=on ./...` under the race lock, with the coverage floor of 80 % on `./pkg/...` from the same run), `fuzz` (`scripts/fuzz.sh`, each harness for `FUZZTIME`), `vuln` (govulncheck) |
+| `make release` | **The release** (below): `go run ./scripts/release`, which holds only what make cannot do (the diff's kind, the CHANGELOG section, the tag and the atomic push, the race run started after the push); `go run ./scripts/release kind` prints the diff's kind and why |
+| `go run ./scripts/release test` | **A builder's check** before handing a branch back (as sigma's): `go vet` and `go test -short -p 4` of the packages the change reaches: the packages of files changed against `origin/main` (a testdata file counts for its package, `go.mod`/`go.sum` mean all) and every package whose tests depend on one |
 | `make race` | **The race run** (René, 4 Nov, as sigma's): `go test -race -short ./...` under `flock ~/.cache/race-gate.lock` (shared with sigma: one -race suite on the host at a time; `RACE_LOCK` overrides). Not in the patch and minor gates: a patch or minor release starts it detached after its push (log `.git/race.out`), nobody waits on it, and cron runs it every 6 h; a red race run is fixed in the next patch |
-| `make test-long` | **The long tier**, by hand, never before a tag: `go test ./...` without `-short` and without race |
-| `make measure` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each file's tests in their own process |
+| `go test ./...` | **The long tier**, by hand, never before a tag: `go test ./...` without `-short` and without race |
+| `make measure` | **Measurement level, by hand, never in a gate** (`scripts/measure.sh`): the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each file's tests in their own process |
 | `make new PKG=.. RUN=..`, `make old` | **The development loop** (AGENTS.md): the new code's few tests, then two old ones (the public API surface, a tiered clean reopen against a full rebuild; 5.4 s first, 0.7 s cached). Both on Go's test cache, no `-count=1` |
-| `make test`, `build`, `lint`, `mod`, `gosec`, `vuln`, `fuzz`, `cover` | one check alone (`cover`: the short tier's coverage report, `coverage.html`). golangci-lint, gosec and govulncheck are pinned and run in the go.mod toolchain image: Docker is always available, so the gate is never "un-runnable"; named volumes keep their caches (lint: 1.4 s warm) |
+| `make help` lists the targets; `make test`, `build`, `lint`, `tidy` | one check alone. golangci-lint, gosec and govulncheck are pinned and run in the go.mod toolchain image: Docker is always available, so the gate is never "un-runnable"; named volumes keep their caches (lint: 1.4 s warm) |
 | `go test -run TestFoo ./pkg/...` | one test |
 
 GitHub CI (`ci.yml`) runs when a `v*` tag is pushed, or by hand on a branch before its tag (`gh workflow run ci.yml --ref
@@ -142,7 +141,7 @@ gate runs again.
    `tasks/todo.md`): `## [X.Y.Z] - date` above the entries, README updated for what the release changes, shipped rows
    leave `tasks/todo.md`. Not pushed alone: `make release-…` pushes it with the tag. The tag is the version: no other doc names it
    (`git tag --contains <commit>` answers which release has a change).
-4. `make release-patch|release-minor|release-major` (`scripts/release`, Go, edits no file): preconditions (main, clean,
+4. `make release` (a major: `go run ./scripts/release major`; `scripts/release`, Go, edits no file): preconditions (main, clean,
    the remote's main an ancestor of HEAD, the tag absent, a push dry-run passes), the diff's kind at most the one asked for (a major: a removed or
    changed public name: a signature's types, type parameters, an embedded field, alias or defined type, a const's type,
    parameter names aside; or the module path's /vN; else a patch, a new exported name, a store format marker, a badger
@@ -176,7 +175,7 @@ walks the directories, so an edit reruns them.
 
 ## Fuzzing
 
-The trust-boundary fuzz harnesses (`make fuzz` runs them briefly in the major gate and by hand; `.github/workflows/fuzz.yml` on demand) are listed in
+The trust-boundary fuzz harnesses (`scripts/fuzz.sh` runs them briefly in the major gate and by hand; `.github/workflows/fuzz.yml` on demand) are listed in
 [SECURITY.md](SECURITY.md) ("Fuzz harnesses"). Run a deep session when you change a decode or import surface and commit any new
 crasher (under the package's `testdata/fuzz/`) with the fix:
 
@@ -192,10 +191,10 @@ with a fresh graph per iteration.
 
 ```bash
 go test -bench=. -benchtime=1x -run '^$' ./bench   # smoke: every benchmark once
-make bench                                         # local suite
-make bench-baseline                                # per-machine baseline -> bench/local-baseline.txt
-make bench-check                                   # fail on >15 % time or >10 % allocs regression
-make bench-compare                                 # compare revisions (bench/bench-compare-revisions.sh)
+go test -bench=. -benchmem -benchtime=0.3s ./bench # local suite
+bench/bench-baseline.sh                            # per-machine baseline -> bench/local-baseline.txt
+bench/bench-check.sh                               # fail on >15 % time or >10 % allocs regression
+bench/bench-compare-revisions.sh                   # compare revisions
 ```
 
 Baselines are per machine and gitignored; never compare across machines. `.github/workflows/bench.yml` runs only by hand: it

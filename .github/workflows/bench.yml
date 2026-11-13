@@ -26,10 +26,10 @@ name: Bench
 #    a perf claim from a fork or an ad-hoc branch without a PR.
 #
 # The authoritative high-resolution tooling remains LOCAL:
-# make bench-baseline + make bench-check on stable hardware
+# bench/bench-baseline.sh + bench/bench-check.sh on stable hardware
 # (docs/CONTRIBUTING.md "Benchmarks").
 # Manual only (René 2026-10-23: no CI on pushes or pull requests; compare
-# locally with `make bench-baseline` / `make bench-check`).
+# locally with `bench/bench-baseline.sh` / `bench/bench-check.sh`).
 on:
   workflow_dispatch:
 

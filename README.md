@@ -355,8 +355,9 @@ Run any tutorial: `go run ./tutorials/001_basic_graph/`
 
 ```bash
 make test            # the short tier, cached
-make gate-patch      # build, lint, mod and test at once, incremental through Go's test cache
-make release-patch   # or release-minor / release-major: the gate, the tag, the push
+make gate            # build, lint, tidy and test at once, incremental through Go's test cache
+make release         # the patch release: the gate, the tag, the push
+make                 # lists every target
 ```
 
 Every check is a plain `go` command or the pinned tool in Docker, one Makefile line each; the release

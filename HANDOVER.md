@@ -30,7 +30,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     agreed item tags at once, René's decisions quoted by a peer apply, a piecewise spec is collected before building,
     agents only on his word with a frozen spec) and CONTRIBUTING 4412c9c6 (Who works, process changes remove steps,
     the gate lists every red). Never start a race or heavy test run by hand; answer a why from the log first.
-  - **Release mechanics:** write the `[x.y.z]` CHANGELOG section in its own commit, then `make release-patch` (gate,
+  - **Release mechanics:** write the `[x.y.z]` CHANGELOG section in its own commit, then `make release` (gate,
     tag, atomic push to GitHub, `make race` detached into `.git/race.out`, ~15-25 s); a green, agreed item needs no go.
   - **Worktrees:** `consolidate` (agent-ae6b1d60…, parked test folding, 68 uncommitted files: possible WIP, leave);
     four merged agent worktrees (a3263c8c, a7ff819f, a9e4dcbc, ae78649d) are harness-locked; remove when unlocked.
@@ -41,7 +41,7 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     ai-soc's combined run), FIXED-MEMORY step 1, WRITERATE; On René ASOFVALID, CONTRACT, RACEAFTER.
 - **Checklist facts learned at releases:** the ai-soc engine builds only with GOTOOLCHAIN=go1.27.3 (its parent module
   requires it); merging a release branch back can move Unreleased CHANGELOG entries under the tag's heading, so check
-  the heading after every such merge; the release tool is `go run ./scripts/release` (`make kind`, `gate-*`, `release-*`).
+  the heading after every such merge; the release tool is `go run ./scripts/release` (`kind`, `test`, `patch`, `major`; `make gate`, `make release`).
 - **Branches:** every merged branch is deleted (René 27 Oct: "delete if everything is merged"). Item work starts a
   branch from main in the main checkout or a worktree removed when the item ends. The 7 unmerged branches of 27 Oct
   live as parents of one commit on `archive/unmerged-2026-10-27` (93c43a64, pushed, which added the five `codex/*` tips as parents to 6554d8ad; tree = main's, merge strategy

@@ -3,7 +3,7 @@
 #
 # Spins a detached worktree per git ref, runs the same benchmark pattern in each,
 # and prints a TSV summary (ref, benchmark, ns/op, B/op, allocs/op). Used by
-# `make bench-compare`. For the local/CI *regression gate* (threshold fail),
+# bench/bench-compare-revisions.sh directly. For the local/CI *regression gate* (threshold fail),
 # use bench/bench-check.sh + bench/bench-compare.sh instead — those compare
 # two already-captured go-test outputs, not two revisions.
 #

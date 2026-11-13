@@ -3,7 +3,7 @@ name: CI
 # Minimal release check (René 2026-10-23): runs when a release tag is pushed,
 # or by hand on a branch before its tag (workflow_dispatch); a push to main
 # without a tag runs nothing. CodeQL runs weekly from codeql.yml. The gates run
-# locally before the tag: `make release-patch|release-minor|release-major`
+# locally before the tag: `make release`
 # (scripts/release; docs/CONTRIBUTING.md § Gates).
 on:
   push:

@@ -2,7 +2,7 @@
 # bench/bench-check.sh — LOCAL regression gate for the bench/ suite.
 #
 # Runs a fresh benchmark pass and compares it against
-# bench/local-baseline.txt (captured by `make bench-baseline`) via
+# bench/local-baseline.txt (captured by `bench/bench-baseline.sh`) via
 # bench-compare.sh — the shared comparator the CI gate also uses — failing
 # (exit 1) on any scenario whose time regressed by more than
 # REGRESSION_THRESHOLD_PCT (default 15) percent.
@@ -18,7 +18,7 @@ current="${BENCH_CURRENT:-$repo_root/bench/local-current.txt}"
 csv_report="${BENCH_REPORT_CSV:-$repo_root/bench/local-benchstat.csv}"
 
 if [[ ! -f "$baseline" ]]; then
-  echo "bench-check: $baseline not found — run 'make bench-baseline' first" >&2
+  echo "bench-check: $baseline not found — run 'bench/bench-baseline.sh' first" >&2
   exit 1
 fi
 
