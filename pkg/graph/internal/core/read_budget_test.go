@@ -182,7 +182,7 @@ func TestReadBudget_NodePropertyDoors(t *testing.T) {
 				if n, err := d.call(bctx); err != nil || n != d.want || meter.Work().Candidates != d.cand {
 					t.Fatalf("door %d %s within budget = %d, %v, work %+v; want %d, %d candidates", i, d.name, n, err, meter.Work(), d.want, d.cand)
 				}
-				bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: d.cand - 1})
+				bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: d.cand - 1})
 				n, err := d.call(bctx)
 				var rb *storepkg.ReadBudgetError
 				if !errors.As(err, &rb) || rb.Door != d.name || n != 0 {
