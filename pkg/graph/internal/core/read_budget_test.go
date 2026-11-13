@@ -114,3 +114,81 @@ func TestReadBudget_LendByIDsCountsCandidates(t *testing.T) {
 		})
 	}
 }
+
+// TestReadBudget_NodePropertyDoors: the Ctx forms of ByLabelAndProperty,
+// ByLabelAndPropertyValues and ByLabelAndProperties count the entities they
+// examine. An indexed lookup counts its matches; a key without an index falls
+// back to the label's every node, and under a budget that fallback is counted
+// (and refused) before the scan reads a row; so is a temporal read's fold
+// over every history ID. Without a budget the answers are unchanged.
+func TestReadBudget_NodePropertyDoors(t *testing.T) {
+	t.Parallel()
+	for _, be := range txbBackends() {
+		t.Run(be.name, func(t *testing.T) {
+			g := be.open(t, false)
+			ctx := context.Background()
+			if err := g.Index.CreateProperty("D", "k"); err != nil {
+				t.Fatal(err)
+			}
+			const nodes = 30
+			for i := range nodes {
+				n, err := g.Nodes.Add(ctx, []string{"D"}, map[string]any{"k": int64(i % 15), "u": int64(i), "v": int64(i % 3)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				// A second version: every node has history, so a temporal read
+				// without an index folds over every history ID of the label.
+				if _, err := g.Nodes.Update(ctx, n.ID(), map[string]any{"w": int64(1)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			tx, err := g.Temporal.NowTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			type door struct {
+				name string
+				call func(context.Context) (int, error)
+				want int // matches
+				cand uint64
+			}
+			doors := []door{
+				{"ByLabelAndProperty", func(c context.Context) (int, error) {
+					r, err := g.Nodes.ByLabelAndPropertyCtx(c, "D", "k", int64(1), storepkg.QueryOpts{})
+					return len(r), err
+				}, 2, 2},
+				{"ByLabelAndPropertyValues", func(c context.Context) (int, error) {
+					r, err := g.Nodes.ByLabelAndPropertyValuesCtx(c, "D", "k", []any{int64(1), int64(2)}, storepkg.QueryOpts{})
+					return len(r), err
+				}, 4, 4},
+				{"ByLabelAndProperty", func(c context.Context) (int, error) { // no index on u: the label scan
+					r, err := g.Nodes.ByLabelAndPropertyCtx(c, "D", "u", int64(7), storepkg.QueryOpts{})
+					return len(r), err
+				}, 1, nodes},
+				{"ByLabelAndProperties", func(c context.Context) (int, error) { // no composite index: the label scan
+					r, err := g.Nodes.ByLabelAndPropertiesCtx(c, "D", map[string]any{"u": int64(7), "v": int64(1)}, storepkg.QueryOpts{})
+					return len(r), err
+				}, 1, nodes},
+				{"ByLabelAndProperty", func(c context.Context) (int, error) { // temporal, no index on u: every history ID
+					r, err := g.Nodes.ByLabelAndPropertyCtx(c, "D", "u", int64(7), storepkg.QueryOpts{TxAt: tx})
+					return len(r), err
+				}, 1, nodes},
+			}
+			for i, d := range doors {
+				if n, err := d.call(ctx); err != nil || n != d.want {
+					t.Fatalf("door %d %s without budget = %d, %v; want %d", i, d.name, n, err, d.want)
+				}
+				bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: d.cand})
+				if n, err := d.call(bctx); err != nil || n != d.want || meter.Work().Candidates != d.cand {
+					t.Fatalf("door %d %s within budget = %d, %v, work %+v; want %d, %d candidates", i, d.name, n, err, meter.Work(), d.want, d.cand)
+				}
+				bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: d.cand - 1})
+				n, err := d.call(bctx)
+				var rb *storepkg.ReadBudgetError
+				if !errors.As(err, &rb) || rb.Door != d.name || n != 0 {
+					t.Fatalf("door %d %s over budget = %d, %v; want ErrReadBudget from %s", i, d.name, n, err, d.name)
+				}
+			}
+		})
+	}
+}

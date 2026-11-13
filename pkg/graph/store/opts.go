@@ -127,7 +127,26 @@ type QueryOpts struct {
 	// without reading the rows; every other answers by reading them.
 	ValidEndAfter    types.Instant
 	ValidEndAfterSet bool
+
+	// meter and meterDoor: the read budget a Ctx door took from its context
+	// (WithReadBudget), counted by the internal steps the options reach.
+	meter     *ReadMeter
+	meterDoor string
 }
+
+// WithReadMeter returns o counting its reads in m as door. The graph's Ctx
+// doors set it from their context; a nil m meters nothing.
+func (o QueryOpts) WithReadMeter(m *ReadMeter, door string) QueryOpts {
+	o.meter, o.meterDoor = m, door
+	return o
+}
+
+// ReadMeter returns the meter o counts in and its door name (nil: none).
+func (o QueryOpts) ReadMeter() (*ReadMeter, string) { return o.meter, o.meterDoor }
+
+// AddCandidates counts n candidates in o's meter (none: nothing), returning
+// the budget error past a limit.
+func (o QueryOpts) AddCandidates(n int) error { return o.meter.AddCandidates(o.meterDoor, n) }
 
 // HasValidEndAfter reports whether ValidEndAfter is a bound: ValidEndAfterSet,
 // or a non-zero ValidEndAfter.

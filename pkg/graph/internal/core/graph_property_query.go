@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -331,4 +332,35 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 	storeutil.SortNodesByID(result)
 	result = storeutil.PaginateNodes(result, opts.After, opts.Limit)
 	return result, nil
+}
+
+// ByLabelAndPropertyCtx is ByLabelAndProperty under ctx's read budget
+// (storepkg.WithReadBudget): it counts the entities it examines (an index's
+// matches, a fallback scan's every node of the label before the scan, a
+// temporal read's every candidate before it is resolved) and returns
+// *storepkg.ReadBudgetError and no rows past a limit. ctx is checked first.
+func (n *NodeOps) ByLabelAndPropertyCtx(ctx context.Context, label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	return n.ByLabelAndProperty(label, key, value, opts.WithReadMeter(storepkg.ReadMeterFrom(ctx), "ByLabelAndProperty"))
+}
+
+// ByLabelAndPropertyValuesCtx is ByLabelAndPropertyValues under ctx's read
+// budget, as ByLabelAndPropertyCtx.
+func (n *NodeOps) ByLabelAndPropertyValuesCtx(ctx context.Context, label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	return n.ByLabelAndPropertyValues(label, key, values, opts.WithReadMeter(storepkg.ReadMeterFrom(ctx), "ByLabelAndPropertyValues"))
+}
+
+// ByLabelAndPropertiesCtx is ByLabelAndProperties under ctx's read budget, as
+// ByLabelAndPropertyCtx; without a composite definition of exactly the keys
+// the label scan counts before it reads.
+func (n *NodeOps) ByLabelAndPropertiesCtx(ctx context.Context, label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	return n.ByLabelAndProperties(label, values, opts.WithReadMeter(storepkg.ReadMeterFrom(ctx), "ByLabelAndProperties"))
 }

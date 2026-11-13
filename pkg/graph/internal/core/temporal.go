@@ -1389,6 +1389,16 @@ func validWindow(opts storepkg.QueryOpts) (start, end types.Instant, ok bool) {
 // no current read. No usable pair at all: the history fold scoped to the
 // label's ever-members (forEachNodeHistoryCandidateOfLabel).
 func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]equalKeys, current func() ([]types.NodeID, error), opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
+	if m, _ := opts.ReadMeter(); m != nil {
+		// A read budget counts each candidate before it is resolved.
+		inner := fn
+		fn = func(id types.NodeID) error {
+			if err := opts.AddCandidates(1); err != nil {
+				return err
+			}
+			return inner(id)
+		}
+	}
 	fold := func() error {
 		currentIDs, err := current()
 		if err != nil {

@@ -1233,3 +1233,65 @@ func (a *API) NextID() types.NodeID {
 	}
 	return a.ops.NextID()
 }
+
+// budgetedPropertyOps is the read-budget form of the property doors; the
+// graph's own Ops implement it.
+type budgetedPropertyOps interface {
+	ByLabelAndPropertyCtx(ctx context.Context, label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
+	ByLabelAndPropertyValuesCtx(ctx context.Context, label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error)
+	ByLabelAndPropertiesCtx(ctx context.Context, label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error)
+}
+
+// ByLabelAndPropertyCtx is ByLabelAndProperty under ctx's read budget
+// (store.WithReadBudget): it counts the entities it examines (an index's
+// matches; a fallback label scan's every node, before the scan; a temporal
+// read's every candidate, before it is resolved) and past a limit returns
+// *store.ReadBudgetError (store.ErrReadBudget) and no rows. Without a budget
+// in ctx it is ByLabelAndProperty after a ctx check. An Ops without the
+// budgeted doors answers unmetered.
+func (a *API) ByLabelAndPropertyCtx(ctx context.Context, label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedPropertyOps); ok {
+		return b.ByLabelAndPropertyCtx(ctx, label, key, value, opts)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.ByLabelAndProperty(label, key, value, opts)
+}
+
+// ByLabelAndPropertyValuesCtx is ByLabelAndPropertyValues under ctx's read
+// budget, as ByLabelAndPropertyCtx.
+func (a *API) ByLabelAndPropertyValuesCtx(ctx context.Context, label, key string, values []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedPropertyOps); ok {
+		return b.ByLabelAndPropertyValuesCtx(ctx, label, key, values, opts)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.ByLabelAndPropertyValues(label, key, values, opts)
+}
+
+// ByLabelAndPropertiesCtx is ByLabelAndProperties under ctx's read budget, as
+// ByLabelAndPropertyCtx; without a composite definition of exactly the keys
+// the label scan counts before it reads.
+func (a *API) ByLabelAndPropertiesCtx(ctx context.Context, label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedPropertyOps); ok {
+		return b.ByLabelAndPropertiesCtx(ctx, label, values, opts)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.ByLabelAndProperties(label, values, opts)
+}

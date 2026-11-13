@@ -115,7 +115,14 @@ func (c *Core) nodesByLabelAndPropertyFormKeys(tok uint16, key string, forms []a
 	// A unique key: the owner index reads one claim per value form instead
 	// of every shard or the property index (UNIQIDX, UNIQUELOOK).
 	if oi, ok := c.ownerIndexAnswers(tok, key, opts); ok {
-		return c.nodesByOwnerIndex(oi, tok, key, forms, opts)
+		nodes, err := c.nodesByOwnerIndex(oi, tok, key, forms, opts)
+		if err == nil {
+			err = opts.AddCandidates(len(nodes))
+		}
+		if err != nil {
+			return nil, err
+		}
+		return nodes, nil
 	}
 	if keys == nil {
 		keys = keysOf(forms)
@@ -130,6 +137,21 @@ func (c *Core) nodesByLabelAndPropertyFormKeys(tok uint16, key string, forms []a
 		perForm = indexed
 	}
 	if lookup || perForm {
+		// Under a read budget a key without an index is the store's own label
+		// scan: the label counts before it, the index's matches after.
+		scanned := false
+		if m, _ := opts.ReadMeter(); m != nil {
+			indexed, err := c.nodePropertyIndexed(tok, key)
+			if err != nil {
+				return nil, err
+			}
+			if !indexed {
+				if err := c.meterLabelScan(tok, opts); err != nil {
+					return nil, err
+				}
+				scanned = true
+			}
+		}
 		var nodes []*types.Node
 		if lookup {
 			found, err := c.propertyKeysQuery.NodesByLabelAndPropertyKeys(tok, key, keys, opts)
@@ -159,10 +181,19 @@ func (c *Core) nodesByLabelAndPropertyFormKeys(tok uint16, key string, forms []a
 			}
 			nodes = copyNodeRows(nodes)
 		}
+		if !scanned {
+			if err := opts.AddCandidates(len(nodes)); err != nil {
+				return nil, err
+			}
+		}
 		return nodes, nil
 	}
 	// Fallback: label scan + filter. Limit is applied after filtering; the cursor can
-	// still go into the scan because filtering preserves ID order.
+	// still go into the scan because filtering preserves ID order. Under a read
+	// budget the label's every node counts before the scan reads one.
+	if err := c.meterLabelScan(tok, opts); err != nil {
+		return nil, err
+	}
 	pageOpts := opts
 	pageOpts.Limit = 0
 	candidates, err := c.store.NodesByLabel(tok, pageOpts)
@@ -222,9 +253,21 @@ func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts
 		return storeutil.PaginateNodes(out, opts.After, opts.Limit), nil
 	}
 	if c.compositeQuery != nil {
+		indexed := c.compositeDeclared(tok, values)
+		if !indexed {
+			// The store scans the label without a definition (its fallback).
+			if err := c.meterLabelScan(tok, opts); err != nil {
+				return nil, err
+			}
+		}
 		nodes, err := c.compositeQuery.NodesByLabelAndProperties(tok, values, opts)
 		if err != nil {
 			return nil, err
+		}
+		if indexed {
+			if err := opts.AddCandidates(len(nodes)); err != nil {
+				return nil, err
+			}
 		}
 		if !c.compositeQueryTrust {
 			if err := validateNodesByLabelAndProperties(tok, want, opts, nodes); err != nil {
@@ -235,6 +278,9 @@ func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts
 		return nodes, nil
 	}
 	// Fallback: label scan + post-filter over every declared pair.
+	if err := c.meterLabelScan(tok, opts); err != nil {
+		return nil, err
+	}
 	pageOpts := opts
 	pageOpts.Limit = 0
 	candidates, err := c.store.NodesByLabel(tok, pageOpts)
@@ -257,4 +303,51 @@ func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts
 		out = copyNodeRows(out)
 	}
 	return out, nil
+}
+
+// meterLabelScan counts, under opts' read budget, the label's every node a
+// fallback scan examines, before the scan reads one (StatsCapability's count;
+// a store without it counts 0 here, so the scan is not refused in advance).
+func (c *Core) meterLabelScan(tok uint16, opts storepkg.QueryOpts) error {
+	if m, _ := opts.ReadMeter(); m == nil {
+		return nil
+	}
+	stats, ok := c.store.(storepkg.StatsCapability)
+	if !ok {
+		return nil
+	}
+	n, err := stats.NodeCountByLabel(tok)
+	if err != nil {
+		return err
+	}
+	return opts.AddCandidates(n)
+}
+
+// compositeDeclared reports whether a composite definition on tok has exactly
+// values' keys (the store then answers from it, not a label scan).
+func (c *Core) compositeDeclared(tok uint16, values map[string]any) bool {
+	intro, ok := c.store.(storepkg.CompositeIndexIntrospectionCapability)
+	if !ok {
+		return true // unknown: counted after the read, as an index answer
+	}
+	defs, err := intro.ListCompositePropertyIndexes(tok)
+	if err != nil {
+		return true
+	}
+	for _, def := range defs {
+		if len(def) != len(values) {
+			continue
+		}
+		all := true
+		for _, k := range def {
+			if _, has := values[k]; !has {
+				all = false
+				break
+			}
+		}
+		if all {
+			return true
+		}
+	}
+	return false
 }
