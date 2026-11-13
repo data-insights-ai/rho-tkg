@@ -21,6 +21,14 @@ var _ storecontract.EntityLendBatchCapability = (*Store)(nil)
 // shard's cache serves and keeps the rows). ids need not be ascending. Pins
 // are taken one at a time (withPin).
 func (ts *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
+	return ts.LendNodesSortedMetered(ids, out, nil)
+}
+
+// LendNodesSortedMetered is LendNodesSorted under a read budget
+// (store.EntityLendBatchMeteredCapability): each closed event shard it is about
+// to open counts one shard open in meter, and an open past the budget is
+// refused before it happens. A nil meter is LendNodesSorted.
+func (ts *Store) LendNodesSortedMetered(ids []types.NodeID, out []*types.Node, meter *storecontract.ReadMeter) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -57,6 +65,9 @@ func (ts *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 
 	shards, groups := groupByEventShard(ts, ids, pending)
 	for k, es := range shards {
+		if err := es.meterOpen(meter, "LendNodesSorted"); err != nil {
+			return err
+		}
 		if err := withPin(es.readOnlyCheckout(ts), func(store *BadgerStore) error {
 			return l.read(store, groups[k])
 		}); err != nil {
@@ -64,6 +75,23 @@ func (ts *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 		}
 	}
 	return nil
+}
+
+// meterOpen counts, in meter, the open of es a read is about to pay (es is
+// closed), returning the budget error that refuses it. A shard opened in
+// between by another read is counted all the same: the count errs high,
+// never low. A nil meter counts nothing.
+func (es *EventShard) meterOpen(meter *storecontract.ReadMeter, door string) error {
+	if meter == nil {
+		return nil
+	}
+	es.shardMu.Lock()
+	closed := es.store == nil
+	es.shardMu.Unlock()
+	if !closed {
+		return nil
+	}
+	return meter.AddShardOpens(door, 1)
 }
 
 // LendRelationshipsSorted is LendNodesSorted for relationships, routed as

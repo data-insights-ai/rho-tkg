@@ -85,6 +85,15 @@ type EntityLendBatchCapability interface {
 	LendRelationshipsSorted(ids []types.RelID, out []*types.Relationship) error
 }
 
+// EntityLendBatchMeteredCapability is OPTIONAL (RH list R2): LendNodesSorted
+// under a read budget (WithReadBudget). The store counts in meter the work it
+// alone sees, such as the closed shards it opens (ReadWork.ShardOpens), and
+// refuses with a *ReadBudgetError before the work that would pass a limit. A
+// nil meter is LendNodesSorted. Tiered.
+type EntityLendBatchMeteredCapability interface {
+	LendNodesSortedMetered(ids []types.NodeID, out []*types.Node, meter *ReadMeter) error
+}
+
 // ScanOrderCapability is OPTIONAL: whether the streaming label and type scans
 // (ForEachNodeByLabel, ForEachRelByType) walk members in ascending ID order from
 // a list kept between scans (true: no per-scan collect or sort) or collect and

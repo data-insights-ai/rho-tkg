@@ -81,3 +81,36 @@ func TestReadBudget_SelectiveDoorRefusesBroadRead(t *testing.T) {
 		})
 	}
 }
+
+// TestReadBudget_LendByIDsCountsCandidates: LendByIDs under a read budget
+// counts one candidate per ID before it reads any row and refuses past the
+// limit without calling fn; within it, it lends as before and counts.
+func TestReadBudget_LendByIDsCountsCandidates(t *testing.T) {
+	t.Parallel()
+	for _, be := range txbBackends() {
+		t.Run(be.name, func(t *testing.T) {
+			g := be.open(t, false)
+			ctx := context.Background()
+			var ids []types.NodeID
+			for range 3 {
+				n, err := g.Nodes.Add(ctx, []string{"Ev"}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ids = append(ids, n.ID())
+			}
+			called := 0
+			fn := func(int, *types.Node) bool { called++; return true }
+			bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 2})
+			err := g.Nodes.LendByIDs(bctx, ids, fn)
+			var rb *storepkg.ReadBudgetError
+			if !errors.As(err, &rb) || rb.Door != "LendByIDs" || called != 0 || meter.Work().Candidates != 3 {
+				t.Fatalf("over budget: %v, %d calls, work %+v", err, called, meter.Work())
+			}
+			bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 3})
+			if err := g.Nodes.LendByIDs(bctx, ids, fn); err != nil || called != 3 || meter.Work().Candidates != 3 {
+				t.Fatalf("within budget: %v, %d calls, work %+v", err, called, meter.Work())
+			}
+		})
+	}
+}

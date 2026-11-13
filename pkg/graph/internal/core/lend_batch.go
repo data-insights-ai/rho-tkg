@@ -45,12 +45,22 @@ func (n *NodeOps) LendByIDs(ctx context.Context, ids []types.NodeID, fn func(i i
 			return err
 		}
 	}
+	// A read budget (storepkg.WithReadBudget) counts one candidate per ID
+	// and refuses before any row is read; the store counts its shard opens.
+	meter := storepkg.ReadMeterFrom(ctx)
+	if err := meter.AddCandidates("LendByIDs", len(ids)); err != nil {
+		return err
+	}
 	batch, _ := c.store.(storepkg.EntityLendBatchCapability)
+	metered, _ := c.store.(storepkg.EntityLendBatchMeteredCapability)
 	lender, _ := c.store.(storepkg.EntityLendCapability)
 	if !c.storeRowsTrust {
-		batch, lender = nil, nil
+		batch, metered, lender = nil, nil, nil
 	}
 	read := func(sorted []types.NodeID, out []*types.Node) error {
+		if metered != nil && meter != nil {
+			return metered.LendNodesSortedMetered(sorted, out, meter)
+		}
 		if batch != nil {
 			return batch.LendNodesSorted(sorted, out)
 		}
