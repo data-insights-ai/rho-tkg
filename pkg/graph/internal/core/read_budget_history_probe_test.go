@@ -177,3 +177,62 @@ func TestReadBudget_HistoryExamined_LongHistory(t *testing.T) {
 		})
 	}
 }
+
+// TestReadBudget_Candidates_DenseKeyCountsBeforeFilter (READBUDGET step 4):
+// Candidates counts the membership entries a temporal read examines before
+// its filters, not only the intersection it resolves. A dense key (128
+// members) intersected with a sparse one (1) examines 129 entries: a budget
+// of 10 refuses at the 11th, with no rows, on every backend, where counting
+// only the intersection would have answered.
+func TestReadBudget_Candidates_DenseKeyCountsBeforeFilter(t *testing.T) {
+	t.Parallel()
+	type open func(t *testing.T) (*Core, func())
+	backends := []struct {
+		name string
+		open open
+	}{{"memory", func(t *testing.T) (*Core, func()) { g := txbBackends()[0].open(t, false); return g, func() {} }}}
+	for _, be := range rbdBackends() {
+		backends = append(backends, struct {
+			name string
+			open open
+		}{be.name, func(t *testing.T) (*Core, func()) { return be.open(t, t.TempDir()) }})
+	}
+	for _, be := range backends {
+		t.Run(be.name, func(t *testing.T) {
+			g, shut := be.open(t)
+			defer shut()
+			ctx := context.Background()
+			for _, k := range []string{"a", "b"} {
+				if err := g.Index.CreateProperty("D", k); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := range 128 {
+				props := map[string]any{"a": int64(1)}
+				if i == 64 {
+					props["b"] = int64(1)
+				}
+				if _, err := g.Nodes.Add(ctx, []string{"D"}, props); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pin, err := g.Temporal.NowTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts := storepkg.QueryOpts{TxPin: pin}
+			values := map[string]any{"a": int64(1), "b": int64(1)}
+			uctx, all := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
+			got, err := g.Nodes.ByLabelAndPropertiesCtx(uctx, "D", values, opts)
+			if err != nil || len(got) != 1 || all.Work().Candidates < 129 {
+				t.Fatalf("unlimited = %d rows, %v, %+v; want 1 row and the 129 entries examined", len(got), err, all.Work())
+			}
+			bctx, ten := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 10})
+			got, err = g.Nodes.ByLabelAndPropertiesCtx(bctx, "D", values, opts)
+			be := rbdBudgetErr(t, err, "candidates")
+			if got != nil || be.Work.Candidates != 11 || ten.Work() != be.Work {
+				t.Fatalf("budget 10 = %d rows, %+v; want no rows, stopped at the 11th entry", len(got), be.Work)
+			}
+		})
+	}
+}

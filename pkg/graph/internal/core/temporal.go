@@ -1389,22 +1389,27 @@ func validWindow(opts storepkg.QueryOpts) (start, end types.Instant, ok bool) {
 // no current read. No usable pair at all: the history fold scoped to the
 // label's ever-members (forEachNodeHistoryCandidateOfLabel).
 func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]equalKeys, current func() ([]types.NodeID, error), opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
-	if m, _ := opts.ReadMeter(); m != nil {
-		// A read budget counts each candidate before it is resolved.
-		inner := fn
-		fn = func(id types.NodeID) error {
-			if err := opts.AddCandidates(1); err != nil {
-				return err
-			}
-			return inner(id)
-		}
-	}
+	// A read budget (RH list R2) counts the entries examined before filtering:
+	// each member a sidecar hands on (before the pin and intersection
+	// filters, so a dense key stops at the member that passes the limit), each
+	// current match added, and on the fold each candidate before it is
+	// resolved.
+	metered, _ := opts.ReadMeter()
 	fold := func() error {
 		currentIDs, err := current()
 		if err != nil {
 			return err
 		}
-		return c.forEachNodeHistoryCandidateOfLabel(tok, currentIDs, opts, fn)
+		resolve := fn
+		if metered != nil {
+			resolve = func(id types.NodeID) error {
+				if err := opts.AddCandidates(1); err != nil {
+					return err
+				}
+				return fn(id)
+			}
+		}
+		return c.forEachNodeHistoryCandidateOfLabel(tok, currentIDs, opts, resolve)
 	}
 	if c.nodePropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
 		return fold()
@@ -1426,6 +1431,12 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 		set := make(map[types.NodeID]struct{})
 		var invalid error
 		member := func(id types.NodeID, firstTx types.Instant) bool {
+			if metered != nil {
+				if err := opts.AddCandidates(1); err != nil {
+					invalid = err
+					return false
+				}
+			}
 			if !c.storeRowsTrust {
 				if verr := storepkg.ValidateNodeID(id); verr != nil {
 					invalid = verr
@@ -1465,6 +1476,9 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 	if !windowed {
 		currentIDs, err := current()
 		if err != nil {
+			return err
+		}
+		if err := opts.AddCandidates(len(currentIDs)); err != nil {
 			return err
 		}
 		for _, id := range currentIDs {

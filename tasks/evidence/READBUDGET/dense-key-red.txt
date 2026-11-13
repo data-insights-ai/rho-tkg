@@ -1,0 +1,6 @@
+    --- FAIL: TestReadBudget_Candidates_DenseKeyCountsBeforeFilter/memory (0.00s)
+        read_budget_history_probe_test.go:228: unlimited = 1 rows, <nil>, {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0}; want 1 row and the 129 entries examined
+    --- FAIL: TestReadBudget_Candidates_DenseKeyCountsBeforeFilter/badger (0.14s)
+        read_budget_history_probe_test.go:228: unlimited = 1 rows, <nil>, {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0}; want 1 row and the 129 entries examined
+    --- FAIL: TestReadBudget_Candidates_DenseKeyCountsBeforeFilter/sharded (0.27s)
+        read_budget_history_probe_test.go:228: unlimited = 1 rows, <nil>, {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0}; want 1 row and the 129 entries examined

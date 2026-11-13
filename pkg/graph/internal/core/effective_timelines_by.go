@@ -87,13 +87,9 @@ func (t *TempOps) RelEffectiveTimelinesByProperties(ctx context.Context, typeNam
 	if !known {
 		return out, nil
 	}
-	// A read budget (storepkg.WithReadBudget) refuses here, before any
-	// timeline is decoded, when the index handed on more candidates than it
-	// allows (an on-disk index cannot narrow by the valid window).
+	// A read budget (storepkg.WithReadBudget) counted each member the index
+	// handed on (relTupleMembers), before any timeline is decoded.
 	meter := storepkg.ReadMeterFrom(ctx)
-	if err := meter.AddCandidates("RelEffectiveTimelinesByProperties", len(ids)); err != nil {
-		return nil, err
-	}
 	route := make(map[string][]int) // driver value key -> tuples
 	for i, tk := range tupleKeys {
 		for _, vk := range tk[driver] {
@@ -220,7 +216,7 @@ func (c *Core) relTupleCandidates(ctx context.Context, tok uint16, keys []string
 		for _, tk := range tupleKeys {
 			vks = append(vks, tk[d]...)
 		}
-		ids, err := c.relTupleMembers(tok, keys[d], firstOccurrences(vks), opts)
+		ids, err := c.relTupleMembers(storepkg.ReadMeterFrom(ctx), tok, keys[d], firstOccurrences(vks), opts)
 		if errors.Is(err, storepkg.ErrIndexNotFound) {
 			continue
 		}
@@ -292,7 +288,11 @@ func (c *Core) relTupleDriverOrder(tok uint16, keys []string, tuples [][]any) ([
 // the windowed form (a declining windowed form falls back to the plain one,
 // as forEachRelPropertyCandidateID), members first recorded after the pin
 // dropped. store.ErrIndexNotFound when the index does not answer.
-func (c *Core) relTupleMembers(tok uint16, key string, valueKeys []string, opts storepkg.QueryOpts) ([]types.RelID, error) {
+//
+// A read budget's meter (RH list R2; nil: none) counts each member the store
+// hands on as a candidate, before the pin filter and before the member list
+// grows, so a dense value stops at the member that passes the limit.
+func (c *Core) relTupleMembers(meter *storepkg.ReadMeter, tok uint16, key string, valueKeys []string, opts storepkg.QueryOpts) ([]types.RelID, error) {
 	pinTx := txPinOf(opts)
 	start, end, windowed := validWindow(opts)
 	windowed = windowed && c.relPropTxWindow != nil
@@ -302,6 +302,9 @@ func (c *Core) relTupleMembers(tok uint16, key string, valueKeys []string, opts 
 			invalid error
 		)
 		member := func(id types.RelID, firstTx types.Instant) bool {
+			if invalid = meter.AddCandidates("RelEffectiveTimelinesByProperties", 1); invalid != nil {
+				return false
+			}
 			if !c.storeRowsTrust {
 				if invalid = storepkg.ValidateRelID(id); invalid != nil {
 					return false

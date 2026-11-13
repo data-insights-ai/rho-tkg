@@ -60,13 +60,15 @@ func TestReadBudget_SelectiveDoorRefusesBroadRead(t *testing.T) {
 				}
 				return
 			}
-			// The disk index's every member: refused, counted, nothing read.
+			// The disk index hands on every member: refused at the member that
+			// passes the limit (counted as it is handed on, READBUDGET step
+			// 4), nothing read.
 			var be *storepkg.ReadBudgetError
 			if !errors.Is(err, storepkg.ErrReadBudget) || !errors.As(err, &be) || got != nil {
 				t.Fatalf("disk under budget %d = %s, %v; want ErrReadBudget", limit, rtbRender(w, got), err)
 			}
-			if be.Door != "RelEffectiveTimelinesByProperties" || be.Limit != "candidates" || be.Work.Candidates != rows || be.Work.Segments != 0 || work != be.Work {
-				t.Fatalf("budget error %+v (meter %+v), want candidates limit at %d candidates, 0 segments", be, work, rows)
+			if be.Door != "RelEffectiveTimelinesByProperties" || be.Limit != "candidates" || be.Work.Candidates != limit+1 || be.Work.Segments != 0 || work != be.Work {
+				t.Fatalf("budget error %+v (meter %+v), want candidates limit at %d candidates, 0 segments", be, work, limit+1)
 			}
 
 			// A budget the read fits: answered and counted.

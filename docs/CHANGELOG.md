@@ -34,6 +34,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   it. Fixed with it: tiered's metered read snapshot read a node's whole history unmetered (`GetNodeHistory`).
   `Temporal().NodeAsOfCtx` / `RelAsOfCtx`: the as-of doors under a read budget, same pin and answer, counting
   decoded bytes and history examined on every backend.
+  Candidates now count the entries examined before filtering: each membership entry a temporal property read or
+  `RelEffectiveTimelinesByProperties` is handed, before the pin and intersection filters, so a refusal comes at the
+  entry that passes the limit (a dense key intersected with a sparse one counted only the intersection: red in
+  `tasks/evidence/READBUDGET/dense-key-red.txt`). A budget that answered on 4.107.1 may refuse now.
   Not counted: `ValidEndAfter`, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
   a nil check per decoded row and answers as before.
 
