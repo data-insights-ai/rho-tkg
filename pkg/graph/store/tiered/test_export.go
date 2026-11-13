@@ -275,7 +275,10 @@ func (ts *Store) SweepHandlesForTest() { ts.sweepHandles() }
 // SetSweepFaultForTest installs fault as the handle sweep's step hook ("gated"
 // once a swap holds the shard's gate, "closed" between a warm swap's close and
 // its reopen, "abandoned" when the pins did not drain by the deadline, the
-// gate still up); a non-nil error ends the swap there. nil removes it.
+// gate still up, "reopen" just before the warm reopen, "unopened" once a swap
+// that closed the handle gave up reopening it, the gate still up); a non-nil
+// error ends the swap there (at "reopen" it stands for a failed open). nil
+// removes it.
 func (ts *Store) SetSweepFaultForTest(fault func(step string) error) {
 	if fault == nil {
 		ts.sweep.fault.Store(nil)

@@ -82,3 +82,20 @@ of go test -count=8 -run TestHandleSweep_PinnedShardDoesNotBlockOthers, 8 red (t
 held: 1, 0, 3, 0, 0, 0, 2, 0 of 5):
     handle_sweep_pending_test.go:126: 0 of the 5 free shards swapped while 5 others are pinned: a pinned shard holds up the pass
 --- FAIL: TestHandleSweep_PinnedShardDoesNotBlockOthers (13.31s)
+
+WARMMEM follow-up 2 (13 Nov 2026): a swap whose own reopen fails demotes a shard a rotation promoted meanwhile. The sweep's
+step hooks: "closed" (an error stands for a stop after the close), new "reopen" (an error stands for a failed open) and new
+"unopened" (the swap gave up, gate still up). go test -v -run TestHandleSweep_FailedSwap ./pkg/graph/store/tiered/ on the
+old failure paths (setTier(TierCold) whatever the tier is now); the warm-shard case, which keeps its demotion, passes:
+    handle_sweep_failed_reopen_test.go:184: day 20 is cold (hot shard true), want the hot shard      (stopped after the close)
+    handle_sweep_failed_reopen_test.go:184: day 20 is cold (hot shard true), want the hot shard      (warm open failed)
+    handle_sweep_failed_reopen_test.go:216: promoted day 20: open false read-only false hot-size false; want a writable hot-size handle   (demoted first, then promoted)
+    handle_sweep_failed_reopen_test.go:275: day 20 is cold (catalog cold), want hot in both          (hot-size open fails too)
+--- FAIL: TestHandleSweep_FailedSwapThenPromotionGetsHandle (0.49s)
+--- FAIL: TestHandleSweep_FailedSwapKeepsPromotedShardHot (stopped_after_the_close, warm_open_failed)
+--- PASS: TestHandleSweep_FailedSwapDemotesWarmShard (0.55s)
+--- FAIL: TestHandleSweep_FailedSwapOfPromotedShardFaultsStore (0.61s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered
+After the fix all five pass. Mutations, each caught: no hot-size reopen for a promoted shard the swap left without a handle (4 of
+the 5 red: no handle, no store fault); no catalog restore (ThenPromotion: "the catalog names the promoted shard cold, want
+hot"); the failed swap demotes any tier but cold (KeepsPromotedShardHot x2 and FaultsStore: "day 20 is cold").

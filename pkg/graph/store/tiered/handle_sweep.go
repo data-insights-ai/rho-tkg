@@ -263,15 +263,24 @@ func (ts *Store) sweepShard(es *EventShard, patient bool) (res sweepResult) {
 
 	var store *BadgerStore // the reopened handle, installed with the gate's release
 	defer func() {
+		restored := false
 		es.shardMu.Lock()
 		switch {
 		case store != nil && es.currentTier() == TierHot && !ts.closing.Load():
 			ts.installPromotedLocked(es, store)
 		case store != nil:
 			ts.installSweptLocked(es, store)
+		case es.store == nil && es.currentTier() == TierHot && !ts.closing.Load():
+			// The swap closed the handle and left none (a failed open, a
+			// stop), and a rotation promoted the shard meanwhile, before or
+			// after the swap gave up: a hot shard needs its handle.
+			restored = ts.reopenPromotedLocked(es)
 		}
 		ts.endHandleGateLocked(es, done)
 		es.shardMu.Unlock()
+		if restored {
+			ts.saveCatalogBestEffort("restore the hot tier of a promoted shard whose swap failed")
+		}
 	}()
 
 	if err := ts.sweepFaultAt("gated"); err != nil {
@@ -295,26 +304,59 @@ func (ts *Store) sweepShard(es *EventShard, patient bool) (res sweepResult) {
 		return res
 	}
 	if err := ts.sweepFaultAt("closed"); err != nil || ts.closing.Load() {
-		// Not reopened: cold in memory (the catalog keeps warm), so until
-		// Close marks the store closed an access takes the locked path,
-		// which handles a closed shard (MoveShard's pattern).
-		es.shardMu.Lock()
-		es.setTier(TierCold)
-		es.shardMu.Unlock()
+		ts.sweepNotReopened(es, nil)
 		return res
 	}
-	s, err := ts.openBadgerStoreWithRecovery(es.path)
+	s, err := ts.sweepReopenHandle(es)
 	if err != nil {
-		es.shardMu.Lock()
-		es.setTier(TierCold)
-		ts.catalog.UpdateShardTier(es.name, TierCold)
-		es.shardMu.Unlock()
-		ts.saveCatalogBestEffort("demote a swept shard that did not reopen")
-		slog.Error("tiered: swept shard did not reopen; demoted to cold", "shard", es.name, "err", err)
+		ts.sweepNotReopened(es, err)
 		return res
 	}
 	store = s
 	return res
+}
+
+// sweepReopenHandle opens es's shard at the warm size, after the "reopen" test
+// step (an error there stands for a failed open).
+func (ts *Store) sweepReopenHandle(es *EventShard) (*BadgerStore, error) {
+	if err := ts.sweepFaultAt("reopen"); err != nil {
+		return nil, err
+	}
+	return ts.openBadgerStoreWithRecovery(es.path)
+}
+
+// sweepNotReopened settles a shard whose swap closed its handle and does not
+// reopen it: the open failed (cause), a test stopped the swap, or Close began.
+// The shard keeps the tier it has now, whatever the swap meant to do:
+//   - warm: cold in memory, so until Close marks the store closed an access
+//     takes the locked path, which opens a closed shard (MoveShard's
+//     pattern); a failed open (cause) also saves the demotion, so a restart
+//     does not need that open;
+//   - hot, a rotation promoted it meanwhile: left hot. The swap's deferred
+//     install gives it a hot-size handle before the gate drops
+//     (reopenPromotedLocked), because a hot shard takes the store's writes;
+//   - cold: as it is.
+//
+// The gate is still up.
+func (ts *Store) sweepNotReopened(es *EventShard, cause error) {
+	demoted := false
+	es.shardMu.Lock()
+	if es.currentTier() == TierWarm {
+		es.setTier(TierCold)
+		if cause != nil {
+			ts.catalog.UpdateShardTier(es.name, TierCold)
+			demoted = true
+		}
+	}
+	tier := es.currentTier()
+	es.shardMu.Unlock()
+	if demoted {
+		ts.saveCatalogBestEffort("demote a swept shard that did not reopen")
+	}
+	if cause != nil {
+		slog.Error("tiered: swept shard did not reopen at the warm size", "shard", es.name, "tier", tier, "err", cause)
+	}
+	_ = ts.sweepFaultAt("unopened")
 }
 
 // closeStatus is how sweepClose ended.
@@ -413,6 +455,33 @@ func (ts *Store) installPromotedLocked(es *EventShard, warm *BadgerStore) {
 	if err := warm.Close(); err != nil {
 		slog.Error("tiered: handle sweep: close the warm handle of a promoted shard", "shard", es.name, "err", err)
 	}
+	ts.openPromotedHandleLocked(es)
+}
+
+// reopenPromotedLocked gives a promoted shard the swap left without a handle
+// (the warm open failed, or the swap stopped after the close) a hot-size one;
+// the shard keeps its hot tier. A swap that demoted the shard before the
+// rotation promoted it left the catalog naming it cold: that is put right, and
+// the result reports it (the caller saves the catalog once it holds no lock).
+// A shard that cannot be opened is the store's sticky fault
+// (openPromotedHandleLocked). Caller holds es.shardMu; the gate is still up.
+func (ts *Store) reopenPromotedLocked(es *EventShard) (catalogChanged bool) {
+	slog.Warn("tiered: handle sweep: a promoted shard's swap left it without a handle; reopening it at the hot size", "shard", es.name)
+	ts.openPromotedHandleLocked(es)
+	if es.store == nil {
+		return false
+	}
+	if e, ok := ts.catalog.GetShard(es.name); ok && e.Tier != TierHot {
+		ts.catalog.UpdateShardTier(es.name, TierHot)
+		return true
+	}
+	return false
+}
+
+// openPromotedHandleLocked opens the hot-size handle of a promoted shard (the
+// recovery open when the hot-size one fails; no handle and the store's sticky
+// fault when both fail) and installs it. Caller holds es.shardMu.
+func (ts *Store) openPromotedHandleLocked(es *EventShard) {
 	hot, err := ts.openExistingBadgerStore(es.path)
 	hotSize := err == nil
 	if err != nil {
