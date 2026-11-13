@@ -1,8 +1,6 @@
 package tiered
 
 import (
-	snowflake "github.com/bds421/rho-snowflake-2026"
-
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
 // ShardKind describes the functional role of a shard.

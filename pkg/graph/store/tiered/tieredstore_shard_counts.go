@@ -2,11 +2,11 @@ package tiered
 
 import (
 	"fmt"
-
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"log/slog"
 	"sort"
 	"sync/atomic"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
 // shardCounts is what a shard contained when it was last closed.
