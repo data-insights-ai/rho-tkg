@@ -18,6 +18,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   [8 MB, 1 GB] and at most `MemTableSize`, refused by name at `New` (`badger.ValidateMemTableSize`); 0 changes
   nothing. Not built, measured: reopening a demoted shard read-only, or the old hot shard at the warm size, at the
   rotation (+11 to +25 MB of allocation per rotation and a write stall under `ts.mu` that grows with the shard).
+- **READBUDGET** (R2): `ReadBudget.DecodedBytes` / `ReadWork.DecodedBytes`, the decode work of a metered read: the stored
+  bytes the store hands to a row decoder, counted before the decode (current rows, history versions with their delta
+  anchors, history skeletons), so a read past the limit stops before it decodes the row that passes it and returns
+  `*store.ReadBudgetError` at `"decoded bytes"` with no rows. A row the entity cache serves decodes nothing and counts
+  0; the memory store counts 0. Counted in `RelEffectiveTimelinesByProperties` (`store.ReadSnapshotMeterCapability`:
+  badger, sharded, tiered across every shard), `Nodes()` and `Rels()` `LendByIDs`, `GetByIDsCtx`
+  (`store.NodesByIDsMeteredCapability`) and the node property doors' time-free reads. Not counted: the property doors
+  with a time coordinate, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
+  a nil check per decoded row and answers as before.
 
 ## [4.107.1] - 2026-11-13
 
