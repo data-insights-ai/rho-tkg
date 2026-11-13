@@ -100,6 +100,7 @@ type memRow struct {
 	took                                   time.Duration
 	userCPU, sysCPU                        time.Duration // process CPU during the step (getrusage)
 	rotate                                 time.Duration // the step's rotation call alone; -1 when it has none
+	sweep                                  time.Duration // from the rotation's return until the handle sweep it kicked is done; -1 when none
 }
 
 // roleCounts splits the writable handles by the shard's state: hot, warm,
@@ -188,26 +189,30 @@ func measureStep(h *handleTracker, ts func() *Store, rows *[]memRow, state strin
 		live: after.HeapAlloc, sys: after.Sys, nextGC: after.NextGC,
 		dTotalAlloc: after.TotalAlloc - before.TotalAlloc,
 		peakAlloc:   pa, peakInuse: pi, peakSys: ps, peakRSS: pr, took: took,
-		userCPU: u1 - u0, sysCPU: s1 - s0, rotate: -1})
+		userCPU: u1 - u0, sysCPU: s1 - s0, rotate: -1, sweep: -1})
 }
 
 func printMemRows(t *testing.T, title string, rows []memRow) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n%s\n", title)
-	fmt.Fprintf(&b, "%-34s %3s %3s | %8s %8s %8s | %9s %9s %9s %9s %9s | %8s | %6s %6s | %6s | %3s %4s %3s %5s %3s\n",
+	fmt.Fprintf(&b, "%-34s %3s %3s | %8s %8s %8s | %9s %9s %9s %9s %9s | %8s | %6s %6s | %6s %6s | %3s %4s %3s %5s %3s\n",
 		"state", "rw", "ro", "live MB", "sys MB", "goal MB", "alloc MB", "peakAl MB", "peakIn MB", "peakSy MB", "peakRSS", "step ms",
-		"usr ms", "sys ms", "rot ms", "hot", "warm", "dem", "coldW", "ref")
+		"usr ms", "sys ms", "rot ms", "swp ms", "hot", "warm", "dem", "coldW", "ref")
 	for _, r := range rows {
 		rot := "-"
 		if r.rotate >= 0 {
 			rot = fmt.Sprintf("%.1f", float64(r.rotate.Microseconds())/1000)
 		}
-		fmt.Fprintf(&b, "%-34s %3d %3d | %8.1f %8.1f %8.1f | %9.1f %9.1f %9.1f %9.1f %9.1f | %8.1f | %6.0f %6.0f | %6s | %3d %4d %3d %5d %3d\n",
+		swp := "-"
+		if r.sweep >= 0 {
+			swp = fmt.Sprintf("%.1f", float64(r.sweep.Microseconds())/1000)
+		}
+		fmt.Fprintf(&b, "%-34s %3d %3d | %8.1f %8.1f %8.1f | %9.1f %9.1f %9.1f %9.1f %9.1f | %8.1f | %6.0f %6.0f | %6s %6s | %3d %4d %3d %5d %3d\n",
 			r.state, r.writable, r.readOnly,
 			float64(r.live)/mib, float64(r.sys)/mib, float64(r.nextGC)/mib,
 			float64(r.dTotalAlloc)/mib, float64(r.peakAlloc)/mib, float64(r.peakInuse)/mib, float64(r.peakSys)/mib, float64(r.peakRSS)/mib,
 			float64(r.took.Microseconds())/1000,
-			float64(r.userCPU.Microseconds())/1000, float64(r.sysCPU.Microseconds())/1000, rot,
+			float64(r.userCPU.Microseconds())/1000, float64(r.sysCPU.Microseconds())/1000, rot, swp,
 			r.roles.hot, r.roles.warm, r.roles.demoted, r.roles.coldW, r.roles.ref)
 	}
 	fmt.Print(b.String())
@@ -225,7 +230,8 @@ type memVariant struct {
 // settled heap, the peak while the state was reached, the process CPU of the
 // step and the wall time of the step's rotation call alone (checkRotation,
 // called right after the clock moves and before the day's writes; "-" = the
-// step has no rotation call).
+// step has no rotation call) and of the handle sweep it kicked (swp ms, from
+// the rotation's return until its swaps are done; the step waits for them).
 func TestShardMemTableStates(t *testing.T) {
 	if testing.Short() || raceEnabled {
 		t.Skip("measurement: not in -short, no race detector")
@@ -270,8 +276,11 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 		}
 	}()
 	ids := map[int][]types.NodeID{}
-	// writeDay moves the clock, rotates (timed alone) and writes the day.
-	var rot time.Duration
+	// writeDay moves the clock, rotates (timed alone), waits for the handle
+	// sweep the rotation kicked (timed from the rotation's return: the swaps
+	// run on the sweep goroutine, the pass here waits for a swap in progress),
+	// and writes the day. The settled state does not depend on timing.
+	var rot, swp time.Duration
 	writeDay := func(day int) {
 		clock.set(julDay(day, 8))
 		t0 := time.Now()
@@ -279,6 +288,9 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 			t.Fatalf("rotation: %v", err)
 		}
 		rot = time.Since(t0)
+		t1 := time.Now()
+		ts.SweepHandlesForTest()
+		swp = time.Since(t1)
 		for i := 0; i < perDay; i++ {
 			id, ok, err := ts.MintNodeIDAt(tok, ms(julDay(day, 1+i%7)), true)
 			if err != nil || !ok {
@@ -308,6 +320,7 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 	} {
 		step(d.state, func() { writeDay(d.day) })
 		rows[len(rows)-1].rotate = rot
+		rows[len(rows)-1].sweep = swp
 	}
 	step("backfill: on-demand cold window", func() {
 		for i := 0; i < 50; i++ {
@@ -354,7 +367,7 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 	})
 	// A rotation after the restart: the shard the restart opened as hot turns warm.
 	step("day 7 rotation after restart", func() { writeDay(26) })
-	rows[len(rows)-1].rotate = rot
+	rows[len(rows)-1].rotate, rows[len(rows)-1].sweep = rot, swp
 	for day, list := range ids {
 		for _, id := range list {
 			if _, err := ts.GetNode(id); err != nil {
