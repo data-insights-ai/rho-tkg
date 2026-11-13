@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"math"
 	"slices"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -86,13 +88,14 @@ func (bs *Store) entityIndexValuePrefix(kind byte, scope uint16, propertyKey, va
 	return storepkg.AppendEntityIndexValue(b, valueKey)
 }
 
-// entityIndexOp appends the op of one entry to ops.
-func (bs *Store) entityIndexOp(ops []writeOp, kind byte, scope uint16, propertyKey, valueKey string, id snowflake.ID, txFrom types.Instant, opType writeOpType) []writeOp {
-	prefix, ok := bs.entityIndexValuePrefix(kind, scope, propertyKey, valueKey)
+// relCurrentOp appends the op of one relationship current entry
+// (EntityIndexRelCurrent) to ops. The member entries go through entityMemberOp.
+func (bs *Store) relCurrentOp(ops []writeOp, scope uint16, propertyKey, valueKey string, id snowflake.ID, opType writeOpType) []writeOp {
+	prefix, ok := bs.entityIndexValuePrefix(storepkg.EntityIndexRelCurrent, scope, propertyKey, valueKey)
 	if !ok {
 		return ops
 	}
-	key := storepkg.AppendEntityIndexEntry(prefix, kind, id, int64(txFrom))
+	key := storepkg.AppendEntityIndexEntry(prefix, storepkg.EntityIndexRelCurrent, id, 0, 0)
 	if opType == writeOpDelete {
 		return append(ops, writeOp{opType: writeOpDelete, key: key})
 	}
@@ -102,16 +105,19 @@ func (bs *Store) entityIndexOp(ops []writeOp, kind byte, scope uint16, propertyK
 // relIndexDiskOpsLocked returns the entries of r's on-disk definitions a door
 // writes: for a current row (set) its current and member entries, for a
 // history row (current false) its member entries, for a removed current row
-// (delete) its current-entry deletes. Each definition being created records
-// the id of a current row (Mutated). Caller holds idxMu.Lock (a history row:
-// idxMu, R or W).
+// (delete) its current-entry deletes. A member entry carries the row's span as
+// it stands (relMemberRow); a door that moves the row (an update, a delete)
+// writes it again with what the move gives (relReplacedMemberOpsLocked, the
+// tombstone's). Each definition being created records the id of a current row
+// (Mutated). Caller holds idxMu.Lock (a history row: idxMu, R or W).
 func (bs *Store) relIndexDiskOpsLocked(r *types.Relationship, id snowflake.ID, opType writeOpType, current bool) []writeOp {
 	if len(bs.relDiskDefs) == 0 || r == nil {
 		return nil
 	}
 	tok := r.TypeToken().Value()
-	txFrom, _, _ := r.TxStamps()
 	var ops []writeOp
+	var row memberRow
+	built := false
 	for _, def := range bs.relDiskDefs {
 		if def.key.RelTypeToken != tok {
 			continue
@@ -119,10 +125,13 @@ func (bs *Store) relIndexDiskOpsLocked(r *types.Relationship, id snowflake.ID, o
 		valueKey, _ := r.IndexablePropertyValueKey(def.key.PropertyKey)
 		if valueKey != "" {
 			if current {
-				ops = bs.entityIndexOp(ops, storepkg.EntityIndexRelCurrent, tok, def.key.PropertyKey, valueKey, id, 0, opType)
+				ops = bs.relCurrentOp(ops, tok, def.key.PropertyKey, valueKey, id, opType)
 			}
 			if opType == writeOpSet {
-				ops = bs.entityIndexOp(ops, storepkg.EntityIndexRelMember, tok, def.key.PropertyKey, valueKey, id, txFrom, writeOpSet)
+				if !built {
+					row, built = bs.relMemberRow(r, nil), true
+				}
+				ops = bs.entityMemberOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, valueKey, id, row)
 			}
 		}
 		if current && def.idx.Mutated != nil {
@@ -151,20 +160,32 @@ func (bs *Store) relEntriesOfLocked(id snowflake.ID) []writeOp {
 }
 
 // nodeMemberOpsLocked returns the member entries of n's on-disk node
-// definitions whose members are on disk, for a row n (current or history).
-// Caller holds idxMu.Lock.
+// definitions whose members are on disk, for a row n (current or history),
+// each with the row's span as it stands (nodeMemberRow). Caller holds
+// idxMu.Lock.
 func (bs *Store) nodeMemberOpsLocked(n *types.Node, id snowflake.ID) []writeOp {
+	return bs.nodeMemberOpsNextLocked(n, id, nil)
+}
+
+// nodeMemberOpsNextLocked is nodeMemberOpsLocked for a row next replaced: a
+// row an update demoted ends at next's start (memberRow.lateTo,
+// RowInfo.EndedBy); next nil: the row as it stands.
+func (bs *Store) nodeMemberOpsNextLocked(n *types.Node, id snowflake.ID, next *types.Node) []writeOp {
 	if !bs.nodeMembersOnDisk || n == nil {
 		return nil
 	}
-	txFrom, _, _ := n.TxStamps()
 	var ops []writeOp
+	var row memberRow
+	built := false
 	for _, def := range bs.propDiskDefs {
 		if !def.members || !n.HasLabelTokenRaw(def.key.LabelToken) {
 			continue
 		}
 		forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
-			ops = bs.entityIndexOp(ops, storepkg.EntityIndexNodeMember, def.key.LabelToken, def.key.PropertyKey, valueKey, id, txFrom, writeOpSet)
+			if !built {
+				row, built = bs.nodeMemberRow(n, next), true
+			}
+			ops = bs.entityMemberOp(ops, storepkg.EntityIndexNodeSpan, def.key.LabelToken, def.key.PropertyKey, valueKey, id, row)
 		})
 	}
 	return ops
@@ -176,12 +197,16 @@ func (bs *Store) nodeMemberOpsKeysLocked(n *types.Node, id snowflake.ID, keys no
 	if !bs.nodeMembersOnDisk || n == nil {
 		return nil
 	}
-	txFrom, _, _ := n.TxStamps()
 	var ops []writeOp
+	var row memberRow
+	built := false
 	for _, k := range keys {
 		def := bs.propDiskDefs[k.def]
 		if def.members {
-			ops = bs.entityIndexOp(ops, storepkg.EntityIndexNodeMember, def.key.LabelToken, def.key.PropertyKey, k.valueKey, id, txFrom, writeOpSet)
+			if !built {
+				row, built = bs.nodeMemberRow(n, nil), true
+			}
+			ops = bs.entityMemberOp(ops, storepkg.EntityIndexNodeSpan, def.key.LabelToken, def.key.PropertyKey, k.valueKey, id, row)
 		}
 	}
 	return ops
@@ -213,11 +238,12 @@ func (bs *Store) entityIndexBuildingLocked() bool {
 
 // dropUnchangedEntityOps drops from ops what an update writes again for a
 // value its old row carried: the delete and set of a current entry (the
-// entry stays as it is, PROPREWRITE) and the member entry of the new row (the
-// old row's member entry, as low or lower, stays). from splits the old row's
-// ops (current-entry deletes) from the new row's. Not while a definition is
-// created (its backfill skips the rows a door marked).
-func (bs *Store) dropUnchangedEntityOps(ops []writeOp, from int, oldTx, newTx types.Instant) []writeOp {
+// entry stays as it is, PROPREWRITE). The new row's member entry is never
+// dropped: it is its own key (its version) and carries its own span
+// (RELDISKWIN). from splits the old row's ops (current-entry deletes) from the
+// new row's. Not while a definition is created (its backfill skips the rows a
+// door marked).
+func (bs *Store) dropUnchangedEntityOps(ops []writeOp, from int) []writeOp {
 	if from == 0 || from == len(ops) || bs.entityIndexBuildingLocked() {
 		return ops
 	}
@@ -225,7 +251,6 @@ func (bs *Store) dropUnchangedEntityOps(ops []writeOp, from int, oldTx, newTx ty
 	for _, op := range ops[:from] {
 		removed[string(op.key)] = struct{}{}
 	}
-	keepMember := newTx < oldTx // the new row lowers the bound (0, unknown, is lowest)
 	var unchanged map[string]struct{}
 	for _, op := range ops[from:] {
 		if op.key[1] != storepkg.EntityIndexRelCurrent {
@@ -243,13 +268,8 @@ func (bs *Store) dropUnchangedEntityOps(ops []writeOp, from int, oldTx, newTx ty
 	}
 	kept := ops[:0]
 	for _, op := range ops {
-		switch op.key[1] {
-		case storepkg.EntityIndexRelCurrent:
+		if op.key[1] == storepkg.EntityIndexRelCurrent {
 			if _, ok := unchanged[string(op.key[:len(op.key)-8])]; ok {
-				continue
-			}
-		case storepkg.EntityIndexRelMember:
-			if _, ok := unchanged[string(memberCurrentPrefix(op.key))]; ok && !keepMember {
 				continue
 			}
 		}
@@ -258,12 +278,43 @@ func (bs *Store) dropUnchangedEntityOps(ops []writeOp, from int, oldTx, newTx ty
 	return kept
 }
 
-// memberCurrentPrefix maps a relationship member entry to the value prefix of
-// the current entry of the same definition and value.
-func memberCurrentPrefix(key []byte) []byte {
-	p := slices.Clone(key[:len(key)-16])
-	p[1] = storepkg.EntityIndexRelCurrent
-	return p
+// dropSameRelMemberOps drops from ops[from:] (the new row r's) the member
+// entries old, the row r replaces in place, already wrote with the same key and
+// the same value: r has old's transaction time, version and span, so a value
+// both carry has the entry it had (PROPREWRITE: a rewrite adds a badger version
+// every lookup of the value visits until compaction drops it). An update that
+// gives the row another stamp or span, or a with-history door (a new version),
+// writes the entry. Not while a definition is created (its backfill skips the
+// rows a door marked).
+func (bs *Store) dropSameRelMemberOps(ops []writeOp, from int, old, r *types.Relationship, id snowflake.ID) []writeOp {
+	if from == len(ops) || len(bs.relDiskDefs) == 0 || old == nil || bs.entityIndexBuildingLocked() ||
+		bs.relMemberRow(old, nil) != bs.relMemberRow(r, nil) {
+		return ops
+	}
+	return dropHeldOps(ops, from, bs.relIndexDiskOpsLocked(old, id, writeOpSet, false))
+}
+
+// dropHeldOps returns ops with the member entry sets from index from on that
+// have holds a set of the same key removed (and so of the same value: the
+// caller's guarantee).
+func dropHeldOps(ops []writeOp, from int, have []writeOp) []writeOp {
+	if len(have) == 0 {
+		return ops
+	}
+	held := make(map[string]struct{}, len(have))
+	for _, op := range have {
+		held[string(op.key)] = struct{}{}
+	}
+	kept := ops[:from]
+	for _, op := range ops[from:] {
+		if op.opType == writeOpSet && op.key[0] == storepkg.KeyEntityIndex && storepkg.EntityIndexIsSpan(op.key[1]) {
+			if _, ok := held[string(op.key)]; ok {
+				continue
+			}
+		}
+		kept = append(kept, op)
+	}
+	return kept
 }
 
 // entityIndexWalkLocked visits once each live entry of kind under the value
@@ -277,19 +328,46 @@ func (bs *Store) entityIndexWalkLocked(kind byte, prefixes [][]byte, fn func(key
 }
 
 func (bs *Store) entityIndexWalkLockedWork(kind byte, prefixes [][]byte, fn func(key []byte), work *storecontract.PropertyMemberWork) error {
+	return bs.entityIndexWalkCore(kind, prefixes, func(key, _ []byte) { fn(key) }, false, nil, work)
+}
+
+// entityIndexWalkValuesLocked is entityIndexWalkLockedWork with each entry's
+// value too (a span entry's envelope): the write buffer's sets go to buffered
+// first, all of them, before the walk reads the disk, and the disk's entries
+// to disk in key order (the keys the buffer decides are left out), so a
+// caller that folds per entity streams the disk's entries and meets each
+// entity's buffered entries as it comes. Both are valid only during the call.
+// Caller holds idxMu (R or W).
+func (bs *Store) entityIndexWalkValuesLocked(kind byte, prefixes [][]byte, buffered, disk func(key, val []byte), work *storecontract.PropertyMemberWork) error {
+	return bs.entityIndexWalkCore(kind, prefixes, disk, true, buffered, work)
+}
+
+func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, val []byte), values bool, buffered func(key, val []byte), work *storecontract.PropertyMemberWork) error {
 	if len(prefixes) == 0 {
 		return nil
 	}
 	slices.SortFunc(prefixes, bytes.Compare)
 	prefixes = slices.CompactFunc(prefixes, bytes.Equal)
 	tail := storepkg.EntityIndexTailLen(kind)
-	ov := pendingKeyOverlay[struct{}]{}
+	ov := pendingKeyOverlay[[]byte]{}
 	bs.rangePendingPrefixes(prefixes, func(k string, op writeOp) {
 		if work != nil {
 			work.OverlayOpsInspected++
 		}
-		noteMemberOverlay(&ov, k, op, work)
+		var val []byte
+		if values && op.opType == writeOpSet {
+			val = slices.Clone(op.value)
+		}
+		noteMemberOverlay(&ov, k, op, val, work)
 	})
+	if buffered != nil {
+		for k, val := range ov.sets {
+			if work != nil {
+				work.OverlaySetsEmitted++
+			}
+			buffered([]byte(k), val)
+		}
+	}
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
@@ -321,7 +399,13 @@ func (bs *Store) entityIndexWalkLockedWork(kind byte, prefixes [][]byte, fn func
 				if work != nil {
 					work.DiskEntriesEmitted++
 				}
-				fn(key)
+				if !values {
+					fn(key, nil)
+					continue
+				}
+				if err := item.Value(func(val []byte) error { fn(key, val); return nil }); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -329,11 +413,14 @@ func (bs *Store) entityIndexWalkLockedWork(kind byte, prefixes [][]byte, fn func
 	if err != nil {
 		return fmt.Errorf("graph: entity index scan: %w", err)
 	}
-	for k := range ov.sets {
+	if buffered != nil {
+		return nil // the caller has the buffer's sets
+	}
+	for k, val := range ov.sets {
 		if work != nil {
 			work.OverlaySetsEmitted++
 		}
-		fn([]byte(k))
+		fn([]byte(k), val)
 	}
 	return nil
 }
@@ -358,7 +445,7 @@ func (bs *Store) entityIndexRangeLockedWork(within, lo, hi []byte, fn func(key [
 			work.OverlayOpsInspected++
 		}
 		if in([]byte(k)) {
-			noteMemberOverlay(&ov, k, op, work)
+			noteMemberOverlay(&ov, k, op, struct{}{}, work)
 		}
 	})
 	err := bs.view(func(txn *badgerv4.Txn) error {
@@ -440,11 +527,18 @@ type memberQuery struct {
 	valueKeys []string
 	numeric   bool
 	lo, hi    float64
+	// window: with one value key, the members whose rows may meet the window
+	// (a definition in the span layout narrows them, diskWindowMembersLocked;
+	// one in the layout before it answers every member of the value).
+	window *memberWindow
 }
 
 // diskTxMembersLocked answers a membership lookup of the definition (kind,
 // scope, propertyKey) from its member entries. Caller holds idxMu (R or W).
 func (bs *Store) diskTxMembersLocked(kind byte, scope uint16, propertyKey string, q memberQuery) (txMemberFold, error) {
+	if q.window != nil && len(q.valueKeys) == 1 && storepkg.EntityIndexIsSpan(kind) {
+		return bs.diskWindowMembersLocked(kind, scope, propertyKey, q.valueKeys[0], *q.window, q.work)
+	}
 	f := txMemberFold{}
 	if q.work != nil {
 		defer func() { q.work.FoldMembersPeak = uint64(len(f)) }()
@@ -549,7 +643,7 @@ func (bs *Store) relDiskMembers(key indexpkg.RelPropertyIndexKey, q memberQuery)
 	if idx.Mutated != nil {
 		return nil, true, ErrIndexNotFound
 	}
-	f, err := bs.diskTxMembersLocked(storepkg.EntityIndexRelMember, key.RelTypeToken, key.PropertyKey, q)
+	f, err := bs.diskTxMembersLocked(bs.memberKind(true, key.RelTypeToken, key.PropertyKey), key.RelTypeToken, key.PropertyKey, q)
 	if err != nil {
 		return nil, true, err
 	}
@@ -575,7 +669,7 @@ func (bs *Store) nodeDiskMembers(key indexpkg.PropertyIndexKey, q memberQuery) (
 	if bs.propertyIndexes[key].Mutated != nil {
 		return nil, true, ErrIndexNotFound
 	}
-	f, err := bs.diskTxMembersLocked(storepkg.EntityIndexNodeMember, key.LabelToken, key.PropertyKey, q)
+	f, err := bs.diskTxMembersLocked(bs.memberKind(false, key.LabelToken, key.PropertyKey), key.LabelToken, key.PropertyKey, q)
 	if err != nil {
 		return nil, true, err
 	}
@@ -599,7 +693,7 @@ func (bs *Store) relDiskMembersAfter(key indexpkg.RelPropertyIndexKey, valueKey 
 	if idx.Mutated != nil {
 		return nil, true, ErrIndexNotFound
 	}
-	f, err := bs.diskTxMembersAfterLocked(storepkg.EntityIndexRelMember, key.RelTypeToken, key.PropertyKey, valueKey, snowflake.ID(after), limit)
+	f, err := bs.diskTxMembersAfterLocked(bs.memberKind(true, key.RelTypeToken, key.PropertyKey), key.RelTypeToken, key.PropertyKey, valueKey, snowflake.ID(after), limit)
 	if err != nil {
 		return nil, true, err
 	}
@@ -617,7 +711,7 @@ func (bs *Store) nodeDiskMembersAfter(key indexpkg.PropertyIndexKey, valueKey st
 	if bs.propertyIndexes[key].Mutated != nil {
 		return nil, true, ErrIndexNotFound
 	}
-	f, err := bs.diskTxMembersAfterLocked(storepkg.EntityIndexNodeMember, key.LabelToken, key.PropertyKey, valueKey, after.SnowflakeID(), limit)
+	f, err := bs.diskTxMembersAfterLocked(bs.memberKind(false, key.LabelToken, key.PropertyKey), key.LabelToken, key.PropertyKey, valueKey, after.SnowflakeID(), limit)
 	if err != nil {
 		return nil, true, err
 	}
@@ -753,8 +847,10 @@ type entityBuildTarget struct {
 // and hands fn the set op of each entry the rows give the targets: a
 // relationship definition's current entries from current rows, a composite's
 // from current rows, and every other target's member entries from every row
-// (no history row is read when every target is a composite). The targets are
-// all relationship or all node definitions. It holds no store lock.
+// (no history row is read when every target is a composite), each with the
+// row's span: a current row's as stored, a history row's ended by the row that
+// replaced it (memberScanGroup). The targets are all relationship or all node
+// definitions. It holds no store lock.
 func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op writeOp) error) error {
 	if len(targets) == 0 {
 		return nil
@@ -763,46 +859,66 @@ func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op 
 	for _, t := range targets {
 		byScope[t.scope] = append(byScope[t.scope], t)
 	}
-	emit := func(t entityBuildTarget, valueKey string, id snowflake.ID, txFrom types.Instant, current bool) error {
-		kind := storepkg.EntityIndexNodeMember
-		if t.rel {
-			kind = storepkg.EntityIndexRelMember
-			if current {
-				for _, op := range bs.entityIndexOp(nil, storepkg.EntityIndexRelCurrent, t.scope, t.propertyKey, valueKey, id, 0, writeOpSet) {
-					if err := fn(op); err != nil {
-						return err
-					}
-				}
-			}
-		}
-		for _, op := range bs.entityIndexOp(nil, kind, t.scope, t.propertyKey, valueKey, id, txFrom, writeOpSet) {
+	axis := bs.validAxis.Get()
+	rel := targets[0].rel
+	memberKind := storepkg.EntityIndexNodeSpan
+	if rel {
+		memberKind = storepkg.EntityIndexRelSpan
+	}
+	group := &memberScanGroup{emit: func(p memberPiece, id snowflake.ID, row memberRow) error {
+		for _, op := range bs.entityMemberOp(nil, memberKind, p.t.scope, p.t.propertyKey, p.valueKey, id, row) {
 			if err := fn(op); err != nil {
 				return err
 			}
 		}
 		return nil
-	}
-	if targets[0].rel {
+	}}
+	if rel {
 		want := func(relType int) bool { return relType > 0 && relType <= 0xFFFF && len(byScope[uint16(relType)]) > 0 } // #nosec G115 -- range checked
-		return bs.scanPropTxRows(storepkg.KeyRel, storepkg.KeyHistRel, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+		group.cur = func(id snowflake.ID) (indexpkg.RowInfo, bool, error) {
+			r, err := bs.scanCurrentRel(want, id)
+			if r == nil || err != nil {
+				return indexpkg.RowInfo{}, false, err
+			}
+			return indexpkg.RelRowInfo(axis, r), true, nil
+		}
+		err := bs.scanPropTxRows(storepkg.KeyRel, storepkg.KeyHistRel, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
 			r, err := bs.decodeScannedRel(want, id, hist, version, raw, local)
 			if r == nil || err != nil {
 				return err
 			}
-			txFrom, _, _ := r.TxStamps()
+			var pieces []memberPiece
 			for _, t := range byScope[r.TypeToken().Value()] {
-				if valueKey, _ := r.IndexablePropertyValueKey(t.propertyKey); valueKey != "" {
-					if err := emit(t, valueKey, id, txFrom, !hist); err != nil {
-						return err
+				valueKey, _ := r.IndexablePropertyValueKey(t.propertyKey)
+				if valueKey == "" {
+					continue
+				}
+				if !hist {
+					for _, op := range bs.relCurrentOp(nil, t.scope, t.propertyKey, valueKey, id, writeOpSet) {
+						if err := fn(op); err != nil {
+							return err
+						}
 					}
 				}
+				pieces = append(pieces, memberPiece{t, valueKey})
 			}
-			return nil
+			return group.row(id, indexpkg.RelRowInfo(axis, r), !hist, pieces)
 		})
+		if err != nil {
+			return err
+		}
+		return group.flush()
 	}
 	want := func(w *storepkg.NodeWire) bool {
 		has := func(label int) bool { return label > 0 && label <= 0xFFFF && len(byScope[uint16(label)]) > 0 } // #nosec G115 -- range checked
 		return has(w.PrimaryLabel) || slices.ContainsFunc(w.ExtraLabels, has)
+	}
+	group.cur = func(id snowflake.ID) (indexpkg.RowInfo, bool, error) {
+		n, err := bs.scanCurrentNode(want, id)
+		if n == nil || err != nil {
+			return indexpkg.RowInfo{}, false, err
+		}
+		return indexpkg.NodeRowInfo(axis, n), true, nil
 	}
 	histKind := byte(0) // composites only: current rows give every entry, so no history row is read
 	for _, t := range targets {
@@ -810,12 +926,12 @@ func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op 
 			histKind = storepkg.KeyHistNode
 		}
 	}
-	return bs.scanPropTxRows(storepkg.KeyNode, histKind, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+	err := bs.scanPropTxRows(storepkg.KeyNode, histKind, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
 		n, err := bs.decodeScannedNode(want, id, hist, version, raw, local)
 		if n == nil || err != nil {
 			return err
 		}
-		txFrom, _, _ := n.TxStamps()
+		var pieces []memberPiece
 		for i := 0; i < n.LabelTokenCount(); i++ {
 			for _, t := range byScope[n.LabelTokenRawAt(i)] {
 				if t.composite != nil {
@@ -824,21 +940,182 @@ func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op 
 							return err
 						}
 					}
-				} else {
-					var err error
-					forEachDiskValueKey(n, t.propertyKey, t.elements, func(valueKey string) {
-						if err == nil {
-							err = emit(t, valueKey, id, txFrom, !hist)
-						}
-					})
-					if err != nil {
-						return err
-					}
+					continue
 				}
+				forEachDiskValueKey(n, t.propertyKey, t.elements, func(valueKey string) {
+					pieces = append(pieces, memberPiece{t, valueKey})
+				})
+			}
+		}
+		return group.row(id, indexpkg.NodeRowInfo(axis, n), !hist, pieces)
+	})
+	if err != nil {
+		return err
+	}
+	return group.flush()
+}
+
+// scanCurrentRel reads the current row of id as a build scan does (the write
+// buffer first, then the store): nil when it has none or no wanted type.
+func (bs *Store) scanCurrentRel(want func(relType int) bool, id snowflake.ID) (*types.Relationship, error) {
+	key := storepkg.RelKey(id)
+	if op, ok := bs.lookupPending(string(key)); ok {
+		if op.opType == writeOpDelete || len(op.value) == 0 {
+			return nil, nil
+		}
+		return bs.decodeScannedRel(want, id, false, 0, op.value, nil)
+	}
+	var r *types.Relationship
+	err := bs.view(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(key)
+		if errors.Is(err, badgerv4.ErrKeyNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) (err error) {
+			r, err = bs.decodeScannedRel(want, id, false, 0, val, nil)
+			return err
+		})
+	})
+	return r, err
+}
+
+// scanCurrentNode is scanCurrentRel for a node row.
+func (bs *Store) scanCurrentNode(want func(w *storepkg.NodeWire) bool, id snowflake.ID) (*types.Node, error) {
+	key := storepkg.NodeKey(id)
+	if op, ok := bs.lookupPending(string(key)); ok {
+		if op.opType == writeOpDelete || len(op.value) == 0 {
+			return nil, nil
+		}
+		return bs.decodeScannedNode(want, id, false, 0, op.value, nil)
+	}
+	var n *types.Node
+	err := bs.view(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(key)
+		if errors.Is(err, badgerv4.ErrKeyNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) (err error) {
+			n, err = bs.decodeScannedNode(want, id, false, 0, val, nil)
+			return err
+		})
+	})
+	return n, err
+}
+
+// memberPiece is one (definition, value) a scanned row gives an entry for.
+type memberPiece struct {
+	t        entityBuildTarget
+	valueKey string
+}
+
+// memberScanRow is a history row waiting for the rows after it.
+type memberScanRow struct {
+	ri     indexpkg.RowInfo
+	pieces []memberPiece
+}
+
+// memberScanGroup derives the member entries of a build scan row by row, as
+// the membership sidecar's build does (indexpkg.RowScan): a current row's entry
+// as it stands, a history row's ended by the row that replaced it
+// (RowInfo.LateSpan) when that row is among the next indexpkg.ReplacingRowWindow
+// rows of the entity, whatever they carry. The scan visits every current row
+// first, then one entity's history rows after another in version order, so a
+// history row waits in rows until its window is full or the entity ends, which
+// bounds what the build holds to a window per entity; when the entity ends
+// with a replaced open row whose window runs past the history rows, the
+// current row is read once (cur) as the last row of the window. A scan in
+// another order (the write buffer's rows) only finds fewer replacing rows: a
+// row keeps its own span, sound.
+type memberScanGroup struct {
+	id   snowflake.ID
+	rows []memberScanRow
+	emit func(p memberPiece, id snowflake.ID, row memberRow) error
+	cur  func(id snowflake.ID) (indexpkg.RowInfo, bool, error)
+}
+
+// row takes one scanned row of entity id: a current row's entries go out at
+// once, a history row waits.
+func (g *memberScanGroup) row(id snowflake.ID, ri indexpkg.RowInfo, current bool, pieces []memberPiece) error {
+	if current {
+		for _, p := range pieces {
+			if err := g.emit(p, id, memberRowOf(ri, ri.Span)); err != nil {
+				return err
 			}
 		}
 		return nil
-	})
+	}
+	if len(g.rows) > 0 && id != g.id {
+		if err := g.flush(); err != nil {
+			return err
+		}
+	}
+	g.id = id
+	g.rows = append(g.rows, memberScanRow{ri: ri, pieces: pieces})
+	for len(g.rows) > indexpkg.ReplacingRowWindow {
+		if err := g.resolve(0, nil); err != nil {
+			return err
+		}
+		g.rows = g.rows[1:]
+	}
+	return nil
+}
+
+// resolve emits the entries of rows[i] with the rows after it (and extra,
+// rows after those) as its window.
+func (g *memberScanGroup) resolve(i int, extra []indexpkg.RowInfo) error {
+	r := g.rows[i]
+	if len(r.pieces) == 0 {
+		return nil
+	}
+	after := make([]indexpkg.RowInfo, 0, indexpkg.ReplacingRowWindow)
+	for _, x := range g.rows[i+1:] {
+		after = append(after, x.ri)
+	}
+	after = append(after, extra...)
+	late := r.ri.LateSpan(after)
+	for _, p := range r.pieces {
+		if err := g.emit(p, g.id, memberRowOf(r.ri, late)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// flush ends the entity: every waiting row is resolved against the rows after
+// it, the current row among them when its window runs past the history.
+func (g *memberScanGroup) flush() error {
+	var curRow []indexpkg.RowInfo
+	curRead := false
+	for i := range g.rows {
+		r := g.rows[i]
+		if len(r.pieces) > 0 && r.ri.Replaced() && r.ri.Span.To == math.MaxInt64 && len(g.rows)-i-1 < indexpkg.ReplacingRowWindow && g.cur != nil {
+			if !curRead {
+				curRead = true
+				ri, ok, err := g.cur(g.id)
+				if err != nil {
+					return err
+				}
+				if ok {
+					curRow = []indexpkg.RowInfo{ri}
+				}
+			}
+			if err := g.resolve(i, curRow); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := g.resolve(i, nil); err != nil {
+			return err
+		}
+	}
+	g.rows = g.rows[:0]
+	return nil
 }
 
 // entityIndexKeysUnderLocked returns the keys under each head, buffered sets
@@ -855,20 +1132,20 @@ func (bs *Store) entityIndexKeysUnderLocked(heads ...[]byte) ([][]byte, error) {
 }
 
 // entityIndexHeads returns the heads of a definition's entries: a
-// relationship definition's current and member heads, a node definition's
-// member head; nil without a property-key token.
+// relationship definition's current head, then the member heads of both
+// layouts (the span kind and the one before RELDISKWIN: a store built before
+// holds the latter until an open builds it again); nil without a property-key
+// token.
 func (bs *Store) entityIndexHeads(rel bool, scope uint16, propertyKey string) [][]byte {
 	tok, ok := bs.propKeyTokenFor(propertyKey)
 	if !ok {
 		return nil
 	}
+	var heads [][]byte
 	if rel {
-		return [][]byte{
-			storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelCurrent, scope, tok),
-			storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelMember, scope, tok),
-		}
+		heads = append(heads, storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexRelCurrent, scope, tok))
 	}
-	return [][]byte{storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeMember, scope, tok)}
+	return append(heads, bs.memberHeads(rel, scope, propertyKey)...)
 }
 
 // entityIndexDropOpsLocked returns the deletes of a definition's 0x0C entries
@@ -949,8 +1226,8 @@ func (bs *Store) createRelPropertyIndexOnDiskLocked(key indexpkg.RelPropertyInde
 		}
 		liveIdx.Mutated = nil
 		bs.persistRelPropertyIndexDefs()
-		kept = append(kept, writeOp{opType: writeOpSet, key: storepkg.EntityIndexBuiltKey(storepkg.EntityIndexRelMember, key.RelTypeToken, key.PropertyKey), value: []byte{1}})
-		bs.appendOpsRaising(storepkg.EntityIndexStoreFormatVersion, kept...)
+		kept = append(kept, writeOp{opType: writeOpSet, key: storepkg.EntityIndexBuiltKey(storepkg.EntityIndexRelMember, key.RelTypeToken, key.PropertyKey), value: []byte{storepkg.EntityIndexBuiltSpan}})
+		bs.appendOpsRaising(storepkg.MemberSpanStoreFormatVersion, kept...)
 		bs.idxMu.Unlock()
 		return bs.flushIfNeeded()
 	}
@@ -960,7 +1237,7 @@ func (bs *Store) createRelPropertyIndexOnDiskLocked(key indexpkg.RelPropertyInde
 // entityIndexOpen is an open's plan for the 0x0C entries (planEntityIndexOpen):
 // which definitions answer from them and what the open writes.
 type entityIndexOpen struct {
-	marked   map[string]struct{} // the built markers present
+	marked   map[string]byte     // the built markers present, with their layout (EntityIndexBuiltLegacy, EntityIndexBuiltSpan)
 	keep     map[string]struct{} // the markers this open keeps
 	canBuild bool
 	targets  []entityBuildTarget // the definitions this open builds
@@ -971,38 +1248,65 @@ type entityIndexOpen struct {
 
 // planEntityIndexOpen reads the 0x0C built markers at open. A definition
 // whose entries are trusted (its marker present, kept by every writable open
-// since its build) answers from them; an untrusted one a writable open with a
-// property-key registry builds (commitEntityIndexOpen), and otherwise it is
-// answered as without 0x0C for this open.
-func (bs *Store) planEntityIndexOpen(txn *badgerv4.Txn) *entityIndexOpen {
-	p := &entityIndexOpen{marked: make(map[string]struct{}), keep: make(map[string]struct{}),
+// since its build, in the span layout) answers from them; an untrusted one, or
+// one built before RELDISKWIN (marker value 1: its member entries carry no
+// span), a writable open with a property-key registry builds
+// (commitEntityIndexOpen), and otherwise it is answered as without 0x0C for
+// this open, except that a read-only open reads a definition of the earlier
+// layout as it is (place: every windowed lookup answers every member of the
+// value, the broad answer it gave).
+func (bs *Store) planEntityIndexOpen(txn *badgerv4.Txn) (*entityIndexOpen, error) {
+	p := &entityIndexOpen{marked: make(map[string]byte), keep: make(map[string]struct{}),
 		canBuild: !bs.readOnly && bs.propKeyReg.Load() != nil}
-	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: storepkg.EntityIndexBuiltPrefix})
+	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: storepkg.EntityIndexBuiltPrefix, PrefetchValues: false})
+	defer it.Close()
 	for it.Rewind(); it.Valid(); it.Next() {
-		p.marked[string(it.Item().Key())] = struct{}{}
+		layout := storepkg.EntityIndexBuiltLegacy // a marker of v4.92.0 to v4.107: its value is 1
+		if err := it.Item().Value(func(v []byte) error {
+			if len(v) > 0 && v[0] >= storepkg.EntityIndexBuiltSpan {
+				layout = storepkg.EntityIndexBuiltSpan
+			}
+			return nil
+		}); err != nil {
+			return nil, fmt.Errorf("graph: read entity-index built marker: %w", err)
+		}
+		p.marked[string(it.Item().Key())] = layout
 	}
-	it.Close()
-	return p
+	return p, nil
 }
 
-// place decides one definition: true when it answers from 0x0C this open.
+// place decides one definition: true when it answers from 0x0C this open. A
+// marker of the span layout is trusted. One of the earlier layout is trusted by
+// a read-only open only, which records it (memberLegacy) and reads it as it
+// is; a writable open builds it again as the span layout. Without a marker a
+// writable open with a registry builds it.
 func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey string, elements bool) bool {
 	kind := storepkg.EntityIndexNodeMember
 	if rel {
 		kind = storepkg.EntityIndexRelMember
 	}
 	k := storepkg.EntityIndexBuiltKey(kind, scope, propertyKey)
-	if _, ok := p.marked[string(k)]; ok {
-		p.keep[string(k)] = struct{}{}
-		return true
+	if layout, ok := p.marked[string(k)]; ok {
+		if layout == storepkg.EntityIndexBuiltSpan {
+			p.keep[string(k)] = struct{}{}
+			return true
+		}
+		if bs.readOnly {
+			p.keep[string(k)] = struct{}{}
+			if bs.memberLegacy == nil {
+				bs.memberLegacy = make(map[memberDef]struct{})
+			}
+			bs.memberLegacy[memberDef{rel, scope, propertyKey}] = struct{}{}
+			return true
+		}
 	}
 	if !p.canBuild {
 		return false
 	}
 	p.stale = append(p.stale, bs.entityIndexHeads(rel, scope, propertyKey)...)
 	p.targets = append(p.targets, entityBuildTarget{rel: rel, scope: scope, propertyKey: propertyKey, elements: elements})
-	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{1}})
-	p.level = max(p.level, storepkg.EntityIndexStoreFormatVersion)
+	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{storepkg.EntityIndexBuiltSpan}})
+	p.level = max(p.level, storepkg.MemberSpanStoreFormatVersion)
 	return true
 }
 
@@ -1025,13 +1329,18 @@ func (p *entityIndexOpen) placeComposite(bs *Store, key indexpkg.CompositeIndexK
 	p.stale = append(p.stale, head)
 	p.targets = append(p.targets, entityBuildTarget{scope: key.LabelToken, composite: keys, head: head})
 	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{1}})
-	p.level = storepkg.CompositeDiskStoreFormatVersion
+	p.level = max(p.level, storepkg.CompositeDiskStoreFormatVersion)
 	return true
 }
 
 // entityIndexOpenCommitHook, set only by tests, runs as commitEntityIndexOpen
 // starts writing.
 var entityIndexOpenCommitHook func()
+
+// entityIndexOpenBeforeMarkHook, set only by tests, runs after the entries of
+// commitEntityIndexOpen's batch were added and before its markers are: an
+// error it returns fails the open there, as a crash would end it.
+var entityIndexOpenBeforeMarkHook func() error
 
 // commitEntityIndexOpen builds the planned definitions' entries from every
 // row and writes them, after deleting the entries they had, with their
@@ -1092,6 +1401,11 @@ func (bs *Store) commitEntityIndexOpen(p *entityIndexOpen) error {
 			return fmt.Errorf("graph: entity-index build at open: %w", err)
 		}
 	}
+	if entityIndexOpenBeforeMarkHook != nil {
+		if err := entityIndexOpenBeforeMarkHook(); err != nil {
+			return fmt.Errorf("graph: entity-index build at open: %w", err)
+		}
+	}
 	if len(p.mark) > 0 {
 		v := bs.raisedFormatMarker(p.level)
 		p.mark = append(p.mark, writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)})
@@ -1111,33 +1425,73 @@ func (bs *Store) commitEntityIndexOpen(p *entityIndexOpen) error {
 }
 
 // nodeReplacedMemberOpsLocked returns the member entries of prev, the row a
-// with-history door demotes, that old, the current row it replaces (whose
-// entries exist), did not give: none when prev is old's copy, as the doors
-// write it. Caller holds idxMu.Lock.
-func (bs *Store) nodeReplacedMemberOpsLocked(prev, old *types.Node, id snowflake.ID) []writeOp {
-	return newEntityOps(bs.nodeMemberOpsLocked(prev, id), bs.nodeMemberOpsLocked(old, id))
+// with-history door demotes, written again as next, the row that replaces it,
+// ends it (RELDISKWIN: lateTo is next's start for a row replaced open, last
+// the demoted row's TxTo). The entry exists, the row's own key, written when
+// the row was; this is its rewrite, one set per value, no read. A value prev
+// carries that old, the current row it replaces, did not still gets its entry,
+// and an entry of old that prev does not give (a demoted row that is not old's
+// copy: another value, version or transaction time) is deleted: no row carries
+// it any more, and a retention purge finds an entry by the rows it removes.
+// Caller holds idxMu.Lock.
+func (bs *Store) nodeReplacedMemberOpsLocked(old, prev, next *types.Node, id snowflake.ID) []writeOp {
+	return append(bs.nodeOrphanedMemberOpsLocked(old, prev, id), bs.nodeMemberOpsNextLocked(prev, id, next)...)
+}
+
+// nodeOrphanedMemberOpsLocked returns the deletes of old's member entries that
+// prev, the row stored in history in old's place, does not give.
+func (bs *Store) nodeOrphanedMemberOpsLocked(old, prev *types.Node, id snowflake.ID) []writeOp {
+	if !bs.nodeMembersOnDisk || old == nil || prev == nil {
+		return nil
+	}
+	oldTx, _, _ := old.TxStamps()
+	prevTx, _, _ := prev.TxStamps()
+	sameRow := oldTx == prevTx && old.Version() == prev.Version()
+	var ops []writeOp
+	for _, def := range bs.propDiskDefs {
+		if !def.members || !old.HasLabelTokenRaw(def.key.LabelToken) {
+			continue
+		}
+		var kept []string // the value keys prev gives under def
+		if sameRow && prev.HasLabelTokenRaw(def.key.LabelToken) {
+			forEachDiskValueKey(prev, def.key.PropertyKey, def.elements, func(valueKey string) { kept = append(kept, valueKey) })
+		}
+		forEachDiskValueKey(old, def.key.PropertyKey, def.elements, func(valueKey string) {
+			if !slices.Contains(kept, valueKey) {
+				ops = bs.entityMemberDelOp(ops, storepkg.EntityIndexNodeSpan, def.key.LabelToken, def.key.PropertyKey, valueKey, id, oldTx, old.Version())
+			}
+		})
+	}
+	return ops
 }
 
 // relReplacedMemberOpsLocked is nodeReplacedMemberOpsLocked for a
 // relationship. Caller holds idxMu.Lock.
-func (bs *Store) relReplacedMemberOpsLocked(prev, old *types.Relationship, id snowflake.ID) []writeOp {
-	return newEntityOps(bs.relIndexDiskOpsLocked(prev, id, writeOpSet, false), bs.relIndexDiskOpsLocked(old, id, writeOpSet, false))
-}
-
-// newEntityOps returns the ops of ops whose key have does not hold.
-func newEntityOps(ops, have []writeOp) []writeOp {
-	if len(ops) == 0 {
+func (bs *Store) relReplacedMemberOpsLocked(old, prev, next *types.Relationship, id snowflake.ID) []writeOp {
+	if len(bs.relDiskDefs) == 0 || prev == nil {
 		return nil
 	}
-	held := make(map[string]struct{}, len(have))
-	for _, op := range have {
-		held[string(op.key)] = struct{}{}
-	}
-	var out []writeOp
-	for _, op := range ops {
-		if _, ok := held[string(op.key)]; !ok {
-			out = append(out, op)
+	tok := prev.TypeToken().Value()
+	oldTx, _, _ := old.TxStamps()
+	prevTx, _, _ := prev.TxStamps()
+	sameRow := oldTx == prevTx && old.Version() == prev.Version()
+	var ops []writeOp
+	var row memberRow
+	built := false
+	for _, def := range bs.relDiskDefs {
+		if def.key.RelTypeToken != tok {
+			continue
+		}
+		prevValue, _ := prev.IndexablePropertyValueKey(def.key.PropertyKey)
+		if oldValue, _ := old.IndexablePropertyValueKey(def.key.PropertyKey); oldValue != "" && (!sameRow || oldValue != prevValue) {
+			ops = bs.entityMemberDelOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, oldValue, id, oldTx, old.Version())
+		}
+		if prevValue != "" {
+			if !built {
+				row, built = bs.relMemberRow(prev, next), true
+			}
+			ops = bs.entityMemberOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, prevValue, id, row)
 		}
 	}
-	return out
+	return ops
 }

@@ -197,8 +197,8 @@ func TestIndexKeyTooLargeRefusedAtEveryNodeDoor(t *testing.T) {
 	// Exactly at the limit: stored, flushed, found. The longest key a write
 	// makes is the definition's member entry (RELDISK); its overhead is
 	// measured with rho's own key builders on a one-byte string.
-	prefix1, _ := storepkg.AppendEntityIndexValue(storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeMember, 7, 0), types.IndexablePropertyValueKey("z"))
-	overhead := len(storepkg.AppendEntityIndexEntry(prefix1, storepkg.EntityIndexNodeMember, snowflake.ID(30), 1)) - 1
+	prefix1, _ := storepkg.AppendEntityIndexValue(storepkg.AppendEntityIndexHead(nil, storepkg.EntityIndexNodeSpan, 7, 0), types.IndexablePropertyValueKey("z"))
+	overhead := len(storepkg.AppendEntityIndexEntry(prefix1, storepkg.EntityIndexNodeSpan, snowflake.ID(30), 1, 1)) - 1
 	fits := strings.Repeat("z", bs.maxEntryKey-overhead)
 	esAfter(t, bs, "PutNode one byte over", bs.PutNode(esNode(31, 7, map[string]string{"body": fits + "z"})), absent(31))
 	if err := bs.PutNode(esNode(30, 7, map[string]string{"body": fits})); err != nil {

@@ -95,7 +95,7 @@ func (bs *Store) checkNodeDiskKeysLocked(n *types.Node, id snowflake.ID) (nodeDi
 // (RELDISK), longer than its 0x0A entry, else the 0x0A entry.
 func (bs *Store) checkNodeIndexKey(def propDiskDef, valueKey string, id snowflake.ID) error {
 	if def.members {
-		return bs.checkEntityIndexKey(storepkg.EntityIndexNodeMember, def.key.PropertyKey, valueKey)
+		return bs.checkEntityIndexKey(storepkg.EntityIndexNodeSpan, def.key.PropertyKey, valueKey)
 	}
 	// The key is 11 bytes and the payload: a domain byte and the value key
 	// for a raw value (a number's is 18 bytes, its key far under any
@@ -136,7 +136,7 @@ func (bs *Store) checkNodeMemberKeysLocked(n *types.Node) error {
 		var err error
 		forEachDiskValueKey(n, def.key.PropertyKey, def.elements, func(valueKey string) {
 			if err == nil {
-				err = bs.checkEntityIndexKey(storepkg.EntityIndexNodeMember, def.key.PropertyKey, valueKey)
+				err = bs.checkEntityIndexKey(storepkg.EntityIndexNodeSpan, def.key.PropertyKey, valueKey)
 			}
 		})
 		if err != nil {
@@ -159,7 +159,7 @@ func (bs *Store) checkRelIndexKeysLocked(r *types.Relationship) error {
 			continue
 		}
 		valueKey, _ := r.IndexablePropertyValueKey(def.key.PropertyKey)
-		if err := bs.checkEntityIndexKey(storepkg.EntityIndexRelMember, def.key.PropertyKey, valueKey); err != nil {
+		if err := bs.checkEntityIndexKey(storepkg.EntityIndexRelSpan, def.key.PropertyKey, valueKey); err != nil {
 			return err
 		}
 	}

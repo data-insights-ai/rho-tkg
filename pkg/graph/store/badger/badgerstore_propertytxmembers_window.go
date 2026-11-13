@@ -19,7 +19,11 @@ var (
 // window view (indexpkg.PropertyTxMembers.MembersDuring) under idxMu.RLock.
 // The first windowed lookup of a value opens the view under idxMu.Lock; every
 // row recorded after that (recordRelPropTxLocked / recordNodePropTxLocked,
-// under idxMu.Lock) keeps it.
+// under idxMu.Lock) keeps it. A definition kept on disk answers the same from
+// its span entries (RELDISKWIN, badgerstore_member_span.go): it reads the
+// value's entries, folds each member's envelope and hands on only the members
+// that meet the window; one a read-only open found built before that layout
+// hands on every member of the value.
 
 // ForEachRelPropertyTxMemberDuring implements
 // store.RelPropertyTxMemberWindowCapability.
@@ -41,11 +45,11 @@ func (bs *Store) forEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyK
 		return err
 	}
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
-	if members, ok, err := bs.relDiskMembers(key, memberQuery{valueKeys: []string{valueKey}, work: work}); ok {
+	if members, ok, err := bs.relDiskMembers(key, memberQuery{valueKeys: []string{valueKey}, work: work, window: &memberWindow{validStart, validEnd, txAt}}); ok {
 		if validStart >= validEnd {
 			members = nil // an empty window answers nothing
 		}
-		return emitTxMembers(members, err, memberWorkCallback(fn, work)) // RELDISK: every member of the value, a sound superset
+		return emitTxMembers(members, err, memberWorkCallback(fn, work)) // RELDISKWIN: the members whose envelope meets the window (every member of the value, a sound superset, from a definition built before it)
 	}
 	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, memberWorkCallback(fn, work),
 		func() (*propTxSidecar[types.RelID], bool) {
@@ -74,11 +78,11 @@ func (bs *Store) forEachNodePropertyTxMemberDuring(labelToken uint16, propertyKe
 		return err
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
-	if members, ok, err := bs.nodeDiskMembers(key, memberQuery{valueKeys: []string{valueKey}, work: work}); ok {
+	if members, ok, err := bs.nodeDiskMembers(key, memberQuery{valueKeys: []string{valueKey}, work: work, window: &memberWindow{validStart, validEnd, txAt}}); ok {
 		if validStart >= validEnd {
 			members = nil // an empty window answers nothing
 		}
-		return emitTxMembers(members, err, memberWorkCallback(fn, work)) // RELDISK: every member of the value, a sound superset
+		return emitTxMembers(members, err, memberWorkCallback(fn, work)) // RELDISKWIN: the members whose envelope meets the window (every member of the value, a sound superset, from a definition built before it)
 	}
 	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, memberWorkCallback(fn, work),
 		func() (*propTxSidecar[types.NodeID], bool) {

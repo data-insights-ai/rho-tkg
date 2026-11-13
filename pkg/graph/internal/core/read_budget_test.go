@@ -13,11 +13,13 @@ import (
 
 // TestReadBudget_SelectiveDoorRefusesBroadRead (RH list R2, ai-soc's
 // native_test case): 40 rows carry the probed value, 2 of them meet the
-// window. A RAM sidecar narrows the candidates to the window; the on-disk
-// index (RelPropertyIndexOnDiskTypes) cannot and hands every member on. Under
-// a read budget the door counts its candidates and output segments; past the
-// candidate limit it returns ErrReadBudget with the counters and no rows,
-// before it decodes a timeline. Without a budget every answer is unchanged.
+// window. The RAM sidecar and the on-disk index (RelPropertyIndexOnDiskTypes,
+// whose member entries carry each row's valid-time envelope since RELDISKWIN)
+// both narrow the candidates to the window: 2 for 40, so a budget of 10 candidates
+// answers on disk as in RAM. Under a read budget the door counts its
+// candidates and output segments; past the candidate limit (here 1) it returns
+// ErrReadBudget with the counters and no rows, before it decodes a timeline.
+// Without a budget every answer is unchanged.
 func TestReadBudget_SelectiveDoorRefusesBroadRead(t *testing.T) {
 	t.Parallel()
 	const rows, limit = 40, 10
@@ -47,36 +49,25 @@ func TestReadBudget_SelectiveDoorRefusesBroadRead(t *testing.T) {
 				t.Fatalf("no budget = %q, want r00,r01", want)
 			}
 
-			// Under the limit (RAM narrows): the same answer, counted.
+			// Under the limit: the same answer, counted, on disk as in RAM.
 			ctx, meter := storepkg.WithReadBudget(w.ctx, storepkg.ReadBudget{Candidates: limit})
 			got, err := g.Temporal.RelEffectiveTimelinesByProperties(ctx, rtbType, rtbKeys, tuples, pin)
-			work := meter.Work()
-			if !disk {
-				if err != nil || rtbNames(w, got[0]) != want {
-					t.Fatalf("RAM under budget = %s, %v; want %s", rtbRender(w, got), err, want)
-				}
-				if work.Candidates != 2 || work.Segments != 2 {
-					t.Fatalf("RAM work = %+v, want 2 candidates, 2 segments", work)
-				}
-				return
+			if err != nil || rtbNames(w, got[0]) != want {
+				t.Fatalf("under budget %d = %s, %v; want %s", limit, rtbRender(w, got), err, want)
 			}
-			// The disk index's every member: refused, counted, nothing read.
-			var be *storepkg.ReadBudgetError
-			if !errors.Is(err, storepkg.ErrReadBudget) || !errors.As(err, &be) || got != nil {
-				t.Fatalf("disk under budget %d = %s, %v; want ErrReadBudget", limit, rtbRender(w, got), err)
-			}
-			if be.Door != "RelEffectiveTimelinesByProperties" || be.Limit != "candidates" || be.Work.Candidates != rows || be.Work.Segments != 0 || work != be.Work {
-				t.Fatalf("budget error %+v (meter %+v), want candidates limit at %d candidates, 0 segments", be, work, rows)
+			if work := meter.Work(); work.Candidates != 2 || work.Segments != 2 {
+				t.Fatalf("work = %+v, want 2 candidates, 2 segments", work)
 			}
 
-			// A budget the read fits: answered and counted.
-			ctx, meter = storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: rows})
+			// Past the limit: refused, counted, nothing read.
+			ctx, meter = storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: 1})
 			got, err = g.Temporal.RelEffectiveTimelinesByProperties(ctx, rtbType, rtbKeys, tuples, pin)
-			if err != nil || rtbNames(w, got[0]) != want {
-				t.Fatalf("disk within budget = %s, %v; want %s", rtbRender(w, got), err, want)
+			var be *storepkg.ReadBudgetError
+			if !errors.Is(err, storepkg.ErrReadBudget) || !errors.As(err, &be) || got != nil {
+				t.Fatalf("budget 1 = %s, %v; want ErrReadBudget", rtbRender(w, got), err)
 			}
-			if work := meter.Work(); work.Candidates != rows || work.Segments != 2 {
-				t.Fatalf("disk work = %+v, want %d candidates, 2 segments", work, rows)
+			if be.Door != "RelEffectiveTimelinesByProperties" || be.Limit != "candidates" || be.Work.Segments != 0 || meter.Work() != be.Work {
+				t.Fatalf("budget error %+v (meter %+v), want the candidates limit with 0 segments", be, meter.Work())
 			}
 		})
 	}

@@ -381,13 +381,14 @@ func (bs *Store) maintainRelPropertyIndexesRemove(r *types.Relationship, id snow
 
 // maintainRelPropertyIndexesUpdate is maintainRelPropertyIndexesAdd for the
 // new row r of an update of old, ops being old's Remove ops: what the update
-// writes again for an unchanged value is dropped (dropUnchangedEntityOps).
+// writes again for an unchanged value is dropped (dropUnchangedEntityOps): the
+// current entry, and the member entry of a row that is old's own again, same
+// key and value (an in-place rewrite that changed nothing).
 func (bs *Store) maintainRelPropertyIndexesUpdate(ops []writeOp, old, r *types.Relationship, id snowflake.ID) []writeOp {
 	from := len(ops)
 	ops = append(ops, bs.maintainRelPropertyIndexesAdd(r, id)...)
-	oldTx, _, _ := old.TxStamps()
-	newTx, _, _ := r.TxStamps()
-	return bs.dropUnchangedEntityOps(ops, from, oldTx, newTx)
+	ops = bs.dropSameRelMemberOps(ops, from, old, r, id)
+	return bs.dropUnchangedEntityOps(ops, from)
 }
 
 // maintainRelPropertyIndexesPurge is the shared-seam removal of a deleted

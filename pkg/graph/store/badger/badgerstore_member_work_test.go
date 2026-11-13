@@ -3,6 +3,7 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sync"
 	"testing"
@@ -16,21 +17,29 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-func TestMemberWorkEmptyWindowKeepsScanCost(t *testing.T) {
+// TestMemberWorkEmptyWindowReadsNothing: a definition on disk (span entries,
+// RELDISKWIN) answers an empty or reversed window without reading a key; a
+// window that meets the 6 members of the value walks its 6 entries one entity
+// at a time (the fold holds one member, not the value's every member) and
+// hands them on.
+func TestMemberWorkEmptyWindowReadsNothing(t *testing.T) {
 	bs, r := memberPageStore(t, 8)
-	for _, end := range []types.Instant{0, -1, 1} {
+	for _, end := range []types.Instant{0, -1, math.MaxInt64} {
 		calls := 0
 		got, err := bs.DiagnoseRelPropertyTxMembersDuring(r, "k", types.IndexablePropertyValueKey("v"), 0, end, 0, func(types.RelID, types.Instant) bool { calls++; return false })
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !got.Supported || !got.Completed || got.FoldMembersPeak != 6 || got.MemberSliceLen != 6 || got.MemberSliceCap != 6 || got.IteratorSteps < 6 {
+		if !got.Supported || !got.Completed {
 			t.Fatalf("work: %+v", got)
 		}
-		if end <= 0 && (calls != 0 || got.CallbackStopped) {
-			t.Fatalf("empty: %+v calls %d", got, calls)
+		if end <= 0 {
+			if calls != 0 || got.CallbackStopped || got.IteratorSteps != 0 || got.DiskEntriesEmitted != 0 || got.FoldMembersPeak != 0 {
+				t.Fatalf("empty window read: %+v calls %d", got, calls)
+			}
+			continue
 		}
-		if end > 0 && (calls != 1 || !got.CallbackStopped || got.MembersEmitted != 1) {
+		if calls != 1 || !got.CallbackStopped || got.MembersEmitted != 1 || got.IteratorSteps != 6 || got.FoldMembersPeak != 1 || got.MemberSliceLen != 6 {
 			t.Fatalf("stopped: %+v", got)
 		}
 	}
@@ -55,30 +64,30 @@ func TestMemberWorkNodeAndRelCounts(t *testing.T) {
 			if err = bs.Flush(); err != nil {
 				t.Fatal(err)
 			}
-			got, err := bs.DiagnoseNodePropertyTxMembersDuring(1, "k", types.IndexablePropertyValueKey("v"), 0, 1, 0, func(types.NodeID, types.Instant) bool { return true })
+			got, err := bs.DiagnoseNodePropertyTxMembersDuring(1, "k", types.IndexablePropertyValueKey("v"), 0, math.MaxInt64, 0, func(types.NodeID, types.Instant) bool { return true })
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !got.Supported || !got.Completed || got.IteratorSteps != uint64(n) || got.FoldMembersPeak != uint64(n) || got.MemberSliceLen != uint64(n) || got.MembersEmitted != uint64(n) {
+			if !got.Supported || !got.Completed || got.IteratorSteps != uint64(n) || got.FoldMembersPeak != 1 || got.MemberSliceLen != uint64(n) || got.MembersEmitted != uint64(n) {
 				t.Fatalf("node: %+v", got)
 			}
 			rel, r := memberPageStore(t, int64(n))
-			got, err = rel.DiagnoseRelPropertyTxMembersDuring(r, "k", types.IndexablePropertyValueKey("v"), 0, 1, 0, func(types.RelID, types.Instant) bool { return true })
+			got, err = rel.DiagnoseRelPropertyTxMembersDuring(r, "k", types.IndexablePropertyValueKey("v"), 0, math.MaxInt64, 0, func(types.RelID, types.Instant) bool { return true })
 			if err != nil {
 				t.Fatal(err)
 			}
 			var normal, diagnosed []types.RelID
-			if err = rel.ForEachRelPropertyTxMemberDuring(r, "k", types.IndexablePropertyValueKey("v"), 0, 1, 0, func(id types.RelID, _ types.Instant) bool { normal = append(normal, id); return true }); err != nil {
+			if err = rel.ForEachRelPropertyTxMemberDuring(r, "k", types.IndexablePropertyValueKey("v"), 0, math.MaxInt64, 0, func(id types.RelID, _ types.Instant) bool { normal = append(normal, id); return true }); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = rel.DiagnoseRelPropertyTxMembersDuring(r, "k", types.IndexablePropertyValueKey("v"), 0, 1, 0, func(id types.RelID, _ types.Instant) bool { diagnosed = append(diagnosed, id); return true }); err != nil {
+			if _, err = rel.DiagnoseRelPropertyTxMembersDuring(r, "k", types.IndexablePropertyValueKey("v"), 0, math.MaxInt64, 0, func(id types.RelID, _ types.Instant) bool { diagnosed = append(diagnosed, id); return true }); err != nil {
 				t.Fatal(err)
 			}
 			if !slices.Equal(normal, diagnosed) {
 				t.Fatalf("ordinary/diagnostic IDs: %v vs %v", normal, diagnosed)
 			}
 			want := uint64(n - n/3)
-			if got.FoldMembersPeak != want || got.MemberSliceLen != want || got.MembersEmitted != want {
+			if got.FoldMembersPeak != 1 || got.MemberSliceLen != want || got.MembersEmitted != want {
 				t.Fatalf("rel: %+v", got)
 			}
 		})
@@ -88,7 +97,7 @@ func TestMemberWorkNodeAndRelCounts(t *testing.T) {
 func TestMemberWorkNestedConcurrentAndErrors(t *testing.T) {
 	bs, r := memberPageStore(t, 8)
 	read := func(key string, fn func(types.RelID, types.Instant) bool) (storecontract.PropertyMemberWork, error) {
-		return bs.DiagnoseRelPropertyTxMembersDuring(r, "k", types.IndexablePropertyValueKey(key), 0, 1, 0, fn)
+		return bs.DiagnoseRelPropertyTxMembersDuring(r, "k", types.IndexablePropertyValueKey(key), 0, math.MaxInt64, 0, fn)
 	}
 	out, err := read("v", func(types.RelID, types.Instant) bool {
 		inner, e := read("w", func(types.RelID, types.Instant) bool { return true })
@@ -110,27 +119,27 @@ func TestMemberWorkNestedConcurrentAndErrors(t *testing.T) {
 			if k == "w" {
 				want = 2
 			}
-			if e != nil || got.MembersEmitted != want || got.FoldMembersPeak != want {
+			if e != nil || got.MembersEmitted != want || got.FoldMembersPeak != 1 {
 				t.Errorf("concurrent: %+v %v", got, e)
 			}
 		}(k)
 	}
 	wg.Wait()
 	for _, token := range []uint16{0, r} {
-		got, e := bs.DiagnoseRelPropertyTxMembersDuring(token, "missing", "v", 0, 1, 0, nil)
-		ordinary := bs.ForEachRelPropertyTxMemberDuring(token, "missing", "v", 0, 1, 0, nil)
+		got, e := bs.DiagnoseRelPropertyTxMembersDuring(token, "missing", "v", 0, math.MaxInt64, 0, nil)
+		ordinary := bs.ForEachRelPropertyTxMemberDuring(token, "missing", "v", 0, math.MaxInt64, 0, nil)
 		if e == nil || ordinary == nil || e.Error() != ordinary.Error() || got.Completed || got.MembersEmitted != 0 {
 			t.Fatalf("invalid: %+v %v vs %v", got, e, ordinary)
 		}
 	}
 	bs.entityIndexWalkTestHook = func() { panic("partial diagnostic") }
 	partial, broken := read("v", func(types.RelID, types.Instant) bool { return true })
-	ordinaryBroken := bs.ForEachRelPropertyTxMemberDuring(r, "k", types.IndexablePropertyValueKey("v"), 0, 1, 0, func(types.RelID, types.Instant) bool { return true })
+	ordinaryBroken := bs.ForEachRelPropertyTxMemberDuring(r, "k", types.IndexablePropertyValueKey("v"), 0, math.MaxInt64, 0, func(types.RelID, types.Instant) bool { return true })
 	bs.entityIndexWalkTestHook = nil
 	if !errors.Is(broken, storecontract.ErrCorruptWire) || ordinaryBroken == nil || ordinaryBroken.Error() != broken.Error() || !partial.Supported || partial.Completed || partial.IteratorSteps != 1 || partial.MembersEmitted != 0 {
 		t.Fatalf("partial: %+v %v vs %v", partial, broken, ordinaryBroken)
 	}
-	missing, e := bs.DiagnoseRelPropertyTxMembersDuring(r, "missing", "v", 0, 1, 0, func(types.RelID, types.Instant) bool { return true })
+	missing, e := bs.DiagnoseRelPropertyTxMembersDuring(r, "missing", "v", 0, math.MaxInt64, 0, func(types.RelID, types.Instant) bool { return true })
 	if !errors.Is(e, ErrIndexNotFound) || missing.Completed {
 		t.Fatalf("missing %+v %v", missing, e)
 	}
@@ -161,7 +170,7 @@ func TestMemberWorkScannerVersionsBoundaryAndPartialError(t *testing.T) {
 	if !ok {
 		t.Fatal("prefix")
 	}
-	key := storepkg.AppendEntityIndexEntry(slices.Clone(prefix), storepkg.EntityIndexRelMember, 1, 0)
+	key := storepkg.AppendEntityIndexEntry(slices.Clone(prefix), storepkg.EntityIndexRelMember, 1, 0, 0)
 	for range 2 {
 		if err = bs.db.Update(func(tx *badgerv4.Txn) error { return tx.Set(key, nil) }); err != nil {
 			t.Fatal(err)
@@ -200,7 +209,7 @@ func TestMemberWorkOverlayCounts(t *testing.T) {
 	}
 	keys := make([]string, 3)
 	for i := range keys {
-		keys[i] = string(storepkg.AppendEntityIndexEntry(slices.Clone(prefix), storepkg.EntityIndexRelMember, snowflake.ID(i+1), 0))
+		keys[i] = string(storepkg.AppendEntityIndexEntry(slices.Clone(prefix), storepkg.EntityIndexRelMember, snowflake.ID(i+1), 0, 0))
 	}
 	bs.flushMu.Lock()
 	defer bs.flushMu.Unlock()

@@ -311,8 +311,10 @@ func TestValidEndAfterAcrossOpens(t *testing.T) {
 		}
 	}
 	closeGraph(g)
-	if v := rawFormatMarker(t, dir); v >= storeutil.ValidEndStoreFormatVersion {
-		t.Errorf("never listed: format marker %d, want below %d", v, storeutil.ValidEndStoreFormatVersion)
+	// The format marker is past 14 already (the definition's member entries,
+	// RELDISKWIN: 17), so the valid-end marker is read from its own key.
+	if n := rawValidEndMarkers(t, dir); n != 0 {
+		t.Errorf("never listed: %d valid-end built markers, want none", n)
 	}
 
 	g = open(true)
@@ -321,8 +323,8 @@ func TestValidEndAfterAcrossOpens(t *testing.T) {
 		t.Errorf("listed: %+v, nothing pruned", st)
 	}
 	closeGraph(g)
-	if v := rawFormatMarker(t, dir); v < storeutil.ValidEndStoreFormatVersion {
-		t.Errorf("format marker %d, want %d", v, storeutil.ValidEndStoreFormatVersion)
+	if n := rawValidEndMarkers(t, dir); n == 0 {
+		t.Errorf("listed: no valid-end built marker (format marker %d, want at least %d)", rawFormatMarker(t, dir), storeutil.ValidEndStoreFormatVersion)
 	}
 
 	for _, step := range []string{"reopened", "reopened again"} {
@@ -384,6 +386,29 @@ func TestValidEndAfterAcrossOpens(t *testing.T) {
 }
 
 // rawFormatMarker reads dir's store-level format marker (0: none).
+// rawValidEndMarkers counts the valid-end built markers of the closed store
+// in dir.
+func rawValidEndMarkers(t *testing.T, dir string) int {
+	t.Helper()
+	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	n := 0
+	if err := db.View(func(txn *badgerv4.Txn) error {
+		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: storeutil.PropertyIndexValidEndBuiltPrefix})
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			n++
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
 func rawFormatMarker(t *testing.T, dir string) uint16 {
 	t.Helper()
 	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))

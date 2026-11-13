@@ -350,7 +350,7 @@ func (bs *Store) exactErasureEntityIndexOpsLocked(nodeIDs []types.NodeID, relIDs
 			return false
 		}
 		set := rels
-		if key[1] == storepkg.EntityIndexNodeMember {
+		if storepkg.EntityIndexIsNodeMember(key[1]) {
 			set = nodes
 		}
 		_, hit := set[id]

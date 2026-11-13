@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -492,15 +491,10 @@ func TestPropertyIndexOnDiskMembershipDoors(t *testing.T) {
 			}
 		}
 		for k, sub := range ramWindows {
-			// A window answers a sound superset: on disk, every member of the value.
-			value := strings.Split(k, " window")[0]
-			if got, all := diskWindows[k], disk[value+" all"]; got != all {
-				t.Errorf("%s: %s = %s on disk, want the value's members %s", phase, k, got, all)
-			}
-			for _, name := range strings.Fields(strings.Trim(sub, "[]")) {
-				if !strings.Contains(" "+strings.Trim(diskWindows[k], "[]")+" ", " "+name+" ") {
-					t.Errorf("%s: %s on disk %s misses %s (RAM %s)", phase, k, diskWindows[k], name, sub)
-				}
+			// A window answers what the sidecar answers (RELDISKWIN: the member
+			// entries carry each row's valid-time envelope), not every member of the value.
+			if got := diskWindows[k]; got != sub {
+				t.Errorf("%s: %s = %s on disk, %s in RAM", phase, k, got, sub)
 			}
 		}
 		if ram["R k=x empty window"] != "[]" || disk["R k=x empty window"] != "[]" {

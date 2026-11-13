@@ -102,13 +102,13 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
 	bs.removeRelPropertyTypeClassCounts(old)
 	bs.removeRelPropertyStatsCounts(old)
-	bs.bumpRelRevLocked(rid)                                   // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
-	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))   // BACKLOG 10c
-	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState)) // BACKLOG 10c — the demoted history row
-	bs.recordRelReplacedLocked(prevState, current)             // backlog 8 — and its property values
+	bs.bumpRelRevLocked(rid)                                                                 // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))                                 // BACKLOG 10c
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState))                               // BACKLOG 10c — the demoted history row
+	bs.recordRelReplacedLocked(prevState, current)                                           // backlog 8 — and its property values
+	diskOps = append(diskOps, bs.relReplacedMemberOpsLocked(old, prevState, current, id)...) // RELDISKWIN: the demoted row's entries again, ended by current
 	diskOps = bs.maintainRelPropertyIndexesUpdate(diskOps, old, current, id)
-	diskOps = append(diskOps, bs.relReplacedMemberOpsLocked(prevState, old, id)...) // RELDISK: what only the demoted row carries
-	bs.maintainRelTypeTemporalIndexesAdd(current, id)                               // BACKLOG 21c
+	bs.maintainRelTypeTemporalIndexesAdd(current, id) // BACKLOG 21c
 	bs.addRelPropertyTypeClassCounts(current)
 	bs.addRelPropertyStatsCounts(current)
 	// Refresh the inline valid-time stamp — a history version-close moves
@@ -187,7 +187,10 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 	bs.forgetRelPropTxCurrentLocked(r)                         // ledger row 62: no current row any more
 	// The tombstone first, then the removal (appends its delete ops to pending
 	// under the lock; no record — emitted here).
-	bs.publishMoveLocked(historyRowMarker(tombstone.Temporal()), []writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, func() { bs.deleteRelByInfo(info, r) })
+	// RELDISKWIN: the deleted row's member entries again, as its tombstone
+	// stamps it (the same keys: a tombstone is the row it deletes).
+	tombOps := append([]writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, bs.relIndexDiskOpsLocked(tombstone, id, writeOpSet, false)...)
+	bs.publishMoveLocked(historyRowMarker(tombstone.Temporal()), tombOps, func() { bs.deleteRelByInfo(info, r) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, delPayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {

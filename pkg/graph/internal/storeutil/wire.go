@@ -107,7 +107,7 @@ const StagedFlushStoreFormatVersion = 9
 
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = UniqueOwnerStoreFormatVersion
+const MaxReadableStoreFormatVersion = MemberSpanStoreFormatVersion
 
 // OpenVoidStoreFormatVersion is the store-level marker of a directory that
 // holds an open-ended void piece (OPENEXCISE, OpenVoidWireFormatVersion rows).
@@ -154,6 +154,17 @@ const ValidEndStoreFormatVersion = 14
 // marker, so a newer binary would then trust entries it missed: it must refuse
 // the store. Raised with the first marker; 4 to 14 are taken, so this is 15.
 const CompositeDiskStoreFormatVersion = 15
+
+// MemberSpanStoreFormatVersion is the store-level marker of a directory with a
+// definition's member entries in the span layout (RELDISKWIN, 0x0C kinds
+// EntityIndexRelSpan and EntityIndexNodeSpan, built marker value
+// EntityIndexBuiltSpan). A binary that predates it neither writes a span
+// entry's value nor rewrites the entry of a row an update or a delete changed,
+// and would clear nothing of them, so a newer binary would then trust spans it
+// let go stale: it must refuse the store. Raised with the first marker of that
+// layout; 4 to 16 are taken (16: the unique owner index, in unique_owner_key.go),
+// so this is 17.
+const MemberSpanStoreFormatVersion = 17
 
 // writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every

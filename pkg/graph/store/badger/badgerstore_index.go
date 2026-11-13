@@ -190,16 +190,16 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			// (planPropertyIndexDisk).
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.PropertyIndexOnDiskDefBuiltKey(labelToken, propertyKey), value: []byte{1}})
 		}
-		// Its member entries and their marker (RELDISK), which raises the
-		// format marker past 12.
+		// Its member entries and their marker (RELDISK, the span layout of
+		// RELDISKWIN), which raises the format marker to 17.
 		ops = append(ops, memberOps...)
-		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.EntityIndexBuiltKey(storepkg.EntityIndexNodeMember, labelToken, propertyKey), value: []byte{1}})
-		marker := uint16(storepkg.EntityIndexStoreFormatVersion)
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.EntityIndexBuiltKey(storepkg.EntityIndexNodeMember, labelToken, propertyKey), value: []byte{storepkg.EntityIndexBuiltSpan}})
+		marker := uint16(storepkg.MemberSpanStoreFormatVersion)
 		if bs.validEndListed(key) && !opts.Elements { // an element's entry bounds no row (ELEMDISK)
 			// Its entries were all written unknown: its valid-end marker, which
 			// raises the format marker to 14 (VALIDENDPRUNE).
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.PropertyIndexValidEndBuiltKey(labelToken, propertyKey), value: []byte{1}})
-			marker = storepkg.ValidEndStoreFormatVersion
+			marker = max(marker, storepkg.ValidEndStoreFormatVersion)
 			bs.validEnd.trusted[key] = struct{}{}
 			bs.refreshValidEndDefsLocked()
 		}
