@@ -1,0 +1,66 @@
+RELDISKWIN option B (René 13 Nov: "B: of course"): time-ordered member entries, so a windowed read seeks to the
+window instead of walking every entry of the value. Fable design, 13 Nov, frozen for the build.
+
+1. Second ordering: mirror the RAM sidecar's two views (late / recent, index/property_tx_members_window.go:329-332,
+   393-423), per row.
+   New kinds 7 (rel) / 8 (node). Key: 0x0C | kind | scope | propTok | payload | axis(1B) | t1(8B) | from(8B) | id(8B) |
+   txFrom(8B) | version(4B); value: the same 32-B from|allTo|lateTo|last. Tail 37 B for both axes (uniform
+   EntityIndexTailLen; the length-check break at badgerstore_entity_index.go:386 and raw terminator logic hold).
+   - axis 0x01 (late end order): t1 = orderPreservingInt64Bits(lateTo) (temporal_index_key.go:54). One entry per row
+     carrying the value.
+   - axis 0x02 (recent order): t1 = ^orderPreservingInt64Bits(last) (descending). Only for widened rows (allTo >
+     lateTo): a demoted open row (EndedBy) and a tombstone whose delete wrote ValidTo (AnyPinSpan).
+   Read of window [S,E) at pin P:
+   a. Seek payload|0x01|enc(S+1), scan while prefix payload|0x01: keep if from < E (and the row meets at P per Meets'
+      rule, property_tx_members_disk.go:54-58).
+   b. If 0 < P < MaxInt64: seek payload|0x02 start, scan while last > P (break at the first last <= P); keep if from < E
+      && allTo > S.
+   c. Union by ID; emit (id, min txFrom over the kept rows of id).
+   Exactness: per-row judgment = Meets' rule on one row's envelope. The disk member set is a SUBSET of RAM's (RAM unions
+   a member's rows into one envelope) and a superset of the resolver's answer; both sound.
+   Bound: axis 1 = rows with lateTo > S, +1 boundary; axis 2 = widened rows with last > P, +1. Unrelated PAST history
+   is never visited: expected steps ~3 for n = 8/32/128 in the test fixture. Not bounded exactly: (a) many rows
+   starting after E (future of the window), (b) an old pin with many widened rows since, (c) open rows with from < E
+   (genuine matches). Document these.
+   firstTxFrom: min TxFrom over visited rows of the ID; amend store/capabilities.go:398-407 comment ("a lower bound on
+   the earliest row that carries the value and may meet the window at txAt"); sound because the windowed door is reached
+   only with TxAt (opts.go:92-97, core temporal.go:1192-1197, 1252). If a test shows otherwise, emit 0 (never prune).
+
+2. Write path (all in the row's batch, no read). Helpers in badgerstore_member_span.go: memberTimeOps (axis-1 set, plus
+   axis-2 set when allTo > lateTo) and memberTimeDelOps, from memberRow (:62-73).
+   - create / put / history version (relIndexDiskOpsLocked :113-144; nodeMemberOpsNextLocked :173-194;
+     nodeMemberOpsKeysLocked :196-215): axis-1 set (lateTo = Span.To; open -> MaxInt64).
+   - update demoting a row (relReplacedMemberOpsLocked :1470-1500; nodeReplacedMemberOpsLocked :1437-1468, callers
+     history_node.go:137,279,405, history_rel.go:109): axis-1 delete of the old entry at the old lateTo, axis-1 set at
+     next.From when EndedBy changed it, axis-2 set when allTo > lateTo. Orphan deletes add the matching time keys.
+   - delete with ValidTo written (history_node.go:515, history_rel.go:192): axis-1 delete at the pre-delete lateTo
+     (MaxInt64), axis-1 set at the written ValidTo, axis-2 set (allTo = MaxInt64).
+   - delete keeping ValidTo: axis-1 rewrite, same key.
+   - retraction / correction / excise / late write: nothing (narrowing only, sound stale entry).
+   - retention purge (purgedNodeMemberOpsLocked :585-603, purgedRelMemberOpsLocked :609-631) and exact erasure: delete
+     BOTH candidate axis-1 keys (standing Span.To and LateSpan(after)) and the axis-2 key (a value must not leak).
+   - drop (entityIndexDropOpsLocked :1153-1167 via memberHeads :252-266): add heads 7/8.
+   - rebuild / create (scanEntityIndexEntries :868-876 emit; createRelPropertyIndexOnDiskLocked :1177): emit 7/8 too;
+     entityIndexHeads (:1139) includes 7/8.
+   Crash safety unchanged: no new marker; built-marker value 2 now means kinds 5/6 and 7/8 (ad480a79 is in no tag).
+
+3. Reader and meter: new entityIndexSeekLocked modelled on entityIndexWalkCore (:345-430): Prefix narrowest, AllVersions,
+   dedupe, overlay via rangePendingPrefixes(prefix|axis) with the same predicate (pending writes exact), IteratorSteps
+   per loop entry (boundary included), DiskEntriesEmitted after filters, new IteratorSeeks counter in
+   PropertyMemberWork. Replace the body of diskWindowMembersLocked with the two seeks, signature kept. Windowed doors use
+   7/8; whole-value, After-paged, numeric range and any-value doors keep 5/6; read-only legacy stays broad.
+
+4. Cost: axis-1 entry ~93 B; create 2 sets (~169 B, +122 %); update of an open row ~6 ops (~460 B, branch 152 B).
+   Measure in TestMemberSpan_WriteOverhead (entries per kind, bytes) and report in green.txt and persistence.md.
+
+5. Tests: red first: TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates asserts flushed IteratorSteps <= 4 at pin 0
+   and <= 6 at pin 350 for n = 8/32/128 (today 13/45/173); output to tasks/evidence/RELDISKWIN/red-seek.txt.
+   agree (:233-247) becomes: disk IDs subset of RAM IDs and equal to a per-row oracle from the fixture rows; graph-level
+   RAM equality stays (core/reldisk_test.go). Extend DiskMatchesSidecar, HandCheckedWindows, SameMillisecond...,
+   LegacyDefinitionBroadThenRebuilt, RebuildCrashLeavesNoTrustedMarker, WriteOverhead. New: future-dated rows visited
+   not emitted; purge/erasure leave zero 7/8 entries (after ReplaceWithHistory and after a history-door PutHistory);
+   drop leaves none; copied reopen writable and read-only. Mutation sweep: axis-2 skipped on demotion; old axis-1 delete
+   skipped; last >= vs >; seek at S vs S+1; from <= E; marker before entries; purge missing the EndedBy key.
+
+6. Steps: (1) rebase onto main's tip; (2) key layout + unit tests; (3) red test + evidence; (4) write path, old tests
+   green; (5) reader, red turns green, new tests; (6) mutation sweep, -race on the named tests, TestLedger; (7) docs.

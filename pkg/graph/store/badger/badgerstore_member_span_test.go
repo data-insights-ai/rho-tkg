@@ -788,12 +788,30 @@ func TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates(t *testing.T) {
 			}
 			must(t, "flush", disk.Flush())
 			check("flushed", disk)
-			workR, err = disk.DiagnoseRelPropertyTxMembersDuring(w.r, "seat", vk, 1000, 1010, 0, func(types.RelID, types.Instant) bool { return true })
-			must(t, "diagnose flushed", err)
-			if workR.MembersEmitted != 2 || workR.FoldMembersPeak != 1 {
-				t.Errorf("n=%d flushed: emitted %d, held %d, want 2 and 1 (the buffer is empty)", n, workR.MembersEmitted, workR.FoldMembersPeak)
+			// Flushed, the walk seeks to the window (RELDISKWIN option B): the late axis
+			// from the window's start, the recent axis down to the pin; the unrelated
+			// history, all of it ending before the window, is never visited.
+			for _, c := range []struct {
+				pin      types.Instant
+				maxSteps uint64
+			}{{0, 4}, {350, 6}} {
+				workR, err = disk.DiagnoseRelPropertyTxMembersDuring(w.r, "seat", vk, 1000, 1010, c.pin, func(types.RelID, types.Instant) bool { return true })
+				must(t, "diagnose flushed", err)
+				workN, err = disk.DiagnoseNodePropertyTxMembersDuring(w.d, "seat", vk, 1000, 1010, c.pin, func(types.NodeID, types.Instant) bool { return true })
+				must(t, "diagnose flushed node", err)
+				for what, work := range map[string][3]uint64{
+					"rel":  {workR.MembersEmitted, workR.FoldMembersPeak, workR.IteratorSteps},
+					"node": {workN.MembersEmitted, workN.FoldMembersPeak, workN.IteratorSteps},
+				} {
+					if work[0] != 2 || work[1] > 2 {
+						t.Errorf("n=%d flushed %s @%d: emitted %d, held %d, want 2 and at most 2", n, what, c.pin, work[0], work[1])
+					}
+					if work[2] > c.maxSteps {
+						t.Errorf("n=%d flushed %s window [1000,1010)@%d: %d iterator steps, want at most %d (the unrelated history is walked)", n, what, c.pin, work[2], c.maxSteps)
+					}
+					t.Logf("n=%d flushed %s window [1000,1010)@%d: iterator steps %d, held peak %d, emitted %d", n, what, c.pin, work[2], work[1], work[0])
+				}
 			}
-			t.Logf("n=%d flushed rel window [1000,1010): iterator steps %d (the value's span entries), held peak %d, emitted %d", n, workR.IteratorSteps, workR.FoldMembersPeak, workR.MembersEmitted)
 
 			// A correction of target 1 at 400 (it moves out of the window) and the deletion
 			// of target 2 at 450, written after the flush: buffered over a flushed store.
