@@ -52,7 +52,9 @@ type Config struct {
 	// RefTypes are relationship types classified as reference: one of them
 	// between two reference nodes is placed on the reference shard, as
 	// without RelsByMint, whatever its ID's mint instant, so its create, its
-	// versions and its reads by ID open no event shard (Sigma RH-S7). Other
+	// versions and its reads by ID open no event shard (Sigma RH-S7); a
+	// store-level create with a caller-supplied ID still runs its duplicate
+	// probe over every shard with rows, as for any type. Other
 	// types, and every type with an event endpoint, place as before.
 	RefTypes []string
 	// ShardWindow is the time window for event shards. Default: 1 week.

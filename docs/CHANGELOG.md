@@ -11,7 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Reference relationship types (Sigma RH-S7)**: `tiered.Config.RefTypes` lists relationship types that are
   reference-class. One of them between two reference nodes is placed on the reference shard whatever its ID's mint
   instant, as without `RelsByMint`, so its create (also batched or with a generated ID), a new version and its reads
-  by ID open no event shard and, with `MintAtValidFrom`, make none; its rows are the legacy same-shard rows. Other
+  by ID open no event shard and, with `MintAtValidFrom`, make none (a store-level create with a caller-supplied ID,
+  `tiered.Store.PutRelationship`, still runs its duplicate probe over every shard with rows; the graph's creates use
+  generated IDs and skip it); its rows are the legacy same-shard rows. Other
   types, and a listed type with an event endpoint, place as before. `g.Admin().IsReferenceType(relType)` reports it
   (true on every non-tiered backend, as `IsReferenceLabel`); `tiered.Store.IsReferenceType` is the classifier. A
   blank entry is refused at `New`. An edge placed by mint before its type was listed stays on its mint shard and is
