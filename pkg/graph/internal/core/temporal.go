@@ -1300,15 +1300,16 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 			if prune != 0 && firstTx != 0 && firstTx > prune {
 				return true // first carried the value after the pin: cannot match
 			}
-			if _, dup := seen[id]; !dup {
-				if metered != nil {
-					if err := opts.AddBufferBytes(bufSetEntry); err != nil {
-						invalid = err
-						return false
-					}
+			if metered != nil { // a duplicate entry (one per equal key) is charged once; unbudgeted reads pay no second map lookup
+				if _, dup := seen[id]; dup {
+					return true
 				}
-				seen[id] = struct{}{}
+				if err := opts.AddBufferBytes(bufSetEntry); err != nil {
+					invalid = err
+					return false
+				}
 			}
+			seen[id] = struct{}{}
 			return true
 		}
 		var window *memberWindow
