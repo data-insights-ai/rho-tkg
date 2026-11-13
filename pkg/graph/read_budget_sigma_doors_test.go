@@ -225,3 +225,65 @@ func TestReadBudgetPublicAdjacencyDoors(t *testing.T) {
 		})
 	}
 }
+
+// TestReadBudgetPublicByLabel (RH list R2, Sigma doors group D): Nodes().ByLabelCtx
+// reaches the graph's budgeted label read on every backend: without a budget the
+// plain door's answer, the label's members counted as candidates, a budget
+// smaller than the label refused with ErrReadBudget and no rows, and a read at a
+// time coordinate (the label's history, not budgeted) refused under a budget and
+// answered without one.
+func TestReadBudgetPublicByLabel(t *testing.T) {
+	t.Parallel()
+	const members = 5
+	for _, b := range allStoreBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			g := b.open(t)
+			ctx := context.Background()
+			for i := range members {
+				if _, err := g.Nodes().Add(ctx, []string{"Ev"}, map[string]any{"i": int64(i)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := g.Nodes().Add(ctx, []string{"Other"}, nil); err != nil {
+				t.Fatal(err)
+			}
+			want, err := g.Nodes().ByLabel("Ev", store.QueryOpts{})
+			if err != nil || len(want) != members {
+				t.Fatalf("plain = %d nodes, %v", len(want), err)
+			}
+			if got, err := g.Nodes().ByLabelCtx(ctx, "Ev", store.QueryOpts{}); err != nil || len(got) != members {
+				t.Fatalf("no budget = %d nodes, %v; want %d", len(got), err, members)
+			}
+			uctx, meter := store.WithReadBudget(ctx, store.ReadBudget{})
+			got, err := g.Nodes().ByLabelCtx(uctx, "Ev", store.QueryOpts{})
+			if err != nil || len(got) != members || meter.Work().Candidates != members {
+				t.Fatalf("ByLabelCtx = %d nodes, %v, %+v; want %d nodes and %d candidates", len(got), err, meter.Work(), members, members)
+			}
+			for i, n := range got {
+				if n.ID() != want[i].ID() {
+					t.Fatalf("row %d = %d, want the plain door's %d", i, n.ID(), want[i].ID())
+				}
+			}
+			bctx, meter := store.WithReadBudget(ctx, store.ReadBudget{Candidates: members - 1})
+			got, err = g.Nodes().ByLabelCtx(bctx, "Ev", store.QueryOpts{})
+			if !errors.Is(err, store.ErrReadBudget) || got != nil || meter.Work().Candidates < members {
+				t.Fatalf("ByLabelCtx of %d under %d = %d nodes, %v, %+v; want ErrReadBudget and no rows", members, members-1, len(got), err, meter.Work())
+			}
+
+			pin, err := g.Temporal().NowTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			at := store.QueryOpts{TxPin: pin}
+			if got, err := g.Nodes().ByLabelCtx(ctx, "Ev", at); err != nil || len(got) != members {
+				t.Fatalf("ByLabelCtx at a pin without a budget = %d nodes, %v; want %d", len(got), err, members)
+			}
+			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: 1000})
+			got, err = g.Nodes().ByLabelCtx(bctx, "Ev", at)
+			var rb *store.ReadBudgetError
+			if !errors.As(err, &rb) || rb.Limit != "unsupported" || got != nil || meter.Work() != (store.ReadWork{}) {
+				t.Fatalf("ByLabelCtx at a pin under a budget = %d nodes, %v, %+v; want an unsupported refusal before any work", len(got), err, meter.Work())
+			}
+		})
+	}
+}

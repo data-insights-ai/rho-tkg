@@ -1296,6 +1296,38 @@ func (a *API) ByLabelAndPropertiesCtx(ctx context.Context, label string, values 
 	return ops.ByLabelAndProperties(label, values, opts)
 }
 
+// budgetedLabelOps is the read-budget form of the label read; the graph's own
+// Ops implement it.
+type budgetedLabelOps interface {
+	ByLabelCtx(ctx context.Context, label string, opts storepkg.QueryOpts) ([]*types.Node, error)
+}
+
+// ByLabelCtx is ByLabel under ctx's read budget (store.WithReadBudget): the
+// label's current members. Each member counts as a candidate before its row is
+// read, where the store lists it (a label index in RAM counts its whole set
+// before the list is built, one kept on disk, LabelIndexOnDisk, each entry as
+// its walk produces it), then the stored bytes of every row decoded
+// (DecodedBytes) and, on tiered, each closed shard it is about to open
+// (ShardOpens); past a limit it returns *store.ReadBudgetError
+// (store.ErrReadBudget) and no rows. A read at a time coordinate (TxAt, TxPin,
+// ValidAt, the valid interval) is the label's history, which this door does
+// not bound: it is refused under a budget (Limit "unsupported") before any
+// work. Without a budget in ctx it is ByLabel after a ctx check. An Ops
+// without the budgeted door answers unmetered.
+func (a *API) ByLabelCtx(ctx context.Context, label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedLabelOps); ok {
+		return b.ByLabelCtx(ctx, label, opts)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.ByLabel(label, opts)
+}
+
 // budgetedIDsPropertyOps is the read-budget form of the ID-only property
 // lookup; the graph's own Ops implement it.
 type budgetedIDsPropertyOps interface {

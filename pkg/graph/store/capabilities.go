@@ -124,6 +124,21 @@ type RelPropertyQueryCandidatesMeteredCapability interface {
 	CountsRelPropertyQueryCandidates()
 }
 
+// NodesByLabelMeteredCapability is OPTIONAL (RH list R2, Sigma doors group D):
+// NodesByLabel's current-members read under the read meter in opts, counting
+// each member of the label as a candidate where the store lists it, before its
+// row is read: a label index in RAM counts its whole set before the list is
+// built, one kept on disk (LabelIndexOnDisk) each entry as its walk produces it
+// and each pending add, so a read past its Candidates limit stops at the entry
+// that passes it. The stored bytes of each row decoded count in DecodedBytes
+// and, on tiered, each closed shard opened in ShardOpens, before the open. The
+// answer is NodesByLabel's. Only the current read is counted: a temporal filter
+// in opts reads, and counts, as NodesByLabel (the graph refuses it under a
+// budget). A nil meter in opts is NodesByLabel. Badger, sharded and tiered.
+type NodesByLabelMeteredCapability interface {
+	NodesByLabelMetered(token uint16, opts QueryOpts) ([]*types.Node, error)
+}
+
 // NodesByIDsMeteredCapability is OPTIONAL (RH list R2): GetNodesByIDs counting
 // in t the stored bytes of each row the store decodes, before the decode
 // (ReadWork.DecodedBytes), and returning the budget error instead of the rows

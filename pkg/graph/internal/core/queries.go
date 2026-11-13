@@ -532,7 +532,7 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 		return nil, nil
 	}
 	if !hasTemporalFilter(opts) {
-		nodes, err := c.store.NodesByLabel(tok, opts)
+		nodes, err := c.storeNodesByLabel(tok, opts)
 		if err == nil && !c.storeRowsTrust {
 			if err = c.validateNodesByLabelPage(tok, opts, nodes); err == nil {
 				nodes = copyNodeRows(nodes)

@@ -46,6 +46,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestReadBudget_SigmaC_History`, `_HistoryGates`, `_HistoryShardOpens`, `TestReadBudgetPublicHistoryDoors`, the wrapper
   store test `TestReadBudget_UnsupportedStoreRefusesBeforeReading`.
 
+- **R2 budgeted doors for Sigma, group D, step 2**: `Nodes().ByLabelCtx`, the current members of a label. Each member
+  counts as a candidate where the store lists it, before its row is read: a RAM label index counts its whole set before
+  the list is built, a label kept on disk (`LabelIndexOnDisk`) each entry as its walk produces it and each pending add,
+  so a budget of 1 over many members refuses at the listing instead of after it (a disk label visits 2 index entries, not
+  96); then the stored bytes of each row decoded and, on tiered, each closed shard opened, counted before the open
+  (new `store.NodesByLabelMeteredCapability`: `badger.Store.NodesByLabelMetered`, sharded, tiered; the memory store and a
+  wrapper embedding a native store charge the label's count, `StatsCapability`, before the read). A read at a time
+  coordinate is the label's history, which the door does not bound: it is refused under a budget (`"unsupported"`)
+  before any work; without a budget it is `ByLabel`. Red: with the door as the plain read under the meter, a budget of 1
+  candidate over 128 members answered all 128 rows, decoded 128 rows by badger's own counter and counted 0 candidates,
+  and the disk label walk was invisible to the index-entry counter
+  (`tasks/evidence/READBUDGET/sigma-doors-d.txt`). Tests: `TestReadBudget_ByLabelCtx`, `_ByLabelCtxStopsAtTheListing`,
+  `_ByLabelCtxDiskIndexAdmitsAsProduced`, `_ByLabelCtxStoreWithoutCounts`, the new door in `TestReadBudget_ProbeMatrix`,
+  `_DecodedBytes_BudgetOneProbeStopsEarly`, `_ShardOpens_TieredDoors`, `_UnsupportedStoreRefusesBeforeReading`, and
+  `TestReadBudgetPublicByLabel`.
 - **R2 budgeted doors for Sigma, group D, step 1**: `Rels().ByTypeAndPropertyCtx` at a time coordinate (`TxAt`, `TxPin`,
   `ValidAt`, a valid interval), for Sigma's relationship lazy and passive probes. A budget refused it with `Limit`
   `"unsupported"` because its history resolver counted nothing; it now counts as the node twin

@@ -32,10 +32,26 @@ import (
 // in-memory map read it replaces. Disk mode briefly takes wbMu inside
 // (idxMu → wbMu is the flush cycle's established lock order).
 func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error) {
+	return bs.labelNodeIDsSnapshotAdmitLocked(token, nil)
+}
+
+// labelNodeIDsSnapshotAdmitLocked is labelNodeIDsSnapshotLocked admitting the
+// members as it lists them (R2, Sigma doors group D): admit(n) is called
+// before n members are collected and a non-nil error stops the listing. A
+// label index in RAM admits its whole set before the list is built; one kept
+// on disk admits each committed entry as the walk produces it and each pending
+// add, so a read past a candidate limit stops at the member that passes it,
+// before it collects the rest of the label. A nil admit is the plain snapshot.
+func (bs *Store) labelNodeIDsSnapshotAdmitLocked(token uint16, admit func(int) error) ([]types.NodeID, error) {
 	if !bs.labelOnDisk {
 		set := bs.labelIdx[token]
 		if len(set) == 0 {
 			return nil, nil
+		}
+		if admit != nil {
+			if err := admit(len(set)); err != nil {
+				return nil, err
+			}
 		}
 		nids := make([]types.NodeID, 0, len(set))
 		for id := range set {
@@ -83,6 +99,7 @@ func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			noteIndexEntryVisited()
 			key := it.Item().Key()
 			if len(key) != storepkg.SizeLabelIdx {
 				continue
@@ -92,14 +109,24 @@ func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error
 				continue
 			}
 			delete(adds, nid) // already committed; don't double-count
+			if admit != nil {
+				if err := admit(1); err != nil {
+					return err
+				}
+			}
 			nids = append(nids, nid)
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("graph: label index scan: %w", err)
+		return nil, walkError("label index scan", err)
 	}
 	for nid := range adds {
+		if admit != nil {
+			if err := admit(1); err != nil {
+				return nil, err
+			}
+		}
 		nids = append(nids, nid)
 	}
 	return nids, nil

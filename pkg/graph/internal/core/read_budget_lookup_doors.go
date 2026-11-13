@@ -51,3 +51,52 @@ func (n *NodeOps) IDsByLabelAndPropertyValuesCtx(ctx context.Context, label, key
 	}
 	return n.IDsByLabelAndPropertyValues(label, key, values, opts.WithReadMeter(storepkg.ReadMeterFrom(ctx), "IDsByLabelAndPropertyValues"))
 }
+
+// ByLabelCtx is ByLabel under ctx's read budget (R2, Sigma doors group D): the
+// label's current members. Each member counts as a candidate before its row is
+// read, where the store lists it (store.NodesByLabelMeteredCapability: a label
+// index in RAM counts its whole set before the list is built, one kept on disk
+// each entry as its walk produces it, so a budget of 1 over many members stops
+// at the listing, not after it), then the stored bytes of each row decoded and,
+// on tiered, each closed shard opened, counted before the open. A store that
+// cannot count its own reads (memory, a wrapper embedding a native store) has
+// the label's count charged before the read. Past a limit
+// *storepkg.ReadBudgetError and no rows; without a budget it is ByLabel.
+//
+// A read at a time coordinate (TxAt, TxPin, ValidAt, the valid interval) is the
+// label's history, which no counter here bounds: under a budget it is refused
+// before any work (Limit "unsupported"); the budgeted time reads of a label's
+// members are the effective scans (Temporal().ForEachNodeEffectiveByLabelCtx)
+// and the property doors.
+func (n *NodeOps) ByLabelCtx(ctx context.Context, label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	if err := n.c.budgetSupported(ctx, "ByLabel"); err != nil {
+		return nil, err
+	}
+	meter := storepkg.ReadMeterFrom(ctx)
+	if meter != nil && hasTemporalFilter(opts) {
+		return nil, &storepkg.ReadBudgetError{Door: "ByLabel", Limit: "unsupported", Work: meter.Work()}
+	}
+	return n.ByLabel(label, opts.WithReadMeter(meter, "ByLabel"))
+}
+
+// storeNodesByLabel is the store's current-members read of label token tok
+// (c.mu held). Under a read budget in opts a native store counts each member
+// it lists before it reads a row (store.NodesByLabelMeteredCapability); one
+// that cannot (memory, a wrapper) has the label's count (StatsCapability, which
+// every store has) charged first, so a budget under it refuses before the read.
+func (c *Core) storeNodesByLabel(tok uint16, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	m, _ := opts.ReadMeter()
+	if m == nil {
+		return c.store.NodesByLabel(tok, opts)
+	}
+	if ms, ok := c.store.(storepkg.NodesByLabelMeteredCapability); ok && c.storeCountsReads {
+		return ms.NodesByLabelMetered(tok, opts)
+	}
+	if err := c.meterLabelScan(tok, opts); err != nil {
+		return nil, err
+	}
+	return c.store.NodesByLabel(tok, opts)
+}

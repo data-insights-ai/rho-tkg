@@ -10,6 +10,20 @@ import (
 // --- Bulk read (parallel folds across all shards) ---
 
 func (s *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	return s.nodesByLabel(token, opts, false)
+}
+
+var _ storecontract.NodesByLabelMeteredCapability = (*Store)(nil)
+
+// NodesByLabelMetered implements store.NodesByLabelMeteredCapability: every
+// shard counts the members of the label it lists, before it reads a row
+// (badger.Store.NodesByLabelMetered), under the one meter in opts, so a shard
+// stops at its next check once another has refused.
+func (s *Store) NodesByLabelMetered(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	return s.nodesByLabel(token, opts, true)
+}
+
+func (s *Store) nodesByLabel(token uint16, opts QueryOpts, metered bool) ([]*types.Node, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -21,7 +35,13 @@ func (s *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error
 	}
 	per := make([][]*types.Node, len(s.shards))
 	err := s.forEachShardErr(func(idx int, shard *badgerShard) error {
-		nodes, e := shard.NodesByLabel(token, stripPagination(opts))
+		var nodes []*types.Node
+		var e error
+		if metered {
+			nodes, e = shard.NodesByLabelMetered(token, stripPagination(opts))
+		} else {
+			nodes, e = shard.NodesByLabel(token, stripPagination(opts))
+		}
 		per[idx] = nodes
 		return e
 	})

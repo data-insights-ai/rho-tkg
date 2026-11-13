@@ -68,6 +68,10 @@ func TestReadBudget_DecodedBytes_BudgetOneProbeStopsEarly(t *testing.T) {
 						r, err := g.Nodes.ByLabelAndPropertyCtx(ctx, "D", "k", int64(size), storepkg.QueryOpts{})
 						return len(r), err
 					}},
+					{"ByLabel", "ByLabel", func(ctx context.Context) (int, error) { // the label's every row (R2, Sigma doors group D)
+						r, err := g.Nodes.ByLabelCtx(ctx, "D", storepkg.QueryOpts{})
+						return len(r), err
+					}},
 					{"property scan", "ByLabelAndProperty", func(ctx context.Context) (int, error) { // no index on pad: the label's every row
 						r, err := g.Nodes.ByLabelAndPropertyCtx(ctx, "D", "pad", fmt.Sprintf("%0*d", 150, 0), storepkg.QueryOpts{})
 						return len(r), err
@@ -96,7 +100,7 @@ func TestReadBudget_DecodedBytes_BudgetOneProbeStopsEarly(t *testing.T) {
 					// One row, not the matches: well under the matches' total. The scan
 					// door decodes the label's every row, the others the matches'.
 					rows := uint64(size)
-					if d.name == "property scan" {
+					if d.name == "property scan" || d.name == "ByLabel" {
 						rows = uint64(len(all))
 					}
 					if n != 0 || be2.Work.DecodedBytes <= 1 || probe.Work() != be2.Work || got > 2*(total/rows) {

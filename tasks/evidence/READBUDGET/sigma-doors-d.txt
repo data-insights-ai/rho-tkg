@@ -84,3 +84,73 @@ Mutations caught (each by the tests named):
 
 Left open for this door: a fold's own history-ID walk (the IDs are listed before the first candidate counts, as the node
 twin's), and the pending-write overlay held before a membership walk.
+
+== Door 2: Nodes().ByLabelCtx (the label's current members) ==
+
+Red method: the door first existed as the plain ByLabel under the read meter (the form the store already supports: its
+label read decodes through the tally and its tiered fan-out charges each shard open), with no candidate counting; every
+failure is the plain read doing the work the budget should have bounded.
+
+RED, go test -run 'TestReadBudget_ByLabelCtx|TestReadBudget_ShardOpens_TieredDoors|TestReadBudget_UnsupportedStore|
+TestReadBudget_ProbeMatrix|TestReadBudget_DecodedBytes_BudgetOneProbeStopsEarly' ./pkg/graph/internal/core (abridged):
+
+  --- FAIL: TestReadBudget_ByLabelCtx/{memory,badger,sharded,tiered}
+      unlimited = [...30 ids], <nil>, work {Candidates:0 ...}; want the plain answer and exactly the 30 live members counted
+  --- FAIL: TestReadBudget_ProbeMatrix/{badger,sharded,tiered}/{pending,flushed}
+      ByLabel over 8 matches: unlimited counted 0 candidates, want at least 8
+  --- FAIL: TestReadBudget_ByLabelCtxStopsAtTheListing/{badger,sharded,tiered}/{pending,flushed}
+      G8 over 8 members: unlimited = 8 nodes, <nil>, work {Candidates:0 ... DecodedBytes:1656}; want the plain answer and 8 candidates
+  --- FAIL: TestReadBudget_ByLabelCtxDiskIndexAdmitsAsProduced/{badger,tiered}/{pending,flushed}
+      an unbudgeted read visited 0 index entries over 96 members: the counter does not see this walk (flushed);
+      unlimited = 96, <nil>, work {Candidates:0 ...}; want 96 rows and 96 candidates (pending)
+  --- FAIL: TestReadBudget_ByLabelCtxStoreWithoutCounts
+      candidates 40 = 40 nodes, <nil>, {Candidates:0 ...}; want the answer and the label counted once
+  (TestReadBudget_ShardOpens_TieredDoors/ByLabel_current and the decoded-bytes probe were green on the stub: the store's label
+  read already counted decodes and charged its shard opens; they stay as guards.)
+
+Unbounded work today (a scratch run on the stub, 128 members, flushed, rows evicted): a budget of 1 candidate answered all
+128 rows, counted 0 candidates and decoded 128 rows by badger's own counter (26,496 bytes) on badger; sharded and tiered the
+same 128 rows and 26,496 bytes. Nothing refused.
+
+What is counted (green), Nodes().ByLabelCtx:
+  Candidates   each member of the label, where the store lists it and before a row is read (store.NodesByLabelMeteredCapability;
+               badger.Store.nodesByLabel admits through labelNodeIDsSnapshotAdmitLocked): a RAM label index counts its whole
+               set before the list is built (len of the set); a label kept on disk (LabelIndexOnDisk) admits each committed
+               entry as the iterator produces it and each pending add; sharded: every shard under the one meter; tiered: the
+               reference shard first (a refusal there touches no other shard), the archive and each event shard, parallel
+               shards stopping at their next check once one refused. The memory store and a wrapper embedding a native store
+               (c.storeCountsReads false) have the label's count (StatsCapability) charged before the read.
+  DecodedBytes the stored bytes of each row decoded (collectNodesBulkParallelTallied counts ValueSize before it copies a row
+               on 2,048 or more rows; forEachNodeBulkTallied below that), before the decode.
+  ShardOpens   tiered: the archive and each closed event shard, before the open (checkoutArchiveCharged, checkoutBudgeted).
+  Not counted  a time coordinate: it is the label's history; under a budget the door refuses it before any work, Limit
+               "unsupported" (TestReadBudget_ByLabelCtx; without a budget it is the plain door's answer).
+  A wrapper that cannot count refuses a DecodedBytes or ShardOpens budget ("unsupported", before any work).
+
+GREEN: the same command, all pass (badger, sharded, tiered x pending, flushed; memory for the counts).
+  Counts (badger, flushed, rows evicted first), label of 128 members and of 2,100 (the parallel decode):
+    unlimited          {Candidates:128 DecodedBytes:26496}      {Candidates:2100 DecodedBytes:434700}
+    Candidates 1       refused after Candidates:128, 0 bytes, 0 rows decoded by badger's counter (the whole read stops at the count)
+    DecodedBytes 1     refused after DecodedBytes:207 (one row) of 26,496 and of 434,700
+  Exactness (TestReadBudget_ByLabelCtx): the unlimited count is exactly the live members (30 of 35 written: the five deleted
+  nodes and the other label's ten are not counted); a limit at that count answers, one under it and 1 refuse with no rows and
+  the meter equal to the error's work; a decoded-bytes limit at the cold count answers, one byte under it refuses (rbdExact).
+  Disk label (TestReadBudget_ByLabelCtxDiskIndexAdmitsAsProduced, 96 members): budget 1 visits 2 index entries on badger and on
+  tiered (3 shards); an unbudgeted read visits 96 (tiered pending: the 64 committed ones; the rest are write-buffer adds).
+  Tiered shard opens: ShardOpens 1 opens at most one closed shard and refuses; unlimited opens 3 and the meter counts 3.
+
+Mutations caught (each by the tests named):
+  the store not counting its members                 -> ByLabelCtx (badger, sharded, tiered), ProbeMatrix, ByLabelCtxDiskIndexAdmitsAsProduced
+  the disk walk counting after it collected          -> ByLabelCtxDiskIndexAdmitsAsProduced (badger, tiered)
+  sharded reading its shards through the plain door  -> ByLabelCtx/sharded, ProbeMatrix/sharded, ByLabelCtxStopsAtTheListing/sharded
+  tiered reading its shards through the plain door   -> ByLabelCtx/tiered, ProbeMatrix/tiered, ByLabelCtxStopsAtTheListing/tiered,
+                                                        ByLabelCtxDiskIndexAdmitsAsProduced/tiered
+  tiered's reference shard read through the plain    -> ByLabelCtx/tiered, ProbeMatrix/tiered, ByLabelCtxStopsAtTheListing/tiered
+  a time coordinate read unbounded under a budget    -> ByLabelCtx (all four backends)
+  the label's count charged as well as the store's   -> ByLabelCtx (badger, sharded, tiered), ByLabelCtxStopsAtTheListing,
+                                                        ByLabelCtxDiskIndexAdmitsAsProduced
+
+Left open for this door: the pending write-buffer overlay of a disk label is gathered (rangePending) before its walk and counted
+per add after it, so it is not admitted as produced; a time coordinate has no budgeted label read (the effective scans and the
+property doors are the budgeted time reads); a RAM label index charges its whole set at once, so the error's Work.Candidates
+is the label's size (not the limit plus one), as the adjacency doors' RAM index.

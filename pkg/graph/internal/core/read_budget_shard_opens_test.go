@@ -24,7 +24,8 @@ import (
 // (Rels().GetByIDsCtx over rows in three shards, HasHistoryCtx and
 // LatestStampsCtx of a relationship live nowhere), and the property lookups
 // Rels().ByTypeAndPropertyCtx and Nodes().IDsByLabelAndPropertyValuesCtx over
-// three shards. A budget of 1 refuses with no rows and
+// three shards, and the label's current members, Nodes().ByLabelCtx. A budget
+// of 1 refuses with no rows and
 // opens at most one shard (the store's ColdOpens counter); unlimited, the
 // answer is the unbudgeted one and the meter counts exactly the opens.
 func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
@@ -145,6 +146,13 @@ func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
 	}{
 		{"ByLabelAndProperty current", "ByLabelAndProperty", func(c context.Context) (string, error) {
 			r, err := g.Nodes.ByLabelAndPropertyCtx(c, "Ev", "k", int64(1), storepkg.QueryOpts{})
+			return nodeIDs(r), err
+		}},
+		{"ByLabel current", "ByLabel", func(c context.Context) (string, error) {
+			r, err := g.Nodes.ByLabelCtx(c, "Ev", storepkg.QueryOpts{})
+			if len(r) == 0 && err == nil {
+				return "", errors.New("no rows")
+			}
 			return nodeIDs(r), err
 		}},
 		{"ByLabelAndProperty TxPin", "ByLabelAndProperty", func(c context.Context) (string, error) {

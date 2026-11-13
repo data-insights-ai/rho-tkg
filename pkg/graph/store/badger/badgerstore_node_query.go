@@ -14,6 +14,27 @@ import (
 )
 
 func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	return bs.nodesByLabel(token, opts, false)
+}
+
+var _ storecontract.NodesByLabelMeteredCapability = (*Store)(nil)
+
+// NodesByLabelMetered implements store.NodesByLabelMeteredCapability:
+// NodesByLabel counting, under the read meter in opts, each member of the label
+// as a candidate where the store lists it, before a row is read (the label
+// index in RAM: its whole set before the list is built; on disk,
+// LabelIndexOnDisk: each entry as the walk produces it, so a read past its
+// Candidates limit stops at the entry that passes it), and the stored bytes of
+// each row it decodes (DecodedBytes). Only the current read is counted: the
+// temporal index paths read as NodesByLabel does.
+func (bs *Store) NodesByLabelMetered(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	return bs.nodesByLabel(token, opts, true)
+}
+
+// nodesByLabel is the body of NodesByLabel and NodesByLabelMetered; with
+// countMembers and a read meter in opts the label's members are admitted as
+// they are listed (the plain door leaves counting to its caller).
+func (bs *Store) nodesByLabel(token uint16, opts QueryOpts, countMembers bool) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -69,7 +90,11 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		}
 	}
 
-	nids, idErr := bs.labelNodeIDsSnapshotLocked(token)
+	var admit func(int) error
+	if m, _ := opts.ReadMeter(); countMembers && m != nil {
+		admit = opts.AddCandidates // the label's members, before the list is built or a row is read
+	}
+	nids, idErr := bs.labelNodeIDsSnapshotAdmitLocked(token, admit)
 	bs.idxMu.RUnlock()
 	if idErr != nil {
 		return nil, idErr

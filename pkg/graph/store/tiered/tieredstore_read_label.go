@@ -11,6 +11,24 @@ import (
 // --- Label/type queries ---
 
 func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	return ts.nodesByLabel(token, opts, false)
+}
+
+var _ storecontract.NodesByLabelMeteredCapability = (*Store)(nil)
+
+// NodesByLabelMetered implements store.NodesByLabelMeteredCapability: the
+// reference shard, the archive and each event shard count the members of the
+// label they list, before they read a row (badger.Store.NodesByLabelMetered),
+// each closed shard is charged to the meter before it opens (it was already,
+// READBUDGET step 6), and the first refusal stops the shards after it: the
+// reference shard is read first and refuses before the archive or an event
+// shard is touched, the event shards stop at their next check once one has
+// refused (ReadMeter.Exceeded).
+func (ts *Store) NodesByLabelMetered(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	return ts.nodesByLabel(token, opts, true)
+}
+
+func (ts *Store) nodesByLabel(token uint16, opts QueryOpts, metered bool) ([]*types.Node, error) {
 	ts.noteTypeScan("NodesByLabel")
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -21,6 +39,12 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	if err := validateQueryOpts(opts); err != nil {
 		return nil, err
 	}
+	byLabel := func(shard *BadgerStore) ([]*types.Node, error) {
+		if metered {
+			return shard.NodesByLabelMetered(token, stripDepth(opts))
+		}
+		return shard.NodesByLabel(token, stripDepth(opts))
+	}
 	// Label queries ask for membership, not ownership: a reference-primary node
 	// may carry an event extra label and vice versa, so query every relevant tier.
 	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
@@ -29,7 +53,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	if err != nil {
 		return nil, err
 	}
-	refNodes, err := ref.NodesByLabel(token, stripDepth(opts))
+	refNodes, err := byLabel(ref)
 	refCheckin()
 	if err != nil {
 		return nil, err
@@ -43,7 +67,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 			return nil, archiveErr
 		}
 		if archive != nil {
-			archiveNodes, err = archive.NodesByLabel(token, stripDepth(opts))
+			archiveNodes, err = byLabel(archive)
 			archiveCheckin()
 			if err != nil {
 				return nil, err
@@ -68,7 +92,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 			return
 		}
 		defer release()
-		results[i].nodes, results[i].err = store.NodesByLabel(token, stripDepth(opts))
+		results[i].nodes, results[i].err = byLabel(store)
 	})
 
 	var slices [][]*types.Node

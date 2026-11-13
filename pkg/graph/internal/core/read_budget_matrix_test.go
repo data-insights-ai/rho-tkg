@@ -12,8 +12,9 @@ import (
 )
 
 // TestReadBudget_ProbeMatrix (READBUDGET step 8, René's done criterion): for
-// every budgeted door (the composite lookup too, and the relationship lookup at
-// a transaction pin and at a valid instant) at 8, 32 and 128 matches, each with a history of 3
+// every budgeted door (the composite lookup too, the relationship lookup at
+// a transaction pin and at a valid instant, and the label's current members, which
+// read every member of the label whatever the size) at 8, 32 and 128 matches, each with a history of 3
 // versions, on badger, sharded and tiered, with the rows pending (as written)
 // and flushed (after a reopen), a budget of 1 on any counter the unlimited read
 // passes stops the read: ErrReadBudget at that limit, no rows, the meter equal
@@ -108,6 +109,10 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							r, err := g.Rels.ByTypeAndPropertyCtx(ctx, rtbType, "device", fmt.Sprintf("d%d", size), storepkg.QueryOpts{})
 							return len(r), err
 						}},
+						{"ByLabel", false, func(ctx context.Context) (int, error) { // the label's every member, whatever the size
+							r, err := g.Nodes.ByLabelCtx(ctx, "D", storepkg.QueryOpts{})
+							return len(r), err
+						}},
 						{"rel property TxPin", true, func(ctx context.Context) (int, error) {
 							r, err := g.Rels.ByTypeAndPropertyCtx(ctx, rtbType, "device", fmt.Sprintf("d%d", size), storepkg.QueryOpts{TxPin: pinTx})
 							return len(r), err
@@ -162,7 +167,7 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							t.Fatalf("%s: unlimited counted 0 decoded bytes over cold rows", what)
 						}
 						switch d.name {
-						case "property current", "composite current", "property TxPin", "property ValidAt", "rel property current", "rel property TxPin", "rel property ValidAt", "IDs current":
+						case "property current", "composite current", "property TxPin", "property ValidAt", "rel property current", "rel property TxPin", "rel property ValidAt", "IDs current", "ByLabel":
 							if total.Candidates < uint64(size) { // an index lookup counts each match
 								t.Fatalf("%s: unlimited counted %d candidates, want at least %d", what, total.Candidates, size)
 							}
