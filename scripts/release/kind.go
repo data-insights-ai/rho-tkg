@@ -26,10 +26,10 @@ import (
 //   - major: an exported name of a public (non-internal) package is removed
 //     or its signature changed (parameter names aside), or go.mod's module
 //     path changes its major;
-//   - minor: a changed store format marker (a const or var named
-//     *FormatVersion*); a badger minor or major bump; a raised go directive;
-//   - patch: anything else, new exported names included (listed as the
-//     reasons of a patch).
+//   - patch: anything else, new exported names, a changed store format marker
+//     (a const or var named *FormatVersion*), a badger minor bump and a raised
+//     go directive included (listed as the reasons of a patch; René, 13 Nov:
+//     every release that is not a major is a patch).
 // Each package's live files are chosen by go/build (build constraints and
 // GOOS/GOARCH suffixes) on both sides, so a measure-tagged file is no API.
 
@@ -131,17 +131,17 @@ func kindOf(base, head tree) (int, []string) {
 	}
 	for n, spec := range newMarkers {
 		if oldMarkers[n] != spec {
-			raise(minor, "format marker %s is new or changed", n)
+			raise(patch, "format marker %s is new or changed", n)
 		}
 	}
 	if a, b := modulePath(base["go.mod"]), modulePath(head["go.mod"]); a != b {
 		raise(major, "go.mod: module %s -> %s", a, b)
 	}
 	if a, b := badgerMinor(base["go.mod"]), badgerMinor(head["go.mod"]); a != "" && b != "" && a != b {
-		raise(minor, "go.mod: badger v%s -> v%s", a, b)
+		raise(patch, "go.mod: badger v%s -> v%s", a, b)
 	}
 	if a, b := goDirective(base["go.mod"]), goDirective(head["go.mod"]); a != b {
-		raise(minor, "go.mod: go %s -> %s", a, b)
+		raise(patch, "go.mod: go %s -> %s", a, b)
 	}
 	sort.Strings(why)
 	return kind, why
