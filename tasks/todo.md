@@ -21,10 +21,10 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Now
 
-- **READBUDGET, RELDISKWIN follow-ups** (both ship in v4.107.2) — wire the on-disk member walk's iterator steps into
-  the read budget; RELDISKWIN's stale late-axis deletes are visited until compaction (an old pin over many updated open
-  rows). Done when a budget bounds the steps and the stale entries are measured on a consumer store. **rho/sigma:**
-  bounds the last uncounted disk-index work of sigma's pinned reads.
+- **READBUDGET, RELDISKWIN follow-ups** (v4.107.2) — refuse native iterator steps, buffers, sorts and historical
+  membership before the work, in every shard and fallback; stale late-axis deletes stay visible until compaction.
+  Done when the limits refuse first, ai-soc's membership guards pass and stale entries are measured on a consumer
+  store (`tasks/evidence/READBUDGET/followups.txt`). **rho/sigma:** bounds native work.
 - **WARMMEM (R3: cheaper writable and inactive shards)** — Finish measured sizing and ownership of writable arenas
   across hot, warm, reference, demoted and late-write handles; separately account for already-open demoted handles
   that a smaller warm-open setting does not shrink. Done when allocation, live heap, peak RSS and CPU improve on
@@ -48,17 +48,11 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Next
 
-- **Round 2 read items** (ai-soc's read-back inventory, 3 Nov, 60-min BA on tiered; estimates, measure each first):
-  UNIQUEMISS (GetOrCreateByKey looks the key up, then the unique pass again on create, core/node_getorcreate.go:123 creates through `addNodeInternal`, whose unique pass is `enforceUniqueForNodeHeld` at node_add.go:236;
-  claimForever re-marshals the whole owner map per claim, unique_forever.go:120-132); OWNERDROP (tiered
-  DropUniqueOwnerIndex's DropPrefix, owner_index.go:198, blocks writes, so a racing Add can get ErrBlockedWrites);
-  EDGEROW (a rel create reads each endpoint row 3-4 times, est. <= 5 s of 14.4 s); CASCADEROW (the cascade reads the
-  current node 2-3 times; cascadeNode 5 s, 27 s on d2; est. 2 s); FLOORDECODE (batchCommitFloor decodes the tx stamps
-  of every value, DecodeWireTxStamps); DBVIEW (DB.View +41 s in query doors, readUnderRLock, not Get/Lend: measure
-  readTxnsTotal per door on one BA run, ask sigma which door; `tasks/evidence/ROUND2/r3-design.txt` item 3). Done when
-  each is measured and fixed or dropped. ai-soc measures them all in one combined run on main's tip (René 3 Nov: no
-  per-item benches; bisect only on a regression), not before ai-soc v5.6.0; a Flux run needs René's word. **rho/sigma:** CASCADEROW, FLOORDECODE and possibly DBVIEW run
-  under sigma's writes and queries; UNIQUEMISS, OWNERDROP and EDGEROW are ai-soc's write path.
+- **Round 2 read items** (ai-soc's read-back inventory, 3 Nov, 60-min BA on tiered) — UNIQUEMISS, OWNERDROP,
+  EDGEROW, CASCADEROW, FLOORDECODE, DBVIEW; code and estimates: `tasks/evidence/ROUND2/read-items.txt`. Done when
+  each is measured and fixed or dropped. ai-soc measures all in one run on main's tip (René 3 Nov: no per-item
+  benches; bisect only on a regression), not before ai-soc v5.6.0; a Flux run needs René's word. **rho/sigma:**
+  CASCADEROW, FLOORDECODE, maybe DBVIEW under sigma's load; UNIQUEMISS, OWNERDROP, EDGEROW are ai-soc's write path.
 - **FIXED-MEMORY** (René 31 Oct; the RAM path for SCALE; badger stays) — per-entity answers leave the Go heap: heap
   fixed, data on NVMe and block, RAM is page cache. Step 0 measured (3 Nov, `tasks/evidence/FIXED-MEMORY/step0.txt`:
   sorted run files pass every bar, hash files refuted; cold reads through a bounded pread pool). Path (a), run files
@@ -138,9 +132,9 @@ On René:
   (7 tests via `-modfile`) is ~15 s warm but would not have caught REFFANOUT's break (ai-soc's
   `TestTieredDerivedReadOpensNoColdShard`, only in its full short suite, 5-8 min at load 30-50). Default: skip; ai-soc's
   own gate catches such a break before it pins. **rho/sigma:** none (release process).
-- **RACEAFTER** (René 5 Nov: "it creates load on the PC") — the release starts `make race` detached after each patch or
-  minor push, and cron runs it every 6 h. Options: cron only; `nice` it; cap it at `-p 2`. Default: unchanged until
-  René says. **rho/sigma:** none (shared PC load).
+- **RACEAFTER** (René 5 Nov: "it creates load on the PC") — the release starts `scripts/race.sh` detached after
+  each patch push, and cron runs it every 6 h. Options: cron only; `nice` it; cap it at `-p 2`. Default: unchanged
+  until René says. **rho/sigma:** none (shared PC load).
 - **ASOFVALID** (ai-soc 5 Nov) — a `valid=` page costs ~8 s on the masked copy (v4.98.4), 76 % one point row read
   per member of a cold shard, which carries no relationship temporal index (shard_index_fanout.go:240-244, :486-490).
   Either (b) a cold checkout loads the rel-type envelope (byID, ~50-60 B a rel, bounded by MaxOpenColdShards; ~2

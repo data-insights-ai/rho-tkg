@@ -1,0 +1,8 @@
+READBUDGET / RELDISKWIN follow-ups (moved from tasks/todo.md, 13 Nov)
+
+- The host on frozen 1d941b25 passes early entity-decode refusal, but membership still emits 8/1 callbacks with
+  Candidates=0 under budget 1; native IDs are collected before admission. Those source paths are unchanged at 4cc49313.
+- BufferBytes=0 is unqualified, not zero allocation.
+- Work to admit before it occurs: native iterator steps, pending-map/ID-buffer growth, sorting/union work, exact and
+  window historical membership; one tally carried through each shard and fallback.
+- Evidence: ai-soc doc/REVIEW-RH.md §13.14 and rh-independent-host-20261113-v1.
