@@ -32,6 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ReadBudget.HistoryExamined` / `ReadWork.HistoryExamined` (limit `"history examined"`): each history version a read
   looks at (skeleton entry, as-of walk peek, decode), counted before the look; memory counts a chain before resolving
   it. Fixed with it: tiered's metered read snapshot read a node's whole history unmetered (`GetNodeHistory`).
+  `Temporal().NodeAsOfCtx` / `RelAsOfCtx`: the as-of doors under a read budget, same pin and answer, counting
+  decoded bytes and history examined on every backend.
   Not counted: `ValidEndAfter`, unique-key owner lookups, `HasHistoryCtx` and `LatestStampsCtx`. A read without a budget pays
   a nil check per decoded row and answers as before.
 

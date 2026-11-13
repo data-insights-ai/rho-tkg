@@ -367,6 +367,59 @@ func (a *API) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship
 	return ops.RelAsOf(id, txTime)
 }
 
+// NodeAsOfCtx is NodeAsOf under ctx's read budget (store.WithReadBudget):
+// the same answer at the same pin, or *store.ReadBudgetError and no row when
+// the rows it decodes (DecodedBytes) or the history versions it looks at
+// (HistoryExamined) pass a limit. Without a budget it is NodeAsOf.
+func (a *API) NodeAsOfCtx(ctx context.Context, id types.NodeID, txTime types.Instant) (*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := ops.(asOfCtxOps); ok {
+		return m.NodeAsOfCtx(ctx, id, txTime)
+	}
+	if err := asOfWithoutBudget(ctx, "NodeAsOf"); err != nil {
+		return nil, err
+	}
+	return ops.NodeAsOf(id, txTime)
+}
+
+// asOfCtxOps is the optional part of Ops that NodeAsOfCtx and RelAsOfCtx
+// reach (the graph's own ops implement it; Ops itself stays unchanged).
+type asOfCtxOps interface {
+	NodeAsOfCtx(ctx context.Context, id types.NodeID, txTime types.Instant) (*types.Node, error)
+	RelAsOfCtx(ctx context.Context, id types.RelID, txTime types.Instant) (*types.Relationship, error)
+}
+
+// asOfWithoutBudget lets an Ops without the Ctx doors answer only a context
+// without a read budget: under a budget it cannot count, so it refuses rather
+// than read unbounded.
+func asOfWithoutBudget(ctx context.Context, door string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if storepkg.ReadMeterFrom(ctx) != nil {
+		return &storepkg.ReadBudgetError{Door: door, Limit: "unsupported"}
+	}
+	return nil
+}
+
+// RelAsOfCtx is RelAsOf under ctx's read budget, as NodeAsOfCtx.
+func (a *API) RelAsOfCtx(ctx context.Context, id types.RelID, txTime types.Instant) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := ops.(asOfCtxOps); ok {
+		return m.RelAsOfCtx(ctx, id, txTime)
+	}
+	if err := asOfWithoutBudget(ctx, "RelAsOf"); err != nil {
+		return nil, err
+	}
+	return ops.RelAsOf(id, txTime)
+}
+
 // NowTx returns the current transaction-time instant — the pin to pass to the
 // AS-OF reads (QueryOpts.TxAt / NodeAtTx / NodesAsOf) or to name via TagAsOf, to
 // snapshot everything committed so far. Every committed entity has TxFrom <=

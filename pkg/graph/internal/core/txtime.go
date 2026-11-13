@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -130,6 +131,73 @@ func (c *Core) nodeAsOfLockedRd(rd entityReads, id types.NodeID, txTime types.In
 	return c.resolveNodeChain(chain, chainProbe{kind: probeAsOf, tx: txTime, asOfCurrent: current != nil}, nil)
 }
 
+// NodeAsOfCtx is NodeAsOf under ctx's read budget (store.WithReadBudget, RH
+// list R2): the same rule and answer at the same pin, with the rows and
+// history versions the read decodes or looks at counted before they are
+// (DecodedBytes, HistoryExamined), and *store.ReadBudgetError and no row past a
+// limit. ctx is checked first; without a budget it is NodeAsOf.
+func (t *TempOps) NodeAsOfCtx(ctx context.Context, id types.NodeID, txTime types.Instant) (*types.Node, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	tally := storepkg.ReadMeterFrom(ctx).Tally("NodeAsOf")
+	if tally == nil {
+		return t.NodeAsOf(id, txTime)
+	}
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
+	var result *types.Node
+	err := c.readUnderRLock(func() error {
+		rd, release := c.meteredEntityReads(tally)
+		defer release()
+		n, err := c.nodeAsOfLockedRd(rd, id, txTime)
+		result = n
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// RelAsOfCtx is RelAsOf under ctx's read budget, as NodeAsOfCtx.
+func (t *TempOps) RelAsOfCtx(ctx context.Context, id types.RelID, txTime types.Instant) (*types.Relationship, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	tally := storepkg.ReadMeterFrom(ctx).Tally("RelAsOf")
+	if tally == nil {
+		return t.RelAsOf(id, txTime)
+	}
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	var result *types.Relationship
+	err := c.readUnderRLock(func() error {
+		if err := c.checkRelTypePointRetention(id, txTime); err != nil {
+			return err
+		}
+		rd, release := c.meteredEntityReads(tally)
+		defer release()
+		r, err := c.relAsOfLockedRd(rd, id, txTime)
+		result = r
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // RelAsOf returns the newest row of relationship id recorded by transaction
 // time txTime — NodeAsOf's rule for relationships. For the relationship's
 // state at a valid instant t as believed at a pin, call RelAtTx(id, t, pin).
@@ -154,6 +222,11 @@ func (t *TempOps) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relation
 }
 
 func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
+	return c.relAsOfLockedRd(entityReads{c: c}, id, txTime)
+}
+
+// relAsOfLockedRd is relAsOfLocked reading through rd, as nodeAsOfLockedRd.
+func (c *Core) relAsOfLockedRd(rd entityReads, id types.RelID, txTime types.Instant) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
@@ -163,8 +236,15 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 	if err := c.checkRelPointRetention(txTime); err != nil {
 		return nil, err
 	}
-	if c.txTimeQuery != nil {
-		r, err := c.txTimeQuery.RelAsOf(id, txTime)
+	metered, _ := c.txTimeQuery.(storepkg.TransactionTimeQueryMeteredCapability)
+	if c.txTimeQuery != nil && (rd.tally == nil || metered != nil) {
+		var r *types.Relationship
+		var err error
+		if rd.tally != nil {
+			r, err = metered.RelAsOfMetered(id, txTime, rd.tally)
+		} else {
+			r, err = c.txTimeQuery.RelAsOf(id, txTime)
+		}
 		if errors.Is(err, storepkg.ErrVersionNotFound) {
 			return nil, ErrNoVersionAsOf
 		}
@@ -180,7 +260,7 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 		return c.relCapabilityVisibleAtTxTime(r, txTime), nil
 	}
 
-	current, err := c.getCurrentRelationship(id)
+	current, err := rd.currentRel(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
@@ -198,7 +278,7 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 	}
 
 	// Resolve through the single resolution seam — see nodeAsOfLocked.
-	hist, err := c.getRelHistory(id)
+	hist, err := rd.relHistory(id)
 	if err != nil {
 		return nil, err
 	}
