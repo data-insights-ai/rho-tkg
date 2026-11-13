@@ -21,6 +21,35 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Now
 
+- **READBUDGET (R2: stop work before spending the budget)** — Enforce one cumulative operation budget inside
+  native enumeration, candidate buffers/unions, row/history decoding and shard checkout, including pending overlays,
+  misses, fallbacks and parallel workers; count entries examined before filtering, not only returned matches.
+  Cover indexed/composite node queries, tuple timelines, ID reads, `ForEachNodePropertyTxMember` and its window/key
+  variants, and `NodeAsOf` through budgeted equivalents that preserve the exact historical pin.
+  Account separately for examined history, decoded wire bytes, temporary/retained buffer bytes and shard opens;
+  returned segments and decoded wire bytes alone are not bounds on native memory or total work.
+  Done when the budget-1 host probe stops before decoding beyond its allowance at 8/32/128 matches, dense keys,
+  long histories, cold shards, pending writes and unsupported paths all obey the same meter, and refusal preserves
+  exact-or-refused results without a silent unbounded fallback. No larger limit substitutes for removing broad work.
+  Waits for the existing decoded-byte candidate and rho's review; the current host call list above is actionable now.
+  **rho/sigma:** bounds failure cost before allocation and decode; acceptance still requires useful selective reads.
+- **RELDISKWIN (select only relevant disk-index history)** — Complete disk membership window pruning for nodes and
+  relationships without collecting every same-key historical member first; meter iterator and overlay work as well
+  as emitted IDs. Done when fixed-window tests at 8/32/128 unrelated history entries preserve exact old/new-pin
+  answers through correction, deletion, pending writes and copied reopen, while unrelated history no longer forces
+  a full-key walk or growing candidate union; report write/storage overhead too. **rho/sigma:** removes wasted reads,
+  rather than replacing their results with budget refusals; complements READBUDGET.
+- **WARMMEM (R3: cheaper writable and inactive shards)** — Finish measured sizing and ownership of writable arenas
+  across hot, warm, reference, demoted and late-write handles; separately account for already-open demoted handles
+  that a smaller warm-open setting does not shrink. Done when allocation, live heap, peak RSS and CPU improve on
+  matched fixtures with late writes, WAL recovery, durability and copied reopen unchanged; no GC tuning or larger
+  cache cap stands in for the saving. Waits for candidate review, then the host baseline. **rho/sigma:** lowers the
+  fixed memory cost per live handle without multiplying reads or writes.
+- **EMPTYBYID (keep proven-empty shards closed)** — Finish skipping NoRows shards in ID, history, adjacency and
+  create-existence probes, including batched paths. Done when repeated idle sweeps and misses cause no empty-shard
+  opens, cross-shard relationships remain findable, and a real late write safely reopens its shard; measure handle
+  and allocation counts. Waits for candidate review. **rho/sigma:** removes repeated open/close work after demotion.
+
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — reads and writes
   stop rebuilding a key's whole history. Released: P3 HISTDECODE, HEADLEND, P1 HISTTRIM, CASCADEMETA (v4.103.0), P2
   (v4.104.1: the plural door reads and fills the head entry; `p2.txt`). Next, P5 (design.txt § P5, checked): bound
@@ -83,16 +112,14 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
   sigma's paged rows, so cutting those (WRITEWHY, sigma's side) does more than a rho lever.
 
 ## Waiting
-- **RHLIST** (René's RH list, 13 Nov; "start work") — R1 (3aa53bc3 + no-write-failure fix) in v4.105.10; R0 waits for
-  René's decision 2; R2 waits for H2 and sigma's door list (received 13 Nov); R3 for B0.
 - **APPENDLIST** (ai-soc V1r, 10 Nov; question) — append-only list per node with a header. A list append via
   nodes.Update rewrites the list twice (wire_history_delta.go:115). Possible: write-once entry keys (node, list, tx,
   seq) plus a header record per tx; as-of = last header ≤ tx; O(1), ~100-150 B per append. Cost is integrations
   (tiered, purge, export, integrity, rollback): 5-8 days, a minor. Needs ai-soc's spec and René's word.
 - **COLDLRU** (ai-soc RHOCOLD a, 9-10 Nov) — one advance reads every cold day shard (cap 2/3 thrash, cap 5 → 2 opens,
   cap 64 badger heap +640 MB), so LRU eviction at check-in does not help: the cap grows with the archive unless
-  sigma's read-back stops reaching old days (ai-soc asked sigma). Not proposed. Open: the empty 1 Jan shard reopens
-  though NoRows skips sealed empty shards (tieredstore_routing.go:384); waits for its catalog mark and an open stack.
+  sigma's read-back stops reaching old days (sigma's COLDSET). Raising the handle cap is not the correction;
+  READBUDGET bounds the remaining opens and EMPTYBYID owns the empty-shard reopen correction.
 - **COLDHEAP** (ai-soc RHOCOLD b) — +970 MB over 3 days; never cold: reference shard, hot/warm, demoted open handles,
   degree tracker. Decoded rows (224 MB) sit in per-shard entity caches, 10,000 entries each (CacheBudgetBytes bounds
   bytes). Waits for ai-soc's retainer view.
