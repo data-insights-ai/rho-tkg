@@ -288,7 +288,7 @@ func (bs *Store) fetchNodesByLabelPropertiesIDs(labelToken uint16, values map[st
 	var result []*types.Node
 	// One forward iterator for the page's misses, not a read transaction and
 	// point Get per row (LISTREAD: 75 % of a cold page was per-row Gets).
-	err := bs.forEachNodeBulk(nids, func(n *types.Node) bool {
+	err := bs.forEachNodeBulkTallied(nids, opts.ReadTally(), func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(labelToken) || !indexpkg.NodeMatchesAllProperties(n, values) {
 			return true
 		}

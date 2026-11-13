@@ -157,6 +157,16 @@ type localAnchorFunc func(anchorVersion uint64) ([]byte, bool)
 // reconstructNodeHistoryWire turns a raw history value into a full NodeWire,
 // applying the interval anchor when raw is a delta.
 func (bs *Store) reconstructNodeHistoryWire(id snowflake.ID, version uint64, raw []byte, local localAnchorFunc) (storepkg.NodeWire, error) {
+	return bs.reconstructNodeHistoryWireTallied(id, version, raw, local, nil)
+}
+
+// reconstructNodeHistoryWireTallied is reconstructNodeHistoryWire counting in
+// t (RH list R2; nil counts nothing) the bytes it decodes, before each decode:
+// the row, and for a delta its anchor.
+func (bs *Store) reconstructNodeHistoryWireTallied(id snowflake.ID, version uint64, raw []byte, local localAnchorFunc, t *storecontract.ReadTally) (storepkg.NodeWire, error) {
+	if err := t.Decoded(len(raw)); err != nil {
+		return storepkg.NodeWire{}, err
+	}
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
 		var w storepkg.NodeWire
 		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {
@@ -172,6 +182,9 @@ func (bs *Store) reconstructNodeHistoryWire(id snowflake.ID, version uint64, raw
 	anchorRaw, err := bs.fetchAnchorRaw(anchorVer, local, func() ([]byte, error) { return bs.readHistoryNodeRaw(id, anchorVer) })
 	if err != nil {
 		return storepkg.NodeWire{}, fmt.Errorf("graph: read node history anchor v%d: %w", anchorVer, err)
+	}
+	if err := t.Decoded(len(anchorRaw)); err != nil {
+		return storepkg.NodeWire{}, err
 	}
 	if storepkg.HistoryValueKindOf(anchorRaw) != storepkg.HistoryFull {
 		return storepkg.NodeWire{}, fmt.Errorf("%w: node history anchor v%d is not a full snapshot", storecontract.ErrCorruptWire, anchorVer)
@@ -192,6 +205,14 @@ func (bs *Store) reconstructNodeHistoryWire(id snowflake.ID, version uint64, raw
 
 // reconstructRelHistoryWire mirrors reconstructNodeHistoryWire.
 func (bs *Store) reconstructRelHistoryWire(id snowflake.ID, version uint64, raw []byte, local localAnchorFunc) (storepkg.RelWire, error) {
+	return bs.reconstructRelHistoryWireTallied(id, version, raw, local, nil)
+}
+
+// reconstructRelHistoryWireTallied mirrors reconstructNodeHistoryWireTallied.
+func (bs *Store) reconstructRelHistoryWireTallied(id snowflake.ID, version uint64, raw []byte, local localAnchorFunc, t *storecontract.ReadTally) (storepkg.RelWire, error) {
+	if err := t.Decoded(len(raw)); err != nil {
+		return storepkg.RelWire{}, err
+	}
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
 		var w storepkg.RelWire
 		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {
@@ -207,6 +228,9 @@ func (bs *Store) reconstructRelHistoryWire(id snowflake.ID, version uint64, raw 
 	anchorRaw, err := bs.fetchAnchorRaw(anchorVer, local, func() ([]byte, error) { return bs.readHistoryRelRaw(id, anchorVer) })
 	if err != nil {
 		return storepkg.RelWire{}, fmt.Errorf("graph: read rel history anchor v%d: %w", anchorVer, err)
+	}
+	if err := t.Decoded(len(anchorRaw)); err != nil {
+		return storepkg.RelWire{}, err
 	}
 	if storepkg.HistoryValueKindOf(anchorRaw) != storepkg.HistoryFull {
 		return storepkg.RelWire{}, fmt.Errorf("%w: rel history anchor v%d is not a full snapshot", storecontract.ErrCorruptWire, anchorVer)

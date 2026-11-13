@@ -244,10 +244,24 @@ func (r entityReads) relHistory(id types.RelID) ([]*types.Relationship, error) {
 // lock is released; emit returning false stops. A read error stops the scan
 // once the entities read before it are emitted.
 func streamEntityTimelines[ID any, S any](c *Core, ids []ID, read func(entityReads, ID) ([]S, error), emit func(ID, []S) bool) error {
+	return streamEntityTimelinesMetered(c, nil, ids, read, emit)
+}
+
+// streamEntityTimelinesMetered is streamEntityTimelines under a read budget
+// (RH list R2): the scan's read snapshot counts the bytes of every row it
+// decodes in tally, before the decode (store.ReadSnapshotMeterCapability), and
+// a read past the budget stops the scan with the *store.ReadBudgetError. A nil
+// tally, or a store without a meter-aware snapshot, counts nothing.
+func streamEntityTimelinesMetered[ID any, S any](c *Core, tally *storepkg.ReadTally, ids []ID, read func(entityReads, ID) ([]S, error), emit func(ID, []S) bool) error {
 	rd := entityReads{c: c, scan: true}
 	if c.readSnapshots != nil {
 		rd.snap = c.readSnapshots.NewReadSnapshot()
 		defer rd.snap.Close()
+		if tally != nil {
+			if m, ok := rd.snap.(storepkg.ReadSnapshotMeterCapability); ok {
+				m.MeterReads(tally)
+			}
+		}
 	}
 	type entry struct {
 		id   ID

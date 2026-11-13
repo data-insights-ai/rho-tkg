@@ -45,6 +45,10 @@ func (ts *Store) nodeHistoryTemporalMetaVia(nid types.NodeID, via shardVia) ([]s
 
 // RelHistoryTemporalMeta mirrors NodeHistoryTemporalMeta for relationships.
 func (ts *Store) RelHistoryTemporalMeta(rid types.RelID) ([]storecontract.VersionTemporalMeta, error) {
+	return ts.relHistoryTemporalMetaVia(rid, directRelReads)
+}
+
+func (ts *Store) relHistoryTemporalMetaVia(rid types.RelID, via relVia) ([]storecontract.VersionTemporalMeta, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -56,13 +60,13 @@ func (ts *Store) RelHistoryTemporalMeta(rid types.RelID) ([]storecontract.Versio
 		return nil, err
 	}
 	defer checkin()
-	liveHere, err := relationshipRowLive(shard, rid)
+	liveHere, err := relationshipRowLiveVia(shard, rid, via)
 	if err != nil {
 		return nil, err
 	}
 	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
 	return historyAcrossShards(ts, shard, liveHere, isArchive, func(s *BadgerStore) ([]storecontract.VersionTemporalMeta, error) {
-		return s.RelHistoryTemporalMeta(rid)
+		return via(s).RelHistoryTemporalMeta(rid)
 	}, mergeHistoryMeta)
 }
 

@@ -41,6 +41,8 @@ var _ storecontract.ReadSnapshotCapability = (*Store)(nil)
 
 var _ storecontract.ReadSnapshotLendCapability = (*readSnapshot)(nil)
 
+var _ storecontract.ReadSnapshotMeterCapability = (*readSnapshot)(nil)
+
 // NewReadSnapshot returns a store.ReadSnapshot; it opens its transaction on
 // the first read that reaches Badger.
 func (bs *Store) NewReadSnapshot() storecontract.ReadSnapshot { return &readSnapshot{bs: bs} }
@@ -73,7 +75,18 @@ type readSnapshot struct {
 	// lent is the node LendNode returned last: a version of the same node
 	// decoded next shares its unchanged string values (R37).
 	lent *types.Node
+	// tally, when set (MeterReads), counts the bytes of every row the
+	// snapshot decodes, before the decode (RH list R2, DecodedBytes). nil: a
+	// nil check per decoded row.
+	tally *storecontract.ReadTally
 }
+
+// MeterReads implements store.ReadSnapshotMeterCapability: every row this
+// snapshot decodes from now on counts its stored bytes in t first, and a
+// refusal (*store.ReadBudgetError) replaces the row. A row the entity cache
+// serves decodes nothing and counts nothing; neither does a skeleton read
+// from the memo of the entity read last (nothing is decoded again).
+func (s *readSnapshot) MeterReads(t *storecontract.ReadTally) { s.tally = t }
 
 // snapIter is one keyspace's iterator and the key it last sought, the
 // iterator standing at the first key at or after it (nil: unknown): a later
@@ -236,6 +249,9 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 	metas := []keyedMeta{}
 	if s.memo.rows != nil && s.memo.prefix == string(prefix) {
 		for _, k := range sortedKeys(s.memo.rows) {
+			if err := s.tally.Decoded(len(s.memo.rows[k])); err != nil {
+				return nil, err
+			}
 			m, err := historyTemporalMetaOf(s.memo.rows[k], node)
 			if err != nil {
 				return nil, err
@@ -250,6 +266,9 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 			}
 			var m storecontract.VersionTemporalMeta
 			if err := item.Value(func(val []byte) error {
+				if err := s.tally.Decoded(len(val)); err != nil {
+					return err
+				}
 				var err error
 				m, err = historyTemporalMetaOf(val, node)
 				return err
@@ -287,6 +306,9 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 		}
 	}
 	for k, raw := range overlay {
+		if err := s.tally.Decoded(len(raw)); err != nil {
+			return nil, err
+		}
 		m, err := historyTemporalMetaOf(raw, i == snapNodeHist)
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode pending history temporal meta: %w", err)
@@ -466,6 +488,9 @@ func (s *readSnapshot) LendNode(nid types.NodeID) (*types.Node, error) {
 	}
 	var n *types.Node
 	ok, err := s.row(snapNodeRows, storepkg.NodeKey(id), func(val []byte) error {
+		if err := s.tally.Decoded(len(val)); err != nil {
+			return err
+		}
 		w := getPooledNodeWire()
 		defer putPooledNodeWire(w)
 		if err := storepkg.SafeUnmarshal(val, w); err != nil {
@@ -522,6 +547,9 @@ func (s *readSnapshot) LendRelationship(rid types.RelID) (*types.Relationship, e
 	}
 	var r *types.Relationship
 	ok, err := s.row(snapRelRows, storepkg.RelKey(id), func(val []byte) error {
+		if err := s.tally.Decoded(len(val)); err != nil {
+			return err
+		}
 		var w storepkg.RelWire
 		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 			return fmt.Errorf("graph: unmarshal relationship: %w", err)
@@ -680,10 +708,13 @@ func (s *readSnapshot) decodeNodeVersion(id snowflake.ID, version uint64, raw, p
 		share = s.lent
 	}
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
+		if err := s.tally.Decoded(len(raw)); err != nil {
+			return nil, err
+		}
 		return s.bs.decodeHistoryNodeValueSharing(id, version, raw, share) // no anchor: the pooled full-row decode
 	}
 	anchor := s.anchor(prefix, func(v uint64) []byte { return storepkg.HistNodeKey(id, v) })
-	w, err := s.bs.reconstructNodeHistoryWire(id, version, raw, anchor)
+	w, err := s.bs.reconstructNodeHistoryWireTallied(id, version, raw, anchor, s.tally)
 	if err != nil {
 		return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 	}
@@ -696,7 +727,7 @@ func (s *readSnapshot) decodeNodeVersion(id snowflake.ID, version uint64, raw, p
 
 func (s *readSnapshot) decodeRelVersion(id snowflake.ID, version uint64, raw, prefix []byte) (*types.Relationship, error) {
 	anchor := s.anchor(prefix, func(v uint64) []byte { return storepkg.HistRelKey(id, v) })
-	w, err := s.bs.reconstructRelHistoryWire(id, version, raw, anchor)
+	w, err := s.bs.reconstructRelHistoryWireTallied(id, version, raw, anchor, s.tally)
 	if err != nil {
 		return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 	}

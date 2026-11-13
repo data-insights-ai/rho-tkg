@@ -1,0 +1,56 @@
+--- FAIL: TestReadBudget_DecodedBytes_RelTimelines (0.94s)
+    --- FAIL: TestReadBudget_DecodedBytes_RelTimelines/badger (0.20s)
+        read_budget_decoded_test.go:126: cold run 0 counted 0 decoded bytes for 8 rows
+    --- FAIL: TestReadBudget_DecodedBytes_RelTimelines/sharded (0.29s)
+        read_budget_decoded_test.go:126: cold run 0 counted 0 decoded bytes for 8 rows
+    --- FAIL: TestReadBudget_DecodedBytes_RelTimelines/tiered (0.45s)
+        read_budget_decoded_test.go:126: cold run 0 counted 0 decoded bytes for 8 rows
+--- FAIL: TestReadBudget_DecodedBytes_NoBudgetUnchanged (1.19s)
+    --- FAIL: TestReadBudget_DecodedBytes_NoBudgetUnchanged/badger (0.19s)
+        read_budget_decoded_test.go:231: unlimited bytes = [[{1794556169146 0 0x903569509c0}]], <nil>, {Candidates:1 Segments:1 ShardOpens:0 DecodedBytes:0}
+    --- FAIL: TestReadBudget_DecodedBytes_NoBudgetUnchanged/sharded (0.40s)
+        read_budget_decoded_test.go:231: unlimited bytes = [[{1794556169389 0 0x90346526240}]], <nil>, {Candidates:1 Segments:1 ShardOpens:0 DecodedBytes:0}
+    --- FAIL: TestReadBudget_DecodedBytes_NoBudgetUnchanged/tiered (0.60s)
+        read_budget_decoded_test.go:231: unlimited bytes = [[{1794556169876 0 0x90346436de0}]], <nil>, {Candidates:1 Segments:1 ShardOpens:0 DecodedBytes:0}
+--- FAIL: TestReadBudget_DecodedBytes_RelTimelinesHistory (1.22s)
+    --- FAIL: TestReadBudget_DecodedBytes_RelTimelinesHistory/badger (0.26s)
+        read_budget_decoded_test.go:199: warm read of history = 
+              0: h0[1794556169145,1794556169146)v0 h0[1794556169146,1794556169148)v1 h0[1794556169148,1794556169150)v2 h0[1794556169150,0)v3 h1[1794556169152,1794556169153)v0 h1[1794556169153,1794556169155)v1 h1[1794556169155,1794556169157)v2 h1[1794556169157,
+    --- FAIL: TestReadBudget_DecodedBytes_RelTimelinesHistory/sharded (0.44s)
+        read_budget_decoded_test.go:199: warm read of history = 
+              0: h0[1794556169491,1794556169492)v0 h0[1794556169492,1794556169494)v1 h0[1794556169494,1794556169496)v2 h0[1794556169496,0)v3 h1[1794556169498,1794556169499)v0 h1[1794556169499,1794556169501)v1 h1[1794556169501,1794556169503)v2 h1[1794556169503,
+    --- FAIL: TestReadBudget_DecodedBytes_RelTimelinesHistory/tiered (0.51s)
+        read_budget_decoded_test.go:199: warm read of history = 
+              0: h0[1794556170013,1794556170014)v0 h0[1794556170014,1794556170016)v1 h0[1794556170016,1794556170018)v2 h0[1794556170018,0)v3 h1[1794556170020,1794556170021)v0 h1[1794556170021,1794556170023)v1 h1[1794556170023,1794556170025)v2 h1[1794556170025,
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.308s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.005s
+FAIL
+
+== the lend doors, before they count (DecodedBytes 0) ==
+--- FAIL: TestReadBudget_DecodedBytes_LendByIDsWarm (0.51s)
+    read_budget_decoded_lend_test.go:114: cold lend counted 0 bytes, warm 0; want a count, then 0
+--- FAIL: TestReadBudget_DecodedBytes_LendByIDs (0.74s)
+    --- FAIL: TestReadBudget_DecodedBytes_LendByIDs/badger (0.16s)
+        read_budget_decoded_lend_test.go:67: nodes: cold lend = 6 rows, <nil>, 0 decoded bytes
+    --- FAIL: TestReadBudget_DecodedBytes_LendByIDs/sharded (0.26s)
+        read_budget_decoded_lend_test.go:67: nodes: cold lend = 6 rows, <nil>, 0 decoded bytes
+    --- FAIL: TestReadBudget_DecodedBytes_LendByIDs/tiered (0.32s)
+        read_budget_decoded_lend_test.go:67: nodes: cold lend = 6 rows, <nil>, 0 decoded bytes
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.833s
+FAIL
+
+== GetByIDsCtx, before it counts ==
+--- FAIL: TestReadBudget_DecodedBytes_GetByIDs (4.97s)
+    --- FAIL: TestReadBudget_DecodedBytes_GetByIDs/badger (1.01s)
+        read_budget_decoded_byid_test.go:52: GetByIDs many: cold counted 0 decoded bytes, want at least 600
+    --- FAIL: TestReadBudget_DecodedBytes_GetByIDs/sharded (1.82s)
+        read_budget_decoded_byid_test.go:52: GetByIDs many: cold counted 0 decoded bytes, want at least 600
+    --- FAIL: TestReadBudget_DecodedBytes_GetByIDs/tiered (2.15s)
+        read_budget_decoded_byid_test.go:52: GetByIDs many: cold counted 0 decoded bytes, want at least 600
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.069s
+FAIL
+
+Property doors (node index and label scan): before the badger query paths counted, door 0 read 0 decoded bytes on badger, sharded and tiered. The budget-1 probe at 8/32/128 matches, the parallel path and the pending overlay were added after the counting and pass at once; each proves the check precedes the decode (the probe's count is one row's).

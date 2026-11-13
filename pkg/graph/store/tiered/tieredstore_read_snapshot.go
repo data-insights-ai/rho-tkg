@@ -21,6 +21,8 @@ var _ storecontract.ReadSnapshotCapability = (*Store)(nil)
 
 var _ storecontract.ReadSnapshotLendCapability = (*readSnapshot)(nil)
 
+var _ storecontract.ReadSnapshotMeterCapability = (*readSnapshot)(nil)
+
 // shardNodeReads is what a tiered node read asks the shard it routed to.
 type shardNodeReads interface {
 	GetNode(types.NodeID) (*types.Node, error)
@@ -40,19 +42,58 @@ func directReads(s *BadgerStore) shardNodeReads { return s }
 func (ts *Store) NewReadSnapshot() storecontract.ReadSnapshot { return &readSnapshot{ts: ts} }
 
 type readSnapshot struct {
-	ts  *Store
-	ref storecontract.ReadSnapshot // the reference shard's, opened on its first read
+	ts    *Store
+	ref   storecontract.ReadSnapshot // the reference shard's, opened on its first read
+	tally *storecontract.ReadTally   // RH list R2: set by MeterReads, every decode counts in it
 }
 
-// via reads the reference shard through the snapshot, any other directly.
-func (r *readSnapshot) via(s *BadgerStore) shardNodeReads {
-	if s == nil || s != r.ts.refShard {
-		return s
+// MeterReads implements store.ReadSnapshotMeterCapability: the reads of this
+// snapshot, on every shard, count the bytes they decode in t before the decode
+// (the reference shard's badger snapshot, and a throwaway one per read on any
+// other shard). Presence reads decode no row and count nothing.
+func (r *readSnapshot) MeterReads(t *storecontract.ReadTally) {
+	r.tally = t
+	if r.ref != nil {
+		r.ref.(storecontract.ReadSnapshotMeterCapability).MeterReads(t)
 	}
+}
+
+// refSnapshot is the reference shard's badger snapshot, opened on first use.
+func (r *readSnapshot) refSnapshot(s *BadgerStore) storecontract.ReadSnapshot {
 	if r.ref == nil {
 		r.ref = s.NewReadSnapshot()
+		if r.tally != nil {
+			r.ref.(storecontract.ReadSnapshotMeterCapability).MeterReads(r.tally)
+		}
 	}
-	return r.ref.(shardNodeReads)
+	return r.ref
+}
+
+// via reads the reference shard through the snapshot, any other directly (a
+// metered snapshot: through a counting read).
+func (r *readSnapshot) via(s *BadgerStore) shardNodeReads {
+	if s == nil {
+		return s
+	}
+	if s != r.ts.refShard {
+		if r.tally != nil {
+			return meteredShard{s, r.tally}
+		}
+		return s
+	}
+	return r.refSnapshot(s).(shardNodeReads)
+}
+
+// relVia is via for relationship reads, which read the reference shard through
+// its snapshot only when metered: an unmetered snapshot reads them directly.
+func (r *readSnapshot) relVia(s *BadgerStore) shardRelReads {
+	if r.tally == nil || s == nil {
+		return s
+	}
+	if s != r.ts.refShard {
+		return meteredShard{s, r.tally}
+	}
+	return r.refSnapshot(s).(shardRelReads)
 }
 
 func (r *readSnapshot) GetNode(id types.NodeID) (*types.Node, error) {
@@ -81,10 +122,16 @@ func (r *readSnapshot) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
 }
 
 func (r *readSnapshot) GetRelationship(id types.RelID) (*types.Relationship, error) {
+	if r.tally != nil {
+		return r.ts.getRelationshipVia(id, r.relVia, false)
+	}
 	return r.ts.GetRelationship(id)
 }
 
 func (r *readSnapshot) LendRelationship(id types.RelID) (*types.Relationship, error) {
+	if r.tally != nil {
+		return r.ts.getRelationshipVia(id, r.relVia, true)
+	}
 	return r.ts.LendRelationship(id)
 }
 
@@ -93,14 +140,23 @@ func (r *readSnapshot) HasRelHistory(id types.RelID) (bool, error) {
 }
 
 func (r *readSnapshot) RelHistoryTemporalMeta(id types.RelID) ([]storecontract.VersionTemporalMeta, error) {
+	if r.tally != nil {
+		return r.ts.relHistoryTemporalMetaVia(id, r.relVia)
+	}
 	return r.ts.RelHistoryTemporalMeta(id)
 }
 
 func (r *readSnapshot) GetRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
+	if r.tally != nil {
+		return r.ts.getRelVersionVia(id, version, r.relVia)
+	}
 	return r.ts.GetRelVersion(id, version)
 }
 
 func (r *readSnapshot) GetRelHistory(id types.RelID) ([]*types.Relationship, error) {
+	if r.tally != nil {
+		return r.ts.getRelHistoryVia(id, r.relVia)
+	}
 	return r.ts.GetRelHistory(id)
 }
 

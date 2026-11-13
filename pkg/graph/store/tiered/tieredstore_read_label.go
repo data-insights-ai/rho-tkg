@@ -357,7 +357,7 @@ func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken 
 	if shardPropertyDoor(have, has, elements) {
 		return store.NodesByLabelAndPropertyKeys(labelToken, key, match.Keys(), opts)
 	}
-	nodes, err := store.NodesByLabel(labelToken, QueryOpts{After: opts.After})
+	nodes, err := store.NodesByLabel(labelToken, QueryOpts{After: opts.After}.WithReadMeter(opts.ReadMeter())) // the fallback scan decodes under the same budget
 	if err != nil {
 		return nil, err
 	}

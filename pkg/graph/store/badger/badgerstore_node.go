@@ -919,9 +919,15 @@ func (bs *Store) loadRelFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.R
 // temporal filtering, sorted by snowflake.ID. Uses the property index if present,
 // else label scan + filter.
 func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
+	return bs.prefetchNodeTallied(nid, nil)
+}
+
+// prefetchNodeTallied is prefetchNode counting in t (nil: nothing) the bytes
+// of the row it decodes on a cache miss, before the decode (RH list R2).
+func (bs *Store) prefetchNodeTallied(nid types.NodeID, t *storecontract.ReadTally) (*types.Node, error) {
 	// Read before the badger read opens — see LoadCleanAt.
 	epoch := bs.nodeCache.FlushEpoch()
-	n, miss, err := bs.prefetchNodeNoFill(nid, true) // point read: promote
+	n, miss, err := bs.prefetchNodeNoFill(nid, true, t) // point read: promote
 	if err != nil || !miss {
 		return n, err
 	}
@@ -933,13 +939,13 @@ func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
 // than the LRU would evict exactly the entries the next pass needs and flush hot
 // point reads. Hits are still served; the result is frozen either way.
 func (bs *Store) prefetchNodeScan(nid types.NodeID) (*types.Node, error) {
-	n, _, err := bs.prefetchNodeNoFill(nid, false) // scan: no promote
+	n, _, err := bs.prefetchNodeNoFill(nid, false, nil) // scan: no promote
 	return n, err
 }
 
 // prefetchNodeNoFill is the shared core. miss=true means n was decoded from
 // badger. The result is frozen because callers may publish it into the cache.
-func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.Node, miss bool, err error) {
+func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool, t *storecontract.ReadTally) (n *types.Node, miss bool, err error) {
 	id := nid.SnowflakeID()
 	// Point reads promote the hit to MRU (exclusive lock); scan reads do not
 	// (GetNoPromote, read lock), so a scan neither serializes on the lock nor
@@ -977,6 +983,9 @@ func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.No
 			return err
 		}
 		return item.Value(func(val []byte) error {
+			if err := t.Decoded(len(val)); err != nil {
+				return err
+			}
 			w := getPooledNodeWire()
 			defer putPooledNodeWire(w)
 			if err := storepkg.SafeUnmarshal(val, w); err != nil {

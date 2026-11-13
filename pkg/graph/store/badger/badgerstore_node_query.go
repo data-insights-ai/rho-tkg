@@ -100,7 +100,7 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 	// floor); Limit'd scans keep the serial early-stopping door. Label and temporal
 	// filters apply post-decode, as in the serial callback.
 	if opts.Limit == 0 && len(ids) >= parallelDecodeMinIDs {
-		all, err := bs.collectNodesBulkParallel(ids)
+		all, err := bs.collectNodesBulkParallelTallied(ids, opts.ReadTally())
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +121,7 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 	}
 
 	nodes := make([]*types.Node, 0, capForLimit(opts.Limit))
-	err := bs.forEachNodeBulk(ids, func(n *types.Node) bool {
+	err := bs.forEachNodeBulkTallied(ids, opts.ReadTally(), func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(token) {
 			return true // continue
 		}
@@ -148,6 +148,14 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 // scanSnapshot that re-pins after a flush, so a row committed and evicted
 // mid-scan is never read from a stale snapshot.
 func (bs *Store) forEachNodeBulk(ids []types.NodeID, fn func(*types.Node) bool) error {
+	return bs.forEachNodeBulkTallied(ids, nil, fn)
+}
+
+// forEachNodeBulkTallied is forEachNodeBulk counting in t (nil: nothing) the
+// stored bytes of each row it decodes from badger, before the decode, and
+// returning the budget error past a limit (RH list R2). A cache hit decodes
+// nothing and counts nothing.
+func (bs *Store) forEachNodeBulkTallied(ids []types.NodeID, t *storecontract.ReadTally, fn func(*types.Node) bool) error {
 	snap := newScanSnapshot(bs, bs.nodeCache.FlushEpoch)
 	defer snap.close()
 	for _, nid := range ids {
@@ -175,6 +183,9 @@ func (bs *Store) forEachNodeBulk(ids []types.NodeID, fn func(*types.Node) bool) 
 		var decoded *types.Node
 		bs.nodeRowDecodes.Add(1)
 		derr := item.Value(func(val []byte) error {
+			if err := t.Decoded(len(val)); err != nil {
+				return err
+			}
 			var w storepkg.NodeWire
 			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
@@ -234,6 +245,14 @@ func (bs *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 // GetNodesByIDs returns nodes for every requested ID, sorted by snowflake.ID;
 // a missing ID returns ErrNodeNotFound.
 func (bs *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
+	return bs.GetNodesByIDsMetered(ids, nil)
+}
+
+var _ storecontract.NodesByIDsMeteredCapability = (*Store)(nil)
+
+// GetNodesByIDsMetered is GetNodesByIDs counting in t (nil: nothing) the bytes
+// of each row it decodes on a cache miss, before the decode (RH list R2).
+func (bs *Store) GetNodesByIDsMetered(ids []types.NodeID, t *storecontract.ReadTally) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -247,12 +266,12 @@ func (bs *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	}
 
 	if unique, ok := uniqueNodeIDsPreserveOrderIfDuplicate(ids); ok {
-		return bs.getNodesByIDsWithDuplicates(ids, unique)
+		return bs.getNodesByIDsWithDuplicates(ids, unique, t)
 	}
 
 	nodes := make([]*types.Node, 0, len(ids))
 	for _, id := range ids {
-		n, err := bs.prefetchNode(id)
+		n, err := bs.prefetchNodeTallied(id, t)
 		if err != nil {
 			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, err)
 		}
@@ -266,10 +285,10 @@ func (bs *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	return nodes, nil
 }
 
-func (bs *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID) ([]*types.Node, error) {
+func (bs *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID, t *storecontract.ReadTally) ([]*types.Node, error) {
 	found := make(map[types.NodeID]*types.Node, len(unique))
 	for _, id := range unique {
-		n, err := bs.prefetchNode(id)
+		n, err := bs.prefetchNodeTallied(id, t)
 		if err != nil {
 			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, err)
 		}
@@ -470,7 +489,7 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey string,
 	hasTemporal := opts.HasValidTimeFilter()
 	var result []*types.Node
 	// One forward iterator for the page's misses (LISTREAD, as the composite door).
-	err := bs.forEachNodeBulk(nids, func(n *types.Node) bool {
+	err := bs.forEachNodeBulkTallied(nids, opts.ReadTally(), func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(labelToken) || !match.Node(n, propKey, elements) {
 			return true
 		}

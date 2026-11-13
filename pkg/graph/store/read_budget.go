@@ -28,18 +28,32 @@ type ReadBudget struct {
 	Segments uint64
 	// ShardOpens bounds the closed shards the reads open (tiered).
 	ShardOpens uint64
+	// DecodedBytes bounds the stored (wire) bytes the doors' reads hand to a
+	// row decoder: each current row decoded, each history version decoded (a
+	// delta row and its anchor) and each history skeleton decoded, counted by
+	// the store at the decode, before it, so a read past the limit stops
+	// before it decodes the row that passes it. It counts decode work, not the
+	// size of the data a read touches: a row the store's entity cache serves
+	// is not decoded and counts nothing, nor does a store that keeps its rows
+	// decoded (memory); a history row decoded twice (its skeleton, then as a
+	// winner) counts twice; a partial decode counts the whole value handed to
+	// it. Index reads count as Candidates, not here. The doors that count:
+	// RelEffectiveTimelinesByProperties, LendByIDs, the node property doors'
+	// time-free reads and GetByIDsCtx (docs/api.md, Read budgets).
+	DecodedBytes uint64
 }
 
 // ReadWork is what the reads made with one context did, counted by the doors
 // that support budgets (fields a door does not count stay 0).
 type ReadWork struct {
-	Candidates uint64
-	Segments   uint64
-	ShardOpens uint64
+	Candidates   uint64
+	Segments     uint64
+	ShardOpens   uint64
+	DecodedBytes uint64
 }
 
 // ReadBudgetError is a read stopped by Door at Limit ("candidates",
-// "segments" or "shard opens") of Budget, the budget whose limit it passed;
+// "segments", "shard opens" or "decoded bytes") of Budget, the budget whose limit it passed;
 // Work is that budget's meter, the work past the limit included.
 type ReadBudgetError struct {
 	Door   string
@@ -60,9 +74,9 @@ func (e *ReadBudgetError) Is(target error) bool { return target == ErrReadBudget
 // budget's context adds its work to the outer meter too, and each meter checks
 // its own limits, so the tighter one stops first.
 type ReadMeter struct {
-	budget                           ReadBudget
-	parent                           *ReadMeter
-	candidates, segments, shardOpens atomic.Uint64
+	budget                                         ReadBudget
+	parent                                         *ReadMeter
+	candidates, segments, shardOpens, decodedBytes atomic.Uint64
 }
 
 type readMeterKey struct{}
@@ -89,7 +103,7 @@ func (m *ReadMeter) Work() ReadWork {
 	if m == nil {
 		return ReadWork{}
 	}
-	return ReadWork{Candidates: m.candidates.Load(), Segments: m.segments.Load(), ShardOpens: m.shardOpens.Load()}
+	return ReadWork{Candidates: m.candidates.Load(), Segments: m.segments.Load(), ShardOpens: m.shardOpens.Load(), DecodedBytes: m.decodedBytes.Load()}
 }
 
 // AddCandidates counts n candidates door examined, here and in every outer
@@ -107,6 +121,40 @@ func (m *ReadMeter) AddSegments(door string, n int) error {
 // AddShardOpens counts n closed shards opened, as AddCandidates.
 func (m *ReadMeter) AddShardOpens(door string, n int) error {
 	return m.add(door, "shard opens", n, func(r *ReadMeter) (*atomic.Uint64, uint64) { return &r.shardOpens, r.budget.ShardOpens })
+}
+
+// AddDecodedBytes counts n stored bytes door hands to a row decoder, as
+// AddCandidates. A store calls it (through a ReadTally) before it decodes the
+// bytes, so a read past the limit stops before it decodes the row that passes
+// it.
+func (m *ReadMeter) AddDecodedBytes(door string, n int) error {
+	return m.add(door, "decoded bytes", n, func(r *ReadMeter) (*atomic.Uint64, uint64) { return &r.decodedBytes, r.budget.DecodedBytes })
+}
+
+// ReadTally is a meter bound to the door that reads: what a store receives
+// (store.ReadSnapshotMeterCapability, QueryOpts, the metered lend doors) to
+// count the bytes it decodes. A nil tally counts nothing and refuses nothing:
+// a read without a budget pays one nil check per decoded row.
+type ReadTally struct {
+	meter *ReadMeter
+	door  string
+}
+
+// Tally binds m to door. A nil meter gives a nil tally.
+func (m *ReadMeter) Tally(door string) *ReadTally {
+	if m == nil {
+		return nil
+	}
+	return &ReadTally{meter: m, door: door}
+}
+
+// Decoded counts n bytes about to be decoded, returning the budget error past
+// a limit. A nil tally counts nothing.
+func (t *ReadTally) Decoded(n int) error {
+	if t == nil {
+		return nil
+	}
+	return t.meter.AddDecodedBytes(t.door, n)
 }
 
 func (m *ReadMeter) add(door, limit string, n int, field func(*ReadMeter) (*atomic.Uint64, uint64)) error {

@@ -17,10 +17,37 @@ func (n *NodeOps) GetByIDsCtx(ctx context.Context, ids []types.NodeID) ([]*types
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
-	if err := storepkg.ReadMeterFrom(ctx).AddCandidates("GetByIDs", len(ids)); err != nil {
+	meter := storepkg.ReadMeterFrom(ctx)
+	if err := meter.AddCandidates("GetByIDs", len(ids)); err != nil {
 		return nil, err
 	}
-	return n.GetByIDs(ids)
+	if meter == nil {
+		return n.GetByIDs(ids)
+	}
+	return n.getByIDsTallied(ids, meter.Tally("GetByIDs"))
+}
+
+// getByIDsTallied is GetByIDs counting the bytes the store decodes in tally.
+func (n *NodeOps) getByIDsTallied(ids []types.NodeID, tally *storepkg.ReadTally) ([]*types.Node, error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	for _, id := range ids {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
+		}
+	}
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.nodesByIDsTalliedLocked(ids, tally)
+		return err
+	})
+	return result, err
 }
 
 // HasHistoryCtx is HasHistory under ctx's read budget.

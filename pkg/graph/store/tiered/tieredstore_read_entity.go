@@ -142,6 +142,27 @@ func (ts *Store) LendRelationship(rid types.RelID) (*types.Relationship, error) 
 	return routeRelRow(ts, rid, lendRelationshipRow)
 }
 
+// getRelationshipVia is GetRelationship (lend: LendRelationship) reading each
+// routed shard through via: a read snapshot's metered read (RH list R2).
+func (ts *Store) getRelationshipVia(rid types.RelID, via relVia, lend bool) (*types.Relationship, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return nil, err
+	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
+	if lend {
+		return routeRelRow(ts, rid, func(s *BadgerStore, id types.RelID) (*types.Relationship, bool, error) {
+			return lendRelationshipRowVia(s, id, via)
+		})
+	}
+	return routeRelRow(ts, rid, func(s *BadgerStore, id types.RelID) (*types.Relationship, bool, error) {
+		return relationshipRowVia(s, id, via)
+	})
+}
+
 // getRelationshipChecked returns a defensive relationship copy from the shard
 // owning rid, keeping shardForRelIDChecked's stale-index guard and reading the
 // row only once.
@@ -225,6 +246,14 @@ func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types
 }
 
 func (ts *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
+	return ts.GetNodesByIDsMetered(ids, nil)
+}
+
+var _ storecontract.NodesByIDsMeteredCapability = (*Store)(nil)
+
+// GetNodesByIDsMetered is GetNodesByIDs counting in t (nil: nothing) the bytes
+// of each row a shard decodes on a cache miss, before the decode (RH list R2).
+func (ts *Store) GetNodesByIDsMetered(ids []types.NodeID, t *storecontract.ReadTally) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -237,7 +266,13 @@ func (ts *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 		}
 	}
 	if len(ids) == 1 {
-		n, err := ts.GetNode(ids[0])
+		var n *types.Node
+		var err error
+		if t == nil {
+			n, err = ts.GetNode(ids[0])
+		} else {
+			n, err = ts.getNodeVia(ids[0], func(s *BadgerStore) shardNodeReads { return meteredShard{s, t} }, false)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", ids[0], err)
 		}
@@ -247,7 +282,7 @@ func (ts *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	move := ts.lockMoveRead() // route and read see the row on one shard
 	defer move.unlock()
 	if unique, ok := uniqueNodeIDsPreserveOrderIfDuplicate(ids); ok {
-		return ts.getNodesByIDsWithDuplicates(ids, unique)
+		return ts.getNodesByIDsWithDuplicates(ids, unique, t)
 	}
 
 	batches, err := ts.groupNodeIDsByShard(ids)
@@ -261,7 +296,7 @@ func (ts *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		nodes, err := store.GetNodesByIDs(batch.ids)
+		nodes, err := store.GetNodesByIDsMetered(batch.ids, t)
 		release()
 		if err != nil {
 			return nil, fmt.Errorf("graph: get nodes by IDs: %w", err)
@@ -275,7 +310,7 @@ func (ts *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	return result, nil
 }
 
-func (ts *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID) ([]*types.Node, error) {
+func (ts *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID, t *storecontract.ReadTally) ([]*types.Node, error) {
 	batches, err := ts.groupNodeIDsByShard(unique)
 	if err != nil {
 		return nil, err
@@ -287,7 +322,7 @@ func (ts *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID) ([]*typ
 		if err != nil {
 			return nil, err
 		}
-		nodes, err := store.GetNodesByIDs(batch.ids)
+		nodes, err := store.GetNodesByIDsMetered(batch.ids, t)
 		release()
 		if err != nil {
 			return nil, fmt.Errorf("graph: get nodes by IDs: %w", err)

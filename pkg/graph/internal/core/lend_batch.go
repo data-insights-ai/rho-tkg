@@ -8,6 +8,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -55,11 +56,29 @@ func (n *NodeOps) LendByIDs(ctx context.Context, ids []types.NodeID, fn func(i i
 	metered, _ := c.store.(storepkg.EntityLendBatchMeteredCapability)
 	lender, _ := c.store.(storepkg.EntityLendCapability)
 	if !c.storeRowsTrust {
-		batch, metered, lender = nil, nil, nil
+		batch, lender = nil, nil
+		if !c.meterableStore() {
+			metered = nil
+		}
 	}
 	read := func(sorted []types.NodeID, out []*types.Node) error {
 		if metered != nil && meter != nil {
-			return metered.LendNodesSortedMetered(sorted, out, meter)
+			if err := metered.LendNodesSortedMetered(sorted, out, meter); err != nil {
+				return err
+			}
+			if !c.storeRowsTrust { // as getCurrentNode: validated, then a copy of its own
+				for j, row := range out[:len(sorted)] {
+					if row == nil {
+						continue
+					}
+					if err := validateCurrentNodeRow(sorted[j], row); err != nil {
+						return err
+					}
+					out[j] = row.DeepCopy()
+					out[j].Freeze()
+				}
+			}
+			return nil
 		}
 		if batch != nil {
 			return batch.LendNodesSorted(sorted, out)
@@ -105,11 +124,29 @@ func (r *RelOps) LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int
 	metered, _ := c.store.(storepkg.RelLendBatchMeteredCapability)
 	lender, _ := c.store.(storepkg.EntityLendCapability)
 	if !c.storeRowsTrust {
-		batch, metered, lender = nil, nil, nil
+		batch, lender = nil, nil
+		if !c.meterableStore() {
+			metered = nil
+		}
 	}
 	read := func(sorted []types.RelID, out []*types.Relationship) error {
 		if metered != nil && meter != nil {
-			return metered.LendRelationshipsSortedMetered(sorted, out, meter)
+			if err := metered.LendRelationshipsSortedMetered(sorted, out, meter); err != nil {
+				return err
+			}
+			if !c.storeRowsTrust { // as getCurrentRelationship: validated, then a copy of its own
+				for j, row := range out[:len(sorted)] {
+					if row == nil {
+						continue
+					}
+					if err := validateCurrentRelationshipRow(sorted[j], row); err != nil {
+						return err
+					}
+					out[j] = row.DeepCopy()
+					out[j].Freeze()
+				}
+			}
+			return nil
 		}
 		if batch != nil {
 			return batch.LendRelationshipsSorted(sorted, out)
@@ -133,6 +170,15 @@ func (r *RelOps) LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int
 		return nil
 	}
 	return lendByIDs(ctx, c, ids, read, fn, &c.opRelReads)
+}
+
+// meterableStore reports whether the store may serve a metered read through
+// its metered capabilities (RH list R2): an exact native store, or the exact
+// in-tree sharded store, whose rows the caller validates and copies; never a
+// wrapper that merely embeds one (K1: its own overrides would be routed around).
+func (c *Core) meterableStore() bool {
+	_, sh := c.store.(*sharded.Store)
+	return c.storeRowsTrust || sh
 }
 
 // reads is the operation counter a lend door adds its lent rows to.

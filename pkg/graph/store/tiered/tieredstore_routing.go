@@ -236,7 +236,13 @@ func relationshipRowExists(store *BadgerStore, id types.RelID) bool {
 // relationshipRowLive is for caller-visible read paths where corruption must
 // be returned instead of being treated as ordinary liveness.
 func relationshipRowLive(store *BadgerStore, id types.RelID) (bool, error) {
-	_, found, err := lendRelationshipRow(store, id) // presence only: no copy of the row
+	return relationshipRowLiveVia(store, id, directRelReads)
+}
+
+// relationshipRowLiveVia is relationshipRowLive reading through via (a metered
+// read counts the decode of the row it lends on a cache miss).
+func relationshipRowLiveVia(store *BadgerStore, id types.RelID, via relVia) (bool, error) {
+	_, found, err := lendRelationshipRowVia(store, id, via) // presence only: no copy of the row
 	if err != nil {
 		return false, err
 	}
@@ -244,11 +250,16 @@ func relationshipRowLive(store *BadgerStore, id types.RelID) (bool, error) {
 }
 
 func relationshipRow(store *BadgerStore, id types.RelID) (*types.Relationship, bool, error) {
+	return relationshipRowVia(store, id, directRelReads)
+}
+
+// relationshipRowVia is relationshipRow reading the row through via.
+func relationshipRowVia(store *BadgerStore, id types.RelID, via relVia) (*types.Relationship, bool, error) {
 	if store == nil || !store.HasRelID(id.SnowflakeID()) {
 		return nil, false, nil
 	}
 	// HasRelID is an index-derived fast path; verify the entity row.
-	rel, err := store.GetRelationship(id)
+	rel, err := via(store).GetRelationship(id)
 	if err != nil {
 		if errors.Is(err, ErrRelNotFound) {
 			return nil, false, nil
@@ -261,10 +272,15 @@ func relationshipRow(store *BadgerStore, id types.RelID) (*types.Relationship, b
 // lendRelationshipRow is relationshipRow returning the shard's frozen row
 // without a copy (LendRelationship).
 func lendRelationshipRow(store *BadgerStore, id types.RelID) (*types.Relationship, bool, error) {
+	return lendRelationshipRowVia(store, id, directRelReads)
+}
+
+// lendRelationshipRowVia is lendRelationshipRow reading the row through via.
+func lendRelationshipRowVia(store *BadgerStore, id types.RelID, via relVia) (*types.Relationship, bool, error) {
 	if store == nil || !store.HasRelID(id.SnowflakeID()) {
 		return nil, false, nil
 	}
-	rel, err := store.LendRelationship(id)
+	rel, err := via(store).LendRelationship(id)
 	if err != nil {
 		if errors.Is(err, ErrRelNotFound) {
 			return nil, false, nil

@@ -2026,7 +2026,17 @@ func (n *NodeOps) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 
 // nodesByIDsLocked is the lock-free body of NodeOps.GetByIDs.
 func (c *Core) nodesByIDsLocked(ids []types.NodeID) ([]*types.Node, error) {
-	nodes, err := c.store.GetNodesByIDs(ids)
+	return c.nodesByIDsTalliedLocked(ids, nil)
+}
+
+// nodesByIDsTalliedLocked is nodesByIDsLocked counting in tally (nil: nothing)
+// the bytes the store decodes (store.NodesByIDsMeteredCapability, RH list R2).
+func (c *Core) nodesByIDsTalliedLocked(ids []types.NodeID, tally *storepkg.ReadTally) ([]*types.Node, error) {
+	read := c.store.GetNodesByIDs
+	if m, ok := c.store.(storepkg.NodesByIDsMeteredCapability); ok && tally != nil && c.meterableStore() {
+		read = func(ids []types.NodeID) ([]*types.Node, error) { return m.GetNodesByIDsMetered(ids, tally) }
+	}
+	nodes, err := read(ids)
 	if err != nil {
 		return nil, err
 	}

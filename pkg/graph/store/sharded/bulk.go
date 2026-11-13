@@ -97,6 +97,14 @@ func (s *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) 
 // pool every other multi-shard read in this file uses (forEachShardErr) —
 // this was the one multi-shard read left applying its buckets sequentially.
 func (s *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
+	return s.GetNodesByIDsMetered(ids, nil)
+}
+
+var _ storecontract.NodesByIDsMeteredCapability = (*Store)(nil)
+
+// GetNodesByIDsMetered is GetNodesByIDs counting in t (nil: nothing) the bytes
+// of each row a slot decodes on a cache miss, before the decode (RH list R2).
+func (s *Store) GetNodesByIDsMetered(ids []types.NodeID, t *storecontract.ReadTally) ([]*types.Node, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -122,7 +130,7 @@ func (s *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	errs := make([]error, len(bucketIdx))
 	runShardPool(len(bucketIdx), func(i int) {
 		idx := bucketIdx[i]
-		slices[i], errs[i] = s.shards[idx].GetNodesByIDs(buckets[idx])
+		slices[i], errs[i] = s.shards[idx].GetNodesByIDsMetered(buckets[idx], t)
 	})
 	if err := errors.Join(errs...); err != nil {
 		return nil, err

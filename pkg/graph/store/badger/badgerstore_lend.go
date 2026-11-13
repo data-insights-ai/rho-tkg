@@ -11,22 +11,35 @@ var _ storecontract.EntityLendCapability = (*Store)(nil)
 // (store.EntityLendCapability): the cached entry on a hit, the decoded row
 // (then cached, as GetNode caches it) on a miss.
 func (bs *Store) LendNode(nid types.NodeID) (*types.Node, error) {
+	return bs.LendNodeMetered(nid, nil)
+}
+
+// LendRelationship is LendNode for relationships.
+func (bs *Store) LendRelationship(rid types.RelID) (*types.Relationship, error) {
+	return bs.LendRelationshipMetered(rid, nil)
+}
+
+// LendNodeMetered is LendNode counting in t (nil: nothing) the bytes of the row
+// it decodes on a cache miss, before the decode, and returning the budget error
+// instead of the row past a limit (RH list R2). A cache hit decodes nothing and
+// counts nothing.
+func (bs *Store) LendNodeMetered(nid types.NodeID, t *storecontract.ReadTally) (*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	return bs.prefetchNode(nid)
+	return bs.prefetchNodeTallied(nid, t)
 }
 
-// LendRelationship is LendNode for relationships.
-func (bs *Store) LendRelationship(rid types.RelID) (*types.Relationship, error) {
+// LendRelationshipMetered is LendNodeMetered for relationships.
+func (bs *Store) LendRelationshipMetered(rid types.RelID, t *storecontract.ReadTally) (*types.Relationship, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	return bs.prefetchRel(rid)
+	return bs.prefetchRelTallied(rid, t)
 }

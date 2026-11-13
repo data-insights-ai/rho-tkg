@@ -10,6 +10,8 @@ var _ storecontract.ReadSnapshotCapability = (*Store)(nil)
 
 var _ storecontract.ReadSnapshotLendCapability = (*readSnapshot)(nil)
 
+var _ storecontract.ReadSnapshotMeterCapability = (*readSnapshot)(nil)
+
 // NewReadSnapshot returns a store.ReadSnapshot (backlog 55) that routes every
 // read to the slot the ID routes to, as the store's own reads do, and reads
 // it through that slot's badger snapshot (opened on the slot's first read):
@@ -21,6 +23,16 @@ func (s *Store) NewReadSnapshot() storecontract.ReadSnapshot {
 type readSnapshot struct {
 	s     *Store
 	slots map[*badger.Store]storecontract.ReadSnapshot
+	tally *storecontract.ReadTally // RH list R2: every slot snapshot counts its decodes in it
+}
+
+// MeterReads implements store.ReadSnapshotMeterCapability: the snapshots of
+// every slot, now and when opened later, count the bytes they decode in t.
+func (r *readSnapshot) MeterReads(t *storecontract.ReadTally) {
+	r.tally = t
+	for _, snap := range r.slots {
+		snap.(storecontract.ReadSnapshotMeterCapability).MeterReads(t)
+	}
 }
 
 func (r *readSnapshot) slot(id int64) (storecontract.ReadSnapshot, error) {
@@ -34,6 +46,9 @@ func (r *readSnapshot) slot(id int64) (storecontract.ReadSnapshot, error) {
 	snap, ok := r.slots[shard]
 	if !ok {
 		snap = shard.NewReadSnapshot()
+		if r.tally != nil {
+			snap.(storecontract.ReadSnapshotMeterCapability).MeterReads(r.tally)
+		}
 		r.slots[shard] = snap
 	}
 	return snap, nil

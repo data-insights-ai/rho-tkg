@@ -661,6 +661,7 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 	// before backlog 38 a re-imported ID's current row shares version
 	// numbers with the earlier life's history.
 	hydrated := make(map[int]*types.Node)
+	var budget error // a read budget's refusal ends the read: no full-chain fallback decodes more
 	hydrate := func(p effPiece[*types.Node]) (*types.Node, bool) {
 		if p.src >= len(metas) {
 			return p.row, true // the current row (or the resolver's normalized copy of it)
@@ -670,6 +671,9 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 		}
 		full, err := rd.lentNodeVersion(id, metas[p.src].Version)
 		if err != nil {
+			if errors.Is(err, storepkg.ErrReadBudget) {
+				budget = err
+			}
 			return nil, false
 		}
 		row, ok := nodeRowAtTx(c.axis(), full, pin)
@@ -686,7 +690,7 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 		}
 		row, ok := hydrate(p)
 		if !ok {
-			return nil, false, nil
+			return nil, budget != nil, budget
 		}
 		segs = append(segs, nodeSegment(p.from, p.to, row))
 	}
@@ -726,6 +730,7 @@ func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, curre
 	// before backlog 38 a re-imported ID's current row shares version
 	// numbers with the earlier life's history.
 	hydrated := make(map[int]*types.Relationship)
+	var budget error // a read budget's refusal ends the read: no full-chain fallback decodes more
 	hydrate := func(p effPiece[*types.Relationship]) (*types.Relationship, bool) {
 		if p.src >= len(metas) {
 			return p.row, true // the current row (or the resolver's normalized copy of it)
@@ -735,6 +740,9 @@ func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, curre
 		}
 		full, err := rd.lentRelVersion(id, metas[p.src].Version)
 		if err != nil {
+			if errors.Is(err, storepkg.ErrReadBudget) {
+				budget = err
+			}
 			return nil, false
 		}
 		row, ok := relRowAtTx(c.axis(), full, pin)
@@ -748,7 +756,7 @@ func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, curre
 	for _, p := range pieces {
 		row, ok := hydrate(p)
 		if !ok {
-			return nil, false, nil
+			return nil, budget != nil, budget
 		}
 		segs = append(segs, relSegment(p.from, p.to, row))
 	}

@@ -9,6 +9,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -47,6 +48,14 @@ type decodeJob struct {
 // door. Cache hits are served inline (no promote — scan discipline) exactly as the
 // serial path.
 func (bs *Store) collectNodesBulkParallel(ids []types.NodeID) ([]*types.Node, error) {
+	return bs.collectNodesBulkParallelTallied(ids, nil)
+}
+
+// collectNodesBulkParallelTallied is collectNodesBulkParallel counting in t
+// (nil: nothing) the stored bytes of each row it stages for decoding, in the
+// serial pass before the copy, so a read past the budget stops before it copies
+// or decodes the row that passes it (RH list R2).
+func (bs *Store) collectNodesBulkParallelTallied(ids []types.NodeID, t *storecontract.ReadTally) ([]*types.Node, error) {
 	results := make([]*types.Node, len(ids))
 	var jobs []decodeJob
 
@@ -72,6 +81,9 @@ func (bs *Store) collectNodesBulkParallel(ids []types.NodeID) ([]*types.Node, er
 				return nil, err // a damaged table, not a delete
 			}
 			continue // deleted / orphaned index entry
+		}
+		if err := t.Decoded(int(item.ValueSize())); err != nil {
+			return nil, err
 		}
 		raw, cerr := item.ValueCopy(nil) // copy — bytes must outlive the txn
 		if cerr != nil {

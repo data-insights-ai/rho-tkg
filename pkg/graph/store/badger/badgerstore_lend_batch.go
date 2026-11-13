@@ -12,6 +12,11 @@ import (
 
 var _ storecontract.EntityLendBatchCapability = (*Store)(nil)
 
+var (
+	_ storecontract.EntityLendBatchMeteredCapability = (*Store)(nil)
+	_ storecontract.RelLendBatchMeteredCapability    = (*Store)(nil)
+)
+
 // LendNodesSorted implements store.EntityLendBatchCapability: the cache
 // answers its hits (no promotion), and the misses the store still lists are
 // read from one scanSnapshot, which re-pins after a flush (see its doc
@@ -19,9 +24,19 @@ var _ storecontract.EntityLendBatchCapability = (*Store)(nil)
 // close IDs or a run a long batch probes for (lendAfterMiss); they are not
 // filled into the cache.
 func (bs *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
+	return bs.LendNodesSortedMetered(ids, out, nil)
+}
+
+// LendNodesSortedMetered is LendNodesSorted under a read budget
+// (store.EntityLendBatchMeteredCapability): each row read from badger counts
+// its stored bytes in meter before it is decoded, so a read past the budget's
+// DecodedBytes stops before it decodes the row that passes it. A cache hit
+// decodes nothing and counts nothing. A nil meter is LendNodesSorted.
+func (bs *Store) LendNodesSortedMetered(ids []types.NodeID, out []*types.Node, meter *storecontract.ReadMeter) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
+	tally := meter.Tally("LendNodesSorted")
 	snap := newScanSnapshot(bs, bs.nodeCache.FlushEpoch)
 	defer snap.close()
 	for i, nid := range ids {
@@ -50,6 +65,9 @@ func (bs *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 			continue
 		}
 		if err := item.Value(func(val []byte) error {
+			if err := tally.Decoded(len(val)); err != nil {
+				return err
+			}
 			var w storepkg.NodeWire
 			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
@@ -70,9 +88,15 @@ func (bs *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 
 // LendRelationshipsSorted is LendNodesSorted for relationships.
 func (bs *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relationship) error {
+	return bs.LendRelationshipsSortedMetered(ids, out, nil)
+}
+
+// LendRelationshipsSortedMetered is LendNodesSortedMetered for relationships.
+func (bs *Store) LendRelationshipsSortedMetered(ids []types.RelID, out []*types.Relationship, meter *storecontract.ReadMeter) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
+	tally := meter.Tally("LendRelationshipsSorted")
 	snap := newScanSnapshot(bs, bs.relCache.FlushEpoch)
 	defer snap.close()
 	for i, rid := range ids {
@@ -101,6 +125,9 @@ func (bs *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relatio
 			continue
 		}
 		if err := item.Value(func(val []byte) error {
+			if err := tally.Decoded(len(val)); err != nil {
+				return err
+			}
 			var w storepkg.RelWire
 			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)

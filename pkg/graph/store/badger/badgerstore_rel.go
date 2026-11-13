@@ -735,9 +735,15 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 }
 
 func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
+	return bs.prefetchRelTallied(rid, nil)
+}
+
+// prefetchRelTallied is prefetchRel counting in t (nil: nothing) the bytes of
+// the row it decodes on a cache miss, before the decode (RH list R2).
+func (bs *Store) prefetchRelTallied(rid types.RelID, t *storecontract.ReadTally) (*types.Relationship, error) {
 	// Read before the badger read opens — see LoadCleanAt.
 	epoch := bs.relCache.FlushEpoch()
-	r, miss, err := bs.prefetchRelNoFill(rid, true) // point read: promote
+	r, miss, err := bs.prefetchRelNoFill(rid, true, t) // point read: promote
 	if err != nil || !miss {
 		return r, err
 	}
@@ -749,13 +755,13 @@ func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
 // prefetchNodeScan for the LRU scan pathology). Used by full-cardinality scans;
 // adjacency reads keep the filling prefetchRel.
 func (bs *Store) prefetchRelScan(rid types.RelID) (*types.Relationship, error) {
-	r, _, err := bs.prefetchRelNoFill(rid, false) // scan: no promote
+	r, _, err := bs.prefetchRelNoFill(rid, false, nil) // scan: no promote
 	return r, err
 }
 
 // prefetchRelNoFill is the shared core. miss=true means r was decoded from badger.
 // The result is frozen because callers may publish it into the cache.
-func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool) (r *types.Relationship, miss bool, err error) {
+func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool, t *storecontract.ReadTally) (r *types.Relationship, miss bool, err error) {
 	id := rid.SnowflakeID()
 	// Point reads promote (Get); scan reads do not (GetNoPromote) — see
 	// prefetchNodeNoFill for the concurrent-scan serialization this avoids.
@@ -787,6 +793,9 @@ func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool) (r *types.Rela
 			return err
 		}
 		return item.Value(func(val []byte) error {
+			if err := t.Decoded(len(val)); err != nil {
+				return err
+			}
 			var w storepkg.RelWire
 			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)

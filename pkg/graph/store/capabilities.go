@@ -101,6 +101,15 @@ type RelLendBatchMeteredCapability interface {
 	LendRelationshipsSortedMetered(ids []types.RelID, out []*types.Relationship, meter *ReadMeter) error
 }
 
+// NodesByIDsMeteredCapability is OPTIONAL (RH list R2): GetNodesByIDs counting
+// in t the stored bytes of each row the store decodes, before the decode
+// (ReadWork.DecodedBytes), and returning the budget error instead of the rows
+// past a limit. A row the entity cache serves decodes nothing and counts
+// nothing. A nil t is GetNodesByIDs. Badger, sharded and tiered.
+type NodesByIDsMeteredCapability interface {
+	GetNodesByIDsMetered(ids []types.NodeID, t *ReadTally) ([]*types.Node, error)
+}
+
 // ScanOrderCapability is OPTIONAL: whether the streaming label and type scans
 // (ForEachNodeByLabel, ForEachRelByType) walk members in ascending ID order from
 // a list kept between scans (true: no per-scan collect or sort) or collect and

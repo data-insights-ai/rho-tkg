@@ -14,6 +14,10 @@ import (
 // Mirror layout of the node-history methods in tieredstore_read_history.go.
 
 func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
+	return ts.getRelVersionVia(rid, version, directRelReads)
+}
+
+func (ts *Store) getRelVersionVia(rid types.RelID, version uint32, via relVia) (*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -25,7 +29,7 @@ func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 		return nil, err
 	}
 	defer checkin()
-	r, err := shard.GetRelVersion(rid, version)
+	r, err := via(shard).GetRelVersion(rid, version)
 	if err == nil || !errors.Is(err, ErrVersionNotFound) {
 		return r, err
 	}
@@ -33,7 +37,7 @@ func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 	// A live rel entity on this shard makes the local ErrVersionNotFound
 	// authoritative, except reference rels: archive/restore can leave history in
 	// refArchive while the live row is back on refShard.
-	liveHere, err := relationshipRowLive(shard, rid)
+	liveHere, err := relationshipRowLiveVia(shard, rid, via)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +49,7 @@ func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 				return nil, archiveErr
 			}
 			if archive != nil {
-				r, err := archive.GetRelVersion(rid, version)
+				r, err := via(archive).GetRelVersion(rid, version)
 				archiveCheckin()
 				if err == nil || !errors.Is(err, ErrVersionNotFound) {
 					return r, err
@@ -57,7 +61,7 @@ func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 
 	var found *types.Relationship
 	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
-		r, err := candidate.GetRelVersion(rid, version)
+		r, err := via(candidate).GetRelVersion(rid, version)
 		if errors.Is(err, ErrVersionNotFound) {
 			return false, nil
 		}
@@ -77,6 +81,10 @@ func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 }
 
 func (ts *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
+	return ts.getRelHistoryVia(rid, directRelReads)
+}
+
+func (ts *Store) getRelHistoryVia(rid types.RelID, via relVia) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -88,29 +96,29 @@ func (ts *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
 		return nil, err
 	}
 	defer checkin()
-	history, err := shard.GetRelHistory(rid)
+	history, err := via(shard).GetRelHistory(rid)
 	if err != nil {
 		return nil, err
 	}
 
-	liveHere, err := relationshipRowLive(shard, rid)
+	liveHere, err := relationshipRowLiveVia(shard, rid, via)
 	if err != nil {
 		return nil, err
 	}
 	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
-			return ts.relHistoryWithArchive(rid, shard, history)
+			return ts.relHistoryWithArchive(rid, shard, history, via)
 		}
 		return history, nil
 	}
 	if isArchive {
-		return ts.relHistoryWithReference(rid, shard, history)
+		return ts.relHistoryWithReference(rid, shard, history, via)
 	}
 
 	sources := relHistorySourcesFrom(shard, history)
 	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
-		history, err := candidate.GetRelHistory(rid)
+		history, err := via(candidate).GetRelHistory(rid)
 		if err != nil {
 			return false, err
 		}
@@ -650,14 +658,14 @@ func appendRelHistorySource(sources *[]relHistorySource, store *BadgerStore, his
 	*sources = append(*sources, relHistorySource{store: store, history: history})
 }
 
-func (ts *Store) relHistoryWithArchive(rid types.RelID, skip *BadgerStore, history []*types.Relationship) ([]*types.Relationship, error) {
+func (ts *Store) relHistoryWithArchive(rid types.RelID, skip *BadgerStore, history []*types.Relationship, via relVia) ([]*types.Relationship, error) {
 	sources := relHistorySourcesFrom(skip, history)
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
 		return nil, err
 	}
 	if archive != nil && archive != skip {
-		archiveHistory, err := archive.GetRelHistory(rid)
+		archiveHistory, err := via(archive).GetRelHistory(rid)
 		archiveCheckin()
 		if err != nil {
 			return nil, err
@@ -669,14 +677,14 @@ func (ts *Store) relHistoryWithArchive(rid types.RelID, skip *BadgerStore, histo
 	return mergeRelHistorySources(sources), nil
 }
 
-func (ts *Store) relHistoryWithReference(rid types.RelID, skip *BadgerStore, history []*types.Relationship) ([]*types.Relationship, error) {
+func (ts *Store) relHistoryWithReference(rid types.RelID, skip *BadgerStore, history []*types.Relationship, via relVia) ([]*types.Relationship, error) {
 	sources := relHistorySourcesFrom(skip, history)
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
 	}
 	if ref != skip {
-		refHistory, err := ref.GetRelHistory(rid)
+		refHistory, err := via(ref).GetRelHistory(rid)
 		refCheckin()
 		if err != nil {
 			return nil, err

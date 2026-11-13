@@ -27,7 +27,9 @@ func (ts *Store) LendNodesSorted(ids []types.NodeID, out []*types.Node) error {
 // LendNodesSortedMetered is LendNodesSorted under a read budget
 // (store.EntityLendBatchMeteredCapability): each closed event shard it is about
 // to open counts one shard open in meter, and an open past the budget is
-// refused before it happens. A nil meter is LendNodesSorted.
+// refused before it happens. Each row a shard decodes (a cache miss) counts its
+// stored bytes in meter before the decode (ReadWork.DecodedBytes); a row the
+// shard's cache serves counts nothing. A nil meter is LendNodesSorted.
 func (ts *Store) LendNodesSortedMetered(ids []types.NodeID, out []*types.Node, meter *storecontract.ReadMeter) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -41,7 +43,10 @@ func (ts *Store) LendNodesSortedMetered(ids []types.NodeID, out []*types.Node, m
 	move := ts.lockMoveRead() // route and read see each row on one shard
 	defer move.unlock()
 	// Every position is routed to one shard, whose read sets its slot.
-	l := batchLend[types.NodeID, types.Node]{ids: ids, out: out, lend: lendNodesCaching}
+	tally := meter.Tally("LendNodesSorted")
+	l := batchLend[types.NodeID, types.Node]{ids: ids, out: out, lend: func(s *BadgerStore, ids []types.NodeID, out []*types.Node) error {
+		return lendNodesCaching(s, ids, out, tally)
+	}}
 	pending := l.all()
 	// lendListed reads the pending IDs store lists and keeps the others.
 	lendListed := func(store *BadgerStore) error {
@@ -119,7 +124,10 @@ func (ts *Store) LendRelationshipsSortedMetered(ids []types.RelID, out []*types.
 	}
 	move := ts.lockMoveRead() // route and read see each row on one shard
 	defer move.unlock()
-	l := batchLend[types.RelID, types.Relationship]{ids: ids, out: out, lend: lendRelsCaching}
+	tally := meter.Tally("LendRelationshipsSorted")
+	l := batchLend[types.RelID, types.Relationship]{ids: ids, out: out, lend: func(s *BadgerStore, ids []types.RelID, out []*types.Relationship) error {
+		return lendRelsCaching(s, ids, out, tally)
+	}}
 	pending := l.all()
 	// lendFound reads the IDs of ask that store lists and adds to pending
 	// those it does not list or lent no row for.
@@ -218,10 +226,10 @@ func (es *EventShard) readOnlyCheckout(ts *Store) func() (*BadgerStore, func(), 
 // round, and badger's batch lend would read every one from badger each time:
 // it keeps round 7's scan rule (no promotion, no fill; LENDCOST round 2,
 // ai-soc: LendByIDs 115 -> 629 s on v4.103.0). out[i] is nil where the shard
-// holds no row.
-func lendNodesCaching(store *BadgerStore, ids []types.NodeID, out []*types.Node) error {
+// holds no row. t (nil: none) counts the bytes of each row decoded on a miss.
+func lendNodesCaching(store *BadgerStore, ids []types.NodeID, out []*types.Node, t *storecontract.ReadTally) error {
 	for i, id := range ids {
-		n, err := store.LendNode(id)
+		n, err := store.LendNodeMetered(id, t)
 		if errors.Is(err, ErrNodeNotFound) {
 			out[i] = nil
 			continue
@@ -235,9 +243,9 @@ func lendNodesCaching(store *BadgerStore, ids []types.NodeID, out []*types.Node)
 }
 
 // lendRelsCaching is lendNodesCaching for relationships (LendRelationship).
-func lendRelsCaching(store *BadgerStore, ids []types.RelID, out []*types.Relationship) error {
+func lendRelsCaching(store *BadgerStore, ids []types.RelID, out []*types.Relationship, t *storecontract.ReadTally) error {
 	for i, id := range ids {
-		r, err := store.LendRelationship(id)
+		r, err := store.LendRelationshipMetered(id, t)
 		if errors.Is(err, ErrRelNotFound) {
 			out[i] = nil
 			continue

@@ -102,7 +102,7 @@ func (t *TempOps) RelEffectiveTimelinesByProperties(ctx context.Context, typeNam
 	}
 	validOK := pageValidKeep(c.axis(), opts)
 	var hit []int
-	err = streamEntityTimelines(c, ids, func(rd entityReads, id types.RelID) ([]temporal.RelSegment, error) {
+	err = streamEntityTimelinesMetered(c, meter.Tally("RelEffectiveTimelinesByProperties"), ids, func(rd entityReads, id types.RelID) ([]temporal.RelSegment, error) {
 		if err := checkCtx(ctx); err != nil {
 			return nil, err
 		}

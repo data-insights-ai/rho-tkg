@@ -50,3 +50,14 @@ type ReadSnapshotLendCapability interface {
 	LendNode(id types.NodeID) (*types.Node, error)
 	LendRelationship(id types.RelID) (*types.Relationship, error)
 }
+
+// ReadSnapshotMeterCapability is OPTIONAL on a ReadSnapshot (RH list R2): the
+// snapshot counts the bytes of every row it decodes from then on (current
+// rows, history versions with their anchors, history skeletons) in t, before
+// the decode, and a read past the budget's DecodedBytes returns the
+// *ReadBudgetError instead of the row. A row served from the store's entity
+// cache decodes nothing and counts nothing. A nil t stops counting. Badger,
+// sharded and tiered snapshots offer it.
+type ReadSnapshotMeterCapability interface {
+	MeterReads(t *ReadTally)
+}

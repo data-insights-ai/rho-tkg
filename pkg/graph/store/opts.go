@@ -144,6 +144,10 @@ func (o QueryOpts) WithReadMeter(m *ReadMeter, door string) QueryOpts {
 // ReadMeter returns the meter o counts in and its door name (nil: none).
 func (o QueryOpts) ReadMeter() (*ReadMeter, string) { return o.meter, o.meterDoor }
 
+// ReadTally returns o's meter bound to its door, for a store to count the
+// bytes it decodes (nil: no budget, nothing counted).
+func (o QueryOpts) ReadTally() *ReadTally { return o.meter.Tally(o.meterDoor) }
+
 // AddCandidates counts n candidates in o's meter (none: nothing), returning
 // the budget error past a limit.
 func (o QueryOpts) AddCandidates(n int) error { return o.meter.AddCandidates(o.meterDoor, n) }
