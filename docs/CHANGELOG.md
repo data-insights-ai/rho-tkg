@@ -15,9 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   next kick): only that shard's readers and writers wait, 47-61 ms at 5,000 rows a shard and 150-193 ms at 50,000; the
   rotation does not. A handle a cold read or late write opened is left to `IdleTimeout`; a reopened handle joins a
   change-log scope opened during the swap (as one reopened after `MoveShard` now does); a shard is skipped
-  while a change-log scope is open; in memory nothing changes. Day 6 of the measure test (64 MB hot, 8 MB warm, three
-  demoted shards): 245 MB of live heap instead of 610, 273 instead of 639 at 50,000 rows a day; without
-  `WarmMemTableSize` 350 instead of 610 (`tasks/evidence/R3/measure.txt` section F).
+  while a change-log scope is open; in memory nothing changes. A rotation that promotes the swapping shard back to hot
+  waits for its swap, and the shard keeps, or gets, a hot-size handle. Day 6 of the measure test (64 MB hot, 8 MB warm, three demoted shards, all
+  closed): 204.5 MB of live heap instead of 610, 225.8 instead of 639 at 50,000 rows a day, flat from day 3 at four
+  writable handles; without `WarmMemTableSize` 350 instead of 610 (`tasks/evidence/R3/measure.txt` section G).
 - **Handles and writes per tier** (R3): `ShardAccessStats` reports the open handles per tier (`ReferenceHandles`,
   `ArchiveHandles`, `HotHandles`, `WarmHandles`, `ColdHandles`, each `TierHandles{Writable, ReadOnly}`) and the
   writable checkouts per tier since `New` (`HotWrites`, `WarmWrites`, `ColdWrites`, kept across a retention drop).
