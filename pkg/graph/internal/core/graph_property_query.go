@@ -150,8 +150,20 @@ func (n *NodeOps) IDsByLabelAndPropertyValues(label, key string, values []any, o
 			ids, answered, err = c.propertyIDsQuery.NodeIDsByLabelAndPropertyKeys(tok, key, keysOf(forms), opts)
 			return err
 		})
-		if err != nil || answered {
-			return ids, err
+		if err != nil {
+			return nil, err
+		}
+		if answered {
+			// A native store that counts what it examines
+			// (PropertyQueryCandidatesMeteredCapability) counted each entry
+			// before it collected it; one that does not (memory) is counted
+			// here, before the answer is handed out.
+			if _, storeCounts := c.store.(storepkg.PropertyQueryCandidatesMeteredCapability); !storeCounts || !c.storeCountsReads {
+				if err := opts.AddCandidates(len(ids)); err != nil {
+					return nil, err
+				}
+			}
+			return ids, nil
 		}
 	}
 	nodes, err := n.ByLabelAndPropertyValues(label, key, values, opts)

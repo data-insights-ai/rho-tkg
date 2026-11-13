@@ -106,9 +106,22 @@ type RelLendBatchMeteredCapability interface {
 // NodesByLabelAndProperties (the composite lookup) count, under the
 // read meter in opts, each node they examine (an index's matches, or a label
 // scan's every node) as a candidate before they filter or decode it, so the
-// graph counts none after (READBUDGET step 8). Native badger, sharded, tiered.
+// graph counts none after (READBUDGET step 8); so does the ID-only lookup
+// NodeIDsByLabelAndPropertyKeys (R2, Sigma doors). Native badger, sharded,
+// tiered.
 type PropertyQueryCandidatesMeteredCapability interface {
 	CountsPropertyQueryCandidates()
+}
+
+// RelPropertyQueryCandidatesMeteredCapability is the relationship twin (R2,
+// Sigma doors): the store's RelationshipsByTypeAndProperty and
+// RelationshipsByTypeAndPropertyKeys count, under the read meter in opts, each
+// relationship they examine (an index's matches, or the type scan's every
+// relationship) as a candidate before they filter or decode it, and count the
+// bytes of each row they decode (ReadWork.DecodedBytes), so the graph counts
+// none after. Native badger, sharded, tiered.
+type RelPropertyQueryCandidatesMeteredCapability interface {
+	CountsRelPropertyQueryCandidates()
 }
 
 // NodesByIDsMeteredCapability is OPTIONAL (RH list R2): GetNodesByIDs counting

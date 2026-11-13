@@ -1296,6 +1296,34 @@ func (a *API) ByLabelAndPropertiesCtx(ctx context.Context, label string, values 
 	return ops.ByLabelAndProperties(label, values, opts)
 }
 
+// budgetedIDsPropertyOps is the read-budget form of the ID-only property
+// lookup; the graph's own Ops implement it.
+type budgetedIDsPropertyOps interface {
+	IDsByLabelAndPropertyValuesCtx(ctx context.Context, label, key string, values []any, opts storepkg.QueryOpts) ([]types.NodeID, error)
+}
+
+// IDsByLabelAndPropertyValuesCtx is IDsByLabelAndPropertyValues under ctx's
+// read budget (store.WithReadBudget): the entries it examines count as
+// candidates inside the store before they are collected or filtered (an
+// index's matches, each admitted as the walk produces it; a fallback that
+// reads the rows counts as ByLabelAndPropertyValuesCtx), and past a limit it
+// returns *store.ReadBudgetError (store.ErrReadBudget) and no IDs. Without a
+// budget in ctx it is IDsByLabelAndPropertyValues after a ctx check. An Ops
+// without the budgeted doors answers unmetered.
+func (a *API) IDsByLabelAndPropertyValuesCtx(ctx context.Context, label, key string, values []any, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedIDsPropertyOps); ok {
+		return b.IDsByLabelAndPropertyValuesCtx(ctx, label, key, values, opts)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.IDsByLabelAndPropertyValues(label, key, values, opts)
+}
+
 // budgetedIDOps is the read-budget form of the by-ID doors; the graph's own
 // Ops implement it.
 type budgetedIDOps interface {

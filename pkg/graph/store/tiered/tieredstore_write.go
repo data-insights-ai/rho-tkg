@@ -194,6 +194,12 @@ func (ts *Store) validatePropertyIndexDDL(tokenErr error, propertyKey string, op
 	return nil
 }
 
+// CountsRelPropertyQueryCandidates marks store.RelPropertyQueryCandidatesMeteredCapability:
+// each shard counts its index's matches (badger) or its type (the fallback
+// scan) before it reads a row, and the archive and each closed event shard
+// charge their open to the read's meter before it.
+func (ts *Store) CountsRelPropertyQueryCandidates() {}
+
 // RelationshipsByTypeAndProperty folds every shard's matches — reference,
 // archive at DepthAll, event shards by opts.Depth — into one ID-sorted,
 // paginated result. Each shard answers under the anchor's index semantics
@@ -245,7 +251,16 @@ func (ts *Store) relsByTypePropertyKeys(relTypeToken uint16, key string, opts Qu
 		if shardPropertyDoor(have, has, elements) {
 			return store.RelationshipsByTypeAndPropertyKeys(relTypeToken, key, targetKeys, shardOpts)
 		}
-		rels, err := store.RelationshipsByType(relTypeToken, QueryOpts{After: shardOpts.After})
+		if m, _ := shardOpts.ReadMeter(); m != nil { // the shard's type counts before the fallback scan reads a row
+			n, err := store.RelCountByType(relTypeToken)
+			if err != nil {
+				return nil, err
+			}
+			if err := shardOpts.AddCandidates(n); err != nil {
+				return nil, err
+			}
+		}
+		rels, err := store.RelationshipsByType(relTypeToken, QueryOpts{After: shardOpts.After}.WithReadMeter(shardOpts.ReadMeter())) // the scan decodes under the same budget
 		if err != nil {
 			return nil, err
 		}
@@ -273,7 +288,7 @@ func (ts *Store) relsByTypePropertyKeys(relTypeToken uint16, key string, opts Qu
 	parts := [][]*types.Relationship{refRels}
 	if opts.Depth == DepthAll {
 		ts.refArchiveGapHook()
-		archive, archiveCheckin, err := ts.checkoutArchive()
+		archive, archiveCheckin, err := ts.checkoutArchiveCharged(opts.ReadTally()) // a budget's shard opens (R2)
 		if err != nil {
 			return nil, err
 		}
@@ -294,7 +309,7 @@ func (ts *Store) relsByTypePropertyKeys(relTypeToken uint16, key string, opts Qu
 	results := make([][]*types.Relationship, len(eventShards))
 	errs := make([]error, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreReadOnly(ts)
+		store, release, err := es.checkoutBudgeted(ts, opts.ReadTally())
 		if err != nil {
 			errs[i] = err
 			return

@@ -868,10 +868,14 @@ func pageTxMembers[ID cmp.Ordered](members []indexpkg.TxMember[ID], after ID, li
 	return members[:min(max(limit, 0), len(members))]
 }
 
-// relCurrentCandidatesLocked returns the relationships (unsorted, possibly
-// repeated) whose current entries under the definition (relTypeToken,
-// propertyKey) carry one of valueKeys. Caller holds idxMu (R or W).
-func (bs *Store) relCurrentCandidatesLocked(relTypeToken uint16, propertyKey string, valueKeys []string) ([]types.RelID, error) {
+// relCurrentCandidatesAdmitLocked returns the relationships (unsorted,
+// possibly repeated) whose current entries under the definition (relTypeToken,
+// propertyKey) carry one of valueKeys. admit (nil: none) is a read budget's
+// candidate admission (R2): it runs after each live entry the walk collects,
+// and its error stops the walk there, so a read past its limit has visited the
+// entries up to the one that passed it, not the whole key. Caller holds idxMu
+// (R or W).
+func (bs *Store) relCurrentCandidatesAdmitLocked(relTypeToken uint16, propertyKey string, valueKeys []string, admit func() error) ([]types.RelID, error) {
 	var prefixes [][]byte
 	for _, vk := range valueKeys {
 		if p, ok := bs.entityIndexValuePrefix(storepkg.EntityIndexRelCurrent, relTypeToken, propertyKey, vk); ok {
@@ -879,11 +883,11 @@ func (bs *Store) relCurrentCandidatesLocked(relTypeToken uint16, propertyKey str
 		}
 	}
 	var rids []types.RelID
-	err := bs.entityIndexWalkLocked(storepkg.EntityIndexRelCurrent, prefixes, func(key []byte) {
+	err := bs.entityIndexWalkAdmitLocked(storepkg.EntityIndexRelCurrent, prefixes, func(key []byte) {
 		if _, id, _, ok := storepkg.EntityIndexEntryOf(key, storepkg.EntityIndexRelCurrent); ok {
 			rids = append(rids, types.RelID(id))
 		}
-	})
+	}, nil, admit)
 	return rids, err
 }
 

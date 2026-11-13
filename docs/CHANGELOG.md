@@ -60,6 +60,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `badger.Store.RelRowDecodesForTest`. Red: with the doors counting candidates only, `GetByIDsCtx` counted 0 decoded
   bytes over cold rows on badger, sharded and tiered, and under `ShardOpens` 1 all three doors answered after opening
   3 closed shards (`tasks/evidence/READBUDGET/sigma-doors-a.txt`).
+- **R2, Sigma doors, group A: the property lookups Sigma reads under a read budget.** `Rels().ByTypeAndPropertyCtx` and
+  `Nodes().IDsByLabelAndPropertyValuesCtx`. The relationship lookup counts each index match inside the store before its
+  row is decoded (RAM index, on-disk index admitted as its walk produces it, and for a key without an index the type's
+  every relationship before the scan), then the bytes of each row decoded and, on tiered, the archive's and each closed
+  event shard's open before it (new `store.RelPropertyQueryCandidatesMeteredCapability` on badger, sharded and tiered; a
+  tiered type scan under a budget decodes through the same meter). A read at a time coordinate is refused under a budget
+  (`"unsupported"`): its history resolver counts nothing; without a budget it is the plain door. The ID-only lookup
+  (`NodeIDsByLabelAndPropertyKeys` on badger and tiered) now counts each posting as it walks, RAM or disk, before it
+  collects it: badger called the unadmitted `propertyIndexDiskKeysCandidatesLocked`, so a budget of 1 over 96 matches
+  visits all 96 index entries when the count comes after the walk; it visits 2 on badger and on tiered (three shards).
+  Red (count after the walk): 96 entries on badger for both doors, on tiered 32 for the ID door and 96 for the
+  relationship door (`tasks/evidence/READBUDGET/sigma-doors-a.txt`).
 
 ### Changed
 

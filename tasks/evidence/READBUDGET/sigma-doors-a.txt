@@ -40,3 +40,55 @@ GREEN: same command, all pass (badger, sharded, tiered x pending, flushed; memor
 Mutations caught: tiered getUniqueRelationshipsByIDs reading a candidate shard uncharged -> ShardOpens_TieredDoors/Rels_GetByIDs
 red; badger GetRelationshipsByIDsMetered reading through the untallied prefetch -> DecodedBytes_RelGetByIDs (badger,
 sharded) and ProbeMatrix (badger, sharded, flushed) red.
+
+== Group 2: Rels().ByTypeAndPropertyCtx, Nodes().IDsByLabelAndPropertyValuesCtx ==
+
+RED 1 (the Ctx doors only put the meter in QueryOpts and call the plain door: nothing in the stores counts), go test -run
+'TestReadBudget_RelByTypeAndPropertyCtx|TestReadBudget_IDsByLabelAndPropertyValuesCtx|TestReadBudget_DecodedBytes_RelByTypeAndProperty|
+TestReadBudget_DiskLookupDoorsAdmitAsProduced|TestReadBudget_ShardOpens_TieredDoors|TestReadBudget_ProbeMatrix' ./pkg/graph/internal/core, abridged:
+
+  --- FAIL: TestReadBudget_RelByTypeAndPropertyCtx/{memory,badger,sharded,tiered}
+      indexed: within budget = [2 rels], <nil>, work {Candidates:0 ...}; want the plain answer and 2 candidates
+  --- FAIL: TestReadBudget_IDsByLabelAndPropertyValuesCtx/{memory,badger,tiered}
+      one value: within budget = [2 ids], <nil>, work {Candidates:0 ...}; want [2 ids] and 2 candidates
+  --- FAIL: TestReadBudget_DecodedBytes_RelByTypeAndProperty/{badger,sharded,tiered}
+      rel property: cold counted 0 decoded bytes, want at least 600
+  --- FAIL: TestReadBudget_DiskLookupDoorsAdmitAsProduced/{badger,tiered}/{IDs_current,rel_property_current}
+      unlimited counted 0 candidates, want at least 96
+  --- FAIL: TestReadBudget_ShardOpens_TieredDoors/Rels_ByTypeAndProperty_current
+      under ShardOpens 1 = "[3 ids]", <nil> (work {Candidates:0 ... ShardOpens:0 ...}, 3 closed shards opened); want a shard-opens refusal and no rows
+  --- FAIL: TestReadBudget_ProbeMatrix/{badger,sharded,tiered}/pending
+      rel property current over 8 matches: unlimited counted 0 candidates, want at least 8
+  --- FAIL: TestReadBudget_ProbeMatrix/{badger,sharded,tiered}/flushed
+      rel property current over 8 matches: unlimited counted 0 decoded bytes over cold rows
+  (the ID-only lookup already charged ShardOpens: its tiered fan-out is the node doors', checkoutBudgeted.)
+
+RED 2 (the unadmitted disk walk, the form the ID-only lookup had: collect every posting, then count): with the store's
+walks changed to collect the whole key and count it after, a Candidates budget of 1 over a key of 96 matches kept on disk
+visits, by badger's own index-entry counter (CountIndexEntriesVisitedForTest):
+
+  --- FAIL: TestReadBudget_DiskLookupDoorsAdmitAsProduced
+      badger/IDs_current:           budget 1 visited 96 index entries (an unbudgeted read 96, 96 matches); want at most 6
+      badger/rel_property_current:  budget 1 visited 96 index entries (an unbudgeted read 96, 96 matches); want at most 6
+      tiered/IDs_current:           budget 1 visited 32 index entries (an unbudgeted read 96, 96 matches); want at most 18
+      tiered/rel_property_current:  budget 1 visited 96 index entries (an unbudgeted read 96, 96 matches); want at most 18
+
+What is counted (green):
+  ByTypeAndPropertyCtx  Candidates: each match of an index (RAM: per batch of the posting walk; disk: per entry, each admitted
+                        as the walk produces it, relCurrentCandidatesAdmitLocked); a key without an index: the type's every
+                        relationship before the scan (badger typeIDs; tiered per shard; core meterTypeScan on memory and
+                        wrapper stores). DecodedBytes: each row decoded on a cache miss (prefetchRelScanTallied), also in a
+                        type scan (RelationshipsByType under the meter). ShardOpens (tiered): archive and each closed
+                        event shard, before the open (checkoutArchiveCharged, checkoutBudgeted).
+                        A read at a time coordinate (TxAt, TxPin, ValidAt, interval) under a budget: Limit "unsupported",
+                        nothing counted, no rows (its history resolver, temporal.go, counts nothing).
+  IDsByLabelAndPropertyValuesCtx
+                        Candidates: each posting of the looked-up values, before the label filter and the collect (RAM index
+                        per posting, disk index through propertyIndexDiskKeysCandidatesAdmitLocked), on badger and on every
+                        tiered shard; memory counts the answer's length in the core. ShardOpens (tiered): the node fan-out's
+                        charges. No row is decoded on the index path; a fallback to rows counts as ByLabelAndPropertyValuesCtx.
+GREEN: same command, all pass. Budget 1 over 96 matches visits 2 index entries on badger and on tiered (3 shards), both
+doors. Mutations caught: the rel RAM lookup not counting its batch -> RelByTypeAndPropertyCtx (badger, sharded, tiered) and
+ProbeMatrix red; the tiered event-shard fan-out checkoutStoreReadOnly instead of checkoutBudgeted -> ShardOpens_TieredDoors/
+Rels_ByTypeAndProperty_current red; the lookup's decode through the untallied prefetch -> DecodedBytes_RelByTypeAndProperty
+and ProbeMatrix red.

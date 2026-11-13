@@ -62,6 +62,10 @@ func (s *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) er
 	})
 }
 
+// CountsRelPropertyQueryCandidates marks store.RelPropertyQueryCandidatesMeteredCapability:
+// every shard is a badger store that counts.
+func (s *Store) CountsRelPropertyQueryCandidates() {}
+
 // RelationshipsByTypeAndProperty folds each shard's accelerated equality
 // matches into one globally ID-sorted, paginated result; each shard answers
 // the same page, as in NodesByLabelAndProperty (backlog 72).

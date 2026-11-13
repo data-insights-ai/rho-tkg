@@ -245,7 +245,7 @@ func TestReadBudget_DecodedBytes_RelPresenceAndStampsDecodeNoRow(t *testing.T) {
 
 // TestReadBudget_UnsupportedStoreRefusesRelDoors: on a wrapper around a native
 // store, which does not count decodes or shard opens, the relationship doors
-// refuse a budget bounding them before any work (ErrReadBudget, Limit
+// (and the two property lookups Sigma reads) refuse a budget bounding them before any work (ErrReadBudget, Limit
 // "unsupported"), and answer under a budget bounding only the candidates the
 // core counts, through the wrapper's own reads.
 func TestReadBudget_UnsupportedStoreRefusesRelDoors(t *testing.T) {
@@ -265,7 +265,18 @@ func TestReadBudget_UnsupportedStoreRefusesRelDoors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := g.Nodes.Add(ctx, []string{"U"}, map[string]any{"k": int64(1)}); err != nil {
+		t.Fatal(err)
+	}
 	doors := map[string]func(ctx context.Context) error{
+		"ByTypeAndProperty": func(ctx context.Context) error {
+			_, err := g.Rels.ByTypeAndPropertyCtx(ctx, "R", "k", int64(1), storepkg.QueryOpts{})
+			return err
+		},
+		"IDsByLabelAndPropertyValues": func(ctx context.Context) error {
+			_, err := g.Nodes.IDsByLabelAndPropertyValuesCtx(ctx, "U", "k", []any{int64(1)}, storepkg.QueryOpts{})
+			return err
+		},
 		"GetByIDs": func(ctx context.Context) error {
 			_, err := g.Rels.GetByIDsCtx(ctx, []types.RelID{r.ID()})
 			return err

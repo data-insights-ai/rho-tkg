@@ -103,6 +103,14 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							r, err := g.Rels.GetByIDsCtx(ctx, relIDs)
 							return len(r), err
 						}},
+						{"rel property current", true, func(ctx context.Context) (int, error) {
+							r, err := g.Rels.ByTypeAndPropertyCtx(ctx, rtbType, "device", fmt.Sprintf("d%d", size), storepkg.QueryOpts{})
+							return len(r), err
+						}},
+						{"IDs current", false, func(ctx context.Context) (int, error) {
+							r, err := g.Nodes.IDsByLabelAndPropertyValuesCtx(ctx, "D", "k", []any{int64(size)}, storepkg.QueryOpts{})
+							return len(r), err
+						}},
 						{"property current", false, func(ctx context.Context) (int, error) {
 							r, err := g.Nodes.ByLabelAndPropertyCtx(ctx, "D", "k", int64(size), storepkg.QueryOpts{})
 							return len(r), err
@@ -145,7 +153,7 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							t.Fatalf("%s: unlimited counted 0 decoded bytes over cold rows", what)
 						}
 						switch d.name {
-						case "property current", "composite current", "property TxPin", "property ValidAt":
+						case "property current", "composite current", "property TxPin", "property ValidAt", "rel property current", "IDs current":
 							if total.Candidates < uint64(size) { // an index lookup counts each match
 								t.Fatalf("%s: unlimited counted %d candidates, want at least %d", what, total.Candidates, size)
 							}

@@ -153,6 +153,9 @@ func (bs *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) e
 	return bs.flushIfNeeded()
 }
 
+// CountsRelPropertyQueryCandidates marks store.RelPropertyQueryCandidatesMeteredCapability.
+func (bs *Store) CountsRelPropertyQueryCandidates() {}
+
 // RelationshipsByTypeAndProperty returns relationships with the rel-type token and
 // property value, applying temporal/pagination options; uses the rel property
 // index if one exists, else a type scan + property filter.
@@ -197,8 +200,13 @@ func (bs *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 	bs.idxMu.RLock()
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
 	if idx, ok := bs.relPropertyIndexes[key]; ok && idx.Mutated == nil && idx.OnDisk() {
-		// RELDISK: the keys' current entries on disk.
-		rids, err := bs.relCurrentCandidatesLocked(relTypeToken, propKey, targetKeys)
+		// RELDISK: the keys' current entries on disk, each admitted as the walk
+		// produces it under a read budget (R2).
+		var admit func() error
+		if m, _ := opts.ReadMeter(); m != nil {
+			admit = func() error { return opts.AddCandidates(1) }
+		}
+		rids, err := bs.relCurrentCandidatesAdmitLocked(relTypeToken, propKey, targetKeys, admit)
 		bs.idxMu.RUnlock()
 		if err != nil || len(rids) == 0 {
 			return nil, err
@@ -218,6 +226,9 @@ func (bs *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 			return nil, nil
 		}
 		return pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Relationship, error) {
+			if err := opts.AddCandidates(len(batch)); err != nil { // each match before its filter and decode
+				return nil, err
+			}
 			rids := bs.filterRelIDsByTemporalPeek(storepkg.ToRelIDs(batch), page)
 			return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, match, elements, rids, page)
 		})
@@ -231,6 +242,10 @@ func (bs *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 	if len(rids) == 0 {
 		return nil, nil
 	}
+	// The type's every relationship counts before the scan reads one.
+	if err := opts.AddCandidates(len(rids)); err != nil {
+		return nil, err
+	}
 	storepkg.SortRelIDs(rids)
 	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, match, scanElements, rids, opts)
 }
@@ -242,8 +257,9 @@ func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey string,
 	}
 	hasTemporal := opts.HasValidTimeFilter()
 	rels := make([]*types.Relationship, 0, capForLimit(opts.Limit))
+	tally := opts.ReadTally()
 	for _, rid := range rids {
-		r, err := bs.prefetchRelScan(rid)
+		r, err := bs.prefetchRelScanTallied(rid, tally)
 		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
 				continue // orphaned index entry

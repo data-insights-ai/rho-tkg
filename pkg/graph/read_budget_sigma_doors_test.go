@@ -79,3 +79,72 @@ func TestReadBudgetPublicRelByIDDoors(t *testing.T) {
 		})
 	}
 }
+
+// TestReadBudgetPublicLookupDoors (RH list R2): Rels().ByTypeAndPropertyCtx
+// and Nodes().IDsByLabelAndPropertyValuesCtx reach the graph's budgeted
+// lookups on every backend: without a budget the plain door's answer, an
+// index's matches counted as candidates, a budget smaller than the matches
+// refused with ErrReadBudget and no rows, and a relationship read at a time
+// coordinate (not budgeted) refused under a budget.
+func TestReadBudgetPublicLookupDoors(t *testing.T) {
+	t.Parallel()
+	for _, b := range allStoreBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			g := b.open(t)
+			ctx := context.Background()
+			if err := g.Index().CreateProperty("D", "k"); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Index().CreateRelProperty("R", "k"); err != nil {
+				t.Fatal(err)
+			}
+			a, err := g.Nodes().Add(ctx, []string{"D"}, map[string]any{"k": int64(7)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			z, err := g.Nodes().Add(ctx, []string{"D"}, map[string]any{"k": int64(7)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range 3 {
+				if _, err := g.Rels().Add(ctx, "R", a, z, map[string]any{"k": int64(7)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			wantRels, err := g.Rels().ByTypeAndProperty("R", "k", int64(7), store.QueryOpts{})
+			if err != nil || len(wantRels) != 3 {
+				t.Fatalf("plain rel lookup = %d, %v", len(wantRels), err)
+			}
+			uctx, meter := store.WithReadBudget(ctx, store.ReadBudget{})
+			gotRels, err := g.Rels().ByTypeAndPropertyCtx(uctx, "R", "k", int64(7), store.QueryOpts{})
+			if err != nil || len(gotRels) != 3 || meter.Work().Candidates != 3 {
+				t.Fatalf("ByTypeAndPropertyCtx = %d rows, %v, %+v; want 3 rows and 3 candidates", len(gotRels), err, meter.Work())
+			}
+			bctx, meter := store.WithReadBudget(ctx, store.ReadBudget{Candidates: 2})
+			gotRels, err = g.Rels().ByTypeAndPropertyCtx(bctx, "R", "k", int64(7), store.QueryOpts{})
+			if !errors.Is(err, store.ErrReadBudget) || gotRels != nil || meter.Work().Candidates < 3 {
+				t.Fatalf("ByTypeAndPropertyCtx of 3 under 2 = %d rows, %v, %+v; want ErrReadBudget and no rows", len(gotRels), err, meter.Work())
+			}
+			tctx, _ := store.WithReadBudget(ctx, store.ReadBudget{Candidates: 100})
+			if _, err := g.Rels().ByTypeAndPropertyCtx(tctx, "R", "k", int64(7), store.QueryOpts{TxAt: 1 << 60}); !errors.Is(err, store.ErrReadBudget) {
+				t.Fatalf("ByTypeAndPropertyCtx at a time coordinate under a budget = %v; want ErrReadBudget (unsupported)", err)
+			}
+
+			wantIDs, err := g.Nodes().IDsByLabelAndPropertyValues("D", "k", []any{int64(7)}, store.QueryOpts{})
+			if err != nil || len(wantIDs) != 2 {
+				t.Fatalf("plain ID lookup = %v, %v", wantIDs, err)
+			}
+			uctx, meter = store.WithReadBudget(ctx, store.ReadBudget{})
+			gotIDs, err := g.Nodes().IDsByLabelAndPropertyValuesCtx(uctx, "D", "k", []any{int64(7)}, store.QueryOpts{})
+			if err != nil || len(gotIDs) != 2 || gotIDs[0] != wantIDs[0] || gotIDs[1] != wantIDs[1] || meter.Work().Candidates != 2 {
+				t.Fatalf("IDsByLabelAndPropertyValuesCtx = %v, %v, %+v; want %v and 2 candidates", gotIDs, err, meter.Work(), wantIDs)
+			}
+			bctx, _ = store.WithReadBudget(ctx, store.ReadBudget{Candidates: 1})
+			gotIDs, err = g.Nodes().IDsByLabelAndPropertyValuesCtx(bctx, "D", "k", []any{int64(7)}, store.QueryOpts{})
+			if !errors.Is(err, store.ErrReadBudget) || gotIDs != nil {
+				t.Fatalf("IDsByLabelAndPropertyValuesCtx of 2 under 1 = %v, %v; want ErrReadBudget and no ids", gotIDs, err)
+			}
+		})
+	}
+}

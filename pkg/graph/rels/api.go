@@ -1133,6 +1133,37 @@ func (a *API) VersionBefore(id types.RelID, version uint32) (*types.Relationship
 	return ops.VersionBefore(id, version)
 }
 
+// budgetedPropertyOps is the read-budget form of the property equality door;
+// the graph's own Ops implement it.
+type budgetedPropertyOps interface {
+	ByTypeAndPropertyCtx(ctx context.Context, typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error)
+}
+
+// ByTypeAndPropertyCtx is ByTypeAndProperty under ctx's read budget
+// (store.WithReadBudget): each index match counts as a candidate inside the
+// store before its row is decoded (a key without an index counts the type's
+// every relationship before the scan reads one), then the stored bytes of
+// every row decoded (DecodedBytes) and, on tiered, each closed shard it is
+// about to open (ShardOpens); past a limit *store.ReadBudgetError
+// (store.ErrReadBudget) and no rows. A read at a time coordinate (TxAt,
+// TxPin, ValidAt, the valid interval) is not budgeted yet and is refused
+// under a budget (Limit "unsupported"); without a budget in ctx every read is
+// ByTypeAndProperty after a ctx check. An Ops without the budgeted doors
+// answers unmetered.
+func (a *API) ByTypeAndPropertyCtx(ctx context.Context, typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedPropertyOps); ok {
+		return b.ByTypeAndPropertyCtx(ctx, typeName, key, value, opts)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.ByTypeAndProperty(typeName, key, value, opts)
+}
+
 // budgetedIDOps is the read-budget form of the by-ID doors; the graph's own
 // Ops implement it.
 type budgetedIDOps interface {

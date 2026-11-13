@@ -49,9 +49,10 @@ func (bs *Store) fetchRelationshipsByTypeIDs(token uint16, ids []types.RelID, op
 	}
 	hasTemporal := opts.HasValidTimeFilter()
 	rels := make([]*types.Relationship, 0, capForLimit(opts.Limit))
+	tally := opts.ReadTally() // a budgeted fallback scan counts the bytes it decodes (R2)
 	for _, rid := range ids {
 		id := rid.SnowflakeID()
-		r, err := bs.prefetchRelScan(rid)
+		r, err := bs.prefetchRelScanTallied(rid, tally)
 		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
 				continue // index orphan or tombstone

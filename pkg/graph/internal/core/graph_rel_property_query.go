@@ -127,6 +127,26 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 		perForm = indexed
 	}
 	if lookup || perForm {
+		// Under a read budget a key without an index is the store's own type
+		// scan: the type counts before it, the index's matches after. A native
+		// store that counts its examined relationships itself
+		// (RelPropertyQueryCandidatesMeteredCapability) counts both, before it
+		// decodes a row.
+		_, storeCounts := c.store.(storepkg.RelPropertyQueryCandidatesMeteredCapability)
+		storeCounts = storeCounts && c.storeCountsReads
+		scanned := storeCounts
+		if m, _ := opts.ReadMeter(); m != nil && !storeCounts {
+			indexed, err := c.relPropertyIndexed(tok, key)
+			if err != nil {
+				return nil, err
+			}
+			if !indexed {
+				if err := c.meterTypeScan(tok, opts); err != nil {
+					return nil, err
+				}
+				scanned = true
+			}
+		}
 		var rels []*types.Relationship
 		if lookup {
 			found, err := c.relPropertyKeysQuery.RelationshipsByTypeAndPropertyKeys(tok, key, keys, opts)
@@ -156,10 +176,20 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 			}
 			rels = copyRelationshipRows(rels)
 		}
+		if !scanned {
+			if err := opts.AddCandidates(len(rels)); err != nil {
+				return nil, err
+			}
+		}
 		return rels, nil
 	}
 	// Fallback: type scan + property filter. Pagination is applied after
-	// filtering (the property predicate can drop arbitrary elements).
+	// filtering (the property predicate can drop arbitrary elements). Under a
+	// read budget the type's every relationship counts before the scan reads
+	// one.
+	if err := c.meterTypeScan(tok, opts); err != nil {
+		return nil, err
+	}
 	pageOpts := opts
 	pageOpts.Limit = 0
 	candidates, err := c.store.RelationshipsByType(tok, pageOpts)
@@ -187,6 +217,25 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 		out = copyRelationshipRows(out)
 	}
 	return out, nil
+}
+
+// meterTypeScan counts, under opts' read budget, the type's every relationship
+// a fallback scan examines, before the scan reads one (StatsCapability's
+// count; a store without it counts 0 here, so the scan is not refused in
+// advance). The relationship twin of meterLabelScan.
+func (c *Core) meterTypeScan(tok uint16, opts storepkg.QueryOpts) error {
+	if m, _ := opts.ReadMeter(); m == nil {
+		return nil
+	}
+	stats, ok := c.store.(storepkg.StatsCapability)
+	if !ok {
+		return nil
+	}
+	n, err := stats.RelCountByType(tok)
+	if err != nil {
+		return err
+	}
+	return opts.AddCandidates(n)
 }
 
 // relPropertyCurrentIDs returns the IDs of relationships whose CURRENT row matches

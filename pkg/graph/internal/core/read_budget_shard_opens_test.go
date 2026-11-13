@@ -22,7 +22,9 @@ import (
 // chain history search of NodeAsOfCtx for a node live nowhere,
 // RelEffectiveTimelinesByProperties, and the relationship by-ID doors
 // (Rels().GetByIDsCtx over rows in three shards, HasHistoryCtx and
-// LatestStampsCtx of a relationship live nowhere). A budget of 1 refuses with no rows and
+// LatestStampsCtx of a relationship live nowhere), and the property lookups
+// Rels().ByTypeAndPropertyCtx and Nodes().IDsByLabelAndPropertyValuesCtx over
+// three shards. A budget of 1 refuses with no rows and
 // opens at most one shard (the store's ColdOpens counter); unlimited, the
 // answer is the unbudgeted one and the meter counts exactly the opens.
 func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
@@ -179,6 +181,31 @@ func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
 				return "", err
 			}
 			return "has", nil
+		}},
+		{"Rels ByTypeAndProperty current", "ByTypeAndProperty", func(c context.Context) (string, error) {
+			r, err := g.Rels.ByTypeAndPropertyCtx(c, rtbType, "estate", "e1", storepkg.QueryOpts{})
+			if err != nil {
+				return "", err
+			}
+			if len(r) == 0 {
+				return "", errors.New("no rows")
+			}
+			var ids []int64
+			for _, row := range r {
+				ids = append(ids, int64(row.ID()))
+			}
+			slices.Sort(ids)
+			return fmt.Sprint(ids), nil
+		}},
+		{"IDsByLabelAndPropertyValues current", "IDsByLabelAndPropertyValues", func(c context.Context) (string, error) {
+			ids, err := g.Nodes.IDsByLabelAndPropertyValuesCtx(c, "Ev", "k", []any{int64(1)}, storepkg.QueryOpts{})
+			if err != nil {
+				return "", err
+			}
+			if len(ids) == 0 {
+				return "", errors.New("no ids")
+			}
+			return fmt.Sprint(ids), nil
 		}},
 		{"Rels LatestStamps", "LatestStamps", func(c context.Context) (string, error) {
 			f, to, del, err := g.Rels.LatestStampsCtx(c, goneRel)

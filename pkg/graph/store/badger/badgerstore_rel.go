@@ -755,7 +755,13 @@ func (bs *Store) prefetchRelTallied(rid types.RelID, t *storecontract.ReadTally)
 // prefetchNodeScan for the LRU scan pathology). Used by full-cardinality scans;
 // adjacency reads keep the filling prefetchRel.
 func (bs *Store) prefetchRelScan(rid types.RelID) (*types.Relationship, error) {
-	r, _, err := bs.prefetchRelNoFill(rid, false, nil) // scan: no promote
+	return bs.prefetchRelScanTallied(rid, nil)
+}
+
+// prefetchRelScanTallied is prefetchRelScan counting in t (nil: nothing) the
+// bytes of the row it decodes on a cache miss, before the decode (RH list R2).
+func (bs *Store) prefetchRelScanTallied(rid types.RelID, t *storecontract.ReadTally) (*types.Relationship, error) {
+	r, _, err := bs.prefetchRelNoFill(rid, false, t) // scan: no promote
 	return r, err
 }
 
