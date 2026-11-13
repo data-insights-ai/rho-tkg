@@ -165,7 +165,7 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 	var fill func([]effPiece[*types.Node], *headFacts)
 	var facts *headFacts // the fold's head facts, for the read counts
 	reason := headMissScan
-	if rd.snap == nil && !rd.scan {
+	if rd.snap == nil && !rd.scan && rd.tally == nil { // a budgeted read (a tally) counts the chain it reads: the head entry would skip it
 		reason = headMissNotQualifying // no current row: the chain ends in a delete
 		if current != nil {
 			epoch := c.nodeHistoryEpoch(id)
@@ -211,6 +211,7 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 		// ID's current row may share version numbers with history); each
 		// is read once for every pin.
 		full := make(map[int]*types.Node)
+		var budget error // a read budget's refusal ends the read: no full-chain fallback decodes more (RH list R2)
 		hydrate := func(src int, pin types.Instant, _ *types.Node) (*types.Node, bool) {
 			if src >= len(metas) {
 				return nodeRowAtTx(c.axis(), current, pin) // the lent current row
@@ -219,6 +220,9 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 			if !ok {
 				var err error
 				if f, err = rd.lentNodeVersion(id, metas[src].Version); err != nil {
+					if errors.Is(err, storepkg.ErrReadBudget) {
+						budget = err
+					}
 					return nil, false
 				}
 				full[src] = f
@@ -227,6 +231,9 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 		}
 		if out, ok := effectiveTimelinesOver(c, nodeKernel, chain, pins, nodeSegment, hydrate, fill); ok {
 			return out, nil
+		}
+		if budget != nil {
+			return nil, budget
 		}
 		// A winner vanished between the reads (e.g. a concurrent trim): fold
 		// the full chain, as nodeEffectiveViaTemporalMeta's caller does.
@@ -245,7 +252,12 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 // relEffectiveTimelinesLocked mirrors nodeEffectiveTimelinesLocked (the
 // relationship-type retention gate ran at the door).
 func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant) ([][]temporal.RelSegment, error) {
-	rd := entityReads{c: c}
+	return c.relEffectiveTimelinesFrom(entityReads{c: c}, id, pins)
+}
+
+// relEffectiveTimelinesFrom is relEffectiveTimelinesLocked reading through rd
+// (c.mu held).
+func (c *Core) relEffectiveTimelinesFrom(rd entityReads, id types.RelID, pins []types.Instant) ([][]temporal.RelSegment, error) {
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 	low := slices.Min(pins)
@@ -271,7 +283,7 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 		}
 	}
 	var fill func([]effPiece[*types.Relationship], *headFacts)
-	if rd.snap == nil && !rd.scan && current != nil {
+	if rd.snap == nil && !rd.scan && rd.tally == nil && current != nil {
 		epoch := c.relHistoryEpoch(id)
 		if out, ok := c.relHeadTimelines(rd, id, current, pins, epoch); ok {
 			return out, nil
@@ -306,6 +318,7 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 		// ID's current row may share version numbers with history); each
 		// is read once for every pin.
 		full := make(map[int]*types.Relationship)
+		var budget error // a read budget's refusal ends the read (RH list R2)
 		hydrate := func(src int, pin types.Instant, _ *types.Relationship) (*types.Relationship, bool) {
 			if src >= len(metas) {
 				return relRowAtTx(c.axis(), current, pin) // the lent current row
@@ -314,6 +327,9 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 			if !ok {
 				var err error
 				if f, err = rd.lentRelVersion(id, metas[src].Version); err != nil {
+					if errors.Is(err, storepkg.ErrReadBudget) {
+						budget = err
+					}
 					return nil, false
 				}
 				full[src] = f
@@ -322,6 +338,9 @@ func (c *Core) relEffectiveTimelinesLocked(id types.RelID, pins []types.Instant)
 		}
 		if out, ok := effectiveTimelinesOver(c, relKernel, chain, pins, relSegment, hydrate, fill); ok {
 			return out, nil
+		}
+		if budget != nil {
+			return nil, budget
 		}
 	}
 	history, err := rd.relHistory(id)

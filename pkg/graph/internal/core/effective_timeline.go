@@ -506,7 +506,7 @@ func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validF
 	// point read uses it; scans (rd.scan) never read or fill it.
 	var epoch uint64
 	reason := headMissScan
-	if rd.snap == nil && !rd.scan {
+	if rd.snap == nil && !rd.scan && rd.tally == nil { // a budgeted read (a tally) counts the chain it reads: the head entry would skip it
 		reason = headMissNotQualifying // no current row: the chain ends in a delete
 		if current != nil {
 			epoch = c.nodeHistoryEpoch(id)
@@ -595,7 +595,7 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 	// token and the current row hold (effective_head.go). Only the plain
 	// point read uses it; scans (rd.scan) never read or fill it.
 	var epoch uint64
-	if rd.snap == nil && !rd.scan && current != nil {
+	if rd.snap == nil && !rd.scan && rd.tally == nil && current != nil {
 		epoch = c.relHistoryEpoch(id)
 		if segs, ok := c.relHeadSegments(rd, id, current, pin, epoch); ok {
 			return segs, nil

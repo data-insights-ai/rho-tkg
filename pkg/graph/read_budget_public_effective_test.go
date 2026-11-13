@@ -148,3 +148,153 @@ func TestReadBudgetPublicScans(t *testing.T) {
 		})
 	}
 }
+
+// TestReadBudgetPublicTimelines: Temporal().NodeEffectiveTimelineCtx, its From
+// and many-pin forms and the relationship twins return the plain doors' answer
+// without a budget and under an unlimited one (one candidate, the history and
+// the segments counted), and refuse with no segments at a limit of 1 on
+// history or segments, on every backend (memory counts the versions of the
+// chain it reads).
+func TestReadBudgetPublicTimelines(t *testing.T) {
+	t.Parallel()
+	const updates = 12
+	for _, b := range allStoreBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			g := b.open(t)
+			ctx := context.Background()
+			a, err := g.Nodes().Add(ctx, []string{"Ev"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			z, err := g.Nodes().Add(ctx, []string{"Ev"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := g.Rels().Add(ctx, "R", a, z, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var mid types.Instant
+			for v := range updates {
+				if v == updates/2 {
+					if mid, err = g.Temporal().NowTx(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, err := g.Nodes().Update(ctx, a.ID(), map[string]any{"v": int64(v)}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := g.Rels().Update(ctx, r.ID(), map[string]any{"v": int64(v)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pin, err := g.Temporal().NowTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			tp := g.Temporal()
+			pins := []types.Instant{mid, pin, 0}
+			nodeStr := func(s []temporal.NodeSegment) string {
+				var out []string
+				for _, x := range s {
+					out = append(out, fmt.Sprintf("[%d,%d)v%d", x.ValidFrom, x.ValidTo, x.Node.Version()))
+				}
+				return fmt.Sprint(out)
+			}
+			relStr := func(s []temporal.RelSegment) string {
+				var out []string
+				for _, x := range s {
+					out = append(out, fmt.Sprintf("[%d,%d)v%d", x.ValidFrom, x.ValidTo, x.Rel.Version()))
+				}
+				return fmt.Sprint(out)
+			}
+			doors := []struct {
+				name  string
+				plain func() (string, int, error)
+				ctx   func(ctx context.Context) (string, int, error)
+			}{
+				{"node", func() (string, int, error) {
+					s, err := tp.NodeEffectiveTimeline(a.ID(), pin)
+					return nodeStr(s), len(s), err
+				},
+					func(c context.Context) (string, int, error) {
+						s, err := tp.NodeEffectiveTimelineCtx(c, a.ID(), pin)
+						return nodeStr(s), len(s), err
+					}},
+				{"node from", func() (string, int, error) {
+					s, err := tp.NodeEffectiveTimelineFrom(a.ID(), mid, pin)
+					return nodeStr(s), len(s), err
+				}, func(c context.Context) (string, int, error) {
+					s, err := tp.NodeEffectiveTimelineFromCtx(c, a.ID(), mid, pin)
+					return nodeStr(s), len(s), err
+				}},
+				{"node pins", func() (string, int, error) {
+					all, err := tp.NodeEffectiveTimelines(a.ID(), pins)
+					n := 0
+					for _, s := range all {
+						n += len(s)
+					}
+					return fmt.Sprint(len(all), nodeStr(all[0]), nodeStr(all[1])), n, err
+				}, func(c context.Context) (string, int, error) {
+					all, err := tp.NodeEffectiveTimelinesCtx(c, a.ID(), pins)
+					if err != nil {
+						return "", 0, err
+					}
+					n := 0
+					for _, s := range all {
+						n += len(s)
+					}
+					return fmt.Sprint(len(all), nodeStr(all[0]), nodeStr(all[1])), n, nil
+				}},
+				{"rel", func() (string, int, error) {
+					s, err := tp.RelEffectiveTimeline(r.ID(), pin)
+					return relStr(s), len(s), err
+				},
+					func(c context.Context) (string, int, error) {
+						s, err := tp.RelEffectiveTimelineCtx(c, r.ID(), pin)
+						return relStr(s), len(s), err
+					}},
+				{"rel pins", func() (string, int, error) {
+					all, err := tp.RelEffectiveTimelines(r.ID(), pins)
+					n := 0
+					for _, s := range all {
+						n += len(s)
+					}
+					return fmt.Sprint(len(all), relStr(all[0]), relStr(all[1])), n, err
+				}, func(c context.Context) (string, int, error) {
+					all, err := tp.RelEffectiveTimelinesCtx(c, r.ID(), pins)
+					if err != nil {
+						return "", 0, err
+					}
+					n := 0
+					for _, s := range all {
+						n += len(s)
+					}
+					return fmt.Sprint(len(all), relStr(all[0]), relStr(all[1])), n, nil
+				}},
+			}
+			for _, d := range doors {
+				want, segs, err := d.plain()
+				if err != nil || segs < 2 {
+					t.Fatalf("%s: plain = %q (%d segments), %v", d.name, want, segs, err)
+				}
+				if got, _, err := d.ctx(ctx); err != nil || got != want {
+					t.Fatalf("%s: no budget = %q, %v; want %q", d.name, got, err, want)
+				}
+				fctx, all := store.WithReadBudget(ctx, store.ReadBudget{})
+				if got, _, err := d.ctx(fctx); err != nil || got != want {
+					t.Fatalf("%s: unlimited = %q, %v; want %q", d.name, got, err, want)
+				}
+				if w := all.Work(); w.Candidates != 1 || w.Segments != uint64(segs) || w.HistoryExamined == 0 {
+					t.Fatalf("%s: unlimited work %+v; want 1 candidate, %d segments and history examined", d.name, w, segs)
+				}
+				for _, limit := range []store.ReadBudget{{HistoryExamined: 1}, {Segments: 1}, {BufferBytes: 1}} {
+					bctx, _ := store.WithReadBudget(ctx, limit)
+					if got, _, err := d.ctx(bctx); !errors.Is(err, store.ErrReadBudget) || got != "[]" && got != "" && got != "0 [] []" {
+						t.Fatalf("%s under %+v = %q, %v; want ErrReadBudget and no segments", d.name, limit, got, err)
+					}
+				}
+			}
+		})
+	}
+}

@@ -50,3 +50,38 @@ Mutations checked: chunk() ignoring BoundsOutput fails every Segments case (12 e
 Found on the way: the memory store has no read snapshot, so streamEntityTimelinesMetered never gave the entity
   reads their tally and RelEffectiveTimelinesByProperties counted no history versions on memory (a HistoryExamined
   budget never refused there). Fixed with the tally on the scan's reads: TestReadBudget_SigmaB_MemoryCountsHistory.
+
+=== GROUP 2: Temporal() NodeEffectiveTimelineCtx, NodeEffectiveTimelineFromCtx, NodeEffectiveTimelinesCtx,
+    RelEffectiveTimelineCtx, RelEffectiveTimelinesCtx ===
+
+Red (the Ctx doors stubbed to their plain doors), `go test -run 'TestReadBudget_SigmaB_Timeline' ./pkg/graph/internal/core`,
+46 failing subtests; a node and a relationship with 24 updates (25 segments):
+
+  TestReadBudget_SigmaB_Timelines/badger/pending/node_timeline
+    unlimited work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0};
+    want 1 candidate, 25 segments, 600 buffer bytes and the history looked at
+    (the plain read walks the whole chain and counts nothing; same for the From, many-pin and rel doors)
+  TestReadBudget_SigmaB_TimelineShardOpens/node_timeline
+    error <nil>, want ErrReadBudget at "shard opens"
+    (the plain read of a deleted node, live nowhere, had opened all 3 cold shards)
+
+Green (`go test -v -run 'TestReadBudget_SigmaB_Timelines/badger/flushed/node_timeline$'`), rows evicted first:
+
+  unlimited:          {Candidates:1 Segments:25 DecodedBytes:12500 HistoryExamined:48 BufferBytes:600}
+  HistoryExamined 1:  refused after {Candidates:1 Segments:0 DecodedBytes:445 HistoryExamined:2}
+  DecodedBytes 1:     refused after {Candidates:1 Segments:0 DecodedBytes:258 HistoryExamined:0}
+  Segments 1:         refused after {Candidates:1 Segments:2 DecodedBytes:12500 HistoryExamined:48 BufferBytes:24}
+  BufferBytes 1:      refused after {Candidates:1 Segments:1 ... BufferBytes:24}
+  (Segments and BufferBytes are charged after the read, before the answer is returned: they bound what is
+   returned, not what is read; HistoryExamined and DecodedBytes bound the read.)
+  A limit of exactly the unlimited count answers; one under refuses; a sweep of HistoryExamined limits at 1/2, 3/4
+  and all but one of the unlimited count refuses within the limit plus 2 counts, with no segments.
+  The single-entity, From, many-pin and rel doors agree on all three backends, pending and flushed.
+
+  Tiered shard opens (`TestReadBudget_SigmaB_TimelineShardOpens`, deleted node and rel, cold shards closed first):
+    the plain read opened 3 cold shards; under ShardOpens 1 the read opened 1 and refused (no segments);
+    unlimited it opened 3 and counted 3, for all 5 doors.
+
+Memory (public API, `TestReadBudgetPublicTimelines`): the doors count the versions of the chain they read; the
+  head-pin cache is skipped under a budget (a hit would read none, so memory and the disk stores would count
+  differently).

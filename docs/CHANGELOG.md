@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **R2 budgeted doors for Sigma, group B, step 2**, the per-entity timelines: `Temporal().NodeEffectiveTimelineCtx`,
+  `NodeEffectiveTimelineFromCtx`, `NodeEffectiveTimelinesCtx`, `RelEffectiveTimelineCtx` and `RelEffectiveTimelinesCtx`
+  return the plain doors' answer or `*store.ReadBudgetError` and no segments: one candidate before the read, the
+  history versions, decoded bytes and (tiered) shard opens through the metered read snapshot, each returned segment
+  and its size as buffer bytes before the answer is returned. A budgeted read skips the head-pin cache (a hit reads no
+  chain, so memory and the disk stores would count differently), and a refusal in a many-pin winner decode ends the
+  read instead of falling back to the full chain. Red: stubbed to the plain doors, 46 failing subtests, the plain read
+  of a deleted node opening all 3 cold shards (`tasks/evidence/READBUDGET/sigma-doors-b.txt`); tests:
+  `TestReadBudget_SigmaB_Timelines`, `_TimelineGates`, `_TimelineShardOpens`, `TestReadBudgetPublicTimelines`,
+  `TestReadBudgetTimelineWrappers`.
 - **R2 budgeted doors for Sigma, group B** (ai-soc RH list R2, "complete Sigma propagation"), step 1, the effective
   scans: `Temporal().ForEachNodeEffectiveByLabelCtx`, `ForEachNodeEffectiveByLabelsCtx`,
   `ForEachNodeEffectiveByLabelsFromCtx`, `ForEachRelEffectiveByTypeCtx` and `ForEachRelEffectiveByTypeFromCtx` stream
