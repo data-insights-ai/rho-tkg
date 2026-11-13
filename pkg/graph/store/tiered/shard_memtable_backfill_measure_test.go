@@ -59,12 +59,12 @@ func TestWarmMemTableBackfillWrite(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		writeMs := time.Since(t0)
+		writeDur := time.Since(t0)
 		t1 := time.Now()
 		if err := ts.Close(); err != nil {
 			t.Fatal(err)
 		}
-		closeMs := time.Since(t1)
+		closeDur := time.Since(t1)
 		pa, _, _, _ := smp.finish()
 		var after runtime.MemStats
 		runtime.ReadMemStats(&after)
@@ -76,7 +76,7 @@ func TestWarmMemTableBackfillWrite(t *testing.T) {
 			return nil
 		})
 		fmt.Fprintf(&b, "%-18s | %9.0f %9.0f %9.1f | %9.1f %9.1f %8d\n", fmt.Sprintf("%d MB", warm/mib),
-			float64(writeMs.Milliseconds()), float64(closeMs.Milliseconds()), 60/(writeMs+closeMs).Seconds(),
+			float64(writeDur.Milliseconds()), float64(closeDur.Milliseconds()), 60/(writeDur+closeDur).Seconds(),
 			float64(after.TotalAlloc-before.TotalAlloc)/mib, float64(pa)/mib, tables)
 	}
 	fmt.Print(b.String())
