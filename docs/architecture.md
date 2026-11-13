@@ -287,8 +287,8 @@ ADR-0012.
   the store's registries as the gate drops; writers to other shards never wait, the swapping shard's wait one swap
   (47-61 ms at 5,000 rows a shard, 150-193 ms at 50,000), and the rotation itself does not wait. It skips a shard
   while a change-log scope is open, stops at `Close` (which waits for it) and does nothing in memory. Day 6 of the
-  measure test at 64 MB hot and 8 MB warm: 245 MB of live heap against 610 before (`tasks/evidence/R3/measure.txt`
-  section F). A crash mid-swap leaves a hot-size WAL that the next writable open migrates, or a cleanly closed shard.
+  measure test at 64 MB hot and 8 MB warm: 204.5 MB of live heap at 5,000 rows a day and 225.8 MB at 50,000,
+  against 610 before (`tasks/evidence/R3/measure.txt` section G). A crash mid-swap leaves a hot-size WAL that the next writable open migrates, or a cleanly closed shard.
 - **Shard pinning.** Every access pins a shard (`checkoutStore` / `checkinStore`); `Close` waits for pins to
   drain and the idle sweep and demotion cleanup skip pinned handles, so no reader ever holds a closed database.
 - **Old entities stay writable** on their own shard after rotation; there is no read-only tier.

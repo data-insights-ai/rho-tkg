@@ -25,12 +25,13 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
   membership before the work, in every shard and fallback; stale late-axis deletes stay visible until compaction.
   Done when the limits refuse first, ai-soc's membership guards pass and stale entries are measured on a consumer
   store (`tasks/evidence/READBUDGET/followups.txt`). **rho/sigma:** bounds native work.
-- **WARMMEM (R3: cheaper writable and inactive shards)** — Finish measured sizing and ownership of writable arenas
-  across hot, warm, reference, demoted and late-write handles; separately account for already-open demoted handles
-  that a smaller warm-open setting does not shrink. Done when allocation, live heap, peak RSS and CPU improve on
-  matched fixtures with late writes, WAL recovery, durability and copied reopen unchanged; no GC tuning or larger
-  cache cap stands in for the saving. Waits for candidate review, then the host baseline. **rho/sigma:** lowers the
-  fixed memory cost per live handle without multiplying reads or writes.
+- **WARMMEM (R3: cheaper writable and inactive shards)** — Sweep and counts done: the handle sweep reopens the old
+  hot shard at WarmMemTableSize and closes demoted handles; per-tier handle and write counts; registries under
+  shardMu; day 6 at 8 MB warm ~205 MB live heap against 610 (`tasks/evidence/R3/measure.txt` section G). Next: B0
+  measurement on ai-soc (RSS, swap time at 1-10 M rows, write counts per tier); read-only warm handles wait for its
+  warm write counts. Open: a swap installing between BeginLogScope's flag and its fold fails loudly with a double
+  scope; a swap whose own reopen fails demotes a hot shard to cold; a cold read at 50,000 rows a day costs 2.5-2.9 s
+  and 707 MB for 100 GetNode calls. **rho/sigma:** lowers the fixed memory cost per live handle.
 - **EMPTYBYID (keep proven-empty shards closed)** — Finish skipping NoRows shards in ID, history, adjacency and
   create-existence probes, including batched paths. Done when repeated idle sweeps and misses cause no empty-shard
   opens, cross-shard relationships remain findable, and a real late write safely reopens its shard; measure handle
