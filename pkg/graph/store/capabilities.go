@@ -482,7 +482,15 @@ type PropertyTxMemberWindow struct {
 // next charge once one refused (ReadMeter.Exceeded), and their errors join
 // (errors.Is ErrReadBudget). A nil t is the unmetered form. The graph uses it
 // for a budgeted property door when the store offers it; a store that opens
-// no shard (badger, sharded, memory) need not.
+// no shard and keeps no member list on disk (sharded, memory) need not.
+//
+// A member list kept on disk (badger's 0x0C member entries) is folded before
+// the first member is handed on, and the door that counts the members only
+// sees them after (R2): with a candidate limit on t's meter the store admits
+// its fold as it grows (ReadTally.CandidateRoom, CandidatesAhead) and returns
+// the *ReadBudgetError, before fn, at the member that passes the room, on
+// every shard of a fan-out under the same t. The door still counts each member
+// it is handed, so a store need not count them itself.
 type PropertyTxMemberMeteredCapability interface {
 	ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 	ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error

@@ -2,7 +2,6 @@ package badger
 
 import (
 	"bytes"
-	"fmt"
 	"math"
 	"slices"
 
@@ -270,7 +269,7 @@ type memberWindow struct {
 // the open rows (genuine candidates whose start the read checks). The write
 // buffer's entries under each axis are judged the same way. An empty or
 // reversed window answers nothing without reading. Caller holds idxMu (R or W).
-func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, valueKey string, w memberWindow, work *storecontract.PropertyMemberWork) (txMemberFold, error) {
+func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, valueKey string, w memberWindow, work *storecontract.PropertyMemberWork, tally *storecontract.ReadTally) (txMemberFold, error) {
 	out := txMemberFold{}
 	if w.start >= w.end {
 		return out, nil
@@ -279,6 +278,7 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 	if !ok {
 		return out, nil
 	}
+	admit := foldAdmit(out, tally) // a read budget's candidate room (R2): nil without one
 	judge := func(key, val []byte) {
 		_, _, _, id, tx, _, ok := storepkg.EntityIndexTimeEntryOf(key)
 		if !ok {
@@ -297,7 +297,7 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 	// The late axis: lateTo > start.
 	late := append(slices.Clip(p), storepkg.EntityIndexAxisLate)
 	seek := storepkg.AppendEntityIndexTimeSeek(slices.Clip(p), storepkg.EntityIndexAxisLate, int64(w.start)+1)
-	if err := bs.entityIndexSeekLocked(late, seek, nil, judge, work); err != nil {
+	if err := bs.entityIndexSeekAdmitLocked(late, seek, nil, judge, work, admit); err != nil {
 		return nil, err
 	}
 	if w.pin != 0 && w.pin < math.MaxInt64 {
@@ -307,7 +307,7 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 			_, last, _, _, _, _, ok := storepkg.EntityIndexTimeEntryOf(key)
 			return ok && types.Instant(last) <= w.pin
 		}
-		if err := bs.entityIndexSeekLocked(recent, recent, past, judge, work); err != nil {
+		if err := bs.entityIndexSeekAdmitLocked(recent, recent, past, judge, work, admit); err != nil {
 			return nil, err
 		}
 	}
@@ -328,6 +328,13 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 // included), its seek (IteratorSeeks) and each live persisted entry it hands
 // on (DiskEntriesEmitted). Caller holds idxMu (R or W).
 func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork) error {
+	return bs.entityIndexSeekAdmitLocked(prefix, seek, past, fn, work, nil)
+}
+
+// entityIndexSeekAdmitLocked is entityIndexSeekLocked with a read budget's
+// admission (R2): admit (nil: none) runs after each entry handed to fn, disk or
+// buffered, and its error stops the walk there.
+func (bs *Store) entityIndexSeekAdmitLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork, admit func() error) error {
 	tail := storepkg.EntityIndexTimeTailLen - 1 // after the axis
 	in := func(k []byte) bool {
 		return len(k) == len(prefix)+tail && bytes.Compare(k, seek) >= 0 && (past == nil || !past(k))
@@ -361,6 +368,7 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 			if bs.entityIndexWalkTestHook != nil {
 				bs.entityIndexWalkTestHook()
 			}
+			noteIndexEntryVisited()
 			item := it.Item()
 			key := item.Key()
 			if len(key) != len(prefix)+tail {
@@ -368,7 +376,6 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 			}
 			if past != nil && past(key) {
 				break
-			noteIndexEntryVisited()
 			}
 			if bytes.Equal(key, prev) {
 				continue // an older version of the key just decided
@@ -383,11 +390,16 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 			if err := item.Value(func(val []byte) error { fn(key, val); return nil }); err != nil {
 				return err
 			}
+			if admit != nil {
+				if err := admit(); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("graph: entity index seek: %w", err)
+		return walkError("entity index seek", err)
 	}
 	for k, val := range ov.sets {
 		if !in([]byte(k)) {
@@ -397,6 +409,11 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 			work.OverlaySetsEmitted++
 		}
 		fn([]byte(k), val)
+		if admit != nil {
+			if err := admit(); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -420,4 +437,26 @@ func (bs *Store) memberHeads(rel bool, scope uint16, propertyKey string) [][]byt
 		heads = append(heads, storepkg.AppendEntityIndexHead(nil, k, scope, tok))
 	}
 	return heads
+}
+
+// foldAdmit is the read budget's admission of a membership walk's fold
+// (R2): nil without a candidate limit on t's meter, else a check, run after
+// each entry the walk folds, that refuses once the fold holds more members
+// than the meter has room for. The door that reads the walk counts each
+// member it hands on, so a fold past the room is a read the budget refuses at
+// the member past it: the walk stops there instead of folding, sorting and
+// handing on the rest of the value (counted as the work it held ahead,
+// ReadTally.CandidatesAhead). The room is read when the walk starts; the
+// members other walks of the same read hold are not counted.
+func foldAdmit(f txMemberFold, t *storecontract.ReadTally) func() error {
+	room := t.CandidateRoom()
+	if room == math.MaxUint64 {
+		return nil
+	}
+	return func() error {
+		if uint64(len(f)) > room {
+			return t.CandidatesAhead(len(f))
+		}
+		return nil
+	}
 }

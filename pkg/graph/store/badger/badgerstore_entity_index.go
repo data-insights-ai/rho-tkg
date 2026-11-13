@@ -328,10 +328,18 @@ func (bs *Store) entityIndexWalkLocked(kind byte, prefixes [][]byte, fn func(key
 }
 
 func (bs *Store) entityIndexWalkLockedWork(kind byte, prefixes [][]byte, fn func(key []byte), work *storecontract.PropertyMemberWork) error {
-	return bs.entityIndexWalkCore(kind, prefixes, func(key, _ []byte) { fn(key) }, false, nil, work)
+	return bs.entityIndexWalkAdmitLocked(kind, prefixes, fn, work, nil)
 }
 
-func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, val []byte), values bool, buffered func(key, val []byte), work *storecontract.PropertyMemberWork) error {
+// entityIndexWalkAdmitLocked is entityIndexWalkLockedWork with a read budget's
+// admission (R2): admit (nil: none) runs after each live entry the walk hands
+// to fn, disk or buffered, and its error stops the walk there, so a read past
+// its limit has visited the entries up to the one that passed it.
+func (bs *Store) entityIndexWalkAdmitLocked(kind byte, prefixes [][]byte, fn func(key []byte), work *storecontract.PropertyMemberWork, admit func() error) error {
+	return bs.entityIndexWalkCore(kind, prefixes, func(key, _ []byte) { fn(key) }, false, nil, work, admit)
+}
+
+func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, val []byte), values bool, buffered func(key, val []byte), work *storecontract.PropertyMemberWork, admit func() error) error {
 	if len(prefixes) == 0 {
 		return nil
 	}
@@ -373,6 +381,7 @@ func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, 
 				if bs.entityIndexWalkTestHook != nil {
 					bs.entityIndexWalkTestHook()
 				}
+				noteIndexEntryVisited()
 				item := it.Item()
 				key := item.Key()
 				if len(key) != len(p)+tail {
@@ -381,7 +390,6 @@ func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, 
 				if bytes.Equal(key, prev) {
 					continue // an older version of the key just decided
 				}
-				noteIndexEntryVisited()
 				prev = append(prev[:0], key...)
 				if item.IsDeletedOrExpired() || ov.overrides(key) {
 					continue
@@ -391,17 +399,20 @@ func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, 
 				}
 				if !values {
 					fn(key, nil)
-					continue
-				}
-				if err := item.Value(func(val []byte) error { fn(key, val); return nil }); err != nil {
+				} else if err := item.Value(func(val []byte) error { fn(key, val); return nil }); err != nil {
 					return err
+				}
+				if admit != nil {
+					if err := admit(); err != nil {
+						return err
+					}
 				}
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("graph: entity index scan: %w", err)
+		return walkError("entity index scan", err)
 	}
 	if buffered != nil {
 		return nil // the caller has the buffer's sets
@@ -411,8 +422,22 @@ func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, 
 			work.OverlaySetsEmitted++
 		}
 		fn([]byte(k), val)
+		if admit != nil {
+			if err := admit(); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+// walkError wraps err of an entity index walk as what names, except a read
+// budget's refusal, which a caller matches as the typed *ReadBudgetError.
+func walkError(what string, err error) error {
+	if errors.Is(err, storecontract.ErrReadBudget) {
+		return err
+	}
+	return fmt.Errorf("graph: %s: %w", what, err)
 }
 
 // entityIndexRangeLocked visits once each live entry under within whose first
@@ -423,6 +448,12 @@ func (bs *Store) entityIndexRangeLocked(within, lo, hi []byte, fn func(key []byt
 }
 
 func (bs *Store) entityIndexRangeLockedWork(within, lo, hi []byte, fn func(key []byte), work *storecontract.PropertyMemberWork) error {
+	return bs.entityIndexRangeAdmitLocked(within, lo, hi, fn, work, nil)
+}
+
+// entityIndexRangeAdmitLocked is entityIndexRangeLockedWork with a read
+// budget's admission (see entityIndexWalkAdmitLocked).
+func (bs *Store) entityIndexRangeAdmitLocked(within, lo, hi []byte, fn func(key []byte), work *storecontract.PropertyMemberWork, admit func() error) error {
 	in := func(k []byte) bool {
 		if !bytes.HasPrefix(k, within) || len(k) < len(lo) || bytes.Compare(k[:len(lo)], lo) < 0 {
 			return false
@@ -450,6 +481,7 @@ func (bs *Store) entityIndexRangeLockedWork(within, lo, hi []byte, fn func(key [
 			if work != nil {
 				work.IteratorSteps++
 			}
+			noteIndexEntryVisited()
 			item := it.Item()
 			key := item.Key()
 			if hi != nil && bytes.Compare(key[:min(len(hi), len(key))], hi) > 0 {
@@ -466,22 +498,31 @@ func (bs *Store) entityIndexRangeLockedWork(within, lo, hi []byte, fn func(key [
 				work.DiskEntriesEmitted++
 			}
 			fn(key)
+			if admit != nil {
+				if err := admit(); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("graph: entity index range scan: %w", err)
+		return walkError("entity index range scan", err)
 	}
 	for k := range ov.sets {
 		if work != nil {
 			work.OverlaySetsEmitted++
 		}
 		fn([]byte(k))
+		if admit != nil {
+			if err := admit(); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-			noteIndexEntryVisited()
 // txMemberFold folds member entries: each entity once, with the lowest
 // transaction time of its entries (indexpkg.MergeFirstTx).
 type txMemberFold map[snowflake.ID]types.Instant
@@ -514,7 +555,9 @@ func foldedTxMembers[ID cmp.Ordered](f txMemberFold, conv func(snowflake.ID) ID)
 // every value), or with numeric every value whose magnitude lies in [lo, hi]
 // and NaN (index.PropertyTxMembers.MembersInRange).
 type memberQuery struct {
-	work      *storecontract.PropertyMemberWork
+	work *storecontract.PropertyMemberWork
+	// tally (R2): the read budget the walk's fold is admitted under; nil: none.
+	tally     *storecontract.ReadTally
 	valueKeys []string
 	numeric   bool
 	lo, hi    float64
@@ -528,9 +571,10 @@ type memberQuery struct {
 // scope, propertyKey) from its member entries. Caller holds idxMu (R or W).
 func (bs *Store) diskTxMembersLocked(kind byte, scope uint16, propertyKey string, q memberQuery) (txMemberFold, error) {
 	if q.window != nil && len(q.valueKeys) == 1 && storepkg.EntityIndexIsSpan(kind) {
-		return bs.diskWindowMembersLocked(kind, scope, propertyKey, q.valueKeys[0], *q.window, q.work)
+		return bs.diskWindowMembersLocked(kind, scope, propertyKey, q.valueKeys[0], *q.window, q.work, q.tally)
 	}
 	f := txMemberFold{}
+	admit := foldAdmit(f, q.tally)
 	if q.work != nil {
 		defer func() { q.work.FoldMembersPeak = uint64(len(f)) }()
 	}
@@ -562,7 +606,7 @@ func (bs *Store) diskTxMembersLocked(kind byte, scope uint16, propertyKey string
 				prefixes = append(prefixes, p)
 			}
 		}
-		if err := bs.entityIndexWalkLockedWork(kind, prefixes, f.add(kind), q.work); err != nil {
+		if err := bs.entityIndexWalkAdmitLocked(kind, prefixes, f.add(kind), q.work, admit); err != nil {
 			return nil, err
 		}
 	}
@@ -778,6 +822,7 @@ func (bs *Store) diskTxMembersAfterLocked(kind byte, scope uint16, propertyKey, 
 			if bs.entityIndexWalkTestHook != nil {
 				bs.entityIndexWalkTestHook()
 			}
+			noteIndexEntryVisited()
 			item := it.Item()
 			key := item.Key()
 			if len(key) != len(p)+tail {
@@ -822,7 +867,6 @@ func emitTxMembers[ID cmp.Ordered](members []indexpkg.TxMember[ID], err error, f
 	}
 	for _, m := range members {
 		if !fn(m.ID, m.FirstTx) {
-			noteIndexEntryVisited()
 			return nil
 		}
 	}

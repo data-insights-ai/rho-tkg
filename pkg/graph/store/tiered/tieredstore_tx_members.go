@@ -345,13 +345,13 @@ var _ storecontract.PropertyTxMemberMeteredCapability = (*Store)(nil) // READBUD
 // ForEachNodePropertyTxMemberMetered implements
 // store.PropertyTxMemberMeteredCapability: ForEachNodePropertyTxMemberKeys
 // (window nil) or its windowed form, the open of each closed shard of the
-// fan-out charged to t before it (allShardsBut).
+// fan-out charged to t before it (allShardsBut) and, since R2, each shard's
+// membership fold admitted under t's candidate room as it grows (the shard's
+// own metered form), so a read past its limit stops at the member that passes
+// it on every shard instead of folding each shard's whole value first.
 func (ts *Store) ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyKey string, valueKeys []string, window *storecontract.PropertyTxMemberWindow, t *storecontract.ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	one := func(bs *BadgerStore, vk string, f func(types.NodeID, types.Instant) bool) error {
-		if window != nil {
-			return bs.ForEachNodePropertyTxMemberDuring(labelToken, propertyKey, vk, window.ValidStart, window.ValidEnd, window.TxAt, f)
-		}
-		return bs.ForEachNodePropertyTxMember(labelToken, propertyKey, vk, f)
+		return bs.ForEachNodePropertyTxMemberMetered(labelToken, propertyKey, []string{vk}, window, t, f) // each shard's fold admitted under the same tally
 	}
 	return unionPropertyTxMembers(ts, t, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
 		return bs.PropertyIndexOptions(labelToken, propertyKey)
@@ -362,10 +362,7 @@ func (ts *Store) ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyK
 // a relationship (type, key) sidecar.
 func (ts *Store) ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *storecontract.PropertyTxMemberWindow, t *storecontract.ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
 	one := func(bs *BadgerStore, vk string, f func(types.RelID, types.Instant) bool) error {
-		if window != nil {
-			return bs.ForEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, vk, window.ValidStart, window.ValidEnd, window.TxAt, f)
-		}
-		return bs.ForEachRelPropertyTxMember(relTypeToken, propertyKey, vk, f)
+		return bs.ForEachRelPropertyTxMemberMetered(relTypeToken, propertyKey, []string{vk}, window, t, f)
 	}
 	return unionPropertyTxMembers(ts, t, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
 		return bs.RelPropertyIndexOptions(relTypeToken, propertyKey)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync/atomic"
 )
 
@@ -254,6 +255,40 @@ func (t *ReadTally) ShardOpen() error {
 		return nil
 	}
 	return t.meter.AddShardOpens(t.door, 1)
+}
+
+// CandidateRoom returns how many more candidates the reads on t's meter may
+// count before a candidate limit of it or of an outer meter refuses (0: the
+// next one does), or math.MaxUint64 when no limit bounds them. A store walk
+// that holds members ahead of the door that counts them stops once it holds
+// more than the room (CandidatesAhead). A nil tally has no limit.
+func (t *ReadTally) CandidateRoom() uint64 {
+	if t == nil {
+		return math.MaxUint64
+	}
+	room := uint64(math.MaxUint64)
+	for r := t.meter; r != nil; r = r.parent {
+		if bound := r.budget.Candidates; bound != 0 {
+			left := uint64(0)
+			if n := r.candidates.Load(); n < bound {
+				left = bound - n
+			}
+			room = min(room, left)
+		}
+	}
+	return room
+}
+
+// CandidatesAhead refuses a read whose store walk holds n members ahead of the
+// door that will count them, more than CandidateRoom: it counts them as work
+// done and returns the budget error of the limit they pass (the door would
+// have refused at the member past it). Within the room it counts nothing and
+// returns nil. A nil tally counts nothing.
+func (t *ReadTally) CandidatesAhead(n int) error {
+	if t == nil || uint64(max(n, 0)) <= t.CandidateRoom() { // #nosec G115 -- a count
+		return nil
+	}
+	return t.meter.AddCandidates(t.door, n)
 }
 
 // Exceeded is the tally's meter's Exceeded. A nil tally returns nil.

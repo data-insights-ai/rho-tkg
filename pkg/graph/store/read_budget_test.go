@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 )
 
@@ -85,5 +86,50 @@ func TestReadMeter_DecodedBytes(t *testing.T) {
 	}
 	if (QueryOpts{}).ReadTally() != nil {
 		t.Fatal("opts without a meter carry a tally")
+	}
+}
+
+// TestReadTally_CandidateRoomAndAhead (R2): a walk that holds members ahead of
+// the door that counts them reads the room the meter has left (the tightest
+// candidate limit of the meter and its outer ones, less what they counted) and
+// refuses past it without counting a thing it did not hold; a nil tally and an
+// unlimited meter have no room limit.
+func TestReadTally_CandidateRoomAndAhead(t *testing.T) {
+	var nilTally *ReadTally
+	if nilTally.CandidateRoom() != math.MaxUint64 || nilTally.CandidatesAhead(1<<40) != nil {
+		t.Fatal("a nil tally has a room limit")
+	}
+	_, free := WithReadBudget(context.Background(), ReadBudget{ShardOpens: 1})
+	if free.Tally("d").CandidateRoom() != math.MaxUint64 {
+		t.Fatal("a meter without a candidate limit has a room limit")
+	}
+	outerCtx, outer := WithReadBudget(context.Background(), ReadBudget{Candidates: 10})
+	innerCtx, inner := WithReadBudget(outerCtx, ReadBudget{Candidates: 8})
+	tally := inner.Tally("door")
+	if err := ReadMeterFrom(innerCtx).AddCandidates("door", 3); err != nil {
+		t.Fatal(err)
+	}
+	if room := tally.CandidateRoom(); room != 5 { // inner 8-3; outer 10-3 is looser
+		t.Fatalf("room = %d, want 5", room)
+	}
+	if err := tally.CandidatesAhead(5); err != nil || inner.Work().Candidates != 3 || outer.Work().Candidates != 3 {
+		t.Fatalf("within the room: %v, inner %+v outer %+v; want nil and nothing counted", err, inner.Work(), outer.Work())
+	}
+	if err := ReadMeterFrom(outerCtx).AddCandidates("o", 6); err != nil { // outer 9 of 10: its room (1) is the tighter now
+		t.Fatal(err)
+	}
+	if room := tally.CandidateRoom(); room != 1 {
+		t.Fatalf("room = %d, want 1 (the outer meter's)", room)
+	}
+	err := tally.CandidatesAhead(2)
+	var be *ReadBudgetError
+	if !errors.Is(err, ErrReadBudget) || !errors.As(err, &be) || be.Door != "door" || be.Limit != "candidates" || be.Budget.Candidates != 10 || be.Work.Candidates != 11 {
+		t.Fatalf("past the room: %v (%+v); want the outer limit at 11", err, be)
+	}
+	if outer.Exceeded() == nil {
+		t.Fatal("the refusal is not kept on the meter")
+	}
+	if _, fresh := WithReadBudget(context.Background(), ReadBudget{Candidates: 2}); fresh.Tally("d").CandidateRoom() != 2 {
+		t.Fatal("a fresh meter's room is its limit")
 	}
 }
