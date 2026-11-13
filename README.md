@@ -355,7 +355,7 @@ Run any tutorial: `go run ./tutorials/001_basic_graph/`
 
 ```bash
 make test            # the short tier, cached
-make gate            # build, lint, tidy and test at once, incremental through Go's test cache
+make gate            # build, lint and test at once, incremental through Go's test cache
 make release         # the patch release: the gate, the tag, the push
 make                 # lists every target
 ```

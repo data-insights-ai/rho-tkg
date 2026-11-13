@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `make measure`): the live heap counts every
+// Measurement level (René 4 Nov, `scripts/measure.sh`): the live heap counts every
 // goroutine of the process (badger's flushes and compactions included), so
 // this slope moves with load and runs by hand, not in a gate.
 

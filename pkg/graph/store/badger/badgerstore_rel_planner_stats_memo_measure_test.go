@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `make measure`): live heap after a GC moves
+// Measurement level (René 4 Nov, `scripts/measure.sh`): live heap after a GC moves
 // with other tests, badger's background work and host load, so this bound
 // runs by hand, not in a gate (MEMGATE).
 

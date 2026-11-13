@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `make measure`): testing.AllocsPerRun reads
+// Measurement level (René 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun reads
 // the process-wide malloc count, and this package runs parallel tests, so the
 // bound runs by hand, not in a gate.
 

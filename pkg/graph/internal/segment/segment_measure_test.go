@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `make measure`): TotalAlloc counts every
+// Measurement level (René 4 Nov, `scripts/measure.sh`): TotalAlloc counts every
 // goroutine of the process, and this package runs parallel tests, so the
 // bound runs by hand, not in a gate. TestCorrupt_LyingCountsAreRejected gates
 // the rejection.

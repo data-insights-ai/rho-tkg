@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `make measure`): testing.AllocsPerRun reads
+// Measurement level (René 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun reads
 // the process-wide malloc count (badger's and the shards' goroutines
 // included), so this comparison moves with load and runs by hand, not in a
 // gate. The one store lookup per seek is gated by

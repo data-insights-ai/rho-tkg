@@ -29,7 +29,7 @@ import (
 // so the test reflects "did the exporter leak anything" rather than
 // "what was the peak transient heap during export".
 //
-// Measurement level (MEMGATE, `make measure`): retained heap is process-wide
+// Measurement level (MEMGATE, `scripts/measure.sh`): retained heap is process-wide
 // and no count pins "retained nothing past return"; the paging itself is
 // counted in the suite (TestExportGraph_HistoryVersionPagingSplitsDeepEntity).
 func TestExportGraph_HistoryBoundedMemory(t *testing.T) {

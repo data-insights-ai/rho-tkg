@@ -24,14 +24,14 @@ defaults: `tasks/todo.md`. File roles: README.md § Documentation.
     load at cold checkout (recommended, ~2 days) or (a) FIXED-MEMORY step 2.
   - **Open with René:** a consumer contract step before rho's tag (5a of the 5 Nov analysis): sigma's ai-soc guard set
     is ~15 s warm but would not have caught REFFANOUT's break (ai-soc's `TestTieredDerivedReadOpensNoColdShard`, in
-    its full suite, 5-8 min); recommendation: skip. Also whether the release keeps starting `make race` detached
+    its full suite, 5-8 min); recommendation: skip. Also whether the release keeps starting scripts/race.sh detached
     (cron runs it every 6 h; options offered: cron only, `nice`, `-p 2`); no change without his word.
   - **Working rules changed 5 Nov** (René approved the analysis of 30 Oct-5 Nov): memory (orders vs questions, a green
     agreed item tags at once, René's decisions quoted by a peer apply, a piecewise spec is collected before building,
     agents only on his word with a frozen spec) and CONTRIBUTING 4412c9c6 (Who works, process changes remove steps,
     the gate lists every red). Never start a race or heavy test run by hand; answer a why from the log first.
   - **Release mechanics:** write the `[x.y.z]` CHANGELOG section in its own commit, then `make release` (gate,
-    tag, atomic push to GitHub, `make race` detached into `.git/race.out`, ~15-25 s); a green, agreed item needs no go.
+    tag, atomic push to GitHub, scripts/race.sh detached into `.git/race.out`, ~15-25 s); a green, agreed item needs no go.
   - **Worktrees:** `consolidate` (agent-ae6b1d60…, parked test folding, 68 uncommitted files: possible WIP, leave);
     four merged agent worktrees (a3263c8c, a7ff819f, a9e4dcbc, ae78649d) are harness-locked; remove when unlocked.
   - **FIXED-MEMORY:** step 0 measured (`tasks/evidence/FIXED-MEMORY/step0.txt`); step 1 (existence files on the

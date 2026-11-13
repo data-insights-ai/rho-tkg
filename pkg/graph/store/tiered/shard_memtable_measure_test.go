@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (`make measure`): what a writable shard costs in Go heap
+// Measurement level (`scripts/measure.sh`): what a writable shard costs in Go heap
 // per lifecycle state (R3, René's RH list 13 Nov: cheaper writable and inactive
 // shards). Every writable badger open allocates a memtable arena of
 // MemTableSize on the Go heap (badger db.go:329-333 skips it only when

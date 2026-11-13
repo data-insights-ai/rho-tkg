@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `make measure`): the live heap after a GC
+// Measurement level (René 4 Nov, `scripts/measure.sh`): the live heap after a GC
 // counts every goroutine of the process, so these comparisons of the
 // estimates with it move with load and run by hand, not in a gate.
 // TestFootprintCounts gates the counts.

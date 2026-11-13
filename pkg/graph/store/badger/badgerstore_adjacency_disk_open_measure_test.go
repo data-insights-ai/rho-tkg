@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `make measure`): the bytes an open allocates
+// Measurement level (René 4 Nov, `scripts/measure.sh`): the bytes an open allocates
 // and the live heap its maps keep are read from process-wide counters, which
 // other tests, badger's own goroutines and host load move, so these bounds run
 // by hand, not in a gate (MEMGATE). The map entry counts gate in

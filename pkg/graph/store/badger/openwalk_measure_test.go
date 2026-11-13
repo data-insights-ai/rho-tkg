@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `make measure`): live heap after a GC moves
+// Measurement level (René 4 Nov, `scripts/measure.sh`): live heap after a GC moves
 // with load and other goroutines, so this bound runs by hand, not in a gate
 // (MEMGATE). The keyspace-walk counts of OPENWALK gate in openwalk_test.go.
 

@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `make measure`): testing.AllocsPerRun counts
+// Measurement level (René 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun counts
 // every allocation in the process, and this package runs parallel tests, so
 // the bound runs by hand, not in a gate (MEMGATE).
 

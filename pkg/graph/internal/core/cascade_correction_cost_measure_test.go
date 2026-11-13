@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Measurement level (MEMGATE, `make measure`): row 85's cost is resolver work
+// Measurement level (MEMGATE, `scripts/measure.sh`): row 85's cost is resolver work
 // on a chain already in memory (cuts × V log V), which no read, row or store
 // count sees, and bytes per write count the whole process. The prepared
 // chain's answers are pinned in the suite (TestCascadeCorrection85_Oracle).
