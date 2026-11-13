@@ -47,7 +47,13 @@ func (t *TempOps) NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant
 // nodesAtTxByIDs is NodesAtTxByIDs after its input checks (NodesAtOptsByIDs
 // shares it): per ID NodeAtTx's gates and body, txAt 0 no pin.
 func (c *Core) nodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error) {
-	return atTxByIDs(c, ids, func(rd entityReads, id types.NodeID) (*types.Node, error) {
+	return c.nodesAtTxByIDsTallied(nil, ids, validAt, txAt)
+}
+
+// nodesAtTxByIDsTallied is nodesAtTxByIDs counting what its reads decode, look
+// at and open in tally (RH list R2; nil counts nothing).
+func (c *Core) nodesAtTxByIDsTallied(tally *storepkg.ReadTally, ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error) {
+	return atTxByIDsMetered(c, tally, ids, func(rd entityReads, id types.NodeID) (*types.Node, error) {
 		if err := c.checkNodePointCompaction(id, txAt); err != nil {
 			return nil, err
 		}
@@ -118,15 +124,29 @@ func (c *Core) relsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]
 // atTxByIDs runs read once per distinct id, effScanChunk ids per read-lock hold,
 // and lays answers out aligned to ids. The first read error fails the call.
 func atTxByIDs[ID comparable, T any](c *Core, ids []ID, read func(entityReads, ID) (T, error)) ([]T, error) {
+	return atTxByIDsMetered(c, nil, ids, read)
+}
+
+// atTxByIDsMetered is atTxByIDs under a read budget (RH list R2): the read
+// snapshot counts the bytes it decodes, the history it looks at and the shards
+// it opens in tally (store.ReadSnapshotMeterCapability), and a store without
+// one (memory) counts the versions of each chain it reads. A nil tally is
+// atTxByIDs.
+func atTxByIDsMetered[ID comparable, T any](c *Core, tally *storepkg.ReadTally, ids []ID, read func(entityReads, ID) (T, error)) ([]T, error) {
 	if len(ids) == 0 {
 		return []T{}, nil
 	}
 	unique := firstOccurrences(ids)
 	answers := make([]T, len(unique)) // aligned to unique
-	rd := entityReads{c: c}
+	rd := entityReads{c: c, tally: tally}
 	if c.readSnapshots != nil {
 		rd.snap = c.readSnapshots.NewReadSnapshot()
 		defer rd.snap.Close()
+		if tally != nil {
+			if m, ok := rd.snap.(storepkg.ReadSnapshotMeterCapability); ok {
+				m.MeterReads(tally)
+			}
+		}
 	}
 	for start := 0; start < len(unique); start += effScanChunk {
 		chunk := unique[start:min(start+effScanChunk, len(unique))]

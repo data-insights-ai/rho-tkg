@@ -184,8 +184,12 @@ func (t *TempOps) ForEachRelEffective(pin types.Instant, fn func(temporal.RelSeg
 // (ErrInvalidStoreMutation) refused before any segment, ErrInvalidTimeRange,
 // ErrTxPinTooNew, ErrNilCallback, ErrGraphClosed. fn runs without graph locks.
 func (t *TempOps) NodesEffectiveByIDs(ids []types.NodeID, pin types.Instant, fn func(temporal.NodeSegment) bool) error {
-	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
-	c := t.c
+	return t.c.nodesEffectiveByIDsRun(nil, ids, recordedPin(pin), fn) // a pin <= 0: nothing recorded yet (round 11)
+}
+
+// nodesEffectiveByIDsRun is NodesEffectiveByIDs' body under a read budget (run
+// nil: none, the plain door); pin is already recordedPin's.
+func (c *Core) nodesEffectiveByIDsRun(run *scanRun, ids []types.NodeID, pin types.Instant, fn func(temporal.NodeSegment) bool) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
@@ -200,7 +204,10 @@ func (t *TempOps) NodesEffectiveByIDs(ids []types.NodeID, pin types.Instant, fn 
 	if err := c.validateEffectivePin(pin); err != nil {
 		return err
 	}
-	return c.streamNodeTimelines(firstOccurrences(ids), pin, nil, fn)
+	if err := run.holdList(len(ids)); err != nil { // the ID list the door copies (RH list R2)
+		return err
+	}
+	return c.streamNodeTimelinesRun(run, firstOccurrences(ids), pin, nil, fn)
 }
 
 // RelsEffectiveByIDs is NodesEffectiveByIDs for relationships

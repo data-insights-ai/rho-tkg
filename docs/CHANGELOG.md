@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **R2 budgeted doors for Sigma, group B, step 3**, the by-ID and bitemporal point doors: `Temporal().NodesEffectiveByIDsCtx`
+  (a stream: one candidate per distinct ID before its read, callbacks before a refusal stand), `NodeAtTxCtx`,
+  `NodesAtTxByIDsCtx` (one candidate and 8 buffer bytes per ID before any ID is read, then the reads' decodes, history
+  and shard opens through one metered read snapshot; exact or refused) and `NodesLowestAnsweredPinsCtx` (reads no row:
+  one candidate and 8 buffer bytes per ID, nothing else). Red: stubbed to the plain doors, 38 failing subtests, the plain
+  reads of a node deleted in a cold shard opening all 3 cold shards and counting nothing
+  (`tasks/evidence/READBUDGET/sigma-doors-b.txt`); tests: `TestReadBudget_SigmaB_NodesEffectiveByIDs`, `_NodeAtTx`,
+  `_NodesAtTxByIDs`, `_NodesLowestAnsweredPins`, `_ByIDsShardOpens`, `_ByIDsNilCallback`, `TestReadBudgetPublicByIDs`,
+  `TestReadBudgetByIDsWrappers`. Still open for group B's relationship twins: `RelAtTx`, `RelsAtTxByIDs`,
+  `RelsEffectiveByIDs`, `RelLowestAnsweredPin`, and `NodesAtOptsByIDs` / `NodesAtTx`.
 - **R2 budgeted doors for Sigma, group B, step 2**, the per-entity timelines: `Temporal().NodeEffectiveTimelineCtx`,
   `NodeEffectiveTimelineFromCtx`, `NodeEffectiveTimelinesCtx`, `RelEffectiveTimelineCtx` and `RelEffectiveTimelinesCtx`
   return the plain doors' answer or `*store.ReadBudgetError` and no segments: one candidate before the read, the

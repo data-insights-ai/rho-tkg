@@ -130,7 +130,10 @@ type sbTieredWorld struct {
 	nodes []types.NodeID // label D, one more per shard
 	rels  []types.RelID  // type NET, one more per shard
 	pin   types.Instant
-	cold  []*tiered.EventShard
+	// preDelete is a pin after the first shard's second node and relationship
+	// were written and before they were deleted: they exist at it.
+	preDelete types.Instant
+	cold      []*tiered.EventShard
 }
 
 func sbBuildTiered(t *testing.T) *sbTieredWorld {
@@ -173,6 +176,11 @@ func sbBuildTiered(t *testing.T) *sbTieredWorld {
 				}
 			}
 			if j == 1 { // history only: the membership sidecars list it, the current members do not
+				if i == 0 {
+					if w.preDelete, err = g.Temporal.NowTx(); err != nil {
+						t.Fatal(err)
+					}
+				}
 				if err := g.Nodes.Delete(ctx, n.ID()); err != nil {
 					t.Fatal(err)
 				}
