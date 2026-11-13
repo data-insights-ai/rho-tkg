@@ -1295,3 +1295,58 @@ func (a *API) ByLabelAndPropertiesCtx(ctx context.Context, label string, values 
 	}
 	return ops.ByLabelAndProperties(label, values, opts)
 }
+
+// budgetedIDOps is the read-budget form of the by-ID doors; the graph's own
+// Ops implement it.
+type budgetedIDOps interface {
+	GetByIDsCtx(ctx context.Context, ids []types.NodeID) ([]*types.Node, error)
+	HasHistoryCtx(ctx context.Context, id types.NodeID) (bool, error)
+	LatestStampsCtx(ctx context.Context, id types.NodeID) (txFrom, txTo types.Instant, deleted bool, err error)
+}
+
+// GetByIDsCtx is GetByIDs under ctx's read budget (store.WithReadBudget): one
+// candidate per ID, counted before any read; past a limit
+// *store.ReadBudgetError and no rows. An Ops without it answers unmetered.
+func (a *API) GetByIDsCtx(ctx context.Context, ids []types.NodeID) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedIDOps); ok {
+		return b.GetByIDsCtx(ctx, ids)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ops.GetByIDs(ids)
+}
+
+// HasHistoryCtx is HasHistory under ctx's read budget: one candidate.
+func (a *API) HasHistoryCtx(ctx context.Context, id types.NodeID) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	if b, ok := ops.(budgetedIDOps); ok {
+		return b.HasHistoryCtx(ctx, id)
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return ops.HasHistory(id)
+}
+
+// LatestStampsCtx is LatestStamps under ctx's read budget: one candidate.
+func (a *API) LatestStampsCtx(ctx context.Context, id types.NodeID) (txFrom, txTo types.Instant, deleted bool, err error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if b, ok := ops.(budgetedIDOps); ok {
+		return b.LatestStampsCtx(ctx, id)
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, 0, false, err
+	}
+	return ops.LatestStamps(id)
+}

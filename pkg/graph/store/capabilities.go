@@ -94,6 +94,13 @@ type EntityLendBatchMeteredCapability interface {
 	LendNodesSortedMetered(ids []types.NodeID, out []*types.Node, meter *ReadMeter) error
 }
 
+// RelLendBatchMeteredCapability is EntityLendBatchMeteredCapability for
+// LendRelationshipsSorted; its miss probe over the other shards counts their
+// opens too. Tiered.
+type RelLendBatchMeteredCapability interface {
+	LendRelationshipsSortedMetered(ids []types.RelID, out []*types.Relationship, meter *ReadMeter) error
+}
+
 // ScanOrderCapability is OPTIONAL: whether the streaming label and type scans
 // (ForEachNodeByLabel, ForEachRelByType) walk members in ascending ID order from
 // a list kept between scans (true: no per-scan collect or sort) or collect and

@@ -101,6 +101,12 @@ func (es *EventShard) meterOpen(meter *storecontract.ReadMeter, door string) err
 // pin at a time, so a probe over many cold shards keeps at most one of them
 // pinned; a shard read for its own IDs is pinned again by the probe.
 func (ts *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relationship) error {
+	return ts.LendRelationshipsSortedMetered(ids, out, nil)
+}
+
+// LendRelationshipsSortedMetered is LendRelationshipsSorted under a read
+// budget, as LendNodesSortedMetered; the miss probe's opens count too.
+func (ts *Store) LendRelationshipsSortedMetered(ids []types.RelID, out []*types.Relationship, meter *storecontract.ReadMeter) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -153,6 +159,9 @@ func (ts *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relatio
 	shards, groups := groupByEventShard(ts, ids, pending)
 	pending = nil
 	for k, es := range shards {
+		if err := es.meterOpen(meter, "LendRelationshipsSorted"); err != nil {
+			return err
+		}
 		if err := withPin(es.readOnlyCheckout(ts), func(store *BadgerStore) error {
 			return lendFound(store, groups[k])
 		}); err != nil {
@@ -174,6 +183,9 @@ func (ts *Store) LendRelationshipsSorted(ids []types.RelID, out []*types.Relatio
 	for _, es := range probe {
 		// An ID's own event shard, which LendRelationship skips here, misses
 		// it again (a set lookup).
+		if err := es.meterOpen(meter, "LendRelationshipsSorted"); err != nil {
+			return err
+		}
 		if err := withPin(es.readOnlyCheckout(ts), lendPending); err != nil || len(pending) == 0 {
 			return err
 		}

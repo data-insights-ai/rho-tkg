@@ -97,12 +97,20 @@ func (r *RelOps) LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int
 			return err
 		}
 	}
+	meter := storepkg.ReadMeterFrom(ctx)
+	if err := meter.AddCandidates("LendByIDs", len(ids)); err != nil {
+		return err
+	}
 	batch, _ := c.store.(storepkg.EntityLendBatchCapability)
+	metered, _ := c.store.(storepkg.RelLendBatchMeteredCapability)
 	lender, _ := c.store.(storepkg.EntityLendCapability)
 	if !c.storeRowsTrust {
-		batch, lender = nil, nil
+		batch, metered, lender = nil, nil, nil
 	}
 	read := func(sorted []types.RelID, out []*types.Relationship) error {
+		if metered != nil && meter != nil {
+			return metered.LendRelationshipsSortedMetered(sorted, out, meter)
+		}
 		if batch != nil {
 			return batch.LendRelationshipsSorted(sorted, out)
 		}

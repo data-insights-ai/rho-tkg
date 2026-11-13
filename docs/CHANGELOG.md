@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.108.0] - 2026-11-13
+
+### Added
+
+- **READBUDGET** (R2, sigma's door list): read budgets on `Nodes().ByLabelAndPropertyCtx`,
+  `ByLabelAndPropertyValuesCtx`, `ByLabelAndPropertiesCtx` (a fallback label scan, an unindexed key or a key set
+  without a composite definition, counts the label's every node before it reads one, so a budget refuses the silent
+  broad read; temporal reads count each candidate before resolving it), `GetByIDsCtx`, `HasHistoryCtx`,
+  `LatestStampsCtx` (one candidate per ID) and `Rels().LendByIDs` (tiered counts the opens of its every-shard miss
+  probe, `RelLendBatchMeteredCapability`). Without a budget every door answers as before.
+
 ## [4.107.0] - 2026-11-13
 
 ### Added

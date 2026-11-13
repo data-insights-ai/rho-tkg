@@ -192,3 +192,66 @@ func TestReadBudget_NodePropertyDoors(t *testing.T) {
 		})
 	}
 }
+
+// TestReadBudget_ByIDDoors: GetByIDsCtx, HasHistoryCtx and LatestStampsCtx
+// count one candidate per ID before reading, and Rels LendByIDs as the node
+// door; the meter is cumulative, so a per-ID probe repeated past the budget
+// is refused.
+func TestReadBudget_ByIDDoors(t *testing.T) {
+	t.Parallel()
+	for _, be := range txbBackends() {
+		t.Run(be.name, func(t *testing.T) {
+			g := be.open(t, false)
+			ctx := context.Background()
+			var ids []types.NodeID
+			var ns []*types.Node
+			for range 3 {
+				n, err := g.Nodes.Add(ctx, []string{"Ev"}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ids, ns = append(ids, n.ID()), append(ns, n)
+			}
+			r, err := g.Rels.Add(ctx, "R", ns[0], ns[1], nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			refused := func(what, door string, err error) {
+				t.Helper()
+				var rb *storepkg.ReadBudgetError
+				if !errors.As(err, &rb) || rb.Door != door {
+					t.Fatalf("%s: %v, want ErrReadBudget from %s", what, err, door)
+				}
+			}
+			bctx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 2})
+			got, err := g.Nodes.GetByIDsCtx(bctx, ids)
+			refused("GetByIDs of 3", "GetByIDs", err)
+			if got != nil {
+				t.Fatal("refused GetByIDs returned rows")
+			}
+			bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 3})
+			if got, err := g.Nodes.GetByIDsCtx(bctx, ids); err != nil || len(got) != 3 || meter.Work().Candidates != 3 {
+				t.Fatalf("GetByIDs within = %d, %v, %+v", len(got), err, meter.Work())
+			}
+			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1})
+			if _, err := g.Nodes.HasHistoryCtx(bctx, ids[0]); err != nil {
+				t.Fatal(err)
+			}
+			_, err = g.Nodes.HasHistoryCtx(bctx, ids[1])
+			refused("second HasHistory", "HasHistory", err)
+			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1})
+			if _, _, _, err := g.Nodes.LatestStampsCtx(bctx, ids[0]); err != nil {
+				t.Fatal(err)
+			}
+			_, _, _, err = g.Nodes.LatestStampsCtx(bctx, ids[1])
+			refused("second LatestStamps", "LatestStamps", err)
+			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1})
+			calls := 0
+			err = g.Rels.LendByIDs(bctx, []types.RelID{r.ID(), r.ID()}, func(int, *types.Relationship) bool { calls++; return true })
+			refused("Rels LendByIDs of 2", "LendByIDs", err)
+			if calls != 0 {
+				t.Fatal("refused rel lend called fn")
+			}
+		})
+	}
+}
