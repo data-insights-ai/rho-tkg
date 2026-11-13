@@ -1,0 +1,64 @@
+// R3 prototype behind section C of measure.txt. NOT in the tree: a throwaway pkg/graph/store/tiered/proto_r3.go
+// plus one hook in rotateHotShardLocked (tieredstore_catalog.go), right before closeEmptyDemotedShardsLocked:
+//
+//	if r3Proto != nil {
+//		r3Proto(ts, oldHot, oldTier, coldDemotions)
+//	}
+//
+// and variants set r3Proto in the measure test: "ro-at-demotion" calls r3ReopenRO on every shard of coldDemotions;
+// "warm-8+reopen-warm-at-rotation" calls r3ReopenWarm on oldHot when oldTier is warm (Config.WarmMemTableSize 8 MB);
+// the last variant does both. Rotation holds ts.mu.Lock, so every swap is a write stall of its own duration. No
+// concurrency handling (a lock-free warm checkout would read es.store while it is replaced): measurement only.
+
+package tiered
+
+import (
+	"fmt"
+	"time"
+)
+
+var r3Swaps []time.Duration
+
+var r3Proto func(ts *Store, oldHot *EventShard, oldTier ShardTier, demoted []*EventShard)
+
+// r3ReopenRO swaps es's writable handle for a read-only one (no pins, no move).
+func (ts *Store) r3ReopenRO(es *EventShard) error {
+	t0 := time.Now()
+	defer func() { r3Swaps = append(r3Swaps, time.Since(t0)) }()
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+	if es.store == nil || es.storeRO || es.moving.Load() || es.activeReqs.Load() != 0 {
+		return nil
+	}
+	if err := es.store.Close(); err != nil {
+		return fmt.Errorf("proto close: %w", err)
+	}
+	es.clearStoreLocked(ts)
+	store, err := ts.newShardStore(ts.shardCfg(es.path, true, true))
+	if err != nil {
+		return err
+	}
+	es.setStoreLocked(ts, store)
+	es.storeRO = true
+	return nil
+}
+
+// r3ReopenWarm swaps es's writable handle for a writable one opened with the warm memtable.
+func (ts *Store) r3ReopenWarm(es *EventShard) error {
+	t0 := time.Now()
+	defer func() { r3Swaps = append(r3Swaps, time.Since(t0)) }()
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+	if es.store == nil || es.moving.Load() || es.activeReqs.Load() != 0 {
+		return nil
+	}
+	if err := es.store.Close(); err != nil {
+		return fmt.Errorf("proto close: %w", err)
+	}
+	store, err := ts.openBadgerStoreWithRecovery(es.path)
+	if err != nil {
+		return err
+	}
+	es.store = store
+	return nil
+}
