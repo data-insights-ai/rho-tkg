@@ -21,7 +21,15 @@ import (
 // window that is not ascending and disjoint.
 func (t *TempOps) ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string,
 	pin types.Instant, window temporal.Window, fn func(temporal.RelSegment) bool) error {
-	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
+	return t.forEachRelEffectiveAtNodesWindowRun(nil, nodeIDs, dir, relTypes, recordedPin(pin), window, fn) // a pin <= 0: nothing recorded yet (round 11)
+}
+
+// forEachRelEffectiveAtNodesWindowRun is ForEachRelEffectiveAtNodesWindow's
+// body under a read budget (run nil: none, the plain door; pin is already
+// recordedPin's). Under a budget Segments counts the segments that meet the
+// window, those handed to fn.
+func (t *TempOps) forEachRelEffectiveAtNodesWindowRun(run *scanRun, nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string,
+	pin types.Instant, window temporal.Window, fn func(temporal.RelSegment) bool) error {
 	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
@@ -34,12 +42,9 @@ func (t *TempOps) ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir t
 	if len(window) == 0 {
 		return t.c.relEffectiveAtNodesGates(nodeIDs, dir, relTypes, pin) // the empty window meets nothing
 	}
-	return t.ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, func(s temporal.RelSegment) bool {
-		if !window.MeetsOn(t.c.axis(), s.ValidFrom, s.ValidTo) {
-			return true
-		}
-		return fn(s)
-	})
+	return t.c.forEachRelEffectiveAtNodesRun(run, nodeIDs, dir, relTypes, pin, func(s temporal.RelSegment) bool {
+		return window.MeetsOn(t.c.axis(), s.ValidFrom, s.ValidTo)
+	}, fn)
 }
 
 // ScanRelEffectiveColumnsAtNodes reads ForEachRelEffectiveAtNodesWindow's
@@ -58,7 +63,20 @@ func (t *TempOps) ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir t
 // memory: read a high-degree seed set in parts. fn must not retain the batch.
 func (t *TempOps) ScanRelEffectiveColumnsAtNodes(nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string,
 	pin types.Instant, window temporal.Window, props []string, fn func(*storepkg.RelColumnBatch) bool) error {
-	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
+	return t.scanRelEffectiveColumnsAtNodesRun(nil, nodeIDs, dir, relTypes, recordedPin(pin), window, props, fn) // a pin <= 0: nothing recorded yet (round 11)
+}
+
+// segmentRowBytes is what a column scan holds per gathered segment (its
+// relationship pointer and its valid span), the BufferBytes charged before
+// each is held under a read budget.
+const segmentRowBytes = bufSliceRef + 2*8
+
+// scanRelEffectiveColumnsAtNodesRun is ScanRelEffectiveColumnsAtNodes' body
+// under a read budget (run nil: none; pin is already recordedPin's): the
+// window door's gather and counts, and each kept segment's segmentRowBytes
+// counted before it is held, so a refusal comes before fn has seen a batch.
+func (t *TempOps) scanRelEffectiveColumnsAtNodesRun(run *scanRun, nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string,
+	pin types.Instant, window temporal.Window, props []string, fn func(*storepkg.RelColumnBatch) bool) error {
 	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
@@ -69,7 +87,11 @@ func (t *TempOps) ScanRelEffectiveColumnsAtNodes(nodeIDs []types.NodeID, dir tem
 		rels     []*types.Relationship
 		from, to []types.Instant
 	)
-	if err := t.ForEachRelEffectiveAtNodesWindow(nodeIDs, dir, relTypes, pin, window, func(s temporal.RelSegment) bool {
+	if err := t.forEachRelEffectiveAtNodesWindowRun(run, nodeIDs, dir, relTypes, pin, window, func(s temporal.RelSegment) bool {
+		if err := run.holdBytes(segmentRowBytes); err != nil {
+			run.refuse = err
+			return false
+		}
 		rels, from, to = append(rels, s.Rel), append(from, s.ValidFrom), append(to, s.ValidTo)
 		return true
 	}); err != nil {

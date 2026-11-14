@@ -7,7 +7,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-var _ storecontract.ExAdjacencyCapability = (*Store)(nil)
+var (
+	_ storecontract.ExAdjacencyCapability        = (*Store)(nil)
+	_ storecontract.ExAdjacencyMeteredCapability = (*Store)(nil) // R2-SCANS
+)
 
 // Ex-adjacency on tiered (store.ExAdjacencyCapability, backlog 50). A node's
 // adjacency lives on the shard that holds the node: the out-leg of a
@@ -23,11 +26,13 @@ var _ storecontract.ExAdjacencyCapability = (*Store)(nil)
 // mint time — plus, for a reference-side node of a store with rels by mint,
 // the event shards (ForEachExAdjacentRelIDByDepth).
 
-// exAdjShards returns the shards nid's adjacency can have lived on, pinned;
-// release checks them in. withEvent=false leaves out the event shard of nid's
-// mint time (a reference-side node's rels by mint: the caller reads the event
-// shards by depth).
-func (ts *Store) exAdjShards(nid types.NodeID, withEvent bool) (shards []*BadgerStore, release func(), err error) {
+// exAdjShardsCharged returns the shards nid's adjacency can have lived on,
+// pinned; release checks them in. withEvent=false leaves out the event shard of
+// nid's mint time (a reference-side node's rels by mint: the caller reads the
+// event shards by depth). Under a read budget (RH list R2, R2-SCANS) the open of
+// a closed archive or event shard is charged to opens before it (nil: none),
+// and a refusal leaves the shard closed.
+func (ts *Store) exAdjShardsCharged(nid types.NodeID, withEvent bool, opens *storecontract.ReadTally) (shards []*BadgerStore, release func(), err error) {
 	var checkins []func()
 	release = func() {
 		for _, c := range checkins {
@@ -39,7 +44,7 @@ func (ts *Store) exAdjShards(nid types.NodeID, withEvent bool) (shards []*Badger
 		return nil, release, err
 	}
 	shards, checkins = append(shards, ref), append(checkins, refCheckin)
-	archive, archiveCheckin, err := ts.checkoutArchive()
+	archive, archiveCheckin, err := ts.checkoutArchiveCharged(opens)
 	if err != nil {
 		return nil, release, err
 	}
@@ -54,7 +59,10 @@ func (ts *Store) exAdjShards(nid types.NodeID, withEvent bool) (shards []*Badger
 	if es.noRows.Load() {
 		return shards, release, nil // closed and empty: it holds no leg, and is not opened
 	}
-	event, eventCheckin, err := es.checkoutStoreForRead(ts)
+	if err := opens.Exceeded(); err != nil { // a refused read opens no further shard
+		return nil, release, err
+	}
+	event, eventCheckin, err := es.checkoutForReadCharged(ts, false, opens)
 	if err != nil {
 		return nil, release, err
 	}
@@ -69,10 +77,11 @@ func (ts *Store) ForEachExAdjacentRelID(nid types.NodeID, incoming bool, fn func
 	return ts.ForEachExAdjacentRelIDByDepth(nid, incoming, DepthAll, fn)
 }
 
-// exAdjRelIDs collects nid's ex-adjacency from every shard it can have lived
-// on (the shards are checked in before the caller's callback runs).
-func (ts *Store) exAdjRelIDs(nid types.NodeID, incoming, withEvent bool) ([]types.RelID, error) {
-	shards, release, err := ts.exAdjShards(nid, withEvent)
+// exAdjRelIDsCharged collects nid's ex-adjacency from every shard it can have
+// lived on (the shards are checked in before the caller's callback runs),
+// charging each closed shard's open to opens before it (nil: none).
+func (ts *Store) exAdjRelIDsCharged(nid types.NodeID, incoming, withEvent bool, opens *storecontract.ReadTally) ([]types.RelID, error) {
+	shards, release, err := ts.exAdjShardsCharged(nid, withEvent, opens)
 	defer release()
 	if err != nil {
 		return nil, err

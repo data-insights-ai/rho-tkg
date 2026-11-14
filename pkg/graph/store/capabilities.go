@@ -1028,6 +1028,19 @@ type ExAdjacencyCapability interface {
 	NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error
 }
 
+// ExAdjacencyMeteredCapability is OPTIONAL (RH list R2, R2-SCANS):
+// ForEachExAdjacentRelID under a read budget. A store that opens closed shards
+// to answer (tiered: the archive, the event shard of the node's mint time, and
+// for a reference-side node of a store with rels by mint the mint shards)
+// charges each open to t before it (ReadTally.ShardOpen) and returns the
+// *ReadBudgetError, before fn, past the ShardOpens limit, the shard left
+// closed. It counts no entry: the caller counts each ID fn is handed. A nil t is
+// the plain door. A store that opens no shard (memory, badger, sharded) need
+// not implement it.
+type ExAdjacencyMeteredCapability interface {
+	ForEachExAdjacentRelIDMetered(nodeID types.NodeID, incoming bool, t *ReadTally, fn func(types.RelID) bool) error
+}
+
 // RelCreateUndoCapability is OPTIONAL, beside ExAdjacencyCapability:
 // UndoRelationshipCreate removes a relationship whose create is being undone
 // (failed create, rollback, failed import). It is DeleteRelationship (same errors,

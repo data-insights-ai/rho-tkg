@@ -103,6 +103,14 @@ func (r *scanRun) holdList(n int) error {
 	return r.meter.AddBufferBytes(r.door, n*bufSliceRef)
 }
 
+// holdBytes counts n bytes the scan is about to hold in a buffer (BufferBytes).
+func (r *scanRun) holdBytes(n int) error {
+	if r == nil {
+		return nil
+	}
+	return r.meter.AddBufferBytes(r.door, n)
+}
+
 // opts is o carrying the scan's meter, for the gather's member enumerations.
 func (r *scanRun) opts(o storepkg.QueryOpts) storepkg.QueryOpts {
 	if r == nil {

@@ -35,6 +35,9 @@ type sbWorld struct {
 	deletedNodes map[types.NodeID]bool
 	deletedRels  map[types.RelID]bool
 	pin          types.Instant
+	// start and end are the endpoints of every relationship: a lookup by start
+	// node (R2-SCANS) seeds from start.
+	start, end types.NodeID
 }
 
 func sbBuild(t testing.TB, g *Core, n int) *sbWorld {
@@ -52,6 +55,7 @@ func sbBuild(t testing.TB, g *Core, n int) *sbWorld {
 		}
 		return a.ID(), b.ID()
 	}()
+	w.start, w.end = s, e
 	for i := range n {
 		nd, err := g.Nodes.Add(ctx, []string{sbLabel}, map[string]any{"i": int64(i), "pad": fmt.Sprintf("%0*d", 60, i)})
 		if err != nil {
@@ -134,6 +138,7 @@ type sbTieredWorld struct {
 	// were written and before they were deleted: they exist at it.
 	preDelete types.Instant
 	cold      []*tiered.EventShard
+	start     types.NodeID // the start node of every relationship
 }
 
 func sbBuildTiered(t *testing.T) *sbTieredWorld {
@@ -156,6 +161,7 @@ func sbBuildTiered(t *testing.T) *sbTieredWorld {
 	ctx := context.Background()
 	w := &sbTieredWorld{g: g, ts: ts}
 	s, e := txbEndpoints(t, g)
+	w.start = s
 	const shards = 3
 	for i := range shards {
 		for j := range 2 {

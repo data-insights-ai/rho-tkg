@@ -53,3 +53,52 @@ Mutations caught (each by the tests named):
   validEndRowsBulk not counting the candidate               -> TestR2Scans_ValidEndFirstCallMetered (badger, tiered: 8 subtests)
   tiered's fan-out not charging the shard opens (nil opens) -> TestReadBudget_SigmaB_ScanShardOpens (node from, node window)
   tiered's shards not given the tally                       -> TestR2Scans_ValidEndFirstCallMetered/tiered (rel from, rel window)
+
+== Step 2: ForEachRelEffectiveAtNodes, its Window form and ScanRelEffectiveColumnsAtNodes under a budget ==
+
+Before: no Ctx form. The plain door read the seeds' current adjacency in one batched read (every row decoded, uncounted)
+and the ex-adjacency of every seed (on tiered it opened the event shard of each seed's mint time), then every candidate's
+timeline: nothing a budget bounded, and a seed with a high degree built its whole candidate list before any count.
+
+RED: the three Ctx doors stubbed to their plain doors (the form a context without a budget gets).
+go test -short -run 'TestR2Scans_AtNodes' ./pkg/graph/internal/core (abridged; the same on badger, sharded, tiered, pending
+and flushed):
+
+  TestR2Scans_AtNodes/*/*/at_nodes
+    unlimited work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0};
+    want 25 candidates (13 in the gather, 12 reads), 36 segments, 104 buffer bytes
+  TestR2Scans_AtNodes/*/*/at_nodes_window      ... want 25 candidates, 9 segments, 104 buffer bytes
+  TestR2Scans_AtNodes/*/*/columns_at_nodes     ... want 25 candidates, 9 segments, 320 buffer bytes
+  TestR2Scans_AtNodesGates/*: at nodes: a stopping callback = <nil> after 1 calls, work {all 0}; want no error and one call
+  TestR2Scans_AtNodesShardOpens (the first assertion: the plain scan opens 2 of the 3 cold shards: the seed's mint shard,
+    read by its ex-adjacency, and the history it reads) then, with the Ctx doors counting nothing, "error <nil>, want
+    ErrReadBudget at shard opens"
+
+What is counted (green), the seed's gather and the reads, before each step:
+  seeds        one candidate per seed probed (its row decoded through a metered read snapshot), BufferBytes 8 per seed.
+  adjacency    each entry of a seed's current adjacency before it is collected (store.AdjacencyMeteredCapability: a RAM
+               index counts the node's whole set before the list is built, the on-disk index each entry as its walk
+               produces it; memory counts the node's degree), the rows it decodes and, on tiered, each shard it opens.
+  ex-adjacency each entry as the store produces it (the walk stops at the one that passes a limit); on tiered each closed
+               shard it opens, before the open (store.ExAdjacencyMeteredCapability: the archive, the event shard of the
+               seed's mint time, a reference-side node's mint shards). A store without an ex-adjacency covering every
+               relationship folds the history IDs of every relationship: each ID counts as it is produced, and on tiered a
+               ShardOpens budget refuses before the fold (Limit "unsupported").
+  reads        one candidate per relationship before its timeline is read (a relationship the gather listed counts twice:
+               a budget reads high), history, decoded bytes, shard opens and segments as the other scans; the Window doors
+               count only the segments that meet the window; the column scan also 24 BufferBytes per kept segment before it
+               is held and makes no callback before it holds every row.
+  Badger, sharded, tiered (pending and flushed), 12 relationships of 3 versions, 3 deleted, one seed that starts them all:
+    unlimited {Candidates:25 Segments:36 BufferBytes:104}; window {Candidates:25 Segments:9 BufferBytes:104}; columns
+    {Candidates:25 Segments:9 BufferBytes:320}  (25 = 1 seed + 9 current + 3 ex-adjacent + 12 reads; 104 = 8 + 8 x 12)
+    Candidates 5: refused inside the gather, no callback, no history looked at; Candidates 13 (the whole gather): the first
+    read refused (14); a limit of 25 answers, 24 refuses at the last read; BufferBytes 1 refuses before anything is counted.
+  Tiered, cold shards closed before each read (TestR2Scans_AtNodesShardOpens): the plain scan opens 2 cold shards; ShardOpens 1
+    opens 1 and refuses; unlimited opens 2 and counts 2.
+  Without an ex-adjacency (TestR2Scans_AtNodesWithoutExAdjacency, c.exAdj nil): the fold's 12 IDs count (34 candidates in all),
+    Candidates 13 stops the fold at its fourth ID (14 counted, nothing read); tiered under ShardOpens 100 refuses "unsupported"
+    with no shard opened.
+  Public API (memory, badger, tiered, sharded): TestReadBudgetPublicAtNodes, 8 relationships, 2 deleted: 17 candidates.
+
+Mutations caught (each by the tests named):
+  tiered's ex-adjacency opens not charged                   -> TestR2Scans_AtNodesShardOpens (all three doors)

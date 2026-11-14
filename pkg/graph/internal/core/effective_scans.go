@@ -68,6 +68,14 @@ func (c *Core) streamRelTimelines(ids []types.RelID, pin types.Instant, keep fun
 
 // streamRelTimelinesRun is streamNodeTimelinesRun for relationships.
 func (c *Core) streamRelTimelinesRun(run *scanRun, ids []types.RelID, pin types.Instant, keep func(*types.Relationship) bool, fn func(temporal.RelSegment) bool) error {
+	return c.streamRelTimelinesWindowed(run, ids, pin, keep, nil, fn)
+}
+
+// streamRelTimelinesWindowed is streamRelTimelinesRun handing fn only the
+// segments accept takes (nil: every segment): the segments a window drops are
+// not counted (Segments counts the segments handed to fn), and the segments
+// kept are counted before fn gets them.
+func (c *Core) streamRelTimelinesWindowed(run *scanRun, ids []types.RelID, pin types.Instant, keep func(*types.Relationship) bool, accept func(temporal.RelSegment) bool, fn func(temporal.RelSegment) bool) error {
 	fn = scanSegments(run, fn)
 	err := streamEntityTimelinesMetered(c, run.tally(), run.chunk(), ids, func(rd entityReads, id types.RelID) ([]temporal.RelSegment, error) {
 		if err := run.admit(); err != nil {
@@ -77,7 +85,7 @@ func (c *Core) streamRelTimelinesRun(run *scanRun, ids []types.RelID, pin types.
 		return skipUnknown(segs, err, storepkg.ErrRelNotFound)
 	}, func(_ types.RelID, segs []temporal.RelSegment) bool {
 		for _, s := range segs {
-			if (keep == nil || keep(s.Rel)) && !fn(s) {
+			if (keep == nil || keep(s.Rel)) && (accept == nil || accept(s)) && !fn(s) {
 				return false
 			}
 		}
@@ -301,8 +309,15 @@ func (c *Core) relsRetentionGate(run *scanRun, ids []types.RelID, pin types.Inst
 // isolation and errors are ForEachRelEffectiveByType's plus an invalid seed
 // (ErrInvalidStoreMutation) and an invalid direction (ErrInvalidDirection).
 func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string, pin types.Instant, fn func(temporal.RelSegment) bool) error {
-	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
-	c := t.c
+	return t.c.forEachRelEffectiveAtNodesRun(nil, nodeIDs, dir, relTypes, recordedPin(pin), nil, fn) // a pin <= 0: nothing recorded yet (round 11)
+}
+
+// forEachRelEffectiveAtNodesRun is ForEachRelEffectiveAtNodes' body under a
+// read budget (run nil: none, the plain door; pin is already recordedPin's).
+// accept (nil: every segment) limits the segments handed to fn, as the Window
+// door does. Under a budget the candidates are gathered by
+// relEffectiveAdjacencyCandidatesRun, each step counted before it is done.
+func (c *Core) forEachRelEffectiveAtNodesRun(run *scanRun, nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string, pin types.Instant, accept func(temporal.RelSegment) bool, fn func(temporal.RelSegment) bool) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
@@ -316,6 +331,9 @@ func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir tempora
 	seeds := firstOccurrences(nodeIDs)
 	if len(seeds) == 0 {
 		return nil // no seed: no relationship, and no history fold
+	}
+	if err := run.holdList(len(seeds)); err != nil { // the seed list the door copies (RH list R2)
+		return err
 	}
 	var (
 		toks []uint16
@@ -331,9 +349,12 @@ func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir tempora
 			return nil // no requested type exists
 		}
 		var err error
-		ids, err = c.relEffectiveAdjacencyCandidates(seeds, toks, outgoing)
+		ids, err = c.relEffectiveAdjacencyCandidatesRun(run, seeds, toks, outgoing)
 		return err
 	}); err != nil {
+		return err
+	}
+	if err := run.holdList(len(ids)); err != nil {
 		return err
 	}
 	seedSet := make(map[types.NodeID]struct{}, len(seeds))
@@ -350,7 +371,7 @@ func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir tempora
 		}
 		return len(toks) == 0 || slices.ContainsFunc(toks, r.HasTypeTokenRaw)
 	}
-	return c.streamRelTimelines(ascending(ids), pin, keep, fn)
+	return c.streamRelTimelinesWindowed(run, ascending(ids), pin, keep, accept, fn)
 }
 
 // relEffectiveAtNodesGates are ForEachRelEffectiveAtNodes' argument and pin

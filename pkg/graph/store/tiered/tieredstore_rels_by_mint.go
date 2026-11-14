@@ -335,6 +335,21 @@ func (ts *Store) refSideNode(nid types.NodeID) (bool, error) {
 // ForEachExAdjacentRelID with a reference-side node's mint shards limited to
 // the tiers depth selects. An ID may repeat.
 func (ts *Store) ForEachExAdjacentRelIDByDepth(nid types.NodeID, incoming bool, depth ShardDepth, fn func(types.RelID) bool) error {
+	return ts.forEachExAdjacentRelIDCharged(nid, incoming, depth, nil, fn)
+}
+
+// ForEachExAdjacentRelIDMetered implements store.ExAdjacencyMeteredCapability:
+// ForEachExAdjacentRelID charging each closed shard it opens (the archive, the
+// event shard of the node's mint time, and for a reference-side node the mint
+// shards) to t before the open.
+func (ts *Store) ForEachExAdjacentRelIDMetered(nid types.NodeID, incoming bool, t *storecontract.ReadTally, fn func(types.RelID) bool) error {
+	return ts.forEachExAdjacentRelIDCharged(nid, incoming, DepthAll, t, fn)
+}
+
+// forEachExAdjacentRelIDCharged is ForEachExAdjacentRelIDByDepth under a read
+// budget (RH list R2, R2-SCANS): each closed shard's open is charged to opens
+// before it (nil: none).
+func (ts *Store) forEachExAdjacentRelIDCharged(nid types.NodeID, incoming bool, depth ShardDepth, opens *storecontract.ReadTally, fn func(types.RelID) bool) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -356,12 +371,12 @@ func (ts *Store) ForEachExAdjacentRelIDByDepth(nid types.NodeID, incoming bool, 
 	}
 	// A reference-side node's legs on an event shard are rels by mint, its
 	// own mint shard's included: those shards are read by depth.
-	ids, err := ts.exAdjRelIDs(nid, incoming, !refSide)
+	ids, err := ts.exAdjRelIDsCharged(nid, incoming, !refSide, opens)
 	if err != nil {
 		return err
 	}
 	if refSide {
-		if err := ts.forEachMintShard(depth, func(s *BadgerStore) error {
+		if err := ts.forEachMintShardCharged(depth, opens, func(s *BadgerStore) error {
 			return s.ForEachExAdjacentRelID(nid, incoming, func(id types.RelID) bool { ids = append(ids, id); return true })
 		}); err != nil {
 			return err
