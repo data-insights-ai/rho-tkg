@@ -557,10 +557,12 @@ type Store struct {
 	// Valid-end indexes (badgerstore_valid_end.go): RAM, per
 	// queried type / label, maintained by noteValidEndOp under wbMu and the K1
 	// membership doors. validEndTrackHook runs between a token's enlisting and
-	// its members' re-read (tests only).
-	relValidEnds      indexpkg.ValidEndIndex
-	nodeValidEnds     indexpkg.ValidEndIndex
-	validEndTrackHook func()
+	// its members' re-read; validEndAttribHook after the rows' read and before
+	// the tracked tokens are set on them (tests only).
+	relValidEnds       indexpkg.ValidEndIndex
+	nodeValidEnds      indexpkg.ValidEndIndex
+	validEndTrackHook  func()
+	validEndAttribHook func()
 	// clearDropTestHook, when non-nil, runs in Clear right before the keyspace
 	// drop; a non-nil error is returned as the drop's failure. Test only.
 	clearDropTestHook func() error
@@ -880,6 +882,21 @@ type Store struct {
 	// valid-end index (ValidEndRowDecodesForTest).
 	historyMetaDecodes atomic.Int64
 	validEndRowDecodes atomic.Int64
+	// validEndAttribLookups counts the RAM membership lookups of the valid-end
+	// attribution pass (tests: the native count beside the meter).
+	validEndAttribLookups atomic.Int64
+	// validEndCommittedReads counts the committed current rows the overlay
+	// path reads on a cache miss (committedTemporal; tests).
+	validEndCommittedReads atomic.Int64
+	// validEndAttribHolds counts the idxMu.RLock acquisitions of the
+	// attribution pass; validEndValueFetches the row values the valid-end read
+	// fetches from badger (Item.Value) and validEndFetchedBytes their bytes
+	// (tests: native counts beside the meter). validEndAttribHoldMax is the
+	// most lookups one hold makes (0: 4096; tests lower it).
+	validEndAttribHolds   atomic.Int64
+	validEndValueFetches  atomic.Int64
+	validEndFetchedBytes  atomic.Int64
+	validEndAttribHoldMax int
 	// nodeRowPointReads counts the node rows among them read by a read
 	// transaction and point Get of their own (NodeRowPointReadsForTest,
 	// LISTREAD: a page reads through one forward scan).

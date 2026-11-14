@@ -23,6 +23,16 @@ import "encoding/binary"
 // Duplicate keys: last one wins, matching the reflect decoder's behavior on
 // this struct (no interface-typed fields, so no decoder panic class here).
 func scanWireTemporalMeta(data []byte) (wireTemporalMetaPartial, bool) {
+	return scanWireTemporalMetaInto(data, nil)
+}
+
+// scanWireTemporalMetaInto is scanWireTemporalMeta that, with labels not nil,
+// also captures a row's tokens as the wire holds them, unchecked: a node's
+// labels ("pl", "el") and a relationship's type ("rt") (nodeLabelTokens and
+// relTypeToken check them; the SafeUnmarshal arm is
+// wireTemporalMetaLabelsPartial). With labels nil the three keys are skipped
+// like any other. An "el" that is not nil or an array of integers declines.
+func scanWireTemporalMetaInto(data []byte, labels *wireRowTokens) (wireTemporalMetaPartial, bool) {
 	var out wireTemporalMetaPartial
 	pos := 0
 
@@ -299,8 +309,68 @@ func scanWireTemporalMeta(data []byte) (wireTemporalMetaPartial, bool) {
 			}
 			return true
 		}
+		// captureInts reads an "el" value: nil, or an array of integers.
+		captureInts := func(dst *[]int64) bool {
+			c, ok := readByte()
+			if !ok {
+				return false
+			}
+			var n int
+			switch {
+			case c == 0xc0:
+				*dst = nil
+				return true
+			case c >= 0x90 && c <= 0x9f:
+				n = int(c & 0x0f)
+			case c == 0xdc:
+				if pos+2 > len(data) {
+					return false
+				}
+				n = int(binary.BigEndian.Uint16(data[pos:]))
+				pos += 2
+			case c == 0xdd:
+				if pos+4 > len(data) {
+					return false
+				}
+				n = int(binary.BigEndian.Uint32(data[pos:]))
+				pos += 4
+			default:
+				return false
+			}
+			if n > len(data)-pos { // every element takes a byte at least
+				return false
+			}
+			vals := make([]int64, 0, min(n, wireArrayPreallocCap)) // the full decoder's cap (decodeIntSlice)
+			for range n {
+				v, ok := readInt()
+				if !ok {
+					return false
+				}
+				vals = append(vals, v)
+			}
+			*dst = vals
+			return true
+		}
 		handled := true
 		switch string(key) {
+		case "pl":
+			if labels == nil {
+				handled = false
+			} else if !captureInt(&labels.Primary) {
+				return out, false
+			}
+		case "el":
+			if labels == nil {
+				handled = false
+			} else if !captureInts(&labels.Extra) {
+				return out, false
+			}
+		case "rt":
+			if labels == nil {
+				handled = false
+			} else if !captureInt(&labels.RelType) {
+				return out, false
+			}
 		case "fv":
 			v, ok := readInt()
 			if !ok || v < 0 || v > 255 {

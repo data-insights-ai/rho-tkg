@@ -362,6 +362,11 @@ func (bs *Store) HistoryMetaDecodesForTest() int64 { return bs.historyMetaDecode
 // read decoded (a counter the read meter does not keep).
 func (bs *Store) ValidEndRowDecodesForTest() int64 { return bs.validEndRowDecodes.Load() }
 
+// ValidEndAttribLookupsForTest returns how many attribution lookups the
+// valid-end index's first calls made on this store (validEndRowsBulk's walk of
+// the former sets and the entities read). Not for production use.
+func (bs *Store) ValidEndAttribLookupsForTest() int64 { return bs.validEndAttribLookups.Load() }
+
 // PropertyDiskLookupsForTest returns how many equality lookups the on-disk
 // property index answered in this process (UNIQUELOOK). Not for production use.
 func PropertyDiskLookupsForTest() int64 { return propertyDiskLookups.Load() }

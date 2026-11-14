@@ -56,18 +56,16 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 }
 
 // historyTemporalMetaByPrefixTallied is historyTemporalMetaByPrefix under a read
-// budget (t not nil, R2 late counts): each history row, committed or buffered,
-// counts one history version and its stored bytes before it is decoded, so a
-// long history stops at the row that passes a limit, not after every row is
-// decoded.
+// budget (t not nil, R2 late counts): each history row counts one history
+// version and its stored size as decoded bytes, a committed row its
+// Item.ValueSize before its value is fetched, a buffered row (already in RAM)
+// its length before its decode, so a long history stops at the row that passes
+// a limit, not after every row is fetched and decoded.
 func (bs *Store) historyTemporalMetaByPrefixTallied(prefix []byte, node bool, t *storecontract.ReadTally) ([]storecontract.VersionTemporalMeta, error) {
 	// Overlay BEFORE the View — see getNodeHistoryByPrefix.
 	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	metaOf := func(raw []byte) (storecontract.VersionTemporalMeta, error) {
-		if err := t.DecodedHistory(len(raw)); err != nil {
-			return storecontract.VersionTemporalMeta{}, err
-		}
 		bs.historyMetaDecodes.Add(1)
 		return historyTemporalMetaOf(raw, node)
 	}
@@ -100,7 +98,12 @@ func (bs *Store) historyTemporalMetaByPrefixTallied(prefix []byte, node bool, t 
 			if _, pending := overlay[string(key)]; pending {
 				continue // overlay set wins (byte-identical for history keys)
 			}
+			if err := t.DecodedHistory(int(it.Item().ValueSize())); err != nil {
+				return err
+			}
+			bs.validEndValueFetches.Add(1)
 			if err := it.Item().Value(func(val []byte) error {
+				bs.validEndFetchedBytes.Add(int64(len(val)))
 				m, err := metaOf(val)
 				if err != nil {
 					return err
@@ -120,6 +123,9 @@ func (bs *Store) historyTemporalMetaByPrefixTallied(prefix []byte, node bool, t 
 		return out, nil
 	}
 	for k, raw := range overlay {
+		if err := t.DecodedHistory(len(raw)); err != nil {
+			return nil, err
+		}
 		m, err := metaOf(raw)
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode pending history temporal meta: %w", err)
