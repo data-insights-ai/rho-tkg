@@ -3,6 +3,7 @@ package temporal
 import (
 	"context"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -273,4 +274,56 @@ func (a *API) RelLowestAnsweredPinCtx(ctx context.Context, id types.RelID) (type
 		return 0, err
 	}
 	return ops.RelLowestAnsweredPin(id)
+}
+
+// nodeTwinsCtxOps is the optional part of Ops the last two node Ctx doors reach
+// (the graph's own ops implement it; Ops itself stays unchanged).
+type nodeTwinsCtxOps interface {
+	NodesAtOptsByIDsCtx(ctx context.Context, ids []types.NodeID, opts storepkg.QueryOpts) ([]*types.Node, error)
+	NodesAtTxCtx(ctx context.Context, validAt, txAt types.Instant) ([]*types.Node, error)
+}
+
+// NodesAtOptsByIDsCtx is NodesAtOptsByIDs under ctx's read budget: the same
+// aligned answer, or *store.ReadBudgetError and no rows. It validates as
+// NodesAtOptsByIDs does (IDs, the opts' point form, a pin above the clock), then
+// counts as NodesAtTxByIDsCtx: one candidate and 8 buffer bytes per ID before
+// any ID is read, then the rows decoded, history looked at and shards opened by
+// each distinct ID's read. Without a budget it is NodesAtOptsByIDs.
+func (a *API) NodesAtOptsByIDsCtx(ctx context.Context, ids []types.NodeID, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := ops.(nodeTwinsCtxOps); ok {
+		return m.NodesAtOptsByIDsCtx(ctx, ids, opts)
+	}
+	if err := asOfWithoutBudget(ctx, "NodesAtOptsByIDs"); err != nil {
+		return nil, err
+	}
+	return ops.NodesAtOptsByIDs(ids, opts)
+}
+
+// NodesAtTxCtx is NodesAtTx under ctx's read budget: the same rows in ID order,
+// or *store.ReadBudgetError and no rows. Every node ever stored is a candidate
+// (the door has no index to narrow it): the store's ID walks (the current IDs
+// and the history IDs) count each distinct ID as a candidate, and 24 buffer
+// bytes for the set entry, before it joins the candidate set, so a budget stops
+// the walk at the ID that passes it; then 8 bytes per ID for the ID list and 8
+// for the result slice before any node is read, then the rows decoded, history
+// looked at and, on tiered, shards opened by each node's read (the metered read
+// snapshot). On tiered the ID walks open every shard and cannot count the
+// opens: a ShardOpens budget is refused before the walk with Limit
+// "unsupported". Without a budget it is NodesAtTx.
+func (a *API) NodesAtTxCtx(ctx context.Context, validAt, txAt types.Instant) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := ops.(nodeTwinsCtxOps); ok {
+		return m.NodesAtTxCtx(ctx, validAt, txAt)
+	}
+	if err := asOfWithoutBudget(ctx, "NodesAtTx"); err != nil {
+		return nil, err
+	}
+	return ops.NodesAtTx(validAt, txAt)
 }

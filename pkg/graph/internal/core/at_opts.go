@@ -76,23 +76,34 @@ func (t *TempOps) RelAtOpts(id types.RelID, opts storepkg.QueryOpts) (*types.Rel
 // NodesAtTxByIDs (aligned to ids, nil where no version is valid); a pin above
 // the commit clock is ErrTxPinTooNew.
 func (t *TempOps) NodesAtOptsByIDs(ids []types.NodeID, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	c := t.c
-	if err := c.checkOpen(); err != nil {
-		return nil, err
-	}
-	for _, id := range ids {
-		if err := storepkg.ValidateNodeID(id); err != nil {
-			return nil, err
-		}
-	}
-	validAt, txAt, err := c.atOpts(opts)
+	validAt, txAt, err := t.c.nodesAtOptsGates(ids, opts)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.checkPinNotTooNew(txAt); err != nil {
-		return nil, err
+	return t.c.nodesAtTxByIDs(ids, validAt, txAt)
+}
+
+// nodesAtOptsGates are NodesAtOptsByIDs' input checks, in order: an open graph,
+// valid IDs, the point form of opts, a pin the clock has reached; it returns the
+// valid instant and the pin the read uses (NodesAtOptsByIDsCtx runs them before
+// it counts anything).
+func (c *Core) nodesAtOptsGates(ids []types.NodeID, opts storepkg.QueryOpts) (validAt, txAt types.Instant, err error) {
+	if err := c.checkOpen(); err != nil {
+		return 0, 0, err
 	}
-	return c.nodesAtTxByIDs(ids, validAt, txAt)
+	for _, id := range ids {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return 0, 0, err
+		}
+	}
+	validAt, txAt, err = c.atOpts(opts)
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := c.checkPinNotTooNew(txAt); err != nil {
+		return 0, 0, err
+	}
+	return validAt, txAt, nil
 }
 
 // RelsAtOptsByIDs is NodesAtOptsByIDs for relationships.

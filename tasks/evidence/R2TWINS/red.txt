@@ -116,3 +116,39 @@ from the cache first):
   flushed): green. Memory: TestReadBudgetPublicRelTwins runs every door on the memory store (the chain's versions counted all at
   once, so a history limit refuses after the first chain).
 
+=== COMMIT 3: the last two node doors, Temporal().NodesAtOptsByIDsCtx and NodesAtTxCtx ===
+
+Red: NodesAtOptsByIDsCtx stubbed (ctx check, one candidate per ID, the plain door), NodesAtTxCtx stubbed (ctx check, the plain door),
+`go test -short -run 'TestReadBudget_R2Twins_Node' ./pkg/graph/internal/core/`: 4 top-level tests, 22 failing (sub)tests:
+
+  TestReadBudget_R2Twins_NodesAtOptsByIDs/{badger,sharded,tiered}/{pending,flushed}
+    unlimited work {Candidates:14 ...all else 0}; want 14 candidates, 112 buffer bytes and the history looked at
+  TestReadBudget_R2Twins_NodesAtTx/...
+    unlimited work {all 0}; want 12 candidates (the distinct known nodes), 480 buffer bytes and the history looked at
+  TestReadBudget_R2Twins_NodesAtTxShardOpens
+    error <nil>, want ErrReadBudget at "unsupported"
+    (before that line the plain NodesAtTx was measured: it opened all 3 cold shards of the tiered store, 3 opens, and counted nothing)
+  TestReadBudget_R2Twins_NodeGates/NodesAtOptsByIDs
+    closed graph = graph is closed, work {Candidates:4 ...}; want ErrGraphClosed and no candidate counted
+
+Green (`go test -short -v -run 'TestReadBudget_R2Twins_Node...' ./pkg/graph/internal/core/`, badger, rows evicted first):
+
+  NodesAtOptsByIDs (14 IDs):    unlimited {Candidates:14 DecodedBytes:10848 HistoryExamined:39 BufferBytes:112}; Candidates 13 and
+                                BufferBytes 111: refused with nothing read; HistoryExamined 1: refused after {DecodedBytes:189
+                                HistoryExamined:2}; a TxPin in opts, a pin above the clock and an invalid ID are refused before
+                                anything is counted
+  NodesAtTx (12 known nodes):   unlimited {Candidates:12 DecodedBytes:10848 HistoryExamined:39 BufferBytes:480} (24 + 8 + 8 per node);
+                                Candidates 5: refused after {Candidates:6 BufferBytes:120}, nothing decoded (the ID walk stopped at
+                                the sixth ID of 12); BufferBytes 1: refused after {Candidates:1 BufferBytes:24}; BufferBytes 479:
+                                refused with every ID gathered and nothing read; HistoryExamined 1: refused after {DecodedBytes:449
+                                HistoryExamined:2}; DecodedBytes 1: refused after the first node's row
+  Tiered (sbBuildTiered, cold shards closed before each read): the plain NodesAtTx opened 3 cold shards; ShardOpens 1 is refused
+                                before the walk, Limit "unsupported", 0 shards opened, nothing counted; a Candidates-only budget
+                                answers the plain rows. NodesAtOptsByIDs over a live node and one deleted in the first shard: the plain
+                                read opened 3, under ShardOpens 1 it opened 1 and refused, unlimited it opened 3 and counted 3.
+
+  Mutations checked (each reverted): the ID walk continuing after a refusal (TestReadBudget_R2Twins_NodesAtTx red: more than limit+1
+  counted); NodesAtTxCtx reading through a nil tally (13 failing subtests); the ShardOpens gate removed
+  (NodesAtTxShardOpens: error <nil>, want ErrReadBudget at "unsupported"). The probe matrix gained `NodesAtOptsByIDs` and `NodesAtTx`
+  (budget 1 on every counter, 8, 32 and 128 IDs, three backends, pending and flushed): green.
+

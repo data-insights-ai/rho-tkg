@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **R2-TWINS, the last two node doors under a read budget**: `Temporal().NodesAtOptsByIDsCtx` counts as
+  `NodesAtTxByIDsCtx` (one candidate and 8 buffer bytes per ID before any ID is read, then the reads' decodes, history
+  and shard opens through one metered snapshot) after `NodesAtOptsByIDs`' own checks. `NodesAtTxCtx` reads every node ever
+  stored: the store's ID walks count each distinct ID (and 24 buffer bytes for its set entry) as they produce it, so a
+  `Candidates` limit of 5 stops the walk at the sixth ID with nothing decoded; then 8 bytes per ID for the list and the
+  answer, then each node's rows, history and shard opens through the metered snapshot. The walks open every shard of a
+  tiered store and cannot count it, so a `ShardOpens` budget is refused before the walk there (`"unsupported"`, 0 shards
+  opened; the plain read opened all 3). Red: the doors stubbed to the plain ones, 22 failing subtests
+  (`tasks/evidence/R2TWINS/red.txt`); tests: `TestReadBudget_R2Twins_NodesAtOptsByIDs`, `_NodesAtTx`,
+  `_NodesAtTxShardOpens`, `_NodeGates`, `TestReadBudgetPublicNodeTwins` (memory included),
+  `TestReadBudgetNodeTwinsWrappers`, the probe matrix (`NodesAtOptsByIDs`, `NodesAtTx`).
 - **R2-TWINS, the relationship twins of the budgeted node doors**: `Rels().GetCtx` and `Temporal().RelAtTxCtx`,
   `RelAtCtx` (the twin of `NodeAtCtx`), `RelsAtTxByIDsCtx`, `RelsEffectiveByIDsCtx` (a stream) and
   `RelLowestAnsweredPinCtx` return the plain door's answer or `*store.ReadBudgetError` and no rows, with the node twins'
@@ -21,8 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`tasks/evidence/R2TWINS/red.txt`); tests: `TestReadBudget_R2Twins_RelGet`, `_RelAt`, `_RelsAtTxByIDs`,
   `_RelsEffectiveByIDs`, `_RelLowestAnsweredPin`, `_RelShardOpens`, `_RelLowestAnsweredPinShardOpens`,
   `_RetentionGateReadsAreCounted`, `_RelGates`, `TestReadBudgetPublicRelTwins` (memory included),
-  `TestReadBudgetRelTwinsWrappers`, `TestAPIGetCtx_Forwarding`, the probe matrix (`rel AtTxByIDs`). Still open for the
-  node doors: `NodesAtOptsByIDs` and `NodesAtTx`.
+  `TestReadBudgetRelTwinsWrappers`, `TestAPIGetCtx_Forwarding`, the probe matrix (`rel AtTxByIDs`).
 - **R2-TWINS, a nil `ctx` is `ErrNilContext`, not a panic**: `Nodes().Iter` / `IterByLabel`, `Rels().Iter` /
   `OutgoingIter` / `IncomingIter` called `ctx.Err()` on the nil interface, and so did the `Ctx` wrappers over an `Ops`
   without the budgeted doors (`temporal`'s as-of and by-ID wrappers, the `nodes` and `rels` fallbacks). They answer

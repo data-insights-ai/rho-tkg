@@ -3,8 +3,10 @@ package core
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -103,13 +105,7 @@ func (t *TempOps) NodesAtTxByIDsCtx(ctx context.Context, ids []types.NodeID, val
 	if err := c.validateEffectivePin(txAt); err != nil {
 		return nil, err
 	}
-	if err := meter.AddCandidates(door, len(ids)); err != nil {
-		return nil, err
-	}
-	if err := meter.AddBufferBytes(door, len(ids)*bufSliceRef); err != nil {
-		return nil, err
-	}
-	return c.nodesAtTxByIDsTallied(meter.Tally(door), ids, validAt, txAt)
+	return c.nodesAtTxByIDsCharged(meter, door, ids, validAt, txAt)
 }
 
 // NodesLowestAnsweredPinsCtx is NodesLowestAnsweredPins under ctx's read
@@ -288,4 +284,142 @@ func (t *TempOps) RelsEffectiveByIDsCtx(ctx context.Context, ids []types.RelID, 
 		return err
 	}
 	return t.c.relsEffectiveByIDsRun(run, ids, recordedPin(pin), fn)
+}
+
+// NodesAtOptsByIDsCtx is NodesAtOptsByIDs under ctx's read budget: after the
+// plain door's checks (an open graph, IDs, the point form of opts, a pin the
+// clock has reached) it counts as NodesAtTxByIDsCtx does: one candidate and 8
+// buffer bytes per ID before any ID is read, then the rows decoded, history
+// looked at and shards opened by each distinct ID's read.
+func (t *TempOps) NodesAtOptsByIDsCtx(ctx context.Context, ids []types.NodeID, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	const door = "NodesAtOptsByIDs"
+	c := t.c
+	meter, err := c.beginTimeline(ctx, door)
+	if err != nil {
+		return nil, err
+	}
+	if meter == nil {
+		return t.NodesAtOptsByIDs(ids, opts)
+	}
+	validAt, txAt, err := c.nodesAtOptsGates(ids, opts)
+	if err != nil {
+		return nil, err
+	}
+	return c.nodesAtTxByIDsCharged(meter, door, ids, validAt, txAt)
+}
+
+// nodesAtTxByIDsCharged counts the candidates (one per ID) and the result
+// buffer (8 bytes per ID) of a by-ID point read of ids, before any ID is read,
+// then reads them through one metered read snapshot (NodesAtTxByIDsCtx and
+// NodesAtOptsByIDsCtx, after their own checks).
+func (c *Core) nodesAtTxByIDsCharged(meter *storepkg.ReadMeter, door string, ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error) {
+	if err := meter.AddCandidates(door, len(ids)); err != nil {
+		return nil, err
+	}
+	if err := meter.AddBufferBytes(door, len(ids)*bufSliceRef); err != nil {
+		return nil, err
+	}
+	return c.nodesAtTxByIDsTallied(meter.Tally(door), ids, validAt, txAt)
+}
+
+// NodesAtTxCtx is NodesAtTx under ctx's read budget. Every node ever stored is a
+// candidate: the store's ID walks (the current IDs, then the history IDs) count
+// each distinct ID, and 24 buffer bytes for its set entry, as they produce it and
+// before it joins the candidate set, so a budget stops the walk at the ID that
+// passes it, with nothing read; then 8 bytes per ID for the ID list and 8 for the
+// answer slice before any node is read; then each node's rows decoded, history
+// looked at and, on tiered, shards opened, through the metered read snapshot, in
+// chunks of effScanChunk nodes per hold of the graph read lock. On tiered the ID
+// walks open every shard and cannot count the opens, so a budget that bounds
+// ShardOpens is refused before the walk (Limit "unsupported"). The answer is
+// NodesAtTx's: the nodes with a version at the pin, in ID order (none: nil).
+func (t *TempOps) NodesAtTxCtx(ctx context.Context, validAt, txAt types.Instant) ([]*types.Node, error) {
+	const door = "NodesAtTx"
+	c := t.c
+	meter, err := c.beginTimeline(ctx, door)
+	if err != nil {
+		return nil, err
+	}
+	if meter == nil {
+		return t.NodesAtTx(validAt, txAt)
+	}
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := c.idWalkOpensRefused(meter, door); err != nil {
+		return nil, err
+	}
+	ids, err := c.collectKnownNodeIDsMetered(meter, door)
+	if err != nil {
+		return nil, err
+	}
+	if err := meter.AddBufferBytes(door, len(ids)*bufSliceRef); err != nil { // the answer slice
+		return nil, err
+	}
+	rows, err := c.nodesAtTxByIDsTallied(meter.Tally(door), ids, validAt, txAt)
+	if err != nil {
+		return nil, err
+	}
+	rows = slices.DeleteFunc(rows, func(n *types.Node) bool { return n == nil }) // a node with no version at the pin
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rows, nil
+}
+
+// idWalkOpensRefused refuses, before any walk, a budget that bounds ShardOpens
+// on a tiered store: the whole-graph ID walks open every shard and cannot count
+// the opens (Limit "unsupported"). Any other read passes.
+func (c *Core) idWalkOpensRefused(meter *storepkg.ReadMeter, door string) error {
+	if !meter.BoundsShardOpens() {
+		return nil
+	}
+	if _, opensShards := c.store.(*tiered.Store); !opensShards {
+		return nil
+	}
+	return &storepkg.ReadBudgetError{Door: door, Limit: "unsupported", Work: meter.Work()}
+}
+
+// collectKnownNodeIDsMetered is collectKnownNodeIDsByDepth (DepthAll) under a
+// read budget: the union of the current and the history IDs, ascending, each
+// distinct ID counted as a candidate and charged its set entry (bufSetEntry) as
+// the walk produces it, the walk stopping at the refusal; the ID list is charged
+// before it is built.
+func (c *Core) collectKnownNodeIDsMetered(meter *storepkg.ReadMeter, door string) ([]types.NodeID, error) {
+	seen := make(map[types.NodeID]struct{})
+	var refuse error
+	admit := func(id types.NodeID) bool {
+		if _, dup := seen[id]; dup {
+			return true
+		}
+		if refuse = meter.AddCandidates(door, 1); refuse != nil {
+			return false
+		}
+		if refuse = meter.AddBufferBytes(door, bufSetEntry); refuse != nil {
+			return false
+		}
+		seen[id] = struct{}{}
+		return true
+	}
+	err := c.readUnderRLock(func() error {
+		if err := c.forEachNodeID(admit); err != nil || refuse != nil {
+			return err
+		}
+		return c.forEachNodeHistoryIDByDepth(storepkg.DepthAll, admit)
+	})
+	if refuse != nil {
+		return nil, refuse
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := meter.AddBufferBytes(door, len(seen)*bufSliceRef); err != nil { // the ID list
+		return nil, err
+	}
+	ids := make([]types.NodeID, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids, nil
 }
