@@ -153,3 +153,29 @@ Mutations caught (each by the tests named):
   props listing's lookup without the meter                  -> TestR2Scans_Paged (props_scan on badger, sharded, tiered)
   the sidecar fetch not capped at the room plus one         -> TestR2Scans_PagedLimit (badger, tiered)
   the listing snapshot not counting its reads               -> TestR2Scans_Paged (the props and values doors, flushed)
+
+== Step 4: HasHistoryCtx and LatestStampsCtx on a store that hides its capabilities ==
+
+Checked first, as asked, on dev (8476020f): Nodes().LatestStampsCtx and Rels().LatestStampsCtx are bounded on every native
+store. Candidates 1 before the read; tiered passes the tally to its metered stamp doors (store.NodeStampsMeteredCapability,
+RelStampsMeteredCapability: latest_stamps.go lines 79, 146, 194, 221), so each closed shard is charged before it opens
+(existing TestReadBudget_ShardOpens_TieredDoors, TestReadBudget_ByIDDoors, the rel twins: green on this base); memory,
+badger and sharded open no shard and read RAM sidecars and a row's temporal block (counted 0 decoded bytes, documented).
+A wrapper embedding a native store refuses a DecodedBytes or ShardOpens budget at the door (budgetSupported, "unsupported",
+TestReadBudget_UnsupportedStoreRefusesBeforeReading and the rel twin cover LatestStamps).
+What did drop the meter was the fallback of a store with no HistoryStampsCapability (or HistoryPresenceCapability): it folds
+the whole history through getNodeHistory / getRelHistory (the fallbacks of nodeHistoryStampsTallied and
+relHistoryStampsTallied in latest_stamps.go, and of HasHistory in history_presence.go) and the door passed the plain form for
+it: a HistoryExamined limit never refused. The rest of the Sigma-side bypass the RH review names
+(sessions/session_stamps.go:83 discarding its context) is in sigma, not here.
+
+RED: go test -short -run TestR2Scans_StampsOnABareStore ./pkg/graph/internal/core (a badger store behind the mandatory
+interface only; node and rel, HasHistoryCtx and LatestStampsCtx):
+  --- FAIL: TestR2Scans_StampsOnABareStore/{node_HasHistory,node_LatestStamps,rel_HasHistory,rel_LatestStamps}
+      unlimited work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0};
+      want 1 candidate and the entity's 6 history versions examined
+
+GREEN: the fallback counts the history versions it reads before it folds them: the unlimited meter counts 1 candidate and 6
+history versions, HistoryExamined 5 refuses (no answer), 6 answers; DecodedBytes and ShardOpens budgets are refused before
+any work (the store cannot count them). The fold has read the history when the count refuses it, as the memory store's
+chain does: a store that hides its capabilities cannot be asked its length first.

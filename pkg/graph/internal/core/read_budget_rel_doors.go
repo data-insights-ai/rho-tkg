@@ -72,8 +72,11 @@ func (r *RelOps) HasHistoryCtx(ctx context.Context, id types.RelID) (bool, error
 	}
 	c := r.c
 	m, ok := c.store.(storepkg.RelStampsMeteredCapability)
-	if meter == nil || !ok || !c.storeCountsReads { // a wrapper keeps its overrides as the read
+	if meter == nil {
 		return r.HasHistory(id)
+	}
+	if !ok || !c.storeCountsReads { // a wrapper keeps its overrides as the read; one that hides its capabilities folds the history, whose versions count
+		return r.hasHistoryTallied(id, meter.Tally("HasHistory"))
 	}
 	if err := c.checkOpen(); err != nil {
 		return false, err

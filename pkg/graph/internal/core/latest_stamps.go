@@ -86,9 +86,15 @@ func (c *Core) nodeHistoryStampsTallied(id types.NodeID, t *storepkg.ReadTally) 
 	if err != nil {
 		return 0, 0, false, err
 	}
+	// A store that hides its stamp capabilities is read through its whole
+	// history: under a budget those versions count before they are folded (RH
+	// list R2, R2-SCANS), as the memory store's chain does.
+	if err := t.History(len(history)); err != nil {
+		return 0, 0, false, err
+	}
 	for _, h := range history {
-		f, t, d := h.TxStamps()
-		txFrom, txTo = storepkg.FoldTxStamps(txFrom, txTo, f, t, d)
+		f, to, d := h.TxStamps()
+		txFrom, txTo = storepkg.FoldTxStamps(txFrom, txTo, f, to, d)
 	}
 	return txFrom, txTo, len(history) > 0, nil
 }
@@ -153,9 +159,12 @@ func (c *Core) relHistoryStampsTallied(id types.RelID, t *storepkg.ReadTally) (t
 	if err != nil {
 		return 0, 0, false, err
 	}
+	if err := t.History(len(history)); err != nil { // as nodeHistoryStampsTallied
+		return 0, 0, false, err
+	}
 	for _, h := range history {
-		f, t, d := h.TxStamps()
-		txFrom, txTo = storepkg.FoldTxStamps(txFrom, txTo, f, t, d)
+		f, to, d := h.TxStamps()
+		txFrom, txTo = storepkg.FoldTxStamps(txFrom, txTo, f, to, d)
 	}
 	return txFrom, txTo, len(history) > 0, nil
 }

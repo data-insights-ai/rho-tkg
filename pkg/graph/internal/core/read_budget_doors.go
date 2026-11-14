@@ -65,9 +65,12 @@ func (n *NodeOps) HasHistoryCtx(ctx context.Context, id types.NodeID) (bool, err
 	if err := meter.AddCandidates("HasHistory", 1); err != nil {
 		return false, err
 	}
-	m, ok := n.c.store.(storepkg.NodeStampsMeteredCapability)
-	if meter == nil || !ok {
+	if meter == nil {
 		return n.HasHistory(id)
+	}
+	m, ok := n.c.store.(storepkg.NodeStampsMeteredCapability)
+	if !ok { // a store that counts nothing below the core: a read of the history it falls back to counts its versions
+		return n.hasHistoryTallied(id, meter.Tally("HasHistory"))
 	}
 	// A store that opens shards counts each closed one before it opens
 	// (ShardOpens, READBUDGET).
@@ -99,9 +102,12 @@ func (n *NodeOps) LatestStampsCtx(ctx context.Context, id types.NodeID) (txFrom,
 	if err := meter.AddCandidates("LatestStamps", 1); err != nil {
 		return 0, 0, false, err
 	}
-	if _, ok := n.c.store.(storepkg.NodeStampsMeteredCapability); !ok || meter == nil {
+	if meter == nil {
 		return n.LatestStamps(id)
 	}
+	// The stamp reads go through the store's metered doors where it has them
+	// (tiered's shard opens); a store without them folds the history rows, whose
+	// versions count (latestStampsTallied).
 	return n.latestStampsTallied(id, meter.Tally("LatestStamps"))
 }
 
