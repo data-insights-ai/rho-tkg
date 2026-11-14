@@ -35,8 +35,8 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
     `ValidEndAfter`; O1 lazy sidecar build; O2 property fold, `LabelTxMembersOf`; O3 `gatherFree`; O4 tiered's 2nd list; table `no test` cells.
   - R2-7 CONSUMERS: ai-soc's four R2 guards and `TestRH02WindowAdmissionCumulativeAcrossKeys` pass on dev; Sigma told.
 - **WARMMEM (R3: cheaper writable and inactive shards)** — **rho/sigma:** lowers fixed memory per handle. Unmerged, evidence `R3/`:
-  - R3-1 OVERCAP (CHANGELOG describes a replaced build): fix 2 `6cfabdde`, a transient handle never counted or kept, a failed
-    Close detaches; Fable re-review mergeable, merge after a comment fix.
+  - R3-1 OVERCAP (CHANGELOG describes a replaced build): merged `db413d11` (Fable re-reviewed); a transient handle is never
+    counted or kept, a failed Close detaches at upgrade and check-in. Waits for the CHANGELOG rewrite (docs keeper).
   - CLOSEFAULT: a failed Close leaves the handle installed, unfenced: `shard_move.go:130`, `retention_purge_drop.go:200`, `clearEventShard`.
   - P0 WALREPLAY: after a double crash a smaller memtable at open ended the process; `WALReplayMemTableSize` built; Fable review.
   - R3-3 LATEWRITE: L1 built (8 MiB memtable for a shard cold at its writable open; 20.8 MiB, was 93.4); Fable review running.
