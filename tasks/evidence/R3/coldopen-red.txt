@@ -77,3 +77,14 @@ CAUGHT: thaw drops the last partial chunk / ascend skips the last ID / Add or Re
 CAUGHT: the open decodes plain / the rel-type sets, the rel IDs or the node IDs plain / no section-length check
 ALLOCATION-ONLY (not testable by a count): the guard n > len(b) in NewIDSetEncoded; without it a declared count of 2^30 would size the
         anchor slice (256 MB) before the first gap fails the stream (the stream fails the same either way).
+
+== 4. The revision tables of a transient read-only handle (before the fix; newFlatRevTable is a stub that makes the table)
+go test -run 'TestColdOpen_TransientHandleMakesNoRevTables|TestColdOpen_WritableHandleMakesItsRevTables' ./pkg/graph/store/tiered/
+--- FAIL: TestColdOpen_TransientHandleMakesNoRevTables (0.00s)
+    --- FAIL: TestColdOpen_TransientHandleMakesNoRevTables/cap_0 (0.48s)
+        cold_open_revs_test.go:34: right after the open: node table made true, rel table made true, want both false
+FAIL
+(the cap 2 case and the writable-handle test pass before the fix: they pin what does not change)
+
+4b. Mutation sweep of the flat revision table (badger package): CAUGHT: a flat get that answers 0 or 2 / a bump from flat that restarts
+the counter / a bumpAll that does not make the table / a transient open that makes the table / a writable open that gets the flat one.

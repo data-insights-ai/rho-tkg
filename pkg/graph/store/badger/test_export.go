@@ -395,3 +395,12 @@ func (bs *Store) IDSetsEncodedForTest() (nodes, rels bool, relTypes int) {
 	}
 	return bs.nodeIDs.Encoded(), bs.relIDs.Encoded(), relTypes
 }
+
+// RevTablesMadeForTest reports whether the node and the rel revision tables
+// (128 KB each) are made. A transient read-only open (Config.TransientRead)
+// leaves them unmade until a write bumps a stripe. Not for production use.
+func (bs *Store) RevTablesMadeForTest() (nodes, rels bool) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	return bs.nodeRevs.stripes != nil, bs.relRevs.stripes != nil
+}

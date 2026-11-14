@@ -103,14 +103,15 @@ func idDoors(t *testing.T, bs *Store) string {
 func TestEncodedIDSetsMatchEagerOnEveryOpenShape(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
-		shape   string
-		encoded bool
+		shape    string
+		encoded  bool
+		revsMade bool // the transient open has the revision tables made: the walk of an untrusted open bumps a stripe per entity
 	}{
-		{"clean", true},
-		{"nocounts", true},
-		{"noproperty", true},
-		{"crashed", false},
-		{"delta", false},
+		{"clean", true, false},
+		{"nocounts", true, false},
+		{"noproperty", true, false},
+		{"crashed", false, true},
+		{"delta", false, true},
 	} {
 		t.Run(c.shape, func(t *testing.T) {
 			t.Parallel()
@@ -133,6 +134,14 @@ func TestEncodedIDSetsMatchEagerOnEveryOpenShape(t *testing.T) {
 			}
 			if n, r, ty := transient.IDSetsEncodedForTest(); n != c.encoded || r != c.encoded || ty != wantTypes {
 				t.Fatalf("right after the open: encoded sets nodes %v rels %v types %d, want %v %v %d", n, r, ty, c.encoded, c.encoded, wantTypes)
+			}
+			// The revision tables follow the same rule: unmade on a transient read-only
+			// open (they answer 1, an untouched stripe), made on any other.
+			if n, r := eager.RevTablesMadeForTest(); !n || !r {
+				t.Fatalf("the eager open has revision tables made: nodes %v rels %v, want both", n, r)
+			}
+			if n, r := transient.RevTablesMadeForTest(); n != c.revsMade || r != c.revsMade {
+				t.Fatalf("the transient open has revision tables made: nodes %v rels %v, want %v", n, r, c.revsMade)
 			}
 			want, got := idDoors(t, eager), idDoors(t, transient)
 			if got != want {
@@ -219,5 +228,27 @@ func TestOpenImageIDSetSectionEncoded(t *testing.T) {
 		if encErr == nil {
 			t.Errorf("%s: encoded decode accepted it", name)
 		}
+	}
+}
+
+// TestTransientReadIsIgnoredOnAWritableOpen: Config.TransientRead means nothing
+// without ReadOnly: a writable open builds its label maps, ID sets and revision
+// tables at the open as before.
+func TestTransientReadIsIgnoredOnAWritableOpen(t *testing.T) {
+	t.Parallel()
+	dir := lazyLabelFixture(t, "clean")
+	s, err := New(Config{Dir: dir, TransientRead: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	if lazy, maps := s.LabelMapStateForTest(); lazy || maps == 0 {
+		t.Fatalf("a writable open with TransientRead: lazy label maps %v with %d maps", lazy, maps)
+	}
+	if n, r, ty := s.IDSetsEncodedForTest(); n || r || ty != 0 {
+		t.Fatalf("a writable open with TransientRead holds encoded sets: %v %v %d", n, r, ty)
+	}
+	if n, r := s.RevTablesMadeForTest(); !n || !r {
+		t.Fatalf("a writable open with TransientRead has revision tables made: %v %v, want both", n, r)
 	}
 }

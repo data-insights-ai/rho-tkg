@@ -15,6 +15,7 @@ package badger
 type revTable struct {
 	stripes []uint64
 	next    uint64
+	flat    bool // no stripes made, every one still 1 (newFlatRevTable)
 }
 
 const revStripeBits = 14 // 16 K stripes, 128 KB per table
@@ -27,13 +28,32 @@ func newRevTable() revTable {
 	return t
 }
 
+// newFlatRevTable is newRevTable without the 128 KB: every stripe is still 1, so
+// get answers 1 and the first bump or bumpAll makes the table from the state
+// newRevTable starts in. A store that never writes (a transient read-only open,
+// Config.TransientRead) keeps it for good.
+func newFlatRevTable() revTable { return revTable{next: 1, flat: true} }
+
+// newRevTableFor is the table a store opens with: the flat one for a transient
+// read-only open, which never writes, the made one otherwise.
+func newRevTableFor(cfg Config) revTable {
+	if cfg.TransientRead && cfg.ReadOnly {
+		return newFlatRevTable()
+	}
+	return newRevTable()
+}
+
 func revStripe(id int64) uint64 {
 	return (uint64(id) * 0x9E3779B97F4A7C15) >> (64 - revStripeBits) // #nosec G115 — a hash, not a conversion of meaning
 }
 
-// get returns id's revision; 0 before the table is made.
+// get returns id's revision; 0 before the table is made, 1 while a flat table
+// is (an untouched stripe).
 func (t *revTable) get(id int64) uint64 {
 	if t.stripes == nil {
+		if t.flat {
+			return 1
+		}
 		return 0
 	}
 	return t.stripes[revStripe(id)]

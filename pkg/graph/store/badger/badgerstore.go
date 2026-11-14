@@ -1183,8 +1183,8 @@ func New(cfg Config) (*Store, error) {
 
 		historyPresenceProbeOnly: cfg.HistoryPresenceProbeOnly,
 		nodeHashes:               make(map[types.NodeID]string),
-		nodeRevs:                 newRevTable(),
-		relRevs:                  newRevTable(),
+		nodeRevs:                 newRevTableFor(cfg),
+		relRevs:                  newRevTableFor(cfg),
 		labelIdx:                 make(map[uint16]map[types.NodeID]struct{}),
 		typeIdx:                  make(map[uint16]*indexpkg.IDSet),
 		outIdx:                   make(map[types.NodeID]map[types.RelID]types.NodeID),
