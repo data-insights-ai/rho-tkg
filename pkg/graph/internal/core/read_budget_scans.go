@@ -289,6 +289,15 @@ func (c *Core) noteListed(n int) {
 	}
 }
 
+// noteProbed tells the test hook (Core.envelopeProbed) that an envelope prune
+// handed n IDs to the store: one envelope probe each, the native count of the
+// prune's work, which no read meter keeps (PRUNELIN).
+func (c *Core) noteProbed(n int) {
+	if c.envelopeProbed != nil {
+		c.envelopeProbed(n)
+	}
+}
+
 // membersFit refuses, before a store lists the current members of a label or a
 // type for a gatherScan, a listing the candidate room cannot hold: the store's
 // own count of them (count, O(1) on every store) against the room. It asks
