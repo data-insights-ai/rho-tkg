@@ -3,7 +3,7 @@
 // Measurement level (`scripts/measure.sh`): what a burst of reads of one closed
 // cold shard costs (R3 follow-up 3, tasks/evidence/R3/coldread.txt). The R3
 // state measure found 100 GetNode on a closed day shard of 50,000 rows at 2.5 to
-// 2.9 s and 707 MB of allocation. The count behind it is the cold opens: with
+// 2.9 s and 707 MiB of allocation. The count behind it is the cold opens: with
 // MaxOpenColdShards 0 (the default) every read opens the shard read-only and
 // closes it again at check-in; with a cap the burst pays one open. The run is by
 // hand, the wall time and the allocation move with the host's load (logged,
@@ -36,7 +36,7 @@ func TestColdReadBurst(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		maxOpen int
-		asoc    bool // ai-soc's cold-read configuration: label and adjacency indexes on disk, a 64 MB block cache
+		asoc    bool // ai-soc's cold-read configuration: label and adjacency indexes on disk, a 64 MiB block cache
 	}{
 		{"default (cap 0, label map in RAM)", 0, false},
 		{"ai-soc config, cap 0", 0, true},
@@ -133,7 +133,7 @@ func coldReadBurst(t *testing.T, perDay, maxOpen int, asoc bool) {
 	opens := coldOpensOf(t, ts, day20)
 	retained := ts.EventShardsForTest()[day20].Store() != nil
 	t.Logf("%d rows a day, %d GetNode on the closed day shard: %d cold opens, %d catalog saves, handle retained %v; %v wall, %v user CPU, "+
-		"alloc %.1f MB, live heap kept %+.1f MB", perDay, len(ids), opens, saves, retained, took.Round(time.Millisecond),
+		"alloc %.1f MiB, live heap kept %+.1f MiB", perDay, len(ids), opens, saves, retained, took.Round(time.Millisecond),
 		(u1 - u0).Round(time.Millisecond), float64(after.TotalAlloc-before.TotalAlloc)/mib,
 		(float64(after.HeapAlloc)-float64(before.HeapAlloc))/mib)
 	want := int64(len(ids)) // not retained: every read opens the shard and closes it at check-in
@@ -150,7 +150,7 @@ func coldReadBurst(t *testing.T, perDay, maxOpen int, asoc bool) {
 
 // TestColdOpenConfigs times and counts what one raw read-only open and close of
 // the closed day shard costs under the cold read config as it was (shardCfg: the
-// store's own settings) and as it is (coldReadCfg: a 16 MB block cache, no label
+// store's own settings) and as it is (coldReadCfg: a 16 MiB block cache, no label
 // maps, encoded ID sets, no revision tables), in both configurations of the
 // burst; 50 rounds each, no read, no catalog save, so the figures are the open
 // and the close alone. Alloc and CPU are logged, never asserted (R3 cold open,
@@ -201,7 +201,7 @@ func TestColdOpenConfigs(t *testing.T) {
 				}
 				u1, _ := rusageCPU()
 				runtime.ReadMemStats(&after)
-				t.Logf("%d rows, %s, %s: open %.2f ms + close %.2f ms, user CPU %.2f ms, alloc %.2f MB per open and close",
+				t.Logf("%d rows, %s, %s: open %.2f ms + close %.2f ms, user CPU %.2f ms, alloc %.2f MiB per open and close",
 					perDay, name, c.name, float64(openTook.Microseconds())/rounds/1000, float64(closeTook.Microseconds())/rounds/1000,
 					float64((u1-u0).Microseconds())/rounds/1000, float64(after.TotalAlloc-before.TotalAlloc)/rounds/mib)
 			}

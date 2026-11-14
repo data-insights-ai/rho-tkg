@@ -25,8 +25,8 @@ func TestWarmMemTableBackfillWrite(t *testing.T) {
 	}
 	pad := strings.Repeat("y", 100<<10)
 	var b strings.Builder
-	fmt.Fprintf(&b, "\nbackfill of 600 x 100 KB rows into an on-demand window shard (hot MemTableSize 64 MB)\n")
-	fmt.Fprintf(&b, "%-18s | %9s %9s %9s | %9s %9s %8s\n", "WarmMemTableSize", "write ms", "close ms", "MB/s", "alloc MB", "peakAl MB", "tables")
+	fmt.Fprintf(&b, "\nbackfill of 600 x 100 KiB rows into an on-demand window shard (hot MemTableSize 64 MiB)\n")
+	fmt.Fprintf(&b, "%-18s | %9s %9s %9s | %9s %9s %8s\n", "WarmMemTableSize", "write ms", "close ms", "MB/s", "alloc MiB", "pkAl MiB", "tables")
 	for _, warm := range []int64{0, 32 * mib, 16 * mib, 8 * mib} {
 		dir := t.TempDir()
 		clock := &tierClock{}
@@ -75,7 +75,7 @@ func TestWarmMemTableBackfillWrite(t *testing.T) {
 			}
 			return nil
 		})
-		fmt.Fprintf(&b, "%-18s | %9.0f %9.0f %9.1f | %9.1f %9.1f %8d\n", fmt.Sprintf("%d MB", warm/mib),
+		fmt.Fprintf(&b, "%-18s | %9.0f %9.0f %9.1f | %9.1f %9.1f %8d\n", fmt.Sprintf("%d MiB", warm/mib),
 			float64(writeDur.Milliseconds()), float64(closeDur.Milliseconds()), 60/(writeDur+closeDur).Seconds(),
 			float64(after.TotalAlloc-before.TotalAlloc)/mib, float64(pa)/mib, tables)
 	}

@@ -76,7 +76,7 @@ CAUGHT: thaw drops the last partial chunk / ascend skips the last ID / Add or Re
         encoded form
 CAUGHT: the open decodes plain / the rel-type sets, the rel IDs or the node IDs plain / no section-length check
 ALLOCATION-ONLY (not testable by a count): the guard n > len(b) in NewIDSetEncoded; without it a declared count of 2^30 would size the
-        anchor slice (256 MB) before the first gap fails the stream (the stream fails the same either way).
+        anchor slice (256 MiB) before the first gap fails the stream (the stream fails the same either way).
 
 == 4. The revision tables of a transient read-only handle (before the fix; newFlatRevTable is a stub that makes the table)
 go test -run 'TestColdOpen_TransientHandleMakesNoRevTables|TestColdOpen_WritableHandleMakesItsRevTables' ./pkg/graph/store/tiered/

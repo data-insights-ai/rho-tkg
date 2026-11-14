@@ -196,7 +196,7 @@ func printMemRows(t *testing.T, title string, rows []memRow) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n%s\n", title)
 	fmt.Fprintf(&b, "%-34s %3s %3s | %8s %8s %8s | %9s %9s %9s %9s %9s | %8s | %6s %6s | %6s %6s | %3s %4s %3s %5s %3s\n",
-		"state", "rw", "ro", "live MB", "sys MB", "goal MB", "alloc MB", "peakAl MB", "peakIn MB", "peakSy MB", "peakRSS", "step ms",
+		"state", "rw", "ro", "live MiB", "sys MiB", "goal MiB", "alloc MiB", "pkAl MiB", "pkIn MiB", "pkSy MiB", "peakRSS", "step ms",
 		"usr ms", "sys ms", "rot ms", "swp ms", "hot", "warm", "dem", "coldW", "ref")
 	for _, r := range rows {
 		rot := "-"
@@ -395,5 +395,5 @@ func runMemTableStates(t *testing.T, v memVariant, perDay int) {
 			}
 		}
 	}
-	printMemRows(t, "variant "+v.name+fmt.Sprintf(" (MemTableSize %d MB, WarmMemTableSize %d MB)", cfg.MemTableSize/mib, cfg.WarmMemTableSize/mib), rows)
+	printMemRows(t, "variant "+v.name+fmt.Sprintf(" (MemTableSize %d MiB, WarmMemTableSize %d MiB)", cfg.MemTableSize/mib, cfg.WarmMemTableSize/mib), rows)
 }
