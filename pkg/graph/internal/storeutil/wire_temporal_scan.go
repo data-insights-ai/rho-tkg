@@ -27,11 +27,12 @@ func scanWireTemporalMeta(data []byte) (wireTemporalMetaPartial, bool) {
 }
 
 // scanWireTemporalMetaInto is scanWireTemporalMeta that, with labels not nil,
-// also captures a node row's label tokens ("pl", "el") as the wire holds them,
-// unchecked (nodeLabelTokens checks them; the SafeUnmarshal arm is
-// wireTemporalMetaLabelsPartial). With labels nil both keys are skipped like
-// any other. An "el" that is not nil or an array of integers declines.
-func scanWireTemporalMetaInto(data []byte, labels *wireNodeLabels) (wireTemporalMetaPartial, bool) {
+// also captures a row's tokens as the wire holds them, unchecked: a node's
+// labels ("pl", "el") and a relationship's type ("rt") (nodeLabelTokens and
+// relTypeToken check them; the SafeUnmarshal arm is
+// wireTemporalMetaLabelsPartial). With labels nil the three keys are skipped
+// like any other. An "el" that is not nil or an array of integers declines.
+func scanWireTemporalMetaInto(data []byte, labels *wireRowTokens) (wireTemporalMetaPartial, bool) {
 	var out wireTemporalMetaPartial
 	pos := 0
 
@@ -339,13 +340,13 @@ func scanWireTemporalMetaInto(data []byte, labels *wireNodeLabels) (wireTemporal
 			if n > len(data)-pos { // every element takes a byte at least
 				return false
 			}
-			vals := make([]int64, n)
-			for i := range vals {
+			vals := make([]int64, 0, min(n, wireArrayPreallocCap)) // the full decoder's cap (decodeIntSlice)
+			for range n {
 				v, ok := readInt()
 				if !ok {
 					return false
 				}
-				vals[i] = v
+				vals = append(vals, v)
 			}
 			*dst = vals
 			return true
@@ -362,6 +363,12 @@ func scanWireTemporalMetaInto(data []byte, labels *wireNodeLabels) (wireTemporal
 			if labels == nil {
 				handled = false
 			} else if !captureInts(&labels.Extra) {
+				return out, false
+			}
+		case "rt":
+			if labels == nil {
+				handled = false
+			} else if !captureInt(&labels.RelType) {
 				return out, false
 			}
 		case "fv":

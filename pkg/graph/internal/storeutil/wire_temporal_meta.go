@@ -68,19 +68,21 @@ func DecodeWireTemporalMeta(raw []byte) (uint32, *types.TemporalMetadata, error)
 	return wireTemporalMetaOf(w)
 }
 
-// wireNodeLabels is a node row's label tokens as the wire holds them ("pl",
-// "el"; NodeWire.PrimaryLabel, ExtraLabels), before nodeLabelTokens checks
-// them.
-type wireNodeLabels struct {
+// wireRowTokens is a row's tokens as the wire holds them: a node's labels
+// ("pl", "el"; NodeWire.PrimaryLabel, ExtraLabels), a relationship's type
+// ("rt"; RelWire.RelType), before nodeLabelTokens or relTypeToken checks them.
+type wireRowTokens struct {
 	Primary int64   `msgpack:"pl"`
 	Extra   []int64 `msgpack:"el"`
+	RelType int64   `msgpack:"rt"`
 }
 
 // wireTemporalMetaLabelsPartial is the SafeUnmarshal arm of
-// DecodeWireNodeTemporalMetaLabels: the selection fields and the label tokens.
+// DecodeWireNodeTemporalMetaLabels and DecodeWireRelTemporalMetaType: the
+// selection fields and the row's tokens.
 type wireTemporalMetaLabelsPartial struct {
 	wireTemporalMetaPartial `msgpack:",inline"`
-	wireNodeLabels          `msgpack:",inline"`
+	wireRowTokens           `msgpack:",inline"`
 }
 
 // DecodeWireNodeTemporalMetaLabels is DecodeWireTemporalMeta for a FULL node
@@ -93,14 +95,14 @@ type wireTemporalMetaLabelsPartial struct {
 // would fail on it. What the valid-end index's first call reads a node's
 // current labels from (R2-2 VEATTRIB).
 func DecodeWireNodeTemporalMetaLabels(raw []byte) (uint32, *types.TemporalMetadata, []uint16, error) {
-	var lab wireNodeLabels
+	var lab wireRowTokens
 	w, ok := scanWireTemporalMetaInto(raw, &lab)
 	if !ok {
 		var full wireTemporalMetaLabelsPartial
 		if err := SafeUnmarshal(raw, &full); err != nil {
 			return 0, nil, nil, err
 		}
-		w, lab = full.wireTemporalMetaPartial, full.wireNodeLabels
+		w, lab = full.wireTemporalMetaPartial, full.wireRowTokens
 	}
 	version, tm, err := wireTemporalMetaOf(w)
 	if err != nil {
@@ -111,6 +113,40 @@ func DecodeWireNodeTemporalMetaLabels(raw []byte) (uint32, *types.TemporalMetada
 		return 0, nil, nil, err
 	}
 	return version, tm, toks, nil
+}
+
+// DecodeWireRelTemporalMetaType is DecodeWireNodeTemporalMetaLabels for a FULL
+// relationship row: its version, temporal block and type token in one pass,
+// the token checked by the full decoder's rule (1..65535, else
+// store.ErrCorruptWire).
+func DecodeWireRelTemporalMetaType(raw []byte) (uint32, *types.TemporalMetadata, uint16, error) {
+	var tok wireRowTokens
+	w, ok := scanWireTemporalMetaInto(raw, &tok)
+	if !ok {
+		var full wireTemporalMetaLabelsPartial
+		if err := SafeUnmarshal(raw, &full); err != nil {
+			return 0, nil, 0, err
+		}
+		w, tok = full.wireTemporalMetaPartial, full.wireRowTokens
+	}
+	version, tm, err := wireTemporalMetaOf(w)
+	if err != nil {
+		return 0, nil, 0, err
+	}
+	rt, err := relTypeToken(tok.RelType)
+	if err != nil {
+		return 0, nil, 0, err
+	}
+	return version, tm, rt, nil
+}
+
+// relTypeToken checks a relationship row's type token by the full decoder's
+// rule (validateRelWireFields).
+func relTypeToken(rt int64) (uint16, error) {
+	if rt <= 0 || rt > maxWireUint16 {
+		return 0, fmt.Errorf("relationship wire: type token %d outside 1..%d: %w", rt, maxWireUint16, storepkg.ErrCorruptWire)
+	}
+	return uint16(rt), nil // #nosec G115 -- range checked above
 }
 
 // nodeLabelTokens checks a node row's label tokens by the rules the full

@@ -1,0 +1,34 @@
+R2-2 VEATTRIB, round 2 (review of 83e3093b), green.
+1 The attribution walks, per tracked token, the smaller of its former set (the RAM ever-member sidecar) and the
+  entities read, under idxMu.RLock for that token only, and counts the walk as candidates before it (attributeFormer).
+  Current tokens come off the current row in the same decode, for relationships too now (DecodeValidEndRelValue: the
+  scanner captures "rt"), so neither kind asks a RAM map per entity.
+  Label 9 (50 entities) after labels 1..3 (2 former members each): 200 lookups -> 6; candidates 50 -> 56 (RAM),
+  100 -> 106 (disk): +6, the walk; one candidate under that is refused before the last walk (fewer than 6 lookups).
+2 TestValidEndOverlay_CommittedRowLabelsOnCacheMiss: node 1 (history row buffered, cache entry evicted) is read by
+  committedTemporal once and listed for label 9 from its committed row's labels; dropping those labels fails it.
+3 TestValidEndFirstCall_LabelAcrossShardsExceedsTogether: B on the reference (3, extra label) and hot shard (3):
+  control 12 candidates, 6 visited, 6 decoded; budget 12 answers; budget 8 refused, the hot shard decodes nothing.
+4 TestValidEndAttribution_WriterInTheGap (label add then remove in the hook: node 1 stays unknown, the next call
+  installs it, label 3 lists it) and TestValidEndAttribution_ConcurrentWriters (4 writers x 5 nodes toggling label 3,
+  60 reads; afterwards label 3 = the nodes that carried it, label 9 = all 20); both under -race.
+5 captureInts preallocates min(n, 4096), as decodeIntSlice.
+6 The bulk iterators and committedTemporal charge Item.ValueSize() as decoded bytes before Item.Value fetches it.
+7 Comments: the bulk rows in one view, each buffered entity in views of its own; the attribution reads no badger.
+Mutations (by hand, reverted): the rel row's type dropped -> TestValidEndFirstCall_RefusesBeforeTheEnlistment and four
+core tests fail (EffectiveValidFrom x2, TieredTxMembershipAndValidEndMatchBadger, R2Scans_ValidEndFirstCallMetered);
+the committed row's labels dropped -> finding 2's test fails.
+
+--- PASS: TestValidEndOverlay_CommittedRowLabelsOnCacheMiss (0.00s)
+--- PASS: TestValidEndAttribution_ConcurrentWriters (0.00s)
+--- PASS: TestValidEndAttribution_WriterInTheGap (0.00s)
+--- PASS: TestValidEndAttribution_WalksFormerSetsNotEntities (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.289s
+--- PASS: TestValidEndFirstCall_LabelAcrossShardsExceedsTogether (0.52s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.551s
+--- PASS: TestDecodeValidEndNodeValue_LabelsMatchFullDecode (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.014s
+
+Also green: go test -run 'ValidEnd' badger, tiered, memory; go test -run 'ValidEnd|R2Scans|From|Window'
+./pkg/graph/internal/core/; storeutil scanner and decode tests and -short storeutil, index; 'Lazy|ReadBudget|TxMember|
+LabelDisk' badger and tiered; -race on every R2-2 test (badger, tiered, storeutil); make old.

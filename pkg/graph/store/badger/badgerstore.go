@@ -880,6 +880,12 @@ type Store struct {
 	// valid-end index (ValidEndRowDecodesForTest).
 	historyMetaDecodes atomic.Int64
 	validEndRowDecodes atomic.Int64
+	// validEndAttribLookups counts the RAM membership lookups of the valid-end
+	// attribution pass (tests: the native count beside the meter).
+	validEndAttribLookups atomic.Int64
+	// validEndCommittedReads counts the committed current rows the overlay
+	// path reads on a cache miss (committedTemporal; tests).
+	validEndCommittedReads atomic.Int64
 	// nodeRowPointReads counts the node rows among them read by a read
 	// transaction and point Get of their own (NodeRowPointReadsForTest,
 	// LISTREAD: a page reads through one forward scan).

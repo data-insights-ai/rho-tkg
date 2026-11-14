@@ -50,7 +50,7 @@ func TestDecodeValidEndNodeValue_LabelsMatchFullDecode(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x7AB1E5)) // #nosec G404 — deterministic test fuzz
 	sameAsReference := func(name string, raw []byte, wantScanOK bool) {
 		t.Helper()
-		var lab wireNodeLabels
+		var lab wireRowTokens
 		got, ok := scanWireTemporalMetaInto(raw, &lab)
 		if !ok {
 			if wantScanOK {
@@ -62,7 +62,7 @@ func TestDecodeValidEndNodeValue_LabelsMatchFullDecode(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: scanner accepted input SafeUnmarshal rejects: %v", name, err)
 		}
-		if got != want.wireTemporalMetaPartial || lab.Primary != want.Primary || !slices.Equal(lab.Extra, want.Extra) {
+		if got != want.wireTemporalMetaPartial || lab.Primary != want.Primary || !slices.Equal(lab.Extra, want.Extra) || lab.RelType != want.RelType {
 			t.Fatalf("%s: scanner diverges: got %+v %+v, want %+v", name, got, lab, want)
 		}
 		// Without a label sink the scanner answers as before.
@@ -130,9 +130,9 @@ func TestDecodeValidEndNodeValue_LabelsMatchFullDecode(t *testing.T) {
 			}
 			flipped := append([]byte(nil), raw...)
 			flipped[rng.Intn(len(flipped))] ^= 0xFF
-			var lab wireNodeLabels
+			var lab wireRowTokens
 			if got, ok := scanWireTemporalMetaInto(flipped, &lab); ok {
-				if want, err := referenceDecodeTemporalMetaLabels(flipped); err == nil && (got != want.wireTemporalMetaPartial || lab.Primary != want.Primary || !slices.Equal(lab.Extra, want.Extra)) {
+				if want, err := referenceDecodeTemporalMetaLabels(flipped); err == nil && (got != want.wireTemporalMetaPartial || lab.Primary != want.Primary || !slices.Equal(lab.Extra, want.Extra) || lab.RelType != want.RelType) {
 					t.Fatalf("bit-flip divergence: got %+v %+v, want %+v", got, lab, want)
 				}
 			}
@@ -187,6 +187,56 @@ func TestDecodeValidEndNodeValue_LabelsMatchFullDecode(t *testing.T) {
 			t.Fatalf("%s: decoded %v; want an error", c.name, got)
 		}
 	}
+	// Relationship rows: the type token comes with the temporal block, from a
+	// full row and a delta, equal to the relationship's; a type token outside
+	// 1..65535 fails closed.
+	for i := 0; i < 200; i++ {
+		tok := uint16(1 + rng.Intn(1<<16-1)) // #nosec G115 — bounded
+		r := types.NewRelationship(types.RelID(rng.Int63n(1<<40)+1), tok, types.NodeID(1+rng.Int63n(1<<30)), types.NodeID(1+rng.Int63n(1<<30)))
+		if rng.Intn(4) != 0 {
+			r.SetTemporal(&types.TemporalMetadata{TxFrom: types.Instant(randomTimestamp(rng)), DeletedAt: types.Instant(randomTimestamp(rng))})
+		}
+		if rng.Intn(2) == 0 {
+			if err := r.SetProperty("p", rng.Int63()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		raw, err := MarshalRelWire(r)
+		if err != nil {
+			continue
+		}
+		sameAsReference("random rel", raw, true)
+		tm, got, err := DecodeValidEndRelValue(raw)
+		wantTM, werr := DecodeValidEndValue(raw, false)
+		if err != nil || got != tok || werr != nil || (tm == nil) != (wantTM == nil) || (tm != nil && *tm != *wantTM) {
+			t.Fatalf("random rel: type %d, %+v, %v; want %d, %+v", got, tm, err, tok, wantTM)
+		}
+		if i < 20 {
+			rw := RelToWire(r)
+			anchor := rw
+			anchor.Properties = nil
+			delta, err := EncodeRelHistoryDelta(DiffRelHistory(anchor, rw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, got, err := DecodeValidEndRelValue(delta); err != nil || got != tok {
+				t.Fatalf("rel delta: type %d, %v; want %d", got, err, tok)
+			}
+		}
+	}
+	for name, raw := range map[string][]byte{
+		"rt 0":            {0x81, 0xa2, 'r', 't', 0x00},
+		"rt past uint16":  {0x81, 0xa2, 'r', 't', 0xce, 0x00, 0x01, 0x00, 0x00},
+		"rt missing":      {0x81, 0xa1, 'v', 0x01},
+		"rt negative":     {0x81, 0xa2, 'r', 't', 0xff},
+		"rt not a number": {0x81, 0xa2, 'r', 't', 0xa1, 'x'},
+	} {
+		sameAsReference(name, raw, false)
+		if _, got, err := DecodeValidEndRelValue(raw); err == nil {
+			t.Fatalf("%s: decoded type %d; want an error", name, got)
+		}
+	}
+
 	// Duplicate keys: the last "el" wins in both arms.
 	dup := append(row([]byte{0x05}, []byte{0x91, 0x06}), 0xa2, 'e', 'l', 0x91, 0x07)
 	dup[0] = 0x83

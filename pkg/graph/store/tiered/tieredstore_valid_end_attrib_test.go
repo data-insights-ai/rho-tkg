@@ -315,3 +315,65 @@ func TestValidEndAttribution_Matrix_Tiered(t *testing.T) {
 		}
 	}
 }
+
+// TestValidEndFirstCall_LabelAcrossShardsExceedsTogether (review finding 3):
+// label B spans both shards (3 nodes on the reference shard, where X1 is their
+// primary label and B an extra one; 3 on the hot shard). Each shard's first
+// call counts its listing (3) and its entities (3): 6 fits a budget of 8, the
+// two together (12) do not. The unlimited control answers the 6 nodes with 12
+// candidates, 6 index entries visited and 6 rows decoded; a budget of 12
+// answers the same; a budget of 8 is refused with the typed error, returns no
+// candidate, and the hot shard (read after the reference shard) decodes no row
+// and installs nothing. Not parallel: the visit counter is the process's.
+func TestValidEndFirstCall_LabelAcrossShardsExceedsTogether(t *testing.T) {
+	open := func() (*Store, uint16, []int64) {
+		ts, toks := vaTiered(t, []string{"X1"}, "X1", "B")
+		x1, b := toks[0], toks[1]
+		gen := tieredNodeGen(t)
+		var ids []int64
+		for i := 0; i < 6; i++ {
+			id := types.NodeID(gen.Generate())
+			n := types.NewNode(id, b, nil)
+			if i < 3 {
+				n = types.NewNode(id, x1, []uint16{b})
+			}
+			if err := ts.PutNode(n); err != nil {
+				t.Fatal(err)
+			}
+			ids = append(ids, int64(id))
+		}
+		if err := ts.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		slices.Sort(ids)
+		return ts, b, ids
+	}
+	ts, b, want := open()
+	shards := vaShards(t, ts)
+	for i, s := range shards {
+		if got, err := s.NodeIDsByLabel(b); err != nil || len(got) != 3 {
+			t.Fatalf("shard %d holds %d nodes of B, %v; want 3", i, len(got), err)
+		}
+	}
+	visited, stop := badger.CountIndexEntriesVisitedForTest()
+	m, got, err := vaCall(ts, b, storecontract.ReadBudget{})
+	v := visited()
+	stop()
+	decodes := shards[0].ValidEndRowDecodesForTest() + shards[1].ValidEndRowDecodesForTest()
+	if err != nil || !slices.Equal(got, want) || m.Work().Candidates != 12 || v != 6 || decodes != 6 {
+		t.Fatalf("control = %v, %v, %d candidates, %d visited, %d decoded; want %v, 12, 6, 6", got, err, m.Work().Candidates, v, decodes, want)
+	}
+	ts, b, want = open()
+	if _, got, err := vaCall(ts, b, storecontract.ReadBudget{Candidates: 12}); err != nil || !slices.Equal(got, want) {
+		t.Fatalf("under 12 = %v, %v; want %v", got, err, want)
+	}
+	ts, b, _ = open()
+	hot := vaShards(t, ts)[1]
+	_, before := hot.ValidEndStats()
+	if _, got, err := vaCall(ts, b, storecontract.ReadBudget{Candidates: 8}); !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 {
+		t.Fatalf("under 8 = %v, %v; want ErrReadBudget and no candidates", got, err)
+	}
+	if _, after := hot.ValidEndStats(); hot.ValidEndRowDecodesForTest() != 0 || after.Entities != before.Entities || after.Unknown != before.Unknown {
+		t.Fatalf("the hot shard decoded %d rows and holds %+v after the refusal; want none and %+v", hot.ValidEndRowDecodesForTest(), after, before)
+	}
+}

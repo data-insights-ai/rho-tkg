@@ -63,3 +63,25 @@ func DecodeValidEndNodeValue(raw []byte) (*types.TemporalMetadata, []uint16, err
 	}
 	return SelectionTemporalMetaOfNodeWire(d.Meta), toks, nil
 }
+
+// DecodeValidEndRelValue is DecodeValidEndNodeValue for a stored relationship
+// row: its temporal block and its type token, from one decode (a full row
+// through DecodeWireRelTemporalMetaType, a delta through its Meta).
+func DecodeValidEndRelValue(raw []byte) (*types.TemporalMetadata, uint16, error) {
+	if HistoryValueKindOf(raw) != HistoryDelta {
+		_, tm, tok, err := DecodeWireRelTemporalMetaType(raw)
+		return tm, tok, err
+	}
+	d, err := DecodeRelHistoryDelta(raw)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := checkRowFormatVersion("valid-end delta row", d.Meta.FormatVersion); err != nil {
+		return nil, 0, err
+	}
+	tok, err := relTypeToken(int64(d.Meta.RelType))
+	if err != nil {
+		return nil, 0, err
+	}
+	return SelectionTemporalMetaOfRelWire(d.Meta), tok, nil
+}

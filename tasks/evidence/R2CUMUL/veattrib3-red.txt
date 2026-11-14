@@ -1,0 +1,19 @@
+R2-2 VEATTRIB, round 2 (review of 83e3093b), red: the new tests on 83e3093b plus two test counters only
+(validEndAttribLookups, one per membership lookup of the old attribution loop; validEndCommittedReads in committedTemporal).
+go test -v -run 'TestValidEndAttribution_WalksFormerSetsNotEntities|TestValidEndOverlay_CommittedRowLabelsOnCacheMiss|TestValidEndAttribution_WriterInTheGap|TestValidEndAttribution_ConcurrentWriters|TestValidEndFirstCall_LabelAcrossShardsExceedsTogether' ./pkg/graph/store/badger/ ./pkg/graph/store/tiered/
+
+Finding 1, red: label 9's first call (50 entities) after labels 1..3 (each 20 current, 2 former members):
+    --- FAIL: TestValidEndAttribution_WalksFormerSetsNotEntities/disk/pending (0.17s)
+        badgerstore_valid_end_attrib2_test.go:88: label 9's first call made 200 attribution lookups and counted 100 candidates; want 6 and 106 (50 listed, 50 entities, the walk 6)
+    --- FAIL: TestValidEndAttribution_WalksFormerSetsNotEntities/ram/flushed (0.17s)
+        badgerstore_valid_end_attrib2_test.go:88: label 9's first call made 200 attribution lookups and counted 50 candidates; want 6 and 56 (0 listed, 50 entities, the walk 6)
+    --- FAIL: TestValidEndAttribution_WalksFormerSetsNotEntities/disk/flushed (0.17s)
+        badgerstore_valid_end_attrib2_test.go:88: label 9's first call made 200 attribution lookups and counted 100 candidates; want 6 and 106 (50 listed, 50 entities, the walk 6)
+    --- FAIL: TestValidEndAttribution_WalksFormerSetsNotEntities/ram/pending (0.17s)
+        badgerstore_valid_end_attrib2_test.go:88: label 9's first call made 200 attribution lookups and counted 50 candidates; want 6 and 56 (0 listed, 50 entities, the walk 6)
+
+Findings 2, 3, 4 were test gaps: their tests pass here (the code they run was right, untested):
+--- PASS: TestValidEndOverlay_CommittedRowLabelsOnCacheMiss (0.00s)
+--- PASS: TestValidEndAttribution_ConcurrentWriters (0.00s)
+--- PASS: TestValidEndAttribution_WriterInTheGap (0.00s)
+--- PASS: TestValidEndFirstCall_LabelAcrossShardsExceedsTogether (0.51s)
