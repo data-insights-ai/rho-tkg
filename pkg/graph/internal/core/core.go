@@ -174,7 +174,12 @@ type Core struct {
 	// historyEpochs — per-entity history tokens (backlog 68): the head-pin
 	// effective timeline is kept per entity while its token holds
 	// (effective_head.go). nil = store declines: every head read folds.
-	historyEpochs    storepkg.HistoryEpochCapability
+	historyEpochs storepkg.HistoryEpochCapability
+	// historyEpochsMetered — the token read under a read budget, charging the
+	// shards it opens (tiered; R2-5 HEADREAD). nil: the store's token read
+	// opens no shard (memory, badger, sharded) and the plain one is used.
+	historyEpochsMetered storepkg.HistoryEpochMeteredCapability
+
 	heads            headCache
 	headCacheOff     bool            // tests: fold every read (the differential oracle)
 	headHits         atomic.Uint64   // head reads answered from an entry
@@ -2357,6 +2362,9 @@ func New(config Config) (*Core, error) {
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)
 	c.historyEpochs = historyEpochCapability(store)
+	if c.historyEpochs != nil {
+		c.historyEpochsMetered = nativeCapability[storepkg.HistoryEpochMeteredCapability](store, "NodeHistoryEpochMetered", "RelHistoryEpochMetered")
+	}
 	c.readSnapshots = readSnapshotCapability(store)
 	c.currentStamps = currentStampsCapability(store)
 	c.historyStamps = nativeCapability[storepkg.HistoryStampsCapability](store, "NodeHistoryStamps", "RelHistoryStamps")

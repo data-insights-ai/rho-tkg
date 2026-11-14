@@ -253,6 +253,7 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 			if err := s.tally.DecodedHistory(len(s.memo.rows[k])); err != nil {
 				return nil, err
 			}
+			s.bs.historyMetaDecodes.Add(1)
 			m, err := historyTemporalMetaOf(s.memo.rows[k], node)
 			if err != nil {
 				return nil, err
@@ -270,6 +271,7 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 				if err := s.tally.DecodedHistory(len(val)); err != nil {
 					return err
 				}
+				s.bs.historyMetaDecodes.Add(1)
 				var err error
 				m, err = historyTemporalMetaOf(val, node)
 				return err
@@ -310,6 +312,7 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 		if err := s.tally.DecodedHistory(len(raw)); err != nil {
 			return nil, err
 		}
+		s.bs.historyMetaDecodes.Add(1)
 		m, err := historyTemporalMetaOf(raw, i == snapNodeHist)
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode pending history temporal meta: %w", err)

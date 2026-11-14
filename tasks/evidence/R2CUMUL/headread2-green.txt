@@ -1,0 +1,349 @@
+# R2-5 HEADREAD round 2 green: go test -json -run 'TestBudgetedTimeline_' ./pkg/graph/internal/core/ (log lines grouped by test/backend/phase,
+# deduplicated per group, answers and work dumps dropped). Fix: the budgeted point timelines read the history token through store.HistoryEpochMeteredCapability
+# (tiered: the routed walk charges ShardOpens before each closed shard it opens). T4 tiered (MaxOpenColdShards 0): 6 opened, 6 counted
+# (was 5); ShardOpens 5 refuses; two entities under ShardOpens 6: first admitted, second refused at its first open.
+# Pinned figures (HistoryExamined / native: badger, sharded, tiered history rows decoded in full or to their skeleton; memory rows handed out):
+#   head hit: 2 / 2 at 10 and 80 versions, every backend and door (T1, T3, T6); memory DecodedBytes 0.
+#   miss and by-IDs scans: N + W = 11 / 81 (memory, badger, tiered: skeletons then winners), N = 9 / 79 on sharded (no skeleton list);
+#     native the same, memory 2 (its skeleton list is not a row read) (T6, T10).
+#   From door (six segments, validFrom 6500): 1 / 1 against the whole timeline's 5 / 5, at 10 and 80 versions (T5).
+#   refused miss (limit N+W-1): the kept entry equals the plain fold's; the retry under the same limit is a hit at 2 (T7); sharded keeps none.
+#   winner gone on a hit: fold + 1 (disk) or fold + 2 (memory counts the failed lookup), native fold + 1 (T8).
+#   two entities under HistoryExamined 3: first admitted (2), second refused at its second winner; unlimited 4 / 4 (T9).
+# Also green: go test -run 'ReadBudget_SigmaB_Timelines|EffectiveHead|EffectiveTimelineHead|Timeline|ReadsTheHead' ./pkg/graph/internal/core/ (ok, 22 s);
+# go test -run 'TestReadBudgetPublicTimelines' ./pkg/graph/; go test -run 'Epoch|Budget|HeadRead|ShardOpens' ./pkg/graph/internal/core/;
+# go test -run 'ValidEnd|Budget|Snapshot|TemporalMeta' ./pkg/graph/store/badger/; go test -run 'Epoch|Budget|ShardOpens' ./pkg/graph/store/tiered/; make old.
+
+TestBudgetedTimeline_HeadFromReadsLess/badger/flushed
+    10 versions: whole HistoryExamined 5, native 5, DecodedBytes 1679; from 6500 1, 1, 527; n898942508365316096[6000,7000)v9
+    80 versions: whole HistoryExamined 5, native 5, DecodedBytes 1679; from 6500 1, 1, 527; n898942509123862528[6000,7000)v79
+TestBudgetedTimeline_HeadFromReadsLess/badger/pending
+    10 versions: whole HistoryExamined 5, native 5, DecodedBytes 1440; from 6500 1, 1, 288; n898942508365316096[6000,7000)v9
+    80 versions: whole HistoryExamined 5, native 5, DecodedBytes 1440; from 6500 1, 1, 288; n898942509123862528[6000,7000)v79
+TestBudgetedTimeline_HeadFromReadsLess/memory/pending
+    10 versions: whole HistoryExamined 5, native 5, DecodedBytes 0; from 6500 1, 1, 0; n898942503765737472[6000,7000)v9
+    80 versions: whole HistoryExamined 5, native 5, DecodedBytes 0; from 6500 1, 1, 0; n898942503771570176[6000,7000)v79
+TestBudgetedTimeline_HeadFromReadsLess/sharded/flushed
+    10 versions: whole HistoryExamined 5, native 5, DecodedBytes 1679; from 6500 1, 1, 527; n898942515727794176[6000,7000)v9
+    80 versions: whole HistoryExamined 5, native 5, DecodedBytes 1679; from 6500 1, 1, 527; n898942516941062144[6000,7000)v79
+TestBudgetedTimeline_HeadFromReadsLess/sharded/pending
+    10 versions: whole HistoryExamined 5, native 5, DecodedBytes 1440; from 6500 1, 1, 288; n898942515727794176[6000,7000)v9
+    80 versions: whole HistoryExamined 5, native 5, DecodedBytes 1440; from 6500 1, 1, 288; n898942516941062144[6000,7000)v79
+TestBudgetedTimeline_HeadFromReadsLess/tiered/flushed
+    10 versions: whole HistoryExamined 5, native 5, DecodedBytes 1679; from 6500 1, 1, 527; n898942517994815488[6000,7000)v9
+    80 versions: whole HistoryExamined 5, native 5, DecodedBytes 1679; from 6500 1, 1, 527; n898942520937152512[6000,7000)v79
+TestBudgetedTimeline_HeadFromReadsLess/tiered/pending
+    10 versions: whole HistoryExamined 5, native 5, DecodedBytes 1440; from 6500 1, 1, 288; n898942517994815488[6000,7000)v9
+    80 versions: whole HistoryExamined 5, native 5, DecodedBytes 1440; from 6500 1, 1, 288; n898942520937152512[6000,7000)v79
+TestBudgetedTimeline_HeadMiss/badger/flushed
+    node_timeline: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3407, hits 0; then hit 2 / 2 / 815 / 1
+    node_timeline: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23567, hits 0; then hit 2 / 2 / 815 / 1
+    node_timeline_from: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3407, hits 0; then hit 2 / 2 / 815 / 1
+    node_timeline_from: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23567, hits 0; then hit 2 / 2 / 815 / 1
+    node_timelines: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3407, hits 0; then hit 2 / 2 / 815 / 1
+    node_timelines: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23567, hits 0; then hit 2 / 2 / 815 / 1
+    rel_timeline: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 4605, hits 0; then hit 2 / 2 / 1113 / 1
+    rel_timeline: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 31765, hits 0; then hit 2 / 2 / 1113 / 1
+    rel_timelines: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 4605, hits 0; then hit 2 / 2 / 1113 / 1
+    rel_timelines: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 31765, hits 0; then hit 2 / 2 / 1113 / 1
+TestBudgetedTimeline_HeadMiss/badger/pending
+    node_timeline: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3168, hits 0; then hit 2 / 2 / 576 / 1
+    node_timeline: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23328, hits 0; then hit 2 / 2 / 576 / 1
+    node_timeline_from: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3168, hits 0; then hit 2 / 2 / 576 / 1
+    node_timeline_from: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23328, hits 0; then hit 2 / 2 / 576 / 1
+    node_timelines: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3168, hits 0; then hit 2 / 2 / 576 / 1
+    node_timelines: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23328, hits 0; then hit 2 / 2 / 576 / 1
+    rel_timeline: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 4268, hits 0; then hit 2 / 2 / 776 / 1
+    rel_timeline: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 31428, hits 0; then hit 2 / 2 / 776 / 1
+    rel_timelines: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 4268, hits 0; then hit 2 / 2 / 776 / 1
+    rel_timelines: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 31428, hits 0; then hit 2 / 2 / 776 / 1
+TestBudgetedTimeline_HeadMiss/memory/pending
+    node_timeline: 10 versions: miss HistoryExamined 11, native 2, DecodedBytes 0, hits 0; then hit 2 / 2 / 0 / 1
+    node_timeline: 80 versions: miss HistoryExamined 81, native 2, DecodedBytes 0, hits 0; then hit 2 / 2 / 0 / 1
+    node_timeline_from: 10 versions: miss HistoryExamined 11, native 2, DecodedBytes 0, hits 0; then hit 2 / 2 / 0 / 1
+    node_timeline_from: 80 versions: miss HistoryExamined 81, native 2, DecodedBytes 0, hits 0; then hit 2 / 2 / 0 / 1
+    node_timelines: 10 versions: miss HistoryExamined 11, native 2, DecodedBytes 0, hits 0; then hit 2 / 2 / 0 / 1
+    node_timelines: 80 versions: miss HistoryExamined 81, native 2, DecodedBytes 0, hits 0; then hit 2 / 2 / 0 / 1
+    rel_timeline: 10 versions: miss HistoryExamined 11, native 2, DecodedBytes 0, hits 0; then hit 2 / 2 / 0 / 1
+    rel_timeline: 80 versions: miss HistoryExamined 81, native 2, DecodedBytes 0, hits 0; then hit 2 / 2 / 0 / 1
+    rel_timelines: 10 versions: miss HistoryExamined 11, native 2, DecodedBytes 0, hits 0; then hit 2 / 2 / 0 / 1
+    rel_timelines: 80 versions: miss HistoryExamined 81, native 2, DecodedBytes 0, hits 0; then hit 2 / 2 / 0 / 1
+TestBudgetedTimeline_HeadMiss/sharded/flushed
+    node_timeline: 10 versions: miss HistoryExamined 9, native 9, DecodedBytes 2831, hits 0; then hit 2 / 2 / 815 / 1
+    node_timeline: 80 versions: miss HistoryExamined 79, native 79, DecodedBytes 22991, hits 0; then hit 2 / 2 / 815 / 1
+    node_timeline_from: 10 versions: miss HistoryExamined 9, native 9, DecodedBytes 2831, hits 0; then hit 2 / 2 / 815 / 1
+    node_timeline_from: 80 versions: miss HistoryExamined 79, native 79, DecodedBytes 22991, hits 0; then hit 2 / 2 / 815 / 1
+    node_timelines: 10 versions: miss HistoryExamined 9, native 9, DecodedBytes 2831, hits 0; then hit 2 / 2 / 815 / 1
+    node_timelines: 80 versions: miss HistoryExamined 79, native 79, DecodedBytes 22991, hits 0; then hit 2 / 2 / 815 / 1
+    rel_timeline: 10 versions: miss HistoryExamined 9, native 9, DecodedBytes 3829, hits 0; then hit 2 / 2 / 1113 / 1
+    rel_timeline: 80 versions: miss HistoryExamined 79, native 79, DecodedBytes 30989, hits 0; then hit 2 / 2 / 1113 / 1
+    rel_timelines: 10 versions: miss HistoryExamined 9, native 9, DecodedBytes 3829, hits 0; then hit 2 / 2 / 1113 / 1
+    rel_timelines: 80 versions: miss HistoryExamined 79, native 79, DecodedBytes 30989, hits 0; then hit 2 / 2 / 1113 / 1
+TestBudgetedTimeline_HeadMiss/sharded/pending
+    node_timeline: 10 versions: miss HistoryExamined 9, native 9, DecodedBytes 2592, hits 0; then hit 2 / 2 / 576 / 1
+    node_timeline: 80 versions: miss HistoryExamined 79, native 79, DecodedBytes 22752, hits 0; then hit 2 / 2 / 576 / 1
+    node_timeline_from: 10 versions: miss HistoryExamined 9, native 9, DecodedBytes 2592, hits 0; then hit 2 / 2 / 576 / 1
+    node_timeline_from: 80 versions: miss HistoryExamined 79, native 79, DecodedBytes 22752, hits 0; then hit 2 / 2 / 576 / 1
+    node_timelines: 10 versions: miss HistoryExamined 9, native 9, DecodedBytes 2592, hits 0; then hit 2 / 2 / 576 / 1
+    node_timelines: 80 versions: miss HistoryExamined 79, native 79, DecodedBytes 22752, hits 0; then hit 2 / 2 / 576 / 1
+    rel_timeline: 10 versions: miss HistoryExamined 9, native 9, DecodedBytes 3492, hits 0; then hit 2 / 2 / 776 / 1
+    rel_timeline: 80 versions: miss HistoryExamined 79, native 79, DecodedBytes 30652, hits 0; then hit 2 / 2 / 776 / 1
+    rel_timelines: 10 versions: miss HistoryExamined 9, native 9, DecodedBytes 3492, hits 0; then hit 2 / 2 / 776 / 1
+    rel_timelines: 80 versions: miss HistoryExamined 79, native 79, DecodedBytes 30652, hits 0; then hit 2 / 2 / 776 / 1
+TestBudgetedTimeline_HeadMiss/tiered/flushed
+    node_timeline: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3407, hits 0; then hit 2 / 2 / 815 / 1
+    node_timeline: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23567, hits 0; then hit 2 / 2 / 815 / 1
+    node_timeline_from: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3407, hits 0; then hit 2 / 2 / 815 / 1
+    node_timeline_from: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23567, hits 0; then hit 2 / 2 / 815 / 1
+    node_timelines: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3407, hits 0; then hit 2 / 2 / 815 / 1
+    node_timelines: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23567, hits 0; then hit 2 / 2 / 815 / 1
+    rel_timeline: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 4605, hits 0; then hit 2 / 2 / 1113 / 1
+    rel_timeline: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 31765, hits 0; then hit 2 / 2 / 1113 / 1
+    rel_timelines: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 4605, hits 0; then hit 2 / 2 / 1113 / 1
+    rel_timelines: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 31765, hits 0; then hit 2 / 2 / 1113 / 1
+TestBudgetedTimeline_HeadMiss/tiered/pending
+    node_timeline: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3168, hits 0; then hit 2 / 2 / 576 / 1
+    node_timeline: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23328, hits 0; then hit 2 / 2 / 576 / 1
+    node_timeline_from: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3168, hits 0; then hit 2 / 2 / 576 / 1
+    node_timeline_from: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23328, hits 0; then hit 2 / 2 / 576 / 1
+    node_timelines: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 3168, hits 0; then hit 2 / 2 / 576 / 1
+    node_timelines: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 23328, hits 0; then hit 2 / 2 / 576 / 1
+    rel_timeline: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 4268, hits 0; then hit 2 / 2 / 776 / 1
+    rel_timeline: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 31428, hits 0; then hit 2 / 2 / 776 / 1
+    rel_timelines: 10 versions: miss HistoryExamined 11, native 11, DecodedBytes 4268, hits 0; then hit 2 / 2 / 776 / 1
+    rel_timelines: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 31428, hits 0; then hit 2 / 2 / 776 / 1
+TestBudgetedTimeline_HeadTokenShardOpens/node_timeline
+    plain opened 6; unlimited: 6 shards opened, 6 counted
+    two entities under ShardOpens 6: <nil>, graph: read budget exceeded: NodeEffectiveTimeline at shard opens (budget {Candidates:0 Segments:0 ShardOpens:6 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}
+TestBudgetedTimeline_HeadTokenShardOpens/node_timeline_from
+    plain opened 6; unlimited: 6 shards opened, 6 counted
+    two entities under ShardOpens 6: <nil>, graph: read budget exceeded: NodeEffectiveTimelineFrom at shard opens (budget {Candidates:0 Segments:0 ShardOpens:6 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}
+TestBudgetedTimeline_HeadTokenShardOpens/node_timelines
+    plain opened 6; unlimited: 6 shards opened, 6 counted
+    two entities under ShardOpens 6: <nil>, graph: read budget exceeded: NodeEffectiveTimelines at shard opens (budget {Candidates:0 Segments:0 ShardOpens:6 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}
+TestBudgetedTimeline_HeadTokenShardOpens/rel_timeline
+    plain opened 6; unlimited: 6 shards opened, 6 counted
+    two entities under ShardOpens 6: <nil>, graph: read budget exceeded: RelEffectiveTimeline at shard opens (budget {Candidates:0 Segments:0 ShardOpens:6 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}
+TestBudgetedTimeline_HeadTokenShardOpens/rel_timelines
+    plain opened 6; unlimited: 6 shards opened, 6 counted
+    two entities under ShardOpens 6: <nil>, graph: read budget exceeded: RelEffectiveTimelines at shard opens (budget {Candidates:0 Segments:0 ShardOpens:6 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}
+TestBudgetedTimeline_HeadTwoEntitiesOneMeter/badger/flushed
+    node_timeline: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timeline_from: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelineFrom at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timelines: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    rel_timeline: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBy
+    rel_timelines: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 Buffer
+TestBudgetedTimeline_HeadTwoEntitiesOneMeter/badger/pending
+    node_timeline: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timeline_from: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelineFrom at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timelines: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    rel_timeline: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBy
+    rel_timelines: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 Buffer
+TestBudgetedTimeline_HeadTwoEntitiesOneMeter/memory/pending
+    node_timeline: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timeline_from: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelineFrom at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timelines: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    rel_timeline: limit 3: first <nil>, second graph: read budget exceeded: RelEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    rel_timelines: limit 3: first <nil>, second graph: read budget exceeded: RelEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+TestBudgetedTimeline_HeadTwoEntitiesOneMeter/sharded/flushed
+    node_timeline: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timeline_from: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelineFrom at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timelines: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    rel_timeline: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBy
+    rel_timelines: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 Buffer
+TestBudgetedTimeline_HeadTwoEntitiesOneMeter/sharded/pending
+    node_timeline: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timeline_from: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelineFrom at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timelines: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    rel_timeline: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBy
+    rel_timelines: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 Buffer
+TestBudgetedTimeline_HeadTwoEntitiesOneMeter/tiered/flushed
+    node_timeline: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timeline_from: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelineFrom at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timelines: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    rel_timeline: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBy
+    rel_timelines: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 Buffer
+TestBudgetedTimeline_HeadTwoEntitiesOneMeter/tiered/pending
+    node_timeline: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timeline_from: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelineFrom at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    node_timelines: limit 3: first <nil>, second graph: read budget exceeded: NodeEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBytes:0}
+    rel_timeline: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimeline at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 BufferBy
+    rel_timelines: limit 3: first <nil>, second graph: unmarshal rel version: graph: read budget exceeded: RelEffectiveTimelines at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:3 Buffer
+TestBudgetedTimeline_HeadWinnerGone/badger/flushed
+    node_timeline: winner gone: HistoryExamined 12, native 12, DecodedBytes 3695, hits 0
+    node_timeline_from: winner gone: HistoryExamined 12, native 12, DecodedBytes 3695, hits 0
+    node_timelines: winner gone: HistoryExamined 12, native 12, DecodedBytes 3695, hits 0
+    rel_timeline: winner gone: HistoryExamined 12, native 12, DecodedBytes 4993, hits 0
+    rel_timelines: winner gone: HistoryExamined 12, native 12, DecodedBytes 4993, hits 0
+TestBudgetedTimeline_HeadWinnerGone/badger/pending
+    node_timeline: winner gone: HistoryExamined 12, native 12, DecodedBytes 3456, hits 0
+    node_timeline_from: winner gone: HistoryExamined 12, native 12, DecodedBytes 3456, hits 0
+    node_timelines: winner gone: HistoryExamined 12, native 12, DecodedBytes 3456, hits 0
+    rel_timeline: winner gone: HistoryExamined 12, native 12, DecodedBytes 4656, hits 0
+    rel_timelines: winner gone: HistoryExamined 12, native 12, DecodedBytes 4656, hits 0
+TestBudgetedTimeline_HeadWinnerGone/memory/pending
+    node_timeline: winner gone: HistoryExamined 13, native 3, DecodedBytes 0, hits 0
+    node_timeline_from: winner gone: HistoryExamined 13, native 3, DecodedBytes 0, hits 0
+    node_timelines: winner gone: HistoryExamined 13, native 3, DecodedBytes 0, hits 0
+    rel_timeline: winner gone: HistoryExamined 13, native 3, DecodedBytes 0, hits 0
+    rel_timelines: winner gone: HistoryExamined 13, native 3, DecodedBytes 0, hits 0
+TestBudgetedTimeline_HeadWinnerGone/sharded/flushed
+    node_timeline: winner gone: HistoryExamined 10, native 10, DecodedBytes 3119, hits 0
+    node_timeline_from: winner gone: HistoryExamined 10, native 10, DecodedBytes 3119, hits 0
+    node_timelines: winner gone: HistoryExamined 10, native 10, DecodedBytes 3119, hits 0
+    rel_timeline: winner gone: HistoryExamined 10, native 10, DecodedBytes 4217, hits 0
+    rel_timelines: winner gone: HistoryExamined 10, native 10, DecodedBytes 4217, hits 0
+TestBudgetedTimeline_HeadWinnerGone/sharded/pending
+    node_timeline: winner gone: HistoryExamined 10, native 10, DecodedBytes 2880, hits 0
+    node_timeline_from: winner gone: HistoryExamined 10, native 10, DecodedBytes 2880, hits 0
+    node_timelines: winner gone: HistoryExamined 10, native 10, DecodedBytes 2880, hits 0
+    rel_timeline: winner gone: HistoryExamined 10, native 10, DecodedBytes 3880, hits 0
+    rel_timelines: winner gone: HistoryExamined 10, native 10, DecodedBytes 3880, hits 0
+TestBudgetedTimeline_HeadWinnerGone/tiered/flushed
+    node_timeline: winner gone: HistoryExamined 12, native 12, DecodedBytes 3695, hits 0
+    node_timeline_from: winner gone: HistoryExamined 12, native 12, DecodedBytes 3695, hits 0
+    node_timelines: winner gone: HistoryExamined 12, native 12, DecodedBytes 3695, hits 0
+    rel_timeline: winner gone: HistoryExamined 12, native 12, DecodedBytes 4993, hits 0
+    rel_timelines: winner gone: HistoryExamined 12, native 12, DecodedBytes 4993, hits 0
+TestBudgetedTimeline_HeadWinnerGone/tiered/pending
+    node_timeline: winner gone: HistoryExamined 12, native 12, DecodedBytes 3456, hits 0
+    node_timeline_from: winner gone: HistoryExamined 12, native 12, DecodedBytes 3456, hits 0
+    node_timelines: winner gone: HistoryExamined 12, native 12, DecodedBytes 3456, hits 0
+    rel_timeline: winner gone: HistoryExamined 12, native 12, DecodedBytes 4656, hits 0
+    rel_timelines: winner gone: HistoryExamined 12, native 12, DecodedBytes 4656, hits 0
+TestBudgetedTimeline_ReadsTheHead/badger/flushed
+    node_timeline: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timeline_from: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timelines: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timeline: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timelines: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    nodes_by_IDs: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; native 11 / 81; head hits 0 / 0; skeletons read 9 / 79
+    rels_by_IDs: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4605 / 31765; native 11 / 81; head hits 0 / 0; skeletons read 0 / 0
+TestBudgetedTimeline_ReadsTheHead/badger/pending
+    node_timeline: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timeline_from: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timelines: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timeline: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timelines: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    nodes_by_IDs: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; native 11 / 81; head hits 0 / 0; skeletons read 9 / 79
+    rels_by_IDs: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4268 / 31428; native 11 / 81; head hits 0 / 0; skeletons read 0 / 0
+TestBudgetedTimeline_ReadsTheHead/memory/pending
+    node_timeline: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 0 / 0; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timeline_from: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 0 / 0; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timelines: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 0 / 0; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timeline: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 0 / 0; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timelines: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 0 / 0; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    nodes_by_IDs: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 0 / 0; native 2 / 2; head hits 0 / 0; skeletons read 9 / 79
+    rels_by_IDs: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 0 / 0; native 2 / 2; head hits 0 / 0; skeletons read 0 / 0
+TestBudgetedTimeline_ReadsTheHead/sharded/flushed
+    node_timeline: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timeline_from: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timelines: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timeline: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timelines: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    nodes_by_IDs: nodes by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2831 / 22991; native 9 / 79; head hits 0 / 0; skeletons read 0 / 0
+    rels_by_IDs: rels by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 3829 / 30989; native 9 / 79; head hits 0 / 0; skeletons read 0 / 0
+TestBudgetedTimeline_ReadsTheHead/sharded/pending
+    node_timeline: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timeline_from: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timelines: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timeline: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timelines: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    nodes_by_IDs: nodes by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2592 / 22752; native 9 / 79; head hits 0 / 0; skeletons read 0 / 0
+    rels_by_IDs: rels by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 3492 / 30652; native 9 / 79; head hits 0 / 0; skeletons read 0 / 0
+TestBudgetedTimeline_ReadsTheHead/tiered/flushed
+    node_timeline: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timeline_from: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timelines: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timeline: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timelines: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    nodes_by_IDs: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; native 11 / 81; head hits 0 / 0; skeletons read 9 / 79
+    rels_by_IDs: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4605 / 31765; native 11 / 81; head hits 0 / 0; skeletons read 0 / 0
+TestBudgetedTimeline_ReadsTheHead/tiered/pending
+    node_timeline: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timeline_from: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    node_timelines: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timeline: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    rel_timelines: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; native 2 / 2; head hits 1 / 1; skeletons read 0 / 0
+    nodes_by_IDs: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; native 11 / 81; head hits 0 / 0; skeletons read 9 / 79
+    rels_by_IDs: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4268 / 31428; native 11 / 81; head hits 0 / 0; skeletons read 0 / 0
+TestBudgetedTimeline_RefusedMissLeavesExactEntry/badger/flushed
+    node_timeline: limit 80: refused after 81 examined, native 80; entry kept true
+    node_timeline_from: limit 80: refused after 81 examined, native 80; entry kept true
+    node_timelines: limit 80: refused after 81 examined, native 80; entry kept true
+    rel_timeline: limit 80: refused after 81 examined, native 80; entry kept true
+    rel_timelines: limit 80: refused after 81 examined, native 80; entry kept true
+TestBudgetedTimeline_RefusedMissLeavesExactEntry/badger/pending
+    node_timeline: limit 80: refused after 81 examined, native 80; entry kept true
+    node_timeline_from: limit 80: refused after 81 examined, native 80; entry kept true
+    node_timelines: limit 80: refused after 81 examined, native 80; entry kept true
+    rel_timeline: limit 80: refused after 81 examined, native 80; entry kept true
+    rel_timelines: limit 80: refused after 81 examined, native 80; entry kept true
+TestBudgetedTimeline_RefusedMissLeavesExactEntry/memory/pending
+    node_timeline: limit 80: refused after 81 examined, native 1; entry kept true
+    node_timeline_from: limit 80: refused after 81 examined, native 1; entry kept true
+    node_timelines: limit 80: refused after 81 examined, native 1; entry kept true
+    rel_timeline: limit 80: refused after 81 examined, native 1; entry kept true
+    rel_timelines: limit 80: refused after 81 examined, native 1; entry kept true
+TestBudgetedTimeline_RefusedMissLeavesExactEntry/sharded/flushed
+    node_timeline: limit 78: refused after 79 examined, native 78; entry kept false
+    node_timeline_from: limit 78: refused after 79 examined, native 78; entry kept false
+    node_timelines: limit 78: refused after 79 examined, native 78; entry kept false
+    rel_timeline: limit 78: refused after 79 examined, native 78; entry kept false
+    rel_timelines: limit 78: refused after 79 examined, native 78; entry kept false
+TestBudgetedTimeline_RefusedMissLeavesExactEntry/sharded/pending
+    node_timeline: limit 78: refused after 79 examined, native 78; entry kept false
+    node_timeline_from: limit 78: refused after 79 examined, native 78; entry kept false
+    node_timelines: limit 78: refused after 79 examined, native 78; entry kept false
+    rel_timeline: limit 78: refused after 79 examined, native 78; entry kept false
+    rel_timelines: limit 78: refused after 79 examined, native 78; entry kept false
+TestBudgetedTimeline_RefusedMissLeavesExactEntry/tiered/flushed
+    node_timeline: limit 80: refused after 81 examined, native 80; entry kept true
+    node_timeline_from: limit 80: refused after 81 examined, native 80; entry kept true
+    node_timelines: limit 80: refused after 81 examined, native 80; entry kept true
+    rel_timeline: limit 80: refused after 81 examined, native 80; entry kept true
+    rel_timelines: limit 80: refused after 81 examined, native 80; entry kept true
+TestBudgetedTimeline_RefusedMissLeavesExactEntry/tiered/pending
+    node_timeline: limit 80: refused after 81 examined, native 80; entry kept true
+    node_timeline_from: limit 80: refused after 81 examined, native 80; entry kept true
+    node_timelines: limit 80: refused after 81 examined, native 80; entry kept true
+    rel_timeline: limit 80: refused after 81 examined, native 80; entry kept true
+    rel_timelines: limit 80: refused after 81 examined, native 80; entry kept true
+
+PASS TestBudgetedTimeline_HeadFromReadsLess/memory
+PASS TestBudgetedTimeline_HeadTwoEntitiesOneMeter/memory
+PASS TestBudgetedTimeline_HeadWinnerGone/memory
+PASS TestBudgetedTimeline_RefusedMissLeavesExactEntry/memory
+PASS TestBudgetedTimeline_ReadsTheHead/memory
+PASS TestBudgetedTimeline_HeadMiss/memory
+PASS TestBudgetedTimeline_HeadFromReadsLess/badger
+PASS TestBudgetedTimeline_HeadMiss/badger
+PASS TestBudgetedTimeline_RefusedMissLeavesExactEntry/badger
+PASS TestBudgetedTimeline_HeadWinnerGone/badger
+PASS TestBudgetedTimeline_HeadTwoEntitiesOneMeter/badger
+PASS TestBudgetedTimeline_ReadsTheHead/badger
+PASS TestBudgetedTimeline_HeadFromReadsLess/sharded
+PASS TestBudgetedTimeline_HeadTwoEntitiesOneMeter/sharded
+PASS TestBudgetedTimeline_HeadMiss/sharded
+PASS TestBudgetedTimeline_ReadsTheHead/sharded
+PASS TestBudgetedTimeline_HeadWinnerGone/sharded
+PASS TestBudgetedTimeline_RefusedMissLeavesExactEntry/sharded
+PASS TestBudgetedTimeline_HeadFromReadsLess/tiered
+PASS TestBudgetedTimeline_HeadFromReadsLess
+PASS TestBudgetedTimeline_HeadWinnerGone/tiered
+PASS TestBudgetedTimeline_HeadWinnerGone
+PASS TestBudgetedTimeline_HeadTwoEntitiesOneMeter/tiered
+PASS TestBudgetedTimeline_HeadTwoEntitiesOneMeter
+PASS TestBudgetedTimeline_HeadMiss/tiered
+PASS TestBudgetedTimeline_HeadMiss
+PASS TestBudgetedTimeline_ReadsTheHead/tiered
+PASS TestBudgetedTimeline_ReadsTheHead
+PASS TestBudgetedTimeline_RefusedMissLeavesExactEntry/tiered
+PASS TestBudgetedTimeline_RefusedMissLeavesExactEntry
+PASS TestBudgetedTimeline_HeadTokenShardOpens/node_timeline
+PASS TestBudgetedTimeline_HeadTokenShardOpens/node_timeline_from
+PASS TestBudgetedTimeline_HeadTokenShardOpens/node_timelines
+PASS TestBudgetedTimeline_HeadTokenShardOpens/rel_timeline
+PASS TestBudgetedTimeline_HeadTokenShardOpens/rel_timelines
+PASS TestBudgetedTimeline_HeadTokenShardOpens
+PASS github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core 4.4s

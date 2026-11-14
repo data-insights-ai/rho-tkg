@@ -795,6 +795,19 @@ type HistoryEpochCapability interface {
 	RelHistoryEpoch(id types.RelID) (uint64, error)
 }
 
+// HistoryEpochMeteredCapability is OPTIONAL (R2-5 HEADREAD): the
+// HistoryEpochCapability token read under a read budget, behind the budgeted
+// point timelines' head entry. The answers are NodeHistoryEpoch's and
+// RelHistoryEpoch's; each closed shard the read is about to open counts in t
+// first (ShardOpens) and a read past the budget returns the
+// *ReadBudgetError. A nil t is the plain read. Tiered offers it (its token
+// walks the shards GetNodeHistory reads); the other stores answer in O(1) and
+// open no shard.
+type HistoryEpochMeteredCapability interface {
+	NodeHistoryEpochMetered(id types.NodeID, t *ReadTally) (uint64, error)
+	RelHistoryEpochMetered(id types.RelID, t *ReadTally) (uint64, error)
+}
+
 // HistoryRollbackTrimCapability is OPTIONAL: transaction rollback without deep
 // copies of history chains. Superseded versions are appended at the previous
 // Version(), so rollback restores the current row and trims history at or after it.

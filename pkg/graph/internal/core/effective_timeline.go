@@ -510,7 +510,9 @@ func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validF
 	if rd.readsHead() {
 		reason = headMissNotQualifying // no current row: the chain ends in a delete
 		if current != nil {
-			epoch = c.nodeHistoryEpoch(id)
+			if epoch, err = c.nodeHistoryEpochRd(rd, id); err != nil {
+				return nil, err
+			}
 			var segs []temporal.NodeSegment
 			if segs, reason, err = c.nodeHeadSegments(rd, id, current, validFrom, pin, epoch); err != nil {
 				return nil, err
@@ -600,7 +602,9 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 	// it.
 	var epoch uint64
 	if rd.readsHead() && current != nil {
-		epoch = c.relHistoryEpoch(id)
+		if epoch, err = c.relHistoryEpochRd(rd, id); err != nil {
+			return nil, err
+		}
 		if segs, ok, err := c.relHeadSegments(rd, id, current, pin, epoch); err != nil {
 			return nil, err
 		} else if ok {

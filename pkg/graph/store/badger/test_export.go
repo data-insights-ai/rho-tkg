@@ -353,6 +353,11 @@ func (bs *Store) RelRowDecodesForTest() int64 { return bs.relRowDecodes.Load() }
 // temporal skeleton (a counter the read meter does not keep).
 func (bs *Store) HistoryMetaDecodesForTest() int64 { return bs.historyMetaDecodes.Load() }
 
+// HistoryRowDecodesForTest returns how many history rows (node and
+// relationship versions) were decoded in full (a counter the read meter does
+// not keep).
+func (bs *Store) HistoryRowDecodesForTest() int64 { return bs.historyRowDecodes.Load() }
+
 // ValidEndRowDecodesForTest returns how many rows the valid-end index's bulk
 // read decoded (a counter the read meter does not keep).
 func (bs *Store) ValidEndRowDecodesForTest() int64 { return bs.validEndRowDecodes.Load() }

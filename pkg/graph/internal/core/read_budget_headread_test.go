@@ -147,30 +147,34 @@ func hrDoors(g *Core, node types.NodeID, rel types.RelID, pin types.Instant) []h
 	}
 }
 
-// hrRun is one budgeted read's figures: the meter's work and two native
+// hrRun is one budgeted read's figures: the meter's work and three native
 // counters the meter does not keep, the reads answered from the head entry
-// (Core.headHits) and the node history skeletons read (headStats.metaRows).
+// (Core.headHits), the node history skeletons read (headStats.metaRows) and
+// the history versions the store read (hr2Native).
 type hrRun struct {
 	answer   string
 	work     storepkg.ReadWork
 	hits     uint64
 	metaRows uint64
+	native   int64
 }
 
-// TestBudgetedTimeline_ReadsTheHead: on badger, sharded and tiered, rows
-// pending and flushed, a node and a relationship of 10 and of 80 versions
-// whose timelines are the same three segments. After the plain door has
-// filled the head entry, each head door under an unlimited budget gives the
-// plain door's exact answer (the control), from the head entry (one head hit,
-// no skeleton read), and counts the same HistoryExamined and DecodedBytes at 80
-// versions as at 10: the two history winners it reads, not the chain. Under a
-// HistoryExamined limit one below that count it refuses at the second winner
-// and walks no chain after the refusal. The by-IDs doors are scans, plain and
-// budgeted alike: they never read the head entry, and their figures are
-// logged.
+// TestBudgetedTimeline_ReadsTheHead: on memory, badger, sharded and tiered,
+// rows pending and (disk stores) flushed, a node and a relationship of 10 and
+// of 80 versions whose timelines are the same three segments. After the plain
+// door has filled the head entry, each head door under an unlimited budget
+// gives the plain door's exact answer (the control), from the head entry (one
+// head hit, no skeleton read), and counts the same HistoryExamined and
+// DecodedBytes at 80 versions as at 10: the two history winners it reads, not
+// the chain, the native counter (hr2Native) 2 as well; memory decodes
+// nothing (DecodedBytes 0). Under a HistoryExamined limit one below that count
+// it refuses at the second winner and walks no chain after the refusal (the
+// native counter sees the first winner only). The by-IDs doors are scans,
+// plain and budgeted alike: they never read the head entry and count the
+// chain (hr2MissCost, hr2MissNative), pinned here (design T10).
 func TestBudgetedTimeline_ReadsTheHead(t *testing.T) {
 	t.Parallel()
-	for _, be := range rbdBackends() {
+	for _, be := range hr2Backends() {
 		t.Run(be.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
@@ -200,25 +204,40 @@ func TestBudgetedTimeline_ReadsTheHead(t *testing.T) {
 								t.Fatalf("%d versions: plain = %q, %v", n, want, err)
 							}
 							cold(n)
-							hits, metas := g.headHits.Load(), g.headStats.metaRows.Load()
+							ids, rids := []types.NodeID{nodes[n]}, []types.RelID{rels[n]}
+							hits, metas, native := g.headHits.Load(), g.headStats.metaRows.Load(), hr2Native(t, g, ids, rids)
 							ctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
 							got, err := d.ctx(ctx)
 							if err != nil || got != want {
 								t.Fatalf("%d versions: unlimited = %q, %v; want the plain answer %q", n, got, err, want)
 							}
-							runs[n] = hrRun{got, meter.Work(), g.headHits.Load() - hits, g.headStats.metaRows.Load() - metas}
+							runs[n] = hrRun{got, meter.Work(), g.headHits.Load() - hits, g.headStats.metaRows.Load() - metas, hr2Native(t, g, ids, rids) - native}
 						}
 						small, big := runs[10], runs[80]
-						t.Logf("%s: HistoryExamined %d at 10 versions, %d at 80; DecodedBytes %d / %d; head hits %d / %d; skeletons read %d / %d; answer %s",
+						t.Logf("%s: HistoryExamined %d at 10 versions, %d at 80; DecodedBytes %d / %d; native %d / %d; head hits %d / %d; skeletons read %d / %d; answer %s",
 							name, small.work.HistoryExamined, big.work.HistoryExamined, small.work.DecodedBytes, big.work.DecodedBytes,
-							small.hits, big.hits, small.metaRows, big.metaRows, big.answer)
+							small.native, big.native, small.hits, big.hits, small.metaRows, big.metaRows, big.answer)
 						d := hrDoors(g, nodes[80], rels[80], pin)[i]
+						if be.name == "memory" && (small.work.DecodedBytes != 0 || big.work.DecodedBytes != 0) {
+							t.Errorf("memory decoded %d / %d bytes; it decodes nothing", small.work.DecodedBytes, big.work.DecodedBytes)
+						}
 						if !d.head {
-							return // a scan: no head entry, plain or budgeted (logged above)
+							// A scan: no head entry, plain or budgeted; it counts
+							// the chain, as a miss does (design T10).
+							for _, n := range sizes {
+								r := runs[n]
+								if c, nat := hr2MissCost(be, n), hr2MissNative(be, n); r.hits != 0 || r.work.HistoryExamined != c || r.native != nat {
+									t.Errorf("%d versions: %d head hits, HistoryExamined %d, native %d; want 0, %d and %d", n, r.hits, r.work.HistoryExamined, r.native, c, nat)
+								}
+							}
+							if be.name != "memory" && big.work.DecodedBytes <= small.work.DecodedBytes {
+								t.Errorf("DecodedBytes %d at 10 versions, %d at 80; want more at 80", small.work.DecodedBytes, big.work.DecodedBytes)
+							}
+							return
 						}
 						for _, n := range sizes {
-							if r := runs[n]; r.hits != 1 || r.metaRows != 0 {
-								t.Errorf("%d versions: %d head hits, %d skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)", n, r.hits, r.metaRows)
+							if r := runs[n]; r.hits != 1 || r.metaRows != 0 || r.native != 2 {
+								t.Errorf("%d versions: %d head hits, %d skeletons read, native %d; want 1, 0 and 2 (the two winners from the head entry)", n, r.hits, r.metaRows, r.native)
 							}
 						}
 						if small.work.HistoryExamined != big.work.HistoryExamined || big.work.HistoryExamined > 2 {
@@ -234,10 +253,12 @@ func TestBudgetedTimeline_ReadsTheHead(t *testing.T) {
 						// the chain after it.
 						if h := big.work.HistoryExamined; h >= 2 {
 							cold(80)
+							ids, rids := []types.NodeID{nodes[80]}, []types.RelID{rels[80]}
+							native := hr2Native(t, g, ids, rids)
 							ctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{HistoryExamined: h - 1})
 							got, err := d.ctx(ctx)
-							if !isBudget(err, "history examined") || meter.Work().HistoryExamined > h {
-								t.Errorf("HistoryExamined %d: %q, %v, %d looked at; want a refusal within %d", h-1, got, err, meter.Work().HistoryExamined, h)
+							if nat := hr2Native(t, g, ids, rids) - native; !isBudget(err, "history examined") || got != "" || meter.Work().HistoryExamined > h || nat > int64(h-1) { // #nosec G115 -- a test size
+								t.Errorf("HistoryExamined %d: %q, %v, %d looked at, native %d; want a refusal within %d, at most %d read", h-1, got, err, meter.Work().HistoryExamined, nat, h, h-1)
 							}
 						}
 					})
@@ -245,6 +266,9 @@ func TestBudgetedTimeline_ReadsTheHead(t *testing.T) {
 			}
 			t.Run("pending", func(t *testing.T) { probe(t, g, false) })
 			shut()
+			if !be.persistent {
+				return
+			}
 			g, shut = be.open(t, dir)
 			defer shut()
 			t.Run("flushed", func(t *testing.T) { probe(t, g, true) })

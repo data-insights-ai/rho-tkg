@@ -1,0 +1,147 @@
+# R2-5 HEADREAD: independent design, then compared with commit 9c17bd36 (base a1a0d485)
+# 14 Nov 2026. Sections 1-2 were fixed from the base code before the commit's diff was read.
+# Checked by reading code unless a line says "run". Run: go test -run 'Budget|HeadRead|ReadsTheHead'
+# ./pkg/graph/internal/core/ (ok, 13 s) and go test -run 'Budget' ./pkg/graph/ (ok) at 9c17bd36.
+
+## 1. What the base does (a1a0d485)
+
+- The four timeline bodies (nodeEffectiveTimelineTail, relEffectiveTimelineFrom, nodeEffectiveTimelinesOf,
+  relEffectiveTimelinesFrom) read the head entry only when `rd.snap == nil && !rd.scan && rd.tally == nil`.
+  A budgeted read carries a tally and a metered snapshot, so it never reads or fills the entry.
+- It then lists the chain's skeletons (N history versions, each charged History(1) + Decoded(bytes) by the
+  snapshot before its decode) and reads the W winners (charged the same way). Cost N + W, growing with history.
+  The plain read on a valid entry costs W version reads.
+- The only callers that pass a non-scan metered rd to these bodies are the five Ctx point doors in
+  read_budget_timelines.go. Every other caller is a scan (streamEntityTimelinesMetered, pagedReads: scan true).
+
+## 2. Design
+
+D1 Doors. NodeEffectiveTimelineCtx, NodeEffectiveTimelineFromCtx, RelEffectiveTimelineCtx,
+   NodeEffectiveTimelinesCtx, RelEffectiveTimelinesCtx. One rule, in one predicate on entityReads
+   (reads the head: not a scan), used at the four gates. No change in the doors themselves and no new read
+   path: the budgeted read runs the plain door's head code through its own rd.
+   The by-IDs scans and page doors stay out (D7).
+
+D2 What is charged, and where (one owner each; nothing new in the head code).
+   - Candidates 1: the door, before the read (as now).
+   - Current row: the metered snapshot, before its decode (as now).
+   - Presence bit, cache lookup, piece walk: no row read, not charged. The lookup is a map get; the piece walk
+     is bounded by the entry cap (2,048 pieces) and by the segments the door charges.
+   - History token (NodeHistoryEpoch / RelHistoryEpoch): O(1) and free on memory, badger, sharded. On tiered it
+     is a routed walk (walkNodeHistoryShards) that can open a closed shard. Under a budget that walk must take
+     the read's tally, so the open is charged ShardOpens before it, by tiered's routing (the owner of every
+     other shard open). Until the token read can take a tally, a budgeted read on tiered must not ask for the
+     token outside the snapshot: rule "work that cannot be charged is refused before it starts".
+   - Each winner version read: History(1) and Decoded(stored bytes) before the decode, in the store's metered
+     snapshot (badger, sharded, tiered: the existing GetNodeVersion / GetRelVersion charge, anchors included).
+   - From door: only the winners of segments that reach validFrom are read, so only they are charged.
+   - Plural doors: a winner is read once for all pins, charged once.
+   - Segments and BufferBytes: the door, after the read and before the answer (as now). Not moved: charging
+     them in the head code would be a second owner.
+
+D3 A head miss costs the fold, as before: N skeletons + W winners, charged by the same helpers. No surcharge
+   for the failed lookup. A miss because a named winner is gone (headMissRowGone) keeps what it already
+   charged and then pays the fold: that work was done.
+
+D4 A budgeted read may fill the entry. The entry is derived from the complete skeleton list and the current
+   row, never from a partial read, and it is put before any winner is hydrated; so an entry put by a read that
+   is later refused among its winners is still exact. No fill when the refusal comes inside the skeleton list
+   (the fold never ran). The entry's memory is bounded by the cache's own piece cap, not by the read budget.
+   Consequence to state in docs/api.md: the cost of a budgeted point read depends on the cache state, as the
+   plain read's does; a read refused on a miss can be admitted on the retry (N + W, then W).
+
+D5 Refusal mid-way. A ReadBudgetError from a winner read on the hit path is returned as the read's error:
+   no fold after it (the fold would list the chain past a spent meter; on memory the list is read before it
+   is charged), no partial segments (slice doors: all or the refusal), entry untouched, no head-hit count.
+   Any other winner error stays headMissRowGone and falls to the fold.
+
+D6 Memory (no read snapshot). The version helpers of entityReads (nodeVersion, relVersion, lentNodeVersion,
+   lentRelVersion), on their no-snapshot arm, charge History(1) before the read. That is the same rule as
+   the snapshot's: one count per version read, each time it is read. Effects: a hit costs W on every backend;
+   a miss on memory becomes N + W (was N), which is what badger, sharded and tiered already count.
+   DecodedBytes stays 0 on memory (it decodes nothing; no byte figure is invented).
+   This charge is in the shared helper, so it also moves memory's counts on every other budgeted door that
+   reads a version on its own after a list (the by-IDs scans, the at-doors): N -> N + W there too. That is
+   a behaviour change to list and to test, not to hide behind a head-only flag.
+
+D7 By-IDs scans (scan true). Not in this item. The standing rule "scans never read or fill the head" stays
+   until René says otherwise. If he allows it, the variant to build is read-only: a scan reads a valid entry
+   and never fills (filling from scans would clear stripes that serve the hot point set).
+   Gain, from headread-green.txt (one entity, badger): HistoryExamined 81 -> 2 and DecodedBytes 23,328 -> 576
+   at 80 versions, per scanned entity that has a valid entry; nothing for entities without one.
+   Costs: one token read per entity (a routed walk on tiered, see D2); a scan's budget cost then depends on
+   which entities were point-read before. Needs René's word.
+
+## 3. Comparison with 9c17bd36
+
+Matches the design:
+- D1: entityReads.readsHead at the four gates; doors unchanged; scans and pages out. (Its form
+  `!scan && (snap == nil || tally != nil)` equals `!scan` for every caller that exists.)
+- D2 for badger and sharded, D3, D4 (fill before hydration, kept after a refusal), D5 (budgetRefusal in
+  nodeHeadSegments, relHeadSegments, headTimelinesOf; the callers return the error before the fold).
+- D6: unsnappedHistory(1) in the four version helpers, before the read.
+- No second path: the hit path, the fold and the fill are the plain door's; the charge sites are the
+  existing helpers. budgetRefusal repeats the `errors.Is(err, ErrReadBudget)` test the two skeleton arms
+  already hold in a local `budget` variable; one helper for all would be tidier, not a defect.
+
+Differences, by importance:
+
+1. Tiered token read is not charged (design D2). c.nodeHistoryEpoch / relHistoryEpoch call the store's
+   NodeHistoryEpoch, which on tiered runs walkNodeHistoryShards with a nil tally
+   (tieredstore_history_epoch.go:28, :41). For an entity on a closed event shard that is one more routed
+   checkout per budgeted point read, opened without a ShardOpens charge, after the metered presence read
+   charged its own open. A shard that was reopened hands out new tokens, so such a read can never hit: the
+   open buys nothing. Before the commit a budgeted read never asked for the token. Read from code, not run:
+   the built test's tiered store has cold_shards=0. Recommendation: CHANGE. Pass the tally down the token walk
+   (the walk already takes `opens`), or skip the head on tiered under a budget until it can.
+
+2. docs/api.md still says the opposite. Line 91: "a budgeted read skips the head-pin cache, whose hit would
+   read none", and "the memory store counts the versions of the chain it reads". The commit touches no doc.
+   Recommendation: CHANGE the row (hit: winners only; miss: chain and fill; cost depends on cache state;
+   memory counts each version read), add the CHANGELOG entry, and tell Sigma (R2-7).
+
+3. Memory half has no test. The built test runs badger, sharded, tiered (rbdBackends); the four new
+   unsnappedHistory(1) sites run only on a store without a snapshot. They also change memory's counts on the
+   by-IDs scans and at-doors (D6); the commit message says the by-IDs scans are "unchanged", which was
+   measured on the three disk backends only. Recommendation: ADD a memory run and list the changed counts.
+
+4. The From door's saving is not shown. At validFrom 2500 the test reads HistoryExamined 2 and the same
+   DecodedBytes as the whole timeline (the one reaching winner and its anchor), so "reads only the winners
+   that reach validFrom" cannot fail in it. Recommendation: ADD a shape where From must count less.
+
+5. The miss under a budget is not tested: the plain door always fills first. Not covered: the unlimited
+   control on a miss, that a budgeted read fills, and that an entry left by a refused read answers exactly.
+   Recommendation: ADD.
+
+6. Native counter. headHits and headStats.metaRows are core counters; metaRows counts node lists only, so
+   the two relationship doors are guarded by headHits alone. AGENTS.md asks for a counter at the native
+   boundary. Recommendation: ADD a store-side count of version decodes (or point gets) for rels and nodes.
+
+7. Cumulative case missing: two entities read under one meter, each within the limit, together past it.
+   Recommendation: ADD (small).
+
+Nothing in the commit is wrong in its answers: under an unlimited budget every head door returns the plain
+door's string on all three backends, pending and flushed (run, green).
+
+## 4. Red tests the design needs, and the built test's cover
+
+T1 Hit cost flat in history: 10 and 80 versions, same HistoryExamined and DecodedBytes, 1 head hit, exact
+   unlimited control against the plain door; node and rel, singular, From, plural; pending and flushed.
+   Built: covered (badger, sharded, tiered).
+T2 Refusal among the winners ends the read, limit one below the hit's count, no chain walk after it.
+   Built: covered (mutation of budgetRefusal fails 30 subtests).
+T3 Memory: T1 and T2 on the memory store (HistoryExamined W on a hit, N + W on a miss, DecodedBytes 0),
+   plus the memory by-IDs and at-door counts before and after. Built: not covered.
+T4 Tiered, entity on a closed event shard past MaxOpenColdShards: ShardOpens charged equals the store's
+   coldOpens delta (native counter) for one budgeted point read; a ShardOpens limit one below refuses before
+   the extra open. Expected red at 9c17bd36 (difference 1). Built: not covered.
+T5 From door: six segments, validFrom reaching one history winner; HistoryExamined and a store-side version
+   read count strictly below the whole timeline's, equal at 10 and 80 versions. Built: not covered.
+T6 Miss under a budget: entry dropped (a non-extending write), unlimited budgeted read equals the plain
+   answer, counts N + W, and the next budgeted read is a hit at W. Built: not covered.
+T7 Refused miss leaves an exact entry: limit between N and N + W refuses; the retry with the same limit is
+   admitted from the entry and equals the plain answer at every pin. Built: not covered.
+T8 Winner gone on a hit (headMissRowGone) under a budget: falls to the fold, answer exact, both charges
+   counted. Built: not covered.
+T9 Two entities under one meter, each fits, the second read is refused. Built: not covered.
+T10 Scans unchanged: by-IDs figures pinned (not only logged) on all four backends. Built: logged only.

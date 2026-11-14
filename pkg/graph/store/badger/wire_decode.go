@@ -39,6 +39,7 @@ func (bs *Store) decodeNodeWireForKey(w storepkg.NodeWire, expected snowflake.ID
 }
 
 func (bs *Store) decodeNodeHistoryWireForKey(w storepkg.NodeWire, expected snowflake.ID, version uint64) (*types.Node, error) {
+	bs.historyRowDecodes.Add(1)
 	n, err := bs.decodeNodeWireForKey(w, expected)
 	if err != nil {
 		return nil, err
@@ -67,6 +68,7 @@ func (bs *Store) decodeRelWireForKey(w storepkg.RelWire, expected snowflake.ID) 
 }
 
 func (bs *Store) decodeRelHistoryWireForKey(w storepkg.RelWire, expected snowflake.ID, version uint64) (*types.Relationship, error) {
+	bs.historyRowDecodes.Add(1)
 	r, err := bs.decodeRelWireForKey(w, expected)
 	if err != nil {
 		return nil, err
