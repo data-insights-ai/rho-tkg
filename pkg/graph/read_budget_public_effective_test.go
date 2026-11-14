@@ -433,13 +433,10 @@ func TestReadBudgetPublicValidEndFirstCall(t *testing.T) {
 				if err != nil || !slices.Equal(got, want) {
 					t.Fatalf("%s: unlimited = %v, %v; want %v", d.name, got, err, want)
 				}
-				// Badger and tiered install nothing of a refused first call: it reads
-				// every ever-member again. Memory keeps the 5 entities it had read
-				// before the refusal and reads the 3 left.
+				// Every store installs nothing of a refused first call (the memory store
+				// too since R2 late counts: the refusal comes before the enlistment, not
+				// at the sixth entity read): it reads every ever-member again.
 				if first, wantFirst := um.Work().Candidates, uint64(n+(n-2)); c.fresh {
-					if b.name == "memory" {
-						wantFirst = (n - 5) + (n - 2)
-					}
 					if first != wantFirst {
 						t.Fatalf("%s: the unlimited first call counted %d candidates; want %d (the ever-members it read, then the %d listed)", d.name, first, wantFirst, n-2)
 					}

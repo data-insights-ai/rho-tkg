@@ -90,7 +90,7 @@ func (bs *Store) NodeIDsByLabelAndPropertyKeys(labelToken uint16, propKey string
 		storepkg.SortNodeIDs(nids)
 		nids = slices.Compact(nids)
 	}
-	nids, err := bs.keepLabelledLocked(labelToken, nids, admit)
+	nids, err := bs.keepLabelledLocked(labelToken, nids, opts.ReadTally())
 	if err != nil {
 		return nil, false, err
 	}
@@ -111,11 +111,11 @@ func (bs *Store) elementsOnDiskSharesLocked(propKey string) bool {
 // keepLabelledLocked keeps the sorted nids that carry the label: from
 // labelIdx, or with the label index on disk from the pending writes and one
 // iterator seeking each node's label key. A lazy label map not built yet is
-// read from the label's keys, admitted first under a budget (admit not nil:
-// labelMembersAdmitLocked). Caller holds idxMu.
-func (bs *Store) keepLabelledLocked(token uint16, nids []types.NodeID, admit func(int) error) ([]types.NodeID, error) {
+// read from the label's keys, the walk counted in t under a budget
+// (labelMembersTalliedLocked). Caller holds idxMu.
+func (bs *Store) keepLabelledLocked(token uint16, nids []types.NodeID, t *storecontract.ReadTally) ([]types.NodeID, error) {
 	if !bs.labelOnDisk {
-		set, _, err := bs.labelMembersAdmitLocked(token, admit)
+		set, err := bs.labelMembersTalliedLocked(token, t)
 		if err != nil {
 			return nil, err
 		}

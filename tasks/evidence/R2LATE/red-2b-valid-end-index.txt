@@ -1,0 +1,16 @@
+=== RUN   TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild
+=== PAUSE TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild
+=== CONT  TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild
+=== RUN   TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild/Track
+    valid_end_budget_test.go:39: room 99 for 100 members = true, <nil>; want refused and not tracked
+=== RUN   TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild/ResolveUnknown
+    valid_end_budget_test.go:95: room 99 for 100 unknown = <nil> after 100 reads; want refused before any read
+=== RUN   TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild/ResolveUnknownBulk
+    valid_end_budget_test.go:95: room 99 for 100 unknown = <nil> after 100 reads; want refused before any read
+--- FAIL: TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild (0.00s)
+    --- FAIL: TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild/Track (0.00s)
+    --- FAIL: TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild/ResolveUnknown (0.00s)
+    --- FAIL: TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild/ResolveUnknownBulk (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.005s
+FAIL

@@ -3,6 +3,7 @@ package badger
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -15,10 +16,11 @@ import (
 // validEndOverlayRows, which decoded its whole history, committed rows and
 // buffered rows alike, and only then counted the history versions (and the
 // stored bytes not at all). Node 1 has 30 history versions, 15 flushed and 15
-// buffered, and a buffered current row. Under a History limit of 3 the first
-// call refuses at the 4th version, before the other 26 are decoded; under a
-// DecodedBytes limit of 1 it refuses at the first row; with no limit it counts
-// the 30 versions and the bytes of the rows it decodes.
+// buffered, and a buffered current row. The control, with no limit, counts the 30
+// versions and decodes 30 rows (the native counter, which the meter does not
+// keep); under a History limit of 3 the call refuses at the 4th version with 3
+// rows decoded; under a DecodedBytes limit of 1 it refuses at the first row with
+// none decoded.
 func TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode(t *testing.T) {
 	t.Parallel()
 	const versions = 30
@@ -50,29 +52,142 @@ func TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode(t *testing.T) {
 		return m, err
 	}
 
-	m, err := call(open(t), storecontract.ReadBudget{})
-	if w := m.Work(); err != nil || w.HistoryExamined != versions || w.DecodedBytes == 0 || w.Candidates != 1 {
-		t.Errorf("unlimited = %+v, %v; want the %d versions counted, the stored bytes and 1 candidate", w, err, versions)
+	bs := open(t)
+	m, err := call(bs, storecontract.ReadBudget{})
+	if w, decodes := m.Work(), bs.HistoryMetaDecodesForTest(); err != nil || w.HistoryExamined != versions || w.DecodedBytes == 0 || w.Candidates != 1 || decodes != versions {
+		t.Fatalf("unlimited = %+v, %v with %d history rows decoded; want the %d versions counted, the stored bytes, 1 candidate and %d rows decoded", w, err, decodes, versions, versions)
 	}
-	t.Logf("unlimited: %+v", m.Work())
 
 	for _, c := range []struct {
-		limit string
-		b     storecontract.ReadBudget
-		want  uint64 // history versions counted at the refusal
+		limit   string
+		b       storecontract.ReadBudget
+		counted uint64 // history versions counted at the refusal
+		decoded int64  // history rows decoded at the refusal
 	}{
-		{"history examined", storecontract.ReadBudget{HistoryExamined: 3}, 4},
-		{"decoded bytes", storecontract.ReadBudget{DecodedBytes: 1}, 1},
+		{"history examined", storecontract.ReadBudget{HistoryExamined: 3}, 4, 3},
+		{"decoded bytes", storecontract.ReadBudget{DecodedBytes: 1}, 1, 0},
 	} {
 		t.Run(c.limit, func(t *testing.T) {
-			m, err := call(open(t), c.b)
+			bs := open(t)
+			m, err := call(bs, c.b)
 			var rb *storecontract.ReadBudgetError
 			if !errors.As(err, &rb) || rb.Limit != c.limit {
 				t.Fatalf("%s: %v; want ErrReadBudget at %q", c.limit, err, c.limit)
 			}
-			if got := m.Work().HistoryExamined; got != c.want {
-				t.Fatalf("%s: %d history versions counted at the refusal (%+v), want %d: the history was decoded before it was counted", c.limit, got, m.Work(), c.want)
+			if got, decodes := m.Work().HistoryExamined, bs.HistoryMetaDecodesForTest(); got != c.counted || decodes != c.decoded {
+				t.Fatalf("%s: %d history versions counted (%+v), %d rows decoded at the refusal; want %d and %d: the history was decoded before it was counted", c.limit, got, m.Work(), decodes, c.counted, c.decoded)
 			}
 		})
+	}
+}
+
+// TestValidEndFirstCall_RefusesBeforeTheEnlistment (R2 late counts): the first
+// call per token enlisted every ever-member of the token as unknown (a map entry
+// each) and only then counted one candidate per entity, so a Candidates limit
+// below the members refused with the whole index built. It now refuses before
+// anything is enlisted, nodes and relationships, committed and buffered: the
+// token is not tracked, no entity is unknown and no row was decoded (the native
+// counters, which the meter does not keep), the refusal counts the members the
+// count walk saw before it stopped (the first past the room), and a retry with
+// room for all answers what the control (no limit) answers, decoding each
+// committed row once.
+func TestValidEndFirstCall_RefusesBeforeTheEnlistment(t *testing.T) {
+	t.Parallel()
+	const members, room = 50, 10
+	for _, kind := range []string{"nodes", "rels"} {
+		for _, flushed := range []bool{true, false} {
+			name := kind + map[bool]string{true: "/flushed", false: "/pending"}[flushed]
+			t.Run(name, func(t *testing.T) {
+				open := func() *Store {
+					bs, err := New(Config{Dir: t.TempDir(), FlushInterval: time.Hour})
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { _ = bs.Close() })
+					if kind == "rels" { // the endpoints, in a label of their own
+						for _, id := range []int64{1001, 1002} {
+							if err := bs.PutNode(types.NewNode(types.NodeID(id), 2, nil)); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+					for i := int64(1); i <= members; i++ {
+						var err error
+						if kind == "nodes" {
+							err = bs.PutNode(veNode(i, 0, 10, 0, 0))
+						} else {
+							err = bs.PutRelationship(types.NewRelationship(types.RelID(i), 1, 1001, 1002))
+						}
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+					if flushed {
+						if err := bs.Flush(); err != nil {
+							t.Fatal(err)
+						}
+					}
+					return bs
+				}
+				call := func(bs *Store, m *storecontract.ReadMeter) ([]int64, error) {
+					var cands []storecontract.ValidEndCandidate
+					var err error
+					if kind == "nodes" {
+						cands, err = bs.NodeValidEndCandidatesMetered([]uint16{1}, 1_000, 0, m.Tally("probe"))
+					} else {
+						cands, err = bs.RelValidEndCandidatesMetered(1, 1_000, 0, m.Tally("probe"))
+					}
+					var ids []int64
+					for _, c := range cands {
+						ids = append(ids, c.ID)
+					}
+					slices.Sort(ids)
+					return ids, err
+				}
+				stats := func(bs *Store) storecontract.ValidEndStats {
+					rels, nodes := bs.ValidEndStats()
+					if kind == "nodes" {
+						return nodes
+					}
+					return rels
+				}
+				// Rows decoded by the first call: a committed row is decoded once, a
+				// buffered one is read from the overlay and the entity cache.
+				wantDecodes := int64(0)
+				if flushed {
+					wantDecodes = members
+				}
+
+				// The control: no limit, every member, one count each, the rows decoded once.
+				ctl := open()
+				_, free := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{})
+				want, err := call(ctl, free)
+				if err != nil || len(want) != members || free.Work().Candidates != members || ctl.ValidEndRowDecodesForTest() != wantDecodes {
+					t.Fatalf("unlimited = %d members, %v, %+v, %d rows decoded; want %d members, %d candidates, %d rows decoded", len(want), err, free.Work(), ctl.ValidEndRowDecodesForTest(), members, members, wantDecodes)
+				}
+				if st := stats(ctl); st.Tokens != 1 || st.Unknown != 0 {
+					t.Fatalf("after the control: %+v; want the token tracked and nothing unknown", st)
+				}
+
+				bs := open()
+				_, m := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: room})
+				_, err = call(bs, m)
+				var rb *storecontract.ReadBudgetError
+				if !errors.As(err, &rb) || rb.Limit != "candidates" {
+					t.Fatalf("room %d for %d members: %v; want ErrReadBudget at candidates", room, members, err)
+				}
+				if st, decodes := stats(bs), bs.ValidEndRowDecodesForTest(); st.Tokens != 0 || st.Unknown != 0 || st.Entities != 0 || decodes != 0 {
+					t.Fatalf("after the refusal: %+v, %d rows decoded; want the token untracked, nothing enlisted and nothing decoded before the first entity was counted", st, decodes)
+				}
+				if got := m.Work().Candidates; got != room+1 {
+					t.Fatalf("the refusal counted %d candidates, want the %d members the count walk saw before it stopped", got, room+1)
+				}
+				// Room for exactly the members: the control's answer, and the refused call left the index exact.
+				_, exact := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: members})
+				if got, err := call(bs, exact); err != nil || !slices.Equal(got, want) || exact.Work().Candidates != members || bs.ValidEndRowDecodesForTest() != wantDecodes {
+					t.Fatalf("room %d = %d members, %v, %+v, %d rows decoded; want the control's %d members, %d candidates and %d rows decoded", members, len(got), err, exact.Work(), bs.ValidEndRowDecodesForTest(), members, members, wantDecodes)
+				}
+			})
+		}
 	}
 }

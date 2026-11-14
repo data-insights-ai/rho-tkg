@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -32,31 +33,34 @@ import (
 // in-memory map read it replaces. Disk mode briefly takes wbMu inside
 // (idxMu → wbMu is the flush cycle's established lock order).
 func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error) {
-	return bs.labelNodeIDsSnapshotAdmitLocked(token, nil)
+	return bs.labelNodeIDsSnapshotTalliedLocked(token, nil)
 }
 
-// labelNodeIDsSnapshotAdmitLocked is labelNodeIDsSnapshotLocked admitting the
-// members as it lists them (R2, Sigma doors group D): admit(n) is called
-// before n members are collected and a non-nil error stops the listing. A
-// label index in RAM admits its whole set before the list is built (a lazy
-// label map, Config.TransientRead, before its keys are walked:
-// labelMembersAdmitLocked); one kept on disk admits each committed entry as the
-// walk produces it and each pending add, so a read past a candidate limit stops
-// at the member that passes it, before it collects the rest of the label. A nil
-// admit is the plain snapshot.
-func (bs *Store) labelNodeIDsSnapshotAdmitLocked(token uint16, admit func(int) error) ([]types.NodeID, error) {
+// labelNodeIDsSnapshotTalliedLocked is labelNodeIDsSnapshotLocked counting the
+// members it lists in t as candidates (R2, Sigma doors group D): t.Candidates(n)
+// is called before n members are collected and a refusal stops the listing. A
+// label index in RAM counts its whole set before the list is built, after the
+// walk that built a lazy label map (Config.TransientRead) was counted by that
+// walk (labelMembersTalliedLocked: the map's keys and the list's members are
+// two pieces of work); one kept on disk counts each committed entry as the walk
+// produces it and each pending add, so a read past a candidate limit stops at
+// the member that passes it, before it collects the rest of the label. A nil t
+// is the plain snapshot.
+func (bs *Store) labelNodeIDsSnapshotTalliedLocked(token uint16, t *storecontract.ReadTally) ([]types.NodeID, error) {
+	admit := func(n int) error { return t.Candidates(n) }
+	if t == nil {
+		admit = nil
+	}
 	if !bs.labelOnDisk {
-		set, counted, err := bs.labelMembersAdmitLocked(token, admit)
+		set, err := bs.labelMembersTalliedLocked(token, t)
 		if err != nil {
 			return nil, err
 		}
 		if len(set) == 0 {
 			return nil, nil
 		}
-		if admit != nil && !counted {
-			if err := admit(len(set)); err != nil {
-				return nil, err
-			}
+		if err := t.Candidates(len(set)); err != nil {
+			return nil, err
 		}
 		nids := make([]types.NodeID, 0, len(set))
 		for id := range set {

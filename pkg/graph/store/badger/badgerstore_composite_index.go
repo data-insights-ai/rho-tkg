@@ -272,11 +272,8 @@ func (bs *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 	// Fallback: snapshot label IDs, release lock, then scan properties.
 	slog.Debug("graph: NodesByLabelAndProperties using full label scan (no matching composite index)",
 		"labelToken", labelToken, "keys", len(values))
-	var admitLabel func(int) error
-	if m, _ := opts.ReadMeter(); m != nil { // the label's every node, before the list is built and the scan reads one
-		admitLabel = opts.AddCandidates
-	}
-	nids, idErr := bs.labelNodeIDsSnapshotAdmitLocked(labelToken, admitLabel)
+	// The label's every node counts before the list is built and the scan reads one.
+	nids, idErr := bs.labelNodeIDsSnapshotTalliedLocked(labelToken, opts.ReadTally())
 	bs.idxMu.RUnlock()
 	if idErr != nil {
 		return nil, idErr

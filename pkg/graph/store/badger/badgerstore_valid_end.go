@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -112,32 +113,34 @@ func (bs *Store) noteValidEndNodeMember(n *types.Node) {
 // tokenMembers is one token's ever-members: its current members (the label
 // or type index) and its former ones (the K1 membership sidecar).
 type tokenMembers struct {
-	each func(fn func(id int64)) // every member, once
+	each iter.Seq[int64] // every member, once; the index may stop it (TrackUnder)
 	has  func(id int64) bool
 }
 
 // nodeTokenMembersLocked is label tok's tokenMembers. Caller holds idxMu.
 func (bs *Store) nodeTokenMembersLocked(tok uint16) (tokenMembers, error) {
-	return bs.nodeTokenMembersAdmitLocked(tok, nil)
+	return bs.nodeTokenMembersTalliedLocked(tok, nil)
 }
 
-// nodeTokenMembersAdmitLocked is nodeTokenMembersLocked admitting the label's
-// members before a label map or keyspace not in RAM is read (R2 late counts:
-// labelCurrentMembersAdmitLocked; admit nil counts nothing).
-func (bs *Store) nodeTokenMembersAdmitLocked(tok uint16, admit func(int) error) (tokenMembers, error) {
-	current, err := bs.labelCurrentMembersAdmitLocked(tok, admit)
+// nodeTokenMembersTalliedLocked is nodeTokenMembersLocked counting, in t, the
+// walk of a label map or keyspace not in RAM (R2 late counts:
+// labelCurrentMembersTalliedLocked); a nil t counts nothing.
+func (bs *Store) nodeTokenMembersTalliedLocked(tok uint16, t *storecontract.ReadTally) (tokenMembers, error) {
+	current, err := bs.labelCurrentMembersTalliedLocked(tok, t)
 	if err != nil {
 		return tokenMembers{}, err
 	}
 	former := bs.labelTxMembers[tok]
 	return tokenMembers{
-		each: func(fn func(int64)) {
+		each: func(yield func(int64) bool) {
 			for id := range current {
-				fn(int64(id))
+				if !yield(int64(id)) {
+					return
+				}
 			}
 			for id := range former {
-				if _, dup := current[id]; !dup {
-					fn(int64(id))
+				if _, dup := current[id]; !dup && !yield(int64(id)) {
+					return
 				}
 			}
 		},
@@ -155,15 +158,17 @@ func (bs *Store) relTokenMembersLocked(tok uint16) (tokenMembers, error) {
 	former := bs.relTypeTxMembers[tok]
 	isCurrent := func(id int64) bool { return current != nil && current.Has(id) }
 	return tokenMembers{
-		each: func(fn func(int64)) {
+		each: func(yield func(int64) bool) {
 			if current != nil {
 				for id := range current.All() {
-					fn(id)
+					if !yield(id) {
+						return
+					}
 				}
 			}
 			for id := range former {
-				if !isCurrent(int64(id)) {
-					fn(int64(id))
+				if !isCurrent(int64(id)) && !yield(int64(id)) {
+					return
 				}
 			}
 		},
@@ -176,8 +181,10 @@ func (bs *Store) relTokenMembersLocked(tok uint16) (tokenMembers, error) {
 
 // trackValidEnds tracks every token of toks not tracked yet (see the file
 // comment). ensureK1 builds the membership sidecar, members gives one token's
-// ever-members (caller holds idxMu).
-func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensureK1 func() error, members func(tok uint16) (tokenMembers, error)) error {
+// ever-members (caller holds idxMu). Under a read budget (t not nil) a token
+// whose members the candidate room cannot hold is refused before any is
+// enlisted (ValidEndIndex.TrackUnder); the tokens tracked before it stay.
+func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensureK1 func() error, members func(tok uint16) (tokenMembers, error), t *storecontract.ReadTally) error {
 	missing := false
 	for _, tok := range toks {
 		missing = missing || !ix.Tracked(tok)
@@ -198,7 +205,10 @@ func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensur
 			bs.idxMu.Unlock()
 			return err
 		}
-		ix.Track(tok, m.each)
+		if _, err := ix.TrackUnder(tok, m.each, t); err != nil {
+			bs.idxMu.Unlock()
+			return err
+		}
 	}
 	bs.idxMu.Unlock()
 	if bs.validEndTrackHook != nil {
@@ -246,6 +256,7 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 		if err := t.Decoded(len(raw)); err != nil {
 			return err
 		}
+		bs.validEndRowDecodes.Add(1)
 		tm, err := storepkg.DecodeValidEndValue(raw, node)
 		if err != nil {
 			return fmt.Errorf("graph: decode row for the valid-end index: %w", err)
@@ -453,10 +464,10 @@ func (bs *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom t
 		return nil, err
 	}
 	toks := []uint16{typeToken}
-	if err := bs.trackValidEnds(&bs.relValidEnds, toks, bs.ensureRelTypeTxMembersBuilt, bs.relTokenMembersLocked); err != nil {
+	if err := bs.trackValidEnds(&bs.relValidEnds, toks, bs.ensureRelTypeTxMembersBuilt, bs.relTokenMembersLocked, t); err != nil {
 		return nil, err
 	}
-	if err := bs.relValidEnds.ResolveUnknownBulk(func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
+	if err := bs.relValidEnds.ResolveUnknownBulkUnder(t, func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
 		return bs.validEndRowsBulk(&bs.relValidEnds, ids, false, bs.relTokenMembersLocked, t)
 	}); err != nil {
 		return nil, err
@@ -480,14 +491,11 @@ func (bs *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
-	members := bs.nodeTokenMembersLocked
-	if t != nil { // a label map read from its keys counts its members first (a lazy map, a label index on disk)
-		members = func(tok uint16) (tokenMembers, error) { return bs.nodeTokenMembersAdmitLocked(tok, t.Candidates) }
-	}
-	if err := bs.trackValidEnds(&bs.nodeValidEnds, labelTokens, bs.ensureLabelTxMembersBuilt, members); err != nil {
+	members := func(tok uint16) (tokenMembers, error) { return bs.nodeTokenMembersTalliedLocked(tok, t) } // a label map read from its keys counts its walk (a lazy map, a label index on disk)
+	if err := bs.trackValidEnds(&bs.nodeValidEnds, labelTokens, bs.ensureLabelTxMembersBuilt, members, t); err != nil {
 		return nil, err
 	}
-	if err := bs.nodeValidEnds.ResolveUnknownBulk(func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
+	if err := bs.nodeValidEnds.ResolveUnknownBulkUnder(t, func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
 		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, members, t)
 	}); err != nil {
 		return nil, err

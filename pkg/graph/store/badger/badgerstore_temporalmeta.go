@@ -68,6 +68,7 @@ func (bs *Store) historyTemporalMetaByPrefixTallied(prefix []byte, node bool, t 
 		if err := t.DecodedHistory(len(raw)); err != nil {
 			return storecontract.VersionTemporalMeta{}, err
 		}
+		bs.historyMetaDecodes.Add(1)
 		return historyTemporalMetaOf(raw, node)
 	}
 
