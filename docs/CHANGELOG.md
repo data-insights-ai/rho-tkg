@@ -227,11 +227,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **A budgeted window membership read counts the entries it rejects (R2, ai-soc's window membership guard)**: on badger
-  and every tiered shard the window walk of a membership kept on disk admits each entry it judges, kept or rejected,
-  under a `Candidates` limit. A narrow window over a value of 64 members found its one match after visiting all 64 and
+- **A budgeted window membership read admits the entries it rejects (R2, ai-soc's window membership guard)**: on badger
+  and every tiered shard the window walk of a membership kept on disk admits each live entry it judges, kept or
+  rejected, under a `Candidates` limit, and adds them to `Work.Candidates` when it refuses. A narrow window over a value of 64 members found its one match after visiting all 64 and
   handed it on with `Candidates` 0 (red: `tasks/evidence/R2WINDOW/red.txt`); it now refuses after 4 entries with the
-  visited entries counted. A window read whose walk visits more entries than the room refuses, even when fewer match.
+  judged entries counted. A window read whose walk judges more entries than the room refuses, even when fewer match.
 
 - **Retention gate under a read budget** (R2): the point retention gate (a pin below the retention max) read the
   node's current row, or a deleted entity's history, uncounted and into the entity cache, so `NodeAtTxCtx`,
