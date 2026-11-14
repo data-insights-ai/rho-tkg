@@ -29,7 +29,7 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
     `ValidEndAfter`; O1 lazy sidecar build; O2 property fold, `LabelTxMembersOf`; O3 `gatherFree`; O4 tiered's 2nd list; table `no test` cells.
   - R2-7 CONSUMERS: ai-soc's four R2 guards and `TestRH02WindowAdmissionCumulativeAcrossKeys` pass on dev; Sigma told.
 - **WARMMEM (R3: cheaper writable and inactive shards)** — **rho/sigma:** lowers fixed memory per handle. Unmerged, evidence `R3/`:
-  - CLOSEFAULT: a failed Close at MoveShard, the drop, Clear leaves a closed handle unfenced (a retry loses rows); building.
+  - CLOSEFAULT: merged `6e3df2ae` (one closeStoreLocked at every close site); its own tests green; CHANGELOG entry next.
   - P0 WALREPLAY + R3-3 LATEWRITE (L1, 20.8 MiB, was 93.4): Fable review mergeable together, 2 medium (a backfill into old
     days compacts 4.6-5x; cold-open crash untested). Fix building: a cold handle past 32 MiB reopens hot; then reopen check.
   - R3-2 FLOOR: two 83 MiB write arenas (169 MiB); options F0-F4 in `design-latewrite-floor.txt`; René's pick.
