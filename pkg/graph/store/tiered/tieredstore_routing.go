@@ -83,8 +83,10 @@ func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
 // not-found): the hot shard is open, so nothing opens, and it answers what the
 // empty shard would, since an ID's row lies on its window's shard, the reference
 // shard or the archive, and a relationship with its start node, which the
-// by-ID probes of the other shards still find. A write never takes this route:
-// a write into es's window must open and wake it (wakeNoRowsLocked).
+// by-ID probes of the other shards still find. A write that may store a row
+// under the ID never takes this route: a write into es's window must open and
+// wake it (wakeNoRowsLocked). A write that only changes a row the ID already
+// has takes it (routeExisting): es holds none.
 func (ts *Store) readableOwner(es *EventShard) *EventShard {
 	if !es.noRows.Load() {
 		return es
@@ -171,14 +173,14 @@ func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerS
 // shardForRelIDReadWithArchive is shardForRelIDCheckedWithArchive for a caller
 // that only reads the store it gets (MOVEREAD, shardForNodeIDRead).
 func (ts *Store) shardForRelIDReadWithArchive(id types.RelID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
-	store, checkin, isArchive, _, err = ts.routeRelShardFor(id, true, nil)
+	store, checkin, isArchive, _, err = ts.routeRelShardFor(id, routeRead, nil)
 	return store, checkin, isArchive, err
 }
 
 // shardForRelIDReadCharged is shardForRelIDReadWithArchive charging the open
 // of a closed archive or event shard to opens before it (READBUDGET step 6).
 func (ts *Store) shardForRelIDReadCharged(id types.RelID, opens *storecontract.ReadTally) (store *BadgerStore, checkin func(), isArchive bool, err error) {
-	store, checkin, isArchive, _, err = ts.routeRelShardFor(id, true, opens)
+	store, checkin, isArchive, _, err = ts.routeRelShardFor(id, routeRead, opens)
 	return store, checkin, isArchive, err
 }
 
@@ -201,13 +203,13 @@ func probeRelRow(store *BadgerStore, id types.RelID) (p relRowProbe, exists bool
 // the shard it returns, so a caller that next asks whether the row is live
 // there (the history walks) does not read the row a second time.
 func (ts *Store) routeRelShard(id types.RelID) (store *BadgerStore, checkin func(), isArchive bool, found relRowProbe, err error) {
-	return ts.routeRelShardFor(id, false, nil)
+	return ts.routeRelShardFor(id, routeWrite, nil)
 }
 
-// routeRelShardFor is routeRelShard; readOnly checks the event shards out
-// with checkoutStoreReadOnly; opens (nil: none) is charged each closed shard's
-// open before it (READBUDGET step 6).
-func (ts *Store) routeRelShardFor(id types.RelID, readOnly bool, opens *storecontract.ReadTally) (store *BadgerStore, checkin func(), isArchive bool, found relRowProbe, err error) {
+// routeRelShardFor is routeRelShard in mode (routeMode); opens (nil: none) is
+// charged each closed shard's open before it (READBUDGET step 6).
+func (ts *Store) routeRelShardFor(id types.RelID, mode routeMode, opens *storecontract.ReadTally) (store *BadgerStore, checkin func(), isArchive bool, found relRowProbe, err error) {
+	readOnly := mode.readOnly()
 	if err := ts.checkOpen(); err != nil {
 		return nil, nil, false, relRowProbe{}, err
 	}
@@ -236,7 +238,7 @@ func (ts *Store) routeRelShardFor(id types.RelID, readOnly bool, opens *storecon
 	}
 
 	candidateEntry := ts.timestampToEventShardEntry(raw)
-	if readOnly {
+	if mode.skipsEmpty() {
 		candidateEntry = ts.relReadableOwner(candidateEntry, raw)
 	}
 	candidate, candidateRelease, err := candidateEntry.checkoutForReadCharged(ts, readOnly, opens)
@@ -358,6 +360,61 @@ func nodeRowLive(store *BadgerStore, id types.NodeID) (bool, error) {
 	return true, nil
 }
 
+// routeMode is what the caller of a by-ID route does with the shard it gets,
+// which decides what the route may do with a closed shard proven empty (noRows,
+// or for a relationship a sealed ID range that misses the ID).
+type routeMode uint8
+
+const (
+	// routeWrite: the caller may store a row under the ID (a create, a history
+	// version, a repair). The ID's own shard is checked out writable; a closed
+	// one is opened and its no-rows mark woken and saved before the write.
+	routeWrite routeMode = iota
+	// routeExisting: the caller changes only a row the ID already has (an
+	// update, a delete, a history trim, an endpoint a create must find) and
+	// answers its own miss when there is none. The shard is checked out
+	// writable like routeWrite's, but a closed shard proven empty holds no row
+	// to change, so it is neither opened nor woken: the route returns the hot
+	// shard (readableOwner), which answers the miss, and a write that found no
+	// row writes nothing there (EMPTYBYID).
+	routeExisting
+	// routeRead: the caller only reads (checkoutStoreReadOnly); a shard proven
+	// empty is skipped as under routeExisting.
+	routeRead
+)
+
+func (m routeMode) readOnly() bool   { return m == routeRead }
+func (m routeMode) skipsEmpty() bool { return m != routeWrite }
+
+// shardForNodeIDExisting is shardForNodeIDChecked for a write that changes only
+// a row the node already has (routeExisting): an update, a delete, a label
+// change, an endpoint a relationship create must find. The caller reads the
+// node from the store it gets and answers its own miss before it writes.
+func (ts *Store) shardForNodeIDExisting(id types.NodeID) (store *BadgerStore, checkin func(), err error) {
+	store, checkin, _, err = ts.routeNodeShard(id, routeExisting, nil)
+	return store, checkin, err
+}
+
+// shardForNodeIDExistingWithArchive is shardForNodeIDExisting reporting an
+// archive hit.
+func (ts *Store) shardForNodeIDExistingWithArchive(id types.NodeID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
+	return ts.routeNodeShard(id, routeExisting, nil)
+}
+
+// shardForRelIDExisting is shardForRelIDChecked for a write that changes only a
+// row the relationship already has (routeExisting).
+func (ts *Store) shardForRelIDExisting(id types.RelID) (store *BadgerStore, checkin func(), err error) {
+	store, checkin, _, err = ts.shardForRelIDExistingWithArchive(id)
+	return store, checkin, err
+}
+
+// shardForRelIDExistingWithArchive is shardForRelIDExisting reporting an
+// archive hit.
+func (ts *Store) shardForRelIDExistingWithArchive(id types.RelID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
+	store, checkin, isArchive, _, err = ts.routeRelShardFor(id, routeExisting, nil)
+	return store, checkin, isArchive, err
+}
+
 // shardForNodeIDChecked resolves the storage shard for a node ID and
 // increments its activeReqs so closeIdleShards cannot close the DB while the
 // caller uses the store. The caller MUST call the returned checkin exactly
@@ -370,32 +427,32 @@ func (ts *Store) shardForNodeIDChecked(id types.NodeID) (store *BadgerStore, che
 }
 
 func (ts *Store) shardForNodeIDCheckedWithArchive(id types.NodeID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
-	return ts.routeNodeShard(id, false, nil)
+	return ts.routeNodeShard(id, routeWrite, nil)
 }
 
 // shardForNodeIDRead is shardForNodeIDChecked for a caller that only reads
 // the store it gets: a moving event shard answers from its source
 // (checkoutStoreReadOnly, MOVEREAD).
 func (ts *Store) shardForNodeIDRead(id types.NodeID) (store *BadgerStore, checkin func(), err error) {
-	store, checkin, _, err = ts.routeNodeShard(id, true, nil)
+	store, checkin, _, err = ts.routeNodeShard(id, routeRead, nil)
 	return store, checkin, err
 }
 
 // shardForNodeIDReadWithArchive is shardForNodeIDRead reporting an archive hit.
 func (ts *Store) shardForNodeIDReadWithArchive(id types.NodeID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
-	return ts.routeNodeShard(id, true, nil)
+	return ts.routeNodeShard(id, routeRead, nil)
 }
 
 // shardForNodeIDReadCharged is shardForNodeIDReadWithArchive charging the
 // open of a closed archive or event shard to opens before it (READBUDGET step
 // 6; nil: none).
 func (ts *Store) shardForNodeIDReadCharged(id types.NodeID, opens *storecontract.ReadTally) (store *BadgerStore, checkin func(), isArchive bool, err error) {
-	return ts.routeNodeShard(id, true, opens)
+	return ts.routeNodeShard(id, routeRead, opens)
 }
 
 // routeNodeShard resolves id's shard; opens (nil: none) is charged each closed
 // shard's open before it (READBUDGET step 6).
-func (ts *Store) routeNodeShard(id types.NodeID, readOnly bool, opens *storecontract.ReadTally) (store *BadgerStore, checkin func(), isArchive bool, err error) {
+func (ts *Store) routeNodeShard(id types.NodeID, mode routeMode, opens *storecontract.ReadTally) (store *BadgerStore, checkin func(), isArchive bool, err error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, nil, false, err
 	}
@@ -426,10 +483,10 @@ func (ts *Store) routeNodeShard(id types.NodeID, readOnly bool, opens *storecont
 	// Event shard: resolve via timestamp, then checkout to prevent idle-close
 	// races. Cold shards opened only for this operation close again on checkin.
 	es := ts.timestampToEventShardEntry(raw)
-	if readOnly {
+	if mode.skipsEmpty() {
 		es = ts.readableOwner(es)
 	}
-	store, checkin, err = es.checkoutForReadCharged(ts, readOnly, opens)
+	store, checkin, err = es.checkoutForReadCharged(ts, mode.readOnly(), opens)
 	if err != nil {
 		return nil, nil, false, err
 	}

@@ -109,7 +109,7 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, opens *storecontr
 // (TestRefArchiveReadersSeeMovedEntityOnce).
 func walkRelHistoryShards[T any](ts *Store, rid types.RelID, opens *storecontract.ReadTally, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
-	shard, checkin, isArchive, probe, err := ts.routeRelShardFor(rid, true, opens)
+	shard, checkin, isArchive, probe, err := ts.routeRelShardFor(rid, routeRead, opens)
 	if err != nil {
 		return zero, err
 	}

@@ -33,6 +33,7 @@ type emptyByID struct {
 	lateRef  types.NodeID // a reference-class ID minted in es's window
 	a, b     types.NodeID // reference nodes
 	sig      types.NodeID // event node on the hot shard
+	lone     types.NodeID // event node on the hot shard with no relationship
 	rel      types.RelID  // a -> b, placed by mint on the hot shard
 }
 
@@ -65,6 +66,7 @@ func newEmptyByID(t *testing.T) *emptyByID {
 	f.a = putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
 	f.b = putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
 	f.sig = putMintNode(t, ts, types.NodeID(ng.Generate()), mintSignalTok)
+	f.lone = putMintNode(t, ts, types.NodeID(ng.Generate()), mintSignalTok)
 	f.rel = types.RelID(rg.Generate())
 	putMintRel(t, ts, f.rel, 1, f.a, f.b)
 	putMintRel(t, ts, f.crossRel, 1, f.sig, f.a)

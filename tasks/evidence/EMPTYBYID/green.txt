@@ -138,3 +138,62 @@
 --- PASS: TestEmptyByID_MarkSurvivesAReopenAndAWriteClearsItForGood (0.63s)
 PASS
 ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	4.238s
+
+
+
+# ===== Round 2 (14 Nov): writes that name an ID the proven-empty shard owns =====
+# Same command as the round-2 red above (plus two old tests by name), after the write route skips the shard
+# (routeExisting; tieredstore_routing.go): opens, checkouts and writable checkouts of the empty shard 0 for every door,
+# 0 over 3 rounds with idle sweeps, no cold handle open at the end, mark kept in memory and in the saved catalog.
+# `make old` and the whole short tier of the six packages that import tiered pass. INFO log lines removed.
+#
+# Mutation sweep (each defended property broken once, `go test -run TestEmptyByID ./pkg/graph/store/tiered/`, all caught):
+#   skipsEmpty() == routeRead only (a write route that opens the shard again)          WritesNamingAMiss, RepeatedWriteMisses,
+#                                                                                       WritesToACrossShardRel, WritesFindACrossShardRelOnAnotherClosedShard
+#   PutNodeVersion and PutRelVersion routed with routeExisting (history row lands on    WriteDoorsThatCreateARowStillWake (both)
+#     the hot shard, the empty shard never woken)
+#   routeExisting skips the probe of the other shards (a rel stored on a closed shard   WritesFindACrossShardRelOnAnotherClosedShard
+#     is no longer found)
+#   routeExisting always returns the hot shard (a woken shard is no longer reached)     LateWriteWakesTheShardForEveryRead,
+#                                                                                       UpdatesAfterALateWriteReachTheWokenShard
+
+--- PASS: TestEmptyByID_RepeatedSweepsAndMissesOpenNothing (0.22s)
+--- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed (0.36s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceNode (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNode (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodeCascade (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodesBatch (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodesBatch_beside_a_stored_node (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/AddNodeLabelToken (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/RemoveNodeLabelToken (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/AddNodeLabelTokenWithHistory (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/RemoveNodeLabelTokenWithHistory (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceNodeWithHistory (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodeWithHistory (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/TruncateNodeHistory (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceRelationship (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelationship (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/UndoRelationshipCreate (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelationshipsBatch (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelationshipsBatch_beside_a_stored_rel (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceRelWithHistory (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelWithHistory (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/TruncateRelHistory (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationship_missing_start (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationship_missing_end (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationshipsBatch_missing_end (0.00s)
+    --- PASS: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationshipsBatch_missing_start (0.00s)
+--- PASS: TestEmptyByID_RepeatedWriteMissesAndSweepsOpenNothing (0.23s)
+--- PASS: TestEmptyByID_WritesToACrossShardRelFindItWithoutOpening (0.29s)
+--- PASS: TestEmptyByID_WritesFindACrossShardRelOnAnotherClosedShard (0.51s)
+--- PASS: TestEmptyByID_WriteDoorsThatCreateARowStillWake (0.67s)
+    --- PASS: TestEmptyByID_WriteDoorsThatCreateARowStillWake/PutNodeVersion (0.33s)
+    --- PASS: TestEmptyByID_WriteDoorsThatCreateARowStillWake/PutRelVersion (0.34s)
+--- PASS: TestEmptyByID_UpdatesAfterALateWriteReachTheWokenShard (0.31s)
+--- PASS: TestEmptyShardDemotion_ClosesImmediately (0.22s)
+=== PAUSE TestEmptyColdShard_WriteComesBack
+--- PASS: TestRelIDRange_DeletedRelOpensOnlyItsShard (0.93s)
+=== CONT  TestEmptyColdShard_WriteComesBack
+--- PASS: TestEmptyColdShard_WriteComesBack (0.29s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	4.085s

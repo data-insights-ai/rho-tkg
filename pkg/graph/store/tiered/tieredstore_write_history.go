@@ -23,7 +23,7 @@ func (ts *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	if err := storecontract.ValidateNodeHistoryVersionSnapshot(current.ID(), prevVersion, prevState); err != nil {
 		return err
 	}
-	shard, checkin, err := ts.shardForNodeIDChecked(current.ID())
+	shard, checkin, err := ts.shardForNodeIDExisting(current.ID())
 	if err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func (ts *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	// refArchive probe baked into shardForRelIDChecked. Pin the resolved
 	// owner for the duration of the atomic replace+history write so a cold
 	// owner cannot be closed out by closeIdleShards mid-write.
-	shard, checkin, err := ts.shardForRelIDChecked(current.ID())
+	shard, checkin, err := ts.shardForRelIDExisting(current.ID())
 	if err != nil {
 		return err
 	}
@@ -129,7 +129,7 @@ func (ts *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	if err := storecontract.ValidateHistoryRetention(keepVersions); err != nil {
 		return err
 	}
-	shard, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
+	shard, checkin, isArchive, err := ts.shardForNodeIDExistingWithArchive(nid)
 	if err != nil {
 		return err
 	}
@@ -241,7 +241,7 @@ func (ts *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	if err := storecontract.ValidateHistoryRetention(keepVersions); err != nil {
 		return err
 	}
-	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
+	shard, checkin, isArchive, err := ts.shardForRelIDExistingWithArchive(rid)
 	if err != nil {
 		return err
 	}
@@ -457,7 +457,7 @@ func (ts *Store) DeleteNodeCascade(nid types.NodeID) error {
 	}
 	id := nid.SnowflakeID()
 
-	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	shard, checkin, err := ts.shardForNodeIDExisting(nid)
 	if err != nil {
 		return err
 	}
@@ -641,7 +641,7 @@ func (ts *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	}
 	id := rid.SnowflakeID()
 
-	entityShard, entityCheckin, err := ts.shardForRelIDChecked(rid)
+	entityShard, entityCheckin, err := ts.shardForRelIDExisting(rid)
 	if err != nil {
 		return err
 	}
@@ -728,7 +728,7 @@ func (ts *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	}
 	id := nid.SnowflakeID()
 
-	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	shard, checkin, err := ts.shardForNodeIDExisting(nid)
 	if err != nil {
 		return err
 	}

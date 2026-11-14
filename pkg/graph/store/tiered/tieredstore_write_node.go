@@ -174,7 +174,7 @@ func (ts *Store) ReplaceNode(n *types.Node) error {
 		return err
 	}
 	id := n.ID().SnowflakeID()
-	store, checkin, err := ts.shardForNodeIDChecked(n.ID())
+	store, checkin, err := ts.shardForNodeIDExisting(n.ID())
 	if err != nil {
 		return err
 	}
@@ -215,7 +215,7 @@ func (ts *Store) DeleteNode(nid types.NodeID) error {
 	}
 	id := nid.SnowflakeID()
 
-	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	store, checkin, err := ts.shardForNodeIDExisting(nid)
 	if err != nil {
 		return err
 	}
@@ -257,7 +257,7 @@ func (ts *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	}
 	id := nid.SnowflakeID()
 
-	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	store, checkin, err := ts.shardForNodeIDExisting(nid)
 	if err != nil {
 		return err
 	}
@@ -302,7 +302,7 @@ func (ts *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	}
 	id := nid.SnowflakeID()
 
-	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	store, checkin, err := ts.shardForNodeIDExisting(nid)
 	if err != nil {
 		return err
 	}
@@ -346,7 +346,7 @@ func (ts *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	}
 	id := nid.SnowflakeID()
 
-	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	store, checkin, err := ts.shardForNodeIDExisting(nid)
 	if err != nil {
 		return err
 	}
@@ -391,7 +391,7 @@ func (ts *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	}
 	id := nid.SnowflakeID()
 
-	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	store, checkin, err := ts.shardForNodeIDExisting(nid)
 	if err != nil {
 		return err
 	}
@@ -576,7 +576,7 @@ func (ts *Store) DeleteNodesBatch(ids []types.NodeID) error {
 		}
 	}
 	for _, id := range ids {
-		shard, checkin, err := ts.shardForNodeIDChecked(id)
+		shard, checkin, err := ts.shardForNodeIDExisting(id)
 		if err != nil {
 			releaseAll()
 			return err

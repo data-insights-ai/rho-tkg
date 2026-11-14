@@ -185,3 +185,166 @@
 FAIL
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	31.323s
 FAIL
+
+
+
+# ===== Round 2 (14 Nov): writes that name an ID the proven-empty shard owns =====
+# go test -v -run 'TestEmptyByID_(Writes|RepeatedWrite|WriteDoors|Updates)' ./pkg/graph/store/tiered/ on dev 8476020f, before the
+# write route skips the shard.
+# A FAIL line under a door: a write that named a missing ID opened the empty shard, checked it out and wrote to it
+# (ShardAccessStats ColdOpens, Cold, ColdWrites +1 each, with a mark wake, two catalog saves and a close and re-seal behind it).
+# Every door answered its pinned miss; only the counts are red. Repeated test: 24 doors x 3 rounds, an idle sweep between,
+# opened the shard 24, 48, 72 times (checked out 26, 52, 78). Cross-shard rel writes (replace, delete, create, undo, batch): 5 opens.
+# PASS: the doors that create a row (PutNodeVersion, PutRelVersion) still open and wake the shard; updates after a late create
+# reach the woken shard.
+# INFO log lines removed.
+
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceNode
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNode
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodeCascade
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodesBatch
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodesBatch_beside_a_stored_node
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/AddNodeLabelToken
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/RemoveNodeLabelToken
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/AddNodeLabelTokenWithHistory
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/RemoveNodeLabelTokenWithHistory
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceNodeWithHistory
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodeWithHistory
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/TruncateNodeHistory
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 2 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 2 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceRelationship
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelationship
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/UndoRelationshipCreate
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelationshipsBatch
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelationshipsBatch_beside_a_stored_rel
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceRelWithHistory
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelWithHistory
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/TruncateRelHistory
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 2 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 2 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationship_missing_start
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationship_missing_end
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationshipsBatch_missing_end
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+=== RUN   TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationshipsBatch_missing_start
+    empty_by_id_write_test.go:131: marked: the empty shard was opened 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out 1 times
+    empty_by_id_write_test.go:131: marked: the empty shard was checked out writable 1 times
+--- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed (5.27s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceNode (0.07s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNode (0.11s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodeCascade (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodesBatch (0.07s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodesBatch_beside_a_stored_node (0.10s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/AddNodeLabelToken (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/RemoveNodeLabelToken (0.11s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/AddNodeLabelTokenWithHistory (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/RemoveNodeLabelTokenWithHistory (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceNodeWithHistory (0.11s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteNodeWithHistory (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/TruncateNodeHistory (0.09s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceRelationship (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelationship (0.09s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/UndoRelationshipCreate (0.57s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelationshipsBatch (0.07s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelationshipsBatch_beside_a_stored_rel (0.07s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/ReplaceRelWithHistory (0.07s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/DeleteRelWithHistory (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/TruncateRelHistory (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationship_missing_start (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationship_missing_end (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationshipsBatch_missing_end (0.08s)
+    --- FAIL: TestEmptyByID_WritesNamingAMissKeepTheShardClosed/PutRelationshipsBatch_missing_start (0.08s)
+=== RUN   TestEmptyByID_RepeatedWriteMissesAndSweepsOpenNothing
+    empty_by_id_write_test.go:168: round: the empty shard was opened 24 times
+    empty_by_id_write_test.go:168: round: the empty shard was checked out 26 times
+    empty_by_id_write_test.go:168: round: the empty shard was checked out writable 26 times
+    empty_by_id_write_test.go:168: round: the empty shard was opened 48 times
+    empty_by_id_write_test.go:168: round: the empty shard was checked out 52 times
+    empty_by_id_write_test.go:168: round: the empty shard was checked out writable 52 times
+    empty_by_id_write_test.go:168: round: the empty shard was opened 72 times
+    empty_by_id_write_test.go:168: round: the empty shard was checked out 78 times
+    empty_by_id_write_test.go:168: round: the empty shard was checked out writable 78 times
+--- FAIL: TestEmptyByID_RepeatedWriteMissesAndSweepsOpenNothing (6.75s)
+=== RUN   TestEmptyByID_WritesToACrossShardRelFindItWithoutOpening
+    empty_by_id_write_test.go:220: cross-shard rel writes: the empty shard was opened 5 times
+    empty_by_id_write_test.go:220: cross-shard rel writes: the empty shard was checked out 5 times
+    empty_by_id_write_test.go:220: cross-shard rel writes: the empty shard was checked out writable 5 times
+--- FAIL: TestEmptyByID_WritesToACrossShardRelFindItWithoutOpening (0.67s)
+=== RUN   TestEmptyByID_WriteDoorsThatCreateARowStillWake
+=== RUN   TestEmptyByID_WriteDoorsThatCreateARowStillWake/PutNodeVersion
+=== RUN   TestEmptyByID_WriteDoorsThatCreateARowStillWake/PutRelVersion
+--- PASS: TestEmptyByID_WriteDoorsThatCreateARowStillWake (0.76s)
+    --- PASS: TestEmptyByID_WriteDoorsThatCreateARowStillWake/PutNodeVersion (0.38s)
+    --- PASS: TestEmptyByID_WriteDoorsThatCreateARowStillWake/PutRelVersion (0.38s)
+=== RUN   TestEmptyByID_UpdatesAfterALateWriteReachTheWokenShard
+--- PASS: TestEmptyByID_UpdatesAfterALateWriteReachTheWokenShard (0.36s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	13.876s
+FAIL

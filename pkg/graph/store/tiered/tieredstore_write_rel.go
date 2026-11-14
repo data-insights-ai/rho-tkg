@@ -13,7 +13,8 @@ import (
 // --- Relationship write operations ---
 // Relationships may be cross-shard when start and end nodes live in different shards.
 // After rotation, two event entities may live in different shards (warm vs hot).
-// We use shard-based routing (shardForNodeIDChecked) instead of class-based routing
+// We use shard-based routing (shardForNodeIDChecked, and shardForNodeIDExisting
+// for an endpoint the write only needs to find) instead of class-based routing
 // to correctly handle E→E cross-shard relationships, and pin cold owners for the
 // duration of the write.
 
@@ -163,12 +164,12 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, mode relCreateMode
 	// Resolve actual shards — not class. Two event entities may be in different shards.
 	// Use the checked variants so cold owner shards stay pinned during the
 	// split-write below.
-	startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
+	startShard, startCheckin, err := ts.shardForNodeIDExisting(r.StartNodeID())
 	if err != nil {
 		return err
 	}
 	defer startCheckin()
-	endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
+	endShard, endCheckin, err := ts.shardForNodeIDExisting(r.EndNodeID())
 	if err != nil {
 		return err
 	}
@@ -275,12 +276,12 @@ func (ts *Store) putRelationshipWithEndpointHashesLocked(r *types.Relationship) 
 	relType := r.TypeToken().Value()
 	relID := r.ID().SnowflakeID()
 
-	startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
+	startShard, startCheckin, err := ts.shardForNodeIDExisting(r.StartNodeID())
 	if err != nil {
 		return "", "", err
 	}
 	defer startCheckin()
-	endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
+	endShard, endCheckin, err := ts.shardForNodeIDExisting(r.EndNodeID())
 	if err != nil {
 		return "", "", err
 	}
@@ -364,7 +365,7 @@ func (ts *Store) ReplaceRelationship(r *types.Relationship) error {
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
-	shard, checkin, err := ts.shardForRelIDChecked(r.ID())
+	shard, checkin, err := ts.shardForRelIDExisting(r.ID())
 	if err != nil {
 		return err
 	}
@@ -396,7 +397,7 @@ func (ts *Store) deleteRelationship(rid types.RelID, undo bool) error {
 
 	// Find which shard owns the entity. Use the checked variant so a cold
 	// owner stays pinned until the writes below complete.
-	entityShard, entityCheckin, err := ts.shardForRelIDChecked(rid)
+	entityShard, entityCheckin, err := ts.shardForRelIDExisting(rid)
 	if err != nil {
 		return err
 	}
@@ -495,7 +496,7 @@ func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreat
 		}
 		seen[rid] = struct{}{}
 
-		startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
+		startShard, startCheckin, err := ts.shardForNodeIDExisting(r.StartNodeID())
 		if err != nil {
 			return err
 		}
@@ -511,7 +512,7 @@ func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreat
 				return ErrNodeNotFound
 			}
 
-			endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
+			endShard, endCheckin, err := ts.shardForNodeIDExisting(r.EndNodeID())
 			if err != nil {
 				return err
 			}
@@ -542,12 +543,12 @@ func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreat
 	}
 
 	for _, r := range rels {
-		startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
+		startShard, startCheckin, err := ts.shardForNodeIDExisting(r.StartNodeID())
 		if err != nil {
 			releaseAll()
 			return err
 		}
-		endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
+		endShard, endCheckin, err := ts.shardForNodeIDExisting(r.EndNodeID())
 		if err != nil {
 			startCheckin()
 			releaseAll()
@@ -606,14 +607,14 @@ func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreat
 	// so the per-rel helper can skip duplicate probes and avoid deadlocking on
 	// relCreateMu.
 	for _, r := range rels {
-		startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
+		startShard, startCheckin, err := ts.shardForNodeIDExisting(r.StartNodeID())
 		if err != nil {
 			if rbErr := rollbackCross(); rbErr != nil {
 				return fmt.Errorf("%w (cross-shard relationship rollback failed: %v)", err, rbErr)
 			}
 			return err
 		}
-		endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
+		endShard, endCheckin, err := ts.shardForNodeIDExisting(r.EndNodeID())
 		if err != nil {
 			startCheckin()
 			if rbErr := rollbackCross(); rbErr != nil {
@@ -695,7 +696,7 @@ func (ts *Store) DeleteRelationshipsBatch(ids []types.RelID) error {
 	}
 
 	for _, id := range ids {
-		entityShard, entityCheckin, err := ts.shardForRelIDChecked(id)
+		entityShard, entityCheckin, err := ts.shardForRelIDExisting(id)
 		if err != nil {
 			releaseAll()
 			return err
