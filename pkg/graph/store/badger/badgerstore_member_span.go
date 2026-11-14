@@ -278,12 +278,17 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 	if !ok {
 		return out, nil
 	}
-	admit := foldAdmit(out, tally) // a read budget's candidate room (R2): nil without one
+	// A read budget's candidate room (R2): nil without one. The walk admits
+	// every entry it judges, the rejected ones too, so a narrow window over a
+	// wide value stops at the room instead of visiting the value.
+	judged := 0
+	admit := walkAdmit(func() int { return judged }, tally)
 	judge := func(key, val []byte) {
 		_, _, _, id, tx, _, ok := storepkg.EntityIndexTimeEntryOf(key)
 		if !ok {
 			return
 		}
+		judged++
 		from, allTo, lateTo, last, ok := storepkg.ParseEntityIndexSpanValue(val)
 		if ok && !indexpkg.RowMeets(types.Instant(from), types.Instant(allTo), types.Instant(lateTo), types.Instant(last), w.start, w.end, w.pin) {
 			return
@@ -444,13 +449,19 @@ func (bs *Store) memberHeads(rel bool, scope uint16, propertyKey string) [][]byt
 // ReadTally.CandidatesAhead). The room is read when the walk starts; the
 // members other walks of the same read hold are not counted.
 func foldAdmit(f txMemberFold, t *storecontract.ReadTally) func() error {
+	return walkAdmit(func() int { return len(f) }, t)
+}
+
+// walkAdmit is foldAdmit over a count the walk keeps: n reports the entries
+// held or visited so far, and the check refuses once it passes the room.
+func walkAdmit(n func() int, t *storecontract.ReadTally) func() error {
 	room := t.CandidateRoom()
 	if room == math.MaxUint64 {
 		return nil
 	}
 	return func() error {
-		if uint64(len(f)) > room {
-			return t.CandidatesAhead(len(f))
+		if c := n(); uint64(c) > room { // #nosec G115 -- a count
+			return t.CandidatesAhead(c)
 		}
 		return nil
 	}

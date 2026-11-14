@@ -101,3 +101,72 @@ func TestMemberWalkFoldStopsAtTheCandidateRoom(t *testing.T) {
 		}
 	}
 }
+
+// TestMemberWindowWalkAdmitsTheEntriesItRejects (R2, the window walk's
+// rejects; ai-soc's window membership guard): a narrow window over a value of
+// 64 members, each valid one instant later than the one before, matches one
+// member, and the late axis visits every entry ending after the window's start
+// to find it. Under a read budget the walk admits each entry it visits, kept
+// or rejected: with room for 3 candidates it refuses with the typed
+// ReadBudgetError and no member after at most 4 entries, instead of visiting
+// all 64 and handing on the one match uncounted. A room as wide as the walk
+// answers the unbudgeted member.
+func TestMemberWindowWalkAdmitsTheEntriesItRejects(t *testing.T) {
+	const members, room = 64, 3
+	key := indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "k"}
+	vk := types.IndexablePropertyValueKey("v")
+	for _, flushed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "pending", true: "flushed"}[flushed], func(t *testing.T) {
+			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = bs.Close() })
+			if err = bs.CreatePropertyIndex(1, "k"); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < members; i++ {
+				n := memberWorkNode(types.NodeID(i + 1))
+				n.SetTemporal(&types.TemporalMetadata{TxFrom: 1, ValidFrom: types.Instant(100 + i), ValidTo: types.Instant(101 + i)})
+				if err = bs.PutNode(n); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if flushed {
+				if err = bs.Flush(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			query := func(tally *storecontract.ReadTally, work *storecontract.PropertyMemberWork) ([]indexpkg.TxMember[types.NodeID], error) {
+				q := memberQuery{valueKeys: []string{vk}, tally: tally, work: work, window: &memberWindow{100, 101, 0}}
+				got, handled, err := bs.nodeDiskMembers(key, q)
+				if !handled {
+					t.Fatal("the definition is not kept on disk")
+				}
+				return got, err
+			}
+			want, err := query(nil, nil)
+			if err != nil || len(want) != 1 {
+				t.Fatalf("no budget = %d members, %v; want 1", len(want), err)
+			}
+			tight := func(candidates uint64) (*storecontract.ReadMeter, *storecontract.ReadTally) {
+				_, m := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: candidates})
+				return m, m.Tally("d")
+			}
+			var work storecontract.PropertyMemberWork
+			meter, tally := tight(room)
+			got, err := query(tally, &work)
+			var rb *storecontract.ReadBudgetError
+			if !errors.As(err, &rb) || rb.Limit != "candidates" || got != nil || meter.Work() != rb.Work || meter.Work().Candidates <= room {
+				t.Fatalf("room %d = %d members, %v, work %+v; want ErrReadBudget at candidates, no members, the visited entries counted", room, len(got), err, meter.Work())
+			}
+			if emitted := work.DiskEntriesEmitted + work.OverlaySetsEmitted; emitted > room+1 {
+				t.Fatalf("room %d: the walk emitted %d entries (%+v); want at most %d", room, emitted, work, room+1)
+			}
+			_, tally = tight(members)
+			if got, err := query(tally, nil); err != nil || !slices.Equal(got, want) {
+				t.Fatalf("room %d = %d members, %v; want the unbudgeted member", members, len(got), err)
+			}
+		})
+	}
+}

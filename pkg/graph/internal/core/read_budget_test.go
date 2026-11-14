@@ -15,8 +15,11 @@ import (
 // native_test case): 40 rows carry the probed value, 2 of them meet the
 // window. The RAM sidecar and the on-disk index (RelPropertyIndexOnDiskTypes,
 // whose member entries carry each row's valid-time envelope since RELDISKWIN)
-// both narrow the candidates to the window: 2 for 40, so a budget of 10 candidates
-// answers on disk as in RAM. Under a read budget the door counts its
+// both narrow the candidates to the window: 2 for 40, so a budget of 10
+// candidates answers in RAM. The on-disk window walk is ordered by end and
+// visits every row ending after the window's start (40 here), each admitted
+// under the budget (R2, the window walk's rejects): there a budget of 10 refuses
+// and one of 40 answers, counting the 2 candidates. Under a read budget the door counts its
 // candidates and output segments; past the candidate limit (here 1) it returns
 // ErrReadBudget with the counters and no rows, before it decodes a timeline.
 // Without a budget every answer is unchanged.
@@ -49,11 +52,20 @@ func TestReadBudget_SelectiveDoorRefusesBroadRead(t *testing.T) {
 				t.Fatalf("no budget = %q, want r00,r01", want)
 			}
 
-			// Under the limit: the same answer, counted, on disk as in RAM.
-			ctx, meter := storepkg.WithReadBudget(w.ctx, storepkg.ReadBudget{Candidates: limit})
+			// Under the limit: the same answer, counted, on disk as in RAM. On disk
+			// the walk visits every row of the value, so the limit must cover them.
+			lim := uint64(limit)
+			if disk {
+				ctx, _ := storepkg.WithReadBudget(w.ctx, storepkg.ReadBudget{Candidates: limit})
+				if _, err := g.Temporal.RelEffectiveTimelinesByProperties(ctx, rtbType, rtbKeys, tuples, pin); !errors.Is(err, storepkg.ErrReadBudget) {
+					t.Fatalf("disk, budget %d over a walk of %d entries = %v; want ErrReadBudget", limit, rows, err)
+				}
+				lim = rows
+			}
+			ctx, meter := storepkg.WithReadBudget(w.ctx, storepkg.ReadBudget{Candidates: lim})
 			got, err := g.Temporal.RelEffectiveTimelinesByProperties(ctx, rtbType, rtbKeys, tuples, pin)
 			if err != nil || rtbNames(w, got[0]) != want {
-				t.Fatalf("under budget %d = %s, %v; want %s", limit, rtbRender(w, got), err, want)
+				t.Fatalf("under budget %d = %s, %v; want %s", lim, rtbRender(w, got), err, want)
 			}
 			if work := meter.Work(); work.Candidates != 2 || work.Segments != 2 {
 				t.Fatalf("work = %+v, want 2 candidates, 2 segments", work)
