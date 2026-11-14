@@ -268,6 +268,9 @@ var _ = atomic.Pointer[shardCounts]{}
 //
 // Shards with a reader in flight are never closed, and their counts are sealed
 // before closing so a shard evicted here can still be counted without reopening.
+// It lists the counted handles only, the ones the cap governs (R3-1 OVERCAP): a
+// transient read handle in flight is closed by its own check-in, so no kept
+// handle is evicted for it.
 func (ts *Store) enforceColdShardCap() {
 	cap := ts.maxOpenColdShards
 	if cap <= 0 || !ts.coldShardsClosable() {
@@ -281,9 +284,9 @@ func (ts *Store) enforceColdShardCap() {
 			continue
 		}
 		es.shardMu.Lock()
-		hasStore := es.store != nil
+		counted := es.store != nil && es.coldCounted
 		es.shardMu.Unlock()
-		if hasStore {
+		if counted {
 			open = append(open, es)
 		}
 	}
@@ -304,7 +307,7 @@ func (ts *Store) enforceColdShardCap() {
 		// A shard being read right now is not a candidate however old its last
 		// access looks: closing it under a reader is the use-after-close this
 		// whole lifecycle is built to avoid.
-		if es.store != nil && es.activeReqs.Load() == 0 {
+		if es.store != nil && es.coldCounted && es.activeReqs.Load() == 0 {
 			sealed = es.snapshotCountsLocked(ts) || sealed
 			if err := es.store.Close(); err != nil {
 				ts.recordBackgroundError(fmt.Errorf("graph: cap-close cold shard %s: %w", es.name, err))

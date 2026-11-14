@@ -311,7 +311,7 @@ type EventShard struct {
 	storeRO           bool             // shardMu-protected: store is a read-only handle (COLDRO): a writer upgrades it first
 	coldOpens         atomic.Int64     // lazy opens of the closed cold shard since New (ShardInfo.ColdOpens)
 	moveFailedAt      atomic.Int64     // when the idle sweep's last move of the shard failed (unix ns; 0 = never): it retries the others first
-	coldCounted       bool             // shardMu-protected: this shard's open store is counted in Store.openColdShards
+	coldCounted       bool             // shardMu-protected: this shard's open store is counted in Store.openColdShards; a cold shard's store left uncounted is a transient read handle, which check-in closes and the cap pass skips (openColdReadOnlyLocked)
 	hotArena          bool             // shardMu-protected: store was opened at MemTableSize as a hot handle; the handle sweep reopens it at WarmMemTableSize once warm (handle_sweep.go)
 	coldOpened        bool             // shardMu-protected: store was opened by a cold read or late write (openColdLocked, openColdReadOnlyLocked); the handle sweep closes a cold shard's other handles, the demoted chain (handle_sweep.go)
 
@@ -453,12 +453,14 @@ type Store struct {
 	// SetIdleTimeoutForTest writes it while idleCloseLoop reads it (row 100).
 	idleTimeout       atomic.Int64
 	maxOpenColdShards int
-	// openColdShards counts cold shards currently holding a Badger handle. It
-	// is what makes retention hard-bounded without taking a lock: the check-in
-	// consults it while holding only its own shard's mutex. Every open, close
-	// and demotion goes through setStoreLocked / clearStoreLocked /
-	// countColdStoreLocked, which count a shard once (EventShard.coldCounted)
-	// whichever door opened its store.
+	// openColdShards counts cold shards currently holding a Badger handle the
+	// cap governs: every cold handle but a transient read one, which a read
+	// opens when the cap has no room and its check-in closes (R3-1 OVERCAP,
+	// openColdReadOnlyLocked). It is what makes retention hard-bounded without
+	// taking a lock: the check-in consults it while holding only its own
+	// shard's mutex. Every open, close and demotion goes through
+	// installStoreLocked / clearStoreLocked / countColdStoreLocked, which count
+	// a shard once (EventShard.coldCounted) whichever door opened its store.
 	openColdShards        atomic.Int64
 	compression           options.CompressionType
 	zstdLevel             int
@@ -2063,18 +2065,16 @@ const transientColdBlockCache = 16 << 20
 // keys (2.3 MB and a third of the CPU of an open at 50,000 rows) and a point
 // read never reads, and the sets of live node, rel and rel-type IDs, which stay
 // in the image's encoding (an insert per ID was half the CPU of an open at
-// ai-soc's configuration). The answers are the same. With MaxOpenColdShards
-// > 0 a handle that fits under the cap is kept at check-in and is configured as
-// every other shard is, and so is a writable one; a read that finds the cap
-// full (checkinReadStore keeps a handle only while the open cold shards are at
-// most the cap) closes its handle at check-in as a cap-0 read does, so it opens
-// the same transient form (R3, tasks/evidence/R3/measure.txt section H: the
-// third cold day of a scan at cap 2 paid the full open on every read). The
-// count is read at the open; a shard that closes before check-in may leave the
-// transient handle kept, which answers the same.
-func (ts *Store) coldReadCfg(name string) BadgerStoreConfig {
+// ai-soc's configuration). The answers are the same. full asks for the handle
+// configured as every other shard is, which a writable handle also is: the open
+// passes it, and it is the open's decision, not this builder's
+// (openColdReadOnlyLocked: full when the cap has room; a transient handle is
+// installed outside the cap's count and closes at its check-in, also at cap > 0
+// when the cap is full: R3, tasks/evidence/R3/measure.txt section H, the third
+// cold day of a scan at cap 2 paid the full open on every read).
+func (ts *Store) coldReadCfg(name string, full bool) BadgerStoreConfig {
 	cfg := ts.shardCfg(name, true, true)
-	if ts.maxOpenColdShards > 0 && ts.openColdShards.Load() < int64(ts.maxOpenColdShards) {
+	if full {
 		return cfg
 	}
 	if cfg.BlockCacheSize == 0 || cfg.BlockCacheSize > transientColdBlockCache {

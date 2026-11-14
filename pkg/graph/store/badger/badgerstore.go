@@ -202,8 +202,10 @@ type Config struct {
 	// pass instead of an insert per ID (indexpkg.NewIDSetEncoded), and answer
 	// membership and listings from it. Answers are the same as without it; a
 	// handle serving many reads would rather have the structures built once, so
-	// the tiered store sets it only for a read-only cold shard that closes at
-	// check-in (MaxOpenColdShards 0). Ignored unless ReadOnly, and when Store is
+	// the tiered store sets it only for a read-only cold handle that closes at
+	// its check-in: every one at MaxOpenColdShards 0, and at a cap above 0 one a
+	// read opens while the cap is full, which the cap never keeps
+	// (tiered.Store.coldReadCfg). Ignored unless ReadOnly, and when Store is
 	// provided explicitly.
 	TransientRead bool
 	// ColumnsOnDisk persists built columnar snapshots so a cold store can decode a
