@@ -27,7 +27,7 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
     `design-meter.txt`): `Staged` and `GatherHold` go, `ReadTally` gets Held/Hold/Drop (one allowance per read, live room),
     pruned and dropped entries charged, tiered asks each shard first (O8). Opus build running, then Fable.
   - R2-2 VEATTRIB: current labels from the decoded rows, former ones from the sidecar, no probes. Fable: mergeable, 4
-    medium (an uncharged N x K RAM loop, three test gaps); fix round 2 building.
+    medium; fix 2 `07b54e56` (attribution 200 -> 6 lookups, charged; tests added); Fable re-review running.
   - R2-5 HEADREAD (Sigma): fix 1 `6233da27` reviewed (a step). Fix 2 building from `design-headread2.txt`: M1 refusal ends
     the read, M2 pinned, the tiered token read opens no shard (ShardOpens 6 -> 5), probe-only snapshot keys only.
   - R2-6 INVENTORY: each budgeted path charged before, refused up front or in `docs/api.md` "Not yet bounded". Open: tiered
@@ -38,8 +38,8 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
   - R3-1 OVERCAP (CHANGELOG describes a replaced build): merged `db413d11` (Fable re-reviewed); a transient handle is never
     counted or kept, a failed Close detaches at upgrade and check-in. Waits for the CHANGELOG rewrite (docs keeper).
   - CLOSEFAULT: a failed Close leaves the handle installed, unfenced: `shard_move.go:130`, `retention_purge_drop.go:200`, `clearEventShard`.
-  - P0 WALREPLAY: after a double crash a smaller memtable at open ended the process; `WALReplayMemTableSize` built; Fable review.
-  - R3-3 LATEWRITE: L1 built (8 MiB memtable for a shard cold at its writable open; 20.8 MiB, was 93.4); Fable review running.
+  - P0 WALREPLAY + R3-3 LATEWRITE (L1, 20.8 MiB, was 93.4): Fable review mergeable together, 2 medium (a backfill into old
+    days at 8 MiB compacts 4.6-5x; default cold-open crash path untested); fix-round design running.
   - R3-2 FLOOR: two 83 MiB write arenas (169 MiB); options F0-F4 in `design-latewrite-floor.txt`; René's pick.
   - R3-4 B0: ai-soc's v6 run on the three BA examples on Flux, after the dev work, on René's word.
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — reads and writes
