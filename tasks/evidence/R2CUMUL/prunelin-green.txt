@@ -1,0 +1,20 @@
+=== RUN   TestByLabelGather_PrunesEachMemberOnce
+=== PAUSE TestByLabelGather_PrunesEachMemberOnce
+=== CONT  TestByLabelGather_PrunesEachMemberOnce
+=== RUN   TestByLabelGather_PrunesEachMemberOnce/badger
+=== PAUSE TestByLabelGather_PrunesEachMemberOnce/badger
+=== RUN   TestByLabelGather_PrunesEachMemberOnce/sharded
+=== PAUSE TestByLabelGather_PrunesEachMemberOnce/sharded
+=== RUN   TestByLabelGather_PrunesEachMemberOnce/tiered
+=== PAUSE TestByLabelGather_PrunesEachMemberOnce/tiered
+=== CONT  TestByLabelGather_PrunesEachMemberOnce/badger
+=== CONT  TestByLabelGather_PrunesEachMemberOnce/tiered
+=== CONT  TestByLabelGather_PrunesEachMemberOnce/sharded
+=== NAME  TestByLabelGather_PrunesEachMemberOnce/tiered
+    read_budget_prune_once_test.go:54: tiered: the store keeps no node envelope prune
+--- PASS: TestByLabelGather_PrunesEachMemberOnce (0.00s)
+    --- PASS: TestByLabelGather_PrunesEachMemberOnce/badger (0.27s)
+    --- SKIP: TestByLabelGather_PrunesEachMemberOnce/tiered (0.33s)
+    --- PASS: TestByLabelGather_PrunesEachMemberOnce/sharded (0.40s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.406s

@@ -490,12 +490,7 @@ func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, op
 	// Candidates come in ascending ID order (current members merged with the
 	// gathered IDs), so a read walks forward once and never sorts
 	// (label_scan_at.go).
-	candIDs, err := c.nodeLabelCandidatesSorted(tok, currentIDs, opts, kind)
-	if err != nil {
-		return nil, err
-	}
-
-	return c.pruneNodeLabelCandidates(tok, candIDs, opts), nil
+	return c.nodeLabelCandidatesSorted(tok, currentIDs, opts, kind)
 }
 
 // pruneNodeLabelCandidates drops the ids of label tok whose valid-time
@@ -510,6 +505,7 @@ func (c *Core) pruneNodeLabelCandidates(tok uint16, ids []types.NodeID, opts sto
 	if c.temporalCandidates == nil {
 		return ids
 	}
+	c.noteProbed(len(ids))
 	sorted := slices.IsSorted(ids)
 	kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, ids, opts)
 	if !ok {
@@ -523,7 +519,8 @@ func (c *Core) pruneNodeLabelCandidates(tok uint16, ids []types.NodeID, opts sto
 
 // nodeLabelCandidatesSorted is the gather of nodeLabelCandidatesFrom in
 // ascending ID order: K1 ever-members (pruned by the tx-time pin) or the
-// history fold by depth, united with currentIDs. Under a read budget the gather
+// history fold by depth, united with currentIDs and pruned by the valid-time
+// envelope index (pruneNodeLabelCandidates). Under a read budget the gather
 // of a scan (kind gatherScan, gatherListed) is held to the candidate room as it
 // grows: the walk stops at the member that passes it and the budget error is
 // returned before the list is completed (gatherKind.fits). The temporal
@@ -532,11 +529,23 @@ func (c *Core) pruneNodeLabelCandidates(tok uint16, ids []types.NodeID, opts sto
 // is pruned by the valid-time envelope index before the read is refused (the
 // door drops what the index vouches cannot overlap). The door's Limit counts
 // answered rows, which no gather can know, so it does not shorten the list.
+//
+// Each listed member is handed to the envelope prune at most once (R2-3
+// PRUNELIN): the gather prunes only the members it listed since its last prune
+// (extra[pruned:]) and the final prune skips the ones it has pruned, so the
+// probes are linear in the members listed; re-pruning the whole list at every
+// member past the room cost m times the room for m members past it. The probes
+// are not charged: each is one in-memory envelope lookup per listed ID, and the
+// listing that hands the ID over owns that cost (the hold and the copy's
+// BufferBytes on a sidecar store, the candidates the list counts). The kept set
+// is the one the whole-list prune keeps (the prune decides each ID alone), so
+// the answer and the refusal point do not change.
 func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts, kind gatherKind) ([]types.NodeID, error) {
 	if !slices.IsSorted(currentIDs) {
 		currentIDs = slices.Sorted(slices.Values(currentIDs))
 	}
 	var extra []types.NodeID
+	pruned := 0 // extra[:pruned] has passed the envelope prune: never probed again
 	t := opts.ReadTally()
 	var refused error
 	after := opts.After.SnowflakeID()
@@ -548,7 +557,9 @@ func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, 
 			extra = append(extra, id)
 			c.noteListed(1)
 			if kind == gatherListed && kind.over(t, len(currentIDs), len(currentIDs)+len(extra)) {
-				extra = c.pruneNodeLabelCandidates(tok, extra, opts) // sound: the door prunes the same ids
+				// sound: the door prunes the same ids; only the members listed since the last prune
+				extra = append(extra[:pruned], c.pruneNodeLabelCandidates(tok, extra[pruned:], opts)...)
+				pruned = len(extra)
 			}
 			refused = kind.fits(t, len(currentIDs), len(currentIDs)+len(extra))
 		}
@@ -572,7 +583,11 @@ func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, 
 	if refused != nil {
 		return nil, refused
 	}
-	return sortedCandidates(currentIDs, extra), nil
+	if pruned == 0 {
+		return c.pruneNodeLabelCandidates(tok, sortedCandidates(currentIDs, extra), opts), nil
+	}
+	rest := c.pruneNodeLabelCandidates(tok, sortedCandidates(currentIDs, extra[pruned:]), opts)
+	return sortedCandidates(rest, extra[:pruned]), nil
 }
 
 // nodesByLabelLocked is the lock-free body of NodeOps.ByLabel. Callers must
@@ -699,6 +714,7 @@ func (c *Core) pruneRelTypeCandidates(tok uint16, ids []types.RelID, opts storep
 	if c.relTypeTemporalCandidates == nil {
 		return ids
 	}
+	c.noteProbed(len(ids))
 	sorted := slices.IsSorted(ids)
 	kept, ok := c.relTypeTemporalCandidates.PruneRelTypeTemporalCandidates(tok, ids, opts)
 	if !ok {

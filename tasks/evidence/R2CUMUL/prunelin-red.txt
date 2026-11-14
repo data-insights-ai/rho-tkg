@@ -1,0 +1,25 @@
+=== RUN   TestByLabelGather_PrunesEachMemberOnce
+=== PAUSE TestByLabelGather_PrunesEachMemberOnce
+=== CONT  TestByLabelGather_PrunesEachMemberOnce
+=== RUN   TestByLabelGather_PrunesEachMemberOnce/badger
+=== PAUSE TestByLabelGather_PrunesEachMemberOnce/badger
+=== RUN   TestByLabelGather_PrunesEachMemberOnce/sharded
+=== PAUSE TestByLabelGather_PrunesEachMemberOnce/sharded
+=== RUN   TestByLabelGather_PrunesEachMemberOnce/tiered
+=== PAUSE TestByLabelGather_PrunesEachMemberOnce/tiered
+=== CONT  TestByLabelGather_PrunesEachMemberOnce/badger
+=== CONT  TestByLabelGather_PrunesEachMemberOnce/tiered
+=== CONT  TestByLabelGather_PrunesEachMemberOnce/sharded
+    read_budget_prune_once_test.go:111: past 40, room 44: 1684 envelope probes for 84 listed members; want each probed once (84)
+=== NAME  TestByLabelGather_PrunesEachMemberOnce/tiered
+    read_budget_prune_once_test.go:54: tiered: the store keeps no node envelope prune
+=== NAME  TestByLabelGather_PrunesEachMemberOnce/sharded
+    read_budget_prune_once_test.go:111: past 80, room 84: 6564 envelope probes for 164 listed members; want each probed once (164)
+    read_budget_prune_once_test.go:124: probes grow faster than the members past the room: 1684 at 40, 6564 at 80 (more than twice)
+--- FAIL: TestByLabelGather_PrunesEachMemberOnce (0.00s)
+    --- PASS: TestByLabelGather_PrunesEachMemberOnce/badger (0.28s)
+    --- SKIP: TestByLabelGather_PrunesEachMemberOnce/tiered (0.34s)
+    --- FAIL: TestByLabelGather_PrunesEachMemberOnce/sharded (0.41s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.422s
+FAIL

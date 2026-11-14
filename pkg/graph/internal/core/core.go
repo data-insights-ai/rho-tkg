@@ -194,6 +194,7 @@ type Core struct {
 	skeletonRead     func(metas int) // tests: called with the skeletons each cascade skeleton read returns (COSTCOUNT)
 	historyCopy      func(rows int)  // tests: called with the rows each GraphTx rollback snapshot copies (RELHIST)
 	candidatesListed func(ids int)   // tests: called with the IDs a label or type candidate gather lists, as it lists them (R2 late counts)
+	envelopeProbed   func(ids int)   // tests: called with the IDs each valid-time envelope prune hands the store, one envelope probe each (PRUNELIN)
 	// readSnapshots — effective scans read their timelines through one store
 	// read snapshot (backlog 55, effective_scan_reads.go). nil = per-entity reads.
 	readSnapshots storepkg.ReadSnapshotCapability
