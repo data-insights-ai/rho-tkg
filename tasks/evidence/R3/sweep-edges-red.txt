@@ -1,0 +1,24 @@
+WARMMEM, the two sweep edge defects of the todo's "Open" list (14 Nov 2026, dev 8476020f). Both were fixed on dev before this item: the todo line
+predates 68f098d2 (follow-up 2) and e15b5bd5 (follow-up 3), and their red output is in sweep-red.txt. Checked on the current tree: the
+tests pass, and each fix, reverted by hand in the code (one edit each, restored after), makes the same tests fail again.
+
+Defect 1, a swap installing between BeginLogScope's flag and its fold fails with a double scope. Mutation: the tiered fold back to
+badger.Store.BeginLogScope (the install's hand-off still uses EnsureLogScope):
+  go test -short -run 'TestHandleSweep_SwapInstallingMidBegin' ./pkg/graph/store/tiered/
+--- FAIL: TestHandleSweep_SwapInstallingMidBeginJoinsScopeOnce (0.26s)
+    handle_sweep_scope_test.go:40: BeginLogScope with a swap installing between its flag and its fold: graph: graph: invalid store mutation: change-log scope already open
+(TestHandleSweep_BeginLogScopeTwiceStillFails guards a caller's own double begin, which stays refused.)
+
+Defect 2, a swap whose own reopen fails demotes a hot shard to cold. Mutation: sweepNotReopened sets cold on any tier but cold, as it
+did before 68f098d2:
+  go test -short -run 'TestHandleSweep_FailedSwap' ./pkg/graph/store/tiered/
+--- FAIL: TestHandleSweep_FailedSwapOfPromotedShardFaultsStore (0.48s)
+    handle_sweep_failed_reopen_test.go:274: promotion = <nil>, want the store fault of the failed reopen
+--- FAIL: TestHandleSweep_FailedSwapKeepsPromotedShardHot (0.00s)
+    --- FAIL: TestHandleSweep_FailedSwapKeepsPromotedShardHot/stopped_after_the_close (0.47s)
+        handle_sweep_failed_reopen_test.go:185: day 20 is cold (hot shard true), want the hot shard
+    --- FAIL: TestHandleSweep_FailedSwapKeepsPromotedShardHot/warm_open_failed (0.50s)
+        handle_sweep_failed_reopen_test.go:185: day 20 is cold (hot shard true), want the hot shard
+FAIL
+
+Unmutated, go test -short -v -run 'TestHandleSweep_' ./pkg/graph/store/tiered/: 19 PASS, 1 SKIP (CrashMidSwapKeepsRows, long tier).
