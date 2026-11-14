@@ -471,8 +471,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   demotion does not count a transient handle a read opened between the tier flip and the count. A failed `Close` of a
   read-only handle at a writer's upgrade (`openColdWritableLocked`) and at the check-in (`checkinReadStore`) now detaches
   the handle and records the background-error fence, as the idle close does; before, the upgrade returned with the
-  closed handle installed and the check-in kept it. `MoveShard`'s close, the retention drop's and `clearEventShard`'s
-  still do neither. `checkoutStoreIfOpen` is removed (unexported; no caller outside its own test). Counts that change:
+  closed handle installed and the check-in kept it; the other close sites follow in the CLOSEFAULT entry below.
+  `checkoutStoreIfOpen` is removed (unexported; no caller outside its own test). Counts that change:
   30 reads over three cold days at cap 2 allocate 11.1 MiB at ai-soc's configuration (was 18.0) and 15.8 at the default
   (was 41.1), 12 opens either way; a third day's open costs 0.86 MiB (was 1.52); a budgeted label listing counts 1
   through a full handle and 2 through a transient one with a stale key. Red and green: `tasks/evidence/R3/overcap-red.txt`,
@@ -486,6 +486,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestColdCap_ReadersShareATransientHandle`, `TestColdCap_WritableFallbackWhenTheCapIsFull`,
   `TestColdCap_CloseWithATransientHandleOpen`. New test hooks, not for production: `tiered.Store.SetDemoteHookForTest` and
   `badger.Store.FailNextCloseForTest`.
+- **CLOSEFAULT: a failed `Close` of a shard handle detaches and fences at every site** (R3-1 OVERCAP review;
+  `tasks/evidence/R3/design-closefault.txt`): a failed `Close` in `MoveShard` (the idle mover calls it), the retention
+  drop (`dropOneShard`) and `Clear` (`clearEventShard`) returned the error with the closed handle still installed and no
+  fence. A warm shard's reads then failed with `ErrStoreClosed` until a restart, and a retry moved or cleared a shard
+  whose final flush had failed, with no fault recorded (the second `Close` returned nil); the drop also left the shard
+  unlinked, so its rows read as not found (red: `tasks/evidence/R3/closefault-red.txt`, green: `closefault-green.txt`).
+  Every such site now closes through `EventShard.closeStoreLocked`, which the idle close, the cap pass, the check-in
+  close, the writable upgrade, the empty demoted shard's close and the handle sweep already used: it detaches the handle
+  whatever `Close` returns and records the background-error fence (`RecoverBackgroundError` lifts it). The catalog entry
+  and the directory are kept and nothing is moved, dropped or cleared. A warm shard whose close failed goes cold in
+  memory, opens on its next access and is warm again after a restart; the drop links the shard back with its directory
+  and entry. `clearEventShard` also makes a warm shard cold in memory when its temporary open or its reopen fails, and
+  its reopen installs the handle through `setStoreLocked`. Counts that change: none. The error text of the drop's and
+  `Clear`'s close is new, `graph: drop: close shard <name>: ...` and `graph: clear: close shard <name>: ...` (they
+  returned the bare cause); the other sites keep theirs. Tests (`pkg/graph/store/tiered`, with
+  `badger.Store.FailNextCloseForTest`; the move, drop and `Clear` tests each for a cold-open and a warm shard):
+  `TestMoveShard_FailedCloseDetachesAndFences`, `TestMoverCloseFaultFencesStore`,
+  `TestTieredColdShardFastDrop_FailedCloseRelinksAndFences`, `TestTieredStoreClear_FailedCloseDetachesAndFences`.
 - **A budgeted ex-adjacency read charges the archive's open (R2-SCANS review)**: on tiered with relationships placed by
   mint, `ForEachExAdjacentRelIDMetered` (behind `ForEachRelEffectiveAtNodesCtx`) asked whether the node lives on the
   reference side through the archive, opening a closed archive uncharged, so the later charged checkout found it open
