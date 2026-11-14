@@ -24,4 +24,10 @@ flag that moves the count to another layer. Work that cannot be charged is refus
 Every limit test pairs an exact, non-empty unlimited control with a counter at the native boundary (iterator steps,
 decodes, clones, shard opens) that the meter under test does not keep, and covers several keys and several shards that each
 fit the limit but exceed it together. An item is "developed" only when such a test covers the whole contract it claims.
-Byte figures divided by 1 << 20 are MiB.
+Public variants of one query run through the same admitted walk; docs/api.md keeps a short table of which entry points
+bound which dimensions, backed by those tests. A streaming door may hand out a prefix before a refusal; a door that returns
+a slice returns all or the refusal. A found failure gets a test at the helper that owns it and at the public caller.
+Logical counters (BufferBytes, DecodedBytes) are not live heap or RSS; never report one as the other.
+Shard lifecycle: keep the handle states, who moves them and the lock order together in the sweep code; extend that one path,
+never add a second cleanup path; keep the pin, scope, late-write, failed-replacement, close-fault and reopen tests.
+Byte figures divided by 1 << 20 are MiB. Status text (todo, evidence) says what the code does now, not what it did.
