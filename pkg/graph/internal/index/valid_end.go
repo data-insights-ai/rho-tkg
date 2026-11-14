@@ -163,7 +163,8 @@ func (ix *ValidEndIndex) Track(tok uint16, members func(enlist func(id int64))) 
 // to the unknown (nothing allocated, nothing marked), and the walk stops at the
 // first entity that, with the ones unknown already, passes the candidate room t
 // has left (ReadTally.CandidateRoom). The token is then not tracked and the
-// budget error is returned (CandidatesAhead, which counts the entities seen).
+// budget error is returned (CandidatesAhead, which counts the entities seen:
+// what the enlistment needed, not work done).
 // A tally without a candidate limit, and nil, skip the count.
 func (ix *ValidEndIndex) TrackUnder(tok uint16, members iter.Seq[int64], t *storepkg.ReadTally) (bool, error) {
 	ix.mu.Lock()
