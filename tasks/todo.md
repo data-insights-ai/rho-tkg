@@ -28,15 +28,16 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
     pruned and dropped entries charged, tiered asks each shard first (O8). Opus build running, then Fable.
   - R2-2 VEATTRIB: current labels from the decoded rows, former ones from the sidecar, no probes. Fable: mergeable, 4
     medium (an uncharged N x K RAM loop, three test gaps); fix round 2 building.
-  - R2-5 HEADREAD (Sigma): fix 1 built (tiered head-token read charged, `HistoryEpochMeteredCapability`). Open: M1 memory
-    swallows a refusal (`temporal_queries.go:635/781`), M2 memory counts unpinned; Fable review and design running.
+  - R2-5 HEADREAD (Sigma): fix 1 `6233da27` reviewed (a step). Fix 2 building from `design-headread2.txt`: M1 refusal ends
+    the read, M2 pinned, the tiered token read opens no shard (ShardOpens 6 -> 5), probe-only snapshot keys only.
   - R2-6 INVENTORY: each budgeted path charged before, refused up front or in `docs/api.md` "Not yet bounded". Open: tiered
     current-member listing under ShardOpens; several-label fold; `labelNodeIDsSnapshotTalliedLocked` buffer range;
     `ValidEndAfter`; O1 lazy sidecar build; O2 property fold, `LabelTxMembersOf`; O3 `gatherFree`; O4 tiered's 2nd list; table `no test` cells.
   - R2-7 CONSUMERS: ai-soc's four R2 guards and `TestRH02WindowAdmissionCumulativeAcrossKeys` pass on dev; Sigma told.
 - **WARMMEM (R3: cheaper writable and inactive shards)** — **rho/sigma:** lowers fixed memory per handle. Unmerged, evidence `R3/`:
-  - R3-1 OVERCAP: open (CHANGELOG describes a replaced build). Fix 2 built (`6cfabdde`): the open picks the form, a transient
-    handle is never counted or kept, a failed Close detaches. Open: `shard_move.go:130`, `retention_purge_drop.go:200`; Fable re-review.
+  - R3-1 OVERCAP (CHANGELOG describes a replaced build): fix 2 `6cfabdde`, a transient handle never counted or kept, a failed
+    Close detaches; Fable re-review mergeable, merge after a comment fix.
+  - CLOSEFAULT: a failed Close leaves the handle installed, unfenced: `shard_move.go:130`, `retention_purge_drop.go:200`, `clearEventShard`.
   - P0 WALREPLAY: after a double crash a smaller memtable at open ended the process; `WALReplayMemTableSize` built; Fable review.
   - R3-3 LATEWRITE: L1 built (8 MiB memtable for a shard cold at its writable open; 20.8 MiB, was 93.4); Fable review running.
   - R3-2 FLOOR: two 83 MiB write arenas (169 MiB); options F0-F4 in `design-latewrite-floor.txt`; René's pick.
