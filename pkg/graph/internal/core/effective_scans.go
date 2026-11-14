@@ -213,8 +213,12 @@ func (c *Core) nodesEffectiveByIDsRun(run *scanRun, ids []types.NodeID, pin type
 // RelsEffectiveByIDs is NodesEffectiveByIDs for relationships
 // (RelEffectiveTimeline per id).
 func (t *TempOps) RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn func(temporal.RelSegment) bool) error {
-	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
-	c := t.c
+	return t.c.relsEffectiveByIDsRun(nil, ids, recordedPin(pin), fn) // a pin <= 0: nothing recorded yet (round 11)
+}
+
+// relsEffectiveByIDsRun is RelsEffectiveByIDs' body under a read budget (run
+// nil: none, the plain door); pin is already recordedPin's.
+func (c *Core) relsEffectiveByIDsRun(run *scanRun, ids []types.RelID, pin types.Instant, fn func(temporal.RelSegment) bool) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
@@ -229,12 +233,50 @@ func (t *TempOps) RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn fu
 	if err := c.validateEffectivePin(pin); err != nil {
 		return err
 	}
-	for _, id := range ids {
-		if err := c.checkRelTypePointRetention(id, pin); err != nil {
-			return err
-		}
+	if err := run.holdList(len(ids)); err != nil { // the ID list the door copies (RH list R2)
+		return err
 	}
-	return c.streamRelTimelines(firstOccurrences(ids), pin, nil, fn)
+	distinct := firstOccurrences(ids)
+	if err := c.relsRetentionGate(run, distinct, pin); err != nil {
+		return err
+	}
+	return c.streamRelTimelinesRun(run, distinct, pin, nil, fn)
+}
+
+// relsRetentionGate is RelsEffectiveByIDs' relationship-family retention gate,
+// which runs for every ID before the first segment (a refused member fails the
+// call). It reads each relationship's row for its type only below the
+// relationship max watermark. Under a read budget that reads, each distinct ID
+// counts as a candidate before its row is read and the rows count through the
+// metered snapshot; the stream then does not count the candidates again
+// (scanRun.admitted), so a refusal here hands out no segment and a Candidates
+// limit stops before the row of the ID that passes it.
+func (c *Core) relsRetentionGate(run *scanRun, ids []types.RelID, pin types.Instant) error {
+	if run == nil || pin == 0 || int64(pin) >= c.retentionRelMaxWatermark.Load() {
+		for _, id := range ids {
+			if err := c.checkRelTypePointRetention(id, pin); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	err := c.readUnderRLock(func() error {
+		rd, release := c.meteredEntityReads(run.tally())
+		defer release()
+		for _, id := range ids {
+			if err := run.admit(); err != nil {
+				return err
+			}
+			if err := c.checkRelTypePointRetentionRd(rd, id, pin); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		run.admitted = true
+	}
+	return err
 }
 
 // ForEachRelEffectiveAtNodes streams, for the relationships adjacent to the

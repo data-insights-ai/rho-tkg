@@ -166,3 +166,47 @@ func (r *RelOps) adjacentCtx(ctx context.Context, nodeID types.NodeID, typeName 
 	})
 	return result, err
 }
+
+// GetCtx is Get under ctx's read budget (the twin of Nodes().GetCtx): the same
+// row or error as Get, or *storepkg.ReadBudgetError and no row. It counts one
+// candidate (the ID) and, each before it is done, the stored bytes of the row it
+// decodes (DecodedBytes: a row served from the entity cache decodes nothing and
+// counts 0) and, on tiered, each closed shard it is about to open (ShardOpens).
+// The call's own checks (the ID, an open graph) run before the candidate is
+// counted. Without a budget it is Get.
+func (r *RelOps) GetCtx(ctx context.Context, id types.RelID) (*types.Relationship, error) {
+	const door = "Get"
+	c := r.c
+	meter, err := c.beginTimeline(ctx, door)
+	if err != nil {
+		return nil, err
+	}
+	if meter == nil {
+		return r.Get(ctx, id)
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := meter.AddCandidates(door, 1); err != nil {
+		return nil, err
+	}
+	var rel *types.Relationship
+	err = c.readUnderRLock(func() error {
+		rd, release := c.meteredEntityReads(meter.Tally(door))
+		defer release()
+		var err error
+		rel, err = rd.currentRel(id)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := checkCtx(ctx); err != nil { // as Get: a context cancelled during the read
+		return nil, err
+	}
+	c.opRelReads.Add(1)
+	return rel, nil
+}

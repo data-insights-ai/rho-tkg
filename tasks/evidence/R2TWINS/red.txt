@@ -61,3 +61,58 @@ FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph
 
 (TestCtxErr and the apiutil CtxErr(nil) assertions are red the same way once the stub is in place: the stub returns ctx.Err().)
 
+=== COMMIT 2: the relationship twins (Rels().GetCtx, Temporal().RelAtTxCtx, RelAtCtx, RelsAtTxByIDsCtx, RelsEffectiveByIDsCtx,
+    RelLowestAnsweredPinCtx) ===
+
+Red: each Ctx door stubbed (checks ctx, counts one candidate (the stream: nothing), calls the plain door; nothing counted below
+it), `go test -short -run 'TestReadBudget_R2Twins_' ./pkg/graph/internal/core/`: 9 top-level tests, 92 failing (sub)tests
+(badger, sharded, tiered x pending, flushed; the tiered shard-open tests; the gate test). Representative lines:
+
+  TestReadBudget_R2Twins_RelsAtTxByIDs/{badger,sharded,tiered}/{pending,flushed}
+    unlimited work {Candidates:14 ...all else 0}; want 14 candidates, 112 buffer bytes and the history looked at
+  TestReadBudget_R2Twins_RelsEffectiveByIDs/...
+    unlimited work {all 0}; want 13 candidates (distinct IDs), 36 segments, 112 buffer bytes and the history looked at
+  TestReadBudget_R2Twins_RelAt/.../{RelAtTx,RelAt}
+    unlimited work {Candidates:1 ...}; want 1 candidate and the chain looked at
+  TestReadBudget_R2Twins_RelGet/.../flushed/live
+    unlimited work {Candidates:1 DecodedBytes:0}; want 1 candidate, no history, no opens and true decoded bytes
+  TestReadBudget_R2Twins_RelLowestAnsweredPin/.../{live,deleted}
+    unlimited work {Candidates:1 BufferBytes:8}; want ... the deleted one's history and, cold, the decoded rows
+  TestReadBudget_R2Twins_RetentionGateReadsAreCounted/.../RelAtTx
+    DecodedBytes 1 = true, <nil> (work {Candidates:1 ...DecodedBytes:0}), cached true; want a refusal before the gate's row read
+    (the plain gate read the row uncounted and left it in the entity cache; same for RelsAtTxByIDs and RelsEffectiveByIDs)
+  TestReadBudget_R2Twins_RelGates/Get
+    an invalid ID = invalid store mutation: zero relationship ID, work {Candidates:1 ...}; want nothing counted
+  TestReadBudget_R2Twins_RelShardOpens/{Get,RelAtTx,RelAt,RelsAtTxByIDs,RelsEffectiveByIDs}, _RelLowestAnsweredPinShardOpens
+    error <nil>, want ErrReadBudget at "shard opens"
+    (before that line the plain reads were measured: three relationships in three cold shards opened 3 shards)
+  Note: sbBuildTiered's relationships start at a reference node and live on the always-open reference shard (0 opens), so
+  the rel shard-open tests use r2BuildTiered: endpoint nodes of an event label in each shard.
+
+Green (the metering added; `go test -short -v -run 'TestReadBudget_R2Twins_Rel...' ./pkg/graph/internal/core/`, badger, rows evicted
+from the cache first):
+
+  RelGet, unlimited:            {Candidates:1 DecodedBytes:358}; DecodedBytes 1: refused with the row not decoded (not in the entity
+                                cache afterwards; the plain Get decoded and cached it); exactly 358 answers, 357 refuses
+  RelAt / RelAtTx (24 updates): unlimited {Candidates:1 DecodedBytes:9185 HistoryExamined:25}; HistoryExamined 1: refused after
+                                {DecodedBytes:641 HistoryExamined:2}; DecodedBytes 1: refused after {DecodedBytes:356}
+  RelsAtTxByIDs (14 IDs):       unlimited {Candidates:14 DecodedBytes:15558 HistoryExamined:39 BufferBytes:112}; Candidates 13 and
+                                BufferBytes 111: refused with nothing read; HistoryExamined 1: refused after {DecodedBytes:287
+                                HistoryExamined:2}
+  RelsEffectiveByIDs (13 IDs):  unlimited {Candidates:13 Segments:36 DecodedBytes:21006 HistoryExamined:54 BufferBytes:112};
+                                Candidates 5: 6 counted, a prefix of 15 segments; Segments 3: 4 counted, 2 entities read;
+                                BufferBytes 1: refused with no entity read
+  Tiered (r2BuildTiered: three relationships in three cold event shards): Get, RelAtTx, RelAt, RelsAtTxByIDs, RelsEffectiveByIDs,
+                                RelLowestAnsweredPin (with a retention watermark): the plain reads opened 3 cold shards; under
+                                ShardOpens 1 the read opened 1 and refused; unlimited it opened 3 and counted 3.
+  Retention gate (a watermark on the type below the pin, another type's above it, so the gate reads the row): RelAtTx and
+                                RelsAtTxByIDs refuse at DecodedBytes 1 with the row not cached; RelsEffectiveByIDs counts 2
+                                candidates for 2 IDs (not 4), Candidates 1 refuses at the second ID before its row is read.
+
+  Mutations checked (each reverted): RelAt's read through a nil tally (32 failing subtests, RelAt, the gate and the shard-open
+  tests); RelsAtTxByIDs' gate back to the uncounted checkRelTypePointRetention (RetentionGateReadsAreCounted/RelsAtTxByIDs on
+  every backend); the gate not marking its candidates admitted (RelsEffectiveByIDs counts 4 candidates for 2 IDs).
+  The probe matrix gained the door `rel AtTxByIDs` (budget 1 on every counter at 8, 32 and 128 IDs, three backends, pending and
+  flushed): green. Memory: TestReadBudgetPublicRelTwins runs every door on the memory store (the chain's versions counted all at
+  once, so a history limit refuses after the first chain).
+

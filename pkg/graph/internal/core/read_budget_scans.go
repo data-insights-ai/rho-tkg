@@ -45,6 +45,9 @@ type scanRun struct {
 	// refuse is the first refusal a segment charge raised: the stream stops
 	// when it is set and the scan returns it.
 	refuse error
+	// admitted is set when a pre-pass has already counted every candidate the
+	// stream reads (RelsEffectiveByIDs' retention gate), so admit counts nothing.
+	admitted bool
 }
 
 // scanRunFor is the shared start of a Ctx scan: ctx is checked first, then a
@@ -83,7 +86,7 @@ func (r *scanRun) chunk() int {
 
 // admit counts one candidate, before its entity is read.
 func (r *scanRun) admit() error {
-	if r == nil {
+	if r == nil || r.admitted {
 		return nil
 	}
 	return r.meter.AddCandidates(r.door, 1)

@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **R2-TWINS, the relationship twins of the budgeted node doors**: `Rels().GetCtx` and `Temporal().RelAtTxCtx`,
+  `RelAtCtx` (the twin of `NodeAtCtx`), `RelsAtTxByIDsCtx`, `RelsEffectiveByIDsCtx` (a stream) and
+  `RelLowestAnsweredPinCtx` return the plain door's answer or `*store.ReadBudgetError` and no rows, with the node twins'
+  counts: one candidate (per ID, per distinct ID for the stream) and the result buffer before any ID is read, then the
+  rows decoded, history looked at and tiered shard opens through one metered read snapshot, each before it happens.
+  The relationship retention gate (`checkRelTypePointRetention`) reads the relationship's row for its type below the
+  relationship max watermark: it now reads through the metered snapshot in the budgeted doors and in the plain
+  `RelsAtTxByIDs` (it was uncounted, and cached the row), and `RelsEffectiveByIDsCtx` counts one candidate per distinct
+  ID in that pre-pass, so a refusal there hands out no segment. Red: the doors stubbed to the plain ones, 92 failing
+  subtests, three relationships in three cold event shards opening 3 shards with nothing counted
+  (`tasks/evidence/R2TWINS/red.txt`); tests: `TestReadBudget_R2Twins_RelGet`, `_RelAt`, `_RelsAtTxByIDs`,
+  `_RelsEffectiveByIDs`, `_RelLowestAnsweredPin`, `_RelShardOpens`, `_RelLowestAnsweredPinShardOpens`,
+  `_RetentionGateReadsAreCounted`, `_RelGates`, `TestReadBudgetPublicRelTwins` (memory included),
+  `TestReadBudgetRelTwinsWrappers`, `TestAPIGetCtx_Forwarding`, the probe matrix (`rel AtTxByIDs`). Still open for the
+  node doors: `NodesAtOptsByIDs` and `NodesAtTx`.
 - **R2-TWINS, a nil `ctx` is `ErrNilContext`, not a panic**: `Nodes().Iter` / `IterByLabel`, `Rels().Iter` /
   `OutgoingIter` / `IncomingIter` called `ctx.Err()` on the nil interface, and so did the `Ctx` wrappers over an `Ops`
   without the budgeted doors (`temporal`'s as-of and by-ID wrappers, the `nodes` and `rels` fallbacks). They answer

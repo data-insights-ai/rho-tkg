@@ -153,7 +153,25 @@ func (t *TempOps) NodesLowestAnsweredPinsCtx(ctx context.Context, ids []types.No
 // row and a deleted one's history through the metered read snapshot, each
 // counted before it is done.
 func (t *TempOps) RelsLowestAnsweredPinsCtx(ctx context.Context, ids []types.RelID) ([]types.Instant, error) {
-	const door = "RelsLowestAnsweredPins"
+	return t.relsLowestAnsweredPinsCtx(ctx, "RelsLowestAnsweredPins", ids)
+}
+
+// RelLowestAnsweredPinCtx is RelLowestAnsweredPin under ctx's read budget:
+// RelsLowestAnsweredPinsCtx for one ID, counted under the door name
+// "RelLowestAnsweredPin" (one candidate and 8 buffer bytes, then, with a
+// retention watermark set, the relationship's current row and, if deleted, its
+// history through the metered read snapshot).
+func (t *TempOps) RelLowestAnsweredPinCtx(ctx context.Context, id types.RelID) (types.Instant, error) {
+	out, err := t.relsLowestAnsweredPinsCtx(ctx, "RelLowestAnsweredPin", []types.RelID{id})
+	if err != nil {
+		return 0, err
+	}
+	return out[0], nil
+}
+
+// relsLowestAnsweredPinsCtx is the body of the relationship lowest-answered-pin
+// Ctx doors, counted under door.
+func (t *TempOps) relsLowestAnsweredPinsCtx(ctx context.Context, door string, ids []types.RelID) ([]types.Instant, error) {
 	c := t.c
 	meter, err := c.beginTimeline(ctx, door)
 	if err != nil {
@@ -177,4 +195,97 @@ func (t *TempOps) RelsLowestAnsweredPinsCtx(ctx context.Context, ids []types.Rel
 		return nil, err
 	}
 	return t.relsLowestAnsweredPins(ids, meter.Tally(door))
+}
+
+// The relationship twins (R2-TWINS): the node doors above for relationships,
+// with the relationship family's retention gate (checkRelTypePointRetention)
+// reading through the budgeted read's metered snapshot as the node gate does.
+
+// RelAtTxCtx is RelAtTx under ctx's read budget: one candidate, then the rows
+// decoded, history versions looked at and closed shards opened by the read, each
+// counted before it is done, the retention gate's row read included (the twin of
+// NodeAtTxCtx).
+func (t *TempOps) RelAtTxCtx(ctx context.Context, id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
+	return t.relAtCtx(ctx, "RelAtTx", id, validAt, txAt, func() (*types.Relationship, error) { return t.RelAtTx(id, validAt, txAt) })
+}
+
+// RelAtCtx is RelAt under ctx's read budget: RelAtTxCtx with no transaction
+// filter (RelAt reads at txAt 0), counted under the door name "RelAt" (the twin
+// of NodeAtCtx).
+func (t *TempOps) RelAtCtx(ctx context.Context, id types.RelID, at types.Instant) (*types.Relationship, error) {
+	return t.relAtCtx(ctx, "RelAt", id, at, 0, func() (*types.Relationship, error) { return t.RelAt(id, at) })
+}
+
+// relAtCtx is the body of the relationship point-read Ctx doors; plain is the
+// door's plain form, which a context without a budget reads as.
+func (t *TempOps) relAtCtx(ctx context.Context, door string, id types.RelID, validAt, txAt types.Instant, plain func() (*types.Relationship, error)) (*types.Relationship, error) {
+	c := t.c
+	meter, err := c.beginTimeline(ctx, door)
+	if err != nil {
+		return nil, err
+	}
+	if meter == nil {
+		return plain()
+	}
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	if err := meter.AddCandidates(door, 1); err != nil {
+		return nil, err
+	}
+	var result *types.Relationship
+	err = c.readUnderRLock(func() error {
+		rd, release := c.meteredEntityReads(meter.Tally(door))
+		defer release()
+		if err := c.checkRelTypePointRetentionRd(rd, id, txAt); err != nil {
+			return err
+		}
+		r, err := c.relAtLockedTxRd(rd, id, validAt, txAt)
+		result = r
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// RelsAtTxByIDsCtx is RelsAtTxByIDs under ctx's read budget: after the plain
+// door's checks it counts one candidate and 8 buffer bytes per ID (the result
+// slice) before any ID is read, then the rows decoded, history looked at and
+// shards opened by each distinct ID's read before they happen, the retention
+// gate's row reads among them (the twin of NodesAtTxByIDsCtx).
+func (t *TempOps) RelsAtTxByIDsCtx(ctx context.Context, ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error) {
+	const door = "RelsAtTxByIDs"
+	c := t.c
+	meter, err := c.beginTimeline(ctx, door)
+	if err != nil {
+		return nil, err
+	}
+	if meter == nil {
+		return t.RelsAtTxByIDs(ids, validAt, txAt)
+	}
+	if err := c.relsAtTxByIDsGates(ids, txAt); err != nil {
+		return nil, err
+	}
+	if err := meter.AddCandidates(door, len(ids)); err != nil {
+		return nil, err
+	}
+	if err := meter.AddBufferBytes(door, len(ids)*bufSliceRef); err != nil {
+		return nil, err
+	}
+	return c.relsAtTxByIDsTallied(meter.Tally(door), ids, validAt, txAt)
+}
+
+// RelsEffectiveByIDsCtx is RelsEffectiveByIDs under ctx's read budget
+// (temporal.API.RelsEffectiveByIDsCtx), the stream twin of NodesEffectiveByIDsCtx.
+func (t *TempOps) RelsEffectiveByIDsCtx(ctx context.Context, ids []types.RelID, pin types.Instant, fn func(temporal.RelSegment) bool) error {
+	run, err := t.c.scanRunFor(ctx, "RelsEffectiveByIDs")
+	if err != nil {
+		return err
+	}
+	return t.c.relsEffectiveByIDsRun(run, ids, recordedPin(pin), fn)
 }

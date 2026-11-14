@@ -197,6 +197,30 @@ func (a *API) Get(ctx context.Context, id types.RelID) (*types.Relationship, err
 	return ops.Get(ctx, id)
 }
 
+// budgetedGetOps is the read-budget form of the point read; the graph's own
+// Ops implement it.
+type budgetedGetOps interface {
+	GetCtx(ctx context.Context, id types.RelID) (*types.Relationship, error)
+}
+
+// GetCtx is Get under ctx's read budget (store.WithReadBudget): the same row
+// or error as Get, or *store.ReadBudgetError and no row. It counts one
+// candidate (the ID) and, each before it is done, the stored bytes of the row it
+// decodes (DecodedBytes: a row served from the entity cache decodes nothing and
+// counts 0) and, on tiered, each closed shard it is about to open (ShardOpens).
+// Without a budget in ctx it is Get. An Ops without the budgeted doors answers
+// unmetered.
+func (a *API) GetCtx(ctx context.Context, id types.RelID) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if b, ok := ops.(budgetedGetOps); ok {
+		return b.GetCtx(ctx, id)
+	}
+	return ops.Get(ctx, id)
+}
+
 // Lend returns the relationship's current row like Get, without Get's copy:
 // the store's own frozen row. Same lifetime and mutation rules as
 // nodes.API.Lend (types.ErrFrozenRelationship; re-check RelMutationEpoch to

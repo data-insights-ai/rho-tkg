@@ -159,3 +159,118 @@ func (a *API) RelsLowestAnsweredPinsCtx(ctx context.Context, ids []types.RelID) 
 	}
 	return ops.RelsLowestAnsweredPins(ids)
 }
+
+// The relationship twins of the doors above (R2-TWINS,
+// RH list R2): the same shape, each a thin wrapper over the graph's own ops,
+// which implement them; an Ops without them answers only a context without a
+// budget (and a cancelled or nil context is refused first).
+
+// relTwinsCtxOps is the optional part of Ops the relationship Ctx doors reach
+// (the graph's own ops implement it; Ops itself stays unchanged).
+type relTwinsCtxOps interface {
+	RelAtTxCtx(ctx context.Context, id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error)
+	RelAtCtx(ctx context.Context, id types.RelID, at types.Instant) (*types.Relationship, error)
+	RelsAtTxByIDsCtx(ctx context.Context, ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error)
+	RelsEffectiveByIDsCtx(ctx context.Context, ids []types.RelID, pin types.Instant, fn func(RelSegment) bool) error
+	RelLowestAnsweredPinCtx(ctx context.Context, id types.RelID) (types.Instant, error)
+}
+
+// RelAtTxCtx is RelAtTx under ctx's read budget: the same row at the same
+// pins, or *store.ReadBudgetError and no row. It counts one candidate (the ID),
+// and the rows decoded (DecodedBytes), the history versions looked at
+// (HistoryExamined) and, on tiered, the closed shards opened (ShardOpens), each
+// before it is done; the retention gate's row reads count too. The checks,
+// gates and errors are RelAtTx's. Without a budget it is RelAtTx.
+func (a *API) RelAtTxCtx(ctx context.Context, id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := ops.(relTwinsCtxOps); ok {
+		return m.RelAtTxCtx(ctx, id, validAt, txAt)
+	}
+	if err := asOfWithoutBudget(ctx, "RelAtTx"); err != nil {
+		return nil, err
+	}
+	return ops.RelAtTx(id, validAt, txAt)
+}
+
+// RelAtCtx is RelAt under ctx's read budget: RelAtTxCtx with no transaction
+// filter, counted under the door name "RelAt" (the twin of NodeAtCtx). Without
+// a budget it is RelAt.
+func (a *API) RelAtCtx(ctx context.Context, id types.RelID, at types.Instant) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := ops.(relTwinsCtxOps); ok {
+		return m.RelAtCtx(ctx, id, at)
+	}
+	if err := asOfWithoutBudget(ctx, "RelAt"); err != nil {
+		return nil, err
+	}
+	return ops.RelAt(id, at)
+}
+
+// RelsAtTxByIDsCtx is RelsAtTxByIDs under ctx's read budget: the same aligned
+// answer, or *store.ReadBudgetError and no rows. It validates as RelsAtTxByIDs
+// does, then counts one candidate per ID and 8 buffer bytes per ID for the
+// result slice before any ID is read (a repeated ID counts at each position: a
+// budget reads high, never low), and the rows decoded, history looked at and
+// shards opened by each distinct ID's read, the retention gate's included,
+// before they are done. Without a budget it is RelsAtTxByIDs.
+func (a *API) RelsAtTxByIDsCtx(ctx context.Context, ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := ops.(relTwinsCtxOps); ok {
+		return m.RelsAtTxByIDsCtx(ctx, ids, validAt, txAt)
+	}
+	if err := asOfWithoutBudget(ctx, "RelsAtTxByIDs"); err != nil {
+		return nil, err
+	}
+	return ops.RelsAtTxByIDs(ids, validAt, txAt)
+}
+
+// RelsEffectiveByIDsCtx is RelsEffectiveByIDs under ctx's read budget: the
+// segments of the plain door in the order of ids, as NodesEffectiveByIDsCtx
+// streams them (the callbacks made before a refusal stand, none follows it): 8
+// buffer bytes per ID of the list before it is copied, one candidate before each
+// distinct ID it reads, what each read looks at, decodes and opens, and each
+// segment before fn gets it. Under a retention watermark the per-relationship
+// retention gate, which the plain door runs for every ID before the first
+// segment, counts its row reads and one candidate per distinct ID first, and a
+// refusal there hands out no segment. Without a budget it is RelsEffectiveByIDs.
+func (a *API) RelsEffectiveByIDsCtx(ctx context.Context, ids []types.RelID, pin types.Instant, fn func(RelSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	if m, ok := ops.(relTwinsCtxOps); ok {
+		return m.RelsEffectiveByIDsCtx(ctx, ids, pin, fn)
+	}
+	if err := asOfWithoutBudget(ctx, "RelsEffectiveByIDs"); err != nil {
+		return err
+	}
+	return ops.RelsEffectiveByIDs(ids, pin, fn)
+}
+
+// RelLowestAnsweredPinCtx is RelLowestAnsweredPin under ctx's read budget, as
+// RelsLowestAnsweredPinsCtx for one ID: one candidate and 8 buffer bytes, and
+// with a retention watermark set the relationship's current row and, if
+// deleted, its history, counted before they are read. Without a budget it is
+// RelLowestAnsweredPin.
+func (a *API) RelLowestAnsweredPinCtx(ctx context.Context, id types.RelID) (types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	if m, ok := ops.(relTwinsCtxOps); ok {
+		return m.RelLowestAnsweredPinCtx(ctx, id)
+	}
+	if err := asOfWithoutBudget(ctx, "RelLowestAnsweredPin"); err != nil {
+		return 0, err
+	}
+	return ops.RelLowestAnsweredPin(id)
+}

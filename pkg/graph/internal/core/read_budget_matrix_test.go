@@ -105,6 +105,16 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 							r, err := g.Rels.GetByIDsCtx(ctx, relIDs)
 							return len(r), err
 						}},
+						{"rel AtTxByIDs", true, func(ctx context.Context) (int, error) { // R2-TWINS: the batched point read of the relationships, at a pin
+							r, err := g.Temporal.RelsAtTxByIDsCtx(ctx, relIDs, pinTx, pinTx)
+							n := 0
+							for _, x := range r {
+								if x != nil {
+									n++
+								}
+							}
+							return n, err
+						}},
 						{"rel property current", true, func(ctx context.Context) (int, error) {
 							r, err := g.Rels.ByTypeAndPropertyCtx(ctx, rtbType, "device", fmt.Sprintf("d%d", size), storepkg.QueryOpts{})
 							return len(r), err

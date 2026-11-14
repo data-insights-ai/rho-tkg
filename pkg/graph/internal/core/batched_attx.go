@@ -76,31 +76,44 @@ func (c *Core) nodesAtTxByIDsTallied(tally *storepkg.ReadTally, ids []types.Node
 // (including the relationship-family retention gate). DECLARED view: not masked
 // by endpoint validity.
 func (t *TempOps) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error) {
-	c := t.c
-	if err := c.checkOpen(); err != nil {
+	if err := t.c.relsAtTxByIDsGates(ids, txAt); err != nil {
 		return nil, err
+	}
+	return t.c.relsAtTxByIDs(ids, validAt, txAt)
+}
+
+// relsAtTxByIDsGates are RelsAtTxByIDs' input checks, in order: an open graph,
+// valid IDs, a pin, a pin the clock has reached (RelsAtTxByIDsCtx runs them
+// before it counts anything).
+func (c *Core) relsAtTxByIDsGates(ids []types.RelID, txAt types.Instant) error {
+	if err := c.checkOpen(); err != nil {
+		return err
 	}
 	for _, id := range ids {
 		if err := storepkg.ValidateRelID(id); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if txAt == 0 {
 		// 0 is NodeAtTx's "no pin"; the batch needs a pin. A pin at the
 		// instant 0 is RelsAtOptsByIDs with TxAtSet (round 11).
-		return nil, fmt.Errorf("%w: transaction-time pin 0 (a pin is required; a pin at the instant 0: RelsAtOptsByIDs with TxAtSet)", ErrInvalidTimeRange)
+		return fmt.Errorf("%w: transaction-time pin 0 (a pin is required; a pin at the instant 0: RelsAtOptsByIDs with TxAtSet)", ErrInvalidTimeRange)
 	}
-	if err := c.validateEffectivePin(txAt); err != nil { // a negative pin: nothing recorded yet (round 11)
-		return nil, err
-	}
-	return c.relsAtTxByIDs(ids, validAt, txAt)
+	return c.validateEffectivePin(txAt) // a negative pin: nothing recorded yet (round 11)
 }
 
 // relsAtTxByIDs is RelsAtTxByIDs after its input checks (RelsAtOptsByIDs
 // shares it).
 func (c *Core) relsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error) {
-	return atTxByIDs(c, ids, func(rd entityReads, id types.RelID) (*types.Relationship, error) {
-		if err := c.checkRelTypePointRetention(id, txAt); err != nil {
+	return c.relsAtTxByIDsTallied(nil, ids, validAt, txAt)
+}
+
+// relsAtTxByIDsTallied is relsAtTxByIDs counting what its reads decode, look at
+// and open in tally (RH list R2; nil counts nothing), the relationship
+// retention gate's row reads included.
+func (c *Core) relsAtTxByIDsTallied(tally *storepkg.ReadTally, ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error) {
+	return atTxByIDsMetered(c, tally, ids, func(rd entityReads, id types.RelID) (*types.Relationship, error) {
+		if err := c.checkRelTypePointRetentionRd(rd, id, txAt); err != nil {
 			return nil, err
 		}
 		if err := c.checkRelPointCompaction(id, txAt); err != nil {
@@ -121,17 +134,12 @@ func (c *Core) relsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]
 	})
 }
 
-// atTxByIDs runs read once per distinct id, effScanChunk ids per read-lock hold,
-// and lays answers out aligned to ids. The first read error fails the call.
-func atTxByIDs[ID comparable, T any](c *Core, ids []ID, read func(entityReads, ID) (T, error)) ([]T, error) {
-	return atTxByIDsMetered(c, nil, ids, read)
-}
-
-// atTxByIDsMetered is atTxByIDs under a read budget (RH list R2): the read
-// snapshot counts the bytes it decodes, the history it looks at and the shards
-// it opens in tally (store.ReadSnapshotMeterCapability), and a store without
-// one (memory) counts the versions of each chain it reads. A nil tally is
-// atTxByIDs.
+// atTxByIDsMetered runs read once per distinct id, effScanChunk ids per read-lock
+// hold, and lays answers out aligned to ids. The first read error fails the call.
+// Under a read budget (RH list R2) the read snapshot counts the bytes it
+// decodes, the history it looks at and the shards it opens in tally
+// (store.ReadSnapshotMeterCapability), and a store without one (memory) counts
+// the versions of each chain it reads. A nil tally counts nothing.
 func atTxByIDsMetered[ID comparable, T any](c *Core, tally *storepkg.ReadTally, ids []ID, read func(entityReads, ID) (T, error)) ([]T, error) {
 	if len(ids) == 0 {
 		return []T{}, nil
