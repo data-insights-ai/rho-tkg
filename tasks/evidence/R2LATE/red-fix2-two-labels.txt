@@ -1,0 +1,10 @@
+--- FAIL: TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce (0.00s)
+    --- FAIL: TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce/disk/flushed (0.21s)
+        badgerstore_valid_end_labels_budget_test.go:77: label 2 alone counted 9 candidates, want 6 (3 listed, 3 entities)
+        badgerstore_valid_end_labels_budget_test.go:91: label 2 after label 1 counted 29 candidates, 3 rows decoded; want 6 (label 1's 20 members not charged again) and, flushed, 3 decoded
+    --- FAIL: TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce/disk/pending (0.21s)
+        badgerstore_valid_end_labels_budget_test.go:77: label 2 alone counted 9 candidates, want 6 (3 listed, 3 entities)
+        badgerstore_valid_end_labels_budget_test.go:91: label 2 after label 1 counted 29 candidates, 0 rows decoded; want 6 (label 1's 20 members not charged again) and, flushed, 3 decoded
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.411s
+FAIL

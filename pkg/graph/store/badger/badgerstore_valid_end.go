@@ -496,7 +496,10 @@ func (bs *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 		return nil, err
 	}
 	if err := bs.nodeValidEnds.ResolveUnknownBulkUnder(t, func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
-		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, members, t)
+		// The attribution pass (which tracked labels each entity read carries) reads
+		// every tracked label's members again: the track listing above is the one
+		// charge for a label's walk, so this pass takes the uncounted closure.
+		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, bs.nodeTokenMembersLocked, t)
 	}); err != nil {
 		return nil, err
 	}
