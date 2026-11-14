@@ -27,7 +27,7 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
     `design-meter.txt`): `Staged` and `GatherHold` go, `ReadTally` gets Held/Hold/Drop (one allowance per read, live room),
     pruned and dropped entries charged, tiered asks each shard first (O8). Opus build running, then Fable.
   - R2-2 VEATTRIB: current labels from the decoded rows, former ones from the sidecar, no probes. Fable: mergeable, 4
-    medium; fix 2 `07b54e56` (attribution 200 -> 6 lookups, charged; tests added); Fable re-review running.
+    medium; fix 2 `07b54e56` re-review NOT mergeable: public test red (16 vs 14), 4 medium; fix-3 design running.
   - R2-5 HEADREAD (Sigma): fix 1 `6233da27` reviewed (a step). Fix 2 building from `design-headread2.txt`: M1 refusal ends
     the read, M2 pinned, the tiered token read opens no shard (ShardOpens 6 -> 5), probe-only snapshot keys only.
   - R2-6 INVENTORY: each budgeted path charged before, refused up front or in `docs/api.md` "Not yet bounded". Open: tiered
