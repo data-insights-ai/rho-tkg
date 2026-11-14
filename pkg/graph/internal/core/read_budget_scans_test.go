@@ -90,6 +90,7 @@ func sbScanDoors(g *Core, pin types.Instant) []sbScan {
 // index only those still open at the pin (the index drops what ended before
 // it: the deleted ones).
 func (w *sbWorld) entities(d sbScan) []string {
+	// (indexed and current: the same split, for the gather's checks.)
 	var out []string
 	if d.nodes {
 		indexed := d.bounded && w.g.nodeValidEnds != nil
@@ -107,6 +108,24 @@ func (w *sbWorld) entities(d sbScan) []string {
 		}
 	}
 	return out
+}
+
+// indexed reports whether a From or Window door reads its candidates from the
+// store's valid-end index (a store that keeps one), not from the gather.
+func (w *sbWorld) indexed(d sbScan) bool {
+	if d.nodes {
+		return d.bounded && w.g.nodeValidEnds != nil
+	}
+	return d.bounded && w.g.relValidEnds != nil
+}
+
+// current is how many members the door's label (type) has now: the entities
+// that were not deleted.
+func (w *sbWorld) current(d sbScan) uint64 {
+	if d.nodes {
+		return uint64(len(w.nodes) - len(w.deletedNodes)) // #nosec G115 -- a count
+	}
+	return uint64(len(w.rels) - len(w.deletedRels)) // #nosec G115 -- a count
 }
 
 // sbEntity is the entity part of a rendered segment ("n12" of "n12[3,0)v2").
@@ -130,10 +149,14 @@ func sbCollect(run func(fn func(string) bool) error) ([]string, error) {
 //     (the entities read before the refusal) and none follows it; the refused
 //     counter of the meter equals the error's;
 //   - the refusal comes before the next entity is read: a Candidates limit of
-//     5 reads 5 entities, a Segments limit of 3 reads at most 2, a limit of 1
-//     on history or decoded bytes at most 2, and a BufferBytes limit of 1
-//     reads none (the plain scan reads every one of the 12 entities, which
-//     the unlimited meter's counts show).
+//     5 refuses a door that gathers its candidates (no valid-end index) before
+//     the gather lists a member (R2 late counts: the native count of IDs
+//     listed, Core.candidatesListed, is 0 against 12 for the control) and
+//     reads none, a door on the index at the entity past the limit; a
+//     Segments limit of 3 reads at most 2, a limit of 1 on history or decoded
+//     bytes at most 2, and a BufferBytes limit of 1 reads none (the plain scan
+//     reads every one of the 12 entities, which the unlimited meter's counts
+//     show).
 func TestReadBudget_SigmaB_Scans(t *testing.T) {
 	t.Parallel()
 	const n = 12
@@ -164,11 +187,23 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 							t.Fatalf("no budget = %v, %v; want the plain stream\n%v", got, err, want)
 						}
 						cold()
+						// The native count of the gather, which the meter does not keep:
+						// the IDs the store listed (Core.candidatesListed).
+						listed := 0
+						g.candidatesListed = func(n int) { listed += n }
+						defer func() { g.candidatesListed = nil }()
 						fctx, full := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 						if got, err := sbCollect(func(fn func(string) bool) error { return d.ctx(fctx, fn) }); err != nil || !slices.Equal(got, want) {
 							t.Fatalf("unlimited = %v, %v; want the plain stream\n%v", got, err, want)
 						}
 						total := full.Work()
+						// A door on a store with a valid-end index lists nothing itself; the
+						// others gather every candidate of the label (type): the control lists
+						// each entity once.
+						gathered := !(d.bounded && w.indexed(d))
+						if wantListed := map[bool]int{true: len(w.entities(d)), false: 0}[gathered]; listed != wantListed {
+							t.Fatalf("unlimited: the gather listed %d IDs, want %d", listed, wantListed)
+						}
 						// The first K candidates' segments are the stream's prefix of
 						// those entities (candidates read in ascending ID order). A From
 						// or Window door on a store with a valid-end index reads only
@@ -191,6 +226,7 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 							}
 							t.Run(c.limit, func(t *testing.T) {
 								cold()
+								listed = 0
 								pctx, meter := storepkg.WithReadBudget(ctx, sbBudget(c.limit, c.n))
 								got, err := sbCollect(func(fn func(string) bool) error { return d.ctx(pctx, fn) })
 								rb := rbdBudgetErr(t, err, c.limit)
@@ -207,6 +243,17 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 								}
 								switch c.limit {
 								case "candidates":
+									if gathered {
+										// The gather refuses before it lists a member (R2 late
+										// counts): the label's (type's) current members pass the
+										// room, are counted as work done, and nothing is listed
+										// or read. A scan on a valid-end index refuses at the
+										// entity past the limit, as before.
+										if len(got) != 0 || listed != 0 || work.Candidates != w.current(d) || work.BufferBytes != 0 {
+											t.Fatalf("candidates %d: callbacks %v, %d IDs listed, work %+v; want none, none listed and the %d current members counted", c.n, got, listed, work, w.current(d))
+										}
+										return
+									}
 									first := map[string]bool{}
 									for _, e := range entities[:c.n] {
 										first[e] = true

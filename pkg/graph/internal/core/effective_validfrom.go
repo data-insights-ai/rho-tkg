@@ -225,7 +225,7 @@ func (c *Core) relEffectiveByTypeBounded(run *scanRun, typeName string, pin, val
 			}
 			return err
 		}
-		ids, err := c.relTypeCandidateIDsAt(tok, run.opts(storepkg.QueryOpts{TxPin: pin, TxPinSet: true}))
+		ids, err := c.relTypeCandidateIDsKind(tok, run.opts(storepkg.QueryOpts{TxPin: pin, TxPinSet: true}), gatherScan)
 		cands = fallbackCands(ids)
 		return err
 	}); err != nil {

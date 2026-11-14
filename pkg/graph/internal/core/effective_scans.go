@@ -360,9 +360,7 @@ func (c *Core) forEachRelEffectiveAtNodesRun(run *scanRun, nodeIDs []types.NodeI
 	}); err != nil {
 		return err
 	}
-	if err := run.holdList(len(ids)); err != nil {
-		return err
-	}
+	// (The candidate list was counted as it grew: relEffectiveAdjacencyCandidatesRun.)
 	seedSet := make(map[types.NodeID]struct{}, len(seeds))
 	for _, id := range seeds {
 		seedSet[id] = struct{}{}
@@ -414,12 +412,16 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 	case len(toks) == 0:
 		return nil, nil
 	case len(toks) == 1:
-		return c.nodeLabelCandidateIDsAt(toks[0], opts)
+		return c.nodeLabelCandidateIDsKind(toks[0], opts, gatherScan)
 	}
+	// Each list the gather builds is held to the candidate room as it grows
+	// (gatherScan.fits), the labels' current members before the store lists them
+	// (membersFit): the scans count one candidate per entity when they read it.
 	var ids []types.NodeID
+	t := opts.ReadTally()
 	gather := func(id types.NodeID) error {
 		ids = append(ids, id)
-		return nil
+		return gatherScan.fits(t, 0, len(ids))
 	}
 	if c.labelTxMembers == nil {
 		if err := c.foldOpensRefused(opts); err != nil {
@@ -427,18 +429,25 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 		}
 		var current []types.NodeID
 		for _, tok := range toks {
+			if err := c.membersFit(opts, gatherScan, func() (int, error) { return c.nodeCountByLabel(tok) }); err != nil {
+				return nil, err
+			}
 			cur, err := c.nodeLabelCurrentIDs(tok)
 			if err != nil {
 				return nil, err
 			}
 			current = append(current, cur...)
+			c.noteListed(len(cur))
+			if err := gatherScan.fits(t, 0, len(current)); err != nil {
+				return nil, err
+			}
 		}
 		err := c.forEachNodeCandidateIDByDepth(current, storepkg.DepthAll, gather)
 		return ids, err
 	}
 	seen := map[types.NodeID]struct{}{}
 	for _, tok := range toks {
-		cand, err := c.nodeLabelCandidateIDsAt(tok, opts)
+		cand, err := c.nodeLabelCandidateIDsKind(tok, opts, gatherScan)
 		if err != nil {
 			return nil, err
 		}
@@ -447,6 +456,9 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 				seen[id] = struct{}{}
 				ids = append(ids, id)
 			}
+		}
+		if err := gatherScan.fits(t, 0, len(ids)); err != nil {
+			return nil, err
 		}
 	}
 	return ids, nil

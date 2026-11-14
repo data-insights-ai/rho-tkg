@@ -160,7 +160,14 @@ func TestReadBudgetPublicScans(t *testing.T) {
 
 				cctx, cm := store.WithReadBudget(ctx, store.ReadBudget{Candidates: 3})
 				got, err := pubCollect(func(fn func(string) bool) error { return d.ctx(cctx, fn) })
-				if !errors.Is(err, store.ErrReadBudget) || cm.Work().Candidates != 4 || len(got) == 0 || !slices.Equal(got, want[:len(got)]) {
+				if gathered := !d.bounded || b.name == "sharded"; gathered {
+					// The gather of the label's (type's) candidates refuses before it
+					// lists a member (R2 late counts): the live members, which pass the
+					// room, are counted as work done and nothing is streamed.
+					if !errors.Is(err, store.ErrReadBudget) || cm.Work().Candidates != n-2 || len(got) != 0 {
+						t.Fatalf("%s: Candidates 3 = %v, %v (work %+v); want a refusal in the gather: none streamed and the %d live members counted", d.name, got, err, cm.Work(), n-2)
+					}
+				} else if !errors.Is(err, store.ErrReadBudget) || cm.Work().Candidates != 4 || len(got) == 0 || !slices.Equal(got, want[:len(got)]) {
 					t.Fatalf("%s: Candidates 3 = %v, %v (work %+v); want a prefix of the plain stream and a refusal at the fourth candidate", d.name, got, err, cm.Work())
 				}
 				hctx, hm := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: 1})
