@@ -1,0 +1,15 @@
+Failures in pkg/graph/internal/core during the R2 meter round (14 Nov 2026), name and output.
+
+TestEffectiveScanTransactionsPerType_ConcurrentWrites (go test -short ./pkg/graph/internal/core/, at d04c268e)
+Deterministic: red on 5 of 5 reruns at d04c268e, and red at 287f5caa (S2) and at 48d6c5a4 (the round's base), so it
+is not from this round's code. Not a flake: a standing red at the base.
+
+--- FAIL: TestEffectiveScanTransactionsPerType_ConcurrentWrites (0.60s)
+    --- FAIL: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false (0.05s)
+        --- FAIL: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/from (0.00s)
+            effective_scan_txns_test.go:325: from: 6 read transactions with two flushes during the scan; want <= 5
+    --- FAIL: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true (0.08s)
+        --- FAIL: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/from (0.00s)
+            effective_scan_txns_test.go:325: from: 6 read transactions with two flushes during the scan; want <= 5
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	52.402s

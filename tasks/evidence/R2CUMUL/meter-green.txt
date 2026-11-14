@@ -1,0 +1,140 @@
+R2 meter round, S5: the red tests green at d04c268e (INFO log lines and RUN lines removed). 14 Nov 2026.
+
+## store: H1, P1 (go test -run 'TestReadTally' ./pkg/graph/store/)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.017s
+
+## index: V5
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.002s
+
+## tiered: O8, D1, D2, B1
+--- PASS: TestTieredMemberDeclineAsksEveryShardFirst (0.02s)
+--- PASS: TestTieredMemberDeclineKeepsItsWork (0.03s)
+--- PASS: TestTieredMemberFanoutBesideAnotherRead (0.11s)
+--- PASS: TestTieredMemberBufferAcrossShards (0.15s)
+    --- PASS: TestTieredMemberBufferAcrossShards/second_read_inside_the_fan-out (0.00s)
+    --- PASS: TestTieredMemberBufferAcrossShards/fallback_after_a_decline (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.361s
+
+## core: T2..T6, D3, prune test reshaped
+--- PASS: TestGather_HeldTight (0.38s)
+    --- PASS: TestGather_HeldTight/badger (0.07s)
+        --- PASS: TestGather_HeldTight/badger/scan (0.00s)
+        --- PASS: TestGather_HeldTight/badger/ByLabel (0.00s)
+    --- PASS: TestGather_HeldTight/sharded (0.15s)
+        --- PASS: TestGather_HeldTight/sharded/scan (0.00s)
+        --- PASS: TestGather_HeldTight/sharded/ByLabel (0.00s)
+    --- PASS: TestGather_HeldTight/tiered (0.16s)
+        --- PASS: TestGather_HeldTight/tiered/scan (0.00s)
+        --- PASS: TestGather_HeldTight/tiered/ByLabel (0.00s)
+    --- PASS: TestGather_HeldTight/memory (0.00s)
+        --- PASS: TestGather_HeldTight/memory/scan (0.00s)
+        --- PASS: TestGather_HeldTight/memory/ByLabel (0.00s)
+--- PASS: TestGather_OneRoomOverLabels (0.33s)
+    --- PASS: TestGather_OneRoomOverLabels/badger (0.10s)
+    --- PASS: TestGather_OneRoomOverLabels/tiered (0.23s)
+    --- PASS: TestGather_OneRoomOverLabels/memory (0.00s)
+--- PASS: TestGather_ShardsExceedTogether (0.98s)
+    --- PASS: TestGather_ShardsExceedTogether/label (0.39s)
+    --- PASS: TestGather_ShardsExceedTogether/type (0.33s)
+    --- PASS: TestGather_ShardsExceedTogether/former_on_two_shards (0.25s)
+--- PASS: TestGather_TypeHeldTight (0.43s)
+    --- PASS: TestGather_TypeHeldTight/badger (0.07s)
+    --- PASS: TestGather_TypeHeldTight/sharded (0.13s)
+    --- PASS: TestGather_TypeHeldTight/tiered (0.22s)
+    --- PASS: TestGather_TypeHeldTight/memory (0.00s)
+    read_budget_gather_meter_test.go:446: ByLabel: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: page: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: scan: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: ByLabel: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: page: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: scan: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: ByLabel: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: page: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: scan: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: ByLabel: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: page: the control counts 12 candidates
+    read_budget_gather_meter_test.go:446: scan: the control counts 12 candidates
+--- PASS: TestGather_BudgetIsTheControlCount (0.39s)
+    --- PASS: TestGather_BudgetIsTheControlCount/badger (0.08s)
+        --- PASS: TestGather_BudgetIsTheControlCount/badger/ByLabel (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/badger/page (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/badger/scan (0.00s)
+    --- PASS: TestGather_BudgetIsTheControlCount/sharded (0.13s)
+        --- PASS: TestGather_BudgetIsTheControlCount/sharded/ByLabel (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/sharded/page (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/sharded/scan (0.00s)
+    --- PASS: TestGather_BudgetIsTheControlCount/tiered (0.18s)
+        --- PASS: TestGather_BudgetIsTheControlCount/tiered/ByLabel (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/tiered/page (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/tiered/scan (0.00s)
+    --- PASS: TestGather_BudgetIsTheControlCount/memory (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/memory/ByLabel (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/memory/page (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/memory/scan (0.00s)
+    read_budget_gather_meter_test.go:569: nodes: control 15 rows, work {Candidates:15 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:480}, 10 index entries visited
+    read_budget_gather_meter_test.go:569: rels: control 15 rows, work {Candidates:15 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:480}, 0 index entries visited
+--- PASS: TestTieredPropertyDeclineThroughTheDoor (0.33s)
+    --- PASS: TestTieredPropertyDeclineThroughTheDoor/nodes (0.00s)
+    --- PASS: TestTieredPropertyDeclineThroughTheDoor/rels (0.00s)
+--- PASS: TestByLabelGather_PrunesEachMemberOnce (0.00s)
+    --- PASS: TestByLabelGather_PrunesEachMemberOnce/memory (0.00s)
+    --- PASS: TestByLabelGather_PrunesEachMemberOnce/badger (0.31s)
+    --- PASS: TestByLabelGather_PrunesEachMemberOnce/sharded (0.48s)
+    --- PASS: TestByLabelGather_PrunesEachMemberOnce/tiered (0.57s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	3.489s
+
+## H1, P1: go test -race -count=200 -run 'TestReadTally_Hold|TestReadTally_NoPhantomRefusal' ./pkg/graph/store/ (200 rounds, race)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	20.323s
+
+## go test -short ./pkg/graph/ ./pkg/graph/store/... ./pkg/graph/internal/... (tree of d04c268e; package lines)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	76.788s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	1.859s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	110.199s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	1.710s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	9.143s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	101.631s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil	0.005s
+--- FAIL: TestEffectiveScanTransactionsPerType_ConcurrentWrites (0.60s)
+    --- FAIL: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false (0.05s)
+        --- FAIL: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/from (0.00s)
+            effective_scan_txns_test.go:325: from: 6 read transactions with two flushes during the scan; want <= 5
+    --- FAIL: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true (0.08s)
+        --- FAIL: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/from (0.00s)
+            effective_scan_txns_test.go:325: from: 6 read transactions with two flushes during the scan; want <= 5
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	52.402s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate	0.006s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr	0.005s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	5.155s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity	0.008s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks	0.061s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry	0.106s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir	1.122s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment	4.764s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake	0.005s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.138s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/valuedict	0.004s
+FAIL
+(the core red is TestEffectiveScanTransactionsPerType_ConcurrentWrites, red at the base 48d6c5a4 too: core-flake.txt)
+
+## go test -short -run 'Gather|ReadBudget|ReadTally|ByLabel|TieredMember|TrackUnder|ValidEnd|Staged|Hold|Drop' ./pkg/... (packages with tests run)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.879s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events	0.007s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	31.856s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.024s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity	0.005s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir	0.168s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.008s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	0.006s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.035s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	37.388s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.088s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	5.635s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	0.006s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/types	0.012s
+
+## make old
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	(TestGraphAccessor_StoreOpsConsumerSurfaceWorks)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.914s (TestTieredCleanReopenMatchesFullRebuild)
