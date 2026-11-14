@@ -548,16 +548,20 @@ type PropertyTxMemberWindow struct {
 // for a budgeted property door when the store offers it; a store that opens
 // no shard and keeps no member list on disk (sharded, memory) need not.
 //
-// A member list kept on disk (badger's 0x0C member entries) is folded before
-// the first member is handed on, and the door that counts the members only
-// sees them after (R2): with a candidate limit on t's meter the store admits
-// its fold as it grows (ReadTally.CandidateRoom, CandidatesAhead) and returns
-// the *ReadBudgetError, before fn, at the member that passes the room, on
-// every shard of a fan-out under the same t. The store counts each member as a
-// candidate before it hands it on (ReadTally.HandedOn; on tiered as each shard
-// gathers it, an entity on two shards twice), so a caller of the capability
-// itself is bounded across keys and shards; a door that counts each member it
-// is handed passes ReadTally.DoorCounts and the store counts none.
+// The store is the one owner of the cost of the read (R2): it counts, through
+// t, what it examines and what it collects, each before the work, and no layer
+// above counts them again (the graph counts only the members of a store without
+// this capability). A member list kept on disk (badger's 0x0C member entries)
+// is folded before the first member is handed on: each member is counted as a
+// candidate when the walk collects it, each entry the walk judges and rejects
+// or steps over as stale when it is met, so the walk stops at the entry that
+// passes the room the meter has left (ReadTally.CandidateRoom) and returns the
+// *ReadBudgetError before fn; the buffers it grows (the write buffer's cloned
+// values, the list the fold becomes) are charged as BufferBytes before they are
+// made. A list kept in RAM charges its snapshot or its window view's walk the
+// same way. The limit holds across the value keys of a call and, on tiered,
+// across the shards of the fan-out under the same t: each shard counts as it
+// collects, an entity on two shards twice.
 type PropertyTxMemberMeteredCapability interface {
 	ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 	ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error

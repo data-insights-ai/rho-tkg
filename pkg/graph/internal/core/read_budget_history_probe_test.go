@@ -242,7 +242,7 @@ func TestReadBudget_Candidates_DenseKeyCountsBeforeFilter(t *testing.T) {
 // TestReadBudget_BufferAndSegmentsChargedBeforeGrowth (READBUDGET step 5): a
 // read's temporary buffers (BufferBytes) and the segments it collects
 // (Segments) are charged before each entry joins them. BufferBytes 1 stops a
-// dense temporal property read before its candidate set holds an entry;
+// dense temporal property read before the store's member list holds an entry;
 // Segments 1 stops the tuple timelines at the second kept segment, with no
 // rows, on every disk backend.
 func TestReadBudget_BufferAndSegmentsChargedBeforeGrowth(t *testing.T) {
@@ -274,11 +274,20 @@ func TestReadBudget_BufferAndSegmentsChargedBeforeGrowth(t *testing.T) {
 			if got, err := g.Nodes.ByLabelAndPropertyCtx(uctx, "D", "a", int64(1), opts); err != nil || len(got) != 128 || all.Work().BufferBytes < 128*(bufSetEntry+bufSliceRef) {
 				t.Fatalf("unlimited = %d rows, %v, %+v; want 128 rows and their buffers counted", len(got), err, all.Work())
 			}
+			// A store with the metered membership form (badger, tiered) charges its own list
+			// first (R2 cumulative: one owner per cost, 16 bytes a collected member), so the
+			// refusal comes before the first member joins that list, ahead of the graph's
+			// seen-set entry (bufSetEntry); the sharded store has none, so the graph's entry is
+			// the first charge.
+			wantBuf := uint64(16)
+			if be.name == "sharded" {
+				wantBuf = bufSetEntry
+			}
 			bctx, one := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{BufferBytes: 1})
 			got, err := g.Nodes.ByLabelAndPropertyCtx(bctx, "D", "a", int64(1), opts)
 			be := rbdBudgetErr(t, err, "buffer bytes")
-			if got != nil || be.Work.BufferBytes != bufSetEntry || be.Work.Candidates != 1 || one.Work() != be.Work {
-				t.Fatalf("BufferBytes 1 = %d rows, %+v; want none, stopped before the first set entry", len(got), be.Work)
+			if got != nil || be.Work.BufferBytes != wantBuf || be.Work.Candidates != 1 || one.Work() != be.Work {
+				t.Fatalf("BufferBytes 1 = %d rows, %+v; want none, stopped before the first member of the store's list", len(got), be.Work)
 			}
 
 			tp := temporal.Pin{Tx: w.pin(t)}

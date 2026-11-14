@@ -1285,12 +1285,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 		var invalid error
 		var prune types.Instant
 		member := func(id types.RelID, firstTx types.Instant) bool {
-			if metered != nil {
-				if err := opts.AddCandidates(1); err != nil {
-					invalid = err
-					return false
-				}
-			}
+			// The member is counted where it is enumerated (forEachRelPropTxMemberOfKeys).
 			if !c.storeRowsTrust {
 				if verr := storepkg.ValidateRelID(id); verr != nil {
 					invalid = verr
@@ -1389,12 +1384,42 @@ func (w *memberWindow) prunePin(pin types.Instant) types.Instant {
 // ErrIndexNotFound (fn may see an entity once per key; the keys form merges
 // them, the lowest first tx, which prunes alike). window selects the windowed
 // form. Under a read budget (t set) a store with the metered form
-// (store.PropertyTxMemberMeteredCapability, tiered) answers it, charging each
-// closed shard it opens to t before the open (READBUDGET step 6).
+// (store.PropertyTxMemberMeteredCapability, badger and tiered) answers it and
+// is the one that counts: every entry it examines and every member it collects
+// or hands on, each closed shard it opens, before the work (READBUDGET step 6,
+// R2). Only for a store without that form does the graph count each member the
+// store hands it, as a candidate before fn sees it.
 func (c *Core) forEachRelPropTxMemberOfKeys(tok uint16, key string, valueKeys []string, window *memberWindow, t *storepkg.ReadTally, fn func(types.RelID, types.Instant) bool) error {
 	if t != nil && c.propTxMetered != nil {
-		return c.propTxMetered.ForEachRelPropertyTxMemberMetered(tok, key, valueKeys, window.store(), t.DoorCounts(), fn) // the door counts each member it is handed
+		return c.propTxMetered.ForEachRelPropertyTxMemberMetered(tok, key, valueKeys, window.store(), t, fn)
 	}
+	fn, refused := countedMembers(t, fn)
+	if err := c.forEachRelPropTxMemberUnmetered(tok, key, valueKeys, window, fn); err != nil {
+		return err
+	}
+	return refused()
+}
+
+// countedMembers wraps fn so that each member handed to it is first counted as
+// a candidate on t (nil: fn itself), the graph's count for a store that does
+// not count its own enumeration; refused returns the budget error that stopped
+// it, after the enumeration.
+func countedMembers[ID any](t *storepkg.ReadTally, fn func(ID, types.Instant) bool) (func(ID, types.Instant) bool, func() error) {
+	if t == nil {
+		return fn, func() error { return nil }
+	}
+	var refused error
+	return func(id ID, tx types.Instant) bool {
+		if refused = t.Candidates(1); refused != nil {
+			return false
+		}
+		return fn(id, tx)
+	}, func() error { return refused }
+}
+
+// forEachRelPropTxMemberUnmetered is forEachRelPropTxMemberOfKeys on the
+// store's unmetered forms.
+func (c *Core) forEachRelPropTxMemberUnmetered(tok uint16, key string, valueKeys []string, window *memberWindow, fn func(types.RelID, types.Instant) bool) error {
 	if c.relPropTxKeys != nil {
 		if window != nil {
 			return c.relPropTxKeys.ForEachRelPropertyTxMemberKeysDuring(tok, key, valueKeys, window.start, window.end, window.txAt, fn)
@@ -1419,8 +1444,18 @@ func (c *Core) forEachRelPropTxMemberOfKeys(tok uint16, key string, valueKeys []
 // (label, key) sidecar.
 func (c *Core) forEachNodePropTxMemberOfKeys(tok uint16, key string, valueKeys []string, window *memberWindow, t *storepkg.ReadTally, fn func(types.NodeID, types.Instant) bool) error {
 	if t != nil && c.propTxMetered != nil {
-		return c.propTxMetered.ForEachNodePropertyTxMemberMetered(tok, key, valueKeys, window.store(), t.DoorCounts(), fn) // the door counts each member it is handed
+		return c.propTxMetered.ForEachNodePropertyTxMemberMetered(tok, key, valueKeys, window.store(), t, fn)
 	}
+	fn, refused := countedMembers(t, fn)
+	if err := c.forEachNodePropTxMemberUnmetered(tok, key, valueKeys, window, fn); err != nil {
+		return err
+	}
+	return refused()
+}
+
+// forEachNodePropTxMemberUnmetered is forEachNodePropTxMemberOfKeys on the
+// store's unmetered forms.
+func (c *Core) forEachNodePropTxMemberUnmetered(tok uint16, key string, valueKeys []string, window *memberWindow, fn func(types.NodeID, types.Instant) bool) error {
 	if c.nodePropTxKeys != nil {
 		if window != nil {
 			return c.nodePropTxKeys.ForEachNodePropertyTxMemberKeysDuring(tok, key, valueKeys, window.start, window.end, window.txAt, fn)
@@ -1529,12 +1564,7 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 		var invalid error
 		var prune types.Instant
 		member := func(id types.NodeID, firstTx types.Instant) bool {
-			if metered != nil {
-				if err := opts.AddCandidates(1); err != nil {
-					invalid = err
-					return false
-				}
-			}
+			// The member is counted where it is enumerated (forEachNodePropTxMemberOfKeys).
 			keep := func() bool {
 				if metered != nil {
 					if err := opts.AddBufferBytes(bufSetEntry); err != nil {

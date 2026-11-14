@@ -8,7 +8,7 @@ import (
 // DiagnoseRelPropertyTxMembersDuring uses the ordinary worker, counting disk membership work.
 // Errors retain partial counters; Completed includes a normal callback stop, separately marked.
 func (bs *Store) DiagnoseRelPropertyTxMembersDuring(token uint16, key, value string, start, end, tx types.Instant, fn func(types.RelID, types.Instant) bool) (work storecontract.PropertyMemberWork, err error) {
-	err = bs.forEachRelPropertyTxMemberDuring(token, key, value, start, end, tx, fn, &work)
+	err = bs.forEachRelPropertyTxMemberDuring(token, key, value, start, end, tx, fn, &work, nil)
 	work.Completed = err == nil
 	return
 }
@@ -16,7 +16,7 @@ func (bs *Store) DiagnoseRelPropertyTxMembersDuring(token uint16, key, value str
 // DiagnoseNodePropertyTxMembersDuring is the node twin of the relationship diagnostic.
 // Counters describe logical work, never physical I/O, encoded bytes or allocated heap.
 func (bs *Store) DiagnoseNodePropertyTxMembersDuring(token uint16, key, value string, start, end, tx types.Instant, fn func(types.NodeID, types.Instant) bool) (work storecontract.PropertyMemberWork, err error) {
-	err = bs.forEachNodePropertyTxMemberDuring(token, key, value, start, end, tx, fn, &work)
+	err = bs.forEachNodePropertyTxMemberDuring(token, key, value, start, end, tx, fn, &work, nil)
 	work.Completed = err == nil
 	return
 }

@@ -28,10 +28,14 @@ var (
 // ForEachRelPropertyTxMemberDuring implements
 // store.RelPropertyTxMemberWindowCapability.
 func (bs *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
-	return bs.forEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, valueKey, validStart, validEnd, txAt, fn, nil)
+	return bs.forEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, valueKey, validStart, validEnd, txAt, fn, nil, nil)
 }
 
-func (bs *Store) forEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool, work *storecontract.PropertyMemberWork) error {
+// forEachRelPropertyTxMemberDuring is the windowed lookup under work (nil: no
+// diagnostic) and a read budget's tally t (nil: none): a definition in RAM
+// charges the entries its window view judges and the members it adds, and the
+// one-time open of the view, to t before the work (windowPropTxMembers).
+func (bs *Store) forEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool, work *storecontract.PropertyMemberWork, t *storecontract.ReadTally) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -51,7 +55,7 @@ func (bs *Store) forEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyK
 		}
 		return emitTxMembers(members, err, memberWorkCallback(fn, work)) // RELDISKWIN: the members whose envelope meets the window (every member of the value, a sound superset, from a definition built before it)
 	}
-	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, memberWorkCallback(fn, work),
+	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, memberWorkCallback(fn, work), t,
 		func() (*propTxSidecar[types.RelID], bool) {
 			return bs.relPropTx[key], bs.relPropIndexUsableLocked(key)
 		},
@@ -61,10 +65,12 @@ func (bs *Store) forEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyK
 // ForEachNodePropertyTxMemberDuring implements
 // store.NodePropertyTxMemberWindowCapability.
 func (bs *Store) ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
-	return bs.forEachNodePropertyTxMemberDuring(labelToken, propertyKey, valueKey, validStart, validEnd, txAt, fn, nil)
+	return bs.forEachNodePropertyTxMemberDuring(labelToken, propertyKey, valueKey, validStart, validEnd, txAt, fn, nil, nil)
 }
 
-func (bs *Store) forEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool, work *storecontract.PropertyMemberWork) error {
+// forEachNodePropertyTxMemberDuring is forEachRelPropertyTxMemberDuring for a
+// node definition.
+func (bs *Store) forEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool, work *storecontract.PropertyMemberWork, t *storecontract.ReadTally) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -84,17 +90,27 @@ func (bs *Store) forEachNodePropertyTxMemberDuring(labelToken uint16, propertyKe
 		}
 		return emitTxMembers(members, err, memberWorkCallback(fn, work)) // RELDISKWIN: the members whose envelope meets the window (every member of the value, a sound superset, from a definition built before it)
 	}
-	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, memberWorkCallback(fn, work),
+	return windowPropTxMembers(bs, valueKey, validStart, validEnd, txAt, memberWorkCallback(fn, work), t,
 		func() (*propTxSidecar[types.NodeID], bool) {
 			return bs.nodePropTx[key], bs.nodePropIndexUsableLocked(key)
 		},
 		func() error { return bs.buildNodePropTx(key) })
 }
 
+// windowViewEntryBytes is what a window view holds per member (R2): a late
+// entry (from, to, ID: 24 bytes) and a recent entry (last, ID: 16).
+const windowViewEntryBytes = 40
+
 // windowPropTxMembers is the body of both windowed lookups (the
 // pagePropTxMembers protocol): sidecar returns the sidecar and whether its
-// index is usable (idxMu held), build builds it.
-func windowPropTxMembers[ID cmp.Ordered](bs *Store, valueKey string, validStart, validEnd, txAt types.Instant, fn func(ID, types.Instant) bool,
+// index is usable (idxMu held), build builds it. Under a read budget's tally t
+// (nil: none) the first lookup of a value, which opens its window view (one
+// pass over every member, O(n log n)), is charged the view's bytes and refused
+// before the open when the value's members pass the room, and the view's walk charges each entry
+// it judges and rejects and each member before it is added (indexpkg.WindowAdmit),
+// so the room bounds the walk, not only the members handed on; the sidecar's
+// build (one scan of the label's or type's rows) is not charged.
+func windowPropTxMembers[ID cmp.Ordered](bs *Store, valueKey string, validStart, validEnd, txAt types.Instant, fn func(ID, types.Instant) bool, t *storecontract.ReadTally,
 	sidecar func() (*propTxSidecar[ID], bool), build func() error) error {
 	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
 		bs.idxMu.RLock()
@@ -110,9 +126,15 @@ func windowPropTxMembers[ID cmp.Ordered](bs *Store, valueKey string, validStart,
 			}
 			continue
 		}
-		members, opened := sc.members.MembersDuring(valueKey, validStart, validEnd, txAt)
+		members, opened, err := sc.members.MembersDuringAdmit(valueKey, validStart, validEnd, txAt, windowAdmitOf(t))
 		bs.idxMu.RUnlock()
+		if err != nil {
+			return err
+		}
 		if !opened {
+			if err := openWindowViewAdmit(t, sc.members.Count(valueKey)); err != nil {
+				return err
+			}
 			bs.idxMu.Lock()
 			if cur, ok := sidecar(); ok && cur == sc {
 				sc.members.OpenWindow(valueKey)
@@ -129,4 +151,28 @@ func windowPropTxMembers[ID cmp.Ordered](bs *Store, valueKey string, validStart,
 		return nil
 	}
 	return fmt.Errorf("graph: windowed property membership: lookup raced %d invalidations: %w", propTxBuildAttempts, ErrIndexNotFound)
+}
+
+// openWindowViewAdmit is a read budget's charge for opening a value's window
+// view, one pass over its n members: refused before the open when n passes the
+// room the meter has left (the members counted as the work held ahead), else
+// the view's bytes are charged as BufferBytes. The members are counted when the
+// walk collects them, not here, so the count does not depend on whether an
+// earlier read opened the view.
+func openWindowViewAdmit(t *storecontract.ReadTally, n int) error {
+	if err := t.CandidatesAhead(n); err != nil {
+		return err
+	}
+	return t.Buffer(n * windowViewEntryBytes)
+}
+
+// windowAdmitOf is the admission of a RAM window view's walk under t (nil: none
+// for a nil tally): each entry it judges and rejects is counted as a candidate,
+// and each member it collects is counted and charged before it is added
+// (memberAdmit).
+func windowAdmitOf(t *storecontract.ReadTally) *indexpkg.WindowAdmit {
+	if t == nil {
+		return nil
+	}
+	return &indexpkg.WindowAdmit{Reject: func() error { return t.Candidates(1) }, Add: memberAdmit(t)}
 }

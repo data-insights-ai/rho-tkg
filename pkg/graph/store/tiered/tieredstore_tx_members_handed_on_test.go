@@ -10,12 +10,13 @@ import (
 )
 
 // TestTieredMeteredMembershipCountsWhatItHandsOn (R2, ai-soc's host lookup,
-// which calls the store capability itself): on tiered a direct caller's
-// members are counted as candidates before the union hands them on, across
-// value keys and shards, so two keys of one member each under Candidates 1
-// refuse with no callback (the union hands on only after every shard
-// answered) instead of handing on 2 with 0 counted. A door's tally
-// (DoorCounts) leaves the count to the door.
+// which calls the store capability itself, and the graph doors, which call it
+// the same way): on tiered each shard counts the members it collects as
+// candidates, across value keys and shards, before the union hands them on, and
+// nothing above counts them again. Two keys of one member each under Candidates
+// 1 refuse with no callback (the union hands on only after every shard
+// answered); under Candidates 2 the read answers both members and counts
+// exactly 2.
 func TestTieredMeteredMembershipCountsWhatItHandsOn(t *testing.T) {
 	ts := newTestTieredStore(t)
 	caseTok, _, _ := installDefaultTestLabelRegistry(t, ts)
@@ -41,13 +42,13 @@ func TestTieredMeteredMembershipCountsWhatItHandsOn(t *testing.T) {
 	if callbacks != 0 || !errors.As(err, &rb) || rb.Limit != "candidates" || meter.Work() != rb.Work || meter.Work().Candidates != 2 {
 		t.Fatalf("direct: %d callbacks, %v, work %+v; want the candidates refusal, 2 counted, no callback", callbacks, err, meter.Work())
 	}
-	_, meter = storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: 1})
+	_, meter = storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: 2})
 	callbacks = 0
-	err = ts.ForEachNodePropertyTxMemberMetered(caseTok, "seat", keys, nil, meter.Tally("door").DoorCounts(), func(types.NodeID, types.Instant) bool {
+	err = ts.ForEachNodePropertyTxMemberMetered(caseTok, "seat", keys, nil, meter.Tally("direct"), func(types.NodeID, types.Instant) bool {
 		callbacks++
 		return true
 	})
-	if err != nil || callbacks != 2 || meter.Work().Candidates != 0 {
-		t.Fatalf("door tally: %d callbacks, %v, work %+v; want 2 handed on, the count left to the door", callbacks, err, meter.Work())
+	if err != nil || callbacks != 2 || meter.Work().Candidates != 2 {
+		t.Fatalf("Candidates 2: %d callbacks, %v, work %+v; want both members handed on, each counted once", callbacks, err, meter.Work())
 	}
 }

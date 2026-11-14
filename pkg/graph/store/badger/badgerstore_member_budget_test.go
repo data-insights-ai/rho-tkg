@@ -172,13 +172,13 @@ func TestMemberWindowWalkAdmitsTheEntriesItRejects(t *testing.T) {
 }
 
 // TestMeteredMembershipCountsWhatItHandsOn (R2, ai-soc's host lookup, which
-// calls the store capability itself, not through a graph door): a direct
-// caller of ForEachNodePropertyTxMemberMetered gets each member counted as a
-// candidate before it is handed on, across value keys, so callbacks never pass
-// Work.Candidates and a Candidates limit refuses at the member past it. Two
+// calls the store capability itself, and the graph doors, which call it the
+// same way): the store counts each member as a candidate before it hands it on,
+// across value keys, so callbacks never pass Work.Candidates and a Candidates
+// limit refuses at the member past it; no layer above counts them again. Two
 // keys of one member each under Candidates 1: one callback, then the typed
-// refusal (it handed on 2 uncounted). A tally from a door (DoorCounts) leaves
-// the count to the door, as before. RAM sidecar and on-disk index alike.
+// refusal. RAM sidecar and on-disk index alike. A limit that covers both
+// members answers the unbudgeted ones and counts exactly 2.
 func TestMeteredMembershipCountsWhatItHandsOn(t *testing.T) {
 	for _, disk := range []bool{false, true} {
 		t.Run(map[bool]string{false: "ram", true: "disk"}[disk], func(t *testing.T) {
@@ -213,14 +213,14 @@ func TestMeteredMembershipCountsWhatItHandsOn(t *testing.T) {
 				if callbacks != 1 || !errors.As(err, &rb) || rb.Limit != "candidates" || meter.Work() != rb.Work || meter.Work().Candidates != 2 {
 					t.Fatalf("window %v: %d callbacks, %v, work %+v; want 1 callback, then the candidates refusal with 2 counted", window, callbacks, err, meter.Work())
 				}
-				_, meter = storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: 1})
+				_, meter = storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: 2})
 				callbacks = 0
-				err = bs.ForEachNodePropertyTxMemberMetered(1, "k", keys, window, meter.Tally("door").DoorCounts(), func(types.NodeID, types.Instant) bool {
+				err = bs.ForEachNodePropertyTxMemberMetered(1, "k", keys, window, meter.Tally("direct"), func(types.NodeID, types.Instant) bool {
 					callbacks++
 					return true
 				})
-				if err != nil || callbacks != 2 || meter.Work().Candidates != 0 {
-					t.Fatalf("window %v, door tally: %d callbacks, %v, work %+v; want 2 handed on and the count left to the door", window, callbacks, err, meter.Work())
+				if err != nil || callbacks != 2 || meter.Work().Candidates != 2 {
+					t.Fatalf("window %v, Candidates 2: %d callbacks, %v, work %+v; want both members handed on and counted once each", window, callbacks, err, meter.Work())
 				}
 			}
 		})

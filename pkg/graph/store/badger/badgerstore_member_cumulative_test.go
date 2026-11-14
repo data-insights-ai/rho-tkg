@@ -16,8 +16,9 @@ import (
 // later) and keeps the third. Unlimited, the read answers the one member. With
 // Candidates 1 the walk judges three entries, two rejected, so it must refuse
 // with the typed ReadBudgetError: the entries a walk judges count against the
-// one limit of the read, across keys, whether the door or the store counts the
-// members handed on. Node and relationship twins.
+// one limit of the read, across keys, and the walk stops at the entry that
+// passes it (the iterator steps, which the meter does not keep, are 2 of the 3
+// of the unlimited control). Node and relationship twins.
 func TestMemberWindowAdmissionCumulativeAcrossKeys(t *testing.T) {
 	keys := []string{types.IndexablePropertyValueKey("a"), types.IndexablePropertyValueKey("b"), types.IndexablePropertyValueKey("c")}
 	window := &storecontract.PropertyTxMemberWindow{ValidStart: 100, ValidEnd: 101, TxAt: 0}
@@ -78,22 +79,23 @@ func TestMemberWindowAdmissionCumulativeAcrossKeys(t *testing.T) {
 			if err = bs.Flush(); err != nil {
 				t.Fatal(err)
 			}
+			// The native boundary: the iterator steps of the walk, which the meter does not keep.
+			steps := 0
+			bs.entityIndexWalkTestHook = func() { steps++ }
 			got := 0
-			if err := read(nil, func() { got++ }); err != nil || got != 1 {
-				t.Fatalf("unlimited: %d members, %v; want the one member of key c", got, err)
+			if err := read(nil, func() { got++ }); err != nil || got != 1 || steps != 3 {
+				t.Fatalf("unlimited: %d members, %v, %d iterator steps; want the one member of key c after the 3 entries", got, err, steps)
 			}
-			for _, door := range []bool{false, true} {
-				_, meter := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: 1})
-				tally := meter.Tally("d")
-				if door {
-					tally = tally.DoorCounts()
-				}
-				got = 0
-				err := read(tally, func() { got++ })
-				var rb *storecontract.ReadBudgetError
-				if !errors.As(err, &rb) || rb.Limit != "candidates" {
-					t.Fatalf("door %v, Candidates 1: %d members, %v, work %+v; want the candidates refusal: three entries judged", door, got, err, meter.Work())
-				}
+			steps = 0
+			_, meter := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: 1})
+			got = 0
+			err = read(meter.Tally("d"), func() { got++ })
+			var rb *storecontract.ReadBudgetError
+			if !errors.As(err, &rb) || rb.Limit != "candidates" || got != 0 {
+				t.Fatalf("Candidates 1: %d members, %v, work %+v; want the candidates refusal, no member: three entries judged", got, err, meter.Work())
+			}
+			if steps != 2 {
+				t.Fatalf("Candidates 1: %d iterator steps; want 2: the walk stops at the second rejected entry and never reads key c", steps)
 			}
 		})
 	}

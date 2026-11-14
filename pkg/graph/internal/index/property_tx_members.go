@@ -338,6 +338,48 @@ func (m *PropertyTxMembers[ID]) Members(vk string) []TxMember[ID] {
 	return out
 }
 
+// MembersAdmit is Members under add (nil: Members): add is called before each
+// member joins the snapshot, which grows as it goes, and its first error stops
+// the snapshot there and is returned with no members. The owner's read budget
+// counts each member as it is collected, so a value past the room is copied up
+// to the member that passes it, not whole.
+func (m *PropertyTxMembers[ID]) MembersAdmit(vk string, add func() error) ([]TxMember[ID], error) {
+	if add == nil {
+		return m.Members(vk), nil
+	}
+	if m == nil {
+		return nil, nil
+	}
+	p, ok := m.values[vk]
+	if !ok {
+		return nil, nil
+	}
+	var out []TxMember[ID]
+	if err := add(); err != nil {
+		return nil, err
+	}
+	out = append(out, TxMember[ID]{ID: p.id, FirstTx: p.p.tx})
+	for id, q := range p.more {
+		if err := add(); err != nil {
+			return nil, err
+		}
+		out = append(out, TxMember[ID]{ID: id, FirstTx: q.tx})
+	}
+	return out, nil
+}
+
+// Count returns the number of members vk has: what Members and OpenWindow walk.
+func (m *PropertyTxMembers[ID]) Count(vk string) int {
+	if m == nil {
+		return 0
+	}
+	p, ok := m.values[vk]
+	if !ok {
+		return 0
+	}
+	return 1 + len(p.more)
+}
+
 // Postings returns the number of (entity, value) postings held.
 func (m *PropertyTxMembers[ID]) Postings() int64 {
 	if m == nil {

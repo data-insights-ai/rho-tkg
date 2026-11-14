@@ -569,7 +569,7 @@ func (bs *Store) diskTxMembersLocked(kind byte, scope uint16, propertyKey string
 		return bs.diskWindowMembersLocked(kind, scope, propertyKey, q.valueKeys[0], *q.window, q.work, q.tally)
 	}
 	f := txMemberFold{}
-	admit := foldAdmit(f, q.tally)
+	budget := newWalkBudget(q.tally)
 	if q.work != nil {
 		defer func() { q.work.FoldMembersPeak = uint64(len(f)) }()
 	}
@@ -601,7 +601,19 @@ func (bs *Store) diskTxMembersLocked(kind byte, scope uint16, propertyKey string
 				prefixes = append(prefixes, p)
 			}
 		}
-		if err := bs.entityIndexWalkAdmitLocked(kind, prefixes, f.add(kind), q.work, admit); err != nil {
+		add := f.add(kind)
+		collect := func(key []byte) { // a member collected: the first entry of an entity
+			n := len(f)
+			add(key)
+			if len(f) > n {
+				budget.charge()
+			}
+		}
+		var admit func() error
+		if budget != nil {
+			admit = budget.admit
+		}
+		if err := bs.entityIndexWalkAdmitLocked(kind, prefixes, collect, q.work, admit); err != nil {
 			return nil, err
 		}
 	}

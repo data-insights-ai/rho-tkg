@@ -381,6 +381,15 @@ func (m *PropertyTxMembers[ID]) OpenWindow(vk string) bool {
 	return true
 }
 
+// WindowAdmit is a read budget's admission of a MembersDuring walk (R2): the
+// owner's charges, each returning the budget error that stops the walk.
+type WindowAdmit struct {
+	// Reject is called for each entry the walk judges and rejects.
+	Reject func() error
+	// Add is called before each member is added to the answer.
+	Add func() error
+}
+
 // MembersDuring returns, caller-owned, the members of vk whose rows carrying
 // vk may be valid somewhere in [start, end) at transaction time pin (0: no
 // pin, every row), each once with its first-tx bound, unordered: those whose
@@ -390,37 +399,63 @@ func (m *PropertyTxMembers[ID]) OpenWindow(vk string) bool {
 // members, or start >= end, answers empty with ok. O(log n + k + r + pending
 // changes). The owner calls it under at least its shared lock.
 func (m *PropertyTxMembers[ID]) MembersDuring(vk string, start, end, pin types.Instant) (out []TxMember[ID], ok bool) {
+	out, ok, _ = m.MembersDuringAdmit(vk, start, end, pin, nil)
+	return out, ok
+}
+
+// MembersDuringAdmit is MembersDuring under admit (nil: none): the entries of
+// the recent view it judges and rejects are charged as it judges them, each
+// member before it is added, and the first error stops the walk and is
+// returned with no answer.
+func (m *PropertyTxMembers[ID]) MembersDuringAdmit(vk string, start, end, pin types.Instant, admit *WindowAdmit) (out []TxMember[ID], ok bool, err error) {
 	if m == nil {
-		return nil, true
+		return nil, true, nil
 	}
 	ps, has := m.values[vk]
 	if !has || start >= end {
-		return nil, true
+		return nil, true, nil
 	}
 	w := m.windows[vk]
 	if w == nil {
-		return nil, false
+		return nil, false, nil
+	}
+	add := func(id ID, tx types.Instant) bool {
+		if admit != nil {
+			if err = admit.Add(); err != nil {
+				return false
+			}
+		}
+		out = append(out, TxMember[ID]{ID: id, FirstTx: tx})
+		return true
 	}
 	var later map[ID]struct{}
 	if pin != 0 && pin < math.MaxInt64 {
-		w.recent.after(pin, func(id ID) {
+		if !w.recent.after(pin, func(id ID) bool {
 			if later == nil {
 				later = make(map[ID]struct{})
 			}
 			later[id] = struct{}{}
 			q := ps.posting(id)
 			if sp, ok := q.envAll(); ok && sp.meets(start, end) {
-				out = append(out, TxMember[ID]{ID: id, FirstTx: q.tx})
+				return add(id, q.tx)
 			}
-		})
-	}
-	w.late.overlap(start, end, func(id ID) {
-		if _, decided := later[id]; decided {
-			return
+			if admit != nil {
+				err = admit.Reject()
+			}
+			return err == nil
+		}) {
+			return nil, true, err
 		}
-		out = append(out, TxMember[ID]{ID: id, FirstTx: ps.posting(id).tx})
-	})
-	return out, true
+	}
+	if !w.late.overlap(start, end, func(id ID) bool {
+		if _, decided := later[id]; decided {
+			return true
+		}
+		return add(id, ps.posting(id).tx)
+	}) {
+		return nil, true, err
+	}
+	return out, true, nil
 }
 
 // spanEntry is one member's envelope in a window view.
@@ -552,35 +587,41 @@ func (w *spanView[ID]) fillSubMax(lo, hi int) types.Instant {
 	return m
 }
 
-// overlap calls fn once per member whose envelope meets [start, end).
-func (w *spanView[ID]) overlap(start, end types.Instant, fn func(ID)) {
-	w.stab(0, len(w.main), start, end, fn)
+// overlap calls fn once per member whose envelope meets [start, end) until fn
+// returns false; it reports whether it ran to the end.
+func (w *spanView[ID]) overlap(start, end types.Instant, fn func(ID) bool) bool {
+	if !w.stab(0, len(w.main), start, end, fn) {
+		return false
+	}
 	for _, e := range w.pending {
-		if !e.none && e.from < end && e.to > start {
-			fn(e.id)
+		if !e.none && e.from < end && e.to > start && !fn(e.id) {
+			return false
 		}
 	}
+	return true
 }
 
-func (w *spanView[ID]) stab(lo, hi int, start, end types.Instant, fn func(ID)) {
+func (w *spanView[ID]) stab(lo, hi int, start, end types.Instant, fn func(ID) bool) bool {
 	if lo >= hi {
-		return
+		return true
 	}
 	mid := int(uint(lo+hi) >> 1)
 	if w.subMax[mid] <= start {
-		return // every envelope under mid ends at or before start
+		return true // every envelope under mid ends at or before start
 	}
-	w.stab(lo, mid, start, end, fn)
+	if !w.stab(lo, mid, start, end, fn) {
+		return false
+	}
 	e := w.main[mid]
 	if e.from >= end {
-		return // the right subtree starts at or after end too
+		return true // the right subtree starts at or after end too
 	}
 	if e.to > start {
-		if _, over := w.pos[e.id]; !over {
-			fn(e.id)
+		if _, over := w.pos[e.id]; !over && !fn(e.id) {
+			return false
 		}
 	}
-	w.stab(mid+1, hi, start, end, fn)
+	return w.stab(mid+1, hi, start, end, fn)
 }
 
 // lastEntry is one member's last stamp in a recent view.
@@ -667,8 +708,9 @@ func (v *lastView[ID]) fold() {
 	clear(v.pos)
 }
 
-// after calls fn once per member whose last stamp is above pin.
-func (v *lastView[ID]) after(pin types.Instant, fn func(ID)) {
+// after calls fn once per member whose last stamp is above pin until fn
+// returns false; it reports whether it ran to the end.
+func (v *lastView[ID]) after(pin types.Instant, fn func(ID) bool) bool {
 	i, _ := slices.BinarySearchFunc(v.main, pin, func(e lastEntry[ID], pin types.Instant) int {
 		if e.last <= pin {
 			return -1
@@ -676,15 +718,16 @@ func (v *lastView[ID]) after(pin types.Instant, fn func(ID)) {
 		return 1
 	})
 	for _, e := range v.main[i:] {
-		if _, over := v.pos[e.id]; !over {
-			fn(e.id)
+		if _, over := v.pos[e.id]; !over && !fn(e.id) {
+			return false
 		}
 	}
 	for _, e := range v.pending {
-		if e.last > pin {
-			fn(e.id)
+		if e.last > pin && !fn(e.id) {
+			return false
 		}
 	}
+	return true
 }
 
 // isqrt returns floor(sqrt(n)) for n >= 0.

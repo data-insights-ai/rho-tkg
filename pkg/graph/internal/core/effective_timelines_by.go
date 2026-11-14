@@ -312,9 +312,11 @@ func (c *Core) relTupleDriverOrder(tok uint16, keys []string, tuples [][]any) ([
 // as forEachRelPropertyCandidateID), members first recorded after the pin
 // dropped. store.ErrIndexNotFound when the index does not answer.
 //
-// A read budget's meter (RH list R2; nil: none) counts each member the store
-// hands on as a candidate, before the pin filter and before the member list
-// grows, so a dense value stops at the member that passes the limit.
+// A read budget's meter (RH list R2; nil: none) counts each member the
+// enumeration yields as a candidate, before the pin filter and before the
+// member list grows, so a dense value stops at the member that passes the limit:
+// the store counts it when it has the metered form, else the graph
+// (forEachRelPropTxMemberOfKeys).
 func (c *Core) relTupleMembers(meter *storepkg.ReadMeter, tok uint16, key string, valueKeys []string, opts storepkg.QueryOpts) ([]types.RelID, error) {
 	pinTx := txPinOf(opts)
 	start, end, windowed := validWindow(opts)
@@ -326,9 +328,7 @@ func (c *Core) relTupleMembers(meter *storepkg.ReadMeter, tok uint16, key string
 			prune   types.Instant
 		)
 		member := func(id types.RelID, firstTx types.Instant) bool {
-			if invalid = meter.AddCandidates("RelEffectiveTimelinesByProperties", 1); invalid != nil {
-				return false
-			}
+			// Counted where it is enumerated (forEachRelPropTxMemberOfKeys).
 			if !c.storeRowsTrust {
 				if invalid = storepkg.ValidateRelID(id); invalid != nil {
 					return false

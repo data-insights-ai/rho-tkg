@@ -278,15 +278,12 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 	if !ok {
 		return out, nil
 	}
-	// A read budget (R2): nil without one. The walk charges each entry it
-	// rejects, or skips as stale, to the tally at once and admits the members it
-	// holds against the room the meter has left, so a narrow window over a wide
-	// value stops at the room instead of visiting the value, across value keys
-	// and shards.
-	var budget *windowBudget
-	if tally != nil {
-		budget = &windowBudget{tally: tally, fold: out}
-	}
+	// A read budget (R2): nil without one. The walk is the one owner of what it
+	// costs: it charges each entry it rejects or steps over as stale, and each
+	// member it collects (the first accepted entry of an entity), to the tally
+	// at once, so a narrow window over a wide value stops at the room instead
+	// of visiting the value, across value keys and shards.
+	budget := newWalkBudget(tally)
 	judge := func(key, val []byte) {
 		_, _, _, id, tx, _, ok := storepkg.EntityIndexTimeEntryOf(key)
 		if !ok {
@@ -301,6 +298,7 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 			out[id] = indexpkg.MergeFirstTx(prev, types.Instant(tx))
 		} else {
 			out[id] = types.Instant(tx)
+			budget.charge() // a member collected
 		}
 	}
 	// The late axis: lateTo > start.
@@ -341,7 +339,7 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 // as a candidate judged, and the admission runs after each entry handed to fn
 // or skipped, disk or buffered, its error stopping the walk there. Caller holds
 // idxMu (R or W).
-func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork, budget *windowBudget) error {
+func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork, budget *walkBudget) error {
 	tail := storepkg.EntityIndexTimeTailLen - 1 // after the axis
 	in := func(k []byte) bool {
 		return len(k) == len(prefix)+tail && bytes.Compare(k, seek) >= 0 && (past == nil || !past(k))
@@ -354,6 +352,9 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 		var val []byte
 		if op.opType == writeOpSet && budget.buffer(len(op.value)) { // charged before the clone
 			val = slices.Clone(op.value)
+			if work != nil {
+				work.OverlayValuesCloned++
+			}
 		}
 		noteMemberOverlay(&ov, k, op, val, work)
 	})
@@ -453,49 +454,39 @@ func (bs *Store) memberHeads(rel bool, scope uint16, propertyKey string) [][]byt
 	return heads
 }
 
-// foldAdmit is the read budget's admission of a membership walk's fold
-// (R2): nil without a candidate limit on t's meter, else a check, run after
-// each entry the walk folds, that refuses once the fold holds more members
-// than the meter has room for. The door that reads the walk counts each
-// member it hands on, so a fold past the room is a read the budget refuses at
-// the member past it: the walk stops there instead of folding, sorting and
-// handing on the rest of the value (counted as the work it held ahead,
-// ReadTally.CandidatesAhead). The room is read at each check, so what the
-// meter counted meanwhile (the earlier value keys, the other shards) is not in
-// it.
-func foldAdmit(f txMemberFold, t *storecontract.ReadTally) func() error {
-	if t.CandidateRoom() == math.MaxUint64 {
-		return nil
-	}
-	return func() error { return t.CandidatesAhead(len(f)) }
-}
-
-// windowBudget is a window walk's read budget (R2, ai-soc review 14 Nov, 3.2):
-// the tally and the fold of the members the walk accepted. An entry the walk
-// rejects (its envelope misses the window) or skips as stale is never handed
-// on, so nobody else counts it: charge counts it as a candidate at once, in a
-// door's mode (ReadTally.DoorCounts) and a direct caller's alike, across the
-// value keys and shards of one read. An accepted member is counted once, by the
-// store when it hands it on or by the door, so admit compares the fold with the
-// room the meter has left now, the charges and the earlier keys taken out. Its
-// methods accept a nil budget (none). Not safe for concurrent use: one walk.
-type windowBudget struct {
+// walkBudget is a member walk's read budget (R2, ai-soc review 14 Nov, 3.2):
+// the walk is the one owner of what it costs, and charges the tally at once,
+// before it goes on, for every entry it examines to no use (a window walk's
+// entry whose envelope misses the window, an older version of a key, a
+// tombstone, an entry the write buffer overrides) and for every member it
+// collects into its fold (the first accepted entry of an entity). Nothing above
+// the walk counts those again, so the Candidates limit holds for the whole read,
+// across the value keys of a call and the shards of a fan-out on one meter, and
+// the walk stops at the entry that passes it. Its methods accept a nil budget
+// (none: no tally). Not safe for concurrent use: one walk.
+type walkBudget struct {
 	tally   *storecontract.ReadTally
-	fold    txMemberFold
 	refused error // the first refusal of a charge, which admit hands the walk
 }
 
-// charge counts one entry the walk judged and rejected, or stepped over as
-// stale, as a candidate.
-func (b *windowBudget) charge() {
+// newWalkBudget returns t's budget for one walk, nil for a nil tally.
+func newWalkBudget(t *storecontract.ReadTally) *walkBudget {
+	if t == nil {
+		return nil
+	}
+	return &walkBudget{tally: t}
+}
+
+// charge counts one entry or member as a candidate.
+func (b *walkBudget) charge() {
 	if b != nil && b.refused == nil {
 		b.refused = b.tally.Candidates(1)
 	}
 }
 
-// buffer charges n bytes about to be cloned as BufferBytes and reports whether
-// the clone may be made (false: refused, refusal returns it).
-func (b *windowBudget) buffer(n int) bool {
+// buffer charges n bytes about to be allocated as BufferBytes and reports whether
+// the allocation may be made (false: refused, refusal returns the error).
+func (b *walkBudget) buffer(n int) bool {
 	if b == nil {
 		return true
 	}
@@ -506,21 +497,13 @@ func (b *windowBudget) buffer(n int) bool {
 }
 
 // refusal returns the refusal a charge gave, nil when none.
-func (b *windowBudget) refusal() error {
+func (b *walkBudget) refusal() error {
 	if b == nil {
 		return nil
 	}
 	return b.refused
 }
 
-// admit returns the walk's refusal: a charge that passed a limit, else the
-// fold past the room (ReadTally.CandidatesAhead).
-func (b *windowBudget) admit() error {
-	if b == nil {
-		return nil
-	}
-	if b.refused != nil {
-		return b.refused
-	}
-	return b.tally.CandidatesAhead(len(b.fold))
-}
+// admit returns the walk's refusal: the charge that passed a limit, nil
+// before that. The walks call it after each entry they handle.
+func (b *walkBudget) admit() error { return b.refusal() }

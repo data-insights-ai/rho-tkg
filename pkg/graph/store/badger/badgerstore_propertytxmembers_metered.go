@@ -9,25 +9,31 @@ import (
 var _ storecontract.PropertyTxMemberMeteredCapability = (*Store)(nil)
 
 // Metered membership (R2, gap B): the store.PropertyTxMemberMeteredCapability
-// forms of badger. A definition kept on disk reads its member entries into a
-// fold before it hands a member on (the exact walk, the window seek), and the
-// door that counts the members only sees them after: under a candidate limit
-// the walk would fold the whole value first. With t, the fold is admitted as it
-// grows (foldAdmit): the walk stops at the member that passes the meter's room
-// and the store returns the *ReadBudgetError, before fn. A definition in RAM
-// (the sidecar's lists are held already) folds as the unmetered doors (its
-// members still counted as they are handed on, below), and a nil t is the
-// unmetered door. One call per key, as the core's per-key loop, stopping at
-// the first error, ErrIndexNotFound or fn's false; fn may see an entity once
-// per key. Shard opens are the tiered store's to charge. Each member is
-// counted as a candidate before it is handed on (ReadTally.HandedOn), so a
-// direct caller is bounded across keys and, on tiered, shards; a door that
-// counts the members itself passes ReadTally.DoorCounts. An entry the walk
-// judges and rejects (a window walk's entry whose envelope misses the window)
-// or steps over as stale is never handed on, so the store charges it to the
-// tally at once, in either mode (windowBudget): the Candidates limit holds for
-// the whole read, across the value keys and, on tiered, the shards, counting
-// what the walks examine and not only the members they hand on.
+// forms of badger. The store is the one owner of the cost of the read: it
+// counts what it examines and what it collects, before it goes on, and nothing
+// above it counts those again (the graph counts only the members of a store
+// without this form). So the Candidates limit holds across the value keys of a
+// call, and on tiered across the shards, whichever layer hands the members on.
+//
+//   - A definition kept on disk reads its member entries into a fold before it
+//     hands a member on (the exact walk, the window seek). Each member is
+//     counted as a candidate when the walk collects it (the first entry of an
+//     entity), each entry the window walk judges and rejects, or steps over as
+//     stale (an older version, a tombstone, an entry the write buffer
+//     overrides), when it is met (walkBudget), so the walk stops at the entry
+//     that passes the room the meter has left and returns the typed
+//     *ReadBudgetError before fn. The write buffer's values it clones and the
+//     list the fold becomes are charged as BufferBytes before they are made.
+//   - A definition in RAM charges the same before its work: the snapshot of the
+//     value's members (counted when it is made), the one-time open of the
+//     value's window view (refused up front when the value's members pass the
+//     room) and the view's walk (the entries it judges and rejects, each
+//     member before it is added). The sidecar's first build, one scan of the
+//     label's or type's rows, is not charged.
+//
+// A nil t is the unmetered door. One call per key, as the core's per-key loop,
+// stopping at the first error, ErrIndexNotFound or fn's false; fn may see an
+// entity once per key. Shard opens are the tiered store's to charge.
 
 // ForEachNodePropertyTxMemberMetered implements
 // store.PropertyTxMemberMeteredCapability: ForEachNodePropertyTxMember (window
@@ -48,11 +54,8 @@ func (bs *Store) ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyK
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	for _, vk := range valueKeys {
 		stopped := false
-		var refused error
-		one := func(id types.NodeID, tx types.Instant) bool {
-			if refused = t.HandedOn(); refused != nil { // a direct caller's member, counted before it is handed on
-				stopped = true
-			} else if !fn(id, tx) {
+		one := func(id types.NodeID, tx types.Instant) bool { // counted where it was collected
+			if !fn(id, tx) {
 				stopped = true
 			}
 			return !stopped
@@ -64,11 +67,8 @@ func (bs *Store) ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyK
 			if err := emitTxMembers(members, err, one); err != nil {
 				return err
 			}
-		} else if err := bs.nodeMembersUnmetered(labelToken, propertyKey, vk, window, one); err != nil {
+		} else if err := bs.nodeMembersRAM(labelToken, propertyKey, vk, window, t, one); err != nil {
 			return err
-		}
-		if refused != nil {
-			return refused
 		}
 		if stopped {
 			return nil
@@ -95,11 +95,8 @@ func (bs *Store) ForEachRelPropertyTxMemberMetered(relTypeToken uint16, property
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
 	for _, vk := range valueKeys {
 		stopped := false
-		var refused error
-		one := func(id types.RelID, tx types.Instant) bool {
-			if refused = t.HandedOn(); refused != nil { // a direct caller's member, counted before it is handed on
-				stopped = true
-			} else if !fn(id, tx) {
+		one := func(id types.RelID, tx types.Instant) bool { // counted where it was collected
+			if !fn(id, tx) {
 				stopped = true
 			}
 			return !stopped
@@ -111,11 +108,8 @@ func (bs *Store) ForEachRelPropertyTxMemberMetered(relTypeToken uint16, property
 			if err := emitTxMembers(members, err, one); err != nil {
 				return err
 			}
-		} else if err := bs.relMembersUnmetered(relTypeToken, propertyKey, vk, window, one); err != nil {
+		} else if err := bs.relMembersRAM(relTypeToken, propertyKey, vk, window, t, one); err != nil {
 			return err
-		}
-		if refused != nil {
-			return refused
 		}
 		if stopped {
 			return nil
@@ -134,16 +128,20 @@ func memberQueryOf(valueKey string, window *storecontract.PropertyTxMemberWindow
 	return q
 }
 
-func (bs *Store) nodeMembersUnmetered(labelToken uint16, propertyKey, valueKey string, window *storecontract.PropertyTxMemberWindow, fn func(types.NodeID, types.Instant) bool) error {
+// nodeMembersRAM answers a lookup of a definition kept in RAM (its membership
+// sidecar) under t: the sidecar's snapshot of the value, or its window view's
+// walk, is charged before it is made (admitSidecarMembers, windowPropTxMembers).
+func (bs *Store) nodeMembersRAM(labelToken uint16, propertyKey, valueKey string, window *storecontract.PropertyTxMemberWindow, t *storecontract.ReadTally, fn func(types.NodeID, types.Instant) bool) error {
 	if window != nil {
-		return bs.ForEachNodePropertyTxMemberDuring(labelToken, propertyKey, valueKey, window.ValidStart, window.ValidEnd, window.TxAt, fn)
+		return bs.forEachNodePropertyTxMemberDuring(labelToken, propertyKey, valueKey, window.ValidStart, window.ValidEnd, window.TxAt, fn, nil, t)
 	}
-	return bs.ForEachNodePropertyTxMember(labelToken, propertyKey, valueKey, fn)
+	return bs.forEachNodePropertyTxMember(labelToken, propertyKey, valueKey, fn, t)
 }
 
-func (bs *Store) relMembersUnmetered(relTypeToken uint16, propertyKey, valueKey string, window *storecontract.PropertyTxMemberWindow, fn func(types.RelID, types.Instant) bool) error {
+// relMembersRAM is nodeMembersRAM for a relationship definition.
+func (bs *Store) relMembersRAM(relTypeToken uint16, propertyKey, valueKey string, window *storecontract.PropertyTxMemberWindow, t *storecontract.ReadTally, fn func(types.RelID, types.Instant) bool) error {
 	if window != nil {
-		return bs.ForEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, valueKey, window.ValidStart, window.ValidEnd, window.TxAt, fn)
+		return bs.forEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, valueKey, window.ValidStart, window.ValidEnd, window.TxAt, fn, nil, t)
 	}
-	return bs.ForEachRelPropertyTxMember(relTypeToken, propertyKey, valueKey, fn)
+	return bs.forEachRelPropertyTxMember(relTypeToken, propertyKey, valueKey, fn, t)
 }

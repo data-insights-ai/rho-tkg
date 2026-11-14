@@ -223,6 +223,29 @@ func (bs *Store) nodePropIndexUsableLocked(key indexpkg.PropertyIndexKey) bool {
 
 // ForEachRelPropertyTxMember implements store.RelPropertyTxMembershipCapability.
 func (bs *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return bs.forEachRelPropertyTxMember(relTypeToken, propertyKey, valueKey, fn, nil)
+}
+
+// memberAdmit is a read budget's admission of a RAM sidecar walk's collection of
+// one member (nil for a nil tally): the member is counted as a candidate and
+// its slot in the list charged as BufferBytes (txMemberBytes), before it is
+// added, so the walk stops at the member that passes a limit.
+func memberAdmit(t *storecontract.ReadTally) func() error {
+	if t == nil {
+		return nil
+	}
+	return func() error {
+		if err := t.Candidates(1); err != nil {
+			return err
+		}
+		return t.Buffer(txMemberBytes)
+	}
+}
+
+// forEachRelPropertyTxMember is ForEachRelPropertyTxMember under a read
+// budget's tally t (nil: none), which a definition in RAM charges before it
+// copies the value's members, one counted as it is collected (memberAdmit).
+func (bs *Store) forEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool, t *storecontract.ReadTally) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -246,8 +269,11 @@ func (bs *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 			return ErrIndexNotFound
 		}
 		if sc := bs.relPropTx[key]; sc != nil && sc.built {
-			members := sc.members.Members(valueKey)
+			members, err := sc.members.MembersAdmit(valueKey, memberAdmit(t))
 			bs.idxMu.RUnlock()
+			if err != nil {
+				return err
+			}
 			// fn runs outside every store lock: it re-enters the store.
 			for _, m := range members {
 				if !fn(m.ID, m.FirstTx) {
@@ -266,6 +292,12 @@ func (bs *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 
 // ForEachNodePropertyTxMember implements store.NodePropertyTxMembershipCapability.
 func (bs *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return bs.forEachNodePropertyTxMember(labelToken, propertyKey, valueKey, fn, nil)
+}
+
+// forEachNodePropertyTxMember is ForEachNodePropertyTxMember under a read
+// budget's tally t (nil: none), as forEachRelPropertyTxMember.
+func (bs *Store) forEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool, t *storecontract.ReadTally) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -289,8 +321,11 @@ func (bs *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 			return ErrIndexNotFound
 		}
 		if sc := bs.nodePropTx[key]; sc != nil && sc.built {
-			members := sc.members.Members(valueKey)
+			members, err := sc.members.MembersAdmit(valueKey, memberAdmit(t))
 			bs.idxMu.RUnlock()
+			if err != nil {
+				return err
+			}
 			for _, m := range members {
 				if !fn(m.ID, m.FirstTx) {
 					return nil

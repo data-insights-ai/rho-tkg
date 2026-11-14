@@ -17,6 +17,9 @@ type PropertyMemberWork struct {
 	OverlayOpsMatched uint64
 	// OverlaySetsEmitted counts final overlay set entries passed to the member fold.
 	OverlaySetsEmitted uint64
+	// OverlayValuesCloned counts the buffered entry values a time-ordered windowed
+	// read copied before it judged them (RELDISKWIN option B).
+	OverlayValuesCloned uint64
 	// DiskEntriesEmitted counts disk entries passed to the fold after version,
 	// deletion, boundary and overlay filtering; several entries may name one entity.
 	DiskEntriesEmitted uint64
