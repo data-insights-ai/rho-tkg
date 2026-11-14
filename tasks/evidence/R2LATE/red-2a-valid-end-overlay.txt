@@ -1,0 +1,15 @@
+=== RUN   TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode
+=== PAUSE TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode
+=== CONT  TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode
+    badgerstore_valid_end_budget_test.go:55: unlimited = {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:30 BufferBytes:0}, <nil>; want the 30 versions counted, the stored bytes and 1 candidate
+    badgerstore_valid_end_budget_test.go:57: unlimited: {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:30 BufferBytes:0}
+=== RUN   TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode/history_examined
+    badgerstore_valid_end_budget_test.go:74: history examined: 30 history versions counted at the refusal ({Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:30 BufferBytes:0}), want 4: the history was decoded before it was counted
+=== RUN   TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode/decoded_bytes
+    badgerstore_valid_end_budget_test.go:71: decoded bytes: <nil>; want ErrReadBudget at "decoded bytes"
+--- FAIL: TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode (0.20s)
+    --- FAIL: TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode/history_examined (0.08s)
+    --- FAIL: TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode/decoded_bytes (0.06s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.204s
+FAIL

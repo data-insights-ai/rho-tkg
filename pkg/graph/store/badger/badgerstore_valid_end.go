@@ -303,14 +303,11 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 		if err := t.Candidates(1); err != nil {
 			return nil, err
 		}
-		rows, err := bs.validEndOverlayRows(id, node)
-		if err != nil {
-			return nil, err
-		}
 		// An entity with a buffered write is read from the write buffer and the
-		// committed rows together, so its history versions count after the read
-		// (before the index installs them): a few entities, not the type.
-		if err := t.History(validEndHistoryRows(rows)); err != nil {
+		// committed rows together, each history row counted before its decode
+		// (and the current row's bytes, when it is read from badger).
+		rows, err := bs.validEndOverlayRows(id, node, t)
+		if err != nil {
 			return nil, err
 		}
 		if len(rows) > 0 {
@@ -333,17 +330,6 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 	return out, nil
 }
 
-// validEndHistoryRows is how many of rows are history rows.
-func validEndHistoryRows(rows []indexpkg.ValidEndRow) int {
-	n := 0
-	for _, r := range rows {
-		if r.Hist {
-			n++
-		}
-	}
-	return n
-}
-
 // advanceTo moves it to the first key at or after target: by Next while the
 // target is a few keys ahead (members of a type are usually dense in the ID
 // order, so the walk is sequential), else by Seek. it only moves forward;
@@ -361,8 +347,10 @@ func advanceTo(it *badgerv4.Iterator, target []byte) {
 // validEndOverlayRows reads one entity with buffered writes: its history
 // rows' temporal skeletons (overlay first) and its current row's temporal
 // block (the entity cache, else the committed key, as RelCurrentStamps reads
-// it).
-func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRow, error) {
+// it). Under a read budget (t not nil) each history row counts a version and
+// its stored bytes before it is decoded, and so does the committed current
+// row's value.
+func (bs *Store) validEndOverlayRows(id int64, node bool, t *storecontract.ReadTally) ([]indexpkg.ValidEndRow, error) {
 	sid := snowflake.ID(id)
 	var (
 		cur    *types.TemporalMetadata
@@ -382,7 +370,7 @@ func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRo
 			bs.idxMu.RUnlock()
 			if found {
 				var err error
-				if cur, found, err = bs.committedTemporal(storepkg.KeyNode, sid); err != nil {
+				if cur, found, err = bs.committedTemporal(storepkg.KeyNode, sid, t); err != nil {
 					return nil, err
 				}
 			}
@@ -400,13 +388,13 @@ func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRo
 			bs.idxMu.RUnlock()
 			if found {
 				var err error
-				if cur, found, err = bs.committedTemporal(storepkg.KeyRel, sid); err != nil {
+				if cur, found, err = bs.committedTemporal(storepkg.KeyRel, sid, t); err != nil {
 					return nil, err
 				}
 			}
 		}
 	}
-	metas, err := bs.historyTemporalMetaByPrefix(prefix, node)
+	metas, err := bs.historyTemporalMetaByPrefixTallied(prefix, node, t)
 	if err != nil {
 		return nil, err
 	}
@@ -422,8 +410,9 @@ func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRo
 
 // committedTemporal reads the committed current row of id (prefix KeyNode or
 // KeyRel) and decodes its temporal block; found false when the key holds no
-// row.
-func (bs *Store) committedTemporal(prefix byte, id snowflake.ID) (*types.TemporalMetadata, bool, error) {
+// row. Under a read budget (t not nil) the value's stored bytes count before
+// the decode.
+func (bs *Store) committedTemporal(prefix byte, id snowflake.ID, t *storecontract.ReadTally) (*types.TemporalMetadata, bool, error) {
 	key := make([]byte, storepkg.SizeNodeKey)
 	key[0] = prefix
 	storepkg.PutUint64(key, 1, int64(id))
@@ -439,6 +428,9 @@ func (bs *Store) committedTemporal(prefix byte, id snowflake.ID) (*types.Tempora
 			return err
 		}
 		return item.Value(func(val []byte) error {
+			if err := t.Decoded(len(val)); err != nil {
+				return err
+			}
 			var derr error
 			if _, tm, derr = storepkg.DecodeWireTemporalMeta(val); derr != nil {
 				return fmt.Errorf("graph: decode current row temporal: %w", derr)
