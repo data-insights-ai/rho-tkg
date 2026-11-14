@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `make release-minor` and `make release-major` on the Makefile.
 - **Sigma aligned:** `make test` is the full short tier; `make presubmit` the builder's check; `make gate` the real
   gate; `make dry-patch` / `make dry-minor` replace `gate-patch` / `gate-minor` (dry-run only).
+- **ai-soc aligned:** `make test` is the gate's short tier on `./aisoc/...` (respects `go.dev.mod`); `make presubmit`
+  the builder's check; `make gate` only (gone `gate-patch` / `gate-minor` aliases). OCI image build stays `make release`.
 
 ### Added
 
