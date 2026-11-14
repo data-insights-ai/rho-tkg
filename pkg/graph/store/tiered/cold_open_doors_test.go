@@ -117,7 +117,7 @@ func coldOpenDoors(t *testing.T, ts *Store, nodes []types.NodeID, rels []types.R
 		slices.Sort(ids)
 		return ids
 	}
-	unknown := types.NodeID(nodes[0] - 1)
+	unknown := nodes[0] - 1
 	for i, id := range append(slices.Clone(nodes), unknown) {
 		n, err := ts.GetNode(id)
 		if err != nil {
@@ -149,7 +149,7 @@ func coldOpenDoors(t *testing.T, ts *Store, nodes []types.NodeID, rels []types.R
 	hist, err := ts.GetNodeHistory(nodes[1])
 	must("GetNodeHistory", err)
 	add("GetNodeHistory(1) %d versions", len(hist))
-	for i, rid := range append(slices.Clone(rels), types.RelID(rels[0]-1)) {
+	for i, rid := range append(slices.Clone(rels), rels[0]-1) {
 		r, err := ts.GetRelationship(rid)
 		if err != nil {
 			add("GetRelationship %d: %v", i, err)
