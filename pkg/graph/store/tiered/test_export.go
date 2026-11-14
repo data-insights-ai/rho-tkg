@@ -291,6 +291,12 @@ func (ts *Store) SetSweepFaultForTest(fault func(step string) error) {
 	ts.sweep.fault.Store(&fault)
 }
 
+// SetDemoteHookForTest installs the rotation's demote hook (Store.demoteHook):
+// fn runs for each shard a rotation demotes, its tier already cold, before the
+// rotation counts its handle; the rotation holds ts.mu, not the shard's lock.
+// nil removes it.
+func (ts *Store) SetDemoteHookForTest(fn func(es *EventShard)) { ts.demoteHook = fn }
+
 // SetSweepDrainTimeoutForTest sets how long a swap waits for its shard's
 // pins before it gives up (the "abandoned" step); 0 restores the default.
 func (ts *Store) SetSweepDrainTimeoutForTest(d time.Duration) { ts.sweep.drain.Store(int64(d)) }

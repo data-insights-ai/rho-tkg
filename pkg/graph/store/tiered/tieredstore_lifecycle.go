@@ -11,10 +11,19 @@ import (
 // setStoreLocked installs store on es and counts it when es is cold. Caller
 // holds es.shardMu.
 func (es *EventShard) setStoreLocked(ts *Store, store *BadgerStore) {
+	es.installStoreLocked(ts, store, true)
+}
+
+// installStoreLocked is setStoreLocked; counted false installs a transient
+// read handle uncounted (openColdReadOnlyLocked without room under the cap).
+// Caller holds es.shardMu.
+func (es *EventShard) installStoreLocked(ts *Store, store *BadgerStore, counted bool) {
 	es.store = store
 	es.hotArena = false   // every install but a hot open is warm-size or read-only
 	es.coldOpened = false // every install but a cold open (the callers set it after)
-	es.countColdStoreLocked(ts)
+	if counted {
+		es.countColdStoreLocked(ts)
+	}
 	es.noteHandle()
 }
 
@@ -23,8 +32,18 @@ func (es *EventShard) setStoreLocked(ts *Store, store *BadgerStore) {
 // shard demoted by rotation keeps its handle — so the demotion calls this too;
 // otherwise the close of that handle would decrement a count it never added
 // and every later check-in would retain past the cap. Caller holds es.shardMu.
+//
+// The count is the handles the cap governs (R3-1 OVERCAP): the writable ones
+// and the read-only ones opened full. A handle a cold open made
+// (EventShard.coldOpened, which installStoreLocked clears before it counts and
+// openColdLocked / openColdReadOnlyLocked set after) was counted at its install
+// or is a transient read handle installed uncounted; a later call (the
+// rotation's demotion, closeEmptyDemotedShardsLocked) leaves it so, since a
+// read can open a just-demoted shard between the tier flip and that call (the
+// handle sweep's swap left it closed). The transient handle's check-in closes
+// it, and the idle tick's cap pass does not list it.
 func (es *EventShard) countColdStoreLocked(ts *Store) {
-	if es.store != nil && !es.coldCounted && es.currentTier() == TierCold {
+	if es.store != nil && !es.coldCounted && !es.coldOpened && es.currentTier() == TierCold {
 		es.coldCounted = true
 		ts.openColdShards.Add(1)
 	}
@@ -64,8 +83,21 @@ func (es *EventShard) openColdLocked(ts *Store) error {
 // when the read-only open fails (an unclean WAL needs a writable recovery) or
 // when the shard's index definitions differ from the anchor's, which only a
 // writable open syncs. Caller holds es.shardMu.
+//
+// The open picks the handle's form and the form binds its fate (R3-1 OVERCAP,
+// tasks/evidence/R3/design-overcap.txt). With room under MaxOpenColdShards
+// (cap > 0 and the open cold count below it, read once here) the handle opens
+// full and is counted, and checkinReadStore keeps it while the count is at
+// most the cap. Without room, or at cap 0, it opens transient (coldReadCfg)
+// and is installed uncounted, outside the cap, and its check-in closes it
+// whatever the count is then. A cap that fills between a full open and its
+// check-in closes that handle there (one full open lost); a cap that frees
+// while a transient handle is in flight leaves it to close, and the shard's
+// next read opens full. The writable fallback is counted as every writable
+// cold handle is.
 func (es *EventShard) openColdReadOnlyLocked(ts *Store) error {
-	store, err := ts.newShardStore(ts.coldReadCfg(es.path))
+	full := ts.maxOpenColdShards > 0 && ts.openColdShards.Load() < int64(ts.maxOpenColdShards)
+	store, err := ts.newShardStore(ts.coldReadCfg(es.path, full))
 	if err != nil {
 		return es.openColdLocked(ts)
 	}
@@ -76,7 +108,7 @@ func (es *EventShard) openColdReadOnlyLocked(ts *Store) error {
 		return es.openColdLocked(ts)
 	}
 	es.coldOpens.Add(1)
-	es.setStoreLocked(ts, store)
+	es.installStoreLocked(ts, store, full)
 	es.coldOpened = true
 	es.storeRO = true
 	es.noteHandle()
@@ -108,10 +140,20 @@ func (es *EventShard) openColdWritableLocked(ts *Store, own int64) error {
 	if es.store == nil { // the idle sweep closed it meanwhile
 		return es.openColdLocked(ts)
 	}
-	if err := es.store.Close(); err != nil {
-		return fmt.Errorf("graph: close read-only cold shard %s: %w", es.name, err)
-	}
+	err := es.store.Close()
 	es.clearStoreLocked(ts)
+	if err != nil {
+		// Close may have closed the DB despite its error: detach, and fence
+		// later access (a reader must not pin it), as the idle close, the cap
+		// pass and the check-in close do. Not yet so: MoveShard's close
+		// (shard_move.go), the retention drop's (retention_purge_drop.go) and
+		// clearEventShard's (tieredstore.go) return the error with the closed
+		// handle installed and no fence.
+		wrapped := fmt.Errorf("graph: close read-only cold shard %s: %w", es.name, err)
+		ts.recordBackgroundError(wrapped)
+		slog.Error("tiered cold shard read-only close failed", "shard", es.name, "err", err)
+		return wrapped
+	}
 	return es.openColdLocked(ts)
 }
 
@@ -238,16 +280,15 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 
 // checkoutStoreForRead pins a shard for read-only fanout work.
 //
-// A cold shard opened here STAYS open, and is closed by the idle timer or by
-// the open-handle cap, whichever comes first. It used to be closed again the
-// moment its read finished, which bounded handles at the cost of making every
-// read of the same old data reopen the same shards — measured through a
+// With MaxOpenColdShards > 0 a cold shard this opens while the cap has room
+// opens full and STAYS open after its read, until the idle timer or the cap
+// pass closes it; one opened with the cap full opens transient and closes at
+// its check-in, as every cold read's handle does at MaxOpenColdShards 0
+// (openColdReadOnlyLocked, checkinReadStore). Retention spares re-reads of the
+// same old data the open: closing at every check-in was measured through a
 // caller as 16.9s to open a case whose signals live in demoted shards, and
-// 7.5s again on the very next read.
-//
-// MaxOpenColdShards is what makes retaining them safe: a DepthAll scan across
-// a years-old store no longer accumulates one handle per historical shard,
-// because the least recently used are closed once the cap is passed.
+// 7.5s again on the very next read. The cap keeps that bounded: a DepthAll scan
+// across a years-old store holds at most the cap's handles past its reads.
 func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), error) {
 	return es.checkoutForRead(ts, false)
 }
@@ -452,60 +493,28 @@ func (es *EventShard) checkinReadStore(ts *Store) {
 	//
 	// With MaxOpenColdShards set, up to that many stay open and the count is
 	// still hard-bounded, because the shard that finds no room closes here just
-	// as it always did.
-	if ts.maxOpenColdShards > 0 && ts.openColdShards.Load() <= int64(ts.maxOpenColdShards) {
+	// as it always did. Only a counted handle is kept: a transient one (opened
+	// without room and installed uncounted, openColdReadOnlyLocked) closes here
+	// always, so every handle the cap keeps was opened full.
+	if es.coldCounted && ts.maxOpenColdShards > 0 && ts.openColdShards.Load() <= int64(ts.maxOpenColdShards) {
 		return
 	}
 
 	// Same reasoning as the idle-close: record the counts while the store is
 	// still open, so the shard can be counted afterwards without reopening.
 	sealedCounts := es.snapshotCountsNoBuildLocked(ts)
-	if err := es.store.Close(); err != nil {
+	err := es.store.Close()
+	// Close may have closed the DB despite its error: detach whatever it
+	// returned, and fence later access, as the idle close does.
+	es.clearStoreLocked(ts)
+	if err != nil {
 		wrapped := fmt.Errorf("graph: close transient cold shard %s: %w", es.name, err)
 		ts.recordBackgroundError(wrapped)
 		slog.Error("tiered cold shard transient close failed", "shard", es.name, "err", err)
-		return
 	}
-	es.clearStoreLocked(ts)
 	if sealedCounts {
 		defer ts.saveCatalogBestEffort("seal shard counts on transient close")
 	}
-}
-
-// checkoutStoreIfOpen pins a shard only if its BadgerStore is already open.
-// Unlike checkoutStore, it never lazy-opens a closed cold shard. This is used
-// by negative-path probes where waking every cold shard would turn a cheap
-// create into a full historical scan.
-func (es *EventShard) checkoutStoreIfOpen(ts *Store) (*BadgerStore, bool, error) {
-	if err := ts.backgroundError(); err != nil {
-		return nil, false, err
-	}
-	if es.currentTier() != TierCold {
-		store, err := es.checkoutStore(ts)
-		return store, err == nil, err
-	}
-
-	es.shardMu.Lock()
-	if ts.closed.Load() {
-		es.shardMu.Unlock()
-		return nil, false, ErrStoreClosed
-	}
-	if es.store == nil {
-		es.shardMu.Unlock()
-		return nil, false, nil
-	}
-	es.readTransientOpen = false
-	es.activeReqs.Add(1)
-	es.lastAccess.Store(time.Now().UnixMilli())
-	store := es.store
-	es.shardMu.Unlock()
-
-	if ts.closed.Load() {
-		es.activeReqs.Add(-1)
-		return nil, false, ErrStoreClosed
-	}
-	es.countAccess()
-	return store, true, nil
 }
 
 // checkinStore decrements activeReqs, signalling that the caller is done
@@ -650,7 +659,8 @@ func (ts *Store) coldShardsClosable() bool { return !ts.inMemory }
 // It runs on the write path (checkRotation) after the rotation committed, so
 // it returns nothing: a failed probe keeps the handle for the idle sweep and is
 // logged and fails no write; a failed close detaches the handle and records the
-// background-error fence exactly as a failed idle close does (checkinReadStore),
+// background-error fence exactly as a failed idle close (closeIdleShards) and a
+// failed check-in close (checkinReadStore) do,
 // never keeping a half-closed handle. checkRotation then returns that fence to
 // the write that triggered the rotation: it is refused with the fault and
 // commits nothing, and the committed rotation is not rolled back (R1).

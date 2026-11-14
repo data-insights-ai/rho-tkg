@@ -280,8 +280,8 @@ ADR-0012.
   50,000 rows, 100 opens and 110 MB of allocation (704 MB before the handle was made cheap, below), 1 open and 8 MB at a
   cap of 2; the close seals the shard's counts and saves the catalog, a JSON rewrite and two fsyncs, only when the seal
   changed the entry. A handle that closes at check-in is configured for one read (`tiered.Store.coldReadCfg`,
-  `badger.Config.TransientRead`; R3 cold open): a block cache of at most 16 MB (ristretto sizes its counters by the
-  configured 64 or 256 MB at every open), no label maps at the open (a trusted image carries the per-label counts, so
+  `badger.Config.TransientRead`; R3 cold open): a block cache of at most 16 MiB (ristretto sizes its counters by the
+  configured 64 or 256 MiB at every open), no label maps at the open (a trusted image carries the per-label counts, so
   the label-key walk is spared and a label's map is read from its keys when a read first asks, once; the maps stay RAM
   maps, so the doc-values doors keep answering, which `LabelIndexOnDisk`'s lazy open would not), the image's node, rel
   and rel-type ID sets kept in the encoding they are stored in (`index.NewIDSetEncoded`: one validating pass and an
@@ -289,7 +289,13 @@ ADR-0012.
   revision tables unmade until a write bumps one. One open at 50,000 rows: 14.3 ms and 7.0 MB of allocation, 11 ms of
   user CPU (default config), 6.2 ms, 2.1 MB and 1.5 ms (ai-soc's), down to 1.1 MB and 0.5 to 0.6 ms of CPU in both.
   A handle a cap keeps and a writable one are configured and built as every other shard is, and a later writable open
-  of the shard works as before; `tasks/evidence/R3/coldread.txt`), a write or a
+  of the shard works as before; `tasks/evidence/R3/coldread.txt`. With `MaxOpenColdShards` > 0 the open picks the form
+  and the form binds the handle's fate (R3-1 OVERCAP, `tasks/evidence/R3/design-overcap.txt`): a read that finds room
+  (the open cold count below the cap, read at the open) opens full and is counted, and its check-in keeps it while the
+  count is at most the cap; a read that finds the cap full opens the transient form, installed outside the count, and
+  its check-in closes it. The count is the handles the cap governs (full read-only and writable ones), and the idle
+  tick's cap pass lists only those, so the cap never keeps a transient handle and never evicts a kept one for a read
+  in flight), a write or a
   checkout that may write reopens it writable (replacing a read-only handle once its readers finish), and at most
   `MaxOpenColdShards` stay open.
 - **No RAM tier.** `DurableCommit` / `SyncWrites` need every write on a disk with a write-ahead log; RAM is each

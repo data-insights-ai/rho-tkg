@@ -178,7 +178,7 @@ func TestColdOpenConfigs(t *testing.T) {
 				cfg  func() BadgerStoreConfig
 			}{
 				{"before (shardCfg)", func() BadgerStoreConfig { return ts.shardCfg(es.path, true, true) }},
-				{"after (coldReadCfg)", func() BadgerStoreConfig { return ts.coldReadCfg(es.path) }},
+				{"after (coldReadCfg)", func() BadgerStoreConfig { return ts.coldReadCfg(es.path, false) }},
 			} {
 				const rounds = 50
 				var openTook, closeTook time.Duration

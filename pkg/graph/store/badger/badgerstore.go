@@ -202,8 +202,10 @@ type Config struct {
 	// pass instead of an insert per ID (indexpkg.NewIDSetEncoded), and answer
 	// membership and listings from it. Answers are the same as without it; a
 	// handle serving many reads would rather have the structures built once, so
-	// the tiered store sets it only for a read-only cold shard that closes at
-	// check-in (MaxOpenColdShards 0). Ignored unless ReadOnly, and when Store is
+	// the tiered store sets it only for a read-only cold handle that closes at
+	// its check-in: every one at MaxOpenColdShards 0, and at a cap above 0 one a
+	// read opens while the cap is full, which the cap never keeps
+	// (tiered.Store.coldReadCfg). Ignored unless ReadOnly, and when Store is
 	// provided explicitly.
 	TransientRead bool
 	// ColumnsOnDisk persists built columnar snapshots so a cold store can decode a
@@ -959,6 +961,9 @@ type Store struct {
 	// through the real requeue path; testHookDurableAfterCheckOpen runs in DurableFlush
 	// after checkOpen so a test can interleave Close.
 	failNextFlush atomic.Pointer[error]
+	// failNextClose (tests only) makes the next Close return its error after the
+	// close ran, a close that may have closed the DB despite its error.
+	failNextClose atomic.Pointer[error]
 	// owner is the owner index of unique keys (UNIQUELOOK,
 	// badgerstore_owner_index.go).
 	owner ownerIndexState
@@ -2783,6 +2788,9 @@ func (bs *Store) Close() error {
 		bs.dbClosed.Store(true)
 		bs.flushMu.Unlock()
 		err = errors.Join(err, bs.db.Close())
+		if injected := bs.failNextClose.Swap(nil); injected != nil { // test seam
+			err = errors.Join(err, *injected)
+		}
 	})
 	return err
 }
