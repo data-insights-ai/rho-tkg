@@ -1,0 +1,41 @@
+EMPTYBYID round 2: handles, allocations and time of the write doors that name a missing ID in a proven-empty shard's window,
+before and after (14 Nov 2026, go1.26.9, linux/amd64, 32 CPU, load average 12-17 while measuring).
+
+Question: the reads skip a closed shard proven empty (round 1); which writes still opened it?
+
+Root cause: every write door that changes a row its ID already has (an update, a delete, a label change, a history trim) or
+needs an endpoint to exist (a relationship create) resolved the ID's shard through the writable route
+(routeNodeShard / routeRelShardFor, readOnly false). That route checks the shard of the ID's mint time out writable: a closed
+cold shard is opened, its no-rows mark woken (cleared, the catalog saved before the write), only for the door to read "not
+found". The open is transient (readTransientOpen): at check-in it closes again when no MaxOpenColdShards room is left, which
+re-seals the counts and saves the catalog once more; with room it stays until the idle sweep, which closes an empty open shard
+at once (openEmptyLocked), so the next miss opens it again. A miss cost an open of a badger handle (its memtable arena: about
+100 MB of allocation at the default memtable size), a catalog save, and a close with a second save.
+
+Fix: routeExisting (tieredstore_routing.go), the writable route that skips a shard proven empty the way routeRead does and
+returns the open hot shard, which answers the door's own miss. A door that stores a row under the ID keeps routeWrite
+(PutNodeVersion, PutRelVersion, the creates, ex-adjacency legs).
+
+Measurement: pkg/graph/store/tiered/empty_by_id_write_measure_test.go (go test -tags measure -run
+TestEmptyByID_MeasureWriteMisses; make measure). Fixture: UTC week shards, RelsByMint, no MaxOpenColdShards (so every
+transient open closes at its check-in: one open per miss; with a cap the opens fall to one per idle sweep, as in round 1),
+the first shard rotated out empty, demoted, closed and marked, two reference nodes and event nodes on the hot shard. One
+round = the 24 write misses of byIDWriteProbes (ReplaceNode, DeleteNode, DeleteNodeCascade, DeleteNodesBatch x2, the four
+label-token doors, ReplaceNodeWithHistory, DeleteNodeWithHistory, TruncateNodeHistory, ReplaceRelationship, DeleteRelationship,
+UndoRelationshipCreate, DeleteRelationshipsBatch x2, ReplaceRelWithHistory, DeleteRelWithHistory, TruncateRelHistory,
+PutRelationship x2 and PutRelationshipsBatch x2 with a missing endpoint) and then the idle sweep. 20 rounds after one
+warm-up round; per round:
+
+                         opens of the   cold        cold writable   open cold    allocs     bytes           time
+                         empty shard    checkouts   checkouts       handles at
+                                                                    the end
+  before   run 1         24.00          26.00       26.00           0            421,078    2,462,388,068   2.458 s
+           run 2         24.00          26.00       26.00           0            420,986    2,462,370,296   2.947 s
+  after    run 1          0.00           0.00        0.00           0                168            6,300   22.9 us
+           run 2          0.00           0.00        0.00           0                168            6,300   17.4 us
+
+"before" is the same tree with the existing route's skip switched off (skipsEmpty() == routeRead), which is exactly the old
+write route; "after" is the commit. Every door returns the same answer in both (TestEmptyByID_WritesNamingAMissKeepTheShardClosed
+runs the doors with the mark and with the shard read). The allocation counters are process-wide: they move with badger's
+goroutines and the host's load, so they are evidence, not a gate; the gate is the opens count in the suite.
+Per miss: one writable open and about 102 MB of allocation, to none.

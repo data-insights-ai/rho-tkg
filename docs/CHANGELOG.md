@@ -303,8 +303,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   answers are unchanged (each path is compared with the shard read), a relationship minted in the window and stored on
   its start node's shard is still found, and a write into the window still wakes the shard, saved before the write. One
   round of 47 by-ID probes opened the empty shard 46 times (`ColdOpens`); now 0, also across idle sweeps and a restart
-  (`tasks/evidence/EMPTYBYID/`). Left: a write that names an ID the shard would own (a delete or update of an ID that is
-  not there, a relationship to a missing endpoint) still opens and wakes it. Tests: `TestEmptyByID_*`.
+  (`tasks/evidence/EMPTYBYID/`). Tests: `TestEmptyByID_*`.
+
+  The writes that name such an ID take the same route (round 2): `ReplaceNode`, `DeleteNode`, `DeleteNodeCascade`,
+  `DeleteNodesBatch`, the node label-token doors, `ReplaceNodeWithHistory`, `DeleteNodeWithHistory`,
+  `TruncateNodeHistory`, `ReplaceRelationship`, `DeleteRelationship`, `UndoRelationshipCreate`,
+  `DeleteRelationshipsBatch`, `ReplaceRelWithHistory`, `DeleteRelWithHistory`, `TruncateRelHistory`, and the endpoint
+  lookups of `PutRelationship` and `PutRelationshipsBatch` (their generated-ID forms too) changed a row or found their
+  endpoint only after a writable checkout, which opened the empty shard, cleared its mark and saved the catalog to
+  answer "not found"; the open closed again at check-in or at the next idle sweep, which re-sealed the shard, and the
+  next miss opened it again. They now answer the miss from the hot shard; the
+  answers are unchanged (each door is compared with the shard read and pins its sentinel), a relationship minted in the
+  window and stored on another shard, closed or open, is still found and changed, and a write that stores a row in the
+  window (a create, `PutNodeVersion`, `PutRelVersion`) still opens and wakes the shard, saved before the write, so a
+  later update of the new ID reaches it. Three rounds of 24 such misses with an idle sweep between opened the shard 72
+  times (checked out 78); now 0. Per round of 24 misses (`make measure`, `TestEmptyByID_MeasureWriteMisses`): 24 opens,
+  26 writable checkouts, 421,000 allocations and 2.46 GB allocated before; none, 168 allocations and 6.3 KB after
+  (`tasks/evidence/EMPTYBYID/measure.txt`). Tests: `TestEmptyByID_Writes*`, `_RepeatedWriteMisses*`,
+  `_WriteDoorsThatCreateARowStillWake`, `_UpdatesAfterALateWriteReachTheWokenShard`.
 
 ## [4.107.3] - 2026-11-13
 

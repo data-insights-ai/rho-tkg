@@ -633,9 +633,14 @@ that test.
   asks the hot shard instead (`readableOwner`, the route of an ID no window covers): node and relationship by ID, history,
   stamps, adjacency and the batched forms; a batch of relationship IDs and `LendRelationshipsSorted` leave those IDs
   pending for the other shards, so a relationship minted in the window but stored on its start node's shard is still found.
-  The create-existence probes of a reference node and of a relationship ID read, so they skip it too. A write into the
-  window, or a write that names an ID the shard would own (a delete or an update of an ID that is not there, a
-  relationship to an endpoint that is not there), still opens and wakes it.
+  The create-existence probes of a reference node and of a relationship ID read, so they skip it too. A write that
+  changes only a row its ID already has (an update, a delete, a label change, a history trim, an endpoint a relationship
+  create must find: `routeExisting`, the `shardFor…IDExisting` doors) takes the same route: a closed shard proven empty
+  holds no such row, so the write answers its own miss (`ErrNodeNotFound`, `ErrRelNotFound`) from the open hot shard and
+  neither opens nor wakes the shard (a relationship stored on another closed shard is still found by the probe of the
+  other shards, and that shard opens). A write that may store a row under the ID (a create, a history version through
+  `PutNodeVersion` or `PutRelVersion`, an ex-adjacency leg) is `routeWrite`: it opens the shard and wakes the mark,
+  saved before the write, and the doors that name the ID route to the woken shard again.
 
 - **ADR-0014 Whole-row replace** (WHOLEROW; designed 2026-10-31 for sigma-tkgd's paged-row writer, which rewrites a
   grown page row whole as one version with its full validity and reads it by `TxPin` plus the current row; shipped in
