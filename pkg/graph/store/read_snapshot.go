@@ -2,7 +2,7 @@ package store
 
 import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
-// ReadSnapshotCapability is OPTIONAL (backlog 55): a store that serves a run
+// ReadSnapshotCapability is OPTIONAL: a store that serves a run
 // of per-entity reads — an effective scan's timelines, one entity after the
 // other — through one read snapshot instead of one storage transaction per
 // read. Badger, sharded (one snapshot per slot) and tiered (one for the
@@ -40,7 +40,7 @@ type ReadSnapshot interface {
 	Close()
 }
 
-// ReadSnapshotLendCapability is OPTIONAL on a ReadSnapshot (row 121): the
+// ReadSnapshotLendCapability is OPTIONAL on a ReadSnapshot: the
 // store's EntityLendCapability through the snapshot, so a scan that hands its
 // rows out frozen reads each row without a defensive copy. LendNode and
 // LendRelationship answer what GetNode and GetRelationship answer, as the

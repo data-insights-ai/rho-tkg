@@ -36,13 +36,13 @@ import (
 // read the new epoch, miss the row, and be cached as current (R14).
 //
 // It also holds the state cuts of node labels AND relationship types
-// (stateCut, backlog 28) under the same epoch and pin bound, so every replica
+// (stateCut) under the same epoch and pin bound, so every replica
 // stamp, node or relationship, feeds both detectors (noteAppliedStamp).
 type asOfColumnCache struct {
 	mu    sync.Mutex
 	epoch atomic.Uint64
 	cols  map[asOfCacheKey]*indexpkg.LabelDocValues
-	// order tracks LRU eviction order (BACKLOG 14f — was FIFO/insertion-order,
+	// order tracks LRU eviction order (was FIFO/insertion-order,
 	// which undercuts the cache's own stated goal once a workload exceeds
 	// asOfCacheCap distinct hot pins: a genuinely hot key inserted early would
 	// be evicted ahead of a key touched once and never again. Least-recently-
@@ -139,7 +139,7 @@ func minPastDated(cur, t types.Instant) types.Instant {
 // noteAppliedStamp feeds a replica-applied stamp — a put's TxFrom or a
 // tombstone's end (tombstoneEnd), node or relationship — to both detectors:
 // the high-water mark and the cached-pin bound (the state cuts hold
-// relationship types too). Callers run it after verification (BACKLOG 12f)
+// relationship types too). Callers run it after verification
 // and hold c.mu.Lock, so no build interleaves the apply's store write.
 func (c *Core) noteAppliedStamp(t types.Instant) {
 	c.asOfColumns.noteAppliedTx(t)
@@ -163,7 +163,7 @@ func tombstoneEnd(tm *types.TemporalMetadata) types.Instant {
 // as-of cache's detectors (noteAppliedStamp). A nil metadata or non-positive
 // TxFrom is ignored.
 //
-// BACKLOG 12f: every apply_record.go call site invokes this AFTER property/hash
+// Every apply_record.go call site invokes this AFTER property/hash
 // verification succeeds, never before. A record that will ultimately be
 // REJECTED (oversized properties, a hash mismatch) must not be counted as
 // "applied" for the out-of-order detector — doing so would be an unforced
@@ -179,7 +179,7 @@ func (c *Core) noteAppliedTxFrom(tm *types.TemporalMetadata) {
 
 // noteClampedClose reports a delete that clamped a scheduled close (the row's
 // ValidTo lay after the delete instant, stampDeleteTombstone): the tombstone
-// rewrote a valid end every earlier pin reads (backlog 25), a history rewrite
+// rewrote a valid end every earlier pin reads, a history rewrite
 // for the cached pins whatever the delete's own stamp. Called after the
 // delete's store write.
 func (c *Core) noteClampedClose(clamped bool) {

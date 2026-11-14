@@ -37,14 +37,14 @@ func SelectAsOf[T TemporalRow](a types.ValidAxis, history []T, pin types.Instant
 //
 // The rule, in one place:
 //
-//   - Candidate: a row with 0 < TxFrom <= pin (recorded-by-then; lesson 43
-//     keeps TxTo out of the candidacy test — superseded is not un-recorded).
+//   - Candidate: a row with 0 < TxFrom <= pin (recorded-by-then; TxTo
+//     stays out of the candidacy test — superseded is not un-recorded).
 //   - Newest: among candidates, the one with the highest VERSION ordinal.
 //     Versions are allocated one above the chain's highest in write order
 //     (core version_alloc.go), so the highest version is the row written last.
 //     Recency is by version, not by TxFrom: an Update derives its TxFrom via
 //     validInstantAfter and can bump it above a later write's plain now()
-//     stamp (lesson 62).
+//     stamp.
 //   - Current arm: a live current row that is a candidate and not retracted
 //     (TxTo == 0) answers unless a history row ABOVE its version was recorded
 //     at or after it and by the pin — the rows a bounded SetVersionInterval
@@ -55,7 +55,7 @@ func SelectAsOf[T TemporalRow](a types.ValidAxis, history []T, pin types.Instant
 //     later write supersedes the current row, so the answer at a pin never
 //     depends on later writes. History rows above the current version
 //     recorded before it (a re-imported ID's earlier life, in a chain stored
-//     before backlog 38: a re-import now starts above every version of the
+//     before the fix: a re-import now starts above every version of the
 //     chain) never answer for it,
 //     and none of them does once one carries a retraction (TxTo at or after
 //     its TxFrom): a live current row never has a superseded or deleted row
@@ -69,8 +69,8 @@ func SelectAsOf[T TemporalRow](a types.ValidAxis, history []T, pin types.Instant
 //   - Retraction: if the newest row was superseded or hard-deleted by the pin
 //     (TxTo != 0 && TxTo <= pin, or DeletedAt != 0 && DeletedAt <= pin) the
 //     entity is ABSENT; the selector never falls through to an older still-open
-//     row (lesson 62).
-//   - A tombstone ends its life (handover 2a): a cascade row can sit ABOVE the
+//     row.
+//   - A tombstone ends its life: a cascade row can sit ABOVE the
 //     tombstoned row (written while that row kept the current slot), so the
 //     newest row need not be the deleted one. The highest-version row below the
 //     newest that carries a TxTo is the row that held the current slot when
@@ -112,7 +112,7 @@ func SelectAsOfWithCurrent[T TemporalRow](a types.ValidAxis, history []T, curren
 			// or after their TxFrom) belong to an earlier life of the ID — a
 			// live current row never has a superseded or deleted row above
 			// it — so none of them answers for the current one (a re-import
-			// stored before backlog 38, possibly with a backfilled TxFrom
+			// stored before re-imports started above every version, possibly with a backfilled TxFrom
 			// inside that life).
 			for _, h := range seq[:len(seq)-1] {
 				if tm, ok := h.TemporalByValue(); ok && tm.TxTo != 0 && tm.TxTo >= tm.TxFrom {
@@ -173,8 +173,8 @@ func openInWrite[T TemporalRow](a types.ValidAxis, seq []T, i int, pin types.Ins
 
 // NormalizeTemporalVisibleAtTxTime rewinds tm in place to the belief state as
 // of txTime: a TxTo or a delete recorded after txTime is removed, with the
-// ValidTo the delete wrote (types.TemporalMetadata.DeleteWroteValidTo) and its markers (a retraction,
-// backlog 43; a kept ValidTo). It is the one rewind of the core as-of and
+// ValidTo the delete wrote (types.TemporalMetadata.DeleteWroteValidTo) and its markers (a retraction;
+// a kept ValidTo). It is the one rewind of the core as-of and
 // pinned doors and the memory store's pinned reads. The reopened end is the
 // store's valid axis a's open end.
 func NormalizeTemporalVisibleAtTxTime(a types.ValidAxis, tm *types.TemporalMetadata, txTime types.Instant) {
@@ -205,7 +205,7 @@ func OwnOpenAtTxTime(a types.ValidAxis, tm *types.TemporalMetadata, pin types.In
 // the newest row desc[i] was recorded — the first lower row (desc is newest
 // first) carrying a TxTo at or after its own TxFrom — is a tombstone deleted
 // after desc[i] was recorded and by pin. A TxTo below its row's TxFrom is a
-// stamp a cascade written before v4.46 copied from its source row (backlog 14):
+// stamp a cascade written before v4.46 copied from its source row:
 // that row never held the slot, so it is passed over.
 func lifeEndedAtTxTime[T TemporalRow](desc []T, i int, pin types.Instant) bool {
 	top, _ := desc[i].TemporalByValue() // a candidate: it has one

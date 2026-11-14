@@ -15,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 72: the equality doors page from sorted posting lists. This
+// The equality doors page from sorted posting lists. This
 // differential runs random node and relationship writes, replaces (property,
 // label and valid-time changes), deletes, and index creation after data
 // exists, on memory, badger and a two-shard sharded store, and checks every

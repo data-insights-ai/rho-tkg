@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 75 (ai-soc 2026-10-15): a page with a valid filter prunes its
+// Valid-filter pruning (ai-soc 2026-10-15): a page with a valid filter prunes its
 // candidates by the valid-time envelope index (CreateRelTemporal /
 // CreateTemporal) before it reads their timelines.
 

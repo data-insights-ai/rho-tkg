@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Windowed membership (ledger row 62, sigma-tkgd 2026-10-16): each posting
+// Windowed membership (sigma-tkgd 2026-10-16): each posting
 // carries the valid-time state of the member's rows that carry the value, so a
 // lookup "members of v whose rows may meet [a, b) at transaction time P" reads
 // O(log n + k + r) through a per-value view instead of every member: k the

@@ -90,7 +90,7 @@ func rsRender(r snapReads) string {
 	return b.String()
 }
 
-// TestReadSnapshotAnswersAsTheStore (backlog 55): one read snapshot, kept
+// TestReadSnapshotAnswersAsTheStore: one read snapshot, kept
 // across steps as an effective scan keeps it within a chunk (released where a
 // chunk ends), answers each read of node 1 and relationship 7 exactly as the
 // store's own method does at that moment — rows only in the write buffer,

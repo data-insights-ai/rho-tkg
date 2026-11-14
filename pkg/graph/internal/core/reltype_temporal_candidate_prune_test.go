@@ -13,7 +13,7 @@ import (
 )
 
 // relDocProbe mirrors docProbe (temporal_candidate_prune_test.go) for the
-// rel-type-keyed mirror (BACKLOG 21c).
+// rel-type-keyed mirror.
 type relDocProbe struct {
 	name string
 	opts storepkg.QueryOpts
@@ -90,7 +90,7 @@ func queryRelDocNames(t *testing.T, g *Core, names map[types.RelID]string, opts 
 }
 
 // TestRelTypeTemporalCandidatePruneEquivalence is the rel-side mirror of
-// TestTemporalCandidatePruneEquivalence (BACKLOG 21c): a temporal ByType query
+// TestTemporalCandidatePruneEquivalence: a temporal ByType query
 // MUST return the identical result whether or not a rel-type valid-time
 // envelope index exists.
 func TestRelTypeTemporalCandidatePruneEquivalence(t *testing.T) {
@@ -189,7 +189,7 @@ func runRelPruneEquivalence(t *testing.T, newStore func(t *testing.T) storepkg.M
 	}
 }
 
-// TestRelTypeTemporalCandidatePruneTieredWired pins backlog 10: the tiered
+// TestRelTypeTemporalCandidatePruneTieredWired pins that the tiered
 // store implements RelTypeTemporalCandidateCapability (per-shard envelope
 // indexes, tiered/shard_index_fanout.go), so core wires the prune and
 // CreateRelTemporal succeeds. The answers are pinned against badger in

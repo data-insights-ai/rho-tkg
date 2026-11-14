@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 43 (retraction): the marker a Retract door writes on its tombstone
+// Retraction: the marker a Retract door writes on its tombstone
 // (types.TemporalMetadata.Retracted, wire key "rx") must survive every wire
 // door a row passes through — the full checked decode (badger rows, export /
 // import, change-feed bodies, replica apply), the selection-scope partial

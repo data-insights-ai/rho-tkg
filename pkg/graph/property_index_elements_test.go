@@ -127,7 +127,7 @@ func checkElementsFixture(t *testing.T, g *graphpkg.Graph, label string, f eleme
 	}
 }
 
-// Backlog 63 (sigma R6): an Elements index makes ByLabelAndProperty mean "the
+// Sigma R6: an Elements index makes ByLabelAndProperty mean "the
 // list contains the value" at current, TxPin, TxAt+ValidAt and interval reads.
 // Pins duplicates once, empty/nil nothing, scalar as one-element list, mixed
 // lists (exact type, no nesting), rel parity, refused combinations, reopen, on-disk.

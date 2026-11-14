@@ -38,7 +38,7 @@ func (s *nodeOpsSpy) DocValuesSnapshotMultiOrdinal(labels []string, propKeys []s
 }
 
 // TestRound10DoorsForward: the round 10 node doors forward their arguments
-// and the Ops' answer and error; a nil API reports the nil graph (rule 1).
+// and the Ops' answer and error; a nil API reports the nil graph.
 func TestRound10DoorsForward(t *testing.T) {
 	wantErr := errors.New("ops failed")
 	spy := &nodeOpsSpy{err: wantErr}

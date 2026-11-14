@@ -7,13 +7,13 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// EntityValidFrom is THE start rule for a row (backlog 62) on the store's
+// EntityValidFrom is THE start rule for a row on the store's
 // valid axis a (types.ValidAxis.Start with the ID's mint instant): its
 // claimed ValidFrom, else (legacy axis only) its UntimedValidFrom. Every
 // valid-time door — the chain resolver, the store push-down, the temporal
 // index envelopes, the column filters — takes a row's start from here, so a
 // create and a later version without a valid-from start on one clock.
-// Config.UntimedValidStart needs no branch here (backlog 73, round 11): the
+// Config.UntimedValidStart needs no branch here: the
 // mode stores its untimed starts explicitly (types.UnboundedValidFrom), and
 // the axis fixed at open says whether a stored 0 is a claim.
 func EntityValidFrom(a types.ValidAxis, id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
@@ -121,7 +121,7 @@ func MatchesTemporalFilterFrom(a types.ValidAxis, from types.Instant, tm *types.
 // This function and MatchesInterval are the CANONICAL entity-level temporal
 // predicates. The store backends use them for query push-down and the core
 // graph layer delegates its nodeValidFrom/relValidFrom/validity helpers here
-// — the semantics must never be redefined elsewhere (lesson 17: a fix behind
+// — the semantics must never be redefined elsewhere (a fix behind
 // one door must not miss the other).
 func MatchesPointInTime(a types.ValidAxis, id snowflake.ID, tm *types.TemporalMetadata, t types.Instant) bool {
 	from := EntityValidFrom(a, id, tm)

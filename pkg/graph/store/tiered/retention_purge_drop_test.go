@@ -278,7 +278,7 @@ func TestTieredColdShardFastDrop_CloseDoesNotRaceEventShardsMap(t *testing.T) {
 }
 
 // TestTieredColdShardFastDrop_CatalogSaveFailureLeavesShardIntact guards
-// BACKLOG 19b: dropOneShard must durably commit the catalog removal BEFORE
+// the catalog-commit ordering: dropOneShard must durably commit the catalog removal BEFORE
 // deleting the shard directory, with an in-memory rollback (catalog +
 // routing) on a failed Save — mirroring RotateHotShard's discipline. Before
 // the fix, the directory was removed FIRST; a Save failure (or a crash in

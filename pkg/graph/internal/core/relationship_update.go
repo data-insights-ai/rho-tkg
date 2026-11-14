@@ -166,7 +166,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 		}
 	}
 	// A tkg_valid_to without a tkg_valid_from closes the version as CloseVersion
-	// does: it keeps its start and ends there (backlog 65).
+	// does: it keeps its start and ends there.
 	var closeStart types.Instant
 	if tmp.closesVersion(c.axis()) {
 		if closeStart, err = c.checkRelClose(current, startID, endID, "tkg_valid_to", tmp.validTo); err != nil {
@@ -290,7 +290,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	}
 
 	// Atomic replace + history — single store call prevents orphaned history
-	// entries. Routes through the BACKLOG 11f scoped sibling when ctx carries a
+	// entries. Routes through the scoped sibling when ctx carries a
 	// scoped change-log token and the store supports it — mirrors
 	// putGeneratedNode's routing pattern. FOUNDATION ONLY: nothing constructs a
 	// token-carrying ctx yet (see scope_token.go), so this branch is currently
@@ -547,7 +547,7 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 		tm.ValidTo = tmp.validTo
 	}
 	if !c.axis().Open(tm.ValidTo) {
-		// The close rule (backlog 65): the row keeps its start, the end must follow it.
+		// The close rule: the row keeps its start, the end must follow it.
 		if err := checkCloseAfterStart("tkg_valid_to", tm.ValidTo, c.relValidFrom(current), "relationship"); err != nil {
 			return nil, false, err
 		}

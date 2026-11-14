@@ -113,7 +113,7 @@ func (s *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) 
 
 // GetNodesByIDs routes each requested ID to its shard, resolves per shard (all
 // missing → ErrNodeNotFound), and returns the union sorted by ID. Shard
-// buckets are read in PARALLEL (BACKLOG 20l) through the same bounded worker
+// buckets are read in PARALLEL through the same bounded worker
 // pool every other multi-shard read in this file uses (forEachShardErr) —
 // this was the one multi-shard read left applying its buckets sequentially.
 func (s *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
@@ -162,8 +162,7 @@ func (s *Store) GetNodesByIDsMetered(ids []types.NodeID, t *storecontract.ReadTa
 	return merged, nil
 }
 
-// GetRelationshipsByIDs mirrors GetNodesByIDs's parallel per-shard-bucket read
-// (BACKLOG 20l).
+// GetRelationshipsByIDs mirrors GetNodesByIDs's parallel per-shard-bucket read.
 func (s *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	return s.GetRelationshipsByIDsMetered(ids, nil)
 }

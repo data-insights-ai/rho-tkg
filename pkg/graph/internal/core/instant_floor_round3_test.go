@@ -16,7 +16,7 @@ import (
 // which was too broad: the seed door reads untrusted bytes off disk, but the
 // apply and import doors carry stamps for rows being committed RIGHT NOW. For
 // those, silently declining to raise the floor stores the row durably while
-// leaving NowTx() below it — reintroducing the exact lesson-71 anachronism the
+// leaving NowTx() below it — reintroducing the exact anachronism the
 // feature exists to close, and doing it silently.
 //
 // It is not exotic: a replica whose own clock is years behind the primary (a

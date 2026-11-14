@@ -10,8 +10,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// One version allocator for every row a write appends to an entity's chain
-// (backlog 18). A bounded SetVersionInterval appends rows ABOVE the current
+// One version allocator for every row a write appends to an entity's chain.
+// A bounded SetVersionInterval appends rows ABOVE the current
 // row's version while the current row keeps the store's current slot, so
 // "current.Version() + 1" is not a free version: an Update, CloseVersion,
 // label change or property CAS that used it wrote a second row with the
@@ -31,15 +31,16 @@ import (
 // Versions are dense along every write path, but history compaction trims the
 // oldest rows, which after bounded corrections lie directly above the current
 // row, and a direct Store.TruncateNodeHistory / TrimNodeHistoryFrom or a
-// re-import stored before backlog 38 can leave a gap too. The check above the
-// current row is therefore exact (nodeHasHistoryAbove, backlog 70): the point
+// re-import stored before re-imports continued the ID's chain can leave a gap
+// too. The check above the
+// current row is therefore exact (nodeHasHistoryAbove): the point
 // read of current+1 answers the dense chain, and only when it misses one page
 // read of at most one row looks past a gap. The stores' as-of fast paths use
 // the same rule (memory historyHasVersionAbove, badger liveHistoryAbove /
 // snapshotHistoryAbove).
 
 // nodeHasHistoryAbove reports whether node id has a history row above
-// version v. Exact (backlog 70): the point read of v+1 answers the common
+// version v. Exact: the point read of v+1 answers the common
 // dense chain; when v+1 is absent one history page read of at most one row
 // from v+2 (memory and badger answer it from their upper bound of the top version
 // without reading rows when none lies above) finds a row above a gap — history compaction
@@ -176,8 +177,8 @@ func (c *Core) nextRelVersion(id types.RelID, current *types.Relationship) (uint
 }
 
 // A re-import of a deleted ID (Nodes().Import, Rels().Import,
-// Nodes().AddByIDIfAbsent and the GraphTx twins) continues the ID's chain
-// (backlog 38). History is keyed by version: a re-import that restarted at
+// Nodes().AddByIDIfAbsent and the GraphTx twins) continues the ID's chain.
+// History is keyed by version: a re-import that restarted at
 // version 0 had its row stored under the earlier life's version-0 key by the
 // first write that moved it to history (an Update, CloseVersion, a cascade),
 // and the earlier row was gone — a pin taken before that write answered

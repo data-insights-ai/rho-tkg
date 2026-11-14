@@ -49,7 +49,7 @@ func axisOrderCheck(t *testing.T, g *graphpkg.Graph, what string) {
 	}
 }
 
-// TestImportAdoptsAxisBeforeRows (row 81): an empty default-mode target with
+// TestImportAdoptsAxisBeforeRows: an empty default-mode target with
 // a temporal and a property index adopts an UntimedWholeAxis export's axis
 // before it writes the first row, so the store's envelopes and buckets are
 // built on the literal axis (they were built on the legacy one and answered

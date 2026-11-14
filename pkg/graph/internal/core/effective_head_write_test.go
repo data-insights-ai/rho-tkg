@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 68b (sigma R10, the write side): a correction of an entity whose
+// Sigma R10, the write side: a correction of an entity whose
 // head entry is valid reads a few rows, not its history — the GraphTx
 // rollback snapshot and the cascade's pre-chain both used to copy every row.
 
@@ -109,7 +109,7 @@ func TestR10bCorrectionReadsBoundedHistory(t *testing.T) {
 }
 
 // A GraphTx rollback keeps the rows above a gap that history compaction left
-// directly above the current row (found by the 68b twin on the path without a
+// directly above the current row (found by the head-write twin on the path without a
 // head entry): compaction trims the oldest history rows, which after bounded
 // corrections lie directly above the current row, and the snapshot probed
 // only version current+1 (dense versions), took the trim path and the
@@ -255,7 +255,7 @@ func relHistoryVersions(t *testing.T, g *Core, id types.RelID) []uint32 {
 	return out
 }
 
-// Backlog 70: every appending door allocates one above the highest version
+// Every appending door allocates one above the highest version
 // stored, also across a compaction gap directly above the current row (the
 // allocator probed only current+1 and wrote v1 beside v3).
 func TestVersionAllocatorAboveCompactionGap(t *testing.T) {
@@ -293,7 +293,7 @@ func TestVersionAllocatorAboveCompactionGap(t *testing.T) {
 	}
 }
 
-// Backlog 70 under 68b's rollback snapshot: with a head entry (top v3) a
+// Under the rollback snapshot: with a head entry (top v3) a
 // GraphTx that appends twice must write v4 and v5, so the rollback trim above
 // v3 removes them (the allocator wrote v1 and v2, and v1 survived).
 func TestTxRollbackAppendsAboveCompactionGap(t *testing.T) {
@@ -353,7 +353,7 @@ func TestTxRollbackAppendsAboveCompactionGap(t *testing.T) {
 	}
 }
 
-// Backlog 70, the stores' as-of fast paths: after a compaction gap above the
+// The stores' as-of fast paths: after a compaction gap above the
 // current row (current v0, history [3]) the row above the gap is the newest
 // belief and must answer as of the head pin — point and bulk, nodes and
 // relationships — as the as-of rule over the whole chain answers. The fast

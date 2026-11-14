@@ -21,12 +21,12 @@ var (
 	_ storecontract.PropertyTxMembershipStatsCapability = (*Store)(nil)
 )
 
-// Property membership sidecars (backlog 8, badger arm): one
+// Property membership sidecars (badger arm): one
 // indexpkg.PropertyTxMembers per declared property index a temporal lookup asked
 // for (value key -> rels/nodes whose rows ever carried it, with the lowest
 // TxFrom). Append-only supersets; the chain resolver stays the authority. A
 // clean close persists the built ones in the open image and a trusted reopen
-// restores them (backlog 74, badgerstore_open_image.go).
+// restores them (badgerstore_open_image.go).
 //
 // Every door writing a current row records via maintain*IndexesAdd under
 // idxMu.Lock, every history row next to its belief-watermark bump. History rows:
@@ -34,12 +34,12 @@ var (
 // PutRel/NodeVersion via enqueueVersionAgainstLazyBuilds. A sidecar in
 // relPropTx / nodePropTx is tracking; built marks it readable.
 //
-// Lazy build without blocking writers (lessons 63, 64): the first lookup of an
+// Lazy build without blocking writers: the first lookup of an
 // unbuilt sidecar starts a build pass (propTxPass) that, under idxMu.Lock, claims
 // every declared unbuilt sidecar of the kind and turns tracking on for each, reads
 // the invalidation generation, releases idxMu, captures the write-buffer overlay,
 // then scans committed current and history rows in one view, filling all of them
-// (backlog 74: one scan, not one per (type, key)). A row written before tracking
+// (one scan, not one per (type, key)). A row written before tracking
 // was on is in the overlay or the view (its door appended its op inside the same
 // idxMu section); a row written after is recorded by its door. A scan straddling an
 // invalidation is discarded and redone. The merge is a union with
@@ -54,13 +54,13 @@ type propTxSidecar[ID cmp.Ordered] struct {
 }
 
 // propTxBuildAttempts bounds rescans of a build that keeps losing to an
-// invalidation (lesson 24); then the lookup reports ErrIndexNotFound (full fold).
+// invalidation; then the lookup reports ErrIndexNotFound (full fold).
 const propTxBuildAttempts = 4
 
 // recordRelRowLocked records one relationship row a door writes (current or
 // history) into every built membership sidecar (K1 rel-type set and property
 // sets). Every row, not only creates: a row's TxFrom lowers the member's bound,
-// and its valid-time span joins the member's spans (ledger row 62). Caller
+// and its valid-time span joins the member's spans. Caller
 // holds idxMu (write).
 func (bs *Store) recordRelRowLocked(r *types.Relationship, current bool) {
 	bs.recordRelTypeMemberLocked(r)
@@ -140,7 +140,7 @@ func (bs *Store) recordNodePropTxLocked(n *types.Node, current bool) {
 }
 
 // recordRelReplacedLocked records prev, the copy of a current row an update
-// door moves to history, replaced by next (ledger row 62): K1 as any row,
+// door moves to history, replaced by next: K1 as any row,
 // and in the property sidecars prev ends at next (indexpkg.RecordReplaced).
 func (bs *Store) recordRelReplacedLocked(prev, next *types.Relationship) {
 	bs.recordRelTypeMemberLocked(prev)
@@ -172,7 +172,7 @@ func (bs *Store) recordNodeReplacedLocked(prev, next *types.Node) {
 }
 
 // forgetRelPropTxCurrentLocked notes that a delete door removed r's ID's
-// current row: its members keep their history envelopes only (ledger row 62).
+// current row: its members keep their history envelopes only.
 // Called once the delete is committed to the write path. Caller holds idxMu
 // (write).
 func (bs *Store) forgetRelPropTxCurrentLocked(r *types.Relationship) {
@@ -341,7 +341,7 @@ func (bs *Store) forEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 	return fmt.Errorf("graph: node property membership: lookup raced %d invalidations: %w", propTxBuildAttempts, ErrIndexNotFound)
 }
 
-// propTxPass is one running build pass (backlog 74). A pass claims every
+// propTxPass is one running build pass. A pass claims every
 // declared, usable sidecar of its kind that is neither built nor claimed, and
 // fills them all from ONE store scan (ai-soc paid 29 scans for 29 types). done
 // closes when the pass ends, installed or not: a lookup on a claimed sidecar
@@ -357,8 +357,7 @@ type propTxTarget[K comparable, ID cmp.Ordered] struct {
 	elements bool
 	scratch  *indexpkg.PropertyTxMembers[ID]
 	// rows collects the scanned rows; the install records them into scratch
-	// (indexpkg.RowScan: a replaced row ends at its replacing row, ledger
-	// row 62).
+	// (indexpkg.RowScan: a replaced row ends at its replacing row).
 	rows indexpkg.RowScan[ID]
 }
 
@@ -651,7 +650,7 @@ func nodeWireHasTarget(w *storepkg.NodeWire, byLabel map[uint16][]*nodePropTxTar
 
 // scanPropTxRows visits every stored row of one entity kind: current rows (curKind)
 // and history rows (histKind; 0 reads none). The write-buffer overlay is captured FIRST, then the
-// badger view opened (lessons 64, 74); a buffered op masks its committed key. A
+// badger view opened; a buffered op masks its committed key. A
 // history delta resolves its anchor from the overlay, then earlier committed rows
 // of the same entity, then the view.
 func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error) error {

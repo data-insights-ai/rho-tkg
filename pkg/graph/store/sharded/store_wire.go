@@ -8,8 +8,7 @@ import (
 )
 
 // Hand-written msgpack encoders/decoders for vectorDefBlob (vector_index.go)
-// and slotCatalog (catalog.go) — BACKLOG 15v, same reflection audit as
-// BACKLOG 15s/15t. Both are ADMIN/GROWTH-path types (vector index
+// and slotCatalog (catalog.go). Both are ADMIN/GROWTH-path types (vector index
 // definitions persist on index create/drop; the catalog persists once at
 // store create and is read at every open), not per-entity-write. Byte-
 // identity with the previous pure-reflection encoding is locked by the

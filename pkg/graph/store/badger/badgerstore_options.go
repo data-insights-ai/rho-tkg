@@ -29,7 +29,7 @@ var ErrInvalidEncryptionKeyLength = errors.New("graph: EncryptionKey length must
 // use: cfg.MemTableSize when explicitly tuned, else Badger's own stock
 // default. Resolved from badgerv4.DefaultOptions rather than hardcoded, so a
 // future Badger version bump that changes its default cannot silently desync
-// this from reality (BACKLOG 18m) — DefaultOptions builds a pure struct
+// this from reality — DefaultOptions builds a pure struct
 // literal, no I/O, so this is a cheap in-memory computation.
 func effectiveMemTableSize(cfg Config) int64 {
 	if cfg.MemTableSize > 0 {
@@ -273,12 +273,12 @@ var badgerOptionsHook func(badgerv4.Options) badgerv4.Options
 // EXPLICITLY before its read-only recovery probe; New runs it on the writable
 // open. Both are gated to a writable, on-disk store; the comparison uses the
 // EFFECTIVE MemTableSize (effectiveMemTableSize — cfg.MemTableSize when tuned,
-// else Badger's own stock default), not a raw cfg.MemTableSize > 0 check
-// (BACKLOG 18m): reverting an explicitly-tuned dir back to MemTableSize: 0
+// else Badger's own stock default), not a raw cfg.MemTableSize > 0 check:
+// reverting an explicitly-tuned dir back to MemTableSize: 0
 // ("use stock") is itself a shrink whenever stock is smaller than the
 // previous tuning, and un-gating on ">0" alone would skip exactly that
-// transition, reproducing the "Arena too small" os.Exit lesson 45 already
-// fixed for the explicit-to-smaller-explicit case.
+// transition, reproducing the "Arena too small" os.Exit already fixed for the
+// explicit-to-smaller-explicit case.
 // Idempotent: a second call after the flush finds nothing to do.
 func MigrateOversizedWAL(cfg Config) error {
 	if cfg.Dir == "" || cfg.InMemory {
@@ -328,7 +328,7 @@ func MigrateOversizedWAL(cfg Config) error {
 
 // guardReadOnlyOversizedWAL returns ErrOversizedWAL when a read-only open at
 // the EFFECTIVE MemTableSize (effectiveMemTableSize — cfg.MemTableSize when
-// tuned, else Badger's own stock default; BACKLOG 18m, same rationale as
+// tuned, else Badger's own stock default; same rationale as
 // MigrateOversizedWAL) would replay an oversized WAL and terminate the
 // process. A read-only open cannot flush, so there is no in-place recovery —
 // the caller must do one writable open (which migrates) first. Gated by

@@ -11,7 +11,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Ledger row 62: the windowed property membership on badger answers the same
+// The windowed property membership on badger answers the same
 // from the write path's records, from an open image after a clean close, and
 // from a build scan after a reopen from an older image or without one.
 
@@ -162,8 +162,8 @@ func TestPropTxWindow_WritePathImageScanAgree(t *testing.T) {
 
 // TestPropTxWindow_InstallRecordsOutsideLock — a build pass records its
 // scanned rows into the pass's private scratch before it takes idxMu: under
-// the lock only the merge into the live sidecar runs (review of ledger row
-// 62: the pairing and recording of 250,000 rows held every writer).
+// the lock only the merge into the live sidecar runs (review: the pairing and
+// recording of 250,000 rows held every writer).
 func TestPropTxWindow_InstallRecordsOutsideLock(t *testing.T) {
 	bs := newFlushParkStore(t, nil)
 	putTestNode(t, bs, 1, 9, nil)

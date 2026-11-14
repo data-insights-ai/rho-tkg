@@ -328,8 +328,9 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 // entityIndexSeekLocked visits once each live time-ordered entry under prefix
 // (a value prefix and axis) from seek on, up to the first key past reports
 // (nil: the prefix's end), with its value: the persisted keys' newest version
-// and the write buffer's, resolved per key (lesson 57). The walk takes every
-// version (AllVersions) and counts each loop entry (IteratorSteps, the boundary
+// and the write buffer's, resolved per key; a buffered entry
+// outside [seek, past) is not visited. The walk takes every version
+// (AllVersions) and counts each loop entry (IteratorSteps, the boundary
 // included), its seek (IteratorSeeks) and each live persisted entry it hands
 // on (DiskEntriesEmitted). budget (nil: none) is a read budget's admission
 // (R2): every entry the walk examines is charged as a candidate once, before

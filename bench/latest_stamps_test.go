@@ -16,7 +16,7 @@ import (
 // BenchmarkLatestStamps measures g.Rels().LatestStamps on one relationship
 // with 0 ("plain"), 100 and 1,000 history versions (updates; every tenth
 // step a bounded correction plus a correction inside it, whose pieces are
-// appended above the current row), memory and badger (backlog 30). On these
+// appended above the current row), memory and badger. On these
 // two backends the door is 0 allocs/op on a built sidecar and a cached current
 // row (tiered and sharded allocate per call: routing, and sharded copies the
 // current row); the regression
@@ -48,7 +48,7 @@ func BenchmarkLatestStamps(b *testing.B) {
 			})
 		}
 	}
-	// Rotating IDs over an entity cache far smaller than the IDs (backlog 42):
+	// Rotating IDs over an entity cache far smaller than the IDs:
 	// badger reads nearly every current row from disk, tiered routes to the
 	// owner shard, sharded asks the owner slot. These rows gate the current-row
 	// half: a door that decodes the whole row on a cache miss (v4.49.0: 25

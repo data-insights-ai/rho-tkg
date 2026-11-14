@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkPostingsWalk (backlog 72): one full walk over a value key of n
+// BenchmarkPostingsWalk: one full walk over a value key of n
 // members in pages of 1,024 through the composite door, as sigma's ListDerived
 // does. ns/op is one whole walk.
 func BenchmarkPostingsWalk(b *testing.B) {
@@ -39,7 +39,7 @@ func BenchmarkPostingsWalk(b *testing.B) {
 	}
 }
 
-// BenchmarkPostingsWrite (backlog 72): the cost of one row write that moves a
+// BenchmarkPostingsWrite: the cost of one row write that moves a
 // node between two value keys of the property and composite indexes, next to
 // a key of 1,000,000 members. The moved node's ID lies inside the big key's ID
 // range, so the sorted insert lands mid-key.
@@ -68,7 +68,7 @@ func BenchmarkPostingsWrite(b *testing.B) {
 	}
 }
 
-// BenchmarkPostingsCreateIndex (backlog 72): declaring a property index and a
+// BenchmarkPostingsCreateIndex: declaring a property index and a
 // composite index over 1,000,000 existing nodes of one value key (the 3-phase
 // build: snapshot, backfill, merge). ns/op is one create; the drop is untimed.
 func BenchmarkPostingsCreateIndex(b *testing.B) {

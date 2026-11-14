@@ -228,7 +228,7 @@ func TestGraphBadgerGetNodesValidAt_DeletedNode(t *testing.T) {
 	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	id := n.ID()
 
-	validTime := txNow(t, g) // after the creates, before the Delete (backlog 62: a row starts at its TxFrom)
+	validTime := txNow(t, g) // after the creates, before the Delete (a row starts at its TxFrom)
 
 	if err := g.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
@@ -268,7 +268,7 @@ func TestGraphBadgerSnapshot_IncludesDeletedNodes(t *testing.T) {
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 
-	snapshotTime := txNow(t, g) // after the creates, before the Delete (backlog 62)
+	snapshotTime := txNow(t, g) // after the creates, before the Delete
 
 	if err := g.Nodes.Delete(context.Background(), a.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)

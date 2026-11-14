@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
-// These tests exercise the BACKLOG 11f Batch C call sites directly
+// These tests exercise the scoped change-log Batch C call sites directly
 // (deleteNodeInternal's Phase B closure via deleteNodeLocked /
 // deleteRelationshipInternal on a fully wired *Core) — nothing in GraphTx
 // constructs a token-carrying context yet, so this is the only way to

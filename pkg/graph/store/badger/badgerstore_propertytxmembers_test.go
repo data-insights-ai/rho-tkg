@@ -14,10 +14,11 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Backlog 8, badger arm of the property membership sidecars: the lazy build
+// Badger arm of the property membership sidecars: the lazy build
 // runs without idxMu, so these tests drive the windows that protocol must
-// close (lessons 63, 64, 74). The door matrix lives in
-// pkg/graph/store/property_tx_members_test.go.
+// close (the unlocked collect window needs a write-generation guard, and the
+// write-buffer overlay is captured before the badger view opens). The door
+// matrix lives in pkg/graph/store/property_tx_members_test.go.
 
 const (
 	ptxT     uint16 = 31
@@ -446,7 +447,7 @@ func TestPropTxBuild_ConcurrentWritersStress(t *testing.T) {
 // 1 M rows) must not hold up a lookup whose sidecar it does not build: one on
 // a built index (B) and the first one on an index declared after the pass
 // started (C, its own pass). A lookup on an index the running pass claimed
-// (D) waits for that pass instead of scanning again (backlog 74). Faulty
+// (D) waits for that pass instead of scanning again. Faulty
 // implementations caught: one store-wide build mutex (B or C waits), a second
 // scan for D. Pass A is parked inside its scan; the deadline only bounds the
 // failure.

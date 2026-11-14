@@ -484,7 +484,7 @@ func TestIngestApplier_TakeFailureLocked_PrunesOnRead(t *testing.T) {
 	}
 }
 
-// TestIngestApplier_RecordFailureLocked_ConcurrentLoad guards BACKLOG 11e's
+// TestIngestApplier_RecordFailureLocked_ConcurrentLoad guards the
 // "untested under load or concurrency" half: many goroutines hammering
 // record/take concurrently through the SAME a.mu discipline every real
 // caller uses, run under -race to confirm the mutex genuinely serializes

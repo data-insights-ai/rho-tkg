@@ -9,7 +9,7 @@ import (
 
 // changeBodyGolden was captured via msgpack.Marshal on the change-log body
 // types BEFORE they had custom EncodeMsgpack methods (pure reflection-based
-// struct encoding, matching struct tags in changelog.go) — see BACKLOG 15s.
+// struct encoding, matching struct tags in changelog.go).
 // Locks the on-wire byte format across the switch to hand-written encoders:
 // if a future edit to any body type's EncodeMsgpack changes these bytes, a
 // change-log/replica-apply wire-format regression breaks cross-version
@@ -37,7 +37,7 @@ var changeBodyGolden = map[string]string{
 }
 
 // TestChangeBodyEncodeGolden proves every hand-written change-log body
-// EncodeMsgpack (BACKLOG 15s) produces byte-identical output to the previous
+// EncodeMsgpack produces byte-identical output to the previous
 // pure-reflection msgpack.Marshal encoding, for both the all-omitted-optional-
 // fields case and the every-optional-field-present case of each of the 10
 // body types.

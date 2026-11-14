@@ -12,14 +12,14 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Fixtures for the cascade-correctness tests (backlog 14, 18, 19 and the 2a
-// half of 20; git show 8d8100b3^:tasks/handover-effective-read-cost-20261009.md §2). One adapter
+// Fixtures for the cascade-correctness tests (git show
+// 8d8100b3^:tasks/handover-effective-read-cost-20261009.md §2). One adapter
 // drives a node or a relationship through the same scenario, so every test runs
-// node AND relationship (rule 2) on the four backends of txbBackends (memory,
+// node AND relationship on the four backends of txbBackends (memory,
 // badger in-memory, sharded, tiered). Every read is rendered as the exact set
 // of tracked entities a door returns ("B:v0 T:v3"), so a door that over- or
-// under-reports, or answers another version, fails the comparison (rule 16), and
-// the named and generic doors are rendered side by side (rule 17).
+// under-reports, or answers another version, fails the comparison, and
+// the named and generic doors are rendered side by side.
 
 const (
 	ccLabel = "C" // label of the tracked nodes
@@ -475,7 +475,7 @@ func (e *ccEnt) same(phase string, doors map[string]string, ids ...int64) string
 	return first
 }
 
-// views is a recorded set of answers at fixed coordinates, for the rule-15
+// views is a recorded set of answers at fixed coordinates, for the two-phase
 // "the past is remembered" comparison.
 type ccViews map[string]string
 
@@ -513,7 +513,7 @@ func (e *ccEnt) unchanged(phase string, before, after ccViews, ids ...int64) {
 		for _, id := range ids {
 			fmt.Fprintf(&chains, "\n chain %s:%s", e.names[id], e.chainString(id))
 		}
-		e.t.Fatalf("[%s %s] the past changed (rule 15):\n %s%s", e.kind(), phase, strings.Join(bad, "\n "), chains.String())
+		e.t.Fatalf("[%s %s] the past changed:\n %s%s", e.kind(), phase, strings.Join(bad, "\n "), chains.String())
 	}
 }
 

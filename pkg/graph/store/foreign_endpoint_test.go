@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 9i: ForeignEndpoint/ForeignIncomingEdge's doc comments used to read
+// ForeignEndpoint/ForeignIncomingEdge's doc comments used to read
 // as promising a staleness-window CHECK ("a cross-validation aid whose
 // staleness window is made explicit by AttestTx"), but Validate() only ever
 // checked AttestTx for presence (non-zero), never for age relative to local
@@ -27,7 +27,7 @@ func TestForeignEndpointValidate_AcceptsArbitrarilyOldAttestTx(t *testing.T) {
 		AttestTx: types.Instant(1), // as old as a positive Instant can be
 	}
 	if err := fe.Validate(); err != nil {
-		t.Fatalf("Validate with an arbitrarily old (but positive) AttestTx = %v, want nil — BACKLOG 9i: no staleness bound is enforced here by design", err)
+		t.Fatalf("Validate with an arbitrarily old (but positive) AttestTx = %v, want nil — no staleness bound is enforced here by design", err)
 	}
 }
 
@@ -70,7 +70,7 @@ func TestForeignIncomingEdgeValidate_AcceptsArbitrarilyOldAttestTx(t *testing.T)
 		AttestTx: types.Instant(1),
 	}
 	if err := e.Validate(); err != nil {
-		t.Fatalf("Validate with an arbitrarily old (but positive) AttestTx = %v, want nil — BACKLOG 9i: no staleness bound is enforced here by design", err)
+		t.Fatalf("Validate with an arbitrarily old (but positive) AttestTx = %v, want nil — no staleness bound is enforced here by design", err)
 	}
 }
 

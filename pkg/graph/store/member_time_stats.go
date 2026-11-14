@@ -13,7 +13,7 @@ type MemberTimeStats struct {
 	// included). A row written without either has none, and so has a row
 	// whose only bound is a start at -inf (types.UnboundedValidFrom, the
 	// untimed first version under Config.UntimedValidStart =
-	// UntimedUnbounded, backlog 73).
+	// UntimedUnbounded).
 	ExplicitValid int64
 	// LastEnded is the latest transaction instant at which a row of an entity
 	// whose rows ever carried the label (type) was ended: superseded, closed,
@@ -31,8 +31,8 @@ func (s MemberTimeStats) HistoryAfter(pin types.Instant) bool { return s.LastEnd
 // Eternal reports that no current member carries explicit valid time and no
 // member row was ever ended: every member is its one current row. Under
 // Config.UntimedValidStart = UntimedFromTxFrom (the default) such a row is
-// valid from its TxFrom (backlog 62), not from the beginning of time, so a read
+// valid from its TxFrom, not from the beginning of time, so a read
 // at valid instant t equals a read pinned at transaction time t; a consumer
 // must not drop the valid-time filter on the strength of Eternal alone. Under
-// UntimedUnbounded such a row is valid at every instant (backlog 73).
+// UntimedUnbounded such a row is valid at every instant.
 func (s MemberTimeStats) Eternal() bool { return s.ExplicitValid == 0 && s.LastEnded == 0 }

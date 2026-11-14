@@ -20,7 +20,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 30: Nodes().LatestStamps / Rels().LatestStamps. The definition the
+// Nodes().LatestStamps / Rels().LatestStamps. The definition the
 // door must equal at every moment: over the entity's current row (Get) and
 // every history row (History), txFrom is the largest TxFrom, txTo the largest
 // TxTo or DeletedAt (0 when none is set), deleted is true when the entity has

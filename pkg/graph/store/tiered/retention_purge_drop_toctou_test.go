@@ -9,7 +9,7 @@ import (
 )
 
 // TestTieredColdShardFastDrop_ForeignLabelDuringDrainBlocksTheDrop is the
-// BACKLOG 19e regression: dropOneShard's single-label eligibility check runs
+// TOCTOU regression: dropOneShard's single-label eligibility check runs
 // TWICE — once before the drain-unlink (a cheap early-out) and once AFTER the
 // drain completes (the AUTHORITATIVE check, since the drain is what makes the
 // shard's on-disk state quiescent/trustworthy). The second call's onlyLabel
@@ -138,7 +138,7 @@ func TestTieredColdShardFastDrop_ForeignLabelDuringDrainBlocksTheDrop(t *testing
 	// the discriminator this test needs is whether the ROTATED shard (and the
 	// row we wrote straight into it) still physically exists.
 	if got, err := held.GetNode(foreignID); err != nil {
-		t.Fatalf("foreign-labeled node lost — BACKLOG 19e regression (shard dropped despite a foreign label): %v", err)
+		t.Fatalf("foreign-labeled node lost — regression (shard dropped despite a foreign label): %v", err)
 	} else if !got.HasLabelTokenRaw(otherTok) {
 		t.Fatalf("foreign node label = %v, want token %d", got.AllLabelTokens(), otherTok)
 	}

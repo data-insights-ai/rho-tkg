@@ -101,7 +101,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 
 	ids, vf, vt := col.IDs(), col.ValidFrom(), col.ValidTo()
 	// The filter reads the effective start (an unset ValidFrom is the row's
-	// TxFrom, backlog 62); the batch reports the stored one (vf).
+	// TxFrom); the batch reports the stored one (vf).
 	eff := col.EffectiveValidFrom()
 	ords := bs.labelColumnOrdinals(token, col)
 	batch := newColumnBatch(len(props))
@@ -180,7 +180,7 @@ func (w validWindow) matches(f, t int64) bool {
 //
 // A point filter ValidAt=t is the interval [t, t+1): `from < t+1` is `from <= t`,
 // and `to > t` is unchanged — so one predicate serves both shapes. ValidAt -1 is
-// the window [-1, 0), a real one (ledger row 60). t = MaxInt64 saturates.
+// the window [-1, 0), a real one. t = MaxInt64 saturates.
 func columnarValidTimeWindow(a types.ValidAxis, opts storecontract.QueryOpts) (w validWindow, ok bool) {
 	if opts.HasValidAt() {
 		at := int64(opts.ValidAt)

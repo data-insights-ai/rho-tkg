@@ -8,7 +8,7 @@ import (
 )
 
 // TestColumnData_OtherPerBatch pins Other's lifetime across the batches of one
-// scan (backlog 48): nil on a batch without an Other cell — no allocation on the
+// scan: nil on a batch without an Other cell — no allocation on the
 // common path, and no mark carried over from an earlier batch.
 func TestColumnData_OtherPerBatch(t *testing.T) {
 	t.Parallel()

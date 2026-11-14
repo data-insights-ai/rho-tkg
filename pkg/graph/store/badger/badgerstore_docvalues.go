@@ -87,7 +87,7 @@ func (bs *Store) labelDocColumns(labelToken uint16, propKeys []string) (col *ind
 		return nil, 0, false, nil // membership not materialized in RAM → fall back
 	}
 
-	cur := bs.labelEpoch(labelToken) // per-label epoch: survives unrelated-label writes (BACKLOG 4b)
+	cur := bs.labelEpoch(labelToken) // per-label epoch: survives unrelated-label writes
 	bs.docMu.Lock()
 	col = bs.docColumns[labelToken]
 	bs.docMu.Unlock()
@@ -123,7 +123,7 @@ func (bs *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 		return nil, 0, false, nil
 	}
 
-	cur := bs.labelEpoch(labelToken) // per-label epoch: survives unrelated-label writes (BACKLOG 4b)
+	cur := bs.labelEpoch(labelToken) // per-label epoch: survives unrelated-label writes
 	bs.docMu.Lock()
 	col := bs.docColumns[labelToken]
 	bs.docMu.Unlock()
@@ -189,7 +189,7 @@ func (bs *Store) multiDocColumns(toks []uint16, propKeys []string) (col *indexpk
 		return nil, "", 0, false, nil // membership not materialized in RAM → fall back
 	}
 
-	cur := bs.multiLabelEpoch(toks) // monotonic sum of member per-label epochs (BACKLOG 4b)
+	cur := bs.multiLabelEpoch(toks) // monotonic sum of member per-label epochs
 	key = indexpkg.MultiLabelKey(toks)
 	bs.docMu.Lock()
 	col = bs.docColumnsMulti[key]
@@ -571,7 +571,7 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 			// memory store and as [mint, +inf) through Badger.
 			//
 			// FILTERING uses the effective start (storeutil.NodeValidFrom: an unset
-			// ValidFrom is the row's TxFrom, backlog 62), carried as the snapshot's
+			// ValidFrom is the row's TxFrom), carried as the snapshot's
 			// third column (DocValues.EffectiveValidFrom) and read by the column
 			// scan's filter and the zone map. Separating them keeps the row-path
 			// predicate identical while letting the reported column mean what it says.

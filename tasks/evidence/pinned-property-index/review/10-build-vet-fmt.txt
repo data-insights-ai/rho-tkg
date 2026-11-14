@@ -1,3 +1,0 @@
-BUILD_VET_OK
-gofmt:
-GOFMT_DONE

@@ -58,7 +58,7 @@ type QueryOpts struct {
 	// time: TxFrom <= TxAt only. 0 = no TX filter (current behaviour: any
 	// version regardless of when it was written). TxTo deliberately does NOT
 	// bound visibility — superseded is not retracted, so a version remains the
-	// authority for its valid-time slot at every later TxAt (see lesson 43; the
+	// authority for its valid-time slot at every later TxAt (the
 	// old TxTo-bounded predicate made NodeAtTx(oldVT, now) return nothing after
 	// any update). Combine with ValidAt / ValidStart / ValidEnd for bitemporal
 	// queries.

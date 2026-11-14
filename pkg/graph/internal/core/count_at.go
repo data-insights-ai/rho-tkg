@@ -11,7 +11,7 @@ import (
 //
 // Paths: no temporal filter/pagination/Depth is the store's O(1) label counter;
 // TxPin alone uses the cached as-of column set when present; TxAt (and ValidAt)
-// counts segments of the label's state cut (backlog 28, state_columns.go);
+// counts segments of the label's state cut (state_columns.go);
 // otherwise ByLabel's candidates are resolved, deciding a candidate on the row the
 // label scan already read when its current row alone decides, with nothing
 // materialized, sorted or paginated.

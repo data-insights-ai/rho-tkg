@@ -77,7 +77,7 @@ type TemporalIndex struct {
 	byID map[snowflake.ID]envelope
 	// posByID mirrors each id's CURRENT slice position so Extend finds an existing
 	// entry in O(1) (a linear scan made N Extends O(n^2)). Unlike byID it must be
-	// rebuilt after every re-sort and after Remove shifts entries (backlog 16h).
+	// rebuilt after every re-sort and after Remove shifts entries.
 	posByID map[snowflake.ID]int
 }
 
@@ -172,8 +172,8 @@ func unionTo(a, b types.Instant) types.Instant {
 // Extend inserts an entry for id, or UNIONs it into the existing entry:
 // [min(From), unionTo(To)]. Unlike Add (replace), this GROWS a per-node valid-time
 // ENVELOPE, so a node whose PAST version overlapped a probe stays a candidate
-// after its current version moves off (rule 16); the resolver filters the
-// over-inclusion. O(1) via posByID (backlog 16h). Caller holds the write lock.
+// after its current version moves off; the resolver filters the
+// over-inclusion. O(1) via posByID. Caller holds the write lock.
 func (ti *TemporalIndex) Extend(id snowflake.ID, from, to types.Instant) {
 	if ti == nil {
 		return
@@ -492,7 +492,7 @@ func PurgeNodeFromAllTemporalIndexes(idxs map[uint16]*TemporalIndex, id snowflak
 	}
 }
 
-// --- Relationship-type temporal indexes (BACKLOG 21c) ---
+// --- Relationship-type temporal indexes ---
 //
 // Mirror of the label-keyed helpers above, held in a SEPARATE map keyed by
 // rel-type token; label and rel-type token namespaces are independent and must

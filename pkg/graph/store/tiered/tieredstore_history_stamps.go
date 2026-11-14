@@ -34,8 +34,8 @@ func shardAnswer(f, t types.Instant, has bool, err error) (shardStamps, error) {
 // When one shard holds the ID's history its answer is the fold. When two or
 // more do, GetNodeHistory keeps ONE copy per version (the first source's,
 // mergeNodeHistorySources) and a fold of the shards' answers would count the
-// dropped copies (a version reused across shards: old collided chains,
-// backlog 26), so the rows are read through GetNodeHistory and folded — the
+// dropped copies (a version reused across shards: old collided chains),
+// so the rows are read through GetNodeHistory and folded — the
 // same rows, exact on every shape, paid only by entities whose history spans
 // shards.
 func (ts *Store) NodeHistoryStamps(nid types.NodeID) (types.Instant, types.Instant, bool, error) {

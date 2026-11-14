@@ -12,7 +12,7 @@ import (
 // TestGraphTx_ImportWithID_UnderChangeLog exercises a transaction importing
 // nodes AND a relationship by explicit ID with a store-global change-log
 // enabled: the tx's writes must be buffered into a scope (never emitted
-// eagerly) and their LSNs minted contiguously at Commit. As of BACKLOG 11f
+// eagerly) and their LSNs minted contiguously at Commit. As of
 // Batch F, badger (this test's backend) implements the full
 // storepkg.ScopedTxCapability, so lockActiveCoreWriteContext takes the
 // token-routed shared RLock path (tx.g.scopedChangeLog != nil), not the

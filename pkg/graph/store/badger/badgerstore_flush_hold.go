@@ -7,7 +7,7 @@ func (bs *Store) FlushesEveryMutation() bool {
 }
 
 // HoldMutationFlushes implements store.MutationFlushHoldCapability
-// (Config.DurableCommit under SyncWrites, backlog 52): until
+// (Config.DurableCommit under SyncWrites): until
 // ReleaseMutationFlushes, a mutation's flushIfNeeded leaves its writes pending
 // unless the pending buffer has reached the hold bound (Config.MaxPendingWrites,
 // DefaultMaxPendingWrites when 0, unbounded when negative). The caller holds

@@ -45,7 +45,7 @@ var ErrRecurrenceSpanTooLarge = errors.New("types: recurrence expansion span too
 // maxExpandSpan bounds Expand's [from, to) window. Without a cap, an
 // arbitrary caller-supplied span (e.g. a multi-million-year range) drives an
 // unbounded loop in expandByDay/expandMonthly/expandYearly — the same DoS
-// class as lesson 48 (untrusted-size-driven amplification), but via loop
+// class as untrusted-size-driven amplification, but via loop
 // iteration count rather than a single make() call. 1000 years comfortably
 // exceeds any realistic recurrence use case (this type models schedules
 // like "every Monday 9-5", not geological time — the existing

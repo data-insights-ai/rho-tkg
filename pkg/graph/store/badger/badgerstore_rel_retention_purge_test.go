@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestPurgeRelLegResidue (backlog 21): the tiered leg-residue primitive drops
+// TestPurgeRelLegResidue: the tiered leg-residue primitive drops
 // the in-leg, the out-leg and the ex-adjacency legs a purged relationship left
 // on a shard that never held its row, leaves a shard that still holds the row
 // alone (its own purge removes it whole), is idempotent, and rejects a

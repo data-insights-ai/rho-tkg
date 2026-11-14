@@ -85,7 +85,7 @@ func TestNodesRelating_AllThirteenRelations(t *testing.T) {
 		return got
 	}
 
-	// One relation at a time: exact-set (rule 16) — no over-report, no omission.
+	// One relation at a time: exact-set — no over-report, no omission.
 	for _, rel := range []types.AllenRelation{
 		types.Before, types.Meets, types.Overlaps, types.Starts, types.During,
 		types.Equals, types.Finishes, types.Contains, types.After, types.MetBy,
@@ -139,7 +139,7 @@ func TestNodesRelating_OpenQueryInterval(t *testing.T) {
 	assertNodeSet(t, "Relating{Meets}[100,∞)", gotM, fix["Meets"])
 }
 
-// TestNodesRelating_PredicateAnywhere is the two-phase history proof (rule 15):
+// TestNodesRelating_PredicateAnywhere is the two-phase history proof:
 // a node whose CURRENT (head) version does NOT relate as {Before} still matches
 // because an EARLIER version's interval did. If history were not retained the
 // query would return empty.
@@ -178,7 +178,7 @@ func TestNodesRelating_PredicateAnywhere(t *testing.T) {
 	assertNodeSet(t, "phase2 {During}(none)", before(types.During.Set()), nil)
 }
 
-// TestRelsRelating_AllThirteenRelations is the relationship mirror (rule 2).
+// TestRelsRelating_AllThirteenRelations is the relationship mirror.
 func TestRelsRelating_AllThirteenRelations(t *testing.T) {
 	g := newTxTimeGraph(t)
 	ctx := context.Background()

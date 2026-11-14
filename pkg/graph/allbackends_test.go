@@ -69,7 +69,7 @@ func allStoreBackendsWith(mut func(*graphpkg.Config)) []storeBackend {
 
 // forAllStoreBackends runs fn once per in-tree backend as a subtest.
 // txFromCfg pins a backend to UntimedFromTxFrom, for a test that asserts the
-// TxFrom start of an untimed create (backlog 62): since v4.57.0 a new store
+// TxFrom start of an untimed create: since v4.57.0 a new store
 // under the default is UntimedUnbounded (TestUntimedDefaultFlip).
 func txFromCfg(c *graphpkg.Config) { c.UntimedValidStart = graphpkg.UntimedFromTxFrom }
 

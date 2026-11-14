@@ -22,7 +22,7 @@ func putNumericNode(t *testing.T, ms *Store, id int64, v any) {
 }
 
 // TestMemoryStore_ForEachNodeByLabelPropertyRangeOrdered directly exercises the
-// memory store's ordered door (Testing Rule 1: direct test per public method).
+// memory store's ordered door (a direct test per public method).
 func TestMemoryStore_ForEachNodeByLabelPropertyRangeOrdered(t *testing.T) {
 	t.Parallel()
 	ms := New()

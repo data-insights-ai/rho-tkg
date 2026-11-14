@@ -10,14 +10,14 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Row 104, part A (sigma O1-3): is a retained pin's belief immutable under a
+// Part A (sigma O1-3): is a retained pin's belief immutable under a
 // retention PURGE? sigma's fingerprint check assumes that a pin rho still
 // answers returns the same belief later. Compaction keeps that (a prefix trim
 // refused below the stub's LastTrimmedTxTo). A purge does NOT: it hard-removes
 // whole entities (rows, history, no tombstone) and advances a watermark to
 // policy.Before, but a purged entity minted below Before was believed at every
 // pin from its creation on, including the pins at and above the watermark the
-// gates still answer. This test pins the behaviour as it is (René decides
+// gates still answer. This test pins the behaviour as it is (RH decides
 // whether purge semantics change):
 //
 //   - node purge (PurgeExpiredNodes): the purged node answers ErrNodeNotFound

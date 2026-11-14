@@ -8,7 +8,7 @@ import (
 )
 
 // TestTieredWireRoundTrip proves every hand-written store-level
-// persistence-type EncodeMsgpack/DecodeMsgpack pair (BACKLOG 15v) reproduces
+// persistence-type EncodeMsgpack/DecodeMsgpack pair reproduces
 // the original value exactly, including the nil-vs-empty-slice case for
 // temporalIndexFileData's non-omitempty fields.
 func TestTieredWireRoundTrip(t *testing.T) {

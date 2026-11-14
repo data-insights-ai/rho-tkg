@@ -6,7 +6,7 @@ import (
 
 // RelEffectiveTimelinesByProperties returns, for every tuple of property
 // values, the effective timelines at pin.Tx of the relationships of typeName
-// whose rows carry those values (row 105, sigma O1-3): result index i holds
+// whose rows carry those values (sigma O1-3): result index i holds
 // the segments whose row carries keys[j] = tuples[i][j] for every j (the
 // property equality of every equality door, types.EqualIndexValues: 3 matches
 // 3.0, NaN matches nothing, list membership does not count) and that meet

@@ -19,7 +19,7 @@ import (
 // O(1) full decodes (valid-time historical resolution).
 //
 // Row handling mirrors getNodeHistoryByPrefix exactly: overlay captured BEFORE
-// the badger View (lesson 64 ordering), overlay deletes mask scanned keys,
+// the badger View, overlay deletes mask scanned keys,
 // overlay sets win (byte-identical for append-only history keys), rows sorted
 // ascending by version. A FULL row is partially decoded (properties/labels/
 // hashes skipped, never materialized); a DELTA row's Meta already carries the
@@ -61,7 +61,7 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 // long history stops at the row that passes a limit, not after every row is
 // decoded.
 func (bs *Store) historyTemporalMetaByPrefixTallied(prefix []byte, node bool, t *storecontract.ReadTally) ([]storecontract.VersionTemporalMeta, error) {
-	// Overlay BEFORE the View — see getNodeHistoryByPrefix (lesson 64).
+	// Overlay BEFORE the View — see getNodeHistoryByPrefix.
 	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	metaOf := func(raw []byte) (storecontract.VersionTemporalMeta, error) {

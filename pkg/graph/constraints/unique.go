@@ -165,8 +165,8 @@ func (a *API) uniqueReady() (UniqueOps, error) {
 	uo, ok := ops.(UniqueOps)
 	if !ok {
 		// The underlying Ops implementation doesn't support unique-constraint
-		// management — a capability gap, not a nil/unwired graph (BACKLOG 8c:
-		// ErrNilGraph was the wrong sentinel here; a.ready() already returned
+		// management — a capability gap, not a nil/unwired graph (ErrNilGraph
+		// was the wrong sentinel here; a.ready() already returned
 		// it for the actual nil-graph case above).
 		return nil, storepkg.ErrCapabilityNotSupported
 	}

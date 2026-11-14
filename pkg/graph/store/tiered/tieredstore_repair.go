@@ -14,7 +14,7 @@ type RepairResult struct {
 	OrphanedInEntries    int // in/ entries without entity → deleted
 	StaleInEntries       int // in/ entries whose entity has different type/end shard → deleted
 	MissingInEntries     int // entities without in/ → re-created
-	OrphanedRelEndpoints int // BACKLOG 19s: rel entities whose start or end node no longer
+	OrphanedRelEndpoints int // rel entities whose start or end node no longer
 	// exists anywhere → skipped and reported, NOT auto-deleted (ambiguous whether this
 	// is a genuine orphan or a transient mid-write race; deleting speculatively risks
 	// destroying a legitimate relationship on observation-window noise — see the door
@@ -156,7 +156,7 @@ func (ts *Store) runRepairStores(stores []namedStore) (*RepairResult, error) {
 			}
 			if startShard == nil || endShard == nil {
 				// A rel entity referencing a node that no longer exists
-				// anywhere (BACKLOG 19s) is a REPORTABLE finding, not a
+				// anywhere is a REPORTABLE finding, not a
 				// reason to abort the entire repair pass — Phase 1 already
 				// treats the symmetric case (an in/ entry with no backing
 				// entity) as an orphan to count, not an error. This can

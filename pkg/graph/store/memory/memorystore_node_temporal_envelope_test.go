@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 56, memory mirror of the badger envelope tests: the node temporal
+// Memory mirror of the badger envelope tests: the node temporal
 // envelope prunes, so once it covers an ID it must cover every row of that ID
 // carrying the label. Each test prunes at an instant only an old row covers;
 // the node must be kept.

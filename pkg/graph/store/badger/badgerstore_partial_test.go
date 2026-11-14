@@ -114,7 +114,7 @@ func TestPutRelEntityAndOutRejectsInvalidPayload(t *testing.T) {
 }
 
 // TestPutAndDeleteRelEntityAndOut_MaintainRelPropertyIndexAndTypeClassCounts
-// (BACKLOG 18l) pins that the partial-write doors keep the rel property index
+// pins that the partial-write doors keep the rel property index
 // and type-class counters in sync — the relationship ENTITY (unlike the
 // incoming-adjacency leg these doors deliberately skip) is fully resident on
 // this shard, so its property-value contribution is fully computable here.

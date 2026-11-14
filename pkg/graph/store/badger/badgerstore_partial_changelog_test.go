@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 18c: the TieredStore cross-shard split-write helpers
+// The TieredStore cross-shard split-write helpers
 // (PutRelEntityAndOut / PutRelIncoming / DeleteRelEntityAndOut /
 // DeleteRelIncoming) mutated state and appendOps'd write ops but never called
 // logChangeRaw — a cross-shard relationship create/delete was completely
@@ -67,7 +67,7 @@ func TestPutRelEntityAndOut_EmitsChangeRelPut(t *testing.T) {
 	recs := drainFeed(t, bs)
 	got := tagSeq(recs)
 	if len(got) != 3 || got[0] != storecontract.ChangeNodePut || got[1] != storecontract.ChangeNodePut || got[2] != storecontract.ChangeRelPut {
-		t.Fatalf("tags = %v, want [NodePut NodePut RelPut] — BACKLOG 18c regression (cross-shard rel create invisible to the feed)", got)
+		t.Fatalf("tags = %v, want [NodePut NodePut RelPut] — regression (cross-shard rel create invisible to the feed)", got)
 	}
 	body, err := storepkg.DecodeRelPut(recs[2].Payload)
 	if err != nil {
@@ -137,7 +137,7 @@ func TestDeleteRelEntityAndOut_EmitsChangeRelDelete(t *testing.T) {
 	got := tagSeq(recs)
 	if len(got) != 4 || got[0] != storecontract.ChangeNodePut || got[1] != storecontract.ChangeNodePut ||
 		got[2] != storecontract.ChangeRelPut || got[3] != storecontract.ChangeRelDelete {
-		t.Fatalf("tags = %v, want [NodePut NodePut RelPut RelDelete] — BACKLOG 18c regression (cross-shard rel delete invisible to the feed)", got)
+		t.Fatalf("tags = %v, want [NodePut NodePut RelPut RelDelete] — regression (cross-shard rel delete invisible to the feed)", got)
 	}
 	body, err := storepkg.DecodeRelDelete(recs[3].Payload)
 	if err != nil {

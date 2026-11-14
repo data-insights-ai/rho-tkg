@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
-// Backlog 49 review: GraphTx.AddRelationships writes graph-generated IDs,
+// Review finding: GraphTx.AddRelationships writes graph-generated IDs,
 // which have no earlier life, so on tiered its batch runs no earlier-lives
 // walk — the walk would build the relationship history-presence set of every
 // shard it asks. Same-shard and cross-shard rows both.

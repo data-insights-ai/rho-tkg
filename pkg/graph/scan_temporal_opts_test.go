@@ -1,6 +1,6 @@
 package graph_test
 
-// Item C (scan-temporal-opts), testing rules 15-17: the column scans
+// Item C (scan-temporal-opts): the column scans
 // (ScanNodeColumns / ScanRelColumns) and the numeric range scans
 // (Nodes().ForEachByLabelPropertyRange / Rels().ForEachByTypePropertyRange) are
 // doors with the same shape as ByLabel / ByType. Under a temporal QueryOpts they
@@ -12,7 +12,7 @@ package graph_test
 //   - "current-row push-down": the door forwards opts to the store, which filters
 //     LIVE rows by valid time. It drops an updated entity's old version (ValidAt
 //     before the update), a deleted entity (no live row), a node whose label was
-//     removed later (rule 16: the label held only on an earlier version), and
+//     removed later (the label held only on an earlier version), and
 //     yields the live value instead of the value at t.
 //   - "transaction-time pins ignored": QueryOpts.HasValidTimeFilter checks valid
 //     time only, so a TxAt / TxPin scan takes the unfiltered current-row shortcut:
@@ -49,7 +49,7 @@ import (
 //	F  value 60 valid from 1000, never touched
 //
 // pin is the transaction time of the last write before the post-pin mutations
-// (derived from the entities' own TxFrom, never the wall clock — lesson 60).
+// (derived from the entities' own TxFrom, never the wall clock).
 type scanOptsFixture struct {
 	pin   types.Instant
 	far   types.Instant
@@ -176,7 +176,7 @@ func scanOptsCases(fx scanOptsFixture) []scanOptsCase {
 			rels:  map[string]int64{"A": 20, "B": 30, "C": 40, "E": 70, "F": 60},
 		},
 		{
-			// Rule 16: D's most recent overlapping version lacks S; S held only on
+			// D's most recent overlapping version lacks S; S held only on
 			// the earlier version inside the interval, so D is found with it.
 			name:  "interval where the label held only on an earlier version",
 			opts:  graphpkg.QueryOpts{ValidStart: 1500, ValidEnd: fx.far},
@@ -409,8 +409,8 @@ func TestScanDoorsAgreeWithByLabelOpts_NodeColumns(t *testing.T) {
 	})
 }
 
-// TestScanDoorsAgreeWithByLabelOpts_RelColumns is the relationship mirror
-// (rule 2): catches the current-row push-down in ScanRelColumns (memory
+// TestScanDoorsAgreeWithByLabelOpts_RelColumns is the relationship mirror:
+// catches the current-row push-down in ScanRelColumns (memory
 // RelationshipsByType / segments, badger's columnar path) for a named type AND
 // for the every-type scan (relType ""), and the missing opts validation.
 func TestScanDoorsAgreeWithByLabelOpts_RelColumns(t *testing.T) {
@@ -533,8 +533,8 @@ func TestScanDoorsAgreeWithByLabelOpts_NodeRange(t *testing.T) {
 	})
 }
 
-// TestScanDoorsAgreeWithByLabelOpts_RelRange is the relationship mirror (rule
-// 2): catches the current-row push-down in Rels().ForEachByTypePropertyRange
+// TestScanDoorsAgreeWithByLabelOpts_RelRange is the relationship mirror:
+// catches the current-row push-down in Rels().ForEachByTypePropertyRange
 // (memory and badger ForEachRelByTypePropertyRange) and the index-required
 // decline under a temporal opt (tiered, sharded).
 func TestScanDoorsAgreeWithByLabelOpts_RelRange(t *testing.T) {
@@ -687,7 +687,7 @@ func TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound(t *testing.T) {
 }
 
 // TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound is the
-// ordered-sibling twin of RangeNeverDropsAtExclusiveBound (lesson 58): the
+// ordered-sibling twin of RangeNeverDropsAtExclusiveBound: the
 // temporal folds behind ForEachByLabelPropertyRangeOrdered /
 // ForEachByTypePropertyRangeOrdered must over-select like their index path
 // (docs/query-planners.md "Over-selecting candidate filter"). Faulty

@@ -16,7 +16,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestTieredTxMembershipAndValidEndMatchBadger (backlog 58): the same writes,
+// TestTieredTxMembershipAndValidEndMatchBadger: the same writes,
 // updates, deletes, valid-time closes and history on badger and on a disk tiered
 // store (reference shard, event shards, archive, a closed cold shard) must give
 // the same tx-membership, property-membership (since v4.58.0 the tiered

@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ex-adjacency (backlog 50). The store keeps, per node and direction, every
+// Ex-adjacency. The store keeps, per node and direction, every
 // relationship that named the node in a row its live adjacency no longer ties
 // to it — written in the same batch as each relationship delete and each
 // history row whose endpoints are not the live row's, by every door (Rels,

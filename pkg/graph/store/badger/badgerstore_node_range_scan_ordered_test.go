@@ -36,7 +36,7 @@ func orderedIDs(t *testing.T, bs *Store, desc bool) []int64 {
 // TestBadgerStore_ForEachNodeByLabelPropertyRangeOrdered directly exercises the
 // badger store's ordered door in BOTH RAM and disk (0x0A) modes, and — for
 // disk mode — both BEFORE and AFTER a flush (the disk ordered path merges the
-// pending-write overlay). Testing Rule 1: direct test per public method.
+// pending-write overlay). A direct test per public method.
 func TestBadgerStore_ForEachNodeByLabelPropertyRangeOrdered(t *testing.T) {
 	t.Parallel()
 

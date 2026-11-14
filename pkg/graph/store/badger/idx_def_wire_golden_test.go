@@ -9,7 +9,7 @@ import (
 
 // idxDefGolden was captured via msgpack.Marshal on the index-definition
 // persistence types BEFORE they had custom EncodeMsgpack methods (pure
-// reflection-based struct encoding, matching struct tags) — see BACKLOG 15v.
+// reflection-based struct encoding, matching struct tags).
 // Locks the on-wire byte format across the switch to hand-written encoders,
 // both for a single value and for the top-level slice shape the actual
 // persist* call sites use.
@@ -28,7 +28,7 @@ var idxDefGolden = map[string]string{
 }
 
 // TestIdxDefEncodeGolden proves every hand-written index-definition
-// EncodeMsgpack (BACKLOG 15v) produces byte-identical output to the previous
+// EncodeMsgpack produces byte-identical output to the previous
 // pure-reflection msgpack.Marshal encoding, both for a single value and for
 // the top-level-slice shape actually used at the persist* call sites.
 func TestIdxDefEncodeGolden(t *testing.T) {

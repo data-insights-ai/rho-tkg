@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Valid-time excise (backlog 64, sigma R7): ExciseNodeValidity /
+// Valid-time excise (sigma R7): ExciseNodeValidity /
 // ExciseRelValidity end an entity's validity over [a, b) and keep it outside.
 // It is the cascade (temporal_cascade.go) with void pieces: over every part of
 // [a, b) where a version is valid as believed before the call, the kernel

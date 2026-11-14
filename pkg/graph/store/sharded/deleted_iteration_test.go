@@ -14,7 +14,7 @@ import (
 // actually fail with it.
 var _ storecontract.DeletedIterationCapability = (*Store)(nil)
 
-// BACKLOG 20f: sharded.Store had no ForEachDeletedNodeID/ForEachDeletedRelID
+// sharded.Store had no ForEachDeletedNodeID/ForEachDeletedRelID
 // at all — storecontract.DeletedIterationCapability (unlike
 // TransactionTimeQuery, HistoryRollbackTrim, label/rel-type-tx membership,
 // and depth iteration, which sharded's package doc comment explicitly
@@ -64,7 +64,7 @@ func TestForEachDeletedNodeID_FoldsAcrossShards(t *testing.T) {
 	}
 
 	if len(got) != len(deleted) {
-		t.Fatalf("ForEachDeletedNodeID visited %d IDs, want %d (deleted set from every shard) — BACKLOG 20f regression", len(got), len(deleted))
+		t.Fatalf("ForEachDeletedNodeID visited %d IDs, want %d (deleted set from every shard) — regression", len(got), len(deleted))
 	}
 	gotSet := map[types.NodeID]bool{}
 	for _, id := range got {
@@ -118,7 +118,7 @@ func TestForEachDeletedRelID_FoldsAcrossShards(t *testing.T) {
 	}
 
 	if len(got) != len(deleted) {
-		t.Fatalf("ForEachDeletedRelID visited %d IDs, want %d — BACKLOG 20f regression", len(got), len(deleted))
+		t.Fatalf("ForEachDeletedRelID visited %d IDs, want %d — regression", len(got), len(deleted))
 	}
 	gotSet := map[types.RelID]bool{}
 	for _, id := range got {
@@ -201,7 +201,7 @@ func TestShardedStore_ForEachDeletedNodeID(t *testing.T) {
 		t.Fatalf("ForEachDeletedNodeID: %v", err)
 	}
 
-	// Exact-set assertion (rule 16): exactly the two deleted IDs, nothing else.
+	// Exact-set assertion: exactly the two deleted IDs, nothing else.
 	want := map[snowflake.ID]struct{}{
 		del0.ID().SnowflakeID(): {},
 		del3.ID().SnowflakeID(): {},

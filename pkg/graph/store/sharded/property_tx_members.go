@@ -5,7 +5,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Property membership sidecars (backlog 8): every shard is a badger store with
+// Property membership sidecars: every shard is a badger store with
 // its own sidecar over its own rows, and the property index DDL fans out to
 // every shard (rel_property_index.go), so the store-wide ever-members of a
 // value are the union of the shards' members. A re-sharding move leaves a

@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 19g: putRelationshipLocked's E→R split-write ordering (in/ first,
+// putRelationshipLocked's E→R split-write ordering (in/ first,
 // then entity+out/) has no rollback path for a process CRASH between the two
 // writes (only for a synchronous failure on the second write, which the
 // existing rollback already covers). A crash after the first write leaves a
@@ -59,10 +59,10 @@ func TestIncomingRelationships_SkipsPhantomInEntryFromCrashedCrossShardWrite(t *
 	// report the never-fully-committed relationship as present.
 	got, err := ts.IncomingRelationships(refNode.ID(), relTok)
 	if err != nil {
-		t.Fatalf("IncomingRelationships with a phantom in/ entry present: %v — BACKLOG 19g regression: must skip unresolvable relIDs, not error", err)
+		t.Fatalf("IncomingRelationships with a phantom in/ entry present: %v — regression: must skip unresolvable relIDs, not error", err)
 	}
 	if len(got) != 0 {
-		t.Fatalf("IncomingRelationships = %d relationship(s), want 0 (phantom in/ entry has no backing entity) — BACKLOG 19g regression", len(got))
+		t.Fatalf("IncomingRelationships = %d relationship(s), want 0 (phantom in/ entry has no backing entity) — regression", len(got))
 	}
 
 	// Repair must still clean it up afterward — locks in that the query

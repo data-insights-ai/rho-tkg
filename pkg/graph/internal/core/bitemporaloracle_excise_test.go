@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestBitemporalOracleExercisesExcise guards the harness itself (backlog 64):
+// TestBitemporalOracleExercisesExcise guards the harness itself:
 // over the harness's own seeds the op mix applies excises (void pieces the
 // probes then resolve against) and also meets refused ones (a span where
 // nothing is valid). Catches an op-mix change that silently stops drawing

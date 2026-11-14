@@ -19,8 +19,8 @@ import (
 // brute-force scan is silently wrong forever. Twin-graph design: graph I
 // (indexed) and graph U (never indexed) receive IDENTICAL operation streams;
 // every query must agree exactly at every checkpoint — including after
-// mutations that the 3-phase index build (lesson 11) must not lose, and for
-// special float values whose printable form loses equality detail (lesson 23).
+// mutations that the 3-phase index build must not lose, and for special
+// float values whose printable form loses equality detail.
 
 type twinGraphs struct {
 	indexed, plain *graphpkg.Graph
@@ -99,8 +99,8 @@ func TestPropertyIndexAgreesWithBruteForceTwin(t *testing.T) {
 			return g.Nodes().Add(ctx, []string{"Scored"}, map[string]any{"who": who, "score": score})
 		})
 	}
-	// Adversarial value matrix: duplicate values, special floats (lesson 23:
-	// index keys must preserve the equality contract, including NaN and ±0),
+	// Adversarial value matrix: duplicate values, special floats (index
+	// keys must preserve the equality contract, including NaN and ±0),
 	// and type-distinct numerics.
 	add("a", int64(10))
 	add("b", int64(10))
@@ -147,7 +147,7 @@ func TestPropertyIndexAgreesWithBruteForceTwin(t *testing.T) {
 	assertQueryAgreement(t, tw, "Scored", "score", int64(20), storepkg.QueryOpts{}, "post-mutation-new-value")
 }
 
-// Lesson 11's exact risk: the 3-phase index build runs concurrently with
+// The exact risk of the 3-phase index build: it runs concurrently with
 // writers. Whatever interleaving happens, the final index must agree with
 // the never-indexed twin that received the same final state.
 func TestPropertyIndexBuiltUnderConcurrentWritesAgrees(t *testing.T) {

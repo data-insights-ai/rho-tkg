@@ -13,7 +13,7 @@ import (
 // These exist because g.Nodes.Labels / HasLabel / PrimaryLabel,
 // g.Rels.Type / HasType, and g.Resolve.NodeProperty / RelProperty all
 // acquire c.mu.RLock and deadlock when invoked inside an open *GraphTx
-// (BeginTx holds c.mu.Lock; sync.RWMutex is not reentrant — lesson 9).
+// (BeginTx holds c.mu.Lock; sync.RWMutex is not reentrant).
 // (*GraphTx).Labels et al. call the *Unlocked helpers directly and
 // inherit c.mu.Lock from the tx.
 

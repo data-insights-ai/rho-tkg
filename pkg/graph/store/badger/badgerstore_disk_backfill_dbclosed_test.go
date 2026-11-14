@@ -7,7 +7,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// BACKLOG 18o: commitPropertyIndexOnDiskBackfill / commitTemporalIndexOnDiskBackfill
+// commitPropertyIndexOnDiskBackfill / commitTemporalIndexOnDiskBackfill
 // use bs.db.NewWriteBatch()+wb.Flush(), the exact API class that hangs forever
 // (WaitForMark on a stopped oracle) when Flush is called after db.Close() —
 // unlike bs.db.Update, which self-guards via IsClosed() (see the flush()

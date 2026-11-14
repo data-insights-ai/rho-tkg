@@ -14,7 +14,7 @@ type Proof struct {
 // FreshGraphID is passed by core create paths immediately after generating a
 // snowflake ID from the graph's configured generators.
 //
-// BACKLOG 15n: a function, not a package-level var. A mutable exported var
+// A function, not a package-level var. A mutable exported var
 // holding this process-wide sentinel could be accidentally reassigned by any
 // importer (e.g. `generatedcreate.FreshGraphID = generatedcreate.Proof{}`,
 // legal since Proof's zero value is externally constructible even though its
@@ -39,7 +39,7 @@ type Capability interface {
 // RelationshipsBatchCapability is the optional generated-ID form of
 // PutRelationshipsBatch: every relationship carries a graph-generated ID, so a
 // store may skip the work a caller-supplied ID needs (tiered: the walk for
-// earlier lives on other shards, backlog 49).
+// earlier lives on other shards).
 type RelationshipsBatchCapability interface {
 	PutRelationshipsBatchGeneratedID(rels []*types.Relationship, proof Proof) error
 }
@@ -52,7 +52,7 @@ type RelationshipEndpointHashCapability interface {
 	PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relationship, proof Proof) (string, string, error)
 }
 
-// RelationshipEndpointHashScopedCapability is the BACKLOG 11f Batch A scoped
+// RelationshipEndpointHashScopedCapability is the Batch A scoped
 // counterpart of RelationshipEndpointHashCapability — FOUNDATION ONLY, see
 // store.ScopedTxChangeLog's doc comment for the full design rationale. It
 // behaves exactly like PutRelationshipGeneratedIDWithEndpointHashes except the

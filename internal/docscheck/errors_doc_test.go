@@ -173,12 +173,12 @@ var retentionSentinels = []string{
 	"ErrInvalidPurgePolicy",
 }
 
-// Admin.Reset safety valve (BACKLOG 13d)
+// Admin.Reset safety valve
 var adminResetSentinels = []string{
 	"ErrResetDisabled",
 }
 
-// Config.DisableIntegrityHashes (backlog 61)
+// Config.DisableIntegrityHashes
 var integrityHashSentinels = []string{
 	"ErrIntegrityDisabled",
 	"ErrIntegrityModeMismatch",
@@ -186,7 +186,7 @@ var integrityHashSentinels = []string{
 	"ErrInvalidUntimedValidStart",
 }
 
-// Config.DurableCommit (backlog 11)
+// Config.DurableCommit
 var durableCommitSentinels = []string{
 	"ErrCommitNotDurable",
 }
@@ -243,8 +243,8 @@ var capabilitySentinels = []string{
 	"ErrRelSegmentFileInvalid",
 }
 
-// TieredStore reference/event ontology sentinels (ADR-0007). BACKLOG 7c:
-// these three are declared in pkg/graph/store/tiered and reachable through
+// TieredStore reference/event ontology sentinels (ADR-0007). These
+// three are declared in pkg/graph/store/tiered and reachable through
 // THREE different sub-APIs (Tier/Index/Nodes), so pkg/graph/errors.go
 // re-exports them centrally rather than any single sub-API package growing
 // its own errors.go for them.
@@ -254,7 +254,7 @@ var tieredOntologySentinels = []string{
 	"ErrPrimaryLabelClassMutation",
 }
 
-// Ingest pipeline sentinels (ADR-0006). BACKLOG 7b: ErrNilSession was
+// Ingest pipeline sentinels (ADR-0006). ErrNilSession was
 // previously treated as an internal-core-only guard and deliberately
 // excluded here — that was wrong. ingest.Session is a TYPE ALIAS for
 // core.Session (pkg/graph/ingest/api.go: `type Session = core.Session`), not

@@ -11,8 +11,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 33: an effective scan (ForEachRelEffectiveByType /
-// ForEachNodeEffectiveByLabel, and the backlog-35 doors ForEachRelEffective,
+// An effective scan (ForEachRelEffectiveByType /
+// ForEachNodeEffectiveByLabel, and the doors ForEachRelEffective,
 // ForEachNodeEffectiveByLabels with several labels, Nodes/RelsEffectiveByIDs)
 // on badger reads each entity's current row once.
 // The faulty gather it names decodes every current row of the type or label

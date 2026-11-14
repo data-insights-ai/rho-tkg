@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
-// These tests exercise the BACKLOG 11f Batch B call sites directly
+// These tests exercise the Batch B call sites directly
 // (updateNodePreparedInternal / updateRelationshipPreparedInternal on a fully
 // wired *Core) — nothing in GraphTx constructs a token-carrying context yet,
 // so this is the only way to observe the routing end-to-end today. Mirrors

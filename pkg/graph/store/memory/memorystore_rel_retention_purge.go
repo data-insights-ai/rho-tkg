@@ -12,7 +12,7 @@ var (
 	_ storecontract.RelRangePurgeLogCapability  = (*Store)(nil)
 )
 
-// LogRelRangePurge appends ONE ChangeRelRangePurge record (backlog 21) so a
+// LogRelRangePurge appends ONE ChangeRelRangePurge record so a
 // replica re-executes the relationship predicate. No-op when the change-log is
 // disabled. See store.RelRangePurgeLogCapability.
 func (ms *Store) LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error {
@@ -39,8 +39,8 @@ func (ms *Store) LogRelRangePurge(typeToken uint16, before types.Instant, mode u
 	return nil
 }
 
-// PurgeRelsByTypeBefore is the memory relationship age purge (backlog 21,
-// store.RelRetentionPurgeCapability): up to `chunk` relationships of typeToken
+// PurgeRelsByTypeBefore is the memory relationship age purge
+// (store.RelRetentionPurgeCapability): up to `chunk` relationships of typeToken
 // minted before `before` — current rows (memtable and sealed) first, then IDs
 // that have only history rows of the type — leave with their legs, indexes,
 // sidecars and whole history, under one ms.mu.Lock. Nodes are untouched. No
@@ -99,7 +99,7 @@ func (ms *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 	}
 	if len(victims) > 0 {
 		// The purged rows' values must not outlive them in the property
-		// membership sidecars; rebuilt on the next temporal lookup (backlog 8).
+		// membership sidecars; rebuilt on the next temporal lookup.
 		ms.dropPropertyTxMembersLocked()
 	}
 	return storecontract.RetentionPurgeResult{RelsPurged: len(victims), More: more}, nil

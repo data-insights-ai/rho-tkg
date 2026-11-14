@@ -16,7 +16,7 @@ import (
 
 // Break-the-code tests for the caller-instant interval corrections
 // (Temporal().SetNodeVersionIntervalWithTx / SetRelVersionIntervalWithTx and
-// their GraphTx, BatchBuilder and ingest Session twins; backlog 34, ledger:
+// their GraphTx, BatchBuilder and ingest Session twins; ledger:
 // git show 6e20157c:tasks/evidence/interval-withtx/notes.md). Every test
 // names the faulty implementation it catches and runs on memory, badger
 // (in-memory), sharded and tiered, node and relationship, through every door.
@@ -232,7 +232,7 @@ func TestIntervalWithTx_StampsEveryAppendedRow(t *testing.T) {
 // accepted; the appended rows would sit at or below their predecessors); a
 // check with >= instead of > (t equal to the newest TxFrom accepted); a check
 // that reads only the current row (the binding stamp is on history rows a
-// correction appended above the current row — lesson 62 — and t between the
+// correction appended above the current row, and t between the
 // current row's TxFrom and that stamp is accepted); a check limited to the
 // rows overlapping the target interval (decision: the rule is about the
 // entity's chain, so a binding row outside [validFrom, validTo) still
@@ -615,7 +615,7 @@ func ivView(t *testing.T, g *Core, kind string, f ivFix, pin types.Instant, grid
 				}
 			}
 			if gen != s {
-				t.Fatalf("pin %d valid %d: NodeAtTx %s, ByLabel{ValidAt,TxAt} %s (rule 17)", pin, v, s, gen)
+				t.Fatalf("pin %d valid %d: NodeAtTx %s, ByLabel{ValidAt,TxAt} %s", pin, v, s, gen)
 			}
 		} else {
 			r, err := g.Temporal.RelAtTx(f.rid, v, pin)
@@ -638,7 +638,7 @@ func ivView(t *testing.T, g *Core, kind string, f ivFix, pin types.Instant, grid
 				}
 			}
 			if gen != s {
-				t.Fatalf("pin %d valid %d: RelAtTx %s, ByType{ValidAt,TxAt} %s (rule 17)", pin, v, s, gen)
+				t.Fatalf("pin %d valid %d: RelAtTx %s, ByType{ValidAt,TxAt} %s", pin, v, s, gen)
 			}
 		}
 		pointAt[v] = s
@@ -737,7 +737,7 @@ func ivPropAt(t *testing.T, g *Core, kind string, f ivFix, v, pin types.Instant,
 // 7 — the sigma-tkgd shape: a burst fact grows [vs,ve) -> [vs,ve') -> [vs,ve”)
 // at the record instants t1 < t2 of a replayed stream.
 //
-// Two-phase (rules 15, 17): before each growth the views at pin t_i - 1 are
+// Two-phase: before each growth the views at pin t_i - 1 are
 // recorded (ivView: AtTx and the generic ByLabel/ByType{ValidAt,TxAt} on a grid,
 // the as-of and {TxPin} doors, the effective timeline, which must agree with
 // AtTx); after it they are unchanged, pin t2 answers what the newest pin

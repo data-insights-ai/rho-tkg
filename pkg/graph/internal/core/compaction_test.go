@@ -238,7 +238,7 @@ func relState(t *testing.T, r *types.Relationship) string {
 	return v
 }
 
-// TestCompactHistoryRels_EndToEnd is the relationship mirror (Testing Rule 2).
+// TestCompactHistoryRels_EndToEnd is the relationship mirror.
 func TestCompactHistoryRels_EndToEnd(t *testing.T) {
 	t.Parallel()
 	for name, cfg := range compactionBackends() {
@@ -475,7 +475,7 @@ func TestCompaction_TamperedStubFailsVerify(t *testing.T) {
 
 // TestCompaction_ReopenDurability: after Close/reopen of a badger dir, the
 // watermark, stub, trimmed history, verify verdict, and ErrHistoryCompacted
-// signal all survive (rule 15 durability + two-phase).
+// signal all survive (durability + two-phase).
 func TestCompaction_ReopenDurability(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")

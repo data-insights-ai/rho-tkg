@@ -43,7 +43,7 @@ func seedColdReadNodes(t *testing.T, bs *Store, withVersion bool) []types.NodeID
 	return ids
 }
 
-// TestColdReadKeepsEveryProperty (row 121): a cold LendNode and a
+// TestColdReadKeepsEveryProperty: a cold LendNode and a
 // GetNodeVersion decode build the property slice once, with no canonical
 // re-copy; the decode must keep every property (an install without the copy
 // must not drop them). The bytes those reads allocate are

@@ -84,7 +84,7 @@ func TestChangeLog_DisabledByDefault(t *testing.T) {
 	}
 }
 
-// ─── NodePut / RelPut parity (rules 1, 2) ───────────────────────────────────
+// ─── NodePut / RelPut parity ────────────────────────────────────────────────
 
 func TestChangeLog_NodePutRelPutParity(t *testing.T) {
 	t.Parallel()
@@ -124,7 +124,7 @@ func TestChangeLog_NodePutRelPutParity(t *testing.T) {
 	}
 }
 
-// ─── Replace emits a fresh NodePut carrying the new state (rule 15) ──────────
+// ─── Replace emits a fresh NodePut carrying the new state (two-phase) ────────
 
 func TestChangeLog_TwoPhase_PutThenReplaceRemembersBoth(t *testing.T) {
 	t.Parallel()
@@ -200,7 +200,7 @@ func TestChangeLog_DeleteRelationship(t *testing.T) {
 }
 
 // Cascade emits EXACTLY ONE ChangeNodeDelete (not one per cascaded rel) carrying
-// the cascaded relationship IDs (rule 16 — exact-set, not over-reporting).
+// the cascaded relationship IDs (exact-set, not over-reporting).
 func TestChangeLog_DeleteNodeCascade_SingleRecordWithCascadedRels(t *testing.T) {
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
@@ -349,7 +349,7 @@ func TestChangeLog_RequeueLogPreservesOrder(t *testing.T) {
 	assertLSNContiguous(t, recs) // 1,2,3 ascending after the flush re-sort
 }
 
-// ─── History-version records (rule 2 parity) ────────────────────────────────
+// ─── History-version records (Node/Relationship parity) ──────────────────────
 
 func TestChangeLog_PutNodeVersion_And_PutRelVersion(t *testing.T) {
 	t.Parallel()
@@ -388,7 +388,7 @@ func TestChangeLog_PutNodeVersion_And_PutRelVersion(t *testing.T) {
 	}
 }
 
-// ─── Truncate / Trim records (rule 2 parity) ────────────────────────────────
+// ─── Truncate / Trim records (Node/Relationship parity) ──────────────────────
 
 func TestChangeLog_TruncateAndTrim(t *testing.T) {
 	t.Parallel()
@@ -753,7 +753,7 @@ func TestChangeLog_LogOnlyFlushPersists(t *testing.T) {
 	}
 }
 
-// ─── White-box: a corrupt 0x09 value fails the read closed (lesson 47) ───────
+// ─── White-box: a corrupt 0x09 value fails the read closed ───────
 
 func TestChangeLog_CorruptRecordFailsClosed(t *testing.T) {
 	t.Parallel()
@@ -774,7 +774,7 @@ func TestChangeLog_CorruptRecordFailsClosed(t *testing.T) {
 	}
 }
 
-// ─── Truncate/Trim — all four node/rel × keep-count/trim corners (rule 2/17) ──
+// ─── Truncate/Trim — all four node/rel × keep-count/trim corners ─────────────
 
 func TestChangeLog_TruncateRelHistory_And_TrimNodeHistory(t *testing.T) {
 	t.Parallel()
@@ -890,7 +890,7 @@ func TestChangeLog_LabelTokenWithHistoryDoors(t *testing.T) {
 	}
 
 	// AddNodeLabelTokenWithHistory: one NodePut carrying the new label, NOT a
-	// stray history-version record (lesson 42 hot-spot).
+	// stray history-version record.
 	withAdd := n.DeepCopy()
 	withAdd.AddLabelTokenRaw(20)
 	withAdd.SetVersion(1)
@@ -1006,7 +1006,7 @@ func TestChangeLog_ClearReAnchors(t *testing.T) {
 // things at once: (1) the DropPrefix + selective-meta-delete rewrite must wipe
 // data, indexes AND metadata (registries) exactly as DropAll did — no leakage;
 // (2) the durable watermark (LastLSNKey) must survive Clear+Close+Reopen so the
-// LSN allocator resumes strictly above the pre-Clear watermark (lesson 52).
+// LSN allocator resumes strictly above the pre-Clear watermark.
 func TestChangeLog_ClearOnDiskWipesAllAndKeepsWatermark(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
@@ -1088,7 +1088,7 @@ func TestChangeLog_ClearOnDiskWipesAllAndKeepsWatermark(t *testing.T) {
 // TestChangeLog_ClearCrashAfterDataDropKeepsWatermark simulates a crash in the
 // middle of Clear — after the data/change-log keyspaces are dropped but BEFORE
 // the marker WriteBatch (which carries the new watermark) is flushed. The fix
-// (lesson 52) drops data via DropPrefix and deliberately leaves LastLSNKey
+// drops data via DropPrefix and deliberately leaves LastLSNKey
 // intact, so the watermark is never absent. With the old db.DropAll() Clear,
 // LastLSNKey would be gone at this point and a reopen would reseed the LSN
 // allocator to 0, colliding with a consumer's pre-Clear watermark.

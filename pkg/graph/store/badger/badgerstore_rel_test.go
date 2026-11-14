@@ -46,7 +46,7 @@ func TestBadgerStorePutGetRelationship(t *testing.T) {
 	}
 }
 
-// TestBadgerStoreSelfLoopRoundTrip (BACKLOG 18t) pins a direct self-loop
+// TestBadgerStoreSelfLoopRoundTrip pins a direct self-loop
 // round-trip at the raw Store layer — AllowSelfLoops is a graph/core-layer
 // (ValidationLimits) concern, never enforced by badger.Store itself
 // (confirmed: no AllowSelfLoops/start-equals-end check anywhere in

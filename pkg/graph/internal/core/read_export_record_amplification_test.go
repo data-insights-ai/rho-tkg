@@ -10,9 +10,9 @@ import (
 )
 
 // TestReadExportRecordDoesNotAllocateDeclaredLengthOnShortBody is the
-// BACKLOG 12k proof: readExportRecord must allocate proportional to bytes
-// actually DELIVERED, not eagerly pre-allocate the declared length header
-// (lesson 48). A 5-byte header claiming the maximum 128 MiB record size with
+// proof that readExportRecord must allocate proportional to bytes
+// actually DELIVERED, not eagerly pre-allocate the declared length header.
+// A 5-byte header claiming the maximum 128 MiB record size with
 // no body attached must not force a 128 MiB allocation before the
 // truncation is even detected — mirrors
 // TestImportRejectsOversizedRecordWithoutAllocatingIt (import_amplification_test.go),

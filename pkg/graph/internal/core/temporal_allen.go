@@ -9,7 +9,7 @@ import (
 
 // NodeInterval returns the effective [start, end) for a node. start is the
 // row's explicit ValidFrom, else the start the chain resolver gives the row
-// (nodeValidFrom: its TxFrom — backlog 62).
+// (nodeValidFrom: its TxFrom).
 //
 // NodeInterval types.ErrOpenInterval if the version is open-ended (still
 // valid: ValidTo is the open end of the graph's valid axis, 0 on the legacy

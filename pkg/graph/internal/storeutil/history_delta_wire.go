@@ -3,8 +3,8 @@ package storeutil
 import "github.com/vmihailenco/msgpack/v5"
 
 // Hand-written msgpack encoders/decoders for NodeHistoryDelta/RelHistoryDelta
-// (wire_history_delta.go) and their nested propKeyRef type (BACKLOG 15t). Same
-// shape as BACKLOG 15s (changelog_wire.go): the embedded Meta NodeWire/RelWire
+// (wire_history_delta.go) and their nested propKeyRef type. Same
+// shape as the change-log body codecs (changelog_wire.go): the embedded Meta NodeWire/RelWire
 // field and PS []PropertyWire elements already dispatch to their own
 // hand-written codecs once reflection reaches them, but the outer 3-field
 // wrapper struct — and propKeyRef, its own PR-element type, which had no

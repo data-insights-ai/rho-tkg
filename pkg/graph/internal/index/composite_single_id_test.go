@@ -7,7 +7,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// Row 66: a composite value key held by exactly one entity keeps that ID
+// A composite value key held by exactly one entity keeps that ID
 // inline; the second ID promotes the key to a posting list, a removal back
 // to one demotes it. Every reader sees the same IDs through Postings.
 func TestCompositeSingleIDPromoteDemote(t *testing.T) {

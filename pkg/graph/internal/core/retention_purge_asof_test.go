@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestRetentionPurgeAsOfBumpAfterRows (backlog 21, R14): the node purge must
+// TestRetentionPurgeAsOfBumpAfterRows (R14): the node purge must
 // invalidate the as-of column cache AFTER it removes rows. A column built
 // between the watermark advance and the chunks (at a pin at or above the
 // boundary, which the gate answers) reads the not-yet-removed node; a bump
@@ -63,7 +63,7 @@ func TestRetentionPurgeAsOfBumpAfterRows(t *testing.T) {
 	}
 }
 
-// TestRelRetentionPurgeKeepsAsOfCache (backlog 21): the as-of cache holds node
+// TestRelRetentionPurgeKeepsAsOfCache: the as-of cache holds node
 // label columns only, so a relationship purge leaves a warm column cached (the
 // same column object answers after the purge) and its answer unchanged.
 // Faulty implementation caught: a relationship purge that bumps the cache

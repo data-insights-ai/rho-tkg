@@ -30,7 +30,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	// vStart <= t (inclusive) means querying at the same millisecond
 	// as the node's snowflake-derived ValidFrom still matches — no
 	// wall-clock sleep needed (R5-F10).
-	now := txNow(t, g) // a row starts at its TxFrom (backlog 62)
+	now := txNow(t, g) // a row starts at its TxFrom
 
 	// GetNodesValidAt should find Alice.
 	nodes, err := g.Temporal.NodesAt(now)

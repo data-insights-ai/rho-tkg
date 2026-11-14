@@ -9,7 +9,7 @@ import (
 )
 
 // TestResolveNodeVersionAt_EveryChainPositionMatchesExpectedVersion guards
-// BACKLOG 10m: resolveNodeVersionAt's monotonic-chain fast path now uses
+// the binary-search scan start: resolveNodeVersionAt's monotonic-chain fast path now uses
 // sort.Search to find the backward scan's STARTING index instead of always
 // starting at the end (O(log n) instead of O(n) to locate an OLD t, the
 // exact case this test targets — a query near the chain's genesis, forcing
@@ -68,7 +68,7 @@ func TestResolveNodeVersionAt_EveryChainPositionMatchesExpectedVersion(t *testin
 }
 
 // TestResolveRelVersionAt_EveryChainPositionMatchesExpectedVersion is the
-// relationship-side mirror (rule 2) of the test above.
+// relationship-side mirror of the test above.
 func TestResolveRelVersionAt_EveryChainPositionMatchesExpectedVersion(t *testing.T) {
 	g := newTestGraphForChain(t)
 	ctx := context.Background()
@@ -140,7 +140,7 @@ func buildSyntheticNodeChain(size int) []*types.Node {
 	return chain
 }
 
-// BenchmarkResolveNodeVersionAt_OldTimestamp measures BACKLOG 10m's fix in
+// BenchmarkResolveNodeVersionAt_OldTimestamp measures the binary-search fix in
 // isolation: querying near the chain's genesis forces the pre-fix linear
 // scan to walk almost the entire chain; the fix locates the same answer via
 // sort.Search instead. MEASURED (this machine, benchtime=2000x): size=100

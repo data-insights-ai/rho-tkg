@@ -1,6 +1,6 @@
 package graph_test
 
-// Backlog 73, final review before v4.56.0: a conversion cut short must not
+// Final review before v4.56.0: a conversion cut short must not
 // let an export or an untimed create through (item 1), and the endpoint
 // constraint holds against the endpoint's whole current life (item 4).
 

@@ -20,7 +20,7 @@ func TestValueStripeInRange(t *testing.T) {
 }
 
 // TestValueStripeGoldenVectors pins the EXACT stripe values ValueStripe
-// produces for a fixed set of inputs — captured from the pre-BACKLOG-15g
+// produces for a fixed set of inputs — captured from the earlier
 // fnv.New64a()-based implementation before it was replaced with an inline
 // FNV-1a accumulator (avoiding the heap-allocating hash.Hash64 interface on
 // every call). "Deterministic across process restarts" is a documented
@@ -157,7 +157,7 @@ func TestLockStripesAscendingDedup(t *testing.T) {
 	vm.UnlockStripes(ordered2)
 }
 
-// BACKLOG 15c: LockStripesExcept had zero direct or indirect test coverage —
+// LockStripesExcept had zero direct or indirect test coverage —
 // the concurrency-critical skip-already-held-stripe path GetOrCreateByKey
 // relies on to create a node while holding the keyed value's stripe without
 // self-deadlocking (a sync.Mutex is not reentrant; re-locking a held stripe

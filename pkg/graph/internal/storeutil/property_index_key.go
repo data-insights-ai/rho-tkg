@@ -95,7 +95,7 @@ var propNumericSubtypeTags = map[string]byte{
 
 // orderPreservingFloat64Bits maps a float64 to a uint64 whose UNSIGNED
 // ordering matches the float's natural ordering — the standard IEEE-754
-// sign-flip trick (lesson 25's "float bit-pattern" case, applied here to KEY
+// sign-flip trick (the float bit-pattern rule, applied here to KEY
 // bytes rather than the hash/equality contract): negative values flip every
 // bit (reversing their magnitude order and moving them below all positive
 // values), non-negative values flip only the sign bit. Because the caller

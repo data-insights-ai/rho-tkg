@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// BACKLOG 11a: GraphTx.GetNode/GetRelationship used bare lockActive() (only
+// GraphTx.GetNode/GetRelationship used bare lockActive() (only
 // tx.mu) instead of lockActiveCore() (tx.mu + c.mu.RLock() + a closed check)
 // — the pattern every OTHER tx read mirror (Export, Snapshot, VerifyShard,
 // Labels, ...) uses. Since a v4.1.0 Path-B tx does NOT hold c.mu for its
@@ -42,7 +42,7 @@ func TestGraphTx_GetNode_AfterCloseReturnsErrGraphClosed(t *testing.T) {
 	}
 
 	if _, err := tx.GetNode(n.ID()); !errors.Is(err, ErrGraphClosed) {
-		t.Fatalf("tx.GetNode after Close = %v, want ErrGraphClosed — BACKLOG 11a regression", err)
+		t.Fatalf("tx.GetNode after Close = %v, want ErrGraphClosed — regression", err)
 	}
 }
 
@@ -73,7 +73,7 @@ func TestGraphTx_GetRelationship_AfterCloseReturnsErrGraphClosed(t *testing.T) {
 	}
 
 	if _, err := tx.GetRelationship(r.ID()); !errors.Is(err, ErrGraphClosed) {
-		t.Fatalf("tx.GetRelationship after Close = %v, want ErrGraphClosed — BACKLOG 11a regression", err)
+		t.Fatalf("tx.GetRelationship after Close = %v, want ErrGraphClosed — regression", err)
 	}
 }
 

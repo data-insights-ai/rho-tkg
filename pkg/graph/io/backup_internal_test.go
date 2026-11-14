@@ -25,7 +25,7 @@ func frameRecord(tag byte, body []byte) []byte {
 }
 
 // TestCountStreamChangeRecords_StartsFromCurrentPositionNotStreamStart
-// guards BACKLOG 8f: the function's doc previously claimed r must be "an
+// guards the fix: the function's doc previously claimed r must be "an
 // export stream positioned at its start", but its real (and only) caller,
 // BackupDeltaTo, always passes a reader already past the header record
 // (consumed by a preceding HeaderOf call). This proves the function has no

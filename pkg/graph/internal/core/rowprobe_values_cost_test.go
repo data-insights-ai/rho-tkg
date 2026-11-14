@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// ROWPROBE's budget (lesson 89) on sigma's paged-row probe (sigma 26 Oct,
+// ROWPROBE's budget on sigma's paged-row probe (sigma 26 Oct,
 // BenchmarkPagedRowsProbeCut): DerivedPage rows carry an int64 hash column
 // with a property index; a probe asks ByLabelAndPropertyValues for a list of
 // hashes. One call with 1,000 values costs per value at most 1.2x a call with

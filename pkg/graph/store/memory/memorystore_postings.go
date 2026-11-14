@@ -10,7 +10,7 @@ import (
 
 // idsAfter yields the IDs of an ascending ID slice above after: the label- and
 // type-scan fallbacks' candidates in the shape of an index posting list's
-// After (backlog 72), so both feed one filter loop. It starts at the first ID
+// After, so both feed one filter loop. It starts at the first ID
 // greater than after, so every copy of a repeated cursor ID is skipped.
 func idsAfter[T interface{ SnowflakeID() snowflake.ID }](ids []T, after types.EntityID) iter.Seq[snowflake.ID] {
 	return func(yield func(snowflake.ID) bool) {

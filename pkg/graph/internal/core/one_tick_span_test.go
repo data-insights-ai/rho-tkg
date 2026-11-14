@@ -20,8 +20,8 @@ import (
 // the store's own predicates (Rels().ByType with no temporal opts) still saw them.
 //
 // Every test below runs over memory, badger (in-memory), sharded and tiered
-// (txbBackends), node AND relationship (rule 2), named AND generic doors
-// (rule 17). Each states the faulty implementation it catches.
+// (txbBackends), node AND relationship, named AND generic doors. Each states
+// the faulty implementation it catches.
 
 // otsBase is a valid-time origin one hour in the past: far enough below the
 // wall that no clock floor or future-valid rule interferes, and on the hot
@@ -209,7 +209,7 @@ func TestOneTickSpanVisible_NodeDoors(t *testing.T) {
 	}
 }
 
-// TestOneTickSpanVisible_RelDoors is the relationship mirror (rule 2) of
+// TestOneTickSpanVisible_RelDoors is the relationship mirror of
 // TestOneTickSpanVisible_NodeDoors: it catches RelAt, RelsDuring,
 // ByType{ValidAt}, RelsRelating and the effective (endpoint-masked) doors
 // skipping a [t, t+1) edge while Rels().ByType(T, QueryOpts{}) finds it —
@@ -363,7 +363,7 @@ func TestOneTickSpanVisible_RelDoors(t *testing.T) {
 // CloseVersion(id, vf+1) writes a closed row [vf, vf+1) that the resolver
 // skipped as eclipsed, so the superseded OPEN row kept answering every later
 // instant (NodeAt(vf+500) found the entity the caller had just closed). Two
-// phases (rule 15): a pin before the close still sees the open belief. The
+// phases: a pin before the close still sees the open belief. The
 // width-2 control (close at vf+2) must behave the same way one tick later.
 func TestOneTickSpanVisible_CloseVersionAtVfPlusOne(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
@@ -607,9 +607,9 @@ func TestOneTickSpanVisible_DeleteAtVfPlusOne(t *testing.T) {
 // being invisible: SetNodeVersionInterval(id, t, t+1, patch) appends a [t, t+1)
 // correction row that the resolver skipped, so NodeAt(t) answered the
 // uncorrected base. The piece must answer at t, the base at t-1 and t+1, and
-// the generic door must agree. Two phases (rule 15): before the correction t
+// the generic door must agree. Two phases: before the correction t
 // reads the base; after it, a pin older than the correction still reads the
-// base (lesson 46 — the correction is a new belief, never a rewrite) while a
+// base (the correction is a new belief, never a rewrite) while a
 // pin at the correction reads the piece.
 //
 // The "boundary" case catches the same skip on a piece the CORRECTION-BASE
@@ -799,7 +799,7 @@ func TestOneTickSpanVisible_CascadeWidthOnePiece(t *testing.T) {
 // is the template — the current row, the most recent version — plus the patch,
 // so it must carry v=2 (the last update), not v=1 (a template taken from
 // history[0]). Once the entity is hard-deleted the same cascade is refused
-// with ErrEntityDeleted (backlog 14; this test pinned the old behaviour — the
+// with ErrEntityDeleted (this test pinned the old behaviour — the
 // cascade succeeded on the tombstoned chain with the newest history row as
 // template — until the refusal was decided).
 func TestCascadeTemplate_GapPieceUsesCurrentRow(t *testing.T) {

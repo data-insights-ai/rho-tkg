@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Fixtures for the re-import tests (backlog 38 and the 2026-09-24 "re-import of
+// Fixtures for the re-import tests (the 2026-09-24 "re-import of
 // a deleted ID" entry). They extend the cascade-correctness adapter (ccEnt):
 // one scenario drives a node or a relationship on every backend, every read is
 // an exact tracked set, and the expected set comes from the brute-force

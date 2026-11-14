@@ -14,7 +14,7 @@ var (
 	_ storecontract.NodePropertyTxMemberPageCapability = (*Store)(nil)
 )
 
-// Paged property membership (backlog 69): a built sidecar pages one value's
+// Paged property membership: a built sidecar pages one value's
 // members in ID order through its ordered view
 // (indexpkg.PropertyTxMembers.MembersAfter) under idxMu.RLock. The first page
 // of a value opens the view under idxMu.Lock; every row recorded after that

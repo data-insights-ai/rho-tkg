@@ -8,7 +8,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// Backlog 72: IDPostings is the one sorted posting list of every equality
+// IDPostings is the one sorted posting list of every equality
 // index key (property, rel property, composite, the numeric buckets). Against a
 // map oracle over random adds and removes — duplicates, absent removes,
 // ascending and descending runs, chunk splits and merges — every After(cursor)
@@ -115,7 +115,7 @@ func checkPostings(t *testing.T, p *IDPostings, oracle map[snowflake.ID]struct{}
 func head(ids []snowflake.ID) []snowflake.ID { return ids[:min(len(ids), 4)] }
 
 // A range-counted index that never held a key counts 0: its counts are
-// allocated at the first key (backlog 72) and a read before must not touch
+// allocated at the first key and a read before must not touch
 // them. Found by the sharded RangeCardinality tests.
 func TestRangeCardinalityEmptyCountedIndex(t *testing.T) {
 	t.Parallel()

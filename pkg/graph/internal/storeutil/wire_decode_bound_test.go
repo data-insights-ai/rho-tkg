@@ -8,8 +8,8 @@ import (
 // DECODEBOUND (tasks/evidence/DECODEBOUND/): an 80-byte node row whose nested
 // map header declares ~808 million entries took 13.6 s to reject (the fuzz
 // smoke counted it as hung). A trust-boundary decode must reject it at once:
-// allocate and iterate by bytes delivered, never by a declared count
-// (lesson 48). Mutation: a decoder that sizes or loops by the declared count.
+// allocate and iterate by bytes delivered, never by a declared count.
+// Mutation: a decoder that sizes or loops by the declared count.
 func TestDecodeRejectsHugeDeclaredCountQuickly(t *testing.T) {
 	data := []byte("\x84\xa2000\xa1p\x91\xd80\x83\xa1v\x98\x98\x98000000\xdf0000000")
 	start := time.Now()

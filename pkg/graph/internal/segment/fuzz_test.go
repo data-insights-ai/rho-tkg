@@ -21,7 +21,7 @@ func fuzzing() bool {
 // checkOpenAllocs fails when Open allocated more than its input bound, while
 // fuzzing only: TotalAlloc counts every goroutine of the process, so in the
 // suite's seed-corpus replay (beside parallel tests and the race detector) the
-// bound would move with load (René 4 Nov). A fuzzing run is a measurement by
+// bound would move with load (RH 4 Nov). A fuzzing run is a measurement by
 // hand.
 func checkOpenAllocs(t *testing.T, before, after *runtime.MemStats, n int) {
 	t.Helper()
@@ -30,7 +30,7 @@ func checkOpenAllocs(t *testing.T, before, after *runtime.MemStats, n int) {
 	}
 }
 
-// FuzzOpen feeds arbitrary bytes to the decode boundary (lessons 47, 48):
+// FuzzOpen feeds arbitrary bytes to the decode boundary:
 // Open and every reader door must return a value or an error, never panic,
 // and, while fuzzing, Open must not allocate in proportion to a count the
 // bytes only claim.

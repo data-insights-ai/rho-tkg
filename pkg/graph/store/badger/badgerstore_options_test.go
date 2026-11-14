@@ -71,7 +71,7 @@ func TestBadgerTuningBoundaries(t *testing.T) {
 		{"compactors below minimum", func(c *Config) { c.NumCompactors = 1 }, "NumCompactors"},
 		{"compactors negative", func(c *Config) { c.NumCompactors = -3 }, "NumCompactors"},
 
-		// BACKLOG 18j: documented bound [1,15] (zero = badger default 1) was
+		// The documented bound [1,15] (zero = badger default 1) was
 		// never enforced, unlike every other tuning knob.
 		{"zstd level zero keeps default", func(c *Config) { c.ZSTDCompressionLevel = 0 }, ""},
 		{"zstd level at floor 1", func(c *Config) { c.ZSTDCompressionLevel = minZSTDCompressionLevel }, ""},
@@ -79,7 +79,7 @@ func TestBadgerTuningBoundaries(t *testing.T) {
 		{"zstd level below floor", func(c *Config) { c.ZSTDCompressionLevel = -1 }, "ZSTDCompressionLevel"},
 		{"zstd level above cap", func(c *Config) { c.ZSTDCompressionLevel = maxZSTDCompressionLevel + 1 }, "ZSTDCompressionLevel"},
 
-		// BACKLOG 18r: a negative rotation duration was silently ignored
+		// A negative rotation duration was silently ignored
 		// (buildBadgerOptions's `> 0` guard) rather than rejected, unlike
 		// every other numeric knob's fail-closed pattern.
 		{"encryption key rotation zero keeps default", func(c *Config) { c.EncryptionKeyRotation = 0 }, ""},
@@ -432,7 +432,7 @@ func TestBadgerMigrateOversizedWALRejectsAboveCapWAL(t *testing.T) {
 
 // writeStockOversizedWALCopy mirrors writeOversizedWALCopy but writes the
 // source under a memtable LARGER than Badger's own stock default
-// (badgerv4.DefaultOptions("").MemTableSize, 64MB) — the fixture BACKLOG 18m's
+// (badgerv4.DefaultOptions("").MemTableSize, 64MB) — the fixture the
 // "revert to stock" gap needs: a dir whose live WAL only becomes oversized
 // relative to the STOCK arena, not an explicitly smaller tuned one.
 func writeStockOversizedWALCopy(t *testing.T, n, padBytes int) string {
@@ -475,13 +475,13 @@ func writeStockOversizedWALCopy(t *testing.T, n, padBytes int) string {
 	return dstDir
 }
 
-// TestBadgerMigrateOversizedWALCoversRevertToStock (BACKLOG 18m) pins the gap
+// TestBadgerMigrateOversizedWALCoversRevertToStock pins the gap
 // the old "cfg.MemTableSize > 0" gate missed: a dir tuned LARGER than Badger's
 // stock default, then reopened with MemTableSize: 0 ("use stock") — itself a
 // shrink whenever stock is smaller than the previous tuning. Before the fix,
 // MigrateOversizedWAL (and New's gate calling it) no-opped unconditionally
 // whenever cfg.MemTableSize == 0, so this exact transition reproduced the
-// lesson-45 "Arena too small" os.Exit via a different input path than the
+// "Arena too small" os.Exit via a different input path than the
 // already-tested explicit-to-smaller-explicit case
 // (TestBadgerReopenLiveWALAcrossMemtableShrink).
 func TestBadgerMigrateOversizedWALCoversRevertToStock(t *testing.T) {
@@ -509,7 +509,7 @@ func TestBadgerMigrateOversizedWALCoversRevertToStock(t *testing.T) {
 	}
 }
 
-// TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock (BACKLOG 18m) mirrors
+// TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock mirrors
 // TestBadgerReadOnlyOpenOversizedWALFailsClosed for the revert-to-stock path:
 // a read-only open at MemTableSize: 0 over a WAL oversized relative to stock
 // must fail closed with ErrOversizedWAL, not silently skip the guard and

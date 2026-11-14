@@ -121,7 +121,7 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 		if err := ms.deleteRelOrPurgeOrphanLocked(rid); err != nil {
 			return zero, err // no ordinary error remains after preflight
 		}
-		ms.dropExAdjRelEverywhereLocked(rid) // backlog 50: no trace of an erased relationship
+		ms.dropExAdjRelEverywhereLocked(rid) // no trace of an erased relationship
 		delete(ms.relHistory, rid)
 		ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 		ms.relHistoryRemovedLocked(rid)

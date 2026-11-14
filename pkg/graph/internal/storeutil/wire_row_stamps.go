@@ -14,7 +14,7 @@ import (
 // version is still read). A row written by a newer release fails with
 // ErrWireFormatVersionUnsupported, a negative version with ErrCorruptWire,
 // undecodable bytes with the decoder's error. It returns a value, so the
-// scanner path allocates nothing. Backlog 42: badger's current-row stamps on
+// scanner path allocates nothing. It serves badger's current-row stamps on
 // an entity-cache miss; DecodeWireTxStamps is the same read without the
 // version.
 func DecodeWireRowStamps(raw []byte) (storepkg.RowStamps, error) {

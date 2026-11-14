@@ -98,7 +98,7 @@ func renderEntityReads(r snapshotReads, lend func(types.NodeID) (*types.Node, er
 	return b.String()
 }
 
-// TestReadSnapshotParityAcrossEntities pins row 121's snapshot reads on
+// TestReadSnapshotParityAcrossEntities pins the snapshot reads on
 // badger, sharded and tiered (the reference shard through one badger
 // snapshot, event shards direct): ONE snapshot, kept across the reads of many
 // entities in ascending ID order (the forward walk a scan does) and then in a

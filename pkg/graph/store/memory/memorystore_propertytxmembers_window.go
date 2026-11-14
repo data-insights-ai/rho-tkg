@@ -11,7 +11,7 @@ var (
 	_ storecontract.NodePropertyTxMemberWindowCapability = (*Store)(nil)
 )
 
-// Windowed property membership (ledger row 62): the sidecar of a declared
+// Windowed property membership: the sidecar of a declared
 // index answers one value's members whose rows may meet a valid-time window
 // through the value's window view (indexpkg.PropertyTxMembers.MembersDuring).
 // The first windowed lookup of a value builds the sidecar if needed and opens

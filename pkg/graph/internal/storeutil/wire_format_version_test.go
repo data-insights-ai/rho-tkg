@@ -43,7 +43,7 @@ func wireMapInt(t *testing.T, m map[string]any, key string) (int64, bool) {
 	}
 }
 
-// The custom EncodeMsgpack implementations bypass struct tags (lesson 39).
+// The custom EncodeMsgpack implementations bypass struct tags.
 // These tests decode the RAW bytes into a generic map so they fail if the
 // field is added to the struct but not to the hand-written encoder — a
 // struct-level round-trip would pass in that case and hide the bug.

@@ -275,7 +275,7 @@ func (a *API) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 // An update that sets tkg_valid_to without tkg_valid_from closes the current
 // version as CloseVersion does: the version keeps its start and ends at
 // tkg_valid_to; an end at or before that start returns ErrInvalidTimeRange and
-// writes nothing (backlog 65).
+// writes nothing.
 func (a *API) Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -303,7 +303,7 @@ func (a *API) UpdateWithTx(ctx context.Context, id types.NodeID, updates map[str
 // UpdateInPlace updates a node in place honoring ctx (no version chain entry).
 //
 // A tkg_valid_to at or before the row's effective start returns
-// ErrInvalidTimeRange (backlog 65).
+// ErrInvalidTimeRange.
 func (a *API) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -328,7 +328,7 @@ func (a *API) ReplaceVersion(ctx context.Context, id types.NodeID, props map[str
 
 // Delete deletes the node honoring ctx.
 //
-// Planned (writer parked, backlog 4/7/25; no release writes it yet): the delete is stamped at the commit
+// Planned (writer parked; no release writes it yet): the delete is stamped at the commit
 // clock also for a row whose start lies ahead, and a ValidTo it does not write
 // (a recorded close at or after the delete, the open end of a row starting at
 // or after it) is kept in a tombstone marked Temporal().DeleteKeptValidTo,
@@ -352,7 +352,7 @@ func (a *API) Delete(ctx context.Context, id types.NodeID) error {
 // on any of them refuses (ErrTxOrder, which wraps ErrInvalidTxFrom). A refusal
 // changes nothing. The commit clock is not moved.
 //
-// Planned (writer parked, backlog 7; no release writes it yet): a recorded close at or after txTo no longer
+// Planned (writer parked; no release writes it yet): a recorded close at or after txTo no longer
 // refuses; the tombstone keeps it (Temporal().DeleteKeptValidTo) for reads
 // pinned before txTo.
 func (a *API) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
@@ -363,7 +363,7 @@ func (a *API) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Inst
 	return ops.DeleteWithTx(ctx, id, txTo)
 }
 
-// Retract says "this node was never true" (backlog 43): it removes the node
+// Retract says "this node was never true": it removes the node
 // and its relationships like Delete, but marks every tombstone of the cascade
 // as a retraction, so a read pinned at or after the retraction instant T
 // finds the node and those relationships at NO valid time (after a Delete the
@@ -493,7 +493,7 @@ func (a *API) Iter(ctx context.Context, opts storepkg.QueryOpts) iter.Seq2[*type
 	}
 }
 
-// IterByLabel is the iter.Seq2 form of ForEachByLabel (BACKLOG 3 — the streaming
+// IterByLabel is the iter.Seq2 form of ForEachByLabel (the streaming
 // whole-node door for a one-shot MATCH (n:L) RETURN n): it ranges over the label's
 // nodes without materializing the result slice, riding the same bulk/parallel decode
 // substrate as ByLabel so the scan is fast while peak memory stays O(1) nodes. Row
@@ -974,7 +974,7 @@ func (a *API) NodeMutationEpoch() uint64 {
 
 // NodeLabelMutationEpoch returns the PER-LABEL node-mutation epoch (0 if the backend
 // lacks the DocValues capability or the label is unknown) — the value a single-label
-// DocValues result returns as gen (BACKLOG 4b). It advances only when a node carrying
+// DocValues result returns as gen. It advances only when a node carrying
 // THIS label is written, not on unrelated-label writes, so a Gate-2 re-check on a
 // single-label aggregate should use this (not NodeMutationEpoch) to avoid discarding a
 // still-valid result after an unrelated-label write.

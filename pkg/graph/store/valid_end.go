@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Valid-end index sentinels (backlog 51): ValidEndOpen is an end that is not
+// Valid-end index sentinels: ValidEndOpen is an end that is not
 // recorded (an open segment), ValidEndNone an entity without a segment.
 const (
 	ValidEndOpen = types.Instant(math.MaxInt64)
@@ -79,7 +79,7 @@ type ValidEndCandidate struct {
 	Stamp, Bound types.Instant
 }
 
-// RelValidEndCapability is OPTIONAL (backlog 51): a RAM valid-end index over
+// RelValidEndCapability is OPTIONAL: a RAM valid-end index over
 // relationships, so a type scan bounded by valid end
 // (temporal ForEachRelEffectiveByTypeFrom) reads the relationships still
 // effective at or after a valid instant instead of the type's whole history.

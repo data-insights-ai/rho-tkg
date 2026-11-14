@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 )
 
-// History epochs (store.HistoryEpochCapability, backlog 68): a token per
+// History epochs (store.HistoryEpochCapability): a token per
 // entity that changes whenever the entity's history rows change.
 //
 // A store keeps tokens only for the IDs a reader asked about (the watch

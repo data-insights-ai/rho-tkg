@@ -67,7 +67,7 @@ type Ops interface {
 	RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]RelSegment, error)
 	NodeEffectiveTimelines(id types.NodeID, pins []types.Instant) ([][]NodeSegment, error)
 	RelEffectiveTimelines(id types.RelID, pins []types.Instant) ([][]RelSegment, error)
-	// The lowest pin the point reads answer (row 104).
+	// The lowest pin the point reads answer.
 	NodeLowestAnsweredPin(id types.NodeID) (types.Instant, error)
 	NodesLowestAnsweredPins(ids []types.NodeID) ([]types.Instant, error)
 	RelLowestAnsweredPin(id types.RelID) (types.Instant, error)
@@ -620,7 +620,7 @@ func (a *API) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*
 // For every valid instant t the segment containing t holds the row
 // NodeAtTx(id, t, pin) returns; none contains t where NodeAtTx answers
 // ErrNoVersionValidAt. ValidFrom is the effective start, never 0 (the ID's
-// TxFrom for a row without a recorded valid-from, backlog 62); a deleted
+// TxFrom for a row without a recorded valid-from); a deleted
 // node's last
 // segment ends at the delete instant; a node created after the pin returns
 // nil, nil. Segments may share a row pointer; DeepCopy before mutating.
@@ -673,7 +673,7 @@ func (a *API) RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]RelSegm
 // NodeEffectiveTimelines returns NodeEffectiveTimeline(id, pins[i]) at index
 // i for every pin, read from ONE walk of the node's history chain: the
 // history rows read are about versions + segments, not pins × versions
-// (row 98: 511 versions at 511 pins read 524,288 rows through 511 singular
+// (511 versions at 511 pins read 524,288 rows through 511 singular
 // calls). The result is aligned with pins: unsorted and repeated pins are
 // allowed, and each answer is the singular door's at that pin (nil for a pin
 // at or below 0 or before the node's creation). Empty pins: an empty result,
@@ -1174,7 +1174,7 @@ func (a *API) DiffCallback(t1, t2 types.Instant, h DiffHandlers) error {
 
 // NodeInterval returns the interval [valid_from, valid_to) for n.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62).
+// A row without a valid-from starts at its TxFrom.
 func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -1185,7 +1185,7 @@ func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) 
 
 // RelInterval returns the interval [valid_from, valid_to) for r.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62).
+// A row without a valid-from starts at its TxFrom.
 func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -1201,7 +1201,7 @@ func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err 
 // or nil node — a post-filter consumer treats either as "excluded", which is
 // the safe default. See core.TempOps.NodeMatchesValidTime.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62).
+// A row without a valid-from starts at its TxFrom.
 func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()
 	if err != nil {
@@ -1217,7 +1217,7 @@ func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool 
 // post-filter consumer treats either as "excluded", which is the safe default.
 // See core.TempOps.RelMatchesValidTime.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62).
+// A row without a valid-from starts at its TxFrom.
 func (a *API) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()
 	if err != nil {
@@ -1227,7 +1227,7 @@ func (a *API) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts
 }
 
 // RelateNodes returns the Allen relation between the validity intervals of x and y
-// (as NodeInterval: a row without a valid-from starts at its TxFrom, backlog 62).
+// (as NodeInterval: a row without a valid-from starts at its TxFrom).
 func (a *API) RelateNodes(x, y *types.Node) (types.AllenRelation, error) {
 	ops, err := a.ready()
 	if err != nil {

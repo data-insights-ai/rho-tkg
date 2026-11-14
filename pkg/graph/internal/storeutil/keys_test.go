@@ -283,7 +283,7 @@ func TestNegativeIDEncoding(t *testing.T) {
 }
 
 // TestKeyPrefixesNonOverlapping verifies every REAL production key-prefix
-// tag is mutually distinct. BACKLOG 15h: this list previously included the
+// tag is mutually distinct. This list previously included the
 // dead test-only scaffold keyTempNode(0x09)/keyTempRel(0x0A) — reserved
 // years ago for a temporal index that was never built that way; the real
 // temporal index shipped later using KeyTemporalIndex(0x0B) instead — while

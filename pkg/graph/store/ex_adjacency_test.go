@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 50: store.ExAdjacencyCapability on every backend. A delete moves
+// store.ExAdjacencyCapability on every backend. A delete moves
 // both legs of the live row into the ex-adjacency; a history row joins it when
 // its endpoints are not the live row's (another life, or no live row), not
 // when they are; NoteExAdjacentRel adds both legs; Clear empties it; a nil

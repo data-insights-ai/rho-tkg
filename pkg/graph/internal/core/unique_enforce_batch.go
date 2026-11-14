@@ -122,7 +122,7 @@ func (c *Core) partitionBatchNodesByUnique(nodes []pendingNode) (survivors []pen
 		// fail on a LATER tuple and be rejected as a violator while an
 		// EARLIER tuple's claim stayed durably persisted — a permanent
 		// orphaned ownership claim on a node that never actually landed
-		// (BACKLOG 9e, batch mirror of the standalone-door fix). The batch's
+		// (batch mirror of the standalone-door fix). The batch's
 		// exclusive c.mu.Lock already fences out any concurrent standalone
 		// writer for the whole partition pass, so no TOCTOU window exists
 		// between this read-only pass and the claim pass below.

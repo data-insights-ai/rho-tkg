@@ -18,7 +18,7 @@ func mustHistory(t *testing.T, g *Core, id types.NodeID) []*types.Node {
 	return h
 }
 
-// store.HistoryEpochCapability's contract on every backend (backlog 68): the
+// store.HistoryEpochCapability's contract on every backend: the
 // token stays while nothing touches the entity's history, and changes on
 // every history write (corrections, also inside a GraphTx), rollback trim and compaction — removal-only changes
 // included — and on a write to another entity it stays. A token is never

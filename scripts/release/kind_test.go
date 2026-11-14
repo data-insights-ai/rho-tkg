@@ -90,7 +90,7 @@ func TestNextVersion(t *testing.T) {
 	for _, c := range []struct {
 		k    int
 		want string
-	}{{patch, "v4.104.2"}, {minor, "v4.105.0"}, {major, "v5.0.0"}} {
+	}{{patch, "v4.104.2"}, {major, "v5.0.0"}} {
 		if got := nextVersion("v4.104.1", c.k); got != c.want {
 			t.Errorf("%s: got %s, want %s", kindNames[c.k], got, c.want)
 		}

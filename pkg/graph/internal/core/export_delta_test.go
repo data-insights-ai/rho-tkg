@@ -936,7 +936,7 @@ func TestImportMerge_RejectsMetaRecord(t *testing.T) {
 
 // --- Trust boundary: a change record whose inner payload is malformed fails
 // closed with ErrCorruptExport and leaves the base unchanged (decode is part of
-// the trust boundary; lesson 44/47).
+// the trust boundary).
 func TestImportMerge_MalformedChangePayload(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

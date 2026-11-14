@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkEffectivePage (backlog 69, evidence 03-bench.txt): 100,000
+// BenchmarkEffectivePage (evidence 03-bench.txt): 100,000
 // relationships over 10 estates and 3 types (each indexed on estate), one
 // page of 500 of estate e3 from its middle, through RelsEffectivePage against
 // the full walk ai-soc runs today (ForEachRelEffective filtered by estate and
@@ -91,7 +91,7 @@ func BenchmarkEffectivePage(b *testing.B) {
 	}
 }
 
-// BenchmarkEffectivePageValidPrune (backlog 75, evidence
+// BenchmarkEffectivePageValidPrune (evidence
 // tasks/evidence/page-valid-prune/): 100,000 relationships over 10 estates and
 // 3 types, each type indexed on estate, of which one in twenty is still open
 // and the rest closed long before ValidAt; one page of 5,000 of estate e3 at

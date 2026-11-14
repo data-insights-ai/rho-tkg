@@ -28,7 +28,7 @@ type IncomingIndexEntry struct {
 // PutRelEntityAndOut writes the entity (0x02), type index (0x04) and outgoing
 // adjacency (0x05) keys, not the incoming key (0x06). TieredStore verifies
 // endpoint existence first. Acquires idxMu.Lock.
-// Co-commits a ChangeRelPut record with the FULL relationship (BACKLOG 18c): the
+// Co-commits a ChangeRelPut record with the FULL relationship: the
 // entity-bearing leg is the one place that can describe the whole rel, and a
 // replica re-derives both legs by routing. PutRelIncoming emits nothing.
 func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
@@ -99,12 +99,12 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 		{opType: writeOpSet, key: storepkg.OutKey(startID, relType, endID, id)},
 	}
 
-	// BACKLOG 18l: the entity is fully resident here, so the property index / type
+	// The entity is fully resident here, so the property index / type
 	// class-count contribution is computable; mirror PutRelationship's maintenance.
 	ops = append(ops, bs.maintainRelPropertyIndexesAdd(r, id)...)
-	bs.maintainRelTypeTemporalIndexesAdd(r, id) // backlog 10: a tiered shard's cross-shard rows
+	bs.maintainRelTypeTemporalIndexesAdd(r, id) // a tiered shard's cross-shard rows
 	bs.addRelPropertyTypeClassCounts(r)
-	bs.addRelPropertyStatsCounts(r) // backlog 53: every door that makes a row current counts it, so a delete can take the row back out
+	bs.addRelPropertyStatsCounts(r) // every door that makes a row current counts it, so a delete can take the row back out
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
@@ -116,7 +116,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 
 // PutRelIncoming writes only the incoming adjacency key (0x06) for a cross-shard
 // relationship; the entity is not stored in this shard. Acquires idxMu.Lock.
-// Emits NO change-log record (BACKLOG 18c): this leg carries only index bytes, and
+// Emits NO change-log record: this leg carries only index bytes, and
 // the companion PutRelEntityAndOut's ChangeRelPut already describes the relationship.
 func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, relID snowflake.ID) error {
 	if err := bs.checkWritable(); err != nil {
@@ -150,9 +150,9 @@ func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, rel
 // DeleteRelEntityAndOut removes the entity (0x02), type index (0x04) and outgoing
 // adjacency (0x05) keys, not 0x06, and returns RelDeleteInfo for the companion
 // in-shard deletion. Acquires idxMu.Lock.
-// Co-commits a ChangeRelDelete record (BACKLOG 18c) like DeleteRelationship (ID
+// Co-commits a ChangeRelDelete record like DeleteRelationship (ID
 // only, hard delete); DeleteRelIncoming emits nothing (see PutRelIncoming). It
-// records the dropped out-leg's ex-adjacency (backlog 50); removals that are not
+// records the dropped out-leg's ex-adjacency; removals that are not
 // a relationship delete use RemoveRelEntityAndOutPlacement.
 func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	return bs.deleteRelEntityAndOut(id, true)
@@ -175,7 +175,7 @@ func (bs *Store) deleteRelEntityAndOut(id snowflake.ID, exLeg bool) (RelDeleteIn
 		return RelDeleteInfo{}, err
 	}
 	// Build the change-log delete record up front, so a marshal error aborts
-	// before any op is enqueued (mirrors DeleteRelationship / lesson 58).
+	// before any op is enqueued (mirrors DeleteRelationship).
 	relDelPayload, err := bs.buildChangePayload(storepkg.RelDeleteBody{ID: int64(id)})
 	if err != nil {
 		return RelDeleteInfo{}, fmt.Errorf("graph: encode change-log: %w", err)
@@ -225,7 +225,7 @@ func (bs *Store) deleteRelEntityAndOut(id snowflake.ID, exLeg bool) (RelDeleteIn
 
 	// NO inIdx cleanup — the in/ key lives in the endpoint's shard.
 
-	// BACKLOG 18l: mirror deleteRelByInfo's maintenance; r is available, so the
+	// Mirror deleteRelByInfo's maintenance; r is available, so the
 	// precise value-based removal is used instead of the brute-force purge.
 	diskOps := bs.maintainRelPropertyIndexesRemove(r, id)
 	// The rel-type temporal envelope stays (append-only): the row's history
@@ -239,7 +239,7 @@ func (bs *Store) deleteRelEntityAndOut(id snowflake.ID, exLeg bool) (RelDeleteIn
 		{opType: writeOpDelete, key: storepkg.OutKey(info.StartID, info.RelType, info.EndID, id)},
 	}
 	if exLeg {
-		ops = append(ops, exAdjLegOp(writeOpSet, info.StartID, false, id)) // backlog 50: the out-leg's ex-adjacency lives here
+		ops = append(ops, exAdjLegOp(writeOpSet, info.StartID, false, id)) // the out-leg's ex-adjacency lives here
 	}
 
 	bs.appendOps(append(ops, diskOps...)...)
@@ -253,8 +253,8 @@ func (bs *Store) deleteRelEntityAndOut(id snowflake.ID, exLeg bool) (RelDeleteIn
 
 // DeleteRelIncoming removes only the incoming adjacency key (0x06) for a
 // cross-shard relationship. Acquires idxMu.Lock. Emits NO change-log record (see
-// PutRelIncoming, BACKLOG 18c). It records the dropped in-leg's ex-adjacency
-// (backlog 50); non-delete removals use RemoveRelIncomingPlacement.
+// PutRelIncoming). It records the dropped in-leg's ex-adjacency;
+// non-delete removals use RemoveRelIncomingPlacement.
 func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
 	return bs.deleteRelIncoming(info, true)
 }
@@ -295,7 +295,7 @@ func (bs *Store) deleteRelIncoming(info RelDeleteInfo, exLeg bool) error {
 
 	ops := []writeOp{{opType: writeOpDelete, key: storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID)}}
 	if exLeg {
-		ops = append(ops, exAdjLegOp(writeOpSet, info.EndID, true, info.ID)) // backlog 50: the in-leg's ex-adjacency
+		ops = append(ops, exAdjLegOp(writeOpSet, info.EndID, true, info.ID)) // the in-leg's ex-adjacency
 	}
 	bs.appendOps(ops...)
 	bs.idxMu.Unlock()

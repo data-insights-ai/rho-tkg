@@ -1,5 +1,5 @@
-# rho-tkg — dev: Makefile + go test. One Go helper: scripts/release (tag/push, kind, presubmit).
-# Everything else is Make recipes or plain go commands. See AGENTS.md § Scripts.
+# Minimal rho-tkg Makefile (plain make = menu). GOFLAGS -trimpath; scripts/release for kind and tag push.
+
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DELETE_ON_ERROR:
@@ -13,6 +13,7 @@ CROSS_GOARCH ?= arm
 TEST_TIMEOUT ?= 20m
 PKG ?=
 RUN ?=
+BENCH ?=
 RACE_LOCK ?= $(HOME)/.cache/race-gate.lock
 COVER_MIN ?= 80
 GOSEC_VERSION ?= v2.29.0
@@ -23,99 +24,73 @@ OLD_API_TEST ?= TestGraphAccessor_StoreOpsConsumerSurfaceWorks
 OLD_REOPEN_PKG ?= ./pkg/graph/store/tiered
 OLD_REOPEN_TEST ?= TestTieredCleanReopenMatchesFullRebuild
 GOLANGCI_LINT_VERSION ?= v2.13.2
-GO_VERSION := $(shell awk '/^toolchain go[0-9]/{sub(/^go/, "", $$2); v=$$2} /^go [0-9]/{if (!v) v=$$2} END{print v}' go.mod)
+# lint Docker image: same toolchain as `go` on this machine (honours go.mod and GOTOOLCHAIN).
+GO_VERSION := $(subst go,,$(shell go env GOVERSION))
 GO_IMAGE ?= golang:$(GO_VERSION)
 LINT_BIN := /go/bin/golangci-lint-$(GOLANGCI_LINT_VERSION)/golangci-lint
 DOCKER_GO := docker run --rm -v "$(CURDIR)":/src:ro -w /src -v rho-tkg-gocache:/go \
 	-v rho-tkg-buildcache:/root/.cache/go-build -v rho-tkg-lintcache:/root/.cache/golangci-lint $(GO_IMAGE)
 
-.PHONY: help setup test-one old presubmit gate race release release-minor release-major \
-	dry-patch dry-minor kind bench bench-smoke bench-baseline bench-check fuzz measure gate-major \
-	build lint test
+.PHONY: help test-one old gate check race release release-major bench \
+	build lint test gate-major fuzz
 
-define HELP_SECTION
+# help — Default goal: short index + every `# target —` comment in this file. Does not build or test.
+help:
+	@echo "  DEV        test-one PKG=… [RUN=…]   old"
+	@echo "  pre-push   gate | check   (same; handoff when green)"
+	@echo "  release    release | release-major   (RH)"
+	@echo "  optional   race   bench [BENCH=smoke|baseline|check]"
+	@echo "  gate step  build | lint | test   (when gate fails on one)"
+	@echo "  scripts    go run ./scripts/release kind | patch -dry-run | …"
 	@echo ""
-	@echo "  $(1)"
-	@grep -hE '^[a-zA-Z0-9_.-]+:.*## $(2)' $(MAKEFILE_LIST) | awk -F':.*## ' '{d=$$2; sub(/^$(2)/, "", d); printf "    %-18s %s\n", $$1, d}'
-endef
+	@grep -hE '^# [a-z][a-z0-9_-]* — ' $(MAKEFILE_LIST) | awk -F' — ' '{printf "  %-18s %s\n", substr($$1,3), $$2}'
 
-help: ## menu: does not build or test
-	@echo "rho-tkg  |  DEV: test-one, old  |  optional: presubmit  |  pre-push: gate  |  release: René"
-	$(call HELP_SECTION,clone,clone:)
-	$(call HELP_SECTION,DEV:,DEV:)
-	$(call HELP_SECTION,optional,optional:)
-	$(call HELP_SECTION,GATE,GATE:)
-	@echo ""
-	@echo "  gate steps (if gate stops on one step)"
-	@grep -hE '^# [a-z][a-z0-9_]* — ' $(MAKEFILE_LIST) | awk -F' — ' '{printf "    %-18s %s\n", substr($$1,3), $$2}'
-	$(call HELP_SECTION,RELEASE,RELEASE:)
-	$(call HELP_SECTION,bench,bench:)
-	@echo ""
-	@echo "  test-one: PKG=./pkg/...  RUN=TestName (optional)"
-	@echo "  release:   go run ./scripts/release kind|presubmit|patch|..."
-	@echo "  by hand:   make fuzz, make measure (not in gate)"
-
-# --- clone ---
-setup: ## clone: go mod download+verify once per worktree
-	go mod download
-	go mod verify
-
-# --- DEV ---
-test-one: ## DEV: one package; PKG required; RUN optional; -short
-	@test -n "$(PKG)" || { echo 'usage: make test-one PKG=./pkg/graph/internal/core RUN=TestFoo' >&2; exit 2; }
+# test-one — DEV: one package or test; PKG required (fails fast if missing); RUN optional; -short only.
+test-one:
+	@test -n "$(PKG)" || { echo 'usage: make test-one PKG=./pkg/... RUN=TestFoo' >&2; exit 2; }
 	go test -short -timeout $(TEST_TIMEOUT) $(if $(RUN),-run '$(RUN)',) $(PKG)
 
-old: ## DEV: two integration tests (store surface + tiered reopen)
+# old — DEV: after new tests, two stable integration checks (public store surface + tiered clean reopen).
+old:
 	go test -timeout $(TEST_TIMEOUT) -run '^$(OLD_API_TEST)$$' $(OLD_API_PKG)
 	go test -timeout $(TEST_TIMEOUT) -run '^$(OLD_REOPEN_TEST)$$' $(OLD_REOPEN_PKG)
 
-# --- optional ---
-presubmit: ## optional: affected vet+short since origin/main (go run ./scripts/release presubmit)
-	go run ./scripts/release presubmit
-
-race: ## optional: -race -short under flock (shared lock with sigma)
-	@mkdir -p "$(dir $(RACE_LOCK))"
-	flock "$(RACE_LOCK)" go test -race -short -timeout 30m ./...
-
-# --- GATE steps (gate calls these) ---
-# build — Compile every package; second line cross-builds. No install binary; library only.
+# build — Compile every package; second line cross-builds CROSS_* (gate step). Library only; no binary installed.
 build:
 	go build -o /dev/null ./...
 	GOOS=$(CROSS_GOOS) GOARCH=$(CROSS_GOARCH) CGO_ENABLED=0 go build -o /dev/null ./...
 
-# lint — tidy -diff, verify, golangci-lint in Docker; report only, no --fix.
+# lint — Gate step: go.mod tidy -diff, verify, golangci-lint in Docker (report only, no --fix).
 lint:
 	go mod tidy -diff
 	go mod verify
 	$(DOCKER_GO) sh -ec 'test -x $(LINT_BIN) || GOBIN=$(patsubst %/,%,$(dir $(LINT_BIN))) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); $(LINT_BIN) run ./...'
 
-# test — go test -short ./... (same as gate's test step).
+# test — Gate step: go test -short ./... (same as gate's test leg without build or lint).
 test:
 	go test -short -timeout $(TEST_TIMEOUT) ./...
 
-gate: ## GATE: build, lint, test with -k (before git push origin dev)
+# gate — Pre-push before git push origin dev: make -k build lint test; lists every red step. Green gate does not push.
+gate:
 	$(MAKE) -k build lint test
 
-# --- RELEASE (René; git/tag/push in scripts/release only) ---
-kind: ## RELEASE: patch|minor|major from diff since last tag
-	go run ./scripts/release kind
+# check — Same as gate; agents treat a task as done only when make check passes.
+check: gate
 
-dry-patch: ## RELEASE: preflight patch (no tag/push)
-	go run ./scripts/release patch -dry-run
+# race — Optional by hand; flock shared with sigma. A patch release starts make race detached after push.
+race:
+	@mkdir -p "$(dir $(RACE_LOCK))"
+	flock "$(RACE_LOCK)" go test -race -short -timeout 30m ./...
 
-dry-minor: ## RELEASE: preflight minor (no tag/push)
-	go run ./scripts/release minor -dry-run
-
-release: ## RELEASE: patch gate, tag, atomic push
+# release — PROD patch (RH): scripts/release gate, tag, atomic push of main+dev+tag.
+release:
 	go run ./scripts/release patch
 
-release-minor: ## RELEASE: minor
-	go run ./scripts/release minor
-
-release-major: ## RELEASE: major (runs make gate-major, then tag)
+# release-major — PROD major (RH): make gate-major, then tag and push.
+release-major:
 	go run ./scripts/release major
 
-# gate-major — cold major gate (release-major only): -race -count=1, coverage, gosec, fuzz, vuln.
+# gate-major — Cold major gate only (release-major): -race -count=1, coverage floor, gosec, fuzz, govulncheck.
 gate-major:
 	@red=(); step() { echo "== $$1"; shift; "$$@" || red+=("$$1"); }; \
 	step build $(MAKE) build; \
@@ -126,31 +101,23 @@ gate-major:
 	step vuln $(DOCKER_GO) sh -ec 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && govulncheck ./...'; \
 	(( $${#red[@]} == 0 )) || { echo "gate-major red: $${red[*]}"; exit 1; }
 
-# fuzz — trust-boundary harnesses (SECURITY.md); FUZZTIME each; major gate and by hand.
+# fuzz — Trust-boundary harnesses (SECURITY.md); FUZZTIME each; used by gate-major, not patch gate.
 fuzz:
 	@t="$(FUZZTIME)"; \
 	for f in FuzzImport FuzzApplyChange; do go test -run '^$$' -fuzz=$$f -fuzztime="$$t" ./pkg/graph/internal/core/; done; \
 	for f in FuzzWireToNodeChecked FuzzWireToRelChecked FuzzUnmarshalNodeWireWithKeys; do \
 		go test -run '^$$' -fuzz=$$f -fuzztime="$$t" ./pkg/graph/internal/storeutil/; done
 
-# measure — //go:build measure tests, one file per process; by hand only.
-measure:
-	@for f in $$(grep -rl '^//go:build measure' --include='*_test.go' pkg); do \
-		tests=$$(grep -oE '^func Test\w+' "$$f" | cut -c6- | paste -sd'|'); \
-		go test -tags measure -count=1 -v -run "^($$tests)$$" "./$${f%/*}"; \
-	done
-
-# --- bench (bench/bench-compare.sh is the shared comparator; not in gate) ---
-bench-smoke: ## bench: every scenario once
+# bench — Optional ./bench; BENCH=smoke|baseline|check or default informal ~0.3s; not in gate.
+bench:
+ifeq ($(BENCH),smoke)
 	go test -bench=. -benchtime=1x -run '^$$' ./bench
-
-bench: ## bench: informal suite (~0.3s per scenario)
-	go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$$' ./bench
-
-bench-baseline: ## bench: write bench/local-baseline.txt (gitignored)
+else ifeq ($(BENCH),baseline)
 	go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$$' ./bench | tee bench/local-baseline.txt
-
-bench-check: ## bench: regress vs local baseline
-	@test -f bench/local-baseline.txt || { echo 'bench-check: run make bench-baseline first' >&2; exit 1; }
+else ifeq ($(BENCH),check)
+	@test -f bench/local-baseline.txt || { echo 'run: make bench BENCH=baseline' >&2; exit 1; }
 	go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$$' ./bench | tee bench/local-current.txt
 	bash bench/bench-compare.sh bench/local-baseline.txt bench/local-current.txt bench/local-benchstat.csv
+else
+	go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$$' ./bench
+endif

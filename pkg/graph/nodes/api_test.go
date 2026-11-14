@@ -727,7 +727,7 @@ func TestAPILatestStampsForwardsAnswer(t *testing.T) {
 	}
 }
 
-// Backlog 43: the retraction doors reach Ops.Retract / RetractWithTx with id and
+// The retraction doors reach Ops.Retract / RetractWithTx with id and
 // instant verbatim (not Delete / DeleteWithTx, which leaves the past readable).
 func TestAPIRetractDoorsForwardVerbatim(t *testing.T) {
 	t.Parallel()

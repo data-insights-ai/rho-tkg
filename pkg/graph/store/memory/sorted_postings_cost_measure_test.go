@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): the bytes a page allocates
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): the bytes a page allocates
 // are read from the process-wide allocation counter, which other tests and
 // host load move, so this bound runs by hand, not in a gate (MEMGATE).
 
@@ -25,7 +25,7 @@ func bytesPerCall(fn func()) uint64 {
 	return (after.TotalAlloc - before.TotalAlloc) / calls
 }
 
-// TestPostingsPageCostIndependentOfKeySize is backlog 72's cost (see
+// TestPostingsPageCostIndependentOfKeySize is the paged equality read's cost (see
 // sorted_postings_cost_test.go): one page of 16 allocates far below one 8-byte
 // copy of its key.
 func TestPostingsPageCostIndependentOfKeySize(t *testing.T) {

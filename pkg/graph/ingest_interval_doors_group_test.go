@@ -218,8 +218,8 @@ func ivNodeEntity(t *testing.T, g *graphpkg.Graph, n *types.Node) ivEntity {
 }
 
 // Two corrections in one session on the entity under test while an untouched
-// sibling of the same kind shares its interval (rule 16: diverging lifecycles,
-// exact reads, negative assertions):
+// sibling of the same kind shares its interval (adversarial shape: diverging
+// lifecycles, exact reads, negative assertions):
 //
 //	create [T,T+1000) cnt 1 (target) and cnt 7 (sibling, never corrected)
 //	correction 1: [T,T+5000) cnt 2         -> pin1

@@ -12,7 +12,7 @@ var _ storecontract.ReadSnapshotLendCapability = (*readSnapshot)(nil)
 
 var _ storecontract.ReadSnapshotMeterCapability = (*readSnapshot)(nil)
 
-// NewReadSnapshot returns a store.ReadSnapshot (backlog 55) that routes every
+// NewReadSnapshot returns a store.ReadSnapshot that routes every
 // read to the slot the ID routes to, as the store's own reads do, and reads
 // it through that slot's badger snapshot (opened on the slot's first read):
 // one transaction per slot a chunk of the scan touches.

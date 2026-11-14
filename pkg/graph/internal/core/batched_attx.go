@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Batched bitemporal point read (backlog 57).
+// Batched bitemporal point read.
 //
 // NodesAtTxByIDs / RelsAtTxByIDs answer NodeAtTx / RelAtTx for many IDs at one
 // (validAt, txAt), with the per-ID door's gates and body. The batch shares the

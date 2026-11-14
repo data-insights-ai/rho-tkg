@@ -1,6 +1,6 @@
 package core
 
-// Fuzz harness for the replica-apply / delta-merge decode path — BACKLOG 12g.
+// Fuzz harness for the replica-apply / delta-merge decode path.
 //
 // import_fuzz_test.go's FuzzImport already fuzzes the WHOLE import pipeline
 // end-to-end; this harness attacks the sibling untrusted-stream boundary
@@ -11,7 +11,7 @@ package core
 // storeutil.SafeUnmarshal per docs/architecture.md "Decode untrusted msgpack
 // only through storeutil.SafeUnmarshal" — but unlike Import, nothing had ever
 // driven arbitrary/adversarial (Tag, Payload) pairs through it directly. Same
-// contract as lesson 47/FuzzImport: apply of ANY (tag, payload) must NEVER
+// contract as FuzzImport: apply of ANY (tag, payload) must NEVER
 // panic or crash the process — it returns an error (rejected) or applies
 // cleanly.
 

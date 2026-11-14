@@ -25,7 +25,7 @@ import (
 // STUB describing what was removed. The stub is a virtual predecessor for the
 // oldest retained version: Verify*Chain requires that version's PrevHash to
 // equal the stub's LastTrimmedHash, so the retained segment keeps full tamper
-// evidence WITHOUT rewriting any stored row (append-only, lesson 46). The stub
+// evidence WITHOUT rewriting any stored row (append-only). The stub
 // carries a self-hash so an attacker who can write the stub cannot forge a clean
 // truncation boundary (ADR Risks).
 //
@@ -329,7 +329,7 @@ func (c *Core) checkPointCompaction(txPin types.Instant, load func() (compaction
 	return nil
 }
 
-// compactionFloor is the point compaction gate as a floor (row 104): a pin
+// compactionFloor is the point compaction gate as a floor: a pin
 // (not 0) is refused exactly when gated and pin < floor, floor = min(graph
 // watermark, the entity's stub LastTrimmedTxTo). Not gated: no compaction
 // ever, or no stub for the entity.
@@ -376,7 +376,7 @@ func (c *Core) checkScanCompactionAt(pin types.Instant) error {
 //
 // scope names what the scan covers (retention.go): node scans fail below the
 // node-purge watermark only, relationship scans also below their type's (or,
-// for every type, the max) relationship-purge watermark (backlog 21).
+// for every type, the max) relationship-purge watermark.
 func (c *Core) validateTemporalQueryOptsScan(opts storepkg.QueryOpts, scope retentionScope) error {
 	if err := validateTemporalQueryOpts(opts); err != nil {
 		return err
@@ -406,8 +406,8 @@ type versionInfo struct {
 // kept rows (hist[t:] and the current row, when present) still form a chain
 // verifyChainLinkage accepts with the stub the trim writes (LastTrimmedHash =
 // hist[t-1]'s hash): every kept row but the oldest links (PrevHash) to a kept
-// row, and the oldest kept row links to the trimmed boundary hist[t-1]
-// (backlog 24). After a bounded SetVersionInterval the newest history
+// row, and the oldest kept row links to the trimmed boundary hist[t-1].
+// After a bounded SetVersionInterval the newest history
 // versions can be cascade rows linking to an older base row, and the current
 // row links below them, so a version count alone trimmed rows the chain still
 // links to: it stopped verifying and an export of it failed import. A version
@@ -415,7 +415,7 @@ type versionInfo struct {
 // is kept). One pass: minRef[i] is the lowest history index a row of
 // hist[i:] ∪ {current} links to. A chain that did not verify before
 // compaction (a dangling PrevHash: rows without integrity data, a re-import
-// next to an old stub) keeps the policy's trim, as before backlog 24 — no keep
+// next to an old stub) keeps the policy's trim, as before the keep rule — no keep
 // rule can make it verify, and it must not stop compacting. hist is ascending
 // by version.
 func anchorSafeTrim(hist []versionInfo, current *versionInfo, trim int) int {
@@ -527,7 +527,7 @@ type entityPlan struct {
 }
 
 // compactionChunk bounds how many entities are planned-then-applied under a
-// SINGLE c.mu.Lock acquisition (BACKLOG 13c). A var, not a const, so tests can
+// SINGLE c.mu.Lock acquisition. A var, not a const, so tests can
 // shrink it to force a deterministic multi-chunk run. Mirrors
 // retentionPurgeChunk's role, though compaction's planning is Core-layer (see
 // the CompactHistoryNodes/Rels doc comment) rather than a store-level range
@@ -597,7 +597,7 @@ func (c *Core) minAsOfTagInstant() (types.Instant, error) {
 // the stub + global watermark to the reference shard — see
 // tieredstore_compaction.go).
 //
-// BACKLOG 13c: processes the population in fixed-size chunks (compactionChunk),
+// It processes the population in fixed-size chunks (compactionChunk),
 // each chunk PLANNED THEN APPLIED under its OWN single c.mu.Lock acquisition —
 // the lock is released only BETWEEN chunks, never held across the whole
 // population. This closes the staleness window a naive "plan everything, then
@@ -754,7 +754,7 @@ func (c *Core) compactNodeChunk(chunk []types.NodeID, policy RetentionPolicy, mi
 }
 
 // CompactHistoryRels is the relationship mirror of CompactHistoryNodes,
-// including the same BACKLOG 13c chunked-lock, partial-commit-on-protected-tag,
+// including the same chunked-lock, partial-commit-on-protected-tag,
 // and idempotent-resume semantics.
 func (a *AdminOps) CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (CompactReport, error) {
 	c := a.c

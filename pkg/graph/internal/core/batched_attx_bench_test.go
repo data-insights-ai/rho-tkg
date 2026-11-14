@@ -9,7 +9,7 @@ import (
 
 // BenchmarkNodesAtTxByIDs — 100 IDs at one (validAt, txAt), half updated
 // after the pin (answered from history), half answered by the current row:
-// the batch door against a loop of NodeAtTx (backlog 57).
+// the batch door against a loop of NodeAtTx.
 func BenchmarkNodesAtTxByIDs(b *testing.B) {
 	for _, be := range []struct {
 		name string

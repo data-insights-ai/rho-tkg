@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 67 (sigma-tkgd 2026-10-17): an open correction that starts at or
+// sigma-tkgd 2026-10-17: an open correction that starts at or
 // after the current row's start, on an entity whose current row is the
 // chain's newest belief and top version, is planned from the current row
 // alone (chainFromCurrent, effective_head_write.go) — no history read, so its
@@ -109,7 +109,7 @@ func appendCost(tb testing.TB, be r10Backend, rel bool, versions, k int) (allocs
 
 // TestCascadeAppend67_AllocsFlat: the allocations of an open append at the
 // head do not grow with the chain (1, 100 and 1,000 versions; memory and
-// badger; nodes and relationships). Before backlog 67 every append read the
+// badger; nodes and relationships). Before chainFromCurrent every append read the
 // whole history (88 % of a changing write's allocations at 1,000 versions).
 func TestCascadeAppend67_AllocsFlat(t *testing.T) {
 	const k = 20
@@ -272,7 +272,7 @@ func TestCascadeAppend67_Twin(t *testing.T) {
 				return tx.Commit()
 			})
 			// An Update of a version that starts in the future (its start is
-			// the row's ValidFrom, its TxFrom the clock: backlog 77), then a
+			// the row's ValidFrom, its TxFrom the clock), then a
 			// gap correction before the genesis and an append above it; the
 			// unpinned point door answers the head timeline throughout.
 			future := tw.a.peekNow() + 1_000_000

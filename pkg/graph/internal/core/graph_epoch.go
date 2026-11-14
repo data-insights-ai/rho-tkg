@@ -7,7 +7,7 @@ import (
 )
 
 // epochRandRead is a seam over crypto/rand.Read so a test can force the
-// all-zero-buffer branch (BACKLOG 14g) deterministically instead of relying
+// all-zero-buffer branch deterministically instead of relying
 // on a 1-in-2^64 chance; production code never reassigns it.
 var epochRandRead = rand.Read
 

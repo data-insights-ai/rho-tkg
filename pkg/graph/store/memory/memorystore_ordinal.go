@@ -90,7 +90,7 @@ func (ms *Store) relOrdinalLocked(id types.RelID, typeToken uint16) uint32 {
 // storedNode is the frozen current row the store keeps for n.
 //
 // Every current node row the store keeps passes here, so the membership
-// sidecars (K1 and property, backlog 8) record it here.
+// sidecars (K1 and property) record it here.
 func (ms *Store) storedNode(n *types.Node) *types.Node {
 	ms.recordNodeRowLocked(n, true)
 	return n.CompactFrozenCopyWithOrdinal(ms.nodeOrdinalLocked(n.ID()))
@@ -104,7 +104,7 @@ func (ms *Store) storedNode(n *types.Node) *types.Node {
 // right for the row's life.
 //
 // Every current relationship row the store keeps passes here, so the membership
-// sidecars (K1 and property, backlog 8) record it here.
+// sidecars (K1 and property) record it here.
 func (ms *Store) storedRel(r *types.Relationship) *types.Relationship {
 	ms.recordRelRowLocked(r, true)
 	ord := ms.relOrdinalLocked(r.ID(), r.TypeToken().Value())
@@ -118,7 +118,7 @@ func (ms *Store) storedRel(r *types.Relationship) *types.Relationship {
 // historyNode is the frozen history row the store keeps for a version of n
 // (frozen so LendNodeVersion can hand it out; GetNodeVersion copies, which
 // thaws). Every history row passes here; see storedNode. by, when not nil, is
-// the current row that replaced n (an update door's demoted row, ledger row 62).
+// the current row that replaced n (an update door's demoted row).
 func (ms *Store) historyNode(n, by *types.Node) *types.Node {
 	if by != nil {
 		ms.recordNodeReplacedLocked(n, by)

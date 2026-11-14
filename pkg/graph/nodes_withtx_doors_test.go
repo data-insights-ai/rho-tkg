@@ -14,9 +14,9 @@ import (
 
 // The GraphTx, BatchBuilder and ingest.Session caller-instant node doors
 // through the pkg/graph facade on every backend — the node twin of
-// TestRelsWithTx_TxBatchIngestFacade (rule 2), and the ordering rule (t after
+// TestRelsWithTx_TxBatchIngestFacade, and the ordering rule (t after
 // the current TxFrom and after every recorded TxTo) on each door with
-// errors.Is at the public layer (rule 4).
+// errors.Is at the public layer.
 //
 // Catches: a public door that forwards to its plain twin (t equal to TxFrom
 // then succeeds and the node is stamped with the clock), a rule that reads
@@ -141,7 +141,7 @@ func TestNodesWithTx_TxBatchIngestFacade(t *testing.T) {
 				// bounded cascade before the first valid-from appends its row
 				// above the current row, which keeps its slot. (The fixture was
 				// a delete plus a backfilled re-import inside the first life,
-				// refused since backlog 38; the core tests keep that stored
+				// refused now; the core tests keep that stored
 				// shape, TestTxBackfillNode_OrderEqualReversed.)
 				m, err := g.Nodes().AddWithTx(ctx, []string{"Ref"}, map[string]any{"tkg_valid_from": base - 1000, "w": int64(1)}, base)
 				if err != nil {

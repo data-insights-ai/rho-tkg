@@ -342,7 +342,7 @@ func (ts *Store) planRelationshipPlacementMoves(moving types.NodeID, relIDs []sn
 // there. Unlike the read-only preflight* functions it can MUTATE destination:
 // purgeOrRejectDestinationAdjacency purges a confirmed-orphaned index entry
 // (pointing at a relationship that exists nowhere), which is idempotent and
-// safe whether or not the move later aborts (BACKLOG 19o).
+// safe whether or not the move later aborts.
 func (ts *Store) checkAndCleanArchiveNodeDestination(nodeID types.NodeID, destination *BadgerStore, moves []relationshipPlacementMove) error {
 	rawID := nodeID.SnowflakeID()
 	if destination.HasNodeID(rawID) {

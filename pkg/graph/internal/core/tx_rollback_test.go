@@ -51,7 +51,7 @@ func TestGraphTx_RollbackDeletes(t *testing.T) {
 }
 
 // TestGraphTx_RollbackDoesNotDeallocateLabelTokenAdoptedByConcurrentWriter is
-// the BACKLOG 11b regression. A tx's newly-allocated label token is
+// a regression test. A tx's newly-allocated label token is
 // registered (and persisted) immediately, before Commit — Rollback does NOT
 // hold c.mu for the tx's whole lifetime (only per-mutation), so a concurrent
 // standalone Add can Lookup and persist an entity referencing the token
@@ -102,7 +102,7 @@ func TestGraphTx_RollbackDoesNotDeallocateLabelTokenAdoptedByConcurrentWriter(t 
 	// would orphan the concurrently-persisted node's label.
 	tok, ok := g.labels.Lookup("RaceLabel")
 	if !ok {
-		t.Fatal("RaceLabel was de-allocated by rollback despite a concurrent node referencing its token — BACKLOG 11b regression")
+		t.Fatal("RaceLabel was de-allocated by rollback despite a concurrent node referencing its token — regression")
 	}
 	if tok != raceToken {
 		t.Fatalf("RaceLabel re-registered under a DIFFERENT token: got %d, want %d", tok, raceToken)

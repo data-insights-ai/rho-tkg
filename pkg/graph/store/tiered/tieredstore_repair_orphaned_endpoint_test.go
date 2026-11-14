@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 19s: RunRepair's Phase 2 (re-create missing in/ entries) aborted
+// RunRepair's Phase 2 (re-create missing in/ entries) aborted
 // the ENTIRE repair pass with a hard error when a cross-shard relationship's
 // endpoint node could not be resolved on any shard — instead of treating it
 // as a reportable orphan, the way Phase 1 already treats an in/ entry with
@@ -54,7 +54,7 @@ func TestTieredStore_Repair_OrphanedRelEndpointDoesNotAbortPass(t *testing.T) {
 
 	result, err := ts.RunRepair()
 	if err != nil {
-		t.Fatalf("RunRepair aborted the whole pass on an orphaned rel endpoint — BACKLOG 19s regression: %v", err)
+		t.Fatalf("RunRepair aborted the whole pass on an orphaned rel endpoint — regression: %v", err)
 	}
 	if result.OrphanedRelEndpoints != 1 {
 		t.Fatalf("OrphanedRelEndpoints = %d, want 1", result.OrphanedRelEndpoints)

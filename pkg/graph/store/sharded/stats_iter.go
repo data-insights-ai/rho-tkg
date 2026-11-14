@@ -174,7 +174,7 @@ func (s *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 }
 
 // ForEachDeletedNodeID / ForEachDeletedRelID implement
-// storecontract.DeletedIterationCapability (BACKLOG 21d/20f) — each shard is
+// storecontract.DeletedIterationCapability — each shard is
 // itself a *badger.Store, which already implements the capability natively
 // (visits IDs with history but no current row), so this is a thin sequential
 // fan-out reusing the SAME forEachID/forEachRelID helpers every other

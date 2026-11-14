@@ -141,7 +141,7 @@ type pendingRel struct {
 	// backfillTxFrom: see pendingNode.backfillTxFrom (§4.1).
 	//
 	// Deliberately NO wireBody/logBody producer-thread pre-encode fields here
-	// (unlike pendingNode) — BACKLOG 21f/15p investigated this and found it
+	// (unlike pendingNode) — an earlier investigation found it
 	// inapplicable: FromNodeHash/ToNodeHash are captured under the per-rel
 	// LockTwo at APPLY time (batch_execute.go, ingest_concurrent.go), on the
 	// SAME thread that would consume a pre-encoded buffer, specifically to

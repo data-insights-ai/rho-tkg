@@ -424,7 +424,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		return nil, fmt.Errorf("graph: node-id collision probe: %w", err)
 	}
 	// A deleted ID's chain continues: the new life starts above its highest
-	// version and after its stamps (backlog 38, version_alloc.go). Decided
+	// version and after its stamps (version_alloc.go). Decided
 	// before any token is allocated, so a refused caller instant leaves
 	// nothing behind.
 	life, err := c.nodeLifeStart(id)

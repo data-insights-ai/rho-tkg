@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestTieredPutRelationship_CrossShardEmitsChangeRecords is the BACKLOG 18c
+// TestTieredPutRelationship_CrossShardEmitsChangeRecords is the
 // end-to-end regression: a cross-shard relationship (start on an event shard,
 // end on the reference shard — the "E→R" split-write branch in
 // putRelationshipLocked) used to be completely invisible to the TieredStore's
@@ -56,7 +56,7 @@ func TestTieredPutRelationship_CrossShardEmitsChangeRecords(t *testing.T) {
 		t.Fatalf("ChangeFeed: %v", err)
 	}
 	if len(feed) != 3 {
-		t.Fatalf("feed after cross-shard PutRelationship = %d records, want 3 (2 NodePut + 1 RelPut) — BACKLOG 18c regression", len(feed))
+		t.Fatalf("feed after cross-shard PutRelationship = %d records, want 3 (2 NodePut + 1 RelPut) — regression", len(feed))
 	}
 	if feed[0].Tag != storecontract.ChangeNodePut || feed[1].Tag != storecontract.ChangeNodePut {
 		t.Fatalf("feed[0:2] tags = [%v %v], want [NodePut NodePut]", feed[0].Tag, feed[1].Tag)
@@ -73,7 +73,7 @@ func TestTieredPutRelationship_CrossShardEmitsChangeRecords(t *testing.T) {
 		t.Fatalf("ChangeFeed after delete: %v", err)
 	}
 	if len(feed) != 4 {
-		t.Fatalf("feed after cross-shard DeleteRelationship = %d records, want 4 — BACKLOG 18c regression", len(feed))
+		t.Fatalf("feed after cross-shard DeleteRelationship = %d records, want 4 — regression", len(feed))
 	}
 	if feed[3].Tag != storecontract.ChangeRelDelete {
 		t.Fatalf("feed[3] tag = %v, want ChangeRelDelete — cross-shard relationship delete invisible to the feed", feed[3].Tag)

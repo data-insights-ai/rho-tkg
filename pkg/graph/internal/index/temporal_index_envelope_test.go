@@ -10,7 +10,7 @@ import (
 // B4 Stage 1 — the per-node valid-time ENVELOPE. Extend maintains a sound superset
 // across all versions, where Add keeps only the current version. These tests pin
 // the sound-superset property the core resolver will rely on for predicate-anywhere
-// temporal queries (rule 16).
+// temporal queries.
 
 func containsID(ids []snowflake.ID, want snowflake.ID) bool {
 	for _, id := range ids {

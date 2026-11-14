@@ -18,7 +18,7 @@ import (
 //
 // Faulty gate caught: one that leaves the sec/op block only at a B/op or
 // allocs/op header and so reads a custom metric's rows as sec/op (identical
-// code failed the gate on a +46 % build-ms sample: backlog 8 review).
+// code failed the gate on a +46 % build-ms sample).
 func runGate(t *testing.T, csv string, vars ...string) (string, error) {
 	t.Helper()
 	if _, err := exec.LookPath("awk"); err != nil {
@@ -192,7 +192,7 @@ func TestPinnedRelGateMatrixMatchesTheGate(t *testing.T) {
 	}
 }
 
-// The LatestStamps family (backlog 30) joins the allocs-gated family: its door
+// The LatestStamps family joins the allocs-gated family: its door
 // is 0 allocs/op and the regression it exists to catch — the door falling back
 // to the History fold — costs 230,388 allocs/op at 10,000 versions. A zero
 // baseline cannot be gated in percent, so a family row with 0 allocs/op fails

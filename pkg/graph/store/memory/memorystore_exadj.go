@@ -7,7 +7,7 @@ import (
 
 var _ storecontract.ExAdjacencyCapability = (*Store)(nil)
 
-// Ex-adjacency (store.ExAdjacencyCapability, backlog 50): exOutIdx / exInIdx
+// Ex-adjacency (store.ExAdjacencyCapability): exOutIdx / exInIdx
 // hold, per node, the relationships that named it as start / end in a row the
 // live adjacency (outIdx / inIdx) no longer ties to it. deleteRelLocked moves
 // both legs of the deleted row there (the adjacency entries it frees);

@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 77 (found by row 67): a plain superseding write of a version that
+// A plain superseding write of a version that
 // starts in the future (Update, the label and CAS doors, CloseVersion) used to
 // stamp the version's start + 1 as TxFrom, ahead of the transaction clock: a
 // head pin did not reach the row, every later write on the entity was stamped

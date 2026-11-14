@@ -35,15 +35,15 @@ import (
 // exhaustion it returns the LIVE snapshot without committing a possibly-stale
 // Rescan and leaves dirty set, so a later quiescent read reconciles exactly
 // (Observe keeps Min/Max monotonically correct for additions, so the fallback
-// never under-reports a live extremum). See lesson 62 and
-// docs/query-planners.md "Deletion semantics".
+// never under-reports a live extremum). See docs/query-planners.md "Deletion
+// semantics".
 //
 // This is coarser-grained than the memory backend's NodePropertyStats (which
 // holds one lock for the whole call — its node lookups are direct in-process
 // map reads with no recursive-locking risk, so it needs no generation guard).
 //
-// propertyStatsRescanMaxAttempts bounds that optimistic-retry loop (lesson 24:
-// an optimistic retry over an unlocked window must be bounded).
+// propertyStatsRescanMaxAttempts bounds that optimistic-retry loop (an
+// optimistic retry over an unlocked window must be bounded).
 const propertyStatsRescanMaxAttempts = 3
 
 func (bs *Store) NodePropertyStats(labelToken uint16, propertyKey string) (storecontract.PropertyStats, error) {

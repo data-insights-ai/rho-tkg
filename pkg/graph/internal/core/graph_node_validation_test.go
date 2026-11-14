@@ -251,7 +251,7 @@ func TestAddNodePropertyValueNonStringIgnored(t *testing.T) {
 
 // TestAddNodePropertyValueNonStringContainersUnaffectedByMaxPropertyValueSize
 // proves non-string containers are governed by the SEPARATE
-// MaxPropertyContainerLength field (BACKLOG 14b), not MaxPropertyValueSize —
+// MaxPropertyContainerLength field, not MaxPropertyValueSize —
 // a small string-length limit (here 1) must NOT reject a modestly-sized
 // numeric/byte container. This is deliberate: MaxPropertyValueSize's natural
 // scale is "how long can one string be", while a container's natural scale is

@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ledger row 60: a store's current-row push-down reads a negative ValidStart
+// A store's current-row push-down reads a negative ValidStart
 // or ValidEnd as a real bound (0 is the only unset value), with and without a
 // temporal envelope index, on every backend; the scan doors agree.
 func TestStoreNegativeValidIntervalIsAFilter(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// These tests exercise the BACKLOG 11f Batch D import-door wiring —
+// These tests exercise the Batch D import-door wiring —
 // putImportedNode / putImportedRelationship — the same way
 // generated_create_scoped_test.go exercises putGeneratedNode/
 // putGeneratedRelationship for Batch A. Nothing in GraphTx constructs a

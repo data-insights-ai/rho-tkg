@@ -4,11 +4,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Belief-watermark sidecar (memory arm) — BACKLOG 10c.
+// Belief-watermark sidecar (memory arm).
 //
 // See store.NodeBeliefWatermarkCapability's doc comment for the full
 // rationale: this restores a SAFE version of the current-row-only fast path
-// BACKLOG 10b removed from nodeAtLockedTx/relAtLockedTx, gated on an explicit
+// removed from nodeAtLockedTx/relAtLockedTx, gated on an explicit
 // per-entity invariant instead of an assumption a bounded cascade correction
 // could silently break.
 //

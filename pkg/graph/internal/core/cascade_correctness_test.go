@@ -8,11 +8,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Cascade correctness (backlog 14, 18, 19 and the 2a half of 20). Every test is
-// two-phase (rule 15: answers at a pin taken before a later write are asserted
-// unchanged after it), runs node and relationship (rule 2) on memory, badger,
+// Cascade correctness. Every test is
+// two-phase (answers at a pin taken before a later write are asserted
+// unchanged after it), runs node and relationship on memory, badger,
 // sharded and tiered, renders exact sets with a bystander entity B beside the
-// target T (rule 16) and compares the named and the generic doors (rule 17).
+// target T and compares the named and the generic doors.
 
 // ccShape is one cascade history applied to target T (valid from 1000). Each
 // shape names the faulty implementation it catches.
@@ -287,7 +287,7 @@ func TestOneTickCascadeRows(t *testing.T) {
 	})
 }
 
-// --- backlog 14 ---------------------------------------------------------------
+// --- cascade on a deleted entity ----------------------------------------------
 
 // TestCascadeOnDeletedEntityRefused: a SetVersionInterval on a hard-deleted
 // entity is refused through every cascade door with ErrEntityDeleted, which
@@ -373,7 +373,7 @@ func TestCascadeOnDeletedEntityRefused(t *testing.T) {
 	})
 }
 
-// TestCascadeAppendedRowsCarryNoRetraction — backlog 14, live trigger: on an
+// TestCascadeAppendedRowsCarryNoRetraction — live trigger: on an
 // updated and closed entity a cascade must not copy a superseded row's TxTo
 // (or a DeletedAt) onto the rows it appends, and a later Update must not carry
 // one onto its new version. Asserts every row has TxTo == 0 or TxTo >= TxFrom,
@@ -424,7 +424,7 @@ func TestCascadeAppendedRowsCarryNoRetraction(t *testing.T) {
 	})
 }
 
-// --- backlog 18 ---------------------------------------------------------------
+// --- versions -----------------------------------------------------------------
 
 // TestCascadeVersionsUniqueAndPastStable: after each shape, a sequence of later
 // version-advancing writes (Update, CloseVersion, AddLabel for nodes) and a
@@ -504,7 +504,7 @@ func TestCascadeVersionsUniqueAndPastStable(t *testing.T) {
 	})
 }
 
-// --- backlog 19 ---------------------------------------------------------------
+// --- rollback -----------------------------------------------------------------
 
 // TestTxRollbackKeepsCascadeRows: a GraphTx that updates, deletes, or is
 // refused a caller-instant update of an entity whose chain holds cascade rows

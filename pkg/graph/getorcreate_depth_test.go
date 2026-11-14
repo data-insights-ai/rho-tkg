@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Row 96 (ai-soc 2026-10-21): an event-class label's GetOrCreateByKey dedupes
+// ai-soc 2026-10-21: an event-class label's GetOrCreateByKey dedupes
 // within a window. GetOrCreateByKeyOpts bounds the lookup by opts.Depth, so a
 // key that lives only on a cold shard does not open that shard at DepthWarm and
 // a new copy is minted on the hot shard. GetOrCreateByKey keeps DepthAll.

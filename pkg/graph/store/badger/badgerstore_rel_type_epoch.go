@@ -8,7 +8,7 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // node-side expand path's Gate-2 depends on it advancing on EVERY edge write. It is
 // not touched here. What is added beside it is a striped counter so a rel-type
 // column snapshot can survive a write to an UNRELATED type — the same thing
-// BACKLOG 4b did for labels once the global node counter proved too coarse.
+// the per-label epoch did for labels once the global node counter proved too coarse.
 //
 // THE DEFAULT IS OVER-INVALIDATION, and that inversion is the whole safety
 // argument. There are ten relationship-mutation sites. Classifying all ten as

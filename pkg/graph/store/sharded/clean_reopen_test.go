@@ -14,7 +14,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Backlog 54 on sharded: every slot is a badger store that reopens from its
+// On sharded, every slot is a badger store that reopens from its
 // keys and its clean-close image. With relationships whose endpoints live on
 // other slots, each slot's RAM state after a clean reopen must equal a full
 // rebuild of the same files.

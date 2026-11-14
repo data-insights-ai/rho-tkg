@@ -21,7 +21,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 42: LatestStamps reads the current-row half through
+// LatestStamps reads the current-row half through
 // store.CurrentStampsCapability (the current row's stamps without the full
 // row: badger decodes only the temporal block on an entity-cache miss). The
 // public answer must stay byte-identical to the implementation it replaces —

@@ -14,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ledger row 62 (sigma-tkgd 2026-10-16): an equality lookup with a valid-time
+// Sigma-tkgd, 2026-10-16: an equality lookup with a valid-time
 // window, ByTypeAndProperty(type, key, v, {TxAt, ValidStart: a, ValidEnd: b})
 // and the node mirror, costs O(log n + members whose rows meet the window), not
 // O(every row the value ever had).
@@ -229,7 +229,7 @@ func TestWindowedEqualitySeekCost(t *testing.T) {
 // value (adds, revisions that change or keep the value, closes, deletes,
 // retractions, excisions, untimed and negative starts, int 3 and float 3.0),
 // then the indexed door answers exactly like the unindexed mirror key (the
-// full-history fold, lesson 58) at every recorded TxAt pin (before the first
+// full-history fold) at every recorded TxAt pin (before the first
 // write, mid-history, after the last) and for every window shape: closed,
 // empty-hitting, a = b (refused alike), open end, UnboundedValidFrom and
 // negative starts, a point, TxAt alone, TxPin alone. Every backend twice:

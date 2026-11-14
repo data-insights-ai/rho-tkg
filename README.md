@@ -327,13 +327,13 @@ This list is the complete documentation set; there are no other `.md` files. Put
 | [`docs/persistence.md`](docs/persistence.md) | Storage formats, wire format and key layout, durability, change-log, backups, upgrading a store |
 | [`docs/badger.md`](docs/badger.md) | badger v4.9.2, read from its source: how it stores, writes and reads data, its costs (measured), its options, the rules rho follows when it uses it, its complete API (every exported symbol, section 8) and the badger features rho should integrate (section 9). Read it before changing any code that reads or writes badger |
 | [`docs/query-planners.md`](docs/query-planners.md) | Planner statistics (cardinality, HyperLogLog NDV, bounds, timelines), index usability, staleness |
-| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Operating manual: standing rules (Rules digest), Makefile gates and release, review and doc-edit rules, fuzz/bench by hand, lesson index ("lesson N") |
+| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Operating manual: standing rules (Rules digest), release checklist, review, fuzz/bench, lessons. Procedure and check hierarchy: AGENTS.md |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security policy and reporting |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Every release, dated: what shipped and why |
-| `tasks/todo.md` | Current work only, in order: Now, Next, Waiting; René's open decisions are the items waiting for him, each with a default. Later, parked and closed items are folded into the changelog (§ Folded from tasks/todo.md) |
-| `AGENTS.md` | Agent entry: documentation rule, repo/branch/check/code hierarchies, short dev loop. Full rules and release detail live in CONTRIBUTING; design in architecture.md |
+| `tasks/todo.md` | Current work only, in order: Now, Next, Waiting; RH's open decisions are the items waiting for him, each with a default. Later, parked and closed items are folded into the changelog (§ Folded from tasks/todo.md) |
+| `AGENTS.md` | Agent entry: procedure (`make` → `test-one` → `check` → release). Full rules: CONTRIBUTING; design: architecture.md |
 
-Measurement data (`.txt`, `.json`) lives under `tasks/evidence/`, explained by the todo row or changelog entry that cites it.
+Measurement data (`.txt`, `.json`) lives under `tasks/evidence/` (local, gitignored; only the folders a current doc, todo row or test cites are kept; older ones are in git history).
 Removed files (old lessons, backlog, ADRs, evidence notes) stay readable in git: `git show 6e20157c:<path>`. `TestNoMDFileOutsideTheDocumentation` fails on any `.md` file this table does not name.
 
 Optional gitignored HANDOVER at the repo root holds local operator state (releases, consumers, glossary); it is not in git or this documentation set.
@@ -354,18 +354,20 @@ Run any tutorial: `go run ./tutorials/001_basic_graph/`
 
 ## Building & testing
 
-Daily work: targeted `go test -run '…' ./pkg/…`, then `make old`. Before push: `make gate`.
-René calls `make release` for a tag.
+Daily work: `make test-one PKG=…`, `make old`. Handoff when `make check` passes. RH calls `make release` for a tag.
 
 ```bash
-make old             # two integration tests (dev)
-make gate            # build, lint, short test ./... (pre-push)
-make release         # patch release: gate, tag, push (René only)
-make                 # target list (see CONTRIBUTING for presubmit, race, bench, dry-*, release-*)
+make                 # menu (default goal)
+make test-one PKG=./pkg/... RUN=TestFoo
+make old             # after new tests
+make check           # task done / pre-push (= gate)
+make release         # patch release (RH only)
 ```
 
-Commands, CI and the release checklist: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) § Gates and release.
-Agent entry: [AGENTS.md](AGENTS.md).
+Dry-run, kind: `go run ./scripts/release …`. See AGENTS.md § Scripts.
+
+Release checklist: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) § Gates and release. Commands and agent entry:
+[AGENTS.md](AGENTS.md).
 
 ## Version history
 

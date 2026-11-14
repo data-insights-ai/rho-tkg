@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// DecodeWireRowStamps (backlog 42) reads a stored current row's TxFrom, TxTo,
+// DecodeWireRowStamps reads a stored current row's TxFrom, TxTo,
 // DeletedAt and version without the full decode. It must equal the full
 // checked decode for every row form the badger store holds: the legacy v1
 // layout (omitempty tail), the v2 fixed tail, a pre-encoded row whose tail the

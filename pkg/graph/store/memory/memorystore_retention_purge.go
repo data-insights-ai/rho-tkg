@@ -74,7 +74,7 @@ func (ms *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 		// Temporal() can legitimately be nil — SetTemporal is never mandatory
 		// (raw Store interface writes, batch import, and replication apply can
 		// all leave it unset) — so this predicate must not dereference it
-		// unconditionally (BACKLOG 17c).
+		// unconditionally.
 		tm := n.Temporal()
 		return tm != nil && !ms.validAxis.Get().Open(tm.ValidTo) && tm.ValidTo < before
 	})
@@ -137,7 +137,7 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		for relID := range relIDs {
 			if r, live := ms.rels[relID]; live {
 				relsPurged++ // count only rows actually removed (parity with badger)
-				// BACKLOG 17f: unlike a normal delete, retention purge erases
+				// Unlike a normal delete, retention purge erases
 				// the relationship's history entirely and advances the
 				// retention watermark below which no read can ever be pinned
 				// again — so, unlike the append-only-superset contract a
@@ -154,7 +154,7 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 			if err := ms.deleteRelOrPurgeOrphanLocked(relID); err != nil {
 				return zero, err
 			}
-			ms.dropExAdjRowsLocked(relID, rows) // nothing of it is left to find (backlog 50)
+			ms.dropExAdjRowsLocked(relID, rows) // nothing of it is left to find
 			delete(ms.relHistory, relID)        // purge the rel's whole history too
 			ms.histGen.Add(1)                   // a history row removed (LabelTimeStats cache)
 			ms.relHistoryRemovedLocked(relID)
@@ -164,7 +164,7 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		}
 
 		ms.removeNodeLabelIndexes(nid, n)
-		ms.dropExAdjNodeLocked(nid) // backlog 50
+		ms.dropExAdjNodeLocked(nid)
 		ms.removeNodePropertyKeyCounts(n)
 		rawID := nid.SnowflakeID()
 		indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -172,7 +172,7 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 		indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
 		indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
-		// BACKLOG 17f: same rationale as the rel-type reap above, for every
+		// Same rationale as the rel-type reap above, for every
 		// label token the CURRENT version carries (a cheap, node-local
 		// iteration — not a full-history label scan, so a label the node
 		// carried earlier in its history and later dropped can still leave a
@@ -193,7 +193,7 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 	}
 	if len(purgedIDs) > 0 {
 		// The purged rows' values must not outlive them in the property
-		// membership sidecars; rebuilt on the next temporal lookup (backlog 8).
+		// membership sidecars; rebuilt on the next temporal lookup.
 		ms.dropPropertyTxMembersLocked()
 	}
 

@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 57: NodesAtTxByIDs / RelsAtTxByIDs answer, per element, exactly what
+// NodesAtTxByIDs / RelsAtTxByIDs answer, per element, exactly what
 // NodeAtTx / RelAtTx answers for that ID (nil on not-found / no version valid).
 // The per-ID door is the oracle; every backend.
 

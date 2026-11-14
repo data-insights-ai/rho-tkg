@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 17f: retention purge hard-removes a node/relationship's ENTIRE
+// Retention purge hard-removes a node/relationship's ENTIRE
 // history and advances the retention watermark below which no read can ever
 // be pinned again — unlike a normal delete, there is no legitimate future
 // query state that could ever need a purged entity's K1 transaction-time
@@ -100,7 +100,7 @@ func TestMemoryPurgeNodesByLabelBefore_ReapsLabelAndRelTypeTxMembers(t *testing.
 	}
 	for _, eid := range oldEvents {
 		if postLabelMembers[eid] {
-			t.Fatalf("labelTxMembers still contains purged node %v after retention purge — BACKLOG 17f regression", eid)
+			t.Fatalf("labelTxMembers still contains purged node %v after retention purge — regression", eid)
 		}
 	}
 	if !postLabelMembers[survivor] {
@@ -116,7 +116,7 @@ func TestMemoryPurgeNodesByLabelBefore_ReapsLabelAndRelTypeTxMembers(t *testing.
 	}
 	for _, rid := range oldRels {
 		if postRelMembers[rid] {
-			t.Fatalf("relTypeTxMembers still contains purged relationship %v after retention purge — BACKLOG 17f regression", rid)
+			t.Fatalf("relTypeTxMembers still contains purged relationship %v after retention purge — regression", rid)
 		}
 	}
 }

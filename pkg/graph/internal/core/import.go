@@ -38,8 +38,7 @@ const importMemoryStageLimit = 8 << 20 // 8 MiB before spilling to temp file.
 // map/slice allocation — a memory-exhaustion DoS at the import trust boundary.
 // The maps are created empty in newImportReplaySeen/newImportRollback and grow
 // naturally during replay, so this is a pure pre-sizing hint: a small cap keeps
-// the common-case optimization while bounding hostile amplification. See
-// docs/CONTRIBUTING.md lesson 48.
+// the common-case optimization while bounding hostile amplification.
 const importPreallocLimit = 4096
 
 // importBodyPreallocCap bounds the buffer pre-allocated for an inbound record
@@ -47,8 +46,7 @@ const importPreallocLimit = 4096
 // the stream actually carries only a few bytes; pre-allocating the declared
 // length would let ~5 hostile bytes amplify into a 128 MiB allocation (a
 // memory-exhaustion DoS at the import trust boundary). We instead grow the body
-// buffer with the bytes actually read, pre-reserving at most this cap. See
-// docs/CONTRIBUTING.md lesson 48.
+// buffer with the bytes actually read, pre-reserving at most this cap.
 const importBodyPreallocCap int64 = 64 << 10 // 64 KiB
 
 // Import reads a portable graph snapshot from r and restores it into c,
@@ -226,7 +224,7 @@ func (c *Core) validateUniqueAfterImportLocked() error {
 			return fmt.Errorf("graph: import unique validation: %w", err)
 		}
 		for _, n := range nodes {
-			// The LOAD door stays lenient (lesson 58): a stream may carry width
+			// The LOAD door stays lenient: a stream may carry width
 			// twins (int(3) beside int64(3)) a pre-v4.57.1 constraint admitted,
 			// so the import compares the stored width keys; the write doors
 			// refuse a new twin.
@@ -276,7 +274,7 @@ func readImportStageRecord(r io.Reader, staged, cap int64) (tag byte, data []byt
 	// Read the body proportional to bytes actually present, not the declared
 	// length: io.CopyN grows the buffer with the data it reads and reports a
 	// short stream as an error, so a header lying about a 128 MiB length on a
-	// tiny stream costs ~64 KiB, not 128 MiB. (docs/CONTRIBUTING.md lesson 48)
+	// tiny stream costs ~64 KiB, not 128 MiB.
 	var body bytes.Buffer
 	body.Grow(int(min(int64(length), importBodyPreallocCap)))
 	got, rerr := io.CopyN(&body, r, int64(length))
@@ -291,11 +289,11 @@ func readImportStageRecord(r io.Reader, staged, cap int64) (tag byte, data []byt
 
 // verifyImportedNodeHash recomputes the content hash of an imported node row
 // and compares it with the hash the stream claims. Import reads untrusted
-// bytes (lesson 6): without this check a transport bit-flip in a property
+// bytes: without this check a transport bit-flip in a property
 // value imports cleanly and produces a graph whose hash chain no longer
 // verifies.
 //
-// BACKLOG 12d: a row whose integrity block is entirely absent or carries an
+// A row whose integrity block is entirely absent or carries an
 // empty Hash is REJECTED, not silently exempted. Every entity this library
 // itself ever produces has a non-empty Hash — SetIntegrity is called on every
 // standalone/tx/batch/ingest create and on every replica-apply/import row
@@ -323,7 +321,7 @@ func (c *Core) verifyImportedNodeHash(n *types.Node, id int64, kind string) erro
 }
 
 // verifyImportedRelHash is the relationship counterpart of
-// verifyImportedNodeHash (see there for the BACKLOG 12d missing-hash
+// verifyImportedNodeHash (see there for the missing-hash
 // rejection rationale). FromNodeHash/ToNodeHash are not part of the content
 // hash and are not checked here; chain links are covered by Verify*Chain.
 func (c *Core) verifyImportedRelHash(r *types.Relationship, id int64, kind string) error {
@@ -641,8 +639,8 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 	// bootstrap data. v1 snapshots / no-change-log sources carry SnapshotLSN 0
 	// and leave the watermark untouched. Non-MetaKV backends no-op.
 	//
-	// Monotonic, mirroring ApplyChange/ApplyChanges's enforced no-regression
-	// (BACKLOG 12c): a raw overwrite here could REGRESS an already-tailing
+	// Monotonic, mirroring ApplyChange/ApplyChanges's enforced no-regression:
+	// a raw overwrite here could REGRESS an already-tailing
 	// replica's watermark if this snapshot is re-imported (or an older one is
 	// imported) onto a replica that has already applied past SnapshotLSN. The
 	// replica would then re-tail from the regressed point, and an entity deleted
@@ -808,7 +806,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		// must not push the clock. An imported snapshot may carry TxFrom stamps
 		// from a clock-skewed or bursting primary that exceed this graph's wall
 		// clock, and those must be covered so a NowTx() on a bootstrap-only
-		// replica still includes the imported rows (lesson 71) — but only once
+		// replica still includes the imported rows — but only once
 		// the row is actually in the store.
 		c.advanceInstantFloor(nodeWireCommitStamp(wn))
 	case exportTagNodeHist:
@@ -965,7 +963,7 @@ type importRollback struct {
 	rels        map[types.RelID]importRelSnapshot
 	relOrder    []types.RelID
 
-	// applyNodeRetention is ImportOptions.ApplyNodeRetention (backlog 21).
+	// applyNodeRetention is ImportOptions.ApplyNodeRetention.
 	applyNodeRetention bool
 
 	// priorMode is the target's untimed mode before the header adopted the
@@ -1310,9 +1308,9 @@ func restoreImportRelHistory(c *Core, id types.RelID, snap importRelSnapshot) er
 
 func (rb *importRollback) restoreRegistries() error {
 	// When the change-log is enabled, keep the token registries APPEND-ONLY across
-	// import rollback (lesson 51/55). A partial change-log-enabled import emits
-	// records IN-BACKEND eagerly (import is not yet wrapped in a TxChangeLogScope —
-	// tasks/todo.md backlog 1), so a token an emitted record references must NOT be
+	// import rollback. A partial change-log-enabled import emits
+	// records IN-BACKEND eagerly (import is not yet wrapped in a TxChangeLogScope),
+	// so a token an emitted record references must NOT be
 	// de-allocated here — that would poison the feed and stall replicas (the same
 	// bug class the per-tx buffer fixes for the tx path). An allocated-but-unused
 	// token is harmless; the partial-import create+delete churn still converges on a

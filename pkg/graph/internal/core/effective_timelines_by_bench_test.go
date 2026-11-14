@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 )
 
-// BenchmarkRelEffectiveTimelinesByProperties (row 105): 1,000 (estate, device)
+// BenchmarkRelEffectiveTimelinesByProperties: 1,000 (estate, device)
 // probes on 100k relationships (10 estates, 10k devices; memory) through one
 // door call vs 1,000 pinned ByTypeAndProperty calls on the device (one version
 // per relationship, not a timeline: the door does more per match and must

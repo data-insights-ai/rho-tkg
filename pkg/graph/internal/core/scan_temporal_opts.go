@@ -7,7 +7,7 @@ import (
 
 // Temporal QueryOpts on the column scans and the unordered numeric range scans.
 //
-// These doors have the shape of ByLabel / ByType (rule 17): a label or type plus
+// These doors have the shape of ByLabel / ByType: a label or type plus
 // QueryOpts. Their fast paths hand opts to a store, and a store answers from
 // CURRENT rows only — it filters the live row by valid time and has no notion of
 // TxAt / TxPin (QueryOpts.HasValidTimeFilter checks valid time only). So whenever

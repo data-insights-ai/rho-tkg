@@ -3,7 +3,7 @@ package types
 import "testing"
 
 // TestValidToAtTxTime: a row's own end as believed at a pin, the rule
-// consumers and storeutil.OwnOpenAtTxTime read (row 73). Break cases: the pin one before and at the delete,
+// consumers and storeutil.OwnOpenAtTxTime read. Break cases: the pin one before and at the delete,
 // a kept close, the kept open end, a legacy tombstone.
 func TestTemporalMetadataValidToAtTxTime(t *testing.T) {
 	t.Parallel()

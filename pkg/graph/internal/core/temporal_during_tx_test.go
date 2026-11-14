@@ -11,8 +11,8 @@ import (
 // Ask 2 — NodesDuringTx / RelsDuringTx: the bitemporal valid-time INTERVAL door.
 // The randomized cross-backend agreement (memory/badger/tiered/sharded, named ==
 // generic == oracle, every txAt) lives in the bitemporal oracle harness; this
-// file is the FOCUSED, deterministic two-phase proof (rule 15) with exact-set
-// assertions (rule 16) of the two distinguishing phenomena the ask names:
+// file is the FOCUSED, deterministic two-phase proof with exact-set
+// assertions of the two distinguishing phenomena the ask names:
 //
 //  1. The transaction-time RECORDED-BY-THEN filter genuinely changes the answer:
 //     an entity whose genesis was recorded AFTER the early pin is entirely absent
@@ -89,7 +89,7 @@ func TestNodesDuringTx_BitemporalTwoPhase(t *testing.T) {
 		[]types.NodeID{n1.ID(), n2.ID(), n3.ID()})
 
 	// [10,30) as of the LATE belief: n2's belief head is [60,∞) (no overlap) but
-	// its older tile [10,60) overlaps — n2 must still be IN (rule 16).
+	// its older tile [10,60) overlaps — n2 must still be IN.
 	assertNodeSet(t, "DuringTx[10,30)@late(older-version)", nodesDuringTx(10, 30, txLate),
 		[]types.NodeID{n1.ID(), n2.ID(), n3.ID()})
 
@@ -111,7 +111,7 @@ func TestNodesDuringTx_BitemporalTwoPhase(t *testing.T) {
 		[]types.NodeID{n1.ID(), n2.ID(), n3.ID()})
 }
 
-// TestRelsDuringTx_BitemporalTwoPhase is the relationship mirror (rule 2 parity).
+// TestRelsDuringTx_BitemporalTwoPhase is the relationship mirror.
 func TestRelsDuringTx_BitemporalTwoPhase(t *testing.T) {
 	t.Parallel()
 	g := newTxTimeGraph(t)

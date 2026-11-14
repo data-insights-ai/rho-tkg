@@ -6,7 +6,7 @@ import (
 )
 
 // PruneRelTypeTemporalCandidates implements store.RelTypeTemporalCandidateCapability
-// (BACKLOG 21c, the rel-side mirror of PruneTemporalCandidates). It drops every
+// (the rel-side mirror of PruneTemporalCandidates). It drops every
 // candidate whose per-rel-type valid-time ENVELOPE is present in the temporal
 // index AND provably cannot overlap the query's valid-time filter — an id the
 // index does not cover is always kept (sound: the chain resolver stays

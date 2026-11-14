@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The many-pin effective timelines (row 98) of temporalOpsSpy: one canned
+// The many-pin effective timelines of temporalOpsSpy: one canned
 // answer per pin.
 func (s *temporalOpsSpy) NodeEffectiveTimelines(id types.NodeID, pins []types.Instant) ([][]NodeSegment, error) {
 	s.record("NodeEffectiveTimelines")
@@ -31,7 +31,7 @@ func (s *temporalOpsSpy) RelEffectiveTimelines(id types.RelID, pins []types.Inst
 	return out, s.err
 }
 
-// The lowest answered pins (row 104) of temporalOpsSpy: lastPin per id.
+// The lowest answered pins of temporalOpsSpy: lastPin per id.
 func (s *temporalOpsSpy) NodeLowestAnsweredPin(id types.NodeID) (types.Instant, error) {
 	s.record("NodeLowestAnsweredPin")
 	s.lastNodeID = id
@@ -64,7 +64,7 @@ func (s *temporalOpsSpy) RelsLowestAnsweredPins(ids []types.RelID) ([]types.Inst
 	return out, s.err
 }
 
-// TestLowestAnsweredPinWrappers — rule 1 for the row-104 wrappers: a nil API
+// TestLowestAnsweredPinWrappers — direct test of the lowest-answered-pin wrappers: a nil API
 // and a typed-nil Ops return ErrNilGraph and no result; a ready API forwards
 // the ids verbatim and returns the Ops' answers and error unchanged.
 func TestLowestAnsweredPinWrappers(t *testing.T) {
@@ -105,7 +105,7 @@ func TestLowestAnsweredPinWrappers(t *testing.T) {
 	}
 }
 
-// TestEffectiveTimelinesWrappers — rule 1 for the many-pin wrappers: a nil API
+// TestEffectiveTimelinesWrappers — direct test of the many-pin wrappers: a nil API
 // and a typed-nil Ops return ErrNilGraph and no result without calling
 // anything; a ready API forwards id and pins verbatim (same order, duplicates
 // kept) and returns the Ops' answers and error unchanged.

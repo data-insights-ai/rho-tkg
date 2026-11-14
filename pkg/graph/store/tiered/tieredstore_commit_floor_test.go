@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 44 on tiered: an event shard's commit floor lives on the reference
+// On tiered, an event shard's commit floor lives on the reference
 // shard (tieredstore_commit_floor.go).
 
 func cfTieredStore(t *testing.T, dir string) (*Store, uint16) {

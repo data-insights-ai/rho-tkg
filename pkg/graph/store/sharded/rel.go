@@ -329,7 +329,7 @@ func (s *Store) IncomingRelationshipsMetered(nodeID types.NodeID, typeToken uint
 // every shard. Each shard holds the entity co-located with its adjacency entry,
 // so per shard we resolve the adjacency rel IDs against that same shard.
 //
-// PERF CAVEAT (BACKLOG 20g): this ALWAYS fans out to every claimed shard
+// PERF CAVEAT: this ALWAYS fans out to every claimed shard
 // (forEachShardErr below), never just nodeID's own shard or the shards of its
 // actual neighbors — a full-fan-out cost proportional to Config.SlotCount for
 // EVERY adjacency read, regardless of how localized the node's real

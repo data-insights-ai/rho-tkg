@@ -5,7 +5,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// store.ReadSnapshotCapability on tiered (row 121): an effective scan's run of
+// store.ReadSnapshotCapability on tiered: an effective scan's run of
 // node reads routes every read exactly as the store's method of the same name
 // (move lock, shard checkout, archive and history-shard fallbacks), and reads
 // the reference shard through ONE badger read snapshot for the run: one

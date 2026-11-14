@@ -2,11 +2,11 @@ package tiered
 
 import "testing"
 
-// BACKLOG 19l: ShardCatalog.RemoveShard had ZERO direct test coverage —
+// ShardCatalog.RemoveShard had ZERO direct test coverage —
 // existing coverage was entirely indirect, exercised through
-// retention_purge_drop.go's dropOneShard (Testing Rule 1: indirect coverage
+// retention_purge_drop.go's dropOneShard (indirect coverage
 // via delegation does not count). This also covers the RemoveShard +
-// snapshotShards/restoreShards transactional pairing that BACKLOG 19b's fix
+// snapshotShards/restoreShards transactional pairing that the catalog-commit fix
 // relies on: dropOneShard calls snapshotShards() before RemoveShard(), then
 // restoreShards(snapshot) if the subsequent catalog.Save() fails — a rollback
 // discipline that needs its own direct proof, not just an assumption that
@@ -87,7 +87,7 @@ func TestShardCatalog_RemoveShard_DoubleRemoveIsIdempotentFalse(t *testing.T) {
 
 // TestShardCatalog_RemoveShard_SnapshotRestoreRollsBack directly proves the
 // snapshotShards -> RemoveShard -> restoreShards rollback discipline
-// dropOneShard depends on (BACKLOG 19b/19e's failure-recovery paths): a
+// dropOneShard depends on (in its failure-recovery paths): a
 // removal followed by a restore from the pre-removal snapshot must bring the
 // entry fully back, indistinguishable from the removal never having happened.
 func TestShardCatalog_RemoveShard_SnapshotRestoreRollsBack(t *testing.T) {
@@ -116,7 +116,7 @@ func TestShardCatalog_RemoveShard_SnapshotRestoreRollsBack(t *testing.T) {
 
 	got, ok := sc.GetShard("events-2026-W01")
 	if !ok {
-		t.Fatal("shard not restored after restoreShards(snapshot) — BACKLOG 19b/19l rollback discipline broken")
+		t.Fatal("shard not restored after restoreShards(snapshot) — rollback discipline broken")
 	}
 	if got.Kind != ShardEvent || got.Tier != TierWarm {
 		t.Fatalf("restored entry = %+v, want Kind=%v Tier=%v", got, ShardEvent, TierWarm)

@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 49: an ID deleted and re-imported so that its new row lands on
+// An ID deleted and re-imported so that its new row lands on
 // another tiered shard (a relationship whose start node moved between the
 // reference and an event shard; a node whose primary label moved between the
 // reference and the event class) keeps every earlier life reachable through

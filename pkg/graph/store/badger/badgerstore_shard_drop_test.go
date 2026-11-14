@@ -8,10 +8,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 13m: CollectShardDropResidue (the tiered whole-shard fast-drop
+// CollectShardDropResidue (the tiered whole-shard fast-drop
 // primitive, ADR-0008 R4) had zero direct badger-package tests — only
-// indirectly exercised via tiered, which violates Rule 1 ("indirect
-// coverage via delegation does NOT count"). These tests exercise the
+// indirectly exercised via tiered, and indirect coverage via delegation does
+// NOT count. These tests exercise the
 // method directly against a badger.Store, covering both label-index modes
 // (RAM and on-disk — hasForeignLabelTokensLocked has separate code paths
 // for each) and the onlyLabel true/false branches plus rel dedup.
@@ -170,7 +170,7 @@ func TestCollectShardDropResidue_EmptyShardIsOnlyLabel(t *testing.T) {
 // (this method mutates nothing itself, but is a maintenance primitive gated
 // the same way as the fast-drop it supports — a warm/cold-tier shard opened
 // ReadOnly must reject it rather than silently return stale-looking data).
-// TestCollectShardDropResidue_WorksOnReadOnlyStore (BACKLOG 18p) pins the
+// TestCollectShardDropResidue_WorksOnReadOnlyStore pins the
 // corrected contract: CollectShardDropResidue is documented as mutating
 // NOTHING (a pure read/analysis primitive), so it must work against a
 // read-only-opened Store, e.g. a transiently-read-opened cold shard —
@@ -178,7 +178,7 @@ func TestCollectShardDropResidue_EmptyShardIsOnlyLabel(t *testing.T) {
 // needs a writable handle and is a separate step entirely. Previously this
 // required checkWritable() + idxMu.Lock(), a stricter precondition than the
 // function's own documented contract needed (a copy-paste of the general
-// write-door boilerplate, not a reasoned requirement — see BACKLOG 13m's
+// write-door boilerplate, not a reasoned requirement — see the earlier
 // test, which pinned the AS-IS behavior as pure coverage without
 // independently re-justifying it).
 func TestCollectShardDropResidue_WorksOnReadOnlyStore(t *testing.T) {
@@ -226,7 +226,7 @@ func TestCollectShardDropResidue_WorksOnReadOnlyStore(t *testing.T) {
 }
 
 // TestCollectShardDropResidue_NilStoreAndClosedStore pins the two lifecycle
-// guards CollectShardDropResidue still enforces after BACKLOG 18p relaxed it
+// guards CollectShardDropResidue still enforces after the relaxation
 // from checkWritable to checkOpen: a nil receiver and a fully closed store
 // must still fail — only the read-only restriction was lifted.
 func TestCollectShardDropResidue_NilStoreAndClosedStore(t *testing.T) {

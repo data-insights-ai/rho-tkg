@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestIterByLabel_EqualsByLabel proves the streaming whole-node door (BACKLOG 3)
+// TestIterByLabel_EqualsByLabel proves the streaming whole-node door
 // yields EXACTLY the same node set (and order) as the materializing ByLabel, over a
 // large label that exercises the bulk-scan substrate, on both backends.
 func TestIterByLabel_EqualsByLabel(t *testing.T) {

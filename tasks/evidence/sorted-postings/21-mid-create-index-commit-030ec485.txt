@@ -1,2 +1,0 @@
-PASS
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.005s

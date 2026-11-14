@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 19h: forEachScopeShard re-derives its shard set on every call rather
+// forEachScopeShard re-derives its shard set on every call rather
 // than snapshotting it at BeginLogScope, so a shard created by rotation WHILE a
 // change-log scope is open needs an explicit hand-off (rotateHotShardLocked) or
 // its rotation-triggering write would self-commit eagerly outside the scope —
@@ -94,7 +94,7 @@ func TestScopeRotation_ShardAfterFirstDivert_NowIncluded(t *testing.T) {
 		t.Fatalf("LastCommittedLSN pre-commit: %v", err)
 	}
 	if preCommitLSN != 0 {
-		t.Fatalf("LastCommittedLSN before CommitLogScope = %d, want 0 (BACKLOG 19h regression: "+
+		t.Fatalf("LastCommittedLSN before CommitLogScope = %d, want 0 (regression: "+
 			"the rotation-triggering write self-committed eagerly outside the scope)", preCommitLSN)
 	}
 
@@ -150,7 +150,7 @@ func TestScopeRotation_Rollback_DoesNotLeak(t *testing.T) {
 		t.Fatalf("LastCommittedLSN: %v", err)
 	}
 	if last != 0 {
-		t.Fatalf("LastCommittedLSN after rollback = %d, want 0 (BACKLOG 19h regression: "+
+		t.Fatalf("LastCommittedLSN after rollback = %d, want 0 (regression: "+
 			"the rotation-triggering write leaked a record/LSN outside the discarded scope)", last)
 	}
 	feed, err := ts.ChangeFeed(0, 0)

@@ -20,7 +20,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Item M (backlog 8, git show 8d8100b3^:tasks/handover-pinned-index-churn-20261009.md): a pinned
+// Item M (git show 8d8100b3^:tasks/handover-pinned-index-churn-20261009.md): a pinned
 // property lookup (ByTypeAndProperty / ByLabelAndProperty with a temporal
 // filter) must cost the rels that ever carried the value, not the whole
 // history of the graph. These tests pin the ANSWER (T1: exact sets per pin on
@@ -568,7 +568,7 @@ func TestPinnedPropertyLookupLoadsOnlyEverMembers(t *testing.T) {
 						t.Fatalf("%s %+v: %d matches, want 5", stage, opts, len(rels))
 					}
 					// A valid-time lookup loads only the members whose rows
-					// meet the window (ledger row 62): the 5 current ones, not
+					// meet the window: the 5 current ones, not
 					// the 3 moved away nor the 2 deleted.
 					want := everMembers
 					if opts.ValidAt != 0 {
@@ -637,7 +637,7 @@ func TestPinnedPropertyLookupLoadsOnlyEverMembers(t *testing.T) {
 						t.Fatalf("%s %+v: %d matches, want 5", stage, opts, len(nodes))
 					}
 					// A valid-time lookup loads only the members whose rows
-					// meet the window (ledger row 62): the 5 current ones, not
+					// meet the window: the 5 current ones, not
 					// the 3 moved away nor the 2 deleted.
 					want := everMembers
 					if opts.ValidAt != 0 {
@@ -845,7 +845,7 @@ func declarePropertyIndexes(t *testing.T, be pinnedPropBackend, g *Core, mode in
 	}
 }
 
-// TestPinnedPropertyDoorsAgree is T2 (rule 17): for every backend and index
+// TestPinnedPropertyDoorsAgree is T2: for every backend and index
 // mode, the named doors (RelsByTypePropertyAt / During, NodesByLabelPropertyAt
 // / During) equal the generic doors (ByTypeAndProperty / ByLabelAndProperty
 // with ValidAt, ValidStart+ValidEnd, TxAt, TxPin), ByLabelAndProperties
@@ -1430,7 +1430,7 @@ func TestPinnedPropertyLookupLifecycle(t *testing.T) {
 		if err := f.g.Close(); err != nil {
 			t.Fatalf("Close: %v", err)
 		}
-		// Clean reopen (backlog 74): the open image restores the built
+		// Clean reopen: the open image restores the built
 		// sidecars, and they answer as the arms did before the close.
 		g := be.open(t)
 		if st := propTxStats(t, g); st.Builds != 0 || st.RelSidecars != 1 || st.NodeSidecars != 1 {

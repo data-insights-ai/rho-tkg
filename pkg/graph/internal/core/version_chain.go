@@ -91,7 +91,7 @@ func (n *NodeOps) VersionAfter(id types.NodeID, version uint32) (*types.Node, er
 }
 
 // CloseVersion sets ValidTo on the current node to t, marking it temporally
-// expired WITHOUT deleting it. BACKLOG 9m/9a: it DOES advance the version —
+// expired WITHOUT deleting it. It DOES advance the version —
 // the pre-close state is archived to history at its own version and the
 // current row becomes a NEW version whose PrevHash chains to the pre-close
 // row's own Hash, so the transition is chain-walkable via VersionAfter/
@@ -322,7 +322,7 @@ func (c *Core) requireRelHistoryUnlocked(id types.RelID) error {
 
 // CloseVersion sets ValidTo on the current relationship to t, marking it
 // temporally expired WITHOUT deleting it — see NodeOps.CloseVersion's doc for
-// the version-advance/hash-chain contract (BACKLOG 9m/9a), mirrored here.
+// the version-advance/hash-chain contract, mirrored here.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) CloseVersion(ctx context.Context, id types.RelID, t types.Instant) error {
 	c := r.c

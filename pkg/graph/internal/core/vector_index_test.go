@@ -165,7 +165,7 @@ func TestVectorIndex_SearchNearestScored(t *testing.T) {
 	}
 }
 
-// TestVectorIndex_SearchNearestScored_TemporalCaveat is the rule-15 two-phase
+// TestVectorIndex_SearchNearestScored_TemporalCaveat is the two-phase
 // pin of the documented ranking caveat: with ValidAt=t the RETURNED node is
 // the historical version, but Distance is computed against the CURRENT vector
 // (the index holds only latest vectors).
@@ -220,7 +220,7 @@ func TestVectorIndex_SearchNearestScored_TemporalCaveat(t *testing.T) {
 // — a node hard-deleted after the pin would be silently missing and distances
 // would rank by post-pin vectors. The door rejects TxPin explicitly instead of
 // returning a silently wrong belief state. Both doors (standalone + tx mirror)
-// funnel through searchNearestLocked, so both must reject (rule 17).
+// funnel through searchNearestLocked, so both must reject.
 func TestVectorIndex_TxPinRejected(t *testing.T) {
 	g, _ := New(Config{})
 	label := "Doc"

@@ -7,7 +7,7 @@ import (
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
-// BenchmarkPropertyIndexElementsWrite (backlog 63): the write cost of one
+// BenchmarkPropertyIndexElementsWrite: the write cost of one
 // Derived row carrying ov_support with 5 rel IDs, under no index, a plain
 // index on a scalar key of the same row, and an Elements index on ov_support.
 func BenchmarkPropertyIndexElementsWrite(b *testing.B) {

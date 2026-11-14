@@ -11,7 +11,7 @@ import (
 
 // QueryOpts.ValidStart/ValidEnd (interval) combined with QueryOpts.TxAt
 // regression coverage. v4.11.1 fixed the delete-tombstone bug at the shared
-// filter{Node,Rel}ChainByTxAt seam (lesson 60), but no test in the repo
+// filter{Node,Rel}ChainByTxAt seam, but no test in the repo
 // combined an interval filter with TxAt — only ValidAt+TxAt
 // (TestDeletedNodeValidAtPlusTxAt) and TxAt-only were covered. This file
 // closes that gap: TEST 1/2 re-run the delete-tombstone scenario through
@@ -70,13 +70,13 @@ func relTombstoneValidTo(t *testing.T, g *Core, id types.RelID) types.Instant {
 // where D is the tombstone's ValidTo. A window starting exactly AT D must:
 //   - MATCH at a pin taken BEFORE the delete — the tombstone is not yet
 //     recorded, so filterNodeChainByTxAt normalizes the row back to open
-//     [5, inf), the belief AS OF that pin (rule 17 / lesson 60);
+//     [5, inf), the belief AS OF that pin;
 //   - NOT match at a pin taken AFTER the delete, or unpinned — the
 //     tombstone's real ValidTo=D is visible, and [D, MaxInt64) starts
 //     exactly where the now-closed [5, D) interval ends (exclusive) — no
 //     overlap.
 //
-// Runs on both backends (rule 3): memory and badger differ in history
+// Runs on both backends: memory and badger differ in history
 // retrieval and native as-of capability, and the chain rows the fix must not
 // mutate are frozen store rows.
 func TestDeletedNodeIntervalPlusTxAt(t *testing.T) {
@@ -99,7 +99,7 @@ func testDeletedNodeIntervalPlusTxAt(t *testing.T, cfg Config) {
 	defer g.Close()
 	ctx := context.Background()
 
-	// Adversarial control (rule 16): same label, a short CLOSED window that
+	// Adversarial control: same label, a short CLOSED window that
 	// can never overlap [D, MaxInt64) for any tombstone instant D — proves
 	// the query discriminates by interval, not "any node with label T".
 	if _, err := g.Nodes.Add(ctx, []string{"T"}, map[string]any{
@@ -220,8 +220,7 @@ func testDeletedNodeIntervalPlusTxAtAll(t *testing.T, cfg Config) {
 
 // TestDeletedRelIntervalPlusTxAt_ByType is TEST 2 (relationship
 // mirror): the same tombstone-interval scenario as
-// TestDeletedNodeIntervalPlusTxAt, through the generic Rels.ByType door
-// (testing rule 2 — Node and Relationship are structural mirrors).
+// TestDeletedNodeIntervalPlusTxAt, through the generic Rels.ByType door.
 func TestDeletedRelIntervalPlusTxAt_ByType(t *testing.T) {
 	t.Parallel()
 	for name, cfg := range map[string]Config{
@@ -251,7 +250,7 @@ func testDeletedRelIntervalPlusTxAtByType(t *testing.T, cfg Config) {
 		t.Fatalf("add b: %v", err)
 	}
 
-	// Adversarial control (rule 16): same type, reverse direction, a short
+	// Adversarial control: same type, reverse direction, a short
 	// CLOSED window that can never overlap [D, MaxInt64).
 	if _, err := g.Rels.Add(ctx, "R", b, a, map[string]any{
 		"tkg_valid_from": types.Instant(1), "tkg_valid_to": types.Instant(2), "state": "control",
@@ -327,7 +326,7 @@ func testIntervalPlusTxAtTwoVersionBelief(t *testing.T, cfg Config) {
 	defer g.Close()
 	ctx := context.Background()
 
-	// Adversarial control (rule 16): a closed window entirely outside the
+	// Adversarial control: a closed window entirely outside the
 	// test's [10,30) time domain — must never appear in either result.
 	if _, err := g.Nodes.Add(ctx, []string{"T"}, map[string]any{
 		"tkg_valid_from": types.Instant(1), "tkg_valid_to": types.Instant(2), "state": "control",
@@ -373,7 +372,7 @@ func testIntervalPlusTxAtTwoVersionBelief(t *testing.T, cfg Config) {
 }
 
 // TestIntervalPlusTxAt_TwoVersionBelief_Rel is the relationship mirror of
-// TestIntervalPlusTxAt_TwoVersionBelief (testing rule 2).
+// TestIntervalPlusTxAt_TwoVersionBelief.
 func TestIntervalPlusTxAt_TwoVersionBelief_Rel(t *testing.T) {
 	t.Parallel()
 	for name, cfg := range map[string]Config{
@@ -403,7 +402,7 @@ func testIntervalPlusTxAtTwoVersionBeliefRel(t *testing.T, cfg Config) {
 		t.Fatalf("add b: %v", err)
 	}
 
-	// Adversarial control (rule 16): reverse direction, a closed window
+	// Adversarial control: reverse direction, a closed window
 	// entirely outside the test's [10,30) time domain.
 	if _, err := g.Rels.Add(ctx, "R", b, a, map[string]any{
 		"tkg_valid_from": types.Instant(1), "tkg_valid_to": types.Instant(2), "state": "control",

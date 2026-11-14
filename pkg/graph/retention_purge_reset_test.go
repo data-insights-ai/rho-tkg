@@ -11,7 +11,7 @@ import (
 )
 
 // TestRetentionReset_DoesNotLeakStalePerLabelWatermarkAcrossReset is the
-// BACKLOG 13b regression: Admin.Reset zeroed only the graph-max retention
+// regression: Admin.Reset zeroed only the graph-max retention
 // watermark, leaving every per-label `retention_watermark/<token>` MetaKV key
 // in place. Reset explicitly PRESERVES the label-token registry (unlike a
 // compaction stub, which is keyed by entity ID and therefore naturally
@@ -72,7 +72,7 @@ func TestRetentionReset_DoesNotLeakStalePerLabelWatermarkAcrossReset(t *testing.
 	const pin = types.Instant(1000) // < smallBoundary, well below farFuture
 	_, err = g.Temporal().NodeAsOf(newFoo.ID(), pin)
 	if errors.Is(err, graphpkg.ErrRetentionExpired) {
-		t.Fatalf("NodeAsOf(post-reset Foo, pin=%d) = ErrRetentionExpired — stale pre-reset Foo watermark leaked across Reset (BACKLOG 13b regression)", pin)
+		t.Fatalf("NodeAsOf(post-reset Foo, pin=%d) = ErrRetentionExpired — stale pre-reset Foo watermark leaked across Reset (regression)", pin)
 	}
 	if !errors.Is(err, graphpkg.ErrNoVersionAsOf) {
 		t.Fatalf("NodeAsOf(post-reset Foo, pin=%d) err = %v, want ErrNoVersionAsOf", pin, err)

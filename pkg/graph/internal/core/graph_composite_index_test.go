@@ -136,8 +136,8 @@ func TestByLabelAndProperties_PartialMatchExcluded(t *testing.T) {
 // composite (2-key) case: the discriminating entity is one whose
 // MOST-RECENT overlapping version fails the predicate, so a
 // most-recent-overlap-only implementation would miss it in the
-// during-interval query (docs/CONTRIBUTING.md testing rule 16 and
-// "Most-recent-overlap is wrong for predicate-during-interval").
+// during-interval query (most-recent-overlap is wrong for
+// predicate-during-interval).
 func TestNodesByLabelAndProperties_TemporalOpts_Adversarial(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -187,7 +187,7 @@ func TestNodesByLabelAndProperties_TemporalOpts_Adversarial(t *testing.T) {
 	// During [t0, tNow): alice's v0 (draft, owner=alice) overlaps the
 	// interval even though her MOST-RECENT overlapping version (v1,
 	// published) fails the predicate. The during-interval query must still
-	// find her (rule 16 predicate-anywhere-in-interval requirement).
+	// find her (predicate-anywhere-in-interval requirement).
 	hits, err = g.Nodes.ByLabelAndProperties("Doc", values, storepkg.QueryOpts{ValidStart: t0, ValidEnd: tNow})
 	if err != nil {
 		t.Fatalf("draft/alice@[t0,tNow): %v", err)

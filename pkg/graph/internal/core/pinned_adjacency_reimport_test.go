@@ -19,8 +19,8 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Backlog 50: a relationship ID deleted and re-imported with other endpoints
-// keeps its earlier life's rows (backlog 38), so the endpoints an ID names are
+// A relationship ID deleted and re-imported with other endpoints
+// keeps its earlier life's rows, so the endpoints an ID names are
 // not fixed. Every adjacency door must still reach an earlier life through the
 // endpoints it named. The oracle resolves EVERY relationship of the world on
 // its own, the way the door resolves one candidate, and keeps it when the node

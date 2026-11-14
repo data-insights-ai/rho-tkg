@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 12i: strictCheckMergeRecord's wrong-base detector was blind to
+// strictCheckMergeRecord's wrong-base detector was blind to
 // ChangeNodeHistoryVersion / ChangeRelHistoryVersion / ChangeNodeHistoryTruncate /
 // ChangeRelHistoryTruncate. These tests exercise the extended switch directly
 // (strictCheckMergeRecord/baseKnowsNode/baseKnowsRel are unexported, callable
@@ -154,7 +154,7 @@ func TestStrictCheckMergeRecord_NodeHistoryVersion_KnownHistoryOnly(t *testing.T
 // TestStrictCheckMergeRecord_NodeHistoryVersion_VersionZero_NotFlaggedEvenIfAbsent
 // pins the Version>0 gate itself: a Version==0 bare history-version record for a
 // totally absent entity must NOT be flagged, regardless of baseKnowsNode's
-// verdict — the gate is conservative by design (BACKLOG 12i decision: gate on
+// verdict — the gate is conservative by design (decision: gate on
 // Version>0 rather than checking every version).
 func TestStrictCheckMergeRecord_NodeHistoryVersion_VersionZero_NotFlaggedEvenIfAbsent(t *testing.T) {
 	t.Parallel()

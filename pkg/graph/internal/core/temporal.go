@@ -44,8 +44,8 @@ func (c *Core) normalizeDuringRange(start, end types.Instant) (types.Instant, er
 
 // nodeValidFrom returns the effective valid-from of a node row: explicit
 // ValidFrom, else its TxFrom (legacy: UpdatedAt, then the mint instant). It is
-// the resolver's start AND its sort key, for a first and a later version alike
-// (backlog 62). Delegates to storeutil.NodeValidFrom (the rule of
+// the resolver's start AND its sort key, for a first and a later version alike.
+// Delegates to storeutil.NodeValidFrom (the rule of
 // storeutil.EntityValidFrom) — one definition shared with the store push-down,
 // the temporal index envelopes and the column filters.
 func (c *Core) nodeValidFrom(n *types.Node) types.Instant {
@@ -100,8 +100,7 @@ func (c *Core) deleteInstantForRelationship(current *types.Relationship) types.I
 // transaction clock and no later write can be stamped with it. When `at` was
 // already pushed past the clock by validInstantAfter (an explicit future
 // valid-from), c.now() is below it and the candidate falls back to at+1: that
-// path hands out unreserved instants today regardless of this helper (see the
-// tasks/todo.md backlog 4 (ii)).
+// path hands out unreserved instants today regardless of this helper.
 func (c *Core) deleteInstantClearOfCloses(at types.Instant, tms ...*types.TemporalMetadata) types.Instant {
 	for moved := true; moved && at < math.MaxInt64; {
 		moved = false
@@ -115,7 +114,7 @@ func (c *Core) deleteInstantClearOfCloses(at types.Instant, tms ...*types.Tempor
 	return at
 }
 
-// tombstoneSpec is how a delete door ends an entity (backlog 43): at is a
+// tombstoneSpec is how a delete door ends an entity: at is a
 // caller transaction instant already gated by resolveCallerTxInstant (0 = the
 // plain doors' clock instant), retract marks every tombstone the door writes
 // as a retraction (types.TemporalMetadata.Retracted): belief in the life it
@@ -144,7 +143,7 @@ type tombstoneSpec struct {
 // historical answer). DeletedAt and TxTo are always the delete instant.
 //
 // clamped reports a close scheduled after the delete that the tombstone
-// clamped: a valid end earlier pins read changed (backlog 25), which the
+// clamped: a valid end earlier pins read changed, which the
 // caller reports to the pinned caches after its store write
 // (noteClampedClose).
 func stampDeleteTombstone(a types.ValidAxis, tm *types.TemporalMetadata, at types.Instant, retract bool) (clamped bool) {
@@ -173,12 +172,12 @@ type supersession struct {
 
 // supersede is THE instant rule of a plain superseding write. tx is the
 // clock, moved past the current row's own TxFrom only when that row was
-// stamped ahead of the clock (a row stored before backlog 77, a re-import
+// stamped ahead of the clock (a row stored by an earlier release, a re-import
 // after a delete ahead of it), so the superseded row's TxTo never precedes its
 // TxFrom. The new version must start after the current version's start (the
-// one start rule, nodeValidFrom — backlog 62); when the clock is not past it
+// one start rule, nodeValidFrom); when the clock is not past it
 // (the current version starts in the future) that start is recorded as the
-// row's ValidFrom, never as its TxFrom. Backlog 77: the start used to be
+// row's ValidFrom, never as its TxFrom. The start used to be
 // stamped as TxFrom, a transaction instant ahead of the clock that no pin
 // taken now reaches and that every later write on the entity is stamped below,
 // so the unpinned point door and the head timeline answered different rows.
@@ -210,7 +209,7 @@ func (s supersession) stamp(tm *types.TemporalMetadata) {
 	}
 }
 
-// checkCloseAfterStart is the one valid-time close rule (backlog 65), shared by
+// checkCloseAfterStart is the one valid-time close rule, shared by
 // CloseVersion, an update that sets tkg_valid_to without tkg_valid_from, and
 // UpdateInPlace: the version keeps its start and ends at end, so an end at or
 // before that start is ErrInvalidTimeRange. what names the input in the error.
@@ -273,7 +272,7 @@ func stampClose(tm *types.TemporalMetadata, start, end types.Instant) {
 // closesVersion reports whether an update's temporal input is a close: a
 // tkg_valid_to that is not the open end of the graph's valid axis a, without
 // a claimed tkg_valid_from (parseValidClaim: on the legacy axis a plain 0 is
-// no claim) — the version keeps its start (backlog 65).
+// no claim) — the version keeps its start.
 func (tmp updateTemporal) closesVersion(a types.ValidAxis) bool {
 	return tmp.hasValidTo && !a.Open(tmp.validTo) && !tmp.validFromSet
 }
@@ -309,11 +308,11 @@ func (c *Core) isNodeValidAt(n *types.Node, t types.Instant) bool {
 // (ValidAt point, ValidStart/ValidEnd interval, or no filter), using the SAME
 // canonical predicate (storeutil.MatchesTemporalFilterFrom) the store push-down
 // and RelMatchesValidTime use, with the row's start taken as the chain resolver
-// takes it (nodeValidFrom: explicit ValidFrom, else TxFrom — backlog 62).
+// takes it (nodeValidFrom: explicit ValidFrom, else TxFrom).
 // Exposed so a consumer that already holds a materialized node (e.g. a query
 // engine post-filtering a traversal) decides validity as NodeAt does — never
 // from the raw shadow value. This is the NODE mirror of RelMatchesValidTime
-// (rule 17: two structural mirrors, same shape); a frozen node (returned by
+// (two structural mirrors, same shape); a frozen node (returned by
 // any plural/scan read, see the Defensive Copying design rule) is read-only
 // here so it is accepted exactly like a mutable one. A nil node never matches.
 func (t *TempOps) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool {
@@ -363,7 +362,7 @@ func (c *Core) resolveNodePositional(chain []*types.Node, t types.Instant, caps 
 	ax := c.axis()
 	start := len(chain) - 1
 	if c.bitemporalMigrated {
-		// BACKLOG 10m: binary search for the backward scan's STARTING
+		// Binary search for the backward scan's STARTING
 		// index instead of always starting at the end — an old t would
 		// otherwise force an O(n) walk past every newer version. Safe
 		// because when bitemporalMigrated is true, nodeVersionBounds'
@@ -405,7 +404,7 @@ func (c *Core) resolveNodeOwnBounds(chain []*types.Node, t types.Instant, caps l
 	ax := c.axis()
 	// Cascade chain: effective intervals can overlap (an older, wider-valid row
 	// under a newer, narrower correction), so the newer BELIEF wins — higher
-	// TxFrom, then version. BACKLOG 10b: bounds here MUST be each row's own
+	// TxFrom, then version. Bounds here MUST be each row's own
 	// asserted interval (nodeOwnBounds), never the positional next-neighbor
 	// bound (nodeVersionBounds) — an untouched older row's ValidFrom must
 	// never truncate a newer, wider-reaching correction. See nodeOwnBounds'
@@ -496,7 +495,7 @@ func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
 // true unconditionally). A version
 // without TemporalMetadata is treated as visible to all TX times.
 //
-// Deliberately NOT bounded by TxTo (lesson 43). TxTo marks when the version
+// Deliberately NOT bounded by TxTo. TxTo marks when the version
 // was SUPERSEDED as the current record — superseded is not retracted: the
 // row remains the authority for its valid-time slot in every later belief
 // state. Excluding rows with TxTo <= txAt (the previous predicate) made
@@ -522,7 +521,7 @@ func versionVisibleAtTx(tm *types.TemporalMetadata, txAt types.Instant) bool {
 // filterNodeChainByTxAt returns the subset of chain whose TX interval contains
 // txAt. txAt == 0 returns chain unchanged (no allocation).
 //
-// Lesson 43 extended to DeletedAt (lesson 60): a hard Delete is a
+// The superseded-is-not-retracted rule extended to DeletedAt: a hard Delete is a
 // TRANSACTION-TIME tombstone. Delete stamps DeletedAt/TxTo (and ValidTo when the
 // row was open or closed after the delete — stampDeleteTombstone) in place on
 // the final version, so a row visible at an earlier txAt still carries
@@ -533,7 +532,7 @@ func versionVisibleAtTx(tm *types.TemporalMetadata, txAt types.Instant) bool {
 // therefore DEEP-COPIED (chain rows may be shared frozen store rows — never
 // mutate them) and normalized to the belief state as of txAt via the same
 // normalizeTemporalVisibleAtTxTime the named as-of door (NodeAsOf/NodesAsOf)
-// already applies, keeping the two doors consistent (testing rule 17).
+// already applies, keeping the two doors consistent.
 func filterNodeChainByTxAt(a types.ValidAxis, chain []*types.Node, txAt types.Instant) []*types.Node {
 	if txAt == 0 {
 		return chain
@@ -598,14 +597,14 @@ func relRowAtTx(a types.ValidAxis, entry *types.Relationship, txAt types.Instant
 // rows are resolved by belief recency (nodeBeliefNewerThan), not by
 // position. A row's end must be its own claim there, never a neighbor's
 // ValidFrom, or an untouched older row can wrongly truncate a newer,
-// wider-reaching correction (BACKLOG 10b). vStart reuses nodeValidFrom
+// wider-reaching correction. vStart reuses nodeValidFrom
 // — the same effective-start key the chain is already sorted by — so this
 // helper never needs the chain, only the entry.
 //
 // Deliberately does NOT replace nodeVersionBounds: the monotonic fast path,
 // the interval door, the Relate (Allen) door, and SelectAsOf all keep using
 // positional bounds, which is correct for them (see the design rationale in
-// docs/CHANGELOG.md's BACKLOG 10b entry) — do not widen this helper's use
+// docs/CHANGELOG.md) — do not widen this helper's use
 // without re-running the full bitemporal oracle fuzz harness at full
 // iteration count (10b's two prior fix attempts were reverted after
 // touching nodeVersionBounds itself broke it in non-obvious multi-cascade
@@ -633,7 +632,7 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 
 	// Version start: the untimed start (TxFrom; legacy UpdatedAt / mint),
 	// replaced by an explicit ValidFrom below unless it is a legacy inherited
-	// one. Version end: the next version's start (backlog 62: one rule).
+	// one. Version end: the next version's start (one rule).
 	vStart = storeutil.UntimedValidFrom(entry.ID().SnowflakeID(), entry.Temporal())
 	if i+1 < len(chain) {
 		vEnd = a.NodeStart(chain[i+1])
@@ -655,7 +654,7 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 }
 
 // nodeInheritedValidFrom is the pre-migration heuristic (bitemporalMigrated
-// false: a store without MetaKVCapability). Caveat (backlog 65): a close row
+// false: a store without MetaKVCapability). Caveat: a close row
 // stamps its version's start as ValidFrom, so a close of a version whose
 // explicit ValidFrom equals its predecessor's reads as inherited here and
 // starts at the close's TxFrom. Every in-tree store migrates.
@@ -673,7 +672,7 @@ func nodeInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetada
 func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.Instant, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
 	ax := c.axis() // once per chain, not per row
 	if !c.sortRelChainForResolve(chain) {
-		// BACKLOG 10m: mirrors resolveNodeVersionAt's binary-search-assisted
+		// Mirrors resolveNodeVersionAt's binary-search-assisted
 		// scan start — see there for the bitemporalMigrated-gating rationale.
 		start := len(chain) - 1
 		if c.bitemporalMigrated {
@@ -697,7 +696,7 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 
-	// BACKLOG 10b: own-interval bounds, not positional — see resolveNodeVersionAt
+	// Own-interval bounds, not positional — see resolveNodeVersionAt
 	// (also for the supersession cap).
 	sc := getSupersessionScratch()
 	defer putSupersessionScratch(sc)
@@ -914,7 +913,7 @@ func adjDirsOf(outgoing bool) adjDirs {
 }
 
 // forEachRelAdjacencyCandidateID is the adjacency-query specialization of
-// forEachRelCandidateIDByDepth (backlog 50): the candidates are currentIDs
+// forEachRelCandidateIDByDepth: the candidates are currentIDs
 // (the seeds' live adjacency) united with the seeds' ex-adjacency in dirs —
 // every relationship that named a seed in a row the live adjacency no longer
 // ties to it (a deleted relationship, or an earlier life of one re-imported
@@ -1219,14 +1218,14 @@ func (c *Core) memberIDsAt(depth storepkg.ShardDepth) storepkg.MemberIDsCapabili
 }
 
 // forEachRelPropertyCandidateID streams the candidate set of a temporal
-// (relType, key = value) lookup into fn, once per candidate (backlog 8).
+// (relType, key = value) lookup into fn, once per candidate.
 //
 // With the store's property membership sidecar for a declared (relType, key)
 // index the candidates are the value's ever-members, minus those whose
 // earliest row carrying the value was recorded strictly after the effective
 // transaction-time pin (TxPin, else TxAt; a pure valid-time filter prunes
 // nothing), united with the current index matches (current). With a
-// valid-time filter and the windowed capability (ledger row 62) they are only
+// valid-time filter and the windowed capability they are only
 // the members whose rows carrying the value may meet the filter's window,
 // pruned the same way; the sidecar records every current and history row, so
 // current is not read. Otherwise — no sidecar, no declared index
@@ -1500,7 +1499,7 @@ func validWindow(opts storepkg.QueryOpts) (start, end types.Instant, ok bool) {
 // the INTERSECTION of the sidecar sets of the pairs whose key has a declared
 // index (a pair without one, or with a non-indexable value, constrains
 // nothing), pruned by the pin per pair, united with the current matches —
-// or, under a valid-time filter with the windowed capability (ledger row 62),
+// or, under a valid-time filter with the windowed capability,
 // each pair's set narrowed to the members whose rows may meet the window and
 // no current read. No usable pair at all: the history fold scoped to the
 // label's ever-members (forEachNodeHistoryCandidateOfLabel).
@@ -1702,7 +1701,7 @@ func (c *Core) findNodeVersionForOptsRd(rd entityReads, id types.NodeID, opts st
 		// Belief-state pin: pure knowledge-time resolution, NO valid-time
 		// filter. Delegate to the SAME resolver the named as-of door uses
 		// (nodeAsOfLocked feeds NodeAsOf / NodesAsOf) so the two doors agree by
-		// construction — the version-ordered retraction rule (lesson 62) is
+		// construction — the version-ordered retraction rule is
 		// inherited, never re-implemented. Absent → the loop's skip sentinel.
 		n, err := c.nodeAsOfLockedRd(rd, id, txPinOf(opts))
 		if err != nil {

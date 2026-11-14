@@ -7,7 +7,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// TestHNSWReassignEntryPoint_PicksMaxLevelSurvivor is the BACKLOG 16e proof:
+// TestHNSWReassignEntryPoint_PicksMaxLevelSurvivor is the proof:
 // reassignEntryPoint must pick the SURVIVING node with the highest level,
 // restoring the same invariant insert() maintains (entryPoint always sits
 // at maxLevel) — not merely "the last non-deleted node by index order",

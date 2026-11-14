@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// This file implements store.ScopedTxChangeLog (BACKLOG 11f Batch A —
+// This file implements store.ScopedTxChangeLog (Batch A —
 // foundation only; see the interface's doc comment in
 // pkg/graph/store/changefeed.go for the full design rationale). It is the
 // multi-token sibling of the single-scope BeginLogScope/SetLogDivert/
@@ -125,7 +125,7 @@ func (ms *Store) logRelPutRoutedLocked(r *types.Relationship, withHistory bool, 
 	return nil
 }
 
-// logNodeDeleteWithHistoryRoutedLocked (BACKLOG 11f Batch C) builds and
+// logNodeDeleteWithHistoryRoutedLocked (Batch C) builds and
 // appends the with-history node-delete change-log record: token == 0 routes
 // through the eager/legacy-scope path (ms.logChangeLocked); token != 0 routes
 // the record into that scope's buffer instead. The single call site for both
@@ -163,7 +163,7 @@ func (ms *Store) logRelDeleteWithHistoryRoutedLocked(id snowflake.ID, tombstone 
 }
 
 // logNodeHistoryVersionRoutedLocked is logNodeHistoryVersionLocked's
-// token-aware sibling (BACKLOG 11f Batch E) — see logNodePutRoutedLocked's
+// token-aware sibling (Batch E) — see logNodePutRoutedLocked's
 // doc comment for the routing rule.
 func (ms *Store) logNodeHistoryVersionRoutedLocked(version uint32, n *types.Node, token uint64) error {
 	if !ms.logEnabled {
@@ -198,7 +198,7 @@ func (ms *Store) logRelHistoryVersionRoutedLocked(version uint32, r *types.Relat
 }
 
 // logNodeHardDeleteRoutedLocked is logNodeHardDeleteLocked's token-aware
-// sibling (BACKLOG 11f Batch F) — see logNodeHistoryVersionRoutedLocked's
+// sibling (Batch F) — see logNodeHistoryVersionRoutedLocked's
 // doc comment.
 func (ms *Store) logNodeHardDeleteRoutedLocked(id snowflake.ID, cascadedRelIDs []int64, token uint64) error {
 	if !ms.logEnabled {

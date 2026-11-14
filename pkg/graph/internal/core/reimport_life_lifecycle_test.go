@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The lifecycle doors over a re-imported ID (backlog 38): replica apply,
+// The lifecycle doors over a re-imported ID: replica apply,
 // export → import, history compaction and retention purge see a chain whose
 // versions continue across lives, and an old chain (written before the fix:
 // the re-import restarted at version 0 and overwrote) reads as it did.

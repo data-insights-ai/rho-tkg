@@ -14,12 +14,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 10g: TestTemporalTwoDoorsAgreeOnLabelQueries (rule 17 — two doors,
+// TestTemporalTwoDoorsAgreeOnLabelQueries (two doors,
 // one answer) covered nodes only. The relationship-type doors are
 // STRUCTURALLY ASYMMETRIC from their node/label counterparts: RelsByTypeAt
 // (the named door) thinly delegates to the generic QueryOpts door, while
 // nodesByLabelAtLocked is a SEPARATE hand-written implementation duplicating
-// candidate-gathering + B4-prune + resolve — exactly the lessons 42/58 drift
+// candidate-gathering + B4-prune + resolve — exactly the sibling-door drift
 // shape, but the equivalence test only guarded the node side. This is the
 // relationship-type mirror.
 //

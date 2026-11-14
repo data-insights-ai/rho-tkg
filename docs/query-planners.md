@@ -226,7 +226,7 @@ means:
   committing a possibly-stale rescan and leaves the pair `dirty`, so a later
   quiescent read reconciles; because `Observe` keeps Min/Max monotonically
   correct for additions, the fallback never under-reports a live extremum.
-  `Count`/`NDV` are always exact/current on both backends. See lesson 63.
+  `Count`/`NDV` are always exact/current on both backends.
 
 Deletes are far more frequent than planner-stat reads in a write-heavy
 workload, hence the deferred rescan. See

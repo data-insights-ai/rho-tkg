@@ -14,7 +14,7 @@ import (
 )
 
 // nodeDeleteRetryBackoffBase/Cap bound the randomized jitter deleteNodeInternal's
-// TOCTOU retry sleeps for (BACKLOG 9r). A bare runtime.Gosched() lets every
+// TOCTOU retry sleeps for. A bare runtime.Gosched() lets every
 // contending goroutine wake at the same cooperative-yield cadence, so under
 // heavy concurrent write contention on one hot node they can keep
 // re-colliding on the same Phase A/Phase B window instead of desynchronizing.
@@ -29,7 +29,7 @@ const (
 
 // nodeDeleteRetryBackoffDuration is the randomized jitter a TOCTOU retry waits,
 // split out from the sleep so a test can assert the BOUND without measuring wall
-// clock. The bound is the property BACKLOG 9r guards; how long the scheduler
+// clock. The bound is the property the test guards; how long the scheduler
 // actually parks the goroutine is not.
 func nodeDeleteRetryBackoffDuration(attempt int) time.Duration {
 	if attempt > nodeDeleteRetryBackoffCap {
@@ -473,7 +473,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 	clamped = stampDeleteTombstone(c.axis(), tmN, now, c.deleteRetracts(spec)) || clamped
 
 	// Single atomic call: PutRelVersion×N + PutNodeVersion + DeleteNodeCascade.
-	// Routes through the BACKLOG 11f scoped sibling when ctx carries a scoped
+	// Routes through the scoped sibling when ctx carries a scoped
 	// change-log token and the store supports it — mirrors putGeneratedNode's
 	// routing pattern. FOUNDATION ONLY: nothing constructs a token-carrying
 	// ctx yet (see scope_token.go), so this branch is currently always dead

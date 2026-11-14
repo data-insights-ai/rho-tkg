@@ -32,7 +32,7 @@ import (
 //     of them; no change-log record is written (a seal is a physical move,
 //     ADR-0011 §4.8).
 //
-// Overlay rule (ADR-0011 §4.1, §4.5, lesson 57): a sealed row is current iff
+// Overlay rule (ADR-0011 §4.1, §4.5): a sealed row is current iff
 // its ID is not in segDead. Every write door that targets an existing row
 // first FAULTS IN a sealed row — decodes it back into the memtable and marks
 // the sealed copy dead — and then runs its unchanged row-store logic. So an
@@ -327,7 +327,7 @@ func (ms *Store) mostUnsealedLocked() uint16 {
 // are frozen and immutable. The install re-takes the lock and moves a row
 // out of the memtable only if rels still holds that exact pointer — a row
 // replaced, deleted or faulted in meanwhile is sealed dead from the start
-// (the per-row write-generation guard of lesson 63). A Clear in between
+// (the per-row write-generation guard). A Clear in between
 // (segEpoch moved) discards the segment.
 func (ms *Store) sealType(tok uint16, explicit bool) error {
 	ms.mu.RLock()
@@ -1130,7 +1130,7 @@ func (ms *Store) relsFromIDsLocked(ids []types.RelID, after types.EntityID, limi
 }
 
 // relsFromSeqLocked is relsFromIDsLocked over ascending candidates already
-// past the cursor (an index posting list's After, backlog 72).
+// past the cursor (an index posting list's After).
 func (ms *Store) relsFromSeqLocked(ids iter.Seq[snowflake.ID], limit int, keep func(*types.Relationship) bool) ([]*types.Relationship, error) {
 	var out []*types.Relationship
 	for raw := range ids {

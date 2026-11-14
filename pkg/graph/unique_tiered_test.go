@@ -23,8 +23,9 @@ import (
 // ErrUniqueEventLabelUnsupported (values span unbounded time shards, no global
 // value index). UniqueForever rides the MetaKV ownership registry globally.
 //
-// Testing Rule 14: NO sub-second ShardWindow. The ref-label doors never touch
-// event shards, so the default 1-week window is used and no rotation is needed.
+// NO sub-second ShardWindow (sub-second windows create boundary gaps). The
+// ref-label doors never touch event shards, so the default 1-week window is
+// used and no rotation is needed.
 // =============================================================================
 
 // openTieredUniqueGraph opens a tiered graph rooted at dir with "User" as a

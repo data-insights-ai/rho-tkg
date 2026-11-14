@@ -1,8 +1,0 @@
---- FAIL: TestReadBudget_AtNodesListChargesBufferBytesAsItGrows (0.00s)
-    --- FAIL: TestReadBudget_AtNodesListChargesBufferBytesAsItGrows/badger (0.16s)
-        read_budget_atnodes_gather_test.go:49: BufferBytes 24: 12 IDs listed, work {Candidates:13 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:104}; want 2 listed and 32 buffer bytes counted at the third
-    --- FAIL: TestReadBudget_AtNodesListChargesBufferBytesAsItGrows/sharded (0.25s)
-        read_budget_atnodes_gather_test.go:49: BufferBytes 24: 12 IDs listed, work {Candidates:13 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:104}; want 2 listed and 32 buffer bytes counted at the third
-    --- FAIL: TestReadBudget_AtNodesListChargesBufferBytesAsItGrows/tiered (0.36s)
-        read_budget_atnodes_gather_test.go:49: BufferBytes 24: 12 IDs listed, work {Candidates:13 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:104}; want 2 listed and 32 buffer bytes counted at the third
-FAIL

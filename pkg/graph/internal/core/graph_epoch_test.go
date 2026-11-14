@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// BACKLOG 14g: graphEpochLocked's corrupt-lineage and zero-avoidance
+// graphEpochLocked's corrupt-lineage and zero-avoidance
 // branches had no direct test.
 
 // TestGraphEpochLocked_CorruptLineageIDRejected seeds graphEpochMeta with a

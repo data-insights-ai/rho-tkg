@@ -14,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Valid-end bounded effective scans (backlog 51, sigma-tkgd step 6):
+// Valid-end bounded effective scans (sigma-tkgd step 6):
 // ForEachRelEffectiveByTypeFrom / ForEachNodeEffectiveByLabelsFrom. The
 // oracle is the unbounded door (ForEachRelEffectiveByType /
 // ForEachNodeEffectiveByLabels) at the same pin, keeping the entities with a
@@ -146,8 +146,8 @@ func primeValidEndIndex(t testing.TB, g *Core, relTypes, labels []string) {
 	}
 }
 
-// TestEffectiveByTypeValidFromCostFollowsResult is sigma-tkgd's acceptance
-// (backlog 51): with K entities whose valid end is at or after validFrom and N
+// TestEffectiveByTypeValidFromCostFollowsResult is sigma-tkgd's acceptance:
+// with K entities whose valid end is at or after validFrom and N
 // retired ones (deleted before validFrom), the bounded doors read K entities
 // whether N is 1,000 or 10,000, on memory and on badger, and stream exactly
 // the K. Entities read = per-entity timeline loads (chainLoadTestHook).

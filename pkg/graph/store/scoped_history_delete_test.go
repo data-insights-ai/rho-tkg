@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// This file exercises store.ScopedDeleteCapability (BACKLOG 11f Batch C —
+// This file exercises store.ScopedDeleteCapability (Batch C —
 // foundation only; see the interface's doc comment in
 // pkg/graph/store/changefeed.go). It mirrors
 // badgerstore_history_scoped_test.go's battery for the two Batch C doors,
@@ -238,7 +238,7 @@ func TestScopedDelete_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
 	})
 }
 
-// ─── DeleteRelWithHistoryScoped mirrors DeleteNodeWithHistoryScoped (rule 2 parity) ───
+// ─── DeleteRelWithHistoryScoped mirrors DeleteNodeWithHistoryScoped (Node/Relationship parity) ───
 
 func TestScopedDelete_DeleteRelWithHistoryScoped(t *testing.T) {
 	forScopedStores(t, true, func(t *testing.T, bs scopedStore) {

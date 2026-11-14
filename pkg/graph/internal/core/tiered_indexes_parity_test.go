@@ -1,6 +1,6 @@
 package core
 
-// Backlog 10 (ai-soc request 3): the tiered store builds relationship-type
+// ai-soc request 3: the tiered store builds relationship-type
 // temporal indexes and composite node indexes per shard. Parity oracle: the
 // same scenario written to a badger graph and to a disk tiered graph whose
 // rows span two event shards, the reference shard and the cross-shard
@@ -257,7 +257,7 @@ func assertRelTemporalParity(t *testing.T, stage string, bw, tw *relTemporalWorl
 	}
 }
 
-// The two-phase answer the rule-15 test pins: "moved" held [1000, 5000) at
+// The answer the two-phase test pins: "moved" held [1000, 5000) at
 // t=1500 and must still be returned there after its interval moved.
 func assertMovedRemembered(t *testing.T, stage string, w *relTemporalWorld) {
 	t.Helper()

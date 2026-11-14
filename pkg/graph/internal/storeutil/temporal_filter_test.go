@@ -153,7 +153,7 @@ func TestMatchesTemporalFilter_ValidAtPrecedence(t *testing.T) {
 	}
 }
 
-// BACKLOG 15j: EnvelopeOverlaps backs the B4 candidate-prune optimization on
+// EnvelopeOverlaps backs the B4 candidate-prune optimization on
 // every history-aware temporal scan and previously had zero direct unit
 // tests — only indirect coverage through higher-level callers. Direct
 // coverage below exercises every branch: no-filter passthrough, ValidAt

@@ -362,7 +362,7 @@ func (bs *Store) incomingIndexEntriesFromKeyspaceLocked() []IncomingIndexEntry {
 	// Ordering closes the commit-window drop: a flush that commits a parked
 	// adjacency SET and clears `flushing` between a scan-first read's Badger
 	// snapshot and its overlay read would leave the edge in neither view, and the
-	// incoming-index repair would then DELETE a live edge. See lesson 64.
+	// incoming-index repair would then DELETE a live edge.
 	overlay := make(map[inKey]bool) // present (SET) / deleted (DELETE) per parked op
 	bs.rangePending(func(k string, op writeOp) {
 		if ik, ok := decode([]byte(k)); ok {

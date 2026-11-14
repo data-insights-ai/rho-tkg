@@ -126,7 +126,7 @@ func TestBitemporalMigration_PreservesExplicitValidFrom(t *testing.T) {
 	}
 }
 
-// TestBitemporalMigration_TruncationGapDoesNotMisfire is BACKLOG 10f: the
+// TestBitemporalMigration_TruncationGapDoesNotMisfire covers this bug: the
 // inheritance loop compared ARRAY-adjacent chain entries, not VERSION-
 // adjacent ones. Simulates a history row that was truncated away (v1
 // missing between v0 and current v2) where the remaining v0 and v2 happen
@@ -169,7 +169,7 @@ func TestBitemporalMigration_TruncationGapDoesNotMisfire(t *testing.T) {
 		t.Fatalf("GetNode: %v", err)
 	}
 	if vf := cur.Temporal().ValidFrom; vf != 5000 {
-		t.Fatalf("post-migration ValidFrom = %d, want 5000 (preserved — v0 is NOT v2's true predecessor after truncation) — BACKLOG 10f regression", vf)
+		t.Fatalf("post-migration ValidFrom = %d, want 5000 (preserved — v0 is NOT v2's true predecessor after truncation) — regression", vf)
 	}
 }
 

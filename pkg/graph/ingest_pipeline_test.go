@@ -12,7 +12,7 @@ import (
 )
 
 // TestIngestPipeline_PublicFacadeSmoke exercises every public method on the
-// ingest sub-API through the graph façade end-to-end (Testing Rule 1).
+// ingest sub-API through the graph façade end-to-end.
 func TestIngestPipeline_PublicFacadeSmoke(t *testing.T) {
 	t.Parallel()
 	g, err := graph.New(graph.Config{})

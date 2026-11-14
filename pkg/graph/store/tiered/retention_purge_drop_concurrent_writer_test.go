@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestTieredColdShardFastDrop_ConcurrentWriters is the BACKLOG 19d regression:
+// TestTieredColdShardFastDrop_ConcurrentWriters is the regression test for a coverage gap:
 // no genuine concurrent-WRITER (not just concurrent readers —
 // TestTieredColdShardFastDrop_ConcurrentReads already covers that — and not
 // just a Close() race — TestTieredColdShardFastDrop_CloseDoesNotRaceEventShardsMap
@@ -26,12 +26,12 @@ import (
 // via the same rotation window, but never eligible for THIS purge) — not the
 // purge-target nodes themselves. Racing writes against nodes the purge may
 // concurrently delete would conflate this test with the separate, already-
-// documented MEDIUM-severity gap (BACKLOG 19g: "putRelationshipLocked's
+// documented MEDIUM-severity gap ("putRelationshipLocked's
 // write ordering has no residue reconciliation on crash... undetectable
 // except via manual VerifyShard/RunRepair") — a node legitimately vanishing
 // out from under an in-flight cross-shard write is a known, accepted race
-// with its own backlog entry; this test targets the DISTINCT property 19d
-// asks for for a stable set of nodes.
+// with its own backlog entry; this test targets the DISTINCT property named
+// above, on a stable set of nodes.
 //
 // Rather than asserting one specific interleaving outcome (which would be
 // flaky by construction against real goroutine scheduling), it asserts the
@@ -127,7 +127,7 @@ func TestTieredColdShardFastDrop_ConcurrentWriters(t *testing.T) {
 	}
 
 	// Writer group 2: label additions on survivor nodes — exercises the
-	// BACKLOG 19e window (a label change landing on the candidate shard
+	// eligibility-recheck window (a label change landing on the candidate shard
 	// mid-drain) via real concurrent goroutines rather than a deterministic
 	// simulation.
 	wg.Add(1)
@@ -203,7 +203,7 @@ func TestTieredColdShardFastDrop_ConcurrentWriters(t *testing.T) {
 		t.Fatalf("RunRepair: %v", err)
 	}
 	if result.OrphanedInEntries != 0 || result.MissingInEntries != 0 {
-		t.Fatalf("RunRepair after concurrent-writer drop found residue: orphaned=%d missing=%d — BACKLOG 19d regression",
+		t.Fatalf("RunRepair after concurrent-writer drop found residue: orphaned=%d missing=%d — regression",
 			result.OrphanedInEntries, result.MissingInEntries)
 	}
 }

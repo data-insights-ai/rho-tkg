@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestRowDoorsAgreeWithResolverOnAnUntimedUpdate (backlog 62, phase A): a
+// TestRowDoorsAgreeWithResolverOnAnUntimedUpdate (phase A): a
 // later version written without a valid-from (ValidFrom 0, version > 0) starts
 // where the resolver starts it (its update instant), so the doors that judge
 // a materialized row — NodeMatchesValidTime / RelMatchesValidTime and
@@ -49,7 +49,7 @@ func TestRowDoorsAgreeWithResolverOnAnUntimedUpdate(t *testing.T) {
 	}
 	// An untimed later version with a valid end (for NodeInterval): the update,
 	// then the end set in place (an update carrying tkg_valid_to alone is a
-	// close that keeps the version's start, backlog 65).
+	// close that keeps the version's start).
 	end := now + 120_000
 	if _, err := g.Nodes.Update(ctx, a.ID(), map[string]any{"v": int64(1)}); err != nil {
 		t.Fatal(err)

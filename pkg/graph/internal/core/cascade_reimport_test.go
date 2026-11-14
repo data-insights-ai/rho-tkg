@@ -4,7 +4,7 @@ import "testing"
 
 // TestAsOfBackfilledReImportOfDeletedID: an entity is created, updated and
 // deleted; its ID was imported again with a backfilled TxFrom inside the first
-// life. Since backlog 38 that import is refused (TestReImportBackfillMustFollowTheChain);
+// life. Now that import is refused (TestReImportBackfillMustFollowTheChain);
 // a chain stored by v4.43–v4.47 can still hold it — version 0 below the first
 // life's rows, recorded before them — so the row is written as that release
 // wrote it. The first life's rows sit above the re-imported current row's

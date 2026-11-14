@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// TestLedger (lesson 80): tasks/todo.md does not lag behind the repo. The tag is
+// TestLedger: tasks/todo.md does not lag behind the repo. The tag is
 // the version, no doc names it: docs/CHANGELOG.md's newest version heading is
 // the latest tag or a newer release written before `make release` tags it;
 // tasks/todo.md has its sections and holds current work only (shipped, later
@@ -94,7 +94,7 @@ func TestVersionLessOrdersNumerically(t *testing.T) {
 	}
 }
 
-// TestDocSizes (René 2026-11-07): tasks/todo.md stays short. The cap is the 7 Nov
+// TestDocSizes (RH 2026-11-07): tasks/todo.md stays short. The cap is the 7 Nov
 // line count plus 10 %; a row longer than 400 characters is split or moved to
 // the file that owns the detail. HANDOVER.md is gitignored local state.
 func TestDocSizes(t *testing.T) {

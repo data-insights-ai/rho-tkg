@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The lesson-62 retraction case at the memory-store seam: a chain whose decisive
+// The as-of retraction case at the memory-store seam: a chain whose decisive
 // newest belief (highest version) was retracted by the pin must report the entity
 // ABSENT — the selector must NOT fall through to an older still-open genesis row.
 // This is the exact regression the WP's mutation gate reintroduces inside the

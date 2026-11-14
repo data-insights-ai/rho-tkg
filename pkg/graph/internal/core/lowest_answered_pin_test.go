@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Row 104 (sigma O1-3 P1): NodeLowestAnsweredPin / RelLowestAnsweredPin and
+// Sigma O1-3 P1: NodeLowestAnsweredPin / RelLowestAnsweredPin and
 // the plural forms return, per id, the lowest transaction pin at which the
 // singular reads answer without ErrHistoryCompacted / ErrRetentionExpired:
 // the max of the compaction stub's LastTrimmedTxTo (under the graph gate),

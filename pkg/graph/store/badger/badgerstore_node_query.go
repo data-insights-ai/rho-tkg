@@ -427,7 +427,7 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 		elements := idx.Elements()
 		if !idx.OnDisk() {
 			// The keys' sorted posting lists, paged from opts.After in
-			// batches (backlog 72): no copy or sort of the whole key.
+			// batches: no copy or sort of the whole key.
 			ids := idx.PostingsOfKeys(targetKeys)
 			empty := ids.Len() == 0
 			bs.idxMu.RUnlock()
@@ -487,7 +487,7 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, match, scanElements, nids, opts)
 }
 
-// NodesByLabelContainingProperty answers an Elements-index lookup (backlog 63) on a
+// NodesByLabelContainingProperty answers an Elements-index lookup on a
 // store holding no copy of the index: the label's nodes whose propKey carries
 // value's key as a scalar or list element, filtered while the rows are fetched.
 // No in-tree caller since v4.58.0 (tiered builds the index on every shard and

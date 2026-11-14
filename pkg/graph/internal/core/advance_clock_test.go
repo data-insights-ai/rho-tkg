@@ -54,9 +54,9 @@ func TestAdvanceClock(t *testing.T) {
 	}
 }
 
-// TestAdvanceClock_RejectsImplausibleFarFutureTarget is the BACKLOG 10d
+// TestAdvanceClock_RejectsImplausibleFarFutureTarget is the
 // regression: AdvanceClock had no upper-bound sanity check, so a single bad
-// call (e.g. the lesson-59 unit-mixup trigger — UnixMicro() passed where
+// call (e.g. the unit-mixup trigger — UnixMicro() passed where
 // UnixMilli() is expected, inflating a near-now value by ~1000x) would
 // permanently poison the transaction clock for the process's life. A target
 // implausibly far ahead of wall-clock must be rejected with
@@ -74,7 +74,7 @@ func TestAdvanceClock_RejectsImplausibleFarFutureTarget(t *testing.T) {
 		t.Fatalf("PeekTx: %v", err)
 	}
 
-	// Simulate the lesson-59 trigger: a microsecond value fed where a
+	// Simulate the unit-mixup trigger: a microsecond value fed where a
 	// millisecond value is expected inflates "now" by ~1000x, landing
 	// millennia ahead of wall-clock.
 	poison := before * 1000

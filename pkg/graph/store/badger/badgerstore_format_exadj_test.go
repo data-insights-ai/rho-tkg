@@ -8,7 +8,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Backlog 50: this release keeps the ex-adjacency index (0x0D) at every
+// This release keeps the ex-adjacency index (0x0D) at every
 // relationship delete; a release before it would delete relationships without
 // it, and the adjacency doors would then miss those relationships. Releases up
 // to v4.51.1 refuse a store marker above 2 (their CurrentWireFormatVersion), so

@@ -246,8 +246,8 @@ func TestTxBackfillRel_InvalidInstant(t *testing.T) {
 // Catches: ">=" instead of ">" (t == TxFrom accepted: a zero-width belief
 // interval), a reversed order accepted (t below TxFrom), and a rule that checks
 // only the current row: after a delete and a backfilled re-import (a chain
-// stored by v4.43–v4.47; the import door refuses it since backlog 38) the
-// history holds a TxFrom and a TxTo ABOVE the current row's TxFrom (the lesson 62
+// stored by v4.43–v4.47; the import door refuses it now) the
+// history holds a TxFrom and a TxTo ABOVE the current row's TxFrom (the
 // inversion: TxFrom is not co-monotonic with version), so t between them must
 // refuse; t between the history TxFrom and TxTo catches a rule that reads
 // TxFrom but not TxTo.
@@ -298,7 +298,7 @@ func TestTxBackfillRel_OrderEqualReversed(t *testing.T) {
 				t.Fatalf("Delete: %v", err)
 			}
 			// The backfilled re-import inside the first life, as v4.43–v4.47
-			// stored it (since backlog 38 the import door refuses it; stored
+			// stored it (the import door refuses it now; stored
 			// chains keep it).
 			oldImportRel(t, g, r.ID(), "LINK", s.ID(), e.ID(), map[string]any{"w": int64(3)}, vf, base+10)
 			cur, err := g.Rels.Get(ctx, r.ID())
@@ -363,7 +363,7 @@ func TestTxBackfillRel_OrderValidStart(t *testing.T) {
 			for _, d := range txbDoors() {
 				base := txbWall() - 2*txbHour
 				r := txbBackfillRelWith(t, g, base, map[string]any{"w": int64(1)})
-				// A derived valid-from is the backfilled TxFrom (backlog 62).
+				// A derived valid-from is the backfilled TxFrom.
 				derived := g.relValidFrom(r)
 				if derived != base {
 					t.Fatalf("fixture: derived valid-from %d, want the backfilled TxFrom %d", derived, base)
@@ -402,7 +402,7 @@ func TestTxBackfillRel_OrderValidStart(t *testing.T) {
 					t.Fatalf("fixture: TxFrom=%d UpdatedAt=%d; want %d, %d", tm.TxFrom, tm.UpdatedAt, x, x+100)
 				}
 				clk.at.Store(int64(x + 1000))
-				// The version starts at its TxFrom (x, backlog 62): refused at
+				// The version starts at its TxFrom (x): refused at
 				// x, accepted in (TxFrom, UpdatedAt].
 				phase := fmt.Sprintf("%s t=%d TxFrom=%d", d.name, x, x)
 				before := snapRel(t, g, f.id)

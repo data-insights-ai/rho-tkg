@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ledger row 63: with its presence flag set, a valid-time filter at 0 or with
+// With its presence flag set, a valid-time filter at 0 or with
 // a bound at 0 is a real filter in every store's current-row push-down (scan
 // doors, temporal and high-frequency index, column scans), on every backend.
 func TestStoreTimeFilterExplicitPresence(t *testing.T) {

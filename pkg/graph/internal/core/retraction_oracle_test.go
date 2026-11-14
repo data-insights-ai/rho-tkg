@@ -19,7 +19,7 @@ import (
 )
 
 // TestRetractionOracle_NeverRecordedWorld is the brute-force oracle of
-// backlog 43, written apart from the resolver: it never asks how a retraction
+// retraction, written apart from the resolver: it never asks how a retraction
 // is resolved, only what it MEANS.
 //
 // Definition: a retraction at T of a life L says L was never true. So at any

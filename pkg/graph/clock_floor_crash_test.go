@@ -19,7 +19,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Crash reopen of the commit clock (backlog 44, lesson 71). A child process
+// Crash reopen of the commit clock. A child process
 // raises the commit-clock floor an hour past the wall (AdvanceClock, the HLC
 // seam; a write burst above one per millisecond does the same in production),
 // writes durable groups and a delete (so the newest stamp lives only in a
@@ -56,7 +56,7 @@ func TestClockFloorCrashChild(t *testing.T) {
 	}
 	if scenario == "trusted-crash" {
 		// A clean first session, so the crashing session opens from a trusted
-		// open image (backlog 54) instead of the full rebuild.
+		// open image instead of the full rebuild.
 		g := cfOpen(dir, backend)
 		if _, err := g.Nodes().Add(t.Context(), []string{"Seed"}, nil); err != nil {
 			cfDie("seed", err)

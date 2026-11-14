@@ -450,7 +450,7 @@ func (c *Core) captureMergeRecord(mrb *mergeRollback, rec storepkg.ChangeRecord,
 		return nil
 
 	case storepkg.ChangeRelRangePurge:
-		// The relationship predicate (backlog 21): same reasoning as
+		// The relationship predicate: same reasoning as
 		// ChangeRangePurge above — capture nothing, validate the payload;
 		// applyRelRangePurgeLocked is idempotent.
 		if _, err := storeutil.DecodeRelRangePurge(rec.Payload); err != nil {
@@ -619,7 +619,7 @@ func (c *Core) strictCheckMergeRecord(rec storepkg.ChangeRecord) error {
 // row, any history version, or a lingering compaction stub. Total ignorance of an
 // id a delta record references is the wrong-base signal (records replay in strict
 // LSN order onto a bootstrap that includes history-only entities, so a correct
-// base can never be ignorant of a legitimately-referenced id — see BACKLOG 12i
+// base can never be ignorant of a legitimately-referenced id — see the
 // design writeup for the full proof). This is a Strict-mode-only probe.
 func (c *Core) baseKnowsNode(id types.NodeID) (bool, error) {
 	if _, err := c.store.GetNode(id); err == nil {

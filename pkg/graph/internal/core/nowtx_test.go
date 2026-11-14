@@ -232,7 +232,7 @@ func TestPeekTx_DoesNotAdvanceClock(t *testing.T) {
 			defer g.Close()
 
 			// 5 years ahead of wall-clock — comfortably below AdvanceClock's
-			// ~10-year skew bound (BACKLOG 10c/10d), but still far enough above
+			// ~10-year skew bound, but still far enough above
 			// wall-clock for the assertions below to be deterministic (the
 			// floor dominates; wall ticks during the loop are irrelevant).
 			wallNow, err := g.Temporal.PeekTx()

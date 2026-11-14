@@ -14,7 +14,7 @@ import (
 var ErrReservedPrefix = errors.New("types: property key uses reserved tkg_ prefix")
 
 // ErrEmptyPropertyKey is returned when a property key is the empty string
-// (also the shape of an undecodable PropertyWire; BACKLOG 15l).
+// (also the shape of an undecodable PropertyWire).
 var ErrEmptyPropertyKey = errors.New("types: property key must not be empty")
 
 // ErrUnsupportedValueType is returned when a property value contains a type
@@ -268,7 +268,7 @@ func (ps PropertySlice) indexableValueKey(key string) (string, bool) {
 
 // forEachIndexKey is the one key iteration every property index consumes: a
 // scalar yields its IndexablePropertyValueKey; a list whose key elements
-// reports true (Elements index, backlog 63) yields each distinct element key.
+// reports true (Elements index) yields each distinct element key.
 // elements is asked for list values only; nil means scalars only.
 func (ps PropertySlice) forEachIndexKey(elements func(propertyKey string) bool, fn func(propertyKey, valueKey string) bool) {
 	if fn == nil {
@@ -325,7 +325,7 @@ func isIndexableList(v any) bool {
 }
 
 // ForEachIndexableElementKey calls fn with the keys an Elements index takes
-// from v (backlog 63): a scalar's key (a one-element list), else each distinct
+// from v: a scalar's key (a one-element list), else each distinct
 // indexable scalar element of a list ([]any, []string, []int, []int64,
 // []float32, []float64, []bool) in first-occurrence order. Keyless elements
 // (nil, nested lists, maps) are skipped; []byte is a blob. Returns false when
@@ -1199,7 +1199,7 @@ func canonicalPropertySlice(ps PropertySlice) (PropertySlice, error) {
 }
 
 func canonicalPropertyValue(key string, value any) (any, error) {
-	// time.Time sugar, as in Set, so SetProperties hashes like Set (BACKLOG 6a).
+	// time.Time sugar, as in Set, so SetProperties hashes like Set.
 	value, _ = canonicalizeTemporalValue(value)
 	if err := ValidatePropertyValue(value); err != nil {
 		return nil, fmt.Errorf("%w: %q (got %T)", err, key, value)

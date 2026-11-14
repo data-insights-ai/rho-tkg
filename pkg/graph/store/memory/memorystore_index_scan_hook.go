@@ -4,8 +4,8 @@ package memory
 // builders, at the exact point BETWEEN releasing one per-row read lock and taking
 // the next — so ms.mu is provably unheld when it runs.
 //
-// It exists so a test can observe the property that BACKLOG 17h guards ("Phase 2
-// never holds the lock across the scan") DETERMINISTICALLY. The previous test raced
+// It exists so a test can observe the property "Phase 2 never holds the lock
+// across the scan" DETERMINISTICALLY. The previous test raced
 // a goroutine polling TryLock and required it to win at least 100 times, which
 // measures the SCHEDULER: on a loaded CI runner the poller was starved to zero
 // successes and the test failed while the code was correct. Running the probe on

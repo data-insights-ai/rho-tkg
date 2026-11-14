@@ -17,7 +17,7 @@ func frameImportRecord(tag byte, body []byte) []byte {
 }
 
 // TestImportRejectsOversizedRecordWithoutAllocatingIt pins the fix for the
-// import-framing memory-amplification DoS (lesson 48): a record header may
+// import-framing memory-amplification DoS: a record header may
 // declare up to maxExportRecordSize (128 MiB) while the stream carries no body.
 // readImportStageRecord must reject it as corrupt WITHOUT eagerly allocating the
 // declared length — otherwise ~5 hostile bytes amplify into a 128 MiB
@@ -90,7 +90,7 @@ func TestImportOversizedRecordWithLyingBody(t *testing.T) {
 }
 
 // TestImportHeaderCountDoesNotPreallocateUntrustedSize pins the second
-// amplification site (lesson 48): the export header's node/rel COUNTS are
+// amplification site: the export header's node/rel COUNTS are
 // untrusted (a ~20-byte header), yet reserve() pre-sizes six replay/rollback
 // maps and slices from them. With the old importPreallocLimit (1<<20) a header
 // claiming 1M+1M counts forced ~312 MiB of allocation before any entity record

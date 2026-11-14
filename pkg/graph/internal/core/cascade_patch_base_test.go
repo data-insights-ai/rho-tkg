@@ -21,8 +21,8 @@ import (
 //	NodeAt(2021) == {city:Y, name:B}   // wrong: city:Y was never true in 2021
 //
 // These tests pin the then-valid-base semantics on every backend (memory,
-// badger, tiered) for the node AND relationship mirrors (testing rule 2),
-// including the two-phase transaction-time checks (rule 15, lesson 46): a pin
+// badger, tiered) for the node AND relationship mirrors,
+// including the two-phase transaction-time checks: a pin
 // taken before the correction must still see the uncorrected belief.
 
 // cpU scales the fixture's "year" instants to milliseconds-ish spacing so a

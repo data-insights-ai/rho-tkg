@@ -452,7 +452,7 @@ func TestGraphQueryNamesValidateBeforeEmptyShortcuts(t *testing.T) {
 }
 
 // A zero interval bound is unset: the opts carry no interval filter. A
-// negative bound is a real one (ledger row 60, v4.58.1), so a reversed
+// negative bound is a real one (v4.58.1), so a reversed
 // negative interval is ErrInvalidTimeRange (the old rule ignored it).
 func TestGraphQueryOptsZeroIntervalBoundDoesNotActivateTemporalFilter(t *testing.T) {
 	t.Parallel()

@@ -17,7 +17,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 32: a reader at a FIXED pin must find an entity that existed at the
+// A reader at a FIXED pin must find an entity that existed at the
 // pin — the same row, at every moment — while a concurrent Update /
 // CloseVersion / Delete / SetVersionInterval moves its current row into
 // history. The faulty implementation these tests catch: a door that assembles
@@ -482,7 +482,7 @@ func (m *pdrMisses) add(door, msg string) {
 	}
 }
 
-// TestPointDoorRace_UnderMovingWriters is the backlog-32 stress test: writer
+// TestPointDoorRace_UnderMovingWriters is the stress test: writer
 // goroutines move the tracked entities' current rows (Update, CloseVersion,
 // Delete, SetVersionInterval cascade, re-create) while reader goroutines call
 // every point and scan door at a pin taken before the writers started, and the

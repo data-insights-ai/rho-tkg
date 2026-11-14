@@ -1,6 +1,6 @@
 package tiered
 
-// WP-31 (sigma row 59, backlog 10(b)): relationship property indexes and
+// WP-31: relationship property indexes and
 // event-label node property indexes on the tiered store, built per shard by
 // the anchored fan-out (reference shard last), definitions on every shard incl.
 // the archive and the closed cold shards, answers folded across the shards and

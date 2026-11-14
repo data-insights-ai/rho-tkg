@@ -22,7 +22,7 @@ import (
 // token, or any row that is neither those nodes' nor those relationships'
 // (hasForeignRowsLocked), forces false (a safe over-decline).
 //
-// BACKLOG 18p: genuinely read-only (checkOpen, idxMu.RLock), matching the doc claims
+// Genuinely read-only (checkOpen, idxMu.RLock), matching the doc claims
 // above — a caller may run this against a read-only-opened Store (e.g. a
 // transiently-read-opened cold shard). Its three constituent reads (
 // hasForeignLabelTokensLocked, labelNodeIDsSnapshotLocked, purgedRelsForNodeLocked) are

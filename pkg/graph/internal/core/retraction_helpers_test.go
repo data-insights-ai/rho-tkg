@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Shared fixtures of the retraction tests (backlog 43, tasks/evidence/retraction/).
+// Shared fixtures of the retraction tests (tasks/evidence/retraction/).
 //
 // The belief definition every retraction test checks, stated without the
 // resolver: a retraction at transaction instant T of an entity E (and, for a

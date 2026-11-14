@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ledger row 63: a present pin at 0 reaches the tx-time and retention code
+// A present pin at 0 reaches the tx-time and retention code
 // as -1 (that code reads 0 as "no pin"); unflagged shapes keep their
 // pre-v4.59.0 pins.
 func TestPinInstantPresence(t *testing.T) {

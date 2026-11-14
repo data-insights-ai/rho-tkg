@@ -10,7 +10,7 @@ import (
 )
 
 // TestPutRelationshipsBatchSameShard_DeterministicAscendingOrder covers
-// BACKLOG 20i (same class as 20c/DeleteNodeWithHistory): within a single shard
+// the same class of bug as DeleteNodeWithHistory: within a single shard
 // group, PutRelationshipsBatch must apply relationships in deterministic
 // ascending rel-ID order, not caller input-slice order. The change-log LSN a
 // relationship's ChangeRelPut record draws is a direct, order-preserving
@@ -65,6 +65,6 @@ func TestPutRelationshipsBatchSameShard_DeterministicAscendingOrder(t *testing.T
 		t.Fatalf("missing change-log records: relA present=%v relB present=%v", okA, okB)
 	}
 	if lsnB >= lsnA {
-		t.Fatalf("BACKLOG 20i regression: relB (smaller ID) committed at LSN %d, relA (larger ID, listed first in input) at LSN %d — want relB before relA (ascending rel-ID order within the shard group), got caller input order instead", lsnB, lsnA)
+		t.Fatalf("regression: relB (smaller ID) committed at LSN %d, relA (larger ID, listed first in input) at LSN %d — want relB before relA (ascending rel-ID order within the shard group), got caller input order instead", lsnB, lsnA)
 	}
 }

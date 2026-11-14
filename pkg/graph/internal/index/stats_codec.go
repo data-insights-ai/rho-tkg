@@ -7,7 +7,7 @@ import (
 )
 
 // Binary form of a PropertyStatsAccumulator, for a store that persists its
-// planner statistics across a clean restart (badger's open image, backlog 54).
+// planner statistics across a clean restart (badger's open image).
 // It carries the whole state — HyperLogLog registers, ordered family, typed
 // min/max, dirty flag — so a decoded accumulator answers exactly as the one
 // encoded. Decoding is fail-closed: any malformed byte is an error.

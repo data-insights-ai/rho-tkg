@@ -2149,7 +2149,7 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	if nodes, err := g.Nodes.GetByIDs([]types.NodeID{a.ID(), b.ID()}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || nodes != nil {
 		t.Fatalf("GetNodesByIDs non-ascending rows = (%v, %v), want nil, ErrInvalidStoreMutation", nodes, err)
 	}
-	// BACKLOG 14d: the Store contract (docs/architecture.md, "Deep-Copy / Frozen
+	// The Store contract (docs/architecture.md, "Deep-Copy / Frozen
 	// Rows at Store Boundary") explicitly permits a store aliasing the same row
 	// pointer for a duplicate requested ID ("Rows for duplicate requested IDs
 	// may alias the same frozen pointer") — this must succeed, not be rejected
@@ -2169,7 +2169,7 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	if rels, err := g.Rels.GetByIDs([]types.RelID{rel.ID(), rel2.ID()}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || rels != nil {
 		t.Fatalf("GetRelationshipsByIDs non-ascending rows = (%v, %v), want nil, ErrInvalidStoreMutation", rels, err)
 	}
-	// BACKLOG 14d: mirrors the node-side aliasing case above — permitted, not
+	// Mirrors the node-side aliasing case above — permitted, not
 	// corruption.
 	fs.getRelRows = []*types.Relationship{rel, rel}
 	if rels, err := g.Rels.GetByIDs([]types.RelID{rel.ID(), rel.ID()}); err != nil || len(rels) != 2 || rels[0].ID() != rel.ID() || rels[1].ID() != rel.ID() {

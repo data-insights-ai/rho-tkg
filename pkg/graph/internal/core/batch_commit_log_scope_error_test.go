@@ -26,7 +26,7 @@ func (s *commitLogScopeFailingStore) CommitLogScope() (uint64, error) {
 
 var errCommitLogScopeInjected = errors.New("injected: commit log scope failure")
 
-// BACKLOG 11c: Batch.Execute's CommitLogScope error handling used
+// Batch.Execute's CommitLogScope error handling used
 // `if err != nil && result.Failed == 0` — so a CommitLogScope failure was
 // silently DROPPED whenever the batch already had a per-op failure. This is
 // backwards: a CommitLogScope failure leaves committed-but-unlogged data (a
@@ -81,7 +81,7 @@ func TestBatchExecute_CommitLogScopeErrorSurfacedAlongsidePerOpFailure(t *testin
 		t.Fatalf("result.Errors = %+v, missing the pre-existing per-op UpdateNode failure", result.Errors)
 	}
 	if !foundLogScope {
-		t.Fatalf("result.Errors = %+v, missing the commit-change-log failure — BACKLOG 11c regression (silently dropped because a per-op failure already existed)", result.Errors)
+		t.Fatalf("result.Errors = %+v, missing the commit-change-log failure — regression (silently dropped because a per-op failure already existed)", result.Errors)
 	}
 	if result.Failed < 2 {
 		t.Fatalf("result.Failed = %d, want >= 2 (per-op failure AND commit-log-scope failure both counted)", result.Failed)

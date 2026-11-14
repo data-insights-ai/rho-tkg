@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 41: both columnar sidecars over thousands of IDs (table growth),
+// Both columnar sidecars over thousands of IDs (table growth),
 // against the history door. The build races writers that add IDs between the
 // seeded ones; then random steps insert IDs (table growth), raise versions
 // (in place), overwrite a row with lower stamps, trim all rows (delete, then

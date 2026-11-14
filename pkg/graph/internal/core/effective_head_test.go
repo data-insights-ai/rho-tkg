@@ -17,7 +17,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The head-answer cache (effective_head.go, backlog 68) against the fold: a
+// The head-answer cache (effective_head.go) against the fold: a
 // random sequence of corrections (SetVersionInterval bounded and open, gaps,
 // at the clock and at a caller instant equal to the newest stamp; sigma's
 // patch of the open current row over its own interval, alone and twice in

@@ -24,7 +24,7 @@ func (v wireValueDirectCustom) DeepCopyValue() any { return v }
 // HashBytes reads but msgpack cannot marshal (msgpack only encodes
 // exported struct fields) — a msgpack round-trip silently drops it,
 // producing a value whose hash differs from the original. Used by
-// TestPropertyToWire_CustomRoundTripHashMismatchRejected (BACKLOG 15f) to
+// TestPropertyToWire_CustomRoundTripHashMismatchRejected to
 // exercise propertyToWire's round-trip hash-mismatch rejection branch,
 // which previously had zero direct test coverage.
 type wireValueDirectHiddenFieldCustom struct {
@@ -235,7 +235,7 @@ func TestReconstructCustomPropertyValueDirectBranches(t *testing.T) {
 	}
 }
 
-// TestPropertyToWire_CustomRoundTripHashMismatchRejected is the BACKLOG 15f
+// TestPropertyToWire_CustomRoundTripHashMismatchRejected is the
 // proof that propertyToWire's per-write msgpack round-trip proof for
 // ptCustom values (storeutil/wire_value.go:429-464) is load-bearing, not
 // redundant perf overhead: RegisterPropertyStructType only validates that

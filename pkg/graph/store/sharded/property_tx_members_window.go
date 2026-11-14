@@ -10,7 +10,7 @@ var (
 	_ storecontract.NodePropertyTxMemberWindowCapability = (*Store)(nil)
 )
 
-// Windowed property membership (ledger row 62): every shard answers from its
+// Windowed property membership: every shard answers from its
 // own sidecar over its own rows; a member with a row carrying the value in the
 // window has that row on some shard, so the union of the shards' answers (an
 // entity on several shards once, with the lowest bound) is the store's.

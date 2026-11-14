@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The paged effective doors (backlog 69) of temporalOpsSpy: the arguments land
+// The paged effective doors of temporalOpsSpy: the arguments land
 // in pageArgs, the answer is the spy's segments with next = 77.
 type pageArgs struct {
 	ctx   context.Context
@@ -33,7 +33,7 @@ func (s *temporalOpsSpy) NodesEffectivePage(ctx context.Context, pin Pin, f Filt
 	return s.nodeSegs, 77, s.err
 }
 
-// TestEffectivePageWrappers — rule 1 for the two paged doors: a nil API and a
+// TestEffectivePageWrappers — direct test of the two paged doors: a nil API and a
 // typed-nil Ops return ErrNilGraph; a ready API forwards ctx, pin, filter,
 // cursor and limit verbatim and returns the Ops' segments, cursor and error.
 // Not parallel: the spy records into one package variable.
@@ -94,8 +94,8 @@ type labelPropsArgs struct {
 
 var spyLabelPropsArgs labelPropsArgs
 
-// TestForEachNodeEffectiveByLabelAndPropertiesWrapper — rule 1 for the
-// listing page door (row 121): nil API and typed-nil Ops are ErrNilGraph; a
+// TestForEachNodeEffectiveByLabelAndPropertiesWrapper — direct test of the
+// listing page door: nil API and typed-nil Ops are ErrNilGraph; a
 // ready API forwards every argument verbatim and returns the Ops' cursor and
 // error, fn seeing the Ops' segments. Not parallel: the spy records into one
 // package variable.
@@ -142,7 +142,7 @@ type valuesArgs struct {
 
 var spyValuesArgs valuesArgs
 
-// TestForEachNodeEffectiveByLabelAndPropertyValuesWrapper — rule 1 for the
+// TestForEachNodeEffectiveByLabelAndPropertyValuesWrapper — direct test of the
 // value-list page door (ROWPROBE): nil API and typed-nil Ops are ErrNilGraph;
 // a ready API forwards every argument verbatim and returns the Ops' cursor
 // and error, fn seeing the Ops' segments. Not parallel: the spy records into

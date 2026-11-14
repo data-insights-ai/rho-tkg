@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TXSNAP's budget (lesson 89) on sigma's session stamp (sigma 26 Oct,
+// TXSNAP's budget on sigma's session stamp (sigma 26 Oct,
 // overview_graph.go, v0.11.73): every WriteDerived looks its Session node up
 // outside the transaction (ByLabelAndProperties, Limit 1), writes its Derived
 // facts, and in the same Tx stamps the Session node once with

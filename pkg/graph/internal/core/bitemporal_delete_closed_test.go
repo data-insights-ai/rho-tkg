@@ -29,8 +29,8 @@ import (
 // one tick past a close that lands exactly on it, so ValidTo == DeletedAt stays
 // an unambiguous "the delete wrote this ValidTo" marker for the normalizers.
 //
-// Every test is two-phase (rule 15): the same questions are asked before and
-// after the delete and must get the same answers. Node and rel mirrors (rule 2),
+// Every test is two-phase: the same questions are asked before and
+// after the delete and must get the same answers. Node and rel mirrors,
 // every backend (memory, badger, tiered), and every delete door (standalone, tx,
 // batch, ingest strong mode, ingest concurrent mode).
 

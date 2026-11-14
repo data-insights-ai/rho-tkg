@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Review of backlog 56 (commit 217769f1).
+// Review of the node temporal envelope (commit 217769f1).
 
 // seedTwoLabelNodeWithHistory writes id with labels {8,7}: history row
 // [100,200), current row [5000,6000) at version 1.

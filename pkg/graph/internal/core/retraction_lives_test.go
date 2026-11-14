@@ -8,7 +8,7 @@ import (
 )
 
 // A retracted life was never true — so none of its rows may shape the answer
-// of another life either (backlog 43). The case that tells "the retracted
+// of another life either. The case that tells "the retracted
 // rows are gone" from "the retracted rows are capped": a life L1 ended by a
 // Delete at D1, then a re-import L2 valid from BELOW L1's start, updated at a
 // valid start S inside L1's span. While L2 is believed, its update S ends the

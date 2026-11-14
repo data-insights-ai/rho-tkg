@@ -163,8 +163,8 @@ func (c *Core) searchNearestScoredLocked(label, propertyKey string, query []floa
 
 func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	// TxPin is refused for vector search — see ErrVectorSearchTxPinUnsupported.
-	// Checked here (the one body both the standalone and tx-mirror doors share,
-	// rule 17) AFTER validateTemporalQueryOptsScan ran in the callers, so a
+	// Checked here (the one body both the standalone and tx-mirror doors share)
+	// AFTER validateTemporalQueryOptsScan ran in the callers, so a
 	// TxPin combined with another temporal opt still surfaces the more specific
 	// ErrConflictingTemporalOpts.
 	if opts.HasTxPin() {

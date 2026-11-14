@@ -18,7 +18,7 @@ import (
 // implements RelPropertyIndexCapability, else a type scan + filter over
 // RelationshipsByType (so it works on every backend, including tiered). With a
 // temporal filter the candidates are the current matches plus the rels whose rows
-// ever carried the value (membership sidecar, backlog 8; else every known history
+// ever carried the value (membership sidecar; else every known history
 // ID), each re-checked at its version at the requested time.
 //
 // DECLARED view under a temporal filter: each relationship's own asserted validity

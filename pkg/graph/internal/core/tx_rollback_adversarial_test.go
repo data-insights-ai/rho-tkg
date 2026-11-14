@@ -113,7 +113,7 @@ func TestTxRollbackRestoresExactPreTxState(t *testing.T) {
 	if _, err := tx.AddRelationship("TX_ONLY_TYPE", created, a, nil); err != nil {
 		t.Fatalf("tx add rel: %v", err)
 	}
-	// The lesson-17 evil case: re-import B's ID with a DIFFERENT shape after
+	// The evil case: re-import B's ID with a DIFFERENT shape after
 	// deleting it in the same tx. Rollback must restore the ORIGINAL B, not
 	// keep the impostor and not delete the row as "created".
 	impostor, err := tx.ImportNodeWithID(ctx, b.ID(), []string{"Impostor"}, map[string]any{"state": "impostor"})
@@ -170,7 +170,7 @@ func TestTxRollbackRestoresExactPreTxState(t *testing.T) {
 // The tx door must preserve the temporal contracts fixed in earlier rounds:
 // explicit-VT updates through a transaction tile the timeline, historical
 // point queries see pre-update state, and bitemporal queries at (oldVT, now)
-// keep working after supersession (lesson 43) when the supersession happened
+// keep working after supersession when the supersession happened
 // inside a committed tx.
 func TestTxCommitPreservesTemporalContracts(t *testing.T) {
 	t.Parallel()

@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 30: the badger history-stamps sidecar (badgerstore_history_stamps.go).
+// The badger history-stamps sidecar (badgerstore_history_stamps.go).
 // Every test compares the sidecar's answer with the fold of the history door
 // over the same ID, so a test that asserts a wrong expectation fails on its
 // own oracle.

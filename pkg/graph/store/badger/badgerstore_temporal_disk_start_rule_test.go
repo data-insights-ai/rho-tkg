@@ -10,7 +10,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt (backlog 62): before
+// TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt: before
 // v4.54.0 the persisted 0x0B keyspace keyed an untimed row by its ID's mint
 // instant; the row now starts at its TxFrom, which a tx backfill puts BEFORE
 // the mint. A keyspace written under the old marker must not be trusted (its

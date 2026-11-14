@@ -128,9 +128,9 @@ const orderedRangePageSize = 256
 // Candidates come from the property index's ordered numeric view (RAM mode)
 // or the persisted 0x0A keyspace (PropertyIndexOnDisk), which OVER-SELECT by
 // design (float64 sort keys, ulp-widened bounds): fn receives CANDIDATES and
-// MUST re-check the predicate with exact comparison semantics (lesson 23; the
+// MUST re-check the predicate with exact comparison semantics (the
 // door never skips a boundary bucket because int64 magnitudes past 2^53
-// collapse onto neighbouring sort keys, lesson 25, so exact inclusivity is
+// collapse onto neighbouring sort keys, so exact inclusivity is
 // fn's responsibility).
 //
 // Current-state only (no temporal QueryOpts parameter). Returns

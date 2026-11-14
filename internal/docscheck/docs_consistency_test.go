@@ -19,7 +19,7 @@ func TestDocsMetadataMatchesSourceOfTruth(t *testing.T) {
 	}
 	goVersion := goMatch[1]
 
-	// The release is the git tag alone: no doc names it (René, 4 Nov).
+	// The release is the git tag alone: no doc names it (RH, 4 Nov).
 	checks := []struct {
 		path string
 		want []string

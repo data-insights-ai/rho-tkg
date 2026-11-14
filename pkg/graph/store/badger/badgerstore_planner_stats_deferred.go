@@ -13,10 +13,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Planner statistics across a clean reopen (backlog 54).
+// Planner statistics across a clean reopen.
 //
 // Planner statistics (presence counts, type-class counts, NDV sketches and
-// min/max) are O(distinct (label or type, key) pairs) since backlog 53, so the
+// min/max) are O(distinct (label or type, key) pairs), so the
 // open image carries them whole (imgSecPlannerStats): a clean reopen restores
 // exactly the state the closing process held — the NDV sketch with the values
 // deleted during earlier sessions still counted (NDV never decreases, see

@@ -546,7 +546,8 @@ func (w *columns) pageIndex(pageRows int) []byte {
 
 // verifySealed re-opens the written bytes and requires every decoded row to
 // equal its source row and to recompute its stored hash (ADR-0011 §4.3:
-// sealing refuses on any mismatch — lesson 44 applied to our own encoder).
+// sealing refuses on any mismatch — the import-side row-hash check applied to
+// our own encoder).
 func verifySealed(data []byte, rows []*types.Relationship, order []int, dicts *Dicts) error {
 	seg, err := OpenWithDicts(data, dicts)
 	if err != nil {

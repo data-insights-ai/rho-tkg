@@ -353,7 +353,7 @@ func TestReadBudget_DiskAdjacencyAdmitsAsProduced(t *testing.T) {
 
 // TestReadBudget_ShardOpens_TieredAdjacency: a reference node's mint-placed
 // relationships (Config.RelsByMint) lie on the event shards, so its adjacency
-// read opens every closed one (backlog 82). Under a budget each open counts
+// read opens every closed one. Under a budget each open counts
 // before it happens: a ShardOpens budget of 1 refuses with no rows having opened
 // at most one closed shard (the store's ColdOpens counter); unlimited, the
 // answer is the plain door's and the meter counts exactly the opens.

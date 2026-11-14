@@ -21,7 +21,7 @@ func (ms *Store) PutNode(n *types.Node) error {
 
 // PutNodeScoped is PutNode with the change-log record routed into the
 // store.ScopedTxChangeLog buffer named by token; token == 0 is PutNode
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) PutNodeScoped(n *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.PutNode(n)
@@ -58,8 +58,8 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	if err != nil {
 		return err
 	}
-	// The vector-index entries go in before any other mutation (lesson 4,
-	// BACKLOG 18e); a failure withdraws them (BATCHFAIL).
+	// The vector-index entries go in before any other mutation; a failure
+	// withdraws them (BATCHFAIL).
 	if err := ms.addNodeVectorsLocked(vectorUpdates, rawID); err != nil {
 		ms.withdrawNodeVectorsLocked([]snowflake.ID{rawID})
 		return err
@@ -69,8 +69,8 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	ms.noteNodeCurrentLocked(n)
 
 	ms.addNodeLabelIndexes(nid, n)
-	ms.recordNodeLabelMembersLocked(n)                   // transaction-time label membership
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
+	ms.recordNodeLabelMembersLocked(n) // transaction-time label membership
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
 	ms.addNodePropertyKeyCounts(n)
 
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -209,7 +209,7 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 
 	rawID := nid.SnowflakeID()
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
-	ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
+	ms.forgetNodePropTxCurrentLocked(n)
 	ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
@@ -228,7 +228,7 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 
 // RemoveNodeLabelTokenScoped is RemoveNodeLabelToken with the record routed
 // into the ScopedTxChangeLog buffer named by token; token == 0 is the
-// unscoped form (memorystore_changelog_scoped.go, backlog 11f).
+// unscoped form (memorystore_changelog_scoped.go).
 func (ms *Store) RemoveNodeLabelTokenScoped(nid types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.RemoveNodeLabelToken(nid, tok, updatedNode)
@@ -277,7 +277,7 @@ func (ms *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.noteNodeCurrentLocked(updatedNode)
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode))
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
@@ -298,7 +298,7 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 
 // AddNodeLabelTokenScoped is AddNodeLabelToken with the record routed into
 // the ScopedTxChangeLog buffer named by token; token == 0 is the unscoped
-// form (memorystore_changelog_scoped.go, backlog 11f).
+// form (memorystore_changelog_scoped.go).
 func (ms *Store) AddNodeLabelTokenScoped(nid types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.AddNodeLabelToken(nid, tok, updatedNode)
@@ -346,7 +346,7 @@ func (ms *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.noteNodeCurrentLocked(updatedNode)
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode))
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
@@ -368,7 +368,7 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 
 // ReplaceNodeScoped is ReplaceNode with the record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is ReplaceNode
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) ReplaceNodeScoped(n *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.ReplaceNode(n)
@@ -412,7 +412,7 @@ func (ms *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(n)
 	ms.noteNodeCurrentLocked(n)
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
 	ms.addNodePropertyKeyCounts(n)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	ms.addNodeToCompositeIndexesLocked(n, rawID)
@@ -433,7 +433,7 @@ func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
 
 // DeleteNodeCascadeScoped is DeleteNodeCascade with the record routed into
 // the ScopedTxChangeLog buffer named by token; token == 0 is the unscoped
-// form (memorystore_changelog_scoped.go, backlog 11f).
+// form (memorystore_changelog_scoped.go).
 func (ms *Store) DeleteNodeCascadeScoped(nid types.NodeID, token uint64) error {
 	if token == 0 {
 		return ms.DeleteNodeCascade(nid)
@@ -449,8 +449,7 @@ func (ms *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 	defer ms.mu.Unlock()
 	defer ms.bumpNodeEpoch()
 	// The cascade changes adjacency, so bumpRelEpoch too: otherwise a concurrent
-	// expand-aggregation column reader's staleness gate passes mid-scan
-	// (backlog 17a).
+	// expand-aggregation column reader's staleness gate passes mid-scan.
 	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
@@ -500,7 +499,7 @@ func (ms *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 
 	rawID := nid.SnowflakeID()
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
-	ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
+	ms.forgetNodePropTxCurrentLocked(n)
 	ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
@@ -568,7 +567,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 	}
 
 	// Phase 2: apply. Every node's vector-index entries go in first, before
-	// any other mutation (lesson 4, BACKLOG 18e); a failure withdraws those
+	// any other mutation; a failure withdraws those
 	// applied, so a failed batch leaves the store as before the call
 	// (BATCHFAIL). Nothing after them fails. The property indexes take the
 	// batch at once (BATCHIDX).
@@ -586,7 +585,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		id := n.ID()
 		ms.nodes[id] = ms.storedNode(n)
 		ms.noteNodeCurrentLocked(n)
-		ms.bumpNodeBeliefWatermarkLocked(id, nodeTxFrom(n)) // BACKLOG 10c
+		ms.bumpNodeBeliefWatermarkLocked(id, nodeTxFrom(n))
 
 		ms.addNodeLabelIndexes(id, n)
 		ms.recordNodeLabelMembersLocked(n) // transaction-time label membership
@@ -677,7 +676,7 @@ func (ms *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		ms.removeNodePropertyKeyCounts(n)
 		rawID := id.SnowflakeID()
 		indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
-		ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
+		ms.forgetNodePropTxCurrentLocked(n)
 		ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 		indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 		indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)

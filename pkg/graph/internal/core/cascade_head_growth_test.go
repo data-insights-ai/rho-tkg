@@ -146,7 +146,7 @@ func growSegments(tb testing.TB, g *Core, e appendEntity, fold bool) []string {
 // at growLarge cuts (past growSmall, on the head entry under growCap) costs per appended
 // row what it costs at growSmall cuts — a cut appends one row per piece, so
 // the cost per cut is linear in the cut and the cost per row flat — and no
-// cut of either sample reads the history (row 88: reads and writes after a
+// cut of either sample reads the history (reads and writes after a
 // grow write are planned from the entry). Before the fix the large sample
 // folded and copied a chain of growLarge²/2 rows per read and per write.
 func TestHeadGrow87_NoCliffPastFormerCap(t *testing.T) {
@@ -194,7 +194,7 @@ func TestHeadGrow87_NoCliffPastFormerCap(t *testing.T) {
 }
 
 // TestHeadGrow87_EntrySurvivesFirstCuts: the first cuts of the grow shape
-// keep the entry (row 88): cut 1 is planned from the history (no entry yet:
+// keep the entry: cut 1 is planned from the history (no entry yet:
 // a chain of one row never fills one) and leaves it behind; cut 2 keeps the
 // chain monotonic; cut 3 makes it non-monotonic (its first row starts below
 // the newest row) and the entry switches to the own-bounds arm instead of

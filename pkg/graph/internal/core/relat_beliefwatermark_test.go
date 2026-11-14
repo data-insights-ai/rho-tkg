@@ -9,7 +9,7 @@ import (
 
 // TestRelAt_BeliefWatermark_DeclinesWhenHistoryOutranksCurrent mirrors
 // TestNodeAt_BeliefWatermark_DeclinesWhenHistoryOutranksCurrent for
-// relationships (rule 2: structural parity). See that test for the full
+// relationships (structural parity). See that test for the full
 // rationale.
 func TestRelAt_BeliefWatermark_DeclinesWhenHistoryOutranksCurrent(t *testing.T) {
 	t.Parallel()

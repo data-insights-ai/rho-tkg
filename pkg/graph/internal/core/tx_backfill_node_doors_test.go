@@ -318,8 +318,8 @@ func TestTxBackfillNode_InvalidInstant(t *testing.T) {
 // Catches: ">=" instead of ">" (t == TxFrom accepted: a zero-width belief
 // interval), a reversed order accepted, and a rule that checks only the
 // current row: after a delete and a backfilled re-import (a chain stored by
-// v4.43–v4.47; the import door refuses it since backlog 38) the node's history
-// holds a TxFrom and a TxTo ABOVE the current row's TxFrom (lesson 62), so t
+// v4.43–v4.47; the import door refuses it now) the node's history
+// holds a TxFrom and a TxTo ABOVE the current row's TxFrom, so t
 // between them must refuse.
 func TestTxBackfillNode_OrderEqualReversed(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
@@ -364,7 +364,7 @@ func TestTxBackfillNode_OrderEqualReversed(t *testing.T) {
 				t.Fatalf("Delete: %v", err)
 			}
 			// The backfilled re-import inside the first life, as v4.43–v4.47
-			// stored it (since backlog 38 the import door refuses it; stored
+			// stored it (the import door refuses it now; stored
 			// chains keep it).
 			oldImportNode(t, g, n.ID(), "Ref", map[string]any{"w": int64(3)}, vf, base+10)
 			cur, err := g.Nodes.Get(ctx, n.ID())
@@ -430,7 +430,7 @@ func TestTxBackfillNode_OrderValidStart(t *testing.T) {
 			for _, d := range doors() {
 				base := txbWall() - 2*txbHour
 				n := txbBackfillNodeAt(t, g, "Ref", base, map[string]any{"w": int64(1)})
-				// A derived valid-from is the backfilled TxFrom (backlog 62).
+				// A derived valid-from is the backfilled TxFrom.
 				derived := g.nodeValidFrom(n)
 				if derived != base {
 					t.Fatalf("fixture: derived valid-from %d, want the backfilled TxFrom %d", derived, base)
@@ -469,7 +469,7 @@ func TestTxBackfillNode_OrderValidStart(t *testing.T) {
 					t.Fatalf("fixture: TxFrom=%d UpdatedAt=%d; want %d, %d", tm.TxFrom, tm.UpdatedAt, x, x+100)
 				}
 				clk.at.Store(int64(x + 1000))
-				// The version starts at its TxFrom (x, backlog 62: one start
+				// The version starts at its TxFrom (x: one start
 				// rule); an in-place write records nothing in transaction time,
 				// so its UpdatedAt does not move the start. At x: refused; in
 				// (TxFrom, UpdatedAt]: accepted.

@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Row 94 (R1): Config.RelsByMint places a relationship between two
+// R1: Config.RelsByMint places a relationship between two
 // reference-shard endpoints on the event shard of its ID's mint instant
 // (entity + both legs), so a cold shard's close frees its edges.
 
@@ -788,7 +788,7 @@ func TestRelsByMint_BatchAndClear(t *testing.T) {
 	}
 }
 
-// TestRelsByMint_DeleteNodeCascadeNoDangling (row 97): store.DeleteNodeCascade
+// TestRelsByMint_DeleteNodeCascadeNoDangling: store.DeleteNodeCascade
 // of a reference node deletes its mint-placed rels with their row and both
 // legs, as DeleteNodeWithHistory does. Break cases: the rel on a cold (closed)
 // mint shard, both directions (a->b and b->a), a self-loop.

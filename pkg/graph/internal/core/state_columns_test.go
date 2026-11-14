@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 28 (sigma-tkgd 2026-10-09): the state form {ValidAt, TxAt} of the
+// State cuts (sigma-tkgd 2026-10-09): the state form {ValidAt, TxAt} of the
 // count and column doors (CountByLabelAt / CountByTypeAt, ScanNodeColumns /
 // ScanRelColumns) answers from a cached effective cut of the label or type at
 // the pin, built once, instead of folding every candidate's rows per call.
@@ -262,7 +262,7 @@ func TestCountByLabelAtStateColumnPath(t *testing.T) {
 
 // stScenario builds the break-case entities: live (A), updated before the pin
 // (B), corrected later (C), deleted (D), retracted (E), deleted and
-// re-imported (F), scheduled to close then deleted (G, backlog 25), added
+// re-imported (F), scheduled to close then deleted (G), added
 // after the pin (H), and backfilled below the pin (I). The doors are read at
 // pinA before the later writes, so the later reads at pinA meet the cut that
 // first read built.

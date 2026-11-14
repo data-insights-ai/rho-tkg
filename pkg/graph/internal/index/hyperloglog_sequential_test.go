@@ -6,13 +6,13 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 16d: docs/CONTRIBUTING.md lesson 65 documented the FNV-1a
-// short-sequential-integer undercount as a TEST-AUTHORING footgun ("feed
-// well-distributed values, never short sequential integers") and left
-// production code unchanged. But the sketch's actual hash input in production is
+// The FNV-1a short-sequential-integer undercount was documented
+// as a TEST-AUTHORING footgun ("feed well-distributed values, never short
+// sequential integers") and left production code unchanged. But the sketch's
+// actual hash input in production is
 // types.IndexablePropertyValueKey(value) — e.g. "i64:1990", "i64:1991",
 // "i64:1992" for a "birthYear" property, or "i64:0".."i64:120" for an "age"
-// property — which is EXACTLY the adversarial shape lesson 65 identified:
+// property — which is EXACTLY the adversarial shape that footgun describes:
 // consecutive keys differ only in their low-order ASCII digit(s). Real
 // property data (years, ages, small counters, sequential external IDs) has
 // this shape routinely, so NodePropertyStats/NodePropertyStatsSketch NDV
@@ -22,7 +22,7 @@ import (
 // (via types.IndexablePropertyValueKey) for a realistic sequential-integer
 // property and assert the NDV estimate is close to the true distinct count
 // — not just "positive" or "not absurdly high" (the loose bound style
-// lesson 65 noted was the reason nobody caught this).
+// that was the reason nobody caught this).
 
 // sequentialIntKeys returns the IndexablePropertyValueKey strings for
 // int64(from)..int64(from+n-1) — the same encoding a real "age" or "year"
@@ -42,7 +42,7 @@ func TestHyperLogLogSequentialIntegerKeysAccuracy(t *testing.T) {
 		t.Fatalf("NewHyperLogLog: %v", err)
 	}
 	// Mirrors a realistic "age" property: 0..1999, the same shape as the
-	// lesson-65 repro (fmt.Sprintf("%d", i) for i:=0..n), but through the
+	// original repro (fmt.Sprintf("%d", i) for i:=0..n), but through the
 	// actual production key encoding ("i64:<n>").
 	const n = 2000
 	for _, s := range sequentialIntKeys(0, n) {
@@ -50,7 +50,7 @@ func TestHyperLogLogSequentialIntegerKeysAccuracy(t *testing.T) {
 	}
 	est := h.Estimate()
 	if re := relativeError(est, n); re >= 0.10 {
-		t.Fatalf("sequential int64 keys 0..%d: estimate=%d actual=%d relative error=%.4f, want <0.10 — BACKLOG 16d regression (FNV-1a low-avalanche undercount on production-shaped keys)", n, est, n, re)
+		t.Fatalf("sequential int64 keys 0..%d: estimate=%d actual=%d relative error=%.4f, want <0.10 — regression (FNV-1a low-avalanche undercount on production-shaped keys)", n, est, n, re)
 	}
 }
 
@@ -66,7 +66,7 @@ func TestHyperLogLogSequentialIntegerKeysAccuracy10k(t *testing.T) {
 	}
 	est := h.Estimate()
 	if re := relativeError(est, n); re >= 0.05 {
-		t.Fatalf("sequential int64 keys at 10k: estimate=%d actual=%d relative error=%.4f, want <0.05 — BACKLOG 16d regression", est, n, re)
+		t.Fatalf("sequential int64 keys at 10k: estimate=%d actual=%d relative error=%.4f, want <0.05 — regression", est, n, re)
 	}
 }
 
@@ -85,7 +85,7 @@ func TestPropertyStatsAccumulator_SequentialYearsAccuracy(t *testing.T) {
 	}
 	got := a.Sketch().Estimate()
 	if re := relativeError(got, n); re >= 0.15 {
-		t.Fatalf("years %d..%d (%d distinct): NDV estimate=%d relative error=%.4f, want <0.15 — BACKLOG 16d regression", firstYear, lastYear, n, got, re)
+		t.Fatalf("years %d..%d (%d distinct): NDV estimate=%d relative error=%.4f, want <0.15 — regression", firstYear, lastYear, n, got, re)
 	}
 }
 
@@ -121,6 +121,6 @@ func TestHyperLogLogSequentialIntegerKeysManyDistinctRegisters(t *testing.T) {
 	// far above what collapse produces.
 	const wantMin = 800
 	if nonzero < wantMin {
-		t.Fatalf("nonzero registers = %d, want >= %d (sequential keys collapsing into too few registers — BACKLOG 16d regression)", nonzero, wantMin)
+		t.Fatalf("nonzero registers = %d, want >= %d (sequential keys collapsing into too few registers — regression)", nonzero, wantMin)
 	}
 }

@@ -8,7 +8,7 @@ import (
 )
 
 // TestIdxDefRoundTrip proves every hand-written index-definition
-// EncodeMsgpack/DecodeMsgpack pair (BACKLOG 15v) reproduces the original
+// EncodeMsgpack/DecodeMsgpack pair reproduces the original
 // value exactly, both for a single value and for a slice (the shape the
 // persist*/load* call sites actually use).
 func TestIdxDefRoundTrip(t *testing.T) {
@@ -75,7 +75,7 @@ func TestIdxDefRoundTrip(t *testing.T) {
 	})
 }
 
-// TestIdxDefEncodeByValue guards against the exact regression BACKLOG 15v's
+// TestIdxDefEncodeByValue guards against the exact regression the
 // sibling implementation (tiered.RegistryFileData) hit: msgpack.Marshal(v) on
 // a NON-ADDRESSABLE value (a plain struct literal boxed into an `any`) fails
 // with "Encode(non-addressable ...)" unless EncodeMsgpack has a VALUE

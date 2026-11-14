@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// This file exercises store.ScopedReplaceCapability (BACKLOG 11f Batch B —
+// This file exercises store.ScopedReplaceCapability (Batch B —
 // foundation only; see the interface's doc comment in
 // pkg/graph/store/changefeed.go). It mirrors
 // scoped_changelog_test.go's battery for the two Batch B doors,
@@ -260,7 +260,7 @@ func TestScopedReplace_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
 	})
 }
 
-// ─── ReplaceRelWithHistoryScoped mirrors ReplaceNodeWithHistoryScoped (rule 2 parity) ───
+// ─── ReplaceRelWithHistoryScoped mirrors ReplaceNodeWithHistoryScoped (Node/Relationship parity) ───
 
 func TestScopedReplace_ReplaceRelWithHistoryScoped(t *testing.T) {
 	forScopedStores(t, true, func(t *testing.T, bs scopedStore) {

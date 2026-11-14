@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestNodeEffectiveTimelinesTieredRowsFlatInVersions pins row 120 (sigma R37):
+// TestNodeEffectiveTimelinesTieredRowsFlatInVersions pins the flat decode (sigma R37):
 // on tiered, a node's effective timelines at two pins decode the winning rows
 // only, not every history row, so the rows decoded do not grow with the
 // node's history. Mutation: tiered without the history temporal-meta

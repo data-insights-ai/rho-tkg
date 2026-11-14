@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Row 66 (v4.60.1): single-ID composite keys held inline and lazily cached
+// v4.60.1: single-ID composite keys held inline and lazily cached
 // node hashes answer exactly as before on every backend.
 
 // A composite key held by 0, 1, 2 nodes, by 1 after a delete and after a

@@ -12,8 +12,8 @@ import (
 
 // coldShardDrainSpinLimit bounds the drain wait (~5s at 1ms/spin) so a wedged
 // request cannot stall a purge; on timeout the shard is re-linked and left to
-// the row-scan path. Also bounds Close()'s drains (BACKLOG 19n,
-// drainActiveReqsBounded).
+// the row-scan path. Also bounds Close()'s drains
+// (drainActiveReqsBounded).
 const coldShardDrainSpinLimit = 5000
 
 // ErrDrainTimeout is returned (wrapped) when a bounded active-request drain
@@ -58,7 +58,7 @@ func (ts *Store) fastDropEligibleShards(labelToken uint16, before types.Instant)
 
 	// dropOneShard mutates ts.eventShards, which Close() ranges; like every
 	// topology mutation it must exclude Close() via
-	// beginSequentialStoreWideOperation/lifecycleMu (BACKLOG 19a).
+	// beginSequentialStoreWideOperation/lifecycleMu.
 	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
 	if err != nil {
 		return total, err
@@ -167,7 +167,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	if cerr != nil {
 		return zero, false, cerr
 	}
-	// Re-verify single-label eligibility (BACKLOG 19e): a write that began and
+	// Re-verify single-label eligibility: a write that began and
 	// finished between step (1) and the unlink is invisible to the drain, so a
 	// concurrent AddNodeLabelToken adding a FOREIGN label would go undetected.
 	// This post-drain result is authoritative: re-link and fall back to row-scan.
@@ -190,7 +190,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	// (5) Physically drop: close the store, then commit the catalog removal
 	// BEFORE deleting the directory. A failure before the commit leaves directory
 	// and catalog untouched (retryable); one after it leaves only an orphaned
-	// directory, never a catalog entry for a missing directory (BACKLOG 19b).
+	// directory, never a catalog entry for a missing directory.
 	es.shardMu.Lock()
 	// A handle swap (the sweep, a move) that began before the unlink reopens
 	// the store outside shardMu: wait for it, so its handle is the one closed
@@ -255,7 +255,7 @@ func (ts *Store) sweepDroppedShardResidue(rels []storecontract.PurgedRel, dropSe
 }
 
 // sweepRelResidue is the residue-sweep body shared by sweepDroppedShardResidue
-// and purgeNodesFanOut's Phase 2 (retention_purge.go) (BACKLOG 19m). It dedupes
+// and purgeNodesFanOut's Phase 2 (retention_purge.go). It dedupes
 // rels by ID (internal rels and self-loops would repeat per endpoint), then
 // purges at each endpoint whose shard might hold residue. isKnownGone lets the
 // fast-drop path skip GetNode for dropSet endpoints; the row-scan path passes

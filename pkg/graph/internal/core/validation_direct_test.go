@@ -80,7 +80,7 @@ func TestValidatePropertyValueLimitTypedDirectBranches(t *testing.T) {
 		{name: "nil", val: nil},
 		{name: "scalar", val: int64(1)},
 		{name: "string too large", val: "xxxx", want: ErrValueTooLarge},
-		// BACKLOG 14a fix: []int/[]string never actually recurse (they have no
+		// Fix: []int/[]string never actually recurse (they have no
 		// depth+1 call), so the old `depth+1 > maxPropertyValueLimitDepth`
 		// check inside these leaf-container cases was dead/inconsistent — it
 		// fired ONLY at the exact depth==maxPropertyValueLimitDepth boundary
@@ -102,7 +102,7 @@ func TestValidatePropertyValueLimitTypedDirectBranches(t *testing.T) {
 		{name: "struct with no string fields", val: struct{ X int }{X: 1}},
 		{name: "struct string too large", val: struct{ X string }{X: "xxxx"}, want: ErrValueTooLarge},
 
-		// BACKLOG 14b: aggregate container length/entry cap, governed by the
+		// Aggregate container length/entry cap, governed by the
 		// SEPARATE MaxPropertyContainerLength field (=3 in this test's
 		// config) — deliberately distinct from MaxPropertyValueSize (string
 		// length), so a legitimate large numeric container (e.g. a
@@ -175,7 +175,7 @@ func TestValidatePropertyValueLimitReflectBranches(t *testing.T) {
 		{name: "struct nested pointer string too large", rv: reflect.ValueOf(sizeLimitCustomProperty{Child: &sizeLimitCustomProperty{Name: "xxxx"}}), want: ErrValueTooLarge},
 		{name: "default kind", rv: reflect.ValueOf(1)},
 
-		// BACKLOG 14b: the reflect-based fallback (arbitrary slice/map kinds not
+		// The reflect-based fallback (arbitrary slice/map kinds not
 		// in the typed fast-path switch, e.g. []int32) gets the same aggregate
 		// container length/entry cap.
 		{name: "reflect slice within container cap", rv: reflect.ValueOf([]int32{1, 2, 3})},
@@ -317,7 +317,7 @@ func TestGraphMutationsRejectOversizedStringInsideRegisteredPropertyStruct(t *te
 	}
 }
 
-// TestGraphMutationsRejectOversizedContainerProperty is the BACKLOG 14b
+// TestGraphMutationsRejectOversizedContainerProperty is the
 // regression, exercised end-to-end through the real Add/Update doors (not
 // just the validator function directly): a slice/map property with more
 // elements than MaxPropertyValueSize must be rejected with ErrValueTooLarge,
@@ -390,7 +390,7 @@ func TestGraphMutationsRejectOversizedContainerProperty(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.run(newGraph(t))
 			if !errors.Is(err, ErrValueTooLarge) {
-				t.Fatalf("error = %v, want ErrValueTooLarge (unbounded container size — BACKLOG 14b regression)", err)
+				t.Fatalf("error = %v, want ErrValueTooLarge (unbounded container size — regression)", err)
 			}
 		})
 	}

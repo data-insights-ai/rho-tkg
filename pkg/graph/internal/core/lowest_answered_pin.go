@@ -6,7 +6,7 @@ import (
 )
 
 // =============================================================================
-// Lowest answered pin (row 104; sigma O1-3 P1)
+// Lowest answered pin (sigma O1-3 P1)
 //
 // NodeLowestAnsweredPin(id) is the lowest transaction pin at which the
 // singular point reads of the node (NodeEffectiveTimeline, NodeAsOf, NodeAtTx,

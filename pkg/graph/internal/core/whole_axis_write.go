@@ -8,7 +8,7 @@ import (
 )
 
 // =============================================================================
-// UntimedWholeAxis writes (round 11, René and Markus 2026-10-17: atemporal is
+// UntimedWholeAxis writes (round 11, RH and Markus 2026-10-17: atemporal is
 // "just a flag")
 //
 // Under Config.UntimedValidStart = UntimedWholeAxis a write without a valid
@@ -28,7 +28,7 @@ import (
 //     time only (the newer belief wins); existence does not change (no piece
 //     where no version is valid). The cascade kernel writes it
 //     (cascadeExisting): a pure whole-axis entity is one whole-axis segment,
-//     planned from its current row in O(1) (backlog 67); an entity with
+//     planned from its current row in O(1); an entity with
 //     explicit valid-time segments costs O(segments) plus its history read.
 //     A relationship's cascade takes the relationship's entity lock only
 //     (as SetRelVersionInterval); deletes serialize on it too.
@@ -258,7 +258,7 @@ func (c *Core) nodeWholeAxis(id types.NodeID, current *types.Node) (bool, error)
 // clock (one per segment), folded from its chain without the entity lock: a
 // caller-instant pre-flight holds it already (checkNodeCallerUpdate). A
 // whole-axis node is its current row alone, decided without the history
-// read (O(1), as the kernel plans it, backlog 67).
+// read (O(1), as the kernel plans it).
 func (c *Core) nodeHeadSegmentRows(id types.NodeID, current *types.Node) ([]*types.Node, error) {
 	if whole, err := c.nodeWholeAxis(id, current); err != nil || whole {
 		return []*types.Node{current}, err

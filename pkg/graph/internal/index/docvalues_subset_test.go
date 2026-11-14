@@ -58,7 +58,7 @@ func TestSubsetDocValuesEqualsBuild(t *testing.T) {
 	getProp := func(id types.NodeID, key string) (any, bool) { v, ok := props[pos[id]][key]; return v, ok }
 	getTemporal := func(id types.NodeID) (int64, int64, int64, bool) {
 		v := valid[pos[id]]
-		return v[0], v[1], v[0] + 7, true // effective start differs from the stored one (backlog 62)
+		return v[0], v[1], v[0] + 7, true // effective start differs from the stored one
 	}
 	keys := []string{"i", "mixed", "s", "rare", "u", "i"}
 	src := BuildLabelDocValues(5, ids, append(keys, "strnum"), getProp, getTemporal)

@@ -314,7 +314,7 @@ func TestSentinelErrors_Distinct(t *testing.T) {
 	}
 }
 
-// TestSentinelErrors_Wrapping verifies (per Testing Rule 4) that each sentinel
+// TestSentinelErrors_Wrapping verifies that each sentinel
 // error can be wrapped and recovered via errors.Is.
 func TestSentinelErrors_Wrapping(t *testing.T) {
 	cases := []struct {

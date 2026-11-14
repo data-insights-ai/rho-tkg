@@ -206,7 +206,7 @@ func TestRelColumns_UnsetValidFromReportsRaw(t *testing.T) {
 
 // TestRelColumns_UnsetValidFromFiltersFromTxFrom is the OTHER half: a valid-time
 // filter treats an unset ValidFrom as the row's effective start —
-// storeutil.EntityValidFrom: its TxFrom (backlog 62), the mint instant only for a
+// storeutil.EntityValidFrom: its TxFrom, the mint instant only for a
 // row without one — so the columnar path answers exactly as the row path does.
 func TestRelColumns_UnsetValidFromFiltersFromTxFrom(t *testing.T) {
 	t.Parallel()

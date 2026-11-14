@@ -17,7 +17,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 21: Admin().PurgeExpiredRels and the per-type retention gate.
+// Admin().PurgeExpiredRels and the per-type retention gate.
 
 type relRetentionBackend struct {
 	name string
@@ -723,7 +723,7 @@ func assertTxRelGates(t *testing.T, g *graphpkg.Graph, f relRetentionFixture) {
 	}
 }
 
-// TestRelPointGateAnswersLaterIDs (backlog 21 F3): a relationship ID minted
+// TestRelPointGateAnswersLaterIDs: a relationship ID minted
 // at or after every relationship watermark cannot have been purged, so a
 // point read of it at a low pin answers normally (here: no version at the
 // pin), not ErrRetentionExpired.

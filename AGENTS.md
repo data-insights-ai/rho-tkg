@@ -1,85 +1,118 @@
 # AGENTS.md
 
-Never create a new .md file: the documentation set and which file owns what is the table in README.md § Documentation.
+Never create a new `.md` file — [README.md § Documentation](README.md#documentation).
 
-rho-tkg (`tkg/v4`) is a pure Go temporal knowledge-graph library. This file is the entry point for Codex, Claude Code and other
-agents; it holds the documentation rule, the hierarchies below and the development loop.
+Entry point for agents on **rho-tkg** (`tkg/v4`). Code and test rules: `docs/CONTRIBUTING.md` § Rules digest (every session).
+Work order: `tasks/todo.md`. Design:
+`docs/architecture.md`; API: `docs/api.md`. Read `docs/badger.md` before changing code that reads or writes badger.
 
-**Scripts.** Makefile + `go test` only. **`scripts/release/`** only: kind, tag, push, and optional **`presubmit`**
-(`make presubmit` → `go run ./scripts/release presubmit`). Race, gate-major, fuzz and measure are **Makefile** targets;
-**`bench/bench-compare.sh`** is the bench comparator. No shell under `scripts/`.
+## Agent procedure (every task)
 
-Read before any work: run **`make`** (default goal prints the Makefile menu) → `docs/CONTRIBUTING.md` § Rules digest →
-`tasks/todo.md` (Now, Next, Waiting). Optional local
-`HANDOVER.md` at the repo root is gitignored operator state (not in git). Read `docs/architecture.md`, a lesson or another
-doc section when the task or the code you touch needs it, and
-`docs/badger.md` before changing code that reads or writes badger.
+1. Run **`make`** first (the menu). Use Make targets, not raw `go` or Docker, wherever one exists.
+2. **Todo first:** the item's row in `tasks/todo.md`, before any other action.
+3. **Red test, then the fix:** `make test-one PKG=./pkg/… RUN=Test…`, then `make old`.
+4. **Review** the full diff before the check (`docs/CONTRIBUTING.md` § Review).
+5. **Finished or handing off:** **`make check`** green. On a red leg, fix against the narrowest command: a red test
+   with `make test-one PKG=<failing package> RUN=<failing test>`, a red build or lint with `make build` or
+   `make lint`. Then `make check` once more.
+6. **Item end:** the item leaves `tasks/todo.md`; its entry is in `docs/CHANGELOG.md` under `[Unreleased]`. The todo
+   is committed once per item end, with the item's commits (alone only at a session handover), after
+   `make test-one PKG=./internal/docscheck/` (`TestLedger`; `TestDocSizes` caps the todo).
+7. **Push `dev`:** only when RH asks, after a green check: `git fetch origin`, then `git push origin dev`. No tag;
+   `main` does not move. A green check never pushes by itself.
+8. **Release:** only when RH asks: `make release` (a major: `make release-major`). It gates, tags and pushes `main`,
+   `dev` and the tag atomically, then starts `make race` detached. Before it: CHANGELOG, README and todo committed,
+   clean tree (`docs/CONTRIBUTING.md` § Release checklist).
 
-**Repository hierarchy (fix order).** rho-tkg is the embeddable graph library. sigma-tkgd builds query and Tyla on rho.
-ai-soc embeds rho and sigma at released pins in its own module. A defect or contract gap is fixed in the repo that
-owns it: rho first, then sigma, then ai-soc; consumers test local rho with `go.dev.mod` (sigma: `make dev RHO=…`;
-ai-soc: `make dev-pin RHO=… SIGMA=…`). Do not change sigma or ai-soc from a rho session unless the todo names it.
+## Who works
 
-**Branch hierarchy.** Work on `dev` (the working branch). `main` / `origin/main` is the released line after a tag;
-unreleased work stays on `dev`. Do not commit or push to `main` by hand for day-to-day work.
+Every item and every fix round, no step skipped: **Fable design** (read-only, before any code) → **Opus build**
+(steps 3 to 5, from the design; spec frozen at launch) → **Fable review** (read-only, before any merge) → findings
+go round again → merge. The main session briefs the agents, checks every finding against source, runs every test,
+lint and gate, and merges; it does not design or write item code. Sonnet does docs and mechanical work (bulk scans,
+sweeps). Other agents only on RH's word. One session per checkout. At an item end after about three compactions:
+update local `HANDOVER.md` if used, tell RH, fresh session.
 
-**Git: DEV vs PROD (rho).** Branch for all work: `dev`. `main` / `origin/main` is what consumers pin after a release.
-No hook runs gate or presubmit. Agents **commit**, **tag** or **push** only when René asks; never `git commit -a`
-(explicit paths; `docs/CONTRIBUTING.md` § Rules digest).
+## Standing orders
 
-**DEV** — share unreleased work on the working branch (not a version release).
+The only place for them: no standing order lives in `tasks/todo.md` or `docs/CONTRIBUTING.md`.
 
-| Step | What |
-|---|---|
-| **Commit** | On `dev` (or item branch → `dev`): code, tests, docs for the item; `go test -run …` / `make old` in-session. Todo-only commits follow Rules digest. |
-| **Tag** | **No** version tag. Dev pushes do not create `v*` tags and do not move `main`. |
-| **Push** | After green **`make gate`**: `git fetch origin`, then `git push origin dev` by hand. Gate green does not push. |
+- **Goal:** realtime ingest at about 2 TB a day (≈23 MB/s, 4 billion 500-byte facts), grown only by
+  more RAM, NVMe and block storage. Nothing may grow in RAM per entity, or in open, recovery, Clear or compaction
+  time per store, without a bound. Removing such a wall ranks above a constant-factor win (todo SCALE).
+- **Scope:** consumer-blocking or wrong-answer/data bugs, plus ai-soc runtime items. Anything else needs a consumer
+  request or a failing test, or goes to `tasks/todo.md` § Waiting.
+- **`tasks/todo.md` is always up to date:** it is the one authority for what is open. Update it in the same step
+  as the work: a new item gets its row before the work starts, a changed state is written when it changes, a
+  finished item leaves. A row is one sentence, then when it is done and what it waits for; **rho/sigma** says what
+  the item brings to the rho + sigma stack (memory, CPU, storage, restart time) or "none". An open decision of
+  RH's carries a default.
+- **Releases:** every release is a **PATCH** (a new door, option, store format marker, badger minor bump or raised
+  go directive included); only a removed or changed public name is a **MAJOR**. Budget: gate warm ≤ 60 s, cold after
+  a Go or dependency bump ≤ 5 min, whole release warm ≤ 2 min; over budget is a todo row the same day. Race, long
+  and fuzz never run on a patch tag's path.
+- **No attribution:** commits, MRs and PRs carry no Co-Authored-By, Claude-Session or "Generated with" line.
+- **Peers:** one message per item each way to sigma-tkgd and ai-soc, ≲1,500 characters, detail in a file; status in
+  the todo (`item | state | next | waits for`), checked against the repo before it is stated.
+- **Reopen check:** before a commit that changes what sigma or ai-soc read at reopen, run a small reopen cycle with
+  the host's writer, on masked rows only (never a Flux file). Sample: ai-soc `TestRestartModesOverBARows`.
+- **Process changes remove:** a change answering "too slow" or "too hard" deletes a step or script, or turns on a
+  Go facility, with wall time before and after. No new hook, script or workflow without RH's word. A correction
+  from RH changes the rule it corrects; it never adds a second one.
+- **Questions and orders:** a question from RH gets an answer from the evidence, then a stop; only an order starts
+  work. Act, do not offer. Before a design question, trace the cause in the code and try to remove it; ask only
+  the remainder.
+- **v5:** v5 work happens in v5, never as v4 API changes; it is paused until RH restarts it.
+- **`HANDOVER.md`:** only the latest work items, as a reference for the next session; local, gitignored, never
+  committed. It holds no rule and no status the todo lacks; where the two differ, the todo is right.
 
-**PROD** — version release (René calls one only).
+## Commands
 
-| Step | What |
-|---|---|
-| **Commit** | On `dev`: finished CHANGELOG / README / `tasks/todo.md` for the release batch; clean tree (`git status`); optional `make dry-patch` preflight. |
-| **Tag** | **`make release`** / `release-minor` / `release-major`: `scripts/release` runs gate (or major gate), then `git tag -a` for the next `v*`. |
-| **Push** | Same command: atomic **`git push`** of **`main`**, **`dev`**, and the **tag** (`scripts/release`). Detached **`make race`** after patch/minor; one line to sigma and ai-soc. GitHub **ci.yml** on **`v*` tag push**. Checklist: `docs/CONTRIBUTING.md` § Release checklist. |
+Nothing here runs unless you or RH invoke it; no hook runs a check.
 
-**Check hierarchy (rho).** Narrow checks while editing; wide checks before push or release. Nothing in this list runs
-presubmit or gate automatically except when you or René invoke it.
-
-| Stage | Command | Role |
+| Stage | Command | What it runs |
 |---|---|---|
-| Edit | `make test-one PKG=./pkg/… RUN=Test…` or `go test -run '…' …` | One package or test; PKG required on the Make target (fails fast if missing). |
-| Wider dev | `make old` | Two stable integration tests on the store surface (seconds cached); default after new tests. |
-| Optional | `make presubmit` | `go run ./scripts/release presubmit` — vet + short on packages since `origin/main`; minutes on fat `dev` |
-| Pre-push (DEV) | `make gate` | Before **DEV push** — `build`, Docker `lint`, full `go test -short ./...` |
-| Release (PROD) | `make dry-patch` / `make release` | Before **PROD tag+push** (René only); not daily dev |
+| Edit | `make test-one PKG=…` [ `RUN=…` ] | One package or test, `-short`; `PKG` required. |
+| After new tests | `make old` | Two stable integration checks on the store surface. |
+| Before sharing | `make check` (= `make gate`) | `build` + Docker `lint` + `go test -short ./...`; lists every red leg. |
+| One gate leg | `make build`, `make lint`, `make test` | The three legs of the check, each alone. |
+| Release | `make release`, `make release-major` | Gate (a major: `gate-major`), annotated tag, atomic push. |
+| Optional | `make race`; `make bench` [ `BENCH=smoke\|baseline\|check` ] | Race run and benchmarks; not in the gate. |
+| Off the menu | `go run ./scripts/release kind`, `… patch -dry-run`; `go test ./...` | Release kind and dry run; the long test tier. |
 
-`make test` is the same short tier as gate's test step; use by hand when you want the whole tree without lint or build.
-By-hand only, never before a tag: `go test ./...` (long tier), `make race`. Dev and gate use the Makefile and `go test`
-only. Go's test cache reruns only what changed, so never `-count=1`; only a major release runs the cold comprehensive gate.
+`scripts/release/` is the only code under `scripts/`. The gates rely on Go's test cache: no routine `-count=1`.
 
-**Code hierarchy (where to edit).** Public callers use `pkg/graph` (`graph.Graph` and its sub-APIs). Shared behaviour and
-temporal semantics live in `pkg/graph/internal/core` (not imported outside rho). Persistence is `pkg/graph/store` and
-backends (`memory`, `badger`, `tiered`, `sharded`). Cross-cutting types: `pkg/types`; wire and helpers: `pkg/graph/io`, `internal/`.
-A change at core or store must stay consistent across every door and backend the contract covers; the layer diagram and
-lock order are `docs/architecture.md` §§ 1 and 4. API names and stability: `docs/api.md`.
+## Repository and branch
 
-Development loop (René, 13 Nov): fix the gap in the owning repo. Each step: a few new tests for the new code, then
-`make old` or one or two named old tests (`go test -run 'TestA|TestB' ./pkg/x`), and `make presubmit` only at item
-handoff when the diff since `origin/main` is still small. Unfinished code is normal until the next release, but keep
-`dev` building: sigma and ai-soc can pin this checkout (`make dev-pin RHO=..`).
+**Fix order:** rho → sigma → ai-soc. Cross-repo edits only if `tasks/todo.md` names them. Consumers pin
+**`origin/main`**; local integration uses `go.dev.mod` (sigma: `make dev RHO=…`; ai-soc: `make dev-pin RHO=… SIGMA=…`).
 
-Resource limits (René's review of 14 Nov, ai-soc `doc/REVIEW-rh-rho.md` §9). A read limit is one allowance for the whole
-read: across keys, shards, versions and pending writes. Charge work before doing it, in the helper that does it (walk,
-decode, clone, allocate, open): pass the tally down; examined and rejected entries count. Each cost has one owner; no mode
-flag that moves the count to another layer. Work that cannot be charged is refused with a typed error before it starts.
-Every limit test pairs an exact, non-empty unlimited control with a counter at the native boundary (iterator steps,
-decodes, clones, shard opens) that the meter under test does not keep, and covers several keys and several shards that each
-fit the limit but exceed it together. An item is "developed" only when such a test covers the whole contract it claims.
-Public variants of one query run through the same admitted walk; docs/api.md keeps a short table of which entry points
-bound which dimensions, backed by those tests. A streaming door may hand out a prefix before a refusal; a door that returns
-a slice returns all or the refusal. A found failure gets a test at the helper that owns it and at the public caller.
-Logical counters (BufferBytes, DecodedBytes) are not live heap or RSS; never report one as the other.
-Shard lifecycle: keep the handle states, who moves them and the lock order together in the sweep code; extend that one path,
-never add a second cleanup path; keep the pin, scope, late-write, failed-replacement, close-fault and reopen tests.
-Byte figures divided by 1 << 20 are MiB. Status text (todo, evidence) says what the code does now, not what it did.
+**Branches:** all day-to-day work on **`dev`**; **`main`** is the released line and moves only with a release.
+Commit with explicit paths, never `git commit -a`; never force-push, never push `origin/v5`; commit and tag, like
+push, only when RH asks. Unfinished code is normal until the next release, but `dev` keeps building (sigma and
+ai-soc can pin this checkout) and stays green: a red test lands on it only with its fix.
+
+## Where to edit
+
+`pkg/graph` (public) → `pkg/graph/internal/core` → `pkg/graph/store` (+ backends). `pkg/types`. Layers and lock order:
+`docs/architecture.md` §§ 1, 4; API: `docs/api.md`. A change at core or store holds on every door and backend the
+contract covers (Rules digest, Code).
+
+## Resource limits
+
+- **Allowance:** one per read, across keys, shards, versions and pending writes.
+- **Charging:** before the work, in the helper that does it (walk, decode, clone, allocate, open); pass the tally
+  down; examined and rejected entries count. Each cost has one owner; no mode flag moves the count to another layer.
+  Work that cannot be charged is refused with a typed error before it starts.
+- **Limit tests:** an exact, non-empty unlimited control plus a counter at the native boundary (iterator steps,
+  decodes, clones, shard opens) that the meter under test does not keep; several keys and several shards that each
+  fit the limit but exceed it together. An item is "developed" only when such a test covers the whole contract it
+  claims. A found failure gets a test at the helper that owns it and at the public caller.
+- **Doors:** public variants of one query run through the same admitted walk; the `docs/api.md` table says which
+  entry point bounds which dimension, backed by those tests. A streaming door may hand out a prefix before a
+  refusal; a slice door returns all or the refusal.
+- **Shard lifecycle:** handle states, who moves them and the lock order stay together in the sweep code; extend that
+  one path, never add a second cleanup path; keep the pin, scope, late-write, failed-replacement, close-fault and
+  reopen tests.
+- **Reporting:** `BufferBytes` / `DecodedBytes` are logical counters, never live heap or RSS. Bytes divided by
+  1 << 20 are MiB. Todo and evidence say what the code does **now**.

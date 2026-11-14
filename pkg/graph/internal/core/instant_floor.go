@@ -11,7 +11,7 @@ import (
 // instantFloorMeta is the MetaKV key holding the durable commit-clock floor
 // watermark — the session's max lastInstant, persisted at Close and reseeded at
 // open so NowTx()/c.now() stay above every persisted TxFrom even when a pre-close
-// burst's monotonic floor outran the wall clock (lesson 71). Distinct from
+// burst's monotonic floor outran the wall clock. Distinct from
 // graphEpochMeta / replicaAppliedLSNMeta / idSlotLeaseMeta / asofTagsMeta.
 const instantFloorMeta = "tx_instant_floor"
 
@@ -40,7 +40,7 @@ func (c *Core) seedInstantFloor() {
 		// session's (lower) lastInstant over an unread one downgrades it
 		// permanently — every later open then reseeds the regressed value and
 		// NowTx() under-covers burst rows still in the store, which is the exact
-		// anachronism lesson 71 exists to close.
+		// anachronism the floor exists to close.
 		c.floorSeedUnreadable = true
 		return
 	}
@@ -69,7 +69,7 @@ func (c *Core) seedInstantFloor() {
 }
 
 // seedCommitFloor raises the commit-clock floor to the store's commit floor
-// (store.CommitFloorCapability, backlog 44): the newest transaction stamp of
+// (store.CommitFloorCapability): the newest transaction stamp of
 // any row the store holds, persisted with the rows themselves. It is what keeps
 // NowTx() and new stamps above stored rows after a crash, when the Close-time
 // watermark (seedInstantFloor) is stale or absent. No plausibility bound: the
@@ -119,7 +119,7 @@ func (c *Core) plausibleForeignStamp(inst types.Instant) bool {
 // It differs from the seed in what it does on refusal. The seed can silently
 // fall back to a wall-derived clock because nothing has been stored yet. Here
 // the row is already in the store, so silently declining to advance would leave
-// NowTx() below durably stored data — the lesson-71 anachronism. The stamp is
+// NowTx() below durably stored data — the anachronism the floor exists to close. The stamp is
 // instead treated as what it is, corruption: the record is REJECTED, and
 // Import's rollback unwinds the whole stream (see TestR9_ImportReplayError...).
 // Loud and atomic beats silent and half-applied.
@@ -182,7 +182,7 @@ func (c *Core) writeInstantFloor() error {
 
 // restoreInstantFloorAfterReset re-persists the commit-clock floor after
 // Admin.Reset() / a replica's ChangeClear apply wiped the MetaKV keyspace —
-// instantFloorMeta's reapPolicyPreserve half (BACKLOG 13l). The commit clock is
+// instantFloorMeta's reapPolicyPreserve half. The commit clock is
 // data-INDEPENDENT node state: like idSlotLeaseMeta, and unlike every Reap key,
 // it describes THIS NODE'S transaction-time position, not the graph's (now
 // erased) entities. Letting Clear wipe it would let transaction time go

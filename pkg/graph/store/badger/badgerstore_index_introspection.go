@@ -5,7 +5,7 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// HasPropertyIndex satisfies store.PropertyIndexIntrospectionCapability (BACKLOG 21b).
+// HasPropertyIndex satisfies store.PropertyIndexIntrospectionCapability.
 func (bs *Store) HasPropertyIndex(labelToken uint16, propertyKey string) (bool, error) {
 	if err := bs.checkOpen(); err != nil {
 		return false, err
@@ -22,7 +22,7 @@ func (bs *Store) HasPropertyIndex(labelToken uint16, propertyKey string) (bool, 
 	return ok, nil
 }
 
-// HasTemporalIndex satisfies store.TemporalIndexIntrospectionCapability (BACKLOG 21b);
+// HasTemporalIndex satisfies store.TemporalIndexIntrospectionCapability;
 // the interval kind only, a high-frequency index on the label does not count.
 func (bs *Store) HasTemporalIndex(labelToken uint16) (bool, error) {
 	if err := bs.checkOpen(); err != nil {
@@ -37,7 +37,7 @@ func (bs *Store) HasTemporalIndex(labelToken uint16) (bool, error) {
 	return ok, nil
 }
 
-// VectorIndexInfo satisfies store.VectorIndexIntrospectionCapability (BACKLOG 21b):
+// VectorIndexInfo satisfies store.VectorIndexIntrospectionCapability:
 // the declared config of the live vector index, restored from the persisted
 // definition at open, or (zero, false, nil).
 func (bs *Store) VectorIndexInfo(labelToken uint16, propertyKey string) (storecontract.VectorIndexInfo, bool, error) {
@@ -68,7 +68,7 @@ func (bs *Store) VectorIndexInfo(labelToken uint16, propertyKey string) (storeco
 	}, true, nil
 }
 
-// HasRelPropertyIndex satisfies store.RelPropertyIndexIntrospectionCapability (BACKLOG 21b).
+// HasRelPropertyIndex satisfies store.RelPropertyIndexIntrospectionCapability.
 func (bs *Store) HasRelPropertyIndex(relTypeToken uint16, propertyKey string) (bool, error) {
 	if err := bs.checkOpen(); err != nil {
 		return false, err

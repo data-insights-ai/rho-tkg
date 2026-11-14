@@ -146,7 +146,7 @@ func TestNewRefusesMissingHotOrReferenceShardDir(t *testing.T) {
 }
 
 // TestNewStoreMakesReferenceAndArchiveDirs pins option (b) of SHARD step 1
-// (René 23 Oct): a new store gets its reference and archive directories up
+// (RH 23 Oct): a new store gets its reference and archive directories up
 // front, an existing one never (the reference case above fails if a reopen
 // makes them). Mutation: drop the pre-creation → archive/ is missing until the
 // first archive write.

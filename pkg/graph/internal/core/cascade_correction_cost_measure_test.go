@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Measurement level (MEMGATE, `scripts/measure.sh`): row 85's cost is resolver work
+// Measurement level (MEMGATE, `scripts/measure.sh`): the correction's cost is resolver work
 // on a chain already in memory (cuts × V log V), which no read, row or store
 // count sees, and bytes per write count the whole process. The prepared
 // chain's answers are pinned in the suite (TestCascadeCorrection85_Oracle).
@@ -82,7 +82,7 @@ func cutsCost(tb testing.TB, be r10Backend, rel bool, versions, k int) (bytes, n
 // V log V (its history read and one sweep), not as cuts × V log V. From 100
 // to 1,000 rows (the cuts grow with the chain here) bytes per write grow
 // about 10 × a log factor (time is logged); the per-cut resolver grew 30 to 60 × (memory:
-// 120 µs to 6.3 ms per write before row 85).
+// 120 µs to 6.3 ms per write before correctionChain).
 func TestCascadeCorrection85_CostFlat(t *testing.T) {
 	const k = 5
 	for _, be := range r10Backends() {

@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 )
 
-// Backlog 52 (ai-soc): Config.DurableCommit + SyncWrites paid one Badger sync
+// ai-soc: Config.DurableCommit + SyncWrites paid one Badger sync
 // per mutation (~822 per 530-op group, ~1 s). A durable group must cost a
 // bounded number of syncs, independent of its size, and keep strict power-loss
 // durability (every sync is a Badger SyncWrites commit). Counted through

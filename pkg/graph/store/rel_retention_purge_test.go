@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 21: store.RelRetentionPurgeCapability on every backend, driven
+// This file exercises store.RelRetentionPurgeCapability on every backend, driven
 // directly (the graph-level tests cover the door). Relationships of type 5
 // minted before the boundary go in every lifecycle — live, live with history,
 // deleted (history only), history rows without a current row — with their

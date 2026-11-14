@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// DecodeWireTxStamps / HistoryValueTxStamps (backlog 30) must read the same
+// DecodeWireTxStamps / HistoryValueTxStamps must read the same
 // TxFrom / TxTo / DeletedAt the full decode does, for full node and
 // relationship rows, delta rows of both kinds, and rows without a temporal
 // block (zeros); a newer format version and a corrupt value fail. Distinct

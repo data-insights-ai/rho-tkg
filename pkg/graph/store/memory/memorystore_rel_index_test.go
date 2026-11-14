@@ -113,7 +113,7 @@ func TestMemStoreForEachRelByTypePropertyRange(t *testing.T) {
 }
 
 // TestForEachRelByTypePropertyRange_CallbackCanReenterStoreWithoutDeadlock is
-// the BACKLOG 17b regression: ForEachRelByTypePropertyRange used to hold
+// the regression where ForEachRelByTypePropertyRange used to hold
 // ms.mu.RLock() across the ENTIRE callback loop, unlike every sibling
 // streaming method (which snapshot IDs, release the lock, then call fn with
 // no lock held). Go's sync.RWMutex documents that once a Lock() call is
@@ -171,7 +171,7 @@ func TestForEachRelByTypePropertyRange_CallbackCanReenterStoreWithoutDeadlock(t 
 			t.Fatalf("ForEachRelByTypePropertyRange: %v", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("ForEachRelByTypePropertyRange deadlocked when its callback re-entered the store — BACKLOG 17b regression")
+		t.Fatal("ForEachRelByTypePropertyRange deadlocked when its callback re-entered the store — regression")
 	}
 	<-writerDone
 }

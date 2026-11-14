@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): live heap after a GC moves
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): live heap after a GC moves
 // with load and other goroutines, so this bound runs by hand, not in a gate
 // (MEMGATE). The keyspace-walk counts of OPENWALK gate in openwalk_test.go.
 
@@ -67,8 +67,8 @@ func openWalkHeapAfterReopen(t *testing.T, n int) uint64 {
 
 const openWalkChildEnv = "RHO_OPENWALK_CHILD"
 
-// TestOpenWalkResidentBytesPerRel pins OPENWALK's RAM budget (SCALE, lesson
-// 89): an open shard keeps at most 24 B of live heap per stored rel (the rel
+// TestOpenWalkResidentBytesPerRel pins OPENWALK's RAM budget (SCALE):
+// an open shard keeps at most 24 B of live heap per stored rel (the rel
 // ID set and the rel-type index as ID sets; v4.86.1: ~45 B, the type index a
 // map[RelID]struct{} per type). Measured as TestExistMapResidentBytesPerNode:
 // the slope between two store sizes after a clean reopen, in a fresh process.

@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 50 (cost): ForEachRelEffectiveAtNodes with one seed reads the rows
+// Cost: ForEachRelEffectiveAtNodes with one seed reads the rows
 // of the relationships that ever named the seed (its adjacency and
 // ex-adjacency) — not every relationship with history, nor every deleted one.
 // On badger with a one-entry cache every row read is a cache miss, so the

@@ -49,7 +49,7 @@ func TestPurge_ReapsUniqueForeverOwner(t *testing.T) {
 	}
 }
 
-// TestPurge_ReapsAllForeverKeysOfMultiKeyOwner (BACKLOG 13h) is the
+// TestPurge_ReapsAllForeverKeysOfMultiKeyOwner is the
 // multi-key companion to TestPurge_ReapsUniqueForeverOwner: a SINGLE node
 // can own forever claims on MULTIPLE distinct constrained keys at once
 // (here, two different labels' constraints, since UniqueForever is scoped
@@ -98,10 +98,10 @@ func TestPurge_ReapsAllForeverKeysOfMultiKeyOwner(t *testing.T) {
 	// BOTH values must be reusable — not just the first key the reap loop
 	// happens to visit.
 	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "a@x.com", "ssn": "222-22-2222"}); err != nil {
-		t.Fatalf("email claim not reaped after owner purge — BACKLOG 13h regression: %v", err)
+		t.Fatalf("email claim not reaped after owner purge — regression: %v", err)
 	}
 	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "b@x.com", "ssn": "111-11-1111"}); err != nil {
-		t.Fatalf("ssn claim not reaped after owner purge — BACKLOG 13h regression: %v", err)
+		t.Fatalf("ssn claim not reaped after owner purge — regression: %v", err)
 	}
 }
 

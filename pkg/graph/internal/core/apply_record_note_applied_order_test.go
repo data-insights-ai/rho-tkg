@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestApplyChange_RejectedNodePutDoesNotBumpAsOfCacheEpoch is the BACKLOG 12f
+// TestApplyChange_RejectedNodePutDoesNotBumpAsOfCacheEpoch is the
 // proof: noteAppliedTxFrom must run AFTER property/hash verification
 // succeeds, never before. Previously all apply handlers called it right
 // after decoding the wire — so a record that would ultimately be REJECTED
@@ -24,7 +24,7 @@ import (
 // This test establishes a high applied-TxFrom watermark via a valid apply,
 // then sends a node put with an OLDER TxFrom (the out-of-order shape) AND a
 // wrong hash (so it must be rejected), and asserts the as-of cache epoch is
-// unchanged. Confirmed load-bearing: reverting the BACKLOG 12f reordering
+// unchanged. Confirmed load-bearing: reverting the reordering
 // (restoring the noteAppliedTxFrom call to its original pre-verification
 // position) turns this RED (the epoch bumps despite the rejection).
 func TestApplyChange_RejectedNodePutDoesNotBumpAsOfCacheEpoch(t *testing.T) {
@@ -76,7 +76,7 @@ func TestApplyChange_RejectedNodePutDoesNotBumpAsOfCacheEpoch(t *testing.T) {
 
 	epochAfter := g.asOfColumns.currentEpoch()
 	if epochAfter != epochBefore {
-		t.Fatalf("a REJECTED node put still bumped the as-of cache epoch (BACKLOG 12f): before=%d after=%d", epochBefore, epochAfter)
+		t.Fatalf("a REJECTED node put still bumped the as-of cache epoch: before=%d after=%d", epochBefore, epochAfter)
 	}
 	if _, err := g.store.GetNode(types.NodeID(101)); !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("GetNode(101) after rejected apply: got %v, want ErrNodeNotFound", err)

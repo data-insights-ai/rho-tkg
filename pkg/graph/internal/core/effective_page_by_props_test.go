@@ -193,7 +193,7 @@ func pageDoorWalk(t *testing.T, g *Core, props map[string]any, pin types.Instant
 	}
 }
 
-// TestForEachNodeEffectiveByLabelAndPropertiesMatchesComposition pins row 121:
+// TestForEachNodeEffectiveByLabelAndPropertiesMatchesComposition pins the composition:
 // on every backend, with the composite index (the ID page path) and without
 // it (the ByLabelAndProperties fallback), the door hands fn exactly the
 // matches ByLabelAndProperties lists, ascending, each with

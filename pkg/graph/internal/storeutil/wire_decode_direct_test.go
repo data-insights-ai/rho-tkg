@@ -9,14 +9,15 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// BACKLOG 15m: decodeMapKeyLen had zero direct tests — only indirect
+// decodeMapKeyLen had zero direct tests — only indirect
 // coverage through the entity wire decoders and fuzzing. Its over-long-key
 // path (a fresh allocation instead of pooled scratch) is a genuinely rare
 // cold path per its own doc comment ("longest known [key] is 3 bytes"), and
 // the allocation is bounded (msgpack str8/str16 caps a single key at 65535
 // bytes) and proportional to bytes the caller actually sent (not an
-// amplification vector like lesson 48's cases — n bytes claimed always
-// requires n real bytes on the wire for ReadFull to succeed), so pooling it
+// amplification vector like a size taken from a declared count — n bytes
+// claimed always requires n real bytes on the wire for ReadFull to succeed),
+// so pooling it
 // was investigated and left as-is: adding a pool for a rare, bounded,
 // non-amplifying cold path would add sync.Pool complexity (variable-size
 // buffers up to 64 KiB are a poor sync.Pool fit — Go's own guidance is to

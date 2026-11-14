@@ -17,8 +17,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Crash harness for the durable-on-return commit (Config.DurableCommit, backlog
-// item 11). A child process opens a disk store whose background flush is an hour
+// Crash harness for the durable-on-return commit (Config.DurableCommit).
+// A child process opens a disk store whose background flush is an hour
 // away, writes ONE commit group through one door, and exits without Close the
 // moment the door returns (os.Exit: a process crash — the pending write buffer
 // is lost, whatever reached Badger's write-ahead log survives). The parent
@@ -59,7 +59,7 @@ func dcOpenStore(backend, dir string, flushInterval time.Duration) (graphpkg.Con
 		}
 		return graphpkg.Config{Store: bs}, nil
 	case "badger-sync", "badger-sync-bound", "badger-sync-small":
-		// SyncWrites (backlog 52): "-bound" caps the held buffer of a durable
+		// SyncWrites: "-bound" caps the held buffer of a durable
 		// group at 16 pending writes, "-small" shrinks the memtable so a group
 		// above Badger's transaction size limit (15 % of it) is split.
 		bc := badger.Config{Dir: dir, SyncWrites: true}
@@ -83,7 +83,7 @@ func dcOpenStore(backend, dir string, flushInterval time.Duration) (graphpkg.Con
 		}
 		return graphpkg.Config{Store: ts}, nil
 	case "tiered-sync":
-		// tiered with SyncWrites (backlog 93) and a small memtable, so a group
+		// tiered with SyncWrites and a small memtable, so a group
 		// above Badger's transaction size limit is split ("tx-big").
 		ts, err := tiered.New(tiered.Config{DataDir: dir, RefLabels: []string{"Ref"}, FlushInterval: flushInterval,
 			SyncWrites: true, MemTableSize: 8 << 20})

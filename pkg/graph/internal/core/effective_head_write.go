@@ -8,7 +8,7 @@ import (
 )
 
 // =============================================================================
-// Corrections from the head entry (backlog 68b, sigma R10 write side)
+// Corrections from the head entry (sigma R10 write side)
 //
 // A correction (cascadeNode / cascadeRel) reads the pre-correction chain for
 // five things: the highest version, the order rule of a caller instant, the
@@ -38,7 +38,7 @@ import (
 // base row gone) the correction plans on the whole chain — on its temporal
 // skeletons with a point read per copied row where the store offers them
 // (CASCADEMETA, cascade_meta.go), else on the history — and leaves
-// the head answer behind (correctionChain.head, row 85), so the next
+// the head answer behind (correctionChain.head), so the next
 // correction at the head is planned from it: a consumer appending versions
 // to a chain of thousands pays the history read once, not per write.
 // =============================================================================
@@ -77,7 +77,7 @@ func chainFromHead[T interface {
 		return hc, false
 	}
 	// One point read per base row: a correction from the chain's start has
-	// one per piece (row 87), so the rows read are kept by version.
+	// one per piece, so the rows read are kept by version.
 	var readRows map[uint32]T
 	row := func(v uint32) (T, bool) {
 		if v == current.Version() {
@@ -123,7 +123,7 @@ func chainFromHead[T interface {
 }
 
 // =============================================================================
-// Appends from the current row (backlog 67, sigma-tkgd 2026-10-17)
+// Appends from the current row (sigma-tkgd 2026-10-17)
 //
 // An open correction [newVF, +inf) at or after the current row's own start —
 // a new version, no backdating — needs nothing of the chain but the current
@@ -134,8 +134,8 @@ func chainFromHead[T interface {
 // open), so the one piece is [newVF, +inf) on the current row, there is no
 // resumption, the top version is the current row's, and the newest open
 // belief is the current row. Each fact is read in O(1): the version probe
-// above the current row (nodeHasHistoryAbove, exact, backlog 70) and the
-// history's newest stamps (store.HistoryStampsCapability, backlog 30). The
+// above the current row (nodeHasHistoryAbove, exact) and the
+// history's newest stamps (store.HistoryStampsCapability). The
 // cascade then builds byte-for-byte the rows the history read builds (the
 // twin tests, cascade_append_test.go and effective_head_write_twin_test.go).
 //

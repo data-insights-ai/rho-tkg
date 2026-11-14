@@ -413,7 +413,7 @@ Wire format and backup naming: [persistence.md](persistence.md).
 **Promise.** Within v4 the following are stable — no breaking changes, only additive evolution; breaking changes wait for v5.0.0:
 - The sub-APIs and their methods (`Nodes`, `Rels`, `Temporal`, `Index`, `Events`, `Constraints`, `IO`, `Admin`, `Stats`, `Hash`, `Resolve`, `Ingest`, `Tx`, `Batch`) and the change-feed reads on `g.Replication()` (`ChangeFeed`, `ForEachChange`, `LastCommittedLSN`).
 - The core types in `pkg/types`, the store contract types in `pkg/graph/store` (`Store`, `QueryOpts`, `ShardDepth`, `DistanceMetric`, sentinels), the error sentinels' identities and meaning, the type aliases on `pkg/graph`, and column segments (`Config.RelSegments` / `SegmentDir` / `SegmentMemoryBudget`, `ScanRelSegments`, `SealRelSegments`, `RelSegmentStats`).
-- The sub-packages' `Ops` interfaces are wiring seams, not for external implementation: they gain methods in minor releases.
+- The sub-packages' `Ops` interfaces are wiring seams, not for external implementation: they gain methods in any release.
 
 **Experimental** (may change or disappear in any release; tell the maintainers before depending on one):
 - The replication apply API (`ApplyChange`, `ApplyChanges`, `AppliedLSN`, `SetAppliedLSN`, `RegistrySnapshot`, `IDSlotLease`, `SetIDSlotLease`, `Watch`, `g.SetReplicationSource`).
@@ -426,7 +426,7 @@ Wire format and backup naming: [persistence.md](persistence.md).
 - `graph.ErrEventPropertyIndex` and `tiered.ErrEventPropertyIndex`: nothing returns them since v4.58.0, no replacement; drop the `errors.Is` match.
 - `(*tiered.Store).SaveLabelRegistry` / `SaveRelTypeRegistry`: use `SaveRegistries`.
 
-**Deprecation ritual.** A method or field whose behaviour or meaning will change gets a `// Deprecated:` godoc marker and a CHANGELOG `Deprecated` entry at least one minor release before the change, stating what and why, the replacement, and the release that changes or removes it:
+**Deprecation ritual.** A method or field whose behaviour or meaning will change gets a `// Deprecated:` godoc marker and a CHANGELOG `Deprecated` entry at least one release before the change, stating what and why, the replacement, and the release that changes or removes it:
 
 ```go
 // Deprecated: SomeMethod is superseded by BetterMethod as of v4.11.0.
@@ -438,4 +438,4 @@ func (g *Graph) SomeMethod() { ... }
 - An **on-disk format change** raises the store marker in the release that first writes it; that release also reads it, every older release refuses the store at `New` with nothing written, and a rollback past it needs a copy made before the upgrade. Which release reads which marker: [persistence.md](persistence.md) "Upgrading a store".
 - A bug fix that makes a door return what its documented contract already promises is not a behaviour change: it ships in a patch under CHANGELOG "Fixed". Past exceptions to the ritual are recorded in [CHANGELOG.md](CHANGELOG.md) (v4.46.0, v4.48.0, v4.51.2); there are no new ones.
 
-Version numbering (fix = patch; new door, option or store marker = minor; a removed or changed public name, or a new module path `/vN`, = major; `make kind` decides) and the release checklist: [CONTRIBUTING.md](CONTRIBUTING.md) § Rules digest and § Release checklist.
+Version numbering (fix = patch; new door, option or store marker = patch; a removed or changed public name, or a new module path `/vN`, = major; `go run ./scripts/release kind` decides) and the release checklist: [CONTRIBUTING.md](CONTRIBUTING.md) § Rules digest and § Release checklist.

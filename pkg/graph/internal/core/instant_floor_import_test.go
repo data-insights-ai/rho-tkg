@@ -15,7 +15,7 @@ import (
 //
 // The import door advances the commit-clock floor to each imported wire's
 // TxFrom so a bootstrap-only replica's NowTx() still covers rows imported from
-// a bursting or clock-skewed primary (lesson 71). But the wire arrives from a
+// a bursting or clock-skewed primary. But the wire arrives from a
 // FILE — a truncated copy, a bit-rotted archive, a snapshot from a host with a
 // broken RTC, or an attacker-supplied stream. Nothing about crossing the import
 // boundary makes its stamps trustworthy.

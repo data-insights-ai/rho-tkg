@@ -84,7 +84,7 @@ func benchmarkReadCosts(b *testing.B, nodes, rels int) {
 			for i, n := range created {
 				ids[i] = n.ID()
 			}
-			time.Sleep(300 * time.Millisecond) // let a badger flush drain (lesson 72)
+			time.Sleep(300 * time.Millisecond) // let a badger flush drain
 
 			perRow := func(b *testing.B, rows int) {
 				b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(rows), "ns/row")

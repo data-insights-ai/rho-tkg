@@ -35,7 +35,7 @@ func rawHasKey(t *testing.T, dir string, key []byte) bool {
 	return found
 }
 
-// TestLoadIndexes_MintInKeyRepairedAfterSplitFlush (row 97): a crash that
+// TestLoadIndexes_MintInKeyRepairedAfterSplitFlush: a crash that
 // splits a flush can land a rel row without its in-key. For a co-located rel
 // whose both endpoints live on another shard (a tiered mint shard,
 // RelsByMint) the dirty open re-creates the in-key and the leg, in map and

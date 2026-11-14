@@ -240,7 +240,7 @@ func TestNodeCompositeValueKeyAcrossTypeCombinations(t *testing.T) {
 
 // TestNodeCompositeValueKeyFloatBitPatternSemantics documents the design
 // choice for K3c: floats are SUPPORTED in composite equality using the SAME
-// lesson-25 bit-pattern semantics types.IndexablePropertyValueKey already
+// bit-pattern semantics types.IndexablePropertyValueKey already
 // applies to the single-key property index (+0/-0 collapse, NaN pinned,
 // float32 vs float64 kept distinct) — chosen over "reject floats" (the
 // unique-constraint precedent) because this is an EQUALITY index, not a

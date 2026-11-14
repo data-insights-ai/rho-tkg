@@ -122,8 +122,8 @@ func assertIdentity(t *testing.T, rec store.ChangeRecord, wantKind replication.E
 	}
 }
 
-// A corrupt/hostile payload fails closed with store.ErrCorruptWire (rule 4 —
-// errors.Is at the public boundary), never a panic.
+// A corrupt/hostile payload fails closed with store.ErrCorruptWire (errors.Is
+// at the public boundary), never a panic.
 func TestDecodeChangeIdentity_CorruptFailsClosed(t *testing.T) {
 	t.Parallel()
 	garbage := []byte{0xc1, 0xff, 0xff, 0xff, 0xff} // 0xc1 is msgpack "never used"
@@ -161,7 +161,7 @@ func TestDecodeChangeIdentity_UnknownTag(t *testing.T) {
 	}
 }
 
-// TestDecodeChangeIdentity_ForeignIncomingRecords guards BACKLOG 8a:
+// TestDecodeChangeIdentity_ForeignIncomingRecords guards the decode contract:
 // ChangeForeignIncoming and ChangeForeignIncomingDelete (ADR-0010 Model A,
 // shipped) must decode as relationship identities, not fall into the
 // unknown-tag default and misreport a well-formed record as
@@ -252,7 +252,7 @@ func TestDecodeChangeIdentity_ForeignIncomingRecords(t *testing.T) {
 	}
 }
 
-// TestDecodeChangeIdentity_RangePurgeRecord guards BACKLOG 8a: ChangeRangePurge
+// TestDecodeChangeIdentity_RangePurgeRecord guards the decode contract: ChangeRangePurge
 // (ADR-0008 R3, shipped) must classify as a no-entity-identity control record
 // (like ChangeMeta/ChangeClear), not the unknown-tag default
 // store.ErrCorruptWire — it names a predicate, not one entity.

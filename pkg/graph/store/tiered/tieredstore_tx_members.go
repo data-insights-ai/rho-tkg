@@ -10,7 +10,7 @@ import (
 )
 
 // Transaction-time membership sidecars (label, type, and since WP-31 node and
-// relationship property) and valid-end indexes on the tiered store (backlog 58). Each shard keeps its own over its own rows, so the
+// relationship property) and valid-end indexes on the tiered store. Each shard keeps its own over its own rows, so the
 // store-wide answer fans out over the reference shard, the archive (if any)
 // and every event shard (closed cold shards are opened, as the DepthAll
 // history fold does); the core uses these for DepthAll reads only.
@@ -28,7 +28,7 @@ var (
 	_ storecontract.RelTypeTxMemberLookupCapability      = (*Store)(nil)
 	_ storecontract.NodePropertyTxMembershipCapability   = (*Store)(nil)
 	_ storecontract.RelPropertyTxMembershipCapability    = (*Store)(nil)
-	_ storecontract.NodePropertyTxMemberWindowCapability = (*Store)(nil) // ledger row 62
+	_ storecontract.NodePropertyTxMemberWindowCapability = (*Store)(nil)
 	_ storecontract.RelPropertyTxMemberWindowCapability  = (*Store)(nil)
 	_ storecontract.RelValidEndCapability                = (*Store)(nil)
 	_ storecontract.NodeValidEndCapability               = (*Store)(nil)
@@ -345,7 +345,7 @@ func (ts *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 }
 
 // ForEachNodePropertyTxMemberDuring implements
-// store.NodePropertyTxMemberWindowCapability (ledger row 62): every shard's
+// store.NodePropertyTxMemberWindowCapability: every shard's
 // windowed answer, united like the full enumeration (unionPropertyTxMembers).
 func (ts *Store) ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	return ts.ForEachNodePropertyTxMemberKeysDuring(labelToken, propertyKey, []string{valueKey}, validStart, validEnd, txAt, fn)

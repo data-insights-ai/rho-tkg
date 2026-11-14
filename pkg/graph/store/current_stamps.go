@@ -3,7 +3,7 @@ package store
 import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
 // RowStamps is one row's transaction stamps and version: what the current-row
-// half of Nodes().LatestStamps / Rels().LatestStamps reads (backlog 42). Zero
+// half of Nodes().LatestStamps / Rels().LatestStamps reads. Zero
 // stamps where the row carries no temporal metadata.
 type RowStamps struct {
 	TxFrom, TxTo, DeletedAt types.Instant
@@ -29,7 +29,7 @@ func RelRowStamps(r *types.Relationship) RowStamps {
 }
 
 // CurrentStampsCapability is OPTIONAL: the stamps and version of one entity's
-// CURRENT row without reading the row (backlog 42, the current-row half of
+// CURRENT row without reading the row (the current-row half of
 // Nodes().LatestStamps / Rels().LatestStamps). For id it returns, at every
 // moment and pending writes included, NodeRowStamps(GetNode(id)) /
 // RelRowStamps(GetRelationship(id)), and the same error where that door fails:

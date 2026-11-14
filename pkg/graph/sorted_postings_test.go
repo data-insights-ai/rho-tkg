@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 72 at the public doors on every backend (tiered and sharded push the
+// Sorted postings at the public doors on every backend (tiered and sharded push the
 // page into each shard and cut the merge): Nodes().ByLabelAndProperties and
 // ByLabelAndProperty walked in keyset pages of random size equal the label
 // scan filtered, sorted and cut. On tiered the primary label routes: "Ref"

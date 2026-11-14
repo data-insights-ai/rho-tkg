@@ -500,7 +500,7 @@ func TestTemporalIndexOnDisk_CrashRecoveryAgreesWithRowData(t *testing.T) {
 	}
 }
 
-// --- overlay / commit-window sequences (lesson 64) ---
+// --- overlay / commit-window sequences ---
 
 // TestTemporalIndexDiskPurge_FlushingOverlay_ParkedRowGetsPurged reproduces
 // the flush() commit window deterministically (parkPendingIntoFlushing): a
@@ -541,7 +541,7 @@ func TestTemporalIndexDiskPurge_FlushingOverlay_ParkedRowGetsPurged(t *testing.T
 	}
 	if !found {
 		t.Fatal("maintainTemporalIndexDiskPurge did not emit a delete for the row parked in `flushing`" +
-			" (commit-window regression — lesson 64)")
+			" (commit-window regression)")
 	}
 }
 

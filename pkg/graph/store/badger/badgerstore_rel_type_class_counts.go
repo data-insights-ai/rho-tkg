@@ -26,7 +26,7 @@ func (bs *Store) addRelPropertyTypeClassCounts(r *types.Relationship) {
 // removeRelPropertyTypeClassCounts takes a row leaving the current set back
 // out of the counters. The caller passes the row it removes (the delete seam's
 // old row, the replace path's previous row), so the decrement is exactly the
-// increment that row made and no per-relationship memo is kept (backlog 53).
+// increment that row made and no per-relationship memo is kept.
 func (bs *Store) removeRelPropertyTypeClassCounts(r *types.Relationship) {
 	bs.adjustRelPropertyTypeClassCounts(r, -1)
 }
@@ -51,7 +51,7 @@ func (bs *Store) adjustRelPropertyTypeClassCounts(r *types.Relationship, delta i
 // RelPropertyTypeClassCounts satisfies the optional
 // store.RelPropertyTypeClassCountsCapability — the exact per-(relType, property key)
 // partition of the type's current relationships by value class. The relationship
-// mirror of NodePropertyTypeClassCounts (rule 2, BACKLOG 5B): the correctness gate for
+// mirror of NodePropertyTypeClassCounts: the correctness gate for
 // the rel ORDER BY r.prop LIMIT k push-down (ordering is sound only when the ordered
 // class is unambiguous). Missing is 0 at this boundary (graph-layer computed).
 // Unregistered pairs return the zero value, not an error. Negative intermediate reads

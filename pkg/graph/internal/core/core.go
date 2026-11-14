@@ -99,7 +99,7 @@ type Core struct {
 	depthHistory        storepkg.DepthHistoryIterationCapability
 	relCreateUndo       storepkg.RelCreateUndoCapability       // undoRelationshipCreate
 	scopedRelCreateUndo storepkg.ScopedRelCreateUndoCapability // undoRelationshipCreate
-	// exAdj is the store's ex-adjacency (backlog 50) once it covers every
+	// exAdj is the store's ex-adjacency once it covers every
 	// relationship (backfillExAdjacencyBestEffort); nil = the adjacency doors
 	// fold every relationship with history instead (forEachRelExAdjacentID).
 	exAdj storepkg.ExAdjacencyCapability
@@ -114,7 +114,7 @@ type Core struct {
 	// sidecars (round 5 request 8), resolved with the same discipline.
 	labelTxLookup   storepkg.LabelTxMemberLookupCapability
 	relTypeTxLookup storepkg.RelTypeTxMemberLookupCapability
-	// property membership sidecars (backlog 8): scope a temporal property
+	// property membership sidecars: scope a temporal property
 	// lookup (ByTypeAndProperty / ByLabelAndProperty(ies) and the named
 	// *PropertyAt / *PropertyDuring doors) to the value's ever-members for a
 	// declared index instead of the whole history fold. nil = store declines
@@ -124,12 +124,12 @@ type Core struct {
 	relPropTxMembers  storepkg.RelPropertyTxMembershipCapability
 	nodePropTxMembers storepkg.NodePropertyTxMembershipCapability
 	// relPropTxPage / nodePropTxPage page those sidecars in ID order above a
-	// cursor (backlog 69, the paged effective doors), resolved with the same
+	// cursor (the paged effective doors), resolved with the same
 	// discipline; nil = every type takes its ever-member gather.
 	relPropTxPage  storepkg.RelPropertyTxMemberPageCapability
 	nodePropTxPage storepkg.NodePropertyTxMemberPageCapability
 	// relPropTxWindow / nodePropTxWindow narrow those sidecars to the members
-	// whose rows may meet a valid-time window (ledger row 62), resolved with
+	// whose rows may meet a valid-time window, resolved with
 	// the same discipline; nil = the whole value's members.
 	relPropTxWindow  storepkg.RelPropertyTxMemberWindowCapability
 	nodePropTxWindow storepkg.NodePropertyTxMemberWindowCapability
@@ -153,7 +153,7 @@ type Core struct {
 	// effective scan reads, under the graph read lock (streamEntityTimelines).
 	currentNodeReadTestHook func() // set only by tests: entityReads.currentNode
 	scanReadTestHook        func()
-	// belief watermarks (BACKLOG 10c): a store that maintains, per entity, the
+	// belief watermarks: a store that maintains, per entity, the
 	// maximum TxFrom ever recorded across its whole version chain lets
 	// nodeAtLockedTx/relAtLockedTx take a SAFE current-row-only fast path for
 	// point-in-time queries — see store.NodeBeliefWatermarkCapability's doc
@@ -171,7 +171,7 @@ type Core struct {
 	// resolver stays the single selection authority: the SAME resolveNodeChain
 	// runs on skeletons and again after winner hydration.
 	temporalMetaHistory storepkg.TemporalMetaHistoryCapability
-	// historyEpochs — per-entity history tokens (backlog 68): the head-pin
+	// historyEpochs — per-entity history tokens: the head-pin
 	// effective timeline is kept per entity while its token holds
 	// (effective_head.go). nil = store declines: every head read folds.
 	historyEpochs    storepkg.HistoryEpochCapability
@@ -181,12 +181,12 @@ type Core struct {
 	headOverlays     atomic.Uint64   // corrections that extended an entry
 	headGens         atomic.Uint64   // generations an extension kept for pins below its newest TxFrom (RELHIST P5 option C)
 	headStats        headReadStats   // node history reads by door and miss reason (RELHIST P5 Phase 0)
-	headWriteOff     bool            // tests: corrections and tx snapshots read the whole history (backlog 68b twin)
-	correctionPerCut bool            // tests: a correction resolves every cut on a fresh chain copy (row 85 twin)
+	headWriteOff     bool            // tests: corrections and tx snapshots read the whole history
+	correctionPerCut bool            // tests: a correction resolves every cut on a fresh chain copy
 	headPieceCap     int             // tests: entry caps below headMaxEntryPieces / headMaxEntryBounds (0: the defaults)
 	headBoundCap     int             //
-	headWrites       atomic.Uint64   // corrections planned from an entry (backlog 68b)
-	appendWrites     atomic.Uint64   // open appends planned from the current row alone (backlog 67)
+	headWrites       atomic.Uint64   // corrections planned from an entry
+	appendWrites     atomic.Uint64   // open appends planned from the current row alone
 	cascadeMetaOff   bool            // tests: a correction on a head miss reads the whole history (CASCADEMETA twin)
 	cascadeMetaHook  func()          // tests: runs between a miss's skeleton read and its point reads (CASCADEMETA)
 	metaWrites       atomic.Uint64   // corrections planned on history skeletons on a head miss (CASCADEMETA)
@@ -196,24 +196,24 @@ type Core struct {
 	candidatesListed func(ids int)   // tests: called with the IDs a label or type candidate gather lists, as it lists them (R2 late counts)
 	envelopeProbed   func(ids int)   // tests: called with the IDs each valid-time envelope prune hands the store, one envelope probe each (PRUNELIN)
 	// readSnapshots — effective scans read their timelines through one store
-	// read snapshot (backlog 55, effective_scan_reads.go). nil = per-entity reads.
+	// read snapshot (effective_scan_reads.go). nil = per-entity reads.
 	readSnapshots storepkg.ReadSnapshotCapability
-	// currentStamps — the current-row half of LatestStamps (backlog 42): a
+	// currentStamps — the current-row half of LatestStamps: a
 	// row's stamps without the row (badger: the temporal block of a cache
 	// miss). nil = store declines or a wrapper only inherits it, so
 	// LatestStamps reads the current row (currentStampsCapability).
 	currentStamps storepkg.CurrentStampsCapability
-	// historyStamps — the history's newest stamps without its rows (backlog
-	// 30), for an append planned from the current row (backlog 67). nil =
+	// historyStamps — the history's newest stamps without its rows,
+	// for an append planned from the current row. nil =
 	// store declines or a wrapper only inherits it (its own history writes
 	// would not be noted): the append is planned from the history.
 	historyStamps storepkg.HistoryStampsCapability
 	// memberIDs — a label's / type's current members from the store's index
-	// without their rows (backlog 33): the candidate gather of the effective
+	// without their rows: the candidate gather of the effective
 	// scans. nil = store declines or a wrapper only inherits it, so the gather
 	// reads the rows (memberIDsCapability).
 	memberIDs storepkg.MemberIDsCapability
-	// valid-end indexes (backlog 51, effective_validfrom.go): the candidates
+	// valid-end indexes (effective_validfrom.go): the candidates
 	// of the valid-end bounded scans. nil = store declines (sharded,
 	// wrappers): the unbounded door's candidates, same answers.
 	relValidEnds  storepkg.RelValidEndCapability
@@ -237,7 +237,7 @@ type Core struct {
 	// support), so the query resolves every candidate (correct, unaccelerated).
 	// Sound for any store: an id the index does not cover is never pruned.
 	temporalCandidates storepkg.TemporalCandidateCapability
-	// relTypeTemporalCandidates — BACKLOG 21c, the rel-type-keyed mirror of
+	// relTypeTemporalCandidates — the rel-type-keyed mirror of
 	// temporalCandidates. nil = store declines (no rel-type temporal index), so the
 	// rel-by-type temporal query resolves every candidate (correct,
 	// unaccelerated). Same sound-superset contract.
@@ -256,7 +256,7 @@ type Core struct {
 	changeFeed       storepkg.ChangeFeedCapability
 	changeLogEnabled bool                      // store's change-log actually on (records emitted)
 	txLogScope       storepkg.TxChangeLogScope // per-tx record buffer (nil when off / unsupported)
-	// scopedChangeLog (BACKLOG 11f) — the token-routed multi-scope mechanism.
+	// scopedChangeLog — the token-routed multi-scope mechanism.
 	// Set ONLY when the store implements the FULL storepkg.ScopedTxCapability
 	// (every door's Scoped sibling AND ScopedTxChangeLog together) — partial
 	// support is deliberately never granted the fast path, see
@@ -275,7 +275,7 @@ type Core struct {
 	// compaction. Both are bare optional capabilities: the store is fixed after
 	// New, so a nil handle means the store declines the capability.
 	metaKV storepkg.MetaKVCapability
-	// hashesOff is Config.DisableIntegrityHashes (backlog 61): no content
+	// hashesOff is Config.DisableIntegrityHashes: no content
 	// hash is computed or stored (integrity_switch.go).
 	hashesOff bool
 	// integrityModeStamp: New persists the setting once every check passed
@@ -284,7 +284,7 @@ type Core struct {
 	// untimedUnbounded is the untimed valid-start mode the graph writes
 	// creates under (Config.UntimedValidStart == UntimedUnbounded, or after
 	// Admin().SetUntimedValidStart); untimedModeStamp / untimedResume are
-	// resolveUntimedMode's decisions for New (backlog 73, untimed_mode.go).
+	// resolveUntimedMode's decisions for New (untimed_mode.go).
 	// untimedIncomplete mirrors the persisted "converting" key: a conversion
 	// started and did not finish, so exports and untimed creates fail closed
 	// (checkUntimedComplete).
@@ -326,7 +326,7 @@ type Core struct {
 	// flushHold is set when DurableCommit is on and the store flushes every
 	// mutation (Badger SyncWrites): a group's mutations run under c.mu.Lock
 	// with the store's per-mutation flush held, and the group's one
-	// DurableFlush makes them durable (backlog 52). Nil = no hold.
+	// DurableFlush makes them durable. Nil = no hold.
 	flushHold storepkg.MutationFlushHoldCapability
 	// allowTxBackfill enables the privileged transaction-time backfill doors:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
@@ -362,8 +362,8 @@ type Core struct {
 	// and BatchExecute). Held for the entire tx/batch lifetime instead of
 	// c.mu.Lock. Standalone mutations and reads acquire c.mu.RLock and proceed
 	// concurrently with an open tx, so only entity-level conflicts block. This
-	// avoids the "read accessor inside a tx deadlocks against c.mu" bug class
-	// (lesson 31). The tx code path takes a brief c.mu.RLock around each
+	// avoids the "read accessor inside a tx deadlocks against c.mu" bug class.
+	// The tx code path takes a brief c.mu.RLock around each
 	// mutation/read so the *Internal/*Locked helpers run with the lock context
 	// they expect.
 	txMu sync.Mutex
@@ -424,7 +424,7 @@ type Core struct {
 	// above it cannot precede any label's watermark. See retention.go.
 	retentionMaxWatermark atomic.Int64
 	// retentionRelMaxWatermark is the max over the per-type relationship
-	// retention watermarks (backlog 21), relRetentionWatermarks the per-type
+	// retention watermarks, relRetentionWatermarks the per-type
 	// values (copy-on-write, nil until a relationship purge ran), and
 	// retentionAnyMax the max of both families: the one-load fast gate of every
 	// scan and point door. retentionMu serializes the watermark advances (the
@@ -652,9 +652,9 @@ var (
 
 	// ErrInvalidClockAdvance is returned by TempOps.AdvanceClock when the
 	// caller-supplied floor target lands implausibly far ahead of wall-clock
-	// (see maxClockAdvanceSkewMillis) — the same bug class lesson 59 closed for
+	// (see maxClockAdvanceSkewMillis) — the same bug class already closed for
 	// AllowTxBackfill. AdvanceClock has no upper-bound protection otherwise: a
-	// single bad call (e.g. a unit mixup, lesson 59's exact trigger) would
+	// single bad call (e.g. a unit mixup, the exact trigger there) would
 	// permanently poison the transaction clock for the process's life.
 	ErrInvalidClockAdvance = errors.New("graph: AdvanceClock target is implausibly far ahead of wall-clock")
 
@@ -767,13 +767,13 @@ var (
 	// explicitly (UntimedDefault takes the store's mode; a store with rows
 	// and no persisted mode is an UntimedFromTxFrom store) or its conversion
 	// to UntimedUnbounded did not finish, and by Admin().SetUntimedValidStart
-	// for a conversion back to UntimedFromTxFrom (backlog 73).
+	// for a conversion back to UntimedFromTxFrom.
 	ErrUntimedModeMismatch = errors.New("graph: store was written under the other untimed valid-start mode (Config.UntimedValidStart)")
 
 	// ErrInvalidUntimedValidStart is returned by New and by
 	// Admin().SetUntimedValidStart for an UntimedValidStart value that names
 	// no mode, and by Admin().SetUntimedValidStart for UntimedDefault (a
-	// conversion names its target) (backlog 73).
+	// conversion names its target).
 	ErrInvalidUntimedValidStart = errors.New("graph: invalid untimed valid-start mode (Config.UntimedValidStart)")
 
 	// ErrCommitNotDurable is returned by GraphTx.Commit, Batch.Execute and the
@@ -1111,7 +1111,7 @@ type Config struct {
 	// a group whose flush filled the memtable (or a value-log file) can stay
 	// unsynced after the return — safe against a process crash, not a power
 	// loss. Power-loss durability needs DurableCommit + SyncWrites on a badger,
-	// sharded or tiered store (backlog 15, 93). With SyncWrites on a badger or
+	// sharded or tiered store. With SyncWrites on a badger or
 	// tiered store a group costs one synced WriteBatch per touched shard, not
 	// one sync per mutation: its
 	// mutations (each GraphTx mutation, the Batch.Execute window, a Rollback)
@@ -1168,7 +1168,7 @@ type Config struct {
 	// otherwise New fails closed. Whitespace-only is rejected.
 	SegmentDir string
 
-	// DisableIntegrityHashes turns the integrity hashes off (backlog 61):
+	// DisableIntegrityHashes turns the integrity hashes off:
 	// no content hash is computed and none is stored, resident or on disk —
 	// Hash, PrevHash, FromNodeHash and ToNodeHash stay empty on every row
 	// (provenance fields are unaffected). For development and quick tests;
@@ -1184,8 +1184,8 @@ type Config struct {
 	DisableIntegrityHashes bool
 
 	// UntimedValidStart is where an entity's first version written without a
-	// valid-from starts in valid time (backlog 73). UntimedFromTxFrom starts
-	// it at its TxFrom (backlog 62); UntimedUnbounded at -inf: the create
+	// valid-from starts in valid time. UntimedFromTxFrom starts
+	// it at its TxFrom; UntimedUnbounded at -inf: the create
 	// stores ValidFrom = types.UnboundedValidFrom, so the entity is valid at
 	// every instant before its first change. A later version without a
 	// valid-from starts at its TxFrom in both modes. The mode is persisted
@@ -1555,7 +1555,7 @@ func nativeNodeIntegrityHash(store storepkg.MandatoryStore) storepkg.NodeIntegri
 // byte-for-byte. sharded.putNodesBatchInternal partitions the pre-encoded
 // wireBodies/logBodies arrays per shard WITH INDEX ALIGNMENT PRESERVED
 // specifically for this door (tested for byte-identity per shard against
-// unsharded badger — BACKLOG 20e). The memory store also IMPLEMENTS the capability (contract + direct test),
+// unsharded badger). The memory store also IMPLEMENTS the capability (contract + direct test),
 // but it stores live *types.Node objects and never serializes a row, so
 // pre-encoding there is pure wasted prepare work — it is deliberately NOT
 // routed (a nil handle disables the prepare-side pre-encode for memory
@@ -1700,7 +1700,7 @@ func labelTxMembershipCapability(store storepkg.MandatoryStore) storepkg.LabelTx
 	return cap
 }
 
-// nodeBeliefWatermarkCapability resolves the BACKLOG 10c belief-watermark
+// nodeBeliefWatermarkCapability resolves the belief-watermark
 // sidecar (see the Core field's doc comment). Same "exact native store only"
 // discipline as labelTxMembershipCapability — a wrapper that merely embeds a
 // native store, or the multi-shard tiered/sharded stores, is forced to nil.
@@ -1806,7 +1806,7 @@ func relTypeTxMemberLookupCapability(store storepkg.MandatoryStore) storepkg.Rel
 	return cap
 }
 
-// relPropertyTxMembershipCapability resolves the backlog-8 rel property
+// relPropertyTxMembershipCapability resolves the rel property
 // membership sidecar with the K1 discipline: exact native stores and direct
 // implementations (sharded) are trusted; a wrapper that merely embeds a native
 // store is forced to nil, because its read overrides would not be visible to
@@ -1843,7 +1843,7 @@ func nodePropertyTxMembershipCapability(store storepkg.MandatoryStore) storepkg.
 	return cap
 }
 
-// relPropertyTxMemberPageCapability resolves the backlog-69 paged form of the
+// relPropertyTxMemberPageCapability resolves the paged form of the
 // rel property membership sidecar with relPropertyTxMembershipCapability's
 // discipline (a wrapper that merely embeds a native store is forced to nil).
 func relPropertyTxMemberPageCapability(store storepkg.MandatoryStore) storepkg.RelPropertyTxMemberPageCapability {
@@ -1950,7 +1950,7 @@ func txChangeLogScope(store storepkg.MandatoryStore, enabled bool) storepkg.TxCh
 	return s
 }
 
-// scopedTxCapability resolves the BACKLOG 11f token-routed multi-scope
+// scopedTxCapability resolves the token-routed multi-scope
 // capability. Unlike txChangeLogScope, this does NOT gate on the change-log
 // being enabled: BeginScopedLog itself returns (0, nil) when the log is off,
 // so scopeToken stays 0 for every tx and every *ScopedAware wrapper falls
@@ -2390,7 +2390,7 @@ func New(config Config) (*Core, error) {
 	c.storeRowsTrust = isExactNativeStore(store)
 	c.nativeAdjacency = nativeAdjacencyReadsValidateNodeExistence(store)
 
-	// Backlog 61: the store's integrity-hash setting must equal the configured
+	// The store's integrity-hash setting must equal the configured
 	// one, before anything writes a row (integrity_switch.go).
 	if err := c.resolveIntegrityMode(); err != nil {
 		if config.Store == nil {
@@ -2398,7 +2398,7 @@ func New(config Config) (*Core, error) {
 		}
 		return nil, err
 	}
-	// Backlog 73: likewise the untimed valid-start mode (untimed_mode.go).
+	// Likewise the untimed valid-start mode (untimed_mode.go).
 	c.setUntimedMode(config.UntimedValidStart)
 	if err := c.resolveUntimedMode(config.UntimedValidStart == UntimedDefault); err != nil {
 		if config.Store == nil {
@@ -2528,7 +2528,7 @@ func New(config Config) (*Core, error) {
 	// whose monotonic floor outran the wall leaves stamps above the reopened wall).
 	// Deliberately NOT fail-closed, unlike the watermarks above: an absent or
 	// unreadable floor is the expected state after an unclean shutdown, where
-	// the store's commit floor (seedCommitFloor below) covers the rows (lesson 71).
+	// the store's commit floor (seedCommitFloor below) covers the rows.
 	c.seedInstantFloor()
 
 	// ADR-0011: declare bulk relationship types last, once registries are
@@ -2541,7 +2541,7 @@ func New(config Config) (*Core, error) {
 	}
 
 	// The watermark above is written only by Close; after a crash the store's
-	// commit floor (persisted with the rows, backlog 44) is what covers them.
+	// commit floor (persisted with the rows) is what covers them.
 	// After the segment directory: its sealed rows are part of the floor.
 	if err := c.seedCommitFloor(); err != nil {
 		if config.Store == nil {

@@ -19,7 +19,7 @@ var (
 	// only index creation declines.
 	ErrRelPropertyIndexUnsupported = errors.New("graph: relationship property indexes are not supported on this backend")
 	// ErrElementsIndexUnsupported is returned for an operation that cannot use an
-	// Elements property index (backlog 63): Elements with RangeCounts, a unique
+	// Elements property index: Elements with RangeCounts, a unique
 	// constraint or GetOrCreateByKey on the key, ByLabelAndProperties over it.
 	ErrElementsIndexUnsupported   = errors.New("graph: not supported with an elements property index")
 	ErrTemporalIndexExists        = errors.New("graph: temporal index already exists")

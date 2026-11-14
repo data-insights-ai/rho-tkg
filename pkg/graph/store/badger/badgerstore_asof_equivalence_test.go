@@ -31,12 +31,12 @@ type asofVersion struct {
 	deletedAt types.Instant
 	validTo   types.Instant // 0 = own interval open
 	current   bool          // stored as the live current row (PutNode/PutRelationship), not history
-	void      bool          // an excise's void piece (backlog 64): bounded, never current or stamped
+	void      bool          // an excise's void piece: bounded, never current or stamped
 }
 
 // genAsofChain produces a random but invariant-respecting version chain: strictly
 // increasing version numbers, optionally non-monotonic TxFrom (to exercise the
-// lesson-62 version-vs-TxFrom inversion), a terminal version that is either an
+// version-vs-TxFrom inversion), a terminal version that is either an
 // open live current or a retracted/deleted tombstone, and DeletedAt only ever set
 // alongside an equal TxTo.
 func genAsofChain(rng *rand.Rand) []asofVersion {
@@ -61,7 +61,7 @@ func genAsofChain(rng *rand.Rand) []asofVersion {
 		chain[n-1].txTo = d
 		chain[n-1].deletedAt = d
 	}
-	// Occasionally force the exact lesson-62 shape: an OPEN genesis (TxTo unset)
+	// Occasionally force the version-vs-TxFrom inversion shape: an OPEN genesis (TxTo unset)
 	// beneath a retracted higher version, which used to resurrect the genesis.
 	if n >= 2 && rng.IntN(4) == 0 {
 		chain[0].txTo = 0

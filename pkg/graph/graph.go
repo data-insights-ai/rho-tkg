@@ -231,7 +231,7 @@ type IDSlotLeaseRecord = store.IDSlotLeaseRecord
 type Config = core.Config
 
 // UntimedValidStart aliases core.UntimedValidStart — Config.UntimedValidStart,
-// where an entity's first version without a valid-from starts (backlog 73).
+// where an entity's first version without a valid-from starts.
 type UntimedValidStart = core.UntimedValidStart
 
 // The untimed valid-start modes: UntimedFromTxFrom starts an entity's first

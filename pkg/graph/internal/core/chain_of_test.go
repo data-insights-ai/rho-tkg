@@ -33,7 +33,7 @@ func TestChainOfMatchesInlineBuilders(t *testing.T) {
 	t.Parallel()
 	v0, v1, v2 := chainOfNodeRow(0, 100, 0), chainOfNodeRow(1, 200, 0), chainOfNodeRow(2, 300, 0)
 	dead := chainOfNodeRow(1, 200, 300)
-	reborn := chainOfNodeRow(0, 400, 0) // a re-import before backlog 38: version 0 again
+	reborn := chainOfNodeRow(0, 400, 0) // a re-import stored before the re-import allocator: version 0 again
 	cases := []struct {
 		name    string
 		history []*types.Node

@@ -37,7 +37,7 @@ const maxWireDecodeDepth = 64
 //     guardMsgpackDepth scans the bytes iteratively (no recursion) and rejects
 //     over-deep input as store.ErrCorruptWire.
 //
-// Lessons 6 and 44: untrusted persisted/imported bytes are a trust boundary —
+// Untrusted persisted/imported bytes are a trust boundary —
 // a single corrupt or adversarial row must fail closed with an error, never
 // crash the process. msgpack.Marshal is panic-free and needs no wrapper.
 //

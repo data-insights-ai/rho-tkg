@@ -171,15 +171,15 @@ var (
 	ErrRetentionPurgeDisabled         = core.ErrRetentionPurgeDisabled
 	ErrRetentionPurgeChangeLogEnabled = core.ErrRetentionPurgeChangeLogEnabled
 	ErrInvalidPurgePolicy             = core.ErrInvalidPurgePolicy
-	// Admin.Reset safety valve (BACKLOG 13d).
+	// Admin.Reset safety valve.
 	ErrResetDisabled = core.ErrResetDisabled
-	// Config.DisableIntegrityHashes (backlog 61).
+	// Config.DisableIntegrityHashes.
 	ErrIntegrityDisabled     = core.ErrIntegrityDisabled
 	ErrIntegrityModeMismatch = core.ErrIntegrityModeMismatch
-	// Config.UntimedValidStart (backlog 73).
+	// Config.UntimedValidStart.
 	ErrUntimedModeMismatch      = core.ErrUntimedModeMismatch
 	ErrInvalidUntimedValidStart = core.ErrInvalidUntimedValidStart
-	// Config.DurableCommit (backlog 11).
+	// Config.DurableCommit.
 	ErrCommitNotDurable = core.ErrCommitNotDurable
 	// Exact legal erasure.
 	ErrExactErasureDisabled           = core.ErrExactErasureDisabled

@@ -8,8 +8,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestDocValuesSnapshotAsOf_TimeTravel is the two-phase temporal proof (Testing
-// Rule 15): a columnar snapshot pinned at t0 must reflect the state AS BELIEVED at
+// TestDocValuesSnapshotAsOf_TimeTravel is the two-phase temporal proof: a
+// columnar snapshot pinned at t0 must reflect the state AS BELIEVED at
 // t0, not the post-mutation state. It also proves the door works where the
 // current-state scanner does and that current vs as-of diverge.
 func TestDocValuesSnapshotAsOf_TimeTravel(t *testing.T) {

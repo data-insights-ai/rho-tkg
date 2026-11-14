@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 21e / 20m — re-sharding via export/import.
+// Re-sharding via export/import.
 //
 // The sharded backend routes an entity to its shard by a PURE, IMMUTABLE
 // function of its own ID (the 5-bit snowflake slot field, ADR-0007). That
@@ -34,7 +34,7 @@ import (
 
 // TestShardedResharding_GrowRoundTrip_ExactSet grows a 2-slot store into a
 // 4-slot store via export/import and asserts an EXACT match: same live node
-// and rel sets (by hash/version/labels — rule 16), full version-history depth
+// and rel sets (by hash/version/labels), full version-history depth
 // preserved (multi-version + deleted-with-history), and a post-migration
 // VerifyConsistency() report with ZERO ShardMismatches.
 func TestShardedResharding_GrowRoundTrip_ExactSet(t *testing.T) {
@@ -144,7 +144,7 @@ func TestShardedResharding_GrowRoundTrip_ExactSet(t *testing.T) {
 	}
 }
 
-// TestShardedResharding_TwoPhaseTemporalSurvival is the rule-15 two-phase
+// TestShardedResharding_TwoPhaseTemporalSurvival is the two-phase
 // test for the migration path: an entity in state X at t0, mutated after t0,
 // must still resolve to X at t0 AFTER a grow-topology export/import.
 func TestShardedResharding_TwoPhaseTemporalSurvival(t *testing.T) {

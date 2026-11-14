@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// BACKLOG 19k: MigrateFromBadger had no enforced single-writer discipline —
+// MigrateFromBadger had no enforced single-writer discipline —
 // two concurrent calls against the SAME destination Store could interleave
 // dst.ontology.SetLabelRegistry (shared, previously-unlocked state on the
 // ontology object) and the insertedNodes/insertedRels rollback bookkeeping,
@@ -37,7 +37,7 @@ func TestMigrateFromBadger_SerializesConcurrentCalls(t *testing.T) {
 	select {
 	case err := <-done:
 		dst.migrateMu.Unlock()
-		t.Fatalf("MigrateFromBadger completed (err=%v) while a simulated in-flight migration held dst.migrateMu — BACKLOG 19k regression", err)
+		t.Fatalf("MigrateFromBadger completed (err=%v) while a simulated in-flight migration held dst.migrateMu — regression", err)
 	case <-time.After(150 * time.Millisecond):
 		// Still blocked on migrateMu, as required.
 	}

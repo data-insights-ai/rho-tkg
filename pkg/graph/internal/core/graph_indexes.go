@@ -134,7 +134,7 @@ func (i *IndexOps) CreateComposite(label string, keys []string) error {
 				return err
 			}
 		}
-		// Equality on every key would give an Elements-indexed key a second meaning (backlog 63).
+		// Equality on every key would give an Elements-indexed key a second meaning.
 		if tok, ok := c.labels.Lookup(label); ok {
 			for _, k := range keys {
 				if err := c.refuseNodeElementsIndex(tok, k, "composite index"); err != nil {
@@ -272,8 +272,8 @@ func (i *IndexOps) HasComposite(label string, keys []string) (bool, error) {
 	return false, nil
 }
 
-// HasProperty reports whether a property index exists on (label, propertyKey)
-// (backlog 21b); the single-key mirror of HasComposite. Unregistered labels
+// HasProperty reports whether a property index exists on (label, propertyKey);
+// the single-key mirror of HasComposite. Unregistered labels
 // return false; backends without introspection return
 // storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) HasProperty(label, propertyKey string) (bool, error) {
@@ -383,8 +383,8 @@ func (i *IndexOps) PropertyIndexValidEndStats() (storepkg.PropertyIndexValidEndS
 	return out, err
 }
 
-// HasTemporal reports whether a temporal interval index exists on label (backlog
-// 21b); a high-frequency index does not count. Unregistered labels return false;
+// HasTemporal reports whether a temporal interval index exists on label;
+// a high-frequency index does not count. Unregistered labels return false;
 // backends without introspection return storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) HasTemporal(label string) (bool, error) {
 	c := i.c
@@ -417,7 +417,7 @@ func (i *IndexOps) HasTemporal(label string) (bool, error) {
 
 // VectorIndexInfo returns the declared configuration (dims, metric, engine, HNSW
 // tuning) of the vector index on (label, propertyKey), or (zero, false) if none
-// (backlog 21b), so a planner can validate a query vector before SearchNearest.
+// so a planner can validate a query vector before SearchNearest.
 // Backends without introspection return storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) VectorIndexInfo(label, propertyKey string) (storepkg.VectorIndexInfo, bool, error) {
 	c := i.c
@@ -454,7 +454,7 @@ func (i *IndexOps) VectorIndexInfo(label, propertyKey string) (storepkg.VectorIn
 }
 
 // HasRelProperty reports whether a relationship property index exists on
-// (typeName, propertyKey) (backlog 21b); the rel-side mirror of HasProperty.
+// (typeName, propertyKey); the rel-side mirror of HasProperty.
 // Backends without introspection return storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) HasRelProperty(typeName, propertyKey string) (bool, error) {
 	c := i.c

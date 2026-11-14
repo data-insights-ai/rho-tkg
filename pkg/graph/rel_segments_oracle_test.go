@@ -274,7 +274,7 @@ func (o *segOracle) step(r *rand.Rand) {
 		i := r.Intn(len(o.liveHOP))
 		id := o.liveHOP[i]
 		// NowTx, not PeekTx: the close must follow the version's start, its
-		// TxFrom (backlog 62), which PeekTx can equal.
+		// TxFrom, which PeekTx can equal.
 		now, err := o.primary.Temporal().NowTx()
 		if err != nil {
 			o.t.Fatal(err)
@@ -809,7 +809,7 @@ func runSegOracle(t *testing.T, segDir func(*testing.T) string) {
 	}
 }
 
-// Two-phase temporal (testing rule 15) across a seal: a HOP row is created in
+// Two-phase temporal test across a seal: a HOP row is created in
 // state X at t0 and sealed; then it is updated and deleted; reads pinned at
 // t0 still return X, from the declared replica exactly as from the plain one.
 func TestRelSegmentsTwoPhaseAcrossSeal(t *testing.T) {

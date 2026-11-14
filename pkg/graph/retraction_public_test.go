@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 43 (retraction) through the pkg/graph facade: every public
+// Retraction through the pkg/graph facade: every public
 // retraction door on every backend. The read semantics (absent at every valid
 // time at pins >= T, unchanged before T) are the door matrix of
 // internal/core/retraction_doors_test.go; these tests pin the contract around

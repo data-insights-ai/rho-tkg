@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 9c: CreateUnique's 3-phase install (install PENDING entry -> validate
+// CreateUnique's 3-phase install (install PENDING entry -> validate
 // existing data -> activate) took no c.mu engagement at all. A standalone
 // write's addNodeInternal holds c.mu.RLock() for its ENTIRE duration —
 // enforceUniqueForNodeHeld's uniqueness check through the actual store write —
@@ -63,7 +63,7 @@ func TestCreateUnique_BlocksInstallUntilInFlightWriteCompletes(t *testing.T) {
 	select {
 	case err := <-createDone:
 		c.mu.RUnlock()
-		t.Fatalf("CreateUnique completed (err=%v) while a simulated in-flight write held c.mu.RLock() — BACKLOG 9c regression: the install must block until every in-flight write completes", err)
+		t.Fatalf("CreateUnique completed (err=%v) while a simulated in-flight write held c.mu.RLock() — regression: the install must block until every in-flight write completes", err)
 	case <-time.After(150 * time.Millisecond):
 		// Still blocked on the install's c.mu.Lock(), as required.
 	}
@@ -93,7 +93,7 @@ func TestCreateUnique_BlocksInstallUntilInFlightWriteCompletes(t *testing.T) {
 
 // TestCreateUnique_AdversarialConcurrentRace is the genuinely-concurrent
 // counterpart to TestCreateUnique_BlocksInstallUntilInFlightWriteCompletes
-// above (BACKLOG 9p): that test proves the fix's mechanism with exactly ONE
+// above: that test proves the fix's mechanism with exactly ONE
 // simulated in-flight writer, manipulated serially from the test goroutine.
 // This one runs `racers` REAL goroutines simultaneously, each independently
 // holding c.mu.RLock() (a genuine concurrent-reader scenario the race
@@ -108,7 +108,7 @@ func TestCreateUnique_BlocksInstallUntilInFlightWriteCompletes(t *testing.T) {
 // TOCTOU window (check with no stripe lock -> [gap: build/hash/etc.] ->
 // store commit) is narrow enough that Go's scheduler essentially never lands
 // a preemption inside it on a fast in-memory store, so that version passed
-// even with the BACKLOG 9c fix fully reverted — a non-load-bearing test.
+// even with the fix fully reverted — a non-load-bearing test.
 // Forcing every racer to hold c.mu.RLock() across an explicit barrier makes
 // the window wide open and deterministic while still exercising REAL
 // concurrent goroutines (not serial manual lock manipulation) and running
@@ -174,7 +174,7 @@ func TestCreateUnique_AdversarialConcurrentRace(t *testing.T) {
 	go func() { createDone <- c.Constraints.CreateUnique(ctx, "User", "email") }()
 	select {
 	case err := <-createDone:
-		t.Errorf("CreateUnique completed (err=%v) while %d simulated in-flight writers still held c.mu.RLock() — BACKLOG 9c/9p regression", err, racers)
+		t.Errorf("CreateUnique completed (err=%v) while %d simulated in-flight writers still held c.mu.RLock() — regression", err, racers)
 	case <-time.After(150 * time.Millisecond):
 	}
 

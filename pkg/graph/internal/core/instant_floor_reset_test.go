@@ -27,15 +27,15 @@ func (s *reapFailStore) MetaSet(key string, v []byte) error {
 func (s *reapFailStore) Close() error { return nil }
 
 // Admin.Reset() wipes the ENTIRE MetaKV keyspace via store.Clear() and then
-// re-persists the two Preserve-classified keys (instantFloorMeta, idSlotLeaseMeta
-// — BACKLOG 13l). Those restores run LAST in reapCoreStateForClear, after five
+// re-persists the two Preserve-classified keys (instantFloorMeta, idSlotLeaseMeta).
+// Those restores run LAST in reapCoreStateForClear, after five
 // Reap steps, and every step returns on first error.
 //
 // So any one of those Reap steps failing means the Preserve keys are never
 // restored — and Clear has ALREADY destroyed them. A transient MetaKV write
 // fault during a Reset therefore permanently destroys durable state that was
 // explicitly classified as must-survive: the commit-clock floor (transaction
-// time can now run BACKWARDS across the Reset — lesson 71) and the id-slot
+// time can now run BACKWARDS across the Reset) and the id-slot
 // lease (two nodes can collide on one snowflake slot after a failover).
 //
 // The ordering is the bug. Restoring what Clear just destroyed is the FIRST

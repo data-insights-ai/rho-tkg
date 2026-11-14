@@ -78,7 +78,7 @@ func (t *TempOps) RelsAt(at types.Instant) ([]*types.Relationship, error) {
 }
 
 func (c *Core) relationshipsAtLocked(at types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): only the relationship
+	// Relationship-purge watermarks: only the relationship
 	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", at); err != nil {
 		return nil, err
@@ -150,7 +150,7 @@ func (c *Core) nodesByLabelAtLocked(label string, at types.Instant) ([]*types.No
 	// drop candidates whose valid-time envelope provably cannot contain `at`,
 	// before the expensive per-id chain resolve below. Same sound-superset prune as
 	// the generic ByLabel{ValidAt} door (queries.go) — both temporal-ByLabel doors
-	// MUST agree (rule 17), enforced by TestTemporalCandidatePruneEquivalence.
+	// MUST agree, enforced by TestTemporalCandidatePruneEquivalence.
 	candIDs = c.pruneNodeLabelCandidates(tok, candIDs, storepkg.QueryOpts{ValidAt: at})
 
 	var result []*types.Node
@@ -253,7 +253,7 @@ func (t *TempOps) RelsDuring(start, end types.Instant) ([]*types.Relationship, e
 }
 
 func (c *Core) relsDuringLocked(start, end types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): only the relationship
+	// Relationship-purge watermarks: only the relationship
 	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", start); err != nil {
 		return nil, err
@@ -347,7 +347,7 @@ func (c *Core) nodesRelatingLocked(from, to types.Instant, rels types.AllenRelat
 	return result, nil
 }
 
-// RelsRelating is the relationship mirror of NodesRelating (Testing Rule 2).
+// RelsRelating is the relationship mirror of NodesRelating.
 //
 // DECLARED view: reports the relationship's own asserted validity only and is
 // NOT masked by endpoint validity — an edge whose start or end node is closed
@@ -377,7 +377,7 @@ func (t *TempOps) RelsRelating(from, to types.Instant, rels types.AllenRelationS
 }
 
 func (c *Core) relsRelatingLocked(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): only the relationship
+	// Relationship-purge watermarks: only the relationship
 	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", from); err != nil {
 		return nil, err
@@ -445,8 +445,8 @@ func (c *Core) nodeAtLocked(id types.NodeID, at types.Instant) (*types.Node, err
 //
 // A history row can outrank the open current row's belief: a bounded
 // bitemporal cascade correction can insert a HISTORY row with a NEWER TxFrom
-// than an untouched, still-open current row, without ever replacing current
-// (BACKLOG 10b). So the shortcut is gated (BACKLOG 10c) on an explicit
+// than an untouched, still-open current row, without ever replacing current.
+// So the shortcut is gated on an explicit
 // invariant: current only answers the query if it IS the newest belief
 // anywhere in the entity's WHOLE version chain (current + every history row)
 // — the store.NodeBeliefWatermarkCapability sidecar tracks exactly that
@@ -538,7 +538,7 @@ func (c *Core) nodeAtLockedTxRd(rd entityReads, id types.NodeID, validAt, txAt t
 // enters here per ID.
 func (c *Core) nodeAtFromCurrent(rd entityReads, id types.NodeID, current *types.Node, validAt, txAt types.Instant) (*types.Node, error) {
 	c.afterCurrentRead(int64(id))
-	// BACKLOG 10c: skip the history fetch when the current row alone provably
+	// Skip the history fetch when the current row alone provably
 	// answers the query — see nodeCurrentAnswersAt's doc comment.
 	if current != nil && c.nodeCurrentAnswersAt(current, validAt, txAt) {
 		return current, nil
@@ -581,12 +581,12 @@ func (c *Core) nodeAtFullChain(rd entityReads, id types.NodeID, current *types.N
 // skeletons (version + numeric temporal only — no properties/labels/hashes
 // materialized), runs THE SAME resolveNodeChain point resolution over them,
 // then hydrates only the winning version with a store point read and gives it
-// the TxAt normalization the resolver's filter gives a chain row (lesson 60;
-// nodeRowAtTx) — the row a resolve over the hydrated chain would select, since
+// the TxAt normalization the resolver's filter gives a chain row (nodeRowAtTx) —
+// the row a resolve over the hydrated chain would select, since
 // selection reads only Version/ID/Temporal, which skeleton and full row share
 // verbatim. A skeleton never leaves this function. The winner's origin is
 // told by its (version, TxFrom), not its version alone: in a chain stored
-// before backlog 38 a re-imported ID's current row shares version numbers
+// by an earlier release a re-imported ID's current row shares version numbers
 // with the earlier life's history. handled=false declines the fast path (winner hydration failed,
 // e.g. a concurrent trim landed between the two reads) and the caller falls
 // back to the full-chain fold — an accelerator can be slower, never wrong.
@@ -602,7 +602,7 @@ func (c *Core) nodeAtViaTemporalMeta(rd entityReads, id types.NodeID, current *t
 	// contract (getNodeHistory rows are ascending by version; monotonicity
 	// detection and positional tiling are both relative to that order). The
 	// resolver may SORT its argument in place (cascade chains), so it gets
-	// its own copy (lesson 73).
+	// its own copy.
 	ordered := make([]*types.Node, 0, len(metas)+1)
 	skeletons := make(map[skeletonKey]struct{}, len(metas))
 	for _, m := range metas {
@@ -647,7 +647,7 @@ func (c *Core) nodeAtViaTemporalMeta(rd entityReads, id types.NodeID, current *t
 }
 
 // skeletonKey identifies a history row among a chain's skeletons: version and
-// TxFrom (a re-import stored before backlog 38 reuses versions, never the
+// TxFrom (a re-import stored by an earlier release reuses versions, never the
 // instant of the same write).
 type skeletonKey struct {
 	version uint32
@@ -686,7 +686,7 @@ func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationshi
 }
 
 // relAtLockedTx is the bitemporal variant of relAtLocked. See nodeAtLockedTx
-// and nodeCurrentAnswersAt for the BACKLOG 10b/10c gate on the
+// and nodeCurrentAnswersAt for the gate on the
 // current-row-alone shortcut (relCurrentAnswersAt).
 func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
 	return c.relAtLockedTxRd(entityReads{c: c}, id, validAt, txAt)
@@ -714,7 +714,7 @@ func (c *Core) relAtLockedTxRd(rd entityReads, id types.RelID, validAt, txAt typ
 // relAtFromCurrent mirrors nodeAtFromCurrent for relationships.
 func (c *Core) relAtFromCurrent(rd entityReads, id types.RelID, current *types.Relationship, validAt, txAt types.Instant) (*types.Relationship, error) {
 	c.afterCurrentRead(int64(id))
-	// BACKLOG 10c: skip the history fetch when the current row alone provably
+	// Skip the history fetch when the current row alone provably
 	// answers the query — see nodeCurrentAnswersAt's doc comment (mirrored here).
 	if current != nil && c.relCurrentAnswersAt(current, validAt, txAt) {
 		return current, nil
@@ -741,8 +741,8 @@ func (c *Core) relAtFromCurrent(rd entityReads, id types.RelID, current *types.R
 	return c.resolveRelChain(chain, chainProbe{kind: probePoint, validAt: validAt, tx: txAt}, nil)
 }
 
-// relAtViaTemporalMeta mirrors nodeAtViaTemporalMeta for relationships (rule
-// 2: structural parity). Skeleton endpoints are zero — the point resolution
+// relAtViaTemporalMeta mirrors nodeAtViaTemporalMeta for relationships
+// (structural parity). Skeleton endpoints are zero — the point resolution
 // never reads them, and the winner is always hydrated before returning.
 func (c *Core) relAtViaTemporalMeta(rd entityReads, id types.RelID, current *types.Relationship, validAt, txAt types.Instant) (*types.Relationship, bool, error) {
 	metas, err := rd.relMeta(id)
@@ -821,7 +821,7 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 }
 
 func (c *Core) neighborsAtLocked(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {
-	// Relationship-purge watermarks (backlog 21): only the relationship
+	// Relationship-purge watermarks: only the relationship
 	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", at); err != nil {
 		return nil, err
@@ -956,7 +956,7 @@ func (t *TempOps) directionalRelsAt(nodeID types.NodeID, at types.Instant, outgo
 }
 
 func (c *Core) directionalRelsAtLocked(nodeID types.NodeID, at types.Instant, outgoing bool) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): only the relationship
+	// Relationship-purge watermarks: only the relationship
 	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", at); err != nil {
 		return nil, err
@@ -1176,8 +1176,8 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 	// (This prune is NOT applied to the Relating doors — their Allen set may include
 	// non-overlapping relations like Before/After/Meets, which envelope-overlap
 	// pruning would wrongly drop.) end is already resolved to a concrete bound by
-	// normalizeDuringRange, so ValidEnd != 0 holds. Mirrors the point-in-time door
-	// (rule 17); TestTemporalDuringCandidatePruneEquivalence enforces agreement.
+	// normalizeDuringRange, so ValidEnd != 0 holds. Mirrors the point-in-time door;
+	// TestTemporalDuringCandidatePruneEquivalence enforces agreement.
 	candIDs = c.pruneNodeLabelCandidates(tok, candIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end})
 	elements, err := c.nodeIndexElements(tok, key)
 	if err != nil {
@@ -1264,7 +1264,7 @@ func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.
 }
 
 func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): only the relationship
+	// Relationship-purge watermarks: only the relationship
 	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention(relType, at); err != nil {
 		return nil, err
@@ -1525,7 +1525,7 @@ func (t *TempOps) RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, 
 }
 
 func (c *Core) relsAtLockedTx(validAt, txAt types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): only the relationship
+	// Relationship-purge watermarks: only the relationship
 	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", relsAtTxPin(validAt, txAt)); err != nil {
 		return nil, err
@@ -1555,7 +1555,7 @@ func (c *Core) relsAtLockedTx(validAt, txAt types.Instant) ([]*types.Relationshi
 // against the belief head and ignores transaction time; NodesDuringTx first
 // filters each chain to the versions RECORDED by txAt (TxFrom <= txAt; a
 // superseded version is NOT retracted, so it remains the authority for its
-// valid-time slot at every later txAt — lesson 43), then applies the same
+// valid-time slot at every later txAt), then applies the same
 // predicate-anywhere overlap test. This closes the multi-valid-version miss for
 // transaction-time interval queries (`NodesDuringTx` / `RelsDuringTx`), exactly as
 // NodesAtTx closed it for the point case.
@@ -1634,7 +1634,7 @@ func (t *TempOps) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relations
 }
 
 func (c *Core) relsDuringTxLocked(start, end, txAt types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): only the relationship
+	// Relationship-purge watermarks: only the relationship
 	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", relsAtTxPin(start, txAt)); err != nil {
 		return nil, err
@@ -1659,7 +1659,7 @@ func (c *Core) relsDuringTxLocked(start, end, txAt types.Instant) ([]*types.Rela
 }
 
 func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): only the relationship
+	// Relationship-purge watermarks: only the relationship
 	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention(relType, start); err != nil {
 		return nil, err

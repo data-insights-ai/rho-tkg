@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestDecodeValidEndValue — backlog 51's write-path decode returns the row's
+// TestDecodeValidEndValue — the write-path decode returns the row's
 // temporal block on every value shape a store holds: a full node row, a full
 // relationship row, a node and a relationship history delta, a row without a
 // temporal block (nil); a corrupt value and a row of a newer format version

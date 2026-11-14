@@ -10,15 +10,15 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Row 85, consumer shape (ai-soc 2026-10-20, TestDerivedWriteCostFlatInVersionChain;
+// Consumer shape (ai-soc 2026-10-20, TestDerivedWriteCostFlatInVersionChain;
 // sigma's Derived write-back, overview_graph.go reconcile / derivedIn /
 // voidUncovered). Per cut, per Derived entity, sigma writes through a GraphTx:
 //
 //   - fold row: ONE bounded two-tick version [t_k, t_k+2) after every row of
 //     the chain; the current row stays the closed genesis, the chain is
 //     monotonic and every version is its own piece of the head timeline;
-//   - Flux row: an open append [t_k, +inf) (planned from the current row,
-//     backlog 67), then a bounded void correction [t_{k-1}, t_k) of the
+//   - Flux row: an open append [t_k, +inf) (planned from the current row),
+//     then a bounded void correction [t_{k-1}, t_k) of the
 //     stretch the new version no longer covers (one piece plus the
 //     resumption that takes the current slot): the chain is non-monotonic;
 //
@@ -163,7 +163,7 @@ func cutCost(tb testing.TB, be r10Backend, sh cutShape, rel, reads bool, cuts, k
 	}
 	run(cuts)
 	allocs, ns = math.Inf(1), math.Inf(1)
-	for range 5 { // min of five: badger's goroutines allocate in bursts (row 84)
+	for range 5 { // min of five: badger's goroutines allocate in bursts
 		var dur time.Duration
 		m := mallocs(func() {
 			start := time.Now()

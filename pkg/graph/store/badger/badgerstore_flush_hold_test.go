@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Direct tests of store.MutationFlushHoldCapability (backlog 52). The graph
+// Direct tests of store.MutationFlushHoldCapability. The graph
 // path (DurableCommit + SyncWrites, crash children) is
 // pkg/graph/durable_commit_syncwrites_test.go.
 //

@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 )
 
-// BenchmarkTieredRelEffectiveByTypeFrom (backlog 58): 2,000 relationships over two
+// BenchmarkTieredRelEffectiveByTypeFrom: 2,000 relationships over two
 // event shards, all but 10 deleted before validFrom; reads/op counts timelines read.
 func BenchmarkTieredRelEffectiveByTypeFrom(b *testing.B) {
 	const total, live = 2_000, 10
@@ -80,7 +80,7 @@ func BenchmarkTieredRelEffectiveByTypeFrom(b *testing.B) {
 	b.ReportMetric(float64(reads)/float64(b.N), "reads/op")
 }
 
-// BenchmarkTieredColdShards (backlog 58): 8 event shards, all but the hot one cold
+// BenchmarkTieredColdShards: 8 event shards, all but the hot one cold
 // and closed (MaxOpenColdShards 0). Per op one ForEachRelEffectiveByTypeFrom and one
 // temporal ByLabel; fallback clears the core's capability handles, capability uses
 // the tiered fan-out.

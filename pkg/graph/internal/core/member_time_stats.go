@@ -141,7 +141,7 @@ func (c *Core) nodeLabelEpoch(tok uint16) (uint64, bool) {
 // its own, read on the graph's valid axis a (round 11: on the literal axis
 // the instant 0 is a claim). A start at -inf (types.UnboundedValidFrom, the
 // untimed first version under Config.UntimedValidStart = UntimedUnbounded,
-// backlog 73, and every untimed write under UntimedWholeAxis) and the open
+// and every untimed write under UntimedWholeAxis) and the open
 // end bound nothing and do not count.
 func explicitValid(a types.ValidAxis, from, to types.Instant) bool {
 	return (a.Claimed(from) && from != types.UnboundedValidFrom) || !a.Open(to)

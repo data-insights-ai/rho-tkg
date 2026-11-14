@@ -4,7 +4,7 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
 // MemberIDsCapability is OPTIONAL: the current members of a label or a
 // relationship type, listed from the store's index without reading their rows
-// (backlog 33: the candidate gather of a temporal label/type read, which only
+// (the candidate gather of a temporal label/type read, which only
 // needs the IDs, decoded every current row before each candidate's own read
 // decoded it again). NodeIDsByLabel(tok) / RelIDsByType(tok) return, ascending,
 // the IDs NodesByLabel(tok, QueryOpts{}) / RelationshipsByType(tok,

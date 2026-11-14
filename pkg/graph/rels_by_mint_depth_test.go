@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestRelsByMint_AdjacencyAtHonoursDepth (row 94): through the graph doors
+// TestRelsByMint_AdjacencyAtHonoursDepth: through the graph doors
 // that take QueryOpts, a reference node's mint-placed rels are scoped by
 // opts.Depth, with and without a temporal filter, ex-adjacency included.
 func TestRelsByMint_AdjacencyAtHonoursDepth(t *testing.T) {

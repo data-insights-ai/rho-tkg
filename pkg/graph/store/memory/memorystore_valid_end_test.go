@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 51: the memory valid-end index's maintenance
+// The memory valid-end index's maintenance
 // (memorystore_valid_end.go), nodes of label 1 with hand-set stamps; the
 // expected candidate sets are the fold rules (index.ValidEndIndex), stated per
 // step. The badger twin (badgerstore_valid_end_test.go) also covers its build

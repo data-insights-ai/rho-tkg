@@ -136,7 +136,7 @@ type EffectivePageOpts struct {
 // match's effective segments at pin to fn: fn(id, segs) with segs exactly
 // NodeEffectiveTimelines(id, []Instant{pin})[0] (TxAt = pin, no valid-time
 // filter; empty when the node has no segment at the pin, and fn is still
-// called: the page counts matches, not segments). Row 121 (sigma R37).
+// called: the page counts matches, not segments). Sigma R37.
 //
 // Paging: the matches above opts.After in ascending ID order, at most
 // opts.Limit (0: all). next is the last match's ID when the page holds Limit

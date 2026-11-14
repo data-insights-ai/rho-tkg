@@ -12,8 +12,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// ValidEndIndex is one entity kind's valid-end index (backlog 51,
-// store.RelValidEndCapability / NodeValidEndCapability): for the type or
+// ValidEndIndex is one entity kind's valid-end index
+// (store.RelValidEndCapability / NodeValidEndCapability): for the type or
 // label tokens a bounded scan asked for (Track), per entity that ever carried
 // one of them an upper bound on its effective valid end and the newest
 // transaction stamp of its rows, ordered per token by each, so a scan bounded

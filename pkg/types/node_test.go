@@ -326,7 +326,7 @@ func TestRemoveLabelTokenRawRefusesLastLabel(t *testing.T) {
 	}
 }
 
-// TestRemoveLabelTokenRawSkipsZeroTokenWhenPromoting is BACKLOG 6d:
+// TestRemoveLabelTokenRawSkipsZeroTokenWhenPromoting guards the zero-token case:
 // RemoveLabelTokenRaw's promotion step used to promote extraLabels[0]
 // unconditionally. NewNode's own documented/tested contract
 // (TestNewNodeAllowsZeroExtraLabelForStoreValidation) permits token 0 to sit
@@ -342,10 +342,10 @@ func TestRemoveLabelTokenRawSkipsZeroTokenWhenPromoting(t *testing.T) {
 
 	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{0, 20})
 	if !n.RemoveLabelTokenRaw(10) {
-		t.Fatal("RemoveLabelTokenRaw(primary) = false, want true — BACKLOG 6d regression")
+		t.Fatal("RemoveLabelTokenRaw(primary) = false, want true — regression")
 	}
 	if n.PrimaryLabelToken() != labelToken(20) {
-		t.Fatalf("PrimaryLabelToken() = %d, want 20 (the non-zero extra), not the reserved token 0 — BACKLOG 6d regression", n.PrimaryLabelToken())
+		t.Fatalf("PrimaryLabelToken() = %d, want 20 (the non-zero extra), not the reserved token 0 — regression", n.PrimaryLabelToken())
 	}
 	if !n.HasLabelToken(labelToken(20)) {
 		t.Fatal("HasLabelToken(20) = false after promotion, want true")
@@ -370,7 +370,7 @@ func TestRemoveLabelTokenRawRefusesPromotionWhenOnlyZeroExtraRemains(t *testing.
 
 	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{0})
 	if n.RemoveLabelTokenRaw(10) {
-		t.Fatal("RemoveLabelTokenRaw(primary) = true when only a reserved zero extra remains, want false — BACKLOG 6d regression")
+		t.Fatal("RemoveLabelTokenRaw(primary) = true when only a reserved zero extra remains, want false — regression")
 	}
 	if n.PrimaryLabelToken() != labelToken(10) {
 		t.Fatalf("PrimaryLabelToken() = %d, want unchanged 10 after refused removal", n.PrimaryLabelToken())

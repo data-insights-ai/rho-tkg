@@ -304,7 +304,7 @@ func TestAsOfTags_ReadOnlyReplicaRejectsWrites(t *testing.T) {
 	}
 }
 
-// Clear()/Reset reaps the durable tag registry (lesson 53 scan-based meta reap
+// Clear()/Reset reaps the durable tag registry (the scan-based meta reap
 // covers this new key).
 func TestAsOfTags_ResetReapsTags(t *testing.T) {
 	t.Parallel()
@@ -346,7 +346,7 @@ func TestAsOfTags_ConcurrentWritesNoLostUpdate(t *testing.T) {
 	}
 }
 
-// TestAsOfTags_ConcurrentWritesSameNameNoLostUpdate guards BACKLOG 10j: the
+// TestAsOfTags_ConcurrentWritesSameNameNoLostUpdate guards against a lost update: the
 // test above races DIFFERENT tag names, which even a naive unsynchronized
 // read-modify-write can often survive by accident depending on interleaving
 // — the sharper adversarial case is many goroutines racing to overwrite the

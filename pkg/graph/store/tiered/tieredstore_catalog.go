@@ -258,7 +258,7 @@ func (ts *Store) discardNewEventShard(store *BadgerStore, name, dir string) {
 	}
 }
 
-// handNewShardToLogScope (BACKLOG 19h): a shard made mid-scope (a rotation or
+// handNewShardToLogScope: a shard made mid-scope (a rotation or
 // an on-demand window shard triggered in a tx/batch) joins the open change-log
 // scope IMMEDIATELY, so even the triggering write is buffered instead of
 // self-committing outside the scope (unreachable by DiscardLogScope).

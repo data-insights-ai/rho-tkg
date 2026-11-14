@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Break-round coverage for the commit-clock floor (lesson 71). Every case here
+// Break-round coverage for the commit-clock floor. Every case here
 // is an attack on the floor's inputs, not a demonstration that it works.
 
 // A malformed durable watermark must be treated as ABSENT — never parsed into a
@@ -175,7 +175,7 @@ func TestMaxWireStamp_NegativesClampAndNeverMaskAPositive(t *testing.T) {
 // relationship tombstones. The record's stamp is the max across all of them, so
 // a nil node tombstone must not abort the fold and the cascade's maximum must
 // still win — otherwise a cascade delete's transaction time escapes the floor on
-// a replica, which is the exact class of hole lesson 71 exists to close.
+// a replica, which is the exact class of hole the floor exists to close.
 func TestRecordCommitStamp_NodeDeleteFoldsCascadedRelTombstones(t *testing.T) {
 	t.Parallel()
 	base := time.Now().UnixMilli()

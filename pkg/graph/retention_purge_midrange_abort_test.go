@@ -19,7 +19,7 @@ var errInjectedSecondPurgeChunk = errors.New("injected: second purge chunk failu
 // commit for real (so it actually deletes rows and durably frees their
 // UniqueForever claims' owners), then fails the SECOND call — simulating a
 // mid-range abort (ctx cancel or a store error) with committed prior chunks,
-// exactly the BACKLOG 13a scenario. It records the first chunk's result so
+// exactly the scenario tested below. It records the first chunk's result so
 // the test can identify EXACTLY which nodes it purged — the memory store's
 // purgeNodesByLabel selects victims by ranging a Go map ("Map order is
 // random — fine: the purge is order-independent", see
@@ -43,7 +43,7 @@ func (s *failSecondPurgeChunkStore) PurgeNodesByLabelBefore(labelToken uint16, b
 	return res, err
 }
 
-// NodesByLabelAndProperty is a pure passthrough (BACKLOG 14c): this fixture
+// NodesByLabelAndProperty is a pure passthrough: this fixture
 // only injects a purge-chunk fault, so declaring the query method directly
 // keeps the graph's propertyIndexCap wrapper-promotion guard trusting it
 // (CreateUniqueForever needs a real property index on this store), consistent
@@ -52,7 +52,7 @@ func (s *failSecondPurgeChunkStore) NodesByLabelAndProperty(labelToken uint16, k
 	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
 }
 
-// TestPurgeRangeAllChunks_ReapsForeverOwnersOnMidRangeAbort is the BACKLOG 13a
+// TestPurgeRangeAllChunks_ReapsForeverOwnersOnMidRangeAbort is the
 // regression: purgeRangeAllChunks only reaped UniqueForever claims of purged
 // owners AFTER the chunk loop exited normally — both early-return paths (ctx
 // cancel, chunk error) skipped the reap even though PRIOR chunks in the same
@@ -111,7 +111,7 @@ func TestPurgeRangeAllChunks_ReapsForeverOwnersOnMidRangeAbort(t *testing.T) {
 			t.Fatalf("first chunk purged unknown node %v", purgedID)
 		}
 		if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": email}); err != nil {
-			t.Fatalf("re-add purged user %v's email %q after mid-range abort failed (ghost owner — BACKLOG 13a regression): %v", purgedID, email, err)
+			t.Fatalf("re-add purged user %v's email %q after mid-range abort failed (ghost owner — regression): %v", purgedID, email, err)
 		}
 	}
 }

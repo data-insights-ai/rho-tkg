@@ -246,7 +246,7 @@ func (r *Relationship) ForEachIndexablePropertyValueKey(fn func(propertyKey, val
 }
 
 // ForEachIndexKey is ForEachIndexablePropertyValueKey for stores with Elements
-// indexes (backlog 63): a list property for which elements reports true yields
+// indexes: a list property for which elements reports true yields
 // each distinct scalar element's key. elements is consulted for list values
 // only; nil means scalars only.
 func (r *Relationship) ForEachIndexKey(elements func(propertyKey string) bool, fn func(propertyKey, valueKey string) bool) {
@@ -442,7 +442,7 @@ func (r *Relationship) TxStamps() (txFrom, txTo, deletedAt Instant) {
 // one, else its TxFrom. A version written by Update (or UpdateWithTx, or a
 // GraphTx / Batch twin) stores ValidFrom 0, "no caller claim", and starts at
 // its TxFrom (when the version it supersedes starts at or after the clock it
-// stores that start + 1 instead, backlog 77); this returns that start without
+// stores that start + 1 instead); this returns that start without
 // reading the timeline. Like
 // ValidRange it allocates nothing on a frozen row. 0 for a nil row. This is
 // the legacy ValidAxis's rule; a row of a store with the literal axis

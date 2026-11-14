@@ -724,7 +724,7 @@ func TestDiffSnapshots_DoesNotBlockWrites(t *testing.T) {
 	}
 }
 
-// TestDiffGracefulUnderConcurrentClose guards BACKLOG 8e's corrected Diff doc
+// TestDiffGracefulUnderConcurrentClose guards the corrected Diff doc
 // comment: because Diff takes c.mu.RLock per entity (readUnderRLock) rather
 // than once for the whole scan, Close can run between entity reads. The
 // claimed safety property is that Diff never observes a torn/closing store —
@@ -785,8 +785,8 @@ func TestDiffGracefulUnderConcurrentClose(t *testing.T) {
 }
 
 // TestDiffConcurrentStandaloneWritesNeverProduceInconsistentResult guards
-// BACKLOG 10o: Diff's per-entity c.mu.RLock (not one atomic global snapshot,
-// see the BACKLOG 8e doc comment on TempOps.Diff) is an HONESTLY DISCLOSED
+// that Diff's per-entity c.mu.RLock (not one atomic global snapshot,
+// see the doc comment on TempOps.Diff) is an HONESTLY DISCLOSED
 // accepted tradeoff — a concurrent standalone backdated write MAY appear as
 // a spurious Created/Deleted entry, and this test does not try to eliminate
 // that (it's by design, not a bug). What was untested is the STRONGER

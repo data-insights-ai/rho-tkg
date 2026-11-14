@@ -10,7 +10,7 @@ import (
 // historyDeltaGolden was captured via msgpack.Marshal on NodeHistoryDelta /
 // RelHistoryDelta / propKeyRef BEFORE they had custom EncodeMsgpack methods
 // (pure reflection-based struct encoding, matching struct tags in
-// wire_history_delta.go) — see BACKLOG 15t. Locks the on-wire byte format of
+// wire_history_delta.go). Locks the on-wire byte format of
 // HistoryDeltaEncoding rows across the switch to hand-written encoders.
 var historyDeltaGolden = map[string]string{
 	"NodeHistoryDelta_min":  "81a16d86a26676cc02a26964d30000000000000064a2706c01a17602a27466d30000000000000000a27474d30000000000000000",
@@ -23,7 +23,7 @@ var historyDeltaGolden = map[string]string{
 }
 
 // TestHistoryDeltaEncodeGolden proves the hand-written EncodeMsgpack methods
-// for NodeHistoryDelta/RelHistoryDelta/propKeyRef (BACKLOG 15t) produce
+// for NodeHistoryDelta/RelHistoryDelta/propKeyRef produce
 // byte-identical output to the previous pure-reflection msgpack.Marshal
 // encoding, for the all-omitted-optional-fields case and the
 // every-optional-field-present case.

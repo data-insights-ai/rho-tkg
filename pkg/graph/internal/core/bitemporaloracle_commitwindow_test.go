@@ -11,7 +11,7 @@ import (
 )
 
 // TestBitemporalOracle_BadgerCommitWindow reproduces the field configuration in
-// which the badger-only, load-dependent read-consistency defect (lesson 64) was
+// which the badger-only, load-dependent read-consistency defect was
 // observed: a graph whose writes have JUST completed while the async flush loop
 // is still draining `pending`->`flushing`->Badger, probed with the SAME
 // cross-door oracle checks as TestBitemporalOracleHarness.

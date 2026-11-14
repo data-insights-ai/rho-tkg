@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Per-shard indexes (backlog 10, WP-31): relationship-type temporal indexes,
+// Per-shard indexes (WP-31): relationship-type temporal indexes,
 // composite node indexes and single-key node and relationship property
 // indexes. Each covered shard builds and maintains its own badger index over
 // its own rows and the tiered store folds the per-shard answers. Composites
@@ -609,8 +609,7 @@ func (ts *Store) ListCompositePropertyIndexes(labelToken uint16) ([][]string, er
 // matches (its composite index, or its label scan + filter without one) into
 // one ID-sorted, paginated result. Shards follow NodesByLabelAndProperty:
 // reference always, archive at DepthAll, event shards by opts.Depth; each
-// answers the same page (After, Limit), whose merge holds the global page
-// (backlog 72).
+// answers the same page (After, Limit), whose merge holds the global page.
 func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]any, opts QueryOpts) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err

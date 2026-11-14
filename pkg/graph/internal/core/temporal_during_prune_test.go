@@ -11,12 +11,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestNodesByLabelPropertyDuring_PruneEquivalence is the rule-17 guarantee for
+// TestNodesByLabelPropertyDuring_PruneEquivalence is the equivalence guarantee for
 // the Step-1 wiring: the labeled interval door NodesByLabelPropertyDuring must
 // return the identical result whether or not the valid-time envelope index
 // exists. The prune is overlap-sound (the During door matches on overlap), so it
-// may narrow candidates but never change the answer. Two-phase (rule 15) and
-// exact-set (rule 16): a phantom-future node MUST be pruned yet an open-ended
+// may narrow candidates but never change the answer. Two-phase and
+// exact-set: a phantom-future node MUST be pruned yet an open-ended
 // node whose OLDER version overlaps MUST survive (envelope-union soundness).
 func TestNodesByLabelPropertyDuring_PruneEquivalence(t *testing.T) {
 	t.Parallel()

@@ -12,7 +12,7 @@ var (
 	_ storecontract.ExAdjacencyMeteredCapability = (*Store)(nil) // R2-SCANS
 )
 
-// Ex-adjacency on tiered (store.ExAdjacencyCapability, backlog 50). A node's
+// Ex-adjacency on tiered (store.ExAdjacencyCapability). A node's
 // adjacency lives on the shard that holds the node: the out-leg of a
 // relationship on its start node's shard (with the entity), the in-leg on its
 // end node's shard. The shard that drops a leg of a deleted relationship

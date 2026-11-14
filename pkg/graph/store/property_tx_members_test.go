@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 8: the store half of the property membership sidecars
+// The store half of the property membership sidecars
 // (RelPropertyTxMembershipCapability / NodePropertyTxMembershipCapability /
 // PropertyTxMembershipStatsCapability), driven through every write door of the
 // Store contract on every backend that offers them.

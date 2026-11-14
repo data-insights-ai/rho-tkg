@@ -45,7 +45,7 @@ func eqRelIDs(a, b []types.RelID) bool {
 }
 
 // TestRelPrefixScan_ValueOrderContract is the relationship mirror of
-// TestPrefixScan_ValueOrderContract (rule 2 parity): exact lex value order
+// TestPrefixScan_ValueOrderContract: exact lex value order
 // asc/desc with rel-ID tie-break in both directions, boundary-successor
 // exclusion, no-match, and the empty prefix — on memory and badger-RAM.
 func TestRelPrefixScan_ValueOrderContract(t *testing.T) {

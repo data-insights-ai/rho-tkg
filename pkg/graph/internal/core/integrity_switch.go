@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Config.DisableIntegrityHashes (backlog 61). Every write path hashes through
+// Config.DisableIntegrityHashes. Every write path hashes through
 // nodeContentHash / relContentHash, so the switch is one branch here: off
 // computes nothing and the rows carry empty hashes, which no encoder writes
 // (wire_encode.go omits an empty hash; the compact frozen form holds none).
@@ -140,7 +140,7 @@ func (c *Core) writeIntegrityMode() error {
 
 // restoreIntegrityModeAfterReset re-persists the setting after Admin.Reset()
 // or a replica's ChangeClear apply wiped the MetaKV keyspace —
-// integrityHashesMeta's reapPolicyPreserve half (BACKLOG 13l). The graph keeps
+// integrityHashesMeta's reapPolicyPreserve half. The graph keeps
 // writing under its setting after the Clear; without the key, a reopen would
 // read its rows as rows written before the setting existed (hashes on). Like
 // restoreInstantFloorAfterReset it needs no capture: the authoritative value
@@ -225,7 +225,7 @@ func (c *Core) sampleRowHashed() (hashed, found bool, err error) {
 
 // admitImportedNodeHash is the hash gate of every import and replica-apply
 // row. Hashes on: the row must carry its content hash and the hash must match
-// (BACKLOG 12d, verifyImportedNodeHash). Hashes off: a hash the row carries is
+// (verifyImportedNodeHash). Hashes off: a hash the row carries is
 // still verified (a corrupt record is refused either way), then every hash is
 // dropped so the off-store holds none.
 //

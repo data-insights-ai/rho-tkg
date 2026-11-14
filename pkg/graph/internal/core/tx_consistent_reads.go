@@ -16,8 +16,8 @@ import (
 // Tx-scoped consistent-read APIs.
 //
 // The standalone IO/Temporal/Admin snapshot-style entry points acquire
-// c.mu themselves. A tx does not hold c.mu for its lifetime (Path B,
-// lesson 31): each tx call takes it briefly (lockActiveCore), so these
+// c.mu themselves. A tx does not hold c.mu for its lifetime (Path B):
+// each tx call takes it briefly (lockActiveCore), so these
 // tx-scoped methods exist for clarity and read the tx's own state.
 //
 // Calling the standalone (*IOOps).Export, (*TempOps).Snapshot, or
@@ -69,7 +69,7 @@ func (tx *GraphTx) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
 // g.Resolve.RelProperty keep tx code on the tx's lock discipline. They
 // would be required again if a tx ever held c.mu.Lock for its lifetime:
 // the standalone accessors take c.mu.RLock and sync.RWMutex is not
-// reentrant (lessons 9, 31).
+// reentrant.
 // The mirrors below call the lock-free *Unlocked helpers directly and
 // guard only the tx-state mutex.
 //
@@ -189,8 +189,8 @@ func (tx *GraphTx) RelProperty(r *types.Relationship, key string) (any, bool) {
 //
 // Every public sub-API read method that opens with c.mu.RLock or
 // c.readUnderRLock(…) deadlocks if called inside an open *GraphTx (BeginTx
-// holds c.mu.Lock for the tx lifetime; sync.RWMutex is not reentrant —
-// lesson 31). The mirrors below dispatch to the matching c.fooLocked
+// holds c.mu.Lock for the tx lifetime; sync.RWMutex is not reentrant).
+// The mirrors below dispatch to the matching c.fooLocked
 // helpers under tx.mu only, inheriting c.mu.Lock from BeginTx. Each
 // returns the zero value of its return type after Commit/Rollback
 // (matching the non-tx accessors' fail-closed contract for closed graphs).

@@ -18,9 +18,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 68b on twin graphs: graph A plans corrections and GraphTx
+// Head-entry corrections on twin graphs: graph A plans corrections and GraphTx
 // rollback snapshots from the head entry (effective_head_write.go), graph B
-// reads the whole history (headWriteOff, the code before 68b; and
+// reads the whole history (headWriteOff, the code before the head entry; and
 // cascadeMetaOff: on a head miss A plans on history skeletons, CASCADEMETA,
 // B on the whole history). Both run the
 // same operations — corrections bounded and open (often of one validity), at
@@ -65,7 +65,7 @@ func TestEffectiveHeadWrite_TwinDifferential(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
 				tw := newHeadTwin(t, be, seed)
 				if s%2 == 1 {
-					// Trimmed entries (row 85): A plans most corrections from a
+					// Trimmed entries: A plans most corrections from a
 					// suffix of the head answer and reads fold.
 					tw.a.headPieceCap, tw.a.headBoundCap = 3, 4
 				}
@@ -351,7 +351,7 @@ func (tw *headTwin) step(step int) {
 // txStep runs one GraphTx of one to four mutations on one entity (and, one
 // time in four, a second entity), then commits or rolls back; a rollback
 // must leave A's rows byte-identical to before the tx, and a rewrite follows.
-// appendsOnly: two appending writes (backlog 70's shape after gapStep).
+// appendsOnly: two appending writes (the shape after gapStep).
 func (tw *headTwin) txStep(rel bool, nid types.NodeID, rid types.RelID, appendsOnly bool) {
 	ctx := context.Background()
 	commit := tw.rng.IntN(2) == 0
@@ -708,7 +708,7 @@ func dumpDiff(a, b string) string {
 	return sb.String()
 }
 
-// gapStep is backlog 70's shape: three bounded corrections of one validity,
+// gapStep is the compaction-gap shape: three bounded corrections of one validity,
 // history compaction to one row (a version gap directly above the current
 // row), a head read, then a GraphTx of two appending writes, rolled back
 // three times in four.

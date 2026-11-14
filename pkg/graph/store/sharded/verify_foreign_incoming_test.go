@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 20a: VerifyConsistency's ShardMismatch check had no carve-out for a
+// VerifyConsistency's ShardMismatch check had no carve-out for a
 // Model-A foreign-incoming half-edge stub (ADR-0010 §3.3), which is
 // DELIBERATELY co-located on its END node's local shard even though its own
 // rel-ID slot belongs to a foreign machine — the entire point of the stub is
@@ -37,7 +37,7 @@ func TestVerifyConsistencyForeignIncomingStubNotFlagged(t *testing.T) {
 		t.Fatalf("VerifyConsistency: %v", err)
 	}
 	if len(rep.ShardMismatches) != 0 {
-		t.Fatalf("ShardMismatches = %+v, want none — BACKLOG 20a regression: a legitimate foreign-incoming stub misdiagnosed as corruption", rep.ShardMismatches)
+		t.Fatalf("ShardMismatches = %+v, want none — regression: a legitimate foreign-incoming stub misdiagnosed as corruption", rep.ShardMismatches)
 	}
 	if !rep.OK() {
 		t.Fatalf("Report = %+v, want OK()", rep)

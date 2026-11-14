@@ -24,9 +24,9 @@ const orderedRangePageSize = 256
 // Candidates come from the property index's ordered numeric view, which
 // OVER-SELECTS by design (float64 sort keys, ulp-widened bounds): fn receives
 // CANDIDATES and MUST re-check the predicate with exact comparison semantics
-// (lesson 23; the inclMin/inclMax flags describe the caller's intended
+// (the inclMin/inclMax flags describe the caller's intended
 // bounds — the door never skips a boundary bucket, since int64 magnitudes
-// past 2^53 collapse onto neighbouring sort keys, lesson 25 — so the exact
+// past 2^53 collapse onto neighbouring sort keys — so the exact
 // inclusivity check is fn's responsibility).
 //
 // Current-state only: there is no temporal QueryOpts parameter — the ordered

@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 51: the badger valid-end index's build protocol and maintenance
+// The badger valid-end index's build protocol and maintenance
 // (badgerstore_valid_end.go). Nodes of label 1 with hand-set stamps; the
 // expected candidate sets are the fold rules (index.ValidEndIndex), stated per
 // case.

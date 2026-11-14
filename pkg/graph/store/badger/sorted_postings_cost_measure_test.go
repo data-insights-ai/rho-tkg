@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): the bytes a page allocates
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): the bytes a page allocates
 // are read from the process-wide allocation counter, which other tests,
 // badger's own goroutines and host load move, so this bound runs by hand,
 // not in a gate (MEMGATE).
@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// TestPostingsPageCostIndependentOfKeySizeBadger is backlog 72's cost on
+// TestPostingsPageCostIndependentOfKeySizeBadger is the postings page cost on
 // badger (see sorted_postings_cost_test.go): a page of 16 allocates a page's
 // rows and batch, a quarter of one 8-byte copy of the key.
 func TestPostingsPageCostIndependentOfKeySizeBadger(t *testing.T) {

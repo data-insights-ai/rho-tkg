@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Unique constraints through SetNodeVersionInterval (docs/CHANGELOG.md backlog 12).
+// Unique constraints through SetNodeVersionInterval (docs/CHANGELOG.md).
 //
 // Rule under test: a cascade appends rows carrying its props patch. The patch
 // is judged as the update doors judge a write:
@@ -479,7 +479,7 @@ func TestUniqueCascade_FloatRefused(t *testing.T) {
 
 // A patch over two constrained keys where one value is taken and the other is
 // free is refused as a whole, and the free value is NOT left claimed (a later
-// create with it passes) — the BACKLOG 9e shape.
+// create with it passes) — the orphaned-claim shape.
 func TestUniqueCascade_RefusalClaimsNothing(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")

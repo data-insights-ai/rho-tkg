@@ -4,7 +4,7 @@ import "context"
 
 // scopeTokenKey is an unexported context key type — only this package can
 // construct a context.Context that carries a scoped change-log token (see
-// store.ScopedTxChangeLog and BACKLOG 11f). No caller outside this package
+// store.ScopedTxChangeLog). No caller outside this package
 // can observe or forge a scope token: context.WithValue requires the exact
 // unexported key value to retrieve it, and Go's type system gives every
 // package-external key literal (even one shaped like scopeTokenKey{}) a
@@ -18,7 +18,7 @@ import "context"
 // FOUNDATION ONLY (Batch A): nothing in this codebase calls withScopeToken
 // yet. GraphTx still drives the legacy single-scope TxChangeLogScope
 // mechanism (tx.go's lockActiveCoreWrite / SetLogDivert) unchanged. A later
-// BACKLOG 11f batch wires GraphTx to open a store.ScopedTxChangeLog scope and
+// batch wires GraphTx to open a store.ScopedTxChangeLog scope and
 // call withScopeToken so its mutations can take the same shared read-lock a
 // standalone mutation takes instead of the current full exclusive lock.
 type scopeTokenKey struct{}

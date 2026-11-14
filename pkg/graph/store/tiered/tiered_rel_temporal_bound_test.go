@@ -1,7 +1,7 @@
 package tiered
 
-// The hot + warm bound for the relationship temporal index on tiered
-// (backlog 10): a cold shard keeps no relationship temporal index. A
+// The hot + warm bound for the relationship temporal index on tiered:
+// a cold shard keeps no relationship temporal index. A
 // demotion frees it, the DDL never opens a cold shard to build it, a lazy
 // cold open never rebuilds it, and a promotion back to warm rebuilds it from
 // the anchoring reference shard.

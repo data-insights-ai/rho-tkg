@@ -240,7 +240,7 @@ func TestChangeBody_RoundTrip(t *testing.T) {
 		}
 	})
 
-	// BACKLOG 15e: RangePurge (ADR-0008 R3) and ForeignIncomingDelete
+	// RangePurge (ADR-0008 R3) and ForeignIncomingDelete
 	// (ADR-0010 Model A cascade) are live shipped record types with the same
 	// SafeUnmarshal-decoder shape as every body above, but were not exercised
 	// by this round-trip suite.

@@ -257,7 +257,7 @@ func TestBadgerEncryptionValidation(t *testing.T) {
 
 // TestBadgerEncryptionSentinelsWithErrorsIs asserts all three new sentinels
 // are reachable and distinguishable via errors.Is, not merely by substring
-// match (Testing Rule 4: sentinel errors are tested with errors.Is).
+// match.
 func TestBadgerEncryptionSentinelsWithErrorsIs(t *testing.T) {
 	_, err := New(Config{Dir: t.TempDir(), EncryptionKey: []byte("bad-length-key")})
 	if !errors.Is(err, ErrInvalidEncryptionKeyLength) {

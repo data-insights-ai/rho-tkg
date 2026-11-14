@@ -103,8 +103,8 @@ func (bs *Store) buildChangePayload(body any) ([]byte, error) {
 // payload when the log is disabled — the matching logChangeRaw call is then a
 // no-op. Every node/rel-put door calls these BEFORE bs.idxMu.Lock() and before
 // any mutation (mirroring buildChangePayload / DeleteNode), so a marshal error
-// aborts the door with nothing mutated and no op enqueued — see lesson 58 /
-// BACKLOG 18a. The door then emits the pre-built payload via bs.logChangeRaw
+// aborts the door with nothing mutated and no op enqueued.
+// The door then emits the pre-built payload via bs.logChangeRaw
 // UNDER idxMu.Lock, atomically with the entity ops it describes.
 func (bs *Store) buildNodePutPayload(n *types.Node, withHistory bool) ([]byte, error) {
 	if !bs.logEnabled.Load() {
@@ -163,8 +163,8 @@ func (bs *Store) nodeDeleteWithHistoryPayload(id snowflake.ID, nodeTombstone *ty
 	return bs.checkedPayload(storepkg.NodeDeleteWithHistoryPayload(id, nodeTombstone, relTombstones))
 }
 
-// logCascadeNodeDeleteRouted is logCascadeNodeDelete's token-aware sibling
-// (BACKLOG 11f Batch F) — see logChangeRoutedRaw's routing rule.
+// logCascadeNodeDeleteRouted is logCascadeNodeDelete's token-aware sibling —
+// see logChangeRoutedRaw's routing rule.
 func (bs *Store) logCascadeNodeDeleteRouted(id snowflake.ID, deleted []RelDeleteInfo, token uint64) error {
 	if !bs.logEnabled.Load() {
 		return nil
@@ -211,7 +211,7 @@ func (bs *Store) relDeleteWithHistoryPayload(id snowflake.ID, tombstone *types.R
 // deletes the stale metadata keys (registries, counters, index defs, …) EXCEPT
 // LastLSNKey and overwrites LastLSNKey with the new watermark alongside the
 // marker. A crash at any point leaves LastLSNKey at its old (or new) value, never
-// absent, so the allocator never moves backward. See lesson 53.
+// absent, so the allocator never moves backward.
 func (bs *Store) clearAndReanchorChangeLog() error {
 	// Step ordering is dictated by two durable invariants that must hold at EVERY
 	// crash point: (a) LastLSNKey is never absent (watermark monotonicity), and
@@ -223,7 +223,7 @@ func (bs *Store) clearAndReanchorChangeLog() error {
 	// claiming rows that no longer exist, and the store would refuse to reopen.
 
 	// Steps 1-3: wipe data + all meta except LastLSNKey (shared with the
-	// change-log-disabled Clear arm so BOTH preserve the watermark — lesson 53).
+	// change-log-disabled Clear arm so BOTH preserve the watermark).
 	if err := bs.clearDataPreservingLastLSN(); err != nil {
 		return err
 	}
@@ -256,7 +256,7 @@ func (bs *Store) clearAndReanchorChangeLog() error {
 // clearDataPreservingLastLSN wipes every data / index / history / change-log
 // keyspace and all metadata EXCEPT LastLSNKey, which stays continuously durable.
 // Every Clear wipes through it (DROPALL: never DropAll), so the LSN watermark is
-// never absent across a Clear (lesson 53): a future change-log-enabled reopen reseeds the allocator FROM it,
+// never absent across a Clear: a future change-log-enabled reopen reseeds the allocator FROM it,
 // never from 0, so post-Clear LSNs cannot collide with a consumer's pre-Clear
 // checkpoint. Called under idxMu.Lock + flushMu.
 //
@@ -467,7 +467,7 @@ func (bs *Store) EnsureLogScope() (opened bool) {
 // before releasing it — so the window in which scopeActive is true is exactly the
 // window in which no concurrent standalone (c.mu.RLock) mutation can run.
 //
-// Defensive lazy-begin (BACKLOG 19h): turning divert ON for a store that never
+// Defensive lazy-begin: turning divert ON for a store that never
 // had BeginLogScope called on it (scopeLog == nil — e.g. a shard a sharded owner
 // brought into an already-open scope by some path other than its own explicit
 // BeginLogScope) lazily allocates the buffer instead of leaving scopeActive true

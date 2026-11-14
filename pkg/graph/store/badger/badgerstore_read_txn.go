@@ -10,7 +10,7 @@ import (
 
 // readTxnsTotal counts the badger read transactions the store's read paths
 // open (every bs.view and every scan or read snapshot), across every store of
-// the process: the seam of the transactions-per-scan tests (backlog 55).
+// the process: the seam of the transactions-per-scan tests.
 // openReadTxns counts the snapshot transactions open right now (a View's
 // lives only inside the call): the seam that no snapshot outlives the reads
 // it serves.

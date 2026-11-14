@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Re-import of a deleted ID (backlog 38; the 2026-09-24 temporal semantics
+// Re-import of a deleted ID (the 2026-09-24 temporal semantics
 // review entry "(HIGH?) Re-import of a deleted ID").
 //
 // History rows are keyed by version. A re-import restarted the entity at
@@ -22,10 +22,10 @@ import (
 // allocator of every appending write), so no history key is reused and the
 // version order is the write order across lives.
 //
-// Every test runs node and relationship (rule 2) on memory, badger, sharded
-// and tiered, renders every door as an exact tracked set (rule 16), compares
-// named and generic doors with the brute-force oracle (rule 17), and checks
-// that answers recorded at earlier pins survive every later write (rule 15).
+// Every test runs node and relationship on memory, badger, sharded
+// and tiered, renders every door as an exact tracked set, compares
+// named and generic doors with the brute-force oracle, and checks
+// that answers recorded at earlier pins survive every later write.
 
 // rlValids are the valid instants the scenario tests probe: around the
 // explicit valid starts of both lives (the delete instants are added per test).
@@ -122,7 +122,7 @@ func TestReImportKeepsEveryLife(t *testing.T) {
 					e.mustCascade(id, 5500, 6000, map[string]any{"x": int64(4)})
 				})
 				// Close after the current version's start (its valid-from, else
-				// its TxFrom — backlog 62; a backfilled valid-from can put it
+				// its TxFrom; a backfilled valid-from can put it
 				// ahead of the clock) and before the second delete (a close after
 				// a plain delete's instant is clamped to it — a separate,
 				// documented limit).
@@ -267,7 +267,7 @@ func rlImportDoors(rel bool) []rlImportDoor {
 // ErrInvalidTxFrom) on every import door and writes nothing — no row, no
 // label or type token; D+1 is accepted and the doors agree with the oracle.
 //
-// Catches: the 8 red subtests of backlog 38 (a backfilled re-import before D
+// Catches: the 8 subtests that were red before the fix (a backfilled re-import before D
 // joined the earlier life: the valid-time doors read it absent from D on while
 // the as-of doors read it present), and an off-by-one that accepts t == D
 // (the life rule counts deletes strictly before a row's TxFrom, so a row at D
@@ -325,7 +325,7 @@ func TestReImportBackfillMustFollowTheChain(t *testing.T) {
 				pins = append(pins, d+1, e.pin())
 				e.agree("accepted t=D+1", pins, valids)
 				// The accepted row reads present at a valid instant after D on
-				// every door (the 8 red subtests of backlog 38 read it absent).
+				// every door (the 8 subtests that were red before the fix read it absent).
 				want := e.wantAt(d+1000, 0)
 				if want != ccSet(ccVer("B", 0), ccVer("T", e.maxVersion(id))) {
 					t.Fatalf("[%s] oracle: valid D+1000 = [%s]; want B and the re-imported T", e.kind(), want)

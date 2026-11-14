@@ -9,7 +9,7 @@ import (
 )
 
 // Shared fixtures of the caller-instant interval-correction tests
-// (SetNodeVersionIntervalWithTx / SetRelVersionIntervalWithTx, backlog 34) and
+// (SetNodeVersionIntervalWithTx / SetRelVersionIntervalWithTx) and
 // the guard that the plain doors keep stamping the commit clock.
 //
 // The fixture entity (node "Ref", or a LINK between a "Ref" and an "Ev" node:
@@ -107,7 +107,7 @@ func ivAppended(before, after map[uint32]types.TemporalMetadata) map[uint32]type
 }
 
 // ivAssertOldRowsUnchanged fails when a row present before the call changed
-// (append-only: lesson 46).
+// (append-only).
 func ivAssertOldRowsUnchanged(t *testing.T, phase string, before, after map[uint32]types.TemporalMetadata) {
 	t.Helper()
 	for v, b := range before {

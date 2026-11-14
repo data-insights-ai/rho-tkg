@@ -15,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestDeltaMerge_ForeignIncomingPutAndDeleteMerges is the BACKLOG 12b
+// TestDeltaMerge_ForeignIncomingPutAndDeleteMerges is the
 // regression for the ChangeForeignIncoming / ChangeForeignIncomingDelete
 // tags: ExportSince legitimately emits them (ADR-0010 Model A), but
 // captureMergeRecord had no cases for them and fell to the `default` branch,
@@ -132,7 +132,7 @@ func mustShardedStore(t *testing.T) *sharded.Store {
 	return st
 }
 
-// TestDeltaMerge_RangePurgeMerges is the BACKLOG 12b regression for the
+// TestDeltaMerge_RangePurgeMerges is the regression for the
 // ChangeRangePurge tag: a range purge emits ONE predicate record (ADR-0008
 // R3), and ExportSince legitimately includes it in a delta stream, but
 // captureMergeRecord had no case for it — every delta containing a retention

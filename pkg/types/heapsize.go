@@ -28,7 +28,7 @@ const (
 // approxTemporalMeta/approxNodeIntegrity/approxRelIntegrity/approxNodeStruct/
 // approxRelStruct are derived from unsafe.Sizeof instead of hardcoded
 // literals so a future struct-layout change can't silently desync the
-// estimator from reality the way it did twice before (BACKLOG 6b/6c):
+// estimator from reality the way it did twice before:
 // approxTemporalMeta was a stale 72 vs the actual 96-byte TemporalMetadata,
 // and a single approxIntegrity=96 constant was wrongly shared between
 // NodeIntegrity (96B) and RelIntegrity (128B, which carries FromNodeHash/

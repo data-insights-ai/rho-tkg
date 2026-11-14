@@ -117,7 +117,7 @@ func (bs *Store) maintainTemporalIndexDiskPurge(id snowflake.ID) []writeOp {
 	// commit and the overlay after `flushing` was cleared would emit NO delete
 	// for that key and ORPHAN the just-committed entry. Capturing the overlay
 	// first closes the window; a key seen by both passes yields a duplicate
-	// delete op, which coalesces harmlessly. See lesson 64.
+	// delete op, which coalesces harmlessly.
 	bs.rangePending(func(k string, op writeOp) {
 		kb := []byte(k)
 		if len(kb) != storepkg.SizeTemporalIndexEntryKey || kb[0] != storepkg.KeyTemporalIndex {
@@ -170,8 +170,8 @@ func (bs *Store) purgeTemporalIndexDiskEntriesLocked(labelToken uint16) ([]write
 	prefix := storepkg.TemporalIndexTokenPrefix(labelToken)
 	prefixStr := string(prefix)
 	var ops []writeOp
-	// Snapshot parked SETs for this label BEFORE the Badger scan (lesson 64 —
-	// see maintainTemporalIndexDiskPurge's doc comment for the race it closes).
+	// Snapshot parked SETs for this label BEFORE the Badger scan (see
+	// maintainTemporalIndexDiskPurge's doc comment for the race it closes).
 	bs.rangePending(func(k string, op writeOp) {
 		if len(k) < len(prefixStr) || k[:len(prefixStr)] != prefixStr {
 			return
@@ -204,7 +204,7 @@ func (bs *Store) purgeTemporalIndexDiskEntriesLocked(labelToken uint16) ([]write
 // open) or ALL rows and the marker (never a half-built keyspace a later
 // open trusts as complete). Mirrors commitPropertyIndexOnDiskBackfill.
 //
-// Rows keyed by an older start rule (the mint start, backlog 62) are deleted in
+// Rows keyed by an older start rule (the mint start) are deleted in
 // the same batch: every 0x0B key the rebuild did not write again goes, so a
 // node's row is never left twice under two starts.
 func (bs *Store) commitTemporalIndexOnDiskBackfill(ops []writeOp) error {
@@ -248,7 +248,7 @@ func (bs *Store) commitTemporalIndexOnDiskBackfill(ops []writeOp) error {
 	}
 	// Guard against blocking forever: Badger v4's WriteBatch.Flush() hangs
 	// when called after db.Close() (WaitForMark blocks on a stopped oracle) —
-	// same guard as flush() (BACKLOG 18o). Currently unreachable (this runs
+	// same guard as flush(). Currently unreachable (this runs
 	// during New()'s own construction, before any caller could hold a Store
 	// to Close()), but a landmine for a future refactor that starts
 	// concurrent access earlier.

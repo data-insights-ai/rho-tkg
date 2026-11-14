@@ -542,7 +542,7 @@ func writeImportMsgpackRecord(t *testing.T, buf *bytes.Buffer, tag byte, v any) 
 }
 
 // mustHashedNodeWire returns w with Hash set to the correct content hash for
-// its decoded content. BACKLOG 12d: verifyImportedNodeHash now REJECTS a row
+// its decoded content. verifyImportedNodeHash now REJECTS a row
 // with no integrity hash (previously silently exempted), so a hand-built
 // synthetic NodeWire fixture must carry a real hash to reach whatever OTHER
 // behavior the test actually means to exercise (e.g. a later record's

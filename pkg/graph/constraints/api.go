@@ -79,7 +79,7 @@ func (a *API) DryRunValidate(ctx context.Context, facts DryRunFacts) ([]DryRunVi
 	do, ok := ops.(DryRunOps)
 	if !ok {
 		// The underlying Ops implementation doesn't support dry-run validation —
-		// a capability gap, not a nil/unwired graph (BACKLOG 8c: ErrNilGraph was
+		// a capability gap, not a nil/unwired graph (ErrNilGraph was
 		// the wrong sentinel here; a.ready() already returned it for the actual
 		// nil-graph case above).
 		return nil, storepkg.ErrCapabilityNotSupported

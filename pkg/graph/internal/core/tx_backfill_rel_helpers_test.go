@@ -37,8 +37,8 @@ const txbMemTable = 8 << 20
 func txbBackends(mods ...func(*Config)) []txbBackend {
 	newCore := func(t testing.TB, cfg Config) *Core {
 		t.Helper()
-		// The TxFrom start of an untimed create is what these tests pin
-		// (backlog 62); the v4.57.0 default is covered by TestUntimedDefaultFlip.
+		// The TxFrom start of an untimed create is what these tests pin;
+		// the v4.57.0 default is covered by TestUntimedDefaultFlip.
 		cfg.UntimedValidStart = UntimedFromTxFrom
 		if cfg.BadgerInMemory {
 			cfg.MemTableSize = txbMemTable

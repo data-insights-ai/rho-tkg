@@ -138,7 +138,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			gc.BeginGroupCommit()
 		}
 	}
-	// Durable group under SyncWrites (backlog 52): hold the per-mutation
+	// Durable group under SyncWrites: hold the per-mutation
 	// flushes for the exclusive window; flushDurableCommit below makes the
 	// group durable in one flush. Released exactly once, under c.mu: on the
 	// normal path just before the unlock below; on an early return or panic
@@ -372,7 +372,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// and the documented "a whole commit group shares one TxFrom" contract
 	// (docs/architecture.md "Ingest pipeline (ADR-0006)": a whole commit group
 	// shares one TxFrom, and TxFrom is strictly increasing ACROSS groups), NOT
-	// per-relationship inside the loop (BACKLOG 11d — the previous code
+	// per-relationship inside the loop (the previous code
 	// called b.g.now() fresh per-rel, so distinct rels in the SAME batch
 	// could get DIFFERENT TxFrom stamps). Distinct rels remain each their
 	// own genesis chain, so per-entity TxFrom monotonicity is unaffected by
@@ -670,7 +670,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// data (documented residual) — ALWAYS surfaced as an additional batch error,
 	// even when per-op failures already occurred: a replica-divergence risk is
 	// not something a caller should ever have silently swallowed just because
-	// something else also failed in the same batch (BACKLOG 11c — the previous
+	// something else also failed in the same batch (the previous
 	// `result.Failed == 0` guard dropped exactly this error whenever it mattered
 	// most, i.e. an already-partially-failed batch whose surviving ops are now
 	// also unlogged).

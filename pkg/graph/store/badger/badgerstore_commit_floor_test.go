@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 44: the commit floor persisted with the rows
+// The commit floor persisted with the rows
 // (badgerstore_commit_floor.go). Each case writes rows with chosen stamps,
 // reopens the directory and checks StoredCommitFloor.
 

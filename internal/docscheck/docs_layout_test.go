@@ -1,7 +1,7 @@
 package docscheck
 
 // The documentation pin: every MD file in the repository is one README.md "Documentation" names, so a new MD file
-// fails here instead of joining the hundreds that piled up (René 2026-10-22: "do not create new md files on your own"; todo row 110).
+// fails here instead of joining the hundreds that piled up (RH 2026-10-22: "do not create new md files on your own").
 
 import (
 	"errors"

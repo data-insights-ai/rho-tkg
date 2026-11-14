@@ -11,7 +11,7 @@ import (
 
 // BenchmarkR10HeadMiss: a head read whose kept answer is gone (dropped each
 // iteration), against the fold without the cache (headCacheOff: the read as
-// it was before backlog 68). The difference is what a miss adds.
+// it was before the head answer). The difference is what a miss adds.
 func BenchmarkR10HeadMiss(b *testing.B) {
 	for _, be := range r10Backends() {
 		for _, versions := range []int{1, 100, 300} {

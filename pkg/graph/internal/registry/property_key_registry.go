@@ -21,10 +21,10 @@ import (
 // Thread-safe via RWMutex with double-check on write miss.
 //
 // Unlike LabelRegistry/RelTypeRegistry, this registry has no RollbackNames —
-// intentional, not an oversight (BACKLOG 15o). RollbackNames exists on the
+// intentional, not an oversight. RollbackNames exists on the
 // other two because a failed tx/import/replica-apply can leave them having
 // grown past a snapshot that must be undone. PropertyKeyRegistry never faces
-// that: (1) lesson 37 — growth here is capacity-soft and never fails a write
+// that: (1) growth here is capacity-soft and never fails a write
 // (overflow returns token 0, encoders fall back to the raw key string), so
 // there is no failed-operation-that-grew-the-registry case to roll back; and
 // (2) property keys are never synced from a replication primary (records

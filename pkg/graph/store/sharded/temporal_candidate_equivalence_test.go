@@ -33,7 +33,7 @@ func idNames(ids []types.NodeID, names map[types.NodeID]string) []string {
 	return out
 }
 
-// TestPruneTemporalCandidatesCrossBackendEquivalence closes BACKLOG 20j: sharded's
+// TestPruneTemporalCandidatesCrossBackendEquivalence closes a coverage gap: sharded's
 // PruneTemporalCandidates (temporal_index.go) partitions candidates by OWNING
 // shard and folds each shard's local badger.PruneTemporalCandidates result back
 // together — a routing layer with no prune logic of its own. The existing
@@ -51,7 +51,7 @@ func idNames(ids []types.NodeID, names map[types.NodeID]string) []string {
 // four-shard sharded.Store, using the SAME snowflake IDs on both (badger does
 // not interpret the slot bits, so this is a legitimate direct ID reuse). Every
 // probe's kept-ID set must be IDENTICAL between the two backends, and is also
-// pinned to a hand-reasoned expected set (rule 16) so a bug that corrupts both
+// pinned to a hand-reasoned expected set so a bug that corrupts both
 // backends identically cannot hide behind an equivalence-only check.
 func TestPruneTemporalCandidatesCrossBackendEquivalence(t *testing.T) {
 	t.Parallel()

@@ -8,7 +8,7 @@ import (
 )
 
 // PropertyTxMembers is the transaction-time membership sidecar of ONE declared
-// property index (backlog 8): canonical value key -> the entities whose rows
+// property index: canonical value key -> the entities whose rows
 // ever carried that value (store.RelPropertyTxMembershipCapability /
 // NodePropertyTxMembershipCapability), each with a lower bound on the TxFrom of
 // the earliest such row. APPEND-ONLY: nothing is ever removed, so it stays a
@@ -24,7 +24,7 @@ import (
 // posting when every value is distinct (a plain map per value costs 264 B
 // there).
 //
-// Ordered views (backlog 69): OrderValue opens, for one value, an ascending
+// Ordered views: OrderValue opens, for one value, an ascending
 // view of its members that Record keeps from then on, so MembersAfter pages
 // the members above a cursor in O(log n + page) instead of enumerating the
 // value. A view exists only for the values a paged read asked for; it is
@@ -37,8 +37,8 @@ type PropertyTxMembers[ID cmp.Ordered] struct {
 	values   map[string]txPostings[ID]
 	postings int64
 	ordered  map[string]*sortedChunks[ID]
-	// windows, per value a valid-time view a windowed lookup opened (ledger
-	// row 62, property_tx_members_window.go); Record keeps each open one.
+	// windows, per value a valid-time view a windowed lookup opened
+	// (property_tx_members_window.go); Record keeps each open one.
 	windows map[string]*windowView[ID]
 	// numeric, nil until OrderNumeric opens it (round 8 request 2): the
 	// value keys by numeric sort key, so MembersInRange visits the values of
@@ -87,7 +87,7 @@ func (m *PropertyTxMembers[ID]) Record(vk string, id ID, tx types.Instant) {
 	})
 }
 
-// RecordRow notes one stored row of id carrying vk (ledger row 62): its first
+// RecordRow notes one stored row of id carrying vk: its first
 // tx, its stamps and valid-time span (RowInfo), as the member's current row or
 // as a history row. The store records every row it keeps here; see
 // txPosting.recordCurrent / recordHistory.
@@ -102,7 +102,7 @@ func (m *PropertyTxMembers[ID]) RecordRow(vk string, id ID, ri RowInfo, current 
 }
 
 // RecordReplaced notes old, the copy of id's current row an update door moved
-// to history, and next, the current row that replaced it (ledger row 62): old
+// to history, and next, the current row that replaced it: old
 // joins the late envelope ended by next (RowInfo.endedBy) under every value
 // old carries, whatever next carries. The update doors call it for the
 // demoted row instead of RecordRow.
@@ -255,7 +255,7 @@ func (m *PropertyTxMembers[ID]) MembersAfter(vk string, after ID, limit int) (ou
 // Merge folds every posting of other into m (other is left unchanged). A
 // current span merges as a union, not a replacement: a build scan and the
 // records of concurrent writes commute, at the cost of a stale current span
-// staying wide (sound, ledger row 62).
+// staying wide (sound).
 func (m *PropertyTxMembers[ID]) Merge(other *PropertyTxMembers[ID]) {
 	if m == nil || other == nil {
 		return
@@ -275,7 +275,7 @@ func (m *PropertyTxMembers[ID]) HasViews() bool {
 }
 
 // ForEachValue calls fn once per value with its members (the open image's
-// encoder, backlog 74). members is reused between calls: valid only during fn.
+// encoder). members is reused between calls: valid only during fn.
 // The owner calls it under at least its shared lock.
 func (m *PropertyTxMembers[ID]) ForEachValue(fn func(vk string, members []TxMember[ID])) {
 	if m == nil {
@@ -292,7 +292,7 @@ func (m *PropertyTxMembers[ID]) ForEachValue(fn func(vk string, members []TxMemb
 }
 
 // SpanMember is one posting with its valid-time state (the open image's
-// encoder, ledger row 62): All / Late / Cur hold only when HasAll / HasLate /
+// encoder): All / Late / Cur hold only when HasAll / HasLate /
 // HasCur; Wild marks a member recorded without a span (Record), which meets
 // every window. See txPosting for the fields.
 type SpanMember[ID comparable] struct {

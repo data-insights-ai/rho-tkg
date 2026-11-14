@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 9g: temporal_cascade.go's version-split logic (cascadeNodeVersionInterval /
+// temporal_cascade.go's version-split logic (cascadeNodeVersionInterval /
 // cascadeRelVersionInterval) computed the next version via raw uint32 arithmetic
 // (`nextVersion := maxVersion + 1`, and a bare `nextVersion++` for the
 // resumption-row split) instead of routing through nextEntityVersion — the
@@ -40,7 +40,7 @@ func TestCascadeVersionOverflow_NodeInitialAllocation(t *testing.T) {
 	now := types.Instant(time.Now().UnixMilli())
 	_, err = g.Temporal.SetNodeVersionInterval(ctx, n.ID(), now-1000, 0, map[string]any{"name": "new"})
 	if !errors.Is(err, ErrVersionOverflow) {
-		t.Fatalf("SetNodeVersionInterval on a max-version node = %v, want ErrVersionOverflow — BACKLOG 9g regression", err)
+		t.Fatalf("SetNodeVersionInterval on a max-version node = %v, want ErrVersionOverflow — regression", err)
 	}
 	assertNodeVersionAndProperty(t, g, n.ID(), math.MaxUint32, "name", "old")
 }
@@ -65,7 +65,7 @@ func TestCascadeVersionOverflow_NodeResumptionAllocation(t *testing.T) {
 	newVT := now + 100_000 // future — still within the node's open-ended validity, so a resumption row is built
 	_, err = g.Temporal.SetNodeVersionInterval(ctx, n.ID(), newVF, newVT, map[string]any{"name": "new"})
 	if !errors.Is(err, ErrVersionOverflow) {
-		t.Fatalf("SetNodeVersionInterval (resumption path) on a near-max-version node = %v, want ErrVersionOverflow — BACKLOG 9g regression", err)
+		t.Fatalf("SetNodeVersionInterval (resumption path) on a near-max-version node = %v, want ErrVersionOverflow — regression", err)
 	}
 	assertNodeVersionAndProperty(t, g, n.ID(), math.MaxUint32-1, "name", "old")
 }
@@ -91,7 +91,7 @@ func TestCascadeVersionOverflow_RelInitialAllocation(t *testing.T) {
 	now := types.Instant(time.Now().UnixMilli())
 	_, err = g.Temporal.SetRelVersionInterval(ctx, r.ID(), now-1000, 0, map[string]any{"state": "new"})
 	if !errors.Is(err, ErrVersionOverflow) {
-		t.Fatalf("SetRelVersionInterval on a max-version relationship = %v, want ErrVersionOverflow — BACKLOG 9g regression", err)
+		t.Fatalf("SetRelVersionInterval on a max-version relationship = %v, want ErrVersionOverflow — regression", err)
 	}
 	assertRelVersionAndProperty(t, g, r.ID(), math.MaxUint32, "state", "old")
 }
@@ -119,7 +119,7 @@ func TestCascadeVersionOverflow_RelResumptionAllocation(t *testing.T) {
 	newVT := now + 100_000
 	_, err = g.Temporal.SetRelVersionInterval(ctx, r.ID(), newVF, newVT, map[string]any{"state": "new"})
 	if !errors.Is(err, ErrVersionOverflow) {
-		t.Fatalf("SetRelVersionInterval (resumption path) on a near-max-version relationship = %v, want ErrVersionOverflow — BACKLOG 9g regression", err)
+		t.Fatalf("SetRelVersionInterval (resumption path) on a near-max-version relationship = %v, want ErrVersionOverflow — regression", err)
 	}
 	assertRelVersionAndProperty(t, g, r.ID(), math.MaxUint32-1, "state", "old")
 }

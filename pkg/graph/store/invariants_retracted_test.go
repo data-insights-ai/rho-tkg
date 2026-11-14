@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 43: the retraction marker qualifies a delete tombstone. A store write
+// The retraction marker qualifies a delete tombstone. A store write
 // carrying it without DeletedAt (a current row, a history row, a replacement
 // marked "retracted") is no door's output; the Store boundary refuses it
 // (ErrInvalidStoreMutation) so no reader ever meets an orphan marker. Catches

@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestCoLocatedLegsSurviveReopen (row 94): a co-located rel whose endpoints
+// TestCoLocatedLegsSurviveReopen: a co-located rel whose endpoints
 // live on another shard (a tiered mint shard) keeps both adjacency legs
 // across a reopen, clean (open image) and rebuilt, as the write path holds
 // them; OutgoingRelIDsOfType filters them by type like IncomingRelIDs.

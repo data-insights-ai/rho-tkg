@@ -60,7 +60,7 @@ func buildLaneGenerators(snowflakeNodeID int64, lanes uint8) ([]*snowflake.Node,
 // validateShardedSlotCoverage cross-validates the slots New()'s ID generators
 // will actually mint from (the interactive pair {SnowflakeNodeID*2, *2+1}
 // plus every IngestLanes slot buildLaneGenerators picked) against a sharded
-// store's own claimed range (BACKLOG 20h). Only applies when store is a
+// store's own claimed range. Only applies when store is a
 // *sharded.Store; every other backend has no slot-ownership concept and is a
 // silent no-op. Without this, a BaseSlot/SlotCount that doesn't cover every
 // slot the generators use is only discovered reactively — a routing error

@@ -14,7 +14,7 @@ import (
 )
 
 // =============================================================================
-// Effective timelines by property tuples (row 105, sigma O1-3)
+// Effective timelines by property tuples (sigma O1-3)
 //
 // RelEffectiveTimelinesByProperties answers many probe tuples (keys[j] =
 // tuple[j] for every j) of one relationship type at one pin in one call:

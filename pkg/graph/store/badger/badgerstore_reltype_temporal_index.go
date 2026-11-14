@@ -19,11 +19,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship-type temporal indexes (BACKLOG 21c): the rel-side mirror of
+// Relationship-type temporal indexes: the rel-side mirror of
 // CreateTemporalIndex/DropTemporalIndex, keyed by rel-type token (RAM-only scope:
 // see the relTypeTemporalIndexes field doc in badgerstore.go). Create installs a
-// Building index with the ID snapshot so writes during the build fold into it
-// (backlog 22); the build runs unlocked, recorded IDs are re-read in full, then
+// Building index with the ID snapshot so writes during the build fold into it;
+// the build runs unlocked, recorded IDs are re-read in full, then
 // merged and published.
 
 // relTemporalBuildsTotal counts rel temporal index builds across every store in
@@ -194,7 +194,7 @@ func (bs *Store) relTemporalRowsOf(ids []snowflake.ID) (*indexpkg.TemporalIndex,
 
 // buildRelTypeTemporalIndex folds the current row and every history version of
 // rids into a fresh envelope index; rels deleted meanwhile are skipped.
-// Backlog 10(a): one read transaction and two forward walks (KeyRel, KeyHistRel)
+// One read transaction and two forward walks (KeyRel, KeyHistRel)
 // over rids in key order, seeking only past gaps of more than relWalkMaxSteps keys.
 // Snapshot rules (breaking either gives unsound prunes):
 //   - The cache answers before the row walk, so the walk follows scanSnapshot's
@@ -203,9 +203,9 @@ func (bs *Store) relTemporalRowsOf(ids []snowflake.ID) (*indexpkg.TemporalIndex,
 //     Re-pin: a flush that commits and evicts a row after the txn opened leaves the
 //     snapshot without its latest version.
 //   - Buffered history writes are snapshotted before the first transaction
-//     (lesson 64) and win over committed rows; a second snapshot after the walk is
+//     and win over committed rows; a second snapshot after the walk is
 //     folded too (widening is sound). Second snapshot: so a version moved into
-//     history during the build is not lost (other writes: backlog 22).
+//     history during the build is not lost (other writes: Phase 3a re-reads their IDs).
 func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.TemporalIndex, error) {
 	bs.relTemporalBuilds.Add(1)
 	relTemporalBuildsTotal.Add(1)
@@ -601,8 +601,8 @@ func (bs *Store) maintainRelTypeTemporalIndexesPurge(id snowflake.ID) {
 	indexpkg.PurgeRelFromAllTemporalIndexes(bs.relTypeTemporalIndexes, id)
 }
 
-// PruneRelTypeTemporalCandidates implements store.RelTypeTemporalCandidateCapability
-// (BACKLOG 21c); see PruneTemporalCandidates for the sound-superset contract.
+// PruneRelTypeTemporalCandidates implements store.RelTypeTemporalCandidateCapability;
+// see PruneTemporalCandidates for the sound-superset contract.
 func (bs *Store) PruneRelTypeTemporalCandidates(relType uint16, ids []types.RelID, opts QueryOpts) ([]types.RelID, bool) {
 	if bs == nil {
 		return ids, false

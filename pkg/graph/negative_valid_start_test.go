@@ -1,10 +1,10 @@
 package graph_test
 
-// Ledger row 60 (sigma-tkgd): a QueryOpts / Pin ValidStart of 0 means "no
+// From sigma-tkgd: a QueryOpts / Pin ValidStart of 0 means "no
 // interval filter"; any negative start (types.UnboundedValidFrom included) is
 // a real interval start, and so is a negative ValidEnd. Rows valid only at
 // times <= 0 must be reachable by every generic, named, paged and count door
-// on every backend, and the doors must agree (lesson 58).
+// on every backend, and the doors must agree.
 
 import (
 	"context"

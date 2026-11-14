@@ -240,7 +240,7 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 	delete(bs.propertyIndexes, key)
 	bs.refreshPropDiskDefsLocked()
 	if _, ok := bs.nodePropTx[key]; ok {
-		delete(bs.nodePropTx, key) // its membership sidecar goes with it (backlog 8)
+		delete(bs.nodePropTx, key) // its membership sidecar goes with it
 		bs.propTxGen++
 	}
 
@@ -292,7 +292,7 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 }
 
 // propIdxDef is the serialized property index definition. RangeCounts and Elements
-// (backlog 63) are written only when set, so plain definitions stay byte-identical; an
+// are written only when set, so plain definitions stay byte-identical; an
 // older binary skips them and loads the index plain.
 type propIdxDef struct {
 	LabelToken  uint16 `msgpack:"l"`
@@ -426,7 +426,7 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 
 	// Phase 3: merge backfill under the write lock. The index stays Building (readers
 	// skip it) until the history fold below is in; current rows alone would let the
-	// envelope prune a node by a past row (backlog 56). Disk row is written unless a
+	// envelope prune a node by a past row. Disk row is written unless a
 	// write since Phase 1 added/removed it (DiskWritten). An ID written since Phase 1
 	// gets its fetched row by Extend (a union); a write that left disk untouched
 	// (PutNodeVersion) left the fetched current row current.
@@ -464,7 +464,7 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 
 	// Phase 4: read history, without the lock, of the Phase 1 members (a superset of
 	// Phase 3's IDs): a fresh snapshot would miss a member that left the label or was
-	// deleted since (backlog 56).
+	// deleted since.
 	foldIDs, folds, err := bs.nodeHistoryFolds(labelToken, nids)
 	if err != nil {
 		bs.idxMu.Lock()
@@ -561,7 +561,7 @@ func (bs *Store) foldTemporalHistoryEnvelopes(tokens []uint16) error {
 		ti, ok := bs.temporalIndexes[tok]
 		var ids []types.NodeID
 		if ok {
-			// Via the snapshot helper, not labelIdx: under LabelIndexOnDisk the map is empty (backlog 54).
+			// Via the snapshot helper, not labelIdx: under LabelIndexOnDisk the map is empty.
 			var err error
 			if ids, err = bs.labelNodeIDsSnapshotLocked(tok); err != nil {
 				bs.idxMu.RUnlock()
@@ -666,7 +666,7 @@ func (bs *Store) extendNodeVersionTemporalLocked(n *types.Node, id snowflake.ID)
 }
 
 // foldRecreatedNodeHistoryLocked runs before a node create / label-add door adds
-// n (backlog 56): for each label whose published temporal index does not cover
+// n: for each label whose published temporal index does not cover
 // id, a deleted node's history may still be on disk and the new row alone would
 // make the envelope vouch for less than the ID holds, so it is folded first (RAM
 // envelope only). A Building index needs nothing. Caller holds idxMu.Lock (order

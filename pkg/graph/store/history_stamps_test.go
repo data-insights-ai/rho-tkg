@@ -14,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 30: store.HistoryStampsCapability, the history half of
+// store.HistoryStampsCapability, the history half of
 // LatestStamps. On every backend NodeHistoryStamps(id) / RelHistoryStamps(id)
 // must equal, at every moment, the fold of GetNodeHistory(id) /
 // GetRelHistory(id): the largest TxFrom, the largest TxTo or DeletedAt, and
@@ -62,7 +62,8 @@ func stampsBackends() []stampsBackend {
 	}
 }
 
-// stampsKind adapts node and relationship doors (testing rule 2).
+// stampsKind adapts node and relationship doors (Node/Relationship test
+// parity).
 type stampsKind struct {
 	name     string
 	put      func(st storecontract.Store, id int64, ver uint32, tf, tt, da types.Instant) error

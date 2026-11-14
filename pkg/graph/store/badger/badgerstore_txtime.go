@@ -43,7 +43,7 @@ import (
 //
 // prefix is the 9-byte per-entity history prefix (HistNodePrefix / HistRelPrefix).
 func (bs *Store) reverseScanHistoryVersion(prefix []byte, consider func(version uint64, val []byte) (stop bool, err error)) error {
-	// Overlay BEFORE the View — the lesson-64 commit-window ordering. Capturing
+	// Overlay BEFORE the View — the commit-window ordering. Capturing
 	// the overlay INSIDE the View callback, i.e. AFTER badger assigned the
 	// transaction's snapshot instant, would let a concurrent flush() that
 	// committed a parked row and cleared `flushing` between the snapshot
@@ -70,7 +70,7 @@ func (bs *Store) reverseScanHistoryVersion(prefix []byte, consider func(version 
 // entity's overlay read happens later at T2, a flush that commits at T1
 // (T0 < T1 < T2) makes that version invisible to BOTH: the txn (opened
 // before the commit) and the now-drained live overlay (cleared after it) —
-// the "lesson 64" commit-window gap. The overlay must therefore be captured
+// the commit-window gap. The overlay must therefore be captured
 // once, at the same instant as the txn snapshot.
 type historyOverlaySnapshot struct {
 	entries map[string][]byte
@@ -340,7 +340,7 @@ func (bs *Store) relRowTemporal(id snowflake.ID) historyTemporal {
 // liveHistoryKeyExists reports whether a history key is present: a buffered
 // write (pending, or flushing mid-commit) decides, else a badger point read of
 // the key (no value read). Same commit-window ordering as GetNodeVersion: the
-// buffer is consulted before the read transaction opens (lesson 64).
+// buffer is consulted before the read transaction opens.
 func (bs *Store) liveHistoryKeyExists(key []byte) (bool, error) {
 	if op, ok := bs.lookupPending(string(key)); ok {
 		return op.opType != writeOpDelete, nil
@@ -360,7 +360,7 @@ func (bs *Store) liveHistoryKeyExists(key []byte) (bool, error) {
 // the set's upper bound of the top version at or below v answers no without
 // a read; else the key v+1 answers yes, and when it is absent the scan decides
 // (a gap above v: history compaction trims the oldest rows, which after
-// bounded corrections lie directly above the current row; backlog 70 — the
+// bounded corrections lie directly above the current row; this is the
 // rule of the graph's nodeHasHistoryAbove). key returns the history key of a
 // version.
 func (bs *Store) liveHistoryAbove(p *historyPresence, id snowflake.ID, has bool, err error, key func(version uint64) []byte) func(v uint64) (bool, error) {
@@ -487,7 +487,7 @@ func selectAsOfScan(a types.ValidAxis, scan func(consider func(version uint64, v
 		}
 		// Every version above cur's is visited: a row there carrying a
 		// retraction (TxTo at or after its TxFrom) belongs to an earlier life
-		// of the ID (a re-import stored before backlog 38), and then none of
+		// of the ID (a re-import stored before re-imports kept the earlier life's history), and then none of
 		// them answers for cur.
 		var run []asOfRow
 		broken, earlierLife := false, false
@@ -623,7 +623,7 @@ func (bs *Store) NodeAsOfMetered(nid types.NodeID, txTime types.Instant, t *stor
 	// rows are written through the cache synchronously before the badger commit.
 	// Read it BEFORE the history scan: a with-history door publishes the moved
 	// row to history before it changes the cache (publishMoveLocked), so this
-	// order sees the row at least once (backlog 32).
+	// order sees the row at least once.
 	current, err := bs.asOfCurrentNode(nid, t)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
@@ -758,8 +758,8 @@ func (bs *Store) relAsOfPickTallied(id snowflake.ID, current *types.Relationship
 
 // nodeAsOfInTxn is NodeAsOf's body reading through an ALREADY-OPEN read
 // transaction and an ALREADY-CAPTURED overlay snapshot instead of opening/
-// reading its own — used by NodesAsOf's single-transaction bulk scan
-// (BACKLOG 18k). Same selection rule and same error contract as NodeAsOf
+// reading its own — used by NodesAsOf's single-transaction bulk scan.
+// Same selection rule and same error contract as NodeAsOf
 // (ErrVersionNotFound on no visible version). See historyOverlaySnapshot for
 // why the overlay must be pre-captured rather than live-read per entity.
 //
@@ -802,7 +802,7 @@ func (bs *Store) relAsOfInTxn(snap *scanSnapshot, rid types.RelID, txTime types.
 // running the per-entity NodeAsOf selection on each. Misses are omitted; returns
 // nil, nil when no node existed at txTime. Mirrors memory NodesAsOf.
 //
-// Single-snapshot consistency (BACKLOG 18k): Phase 2 runs inside ONE badger
+// Single-snapshot consistency: Phase 2 runs inside ONE badger
 // read transaction AND one continuous bs.idxMu.RLock() hold, so it observes ONE
 // consistent point-in-time view with NO concurrent writer able to interleave —
 // every writer (PutNode/ReplaceNode/DeleteNode/PutNodeVersion/...) takes
@@ -828,7 +828,7 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	// OWN paged transactions internally, so it must run BEFORE Phase 2's long
 	// idxMu.RLock() hold — nesting a second idxMu.RLock() from the SAME
 	// goroutine inside that hold would self-deadlock once a writer is queued
-	// (sync.RWMutex is not reentrant, lesson 9). A candidate list collected
+	// (sync.RWMutex is not reentrant). A candidate list collected
 	// slightly before Phase 2's lock is fine — the two-phase "collect IDs, then
 	// process" convention (docs/architecture.md "History-aware merging")
 	// accepts this; the consistency guarantee below is about VALUES read during
@@ -851,7 +851,7 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	// for the whole scan — see the doc comment above for why both are needed.
 	// The history-version overlay is ALSO captured once here, BEFORE opening
 	// the shared txn (same ordering discipline as getNodeHistoryByPrefix's
-	// lesson-64 fix) — see historyOverlaySnapshot's doc comment for why a
+	// commit-window fix) — see historyOverlaySnapshot's doc comment for why a
 	// per-entity live overlay re-read would reopen that exact commit-window
 	// gap across this scan's long real-time duration.
 	// The history presence set is built here, before idxMu is taken: a build is
@@ -917,8 +917,7 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 }
 
 // RelsAsOf returns every relationship version visible at txTime. Mirrors
-// NodesAsOf, including its single-snapshot-consistency contract for future pins
-// (BACKLOG 18k).
+// NodesAsOf, including its single-snapshot-consistency contract for future pins.
 func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err

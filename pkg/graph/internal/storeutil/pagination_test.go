@@ -194,7 +194,7 @@ func TestPaginateNodesInOrder(t *testing.T) {
 		{name: "cursor found with limit", input: nodes, after: 10, limit: 1, want: []types.NodeID{20}},
 		{name: "cursor at last", input: nodes, after: 20, limit: 0, want: nil},
 		{name: "cursor absent", input: nodes, after: 99, limit: 0, want: nil},
-		// BACKLOG 15q: a negative after must be treated the same as "no
+		// A negative after must be treated the same as "no
 		// cursor" (start from the beginning), matching every sibling
 		// Paginate* function's `after.SnowflakeID() > 0` idiom — not
 		// PaginateNodesInOrder's prior `after != 0`, which would have

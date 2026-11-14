@@ -11,8 +11,8 @@ import (
 )
 
 // Phase 0 — bitemporal queries (valid time × transaction time).
-// Rule 15: two-phase tests for history-aware methods.
-// Rule 2: Node and Rel parity.
+// Two-phase tests for history-aware methods.
+// Node and Rel parity.
 
 func TestNodeAtTx_BitemporalTwoPhase(t *testing.T) {
 	t.Parallel()
@@ -292,7 +292,7 @@ func TestQueryOptsTxAt_RelsByType(t *testing.T) {
 
 // Phase 1: Update must NOT inherit ValidFrom from the previous version.
 // New non-genesis version should have ValidFrom == 0 (resolver derives from UpdatedAt).
-// Rule 2: Node + Rel parity.
+// Node + Rel parity.
 
 func TestUpdateNode_NoValidFromInheritance(t *testing.T) {
 	t.Parallel()
@@ -382,7 +382,7 @@ func TestUpdateNode_ResolverUsesUpdatedAtForNonGenesis(t *testing.T) {
 
 func TestVersionVisibleAtTx_Helper(t *testing.T) {
 	t.Parallel()
-	// Direct unit test of the helper. Rule 4: sentinel test (no errors here,
+	// Direct unit test of the helper (no sentinel errors here,
 	// just predicate verification on boundary conditions).
 	tests := []struct {
 		name string
@@ -395,7 +395,7 @@ func TestVersionVisibleAtTx_Helper(t *testing.T) {
 		{"before TxFrom invisible", &types.TemporalMetadata{TxFrom: 10}, 5, false},
 		{"at TxFrom visible", &types.TemporalMetadata{TxFrom: 10}, 10, true},
 		{"between visible", &types.TemporalMetadata{TxFrom: 10, TxTo: 20}, 15, true},
-		// Lesson 43: TxTo marks supersession-as-current-record, NOT
+		// TxTo marks supersession-as-current-record, NOT
 		// retraction. A superseded version stays visible at later txAt so it
 		// can keep answering historical valid-time — the previous predicate
 		// excluded it and broke NodeAtTx(oldVT, now) after any update.

@@ -9,7 +9,7 @@ import (
 
 // This file wires the four store doors the bitemporal cascade
 // (cascadeNodeVersionInterval / cascadeRelVersionInterval in
-// temporal_cascade.go) calls through their BACKLOG 11f Batch E scoped
+// temporal_cascade.go) calls through their scoped
 // siblings — PutNodeVersion/ReplaceNode/PutRelVersion/ReplaceRelationship —
 // mirroring putGeneratedNode's exact routing pattern. FOUNDATION ONLY:
 // nothing constructs a token-carrying ctx yet, so every branch here is

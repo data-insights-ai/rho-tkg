@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestEffectivePage_ReimportedIDEnvelope (backlog 75 review) — an entity
+// TestEffectivePage_ReimportedIDEnvelope — an entity
 // deleted before its type's (label's) envelope index was created is
 // uncovered; re-imported with a later valid-from, its envelope must still
 // cover the deleted life's rows, or a page at a pin before the delete prunes

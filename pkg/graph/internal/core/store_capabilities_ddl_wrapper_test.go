@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 14c: propertyIndexCap/relPropertyIndexCap (DDL: CreatePropertyIndex/
+// propertyIndexCap/relPropertyIndexCap (DDL: CreatePropertyIndex/
 // CreateRelPropertyIndex) type-asserted the SAME bundled interface
 // (PropertyIndexCapability/RelPropertyIndexCapability) that
 // propertyQueryCapability/relPropertyQueryCapability (query acceleration,
@@ -76,7 +76,7 @@ func TestPropertyIndexDDL_IgnoresInterfaceEmbeddedNativeStore(t *testing.T) {
 		t.Fatal("interface-embedded native store must not enable the property-query fast path")
 	}
 	// DDL side must now refuse it too — else it would build a real index on
-	// ms that the query side above can never use (BACKLOG 14c).
+	// ms that the query side above can never use.
 	if err := g.Index.CreateProperty("Doc", "status"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Fatalf("CreateProperty with interface-embedded native store = %v, want ErrCapabilityNotSupported", err)
 	}

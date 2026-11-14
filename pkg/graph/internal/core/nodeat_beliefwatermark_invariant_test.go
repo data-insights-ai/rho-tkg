@@ -108,7 +108,7 @@ func testNodeAtBeliefWatermarkDeclinesWhenHistoryOutranksCurrent(t *testing.T, c
 		t.Fatalf("watermark = %d, want %d (the injected row's TxFrom)", watermark, injectedTx)
 	}
 	if g.nodeCurrentAnswersAt(current, 2000, 0) {
-		t.Fatalf("nodeCurrentAnswersAt = true after injecting a higher-belief history row, want false (BACKLOG 10c: the fast path must decline whenever ANY history row could outrank current, regardless of how it got there)")
+		t.Fatalf("nodeCurrentAnswersAt = true after injecting a higher-belief history row, want false (the fast path must decline whenever ANY history row could outrank current, regardless of how it got there)")
 	}
 
 	// And the full-chain resolver (which the declined fast path now falls

@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Final review of backlog 56, finding 2: Phase 2 ranged a node's history map
+// Final review of the node temporal envelope, finding 2: Phase 2 ranged a node's history map
 // after RUnlock while a concurrent PutNodeVersion wrote it (run with -race).
 func TestMemoryNodeTemporalEnvelope_ConcurrentPutNodeVersionDuringCreate(t *testing.T) {
 	t.Parallel()

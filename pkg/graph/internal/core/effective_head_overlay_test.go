@@ -76,7 +76,7 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 		if rng.IntN(15) == 0 {
 			chain[rng.IntN(n)].Temporal().DeletedAt = tx
 		}
-		// A chain stored before backlog 38: two rows share a version (a
+		// A chain stored before the re-import allocator: two rows share a version (a
 		// segment cannot name its winner by version there).
 		shared := rng.IntN(20) == 0
 		if shared {
@@ -152,7 +152,7 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 				gens++
 			}
 		}
-		// The overlay keeps the correction facts (backlog 68b) the fold of
+		// The overlay keeps the correction facts the fold of
 		// the grown chain gathers.
 		var gf headFacts
 		effectivePiecesFacts(g, nodeKernel, grown, gpin, &gf)
@@ -168,7 +168,7 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 }
 
 // checkHeadCorrection plans random corrections of chain from its entry e
-// (chainFromHead, backlog 68b) and requires what the history read computes
+// (chainFromHead) and requires what the history read computes
 // (temporal_cascade.go): the resumption source and end, the correction
 // segments (bounds, base, gap) for a correction and an excise, and the
 // newest open belief. Returns the corrections checked.

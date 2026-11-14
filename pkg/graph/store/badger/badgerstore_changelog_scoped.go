@@ -7,8 +7,8 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// This file implements store.ScopedTxChangeLog (BACKLOG 11f Batch A —
-// foundation only; see the interface's doc comment in
+// This file implements store.ScopedTxChangeLog (foundation only;
+// see the interface's doc comment in
 // pkg/graph/store/changefeed.go for the full design rationale). It is the
 // multi-token sibling of the single-scope BeginLogScope/SetLogDivert/
 // CommitLogScope/DiscardLogScope mechanism in badgerstore_changelog.go, which
@@ -109,7 +109,7 @@ func (bs *Store) logChangeScoped(token uint64, tag storecontract.ChangeTag, payl
 //
 // There is deliberately no badger-side "build the payload for me" sibling
 // mirroring memory's logRelPutRoutedLocked: badger has no bulk relationship
-// create door reachable from a Scoped call site (BACKLOG 21g's investigation
+// create door reachable from a Scoped call site (an earlier investigation
 // found the same fact from the opposite direction — see its CHANGELOG entry),
 // and PutRelationshipGeneratedIDWithEndpointHashes/its Scoped counterpart are
 // not implemented by this backend at all (only memory and tiered implement
@@ -128,7 +128,7 @@ func (bs *Store) logChangeRoutedRaw(tag storecontract.ChangeTag, payload []byte,
 // appendOpsLoggedRouted is appendOpsLogged's token-aware sibling — see
 // appendOpsLogged's doc comment for why PutNodeVersion/PutRelVersion need
 // this ONE-critical-section-for-both-ops-and-record shape instead of the
-// idxMu-based logChangeRoutedRaw (BACKLOG 11f Batch E: neither door holds
+// idxMu-based logChangeRoutedRaw (neither door holds
 // idxMu.Lock across its enqueue). token == 0 takes the exact appendOpsLogged
 // path (pendingLog when no legacy scope is active, scopeLog when one is);
 // token != 0 buffers into that scope's token-keyed buffer instead. Returns

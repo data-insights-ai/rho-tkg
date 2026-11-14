@@ -35,7 +35,7 @@ func putRelTypeTemporalTestRel(t *testing.T, bs *Store, relType uint16, rid type
 	return r
 }
 
-// TestCreateRelTemporalIndex_ExistsAndNotFound is the direct test (rule 1) for
+// TestCreateRelTemporalIndex_ExistsAndNotFound is the direct test for
 // CreateRelTemporalIndex/DropRelTemporalIndex's sentinel-error behavior — the
 // rel-side mirror of the node CreateTemporalIndex/DropTemporalIndex contract.
 func TestCreateRelTemporalIndex_ExistsAndNotFound(t *testing.T) {
@@ -65,8 +65,8 @@ func TestCreateRelTemporalIndex_ExistsAndNotFound(t *testing.T) {
 // TestTemporalEnvelope_ForwardMaintenance: proves the write-path maintenance
 // wiring (maintainRelTypeTemporalIndexesAdd/Remove at every rel-mutation door)
 // keeps the envelope covering a past version's interval after
-// ReplaceRelWithHistory moves the current version off it — a two-phase test
-// (rule 15): create at t0 in [10,20), mutate to [30,40), assert the envelope
+// ReplaceRelWithHistory moves the current version off it — a two-phase test:
+// create at t0 in [10,20), mutate to [30,40), assert the envelope
 // still answers the t0 window.
 func TestRelTypeTemporalEnvelope_ForwardMaintenance(t *testing.T) {
 	t.Parallel()

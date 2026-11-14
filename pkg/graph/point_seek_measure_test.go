@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun reads
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun reads
 // the process-wide malloc count (badger's and the shards' goroutines
 // included), so this comparison moves with load and runs by hand, not in a
 // gate. The one store lookup per seek is gated by
@@ -103,7 +103,7 @@ func TestRound11PointSeekOneWalk(t *testing.T) {
 			// A tiered page asks its paged membership once per numeric form
 			// (one source per equal key, as on every backend), and each ask
 			// fans out over the reference, archive and event shards: about 17
-			// allocations a form, no walk. Until row 106 it walked the whole
+			// allocations a form, no walk. It once walked the whole
 			// label for every seek, so the margin held for that reason. That
 			// no tiered page walks a label or type is pinned by
 			// TestTieredRelsEffectivePage_NoWholeTypeScan (core).

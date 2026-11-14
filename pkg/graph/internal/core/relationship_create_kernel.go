@@ -13,7 +13,7 @@ import (
 // mirrors, and BatchBuilder.Execute. Before the kernel existed each door
 // carried its own copy of the validate → endpoint-hash ladder → type-token
 // allocation → build → persist → rollback sequence, and an invariant added
-// to one door could silently miss the others (lesson 17; the MR protocol's
+// to one door could silently miss the others (the MR protocol's
 // "check batch paths" rule existed to compensate by process). Changes to
 // creation semantics belong HERE, not in the doors.
 
@@ -228,7 +228,7 @@ func relPersistModeFor(useEndpointHashWrite bool) relPersistMode {
 }
 
 // putRelationshipEndpointHashWrite persists r via the endpointHashWrite
-// capability, routing through its BACKLOG 11f scoped sibling when ctx carries
+// capability, routing through its scoped sibling when ctx carries
 // a scoped change-log token and the store supports it — see
 // generatedcreate.RelationshipEndpointHashScopedCapability's doc comment.
 // FOUNDATION ONLY: see createRelWithTypeRollback's doc comment.
@@ -257,7 +257,7 @@ func (c *Core) putRelationshipEndpointHashWrite(ctx context.Context, r *types.Re
 // landed but post-write cleanup/registry persistence failed; err != nil).
 // Callers must count the create and surface the row whenever rel != nil.
 //
-// ctx is consulted ONLY for a BACKLOG 11f scoped change-log token (see
+// ctx is consulted ONLY for a scoped change-log token (see
 // scopeTokenFrom) in the relPersistEndpointHashWrite and relPersistPlain
 // persist branches below — FOUNDATION ONLY, nothing constructs a
 // token-carrying ctx yet, so this is currently always a no-op. Callers with

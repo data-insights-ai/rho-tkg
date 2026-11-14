@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 74 (ai-soc): every declared property sidecar of one kind is built by
+// Every declared property sidecar of one kind is built by
 // ONE store pass. ai-soc's first RelsEffectivePage after an open asked 29 rel
 // types and paid 29 full scans (buildRelPropTx, 123 of 259 s CPU).
 //

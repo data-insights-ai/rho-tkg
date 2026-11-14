@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship retention purge (backlog 21): the relationship mirror of
+// Relationship retention purge: the relationship mirror of
 // PurgeExpiredNodes for consumers that keep a long-lived overview and let raw
 // event RELATIONSHIPS age out while every node stays.
 

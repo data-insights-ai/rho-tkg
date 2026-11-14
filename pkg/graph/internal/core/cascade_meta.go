@@ -31,7 +31,7 @@ import (
 //
 // The plan falls back to the whole history when the skeletons cannot stand
 // for the rows: versions not strictly ascending, or one equal to the current
-// row's (a chain stored before backlog 38, where the current row shares a
+// row's (a legacy chain, where the current row shares a
 // version with a history row and a point read could not tell them apart), a
 // skeleton read that fails, or a point read that fails or finds nothing (a
 // compaction between the two reads). sharded has no skeleton door on the
@@ -143,7 +143,7 @@ func (c *Core) nodeMissPlan(id types.NodeID, current *types.Node, newVF, newVT t
 	}
 	if current == nil {
 		// Hard-deleted: the chain ends in a tombstone. A correction appended
-		// after it would be a belief no door reads consistently (backlog 14).
+		// after it would be a belief no door reads consistently.
 		return missPlan[*types.Node]{}, nodeDeletedErr(id)
 	}
 	return planMiss(c, nodeKernel, history, current, newVF, newVT, splitGaps, nodeResumptionEnd), nil
@@ -199,7 +199,7 @@ func (c *Core) relMissPlan(id types.RelID, current *types.Relationship, newVF, n
 		return missPlan[*types.Relationship]{}, storepkg.ErrRelNotFound
 	}
 	if current == nil {
-		// Hard-deleted — see nodeMissPlan (backlog 14).
+		// Hard-deleted — see nodeMissPlan.
 		return missPlan[*types.Relationship]{}, relDeletedErr(id)
 	}
 	return planMiss(c, relKernel, history, current, newVF, newVT, splitGaps, relResumptionEnd), nil

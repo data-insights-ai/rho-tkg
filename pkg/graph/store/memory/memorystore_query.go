@@ -93,7 +93,7 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	for id := range set {
 		ids = append(ids, id)
 	}
-	// BACKLOG 17e: mirror badger's NodesByLabel — order-independent consumers
+	// Mirror badger's NodesByLabel — order-independent consumers
 	// set NoSort to drop the O(n log n) sort; keyset pagination (After > 0)
 	// still needs sorted order regardless of the flag.
 	if !opts.NoSort || opts.After != 0 {
@@ -163,7 +163,7 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		return nil, nil
 	}
 
-	// Temporal index fast path (BACKLOG 21c, the rel-side mirror of the
+	// Temporal index fast path (the rel-side mirror of the
 	// NodesByLabel block above): use the rel-type interval index when one
 	// exists and a temporal filter is set. Authoritative — like the node
 	// side, nil means 0 matches, not "index not consulted."

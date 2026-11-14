@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// This file exercises store.ScopedLabelCapability (BACKLOG 11f Batch D —
+// This file exercises store.ScopedLabelCapability (Batch D —
 // foundation only; see the interface's doc comment in
 // pkg/graph/store/changefeed.go). It mirrors
 // badgerstore_history_delete_scoped_test.go's battery for the two Batch D
@@ -298,7 +298,7 @@ func TestScopedLabel_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
 	})
 }
 
-// ─── RemoveNodeLabelTokenWithHistoryScoped mirrors the add door (rule 2 parity) ───
+// ─── RemoveNodeLabelTokenWithHistoryScoped mirrors the add door ───
 
 func TestScopedLabel_RemoveNodeLabelTokenWithHistoryScoped(t *testing.T) {
 	forScopedStores(t, true, func(t *testing.T, bs scopedStore) {

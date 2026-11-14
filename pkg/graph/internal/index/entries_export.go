@@ -9,7 +9,7 @@ import (
 // ForEachBucketEntry calls fn for every (bucket start, id) entry, bucket by
 // bucket. Add(id, start) puts the entry back into the same bucket, so a store
 // can persist an index this way and reload it without the rows (badger's
-// clean-close open state, backlog 54).
+// clean-close open state).
 func (hfi *HighFrequencyIndex) ForEachBucketEntry(fn func(start types.Instant, id types.NodeID)) {
 	if hfi == nil {
 		return

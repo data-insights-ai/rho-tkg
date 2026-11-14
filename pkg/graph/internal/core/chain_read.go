@@ -1,6 +1,6 @@
 package core
 
-// Chain read order (backlog 32). A per-entity resolver (nodeAtLockedTx,
+// Chain read order. A per-entity resolver (nodeAtLockedTx,
 // nodeAsOfLocked, findNodeVersionMatchingDuringTx, findNodeVersionRelating and
 // the relationship mirrors) assembles the entity's version chain from TWO
 // store reads with no snapshot across them and no entity lock: the current

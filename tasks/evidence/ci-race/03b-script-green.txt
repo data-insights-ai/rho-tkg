@@ -1,2 +1,0 @@
-test-race-test: ok
-exit 0

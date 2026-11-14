@@ -325,7 +325,7 @@ func BenchmarkPinnedScanScaling(b *testing.B) {
 	}
 }
 
-// --- Backlog 8: pinned relationship property lookups ---
+// --- Pinned relationship property lookups ---
 //
 // BenchmarkPinnedRelPropertyLookup measures Rels().ByTypeAndProperty with a
 // transaction-time pin (sigma-tkgd's seat-scoped lookup) against the same

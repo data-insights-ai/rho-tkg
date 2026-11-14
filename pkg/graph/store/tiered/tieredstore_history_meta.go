@@ -9,7 +9,7 @@ import (
 
 // History temporal metadata (store.TemporalMetaHistoryCapability) across the
 // shards, so the graph's historical-pin resolution decodes only the winning
-// rows on tiered too (row 120). The row set is exactly GetNodeHistory's /
+// rows on tiered too. The row set is exactly GetNodeHistory's /
 // GetRelHistory's: the same routing (owner shard, archive or reference shard,
 // the other shards holding earlier lives), merged by version.
 

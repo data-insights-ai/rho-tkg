@@ -6,15 +6,15 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 17c/17d: PurgeNodesByLabelValidToBefore's predicate dereferenced
+// PurgeNodesByLabelValidToBefore's predicate dereferenced
 // n.Temporal().ValidTo unconditionally. Temporal() can legitimately be nil —
 // SetTemporal is never mandatory (raw Store interface writes, batch import,
 // and replication apply can all leave it unset) — so any node stored without
 // it crashed the whole purge call with a nil-pointer panic (a DoS: any single
 // untemporal'd node in the label poisons every future purge attempt on that
-// label). This file also closes 17d: PurgeNodesByLabelValidToBefore had ZERO
-// direct test coverage before this fix (Testing Rule 1/7 violation, the
-// direct cause of 17c shipping unnoticed).
+// label). This file also closes a second gap: PurgeNodesByLabelValidToBefore had ZERO
+// direct test coverage before this fix (the direct cause of the panic shipping
+// unnoticed).
 
 func TestMemoryStorePurgeNodesByLabelValidToBefore_NilTemporalDoesNotPanic(t *testing.T) {
 	t.Parallel()
@@ -33,7 +33,7 @@ func TestMemoryStorePurgeNodesByLabelValidToBefore_NilTemporalDoesNotPanic(t *te
 
 	defer func() {
 		if r := recover(); r != nil {
-			t.Fatalf("PurgeNodesByLabelValidToBefore panicked on a nil-Temporal node — BACKLOG 17c regression: %v", r)
+			t.Fatalf("PurgeNodesByLabelValidToBefore panicked on a nil-Temporal node — regression: %v", r)
 		}
 	}()
 

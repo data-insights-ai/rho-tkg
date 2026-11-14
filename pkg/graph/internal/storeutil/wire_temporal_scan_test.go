@@ -98,7 +98,7 @@ func TestScanWireTemporalMeta_MatchesSafeUnmarshal(t *testing.T) {
 				DeletedAt: types.Instant(randomTimestamp(rng)),
 				CreatedBy: "creator",
 			})
-			// The retraction marker (backlog 43) rides on tombstones.
+			// The retraction marker rides on tombstones.
 			if tm := n.Temporal(); tm.DeletedAt != 0 && rng.Intn(2) == 0 {
 				tm.Retracted = true
 			}

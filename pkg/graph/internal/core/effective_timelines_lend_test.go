@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestEffectiveTimelinesLendTheCurrentRow pins row 120 (sigma R37, ai-soc's
+// TestEffectiveTimelinesLendTheCurrentRow pins the lend rule (sigma R37, ai-soc's
 // listing bound): on a trusted store a timeline segment that is the current
 // row is the stored frozen row itself (the one Lend returns), not a per-call
 // DeepCopy of it. Mutation: reading the current row through Get's defensive

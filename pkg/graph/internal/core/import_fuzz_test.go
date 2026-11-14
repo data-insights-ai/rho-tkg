@@ -9,7 +9,7 @@ package core
 // rel / history), hash verification, and rollback. The contract:
 //
 //   - Import of ANY bytes must NEVER panic or crash the process — it returns an
-//     error (rejected) or a successfully restored graph. (Lesson 44: import is a
+//     error (rejected) or a successfully restored graph. (Import is a
 //     trust boundary; corrupt/hostile streams fail closed, never crash.)
 //   - A stream that imports SUCCESSFULLY must yield a self-consistent graph that
 //     re-exports without error — no read-but-cannot-re-emit asymmetry.

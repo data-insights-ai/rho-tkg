@@ -17,7 +17,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// TestNodeStoredSizesMatchHistory pins row 121's stored-size read on badger,
+// TestNodeStoredSizesMatchHistory pins the stored-size read on badger,
 // sharded and tiered (delta-encoded history, a reference and an event
 // label): for nodes never changed, updated, rewritten in valid time, excised
 // and deleted, NodeStoredSizes lists the current row (if any) with the

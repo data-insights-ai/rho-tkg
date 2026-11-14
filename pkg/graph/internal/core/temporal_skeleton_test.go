@@ -92,7 +92,7 @@ func TestSkeletonResolve_CascadeReopenDelete(t *testing.T) {
 	skeletonABNode(t, g, id, probes, []types.Instant{0, now})
 
 	// The delete ends the node's valid life at the delete instant: a
-	// far-future probe finds no version (handover 2a). This test first pinned
+	// far-future probe finds no version. This test first pinned
 	// the cascade-reopened row (k=1) here — an open cascade row of a deleted
 	// node read as valid forever, which is the 2a bug, not a property.
 	if got, err := g.Temporal.NodeAt(id, now+1_000_000); !errors.Is(err, storepkg.ErrNoVersionValidAt) {
@@ -115,8 +115,8 @@ func mustNodeProp(t *testing.T, g *Core, id types.NodeID, va, ta types.Instant) 
 	return v, nil
 }
 
-// TestSkeletonResolve_RelCascadeMirror is the relationship mirror (rule 2) of
-// the cascade-reopen-delete scenario.
+// TestSkeletonResolve_RelCascadeMirror is the relationship mirror (Node/
+// Relationship parity) of the cascade-reopen-delete scenario.
 func TestSkeletonResolve_RelCascadeMirror(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{BadgerInMemory: true})

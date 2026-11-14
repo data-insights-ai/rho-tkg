@@ -10,14 +10,14 @@ import (
 )
 
 // Numeric range reads over ANY version recorded at a pin (sigma-tkgd round
-// 9 request R9-1, backlog 16 as a new door).
+// 9 request R9-1, as a new door).
 //
 // ByLabelAndProperty(label, key, v, {ValidStart: types.UnboundedValidFrom,
 // ValidEnd: MaxInt64, TxAt: pin}) matches an entity when any row recorded at pin (every
 // valid-time version, those of an entity deleted before the pin included,
 // retracted lives dropped) carries the label and v. The range doors at a
-// coordinate test the ONE version the label read resolves (round 8, backlog
-// 16 unchanged). These doors are the equality door's semantics over a
+// coordinate test the ONE version the label read resolves (round 8
+// unchanged). These doors are the equality door's semantics over a
 // range: the entities of which some row recorded at pin carries the label
 // and a numeric value within the bounds (compared as RangeCardinalityAt
 // compares: a float32 widened, NaN never in range). Candidates are the
@@ -28,7 +28,7 @@ import (
 
 // anyValidStart and anyValidEnd bound "any valid time":
 // [types.UnboundedValidFrom, math.MaxInt64), a real interval filter that also
-// reaches rows valid only before the epoch (ledger row 60).
+// reaches rows valid only before the epoch.
 const (
 	anyValidStart = types.UnboundedValidFrom
 	anyValidEnd   = types.Instant(math.MaxInt64)

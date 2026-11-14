@@ -817,7 +817,7 @@ func (bs *Store) exactErasureChangeLogRetainedLocked() (bool, error) {
 
 func (bs *Store) purgeExactRelSidecarsLocked(rid types.RelID) {
 	// An erased value must not stay resident in a property membership
-	// sidecar: drop them all; they rebuild from the surviving rows (backlog 8).
+	// sidecar: drop them all; they rebuild from the surviving rows.
 	bs.dropPropertyTxMembersLocked()
 	raw := rid.SnowflakeID()
 	indexpkg.PurgeRelFromAllPropertyIndexes(bs.relPropertyIndexes, raw) // its 0x0C entries: the plan's entityOps
@@ -833,7 +833,7 @@ func (bs *Store) purgeExactRelSidecarsLocked(rid types.RelID) {
 }
 
 func (bs *Store) purgeExactNodeSidecarsLocked(nid types.NodeID) {
-	bs.dropPropertyTxMembersLocked() // backlog 8, see purgeExactRelSidecarsLocked
+	bs.dropPropertyTxMembersLocked() // see purgeExactRelSidecarsLocked
 	delete(bs.nodeBeliefWatermark, nid)
 	for tok, members := range bs.labelTxMembers {
 		delete(members, nid)

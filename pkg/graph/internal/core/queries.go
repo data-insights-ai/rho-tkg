@@ -32,7 +32,7 @@ func (c *Core) lookupRelTypeQueryToken(typeName string) (uint16, bool) {
 // has a paired (*Core).*Locked helper that runs the body without c.mu; the
 // public method wraps it in c.mu.RLock, the tx mirror (tx_consistent_reads.go)
 // calls it under tx.mu and its own brief c.mu.RLock (lockActiveCore), because
-// RWMutex is not reentrant (lesson 31). Input validation stays at the public
+// RWMutex is not reentrant. Input validation stays at the public
 // layer so both paths check alike.
 
 // ByLabel returns nodes with the label (resolved from string), with optional
@@ -228,7 +228,7 @@ type nodeRangeScanner interface {
 // the version ByLabel resolves, kept when its value AT THE PIN is in range.
 // No index needed, never ErrIndexNotFound. Under ValidStart+ValidEnd the
 // range tests the ONE resolved version, unlike ByLabelAndProperty, which
-// matches a value held anywhere in the interval (backlog 16).
+// matches a value held anywhere in the interval.
 func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -445,7 +445,7 @@ func (c *Core) nodeLabelCandidatesAtListing(tok uint16, opts storepkg.QueryOpts,
 
 // nodeLabelCandidateIDsAt is nodeLabelCandidatesAt for callers that resolve
 // every candidate themselves and need no current row: current members come
-// from store.MemberIDsCapability without reading rows (backlog 33), else
+// from store.MemberIDsCapability without reading rows, else
 // from the rows, and so does a depth-scoped read on a tiered store
 // (memberIDsAt). Callers hold c.mu (R or W).
 func (c *Core) nodeLabelCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]types.NodeID, error) {
@@ -499,8 +499,8 @@ func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, op
 // or no envelope covers the label. The envelope is a sound superset over every
 // row of the entity (current and history, any transaction time): pruning is
 // positive-evidence-only. Ascending input stays ascending. The one seam of the
-// node envelope prune: the ByLabel doors and the paged effective door
-// (backlog 75). Callers hold c.mu (R or W).
+// node envelope prune: the ByLabel doors and the paged effective door.
+// Callers hold c.mu (R or W).
 func (c *Core) pruneNodeLabelCandidates(tok uint16, ids []types.NodeID, opts storepkg.QueryOpts) []types.NodeID {
 	if c.temporalCandidates == nil {
 		return ids
@@ -709,7 +709,7 @@ func (c *Core) relTypeCandidatesFrom(tok uint16, currentIDs []types.RelID, opts 
 }
 
 // pruneRelTypeCandidates is pruneNodeLabelCandidates for relationship type tok
-// (backlog 21c, CreateRelTemporal).
+// (CreateRelTemporal).
 func (c *Core) pruneRelTypeCandidates(tok uint16, ids []types.RelID, opts storepkg.QueryOpts) []types.RelID {
 	if c.relTypeTemporalCandidates == nil {
 		return ids
@@ -1381,7 +1381,7 @@ func (c *Core) incomingRelsForNodesLocked(nodeIDs []types.NodeID, typeName strin
 // Candidates: the live adjacency UNIONED with each seed's ex-adjacency
 // (forEachRelAdjacencyCandidateID; docs/architecture.md "Adjacency-at-t fold
 // uses the seed's ex-adjacency"). A relationship deleted after txAt is still
-// visible (delete is a tx-time tombstone, lesson 60); one created after, or
+// visible (delete is a tx-time tombstone); one created after, or
 // deleted before, txAt is not; a backfilled one (AddWithTx) is visible from
 // its backfilled TxFrom.
 //
@@ -1451,7 +1451,7 @@ func (r *RelOps) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, t
 // Outgoing/IncomingForNodesAtTx; outgoing=true selects the start-endpoint
 // direction.
 func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeName string, txAt types.Instant, outgoing bool) (map[types.NodeID][]*types.Relationship, error) {
-	// Relationship-purge watermarks apply (backlog 21).
+	// Relationship-purge watermarks apply.
 	if err := c.checkRelsOnlyRetention(typeName, txAt); err != nil {
 		return nil, err
 	}
@@ -1545,7 +1545,7 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 // agrees with ByType(QueryOpts{TxPin: pin}) filtered by endpoint BY
 // CONSTRUCTION: candidates go through the same as-of resolution as the TxPin
 // door (findRelVersionForOpts -> relAsOfLocked -> storeutil.SelectAsOf), so
-// the doors cannot drift (rule 17).
+// the doors cannot drift.
 //
 // Use this for AS-OF-SYSTEM-TIME semantics. Unlike OutgoingForNodesAtTx it
 // returns EVERY edge believed at the pin: past-valid facts, point events and
@@ -1631,7 +1631,7 @@ func (r *RelOps) IncomingForNodesAtPin(nodeIDs []types.NodeID, typeName string, 
 // Outgoing/IncomingForNodesAtPin; outgoing=true selects the start-endpoint
 // direction. See OutgoingForNodesAtPin for the seed-tolerance contract.
 func (c *Core) directionalRelsForNodesAtPinLocked(nodeIDs []types.NodeID, typeName string, pin types.Instant, outgoing bool) (map[types.NodeID][]*types.Relationship, error) {
-	// Relationship-purge watermarks apply (backlog 21).
+	// Relationship-purge watermarks apply.
 	if err := c.checkRelsOnlyRetention(typeName, pin); err != nil {
 		return nil, err
 	}
@@ -2036,7 +2036,7 @@ func (c *Core) allRelsLocked(opts storepkg.QueryOpts) ([]*types.Relationship, er
 }
 
 // ForEach streams all relationships matching opts to fn; mirrors
-// NodeOps.ForEach (Testing Rule 2). Current-state unpaginated scans walk the
+// NodeOps.ForEach. Current-state unpaginated scans walk the
 // rel-ID iterator one row at a time (O(1) memory); temporal and paginated
 // scans fall back to All. Isolation is relaxed as in ForEachByType: IDs are
 // snapshotted, rows fetched and fn called without graph locks.
@@ -2272,7 +2272,7 @@ type relRangeScanner interface {
 // frozen-row contract as ForEachByType. A TEMPORAL QueryOpts is served by a
 // full fold over ByType's resolved versions (forEachRelInRangeTemporal):
 // value at the pin, ID order, no index; under ValidStart+ValidEnd the range
-// tests the ONE resolved version, unlike ByTypeAndProperty (backlog 16).
+// tests the ONE resolved version, unlike ByTypeAndProperty.
 func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {

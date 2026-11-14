@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkStateColumns (backlog 28): the state count and column scan of a
+// BenchmarkStateColumns: the state count and column scan of a
 // label / type of n entities at {ValidAt: now, TxAt: pin}, every tenth entity
 // updated after the pin (sigma's measured shape), against the unpinned column
 // scan of the same rows. Each iteration reads at a new valid instant, as

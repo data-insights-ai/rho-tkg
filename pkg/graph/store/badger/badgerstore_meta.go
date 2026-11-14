@@ -356,7 +356,7 @@ func (bs *Store) MetaSetDurable(key string, value []byte) error {
 }
 
 // MetaSetDurableRaising is MetaSetDurable that also raises the store-level
-// format marker to marker (store.MetaFormatMarkerCapability, backlog 73) and
+// format marker to marker (store.MetaFormatMarkerCapability) and
 // replicates the entry: the entry, the marker raise (the one tracker,
 // raiseFormatMarkerPendingLocked) and a ChangeMeta change-log record land in
 // the pending batch in one wbMu section, and a durable flush then commits that

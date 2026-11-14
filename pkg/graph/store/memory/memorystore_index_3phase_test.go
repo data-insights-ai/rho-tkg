@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 17h: CreatePropertyIndex/CreateRelPropertyIndex were rewritten from
+// CreatePropertyIndex/CreateRelPropertyIndex were rewritten from
 // "hold ms.mu.Lock() across the whole scan-and-build" to the 3-phase pattern
 // already proven out by the badger backend — install an empty live index and
 // snapshot candidate IDs under Lock, scan with only brief per-row RLocks (no
@@ -61,7 +61,7 @@ func TestCreatePropertyIndex_ReleasesLockDuringScan(t *testing.T) {
 	}
 	if free != checked {
 		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
-			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			"hold the exclusive lock across the scan (regression)",
 			checked-free, checked)
 	}
 }
@@ -105,7 +105,7 @@ func TestCreateRelPropertyIndex_ReleasesLockDuringScan(t *testing.T) {
 	}
 	if free != checked {
 		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
-			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			"hold the exclusive lock across the scan (regression)",
 			checked-free, checked)
 	}
 }

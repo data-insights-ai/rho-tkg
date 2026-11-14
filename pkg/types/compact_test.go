@@ -289,7 +289,7 @@ func assertNodeViewsEqual(t *testing.T, got, want *Node) {
 }
 
 // TestNodeCompactFrozenCopyAnswersLikeAFrozenDeepCopy is the node mirror
-// (testing rule 2).
+// (Node/Relationship parity).
 func TestNodeCompactFrozenCopyAnswersLikeAFrozenDeepCopy(t *testing.T) {
 	for _, c := range compactNodeCases() {
 		t.Run(c.name, func(t *testing.T) {

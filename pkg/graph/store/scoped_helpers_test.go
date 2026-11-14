@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// scopedStore is a store with the scoped change-log doors (BACKLOG 11f): the
+// scopedStore is a store with the scoped change-log doors: the
 // scoped_*_test.go battery runs on every backend that implements it.
 type scopedStore interface {
 	storecontract.Store

@@ -7,7 +7,7 @@ import (
 )
 
 // The W5 oracle's generator for the caller-instant interval corrections
-// (SetNodeVersionIntervalWithTx / SetRelVersionIntervalWithTx, backlog 34),
+// (SetNodeVersionIntervalWithTx / SetRelVersionIntervalWithTx),
 // each through a randomly chosen door (standalone, GraphTx, Batch, ingest
 // strong, ingest concurrent; ivDoors, in the order of txbNodeFamilies).
 //
@@ -17,7 +17,7 @@ import (
 // version: the appended ones) through the as-of, as-of set and TxPin doors,
 // and pin t-1 the belief before. A t at or below any TxFrom / TxTo of the
 // chain is refused on every door with ErrTxOrder
-// and changes nothing. The sequence-level checks (rule 15 over every intent,
+// and changes nothing. The sequence-level checks (two-phase over every intent,
 // the bitemporal oracle on the captured chains, cross-backend equality) run on
 // these chains like on every other op.
 

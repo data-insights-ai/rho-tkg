@@ -9,14 +9,14 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// These tests exercise the BACKLOG 11f Batch E cascade-door wiring end to
+// These tests exercise the cascade-door wiring end to
 // end through the real cascadeNodeVersionInterval / cascadeRelVersionInterval
 // entry points (via TempOps.SetNodeVersionInterval/SetRelVersionInterval,
 // which forward ctx unchanged — the same function GraphTx.
 // SetNodeVersionInterval/SetRelVersionInterval call) — not just the
 // putNodeVersionScopedAware/replaceNodeScopedAware helpers in isolation.
 // This proves the wiring added in temporal_cascade.go actually routes
-// without needing to touch (or re-verify) the delicate BACKLOG 10b cascade
+// without needing to touch (or re-verify) the delicate cascade
 // algorithm itself.
 
 func newTxTimeGraphWithChangeLog(t *testing.T) *Core {

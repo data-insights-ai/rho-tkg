@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Final review of backlog 56.
+// Final review of the node temporal envelope.
 
 // crashReopen flushes, closes without an open image (a crash) and reopens.
 func crashReopen(t *testing.T, bs *Store, cfg Config) *Store {

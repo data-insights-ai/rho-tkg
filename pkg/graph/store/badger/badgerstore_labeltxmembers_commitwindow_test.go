@@ -10,7 +10,7 @@ import (
 
 // These tests pin the SCAN->OVERLAY commit window in the lazy K1 membership
 // sidecar builds (ensureLabelTxMembersBuilt / ensureRelTypeTxMembersBuilt) —
-// the same race lesson 64 closed in getNodeHistoryByPrefix. The build holds
+// the same race closed in getNodeHistoryByPrefix. The build holds
 // idxMu.Lock, but flush() releases its idxMu.RLock right after parking
 // `pending` into `flushing`, so a flush that was already parked still commits
 // to Badger and clears `flushing` while the build runs. A build that scans

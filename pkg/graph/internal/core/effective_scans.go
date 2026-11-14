@@ -12,7 +12,7 @@ import (
 )
 
 // =============================================================================
-// Broader effective scans (backlog 35, requested by sigma-tkgd 2026-10-09)
+// Broader effective scans (requested by sigma-tkgd 2026-10-09)
 //
 // Every effective scan is a candidate gather (under the read lock) followed by
 // streamNodeTimelines / streamRelTimelines: each candidate's timeline is read
@@ -32,7 +32,7 @@ var ErrInvalidDirection = errors.New("graph: invalid relationship direction")
 // streamNodeTimelines streams the effective timeline at pin of each id (in
 // order; an unknown id is skipped) as the segments whose row keep accepts
 // (keep nil: every segment); fn returning false stops. The timelines are read
-// through streamEntityTimelines (one store snapshot per scan, backlog 55).
+// through streamEntityTimelines (one store snapshot per scan).
 func (c *Core) streamNodeTimelines(ids []types.NodeID, pin types.Instant, keep func(*types.Node) bool, fn func(temporal.NodeSegment) bool) error {
 	return c.streamNodeTimelinesRun(nil, ids, pin, keep, fn)
 }

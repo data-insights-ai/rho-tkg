@@ -19,7 +19,7 @@ import (
 // existing rows in place while preserving their original TxFrom, which left a
 // hole in the pre-correction belief (the inserted interval's slot returned
 // nothing). Runs node + rel across all three backends — the resolver/cascade
-// must agree everywhere (rule 2 parity, MR protocol phase 2).
+// must agree everywhere (Node/Relationship parity, MR protocol phase 2).
 func TestCascade_BeliefIsConsistentPerTxAt(t *testing.T) {
 	t.Parallel()
 	for _, backend := range storeContractBackends() {

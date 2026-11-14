@@ -1,6 +1,6 @@
 package core
 
-// WP-31 (sigma row 59): relationship property indexes and event-label node
+// WP-31 (sigma): relationship property indexes and event-label node
 // property indexes on the tiered store answer exactly as on every other
 // backend. One scenario through the graph doors on memory, badger, sharded and
 // a disk tiered store whose rows span the reference shard, a warm event shard

@@ -335,7 +335,7 @@ func hfIDsContain(ids []types.NodeID, want types.NodeID) bool {
 	return false
 }
 
-// TestHFIndexBucketForIsMonotonicAtTheExtremes (backlog 73): a row valid
+// TestHFIndexBucketForIsMonotonicAtTheExtremes: a row valid
 // since -inf (types.UnboundedValidFrom) must land in a bucket at or below
 // every later start's; validFrom - origin overflowed and wrapped it to the
 // top.

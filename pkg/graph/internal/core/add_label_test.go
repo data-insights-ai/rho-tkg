@@ -178,7 +178,7 @@ func TestAddNodeLabel_TooManyLabelsDoesNotRegisterRejectedLabel(t *testing.T) {
 	}
 }
 
-// TestAddNodeLabel_RejectsUniqueConstraintViolation guards BACKLOG 9n:
+// TestAddNodeLabel_RejectsUniqueConstraintViolation guards this:
 // docs/architecture.md ("Enforce at the finalized-state seam, not per door")
 // documents AddLabel as "the door everyone forgets" for unique-constraint
 // enforcement — a node NOT yet carrying the constrained
@@ -213,7 +213,7 @@ func TestAddNodeLabel_RejectsUniqueConstraintViolation(t *testing.T) {
 	// of the constrained value — must be rejected.
 	err = g.Nodes.AddLabel(ctx, other.ID(), "Employee")
 	if err == nil {
-		t.Fatal("AddLabel succeeded despite a pre-existing unique-value conflict — BACKLOG 9n regression")
+		t.Fatal("AddLabel succeeded despite a pre-existing unique-value conflict — regression")
 	}
 	if !errors.Is(err, ErrUniqueViolation) {
 		t.Fatalf("AddLabel error = %v, want ErrUniqueViolation", err)

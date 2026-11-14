@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 55, review round: a scan reads effScanChunk entities per hold of
+// A scan reads effScanChunk entities per hold of
 // the read lock and hands them to fn after it; no read snapshot stays open
 // while fn runs (a read transaction's mark would keep every version it can
 // see from compaction and value-log GC for as long as fn takes), and an

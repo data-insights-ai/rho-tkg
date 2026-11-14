@@ -27,7 +27,7 @@ func withCompactionChunkHook(t *testing.T, fn func()) {
 }
 
 // TestCompaction_ChunkedUnderConcurrentWrite is the primary correctness proof
-// for BACKLOG 13c: a chunk's plan and its apply happen under ONE uninterrupted
+// for chunked compaction: a chunk's plan and its apply happen under ONE uninterrupted
 // c.mu.Lock hold, so a concurrent write landing in a BETWEEN-chunk gap can only
 // ever affect a not-yet-planned entity in a LATER chunk — which is planned
 // FRESH against the CURRENT chain when its own chunk's turn comes, never a
@@ -111,7 +111,7 @@ func TestCompaction_ChunkedUnderConcurrentWrite(t *testing.T) {
 }
 
 // TestCompaction_RelChunkedUnderConcurrentWrite mirrors the node test for
-// CompactHistoryRels / compactRelChunk (Testing Rule 2).
+// CompactHistoryRels / compactRelChunk.
 func TestCompaction_RelChunkedUnderConcurrentWrite(t *testing.T) {
 	withCompactionChunk(t, 2)
 	g, err := New(Config{})

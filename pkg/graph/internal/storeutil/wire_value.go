@@ -406,7 +406,7 @@ func PropertyTypeTag(v any) byte {
 	return types.PropertyHashTypeTag(v)
 }
 
-// propertyToWire's ptCustom branch (BACKLOG 15f, investigated): the full
+// propertyToWire's ptCustom branch (investigated): the full
 // marshal + reflect-unmarshal + hash-before/hash-after + compare round-trip
 // runs on EVERY write of a custom-typed property value, not just at
 // type-registration time — deliberately. types.RegisterPropertyStructType

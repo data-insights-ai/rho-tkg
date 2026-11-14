@@ -16,7 +16,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
-// TestRelRetentionPurgeFeed (backlog 21): a relationship purge emits ONE
+// TestRelRetentionPurgeFeed: a relationship purge emits ONE
 // ChangeRelRangePurge record (tag 14, the predicate) and no per-entity
 // record, byte-identical on badger, sharded and tiered; a replica re-runs it
 // to the primary's state and refuses the low pin; a replica bootstrapped
@@ -166,7 +166,7 @@ func TestRelRetentionPurgeFeed(t *testing.T) {
 	}
 }
 
-// TestImportApplyNodeRetention (backlog 21): an export taken after a node
+// TestImportApplyNodeRetention: an export taken after a node
 // purge carries the node watermark; Import ignores it by default (as before)
 // and applies it with ImportOptions.ApplyNodeRetention.
 func TestImportApplyNodeRetention(t *testing.T) {

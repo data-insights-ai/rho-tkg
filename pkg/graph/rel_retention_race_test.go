@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestRelRetentionPurgeTxRollbackNoResurrection (backlog 21): a transaction
+// TestRelRetentionPurgeTxRollbackNoResurrection: a transaction
 // that touched an aged-out relationship and then rolls back must not bring it
 // back after a relationship purge. Rollback restores the transaction's
 // pre-images (the relaxed v4 isolation overwrites a standalone write that
@@ -70,7 +70,7 @@ func TestRelRetentionPurgeTxRollbackNoResurrection(t *testing.T) {
 	}
 }
 
-// TestNodeRetentionPurgeTxRollback (backlog 21, found on the way): the node
+// TestNodeRetentionPurgeTxRollback (found on the way): the node
 // purge had the same gap — it ran under an open transaction that updated its
 // victim and the Rollback then failed on the purged node. It now waits for
 // the transaction like the relationship purge.
@@ -120,7 +120,7 @@ func TestNodeRetentionPurgeTxRollback(t *testing.T) {
 	}
 }
 
-// TestRetentionPurgeWaitHonoursCtx (backlog 21 F1): a purge waiting for an
+// TestRetentionPurgeWaitHonoursCtx: a purge waiting for an
 // open transaction (e.g. one the caller's own goroutine holds) returns
 // ctx.Err() when ctx ends instead of blocking for good.
 func TestRetentionPurgeWaitHonoursCtx(t *testing.T) {
@@ -166,7 +166,7 @@ func TestRetentionPurgeWaitHonoursCtx(t *testing.T) {
 	}
 }
 
-// TestRelRetentionPurgeConcurrent (backlog 21, run under -race): a purge of
+// TestRelRetentionPurgeConcurrent (run under -race): a purge of
 // the old EVENT relationships while writers add and delete new ones and
 // readers scan both types. Afterwards no relationship minted below the
 // boundary is left, every new one is answered, and the count agrees with the

@@ -13,7 +13,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// store.ReadSnapshotCapability (backlog 55): an effective scan reads a run of
+// store.ReadSnapshotCapability: an effective scan reads a run of
 // entities (one chunk, one hold of the graph read lock) through ONE read
 // transaction and forward-walking iterators, instead of a View per read
 // (three per entity with history: the row, the temporal skeletons, the
@@ -109,7 +109,7 @@ type histMemo struct {
 // metaMemo is the committed history skeleton (key → temporal meta) of the
 // entity whose skeleton was read last in the current transaction: the
 // presence probe and the skeleton read of one entity walk Badger once and copy
-// no row (row 121); a winning row is then read on its own (version).
+// no row; a winning row is then read on its own (version).
 type metaMemo struct {
 	prefix string
 	metas  []keyedMeta // ascending by key (by version); never nil once read
@@ -203,7 +203,7 @@ func (s *readSnapshot) seek(i int, key []byte) *badgerv4.Iterator {
 
 // row hands the value stored at key (keyspace i) to decode, or reports
 // false. The value is the iterator's buffer, valid only during decode: the
-// iterator reuses it across rows, so a run of reads copies no row (row 121).
+// iterator reuses it across rows, so a run of reads copies no row.
 func (s *readSnapshot) row(i int, key []byte, decode func(val []byte) error) (bool, error) {
 	it := s.seek(i, key)
 	if !it.Valid() || !bytes.Equal(it.Item().Key(), key) {
@@ -381,7 +381,7 @@ func (s *readSnapshot) version(prefix, key []byte) ([]byte, error) {
 // versionRow hands history row key's raw value to decode, read as version
 // reads it. A full committed row is decoded inside the read, from the
 // iterator's buffer (valid only during decode), so a winning history row
-// costs one decode and no copy of its own (row 121); a delta
+// costs one decode and no copy of its own; a delta
 // row is copied out first, as its anchor is read through the same
 // transaction.
 func (s *readSnapshot) versionRow(i int, prefix, key []byte, decode func(raw []byte) error) error {

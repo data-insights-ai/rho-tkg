@@ -10,8 +10,8 @@ import (
 )
 
 // RelPropertyStats returns NDV/min/max/count planner statistics for
-// (relTypeToken, propertyKey) — the relationship mirror of NodePropertyStats
-// (BACKLOG 21a). Missing/unpopulated pairs return a zero-value PropertyStats,
+// (relTypeToken, propertyKey) — the relationship mirror of NodePropertyStats.
+// Missing/unpopulated pairs return a zero-value PropertyStats,
 // not an error, mirroring RelPropertyTypeClassCounts' "unregistered → zero"
 // convention. Locking follows the exact same fine-grained, write-generation-
 // guarded rescan discipline as NodePropertyStats — see its doc comment for
@@ -148,7 +148,7 @@ func (bs *Store) addRelPropertyStatsCounts(r *types.Relationship) {
 // removeRelPropertyStatsCounts takes a row leaving the current set back out:
 // presence counters decrement and each value is Forgotten by the
 // accumulator. The caller passes the row it removes, so no per-relationship
-// memo is kept (backlog 53). Caller MUST already hold bs.idxMu.Lock().
+// memo is kept. Caller MUST already hold bs.idxMu.Lock().
 func (bs *Store) removeRelPropertyStatsCounts(r *types.Relationship) {
 	bs.adjustRelPropertyStatsCounts(r, -1)
 }

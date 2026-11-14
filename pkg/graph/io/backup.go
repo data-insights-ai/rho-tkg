@@ -196,7 +196,7 @@ func (a *API) BackupDeltaTo(dir string, since Cursor) (Cursor, error) {
 // position onward and counts how many carry the delta change-record tag,
 // without decoding any record body. It has no precondition on where r is
 // positioned — it simply consumes frames until EOF — so a caller may start
-// it anywhere in a well-formed frame sequence. BACKLOG 8f: BackupDeltaTo's
+// it anywhere in a well-formed frame sequence. BackupDeltaTo's
 // call site passes r already past the header record (consumed by the
 // preceding HeaderOf call), NOT at the stream's start, which is exactly
 // what's wanted here: counting the header would corrupt the "empty delta"

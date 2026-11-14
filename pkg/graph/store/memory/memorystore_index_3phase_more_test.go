@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 17h (remainder): CreateCompositePropertyIndex, CreateTemporalIndex,
+// CreateCompositePropertyIndex, CreateTemporalIndex,
 // CreateHighFrequencyIndex, and CreateVectorIndexWithOptions were ALSO
 // rewritten from "hold ms.mu.Lock() across the whole scan-and-build" to the
 // same 3-phase pattern already proven out for CreatePropertyIndex (see
@@ -62,7 +62,7 @@ func TestCreateCompositePropertyIndex_ReleasesLockDuringScan(t *testing.T) {
 	}
 	if free != checked {
 		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
-			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			"hold the exclusive lock across the scan (regression)",
 			checked-free, checked)
 	}
 }
@@ -201,7 +201,7 @@ func TestCreateTemporalIndex_ReleasesLockDuringScan(t *testing.T) {
 	}
 	if free != checked {
 		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
-			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			"hold the exclusive lock across the scan (regression)",
 			checked-free, checked)
 	}
 }
@@ -221,7 +221,7 @@ func TestCreateTemporalIndex_ConcurrentMutationDuringScanIsReconciled(t *testing
 	// provably land inside Phase 2 (about half of nodes 1..4000 already read
 	// stale). A free goroutine could lose the race to Phase 3, and a write after
 	// publish meets the grow-only envelope (..._ReplaceAfterPublishKeepsEnvelope):
-	// CI run 39035363652, todo row 72.
+	// CI run 39035363652.
 	var scanned int
 	mutated := false
 	phase2ScanHook = func() {
@@ -320,7 +320,7 @@ func TestCreateHighFrequencyIndex_ReleasesLockDuringScan(t *testing.T) {
 	}
 	if free != checked {
 		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
-			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			"hold the exclusive lock across the scan (regression)",
 			checked-free, checked)
 	}
 }
@@ -456,7 +456,7 @@ func TestCreateVectorIndexWithOptions_ReleasesLockDuringScan(t *testing.T) {
 	}
 	if free != checked {
 		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
-			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			"hold the exclusive lock across the scan (regression)",
 			checked-free, checked)
 	}
 }

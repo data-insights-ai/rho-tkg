@@ -19,7 +19,7 @@ import (
 // time at "now". That "now" was the WALL clock, but every TX-as-valid-time
 // start (a later version's UpdatedAt) is stamped by the graph's transaction
 // clock, whose monotonic floor runs AHEAD of the wall after a burst of more
-// than one write per millisecond (lesson 71), after an HLC AdvanceClock, and on
+// than one write per millisecond, after an HLC AdvanceClock, and on
 // a replica that applied a primary's stamps. Until the wall caught up, the
 // newer versions sat "in the future" of wall-now, so the door returned an
 // older superseded version — and a different one on each call as the wall

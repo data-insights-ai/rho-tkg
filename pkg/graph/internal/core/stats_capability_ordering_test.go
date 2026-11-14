@@ -7,7 +7,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// BACKLOG 14e (lessons 17/58 drift pattern): PropertyTypeClassCounts and
+// Sibling-door drift pattern: PropertyTypeClassCounts and
 // RelPropertyTypeClassCounts check the store's optional capability BEFORE
 // looking up the label/type token, so a store that declines the capability
 // (e.g. DisablePlannerStats) fails closed with ErrCapabilityNotSupported

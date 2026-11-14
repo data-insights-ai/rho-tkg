@@ -13,7 +13,7 @@ import (
 
 // BenchmarkRelHistoryStamps / BenchmarkNodeHistoryStamps measure the
 // history-stamps sidecar on a reopened on-disk store of 200 K and 1 M
-// entities where 1 % hold three stamped history rows (backlog 30):
+// entities where 1 % hold three stamped history rows:
 //
 //   - build: the one-time cost of the first call (a scan of every history
 //     value's temporal fields plus the install), the sidecar reset before

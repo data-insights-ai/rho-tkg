@@ -7,8 +7,8 @@ import (
 )
 
 // Contract-exercise battery: direct coverage for the mandatory-Store doors S1
-// implemented as thin per-shard delegations but did not test directly (Testing
-// Rule 1 — every public method gets a direct test). Correctness of the underlying
+// implemented as thin per-shard delegations but did not test directly (every
+// public method gets a direct test). Correctness of the underlying
 // per-shard behaviour is owned by the badger batteries; here we assert the
 // SHARDED routing/fold wrapper round-trips across a multi-slot spread.
 

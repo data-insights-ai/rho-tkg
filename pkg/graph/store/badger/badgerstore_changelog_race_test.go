@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// BACKLOG 18i: logEnabled was a plain bool written under wbMu
+// logEnabled was a plain bool written under wbMu
 // (DisableChangeLog/EnableChangeLog/EnableChangeLogWithSource) but read by
 // the PUBLIC ChangeLogEnabled() accessor with no lock at all — a real data
 // race under Go's memory model whenever ChangeLogEnabled() is called

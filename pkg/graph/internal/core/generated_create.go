@@ -10,7 +10,7 @@ import (
 )
 
 // putGeneratedNode persists a freshly-ID-minted node. When ctx carries a
-// BACKLOG 11f scoped change-log token (see scopeTokenFrom) and the store
+// scoped change-log token (see scopeTokenFrom) and the store
 // supports store.ScopedPutCapability, the write routes through PutNodeScoped
 // so its change-log record lands in that scope's buffer instead of the eager
 // pending log. FOUNDATION ONLY: nothing constructs a token-carrying ctx yet
@@ -54,7 +54,7 @@ func (c *Core) putGeneratedRelationship(ctx context.Context, r *types.Relationsh
 // ImportNodeWithID/AddByIDIfAbsent. Unlike putGeneratedNode this door never
 // goes through c.generatedCreate (import supplies its own ID, so there is no
 // fresh-ID-minting semantics to preserve) — it routes through
-// store.ScopedPutCapability under the same BACKLOG 11f token rule and
+// store.ScopedPutCapability under the same token rule and
 // otherwise falls straight through to the plain c.store.PutNode door that
 // existed here before scope-token routing was added (Batch D).
 func (c *Core) putImportedNode(ctx context.Context, n *types.Node) error {

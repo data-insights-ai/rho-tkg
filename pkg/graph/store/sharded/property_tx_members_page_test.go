@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestShardedPropertyTxMemberPageMerge (backlog 69): a page is the smallest
+// TestShardedPropertyTxMemberPageMerge: a page is the smallest
 // IDs above the cursor across both slots, ascending, an entity a move left on
 // two shards once with the lower bound. Faulty fan-outs caught: one shard
 // only, shard order instead of ID order, duplicates, a limit applied per

@@ -35,8 +35,7 @@ var _ storecontract.HistoryPresenceCapability = (*Store)(nil)
 // sit above the SET's version); a DELETE moves the ID to unknown under a fresh
 // stamp (other rows may remain). A probe installs its answer only if the ID
 // still carries the stamp it read before the probe, so a write that lands
-// during the probe is never overwritten (lessons 63 / 74, per-ID write
-// generation).
+// during the probe is never overwritten (per-ID write generation).
 //
 // The set is built once, lazily: the build turns tracking on under wbMu, then
 // scans the history keyspace for the highest version per ID (key-only: the
@@ -47,7 +46,7 @@ var _ storecontract.HistoryPresenceCapability = (*Store)(nil)
 // holds buildMu, so a scan never straddles a wipe, and drops the set with the
 // write buffer; the next call rebuilds it.
 //
-// RAM: O(IDs with history) in a columnar idTable (backlog 41): 12 B per slot
+// RAM: O(IDs with history) in a columnar idTable: 12 B per slot
 // at most 80 % full (TestHistorySidecarRAMPerID; a Go map paid 24-38 B per
 // ID); not built until the first HasNodeHistory / HasRelHistory / bulk as-of
 // call (HistoryPresenceStats reports it).
@@ -179,8 +178,8 @@ func (bs *Store) HasRelHistory(id types.RelID) (bool, error) {
 // historyTopBound returns the presence set's upper bound of id's highest
 // history version when the set decides it: built, the ID in has (not
 // unknown after a delete) and its top bounded. A history page from above the
-// bound is empty without an iterator (the graph's exact row-above probe,
-// backlog 70). ok false: read the keys.
+// bound is empty without an iterator (the graph's exact row-above probe).
+// ok false: read the keys.
 func (bs *Store) historyTopBound(p *historyPresence, id snowflake.ID) (uint32, bool) {
 	if bs.historyPresenceProbeOnly || !p.built.Load() {
 		return 0, false
@@ -269,7 +268,7 @@ func (bs *Store) ensureHistoryPresenceBuilt(p *historyPresence, kind byte) error
 //     snapshot still holds, and a probe may since have resolved a LOWER top -
 //     the trim doors take no idxMu).
 //
-// Every other case falls back to the snapshot key read (lessons 63, 64, 74).
+// Every other case falls back to the snapshot key read.
 // The zero value never answers.
 type bulkPresence struct {
 	p       *historyPresence
@@ -367,7 +366,7 @@ type idTop struct {
 }
 
 // scanHistoryTops returns every ID with a history row and its highest version:
-// the buffered writes (overlay captured BEFORE the badger view, lesson 64) and
+// the buffered writes (overlay captured BEFORE the badger view) and
 // the committed keys, key-only. A pending delete masks its committed key.
 // An ID of up to historyForwardRows rows is walked forward; a deeper one costs a
 // reverse seek to the end of its key range and a seek to the next ID.
@@ -496,7 +495,7 @@ func committedHistoryTop(rit *badgerv4.Iterator, idPrefix, end []byte, deletes m
 }
 
 // probeHistoryPresence answers for one ID from its keys: the write-buffer
-// overlay (captured BEFORE the badger view, lesson 64) then a key-only,
+// overlay (captured BEFORE the badger view) then a key-only,
 // prefix-bounded seek. A buffered delete masks its committed key. With wantTop
 // it also returns the highest version (clamped) of the surviving rows - a
 // reverse seek instead of the first-key early exit.

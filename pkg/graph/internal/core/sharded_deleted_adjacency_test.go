@@ -9,8 +9,8 @@ import (
 )
 
 // TestShardedDeletedIterationCapability_AdjacencyAtTFold: OutgoingRelsAt /
-// IncomingRelsAt reach a DELETED relationship on a sharded-backed graph (since
-// backlog 50 through the store's ex-adjacency).
+// IncomingRelsAt reach a DELETED relationship on a sharded-backed graph (through
+// the store's ex-adjacency).
 //
 // This package cannot exercise the "rel's own shard differs from its
 // endpoints' shard" case with hand-crafted IDs (sharded's mkNodeID/mkRelID
@@ -72,7 +72,7 @@ func TestShardedDeletedIterationCapability_AdjacencyAtTFold(t *testing.T) {
 	// strictly later than that real stamp, not just later than `before`.
 	after := g.now() + 1
 
-	// Two-phase test (rule 15): rel existed and was valid at `before`, was
+	// Two-phase test: rel existed and was valid at `before`, was
 	// deleted after that, so a query pinned at `before` must still surface it —
 	// proving the deleted-rel fold (not just the live adjacency index, which no
 	// longer has this rel) is exercised.
@@ -92,7 +92,7 @@ func TestShardedDeletedIterationCapability_AdjacencyAtTFold(t *testing.T) {
 		t.Fatalf("IncomingRelsAt(b, before) = %v, want exactly [%v]", in, rel.ID())
 	}
 
-	// Negative assertion (rule 16): after deletion, a query pinned at `after`
+	// Negative assertion: after deletion, a query pinned at `after`
 	// must NOT surface the now-deleted relationship.
 	outAfter, err := g.Temporal.OutgoingRelsAt(a.ID(), after)
 	if err != nil {

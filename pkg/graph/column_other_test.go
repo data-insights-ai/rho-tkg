@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 48: ColumnData.Other marks a cell whose row holds the property outside
+// ColumnData.Other marks a cell whose row holds the property outside
 // the column (a list, a map, a scalar of another kind).
 
 // otherProps puts the column with Other cells SECOND, so a mark on the wrong

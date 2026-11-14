@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// BACKLOG 16g: hnswVisitedBuf replaces a fresh []bool allocated on every
+// hnswVisitedBuf replaces a fresh []bool allocated on every
 // searchLayer call with a pooled, generation-tagged buffer. These tests
 // pin the buffer's own correctness in isolation, independent of the full
 // HNSW search machinery (which the package's existing recall/determinism

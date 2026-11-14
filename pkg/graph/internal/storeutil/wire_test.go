@@ -1411,7 +1411,7 @@ func TestValidatePropertyWireSliceRejectsEmptyKeyNeitherV1NorV2(t *testing.T) {
 
 	pw := []PropertyWire{{Key: "", KeyToken: 0, Value: int64(1), Type: ptInt64}}
 	if err := ValidatePropertyWireSlice(pw); err == nil {
-		t.Fatal("ValidatePropertyWireSlice with an empty Key and zero KeyToken returned nil, want error — BACKLOG 15l regression")
+		t.Fatal("ValidatePropertyWireSlice with an empty Key and zero KeyToken returned nil, want error — regression")
 	}
 }
 

@@ -1,4 +1,0 @@
-# mutant: a drained chunk leaves the prefix sums stale
---- FAIL: TestCountedChunks_DrainedChunkBetweenFullNeighbours (0.00s)
-    property_index_prefixcount_test.go:253: drained: [-1,1e+09] = 2048, want 4095 (chunks 2)
-FAIL

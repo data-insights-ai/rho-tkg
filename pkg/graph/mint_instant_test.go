@@ -11,7 +11,7 @@ import (
 
 // Item 36: the public mint-instant derivation decodes the wall-clock instant
 // the ID was minted at, for Add and AddWithTx, node and relationship, on every
-// backend. Since backlog 62 it is no longer the resolver's start of a row
+// backend. It is no longer the resolver's start of a row
 // without a valid-from (that is the row's TxFrom: TestUntimedRowsStartAtTxFrom),
 // only of a legacy row without a TxFrom.
 

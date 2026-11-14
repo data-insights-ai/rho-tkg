@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestTieredNodePropertyTxMembersOnePass (backlog 74): the node property
+// TestTieredNodePropertyTxMembersOnePass: the node property
 // indexes of a tiered store live on the reference shard, whose sidecars one
 // pass builds. Faulty build caught: one reference-shard scan per (label, key)
 // (three lookups, three builds); the members must equal the rows.

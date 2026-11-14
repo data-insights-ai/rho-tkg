@@ -9,13 +9,13 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReImportContinuesTheChainFacade — backlog 38 through the public API on
+// TestReImportContinuesTheChainFacade — a re-import continuing the chain, through the public API on
 // every backend, node and relationship: a re-import of a deleted ID starts one
 // above the earlier life's top version and links its PrevHash to that row; an
 // Update then keeps every earlier history row (versions 0, 1 and 2 all
 // stored); the chain verifies; a backfilled re-import whose tkg_tx_from is at
 // or below the delete is refused with errors.Is(graph.ErrTxOrder) and
-// errors.Is(graph.ErrInvalidTxFrom) at the public layer (rule 4) and writes
+// errors.Is(graph.ErrInvalidTxFrom) at the public layer and writes
 // nothing.
 func TestReImportContinuesTheChainFacade(t *testing.T) {
 	t.Parallel()
@@ -40,7 +40,7 @@ func TestReImportContinuesTheChainFacade(t *testing.T) {
 				history  func(id int64) ([]uint32, []string, error)
 				verify   func(id int64) (bool, error)
 				// doors: every import door of the kind (the refusal is checked
-				// on each, rule 4).
+				// on each).
 				doors map[string]func(id int64, props map[string]any) error
 			}
 			kinds := []kind{

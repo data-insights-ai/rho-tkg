@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// A lookup on a BUILT membership sidecar (property: backlog 8; K1 label and
+// A lookup on a BUILT membership sidecar (property, K1 label and
 // rel type) is a read: it must take ms.mu shared, so concurrent lookups and
 // other readers do not serialize on it. Faulty implementation caught: taking
 // ms.mu.Lock on every call. The test holds a read lock (as a concurrent reader

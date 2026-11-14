@@ -194,7 +194,7 @@ func TestCacheBudget_TombstoneLifecycleReleasesBytes(t *testing.T) {
 	}
 }
 
-// TestCacheBudget_MarkDeletedShrinksAlreadyCachedEntry (BACKLOG 16m) pins
+// TestCacheBudget_MarkDeletedShrinksAlreadyCachedEntry pins
 // that MarkDeleted on a key ALREADY in the cache releases the stale
 // payload's accounted bytes immediately, not just after flush. Get/
 // GetNoPromote/Peek never return entry.Value once Deleted is set, so

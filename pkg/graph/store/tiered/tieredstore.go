@@ -406,7 +406,7 @@ type Store struct {
 	droppedWrites     [3]atomic.Uint64            // their writable checkouts
 	refArchive        atomic.Pointer[BadgerStore] // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu         sync.Mutex                  // serializes lazy-open of refArchive (single-flight)
-	migrateMu         sync.Mutex                  // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
+	migrateMu         sync.Mutex                  // serializes concurrent MigrateFromBadger calls against this Store
 	asOfWalkGapHook   func()                      // tests: between NodeAsOfWalk's liveness check and its read
 	moveMu            sync.RWMutex                // ArchiveNode/RestoreNode hold it; reads of the reference shard and the archive (and point routes) read-hold it (refAndArchive, lockMoveRead); writes do not, so a direct user must not write during a move (the graph fences with c.mu)
 	fanoutRefReadHook func()                      // test-only: refArchiveGapHook runs it between a door's reference shard read and its archive read
@@ -451,7 +451,7 @@ type Store struct {
 	flushInt         time.Duration
 	coldAfter        time.Duration
 	// idleTimeout is the cold-shard idle timeout in nanoseconds; atomic because
-	// SetIdleTimeoutForTest writes it while idleCloseLoop reads it (row 100).
+	// SetIdleTimeoutForTest writes it while idleCloseLoop reads it.
 	idleTimeout       atomic.Int64
 	maxOpenColdShards int
 	// openColdShards counts cold shards currently holding a Badger handle the
@@ -510,7 +510,7 @@ type Store struct {
 	// scopeMu guards scopeOpen/scopeDivertOn — a leaf lock, never held while
 	// acquiring ts.mu, so it is safe to take from inside rotateHotShardLocked
 	// (which already holds ts.mu.Lock). They track whether a change-log scope
-	// (BACKLOG 19h) is currently open store-wide and its current divert state,
+	// is currently open store-wide and its current divert state,
 	// so a shard created by mid-tx rotation can be brought into the open scope
 	// immediately — before the rotation-triggering write reaches it — instead
 	// of that write self-committing eagerly outside the scope (which a
@@ -521,7 +521,7 @@ type Store struct {
 	scopeOpen     bool
 	scopeDivertOn bool
 
-	// nodeCreateLocks / relCreateLocks (BACKLOG 19q) use the SAME 256-shard
+	// nodeCreateLocks / relCreateLocks use the SAME 256-shard
 	// per-ID striping internal/locks.Manager provides for entity-level
 	// serialization elsewhere in this codebase (docs/architecture.md "Entity
 	// Lock Manager"). INVARIANT: the lock for entity ID X is held continuously
@@ -542,7 +542,7 @@ type Store struct {
 	relCreateLocks  *lockspkg.Manager
 
 	// relLives / nodeLives: IDs re-imported onto another shard than their
-	// earlier lives' history (backlog 49, tieredstore_history_lives.go).
+	// earlier lives' history (tieredstore_history_lives.go).
 	relLives  historyLives
 	nodeLives historyLives
 
@@ -1141,7 +1141,7 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	// One-time record of re-imports made before the earlier-lives record
-	// existed (backlog 49); every shard is registered by now.
+	// existed; every shard is registered by now.
 	if err := ts.backfillHistoryLives(); err != nil {
 		for _, es := range ts.eventShards {
 			if es.store != nil {
@@ -1419,7 +1419,7 @@ func (ts *Store) Close() error {
 		// closed DB (docs/architecture.md "Badger WriteBatch.Flush() blocks
 		// forever on closed DB": closeIdleShards uses the same pattern), so
 		// closing while a long-running RunRepair/VerifyShard still holds a
-		// checkout would deadlock that caller. Bounded spin-wait (BACKLOG 19n —
+		// checkout would deadlock that caller. Bounded spin-wait (it
 		// mirrors the purge protocol's coldShardDrainSpinLimit instead of
 		// spinning forever): Close is rare and the wait is normally bounded by
 		// whatever outermost admin call is in flight, but a checkin leak
@@ -1461,7 +1461,7 @@ func (ts *Store) Close() error {
 		// archiveActiveReqs first so a concurrent AllNodeHistoryIDs /
 		// ForEachNodeHistoryID / similar archive reader cannot race the
 		// underlying db.Close() — same Badger v4 Flush-on-closed-DB
-		// concern as event shards above. Bounded (BACKLOG 19n) — see the
+		// concern as event shards above. Bounded — see the
 		// event-shard drain above for the rationale.
 		if archive != nil {
 			if !ts.drainActiveReqsBounded(ts.archiveActiveReqs.Load) {
@@ -1474,8 +1474,8 @@ func (ts *Store) Close() error {
 
 		// Close reference shard. Drain refActiveReqs first so public
 		// store methods that already passed checkOpen cannot have the
-		// Badger handle closed underneath a read/write call. Bounded
-		// (BACKLOG 19n) — see the event-shard drain above for the rationale.
+		// Badger handle closed underneath a read/write call. Bounded —
+		// see the event-shard drain above for the rationale.
 		if !ts.drainActiveReqsBounded(ts.refActiveReqs.Load) {
 			closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref shard: %w (checkin leak?)", ErrDrainTimeout))
 		}

@@ -8,7 +8,7 @@ import (
 )
 
 // TestChangeBodyRoundTrip proves every hand-written change-log body
-// EncodeMsgpack/DecodeMsgpack pair (BACKLOG 15s) reproduces the original
+// EncodeMsgpack/DecodeMsgpack pair reproduces the original
 // struct exactly, for both the all-omitted-optional-fields case and the
 // every-optional-field-present case.
 func TestChangeBodyRoundTrip(t *testing.T) {

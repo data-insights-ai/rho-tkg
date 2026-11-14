@@ -56,7 +56,7 @@ func TestResolveNodeChain_Point(t *testing.T) {
 		{name: "covers v1", validAt: 2500, wantVer: 1},
 		{name: "before genesis", validAt: 500, wantErr: storepkg.ErrNoVersionValidAt},
 		// TX filter: v1 recorded at 2000; pin at 1500 hides it, so the then-open
-		// v0 answers even a validAt in v1's later slot (lesson 43 belief rebuild).
+		// v0 answers even a validAt in v1's later slot (belief rebuild: superseded is not retracted).
 		{name: "txAt hides v1", validAt: 2500, txAt: 1500, wantVer: 0},
 	}
 	for _, tc := range cases {
@@ -162,7 +162,7 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 		t.Fatalf("{During}: err = %v, want ErrNoVersionValidAt", err)
 	}
 
-	// Relationship mirror (rule 2): same shape, {Before} finds the one-tick row.
+	// Relationship mirror: same shape, {Before} finds the one-tick row.
 	buildR := func() []*types.Relationship {
 		return []*types.Relationship{
 			rcRel(1, 0, &types.TemporalMetadata{ValidFrom: 10, TxFrom: 10}),
@@ -207,9 +207,10 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 	}
 }
 
-// TestResolveNodeChain_TombstoneNormalizedAtPreDeletePin exercises lesson 60: a
-// hard-deleted row queried at a pin BEFORE the delete is normalized to its live
-// belief (ValidTo/DeletedAt cleared) rather than silently excluded.
+// TestResolveNodeChain_TombstoneNormalizedAtPreDeletePin exercises the delete
+// tombstone rule: a hard-deleted row queried at a pin BEFORE the delete is
+// normalized to its live belief (ValidTo/DeletedAt cleared) rather than
+// silently excluded.
 func TestResolveNodeChain_TombstoneNormalizedAtPreDeletePin(t *testing.T) {
 	t.Parallel()
 	c := resolverTestCore()
@@ -237,7 +238,7 @@ func TestResolveNodeChain_TombstoneNormalizedAtPreDeletePin(t *testing.T) {
 	}
 }
 
-// --- Node: interval (probeInterval) — predicate-anywhere (rule 16) ---------
+// --- Node: interval (probeInterval) — predicate-anywhere ---------
 
 func TestResolveNodeChain_IntervalPredicateAnywhere(t *testing.T) {
 	t.Parallel()
@@ -269,7 +270,7 @@ func TestResolveNodeChain_IntervalPredicateAnywhere(t *testing.T) {
 	}
 }
 
-// --- Node: as-of (probeAsOf) — belief selection + retraction (lesson 62) ---
+// --- Node: as-of (probeAsOf) — belief selection + retraction ---
 
 func TestResolveNodeChain_AsOf(t *testing.T) {
 	t.Parallel()
@@ -298,7 +299,7 @@ func TestResolveNodeChain_AsOf(t *testing.T) {
 		t.Fatalf("asOf 500 err = %v, want ErrNoVersionAsOf", err)
 	}
 
-	// Retraction (lesson 62): newest belief v1 retracted by 2500; the resolver
+	// Retraction: newest belief v1 retracted by 2500; the resolver
 	// must NOT fall through to older v0 whose TxTo is still open past the pin.
 	buildRetract := func() []*types.Node {
 		return []*types.Node{
@@ -311,14 +312,14 @@ func TestResolveNodeChain_AsOf(t *testing.T) {
 	}
 }
 
-// TestResolveNodeChain_AsOf_DoesNotMutateInputChain guards lesson 60 for the
-// probeAsOf path specifically: resolveNodeChainAsOf must never mutate a chain
-// row in place (chain rows may be shared frozen store rows on some backends —
+// TestResolveNodeChain_AsOf_DoesNotMutateInputChain guards the tombstone
+// discipline for the probeAsOf path specifically: resolveNodeChainAsOf must
+// never mutate a chain row in place (chain rows may be shared frozen store
+// rows on some backends —
 // e.g. TieredStore, which lacks TransactionTimeQueryCapability and falls
 // through to this resolver). Unlike filterNodeChainByTxAt (used by
 // probePoint/probeInterval), which explicitly DeepCopy()s before normalizing a
-// post-pin tombstone, resolveNodeChainAsOf must apply the same discipline
-// (BACKLOG 10a).
+// post-pin tombstone, resolveNodeChainAsOf must apply the same discipline.
 func TestResolveNodeChain_AsOf_DoesNotMutateInputChain(t *testing.T) {
 	t.Parallel()
 	c := resolverTestCore()
@@ -343,7 +344,7 @@ func TestResolveNodeChain_AsOf_DoesNotMutateInputChain(t *testing.T) {
 }
 
 // TestResolveRelChain_AsOf_DoesNotMutateInputChain is the relationship mirror
-// of TestResolveNodeChain_AsOf_DoesNotMutateInputChain (rule 2).
+// of TestResolveNodeChain_AsOf_DoesNotMutateInputChain.
 func TestResolveRelChain_AsOf_DoesNotMutateInputChain(t *testing.T) {
 	t.Parallel()
 	c := resolverTestCore()
@@ -365,7 +366,7 @@ func TestResolveRelChain_AsOf_DoesNotMutateInputChain(t *testing.T) {
 	}
 }
 
-// --- Relationship parity (rule 2) -----------------------------------------
+// --- Relationship parity -----------------------------------------
 
 func TestResolveRelChain_Point(t *testing.T) {
 	t.Parallel()

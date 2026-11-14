@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 16h: Extend's O(n) linear scan (to find whether id already has an
+// Extend's O(n) linear scan (to find whether id already has an
 // entry) was replaced with an O(1) posByID lookup. Unlike byID (bounds,
 // sort-invariant), posByID tracks slice POSITION, which every sort and
 // Remove's filter-copy invalidates — so this correctness-critical bookkeeping

@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 18d: ensureLabelTxMembersBuilt / ensureRelTypeTxMembersBuilt (the K1
+// ensureLabelTxMembersBuilt / ensureRelTypeTxMembersBuilt (the K1
 // label/rel-type transaction-time membership sidecar) decoded every history
 // row (0x07/0x08) via a bare SafeUnmarshal into a plain NodeWire/RelWire. Under
 // HistoryDeltaEncoding, a non-anchor history row can be a 'D'-tagged DELTA —
@@ -90,7 +90,7 @@ func testEnsureLabelTxMembersDeltaRow(t *testing.T, flush bool) {
 		t.Fatalf("ForEachLabelTxMember: %v", err)
 	}
 	if !found {
-		t.Fatal("node whose only label evidence is a delta-encoded history row was not recorded as a member — BACKLOG 18d regression")
+		t.Fatal("node whose only label evidence is a delta-encoded history row was not recorded as a member — regression")
 	}
 }
 
@@ -146,7 +146,7 @@ func testEnsureRelTypeTxMembersDeltaRow(t *testing.T, flush bool) {
 		t.Fatalf("ForEachRelTypeTxMember: %v", err)
 	}
 	if !found {
-		t.Fatal("relationship whose only type evidence is a delta-encoded history row was not recorded as a member — BACKLOG 18d regression")
+		t.Fatal("relationship whose only type evidence is a delta-encoded history row was not recorded as a member — regression")
 	}
 }
 

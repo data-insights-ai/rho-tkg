@@ -26,7 +26,7 @@ import (
 // history, so an array-adjacent pair may not be version-adjacent; comparing
 // ValidFrom across a gap risks a coincidental match between two
 // INDEPENDENTLY, GENUINELY asserted ValidFrom values being misread as
-// inheritance and wrongly cleared (BACKLOG 10f). The loop below skips the
+// inheritance and wrongly cleared. The loop below skips the
 // comparison entirely when a version gap is present — conservative by
 // construction: it can only leave a value UN-cleared it wasn't certain
 // about, never wrongly clear a value it shouldn't have.
@@ -140,7 +140,7 @@ func (c *Core) migrateNodeHistoryClearInheritedValidFrom() error {
 			v := chain[i]
 			tm := v.Temporal()
 			if tm == nil || tm.ValidFrom == 0 || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
-				continue // -inf is never an inherited legacy start (backlog 73): a close copies it
+				continue // -inf is never an inherited legacy start: a close copies it
 			}
 			prev := chain[i-1]
 			if v.Version() != prev.Version()+1 {
@@ -199,7 +199,7 @@ func (c *Core) migrateRelHistoryClearInheritedValidFrom() error {
 			v := chain[i]
 			tm := v.Temporal()
 			if tm == nil || tm.ValidFrom == 0 || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
-				continue // -inf is never an inherited legacy start (backlog 73): a close copies it
+				continue // -inf is never an inherited legacy start: a close copies it
 			}
 			prev := chain[i-1]
 			if v.Version() != prev.Version()+1 {

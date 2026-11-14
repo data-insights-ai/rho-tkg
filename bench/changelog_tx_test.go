@@ -17,7 +17,7 @@ import (
 // mutation — see (*GraphTx).lockActiveCoreWrite, tx.go: when a per-tx
 // change-log scope is active it upgrades from RLock to Lock and toggles
 // SetLogDivert so no concurrent standalone mutation can have its own
-// change-log record misrouted into the transaction's buffer (lesson 53-55).
+// change-log record misrouted into the transaction's buffer.
 // That per-mutation EXCLUSIVE lock is what this benchmark measures the cost
 // of: concurrent tx-per-batch write throughput should stay flat as
 // goroutines increase (every goroutine's every mutation serializes on the

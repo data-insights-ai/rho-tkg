@@ -30,7 +30,7 @@ func TestRelHistoryCountByType(t *testing.T) {
 			}
 			return r
 		}
-		supported := b.name == "memory" || b.name == "badger" || b.tiered // tiered since backlog 58
+		supported := b.name == "memory" || b.name == "badger" || b.tiered
 		count := func(step, typ string, want int) {
 			t.Helper()
 			got, ok, err := g.Stats().RelHistoryCountByType(typ)

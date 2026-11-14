@@ -95,7 +95,7 @@ func (ts *Store) purgeNodesFanOut(perShard func(shard *BadgerStore) (storecontra
 	}
 
 	// Phase 2: cross-shard rel-residue sweep on the SURVIVING endpoint's shard
-	// (BACKLOG 19m: shared body with sweepDroppedShardResidue via
+	// (shared body with sweepDroppedShardResidue via
 	// sweepRelResidue, retention_purge_drop.go). No precomputed "known gone"
 	// set here — a purged endpoint's shard already cleaned itself in phase 1,
 	// so GetNode's ErrNodeNotFound alone is what detects it.

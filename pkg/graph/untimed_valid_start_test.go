@@ -1,7 +1,7 @@
 package graph_test
 
-// Backlog 73: Config.UntimedValidStart. UntimedFromTxFrom (the default) starts
-// a row without a valid-from at its TxFrom (backlog 62); UntimedUnbounded
+// Config.UntimedValidStart. UntimedFromTxFrom (the default) starts
+// a row without a valid-from at its TxFrom; UntimedUnbounded
 // starts an entity's FIRST version without a valid-from at -inf
 // (types.UnboundedValidFrom) and every later untimed version at its TxFrom.
 // TestUntimedValidStartModes is the red test.

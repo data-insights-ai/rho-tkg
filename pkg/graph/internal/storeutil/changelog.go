@@ -104,7 +104,7 @@ type RangePurgeBody struct {
 	Mode       uint8  `msgpack:"m,omitempty"`
 }
 
-// RelRangePurgeBody is the ChangeRelRangePurge payload (backlog 21): purge
+// RelRangePurgeBody is the ChangeRelRangePurge payload: purge
 // every relationship of TypeToken minted before Before, under Mode (0 = ByAge,
 // the only mode). Like RangePurgeBody it carries no per-entity rows.
 type RelRangePurgeBody struct {
@@ -273,7 +273,7 @@ func RelPutPayload(r *types.Relationship, withHistory bool) ([]byte, error) {
 }
 
 // PreEncodeRelPutPayloadV2 is the relationship counterpart of
-// PreEncodeNodePutPayloadV2 (ADR-0006 §4.5, BACKLOG 21f/15p): pre-encodes a
+// PreEncodeNodePutPayloadV2 (ADR-0006 §4.5): pre-encodes a
 // CREATE's ChangeRelPut payload on the producer thread with a ZERO
 // transaction-time tail. For a create, WithHistory is false and omitempty —
 // the body is a one-entry map {"w": wire}, so the nested v2 wire is the LAST
@@ -300,7 +300,7 @@ func PreEncodeRelPutPayloadV2(r *types.Relationship) ([]byte, error) {
 // --- Decoders (used by the replica-apply path; all fail closed) ---
 //
 // Every decoder routes through SafeUnmarshal: a corrupt or hostile body must
-// return store.ErrCorruptWire, never panic the process (lesson 47).
+// return store.ErrCorruptWire, never panic the process.
 
 // DecodeNodePut decodes a ChangeNodePut payload.
 func DecodeNodePut(payload []byte) (NodePutBody, error) {

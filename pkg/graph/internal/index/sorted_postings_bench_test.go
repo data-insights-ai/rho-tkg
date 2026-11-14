@@ -7,7 +7,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// BenchmarkPostingsBytesPerMember (backlog 72) reports the heap bytes one
+// BenchmarkPostingsBytesPerMember reports the heap bytes one
 // posting costs in a value key of 1,000,000 members: the composite index and
 // the plain property index (one int and one string value), each filled in
 // ascending ID order (snowflake writes) and in shuffled order.

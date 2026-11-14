@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// ── Two doors the commit-clock floor (lesson 71) must also cover, both of which
+// ── Two doors the commit-clock floor must also cover, both of which
 // only exist because the change-log vocabulary and the Reset policy grew:
 //
 //	(1) Admin.Reset()/ChangeClear wipe the whole MetaKV keyspace, which would take
@@ -76,7 +76,7 @@ func TestInstantFloor_PreservedAcrossReset(t *testing.T) {
 		t.Fatalf("Reset wiped the commit-clock floor watermark (got %d bytes, want 8) — "+
 			"instantFloorMeta is classified reapPolicyPreserve: the commit clock is this "+
 			"node's transaction-time position, not graph data, so a data Reset must not let "+
-			"TX time regress across it (lesson 71)", len(v))
+			"TX time regress across it", len(v))
 	}
 	if got := types.Instant(binary.BigEndian.Uint64(v)); got < maxTx {
 		t.Fatalf("restored floor watermark %d < pre-Reset max TxFrom %d — a reopen would "+
@@ -154,7 +154,7 @@ func TestRecordCommitStamp_CoversForeignIncomingStub(t *testing.T) {
 		t.Fatalf("recordCommitStamp(ChangeForeignIncoming) = %d, want %d — the cross-machine "+
 			"incoming half-edge stub carries a foreign partition's TxFrom verbatim, so it must "+
 			"advance the commit-clock floor exactly like ChangeRelPut; returning 0 leaves NowTx() "+
-			"under-covering applied stub rows (lesson 71)", got, rTx)
+			"under-covering applied stub rows", got, rTx)
 	}
 
 	// Negative pin: the switch is TAG-driven and deliberate, not payload-sniffing.

@@ -2,7 +2,7 @@ package types
 
 import "testing"
 
-// TestEffectiveValidFrom: the start rule on a row (backlog 67): the stored
+// TestEffectiveValidFrom: the start rule on a row: the stored
 // ValidFrom when set (UnboundedValidFrom included), else TxFrom, else the
 // legacy UpdatedAt, else the ID's mint instant; frozen rows (meta) alike; nil
 // rows 0.

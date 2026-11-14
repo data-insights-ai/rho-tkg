@@ -174,7 +174,7 @@ type DocValues[T EntityID] struct {
 	// and the zone map use; nil when it equals validFrom on every row (a builder
 	// that reports the effective start as validFrom). A builder that reports the
 	// RAW stored ValidFrom (badger: ColumnBatch.ValidFrom is the stored value)
-	// supplies both (backlog 62).
+	// supplies both.
 	effFrom []int64
 
 	// Zone map: per-block min/max of validFrom/validTo over zoneBlockSize ordinals,

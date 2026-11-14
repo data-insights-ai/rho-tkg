@@ -27,7 +27,7 @@ func heapPerKey(n int, build func(keys []string) any) float64 {
 	return float64(int64(m.HeapAlloc)-int64(before)) / float64(n)
 }
 
-// Row 66 (sigma: overview keys are almost all single-ID): a single-ID key
+// Sigma's overview keys are almost all single-ID: a single-ID key
 // costs its map slot, not a posting list (v4.60.0: 99 B per key, now ~19),
 // also after a second ID came and went (demotion). The gate is the structure:
 // every key inline, no posting list; the live heap per key is logged.

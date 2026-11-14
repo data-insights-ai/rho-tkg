@@ -1,6 +1,6 @@
 package core
 
-// Backlog 17 / item-10 follow-up: a relationship version written through the
+// A relationship version written through the
 // store's PutRelVersion door (g.IO().Import replays every history version that
 // way) must stay findable through the relationship-type temporal index. The
 // envelope index prunes a candidate whose envelope cannot overlap the query; if

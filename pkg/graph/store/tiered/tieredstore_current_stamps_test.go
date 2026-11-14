@@ -12,7 +12,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Backlog 42: tiered NodeCurrentStamps / RelCurrentStamps route exactly as
+// Tiered NodeCurrentStamps / RelCurrentStamps route exactly as
 // LendNode / LendRelationship (GetNode / GetRelationship) route — reference
 // shard, archive, the ID's event shard, cold shards opened for the read — and
 // answer the ONE row that route finds. Rows of the same ID on two shards carry
