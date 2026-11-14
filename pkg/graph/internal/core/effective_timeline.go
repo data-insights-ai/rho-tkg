@@ -864,6 +864,7 @@ func (c *Core) forEachRelEffectiveByTypeRun(run *scanRun, typeName string, pin t
 	}); err != nil {
 		return err
 	}
+	run.gathered() // the gather counted every candidate
 	if err := run.holdList(len(ids)); err != nil {
 		return err
 	}

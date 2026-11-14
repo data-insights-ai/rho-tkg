@@ -72,8 +72,15 @@ type ReadWork struct {
 }
 
 // ReadBudgetError is a read stopped by Door at Limit ("candidates",
-// "segments", "shard opens", "decoded bytes", "history examined" or "buffer bytes") of Budget, the budget whose limit it passed;
-// Work is that budget's meter, the work past the limit included.
+// "segments", "shard opens", "decoded bytes", "history examined" or "buffer
+// bytes") of Budget, the budget whose limit it passed. Work is that budget's
+// meter's counters as the charge that passed the limit read them, right after
+// its own add: Work.<Limit> is above Budget.<Limit>, and every field is at most
+// the meter's Work read after the door returned. They are equal when one
+// goroutine charges the meter and nothing is charged after the refusal; the
+// parallel shards of a tiered fan-out may each make their own refusal, joined
+// (errors.As gives the first in shard order, ReadMeter.Exceeded the first in
+// time).
 type ReadBudgetError struct {
 	Door   string
 	Limit  string
@@ -220,22 +227,25 @@ func (m *ReadMeter) Exceeded() error {
 // refuses nothing: a read without a budget pays one nil check per decoded row.
 // The layer that does a piece of work charges it, once (a store that takes a
 // tally counts what it walks and collects; the graph counts only what a store
-// without the metered form hands it).
+// without the metered form hands it). No charge is ever given back: every
+// counter of a meter only grows, so the room a read sees only shrinks.
 type ReadTally struct {
 	meter *ReadMeter
 	door  string
-	stage *tallyStage // set on a tally from Staged: its candidate and buffer charges are held back
+	hold  *holdScope // set by Held: the entries the read holds ahead of the work that counts them
 }
 
-// tallyStage holds back the Candidates and BufferBytes charges of a fan-out
-// whose work may be thrown away (ReadTally.Staged): they count against the room
-// the meter had left when the stage began, and reach the meter only at commit,
-// or when the room is passed, which commits at once and refuses. mu guards err.
-type tallyStage struct {
-	candRoom, bufRoom uint64 // the room the meter had left (math.MaxUint64: none)
-	cand, buf         atomic.Uint64
-	mu                sync.Mutex
-	err               error // the refusal, kept: every later charge returns it
+// holdScope is one read's holds (ReadTally.Held): the entries a gather has
+// taken into its hands and will count later, when it drops them (Drop) or when
+// it settles before it returns (Settle); the door does not count them again.
+// pending is not work: it only narrows the room the read's admissions see
+// (CandidateRoom). mu orders every admission, Drop and Settle of the read, so
+// pending and the meter move together; err is the read's refusal, kept,
+// returned by every later Hold, Drop and Settle.
+type holdScope struct {
+	mu      sync.Mutex
+	pending atomic.Uint64
+	err     error
 }
 
 // Tally binds m to door. A nil meter gives a nil tally.
@@ -252,9 +262,6 @@ func (m *ReadMeter) Tally(door string) *ReadTally {
 func (t *ReadTally) Candidates(n int) error {
 	if t == nil {
 		return nil
-	}
-	if t.stage != nil {
-		return t.stage.charge(t, &t.stage.cand, t.stage.candRoom, n)
 	}
 	return t.meter.AddCandidates(t.door, n)
 }
@@ -284,9 +291,6 @@ func (t *ReadTally) Buffer(n int) error {
 	if t == nil {
 		return nil
 	}
-	if t.stage != nil {
-		return t.stage.charge(t, &t.stage.buf, t.stage.bufRoom, n)
-	}
 	return t.meter.AddBufferBytes(t.door, n)
 }
 
@@ -302,19 +306,12 @@ func (t *ReadTally) ShardOpen() error {
 
 // CandidateRoom returns how many more candidates the reads on t's meter may
 // count before a candidate limit of it or of an outer meter refuses (0: the
-// next one does), or math.MaxUint64 when no limit bounds them. A store that
-// is about to do work it will count only later (a pass over a value's members
-// that does not examine them one by one) refuses up front when the work passes
-// the room (CandidatesAhead). A nil tally has no limit.
+// next one does), net of the entries t's read holds (Hold), read live; or
+// math.MaxUint64 when no limit bounds them. Every reader gets that figure as
+// it is now; nobody keeps it across work. A nil tally has no limit.
 func (t *ReadTally) CandidateRoom() uint64 {
 	if t == nil {
 		return math.MaxUint64
-	}
-	if t.stage != nil {
-		if t.stage.candRoom == math.MaxUint64 {
-			return math.MaxUint64
-		}
-		return t.stage.candRoom - min(t.stage.candRoom, t.stage.cand.Load())
 	}
 	room := uint64(math.MaxUint64)
 	for r := t.meter; r != nil; r = r.parent {
@@ -326,119 +323,145 @@ func (t *ReadTally) CandidateRoom() uint64 {
 			room = min(room, left)
 		}
 	}
-	return room
+	if room == math.MaxUint64 || t.hold == nil {
+		return room
+	}
+	return room - min(room, t.hold.pending.Load())
+}
+
+// Held returns t with a hold scope, for one read whose gather holds entries
+// ahead of the work that counts them (Hold, Drop, Settle): t itself when t is
+// nil or has a scope already (one scope a read: the shards and the labels of
+// one gather share it). Every metered tally gets a scope, a candidate limit or
+// not, so the unlimited control holds and settles as a limited read does and
+// counts what that read needs.
+func (t *ReadTally) Held() *ReadTally {
+	if t == nil || t.hold != nil {
+		return t
+	}
+	return &ReadTally{meter: t.meter, door: t.door, hold: &holdScope{}}
+}
+
+// Hold admits n entries a gather is about to take into its hands, to be
+// counted later by whoever drops them (Drop) or reads them: within the room
+// (CandidateRoom, net of the read's holds) they are held, counted nothing;
+// past it the entries held and these n are counted as work done (one add,
+// which passes the limit and is the meter's typed error), the error is kept
+// for the read, and nothing more is held. A read already refused by another
+// limit (ReadMeter.Exceeded) gets that error. On a tally without a scope (Held
+// not called: a gather that counts nothing, gatherFree) it holds nothing and
+// returns nil.
+func (t *ReadTally) Hold(n int) error {
+	if t == nil || t.hold == nil {
+		return nil
+	}
+	return t.ahead(n, true)
 }
 
 // CandidatesAhead refuses a read about to do work on n entries that it will
-// count only as it examines them later, more than CandidateRoom: it counts them
-// as work done and returns the budget error of the limit they pass (the count
-// would have refused at the entry past it). Within the room it counts nothing
-// and returns nil. A nil tally counts nothing.
+// count only as it examines them later, more than CandidateRoom (net of the
+// read's holds): the same admission as Hold, with nothing retained. Past the
+// room it counts the n entries, and on a tally with a scope the entries held
+// too (they are cleared, so nothing counts twice), as work done, and returns
+// the budget error of the limit they pass (the count would have refused at the
+// entry past it). Within the room it counts nothing and returns nil. A nil
+// tally counts nothing.
 func (t *ReadTally) CandidatesAhead(n int) error {
-	if t == nil || uint64(max(n, 0)) <= t.CandidateRoom() { // #nosec G115 -- a count
+	if t == nil {
 		return nil
 	}
-	if t.stage != nil {
-		return t.stage.refuse(t, n)
-	}
-	return t.meter.AddCandidates(t.door, n)
-}
-
-// bufferRoom returns how many more buffer bytes the reads on t's meter may
-// count before a limit of it or of an outer meter refuses, math.MaxUint64 when
-// none bounds them.
-func (t *ReadTally) bufferRoom() uint64 {
-	room := uint64(math.MaxUint64)
-	for r := t.meter; r != nil; r = r.parent {
-		if bound := r.budget.BufferBytes; bound != 0 {
-			left := uint64(0)
-			if n := r.bufferBytes.Load(); n < bound {
-				left = bound - n
-			}
-			room = min(room, left)
+	if t.hold == nil {
+		if uint64(max(n, 0)) <= t.CandidateRoom() { // #nosec G115 -- a count
+			return nil
 		}
+		return t.meter.AddCandidates(t.door, n)
 	}
-	return room
+	return t.ahead(n, false)
 }
 
-// Staged returns a tally for a fan-out whose work may be thrown away (a
-// membership read over the shards of a store that declines when one shard
-// cannot answer, so that the caller falls back and reads again on the same
-// meter): the Candidates and BufferBytes it is charged are held back, counted
-// against the room t's meter has left now, and reach the meter only when commit
-// is called, so a fan-out that is abandoned costs nothing. A charge past the
-// room commits what was held at once and refuses with the meter's typed error,
-// as t itself would have; every later charge returns that error and commit
-// returns it too. The other charges (shard opens, decoded bytes, history) go to
-// the meter at once. Safe for concurrent use: the shards of a fan-out share it.
-// A nil tally gives a nil tally and a commit that does nothing.
-func (t *ReadTally) Staged() (staged *ReadTally, commit func() error) {
-	if t == nil {
-		return nil, func() error { return nil }
+// ahead is the one admission of a scoped tally (the owner of the count: the
+// meter), under the scope's mutex. n within the room: held when keep, nil.
+// Past it: the held entries and n are counted by one add, which passes the
+// limit of the meter whose room was the least (the counters only grow), so it
+// returns that meter's typed error; it is kept for the read. Never a give-back:
+// nothing is subtracted from a counter.
+func (t *ReadTally) ahead(n int, keep bool) error {
+	s := t.hold
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
 	}
-	st := &tallyStage{candRoom: t.CandidateRoom(), bufRoom: t.bufferRoom()}
-	s := &ReadTally{meter: t.meter, door: t.door, stage: st}
-	return s, func() error { return st.commit(s) }
-}
-
-// charge holds n back in counter, against room, refusing past it.
-func (st *tallyStage) charge(t *ReadTally, counter *atomic.Uint64, room uint64, n int) error {
-	st.mu.Lock()
-	err := st.err
-	st.mu.Unlock()
-	if err != nil {
+	if err := t.meter.Exceeded(); err != nil {
 		return err
 	}
-	if total := counter.Add(uint64(max(n, 0))); room == math.MaxUint64 || total <= room { // #nosec G115 -- a count
+	k := uint64(max(n, 0)) // #nosec G115 -- a count
+	if k <= t.CandidateRoom() {
+		if keep {
+			s.pending.Add(k)
+		}
 		return nil
 	}
-	return st.refuse(t, 0)
+	total := s.pending.Swap(0) + k
+	s.err = t.meter.AddCandidates(t.door, int(total)) // #nosec G115 -- a count of entries held in RAM
+	return s.err
 }
 
-// refuse commits what was held, and extra candidates the caller held ahead,
-// to the meter and returns its typed error, kept for every later charge.
-func (st *tallyStage) refuse(t *ReadTally, extra int) error {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	if st.err != nil {
-		return st.err
+// Drop counts n held entries a gather examined and dropped (a member past the
+// pin or at or below After, an entity a second shard or label hands on, an ID
+// the envelope prune drops): they leave the read's holds and are counted now,
+// under the scope's mutex. The add comes before pending is lowered, so a
+// reader of CandidateRoom, which takes no lock, may see the room smaller for a
+// moment, never larger. After the read's refusal it returns that error and
+// counts nothing (the refusal counted them); a refusal of its own add is kept.
+// On a tally without a scope (gatherFree, which held nothing) it counts
+// nothing.
+func (t *ReadTally) Drop(n int) error {
+	if t == nil || t.hold == nil {
+		return nil
 	}
-	st.cand.Add(uint64(max(extra, 0))) // #nosec G115 -- a count
-	err := st.flush(t)
-	if err == nil { // the meter's limit did not move with the room: still a read past the room
-		err = &ReadBudgetError{Door: t.door, Limit: "candidates", Budget: t.meter.budget, Work: t.meter.Work()}
+	s := t.hold
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
 	}
-	st.err = err
-	return err
+	return t.countHeldLocked(uint64(max(n, 0))) // #nosec G115 -- a count
 }
 
-// commit adds what was held to the meter, returning its error past a limit.
-func (st *tallyStage) commit(t *ReadTally) error {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	if st.err != nil {
-		return st.err
+// Settle counts every entry the read still holds, by one add, as work done:
+// the gather that held them calls it before it returns, so the read's count
+// is every entry the gather took into its hands whether the door then reads
+// it or not (a Limit that stops the door early, a stale sidecar entry held
+// beside the current member it repeats), and the door does not count them
+// again. The room does not move. After the read's refusal it returns that
+// error; on a tally without a scope it counts nothing.
+func (t *ReadTally) Settle() error {
+	if t == nil || t.hold == nil {
+		return nil
 	}
-	st.err = st.flush(t) // kept only when it refused: nil leaves the stage used up, with nothing held
-	return st.err
+	s := t.hold
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
+	}
+	return t.countHeldLocked(s.pending.Load())
 }
 
-// flush adds the held candidates and buffer bytes to the meter. Caller holds mu.
-func (st *tallyStage) flush(t *ReadTally) error {
-	var err error
-	if c := st.cand.Swap(0); c > 0 {
-		err = t.meter.AddCandidates(t.door, int(c)) // #nosec G115 -- a count
+// countHeldLocked counts k of the read's held entries: the add first, then
+// pending lowered by k (never below 0). A refusal of the add is kept for the
+// read. Caller holds t.hold.mu.
+func (t *ReadTally) countHeldLocked(k uint64) error {
+	if k == 0 {
+		return nil
 	}
-	if b := st.buf.Swap(0); b > 0 {
-		if e := t.meter.AddBufferBytes(t.door, int(b)); err == nil { // #nosec G115 -- a count
-			err = e
-		}
-	}
-	var be *ReadBudgetError
-	if errors.As(err, &be) { // the work past the limit includes both charges, whichever refused first
-		cp := *be
-		cp.Work = t.meter.Work()
-		return &cp
+	s := t.hold
+	err := t.meter.AddCandidates(t.door, int(k)) // #nosec G115 -- a count of entries held in RAM
+	p := s.pending.Load()                        // written only under mu
+	s.pending.Store(p - min(p, k))
+	if err != nil {
+		s.err = err
 	}
 	return err
 }

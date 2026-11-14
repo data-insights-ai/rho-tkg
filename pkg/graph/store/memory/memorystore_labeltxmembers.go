@@ -146,13 +146,14 @@ func (ms *Store) ensureRelTypeTxMembersBuiltLocked() error {
 // sidecar is read under ms.mu.RLock (readOrBuild); only the first call builds
 // under the write lock.
 func (ms *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
-	return ms.ForEachLabelTxMemberMetered(token, nil, nil, fn)
+	return ms.ForEachLabelTxMemberMetered(token, nil, fn)
 }
 
 // ForEachLabelTxMemberMetered implements
-// store.TxMemberGatherMeteredCapability: ForEachLabelTxMember with the copy of
-// the set reserved in hold and charged in t (BufferBytes) before it is made.
-func (ms *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+// store.TxMemberGatherMeteredCapability: ForEachLabelTxMember with the members
+// of the set past the current ones held in t and the copy charged in t
+// (BufferBytes), both before it is made.
+func (ms *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -160,18 +161,19 @@ func (ms *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.Read
 		return errNilIterationCallback()
 	}
 	return emitMemoryTxMemberCopy(ms, func() map[types.NodeID]types.Instant { return ms.labelTxMembers[token] },
+		func() int { return len(ms.labelIdx[token]) },
 		func() bool { return ms.labelTxMembers != nil },
-		func() error { ms.ensureLabelTxMembersBuiltLocked(); return nil }, t, hold, fn)
+		func() error { ms.ensureLabelTxMembersBuiltLocked(); return nil }, t, fn)
 }
 
 // ForEachRelTypeTxMember implements store.RelTypeTxMembershipCapability.
 func (ms *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
-	return ms.ForEachRelTypeTxMemberMetered(token, nil, nil, fn)
+	return ms.ForEachRelTypeTxMemberMetered(token, nil, fn)
 }
 
 // ForEachRelTypeTxMemberMetered is ForEachLabelTxMemberMetered for a
 // relationship type.
-func (ms *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+func (ms *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -179,21 +181,25 @@ func (ms *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.Re
 		return errNilIterationCallback()
 	}
 	return emitMemoryTxMemberCopy(ms, func() map[types.RelID]types.Instant { return ms.relTypeTxMembers[token] },
+		func() int { return len(ms.typeIdx[token]) + ms.liveSealedOfLocked(token) },
 		func() bool { return ms.relTypeTxMembers != nil },
-		ms.ensureRelTypeTxMembersBuiltLocked, t, hold, fn)
+		ms.ensureRelTypeTxMembersBuiltLocked, t, fn)
 }
 
 // emitMemoryTxMemberCopy copies the set setOf returns (building the sidecar
 // first when built reports it is not, under the write lock) and hands the copy
 // to fn outside the store lock (fn re-enters the store to resolve chains).
-// Under a budget the copy is paid for before it is made (R2 round 3): its size
-// is reserved in hold and its bytes charged as BufferBytes, so a gather past the
-// hold's allowance is refused with nothing copied.
-func emitMemoryTxMemberCopy[ID comparable](ms *Store, setOf func() map[ID]types.Instant, built func() bool, build func() error, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(ID, types.Instant) bool) error {
+// Under a budget the copy is paid for before it is made (R2 round 3): the set
+// repeats the token's current members (current, the label or type index's
+// count under ms.mu), which the caller holds or counted already, so the
+// members past them are held in t (ReadTally.Hold; this relies on every
+// acquire door recording into the set) and the copy's bytes charged as
+// BufferBytes, so a gather past the room is refused with nothing copied.
+func emitMemoryTxMemberCopy[ID comparable](ms *Store, setOf func() map[ID]types.Instant, current func() int, built func() bool, build func() error, t *storecontract.ReadTally, fn func(ID, types.Instant) bool) error {
 	var members []indexpkg.TxMember[ID]
 	snapshot := func() error {
 		set := setOf()
-		if err := hold.Reserve(len(set)); err != nil {
+		if err := t.Hold(max(0, len(set)-current())); err != nil {
 			return err
 		}
 		if err := t.Buffer(storecontract.TxMemberCopyBytes * len(set)); err != nil {
@@ -203,6 +209,7 @@ func emitMemoryTxMemberCopy[ID comparable](ms *Store, setOf func() map[ID]types.
 		for id, tx := range set {
 			members = append(members, indexpkg.TxMember[ID]{ID: id, FirstTx: tx})
 		}
+		noteTxMembersCopied(len(members))
 		return nil
 	}
 	err := ms.readOrBuild(func() (bool, error) {

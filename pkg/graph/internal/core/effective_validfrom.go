@@ -211,6 +211,7 @@ func (c *Core) relEffectiveByTypeBounded(run *scanRun, typeName string, pin, val
 	// ever-member's temporal fields); otherwise it reads the unbounded gather.
 	metered, _ := c.relValidEnds.(storepkg.RelValidEndMeteredCapability)
 	useIndex := c.relValidEnds != nil && (run == nil || metered != nil)
+	gathered := false // the fallback gather counted its candidates
 	if err := c.readUnderRLock(func() error {
 		var known bool
 		if tok, known = c.lookupRelTypeQueryToken(typeName); !known {
@@ -227,9 +228,13 @@ func (c *Core) relEffectiveByTypeBounded(run *scanRun, typeName string, pin, val
 		}
 		ids, err := c.relTypeCandidateIDsKind(tok, run.opts(storepkg.QueryOpts{TxPin: pin, TxPinSet: true}), gatherScan)
 		cands = fallbackCands(ids)
+		gathered = err == nil
 		return err
 	}); err != nil {
 		return err
+	}
+	if gathered {
+		run.gathered() // the gather counted every candidate
 	}
 	if err := run.holdList(len(cands)); err != nil {
 		return err
@@ -320,6 +325,7 @@ func (c *Core) nodeEffectiveByLabelsBounded(run *scanRun, labels []string, pin, 
 	)
 	metered, _ := c.nodeValidEnds.(storepkg.NodeValidEndMeteredCapability) // as relEffectiveByTypeBounded
 	useIndex := c.nodeValidEnds != nil && (run == nil || metered != nil)
+	gathered := false // the fallback gather counted its candidates
 	if err := c.readUnderRLock(func() error {
 		for _, label := range labels {
 			if tok, known := c.labels.Lookup(label); known && !slices.Contains(toks, tok) {
@@ -340,9 +346,13 @@ func (c *Core) nodeEffectiveByLabelsBounded(run *scanRun, labels []string, pin, 
 		}
 		ids, err := c.nodeLabelsCandidatesAtOpts(toks, run.opts(storepkg.QueryOpts{TxPin: pin}))
 		cands = fallbackCands(ids)
+		gathered = err == nil
 		return err
 	}); err != nil {
 		return err
+	}
+	if gathered {
+		run.gathered() // the gather counted every candidate
 	}
 	if err := run.holdList(len(cands)); err != nil {
 		return err

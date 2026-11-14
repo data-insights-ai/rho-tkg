@@ -162,24 +162,27 @@ func (ix *ValidEndIndex) Track(tok uint16, members func(enlist func(id int64))) 
 // entity is enlisted: members is walked once to count the entities it would add
 // to the unknown (nothing allocated, nothing marked), and the walk stops at the
 // first entity that, with the ones unknown already, passes the candidate room t
-// has left (ReadTally.CandidateRoom). The token is then not tracked and the
-// budget error is returned (CandidatesAhead, which counts the entities seen:
-// what the enlistment needed, not work done).
-// A tally without a candidate limit, and nil, skip the count.
+// has left (ReadTally.CandidatesAhead at each new entity: the room is read
+// live, so charges another read makes on the context during the walk shrink
+// it). The token is then not tracked and the budget error is returned
+// (CandidatesAhead counts the entities seen: what the enlistment needed, not
+// work done). A tally without a candidate limit (the room is unbounded: no
+// limit exists), and nil, skip the count.
 func (ix *ValidEndIndex) TrackUnder(tok uint16, members iter.Seq[int64], t *storepkg.ReadTally) (bool, error) {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
 	if ix.toks[tok] != nil {
 		return false, nil
 	}
-	if room := t.CandidateRoom(); room != math.MaxUint64 {
-		n := uint64(len(ix.unknown)) // #nosec G115 -- a count
+	if t.CandidateRoom() != math.MaxUint64 {
+		n := len(ix.unknown)
 		for id := range members {
 			if _, already := ix.unknown[id]; already {
 				continue
 			}
-			if n++; n > room {
-				return false, t.CandidatesAhead(int(n)) // #nosec G115 -- a count of members held in RAM; past the room, so refused
+			n++
+			if err := t.CandidatesAhead(n); err != nil {
+				return false, err
 			}
 		}
 	}

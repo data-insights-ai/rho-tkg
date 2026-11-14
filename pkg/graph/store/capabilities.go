@@ -565,13 +565,13 @@ type PropertyTxMemberWindow struct {
 // of a value's window view when the value passes the room (the view is a
 // persistent structure, not a buffer: the first budgeted reader of a value pays
 // that refusal, later readers do not). The limit holds across the value keys of
-// a call and, on tiered, across the shards of the fan-out, which charge a
-// staged tally (ReadTally.Staged) on the one meter and stop at their next
-// charge once one refused: an entity on two shards counts twice, and nothing
-// reaches the meter until every shard has answered, so a read that declines
-// (store.ErrIndexNotFound: a shard without the index) costs nothing and the
-// caller's fallback is not charged twice. The lists the fan-out keeps are
-// charged as BufferBytes too.
+// a call and, on tiered, across the shards of the fan-out, which charge the one
+// meter live and stop at their next charge once one refused: an entity on two
+// shards counts twice. Nothing is given back: a read that declines
+// (store.ErrIndexNotFound) keeps what its shards walked and the caller's
+// fallback counts on top; tiered asks every open shard before any walk, so a
+// shard without the index that is open makes the decline cost nothing. The
+// lists the fan-out keeps are charged as BufferBytes too.
 type PropertyTxMemberMeteredCapability interface {
 	ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 	ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
@@ -586,13 +586,13 @@ type PropertyTxMemberMeteredCapability interface {
 // (ReadTally.ShardOpen) and returns the *ReadBudgetError, before any member is
 // handed on, past the ShardOpens limit; workers reading shards in parallel stop
 // at their next charge once one refused (ReadMeter.Exceeded). A nil t is the
-// unmetered form. The ever-member enumerations also take the gather's hold
-// (R2 round 3, GatherHold; nil: none): the store reserves the size of each set
-// it is about to copy before the copy, over every shard, and returns the hold's
-// refusal before it copies a set that passes it, and it charges the copies it
-// holds (a member's 16 bytes in a list, 32 in tiered's union) as BufferBytes
-// before it makes them (TxMemberGatherMeteredCapability, which badger and
-// memory implement too: they open no shard, but they copy).
+// unmetered form. The ever-member enumerations hold the entries of each set
+// they are about to copy on t before the copy (ReadTally.Hold, against the
+// room net of the read's holds, over every shard and label of the read) and
+// return the refusal before they copy a set that passes it, and they charge
+// the copies they hold (a member's 16 bytes in a list, 32 in tiered's union)
+// as BufferBytes before they make them (TxMemberGatherMeteredCapability, which
+// badger and memory implement too: they open no shard, but they copy).
 type MemberGatherMeteredCapability interface {
 	NodeIDsByLabelMetered(labelToken uint16, t *ReadTally) ([]types.NodeID, error)
 	RelIDsByTypeMetered(typeToken uint16, t *ReadTally) ([]types.RelID, error)
@@ -602,10 +602,17 @@ type MemberGatherMeteredCapability interface {
 // TxMemberGatherMeteredCapability is OPTIONAL (R2 round 3): the ever-member
 // enumerations of MemberGatherMeteredCapability on their own, for a store that
 // copies a sidecar's set out before it hands the members on (badger, memory,
-// tiered): the copy is reserved in hold and charged in t before it is made.
+// tiered). Every entry the store copies is one candidate of the read, held on t
+// before the copy (ReadTally.Hold; badger holds its set of former members,
+// memory the members of its set past the current ones, which the caller holds
+// or counted already) and its bytes charged as BufferBytes; an entry the store
+// itself drops (tiered: an entity a second shard hands on) it counts with
+// ReadTally.Drop. The caller counts each entry it is handed: with Drop when it
+// drops it, or as a candidate when its door reads it. On a tally without a hold
+// scope Hold holds nothing (the caller counts what it reads).
 type TxMemberGatherMeteredCapability interface {
-	ForEachLabelTxMemberMetered(token uint16, t *ReadTally, hold *GatherHold, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
-	ForEachRelTypeTxMemberMetered(token uint16, t *ReadTally, hold *GatherHold, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+	ForEachLabelTxMemberMetered(token uint16, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+	ForEachRelTypeTxMemberMetered(token uint16, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
 // TxMemberCopyBytes is the logical size (BufferBytes) of one ever-member a

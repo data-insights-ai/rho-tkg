@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -9,21 +10,25 @@ import (
 )
 
 // TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses (R2 late counts, review of
-// lane C, finding 1): Nodes().ByLabelCtx at a time coordinate gathers the
-// label's ever-members, then applies After, Limit and the valid-time envelope
-// prune. The gather holds the members past the listing to the candidate room as
-// it lists them, so it must list only what the door can use: After and the
-// prune apply while listing. Label D has 12 nodes, 9 live and 3 (every fourth)
-// valid only within [1000, 2000) and deleted, with an envelope index on D. Native counter,
-// which the meter does not keep: Core.candidatesListed, the IDs the gather lists.
-//   - After the second deleted node: one member past it, so a room of one past
-//     the listing answers (the control without After lists all 3 and needs 3);
-//   - ValidAt 5000: the envelope prunes the three deleted nodes, so the room
-//     of the live listing answers (without the prune the first one is refused);
+// lane C, finding 1; R2 meter): Nodes().ByLabelCtx at a time coordinate gathers
+// the label's ever-members, then applies After, Limit and the valid-time
+// envelope prune. Every entry the gather takes into its hands is counted: held
+// before the work that produces it, and an entry After or the prune drops is
+// examined and counted where it is dropped (ReadTally.Drop). So the unlimited
+// control's Work.Candidates is the smallest Candidates budget that answers,
+// whatever the page. Label D has 12 nodes, 9 live and 3 (every fourth) valid
+// only within [1000, 2000) and deleted, with an envelope index on D. Native
+// counter, which the meter does not keep: Core.candidatesListed, the IDs the
+// gather lists.
+//   - After the second deleted node: the members at or below After are dropped
+//     after the gather and counted, so the page costs what the whole gather
+//     costs (12): that budget answers the plain page, one less refuses;
+//   - ValidAt 5000: the envelope prunes the three deleted nodes once, after the
+//     gather, and counts them (12): that budget answers, one less refuses;
 //   - Limit: the gather cannot stop at a Limit, which counts answered rows not
-//     candidates, so a Limit of 2 under a room that holds the listing but not
-//     the 3 members past it is still refused, with the first one counted: the
-//     documented limit of the door (docs/api.md).
+//     candidates, so a Limit of 2 costs the whole gather (12): the gather counts
+//     what it held before the door reads a row, so the control counts it too
+//     and that budget answers; the documented limit of the door (docs/api.md).
 func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 	t.Parallel()
 	const n, deleted = 12, 3
@@ -73,22 +78,39 @@ func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 				return got, m.Work(), listed, err
 			}
 
+			// exact runs the read unlimited, then at its count (the plain answer) and
+			// one under it (refused), and returns the count and the IDs listed.
+			exact := func(name string, opts storepkg.QueryOpts, want []*types.Node) (uint64, int) {
+				t.Helper()
+				got, w, l, err := read(opts, 0)
+				if err != nil || nodeVersionsOf(got) != nodeVersionsOf(want) {
+					t.Fatalf("%s unlimited: %v, %v; want the plain answer %v", name, nodeVersionsOf(got), err, nodeVersionsOf(want))
+				}
+				if got, _, _, err := read(opts, w.Candidates); err != nil || nodeVersionsOf(got) != nodeVersionsOf(want) {
+					t.Fatalf("%s, room %d (the control's count): %v, %v; want the plain answer", name, w.Candidates, nodeVersionsOf(got), err)
+				}
+				if got, _, _, err := read(opts, w.Candidates-1); !errors.Is(err, storepkg.ErrReadBudget) || len(got) != 0 {
+					t.Fatalf("%s, room %d (one under): %d nodes, %v; want the refusal", name, w.Candidates-1, len(got), err)
+				}
+				return w.Candidates, l
+			}
+
 			// After the second deleted node (ids[7]): only ids[11] is a member past it.
 			after := storepkg.QueryOpts{TxPin: pin, After: types.EntityID(ids[7])}
 			want, err := g.Nodes.ByLabel("D", after)
 			if err != nil || len(want) == 0 {
 				t.Fatalf("plain After = %d nodes, %v", len(want), err)
 			}
-			if got, w, l, err := read(after, live+1); err != nil || nodeVersionsOf(got) != nodeVersionsOf(want) || l != live+1 {
-				t.Fatalf("After, room %d: %v, %v, work %+v, %d IDs listed; want the plain page, and %d listed (the live members and the one past After)", live+1, nodeVersionsOf(got), err, w, l, live+1)
+			if c, l := exact("After", after, want); c != live+deleted || l != live+1 {
+				t.Fatalf("After: %d counted, %d IDs listed; want %d (the live members and the 3 that ended, 2 dropped at After) and %d listed (the live members and the one past After)", c, l, live+deleted, live+1)
 			}
-			if _, w, _, err := read(after, live); err == nil || w.Candidates != live+1 {
-				t.Fatalf("After, room %d: %v, work %+v; want the member past After refused (%d counted)", live, err, w, live+1)
-			}
-			// The control without After lists every member and needs the room for them.
 			all := storepkg.QueryOpts{TxPin: pin}
-			if _, w, l, err := read(all, live+deleted); err != nil || l != live+deleted || w.Candidates != live+deleted {
-				t.Fatalf("no After: %v, work %+v, %d IDs listed; want %d listed and counted", err, w, l, live+deleted)
+			wantAll, err := g.Nodes.ByLabel("D", all)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c, l := exact("no After", all, wantAll); c != live+deleted || l != live+deleted {
+				t.Fatalf("no After: %d counted, %d IDs listed; want %d listed and counted", c, l, live+deleted)
 			}
 
 			// ValidAt 5000: the envelope index prunes the three nodes valid only until 2000.
@@ -98,21 +120,21 @@ func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 				if err != nil || len(want) != live {
 					t.Fatalf("plain ValidAt = %d nodes, %v; want the %d live members", len(want), err, live)
 				}
-				if got, w, l, err := read(valid, live); err != nil || nodeVersionsOf(got) != nodeVersionsOf(want) || w.Candidates != live || l != live+deleted {
-					t.Fatalf("ValidAt, room %d: %v, %v, work %+v, %d IDs listed; want the plain answer, %d counted, and the %d members the gather read dropped by the prune, not counted", live, nodeVersionsOf(got), err, w, l, live, deleted)
+				if c, l := exact("ValidAt", valid, want); c != live+deleted || l != live+deleted {
+					t.Fatalf("ValidAt: %d counted, %d IDs listed; want %d counted (the 3 the prune dropped included) and %d listed", c, l, live+deleted, live+deleted)
 				}
 			}
 
 			// Limit counts answered rows: the gather cannot stop at it.
 			limit := storepkg.QueryOpts{TxPin: pin, Limit: 2}
-			if got, err := g.Nodes.ByLabel("D", limit); err != nil || len(got) != 2 {
-				t.Fatalf("plain Limit = %d nodes, %v", len(got), err)
+			wantLimit, err := g.Nodes.ByLabel("D", limit)
+			if err != nil || len(wantLimit) != 2 {
+				t.Fatalf("plain Limit = %d nodes, %v", len(wantLimit), err)
 			}
-			if _, w, _, err := read(limit, live); err == nil || w.Candidates != live+1 {
-				t.Fatalf("Limit 2, room %d: %v, work %+v; want a refusal at the first member past the listing (%d counted): the limit counts answers, not the candidates gathered", live, err, w, live+1)
-			}
-			if got, _, _, err := read(limit, live+deleted); err != nil || len(got) != 2 {
-				t.Fatalf("Limit 2, room %d = %d nodes, %v; want the plain 2", live+deleted, len(got), err)
+			// The gather settles the 3 that ended (it held them) before the door
+			// stops at the second row: the control counts the whole gather, 12.
+			if c, _ := exact("Limit 2", limit, wantLimit); c != live+deleted {
+				t.Fatalf("Limit 2: %d counted; want %d: the limit counts answers, not the candidates gathered", c, live+deleted)
 			}
 		})
 	}

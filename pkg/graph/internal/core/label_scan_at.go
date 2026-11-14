@@ -310,10 +310,11 @@ func (c *Core) nodesByLabelTemporalLocked(tok uint16, opts storepkg.QueryOpts) (
 	candIDs = skipAfter(candIDs, opts.After)
 	scan := c.newNodeLabelScanAt(tok, current, opts)
 	// Under a read budget (RH list R2, R2-SCANS) the label's current members were
-	// counted where the store listed them; the candidate list is counted when it
-	// is built, each member that is no longer current (it is resolved from its
-	// history) before its chain is read, each candidate resolved through the
-	// metered reads, and each answered row before it joins the answer.
+	// counted where the store listed them and every other member the gather took
+	// into its hands when it settled (gatherKind.settle), so no candidate is
+	// counted here: the candidate list is counted when it is built, each
+	// candidate resolved through the metered reads, and each answered row before
+	// it joins the answer.
 	budgeted := opts.ReadTally() != nil
 	if budgeted {
 		if err := opts.AddBufferBytes(bufSliceRef * len(candIDs)); err != nil {
@@ -325,11 +326,6 @@ func (c *Core) nodesByLabelTemporalLocked(tok uint16, opts storepkg.QueryOpts) (
 	}
 	var result []*types.Node
 	for _, id := range candIDs {
-		if budgeted && scan.currentRow(id) == nil {
-			if err := opts.AddCandidates(1); err != nil {
-				return nil, err
-			}
-		}
 		n, err := scan.resolve(id)
 		if err != nil {
 			return nil, err

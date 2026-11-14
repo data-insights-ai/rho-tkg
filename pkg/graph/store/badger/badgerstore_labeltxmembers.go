@@ -463,13 +463,14 @@ func (bs *Store) forgetTxMembersLocked(nid types.NodeID, rels []RelDeleteInfo) {
 
 // ForEachLabelTxMember implements store.LabelTxMembershipCapability.
 func (bs *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
-	return bs.ForEachLabelTxMemberMetered(token, nil, nil, fn)
+	return bs.ForEachLabelTxMemberMetered(token, nil, fn)
 }
 
 // ForEachLabelTxMemberMetered implements
 // store.TxMemberGatherMeteredCapability: ForEachLabelTxMember with the copy of
-// the set reserved in hold and charged in t (BufferBytes) before it is made.
-func (bs *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+// the set held in t (its entries are candidates of the read) and its bytes
+// charged in t (BufferBytes), both before it is made.
+func (bs *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -479,17 +480,17 @@ func (bs *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.Read
 	if err := bs.ensureLabelTxMembersBuilt(); err != nil {
 		return err
 	}
-	return emitTxMemberCopy(bs, func() map[types.NodeID]types.Instant { return bs.labelTxMembers[token] }, t, hold, fn)
+	return emitTxMemberCopy(bs, func() map[types.NodeID]types.Instant { return bs.labelTxMembers[token] }, t, fn)
 }
 
 // ForEachRelTypeTxMember implements store.RelTypeTxMembershipCapability.
 func (bs *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
-	return bs.ForEachRelTypeTxMemberMetered(token, nil, nil, fn)
+	return bs.ForEachRelTypeTxMemberMetered(token, nil, fn)
 }
 
 // ForEachRelTypeTxMemberMetered is ForEachLabelTxMemberMetered for a
 // relationship type.
-func (bs *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+func (bs *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -499,23 +500,27 @@ func (bs *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.Re
 	if err := bs.ensureRelTypeTxMembersBuilt(); err != nil {
 		return err
 	}
-	return emitTxMemberCopy(bs, func() map[types.RelID]types.Instant { return bs.relTypeTxMembers[token] }, t, hold, fn)
+	return emitTxMemberCopy(bs, func() map[types.RelID]types.Instant { return bs.relTypeTxMembers[token] }, t, fn)
 }
 
 // emitTxMemberCopy copies the set setOf returns under idxMu.RLock, so fn runs
 // OUTSIDE the store lock (it re-enters the store to resolve chains), and hands
 // the copy to fn. Under a budget the copy is paid for before it is made (R2
-// round 3): its size is reserved in hold, which refuses a gather past its
-// allowance with nothing copied, and its bytes (store.TxMemberCopyBytes a
-// member) are charged as BufferBytes.
-func emitTxMemberCopy[ID comparable](bs *Store, setOf func() map[ID]types.Instant, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(ID, types.Instant) bool) error {
+// round 3): its entries are held in t (ReadTally.Hold: the set holds the former
+// members only, none of the current ones the caller holds or counts; a stale
+// entry, an ID that carries the token again, is held beside the current member
+// it repeats and counted when the gather settles: high, never low, and the
+// same in the unlimited control), which refuses a gather past the room with
+// nothing copied, and
+// its bytes (store.TxMemberCopyBytes a member) are charged as BufferBytes.
+func emitTxMemberCopy[ID comparable](bs *Store, setOf func() map[ID]types.Instant, t *storecontract.ReadTally, fn func(ID, types.Instant) bool) error {
 	type member struct {
 		id ID
 		tx types.Instant
 	}
 	bs.idxMu.RLock()
 	set := setOf()
-	if err := hold.Reserve(len(set)); err != nil {
+	if err := t.Hold(len(set)); err != nil {
 		bs.idxMu.RUnlock()
 		return err
 	}
