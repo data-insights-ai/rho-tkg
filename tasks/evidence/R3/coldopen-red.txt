@@ -46,3 +46,34 @@ EQUIVALENT: lazy open on a delta image (!img.delta()): openImageDelta already dr
         fails first; the test's delta shape stays not lazy either way.
 Before the first sweep four mutants were missed (labelScanIDs, labelCurrentMembersLocked, the foreign-label check, the stale-key
 filter): the fixture had no rels outside label 1, no stale label key and no LabelTxMembersOf/kept-list probe; it has them now.
+
+== 3. The ID sets of a transient read-only handle (before the fix; IDSet.Encoded is a stub that answers false)
+go test -run 'TestColdOpen_TransientHandleBuildsNoIDSets|TestColdOpen_WritableHandleBuildsItsIDSets' ./pkg/graph/store/tiered/
+--- FAIL: TestColdOpen_TransientHandleBuildsNoIDSets (0.00s)
+    --- FAIL: TestColdOpen_TransientHandleBuildsNoIDSets/cap_0 (0.45s)
+        cold_open_idsets_test.go:35: right after the open: the node set is encoded = false, want true
+FAIL
+go test -run 'TestEncodedIDSets|TestOpenImageIDSetSectionEncoded' ./pkg/graph/store/badger/
+--- FAIL: TestOpenImageIDSetSectionEncoded (0.00s)
+    badgerstore_idset_encoded_test.go:202: three: encoded = false for 3 IDs
+--- FAIL: TestEncodedIDSetsMatchEagerOnEveryOpenShape (0.00s)
+    --- FAIL: TestEncodedIDSetsMatchEagerOnEveryOpenShape/nocounts (0.18s)
+        badgerstore_idset_encoded_test.go:135: right after the open: encoded sets nodes false rels false types 0, want true true 2
+    --- FAIL: TestEncodedIDSetsMatchEagerOnEveryOpenShape/clean (0.18s)
+        badgerstore_idset_encoded_test.go:135: right after the open: encoded sets nodes false rels false types 0, want true true 2
+    --- FAIL: TestEncodedIDSetsMatchEagerOnEveryOpenShape/noproperty (0.20s)
+        badgerstore_idset_encoded_test.go:135: right after the open: encoded sets nodes false rels false types 0, want true true 2
+FAIL
+(the crashed and delta shapes, the cap 2 case, the writable-handle test and the bad-section cases pass before the fix: they pin what does
+not change)
+
+3b. Mutation sweep of the encoded ID set (index package: TestIDSetEncoded*) and of the image decode wiring (badger package:
+TestEncodedIDSetsMatchEagerOnEveryOpenShape, TestOpenImageIDSetSectionEncoded):
+CAUGHT: has stops a gap early / answers true at the first gap above the ID / anchor offset before its gap / anchors every stride+1 /
+        the binary search takes the anchor at the ID, not below
+CAUGHT: validate accepts a zero gap / has no overflow check
+CAUGHT: thaw drops the last partial chunk / ascend skips the last ID / Add or Remove without the thaw / Len, Ascend or Has ignore the
+        encoded form
+CAUGHT: the open decodes plain / the rel-type sets, the rel IDs or the node IDs plain / no section-length check
+ALLOCATION-ONLY (not testable by a count): the guard n > len(b) in NewIDSetEncoded; without it a declared count of 2^30 would size the
+        anchor slice (256 MB) before the first gap fails the stream (the stream fails the same either way).

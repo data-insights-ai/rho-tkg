@@ -2058,10 +2058,12 @@ const transientColdBlockCache = 16 << 20
 // where the store's BlockCacheSize (0: badger's 256 MB) would have ristretto
 // size its counters for the whole of it, 2.4 MB at the stock size, 0.85 MB at
 // 64 MB, 0.15 MB here; and badger.Config.TransientRead, which leaves the
-// build of what a read may never need to the read that does: the label maps,
-// which the open builds from one walk of the shard's label keys (2.3 MB and a
-// third of the CPU of an open at 50,000 rows) and a point read never reads.
-// The answers are the same. A handle a cap keeps (MaxOpenColdShards > 0) is
+// build of what a read may never need to the read that does, or spares it:
+// the label maps, which the open builds from one walk of the shard's label
+// keys (2.3 MB and a third of the CPU of an open at 50,000 rows) and a point
+// read never reads, and the sets of live node, rel and rel-type IDs, which stay
+// in the image's encoding (an insert per ID was half the CPU of an open at
+// ai-soc's configuration). The answers are the same. A handle a cap keeps (MaxOpenColdShards > 0) is
 // configured as every other shard is, and so is a writable one.
 func (ts *Store) coldReadCfg(name string) BadgerStoreConfig {
 	cfg := ts.shardCfg(name, true, true)

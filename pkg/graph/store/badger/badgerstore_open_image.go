@@ -698,7 +698,7 @@ func (bs *Store) readOpenImageChunks(txn *badgerv4.Txn, h openImageHeader, img *
 	if len(blob) != h.length || crc32.Checksum(blob, crc32cTable) != h.crc {
 		return errors.New("length or checksum mismatch")
 	}
-	decoded, err := decodeOpenImage(blob)
+	decoded, err := decodeOpenImageWith(blob, bs.transientRead) // a transient read-only handle keeps the ID sets encoded
 	if err != nil {
 		return err
 	}
@@ -812,6 +812,23 @@ func (r *imgReader) idSet() *indexpkg.IDSet {
 	return set
 }
 
+// idSetOf is idSet, or with encoded the set in the image's own encoding: the
+// same validation (positive ascending IDs, a count the bytes can hold) in one
+// pass, and the bytes kept (indexpkg.NewIDSetEncoded).
+func (r *imgReader) idSetOf(encoded bool) *indexpkg.IDSet {
+	if !encoded {
+		return r.idSet()
+	}
+	n := r.count(len(r.b)) // each ID takes at least one byte
+	set, used, err := indexpkg.NewIDSetEncoded(r.b, n)
+	if err != nil {
+		r.fail("id set")
+		return nil
+	}
+	r.b = r.b[used:]
+	return &set
+}
+
 func (r *imgReader) str() string { return string(r.bytes(r.count(len(r.b)))) }
 
 func (r *imgReader) valueIDs() []imgValueIDs {
@@ -883,7 +900,13 @@ func (r *imgReader) intervals() []indexpkg.IntervalEntry {
 	return out
 }
 
-func decodeOpenImage(blob []byte) (*openImage, error) {
+func decodeOpenImage(blob []byte) (*openImage, error) { return decodeOpenImageWith(blob, false) }
+
+// decodeOpenImageWith is decodeOpenImage keeping the ID sets (the live node and
+// rel IDs, the rel-type index) in the image's encoded form when encoded: one
+// validating pass instead of an insert per ID (indexpkg.NewIDSetEncoded). It
+// accepts and refuses what the plain decode does.
+func decodeOpenImageWith(blob []byte, encoded bool) (*openImage, error) {
 	img := newOpenImage()
 	top := imgReader{b: blob}
 	for len(top.b) > 0 && top.err == nil {
@@ -948,15 +971,15 @@ func decodeOpenImage(blob []byte) (*openImage, error) {
 			key := indexpkg.PropertyIndexKey{LabelToken: r.u16(), PropertyKey: r.str()}
 			img.nodePropTx[key] = imgPropTx[types.NodeID](&r)
 		case imgSecNodeIDs:
-			img.nodeIDs = r.idSet()
+			img.nodeIDs = r.idSetOf(encoded)
 		case imgSecRelIDs:
-			img.relIDs = r.idSet()
+			img.relIDs = r.idSetOf(encoded)
 		case imgSecRelTypes:
 			n := r.count(len(r.b))
 			img.relTypes = make(map[uint16]*indexpkg.IDSet, n)
 			for range n {
 				tok := r.u16()
-				img.relTypes[tok] = r.idSet()
+				img.relTypes[tok] = r.idSetOf(encoded)
 			}
 		case imgSecLabelCounts:
 			n := r.count(len(r.b))

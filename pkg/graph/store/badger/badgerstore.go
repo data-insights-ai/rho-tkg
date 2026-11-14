@@ -194,13 +194,17 @@ type Config struct {
 	// it for cold shards. Ignored when Store is provided explicitly.
 	HistoryPresenceProbeOnly bool
 	// TransientRead marks a read-only open as a handle for one read, or a few, that
-	// closes when they end. It skips at the open what the first read that needs it
-	// builds instead: a trusted open image carrying the per-label counts spares the
-	// label-key walk, and the label index's maps are built per label when a read
-	// first asks for one (labelMembersLocked). Answers are the same as without it;
-	// a handle serving many reads pays each build once, so the tiered store sets it
-	// only for a read-only cold shard that closes at check-in (MaxOpenColdShards 0).
-	// Ignored unless ReadOnly, and when Store is provided explicitly.
+	// closes when they end. It skips at the open what the reads would build or
+	// need only in part: a trusted open image carrying the per-label counts spares
+	// the label-key walk, and the label index's maps are built per label when a
+	// read first asks for one (labelMembersLocked); the image's live node, rel and
+	// rel-type ID sets stay in the encoded form they are stored in, one validating
+	// pass instead of an insert per ID (indexpkg.NewIDSetEncoded), and answer
+	// membership and listings from it. Answers are the same as without it; a
+	// handle serving many reads would rather have the structures built once, so
+	// the tiered store sets it only for a read-only cold shard that closes at
+	// check-in (MaxOpenColdShards 0). Ignored unless ReadOnly, and when Store is
+	// provided explicitly.
 	TransientRead bool
 	// ColumnsOnDisk persists built columnar snapshots so a cold store can decode a
 	// column instead of re-reading every entity. Observable only as latency. A persisted

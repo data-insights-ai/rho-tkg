@@ -380,3 +380,18 @@ func (bs *Store) LabelMapStateForTest() (lazy bool, inRAM int) {
 // has read from their keys so far; a label asked twice counts once. Not for
 // production use.
 func (bs *Store) LabelMapBuildsForTest() int64 { return bs.lazyLabelBuilds.Load() }
+
+// IDSetsEncodedForTest reports whether this open kept the live node set and the
+// live rel set in their encoded form (Config.TransientRead on a read-only open
+// with a trusted image) and how many rel-type sets it did; an empty set is never
+// encoded. Not for production use.
+func (bs *Store) IDSetsEncodedForTest() (nodes, rels bool, relTypes int) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	for _, set := range bs.typeIdx {
+		if set.Encoded() {
+			relTypes++
+		}
+	}
+	return bs.nodeIDs.Encoded(), bs.relIDs.Encoded(), relTypes
+}
