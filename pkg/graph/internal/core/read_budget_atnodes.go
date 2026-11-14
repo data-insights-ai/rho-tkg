@@ -26,8 +26,10 @@ import (
 //     gather decodes, each closed shard the gather opens (a tiered seed's
 //     ex-adjacency lives on the archive and on the event shard of its mint time:
 //     storepkg.ExAdjacencyMeteredCapability), before they happen;
-//   - BufferBytes: 8 per seed and 8 per listed relationship once each list is
-//     built, and for the column scan 24 per kept segment before it is held;
+//   - BufferBytes: 8 per seed once the seed list is built, 8 per relationship
+//     before it joins the candidate list (R2 late counts: the gather charges
+//     the list as it grows), and for the column scan 24 per kept segment before
+//     it is held;
 //   - HistoryExamined, DecodedBytes, ShardOpens and Segments of the timeline
 //     reads and of the segments handed out, as the scans of read_budget_scans.go.
 
@@ -113,7 +115,11 @@ func (c *Core) relEffectiveAdjacencyCandidatesRun(run *scanRun, seeds []types.No
 	}
 	var ids []types.RelID
 	err := c.forEachRelAdjacencyCandidateIDRun(run, seeds, adjDirsOf(outgoing), current, func(id types.RelID) error {
+		if err := run.holdBytes(bufSliceRef); err != nil { // the list grows by one ID: counted before it is appended
+			return err
+		}
 		ids = append(ids, id)
+		c.noteListed(1)
 		return nil
 	})
 	return ids, err

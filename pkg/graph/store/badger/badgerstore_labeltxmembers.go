@@ -8,6 +8,7 @@ import (
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -585,10 +586,20 @@ func (bs *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id 
 // in LabelIndexOnDisk mode read from the persisted keyspace. The caller holds
 // idxMu (R or W) and only reads the set.
 func (bs *Store) labelCurrentMembersLocked(token uint16) (map[types.NodeID]struct{}, error) {
+	return bs.labelCurrentMembersTalliedLocked(token, nil)
+}
+
+// labelCurrentMembersTalliedLocked is labelCurrentMembersLocked for a read
+// under a budget: a label read from its keys (a lazy map not built yet, or the
+// keyspace in LabelIndexOnDisk mode) counts that walk in t
+// (labelMembersTalliedLocked, labelNodeIDsSnapshotTalliedLocked); a nil t counts
+// nothing.
+func (bs *Store) labelCurrentMembersTalliedLocked(token uint16, t *storecontract.ReadTally) (map[types.NodeID]struct{}, error) {
 	if !bs.labelOnDisk {
-		return bs.labelMembersLocked(token)
+		set, _, err := bs.labelMembersTalliedLocked(token, t)
+		return set, err
 	}
-	ids, err := bs.labelNodeIDsSnapshotLocked(token)
+	ids, err := bs.labelNodeIDsSnapshotTalliedLocked(token, t)
 	if err != nil {
 		return nil, err
 	}

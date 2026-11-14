@@ -303,7 +303,7 @@ func (s singleVersionNodeResolver) firstVersionCovers(n *types.Node) (covered, o
 // nodesByLabelTemporalLocked is nodesByLabelLocked under a temporal filter: every
 // answer in ascending ID order, paginated. Callers hold c.mu.
 func (c *Core) nodesByLabelTemporalLocked(tok uint16, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	current, candIDs, err := c.nodeLabelCandidatesAtListing(tok, opts, true)
+	current, candIDs, err := c.nodeLabelCandidatesAtListing(tok, opts, gatherListed)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,16 @@
+--- FAIL: TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt (0.13s)
+    --- FAIL: TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt/NodesByLabelMetered (0.01s)
+        badgerstore_label_lazy_budget_test.go:125: unlimited: 40 candidates counted, 1 maps built, 41 keys walked; want 81 (0 before the walk, 41 keys walked, 40 listed, 0 entities read), 1 and 41
+        badgerstore_label_lazy_budget_test.go:150: Candidates 39: 1 maps built, 41 keys walked; want 0 and 0: the walk was not charged before it
+    --- FAIL: TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt/NodesByLabelAndProperty_scan (0.01s)
+        badgerstore_label_lazy_budget_test.go:125: unlimited: 24 candidates counted, 1 maps built, 25 keys walked; want 49 (0 before the walk, 25 keys walked, 24 listed, 0 entities read), 1 and 25
+        badgerstore_label_lazy_budget_test.go:150: Candidates 23: 1 maps built, 25 keys walked; want 0 and 0: the walk was not charged before it
+    --- FAIL: TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt/NodeIDsByLabelAndPropertyKeys (0.01s)
+        badgerstore_label_lazy_budget_test.go:125: unlimited: 8 candidates counted, 1 maps built, 41 keys walked; want 49 (8 before the walk, 41 keys walked, 0 listed, 0 entities read), 1 and 41
+        badgerstore_label_lazy_budget_test.go:147: Candidates 47 = 8 ids, <nil>; want ErrReadBudget at candidates and no ids
+    --- FAIL: TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt/NodeValidEndCandidatesMetered (0.01s)
+        badgerstore_label_lazy_budget_test.go:125: unlimited: 40 candidates counted, 1 maps built, 41 keys walked; want 81 (0 before the walk, 41 keys walked, 0 listed, 40 entities read), 1 and 41
+        badgerstore_label_lazy_budget_test.go:150: Candidates 39: 1 maps built, 41 keys walked; want 0 and 0: the walk was not charged before it
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.139s
+FAIL

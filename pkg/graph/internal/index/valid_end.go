@@ -2,6 +2,8 @@ package index
 
 import (
 	"cmp"
+	"iter"
+	"math"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -147,10 +149,39 @@ func (ix *ValidEndIndex) TrackedTokens() []uint16 {
 // called). The owning store calls it while no row write is in flight, so
 // every write after it is noted.
 func (ix *ValidEndIndex) Track(tok uint16, members func(enlist func(id int64))) bool {
+	tracked, _ := ix.TrackUnder(tok, func(yield func(int64) bool) {
+		members(func(id int64) { yield(id) })
+	}, nil)
+	return tracked
+}
+
+// TrackUnder is Track under a read budget (t not nil, R2 late counts), with
+// members as an iterator the index may stop. Every unknown entity is read and
+// counted as a candidate by the first call that resolves it, so a candidate
+// limit the enlistment alone would pass is refused here, before the first
+// entity is enlisted: members is walked once to count the entities it would add
+// to the unknown (nothing allocated, nothing marked), and the walk stops at the
+// first entity that, with the ones unknown already, passes the candidate room t
+// has left (ReadTally.CandidateRoom). The token is then not tracked and the
+// budget error is returned (CandidatesAhead, which counts the entities seen:
+// what the enlistment needed, not work done).
+// A tally without a candidate limit, and nil, skip the count.
+func (ix *ValidEndIndex) TrackUnder(tok uint16, members iter.Seq[int64], t *storepkg.ReadTally) (bool, error) {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
 	if ix.toks[tok] != nil {
-		return false
+		return false, nil
+	}
+	if room := t.CandidateRoom(); room != math.MaxUint64 {
+		n := uint64(len(ix.unknown)) // #nosec G115 -- a count
+		for id := range members {
+			if _, already := ix.unknown[id]; already {
+				continue
+			}
+			if n++; n > room {
+				return false, t.CandidatesAhead(int(n)) // #nosec G115 -- a count of members held in RAM; past the room, so refused
+			}
+		}
 	}
 	if ix.toks == nil {
 		ix.ents = make(map[int64]veEnt)
@@ -160,8 +191,10 @@ func (ix *ValidEndIndex) Track(tok uint16, members func(enlist func(id int64))) 
 	}
 	ix.toks[tok] = &veToken{}
 	ix.active.Store(true)
-	members(ix.markUnknownLocked)
-	return true
+	for id := range members {
+		ix.markUnknownLocked(id)
+	}
+	return true, nil
 }
 
 // Reset drops the index (Clear); tokens are tracked again on their next query.
@@ -328,10 +361,23 @@ func (ix *ValidEndIndex) installLocked(id int64, rows []ValidEndRow) {
 // a write noted id again meanwhile (it then stays unknown and is listed).
 // read runs without the index lock.
 func (ix *ValidEndIndex) ResolveUnknown(read func(id int64) ([]ValidEndRow, error)) error {
+	return ix.ResolveUnknownUnder(nil, read)
+}
+
+// ResolveUnknownUnder is ResolveUnknown under a read budget (t not nil, R2 late
+// counts): the unknown entities are copied into the pending list only when the
+// candidates they will count (one each, in read) fit the room t has left; else
+// they are counted as work done and the budget error is returned before the
+// list is built (ReadTally.CandidatesAhead).
+func (ix *ValidEndIndex) ResolveUnknownUnder(t *storepkg.ReadTally, read func(id int64) ([]ValidEndRow, error)) error {
 	ix.mu.Lock()
 	if len(ix.unknown) == 0 {
 		ix.mu.Unlock()
 		return nil
+	}
+	if err := t.CandidatesAhead(len(ix.unknown)); err != nil {
+		ix.mu.Unlock()
+		return err
 	}
 	pending := make(map[int64]uint64, len(ix.unknown))
 	for id, s := range ix.unknown {
@@ -356,10 +402,21 @@ func (ix *ValidEndIndex) ResolveUnknown(read func(id int64) ([]ValidEndRow, erro
 // entity: read returns the stored rows of each id it found (an id it omits is
 // gone).
 func (ix *ValidEndIndex) ResolveUnknownBulk(read func(ids []int64) (map[int64][]ValidEndRow, error)) error {
+	return ix.ResolveUnknownBulkUnder(nil, read)
+}
+
+// ResolveUnknownBulkUnder is ResolveUnknownBulk under a read budget, as
+// ResolveUnknownUnder: no pending map or ID list is built for more unknown
+// entities than the candidate room t has left.
+func (ix *ValidEndIndex) ResolveUnknownBulkUnder(t *storepkg.ReadTally, read func(ids []int64) (map[int64][]ValidEndRow, error)) error {
 	ix.mu.Lock()
 	if len(ix.unknown) == 0 {
 		ix.mu.Unlock()
 		return nil
+	}
+	if err := t.CandidatesAhead(len(ix.unknown)); err != nil {
+		ix.mu.Unlock()
+		return err
 	}
 	pending := make(map[int64]uint64, len(ix.unknown))
 	ids := make([]int64, 0, len(ix.unknown))

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -112,25 +113,34 @@ func (bs *Store) noteValidEndNodeMember(n *types.Node) {
 // tokenMembers is one token's ever-members: its current members (the label
 // or type index) and its former ones (the K1 membership sidecar).
 type tokenMembers struct {
-	each func(fn func(id int64)) // every member, once
+	each iter.Seq[int64] // every member, once; the index may stop it (TrackUnder)
 	has  func(id int64) bool
 }
 
 // nodeTokenMembersLocked is label tok's tokenMembers. Caller holds idxMu.
 func (bs *Store) nodeTokenMembersLocked(tok uint16) (tokenMembers, error) {
-	current, err := bs.labelCurrentMembersLocked(tok)
+	return bs.nodeTokenMembersTalliedLocked(tok, nil)
+}
+
+// nodeTokenMembersTalliedLocked is nodeTokenMembersLocked counting, in t, the
+// walk of a label map or keyspace not in RAM (R2 late counts:
+// labelCurrentMembersTalliedLocked); a nil t counts nothing.
+func (bs *Store) nodeTokenMembersTalliedLocked(tok uint16, t *storecontract.ReadTally) (tokenMembers, error) {
+	current, err := bs.labelCurrentMembersTalliedLocked(tok, t)
 	if err != nil {
 		return tokenMembers{}, err
 	}
 	former := bs.labelTxMembers[tok]
 	return tokenMembers{
-		each: func(fn func(int64)) {
+		each: func(yield func(int64) bool) {
 			for id := range current {
-				fn(int64(id))
+				if !yield(int64(id)) {
+					return
+				}
 			}
 			for id := range former {
-				if _, dup := current[id]; !dup {
-					fn(int64(id))
+				if _, dup := current[id]; !dup && !yield(int64(id)) {
+					return
 				}
 			}
 		},
@@ -148,15 +158,17 @@ func (bs *Store) relTokenMembersLocked(tok uint16) (tokenMembers, error) {
 	former := bs.relTypeTxMembers[tok]
 	isCurrent := func(id int64) bool { return current != nil && current.Has(id) }
 	return tokenMembers{
-		each: func(fn func(int64)) {
+		each: func(yield func(int64) bool) {
 			if current != nil {
 				for id := range current.All() {
-					fn(id)
+					if !yield(id) {
+						return
+					}
 				}
 			}
 			for id := range former {
-				if !isCurrent(int64(id)) {
-					fn(int64(id))
+				if !isCurrent(int64(id)) && !yield(int64(id)) {
+					return
 				}
 			}
 		},
@@ -169,8 +181,10 @@ func (bs *Store) relTokenMembersLocked(tok uint16) (tokenMembers, error) {
 
 // trackValidEnds tracks every token of toks not tracked yet (see the file
 // comment). ensureK1 builds the membership sidecar, members gives one token's
-// ever-members (caller holds idxMu).
-func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensureK1 func() error, members func(tok uint16) (tokenMembers, error)) error {
+// ever-members (caller holds idxMu). Under a read budget (t not nil) a token
+// whose members the candidate room cannot hold is refused before any is
+// enlisted (ValidEndIndex.TrackUnder); the tokens tracked before it stay.
+func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensureK1 func() error, members func(tok uint16) (tokenMembers, error), t *storecontract.ReadTally) error {
 	missing := false
 	for _, tok := range toks {
 		missing = missing || !ix.Tracked(tok)
@@ -191,7 +205,10 @@ func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensur
 			bs.idxMu.Unlock()
 			return err
 		}
-		ix.Track(tok, m.each)
+		if _, err := ix.TrackUnder(tok, m.each, t); err != nil {
+			bs.idxMu.Unlock()
+			return err
+		}
 	}
 	bs.idxMu.Unlock()
 	if bs.validEndTrackHook != nil {
@@ -239,6 +256,7 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 		if err := t.Decoded(len(raw)); err != nil {
 			return err
 		}
+		bs.validEndRowDecodes.Add(1)
 		tm, err := storepkg.DecodeValidEndValue(raw, node)
 		if err != nil {
 			return fmt.Errorf("graph: decode row for the valid-end index: %w", err)
@@ -296,14 +314,11 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 		if err := t.Candidates(1); err != nil {
 			return nil, err
 		}
-		rows, err := bs.validEndOverlayRows(id, node)
-		if err != nil {
-			return nil, err
-		}
 		// An entity with a buffered write is read from the write buffer and the
-		// committed rows together, so its history versions count after the read
-		// (before the index installs them): a few entities, not the type.
-		if err := t.History(validEndHistoryRows(rows)); err != nil {
+		// committed rows together, each history row counted before its decode
+		// (and the current row's bytes, when it is read from badger).
+		rows, err := bs.validEndOverlayRows(id, node, t)
+		if err != nil {
 			return nil, err
 		}
 		if len(rows) > 0 {
@@ -326,17 +341,6 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 	return out, nil
 }
 
-// validEndHistoryRows is how many of rows are history rows.
-func validEndHistoryRows(rows []indexpkg.ValidEndRow) int {
-	n := 0
-	for _, r := range rows {
-		if r.Hist {
-			n++
-		}
-	}
-	return n
-}
-
 // advanceTo moves it to the first key at or after target: by Next while the
 // target is a few keys ahead (members of a type are usually dense in the ID
 // order, so the walk is sequential), else by Seek. it only moves forward;
@@ -354,8 +358,10 @@ func advanceTo(it *badgerv4.Iterator, target []byte) {
 // validEndOverlayRows reads one entity with buffered writes: its history
 // rows' temporal skeletons (overlay first) and its current row's temporal
 // block (the entity cache, else the committed key, as RelCurrentStamps reads
-// it).
-func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRow, error) {
+// it). Under a read budget (t not nil) each history row counts a version and
+// its stored bytes before it is decoded, and so does the committed current
+// row's value.
+func (bs *Store) validEndOverlayRows(id int64, node bool, t *storecontract.ReadTally) ([]indexpkg.ValidEndRow, error) {
 	sid := snowflake.ID(id)
 	var (
 		cur    *types.TemporalMetadata
@@ -375,7 +381,7 @@ func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRo
 			bs.idxMu.RUnlock()
 			if found {
 				var err error
-				if cur, found, err = bs.committedTemporal(storepkg.KeyNode, sid); err != nil {
+				if cur, found, err = bs.committedTemporal(storepkg.KeyNode, sid, t); err != nil {
 					return nil, err
 				}
 			}
@@ -393,13 +399,13 @@ func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRo
 			bs.idxMu.RUnlock()
 			if found {
 				var err error
-				if cur, found, err = bs.committedTemporal(storepkg.KeyRel, sid); err != nil {
+				if cur, found, err = bs.committedTemporal(storepkg.KeyRel, sid, t); err != nil {
 					return nil, err
 				}
 			}
 		}
 	}
-	metas, err := bs.historyTemporalMetaByPrefix(prefix, node)
+	metas, err := bs.historyTemporalMetaByPrefixTallied(prefix, node, t)
 	if err != nil {
 		return nil, err
 	}
@@ -415,8 +421,9 @@ func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRo
 
 // committedTemporal reads the committed current row of id (prefix KeyNode or
 // KeyRel) and decodes its temporal block; found false when the key holds no
-// row.
-func (bs *Store) committedTemporal(prefix byte, id snowflake.ID) (*types.TemporalMetadata, bool, error) {
+// row. Under a read budget (t not nil) the value's stored bytes count before
+// the decode.
+func (bs *Store) committedTemporal(prefix byte, id snowflake.ID, t *storecontract.ReadTally) (*types.TemporalMetadata, bool, error) {
 	key := make([]byte, storepkg.SizeNodeKey)
 	key[0] = prefix
 	storepkg.PutUint64(key, 1, int64(id))
@@ -432,6 +439,9 @@ func (bs *Store) committedTemporal(prefix byte, id snowflake.ID) (*types.Tempora
 			return err
 		}
 		return item.Value(func(val []byte) error {
+			if err := t.Decoded(len(val)); err != nil {
+				return err
+			}
 			var derr error
 			if _, tm, derr = storepkg.DecodeWireTemporalMeta(val); derr != nil {
 				return fmt.Errorf("graph: decode current row temporal: %w", derr)
@@ -454,10 +464,10 @@ func (bs *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom t
 		return nil, err
 	}
 	toks := []uint16{typeToken}
-	if err := bs.trackValidEnds(&bs.relValidEnds, toks, bs.ensureRelTypeTxMembersBuilt, bs.relTokenMembersLocked); err != nil {
+	if err := bs.trackValidEnds(&bs.relValidEnds, toks, bs.ensureRelTypeTxMembersBuilt, bs.relTokenMembersLocked, t); err != nil {
 		return nil, err
 	}
-	if err := bs.relValidEnds.ResolveUnknownBulk(func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
+	if err := bs.relValidEnds.ResolveUnknownBulkUnder(t, func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
 		return bs.validEndRowsBulk(&bs.relValidEnds, ids, false, bs.relTokenMembersLocked, t)
 	}); err != nil {
 		return nil, err
@@ -481,10 +491,14 @@ func (bs *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := bs.trackValidEnds(&bs.nodeValidEnds, labelTokens, bs.ensureLabelTxMembersBuilt, bs.nodeTokenMembersLocked); err != nil {
+	members := func(tok uint16) (tokenMembers, error) { return bs.nodeTokenMembersTalliedLocked(tok, t) } // a label map read from its keys counts its walk (a lazy map, a label index on disk)
+	if err := bs.trackValidEnds(&bs.nodeValidEnds, labelTokens, bs.ensureLabelTxMembersBuilt, members, t); err != nil {
 		return nil, err
 	}
-	if err := bs.nodeValidEnds.ResolveUnknownBulk(func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
+	if err := bs.nodeValidEnds.ResolveUnknownBulkUnder(t, func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
+		// The attribution pass (which tracked labels each entity read carries) reads
+		// every tracked label's members again: the track listing above is the one
+		// charge for a label's walk, so this pass takes the uncounted closure.
 		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, bs.nodeTokenMembersLocked, t)
 	}); err != nil {
 		return nil, err

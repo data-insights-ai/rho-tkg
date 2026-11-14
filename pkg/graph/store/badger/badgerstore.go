@@ -459,6 +459,7 @@ type Store struct {
 	lazyLabelMu               sync.Mutex                                    // guards lazyLabelSets; taken under idxMu (R), never around it
 	lazyLabelSets             map[uint16]map[types.NodeID]struct{}          // labelLazy: the label maps read so far; a label without members is a nil entry
 	lazyLabelBuilds           atomic.Int64                                  // labelLazy: label maps read from their keys (tests assert none twice)
+	lazyLabelKeysWalked       atomic.Int64                                  // labelLazy: label keys visited by those walks (the native count a read budget's refusal is checked against)
 	adjOnDisk                 bool                                          // answer adjacency snapshots from the persisted keyspaces
 	propIdxOnDisk             bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
 	propDiskLabels            map[string]struct{}                           // PropertyIndexOnDiskLabels: these labels' property indexes too
@@ -871,6 +872,12 @@ type Store struct {
 	// relRowDecodes counts relationship rows read and decoded from badger by
 	// the point and scan reads (RelRowDecodesForTest, RH list R2).
 	relRowDecodes atomic.Int64
+	// historyMetaDecodes counts history rows decoded to their temporal skeleton
+	// by historyTemporalMetaByPrefixTallied (HistoryMetaDecodesForTest, R2 late
+	// counts); validEndRowDecodes the rows validEndRowsBulk decodes for the
+	// valid-end index (ValidEndRowDecodesForTest).
+	historyMetaDecodes atomic.Int64
+	validEndRowDecodes atomic.Int64
 	// nodeRowPointReads counts the node rows among them read by a read
 	// transaction and point Get of their own (NodeRowPointReadsForTest,
 	// LISTREAD: a page reads through one forward scan).

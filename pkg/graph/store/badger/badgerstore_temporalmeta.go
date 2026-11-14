@@ -52,10 +52,25 @@ func (bs *Store) RelHistoryTemporalMeta(rid types.RelID) ([]storecontract.Versio
 // decoder (NodeHistoryDelta vs RelHistoryDelta); the partial FULL-row decode is
 // entity-agnostic (NodeWire and RelWire share the temporal tags).
 func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storecontract.VersionTemporalMeta, error) {
+	return bs.historyTemporalMetaByPrefixTallied(prefix, node, nil)
+}
+
+// historyTemporalMetaByPrefixTallied is historyTemporalMetaByPrefix under a read
+// budget (t not nil, R2 late counts): each history row, committed or buffered,
+// counts one history version and its stored bytes before it is decoded, so a
+// long history stops at the row that passes a limit, not after every row is
+// decoded.
+func (bs *Store) historyTemporalMetaByPrefixTallied(prefix []byte, node bool, t *storecontract.ReadTally) ([]storecontract.VersionTemporalMeta, error) {
 	// Overlay BEFORE the View — see getNodeHistoryByPrefix (lesson 64).
 	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
-	metaOf := func(raw []byte) (storecontract.VersionTemporalMeta, error) { return historyTemporalMetaOf(raw, node) }
+	metaOf := func(raw []byte) (storecontract.VersionTemporalMeta, error) {
+		if err := t.DecodedHistory(len(raw)); err != nil {
+			return storecontract.VersionTemporalMeta{}, err
+		}
+		bs.historyMetaDecodes.Add(1)
+		return historyTemporalMetaOf(raw, node)
+	}
 
 	// Committed rows come ascending by key, so by version: they append to
 	// out, and only a buffered row needs the merge below (R37: a map, a

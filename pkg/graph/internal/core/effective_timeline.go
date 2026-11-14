@@ -852,7 +852,7 @@ func (c *Core) forEachRelEffectiveByTypeRun(run *scanRun, typeName string, pin t
 			return nil
 		}
 		var err error
-		ids, err = c.relTypeCandidateIDsAt(tok, run.opts(storepkg.QueryOpts{TxPin: pin}))
+		ids, err = c.relTypeCandidateIDsKind(tok, run.opts(storepkg.QueryOpts{TxPin: pin}), gatherScan)
 		return err
 	}); err != nil {
 		return err

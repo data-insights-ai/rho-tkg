@@ -410,19 +410,22 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 // coordinate resolves (nodesByLabelLocked, countNodesByLabelLocked), with the
 // label's current rows the gather reads. Callers hold c.mu (R or W).
 func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*types.Node, []types.NodeID, error) {
-	return c.nodeLabelCandidatesAtListing(tok, opts, false)
+	return c.nodeLabelCandidatesAtListing(tok, opts, gatherFree)
 }
 
-// nodeLabelCandidatesAtListing is nodeLabelCandidatesAt, counting the label's
-// current rows where the store lists them, before they are decoded
-// (storeNodesByLabel; RH list R2, R2-SCANS) when countListing is set and opts
-// carries a read budget: the temporal ByLabel read counts that listing as
-// candidates. The effective scans, whose fallback gather also lands here, count
-// a candidate per entity when they read it and leave the listing uncounted.
-func (c *Core) nodeLabelCandidatesAtListing(tok uint16, opts storepkg.QueryOpts, countListing bool) ([]*types.Node, []types.NodeID, error) {
+// nodeLabelCandidatesAtListing is nodeLabelCandidatesAt for a gather of the
+// given kind (gatherKind): gatherListed counts the label's current rows where
+// the store lists them, before they are decoded (storeNodesByLabel; RH list R2,
+// R2-SCANS) when opts carries a read budget: the temporal ByLabel read counts
+// that listing as candidates. The effective scans' fallback gather (gatherScan)
+// counts a candidate per entity when it reads it and leaves the listing
+// uncounted, so the gather is held to the candidate room instead.
+func (c *Core) nodeLabelCandidatesAtListing(tok uint16, opts storepkg.QueryOpts, kind gatherKind) ([]*types.Node, []types.NodeID, error) {
 	listing := storepkg.QueryOpts{Depth: opts.Depth}
-	if m, door := opts.ReadMeter(); m != nil && countListing {
+	if m, door := opts.ReadMeter(); m != nil && kind == gatherListed {
 		listing = listing.WithReadMeter(m, door)
+	} else if err := c.membersFit(opts, kind, func() (int, error) { return c.nodeCountByLabel(tok) }); err != nil {
+		return nil, nil, err // the rows listing below is not counted: refused before it reads them
 	}
 	current, err := c.storeNodesByLabel(tok, listing)
 	if err != nil {
@@ -432,7 +435,8 @@ func (c *Core) nodeLabelCandidatesAtListing(tok uint16, opts storepkg.QueryOpts,
 	if err != nil {
 		return nil, nil, err
 	}
-	candIDs, err := c.nodeLabelCandidatesFrom(tok, currentIDs, opts)
+	c.noteListed(len(currentIDs))
+	candIDs, err := c.nodeLabelCandidatesFrom(tok, currentIDs, opts, kind)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -445,22 +449,36 @@ func (c *Core) nodeLabelCandidatesAtListing(tok uint16, opts storepkg.QueryOpts,
 // from the rows, and so does a depth-scoped read on a tiered store
 // (memberIDsAt). Callers hold c.mu (R or W).
 func (c *Core) nodeLabelCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	return c.nodeLabelCandidateIDsKind(tok, opts, gatherFree)
+}
+
+// nodeLabelCandidateIDsKind is nodeLabelCandidateIDsAt for a gather of the given
+// kind: the scans gather with gatherScan, which holds the list to the
+// candidate room as it is built.
+func (c *Core) nodeLabelCandidateIDsKind(tok uint16, opts storepkg.QueryOpts, kind gatherKind) ([]types.NodeID, error) {
 	members := c.memberIDsAt(opts.Depth)
 	if members == nil {
-		_, ids, err := c.nodeLabelCandidatesAt(tok, opts)
+		_, ids, err := c.nodeLabelCandidatesAtListing(tok, opts, kind)
 		return ids, err
+	}
+	if err := c.membersFit(opts, kind, func() (int, error) { return c.nodeCountByLabel(tok) }); err != nil {
+		return nil, err // the listing below is not counted: refused before the store builds it
 	}
 	currentIDs, err := nodeIDsByLabelUnder(members, tok, opts.ReadTally())
 	if err != nil {
 		return nil, err
 	}
-	return c.nodeLabelCandidatesFrom(tok, currentIDs, opts)
+	c.noteListed(len(currentIDs))
+	return c.nodeLabelCandidatesFrom(tok, currentIDs, opts, kind)
 }
 
 // nodeLabelCandidatesFrom widens the label's current members to the candidate
 // set of a read at opts (the ever-members or the history fold, then the
-// valid-time envelope prune). Callers hold c.mu (R or W).
-func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+// valid-time envelope prune). kind says how the read counts its candidates
+// (gatherKind): the gather is held to the candidate room as it grows, the
+// current members the read has counted already left out. Callers hold c.mu (R
+// or W).
+func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts, kind gatherKind) ([]types.NodeID, error) {
 
 	// Gather candidate IDs. K1: with a transaction-time label-membership
 	// sidecar, scope to the label's ever-members (O(matches)) instead of folding
@@ -472,7 +490,7 @@ func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, op
 	// Candidates come in ascending ID order (current members merged with the
 	// gathered IDs), so a read walks forward once and never sorts
 	// (label_scan_at.go).
-	candIDs, err := c.nodeLabelCandidatesSorted(tok, currentIDs, opts)
+	candIDs, err := c.nodeLabelCandidatesSorted(tok, currentIDs, opts, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -505,22 +523,42 @@ func (c *Core) pruneNodeLabelCandidates(tok uint16, ids []types.NodeID, opts sto
 
 // nodeLabelCandidatesSorted is the gather of nodeLabelCandidatesFrom in
 // ascending ID order: K1 ever-members (pruned by the tx-time pin) or the
-// history fold by depth, united with currentIDs.
-func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+// history fold by depth, united with currentIDs. Under a read budget the gather
+// of a scan (kind gatherScan, gatherListed) is held to the candidate room as it
+// grows: the walk stops at the member that passes it and the budget error is
+// returned before the list is completed (gatherKind.fits). The temporal
+// ByLabel read (gatherListed) lists only what its door can use: a member at or
+// below After is not listed (the door drops it), and a list that passes the room
+// is pruned by the valid-time envelope index before the read is refused (the
+// door drops what the index vouches cannot overlap). The door's Limit counts
+// answered rows, which no gather can know, so it does not shorten the list.
+func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts, kind gatherKind) ([]types.NodeID, error) {
 	if !slices.IsSorted(currentIDs) {
 		currentIDs = slices.Sorted(slices.Values(currentIDs))
 	}
 	var extra []types.NodeID
-	add := func(id types.NodeID) {
+	t := opts.ReadTally()
+	var refused error
+	after := opts.After.SnowflakeID()
+	add := func(id types.NodeID) bool {
+		if kind == gatherListed && after > 0 && id.SnowflakeID() <= after {
+			return true // skipAfter drops it: not listed
+		}
 		if !inSorted(currentIDs, id) {
 			extra = append(extra, id)
+			c.noteListed(1)
+			if kind == gatherListed && kind.over(t, len(currentIDs), len(currentIDs)+len(extra)) {
+				extra = c.pruneNodeLabelCandidates(tok, extra, opts) // sound: the door prunes the same ids
+			}
+			refused = kind.fits(t, len(currentIDs), len(currentIDs)+len(extra))
 		}
+		return refused == nil
 	}
 	if c.labelTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
 		pinTx := effectiveTxPin(opts)
-		if err := forEachLabelTxMemberUnder(c.labelTxMembers, tok, opts.ReadTally(), func(id types.NodeID, firstTx types.Instant) bool {
+		if err := forEachLabelTxMemberUnder(c.labelTxMembers, tok, t, func(id types.NodeID, firstTx types.Instant) bool {
 			if pinTx == 0 || firstTx == 0 || firstTx <= pinTx {
-				add(id)
+				return add(id)
 			}
 			return true
 		}); err != nil {
@@ -528,11 +566,11 @@ func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, 
 		}
 	} else if err := c.foldOpensRefused(opts); err != nil {
 		return nil, err
-	} else if err := c.forEachNodeHistoryIDByDepth(opts.Depth, func(id types.NodeID) bool {
-		add(id)
-		return true
-	}); err != nil {
+	} else if err := c.forEachNodeHistoryIDByDepth(opts.Depth, add); err != nil {
 		return nil, err
+	}
+	if refused != nil {
+		return nil, refused
 	}
 	return sortedCandidates(currentIDs, extra), nil
 }
@@ -592,6 +630,16 @@ func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Rela
 // relTypeCandidatesAt is nodeLabelCandidatesAt for a relationship type
 // (relsByTypeLocked, countRelsByTypeLocked).
 func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*types.Relationship, []types.RelID, error) {
+	return c.relTypeCandidatesAtKind(tok, opts, gatherFree)
+}
+
+// relTypeCandidatesAtKind is relTypeCandidatesAt for a gather of the given kind
+// (nodeLabelCandidatesAtListing; no read counts the type's listing, so
+// gatherListed is not used for types).
+func (c *Core) relTypeCandidatesAtKind(tok uint16, opts storepkg.QueryOpts, kind gatherKind) ([]*types.Relationship, []types.RelID, error) {
+	if err := c.membersFit(opts, kind, func() (int, error) { return c.relCountByType(tok) }); err != nil {
+		return nil, nil, err // the rows listing below is not counted: refused before it reads them
+	}
 	current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{Depth: opts.Depth})
 	if err != nil {
 		return nil, nil, err
@@ -600,7 +648,8 @@ func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*type
 	if err != nil {
 		return nil, nil, err
 	}
-	candIDs, err := c.relTypeCandidatesFrom(tok, currentIDs, opts)
+	c.noteListed(len(currentIDs))
+	candIDs, err := c.relTypeCandidatesFrom(tok, currentIDs, opts, kind)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -609,25 +658,34 @@ func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*type
 
 // relTypeCandidateIDsAt is nodeLabelCandidateIDsAt for a relationship type.
 func (c *Core) relTypeCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]types.RelID, error) {
+	return c.relTypeCandidateIDsKind(tok, opts, gatherFree)
+}
+
+// relTypeCandidateIDsKind is nodeLabelCandidateIDsKind for a relationship type.
+func (c *Core) relTypeCandidateIDsKind(tok uint16, opts storepkg.QueryOpts, kind gatherKind) ([]types.RelID, error) {
 	members := c.memberIDsAt(opts.Depth)
 	if members == nil {
-		_, ids, err := c.relTypeCandidatesAt(tok, opts)
+		_, ids, err := c.relTypeCandidatesAtKind(tok, opts, kind)
 		return ids, err
+	}
+	if err := c.membersFit(opts, kind, func() (int, error) { return c.relCountByType(tok) }); err != nil {
+		return nil, err // the listing below is not counted: refused before the store builds it
 	}
 	currentIDs, err := relIDsByTypeUnder(members, tok, opts.ReadTally())
 	if err != nil {
 		return nil, err
 	}
-	return c.relTypeCandidatesFrom(tok, currentIDs, opts)
+	c.noteListed(len(currentIDs))
+	return c.relTypeCandidatesFrom(tok, currentIDs, opts, kind)
 }
 
 // relTypeCandidatesFrom is nodeLabelCandidatesFrom for a relationship type.
-func (c *Core) relTypeCandidatesFrom(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts) ([]types.RelID, error) {
+func (c *Core) relTypeCandidatesFrom(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts, kind gatherKind) ([]types.RelID, error) {
 
 	// scope the candidate set to the type's ever-members when the store owns
 	// the transaction-time rel-type-membership sidecar (see nodesByLabelLocked).
 	// Ascending ID order, as nodeLabelCandidatesFrom.
-	candIDs, err := c.relTypeCandidatesSorted(tok, currentIDs, opts)
+	candIDs, err := c.relTypeCandidatesSorted(tok, currentIDs, opts, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -653,21 +711,26 @@ func (c *Core) pruneRelTypeCandidates(tok uint16, ids []types.RelID, opts storep
 }
 
 // relTypeCandidatesSorted is nodeLabelCandidatesSorted for a relationship type.
-func (c *Core) relTypeCandidatesSorted(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts) ([]types.RelID, error) {
+func (c *Core) relTypeCandidatesSorted(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts, kind gatherKind) ([]types.RelID, error) {
 	if !slices.IsSorted(currentIDs) {
 		currentIDs = slices.Sorted(slices.Values(currentIDs))
 	}
 	var extra []types.RelID
-	add := func(id types.RelID) {
+	t := opts.ReadTally()
+	var refused error
+	add := func(id types.RelID) bool {
 		if !inSorted(currentIDs, id) {
 			extra = append(extra, id)
+			c.noteListed(1)
+			refused = kind.fits(t, len(currentIDs), len(currentIDs)+len(extra))
 		}
+		return refused == nil
 	}
 	if c.relTypeTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
 		pinTx := effectiveTxPin(opts)
-		if err := forEachRelTypeTxMemberUnder(c.relTypeTxMembers, tok, opts.ReadTally(), func(id types.RelID, firstTx types.Instant) bool {
+		if err := forEachRelTypeTxMemberUnder(c.relTypeTxMembers, tok, t, func(id types.RelID, firstTx types.Instant) bool {
 			if pinTx == 0 || firstTx == 0 || firstTx <= pinTx {
-				add(id)
+				return add(id)
 			}
 			return true
 		}); err != nil {
@@ -675,11 +738,11 @@ func (c *Core) relTypeCandidatesSorted(tok uint16, currentIDs []types.RelID, opt
 		}
 	} else if err := c.foldOpensRefused(opts); err != nil {
 		return nil, err
-	} else if err := c.forEachRelHistoryIDByDepth(opts.Depth, func(id types.RelID) bool {
-		add(id)
-		return true
-	}); err != nil {
+	} else if err := c.forEachRelHistoryIDByDepth(opts.Depth, add); err != nil {
 		return nil, err
+	}
+	if refused != nil {
+		return nil, refused
 	}
 	return sortedCandidates(currentIDs, extra), nil
 }

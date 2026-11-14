@@ -2,10 +2,12 @@ package badger
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync/atomic"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -32,8 +34,11 @@ import (
 
 // labelKeyMembers reads tok's label keys through txn: the live nodes carrying
 // the label, nil for a label without members. The open's walk and
-// openLabelMembers count a key the same way.
-func (bs *Store) labelKeyMembers(txn *badgerv4.Txn, tok uint16) map[types.NodeID]struct{} {
+// openLabelMembers count a key the same way. Under a read budget (t not nil)
+// each key counts one candidate as the walk visits it, live or stale, before it
+// is looked at, and the walk stops at the key that passes a limit: this walk is
+// the helper that does the work, so it is the one that charges it.
+func (bs *Store) labelKeyMembers(txn *badgerv4.Txn, tok uint16, t *storecontract.ReadTally) (map[types.NodeID]struct{}, error) {
 	prefix := binary.BigEndian.AppendUint16([]byte{storepkg.KeyLabel}, tok)
 	opts := badgerv4.DefaultIteratorOptions
 	opts.PrefetchValues = false
@@ -46,6 +51,10 @@ func (bs *Store) labelKeyMembers(txn *badgerv4.Txn, tok uint16) map[types.NodeID
 		if len(key) != storepkg.SizeLabelIdx {
 			continue
 		}
+		bs.lazyLabelKeysWalked.Add(1)
+		if err := t.Candidates(1); err != nil {
+			return nil, err
+		}
 		if nid := types.NodeID(storepkg.ParseIDFromKey(key, 3)); bs.nodeIDs.Has(int64(nid)) {
 			if set == nil {
 				set = make(map[types.NodeID]struct{})
@@ -53,36 +62,66 @@ func (bs *Store) labelKeyMembers(txn *badgerv4.Txn, tok uint16) map[types.NodeID
 			set[nid] = struct{}{}
 		}
 	}
-	return set
+	return set, nil
 }
 
 // labelMembersLocked returns tok's members in the RAM label index, nil for a
 // label without. With labelLazy (the open built no maps) it reads the label's
 // keys on first use and keeps the map. The caller holds idxMu (R or W), which
 // does not guard the lazy maps (lazyLabelMu does, taken inside), and only
-// reads the set.
+// reads the set. The budgeted doors that reach it call labelMembersTalliedLocked.
 func (bs *Store) labelMembersLocked(tok uint16) (map[types.NodeID]struct{}, error) {
+	set, _, err := bs.labelMembersTalliedLocked(tok, nil)
+	return set, err
+}
+
+// labelMembersTalliedLocked is labelMembersLocked for a read under a budget
+// (t not nil, R2 late counts). A lazy label whose map is not built yet is read
+// from its keys, and that walk is charged by the walk (labelKeyMembers: one
+// candidate per key, live or stale, before it is looked at); it is refused
+// before it starts when the live members the open's image holds (the label
+// counter) already pass the candidate room t has left (CandidatesAhead, which
+// counts nothing within the room), so a read past its Candidates limit reads no
+// key and keeps no map. A refused walk builds nothing. built reports that this
+// call walked the keys and counted them: a caller that lists the members as
+// candidates counts them only when it is false, so a cold read counts the
+// members once (the walk) as a warm one does (the listing); what it does with
+// them besides (the rows it reads) it counts itself. A label index in RAM, and a
+// lazy map built already, cost nothing to read: nothing is counted here. A nil t
+// is labelMembersLocked.
+func (bs *Store) labelMembersTalliedLocked(tok uint16, t *storecontract.ReadTally) (set map[types.NodeID]struct{}, built bool, err error) {
 	if !bs.labelLazy {
-		return bs.labelIdx[tok], nil
+		return bs.labelIdx[tok], false, nil
 	}
 	bs.lazyLabelMu.Lock()
 	defer bs.lazyLabelMu.Unlock()
 	if set, ok := bs.lazyLabelSets[tok]; ok {
-		return set, nil
+		return set, false, nil
 	}
-	var set map[types.NodeID]struct{}
+	if v, ok := bs.labelCounts.Load(tok); ok {
+		if err := t.CandidatesAhead(int(v.(*atomic.Int64).Load())); err != nil { // #nosec G115 -- a count within int range
+			return nil, false, err
+		}
+	}
+	var refused error // the budget's refusal inside the walk, handed back as it is
 	if err := bs.view(func(txn *badgerv4.Txn) error {
-		set = bs.labelKeyMembers(txn, tok)
-		return nil
+		var werr error
+		if set, werr = bs.labelKeyMembers(txn, tok, t); werr != nil && errors.Is(werr, storecontract.ErrReadBudget) {
+			refused = werr
+		}
+		return werr
 	}); err != nil {
-		return nil, fmt.Errorf("graph: read the members of label %d: %w", tok, err)
+		if refused != nil {
+			return nil, false, refused
+		}
+		return nil, false, fmt.Errorf("graph: read the members of label %d: %w", tok, err)
 	}
 	if bs.lazyLabelSets == nil {
 		bs.lazyLabelSets = make(map[uint16]map[types.NodeID]struct{})
 	}
 	bs.lazyLabelSets[tok] = set
 	bs.lazyLabelBuilds.Add(1)
-	return set, nil
+	return set, true, nil
 }
 
 // labelSetsLocked is labelMembersLocked for each of toks, in order.

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"math"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -17,10 +18,21 @@ import (
 // prefix of the plain scan's segments, none after the refusal).
 //
 // What a budgeted scan counts:
-//   - Candidates: one per entity, before the entity is read (the candidate
-//     list the scan gathers is not bounded by it: it is built first);
-//   - BufferBytes: 8 per listed candidate, once the gather has built the list
-//     and before the first entity is read;
+//   - Candidates: one per entity, before the entity is read; and the gather that
+//     lists them is held to the candidate room as it lists (R2 late counts,
+//     gatherScan): the label's (type's) current members are checked against the
+//     room by the store's own count before the store lists them, the ever-members
+//     past them as the sidecar or the history fold yields them, the list of
+//     several labels as it unites them, so a scan whose candidates pass the
+//     room is refused before its list is built, with the members it saw counted
+//     as work done and no callback made. A tiered store under a ShardOpens
+//     bound is the exception for the first check (its count may open a shard no
+//     counter sees), and the history fold of several labels on a store without
+//     the membership sidecar builds its ID union in the store's own fold
+//     (forEachNodeCandidateIDByDepth) before the gather sees it;
+//   - BufferBytes: 8 per listed candidate, before each joins the list where the
+//     gather builds it (the by-endpoint scans) and else once the gather has
+//     built it, before the first entity is read;
 //   - ShardOpens (tiered): each closed shard the gather (the label's or the
 //     type's current members and its ever-members: storepkg.MemberGatherMeteredCapability)
 //     and the entity reads (the metered read snapshot) are about to open;
@@ -189,6 +201,94 @@ func scanSegments[S any](r *scanRun, fn func(S) bool) func(S) bool {
 		}
 		return fn(s)
 	}
+}
+
+// gatherKind says who counts the candidates a label or type gather lists
+// (R2 late counts), so that the gather itself holds its list to the candidate
+// room as it grows instead of building it first.
+type gatherKind uint8
+
+const (
+	// gatherFree: the caller counts nothing of the list as a whole (a paged door
+	// counts the entities of its page, a read without a budget nothing).
+	gatherFree gatherKind = iota
+	// gatherScan: the caller counts one candidate per list entry when it reads
+	// the entity (the effective scans), so the list must fit the candidate room.
+	gatherScan
+	// gatherListed: as gatherScan, and the store has counted the label's current
+	// members where it listed them (the temporal ByLabel read), so only the
+	// members past them count against the room.
+	gatherListed
+)
+
+// fits refuses a gather that holds n candidates, the first current of which are
+// the label's current members: the entries the caller counts when it reads them
+// must fit the candidate room t has left. A gather past it is refused as it
+// grows, before its list is completed: the budget error counts the candidates it
+// holds (ReadTally.CandidatesAhead, which counts nothing within the room; what
+// it counts is what the list needed, not work done, and ReadBudgetError has no
+// field to say so). A nil t, a meter without a candidate limit and gatherFree
+// refuse nothing.
+func (k gatherKind) fits(t *storepkg.ReadTally, current, n int) error {
+	switch k {
+	case gatherScan:
+		return t.CandidatesAhead(n)
+	case gatherListed:
+		return t.CandidatesAhead(n - current)
+	}
+	return nil
+}
+
+// over reports, counting nothing, whether fits would refuse: a gather that may
+// still shrink its list (the envelope prune of the temporal ByLabel read) asks
+// before it spends the refusal, which counts the list as work done.
+func (k gatherKind) over(t *storepkg.ReadTally, current, n int) bool {
+	if t == nil {
+		return false
+	}
+	switch k {
+	case gatherScan:
+		return uint64(max(n, 0)) > t.CandidateRoom() // #nosec G115 -- a count
+	case gatherListed:
+		return uint64(max(n-current, 0)) > t.CandidateRoom() // #nosec G115 -- a count
+	}
+	return false
+}
+
+// noteListed tells the test hook (Core.candidatesListed) that a gather listed n
+// IDs: the native count of the work, which no read meter keeps.
+func (c *Core) noteListed(n int) {
+	if c.candidatesListed != nil {
+		c.candidatesListed(n)
+	}
+}
+
+// membersFit refuses, before a store lists the current members of a label or a
+// type for a gatherScan, a listing the candidate room cannot hold: the store's
+// own count of them (count, O(1) on every store) against the room. It asks
+// nothing when opts carries no candidate limit, and not a tiered store when the
+// budget bounds ShardOpens, whose count may open a closed shard no counter
+// would see: there the listing's own metered gather (nodeIDsByLabelUnder)
+// charges the opens and the list is bounded by what the stores hold
+// (documented as a limit of the budgeted scans, docs/api.md).
+func (c *Core) membersFit(opts storepkg.QueryOpts, kind gatherKind, count func() (int, error)) error {
+	if kind != gatherScan {
+		return nil
+	}
+	t := opts.ReadTally()
+	if t.CandidateRoom() == math.MaxUint64 {
+		return nil
+	}
+	if m, _ := opts.ReadMeter(); m.BoundsShardOpens() {
+		if _, opensShards := c.store.(*tiered.Store); opensShards {
+			return nil
+		}
+	}
+	n, err := count()
+	if err != nil {
+		return err
+	}
+	return t.CandidatesAhead(n)
 }
 
 // nodeIDsByLabelUnder is members.NodeIDsByLabel, its shard opens counted in t

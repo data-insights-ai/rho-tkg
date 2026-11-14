@@ -349,6 +349,14 @@ func (bs *Store) NodeRowDecodesForTest() int64 { return bs.nodeRowDecodes.Load()
 // reads read from badger (RH list R2).
 func (bs *Store) RelRowDecodesForTest() int64 { return bs.relRowDecodes.Load() }
 
+// HistoryMetaDecodesForTest returns how many history rows were decoded to their
+// temporal skeleton (a counter the read meter does not keep).
+func (bs *Store) HistoryMetaDecodesForTest() int64 { return bs.historyMetaDecodes.Load() }
+
+// ValidEndRowDecodesForTest returns how many rows the valid-end index's bulk
+// read decoded (a counter the read meter does not keep).
+func (bs *Store) ValidEndRowDecodesForTest() int64 { return bs.validEndRowDecodes.Load() }
+
 // PropertyDiskLookupsForTest returns how many equality lookups the on-disk
 // property index answered in this process (UNIQUELOOK). Not for production use.
 func PropertyDiskLookupsForTest() int64 { return propertyDiskLookups.Load() }
@@ -380,6 +388,10 @@ func (bs *Store) LabelMapStateForTest() (lazy bool, inRAM int) {
 // has read from their keys so far; a label asked twice counts once. Not for
 // production use.
 func (bs *Store) LabelMapBuildsForTest() int64 { return bs.lazyLabelBuilds.Load() }
+
+// LabelKeysWalkedForTest is how many label keys the lazy label maps' walks
+// visited (a counter the read meter does not keep).
+func (bs *Store) LabelKeysWalkedForTest() int64 { return bs.lazyLabelKeysWalked.Load() }
 
 // IDSetsEncodedForTest reports whether this open kept the live node set and the
 // live rel set in their encoded form (Config.TransientRead on a read-only open

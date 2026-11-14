@@ -160,7 +160,14 @@ func TestReadBudgetPublicScans(t *testing.T) {
 
 				cctx, cm := store.WithReadBudget(ctx, store.ReadBudget{Candidates: 3})
 				got, err := pubCollect(func(fn func(string) bool) error { return d.ctx(cctx, fn) })
-				if !errors.Is(err, store.ErrReadBudget) || cm.Work().Candidates != 4 || len(got) == 0 || !slices.Equal(got, want[:len(got)]) {
+				if gathered := !d.bounded || b.name == "sharded"; gathered {
+					// The gather of the label's (type's) candidates refuses before it
+					// lists a member (R2 late counts): the live members, which pass the
+					// room, are counted as work done and nothing is streamed.
+					if !errors.Is(err, store.ErrReadBudget) || cm.Work().Candidates != n-2 || len(got) != 0 {
+						t.Fatalf("%s: Candidates 3 = %v, %v (work %+v); want a refusal in the gather: none streamed and the %d live members counted", d.name, got, err, cm.Work(), n-2)
+					}
+				} else if !errors.Is(err, store.ErrReadBudget) || cm.Work().Candidates != 4 || len(got) == 0 || !slices.Equal(got, want[:len(got)]) {
 					t.Fatalf("%s: Candidates 3 = %v, %v (work %+v); want a prefix of the plain stream and a refusal at the fourth candidate", d.name, got, err, cm.Work())
 				}
 				hctx, hm := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: 1})
@@ -433,13 +440,10 @@ func TestReadBudgetPublicValidEndFirstCall(t *testing.T) {
 				if err != nil || !slices.Equal(got, want) {
 					t.Fatalf("%s: unlimited = %v, %v; want %v", d.name, got, err, want)
 				}
-				// Badger and tiered install nothing of a refused first call: it reads
-				// every ever-member again. Memory keeps the 5 entities it had read
-				// before the refusal and reads the 3 left.
+				// Every store installs nothing of a refused first call (the memory store
+				// too since R2 late counts: the refusal comes before the enlistment, not
+				// at the sixth entity read): it reads every ever-member again.
 				if first, wantFirst := um.Work().Candidates, uint64(n+(n-2)); c.fresh {
-					if b.name == "memory" {
-						wantFirst = (n - 5) + (n - 2)
-					}
 					if first != wantFirst {
 						t.Fatalf("%s: the unlimited first call counted %d candidates; want %d (the ever-members it read, then the %d listed)", d.name, first, wantFirst, n-2)
 					}

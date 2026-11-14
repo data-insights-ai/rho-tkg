@@ -1,6 +1,8 @@
 package memory
 
 import (
+	"iter"
+
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -108,7 +110,7 @@ func (ms *Store) nodeValidEndRowsLocked(id types.NodeID) []indexpkg.ValidEndRow 
 // store decodes nothing) before they are folded; a refusal stops the re-read
 // at that entity and the ones not yet read stay unknown.
 func (ms *Store) validEndCandidates(ix *indexpkg.ValidEndIndex, toks []uint16, ensureK1 func() error,
-	members func(tok uint16, enlist func(id int64)), rows func(id int64) ([]indexpkg.ValidEndRow, error),
+	members func(tok uint16) iter.Seq[int64], rows func(id int64) ([]indexpkg.ValidEndRow, error),
 	pin, validFrom types.Instant, t *storecontract.ReadTally) ([]storecontract.ValidEndCandidate, error) {
 	if ms == nil {
 		return nil, ErrNilStore
@@ -136,7 +138,7 @@ func (ms *Store) validEndCandidates(ix *indexpkg.ValidEndIndex, toks []uint16, e
 		metered = rows
 	}
 	answer := func() ([]storecontract.ValidEndCandidate, error) {
-		if err := ix.ResolveUnknown(metered); err != nil {
+		if err := ix.ResolveUnknownUnder(t, metered); err != nil {
 			return nil, err
 		}
 		return ix.Candidates(toks, pin, validFrom), nil
@@ -168,7 +170,9 @@ func (ms *Store) validEndCandidates(ix *indexpkg.ValidEndIndex, toks []uint16, e
 		return nil, err
 	}
 	for _, tok := range toks {
-		ix.Track(tok, func(enlist func(id int64)) { members(tok, enlist) })
+		if _, err := ix.TrackUnder(tok, members(tok), t); err != nil { // a token the candidate room cannot hold is refused before any entity is enlisted
+			return nil, err
+		}
 	}
 	return answer()
 }
@@ -185,9 +189,13 @@ func (ms *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom t
 		return nil, ErrNilStore
 	}
 	return ms.validEndCandidates(&ms.relValidEnds, []uint16{typeToken}, ms.ensureRelTypeTxMembersBuiltLocked,
-		func(tok uint16, enlist func(int64)) {
-			for id := range ms.relTypeTxMembers[tok] {
-				enlist(int64(id))
+		func(tok uint16) iter.Seq[int64] {
+			return func(yield func(int64) bool) {
+				for id := range ms.relTypeTxMembers[tok] {
+					if !yield(int64(id)) {
+						return
+					}
+				}
 			}
 		},
 		func(id int64) ([]indexpkg.ValidEndRow, error) { return ms.relValidEndRowsLocked(types.RelID(id)) },
@@ -215,9 +223,13 @@ func (ms *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 	}
 	return ms.validEndCandidates(&ms.nodeValidEnds, labelTokens,
 		func() error { ms.ensureLabelTxMembersBuiltLocked(); return nil },
-		func(tok uint16, enlist func(int64)) {
-			for id := range ms.labelTxMembers[tok] {
-				enlist(int64(id))
+		func(tok uint16) iter.Seq[int64] {
+			return func(yield func(int64) bool) {
+				for id := range ms.labelTxMembers[tok] {
+					if !yield(int64(id)) {
+						return
+					}
+				}
 			}
 		},
 		func(id int64) ([]indexpkg.ValidEndRow, error) {
