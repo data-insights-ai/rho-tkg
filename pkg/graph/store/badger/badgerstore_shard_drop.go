@@ -139,12 +139,7 @@ func (bs *Store) hasForeignRowsLocked(ids []types.NodeID, rels map[types.RelID]s
 // RAM label map and the on-disk 0x03 keyspace (+ pending overlay).
 func (bs *Store) hasForeignLabelTokensLocked(keepToken uint16) (bool, error) {
 	if !bs.labelOnDisk {
-		for tok, set := range bs.labelIdx {
-			if tok != keepToken && len(set) > 0 {
-				return true, nil
-			}
-		}
-		return false, nil
+		return bs.labelOtherThanLocked(keepToken), nil
 	}
 
 	foreignPending := false

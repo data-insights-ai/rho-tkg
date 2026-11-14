@@ -102,7 +102,12 @@ func (bs *Store) labelScanIDs(token uint16) (ids []types.NodeID, sorted bool, er
 		bs.idxMu.RUnlock()
 		return ids, false, err
 	}
-	ids, gen, ok := bs.labelOrder.Ordered(token, len(bs.labelIdx[token]))
+	members, err := bs.labelMembersLocked(token)
+	if err != nil {
+		bs.idxMu.RUnlock()
+		return nil, false, err
+	}
+	ids, gen, ok := bs.labelOrder.Ordered(token, len(members))
 	if ok {
 		bs.idxMu.RUnlock()
 		return ids, true, nil

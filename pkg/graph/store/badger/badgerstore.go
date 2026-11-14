@@ -193,6 +193,15 @@ type Config struct {
 	// key probe instead of building the RAM ID set on first call. The tiered store sets
 	// it for cold shards. Ignored when Store is provided explicitly.
 	HistoryPresenceProbeOnly bool
+	// TransientRead marks a read-only open as a handle for one read, or a few, that
+	// closes when they end. It skips at the open what the first read that needs it
+	// builds instead: a trusted open image carrying the per-label counts spares the
+	// label-key walk, and the label index's maps are built per label when a read
+	// first asks for one (labelMembersLocked). Answers are the same as without it;
+	// a handle serving many reads pays each build once, so the tiered store sets it
+	// only for a read-only cold shard that closes at check-in (MaxOpenColdShards 0).
+	// Ignored unless ReadOnly, and when Store is provided explicitly.
+	TransientRead bool
 	// ColumnsOnDisk persists built columnar snapshots so a cold store can decode a
 	// column instead of re-reading every entity. Observable only as latency. A persisted
 	// column is a rebuild accelerator, never a read authority (as TemporalIndexOnDisk):
@@ -441,6 +450,11 @@ type Store struct {
 	relRevs                   revTable                                      // rel row revisions for safe prefetch handoff (BACKLOG 18b; mirrors nodeRevs)
 	labelIdx                  map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
 	labelOnDisk               bool                                          // answer label snapshots from the persisted keyspace
+	transientRead             bool                                          // Config.TransientRead on a read-only open: what a first read needs is built then, not at the open
+	labelLazy                 bool                                          // the open built no label maps (TransientRead, trusted image with label counts): labelMembersLocked reads a label's members from its keys on first use; fixed at open
+	lazyLabelMu               sync.Mutex                                    // guards lazyLabelSets; taken under idxMu (R), never around it
+	lazyLabelSets             map[uint16]map[types.NodeID]struct{}          // labelLazy: the label maps read so far; a label without members is a nil entry
+	lazyLabelBuilds           atomic.Int64                                  // labelLazy: label maps read from their keys (tests assert none twice)
 	adjOnDisk                 bool                                          // answer adjacency snapshots from the persisted keyspaces
 	propIdxOnDisk             bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
 	propDiskLabels            map[string]struct{}                           // PropertyIndexOnDiskLabels: these labels' property indexes too
@@ -1190,6 +1204,7 @@ func New(cfg Config) (*Store, error) {
 		vectorIndexes:           make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
 		inMemory:                cfg.InMemory,
 		labelOnDisk:             cfg.LabelIndexOnDisk,
+		transientRead:           cfg.TransientRead && cfg.ReadOnly,
 		adjOnDisk:               cfg.AdjacencyIndexOnDisk,
 		propIdxOnDisk:           cfg.PropertyIndexOnDisk,
 		temporalIdxOnDisk:       cfg.TemporalIndexOnDisk,
@@ -1404,10 +1419,12 @@ func (bs *Store) loadIndexes(img *openImage) error {
 			bs.statsDeferred.Store(true) // built at the first statistics read
 		}
 	}
-	if bs.labelOnDisk {
+	if bs.labelOnDisk || bs.labelLazy {
 		// Disk-resident label index: the map was built transiently for the open-path
 		// rebuilds; drop it for the steady-state RAM win (label snapshots come from
-		// badgerstore_label_disk.go). Open peak memory still includes it.
+		// badgerstore_label_disk.go). Open peak memory still includes it. A lazy
+		// open (labelLazy) drops what those rebuilds read for the same reason: the
+		// maps are built per label on first use (badgerstore_label_lazy.go).
 		bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	}
 	return nil
@@ -1591,7 +1608,13 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		// decoded row. A trusted image with the label index on disk only counts the
 		// members (EXISTMAP: the map was built and dropped, ~33 B per node of open
 		// peak); an index the image lacks reads its label's keys (openLabelMembers).
-		lazyLabels := img != nil && bs.labelOnDisk
+		// A transient read-only open (Config.TransientRead) with a trusted image that
+		// holds the live node set and the label counts reads no label key either: the
+		// maps are built per label when a read asks (badgerstore_label_lazy.go). Any
+		// other image, or none, walks as before.
+		lazyMap := bs.transientRead && !bs.labelOnDisk && img != nil && img.nodeIDs != nil && img.labelCounts != nil && !img.delta()
+		lazyLabels := (img != nil && bs.labelOnDisk) || lazyMap
+		bs.labelLazy = lazyMap
 		labelCounts := map[uint16]int64{}
 		if lazyLabels && img.nodeIDs != nil && img.labelCounts != nil {
 			// The image holds the counts the walk below would make (OPENWALK),

@@ -60,6 +60,15 @@ func (bs *Store) IndexStateDigestForTest() string {
 	for _, id := range rels {
 		add("rel %d ord=%d", id, bs.ords.rel(id, false))
 	}
+	if bs.labelLazy { // a lazy open built no map: read each live label's members from its keys
+		bs.labelCounts.Range(func(k, v any) bool {
+			if v.(*atomic.Int64).Load() > 0 {
+				set, _ := bs.labelMembersLocked(k.(uint16))
+				add("label %d %v", k, digestNodeIDs(set))
+			}
+			return true
+		})
+	}
 	for tok, set := range bs.labelIdx {
 		add("label %d %v", tok, digestNodeIDs(set))
 	}

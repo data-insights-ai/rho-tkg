@@ -360,3 +360,23 @@ func (bs *Store) FailNextUniqueOwnerClaimForTest(err error) {
 	bs.owner.failNextClaim = err
 	bs.owner.claimMu.Unlock()
 }
+
+// LabelMapStateForTest reports whether this open left the label maps to be
+// built per label on first use (Config.TransientRead on a read-only open with a
+// trusted image) and how many label maps are in RAM now: the open's own, or the
+// lazy ones built so far (an empty label's counts). Not for production use.
+func (bs *Store) LabelMapStateForTest() (lazy bool, inRAM int) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	if bs.labelLazy {
+		bs.lazyLabelMu.Lock()
+		defer bs.lazyLabelMu.Unlock()
+		return true, len(bs.lazyLabelSets)
+	}
+	return false, len(bs.labelIdx)
+}
+
+// LabelMapBuildsForTest is how many label maps a lazy open (Config.TransientRead)
+// has read from their keys so far; a label asked twice counts once. Not for
+// production use.
+func (bs *Store) LabelMapBuildsForTest() int64 { return bs.lazyLabelBuilds.Load() }

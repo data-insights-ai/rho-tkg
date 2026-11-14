@@ -44,7 +44,10 @@ func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error
 // before it collects the rest of the label. A nil admit is the plain snapshot.
 func (bs *Store) labelNodeIDsSnapshotAdmitLocked(token uint16, admit func(int) error) ([]types.NodeID, error) {
 	if !bs.labelOnDisk {
-		set := bs.labelIdx[token]
+		set, err := bs.labelMembersLocked(token)
+		if err != nil {
+			return nil, err
+		}
 		if len(set) == 0 {
 			return nil, nil
 		}

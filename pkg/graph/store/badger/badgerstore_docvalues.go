@@ -217,8 +217,11 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	gen := bs.multiLabelEpoch(toks)
 
 	bs.idxMu.RLock()
-	ids := bs.intersectLabelsLocked(toks)
+	ids, ierr := bs.intersectLabelsLocked(toks)
 	bs.idxMu.RUnlock()
+	if ierr != nil {
+		return nil, true // a label's members unreadable: the caller reads the records
+	}
 	// An EMPTY intersection is served (an empty snapshot, round 5 request 3):
 	// the caller cannot tell it from the labels' counts, and a decline sent it
 	// to look for a common member itself. Only over-cap declines.
@@ -238,8 +241,18 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	// membership re-derived (a node is a member only if it carries every
 	// label) and the accounting identity summed over the member labels.
 	if old != nil && old.HasAll(keys) {
-		if touched, ok := bs.takeMultiLabelDelta(toks, gen, old.Epoch()); ok {
+		var sets []map[types.NodeID]struct{}
+		var serr error
+		if bs.labelLazy { // read-only: the maps are read once, here
+			bs.idxMu.RLock()
+			sets, serr = bs.labelSetsLocked(toks)
+			bs.idxMu.RUnlock()
+		}
+		if touched, ok := bs.takeMultiLabelDelta(toks, gen, old.Epoch()); ok && serr == nil {
 			member := func(id types.NodeID) bool {
+				if bs.labelLazy {
+					return inAllSets(sets, id) // read-only: the maps read once never change
+				}
 				for _, t := range toks {
 					if _, in := bs.labelIdx[t][id]; !in {
 						return false
@@ -302,16 +315,20 @@ func (bs *Store) bulkNodePropGetter(ids []types.NodeID) func(types.NodeID, strin
 // intersectLabelsLocked returns the node IDs present in EVERY label token,
 // driven by the smallest set (O(min |label|) probes), as a slice (no
 // intermediate set). Returns nil if any token is unknown/empty. Must hold
-// bs.idxMu (read lock).
-func (bs *Store) intersectLabelsLocked(toks []uint16) []types.NodeID {
+// bs.idxMu (read lock). The error is a lazy label map (labelLazy) that could
+// not be read.
+func (bs *Store) intersectLabelsLocked(toks []uint16) ([]types.NodeID, error) {
 	if len(toks) == 0 {
-		return nil
+		return nil, nil
+	}
+	sets, err := bs.labelSetsLocked(toks)
+	if err != nil {
+		return nil, err
 	}
 	var smallest map[types.NodeID]struct{}
-	for _, t := range toks {
-		s := bs.labelIdx[t]
+	for _, s := range sets {
 		if len(s) == 0 {
-			return nil
+			return nil, nil
 		}
 		if smallest == nil || len(s) < len(smallest) {
 			smallest = s
@@ -319,22 +336,11 @@ func (bs *Store) intersectLabelsLocked(toks []uint16) []types.NodeID {
 	}
 	out := make([]types.NodeID, 0, len(smallest))
 	for id := range smallest {
-		if bs.inAllLabelsLocked(toks, id) {
+		if inAllSets(sets, id) {
 			out = append(out, id)
 		}
 	}
-	return out
-}
-
-// inAllLabelsLocked reports whether id carries every label of toks. Must
-// hold bs.idxMu (read lock).
-func (bs *Store) inAllLabelsLocked(toks []uint16, id types.NodeID) bool {
-	for _, t := range toks {
-		if _, ok := bs.labelIdx[t][id]; !ok {
-			return false
-		}
-	}
-	return true
+	return out, nil
 }
 
 // multiColumnsFromMember builds an intersection's snapshot at gen from the
@@ -360,13 +366,17 @@ func (bs *Store) multiColumnsFromMember(toks []uint16, gen uint64, keys []string
 		return nil
 	}
 	bs.idxMu.RLock()
+	sets, serr := bs.labelSetsLocked(toks)
+	bs.idxMu.RUnlock()
+	if serr != nil {
+		return nil
+	}
 	var ords []int
 	for o, id := range src.IDs() {
-		if bs.inAllLabelsLocked(toks, id) {
+		if inAllSets(sets, id) {
 			ords = append(ords, o)
 		}
 	}
-	bs.idxMu.RUnlock()
 	sub, ok := indexpkg.SubsetDocValues(gen, src, ords, keys)
 	if !ok {
 		return nil
@@ -383,9 +393,9 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 	gen := bs.labelEpoch(labelToken)
 
 	bs.idxMu.RLock()
-	set := bs.labelIdx[labelToken]
+	set, serr := bs.labelMembersLocked(labelToken)
 	n := len(set)
-	if n == 0 || n > indexpkg.MaxDocValuesNodes {
+	if serr != nil || n == 0 || n > indexpkg.MaxDocValuesNodes {
 		bs.idxMu.RUnlock()
 		return nil, true
 	}
@@ -418,7 +428,11 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 	if old != nil && old.HasAll(keys) {
 		if touched, ok := bs.takeLabelDelta(labelToken, gen, old.Epoch()); ok {
 			member := func(id types.NodeID) bool {
-				_, in := bs.labelIdx[labelToken][id]
+				m := set // read-only: the map read once never changes
+				if !bs.labelLazy {
+					m = bs.labelIdx[labelToken]
+				}
+				_, in := m[id]
 				return in
 			}
 			if ext, patched := bs.refreshColumns(old, gen, touched, member); ext != nil {

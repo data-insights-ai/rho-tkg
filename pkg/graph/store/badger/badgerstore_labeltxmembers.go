@@ -586,7 +586,7 @@ func (bs *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id 
 // idxMu (R or W) and only reads the set.
 func (bs *Store) labelCurrentMembersLocked(token uint16) (map[types.NodeID]struct{}, error) {
 	if !bs.labelOnDisk {
-		return bs.labelIdx[token], nil
+		return bs.labelMembersLocked(token)
 	}
 	ids, err := bs.labelNodeIDsSnapshotLocked(token)
 	if err != nil {

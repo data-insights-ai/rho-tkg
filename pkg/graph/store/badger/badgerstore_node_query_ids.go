@@ -113,7 +113,10 @@ func (bs *Store) elementsOnDiskSharesLocked(propKey string) bool {
 // iterator seeking each node's label key. Caller holds idxMu.
 func (bs *Store) keepLabelledLocked(token uint16, nids []types.NodeID) ([]types.NodeID, error) {
 	if !bs.labelOnDisk {
-		set := bs.labelIdx[token]
+		set, err := bs.labelMembersLocked(token)
+		if err != nil {
+			return nil, err
+		}
 		return slices.DeleteFunc(nids, func(nid types.NodeID) bool {
 			_, ok := set[nid]
 			return !ok

@@ -10,3 +10,39 @@ go test -run 'TestColdOpen_' ./pkg/graph/store/tiered/
 FAIL
 (the cap 0 / 4 MB, the two cap 2 cases and TestColdOpen_WritableHandleKeepsTheConfiguredBlockCache pass before the fix: they pin what
 does not change)
+
+== 2a. Tried and rejected: the lazy label map of LabelIndexOnDisk for a transient read-only handle
+The only lazy label map in the code is LabelIndexOnDisk's (a trusted image with the per-label counts opens without the label-key
+walk). Setting it on the read-only cold handle at MaxOpenColdShards 0 (cfg.LabelIndexOnDisk = true in the cold read config) builds no
+map at open, but every door gated on `!bs.labelOnDisk` declines on such a handle (ForEachDocValues, DocValuesSnapshot, the multi-label
+columns, the columnar scan: "membership not materialized in RAM -> fall back"), and tiered's ForEachDocValues declines as a whole when
+one shard declines, so one cold shard took the fast path from every hot shard of the query. go test -short ./pkg/graph/store/tiered/
+with that setting:
+--- FAIL: TestTieredDocValues_ColdShardParticipation (0.91s)
+    tieredstore_docvalues_test.go:389: ForEachDocValues declined; want usable
+Not used. Instead 2b: the same lazy open (no walk, counters from the image) with the maps kept in RAM mode and built per label on first
+use (badger.Config.TransientRead), so every door that reads the maps keeps working.
+
+== 2b. The label maps of a transient read-only handle (before the fix)
+go test -run 'TestColdOpen_Transient.*Label|TestColdOpen_Writable.*Label' ./pkg/graph/store/tiered/
+--- FAIL: TestColdOpen_TransientHandleBuildsNoLabelMapAtOpen (0.00s)
+    --- FAIL: TestColdOpen_TransientHandleBuildsNoLabelMapAtOpen/cap_0 (0.77s)
+        cold_open_labels_test.go:47: right after the open: lazy label maps false with 1 maps in RAM, want true with 0
+FAIL
+(the cap 0 / label index on disk and the cap 2 case pass before the fix, and so does TestColdOpen_WritableHandleKeepsTheLabelMap: they pin
+what does not change)
+
+2c. Mutation sweep of the lazy label maps (each reader of the label index put back on the empty map, or the builder broken; every
+one run against TestLazyLabelMapsMatchEagerOnEveryOpenShape and TestLazyLabelMapsServeConcurrentReaders, badger package):
+CAUGHT: labelNodeIDsSnapshotAdmitLocked reads labelIdx (snapshot door)
+CAUGHT: labelScanIDs counts the kept list from labelIdx (the second scan no longer shares the first's sorted list)
+CAUGHT: buildLabelColumns reads labelIdx; the intersection reads labelIdx; multiColumnsFromMember reads labelIdx (doc-values doors)
+CAUGHT: labelCurrentMembersLocked reads labelIdx (LabelTxMembersOf)
+CAUGHT: keepLabelledLocked reads labelIdx (NodeIDsByLabelAndPropertyKeys)
+CAUGHT: hasForeignLabelTokensLocked reads labelIdx (CollectShardDropResidue)
+CAUGHT: the builder keeps stale label keys (no node-liveness filter); the open trusts an image without label counts; a map built on
+        every read instead of once
+EQUIVALENT: lazy open on a delta image (!img.delta()): openImageDelta already drops the image's ID sets, so the condition on them
+        fails first; the test's delta shape stays not lazy either way.
+Before the first sweep four mutants were missed (labelScanIDs, labelCurrentMembersLocked, the foreign-label check, the stale-key
+filter): the fixture had no rels outside label 1, no stale label key and no LabelTxMembersOf/kept-list probe; it has them now.
