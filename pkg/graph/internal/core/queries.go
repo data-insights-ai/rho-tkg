@@ -526,7 +526,12 @@ func (c *Core) pruneNodeLabelCandidates(tok uint16, ids []types.NodeID, opts sto
 // history fold by depth, united with currentIDs. Under a read budget the gather
 // of a scan (kind gatherScan, gatherListed) is held to the candidate room as it
 // grows: the walk stops at the member that passes it and the budget error is
-// returned before the list is completed (gatherKind.fits).
+// returned before the list is completed (gatherKind.fits). The temporal
+// ByLabel read (gatherListed) lists only what its door can use: a member at or
+// below After is not listed (the door drops it), and a list that passes the room
+// is pruned by the valid-time envelope index before the read is refused (the
+// door drops what the index vouches cannot overlap). The door's Limit counts
+// answered rows, which no gather can know, so it does not shorten the list.
 func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts, kind gatherKind) ([]types.NodeID, error) {
 	if !slices.IsSorted(currentIDs) {
 		currentIDs = slices.Sorted(slices.Values(currentIDs))
@@ -534,10 +539,17 @@ func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, 
 	var extra []types.NodeID
 	t := opts.ReadTally()
 	var refused error
+	after := opts.After.SnowflakeID()
 	add := func(id types.NodeID) bool {
+		if kind == gatherListed && after > 0 && id.SnowflakeID() <= after {
+			return true // skipAfter drops it: not listed
+		}
 		if !inSorted(currentIDs, id) {
 			extra = append(extra, id)
 			c.noteListed(1)
+			if kind == gatherListed && kind.over(t, len(currentIDs), len(currentIDs)+len(extra)) {
+				extra = c.pruneNodeLabelCandidates(tok, extra, opts) // sound: the door prunes the same ids
+			}
 			refused = kind.fits(t, len(currentIDs), len(currentIDs)+len(extra))
 		}
 		return refused == nil

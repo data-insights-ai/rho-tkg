@@ -225,8 +225,10 @@ const (
 // the label's current members: the entries the caller counts when it reads them
 // must fit the candidate room t has left. A gather past it is refused as it
 // grows, before its list is completed: the budget error counts the candidates it
-// holds (ReadTally.CandidatesAhead, which counts nothing within the room). A
-// nil t, a meter without a candidate limit and gatherFree refuse nothing.
+// holds (ReadTally.CandidatesAhead, which counts nothing within the room; what
+// it counts is what the list needed, not work done, and ReadBudgetError has no
+// field to say so). A nil t, a meter without a candidate limit and gatherFree
+// refuse nothing.
 func (k gatherKind) fits(t *storepkg.ReadTally, current, n int) error {
 	switch k {
 	case gatherScan:
@@ -235,6 +237,22 @@ func (k gatherKind) fits(t *storepkg.ReadTally, current, n int) error {
 		return t.CandidatesAhead(n - current)
 	}
 	return nil
+}
+
+// over reports, counting nothing, whether fits would refuse: a gather that may
+// still shrink its list (the envelope prune of the temporal ByLabel read) asks
+// before it spends the refusal, which counts the list as work done.
+func (k gatherKind) over(t *storepkg.ReadTally, current, n int) bool {
+	if t == nil {
+		return false
+	}
+	switch k {
+	case gatherScan:
+		return uint64(max(n, 0)) > t.CandidateRoom() // #nosec G115 -- a count
+	case gatherListed:
+		return uint64(max(n-current, 0)) > t.CandidateRoom() // #nosec G115 -- a count
+	}
+	return false
 }
 
 // noteListed tells the test hook (Core.candidatesListed) that a gather listed n
