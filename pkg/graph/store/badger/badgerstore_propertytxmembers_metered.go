@@ -22,7 +22,12 @@ var _ storecontract.PropertyTxMemberMeteredCapability = (*Store)(nil)
 // per key. Shard opens are the tiered store's to charge. Each member is
 // counted as a candidate before it is handed on (ReadTally.HandedOn), so a
 // direct caller is bounded across keys and, on tiered, shards; a door that
-// counts the members itself passes ReadTally.DoorCounts.
+// counts the members itself passes ReadTally.DoorCounts. An entry the walk
+// judges and rejects (a window walk's entry whose envelope misses the window)
+// or steps over as stale is never handed on, so the store charges it to the
+// tally at once, in either mode (windowBudget): the Candidates limit holds for
+// the whole read, across the value keys and, on tiered, the shards, counting
+// what the walks examine and not only the members they hand on.
 
 // ForEachNodePropertyTxMemberMetered implements
 // store.PropertyTxMemberMeteredCapability: ForEachNodePropertyTxMember (window

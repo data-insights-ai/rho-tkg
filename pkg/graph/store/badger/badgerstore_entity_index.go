@@ -525,14 +525,25 @@ func (f txMemberFold) add(kind byte) func(key []byte) {
 	}
 }
 
-// foldedTxMembers returns f's members in ascending ID order.
-func foldedTxMembers[ID cmp.Ordered](f txMemberFold, conv func(snowflake.ID) ID) []indexpkg.TxMember[ID] {
+// txMemberBytes is the logical size of one member of the list a fold becomes
+// (indexpkg.TxMember: an ID and its first transaction time, 8 + 8), what the
+// list is charged per member as BufferBytes (R2).
+const txMemberBytes = 16
+
+// foldedTxMembers returns f's members in ascending ID order. Under t (nil:
+// none) the list is charged as BufferBytes, txMemberBytes per member, before it
+// is allocated and sorted, so a read bounded in buffer bytes stops before the
+// list grows past the limit.
+func foldedTxMembers[ID cmp.Ordered](f txMemberFold, conv func(snowflake.ID) ID, t *storecontract.ReadTally) ([]indexpkg.TxMember[ID], error) {
+	if err := t.Buffer(len(f) * txMemberBytes); err != nil {
+		return nil, err
+	}
 	out := make([]indexpkg.TxMember[ID], 0, len(f))
 	for id, tx := range f {
 		out = append(out, indexpkg.TxMember[ID]{ID: conv(id), FirstTx: tx})
 	}
 	slices.SortFunc(out, func(a, b indexpkg.TxMember[ID]) int { return cmp.Compare(a.ID, b.ID) })
-	return out
+	return out, nil
 }
 
 // memberQuery selects the values of a membership lookup: valueKeys (nil:
@@ -705,7 +716,9 @@ func (bs *Store) relDiskMembers(key indexpkg.RelPropertyIndexKey, q memberQuery)
 	if err != nil {
 		return nil, true, err
 	}
-	members = foldedTxMembers(f, func(id snowflake.ID) types.RelID { return types.RelID(id) })
+	if members, err = foldedTxMembers(f, func(id snowflake.ID) types.RelID { return types.RelID(id) }, q.tally); err != nil {
+		return nil, true, err
+	}
 	if q.work != nil {
 		q.work.MemberSliceLen = uint64(len(members))
 		q.work.MemberSliceCap = uint64(cap(members))
@@ -731,7 +744,9 @@ func (bs *Store) nodeDiskMembers(key indexpkg.PropertyIndexKey, q memberQuery) (
 	if err != nil {
 		return nil, true, err
 	}
-	members = foldedTxMembers(f, func(id snowflake.ID) types.NodeID { return types.NodeID(id) })
+	if members, err = foldedTxMembers(f, func(id snowflake.ID) types.NodeID { return types.NodeID(id) }, q.tally); err != nil {
+		return nil, true, err
+	}
 	if q.work != nil {
 		q.work.MemberSliceLen = uint64(len(members))
 		q.work.MemberSliceCap = uint64(cap(members))
@@ -755,7 +770,8 @@ func (bs *Store) relDiskMembersAfter(key indexpkg.RelPropertyIndexKey, valueKey 
 	if err != nil {
 		return nil, true, err
 	}
-	return pageTxMembers(foldedTxMembers(f, func(id snowflake.ID) types.RelID { return types.RelID(id) }), after, limit), true, nil
+	members, _ = foldedTxMembers(f, func(id snowflake.ID) types.RelID { return types.RelID(id) }, nil) // unmetered: no refusal
+	return pageTxMembers(members, after, limit), true, nil
 }
 
 // nodeDiskMembersAfter is relDiskMembersAfter for a node definition whose
@@ -773,7 +789,8 @@ func (bs *Store) nodeDiskMembersAfter(key indexpkg.PropertyIndexKey, valueKey st
 	if err != nil {
 		return nil, true, err
 	}
-	return pageTxMembers(foldedTxMembers(f, func(id snowflake.ID) types.NodeID { return types.NodeID(id) }), after, limit), true, nil
+	members, _ = foldedTxMembers(f, func(id snowflake.ID) types.NodeID { return types.NodeID(id) }, nil) // unmetered: no refusal
+	return pageTxMembers(members, after, limit), true, nil
 }
 
 // diskTxMembersAfterLocked folds the member entries of one value from the ID

@@ -19,7 +19,9 @@ import (
 // candidates answers in RAM. The on-disk window walk is ordered by end and
 // visits every row ending after the window's start (40 here), each admitted
 // under the budget (R2, the window walk's rejects): there a budget of 10 refuses
-// and one of 40 answers, counting the 2 candidates. Under a read budget the door counts its
+// and one of 40 answers, counting the 38 rejected entries as the walk judges
+// them and the 2 members the door is handed (R2 cumulative: a rejected entry is
+// never handed on, so the store charges it). Under a read budget the door counts its
 // candidates and output segments; past the candidate limit (here 1) it returns
 // ErrReadBudget with the counters and no rows, before it decodes a timeline.
 // Without a budget every answer is unchanged.
@@ -67,8 +69,12 @@ func TestReadBudget_SelectiveDoorRefusesBroadRead(t *testing.T) {
 			if err != nil || rtbNames(w, got[0]) != want {
 				t.Fatalf("under budget %d = %s, %v; want %s", lim, rtbRender(w, got), err, want)
 			}
-			if work := meter.Work(); work.Candidates != 2 || work.Segments != 2 {
-				t.Fatalf("work = %+v, want 2 candidates, 2 segments", work)
+			wantCandidates := uint64(2)
+			if disk {
+				wantCandidates = rows // the 38 entries the walk rejected, and the 2 members
+			}
+			if work := meter.Work(); work.Candidates != wantCandidates || work.Segments != 2 {
+				t.Fatalf("work = %+v, want %d candidates, 2 segments", work, wantCandidates)
 			}
 
 			// Past the limit: refused, counted, nothing read.

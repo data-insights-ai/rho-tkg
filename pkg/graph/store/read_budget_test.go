@@ -133,3 +133,23 @@ func TestReadTally_CandidateRoomAndAhead(t *testing.T) {
 		t.Fatal("a fresh meter's room is its limit")
 	}
 }
+
+// TestReadTally_Buffer (R2 cumulative): a store charges the bytes of a buffer it
+// is about to grow as BufferBytes through its tally, refusing past the limit
+// with the typed error and the bytes counted; a nil tally counts nothing.
+func TestReadTally_Buffer(t *testing.T) {
+	var nilTally *ReadTally
+	if err := nilTally.Buffer(1 << 40); err != nil {
+		t.Fatalf("nil tally: %v", err)
+	}
+	_, m := WithReadBudget(context.Background(), ReadBudget{BufferBytes: 100})
+	tally := m.Tally("door")
+	if err := tally.Buffer(100); err != nil || m.Work().BufferBytes != 100 {
+		t.Fatalf("at the limit: %v, work %+v", err, m.Work())
+	}
+	err := tally.Buffer(1)
+	var be *ReadBudgetError
+	if !errors.As(err, &be) || be.Limit != "buffer bytes" || be.Door != "door" || be.Work.BufferBytes != 101 {
+		t.Fatalf("past the limit: %v (%+v); want buffer bytes at 101", err, be)
+	}
+}

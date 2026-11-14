@@ -278,19 +278,23 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 	if !ok {
 		return out, nil
 	}
-	// A read budget's candidate room (R2): nil without one. The walk admits
-	// every entry it judges, the rejected ones too, so a narrow window over a
-	// wide value stops at the room instead of visiting the value.
-	judged := 0
-	admit := walkAdmit(func() int { return judged }, tally)
+	// A read budget (R2): nil without one. The walk charges each entry it
+	// rejects, or skips as stale, to the tally at once and admits the members it
+	// holds against the room the meter has left, so a narrow window over a wide
+	// value stops at the room instead of visiting the value, across value keys
+	// and shards.
+	var budget *windowBudget
+	if tally != nil {
+		budget = &windowBudget{tally: tally, fold: out}
+	}
 	judge := func(key, val []byte) {
 		_, _, _, id, tx, _, ok := storepkg.EntityIndexTimeEntryOf(key)
 		if !ok {
 			return
 		}
-		judged++
 		from, allTo, lateTo, last, ok := storepkg.ParseEntityIndexSpanValue(val)
 		if ok && !indexpkg.RowMeets(types.Instant(from), types.Instant(allTo), types.Instant(lateTo), types.Instant(last), w.start, w.end, w.pin) {
+			budget.charge() // rejected: never handed on, so no one else counts it
 			return
 		}
 		if prev, seen := out[id]; seen {
@@ -302,7 +306,7 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 	// The late axis: lateTo > start.
 	late := append(slices.Clip(p), storepkg.EntityIndexAxisLate)
 	seek := storepkg.AppendEntityIndexTimeSeek(slices.Clip(p), storepkg.EntityIndexAxisLate, int64(w.start)+1)
-	if err := bs.entityIndexSeekLocked(late, seek, nil, judge, work, admit); err != nil {
+	if err := bs.entityIndexSeekLocked(late, seek, nil, judge, work, budget); err != nil {
 		return nil, err
 	}
 	if w.pin != 0 && w.pin < math.MaxInt64 {
@@ -312,7 +316,7 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 			_, last, _, _, _, _, ok := storepkg.EntityIndexTimeEntryOf(key)
 			return ok && types.Instant(last) <= w.pin
 		}
-		if err := bs.entityIndexSeekLocked(recent, recent, past, judge, work, admit); err != nil {
+		if err := bs.entityIndexSeekLocked(recent, recent, past, judge, work, budget); err != nil {
 			return nil, err
 		}
 	}
@@ -327,14 +331,17 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 // entityIndexSeekLocked visits once each live time-ordered entry under prefix
 // (a value prefix and axis) from seek on, up to the first key past reports
 // (nil: the prefix's end), with its value: the persisted keys' newest version
-// and the write buffer's, resolved per key (lesson 57); a buffered entry
-// outside [seek, past) is not visited. The walk takes every version
-// (AllVersions) and counts each loop entry (IteratorSteps, the boundary
+// and the write buffer's, resolved per key (lesson 57). The walk takes every
+// version (AllVersions) and counts each loop entry (IteratorSteps, the boundary
 // included), its seek (IteratorSeeks) and each live persisted entry it hands
-// on (DiskEntriesEmitted). admit (nil: none) is a read budget's admission
-// (R2): it runs after each entry handed to fn, disk or buffered, and its error
-// stops the walk there. Caller holds idxMu (R or W).
-func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork, admit func() error) error {
+// on (DiskEntriesEmitted). budget (nil: none) is a read budget's admission
+// (R2): the buffered values are charged as BufferBytes before they are
+// cloned, each persisted step that is not a live entry (an older version of a
+// key, a deleted or expired entry, one the write buffer overrides) is charged
+// as a candidate judged, and the admission runs after each entry handed to fn
+// or skipped, disk or buffered, its error stopping the walk there. Caller holds
+// idxMu (R or W).
+func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork, budget *windowBudget) error {
 	tail := storepkg.EntityIndexTimeTailLen - 1 // after the axis
 	in := func(k []byte) bool {
 		return len(k) == len(prefix)+tail && bytes.Compare(k, seek) >= 0 && (past == nil || !past(k))
@@ -345,11 +352,14 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 			work.OverlayOpsInspected++
 		}
 		var val []byte
-		if op.opType == writeOpSet {
+		if op.opType == writeOpSet && budget.buffer(len(op.value)) { // charged before the clone
 			val = slices.Clone(op.value)
 		}
 		noteMemberOverlay(&ov, k, op, val, work)
 	})
+	if err := budget.refusal(); err != nil {
+		return err
+	}
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
@@ -378,10 +388,18 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 				break
 			}
 			if bytes.Equal(key, prev) {
-				continue // an older version of the key just decided
+				budget.charge() // an older version of the key just decided: a step the read paid
+				if err := budget.admit(); err != nil {
+					return err
+				}
+				continue
 			}
 			prev = append(prev[:0], key...)
 			if item.IsDeletedOrExpired() || ov.overrides(key) {
+				budget.charge() // a stale entry, as above
+				if err := budget.admit(); err != nil {
+					return err
+				}
 				continue
 			}
 			if work != nil {
@@ -390,10 +408,8 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 			if err := item.Value(func(val []byte) error { fn(key, val); return nil }); err != nil {
 				return err
 			}
-			if admit != nil {
-				if err := admit(); err != nil {
-					return err
-				}
+			if err := budget.admit(); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -409,10 +425,8 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 			work.OverlaySetsEmitted++
 		}
 		fn([]byte(k), val)
-		if admit != nil {
-			if err := admit(); err != nil {
-				return err
-			}
+		if err := budget.admit(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -446,23 +460,67 @@ func (bs *Store) memberHeads(rel bool, scope uint16, propertyKey string) [][]byt
 // member it hands on, so a fold past the room is a read the budget refuses at
 // the member past it: the walk stops there instead of folding, sorting and
 // handing on the rest of the value (counted as the work it held ahead,
-// ReadTally.CandidatesAhead). The room is read when the walk starts; the
-// members other walks of the same read hold are not counted.
+// ReadTally.CandidatesAhead). The room is read at each check, so what the
+// meter counted meanwhile (the earlier value keys, the other shards) is not in
+// it.
 func foldAdmit(f txMemberFold, t *storecontract.ReadTally) func() error {
-	return walkAdmit(func() int { return len(f) }, t)
+	if t.CandidateRoom() == math.MaxUint64 {
+		return nil
+	}
+	return func() error { return t.CandidatesAhead(len(f)) }
 }
 
-// walkAdmit is foldAdmit over a count the walk keeps: n reports the entries
-// held or visited so far, and the check refuses once it passes the room.
-func walkAdmit(n func() int, t *storecontract.ReadTally) func() error {
-	room := t.CandidateRoom()
-	if room == math.MaxUint64 {
+// windowBudget is a window walk's read budget (R2, ai-soc review 14 Nov, 3.2):
+// the tally and the fold of the members the walk accepted. An entry the walk
+// rejects (its envelope misses the window) or skips as stale is never handed
+// on, so nobody else counts it: charge counts it as a candidate at once, in a
+// door's mode (ReadTally.DoorCounts) and a direct caller's alike, across the
+// value keys and shards of one read. An accepted member is counted once, by the
+// store when it hands it on or by the door, so admit compares the fold with the
+// room the meter has left now, the charges and the earlier keys taken out. Its
+// methods accept a nil budget (none). Not safe for concurrent use: one walk.
+type windowBudget struct {
+	tally   *storecontract.ReadTally
+	fold    txMemberFold
+	refused error // the first refusal of a charge, which admit hands the walk
+}
+
+// charge counts one entry the walk judged and rejected, or stepped over as
+// stale, as a candidate.
+func (b *windowBudget) charge() {
+	if b != nil && b.refused == nil {
+		b.refused = b.tally.Candidates(1)
+	}
+}
+
+// buffer charges n bytes about to be cloned as BufferBytes and reports whether
+// the clone may be made (false: refused, refusal returns it).
+func (b *windowBudget) buffer(n int) bool {
+	if b == nil {
+		return true
+	}
+	if b.refused == nil {
+		b.refused = b.tally.Buffer(n)
+	}
+	return b.refused == nil
+}
+
+// refusal returns the refusal a charge gave, nil when none.
+func (b *windowBudget) refusal() error {
+	if b == nil {
 		return nil
 	}
-	return func() error {
-		if c := n(); uint64(c) > room { // #nosec G115 -- a count
-			return t.CandidatesAhead(c)
-		}
+	return b.refused
+}
+
+// admit returns the walk's refusal: a charge that passed a limit, else the
+// fold past the room (ReadTally.CandidatesAhead).
+func (b *windowBudget) admit() error {
+	if b == nil {
 		return nil
 	}
+	if b.refused != nil {
+		return b.refused
+	}
+	return b.tally.CandidatesAhead(len(b.fold))
 }

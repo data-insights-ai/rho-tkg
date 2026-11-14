@@ -1,0 +1,48 @@
+=== RUN   TestMemberWalkFoldStopsAtTheCandidateRoom
+=== RUN   TestMemberWalkFoldStopsAtTheCandidateRoom/pending/exact
+=== RUN   TestMemberWalkFoldStopsAtTheCandidateRoom/pending/window
+=== RUN   TestMemberWalkFoldStopsAtTheCandidateRoom/flushed/exact
+=== RUN   TestMemberWalkFoldStopsAtTheCandidateRoom/flushed/window
+--- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom (0.05s)
+    --- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom/pending/exact (0.00s)
+    --- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom/pending/window (0.01s)
+    --- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom/flushed/exact (0.00s)
+    --- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom/flushed/window (0.04s)
+=== RUN   TestMemberWindowWalkAdmitsTheEntriesItRejects
+=== RUN   TestMemberWindowWalkAdmitsTheEntriesItRejects/pending
+=== RUN   TestMemberWindowWalkAdmitsTheEntriesItRejects/flushed
+--- PASS: TestMemberWindowWalkAdmitsTheEntriesItRejects (0.05s)
+    --- PASS: TestMemberWindowWalkAdmitsTheEntriesItRejects/pending (0.04s)
+    --- PASS: TestMemberWindowWalkAdmitsTheEntriesItRejects/flushed (0.01s)
+=== RUN   TestMeteredMembershipCountsWhatItHandsOn
+=== RUN   TestMeteredMembershipCountsWhatItHandsOn/ram
+=== RUN   TestMeteredMembershipCountsWhatItHandsOn/disk
+--- PASS: TestMeteredMembershipCountsWhatItHandsOn (0.02s)
+    --- PASS: TestMeteredMembershipCountsWhatItHandsOn/ram (0.01s)
+    --- PASS: TestMeteredMembershipCountsWhatItHandsOn/disk (0.01s)
+=== RUN   TestMemberWindowWalkCountsRejectsAndAcceptedOnce
+=== RUN   TestMemberWindowWalkCountsRejectsAndAcceptedOnce/pending
+=== RUN   TestMemberWindowWalkCountsRejectsAndAcceptedOnce/flushed
+--- PASS: TestMemberWindowWalkCountsRejectsAndAcceptedOnce (0.02s)
+    --- PASS: TestMemberWindowWalkCountsRejectsAndAcceptedOnce/pending (0.01s)
+    --- PASS: TestMemberWindowWalkCountsRejectsAndAcceptedOnce/flushed (0.01s)
+=== RUN   TestMemberWindowWalkChargesStaleSteps
+--- PASS: TestMemberWindowWalkChargesStaleSteps (0.01s)
+=== RUN   TestMemberWalkChargesBufferBytes
+=== RUN   TestMemberWalkChargesBufferBytes/exact/pending
+=== RUN   TestMemberWalkChargesBufferBytes/exact/flushed
+=== RUN   TestMemberWalkChargesBufferBytes/window/pending
+=== RUN   TestMemberWalkChargesBufferBytes/window/flushed
+--- PASS: TestMemberWalkChargesBufferBytes (0.03s)
+    --- PASS: TestMemberWalkChargesBufferBytes/exact/pending (0.01s)
+    --- PASS: TestMemberWalkChargesBufferBytes/exact/flushed (0.01s)
+    --- PASS: TestMemberWalkChargesBufferBytes/window/pending (0.01s)
+    --- PASS: TestMemberWalkChargesBufferBytes/window/flushed (0.01s)
+=== RUN   TestMemberWindowAdmissionCumulativeAcrossKeys
+=== RUN   TestMemberWindowAdmissionCumulativeAcrossKeys/node
+=== RUN   TestMemberWindowAdmissionCumulativeAcrossKeys/rel
+--- PASS: TestMemberWindowAdmissionCumulativeAcrossKeys (0.02s)
+    --- PASS: TestMemberWindowAdmissionCumulativeAcrossKeys/node (0.01s)
+    --- PASS: TestMemberWindowAdmissionCumulativeAcrossKeys/rel (0.01s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.254s

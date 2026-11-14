@@ -285,6 +285,16 @@ func (t *ReadTally) History(n int) error {
 	return t.meter.AddHistoryExamined(t.door, n)
 }
 
+// Buffer counts n bytes about to be added to a temporary buffer the store
+// holds for the read (BufferBytes), returning the budget error past a limit,
+// before the buffer grows. A nil tally counts nothing.
+func (t *ReadTally) Buffer(n int) error {
+	if t == nil {
+		return nil
+	}
+	return t.meter.AddBufferBytes(t.door, n)
+}
+
 // ShardOpen counts one closed shard about to be opened (ShardOpens),
 // returning the budget error past a limit, before the open. A nil tally
 // counts nothing.
