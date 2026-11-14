@@ -565,13 +565,13 @@ type PropertyTxMemberWindow struct {
 // of a value's window view when the value passes the room (the view is a
 // persistent structure, not a buffer: the first budgeted reader of a value pays
 // that refusal, later readers do not). The limit holds across the value keys of
-// a call and, on tiered, across the shards of the fan-out, which charge a
-// staged tally (ReadTally.Staged) on the one meter and stop at their next
-// charge once one refused: an entity on two shards counts twice, and nothing
-// reaches the meter until every shard has answered, so a read that declines
-// (store.ErrIndexNotFound: a shard without the index) costs nothing and the
-// caller's fallback is not charged twice. The lists the fan-out keeps are
-// charged as BufferBytes too.
+// a call and, on tiered, across the shards of the fan-out, which charge the one
+// meter live and stop at their next charge once one refused: an entity on two
+// shards counts twice. Nothing is given back: a read that declines
+// (store.ErrIndexNotFound) keeps what its shards walked and the caller's
+// fallback counts on top; tiered asks every open shard before any walk, so a
+// shard without the index that is open makes the decline cost nothing. The
+// lists the fan-out keeps are charged as BufferBytes too.
 type PropertyTxMemberMeteredCapability interface {
 	ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 	ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error

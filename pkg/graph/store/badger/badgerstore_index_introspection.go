@@ -118,3 +118,27 @@ func (bs *Store) RelPropertyIndexOptions(relTypeToken uint16, propertyKey string
 	idx, ok := bs.relPropertyIndexes[indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}]
 	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts(), Elements: idx.Elements()}, ok, nil
 }
+
+// PropertyIndexUsable reports whether the node property index on (labelToken,
+// propertyKey) is declared and finished (not being created): the state in
+// which its membership lookups answer. A fan-out over shards asks it of every
+// shard before it walks one (tiered).
+func (bs *Store) PropertyIndexUsable(labelToken uint16, propertyKey string) bool {
+	if bs.checkOpen() != nil {
+		return false
+	}
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	return bs.nodePropIndexUsableLocked(indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey})
+}
+
+// RelPropertyIndexUsable is PropertyIndexUsable for a relationship property
+// index.
+func (bs *Store) RelPropertyIndexUsable(relTypeToken uint16, propertyKey string) bool {
+	if bs.checkOpen() != nil {
+		return false
+	}
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	return bs.relPropIndexUsableLocked(indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey})
+}
