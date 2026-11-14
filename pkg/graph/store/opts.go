@@ -130,23 +130,43 @@ type QueryOpts struct {
 
 	// meter and meterDoor: the read budget a Ctx door took from its context
 	// (WithReadBudget), counted by the internal steps the options reach.
+	// hold: the read's hold scope (Held), shared by the gathers of one read.
 	meter     *ReadMeter
 	meterDoor string
+	hold      *holdScope
 }
 
-// WithReadMeter returns o counting its reads in m as door. The graph's Ctx
-// doors set it from their context; a nil m meters nothing.
+// WithReadMeter returns o counting its reads in m as door, with no hold scope.
+// The graph's Ctx doors set it from their context; a nil m meters nothing.
 func (o QueryOpts) WithReadMeter(m *ReadMeter, door string) QueryOpts {
-	o.meter, o.meterDoor = m, door
+	o.meter, o.meterDoor, o.hold = m, door, nil
+	return o
+}
+
+// Held returns o with a hold scope for one read whose gathers hold entries
+// ahead of the work that counts them (ReadTally.Held): set once per read, so
+// every gather of it (each label, each shard) shares one room. o itself when
+// it has no meter, no candidate limit or a scope already.
+func (o QueryOpts) Held() QueryOpts {
+	if t := o.ReadTally().Held(); t != nil {
+		o.hold = t.hold
+	}
 	return o
 }
 
 // ReadMeter returns the meter o counts in and its door name (nil: none).
 func (o QueryOpts) ReadMeter() (*ReadMeter, string) { return o.meter, o.meterDoor }
 
-// ReadTally returns o's meter bound to its door, for a store to count the
-// bytes it decodes (nil: no budget, nothing counted).
-func (o QueryOpts) ReadTally() *ReadTally { return o.meter.Tally(o.meterDoor) }
+// ReadTally returns o's meter bound to its door and its hold scope, for a
+// store to count the bytes it decodes and the entries it holds (nil: no
+// budget, nothing counted).
+func (o QueryOpts) ReadTally() *ReadTally {
+	t := o.meter.Tally(o.meterDoor)
+	if t != nil {
+		t.hold = o.hold
+	}
+	return t
+}
 
 // AddCandidates counts n candidates in o's meter (none: nothing), returning
 // the budget error past a limit.

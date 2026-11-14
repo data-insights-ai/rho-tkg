@@ -434,12 +434,12 @@ func TestReadBudget_SigmaB_MemberGatherMeteredOpens(t *testing.T) {
 		}},
 		{"ForEachLabelTxMember", func(tl *storepkg.ReadTally) (int, error) {
 			n := 0
-			err := w.ts.ForEachLabelTxMemberMetered(ltok, tl, nil, func(types.NodeID, types.Instant) bool { n++; return true })
+			err := w.ts.ForEachLabelTxMemberMetered(ltok, tl, func(types.NodeID, types.Instant) bool { n++; return true })
 			return n, err
 		}},
 		{"ForEachRelTypeTxMember", func(tl *storepkg.ReadTally) (int, error) {
 			n := 0
-			err := w.ts.ForEachRelTypeTxMemberMetered(rtok, tl, nil, func(types.RelID, types.Instant) bool { n++; return true })
+			err := w.ts.ForEachRelTypeTxMemberMetered(rtok, tl, func(types.RelID, types.Instant) bool { n++; return true })
 			return n, err
 		}},
 	}

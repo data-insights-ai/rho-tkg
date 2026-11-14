@@ -276,18 +276,28 @@ func TestGather_ShardsExceedTogether(t *testing.T) {
 	}
 
 	t.Run("former on two shards", func(t *testing.T) {
-		g, ts, rotate := gatherTiered(t)
-		ids := addDeleted(t, g, []string{"G"}, 1, 1)
-		rotate()
-		tok, ok := g.labels.Lookup("G")
-		if !ok {
-			t.Fatal("fixture: no G token")
+		// A reference entity carrying G: versions on the reference shard,
+		// archived, versions on the archive, restored, deleted. Both shards keep
+		// G history rows and no current row: a former member on each.
+		g, ts, _ := gatherTiered(t)
+		ctx := context.Background()
+		ids := addDeleted(t, g, []string{"Ref", "G"}, 1, 0)
+		update := func(vs ...int64) {
+			for _, v := range vs {
+				if _, err := g.Nodes.Update(ctx, ids[0], map[string]any{"i": v}); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
-		bs := ts.HotShardForTest().Store() // the same entity's G history on a second shard
-		if err := bs.PutNode(types.NewNode(ids[0], tok, nil)); err != nil {
+		update(1, 2)
+		if err := ts.ArchiveNode(ids[0]); err != nil {
 			t.Fatal(err)
 		}
-		if err := bs.DeleteNode(ids[0]); err != nil {
+		update(3, 4)
+		if err := ts.RestoreNode(ids[0]); err != nil {
+			t.Fatal(err)
+		}
+		if err := g.Nodes.Delete(ctx, ids[0]); err != nil {
 			t.Fatal(err)
 		}
 		pin, err := g.Temporal.NowTx()
@@ -450,17 +460,20 @@ func TestGather_BudgetIsTheControlCount(t *testing.T) {
 }
 
 // TestTieredPropertyDeclineThroughTheDoor (D3): a tiered property membership
-// read that declines after its shards walked keeps what they examined, and the
-// graph's fallback (the history fold) counts on top. Three event shards each
-// hold 5 nodes of Sig with k=1 and 5 relationships of ST with w=1; the oldest
-// shard is closed and has lost both indexes, so it is found only when it is
-// opened, after the two open shards walked their member entries on disk (10,
-// the native count of badger.CountIndexEntriesVisitedForTest, which the meter
-// does not keep; the relationship index is in RAM). Nodes().ByLabelAndPropertyCtx and Rels().ByTypeAndPropertyCtx
-// at the pin: the control answers the fallback's 15 rows with Work.Candidates
-// = 10 examined + the fallback's count; that count as the budget answers, one
-// less refuses with no row. Before, the decline gave its work back and the
-// control counted the fallback alone.
+// read whose answer an open shard declines asks every open shard before any
+// walk (O8), so the decline costs nothing and the graph's fallback is the
+// read's whole count. Three event shards each hold 5
+// nodes of Sig with k=1 and 5 relationships of ST with w=1; the hot shard has
+// lost both indexes. Nodes().ByLabelAndPropertyCtx and
+// Rels().ByTypeAndPropertyCtx at the pin: the control answers the 15 rows and
+// counts the fallback alone (dtFallback: 15), with no member entry walked:
+// the node read visits 10 index entries on disk, the fallback's equality
+// lookups on the two shards that keep the index
+// (badger.CountIndexEntriesVisitedForTest, which the meter does not keep; the
+// relationship index is in RAM, so the rels door is the count's guard only).
+// That count as the budget answers, one less refuses with no row. Before, the
+// two older shards walked their 10 node member entries before the hot shard's
+// decline was seen (20 visited), and gave that work back.
 func TestTieredPropertyDeclineThroughTheDoor(t *testing.T) {
 	const per, shards = 5, 3
 	ts, err := tiered.New(tiered.Config{
@@ -468,7 +481,6 @@ func TestTieredPropertyDeclineThroughTheDoor(t *testing.T) {
 		RefLabels:           []string{"Ref"},
 		ShardWindow:         7 * 24 * time.Hour,
 		FlushInterval:       1<<63 - 1,
-		MaxOpenColdShards:   4,
 		PropertyIndexOnDisk: true,
 	})
 	if err != nil {
@@ -520,28 +532,19 @@ func TestTieredPropertyDeclineThroughTheDoor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The oldest event shard loses both indexes and is closed.
+	// The hot shard (open, walked last) loses both indexes.
 	ltok, _ := g.labels.Lookup("Sig")
 	rtok, _ := g.relTypes.Lookup("ST")
-	ts.MuForTest().RLock()
-	hot := ts.HotShardForTest()
-	var oldest *tiered.EventShard
-	for _, es := range ts.EventShardsForTest() {
-		if es != hot && (oldest == nil || es.Name() < oldest.Name()) {
-			oldest = es
-		}
-	}
-	ts.MuForTest().RUnlock()
-	if n := len(ts.EventShardsForTest()); n != shards || oldest == nil {
+	if n := len(ts.EventShardsForTest()); n != shards {
 		t.Fatalf("fixture: %d event shards, want %d", n, shards)
 	}
-	if err := oldest.Store().DropPropertyIndex(ltok, "k"); err != nil {
+	hot := ts.HotShardForTest().Store()
+	if err := hot.DropPropertyIndex(ltok, "k"); err != nil {
 		t.Fatal(err)
 	}
-	if err := oldest.Store().DropRelPropertyIndex(rtok, "w"); err != nil {
+	if err := hot.DropRelPropertyIndex(rtok, "w"); err != nil {
 		t.Fatal(err)
 	}
-	demoteToCold(ts, oldest.Name())
 	visited, stop := badger.CountIndexEntriesVisitedForTest()
 	defer stop()
 
@@ -558,22 +561,19 @@ func TestTieredPropertyDeclineThroughTheDoor(t *testing.T) {
 	for _, name := range []string{"nodes", "rels"} {
 		run := doors[name]
 		t.Run(name, func(t *testing.T) {
-			closeEventShardStore(t, oldest)
 			before := visited()
 			uctx, um := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 			rows, err := run(uctx)
 			examined := visited() - before
 			count := um.Work().Candidates
 			t.Logf("%s: control %d rows, work %+v, %d index entries visited", name, rows, um.Work(), examined)
-			if err != nil || rows != per*shards || (name == "nodes" && examined < 2*per) || count != uint64(2*per)+dtFallback[name] {
-				t.Fatalf("%s control: %d rows, %v, %d visited, work %+v; want %d rows, the walks' %d entries visited (nodes, on disk), %d candidates (%d examined + the fallback's %d)", name, rows, err, examined, um.Work(), per*shards, 2*per, uint64(2*per)+dtFallback[name], 2*per, dtFallback[name])
+			if err != nil || rows != per*shards || examined != dtVisited[name] || count != dtFallback[name] {
+				t.Fatalf("%s control: %d rows, %v, %d visited, work %+v; want %d rows, %d entries visited (no member walk), %d candidates (the fallback alone)", name, rows, err, examined, um.Work(), per*shards, dtVisited[name], dtFallback[name])
 			}
-			closeEventShardStore(t, oldest)
 			ectx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: count})
 			if rows, err := run(ectx); err != nil || rows != per*shards {
 				t.Fatalf("%s Candidates %d: %d rows, %v; want the control's", name, count, rows, err)
 			}
-			closeEventShardStore(t, oldest)
 			lctx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: count - 1})
 			if rows, err := run(lctx); rows != 0 || !errors.Is(err, storepkg.ErrReadBudget) {
 				t.Fatalf("%s Candidates %d: %d rows, %v; want the refusal with no row", name, count-1, rows, err)
@@ -583,8 +583,9 @@ func TestTieredPropertyDeclineThroughTheDoor(t *testing.T) {
 }
 
 // dtFallback is the count of TestTieredPropertyDeclineThroughTheDoor's reads
-// apart from the declined fan-out (the fallback and the door's other lookups),
-// measured at 48d6c5a4, where the decline gave its work back: the control's
-// whole count there. The node read's 60 index entries visited include the
-// door's equality lookups beside the two walks.
-var dtFallback = map[string]uint64{"nodes": 40, "rels": 30}
+// (the fallback's), and dtVisited the disk index entries each visits (the
+// fallback's equality lookups; no member walk).
+var (
+	dtFallback = map[string]uint64{"nodes": 15, "rels": 15}
+	dtVisited  = map[string]int64{"nodes": 10, "rels": 0}
+)

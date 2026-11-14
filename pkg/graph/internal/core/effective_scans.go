@@ -414,22 +414,23 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 	case len(toks) == 1:
 		return c.nodeLabelCandidateIDsKind(toks[0], opts, gatherScan)
 	}
-	// Each list the gather builds is held to the candidate room as it grows
-	// (gatherScan.fits), the labels' current members before the store lists them
-	// (membersFit): the scans count one candidate per entity when they read it.
-	var ids []types.NodeID
+	// One read, one room (R2 meter): the labels' gathers share the read's hold
+	// scope, so every entry any label takes into its hands is held on it (each
+	// label's current members before the store lists them, membersFit; the
+	// ever-members as they are produced); a node a second label hands on is
+	// examined and dropped here, counted (gatherKind.drop); the scans count the
+	// others when they read them.
+	opts = gatherScan.held(opts)
 	t := opts.ReadTally()
-	gather := func(id types.NodeID) error {
-		ids = append(ids, id)
-		return gatherScan.fits(t, 0, len(ids))
-	}
+	var ids []types.NodeID
 	if c.labelTxMembers == nil {
 		if err := c.foldOpensRefused(opts); err != nil {
 			return nil, err
 		}
 		var current []types.NodeID
 		for _, tok := range toks {
-			if err := c.membersFit(opts, gatherScan, func() (int, error) { return c.nodeCountByLabel(tok) }); err != nil {
+			later, err := c.membersFit(opts, gatherScan, func() (int, error) { return c.nodeCountByLabel(tok) })
+			if err != nil {
 				return nil, err
 			}
 			cur, err := c.nodeLabelCurrentIDs(tok)
@@ -438,11 +439,24 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 			}
 			current = append(current, cur...)
 			c.noteListed(len(cur))
-			if err := gatherScan.fits(t, 0, len(current)); err != nil {
+			if err := holdLater(later, gatherScan, opts, len(cur)); err != nil {
 				return nil, err
 			}
 		}
-		err := c.forEachNodeCandidateIDByDepth(current, storepkg.DepthAll, gather)
+		listed := make(map[types.NodeID]struct{}, len(current))
+		for _, id := range current {
+			listed[id] = struct{}{}
+		}
+		if err := gatherScan.drop(t, len(current)-len(listed)); err != nil { // a node of two labels: held twice, read once
+			return nil, err
+		}
+		err := c.forEachNodeCandidateIDByDepth(current, storepkg.DepthAll, func(id types.NodeID) error {
+			ids = append(ids, id)
+			if _, cur := listed[id]; cur {
+				return nil
+			}
+			return gatherScan.hold(t, 1)
+		})
 		return ids, err
 	}
 	seen := map[types.NodeID]struct{}{}
@@ -452,13 +466,14 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 			return nil, err
 		}
 		for _, id := range cand {
-			if _, dup := seen[id]; !dup {
-				seen[id] = struct{}{}
-				ids = append(ids, id)
+			if _, dup := seen[id]; dup {
+				if err := gatherScan.drop(t, 1); err != nil {
+					return nil, err
+				}
+				continue
 			}
-		}
-		if err := gatherScan.fits(t, 0, len(ids)); err != nil {
-			return nil, err
+			seen[id] = struct{}{}
+			ids = append(ids, id)
 		}
 	}
 	return ids, nil
