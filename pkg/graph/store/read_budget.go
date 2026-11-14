@@ -237,10 +237,11 @@ type ReadTally struct {
 
 // holdScope is one read's holds (ReadTally.Held): the entries a gather has
 // taken into its hands and will count later, when it drops them (Drop) or when
-// the door reads them. pending is not work: it only narrows the room the read's
-// admissions see (CandidateRoom). mu orders every admission and Drop of the
-// read, so pending and the meter move together; err is the read's refusal,
-// kept, returned by every later Hold and Drop.
+// it settles before it returns (Settle); the door does not count them again.
+// pending is not work: it only narrows the room the read's admissions see
+// (CandidateRoom). mu orders every admission, Drop and Settle of the read, so
+// pending and the meter move together; err is the read's refusal, kept,
+// returned by every later Hold, Drop and Settle.
 type holdScope struct {
 	mu      sync.Mutex
 	pending atomic.Uint64
@@ -328,24 +329,14 @@ func (t *ReadTally) CandidateRoom() uint64 {
 	return room - min(room, t.hold.pending.Load())
 }
 
-// boundsCandidates reports whether t's meter or an outer one bounds
-// Candidates.
-func (t *ReadTally) boundsCandidates() bool {
-	for r := t.meter; r != nil; r = r.parent {
-		if r.budget.Candidates != 0 {
-			return true
-		}
-	}
-	return false
-}
-
 // Held returns t with a hold scope, for one read whose gather holds entries
-// ahead of the work that counts them (Hold, Drop): t itself when t is nil, when
-// no candidate limit bounds its meter (nothing to hold against: Hold holds
-// nothing and Drop counts at once), or when t has a scope already (one scope a
-// read: the shards and the labels of one gather share it).
+// ahead of the work that counts them (Hold, Drop, Settle): t itself when t is
+// nil or has a scope already (one scope a read: the shards and the labels of
+// one gather share it). Every metered tally gets a scope, a candidate limit or
+// not, so the unlimited control holds and settles as a limited read does and
+// counts what that read needs.
 func (t *ReadTally) Held() *ReadTally {
-	if t == nil || t.hold != nil || !t.boundsCandidates() {
+	if t == nil || t.hold != nil {
 		return t
 	}
 	return &ReadTally{meter: t.meter, door: t.door, hold: &holdScope{}}
@@ -357,8 +348,8 @@ func (t *ReadTally) Held() *ReadTally {
 // past it the entries held and these n are counted as work done (one add,
 // which passes the limit and is the meter's typed error), the error is kept
 // for the read, and nothing more is held. A read already refused by another
-// limit (ReadMeter.Exceeded) gets that error. On a tally without a scope (no
-// candidate limit, or Held not called: gatherFree) it holds nothing and
+// limit (ReadMeter.Exceeded) gets that error. On a tally without a scope (Held
+// not called: a gather that counts nothing, gatherFree) it holds nothing and
 // returns nil.
 func (t *ReadTally) Hold(n int) error {
 	if t == nil || t.hold == nil {
@@ -418,32 +409,61 @@ func (t *ReadTally) ahead(n int, keep bool) error {
 
 // Drop counts n held entries a gather examined and dropped (a member past the
 // pin or at or below After, an entity a second shard or label hands on, an ID
-// the envelope prune drops) or reads itself: they leave the read's holds and
-// are counted now, under the scope's mutex, so the room does not move. After
-// the read's refusal it returns that error and counts nothing (the refusal
-// counted them); a refusal of its own add is kept. On a tally without a scope
-// it is Candidates(n).
+// the envelope prune drops): they leave the read's holds and are counted now,
+// under the scope's mutex. The add comes before pending is lowered, so a
+// reader of CandidateRoom, which takes no lock, may see the room smaller for a
+// moment, never larger. After the read's refusal it returns that error and
+// counts nothing (the refusal counted them); a refusal of its own add is kept.
+// On a tally without a scope (gatherFree, which held nothing) it counts
+// nothing.
 func (t *ReadTally) Drop(n int) error {
-	if t == nil {
+	if t == nil || t.hold == nil {
 		return nil
 	}
 	s := t.hold
-	if s == nil {
-		return t.meter.AddCandidates(t.door, n)
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.err != nil {
 		return s.err
 	}
-	k := uint64(max(n, 0)) // #nosec G115 -- a count
-	p := s.pending.Load()  // written only under mu
-	s.pending.Store(p - min(p, k))
-	if err := t.meter.AddCandidates(t.door, n); err != nil {
-		s.err = err
-		return err
+	return t.countHeldLocked(uint64(max(n, 0))) // #nosec G115 -- a count
+}
+
+// Settle counts every entry the read still holds, by one add, as work done:
+// the gather that held them calls it before it returns, so the read's count
+// is every entry the gather took into its hands whether the door then reads
+// it or not (a Limit that stops the door early, a stale sidecar entry held
+// beside the current member it repeats), and the door does not count them
+// again. The room does not move. After the read's refusal it returns that
+// error; on a tally without a scope it counts nothing.
+func (t *ReadTally) Settle() error {
+	if t == nil || t.hold == nil {
+		return nil
 	}
-	return nil
+	s := t.hold
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
+	}
+	return t.countHeldLocked(s.pending.Load())
+}
+
+// countHeldLocked counts k of the read's held entries: the add first, then
+// pending lowered by k (never below 0). A refusal of the add is kept for the
+// read. Caller holds t.hold.mu.
+func (t *ReadTally) countHeldLocked(k uint64) error {
+	if k == 0 {
+		return nil
+	}
+	s := t.hold
+	err := t.meter.AddCandidates(t.door, int(k)) // #nosec G115 -- a count of entries held in RAM
+	p := s.pending.Load()                        // written only under mu
+	s.pending.Store(p - min(p, k))
+	if err != nil {
+		s.err = err
+	}
+	return err
 }
 
 // Exceeded is the tally's meter's Exceeded. A nil tally returns nil.

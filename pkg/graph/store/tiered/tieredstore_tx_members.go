@@ -198,7 +198,9 @@ type txMemberUnion[ID comparable] struct {
 // dropDups (the label and type gathers, whose shards held every entry they
 // copied: ReadTally.Hold) an entity a second shard hands on is examined and
 // dropped here, so it is counted (ReadTally.Drop) before the skip: an entity
-// that is a former member on two shards counts twice. The property doors'
+// that is a former member on two shards counts twice. A gather that holds
+// nothing (no scope on t: the paged doors, which count their own entities)
+// counts nothing here (Drop on a tally without a scope). The property doors'
 // shards counted their members as they collected them, so they drop nothing.
 func (u *txMemberUnion[ID]) add(ms []txMember[ID], t *storecontract.ReadTally, dropDups bool) error {
 	if u.tx == nil {

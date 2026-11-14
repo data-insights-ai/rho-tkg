@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"math"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -66,7 +65,8 @@ type scanRun struct {
 	// when it is set and the scan returns it.
 	refuse error
 	// admitted is set when a pre-pass has already counted every candidate the
-	// stream reads (RelsEffectiveByIDs' retention gate), so admit counts nothing.
+	// stream reads (RelsEffectiveByIDs' retention gate, a label or type gather:
+	// gathered), so admit counts nothing.
 	admitted bool
 }
 
@@ -102,6 +102,14 @@ func (r *scanRun) chunk() int {
 		return 1
 	}
 	return effScanChunk
+}
+
+// gathered marks the run's candidates as counted by the gather that listed
+// them (gatherKind.settle), so the stream's admit counts nothing again.
+func (r *scanRun) gathered() {
+	if r != nil {
+		r.admitted = true
+	}
 }
 
 // admit counts one candidate, before its entity is read.
@@ -261,6 +269,18 @@ func (k gatherKind) drop(t *storepkg.ReadTally, n int) error {
 	return t.Drop(n)
 }
 
+// settle counts, before the gather returns its list, every entry it still
+// holds (ReadTally.Settle: one add), so the read's count is every entry the
+// gather took into its hands and the door does not count the list again
+// (scanRun.admitted; the temporal ByLabel read counts no candidate of it).
+// gatherFree counts nothing.
+func (k gatherKind) settle(t *storepkg.ReadTally) error {
+	if k == gatherFree {
+		return nil
+	}
+	return t.Settle()
+}
+
 // noteListed tells the test hook (Core.candidatesListed) that a gather listed n
 // IDs: the native count of the work, which no read meter keeps.
 func (c *Core) noteListed(n int) {
@@ -279,41 +299,39 @@ func (c *Core) noteProbed(n int) {
 }
 
 // membersFit holds, before a store lists the current members of a label or a
-// type for a gatherScan, the store's own count of them (count, O(1) on every
-// store) on opts' tally (ReadTally.Hold: the read's one room, net of what it
-// holds already), so a listing the room cannot hold is refused before it is
-// built. It asks nothing when opts carries no candidate limit. later reports
-// that the caller must hold the listing's length itself, after the listing: a
+// type for a gatherScan under a read meter, the store's own count of them
+// (count, O(1) on every store) on opts' tally (ReadTally.Hold: the read's one
+// room, net of what it holds already), so a listing the room cannot hold is
+// refused before it is built, and returns how many it held. It holds none on a
 // tiered store under a budget that bounds ShardOpens, whose count may open a
 // closed shard no counter would see (the listing's own metered gather,
 // nodeIDsByLabelUnder, charges the opens; documented as a limit of the
-// budgeted scans, docs/api.md).
-func (c *Core) membersFit(opts storepkg.QueryOpts, kind gatherKind, count func() (int, error)) (later bool, err error) {
-	if kind != gatherScan {
-		return false, nil
-	}
+// budgeted scans, docs/api.md): holdListed holds the listing after it.
+func (c *Core) membersFit(opts storepkg.QueryOpts, kind gatherKind, count func() (int, error)) (held int, err error) {
 	t := opts.ReadTally()
-	if t.CandidateRoom() == math.MaxUint64 {
-		return false, nil
+	if kind != gatherScan || t == nil {
+		return 0, nil
 	}
 	if m, _ := opts.ReadMeter(); m.BoundsShardOpens() {
 		if _, opensShards := c.store.(*tiered.Store); opensShards {
-			return true, nil
+			return 0, nil
 		}
 	}
 	n, err := count()
 	if err != nil {
-		return false, err
+		return 0, err
 	}
-	return false, kind.hold(t, n)
+	return n, kind.hold(t, n)
 }
 
-// holdLater holds the n current members a membersFit left to its caller.
-func holdLater(later bool, kind gatherKind, opts storepkg.QueryOpts, n int) error {
-	if !later {
+// holdListed holds, for a gatherScan, the current members the listing of n
+// returned past the held ones membersFit held before it (all n when it held
+// none), so every listed member is held once.
+func holdListed(held int, kind gatherKind, opts storepkg.QueryOpts, n int) error {
+	if kind != gatherScan || n <= held {
 		return nil
 	}
-	return kind.hold(opts.ReadTally(), n)
+	return kind.hold(opts.ReadTally(), n-held)
 }
 
 // nodeIDsByLabelUnder is members.NodeIDsByLabel, its shard opens counted in t

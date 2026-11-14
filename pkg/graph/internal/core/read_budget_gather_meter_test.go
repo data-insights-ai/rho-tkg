@@ -208,11 +208,13 @@ func gatherTiered(t *testing.T) (*Core, *tiered.Store, func()) {
 // TestGather_ShardsExceedTogether (T4, T5's twin): the former members of a
 // label (of a type) on three event shards, 4 on each, under a room of 10: each
 // shard's set fits it, together they pass it. The shards hold their sets on one
-// room: the read is refused with no callback, at most two sets copied and 11 or
-// more counted. The control copies the 12 and counts 12. Second case: one
-// entity that is a former member on two shards is held by both and dropped
-// once by the union, so the control counts it twice and that count answers as
-// a budget (it was refused: the control counted it once).
+// room: the third hold is refused, so the read is refused with no callback, two
+// sets copied (8) and the 12 counted (the 8 held and the 4 of the hold that
+// passed). The control copies the 12 and counts 12. Second case: one entity
+// that is a former member on two shards (formerOnTwoShards) is held by both
+// and dropped once by the union, so the control counts it twice and that count
+// answers as a budget (it was refused: the control counted it once); a budget
+// of 1 is refused at the second hold, one set copied and 2 counted.
 func TestGather_ShardsExceedTogether(t *testing.T) {
 	const per, shards, room = 4, 3, 10
 	for _, kind := range []string{"label", "type"} {
@@ -269,37 +271,15 @@ func TestGather_ShardsExceedTogether(t *testing.T) {
 			lctx, lm := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: room})
 			got, err := run(lctx)
 			rbdBudgetErr(t, err, "candidates")
-			if len(got) != 0 || copied()-before > 2*per || lm.Work().Candidates < room+1 {
-				t.Fatalf("Candidates %d: %d segments, %d copied, work %+v; want the refusal with no callback, at most %d copied, %d or more counted", room, len(got), copied()-before, lm.Work(), 2*per, room+1)
+			if len(got) != 0 || copied()-before != 2*per || lm.Work().Candidates != per*shards {
+				t.Fatalf("Candidates %d: %d segments, %d copied, work %+v; want the refusal with no callback, %d copied, %d counted", room, len(got), copied()-before, lm.Work(), 2*per, per*shards)
 			}
 		})
 	}
 
 	t.Run("former on two shards", func(t *testing.T) {
-		// A reference entity carrying G: versions on the reference shard,
-		// archived, versions on the archive, restored, deleted. Both shards keep
-		// G history rows and no current row: a former member on each.
 		g, ts, _ := gatherTiered(t)
-		ctx := context.Background()
-		ids := addDeleted(t, g, []string{"Ref", "G"}, 1, 0)
-		update := func(vs ...int64) {
-			for _, v := range vs {
-				if _, err := g.Nodes.Update(ctx, ids[0], map[string]any{"i": v}); err != nil {
-					t.Fatal(err)
-				}
-			}
-		}
-		update(1, 2)
-		if err := ts.ArchiveNode(ids[0]); err != nil {
-			t.Fatal(err)
-		}
-		update(3, 4)
-		if err := ts.RestoreNode(ids[0]); err != nil {
-			t.Fatal(err)
-		}
-		if err := g.Nodes.Delete(ctx, ids[0]); err != nil {
-			t.Fatal(err)
-		}
+		formerOnTwoShards(t, g, ts)
 		pin, err := g.Temporal.NowTx()
 		if err != nil {
 			t.Fatal(err)
@@ -318,13 +298,140 @@ func TestGather_ShardsExceedTogether(t *testing.T) {
 		if got, err := run(ectx); err != nil || fmt.Sprint(got) != fmt.Sprint(want) {
 			t.Fatalf("Candidates 2 (the control's count): %v, %v; want the control's answer", got, err)
 		}
-		lctx, _ := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: 1})
+		copied := copiedCounter(t)
+		lctx, lm := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: 1})
 		got, err := run(lctx)
 		rbdBudgetErr(t, err, "candidates")
-		if len(got) != 0 {
-			t.Fatalf("Candidates 1: %v; want no callback", got)
+		if len(got) != 0 || copied() != 1 || lm.Work().Candidates != 2 {
+			t.Fatalf("Candidates 1: %v, %d copied, work %+v; want no callback, 1 copied, 2 counted", got, copied(), lm.Work())
 		}
 	})
+}
+
+// formerOnTwoShards adds a reference entity carrying Ref and G (property i 0)
+// with versions on the reference shard, archives it, adds versions on the
+// archive, restores and deletes it: both shards keep G history rows and no
+// current row, a former member of G (and Ref) on each.
+func formerOnTwoShards(t *testing.T, g *Core, ts *tiered.Store) types.NodeID {
+	t.Helper()
+	ctx := context.Background()
+	id := addDeleted(t, g, []string{"Ref", "G"}, 1, 0)[0]
+	update := func(vs ...int64) {
+		for _, v := range vs {
+			if _, err := g.Nodes.Update(ctx, id, map[string]any{"i": v}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	update(1, 2)
+	if err := ts.ArchiveNode(id); err != nil {
+		t.Fatal(err)
+	}
+	update(3, 4)
+	if err := ts.RestoreNode(id); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Nodes.Delete(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// TestGather_PageCountsNoUnionDrop (fix round, review defect 1): the paged
+// doors gather without holding (gatherFree) and count their own entities, so
+// the tiered union, which counts an entity a second shard hands on only for a
+// gather that held it, counts nothing for them. formerOnTwoShards' entity,
+// former of Ref and G on the reference shard and the archive, through
+// NodesEffectivePage (i = 0, limit 100): the control answers its one segment
+// and counts 1 candidate (the entity read), as at 48d6c5a4; that budget
+// answers. Before the fix the two labels' unions each counted the second
+// shard's copy: 3, refused at 1 and 2.
+func TestGather_PageCountsNoUnionDrop(t *testing.T) {
+	g, ts, _ := gatherTiered(t)
+	formerOnTwoShards(t, g, ts)
+	pin, err := g.Temporal.NowTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := func(ctx context.Context) ([]string, error) {
+		segs, _, err := g.Temporal.NodesEffectivePage(ctx, temporal.Pin{Tx: pin}, temporal.Filter{Prop: "i", Eq: int64(0)}, 0, 100)
+		var out []string
+		for _, s := range segs {
+			out = append(out, sbNodeSeg(s))
+		}
+		return out, err
+	}
+	uctx, um := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
+	want, err := page(uctx)
+	if err != nil || len(want) != 1 || um.Work().Candidates != 1 {
+		t.Fatalf("unlimited: %v, %v, work %+v; want one segment and 1 candidate", want, err, um.Work())
+	}
+	ectx, em := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: 1})
+	if got, err := page(ectx); err != nil || fmt.Sprint(got) != fmt.Sprint(want) || em.Work().Candidates != 1 {
+		t.Fatalf("Candidates 1 (the control's count): %v, %v, work %+v; want the control's page", got, err, em.Work())
+	}
+}
+
+// TestGather_ReacquiredLabel (fix round, review defect 2): a node that lost a
+// label and took it again is a current member and, on badger and tiered, a
+// stale entry of the ever-member sidecar (high, never low: the sidecar is not
+// pruned). The scan holds it twice, as a current member and in the store's
+// copy, and counts both when it settles; memory's set repeats the current
+// members, which its copy does not hold again, and sharded folds the history.
+// Label G on 4 nodes (with Ev), the sidecar built by a first scan, then 2 of
+// them lose G and take it again. ForEachNodeEffectiveByLabelCtx at the pin:
+// the control answers the 4 nodes with 6 candidates on badger and tiered and 4
+// on memory and sharded; that count answers as a budget, one less refuses with
+// no callback, on every backend. Before, badger and tiered counted 4 and
+// refused 4 and 5 with 6 counted.
+func TestGather_ReacquiredLabel(t *testing.T) {
+	want := map[string]uint64{"badger": 6, "tiered": 6, "memory": 4, "sharded": 4}
+	for _, be := range gatherBackends() {
+		t.Run(be.name, func(t *testing.T) {
+			g, shut := be.open(t, t.TempDir())
+			defer shut()
+			ctx := context.Background()
+			ids := addDeleted(t, g, []string{"Ev", "G"}, 4, 0)
+			run := func(ctx context.Context, pin types.Instant) ([]string, error) {
+				return sbCollect(func(fn func(string) bool) error {
+					return g.Temporal.ForEachNodeEffectiveByLabelCtx(ctx, "G", pin, func(s temporal.NodeSegment) bool { return fn(sbNodeSeg(s)) })
+				})
+			}
+			first, err := g.Temporal.NowTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := run(ctx, first); err != nil { // builds the sidecars
+				t.Fatal(err)
+			}
+			for _, id := range ids[:2] {
+				if err := g.Nodes.RemoveLabel(ctx, id, "G"); err != nil {
+					t.Fatal(err)
+				}
+				if err := g.Nodes.AddLabel(ctx, id, "G"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pin, err := g.Temporal.NowTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			uctx, um := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
+			answer, err := run(uctx, pin)
+			count := um.Work().Candidates
+			if err != nil || len(answer) == 0 || count != want[be.name] {
+				t.Fatalf("unlimited: %v, %v, work %+v; want the stream and %d candidates", answer, err, um.Work(), want[be.name])
+			}
+			ectx, em := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: count})
+			if got, err := run(ectx, pin); err != nil || fmt.Sprint(got) != fmt.Sprint(answer) || em.Work().Candidates != count {
+				t.Fatalf("Candidates %d (the control's count): %v, %v, work %+v; want the control's answer and count", count, got, err, em.Work())
+			}
+			lctx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: count - 1})
+			if got, err := run(lctx, pin); len(got) != 0 || !errors.Is(err, storepkg.ErrReadBudget) {
+				t.Fatalf("Candidates %d: %v, %v; want the refusal with no callback", count-1, got, err)
+			}
+		})
+	}
 }
 
 // TestGather_TypeHeldTight (T5, T2's twin for a type): a type of 5 current and
@@ -392,9 +499,9 @@ func TestGather_TypeHeldTight(t *testing.T) {
 // it a4 is deleted (a former member the pin keeps), b1..b6 gain G and are
 // deleted (former members acquired after the pin: dropped) and c1 gains G (a
 // current member that did not exist at the pin). The effective scan, the
-// temporal ByLabel read and its page after a4 (which drops a4) each answer a
-// budget of their control's Work.Candidates with the control's answer and
-// refuse one less, on every backend.
+// temporal ByLabel read and its page after a4 (which drops a4) each count the
+// 12 entries the gather examined (5 current members, 7 former), answer that
+// budget with the control's answer and refuse one less, on every backend.
 func TestGather_BudgetIsTheControlCount(t *testing.T) {
 	for _, be := range gatherBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -440,10 +547,9 @@ func TestGather_BudgetIsTheControlCount(t *testing.T) {
 					uctx, um := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 					want, err := run(uctx)
 					count := um.Work().Candidates
-					if err != nil || len(want) == 0 || count == 0 {
-						t.Fatalf("unlimited: %v, %v, work %+v; want a non-empty answer", want, err, um.Work())
+					if err != nil || len(want) == 0 || count != 12 {
+						t.Fatalf("unlimited: %v, %v, work %+v; want a non-empty answer and 12 candidates", want, err, um.Work())
 					}
-					t.Logf("%s: the control counts %d candidates", name, count)
 					ectx, em := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: count})
 					if got, err := run(ectx); err != nil || fmt.Sprint(got) != fmt.Sprint(want) || em.Work().Candidates != count {
 						t.Fatalf("Candidates %d (the control's count): %v, %v, work %+v; want the control's answer and count", count, got, err, em.Work())

@@ -17,30 +17,44 @@ import (
 // mutex, so the room does not move. A nested meter's tighter outer limit
 // refuses. 64 goroutines Hold(1) at room 40: exactly 40 succeed (the native
 // count of nil returns, which the meter does not keep), one error value, 41
-// counted, every round of 200. The control, with no candidate limit, holds
-// nothing and counts nothing.
+// counted, every round of 200. The control, with no candidate limit, holds as
+// well (a scope on every metered tally) and counts what it held when the read
+// settles (Settle: one add); a tally without a scope (gatherFree) holds,
+// drops and settles nothing.
 func TestReadTally_Hold(t *testing.T) {
 	var nilTally *ReadTally
-	if nilTally.Held() != nil || nilTally.Hold(5) != nil || nilTally.Drop(5) != nil {
+	if nilTally.Held() != nil || nilTally.Hold(5) != nil || nilTally.Drop(5) != nil || nilTally.Settle() != nil {
 		t.Fatal("a nil tally holds or counts")
 	}
 
-	// The control: no candidate limit, Held is the tally itself.
+	// The control: no candidate limit. Held gives the read a scope all the
+	// same; the holds count nothing until a Drop or the read's Settle.
 	_, m := WithReadBudget(context.Background(), ReadBudget{Segments: 1})
 	free := m.Tally("door")
-	if free.Held() != free {
-		t.Fatal("Held made a scope without a candidate limit")
+	h0 := free.Held()
+	if h0 == free || h0.Held() != h0 {
+		t.Fatal("Held made no scope (or a second one) without a candidate limit")
 	}
 	for range 3 {
-		if err := free.Held().Hold(4); err != nil {
+		if err := h0.Hold(4); err != nil {
 			t.Fatalf("unlimited Hold: %v", err)
 		}
 	}
 	if m.Work() != (ReadWork{}) {
 		t.Fatalf("unlimited holds counted %+v; want nothing", m.Work())
 	}
-	if err := free.Held().Drop(2); err != nil || m.Work().Candidates != 2 {
+	if err := h0.Drop(2); err != nil || m.Work().Candidates != 2 {
 		t.Fatalf("unlimited Drop(2): %v, %+v; want 2 counted at once", err, m.Work())
+	}
+	if err := h0.Settle(); err != nil || m.Work().Candidates != 12 {
+		t.Fatalf("unlimited Settle: %v, %+v; want the 10 still held counted, 12", err, m.Work())
+	}
+	if err := h0.Settle(); err != nil || m.Work().Candidates != 12 {
+		t.Fatalf("a second Settle: %v, %+v; want nothing more counted", err, m.Work())
+	}
+	// A tally without a scope (a gather that holds nothing, gatherFree).
+	if free.Hold(4) != nil || free.Drop(4) != nil || free.Settle() != nil || m.Work().Candidates != 12 {
+		t.Fatalf("a tally without a scope counted: %+v; want 12", m.Work())
 	}
 
 	// Three holds that each fit and pass together: refused at the third.
@@ -81,6 +95,20 @@ func TestReadTally_Hold(t *testing.T) {
 	}
 	if err := h.CandidatesAhead(5); !errors.Is(err, ErrReadBudget) || m.Work().Candidates != 2+4+5 {
 		t.Fatalf("CandidatesAhead(5) past the room: %v, work %+v; want the refusal with the 4 held and the 5 counted (11)", err, m.Work())
+	}
+
+	// Settle counts what the read still holds, one add, and leaves the room.
+	_, m = WithReadBudget(context.Background(), ReadBudget{Candidates: 10})
+	h = m.Tally("door").Held()
+	if err := h.Hold(6); err != nil || h.Drop(1) != nil {
+		t.Fatal("Hold(6), Drop(1) at 10")
+	}
+	if err := h.Settle(); err != nil || m.Work().Candidates != 6 || h.CandidateRoom() != 4 {
+		t.Fatalf("Settle of 5 held at 10: %v, work %+v, room %d; want 6 counted and a room of 4", err, m.Work(), h.CandidateRoom())
+	}
+	// After a refusal Settle returns it and counts nothing.
+	if err := h.Hold(5); !errors.Is(err, ErrReadBudget) || h.Settle() != err || m.Work().Candidates != 11 {
+		t.Fatalf("Settle after the refusal: work %+v; want the same error, 11 counted", m.Work())
 	}
 
 	// A read stopped by another limit: Hold returns that error.
@@ -248,5 +276,67 @@ func TestReadTally_NoPhantomRefusal(t *testing.T) {
 	}
 	if len(bad) > 0 {
 		t.Fatalf("%d of %d rounds refused a demand of exactly the limit or saw Work fall: %v", len(bad), rounds, bad[:min(len(bad), 3)])
+	}
+}
+
+// TestReadTally_DropKeepsTheRoom (fix round, review defect 6): Drop counts
+// the entries before it lowers the read's holds, so a reader of
+// CandidateRoom, which takes no lock, never sees the room larger than it is.
+// Limit 1000; one scope holds 400 and 4 goroutines Drop(1) 100 times each
+// while a sampler reads the room: it is never above 600, every round of 200
+// (the native count: the samples taken). The control: no Drop, the room 600.
+func TestReadTally_DropKeepsTheRoom(t *testing.T) {
+	const limit, held, droppers, per, rounds = 1000, 400, 4, 100, 200
+	_, m := WithReadBudget(context.Background(), ReadBudget{Candidates: limit})
+	if h := m.Tally("door").Held(); h.Hold(held) != nil || h.CandidateRoom() != limit-held {
+		t.Fatalf("control: room %d; want %d", h.CandidateRoom(), limit-held)
+	}
+	var bad []string
+	for round := range rounds {
+		_, m := WithReadBudget(context.Background(), ReadBudget{Candidates: limit})
+		h := m.Tally("door").Held()
+		if err := h.Hold(held); err != nil {
+			t.Fatal(err)
+		}
+		stop := make(chan struct{})
+		var samples, wrong atomic.Int64
+		var sampler sync.WaitGroup
+		sampler.Add(1)
+		go func() {
+			defer sampler.Done()
+			for {
+				if h.CandidateRoom() > limit-held {
+					wrong.Add(1)
+				}
+				samples.Add(1)
+				select {
+				case <-stop:
+					return
+				default:
+				}
+			}
+		}()
+		var wg sync.WaitGroup
+		for range droppers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for range per {
+					if err := h.Drop(1); err != nil {
+						t.Error(err)
+						return
+					}
+				}
+			}()
+		}
+		wg.Wait()
+		close(stop)
+		sampler.Wait()
+		if wrong.Load() != 0 || samples.Load() == 0 || m.Work().Candidates != held {
+			bad = append(bad, fmt.Sprintf("round %d: %d of %d samples off the room, %d counted", round, wrong.Load(), samples.Load(), m.Work().Candidates))
+		}
+	}
+	if len(bad) > 0 {
+		t.Fatalf("%d of %d rounds (want the room at most 600 in every sample, 400 counted): %v", len(bad), rounds, bad[:min(len(bad), 3)])
 	}
 }

@@ -26,9 +26,9 @@ import (
 //   - ValidAt 5000: the envelope prunes the three deleted nodes once, after the
 //     gather, and counts them (12): that budget answers, one less refuses;
 //   - Limit: the gather cannot stop at a Limit, which counts answered rows not
-//     candidates, so a Limit of 2 needs the room of the whole gather (12), while
-//     its unlimited control, which stops reading at the second row, counts the
-//     live members only (9): the documented limit of the door (docs/api.md).
+//     candidates, so a Limit of 2 costs the whole gather (12): the gather counts
+//     what it held before the door reads a row, so the control counts it too
+//     and that budget answers; the documented limit of the door (docs/api.md).
 func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 	t.Parallel()
 	const n, deleted = 12, 3
@@ -131,21 +131,10 @@ func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 			if err != nil || len(wantLimit) != 2 {
 				t.Fatalf("plain Limit = %d nodes, %v", len(wantLimit), err)
 			}
-			// The gather holds the 3 that ended before the door stops at the second
-			// row: a room of the live members is refused (badger and tiered at the
-			// copy, the 12 counted; sharded's fold at the first of them, 10), the
-			// room of the whole gather answers. The control stops reading at the
-			// second row and counts the live members only: a read that stops early
-			// counts less than the budget it needs.
-			wantLimitRefused := map[bool]uint64{true: live + 1, false: live + deleted}[be.name == "sharded"]
-			if _, w, _, err := read(limit, live); !errors.Is(err, storepkg.ErrReadBudget) || w.Candidates != wantLimitRefused {
-				t.Fatalf("Limit 2, room %d: %v, work %+v; want the refusal (%d counted): the limit counts answers, not the candidates gathered", live, err, w, wantLimitRefused)
-			}
-			if got, _, _, err := read(limit, live+deleted); err != nil || nodeVersionsOf(got) != nodeVersionsOf(wantLimit) {
-				t.Fatalf("Limit 2, room %d = %v, %v; want the plain 2", live+deleted, nodeVersionsOf(got), err)
-			}
-			if _, w, _, err := read(limit, 0); err != nil || w.Candidates != live {
-				t.Fatalf("Limit 2 unlimited: %v, work %+v; want %d counted (the listing; the door stops before the members past it)", err, w, live)
+			// The gather settles the 3 that ended (it held them) before the door
+			// stops at the second row: the control counts the whole gather, 12.
+			if c, _ := exact("Limit 2", limit, wantLimit); c != live+deleted {
+				t.Fatalf("Limit 2: %d counted; want %d: the limit counts answers, not the candidates gathered", c, live+deleted)
 			}
 		})
 	}

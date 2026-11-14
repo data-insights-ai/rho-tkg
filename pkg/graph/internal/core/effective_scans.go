@@ -417,9 +417,11 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 	// One read, one room (R2 meter): the labels' gathers share the read's hold
 	// scope, so every entry any label takes into its hands is held on it (each
 	// label's current members before the store lists them, membersFit; the
-	// ever-members as they are produced); a node a second label hands on is
-	// examined and dropped here, counted (gatherKind.drop); the scans count the
-	// others when they read them.
+	// ever-members as they are produced) and counted when the gather settles
+	// (gatherKind.settle): each label's gather settles its own, so a node a
+	// second label hands on is counted again by that label and only skipped
+	// here; the fold settles once at its end. The scan does not count the list
+	// again (scanRun.admitted).
 	opts = gatherScan.held(opts)
 	t := opts.ReadTally()
 	var ids []types.NodeID
@@ -429,7 +431,7 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 		}
 		var current []types.NodeID
 		for _, tok := range toks {
-			later, err := c.membersFit(opts, gatherScan, func() (int, error) { return c.nodeCountByLabel(tok) })
+			held, err := c.membersFit(opts, gatherScan, func() (int, error) { return c.nodeCountByLabel(tok) })
 			if err != nil {
 				return nil, err
 			}
@@ -439,7 +441,7 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 			}
 			current = append(current, cur...)
 			c.noteListed(len(cur))
-			if err := holdLater(later, gatherScan, opts, len(cur)); err != nil {
+			if err := holdListed(held, gatherScan, opts, len(cur)); err != nil {
 				return nil, err
 			}
 		}
@@ -457,7 +459,10 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 			}
 			return gatherScan.hold(t, 1)
 		})
-		return ids, err
+		if err != nil {
+			return nil, err
+		}
+		return ids, gatherScan.settle(t)
 	}
 	seen := map[types.NodeID]struct{}{}
 	for _, tok := range toks {
@@ -467,10 +472,7 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 		}
 		for _, id := range cand {
 			if _, dup := seen[id]; dup {
-				if err := gatherScan.drop(t, 1); err != nil {
-					return nil, err
-				}
-				continue
+				continue // counted by the label's gather that handed it on
 			}
 			seen[id] = struct{}{}
 			ids = append(ids, id)
@@ -588,6 +590,7 @@ func (c *Core) forEachNodeEffectiveByLabelsRun(run *scanRun, labels []string, pi
 	}); err != nil {
 		return err
 	}
+	run.gathered() // the gather counted every candidate
 	if err := run.holdList(len(ids)); err != nil {
 		return err
 	}

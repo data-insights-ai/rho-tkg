@@ -424,13 +424,13 @@ func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*ty
 func (c *Core) nodeLabelCandidatesAtListing(tok uint16, opts storepkg.QueryOpts, kind gatherKind) ([]*types.Node, []types.NodeID, error) {
 	opts = kind.held(opts)
 	listing := storepkg.QueryOpts{Depth: opts.Depth}
-	later := false
+	held := 0
 	if m, door := opts.ReadMeter(); m != nil && kind == gatherListed {
 		listing = listing.WithReadMeter(m, door)
-	} else if l, err := c.membersFit(opts, kind, func() (int, error) { return c.nodeCountByLabel(tok) }); err != nil {
+	} else if h, err := c.membersFit(opts, kind, func() (int, error) { return c.nodeCountByLabel(tok) }); err != nil {
 		return nil, nil, err // the rows listing below is not counted: refused before it reads them
 	} else {
-		later = l
+		held = h
 	}
 	current, err := c.storeNodesByLabel(tok, listing)
 	if err != nil {
@@ -441,7 +441,7 @@ func (c *Core) nodeLabelCandidatesAtListing(tok uint16, opts storepkg.QueryOpts,
 		return nil, nil, err
 	}
 	c.noteListed(len(currentIDs))
-	if err := holdLater(later, kind, opts, len(currentIDs)); err != nil {
+	if err := holdListed(held, kind, opts, len(currentIDs)); err != nil {
 		return nil, nil, err
 	}
 	candIDs, err := c.nodeLabelCandidatesFrom(tok, currentIDs, opts, kind)
@@ -470,7 +470,7 @@ func (c *Core) nodeLabelCandidateIDsKind(tok uint16, opts storepkg.QueryOpts, ki
 		return ids, err
 	}
 	opts = kind.held(opts)
-	later, err := c.membersFit(opts, kind, func() (int, error) { return c.nodeCountByLabel(tok) })
+	held, err := c.membersFit(opts, kind, func() (int, error) { return c.nodeCountByLabel(tok) })
 	if err != nil {
 		return nil, err // the listing below is not counted: refused before the store builds it
 	}
@@ -479,7 +479,7 @@ func (c *Core) nodeLabelCandidateIDsKind(tok uint16, opts storepkg.QueryOpts, ki
 		return nil, err
 	}
 	c.noteListed(len(currentIDs))
-	if err := holdLater(later, kind, opts, len(currentIDs)); err != nil {
+	if err := holdListed(held, kind, opts, len(currentIDs)); err != nil {
 		return nil, err
 	}
 	return c.nodeLabelCandidatesFrom(tok, currentIDs, opts, kind)
@@ -502,8 +502,16 @@ func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, op
 	//
 	// Candidates come in ascending ID order (current members merged with the
 	// gathered IDs), so a read walks forward once and never sorts
-	// (label_scan_at.go).
-	return c.nodeLabelCandidatesSorted(tok, currentIDs, opts, kind)
+	// (label_scan_at.go). The gather settles what it holds before it returns
+	// (gatherKind.settle).
+	ids, err := c.nodeLabelCandidatesSorted(tok, currentIDs, opts, kind)
+	if err != nil {
+		return nil, err
+	}
+	if err := kind.settle(opts.ReadTally()); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 // pruneNodeLabelCandidates drops the ids of label tok whose valid-time
@@ -712,7 +720,7 @@ func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*type
 // gatherListed is not used for types).
 func (c *Core) relTypeCandidatesAtKind(tok uint16, opts storepkg.QueryOpts, kind gatherKind) ([]*types.Relationship, []types.RelID, error) {
 	opts = kind.held(opts)
-	later, err := c.membersFit(opts, kind, func() (int, error) { return c.relCountByType(tok) })
+	held, err := c.membersFit(opts, kind, func() (int, error) { return c.relCountByType(tok) })
 	if err != nil {
 		return nil, nil, err // the rows listing below is not counted: refused before it reads them
 	}
@@ -725,7 +733,7 @@ func (c *Core) relTypeCandidatesAtKind(tok uint16, opts storepkg.QueryOpts, kind
 		return nil, nil, err
 	}
 	c.noteListed(len(currentIDs))
-	if err := holdLater(later, kind, opts, len(currentIDs)); err != nil {
+	if err := holdListed(held, kind, opts, len(currentIDs)); err != nil {
 		return nil, nil, err
 	}
 	candIDs, err := c.relTypeCandidatesFrom(tok, currentIDs, opts, kind)
@@ -748,7 +756,7 @@ func (c *Core) relTypeCandidateIDsKind(tok uint16, opts storepkg.QueryOpts, kind
 		return ids, err
 	}
 	opts = kind.held(opts)
-	later, err := c.membersFit(opts, kind, func() (int, error) { return c.relCountByType(tok) })
+	held, err := c.membersFit(opts, kind, func() (int, error) { return c.relCountByType(tok) })
 	if err != nil {
 		return nil, err // the listing below is not counted: refused before the store builds it
 	}
@@ -757,7 +765,7 @@ func (c *Core) relTypeCandidateIDsKind(tok uint16, opts storepkg.QueryOpts, kind
 		return nil, err
 	}
 	c.noteListed(len(currentIDs))
-	if err := holdLater(later, kind, opts, len(currentIDs)); err != nil {
+	if err := holdListed(held, kind, opts, len(currentIDs)); err != nil {
 		return nil, err
 	}
 	return c.relTypeCandidatesFrom(tok, currentIDs, opts, kind)
@@ -776,6 +784,9 @@ func (c *Core) relTypeCandidatesFrom(tok uint16, currentIDs []types.RelID, opts 
 	kept := c.pruneRelTypeCandidates(tok, candIDs, opts)
 	if err := kind.drop(opts.ReadTally(), prunedHeld(kind, currentIDs, candIDs, kept)); err != nil {
 		return nil, err // the envelope prune dropped held entries: counted
+	}
+	if err := kind.settle(opts.ReadTally()); err != nil {
+		return nil, err
 	}
 	return kept, nil
 }

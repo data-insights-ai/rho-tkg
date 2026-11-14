@@ -508,8 +508,10 @@ func (bs *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.Re
 // the copy to fn. Under a budget the copy is paid for before it is made (R2
 // round 3): its entries are held in t (ReadTally.Hold: the set holds the former
 // members only, none of the current ones the caller holds or counts; a stale
-// entry, an ID that carries the token again, is held and never dropped: high,
-// never low), which refuses a gather past the room with nothing copied, and
+// entry, an ID that carries the token again, is held beside the current member
+// it repeats and counted when the gather settles: high, never low, and the
+// same in the unlimited control), which refuses a gather past the room with
+// nothing copied, and
 // its bytes (store.TxMemberCopyBytes a member) are charged as BufferBytes.
 func emitTxMemberCopy[ID comparable](bs *Store, setOf func() map[ID]types.Instant, t *storecontract.ReadTally, fn func(ID, types.Instant) bool) error {
 	type member struct {
