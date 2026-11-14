@@ -71,3 +71,51 @@ burst and a runtime trace came from a throwaway copy of the same fixture.
       count, and it would cost a bulk read through a transient handle its block reuse. None of these changes how many opens a burst makes.
    All of it is O(rows in the shard) per open (the label map, the image's ID set), the SCALE wall that FIXED-MEMORY and the
    disk-resident indexes already cover; an open of a 4-billion-row day is not a cold-read problem.
+
+5. Option c built (R3 cold open, 14 Nov 2026, dev cd025375 plus four commits; the open is cheaper for a read-only cold handle that closes at
+   check-in, MaxOpenColdShards 0; the number of opens, the defaults and every other handle are as before; the red runs and the mutation
+   sweeps are in coldopen-red.txt). Same fixture and host (load 38-48 during the "after" runs, so wall times are noise; counts, CPU
+   and allocation are not): `R3_PER_DAY=50000 go test -tags measure -v -run 'TestColdReadBurst|TestColdOpenConfigs' ./pkg/graph/store/tiered/`.
+
+   Four changes, each for the read-only handle a read opens at cap 0 (tiered.Store.coldReadCfg, badger.Config.TransientRead):
+   a. block cache of at most 16 MB (the configured 64 MB or the stock 256 MB were sized into ristretto's counters at every open);
+   b. no label maps at the open: a trusted image with the per-label counts spares the label-key walk and each label's map is read
+      from its keys when a read first asks, once. The lazy open of LabelIndexOnDisk was tried first and rejected: in disk mode the
+      doc-values doors decline (TestTieredDocValues_ColdShardParticipation: "ForEachDocValues declined; want usable", coldopen-red.txt
+      2a), so the lazy maps stay RAM maps and every reader of the label index goes through labelMembersLocked;
+   c. the image's node, rel and rel-type ID sets stay in the encoded form they are stored in (indexpkg.NewIDSetEncoded: one validating
+      pass, an anchor every 64 IDs, Has by a binary search of the anchors and at most 63 gaps), not an insert per ID; the first write
+      builds the chunks;
+   d. the node and rel revision tables (128 KB each) unmade until a write bumps a stripe; get answers 1, an untouched stripe's value.
+
+   Raw read-only open and close of the closed 50,000-row shard, 50 rounds, no read, no catalog (TestColdOpenConfigs):
+     configuration    config            open + close      user CPU     alloc per open and close
+     default          before (shardCfg)  14.27 + 5.14 ms   11.01 ms     7.02 MB
+     default          after (coldReadCfg) 3.97 + 3.65 ms    0.58 ms     1.09 MB
+     ai-soc           before             6.19 + 6.31 ms    1.51 ms     2.08 MB
+     ai-soc           after              5.37 + 6.32 ms    0.51 ms     1.07 MB
+   (wall time is mostly badger's own close and waits, and the loaded host; the CPU and the allocation are the open's work)
+
+   The burst, 100 GetNode on the closed day shard of 50,000 rows (TestColdReadBurst), opens unchanged (100 at cap 0, 1 at cap 2):
+     row                                 alloc before -> after     per open        user CPU (burst)
+     default config, cap 0               703.9 -> 110-113 MB        7.04 -> 1.1 MB    968 ms -> 54-115 ms
+     ai-soc config, cap 0                210.1 -> 112-114 MB        2.10 -> 1.1 MB    127 ms -> 54-102 ms (load 10-20 before, 38-48 after)
+     default config, cap 2 (retained)      7.7 MB, +5.9 MB live: unchanged by design (a retained handle is configured as before)
+     ai-soc config, cap 2 (retained)       2.7-2.8 MB, +2.2 MB live: unchanged
+   At 5,000 rows a day (10 reads): default cap 0 34.3 -> 8.8 MB (0.88 MB per open), ai-soc cap 0 15.3 -> 8.7 MB. The open is no longer
+   O(rows) in CPU and allocation by more than the image blob and its anchors: 1.07 MB at 5,000 rows against 1.12 MB at 50,000 per open.
+
+   What is left of an open (ai-soc config, pprof alloc_space of the 100 opens, 1.05 MB): badger.Open 0.56 MB (ristretto's set buffer, a
+   fixed 256 KB whatever the capacity, and its sketches at 16 MB 0.2 MB), the image read 0.33 MB (the blob and badger's value copies),
+   badger's own table blocks and the wire-format check 0.08 MB each. None of it is rho's to cut at the open; a retained handle at
+   cap >= 1 (option a or b above) still removes it altogether and costs +1 to +6 MB of live heap per retained shard.
+
+   Correctness, by test: every read door over the closed shard answers the same through the transient handle as through the retained
+   one (TestColdOpen_ReadDoorsAnswerTheSameThroughATransientHandle: by-ID reads of live, deleted and unknown IDs, label and type
+   reads, adjacency, degrees, history and presence probes, counts, former label members, listings, integrity); at the store level
+   the label doors, the doc-values doors, the shard-drop residue, the former members and the index state digest of a lazy open equal
+   an eager open's on a clean image, an image without the label counts, without the property index, with none (a crash) and an
+   older one (TestLazyLabelMapsMatchEagerOnEveryOpenShape, TestEncodedIDSetsMatchEagerOnEveryOpenShape); the sealed-shard catalog
+   builds run through the transient handle (BuildFormerLabelTokens, the rel ID range, the sealed counts: the existing
+   TestColdRead_TransientCloseLeavesAnUnchangedCatalogAlone still sees no catalog save, which it would if a count or the former-label
+   set changed); a later writable open of the same shard builds everything at the open (TestColdOpen_Writable*).

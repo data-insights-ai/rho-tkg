@@ -167,7 +167,10 @@ Dir/
   compaction, closes the value log and tables, removes `LOCK`, syncs the directories.
 - **Read-only** opens allocate no new memtable and run no compactors, so a read-only shard never compacts; they still
   replay every leftover `.mem` into a full arena (a cleanly closed directory has none: the 2 MB measured), refuse a torn
-  WAL, and refuse a missing directory. On a read-only mount only a read-only open works.
+  WAL, and refuse a missing directory. On a read-only mount only a read-only open works. What a read-only open costs
+  beyond badger's own is rho's index build: for a handle that closes with its read (`Config.TransientRead`) it is 1.1 MB
+  and 0.5 ms at 50,000 rows, of which ristretto's set buffer (256 KB whatever the cache size) and sketches (0.2 MB at
+  16 MB, 2.4 MB at the stock 256 MB) and the image read are most (`tasks/evidence/R3/coldread.txt` section 5).
 - **No integrity check of data by default.** With `ChecksumVerificationMode` off (badger's default), a changed byte
   in a table's data block reaches the reader undetected (the table index alone is checksummed at open). rho turns
   both checks on (`OnBlockRead`, `VerifyValueChecksum`, v4.75.2), so a damaged block or value is `ErrCorruptWire`.

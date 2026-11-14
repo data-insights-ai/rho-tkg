@@ -2,6 +2,7 @@ package tiered
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -215,6 +216,14 @@ func coldOpenDoors(t *testing.T, ts *Store, nodes []types.NodeID, rels []types.R
 // The second pass is the one that checks: the same directory, reopened.
 func TestColdOpen_ReadDoorsAnswerTheSameThroughATransientHandle(t *testing.T) {
 	cfg, nodes, rels, shard := coldOpenDoorsDir(t)
+	// What the doors leave in the catalog: a transient close seals the shard's counts,
+	// its former label members and its rel ID range from the open handle
+	// (sealCountsLocked); the seal must come out as it went in, with no save.
+	type sealed struct {
+		entry ShardEntry
+		saves int64
+	}
+	var sealedBefore, sealedAfter sealed
 	pass := func(maxOpen int) (string, int64) {
 		t.Helper()
 		c := cfg
@@ -226,11 +235,20 @@ func TestColdOpen_ReadDoorsAnswerTheSameThroughATransientHandle(t *testing.T) {
 		defer func() { _ = ts.Close() }()
 		installDefaultTestLabelRegistry(t, ts)
 		before := coldOpensOf(t, ts, shard)
+		sealedBefore = sealed{catalogEntry(t, ts.CatalogForTest(), shard), ts.CatalogForTest().SavesForTest()}
 		doors := coldOpenDoors(t, ts, nodes, rels)
+		sealedAfter = sealed{catalogEntry(t, ts.CatalogForTest(), shard), ts.CatalogForTest().SavesForTest()}
 		return doors, coldOpensOf(t, ts, shard) - before
 	}
 	want, retainedOpens := pass(2)
 	got, transientOpens := pass(0)
+	if !sealedBefore.entry.CountsSealed || !sealedBefore.entry.FormerLabelsKnown || !sealedBefore.entry.RelIDs {
+		t.Fatalf("setup: the catalog entry the transient pass starts from is not fully sealed: %+v", sealedBefore.entry)
+	}
+	if !reflect.DeepEqual(sealedBefore.entry, sealedAfter.entry) || sealedAfter.saves != sealedBefore.saves {
+		t.Fatalf("the transient closes changed the sealed entry or saved the catalog (%d saves):\n before: %+v\n  after: %+v",
+			sealedAfter.saves-sealedBefore.saves, sealedBefore.entry, sealedAfter.entry)
+	}
 	if retainedOpens != 1 {
 		t.Fatalf("the retained pass opened the cold shard %d times, want 1", retainedOpens)
 	}

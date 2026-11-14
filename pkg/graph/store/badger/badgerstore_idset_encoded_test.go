@@ -87,6 +87,15 @@ func idDoors(t *testing.T, bs *Store) string {
 	nc, _ := bs.NodeCount()
 	rc, _ := bs.RelationshipCount()
 	add("counts %d %d", nc, rc)
+	// What a close seals into the tiered catalog (sealCountsLocked).
+	lo, hi, anyRel, err := bs.RelIDRange()
+	add("RelIDRange %d %d %v %v", lo, hi, anyRel, err)
+	sn, sr, byLabel, byType, err := bs.CountSnapshot()
+	add("CountSnapshot %d %d %v %v %v", sn, sr, byLabel, byType, err)
+	none, err := bs.HoldsNoRows()
+	add("HoldsNoRows %v %v", none, err)
+	former, ok := bs.FormerLabelTokens()
+	add("FormerLabelTokens %v %v", former, ok)
 	return strings.Join(out, "\n") + "\n" + bs.IndexStateDigestForTest()
 }
 

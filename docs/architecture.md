@@ -277,9 +277,19 @@ ADR-0012.
   keeps its handle until the idle sweep closes it after `IdleTimeout` unused, counted from its last cold access (a demoted shard no cold read touched closes at the next
   sweep; hot and warm reads stamp no access). A read reopens a cold shard read-only (COLDRO: 1.3 ms against 27.6 ms writable; with
   `MaxOpenColdShards` 0 it closes again at check-in, so a burst of reads is one open each: 100 `GetNode` on a day shard of
-  50,000 rows, 100 opens and 705 MB of allocation with the label map in RAM, 1 open and 8 MB at a cap of 2; the close seals
-  the shard's counts and saves the catalog, a JSON rewrite and two fsyncs, only when the seal changed the entry;
-  `tasks/evidence/R3/coldread.txt`), a write or a
+  50,000 rows, 100 opens and 110 MB of allocation (704 MB before the handle was made cheap, below), 1 open and 8 MB at a
+  cap of 2; the close seals the shard's counts and saves the catalog, a JSON rewrite and two fsyncs, only when the seal
+  changed the entry. A handle that closes at check-in is configured for one read (`tiered.Store.coldReadCfg`,
+  `badger.Config.TransientRead`; R3 cold open): a block cache of at most 16 MB (ristretto sizes its counters by the
+  configured 64 or 256 MB at every open), no label maps at the open (a trusted image carries the per-label counts, so
+  the label-key walk is spared and a label's map is read from its keys when a read first asks, once; the maps stay RAM
+  maps, so the doc-values doors keep answering, which `LabelIndexOnDisk`'s lazy open would not), the image's node, rel
+  and rel-type ID sets kept in the encoding they are stored in (`index.NewIDSetEncoded`: one validating pass and an
+  anchor every 64 IDs, `Has` by a binary search and at most 63 gaps, the first write builds the chunks) and the
+  revision tables unmade until a write bumps one. One open at 50,000 rows: 14.3 ms and 7.0 MB of allocation, 11 ms of
+  user CPU (default config), 6.2 ms, 2.1 MB and 1.5 ms (ai-soc's), down to 1.1 MB and 0.5 to 0.6 ms of CPU in both.
+  A handle a cap keeps and a writable one are configured and built as every other shard is, and a later writable open
+  of the shard works as before; `tasks/evidence/R3/coldread.txt`), a write or a
   checkout that may write reopens it writable (replacing a read-only handle once its readers finish), and at most
   `MaxOpenColdShards` stay open.
 - **No RAM tier.** `DurableCommit` / `SyncWrites` need every write on a disk with a write-ahead log; RAM is each

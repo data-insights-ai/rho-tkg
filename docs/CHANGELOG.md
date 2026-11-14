@@ -259,6 +259,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **A read-only cold open is cheaper** (R3 cold open, coldread.txt option c): with `MaxOpenColdShards` 0 (the default) every
+  read of a closed cold shard opens it read-only and closes it at check-in, 100 opens for 100 `GetNode` on a day shard of
+  50,000 rows, 7.0 MB of allocation and 11 ms of CPU per open at the default configuration, 2.1 MB and 1.5 ms at ai-soc's
+  (labels and adjacency on disk, 64 MB block cache). That handle is now configured for one read (`tiered.Store.coldReadCfg`,
+  the new wiring field `badger.Config.TransientRead`, read-only opens only): a block cache of at most 16 MB (it was the
+  configured size, 64 or 256 MB, sized into ristretto's counters at every open); no label maps at the open when the open image
+  carries the per-label counts (the label-key walk is spared and a label's map is read from its keys when a read first asks,
+  once; `LabelIndexOnDisk`'s lazy open was tried and left, its doc-values doors decline); the image's node, rel and rel-type ID
+  sets kept in the image's own encoding (`index.NewIDSetEncoded`: validated in one pass, an anchor every 64 IDs, built into
+  chunks only by a write) instead of an insert per ID; and the revision tables (128 KB each) unmade until a write. One open
+  now allocates 1.1 MB and takes 0.5 to 0.6 ms of CPU in both configurations; the 100 reads allocate 110 MB where they
+  allocated 704 MB (default) and 210 MB (ai-soc). The number of opens, the defaults and every other handle are unchanged:
+  a handle a cap keeps (`MaxOpenColdShards` > 0), a writable one and a read-only open that is not a cold read are
+  configured and built as before, and every read door answers as it did (the tiered read doors over the closed shard, the
+  label, doc-values, shard-drop and former-label doors, the index state and the sealed catalog entry, transient handle
+  against retained handle: `TestColdOpen_ReadDoorsAnswerTheSameThroughATransientHandle`,
+  `TestLazyLabelMapsMatchEagerOnEveryOpenShape`, `TestEncodedIDSetsMatchEagerOnEveryOpenShape`). A label read through a
+  transient handle walks that label's keys once, which the open's walk did for every label. Red:
+  `TestColdOpen_TransientHandleGetsASmallBlockCache`, `TestColdOpen_TransientHandleBuildsNoLabelMapAtOpen`,
+  `TestColdOpen_TransientHandleBuildsNoIDSets`, `TestColdOpen_TransientHandleMakesNoRevTables`
+  (`tasks/evidence/R3/coldopen-red.txt`); measurement: `TestColdReadBurst`, `TestColdOpenConfigs` (`-tags measure`).
+
 - **Adjacency scan errors** (R2, Sigma doors group A): a failed on-disk adjacency scan now returns its error from
   the plain `Incoming`/`Outgoing` reads on tiered and sharded, where it was logged and read as no entries (a silent
   empty answer).

@@ -47,7 +47,11 @@ func TestColdReadBurst(t *testing.T) {
 	}
 }
 
-func coldReadBurst(t *testing.T, perDay, maxOpen int, asoc bool) {
+// coldBurstFixture is the section E fixture of the burst: perDay rows on day 20,
+// four more days so day 20 is cold, the idle sweep closes it. It returns the store,
+// every 500th node of day 20 and the shard's name.
+func coldBurstFixture(t *testing.T, perDay, maxOpen int, asoc bool) (ts *Store, ids []types.NodeID, day20 string) {
+	t.Helper()
 	clock := &tierClock{}
 	clock.set(julDay(20, 8))
 	cfg := tierClockCfg(t.TempDir(), clock)
@@ -68,8 +72,7 @@ func coldReadBurst(t *testing.T, perDay, maxOpen int, asoc bool) {
 		t.Fatal(err)
 	}
 	ts.SetLabelRegistry(reg)
-	defer func() { _ = ts.Close() }()
-	var ids []types.NodeID
+	t.Cleanup(func() { _ = ts.Close() })
 	for day := 20; day <= 24; day++ { // day 20 is cold from day 23 on (ColdAfter 48 h)
 		clock.set(julDay(day, 8))
 		if err := ts.CheckRotationForTest(); err != nil {
@@ -96,7 +99,7 @@ func coldReadBurst(t *testing.T, perDay, maxOpen int, asoc bool) {
 			}
 		}
 	}
-	const day20 = "2026-07-20"
+	day20 = "2026-07-20"
 	ts.SetIdleTimeoutForTest(time.Millisecond)
 	time.Sleep(5 * time.Millisecond)
 	ts.CloseIdleShardsForTest()
@@ -104,6 +107,11 @@ func coldReadBurst(t *testing.T, perDay, maxOpen int, asoc bool) {
 	if ts.EventShardsForTest()[day20].Store() != nil {
 		t.Fatal("the closed cold shard is still open before the burst")
 	}
+	return ts, ids, day20
+}
+
+func coldReadBurst(t *testing.T, perDay, maxOpen int, asoc bool) {
+	ts, ids, day20 := coldBurstFixture(t, perDay, maxOpen, asoc)
 	runtime.GC()
 	runtime.GC()
 	var before, after runtime.MemStats
@@ -137,5 +145,66 @@ func coldReadBurst(t *testing.T, perDay, maxOpen int, asoc bool) {
 	}
 	if retained != (maxOpen > 0) {
 		t.Fatalf("the cold handle is retained = %v after the burst with MaxOpenColdShards %d", retained, maxOpen)
+	}
+}
+
+// TestColdOpenConfigs times and counts what one raw read-only open and close of
+// the closed day shard costs under the cold read config as it was (shardCfg: the
+// store's own settings) and as it is (coldReadCfg: a 16 MB block cache, no label
+// maps, encoded ID sets, no revision tables), in both configurations of the
+// burst; 50 rounds each, no read, no catalog save, so the figures are the open
+// and the close alone. Alloc and CPU are logged, never asserted (R3 cold open,
+// tasks/evidence/R3/coldread.txt).
+//
+//	R3_PER_DAY=50000 go test -tags measure -v -run TestColdOpenConfigs ./pkg/graph/store/tiered/
+func TestColdOpenConfigs(t *testing.T) {
+	if testing.Short() || raceEnabled {
+		t.Skip("measurement: not in -short, no race detector")
+	}
+	perDay := 5000
+	if v, err := strconv.Atoi(os.Getenv("R3_PER_DAY")); err == nil {
+		perDay = v
+	}
+	for _, asoc := range []bool{false, true} {
+		name := "default config"
+		if asoc {
+			name = "ai-soc config"
+		}
+		t.Run(name, func(t *testing.T) {
+			ts, _, day20 := coldBurstFixture(t, perDay, 0, asoc)
+			es := ts.EventShardsForTest()[day20]
+			for _, c := range []struct {
+				name string
+				cfg  func() BadgerStoreConfig
+			}{
+				{"before (shardCfg)", func() BadgerStoreConfig { return ts.shardCfg(es.path, true, true) }},
+				{"after (coldReadCfg)", func() BadgerStoreConfig { return ts.coldReadCfg(es.path) }},
+			} {
+				const rounds = 50
+				var openTook, closeTook time.Duration
+				runtime.GC()
+				var before, after runtime.MemStats
+				runtime.ReadMemStats(&before)
+				u0, _ := rusageCPU()
+				for i := 0; i < rounds; i++ {
+					t0 := time.Now()
+					store, err := ts.newShardStore(c.cfg())
+					if err != nil {
+						t.Fatal(err)
+					}
+					openTook += time.Since(t0)
+					t0 = time.Now()
+					if err := store.Close(); err != nil {
+						t.Fatal(err)
+					}
+					closeTook += time.Since(t0)
+				}
+				u1, _ := rusageCPU()
+				runtime.ReadMemStats(&after)
+				t.Logf("%d rows, %s, %s: open %.2f ms + close %.2f ms, user CPU %.2f ms, alloc %.2f MB per open and close",
+					perDay, name, c.name, float64(openTook.Microseconds())/rounds/1000, float64(closeTook.Microseconds())/rounds/1000,
+					float64((u1-u0).Microseconds())/rounds/1000, float64(after.TotalAlloc-before.TotalAlloc)/rounds/mib)
+			}
+		})
 	}
 }
