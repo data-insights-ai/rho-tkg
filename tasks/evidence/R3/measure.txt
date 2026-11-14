@@ -597,32 +597,55 @@ day 7 rotation after restart         4   0 |    226.0   1306.1    452.3 |     25
 
 === H. R3 on ai-soc's setup: startup floor, cap 2 day rotation, close and reopen (14 Nov, dev 88404d63 + the new tests) ===
 Asked by the ai-soc review of 14 Nov, section 7: local numbers for R3 on what ai-soc runs (MaxOpenColdShards 2, 64 MiB block cache,
-label and adjacency indexes on disk). Go 1.26.9, badger v4.9.2. The host was shared and loaded (load average 17-25 on 32 cores, other
-sessions running): the heap and allocation columns repeated to 0.1 MiB between runs (counts too); wall time, CPU and RSS did not.
+label and adjacency indexes on disk, no compression). Go 1.26.9, badger v4.9.2. The host was shared and loaded: load average 17-25
+on 32 cores for the first set of runs (Snappy tables, see "NoCompression" below) and 21-59 for the second (NoCompression, the
+figures of this section); other sessions running. The heap and allocation columns repeated to 0.1 MiB between runs (counts too);
+wall time, CPU and RSS did not and are given as ranges over both sets.
 Units: every size in this file is bytes / 2^20 (MiB); sections A to G said "MB" until 14 Nov (the labels were fixed, no figure
 changed). Section B's MB/s is 60 / seconds, nominal. "alloc" = TotalAlloc across the step; "live" = HeapAlloc after two GCs.
 
 Configurations (pkg/graph/store/tiered/shard_asoc_measure_test.go; both on the section E/G fixture: tierClockCfg, ShardWindow 24 h
 UTC, ColdAfter 48 h, MintAtValidFrom, MemTableSize 64 MiB, CacheCapacity 100):
-  default   nothing else: stock 256 MiB block cache, every index in RAM, MaxOpenColdShards 0 (2 in the "default, cap 2" rows)
+  default   nothing else: stock 256 MiB block cache, Snappy tables, every index in RAM, MaxOpenColdShards 0 (2 in the "default, cap 2"
+            rows)
   ai-soc    MaxOpenColdShards 2, LabelIndexOnDisk, AdjacencyIndexOnDisk, BlockCacheSize 64 MiB, HistoryDeltaEncoding,
-            OpenImageInterval 5 min, RelsByMint (the settings of the coldread.txt rows, read from ai-soc's graphmgr tieredConfig)
+            OpenImageInterval 5 min, RelsByMint, NoCompression (ai-soc's -no-compression defaults to true: cmd/aisoc/serve.go:258;
+            the other settings are those of the coldread.txt rows, read from graphmgr tieredConfig). Left at ai-soc's defaults, as
+            ai-soc leaves them: NumCompactors 0 (badger's 4), ValueThreshold 0 (badger's 1 MiB), CacheBudgetBytes 0 (no budget),
+            ColdDir "" (every shard under the data dir), MemTableSize 0 (badger's 64 MiB, the 64 MiB set here).
   Not carried from graphmgr.tieredConfig: SyncWrites (fsync per write, slow, no heap effect), ValueDictionaries, the property and
   rel-property disk indexes and PropertyIndexValidEnd (none of the fixture's rows use them), ColdAfter 72 h (48 h here, as in
   sections E to G; ai-soc runs 72 h, so its cold days start a day later), and CacheCapacity (ai-soc leaves the default 10,000; one
   row below runs it). The day rows are event nodes, as in sections E to G, except the "rels" rows: relationships between 200
   reference nodes, minted at the day (MintRelIDAt) and placed on the day shard by RelsByMint, which is what ai-soc writes.
+  The "default" rows keep Snappy, so against them ai-soc differs in compression as well as in indexes and cache.
 Commands (each Test in its own process, the floor once per configuration; counts are of the runs listed):
-  go test -tags measure -v -run 'TestAsocStartupFloor/default' ./pkg/graph/store/tiered/        (3 runs; likewise /ai-soc)
+  go test -tags measure -v -run 'TestAsocStartupFloor/default' ./pkg/graph/store/tiered/        (14 runs; likewise /ai-soc)
   R3_PER_DAY=5000  go test -tags measure -v -run TestAsocDayRotation ./pkg/graph/store/tiered/   (3 runs, 5 s each)
   R3_PER_DAY=50000 go test -tags measure -v -run TestAsocDayRotation ./pkg/graph/store/tiered/   (2 runs, 25 s each)
   R3_PER_DAY=5000|50000 go test -tags measure -v -run TestAsocReopenPerDay ./pkg/graph/store/tiered/   (3 and 2 runs, 10 s and 57 s)
 
---- H.1 Startup floor: a fresh store, reference + hot shard only (3 runs per configuration, 2 forced GCs) ---
+NoCompression (review of 14 Nov: the first set of runs had Snappy tables, ai-soc runs none). What moved when ai-soc's configuration
+changed from Snappy to NoCompression (first set -> second set; the default rows were not touched):
+  startup floor and one handle: no move (the heap and the open allocate nothing for a table that does not exist yet); the close
+  of an empty handle 7.10 -> 7.06-7.07 MiB.
+  5,000 rows a day: live 343.9 -> 343.8, alloc a day 108.8 -> 108.6-109.1, sweep 7.6 -> 7.5-7.6: no move beyond the run-to-run
+  spread of 0.2 MiB. A read-only open 1.56 -> 1.49 MiB (-0.07), a retained handle +1.4 -> +1.3 live.
+  50,000 rows a day: the sweep (the close of the demoted handle, which flushes its memtable to a table) 35.1 -> 14.1-19.0 MiB
+  (-16 to -21), so alloc a day 273.1-275.8 -> 259.5-260.1 (-14 to -16, -5 %); live 362.4 -> 362.2-362.3 (-0.1). A read-only open
+  2.23 -> 2.02 MiB (-0.2, -9 %) with +1.8 -> +1.6 live; 100 reads on one day 2.76 -> 2.31; 300 reads that open 102 times
+  216 -> 207-208 MiB (-8 to -9, -4 %). Rels on the day shards: the sweep stays 39 MiB, alloc a day 358-365 (no move); the read-only
+  open 2.96 -> 2.60. CacheCapacity 10,000: sweep 35.0 -> 14.5-19.1, alloc a day 273-276 -> 257-261 (-14).
+  late write into a closed day (writable open 86.3, close 7.4 -> 7.3 MiB) and the per-day extra: -0.2 to -0.5 MiB at 5,000 rows
+  (+93.7 -> +93.4 for a daily late write), within the spread at 50,000 rows (+95.4-95.5 -> +93.5-94.8).
+
+--- H.1 Startup floor: a fresh store, reference + hot shard only (14 runs per configuration, 2 forced GCs) ---
                           live MiB  alloc MiB  HeapInuse  GC goal   New wall   New CPU usr+sys   RSS after New (14 runs each)
-default                      171.9      172.1     +172.2    345.7    74-125 ms      9-49 ms      +6.6 to +9.8 (13 runs), +91.5 (1)
-ai-soc                       168.9      169.1     +169.2    339.7    76-184 ms      9-58 ms      +6.4 to +7.3 (8 runs), +90 (6)
-(live = HeapAlloc after New minus before, the process at 0.7 MiB; the heap numbers are identical in every run)
+default                      171.9      172.1     +172.2    345.7    73-299 ms      7-49 ms      +6.5 to +9.7 (14 runs)
+ai-soc (NoCompression)       168.9      169.1     +169.2    339.7    83-324 ms      9-95 ms      +6.5 to +7.3 (7), +90.1 to +90.8 (6), +173.8 (1)
+(live = HeapAlloc after New minus before, the process at 0.7 MiB; the heap numbers are identical in every run, with or without
+compression; the 14 first-set ai-soc runs: 76-184 ms, +6.4 to +7.3 (8 runs), +90 (6); 14 first-set default runs: +6.6 to +9.8 (13),
++91.5 (1))
 One more writable handle opened beside them (what each day's new hot shard adds), by allocation site, MemProfileRate 1 (inuse):
                                           default     ai-soc
   memtable arena (skiplist)                83.203     83.203   = MemTableSize 64 + maxBatchSize 9.6 + maxBatchCount x 96 9.6
@@ -634,86 +657,94 @@ One more writable handle opened beside them (what each day's new hot shard adds)
   other                                     0.007      0.011
   total live per writable handle           85.94      84.44    (HeapAlloc delta 85.94 / 84.44; allocated 85.99 / 84.50 MiB)
   the whole open of two handles            171.88     168.88   = 2 x the handle: the tiered store itself holds under 0.05 MiB
-  close of the handle                       7.10       7.10    allocated: 4.00 table-builder buffer (z.Allocator) + 3.00
+  close of the handle                       7.10       7.07    allocated: 4.00 table-builder buffer (z.Allocator) + 3.00
                                                                flatbuffers table index; frees 85.9 / 84.4 live
 Interpretation: the floor is two arenas. At MemTableSize 64 MiB a writable handle is 83.2 MiB of arena and 1 to 2 MiB of everything
-else, so ai-soc's 64 MiB block cache and disk indexes save 3.0 MiB of 171.9 (1.7 %): the arena is 97-98 % of the floor and no
-index, cache or per-shard map shows at a start with no rows. The index maps and the block cache grow with rows and reads (H.2
-below), the arena does not. Not measured here: what a memtable that fills (a rotation to a new arena) adds.
-RSS: the arena is untouched zero pages when it comes from fresh memory (+7 MiB after New for both handles, the figure of section E
-finding 4), and +90 MiB, with 35-48 ms of system CPU against 2-13, when the allocator hands out memory it must zero (7 of 28 runs,
-6 of them ai-soc's): this is section E's hypothesis for the consumer's +106 MiB RSS, now seen on the floor, not a different cost.
+else, so ai-soc's 64 MiB block cache and disk indexes save 3.0 MiB of 171.9 (1.7 %): the arena is 96.8 % of the default floor and
+98.5 % of ai-soc's, and no index, cache or per-shard map shows at a start with no rows. The index maps and the block cache grow
+with rows and reads (H.2 below), the arena does not. Not measured here: what a memtable that fills (a rotation to a new arena)
+adds. RSS: the arena is untouched zero pages when it comes from fresh memory (+7 MiB after New for both handles, the figure of
+section E finding 4), and +90 MiB (one arena) or +174 MiB (both), with 35-72 ms of system CPU against 3-14, when the allocator
+hands out memory it must zero (ai-soc 13 of 28 runs, default 1 of 28): this is section E's hypothesis for the consumer's +106 MiB
+RSS, now seen on the floor, not a different cost.
 
---- H.2 ai-soc cap 2, day rotation, 5,000 rows a day (run 1 of 3, event nodes; counts and MiB were the same in the other runs) ---
+--- H.2 ai-soc cap 2, day rotation, 5,000 rows a day (NoCompression, run 3 of 3, event nodes; counts and MiB were the same in the
+    other runs, the step wall was 100-600 ms at load 59) ---
 day    rw ro | live MiB  goal MiB | alloc MiB   rot   sweep   idle   rows  | saves opens | step ms
-day 1   2  0 |    174.0     348.3 |      10.5   0.0     0.0    0.0   10.5  |     0     0 |      36
-day 2   3  0 |    258.9     518.1 |     101.2  90.7     0.0    0.0   10.5  |     1     0 |      97
-day 3   4  0 |    343.8     687.9 |     101.3  90.8     0.0    0.0   10.5  |     1     0 |     201
-day 4   4  0 |    343.8     688.0 |     108.9  90.7     7.6    0.0   10.5  |     2     0 |     185
-day 5   4  0 |    343.9     688.1 |     108.8  90.6     7.6    0.0   10.5  |     2     0 |     141
-day 6   4  0 |    343.9     688.1 |     108.9  90.7     7.6    0.0   10.5  |     2     0 |     183
+day 1   2  0 |    174.0     348.3 |      10.5   0.0     0.0    0.0   10.5  |     0     0 |      50
+day 2   3  0 |    258.9     518.1 |     101.2  90.7     0.0    0.0   10.5  |     1     0 |      94
+day 3   4  0 |    343.8     687.9 |     101.2  90.7     0.0    0.0   10.5  |     1     0 |     103
+day 4   4  0 |    343.8     687.9 |     108.7  90.8     7.5    0.0   10.5  |     2     0 |     185
+day 5   4  0 |    343.8     687.9 |     108.6  90.6     7.5    0.0   10.5  |     2     0 |     202
+day 6   4  0 |    343.8     688.0 |     108.7  90.7     7.5    0.0   10.5  |     2     0 |     197
 (rot = CheckRotation, sweep = the handle sweep it kicks, idle = an idle tick, rows = the day's 5,000 writes; rw / ro = writable and
-read-only handles, reference shard included; saves = catalog saves; opens = cold opens; the open of the store itself: 169.7 live)
-Day 6 across configurations and row counts (days 4-6 for alloc; steady, the same each day):
+read-only handles, reference shard included; saves = catalog saves; opens = cold opens; the open of the store itself: 169.7 live.
+step ms = the step's own wall, f alone, without measureStep's two forced GCs, the sampler stop and the ListShards calls, and at
+whatever load the host had; alloc = the step's TotalAlloc as measureStep reads it, after the two GCs)
+Day 6 across configurations and row counts (days 4-6 for alloc; steady, the same each day; min-max over the runs):
                                       5,000 rows a day                           50,000 rows a day
                               live  alloc/day  rot   sweep  rows  saves  |  live  alloc/day   rot   sweep  rows   step ms
-  ai-soc, event nodes         343.9    108.8    90.7   7.6   10.5    2    |  362.4  273-276   113.7  35.1  124-127  645-830
-  ai-soc, rels on day shards  346.2    118.6    96.0   8.0   14.5    2    |  357.1  358-364   108.7  39.1  210-216  780-1060
-  ai-soc + CacheCapacity 10k  349.3    109.1    91.3   7.6   10.2    2    |  370.7  273-276   114.3  35.0  124-126  540-600
-  default config, cap 2       350.6    110.5    92.2   7.6   10.8    2    |  372.1  277-279   115.2  35.0  127-129  550-570
+  ai-soc, event nodes         343.8  108.6-109.1 90.6-90.9 7.5-7.6 10.5  2 | 362.2-362.3 259.5-260.1 113.7-114.2 14.1-19.0 127  720-1470
+  ai-soc, rels on day shards  346.0  118.4-118.9 95.9-96.1 7.9   14.5-15.0 2 | 357.0-357.1 358.5-365.1 108.8-109.5 38.6-39.1 210-217 950-2880
+  ai-soc + CacheCapacity 10k  349.1  108.8-109.1 91.2-91.3 7.5   10.2  2 | 370.6-370.7 257.2-261.0 114.3-119.1 14.5-19.1 124-127 650-2570
+  default config, cap 2       350.4  110.5-110.9 92.1-92.4 7.6-7.7 10.7-10.8 2 | 371.9-372.0 276.9-280.9 115.2-115.9 35.0-35.2 127-130 650-3150
   (section G baseline-64, cap 0: 350.3 / 110.6 at 5,000 and 371.7 / 279.1 at 50,000 rows: the same, so the cap changes no day cost)
-Interpretation: ai-soc holds 4 writable handles from day 3 on (hot, two warm, reference) = 343.9 MiB live, flat; the six-day run
-settles above 344 MiB live at 5,000 rows or 362 MiB at 50,000 (the 18 MiB gap is the part that grows with the rows, not broken down
-here). A day costs 108.8 MiB of allocation at 5,000 rows, 83 % of it the new hot arena (rot 90.7: the new handle's open, 84.5
-on an empty directory, and the rest the old hot shard's flush and demotion), 7.6 MiB closing the demoted handle (it grows with the rows
-it flushes: 35.1 MiB at 50,000) and the rows 10.5 MiB (2.2 KiB a row here, 2.6 at 50,000). 2 catalog saves a day from day 4 on
-(the rotation, the sealed close of the demoted handle), 1 on days 2-3. Against the default config ai-soc is 6.7 MiB lower live
-(about 6 of it the block cache structures of 4 handles) and 1.7 MiB lower in alloc per day. Rels instead of nodes on the day shards
-cost 10 MiB more alloc a day at 5,000 rows (rows +4.0, rot +5.3, sweep +0.4) and the same handles. CacheCapacity 10,000 (ai-soc's
-real setting) adds 5.4 MiB live at 5,000 rows and 8.3 at 50,000 (the entity caches of 4 handles filling). The 50,000-row steps take
-540-1060 ms of wall on this host.
+  (50,000-row step ms: load 21-59, so 2-3 times the first set's 540-1060 ms; read as a bound)
+Interpretation: ai-soc holds 4 writable handles from day 3 on (hot, two warm, reference) = 343.8 MiB live, flat; the six-day run
+settles at 344 MiB live at 5,000 rows and 362 MiB at 50,000 (the 18 MiB gap is the part that grows with the rows, not broken down
+here). A day costs 108.9 MiB of allocation at 5,000 rows, 83 % of it the new hot arena (rot 90.7: the new handle's open, 84.5 on an
+empty directory, and the rest the old hot shard's flush and demotion), 7.5 MiB closing the demoted handle (it grows with the rows
+it flushes: 14-19 MiB at 50,000 without compression, 35 with Snappy as the default config has it) and the rows 10.5 MiB (2.2 KiB a
+row here, 2.6 at 50,000). 2 catalog saves a day from day 4 on (the rotation, the sealed close of the demoted handle), 1 on days
+2-3. Against the default config ai-soc is 6.6 MiB lower live (about 6 of it the block cache structures of 4 handles) and 1.8 MiB
+lower in alloc per day at 5,000 rows, 17-21 lower at 50,000 (the compression: the sweep). Rels instead of nodes on the day shards
+cost 10 MiB more alloc a day at 5,000 rows (rows +4.0, rot +5.3, sweep +0.3), a sweep that stays 39 MiB at 50,000 rows with or
+without compression, and the same handles. CacheCapacity 10,000 (ai-soc's real setting) adds 5.3 MiB live at 5,000 rows and
+8.4 at 50,000 (the entity caches of 4 handles filling).
 
 Cold reads at the end of day 6 (days 20, 21, 22 are closed; every burst starts with all handles closed by an idle tick; cap 2):
-                                          reads  opens  saves  alloc MiB   live kept (retained RO handles)   wall ms (loaded host)
+                                          reads  opens  saves  alloc MiB   live kept (retained RO handles)   wall ms (load 17-59)
 5,000 rows a day, ai-soc, event nodes
-  one day                                    10      1      0       1.56   +1.4 (1 handle)                          6-8
-  two days, interleaved                      20      2      0       3.12   +2.7 (2 handles)                         6-16
-  three days, in turn                        30     12      0      18.3    +2.7 (2 handles: the third day closes)   17-148
-  three days, interleaved                    30     12      0      18.3    +2.7                                     8-135
-5,000 rows, ai-soc, rels: 1.61 / 3.20 / 19.1 / 19.1 MiB, the same opens; default config cap 2: 3.47 / 6.9 / 41.1 / 41.1 MiB
+  one day                                    10      1      0       1.50   +1.3 (1 handle)                          6-18
+  two days, interleaved                      20      2      0       2.98   +2.7 (2 handles)                         6-45
+  three days, in turn                        30     12      0      18.0    +2.7 (2 handles: the third day closes)   17-620
+  three days, interleaved                    30     12      0      18.0    +2.7                                     8-660
+5,000 rows, ai-soc, rels: 1.55 / 3.06 / 18.5 / 18.5 MiB, the same opens; default config cap 2 (Snappy): 3.47 / 6.9 / 41.1 / 41.1 MiB
 50,000 rows a day, ai-soc, event nodes
-  one day                                   100      1      0       2.75   +2.2                                     8-10
-  two days, interleaved                     200      2      0       5.5    +4.4                                     10-17
-  three days, in turn                       300    102      0     216      +4.4                                     250-830
-  three days, interleaved                   300    102      0     216      +4.4                                     250-1200
-50,000 rows, default config cap 2: 7.74 / 15.3 / 721 / 721 MiB, 1.6-4.7 s (1.5 s user CPU), +5.9 live per retained handle
-Interpretation: a burst on one or two cold days costs one open a day (1.56 MiB at 5,000 rows, 2.1 at 50,000, a catalog save
-never) and keeps 1.4 / 2.2 MiB live per retained handle. The cap keeps the first two days a read reaches and does not evict:
-the third day closes at every check-in, so each of its reads opens it again (10 reads = 10 opens, 15.2 MiB at 5,000 rows;
-100 reads = 100 opens, 211 MiB at 50,000 rows) and only reads of the first two days are free. A scan over three or more
+  one day                                   100      1      0       2.31   +1.7                                     9-31
+  two days, interleaved                     200      2      0       4.57   +3.4                                     15-29
+  three days, in turn                       300    102      0     207.5    +3.4                                     420-2590
+  three days, interleaved                   300    102      0     207.8    +3.4                                     250-2190
+50,000 rows, ai-soc, rels: 2.9 / 5.8 / 267-270 MiB; default config cap 2 (Snappy): 7.74 / 15.3 / 721 / 721 MiB, 1.6-4.7 s
+(1.5 s user CPU), +5.9 live per retained handle
+Interpretation: a burst on one or two cold days costs one open a day (1.5 MiB at 5,000 rows, 2.0 at 50,000, a catalog save
+never) and keeps 1.3 / 1.7 MiB live per retained handle. The cap keeps the first two days a read reaches and does not evict:
+the third day closes at every check-in, so each of its reads opens it again (10 reads = 10 opens, 15 MiB at 5,000 rows;
+100 reads = 100 opens, 203 MiB at 50,000 rows) and only reads of the first two days are free. A scan over three or more
 cold days pays one open per read of the third and later days. This is the cap as documented (graphmgr Config.MaxOpenColdShards:
-"a shard past it closes after its read and reopens at the next"), not a leak.
+"a shard past it closes after its read and reopens at the next"), not a leak. What that open costs is the subject of the last
+paragraph of this section.
 
 --- H.3 Close and reopen: what a late write or a read into a closed day costs (ai-soc config, cap 2, day 6 state) ---
 step                                                  rw ro | alloc MiB   live MiB change | opens saves | wall ms   (5,000 rows a day)
-late write into the hot day (handle open)              4  0 |      0.02       -2.7 (a)     |    0     0 |  0.1
-late write into a warm day (handle open)               4  0 |      0.03        0.0         |    0     0 |  0.1
-late write into a closed cold day: writable open       5  0 |     86.30      +84.5         |    1     1 |  53-85
-read of that day's row (handle open)                   5  0 |      0.01        0.0         |    0     0 |  0.0
-idle tick closes the late-write handle                 4  0 |      7.37      -84.5         |    0     1 |  34-53
-read of a closed day: read-only open, kept by cap 2    4  1 |      1.56      +1.3          |    1     0 |  6-7
-read of the same day again                             4  1 |      0.03       0.0          |    0     0 |  0.0
-read of a second closed day                            4  2 |      1.50      +1.3          |    1     0 |  4-6
-read of a third closed day (closed at check-in)        4  2 |      1.54       0.0          |    1     0 |  1-24
-late write into a day with a read-only handle          5  1 |     86.46      +83.2         |    1     1 |  48-80
-idle tick closes every handle of the cold day          4  0 |      7.47      -85.8         |    0     1 |  44-82
+late write into the hot day (handle open)              4  0 |      0.02       -2.6 (a)     |    0     0 |  0.0-0.3
+late write into a warm day (handle open)               4  0 |      0.03        0.0         |    0     0 |  0.0-0.3
+late write into a closed cold day: writable open       5  0 |     86.3       +84.5         |    1     1 |  51-193
+read of that day's row (handle open)                   5  0 |      0.01        0.0         |    0     0 |  0.0-0.1
+idle tick closes the late-write handle                 4  0 |      7.3       -84.5         |    0     1 |  34-145
+read of a closed day: read-only open, kept by cap 2    4  1 |      1.49       +1.3         |    1     0 |  6-15
+read of the same day again                             4  1 |      0.03        0.0         |    0     0 |  0.0-0.1
+read of a second closed day                            4  2 |      1.47       +1.3         |    1     0 |  4-16
+read of a third closed day (closed at check-in)        4  2 |      1.52        0.0         |    1     0 |  1-36
+late write into a day with a read-only handle          5  1 |     86.3       +83.2         |    1     1 |  50-123
+idle tick closes every handle of the cold day          4  0 |      7.4       -85.8         |    0     1 |  40-104
 (a) the idle tick before the step closed the two read-only handles of the last burst.
-At 50,000 rows: writable open 87.4 MiB (+84.9 live), its close 7.8, read-only open 2.1-2.3 (+1.7-1.8 live); rels at 5,000 rows:
-86.5 / 7.4 / 1.6 (the late write is a ReplaceRelationship of a relationship on the closed day, the same writable open).
+At 50,000 rows: writable open 87.3 MiB (+84.8 live), its close 7.6, read-only open 2.0-2.1 (+1.6 live); rels at 5,000 rows:
+86.4 / 7.3 / 1.55 (the late write is a ReplaceRelationship of a relationship on the closed day, the same writable open).
 Interpretation: a late write into a closed cold day pays a whole hot-size writable open, 86.3 MiB of allocation and 84.5 MiB live
-until the idle close, plus 7.4 MiB and a catalog save when it closes (93.7 MiB and 2 saves a round trip, row count aside); a
-late write into the hot or a warm day, whose handle is open, costs nothing. A read-only open is 1.5 MiB (2.1 at 50,000 rows),
-about 1/55 of that, and a retained one holds 1.3-2.2 MiB live. WarmMemTableSize 8 MiB would make the writable reopen 17.3 instead
+until the idle close, plus 7.3 MiB and a catalog save when it closes (93.6 MiB and 2 saves a round trip, row count aside); a
+late write into the hot or a warm day, whose handle is open, costs nothing. A read-only open is 1.5 MiB (2.0 at 50,000 rows),
+about 1/58 of that, and a retained one holds 1.3-1.6 MiB live. WarmMemTableSize 8 MiB would make the writable reopen 17.3 instead
 of 90 MiB (section A, default config); ai-soc does not set it.
 
 Per day, when every day writes late into the oldest closed day and reads every cold day (idle tick at the start of the next day
@@ -721,25 +752,34 @@ closes what the day before opened); allocation of the day step, MiB, against the
                                           5,000 rows a day                      50,000 rows a day
                                     extra d4-6  extra d5-6  opens/saves      extra d4-6   extra d5-6   opens/saves
   event nodes
-  late write into day 1 each day       +91.2       +93.7      3 / 11 (6)     +92.6-93.5   +95.4-95.5     3 / 11
-  read of each cold day each day        +3.0        +3.8      6 / 6 (6)      +2.4-5.4     +4.1-5.7       6 / 6
-  both                                 +92.7       +96.0      6 / 11         +95.0-96.1   +98.7-99.0     6 / 11
+  late write into day 1 each day     +90.8-91.0  +93.3-93.5  3 / 11 (6)     +91.4-92.3   +93.5-94.8     3 / 11
+  read of each cold day each day      +2.7-3.0    +3.6-3.8   6 / 6 (6)      +3.0-4.3     +4.8-5.3      6 / 6
+  both                               +92.2-92.5  +95.4-95.7  6 / 11         +92.7-94.6   +95.5-98.1     6 / 11
   rels on the day shards
-  late write into day 1 each day       +91.4       +93.9      3 / 11         +94.9-97.9   +99.7-100.5    3 / 11
-  read of each cold day each day        +3.1        +3.9      6 / 6          +4.4-4.5     +5.2-5.6       6 / 6
-  both                                 +92.9       +96.2      6 / 11         +96.3-97.8   +101.1-102.0   6 / 11
+  late write into day 1 each day     +91.1-91.2   +93.6      3 / 11         +93.1-94.7   +96.5-97.4     3 / 11
+  read of each cold day each day      +3.0-3.1    +3.8-3.9   6 / 6          +4.1-4.9      +4.9          6 / 6
+  both                               +92.7-92.8  +95.9-96.0  6 / 11         +95.7-99.9   +99.0-102.4    6 / 11
 (days 4-6: opens and saves summed over the three days, the saves of "no late work" in brackets; extra d5-6 is the steady state:
-day 4 has no close of the previous day's late-write handle yet, and fewer than three cold days to read)
-Day 6 ends with 5 writable handles (428.6 MiB live at 5,000 rows, against 343.9) in the late-write rows: the handle the late write
-opened stays until the idle close, which in production is IdleTimeout (5 min); the reads add 2 read-only handles (+2.8 MiB).
-Interpretation: closing demoted handles costs the 7.6 MiB a day the sweep already pays (the "no late work" rows), reading closed
-days costs 1.5 MiB per cold day read (4.6 MiB a day at three cold days; 3.8 averaged over days 5-6), and a daily late write into
-a closed day costs 93.7 MiB of allocation (86.3 open + 7.4 close) and 2 more catalog saves, 86 % on top of a day's 108.8 MiB:
-that open is the R3 cost a consumer can still trigger from the outside; reads cost a few MiB.
+day 4 has no close of the previous day's late-write handle yet, and fewer than three cold days to read; the 50,000-row rows
+move 1-3 MiB between runs because the flushes of a day finish at different times)
+Day 6 ends with 5 writable handles (428.4 MiB live at 5,000 rows, against 343.8) in the late-write rows: the handle the late write
+opened stays until the idle close, which in production is IdleTimeout (5 min); the reads add 2 read-only handles (+2.7 MiB).
+Interpretation: closing demoted handles costs the 7.5 MiB a day the sweep already pays (the "no late work" rows), reading closed
+days costs 1.5 MiB per cold day read (4.5 MiB a day at three cold days; 3.6-3.8 averaged over days 5-6), and a daily late write
+into a closed day costs 93.4 MiB of allocation a day (86.3 open + 7.3 close; 93.3-93.5 measured) and 2 more catalog saves, 86 % on top of a day's 108.9
+MiB: that open is the R3 cost a consumer can still trigger from the outside; reads cost a few MiB.
 
 Defects: none seen. Behaviour worth knowing: (1) cap 2 does not evict, so a third cold day is opened per read (above);
-(2) the close of a writable handle allocates 7.1 MiB however few rows it holds (4 MiB table-builder buffer, 3 MiB table index)
-and 35-39 MiB at 50,000 rows; (3) RSS after an open is bimodal (+7 or +90 MiB), see H.1.
+(2) the close of a writable handle allocates 7.1 MiB however few rows it holds (4 MiB table-builder buffer, 3 MiB table index),
+14-19 MiB at 50,000 rows without compression and 35-39 MiB with it (rels: 39 either way); (3) RSS after an open is bimodal (+7
+or +90 MiB, once +174), see H.1; (4) at cap > 0 coldReadCfg (tieredstore.go:2068-2071) returns the full shardCfg, so a day past
+the cap, which closes at every check-in, still opens at full price: 2.0 MiB at 50,000 rows on ai-soc's setup (2.1 with Snappy;
+2.12 MiB per raw open and close in TestColdOpenConfigs' "before" row) and 7.06 MiB at the default (721 MiB / 102 opens; 7.03 raw),
+not the 1.1 MiB transient open of fd593767 (a 16 MiB block cache, no label maps, encoded ID sets, no revision tables: 1.10 and
+1.08 MiB raw at 50,000 rows in today's TestColdOpenConfigs run, 1.07 and 1.09 in coldread.txt section 5). This is the R3 cost that remains on ai-soc's setup: a scan over three cold
+days pays about twice the transient open on every read of the third and later days (203 MiB for 100 such reads, against about
+110 MiB: coldread.txt section 5 measured 112-114 MiB per 100 reads that open each time at cap 0). Not changed here (measurement only): the transient config at cap > 0 would apply to the opens that close at check-in and
+leave the retained handles as they are.
 Limits: rows of two short string properties; one writer; SyncWrites off; ColdAfter 48 h not 72 h; the property-index
 disk settings, value dictionaries and the churn of a real day (sigma's derived rows, annotations) are not in the fixture; RSS was
 read only at the floor; every figure is from one process per run, the host loaded.

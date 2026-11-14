@@ -39,8 +39,10 @@ import (
 // asocCfg is the tiered configuration of the section G and coldread fixtures
 // with ai-soc's settings (graphmgr tieredConfig, as the R3 measure tests carry
 // them): MaxOpenColdShards 2, LabelIndexOnDisk, AdjacencyIndexOnDisk, a 64 MiB
-// block cache, HistoryDeltaEncoding, an open image every 5 min, RelsByMint. Not
-// carried: SyncWrites, ValueDictionaries, the property and rel-property index
+// block cache, HistoryDeltaEncoding, an open image every 5 min, RelsByMint and
+// NoCompression (ai-soc's -no-compression defaults to true). NumCompactors,
+// ValueThreshold, CacheBudgetBytes and ColdDir stay at ai-soc's defaults (unset).
+// Not carried: SyncWrites, ValueDictionaries, the property and rel-property index
 // settings and CacheCapacity (ai-soc leaves the default 10,000; the fixtures
 // use 100, so the entity cache does not grow with the rows).
 func asocCfg(dir string, clock *tierClock) Config {
@@ -52,6 +54,7 @@ func asocCfg(dir string, clock *tierClock) Config {
 	cfg.HistoryDeltaEncoding = true
 	cfg.OpenImageInterval = 5 * time.Minute
 	cfg.RelsByMint = true
+	cfg.NoCompression = true
 	return cfg
 }
 
@@ -389,10 +392,8 @@ func floorRun(t *testing.T, c asocConfig) {
 // --- the day rotation under ai-soc's cap -------------------------------------
 
 type asocOpts struct {
-	name      string
 	mk        func(dir string, clock *tierClock) Config
 	perDay    int
-	days      int
 	rels      bool // the day rows are relationships between reference nodes (ai-soc's RelsByMint), not event nodes
 	lateWrite bool // from day 4 on, after each day's rows, one late write into day 1 (cold, closed)
 	lateRead  bool // from day 4 on, after each day's rows, one GetNode in each cold day
@@ -597,8 +598,6 @@ func (r *asocRun) writeDay(day int) {
 	var d dayRow
 	d.day = day
 	s0, o0 := r.saves(), r.opens()
-	a0 := allocNow()
-	t0 := time.Now()
 	step := func(into *uint64, f func()) {
 		a := allocNow()
 		f()
@@ -634,11 +633,10 @@ func (r *asocRun) writeDay(day int) {
 			})
 		}
 	})
-	d.took = time.Since(t0)
-	d.alloc = allocNow() - a0
 	d.saves = r.saves() - s0
 	d.opens = r.opens() - o0
 	last := r.rows[len(r.rows)-1]
+	d.took, d.alloc = last.took, last.dTotalAlloc // the step's own: f alone for the wall, the step's TotalAlloc
 	d.rw, d.ro, d.live, d.goal = last.writable, last.readOnly, last.live, last.nextGC
 	r.days = append(r.days, d)
 }
@@ -701,7 +699,7 @@ func TestAsocDayRotation(t *testing.T) {
 		}, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			r := newAsocRun(t, asocOpts{name: c.name, mk: c.mk, perDay: perDay, days: 6, rels: c.rels})
+			r := newAsocRun(t, asocOpts{mk: c.mk, perDay: perDay, rels: c.rels})
 			for day := 20; day <= 25; day++ {
 				r.writeDay(day)
 			}
@@ -809,7 +807,7 @@ func asocReopenPerDay(t *testing.T, perDay int, rels bool) {
 		{"read of each cold day each day", false, true},
 		{"late write and reads each day", true, true},
 	} {
-		r := newAsocRun(t, asocOpts{name: v.name, mk: asocCfg, perDay: perDay, days: 6, rels: rels, lateWrite: v.write, lateRead: v.read})
+		r := newAsocRun(t, asocOpts{mk: asocCfg, perDay: perDay, rels: rels, lateWrite: v.write, lateRead: v.read})
 		for day := 20; day <= 25; day++ {
 			r.writeDay(day)
 		}
