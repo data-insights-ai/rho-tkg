@@ -6,7 +6,7 @@
 //	}
 //
 // and variants set r3Proto in the measure test: "ro-at-demotion" calls r3ReopenRO on every shard of coldDemotions;
-// "warm-8+reopen-warm-at-rotation" calls r3ReopenWarm on oldHot when oldTier is warm (Config.WarmMemTableSize 8 MB);
+// "warm-8+reopen-warm-at-rotation" calls r3ReopenWarm on oldHot when oldTier is warm (Config.WarmMemTableSize 8 MiB);
 // the last variant does both. Rotation holds ts.mu.Lock, so every swap is a write stall of its own duration. No
 // concurrency handling (a lock-free warm checkout would read es.store while it is replaced): measurement only.
 

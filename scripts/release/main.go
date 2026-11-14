@@ -5,7 +5,6 @@
 //
 //	go run ./scripts/release <patch|minor|major> [-dry-run]
 //	go run ./scripts/release kind
-//	go run ./scripts/release test
 //
 // A release: preconditions (on dev, clean, the remote's main an ancestor of
 // HEAD, a push dry-run passes, the next tag absent), the diff's kind is at
@@ -14,17 +13,14 @@
 // (message: that section), git push --atomic of dev as main and dev, and the
 // tag; local main then moves to the tag (dev is merged into main). The tag is
 // the version: it edits no file. -dry-run: everything but the tag and the
-// push. After a patch or minor push it starts scripts/race.sh detached (log
+// push. After a patch or minor push it starts `scripts/race` detached (log
 // .git/race.out): -race runs after the tag, nobody waits on it, and a red
 // race run is fixed in the next patch.
 //
 // kind prints the diff's kind since the last tag and why.
 //
-// test is a builder's presubmit (as sigma's): go vet and go test -short -p 4
-// of the packages a change reaches: the packages of the files changed against
-// origin/main (committed, staged, unstaged or untracked; a testdata file
-// counts for its package, go.mod or go.sum means all) and every package whose
-// tests depend on one of them.
+// Presubmit (make presubmit) and race (make race) live in scripts/presubmit and
+// scripts/race; this command is release and kind only.
 package main
 
 import (
@@ -57,8 +53,6 @@ func main() {
 		for _, w := range why {
 			fmt.Println("  " + w)
 		}
-	case "test":
-		os.Exit(runAffected())
 	default:
 		k := parseKind(args[0])
 		dry := len(args) == 2 && args[1] == "-dry-run"
@@ -70,7 +64,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release <patch|minor|major> [-dry-run] | release kind | release test")
+	fmt.Fprintln(os.Stderr, "usage: release <patch|minor|major> [-dry-run] | release kind")
 	os.Exit(2)
 }
 
@@ -300,7 +294,7 @@ func release(k int, dry bool) {
 	}
 }
 
-// startRace runs scripts/race.sh detached, in its own session so it outlives the
+// startRace runs release race detached, in its own session so it outlives the
 // release and the terminal, its output in .git/race.out after a header naming
 // the tag.
 func startRace(tag string) {
@@ -309,11 +303,12 @@ func startRace(tag string) {
 	if err == nil {
 		_, _ = fmt.Fprintf(f, "race at %s, started %s\n", tag, time.Now().Format(time.RFC3339))
 	}
-	c := exec.Command("scripts/race.sh") // #nosec G204 -- a fixed script
+	c := exec.Command("go", "run", "./scripts/race") // #nosec G204 -- fixed subcommand
+	c.Env = append(os.Environ(), "GOFLAGS=-trimpath")
 	c.Stdout, c.Stderr = f, f
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := c.Start(); err != nil {
-		fmt.Printf("race: not started: %v (run scripts/race.sh)\n", err)
+		fmt.Printf("race: not started: %v (run make race)\n", err)
 		return
 	}
 	fmt.Printf("race: started in the background (pid %d), log %s\n", c.Process.Pid, log)
@@ -327,102 +322,3 @@ func mustRead(p string) []byte {
 	return bytes.TrimSpace(b)
 }
 
-// runAffected runs go vet and go test -short -p 4 on the packages a change
-// reaches (see the package comment) and returns the exit code.
-func runAffected() int {
-	pkgs, err := affectedPackages()
-	if err != nil {
-		fmt.Println("test:", err)
-		return 1
-	}
-	if len(pkgs) == 0 {
-		fmt.Println("test: no Go package reached by the change")
-		return 0
-	}
-	fmt.Printf("test: %d packages reached\n", len(pkgs))
-	env := append(os.Environ(), "GOFLAGS=-trimpath")
-	for _, args := range [][]string{
-		append([]string{"vet"}, pkgs...),
-		append([]string{"test", "-short", "-p", "4", "-timeout", "20m"}, pkgs...),
-	} {
-		c := exec.Command("go", args...) // #nosec G204 -- go with package paths from go list
-		c.Env, c.Stdout, c.Stderr = env, os.Stdout, os.Stderr
-		if err := c.Run(); err != nil {
-			return 1
-		}
-	}
-	return 0
-}
-
-// affectedPackages lists the module's packages whose tests reach a package
-// changed against origin/main.
-func affectedPackages() ([]string, error) {
-	base, err := git("merge-base", "HEAD", remote()+"/main")
-	if err != nil {
-		return nil, fmt.Errorf("merge-base: %s", base)
-	}
-	var files []string
-	for _, args := range [][]string{
-		{"diff", "--name-only", base},
-		{"ls-files", "--others", "--exclude-standard"},
-	} {
-		out, err := git(args...)
-		if err != nil {
-			return nil, fmt.Errorf("git %s: %s", args[0], out)
-		}
-		files = append(files, strings.Fields(out)...)
-	}
-	mod, err := exec.Command("go", "list", "-m").Output()
-	if err != nil {
-		return nil, err
-	}
-	module := strings.TrimSpace(string(mod))
-	all := false
-	changed := map[string]bool{}
-	for _, f := range files {
-		if f == "go.mod" || f == "go.sum" {
-			all = true
-		}
-		if i := strings.Index(f, "/testdata/"); i >= 0 {
-			f = f[:i] + "/x.go"
-		} else if strings.HasPrefix(f, "testdata/") {
-			f = "x.go"
-		}
-		if !strings.HasSuffix(f, ".go") {
-			continue
-		}
-		dir := module
-		if i := strings.LastIndex(f, "/"); i >= 0 {
-			dir += "/" + f[:i]
-		}
-		changed[dir] = true
-	}
-	out, err := exec.Command("go", "list", "-test", "-f", "{{.ImportPath}}|{{join .Deps \" \"}}", "./...").Output()
-	if err != nil {
-		return nil, fmt.Errorf("go list: %v", err)
-	}
-	seen := map[string]bool{}
-	var pkgs []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		path, deps, _ := strings.Cut(line, "|")
-		if strings.Contains(path, " ") || strings.HasSuffix(path, "_test") {
-			continue // a test variant; its .test main carries the same deps
-		}
-		pkg := strings.TrimSuffix(path, ".test")
-		if seen[pkg] {
-			continue
-		}
-		hit := all || changed[pkg]
-		for _, d := range strings.Fields(deps) {
-			if hit {
-				break
-			}
-			hit = changed[d]
-		}
-		if hit {
-			seen[pkg] = true
-			pkgs = append(pkgs, pkg)
-		}
-	}
-	return pkgs, nil
-}

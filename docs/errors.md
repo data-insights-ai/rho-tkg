@@ -225,13 +225,13 @@ Declared by one store package and returned by its constructor or its own doors; 
 | `ErrEncryptionRequiresBlockCache` | badger | `EncryptionKey` set with `BlockCacheSize` 0 (Badger would panic at open) | `badger.New()` |
 | `ErrEncryptionRequiresIndexCache` | badger | `EncryptionKey` set with `IndexCacheSize` 0 (Badger would panic at the first encrypted flush) | `badger.New()` |
 
-Two typed errors carry a failed operation (match them with `errors.As`): `graph.BatchError{Op, ID, Err}` (one failed op of a batch, in `BatchResult.Errors`) and `*sharded.PartialBatchError{Op, CommittedShards, FailedShard, Err}` (a batch door that committed some shards and failed on one; `Unwrap` gives `Err`).
+Three typed errors carry a failed operation (match them with `errors.As`): `graph.BatchError{Op, ID, Err}` (one failed op of a batch, in `BatchResult.Errors`), `*sharded.PartialBatchError{Op, CommittedShards, FailedShard, Err}` (a batch door that committed some shards and failed on one; `Unwrap` gives `Err`), and `*store.ReadBudgetError{Door, Limit, Budget, Work}` (a selective read stopped at its budget, since v4.107.0). `ReadBudgetError.Is` matches `store.ErrReadBudget`. That sentinel is declared in `pkg/graph/store/read_budget.go`, not re-exported as `graph.ErrReadBudget`. The doors are `docs/api.md` "Read budgets". A context without a budget does not return it.
 
 Three internal sentinels have no exported alias and can reach a caller only as an error message: a nil callback on the callback scan doors (`ErrNilCallback`, e.g. `g.Temporal().ForEachNodeEffectiveByLabel` / `ForEachRelEffectiveByType`, the adjacent-ordinal and `ForEach*` scans), the commit clock reaching its maximum (`ErrCommitClockExhausted`, defence in depth) and `RecordForeignIncoming` refusing a foreign stamp implausibly far past the host clock (`ErrForeignStampImplausible`).
 
 ## Store-Internal Sentinels (Not Re-Exported Through pkg/graph)
 
-These sentinels are declared in `pkg/graph/store/errors.go` and have **no alias in `pkg/graph/errors.go`**. Some are purely internal (never surfaced past the store implementation); others leak through a specific public `Graph` method (noted per row) because that door has no conversion step. To classify these, import the store package directly: `storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"` and check `errors.Is(err, storepkg.ErrXxx)` — `errors.Is(err, graph.ErrXxx)` will never match them. (`ErrCorruptWire`, also store-only and not re-exported, is documented above under Integrity & Wire alongside its wire-format sibling rather than repeated here.)
+These sentinels have **no alias in `pkg/graph/errors.go`**. Most are declared in `pkg/graph/store/errors.go`; `ErrReadBudget` is declared in `pkg/graph/store/read_budget.go`. Some are purely internal (never surfaced past the store implementation); others leak through a specific public `Graph` method (noted per row) because that door has no conversion step. To classify these, import the store package directly: `storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"` and check `errors.Is(err, storepkg.ErrXxx)` — `errors.Is(err, graph.ErrXxx)` will never match them. (`ErrCorruptWire`, also store-only and not re-exported, is documented above under Integrity & Wire alongside its wire-format sibling rather than repeated here.)
 
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
@@ -242,6 +242,7 @@ These sentinels are declared in `pkg/graph/store/errors.go` and have **no alias 
 | `ErrChangesNotAscending` | store | A batch passed to `ApplyChanges` is not in strictly ascending LSN order | `g.Replication().ApplyChanges(recs)` — the successful ascending prefix before the out-of-order record is still applied and watermarked; this sentinel itself is not re-exported through `pkg/graph` or `pkg/graph/replication` |
 | `ErrInvalidForeignIncoming` | store | Malformed `store.ForeignIncomingEdge` descriptor (zero rel ID, empty type name, zero endpoint ID, or zero attest-time) | `g.Rels().RecordForeignIncoming()` |
 | `ErrSlotNotLocal` | store | A PARTITIONED store was handed an entity whose snowflake slot it does not own (its authority lives on another partition). Re-exported as `sharded.ErrSlotNotLocal` (same value) | A point read or write routed to the wrong `sharded.Store` partition (an ID whose slot is unclaimed fails closed — see api.md's Sharded store section); also raised inside `g.IO().Import()` when a re-shard would drop a non-empty slot, where it drives the import rollback |
+| `ErrReadBudget` | store | A selective read passed a `ReadBudget` limit and handed out no rows (an answer is exact or refused). The value is `*ReadBudgetError` (`Door`, `Limit`, `Budget`, `Work`); `errors.Is` matches this sentinel. A zero budget field is unbounded. A context with no budget does not return it | Every budgeted `Ctx` door listed in `docs/api.md` "Read budgets", since v4.107.0 |
 
 ## Transaction-Time Backfill (§4.1)
 
@@ -392,7 +393,7 @@ errors.Is(err, graph.ErrTxBackfillDisabled)
 errors.Is(err, graph.ErrPrimaryRegistryStale)
 ```
 
-Sentinels documented under "Store-Internal Sentinels" (and `ErrCorruptWire` under "Integrity & Wire") have no `graph.ErrXxx` alias — reach them via `pkg/graph/store` directly:
+Sentinels documented under "Store-Internal Sentinels" (`ErrReadBudget` included) and `ErrCorruptWire` under "Integrity & Wire" have no `graph.ErrXxx` alias — reach them via `pkg/graph/store` directly:
 
 ```go
 import storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"

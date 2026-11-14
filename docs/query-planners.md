@@ -35,7 +35,7 @@ backend answers and which declines.
 | Node / relationship mutation epoch | `g.Nodes().NodeMutationEpoch()` / `g.Rels().RelMutationEpoch()` | O(1) | O(1) | returns 0 (not an error) when the backend lacks the DocValues capability; the per-label `NodeLabelMutationEpoch` is badger and sharded only (0 on memory and tiered) |
 | Equality lookup (one key) | `g.Nodes().ByLabelAndProperty(label, key, value, opts)` / `g.Rels().ByTypeAndProperty(type, key, value, opts)` without a temporal filter | with a property index: O(log matches + page) per keyset page (`After`, `Limit`), O(matches) unpaged; the value's IDs are a posting list kept sorted at write time (backlog 72; before, every call copied and sorted all matches); badger `PropertyIndexOnDisk` (nodes) still collects and sorts the value's IDs; else O(label size) scan+filter | each shard / slot answers the same page from its own index copy, the merge is cut to it; a tiered shard without a usable copy scans+filters | never errors |
 | Composite (multi-key) equality lookup | `g.Nodes().ByLabelAndProperties(label, values, opts)` | O(log matches + page) per keyset page with a matching `g.Index().CreateComposite` definition when every value is single-form (sorted posting lists, backlog 72), O(matches) unpaged; a number in the query reads through the single-key index of the pair with the fewest forms ("Numbers and floats"); else O(label size) scan+filter | each shard answers the same page with its own definition (every shard builds one) and the merge is cut to it; else scan+filter per shard | never errors; falls back to scan+filter when no exact-key-set definition exists (see "Composite property indexes" below) |
-| Temporal property lookup | `g.Rels().ByTypeAndProperty` / `g.Nodes().ByLabelAndProperty(ies)` with a temporal filter, the named `*PropertyAt` / `*PropertyDuring` doors | O(the value's ever-members) with a declared index (property membership sidecar, built lazily once); else O(all history) | sharded unions its slots' sidecars; tiered unions its shards' (DepthAll) and takes the full-history fold while any shard lacks a finished copy of the anchor's index | never — without the sidecar the full-history fold answers the same |
+| Temporal property lookup | `g.Rels().ByTypeAndProperty` / `g.Nodes().ByLabelAndProperty(ies)` with a temporal filter, the named `*PropertyAt` / `*PropertyDuring` doors | RAM sidecar: O(the value's ever-members), built lazily once. On-disk windowed membership seeks (RELDISKWIN, v4.107.2): rows ending before the window are not visited. Else O(all history) | sharded unions its slots' sidecars; tiered unions its shards' (DepthAll), each on-disk shard seeking its own window, and takes the full-history fold while any shard lacks a finished copy of the anchor's index | never — without the sidecar the full-history fold answers the same |
 | Pinned adjacency — bitemporal (TxAt) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter); **valid-at-now filter — drops past-valid edges**, see below |
 | Pinned adjacency — belief-state (TxPin) | `g.Rels().OutgoingForNodesAtPin(nodeIDs, type, pin)` / `IncomingForNodesAtPin(...)` | adjacency index + O(deleted rels) fold; agrees with `ByType{TxPin}` filtered by endpoint by construction | same adjacency-index push-down per shard | `pin == 0` delegates to `OutgoingForNodes`/`IncomingForNodes`; a seed absent from the belief state at the pin is skipped silently (no `ErrNodeNotFound`) |
 
@@ -680,13 +680,25 @@ version; the question is only which candidates to resolve.
 
 | Store | Candidates | Cost |
 |---|---|---|
-| memory, badger, sharded (union of its slots), tiered (union of its shards, DepthAll, while every shard carries a finished copy of the anchor's index), with a DECLARED index on `(type, key)` / `(label, key)` | current index matches ∪ the value's ever-members from the store's property membership sidecar, minus members whose earliest row carrying the value was recorded after the effective pin (`TxPin`, else `TxAt`; a pure valid-time read prunes nothing) | O(rels that ever carried the value × their versions) |
+| memory, badger, sharded (union of its slots), tiered (union of its shards, DepthAll, while every shard carries a finished copy of the anchor's index), with a DECLARED index on `(type, key)` / `(label, key)` | RAM sidecar: current index matches ∪ the value's ever-members, minus members whose earliest row carrying the value was recorded after the effective pin (`TxPin`, else `TxAt`; a pure valid-time read prunes nothing). On-disk windowed membership seeks instead (paragraph below) | RAM sidecar: O(rels that ever carried the value × their versions). On-disk window: the seek, not this walk |
 | no declared index, tiered otherwise, a wrapper store | current matches ∪ every ID with a history row (the full fold) | O(all history of the graph) |
 
 Both rows return the same answer (the sidecar is a sound superset; the
 resolver rejects the rest). `ByLabelAndProperties` intersects the sidecar
 sets of the keys that have a declared single-key index; keys without one
 constrain nothing.
+
+Since v4.107.2 (RELDISKWIN) an on-disk definition (`PropertyIndexOnDisk`,
+`PropertyIndexOnDiskLabels`, `RelPropertyIndexOnDiskTypes`) answers
+`ForEachNodePropertyTxMemberDuring` / `ForEachRelPropertyTxMemberDuring` by
+seeking the time-ordered copy of the member entries (`0x0C` kinds 7 and 8).
+Rows that end before the window, and unwidened rows written after the pin,
+are not visited. The seek still visits rows that start after the window,
+widened rows written after an old pin, and open rows that start before the
+window's end. Until compaction, a delete of an open row can leave a
+`MaxInt64` end. The RAM sidecar still walks its ever-members and filters by
+envelope. Key layout: `docs/persistence.md`. The October 2026 timings below
+are that sidecar fold, not this seek.
 
 The sidecar (`store.RelPropertyTxMembershipCapability` /
 `NodePropertyTxMembershipCapability`) maps `(scope, key, value)` to every
@@ -723,9 +735,12 @@ graph".
 
 Which in-tree backend answers a primitive natively and which declines. Read from
 the method sets of `memory.Store`, `badger.Store`, `tiered.Store` and
-`sharded.Store` (checked at v4.105.6); "no" is a decline or a slower fallback as
-stated in the primitive's own section. `store.CapabilitiesOf(s).IndexAcceleration`
-states the index-served doors per store at run time.
+`sharded.Store`. Those Stats method sets were checked at v4.105.6, and
+`pkg/graph/stats` is unchanged since. The on-disk windowed membership cost is
+RELDISKWIN (v4.107.2), in the temporal property section above. "no" is a
+decline or a slower fallback as stated in the primitive's own section.
+`store.CapabilitiesOf(s).IndexAcceleration` states the index-served doors per
+store at run time.
 
 | Primitive | memory | badger | tiered | sharded |
 |---|---|---|---|---|

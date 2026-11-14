@@ -21,21 +21,17 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Now
 
-- **READBUDGET, RELDISKWIN follow-ups** (v4.107.2) — refuse native iterator steps, buffers, sorts and historical
-  membership before the work, in every shard and fallback; stale late-axis deletes stay visible until compaction.
-  Done when the limits refuse first, ai-soc's membership guards pass and stale entries are measured on a consumer
-  store (`tasks/evidence/READBUDGET/followups.txt`). **rho/sigma:** bounds native work.
-- **WARMMEM (R3: cheaper writable and inactive shards)** — Sweep and counts done: the handle sweep reopens the old
-  hot shard at WarmMemTableSize and closes demoted handles; per-tier handle and write counts; registries under
-  shardMu; day 6 at 8 MB warm ~205 MB live heap against 610 (`tasks/evidence/R3/measure.txt` section G). Next: B0
-  measurement on ai-soc (RSS, swap time at 1-10 M rows, write counts per tier); read-only warm handles wait for its
-  warm write counts. Open: a swap installing between BeginLogScope's flag and its fold fails loudly with a double
-  scope; a swap whose own reopen fails demotes a hot shard to cold; a cold read at 50,000 rows a day costs 2.5-2.9 s
-  and 707 MB for 100 GetNode calls. **rho/sigma:** lowers the fixed memory cost per live handle.
-- **EMPTYBYID (keep proven-empty shards closed)** — Finish skipping NoRows shards in ID, history, adjacency and
-  create-existence probes, including batched paths. Done when repeated idle sweeps and misses cause no empty-shard
-  opens, cross-shard relationships remain findable, and a real late write safely reopens its shard; measure handle
-  and allocation counts. Waits for candidate review. **rho/sigma:** removes repeated open/close work after demotion.
+- **READBUDGET, RELDISKWIN follow-ups** (v4.107.2) — the Ctx doors through R2-SCANS are in CHANGELOG
+  [Unreleased]. Still open: refuse native iterator steps, buffers, sorts and historical membership before the
+  work, in every shard and fallback; stale late-axis deletes stay visible until compaction. Done when the limits
+  refuse first, ai-soc's membership guards pass and stale entries are measured
+  (`tasks/evidence/READBUDGET/followups.txt`). **rho/sigma:** bounds native work.
+- **WARMMEM (R3: cheaper writable and inactive shards)** — Sweep, per-tier counts and the three follow-ups are in
+  CHANGELOG [Unreleased]: no double change-log scope, a failed swap does not demote a shard a rotation promoted
+  back to hot, and a cold close no longer rewrites an unchanged catalog. The cheap read-only cold open is in
+  `docs/architecture.md` (one open at 50,000 rows, about 1.1 MB). Left: the ai-soc B0 measurement (RSS, swap time
+  at 1-10 M rows, write counts per tier); read-only warm handles wait for those counts.
+  **rho/sigma:** lowers the fixed memory cost per live handle.
 
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — reads and writes
   stop rebuilding a key's whole history. Released: P3 HISTDECODE, HEADLEND, P1 HISTTRIM, CASCADEMETA (v4.103.0), P2
@@ -133,8 +129,8 @@ On René:
   (7 tests via `-modfile`) is ~15 s warm but would not have caught REFFANOUT's break (ai-soc's
   `TestTieredDerivedReadOpensNoColdShard`, only in its full short suite, 5-8 min at load 30-50). Default: skip; ai-soc's
   own gate catches such a break before it pins. **rho/sigma:** none (release process).
-- **RACEAFTER** (René 5 Nov: "it creates load on the PC") — the release starts `scripts/race.sh` detached after
-  each patch push, and cron runs it every 6 h. Options: cron only; `nice` it; cap it at `-p 2`. Default: unchanged
+- **RACEAFTER** (René 5 Nov: "it creates load on the PC") — the release starts `go run ./scripts/release race` detached after
+  each patch push; host cron no longer runs race (14 Nov). Options: drop detached start too; `nice` it; cap at `-p 2`. Default: detached after release only
   until René says. **rho/sigma:** none (shared PC load).
 - **ASOFVALID** (ai-soc 5 Nov) — a `valid=` page costs ~8 s on the masked copy (v4.98.4), 76 % one point row read
   per member of a cold shard, which carries no relationship temporal index (shard_index_fanout.go:240-244, :486-490).

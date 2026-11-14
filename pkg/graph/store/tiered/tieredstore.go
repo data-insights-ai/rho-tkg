@@ -2063,11 +2063,18 @@ const transientColdBlockCache = 16 << 20
 // keys (2.3 MB and a third of the CPU of an open at 50,000 rows) and a point
 // read never reads, and the sets of live node, rel and rel-type IDs, which stay
 // in the image's encoding (an insert per ID was half the CPU of an open at
-// ai-soc's configuration). The answers are the same. A handle a cap keeps (MaxOpenColdShards > 0) is
-// configured as every other shard is, and so is a writable one.
+// ai-soc's configuration). The answers are the same. With MaxOpenColdShards
+// > 0 a handle that fits under the cap is kept at check-in and is configured as
+// every other shard is, and so is a writable one; a read that finds the cap
+// full (checkinReadStore keeps a handle only while the open cold shards are at
+// most the cap) closes its handle at check-in as a cap-0 read does, so it opens
+// the same transient form (R3, tasks/evidence/R3/measure.txt section H: the
+// third cold day of a scan at cap 2 paid the full open on every read). The
+// count is read at the open; a shard that closes before check-in may leave the
+// transient handle kept, which answers the same.
 func (ts *Store) coldReadCfg(name string) BadgerStoreConfig {
 	cfg := ts.shardCfg(name, true, true)
-	if ts.maxOpenColdShards > 0 {
+	if ts.maxOpenColdShards > 0 && ts.openColdShards.Load() < int64(ts.maxOpenColdShards) {
 		return cfg
 	}
 	if cfg.BlockCacheSize == 0 || cfg.BlockCacheSize > transientColdBlockCache {

@@ -1,0 +1,8 @@
+2026/11/14 11:06:05 INFO graph: tiered store opened duration=145.95851ms reference=40.185247ms hot=55.945526ms warm=720ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/14 11:06:05 INFO graph: tiered store opened duration=145.982691ms reference=45.064184ms hot=55.920465ms warm=830ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestColdOpen_OverCapHandleOpensTransient (0.00s)
+    --- FAIL: TestColdOpen_OverCapHandleOpensTransient/cap_full:_transient_config,_closed_at_check-in (0.43s)
+        cold_open_over_cap_test.go:45: read-only cold handle: block cache 67108864, lazy label maps false; want 16777216, true
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.438s
+FAIL
