@@ -118,7 +118,14 @@ type tokenMembers struct {
 
 // nodeTokenMembersLocked is label tok's tokenMembers. Caller holds idxMu.
 func (bs *Store) nodeTokenMembersLocked(tok uint16) (tokenMembers, error) {
-	current, err := bs.labelCurrentMembersLocked(tok)
+	return bs.nodeTokenMembersAdmitLocked(tok, nil)
+}
+
+// nodeTokenMembersAdmitLocked is nodeTokenMembersLocked admitting the label's
+// members before a label map or keyspace not in RAM is read (R2 late counts:
+// labelCurrentMembersAdmitLocked; admit nil counts nothing).
+func (bs *Store) nodeTokenMembersAdmitLocked(tok uint16, admit func(int) error) (tokenMembers, error) {
+	current, err := bs.labelCurrentMembersAdmitLocked(tok, admit)
 	if err != nil {
 		return tokenMembers{}, err
 	}
@@ -481,11 +488,15 @@ func (bs *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := bs.trackValidEnds(&bs.nodeValidEnds, labelTokens, bs.ensureLabelTxMembersBuilt, bs.nodeTokenMembersLocked); err != nil {
+	members := bs.nodeTokenMembersLocked
+	if t != nil { // a label map read from its keys counts its members first (a lazy map, a label index on disk)
+		members = func(tok uint16) (tokenMembers, error) { return bs.nodeTokenMembersAdmitLocked(tok, t.Candidates) }
+	}
+	if err := bs.trackValidEnds(&bs.nodeValidEnds, labelTokens, bs.ensureLabelTxMembersBuilt, members); err != nil {
 		return nil, err
 	}
 	if err := bs.nodeValidEnds.ResolveUnknownBulk(func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
-		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, bs.nodeTokenMembersLocked, t)
+		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, members, t)
 	}); err != nil {
 		return nil, err
 	}

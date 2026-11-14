@@ -585,10 +585,20 @@ func (bs *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id 
 // in LabelIndexOnDisk mode read from the persisted keyspace. The caller holds
 // idxMu (R or W) and only reads the set.
 func (bs *Store) labelCurrentMembersLocked(token uint16) (map[types.NodeID]struct{}, error) {
+	return bs.labelCurrentMembersAdmitLocked(token, nil)
+}
+
+// labelCurrentMembersAdmitLocked is labelCurrentMembersLocked for a read under
+// a budget: a label read from its keys (a lazy map not built yet, or the
+// keyspace in LabelIndexOnDisk mode) admits its members first
+// (labelMembersAdmitLocked, labelNodeIDsSnapshotAdmitLocked); admit nil counts
+// nothing.
+func (bs *Store) labelCurrentMembersAdmitLocked(token uint16, admit func(int) error) (map[types.NodeID]struct{}, error) {
 	if !bs.labelOnDisk {
-		return bs.labelMembersLocked(token)
+		set, _, err := bs.labelMembersAdmitLocked(token, admit)
+		return set, err
 	}
-	ids, err := bs.labelNodeIDsSnapshotLocked(token)
+	ids, err := bs.labelNodeIDsSnapshotAdmitLocked(token, admit)
 	if err != nil {
 		return nil, err
 	}

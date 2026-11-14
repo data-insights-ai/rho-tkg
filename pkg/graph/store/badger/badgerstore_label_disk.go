@@ -38,20 +38,22 @@ func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error
 // labelNodeIDsSnapshotAdmitLocked is labelNodeIDsSnapshotLocked admitting the
 // members as it lists them (R2, Sigma doors group D): admit(n) is called
 // before n members are collected and a non-nil error stops the listing. A
-// label index in RAM admits its whole set before the list is built; one kept
-// on disk admits each committed entry as the walk produces it and each pending
-// add, so a read past a candidate limit stops at the member that passes it,
-// before it collects the rest of the label. A nil admit is the plain snapshot.
+// label index in RAM admits its whole set before the list is built (a lazy
+// label map, Config.TransientRead, before its keys are walked:
+// labelMembersAdmitLocked); one kept on disk admits each committed entry as the
+// walk produces it and each pending add, so a read past a candidate limit stops
+// at the member that passes it, before it collects the rest of the label. A nil
+// admit is the plain snapshot.
 func (bs *Store) labelNodeIDsSnapshotAdmitLocked(token uint16, admit func(int) error) ([]types.NodeID, error) {
 	if !bs.labelOnDisk {
-		set, err := bs.labelMembersLocked(token)
+		set, counted, err := bs.labelMembersAdmitLocked(token, admit)
 		if err != nil {
 			return nil, err
 		}
 		if len(set) == 0 {
 			return nil, nil
 		}
-		if admit != nil {
+		if admit != nil && !counted {
 			if err := admit(len(set)); err != nil {
 				return nil, err
 			}

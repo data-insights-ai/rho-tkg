@@ -472,7 +472,11 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 	slog.Debug("graph: NodesByLabelAndProperty using full label scan (no property index)",
 		"labelToken", labelToken, "propertyKey", propKey)
 	scanElements := bs.propertyIndexes[key].Elements()
-	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
+	var admitLabel func(int) error
+	if m, _ := opts.ReadMeter(); m != nil { // the label's every node, before the list is built and the scan reads one
+		admitLabel = opts.AddCandidates
+	}
+	nids, idErr := bs.labelNodeIDsSnapshotAdmitLocked(labelToken, admitLabel)
 	bs.idxMu.RUnlock()
 	if idErr != nil {
 		return nil, idErr
@@ -481,10 +485,7 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 		return nil, nil
 	}
 
-	// Sorted scan for property matches; the label's every node counts first.
-	if err := opts.AddCandidates(len(nids)); err != nil {
-		return nil, err
-	}
+	// Sorted scan for property matches.
 	storepkg.SortNodeIDs(nids)
 	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, match, scanElements, nids, opts)
 }

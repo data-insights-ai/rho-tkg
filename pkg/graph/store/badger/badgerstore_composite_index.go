@@ -272,16 +272,17 @@ func (bs *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 	// Fallback: snapshot label IDs, release lock, then scan properties.
 	slog.Debug("graph: NodesByLabelAndProperties using full label scan (no matching composite index)",
 		"labelToken", labelToken, "keys", len(values))
-	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
+	var admitLabel func(int) error
+	if m, _ := opts.ReadMeter(); m != nil { // the label's every node, before the list is built and the scan reads one
+		admitLabel = opts.AddCandidates
+	}
+	nids, idErr := bs.labelNodeIDsSnapshotAdmitLocked(labelToken, admitLabel)
 	bs.idxMu.RUnlock()
 	if idErr != nil {
 		return nil, idErr
 	}
 	if len(nids) == 0 {
 		return nil, nil
-	}
-	if err := opts.AddCandidates(len(nids)); err != nil { // the label's every node, before the scan reads one
-		return nil, err
 	}
 	storepkg.SortNodeIDs(nids)
 	return bs.fetchNodesByLabelPropertiesIDs(labelToken, values, nids, opts)
