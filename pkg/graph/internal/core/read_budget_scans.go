@@ -103,6 +103,54 @@ func (r *scanRun) holdList(n int) error {
 	return r.meter.AddBufferBytes(r.door, n*bufSliceRef)
 }
 
+// listCap is how many candidates the scan may list at once when it asks for n:
+// n, or one more than the candidate room the meter has left when that is less,
+// so a listing never holds more than the one candidate that would pass the
+// limit (a nil run lists n).
+func (r *scanRun) listCap(n int) int {
+	if r == nil {
+		return n
+	}
+	if room := r.tally().CandidateRoom(); room < uint64(max(n, 0)) { // #nosec G115 -- a count
+		return int(room) + 1 // #nosec G115 -- below n
+	}
+	return n
+}
+
+// admitSegments counts n segments the scan is about to hand out, one at a
+// time, so a refusal names the segment that passes the limit.
+func (r *scanRun) admitSegments(n int) error {
+	if r == nil {
+		return nil
+	}
+	for range n {
+		if err := r.meter.AddSegments(r.door, 1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pagedReads are the entity reads of a paged door, which reads many chunks of
+// entities through one snapshot (none: the store has no snapshot): under a
+// budget the snapshot counts the rows it decodes and the history it looks at in
+// the run's tally (a store without a meter-aware snapshot, memory, counts an
+// entity's chain versions through the reads' tally). closeSnap releases it.
+func (c *Core) pagedReads(run *scanRun) (rd entityReads, closeSnap func()) {
+	tally := run.tally()
+	rd, closeSnap = entityReads{c: c, scan: true, tally: tally}, func() {}
+	if c.readSnapshots != nil {
+		rd.snap = c.readSnapshots.NewReadSnapshot()
+		closeSnap = func() { rd.snap.Close() }
+		if tally != nil {
+			if m, ok := rd.snap.(storepkg.ReadSnapshotMeterCapability); ok {
+				m.MeterReads(tally)
+			}
+		}
+	}
+	return rd, closeSnap
+}
+
 // holdBytes counts n bytes the scan is about to hold in a buffer (BufferBytes).
 func (r *scanRun) holdBytes(n int) error {
 	if r == nil {

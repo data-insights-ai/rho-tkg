@@ -29,12 +29,24 @@ import (
 
 // ForEachNodeEffectiveByLabelAndProperties is the listing page door; its
 // contract is temporal.API.ForEachNodeEffectiveByLabelAndProperties.
+//
+// Under a read budget in ctx (RH list R2, R2-SCANS) it streams like the effective
+// scans: one candidate per entity before its read (a listing asks the store for
+// no more candidates than the meter has room for plus the one that passes it,
+// scanRun.listCap), 8 buffer bytes per listed candidate, a fallback listing
+// through the rows (no composite index) counted inside the store, the history,
+// decoded bytes and shard opens of each read, and each segment before fn gets it;
+// the callbacks made before a refusal stand and none follows it.
 func (t *TempOps) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, label string, props map[string]any, pin types.Instant, opts temporal.EffectivePageOpts, fn func(types.NodeID, []temporal.NodeSegment) bool) (types.NodeID, error) {
 	c := t.c
 	if err := checkCtx(ctx); err != nil {
 		return 0, err
 	}
 	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
+	run, err := c.scanRunFor(ctx, "ForEachNodeEffectiveByLabelAndProperties")
+	if err != nil {
 		return 0, err
 	}
 	if fn == nil {
@@ -74,11 +86,8 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, 
 		return 0, err
 	}
 	match := nodeEqualMatcher(tok, props)
-	rd := entityReads{c: c, scan: true}
-	if c.readSnapshots != nil {
-		rd.snap = c.readSnapshots.NewReadSnapshot()
-		defer rd.snap.Close()
-	}
+	rd, closeSnap := c.pagedReads(run)
+	defer closeSnap()
 	type entry struct {
 		id   types.NodeID
 		segs []temporal.NodeSegment
@@ -86,7 +95,9 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, 
 	var (
 		after   = opts.After
 		matched int
-		buf     = make([]entry, 0, effScanChunk)
+		ids     []types.NodeID // listed, not yet read: a Segments or BufferBytes bound reads one at a time
+		more    = true         // the store may list more above the last listed ID
+		buf     = make([]entry, 0, run.chunk())
 	)
 	for {
 		if err := checkCtx(ctx); err != nil {
@@ -96,22 +107,33 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, 
 		if opts.Limit > 0 {
 			n = min(n, opts.Limit-matched)
 		}
+		n = run.listCap(n) // no more than the budget has room for plus the one that passes it
 		buf = buf[:0]
-		var (
-			more    bool
-			readErr error
-		)
+		var readErr error
 		if err := c.readUnderRLock(func() error {
-			ids, m, err := c.nodeIDsByLabelAndProperties(tok, props, after, n, opts.Depth)
-			if err != nil {
-				return err
+			if len(ids) == 0 { // the listing and its first reads under one hold, as the plain door
+				if !more {
+					return nil
+				}
+				var err error
+				if ids, more, err = c.nodeIDsByLabelAndProperties(run, tok, props, after, n, opts.Depth); err != nil {
+					return err
+				}
+				if err := run.holdList(len(ids)); err != nil {
+					return err
+				}
 			}
-			more = m
+			take := ids[:min(run.chunk(), len(ids))]
+			ids = ids[len(take):]
 			if rd.snap != nil {
 				defer rd.snap.Release() // no iterator (table pins) or read mark while fn runs
 			}
-			for _, id := range ids {
+			for _, id := range take {
 				after = id
+				if err := run.admit(); err != nil {
+					readErr = err
+					return nil
+				}
 				segs, ok, err := c.nodeEffectiveTimelinesFrom(rd, id, pins, match)
 				if err != nil {
 					readErr = err
@@ -129,6 +151,9 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, 
 			if err := checkCtx(ctx); err != nil {
 				return 0, err
 			}
+			if err := run.admitSegments(len(e.segs)); err != nil {
+				return 0, err
+			}
 			matched++
 			if !fn(e.id, e.segs) || matched == opts.Limit {
 				return e.id, nil
@@ -137,7 +162,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, 
 		if readErr != nil {
 			return 0, readErr
 		}
-		if !more {
+		if len(ids) == 0 && !more {
 			return 0, nil
 		}
 	}
@@ -147,7 +172,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, 
 // ascending order, and whether more may follow (c.mu held): the composite
 // index's posting list where the store offers it, else the IDs of
 // NodesByLabelAndProperties' page.
-func (c *Core) nodeIDsByLabelAndProperties(tok uint16, values map[string]any, after types.NodeID, n int, depth storepkg.ShardDepth) ([]types.NodeID, bool, error) {
+func (c *Core) nodeIDsByLabelAndProperties(run *scanRun, tok uint16, values map[string]any, after types.NodeID, n int, depth storepkg.ShardDepth) ([]types.NodeID, bool, error) {
 	// A numeric value has several index forms (3 and 3.0): only the
 	// read path that combines them answers it.
 	if _, multi := equalForms(values); !multi && c.compositeIDPage != nil {
@@ -156,7 +181,9 @@ func (c *Core) nodeIDsByLabelAndProperties(tok uint16, values map[string]any, af
 			return ids, more, err
 		}
 	}
-	rows, err := c.nodesByLabelAndProperties(tok, values, storepkg.QueryOpts{Depth: depth, After: types.EntityID(after), Limit: n})
+	// Under a budget the lookup counts its matches (or the label's nodes, a key
+	// set without a composite index) and the rows it decodes inside the store.
+	rows, err := c.nodesByLabelAndProperties(tok, values, run.opts(storepkg.QueryOpts{Depth: depth, After: types.EntityID(after), Limit: n}))
 	if err != nil {
 		return nil, false, err
 	}

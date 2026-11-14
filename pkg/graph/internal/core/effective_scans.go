@@ -43,6 +43,12 @@ func (c *Core) streamNodeTimelines(ids []types.NodeID, pin types.Instant, keep f
 // scan with its *store.ReadBudgetError, after fn has seen the entities read
 // before it.
 func (c *Core) streamNodeTimelinesRun(run *scanRun, ids []types.NodeID, pin types.Instant, keep func(*types.Node) bool, fn func(temporal.NodeSegment) bool) error {
+	return c.streamNodeTimelinesWindowed(run, ids, pin, keep, nil, fn)
+}
+
+// streamNodeTimelinesWindowed is streamNodeTimelinesRun handing fn only the
+// segments accept takes (nil: every segment), as streamRelTimelinesWindowed.
+func (c *Core) streamNodeTimelinesWindowed(run *scanRun, ids []types.NodeID, pin types.Instant, keep func(*types.Node) bool, accept func(temporal.NodeSegment) bool, fn func(temporal.NodeSegment) bool) error {
 	fn = scanSegments(run, fn)
 	err := streamEntityTimelinesMetered(c, run.tally(), run.chunk(), ids, func(rd entityReads, id types.NodeID) ([]temporal.NodeSegment, error) {
 		if err := run.admit(); err != nil {
@@ -52,7 +58,7 @@ func (c *Core) streamNodeTimelinesRun(run *scanRun, ids []types.NodeID, pin type
 		return skipUnknown(segs, err, storepkg.ErrNodeNotFound)
 	}, func(_ types.NodeID, segs []temporal.NodeSegment) bool {
 		for _, s := range segs {
-			if (keep == nil || keep(s.Node)) && !fn(s) {
+			if (keep == nil || keep(s.Node)) && (accept == nil || accept(s)) && !fn(s) {
 				return false
 			}
 		}

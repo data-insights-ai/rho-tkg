@@ -28,12 +28,24 @@ import (
 
 // ForEachNodeEffectiveByLabelAndPropertyValues is the value-list page door;
 // its contract is temporal.API.ForEachNodeEffectiveByLabelAndPropertyValues.
+//
+// Under a read budget in ctx (RH list R2, R2-SCANS) it streams as
+// ForEachNodeEffectiveByLabelAndProperties does: the key's matches are counted
+// inside the store before each is decoded (an index's matches, or the label's
+// nodes where the key has no index), so a limit stops the listing at the match
+// that passes it; 8 buffer bytes per listed ID; one candidate per entity before
+// its read; the history, decoded bytes and shard opens of each read; each
+// segment before fn gets it.
 func (t *TempOps) ForEachNodeEffectiveByLabelAndPropertyValues(ctx context.Context, label string, props map[string]any, key string, values []any, pin types.Instant, opts temporal.EffectivePageOpts, fn func(types.NodeID, []temporal.NodeSegment) bool) (types.NodeID, error) {
 	c := t.c
 	if err := checkCtx(ctx); err != nil {
 		return 0, err
 	}
 	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
+	run, err := c.scanRunFor(ctx, "ForEachNodeEffectiveByLabelAndPropertyValues")
+	if err != nil {
 		return 0, err
 	}
 	if fn == nil {
@@ -91,7 +103,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndPropertyValues(ctx context.Conte
 		if err := c.refuseNodeElementsIndex(tok, key, "ForEachNodeEffectiveByLabelAndPropertyValues"); err != nil {
 			return err
 		}
-		rows, err := c.nodesByLabelAndPropertyFormKeys(tok, key, forms, keys, storepkg.QueryOpts{Depth: opts.Depth, After: types.EntityID(opts.After)})
+		rows, err := c.nodesByLabelAndPropertyFormKeys(tok, key, forms, keys, run.opts(storepkg.QueryOpts{Depth: opts.Depth, After: types.EntityID(opts.After)}))
 		if err != nil {
 			return err
 		}
@@ -99,7 +111,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndPropertyValues(ctx context.Conte
 		for i, r := range rows {
 			ids[i] = r.ID()
 		}
-		return nil
+		return run.holdList(len(ids))
 	}); err != nil || len(ids) == 0 {
 		return 0, err
 	}
@@ -109,24 +121,21 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndPropertyValues(ctx context.Conte
 	fixed := nodeEqualMatcher(tok, props)
 	in := keys.match()
 	match := func(n *types.Node) bool { return fixed(n) && in.Node(n, key, false) }
-	rd := entityReads{c: c, scan: true}
-	if c.readSnapshots != nil {
-		rd.snap = c.readSnapshots.NewReadSnapshot()
-		defer rd.snap.Close()
-	}
+	rd, closeSnap := c.pagedReads(run)
+	defer closeSnap()
 	type entry struct {
 		id   types.NodeID
 		segs []temporal.NodeSegment
 	}
 	var (
 		matched int
-		buf     = make([]entry, 0, min(effScanChunk, len(ids)))
+		buf     = make([]entry, 0, min(run.chunk(), len(ids)))
 	)
 	for len(ids) > 0 {
 		if err := checkCtx(ctx); err != nil {
 			return 0, err
 		}
-		n := min(effScanChunk, len(ids))
+		n := min(run.chunk(), len(ids)) // one entity under a Segments or BufferBytes bound
 		if opts.Limit > 0 {
 			n = min(n, opts.Limit-matched)
 		}
@@ -139,6 +148,10 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndPropertyValues(ctx context.Conte
 				defer rd.snap.Release() // no iterator (table pins) or read mark while fn runs
 			}
 			for _, id := range chunk {
+				if err := run.admit(); err != nil {
+					readErr = err
+					return nil
+				}
 				segs, ok, err := c.nodeEffectiveTimelinesFrom(rd, id, pins, match)
 				if err != nil {
 					readErr = err
@@ -154,6 +167,9 @@ func (t *TempOps) ForEachNodeEffectiveByLabelAndPropertyValues(ctx context.Conte
 		}
 		for _, e := range buf {
 			if err := checkCtx(ctx); err != nil {
+				return 0, err
+			}
+			if err := run.admitSegments(len(e.segs)); err != nil {
 				return 0, err
 			}
 			matched++

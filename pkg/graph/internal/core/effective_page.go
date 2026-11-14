@@ -60,6 +60,11 @@ type pageSource[ID ~int64] struct {
 	done  bool // the store has nothing above seen
 	fetch func(after ID, n int) (ids []ID, last ID, done bool, err error)
 	prune func(ids []ID) []ID // drops fetched candidates outside the valid filter (nil: none)
+	// run is the page's read budget (nil: none): a fetch asks for no more
+	// candidates than the meter has room for plus the one that passes it
+	// (scanRun.listCap), and each fetched list is held as BufferBytes before it
+	// is buffered (RH list R2, R2-SCANS).
+	run *scanRun
 }
 
 // fill refills an empty buffer (c.mu held); a cancelled ctx stops it before
@@ -69,12 +74,15 @@ func (s *pageSource[ID]) fill(ctx context.Context, n int) error {
 		if err := checkCtx(ctx); err != nil {
 			return err
 		}
-		ids, last, done, err := s.fetch(s.seen, n)
+		ids, last, done, err := s.fetch(s.seen, s.run.listCap(n))
 		if err != nil {
 			return err
 		}
 		if s.prune != nil && len(ids) > 0 {
 			ids = s.prune(ids)
+		}
+		if err := s.run.holdList(len(ids)); err != nil {
+			return err
 		}
 		s.buf, s.done = ids, done
 		if last > s.seen {
@@ -127,9 +135,9 @@ func above[ID ~int64](ids []ID, after ID) []ID {
 // sidecarSource is a source from a paged membership sidecar: page fetches at
 // most n members above after; members first recorded after pin are dropped
 // (they cannot carry the value at the pin) but still advance the resume point.
-func sidecarSource[ID ~int64](pin types.Instant, after ID, trust bool, validate func(ID) error,
+func sidecarSource[ID ~int64](run *scanRun, pin types.Instant, after ID, trust bool, validate func(ID) error,
 	page func(after ID, n int, fn func(ID, types.Instant) bool) error) *pageSource[ID] {
-	return &pageSource[ID]{seen: after, fetch: func(after ID, n int) ([]ID, ID, bool, error) {
+	return &pageSource[ID]{seen: after, run: run, fetch: func(after ID, n int) ([]ID, ID, bool, error) {
 		var (
 			ids     []ID
 			last    ID
@@ -163,6 +171,12 @@ func sidecarSource[ID ~int64](pin types.Instant, after ID, trust bool, validate 
 // listSource is a source over a whole ascending candidate list.
 func listSource[ID ~int64](ids []ID, after ID) *pageSource[ID] {
 	return &pageSource[ID]{buf: above(ids, after), seen: after, done: true}
+}
+
+// held is the source's list counted as BufferBytes, 8 per candidate, once it is
+// built and before it is merged (RH list R2; nil run: nothing).
+func (s *pageSource[ID]) held(run *scanRun) (*pageSource[ID], error) {
+	return s, run.holdList(len(s.buf))
 }
 
 // pageQueryOpts returns pin as store query options — the transaction pin and
@@ -235,10 +249,23 @@ func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Fi
 	return types.EqualIndexKeys(f.Eq), opts, nil
 }
 
-// RelsEffectivePage implements temporal.API.RelsEffectivePage.
+// RelsEffectivePage implements temporal.API.RelsEffectivePage. Under a read
+// budget in ctx (RH list R2, R2-SCANS) it is exact or refused: it counts the
+// candidates it lists (BufferBytes, 8 each, and no more than the budget has room
+// for plus the one that passes it), one candidate per relationship before its
+// timeline is read, the history, decoded bytes and shard opens of the reads, and
+// each kept segment (Segments, and its struct size as BufferBytes, before it is
+// collected), and returns *store.ReadBudgetError and no segments past a limit.
 func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after types.RelID, limit int) ([]temporal.RelSegment, types.RelID, error) {
 	pin.Tx = recordedPin(pin.Tx) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, 0, err
+	}
+	run, err := c.scanRunFor(ctx, "RelsEffectivePage")
+	if err != nil {
+		return nil, 0, err
+	}
 	keys, opts, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeAllRels)
 	if err != nil {
 		return nil, 0, err
@@ -251,7 +278,7 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 			if err := checkCtx(ctx); err != nil {
 				return err
 			}
-			tokSrcs, err := c.relPageSources(ctx, tok, f.Prop, keys, opts, after)
+			tokSrcs, err := c.relPageSources(ctx, run, tok, f.Prop, keys, opts, after)
 			if err != nil {
 				return err
 			}
@@ -263,6 +290,7 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 	}
 	validOK := pageValidKeep(c.axis(), opts)
 	keepRow := func(r *types.Relationship) bool { return keys.rel(r, f.Prop, false) }
+	meetsFilter := func(s temporal.RelSegment) bool { return validOK(s.ValidFrom, s.ValidTo) }
 	var (
 		out      []temporal.RelSegment
 		entities int
@@ -275,22 +303,26 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 		var batch []types.RelID
 		if err := c.readUnderRLock(func() error {
 			var err error
-			batch, err = mergePage(ctx, srcs, limit-entities)
-			return err
+			if batch, err = mergePage(ctx, srcs, run.listCap(limit-entities)); err != nil {
+				return err
+			}
+			return run.holdList(len(batch))
 		}); err != nil {
 			return nil, 0, err
 		}
 		if len(batch) == 0 {
 			return out, 0, nil
 		}
-		if err := c.streamRelTimelines(batch, pin.Tx, keepRow, func(s temporal.RelSegment) bool {
-			if validOK(s.ValidFrom, s.ValidTo) {
-				if id := s.Rel.ID(); id != last {
-					last = id
-					entities++
-				}
-				out = append(out, s)
+		if err := c.streamRelTimelinesWindowed(run, batch, pin.Tx, keepRow, meetsFilter, func(s temporal.RelSegment) bool {
+			if err := run.holdBytes(relSegmentSize); err != nil { // the segment joins the page the call returns
+				run.refuse = err
+				return false
 			}
+			if id := s.Rel.ID(); id != last {
+				last = id
+				entities++
+			}
+			out = append(out, s)
 			return true
 		}); err != nil {
 			return nil, 0, err
@@ -303,14 +335,14 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 // per equal key from the membership sidecar, else (no index) the type's
 // candidates, pruned by the type's envelope index (c.mu held). No key, no
 // source. A cancelled ctx stops the first fetch.
-func (c *Core) relPageSources(ctx context.Context, tok uint16, key string, keys equalKeys, opts storepkg.QueryOpts, after types.RelID) ([]*pageSource[types.RelID], error) {
+func (c *Core) relPageSources(ctx context.Context, run *scanRun, tok uint16, key string, keys equalKeys, opts storepkg.QueryOpts, after types.RelID) ([]*pageSource[types.RelID], error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
 	if c.relPropTxPage != nil {
 		srcs := make([]*pageSource[types.RelID], 0, len(keys))
 		for _, vk := range keys {
-			src := sidecarSource(txPinOf(opts), after, c.storeRowsTrust, storepkg.ValidateRelID,
+			src := sidecarSource(run, txPinOf(opts), after, c.storeRowsTrust, storepkg.ValidateRelID,
 				func(after types.RelID, n int, fn func(types.RelID, types.Instant) bool) error {
 					return c.relPropTxPage.ForEachRelPropertyTxMemberAfter(tok, key, vk, after, n, fn)
 				})
@@ -330,17 +362,29 @@ func (c *Core) relPageSources(ctx context.Context, tok uint16, key string, keys 
 			return srcs, nil
 		}
 	}
-	ids, err := c.relTypeCandidateIDsAt(tok, opts) // pruned by the envelope
+	ids, err := c.relTypeCandidateIDsAt(tok, run.opts(opts)) // pruned by the envelope; its member enumerations charge their shard opens
 	if err != nil {
 		return nil, err
 	}
-	return []*pageSource[types.RelID]{listSource(ascending(ids), after)}, nil
+	src, err := listSource(ascending(ids), after).held(run)
+	if err != nil {
+		return nil, err
+	}
+	return []*pageSource[types.RelID]{src}, nil
 }
 
-// NodesEffectivePage implements temporal.API.NodesEffectivePage.
+// NodesEffectivePage implements temporal.API.NodesEffectivePage, under a read
+// budget in ctx as RelsEffectivePage.
 func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after types.NodeID, limit int) ([]temporal.NodeSegment, types.NodeID, error) {
 	pin.Tx = recordedPin(pin.Tx) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, 0, err
+	}
+	run, err := c.scanRunFor(ctx, "NodesEffectivePage")
+	if err != nil {
+		return nil, 0, err
+	}
 	keys, opts, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeNodes)
 	if err != nil {
 		return nil, 0, err
@@ -353,7 +397,7 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 			if err := checkCtx(ctx); err != nil {
 				return err
 			}
-			tokSrcs, err := c.nodePageSources(ctx, tok, f.Prop, keys, opts, after)
+			tokSrcs, err := c.nodePageSources(ctx, run, tok, f.Prop, keys, opts, after)
 			if err != nil {
 				return err
 			}
@@ -365,6 +409,7 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 	}
 	validOK := pageValidKeep(c.axis(), opts)
 	keepRow := func(n *types.Node) bool { return keys.node(n, f.Prop, false) }
+	meetsFilter := func(s temporal.NodeSegment) bool { return validOK(s.ValidFrom, s.ValidTo) }
 	var (
 		out      []temporal.NodeSegment
 		entities int
@@ -377,22 +422,26 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 		var batch []types.NodeID
 		if err := c.readUnderRLock(func() error {
 			var err error
-			batch, err = mergePage(ctx, srcs, limit-entities)
-			return err
+			if batch, err = mergePage(ctx, srcs, run.listCap(limit-entities)); err != nil {
+				return err
+			}
+			return run.holdList(len(batch))
 		}); err != nil {
 			return nil, 0, err
 		}
 		if len(batch) == 0 {
 			return out, 0, nil
 		}
-		if err := c.streamNodeTimelines(batch, pin.Tx, keepRow, func(s temporal.NodeSegment) bool {
-			if validOK(s.ValidFrom, s.ValidTo) {
-				if id := s.Node.ID(); id != last {
-					last = id
-					entities++
-				}
-				out = append(out, s)
+		if err := c.streamNodeTimelinesWindowed(run, batch, pin.Tx, keepRow, meetsFilter, func(s temporal.NodeSegment) bool {
+			if err := run.holdBytes(nodeSegmentSize); err != nil { // the segment joins the page the call returns
+				run.refuse = err
+				return false
 			}
+			if id := s.Node.ID(); id != last {
+				last = id
+				entities++
+			}
+			out = append(out, s)
 			return true
 		}); err != nil {
 			return nil, 0, err
@@ -402,14 +451,14 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 }
 
 // nodePageSources is relPageSources for a label.
-func (c *Core) nodePageSources(ctx context.Context, tok uint16, key string, keys equalKeys, opts storepkg.QueryOpts, after types.NodeID) ([]*pageSource[types.NodeID], error) {
+func (c *Core) nodePageSources(ctx context.Context, run *scanRun, tok uint16, key string, keys equalKeys, opts storepkg.QueryOpts, after types.NodeID) ([]*pageSource[types.NodeID], error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
 	if c.nodePropTxPage != nil {
 		srcs := make([]*pageSource[types.NodeID], 0, len(keys))
 		for _, vk := range keys {
-			src := sidecarSource(txPinOf(opts), after, c.storeRowsTrust, storepkg.ValidateNodeID,
+			src := sidecarSource(run, txPinOf(opts), after, c.storeRowsTrust, storepkg.ValidateNodeID,
 				func(after types.NodeID, n int, fn func(types.NodeID, types.Instant) bool) error {
 					return c.nodePropTxPage.ForEachNodePropertyTxMemberAfter(tok, key, vk, after, n, fn)
 				})
@@ -428,9 +477,13 @@ func (c *Core) nodePageSources(ctx context.Context, tok uint16, key string, keys
 			return srcs, nil
 		}
 	}
-	ids, err := c.nodeLabelCandidateIDsAt(tok, opts) // pruned by the envelope
+	ids, err := c.nodeLabelCandidateIDsAt(tok, run.opts(opts)) // pruned by the envelope; its member enumerations charge their shard opens
 	if err != nil {
 		return nil, err
 	}
-	return []*pageSource[types.NodeID]{listSource(ascending(ids), after)}, nil
+	src, err := listSource(ascending(ids), after).held(run)
+	if err != nil {
+		return nil, err
+	}
+	return []*pageSource[types.NodeID]{src}, nil
 }

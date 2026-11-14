@@ -81,6 +81,15 @@ type Filter struct {
 // CreateRelTemporal on the types paged with a valid filter (all four backends
 // prune; the index costs RAM per relationship and is rebuilt at open).
 //
+// Read budget (store.WithReadBudget, RH list R2): a ctx carrying one bounds the
+// call, exact or refused: *store.ReadBudgetError and no segments past a limit.
+// It counts one candidate per relationship before its timeline is read, the
+// history versions, decoded bytes and (tiered) shard opens of the reads, one
+// segment per segment kept, and as BufferBytes 8 per listed candidate and a
+// segment's struct size per segment collected; a listing asks for no more
+// candidates than the budget has room for plus the one that passes it. A ctx
+// without a budget changes nothing.
+//
 // Errors: ForEachRelEffective's gates for pin.Tx (ErrInvalidTimeRange,
 // ErrTxPinTooNew, ErrHistoryCompacted, ErrRetentionExpired),
 // ErrInvalidTimeRange for a conflicting or reversed valid filter, an invalid
@@ -102,7 +111,8 @@ func (a *API) RelsEffectivePage(ctx context.Context, pin Pin, f Filter, after ty
 // property). Tiered offers no paged sidecar, so every label gathers there. A
 // label's envelope index (Index().CreateTemporal) prunes a valid-filtered page
 // as CreateRelTemporal does; a node listed by several labels is read when one
-// of them keeps it. Tiered keeps no node envelope prune.
+// of them keeps it. Tiered keeps no node envelope prune. A read budget in ctx
+// bounds it as it bounds RelsEffectivePage, one candidate per node read.
 func (a *API) NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after types.NodeID, limit int) (segs []NodeSegment, next types.NodeID, err error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -148,6 +158,17 @@ type EffectivePageOpts struct {
 // through one read snapshot (one transaction and forward iterators, tiered
 // for its reference shard), not one transaction per row.
 //
+// Read budget (store.WithReadBudget, RH list R2): a ctx carrying one bounds the
+// call as the effective scans of ForEachNodeEffectiveByLabelCtx are bounded: one
+// candidate per node before it is read, the history versions, decoded bytes and
+// (tiered) shard opens of the reads, one segment per segment before fn gets it,
+// 8 buffer bytes per listed candidate; a listing through the rows (no composite
+// index) counts its matches, or the label's nodes, inside the store, and no
+// listing asks for more candidates than the budget has room for plus the one
+// that passes it. A stream has no partial answer to withhold: it stops at the
+// first refusal with *store.ReadBudgetError, the callbacks made before it stand
+// and none follows. A ctx without a budget changes nothing.
+//
 // Errors: as ByLabelAndProperties for label, props and opts.Depth;
 // NodeEffectiveTimelines' pin gates (ErrTxPinTooNew, ErrHistoryCompacted,
 // ErrRetentionExpired); ErrInvalidQueryLimit (Limit < 0),
@@ -180,6 +201,11 @@ func (a *API) ForEachNodeEffectiveByLabelAndProperties(ctx context.Context, labe
 // candidate is read, so lead with the most selective key. Each match is then
 // read once (current row, history skeleton, winning history row), a chunk of
 // up to 256 through one read snapshot on badger, sharded and tiered.
+//
+// Under a read budget in ctx it streams as the props door does; the key's
+// matches are counted inside the store before each is decoded (an index's, or
+// the label's nodes where the key has no index), so a Candidates limit stops the
+// listing at the match that passes it.
 //
 // Errors: ByLabelAndPropertyValues' for label, key, values and opts.Depth; a
 // fixed pair's key or value as ByLabelAndProperties refuses it;

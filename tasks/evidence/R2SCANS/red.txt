@@ -102,3 +102,54 @@ What is counted (green), the seed's gather and the reads, before each step:
 
 Mutations caught (each by the tests named):
   tiered's ex-adjacency opens not charged                   -> TestR2Scans_AtNodesShardOpens (all three doors)
+  ex-adjacency callback not counting                        -> TestR2Scans_AtNodes, _AtNodesWithoutExAdjacency, TestReadBudgetPublicAtNodes
+  adjacency read without the tally                          -> TestR2Scans_AtNodes, _AtNodesWithoutExAdjacency, TestReadBudgetPublicAtNodes
+  column scan not counting the segments it holds            -> TestR2Scans_AtNodes (columns)
+
+== Step 3: the paged scans (NodesEffectivePage, RelsEffectivePage, ForEachNodeEffectiveByLabelAndProperties,
+   ForEachNodeEffectiveByLabelAndPropertyValues) under a budget ==
+
+Before: the four doors take a ctx but read nothing from it but its cancellation: a ReadBudget in it was ignored and the
+door read unbounded (no counter, no refusal). A page door listed every label's or type's candidates, a listing door read
+its listing in chunks of 256 with no regard to a Candidates limit.
+
+RED: the doors unchanged (the budget in ctx ignored). go test -short -run 'TestR2Scans_Paged' ./pkg/graph/internal/core
+(abridged; badger, sharded, tiered, pending and flushed):
+
+  TestR2Scans_Paged/*/*/NodesEffectivePage
+    unlimited work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0};
+    want 26 candidates (26 reads, 0 scanned), 72 segments and at least 208 buffer bytes
+  TestR2Scans_Paged/*/*/RelsEffectivePage       ... want 24 candidates, 72 segments, 192 buffer bytes
+  TestR2Scans_Paged/*/*/props_composite         ... want 12 candidates (12 reads), 36 segments, 96 buffer bytes
+  TestR2Scans_Paged/*/*/props_scan              ... want 24 candidates (12 reads, 12 scanned), 36 segments
+  TestR2Scans_PagedLimit: NodesEffectivePage: a page of 5 under Candidates 5 = 15 segments, <nil>, work {all 0}
+
+What is counted (green):
+  reads        one candidate per entity before its timeline is read, the history versions, decoded bytes and shard opens of
+               each read (the metered read snapshot; memory counts an entity's chain), one segment per segment before it is
+               handed out (a page door counts the segments it keeps, after the valid-time filter); under a Segments or
+               BufferBytes bound one entity at a time.
+  listing      a listing asks the store for no more candidates than the meter has room for plus the one that passes the limit
+               (scanRun.listCap: the page's merged batch, a sidecar fetch, a props listing); BufferBytes 8 per listed
+               candidate (each source's list, a page's merged batch) and, for a page door, a segment's struct size per
+               segment it collects before it holds it; a lookup through the rows (no composite index, a key without an
+               index) is counted inside the store: its matches, or the label's nodes, before the decode, and its shard opens.
+  A page door is exact or refused (no segments past a limit); a stream's callbacks before a refusal stand.
+  Badger, sharded, tiered, 12 nodes of each of two labels (P with a composite and two property indexes, Q with none), 12
+  relationships of each of two types, three versions each, two endpoint nodes:
+    NodesEffectivePage      {Candidates:26 Segments:72 BufferBytes:2144}   (24 + the 2 endpoint nodes read and dropped)
+    RelsEffectivePage       {Candidates:24 Segments:72 BufferBytes:2112}
+    props composite {Candidates:12 Segments:36 BufferBytes:96} (badger, tiered: the posting list, no row read); props scan,
+    values index, values scan {Candidates:24 ...} (12 counted inside the lookup, 12 reads)
+    A page of 5 entities costs 5 reads (7 for the node page: the endpoint nodes sort first): Candidates 7 answers, 6 refuses
+    at the seventh. Candidates 5 on a stream hands out the first 5 entities and refuses at the sixth; on a lookup that counts
+    the label it refuses inside the lookup before any entity is read.
+  Tiered, cold shards closed before each read (TestR2Scans_PagedShardOpens): every door opens 3 cold shards plain; ShardOpens 1
+    opens 1 and refuses; unlimited opens 3 and counts 3.
+  A listing door's chunk of candidates no longer follows a Segments or BufferBytes bound (it re-listed, and under a lookup
+  that scans the label re-counted the label, once per entity): the listing stays at 256 and the reads go one entity at a time.
+
+Mutations caught (each by the tests named):
+  props listing's lookup without the meter                  -> TestR2Scans_Paged (props_scan on badger, sharded, tiered)
+  the sidecar fetch not capped at the room plus one         -> TestR2Scans_PagedLimit (badger, tiered)
+  the listing snapshot not counting its reads               -> TestR2Scans_Paged (the props and values doors, flushed)
