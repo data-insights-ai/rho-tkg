@@ -3,12 +3,14 @@ package tiered
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -111,6 +113,7 @@ type ShardCatalog struct {
 	mu     sync.RWMutex
 	Shards []ShardEntry `json:"shards"`
 	path   string
+	saves  atomic.Int64 // catalog files written since the catalog was made (SavesForTest)
 }
 
 // NewShardCatalog creates a new catalog that will persist to the given path.
@@ -290,6 +293,7 @@ func (sc *ShardCatalog) Save() error {
 	if err != nil {
 		return err
 	}
+	sc.saves.Add(1)
 	if err := atomicWriteFile(sc.path, data, "shard catalog"); err != nil {
 		if restoreErr := restoreShardCatalogFile(snapshot); restoreErr != nil {
 			return fmt.Errorf("shard catalog: save: %w (rollback failed: %v)", err, restoreErr)
@@ -567,21 +571,29 @@ func (sc *ShardCatalog) AddRelType(shardName, relType string) {
 // SealShardCounts records a shard's counts as exact and final. Call it only for
 // a shard that is closed, or about to be, and therefore cannot change again.
 //
-// Returns true if the shard was found. The maps are copied, so the caller may
-// reuse or mutate its own.
+// Returns true if the entry changed (the counts were not sealed, or differ from
+// the sealed ones): only then has the saved catalog gone stale. A shard sealed
+// again with the counts it carries, as a read-only open of it does at each
+// close, changes nothing and costs no save. A shard the catalog does not know
+// reports no change. The maps are copied, so the caller may reuse or mutate its
+// own.
 func (sc *ShardCatalog) SealShardCounts(name string, nodes, rels int, byLabel, byRelType map[uint16]int) bool {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	for i := range sc.Shards {
-		if sc.Shards[i].Name != name {
+		e := &sc.Shards[i]
+		if e.Name != name {
 			continue
 		}
-		sc.Shards[i].ApproxNodes = nodes
-		sc.Shards[i].ApproxRels = rels
-		sc.Shards[i].NodeCountsByLabel = tokenCountsToJSON(byLabel)
-		sc.Shards[i].RelCountsByType = tokenCountsToJSON(byRelType)
-		sc.Shards[i].CountsSealed = true
-		return true
+		labels, relTypes := tokenCountsToJSON(byLabel), tokenCountsToJSON(byRelType)
+		changed := !e.CountsSealed || e.ApproxNodes != nodes || e.ApproxRels != rels ||
+			!maps.Equal(e.NodeCountsByLabel, labels) || !maps.Equal(e.RelCountsByType, relTypes)
+		e.ApproxNodes = nodes
+		e.ApproxRels = rels
+		e.NodeCountsByLabel = labels
+		e.RelCountsByType = relTypes
+		e.CountsSealed = true
+		return changed
 	}
 	return false
 }

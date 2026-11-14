@@ -275,7 +275,11 @@ ADR-0012.
   fault lands still commits. A
   demoted shard still on the handle it had while hot or warm has it closed by the handle sweep (below); every other demoted shard
   keeps its handle until the idle sweep closes it after `IdleTimeout` unused, counted from its last cold access (a demoted shard no cold read touched closes at the next
-  sweep; hot and warm reads stamp no access). A read reopens a cold shard read-only (COLDRO: 1.3 ms against 27.6 ms writable), a write or a
+  sweep; hot and warm reads stamp no access). A read reopens a cold shard read-only (COLDRO: 1.3 ms against 27.6 ms writable; with
+  `MaxOpenColdShards` 0 it closes again at check-in, so a burst of reads is one open each: 100 `GetNode` on a day shard of
+  50,000 rows, 100 opens and 705 MB of allocation with the label map in RAM, 1 open and 8 MB at a cap of 2; the close seals
+  the shard's counts and saves the catalog, a JSON rewrite and two fsyncs, only when the seal changed the entry;
+  `tasks/evidence/R3/coldread.txt`), a write or a
   checkout that may write reopens it writable (replacing a read-only handle once its readers finish), and at most
   `MaxOpenColdShards` stay open.
 - **No RAM tier.** `DurableCommit` / `SyncWrites` need every write on a disk with a write-ahead log; RAM is each

@@ -60,6 +60,10 @@ func (ts *Store) EventShardsForTest() map[string]*EventShard { return ts.eventSh
 // CatalogForTest returns the shard catalog.
 func (ts *Store) CatalogForTest() *ShardCatalog { return ts.catalog }
 
+// SavesForTest is the number of catalog files written since the catalog was
+// made (each is a JSON rewrite and two fsyncs).
+func (sc *ShardCatalog) SavesForTest() int64 { return sc.saves.Load() }
+
 // ClosedForTest returns the closed flag (atomic.Bool).
 func (ts *Store) ClosedForTest() *atomic.Bool { return &ts.closed }
 

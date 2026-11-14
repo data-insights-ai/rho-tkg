@@ -237,6 +237,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   member each under `Candidates` 1 handed on 2 with 0 counted (red: `tasks/evidence/R2WINDOW/handedon-red.txt`). The
   graph doors pass `ReadTally.DoorCounts()` and count as before.
 
+- **A cold read no longer rewrites the shard catalog** (R3 follow-up 3, found by the cold read of the R3 state
+  measure, 100 `GetNode` on a closed day shard of 50,000 rows at 2.5 to 2.9 s and 707 MB): with `MaxOpenColdShards` 0
+  (the default) a read of a closed cold shard opens it read-only and closes it at check-in, and that close sealed the
+  shard's counts and saved the whole catalog (a JSON rewrite and two fsyncs) although the seal changed nothing:
+  `ShardCatalog.SealShardCounts` answered "the shard was found", not "the entry changed". Every such read paid a catalog
+  save, which grows with the shard count; two thirds of the wall time of 100 reads in a trace under ai-soc's
+  configuration (labels and adjacency on disk). Now the seal reports a change only when the counts differ or were not sealed: 100
+  reads made 100 opens and 100 saves, now 100 opens and none, and the close after a late write, which unseals, still
+  saves and the saved file carries the new count. What is left of the cost is the open itself, one per read while
+  `MaxOpenColdShards` is 0; with a cap of 1 or more the same 100 reads make one open (`MaxOpenColdShards` 2, as ai-soc
+  runs: 1 open, 7-16 ms, 2.7 MB; `tasks/evidence/R3/coldread.txt`). Red: `TestColdRead_TransientCloseLeavesAnUnchangedCatalogAlone`
+  (`tasks/evidence/R3/coldread-red.txt`); tests: `TestColdRead_SealAfterALateWriteStillSavesTheCatalog`,
+  `TestShardCatalog_SealReportsOnlyAChange`; measurement: `TestColdReadBurst` (`-tags measure`).
+
 - **Retention gate under a read budget** (R2): the point retention gate (a pin below the retention max) read the
   node's current row, or a deleted entity's history, uncounted and into the entity cache, so `NodeAtTxCtx`,
   `NodesAtTxByIDsCtx`, `NodeAsOfCtx`, `RelAsOfCtx` and the effective timelines answered past a `DecodedBytes` budget

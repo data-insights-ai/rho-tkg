@@ -1,0 +1,12 @@
+R3 follow-up 3, red (14 Nov 2026): go test -short -run 'TestColdRead_' -v ./pkg/graph/store/tiered/ on dev 8476020f with only the
+test hook in place (ShardCatalog.saves, counted in Save, read by SavesForTest). MaxOpenColdShards 0: each read of the closed cold shard
+opens it read-only and closes it at check-in (6 ColdOpens for 6 reads, asserted), and each close saves the whole catalog although its
+seal changed nothing: SealShardCounts answers "found", so sealCountsLocked reports a change every time. The guard test (a late write's
+seal still saves, and the file carries the new count) passes on the old code.
+
+    cold_read_catalog_test.go:62: catalog saves per read [1 1 1 1 1 1], want none: the seal at each close changed nothing
+--- PASS: TestColdRead_SealAfterALateWriteStillSavesTheCatalog (0.51s)
+--- FAIL: TestColdRead_TransientCloseLeavesAnUnchangedCatalogAlone (0.54s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.548s
+FAIL

@@ -1,0 +1,73 @@
+R3 follow-up 3: why 100 GetNode on a closed day shard cost 2.5-2.9 s and 707 MB at 50,000 rows a day (measure.txt section E,
+finding 4, "not investigated"). 14 Nov 2026, dev 8476020f, Go 1.26.9, badger v4.9.2, host with other sessions running (load 15-30, so
+wall times carry noise; counts and allocation do not). Method: pkg/graph/store/tiered/shard_cold_read_measure_test.go
+(`R3_PER_DAY=50000 go test -tags measure -v -run TestColdReadBurst ./pkg/graph/store/tiered/`; add -count=3 for repeats): the
+section E fixture (MemTableSize 64 MB, 24 h windows, ColdAfter 48 h, MintAtValidFrom), perDay rows on day 20, four more days so day 20
+is cold, the idle sweep closes it, then one GetNode per 500th node of day 20 (10 at 5,000 rows a day, 100 at 50,000). pprof of the
+burst and a runtime trace came from a throwaway copy of the same fixture.
+
+1. Cause, by count. The cold read is not one expensive read. It is one cold open per GetNode: ShardInfo.ColdOpens is 100 after 100
+   reads, 10 after 10, with MaxOpenColdShards 0 (the default, and the section E fixture's setting). A read of a closed cold shard
+   opens it read-only (openColdReadOnlyLocked) and checkinReadStore closes it again as the read ends unless MaxOpenColdShards has
+   room (documented: "0 keeps the original behaviour", a deliberate opt-in so a DepthAll scan does not pile up handles). So the
+   number is 100 x (open + close + check-in), not 100 x (a GetNode). With a cap the same 100 reads make 1 open.
+
+2. What one open and close costs at 50,000 rows (alloc per open = burst / 100):
+
+   configuration                          cold opens  catalog saves   alloc MB  user CPU   wall (3 runs, loaded host)
+   default config, cap 0 (section E)         100         100           705-707   1.3-3.3 s   2.6-10.5 s   (measure.txt: 2.5-2.9 s, 707 MB)
+   ai-soc config, cap 0                      100         100           210-215   0.17-0.67 s 1.0-7.2 s
+   default config, cap 2                       1           0               7.7   11-22 ms    16-47 ms
+   ai-soc config, cap 2 (what ai-soc runs)     1           0               2.7   1-6 ms      7-16 ms
+   ("ai-soc config": LabelIndexOnDisk, AdjacencyIndexOnDisk, BlockCacheSize 64 MB, HistoryDeltaEncoding, OpenImageInterval 5 min,
+   as tieredConfig in ai-soc's graphmgr/manager.go; "default": none of them, so the label map is built in RAM at every open.)
+   At 5,000 rows: 10 reads, default cap 0: 10 opens, 34.3 MB; ai-soc cap 0: 10 opens, 15.3 MB; cap 2: 1 open, 3.5 / 1.5 MB.
+   The shard a retained read-only handle keeps live: +5.9 MB (default config), +2.2 MB (ai-soc config) at 50,000 rows; +3.1 and
+   +1.4 MB at 5,000.
+
+   Where an open's 7.0 MB (default config) goes, pprof alloc_space of the 100 opens: loadIndexes' key scan 3.4 MB (the label map
+   2.3 MB, table blocks decoded 1.1 MB), the ristretto block cache init 2.4 MB (cmSketch and doorkeeper bloom, sized by the 256 MB
+   default BlockCacheSize), the open image decode 0.7 MB (the node-ID set, 50,000 inserts), the rest small. CPU samples of the same
+   burst: the key scan is 76 % of the open (the label map 34 %), the image decode 14 %. Under ai-soc's configuration (2.1 MB): cache
+   init 0.85 MB, image decode 0.72 MB (the node-ID set, one IDSet.Add per ID, 0.4 MB of it, and 52 % of the open's CPU samples),
+   the revision table 0.26 MB. The open is O(rows in the shard): 16 ms and 3.5 MB at 5,000 rows, 29 ms and 7 MB at 50,000. A raw
+   read-only open and close of the shard, timed alone (50 rounds, no read, no catalog): 19.9 + 9.8 ms (default config), 3.8 + 1.6 ms
+   (ai-soc config); a GetNode in the burst took 35 and 12.8 ms before the fix, the difference being the read and the catalog save.
+
+3. Found on the way, and fixed (the one part of the cost that was not the open): a runtime trace of the ai-soc-config run with cap 0
+   puts 2.2 s of the burst's 2.4 s of wall time in fsync, 1.58 s of it (two thirds) under ShardCatalog.Save called from
+   checkinReadStore. Each transient close sealed the shard's counts (sealCountsLocked) and saved the whole catalog: a JSON
+   rewrite of every shard entry and two fsyncs (file, directory), 15 ms of waiting per read here and more with the shard count
+   (ai-soc's year of day shards). The seal changed nothing: the shard was sealed already, a read-only open cannot change it, and
+   SealShardCounts answered "the shard was found", so the caller took every seal for a change. SealShardCounts now reports a change
+   only when the entry was not sealed or its totals or per-label or per-type counts differ. 100 reads: 100 saves -> 0 (asserted by
+   TestColdRead_TransientCloseLeavesAnUnchangedCatalogAlone, red in coldread-red.txt); a late write's close still saves and the
+   saved file carries the new count (TestColdRead_SealAfterALateWriteStillSavesTheCatalog); the contract itself:
+   TestShardCatalog_SealReportsOnlyAChange. Mutations, each caught: SealShardCounts always true (the 6 saves per 6 reads), never
+   true, blind to the label and type counts. Before and after, three runs each (-count=3), same host and load:
+     ai-soc config, cap 0, 100 reads, wall: before 6.8 / 4.1 / 7.2 s -> after 1.9 / 1.2 / 1.0 s; saves 100 -> 0
+     default config, cap 0, wall: before 7.1 / 9.1 / 10.5 s -> after 6.0 / 3.5 / 2.6 s; saves 100 -> 0; alloc unchanged (705 MB)
+     5,000 rows, 10 reads, default config: 183 ms -> 47 / 111 / 92 ms
+   Allocation and user CPU do not move (the save is waiting, not work); the host's load moves the wall time of both columns, the
+   save counts do not.
+
+4. What is left is the cold open per read at MaxOpenColdShards 0, and it is a design decision (a documented default), so it is
+   not changed here. Options, cheapest first:
+   a. No rho change: a consumer that re-reads cold days sets MaxOpenColdShards >= 1. ai-soc already runs 2 (COLDSET), so its 100
+      reads on one cold day make 1 open (7-16 ms, 2.7 MB above). The section E fixture reads with the default, which is why it
+      showed 707 MB; its cold-read row is the cap-0 cost, not the cost under ai-soc's configuration. The measure test now prints
+      all four rows.
+   b. Change the default: retain the most recent read-only cold handle even at cap 0 (1 handle, +2 to +6 MB of heap at 50,000
+      rows, closed by IdleTimeout and by the cap as now). It changes a documented default (docs/api.md stability rule, the
+      deprecation ritual) and breaks TestColdOpensCountsEachOpenOfAClosedShard's "not retained" case, which pins the
+      old contract; the reason the default is 0 is a scan over many historical shards, which one retained handle does not
+      bring back. René's call.
+   c. Make an open cheaper, for every open (cold, warm, restart) and not only the cold read: (i) bulk-load the node-ID set of the
+      open image from its sorted runs instead of one IDSet.Add per ID (52 % of the open's CPU samples under ai-soc's configuration,
+      0.4 of its 2.1 MB); (ii) open a read-only cold handle with LabelIndexOnDisk's lazy label map (2.3 MB and 34 % of the CPU
+      under the default configuration, nothing under ai-soc's, which has it on already); (iii) size the block cache of a handle that
+      closes at check-in (cap 0) down: 100 opens at BlockCacheSize 256 / 64 / 16 / 4 MB allocate 740 / 582 / 544 / 533 MB (default
+      config) and, with ai-soc's configuration, 222 / 173 MB at 64 / 4 MB; a cut of 20-28 % of the allocation and not of the
+      count, and it would cost a bulk read through a transient handle its block reuse. None of these changes how many opens a burst makes.
+   All of it is O(rows in the shard) per open (the label map, the image's ID set), the SCALE wall that FIXED-MEMORY and the
+   disk-resident indexes already cover; an open of a 4-billion-row day is not a cold-read problem.
