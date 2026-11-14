@@ -457,7 +457,6 @@ func TestColdCap_RotationDoesNotCountATransientHandle(t *testing.T) {
 // handle's Close fails. The handle may be closed whatever the error says, so it
 // is detached and the store fenced, as the idle close and the check-in close
 // do: the write fails with the fault and no later read pins the closed handle.
-// MoveShard's, the retention drop's and clearEventShard's closes do not yet.
 func TestColdCap_FailedUpgradeCloseDetachesAndFences(t *testing.T) {
 	t.Parallel()
 	f := newOverCapFixture(t, 1, 1)

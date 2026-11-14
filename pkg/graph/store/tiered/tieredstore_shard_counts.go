@@ -309,11 +309,7 @@ func (ts *Store) enforceColdShardCap() {
 		// whole lifecycle is built to avoid.
 		if es.store != nil && es.coldCounted && es.activeReqs.Load() == 0 {
 			sealed = es.snapshotCountsLocked(ts) || sealed
-			if err := es.store.Close(); err != nil {
-				ts.recordBackgroundError(fmt.Errorf("graph: cap-close cold shard %s: %w", es.name, err))
-				slog.Error("tiered cold shard cap-close failed", "shard", es.name, "err", err)
-			}
-			es.clearStoreLocked(ts)
+			_ = es.closeStoreLocked(ts, "cap-close cold shard") // a fault is the fence
 		}
 		es.shardMu.Unlock()
 	}

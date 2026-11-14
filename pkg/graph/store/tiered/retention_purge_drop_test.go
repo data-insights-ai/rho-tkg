@@ -374,3 +374,98 @@ func TestTieredColdShardFastDrop_CatalogSaveFailureLeavesShardIntact(t *testing.
 		}
 	}
 }
+
+// TestTieredColdShardFastDrop_FailedCloseRelinksAndFences (CLOSEFAULT): the
+// drop's close of the unlinked shard fails. Close may have closed the DB
+// whatever it returned, so the handle is detached and the store fenced, as the
+// idle close does; the shard is linked back with its catalog entry and
+// directory, a warm one cold in memory. Every row reads after
+// RecoverBackgroundError and after a reopen, where the same purge drops the
+// shard. Catches the closed handle left installed with no fence and the shard
+// left unlinked: its rows read as not found until a restart.
+func TestTieredColdShardFastDrop_FailedCloseRelinksAndFences(t *testing.T) {
+	t.Parallel()
+	for _, warm := range []bool{false, true} {
+		name := "cold-open"
+		if warm {
+			name = "warm"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			cfg := Config{DataDir: dir, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}
+			ts, err := New(cfg)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			t.Cleanup(func() { _ = ts.Close() })
+			reg := registrypkg.NewLabelRegistry()
+			ts.SetLabelRegistry(reg)
+			signalTok, _ := reg.GetOrCreate("Signal")
+			gen := tieredNodeGen(t)
+			var ids []types.NodeID
+			for i := 0; i < 10; i++ {
+				id := types.NodeID(gen.Generate())
+				if err := ts.PutNode(types.NewNode(id, signalTok, nil)); err != nil {
+					t.Fatalf("put: %v", err)
+				}
+				ids = append(ids, id)
+			}
+			if err := ts.ForceRotate(); err != nil {
+				t.Fatalf("ForceRotate: %v", err)
+			}
+			ts.SweepHandlesForTest() // the warm-size swap settles first
+			entry := ts.catalog.EventShards()[0]
+			shardDir := filepath.Join(dir, entry.Path)
+			es := ts.EventShardsForTest()[entry.Name]
+			if !warm {
+				demoteToCold(ts, entry.Name) // the handle stays installed
+			}
+			handle, _ := es.StoreStateForTest()
+			if handle == nil {
+				t.Fatal("no handle installed on the rotated shard")
+			}
+			fault := errors.New("injected close fault")
+			handle.FailNextCloseForTest(fault)
+
+			_, err = ts.PurgeNodesByLabelBefore(signalTok, types.Instant(1<<50), 8)
+			ts.mu.RLock()
+			linked := ts.eventShards[entry.Name] == es
+			dropping := len(ts.droppingShards)
+			ts.mu.RUnlock()
+			if !linked {
+				t.Fatalf("shard %q not linked back after its close failed: its rows read as not found", entry.Name)
+			}
+			if dropping != 0 {
+				t.Fatalf("%d shards still reserved as dropping, want none", dropping)
+			}
+			if _, ok := ts.catalog.GetShard(entry.Name); !ok {
+				t.Fatal("the catalog lost the shard whose close failed")
+			}
+			if _, serr := os.Stat(shardDir); serr != nil {
+				t.Fatalf("shard directory after the failed close: %v", serr)
+			}
+			if warm {
+				wantColdInMemory(t, ts, es)
+			}
+			wantCloseFaultFenced(t, ts, es, err, fault, ids...)
+
+			re := reopenAndRead(t, ts, cfg, ids...)
+			reg = registrypkg.NewLabelRegistry()
+			re.SetLabelRegistry(reg)
+			if tok, _ := reg.GetOrCreate("Signal"); tok != signalTok {
+				t.Fatalf("Signal token %d after the reopen, want %d", tok, signalTok)
+			}
+			res, err := re.PurgeNodesByLabelBefore(signalTok, types.Instant(1<<50), 8)
+			if err != nil {
+				t.Fatalf("purge after the reopen: %v", err)
+			}
+			if res.NodesPurged != len(ids) {
+				t.Fatalf("purge after the reopen: %d nodes, want %d", res.NodesPurged, len(ids))
+			}
+			if _, serr := os.Stat(shardDir); !errors.Is(serr, os.ErrNotExist) {
+				t.Fatalf("shard directory after the retried drop: %v, want gone", serr)
+			}
+		})
+	}
+}

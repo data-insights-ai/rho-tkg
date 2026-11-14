@@ -140,21 +140,43 @@ func (es *EventShard) openColdWritableLocked(ts *Store, own int64) error {
 	if es.store == nil { // the idle sweep closed it meanwhile
 		return es.openColdLocked(ts)
 	}
-	err := es.store.Close()
-	es.clearStoreLocked(ts)
-	if err != nil {
-		// Close may have closed the DB despite its error: detach, and fence
-		// later access (a reader must not pin it), as the idle close, the cap
-		// pass and the check-in close do. Not yet so: MoveShard's close
-		// (shard_move.go), the retention drop's (retention_purge_drop.go) and
-		// clearEventShard's (tieredstore.go) return the error with the closed
-		// handle installed and no fence.
-		wrapped := fmt.Errorf("graph: close read-only cold shard %s: %w", es.name, err)
-		ts.recordBackgroundError(wrapped)
-		slog.Error("tiered cold shard read-only close failed", "shard", es.name, "err", err)
-		return wrapped
+	// A failed close detaches and fences (a reader must not pin it).
+	if err := es.closeStoreLocked(ts, "close read-only cold shard"); err != nil {
+		return err
 	}
 	return es.openColdLocked(ts)
+}
+
+// closeStoreLocked closes es's installed store and detaches it whatever Close
+// says (Close may have closed the DB despite its error); a failed Close is the
+// store's sticky fault (the fence: every checkout refuses it until
+// RecoverBackgroundError or a reopen). Every close of an installed event shard
+// handle runs through it, Store.Close's excepted (ts.closed refuses all):
+// the idle close, the cap pass, the check-in close, the writable upgrade, the
+// empty demoted shard's close, the handle sweep, MoveShard, the retention drop
+// and Clear. The error is "graph: <what> <shard>: <cause>". Caller holds
+// es.shardMu.
+func (es *EventShard) closeStoreLocked(ts *Store, what string) error {
+	err := es.store.Close()
+	es.clearStoreLocked(ts)
+	if err == nil {
+		return nil
+	}
+	wrapped := fmt.Errorf("graph: %s %s: %w", what, es.name, err)
+	ts.recordBackgroundError(wrapped)
+	slog.Error("tiered: shard close failed; handle detached, store fenced", "what", what, "shard", es.name, "err", err)
+	return wrapped
+}
+
+// coldInMemoryLocked makes a warm shard whose handle a failed close detached
+// cold in memory, the catalog untouched (MoveShard's pattern, shard_move.go,
+// and sweepNotReopened's): its next access takes the locked path, which
+// opens it, not the warm fast path with no store; a restart reads it warm
+// from the catalog. Caller holds es.shardMu.
+func (es *EventShard) coldInMemoryLocked() {
+	if es.currentTier() == TierWarm {
+		es.setTier(TierCold)
+	}
 }
 
 // clearStoreLocked drops es's store (the caller closed it) and uncounts it.
@@ -503,15 +525,7 @@ func (es *EventShard) checkinReadStore(ts *Store) {
 	// Same reasoning as the idle-close: record the counts while the store is
 	// still open, so the shard can be counted afterwards without reopening.
 	sealedCounts := es.snapshotCountsNoBuildLocked(ts)
-	err := es.store.Close()
-	// Close may have closed the DB despite its error: detach whatever it
-	// returned, and fence later access, as the idle close does.
-	es.clearStoreLocked(ts)
-	if err != nil {
-		wrapped := fmt.Errorf("graph: close transient cold shard %s: %w", es.name, err)
-		ts.recordBackgroundError(wrapped)
-		slog.Error("tiered cold shard transient close failed", "shard", es.name, "err", err)
-	}
+	_ = es.closeStoreLocked(ts, "close transient cold shard") // a fault is the fence
 	if sealedCounts {
 		defer ts.saveCatalogBestEffort("seal shard counts on transient close")
 	}
@@ -691,14 +705,8 @@ func (ts *Store) closeEmptyDemotedShardsLocked(oldHot *EventShard, demoted []*Ev
 			return
 		}
 		sealedAny = es.snapshotCountsNoBuildLocked(ts) || sealedAny
-		err = es.store.Close()
-		es.clearStoreLocked(ts)
-		if err != nil {
-			// Close may have closed the DB despite its error: detach, and fence
-			// later access; the committed topology is not rolled back.
-			ts.recordBackgroundError(fmt.Errorf("graph: close empty demoted shard %s: %w", es.name, err))
-			slog.Error("tiered empty demoted shard close failed", "shard", es.name, "err", err)
-		}
+		// A fault is the fence; the committed topology is not rolled back.
+		_ = es.closeStoreLocked(ts, "close empty demoted shard")
 	}
 	closeEmpty(oldHot)
 	for _, es := range demoted {
@@ -737,12 +745,7 @@ func (ts *Store) closeIdleShards() {
 			// change, so the snapshot stays true until it is opened again, and
 			// count folds stop reopening it just to add up numbers.
 			sealedAny = es.snapshotCountsLocked(ts) || sealedAny
-			if err := es.store.Close(); err != nil {
-				wrapped := fmt.Errorf("graph: idle-close cold shard %s: %w", es.name, err)
-				ts.recordBackgroundError(wrapped)
-				slog.Error("tiered cold shard idle-close failed", "shard", es.name, "err", err)
-			}
-			es.clearStoreLocked(ts)
+			_ = es.closeStoreLocked(ts, "idle-close cold shard") // a fault is the fence
 		}
 		es.shardMu.Unlock()
 	}

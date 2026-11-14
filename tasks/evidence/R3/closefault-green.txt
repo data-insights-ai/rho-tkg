@@ -1,0 +1,12 @@
+--- PASS: TestMoverCloseFaultFencesStore (0.57s)
+--- PASS: TestMoveShard_FailedCloseDetachesAndFences (0.00s)
+    --- PASS: TestMoveShard_FailedCloseDetachesAndFences/warm (0.81s)
+    --- PASS: TestMoveShard_FailedCloseDetachesAndFences/cold-open (0.89s)
+--- PASS: TestTieredStoreClear_FailedCloseDetachesAndFences (0.00s)
+    --- PASS: TestTieredStoreClear_FailedCloseDetachesAndFences/cold-open (0.94s)
+    --- PASS: TestTieredStoreClear_FailedCloseDetachesAndFences/warm (1.25s)
+--- PASS: TestTieredColdShardFastDrop_FailedCloseRelinksAndFences (0.00s)
+    --- PASS: TestTieredColdShardFastDrop_FailedCloseRelinksAndFences/warm (1.14s)
+    --- PASS: TestTieredColdShardFastDrop_FailedCloseRelinksAndFences/cold-open (1.28s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.437s

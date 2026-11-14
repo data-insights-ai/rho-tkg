@@ -1,0 +1,98 @@
+CLOSEFAULT: a failed Close of an installed shard handle detaches and fences at every site. Design only, no code changed. 14 Nov 2026, worktree agent-aa712e5d2369f57ae at
+3e3f23a3 (R3-1 OVERCAP merged, db413d11). Read off the code; nothing was run. Paths are under pkg/graph/store/tiered unless a directory is given.
+0. Facts
+   a. badger Close (../badger/badgerstore.go:2759-2796) runs once (closeOnce): final flush, dbClosed, db.Close, errors joined. A SECOND Close returns nil. After the first,
+      checkOpen (:2798) gives ErrStoreClosed and the stats accessors behind isClosingOrClosed (:2820) return zero without an error. FailNextCloseForTest
+      (../badger/test_export.go:315) joins its error after the DB really closed.
+   b. "Detach and fence" today is three statements repeated at six sites under es.shardMu, no shared function: es.store.Close(); es.clearStoreLocked(ts)
+      (tieredstore_lifecycle.go:163: store nil, flags reset, openColdShards uncounted); ts.recordBackgroundError(wrapped) (tieredstore.go:1510, takes only bgErrMu, a leaf).
+      The fence is ts.backgroundError(): every checkout refuses on it (:177); RecoverBackgroundError or a reopen lifts it.
+
+1. Every Close of a shard handle (grep "\.Close()", non-test files). All ten installed-handle sites hold es.shardMu.
+   A  tieredstore_lifecycle.go:740    closeIdleShards                detaches + fences                           ok
+   B  tieredstore_shard_counts.go:312 enforceColdShardCap            detaches + fences                           ok
+   C  tieredstore_lifecycle.go:506    checkinReadStore               detaches + fences                           ok
+   D  tieredstore_lifecycle.go:143    openColdWritableLocked         detaches + fences, error returned           ok
+   E  tieredstore_lifecycle.go:694    closeEmptyDemotedShardsLocked  detaches + fences                           ok
+   F  handle_sweep.go:420             sweepClose                     detaches + fences; a warm shard reopens     ok
+   G  tieredstore.go:1447             Store.Close                    detaches, error in Close's result; no fence needed (ts.closed refuses all)   ok
+   H  shard_move.go:130               closeForMove (MoveShard)       NO: returns before clearStoreLocked, no fence
+   I  retention_purge_drop.go:200     dropOneShard step 5            NO: same, and the shard stays unlinked
+   J  tieredstore.go:1834             clearEventShard                NO: same
+   Never installed (nothing to detach; error returned or logged; unchanged): handle_sweep.go:442, :461; shard_move.go:175 (es.moveRead, taken out under shardMu first);
+   tieredstore_lifecycle.go:105; tieredstore.go:1845 (clearEventShard's temporary writable handle), :2110 (recovery probe); tieredstore_catalog.go:251, :476, :480, :498;
+   New's rollback (tieredstore.go:870-931, :1058-1154). Not event shards: tieredstore.go:1470 archive, :1486 refShard; owner_index.go.
+
+2. What a failed Close leaves behind at H, I, J
+   H MoveShard: es.store still points at the closed DB, coldCounted stays (a cold shard keeps its cap slot), no fence. MoveShard returns the error; the idle mover
+     (shard_move.go:544) logs it and retries on a later tick.
+     - warm: the fast checkout hands out the closed handle for the store's life: every read and late write of the shard fails with ErrStoreClosed, stats read zero (0a).
+       Nothing closes a warm handle; only a restart ends it.
+     - cold: the same until the idle close closes it again; that Close returns nil (0a), so the handle goes quietly.
+     - the retry: Close returns nil and the shard moves. Rows the failed final flush did not write are gone and no fault was ever recorded: a lost row with no sticky error.
+       Counts sealed at :129 stay in the live catalog unsaved.
+   I retention drop: as H, plus step 2 removed es from ts.eventShards and the :202 return does not link it back (the catalog-save failure at :211 does). Catalog entry and
+     directory stay, but the running store routes no read to the shard: its rows read as not found until a restart (wrong answer). The purge returns the error.
+   J clearEventShard: as H; Clear returns the error and rolls its index files back, the shard is not cleared. A second Clear passes the close (nil) and clears.
+   No panic at H, I, J today (the handle stays non-nil); a nil-handle warm shard is the panic the fix must avoid (3f).
+
+3. Fix: one function for the path, every site through it
+   a. New, beside clearStoreLocked in tieredstore_lifecycle.go:
+        // closeStoreLocked closes es's installed store and detaches it whatever Close says (Close may have closed the DB
+        // despite its error); a failed Close is the store's sticky fault (the fence). Caller holds es.shardMu.
+        func (es *EventShard) closeStoreLocked(ts *Store, what string) error
+      Body: err := es.store.Close(); es.clearStoreLocked(ts); nil on success; else wrapped := fmt.Errorf("graph: %s %s: %w", what, es.name, err);
+      ts.recordBackgroundError(wrapped); one slog.Error; return wrapped.
+   b. A-F call it in place of their three statements, what = "idle-close cold shard", "cap-close cold shard", "close transient cold shard", "close read-only cold shard",
+      "close empty demoted shard", "handle sweep: close shard": the error text stays (tieredstore_test.go:3655, empty_shard_demotion_test.go:290,
+      empty_shard_close_fault_write_test.go:182 and pkg/graph/tiered_close_fault_write_test.go:101 match on it). G keeps its lines (it must not record a fence).
+   c. H closeForMove: err := es.closeStoreLocked(ts, "MoveShard: close shard"); on a fault a warm shard goes cold in memory (3f); sealed counts are saved on both outcomes,
+      as the idle close does; return err. MoveShard itself is unchanged: endMoveRead, return; the deferred endHandleGateLocked finds no store. Nothing is moved.
+   d. I dropOneShard (after waitMoveLocked): es.closeStoreLocked(ts, "drop: close shard"); on a fault a warm shard goes cold in memory (3f), shardMu is released, then under
+      ts.mu the shard is linked back (ts.eventShards[es.name] = es; reindexShardsLocked) as the three re-links above it do; return the error. Catalog and directory
+      untouched.
+   e. J clearEventShard (own pin held): es.closeStoreLocked(ts, "clear: close shard"); on a fault a warm shard goes cold in memory (3f); return the error. Same function,
+      same class: :1840 (newShardStore fails) and :1851 (reopen fails) leave tier warm with store nil. Builder: cold in memory at both, and install the :1851 reopen with
+      setStoreLocked (it assigns es.store bare). Cut this sentence to keep the item narrow.
+   f. "Cold in memory": if es.currentTier() == TierWarm { es.setTier(TierCold) } under shardMu, catalog untouched: the pattern of shard_move.go:101-104 and sweepNotReopened
+      (handle_sweep.go:347). A warm shard with no handle would return nil from its checkout once RecoverBackgroundError lifts the fence; cold, the next access takes the
+      locked path and opens it, and a restart reads warm from the catalog.
+   g. Comments: tieredstore_lifecycle.go:146-151 and cold_open_over_cap_test.go:466 lose "not yet so". docs/architecture.md:267 names the idle close only; the docs keeper
+      adds the move, the drop and Clear.
+
+4. Red tests: all -short, t.Parallel; fault := errors.New("injected close fault"), set with es.Store().FailNextCloseForTest(fault) on the installed handle. After the
+   faulted call each asserts:
+     (1) the call's error Is fault; (2) es.Store() == nil; (3) ts.backgroundError() Is fault; (4) es.checkoutStoreReadOnly and es.CheckoutStoreForTest are refused; (5)
+     ts.openColdShards.Load() == 0; (6) ts.RecoverBackgroundError() == nil, then GetNode of every row written returns it; (7) _ = ts.Close(); New on the same config;
+     GetNode again.
+   Red today on (2) and (3) at every site; T3 also on its link assertion.
+   T1 shard_move_test.go TestMoveShard_FailedCloseDetachesAndFences, MoveShard(ctx, old, VolumeWarm), two subtests: cold-open: moveFixture, then CheckoutStoreForTest +
+      CheckinStoreForTest (as TestMoveOpenColdShardStaysClosed) so a counted handle is installed. warm: warmMoveFixture; also es.Tier() == TierCold and the catalog entry
+      still warm. Both: shardCopies has one entry, not under cfg.WarmDir, and the catalog volume is unchanged (nothing moved).
+   T2 shard_move_test.go TestMoverCloseFaultFencesStore: sweepFixture, the fault on the handle of the shard sweepMoveOne picks first (opened as in T1 if closed),
+      ts.sweepMoveOne(): (2)-(4) and wantVolumes(t, ts, nil).
+   T3 retention_purge_drop_test.go TestTieredColdShardFastDrop_FailedCloseRelinksAndFences: the setup of ..._CatalogSaveFailureLeavesShardIntact without the chmod (ten
+      Signal nodes, ForceRotate); subtests warm (as rotated) and cold-open (demoteToCold; the handle stays installed). PurgeNodesByLabelBefore(signalTok, 1<<50, 8). Also:
+      ts.eventShards[name] == es, catalog entry and directory exist, ts.droppingShards is empty. After (7) the same purge on the reopened store returns NodesPurged 10 and
+      the directory is gone (retryable).
+   T4 clear_test.go TestTieredStoreClear_FailedCloseDetachesAndFences: newDiskTestTieredStore, one Signal node n, ForceRotate; subtests warm and cold-open (demoteToCold).
+      ts.Clear(). (6) and (7) read n only (its shard was not cleared; others may be, in map order). Warm: tier cold in memory.
+   Stay green: TestColdCap_* (both Failed* included), TestTieredStore_ColdShard_IdleCloseErrorSurfaces, TestEmptyShardDemotion_*,
+   TestTieredEmptyShardCloseFault_PublicAddFailsAndCommitsNothing (pkg/graph), TestHandleSweep_*, TestMove*, TestMoved*, TestMoverErrorIsNotStoreWide, TestSweep*,
+   TestCloseStop*, TestTieredColdShardFastDrop*, TestFastDrop*, TestTieredStoreClear*, TestTieredStore_Clear_DoesNotTouchClosingEventShard, TestTieredClearCrash*.
+   Run: make test-one PKG=./pkg/graph/store/tiered/ RUN='FailedClose|CloseFault' (red to R3/closefault-red.txt, green to closefault-green.txt); make old; go test -short
+   ./pkg/graph/ ./pkg/graph/store/... ; make check.
+5. Settled from the docs and the code (no question)
+   - A half-closed handle is never kept and a failed close fences as the idle close does (docs/architecture.md:267-270); one path (AGENTS.md "Shard lifecycle"): 3a is it,
+     H, I, J join it and A-F move onto it.
+   - The background mover fences too: closeIdleShards, on the same idle loop, already does. SHARD step 6 ("a mover error is not store-wide", TestMoverErrorIsNotStoreWide)
+     is about a failed copy and stays.
+   - The drop does not remove the directory after a failed close (a reopen must give the rows); Clear stops at the faulted shard, and shards cleared before it stay cleared,
+     as on any Clear error.
+   - Lock order (docs/architecture.md § 4, lifecycleMu -> ts.mu -> shardIdxMu): no site takes ts.mu under shardMu; 3d releases shardMu first, as :211-226 does.
+   - Not this item: MoveShard does not ask the fence at entry (a later tick moves the closed shard's files). A rotation that promotes the shard to hot while its move gate
+     is up leaves a hot shard without a handle on any failed MoveShard (shard_move.go:97 reopens on the normal path only); the sweep has reopenPromotedLocked for that.
+6. For René (one policy call): a WARM shard whose close faulted at H, I or J. Default (designed above): no handle, cold in memory, catalog keeps warm; reads open it on
+   demand after RecoverBackgroundError, a restart brings it back warm. Alternative: reopen at once as the sweep does at F (reopenMovedShard): a fresh handle on a store just
+   fenced.
+

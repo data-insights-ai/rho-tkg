@@ -950,3 +950,166 @@ func TestCloseStoppingWarmMoveLeavesShardCold(t *testing.T) {
 		t.Fatalf("GetNode after the stopped move: %v", err)
 	}
 }
+
+// wantDetachedAndFenced asserts what a close fault on es's installed handle
+// leaves (CLOSEFAULT, the design's (2) to (4)): the handle is detached, the
+// store fenced with the fault, and es's read and write checkouts refused.
+func wantDetachedAndFenced(t *testing.T, ts *Store, es *EventShard, fault error) {
+	t.Helper()
+	if s, _ := es.StoreStateForTest(); s != nil {
+		t.Fatal("the closed handle stays installed after its close failed")
+	}
+	if err := ts.backgroundError(); !errors.Is(err, fault) {
+		t.Fatalf("background error = %v, want the close fault (the store fenced)", err)
+	}
+	if _, release, err := es.checkoutStoreReadOnly(ts); err == nil {
+		release()
+		t.Fatal("a read pinned the shard after its close failed")
+	}
+	if _, err := es.CheckoutStoreForTest(ts); err == nil {
+		es.CheckinStoreForTest()
+		t.Fatal("a write pinned the shard after its close failed")
+	}
+}
+
+// wantCloseFaultFenced is wantDetachedAndFenced for a call that returned err
+// (the design's (1) to (6)): err is the fault, no cold handle stays counted,
+// and RecoverBackgroundError lifts the fence so every id reads again.
+func wantCloseFaultFenced(t *testing.T, ts *Store, es *EventShard, err, fault error, ids ...types.NodeID) {
+	t.Helper()
+	if !errors.Is(err, fault) {
+		t.Fatalf("the call = %v, want the close fault", err)
+	}
+	wantDetachedAndFenced(t, ts, es, fault)
+	if n := ts.openColdShards.Load(); n != 0 {
+		t.Fatalf("open cold shards %d after the failed close, want 0 (the detached handle uncounted)", n)
+	}
+	if err := ts.RecoverBackgroundError(); err != nil {
+		t.Fatalf("RecoverBackgroundError: %v", err)
+	}
+	for _, id := range ids {
+		if _, err := ts.GetNode(id); err != nil {
+			t.Fatalf("GetNode %v after RecoverBackgroundError: %v", id, err)
+		}
+	}
+}
+
+// wantColdInMemory asserts a warm shard whose close failed is cold in memory
+// while the catalog keeps it warm (a restart opens it warm).
+func wantColdInMemory(t *testing.T, ts *Store, es *EventShard) {
+	t.Helper()
+	if tier := es.Tier(); tier != TierCold {
+		t.Fatalf("the warm shard whose close failed is %s in memory, want cold", tier)
+	}
+	if e, _ := ts.CatalogForTest().GetShard(es.name); e.Tier != TierWarm {
+		t.Fatalf("catalog tier %s, want warm (untouched)", e.Tier)
+	}
+}
+
+// reopenAndRead closes ts, opens the store again on cfg and reads every id
+// (the design's (7)). The reopened store closes at the test's end.
+func reopenAndRead(t *testing.T, ts *Store, cfg Config, ids ...types.NodeID) *Store {
+	t.Helper()
+	_ = ts.Close()
+	re, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New after the failed close: %v", err)
+	}
+	t.Cleanup(func() { _ = re.Close() })
+	for _, id := range ids {
+		if _, err := re.GetNode(id); err != nil {
+			t.Fatalf("GetNode %v after the reopen: %v", id, err)
+		}
+	}
+	return re
+}
+
+// openColdHandle settles the handle sweep and, when es's cold shard is
+// closed, opens it through a checkout so a counted handle is installed
+// (TestMoveOpenColdShardStaysClosed). It returns the installed handle.
+func openColdHandle(t *testing.T, ts *Store, es *EventShard) *BadgerStore {
+	t.Helper()
+	ts.SweepHandlesForTest()
+	if s, _ := es.StoreStateForTest(); s == nil {
+		if _, err := es.CheckoutStoreForTest(ts); err != nil {
+			t.Fatal(err)
+		}
+		es.CheckinStoreForTest()
+	}
+	s, _ := es.StoreStateForTest()
+	if s == nil {
+		t.Fatal("no handle installed on the cold shard")
+	}
+	return s
+}
+
+// TestMoveShard_FailedCloseDetachesAndFences (CLOSEFAULT): MoveShard closes
+// the shard's installed handle and Close fails. Close may have closed the DB
+// whatever it returned, so the handle is detached and the store fenced, as
+// the idle close does; nothing moves, a warm shard is cold in memory (the
+// catalog keeps warm), and every row reads after RecoverBackgroundError and
+// after a reopen. Catches the closed handle left installed with no fence: a
+// warm shard's reads fail with ErrStoreClosed until a restart, and the retry
+// moves a shard whose final flush failed with no fault recorded.
+func TestMoveShard_FailedCloseDetachesAndFences(t *testing.T) {
+	t.Parallel()
+	for _, warm := range []bool{false, true} {
+		name := "cold-open"
+		if warm {
+			name = "warm"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var (
+				ts  *Store
+				cfg Config
+				n   *types.Node
+				old string
+			)
+			if warm {
+				ts, cfg, n, _, old, _ = warmMoveFixture(t)
+			} else {
+				ts, cfg, n, old, _ = moveFixture(t)
+			}
+			t.Cleanup(func() { _ = ts.Close() })
+			es := ts.EventShardsForTest()[old]
+			var handle *BadgerStore
+			if warm {
+				ts.SweepHandlesForTest() // the warm-size swap settles first
+				handle, _ = es.StoreStateForTest()
+			} else {
+				handle = openColdHandle(t, ts, es)
+			}
+			fault := errors.New("injected close fault")
+			handle.FailNextCloseForTest(fault)
+			err := ts.MoveShard(context.Background(), old, VolumeWarm)
+			if warm {
+				wantColdInMemory(t, ts, es)
+			}
+			if got := shardCopies(t, cfg, old); len(got) != 1 || got[0] != filepath.Join(cfg.DataDir, "events", old) {
+				t.Fatalf("shard copies %v after the failed close, want only the source", got)
+			}
+			wantCloseFaultFenced(t, ts, es, err, fault, n.ID())
+			wantVolumes(t, ts, nil) // ListShards refuses under the fence
+			reopenAndRead(t, ts, cfg, n.ID())
+		})
+	}
+}
+
+// TestMoverCloseFaultFencesStore (CLOSEFAULT): the idle mover's close of the
+// shard it picks fails. The store is fenced and the handle detached, as the
+// idle close on the same loop does; the shard does not move. SHARD step 6
+// (TestMoverErrorIsNotStoreWide) is about a failed copy and stays.
+func TestMoverCloseFaultFencesStore(t *testing.T) {
+	t.Parallel()
+	ts, _, names := sweepFixture(t)
+	es := ts.EventShardsForTest()[names[0]] // the oldest: the sweep picks it first
+	fault := errors.New("injected close fault")
+	openColdHandle(t, ts, es).FailNextCloseForTest(fault)
+	ts.sweepMoveOne()
+	wantDetachedAndFenced(t, ts, es, fault)
+	if err := ts.RecoverBackgroundError(); err != nil { // ListShards refuses under the fence
+		t.Fatalf("RecoverBackgroundError: %v", err)
+	}
+	wantVolumes(t, ts, nil)
+}

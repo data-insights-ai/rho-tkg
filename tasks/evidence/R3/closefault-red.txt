@@ -1,0 +1,30 @@
+go test -short -timeout 20m -run 'FailedClose|CloseFault' ./pkg/graph/store/tiered/
+2026/11/14 14:10:18 INFO graph: tiered store opened duration=135.056145ms reference=47.765387ms hot=48.834234ms warm=100ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/14 14:10:18 INFO graph: tiered store opened duration=135.075035ms reference=47.683423ms hot=48.838805ms warm=500ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/14 14:10:18 INFO graph: tiered store opened duration=139.817786ms reference=52.751317ms hot=49.451361ms warm=190ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/14 14:10:18 INFO graph: tiered store opened duration=139.91746ms reference=52.760048ms hot=49.529644ms warm=230ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/14 14:10:18 INFO graph: tiered store opened duration=149.475463ms reference=47.482974ms hot=63.525644ms warm=480ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/14 14:10:18 INFO graph: tiered store opened duration=149.608139ms reference=52.641153ms hot=58.377757ms warm=120ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/14 14:10:18 INFO graph: tiered store opened duration=149.555967ms reference=52.569969ms hot=58.404738ms warm=450ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/14 14:10:18 ERROR graph: idle sweep: move shard (retried on a later tick) shard=2026-W46 volume=cold error="graph: MoveShard: close shard 2026-W46: injected close fault"
+--- FAIL: TestTieredColdShardFastDrop_FailedCloseRelinksAndFences (0.00s)
+    --- FAIL: TestTieredColdShardFastDrop_FailedCloseRelinksAndFences/warm (0.40s)
+        retention_purge_drop_test.go:437: shard "2026-W46" not linked back after its close failed: its rows read as not found
+    --- FAIL: TestTieredColdShardFastDrop_FailedCloseRelinksAndFences/cold-open (0.40s)
+        retention_purge_drop_test.go:437: shard "2026-W46" not linked back after its close failed: its rows read as not found
+--- FAIL: TestTieredStoreClear_FailedCloseDetachesAndFences (0.00s)
+    --- FAIL: TestTieredStoreClear_FailedCloseDetachesAndFences/warm (0.42s)
+        clear_test.go:360: the warm shard whose close failed is warm in memory, want cold
+    --- FAIL: TestTieredStoreClear_FailedCloseDetachesAndFences/cold-open (0.42s)
+        clear_test.go:362: the closed handle stays installed after its close failed
+--- FAIL: TestMoveShard_FailedCloseDetachesAndFences (0.00s)
+    --- FAIL: TestMoveShard_FailedCloseDetachesAndFences/warm (0.43s)
+        shard_move_test.go:1087: the warm shard whose close failed is warm in memory, want cold
+    --- FAIL: TestMoveShard_FailedCloseDetachesAndFences/cold-open (0.50s)
+        shard_move_test.go:1092: the closed handle stays installed after its close failed
+--- FAIL: TestMoverCloseFaultFencesStore (0.50s)
+    shard_move_test.go:1110: the closed handle stays installed after its close failed
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.519s
+FAIL
+make: *** [Makefile:66: test-one] Error 1

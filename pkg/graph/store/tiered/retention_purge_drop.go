@@ -197,11 +197,19 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	// here and not one installed after the directory is gone.
 	es.waitMoveLocked()
 	if es.store != nil {
-		if closeErr := es.store.Close(); closeErr != nil {
+		if closeErr := es.closeStoreLocked(ts, "drop: close shard"); closeErr != nil {
+			// Detached and fenced; catalog entry and directory stay, so a
+			// reopen reads the rows. A warm shard is cold in memory (its next
+			// access opens it), and the shard is linked back after shardMu
+			// is released (lock order: ts.mu is never taken under shardMu).
+			es.coldInMemoryLocked()
 			es.shardMu.Unlock()
+			ts.mu.Lock()
+			ts.eventShards[es.name] = es
+			ts.reindexShardsLocked()
+			ts.mu.Unlock()
 			return zero, false, closeErr
 		}
-		es.clearStoreLocked(ts)
 	}
 	es.shardMu.Unlock()
 

@@ -1830,23 +1830,32 @@ func (ts *Store) clearEventShard(es *EventShard) error {
 		time.Sleep(time.Millisecond)
 	}
 
+	// Every exit that leaves the shard without a handle makes a warm shard cold
+	// in memory: a warm shard with no handle would hand out a nil store once
+	// the fence lifts; cold, its next access opens it.
 	if es.store != nil {
-		if err := es.store.Close(); err != nil {
+		if err := es.closeStoreLocked(ts, "clear: close shard"); err != nil {
+			es.coldInMemoryLocked() // detached and fenced; not cleared
 			return err
 		}
-		es.clearStoreLocked(ts)
 	}
 
 	store, err := ts.newShardStore(ts.shardCfg(es.path, false, es.currentTier() == TierCold))
 	if err != nil {
+		es.coldInMemoryLocked()
 		return err
 	}
 	clearErr := store.Clear()
 	closeErr := store.Close()
 	var reopenErr error
 	if es.currentTier() == TierWarm && !ts.closed.Load() {
-		es.store, reopenErr = ts.openBadgerStoreWithRecovery(es.path)
-		es.readTransientOpen = false
+		var reopened *BadgerStore
+		if reopened, reopenErr = ts.openBadgerStoreWithRecovery(es.path); reopenErr != nil {
+			es.coldInMemoryLocked()
+		} else {
+			es.setStoreLocked(ts, reopened)
+			es.readTransientOpen = false
+		}
 	}
 	return errors.Join(clearErr, closeErr, reopenErr)
 }
