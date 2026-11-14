@@ -223,37 +223,61 @@ func (u *txMemberUnion[ID]) emit(fn func(ID, types.Instant) bool) {
 
 // unionTxMembers fans each shard's enumeration out and streams the union.
 func unionTxMembers[ID comparable](ts *Store, each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
-	return unionTxMembersMetered(ts, nil, each, fn)
+	return unionTxMembersSkip(ts, nil, nil, nil, untalliedGather(each), fn)
 }
 
-// unionTxMembersMetered is unionTxMembers with the open of each closed shard
-// charged to opens before it (nil: none).
-func unionTxMembersMetered[ID comparable](ts *Store, opens *storecontract.ReadTally, each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
-	return unionTxMembersSkip(ts, nil, opens, each, fn)
+// gatherEach is one shard's ever-member enumeration under the gather's tally
+// and hold (both nil: unmetered).
+type gatherEach[ID comparable] func(bs *BadgerStore, t *storecontract.ReadTally, hold *storecontract.GatherHold, f func(ID, types.Instant) bool) error
+
+// untalliedGather adapts an enumeration that takes no tally or hold.
+func untalliedGather[ID comparable](each func(*BadgerStore, func(ID, types.Instant) bool) error) gatherEach[ID] {
+	return func(bs *BadgerStore, _ *storecontract.ReadTally, _ *storecontract.GatherHold, f func(ID, types.Instant) bool) error {
+		return each(bs, f)
+	}
 }
 
-// unionTxMembersSkip is unionTxMembersMetered without the event shards skip
-// reports (nil: none): a sealed shard proven to hold no member (Sigma RH-S7).
-func unionTxMembersSkip[ID comparable](ts *Store, skip func(*EventShard) bool, opens *storecontract.ReadTally, each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
+// unionTxMembersSkip fans each shard's enumeration out (without the event
+// shards skip reports, nil: none: a sealed shard proven to hold no member,
+// Sigma RH-S7) and streams the union. Under a budget (t) the work is paid for
+// before it is done (R2 round 3): each closed shard's open is charged to t, each
+// shard reserves the set it copies in hold, the one allowance of the gather over
+// every shard (an entity on two shards reserved twice), and refuses before the
+// copy once the shards together pass it; the members each shard keeps in its
+// list (shardMemberBytes) and the union's entries (unionEntryBytes) are charged
+// as BufferBytes before they are added, so a refusal stops the gather before the
+// union is built and fn sees nothing.
+func unionTxMembersSkip[ID comparable](ts *Store, skip func(*EventShard) bool, t *storecontract.ReadTally, hold *storecontract.GatherHold, each gatherEach[ID], fn func(ID, types.Instant) bool) error {
 	if fn == nil {
 		return errNilIterationCallback()
 	}
 	read := func(bs *BadgerStore, _ bool) ([]txMember[ID], error) {
 		var out []txMember[ID]
-		err := each(bs, func(id ID, tx types.Instant) bool {
+		var refused error
+		err := each(bs, t, hold, func(id ID, tx types.Instant) bool {
+			if refused = t.Buffer(shardMemberBytes); refused != nil { // charged before the list grows
+				return false
+			}
 			out = append(out, txMember[ID]{id, tx})
 			return true
 		})
+		if err == nil {
+			err = refused
+		}
 		return out, err
 	}
-	ref, others, err := allShardsBut(ts, skip, opens, read)
+	ref, others, err := allShardsBut(ts, skip, t, read)
 	if err != nil {
 		return err
 	}
 	var u txMemberUnion[ID]
-	_ = u.add(ref, nil) // no tally: never refuses
+	if err := u.add(ref, t); err != nil {
+		return err
+	}
 	for _, ms := range others {
-		_ = u.add(ms, nil)
+		if err := u.add(ms, t); err != nil {
+			return err
+		}
 	}
 	u.emit(fn)
 	return nil
@@ -262,31 +286,32 @@ func unionTxMembersSkip[ID comparable](ts *Store, skip func(*EventShard) bool, o
 // ForEachLabelTxMember implements store.LabelTxMembershipCapability: the
 // union of every shard's ever-members of token.
 func (ts *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
-	return ts.ForEachLabelTxMemberMetered(token, nil, fn)
+	return ts.ForEachLabelTxMemberMetered(token, nil, nil, fn)
 }
 
 // ForEachLabelTxMemberMetered implements store.MemberGatherMeteredCapability:
-// ForEachLabelTxMember with the open of each closed shard charged to t before
-// it.
-func (ts *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+// ForEachLabelTxMember with each closed shard's open charged to t before it, and
+// each shard's copy reserved in hold and charged in t before it is made
+// (unionTxMembersSkip).
+func (ts *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	ts.noteTypeScan("ForEachLabelTxMember")
 	skip := func(es *EventShard) bool { return es.sealedWithoutFormerLabel(token) }
-	return unionTxMembersSkip(ts, skip, t, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
-		return bs.ForEachLabelTxMember(token, f)
+	return unionTxMembersSkip(ts, skip, t, hold, func(bs *BadgerStore, st *storecontract.ReadTally, h *storecontract.GatherHold, f func(types.NodeID, types.Instant) bool) error {
+		return bs.ForEachLabelTxMemberMetered(token, st, h, f)
 	}, fn)
 }
 
 // ForEachRelTypeTxMember implements store.RelTypeTxMembershipCapability.
 func (ts *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
-	return ts.ForEachRelTypeTxMemberMetered(token, nil, fn)
+	return ts.ForEachRelTypeTxMemberMetered(token, nil, nil, fn)
 }
 
 // ForEachRelTypeTxMemberMetered is ForEachLabelTxMemberMetered for a
 // relationship type.
-func (ts *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+func (ts *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
 	ts.noteTypeScan("ForEachRelTypeTxMember")
-	return unionTxMembersMetered(ts, t, func(bs *BadgerStore, f func(types.RelID, types.Instant) bool) error {
-		return bs.ForEachRelTypeTxMember(token, f)
+	return unionTxMembersSkip(ts, nil, t, hold, func(bs *BadgerStore, st *storecontract.ReadTally, h *storecontract.GatherHold, f func(types.RelID, types.Instant) bool) error {
+		return bs.ForEachRelTypeTxMemberMetered(token, st, h, f)
 	}, fn)
 }
 
@@ -294,9 +319,9 @@ func (ts *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.Re
 // ids any shard knows as an ever-member of token, once.
 func (ts *Store) LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	skip := func(es *EventShard) bool { return es.sealedWithoutLabelMember(token) }
-	return unionTxMembersSkip(ts, skip, nil, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
+	return unionTxMembersSkip(ts, skip, nil, nil, untalliedGather(func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
 		return bs.LabelTxMembersOf(token, ids, f)
-	}, fn)
+	}), fn)
 }
 
 // RelTypeTxMembersOf implements store.RelTypeTxMemberLookupCapability.

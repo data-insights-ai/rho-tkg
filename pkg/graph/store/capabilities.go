@@ -586,14 +586,31 @@ type PropertyTxMemberMeteredCapability interface {
 // (ReadTally.ShardOpen) and returns the *ReadBudgetError, before any member is
 // handed on, past the ShardOpens limit; workers reading shards in parallel stop
 // at their next charge once one refused (ReadMeter.Exceeded). A nil t is the
-// unmetered form. A store that opens no shard (badger, sharded, memory) need
-// not implement it.
+// unmetered form. The ever-member enumerations also take the gather's hold
+// (R2 round 3, GatherHold; nil: none): the store reserves the size of each set
+// it is about to copy before the copy, over every shard, and returns the hold's
+// refusal before it copies a set that passes it, and it charges the copies it
+// holds (a member's 16 bytes in a list, 32 in tiered's union) as BufferBytes
+// before it makes them (TxMemberGatherMeteredCapability, which badger and
+// memory implement too: they open no shard, but they copy).
 type MemberGatherMeteredCapability interface {
 	NodeIDsByLabelMetered(labelToken uint16, t *ReadTally) ([]types.NodeID, error)
 	RelIDsByTypeMetered(typeToken uint16, t *ReadTally) ([]types.RelID, error)
-	ForEachLabelTxMemberMetered(token uint16, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
-	ForEachRelTypeTxMemberMetered(token uint16, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+	TxMemberGatherMeteredCapability
 }
+
+// TxMemberGatherMeteredCapability is OPTIONAL (R2 round 3): the ever-member
+// enumerations of MemberGatherMeteredCapability on their own, for a store that
+// copies a sidecar's set out before it hands the members on (badger, memory,
+// tiered): the copy is reserved in hold and charged in t before it is made.
+type TxMemberGatherMeteredCapability interface {
+	ForEachLabelTxMemberMetered(token uint16, t *ReadTally, hold *GatherHold, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+	ForEachRelTypeTxMemberMetered(token uint16, t *ReadTally, hold *GatherHold, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
+
+// TxMemberCopyBytes is the logical size (BufferBytes) of one ever-member a
+// store copies out of its sidecar for a gather: an ID and a transaction time.
+const TxMemberCopyBytes = 16
 
 // RelPropertyTxMemberPageCapability is OPTIONAL (backlog 69): the members
 // RelPropertyTxMembershipCapability enumerates for one value, in ascending ID

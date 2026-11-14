@@ -239,6 +239,32 @@ func (k gatherKind) fits(t *storepkg.ReadTally, current, n int) error {
 	return nil
 }
 
+// hold is the gather's allowance in the stores (storepkg.GatherHold, R2 round
+// 3): the ever-members the stores may copy for this gather, over every shard,
+// before the read is refused, so a store refuses a set it cannot hold before it
+// copies it (O(1)) instead of copying, merging and handing on every member
+// before fits refuses. The stores reserve each set whole, the members the read
+// then drops (a transaction time past the pin, at or below After, the label's
+// current members of a gatherScan, an entity on two shards twice) included: they
+// are copied, so they are work. Its room is fits' (the current members of a
+// gatherListed added, as the read leaves them out); its refusal is fits'. nil
+// when nothing bounds the gather (gatherFree, no candidate limit).
+func (k gatherKind) hold(t *storepkg.ReadTally, current int) *storepkg.GatherHold {
+	if k == gatherFree || t == nil {
+		return nil
+	}
+	room := t.CandidateRoom()
+	if room == math.MaxUint64 {
+		return nil
+	}
+	offset := 0
+	if k == gatherListed {
+		offset = current
+	}
+	limit := int64(min(room, math.MaxInt64/2)) + int64(offset) // #nosec G115 -- clamped
+	return storepkg.NewGatherHold(limit, func(n int) error { return t.CandidatesAhead(n - offset) })
+}
+
 // over reports, counting nothing, whether fits would refuse: a gather that may
 // still shrink its list (the envelope prune of the temporal ByLabel read) asks
 // before it spends the refusal, which counts the list as work done.
@@ -308,19 +334,22 @@ func relIDsByTypeUnder(members storepkg.MemberIDsCapability, tok uint16, t *stor
 	return members.RelIDsByType(tok)
 }
 
-// forEachLabelTxMemberUnder is members.ForEachLabelTxMember with its shard
-// opens counted in t where the store offers the metered form.
-func forEachLabelTxMemberUnder(members storepkg.LabelTxMembershipCapability, tok uint16, t *storepkg.ReadTally, fn func(types.NodeID, types.Instant) bool) error {
-	if m, ok := members.(storepkg.MemberGatherMeteredCapability); ok && t != nil {
-		return m.ForEachLabelTxMemberMetered(tok, t, fn)
+// forEachLabelTxMemberUnder is members.ForEachLabelTxMember under t and the
+// gather's hold where the store offers the metered form
+// (storepkg.TxMemberGatherMeteredCapability: badger, memory, tiered), so the
+// stores' copies are reserved and charged before they are made. A store without
+// it (a wrapper) copies unbounded and fn counts the members after.
+func forEachLabelTxMemberUnder(members storepkg.LabelTxMembershipCapability, tok uint16, t *storepkg.ReadTally, hold *storepkg.GatherHold, fn func(types.NodeID, types.Instant) bool) error {
+	if m, ok := members.(storepkg.TxMemberGatherMeteredCapability); ok && t != nil {
+		return m.ForEachLabelTxMemberMetered(tok, t, hold, fn)
 	}
 	return members.ForEachLabelTxMember(tok, fn)
 }
 
 // forEachRelTypeTxMemberUnder is forEachLabelTxMemberUnder for a type.
-func forEachRelTypeTxMemberUnder(members storepkg.RelTypeTxMembershipCapability, tok uint16, t *storepkg.ReadTally, fn func(types.RelID, types.Instant) bool) error {
-	if m, ok := members.(storepkg.MemberGatherMeteredCapability); ok && t != nil {
-		return m.ForEachRelTypeTxMemberMetered(tok, t, fn)
+func forEachRelTypeTxMemberUnder(members storepkg.RelTypeTxMembershipCapability, tok uint16, t *storepkg.ReadTally, hold *storepkg.GatherHold, fn func(types.RelID, types.Instant) bool) error {
+	if m, ok := members.(storepkg.TxMemberGatherMeteredCapability); ok && t != nil {
+		return m.ForEachRelTypeTxMemberMetered(tok, t, hold, fn)
 	}
 	return members.ForEachRelTypeTxMember(tok, fn)
 }

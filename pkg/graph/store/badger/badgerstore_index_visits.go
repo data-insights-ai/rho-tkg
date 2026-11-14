@@ -25,3 +25,23 @@ func CountIndexEntriesVisitedForTest() (visited func() int64, stop func()) {
 	indexVisitCounter.Store(c)
 	return c.Load, func() { indexVisitCounter.Store(nil) }
 }
+
+// txMemberCopyCounter (tests only) counts the ever-members every sidecar copy
+// of the process makes for a label or type gather (emitTxMemberCopy): the
+// native count of the work a GatherHold bounds, which no read meter keeps.
+var txMemberCopyCounter atomic.Pointer[atomic.Int64]
+
+func noteTxMembersCopied(n int) {
+	if c := txMemberCopyCounter.Load(); c != nil {
+		c.Add(int64(n))
+	}
+}
+
+// CountTxMembersCopiedForTest starts counting the ever-members the sidecar
+// copies of this process make; stop ends it. Tests that use it must not run in
+// parallel with other gathers.
+func CountTxMembersCopiedForTest() (copied func() int64, stop func()) {
+	c := new(atomic.Int64)
+	txMemberCopyCounter.Store(c)
+	return c.Load, func() { txMemberCopyCounter.Store(nil) }
+}

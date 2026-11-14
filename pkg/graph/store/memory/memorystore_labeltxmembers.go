@@ -2,6 +2,7 @@ package memory
 
 import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -145,71 +146,75 @@ func (ms *Store) ensureRelTypeTxMembersBuiltLocked() error {
 // sidecar is read under ms.mu.RLock (readOrBuild); only the first call builds
 // under the write lock.
 func (ms *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return ms.ForEachLabelTxMemberMetered(token, nil, nil, fn)
+}
+
+// ForEachLabelTxMemberMetered implements
+// store.TxMemberGatherMeteredCapability: ForEachLabelTxMember with the copy of
+// the set reserved in hold and charged in t (BufferBytes) before it is made.
+func (ms *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	if ms == nil {
 		return ErrNilStore
 	}
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	var members []indexpkg.TxMember[types.NodeID]
-	snapshot := func() {
-		set := ms.labelTxMembers[token]
-		members = make([]indexpkg.TxMember[types.NodeID], 0, len(set))
-		for id, tx := range set {
-			members = append(members, indexpkg.TxMember[types.NodeID]{ID: id, FirstTx: tx})
-		}
-	}
-	err := ms.readOrBuild(func() (bool, error) {
-		if ms.labelTxMembers == nil {
-			return false, nil
-		}
-		snapshot()
-		return true, nil
-	}, func() error {
-		ms.ensureLabelTxMembersBuiltLocked()
-		snapshot()
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	// fn runs outside the store lock (it re-enters the store to resolve chains).
-	for _, m := range members {
-		if !fn(m.ID, m.FirstTx) {
-			return nil
-		}
-	}
-	return nil
+	return emitMemoryTxMemberCopy(ms, func() map[types.NodeID]types.Instant { return ms.labelTxMembers[token] },
+		func() bool { return ms.labelTxMembers != nil },
+		func() error { ms.ensureLabelTxMembersBuiltLocked(); return nil }, t, hold, fn)
 }
 
 // ForEachRelTypeTxMember implements store.RelTypeTxMembershipCapability.
 func (ms *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return ms.ForEachRelTypeTxMemberMetered(token, nil, nil, fn)
+}
+
+// ForEachRelTypeTxMemberMetered is ForEachLabelTxMemberMetered for a
+// relationship type.
+func (ms *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
 	if ms == nil {
 		return ErrNilStore
 	}
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	var members []indexpkg.TxMember[types.RelID]
-	snapshot := func() {
-		set := ms.relTypeTxMembers[token]
-		members = make([]indexpkg.TxMember[types.RelID], 0, len(set))
-		for id, tx := range set {
-			members = append(members, indexpkg.TxMember[types.RelID]{ID: id, FirstTx: tx})
-		}
-	}
-	err := ms.readOrBuild(func() (bool, error) {
-		if ms.relTypeTxMembers == nil {
-			return false, nil
-		}
-		snapshot()
-		return true, nil
-	}, func() error {
-		if err := ms.ensureRelTypeTxMembersBuiltLocked(); err != nil {
+	return emitMemoryTxMemberCopy(ms, func() map[types.RelID]types.Instant { return ms.relTypeTxMembers[token] },
+		func() bool { return ms.relTypeTxMembers != nil },
+		ms.ensureRelTypeTxMembersBuiltLocked, t, hold, fn)
+}
+
+// emitMemoryTxMemberCopy copies the set setOf returns (building the sidecar
+// first when built reports it is not, under the write lock) and hands the copy
+// to fn outside the store lock (fn re-enters the store to resolve chains).
+// Under a budget the copy is paid for before it is made (R2 round 3): its size
+// is reserved in hold and its bytes charged as BufferBytes, so a gather past the
+// hold's allowance is refused with nothing copied.
+func emitMemoryTxMemberCopy[ID comparable](ms *Store, setOf func() map[ID]types.Instant, built func() bool, build func() error, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(ID, types.Instant) bool) error {
+	var members []indexpkg.TxMember[ID]
+	snapshot := func() error {
+		set := setOf()
+		if err := hold.Reserve(len(set)); err != nil {
 			return err
 		}
-		snapshot()
+		if err := t.Buffer(storecontract.TxMemberCopyBytes * len(set)); err != nil {
+			return err
+		}
+		members = make([]indexpkg.TxMember[ID], 0, len(set))
+		for id, tx := range set {
+			members = append(members, indexpkg.TxMember[ID]{ID: id, FirstTx: tx})
+		}
 		return nil
+	}
+	err := ms.readOrBuild(func() (bool, error) {
+		if !built() {
+			return false, nil
+		}
+		return true, snapshot()
+	}, func() error {
+		if err := build(); err != nil {
+			return err
+		}
+		return snapshot()
 	})
 	if err != nil {
 		return err

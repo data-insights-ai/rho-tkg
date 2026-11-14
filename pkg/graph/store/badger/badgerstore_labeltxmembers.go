@@ -463,6 +463,13 @@ func (bs *Store) forgetTxMembersLocked(nid types.NodeID, rels []RelDeleteInfo) {
 
 // ForEachLabelTxMember implements store.LabelTxMembershipCapability.
 func (bs *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return bs.ForEachLabelTxMemberMetered(token, nil, nil, fn)
+}
+
+// ForEachLabelTxMemberMetered implements
+// store.TxMemberGatherMeteredCapability: ForEachLabelTxMember with the copy of
+// the set reserved in hold and charged in t (BufferBytes) before it is made.
+func (bs *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -472,29 +479,17 @@ func (bs *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, fir
 	if err := bs.ensureLabelTxMembersBuilt(); err != nil {
 		return err
 	}
-	// Snapshot under idxMu.RLock so fn runs OUTSIDE the store lock (it re-enters
-	// the store to resolve chains).
-	bs.idxMu.RLock()
-	set := bs.labelTxMembers[token]
-	type member struct {
-		id types.NodeID
-		tx types.Instant
-	}
-	members := make([]member, 0, len(set))
-	for id, tx := range set {
-		members = append(members, member{id: id, tx: tx})
-	}
-	bs.idxMu.RUnlock()
-	for _, m := range members {
-		if !fn(m.id, m.tx) {
-			return nil
-		}
-	}
-	return nil
+	return emitTxMemberCopy(bs, func() map[types.NodeID]types.Instant { return bs.labelTxMembers[token] }, t, hold, fn)
 }
 
 // ForEachRelTypeTxMember implements store.RelTypeTxMembershipCapability.
 func (bs *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return bs.ForEachRelTypeTxMemberMetered(token, nil, nil, fn)
+}
+
+// ForEachRelTypeTxMemberMetered is ForEachLabelTxMemberMetered for a
+// relationship type.
+func (bs *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -504,17 +499,36 @@ func (bs *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, fi
 	if err := bs.ensureRelTypeTxMembersBuilt(); err != nil {
 		return err
 	}
-	bs.idxMu.RLock()
-	set := bs.relTypeTxMembers[token]
+	return emitTxMemberCopy(bs, func() map[types.RelID]types.Instant { return bs.relTypeTxMembers[token] }, t, hold, fn)
+}
+
+// emitTxMemberCopy copies the set setOf returns under idxMu.RLock, so fn runs
+// OUTSIDE the store lock (it re-enters the store to resolve chains), and hands
+// the copy to fn. Under a budget the copy is paid for before it is made (R2
+// round 3): its size is reserved in hold, which refuses a gather past its
+// allowance with nothing copied, and its bytes (store.TxMemberCopyBytes a
+// member) are charged as BufferBytes.
+func emitTxMemberCopy[ID comparable](bs *Store, setOf func() map[ID]types.Instant, t *storecontract.ReadTally, hold *storecontract.GatherHold, fn func(ID, types.Instant) bool) error {
 	type member struct {
-		id types.RelID
+		id ID
 		tx types.Instant
+	}
+	bs.idxMu.RLock()
+	set := setOf()
+	if err := hold.Reserve(len(set)); err != nil {
+		bs.idxMu.RUnlock()
+		return err
+	}
+	if err := t.Buffer(storecontract.TxMemberCopyBytes * len(set)); err != nil {
+		bs.idxMu.RUnlock()
+		return err
 	}
 	members := make([]member, 0, len(set))
 	for id, tx := range set {
 		members = append(members, member{id: id, tx: tx})
 	}
 	bs.idxMu.RUnlock()
+	noteTxMembersCopied(len(members))
 	for _, m := range members {
 		if !fn(m.id, m.tx) {
 			return nil

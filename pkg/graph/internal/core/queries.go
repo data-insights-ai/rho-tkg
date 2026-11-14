@@ -556,7 +556,7 @@ func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, 
 	}
 	if c.labelTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
 		pinTx := effectiveTxPin(opts)
-		if err := forEachLabelTxMemberUnder(c.labelTxMembers, tok, t, func(id types.NodeID, firstTx types.Instant) bool {
+		if err := forEachLabelTxMemberUnder(c.labelTxMembers, tok, t, kind.hold(t, len(currentIDs)), func(id types.NodeID, firstTx types.Instant) bool {
 			if pinTx == 0 || firstTx == 0 || firstTx <= pinTx {
 				return add(id)
 			}
@@ -728,7 +728,7 @@ func (c *Core) relTypeCandidatesSorted(tok uint16, currentIDs []types.RelID, opt
 	}
 	if c.relTypeTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
 		pinTx := effectiveTxPin(opts)
-		if err := forEachRelTypeTxMemberUnder(c.relTypeTxMembers, tok, t, func(id types.RelID, firstTx types.Instant) bool {
+		if err := forEachRelTypeTxMemberUnder(c.relTypeTxMembers, tok, t, kind.hold(t, len(currentIDs)), func(id types.RelID, firstTx types.Instant) bool {
 			if pinTx == 0 || firstTx == 0 || firstTx <= pinTx {
 				return add(id)
 			}
