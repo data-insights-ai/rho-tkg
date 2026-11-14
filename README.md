@@ -332,7 +332,7 @@ This list is the complete documentation set; there are no other `.md` files. Put
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Every release, dated: what shipped and why |
 | `HANDOVER.md` | State only: releases, branches, consumers and their agents, glossary, the numbered backlog, user-only actions |
 | `tasks/todo.md` | Current work only, in order: Now, Next, Waiting; René's open decisions are the items waiting for him, each with a default. Later, parked and closed items are folded into the changelog (§ Folded from tasks/todo.md) |
-| `CLAUDE.md`, `AGENTS.md` | Entry points for Claude Code and Codex: pointers into this list (CLAUDE imports AGENTS); they send an agent to the badger file above before any badger work |
+| `AGENTS.md` | Entry point for agents: the documentation rule and the development loop. It sends an agent to the badger file above before any badger work |
 
 Measurement data (`.txt`, `.json`) lives under `tasks/evidence/`, explained by the todo row or changelog entry that cites it.
 Removed files (old lessons, backlog, ADRs, evidence notes) stay readable in git: `git show 6e20157c:<path>`. `TestNoMDFileOutsideTheDocumentation` fails on any `.md` file this table does not name.
@@ -355,8 +355,9 @@ Run any tutorial: `go run ./tutorials/001_basic_graph/`
 
 ```bash
 make test            # the short tier, cached
+make presubmit       # vet and short tests for packages this change reaches (dev loop)
 make gate            # build, lint and test one after another, incremental through Go's test cache
-make release         # the patch release: the gate, the tag, the push
+make release         # the patch release: the gate, the tag, the push (René calls one)
 make                 # lists every target
 ```
 

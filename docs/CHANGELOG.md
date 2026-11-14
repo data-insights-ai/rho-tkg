@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs caught up with dev (14 Nov).** `HANDOVER.md` states 14 Nov: tag v4.107.3 is on `dev`, `main` is the
+  v4.107.2 release. `tasks/todo.md` drops EMPTYBYID (its done condition is the EMPTYBYID entry in this
+  section) and the three WARMMEM
+  defects this file already records; what remains there is the ai-soc B0 measurement. `docs/errors.md` lists
+  `store.ErrReadBudget`. `docs/query-planners.md` states the RELDISKWIN seek. `docs/CONTRIBUTING.md` says
+  `make release`, and only when René calls one. README's documentation table no longer names `CLAUDE.md`.
+- **The race run is Go only.** Gone: `scripts/race.sh`. `make race` (`scripts/race`) takes the host race lock and runs
+  `go test -race -short ./...`; patch and minor releases still start that detached (log `.git/race.out`). Host cron
+  no longer schedules gate or race on rho (14 Nov).
+- **Dev is Makefile + go test; release is thin.** `make presubmit` (`scripts/presubmit`) holds the affected-package
+  vet and short test; `scripts/release` is `kind` and patch/minor/major tag push only. `make kind`, `make dry-patch`,
+  `make release-minor` and `make release-major` on the Makefile.
+- **Sigma aligned:** `make test` is the full short tier; `make presubmit` the builder's check; `make gate` the real
+  gate; `make dry-patch` / `make dry-minor` replace `gate-patch` / `gate-minor` (dry-run only).
+
 ### Added
 
 - **R2-TWINS, the last two node doors under a read budget**: `Temporal().NodesAtOptsByIDsCtx` counts as
