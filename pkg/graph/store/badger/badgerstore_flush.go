@@ -325,6 +325,7 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	bs.flushingByPrefix, bs.pendingByPrefix = bs.pendingByPrefix, nil
 	logs := bs.pendingLog
 	bs.pendingLog = nil
+	flushBytes := bs.pendingBytes
 	bs.pendingBytes = 0
 	bs.wbMu.Unlock()
 	nc := bs.nodeCount.Load()
@@ -446,6 +447,7 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		bs.commitFloor.Store(floor)
 		bs.commitFloorDurable = floor
 	}
+	bs.committedBytes.Add(flushBytes)
 	if bs.syncWrites {
 		bs.syncedFlushes.Add(1) // Badger synced the batch (SyncCountForTest)
 	} else {
@@ -567,4 +569,19 @@ func (bs *Store) gcLoop() {
 			bs.runValueLogGC()
 		}
 	}
+}
+
+// CommittedBytes is the badger transaction size of what this handle's flushes
+// committed since it opened (the write buffer's pendingTxnSize, which can
+// overstate a coalesced key): logical bytes, not heap. The tiered store grows
+// a small cold handle by it (R3-3 LATEWRITE).
+func (bs *Store) CommittedBytes() int64 { return bs.committedBytes.Load() }
+
+// MemTableSize is the memtable size this handle's badger open used (badger's
+// effective option: the stock 64 MiB when Config.MemTableSize is 0).
+func (bs *Store) MemTableSize() int64 {
+	if bs == nil || bs.db == nil {
+		return 0
+	}
+	return bs.db.Opts().MemTableSize
 }

@@ -332,3 +332,21 @@ func (es *EventShard) StoreStateForTest() (*BadgerStore, bool) {
 	defer es.shardMu.Unlock()
 	return es.store, es.storeRO
 }
+
+// SetShardOpenHookForTest makes fn see the config of every shard open
+// (newShardStore); nil removes it.
+func (ts *Store) SetShardOpenHookForTest(fn func(BadgerStoreConfig)) {
+	if fn == nil {
+		ts.shardOpenHook.Store(nil)
+		return
+	}
+	ts.shardOpenHook.Store(&fn)
+}
+
+// GrowNextForTest reports whether es's next writable open takes MemTableSize
+// (EventShard.growNext, R3-3 the grow).
+func (es *EventShard) GrowNextForTest() bool {
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+	return es.growNext
+}

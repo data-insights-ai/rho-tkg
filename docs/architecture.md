@@ -305,21 +305,27 @@ ADR-0012.
   `MaxOpenColdShards` stay open.
 - **No RAM tier.** `DurableCommit` / `SyncWrites` need every write on a disk with a write-ahead log; RAM is each
   shard's cache (`MemTableSize`, `BlockCacheSize`, `CacheBudgetBytes`).
-- **A writable handle costs its memtable arena whatever the shard's role** (about 1.3 x `MemTableSize` on the Go heap: 83 MB at
-  64 MB, 86.5 MB live per handle with its other state), so a hot, warm and demoted-but-open shard weigh the same
+- **A writable handle costs its memtable arena whatever the shard's role** (about 1.3 x `MemTableSize` on the Go heap: 83.2 MiB
+  at 64 MiB, 86.5 MiB live per handle with its other state), so a hot, warm and demoted-but-open shard weigh the same
   (R3, `tasks/evidence/R3/measure.txt`). `WarmMemTableSize` sizes the memtable of a shard opened writable in a non-hot
   role (a warm shard at `New`, a window shard made on demand, a cold shard a late write opens, a shard reopened after a
-  move or `Clear`; 8 MB against 64 MB: a restart over two warm shards 346 to 200 MB of live heap, a window shard made on
-  demand 86 to 13 MB of allocation).
+  move or `Clear`; 8 MiB against 64 MiB: a restart over two warm shards 345.7 to 200.3 MiB of live heap, a window shard
+  made on demand 86.2 to 13.4 MiB of allocation). Without it a shard cold at the open still opens writable at 8 MiB
+  (R3-3 LATEWRITE, `nonHotCfg`): a rotation promotes only a warm shard, so such a handle never becomes the hot shard's.
+  Such a handle that has committed 32 MiB is closed by the handle sweep and the shard's next writable open takes
+  `MemTableSize` (`coldGrowOwedLocked`, `EventShard.growNext`). `WarmMemTableSize` equal to `MemTableSize` keeps
+  `MemTableSize` on every writable open and owes no swap; one below it is kept as set.
 - **The handle sweep** (R3, `handle_sweep.go`) shrinks the handles a rotation leaves: a goroutine started by `New`,
   kicked at the end of each rotation and on the idle tick. It visits only the shards that owe work, a pending set that
   a rotation fills with the old hot shard and the shards it demotes (a cold window shard made open joins it too) and
   that keeps a shard a pass could not settle (a scope open, a pin past the deadline); a pass costs the work, not the
   shards the store retains (counted: one shard looked at among 10, 100 or 1,000 retained). It reopens the old hot
-  shard, now warm, writable at `WarmMemTableSize` (when set; `EventShard.hotArena`, set only by a hot open, marks the
-  handles owed a reopen), and closes a cold shard's handle unless a cold read or late write opened it
-  (`EventShard.coldOpened`): the demoted chain is closed whatever its size, a cold read's or late write's handle is
-  left to `IdleTimeout`, so a shard with steady late writes is not reopened on every kick. A swap is `MoveShard`
+  shard, now warm, writable at `WarmMemTableSize` (when set and below `MemTableSize`; `EventShard.hotArena`, set only
+  by a hot open, marks the handles owed a reopen), and closes a cold shard's handle unless a cold read or late write
+  opened it (`EventShard.coldOpened`): the demoted chain is closed whatever its size, a cold read's or late write's
+  handle is left to `IdleTimeout` until it has committed 32 MiB on the small cold memtable (the grow: a writable
+  checkout pends it, the close sets `growNext`), so a shard with steady late writes is closed once per small handle,
+  not on every kick. A swap is `MoveShard`
   without the copy: it takes the shard's move gate, waits for its pins to drain outside `ts.mu` (at most 1 s: a
   longer pin makes it give up and drop the gate, the shard retried on the next kick; a shard with pins held is left to
   the end of the pass, so a pin delays only its own shard), closes, reopens and re-applies the store's registries as

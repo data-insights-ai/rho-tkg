@@ -157,12 +157,21 @@ type Config struct {
 	// (MintAtValidFrom), a cold shard a write opens, a shard reopened after
 	// MoveShard or Clear. The hot shard, the reference shard, the archive and the
 	// owner index keep MemTableSize. Every writable open allocates an arena of about
-	// 1.3 x its memtable size on the Go heap whatever its role (83 MB at 64 MB, 10 MB
-	// at 8 MB), so this is what a late write, a backfill or a restart costs per
-	// shard, and the room to raise MemTableSize for the hot shard alone. 0 keeps
-	// MemTableSize for every role. Valid [8MB, 1GB] and at most MemTableSize (the
-	// stock 64 MB when that is 0), refused by name at New. A shard keeps the size
-	// it opened with until its handle closes: a rotation that turns a hot shard
+	// 1.3 x its memtable size on the Go heap whatever its role (83.2 MiB at
+	// 64 MiB, 10.4 MiB at 8 MiB), so this is what a late write, a backfill or a
+	// restart costs per shard, and the room to raise MemTableSize for the hot
+	// shard alone. 0: a shard cold at the open (a late write into a closed day,
+	// beside its read-only handle or not, a cold window shard made on demand,
+	// the Clear of a cold shard, the retention drop's rollback) opens writable
+	// at 8 MiB, or MemTableSize when that is smaller (R3-3 LATEWRITE: 86.3 ->
+	// 13.4 MiB a late-write open on ai-soc's setup); such a handle that has
+	// committed 32 MiB is closed by the handle sweep and the shard's next
+	// writable open takes MemTableSize until its idle close. Every other role
+	// keeps MemTableSize. Equal to MemTableSize: every writable open keeps
+	// MemTableSize and the sweep swaps nothing (an 83.2 MiB arena per late
+	// write); below it, kept as set. Valid [8 MiB, 1 GiB] and at most
+	// MemTableSize (the stock 64 MiB when that is 0), refused by name at New.
+	// A shard keeps the size it opened with until its handle closes: a rotation that turns a hot shard
 	// warm does not reopen it, and a window shard made on demand that rotation
 	// later makes hot keeps the smaller memtable. Bulk writes into a non-hot shard
 	// flush in pieces of this size, and one transaction holds at most 15% of it
@@ -314,6 +323,7 @@ type EventShard struct {
 	coldCounted       bool             // shardMu-protected: this shard's open store is counted in Store.openColdShards; a cold shard's store left uncounted is a transient read handle, which check-in closes and the cap pass skips (openColdReadOnlyLocked)
 	hotArena          bool             // shardMu-protected: store was opened at MemTableSize as a hot handle; the handle sweep reopens it at WarmMemTableSize once warm (handle_sweep.go)
 	coldOpened        bool             // shardMu-protected: store was opened by a cold read or late write (openColdLocked, openColdReadOnlyLocked); the handle sweep closes a cold shard's other handles, the demoted chain (handle_sweep.go)
+	growNext          bool             // shardMu-protected: the sweep closed a small cold handle that committed coldGrowBytes; the next writable open (openColdLocked) takes MemTableSize and clears it. Not persisted (warm_memtable.go)
 
 	// counts is what this shard held when it was last closed, so counting
 	// questions can be answered without reopening it. See shardCounts.
@@ -567,6 +577,10 @@ type Store struct {
 
 	// relsByMint: Config.RelsByMint and its sticky marker (tieredstore_rels_by_mint.go).
 	relsByMint relsByMintState
+
+	// shardOpenHook, tests only, sees the config of every shard open
+	// (newShardStore).
+	shardOpenHook atomic.Pointer[func(BadgerStoreConfig)]
 }
 
 // maxShardOpenParallelism bounds how many event shards are opened at once.
@@ -1259,6 +1273,9 @@ func (ts *Store) LoadPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) (
 // newShardStore opens a shard and installs the registries naming the value
 // dictionaries' members (every shard open goes through here).
 func (ts *Store) newShardStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
+	if h := ts.shardOpenHook.Load(); h != nil {
+		(*h)(cfg) // tests only: the config of every shard open
+	}
 	s, err := NewBadgerStore(cfg)
 	if err == nil {
 		s.SetNameRegistries(ts.labelNames.Load(), ts.relTypeNames.Load())
@@ -1983,6 +2000,10 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	if !ts.inMemory {
 		cfg.Dir = ts.shardDir(name)
 	}
+	// A shard opened below the hot size (WarmMemTableSize) replays a leftover
+	// WAL at the hot size first: a WAL badger cut to its content no longer
+	// shows the memtable that wrote it (P0 WALREPLAY).
+	cfg.WALReplayMemTableSize = hotMemTableSize(ts.memTableSize)
 	// Inject the canonical property-key registry so this shard's loadIndexes can
 	// resolve tokenized property keys at open. Nil while the reference shard
 	// itself is being opened (it loads the canonical copy from its own meta);
@@ -2037,25 +2058,32 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 // is recovered by a read-write open, but the returned handle must be mutable:
 // existing event entities keep routing to their owner shard after rotation.
 func (ts *Store) openBadgerStoreWithRecovery(name string) (*BadgerStore, error) {
-	return ts.openShardStoreWithRecovery(name, false)
+	return ts.openShardStoreWithRecovery(name, false, false)
 }
 
 // openColdBadgerStoreWithRecovery opens a COLD event shard: like
 // openBadgerStoreWithRecovery, but the shard's relationship temporal index
 // definitions are discarded instead of rebuilt (a cold shard keeps none —
 // the hot + warm bound, shard_index_fanout.go).
-func (ts *Store) openColdBadgerStoreWithRecovery(name string) (*BadgerStore, error) {
-	return ts.openShardStoreWithRecovery(name, true)
+func (ts *Store) openColdBadgerStoreWithRecovery(name string, grow bool) (*BadgerStore, error) {
+	return ts.openShardStoreWithRecovery(name, true, grow)
 }
 
 // shardCfg is badgerCfg plus the cold-shard options.
 func (ts *Store) shardCfg(name string, readOnly, cold bool) BadgerStoreConfig {
+	return ts.shardOpenCfg(name, readOnly, cold, false)
+}
+
+// shardOpenCfg is shardCfg for a writable open of a cold shard that grows
+// (EventShard.growNext): it takes MemTableSize instead of the small cold
+// memtable (nonHotCfg).
+func (ts *Store) shardOpenCfg(name string, readOnly, cold, grow bool) BadgerStoreConfig {
 	cfg := ts.badgerCfg(name, readOnly)
 	cfg.DropRelTemporalIndexesAtOpen = cold
 	// A cold shard is often opened for one read: answer HasHistory by a per-ID
 	// key probe instead of a scan of its whole history keyspace.
 	cfg.HistoryPresenceProbeOnly = cold
-	return ts.nonHotCfg(cfg)
+	return ts.nonHotCfg(cfg, cold && !grow)
 }
 
 // transientColdBlockCache is the most block cache a transient read-only cold
@@ -2094,7 +2122,7 @@ func (ts *Store) coldReadCfg(name string, full bool) BadgerStoreConfig {
 	return cfg
 }
 
-func (ts *Store) openShardStoreWithRecovery(name string, cold bool) (*BadgerStore, error) {
+func (ts *Store) openShardStoreWithRecovery(name string, cold, grow bool) (*BadgerStore, error) {
 	// Every reopen of a cataloged shard (lazy cold, warm at open, the drop and
 	// Clear rollbacks) comes through here.
 	if err := ts.requireShardDir(name); err != nil {
@@ -2107,26 +2135,36 @@ func (ts *Store) openShardStoreWithRecovery(name string, cold bool) (*BadgerStor
 	// probe with "Arena too small". That is not ErrTruncateNeeded, so without
 	// this the probe would abort recovery before the writable open is ever
 	// tried. Idempotent and a no-op on clean dirs, stock memtable sizes, and
-	// in-memory shards.
-	if err := badger.MigrateOversizedWAL(ts.shardCfg(name, false, cold)); err != nil {
+	// in-memory shards. It flushes at the probe's size (the hot size: a
+	// read-only open keeps it) what the probe cannot replay; a leftover WAL
+	// the probe can replay but a smaller writable open (WarmMemTableSize, a
+	// cold shard's 8 MiB) cannot is flushed by that open's own migration in
+	// badger.New, at no less than WALReplayMemTableSize (P0 WALREPLAY). The
+	// probe counts an unclean WAL (walTruncations) only when the file is
+	// longer than its content: an uncut WAL or one with a zero tail counts; a
+	// WAL cut exactly to its content passes the probe and counts 0.
+	probeCfg := ts.shardCfg(name, true, true)
+	migrateCfg := ts.shardOpenCfg(name, false, cold, grow)
+	migrateCfg.MemTableSize = probeCfg.MemTableSize
+	if err := badger.MigrateOversizedWAL(migrateCfg); err != nil {
 		return nil, fmt.Errorf("graph: WAL migration %s: %w", name, err)
 	}
 	// The probe is closed right away: open it with the discard option so it
 	// skips the relationship temporal rebuild (read-only, it leaves the
 	// persisted definitions for the real open).
-	probe, err := ts.newShardStore(ts.shardCfg(name, true, true))
+	probe, err := ts.newShardStore(probeCfg)
 	if err == nil {
 		if err := probe.Close(); err != nil {
 			return nil, fmt.Errorf("graph: recovery probe close %s: %w", name, err)
 		}
-		return ts.newShardStore(ts.shardCfg(name, false, cold))
+		return ts.newShardStore(ts.shardOpenCfg(name, false, cold, grow))
 	}
 	if !isTruncateNeeded(err) {
 		return nil, err
 	}
 	slog.Warn("graph: recovering corrupt WAL by truncation", "shard", name)
 	ts.walTruncations.Add(1)
-	return ts.newShardStore(ts.shardCfg(name, false, cold))
+	return ts.newShardStore(ts.shardOpenCfg(name, false, cold, grow))
 }
 
 // isTruncateNeeded checks whether the error indicates a Badger WAL truncation

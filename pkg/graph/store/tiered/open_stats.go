@@ -21,7 +21,10 @@ type OpenStats struct {
 	// PromoteColdShardsAtOpen).
 	Demoted, Promoted int
 	// WALTruncations counts shards whose unclean WAL was cut to open them,
-	// at open and on every later cold open since.
+	// at open and on every later cold open since. The probe counts an
+	// unclean WAL only when the file is longer than its content: an uncut WAL
+	// or one with a zero tail counts; a WAL cut exactly to its content passes
+	// the probe and counts 0.
 	WALTruncations int64
 }
 
