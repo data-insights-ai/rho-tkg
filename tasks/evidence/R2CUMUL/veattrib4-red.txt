@@ -1,0 +1,27 @@
+R2-2 VEATTRIB fix round 3 (design-veattrib3.txt), red phase: N1..N8 on 07b54e56 plus the counters only
+(validEndAttribHolds per RLock, validEndValueFetches / validEndFetchedBytes at VE add, committedTemporal, TM committed
+loop; validEndAttribHoldMax field present, unused). go test -short, -run on the test names.
+
+Public (pkg/graph), unchanged test:
+  TestReadBudgetPublicValidEndFirstCall/badger, /tiered: ByLabelsFrom: the unlimited first call counted 16 candidates;
+    want 14 (the ever-members it read, then the 6 listed)
+
+store/badger (modes ram, disk; flushed and pending; one line per kind, every subtest red with the same figures):
+  N1 TestValidEndAttribution_OwnFormerMembersCountOnce  FAIL  control 10 (ram) / 16 (disk) candidates, 2 lookups, 1 hold;
+     want 8 / 14 (listing 0 / 6, 8 entities, label 9's 2 former members not again)
+  N2 TestValidEndAttribution_WalksFormerSetsNotEntities FAIL  8 lookups, 60 (ram) / 110 (disk) candidates; want 58 / 108
+     (listing 0 / 50, 52 entities, 6 rejected former entries)
+  N3 TestValidEndAttribution_EntitySide                 FAIL  steady: 6 candidates, 3 lookups; want 3, 3 + 0.
+     first: 100 (ram) / 150 (disk) candidates, 50 lookups; want 50 / 100
+  N4 TestValidEndAttribution_HoldsBounded               FAIL  empty: 4 holds; want 1. default hold: 2 holds, entity 100/150
+     counted; want 1 hold, 50/100
+  N5 TestValidEndRows_ChargeEachValueBeforeItsFetch     FAIL  nodes k=6: limit 317, 6 values fetched; want 5.
+     rels k=6: limit 449, 6 fetched; want 5 (TM committed history row fetched before its charge); k=1..5, 7 pass
+  N6 TestValidEndOverlay_CommittedRowTypeOnCacheMiss    PASS  (coverage of 07b54e56's rel arm; red under the mutation,
+     veattrib4-green.txt)
+  N7 TestValidEndAttribution_RelFormerWalkCounts        FAIL  control 58 candidates, 5 lookups, 75 held; want 55
+
+store/tiered:
+  N8 TestValidEndFirstCall_FormerMembersAcrossShards    FAIL  control 20 candidates; want 18 (per shard 3 listed,
+     4 entities, A's 2 rejected)
+  TestValidEndFirstCall_LabelAcrossShardsExceedsTogether (limit moved 8 -> 11, one under the control 12)  PASS

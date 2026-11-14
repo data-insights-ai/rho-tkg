@@ -17,7 +17,8 @@ import (
 
 // vaFormerFixture writes labels 1..3 of 20 nodes each, plus 2 nodes per label
 // that carried it with label 8 and lost it (former members), and label 9 of
-// 50 nodes (IDs 9001..9050), none former.
+// 50 nodes (IDs 9001..9050) plus 2 former members (9051, 9052, the same way);
+// it returns label 9's 52 ever-members.
 func vaFormerFixture(t *testing.T, bs *Store) []int64 {
 	t.Helper()
 	must := func(err error) {
@@ -42,20 +43,30 @@ func vaFormerFixture(t *testing.T, bs *Store) []int64 {
 		must(bs.PutNode(vaNode(types.NodeID(i), 0, 10, 0, 9)))
 		b = append(b, i)
 	}
+	for i := types.NodeID(9051); i <= 9052; i++ {
+		prev := vaNode(i, 0, 10, 0, 9, 8)
+		must(bs.PutNode(prev))
+		must(bs.RemoveNodeLabelTokenWithHistory(i, 9, vaNode(i, 1, 20, 0, 8), 0, prev))
+		b = append(b, int64(i))
+	}
 	return b
 }
 
-// TestValidEndAttribution_WalksFormerSetsNotEntities (review finding 1): the
-// attribution asked every tracked label about every entity read, a RAM lookup
-// each under idxMu.RLock, uncounted: label 9's first call (50 entities) after
-// labels 1..3 made 4 x 50 = 200 lookups. It now walks, per tracked label, the
-// smaller of its former set and the entities read, and counts that walk as
-// candidates before it is made (examined entries): 2 + 2 + 2 + 0 = 6 lookups and
-// 6 candidates, whatever the number of entities. The native counter is the
-// pass's own lookups (validEndAttribLookups), which the meter does not keep. The
-// unlimited control answers label 9's 50 nodes and counts its listing (50 on
-// disk, none from a RAM map), the 50 entities and the walk; one candidate less
-// is refused with the typed error before the last label's walk.
+// TestValidEndAttribution_WalksFormerSetsNotEntities (review finding 1, fix
+// round 3 D1): the attribution asked every tracked label about every entity
+// read, a RAM lookup each under idxMu.RLock, uncounted: label 9's first call
+// (50 entities) after labels 1..3 made 4 x 50 = 200 lookups. It now walks, per
+// tracked label in token order, the smaller of its former set and the entities
+// read: 2 + 2 + 2 + 2 = 8 lookups, whatever the number of entities. An entity of
+// the call is counted once, at its read; a former-set entry that is not one (the
+// 2 of each of labels 1..3) counts one candidate as it is visited: 6. Label 9's
+// own former members (9051, 9052) are entities of the call: not counted again.
+// The native counter is the pass's own lookups (validEndAttribLookups), which
+// the meter does not keep. The unlimited control answers label 9's 52
+// ever-members and counts its listing (50 on disk, none from a RAM map), the 52
+// entities and the 6 rejected entries; one candidate less is refused with the
+// typed error at label 3's second entry, the 6th lookup: label 9's walk is not
+// made, and the refusal counts the control's figure.
 func TestValidEndAttribution_WalksFormerSetsNotEntities(t *testing.T) {
 	t.Parallel()
 	for _, m := range []vaMode{{name: "ram"}, {name: "disk", disk: true}} {
@@ -83,19 +94,24 @@ func TestValidEndAttribution_WalksFormerSetsNotEntities(t *testing.T) {
 				if m.disk {
 					listing = 50
 				}
-				const walk = 2 + 2 + 2 + 0
-				if c := control.Work().Candidates; lookups != walk || c != listing+50+walk {
-					t.Fatalf("label 9's first call made %d attribution lookups and counted %d candidates; want %d and %d (%d listed, 50 entities, the walk %d)", lookups, c, walk, listing+50+walk, listing, walk)
+				const walk, rejected = 2 + 2 + 2 + 2, 2 + 2 + 2
+				count := listing + 52 + rejected
+				if c := control.Work().Candidates; lookups != walk || c != count {
+					t.Fatalf("label 9's first call made %d attribution lookups and counted %d candidates; want %d and %d (%d listed, 52 entities, %d rejected former entries)", lookups, c, walk, count, listing, rejected)
 				}
 
 				bs = open()
 				before = bs.validEndAttribLookups.Load()
-				_, got, err = vaCall(bs, 9, storecontract.ReadBudget{Candidates: listing + 50 + walk - 1})
-				if !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 {
-					t.Fatalf("one under the control = %d candidates, %v; want ErrReadBudget", len(got), err)
+				_, nodesBefore := bs.ValidEndStats()
+				refused, got, err := vaCall(bs, 9, storecontract.ReadBudget{Candidates: count - 1})
+				if !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 || refused.Work().Candidates != count {
+					t.Fatalf("one under the control = %d candidates, %v, %d counted; want ErrReadBudget counting %d", len(got), err, refused.Work().Candidates, count)
 				}
-				if l := bs.validEndAttribLookups.Load() - before; l >= walk {
-					t.Fatalf("the refused call made %d lookups; want fewer than %d (refused before the walk that passes the limit)", l, walk)
+				if l := bs.validEndAttribLookups.Load() - before; l != rejected {
+					t.Fatalf("the refused call made %d lookups; want %d (refused at the last rejected entry, label 9's walk not made)", l, rejected)
+				}
+				if _, nodes := bs.ValidEndStats(); nodes.Entities != nodesBefore.Entities {
+					t.Fatalf("the refused call installed %+v; before it %+v", nodes, nodesBefore)
 				}
 			})
 		}

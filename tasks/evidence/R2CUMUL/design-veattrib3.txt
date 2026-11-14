@@ -1,0 +1,118 @@
+R2-2 VEATTRIB, fix round 3: design (input of the Opus build; spec frozen). Base 07b54e56. Read-only review of
+pkg/graph/store/badger/badgerstore_valid_end.go (VE), badgerstore_temporalmeta.go (TM), internal/index/valid_end.go.
+VERIFIED AGAINST SOURCE (all eight hold)
+D1 VE:402-406 charges min(f.n, len(out)) for every tracked token, the queried one included; its former members are
+   in out and were charged at VE:334 / :371. TestReadBudgetPublicValidEndFirstCall: 16, want 14, badger and tiered.
+   Memory attributes from its rows (ValidEndRowOfNode on history rows), makes no lookup: 14.
+D2 VE:419-423 runs only when f.n > len(out); every fixture has former sets of 0 or 2 against 3..50 entities.
+D3 TM:103 Item.Value runs before metaOf (TM:68) charges. VE:315 and VE:532 charge first; no test pins either.
+D4 VE:540-543: no test has a relationship on the overlay path with a cache miss.
+D6 VE:381-384 runs on every call with an unknown entity; one RLock per tracked token. D5 text below.
+D7 the tiered test refuses at 8 (control 12); attrib2_test.go:97 fails only on `>= walk`. D8 no rel count test.
+DECISION 1 (D1): ONE FIGURE, 14
+Rule: an entity this call read is charged once, at its read (VE:334, :371). An attribution lookup on such an entity is
+the same entity examined, not a second candidate: 0. A former-set entry the walk produces that is NOT an entity read is
+examined and rejected and has no other owner: 1 candidate, charged as the walk produces it, before the next step (the
+shape of ValidEndIndex.TrackUnder: skip what the call's own map already holds, count the rest, refuse at the one that
+passes). Public test stays 14; the memory store's count does not change. Remaining store difference, stated in api.md:
+badger adds 1 per rejected former entry of another tracked token (memory examines none), 58 against 52 in N2.
+Code (attributeFormer, validEndRowsBulk):
+ a. `toks := ix.TrackedTokens(); slices.Sort(toks)` (deterministic order; refusal tests need it).
+ b. Per token, f := former(tok). Former side when f.n < len(out) && f.n <= hold (hold = 4096): for id in f.each:
+    lookups++; if rows, ok := out[id]; ok { append tok } else if err := t.Candidates(1); err != nil { return err }.
+    Else entity side: for id, rows in out: lookups++; if f.has(id) { append tok }. No charge (every id is charged).
+    A tie (f.n == len(out)) takes the entity side. The pre-walk t.Candidates(walk) at VE:403 is removed.
+ c. validEndAttribLookups counts each probe before it is made (both sides).
+DECISION 2 (D6): THE PER-CALL WALK IS ACCEPTABLE, THE LOCK IS NOT
+Work per call: at most T x E probes (T tracked tokens, E entities this call reads), charged part at most
+sum over tokens of min(f, E-1, 4096). No term in store size, none in a former set's size. Accepted under the goal.
+Lock: one idxMu.RLock for the pass, released and retaken after at most `hold` probes (Store field
+validEndAttribHoldMax, 0 = 4096, tests set it). Former side: retake before the walk when probes so far + f.n > hold,
+then fetch f again and choose the side again; never unlock inside a walk of the sidecar map. Entity side: unlock and
+retake every `hold` probes, fetch f = former(tok) again after each retake. A pass over empty sets takes the lock once.
+Counter validEndAttribHolds (RLock acquisitions). The writer argument is unchanged: a write between holds marks its
+entity unknown under a fresh seq, so ResolveUnknownBulkUnder does not install its fold.
+TestValidEndFirstCall_CostIgnoresOtherLabels: keep; comment: holds for the listing and the reads, another tracked
+label adds at most its rejected former entries (N2).
+DECISION 3 (D3): CHARGE BEFORE THE FETCH, IN THE HELPER THAT FETCHES
+TM historyTemporalMetaByPrefixTallied: in the committed loop, `t.DecodedHistory(int(it.Item().ValueSize()))` before
+it.Item().Value; metaOf no longer charges; a buffered row (already in RAM) is charged DecodedHistory(len(raw)) before
+historyTemporalMetaOf. Only validEndOverlayRows passes a tally (one caller). VE:315 and VE:532 stay as they are.
+Two counters the meter does not keep: validEndValueFetches (++ immediately before each Item.Value at VE:318, VE:535,
+TM:103) and validEndFetchedBytes (+= len(raw) inside each of those callbacks).
+TESTS (red first on 07b54e56 plus the counters only; each: exact unlimited control, native counter, refusal at
+control-1 with the typed error, nothing installed). N1..N7 in pkg/graph/store/badger, modes ram and disk.
+N1 D1 TestValidEndAttribution_OwnFormerMembersCountOnce. Label 9: 6 current, 2 former (deleted, as the public test).
+   First call: candidates = listing (0 ram, 6 disk) + 8, lookups 2, holds 1 (now: + 2). Limit control-1: refused,
+   lookups 0. TestReadBudgetPublicValidEndFirstCall stays at 14 (memory, badger, tiered), untouched.
+N2 D1+D7 TestValidEndAttribution_WalksFormerSetsNotEntities (changed). vaFormerFixture gains 9051, 9052 (carried 9
+   with 8, lost 9). Control: lookups 2+2+2+2 = 8, candidates = listing 50 + 52 + 6. Limit control-1: ErrReadBudget,
+   work counts the control's figure, lookups == 6 exactly (label 9's own walk not made; replaces `< walk`).
+N3 D2 TestValidEndAttribution_EntitySide. (a) steady state: labels 3 (20 former members) and 9 tracked; 3 of label
+   3's former members made unknown (assert Stats().Unknown == 3). Call label 3: candidates 3, lookups 3 for token 3
+   plus token 9's as the fixture gives them (derivation in the test), the 3 listed for label 3, Unknown 0. Limit 2:
+   refused, lookups 0, row decodes 0, Unknown 3. (b) first call: label 3 with 60 former members, label 9 with 50
+   entities: lookups 50, candidates = listing + 50. Mutations red: entity side a no-op; entity side charged.
+N4 D6 TestValidEndAttribution_HoldsBounded, validEndAttribHoldMax = 4. (a) 4 tracked labels, empty former sets, 5
+   entities: holds 1. (b) N3b: the exact hold count the code defines for 50 probes, answers equal the control's.
+   (c) former set of 5 against 50 entities: entity side (5 > hold), lookups 50, no charge.
+N5 D3 TestValidEndRows_ChargeEachValueBeforeItsFetch, node and relationship. Flushed: entities 1, 2 (a history row
+   and a current row each, bulk path); entity 3: current and one history row flushed, cache entry evicted, one more
+   history version buffered (overlay path). Charge order 1h 1c 2h 2c 3c 3h 3h'. Control: DecodedBytes == fetched
+   bytes + len(buffered value), fetches 6, HistoryExamined 4, committed reads 1. Sizes from the stored-size door
+   (badgerstore_stored_sizes.go). For k in 1..7, fresh store, DecodedBytes limit = sum of the first k sizes - 1:
+   ErrReadBudget, fetches == k-1 (k = 7: fetches 6, historyMetaDecodes one under the control). Mutations red: the
+   charge after the fetch at VE:315, VE:532, TM:103; either charge deleted.
+N6 D4 TestValidEndOverlay_CommittedRowTypeOnCacheMiss. Rel 1 (type 9) flushed, evicted from relCache, one history
+   version buffered (a current member is not in relTypeTxMembers: only the row's type lists it); rel 2 on the bulk
+   path. RelValidEndCandidatesMetered(9) = [1 2], committed reads 1, Entities 2. Mutation red: the type dropped.
+N7 D8 TestValidEndAttribution_RelFormerWalkCounts. Type 1: 20 rels, 2 deleted; type 9: 50 rels, 3 deleted. Type 1
+   first. Type 9's first call: 53 entities, lookups 2 + 3, candidates 55, rels.Entities 75. Limit 54: refused,
+   lookups 2. Mutation red: relFormerLocked returns an empty set (the 3 deleted rels drop out).
+N8 D7 pkg/graph/store/tiered, TestValidEndFirstCall_FormerMembersAcrossShards. Per shard: label B 3 current and 1
+   former; label A (lower token, tracked first) 2 former members that never carried B. B's first call per shard:
+   listing 3, entities 4, A's 2 rejected = 9 (fits 17); control 18, lookups 3 per shard. Limit 17: ErrReadBudget,
+   no candidates, hot shard lookups 2 and Entities unchanged.
+   TestValidEndFirstCall_LabelAcrossShardsExceedsTogether: the refusal moves from 8 to 11 (control 12).
+A fixture whose native figures differ: the test states the control's with the derivation. If 14 or decision 1's
+rule cannot hold, stop and report.
+DOCS (D5), for the docs keeper
+api.md:104 row, cells in order. Candidates: the two it names now, `TestReadBudgetPublicValidEndFirstCall`,
+ N1, N2, N3, N7 (`store/badger`), N8 (`store/tiered`). BufferBytes: —.
+ DecodedBytes: `TestR2Scans_ValidEndFirstCallMetered`, N5. HistoryExamined: the two it names now, N5. ShardOpens and
+ Segments: unchanged. (N1..N8 written out as test names.)
+api.md:123: replace from "with `LabelIndexOnDisk` the track listing" to "not only this call's)" by:
+ "with `LabelIndexOnDisk` the track listing is the one charge of a label's walk. Each entity read is told which
+ tracked labels or types it carries (since R2-2 VEATTRIB): the current ones come off its current row in the same
+ decode, the former ones from the RAM ever-member sidecar, walked per tracked token on the smaller side, the token's
+ former set or the entities read, with no badger read. An entity read is counted once, at its read; a former-set
+ entry the walk visits that is not an entity of this call counts one more `Candidates` as it is visited, so a call
+ costs at most one candidate per former member of each tracked token beyond its entities (label 9, 52 entities,
+ after three labels with 2 former members each: 6 more), on RAM label maps too; the memory store attributes from its
+ rows and counts none. This holds for every call that reads an unknown entity, not only the first, and the tracked
+ tokens are every token tracked since the open. The walk holds the index lock for at most 4096 lookups at a time.
+ `DecodedBytes` of the valid-end read on badger and tiered is the stored size badger reports for each row
+ (`Item.ValueSize`: exact for an inline value, approximate for a value-log one), charged before the value is fetched,
+ on the bulk path and for an entity with buffered writes alike)"
+CHANGELOG facts (R2-2 entry, lines 431-443, rewritten; no tokenCarrier, no probe per entity and label):
+ - current tokens from the current row's decode (nodes: labels; relationships: type); former from the sidecar.
+ - the walk: smaller side per tracked token; lookups 200 -> 8 in N2's fixture; lock holds of 4096 lookups.
+ - counts: an entity once; + 1 per rejected former entry; N2: 50 + 52 + 6 on disk, 52 + 6 with RAM label maps (RAM
+   label maps do change; "unchanged" was false); the queried label's own former members are not charged again
+   (public first call 14 on memory, badger, tiered).
+ - DecodedBytes is Item.ValueSize, charged before the fetch at all three fetch sites.
+ - a refusal at the enlistment leaves the token untracked; a refusal in the walk installs nothing.
+ - tests N1..N8 by name; counters validEndAttribLookups, validEndAttribHolds, validEndValueFetches,
+   validEndFetchedBytes; evidence veattrib4-red.txt, veattrib4-green.txt.
+Code comments to correct: VE:256-264 and VE:387-393 (the count), VE:444-449 and TM:58-62 (before the fetch).
+COMMANDS THE BUILDER KEEPS GREEN (in this order; from `make old` on after every change of a count)
+ make                                                        (menu)
+ make test-one PKG=./pkg/graph/store/badger/ RUN='ValidEnd'  (red first, then green; N1..N7)
+ make test-one PKG=./pkg/graph/store/tiered/ RUN='ValidEnd'  (N8); the same for ./pkg/graph/store/memory/
+ make test-one PKG=<each of> ./pkg/graph/internal/index/ ./pkg/graph/internal/storeutil/ ./pkg/graph/store/badger/
+     ./pkg/graph/store/tiered/ ./pkg/graph/internal/core/    (whole package, no RUN)
+ make test-one PKG=./pkg/graph/                              (= go test -short ./pkg/graph/; the public tests, 14)
+ go test -race -short -run 'ValidEnd' ./pkg/graph/store/badger/ ./pkg/graph/store/tiered/
+ make old; make test-one PKG=./internal/docscheck/; make check   (build, lint, go test -short ./...: every leg green)
+Evidence: veattrib4-red.txt (N1..N8 on 07b54e56 plus the counters) and veattrib4-green.txt (figures, the mutations
+run by hand and reverted, the results of this list). No new .md file.

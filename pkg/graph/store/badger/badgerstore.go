@@ -886,6 +886,15 @@ type Store struct {
 	// validEndCommittedReads counts the committed current rows the overlay
 	// path reads on a cache miss (committedTemporal; tests).
 	validEndCommittedReads atomic.Int64
+	// validEndAttribHolds counts the idxMu.RLock acquisitions of the
+	// attribution pass; validEndValueFetches the row values the valid-end read
+	// fetches from badger (Item.Value) and validEndFetchedBytes their bytes
+	// (tests: native counts beside the meter). validEndAttribHoldMax is the
+	// most lookups one hold makes (0: 4096; tests lower it).
+	validEndAttribHolds   atomic.Int64
+	validEndValueFetches  atomic.Int64
+	validEndFetchedBytes  atomic.Int64
+	validEndAttribHoldMax int
 	// nodeRowPointReads counts the node rows among them read by a read
 	// transaction and point Get of their own (NodeRowPointReadsForTest,
 	// LISTREAD: a page reads through one forward scan).

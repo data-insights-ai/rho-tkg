@@ -322,9 +322,10 @@ func TestValidEndAttribution_Matrix_Tiered(t *testing.T) {
 // call counts its listing (3) and its entities (3): 6 fits a budget of 8, the
 // two together (12) do not. The unlimited control answers the 6 nodes with 12
 // candidates, 6 index entries visited and 6 rows decoded; a budget of 12
-// answers the same; a budget of 8 is refused with the typed error, returns no
-// candidate, and the hot shard (read after the reference shard) decodes no row
-// and installs nothing. Not parallel: the visit counter is the process's.
+// answers the same; a budget of 11 (one under the control) is refused with the
+// typed error, returns no candidate, and the hot shard (read after the
+// reference shard) decodes no row and installs nothing. Not parallel: the
+// visit counter is the process's.
 func TestValidEndFirstCall_LabelAcrossShardsExceedsTogether(t *testing.T) {
 	open := func() (*Store, uint16, []int64) {
 		ts, toks := vaTiered(t, []string{"X1"}, "X1", "B")
@@ -370,10 +371,96 @@ func TestValidEndFirstCall_LabelAcrossShardsExceedsTogether(t *testing.T) {
 	ts, b, _ = open()
 	hot := vaShards(t, ts)[1]
 	_, before := hot.ValidEndStats()
-	if _, got, err := vaCall(ts, b, storecontract.ReadBudget{Candidates: 8}); !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 {
-		t.Fatalf("under 8 = %v, %v; want ErrReadBudget and no candidates", got, err)
+	if _, got, err := vaCall(ts, b, storecontract.ReadBudget{Candidates: 11}); !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 {
+		t.Fatalf("under 11 = %v, %v; want ErrReadBudget and no candidates", got, err)
 	}
 	if _, after := hot.ValidEndStats(); hot.ValidEndRowDecodesForTest() != 0 || after.Entities != before.Entities || after.Unknown != before.Unknown {
 		t.Fatalf("the hot shard decoded %d rows and holds %+v after the refusal; want none and %+v", hot.ValidEndRowDecodesForTest(), after, before)
+	}
+}
+
+// TestValidEndFirstCall_FormerMembersAcrossShards (R2-2 VEATTRIB fix round 3,
+// D7): per shard, label B has 3 current members and 1 former one (deleted), and
+// label A, a lower token tracked first, 2 former members (deleted) that never
+// carried B; on the reference shard X1 is their primary label. B's first call
+// per shard counts its listing (3) and its entities (4), and the attribution
+// walks A's former set (2, no entity of the call: 2 rejected entries) and B's
+// (1, read: none): 9 candidates and 3 lookups (the native counter) per shard,
+// 18 over both. Each shard fits 17; the two do not: under 17 the call is refused
+// with the typed error and returns no candidate; the hot shard (read second)
+// makes 2 lookups (refused at A's second entry) and installs nothing.
+func TestValidEndFirstCall_FormerMembersAcrossShards(t *testing.T) {
+	t.Parallel()
+	open := func() (*Store, uint16, []int64) {
+		ts, toks := vaTiered(t, []string{"X1"}, "A", "X1", "B")
+		a, x1, b := toks[0], toks[1], toks[2]
+		gen := tieredNodeGen(t)
+		var want []int64
+		put := func(deleted bool, labels ...uint16) {
+			t.Helper()
+			id := types.NodeID(gen.Generate())
+			if err := ts.PutNode(vaNode(id, 0, 10, 0, labels...)); err != nil {
+				t.Fatal(err)
+			}
+			if deleted {
+				if err := ts.DeleteNodeWithHistory(id, 0, vaNode(id, 0, 10, 30, labels...), nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if slices.Contains(labels, b) {
+				want = append(want, int64(id))
+			}
+		}
+		for _, ref := range []bool{true, false} {
+			with := func(labels ...uint16) []uint16 {
+				if ref {
+					return append([]uint16{x1}, labels...)
+				}
+				return labels
+			}
+			for i := 0; i < 3; i++ {
+				put(false, with(b)...)
+			}
+			put(true, with(b)...)
+			put(true, with(a)...)
+			put(true, with(a)...)
+		}
+		if err := ts.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		if _, got, err := vaCall(ts, a, storecontract.ReadBudget{}); err != nil || len(got) != 4 {
+			t.Fatalf("A = %v, %v; want its 4 former members", got, err)
+		}
+		slices.Sort(want)
+		return ts, b, want
+	}
+	lookups := func(shards []*BadgerStore) (n []int64) {
+		for _, s := range shards {
+			n = append(n, s.ValidEndAttribLookupsForTest())
+		}
+		return n
+	}
+	ts, b, want := open()
+	shards := vaShards(t, ts)
+	l0 := lookups(shards)
+	m, got, err := vaCall(ts, b, storecontract.ReadBudget{})
+	l1 := lookups(shards)
+	if err != nil || !slices.Equal(got, want) || m.Work().Candidates != 18 {
+		t.Fatalf("control = %v, %v, %d candidates; want %v, 18 (per shard 3 listed, 4 entities, A's 2 rejected)", got, err, m.Work().Candidates, want)
+	}
+	for i := range shards {
+		if d := l1[i] - l0[i]; d != 3 {
+			t.Fatalf("shard %d made %d lookups; want 3 (A's 2, B's 1)", i, d)
+		}
+	}
+	ts, b, _ = open()
+	hot := vaShards(t, ts)[1]
+	_, before := hot.ValidEndStats()
+	h0 := hot.ValidEndAttribLookupsForTest()
+	if _, got, err := vaCall(ts, b, storecontract.ReadBudget{Candidates: 17}); !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 {
+		t.Fatalf("under 17 = %v, %v; want ErrReadBudget and no candidates", got, err)
+	}
+	if _, after := hot.ValidEndStats(); hot.ValidEndAttribLookupsForTest()-h0 != 2 || after.Entities != before.Entities {
+		t.Fatalf("the hot shard made %d lookups and holds %+v after the refusal; want 2 and %+v", hot.ValidEndAttribLookupsForTest()-h0, after, before)
 	}
 }

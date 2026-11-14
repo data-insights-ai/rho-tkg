@@ -168,7 +168,10 @@ type vaFigures struct {
 // row per entity (3 when flushed; a buffered entity is read from the cache).
 // Before, with the label index on disk, each tracked label added a probe per
 // entity: +3 candidates and +3 visits per label. The unlimited control answers
-// the three nodes. Not parallel: the visit counter is the process's.
+// the three nodes. This holds for the listing and the reads; another tracked
+// label with former members adds at most its rejected former entries
+// (TestValidEndAttribution_WalksFormerSetsNotEntities); the labels here have
+// none. Not parallel: the visit counter is the process's.
 func TestValidEndFirstCall_CostIgnoresOtherLabels(t *testing.T) {
 	const each = 200
 	want := []int64{1001, 1002, 1003}

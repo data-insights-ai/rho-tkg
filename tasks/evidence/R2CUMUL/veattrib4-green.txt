@@ -1,0 +1,43 @@
+R2-2 VEATTRIB fix round 3 (design-veattrib3.txt), green phase. Code: D1 (attribution charges only a rejected former
+entry, as visited; tokens in sorted order; a tie takes the entity side), D6 (one idxMu.RLock per pass, retaken after at
+most validEndAttribHoldMax lookups, 0 = 4096), D3 (TM committed history charged DecodedHistory(ValueSize) before
+Item.Value, a buffered row before its decode), D7 comments.
+
+Runs made before René's order "no tests" (14 Nov), all green:
+  go test -short ./pkg/graph/store/badger/ -run ValidEnd        ok
+  go test -short ./pkg/graph/store/tiered/ -run ValidEnd        ok
+  go test -short ./pkg/graph/ -run TestReadBudgetPublic         ok (TestReadBudgetPublicValidEndFirstCall: 14 on memory,
+                                                                badger, tiered)
+Not run (stopped by the order): whole ./pkg/graph/, ./pkg/graph/store/... ./pkg/graph/internal/..., -race, make old,
+docscheck. go build ./... green.
+
+Figures (controls):
+  N1 label 9, 6 current + 2 former: candidates 8 (ram) / 14 (disk), lookups 2, holds 1; control-1 refused at the
+     enlistment, 0 lookups, nothing installed.
+  N2 labels 1..3 (2 former each), label 9 52 ever-members: lookups 8 (was 200 before 07b54e56), candidates 58 (ram) /
+     108 (disk); control-1 refused at label 3's 2nd entry, lookups 6, Work counts 58 / 108.
+  N3 steady: 3 candidates, 3 lookups, Unknown 3 -> 0; limit 2 refused, 0 lookups, 0 decodes, Unknown 3.
+     first: label 3 60 former vs 50 entities: 50 lookups, candidates 50 / 100.
+  N4 hold 4: empty former sets 1 hold; entity side 50 lookups 13 holds (default: 1); former 5 > hold: entity side,
+     50 lookups, no charge (default: former side, 5 lookups, +5).
+  N5 nodes/rels: DecodedBytes = fetched + buffered row (525 / 371), 6 fetches, HistoryExamined 4, 1 committed read;
+     limit sum(k)-1 refuses with k-1 fetches, k = 1..7.
+  N6 rel 1 overlay path on a cache miss: [1 2], 1 committed read, 2 entities.
+  N7 type 9 53 rels after type 1: lookups 5, candidates 55, 75 held; limit 54 refused, lookups 2.
+  N8 tiered: control 18, 3 lookups per shard; limit 17 refused, hot shard 2 lookups, Entities unchanged.
+  TestValidEndFirstCall_LabelAcrossShardsExceedsTogether refuses at 11 (control 12).
+
+Mutations, run by hand and reverted (files compared byte-equal afterwards), each RED:
+  entity-side-noop             N3 (label 3 = 0 candidates; want 60)
+  entity-side-charged          N3 (6 / 100 candidates; want 3 / 50)
+  own-former-charged           N1 (16 / 10; want 14 / 8), N2, N7
+  no-retake                    N4 (1 hold; want 13)
+  add-charge-after-fetch       N5 k=1 (1 fetch; want 0)
+  add-charge-deleted           N5 control (DecodedBytes 225 / 159; want 525 / 371)
+  committed-charge-after-fetch N5 k=5 (5 fetches; want 4)
+  committed-charge-deleted     N5 control
+  history-charge-after-fetch   N5 k=6 (6 fetches; want 5)
+  history-charge-deleted       N5 control
+  buffered-charge-deleted      N5 control
+  rel-type-dropped             N6 (type 9 = [2]; want [1 2])
+  rel-former-empty             N7 (type 1 = 20; want 22)
