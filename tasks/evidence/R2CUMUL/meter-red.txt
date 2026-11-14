@@ -1,0 +1,124 @@
+R2 meter round, S0: the red tests at 48d6c5a4 (INFO log lines and RUN lines removed; H1 and P1 use the new API, so they do not compile until S1 and are not run here). 14 Nov 2026.
+
+## store: H1, P1 (go test -run 'TestReadTally' ./pkg/graph/store/)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.004s
+
+## index: V5
+--- FAIL: TestTrackUnder_LiveRoom (0.00s)
+    valid_end_live_room_test.go:54: Candidates 10, 5 charged by another read after the 3rd yield: tracked true, <nil>; want refused
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.003s
+FAIL
+
+## tiered: O8, D1, D2, B1
+    tieredstore_tx_members_decline_test.go:137: decline (shard 2026-W46 without the index): 0 members, graph: property index not found, work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, 8 entries visited; want ErrIndexNotFound before any walk: nothing counted, 0 visited
+--- FAIL: TestTieredMemberDeclineAsksEveryShardFirst (0.02s)
+    tieredstore_tx_members_decline_test.go:163: control decline: 0 handed, graph: property index not found, 12 yielded, work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want ErrIndexNotFound, none handed, 12 yielded and work {Candidates:12 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:384} kept
+--- FAIL: TestTieredMemberDeclineKeepsItsWork (0.02s)
+    tieredstore_tx_members_decline_test.go:217: unlimited control: A graph: property index not found, B <nil>, 12 yielded, work {Candidates:3 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:48}; want A's decline, B answered, work {Candidates:15 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:432}
+--- FAIL: TestTieredMemberFanoutBesideAnotherRead (0.10s)
+    tieredstore_tx_members_decline_test.go:265: B's Buffer(96) after A's 4 appends under 223: <nil>, meter {Candidates:8 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:320}; want refused
+    tieredstore_tx_members_decline_test.go:275: decline: graph: property index not found, work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want ErrIndexNotFound with 384 bytes kept
+--- FAIL: TestTieredMemberBufferAcrossShards (0.13s)
+    --- FAIL: TestTieredMemberBufferAcrossShards/second_read_inside_the_fan-out (0.00s)
+    --- FAIL: TestTieredMemberBufferAcrossShards/fallback_after_a_decline (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.318s
+FAIL
+
+## core: T2..T6, D3, prune test reshaped
+    read_budget_gather_meter_test.go:120: Candidates 10: 0 answered, 6 copied, work {Candidates:11 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:96}; want the refusal with no callback and nothing copied
+    read_budget_gather_meter_test.go:120: Candidates 10: 0 answered, 6 copied, work {Candidates:11 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:96}; want the refusal with no callback and nothing copied
+    read_budget_gather_meter_test.go:120: Candidates 10: 0 answered, 6 copied, work {Candidates:11 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:384}; want the refusal with no callback and nothing copied
+    read_budget_gather_meter_test.go:120: Candidates 10: 0 answered, 6 copied, work {Candidates:11 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:384}; want the refusal with no callback and nothing copied
+--- FAIL: TestGather_HeldTight (0.66s)
+    --- FAIL: TestGather_HeldTight/badger (0.12s)
+        --- FAIL: TestGather_HeldTight/badger/scan (0.00s)
+        --- FAIL: TestGather_HeldTight/badger/ByLabel (0.00s)
+    --- PASS: TestGather_HeldTight/sharded (0.26s)
+        --- PASS: TestGather_HeldTight/sharded/scan (0.00s)
+        --- PASS: TestGather_HeldTight/sharded/ByLabel (0.00s)
+    --- FAIL: TestGather_HeldTight/tiered (0.28s)
+        --- FAIL: TestGather_HeldTight/tiered/scan (0.00s)
+        --- FAIL: TestGather_HeldTight/tiered/ByLabel (0.00s)
+    --- PASS: TestGather_HeldTight/memory (0.00s)
+        --- PASS: TestGather_HeldTight/memory/scan (0.00s)
+        --- PASS: TestGather_HeldTight/memory/ByLabel (0.00s)
+    read_budget_gather_meter_test.go:175: Candidates 10: 0 segments, 12 copied, work {Candidates:16 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:192}; want the refusal at the second label with 6 copied
+    read_budget_gather_meter_test.go:175: Candidates 10: 0 segments, 12 copied, work {Candidates:16 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:768}; want the refusal at the second label with 6 copied
+    read_budget_gather_meter_test.go:175: Candidates 10: 0 segments, 16 copied, work {Candidates:16 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:256}; want the refusal at the second label with 8 copied
+--- FAIL: TestGather_OneRoomOverLabels (0.53s)
+    --- FAIL: TestGather_OneRoomOverLabels/badger (0.16s)
+    --- FAIL: TestGather_OneRoomOverLabels/tiered (0.37s)
+    --- FAIL: TestGather_OneRoomOverLabels/memory (0.00s)
+    read_budget_gather_meter_test.go:305: unlimited: [n898951546607960064[1794659424054,1794659424077)v0], <nil>, work {Candidates:1 Segments:1 ShardOpens:0 DecodedBytes:276 HistoryExamined:2 BufferBytes:72}; want the stream and 2 candidates (held on two shards, one dropped by the union, one read)
+--- FAIL: TestGather_ShardsExceedTogether (1.64s)
+    --- PASS: TestGather_ShardsExceedTogether/label (0.67s)
+    --- PASS: TestGather_ShardsExceedTogether/type (0.53s)
+    --- FAIL: TestGather_ShardsExceedTogether/former_on_two_shards (0.44s)
+    read_budget_gather_meter_test.go:369: Candidates 10: 0 segments, 6 copied, work {Candidates:11 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:96}; want the refusal with no callback and nothing copied
+    read_budget_gather_meter_test.go:369: Candidates 10: 0 segments, 6 copied, work {Candidates:11 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:384}; want the refusal with no callback and nothing copied
+--- FAIL: TestGather_TypeHeldTight (0.72s)
+    --- FAIL: TestGather_TypeHeldTight/badger (0.13s)
+    --- PASS: TestGather_TypeHeldTight/sharded (0.25s)
+    --- FAIL: TestGather_TypeHeldTight/tiered (0.34s)
+    --- PASS: TestGather_TypeHeldTight/memory (0.00s)
+    read_budget_gather_meter_test.go:436: ByLabel: the control counts 6 candidates
+    read_budget_gather_meter_test.go:439: Candidates 6 (the control's count): [], graph: read budget exceeded: ByLabel at candidates (budget {Candidates:6 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}), work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want the control's answer and count
+    read_budget_gather_meter_test.go:436: page: the control counts 5 candidates
+    read_budget_gather_meter_test.go:439: Candidates 5 (the control's count): [], graph: read budget exceeded: ByLabel at candidates (budget {Candidates:5 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}), work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want the control's answer and count
+    read_budget_gather_meter_test.go:436: scan: the control counts 6 candidates
+    read_budget_gather_meter_test.go:439: Candidates 6 (the control's count): [], graph: read budget exceeded: ForEachNodeEffectiveByLabel at candidates (budget {Candidates:6 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}), work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want the control's answer and count
+    read_budget_gather_meter_test.go:436: ByLabel: the control counts 12 candidates
+    read_budget_gather_meter_test.go:436: page: the control counts 11 candidates
+    read_budget_gather_meter_test.go:436: scan: the control counts 12 candidates
+    read_budget_gather_meter_test.go:436: ByLabel: the control counts 6 candidates
+    read_budget_gather_meter_test.go:439: Candidates 6 (the control's count): [], graph: read budget exceeded: ByLabel at candidates (budget {Candidates:6 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}), work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want the control's answer and count
+    read_budget_gather_meter_test.go:436: page: the control counts 5 candidates
+    read_budget_gather_meter_test.go:439: Candidates 5 (the control's count): [], graph: read budget exceeded: ByLabel at candidates (budget {Candidates:5 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}), work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want the control's answer and count
+    read_budget_gather_meter_test.go:436: scan: the control counts 6 candidates
+    read_budget_gather_meter_test.go:439: Candidates 6 (the control's count): [], graph: read budget exceeded: ForEachNodeEffectiveByLabel at candidates (budget {Candidates:6 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}), work {Candidates:7 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want the control's answer and count
+    read_budget_gather_meter_test.go:436: ByLabel: the control counts 6 candidates
+    read_budget_gather_meter_test.go:439: Candidates 6 (the control's count): [], graph: read budget exceeded: ByLabel at candidates (budget {Candidates:6 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, work {Candidates:12 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}), work {Candidates:12 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want the control's answer and count
+    read_budget_gather_meter_test.go:436: page: the control counts 5 candidates
+    read_budget_gather_meter_test.go:439: Candidates 5 (the control's count): [], graph: read budget exceeded: ByLabel at candidates (budget {Candidates:5 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, work {Candidates:12 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}), work {Candidates:12 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want the control's answer and count
+    read_budget_gather_meter_test.go:436: scan: the control counts 6 candidates
+    read_budget_gather_meter_test.go:439: Candidates 6 (the control's count): [], graph: read budget exceeded: ForEachNodeEffectiveByLabel at candidates (budget {Candidates:6 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, work {Candidates:12 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}), work {Candidates:12 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want the control's answer and count
+--- FAIL: TestGather_BudgetIsTheControlCount (0.71s)
+    --- FAIL: TestGather_BudgetIsTheControlCount/badger (0.13s)
+        --- FAIL: TestGather_BudgetIsTheControlCount/badger/ByLabel (0.00s)
+        --- FAIL: TestGather_BudgetIsTheControlCount/badger/page (0.00s)
+        --- FAIL: TestGather_BudgetIsTheControlCount/badger/scan (0.00s)
+    --- PASS: TestGather_BudgetIsTheControlCount/sharded (0.24s)
+        --- PASS: TestGather_BudgetIsTheControlCount/sharded/ByLabel (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/sharded/page (0.00s)
+        --- PASS: TestGather_BudgetIsTheControlCount/sharded/scan (0.00s)
+    --- FAIL: TestGather_BudgetIsTheControlCount/tiered (0.34s)
+        --- FAIL: TestGather_BudgetIsTheControlCount/tiered/ByLabel (0.00s)
+        --- FAIL: TestGather_BudgetIsTheControlCount/tiered/page (0.00s)
+        --- FAIL: TestGather_BudgetIsTheControlCount/tiered/scan (0.00s)
+    --- FAIL: TestGather_BudgetIsTheControlCount/memory (0.00s)
+        --- FAIL: TestGather_BudgetIsTheControlCount/memory/ByLabel (0.00s)
+        --- FAIL: TestGather_BudgetIsTheControlCount/memory/page (0.00s)
+        --- FAIL: TestGather_BudgetIsTheControlCount/memory/scan (0.00s)
+    read_budget_gather_meter_test.go:567: nodes: control 15 rows, work {Candidates:40 Segments:0 ShardOpens:1 DecodedBytes:0 HistoryExamined:0 BufferBytes:2160}, 60 index entries visited
+    read_budget_gather_meter_test.go:569: nodes control: 15 rows, <nil>, 60 visited, work {Candidates:40 Segments:0 ShardOpens:1 DecodedBytes:0 HistoryExamined:0 BufferBytes:2160}; want 15 rows, the walks' 10 entries visited (nodes, on disk), 50 candidates (10 examined + the fallback's 40)
+    read_budget_gather_meter_test.go:567: rels: control 15 rows, work {Candidates:30 Segments:0 ShardOpens:1 DecodedBytes:2120 HistoryExamined:0 BufferBytes:1800}, 0 index entries visited
+    read_budget_gather_meter_test.go:569: rels control: 15 rows, <nil>, 0 visited, work {Candidates:30 Segments:0 ShardOpens:1 DecodedBytes:2120 HistoryExamined:0 BufferBytes:1800}; want 15 rows, the walks' 10 entries visited (nodes, on disk), 40 candidates (10 examined + the fallback's 30)
+--- FAIL: TestTieredPropertyDeclineThroughTheDoor (0.65s)
+    --- FAIL: TestTieredPropertyDeclineThroughTheDoor/nodes (0.08s)
+    --- FAIL: TestTieredPropertyDeclineThroughTheDoor/rels (0.05s)
+=== NAME  TestByLabelGather_PrunesEachMemberOnce/memory
+    read_budget_prune_once_test.go:92: past 40, unlimited: 44 nodes, <nil>, work {Candidates:44 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:40 BufferBytes:2048}, 84 listed, 84 probed; want 44 nodes, 84 listed, 84 probed, 84 candidates
+=== NAME  TestByLabelGather_PrunesEachMemberOnce/badger
+    read_budget_prune_once_test.go:92: past 40, unlimited: 44 nodes, <nil>, work {Candidates:44 Segments:0 ShardOpens:0 DecodedBytes:10000 HistoryExamined:80 BufferBytes:1984}, 84 listed, 84 probed; want 44 nodes, 84 listed, 84 probed, 84 candidates
+=== NAME  TestByLabelGather_PrunesEachMemberOnce/sharded
+    read_budget_prune_once_test.go:92: past 40, unlimited: 44 nodes, <nil>, work {Candidates:44 Segments:0 ShardOpens:0 DecodedBytes:5000 HistoryExamined:40 BufferBytes:704}, 84 listed, 84 probed; want 44 nodes, 84 listed, 84 probed, 84 candidates
+--- FAIL: TestByLabelGather_PrunesEachMemberOnce (0.00s)
+    --- FAIL: TestByLabelGather_PrunesEachMemberOnce/memory (0.00s)
+    --- FAIL: TestByLabelGather_PrunesEachMemberOnce/badger (0.14s)
+    --- FAIL: TestByLabelGather_PrunesEachMemberOnce/sharded (0.26s)
+    --- PASS: TestByLabelGather_PrunesEachMemberOnce/tiered (0.69s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.669s
+FAIL

@@ -203,6 +203,7 @@ func emitMemoryTxMemberCopy[ID comparable](ms *Store, setOf func() map[ID]types.
 		for id, tx := range set {
 			members = append(members, indexpkg.TxMember[ID]{ID: id, FirstTx: tx})
 		}
+		noteTxMembersCopied(len(members))
 		return nil
 	}
 	err := ms.readOrBuild(func() (bool, error) {
