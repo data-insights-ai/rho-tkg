@@ -331,15 +331,23 @@ func (bs *Store) entityIndexWalkLockedWork(kind byte, prefixes [][]byte, fn func
 	return bs.entityIndexWalkAdmitLocked(kind, prefixes, fn, work, nil)
 }
 
-// entityIndexWalkAdmitLocked is entityIndexWalkLockedWork with a read budget's
+// entityIndexWalkAdmitLocked is entityIndexWalkLockedWork with a candidate
 // admission (R2): admit (nil: none) runs after each live entry the walk hands
 // to fn, disk or buffered, and its error stops the walk there, so a read past
 // its limit has visited the entries up to the one that passed it.
 func (bs *Store) entityIndexWalkAdmitLocked(kind byte, prefixes [][]byte, fn func(key []byte), work *storecontract.PropertyMemberWork, admit func() error) error {
-	return bs.entityIndexWalkCore(kind, prefixes, func(key, _ []byte) { fn(key) }, false, nil, work, admit)
+	return bs.entityIndexWalkCore(kind, prefixes, func(key, _ []byte) { fn(key) }, false, nil, work, admit, nil)
 }
 
-func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, val []byte), values bool, buffered func(key, val []byte), work *storecontract.PropertyMemberWork, admit func() error) error {
+// entityIndexWalkBudgetLocked is entityIndexWalkLockedWork under a member
+// walk's read budget (R2, walkBudget): every entry the walk examines, live or
+// stale or a buffered op, is charged once before it is read, and a refusal stops
+// the walk at the entry that passed the limit. Caller holds idxMu (R or W).
+func (bs *Store) entityIndexWalkBudgetLocked(kind byte, prefixes [][]byte, fn func(key []byte), work *storecontract.PropertyMemberWork, budget *walkBudget) error {
+	return bs.entityIndexWalkCore(kind, prefixes, func(key, _ []byte) { fn(key) }, false, nil, work, nil, budget)
+}
+
+func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, val []byte), values bool, buffered func(key, val []byte), work *storecontract.PropertyMemberWork, admit func() error, budget *walkBudget) error {
 	if len(prefixes) == 0 {
 		return nil
 	}
@@ -351,12 +359,18 @@ func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, 
 		if work != nil {
 			work.OverlayOpsInspected++
 		}
+		if budget.entry() != nil { // a buffered op is an entry examined: charged before it is kept
+			return
+		}
 		var val []byte
 		if values && op.opType == writeOpSet {
 			val = slices.Clone(op.value)
 		}
 		noteMemberOverlay(&ov, k, op, val, work)
 	})
+	if err := budget.refusal(); err != nil {
+		return err
+	}
 	if buffered != nil {
 		for k, val := range ov.sets {
 			if work != nil {
@@ -387,6 +401,9 @@ func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, 
 				if len(key) != len(p)+tail {
 					break // a longer raw value (0x00 0xFF after p): its entries sort after p's
 				}
+				if err := budget.entry(); err != nil { // every entry examined is charged before it is read: live, stale or a repeat
+					return err
+				}
 				if bytes.Equal(key, prev) {
 					continue // an older version of the key just decided
 				}
@@ -407,6 +424,9 @@ func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, 
 						return err
 					}
 				}
+				if err := budget.admit(); err != nil { // a refusal of the fold's buffer
+					return err
+				}
 			}
 		}
 		return nil
@@ -426,6 +446,9 @@ func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, 
 			if err := admit(); err != nil {
 				return err
 			}
+		}
+		if err := budget.admit(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -525,6 +548,12 @@ func (f txMemberFold) add(kind byte) func(key []byte) {
 	}
 }
 
+// foldEntryBytes is what the fold of a member walk is charged per entity (R2):
+// 24 bytes as BufferBytes, the logical estimate of a set entry (an ID, a
+// transaction time and the map's overhead) every read budget uses, before the
+// entity joins the fold.
+const foldEntryBytes = 24
+
 // txMemberBytes is the logical size of one member of the list a fold becomes
 // (indexpkg.TxMember: an ID and its first transaction time, 8 + 8), what the
 // list is charged per member as BufferBytes (R2).
@@ -601,19 +630,18 @@ func (bs *Store) diskTxMembersLocked(kind byte, scope uint16, propertyKey string
 				prefixes = append(prefixes, p)
 			}
 		}
-		add := f.add(kind)
-		collect := func(key []byte) { // a member collected: the first entry of an entity
-			n := len(f)
-			add(key)
-			if len(f) > n {
-				budget.charge()
+		collect := func(key []byte) { // the walk charged the entry; the fold's entry is charged before it grows
+			_, id, tx, ok := storepkg.EntityIndexEntryOf(key, kind)
+			if !ok {
+				return
+			}
+			if prev, seen := f[id]; seen {
+				f[id] = indexpkg.MergeFirstTx(prev, types.Instant(tx))
+			} else if budget.buffer(foldEntryBytes) {
+				f[id] = types.Instant(tx)
 			}
 		}
-		var admit func() error
-		if budget != nil {
-			admit = budget.admit
-		}
-		if err := bs.entityIndexWalkAdmitLocked(kind, prefixes, collect, q.work, admit); err != nil {
+		if err := bs.entityIndexWalkBudgetLocked(kind, prefixes, collect, q.work, budget); err != nil {
 			return nil, err
 		}
 	}

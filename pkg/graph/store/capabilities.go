@@ -548,20 +548,30 @@ type PropertyTxMemberWindow struct {
 // for a budgeted property door when the store offers it; a store that opens
 // no shard and keeps no member list on disk (sharded, memory) need not.
 //
-// The store is the one owner of the cost of the read (R2): it counts, through
-// t, what it examines and what it collects, each before the work, and no layer
+// The store is the one owner of the cost of the read (R2): it charges, through
+// t, what it examines and what it holds, each before the work, and no layer
 // above counts them again (the graph counts only the members of a store without
 // this capability). A member list kept on disk (badger's 0x0C member entries)
-// is folded before the first member is handed on: each member is counted as a
-// candidate when the walk collects it, each entry the walk judges and rejects
-// or steps over as stale when it is met, so the walk stops at the entry that
-// passes the room the meter has left (ReadTally.CandidateRoom) and returns the
+// is folded before the first member is handed on: every entry the walk examines
+// is counted as a candidate once, when it is met and before its value is read
+// (a live entry, a repeat of an entity already collected, an older version, a
+// tombstone, an entry the write buffer overrides, an op of the write buffer),
+// so the walk stops at the entry that passes the room the meter has left
+// (ReadTally.CandidateRoom) without reading it and returns the
 // *ReadBudgetError before fn; the buffers it grows (the write buffer's cloned
-// values, the list the fold becomes) are charged as BufferBytes before they are
-// made. A list kept in RAM charges its snapshot or its window view's walk the
-// same way. The limit holds across the value keys of a call and, on tiered,
-// across the shards of the fan-out under the same t: each shard counts as it
-// collects, an entity on two shards twice.
+// values, the fold's entries, the list the fold becomes) are charged as
+// BufferBytes before they are made. A list kept in RAM charges its snapshot and
+// its window view's walk the same way, and refuses up front the one-time open
+// of a value's window view when the value passes the room (the view is a
+// persistent structure, not a buffer: the first budgeted reader of a value pays
+// that refusal, later readers do not). The limit holds across the value keys of
+// a call and, on tiered, across the shards of the fan-out, which charge a
+// staged tally (ReadTally.Staged) on the one meter and stop at their next
+// charge once one refused: an entity on two shards counts twice, and nothing
+// reaches the meter until every shard has answered, so a read that declines
+// (store.ErrIndexNotFound: a shard without the index) costs nothing and the
+// caller's fallback is not charged twice. The lists the fan-out keeps are
+// charged as BufferBytes too.
 type PropertyTxMemberMeteredCapability interface {
 	ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 	ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error

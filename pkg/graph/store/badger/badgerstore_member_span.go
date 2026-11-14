@@ -279,10 +279,11 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 		return out, nil
 	}
 	// A read budget (R2): nil without one. The walk is the one owner of what it
-	// costs: it charges each entry it rejects or steps over as stale, and each
-	// member it collects (the first accepted entry of an entity), to the tally
-	// at once, so a narrow window over a wide value stops at the room instead
-	// of visiting the value, across value keys and shards.
+	// costs: entityIndexSeekLocked charges every entry it examines (a live one,
+	// an older version, a tombstone, an entry the write buffer overrides, a
+	// buffered op) once, before it reads it, so a narrow window over a wide value
+	// stops at the room instead of visiting the value, across value keys and
+	// shards; the fold's entries are charged as BufferBytes before they join it.
 	budget := newWalkBudget(tally)
 	judge := func(key, val []byte) {
 		_, _, _, id, tx, _, ok := storepkg.EntityIndexTimeEntryOf(key)
@@ -291,14 +292,12 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 		}
 		from, allTo, lateTo, last, ok := storepkg.ParseEntityIndexSpanValue(val)
 		if ok && !indexpkg.RowMeets(types.Instant(from), types.Instant(allTo), types.Instant(lateTo), types.Instant(last), w.start, w.end, w.pin) {
-			budget.charge() // rejected: never handed on, so no one else counts it
 			return
 		}
 		if prev, seen := out[id]; seen {
 			out[id] = indexpkg.MergeFirstTx(prev, types.Instant(tx))
-		} else {
+		} else if budget.buffer(foldEntryBytes) { // charged before the fold grows
 			out[id] = types.Instant(tx)
-			budget.charge() // a member collected
 		}
 	}
 	// The late axis: lateTo > start.
@@ -333,12 +332,13 @@ func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, v
 // version (AllVersions) and counts each loop entry (IteratorSteps, the boundary
 // included), its seek (IteratorSeeks) and each live persisted entry it hands
 // on (DiskEntriesEmitted). budget (nil: none) is a read budget's admission
-// (R2): the buffered values are charged as BufferBytes before they are
-// cloned, each persisted step that is not a live entry (an older version of a
-// key, a deleted or expired entry, one the write buffer overrides) is charged
-// as a candidate judged, and the admission runs after each entry handed to fn
-// or skipped, disk or buffered, its error stopping the walk there. Caller holds
-// idxMu (R or W).
+// (R2): every entry the walk examines is charged as a candidate once, before
+// its value is read or parsed or anything is kept of it, whether it is live,
+// stale (an older version of a key, a deleted or expired entry, one the write
+// buffer overrides) or a repeat of an entity already collected: a buffered op
+// is examined as the buffer is scanned, before its value is cloned (charged as
+// BufferBytes first). A refusal stops the walk at once, so a limit of N has
+// read N entries. Caller holds idxMu (R or W).
 func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte) bool, fn func(key, val []byte), work *storecontract.PropertyMemberWork, budget *walkBudget) error {
 	tail := storepkg.EntityIndexTimeTailLen - 1 // after the axis
 	in := func(k []byte) bool {
@@ -348,6 +348,9 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 	bs.rangePendingPrefixes([][]byte{prefix}, func(k string, op writeOp) {
 		if work != nil {
 			work.OverlayOpsInspected++
+		}
+		if budget.entry() != nil { // examined: charged before anything is kept of it; once refused, no more is taken
+			return
 		}
 		var val []byte
 		if op.opType == writeOpSet && budget.buffer(len(op.value)) { // charged before the clone
@@ -388,19 +391,14 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 			if past != nil && past(key) {
 				break
 			}
+			if err := budget.entry(); err != nil { // every entry examined is charged before it is read
+				return err
+			}
 			if bytes.Equal(key, prev) {
-				budget.charge() // an older version of the key just decided: a step the read paid
-				if err := budget.admit(); err != nil {
-					return err
-				}
-				continue
+				continue // an older version of the key just decided
 			}
 			prev = append(prev[:0], key...)
 			if item.IsDeletedOrExpired() || ov.overrides(key) {
-				budget.charge() // a stale entry, as above
-				if err := budget.admit(); err != nil {
-					return err
-				}
 				continue
 			}
 			if work != nil {
@@ -409,7 +407,7 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 			if err := item.Value(func(val []byte) error { fn(key, val); return nil }); err != nil {
 				return err
 			}
-			if err := budget.admit(); err != nil {
+			if err := budget.admit(); err != nil { // a refusal of the fold's buffer
 				return err
 			}
 		}
@@ -425,7 +423,7 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 		if work != nil {
 			work.OverlaySetsEmitted++
 		}
-		fn([]byte(k), val)
+		fn([]byte(k), val) // the op was charged when the buffer was scanned
 		if err := budget.admit(); err != nil {
 			return err
 		}
@@ -454,16 +452,19 @@ func (bs *Store) memberHeads(rel bool, scope uint16, propertyKey string) [][]byt
 	return heads
 }
 
-// walkBudget is a member walk's read budget (R2, ai-soc review 14 Nov, 3.2):
-// the walk is the one owner of what it costs, and charges the tally at once,
-// before it goes on, for every entry it examines to no use (a window walk's
-// entry whose envelope misses the window, an older version of a key, a
-// tombstone, an entry the write buffer overrides) and for every member it
-// collects into its fold (the first accepted entry of an entity). Nothing above
-// the walk counts those again, so the Candidates limit holds for the whole read,
-// across the value keys of a call and the shards of a fan-out on one meter, and
-// the walk stops at the entry that passes it. Its methods accept a nil budget
-// (none: no tally). Not safe for concurrent use: one walk.
+// walkBudget is a member walk's read budget (R2, ai-soc review 14 Nov, 3.2;
+// Fable review): the walk is the one owner of what it costs, and charges the
+// tally before it does the work. Every entry it examines is one candidate,
+// charged once when it is met and before its value is read or parsed or it is
+// folded: a live entry, a stale one (an older version of a key, a tombstone, an
+// entry the write buffer overrides), a repeat of an entity already collected, a
+// window walk's entry whose envelope misses the window, a buffered op. Its
+// buffers are charged as BufferBytes before they are made (the fold's entries,
+// the buffer's cloned values, the list the fold becomes). Nothing above the walk
+// counts those again, so the Candidates limit holds for the whole read, across
+// the value keys of a call and the shards of a fan-out on one meter, and the
+// walk stops at the entry that passes it, never having read it. Its methods
+// accept a nil budget (none: no tally). Not safe for concurrent use: one walk.
 type walkBudget struct {
 	tally   *storecontract.ReadTally
 	refused error // the first refusal of a charge, which admit hands the walk
@@ -477,11 +478,16 @@ func newWalkBudget(t *storecontract.ReadTally) *walkBudget {
 	return &walkBudget{tally: t}
 }
 
-// charge counts one entry or member as a candidate.
-func (b *walkBudget) charge() {
-	if b != nil && b.refused == nil {
+// entry charges one entry the walk examines as a candidate and returns the
+// refusal that stops the walk, nil while the room lasts.
+func (b *walkBudget) entry() error {
+	if b == nil {
+		return nil
+	}
+	if b.refused == nil {
 		b.refused = b.tally.Candidates(1)
 	}
+	return b.refused
 }
 
 // buffer charges n bytes about to be allocated as BufferBytes and reports whether
@@ -505,5 +511,5 @@ func (b *walkBudget) refusal() error {
 }
 
 // admit returns the walk's refusal: the charge that passed a limit, nil
-// before that. The walks call it after each entry they handle.
+// before that. The walks call it after each entry they fold.
 func (b *walkBudget) admit() error { return b.refusal() }

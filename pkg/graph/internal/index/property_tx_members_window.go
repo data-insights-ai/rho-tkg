@@ -382,12 +382,17 @@ func (m *PropertyTxMembers[ID]) OpenWindow(vk string) bool {
 }
 
 // WindowAdmit is a read budget's admission of a MembersDuring walk (R2): the
-// owner's charges, each returning the budget error that stops the walk.
+// owner's charges, each made before the work it names and returning the budget
+// error that stops the walk.
 type WindowAdmit struct {
-	// Reject is called for each entry the walk judges and rejects.
-	Reject func() error
+	// Entry is called for each entry the walk examines (a recent-view entry
+	// judged, a late-view entry visited), before it is looked at.
+	Entry func() error
 	// Add is called before each member is added to the answer.
 	Add func() error
+	// Later is called before an entry of the recent view joins the set of the
+	// members it decided.
+	Later func() error
 }
 
 // MembersDuring returns, caller-owned, the members of vk whose rows carrying
@@ -403,9 +408,9 @@ func (m *PropertyTxMembers[ID]) MembersDuring(vk string, start, end, pin types.I
 	return out, ok
 }
 
-// MembersDuringAdmit is MembersDuring under admit (nil: none): the entries of
-// the recent view it judges and rejects are charged as it judges them, each
-// member before it is added, and the first error stops the walk and is
+// MembersDuringAdmit is MembersDuring under admit (nil: none): every entry it
+// examines is charged before it is looked at, the map of decided members and
+// each member before they grow, and the first error stops the walk and is
 // returned with no answer.
 func (m *PropertyTxMembers[ID]) MembersDuringAdmit(vk string, start, end, pin types.Instant, admit *WindowAdmit) (out []TxMember[ID], ok bool, err error) {
 	if m == nil {
@@ -431,6 +436,14 @@ func (m *PropertyTxMembers[ID]) MembersDuringAdmit(vk string, start, end, pin ty
 	var later map[ID]struct{}
 	if pin != 0 && pin < math.MaxInt64 {
 		if !w.recent.after(pin, func(id ID) bool {
+			if admit != nil {
+				if err = admit.Entry(); err != nil {
+					return false
+				}
+				if err = admit.Later(); err != nil {
+					return false
+				}
+			}
 			if later == nil {
 				later = make(map[ID]struct{})
 			}
@@ -439,15 +452,17 @@ func (m *PropertyTxMembers[ID]) MembersDuringAdmit(vk string, start, end, pin ty
 			if sp, ok := q.envAll(); ok && sp.meets(start, end) {
 				return add(id, q.tx)
 			}
-			if admit != nil {
-				err = admit.Reject()
-			}
-			return err == nil
+			return true
 		}) {
 			return nil, true, err
 		}
 	}
 	if !w.late.overlap(start, end, func(id ID) bool {
+		if admit != nil {
+			if err = admit.Entry(); err != nil {
+				return false
+			}
+		}
 		if _, decided := later[id]; decided {
 			return true
 		}

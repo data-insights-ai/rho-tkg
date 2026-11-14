@@ -52,7 +52,7 @@ func pagePropertyTxMembers[ID ~int64](ts *Store, options func(*BadgerStore) (sto
 		}
 		return errNilIterationCallback()
 	}
-	ref, others, err := propertyTxMemberAnswers(ts, nil, options, page)
+	ref, others, err := propertyTxMemberAnswers(ts, nil, options, untallied(page))
 	if err != nil {
 		return err
 	}

@@ -97,10 +97,6 @@ func (bs *Store) forEachNodePropertyTxMemberDuring(labelToken uint16, propertyKe
 		func() error { return bs.buildNodePropTx(key) })
 }
 
-// windowViewEntryBytes is what a window view holds per member (R2): a late
-// entry (from, to, ID: 24 bytes) and a recent entry (last, ID: 16).
-const windowViewEntryBytes = 40
-
 // windowPropTxMembers is the body of both windowed lookups (the
 // pagePropTxMembers protocol): sidecar returns the sidecar and whether its
 // index is usable (idxMu held), build builds it. Under a read budget's tally t
@@ -127,12 +123,16 @@ func windowPropTxMembers[ID cmp.Ordered](bs *Store, valueKey string, validStart,
 			continue
 		}
 		members, opened, err := sc.members.MembersDuringAdmit(valueKey, validStart, validEnd, txAt, windowAdmitOf(t))
+		viewMembers := 0
+		if err == nil && !opened {
+			viewMembers = sc.members.Count(valueKey) // read under the lock: a write updates the value map
+		}
 		bs.idxMu.RUnlock()
 		if err != nil {
 			return err
 		}
 		if !opened {
-			if err := openWindowViewAdmit(t, sc.members.Count(valueKey)); err != nil {
+			if err := openWindowViewAdmit(t, viewMembers); err != nil {
 				return err
 			}
 			bs.idxMu.Lock()
@@ -155,24 +155,28 @@ func windowPropTxMembers[ID cmp.Ordered](bs *Store, valueKey string, validStart,
 
 // openWindowViewAdmit is a read budget's charge for opening a value's window
 // view, one pass over its n members: refused before the open when n passes the
-// room the meter has left (the members counted as the work held ahead), else
-// the view's bytes are charged as BufferBytes. The members are counted when the
-// walk collects them, not here, so the count does not depend on whether an
-// earlier read opened the view.
+// room the meter has left (the members counted as the work held ahead). The
+// view is a persistent structure, kept and maintained by the sidecar from then
+// on, not a buffer of this read, so it is not charged as BufferBytes, and the
+// members are counted when the walk examines them, not here: the first budgeted
+// reader of a value pays its build (the refusal when the value passes the
+// room), and later readers do not.
 func openWindowViewAdmit(t *storecontract.ReadTally, n int) error {
-	if err := t.CandidatesAhead(n); err != nil {
-		return err
-	}
-	return t.Buffer(n * windowViewEntryBytes)
+	return t.CandidatesAhead(n)
 }
 
 // windowAdmitOf is the admission of a RAM window view's walk under t (nil: none
-// for a nil tally): each entry it judges and rejects is counted as a candidate,
-// and each member it collects is counted and charged before it is added
-// (memberAdmit).
+// for a nil tally): each entry the walk examines is counted as a candidate
+// before it is looked at, each member added is charged txMemberBytes of
+// BufferBytes and each entry of the map of decided members foldEntryBytes,
+// before they grow.
 func windowAdmitOf(t *storecontract.ReadTally) *indexpkg.WindowAdmit {
 	if t == nil {
 		return nil
 	}
-	return &indexpkg.WindowAdmit{Reject: func() error { return t.Candidates(1) }, Add: memberAdmit(t)}
+	return &indexpkg.WindowAdmit{
+		Entry: func() error { return t.Candidates(1) },
+		Add:   func() error { return t.Buffer(txMemberBytes) },
+		Later: func() error { return t.Buffer(foldEntryBytes) },
+	}
 }

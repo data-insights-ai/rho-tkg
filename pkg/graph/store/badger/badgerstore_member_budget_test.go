@@ -74,10 +74,10 @@ func TestMemberWalkFoldStopsAtTheCandidateRoom(t *testing.T) {
 				if !errors.As(err, &rb) || rb.Limit != "candidates" || got != nil || meter.Work() != rb.Work {
 					t.Fatalf("room %d = %d members, %v; want ErrReadBudget at candidates and no members", room, len(got), err)
 				}
-				if emitted := work.DiskEntriesEmitted + work.OverlaySetsEmitted; emitted > room+1 {
-					t.Fatalf("room %d: the walk emitted %d entries (%+v); want at most %d: it folded the value before it admitted a member", room, emitted, work, room+1)
+				if emitted := work.DiskEntriesEmitted + work.OverlaySetsEmitted; emitted > room {
+					t.Fatalf("room %d: the walk emitted %d entries (%+v); want at most %d: the entry past the room is charged before it is read, and the value is not folded before a member is admitted", room, emitted, work, room)
 				}
-				if flushed && work.IteratorSteps > 2*(room+1) {
+				if flushed && work.IteratorSteps > room+1 {
 					t.Fatalf("room %d: %d iterator steps (%+v) over a value of %d members", room, work.IteratorSteps, work, members)
 				}
 
@@ -160,8 +160,8 @@ func TestMemberWindowWalkAdmitsTheEntriesItRejects(t *testing.T) {
 			if !errors.As(err, &rb) || rb.Limit != "candidates" || got != nil || meter.Work() != rb.Work || meter.Work().Candidates <= room {
 				t.Fatalf("room %d = %d members, %v, work %+v; want ErrReadBudget at candidates, no members, the visited entries counted", room, len(got), err, meter.Work())
 			}
-			if emitted := work.DiskEntriesEmitted + work.OverlaySetsEmitted; emitted > room+1 {
-				t.Fatalf("room %d: the walk emitted %d entries (%+v); want at most %d", room, emitted, work, room+1)
+			if emitted := work.DiskEntriesEmitted + work.OverlaySetsEmitted; emitted > room {
+				t.Fatalf("room %d: the walk emitted %d entries (%+v); want at most %d: the entry past the room is charged and not read", room, emitted, work, room)
 			}
 			_, tally = tight(members)
 			if got, err := query(tally, nil); err != nil || !slices.Equal(got, want) {

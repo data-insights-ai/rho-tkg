@@ -48,13 +48,14 @@ func cumulativeTally(b storecontract.ReadBudget) (*storecontract.ReadMeter, *sto
 
 // TestMemberWindowWalkCountsRejectsAndCollectedOnce (R2 cumulative, 3.2): a
 // window [100, 101) over a value of 4 members, 2 valid in it and 2 valid after
-// it. The store is the one owner of the cost: it counts the 2 rejected entries
-// as it judges them and the 2 members as it collects them, once each, so the
-// read costs 4 candidates, and what it hands on is not counted again, through
-// the internal walk and through the capability a host calls. The walk stops at
-// the entry that passes the limit: the entries it visits (the native counters
-// of the work diagnostic, which the meter does not keep) are the limit plus the
-// one that refused, of the control's 4. Pending and flushed.
+// it. The store is the one owner of the cost: it counts each of the 4 entries it
+// examines once, the 2 it rejects and the 2 it keeps, so the read costs 4
+// candidates, and what it hands on is not counted again, through the internal
+// walk and through the capability a host calls. The walk stops at
+// the entry that passes the limit, having charged it before it read it: the
+// entries it reads (the native counters of the work diagnostic, which the meter
+// does not keep) are the limit, of the control's 4, while the meter counts the
+// one that refused too. Pending and flushed.
 func TestMemberWindowWalkCountsRejectsAndCollectedOnce(t *testing.T) {
 	key := indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "k"}
 	vk := types.IndexablePropertyValueKey("v")
@@ -68,7 +69,7 @@ func TestMemberWindowWalkCountsRejectsAndCollectedOnce(t *testing.T) {
 				}
 				return got, err
 			}
-			visits := func(w storecontract.PropertyMemberWork) uint64 { return w.DiskEntriesEmitted + w.OverlaySetsEmitted }
+			visits := func(w storecontract.PropertyMemberWork) uint64 { return w.DiskEntriesEmitted + w.OverlayOpsMatched } // the entries the walk read
 			var control storecontract.PropertyMemberWork
 			want, err := query(nil, &control)
 			if err != nil || len(want) != 2 || visits(control) != 4 {
@@ -81,8 +82,8 @@ func TestMemberWindowWalkCountsRejectsAndCollectedOnce(t *testing.T) {
 				if got, err := query(tally, &work); !errors.As(err, &rb) || rb.Limit != "candidates" || got != nil || m.Work().Candidates != limit+1 {
 					t.Fatalf("Candidates %d: %d members, %v, work %+v; want the candidates refusal at the entry past it", limit, len(got), err, m.Work())
 				}
-				if visits(work) != limit+1 {
-					t.Fatalf("Candidates %d: %d entries visited (%+v); want %d, the walk stopping at the entry that refused", limit, visits(work), work, limit+1)
+				if visits(work) != limit {
+					t.Fatalf("Candidates %d: %d entries read (%+v); want %d: the entry that refused is charged and not read", limit, visits(work), work, limit)
 				}
 			}
 			m, tally := cumulativeTally(storecontract.ReadBudget{Candidates: 4})
@@ -108,14 +109,17 @@ func TestMemberWindowWalkCountsRejectsAndCollectedOnce(t *testing.T) {
 	}
 }
 
-// TestMemberWindowWalkChargesStaleSteps (R2 cumulative, 3.3): every node of a
-// value is replaced after a flush (its first row demoted), so the late axis
-// holds, per node, the entries that stand and the older versions and tombstones
-// of the key the demotion deleted, which the walk steps over. Each such step is
-// charged as a candidate, and each member once as it is collected: the meter's
-// Candidates equal the native iterator steps that did not emit an entry (the
-// work diagnostic, which the meter does not keep) plus the members, and a
-// budget of exactly the members refuses.
+// TestMemberWindowWalkChargesStaleSteps (R2 cumulative, 3.3; Fable review 3):
+// every node of a value is replaced after a flush (its first row demoted), so
+// the late axis holds, per node, the entries that stand (two: the demoted row's
+// and the new row's, the second a repeat of an entity already collected) and the
+// older versions and tombstones of the key the demotion deleted, which the walk
+// steps over. Every one of those entries is charged as a candidate, once, before
+// it is read: the meter's Candidates equal the native iterator steps of the work
+// diagnostic, which the meter does not keep (24 for 8 nodes: 16 live, 8 stale),
+// and a budget of exactly the members refuses at the 9th entry, which is not
+// read. Several live entries per entity, replaced 5 times, are in
+// TestMemberWalkChargesEveryEntryExamined.
 func TestMemberWindowWalkChargesStaleSteps(t *testing.T) {
 	const n = 8
 	key := indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "k"}
@@ -144,27 +148,28 @@ func TestMemberWindowWalkChargesStaleSteps(t *testing.T) {
 		t.Fatalf("unbudgeted: %d members, %v; want %d", len(got), err, n)
 	}
 	stale := work.IteratorSteps - work.DiskEntriesEmitted
-	if stale == 0 || m.Work().Candidates != stale+n {
-		t.Fatalf("Candidates %d, iterator steps %d, entries emitted %d (%+v); want %d stale steps (not 0) and %d members counted", m.Work().Candidates, work.IteratorSteps, work.DiskEntriesEmitted, work, stale, n)
+	if stale == 0 || work.DiskEntriesEmitted <= n || m.Work().Candidates != work.IteratorSteps {
+		t.Fatalf("Candidates %d, iterator steps %d, entries emitted %d (%+v); want every step charged: %d stale (not 0) and more live entries than the %d members", m.Work().Candidates, work.IteratorSteps, work.DiskEntriesEmitted, work, stale, n)
 	}
 	var cut storecontract.PropertyMemberWork
-	_, tally = cumulativeTally(storecontract.ReadBudget{Candidates: n})
+	m, tally = cumulativeTally(storecontract.ReadBudget{Candidates: n})
 	var rb *storecontract.ReadBudgetError
-	if got, err := query(tally, &cut); !errors.As(err, &rb) || rb.Limit != "candidates" || got != nil {
-		t.Fatalf("Candidates %d over %d stale steps: %d members, %v; want the candidates refusal", n, stale, len(got), err)
+	if got, err := query(tally, &cut); !errors.As(err, &rb) || rb.Limit != "candidates" || got != nil || m.Work().Candidates != n+1 {
+		t.Fatalf("Candidates %d over %d examined entries: %d members, %v, work %+v; want the refusal at the %dth", n, work.IteratorSteps, len(got), err, m.Work(), n+1)
 	}
-	if cut.IteratorSteps >= work.IteratorSteps {
-		t.Fatalf("refused read took %d iterator steps, the control %d: the walk did not stop at the refusal", cut.IteratorSteps, work.IteratorSteps)
+	if cut.IteratorSteps != n+1 || cut.DiskEntriesEmitted > n {
+		t.Fatalf("refused read took %d iterator steps and passed on %d entries (control %d steps); want %d steps, the last not read", cut.IteratorSteps, cut.DiskEntriesEmitted, work.IteratorSteps, n+1)
 	}
 }
 
 // TestMemberWalkChargesBufferBytes (R2 cumulative, 3.3): the buffers a member
 // walk holds are charged as BufferBytes before they grow: each pending value
 // cloned for the window walk's overlay (EntityIndexSpanValueLen bytes) and the
+// fold's entries (foldEntryBytes, 24, before an entity joins the fold) and the
 // list the fold becomes (txMemberBytes per member, before it is allocated and
-// sorted), exact and windowed. Counts are exact: n pending entries cost 32n for
-// the clones and 16n for the list; flushed, only the list; a limit one byte
-// short of either refuses at it. The native counters of the work diagnostic,
+// sorted), exact and windowed. Counts are exact: n members cost 24n for the
+// fold and 16n for the list, and n pending entries 32n more for the clones in a
+// windowed read; a limit one byte short of either refuses at it. The native counters of the work diagnostic,
 // which the meter does not keep, show the buffer was not made: the clones made
 // stop one short of the refused one, and a list refused is never allocated
 // (MemberSliceLen 0, the control's n; the exact walk: the window walk reports
@@ -174,6 +179,7 @@ func TestMemberWalkChargesBufferBytes(t *testing.T) {
 	key := indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "k"}
 	vk := types.IndexablePropertyValueKey("v")
 	list := uint64(n * txMemberBytes)
+	fold := uint64(n * foldEntryBytes)
 	clones := uint64(n * storepkg.EntityIndexSpanValueLen)
 	for _, windowed := range []bool{false, true} {
 		for _, flushed := range []bool{false, true} {
@@ -188,7 +194,7 @@ func TestMemberWalkChargesBufferBytes(t *testing.T) {
 					got, _, err := bs.nodeDiskMembers(key, q)
 					return got, err
 				}
-				want, wantClones := list, uint64(0)
+				want, wantClones := list+fold, uint64(0)
 				if windowed && !flushed {
 					want, wantClones = want+clones, n
 				}

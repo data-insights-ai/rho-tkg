@@ -10,26 +10,32 @@ var _ storecontract.PropertyTxMemberMeteredCapability = (*Store)(nil)
 
 // Metered membership (R2, gap B): the store.PropertyTxMemberMeteredCapability
 // forms of badger. The store is the one owner of the cost of the read: it
-// counts what it examines and what it collects, before it goes on, and nothing
-// above it counts those again (the graph counts only the members of a store
-// without this form). So the Candidates limit holds across the value keys of a
-// call, and on tiered across the shards, whichever layer hands the members on.
+// charges what it examines and what it holds, before it does the work, and
+// nothing above it counts those again (the graph counts only the members of a
+// store without this form). So the Candidates limit holds across the value keys
+// of a call, and on tiered across the shards, whichever layer hands the members
+// on.
 //
 //   - A definition kept on disk reads its member entries into a fold before it
-//     hands a member on (the exact walk, the window seek). Each member is
-//     counted as a candidate when the walk collects it (the first entry of an
-//     entity), each entry the window walk judges and rejects, or steps over as
-//     stale (an older version, a tombstone, an entry the write buffer
-//     overrides), when it is met (walkBudget), so the walk stops at the entry
-//     that passes the room the meter has left and returns the typed
-//     *ReadBudgetError before fn. The write buffer's values it clones and the
-//     list the fold becomes are charged as BufferBytes before they are made.
+//     hands a member on (the exact walk, the window seek). Every entry the walk
+//     examines is one candidate, charged once when it is met and before its
+//     value is read or parsed (walkBudget): a live entry, a repeat of an entity
+//     already collected, an older version of a key, a tombstone, an entry the
+//     write buffer overrides, an op of the write buffer; a window walk's entry
+//     whose envelope misses the window too. The walk stops at the entry that
+//     passes the room the meter has left, never having read it, and returns the
+//     typed *ReadBudgetError before fn. The buffers are charged as BufferBytes
+//     before they are made: the write buffer's values cloned for a window walk,
+//     the fold's entries (foldEntryBytes) and the list the fold becomes.
 //   - A definition in RAM charges the same before its work: the snapshot of the
-//     value's members (counted when it is made), the one-time open of the
-//     value's window view (refused up front when the value's members pass the
-//     room) and the view's walk (the entries it judges and rejects, each
-//     member before it is added). The sidecar's first build, one scan of the
-//     label's or type's rows, is not charged.
+//     value's members counts each member as it is collected, the one-time open
+//     of the value's window view (a persistent structure, not a buffer: no
+//     BufferBytes) is refused up front when the value's members pass the room,
+//     and the view's walk counts every entry it examines, charging the members
+//     it adds and the map of decided members as BufferBytes. The first budgeted
+//     reader of a value pays the open's refusal; later readers do not. The
+//     sidecar's first build, one scan of the label's or type's rows, is not
+//     charged.
 //
 // A nil t is the unmetered door. One call per key, as the core's per-key loop,
 // stopping at the first error, ErrIndexNotFound or fn's false; fn may see an

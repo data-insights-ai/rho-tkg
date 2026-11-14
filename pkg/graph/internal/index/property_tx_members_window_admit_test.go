@@ -9,13 +9,15 @@ import (
 )
 
 // TestPropertyTxMembersDuringAdmit (R2 cumulative, RAM sidecar): a window read
-// under an admission charges what its walk examines, and stops at the first
-// refusal. 64 members, each valid one instant after the one before, all last
-// stamped after the pin, so the recent view judges all 64 and the window
-// [100, 101) keeps 1. The control (no admission) answers that one member, equal
-// to MembersDuring's; the admission counts 63 rejects and 1 member (the native
-// counts of the walk, kept by the test, not by any meter); a refusal at the
-// 4th reject stops the walk there (4 entries judged, not 64) and answers
+// under an admission charges what its walk examines before it does it, and
+// stops at the first refusal. 64 members, each valid one instant after the one
+// before, all last stamped after the pin, so the recent view examines all 64
+// (and the late view the one that meets the window, which the recent view
+// decided already). The control (no admission) answers that one member, equal
+// to MembersDuring's; the admission sees 65 entries, 1 member added and 64
+// entries of the decided map (the native counts of the walk, kept by the test,
+// not by any meter); a refusal at the 4th entry stops the walk there (3 entries
+// let through and the 4th refused before it is looked at, not 64) and answers
 // nothing.
 func TestPropertyTxMembersDuringAdmit(t *testing.T) {
 	t.Parallel()
@@ -27,40 +29,52 @@ func TestPropertyTxMembersDuringAdmit(t *testing.T) {
 	if !m.OpenWindow("v") || m.Count("v") != n {
 		t.Fatalf("fixture: %d members, want %d", m.Count("v"), n)
 	}
-	const pin = 150 // before every row's last stamp: the recent view judges every member
+	const pin = 150 // before every row's last stamp: the recent view examines every member
 	want, ok := m.MembersDuring("v", 100, 101, pin)
 	if !ok || len(want) != 1 {
 		t.Fatalf("control: %d members, %v; want 1", len(want), ok)
 	}
 
-	rejects, adds := 0, 0
-	count := &WindowAdmit{Reject: func() error { rejects++; return nil }, Add: func() error { adds++; return nil }}
+	entries, adds, laters := 0, 0, 0
+	count := &WindowAdmit{
+		Entry: func() error { entries++; return nil },
+		Add:   func() error { adds++; return nil },
+		Later: func() error { laters++; return nil },
+	}
 	got, ok, err := m.MembersDuringAdmit("v", 100, 101, pin, count)
-	if err != nil || !ok || !slices.Equal(got, want) || rejects != n-1 || adds != 1 {
-		t.Fatalf("counting admission: %v, %v, %v, %d rejects, %d adds; want the control's member after %d rejects and 1 add", got, ok, err, rejects, adds, n-1)
+	if err != nil || !ok || !slices.Equal(got, want) || entries != n+1 || adds != 1 || laters != n {
+		t.Fatalf("counting admission: %v, %v, %v, %d entries, %d adds, %d later; want the control's member after %d entries, 1 add, %d later", got, ok, err, entries, adds, laters, n+1, n)
 	}
 
 	errStop := errors.New("budget")
-	rejects, adds = 0, 0
-	stop := &WindowAdmit{Reject: func() error {
-		if rejects++; rejects > 3 {
-			return errStop
-		}
-		return nil
-	}, Add: func() error { adds++; return nil }}
+	entries, adds, laters = 0, 0, 0
+	stop := &WindowAdmit{
+		Entry: func() error {
+			if entries++; entries > 3 {
+				return errStop
+			}
+			return nil
+		},
+		Add:   func() error { adds++; return nil },
+		Later: func() error { laters++; return nil },
+	}
 	got, ok, err = m.MembersDuringAdmit("v", 100, 101, pin, stop)
-	if !errors.Is(err, errStop) || got != nil || !ok || rejects != 4 {
-		t.Fatalf("refusing admission: %v, %v, %v after %d rejects; want errStop, no member, the walk stopped at the 4th reject", got, ok, err, rejects)
+	if !errors.Is(err, errStop) || got != nil || !ok || entries != 4 || laters != 3 {
+		t.Fatalf("refusing admission: %v, %v, %v after %d entries, %d later; want errStop, no member, the walk stopped at the 4th entry before it was looked at", got, ok, err, entries, laters)
 	}
 
-	// A refusal on the first member added stops the late walk too: nothing is answered.
+	// A refusal on a member added stops the late walk too: nothing is answered.
 	adds = 0
-	got, _, err = m.MembersDuringAdmit("v", 0, 1000, 0, &WindowAdmit{Reject: func() error { return nil }, Add: func() error {
-		if adds++; adds > 2 {
-			return errStop
-		}
-		return nil
-	}})
+	got, _, err = m.MembersDuringAdmit("v", 0, 1000, 0, &WindowAdmit{
+		Entry: func() error { return nil },
+		Add: func() error {
+			if adds++; adds > 2 {
+				return errStop
+			}
+			return nil
+		},
+		Later: func() error { return nil },
+	})
 	if !errors.Is(err, errStop) || got != nil || adds != 3 {
 		t.Fatalf("late walk: %v, %v after %d adds; want errStop after the 3rd add", got, err, adds)
 	}
