@@ -259,6 +259,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **R2 late counts, work counted before it is done** (ai-soc review 14 Nov 3.3, René's resource-limit rules): four
+  gaps where a read budget counted after the work. (1) A lazy label map (`TransientRead`) walked all the label's keys
+  uncounted: the walk now counts a candidate per key and is refused before it starts when the label's members pass the
+  room (`NodesByLabelMetered`, the label-scan fallbacks, the property ID lookup, the valid-end first call; a cold read
+  counts the walk and the listing). (2) The valid-end overlay read decoded an entity's whole history before it counted
+  a row: each history row and its stored bytes count before their decode; the first call per token no longer enlists
+  every ever-member as unknown before the first count (`ValidEndIndex.TrackUnder`, `ResolveUnknownUnder`,
+  `ResolveUnknownBulkUnder`) and a refused call leaves the token untracked on memory too (it kept the entities it had
+  read). (3) The effective scans' candidate gather is held to the candidate room as it lists, so a scan past it is
+  refused before its list is built with no callback made (it streamed the entities up to the limit first); the
+  by-endpoint scans charge the list's buffer bytes as it grows. Paged doors are unchanged. Counts with no limit that
+  moved: a cold lazy label read counts the walk too, the lookup and valid-end calls count the label's members, a
+  memory refusal counts the members the count walk saw. Old tests changed with it: `TestReadBudget_SigmaB_Scans`,
+  `TestR2Scans_ByLabelCtxAtATime`, `TestReadBudgetPublicScans`, `TestReadBudgetPublicValidEndFirstCall`. Red:
+  `tasks/evidence/R2LATE/`; tests: `TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt`,
+  `TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode`, `TestValidEndFirstCall_RefusesBeforeTheEnlistment`
+  (badger, committed and buffered; memory twin), `TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild`,
+  `TestReadBudget_GatherStopsAtTheRoom`, `TestReadBudget_AtNodesListChargesBufferBytesAsItGrows`, each with a native
+  counter the meter does not keep.
 - **A read-only cold open is cheaper** (R3 cold open, coldread.txt option c): with `MaxOpenColdShards` 0 (the default) every
   read of a closed cold shard opens it read-only and closes it at check-in, 100 opens for 100 `GetNode` on a day shard of
   50,000 rows, 7.0 MB of allocation and 11 ms of CPU per open at the default configuration, 2.1 MB and 1.5 ms at ai-soc's
