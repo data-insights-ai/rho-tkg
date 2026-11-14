@@ -21,42 +21,27 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Now
 
-- **READBUDGET, RELDISKWIN follow-ups** (v4.107.2) — the Ctx doors through R2-SCANS are in CHANGELOG
-  [Unreleased]. Still open: refuse native iterator steps, buffers, sorts and historical membership before the
-  work, in every shard and fallback; stale late-axis deletes stay visible until compaction. Done when the limits
-  refuse first, ai-soc's membership guards pass and stale entries are measured
-  (`tasks/evidence/READBUDGET/followups.txt`). **rho/sigma:** bounds native work.
-  Work items (14 Nov, review `ai-soc doc/RH-changes-sigma-rho.md` §3 and `REVIEW-rh-rho.md` §9; each has a red test
-  first, evidence in `tasks/evidence/R2CUMUL/`):
-  - R2-2 VEATTRIB: with `LabelIndexOnDisk` the valid-end first call re-lists every tracked label's keys. Test
-    `TestValidEndFirstCall_WalksNoOtherLabel`: label B's first call visits none of label A's keys.
-  - R2-3 PRUNELIN: the temporal ByLabel gather re-prunes its whole list on each member past the room. Test
-    `TestByLabelGather_PrunesEachMemberOnce`: envelope probes grow linearly with the members.
-  - R2-4 STAGED: `ReadTally.Staged` loses a concurrent charge at a refusal, and two reads on one meter each get the
-    whole room. Test `TestReadTally_StagedConcurrentChargesAllCount`.
-  - R2-5 HEADREAD (Sigma, 14 Nov): a budgeted single-entity timeline walks the whole version chain, the plain one
-    answers from the head. Test `TestBudgetedTimeline_ReadsTheHead`: HistoryExamined the same at 10 and 80 versions.
-  - R2-6 INVENTORY: every budgeted path's walks, decodes, copies, lists and opens, each charged before, refused up
-    front, or listed in `docs/api.md` "Not yet bounded"; the list matches the code
-    (`tasks/evidence/R2CUMUL/inventory.txt`). Known open: tiered current-member listing under a ShardOpens bound, the
-    several-label history fold without a sidecar (core `temporal.go`), a RAM sidecar's first build, `ValidEndAfter`.
-  - R2-7 CONSUMERS: ai-soc's four R2 guards and `TestRH02WindowAdmissionCumulativeAcrossKeys` pass on dev; Sigma
-    told of every behaviour change.
-- **WARMMEM (R3: cheaper writable and inactive shards)** — Sweep, per-tier counts and the three follow-ups are in
-  CHANGELOG [Unreleased]: no double change-log scope, a failed swap does not demote a shard a rotation promoted
-  back to hot, and a cold close no longer rewrites an unchanged catalog. The cheap read-only cold open is in
-  `docs/architecture.md` (one open at 50,000 rows, about 1.1 MB). Left: the ai-soc B0 measurement (RSS, swap time
-  at 1-10 M rows, write counts per tier); read-only warm handles wait for those counts.
-  **rho/sigma:** lowers the fixed memory cost per live handle.
-  Work items (14 Nov, review §7; local runs, `tasks/evidence/R3/measure.txt` section H):
-  - R3-1 OVERCAP: rerun H's cold bursts at cap 2 with the over-cap transient open (CHANGELOG [Unreleased]); the
-    third cold day's open should fall from 2.0 to about 1.1 MiB.
-  - R3-2 FLOOR: the startup floor is two 83 MiB write arenas (hot and reference, 169 MiB). Test
-    `TestAsocStartupFloor` (measure) reports it; whether the reference shard needs a full arena is René's call.
-  - R3-3 LATEWRITE: a late write into a closed day costs 94 MiB (a hot-size writable open). Test (measure)
-    `TestAsocReopenPerDay`; a smaller arena for a late-write open is the candidate fix.
+- **READBUDGET, RELDISKWIN follow-ups** (v4.107.2) — the Ctx doors through R2-SCANS and R2-1..R2-3 are in CHANGELOG
+  [Unreleased]. Open: native iterator steps, buffers, sorts and historical membership refused before the work, in
+  every shard and fallback; stale late-axis deletes stay visible until compaction. Done when the limits refuse first,
+  ai-soc's membership guards pass and stale entries are measured (`tasks/evidence/READBUDGET/followups.txt`).
+  **rho/sigma:** bounds native work. Work items (14 Nov; ai-soc `RH-changes-sigma-rho.md` §3, `REVIEW-rh-rho.md` §9),
+  red test first, evidence in `tasks/evidence/R2CUMUL/`:
+  - R2-4 STAGED: `ReadTally.Staged` loses a concurrent charge at a refusal; two reads on one meter each get the room.
+  - R2-5 HEADREAD (Sigma): a budgeted single-entity timeline walks the whole chain, the plain one answers from the head.
+  - R2-6 INVENTORY: every budgeted path's walks, decodes, copies, lists and opens charged before, refused up front or
+    in `docs/api.md` "Not yet bounded" (`tasks/evidence/R2CUMUL/inventory.txt`). Open: tiered current-member listing
+    under ShardOpens; the several-label fold; the property fold's whole-history ID list and badger `LabelTxMembersOf`;
+    the write-buffer range in `labelNodeIDsSnapshotTalliedLocked`; a RAM sidecar's first build; `ValidEndAfter`;
+    GatherHold per label, loose by the current members (badger, tiered), untested for memory, shards, labels.
+  - R2-7 CONSUMERS: ai-soc's four R2 guards and `TestRH02WindowAdmissionCumulativeAcrossKeys` pass on dev; Sigma told.
+- **WARMMEM (R3: cheaper writable and inactive shards)** — Done: CHANGELOG [Unreleased], `docs/architecture.md`. Left:
+  the ai-soc B0 measurement (RSS, swap time at 1-10 M rows, write counts per tier); read-only warm handles wait for
+  them. **rho/sigma:** lowers the fixed memory cost per live handle. Work items: review §7, `tasks/evidence/R3/measure.txt` H.
+  - R3-1 OVERCAP: rerun H's cold bursts at cap 2: the third cold day's open should fall from 2.0 to about 1.1 MiB.
+  - R3-2 FLOOR: the startup floor is two 83 MiB write arenas (169 MiB); a smaller reference arena is René's call.
+  - R3-3 LATEWRITE: a late write into a closed day costs 94 MiB (a hot-size writable open); candidate: a smaller arena.
   - R3-4 B0: ai-soc's v6 run on the three BA examples on Flux, after the dev work, on René's word.
-
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — reads and writes
   stop rebuilding a key's whole history. Released: P3 HISTDECODE, HEADLEND, P1 HISTTRIM, CASCADEMETA (v4.103.0), P2
   (v4.104.1), P5 phase 0 (v4.105.1) and option C (v4.105.2: pin-below misses 516 -> 52, skeletons 8,413 -> 1,145).

@@ -32,11 +32,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **R3 measured on ai-soc's setup** (ai-soc review of 14 Nov, §7; `tasks/evidence/R3/measure.txt` section H, local
-  runs, NoCompression as ai-soc runs): the startup floor is 2 handles, 168.9 MiB live (171.9 at the default; 98 % is
-  the two write arenas); a cap-2 day rotation holds 4 handles at 343.9 MiB flat, 108.8 MiB allocated and 2 catalog
-  saves a day; a late write into a closed day costs a writable open of 86.3 MiB plus a 7.4 MiB close, a read of it
-  1.5 MiB. Tests (tag `measure`, measurement only): `TestAsocStartupFloor`, `TestAsocDayRotation`,
-  `TestAsocReopenPerDay` in `pkg/graph/store/tiered/shard_asoc_measure_test.go`.
+  runs, NoCompression as ai-soc runs): the startup floor is 2 handles, 168.9 MiB live (171.9 at the default); the two
+  write arenas are 98.5 % of it. A cap-2 day rotation holds 4 handles at 343.8 MiB live, flat, allocates about 109 MiB
+  a day (108.6-109.1) and makes 2 catalog saves a day. A late write into a closed day costs a writable open of 86.3
+  MiB plus a 7.3 MiB close (93.6 MiB); a read of a closed day is a read-only open of 1.5 MiB. Tests (tag `measure`,
+  measurement only): `TestAsocStartupFloor`, `TestAsocDayRotation`, `TestAsocReopenPerDay` in
+  `pkg/graph/store/tiered/shard_asoc_measure_test.go`.
 - **R2-TWINS, the last two node doors under a read budget**: `Temporal().NodesAtOptsByIDsCtx` counts as
   `NodesAtTxByIDsCtx` (one candidate and 8 buffer bytes per ID before any ID is read, then the reads' decodes, history
   and shard opens through one metered snapshot) after `NodesAtOptsByIDs`' own checks. `NodesAtTxCtx` reads every node ever
@@ -407,17 +408,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ever-member set out of the store (badger and memory copy the sidecar set; tiered copies every shard's set and builds
   the union) before the core saw a member and refused at the room: a label of 40 nodes, 35 deleted, under `Candidates`
   8 copied the 35 (red: `tasks/evidence/R2CUMUL/gatherhold-red.txt`). The core now hands the stores a
-  `store.GatherHold` sized to the room (the room for a scan, room plus the current members already listed for a listed
-  gather); a store reserves a set's size in it, and charges 16 buffer bytes a member (`store.TxMemberCopyBytes`),
-  before it copies the set, and the tiered union charges its entries (32 each) before it adds them. A set past the
-  room is refused in O(1) with the typed error and nothing copied. The capability is
-  `store.TxMemberGatherMeteredCapability` (`ForEachLabelTxMemberMetered`, `ForEachRelTypeTxMemberMetered`; unreleased,
-  part of `MemberGatherMeteredCapability`). Counts that change: such a gather refuses when the raw ever-member set
-  passes the room, members the pin, `After` or the prune would drop included (badger and tiered, a room of 8 over 5
-  current and 15 former members lists 5 and counts 15, was 9 and 9; sharded keeps no sidecar and is unchanged);
-  `BufferBytes` grows by 16 a former member (badger, memory) and 64 (tiered: the shard copy, its list and the union).
-  Test: `TestGatherHold_RefusesBeforeTheCopy` (badger, tiered; the unlimited control and the stores' own copy
-  counter, `badger.CountTxMembersCopiedForTest`).
+  `store.GatherHold`: the room for a scan; for the listed gather of `Nodes().ByLabelCtx`, the room plus the current
+  members already counted. A store reserves a set's size in it (one hold for all shards of a gather, one for each label
+  of a several-label scan) and charges 16 `BufferBytes` a member (`store.TxMemberCopyBytes`) before it copies the set;
+  the tiered union charges its entries (32 each) before it adds them. A set past the hold is refused in O(1) with the
+  typed error and nothing copied. The sidecar of badger and tiered holds only former members, that of memory every
+  ever-member, current ones too, so on badger and tiered a set up to the current members past the room still passes
+  the hold: it is copied, charged, then refused by the per-member count (badger, 5 current and 3 former members,
+  `ByLabelCtx` at `Candidates` 5: refused with 48 buffer bytes charged; memory refuses the same read with none). The
+  capability is `store.TxMemberGatherMeteredCapability` (`ForEachLabelTxMemberMetered`,
+  `ForEachRelTypeTxMemberMetered`; unreleased, part of `MemberGatherMeteredCapability`). Counts that change: such a
+  gather refuses when the raw sidecar set passes the hold, members the pin, `After` or the prune would drop included
+  (badger and tiered, a room of 8 over 5 current and 15 former members lists 5 and counts 15, was 9 and 9; memory
+  counts the whole sidecar, current members included: 5 current and 6 former members at `Candidates` 8 refuse with 11
+  counted; sharded keeps no sidecar and is unchanged). `BufferBytes` grows by 16 for each sidecar member the gather
+  copies: a former member on badger, every ever-member on memory (11 members: 176 more), and 64 a former member on
+  tiered when it lives on one shard (the shard copy 16, its list 16, the union 32). Test:
+  `TestGatherHold_RefusesBeforeTheCopy` (badger and tiered, one label on one shard; the unlimited control and the stores'
+  own copy counter, `badger.CountTxMembersCopiedForTest`); the changed counts are in `TestReadBudget_GatherStopsAtTheRoom`,
+  `TestR2Scans_ByLabelCtxAtATime` and `TestReadBudget_SigmaB_Scans`. No test covers memory's hold path, several shards
+  or several labels yet.
+- **R2-2 VEATTRIB: the valid-end first call no longer re-lists every tracked label's keys** (review of the R2 cumulative
+  merge): with `LabelIndexOnDisk` the first call of the valid-end index for a label (`NodeValidEndCandidatesMetered`,
+  behind the From and Window scans) told each entity it read which tracked labels it carries by listing every tracked
+  label's keyspace again, uncounted: label 2 (3 nodes) read after label 1 (20 and 200 nodes) visited 26 and 206 label
+  index entries (red: `tasks/evidence/R2CUMUL/veattrib-red.txt`), and with its writes still buffered it ranged the whole
+  write buffer once for each tracked label. The attribution now asks per entity and tracked label (`tokenCarrier`): a
+  RAM label map answers free, as before; on disk a former member is answered by the ever-member sidecar, free, and any
+  other entity's label key is probed, the write buffer first, then the index, after one `Candidates` is charged and with
+  one index entry visited. Label 2's first call visits its listing (3) and 6 probes whatever label 1's size. Counts that
+  change: under `LabelIndexOnDisk` a first call charges one more candidate for each entity read and tracked label the
+  sidecar does not answer; label 2 alone counts 3 listed, 3 probes and 3 entities, 9 (was 6), and after label 1 3 + 6 +
+  3, 12 (was 6); RAM label maps are unchanged. Tests (`pkg/graph/store/badger`):
+  `TestValidEndFirstCall_WalksNoOtherLabel` (the native counter is the label index entries visited),
+  `TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce` (the counts above).
+- **R2-3 PRUNELIN: the temporal ByLabel gather hands each listed member to the valid-time prune once** (review of the R2
+  cumulative merge): under a `Candidates` limit the gather of `Nodes().ByLabelCtx` at a time coordinate pruned its whole
+  list by the valid-time envelope index at every member past the candidate room, so m members past the room cost about m
+  times the room in envelope probes (sharded, room = live + past members: 1684 probes for 84 listed members at 40 past the
+  room, 6564 for 164 at 80; red: `tasks/evidence/R2CUMUL/prunelin-red.txt`). Stores without the label ever-member
+  sidecar reach it (they take the history fold: sharded); with the sidecar the R2-1 hold usually refuses first; tiered
+  keeps no node envelope prune. A `pruned` mark now stops it: the gather prunes only the members listed since its last
+  prune and the final prune skips the pruned ones, so each member is probed at most once (84 and 164 probes; green:
+  `tasks/evidence/R2CUMUL/prunelin-green.txt`). The kept set, the answer, `Candidates`, `BufferBytes` and the point of
+  refusal do not change. The probes are not charged: each is one in-memory envelope lookup for a listed member, and the
+  listing owns that cost. The relationship gather never pruned inside its walk. Test:
+  `TestByLabelGather_PrunesEachMemberOnce` (the native counters `Core.candidatesListed` and `Core.envelopeProbed`; only
+  the sharded run reaches the prune: badger is refused by the hold, tiered is skipped).
 - **R3: a cold read past the cap opens the cheap transient form** (ai-soc review of 14 Nov, §7, found by the R3
   measure on ai-soc's setup): with `MaxOpenColdShards` > 0 a read that finds the cap full closes its handle at
   check-in, yet `coldReadCfg` gave it the full configuration, so at cap 2 the third cold day of a scan paid the full
