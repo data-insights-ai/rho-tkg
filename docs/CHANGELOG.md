@@ -232,6 +232,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rejected, under a `Candidates` limit, and adds them to `Work.Candidates` when it refuses. A narrow window over a value of 64 members found its one match after visiting all 64 and
   handed it on with `Candidates` 0 (red: `tasks/evidence/R2WINDOW/red.txt`); it now refuses after 4 entries with the
   judged entries counted. A window read whose walk judges more entries than the room refuses, even when fewer match.
+  A caller of the capability itself (`ForEachNodePropertyTxMemberMetered`, `ForEachRelPropertyTxMemberMetered`) now gets
+  each member counted as a candidate before it is handed on, across value keys and tiered shards: two keys of one
+  member each under `Candidates` 1 handed on 2 with 0 counted (red: `tasks/evidence/R2WINDOW/handedon-red.txt`). The
+  graph doors pass `ReadTally.DoorCounts()` and count as before.
 
 - **Retention gate under a read budget** (R2): the point retention gate (a pin below the retention max) read the
   node's current row, or a deleted entity's history, uncounted and into the entity cache, so `NodeAtTxCtx`,

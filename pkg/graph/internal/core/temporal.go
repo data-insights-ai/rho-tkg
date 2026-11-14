@@ -1393,7 +1393,7 @@ func (w *memberWindow) prunePin(pin types.Instant) types.Instant {
 // closed shard it opens to t before the open (READBUDGET step 6).
 func (c *Core) forEachRelPropTxMemberOfKeys(tok uint16, key string, valueKeys []string, window *memberWindow, t *storepkg.ReadTally, fn func(types.RelID, types.Instant) bool) error {
 	if t != nil && c.propTxMetered != nil {
-		return c.propTxMetered.ForEachRelPropertyTxMemberMetered(tok, key, valueKeys, window.store(), t, fn)
+		return c.propTxMetered.ForEachRelPropertyTxMemberMetered(tok, key, valueKeys, window.store(), t.DoorCounts(), fn) // the door counts each member it is handed
 	}
 	if c.relPropTxKeys != nil {
 		if window != nil {
@@ -1419,7 +1419,7 @@ func (c *Core) forEachRelPropTxMemberOfKeys(tok uint16, key string, valueKeys []
 // (label, key) sidecar.
 func (c *Core) forEachNodePropTxMemberOfKeys(tok uint16, key string, valueKeys []string, window *memberWindow, t *storepkg.ReadTally, fn func(types.NodeID, types.Instant) bool) error {
 	if t != nil && c.propTxMetered != nil {
-		return c.propTxMetered.ForEachNodePropertyTxMemberMetered(tok, key, valueKeys, window.store(), t, fn)
+		return c.propTxMetered.ForEachNodePropertyTxMemberMetered(tok, key, valueKeys, window.store(), t.DoorCounts(), fn) // the door counts each member it is handed
 	}
 	if c.nodePropTxKeys != nil {
 		if window != nil {

@@ -170,3 +170,59 @@ func TestMemberWindowWalkAdmitsTheEntriesItRejects(t *testing.T) {
 		})
 	}
 }
+
+// TestMeteredMembershipCountsWhatItHandsOn (R2, ai-soc's host lookup, which
+// calls the store capability itself, not through a graph door): a direct
+// caller of ForEachNodePropertyTxMemberMetered gets each member counted as a
+// candidate before it is handed on, across value keys, so callbacks never pass
+// Work.Candidates and a Candidates limit refuses at the member past it. Two
+// keys of one member each under Candidates 1: one callback, then the typed
+// refusal (it handed on 2 uncounted). A tally from a door (DoorCounts) leaves
+// the count to the door, as before. RAM sidecar and on-disk index alike.
+func TestMeteredMembershipCountsWhatItHandsOn(t *testing.T) {
+	for _, disk := range []bool{false, true} {
+		t.Run(map[bool]string{false: "ram", true: "disk"}[disk], func(t *testing.T) {
+			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: disk, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = bs.Close() })
+			if err = bs.CreatePropertyIndex(1, "k"); err != nil {
+				t.Fatal(err)
+			}
+			for i, v := range []string{"a", "b"} {
+				n := types.NewNode(types.NodeID(i+1), 1, []uint16{1})
+				_ = n.SetProperty("k", v)
+				n.SetTemporal(&types.TemporalMetadata{TxFrom: 1, ValidFrom: 100, ValidTo: 200})
+				if err = bs.PutNode(n); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err = bs.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			keys := []string{types.IndexablePropertyValueKey("a"), types.IndexablePropertyValueKey("b")}
+			for _, window := range []*storecontract.PropertyTxMemberWindow{nil, {ValidStart: 0, ValidEnd: 1000, TxAt: 0}} {
+				_, meter := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: 1})
+				callbacks := 0
+				err := bs.ForEachNodePropertyTxMemberMetered(1, "k", keys, window, meter.Tally("direct"), func(types.NodeID, types.Instant) bool {
+					callbacks++
+					return true
+				})
+				var rb *storecontract.ReadBudgetError
+				if callbacks != 1 || !errors.As(err, &rb) || rb.Limit != "candidates" || meter.Work() != rb.Work || meter.Work().Candidates != 2 {
+					t.Fatalf("window %v: %d callbacks, %v, work %+v; want 1 callback, then the candidates refusal with 2 counted", window, callbacks, err, meter.Work())
+				}
+				_, meter = storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: 1})
+				callbacks = 0
+				err = bs.ForEachNodePropertyTxMemberMetered(1, "k", keys, window, meter.Tally("door").DoorCounts(), func(types.NodeID, types.Instant) bool {
+					callbacks++
+					return true
+				})
+				if err != nil || callbacks != 2 || meter.Work().Candidates != 0 {
+					t.Fatalf("window %v, door tally: %d callbacks, %v, work %+v; want 2 handed on and the count left to the door", window, callbacks, err, meter.Work())
+				}
+			}
+		})
+	}
+}

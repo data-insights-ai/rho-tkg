@@ -1,0 +1,11 @@
+--- FAIL: TestMeteredMembershipCountsWhatItHandsOn (0.01s)
+    --- FAIL: TestMeteredMembershipCountsWhatItHandsOn/ram (0.00s)
+        badgerstore_member_budget_test.go:214: window <nil>: 2 callbacks, <nil>, work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want 1 callback, then the candidates refusal with 2 counted
+    --- FAIL: TestMeteredMembershipCountsWhatItHandsOn/disk (0.00s)
+        badgerstore_member_budget_test.go:214: window <nil>: 2 callbacks, <nil>, work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want 1 callback, then the candidates refusal with 2 counted
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.014s
+FAIL
+--- FAIL: TestTieredMeteredMembershipCountsWhatItHandsOn (0.01s)
+    tieredstore_tx_members_handed_on_test.go:42: direct: 2 callbacks, <nil>, work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}; want the candidates refusal, 2 counted, no callback
+FAIL

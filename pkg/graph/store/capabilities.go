@@ -553,8 +553,11 @@ type PropertyTxMemberWindow struct {
 // sees them after (R2): with a candidate limit on t's meter the store admits
 // its fold as it grows (ReadTally.CandidateRoom, CandidatesAhead) and returns
 // the *ReadBudgetError, before fn, at the member that passes the room, on
-// every shard of a fan-out under the same t. The door still counts each member
-// it is handed, so a store need not count them itself.
+// every shard of a fan-out under the same t. The store counts each member as a
+// candidate before it hands it on (ReadTally.HandedOn; on tiered as each shard
+// gathers it, an entity on two shards twice), so a caller of the capability
+// itself is bounded across keys and shards; a door that counts each member it
+// is handed passes ReadTally.DoorCounts and the store counts none.
 type PropertyTxMemberMeteredCapability interface {
 	ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 	ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error

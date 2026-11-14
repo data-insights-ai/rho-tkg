@@ -18,7 +18,10 @@ var _ storecontract.PropertyTxMemberMeteredCapability = (*Store)(nil)
 // (the sidecar's lists are held already) answers as the unmetered doors, and
 // so does a nil t. One call per key, as the core's per-key loop, stopping at
 // the first error, ErrIndexNotFound or fn's false; fn may see an entity once
-// per key. Shard opens are the tiered store's to charge.
+// per key. Shard opens are the tiered store's to charge. Each member is
+// counted as a candidate before it is handed on (ReadTally.HandedOn), so a
+// direct caller is bounded across keys and, on tiered, shards; a door that
+// counts the members itself passes ReadTally.DoorCounts.
 
 // ForEachNodePropertyTxMemberMetered implements
 // store.PropertyTxMemberMeteredCapability: ForEachNodePropertyTxMember (window
@@ -39,8 +42,11 @@ func (bs *Store) ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyK
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	for _, vk := range valueKeys {
 		stopped := false
+		var refused error
 		one := func(id types.NodeID, tx types.Instant) bool {
-			if !fn(id, tx) {
+			if refused = t.HandedOn(); refused != nil { // a direct caller's member, counted before it is handed on
+				stopped = true
+			} else if !fn(id, tx) {
 				stopped = true
 			}
 			return !stopped
@@ -54,6 +60,9 @@ func (bs *Store) ForEachNodePropertyTxMemberMetered(labelToken uint16, propertyK
 			}
 		} else if err := bs.nodeMembersUnmetered(labelToken, propertyKey, vk, window, one); err != nil {
 			return err
+		}
+		if refused != nil {
+			return refused
 		}
 		if stopped {
 			return nil
@@ -80,8 +89,11 @@ func (bs *Store) ForEachRelPropertyTxMemberMetered(relTypeToken uint16, property
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
 	for _, vk := range valueKeys {
 		stopped := false
+		var refused error
 		one := func(id types.RelID, tx types.Instant) bool {
-			if !fn(id, tx) {
+			if refused = t.HandedOn(); refused != nil { // a direct caller's member, counted before it is handed on
+				stopped = true
+			} else if !fn(id, tx) {
 				stopped = true
 			}
 			return !stopped
@@ -95,6 +107,9 @@ func (bs *Store) ForEachRelPropertyTxMemberMetered(relTypeToken uint16, property
 			}
 		} else if err := bs.relMembersUnmetered(relTypeToken, propertyKey, vk, window, one); err != nil {
 			return err
+		}
+		if refused != nil {
+			return refused
 		}
 		if stopped {
 			return nil

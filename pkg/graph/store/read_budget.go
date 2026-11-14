@@ -219,6 +219,34 @@ func (m *ReadMeter) Exceeded() error {
 type ReadTally struct {
 	meter *ReadMeter
 	door  string
+	// doorCounts: the door that reads counts each member a membership
+	// enumeration hands it (DoorCounts); else the store counts them.
+	doorCounts bool
+}
+
+// DoorCounts returns t for a door that counts each member a metered
+// membership enumeration (PropertyTxMemberMeteredCapability) hands it: the
+// store then admits its walks under the room but counts no member it hands
+// on. A caller of the capability itself passes t, and the store counts each
+// member as a candidate before it hands it on (R2, a host that reads the
+// membership directly). A nil tally gives nil.
+func (t *ReadTally) DoorCounts() *ReadTally {
+	if t == nil {
+		return nil
+	}
+	c := *t
+	c.doorCounts = true
+	return &c
+}
+
+// HandedOn counts one member a metered membership enumeration is about to
+// hand on, unless a door counts them (DoorCounts), returning the budget
+// error past a limit. A nil tally counts nothing.
+func (t *ReadTally) HandedOn() error {
+	if t == nil || t.doorCounts {
+		return nil
+	}
+	return t.meter.AddCandidates(t.door, 1)
 }
 
 // Tally binds m to door. A nil meter gives a nil tally.
