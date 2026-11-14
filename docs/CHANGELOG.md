@@ -313,29 +313,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **R2 cumulative: a `Candidates` limit holds for the whole read, and the store that walks owns the count** (ai-soc's
-  review of 14 Nov, 3.2 and 3.3, and René's rule that a limit is one allowance across keys, shards, versions and pending
-  writes): a window walk of an on-disk membership counted only the members it handed on and compared a per-key count
-  with the room read when the walk started, so a narrow window over several value keys judged many entries and refused
-  none (red: `tasks/evidence/R2CUMUL/red.txt`: three keys of one entry each, window rejecting two, `Candidates` 1,
-  answered 1 member, node and relationship). Now the store charges what it examines and collects, before it goes on, in
-  one place and never again above it: each member collected, each entry judged and rejected, each stale step (an
-  older version, a tombstone, an entry the write buffer overrides), on badger's disk walks and on its RAM sidecar's
-  snapshot, window-view open and window walk (`index.PropertyTxMembers.MembersAdmit`, `MembersDuringAdmit`, which stop at
-  the first refusal), and on every shard of a tiered fan-out under the one meter (red:
-  `tasks/evidence/R2CUMUL/tiered-red.txt`: members spread over three shards that each fit the limit and together
-  exceed it were all folded before one was counted). The `ReadTally.DoorCounts` mode and `HandedOn` that moved the
-  member count to the graph (unreleased) are removed; the graph counts members only for a store without the metered
-  form. Buffers are charged before they are made: the write buffer's values cloned for a window walk and the list a
-  fold becomes (16 bytes a member), through the new `ReadTally.Buffer`. Counts that change: an on-disk window read
-  counts the rejected entries and the members collected (40 for 40 rows of which 2 match, was 2), a read with
-  `BufferBytes` 1 over a metered store stops at the store's 16-byte list slot before the graph's 24. Not yet bounded:
-  the first build of a RAM sidecar. Tests: `TestMemberWindowAdmissionCumulativeAcrossKeys`,
-  `TestMemberWindowWalkCountsRejectsAndCollectedOnce`, `TestMemberWindowWalkChargesStaleSteps`,
-  `TestMemberWalkChargesBufferBytes`, `TestMeteredRAMSidecarWalkIsCharged`, `TestPropertyTxMembersDuringAdmit`,
-  `TestTieredMemberCollectionCumulativeAcrossShards`, `TestReadBudget_MemberLimitHoldsAcrossKeysAndShards`, each
-  pairing the exact unlimited control with a native counter (iterator steps, entries visited, clones, the list
-  allocated).
-
+  review of 14 Nov, 3.2 and 3.3, René's rule that a limit is one allowance across keys, shards, versions and pending
+  writes, and the Fable review of it): a window walk of an on-disk membership counted only the members it handed on and
+  compared a per-key count with the room read when the walk started, so a narrow window over several value keys judged
+  many entries and refused none (red: `tasks/evidence/R2CUMUL/red.txt`: three keys of one entry each, window rejecting
+  two, `Candidates` 1, answered 1 member, node and relationship). Now the store charges what it examines and holds,
+  before it does the work, in one place and never again above it: every entry a disk walk examines, once, before its
+  value is read (a live entry, a repeat of an entity already collected, an older version, a tombstone, an entry the write
+  buffer overrides, a buffered op, exact and window walks alike: red `tasks/evidence/R2CUMUL/review-red.txt`, 4 nodes
+  replaced 5 times counted 4 for 31 entries stepped), so a limit of N reads N entries; the same on badger's RAM sidecar
+  (the snapshot, the walk of the window view: `index.PropertyTxMembers.MembersAdmit`, `MembersDuringAdmit`, which stop at
+  the first refusal; the one-time open of a value's window view is refused up front when the value passes the room and is
+  not `BufferBytes`: the first budgeted reader of a value pays it, later readers do not), and on every shard of a tiered
+  fan-out under the one meter (red: `tasks/evidence/R2CUMUL/tiered-red.txt`: shards that each fit the limit and together
+  exceed it were all folded before one was counted). The tiered fan-out charges a staged tally
+  (`ReadTally.Staged`) whose work reaches the meter only when every shard has answered: a read that declines
+  (`ErrIndexNotFound`) costs nothing, where the shards that had collected charged their members and the graph's fallback
+  charged its own work again. The `ReadTally.DoorCounts` mode and `HandedOn` that moved the member count to the graph
+  (unreleased) are removed; the graph counts members only for a store without the metered form. Buffers are charged
+  before they are made, through the new `ReadTally.Buffer`: the write buffer's values cloned for a window walk (32
+  bytes), the fold's entries (24 an entity), the list a fold becomes (16 a member), the lists the tiered shards keep (16)
+  and its union (32 an entity), the RAM window walk's members and decided map. Fixed with it: a data race, found by the
+  review, in the first windowed lookup of a RAM sidecar value, which sized the value after it had released the index
+  lock while a write to the same (label, key) updated the sidecar's value map (`TestWindowFirstLookupDoesNotRaceWithWrites`,
+  red under `-race`). Counts that change: an on-disk read counts every entry it examines (an on-disk window read of 40 rows
+  with 2 matches counts 40, was 2; a value whose rows were rewritten counts each version), a read with `BufferBytes` 1
+  over a metered store stops at the store's first buffer charge before the graph's 24. Not yet bounded: the first build of
+  a RAM sidecar. Tests: `TestMemberWindowAdmissionCumulativeAcrossKeys`, `TestMemberWindowWalkCountsRejectsAndCollectedOnce`,
+  `TestMemberWindowWalkChargesStaleSteps`, `TestMemberWalkChargesEveryEntryExamined`, `TestMemberWalkChargesBufferBytes`,
+  `TestMeteredRAMSidecarWalkIsCharged`, `TestPropertyTxMembersDuringAdmit`, `TestReadTally_Staged`,
+  `TestTieredMemberCollectionCumulativeAcrossShards`, `TestTieredMemberDeclineCostsNothing`,
+  `TestTieredMemberFanoutChargesItsBuffers`, `TestReadBudget_MemberLimitHoldsAcrossKeysAndShards`, each pairing the exact
+  unlimited control with a native counter (iterator steps, entries read, clones, the list allocated, entries visited).
 - **A budgeted ex-adjacency read charges the archive's open (R2-SCANS review)**: on tiered with relationships placed by
   mint, `ForEachExAdjacentRelIDMetered` (behind `ForEachRelEffectiveAtNodesCtx`) asked whether the node lives on the
   reference side through the archive, opening a closed archive uncharged, so the later charged checkout found it open
