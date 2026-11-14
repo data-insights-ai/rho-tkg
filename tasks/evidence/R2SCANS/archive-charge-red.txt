@@ -1,0 +1,6 @@
+2026/11/14 08:33:41 INFO graph: tiered store opened duration=56.26796ms reference=6.688387ms hot=39.246195ms warm=3µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestExAdjacencyMetered_ChargesTheArchiveOpen (0.38s)
+    exadj_archive_charge_test.go:43: no room left: err <nil>, work {Candidates:0 Segments:0 ShardOpens:1 DecodedBytes:0 HistoryExamined:0 BufferBytes:0}, archive open true; want the shard-opens refusal with the archive closed
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.403s
+FAIL

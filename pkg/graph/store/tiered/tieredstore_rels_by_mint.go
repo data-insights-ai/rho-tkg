@@ -305,14 +305,15 @@ func (ts *Store) connectedRelIDs(shard *BadgerStore, nid types.NodeID) (out, in 
 
 // refSideNode reports whether nid lives or lived on the reference side (the
 // reference shard or the archive): the nodes whose ex-adjacency a mint shard
-// can hold.
-func (ts *Store) refSideNode(nid types.NodeID) (bool, error) {
+// can hold. A closed archive's open is charged to opens before it (nil:
+// none; R2-SCANS review finding 1).
+func (ts *Store) refSideNode(nid types.NodeID, opens *storecontract.ReadTally) (bool, error) {
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return false, err
 	}
 	defer refCheckin()
-	archive, archiveCheckin, err := ts.checkoutArchive()
+	archive, archiveCheckin, err := ts.checkoutArchiveCharged(opens)
 	if err != nil {
 		return false, err
 	}
@@ -365,7 +366,7 @@ func (ts *Store) forEachExAdjacentRelIDCharged(nid types.NodeID, incoming bool, 
 	refSide := false
 	if ts.relsByMint.fanOut.Load() {
 		var err error
-		if refSide, err = ts.refSideNode(nid); err != nil {
+		if refSide, err = ts.refSideNode(nid, opens); err != nil {
 			return err
 		}
 	}

@@ -251,8 +251,10 @@ func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Fi
 
 // RelsEffectivePage implements temporal.API.RelsEffectivePage. Under a read
 // budget in ctx (RH list R2, R2-SCANS) it is exact or refused: it counts the
-// candidates it lists (BufferBytes, 8 each, and no more than the budget has room
-// for plus the one that passes it), one candidate per relationship before its
+// candidates it lists (BufferBytes, 8 each as a list is fetched and 8 again as
+// the merged batch holds them, so 16 for a candidate that reaches a batch, and
+// the whole type list once more without a sidecar; no more than the budget has
+// room for plus the one that passes it), one candidate per relationship before its
 // timeline is read, the history, decoded bytes and shard opens of the reads, and
 // each kept segment (Segments, and its struct size as BufferBytes, before it is
 // collected), and returns *store.ReadBudgetError and no segments past a limit.

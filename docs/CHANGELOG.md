@@ -290,6 +290,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A budgeted ex-adjacency read charges the archive's open (R2-SCANS review)**: on tiered with relationships placed by
+  mint, `ForEachExAdjacentRelIDMetered` (behind `ForEachRelEffectiveAtNodesCtx`) asked whether the node lives on the
+  reference side through the archive, opening a closed archive uncharged, so the later charged checkout found it open
+  and `ShardOpens` read one low and a budget with no room left opened it (red:
+  `tasks/evidence/R2SCANS/archive-charge-red.txt`). The open is now charged before it, and a refusal leaves the archive
+  closed. Test: `TestExAdjacencyMetered_ChargesTheArchiveOpen`.
+
 - **A budgeted window membership read admits the entries it rejects (R2, ai-soc's window membership guard)**: on badger
   and every tiered shard the window walk of a membership kept on disk admits each live entry it judges, kept or
   rejected, under a `Candidates` limit, and adds them to `Work.Candidates` when it refuses. A narrow window over a value of 64 members found its one match after visiting all 64 and
