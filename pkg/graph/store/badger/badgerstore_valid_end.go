@@ -2,6 +2,7 @@ package badger
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"iter"
@@ -117,12 +118,7 @@ type tokenMembers struct {
 	has  func(id int64) bool
 }
 
-// nodeTokenMembersLocked is label tok's tokenMembers. Caller holds idxMu.
-func (bs *Store) nodeTokenMembersLocked(tok uint16) (tokenMembers, error) {
-	return bs.nodeTokenMembersTalliedLocked(tok, nil)
-}
-
-// nodeTokenMembersTalliedLocked is nodeTokenMembersLocked counting, in t, the
+// nodeTokenMembersTalliedLocked is label tok's tokenMembers, counting, in t, the
 // walk of a label map or keyspace not in RAM (R2 late counts:
 // labelCurrentMembersTalliedLocked); a nil t counts nothing.
 func (bs *Store) nodeTokenMembersTalliedLocked(tok uint16, t *storecontract.ReadTally) (tokenMembers, error) {
@@ -150,6 +146,64 @@ func (bs *Store) nodeTokenMembersTalliedLocked(tok uint16, t *storecontract.Read
 			return cur || was
 		},
 	}, nil
+}
+
+// tokenCarrier answers, for one tracked token, whether an entity carries it
+// (a current or a former member), reading through txn where it must read the
+// store. Caller holds idxMu (R).
+type tokenCarrier func(txn *badgerv4.Txn, tok uint16) (has func(id int64) (bool, error), err error)
+
+// nodeTokenCarrierLocked is label tok's tokenCarrier for the valid-end
+// attribution pass. A label in RAM (a map the open built, or a lazy map, built
+// by the track listing that tracked the label, else read and charged now)
+// answers from the map. A label kept on disk (LabelIndexOnDisk) answers a
+// former member from the ever-member sidecar, else probes the entity's label
+// key, the write buffer first: one candidate charged in t before the probe and
+// one index entry visited, so the pass costs a probe per entity and tracked
+// label, not a walk of every tracked label's keys. Caller holds idxMu (R).
+func (bs *Store) nodeTokenCarrierLocked(txn *badgerv4.Txn, tok uint16, t *storecontract.ReadTally) (func(int64) (bool, error), error) {
+	if !bs.labelOnDisk {
+		m, err := bs.nodeTokenMembersTalliedLocked(tok, t)
+		if err != nil {
+			return nil, err
+		}
+		return func(id int64) (bool, error) { return m.has(id), nil }, nil
+	}
+	former := bs.labelTxMembers[tok]
+	key := make([]byte, storepkg.SizeLabelIdx)
+	key[0] = storepkg.KeyLabel
+	binary.BigEndian.PutUint16(key[1:3], tok)
+	return func(id int64) (bool, error) {
+		if _, was := former[types.NodeID(id)]; was {
+			return true, nil
+		}
+		if err := t.Candidates(1); err != nil {
+			return false, err
+		}
+		noteIndexEntryVisited()
+		storepkg.PutUint64(key, 3, id)
+		if op, ok := bs.lookupPending(string(key)); ok {
+			return op.opType == writeOpSet, nil
+		}
+		switch _, err := txn.Get(key); {
+		case err == nil:
+			return true, nil
+		case errors.Is(err, badgerv4.ErrKeyNotFound):
+			return false, nil
+		default:
+			return false, fmt.Errorf("graph: probe label %d of node %d: %w", tok, id, err)
+		}
+	}, nil
+}
+
+// relTokenCarrierLocked is type tok's tokenCarrier: the type index and the
+// ever-member sidecar are in RAM. Caller holds idxMu (R).
+func (bs *Store) relTokenCarrierLocked(_ *badgerv4.Txn, tok uint16) (func(int64) (bool, error), error) {
+	m, err := bs.relTokenMembersLocked(tok)
+	if err != nil {
+		return nil, err
+	}
+	return func(id int64) (bool, error) { return m.has(id), nil }, nil
 }
 
 // relTokenMembersLocked is type tok's tokenMembers. Caller holds idxMu.
@@ -231,7 +285,7 @@ func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensur
 // stored bytes of every row handed to the decoder as decoded bytes, each before
 // it is done, so a refusal stops the walk at the entity (the row) that passes
 // the limit and the whole call returns the error: no entity is installed.
-func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node bool, members func(tok uint16) (tokenMembers, error), t *storecontract.ReadTally) (map[int64][]indexpkg.ValidEndRow, error) {
+func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node bool, carries tokenCarrier, t *storecontract.ReadTally) (map[int64][]indexpkg.ValidEndRow, error) {
 	current, history := storepkg.KeyRel, storepkg.KeyHistRel
 	if node {
 		current, history = storepkg.KeyNode, storepkg.KeyHistNode
@@ -325,18 +379,40 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 			out[id] = rows
 		}
 	}
+	if len(out) == 0 {
+		return out, nil
+	}
+	// The attribution: which tracked tokens each entity read carries. It asks
+	// per entity (tokenCarrier), so a label kept on disk is probed per entity,
+	// each probe charged before it is made, not listed again (R2-2 VEATTRIB).
+	read := make([]int64, 0, len(out))
+	for id := range out {
+		read = append(read, id)
+	}
+	slices.Sort(read)
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
-	for _, tok := range ix.TrackedTokens() {
-		m, err := members(tok)
-		if err != nil {
-			return nil, err
-		}
-		for id, rows := range out {
-			if m.has(id) {
-				rows[0].Tokens = append(rows[0].Tokens, tok)
+	err = bs.view(func(txn *badgerv4.Txn) error {
+		for _, tok := range ix.TrackedTokens() {
+			has, err := carries(txn, tok)
+			if err != nil {
+				return err
+			}
+			for _, id := range read {
+				ok, err := has(id)
+				if err != nil {
+					return err
+				}
+				if ok {
+					rows := out[id]
+					rows[0].Tokens = append(rows[0].Tokens, tok)
+				}
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -468,7 +544,7 @@ func (bs *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom t
 		return nil, err
 	}
 	if err := bs.relValidEnds.ResolveUnknownBulkUnder(t, func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
-		return bs.validEndRowsBulk(&bs.relValidEnds, ids, false, bs.relTokenMembersLocked, t)
+		return bs.validEndRowsBulk(&bs.relValidEnds, ids, false, bs.relTokenCarrierLocked, t)
 	}); err != nil {
 		return nil, err
 	}
@@ -496,10 +572,12 @@ func (bs *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 		return nil, err
 	}
 	if err := bs.nodeValidEnds.ResolveUnknownBulkUnder(t, func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
-		// The attribution pass (which tracked labels each entity read carries) reads
-		// every tracked label's members again: the track listing above is the one
-		// charge for a label's walk, so this pass takes the uncounted closure.
-		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, bs.nodeTokenMembersLocked, t)
+		// The attribution pass (which tracked labels each entity read carries)
+		// asks per entity: a RAM label map it already has, a label on disk by a
+		// probe charged before it is made (nodeTokenCarrierLocked).
+		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, func(txn *badgerv4.Txn, tok uint16) (func(int64) (bool, error), error) {
+			return bs.nodeTokenCarrierLocked(txn, tok, t)
+		}, t)
 	}); err != nil {
 		return nil, err
 	}
