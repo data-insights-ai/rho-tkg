@@ -410,10 +410,18 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 // coordinate resolves (nodesByLabelLocked, countNodesByLabelLocked), with the
 // label's current rows the gather reads. Callers hold c.mu (R or W).
 func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*types.Node, []types.NodeID, error) {
-	// Under a read budget in opts the label's current rows are counted where the
-	// store lists them, before they are decoded (storeNodesByLabel; RH list R2).
+	return c.nodeLabelCandidatesAtListing(tok, opts, false)
+}
+
+// nodeLabelCandidatesAtListing is nodeLabelCandidatesAt, counting the label's
+// current rows where the store lists them, before they are decoded
+// (storeNodesByLabel; RH list R2, R2-SCANS) when countListing is set and opts
+// carries a read budget: the temporal ByLabel read counts that listing as
+// candidates. The effective scans, whose fallback gather also lands here, count
+// a candidate per entity when they read it and leave the listing uncounted.
+func (c *Core) nodeLabelCandidatesAtListing(tok uint16, opts storepkg.QueryOpts, countListing bool) ([]*types.Node, []types.NodeID, error) {
 	listing := storepkg.QueryOpts{Depth: opts.Depth}
-	if m, door := opts.ReadMeter(); m != nil {
+	if m, door := opts.ReadMeter(); m != nil && countListing {
 		listing = listing.WithReadMeter(m, door)
 	}
 	current, err := c.storeNodesByLabel(tok, listing)
