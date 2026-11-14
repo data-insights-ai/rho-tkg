@@ -628,10 +628,11 @@ func parseOpenImageHeader(val []byte) (openImageHeader, bool) {
 }
 
 // readOpenImage returns the image when the open may trust it (see the trust
-// rule above), nil otherwise.
-func (bs *Store) readOpenImage() *openImage {
+// rule above), nil otherwise. A budgeted open refuses before a row rebuild
+// or delta scan; restoring a clean image belongs to its charged shard open.
+func (bs *Store) readOpenImage() (*openImage, error) {
 	if bs.inMemory {
-		return nil
+		return nil, nil
 	}
 	newest := bs.db.MaxVersion()
 	var img *openImage
@@ -639,7 +640,7 @@ func (bs *Store) readOpenImage() *openImage {
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(openImageHeaderKey)
 		if errors.Is(err, badgerv4.ErrKeyNotFound) {
-			return nil // never written, or a release without it closed the store
+			return bs.openReadTally.RefuseUnsupported() // never written, or an older release closed the store
 		}
 		if err != nil {
 			return err
@@ -656,6 +657,9 @@ func (bs *Store) readOpenImage() *openImage {
 			return errors.New("unreadable header")
 		}
 		if h.kind != openImageKindClose || item.Version() != newest {
+			if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+				return err // before decoding the image or scanning its delta
+			}
 			// A periodic image, or a commit after the Close image: apply it to
 			// the entities touched since it.
 			since = h.since
@@ -666,18 +670,21 @@ func (bs *Store) readOpenImage() *openImage {
 		return bs.readOpenImageChunks(txn, h, &img)
 	})
 	if err != nil {
+		if refused := bs.openReadTally.RefuseUnsupported(); refused != nil {
+			return nil, errors.Join(refused, err)
+		}
 		if bs.logger != nil {
 			bs.logger.Warningf("graph: open image ignored, rebuilding from the rows: %v", err)
 		}
-		return nil
+		return nil, nil
 	}
 	if img != nil && since != 0 && !bs.openImageDelta(img, since) {
-		return nil
+		return nil, nil
 	}
 	if img != nil && since == 0 {
 		bs.imageVersion.Store(newest) // trusted whole: the store is at its image
 	}
-	return img
+	return img, nil
 }
 
 // readOpenImageChunks reassembles, verifies and decodes the chunks.

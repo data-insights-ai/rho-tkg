@@ -4,10 +4,65 @@ import (
 	"context"
 	"errors"
 	"iter"
+	"slices"
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
+
+func TestResolveUnknown_SharedAdmission(t *testing.T) {
+	for _, bulk := range []bool{false, true} {
+		for _, budget := range []storepkg.ReadBudget{{}, {Candidates: 6}, {BufferBytes: 1}} {
+			_, meter := storepkg.WithReadBudget(t.Context(), budget)
+			indexes := []*ValidEndIndex{{}, {}}
+			var readIDs []int64
+			var err error
+			for i, ix := range indexes {
+				ix.Track(1, func(enlist func(int64)) {
+					for id := int64(i*4 + 1); id <= int64(i*4+4); id++ {
+						enlist(id)
+					}
+				})
+				read := func(id int64) ([]ValidEndRow, error) {
+					readIDs = append(readIDs, id)
+					return []ValidEndRow{{Tokens: []uint16{1}, ValidTo: 300}}, nil
+				}
+				if bulk {
+					err = ix.ResolveUnknownBulkUnder(meter.Tally("probe"), func(ids []int64) (map[int64][]ValidEndRow, error) {
+						out := make(map[int64][]ValidEndRow)
+						for _, id := range ids {
+							out[id], _ = read(id)
+						}
+						return out, nil
+					})
+				} else {
+					err = ix.ResolveUnknownUnder(meter.Tally("probe"), read)
+				}
+				if err != nil {
+					break
+				}
+			}
+			slices.Sort(readIDs)
+			want := []int64{1, 2, 3, 4, 5, 6, 7, 8}
+			if budget.Candidates != 0 {
+				want = want[:4]
+			}
+			if budget.BufferBytes != 0 {
+				want = nil
+			}
+			if !slices.Equal(readIDs, want) {
+				t.Errorf("bulk %v, budget %+v: native reads %v; want %v", bulk, budget, readIDs, want)
+			}
+			if budget == (storepkg.ReadBudget{}) {
+				if err != nil || indexes[0].Stats().Entities != 4 || indexes[1].Stats().Entities != 4 {
+					t.Errorf("control: %v, %+v/%+v", err, indexes[0].Stats(), indexes[1].Stats())
+				}
+			} else if !errors.Is(err, storepkg.ErrReadBudget) {
+				t.Errorf("budget %+v: %v; want refusal", budget, err)
+			}
+		}
+	}
+}
 
 // TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild (R2 late counts, ai-soc
 // review 14 Nov 3.3): Track enlisted every ever-member of a token as unknown and
@@ -64,25 +119,24 @@ func TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild(t *testing.T) {
 		if got := m.Work().Candidates; got != 11 {
 			t.Fatalf("the first refusal counted %d candidates, want the 11 members it saw", got)
 		}
-		// Room for exactly the members enlists them, counting nothing itself: the
-		// walk runs twice (the count, then the enlistment), 200 steps.
+		// Exact room admits each member once, then installs the complete token.
 		steps = 0
 		m, tl = tally(members)
-		if tracked, err := ix.TrackUnder(1, seq(1), tl); !tracked || err != nil || steps != 2*members {
-			t.Fatalf("room %d = %v, %v after %d walked; want tracked after %d", members, tracked, err, steps, 2*members)
+		if tracked, err := ix.TrackUnder(1, seq(1), tl); !tracked || err != nil || steps != members {
+			t.Fatalf("room %d = %v, %v after %d walked; want tracked after %d", members, tracked, err, steps, members)
 		}
-		if st := ix.Stats(); st.Tokens != 1 || st.Unknown != members || m.Work().Candidates != 0 {
-			t.Fatalf("after the enlistment: %+v, %d candidates counted; want %d unknown and none counted (the resolve counts each entity)", st, m.Work().Candidates, members)
+		if st := ix.Stats(); st.Tokens != 1 || st.Unknown != members || m.Work().Candidates != members {
+			t.Fatalf("after the enlistment: %+v, %d candidates counted; want %d unknown and the same number admitted", st, m.Work().Candidates, members)
 		}
 		// A second token's members add to the unknown ones the resolve will count.
-		_, tl = tally(members + members/2)
+		_, tl = tally(members - 1)
 		if tracked, err := ix.TrackUnder(2, seq(1000), tl); tracked || !refused(err) {
 			t.Fatalf("a second token past the room = %v, %v; want refused", tracked, err)
 		}
 		if st := ix.Stats(); st.Tokens != 1 || st.Unknown != members {
 			t.Fatalf("after the second refusal: %+v; want the first token only", st)
 		}
-		// The same members of an already unknown entity add nothing.
+		// Repeated members still cost a walk but add no new unknown entries.
 		_, tl = tally(members)
 		if tracked, err := ix.TrackUnder(3, seq(1), tl); !tracked || err != nil {
 			t.Fatalf("a token whose members are unknown already = %v, %v; want tracked within room %d", tracked, err, members)
@@ -120,7 +174,7 @@ func TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild(t *testing.T) {
 			if st := ix.Stats(); st.Unknown != members || m.Work().Candidates != members {
 				t.Fatalf("after the refusal: %+v, %d candidates counted; want the %d unknown kept and counted", st, m.Work().Candidates, members)
 			}
-			// Room for exactly the unknown entities reads them all (the read counts each).
+			// Exact room admits the pending snapshot before the callback reads it.
 			_, tl = tally(members)
 			if err := resolve(tl); err != nil || reads != members || ix.Stats().Unknown != 0 {
 				t.Fatalf("room %d = %v after %d reads, %d unknown; want %d reads and none unknown", members, err, reads, ix.Stats().Unknown, members)

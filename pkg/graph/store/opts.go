@@ -143,10 +143,10 @@ func (o QueryOpts) WithReadMeter(m *ReadMeter, door string) QueryOpts {
 	return o
 }
 
-// Held returns o with a hold scope for one read whose gathers hold entries
-// ahead of the work that counts them (ReadTally.Held): set once per read, so
+// Held returns o with a hold scope for one read whose gathers charge entries
+// before producing them (ReadTally.Held): set once per read, so
 // every gather of it (each label, each shard) shares one room. o itself when
-// it has no meter, no candidate limit or a scope already.
+// it has no meter or already has a scope; an unlimited meter still counts holds.
 func (o QueryOpts) Held() QueryOpts {
 	if t := o.ReadTally().Held(); t != nil {
 		o.hold = t.hold

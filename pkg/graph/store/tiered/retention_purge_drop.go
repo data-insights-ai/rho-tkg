@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -132,10 +133,19 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	}
 	ts.droppingShards[es.name] = struct{}{}
 	ts.mu.Unlock()
+	// One exit restores routing on every pre-commit failure. Once the catalog
+	// removal commits, keep the name reserved until its directory is gone.
+	committed, removed := false, false
 	defer func() {
 		ts.mu.Lock()
-		delete(ts.droppingShards, es.name)
-		ts.mu.Unlock()
+		defer ts.mu.Unlock()
+		if !committed {
+			ts.eventShards[es.name] = es
+			ts.reindexShardsLocked()
+		}
+		if !committed || removed {
+			delete(ts.droppingShards, es.name)
+		}
 	}()
 
 	// (3) Drain in-flight requests. No new checkouts can arrive (unlinked), so
@@ -149,10 +159,6 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		time.Sleep(time.Millisecond)
 	}
 	if !drained {
-		ts.mu.Lock()
-		ts.eventShards[es.name] = es // re-link — the row scan will handle it
-		ts.reindexShardsLocked()
-		ts.mu.Unlock()
 		return zero, false, nil
 	}
 
@@ -172,10 +178,6 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	// concurrent AddNodeLabelToken adding a FOREIGN label would go undetected.
 	// This post-drain result is authoritative: re-link and fall back to row-scan.
 	if !stillOnlyLabel {
-		ts.mu.Lock()
-		ts.eventShards[es.name] = es
-		ts.reindexShardsLocked()
-		ts.mu.Unlock()
 		return zero, false, nil
 	}
 	dropSet := make(map[types.NodeID]struct{}, len(nodeIDs))
@@ -204,10 +206,6 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 			// is released (lock order: ts.mu is never taken under shardMu).
 			es.coldInMemoryLocked()
 			es.shardMu.Unlock()
-			ts.mu.Lock()
-			ts.eventShards[es.name] = es
-			ts.reindexShardsLocked()
-			ts.mu.Unlock()
 			return zero, false, closeErr
 		}
 	}
@@ -225,23 +223,26 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		store, reopenErr := ts.openShardStoreWithRecovery(es.path, es.currentTier() == TierCold, false)
 		if reopenErr == nil {
 			es.setStoreLocked(ts, store)
+		} else {
+			es.coldInMemoryLocked()
 		}
 		es.shardMu.Unlock()
-		ts.mu.Lock()
-		ts.eventShards[es.name] = es
-		ts.reindexShardsLocked()
-		ts.mu.Unlock()
 		if reopenErr != nil {
 			return zero, false, fmt.Errorf("graph: reopen shard %s after failed drop: %w (drop error: %v)", es.name, reopenErr, serr)
 		}
 		return zero, false, serr
 	}
+	committed = true
 	ts.foldDroppedAccesses(es)
 	if h := ts.dropRemoveHook; h != nil {
 		h()
 	}
 	if rerr := os.RemoveAll(dir); rerr != nil {
-		return zero, false, rerr
+		// The logical removal committed. Report it even if physical cleanup
+		// failed; otherwise a retry can never report these purged IDs.
+		slog.Error("tiered: dropped shard directory remains; name reserved", "shard", es.name, "dir", dir, "err", rerr)
+	} else {
+		removed = true
 	}
 
 	return storecontract.RetentionPurgeResult{

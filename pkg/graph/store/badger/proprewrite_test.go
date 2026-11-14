@@ -64,7 +64,7 @@ func prwCandidates(t *testing.T, bs *Store, v string) []int64 {
 	t.Helper()
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
-	nids, err := bs.propertyIndexDiskKeysCandidatesLocked("k", []string{types.IndexablePropertyValueKey(v)}, nil)
+	nids, err := bs.propertyIndexDiskKeysCandidatesTalliedLocked("k", []string{types.IndexablePropertyValueKey(v)}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

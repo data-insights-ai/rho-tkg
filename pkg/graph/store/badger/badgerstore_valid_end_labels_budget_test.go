@@ -2,6 +2,7 @@ package badger
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -18,7 +19,8 @@ import (
 // own once more. The track listing is the only charge of a label's walk. Label 1
 // has 20 nodes and label 2 has 3; the first call of label 2 counts its listing (3
 // on disk, none with the label index in RAM, where the walk costs nothing) and
-// one candidate per entity it reads (3), never label 1's 20 members, alone and
+// admissions for each enlistment, pending snapshot, row read and candidate copy,
+// plus native forward steps, never label 1's 20 members, alone and
 // after label 1 alike: the attribution reads the labels off the rows it decodes
 // (R2-2 VEATTRIB; the per-entity probe of each tracked label is gone); the
 // native counter (rows the bulk read decoded) is 3 either way.
@@ -52,6 +54,10 @@ func TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
+					// Isolate attribution from the separately metered membership build.
+					if err := bs.ensureLabelTxMembersBuilt(); err != nil {
+						t.Fatal(err)
+					}
 					return bs
 				}
 				call := func(bs *Store, label uint16, budget storecontract.ReadBudget) (*storecontract.ReadMeter, []int64, error) {
@@ -75,8 +81,9 @@ func TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce(t *testing.T) {
 				if disk {
 					listing = b // the keyspace walk; the RAM index lists nothing
 				}
-				if got := m.Work().Candidates; got != listing+b {
-					t.Fatalf("label 2 alone counted %d candidates, want %d (%d listed, %d entities)", got, listing+b, listing, b)
+				count := listing + 4*b + uint64(alone.ValidEndIteratorStepsForTest())
+				if got := m.Work().Candidates; got != count {
+					t.Fatalf("label 2 alone counted %d candidates, want %d (%d listed, %d entities)", got, count, listing, b)
 				}
 
 				// Label 1 tracked first: label 2's count must not move.
@@ -89,8 +96,8 @@ func TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce(t *testing.T) {
 				if err != nil || !slices.Equal(got, want) {
 					t.Fatalf("label 2 after label 1 = %v, %v; want %v", got, err, want)
 				}
-				if counted, read := m.Work().Candidates, both.ValidEndRowDecodesForTest()-decodes; counted != listing+b || (flushed && read != b) {
-					t.Fatalf("label 2 after label 1 counted %d candidates, %d rows decoded; want %d (label 1's %d members not charged again, no probe) and, flushed, %d decoded", counted, read, listing+b, a, b)
+				if counted, read := m.Work().Candidates, both.ValidEndRowDecodesForTest()-decodes; counted != count || (flushed && read != b) {
+					t.Fatalf("label 2 after label 1 counted %d candidates, %d rows decoded; want %d (label 1's %d members not charged again, no probe) and, flushed, %d decoded", counted, read, count, a, b)
 				}
 
 				// The room of its own count answers; one under it refuses.
@@ -98,17 +105,69 @@ func TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce(t *testing.T) {
 				if _, _, err := call(bounded, 1, storecontract.ReadBudget{}); err != nil {
 					t.Fatal(err)
 				}
-				if _, got, err := call(bounded, 2, storecontract.ReadBudget{Candidates: listing + b}); err != nil || !slices.Equal(got, want) {
-					t.Fatalf("label 2 under its own count %d = %v, %v; want %v", listing+b, got, err, want)
+				if _, got, err := call(bounded, 2, storecontract.ReadBudget{Candidates: count}); err != nil || !slices.Equal(got, want) {
+					t.Fatalf("label 2 under its own count %d = %v, %v; want %v", count, got, err, want)
 				}
 				one := open()
 				if _, _, err := call(one, 1, storecontract.ReadBudget{}); err != nil {
 					t.Fatal(err)
 				}
-				if _, got, err := call(one, 2, storecontract.ReadBudget{Candidates: listing + b - 1}); err == nil || len(got) != 0 {
+				if _, got, err := call(one, 2, storecontract.ReadBudget{Candidates: count - 1}); err == nil || len(got) != 0 {
 					t.Fatalf("label 2 one under its count = %v, %v; want ErrReadBudget and no candidates", got, err)
 				}
 			})
+		}
+	}
+}
+
+func TestValidEndLabelMap_AdmissionBeforeCopy(t *testing.T) {
+	bs, err := New(Config{InMemory: true, LabelIndexOnDisk: true, MaxPendingWrites: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	for label := uint16(1); label <= 2; label++ {
+		for n := int64(1); n <= 3; n++ {
+			if err := bs.PutNode(types.NewNode(types.NodeID(int64(label)*10+n), label, nil)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	run := func(limit uint64) (int64, uint64, error) {
+		copied, stop := CountValidEndMembersCopiedForTest()
+		defer stop()
+		_, m := storecontract.WithReadBudget(t.Context(), storecontract.ReadBudget{BufferBytes: limit})
+		bs.idxMu.RLock()
+		defer bs.idxMu.RUnlock()
+		for label := uint16(1); label <= 2; label++ {
+			set, err := bs.labelCurrentMembersTalliedLocked(label, m.Tally("label current map"))
+			if err != nil {
+				return copied(), m.Work().BufferBytes, err
+			}
+			if len(set) != 3 {
+				t.Fatalf("label %d members %v", label, set)
+			}
+			for n := int64(1); n <= 3; n++ {
+				if _, ok := set[types.NodeID(int64(label)*10+n)]; !ok {
+					t.Fatalf("label %d missing ID %d", label, int64(label)*10+n)
+				}
+			}
+		}
+		return copied(), m.Work().BufferBytes, nil
+	}
+	// Each label costs 24 bytes of IDs plus 72 bytes of membership entries.
+	copied, used, err := run(0)
+	if err != nil || copied != 6 || used != 192 {
+		t.Fatalf("control: copies %d, buffer %d, err %v; want six copies,192 bytes", copied, used, err)
+	}
+	for _, limit := range []uint64{96, 160} {
+		copied, used, err = run(limit)
+		var refusal *storecontract.ReadBudgetError
+		if !errors.As(err, &refusal) || refusal.Limit != "buffer bytes" || copied != 3 || used <= limit {
+			t.Fatalf("limit %d: copies %d, buffer %d, err %v; want refusal before second map", limit, copied, used, err)
 		}
 	}
 }

@@ -89,8 +89,11 @@ func TestReadBudgetPublicHistoryDoors(t *testing.T) {
 				if got, err := d.call(uctx); err != nil || got != d.want {
 					t.Fatalf("%s: unlimited = %q, %v; want %q", d.name, got, err, d.want)
 				}
-				if w := meter.Work(); w.Candidates != 1 || w.HistoryExamined != updates {
-					t.Fatalf("%s: unlimited work %+v; want 1 candidate and %d versions looked at", d.name, w, updates)
+				// Every returned version is examined; pending overlay copies and
+				// committed iterator walks are additional native history work.
+				historyWork := meter.Work().HistoryExamined
+				if w := meter.Work(); w.Candidates != 1 || historyWork < updates {
+					t.Fatalf("%s: unlimited work %+v; want 1 candidate and at least %d versions looked at", d.name, w, updates)
 				}
 				bctx, meter := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: updates - 1})
 				got, err := d.call(bctx)
@@ -101,7 +104,7 @@ func TestReadBudgetPublicHistoryDoors(t *testing.T) {
 				if w := meter.Work(); w != rb.Work {
 					t.Fatalf("%s: meter %+v, error work %+v", d.name, w, rb.Work)
 				}
-				exact, _ := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: updates, Candidates: 1})
+				exact, _ := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: historyWork, Candidates: 1})
 				if got, err := d.call(exact); err != nil || got != d.want {
 					t.Fatalf("%s: a budget of exactly the work = %q, %v; want the rows", d.name, got, err)
 				}

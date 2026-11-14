@@ -20,8 +20,7 @@ import (
 // 0 listed), and under a limit of 8 it lists the 5 and the store refuses the 15
 // former members before it copies them (R2 meter: held on the read's room, the
 // 5 held and the 15 counted by the add that passes the limit: 20). Sharded
-// keeps no sidecar: its history fold holds each member before it lists it and
-// stops at the 4th past the 5 (8 listed, 9 counted). Never the 20 listed.
+// uses the same native sidecar; these fixture IDs belong to one slot.
 func TestReadBudget_GatherStopsAtTheRoom(t *testing.T) {
 	t.Parallel()
 	const members, kept = 20, 5
@@ -73,6 +72,7 @@ func TestReadBudget_GatherStopsAtTheRoom(t *testing.T) {
 				}},
 			}
 			for _, d := range doors {
+				warmGatherMembership(t, g)
 				t.Run(d.name, func(t *testing.T) {
 					listed := 0 // the native count of IDs the gather lists
 					g.candidatesListed = func(n int) { listed += n }
@@ -96,14 +96,8 @@ func TestReadBudget_GatherStopsAtTheRoom(t *testing.T) {
 						{kept - 1, 0, kept},
 						// The 15 former members are held whole before the stores copy
 						// them, so a room of 8 refuses with the 5 current members listed
-						// and the 5 held plus the 15 counted; sharded keeps no sidecar
-						// and its history fold holds each member before it lists it,
-						// refused at the 4th past the 5.
-						map[bool]struct {
-							limit   uint64
-							listed  int
-							counted uint64
-						}{true: {kept + 3, kept + 3, kept + 4}, false: {kept + 3, kept, members}}[be.name == "sharded"],
+						// and the 5 held plus the 15 counted.
+						{kept + 3, kept, members},
 					} {
 						listed = 0
 						pctx, m := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: c.limit})

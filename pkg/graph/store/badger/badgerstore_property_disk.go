@@ -615,7 +615,7 @@ var propertyDiskSeekTestHook func()
 // equality lookup on the on-disk property index.
 var propertyDiskIterOptsTestHook func(badgerv4.IteratorOptions)
 
-// propertyIndexDiskKeysCandidatesLocked resolves propertyKey and its value
+// propertyIndexDiskKeysCandidatesTalliedLocked resolves propertyKey and its value
 // keys to the (unsorted, possibly repeated) on-disk candidate node IDs in one
 // pending-write overlay pass and one iterator, seeking once per numeric
 // magnitude (its typed keys share a seek prefix) or raw value (ROWPROBE: a
@@ -624,26 +624,30 @@ var propertyDiskIterOptsTestHook func(badgerv4.IteratorOptions)
 // moved from one listed value to another keeps the new entry. A
 // property key with no token or a non-indexable value matches nothing, the
 // RAM path's silent-empty contract. Caller holds idxMu (R or W).
-func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant) ([]types.NodeID, error) {
-	return bs.propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey, valueKeys, bounds, nil)
-}
-
-// propertyIndexDiskKeysCandidatesAdmitLocked is propertyIndexDiskKeysCandidatesLocked
-// with a read budget's candidate admission (R2). admit (nil: none) is called
-// with 1 for each candidate before the walk collects it, and its error stops
-// the walk there, so a read past its limit has visited the entries up to the
-// one that passed it, not the whole key. An entry a later walk of the same
-// lookup visits again counts again, and so does a node listed under two of the
-// looked-up values (an Elements index). A pending set that no disk entry
-// matched counts too, before it is added.
-func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant, admit func(n int) error) ([]types.NodeID, error) {
+//
+// Every pending operation and committed iterator entry is admitted before it
+// is examined, including deletes, repeats and rejected numeric subtypes.
+// Prefixes, overlays, copied keys, IDs and bounds pay for buffers before they
+// are allocated; a bound's stored bytes are charged before its decode. A
+// pending entry is admitted by its overlay walk, not again when emitted.
+func (bs *Store) propertyIndexDiskKeysCandidatesTalliedLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant, t *storecontract.ReadTally) ([]types.NodeID, error) {
 	propertyDiskLookups.Add(1)
 	tok, ok := bs.propKeyTokenFor(propertyKey)
 	if !ok {
 		return nil, nil
 	}
 	// The value prefixes, sorted and distinct in one buffer.
-	var buf []byte
+	var prefixBytes int
+	for _, vk := range valueKeys {
+		// Raw payloads contain the value key; numeric payloads have fixed size.
+		// Allocate the admitted upper bound once, before encoding any prefix.
+		n := max(4+len(vk), 3+storepkg.PropIdxNumericPayloadLen)
+		if err := t.Buffer(n + 8 + 24); err != nil { // prefix bytes, end, slice header
+			return nil, err
+		}
+		prefixBytes += n
+	}
+	buf := make([]byte, 0, prefixBytes)
 	ends := make([]int, 0, len(valueKeys))
 	for _, vk := range valueKeys {
 		if buf, ok = storepkg.AppendPropertyIndexValuePrefix(buf, tok, vk); ok {
@@ -674,7 +678,14 @@ func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, 
 
 	var adds, dels map[string]types.NodeID
 	var pendingBounds map[string]types.Instant // bounds != nil: the pending sets' bounds
-	bs.rangePendingPrefixes(prefixes, func(k string, op writeOp) {
+	var pendingErr error
+	bs.walkPendingPrefixes(prefixes, func(k string, op writeOp) bool {
+		if pendingErr = t.Candidates(1); pendingErr != nil {
+			return false
+		}
+		if pendingErr = t.Buffer(40); pendingErr != nil { // key reference, ID and map entry
+			return false
+		}
 		nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey([]byte(k)))
 		if op.opType == writeOpSet {
 			if adds == nil {
@@ -683,10 +694,16 @@ func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, 
 			adds[k] = nid
 			delete(dels, k)
 			if bounds != nil {
-				if pendingBounds == nil {
-					pendingBounds = make(map[string]types.Instant)
+				if pendingErr = t.Decoded(len(op.value)); pendingErr != nil {
+					return false
 				}
-				if b, ok := storepkg.DecodeValidEndBound(op.value); ok {
+				if b, ok := decodePropertyValidEndBound(op.value); ok {
+					if pendingErr = t.Buffer(40); pendingErr != nil {
+						return false
+					}
+					if pendingBounds == nil {
+						pendingBounds = make(map[string]types.Instant)
+					}
 					pendingBounds[k] = b
 				} else {
 					delete(pendingBounds, k)
@@ -699,7 +716,11 @@ func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, 
 			dels[k] = nid
 			delete(adds, k)
 		}
+		return true
 	})
+	if pendingErr != nil {
+		return nil, pendingErr
+	}
 
 	// A raw-domain (string, bool, temporal) value prefix has no terminator, so
 	// every longer value that extends it shares it: a walk of the prefix visits
@@ -754,8 +775,15 @@ func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, 
 			last = seek
 			from, to := seek, []byte(nil)
 			if prefix[3] == storepkg.PropIdxDomainRaw {
-				from = binary.BigEndian.AppendUint64(slices.Clone(seek), lo)
-				to = binary.BigEndian.AppendUint64(slices.Clone(seek), hi)
+				if err := t.Buffer(2 * (len(seek) + 8)); err != nil {
+					return err
+				}
+				from = make([]byte, len(seek), len(seek)+8)
+				copy(from, seek)
+				from = binary.BigEndian.AppendUint64(from, lo)
+				to = make([]byte, len(seek), len(seek)+8)
+				copy(to, seek)
+				to = binary.BigEndian.AppendUint64(to, hi)
 			}
 			if start == nil || bytes.Compare(from, start) < 0 || (it.Valid() && bytes.Compare(it.Item().Key(), from) < 0) {
 				if propertyDiskSeekTestHook != nil {
@@ -772,13 +800,23 @@ func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, 
 					propertyDiskVisitTestHook()
 				}
 				noteIndexEntryVisited()
+				if err := t.Candidates(1); err != nil {
+					return err
+				}
 				if to != nil && bytes.Compare(key, to) > 0 {
 					break
 				}
 				if bytes.Equal(key, prev) {
 					continue // an older version of the key just decided (in any walk: its newest version is the same)
 				}
-				prev = append(prev[:0], key...)
+				if cap(prev) < len(key) {
+					if err := t.Buffer(len(key)); err != nil {
+						return err
+					}
+					prev = make([]byte, len(key))
+				}
+				prev = prev[:len(key)]
+				copy(prev, key)
 				if item.IsDeletedOrExpired() || !listed(key) {
 					continue
 				}
@@ -788,11 +826,20 @@ func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, 
 				nid := types.NodeID(storepkg.PropertyIndexNodeIDFromKey(key))
 				if _, pending := adds[string(key)]; pending && bounds != nil { // the pending set decides
 					if b, ok := pendingBounds[string(key)]; ok {
+						if err := t.Buffer(24); err != nil {
+							return err
+						}
 						bounds[nid] = b
 					}
 				} else if bounds != nil {
+					if err := t.Decoded(int(item.ValueSize())); err != nil { // #nosec G115 -- a bounded Badger value
+						return err
+					}
 					if err := item.Value(func(v []byte) error {
-						if b, ok := storepkg.DecodeValidEndBound(v); ok {
+						if b, ok := decodePropertyValidEndBound(v); ok {
+							if err := t.Buffer(24); err != nil {
+								return err
+							}
 							bounds[nid] = b
 						}
 						return nil
@@ -801,10 +848,8 @@ func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, 
 					}
 				}
 				delete(adds, string(key))
-				if admit != nil {
-					if err := admit(1); err != nil {
-						return err // the candidate that passes the limit: nothing after it is walked
-					}
+				if err := t.Buffer(8); err != nil {
+					return err
 				}
 				nids = append(nids, nid)
 			}
@@ -822,13 +867,14 @@ func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, 
 		nids = slices.Compact(nids)
 	}
 	for k, nid := range adds {
-		if admit != nil {
-			if err := admit(1); err != nil {
-				return nil, err
-			}
+		if err := t.Buffer(8); err != nil {
+			return nil, err
 		}
 		nids = append(nids, nid)
 		if b, ok := pendingBounds[k]; ok {
+			if err := t.Buffer(24); err != nil {
+				return nil, err
+			}
 			bounds[nid] = b
 		}
 	}
@@ -1259,6 +1305,9 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 		case trusted || all:
 			p.disk[key] = struct{}{}
 		case canBuild:
+			if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+				return nil, err
+			}
 			p.disk[key] = struct{}{}
 			p.rebuild[def.PropertyKey] = struct{}{}
 		default:
@@ -1273,7 +1322,10 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 		clear(p.disk)
 		clear(p.rebuild)
 	}
-	veMark, veUnmark := bs.planValidEnd(txn, p)
+	veMark, veUnmark, err := bs.planValidEnd(txn, p)
+	if err != nil {
+		return nil, err
+	}
 	it = txn.NewIterator(badgerv4.IteratorOptions{Prefix: propDiskInexactPrefix})
 	for it.Rewind(); it.Valid(); it.Next() {
 		if p.inexact == nil {
@@ -1337,6 +1389,11 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 		v := bs.raisedFormatMarker(level)
 		p.mark = append(p.mark, writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)})
 	}
+	if p.writes() {
+		if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+			return nil, err
+		}
+	}
 	return p, nil
 }
 
@@ -1346,7 +1403,7 @@ func (bs *Store) planPropertyIndexDisk(txn *badgerv4.Txn, defs []propIdxDef) (*p
 // bounded entries unknown (unless the open rebuilds the key, which writes them
 // fresh), with its marker to set. It returns the markers to set and those of
 // definitions no longer listed or on disk, to delete.
-func (bs *Store) planValidEnd(txn *badgerv4.Txn, p *propDiskOpen) (mark []writeOp, unmark [][]byte) {
+func (bs *Store) planValidEnd(txn *badgerv4.Txn, p *propDiskOpen) (mark []writeOp, unmark [][]byte, err error) {
 	marked := make(map[string]struct{})
 	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: storepkg.PropertyIndexValidEndBuiltPrefix})
 	for it.Rewind(); it.Valid(); it.Next() {
@@ -1369,6 +1426,9 @@ func (bs *Store) planValidEnd(txn *badgerv4.Txn, p *propDiskOpen) (mark []writeO
 		if bs.readOnly {
 			continue
 		}
+		if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+			return nil, nil, err
+		}
 		_, rebuilt := p.rebuild[key.PropertyKey]
 		if _, done := reset[key.PropertyKey]; !rebuilt && !done {
 			reset[key.PropertyKey] = struct{}{}
@@ -1382,7 +1442,7 @@ func (bs *Store) planValidEnd(txn *badgerv4.Txn, p *propDiskOpen) (mark []writeO
 			unmark = append(unmark, []byte(k))
 		}
 	}
-	return mark, unmark
+	return mark, unmark, nil
 }
 
 // commitPropertyIndexOnDiskBackfill writes an open's rebuild of on-disk

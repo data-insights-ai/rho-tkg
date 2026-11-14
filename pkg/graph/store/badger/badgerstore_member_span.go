@@ -346,21 +346,25 @@ func (bs *Store) entityIndexSeekLocked(prefix, seek []byte, past func(key []byte
 		return len(k) == len(prefix)+tail && bytes.Compare(k, seek) >= 0 && (past == nil || !past(k))
 	}
 	ov := pendingKeyOverlay[[]byte]{}
-	bs.rangePendingPrefixes([][]byte{prefix}, func(k string, op writeOp) {
+	bs.walkPendingPrefixes([][]byte{prefix}, func(k string, op writeOp) bool {
 		if work != nil {
 			work.OverlayOpsInspected++
 		}
 		if budget.entry() != nil { // examined: charged before anything is kept of it; once refused, no more is taken
-			return
+			return false
 		}
 		var val []byte
-		if op.opType == writeOpSet && budget.buffer(len(op.value)) { // charged before the clone
+		if op.opType == writeOpSet {
+			if !budget.buffer(len(op.value)) {
+				return false
+			}
 			val = slices.Clone(op.value)
 			if work != nil {
 				work.OverlayValuesCloned++
 			}
 		}
 		noteMemberOverlay(&ov, k, op, val, work)
+		return true
 	})
 	if err := budget.refusal(); err != nil {
 		return err

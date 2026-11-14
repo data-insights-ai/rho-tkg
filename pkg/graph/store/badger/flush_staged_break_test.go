@@ -52,7 +52,12 @@ func (h stagedHistory) session1(t *testing.T, cfg Config) {
 	if err := bs.CreatePropertyIndex(8, "k"); err != nil {
 		t.Fatal(err)
 	}
-	putNodes(t, bs, h.base)
+	// This session only supplies the clean baseline image. Seed it in one
+	// durable group; the second session still tests the selected sync mode
+	// and each staged-flush failure point.
+	if err := inOneFlush(bs, cfg.SyncWrites, func() { putNodes(t, bs, h.base) }); err != nil {
+		t.Fatal(err)
+	}
 	if err := bs.Close(); err != nil {
 		t.Fatal(err)
 	}

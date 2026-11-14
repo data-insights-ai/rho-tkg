@@ -155,6 +155,13 @@ func (ts *Store) RelationshipCount() (int, error) {
 }
 
 func (ts *Store) RelCountByType(token uint16) (int, error) {
+	return ts.RelCountByTypeMetered(token, nil)
+}
+
+// RelCountByTypeMetered is RelCountByType under a read budget
+// (storecontract.MemberCountMeteredCapability), charged as
+// NodeCountByLabelMetered. A nil t is RelCountByType.
+func (ts *Store) RelCountByTypeMetered(token uint16, t *storecontract.ReadTally) (int, error) {
 	if err := ts.checkOpen(); err != nil {
 		return 0, err
 	}
@@ -181,7 +188,7 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 
 	// refArchive parity: archived rels of this type count toward total.
 	ts.refArchiveGapHook()
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchiveCharged(t)
 	if archiveErr != nil {
 		return 0, archiveErr
 	}
@@ -207,7 +214,7 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 			results[i].count = n
 			return
 		}
-		store, release, err := es.checkoutStoreReadOnly(ts)
+		store, release, err := es.checkoutBudgeted(ts, t)
 		if err != nil {
 			results[i].err = err
 			return

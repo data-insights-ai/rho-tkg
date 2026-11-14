@@ -14,8 +14,9 @@ import (
 // putting a ReadBudget in the call's context. A door that supports budgets
 // counts its work in the context's ReadMeter and, at a limit, returns a
 // *ReadBudgetError (errors.Is ErrReadBudget) carrying the counters, before it
-// hands out any row: an answer is exact or refused, never partial. A context
-// without a budget reads as before: general callers keep their contract.
+// starts the refused work. Slice doors return all or an error; streaming
+// callbacks delivered before refusal remain valid. A context without a budget
+// reads as before: general callers keep their contract.
 
 // ErrReadBudget is the sentinel of a selective read stopped at its budget.
 var ErrReadBudget = errors.New("graph: read budget exceeded")
@@ -30,18 +31,13 @@ type ReadBudget struct {
 	Segments uint64
 	// ShardOpens bounds the closed shards the reads open (tiered).
 	ShardOpens uint64
-	// DecodedBytes bounds the stored (wire) bytes the doors' reads hand to a
-	// row decoder: each current row decoded, each history version decoded (a
-	// delta row and its anchor) and each history skeleton decoded, counted by
-	// the store at the decode, before it, so a read past the limit stops
-	// before it decodes the row that passes it. It counts decode work, not the
-	// size of the data a read touches: a row the store's entity cache serves
-	// is not decoded and counts nothing, nor does a store that keeps its rows
-	// decoded (memory); a history row decoded twice (its skeleton, then as a
-	// winner) counts twice; a partial decode counts the whole value handed to
-	// it. Index reads count as Candidates, not here. The doors that count:
-	// RelEffectiveTimelinesByProperties, LendByIDs, the node property doors'
-	// time-free reads and GetByIDsCtx (docs/api.md, Read budgets).
+	// DecodedBytes bounds stored bytes handed to a decoder, charged before
+	// decoding: current rows, history skeletons, winners and delta anchors,
+	// encoded memory relationship segments, and property-index bounds.
+	// Cache hits and already decoded RAM rows add no decode bytes. A partial
+	// decode counts its whole input; repeated decodes count again. It measures
+	// logical decoder input, not physical I/O, block decompression or live heap.
+	// Covered doors and native tests are listed in docs/api.md.
 	DecodedBytes uint64
 	// HistoryExamined bounds the history versions the doors' reads look at:
 	// each history row the store hands to a reader (a skeleton entry, a
@@ -72,11 +68,12 @@ type ReadWork struct {
 }
 
 // ReadBudgetError is a read stopped by Door at Limit ("candidates",
-// "segments", "shard opens", "decoded bytes", "history examined" or "buffer
-// bytes") of Budget, the budget whose limit it passed. Work is that budget's
-// meter's counters as the charge that passed the limit read them, right after
-// its own add: Work.<Limit> is above Budget.<Limit>, and every field is at most
-// the meter's Work read after the door returned. They are equal when one
+// "segments", "shard opens", "decoded bytes", "history examined", "buffer
+// bytes" or "unsupported") of Budget. Unsupported refuses work that cannot be
+// charged, before it starts; other limits name the bound it passed. Work is
+// that budget's meter's counters at refusal. For a numeric limit the charge
+// has just been added: Work.<Limit> is above Budget.<Limit>, and every field
+// is at most the meter's Work read after the door returned. They are equal when one
 // goroutine charges the meter and nothing is charged after the refusal; the
 // parallel shards of a tiered fan-out may each make their own refusal, joined
 // (errors.As gives the first in shard order, ReadMeter.Exceeded the first in
@@ -102,6 +99,7 @@ func (e *ReadBudgetError) Is(target error) bool { return target == ErrReadBudget
 type ReadMeter struct {
 	budget                                         ReadBudget
 	parent                                         *ReadMeter
+	candidateMu                                    sync.Mutex // the outermost meter orders candidate admissions for its whole tree
 	candidates, segments, shardOpens, decodedBytes atomic.Uint64
 	historyExamined, bufferBytes                   atomic.Uint64
 	exceeded                                       atomic.Pointer[ReadBudgetError] // the first refusal, for Exceeded
@@ -174,6 +172,18 @@ func (m *ReadMeter) Work() ReadWork {
 // meter, and returns the budget error of the innermost meter whose candidate
 // limit the total passes. A nil meter counts nothing.
 func (m *ReadMeter) AddCandidates(door string, n int) error {
+	if m == nil {
+		return nil
+	}
+	root := m
+	for root.parent != nil {
+		root = root.parent
+	}
+	root.candidateMu.Lock()
+	defer root.candidateMu.Unlock()
+	if err := m.Exceeded(); err != nil {
+		return err
+	}
 	return m.add(door, "candidates", n, func(r *ReadMeter) (*atomic.Uint64, uint64) { return &r.candidates, r.budget.Candidates })
 }
 
@@ -232,21 +242,13 @@ func (m *ReadMeter) Exceeded() error {
 type ReadTally struct {
 	meter *ReadMeter
 	door  string
-	hold  *holdScope // set by Held: the entries the read holds ahead of the work that counts them
+	hold  *holdScope // set by Held: this gather admits its entries before copying them
 }
 
-// holdScope is one read's holds (ReadTally.Held): the entries a gather has
-// taken into its hands and will count later, when it drops them (Drop) or when
-// it settles before it returns (Settle); the door does not count them again.
-// pending is not work: it only narrows the room the read's admissions see
-// (CandidateRoom). mu orders every admission, Drop and Settle of the read, so
-// pending and the meter move together; err is the read's refusal, kept,
-// returned by every later Hold, Drop and Settle.
-type holdScope struct {
-	mu      sync.Mutex
-	pending atomic.Uint64
-	err     error
-}
+// holdScope marks a gather that charges candidates at admission. It keeps no
+// private reservation: every read sharing the meter or an outer meter sees
+// that charge before another copy starts. Drop and Settle never charge again.
+type holdScope struct{}
 
 // Tally binds m to door. A nil meter gives a nil tally.
 func (m *ReadMeter) Tally(door string) *ReadTally {
@@ -304,17 +306,24 @@ func (t *ReadTally) ShardOpen() error {
 	return t.meter.AddShardOpens(t.door, 1)
 }
 
-// CandidateRoom returns how many more candidates the reads on t's meter may
-// count before a candidate limit of it or of an outer meter refuses (0: the
-// next one does), net of the entries t's read holds (Hold), read live; or
-// math.MaxUint64 when no limit bounds them. Every reader gets that figure as
-// it is now; nobody keeps it across work. A nil tally has no limit.
+// CandidateRoom returns how many more candidates reads on t's meter may
+// admit before a candidate limit of it or an outer meter refuses (0: the
+// next one does), including entries other gathers already admitted. The room
+// only shrinks; admission must still charge before work starts. A nil tally
+// or a meter without a candidate limit returns math.MaxUint64.
 func (t *ReadTally) CandidateRoom() uint64 {
 	if t == nil {
 		return math.MaxUint64
 	}
+	return t.meter.candidateRoom()
+}
+
+// candidateRoom is the least room of m and its outer meters. All accepted
+// holds are already counted; atomic loads let a diagnostic read sample the
+// room without taking the admission lock. It is never a reservation.
+func (m *ReadMeter) candidateRoom() uint64 {
 	room := uint64(math.MaxUint64)
-	for r := t.meter; r != nil; r = r.parent {
+	for r := m; r != nil; r = r.parent {
 		if bound := r.budget.Candidates; bound != 0 {
 			left := uint64(0)
 			if n := r.candidates.Load(); n < bound {
@@ -323,18 +332,12 @@ func (t *ReadTally) CandidateRoom() uint64 {
 			room = min(room, left)
 		}
 	}
-	if room == math.MaxUint64 || t.hold == nil {
-		return room
-	}
-	return room - min(room, t.hold.pending.Load())
+	return room
 }
 
-// Held returns t with a hold scope, for one read whose gather holds entries
-// ahead of the work that counts them (Hold, Drop, Settle): t itself when t is
-// nil or has a scope already (one scope a read: the shards and the labels of
-// one gather share it). Every metered tally gets a scope, a candidate limit or
-// not, so the unlimited control holds and settles as a limited read does and
-// counts what that read needs.
+// Held marks a gather that pays for its entries through Hold before copying
+// them. It returns t itself when nil or already marked. Unlimited controls
+// use the same admission and counting path as bounded reads.
 func (t *ReadTally) Held() *ReadTally {
 	if t == nil || t.hold != nil {
 		return t
@@ -342,129 +345,47 @@ func (t *ReadTally) Held() *ReadTally {
 	return &ReadTally{meter: t.meter, door: t.door, hold: &holdScope{}}
 }
 
-// Hold admits n entries a gather is about to take into its hands, to be
-// counted later by whoever drops them (Drop) or reads them: within the room
-// (CandidateRoom, net of the read's holds) they are held, counted nothing;
-// past it the entries held and these n are counted as work done (one add,
-// which passes the limit and is the meter's typed error), the error is kept
-// for the read, and nothing more is held. A read already refused by another
-// limit (ReadMeter.Exceeded) gets that error. On a tally without a scope (Held
-// not called: a gather that counts nothing, gatherFree) it holds nothing and
-// returns nil.
+// Hold charges n candidates before a gather copies them. The charge is
+// immediately visible to every read sharing any enclosing budget. Refused
+// admissions do no copy, and a spent context returns its original refusal.
+// A tally without Held counts nothing here: its caller owns admission.
 func (t *ReadTally) Hold(n int) error {
 	if t == nil || t.hold == nil {
 		return nil
 	}
-	return t.ahead(n, true)
+	return t.meter.AddCandidates(t.door, max(n, 0))
 }
 
 // CandidatesAhead refuses a read about to do work on n entries that it will
-// count only as it examines them later, more than CandidateRoom (net of the
-// read's holds): the same admission as Hold, with nothing retained. Past the
-// room it counts the n entries, and on a tally with a scope the entries held
-// too (they are cleared, so nothing counts twice), as work done, and returns
-// the budget error of the limit they pass (the count would have refused at the
-// entry past it). Within the room it counts nothing and returns nil. A nil
-// tally counts nothing.
+// count as it examines them later, when n exceeds CandidateRoom. This is a
+// preflight, not a reservation: the native walk must still charge its work.
+// Past the room it charges the refused demand and returns the typed error;
+// within the room it counts nothing. Already admitted holds stay counted.
 func (t *ReadTally) CandidatesAhead(n int) error {
 	if t == nil {
 		return nil
 	}
-	if t.hold == nil {
-		if uint64(max(n, 0)) <= t.CandidateRoom() { // #nosec G115 -- a count
-			return nil
-		}
-		return t.meter.AddCandidates(t.door, n)
-	}
-	return t.ahead(n, false)
-}
-
-// ahead is the one admission of a scoped tally (the owner of the count: the
-// meter), under the scope's mutex. n within the room: held when keep, nil.
-// Past it: the held entries and n are counted by one add, which passes the
-// limit of the meter whose room was the least (the counters only grow), so it
-// returns that meter's typed error; it is kept for the read. Never a give-back:
-// nothing is subtracted from a counter.
-func (t *ReadTally) ahead(n int, keep bool) error {
-	s := t.hold
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.err != nil {
-		return s.err
-	}
 	if err := t.meter.Exceeded(); err != nil {
 		return err
 	}
-	k := uint64(max(n, 0)) // #nosec G115 -- a count
-	if k <= t.CandidateRoom() {
-		if keep {
-			s.pending.Add(k)
-		}
+	if uint64(max(n, 0)) <= t.CandidateRoom() { // #nosec G115 -- a count
 		return nil
 	}
-	total := s.pending.Swap(0) + k
-	s.err = t.meter.AddCandidates(t.door, int(total)) // #nosec G115 -- a count of entries held in RAM
-	return s.err
+	return t.meter.AddCandidates(t.door, max(n, 0))
 }
 
-// Drop counts n held entries a gather examined and dropped (a member past the
-// pin or at or below After, an entity a second shard or label hands on, an ID
-// the envelope prune drops): they leave the read's holds and are counted now,
-// under the scope's mutex. The add comes before pending is lowered, so a
-// reader of CandidateRoom, which takes no lock, may see the room smaller for a
-// moment, never larger. After the read's refusal it returns that error and
-// counts nothing (the refusal counted them); a refusal of its own add is kept.
-// On a tally without a scope (gatherFree, which held nothing) it counts
-// nothing.
-func (t *ReadTally) Drop(n int) error {
+// Drop finishes rejected entries already charged by Hold. It returns a
+// shared refusal if the context was spent and never refunds or charges again.
+func (t *ReadTally) Drop(_ int) error {
 	if t == nil || t.hold == nil {
 		return nil
 	}
-	s := t.hold
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.err != nil {
-		return s.err
-	}
-	return t.countHeldLocked(uint64(max(n, 0))) // #nosec G115 -- a count
+	return t.Exceeded()
 }
 
-// Settle counts every entry the read still holds, by one add, as work done:
-// the gather that held them calls it before it returns, so the read's count
-// is every entry the gather took into its hands whether the door then reads
-// it or not (a Limit that stops the door early, a stale sidecar entry held
-// beside the current member it repeats), and the door does not count them
-// again. The room does not move. After the read's refusal it returns that
-// error; on a tally without a scope it counts nothing.
-func (t *ReadTally) Settle() error {
-	if t == nil || t.hold == nil {
-		return nil
-	}
-	s := t.hold
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.err != nil {
-		return s.err
-	}
-	return t.countHeldLocked(s.pending.Load())
-}
-
-// countHeldLocked counts k of the read's held entries: the add first, then
-// pending lowered by k (never below 0). A refusal of the add is kept for the
-// read. Caller holds t.hold.mu.
-func (t *ReadTally) countHeldLocked(k uint64) error {
-	if k == 0 {
-		return nil
-	}
-	s := t.hold
-	err := t.meter.AddCandidates(t.door, int(k)) // #nosec G115 -- a count of entries held in RAM
-	p := s.pending.Load()                        // written only under mu
-	s.pending.Store(p - min(p, k))
-	if err != nil {
-		s.err = err
-	}
-	return err
-}
+// Settle checks the gather before it returns its list. Every entry was paid
+// for at admission, including entries a caller's result limit will skip.
+func (t *ReadTally) Settle() error { return t.Drop(0) }
 
 // Exceeded is the tally's meter's Exceeded. A nil tally returns nil.
 func (t *ReadTally) Exceeded() error {
@@ -472,6 +393,27 @@ func (t *ReadTally) Exceeded() error {
 		return nil
 	}
 	return t.meter.Exceeded()
+}
+
+// RefuseUnsupported stops before work that cannot be charged to this read.
+// Every enclosing meter keeps the refusal, so sibling reads sharing an outer
+// allowance stop too. A nil tally is an unmetered read and refuses nothing.
+func (t *ReadTally) RefuseUnsupported() error {
+	if t == nil || t.meter == nil {
+		return nil
+	}
+	if err := t.Exceeded(); err != nil {
+		return err
+	}
+	var first *ReadBudgetError
+	for m := t.meter; m != nil; m = m.parent {
+		e := &ReadBudgetError{Door: t.door, Limit: "unsupported", Budget: m.budget, Work: m.Work()}
+		m.exceeded.CompareAndSwap(nil, e)
+		if first == nil {
+			first = m.exceeded.Load()
+		}
+	}
+	return first
 }
 
 // DecodedHistory counts one history version and its n stored bytes about to
@@ -487,14 +429,19 @@ func (t *ReadTally) DecodedHistory(n int) error {
 }
 
 func (m *ReadMeter) add(door, limit string, n int, field func(*ReadMeter) (*atomic.Uint64, uint64)) error {
+	if err := m.Exceeded(); err != nil {
+		return err
+	}
 	var over error
 	for r := m; r != nil; r = r.parent {
 		c, bound := field(r)
 		total := c.Add(uint64(n)) // #nosec G115 -- a count, never negative
-		if over == nil && bound != 0 && total > bound {
+		if bound != 0 && total > bound {
 			e := &ReadBudgetError{Door: door, Limit: limit, Budget: r.budget, Work: r.Work()}
 			r.exceeded.CompareAndSwap(nil, e)
-			over = e
+			if over == nil {
+				over = r.exceeded.Load()
+			}
 		}
 	}
 	return over

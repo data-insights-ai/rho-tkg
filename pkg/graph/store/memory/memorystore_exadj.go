@@ -6,6 +6,7 @@ import (
 )
 
 var _ storecontract.ExAdjacencyCapability = (*Store)(nil)
+var _ storecontract.ExAdjacencyMeteredCapability = (*Store)(nil)
 
 // Ex-adjacency (store.ExAdjacencyCapability): exOutIdx / exInIdx
 // hold, per node, the relationships that named it as start / end in a row the
@@ -79,6 +80,11 @@ func (ms *Store) dropExAdjNodeLocked(nid types.NodeID) {
 // ForEachExAdjacentRelID implements store.ExAdjacencyCapability (a snapshot
 // taken under the lock, fn called outside it).
 func (ms *Store) ForEachExAdjacentRelID(nid types.NodeID, incoming bool, fn func(types.RelID) bool) error {
+	return ms.ForEachExAdjacentRelIDMetered(nid, incoming, nil, fn)
+}
+
+// ForEachExAdjacentRelIDMetered admits the locked snapshot before copying it.
+func (ms *Store) ForEachExAdjacentRelIDMetered(nid types.NodeID, incoming bool, t *storecontract.ReadTally, fn func(types.RelID) bool) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -99,8 +105,18 @@ func (ms *Store) ForEachExAdjacentRelID(nid types.NodeID, incoming bool, fn func
 	if incoming {
 		idx = ms.exInIdx
 	}
-	var ids []types.RelID
+	n := idx[nid].len()
+	if err := t.Candidates(n); err != nil {
+		ms.mu.RUnlock()
+		return err
+	}
+	if err := t.Buffer(8 * n); err != nil {
+		ms.mu.RUnlock()
+		return err
+	}
+	ids := make([]types.RelID, 0, n)
 	for id := range idx[nid].all() {
+		noteExAdjacentCopied()
 		ids = append(ids, id)
 	}
 	ms.mu.RUnlock()

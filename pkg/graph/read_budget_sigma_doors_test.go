@@ -230,8 +230,7 @@ func TestReadBudgetPublicAdjacencyDoors(t *testing.T) {
 // reaches the graph's budgeted label read on every backend: without a budget the
 // plain door's answer, the label's members counted as candidates, a budget
 // smaller than the label refused with ErrReadBudget and no rows, and a read at a
-// time coordinate (the label's history, not budgeted) refused under a budget and
-// answered without one.
+// time coordinate answered with the same rows under its complete native budget.
 func TestReadBudgetPublicByLabel(t *testing.T) {
 	t.Parallel()
 	const members = 5
@@ -278,16 +277,21 @@ func TestReadBudgetPublicByLabel(t *testing.T) {
 			if got, err := g.Nodes().ByLabelCtx(ctx, "Ev", at); err != nil || len(got) != members {
 				t.Fatalf("ByLabelCtx at a pin without a budget = %d nodes, %v; want %d", len(got), err, members)
 			}
-			// Since R2-SCANS a read at a pin is counted, not refused: the plain
-			// answer, the label's members counted once, a limit under them refuses.
-			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: members})
-			if got, err := g.Nodes().ByLabelCtx(bctx, "Ev", at); err != nil || len(got) != members || meter.Work().Candidates != members {
-				t.Fatalf("ByLabelCtx at a pin under a budget = %d nodes, %v, %+v; want %d nodes and %d candidates", len(got), err, meter.Work(), members, members)
+			// The current and ever-member snapshots each own their work.
+			// Memory repeats current members in its ever-member snapshot;
+			// Badger as-of separately probes each gathered current row.
+			wantCandidates := uint64(members)
+			if b.name == "memory" || b.name == "badger" {
+				wantCandidates += members
 			}
-			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: members - 1})
+			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: wantCandidates})
+			if got, err := g.Nodes().ByLabelCtx(bctx, "Ev", at); err != nil || len(got) != members || meter.Work().Candidates != wantCandidates {
+				t.Fatalf("ByLabelCtx at a pin under a budget = %d nodes, %v, %+v; want %d nodes and %d candidates", len(got), err, meter.Work(), members, wantCandidates)
+			}
+			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: wantCandidates - 1})
 			got, err = g.Nodes().ByLabelCtx(bctx, "Ev", at)
 			var rb *store.ReadBudgetError
-			if !errors.As(err, &rb) || rb.Limit != "candidates" || got != nil || meter.Work().Candidates < members {
+			if !errors.As(err, &rb) || rb.Limit != "candidates" || got != nil || meter.Work().Candidates < wantCandidates {
 				t.Fatalf("ByLabelCtx at a pin one under the count = %d nodes, %v, %+v; want a candidates refusal and no rows", len(got), err, meter.Work())
 			}
 		})

@@ -208,14 +208,20 @@ func hr2Build(t *testing.T, g *Core) any {
 	return w
 }
 
-// hr2MissCost is what a budgeted miss reads for an hrNode / hrRel of versions
-// rows (N = versions-1 history rows, W = 2 history winners): memory, badger
-// and tiered list the history skeletons and then read the winners (N + W);
-// sharded has no skeleton list and reads the history rows once (N).
-func hr2MissCost(be hr2Backend, versions int) uint64 {
+// hr2MissCost includes every history handling phase. A settled skeleton
+// costs N examinations plus two winners; a pending overlay adds N captures
+// or merge examinations. Sharded reads the full chain: capture and decode
+// cost 2N, with another N to merge a pending overlay.
+func hr2MissCost(be hr2Backend, versions int, flushed bool) uint64 {
 	n := uint64(versions - 1) // #nosec G115 -- a test size
 	if !hr2Skeletons(be) {
-		return n
+		if flushed {
+			return 2 * n
+		}
+		return 3 * n
+	}
+	if be.name != "memory" && !flushed {
+		return 2*n + 2
 	}
 	return n + 2
 }
@@ -224,17 +230,21 @@ func hr2MissCost(be hr2Backend, versions int) uint64 {
 // it reads the winners (store.TemporalMetaHistoryCapability).
 func hr2Skeletons(be hr2Backend) bool { return be.name != "sharded" }
 
-// hr2MissNative is the native count of that miss: every history row read or
-// decoded, in full or to its skeleton, the same figure on every store.
+// hr2MissNative counts actual rows read or decoded, in full or to a skeleton.
+// Raw capture and merge examinations do not add native decodes.
 func hr2MissNative(be hr2Backend, versions int) int64 {
-	return int64(hr2MissCost(be, versions)) // #nosec G115 -- a test size
+	n := int64(versions - 1)
+	if !hr2Skeletons(be) {
+		return n
+	}
+	return n + 2
 }
 
 // TestBudgetedTimeline_HeadMiss (design T6): on every backend, rows pending
 // and flushed, each head door after its entity's entry is dropped: the
 // unlimited budgeted read gives the plain door's exact answer, is not a head
-// hit, and counts the chain it reads (hr2MissCost: N + W, N on sharded), the
-// native counter agreeing (hr2MissNative); it fills the entry, so the next
+// hit, and counts each capture, merge and decode phase (hr2MissCost), with
+// exact native decodes/listed rows (hr2MissNative); it fills the entry, so the next
 // budgeted read is a head hit at the W = 2 winners, the native counter 2.
 func TestBudgetedTimeline_HeadMiss(t *testing.T) {
 	t.Parallel()
@@ -264,7 +274,7 @@ func TestBudgetedTimeline_HeadMiss(t *testing.T) {
 					if miss.err != nil || miss.answer != want || miss.hits != 0 {
 						t.Fatalf("%d versions: miss = %q, %v, %d head hits; want the plain answer %q, no hit", n, miss.answer, miss.err, miss.hits, want)
 					}
-					if c, nat := hr2MissCost(be, n), hr2MissNative(be, n); miss.work.HistoryExamined != c || miss.native != nat {
+					if c, nat := hr2MissCost(be, n, flushed), hr2MissNative(be, n); miss.work.HistoryExamined != c || miss.native != nat {
 						t.Errorf("%d versions: miss HistoryExamined %d, native %d; want %d and %d", n, miss.work.HistoryExamined, miss.native, c, nat)
 					}
 					if hit.err != nil || hit.answer != want || hit.hits != 1 || hit.work.HistoryExamined != 2 || hit.native != 2 {
@@ -307,7 +317,7 @@ func TestBudgetedTimeline_RefusedMissLeavesExactEntry(t *testing.T) {
 					t.Fatal("the plain door kept no entry")
 				}
 				g.heads.put(k, nil)
-				limit := storepkg.ReadBudget{HistoryExamined: hr2MissCost(be, 80) - 1}
+				limit := storepkg.ReadBudget{HistoryExamined: hr2MissCost(be, 80, flushed) - 1}
 				if flushed {
 					rbdEvict(t, g, []types.NodeID{node}, []types.RelID{rel})
 				}
@@ -429,7 +439,9 @@ func TestBudgetedTimeline_HeadWinnerGone(t *testing.T) {
 							head = 2
 						}
 					}
-					sum := hr2MissCost(be, versions) + head
+					// The not-visible case just appended a history version, so
+					// its fold merges an overlay even after the earlier reopen.
+					sum := hr2MissCost(be, versions, flushed && c.version == 9999) + head
 					if nat := hr2MissNative(be, versions) + headNat; r.work.HistoryExamined != sum || r.native != nat {
 						t.Errorf("HistoryExamined %d, native %d; want %d (the head path's, then the fold's) and %d (the head path's rows, then the fold's)",
 							r.work.HistoryExamined, r.native, sum, nat)
@@ -486,19 +498,19 @@ func TestBudgetedTimeline_HeadTwoEntitiesOneMeter(t *testing.T) {
 				native := func() int64 {
 					return hr2Native(t, g, []types.NodeID{w.nodes[10], w.nodes[80]}, []types.RelID{w.rels[10], w.rels[80]})
 				}
-				both := func(b0 storepkg.ReadBudget) (string, error, string, error, storepkg.ReadWork, int64) {
+				both := func(b0 storepkg.ReadBudget) (string, string, storepkg.ReadWork, int64, error, error) {
 					evict()
 					ctx, meter := storepkg.WithReadBudget(context.Background(), b0)
 					n0 := native()
 					gotA, errA := a.ctx(ctx)
 					gotB, errB := b.ctx(ctx)
-					return gotA, errA, gotB, errB, meter.Work(), native() - n0
+					return gotA, gotB, meter.Work(), native() - n0, errA, errB
 				}
-				gotA, errA, gotB, errB, work, nat := both(storepkg.ReadBudget{})
+				gotA, gotB, work, nat, errA, errB := both(storepkg.ReadBudget{})
 				if errA != nil || errB != nil || gotA != wantA || gotB != wantB || work.HistoryExamined != 4 || nat != 4 {
 					t.Fatalf("unlimited = %q, %v; %q, %v; HistoryExamined %d, native %d; want the plain answers at 4 and 4", gotA, errA, gotB, errB, work.HistoryExamined, nat)
 				}
-				gotA, errA, gotB, errB, work, nat = both(storepkg.ReadBudget{HistoryExamined: 3})
+				gotA, gotB, work, nat, errA, errB = both(storepkg.ReadBudget{HistoryExamined: 3})
 				t.Logf("limit 3: first %v, second %v; HistoryExamined %d, native %d", errA, errB, work.HistoryExamined, nat)
 				if errA != nil || gotA != wantA || !isBudget(errB, "history examined") || gotB != "" || work.HistoryExamined != 4 || nat != 3 {
 					t.Fatalf("limit 3 = %q, %v; %q, %v; HistoryExamined %d, native %d; want the first admitted, the second refused at its second winner (4 counted, 3 read)",
@@ -592,8 +604,15 @@ func TestBudgetedTimeline_HeadFromReadsLess(t *testing.T) {
 					n, p.whole.work.HistoryExamined, p.whole.native, p.from.work.HistoryExamined, p.from.native)
 			}
 		}
-		if runs[10].from.work != runs[80].from.work || runs[10].whole.work != runs[80].whole.work {
-			t.Errorf("work at 10 versions %+v / %+v, at 80 %+v / %+v; want the same", runs[10].whole.work, runs[10].from.work, runs[80].whole.work, runs[80].from.work)
+		// Forward iterator skips are candidates and depend on key gaps.
+		// Hydration, output buffers and the From door remain constant.
+		whole10, whole80 := runs[10].whole.work, runs[80].whole.work
+		if whole10.Candidates < 1 || whole80.Candidates < 1 {
+			t.Fatal("whole timeline did not count its entity candidate")
+		}
+		whole10.Candidates, whole80.Candidates = 0, 0
+		if runs[10].from.work != runs[80].from.work || whole10 != whole80 {
+			t.Errorf("work at 10 versions %+v / %+v, at 80 %+v / %+v; want equal hydration and From work", runs[10].whole.work, runs[10].from.work, runs[80].whole.work, runs[80].from.work)
 		}
 	})
 }
@@ -690,7 +709,7 @@ func (w *hr2TieredWorld) opens() uint64 { return w.ts.ShardAccessStats().ColdOpe
 // closed cold shard opens (cap 0: each read reopens it): the current row, the
 // presence read, the skeleton list and the two winners. The history token
 // opens none: the shard is closed, so there is no token (0) and the read
-// folds and keeps no entry.
+// folds and cannot reuse an entry with a zero token.
 const hr2TieredOpens = 5
 
 // TestBudgetedTimeline_HeadTokenShardOpens (design T4): on a tiered store

@@ -196,17 +196,50 @@ func (r entityReads) hasRelHistory(id types.RelID) (has, known bool, err error) 
 	return has, true, err
 }
 
+// nodeMayHaveHistoryAbove gates the current-row shortcut. The plain read has
+// a bounded version probe; with a tally only an empty history is proved here.
+// Otherwise the metered resolver reads the chain once, since the plain
+// version probe and its gap fallback cannot charge their cold opens or rows.
+func (r entityReads) nodeMayHaveHistoryAbove(id types.NodeID, version uint32) (bool, error) {
+	if r.tally == nil {
+		return r.c.nodeHasHistoryAbove(id, version)
+	}
+	if r.snap == nil {
+		if p, ok := r.c.store.(storepkg.NodeStampsMeteredCapability); ok {
+			return p.HasNodeHistoryMetered(id, r.tally)
+		}
+		return true, nil // no admitted presence probe: use the metered resolver
+	}
+	has, known, err := r.hasNodeHistory(id)
+	return !known || has, err
+}
+
+func (r entityReads) relMayHaveHistoryAbove(id types.RelID, version uint32) (bool, error) {
+	if r.tally == nil {
+		return r.c.relHasHistoryAbove(id, version)
+	}
+	if r.snap == nil {
+		if p, ok := r.c.store.(storepkg.RelStampsMeteredCapability); ok {
+			return p.HasRelHistoryMetered(id, r.tally)
+		}
+		return true, nil
+	}
+	has, known, err := r.hasRelHistory(id)
+	return !known || has, err
+}
+
 // nodeMeta and relMeta are called only when c.temporalMetaHistory is set.
 func (r entityReads) nodeMeta(id types.NodeID) ([]storepkg.VersionTemporalMeta, error) {
 	var metas []storepkg.VersionTemporalMeta
 	var err error
-	if r.snap == nil {
-		metas, err = r.c.temporalMetaHistory.NodeHistoryTemporalMeta(id)
-		if err == nil {
-			err = r.unsnappedHistory(len(metas))
-		}
-	} else {
+	if r.snap != nil {
 		metas, err = r.snap.NodeHistoryTemporalMeta(id)
+	} else if r.tally == nil {
+		metas, err = r.c.temporalMetaHistory.NodeHistoryTemporalMeta(id)
+	} else if h, ok := r.c.store.(storepkg.HistoryReadMeteredCapability); ok && r.c.storeCountsReads {
+		metas, err = h.NodeHistoryTemporalMetaMetered(id, r.tally)
+	} else {
+		return nil, r.tally.RefuseUnsupported()
 	}
 	if err == nil {
 		r.c.noteNodeMeta(len(metas))
@@ -215,19 +248,21 @@ func (r entityReads) nodeMeta(id types.NodeID) ([]storepkg.VersionTemporalMeta, 
 }
 
 func (r entityReads) relMeta(id types.RelID) ([]storepkg.VersionTemporalMeta, error) {
-	if r.snap == nil {
-		metas, err := r.c.temporalMetaHistory.RelHistoryTemporalMeta(id)
-		if err == nil {
-			err = r.unsnappedHistory(len(metas))
-		}
-		return metas, err
+	if r.snap != nil {
+		return r.snap.RelHistoryTemporalMeta(id)
 	}
-	return r.snap.RelHistoryTemporalMeta(id)
+	if r.tally == nil {
+		return r.c.temporalMetaHistory.RelHistoryTemporalMeta(id)
+	}
+	if h, ok := r.c.store.(storepkg.HistoryReadMeteredCapability); ok && r.c.storeCountsReads {
+		return h.RelHistoryTemporalMetaMetered(id, r.tally)
+	}
+	return nil, r.tally.RefuseUnsupported()
 }
 
 func (r entityReads) nodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	if r.snap == nil {
-		if err := r.unsnappedHistory(1); err != nil {
+		if err := r.unsnappedVersion(); err != nil {
 			return nil, err
 		}
 		if sc, ok := r.c.store.(storepkg.NodeVersionSharingCapability); ok && r.share != nil {
@@ -250,12 +285,12 @@ func (r entityReads) nodeVersion(id types.NodeID, version uint32) (*types.Node, 
 // reads as nodeVersion (badger and tiered: decoded beside the current row
 // where rd.share is set, R37). A lent row costs nothing, so a store offering
 // both lends. Under a budget a version read without a metered snapshot counts
-// one history version before the read (unsnappedHistory); a metered snapshot
+// one history version before the read (unsnappedVersion); a metered snapshot
 // counts its own.
 func (r entityReads) lentNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	if r.snap == nil && r.c.storeRowsTrust {
 		if lender, ok := r.c.store.(storepkg.VersionLendCapability); ok {
-			if err := r.unsnappedHistory(1); err != nil {
+			if err := r.unsnappedVersion(); err != nil {
 				return nil, err
 			}
 			n, err := lender.LendNodeVersion(id, version)
@@ -272,7 +307,7 @@ func (r entityReads) lentNodeVersion(id types.NodeID, version uint32) (*types.No
 func (r entityReads) lentRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	if r.snap == nil && r.c.storeRowsTrust {
 		if lender, ok := r.c.store.(storepkg.VersionLendCapability); ok {
-			if err := r.unsnappedHistory(1); err != nil {
+			if err := r.unsnappedVersion(); err != nil {
 				return nil, err
 			}
 			rel, err := lender.LendRelVersion(id, version)
@@ -287,7 +322,7 @@ func (r entityReads) lentRelVersion(id types.RelID, version uint32) (*types.Rela
 
 func (r entityReads) relVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	if r.snap == nil {
-		if err := r.unsnappedHistory(1); err != nil {
+		if err := r.unsnappedVersion(); err != nil {
 			return nil, err
 		}
 		return r.c.getRelVersion(id, version)
@@ -296,46 +331,46 @@ func (r entityReads) relVersion(id types.RelID, version uint32) (*types.Relation
 	return r.c.trustedRelVersion(id, version, rel, err)
 }
 
-// unsnappedHistory counts n history versions read without a metered snapshot
-// (the memory store, which decodes nothing) in the run's tally, before they
-// are resolved: a chain or skeleton list, and each version read on its own (a
-// winner, also one a skeleton listed); past the budget the read returns its
-// error instead (RH list R2). Without a tally it counts nothing.
-func (r entityReads) unsnappedHistory(n int) error {
-	if r.tally == nil {
-		return nil
-	}
-	return r.tally.History(n)
+// unsnappedVersion admits one history version read without a metered
+// snapshot. Chain and metadata lists charge in their native helpers.
+func (r entityReads) unsnappedVersion() error {
+	return r.tally.History(1)
 }
 
 func (r entityReads) nodeHistory(id types.NodeID) ([]*types.Node, error) {
-	if r.snap == nil {
-		h, err := r.c.getNodeHistory(id)
-		if err == nil {
-			err = r.unsnappedHistory(len(h))
-		}
-		if err != nil {
-			return nil, err
-		}
-		return h, nil
+	if r.snap != nil {
+		h, err := r.snap.GetNodeHistory(id)
+		return r.c.trustedNodeHistory(id, h, err)
 	}
-	h, err := r.snap.GetNodeHistory(id)
-	return r.c.trustedNodeHistory(id, h, err)
+	if r.tally == nil {
+		return r.c.getNodeHistory(id)
+	}
+	if h, ok := r.c.store.(storepkg.HistoryReadMeteredCapability); ok && r.c.storeCountsReads {
+		rows, err := h.GetNodeHistoryMetered(id, r.tally)
+		if r.c.historyRead != nil {
+			r.c.historyRead(len(rows))
+		}
+		return r.c.trustedNodeHistory(id, rows, err)
+	}
+	return nil, r.tally.RefuseUnsupported()
 }
 
 func (r entityReads) relHistory(id types.RelID) ([]*types.Relationship, error) {
-	if r.snap == nil {
-		h, err := r.c.getRelHistory(id)
-		if err == nil {
-			err = r.unsnappedHistory(len(h))
-		}
-		if err != nil {
-			return nil, err
-		}
-		return h, nil
+	if r.snap != nil {
+		h, err := r.snap.GetRelHistory(id)
+		return r.c.trustedRelHistory(id, h, err)
 	}
-	h, err := r.snap.GetRelHistory(id)
-	return r.c.trustedRelHistory(id, h, err)
+	if r.tally == nil {
+		return r.c.getRelHistory(id)
+	}
+	if h, ok := r.c.store.(storepkg.HistoryReadMeteredCapability); ok && r.c.storeCountsReads {
+		rows, err := h.GetRelHistoryMetered(id, r.tally)
+		if r.c.historyRead != nil {
+			r.c.historyRead(len(rows))
+		}
+		return r.c.trustedRelHistory(id, rows, err)
+	}
+	return nil, r.tally.RefuseUnsupported()
 }
 
 // streamEntityTimelines reads each id's timeline in order (read, under the

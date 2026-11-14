@@ -531,7 +531,7 @@ func unionPropertyTxMembers[ID comparable](ts *Store, opens *storecontract.ReadT
 // a shard whose copy is still being created as not carrying it).
 //
 // Every shard that can be asked without an open (the reference shard, an open
-// archive, every event shard that is not cold) is asked first, before any
+// archive, every event shard with an open handle, including cold) is asked before any
 // walk (openShardsAnswer), so a decline found there costs nothing. A closed
 // shard is asked when the walk opens it, and a copy found still building
 // mid-walk declines then: such a decline keeps what the shards walked (no
@@ -610,11 +610,12 @@ func propertyTxMemberAnswers[ID comparable](ts *Store, opens *storecontract.Read
 }
 
 // openShardsAnswer asks every shard that is open now (an open archive, every
-// event shard that is not cold; the caller asked the reference shard) whether
-// it carries a finished copy of the index with the anchor's options, before
-// any shard is walked: false when one does not. A cold shard is not opened for
-// the question; it is asked when the walk opens it. A shard that turns cold in
-// between is opened here, charged to opens as every open is.
+// event shard whose store is open, cold included; the caller asked the
+// reference shard) whether it carries a finished copy of the index with the
+// anchor's options, before any shard is walked: false when one does not. No
+// shard is opened for the question: an event shard whose store is closed (a
+// closed cold shard, or a moving one whose store the move already closed) is
+// asked when the walk opens it.
 func openShardsAnswer(ts *Store, opens *storecontract.ReadTally, options func(*BadgerStore) (storecontract.PropertyIndexOptions, bool, error), anchor storecontract.PropertyIndexOptions) (bool, error) {
 	ask := func(bs *BadgerStore) (bool, error) {
 		o, has, err := options(bs)
@@ -637,10 +638,16 @@ func openShardsAnswer(ts *Store, opens *storecontract.ReadTally, options func(*B
 	shards := ts.eventShardsToRead(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		if es == nil || es.currentTier() == TierCold {
+		if es == nil {
 			continue
 		}
-		bs, release, err := es.checkoutBudgeted(ts, opens)
+		if err := opens.Exceeded(); err != nil {
+			return false, err
+		}
+		bs, release, err := es.checkoutForMode(ts, routeIfOpen, opens)
+		if errors.Is(err, errShardNotOpen) {
+			continue // closed: asked when the walk opens it
+		}
 		if err != nil {
 			return false, err
 		}
@@ -658,22 +665,30 @@ func openShardsAnswer(ts *Store, opens *storecontract.ReadTally, options func(*B
 // ValidEndOpen, wins). The union is a sound superset: a shard's fold bounds
 // only its own rows, so other shards' bounds stay looser, never tighter. Gen
 // is 0: Refine is a no-op on tiered.
-func mergeValidEndCandidates(ref []storecontract.ValidEndCandidate, others [][]storecontract.ValidEndCandidate) []storecontract.ValidEndCandidate {
+func mergeValidEndCandidates(ref []storecontract.ValidEndCandidate, others [][]storecontract.ValidEndCandidate, t *storecontract.ReadTally) ([]storecontract.ValidEndCandidate, error) {
 	if len(others) == 0 {
 		for i := range ref {
 			ref[i].Gen = 0
 		}
-		return ref
+		return ref, nil
 	}
-	pos := make(map[int64]int, len(ref))
+	pos := make(map[int64]int)
 	var out []storecontract.ValidEndCandidate
-	add := func(cs []storecontract.ValidEndCandidate) {
+	add := func(cs []storecontract.ValidEndCandidate) error {
 		for _, c := range cs {
 			c.Gen = 0
 			i, ok := pos[c.ID]
 			if !ok {
+				// Native shard lists already charged candidates. This union owns
+				// its map entry and candidate copy (24 + 32 logical bytes).
+				if err := t.Buffer(56); err != nil {
+					return err
+				}
 				pos[c.ID] = len(out)
 				out = append(out, c)
+				if counter := validEndMergeCopies.Load(); counter != nil {
+					counter.Add(1)
+				}
 				continue
 			}
 			m := &out[i]
@@ -683,12 +698,17 @@ func mergeValidEndCandidates(ref []storecontract.ValidEndCandidate, others [][]s
 			}
 			m.Stamp, m.Bound = max(m.Stamp, c.Stamp), max(m.Bound, c.Bound)
 		}
+		return nil
 	}
-	add(ref)
+	if err := add(ref); err != nil {
+		return nil, err
+	}
 	for _, cs := range others {
-		add(cs)
+		if err := add(cs); err != nil {
+			return nil, err
+		}
 	}
-	return out
+	return out, nil
 }
 
 // RelValidEndCandidates implements store.RelValidEndCapability over every
@@ -712,7 +732,7 @@ func (ts *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom t
 	if err != nil {
 		return nil, err
 	}
-	return mergeValidEndCandidates(ref, others), nil
+	return mergeValidEndCandidates(ref, others, t)
 }
 
 // RefineRelValidEnd implements store.RelValidEndCapability as a no-op: a
@@ -736,7 +756,7 @@ func (ts *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 	if err != nil {
 		return nil, err
 	}
-	return mergeValidEndCandidates(ref, others), nil
+	return mergeValidEndCandidates(ref, others, t)
 }
 
 // RefineNodeValidEnd implements store.NodeValidEndCapability as a no-op (see

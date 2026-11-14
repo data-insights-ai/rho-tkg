@@ -21,6 +21,10 @@ var (
 // ForEachRelPropertyTxMemberDuring implements
 // store.RelPropertyTxMemberWindowCapability.
 func (ms *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return ms.forEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, valueKey, validStart, validEnd, txAt, fn, nil)
+}
+
+func (ms *Store) forEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool, tally *storecontract.ReadTally) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -44,19 +48,22 @@ func (ms *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyK
 			return false, nil
 		}
 		var ok bool
-		members, ok = m.MembersDuring(valueKey, validStart, validEnd, txAt)
-		return ok, nil
+		var err error
+		members, ok, err = m.MembersDuringAdmit(valueKey, validStart, validEnd, txAt, propertyWindowAdmit(tally))
+		return ok, err
 	}, func() error {
-		m, err := ms.relPropTxSidecarLocked(key)
+		m, err := ms.relPropTxSidecarUnderLocked(key, tally)
 		if err != nil {
 			return err
 		}
 		if m == nil {
 			return ErrIndexNotFound
 		}
-		m.OpenWindow(valueKey)
-		members, _ = m.MembersDuring(valueKey, validStart, validEnd, txAt)
-		return nil
+		if _, err := m.OpenWindowAdmit(valueKey, tally.Candidates); err != nil {
+			return err
+		}
+		members, _, err = m.MembersDuringAdmit(valueKey, validStart, validEnd, txAt, propertyWindowAdmit(tally))
+		return err
 	})
 	if err != nil {
 		return err
@@ -72,6 +79,10 @@ func (ms *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyK
 // ForEachNodePropertyTxMemberDuring implements
 // store.NodePropertyTxMemberWindowCapability.
 func (ms *Store) ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return ms.forEachNodePropertyTxMemberDuring(labelToken, propertyKey, valueKey, validStart, validEnd, txAt, fn, nil)
+}
+
+func (ms *Store) forEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool, tally *storecontract.ReadTally) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -95,16 +106,22 @@ func (ms *Store) ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKe
 			return false, nil
 		}
 		var ok bool
-		members, ok = m.MembersDuring(valueKey, validStart, validEnd, txAt)
-		return ok, nil
+		var err error
+		members, ok, err = m.MembersDuringAdmit(valueKey, validStart, validEnd, txAt, propertyWindowAdmit(tally))
+		return ok, err
 	}, func() error {
-		m := ms.nodePropTxSidecarLocked(key)
+		m, err := ms.nodePropTxSidecarUnderLocked(key, tally)
+		if err != nil {
+			return err
+		}
 		if m == nil {
 			return ErrIndexNotFound
 		}
-		m.OpenWindow(valueKey)
-		members, _ = m.MembersDuring(valueKey, validStart, validEnd, txAt)
-		return nil
+		if _, err := m.OpenWindowAdmit(valueKey, tally.Candidates); err != nil {
+			return err
+		}
+		members, _, err = m.MembersDuringAdmit(valueKey, validStart, validEnd, txAt, propertyWindowAdmit(tally))
+		return err
 	})
 	if err != nil {
 		return err

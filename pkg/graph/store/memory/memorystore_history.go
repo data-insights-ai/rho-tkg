@@ -434,6 +434,12 @@ func (ms *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 // GetNodeHistory returns all node version snapshots in ascending version order.
 // Returns an empty slice if no history exists.
 func (ms *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
+	return ms.GetNodeHistoryMetered(nid, nil)
+}
+
+// GetNodeHistoryMetered admits the chain and its temporary lists while the
+// store lock holds its size stable, before sorting or copying any row.
+func (ms *Store) GetNodeHistoryMetered(nid types.NodeID, tally *storecontract.ReadTally) ([]*types.Node, error) {
 	if ms == nil {
 		return nil, ErrNilStore
 	}
@@ -447,23 +453,7 @@ func (ms *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 		return nil, err
 	}
 
-	inner := ms.nodeHistory[nid]
-	if len(inner) == 0 {
-		return nil, nil
-	}
-
-	versions := make([]uint32, 0, len(inner))
-	for v := range inner {
-		versions = append(versions, v)
-	}
-	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
-
-	ms.historyRowsRead.Add(int64(len(versions)))
-	result := make([]*types.Node, len(versions))
-	for i, v := range versions {
-		result[i] = inner[v].DeepCopy()
-	}
-	return result, nil
+	return copyHistory(ms.nodeHistory[nid], tally, (*types.Node).DeepCopy, &ms.historyRowsRead)
 }
 
 // NodeHistoryVersionsFrom returns node history snapshots with Version() >=
@@ -654,6 +644,11 @@ func (ms *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 // GetRelHistory returns all relationship version snapshots in ascending version order.
 // Returns an empty slice if no history exists.
 func (ms *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
+	return ms.GetRelHistoryMetered(rid, nil)
+}
+
+// GetRelHistoryMetered is the relationship counterpart of GetNodeHistoryMetered.
+func (ms *Store) GetRelHistoryMetered(rid types.RelID, tally *storecontract.ReadTally) ([]*types.Relationship, error) {
 	if ms == nil {
 		return nil, ErrNilStore
 	}
@@ -667,23 +662,7 @@ func (ms *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
 		return nil, err
 	}
 
-	inner := ms.relHistory[rid]
-	if len(inner) == 0 {
-		return nil, nil
-	}
-
-	versions := make([]uint32, 0, len(inner))
-	for v := range inner {
-		versions = append(versions, v)
-	}
-	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
-
-	ms.historyRowsRead.Add(int64(len(versions)))
-	result := make([]*types.Relationship, len(versions))
-	for i, v := range versions {
-		result[i] = inner[v].DeepCopy()
-	}
-	return result, nil
+	return copyHistory(ms.relHistory[rid], tally, (*types.Relationship).DeepCopy, &ms.historyRowsRead)
 }
 
 // RelHistoryVersionsFrom returns relationship history snapshots with Version()

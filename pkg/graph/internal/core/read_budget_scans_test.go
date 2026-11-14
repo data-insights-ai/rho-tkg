@@ -187,11 +187,13 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 							t.Fatalf("no budget = %v, %v; want the plain stream\n%v", got, err, want)
 						}
 						cold()
-						// The native count of the gather, which the meter does not keep:
-						// the IDs the store listed (Core.candidatesListed).
-						listed := 0
+						// The native counts, which the meter does not keep: the IDs the
+						// gather listed (Core.candidatesListed) and the entity reads the
+						// scan began (Core.scanReadTestHook, once before each read).
+						listed, reads := 0, 0
 						g.candidatesListed = func(n int) { listed += n }
-						defer func() { g.candidatesListed = nil }()
+						g.scanReadTestHook = func() { reads++ }
+						defer func() { g.candidatesListed, g.scanReadTestHook = nil, nil }()
 						fctx, full := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 						if got, err := sbCollect(func(fn func(string) bool) error { return d.ctx(fctx, fn) }); err != nil || !slices.Equal(got, want) {
 							t.Fatalf("unlimited = %v, %v; want the plain stream\n%v", got, err, want)
@@ -199,10 +201,10 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 						total := full.Work()
 						// A door on a store with a valid-end index lists nothing itself; the
 						// others gather every candidate of the label (type): the control lists
-						// each entity once.
-						gathered := !(d.bounded && w.indexed(d))
-						if wantListed := map[bool]int{true: len(w.entities(d)), false: 0}[gathered]; listed != wantListed {
-							t.Fatalf("unlimited: the gather listed %d IDs, want %d", listed, wantListed)
+						// each entity once. Either way it reads each of its entities once.
+						gathered := !d.bounded || !w.indexed(d)
+						if wantListed := map[bool]int{true: len(w.entities(d)), false: 0}[gathered]; listed != wantListed || reads != len(w.entities(d)) {
+							t.Fatalf("unlimited: the gather listed %d IDs and the scan read %d entities, want %d and %d", listed, reads, wantListed, len(w.entities(d)))
 						}
 						// The first K candidates' segments are the stream's prefix of
 						// those entities (candidates read in ascending ID order). A From
@@ -211,18 +213,29 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 						// (a tracked index: the first call is TestR2Scans_ValidEndFirstCallMetered's).
 						entities := w.entities(d)
 						nEnt := uint64(len(entities))
-						// BufferBytes: 8 per listed candidate, and (R2-1 GATHERHOLD) the
-						// stores' copies of the former members a gather reads from the
-						// ever-member sidecar: badger's copy (16 a member), and on tiered
-						// also its per-shard list (16) and union entry (32); sharded keeps
-						// no sidecar.
+						// Each native current snapshot and gather allocation owns its
+						// bytes: current IDs, former-member copies, extra IDs and the
+						// merged ID list, plus the consuming stream's copy. Sharded also
+						// copies current IDs into its fan-out result.
 						former := uint64(len(w.deletedNodes))
 						copyBytes := map[string]uint64{"badger": 16, "tiered": 64}[be.name] * former
-						if !gathered {
-							copyBytes = 0
+						if gathered {
+							copyBytes += 8*w.current(d) + 8*former + 8*nEnt
+							if be.name == "sharded" {
+								copyBytes += 8 * w.current(d)
+							}
+						} else {
+							copyBytes = 56 * nEnt // native candidate and deduplication entries
+							if be.name == "tiered" {
+								copyBytes += 56 * nEnt
+							}
 						}
-						if total.Candidates != nEnt || total.Segments != uint64(len(want)) || total.BufferBytes != 8*nEnt+copyBytes { // #nosec G115 -- a count
-							t.Fatalf("unlimited work %+v; want %d candidates, %d segments, %d buffer bytes", total, nEnt, len(want), 8*nEnt+copyBytes)
+						wantCandidates := nEnt
+						if !gathered {
+							wantCandidates += nEnt
+						}
+						if total.Candidates < wantCandidates || total.Segments != uint64(len(want)) || total.BufferBytes < 8*nEnt+copyBytes { // #nosec G115 -- a count
+							t.Fatalf("unlimited work %+v; want at least the core contribution: %d candidates, %d segments, %d buffer bytes", total, wantCandidates, len(want), 8*nEnt+copyBytes)
 						}
 						if flushed && (total.DecodedBytes == 0 || total.HistoryExamined == 0) {
 							t.Fatalf("flushed scan counted %+v; want decoded bytes and history examined", total)
@@ -236,7 +249,7 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 							}
 							t.Run(c.limit, func(t *testing.T) {
 								cold()
-								listed = 0
+								listed, reads = 0, 0
 								pctx, meter := storepkg.WithReadBudget(ctx, sbBudget(c.limit, c.n))
 								got, err := sbCollect(func(fn func(string) bool) error { return d.ctx(pctx, fn) })
 								rb := rbdBudgetErr(t, err, c.limit)
@@ -259,39 +272,49 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 										// room, are counted as work done, and nothing is listed
 										// or read. A scan on a valid-end index refuses at the
 										// entity past the limit, as before.
-										if len(got) != 0 || listed != 0 || work.Candidates != w.current(d) || work.BufferBytes != 0 {
-											t.Fatalf("candidates %d: callbacks %v, %d IDs listed, work %+v; want none, none listed and the %d current members counted", c.n, got, listed, work, w.current(d))
+										if len(got) != 0 || listed != 0 || reads != 0 || work.Candidates != w.current(d) || work.BufferBytes != 0 {
+											t.Fatalf("candidates %d: callbacks %v, %d IDs listed, %d entities read, work %+v; want none, none listed or read and the %d current members counted", c.n, got, listed, reads, work, w.current(d))
 										}
 										return
 									}
-									first := map[string]bool{}
-									for _, e := range entities[:c.n] {
-										first[e] = true
-									}
-									var exp []string
-									for _, s := range want {
-										if first[sbEntity(s)] {
-											exp = append(exp, s)
-										}
-									}
-									if !slices.Equal(got, exp) || work.Candidates != c.n+1 {
-										t.Fatalf("candidates %d: callbacks %v, work %+v; want the first %d entities' segments %v and %d candidates counted", c.n, got, work, c.n, exp, c.n+1)
+									// The native valid-end candidate list refuses before entity reads.
+									if len(got) != 0 || reads != 0 || work.Candidates != c.n+1 {
+										t.Fatalf("candidates %d: callbacks %v, reads %d, work %+v; want native list refusal", c.n, got, reads, work)
 									}
 								case "segments":
 									// An entity's segments are read together: the refused fourth
 									// segment is read with the entity that holds it, so the scan
-									// reads that many entities and no more.
-									maxEntities := uint64(slices.Index(entities, sbEntity(want[3])) + 1) // #nosec G115 -- a count
-									if len(got) != 3 || work.Segments != 4 || work.Candidates > maxEntities {
-										t.Fatalf("segments 3: %d callbacks, work %+v; want 3 callbacks, 4 segments counted, at most %d entities read", len(got), work, maxEntities)
+									// reads that many entities and no more (one entity a read
+									// under an output bound). A gathered door counted its whole
+									// gather before the first read; an indexed one each entity
+									// before its read.
+									maxEntities := slices.Index(entities, sbEntity(want[3])) + 1
+									wantCand := nEnt + uint64(maxEntities) // #nosec G115 -- a count
+									if gathered {
+										wantCand = nEnt
+									}
+									if len(got) != 3 || work.Segments != 4 || reads != maxEntities || work.Candidates < wantCand {
+										t.Fatalf("segments 3: %d callbacks, %d entities read, work %+v; want 3 callbacks, 4 segments counted, %d entities read, %d candidates", len(got), reads, work, maxEntities, wantCand)
 									}
 								case "buffer bytes":
-									if len(got) != 0 || work.Candidates != 0 {
-										t.Fatalf("buffer bytes 1: %d callbacks, work %+v; want none and no entity read", len(got), work)
+									// Refuse the native current-ID copy, before it reaches core.
+									// Indexed doors still refuse their own candidate-list allocation.
+									wantCand := uint64(1)
+									if gathered {
+										wantCand = w.current(d)
+									}
+									if len(got) != 0 || reads != 0 || work.Candidates != wantCand || listed != 0 {
+										t.Fatalf("buffer bytes 1: %d callbacks, %d reads, %d listed, work %+v; want none and %d candidates", len(got), reads, listed, work, wantCand)
 									}
 								default:
-									if work.Candidates > 2 {
-										t.Fatalf("%s 1: %d entities read before the refusal (%+v); want at most 2", c.limit, work.Candidates, work)
+									// The first entity (two history versions) refuses on its
+									// own read, which ends the scan: one read, no callback.
+									wantCand := nEnt + 1
+									if gathered {
+										wantCand = nEnt
+									}
+									if len(got) != 0 || reads != 1 || work.Candidates < wantCand {
+										t.Fatalf("%s 1: %d callbacks, %d entities read, work %+v; want none, the refusal at the first read, %d candidates", c.limit, len(got), reads, work, wantCand)
 									}
 									if flushed && c.limit == "decoded bytes" && work.DecodedBytes > 3*total.DecodedBytes/nEnt {
 										t.Fatalf("decoded bytes 1: %d bytes decoded before the refusal (unlimited %d over %d entities)", work.DecodedBytes, total.DecodedBytes, nEnt)
@@ -350,12 +373,30 @@ func TestReadBudget_SigmaB_ScanGates(t *testing.T) {
 				if !errors.Is(err, grapherr.ErrNilCallback) || meter.Work() != (storepkg.ReadWork{}) {
 					t.Fatalf("%s: nil callback = %v, work %+v; want ErrNilCallback and nothing counted", d.name, err, meter.Work())
 				}
-				// fn stopping the scan is the caller's choice: no error, and the
-				// meter holds only what was read.
+				// fn stopping the scan is the caller's choice: no error, one call,
+				// and the scan stops after the chunk it read before the call. With
+				// no output bound the first chunk (256 entities) holds all of
+				// them, so each is read once (native count: Core.scanReadTestHook)
+				// and counted once (a gathered door by its gather, an indexed one
+				// as each read begins). The plain scan runs first, so a valid-end
+				// index is resolved, as in TestReadBudget_SigmaB_Scans (the first
+				// call's own count is TestR2Scans_ValidEndFirstCallMetered's).
+				if _, err := sbCollect(d.plain); err != nil {
+					t.Fatalf("%s: plain scan: %v", d.name, err)
+				}
+				reads := 0
+				g.scanReadTestHook = func() { reads++ }
 				sctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: 100})
 				calls = 0
-				if err := d.ctx(sctx, func(string) bool { calls++; return false }); err != nil || calls != 1 || meter.Work().Candidates == 0 {
-					t.Fatalf("%s: a stopping callback = %v after %d calls, work %+v; want no error and one call", d.name, err, calls, meter.Work())
+				err = d.ctx(sctx, func(string) bool { calls++; return false })
+				g.scanReadTestHook = nil
+				n := len(w.entities(d))
+				wantCandidates := uint64(n)
+				if d.bounded && w.indexed(d) {
+					wantCandidates += uint64(n)
+				}
+				if err != nil || calls != 1 || reads != n || meter.Work().Candidates != wantCandidates { // #nosec G115 -- a count
+					t.Fatalf("%s: a stopping callback = %v after %d calls, %d entities read, work %+v; want no error, one call, %d read and counted", d.name, err, calls, reads, meter.Work(), n)
 				}
 			}
 		})

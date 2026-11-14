@@ -1,12 +1,57 @@
 package badger
 
 import (
+	"sync/atomic"
+
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 var _ storecontract.PropertyTxMemberMeteredCapability = (*Store)(nil)
+
+var propertyMemberDecodeCounter atomic.Pointer[atomic.Int64]
+var propertyMemberCopyCounter atomic.Pointer[atomic.Int64]
+
+func notePropertyMemberDecoded() {
+	if c := propertyMemberDecodeCounter.Load(); c != nil {
+		c.Add(1)
+	}
+}
+
+// CountPropertyMemberDecodesForTest counts native property membership row and
+// anchor decodes independently of the read meter. These tests run alone.
+func CountPropertyMemberDecodesForTest() (decoded func() int64, stop func()) {
+	c := new(atomic.Int64)
+	propertyMemberDecodeCounter.Store(c)
+	return c.Load, func() { propertyMemberDecodeCounter.Store(nil) }
+}
+
+func notePropertyMemberBytesCopied(n int) {
+	if c := propertyMemberCopyCounter.Load(); c != nil {
+		c.Add(int64(n))
+	}
+}
+
+// CountPropertyMemberBytesCopiedForTest counts actual overlay and anchor bytes
+// copied by property builds. It is independent of logical BufferBytes.
+func CountPropertyMemberBytesCopiedForTest() (copied func() int64, stop func()) {
+	c := new(atomic.Int64)
+	propertyMemberCopyCounter.Store(c)
+	return c.Load, func() { propertyMemberCopyCounter.Store(nil) }
+}
+
+func propertyKeyAdmit(t *storecontract.ReadTally) func(int) error {
+	if t == nil {
+		return nil
+	}
+	return func(n int) error {
+		if err := t.Candidates(1); err != nil {
+			return err
+		}
+		return t.Buffer(n)
+	}
+}
 
 // Metered membership (R2, gap B): the store.PropertyTxMemberMeteredCapability
 // forms of badger. The store is the one owner of the cost of the read: it
@@ -30,12 +75,11 @@ var _ storecontract.PropertyTxMemberMeteredCapability = (*Store)(nil)
 //   - A definition in RAM charges the same before its work: the snapshot of the
 //     value's members counts each member as it is collected, the one-time open
 //     of the value's window view (a persistent structure, not a buffer: no
-//     BufferBytes) is refused up front when the value's members pass the room,
-//     and the view's walk counts every entry it examines, charging the members
-//     it adds and the map of decided members as BufferBytes. The first budgeted
-//     reader of a value pays the open's refusal; later readers do not. The
-//     sidecar's first build, one scan of the label's or type's rows, is not
-//     charged.
+//     BufferBytes) consumes its member count before construction under the
+//     exclusive lock. Its walk counts every entry examined and charges the
+//     answer and decision-map slots as BufferBytes. A cold sidecar admits
+//     every pending/committed row visit, history examination, row/anchor decode
+//     and temporary overlay, anchor and RowScan allocation before that work.
 //
 // A nil t is the unmetered door. One call per key, as the core's per-key loop,
 // stopping at the first error, ErrIndexNotFound or fn's false; fn may see an

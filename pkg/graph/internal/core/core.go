@@ -1681,11 +1681,11 @@ func depthHistoryIterationCapability(store storepkg.MandatoryStore) storepkg.Dep
 	return cap
 }
 
-// labelTxMembershipCapability resolves the K1 transaction-time label-membership
-// sidecar. Only the exact native single-shard backends (memory, badger) own a
-// coherent whole-store membership index (tiered: the union of its shards'); a
-// wrapper that merely EMBEDS a native store is forced to nil so the query
-// falls back to the correct (if unaccelerated) full-history candidate fold.
+// labelTxMembershipCapability resolves transaction-time label membership.
+// Native stores own the index, union their tiers, or visit each owning slot.
+// A wrapper that merely embeds a native implementation is forced to nil so
+// plain queries preserve its full-history hooks. Metered queries refuse when
+// that fallback cannot admit its native work.
 func labelTxMembershipCapability(store storepkg.MandatoryStore) storepkg.LabelTxMembershipCapability {
 	cap, ok := store.(storepkg.LabelTxMembershipCapability)
 	if !ok {

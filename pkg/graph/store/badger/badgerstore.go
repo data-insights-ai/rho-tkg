@@ -208,6 +208,10 @@ type Config struct {
 	// (tiered.Store.coldReadCfg). Ignored unless ReadOnly, and when Store is
 	// provided explicitly.
 	TransientRead bool
+	// OpenReadTally belongs to a lazy open made by a budgeted read. The caller
+	// charges the physical open; native recovery and index rebuilding refuse
+	// before work that cannot be charged. Nil keeps normal open-time repair.
+	OpenReadTally *storecontract.ReadTally
 	// ColumnsOnDisk persists built columnar snapshots so a cold store can decode a
 	// column instead of re-reading every entity. Observable only as latency. A persisted
 	// column is a rebuild accelerator, never a read authority (as TemporalIndexOnDisk):
@@ -466,6 +470,7 @@ type Store struct {
 	labelIdx                  map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
 	labelOnDisk               bool                                          // answer label snapshots from the persisted keyspace
 	transientRead             bool                                          // Config.TransientRead on a read-only open: what a first read needs is built then, not at the open
+	openReadTally             *storecontract.ReadTally                      // nonnil only during a budgeted New; forbids native rebuild/repair before admission
 	labelLazy                 bool                                          // the open built no label maps (TransientRead, trusted image with label counts): labelMembersLocked reads a label's members from its keys on first use; fixed at open
 	lazyLabelMu               sync.Mutex                                    // guards lazyLabelSets; taken under idxMu (R), never around it
 	lazyLabelSets             map[uint16]map[types.NodeID]struct{}          // labelLazy: the label maps read so far; a label without members is a nil entry
@@ -700,11 +705,10 @@ type Store struct {
 	// maps. Entity point reads survive this window via the resident dirty cache;
 	// overlay scans must use rangePending/lookupPending.
 	flushing map[string]writeOp
-	// pendingByPrefix and flushingByPrefix list the history (0x07, 0x08) and
-	// property-index (0x0A) keys of pending and flushing by prefix, the key
-	// less its last 8 bytes (version, node ID), so a history read finds its
-	// entity's buffered rows and an equality lookup its values' buffered
-	// entries without walking either buffer (HISTPEND, PENDSEEK). Guarded by
+	// pendingByPrefix and flushingByPrefix list label, history and property
+	// keys of pending and flushing by their query prefix, so a label or
+	// equality lookup and an entity's history read visit only their buffered
+	// entries. Entity-index keys include their value and optional axis. Guarded by
 	// wbMu, swapped and dropped with the buffers they list.
 	pendingByPrefix  map[string][]string
 	flushingByPrefix map[string][]string
@@ -890,8 +894,9 @@ type Store struct {
 	// reads (HistoryMetaDecodesForTest, R2 late counts, R2-5 HEADREAD);
 	// validEndRowDecodes the rows validEndRowsBulk decodes for the valid-end
 	// index (ValidEndRowDecodesForTest).
-	historyMetaDecodes atomic.Int64
-	validEndRowDecodes atomic.Int64
+	historyMetaDecodes    atomic.Int64
+	validEndRowDecodes    atomic.Int64
+	validEndIteratorSteps atomic.Int64
 	// validEndAttribLookups counts the RAM membership lookups of the valid-end
 	// attribution pass (tests: the native count beside the meter).
 	validEndAttribLookups atomic.Int64
@@ -1137,6 +1142,10 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
+	if err := guardReadOpenWAL(cfg); err != nil {
+		return nil, err
+	}
+
 	// Shrinking the effective MemTableSize on a dir with WALs written under a larger
 	// memtable fails the open ("Arena too small", unrecoverable), so flush such WALs at
 	// their original size first. Gated on a writable on-disk store, not on MemTableSize >
@@ -1173,6 +1182,10 @@ func New(cfg Config) (*Store, error) {
 	if vlogKnown {
 		reportVlogCut(badgerLogger(cfg), vlogPath, vlogWritten)
 	}
+	if err := guardReadOpenRecovery(db, cfg.OpenReadTally); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 
 	// Enforce the on-disk format contract before decoding a row: a directory stamped by
 	// a newer release fails closed here, not as per-row decode failures that loadIndexes
@@ -1184,7 +1197,7 @@ func New(cfg Config) (*Store, error) {
 	}
 	// A staged flush that committed before a crash is applied (or uncommitted
 	// staging deleted) before any row, counter or index is read.
-	if err := recoverStagedFlush(db, cfg.ReadOnly, badgerLogger(cfg)); err != nil {
+	if err := recoverStagedFlush(db, cfg.ReadOnly || cfg.OpenReadTally != nil, badgerLogger(cfg)); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
@@ -1228,6 +1241,7 @@ func New(cfg Config) (*Store, error) {
 
 	maxEntryKey, maxEntryValue := entryLimits(cfg)
 	bs := &Store{
+		openReadTally: cfg.OpenReadTally,
 		vdict:         newValueDict(vdPlan),
 		db:            db,
 		maxEntryKey:   maxEntryKey,
@@ -1384,7 +1398,11 @@ func New(cfg Config) (*Store, error) {
 
 	// A cleanly closed store opens from its keys and the persisted open image
 	// (badgerstore_open_image.go) instead of decoding every row.
-	img := bs.readOpenImage()
+	img, err := bs.readOpenImage()
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	if err := bs.loadIndexesRecovering(img); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, fmt.Errorf("graph: load indexes: %w", err)
@@ -1402,6 +1420,10 @@ func New(cfg Config) (*Store, error) {
 	}
 	bs.idxMu.RUnlock()
 	if len(temporalToks) > 0 {
+		if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
 		if err := bs.foldTemporalHistoryEnvelopes(temporalToks); err != nil {
 			_ = db.Close() // best-effort cleanup
 			return nil, fmt.Errorf("graph: fold temporal history envelopes: %w", err)
@@ -1431,6 +1453,9 @@ func New(cfg Config) (*Store, error) {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
+
+	// The open's allowance must not become the retained handle's allowance.
+	bs.openReadTally = nil
 
 	// Start background goroutines (skip when read-only or no flush interval).
 	if flushInt > 0 && !cfg.ReadOnly {
@@ -1573,6 +1598,11 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			if nerr != nil || rerr != nil || img.nodeIDs == nil || img.relIDs == nil ||
 				int64(img.nodeIDs.Len()) != pn || int64(img.relIDs.Len()) != pr {
 				img.nodeIDs, img.relIDs = nil, nil
+			}
+		}
+		if img == nil || img.nodeIDs == nil || img.relIDs == nil {
+			if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+				return err
 			}
 		}
 		var it *badgerv4.Iterator
@@ -2040,7 +2070,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		bs.nodeMemberDisk = make(map[indexpkg.PropertyIndexKey]struct{})
 		for key := range propDisk.disk {
 			_, elements := propDisk.elements[key]
-			if entityDisk.place(bs, false, key.LabelToken, key.PropertyKey, elements) {
+			if disk, err := entityDisk.place(bs, false, key.LabelToken, key.PropertyKey, elements); err != nil {
+				return err
+			} else if disk {
 				bs.nodeMemberDisk[key] = struct{}{} // its member entries answer its pinned reads
 			}
 		}
@@ -2079,6 +2111,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				} else if onDisk && !rebuild {
 					// Disk mode keeps the entries in the 0x0A keyspace, already
 					// built: nothing to read from the rows.
+				} else if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+					return err
 				} else if nodeIDs, ok := bs.openLabelMembers(txn, def.LabelToken, lazyLabels); ok {
 					build := indexpkg.NewPostingsBuild(def.Elements)
 					for nodeID := range nodeIDs {
@@ -2151,7 +2185,11 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						return fmt.Errorf("graph: load relationship property index definition type %d property %q: an elements index needs the RAM index, not RelPropertyIndexOnDiskTypes: %w",
 							def.RelTypeToken, def.PropertyKey, storecontract.ErrCapabilityNotSupported)
 					}
-					onDisk = entityDisk.place(bs, true, def.RelTypeToken, def.PropertyKey, false)
+					var err error
+					onDisk, err = entityDisk.place(bs, true, def.RelTypeToken, def.PropertyKey, false)
+					if err != nil {
+						return err
+					}
 				}
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if onDisk {
@@ -2167,6 +2205,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						})
 						fillFromBuild(build, idx.AddKey)
 					}
+				} else if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+					return err
 				} else if relIDs := bs.typeIdx[def.RelTypeToken]; relIDs != nil {
 					build := indexpkg.NewPostingsBuild(def.Elements)
 					for id := range relIDs.All() {
@@ -2220,7 +2260,15 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 				seenComposite[key] = struct{}{}
 				idx := indexpkg.NewCompositePropertyIndex(def.Keys)
-				if bs.propIdxOnDiskWanted(def.LabelToken) && entityDisk.placeComposite(bs, key, def.Keys) {
+				onDisk := false
+				if bs.propIdxOnDiskWanted(def.LabelToken) {
+					var err error
+					onDisk, err = entityDisk.placeComposite(bs, key, def.Keys)
+					if err != nil {
+						return err
+					}
+				}
+				if onDisk {
 					idx = indexpkg.NewCompositePropertyIndexOnDisk(def.Keys)
 				} else if entries, ok := img.takeComposite(key); ok {
 					installValueIDsKept(entries, func(id int64) bool { return bs.keepNodeEntry(img, id) }, idx.AddKey)
@@ -2229,6 +2277,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							idx.AddKey(id, vk)
 						}
 					})
+				} else if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+					return err
 				} else if nodeIDs, ok := bs.openLabelMembers(txn, def.LabelToken, lazyLabels); ok {
 					build := indexpkg.NewPostingsBuild(false)
 					for nodeID := range nodeIDs {
@@ -2319,6 +2369,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						ti.AddKnownAbsent(id, from, to)
 					}
 					it.Close()
+				} else if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+					return err
 				} else if nodeIDs, ok := bs.openLabelMembers(txn, tok, lazyLabels); ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
@@ -2393,6 +2445,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						from, _ := indexpkg.NodeTemporalBounds(bs.validAxis.Get(), id, n.Temporal())
 						hfi.Add(types.NodeID(id), from)
 					})
+				} else if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+					return err
 				} else if nodeIDs, ok := bs.openLabelMembers(txn, def.LabelToken, lazyLabels); ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
@@ -2467,6 +2521,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						return fmt.Errorf("graph: load vector index definition label %d property %q update from an older image: %w",
 							def.LabelToken, def.PropertyKey, addErr)
 					}
+				} else if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+					return err
 				} else if nodeIDs, ok := bs.openLabelMembers(txn, def.LabelToken, lazyLabels); ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
@@ -2510,6 +2566,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		return err
 	}
 	if bs.temporalIdxOnDisk && temporalIdxNeedsBuild && !bs.readOnly {
+		if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+			return err
+		}
 		if err := bs.commitTemporalIndexOnDiskBackfill(temporalIdxBackfillOps); err != nil {
 			return err
 		}

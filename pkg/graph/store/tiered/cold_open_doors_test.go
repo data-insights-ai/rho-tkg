@@ -215,6 +215,7 @@ func coldOpenDoors(t *testing.T, ts *Store, nodes []types.NodeID, rels []types.R
 // and presence probes, counts, the sealed-shard catalog doors and integrity.
 // The second pass is the one that checks: the same directory, reopened.
 func TestColdOpen_ReadDoorsAnswerTheSameThroughATransientHandle(t *testing.T) {
+	t.Parallel()
 	cfg, nodes, rels, shard := coldOpenDoorsDir(t)
 	// What the doors leave in the catalog: a transient close seals the shard's counts,
 	// its former label members and its rel ID range from the open handle

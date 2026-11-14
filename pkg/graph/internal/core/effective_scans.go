@@ -417,33 +417,42 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 	// One read, one room (R2 meter): the labels' gathers share the read's hold
 	// scope, so every entry any label takes into its hands is held on it (each
 	// label's current members before the store lists them, membersFit; the
-	// ever-members as they are produced) and counted when the gather settles
-	// (gatherKind.settle): each label's gather settles its own, so a node a
-	// second label hands on is counted again by that label and only skipped
-	// here; the fold settles once at its end. The scan does not count the list
-	// again (scanRun.admitted).
+	// ever-members as they are produced). Hold charges immediately: a node a
+	// second label hands on is counted again by that label and skipped here.
+	// Settle checks for a shared refusal; the scan does not count the list again
+	// (scanRun.admitted).
 	opts = gatherScan.held(opts)
 	t := opts.ReadTally()
 	var ids []types.NodeID
 	if c.labelTxMembers == nil {
-		if err := c.foldOpensRefused(opts); err != nil {
+		// This fallback collects the complete history union before emitting
+		// an ID. No native admission covers those copies, on sharded too.
+		if err := t.RefuseUnsupported(); err != nil {
 			return nil, err
 		}
 		var current []types.NodeID
 		for _, tok := range toks {
-			held, err := c.membersFit(opts, gatherScan, func() (int, error) { return c.nodeCountByLabel(tok) })
+			members := c.memberIDsAt(opts.Depth)
+			if members == nil || c.currentMembersMetered() == nil {
+				if err := unsupportedMemberGather(opts); err != nil {
+					return nil, err
+				}
+			}
+			if err := c.membersAhead(opts, gatherScan, func(t *storepkg.ReadTally) (int, error) { return c.nodeCountByLabelUnder(tok, t) }); err != nil {
+				return nil, err
+			}
+			cur, err := c.nodeLabelCurrentIDsUnder(tok, opts)
 			if err != nil {
 				return nil, err
 			}
-			cur, err := c.nodeLabelCurrentIDs(tok)
-			if err != nil {
+			if err := t.Buffer(8 * len(cur)); err != nil {
 				return nil, err
 			}
 			current = append(current, cur...)
 			c.noteListed(len(cur))
-			if err := holdListed(held, gatherScan, opts, len(cur)); err != nil {
-				return nil, err
-			}
+		}
+		if err := t.Buffer(24 * len(current)); err != nil {
+			return nil, err
 		}
 		listed := make(map[types.NodeID]struct{}, len(current))
 		for _, id := range current {
@@ -453,6 +462,9 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 			return nil, err
 		}
 		err := c.forEachNodeCandidateIDByDepth(current, storepkg.DepthAll, func(id types.NodeID) error {
+			if err := t.Buffer(8); err != nil {
+				return err
+			}
 			ids = append(ids, id)
 			if _, cur := listed[id]; cur {
 				return nil
@@ -474,6 +486,9 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 			if _, dup := seen[id]; dup {
 				continue // counted by the label's gather that handed it on
 			}
+			if err := t.Buffer(32); err != nil {
+				return nil, err
+			}
 			seen[id] = struct{}{}
 			ids = append(ids, id)
 		}
@@ -485,8 +500,12 @@ func (c *Core) nodeLabelsCandidatesAtOpts(toks []uint16, opts storepkg.QueryOpts
 // index without reading rows where it offers store.MemberIDsCapability, else
 // from the label's rows (c.mu held).
 func (c *Core) nodeLabelCurrentIDs(tok uint16) ([]types.NodeID, error) {
+	return c.nodeLabelCurrentIDsUnder(tok, storepkg.QueryOpts{})
+}
+
+func (c *Core) nodeLabelCurrentIDsUnder(tok uint16, opts storepkg.QueryOpts) ([]types.NodeID, error) {
 	if c.memberIDs != nil {
-		return c.memberIDs.NodeIDsByLabel(tok)
+		return c.nodeIDsByLabelUnder(c.memberIDs, tok, opts)
 	}
 	rows, err := c.store.NodesByLabel(tok, storepkg.QueryOpts{})
 	if err != nil {

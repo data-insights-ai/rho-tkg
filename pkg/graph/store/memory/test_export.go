@@ -14,6 +14,9 @@ func (ms *Store) HistoryRowsReadForTest() int64 { return ms.historyRowsRead.Load
 // TemporalMeta lists handed out (a counter the read meter does not keep).
 func (ms *Store) HistoryMetasListedForTest() int64 { return ms.historyMetasListed.Load() }
 
+// ValidEndHistoryCopiesForTest counts history rows built for the valid-end index.
+func (ms *Store) ValidEndHistoryCopiesForTest() int64 { return ms.validEndHistoryCopies.Load() }
+
 // GetNodeHistoryEntry returns a deep copy of the stored history entry for the
 // given node ID and version. Returns nil if no entry exists. Acquires the
 // Store read lock for the duration of the lookup.

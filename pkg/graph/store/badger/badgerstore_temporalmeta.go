@@ -63,7 +63,10 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 // a limit, not after every row is fetched and decoded.
 func (bs *Store) historyTemporalMetaByPrefixTallied(prefix []byte, node bool, t *storecontract.ReadTally) ([]storecontract.VersionTemporalMeta, error) {
 	// Overlay BEFORE the View — see getNodeHistoryByPrefix.
-	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
+	overlay, overlayDeletes, err := bs.pendingHistoryVersionOverlayTallied(prefix, 0, t)
+	if err != nil {
+		return nil, err
+	}
 
 	metaOf := func(raw []byte) (storecontract.VersionTemporalMeta, error) {
 		bs.historyMetaDecodes.Add(1)
@@ -81,13 +84,17 @@ func (bs *Store) historyTemporalMetaByPrefixTallied(prefix []byte, node bool, t 
 		// a concurrent flush completion inside the scan->merge window.
 		bs.historyScanTestHook()
 	}
-	err := bs.view(func(txn *badgerv4.Txn) error {
+	err = bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false // decode happens inside Value(), no staging copy
 		opts.Prefix = prefix        // tables without the key are skipped, not iterated
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			if err := t.History(1); err != nil {
+				return err
+			}
+			noteIndexEntryVisited()
 			key := it.Item().Key()
 			if len(key) != storepkg.SizeHistKey {
 				continue
@@ -98,7 +105,10 @@ func (bs *Store) historyTemporalMetaByPrefixTallied(prefix []byte, node bool, t 
 			if _, pending := overlay[string(key)]; pending {
 				continue // overlay set wins (byte-identical for history keys)
 			}
-			if err := t.DecodedHistory(int(it.Item().ValueSize())); err != nil {
+			if err := t.Decoded(int(it.Item().ValueSize())); err != nil {
+				return err
+			}
+			if err := t.Buffer(16); err != nil {
 				return err
 			}
 			bs.validEndValueFetches.Add(1)
@@ -124,6 +134,9 @@ func (bs *Store) historyTemporalMetaByPrefixTallied(prefix []byte, node bool, t 
 	}
 	for k, raw := range overlay {
 		if err := t.DecodedHistory(len(raw)); err != nil {
+			return nil, err
+		}
+		if err := t.Buffer(16); err != nil {
 			return nil, err
 		}
 		m, err := metaOf(raw)

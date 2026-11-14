@@ -21,14 +21,14 @@ import (
 // counter, which the meter does not keep: Core.candidatesListed, the IDs the
 // gather lists.
 //   - After the second deleted node: the members at or below After are dropped
-//     after the gather and counted, so the page costs what the whole gather
-//     costs (12): that budget answers the plain page, one less refuses;
+//     after the gather and counted: the gather costs 12, and native as-of adds
+//     current-row probes for the four IDs past After;
 //   - ValidAt 5000: the envelope prunes the three deleted nodes once, after the
 //     gather, and counts them (12): that budget answers, one less refuses;
 //   - Limit: the gather cannot stop at a Limit, which counts answered rows not
 //     candidates, so a Limit of 2 costs the whole gather (12): the gather counts
-//     what it held before the door reads a row, so the control counts it too
-//     and that budget answers; the documented limit of the door (docs/api.md).
+//     what it held before the door reads a row; native as-of adds the two
+//     current-row probes. The exact total budget answers and one less refuses.
 func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 	t.Parallel()
 	const n, deleted = 12, 3
@@ -65,6 +65,12 @@ func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 				t.Fatal(err)
 			}
 			const live = n - deleted
+			asOfPerRow := uint64(0)
+			if be.name == "badger" {
+				// Plain controls warm presence. The admitted native as-of path
+				// separately probes each current row that reaches resolution.
+				asOfPerRow = 1
+			}
 
 			listed := 0 // the native count of IDs the gather lists
 			g.candidatesListed = func(k int) { listed += k }
@@ -101,16 +107,18 @@ func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 			if err != nil || len(want) == 0 {
 				t.Fatalf("plain After = %d nodes, %v", len(want), err)
 			}
-			if c, l := exact("After", after, want); c != live+deleted || l != live+1 {
-				t.Fatalf("After: %d counted, %d IDs listed; want %d (the live members and the 3 that ended, 2 dropped at After) and %d listed (the live members and the one past After)", c, l, live+deleted, live+1)
+			wantCandidates := n + 4*asOfPerRow
+			if c, l := exact("After", after, want); c != wantCandidates || l != live+1 {
+				t.Fatalf("After: %d counted, %d IDs listed; want %d (the whole gather and probes past After) and %d listed (the live members and the one past After)", c, l, wantCandidates, live+1)
 			}
 			all := storepkg.QueryOpts{TxPin: pin}
 			wantAll, err := g.Nodes.ByLabel("D", all)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if c, l := exact("no After", all, wantAll); c != live+deleted || l != live+deleted {
-				t.Fatalf("no After: %d counted, %d IDs listed; want %d listed and counted", c, l, live+deleted)
+			wantCandidates = n + n*asOfPerRow
+			if c, l := exact("no After", all, wantAll); c != wantCandidates || l != n {
+				t.Fatalf("no After: %d counted, %d IDs listed; want %d counted and %d listed", c, l, wantCandidates, n)
 			}
 
 			// ValidAt 5000: the envelope index prunes the three nodes valid only until 2000.
@@ -132,9 +140,11 @@ func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 				t.Fatalf("plain Limit = %d nodes, %v", len(wantLimit), err)
 			}
 			// The gather settles the 3 that ended (it held them) before the door
-			// stops at the second row: the control counts the whole gather, 12.
-			if c, _ := exact("Limit 2", limit, wantLimit); c != live+deleted {
-				t.Fatalf("Limit 2: %d counted; want %d: the limit counts answers, not the candidates gathered", c, live+deleted)
+			// stops at the second row: the control counts the whole gather plus
+			// the native probes needed to answer those two rows.
+			wantCandidates = n + 2*asOfPerRow
+			if c, _ := exact("Limit 2", limit, wantLimit); c != wantCandidates {
+				t.Fatalf("Limit 2: %d counted; want %d: the whole gather and probes for two answers", c, wantCandidates)
 			}
 		})
 	}

@@ -227,6 +227,7 @@ func (bs *Store) recordRelWireMembersLocked(rid types.RelID, w, cur *storepkg.Re
 // Current rows (0x01) are always full (never delta-tagged), so this helper is
 // safe to use uniformly for both keyspaces.
 func decodeNodeWireForMembership(val []byte) (storepkg.NodeWire, bool) {
+	noteMembershipDecoded()
 	if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
 		var w storepkg.NodeWire
 		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
@@ -243,6 +244,7 @@ func decodeNodeWireForMembership(val []byte) (storepkg.NodeWire, bool) {
 
 // decodeRelWireForMembership mirrors decodeNodeWireForMembership for relationships.
 func decodeRelWireForMembership(val []byte) (storepkg.RelWire, bool) {
+	noteMembershipDecoded()
 	if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
 		var w storepkg.RelWire
 		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
@@ -271,34 +273,58 @@ type txMemberBuildRow[W any] struct {
 // round, a row it commits between the View and the overlay read is in
 // neither). Deletes of history rows are ignored: a stale former member is
 // harmless. Caller holds idxMu (write).
-func buildTxMembersLocked[W any](bs *Store, currentTag, historyTag byte, currentSize int, decode func([]byte) (W, bool), record func(id int64, w, cur *W)) error {
+func buildTxMembersLocked[W any](bs *Store, currentTag, historyTag byte, currentSize int, decode func([]byte) (W, bool), t *storecontract.ReadTally, record func(id int64, w, cur *W)) error {
 	type overlayCurrent struct {
 		row W
 		ok  bool // false: buffered delete or an unreadable row
 	}
 	current := make(map[int64]overlayCurrent)
 	var history []txMemberBuildRow[W]
-	bs.rangePending(func(k string, op writeOp) {
+	var pendingErr error
+	bs.walkPending(func(k string, op writeOp) bool {
+		if pendingErr = t.Candidates(1); pendingErr != nil {
+			return false
+		}
 		kb := []byte(k)
 		switch {
 		case len(kb) == currentSize && kb[0] == currentTag:
+			if pendingErr = t.Buffer(24 + len(op.value)); pendingErr != nil {
+				return false
+			}
 			var c overlayCurrent
 			if op.opType != writeOpDelete && len(op.value) > 0 {
+				if pendingErr = t.Decoded(len(op.value)); pendingErr != nil {
+					return false
+				}
 				c.row, c.ok = decode(op.value)
 			}
 			current[int64(storepkg.ParseIDFromKey(kb, 1))] = c
 		case len(kb) == storepkg.SizeHistKey && kb[0] == historyTag:
+			if pendingErr = t.History(1); pendingErr != nil {
+				return false
+			}
 			if op.opType == writeOpDelete || len(op.value) == 0 {
-				return
+				return true
+			}
+			if pendingErr = t.Buffer(8 + len(op.value)); pendingErr != nil {
+				return false
+			}
+			if pendingErr = t.Decoded(len(op.value)); pendingErr != nil {
+				return false
 			}
 			if w, ok := decode(op.value); ok {
 				history = append(history, txMemberBuildRow[W]{id: int64(storepkg.ParseIDFromKey(kb, 1)), row: w})
 			}
 		}
+		return true
 	})
+	if pendingErr != nil {
+		return pendingErr
+	}
 	return bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
+		opts.Prefix = []byte{currentTag}
 		cit := txn.NewIterator(opts)
 		defer cit.Close()
 		cit.Seek([]byte{currentTag})
@@ -321,11 +347,23 @@ func buildTxMembersLocked[W any](bs *Store, currentTag, historyTag byte, current
 				return last, nil
 			}
 			storepkg.PutUint64(key, 1, id)
-			advanceTo(cit, key)
+			for cit.Valid() {
+				noteIndexEntryVisited()
+				if err := t.Candidates(1); err != nil {
+					return nil, err
+				}
+				if bytes.Compare(cit.Item().Key(), key) >= 0 {
+					break
+				}
+				cit.Next()
+			}
 			if !cit.Valid() || !bytes.Equal(cit.Item().Key(), key) {
 				return nil, nil
 			}
 			if err := cit.Item().Value(func(val []byte) error {
+				if err := t.Decoded(len(val)); err != nil {
+					return err
+				}
 				if w, ok := decode(val); ok {
 					last = &w
 				}
@@ -335,10 +373,18 @@ func buildTxMembersLocked[W any](bs *Store, currentTag, historyTag byte, current
 			}
 			return last, nil
 		}
+		opts.Prefix = []byte{historyTag}
 		hit := txn.NewIterator(opts)
 		defer hit.Close()
 		prefix := []byte{historyTag}
 		for hit.Seek(prefix); hit.ValidForPrefix(prefix); hit.Next() {
+			noteIndexEntryVisited()
+			if err := t.Candidates(1); err != nil {
+				return err
+			}
+			if err := t.History(1); err != nil {
+				return err
+			}
 			item := hit.Item()
 			if len(item.Key()) != storepkg.SizeHistKey {
 				continue
@@ -347,6 +393,9 @@ func buildTxMembersLocked[W any](bs *Store, currentTag, historyTag byte, current
 			var w W
 			ok := false
 			if err := item.Value(func(val []byte) error {
+				if err := t.Decoded(len(val)); err != nil {
+					return err
+				}
 				w, ok = decode(val)
 				return nil
 			}); err != nil {
@@ -370,6 +419,9 @@ func buildTxMembersLocked[W any](bs *Store, currentTag, historyTag byte, current
 				}
 			} else {
 				storepkg.PutUint64(key, 1, h.id)
+				if err := t.Candidates(1); err != nil {
+					return err
+				}
 				item, err := txn.Get(key)
 				switch {
 				case errors.Is(err, badgerv4.ErrKeyNotFound):
@@ -377,6 +429,9 @@ func buildTxMembersLocked[W any](bs *Store, currentTag, historyTag byte, current
 					return err
 				default:
 					if err := item.Value(func(val []byte) error {
+						if err := t.Decoded(len(val)); err != nil {
+							return err
+						}
 						if w, ok := decode(val); ok {
 							cur = &w
 						}
@@ -395,6 +450,10 @@ func buildTxMembersLocked[W any](bs *Store, currentTag, historyTag byte, current
 // ensureLabelTxMembersBuilt lazily builds the label membership sidecar from the
 // history rows of the write-buffer overlay and the committed keyspace.
 func (bs *Store) ensureLabelTxMembersBuilt() error {
+	return bs.ensureLabelTxMembersBuiltUnder(nil)
+}
+
+func (bs *Store) ensureLabelTxMembersBuiltUnder(t *storecontract.ReadTally) error {
 	if bs.labelTxMembersBuilt.Load() {
 		return nil
 	}
@@ -404,7 +463,7 @@ func (bs *Store) ensureLabelTxMembersBuilt() error {
 		return nil // built by a racing caller while we waited for the lock
 	}
 	bs.labelTxMembers = make(map[uint16]map[types.NodeID]types.Instant)
-	err := buildTxMembersLocked(bs, storepkg.KeyNode, storepkg.KeyHistNode, storepkg.SizeNodeKey, decodeNodeWireForMembership,
+	err := buildTxMembersLocked(bs, storepkg.KeyNode, storepkg.KeyHistNode, storepkg.SizeNodeKey, decodeNodeWireForMembership, t,
 		func(id int64, w, cur *storepkg.NodeWire) { bs.recordNodeWireMembersLocked(types.NodeID(id), w, cur) })
 	if err != nil {
 		bs.labelTxMembers = nil // failed build — retry on next call
@@ -419,6 +478,10 @@ func (bs *Store) ensureLabelTxMembersBuilt() error {
 
 // ensureRelTypeTxMembersBuilt lazily builds the rel-type membership sidecar.
 func (bs *Store) ensureRelTypeTxMembersBuilt() error {
+	return bs.ensureRelTypeTxMembersBuiltUnder(nil)
+}
+
+func (bs *Store) ensureRelTypeTxMembersBuiltUnder(t *storecontract.ReadTally) error {
 	if bs.relTypeMembersBuilt.Load() {
 		return nil
 	}
@@ -428,7 +491,7 @@ func (bs *Store) ensureRelTypeTxMembersBuilt() error {
 		return nil
 	}
 	bs.relTypeTxMembers = make(map[uint16]map[types.RelID]types.Instant)
-	err := buildTxMembersLocked(bs, storepkg.KeyRel, storepkg.KeyHistRel, storepkg.SizeRelKey, decodeRelWireForMembership,
+	err := buildTxMembersLocked(bs, storepkg.KeyRel, storepkg.KeyHistRel, storepkg.SizeRelKey, decodeRelWireForMembership, t,
 		func(id int64, w, cur *storepkg.RelWire) { bs.recordRelWireMembersLocked(types.RelID(id), w, cur) })
 	if err != nil {
 		bs.relTypeTxMembers = nil
@@ -477,7 +540,7 @@ func (bs *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.Read
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	if err := bs.ensureLabelTxMembersBuilt(); err != nil {
+	if err := bs.ensureLabelTxMembersBuiltUnder(t); err != nil {
 		return err
 	}
 	return emitTxMemberCopy(bs, func() map[types.NodeID]types.Instant { return bs.labelTxMembers[token] }, t, fn)
@@ -497,22 +560,15 @@ func (bs *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.Re
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	if err := bs.ensureRelTypeTxMembersBuilt(); err != nil {
+	if err := bs.ensureRelTypeTxMembersBuiltUnder(t); err != nil {
 		return err
 	}
 	return emitTxMemberCopy(bs, func() map[types.RelID]types.Instant { return bs.relTypeTxMembers[token] }, t, fn)
 }
 
-// emitTxMemberCopy copies the set setOf returns under idxMu.RLock, so fn runs
-// OUTSIDE the store lock (it re-enters the store to resolve chains), and hands
-// the copy to fn. Under a budget the copy is paid for before it is made (R2
-// round 3): its entries are held in t (ReadTally.Hold: the set holds the former
-// members only, none of the current ones the caller holds or counts; a stale
-// entry, an ID that carries the token again, is held beside the current member
-// it repeats and counted when the gather settles: high, never low, and the
-// same in the unlimited control), which refuses a gather past the room with
-// nothing copied, and
-// its bytes (store.TxMemberCopyBytes a member) are charged as BufferBytes.
+// emitTxMemberCopy charges every entry of the native former-member snapshot
+// before copying it, including stale entries repeated by a current listing.
+// Candidates and BufferBytes have the same native owner on scans and pages.
 func emitTxMemberCopy[ID comparable](bs *Store, setOf func() map[ID]types.Instant, t *storecontract.ReadTally, fn func(ID, types.Instant) bool) error {
 	type member struct {
 		id ID
@@ -520,7 +576,7 @@ func emitTxMemberCopy[ID comparable](bs *Store, setOf func() map[ID]types.Instan
 	}
 	bs.idxMu.RLock()
 	set := setOf()
-	if err := t.Hold(len(set)); err != nil {
+	if err := t.Candidates(len(set)); err != nil {
 		bs.idxMu.RUnlock()
 		return err
 	}
@@ -556,7 +612,7 @@ func (bs *Store) LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id t
 		return err
 	}
 	bs.idxMu.RLock()
-	current, err := bs.labelCurrentMembersLocked(token)
+	current, err := bs.labelCurrentMembersOfLocked(token, ids)
 	var members []indexpkg.TxMember[types.NodeID]
 	if err == nil {
 		members = txMembersOf(bs.labelTxMembers[token], ids, func(id types.NodeID) bool {
@@ -574,6 +630,64 @@ func (bs *Store) LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id t
 		}
 	}
 	return nil
+}
+
+// labelCurrentMembersOfLocked probes only ids. A disk or transient label map
+// must not be materialized merely to decide a small point subset. idxMu is
+// held, so the pending overlay and committed label keys describe the same
+// current membership even when a flush moves a key between them.
+func (bs *Store) labelCurrentMembersOfLocked(token uint16, ids []types.NodeID) (map[types.NodeID]struct{}, error) {
+	if !bs.labelOnDisk && !bs.labelLazy {
+		return bs.labelIdx[token], nil
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	// Save point overrides before the read transaction takes its timestamp.
+	// A flush may clear its buffer after committing, without taking idxMu.
+	// Reading overrides afterwards could miss a key that the older transaction
+	// cannot yet see.
+	var overrides map[types.NodeID]bool
+	for _, id := range ids {
+		key := storepkg.LabelIndexKey(token, id.SnowflakeID())
+		if op, ok := bs.lookupPending(string(key)); ok {
+			notePendingKeyVisited()
+			if overrides == nil {
+				overrides = make(map[types.NodeID]bool)
+			}
+			overrides[id] = op.opType == writeOpSet
+		}
+	}
+	var members map[types.NodeID]struct{}
+	err := bs.view(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		opts.Prefix = labelIndexPrefix(token)
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for _, id := range ids {
+			if bs.labelLazy && !bs.nodeIDs.Has(int64(id)) {
+				continue // transient maps, like the open, exclude stale label keys
+			}
+			present, pending := overrides[id]
+			if !pending {
+				key := storepkg.LabelIndexKey(token, id.SnowflakeID())
+				it.Seek(key)
+				if it.Valid() {
+					noteIndexEntryVisited()
+					present = bytes.Equal(it.Item().Key(), key)
+				}
+			}
+			if present {
+				if members == nil {
+					members = make(map[types.NodeID]struct{})
+				}
+				members[id] = struct{}{}
+			}
+		}
+		return nil
+	})
+	return members, err
 }
 
 // RelTypeTxMembersOf implements store.RelTypeTxMemberLookupCapability.
@@ -601,18 +715,9 @@ func (bs *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id 
 	return nil
 }
 
-// labelCurrentMembersLocked returns token's current members: the label index,
-// in LabelIndexOnDisk mode read from the persisted keyspace. The caller holds
-// idxMu (R or W) and only reads the set.
-func (bs *Store) labelCurrentMembersLocked(token uint16) (map[types.NodeID]struct{}, error) {
-	return bs.labelCurrentMembersTalliedLocked(token, nil)
-}
-
-// labelCurrentMembersTalliedLocked is labelCurrentMembersLocked for a read
-// under a budget: a label read from its keys (a lazy map not built yet, or the
-// keyspace in LabelIndexOnDisk mode) counts that walk in t
-// (labelMembersTalliedLocked, labelNodeIDsSnapshotTalliedLocked); a nil t counts
-// nothing.
+// labelCurrentMembersTalliedLocked returns token's current members. The caller
+// holds idxMu (R or W) and only reads the set. Lazy and on-disk label walks
+// charge t before examining entries or copying IDs; a nil t counts nothing.
 func (bs *Store) labelCurrentMembersTalliedLocked(token uint16, t *storecontract.ReadTally) (map[types.NodeID]struct{}, error) {
 	if !bs.labelOnDisk {
 		set, _, err := bs.labelMembersTalliedLocked(token, t)
@@ -622,9 +727,13 @@ func (bs *Store) labelCurrentMembersTalliedLocked(token uint16, t *storecontract
 	if err != nil {
 		return nil, err
 	}
+	if err := t.Buffer(24 * len(ids)); err != nil {
+		return nil, err
+	}
 	set := make(map[types.NodeID]struct{}, len(ids))
 	for _, id := range ids {
 		set[id] = struct{}{}
+		noteValidEndMemberCopied()
 	}
 	return set, nil
 }

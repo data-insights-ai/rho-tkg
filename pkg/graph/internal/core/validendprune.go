@@ -52,6 +52,10 @@ func (c *Core) nodesByLabelAndPropertyFormsValidEnd(label, key string, forms []a
 		return nil, nil
 	}
 	keys := keysOf(forms)
+	tally := opts.ReadTally()
+	rd, release := c.meteredEntityReads(tally)
+	defer release()
+	rd.scan = true // a multi-row filter must not fill the point-read head cache
 	var out []*types.Node
 	page := opts
 	for {
@@ -61,7 +65,7 @@ func (c *Core) nodesByLabelAndPropertyFormsValidEnd(label, key string, forms []a
 		}
 		pin := c.peekNow()
 		for i, n := range nodes {
-			segs, err := c.nodeTimelineOfReturnedRow(n, pin)
+			segs, err := c.nodeTimelineOfReturnedRow(rd, n, pin)
 			if errors.Is(err, storepkg.ErrNodeNotFound) { // purged since the lookup
 				continue
 			}
@@ -73,6 +77,9 @@ func (c *Core) nodesByLabelAndPropertyFormsValidEnd(label, key string, forms []a
 				c.validEndQuery.RefineNodePropertyValidEnd(n, probes[i], end)
 			}
 			if end >= bound { // ValidEndOpen is the largest instant
+				if err := tally.Buffer(bufSliceRef); err != nil {
+					return nil, err
+				}
 				out = append(out, n)
 				if opts.Limit > 0 && len(out) == opts.Limit {
 					return out, nil
@@ -92,10 +99,10 @@ func (c *Core) nodesByLabelAndPropertyFormsValidEnd(label, key string, forms []a
 // returns as it stood). With history the chain is read, current row included.
 // The caller's pin is now: no compaction or retention refusal can apply to a
 // row without history.
-func (c *Core) nodeTimelineOfReturnedRow(n *types.Node, pin types.Instant) ([]temporal.NodeSegment, error) {
+func (c *Core) nodeTimelineOfReturnedRow(rd entityReads, n *types.Node, pin types.Instant) ([]temporal.NodeSegment, error) {
 	id := n.ID()
 	c.entityLocks.LockEntity(id.SnowflakeID())
-	has, known, err := entityReads{c: c}.hasNodeHistory(id)
+	has, known, err := rd.hasNodeHistory(id)
 	c.entityLocks.UnlockEntity(id.SnowflakeID())
 	if err != nil {
 		return nil, err
@@ -103,7 +110,7 @@ func (c *Core) nodeTimelineOfReturnedRow(n *types.Node, pin types.Instant) ([]te
 	if known && !has {
 		return nodeSegments(c.nodeEffectivePieces([]*types.Node{n}, pin), nil), nil
 	}
-	return c.nodeEffectiveTimelineLocked(id, pin)
+	return c.nodeEffectiveTimelineFrom(rd, id, pin)
 }
 
 // validEndCandidates is one page of the current matches, with a probe per node

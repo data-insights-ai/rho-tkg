@@ -577,42 +577,46 @@ type PropertyTxMemberMeteredCapability interface {
 	ForEachRelPropertyTxMemberMetered(relTypeToken uint16, propertyKey string, valueKeys []string, window *PropertyTxMemberWindow, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
-// MemberGatherMeteredCapability is OPTIONAL (RH list R2, sigma's group B): the
-// member enumerations an effective label or type scan gathers its candidates
-// from (MemberIDsCapability's NodeIDsByLabel / RelIDsByType, the K1
-// LabelTxMembershipCapability / RelTypeTxMembershipCapability
-// ForEach...TxMember) under a read budget, with the same answers. A store that
-// opens closed shards to answer (tiered) charges each open to t before it
-// (ReadTally.ShardOpen) and returns the *ReadBudgetError, before any member is
-// handed on, past the ShardOpens limit; workers reading shards in parallel stop
-// at their next charge once one refused (ReadMeter.Exceeded). A nil t is the
-// unmetered form. The ever-member enumerations hold the entries of each set
-// they are about to copy on t before the copy (ReadTally.Hold, against the
-// room net of the read's holds, over every shard and label of the read) and
-// return the refusal before they copy a set that passes it, and they charge
-// the copies they hold (a member's 16 bytes in a list, 32 in tiered's union)
-// as BufferBytes before they make them (TxMemberGatherMeteredCapability, which
-// badger and memory implement too: they open no shard, but they copy).
-type MemberGatherMeteredCapability interface {
+// CurrentMemberIDsMeteredCapability is MemberIDsCapability under one read tally.
+// Native snapshots charge every examined entry as a Candidate before walking
+// or copying it, including rejected and repeated entries. They charge ID copies
+// and unions as BufferBytes before allocation, and closed shard opens before
+// opening. Counts are only preflight hints: admission uses the actual snapshot
+// under its owning lock. A nil tally is the plain form.
+// A refusal returns no partial ID slice.
+type CurrentMemberIDsMeteredCapability interface {
 	NodeIDsByLabelMetered(labelToken uint16, t *ReadTally) ([]types.NodeID, error)
 	RelIDsByTypeMetered(typeToken uint16, t *ReadTally) ([]types.RelID, error)
+}
+
+// MemberGatherMeteredCapability combines the native current-ID snapshots and
+// the ever-member enumerations used by effective label and type gathers.
+type MemberGatherMeteredCapability interface {
+	CurrentMemberIDsMeteredCapability
 	TxMemberGatherMeteredCapability
 }
 
-// TxMemberGatherMeteredCapability is OPTIONAL (R2 round 3): the ever-member
-// enumerations of MemberGatherMeteredCapability on their own, for a store that
-// copies a sidecar's set out before it hands the members on (badger, memory,
-// tiered). Every entry the store copies is one candidate of the read, held on t
-// before the copy (ReadTally.Hold; badger holds its set of former members,
-// memory the members of its set past the current ones, which the caller holds
-// or counted already) and its bytes charged as BufferBytes; an entry the store
-// itself drops (tiered: an entity a second shard hands on) it counts with
-// ReadTally.Drop. The caller counts each entry it is handed: with Drop when it
-// drops it, or as a candidate when its door reads it. On a tally without a hold
-// scope Hold holds nothing (the caller counts what it reads).
+// TxMemberGatherMeteredCapability enumerates ever-members under one read tally.
+// Each native snapshot charges all entries it copies as Candidates and its
+// bytes as BufferBytes before allocation. Badger copies former members; memory
+// copies its full ever-member set, including current members listed earlier.
+// A first sidecar construction separately charges its row walks, history and
+// decodes before work. The consuming callback does not charge copies again.
+// The same ownership applies to scans and pages; a nil tally is unmetered.
 type TxMemberGatherMeteredCapability interface {
 	ForEachLabelTxMemberMetered(token uint16, t *ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 	ForEachRelTypeTxMemberMetered(token uint16, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
+
+// MemberCountMeteredCapability is OPTIONAL: NodeCountByLabel / RelCountByType
+// under a read budget, same answers. A store that must open a closed shard to
+// answer (tiered: a cold shard closed without sealed counts, an archive not yet
+// opened) charges each open to t before it (ReadTally.ShardOpen) and returns the
+// *ReadBudgetError and no count past the limit, the shard left closed. It counts
+// no candidate and holds nothing. A nil t is the plain form.
+type MemberCountMeteredCapability interface {
+	NodeCountByLabelMetered(labelToken uint16, t *ReadTally) (int, error)
+	RelCountByTypeMetered(typeToken uint16, t *ReadTally) (int, error)
 }
 
 // TxMemberCopyBytes is the logical size (BufferBytes) of one ever-member a
@@ -788,6 +792,18 @@ type TemporalMetaHistoryCapability interface {
 	RelHistoryTemporalMeta(id types.RelID) ([]VersionTemporalMeta, error)
 }
 
+// HistoryReadMeteredCapability admits history lists without a read snapshot.
+// Every method preserves its plain counterpart's rows, order and ownership;
+// the native helper charges history examinations and temporary list buffers
+// before constructing them, under the lock that protects the chain's size.
+// A nil tally preserves the plain read.
+type HistoryReadMeteredCapability interface {
+	GetNodeHistoryMetered(id types.NodeID, t *ReadTally) ([]*types.Node, error)
+	GetRelHistoryMetered(id types.RelID, t *ReadTally) ([]*types.Relationship, error)
+	NodeHistoryTemporalMetaMetered(id types.NodeID, t *ReadTally) ([]VersionTemporalMeta, error)
+	RelHistoryTemporalMetaMetered(id types.RelID, t *ReadTally) ([]VersionTemporalMeta, error)
+}
+
 // HistoryEpochCapability is OPTIONAL: a token per entity that changes whenever
 // that entity's history rows change, so a reader can keep a value derived from
 // the rows (the graph's head-pin effective timeline) and tell in
@@ -796,7 +812,7 @@ type TemporalMetaHistoryCapability interface {
 // ID was written, overwritten or removed between them. Tokens are never
 // reused within a process (a reopened store or another shard hands out new
 // ones). 0 means "no token now": the caller must not reuse a derived value
-// and keeps none. A store whose token read would have to open a shard (tiered:
+// while the token is zero. A store whose token read would have to open a shard (tiered:
 // a closed cold shard or an archive not yet opened on the entity's walk)
 // answers 0 instead of opening it: a token is good only while the handle that
 // issued it stays open (R2-5 HEADREAD). The current row is not covered.
@@ -1069,15 +1085,12 @@ type ExAdjacencyCapability interface {
 	NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error
 }
 
-// ExAdjacencyMeteredCapability is OPTIONAL (RH list R2, R2-SCANS):
-// ForEachExAdjacentRelID under a read budget. A store that opens closed shards
-// to answer (tiered: the archive, the event shard of the node's mint time, and
-// for a reference-side node of a store with rels by mint the mint shards)
-// charges each open to t before it (ReadTally.ShardOpen) and returns the
-// *ReadBudgetError, before fn, past the ShardOpens limit, the shard left
-// closed. It counts no entry: the caller counts each ID fn is handed. A nil t is
-// the plain door. A store that opens no shard (memory, badger, sharded) need
-// not implement it.
+// ExAdjacencyMeteredCapability is ExAdjacencyCapability under a read tally.
+// The native snapshot charges examined entries as Candidates, including pending
+// deletes and duplicates, before collecting IDs; ID lists and pending overlays
+// pay BufferBytes before allocation. Fan-outs pass the same tally down and
+// charge their own copies and closed shard opens. The caller does not charge
+// delivered IDs again. Callbacks run outside store locks. A nil t is plain.
 type ExAdjacencyMeteredCapability interface {
 	ForEachExAdjacentRelIDMetered(nodeID types.NodeID, incoming bool, t *ReadTally, fn func(types.RelID) bool) error
 }

@@ -17,29 +17,29 @@ import (
 // prefix of the plain scan's segments, none after the refusal).
 //
 // What a budgeted scan counts:
-//   - Candidates: one per entity, before the entity is read; and every entry the
-//     gather that lists them takes into its hands is held ahead on the read's
-//     one room (gatherScan, ReadTally.Hold; R2 meter): the label's (type's)
-//     current members by the store's own count before the store lists them, the
-//     ever-members past them by the store before it copies its set (or one by
-//     one as the history fold yields them), over every label and shard of the
-//     read; an entry the gather drops (past the pin, an entity a second label or
-//     shard hands on, an ID the envelope prune drops) is counted where it is
-//     dropped (ReadTally.Drop), the others when the scan reads them. So a scan
+//   - Candidates: every entry the gather takes into its hands is held ahead
+//     on the read's one room (gatherScan, ReadTally.Hold): the label's (type's)
+//     current members at the native snapshot before it copies them (the earlier
+//     count is a preflight only). Each native ever-member snapshot charges every
+//     copied entry, including repeats of current IDs. Fallbacks hold entries one by
+//     one as the history fold yields them, over every label and shard of the
+//     read. Hold charges at admission, including entries later dropped by a
+//     pin, duplicate or envelope filter. Drop and Settle check for a shared
+//     refusal, without a second charge when scanned. So a scan
 //     whose candidates pass the room is refused before its list is built, with
 //     the entries it held counted as work done and no callback made, and the
-//     unlimited control's count is the smallest budget that answers. A tiered
-//     store under a ShardOpens bound holds its current members after the metered
-//     listing (its count may open a shard no counter sees), and the history fold
-//     of several labels on a store without the membership sidecar builds its ID
-//     union in the store's own fold (forEachNodeCandidateIDByDepth) before the
-//     gather holds an ID;
-//   - BufferBytes: 8 per listed candidate, before each joins the list where the
-//     gather builds it (the by-endpoint scans) and else once the gather has
-//     built it, before the first entity is read;
-//   - ShardOpens (tiered): each closed shard the gather (the label's or the
-//     type's current members and its ever-members: storepkg.MemberGatherMeteredCapability)
-//     and the entity reads (the metered read snapshot) are about to open;
+//     unlimited control's count is the smallest budget that answers. The
+//     history fold of several labels on a store without the membership sidecar
+//     builds its ID union in the store's own fold
+//     (forEachNodeCandidateIDByDepth) before the gather holds an ID;
+//   - BufferBytes: native ID snapshots, pending overlays and each gather copy,
+//     charged by the helper before allocation; 8 per ID in a slice and 24 per
+//     ID in a set. The consuming stream charges its own copies separately;
+//   - ShardOpens (tiered): each closed shard the count (the label's or the
+//     type's current members: storepkg.MemberCountMeteredCapability), the
+//     gather (the current members and the ever-members:
+//     storepkg.MemberGatherMeteredCapability) and the entity reads (the metered
+//     read snapshot) are about to open;
 //   - HistoryExamined and DecodedBytes: the history versions and rows each
 //     entity's read looks at and decodes, through the store's metered read
 //     snapshot (the memory store, which has none, counts the versions of an
@@ -218,23 +218,21 @@ func scanSegments[S any](r *scanRun, fn func(S) bool) func(S) bool {
 
 // gatherKind says who counts the candidates a label or type gather lists
 // (R2 late counts, R2 meter): every entry a gather takes into its hands is one
-// candidate of the read, held ahead before the work that produces it
-// (ReadTally.Hold, against the room net of the read's holds), counted by the
-// helper that drops it (ReadTally.Drop) or by the door that reads it. So for a
+// candidate of the read, charged before the work that produces it
+// (ReadTally.Hold). Drop and Settle check for refusal without charging again.
+// So for a
 // read that runs to its end, the unlimited control's Work.Candidates is the
 // smallest Candidates budget that answers. Within one read every Hold precedes
 // the door's first read of an entry handed on.
 type gatherKind uint8
 
 const (
-	// gatherFree: the caller counts nothing of the list as a whole (a paged door
-	// counts the entities of its page, a read without a budget nothing): it holds
-	// and drops nothing (the stores' ever-member copies are bounded by
-	// BufferBytes only).
+	// gatherFree: the caller holds and drops nothing. Native snapshots still
+	// count their work; a paged door separately counts the entities it reads.
 	gatherFree gatherKind = iota
-	// gatherScan: the caller counts one candidate per list entry when it reads
-	// the entity (the effective scans): the current members are held before the
-	// store lists them, the ever-members past them as they are produced.
+	// gatherScan: the gather counts its entries before returning the list to
+	// the effective scan: native snapshots count before copying, and a fallback
+	// holds each extra member as it is produced.
 	gatherScan
 	// gatherListed: as gatherScan, and the store has counted the label's current
 	// members where it listed them (the temporal ByLabel read): only the members
@@ -260,7 +258,7 @@ func (k gatherKind) hold(t *storepkg.ReadTally, n int) error {
 	return t.Hold(n)
 }
 
-// drop counts n held entries the gather examined and dropped (ReadTally.Drop);
+// drop checks the read after rejecting entries already charged by Hold.
 // gatherFree counts nothing (the page counts its own entities).
 func (k gatherKind) drop(t *storepkg.ReadTally, n int) error {
 	if k == gatherFree || n <= 0 {
@@ -269,11 +267,9 @@ func (k gatherKind) drop(t *storepkg.ReadTally, n int) error {
 	return t.Drop(n)
 }
 
-// settle counts, before the gather returns its list, every entry it still
-// holds (ReadTally.Settle: one add), so the read's count is every entry the
-// gather took into its hands and the door does not count the list again
-// (scanRun.admitted; the temporal ByLabel read counts no candidate of it).
-// gatherFree counts nothing.
+// settle checks for a shared refusal before the gather returns its list.
+// Hold already charged every admitted entry; the consuming door does not
+// count the list again. gatherFree leaves counting to its caller.
 func (k gatherKind) settle(t *storepkg.ReadTally) error {
 	if k == gatherFree {
 		return nil
@@ -299,29 +295,49 @@ func (c *Core) noteProbed(n int) {
 }
 
 // membersFit holds, before a store lists the current members of a label or a
-// type for a gatherScan under a read meter, the store's own count of them
-// (count, O(1) on every store) on opts' tally (ReadTally.Hold: the read's one
-// room, net of what it holds already), so a listing the room cannot hold is
-// refused before it is built, and returns how many it held. It holds none on a
-// tiered store under a budget that bounds ShardOpens, whose count may open a
-// closed shard no counter would see (the listing's own metered gather,
-// nodeIDsByLabelUnder, charges the opens; documented as a limit of the
-// budgeted scans, docs/api.md): holdListed holds the listing after it.
-func (c *Core) membersFit(opts storepkg.QueryOpts, kind gatherKind, count func() (int, error)) (held int, err error) {
+// type for a gatherScan under a read meter, the store's own count of them on
+// opts' tally (ReadTally.Hold: the read's one room, net of what it holds
+// already), so a listing the room cannot hold is refused before it is built,
+// and returns how many it held. count runs under the same tally: a store that
+// opens a closed shard to count (tiered: a cold shard without sealed counts,
+// the archive) charges the open to it before the open
+// (nodeCountByLabelUnder, relCountByTypeUnder), under every meter.
+func (c *Core) membersFit(opts storepkg.QueryOpts, kind gatherKind, count func(*storepkg.ReadTally) (int, error)) (held int, err error) {
 	t := opts.ReadTally()
 	if kind != gatherScan || t == nil {
 		return 0, nil
 	}
-	if m, _ := opts.ReadMeter(); m.BoundsShardOpens() {
-		if _, opensShards := c.store.(*tiered.Store); opensShards {
-			return 0, nil
-		}
-	}
-	n, err := count()
+	n, err := count(t)
 	if err != nil {
 		return 0, err
 	}
 	return n, kind.hold(t, n)
+}
+
+// nodeCountByLabelUnder is c.nodeCountByLabel, its shard opens counted in t
+// where the store offers storepkg.MemberCountMeteredCapability (t nil: plain).
+func (c *Core) nodeCountByLabelUnder(tok uint16, t *storepkg.ReadTally) (int, error) {
+	if m, ok := c.store.(storepkg.MemberCountMeteredCapability); ok && t != nil {
+		n, err := m.NodeCountByLabelMetered(tok, t)
+		if err != nil {
+			return 0, err
+		}
+		return n, validateStoreCount("NodeCountByLabel", n)
+	}
+	return c.nodeCountByLabel(tok)
+}
+
+// relCountByTypeUnder is c.relCountByType, its shard opens counted in t where
+// the store offers storepkg.MemberCountMeteredCapability (t nil: plain).
+func (c *Core) relCountByTypeUnder(tok uint16, t *storepkg.ReadTally) (int, error) {
+	if m, ok := c.store.(storepkg.MemberCountMeteredCapability); ok && t != nil {
+		n, err := m.RelCountByTypeMetered(tok, t)
+		if err != nil {
+			return 0, err
+		}
+		return n, validateStoreCount("RelCountByType", n)
+	}
+	return c.relCountByType(tok)
 }
 
 // holdListed holds, for a gatherScan, the current members the listing of n
@@ -334,64 +350,89 @@ func holdListed(held int, kind gatherKind, opts storepkg.QueryOpts, n int) error
 	return kind.hold(opts.ReadTally(), n-held)
 }
 
-// nodeIDsByLabelUnder is members.NodeIDsByLabel, its shard opens counted in t
-// where the store offers storepkg.MemberGatherMeteredCapability (t nil: plain).
-func nodeIDsByLabelUnder(members storepkg.MemberIDsCapability, tok uint16, t *storepkg.ReadTally) ([]types.NodeID, error) {
-	if m, ok := members.(storepkg.MemberGatherMeteredCapability); ok && t != nil {
-		return m.NodeIDsByLabelMetered(tok, t)
+// membersAhead preserves the cheap count preflight, including the shard opens
+// needed to obtain it. It reserves nothing: the native snapshot admits its
+// actual set while locked, so a writer between count and copy cannot escape.
+func (c *Core) membersAhead(opts storepkg.QueryOpts, kind gatherKind, count func(*storepkg.ReadTally) (int, error)) error {
+	t := opts.ReadTally()
+	if kind != gatherScan || t == nil {
+		return nil
+	}
+	n, err := count(t)
+	if err != nil {
+		return err
+	}
+	return t.CandidatesAhead(n)
+}
+
+func (c *Core) currentMembersMetered() storepkg.CurrentMemberIDsMeteredCapability {
+	return nativeCapability[storepkg.CurrentMemberIDsMeteredCapability](c.store, "NodeIDsByLabelMetered", "RelIDsByTypeMetered")
+}
+
+func unsupportedMemberGather(opts storepkg.QueryOpts) error {
+	return opts.ReadTally().RefuseUnsupported()
+}
+
+// nodeIDsByLabelUnder uses only an explicitly implemented native capability;
+// a wrapper's inherited method cannot meter its overridden plain listing.
+func (c *Core) nodeIDsByLabelUnder(members storepkg.MemberIDsCapability, tok uint16, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	if t := opts.ReadTally(); t != nil {
+		if m := c.currentMembersMetered(); m != nil {
+			return m.NodeIDsByLabelMetered(tok, t)
+		}
+		return nil, unsupportedMemberGather(opts)
 	}
 	return members.NodeIDsByLabel(tok)
 }
 
-// relIDsByTypeUnder is nodeIDsByLabelUnder for a relationship type.
-func relIDsByTypeUnder(members storepkg.MemberIDsCapability, tok uint16, t *storepkg.ReadTally) ([]types.RelID, error) {
-	if m, ok := members.(storepkg.MemberGatherMeteredCapability); ok && t != nil {
-		return m.RelIDsByTypeMetered(tok, t)
+func (c *Core) relIDsByTypeUnder(members storepkg.MemberIDsCapability, tok uint16, opts storepkg.QueryOpts) ([]types.RelID, error) {
+	if t := opts.ReadTally(); t != nil {
+		if m := c.currentMembersMetered(); m != nil {
+			return m.RelIDsByTypeMetered(tok, t)
+		}
+		return nil, unsupportedMemberGather(opts)
 	}
 	return members.RelIDsByType(tok)
 }
 
-// storeHoldsTxMembers reports whether members holds the entries of its
-// ever-member copies itself (storepkg.TxMemberGatherMeteredCapability: badger,
-// memory, tiered) under t; a store without the metered form (a wrapper) copies
-// unbounded and the gather holds each member as it is handed on.
-func storeHoldsTxMembers(members any, t *storepkg.ReadTally) bool {
-	_, ok := members.(storepkg.TxMemberGatherMeteredCapability)
-	return ok && t != nil
+// txMembersMetered accepts only a store's explicit native implementation.
+// A wrapper's plain sidecar override cannot be bypassed by a promoted method.
+func (c *Core) txMembersMetered() storepkg.TxMemberGatherMeteredCapability {
+	return nativeCapability[storepkg.TxMemberGatherMeteredCapability](c.store, "ForEachLabelTxMemberMetered", "ForEachRelTypeTxMemberMetered")
 }
 
-// forEachLabelTxMemberUnder is members.ForEachLabelTxMember under t where the
-// store offers the metered form (storeHoldsTxMembers), so the stores' copies
-// are held and charged before they are made.
-func forEachLabelTxMemberUnder(members storepkg.LabelTxMembershipCapability, tok uint16, t *storepkg.ReadTally, fn func(types.NodeID, types.Instant) bool) error {
-	if m, ok := members.(storepkg.TxMemberGatherMeteredCapability); ok && t != nil {
-		return m.ForEachLabelTxMemberMetered(tok, t, fn)
+func (c *Core) forEachLabelTxMemberUnder(members storepkg.LabelTxMembershipCapability, tok uint16, opts storepkg.QueryOpts, fn func(types.NodeID, types.Instant) bool) error {
+	if t := opts.ReadTally(); t != nil {
+		if m := c.txMembersMetered(); m != nil {
+			return m.ForEachLabelTxMemberMetered(tok, t, fn)
+		}
+		return unsupportedMemberGather(opts)
 	}
 	return members.ForEachLabelTxMember(tok, fn)
 }
 
-// forEachRelTypeTxMemberUnder is forEachLabelTxMemberUnder for a type.
-func forEachRelTypeTxMemberUnder(members storepkg.RelTypeTxMembershipCapability, tok uint16, t *storepkg.ReadTally, fn func(types.RelID, types.Instant) bool) error {
-	if m, ok := members.(storepkg.TxMemberGatherMeteredCapability); ok && t != nil {
-		return m.ForEachRelTypeTxMemberMetered(tok, t, fn)
+func (c *Core) forEachRelTypeTxMemberUnder(members storepkg.RelTypeTxMembershipCapability, tok uint16, opts storepkg.QueryOpts, fn func(types.RelID, types.Instant) bool) error {
+	if t := opts.ReadTally(); t != nil {
+		if m := c.txMembersMetered(); m != nil {
+			return m.ForEachRelTypeTxMemberMetered(tok, t, fn)
+		}
+		return unsupportedMemberGather(opts)
 	}
 	return members.ForEachRelTypeTxMember(tok, fn)
 }
 
 // foldOpensRefused refuses a candidate gather that walks the history IDs of
-// every shard of a tiered store (no usable membership sidecar) under a budget
-// that bounds ShardOpens: the walk opens closed shards it cannot count, so it
-// is refused before it starts (Limit "unsupported"), as the property doors'
-// history fold is. Any other read passes.
+// every shard of a tiered store (no usable membership sidecar) under any
+// meter: the walk cannot charge its cold opens or history probes. It refuses
+// before that work even when the meter has no numeric limit.
 func (c *Core) foldOpensRefused(opts storepkg.QueryOpts) error {
-	m, door := opts.ReadMeter()
-	if m == nil || !m.BoundsShardOpens() {
+	if opts.ReadTally() == nil {
 		return nil
 	}
 	if _, opensShards := c.store.(*tiered.Store); !opensShards {
 		return nil
 	}
-	return &storepkg.ReadBudgetError{Door: door, Limit: "unsupported", Work: m.Work()}
+	return opts.ReadTally().RefuseUnsupported()
 }
 
 // ForEachNodeEffectiveByLabelCtx is ForEachNodeEffectiveByLabel under ctx's

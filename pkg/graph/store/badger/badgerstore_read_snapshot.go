@@ -75,9 +75,8 @@ type readSnapshot struct {
 	// lent is the node LendNode returned last: a version of the same node
 	// decoded next shares its unchanged string values (R37).
 	lent *types.Node
-	// tally, when set (MeterReads), counts the bytes of every row the
-	// snapshot decodes, before the decode (RH list R2, DecodedBytes). nil: a
-	// nil check per decoded row.
+	// tally admits native key walks, history examinations, decodes and
+	// temporary history buffers before their work. Nil leaves them unmetered.
 	tally *storecontract.ReadTally
 }
 
@@ -175,7 +174,7 @@ func (si *snapIter) pastPrefix(prefix []byte) {
 }
 
 // seek positions keyspace i's iterator at the first key at or after key.
-func (s *readSnapshot) seek(i int, key []byte) *badgerv4.Iterator {
+func (s *readSnapshot) seek(i int, key []byte) (*badgerv4.Iterator, error) {
 	txn := s.pinned()
 	si := &s.its[i]
 	if si.it == nil {
@@ -191,6 +190,10 @@ func (s *readSnapshot) seek(i int, key []byte) *badgerv4.Iterator {
 				walked = true
 				break
 			}
+			if err := s.tally.Candidates(1); err != nil {
+				return nil, err
+			}
+			noteIndexEntryVisited()
 			si.it.Next()
 		}
 	}
@@ -198,14 +201,17 @@ func (s *readSnapshot) seek(i int, key []byte) *badgerv4.Iterator {
 		si.it.Seek(key)
 	}
 	si.last = append(si.last[:0], key...)
-	return si.it
+	return si.it, nil
 }
 
 // row hands the value stored at key (keyspace i) to decode, or reports
 // false. The value is the iterator's buffer, valid only during decode: the
 // iterator reuses it across rows, so a run of reads copies no row.
 func (s *readSnapshot) row(i int, key []byte, decode func(val []byte) error) (bool, error) {
-	it := s.seek(i, key)
+	it, err := s.seek(i, key)
+	if err != nil {
+		return false, err
+	}
 	if !it.Valid() || !bytes.Equal(it.Item().Key(), key) {
 		return false, nil
 	}
@@ -222,15 +228,27 @@ func (s *readSnapshot) committedHistory(i int, prefix []byte) (map[string][]byte
 	}
 	rows := map[string][]byte{}
 	defer func() { s.bs.historyRowCopies.Add(int64(len(rows))) }() // one count per list (R6)
-	for it := s.seek(i, prefix); it.ValidForPrefix(prefix); it.Next() {
+	it, err := s.seek(i, prefix)
+	if err != nil {
+		return nil, err
+	}
+	for ; it.ValidForPrefix(prefix); it.Next() {
+		if err := s.tally.History(1); err != nil {
+			return nil, err
+		}
+		noteIndexEntryVisited()
 		item := it.Item()
 		if len(item.Key()) != storepkg.SizeHistKey {
 			continue
+		}
+		if err := s.tally.Buffer(40 + len(item.Key()) + int(item.ValueSize())); err != nil {
+			return nil, err
 		}
 		val, err := item.ValueCopy(nil)
 		if err != nil {
 			return nil, err
 		}
+		noteHistoryBytesCopied(len(val))
 		rows[string(item.KeyCopy(nil))] = val
 	}
 	s.its[i].pastPrefix(prefix)
@@ -252,8 +270,14 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 	decoded := 0
 	defer func() { s.bs.historyMetaDecodes.Add(int64(decoded)) }() // one count per list (R6)
 	if s.memo.rows != nil && s.memo.prefix == string(prefix) {
+		if err := s.tally.Buffer(16 * len(s.memo.rows)); err != nil {
+			return nil, err
+		}
 		for _, k := range sortedKeys(s.memo.rows) {
 			if err := s.tally.DecodedHistory(len(s.memo.rows[k])); err != nil {
+				return nil, err
+			}
+			if err := s.tally.Buffer(32); err != nil {
 				return nil, err
 			}
 			decoded++
@@ -264,16 +288,27 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 			metas = append(metas, keyedMeta{k, m})
 		}
 	} else {
-		for it := s.seek(i, prefix); it.ValidForPrefix(prefix); it.Next() {
+		it, err := s.seek(i, prefix)
+		if err != nil {
+			return nil, err
+		}
+		for ; it.ValidForPrefix(prefix); it.Next() {
+			if err := s.tally.History(1); err != nil {
+				return nil, err
+			}
+			noteIndexEntryVisited()
 			item := it.Item()
 			if len(item.Key()) != storepkg.SizeHistKey {
 				continue
 			}
+			if err := s.tally.Decoded(int(item.ValueSize())); err != nil {
+				return nil, err
+			}
+			if err := s.tally.Buffer(32 + len(item.Key())); err != nil {
+				return nil, err
+			}
 			var m storecontract.VersionTemporalMeta
 			if err := item.Value(func(val []byte) error {
-				if err := s.tally.DecodedHistory(len(val)); err != nil {
-					return err
-				}
 				decoded++
 				var err error
 				m, err = historyTemporalMetaOf(val, node)
@@ -294,7 +329,10 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 // the entity it is the committed skeleton itself (the memo: callers only
 // read it).
 func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
-	overlay, overlayDeletes := s.bs.pendingHistoryVersionOverlay(prefix, 0)
+	overlay, overlayDeletes, err := s.bs.pendingHistoryVersionOverlayTallied(prefix, 0, s.tally)
+	if err != nil {
+		return nil, err
+	}
 	if h := s.bs.historyScanTestHook; h != nil {
 		h() // tests only: the commit window between the overlay capture and the read
 	}
@@ -305,8 +343,14 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 	if len(overlay) == 0 && len(overlayDeletes) == 0 {
 		return committed, nil
 	}
+	if err := s.tally.Buffer(32 * (len(committed) + len(overlay))); err != nil {
+		return nil, err
+	}
 	entries := make(map[string]storecontract.VersionTemporalMeta, len(committed)+len(overlay))
 	for _, e := range committed {
+		if err := s.tally.History(1); err != nil {
+			return nil, err
+		}
 		if _, deleted := overlayDeletes[e.key]; !deleted {
 			entries[e.key] = e.meta
 		}
@@ -324,6 +368,9 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 		}
 		entries[k] = m
 	}
+	if err := s.tally.Buffer((16 + 32) * len(entries)); err != nil {
+		return nil, err
+	}
 	keys := make([]string, 0, len(entries))
 	for k := range entries {
 		keys = append(keys, k)
@@ -340,7 +387,10 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 // getNodeHistoryByPrefix does (overlay captured first; a buffered delete masks
 // a committed row, a buffered set replaces it): key → raw value.
 func (s *readSnapshot) history(i int, prefix []byte) (map[string][]byte, error) {
-	overlay, overlayDeletes := s.bs.pendingHistoryVersionOverlay(prefix, 0)
+	overlay, overlayDeletes, err := s.bs.pendingHistoryVersionOverlayTallied(prefix, 0, s.tally)
+	if err != nil {
+		return nil, err
+	}
 	if h := s.bs.historyScanTestHook; h != nil {
 		h() // tests only: the commit window between the overlay capture and the read
 	}
@@ -348,13 +398,25 @@ func (s *readSnapshot) history(i int, prefix []byte) (map[string][]byte, error) 
 	if err != nil {
 		return nil, err
 	}
+	if len(overlay) == 0 && len(overlayDeletes) == 0 {
+		return committed, nil
+	}
+	if err := s.tally.Buffer(40 * (len(committed) + len(overlay))); err != nil {
+		return nil, err
+	}
 	entries := make(map[string][]byte, len(committed)+len(overlay))
 	for k, v := range committed {
+		if err := s.tally.History(1); err != nil {
+			return nil, err
+		}
 		if _, deleted := overlayDeletes[k]; !deleted {
 			entries[k] = v
 		}
 	}
 	for k, v := range overlay {
+		if err := s.tally.History(1); err != nil {
+			return nil, err
+		}
 		entries[k] = v
 	}
 	return entries, nil
@@ -363,6 +425,9 @@ func (s *readSnapshot) history(i int, prefix []byte) (map[string][]byte, error) 
 // version returns history row key's raw value as GetNodeVersion /
 // GetRelVersion read it: the write buffer first, then the snapshot.
 func (s *readSnapshot) version(prefix, key []byte) ([]byte, error) {
+	if err := s.tally.History(1); err != nil {
+		return nil, err
+	}
 	if op, found := s.bs.lookupPending(string(key)); found {
 		if op.opType == writeOpDelete {
 			return nil, ErrVersionNotFound
@@ -383,7 +448,7 @@ func (s *readSnapshot) version(prefix, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return item.ValueCopy(nil)
+	return copyHistoryItem(item, s.tally)
 }
 
 // versionRow hands history row key's raw value to decode, read as version
@@ -410,7 +475,10 @@ func (s *readSnapshot) versionRow(i int, prefix, key []byte, decode func(raw []b
 	// Its own iterator, walked forward: winners of ascending entities ascend,
 	// and a walked iterator reuses its items' buffers where a Get copies the
 	// row twice afresh.
-	it := s.seek(i, key)
+	it, err := s.seek(i, key)
+	if err != nil {
+		return err
+	}
 	if !it.Valid() || !bytes.Equal(it.Item().Key(), key) {
 		return ErrVersionNotFound
 	}
@@ -419,7 +487,14 @@ func (s *readSnapshot) versionRow(i int, prefix, key []byte, decode func(raw []b
 		if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
 			return decode(val)
 		}
+		if err := s.tally.History(1); err != nil {
+			return err
+		}
+		if err := s.tally.Buffer(len(val)); err != nil {
+			return err
+		}
 		delta = append([]byte(nil), val...)
+		noteHistoryBytesCopied(len(delta))
 		return nil
 	}); err != nil || delta == nil {
 		return err
@@ -427,11 +502,10 @@ func (s *readSnapshot) versionRow(i int, prefix, key []byte, decode func(raw []b
 	return decode(delta)
 }
 
-// anchor is the localAnchorFunc of a delta row read through the snapshot.
-func (s *readSnapshot) anchor(prefix []byte, key func(uint64) []byte) localAnchorFunc {
-	return func(v uint64) ([]byte, bool) {
-		raw, err := s.version(prefix, key(v))
-		return raw, err == nil
+// anchor preserves a read/copy refusal instead of treating it as a cache miss.
+func (s *readSnapshot) anchor(prefix []byte, key func(uint64) []byte) func(uint64) ([]byte, error) {
+	return func(v uint64) ([]byte, error) {
+		return s.version(prefix, key(v))
 	}
 }
 
@@ -443,6 +517,9 @@ func (s *readSnapshot) historyMeta(i int, prefix []byte) ([]storecontract.Versio
 	}
 	if len(entries) == 0 {
 		return nil, nil
+	}
+	if err := s.tally.Buffer(16 * len(entries)); err != nil {
+		return nil, err
 	}
 	out := make([]storecontract.VersionTemporalMeta, len(entries))
 	for j, e := range entries {
@@ -589,7 +666,7 @@ func (s *readSnapshot) HasNodeHistory(nid types.NodeID) (bool, error) {
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return false, err
 	}
-	return bs.hasHistory(&bs.histNodePresence, storepkg.KeyHistNode, nid.SnowflakeID(), s.probe)
+	return bs.hasHistoryTallied(&bs.histNodePresence, storepkg.KeyHistNode, nid.SnowflakeID(), s.probe, s.tally)
 }
 
 // HasRelHistory is HasNodeHistory for relationships.
@@ -601,14 +678,15 @@ func (s *readSnapshot) HasRelHistory(rid types.RelID) (bool, error) {
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return false, err
 	}
-	return bs.hasHistory(&bs.histRelPresence, storepkg.KeyHistRel, rid.SnowflakeID(), s.probe)
+	return bs.hasHistoryTallied(&bs.histRelPresence, storepkg.KeyHistRel, rid.SnowflakeID(), s.probe, s.tally)
 }
 
 // probe is probeHistoryPresence through the snapshot: whether id has a
 // history row (write buffer first, a buffered delete masking its committed
 // key) and, with wantTop, the highest version, clamped. Without wantTop (a
-// HistoryPresenceProbeOnly store) it reads keys only, no value: nothing is
-// decoded or charged (R2-5 HEADREAD). With wantTop (an ID a trim left
+// HistoryPresenceProbeOnly store or a cold metered read) it reads keys only:
+// key visits and key buffers are charged, with no history value decoded.
+// With wantTop (an ID a trim left
 // unresolved) it reads the skeleton, charged, and the skeleton read after it
 // is served from the memo.
 func (s *readSnapshot) probe(kind byte, id snowflake.ID, wantTop bool) (bool, uint32, error) {
@@ -617,7 +695,8 @@ func (s *readSnapshot) probe(kind byte, id snowflake.ID, wantTop bool) (bool, ui
 		i, prefix = snapNodeHist, storepkg.HistNodePrefix(id)
 	}
 	if !wantTop {
-		return s.probeKeys(i, prefix), 0, nil
+		found, err := s.probeKeys(i, prefix)
+		return found, 0, err
 	}
 	entries, err := s.historyMetas(i, prefix)
 	if err != nil {
@@ -633,27 +712,43 @@ func (s *readSnapshot) probe(kind byte, id snowflake.ID, wantTop bool) (bool, ui
 // from keys alone: a buffered row first (the overlay captured before the
 // transaction is pinned, lesson 64), then the first committed key no
 // buffered delete masks.
-func (s *readSnapshot) probeKeys(i int, prefix []byte) bool {
-	overlay, deletes := s.bs.pendingHistoryVersionOverlay(prefix, 0)
-	if len(overlay) > 0 {
-		return true
+func (s *readSnapshot) probeKeys(i int, prefix []byte) (bool, error) {
+	keys, err := s.bs.pendingHistoryKeys(prefix, s.tally)
+	if err != nil {
+		return false, err
+	}
+	for _, op := range keys {
+		if err := s.tally.Candidates(1); err != nil {
+			return false, err
+		}
+		if op != writeOpDelete {
+			return true, nil
+		}
 	}
 	if h := s.bs.historyScanTestHook; h != nil {
 		h() // tests only: the commit window between the overlay capture and the read
 	}
-	for it := s.seek(i, prefix); it.ValidForPrefix(prefix); it.Next() {
+	it, err := s.seek(i, prefix)
+	if err != nil {
+		return false, err
+	}
+	for ; it.ValidForPrefix(prefix); it.Next() {
+		if err := s.tally.Candidates(1); err != nil {
+			return false, err
+		}
+		noteIndexEntryVisited()
 		key := it.Item().Key()
 		if len(key) != storepkg.SizeHistKey {
 			continue
 		}
-		if _, deleted := deletes[string(key)]; deleted {
+		if keys[string(key)] == writeOpDelete {
 			continue
 		}
 		s.its[i].last = append(s.its[i].last[:0], key...) // the iterator stands at key
-		return true
+		return true, nil
 	}
 	s.its[i].pastPrefix(prefix)
-	return false
+	return false, nil
 }
 
 // nodeHistoryRaw returns nid's history rows (key → raw) through the snapshot.
@@ -757,7 +852,7 @@ func (s *readSnapshot) decodeNodeVersion(id snowflake.ID, version uint64, raw, p
 		return s.bs.decodeHistoryNodeValueSharing(id, version, raw, share) // no anchor: the pooled full-row decode
 	}
 	anchor := s.anchor(prefix, func(v uint64) []byte { return storepkg.HistNodeKey(id, v) })
-	w, err := s.bs.reconstructNodeHistoryWireTallied(id, version, raw, anchor, s.tally)
+	w, err := s.bs.reconstructNodeHistoryWireWithAnchor(version, raw, anchor, s.tally)
 	if err != nil {
 		return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 	}
@@ -770,7 +865,7 @@ func (s *readSnapshot) decodeNodeVersion(id snowflake.ID, version uint64, raw, p
 
 func (s *readSnapshot) decodeRelVersion(id snowflake.ID, version uint64, raw, prefix []byte) (*types.Relationship, error) {
 	anchor := s.anchor(prefix, func(v uint64) []byte { return storepkg.HistRelKey(id, v) })
-	w, err := s.bs.reconstructRelHistoryWireTallied(id, version, raw, anchor, s.tally)
+	w, err := s.bs.reconstructRelHistoryWireWithAnchor(version, raw, anchor, s.tally)
 	if err != nil {
 		return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 	}
@@ -789,6 +884,9 @@ func (s *readSnapshot) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	}
 	id := nid.SnowflakeID()
 	prefix := storepkg.HistNodePrefix(id)
+	if err := s.tally.Buffer((8 + 16) * len(entries)); err != nil {
+		return nil, err
+	}
 	out := make([]*types.Node, 0, len(entries))
 	for _, k := range sortedKeys(entries) {
 		n, err := s.decodeNodeVersion(id, historyVersionFromKey([]byte(k)), entries[k], prefix)
@@ -808,6 +906,9 @@ func (s *readSnapshot) GetRelHistory(rid types.RelID) ([]*types.Relationship, er
 	}
 	id := rid.SnowflakeID()
 	prefix := storepkg.HistRelPrefix(id)
+	if err := s.tally.Buffer((8 + 16) * len(entries)); err != nil {
+		return nil, err
+	}
 	out := make([]*types.Relationship, 0, len(entries))
 	for _, k := range sortedKeys(entries) {
 		r, err := s.decodeRelVersion(id, historyVersionFromKey([]byte(k)), entries[k], prefix)

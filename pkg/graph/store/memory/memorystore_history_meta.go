@@ -1,9 +1,6 @@
 package memory
 
 import (
-	"cmp"
-	"slices"
-
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -18,6 +15,12 @@ var _ storecontract.TemporalMetaHistoryCapability = (*Store)(nil)
 // NodeHistoryTemporalMeta returns the temporal skeleton of every history
 // version of nid, ascending by version.
 func (ms *Store) NodeHistoryTemporalMeta(nid types.NodeID) ([]storecontract.VersionTemporalMeta, error) {
+	return ms.NodeHistoryTemporalMetaMetered(nid, nil)
+}
+
+// NodeHistoryTemporalMetaMetered admits the metadata list and every owned
+// temporal block under the lock protecting the history chain.
+func (ms *Store) NodeHistoryTemporalMetaMetered(nid types.NodeID, tally *storecontract.ReadTally) ([]storecontract.VersionTemporalMeta, error) {
 	if ms == nil {
 		return nil, ErrNilStore
 	}
@@ -29,21 +32,16 @@ func (ms *Store) NodeHistoryTemporalMeta(nid types.NodeID) ([]storecontract.Vers
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	inner := ms.nodeHistory[nid]
-	if len(inner) == 0 {
-		return nil, nil
-	}
-	out := make([]storecontract.VersionTemporalMeta, 0, len(inner))
-	for v, n := range inner {
-		out = append(out, storecontract.VersionTemporalMeta{Version: v, Temporal: ownTemporal(n.Temporal(), n.IsFrozen())})
-	}
-	slices.SortFunc(out, func(a, b storecontract.VersionTemporalMeta) int { return cmp.Compare(a.Version, b.Version) })
-	ms.historyMetasListed.Add(int64(len(out)))
-	return out, nil
+	return copyHistoryMetas(ms.nodeHistory[nid], tally, &ms.historyMetasListed)
 }
 
 // RelHistoryTemporalMeta mirrors NodeHistoryTemporalMeta for relationships.
 func (ms *Store) RelHistoryTemporalMeta(rid types.RelID) ([]storecontract.VersionTemporalMeta, error) {
+	return ms.RelHistoryTemporalMetaMetered(rid, nil)
+}
+
+// RelHistoryTemporalMetaMetered is the relationship counterpart.
+func (ms *Store) RelHistoryTemporalMetaMetered(rid types.RelID, tally *storecontract.ReadTally) ([]storecontract.VersionTemporalMeta, error) {
 	if ms == nil {
 		return nil, ErrNilStore
 	}
@@ -55,25 +53,5 @@ func (ms *Store) RelHistoryTemporalMeta(rid types.RelID) ([]storecontract.Versio
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	inner := ms.relHistory[rid]
-	if len(inner) == 0 {
-		return nil, nil
-	}
-	out := make([]storecontract.VersionTemporalMeta, 0, len(inner))
-	for v, r := range inner {
-		out = append(out, storecontract.VersionTemporalMeta{Version: v, Temporal: ownTemporal(r.Temporal(), r.IsFrozen())})
-	}
-	slices.SortFunc(out, func(a, b storecontract.VersionTemporalMeta) int { return cmp.Compare(a.Version, b.Version) })
-	ms.historyMetasListed.Add(int64(len(out)))
-	return out, nil
-}
-
-// ownTemporal returns a block the caller owns: Temporal already copies on a
-// frozen row; an unfrozen row's pointer is the stored block itself.
-func ownTemporal(tm *types.TemporalMetadata, frozen bool) *types.TemporalMetadata {
-	if tm == nil || frozen {
-		return tm
-	}
-	cp := *tm
-	return &cp
+	return copyHistoryMetas(ms.relHistory[rid], tally, &ms.historyMetasListed)
 }

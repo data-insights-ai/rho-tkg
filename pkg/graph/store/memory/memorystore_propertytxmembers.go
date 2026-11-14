@@ -157,6 +157,10 @@ func (ms *Store) dropPropertyTxMembersLocked() {
 // nil when no rel property index is declared or it is still being created.
 // Caller holds ms.mu (write).
 func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*indexpkg.PropertyTxMembers[types.RelID], error) {
+	return ms.relPropTxSidecarUnderLocked(key, nil)
+}
+
+func (ms *Store) relPropTxSidecarUnderLocked(key indexpkg.RelPropertyIndexKey, tally *storecontract.ReadTally) (*indexpkg.PropertyTxMembers[types.RelID], error) {
 	idx, ok := ms.relPropertyIndexes[key]
 	if !ok || idx.Mutated != nil {
 		return nil, nil
@@ -170,28 +174,55 @@ func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*inde
 	// Every row of the type, so a replaced row is ended by its replacing row
 	// (indexpkg.RowScan).
 	var scan indexpkg.RowScan[types.RelID]
-	record := func(r *types.Relationship, current bool) {
+	record := func(r *types.Relationship, current bool) error {
+		noteTxMemberBuildRow()
 		if !r.HasTypeTokenRaw(key.RelTypeToken) {
-			return
+			return nil
 		}
-		var vks []string
-		r.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
-			vks = append(vks, vk)
-			return true
-		})
-		scan.Add(r.ID(), indexpkg.RelRowInfo(ms.validAxis.Get(), r), current, vks)
+		vks, err := indexpkg.PropertyValueKeysAdmit(func(fn func(string) bool) {
+			r.ForEachPropertyIndexKey(key.PropertyKey, elements, fn)
+		}, propertyKeyAdmit(tally))
+		if err != nil {
+			return err
+		}
+		return scan.AddAdmit(r.ID(), indexpkg.RelRowInfo(ms.validAxis.Get(), r), current, vks, tally.Buffer)
+	}
+	// The sealed walker decodes before invoking record, including dead rows.
+	// Admit its complete input before entering that native decoder.
+	if err := tally.Candidates(len(ms.rels)); err != nil {
+		return nil, err
+	}
+	for _, st := range ms.segTypes {
+		if err := tally.Candidates(int(st.sealedRows)); err != nil {
+			return nil, err
+		}
+		if err := tally.Decoded(int(st.segBytes)); err != nil {
+			return nil, err
+		}
 	}
 	// ADR-0011: every current row, sealed included; a decode error leaves the
 	// sidecar unbuilt (it must be a superset).
+	var recordErr error
 	if err := ms.forEachCurrentRelLocked(func(r *types.Relationship) bool {
-		record(r, true)
-		return true
+		recordErr = record(r, true)
+		return recordErr == nil
 	}); err != nil {
 		return nil, err
 	}
+	if recordErr != nil {
+		return nil, recordErr
+	}
 	for _, versions := range ms.relHistory {
 		for _, r := range versions {
-			record(r, false)
+			if err := tally.Candidates(1); err != nil {
+				return nil, err
+			}
+			if err := tally.History(1); err != nil {
+				return nil, err
+			}
+			if err := record(r, false); err != nil {
+				return nil, err
+			}
 		}
 	}
 	scan.Into(m)
@@ -206,34 +237,54 @@ func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*inde
 
 // nodePropTxSidecarLocked is relPropTxSidecarLocked for a node index.
 func (ms *Store) nodePropTxSidecarLocked(key indexpkg.PropertyIndexKey) *indexpkg.PropertyTxMembers[types.NodeID] {
+	m, _ := ms.nodePropTxSidecarUnderLocked(key, nil)
+	return m
+}
+
+func (ms *Store) nodePropTxSidecarUnderLocked(key indexpkg.PropertyIndexKey, tally *storecontract.ReadTally) (*indexpkg.PropertyTxMembers[types.NodeID], error) {
 	idx, ok := ms.propertyIndexes[key]
 	if !ok || idx.Mutated != nil {
-		return nil
+		return nil, nil
 	}
 	if m := ms.nodePropTxMembers[key]; m != nil {
-		return m
+		return m, nil
 	}
 	start := time.Now()
 	m := indexpkg.NewPropertyTxMembers[types.NodeID]()
 	elements := idx.Elements()
 	var scan indexpkg.RowScan[types.NodeID] // see relPropTxSidecarLocked
-	record := func(n *types.Node, current bool) {
+	record := func(n *types.Node, current bool) error {
+		noteTxMemberBuildRow()
 		if !n.HasLabelTokenRaw(key.LabelToken) {
-			return
+			return nil
 		}
-		var vks []string
-		n.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
-			vks = append(vks, vk)
-			return true
-		})
-		scan.Add(n.ID(), indexpkg.NodeRowInfo(ms.validAxis.Get(), n), current, vks)
+		vks, err := indexpkg.PropertyValueKeysAdmit(func(fn func(string) bool) {
+			n.ForEachPropertyIndexKey(key.PropertyKey, elements, fn)
+		}, propertyKeyAdmit(tally))
+		if err != nil {
+			return err
+		}
+		return scan.AddAdmit(n.ID(), indexpkg.NodeRowInfo(ms.validAxis.Get(), n), current, vks, tally.Buffer)
 	}
 	for _, n := range ms.nodes {
-		record(n, true)
+		if err := tally.Candidates(1); err != nil {
+			return nil, err
+		}
+		if err := record(n, true); err != nil {
+			return nil, err
+		}
 	}
 	for _, versions := range ms.nodeHistory {
 		for _, n := range versions {
-			record(n, false)
+			if err := tally.Candidates(1); err != nil {
+				return nil, err
+			}
+			if err := tally.History(1); err != nil {
+				return nil, err
+			}
+			if err := record(n, false); err != nil {
+				return nil, err
+			}
 		}
 	}
 	scan.Into(m)
@@ -243,7 +294,7 @@ func (ms *Store) nodePropTxSidecarLocked(key indexpkg.PropertyIndexKey) *indexpk
 	ms.nodePropTxMembers[key] = m
 	ms.propTxBuilds++
 	ms.propTxBuildTime += time.Since(start)
-	return m
+	return m, nil
 }
 
 // readOrBuild runs read under ms.mu.RLock; if the sidecar is not built it runs
@@ -270,6 +321,10 @@ func (ms *Store) readOrBuild(read func() (done bool, err error), build func() er
 
 // ForEachRelPropertyTxMember implements store.RelPropertyTxMembershipCapability.
 func (ms *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return ms.forEachRelPropertyTxMember(relTypeToken, propertyKey, valueKey, fn, nil)
+}
+
+func (ms *Store) forEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool, tally *storecontract.ReadTally) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -292,18 +347,19 @@ func (ms *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 		if m == nil {
 			return false, nil
 		}
-		members = m.Members(valueKey)
-		return true, nil
+		var err error
+		members, err = m.MembersAdmit(valueKey, propertyMemberAdmit(tally))
+		return true, err
 	}, func() error {
-		m, err := ms.relPropTxSidecarLocked(key)
+		m, err := ms.relPropTxSidecarUnderLocked(key, tally)
 		if err != nil {
 			return err
 		}
 		if m == nil {
 			return ErrIndexNotFound
 		}
-		members = m.Members(valueKey)
-		return nil
+		members, err = m.MembersAdmit(valueKey, propertyMemberAdmit(tally))
+		return err
 	})
 	if err != nil {
 		return err
@@ -319,6 +375,10 @@ func (ms *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 
 // ForEachNodePropertyTxMember implements store.NodePropertyTxMembershipCapability.
 func (ms *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return ms.forEachNodePropertyTxMember(labelToken, propertyKey, valueKey, fn, nil)
+}
+
+func (ms *Store) forEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool, tally *storecontract.ReadTally) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -341,15 +401,19 @@ func (ms *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 		if m == nil {
 			return false, nil
 		}
-		members = m.Members(valueKey)
-		return true, nil
+		var err error
+		members, err = m.MembersAdmit(valueKey, propertyMemberAdmit(tally))
+		return true, err
 	}, func() error {
-		m := ms.nodePropTxSidecarLocked(key)
+		m, err := ms.nodePropTxSidecarUnderLocked(key, tally)
+		if err != nil {
+			return err
+		}
 		if m == nil {
 			return ErrIndexNotFound
 		}
-		members = m.Members(valueKey)
-		return nil
+		members, err = m.MembersAdmit(valueKey, propertyMemberAdmit(tally))
+		return err
 	})
 	if err != nil {
 		return err

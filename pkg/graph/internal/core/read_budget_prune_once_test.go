@@ -41,6 +41,10 @@ func TestByLabelGather_PrunesEachMemberOnce(t *testing.T) {
 			t.Parallel()
 			for _, past := range []int{40, 80} {
 				members := live + 2*past
+				candidates := members
+				if be.name == "memory" {
+					candidates += live
+				}
 				g, shut := be.open(t, t.TempDir())
 				defer shut()
 				ctx := context.Background()
@@ -76,6 +80,7 @@ func TestByLabelGather_PrunesEachMemberOnce(t *testing.T) {
 					add(2000, true) // dropped by the prune
 				}
 
+				warmGatherMembership(t, g) // isolate pruning from the first sidecar build
 				listed, probed := 0, 0
 				g.candidatesListed = func(k int) { listed += k }
 				g.envelopeProbed = func(k int) { probed += k }
@@ -88,16 +93,16 @@ func TestByLabelGather_PrunesEachMemberOnce(t *testing.T) {
 				}
 
 				want, w, err := read(storepkg.ReadBudget{})
-				if err != nil || len(want) != live+past || listed != members || probed != wantProbed || w.Candidates != uint64(members) {
-					t.Fatalf("past %d, unlimited: %d nodes, %v, work %+v, %d listed, %d probed; want %d nodes, %d listed, %d probed, %d candidates", past, len(want), err, w, listed, probed, live+past, members, wantProbed, members)
+				if err != nil || len(want) != live+past || listed != members || probed != wantProbed || w.Candidates != uint64(candidates) {
+					t.Fatalf("past %d, unlimited: %d nodes, %v, work %+v, %d listed, %d probed; want %d nodes, %d listed, %d probed, %d candidates", past, len(want), err, w, listed, probed, live+past, members, wantProbed, candidates)
 				}
-				got, w, err := read(storepkg.ReadBudget{Candidates: uint64(members)})
-				if err != nil || nodeVersionsOf(got) != nodeVersionsOf(want) || w.Candidates != uint64(members) || probed != wantProbed {
-					t.Fatalf("past %d, Candidates %d (the control's count): %v, %v, work %+v, %d probed; want the control's nodes and count", past, members, nodeVersionsOf(got), err, w, probed)
+				got, w, err := read(storepkg.ReadBudget{Candidates: uint64(candidates)})
+				if err != nil || nodeVersionsOf(got) != nodeVersionsOf(want) || w.Candidates != uint64(candidates) || probed != wantProbed {
+					t.Fatalf("past %d, Candidates %d (the control's count): %v, %v, work %+v, %d probed; want the control's nodes and count", past, candidates, nodeVersionsOf(got), err, w, probed)
 				}
-				got, w, err = read(storepkg.ReadBudget{Candidates: uint64(members - 1)})
+				got, w, err = read(storepkg.ReadBudget{Candidates: uint64(candidates - 1)})
 				if !errors.Is(err, storepkg.ErrReadBudget) || len(got) != 0 || probed != 0 {
-					t.Fatalf("past %d, Candidates %d: %d nodes, %v, work %+v, %d probed; want refused with no row and 0 probes", past, members-1, len(got), err, w, probed)
+					t.Fatalf("past %d, Candidates %d: %d nodes, %v, work %+v, %d probed; want refused with no row and 0 probes", past, candidates-1, len(got), err, w, probed)
 				}
 				g.candidatesListed, g.envelopeProbed = nil, nil
 			}

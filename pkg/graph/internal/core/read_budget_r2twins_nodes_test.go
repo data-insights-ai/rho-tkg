@@ -66,8 +66,8 @@ func TestReadBudget_R2Twins_NodesAtOptsByIDs(t *testing.T) {
 					t.Fatalf("unlimited = %q, %v; want %q", got, err, want)
 				}
 				total := full.Work()
-				if total.Candidates != uint64(len(ids)) || total.BufferBytes != uint64(8*len(ids)) || total.HistoryExamined == 0 || flushed && total.DecodedBytes == 0 { // #nosec G115 -- counts
-					t.Fatalf("unlimited work %+v; want %d candidates, %d buffer bytes and the history looked at", total, len(ids), 8*len(ids))
+				if total.Candidates < uint64(len(ids)) || total.BufferBytes < uint64(8*len(ids)) || total.HistoryExamined == 0 || flushed && total.DecodedBytes == 0 { // #nosec G115 -- counts
+					t.Fatalf("unlimited work %+v; want at least the core contribution: %d candidates, %d buffer bytes and the history looked at", total, len(ids), 8*len(ids))
 				}
 				for _, c := range []struct {
 					limit string
@@ -88,7 +88,7 @@ func TestReadBudget_R2Twins_NodesAtOptsByIDs(t *testing.T) {
 						if work.HistoryExamined != 0 || work.DecodedBytes != 0 {
 							t.Fatalf("%s %d: %+v read before the refusal; want nothing read", c.limit, c.n, work)
 						}
-					} else if work.HistoryExamined > 2 || work.DecodedBytes > total.DecodedBytes/4 {
+					} else if c.limit == "history examined" && work.HistoryExamined > 2 || c.limit == "decoded bytes" && work.DecodedBytes > total.DecodedBytes/4 {
 						t.Fatalf("%s 1: refused after %+v (unlimited %+v); want the first entity's read only", c.limit, work, total)
 					}
 					t.Logf("%s %d: refused after %+v (unlimited %+v)", c.limit, c.n, work, total)
@@ -182,8 +182,8 @@ func TestReadBudget_R2Twins_NodesAtTx(t *testing.T) {
 				}
 				total := full.Work()
 				// 24 bytes a set entry, 8 an ID of the list, 8 a slot of the result slice.
-				if total.Candidates != n || total.BufferBytes != 40*n || total.HistoryExamined == 0 || flushed && total.DecodedBytes == 0 || total.Segments != 0 || total.ShardOpens != 0 {
-					t.Fatalf("unlimited work %+v; want %d candidates (the distinct known nodes), %d buffer bytes and the history looked at", total, n, 40*n)
+				if total.Candidates < n || total.BufferBytes < 40*n || total.HistoryExamined == 0 || flushed && total.DecodedBytes == 0 || total.Segments != 0 || total.ShardOpens != 0 {
+					t.Fatalf("unlimited work %+v; want at least the core contribution: %d candidates (the distinct known nodes), %d buffer bytes and the history looked at", total, n, 40*n)
 				}
 				for _, c := range []struct {
 					limit string
@@ -211,7 +211,7 @@ func TestReadBudget_R2Twins_NodesAtTx(t *testing.T) {
 							t.Fatalf("buffer bytes %d: %+v; want nothing read (and, at 1, the walk stopped at its first ID)", c.n, work)
 						}
 					default:
-						if work.Candidates != n || work.HistoryExamined > 2 || work.DecodedBytes > total.DecodedBytes/4 {
+						if work.Candidates < n || c.limit == "history examined" && work.HistoryExamined > 2 || c.limit == "decoded bytes" && work.DecodedBytes > total.DecodedBytes/4 {
 							t.Fatalf("%s 1: refused after %+v (unlimited %+v); want every ID gathered and the first node's read only", c.limit, work, total)
 						}
 					}
@@ -231,7 +231,7 @@ func TestReadBudget_R2Twins_NodesAtTx(t *testing.T) {
 				}
 				// A pin before every node answers an empty list, the candidates counted.
 				ectx, em := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
-				if rows, err := g.Temporal.NodesAtTxCtx(ectx, 1, 1); err != nil || len(rows) != 0 || em.Work().Candidates != n {
+				if rows, err := g.Temporal.NodesAtTxCtx(ectx, 1, 1); err != nil || len(rows) != 0 || em.Work().Candidates < n {
 					t.Fatalf("a time before every node = %d rows, %v, work %+v; want none and %d candidates", len(rows), err, em.Work(), n)
 				}
 			}

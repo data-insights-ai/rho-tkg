@@ -6,12 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [4.107.4] - 2026-11-14
-
 ### Changed
 
+- **R2-6 native read admission:** current and ever-member snapshots, ex-adjacency, pending walks and first
+  membership builds charge before copying or decoding. Valid-end enlistment, pruning, history and cross-shard
+  merges share the query allowance. History snapshots admit raw buffers and delta anchors, memory history admits
+  chains before cloning, and cold presence probes stay scoped to the requested entity. Native as-of reads admit
+  pending captures, retained runs, metadata decodes and anchors. Sharded membership keeps one allowance across
+  owning slots and stops fanout when its callback stops. Nested refusals remain sticky across dimensions.
+  Metered cold reads refuse recovery or index repair before rebuilding; archive preflight and the
+  installed handle each count as an actual open. Unsupported native fallbacks refuse before work.
+  Exact native/public controls and independent copy, iterator, decoder and open counters cover these boundaries.
+  Codex's combined review and `make check` pass (67.81 s), along with `make old`, focused race checks,
+  five masked host budget guards and the masked host writer/reopen cycle. The host checks qualify their recorded
+  Sigma pairings only; tonight's newer Sigma integration remains separate. Evidence: `tasks/evidence/R2-6/`.
+
+- **R2-7 consumer handoff:** the exact frozen R2 snapshot is committed locally as `5a8b79f7`; all 2,401
+  committed files match Sigma's sealed source manifest. A fresh full check passes (114.88 s). This snapshot
+  excludes the later R3 and R2-6 repairs. Sigma dev `8a9c6cffd` passes its full verifier (412.175 s),
+  34 native tests and two masked host writer/reopen tests against it; default golden skipped.
+  The later R2-6/R3/PURGEFAIL repairs form a separately reviewed local handoff on `codex/quality-takeover`,
+  with the passing combined gate and exact source manifest under `tasks/evidence/R2-6/`. Integration against
+  tonight's newer Sigma remains the consumer's next check; neither handoff pushes or releases a revision.
+
+- The Fable/Opus workflow applies to Claude sessions. Codex performs design, implementation, documentation,
+  review and validation directly; delegation requires RH's explicit request.
+
 - **One working style (14 Nov).** `AGENTS.md` is the one place for how to work: an eight-step procedure, who
-  works (Fable design, Opus build, Fable review), every standing order, the command table and the git rules.
+  works (Codex directly; Fable/Opus for Claude sessions), every standing order, the command table and the git rules.
   `docs/CONTRIBUTING.md` holds rules for the code only: the Code and Tests digest, the release checklist and a
   Lessons section that names, for each rule, the test or file that enforces it. `tasks/todo.md` holds work items
   only. A comment says what and why in words: lesson, testing-rule, backlog and todo-row numbers are removed from
@@ -31,6 +53,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   holds shipped work and priorities; consumers and release facts stay in todo, CHANGELOG and commits.
 - **The race run** (`make race`, flock): patch/minor release starts it detached (`.git/race.out`). Host cron no longer
   schedules gate or race on rho (14 Nov).
+
+- **WAL recovery and cold late writes:** leftover WALs are replayed at the required size before a smaller writable
+  open; even a cut WAL whose apparent size fits the target is flushed when the replay floor requires it. Two cold
+  reads followed by a late write preserve all rows without truncation. Disk cold writes default to an 8 MiB memtable;
+  a retained handle that commits 32 MiB grows on its next writable open after the sweep closes it. One shared
+  writable checkout now covers creates, updates, labels, deletes and history, wakes empty-shard marks, and pends
+  growth. An in-memory cold shard keeps the configured memtable because it has no sweep; an explicit warm size
+  remains explicit. At cold cap 0, by-ID writes close at check-in and do not accumulate growth across writes.
+  Native/public regressions cover every routing door, WAL sizes, counters and exact row/history readback. The
+  public late-write test now uses a real graph batch: format marker 4 to 9 at 8 MiB proves staged flushing; the
+  64 MiB control stays at 4, with equal answers before and after reopen.
+- **Calendar promotion after a lifecycle failure:** a catalog-warm shard left cold in memory regains a writable
+  warm-size handle and anchored indexes before promotion; an active cold-handle pin refuses the attempt. A future
+  shard moved to another volume returns via the shared move path before becoming hot. Tests inject failures at
+  the move gate, copy, rename, catalog save and source removal, check exact row preservation through retry/reopen,
+  and verify pinned readers can finish without the store lock being held by promotion. Clear tests also cover
+  temporary-open and reopen failures and the pending marker's effect on writes after recovery.
+
+- **R3 takeover validation:** full combined `make check` and `make old` pass; long WAL/late-write checks and
+  focused lifecycle races pass, and all 21 deliberately broken recovery safeguards fail their tests. The isolated
+  masked host passed clean restart with late rows (74.7 s) and SIGKILL/stale-image recovery against unbroken bars
+  (90.7 s), using its declared Sigma v0.18.0. This qualifies that host pairing; its older configuration does not
+  satisfy newer Sigma's required reference labels/types. Native subprocess tests cover cold WAL recovery, and the
+  public staged-batch witness covers the small writable handle. Evidence: `tasks/evidence/R3/codex-review.txt`.
+
+- **PURGEFAIL:** failed fast purges restore the shard to routing on every pre-commit exit, including checkout,
+  residue collection and cross-shard cleanup errors. A failed rollback reopen leaves a warm shard cold in memory
+  so its next access reopens it. One deferred settlement replaces the repeated partial rollback blocks. After the
+  catalog removal commits, a failed directory deletion is logged while the purge still reports its committed IDs
+  and keeps the name reserved. Rotation and window creation avoid directories left by failed cleanup, including
+  after restart; a new shard refuses an existing chosen directory before opening badger. This prevents purged
+  rows reappearing through name reuse. Tests cover native/public abort and retry, exact node IDs and relationships,
+  filesystem failures, reopen, and the native open count on an existing-directory refusal. Nine mutations fail
+  their tests; focused race, `make old`, masked host restart (75.17 s) and the combined `make check` pass.
+
+- **Faster staged-flush test setup:** seed the 2,000 baseline rows through the existing group-commit helper
+  instead of committing each row separately in sync mode. Both recovery/fail-closed test families retain every
+  crash point, sync mode, exact digest and log-sequence assertion. Their measured test time fell from 19.94 s
+  to 3.20 s (whole command 24.15 s to 11.03 s); no tests were skipped. The latest full gate passes in 138.48 s,
+  still above its 60 s target and tracked separately.
 
 ### Added
 
@@ -372,92 +434,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **R2 cumulative: a `Candidates` limit holds for the whole read, and the store that walks owns the count** (ai-soc's
-  review of 14 Nov, 3.2 and 3.3, René's rule that a limit is one allowance across keys, shards, versions and pending
-  writes, and the Fable review of it): a window walk of an on-disk membership counted only the members it handed on and
-  compared a per-key count with the room read when the walk started, so a narrow window over several value keys judged
-  many entries and refused none (red: `tasks/evidence/R2CUMUL/red.txt`: three keys of one entry each, window rejecting
-  two, `Candidates` 1, answered 1 member, node and relationship). Now the store charges what it examines and holds,
-  before it does the work, in one place and never again above it: every entry a disk walk examines, once, before its
-  value is read (a live entry, a repeat of an entity already collected, an older version, a tombstone, an entry the write
-  buffer overrides, a buffered op, exact and window walks alike: red `tasks/evidence/R2CUMUL/review-red.txt`, 4 nodes
-  replaced 5 times counted 4 for 31 entries stepped), so a limit of N reads N entries; the same on badger's RAM sidecar
-  (the snapshot, the walk of the window view: `index.PropertyTxMembers.MembersAdmit`, `MembersDuringAdmit`, which stop at
-  the first refusal; the one-time open of a value's window view is refused up front when the value passes the room and is
-  not `BufferBytes`: the first budgeted reader of a value pays it, later readers do not), and on every shard of a tiered
-  fan-out under the one meter (red: `tasks/evidence/R2CUMUL/tiered-red.txt`: shards that each fit the limit and together
-  exceed it were all folded before one was counted). The tiered fan-out charges a staged tally
-  (`ReadTally.Staged`) whose work reaches the meter only when every shard has answered: a read that declines
-  (`ErrIndexNotFound`) costs nothing, where the shards that had collected charged their members and the graph's fallback
-  charged its own work again. The `ReadTally.DoorCounts` mode and `HandedOn` that moved the member count to the graph
-  (unreleased) are removed; the graph counts members only for a store without the metered form. Buffers are charged
-  before they are made, through the new `ReadTally.Buffer`: the write buffer's values cloned for a window walk (32
-  bytes), the fold's entries (24 an entity), the list a fold becomes (16 a member), the lists the tiered shards keep (16)
-  and its union (32 an entity), the RAM window walk's members and decided map. Fixed with it: a data race, found by the
-  review, in the first windowed lookup of a RAM sidecar value, which sized the value after it had released the index
-  lock while a write to the same (label, key) updated the sidecar's value map (`TestWindowFirstLookupDoesNotRaceWithWrites`,
-  red under `-race`). Counts that change: an on-disk read counts every entry it examines (an on-disk window read of 40 rows
-  with 2 matches counts 40, was 2; a value whose rows were rewritten counts each version), a read with `BufferBytes` 1
-  over a metered store stops at the store's first buffer charge before the graph's 24. Not yet bounded: the first build of
-  a RAM sidecar. Tests: `TestMemberWindowAdmissionCumulativeAcrossKeys`, `TestMemberWindowWalkCountsRejectsAndCollectedOnce`,
-  `TestMemberWindowWalkChargesStaleSteps`, `TestMemberWalkChargesEveryEntryExamined`, `TestMemberWalkChargesBufferBytes`,
-  `TestMeteredRAMSidecarWalkIsCharged`, `TestPropertyTxMembersDuringAdmit`, `TestReadTally_Staged`,
-  `TestTieredMemberCollectionCumulativeAcrossShards`, `TestTieredMemberDeclineCostsNothing`,
-  `TestTieredMemberFanoutChargesItsBuffers`, `TestReadBudget_MemberLimitHoldsAcrossKeysAndShards`, each pairing the exact
-  unlimited control with a native counter (iterator steps, entries read, clones, the list allocated, entries visited).
-- **R2-1 GATHERHOLD: a label or type gather is refused before the stores copy its ever-members** (review of the R2
-  cumulative merge, finding 1): under a `Candidates` limit the effective scans by label and type
-  (`ForEachNodeEffectiveByLabelCtx`, `ForEachRelEffectiveByTypeCtx` and the doors on that gather) took the label's whole
-  ever-member set out of the store (badger and memory copy the sidecar set; tiered copies every shard's set and builds
-  the union) before the core saw a member and refused at the room: a label of 40 nodes, 35 deleted, under `Candidates`
-  8 copied the 35 (red: `tasks/evidence/R2CUMUL/gatherhold-red.txt`). The core now hands the stores a
-  `store.GatherHold`: the room for a scan; for the listed gather of `Nodes().ByLabelCtx`, the room plus the current
-  members already counted. A store reserves a set's size in it (one hold for all shards of a gather, one for each label
-  of a several-label scan) and charges 16 `BufferBytes` a member (`store.TxMemberCopyBytes`) before it copies the set;
-  the tiered union charges its entries (32 each) before it adds them. A set past the hold is refused in O(1) with the
-  typed error and nothing copied. The sidecar of badger and tiered holds only former members, that of memory every
-  ever-member, current ones too, so on badger and tiered a set up to the current members past the room still passes
-  the hold: it is copied, charged, then refused by the per-member count (badger, 5 current and 3 former members,
-  `ByLabelCtx` at `Candidates` 5: refused with 48 buffer bytes charged; memory refuses the same read with none). The
-  capability is `store.TxMemberGatherMeteredCapability` (`ForEachLabelTxMemberMetered`,
-  `ForEachRelTypeTxMemberMetered`; unreleased, part of `MemberGatherMeteredCapability`). Counts that change: such a
-  gather refuses when the raw sidecar set passes the hold, members the pin, `After` or the prune would drop included
-  (badger and tiered, a room of 8 over 5 current and 15 former members lists 5 and counts 15, was 9 and 9; memory
-  counts the whole sidecar, current members included: 5 current and 6 former members at `Candidates` 8 refuse with 11
-  counted; sharded keeps no sidecar and is unchanged). `BufferBytes` grows by 16 for each sidecar member the gather
-  copies: a former member on badger, every ever-member on memory (11 members: 176 more), and 64 a former member on
-  tiered when it lives on one shard (the shard copy 16, its list 16, the union 32). Test:
-  `TestGatherHold_RefusesBeforeTheCopy` (badger and tiered, one label on one shard; the unlimited control and the stores'
-  own copy counter, `badger.CountTxMembersCopiedForTest`); the changed counts are in `TestReadBudget_GatherStopsAtTheRoom`,
-  `TestR2Scans_ByLabelCtxAtATime` and `TestReadBudget_SigmaB_Scans`. No test covers memory's hold path, several shards
-  or several labels yet.
-- **R2-2 VEATTRIB: the valid-end first call no longer re-lists every tracked label's keys** (review of the R2 cumulative
-  merge): with `LabelIndexOnDisk` the first call of the valid-end index for a label (`NodeValidEndCandidatesMetered`,
-  behind the From and Window scans) told each entity it read which tracked labels it carries by listing every tracked
-  label's keyspace again, uncounted: label 2 (3 nodes) read after label 1 (20 and 200 nodes) visited 26 and 206 label
-  index entries (red: `tasks/evidence/R2CUMUL/veattrib-red.txt`), and with its writes still buffered it ranged the whole
-  write buffer once for each tracked label. The attribution now asks per entity and tracked label (`tokenCarrier`): a
-  RAM label map answers free, as before; on disk a former member is answered by the ever-member sidecar, free, and any
-  other entity's label key is probed, the write buffer first, then the index, after one `Candidates` is charged and with
-  one index entry visited. Label 2's first call visits its listing (3) and 6 probes whatever label 1's size. Counts that
-  change: under `LabelIndexOnDisk` a first call charges one more candidate for each entity read and tracked label the
-  sidecar does not answer; label 2 alone counts 3 listed, 3 probes and 3 entities, 9 (was 6), and after label 1 3 + 6 +
-  3, 12 (was 6); RAM label maps are unchanged. Tests (`pkg/graph/store/badger`):
-  `TestValidEndFirstCall_WalksNoOtherLabel` (the native counter is the label index entries visited),
-  `TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce` (the counts above).
-- **R2-3 PRUNELIN: the temporal ByLabel gather hands each listed member to the valid-time prune once** (review of the R2
-  cumulative merge): under a `Candidates` limit the gather of `Nodes().ByLabelCtx` at a time coordinate pruned its whole
-  list by the valid-time envelope index at every member past the candidate room, so m members past the room cost about m
-  times the room in envelope probes (sharded, room = live + past members: 1684 probes for 84 listed members at 40 past the
-  room, 6564 for 164 at 80; red: `tasks/evidence/R2CUMUL/prunelin-red.txt`). Stores without the label ever-member
-  sidecar reach it (they take the history fold: sharded); with the sidecar the R2-1 hold usually refuses first; tiered
-  keeps no node envelope prune. A `pruned` mark now stops it: the gather prunes only the members listed since its last
-  prune and the final prune skips the pruned ones, so each member is probed at most once (84 and 164 probes; green:
-  `tasks/evidence/R2CUMUL/prunelin-green.txt`). The kept set, the answer, `Candidates`, `BufferBytes` and the point of
-  refusal do not change. The probes are not charged: each is one in-memory envelope lookup for a listed member, and the
-  listing owns that cost. The relationship gather never pruned inside its walk. Test:
-  `TestByLabelGather_PrunesEachMemberOnce` (the native counters `Core.candidatesListed` and `Core.envelopeProbed`; only
-  the sharded run reaches the prune: badger is refused by the hold, tiered is skipped).
+- **R2 cumulative and METER:** property membership walks charge each examined entry before reading or
+  cloning it, including rejected windows, stale versions, tombstones and pending writes. Tiered workers charge
+  the shared meter directly. A decline found by preflight on any already-open shard, including a cold handle,
+  does no member work; a decline after a walk keeps all work charged, and the graph's fallback adds to it.
+  The native late-decline control visits two index entries before declining, then two during fallback: five
+  candidates including the fallback's other member. A budget of five answers the exact three-node set; four
+  refuses with no slice returned. Tests: `TestTieredMemberDeclineKeepsItsWork`,
+  `TestTieredMemberFanoutBesideAnotherRead`, `TestTieredPropertyDeclineFallbackEarly`,
+  `TestTieredPropertyDeclineFallbackLate`, `TestMemberWindowAdmissionCumulativeAcrossKeys`.
+- **R2-1/3/4 gather admission:** `ReadTally.Hold` charges current members before listing, former members
+  before copying, and history-fold entries as produced. Admissions share the outermost meter's lock, so
+  separate reads and sibling nested budgets see each other's charges before copying. `Drop` and `Settle`
+  check for a shared refusal; neither charges again or refunds work. `CandidateRoom` reads monotonic counts.
+  The deferred reservation bookkeeping has been removed. Native
+  copy, listing and entity-read counters cover several labels, several shards, reacquired labels and every
+  memory-store acquisition path. `TestReadTally_DropKeepsTheRoom` and
+  `TestReadTally_RefusalKeepsTheRoom` cover concurrent room reads and parent meters. The envelope prune visits
+  each listed entity at most once; a prune cannot rescue a gather already beyond its allowance.
+- **R2-6 pending and first membership builds:** pending member walks stop at refusal; label walks use the
+  existing prefix index and charge deletes and overridden entries, overlay buffers and output IDs before
+  work. Badger and memory label/type membership builds now charge candidate and history visits, and Badger
+  wire decodes, before processing rows; a refused build discards its partial sidecar and can retry exactly.
+  Native/public regressions cover committed and pending rows, both entity kinds, and historical answers.
+  This is one part of the ongoing allocation and range audit, not a universal resource-bound claim.
+- **R2 validation:** the combined build, lint and short-test gate passes, as do focused race checks and
+  ai-soc's four `InputReadBudget` guards plus its unchanged three-key cumulative-window probe. The full gate
+  took 171 s with uncached packages and 4.58 s on the cached follow-up; the changed-package gate exceeds its
+  60 s target and remains tracked. Sigma completed its frozen-R2 handoff at `715dda5d8`, with verified Go code
+  unchanged from `952f61957`. The consumer guards qualify their tested boundaries only; the remaining
+  first-build and allocation audit stays open.
+- **R2 counted preliminary opens:** `MemberCountMeteredCapability` passes the read's tally into tiered
+  label/type counts. A count that needs a closed shard charges its open before opening it; sealed counts open
+  nothing. The gather now runs this count and admits its size even with a `ShardOpens` bound. Previously an
+  unlimited or candidate-only read could open shards uncounted, and a shard-open bound bypassed the pre-count.
+  Helper, core and public tests cover node and relationship counts, lazy archive opens, retained and transient
+  cold handles, nested meters and several calls on one context. Three unsealed shards require exactly three
+  counted opens; a limit of two opens two and refuses before member listing. Tests:
+  `TestMemberCountMetered`, `TestReadBudget_ScanMemberCount`, `TestReadBudgetPublicMemberCount`.
+- **R2-2 VEATTRIB:** first-call valid-end attribution uses each entity's carried labels and former-membership
+  facts instead of re-listing tracked label keyspaces. Pending operations are selected by prefix and walked
+  under the tally. Candidates, history and decoded bytes are charged at their native boundaries, including
+  committed values after a cache miss. Tests: `TestValidEndAttribution_EntitySide`,
+  `TestValidEndAttribution_HoldsBounded`, `TestValidEndRows_ChargeEachValueBeforeItsFetch`,
+  `TestValidEndOverlay_CommittedRowTypeOnCacheMiss`, `TestValidEndAttribution_RelFormerWalkCounts`.
+- **R2-5 HEADREAD:** budgeted point timelines can reuse a valid head entry and charge only the winner rows
+  they read; a miss charges the temporal skeleton and winners. History-token probes do not open closed shards;
+  a zero token cannot validate a cached entry. A refused winner read returns its refusal instead of starting
+  an additional full-chain fallback. Memory reads count both chain inspection and separately read winners.
+  Tests in `read_budget_headread2_test.go` and `read_budget_headread3_test.go` compare exact historical answers
+  and native row reads, including pending/flushed data, probe-only history and parent read budgets.
 - **R3-1 OVERCAP: a cold read past the cap opens the cheap transient form, and the cap never keeps it** (ai-soc review of
   14 Nov, §7; `tasks/evidence/R3/measure.txt` section H): with `MaxOpenColdShards` > 0 a read that found the cap full
   closed its handle at check-in, yet `coldReadCfg` gave it the full configuration, so at cap 2 the third cold day of a
@@ -495,8 +521,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Every such site now closes through `EventShard.closeStoreLocked`, which the idle close, the cap pass, the check-in
   close, the writable upgrade, the empty demoted shard's close and the handle sweep already used: it detaches the handle
   whatever `Close` returns and records the background-error fence (`RecoverBackgroundError` lifts it). The catalog entry
-  and the directory are kept and nothing is moved, dropped or cleared. A warm shard whose close failed goes cold in
-  memory, opens on its next access and is warm again after a restart; the drop links the shard back with its directory
+  and directory of the failed shard are kept; a failed move does not move it. Clear can already have cleared earlier
+  shards. Its pending marker remains, and the next open completes the Clear, including writes made after recovery;
+  repeating Clear successfully removes the marker. A warm shard whose close failed goes cold in memory, opens on
+  its next access and is restored to warm before calendar promotion or after a restart; the drop links the shard back with its directory
   and entry. `clearEventShard` also makes a warm shard cold in memory when its temporary open or its reopen fails, and
   its reopen installs the handle through `setStoreLocked`. Counts that change: none. The error text of the drop's and
   `Clear`'s close is new, `graph: drop: close shard <name>: ...` and `graph: clear: close shard <name>: ...` (they

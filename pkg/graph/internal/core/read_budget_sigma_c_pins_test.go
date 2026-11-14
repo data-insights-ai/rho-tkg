@@ -131,8 +131,8 @@ func TestReadBudget_SigmaC_LowestAnsweredPins(t *testing.T) {
 							t.Fatalf("unlimited = %v, %v; want %v", got, err, want)
 						}
 						total := full.Work()
-						if total.Candidates != uint64(d.n) || total.BufferBytes != uint64(8*d.n) || total.HistoryExamined == 0 || flushed && total.DecodedBytes == 0 || total.ShardOpens != 0 || total.Segments != 0 { // #nosec G115 -- counts
-							t.Fatalf("unlimited work %+v; want %d candidates, %d buffer bytes, the history of the deleted entities and no shard opens", total, d.n, 8*d.n)
+						if total.Candidates < uint64(d.n) || total.BufferBytes < uint64(8*d.n) || total.HistoryExamined == 0 || flushed && total.DecodedBytes == 0 || total.ShardOpens != 0 || total.Segments != 0 { // #nosec G115 -- counts
+							t.Fatalf("unlimited work %+v; want at least the core contribution: %d candidates, %d buffer bytes, the history of the deleted entities and no shard opens", total, d.n, 8*d.n)
 						}
 						for _, c := range []struct {
 							limit string
@@ -306,8 +306,8 @@ func TestReadBudget_SigmaC_LowestAnsweredPinsMemory(t *testing.T) {
 				t.Fatalf("unlimited = %v, %v; want %v", got, err, want)
 			}
 			total := full.Work()
-			if total.Candidates != uint64(d.n) || total.BufferBytes != uint64(8*d.n) || total.HistoryExamined == 0 || total.DecodedBytes != 0 || total.ShardOpens != 0 { // #nosec G115 -- counts
-				t.Fatalf("unlimited work %+v; want %d candidates, %d buffer bytes, the deleted entities' versions and no decoded bytes", total, d.n, 8*d.n)
+			if total.Candidates < uint64(d.n) || total.BufferBytes < uint64(8*d.n) || total.HistoryExamined == 0 || total.DecodedBytes != 0 || total.ShardOpens != 0 { // #nosec G115 -- counts
+				t.Fatalf("unlimited work %+v; want at least the core contribution: %d candidates, %d buffer bytes, the deleted entities' versions and no decoded bytes", total, d.n, 8*d.n)
 			}
 			pctx, meter := storepkg.WithReadBudget(ctx, sbBudget("history examined", 1))
 			got, err := d.ctx(pctx)

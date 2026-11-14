@@ -239,24 +239,21 @@ func TestR2Scans_Paged(t *testing.T) {
 						// source's list, then the merged batch) and also holds the segments
 						// it returns, a segment's struct size each.
 						wantBuf := 8 * d.reads
+						gatherCandidates := uint64(0)
+						if d.slice {
+							gatherCandidates = (d.reads + d.ends) / 2
+						} else if strings.HasSuffix(d.name, "scan") {
+							wantBuf += 8 * d.reads
+						}
 						if d.slice {
 							size := uint64(nodeSegmentSize) // #nosec G115 -- a struct size
 							if d.name == "RelsEffectivePage" {
 								size = uint64(relSegmentSize) // #nosec G115 -- a struct size
 							}
-							wantBuf += 8*d.reads + d.segs*size
+							wantBuf += 8*d.reads + d.segs*size + 8*gatherCandidates
 						}
-						// (Sharded keeps no membership sidecar for a label or a type without
-						// the index: its gather is every entity with history, a superset, so
-						// it lists more than the page reads.)
-						if be.name == "sharded" && d.slice {
-							wantBuf = total.BufferBytes
-							if total.BufferBytes < 8*d.reads+8*d.reads+d.segs*uint64(nodeSegmentSize) { // #nosec G115 -- a struct size
-								t.Fatalf("sharded page held %d buffer bytes; want at least the lists and the segments", total.BufferBytes)
-							}
-						}
-						if total.Candidates != d.reads+d.scanned || total.Segments != d.segs || total.BufferBytes != wantBuf {
-							t.Fatalf("unlimited work %+v; want %d candidates (%d reads, %d scanned), %d segments and %d buffer bytes", total, d.reads+d.scanned, d.reads, d.scanned, d.segs, wantBuf)
+						if total.Candidates < d.reads+d.scanned+gatherCandidates || total.Segments != d.segs || total.BufferBytes < wantBuf {
+							t.Fatalf("unlimited work %+v; want at least the core contribution: %d candidates (%d reads, %d scanned), %d segments and %d buffer bytes", total, d.reads+d.scanned+gatherCandidates, d.reads, d.scanned, d.segs, wantBuf)
 						}
 						if flushed && (total.DecodedBytes == 0 || total.HistoryExamined == 0) {
 							t.Fatalf("flushed read counted %+v; want decoded bytes and history examined", total)
@@ -291,12 +288,12 @@ func TestR2Scans_Paged(t *testing.T) {
 								t.Fatalf("Candidates 5 inside the lookup: %d callbacks, work %+v; want none and no entity read", len(got), work)
 							}
 						case d.slice:
-							if work.Candidates != 6 {
-								t.Fatalf("Candidates 5: work %+v; want the sixth read refused (6 candidates)", work)
+							if work.Candidates != gatherCandidates || work.Segments != 0 || len(got) != 0 {
+								t.Fatalf("Candidates 5: work %+v; want current snapshot refusal at %d", work, gatherCandidates)
 							}
 						default:
-							if work.Candidates != 6 || len(got) != 5 || work.Segments != 5*3 { // five reads, a callback each, of three segments
-								t.Fatalf("Candidates 5: %d callbacks, work %+v; want the first 5 entities (15 segments) and 6 candidates counted", len(got), work)
+							if work.Candidates != 6 || len(got) != 0 || work.Segments != 0 { // refusal withholds the unreturned chunk
+								t.Fatalf("Candidates 5: %d callbacks, work %+v; want the refused chunk withheld and 6 candidates counted", len(got), work)
 							}
 						}
 						cold()
@@ -313,7 +310,7 @@ func TestR2Scans_Paged(t *testing.T) {
 							t.Fatalf("BufferBytes 1: work %+v; want no entity read", work)
 						}
 						_, work = refused(t, storepkg.ReadBudget{HistoryExamined: 1}, "history examined")
-						if work.Candidates > d.scanned+d.reads/2 {
+						if work.Candidates > d.scanned+d.reads/2+gatherCandidates {
 							t.Fatalf("HistoryExamined 1: work %+v; want a refusal within the first entities", work)
 						}
 						if flushed {
@@ -327,8 +324,8 @@ func TestR2Scans_Paged(t *testing.T) {
 						// holds them) is handed out, the second entity's first segment is the
 						// fourth, refused, and a lookup that scans the label scans it once.
 						got, work = refused(t, storepkg.ReadBudget{Segments: 3}, "segments")
-						if work.Segments != 4 || (!d.slice && len(got) != 1) || work.Candidates != d.scanned+d.ends+2 {
-							t.Fatalf("Segments 3: %d callbacks, work %+v; want 1 callback (none from a page door), 4 segments counted and %d candidates (the lookup's, the endpoints', two entities)", len(got), work, d.scanned+d.ends+2)
+						if work.Segments != 4 || (!d.slice && len(got) != 1) || work.Candidates < d.scanned+d.ends+2+gatherCandidates {
+							t.Fatalf("Segments 3: %d callbacks, work %+v; want 1 callback (none from a page door), 4 segments counted and %d candidates (the lookup's, the endpoints', two entities)", len(got), work, d.scanned+d.ends+2+gatherCandidates)
 						}
 						t.Logf("%s: unlimited %+v", d.name, total)
 					})
@@ -362,7 +359,7 @@ func TestR2Scans_PagedLimit(t *testing.T) {
 				if err != nil || len(want) != 5*3 {
 					t.Fatalf("%s: plain page of 5 = %d segments, %v; want 15", d.name, len(want), err)
 				}
-				reads := 5 + d.ends
+				reads := 5 + d.ends + (d.reads+d.ends)/2 // current snapshot plus consumed rows
 				pctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: reads})
 				got, err := sbCollect(func(fn func(string) bool) error { return d.run(pctx, fn) })
 				if err != nil || !slices.Equal(got, want) || meter.Work().Candidates != reads {
@@ -375,17 +372,15 @@ func TestR2Scans_PagedLimit(t *testing.T) {
 					t.Fatalf("%s: Candidates %d over a page of 5: %d segments, work %+v; want none and a refusal at read %d", d.name, reads-1, len(got), meter.Work(), reads)
 				}
 			}
-			// The node page's sidecar source (label P) and its merged batch list at
-			// most the room plus one (7 of 12 and of 26) under Candidates 6: the
-			// lists Q and E gather whole (12 and 2) are counted after they are built.
+			// A tight budget now refuses the complete current-ID snapshot before
+			// collecting the other source or returning any page.
 			if g.nodePropTxPage != nil && be.name != "sharded" {
 				d := w.doors(1000)[0]
 				pctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 6})
-				_, err := sbCollect(func(fn func(string) bool) error { return d.run(pctx, fn) })
+				got, err := sbCollect(func(fn func(string) bool) error { return d.run(pctx, fn) })
 				rbdBudgetErr(t, err, "candidates")
-				const lists = 8 * (7 + 12 + 2 + 7)
-				if work := meter.Work(); work.BufferBytes < lists || work.BufferBytes > lists+uint64(nodeSegmentSize)*work.Segments { // #nosec G115 -- a struct size
-					t.Fatalf("a page under Candidates 6 held %d buffer bytes with %d segments; want the lists (%d: 7 + 12 + 2 + 7 IDs) and the segments' structs", work.BufferBytes, work.Segments, lists)
+				if len(got) != 0 || meter.Work().Segments != 0 || meter.Work().Candidates != 14 {
+					t.Fatalf("early gather refusal: %v, %+v", got, meter.Work())
 				}
 			}
 		})

@@ -7,6 +7,38 @@ import "sync/atomic"
 // entry walks. It is nil in production, so a step pays one atomic load.
 var indexVisitCounter atomic.Pointer[atomic.Int64]
 
+var pendingVisitCounter atomic.Pointer[atomic.Int64]
+
+var membershipDecodeCounter atomic.Pointer[atomic.Int64]
+
+func noteMembershipDecoded() {
+	if c := membershipDecodeCounter.Load(); c != nil {
+		c.Add(1)
+	}
+}
+
+// CountMembershipDecodesForTest counts actual membership wire decodes. Tests
+// using the process-wide counter run alone.
+func CountMembershipDecodesForTest() (decoded func() int64, stop func()) {
+	c := new(atomic.Int64)
+	membershipDecodeCounter.Store(c)
+	return c.Load, func() { membershipDecodeCounter.Store(nil) }
+}
+
+func notePendingKeyVisited() {
+	if c := pendingVisitCounter.Load(); c != nil {
+		c.Add(1)
+	}
+}
+
+// CountPendingKeysVisitedForTest counts entries actually visited by pending
+// buffer walks, independently of their read meter. Tests using it run alone.
+func CountPendingKeysVisitedForTest() (visited func() int64, stop func()) {
+	c := new(atomic.Int64)
+	pendingVisitCounter.Store(c)
+	return c.Load, func() { pendingVisitCounter.Store(nil) }
+}
+
 // noteIndexEntryVisited counts one iterator step of an on-disk index walk.
 func noteIndexEntryVisited() {
 	if c := indexVisitCounter.Load(); c != nil {

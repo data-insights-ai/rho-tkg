@@ -427,7 +427,7 @@ func (c *Core) nodeLabelCandidatesAtListing(tok uint16, opts storepkg.QueryOpts,
 	held := 0
 	if m, door := opts.ReadMeter(); m != nil && kind == gatherListed {
 		listing = listing.WithReadMeter(m, door)
-	} else if h, err := c.membersFit(opts, kind, func() (int, error) { return c.nodeCountByLabel(tok) }); err != nil {
+	} else if h, err := c.membersFit(opts, kind, func(t *storepkg.ReadTally) (int, error) { return c.nodeCountByLabelUnder(tok, t) }); err != nil {
 		return nil, nil, err // the rows listing below is not counted: refused before it reads them
 	} else {
 		held = h
@@ -466,22 +466,24 @@ func (c *Core) nodeLabelCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]t
 func (c *Core) nodeLabelCandidateIDsKind(tok uint16, opts storepkg.QueryOpts, kind gatherKind) ([]types.NodeID, error) {
 	members := c.memberIDsAt(opts.Depth)
 	if members == nil {
+		if err := unsupportedMemberGather(opts); err != nil {
+			return nil, err
+		}
 		_, ids, err := c.nodeLabelCandidatesAtListing(tok, opts, kind)
 		return ids, err
 	}
 	opts = kind.held(opts)
-	held, err := c.membersFit(opts, kind, func() (int, error) { return c.nodeCountByLabel(tok) })
-	if err != nil {
-		return nil, err // the listing below is not counted: refused before the store builds it
+	if opts.ReadTally() != nil && c.currentMembersMetered() == nil {
+		return nil, unsupportedMemberGather(opts)
 	}
-	currentIDs, err := nodeIDsByLabelUnder(members, tok, opts.ReadTally())
+	if err := c.membersAhead(opts, kind, func(t *storepkg.ReadTally) (int, error) { return c.nodeCountByLabelUnder(tok, t) }); err != nil {
+		return nil, err
+	}
+	currentIDs, err := c.nodeIDsByLabelUnder(members, tok, opts)
 	if err != nil {
 		return nil, err
 	}
 	c.noteListed(len(currentIDs))
-	if err := holdListed(held, kind, opts, len(currentIDs)); err != nil {
-		return nil, err
-	}
 	return c.nodeLabelCandidatesFrom(tok, currentIDs, opts, kind)
 }
 
@@ -545,11 +547,10 @@ func (c *Core) pruneNodeLabelCandidates(tok uint16, ids []types.NodeID, opts sto
 // the gather takes into its hands is one candidate of the read (gatherKind):
 // the store holds the set it copies (or the gather holds each ID the fold
 // yields, or each member a store without the metered form hands on) before
-// the work, so a list past the room is refused before it is completed; an
-// entry the gather drops is counted where it is dropped (ReadTally.Drop): a
-// member past the pin, a member at or below After (the temporal ByLabel read,
-// gatherListed, lists only what its door can use) and an ID the envelope prune
-// drops; the others are counted by the door when it reads them. The door's
+// the work, so a list past the room is refused before it is completed. Hold
+// charges immediately, including a member past the pin, a member at or below
+// After and an ID the envelope prune drops. Drop and Settle check for a shared
+// refusal without another charge. The door's
 // Limit counts answered rows, which no gather can know, so it does not shorten
 // the list.
 //
@@ -561,6 +562,9 @@ func (c *Core) pruneNodeLabelCandidates(tok uint16, ids []types.NodeID, opts sto
 // examined, on every backend.
 func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts, kind gatherKind) ([]types.NodeID, error) {
 	if !slices.IsSorted(currentIDs) {
+		if err := opts.ReadTally().Buffer(8 * len(currentIDs)); err != nil {
+			return nil, err
+		}
 		currentIDs = slices.Sorted(slices.Values(currentIDs))
 	}
 	var extra []types.NodeID
@@ -574,14 +578,17 @@ func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, 
 			refused = kind.drop(t, 1) // skipAfter drops it: counted, not listed
 			return refused == nil
 		}
+		if refused = t.Buffer(8); refused != nil {
+			return false
+		}
 		extra = append(extra, id)
 		c.noteListed(1)
 		return true
 	}
 	if c.labelTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
 		pinTx := effectiveTxPin(opts)
-		storeHeld := storeHoldsTxMembers(c.labelTxMembers, t)
-		if err := forEachLabelTxMemberUnder(c.labelTxMembers, tok, t, func(id types.NodeID, firstTx types.Instant) bool {
+		storeHeld := t != nil && c.txMembersMetered() != nil
+		if err := c.forEachLabelTxMemberUnder(c.labelTxMembers, tok, opts, func(id types.NodeID, firstTx types.Instant) bool {
 			if inSorted(currentIDs, id) {
 				return true // a current member: held or counted with them
 			}
@@ -616,6 +623,11 @@ func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, 
 	}
 	if err := dropRepeats(kind, t, &extra); err != nil {
 		return nil, err
+	}
+	if len(extra) > 0 {
+		if err := t.Buffer(8 * (len(currentIDs) + len(extra))); err != nil {
+			return nil, err
+		}
 	}
 	all := sortedCandidates(currentIDs, extra)
 	kept := c.pruneNodeLabelCandidates(tok, all, opts)
@@ -720,7 +732,7 @@ func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*type
 // gatherListed is not used for types).
 func (c *Core) relTypeCandidatesAtKind(tok uint16, opts storepkg.QueryOpts, kind gatherKind) ([]*types.Relationship, []types.RelID, error) {
 	opts = kind.held(opts)
-	held, err := c.membersFit(opts, kind, func() (int, error) { return c.relCountByType(tok) })
+	held, err := c.membersFit(opts, kind, func(t *storepkg.ReadTally) (int, error) { return c.relCountByTypeUnder(tok, t) })
 	if err != nil {
 		return nil, nil, err // the rows listing below is not counted: refused before it reads them
 	}
@@ -752,22 +764,24 @@ func (c *Core) relTypeCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]typ
 func (c *Core) relTypeCandidateIDsKind(tok uint16, opts storepkg.QueryOpts, kind gatherKind) ([]types.RelID, error) {
 	members := c.memberIDsAt(opts.Depth)
 	if members == nil {
+		if err := unsupportedMemberGather(opts); err != nil {
+			return nil, err
+		}
 		_, ids, err := c.relTypeCandidatesAtKind(tok, opts, kind)
 		return ids, err
 	}
 	opts = kind.held(opts)
-	held, err := c.membersFit(opts, kind, func() (int, error) { return c.relCountByType(tok) })
-	if err != nil {
-		return nil, err // the listing below is not counted: refused before the store builds it
+	if opts.ReadTally() != nil && c.currentMembersMetered() == nil {
+		return nil, unsupportedMemberGather(opts)
 	}
-	currentIDs, err := relIDsByTypeUnder(members, tok, opts.ReadTally())
+	if err := c.membersAhead(opts, kind, func(t *storepkg.ReadTally) (int, error) { return c.relCountByTypeUnder(tok, t) }); err != nil {
+		return nil, err
+	}
+	currentIDs, err := c.relIDsByTypeUnder(members, tok, opts)
 	if err != nil {
 		return nil, err
 	}
 	c.noteListed(len(currentIDs))
-	if err := holdListed(held, kind, opts, len(currentIDs)); err != nil {
-		return nil, err
-	}
 	return c.relTypeCandidatesFrom(tok, currentIDs, opts, kind)
 }
 
@@ -813,20 +827,26 @@ func (c *Core) pruneRelTypeCandidates(tok uint16, ids []types.RelID, opts storep
 // (no After; relTypeCandidatesFrom prunes after it).
 func (c *Core) relTypeCandidatesSorted(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts, kind gatherKind) ([]types.RelID, error) {
 	if !slices.IsSorted(currentIDs) {
+		if err := opts.ReadTally().Buffer(8 * len(currentIDs)); err != nil {
+			return nil, err
+		}
 		currentIDs = slices.Sorted(slices.Values(currentIDs))
 	}
 	var extra []types.RelID
 	t := opts.ReadTally()
 	var refused error
 	keep := func(id types.RelID) bool {
+		if refused = t.Buffer(8); refused != nil {
+			return false
+		}
 		extra = append(extra, id)
 		c.noteListed(1)
 		return true
 	}
 	if c.relTypeTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
 		pinTx := effectiveTxPin(opts)
-		storeHeld := storeHoldsTxMembers(c.relTypeTxMembers, t)
-		if err := forEachRelTypeTxMemberUnder(c.relTypeTxMembers, tok, t, func(id types.RelID, firstTx types.Instant) bool {
+		storeHeld := t != nil && c.txMembersMetered() != nil
+		if err := c.forEachRelTypeTxMemberUnder(c.relTypeTxMembers, tok, opts, func(id types.RelID, firstTx types.Instant) bool {
 			if inSorted(currentIDs, id) {
 				return true // a current member: held or counted with them
 			}
@@ -861,6 +881,11 @@ func (c *Core) relTypeCandidatesSorted(tok uint16, currentIDs []types.RelID, opt
 	}
 	if err := dropRepeats(kind, t, &extra); err != nil {
 		return nil, err
+	}
+	if len(extra) > 0 {
+		if err := t.Buffer(8 * (len(currentIDs) + len(extra))); err != nil {
+			return nil, err
+		}
 	}
 	return sortedCandidates(currentIDs, extra), nil
 }

@@ -38,6 +38,11 @@ func (ts *Store) SetAsOfAfterCurrentTestHookForTest(fn func()) {
 // and its read of the shard.
 func (ts *Store) SetAsOfWalkGapHookForTest(fn func()) { ts.asOfWalkGapHook = fn }
 
+// SetFanoutRefReadHookForTest installs fn between a fan-out's reference shard
+// read and the rest of its shards (refArchiveGapHook; nil removes it). Set it
+// before the reads it observes.
+func (ts *Store) SetFanoutRefReadHookForTest(fn func()) { ts.fanoutRefReadHook = fn }
+
 // RefActiveReqsForTest returns the refcount on the reference shard.
 func (ts *Store) RefActiveReqsForTest() *atomic.Int64 { return &ts.refActiveReqs }
 
@@ -349,4 +354,19 @@ func (es *EventShard) GrowNextForTest() bool {
 	es.shardMu.Lock()
 	defer es.shardMu.Unlock()
 	return es.growNext
+}
+
+// SetColdGrowBytesForTest lowers what a small cold handle commits before the
+// handle sweep closes it for the grow (coldGrowBytes) on this store; 0
+// restores the constant.
+func (ts *Store) SetColdGrowBytesForTest(n int64) { ts.coldGrowBytesForTest.Store(n) }
+
+// CountValidEndMergeCopiesForTest observes tiered union copies independently of
+// the read meter. Tests using this process-wide observer run alone.
+var validEndMergeCopies atomic.Pointer[atomic.Int64]
+
+func CountValidEndMergeCopiesForTest() (copied func() int64, stop func()) {
+	c := new(atomic.Int64)
+	validEndMergeCopies.Store(c)
+	return c.Load, func() { validEndMergeCopies.Store(nil) }
 }

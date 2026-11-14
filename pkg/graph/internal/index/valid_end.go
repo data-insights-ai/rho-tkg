@@ -3,7 +3,6 @@ package index
 import (
 	"cmp"
 	"iter"
-	"math"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -54,6 +53,22 @@ type ValidEndIndex struct {
 	unknown map[int64]uint64 // entity -> the seq at which it last became or stayed unknown
 	seq     uint64
 	notes   uint64 // row writes that changed the index (Stats)
+}
+
+var validEndCopyCounter atomic.Pointer[atomic.Int64]
+
+func noteValidEndCandidateCopied() {
+	if c := validEndCopyCounter.Load(); c != nil {
+		c.Add(1)
+	}
+}
+
+// CountValidEndCandidatesCopiedForTest observes actual candidate-list appends,
+// independently of their read meter. Tests using it run alone.
+func CountValidEndCandidatesCopiedForTest() (copied func() int64, stop func()) {
+	c := new(atomic.Int64)
+	validEndCopyCounter.Store(c)
+	return c.Load, func() { validEndCopyCounter.Store(nil) }
 }
 
 // ValidEndRow is one stored row as a ValidEndIndex folds it: a history row
@@ -155,36 +170,26 @@ func (ix *ValidEndIndex) Track(tok uint16, members func(enlist func(id int64))) 
 	return tracked
 }
 
-// TrackUnder is Track under a read budget (t not nil, R2 late counts), with
-// members as an iterator the index may stop. Every unknown entity is read and
-// counted as a candidate by the first call that resolves it, so a candidate
-// limit the enlistment alone would pass is refused here, before the first
-// entity is enlisted: members is walked once to count the entities it would add
-// to the unknown (nothing allocated, nothing marked), and the walk stops at the
-// first entity that, with the ones unknown already, passes the candidate room t
-// has left (ReadTally.CandidatesAhead at each new entity: the room is read
-// live, so charges another read makes on the context during the walk shrink
-// it). The token is then not tracked and the budget error is returned
-// (CandidatesAhead counts the entities seen: what the enlistment needed, not
-// work done). A tally without a candidate limit (the room is unbounded: no
-// limit exists), and nil, skip the count.
+// TrackUnder admits each membership entry before copying it into a temporary
+// list. The same tally covers other indexes and concurrent reads. A refusal
+// leaves this token untracked; installation starts only after the complete
+// list has been admitted. Each membership is walked once, with or without a
+// candidate limit.
 func (ix *ValidEndIndex) TrackUnder(tok uint16, members iter.Seq[int64], t *storepkg.ReadTally) (bool, error) {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
 	if ix.toks[tok] != nil {
 		return false, nil
 	}
-	if t.CandidateRoom() != math.MaxUint64 {
-		n := len(ix.unknown)
-		for id := range members {
-			if _, already := ix.unknown[id]; already {
-				continue
-			}
-			n++
-			if err := t.CandidatesAhead(n); err != nil {
-				return false, err
-			}
+	var admitted []int64
+	for id := range members {
+		if err := t.Candidates(1); err != nil {
+			return false, err
 		}
+		if err := t.Buffer(8); err != nil {
+			return false, err
+		}
+		admitted = append(admitted, id)
 	}
 	if ix.toks == nil {
 		ix.ents = make(map[int64]veEnt)
@@ -194,7 +199,7 @@ func (ix *ValidEndIndex) TrackUnder(tok uint16, members iter.Seq[int64], t *stor
 	}
 	ix.toks[tok] = &veToken{}
 	ix.active.Store(true)
-	for id := range members {
+	for _, id := range admitted {
 		ix.markUnknownLocked(id)
 	}
 	return true, nil
@@ -324,20 +329,25 @@ func (ix *ValidEndIndex) Install(id int64, rows []ValidEndRow) {
 	if ix.toks == nil {
 		return
 	}
-	ix.installLocked(id, rows)
+	_ = ix.installUnderLocked(id, rows, nil)
 }
 
-func (ix *ValidEndIndex) installLocked(id int64, rows []ValidEndRow) {
-	if e, ok := ix.ents[id]; ok {
-		ix.dropLocked(id, e)
-	}
-	delete(ix.unknown, id)
+func (ix *ValidEndIndex) installUnderLocked(id int64, rows []ValidEndRow, t *storepkg.ReadTally) error {
 	tracked := false
 	for _, r := range rows {
 		tracked = tracked || ix.carriesTrackedLocked(r.Tokens)
 	}
+	if tracked {
+		if err := t.Buffer(64 * len(rows)); err != nil {
+			return err
+		}
+	}
+	if e, ok := ix.ents[id]; ok {
+		ix.dropLocked(id, e)
+	}
+	delete(ix.unknown, id)
 	if !tracked {
-		return
+		return nil
 	}
 	rows = slices.Clone(rows)
 	slices.SortStableFunc(rows, func(a, b ValidEndRow) int {
@@ -349,14 +359,13 @@ func (ix *ValidEndIndex) installLocked(id int64, rows []ValidEndRow) {
 		}
 		return cmp.Compare(a.Version, b.Version)
 	})
-	var (
-		e  veEnt
-		ok bool
-	)
+	var e veEnt
+	var ok bool
 	for _, r := range rows {
 		ix.foldLocked(id, e, ok, r, true)
 		e, ok = ix.ents[id]
 	}
+	return nil
 }
 
 // ResolveUnknown re-reads the rows of every unknown entity (read returns all
@@ -367,18 +376,19 @@ func (ix *ValidEndIndex) ResolveUnknown(read func(id int64) ([]ValidEndRow, erro
 	return ix.ResolveUnknownUnder(nil, read)
 }
 
-// ResolveUnknownUnder is ResolveUnknown under a read budget (t not nil, R2 late
-// counts): the unknown entities are copied into the pending list only when the
-// candidates they will count (one each, in read) fit the room t has left; else
-// they are counted as work done and the budget error is returned before the
-// list is built (ReadTally.CandidatesAhead).
+// ResolveUnknownUnder charges the pending snapshot before copying it. The
+// callback separately owns the row reads; the index owns its temporary copies.
 func (ix *ValidEndIndex) ResolveUnknownUnder(t *storepkg.ReadTally, read func(id int64) ([]ValidEndRow, error)) error {
 	ix.mu.Lock()
 	if len(ix.unknown) == 0 {
 		ix.mu.Unlock()
 		return nil
 	}
-	if err := t.CandidatesAhead(len(ix.unknown)); err != nil {
+	if err := t.Candidates(len(ix.unknown)); err != nil {
+		ix.mu.Unlock()
+		return err
+	}
+	if err := t.Buffer(24 * len(ix.unknown)); err != nil {
 		ix.mu.Unlock()
 		return err
 	}
@@ -394,9 +404,12 @@ func (ix *ValidEndIndex) ResolveUnknownUnder(t *storepkg.ReadTally, read func(id
 		}
 		ix.mu.Lock()
 		if cur, still := ix.unknown[id]; still && cur == s {
-			ix.installLocked(id, rows)
+			err = ix.installUnderLocked(id, rows, t)
 		}
 		ix.mu.Unlock()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -408,16 +421,19 @@ func (ix *ValidEndIndex) ResolveUnknownBulk(read func(ids []int64) (map[int64][]
 	return ix.ResolveUnknownBulkUnder(nil, read)
 }
 
-// ResolveUnknownBulkUnder is ResolveUnknownBulk under a read budget, as
-// ResolveUnknownUnder: no pending map or ID list is built for more unknown
-// entities than the candidate room t has left.
+// ResolveUnknownBulkUnder admits the pending map and ID list together before
+// copying either. Row reads and the installation copy charge separately.
 func (ix *ValidEndIndex) ResolveUnknownBulkUnder(t *storepkg.ReadTally, read func(ids []int64) (map[int64][]ValidEndRow, error)) error {
 	ix.mu.Lock()
 	if len(ix.unknown) == 0 {
 		ix.mu.Unlock()
 		return nil
 	}
-	if err := t.CandidatesAhead(len(ix.unknown)); err != nil {
+	if err := t.Candidates(len(ix.unknown)); err != nil {
+		ix.mu.Unlock()
+		return err
+	}
+	if err := t.Buffer((24 + 8) * len(ix.unknown)); err != nil {
 		ix.mu.Unlock()
 		return err
 	}
@@ -436,7 +452,9 @@ func (ix *ValidEndIndex) ResolveUnknownBulkUnder(t *storepkg.ReadTally, read fun
 	defer ix.mu.Unlock()
 	for id, s := range pending {
 		if cur, still := ix.unknown[id]; still && cur == s {
-			ix.installLocked(id, rows[id])
+			if err := ix.installUnderLocked(id, rows[id], t); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -446,17 +464,36 @@ func (ix *ValidEndIndex) ResolveUnknownBulkUnder(t *storepkg.ReadTally, read fun
 // at or above validFrom or whose stamp is above pin, each once, plus every
 // unknown entity (Stamp and Bound store.ValidEndOpen: never refined).
 func (ix *ValidEndIndex) Candidates(tokens []uint16, pin, validFrom types.Instant) []storepkg.ValidEndCandidate {
+	out, _ := ix.CandidatesUnder(tokens, pin, validFrom, nil)
+	return out
+}
+
+// CandidatesUnder counts every ordered entry before filtering duplicates, and
+// admits the deduplication entry and candidate before copying them.
+func (ix *ValidEndIndex) CandidatesUnder(tokens []uint16, pin, validFrom types.Instant, tally *storepkg.ReadTally) ([]storepkg.ValidEndCandidate, error) {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
 	var out []storepkg.ValidEndCandidate
 	seen := make(map[int64]struct{})
+	var err error
 	add := func(k veKey) bool {
+		if err = tally.Candidates(1); err != nil {
+			return false
+		}
 		if _, dup := seen[k.id]; dup {
 			return true
 		}
+		if err = tally.Buffer(24 + 32); err != nil {
+			return false
+		}
 		seen[k.id] = struct{}{}
-		e := ix.ents[k.id]
-		out = append(out, storepkg.ValidEndCandidate{ID: k.id, Gen: uint64(e.gen), Stamp: types.Instant(e.stamp), Bound: types.Instant(e.bound)})
+		e, known := ix.ents[k.id]
+		candidate := storepkg.ValidEndCandidate{ID: k.id, Gen: uint64(e.gen), Stamp: types.Instant(e.stamp), Bound: types.Instant(e.bound)}
+		if !known {
+			candidate.Stamp, candidate.Bound = storepkg.ValidEndOpen, storepkg.ValidEndOpen
+		}
+		noteValidEndCandidateCopied()
+		out = append(out, candidate)
 		return true
 	}
 	for _, tok := range tokens {
@@ -465,17 +502,22 @@ func (ix *ValidEndIndex) Candidates(tokens []uint16, pin, validFrom types.Instan
 			continue
 		}
 		t.byBound.ascendFrom(int64(validFrom), add)
+		if err != nil {
+			return nil, err
+		}
 		if pin < storepkg.ValidEndOpen {
 			t.byStamp.ascendFrom(int64(pin)+1, add)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	for id := range ix.unknown {
-		if _, dup := seen[id]; !dup {
-			seen[id] = struct{}{}
-			out = append(out, storepkg.ValidEndCandidate{ID: id, Stamp: storepkg.ValidEndOpen, Bound: storepkg.ValidEndOpen})
+		if !add(veKey{id: id}) {
+			return nil, err
 		}
 	}
-	return out
+	return out, nil
 }
 
 // Refine lowers id's bound to end, its exact effective valid end read at a

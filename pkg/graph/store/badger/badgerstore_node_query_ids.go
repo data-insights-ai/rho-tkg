@@ -68,23 +68,21 @@ func (bs *Store) NodeIDsByLabelAndPropertyKeys(labelToken uint16, propKey string
 	// Under a read budget each candidate is admitted as the walk produces it
 	// (R2), before it is collected: a read past its Candidates limit stops at
 	// the entry that passes it, not after the whole key was gathered.
-	var admit func(int) error
-	if m, _ := opts.ReadMeter(); m != nil {
-		admit = opts.AddCandidates
-	}
+	tally := opts.ReadTally()
 	var nids []types.NodeID
 	if !idx.OnDisk() {
 		for id := range idx.PostingsOfKeys(targetKeys).After(0) {
-			if admit != nil {
-				if err := admit(1); err != nil {
-					return nil, false, err
-				}
+			if err := tally.Candidates(1); err != nil {
+				return nil, false, err
+			}
+			if err := tally.Buffer(8); err != nil {
+				return nil, false, err
 			}
 			nids = append(nids, types.NodeID(id))
 		}
 	} else {
 		var err error
-		if nids, err = bs.propertyIndexDiskKeysCandidatesAdmitLocked(propKey, targetKeys, nil, admit); err != nil {
+		if nids, err = bs.propertyIndexDiskKeysCandidatesTalliedLocked(propKey, targetKeys, nil, tally); err != nil {
 			return nil, false, err
 		}
 		storepkg.SortNodeIDs(nids)

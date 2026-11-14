@@ -328,8 +328,8 @@ func TestReadBudget_R2Twins_RelLowestAnsweredPin(t *testing.T) {
 						if c.name != "unknown" && want != floor {
 							t.Fatalf("pin %d; want the type's watermark %d", want, floor)
 						}
-						if total.Candidates != 1 || total.BufferBytes != 8 || total.ShardOpens != 0 || total.Segments != 0 || c.name == "deleted" && total.HistoryExamined == 0 || c.name == "live" && total.HistoryExamined != 0 || flushed && c.name != "unknown" && total.DecodedBytes == 0 {
-							t.Fatalf("unlimited work %+v; want 1 candidate, 8 buffer bytes, the deleted one's history and, cold, the decoded rows", total)
+						if total.Candidates != 1 || total.BufferBytes < 8 || total.ShardOpens != 0 || total.Segments != 0 || c.name == "deleted" && total.HistoryExamined == 0 || c.name == "live" && total.HistoryExamined != 0 || flushed && c.name != "unknown" && total.DecodedBytes == 0 {
+							t.Fatalf("unlimited work %+v; want at least the core contribution: 1 candidate, 8 buffer bytes, the deleted one's history and, cold, the decoded rows", total)
 						}
 						// A buffer limit under the 8 bytes refuses after the candidate and before any read.
 						cold()

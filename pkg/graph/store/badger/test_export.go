@@ -382,6 +382,9 @@ func (bs *Store) HistoryRowCopiesForTest() int64 { return bs.historyRowCopies.Lo
 // read decoded (a counter the read meter does not keep).
 func (bs *Store) ValidEndRowDecodesForTest() int64 { return bs.validEndRowDecodes.Load() }
 
+// ValidEndIteratorStepsForTest counts forward key steps during valid-end reads.
+func (bs *Store) ValidEndIteratorStepsForTest() int64 { return bs.validEndIteratorSteps.Load() }
+
 // ValidEndAttribLookupsForTest returns how many attribution lookups the
 // valid-end index's first calls made on this store (validEndRowsBulk's walk of
 // the former sets and the entities read). Not for production use.

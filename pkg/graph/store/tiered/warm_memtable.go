@@ -65,6 +65,15 @@ const coldMemTableSize = 8 << 20
 // ai-soc's daily late write stays below it and keeps the small open.
 const coldGrowBytes = 4 * coldMemTableSize
 
+// coldGrowLimit is coldGrowBytes, or the lower limit a test set on this store
+// (SetColdGrowBytesForTest), so a grow test runs in -short.
+func (ts *Store) coldGrowLimit() int64 {
+	if n := ts.coldGrowBytesForTest.Load(); n > 0 {
+		return n
+	}
+	return coldGrowBytes
+}
+
 // coldGrowOwedLocked reports whether es's handle has outgrown the small cold
 // memtable: WarmMemTableSize is 0 (an explicit one is the consumer's word and
 // never grows), es is cold on a writable handle opened below the hot size, and
@@ -75,7 +84,7 @@ func (ts *Store) coldGrowOwedLocked(es *EventShard) bool {
 	if ts.warmMemTableSize != 0 || es.currentTier() != TierCold || es.store == nil || es.storeRO {
 		return false
 	}
-	return es.store.CommittedBytes() >= coldGrowBytes && es.store.MemTableSize() < hotMemTableSize(ts.memTableSize)
+	return es.store.CommittedBytes() >= ts.coldGrowLimit() && es.store.MemTableSize() < hotMemTableSize(ts.memTableSize)
 }
 
 // pendColdGrowLocked hands es to the handle sweep when its handle owes the
@@ -89,11 +98,11 @@ func (ts *Store) pendColdGrowLocked(es *EventShard) {
 }
 
 // nonHotCfg sizes the memtable of a writable open in a non-hot role:
-// WarmMemTableSize when set; else, when the shard is cold at this open and
-// does not grow, at most coldMemTableSize; else MemTableSize. Only a shard
-// cold at the open: a rotation promotes a warm shard only
-// (rotateHotShardLocked refuses another tier), so a small cold handle never
-// becomes the hot shard's. A small handle stays until IdleTimeout or the
+// WarmMemTableSize when set; else, for a disk shard cold at this open that
+// does not grow, at most coldMemTableSize; else MemTableSize. In memory no
+// sweep can grow the handle, so it keeps MemTableSize. A rotation restores
+// a catalog-warm shard's warm-size handle before promotion, so a small cold
+// handle never becomes the hot shard's. A small handle stays until IdleTimeout or the
 // store's close (coldOpened), unless it commits coldGrowBytes: then the sweep
 // closes it and the open after (grow, EventShard.growNext) takes MemTableSize.
 // A read-only open allocates no memtable and keeps the hot size (see
@@ -104,7 +113,7 @@ func (ts *Store) nonHotCfg(cfg BadgerStoreConfig, small bool) BadgerStoreConfig 
 	case cfg.ReadOnly:
 	case ts.warmMemTableSize > 0:
 		cfg.MemTableSize = ts.warmMemTableSize
-	case small:
+	case small && !ts.inMemory:
 		cfg.MemTableSize = min(hotMemTableSize(cfg.MemTableSize), coldMemTableSize)
 	}
 	return cfg

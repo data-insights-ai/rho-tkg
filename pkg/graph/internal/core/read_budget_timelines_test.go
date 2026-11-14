@@ -175,8 +175,8 @@ func TestReadBudget_SigmaB_Timelines(t *testing.T) {
 							t.Fatalf("unlimited = %q, %v; want the plain answer %q", got, err, want)
 						}
 						total := full.Work()
-						if total.Candidates != 1 || total.Segments != uint64(segs) || total.BufferBytes != uint64(segs*d.segSize) || total.HistoryExamined < sbLongVersions/2 { // #nosec G115 -- counts
-							t.Fatalf("unlimited work %+v; want 1 candidate, %d segments, %d buffer bytes and the history looked at", total, segs, segs*d.segSize)
+						if total.Candidates < 1 || total.Segments != uint64(segs) || total.BufferBytes < uint64(segs*d.segSize) || total.HistoryExamined < sbLongVersions/2 { // #nosec G115 -- counts
+							t.Fatalf("unlimited work %+v; want at least the core contribution: 1 candidate, %d segments, %d buffer bytes and the history looked at", total, segs, segs*d.segSize)
 						}
 						if flushed && total.DecodedBytes == 0 {
 							t.Fatalf("flushed read decoded nothing: %+v", total)

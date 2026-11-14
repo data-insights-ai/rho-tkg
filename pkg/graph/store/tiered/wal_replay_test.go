@@ -31,6 +31,7 @@ const (
 	wrEnvDir     = "RHO_TIERED_WALREPLAY_DIR"
 	wrEnvColdDir = "RHO_TIERED_WALREPLAY_COLD_DIR"
 	wrEnvWarm    = "RHO_TIERED_WALREPLAY_WARM"
+	wrEnvRead    = "RHO_TIERED_WALREPLAY_READ_FIRST"
 	wrHot        = 64 << 20
 	wrWarm       = 8 << 20
 	wrRowSize    = 256 << 10
@@ -284,6 +285,9 @@ func TestWALReplay_CutWALOpensAtWarmSize(t *testing.T) {
 // TestWALReplayColdChild is TestWALReplay_ColdLazyOpenOverHotSizeWAL's
 // child: the clock at day 25, day 22 cold and closed at New; one late write
 // into day 22 opens it writable (openColdLocked), then every row is read.
+// With wrEnvRead set its first two accesses are reads (each a read-only open
+// at cap 0, replaying the leftover WAL at the hot size, closed at check-in),
+// reported as read_first before the late write.
 func TestWALReplayColdChild(t *testing.T) {
 	dir := os.Getenv(wrEnvColdDir)
 	if dir == "" {
@@ -299,6 +303,21 @@ func TestWALReplayColdChild(t *testing.T) {
 	es := ts.EventShardsForTest()[wrShard]
 	if s, _ := es.StoreStateForTest(); es == nil || es.Tier() != TierCold || s != nil {
 		t.Fatalf("day 22 after the open: %+v; want cold and closed", es)
+	}
+	readFirst := ""
+	if os.Getenv(wrEnvRead) != "" {
+		var counts []string
+		for range 2 {
+			ns, err := ts.NodesByLabel(tok, QueryOpts{})
+			if err != nil {
+				t.Fatalf("read before the late write: %v", err)
+			}
+			if s, _ := es.StoreStateForTest(); s != nil {
+				t.Fatal("day 22 still open after a read at cap 0")
+			}
+			counts = append(counts, strconv.Itoa(len(ns)))
+		}
+		readFirst = "read_first=" + strings.Join(counts, ",") + " "
 	}
 	id, ok, err := ts.MintNodeIDAt(tok, ms(julDay(22, 10)), true)
 	if err != nil || !ok {
@@ -318,7 +337,7 @@ func TestWALReplayColdChild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
-	fmt.Printf("WALREPLAY rows=%d cold_wal=%d wal_truncations=%d cold_opens=%d late=%d\n", len(ns),
+	fmt.Printf("WALREPLAY %srows=%d cold_wal=%d wal_truncations=%d cold_opens=%d late=%d\n", readFirst, len(ns),
 		maxMemFileSizeTiered(t, filepath.Join(dir, "events", wrShard)), ts.OpenStats().WALTruncations,
 		es.coldOpens.Load(), id)
 	if err := ts.Close(); err != nil {
@@ -373,6 +392,32 @@ func TestWALReplay_ColdLazyOpenOverHotSizeWAL(t *testing.T) {
 				})
 			}
 		}
+		if rows != 44 {
+			continue
+		}
+		// Read first: the WAL cut exactly passes the read-only open, which
+		// replays it at the hot size on each of the two reads; the late
+		// write after them opens writable at the cold size and migrates it.
+		t.Run(fmt.Sprintf("%d MiB %s read first", rows*wrRowSize>>20, wrExact), func(t *testing.T) {
+			dst := t.TempDir()
+			copyTree(t, base, dst)
+			wrCutWAL(t, dst, wrExact)
+			report := wrChild(t, "TestWALReplayColdChild", "two reads, then the cold late write",
+				wrEnvColdDir+"="+dst, wrEnvWarm+"=0", wrEnvRead+"=1")
+			wantReport := fmt.Sprintf("WALREPLAY read_first=%d,%d rows=%d cold_wal=%d wal_truncations=0 cold_opens=3 late=", rows, rows, rows+1, 2*coldMemTableSize)
+			if !strings.HasPrefix(report, wantReport) {
+				t.Fatalf("child reported %q, want prefix %q", report, wantReport)
+			}
+			late, err := strconv.ParseInt(strings.TrimPrefix(report, wantReport), 10, 64)
+			if err != nil {
+				t.Fatalf("child's late id in %q: %v", report, err)
+			}
+			all := map[types.NodeID]string{types.NodeID(late): "late"}
+			for id, pad := range want {
+				all[id] = pad
+			}
+			wrReadBack(t, dst, 25, 0, all)
+		})
 	}
 }
 

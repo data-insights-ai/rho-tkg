@@ -11,6 +11,7 @@ import (
 )
 
 var _ storecontract.ExAdjacencyCapability = (*Store)(nil)
+var _ storecontract.ExAdjacencyMeteredCapability = (*Store)(nil)
 
 // Ex-adjacency (store.ExAdjacencyCapability): one key
 // 0x0D | node | dir | rel (storeutil.ExAdjKey) per relationship that named the
@@ -54,11 +55,22 @@ func (bs *Store) exAdjOpsForHistoryRowLocked(rid types.RelID, r *types.Relations
 // exAdjRelIDs returns nid's ex-adjacency in one direction: the committed keys
 // overlaid with the pending ones (flushing ++ pending; a pending delete wins).
 func (bs *Store) exAdjRelIDs(nid types.NodeID, incoming bool) ([]types.RelID, error) {
+	return bs.exAdjRelIDsTallied(nid, incoming, nil)
+}
+
+func (bs *Store) exAdjRelIDsTallied(nid types.NodeID, incoming bool, t *storecontract.ReadTally) ([]types.RelID, error) {
 	prefix := storepkg.ExAdjPrefix(nid.SnowflakeID(), incoming)
 	var adds, dels map[types.RelID]struct{}
-	bs.rangePending(func(k string, op writeOp) {
-		if len(k) != storepkg.SizeExAdj || !hasPrefix([]byte(k), prefix) {
-			return
+	var pendingErr error
+	bs.walkPendingPrefixes([][]byte{prefix}, func(k string, op writeOp) bool {
+		if pendingErr = t.Candidates(1); pendingErr != nil {
+			return false
+		}
+		if len(k) != storepkg.SizeExAdj {
+			return true
+		}
+		if pendingErr = t.Buffer(24); pendingErr != nil {
+			return false
 		}
 		rid := types.RelID(storepkg.ParseIDFromKey([]byte(k), 10))
 		if op.opType == writeOpSet {
@@ -67,14 +79,18 @@ func (bs *Store) exAdjRelIDs(nid types.NodeID, incoming bool) ([]types.RelID, er
 			}
 			adds[rid] = struct{}{}
 			delete(dels, rid)
-			return
+		} else {
+			if dels == nil {
+				dels = make(map[types.RelID]struct{})
+			}
+			dels[rid] = struct{}{}
+			delete(adds, rid)
 		}
-		if dels == nil {
-			dels = make(map[types.RelID]struct{})
-		}
-		dels[rid] = struct{}{}
-		delete(adds, rid)
+		return true
 	})
+	if pendingErr != nil {
+		return nil, pendingErr
+	}
 	var ids []types.RelID
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
@@ -82,7 +98,11 @@ func (bs *Store) exAdjRelIDs(nid types.NodeID, incoming bool) ([]types.RelID, er
 		opts.Prefix = prefix
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		for it.Rewind(); it.Valid(); it.Next() {
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			noteIndexEntryVisited()
+			if err := t.Candidates(1); err != nil {
+				return err
+			}
 			key := it.Item().Key()
 			if len(key) != storepkg.SizeExAdj {
 				continue
@@ -92,6 +112,10 @@ func (bs *Store) exAdjRelIDs(nid types.NodeID, incoming bool) ([]types.RelID, er
 				continue
 			}
 			delete(adds, rid)
+			if err := t.Buffer(8); err != nil {
+				return err
+			}
+			noteExAdjacentCopied()
 			ids = append(ids, rid)
 		}
 		return nil
@@ -100,6 +124,10 @@ func (bs *Store) exAdjRelIDs(nid types.NodeID, incoming bool) ([]types.RelID, er
 		return nil, fmt.Errorf("graph: ex-adjacency scan: %w", err)
 	}
 	for rid := range adds {
+		if err := t.Buffer(8); err != nil {
+			return nil, err
+		}
+		noteExAdjacentCopied()
 		ids = append(ids, rid)
 	}
 	return ids, nil
@@ -123,6 +151,11 @@ func (bs *Store) exAdjNodeDeleteOps(nid types.NodeID) ([]writeOp, error) {
 
 // ForEachExAdjacentRelID implements store.ExAdjacencyCapability.
 func (bs *Store) ForEachExAdjacentRelID(nid types.NodeID, incoming bool, fn func(types.RelID) bool) error {
+	return bs.ForEachExAdjacentRelIDMetered(nid, incoming, nil, fn)
+}
+
+// ForEachExAdjacentRelIDMetered charges the snapshot before any copy or callback.
+func (bs *Store) ForEachExAdjacentRelIDMetered(nid types.NodeID, incoming bool, t *storecontract.ReadTally, fn func(types.RelID) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -132,7 +165,7 @@ func (bs *Store) ForEachExAdjacentRelID(nid types.NodeID, incoming bool, fn func
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}
-	ids, err := bs.exAdjRelIDs(nid, incoming)
+	ids, err := bs.exAdjRelIDsTallied(nid, incoming, t)
 	if err != nil {
 		return err
 	}

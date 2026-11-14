@@ -58,6 +58,7 @@ func TestValidEndFirstCall_WalksNoOtherLabel(t *testing.T) {
 
 				visited, stop := CountIndexEntriesVisitedForTest()
 				defer stop()
+				stepsBefore := bs.ValidEndIteratorStepsForTest()
 				m, got, err := vaCall(bs, 2, storecontract.ReadBudget{})
 				want := []int64{a + 1, a + 2, a + 3}
 				if err != nil || !slices.Equal(got, want) {
@@ -72,7 +73,7 @@ func TestValidEndFirstCall_WalksNoOtherLabel(t *testing.T) {
 				if v := visited(); v != listing {
 					t.Fatalf("label 2's first call visited %d label index entries after a label of %d; want %d (its listing, no probe)", v, a, listing)
 				}
-				if c, want := m.Work().Candidates, uint64(b+b); c != want {
+				if c, want := m.Work().Candidates, uint64(5*b)+uint64(bs.ValidEndIteratorStepsForTest()-stepsBefore); c != want {
 					t.Fatalf("label 2's first call counted %d candidates; want %d (%d listed, %d entities read)", c, want, b, b)
 				}
 			})
@@ -130,6 +131,14 @@ func vaOpen(t *testing.T, m vaMode, flushed bool, write func(bs *Store)) *Store 
 		}
 	}
 	t.Cleanup(func() { _ = bs.Close() })
+	// These fixtures measure attribution and row reads after the membership
+	// sidecars exist; cold construction has separate native budget tests.
+	if err := bs.ensureLabelTxMembersBuilt(); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.ensureRelTypeTxMembersBuilt(); err != nil {
+		t.Fatal(err)
+	}
 	return bs
 }
 
@@ -155,15 +164,16 @@ func vaOtherLabels(t *testing.T, bs *Store, k, each int) {
 // and the native counts the meter does not keep (label index entries visited:
 // iterator steps and probes; rows the bulk read decoded).
 type vaFigures struct {
-	candidates       uint64
-	visited, decodes int64
+	candidates              uint64
+	visited, decodes, steps int64
 }
 
 // TestValidEndFirstCall_CostIgnoresOtherLabels (R2-2 V1): the first call of
 // label 9 (3 nodes) costs the same after 1, 2 and 3 other tracked labels of 200
 // nodes each, in every label mode: its own listing (3 candidates, from the
 // label index on disk or the lazy walk; none from a map built at the open) and
-// one candidate per entity it reads (3); index entries visited: its own
+// each enlistment, pending snapshot, row read, candidate copy and forward step;
+// index entries visited: its own
 // committed listing only (3 on disk when flushed); rows decoded: one current
 // row per entity (3 when flushed; a buffered entity is read from the cache).
 // Before, with the label index on disk, each tracked label added a probe per
@@ -190,9 +200,10 @@ func TestValidEndFirstCall_CostIgnoresOtherLabels(t *testing.T) {
 						}
 					}
 					decodes := bs.ValidEndRowDecodesForTest()
+					stepsBefore := bs.ValidEndIteratorStepsForTest()
 					visited, stop := CountIndexEntriesVisitedForTest()
 					meter, got, err := vaCall(bs, 9, storecontract.ReadBudget{})
-					f := vaFigures{meter.Work().Candidates, visited(), bs.ValidEndRowDecodesForTest() - decodes}
+					f := vaFigures{meter.Work().Candidates, visited(), bs.ValidEndRowDecodesForTest() - decodes, bs.ValidEndIteratorStepsForTest() - stepsBefore}
 					stop()
 					if err != nil || !slices.Equal(got, want) {
 						t.Fatalf("after %d labels: label 9 = %v, %v; want %v", k, got, err, want)
@@ -211,8 +222,8 @@ func TestValidEndFirstCall_CostIgnoresOtherLabels(t *testing.T) {
 					}
 				}
 				for k, f := range figs {
-					if f.candidates != listing+3 || f.visited != visits || f.decodes != decodes {
-						t.Errorf("after %d other labels: %d candidates, %d index entries visited, %d rows decoded; want %d (%d listed, 3 entities), %d, %d, whatever the other labels", k+1, f.candidates, f.visited, f.decodes, listing+3, listing, visits, decodes)
+					if f.candidates != listing+4*3+uint64(f.steps) || f.visited != visits || f.decodes != decodes {
+						t.Errorf("after %d other labels: %d candidates, %d index entries visited, %d rows decoded; want %d (%d listed, 3 entities), %d, %d, whatever the other labels", k+1, f.candidates, f.visited, f.decodes, listing+4*3+uint64(f.steps), listing, visits, decodes)
 					}
 				}
 			})
@@ -259,7 +270,11 @@ func TestValidEndFirstCall_RefusedInstallsNothing(t *testing.T) {
 				}
 				bs := open()
 				_, before := bs.ValidEndStats()
-				if _, got, err := vaCall(bs, 9, storecontract.ReadBudget{Candidates: count - 1}); !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 {
+				enlistCount := uint64(3)
+				if m.disk || m.lazy {
+					enlistCount += 3
+				}
+				if _, got, err := vaCall(bs, 9, storecontract.ReadBudget{Candidates: enlistCount - 1}); !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 {
 					t.Fatalf("under %d candidates = %v, %v; want ErrReadBudget and no candidates", count-1, got, err)
 				}
 				if _, after := bs.ValidEndStats(); after.Entities != before.Entities || after.Unknown != before.Unknown || after.Tokens != before.Tokens {

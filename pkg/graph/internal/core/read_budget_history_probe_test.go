@@ -148,6 +148,13 @@ func TestReadBudget_HistoryExamined_LongHistory(t *testing.T) {
 					}
 				}
 			}
+			// Pending capture and committed iteration have different native costs.
+			// Finish writes so the background flush cannot change them between reads.
+			if f, ok := g.store.(interface{ Flush() error }); ok {
+				if err := f.Flush(); err != nil {
+					t.Fatal(err)
+				}
+			}
 			for _, size := range []int{8, 32} {
 				for _, o := range []struct {
 					name string
@@ -156,6 +163,11 @@ func TestReadBudget_HistoryExamined_LongHistory(t *testing.T) {
 					{"TxPin", storepkg.QueryOpts{TxPin: pin}},
 					{"ValidAt", storepkg.QueryOpts{ValidAt: pin, TxAt: pin}},
 				} {
+					// Isolate repeated chain reads; first membership builds have native
+					// admission regressions of their own. Warm both controls equally.
+					if got, err := g.Nodes.ByLabelAndProperty("H", "k", int64(size), o.opts); err != nil || len(got) != size {
+						t.Fatalf("warm membership: %d rows, %v", len(got), err)
+					}
 					uctx, all := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 					want, err := g.Nodes.ByLabelAndPropertyCtx(uctx, "H", "k", int64(size), o.opts)
 					if err != nil || len(want) != size || all.Work().HistoryExamined < uint64(size*versions/2) {
@@ -172,7 +184,13 @@ func TestReadBudget_HistoryExamined_LongHistory(t *testing.T) {
 					bctx, exact := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: all.Work().HistoryExamined})
 					got, err = g.Nodes.ByLabelAndPropertyCtx(bctx, "H", "k", int64(size), o.opts)
 					if err != nil || fmt.Sprint(nodeIDsOf(got)) != fmt.Sprint(nodeIDsOf(want)) || exact.Work().HistoryExamined != all.Work().HistoryExamined {
-						t.Fatalf("%d %s at its own count: %d rows, %v, %+v", size, o.name, len(got), err, exact.Work())
+						t.Fatalf("%d %s at its own count: %d rows, %v, %+v; control %+v", size, o.name, len(got), err, exact.Work(), all.Work())
+					}
+					bctx, below := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: all.Work().HistoryExamined - 1})
+					got, err = g.Nodes.ByLabelAndPropertyCtx(bctx, "H", "k", int64(size), o.opts)
+					be = rbdBudgetErr(t, err, "history examined")
+					if got != nil || below.Work() != be.Work {
+						t.Fatalf("%d %s below its own count: %d rows, %v, %+v", size, o.name, len(got), err, below.Work())
 					}
 				}
 			}
@@ -309,8 +327,8 @@ type rbWrapStore struct{ *badger.Store }
 // store that does not count decodes or shard opens (a wrapper around a native
 // store), every budgeted door refuses a budget bounding them before any read,
 // with ErrReadBudget and Limit "unsupported", instead of reading unbounded and
-// reporting 0; a budget bounding only what the core counts (Candidates) still
-// answers, and the native store answers both.
+// reporting 0. A Candidates-only budget can use core-admitted current reads;
+// history and temporal membership still require explicit native admission.
 func TestReadBudget_UnsupportedStoreRefusesBeforeReading(t *testing.T) {
 	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true})
@@ -371,8 +389,7 @@ func TestReadBudget_UnsupportedStoreRefusesBeforeReading(t *testing.T) {
 			return err
 		},
 		// The relationship lookup at a pin (group D) counts like the node twin: a
-		// store that cannot count its decodes or opens refuses it, one that
-		// bounds only Candidates answers.
+		// store without native membership admission refuses before the fold.
 		"ByTypeAndProperty": func(ctx context.Context) error {
 			got, err := g.Rels.ByTypeAndPropertyCtx(ctx, "U", "k", int64(1), storepkg.QueryOpts{TxPin: pin})
 			if err == nil && len(got) != 1 {
@@ -422,7 +439,11 @@ func TestReadBudget_UnsupportedStoreRefusesBeforeReading(t *testing.T) {
 			}
 		}
 		bctx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 100})
-		if err := call(bctx); err != nil {
+		err := call(bctx)
+		if door == "ByTypeAndProperty" || door == "History" || door == "NodeAt" || door == "NodeAsOf" {
+			// The wrapper cannot admit a native membership/history snapshot.
+			rbdBudgetErr(t, err, "unsupported")
+		} else if err != nil {
 			t.Fatalf("%s under a Candidates budget: %v; want an answer", door, err)
 		}
 	}

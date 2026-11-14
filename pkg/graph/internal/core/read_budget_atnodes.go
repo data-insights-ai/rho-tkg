@@ -129,13 +129,19 @@ func (c *Core) relEffectiveAdjacencyCandidatesRun(run *scanRun, seeds []types.No
 // read budget: each ex-adjacent entry counts one candidate as the store
 // produces it, and the walk stops at the one that passes a limit.
 func (c *Core) forEachRelAdjacencyCandidateIDRun(run *scanRun, seeds []types.NodeID, dirs adjDirs, currentIDs []types.RelID, fn func(types.RelID) error) error {
+	if err := run.holdBytes(24 * len(currentIDs)); err != nil {
+		return err
+	}
 	seen := make(map[types.RelID]struct{}, len(currentIDs))
 	for _, id := range currentIDs {
 		seen[id] = struct{}{}
 	}
 	var refused error
 	if err := c.forEachRelExAdjacentIDRun(run, seeds, dirs, storepkg.DepthAll, func(id types.RelID) bool {
-		if refused = run.admit(); refused != nil {
+		if _, ok := seen[id]; ok {
+			return true
+		}
+		if refused = run.holdBytes(24); refused != nil {
 			return false
 		}
 		seen[id] = struct{}{}
@@ -158,9 +164,10 @@ func (c *Core) forEachRelAdjacencyCandidateIDRun(run *scanRun, seeds []types.Nod
 // store that opens closed shards to answer charges each open to the run's tally
 // before it (storepkg.ExAdjacencyMeteredCapability); a store without an
 // ex-adjacency covering every relationship folds the history IDs of every shard,
-// which on a store that opens shards cannot count its opens, so a ShardOpens
-// budget refuses it before the fold (Limit "unsupported", foldOpensRefused). The
-// callback counts each ID it is handed.
+// which on tiered cannot count its opens or history probes, so every meter
+// refuses before the fold (Limit "unsupported", foldOpensRefused). The
+// native snapshot counts its entries before any copy; the callback does not
+// count them again.
 func (c *Core) forEachRelExAdjacentIDRun(run *scanRun, seeds []types.NodeID, dirs adjDirs, depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
 	if run == nil {
 		return c.forEachRelExAdjacentID(seeds, dirs, depth, fn)
@@ -169,11 +176,21 @@ func (c *Core) forEachRelExAdjacentIDRun(run *scanRun, seeds []types.NodeID, dir
 		if err := c.foldOpensRefused(run.opts(storepkg.QueryOpts{})); err != nil {
 			return err
 		}
-		return c.forEachRelHistoryIDByDepth(depth, fn)
+		var refused error
+		err := c.forEachRelHistoryIDByDepth(depth, func(id types.RelID) bool {
+			if refused = run.admit(); refused != nil {
+				return false
+			}
+			return fn(id)
+		})
+		if err != nil {
+			return err
+		}
+		return refused
 	}
-	metered, _ := c.exAdj.(storepkg.ExAdjacencyMeteredCapability)
+	metered := nativeCapability[storepkg.ExAdjacencyMeteredCapability](c.store, "ForEachExAdjacentRelIDMetered")
 	if metered == nil {
-		return c.forEachRelExAdjacentID(seeds, dirs, depth, fn)
+		return unsupportedMemberGather(run.opts(storepkg.QueryOpts{}))
 	}
 	stopped := false
 	visit := func(id types.RelID) bool {

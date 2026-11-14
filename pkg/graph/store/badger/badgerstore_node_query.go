@@ -445,11 +445,7 @@ func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 		// Each candidate is admitted as the walk produces it (R2): a read past
 		// its Candidates limit stops at the entry that passes it, before it
 		// collects, sorts or compacts the rest of the key.
-		var admit func(int) error
-		if m, _ := opts.ReadMeter(); m != nil {
-			admit = opts.AddCandidates
-		}
-		nids, dErr := bs.propertyIndexDiskKeysCandidatesAdmitLocked(propKey, targetKeys, nil, admit)
+		nids, dErr := bs.propertyIndexDiskKeysCandidatesTalliedLocked(propKey, targetKeys, nil, opts.ReadTally())
 		bs.idxMu.RUnlock()
 		if dErr != nil {
 			return nil, dErr
@@ -526,6 +522,8 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey string,
 	}
 
 	hasTemporal := opts.HasValidTimeFilter()
+	tally := opts.ReadTally()
+	var admissionErr error
 	var result []*types.Node
 	// One forward iterator for the page's misses (LISTREAD, as the composite door).
 	err := bs.forEachNodeBulkTallied(nids, opts.ReadTally(), func(n *types.Node) bool {
@@ -535,11 +533,17 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey string,
 		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), n.ID().SnowflakeID(), n.Temporal(), opts) {
 			return true
 		}
+		if admissionErr = tally.Buffer(8); admissionErr != nil {
+			return false
+		}
 		result = append(result, n)
 		return opts.Limit == 0 || len(result) < opts.Limit
 	})
 	if err != nil {
 		return nil, err
+	}
+	if admissionErr != nil {
+		return nil, admissionErr
 	}
 
 	if len(result) == 0 {

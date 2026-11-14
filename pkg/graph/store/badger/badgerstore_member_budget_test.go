@@ -173,8 +173,9 @@ func TestMemberWindowWalkAdmitsTheEntriesItRejects(t *testing.T) {
 
 // TestMeteredMembershipCountsWhatItHandsOn (R2, ai-soc's host lookup, which
 // calls the store capability itself, and the graph doors, which call it the
-// same way): the store counts each member as a candidate before it hands it on,
-// across value keys, so callbacks never pass Work.Candidates and a Candidates
+// same way): after its separately tested first build, the store counts each
+// member as a candidate before it hands it on, across value keys, so callbacks
+// never pass Work.Candidates and a Candidates
 // limit refuses at the member past it; no layer above counts them again. Two
 // keys of one member each under Candidates 1: one callback, then the typed
 // refusal. RAM sidecar and on-disk index alike. A limit that covers both
@@ -203,9 +204,20 @@ func TestMeteredMembershipCountsWhatItHandsOn(t *testing.T) {
 			}
 			keys := []string{types.IndexablePropertyValueKey("a"), types.IndexablePropertyValueKey("b")}
 			for _, window := range []*storecontract.PropertyTxMemberWindow{nil, {ValidStart: 0, ValidEnd: 1000, TxAt: 0}} {
+				// Admit the first build before isolating warm callback admission.
+				_, buildMeter := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{})
+				var control []types.NodeID
+				err := bs.ForEachNodePropertyTxMemberMetered(1, "k", keys, window, buildMeter.Tally("build"), func(id types.NodeID, _ types.Instant) bool {
+					control = append(control, id)
+					return true
+				})
+				slices.Sort(control)
+				if err != nil || !slices.Equal(control, []types.NodeID{1, 2}) {
+					t.Fatalf("first-build control: %v, %v", control, err)
+				}
 				_, meter := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{Candidates: 1})
 				callbacks := 0
-				err := bs.ForEachNodePropertyTxMemberMetered(1, "k", keys, window, meter.Tally("direct"), func(types.NodeID, types.Instant) bool {
+				err = bs.ForEachNodePropertyTxMemberMetered(1, "k", keys, window, meter.Tally("direct"), func(types.NodeID, types.Instant) bool {
 					callbacks++
 					return true
 				})

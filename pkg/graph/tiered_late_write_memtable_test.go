@@ -3,6 +3,7 @@ package graph_test
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +11,10 @@ import (
 	"testing"
 	"time"
 
+	badgerv4 "github.com/dgraph-io/badger/v4"
+
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -172,14 +176,14 @@ func lwDay22(hour, minute int) types.Instant {
 	return types.Instant(time.Date(2026, 7, 22, hour, minute, 0, 0, time.UTC).UnixMilli())
 }
 
-// lwOpen opens the tiered store and graph at dir: MemTableSize 64 MiB, the
+// lwOpen opens the tiered store and graph at dir: MemTableSize hot, the
 // clock at day 25.
-func lwOpen(t *testing.T, dir string, warm int64) (*tiered.Store, *graphpkg.Graph) {
+func lwOpen(t *testing.T, dir string, warm, hot int64) (*tiered.Store, *graphpkg.Graph) {
 	t.Helper()
 	ts, err := tiered.New(tiered.Config{DataDir: dir, ShardWindow: 24 * time.Hour, ShardWindowLocation: time.UTC,
 		ColdAfter: 48 * time.Hour, FlushInterval: 1<<63 - 1, MintAtValidFrom: true,
 		Clock:        func() time.Time { return time.Date(2026, 7, 25, 9, 0, 0, 0, time.UTC) },
-		MemTableSize: lwHot, WarmMemTableSize: warm, MaxOpenColdShards: 1})
+		MemTableSize: hot, WarmMemTableSize: warm, MaxOpenColdShards: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,13 +199,14 @@ func lwOpen(t *testing.T, dir string, warm int64) (*tiered.Store, *graphpkg.Grap
 // shard, beside its read-only handle, and a batch of 1.8 MiB into the closed
 // shard (above the 1.2 MiB transaction limit of an 8 MiB memtable: staged;
 // one transaction at 64 MiB). It returns the WAL each writable open of day 22
-// left and the answers (both nodes, the relationship, the batch's nodes)
-// before and after a reopen.
-func lwRun(t *testing.T, warm int64) (wals []int64, before, after string) {
+// left, day 22's store format marker before and after the batch, and the
+// answers (both nodes, the relationship, the batch's nodes) before and after
+// a reopen.
+func lwRun(t *testing.T, warm int64) (wals []int64, markers [2]uint16, before, after string) {
 	t.Helper()
 	ctx := context.Background()
 	dir := t.TempDir()
-	ts, g := lwOpen(t, dir, warm)
+	ts, g := lwOpen(t, dir, warm, lwHot)
 	n, err := g.Nodes().Add(ctx, []string{"Signal"}, map[string]any{"k": "v1", "tkg_valid_from": lwDay22(12, 0)})
 	if err != nil {
 		t.Fatal(err)
@@ -246,21 +251,28 @@ func lwRun(t *testing.T, warm int64) (wals []int64, before, after string) {
 		t.Fatalf("late relationship update: %v", err)
 	}
 	wals = append(wals, lwWAL(t, dir))
+	markers[0] = lwMarker(t, ts)
 
 	// The late batch: 8 rows of 234 KiB (1.8 MiB) in one flush.
 	lwCloseIdle(t, ts)
 	var batch []types.NodeID
-	for i := 0; i < 8; i++ {
-		b, err := g.Nodes().Add(ctx, []string{"Signal"}, lwRow(fmt.Sprintf("b%d", i), map[string]any{"b": i, "tkg_valid_from": lwDay22(14, i)}))
-		if err != nil {
-			t.Fatalf("late batch row %d: %v", i, err)
+	if _, err := g.Batch().Run(func(bb *graphpkg.BatchBuilder) error {
+		for i := 0; i < 8; i++ {
+			b, err := bb.AddNode([]string{"Signal"}, lwRow(fmt.Sprintf("b%d", i), map[string]any{"b": i, "tkg_valid_from": lwDay22(14, i)}))
+			if err != nil {
+				return err
+			}
+			batch = append(batch, b.ID())
 		}
-		batch = append(batch, b.ID())
+		return nil
+	}); err != nil {
+		t.Fatalf("late batch: %v", err)
 	}
 	if err := ts.Flush(); err != nil {
 		t.Fatalf("late batch flush: %v", err)
 	}
 	wals = append(wals, lwWAL(t, dir))
+	markers[1] = lwMarker(t, ts)
 
 	answers := func(g *graphpkg.Graph) string {
 		s := lwAnswers(t, g, n.ID()) + lwAnswers(t, g, n2.ID()) + lwRelAnswers(t, g, rel.ID())
@@ -273,10 +285,44 @@ func lwRun(t *testing.T, warm int64) (wals []int64, before, after string) {
 	if err := g.Close(); err != nil {
 		t.Fatal(err)
 	}
-	_, g = lwOpen(t, dir, warm)
+	_, g = lwOpen(t, dir, warm, lwHot)
 	defer func() { _ = g.Close() }()
 	after = answers(g)
-	return wals, before, after
+	return wals, markers, before, after
+}
+
+// lwMarker is the store format marker (WireFormatVersionKey) on day 22's
+// open handle, read through badger (0: none written yet). A flush above the
+// transaction limit of its memtable is staged and raises it to
+// StagedFlushStoreFormatVersion, which a binary reading only up to the one
+// before refuses at reopen.
+func lwMarker(t *testing.T, ts *tiered.Store) uint16 {
+	t.Helper()
+	s, _ := lwShard(t, ts).StoreStateForTest()
+	if s == nil {
+		t.Fatal("day 22 has no handle to read the marker from")
+	}
+	var v uint16
+	err := s.DBForTest().View(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(storepkg.WireFormatVersionKey)
+		if errors.Is(err, badgerv4.ErrKeyNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			if len(val) != 2 {
+				return fmt.Errorf("store format marker has %d bytes, want 2", len(val))
+			}
+			v = uint16(val[0])<<8 | uint16(val[1])
+			return nil
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
 }
 
 // TestLateWriteColdShardOpensAtSmallMemtable: MemTableSize 64 MiB, no
@@ -291,10 +337,18 @@ func TestLateWriteColdShardOpensAtSmallMemtable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("opens 64 MiB memtables: not in -short")
 	}
-	wals, before, after := lwRun(t, 0)
-	cwals, cbefore, cafter := lwRun(t, lwHot)
+	wals, markers, before, after := lwRun(t, 0)
+	cwals, cmarkers, cbefore, cafter := lwRun(t, lwHot)
 	t.Logf("WAL of day 22's writable opens: %v (control %v)", wals, cwals)
+	t.Logf("store format marker before / after the late batch: %v (control %v, staged %d)", markers, cmarkers, storepkg.StagedFlushStoreFormatVersion)
 	t.Logf("answers:\n%s", before)
+	if markers[0] >= storepkg.StagedFlushStoreFormatVersion || markers[1] != storepkg.StagedFlushStoreFormatVersion {
+		t.Errorf("format marker %v before / after the 1.8 MiB batch on the 8 MiB handle, want below %d, then %d (a staged flush)",
+			markers, storepkg.StagedFlushStoreFormatVersion, storepkg.StagedFlushStoreFormatVersion)
+	}
+	if cmarkers[1] >= storepkg.StagedFlushStoreFormatVersion {
+		t.Errorf("control at 64 MiB: format marker %v, want below %d (one transaction)", cmarkers, storepkg.StagedFlushStoreFormatVersion)
+	}
 	for i, w := range wals {
 		if w != 2*lwCold {
 			t.Errorf("writable open %d of the cold day: WAL %d, want 2 x %d (an 8 MiB memtable)", i, w, lwCold)
@@ -328,7 +382,7 @@ func lwBackfill(t *testing.T, warm int64) (walA, walB int64, before, after strin
 	t.Helper()
 	ctx := context.Background()
 	dir := t.TempDir()
-	ts, g := lwOpen(t, dir, warm)
+	ts, g := lwOpen(t, dir, warm, lwHot)
 	if _, err := g.Nodes().Add(ctx, []string{"Signal"}, map[string]any{"seed": true, "tkg_valid_from": lwDay22(0, 1)}); err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +445,7 @@ func lwBackfill(t *testing.T, warm int64) (walA, walB int64, before, after strin
 	if err := g.Close(); err != nil {
 		t.Fatal(err)
 	}
-	_, g = lwOpen(t, dir, warm)
+	_, g = lwOpen(t, dir, warm, lwHot)
 	defer func() { _ = g.Close() }()
 	after = answers(g)
 	return walA, walB, before, after
@@ -422,5 +476,180 @@ func TestLateWriteBackfillGrowsTheColdHandle(t *testing.T) {
 	if before != cbefore || after != cafter || after != before {
 		t.Fatalf("answers differ from the control at the hot size:\nbefore:\n%s\ncontrol:\n%s\nafter reopen:\n%s\ncontrol after reopen:\n%s",
 			before, cbefore, after, cafter)
+	}
+}
+
+// lwGrowHot is the hot memtable of the grow tests that run in -short, with
+// the grow limit lowered to lwGrowLimit (SetColdGrowBytesForTest); the 32 MiB
+// constant is TestLateWriteBackfillGrowsTheColdHandle's.
+const (
+	lwGrowHot   = 16 << 20
+	lwGrowLimit = 1 << 20
+)
+
+// lwUpdateBackfill seeds four nodes and a relationship into cold day 22
+// (MemTableSize 16 MiB, WarmMemTableSize warm), closes the shard, then
+// writes nine updates of 234 KiB through one shape of door: g.Nodes().Update,
+// g.Rels().Update, or one g.Batch() a time updating a node and the
+// relationship; a flush after each. The first update runs on a fresh small
+// handle; after eight one sweep pass, then the ninth. It returns the WAL
+// after the first and the last update, the sweep closes the pass added, and
+// the answers (the four nodes and the relationship) before and after a
+// reopen.
+func lwUpdateBackfill(t *testing.T, shape string, warm int64) (walA, walB, closes int64, before, after string) {
+	t.Helper()
+	ctx := context.Background()
+	dir := t.TempDir()
+	ts, g := lwOpen(t, dir, warm, lwGrowHot)
+	ts.SetColdGrowBytesForTest(lwGrowLimit)
+	var nodes []*types.Node
+	for i := 0; i < 4; i++ {
+		n, err := g.Nodes().Add(ctx, []string{"Signal"}, map[string]any{"i": i, "tkg_valid_from": lwDay22(2, i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		nodes = append(nodes, n)
+	}
+	rel, err := g.Rels().Add(ctx, "LINKS", nodes[0], nodes[1], map[string]any{"r": 0, "tkg_valid_from": lwDay22(2, 30)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	ts.SweepHandlesForTest()
+	if s, _ := lwShard(t, ts).StoreStateForTest(); s != nil {
+		lwCloseIdle(t, ts)
+	}
+	_, base := ts.HandleSweepCountsForTest()
+	update := func(i int) {
+		t.Helper()
+		props := lwRow(fmt.Sprintf("u%d", i), map[string]any{"u": i})
+		var err error
+		switch shape {
+		case "Nodes().Update":
+			_, err = g.Nodes().Update(ctx, nodes[i%4].ID(), props)
+		case "Rels().Update":
+			_, err = g.Rels().Update(ctx, rel.ID(), props)
+		case "Batch":
+			_, err = g.Batch().Run(func(bb *graphpkg.BatchBuilder) error {
+				if err := bb.UpdateNode(nodes[i%4].ID(), props); err != nil {
+					return err
+				}
+				return bb.UpdateRelationship(rel.ID(), map[string]any{"b": i})
+			})
+		}
+		if err != nil {
+			t.Fatalf("%s %d: %v", shape, i, err)
+		}
+		if err := ts.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	update(0)
+	walA = lwWAL(t, dir)
+	for i := 1; i < 8; i++ {
+		update(i)
+	}
+	ts.SweepHandlesForTest()
+	_, c := ts.HandleSweepCountsForTest()
+	closes = c - base
+	update(8)
+	walB = lwWAL(t, dir)
+	answers := func(g *graphpkg.Graph) string {
+		s := lwRelAnswers(t, g, rel.ID())
+		for _, n := range nodes {
+			s += lwAnswers(t, g, n.ID())
+		}
+		return s
+	}
+	before = answers(g)
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, g = lwOpen(t, dir, warm, lwGrowHot)
+	defer func() { _ = g.Close() }()
+	after = answers(g)
+	return walA, walB, closes, before, after
+}
+
+// TestLateWriteUpdateBackfillGrowsTheColdHandle (M1): a backfill into a cold
+// day that only updates rows (nodes, a relationship, or batches of both)
+// grows the small cold handle as a create backfill does: past the grow limit
+// one sweep pass closes it (closes +1) and the next update opens the shard
+// at MemTableSize (WAL 2 x 8 MiB, then 2 x 16 MiB). Control: WarmMemTableSize
+// = MemTableSize, 16 MiB throughout, no close; the answers (current row,
+// every version, each as of its transaction time, the hash chain) equal,
+// before and after a reopen.
+func TestLateWriteUpdateBackfillGrowsTheColdHandle(t *testing.T) {
+	t.Parallel()
+	for _, shape := range []string{"Nodes().Update", "Rels().Update", "Batch"} {
+		t.Run(shape, func(t *testing.T) {
+			t.Parallel()
+			walA, walB, closes, before, after := lwUpdateBackfill(t, shape, 0)
+			cwalA, cwalB, ccloses, cbefore, cafter := lwUpdateBackfill(t, shape, lwGrowHot)
+			t.Logf("WAL %d / %d, sweep closes +%d (control %d / %d, +%d)", walA, walB, closes, cwalA, cwalB, ccloses)
+			if cwalA != 2*lwGrowHot || cwalB != 2*lwGrowHot || ccloses != 0 {
+				t.Fatalf("control: WAL %d / %d, closes +%d; want 2 x %d, +0", cwalA, cwalB, ccloses, lwGrowHot)
+			}
+			if walA != 2*lwCold || walB != 2*lwGrowHot || closes != 1 {
+				t.Errorf("WAL %d before the limit, %d after, closes +%d; want 2 x %d, then 2 x %d, +1", walA, walB, closes, lwCold, lwGrowHot)
+			}
+			if h, c := lwLines(cbefore, "history ")+lwLines(cbefore, "rel history "), lwLines(cbefore, "chain true <nil>"); h == 0 || c != 4 || !strings.Contains(cbefore, "rel chain true <nil>") {
+				t.Fatalf("control answers: %d earlier versions, %d valid node chains; want versions, 4 and a valid relationship chain:\n%s", h, c, cbefore)
+			}
+			if before != cbefore || after != cafter || after != before {
+				t.Fatalf("answers differ from the control:\nbefore:\n%s\ncontrol:\n%s\nafter reopen:\n%s\ncontrol after reopen:\n%s",
+					before, cbefore, after, cafter)
+			}
+		})
+	}
+}
+
+// TestLateWriteInMemoryKeepsTheHotSize (L2): an in-memory store has no idle
+// close, no handle sweep and so no grow, so a window shard a late write
+// makes cold keeps MemTableSize, not the small cold memtable. The row reads
+// back with the answers of the disk control, whose handle takes 8 MiB.
+func TestLateWriteInMemoryKeepsTheHotSize(t *testing.T) {
+	t.Parallel()
+	run := func(inMemory bool) (int64, string) {
+		cfg := tiered.Config{DataDir: t.TempDir(), ShardWindow: 24 * time.Hour, ShardWindowLocation: time.UTC,
+			ColdAfter: 48 * time.Hour, FlushInterval: 1<<63 - 1, MintAtValidFrom: true,
+			Clock:        func() time.Time { return time.Date(2026, 7, 25, 9, 0, 0, 0, time.UTC) },
+			MemTableSize: lwGrowHot}
+		if inMemory {
+			cfg.DataDir, cfg.InMemory = "", true
+		}
+		ts, err := tiered.New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := graphpkg.New(graphpkg.Config{Store: ts})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = g.Close() }()
+		ctx := context.Background()
+		n, err := g.Nodes().Add(ctx, []string{"Signal"}, map[string]any{"k": "v1", "tkg_valid_from": lwDay22(12, 0)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := g.Nodes().Update(ctx, n.ID(), map[string]any{"k": "v2"}); err != nil {
+			t.Fatal(err)
+		}
+		s, _ := lwShard(t, ts).StoreStateForTest()
+		if s == nil {
+			t.Fatal("day 22 has no handle after the late write")
+		}
+		return s.MemTableSize(), lwAnswers(t, g, n.ID())
+	}
+	mem, answers := run(true)
+	cmem, canswers := run(false)
+	t.Logf("in memory: memtable %d; disk control %d", mem, cmem)
+	if mem != lwGrowHot || cmem != lwCold {
+		t.Errorf("day 22's memtable %d in memory, %d on disk; want %d and %d", mem, cmem, lwGrowHot, lwCold)
+	}
+	if answers != canswers || lwLines(canswers, "history ") != 1 || !strings.Contains(canswers, "chain true <nil>") {
+		t.Fatalf("answers in memory:\n%s\ndisk control:\n%s", answers, canswers)
 	}
 }

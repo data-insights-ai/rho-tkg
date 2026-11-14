@@ -103,31 +103,74 @@ func relTxFrom(r *types.Relationship) types.Instant {
 // ensureLabelTxMembersBuiltLocked builds the label sidecar from the current +
 // history node state on first use. Caller holds ms.mu (write).
 func (ms *Store) ensureLabelTxMembersBuiltLocked() {
+	_ = ms.ensureLabelTxMembersBuiltUnderLocked(nil)
+}
+
+func (ms *Store) ensureLabelTxMembersBuiltUnderLocked(t *storecontract.ReadTally) (err error) {
 	if ms.labelTxMembers != nil {
-		return
+		return nil
 	}
-	built := make(map[uint16]map[types.NodeID]types.Instant)
-	ms.labelTxMembers = built
+	ms.labelTxMembers = make(map[uint16]map[types.NodeID]types.Instant)
+	defer func() {
+		if err != nil {
+			ms.labelTxMembers = nil
+		}
+	}()
 	for _, n := range ms.nodes {
+		if err := t.Candidates(1); err != nil {
+			return err
+		}
+		noteTxMemberBuildRow()
 		ms.recordNodeLabelMembersLocked(n)
 	}
 	for _, versions := range ms.nodeHistory {
 		for _, n := range versions {
+			if err := t.Candidates(1); err != nil {
+				return err
+			}
+			if err := t.History(1); err != nil {
+				return err
+			}
+			noteTxMemberBuildRow()
 			ms.recordNodeLabelMembersLocked(n)
 		}
 	}
+	return nil
 }
 
 // ensureRelTypeTxMembersBuiltLocked builds the rel-type sidecar from current +
 // history relationship state on first use. Caller holds ms.mu (write).
 func (ms *Store) ensureRelTypeTxMembersBuiltLocked() error {
+	return ms.ensureRelTypeTxMembersBuiltUnderLocked(nil)
+}
+
+func (ms *Store) ensureRelTypeTxMembersBuiltUnderLocked(t *storecontract.ReadTally) (err error) {
 	if ms.relTypeTxMembers != nil {
 		return nil
 	}
 	ms.relTypeTxMembers = make(map[uint16]map[types.RelID]types.Instant)
+	defer func() {
+		if err != nil {
+			ms.relTypeTxMembers = nil
+		}
+	}()
+	// The sealed walker decodes pages before invoking its callback. Admit
+	// its whole pass before entering it, including rows it rejects as dead.
+	if err := t.Candidates(len(ms.rels)); err != nil {
+		return err
+	}
+	for _, st := range ms.segTypes {
+		if err := t.Candidates(int(st.sealedRows)); err != nil {
+			return err
+		}
+		if err := t.Decoded(int(st.segBytes)); err != nil {
+			return err
+		}
+	}
 	// ADR-0011: every current row, sealed ones included. The sidecar must be
 	// a superset, so a decode error leaves it unbuilt and fails the read.
 	if err := ms.forEachCurrentRelLocked(func(r *types.Relationship) bool {
+		noteTxMemberBuildRow()
 		ms.recordRelTypeMemberLocked(r)
 		return true
 	}); err != nil {
@@ -136,6 +179,13 @@ func (ms *Store) ensureRelTypeTxMembersBuiltLocked() error {
 	}
 	for _, versions := range ms.relHistory {
 		for _, r := range versions {
+			if err := t.Candidates(1); err != nil {
+				return err
+			}
+			if err := t.History(1); err != nil {
+				return err
+			}
+			noteTxMemberBuildRow()
 			ms.recordRelTypeMemberLocked(r)
 		}
 	}
@@ -151,8 +201,8 @@ func (ms *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, fir
 
 // ForEachLabelTxMemberMetered implements
 // store.TxMemberGatherMeteredCapability: ForEachLabelTxMember with the members
-// of the set past the current ones held in t and the copy charged in t
-// (BufferBytes), both before it is made.
+// of the native set charged as Candidates and its copy as BufferBytes,
+// both before it is made.
 func (ms *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	if ms == nil {
 		return ErrNilStore
@@ -161,9 +211,8 @@ func (ms *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.Read
 		return errNilIterationCallback()
 	}
 	return emitMemoryTxMemberCopy(ms, func() map[types.NodeID]types.Instant { return ms.labelTxMembers[token] },
-		func() int { return len(ms.labelIdx[token]) },
 		func() bool { return ms.labelTxMembers != nil },
-		func() error { ms.ensureLabelTxMembersBuiltLocked(); return nil }, t, fn)
+		func() error { return ms.ensureLabelTxMembersBuiltUnderLocked(t) }, t, fn)
 }
 
 // ForEachRelTypeTxMember implements store.RelTypeTxMembershipCapability.
@@ -181,25 +230,19 @@ func (ms *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.Re
 		return errNilIterationCallback()
 	}
 	return emitMemoryTxMemberCopy(ms, func() map[types.RelID]types.Instant { return ms.relTypeTxMembers[token] },
-		func() int { return len(ms.typeIdx[token]) + ms.liveSealedOfLocked(token) },
 		func() bool { return ms.relTypeTxMembers != nil },
-		ms.ensureRelTypeTxMembersBuiltLocked, t, fn)
+		func() error { return ms.ensureRelTypeTxMembersBuiltUnderLocked(t) }, t, fn)
 }
 
-// emitMemoryTxMemberCopy copies the set setOf returns (building the sidecar
-// first when built reports it is not, under the write lock) and hands the copy
-// to fn outside the store lock (fn re-enters the store to resolve chains).
-// Under a budget the copy is paid for before it is made (R2 round 3): the set
-// repeats the token's current members (current, the label or type index's
-// count under ms.mu), which the caller holds or counted already, so the
-// members past them are held in t (ReadTally.Hold; this relies on every
-// acquire door recording into the set) and the copy's bytes charged as
-// BufferBytes, so a gather past the room is refused with nothing copied.
-func emitMemoryTxMemberCopy[ID comparable](ms *Store, setOf func() map[ID]types.Instant, current func() int, built func() bool, build func() error, t *storecontract.ReadTally, fn func(ID, types.Instant) bool) error {
+// emitMemoryTxMemberCopy copies the set under its owning lock and invokes fn
+// outside it. Every copied entry is native work, including current members
+// repeated by this snapshot. Deducting a later current count would let a writer
+// add members between the two snapshots without paying for them.
+func emitMemoryTxMemberCopy[ID comparable](ms *Store, setOf func() map[ID]types.Instant, built func() bool, build func() error, t *storecontract.ReadTally, fn func(ID, types.Instant) bool) error {
 	var members []indexpkg.TxMember[ID]
 	snapshot := func() error {
 		set := setOf()
-		if err := t.Hold(max(0, len(set)-current())); err != nil {
+		if err := t.Candidates(len(set)); err != nil {
 			return err
 		}
 		if err := t.Buffer(storecontract.TxMemberCopyBytes * len(set)); err != nil {

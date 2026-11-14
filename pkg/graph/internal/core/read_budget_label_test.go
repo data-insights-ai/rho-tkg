@@ -116,7 +116,17 @@ func TestReadBudget_ByLabelCtx(t *testing.T) {
 			// history-only candidates, counted besides the live ones the store
 			// lists, and a limit under the count refuses with no rows.
 			// TestR2Scans_ByLabelCtxAtATime holds the counts on the disk backends.
+			gatherCandidates := uint64(live + deleted)
+			if be.name == "memory" {
+				gatherCandidates += live
+			}
 			for _, opts := range []storepkg.QueryOpts{{TxPin: pin}, {TxAt: pin}, {ValidAt: pin, ValidAtSet: true}} {
+				wantCandidates := gatherCandidates
+				if be.name == "badger" && opts.HasTxPin() {
+					// The plain control warms presence; native as-of still admits
+					// one current-row probe for every gathered candidate.
+					wantCandidates += live + deleted
+				}
 				wantAt, err := g.Nodes.ByLabel("L", opts)
 				if err != nil || len(wantAt) != live+deleted {
 					t.Fatalf("plain at %+v = %d nodes, %v; want the %d members at the pin", opts, len(wantAt), err, live+deleted)
@@ -125,14 +135,14 @@ func TestReadBudget_ByLabelCtx(t *testing.T) {
 					t.Fatalf("no budget at %+v = %v, %v; want the plain door's", opts, nodeIDsOf(got), err)
 				}
 				bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
-				if got, err := call(bctx, opts); err != nil || fmt.Sprint(nodeIDsOf(got)) != fmt.Sprint(nodeIDsOf(wantAt)) || meter.Work().Candidates != live+deleted {
-					t.Fatalf("at %+v under an unlimited budget = %v, %v, work %+v; want the plain door's answer and %d candidates", opts, nodeIDsOf(got), err, meter.Work(), live+deleted)
+				if got, err := call(bctx, opts); err != nil || fmt.Sprint(nodeIDsOf(got)) != fmt.Sprint(nodeIDsOf(wantAt)) || meter.Work().Candidates != wantCandidates {
+					t.Fatalf("at %+v under an unlimited budget = %v, %v, work %+v; want the plain door's answer and %d candidates", opts, nodeIDsOf(got), err, meter.Work(), wantCandidates)
 				}
-				bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: live + deleted - 1})
+				bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: wantCandidates - 1})
 				got, err := call(bctx, opts)
 				rb := rbdBudgetErr(t, err, "candidates")
-				if got != nil || rb.Door != "ByLabel" || meter.Work().Candidates != live+deleted {
-					t.Fatalf("at %+v one under the count = %d nodes, %+v, work %+v; want no rows and a refusal at candidate %d", opts, len(got), rb, meter.Work(), live+deleted)
+				if got != nil || rb.Door != "ByLabel" || meter.Work().Candidates != wantCandidates {
+					t.Fatalf("at %+v one under the count = %d nodes, %+v, work %+v; want no rows and a refusal at candidate %d", opts, len(got), rb, meter.Work(), wantCandidates)
 				}
 			}
 

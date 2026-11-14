@@ -11,8 +11,14 @@ import (
 // ex-adjacency; a node's is spread over the shards like its adjacency, so a
 // read fans out over every shard (as foldAdjacency does).
 var _ storecontract.ExAdjacencyCapability = (*Store)(nil)
+var _ storecontract.ExAdjacencyMeteredCapability = (*Store)(nil)
 
 func (s *Store) ForEachExAdjacentRelID(nid types.NodeID, incoming bool, fn func(types.RelID) bool) error {
+	return s.ForEachExAdjacentRelIDMetered(nid, incoming, nil, fn)
+}
+
+// ForEachExAdjacentRelIDMetered shares native admission across every slot.
+func (s *Store) ForEachExAdjacentRelIDMetered(nid types.NodeID, incoming bool, t *storecontract.ReadTally, fn func(types.RelID) bool) error {
 	if err := s.checkOpen(); err != nil {
 		return err
 	}
@@ -23,7 +29,7 @@ func (s *Store) ForEachExAdjacentRelID(nid types.NodeID, incoming bool, fn func(
 		return err
 	}
 	return s.forEachRelID(fn, func(shard *badgerShard, cb func(types.RelID) bool) error {
-		return shard.ForEachExAdjacentRelID(nid, incoming, cb)
+		return shard.ForEachExAdjacentRelIDMetered(nid, incoming, t, cb)
 	})
 }
 

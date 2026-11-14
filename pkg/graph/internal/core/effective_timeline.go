@@ -463,11 +463,6 @@ func (t *TempOps) RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]tem
 	return out, nil
 }
 
-// nodeEffectiveTimelineLocked is the per-entity body (c.mu held).
-func (c *Core) nodeEffectiveTimelineLocked(id types.NodeID, pin types.Instant) ([]temporal.NodeSegment, error) {
-	return c.nodeEffectiveTimelineFrom(entityReads{c: c}, id, pin)
-}
-
 // nodeEffectiveTimelineFrom is the per-entity body reading through rd (c.mu held).
 func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin types.Instant) ([]temporal.NodeSegment, error) {
 	return c.nodeEffectiveTimelineTail(rd, id, types.UnboundedValidFrom, pin)

@@ -349,19 +349,34 @@ func (m *PropertyTxMembers[ID]) windowSet(vk string, id ID, old txPosting, had b
 // amortised plus a fold of the pending changes into the sorted trees every
 // ~2 sqrt(n) of them. The owner calls it under its exclusive lock.
 func (m *PropertyTxMembers[ID]) OpenWindow(vk string) bool {
+	opened, _ := m.OpenWindowAdmit(vk, nil)
+	return opened
+}
+
+// OpenWindowAdmit charges the actual member count before allocating or copying
+// a first window view. The owner holds its exclusive lock across admission and
+// construction, so writes cannot enlarge the admitted input. An existing view
+// consumes no build allowance. Its arrays become persistent index storage.
+func (m *PropertyTxMembers[ID]) OpenWindowAdmit(vk string, admit func(int) error) (bool, error) {
 	if m == nil {
-		return false
+		return false, nil
 	}
 	if m.windows[vk] != nil {
-		return true
+		return true, nil
 	}
 	ps, ok := m.values[vk]
 	if !ok {
-		return false
+		return false, nil
+	}
+	if admit != nil {
+		if err := admit(1 + len(ps.more)); err != nil {
+			return false, err
+		}
 	}
 	late := make([]spanEntry[ID], 0, 1+len(ps.more))
 	recent := make([]lastEntry[ID], 0, 1+len(ps.more))
 	add := func(id ID, q txPosting) {
+		noteWindowMemberBuilt()
 		if sp, ok := q.envLate(); ok {
 			late = append(late, spanEntry[ID]{from: sp.From, to: sp.To, id: id})
 		}
@@ -378,7 +393,7 @@ func (m *PropertyTxMembers[ID]) OpenWindow(vk string) bool {
 		m.windows = make(map[string]*windowView[ID])
 	}
 	m.windows[vk] = w
-	return true
+	return true, nil
 }
 
 // WindowAdmit is a read budget's admission of a MembersDuring walk (R2): the
@@ -804,10 +819,44 @@ func (ri RowInfo) LateSpan(after []RowInfo) Span {
 
 // Add notes one scanned row. vks is retained.
 func (s *RowScan[ID]) Add(id ID, ri RowInfo, current bool, vks []string) {
+	_ = s.AddAdmit(id, ri, current, vks, nil)
+}
+
+// AddAdmit admits the temporary row slots before either scan buffer grows.
+// The logical sizes are a 32-byte replacer and a 96-byte row including its
+// value-key slice header; retained key strings are charged by PropertyValueKeysAdmit.
+func (s *RowScan[ID]) AddAdmit(id ID, ri RowInfo, current bool, vks []string, admit func(int) error) error {
+	if admit != nil {
+		n := 32
+		if len(vks) > 0 {
+			n += 96
+		}
+		if err := admit(n); err != nil {
+			return err
+		}
+	}
 	s.reps = append(s.reps, replacer[ID]{id: id, txFrom: ri.TxFrom, from: ri.Span.From, version: ri.Version})
 	if len(vks) > 0 {
 		s.rows = append(s.rows, scanRow[ID]{id: id, ri: ri, current: current, vks: vks})
 	}
+	return nil
+}
+
+// PropertyValueKeysAdmit collects a row's indexable keys, admitting each
+// retained string and its logical 16-byte slot before the slice grows.
+func PropertyValueKeysAdmit(each func(func(string) bool), admit func(int) error) ([]string, error) {
+	var keys []string
+	var err error
+	each(func(vk string) bool {
+		if admit != nil {
+			if err = admit(16 + len(vk)); err != nil {
+				return false
+			}
+		}
+		keys = append(keys, vk)
+		return true
+	})
+	return keys, err
 }
 
 // Len reports the rows carrying a value key waiting to be recorded.

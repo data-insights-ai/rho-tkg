@@ -249,7 +249,7 @@ func (bs *Store) NodesByLabelAndPropertyKeysValidEnd(labelToken uint16, propKey 
 		return nodes, nil, err
 	}
 	bounds := make(map[types.NodeID]types.Instant)
-	nids, err := bs.propertyIndexDiskKeysCandidatesLocked(propKey, targetKeys, bounds)
+	nids, err := bs.propertyIndexDiskKeysCandidatesTalliedLocked(propKey, targetKeys, bounds, opts.ReadTally())
 	bs.idxMu.RUnlock()
 	if err != nil || len(nids) == 0 {
 		return nil, nil, err
@@ -265,6 +265,9 @@ func (bs *Store) NodesByLabelAndPropertyKeysValidEnd(labelToken uint16, propKey 
 	}
 	nodes, err := bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, match, false, kept, opts)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := opts.ReadTally().Buffer(32 * len(nodes)); err != nil { // one ValidEndProbe per returned row
 		return nil, nil, err
 	}
 	probes := make([]storecontract.ValidEndProbe, len(nodes))

@@ -8,6 +8,22 @@ import "sync/atomic"
 // itself. nil in production, so a copy pays one atomic load.
 var txMemberCopyCounter atomic.Pointer[atomic.Int64]
 
+var txMemberBuildCounter atomic.Pointer[atomic.Int64]
+
+func noteTxMemberBuildRow() {
+	if c := txMemberBuildCounter.Load(); c != nil {
+		c.Add(1)
+	}
+}
+
+// CountTxMemberBuildRowsForTest counts rows actually fed to a membership
+// build, independently of its meter. Tests using it run alone.
+func CountTxMemberBuildRowsForTest() (visited func() int64, stop func()) {
+	c := new(atomic.Int64)
+	txMemberBuildCounter.Store(c)
+	return c.Load, func() { txMemberBuildCounter.Store(nil) }
+}
+
 func noteTxMembersCopied(n int) {
 	if c := txMemberCopyCounter.Load(); c != nil {
 		c.Add(int64(n))

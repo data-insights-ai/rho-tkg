@@ -310,13 +310,10 @@ func relIDsString(r []*types.Relationship, err error) (string, error) {
 	return fmt.Sprint(ids), nil
 }
 
-// TestReadBudget_ShardOpens_TieredFoldRefused: a temporal property read with
-// no usable index folds the label's history over every shard, opening closed
-// tiered shards it does not count; under a ShardOpens budget it refuses before
-// the walk (Limit "unsupported") instead of opening them unbounded, and
-// without one it answers; so does the relationship lookup of a type with no
-// index.
-func TestReadBudget_ShardOpens_TieredFoldRefused(t *testing.T) {
+// A property fallback uses the metered label/type gather when it covers the
+// requested depth. A depth-scoped history fold has no metered gather and must
+// refuse before it starts instead of bypassing the read's allowance.
+func TestReadBudget_ShardOpens_TieredPropertyFallback(t *testing.T) {
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1, MaxOpenColdShards: 4})
 	if err != nil {
@@ -328,7 +325,8 @@ func TestReadBudget_ShardOpens_TieredFoldRefused(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close(); _ = ts.Close() })
 	ctx := context.Background()
-	if _, err := g.Nodes.Add(ctx, []string{"Ev"}, map[string]any{"u": int64(1)}); err != nil {
+	wantNode, err := g.Nodes.Add(ctx, []string{"Ev"}, map[string]any{"u": int64(1)})
+	if err != nil {
 		t.Fatal(err)
 	}
 	pin, err := g.Temporal.NowTx()
@@ -338,18 +336,22 @@ func TestReadBudget_ShardOpens_TieredFoldRefused(t *testing.T) {
 	opts := storepkg.QueryOpts{TxPin: pin}
 	bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{ShardOpens: 100})
 	got, err := g.Nodes.ByLabelAndPropertyCtx(bctx, "Ev", "u", int64(1), opts)
-	var rb *storepkg.ReadBudgetError
-	if !errors.As(err, &rb) || rb.Limit != "unsupported" || got != nil {
-		t.Fatalf("fold under ShardOpens = %d rows, %v (%+v); want an unsupported refusal", len(got), err, meter.Work())
+	if err != nil || len(got) != 1 || got[0].ID() != wantNode.ID() {
+		t.Fatalf("fallback under ShardOpens = %v, %v (%+v); want node %d", got, err, meter.Work(), wantNode.ID())
 	}
 	bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 100})
 	if got, err := g.Nodes.ByLabelAndPropertyCtx(bctx, "Ev", "u", int64(1), opts); err != nil || len(got) != 1 {
 		t.Fatalf("fold under Candidates = %d rows, %v; want 1", len(got), err)
 	}
 
-	// The relationship twin (R2, Sigma doors group D): a type with no index
-	// folds every shard's history, so it refuses a ShardOpens budget the same
-	// way and answers under a Candidates one.
+	var rb *storepkg.ReadBudgetError
+	bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{ShardOpens: 100})
+	got, err = g.Nodes.ByLabelAndPropertyCtx(bctx, "Ev", "u", int64(1), storepkg.QueryOpts{TxPin: pin, Depth: storepkg.DepthWarm})
+	if got != nil || !errors.As(err, &rb) || rb.Limit != "unsupported" || meter.Exceeded() == nil {
+		t.Fatalf("depth-scoped fold = %v, %v; want shared unsupported refusal", got, err)
+	}
+
+	// The relationship twin uses the same admitted fallback.
 	s, err := g.Nodes.Add(ctx, []string{"Ev"}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -358,7 +360,8 @@ func TestReadBudget_ShardOpens_TieredFoldRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.Rels.AddByID(ctx, "FOLD", s.ID(), e.ID(), map[string]any{"u": int64(1)}); err != nil {
+	wantRel, err := g.Rels.AddByID(ctx, "FOLD", s.ID(), e.ID(), map[string]any{"u": int64(1)})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if pin, err = g.Temporal.NowTx(); err != nil {
@@ -367,11 +370,16 @@ func TestReadBudget_ShardOpens_TieredFoldRefused(t *testing.T) {
 	opts = storepkg.QueryOpts{TxPin: pin}
 	bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{ShardOpens: 100})
 	rels, err := g.Rels.ByTypeAndPropertyCtx(bctx, "FOLD", "u", int64(1), opts)
-	if !errors.As(err, &rb) || rb.Limit != "unsupported" || rb.Door != "ByTypeAndProperty" || rels != nil {
-		t.Fatalf("rel fold under ShardOpens = %d rels, %v (%+v); want an unsupported refusal", len(rels), err, meter.Work())
+	if err != nil || len(rels) != 1 || rels[0].ID() != wantRel.ID() {
+		t.Fatalf("rel fallback under ShardOpens = %v, %v (%+v); want rel %d", rels, err, meter.Work(), wantRel.ID())
 	}
 	bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 100})
 	if got, err := g.Rels.ByTypeAndPropertyCtx(bctx, "FOLD", "u", int64(1), opts); err != nil || len(got) != 1 {
 		t.Fatalf("rel fold under Candidates = %d rows, %v; want 1", len(got), err)
+	}
+	bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{ShardOpens: 100})
+	rels, err = g.Rels.ByTypeAndPropertyCtx(bctx, "FOLD", "u", int64(1), storepkg.QueryOpts{TxPin: pin, Depth: storepkg.DepthWarm})
+	if rels != nil || !errors.As(err, &rb) || rb.Limit != "unsupported" || meter.Exceeded() == nil {
+		t.Fatalf("depth-scoped rel fold = %v, %v; want shared unsupported refusal", rels, err)
 	}
 }

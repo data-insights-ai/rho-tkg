@@ -77,6 +77,63 @@ func TestLateWriteMemtable_OnlyColdAtTheOpen(t *testing.T) {
 	}
 }
 
+// TestLateWriteMemtable_InMemoryKeepsTheHotSize (L2): an in-memory store has
+// no idle close, no handle sweep and so no grow: a window shard a late write
+// makes cold keeps its first handle for good, so with WarmMemTableSize 0 it
+// takes MemTableSize, not the small cold memtable. An explicit
+// WarmMemTableSize is kept as set, in memory too. Control: the same write on
+// disk opens at the cold size. The native counter is the handle's badger
+// option (BadgerStore.MemTableSize); the row reads back in each case.
+func TestLateWriteMemtable_InMemoryKeepsTheHotSize(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		inMemory bool
+		warm     int64
+		want     int64
+	}{
+		{"in memory", true, 0, cgHot},
+		{"in memory, WarmMemTableSize 8 MiB", true, coldMemTableSize, coldMemTableSize},
+		{"on disk (control)", false, 0, coldMemTableSize},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			clock := &tierClock{}
+			clock.set(julDay(22, 12))
+			cfg := tierClockCfg(t.TempDir(), clock)
+			if tc.inMemory {
+				cfg.DataDir = ""
+				cfg.InMemory = true
+			}
+			cfg.MemTableSize = cgHot
+			cfg.WarmMemTableSize = tc.warm
+			ts, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = ts.Close() })
+			reg := registrypkg.NewLabelRegistry()
+			ts.SetLabelRegistry(reg)
+			tok, _ := reg.GetOrCreate("Signal")
+			id := warmMemPut(t, ts, tok, 10, 3)
+			es := ts.EventShardsForTest()["2026-07-10"]
+			if es == nil || es.Tier() != TierCold {
+				t.Fatalf("day 10 is %+v, want a cold shard", es)
+			}
+			s, _ := es.StoreStateForTest()
+			if s == nil {
+				t.Fatal("day 10 has no handle after the late write")
+			}
+			if got := s.MemTableSize(); got != tc.want {
+				t.Errorf("day 10's handle MemTableSize %d, want %d", got, tc.want)
+			}
+			if _, err := ts.GetNode(id); err != nil {
+				t.Fatalf("the late row: %v", err)
+			}
+		})
+	}
+}
+
 // writableOpens records the MemTableSize of every writable open of day 10
 // (newShardStore's config) until the returned func is called, which removes
 // the hook and returns them.

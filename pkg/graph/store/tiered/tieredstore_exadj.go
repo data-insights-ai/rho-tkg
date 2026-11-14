@@ -62,7 +62,9 @@ func (ts *Store) exAdjShardsCharged(nid types.NodeID, withEvent bool, opens *sto
 	if err := opens.Exceeded(); err != nil { // a refused read opens no further shard
 		return nil, release, err
 	}
-	event, eventCheckin, err := es.checkoutForReadCharged(ts, false, opens)
+	// Enumeration only reads keys. A metered read must use the read-only
+	// checkout, which refuses any unmeterable cold recovery or index repair.
+	event, eventCheckin, err := es.checkoutForReadCharged(ts, opens != nil, opens)
 	if err != nil {
 		return nil, release, err
 	}
@@ -88,7 +90,7 @@ func (ts *Store) exAdjRelIDsCharged(nid types.NodeID, incoming, withEvent bool, 
 	}
 	var ids []types.RelID
 	for _, s := range shards {
-		if err := s.ForEachExAdjacentRelID(nid, incoming, func(id types.RelID) bool { ids = append(ids, id); return true }); err != nil {
+		if err := appendExAdjacentIDs(s, nid, incoming, opens, &ids); err != nil {
 			return nil, err
 		}
 	}
@@ -134,4 +136,21 @@ func (ts *Store) noteHistoryRowLegs(rid types.RelID, r *types.Relationship) erro
 		return err
 	}
 	return ts.NoteExAdjacentRel(rid, r.StartNodeID(), r.EndNodeID())
+}
+
+// appendExAdjacentIDs accounts for the fan-out's copy separately from the
+// shard's native snapshot. Both spend the same read's buffer allowance.
+func appendExAdjacentIDs(s *BadgerStore, nid types.NodeID, incoming bool, t *storecontract.ReadTally, ids *[]types.RelID) error {
+	var refused error
+	err := s.ForEachExAdjacentRelIDMetered(nid, incoming, t, func(id types.RelID) bool {
+		if refused = t.Buffer(8); refused != nil {
+			return false
+		}
+		*ids = append(*ids, id)
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	return refused
 }

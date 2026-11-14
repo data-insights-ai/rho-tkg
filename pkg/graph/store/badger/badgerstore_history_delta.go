@@ -37,12 +37,25 @@ func (bs *Store) readHistoryRelRaw(id snowflake.ID, version uint64) ([]byte, err
 }
 
 func (bs *Store) readHistoryRaw(key []byte) ([]byte, error) {
+	return bs.readHistoryRawTallied(key, nil)
+}
+
+// readHistoryRawTallied owns a live history point read and its retained bytes.
+// Lookup/capture precedes opening the transaction, as on the plain path.
+func (bs *Store) readHistoryRawTallied(key []byte, t *storecontract.ReadTally) ([]byte, error) {
+	if err := t.History(1); err != nil {
+		return nil, err
+	}
 	if op, found := bs.lookupPending(string(key)); found {
 		if op.opType == writeOpDelete {
 			return nil, ErrVersionNotFound
 		}
+		if err := t.Buffer(len(op.value)); err != nil {
+			return nil, err
+		}
 		out := make([]byte, len(op.value))
 		copy(out, op.value)
+		noteHistoryBytesCopied(len(out))
 		return out, nil
 	}
 	var out []byte
@@ -54,16 +67,26 @@ func (bs *Store) readHistoryRaw(key []byte) ([]byte, error) {
 		if err != nil {
 			return err
 		}
-		return item.Value(func(val []byte) error {
-			out = make([]byte, len(val))
-			copy(out, val)
-			return nil
-		})
+		out, err = copyHistoryItem(item, t)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// copyHistoryItem admits retained raw bytes before Badger's ValueCopy. Both
+// snapshot version reads and native as-of anchors share this copy boundary.
+func copyHistoryItem(item *badgerv4.Item, t *storecontract.ReadTally) ([]byte, error) {
+	if err := t.Buffer(int(item.ValueSize())); err != nil {
+		return nil, err
+	}
+	raw, err := item.ValueCopy(nil)
+	if err == nil {
+		noteHistoryBytesCopied(len(raw))
+	}
+	return raw, err
 }
 
 // ---- write-side: full-or-delta value construction ----
@@ -164,6 +187,20 @@ func (bs *Store) reconstructNodeHistoryWire(id snowflake.ID, version uint64, raw
 // t (RH list R2; nil counts nothing) the bytes it decodes, before each decode:
 // the row, and for a delta its anchor.
 func (bs *Store) reconstructNodeHistoryWireTallied(id snowflake.ID, version uint64, raw []byte, local localAnchorFunc, t *storecontract.ReadTally) (storepkg.NodeWire, error) {
+	return bs.reconstructNodeHistoryWireWithAnchor(version, raw, func(av uint64) ([]byte, error) {
+		return bs.fetchAnchorRaw(av, local, func() ([]byte, error) {
+			raw, err := bs.readHistoryRawTallied(storepkg.HistNodeKey(id, av), t)
+			if err == nil {
+				noteHistoryAnchorBytesCopied(len(raw))
+			}
+			return raw, err
+		})
+	}, t)
+}
+
+// reconstructNodeHistoryWireWithAnchor propagates anchor admission errors.
+// Its resolver owns the read/copy and cannot fall back after refusing work.
+func (bs *Store) reconstructNodeHistoryWireWithAnchor(version uint64, raw []byte, anchor func(uint64) ([]byte, error), t *storecontract.ReadTally) (storepkg.NodeWire, error) {
 	if err := t.DecodedHistory(len(raw)); err != nil {
 		return storepkg.NodeWire{}, err
 	}
@@ -179,7 +216,7 @@ func (bs *Store) reconstructNodeHistoryWireTallied(id snowflake.ID, version uint
 		return storepkg.NodeWire{}, err
 	}
 	anchorVer := storepkg.AnchorVersionFor(version, bs.historyAnchorInterval)
-	anchorRaw, err := bs.fetchAnchorRaw(anchorVer, local, func() ([]byte, error) { return bs.readHistoryNodeRaw(id, anchorVer) })
+	anchorRaw, err := anchor(anchorVer)
 	if err != nil {
 		return storepkg.NodeWire{}, fmt.Errorf("graph: read node history anchor v%d: %w", anchorVer, err)
 	}
@@ -210,6 +247,19 @@ func (bs *Store) reconstructRelHistoryWire(id snowflake.ID, version uint64, raw 
 
 // reconstructRelHistoryWireTallied mirrors reconstructNodeHistoryWireTallied.
 func (bs *Store) reconstructRelHistoryWireTallied(id snowflake.ID, version uint64, raw []byte, local localAnchorFunc, t *storecontract.ReadTally) (storepkg.RelWire, error) {
+	return bs.reconstructRelHistoryWireWithAnchor(version, raw, func(av uint64) ([]byte, error) {
+		return bs.fetchAnchorRaw(av, local, func() ([]byte, error) {
+			raw, err := bs.readHistoryRawTallied(storepkg.HistRelKey(id, av), t)
+			if err == nil {
+				noteHistoryAnchorBytesCopied(len(raw))
+			}
+			return raw, err
+		})
+	}, t)
+}
+
+// reconstructRelHistoryWireWithAnchor is the relationship counterpart.
+func (bs *Store) reconstructRelHistoryWireWithAnchor(version uint64, raw []byte, anchor func(uint64) ([]byte, error), t *storecontract.ReadTally) (storepkg.RelWire, error) {
 	if err := t.DecodedHistory(len(raw)); err != nil {
 		return storepkg.RelWire{}, err
 	}
@@ -225,7 +275,7 @@ func (bs *Store) reconstructRelHistoryWireTallied(id snowflake.ID, version uint6
 		return storepkg.RelWire{}, err
 	}
 	anchorVer := storepkg.AnchorVersionFor(version, bs.historyAnchorInterval)
-	anchorRaw, err := bs.fetchAnchorRaw(anchorVer, local, func() ([]byte, error) { return bs.readHistoryRelRaw(id, anchorVer) })
+	anchorRaw, err := anchor(anchorVer)
 	if err != nil {
 		return storepkg.RelWire{}, fmt.Errorf("graph: read rel history anchor v%d: %w", anchorVer, err)
 	}
@@ -247,11 +297,14 @@ func (bs *Store) reconstructRelHistoryWireTallied(id snowflake.ID, version uint6
 	return w, nil
 }
 
-// historyNodeTemporal decodes only enough of a node history value to read its
+// historyNodeTemporalTallied decodes only enough of a node history value to read its
 // temporal metadata (for as-of classification): a delta carries the full
 // temporal block verbatim in its Meta, so no anchor read is needed. Used by the
 // reverse as-of scan, which then fully reconstructs only the winning version.
-func (bs *Store) historyNodeTemporal(id snowflake.ID, version uint64, raw []byte) (*types.Node, error) {
+func (bs *Store) historyNodeTemporalTallied(id snowflake.ID, version uint64, raw []byte, t *storecontract.ReadTally) (*types.Node, error) {
+	if err := t.DecodedHistory(len(raw)); err != nil {
+		return nil, err
+	}
 	var w storepkg.NodeWire
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
 		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {
@@ -267,8 +320,15 @@ func (bs *Store) historyNodeTemporal(id snowflake.ID, version uint64, raw []byte
 	return bs.decodeNodeHistoryWireForKey(w, id, version)
 }
 
-// historyRelTemporal mirrors historyNodeTemporal for relationships.
+// historyRelTemporal mirrors historyNodeTemporalTallied without a tally.
 func (bs *Store) historyRelTemporal(id snowflake.ID, version uint64, raw []byte) (*types.Relationship, error) {
+	return bs.historyRelTemporalTallied(id, version, raw, nil)
+}
+
+func (bs *Store) historyRelTemporalTallied(id snowflake.ID, version uint64, raw []byte, t *storecontract.ReadTally) (*types.Relationship, error) {
+	if err := t.DecodedHistory(len(raw)); err != nil {
+		return nil, err
+	}
 	var w storepkg.RelWire
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
 		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {

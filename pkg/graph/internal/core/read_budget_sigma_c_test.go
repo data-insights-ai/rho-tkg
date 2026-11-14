@@ -64,7 +64,8 @@ func scHistDoors(g *Core, node types.NodeID, rel types.RelID) []scHist {
 //   - the plain door reads every version (Core.historyRead) and has no budget to
 //     stop at; without a budget, and under an unlimited one, the Ctx door's
 //     answer is the plain door's, and the unlimited meter counts one candidate
-//     and exactly one history version examined per row;
+//     and each capture, merge and decode examination, with one native decode
+//     per row;
 //   - a limit of 1 on history examined or decoded bytes refuses with
 //     *ReadBudgetError at that limit from History and no rows, the meter equal
 //     to the error's work, and the read stops there: at most two versions
@@ -102,12 +103,21 @@ func TestReadBudget_SigmaC_History(t *testing.T) {
 						}
 						cold()
 						fctx, full := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
+						nativeBefore := hr2Native(t, g, []types.NodeID{lw.node}, []types.RelID{lw.rel})
 						if got, _, err := d.ctx(fctx); err != nil || got != want {
 							t.Fatalf("unlimited = %q, %v; want the plain rows %q", got, err, want)
 						}
 						total := full.Work()
-						if total.Candidates != 1 || total.HistoryExamined != uint64(rows) || total.DecodedBytes == 0 || total.ShardOpens != 0 { // #nosec G115 -- counts
-							t.Fatalf("unlimited work %+v; want 1 candidate, %d history versions, decoded bytes and no shard opens", total, rows)
+						// Committed raw capture plus decode; a pending overlay
+						// also merges each captured entry before decoding it.
+						phases := uint64(2)
+						if !flushed {
+							phases++
+						}
+						wantHistory := phases * uint64(rows) // #nosec G115 -- a test count
+						native := hr2Native(t, g, []types.NodeID{lw.node}, []types.RelID{lw.rel}) - nativeBefore
+						if total.Candidates != 1 || total.HistoryExamined != wantHistory || total.DecodedBytes == 0 || total.ShardOpens != 0 || total.BufferBytes == 0 || native != int64(rows) {
+							t.Fatalf("unlimited work %+v, native decodes %d; want 1 candidate, %d history examinations, %d decodes, buffer/decode bytes and no shard opens", total, native, wantHistory, rows)
 						}
 						for _, limit := range []string{"history examined", "decoded bytes"} {
 							t.Run(limit, func(t *testing.T) {

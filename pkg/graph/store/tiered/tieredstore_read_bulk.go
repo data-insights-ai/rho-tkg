@@ -162,7 +162,18 @@ func (ts *Store) NodeCount() (int, error) {
 	return total, nil
 }
 
+var _ storecontract.MemberCountMeteredCapability = (*Store)(nil)
+
 func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
+	return ts.NodeCountByLabelMetered(token, nil)
+}
+
+// NodeCountByLabelMetered is NodeCountByLabel under a read budget
+// (storecontract.MemberCountMeteredCapability): the archive not yet opened and
+// each cold shard without sealed counts is charged to t before its open, and a
+// refusal returns the budget error with that shard left closed. A nil t is
+// NodeCountByLabel.
+func (ts *Store) NodeCountByLabelMetered(token uint16, t *storecontract.ReadTally) (int, error) {
 	if err := ts.checkOpen(); err != nil {
 		return 0, err
 	}
@@ -185,7 +196,7 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 	total += n
 
 	ts.refArchiveGapHook()
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchiveCharged(t)
 	if archiveErr != nil {
 		return 0, archiveErr
 	}
@@ -215,7 +226,7 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 			results[i].count = n
 			return
 		}
-		store, release, err := es.checkoutStoreReadOnly(ts)
+		store, release, err := es.checkoutBudgeted(ts, t)
 		if err != nil {
 			results[i].err = err
 			return

@@ -60,9 +60,16 @@ func (ms *Store) nodeHistoryRemovedLocked(id types.NodeID) {
 
 // relValidEndRowsLocked returns every stored row of rel id (none: gone).
 // Caller holds ms.mu.
-func (ms *Store) relValidEndRowsLocked(id types.RelID) ([]indexpkg.ValidEndRow, error) {
+func (ms *Store) relValidEndRowsLocked(id types.RelID, t *storecontract.ReadTally) ([]indexpkg.ValidEndRow, error) {
+	if err := t.History(len(ms.relHistory[id])); err != nil {
+		return nil, err
+	}
 	var rows []indexpkg.ValidEndRow
 	for v, r := range ms.relHistory[id] {
+		if err := t.Buffer(64 + 2); err != nil {
+			return nil, err
+		}
+		ms.validEndHistoryCopies.Add(1)
 		row := indexpkg.ValidEndRowOfRel(r, true)
 		row.Version = v
 		rows = append(rows, row)
@@ -74,6 +81,11 @@ func (ms *Store) relValidEndRowsLocked(id types.RelID) ([]indexpkg.ValidEndRow, 
 			return nil, err
 		}
 		if sealed {
+			// A sealed row decoder receives the encoded segment. Charge its
+			// stored size before entering the decoder, as for a wire row.
+			if err := t.Decoded(sg.bytes); err != nil {
+				return nil, err
+			}
 			if cur, err = sg.seg.Row(row); err != nil {
 				return nil, err
 			}
@@ -81,22 +93,35 @@ func (ms *Store) relValidEndRowsLocked(id types.RelID) ([]indexpkg.ValidEndRow, 
 		}
 	}
 	if ok {
+		if err := t.Buffer(64 + 2); err != nil {
+			return nil, err
+		}
 		rows = append(rows, indexpkg.ValidEndRowOfRel(cur, false))
 	}
 	return rows, nil
 }
 
-func (ms *Store) nodeValidEndRowsLocked(id types.NodeID) []indexpkg.ValidEndRow {
+func (ms *Store) nodeValidEndRowsLocked(id types.NodeID, t *storecontract.ReadTally) ([]indexpkg.ValidEndRow, error) {
+	if err := t.History(len(ms.nodeHistory[id])); err != nil {
+		return nil, err
+	}
 	var rows []indexpkg.ValidEndRow
 	for v, n := range ms.nodeHistory[id] {
+		if err := t.Buffer(64 + 2*n.LabelTokenCount()); err != nil {
+			return nil, err
+		}
+		ms.validEndHistoryCopies.Add(1)
 		row := indexpkg.ValidEndRowOfNode(n, true)
 		row.Version = v
 		rows = append(rows, row)
 	}
 	if n, ok := ms.nodes[id]; ok {
+		if err := t.Buffer(64 + 2*n.LabelTokenCount()); err != nil {
+			return nil, err
+		}
 		rows = append(rows, indexpkg.ValidEndRowOfNode(n, false))
 	}
-	return rows
+	return rows, nil
 }
 
 // validEndCandidates answers ix for toks under ms.mu.RLock when every token
@@ -119,20 +144,7 @@ func (ms *Store) validEndCandidates(ix *indexpkg.ValidEndIndex, toks []uint16, e
 		if err := t.Candidates(1); err != nil {
 			return nil, err
 		}
-		r, err := rows(id)
-		if err != nil {
-			return nil, err
-		}
-		hist := 0
-		for _, row := range r {
-			if row.Hist {
-				hist++
-			}
-		}
-		if err := t.History(hist); err != nil { // a chain's versions all at once, as the memory store counts them everywhere
-			return nil, err
-		}
-		return r, nil
+		return rows(id)
 	}
 	if t == nil {
 		metered = rows
@@ -141,7 +153,7 @@ func (ms *Store) validEndCandidates(ix *indexpkg.ValidEndIndex, toks []uint16, e
 		if err := ix.ResolveUnknownUnder(t, metered); err != nil {
 			return nil, err
 		}
-		return ix.Candidates(toks, pin, validFrom), nil
+		return ix.CandidatesUnder(toks, pin, validFrom, t)
 	}
 	tracked := func() bool {
 		for _, tok := range toks {
@@ -188,7 +200,7 @@ func (ms *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom t
 	if ms == nil {
 		return nil, ErrNilStore
 	}
-	return ms.validEndCandidates(&ms.relValidEnds, []uint16{typeToken}, ms.ensureRelTypeTxMembersBuiltLocked,
+	return ms.validEndCandidates(&ms.relValidEnds, []uint16{typeToken}, func() error { return ms.ensureRelTypeTxMembersBuiltUnderLocked(t) },
 		func(tok uint16) iter.Seq[int64] {
 			return func(yield func(int64) bool) {
 				for id := range ms.relTypeTxMembers[tok] {
@@ -198,7 +210,7 @@ func (ms *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom t
 				}
 			}
 		},
-		func(id int64) ([]indexpkg.ValidEndRow, error) { return ms.relValidEndRowsLocked(types.RelID(id)) },
+		func(id int64) ([]indexpkg.ValidEndRow, error) { return ms.relValidEndRowsLocked(types.RelID(id), t) },
 		pin, validFrom, t)
 }
 
@@ -222,7 +234,7 @@ func (ms *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 		return nil, ErrNilStore
 	}
 	return ms.validEndCandidates(&ms.nodeValidEnds, labelTokens,
-		func() error { ms.ensureLabelTxMembersBuiltLocked(); return nil },
+		func() error { return ms.ensureLabelTxMembersBuiltUnderLocked(t) },
 		func(tok uint16) iter.Seq[int64] {
 			return func(yield func(int64) bool) {
 				for id := range ms.labelTxMembers[tok] {
@@ -233,7 +245,7 @@ func (ms *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 			}
 		},
 		func(id int64) ([]indexpkg.ValidEndRow, error) {
-			return ms.nodeValidEndRowsLocked(types.NodeID(id)), nil
+			return ms.nodeValidEndRowsLocked(types.NodeID(id), t)
 		},
 		pin, validFrom, t)
 }

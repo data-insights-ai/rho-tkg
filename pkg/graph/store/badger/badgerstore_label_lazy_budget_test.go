@@ -111,6 +111,13 @@ func TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt(t *testing.T) {
 				reads = uint64(len(want)) // #nosec G115 -- a count
 			}
 			cold := before + walk + reads // a cold read counts the walk once: it is the listing of the members it built
+			if d.reads {
+				// Enlistment, pending-ID capture, entity reads and the candidate
+				// list each walk the members. Dense current IDs require one
+				// forward iterator step between consecutive reads.
+				cold = walk + 4*members + members - 1
+				lists = members
+			}
 
 			// The control: no limit, the eager open's answer, the exact count, one
 			// map built, every key of the label walked once; a second read walks
@@ -120,6 +127,9 @@ func TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt(t *testing.T) {
 			got, err := d.run(t, lazy, free)
 			if err != nil || !slices.Equal(got, want) {
 				t.Fatalf("unlimited = %v, %v; want %v", got, err, want)
+			}
+			if d.reads && lazy.validEndIteratorSteps.Load() != int64(members-1) { // #nosec G115 -- fixture count
+				t.Fatalf("native forward steps %d; want %d", lazy.validEndIteratorSteps.Load(), members-1)
 			}
 			if counted, built, keys := free.Work().Candidates, lazy.LabelMapBuildsForTest(), lazy.LabelKeysWalkedForTest(); counted != cold || built != 1 || keys != int64(walk) { // #nosec G115 -- a count
 				t.Errorf("unlimited: %d candidates counted, %d maps built, %d keys walked; want %d (%d before the walk, %d keys walked, %d entities read; a cold listing is the walk, not a second charge for the same members), 1 and %d", counted, built, keys, cold, before, walk, reads, walk)

@@ -227,8 +227,10 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 									t.Fatalf("%s, %s 1: %d rows decoded before the refusal", what, c.limit, decoded)
 								}
 							}
-							// About one row decoded at most, whatever the matches.
-							if total.DecodedBytes > 0 && got.DecodedBytes > 3*total.DecodedBytes/uint64(size) {
+							// A history-only bound does not restrict current-index lookup
+							// decodes that precede the first history read. Other limits
+							// stop near the first row.
+							if c.limit != "history examined" && total.DecodedBytes > 0 && got.DecodedBytes > 3*total.DecodedBytes/uint64(size) {
 								t.Fatalf("%s, %s 1: decoded %d bytes before the refusal (unlimited %d over %d matches)", what, c.limit, got.DecodedBytes, total.DecodedBytes, size)
 							}
 						}

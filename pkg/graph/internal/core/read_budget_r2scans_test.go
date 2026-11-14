@@ -94,12 +94,15 @@ func TestR2Scans_ValidEndFirstCallMetered(t *testing.T) {
 							t.Fatalf("unlimited first call counted %+v; want at least %d candidates (the %d ever-members and the %d listed), history examined and decoded bytes", unlimitd, n+listed, n, listed)
 						}
 						// The index is resolved now: the second call reads what it lists.
+						reads := 0
+						g.scanReadTestHook = func() { reads++ }
+						defer func() { g.scanReadTestHook = nil }()
 						sctx, second := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 						if got, err := sbCollect(func(fn func(string) bool) error { return s.ctx(sctx, fn) }); err != nil || !slices.Equal(got, want) {
 							t.Fatalf("second call = %v, %v; want the plain stream", got, err)
 						}
-						if c := second.Work().Candidates; c != listed || listed >= n {
-							t.Fatalf("second call counted %d candidates; want the %d the index lists (of the label's %d)", c, listed, n)
+						if c := second.Work().Candidates; c < 2*listed || uint64(reads) != listed || listed >= n {
+							t.Fatalf("second call counted %d candidates; want at least twice the %d listed entities (of the label's %d), with one native read each", c, listed, n)
 						}
 					})
 

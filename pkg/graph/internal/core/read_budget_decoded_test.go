@@ -261,7 +261,7 @@ func TestReadBudget_DecodedBytes_NoBudgetUnchanged(t *testing.T) {
 			shut()
 			g, shut = be.open(t, dir)
 			defer shut()
-			ctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: 1, Segments: 1})
+			ctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Segments: 1})
 			got, err := g.Temporal.RelEffectiveTimelinesByProperties(ctx, rtbType, rtbKeys, [][]any{{"e1", "d1"}}, pin)
 			if err != nil || len(got) != 1 || len(got[0]) != 1 || meter.Work().DecodedBytes < 5000 {
 				t.Fatalf("unlimited bytes = %v, %v, %+v", got, err, meter.Work())

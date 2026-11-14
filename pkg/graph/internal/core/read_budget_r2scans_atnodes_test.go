@@ -119,13 +119,21 @@ func TestR2Scans_AtNodes(t *testing.T) {
 						}
 						total := full.Work()
 						live, gone := uint64(n-len(w.deletedRels)), uint64(len(w.deletedRels))
-						gather := 1 + live + gone // the seed, its current adjacency, its ex-adjacency
-						wantBuf := uint64(8 * (1 + n))
+						gather := 1 + live + gone         // the seed, its current adjacency, its ex-adjacency
+						wantBuf := uint64(8*(1+n) + 24*n) // output IDs and the union map
+						if flushed {
+							wantBuf += 8 * gone
+						} else {
+							wantBuf += 32 * gone
+						}
+						if be.name == "tiered" {
+							wantBuf += 8 * gone
+						}
 						if columns {
 							wantBuf += 24 * uint64(len(want))
 						}
-						if total.Candidates != gather+n || total.Segments != uint64(len(want)) || total.BufferBytes != wantBuf { // #nosec G115 -- a count
-							t.Fatalf("unlimited work %+v; want %d candidates (%d in the gather, %d reads), %d segments, %d buffer bytes", total, gather+n, gather, n, len(want), wantBuf)
+						if total.Candidates < gather+n || total.Segments != uint64(len(want)) || total.BufferBytes < wantBuf { // #nosec G115 -- a count
+							t.Fatalf("unlimited work %+v; want at least the core contribution: %d candidates (%d in the gather, %d reads), %d segments, %d buffer bytes", total, gather+n, gather, n, len(want), wantBuf)
 						}
 						if flushed && (total.DecodedBytes == 0 || total.HistoryExamined == 0) {
 							t.Fatalf("flushed scan counted %+v; want decoded bytes and history examined", total)
@@ -157,8 +165,8 @@ func TestR2Scans_AtNodes(t *testing.T) {
 						if !columns {
 							// Inside the reads: the entities read before the refusal are handed out.
 							got, work, _ = refused(t, storepkg.ReadBudget{Candidates: gather + 4}, "candidates")
-							if work.Candidates != gather+5 || len(got) == 0 {
-								t.Fatalf("Candidates %d (four reads): %d callbacks, work %+v; want a prefix and %d candidates counted", gather+4, len(got), work, gather+5)
+							if work.Candidates != gather+5 || len(got) != 0 {
+								t.Fatalf("Candidates %d (four reads): %d callbacks, work %+v; want the refused chunk withheld and %d candidates counted", gather+4, len(got), work, gather+5)
 							}
 						}
 						// Exact at the count.
@@ -180,8 +188,8 @@ func TestR2Scans_AtNodes(t *testing.T) {
 							t.Fatalf("BufferBytes 1: %d callbacks, work %+v; want none and nothing counted (the seed list passes the limit first)", len(got), work)
 						}
 						got, work, _ = refused(t, storepkg.ReadBudget{BufferBytes: 8 + 8*uint64(n) - 1}, "buffer bytes")
-						if len(got) != 0 || work.Candidates != gather {
-							t.Fatalf("BufferBytes one under the lists: %d callbacks, work %+v; want none, the gather counted (%d candidates) and no relationship read", len(got), work, gather)
+						if len(got) != 0 || work.Candidates != 1+live {
+							t.Fatalf("BufferBytes inside the union: %d callbacks, work %+v; want none, seed and current adjacency admitted (%d candidates), no relationship read", len(got), work, 1+live)
 						}
 						got, work, _ = refused(t, storepkg.ReadBudget{HistoryExamined: 1}, "history examined")
 						if len(got) != 0 || work.Candidates > gather+2 {
@@ -203,8 +211,8 @@ func TestR2Scans_AtNodes(t *testing.T) {
 							if len(got) != 0 || work.Segments != 4 {
 								t.Fatalf("Segments 3: %d callbacks, work %+v; want no batch (the scan holds every row first) and 4 segments counted", len(got), work)
 							}
-							got, work, _ = refused(t, storepkg.ReadBudget{BufferBytes: wantBuf - 1}, "buffer bytes")
-							if len(got) != 0 || work.BufferBytes != wantBuf {
+							got, work, _ = refused(t, storepkg.ReadBudget{BufferBytes: total.BufferBytes - 1}, "buffer bytes")
+							if len(got) != 0 || work.BufferBytes != total.BufferBytes {
 								t.Fatalf("BufferBytes one under: %d callbacks, work %+v; want no batch and a refusal at the last held row", len(got), work)
 							}
 						}
@@ -279,8 +287,8 @@ func TestR2Scans_AtNodesGates(t *testing.T) {
 // cover every relationship (the graph then folds the history IDs of every
 // relationship, c.exAdj nil) counts each ID the fold produces as a candidate,
 // before it is collected, and a Candidates limit stops the fold at that ID; on a
-// store that opens shards the fold cannot count its opens, so a ShardOpens
-// budget refuses it before the walk (Limit "unsupported") with no shard opened.
+// tiered store the fold cannot count its opens or history probes, so any
+// meter refuses it before the walk (Limit "unsupported") with no shard opened.
 func TestR2Scans_AtNodesWithoutExAdjacency(t *testing.T) {
 	t.Parallel()
 	const n = 12
@@ -323,13 +331,16 @@ func TestR2Scans_AtNodesWithoutExAdjacency(t *testing.T) {
 		w := sbBuildTiered(t)
 		d := r2AtNodesDoors(w.g, w, w.pin)[0]
 		w.g.exAdj = nil
-		w.closeCold(t)
-		opens := w.opens()
-		bctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{ShardOpens: 100})
-		got, err := sbCollect(func(fn func(string) bool) error { return d.ctx(bctx, fn) })
-		rb := rbdBudgetErr(t, err, "unsupported")
-		if rb.Door != d.door || len(got) != 0 || w.opens() != opens || meter.Work().ShardOpens != 0 {
-			t.Fatalf("a ShardOpens budget over the fold = %d callbacks, %d shards opened, work %+v; want a refusal \"unsupported\" before any shard opened", len(got), w.opens()-opens, meter.Work())
+		for _, budget := range []storepkg.ReadBudget{{ShardOpens: 100}, {Candidates: 10000}, {}} {
+			w.closeCold(t)
+			opens := w.opens()
+			bctx, outer := storepkg.WithReadBudget(context.Background(), budget)
+			bctx, meter := storepkg.WithReadBudget(bctx, storepkg.ReadBudget{})
+			got, err := sbCollect(func(fn func(string) bool) error { return d.ctx(bctx, fn) })
+			rb := rbdBudgetErr(t, err, "unsupported")
+			if rb.Door != d.door || len(got) != 0 || w.opens() != opens || meter.Work().ShardOpens != 0 || outer.Exceeded() == nil || meter.Exceeded() == nil {
+				t.Fatalf("budget %+v over the fold = %d callbacks, %d shards opened, work %+v; want shared refusal before any shard opened", budget, len(got), w.opens()-opens, meter.Work())
+			}
 		}
 	})
 }

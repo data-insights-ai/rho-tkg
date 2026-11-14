@@ -70,8 +70,9 @@ type Store struct {
 	// historyMetasListed the skeletons NodeHistoryTemporalMeta and
 	// RelHistoryTemporalMeta hand out. Test counters the read meter does not
 	// keep (HistoryRowsReadForTest, HistoryMetasListedForTest; R2-5 HEADREAD).
-	historyRowsRead    atomic.Int64
-	historyMetasListed atomic.Int64
+	historyRowsRead       atomic.Int64
+	historyMetasListed    atomic.Int64
+	validEndHistoryCopies atomic.Int64 // native row construction, independent of read accounting
 
 	mu     sync.RWMutex
 	closed bool

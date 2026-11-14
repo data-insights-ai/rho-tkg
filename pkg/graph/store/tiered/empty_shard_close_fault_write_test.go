@@ -120,6 +120,7 @@ func (f *closeFaultStore) failWrite(t *testing.T, write func() error) error {
 }
 
 func TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite(t *testing.T) {
+	t.Parallel()
 	event := func(day int) *types.Node {
 		return types.NewNode(types.NodeID(vtID(vtCounter(julDay(day, 12)))), mintSignalTok, nil)
 	}

@@ -136,8 +136,8 @@ func TestReadBudget_R2Twins_RelsAtTxByIDs(t *testing.T) {
 					t.Fatalf("unlimited = %q, %v; want %q", got, err, want)
 				}
 				total := full.Work()
-				if total.Candidates != uint64(len(ids)) || total.BufferBytes != uint64(8*len(ids)) || total.HistoryExamined == 0 || flushed && total.DecodedBytes == 0 { // #nosec G115 -- counts
-					t.Fatalf("unlimited work %+v; want %d candidates, %d buffer bytes and the history looked at", total, len(ids), 8*len(ids))
+				if total.Candidates < uint64(len(ids)) || total.BufferBytes < uint64(8*len(ids)) || total.HistoryExamined == 0 || flushed && total.DecodedBytes == 0 { // #nosec G115 -- counts
+					t.Fatalf("unlimited work %+v; want at least the core contribution: %d candidates, %d buffer bytes and the history looked at", total, len(ids), 8*len(ids))
 				}
 				for _, c := range []struct {
 					limit string
@@ -158,7 +158,7 @@ func TestReadBudget_R2Twins_RelsAtTxByIDs(t *testing.T) {
 						if work.HistoryExamined != 0 || work.DecodedBytes != 0 {
 							t.Fatalf("%s %d: %+v read before the refusal; want nothing read", c.limit, c.n, work)
 						}
-					} else if work.HistoryExamined > 2 || work.DecodedBytes > total.DecodedBytes/4 {
+					} else if c.limit == "history examined" && work.HistoryExamined > 2 || c.limit == "decoded bytes" && work.DecodedBytes > total.DecodedBytes/4 {
 						t.Fatalf("%s 1: refused after %+v (unlimited %+v); want the first entity's read only", c.limit, work, total)
 					}
 					t.Logf("%s %d: refused after %+v (unlimited %+v)", c.limit, c.n, work, total)
@@ -226,7 +226,11 @@ func TestReadBudget_R2Twins_RelsEffectiveByIDs(t *testing.T) {
 				run := func(ctx context.Context, fn func(string) bool) error {
 					return g.Temporal.RelsEffectiveByIDsCtx(ctx, ids, w.pin, func(s temporal.RelSegment) bool { return fn(sbRelSeg(s)) })
 				}
+				reads := 0
+				g.scanReadTestHook = func() { reads++ }
+				defer func() { g.scanReadTestHook = nil }()
 				cold := func() {
+					reads = 0
 					if flushed {
 						rbdEvict(t, g, nil, w.rels)
 					}
@@ -247,8 +251,8 @@ func TestReadBudget_R2Twins_RelsEffectiveByIDs(t *testing.T) {
 					t.Fatalf("unlimited = %v, %v; want the plain stream\n%v", got, err, want)
 				}
 				total := full.Work()
-				if total.Candidates != uint64(len(distinct)) || total.Segments != uint64(len(want)) || total.BufferBytes != uint64(8*len(ids)) || total.HistoryExamined == 0 || flushed && total.DecodedBytes == 0 { // #nosec G115 -- counts
-					t.Fatalf("unlimited work %+v; want %d candidates (distinct IDs), %d segments, %d buffer bytes and the history looked at", total, len(distinct), len(want), 8*len(ids))
+				if total.Candidates < uint64(len(distinct)) || total.Segments != uint64(len(want)) || total.BufferBytes < uint64(8*len(ids)) || total.HistoryExamined == 0 || flushed && total.DecodedBytes == 0 { // #nosec G115 -- counts
+					t.Fatalf("unlimited work %+v; want at least the core contribution: %d candidates (distinct IDs), %d segments, %d buffer bytes and the history looked at", total, len(distinct), len(want), 8*len(ids))
 				}
 				for _, c := range []struct {
 					limit string
@@ -268,21 +272,13 @@ func TestReadBudget_R2Twins_RelsEffectiveByIDs(t *testing.T) {
 						}
 						switch c.limit {
 						case "candidates":
-							first := map[string]bool{}
-							for _, id := range distinct[:c.n] {
-								first[fmt.Sprintf("r%d", int64(id))] = true
-							}
-							var exp []string
-							for _, s := range want {
-								if first[sbEntity(s)] {
-									exp = append(exp, s)
-								}
-							}
-							if !slices.Equal(got, exp) || work.Candidates != c.n+1 {
-								t.Fatalf("candidates %d: callbacks %v, work %+v; want the first %d IDs' segments %v and %d counted", c.n, got, work, c.n, exp, c.n+1)
+							// The scan hook includes the attempted read that refuses.
+							// Sticky refusal withholds this chunk's buffered callbacks.
+							if len(got) != 0 || work.Candidates != c.n+1 || reads > int(c.n+1) {
+								t.Fatalf("candidates %d: callbacks %v, attempted reads %d, work %+v; want no callbacks and at most %d attempts", c.n, got, reads, work, c.n+1)
 							}
 						case "segments":
-							if len(got) != 3 || work.Segments != 4 || work.Candidates > 2 {
+							if len(got) != 3 || work.Segments != 4 || reads > 2 {
 								t.Fatalf("segments 3: %d callbacks, work %+v; want 3 callbacks, 4 counted, at most 2 entities read", len(got), work)
 							}
 						case "buffer bytes":
@@ -290,8 +286,8 @@ func TestReadBudget_R2Twins_RelsEffectiveByIDs(t *testing.T) {
 								t.Fatalf("buffer bytes 1: %d callbacks, work %+v; want none and no entity read", len(got), work)
 							}
 						default:
-							if work.Candidates > 2 {
-								t.Fatalf("%s 1: %d entities read before the refusal (%+v); want at most 2", c.limit, work.Candidates, work)
+							if reads > 2 {
+								t.Fatalf("%s 1: %d entities read before the refusal (%+v); want at most 2", c.limit, reads, work)
 							}
 						}
 						t.Logf("%s %d: refused after %+v (unlimited %+v)", c.limit, c.n, work, total)

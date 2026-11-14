@@ -56,13 +56,14 @@ func (bs *Store) putPendingLocked(op writeOp) {
 }
 
 // listedPrefixEnd returns the length of the prefix key k is listed under in
-// pendingByPrefix, 0 when it is not listed: a history or 0x0A key under all
-// but its 8-byte suffix, a 0x0C key under its value prefix (all but its ID and,
+// pendingByPrefix, 0 when it is not listed: label, ex-adjacency, history and
+// property keys under all but their 8-byte suffix; entity-index keys under
+// their value prefix (all but their ID and,
 // for a member entry, its transaction time; a time-ordered entry under its
 // value prefix and axis).
 func listedPrefixEnd(k string) int {
 	switch k[0] { // every key of these keyspaces is longer than its suffix
-	case storepkg.KeyHistNode, storepkg.KeyHistRel, storepkg.KeyPropertyIndex:
+	case storepkg.KeyHistNode, storepkg.KeyHistRel, storepkg.KeyPropertyIndex, storepkg.KeyLabel, storepkg.KeyExAdj:
 		return len(k) - 8
 	case storepkg.KeyEntityIndex:
 		if len(k) > storepkg.EntityIndexHeadLen {

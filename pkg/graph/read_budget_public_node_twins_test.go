@@ -14,8 +14,9 @@ import (
 // TestReadBudgetPublicNodeTwins (R2-TWINS): Temporal().NodesAtOptsByIDsCtx and
 // NodesAtTxCtx reach the graph's budgeted doors on every backend (memory
 // included): without a budget and under an unlimited one they answer what the
-// plain doors answer; NodesAtOptsByIDsCtx counts one candidate and 8 buffer bytes
-// per ID and refuses one under that count before reading; NodesAtTxCtx counts
+// plain doors answer; NodesAtOptsByIDsCtx counts one candidate and at least
+// 8 buffer bytes per ID, plus native history buffers, and refuses one under
+// the candidate count before reading; NodesAtTxCtx counts
 // every node ever stored as a candidate (the walks of the store's IDs), refuses a
 // Candidates limit below that count with nothing read, and a history limit of 1
 // within the first node's chain; a nil ctx is ErrNilContext and a cancelled one
@@ -79,7 +80,7 @@ func TestReadBudgetPublicNodeTwins(t *testing.T) {
 				run        func(c context.Context) (string, error) // the answer, or "" with the error
 				want       string
 				candidates uint64 // what an unlimited run counts
-				buffer     uint64
+				buffer     uint64 // core result/gather bytes; native history buffers add to these
 			}{
 				{"NodesAtOptsByIDs", func(c context.Context) (string, error) {
 					xs, err := tp.NodesAtOptsByIDsCtx(c, ids, opts)
@@ -107,8 +108,8 @@ func TestReadBudgetPublicNodeTwins(t *testing.T) {
 				if got, err := r.run(fctx); err != nil || got != r.want {
 					t.Fatalf("%s: unlimited = %q, %v; want %q", r.name, got, err, r.want)
 				}
-				if w := all.Work(); w.Candidates != r.candidates || w.BufferBytes != r.buffer || w.HistoryExamined == 0 {
-					t.Fatalf("%s: unlimited work %+v; want %d candidates, %d buffer bytes and the history looked at", r.name, w, r.candidates, r.buffer)
+				if w := all.Work(); w.Candidates != r.candidates || w.BufferBytes < r.buffer || w.HistoryExamined == 0 {
+					t.Fatalf("%s: unlimited work %+v; want %d candidates, at least %d buffer bytes and the history looked at", r.name, w, r.candidates, r.buffer)
 				}
 				lctx, lm := store.WithReadBudget(ctx, store.ReadBudget{Candidates: r.candidates - 1})
 				if got, err := r.run(lctx); !errors.Is(err, store.ErrReadBudget) || got != "" || lm.Work().HistoryExamined != 0 {

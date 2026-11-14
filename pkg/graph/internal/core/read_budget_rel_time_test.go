@@ -384,6 +384,13 @@ func TestReadBudget_HistoryExamined_RelByTypeAndPropertyLongHistory(t *testing.T
 					}
 				}
 			}
+			// Pending capture and committed iteration have different native costs.
+			// Finish writes so the background flush cannot change them between reads.
+			if f, ok := g.store.(interface{ Flush() error }); ok {
+				if err := f.Flush(); err != nil {
+					t.Fatal(err)
+				}
+			}
 			for _, size := range []int{8, 32} {
 				for _, o := range []struct {
 					name string
@@ -392,6 +399,11 @@ func TestReadBudget_HistoryExamined_RelByTypeAndPropertyLongHistory(t *testing.T
 					{"TxPin", storepkg.QueryOpts{TxPin: pin}},
 					{"ValidAt", storepkg.QueryOpts{ValidAt: pin, TxAt: pin}},
 				} {
+					// Isolate repeated chain reads; first membership builds have native
+					// admission regressions of their own. Warm both controls equally.
+					if got, err := g.Rels.ByTypeAndProperty("H", "k", int64(size), o.opts); err != nil || len(got) != size {
+						t.Fatalf("warm membership: %d rows, %v", len(got), err)
+					}
 					uctx, full := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 					want, err := g.Rels.ByTypeAndPropertyCtx(uctx, "H", "k", int64(size), o.opts)
 					if err != nil || len(want) != size || full.Work().HistoryExamined < uint64(size*versions/2) {
@@ -406,7 +418,13 @@ func TestReadBudget_HistoryExamined_RelByTypeAndPropertyLongHistory(t *testing.T
 					bctx, exact := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: full.Work().HistoryExamined})
 					got, err = g.Rels.ByTypeAndPropertyCtx(bctx, "H", "k", int64(size), o.opts)
 					if err != nil || fmt.Sprint(relIDsOf(got)) != fmt.Sprint(relIDsOf(want)) || exact.Work().HistoryExamined != full.Work().HistoryExamined {
-						t.Fatalf("%d %s at its own count: %d rels, %v, %+v", size, o.name, len(got), err, exact.Work())
+						t.Fatalf("%d %s at its own count: %d rels, %v, %+v; control %+v", size, o.name, len(got), err, exact.Work(), full.Work())
+					}
+					bctx, below := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: full.Work().HistoryExamined - 1})
+					got, err = g.Rels.ByTypeAndPropertyCtx(bctx, "H", "k", int64(size), o.opts)
+					rb = rbdBudgetErr(t, err, "history examined")
+					if got != nil || below.Work() != rb.Work {
+						t.Fatalf("%d %s below its own count: %d rels, %v, %+v", size, o.name, len(got), err, below.Work())
 					}
 				}
 			}
@@ -415,12 +433,10 @@ func TestReadBudget_HistoryExamined_RelByTypeAndPropertyLongHistory(t *testing.T
 }
 
 // TestReadBudget_RelByTypeAndPropertyTimeNoIndexFold: a time read of a key
-// without an index, on a type with no membership sidecar, folds the history of
-// every relationship: the type scan of the current lookup counts every
-// relationship of the type before it reads one, each history candidate the
-// fold adds counts before it is resolved, so the unlimited count covers the
-// type, the answer without a budget is the plain door's, a limit at the
-// unlimited count answers, one under it and a budget of 1 refuse with no rows.
+// without an index gathers every current and former member before resolving
+// its history. After the separately tested first build, the unlimited count
+// covers the type and a limit at that count answers exactly as the plain door;
+// one under it and a budget of 1 refuse with no rows.
 func TestReadBudget_RelByTypeAndPropertyTimeNoIndexFold(t *testing.T) {
 	t.Parallel()
 	const rels = 20
@@ -447,6 +463,7 @@ func TestReadBudget_RelByTypeAndPropertyTimeNoIndexFold(t *testing.T) {
 			if err != nil || len(plain) != rels/4 {
 				t.Fatalf("plain = %d rels, %v; want %d", len(plain), err, rels/4)
 			}
+			warmGatherMembership(t, g)
 			uctx, full := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 			got, err := g.Rels.ByTypeAndPropertyCtx(uctx, "F", "u", int64(1), opts)
 			total := full.Work().Candidates
@@ -468,8 +485,8 @@ func TestReadBudget_RelByTypeAndPropertyTimeNoIndexFold(t *testing.T) {
 
 			// History-only candidates: six relationships of a type that carried
 			// the value at the pin and were deleted after it are no current row,
-			// so the type scan counts none of them; the fold counts each before it
-			// resolves it, and a budget under that count refuses.
+			// so the current list counts none of them. The native former-member
+			// snapshot counts them before copying; a smaller budget refuses.
 			var gone []types.RelID
 			for range 6 {
 				r, err := g.Rels.AddByID(ctx, "G", s, e, map[string]any{"u": int64(1)})
@@ -497,8 +514,8 @@ func TestReadBudget_RelByTypeAndPropertyTimeNoIndexFold(t *testing.T) {
 			}
 			bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 3})
 			got, err = g.Rels.ByTypeAndPropertyCtx(bctx, "G", "u", int64(1), opts)
-			if rb := rbdBudgetErr(t, err, "candidates"); got != nil || meter.Work() != rb.Work || rb.Work.Candidates != 4 {
-				t.Fatalf("deleted, budget 3 = %d rels, %+v; want no rows, stopped at the 4th history candidate", len(got), rb.Work)
+			if rb := rbdBudgetErr(t, err, "candidates"); got != nil || meter.Work() != rb.Work || rb.Work.Candidates != uint64(len(gone)) {
+				t.Fatalf("deleted, budget 3 = %d rels, %+v; want no rows, refused before copying the six-member snapshot", len(got), rb.Work)
 			}
 		})
 	}

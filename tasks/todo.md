@@ -6,6 +6,12 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 
 ## Now
 
+- **GATEBUDGET** — latest check passes in 67.81 s with core retested and native stores cached; earlier
+  changed-package check passed in 138.48 s, both above the 60 s target;
+  grouped staged-flush setup cut two tests from 19.94 s to 3.20 s (command 24.15 s to 11.03 s);
+  three independent tiered families now use Go parallel tests (13.82 s to 9.35 s, focused race green);
+  lowering workers regressed the full test leg; done when a normal edit gate meets 60 s; waits for further measured reductions.
+  **rho/sigma:** validation turnaround.
 - **SCALE** (the standing goal, AGENTS.md § Standing orders) — Done when `docs/architecture.md` lists what grows
   with total volume instead of per shard (RAM per entity; open, crash recovery, Clear and compaction cost per store
   size; hot-shard write rate against peaks), each measured and bounded or queued here. Bounded so far: existence
@@ -14,25 +20,11 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   lazy per-entity sidecars (`relValidIdx` 43-67 B per rel on plain badger, belief watermarks, tx membership, history
   presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-MEMORY (Next). Evidence:
   `tasks/evidence/SCALE/`.
-- **READBUDGET, RELDISKWIN follow-ups** (v4.107.2) — through R2-SCANS: CHANGELOG [Unreleased]. Done when every limit refuses
-  before its work (`tasks/evidence/READBUDGET/followups.txt`). **rho/sigma:** bounds native work. Unmerged; evidence `R2CUMUL/`:
-  - R2-1 GATHERHOLD + R2-3 PRUNELIN + R2-4 STAGED, one open item (CHANGELOG describes replaced builds; `design-fixround.txt`,
-    `design-meter.txt`): `Staged` and `GatherHold` go, `ReadTally` gets Held/Hold/Drop (one allowance per read, live room),
-    pruned and dropped entries charged, tiered asks each shard first (O8). Built `17b64190`; Fable: 2 high (wrong refusals:
-    tiered Drop without scope, stale sidecar entry held twice), control != budget; fix round building. PATCH (no released name).
-  - R2-2 VEATTRIB: current labels from the decoded rows, former ones from the sidecar, no probes. Fable: mergeable, 4
-    medium; fix 2 `07b54e56` NOT mergeable (public test red 16 vs 14, 4 medium); fix 3 building (`design-veattrib3`).
-  - R2-5 HEADREAD (Sigma): fix 1 `6233da27` reviewed (a step). Fix 2 building from `design-headread2.txt`: M1 refusal ends
-    the read, M2 pinned, the tiered token read opens no shard (ShardOpens 6 -> 5), probe-only snapshot keys only.
-  - R2-6 INVENTORY: each budgeted path charged before, refused up front or in `docs/api.md` "Not yet bounded". Open: tiered
-    current-member listing under ShardOpens; several-label fold; `labelNodeIDsSnapshotTalliedLocked` buffer range;
-    `ValidEndAfter`; O1 lazy sidecar build; O2 property fold, `LabelTxMembersOf`; O3 `gatherFree`; O4 tiered's 2nd list; table `no test` cells.
-  - R2-7 CONSUMERS: ai-soc's four R2 guards and `TestRH02WindowAdmissionCumulativeAcrossKeys` pass on dev; Sigma told.
-- **WARMMEM (R3: cheaper writable and inactive shards)** — **rho/sigma:** lowers fixed memory per handle. Unmerged, evidence `R3/`:
-  - P0 WALREPLAY + R3-3 LATEWRITE (L1, 20.8 MiB, was 93.4): Fable review mergeable together, 2 medium (a backfill into old
-    days compacts 4.6-5x; cold-open crash untested). Fix building: a cold handle past 32 MiB reopens hot; then reopen check.
-  - R3-2 FLOOR: two 83 MiB write arenas (169 MiB); options F0-F4 in `design-latewrite-floor.txt`; René's pick.
-  - R3-4 B0: ai-soc's v6 run on the three BA examples on Flux, after the dev work, on René's word.
+- **WARMMEM** — **rho/sigma:** lowers fixed memory per handle; evidence `tasks/evidence/R3/`:
+  - R3-2 FLOOR: design complete; done when RH's F0-F4 choice is implemented and measured; waits for decision,
+    default F0 (retain the current write arenas pending the documented tradeoff).
+  - R3-4 B0: prepare ai-soc's v6 measurement on three BA examples; done when RSS, swap time and per-tier writes
+    are measured; waits for RH's Flux-run word; default no Flux run.
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — reads and writes
   stop rebuilding a key's whole history. Released: P3 HISTDECODE, HEADLEND, P1 HISTTRIM, CASCADEMETA (v4.103.0), P2
   (v4.104.1), P5 phase 0 (v4.105.1) and option C (v4.105.2: pin-below misses 516 -> 52, skeletons 8,413 -> 1,145).

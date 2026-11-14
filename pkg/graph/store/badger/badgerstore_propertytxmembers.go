@@ -283,7 +283,7 @@ func (bs *Store) forEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 			return nil
 		}
 		bs.idxMu.RUnlock()
-		if err := bs.buildRelPropTx(key); err != nil {
+		if err := bs.buildRelPropTxUnder(key, t); err != nil {
 			return err
 		}
 	}
@@ -334,7 +334,7 @@ func (bs *Store) forEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 			return nil
 		}
 		bs.idxMu.RUnlock()
-		if err := bs.buildNodePropTx(key); err != nil {
+		if err := bs.buildNodePropTxUnder(key, t); err != nil {
 			return err
 		}
 	}
@@ -364,12 +364,22 @@ type propTxTarget[K comparable, ID cmp.Ordered] struct {
 // buildRelPropTx builds the sidecar for key (see the file comment): nil when built
 // (by this call's pass or a running one), ErrIndexNotFound when the index went away.
 func (bs *Store) buildRelPropTx(key indexpkg.RelPropertyIndexKey) error {
-	return ensurePropTxBuilt(bs, "relationship", key, &bs.relPropTx, &bs.relPropertyIndexes, bs.relMembersOnDiskLocked, bs.scanRelPropTx)
+	return bs.buildRelPropTxUnder(key, nil)
+}
+
+func (bs *Store) buildRelPropTxUnder(key indexpkg.RelPropertyIndexKey, t *storecontract.ReadTally) error {
+	return ensurePropTxBuilt(bs, "relationship", key, &bs.relPropTx, &bs.relPropertyIndexes, bs.relMembersOnDiskLocked, t,
+		func(targets []*relPropTxTarget) error { return bs.scanRelPropTx(targets, t) })
 }
 
 // buildNodePropTx is buildRelPropTx for a node property index.
 func (bs *Store) buildNodePropTx(key indexpkg.PropertyIndexKey) error {
-	return ensurePropTxBuilt(bs, "node", key, &bs.nodePropTx, &bs.propertyIndexes, bs.nodeMembersOnDiskLocked, bs.scanNodePropTx)
+	return bs.buildNodePropTxUnder(key, nil)
+}
+
+func (bs *Store) buildNodePropTxUnder(key indexpkg.PropertyIndexKey, t *storecontract.ReadTally) error {
+	return ensurePropTxBuilt(bs, "node", key, &bs.nodePropTx, &bs.propertyIndexes, bs.nodeMembersOnDiskLocked, t,
+		func(targets []*nodePropTxTarget) error { return bs.scanNodePropTx(targets, t) })
 }
 
 // ensurePropTxBuilt is the body of both builds. sidecars and indexes point at
@@ -378,7 +388,7 @@ func (bs *Store) buildNodePropTx(key indexpkg.PropertyIndexKey) error {
 // no sidecar; scan runs one store pass filling every target. Lock order: idxMu
 // is never held while waiting for a pass or scanning.
 func ensurePropTxBuilt[K comparable, ID cmp.Ordered](bs *Store, what string, key K,
-	sidecars *map[K]*propTxSidecar[ID], indexes *map[K]*indexpkg.PropertyIndex, onDisk func(K) bool,
+	sidecars *map[K]*propTxSidecar[ID], indexes *map[K]*indexpkg.PropertyIndex, onDisk func(K) bool, tally *storecontract.ReadTally,
 	scan func([]*propTxTarget[K, ID]) error) error {
 	usable := func(idx *indexpkg.PropertyIndex) bool { return idx != nil && idx.Mutated == nil } // declared, finished creating
 	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
@@ -399,22 +409,35 @@ func ensurePropTxBuilt[K comparable, ID cmp.Ordered](bs *Store, what string, key
 		pass := &propTxPass{done: make(chan struct{})}
 		var targets []*propTxTarget[K, ID]
 		for k, idx := range *indexes {
+			if err := tally.Candidates(1); err != nil {
+				bs.idxMu.Unlock()
+				return err
+			}
 			if !usable(idx) || onDisk(k) {
 				continue
 			}
 			sc := (*sidecars)[k]
-			if sc == nil {
-				sc = &propTxSidecar[ID]{members: indexpkg.NewPropertyTxMembers[ID]()}
-				if *sidecars == nil {
-					*sidecars = make(map[K]*propTxSidecar[ID])
-				}
-				(*sidecars)[k] = sc // tracking from here on
-			}
-			if sc.built || sc.pass != nil {
+			if sc != nil && (sc.built || sc.pass != nil) {
 				continue
 			}
-			sc.pass = pass
+			// The temporary target, its slice slot and scan-group references.
+			if err := tally.Buffer(128); err != nil {
+				bs.idxMu.Unlock()
+				return err
+			}
+			if sc == nil {
+				sc = &propTxSidecar[ID]{members: indexpkg.NewPropertyTxMembers[ID]()}
+			}
 			targets = append(targets, &propTxTarget[K, ID]{key: k, sc: sc, elements: idx.Elements(), scratch: indexpkg.NewPropertyTxMembers[ID]()})
+		}
+		// Publish all claims only after admission succeeds. A refused claim
+		// leaves no running pass for another reader to wait on.
+		if *sidecars == nil {
+			*sidecars = make(map[K]*propTxSidecar[ID])
+		}
+		for _, target := range targets {
+			(*sidecars)[target.key] = target.sc
+			target.sc.pass = pass
 		}
 		gen := bs.propTxGen
 		bs.idxMu.Unlock()
@@ -494,25 +517,25 @@ type relPropTxTarget = propTxTarget[indexpkg.RelPropertyIndexKey, types.RelID]
 type nodePropTxTarget = propTxTarget[indexpkg.PropertyIndexKey, types.NodeID]
 
 // scanRelPropTx fills every rel target from one pass over the rel rows.
-func (bs *Store) scanRelPropTx(targets []*relPropTxTarget) error {
+func (bs *Store) scanRelPropTx(targets []*relPropTxTarget, tally *storecontract.ReadTally) error {
 	byType := make(map[int][]*relPropTxTarget, len(targets))
 	for _, t := range targets {
 		tok := int(t.key.RelTypeToken)
 		byType[tok] = append(byType[tok], t)
 	}
-	return bs.scanPropTxRows(storepkg.KeyRel, storepkg.KeyHistRel, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-		return bs.recordRelRowPropTx(byType, id, hist, version, raw, local)
+	return bs.scanPropTxRowsUnder(storepkg.KeyRel, storepkg.KeyHistRel, tally, func(id snowflake.ID, hist bool, version uint64, raw []byte, local propertyAnchorFunc) error {
+		return bs.recordRelRowPropTx(byType, id, hist, version, raw, local, tally)
 	})
 }
 
 // scanNodePropTx fills every node target from one pass over the node rows.
-func (bs *Store) scanNodePropTx(targets []*nodePropTxTarget) error {
+func (bs *Store) scanNodePropTx(targets []*nodePropTxTarget, tally *storecontract.ReadTally) error {
 	byLabel := make(map[uint16][]*nodePropTxTarget, len(targets))
 	for _, t := range targets {
 		byLabel[t.key.LabelToken] = append(byLabel[t.key.LabelToken], t)
 	}
-	return bs.scanPropTxRows(storepkg.KeyNode, storepkg.KeyHistNode, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-		return bs.recordNodeRowPropTx(byLabel, id, hist, version, raw, local)
+	return bs.scanPropTxRowsUnder(storepkg.KeyNode, storepkg.KeyHistNode, tally, func(id snowflake.ID, hist bool, version uint64, raw []byte, local propertyAnchorFunc) error {
+		return bs.recordNodeRowPropTx(byLabel, id, hist, version, raw, local, tally)
 	})
 }
 
@@ -520,20 +543,23 @@ func (bs *Store) scanNodePropTx(targets []*nodePropTxTarget) error {
 // through the checked wire path, so the value key equals the index's, and records
 // it into every target of its type. A row of an untargeted type is skipped
 // before the full decode.
-func (bs *Store) recordRelRowPropTx(byType map[int][]*relPropTxTarget, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-	r, err := bs.decodeScannedRel(func(relType int) bool { return len(byType[relType]) > 0 }, id, hist, version, raw, local)
+func (bs *Store) recordRelRowPropTx(byType map[int][]*relPropTxTarget, id snowflake.ID, hist bool, version uint64, raw []byte, local propertyAnchorFunc, tally *storecontract.ReadTally) error {
+	r, err := bs.decodeScannedRelUnder(func(relType int) bool { return len(byType[relType]) > 0 }, id, hist, version, raw, local, tally)
 	if r == nil || err != nil {
 		return err
 	}
 	targets := byType[int(r.TypeToken().Value())]
 	rid, ri := r.ID(), indexpkg.RelRowInfo(bs.validAxis.Get(), r)
 	for _, t := range targets {
-		var vks []string
-		r.ForEachPropertyIndexKey(t.key.PropertyKey, t.elements, func(vk string) bool {
-			vks = append(vks, vk)
-			return true
-		})
-		t.rows.Add(rid, ri, !hist, vks)
+		vks, err := indexpkg.PropertyValueKeysAdmit(func(fn func(string) bool) {
+			r.ForEachPropertyIndexKey(t.key.PropertyKey, t.elements, fn)
+		}, propertyKeyAdmit(tally))
+		if err != nil {
+			return err
+		}
+		if err := t.rows.AddAdmit(rid, ri, !hist, vks, tally.Buffer); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -542,6 +568,16 @@ func (bs *Store) recordRelRowPropTx(byType map[int][]*relPropTxTarget, id snowfl
 // delta) through the checked wire path, so its value keys equal the index's;
 // nil, nil for a row of a type want refuses, before the full decode.
 func (bs *Store) decodeScannedRel(want func(relType int) bool, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) (*types.Relationship, error) {
+	return bs.decodeScannedRelUnder(want, id, hist, version, raw, func(av uint64) ([]byte, error) {
+		return bs.fetchAnchorRaw(av, local, func() ([]byte, error) { return bs.readHistoryRelRaw(id, av) })
+	}, nil)
+}
+
+func (bs *Store) decodeScannedRelUnder(want func(relType int) bool, id snowflake.ID, hist bool, version uint64, raw []byte, anchor propertyAnchorFunc, tally *storecontract.ReadTally) (*types.Relationship, error) {
+	if err := tally.Decoded(len(raw)); err != nil {
+		return nil, err
+	}
+	notePropertyMemberDecoded()
 	var w storepkg.RelWire
 	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
 		d, err := storepkg.DecodeRelHistoryDelta(raw)
@@ -551,9 +587,21 @@ func (bs *Store) decodeScannedRel(want func(relType int) bool, id snowflake.ID, 
 		if !want(d.Meta.RelType) {
 			return nil, nil
 		}
-		if w, err = bs.reconstructRelHistoryWire(id, version, raw, local); err != nil {
+		anchorRaw, err := anchor(storepkg.AnchorVersionFor(version, bs.historyAnchorInterval))
+		if err != nil {
 			return nil, err
 		}
+		if err := tally.Decoded(len(anchorRaw)); err != nil {
+			return nil, err
+		}
+		if storepkg.HistoryValueKindOf(anchorRaw) != storepkg.HistoryFull {
+			return nil, fmt.Errorf("%w: relationship history anchor is not a full snapshot", storecontract.ErrCorruptWire)
+		}
+		notePropertyMemberDecoded()
+		if err := storepkg.SafeUnmarshal(anchorRaw, &w); err != nil {
+			return nil, err
+		}
+		w = storepkg.ApplyRelHistory(w, d)
 	} else {
 		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {
 			return nil, err
@@ -564,6 +612,9 @@ func (bs *Store) decodeScannedRel(want func(relType int) bool, id snowflake.ID, 
 	}
 	if err := bs.resolveRelWireKeys(&w); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
+	}
+	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
+		storepkg.SortWirePropertiesByKey(w.Properties)
 	}
 	r, err := storepkg.WireToRelChecked(w)
 	if err != nil {
@@ -578,6 +629,16 @@ func (bs *Store) decodeScannedRel(want func(relType int) bool, id snowflake.ID, 
 // decodeScannedNode is decodeScannedRel for a node row; want sees the row's
 // wire labels (nodeWireHasTarget).
 func (bs *Store) decodeScannedNode(want func(w *storepkg.NodeWire) bool, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) (*types.Node, error) {
+	return bs.decodeScannedNodeUnder(want, id, hist, version, raw, func(av uint64) ([]byte, error) {
+		return bs.fetchAnchorRaw(av, local, func() ([]byte, error) { return bs.readHistoryNodeRaw(id, av) })
+	}, nil)
+}
+
+func (bs *Store) decodeScannedNodeUnder(want func(w *storepkg.NodeWire) bool, id snowflake.ID, hist bool, version uint64, raw []byte, anchor propertyAnchorFunc, tally *storecontract.ReadTally) (*types.Node, error) {
+	if err := tally.Decoded(len(raw)); err != nil {
+		return nil, err
+	}
+	notePropertyMemberDecoded()
 	var w storepkg.NodeWire
 	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
 		d, err := storepkg.DecodeNodeHistoryDelta(raw)
@@ -587,9 +648,21 @@ func (bs *Store) decodeScannedNode(want func(w *storepkg.NodeWire) bool, id snow
 		if !want(&d.Meta) {
 			return nil, nil
 		}
-		if w, err = bs.reconstructNodeHistoryWire(id, version, raw, local); err != nil {
+		anchorRaw, err := anchor(storepkg.AnchorVersionFor(version, bs.historyAnchorInterval))
+		if err != nil {
 			return nil, err
 		}
+		if err := tally.Decoded(len(anchorRaw)); err != nil {
+			return nil, err
+		}
+		if storepkg.HistoryValueKindOf(anchorRaw) != storepkg.HistoryFull {
+			return nil, fmt.Errorf("%w: node history anchor is not a full snapshot", storecontract.ErrCorruptWire)
+		}
+		notePropertyMemberDecoded()
+		if err := storepkg.SafeUnmarshal(anchorRaw, &w); err != nil {
+			return nil, err
+		}
+		w = storepkg.ApplyNodeHistory(w, d)
 	} else {
 		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {
 			return nil, err
@@ -600,6 +673,9 @@ func (bs *Store) decodeScannedNode(want func(w *storepkg.NodeWire) bool, id snow
 	}
 	if err := bs.resolveNodeWireKeys(&w); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
+	}
+	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
+		storepkg.SortWirePropertiesByKey(w.Properties)
 	}
 	n, err := storepkg.WireToNodeChecked(w)
 	if err != nil {
@@ -613,20 +689,23 @@ func (bs *Store) decodeScannedNode(want func(w *storepkg.NodeWire) bool, id snow
 
 // recordNodeRowPropTx is recordRelRowPropTx for node rows: the row is recorded
 // into the targets of every label it carries.
-func (bs *Store) recordNodeRowPropTx(byLabel map[uint16][]*nodePropTxTarget, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-	n, err := bs.decodeScannedNode(func(w *storepkg.NodeWire) bool { return nodeWireHasTarget(w, byLabel) }, id, hist, version, raw, local)
+func (bs *Store) recordNodeRowPropTx(byLabel map[uint16][]*nodePropTxTarget, id snowflake.ID, hist bool, version uint64, raw []byte, local propertyAnchorFunc, tally *storecontract.ReadTally) error {
+	n, err := bs.decodeScannedNodeUnder(func(w *storepkg.NodeWire) bool { return nodeWireHasTarget(w, byLabel) }, id, hist, version, raw, local, tally)
 	if n == nil || err != nil {
 		return err
 	}
 	nid, ri := n.ID(), indexpkg.NodeRowInfo(bs.validAxis.Get(), n)
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		for _, t := range byLabel[n.LabelTokenRawAt(i)] {
-			var vks []string
-			n.ForEachPropertyIndexKey(t.key.PropertyKey, t.elements, func(vk string) bool {
-				vks = append(vks, vk)
-				return true
-			})
-			t.rows.Add(nid, ri, !hist, vks)
+			vks, err := indexpkg.PropertyValueKeysAdmit(func(fn func(string) bool) {
+				n.ForEachPropertyIndexKey(t.key.PropertyKey, t.elements, fn)
+			}, propertyKeyAdmit(tally))
+			if err != nil {
+				return err
+			}
+			if err := t.rows.AddAdmit(nid, ri, !hist, vks, tally.Buffer); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -654,20 +733,59 @@ func nodeWireHasTarget(w *storepkg.NodeWire, byLabel map[uint16][]*nodePropTxTar
 // history delta resolves its anchor from the overlay, then earlier committed rows
 // of the same entity, then the view.
 func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error) error {
+	return bs.scanPropTxRowsUnder(curKind, histKind, nil, func(id snowflake.ID, hist bool, version uint64, raw []byte, local propertyAnchorFunc) error {
+		var anchor localAnchorFunc
+		var anchorErr error
+		if local != nil {
+			anchor = func(av uint64) ([]byte, bool) {
+				var b []byte
+				b, anchorErr = local(av)
+				return b, anchorErr == nil
+			}
+		}
+		err := visit(id, hist, version, raw, anchor)
+		if anchorErr != nil {
+			return anchorErr
+		}
+		return err
+	})
+}
+
+// propertyAnchorFunc returns an admitted anchor or an error. A budget refusal
+// must never become a cache miss followed by an unmetered point read.
+type propertyAnchorFunc func(version uint64) ([]byte, error)
+
+func (bs *Store) scanPropTxRowsUnder(curKind, histKind byte, tally *storecontract.ReadTally, visit func(id snowflake.ID, hist bool, version uint64, raw []byte, local propertyAnchorFunc) error) error {
 	overlay := make(map[string]writeOp)
-	bs.rangePending(func(k string, op writeOp) {
+	var refused error
+	bs.walkPending(func(k string, op writeOp) bool {
+		if refused = tally.Candidates(1); refused != nil {
+			return false
+		}
 		if len(k) == 0 {
-			return
+			return true
 		}
 		switch {
 		case k[0] == curKind && len(k) == storepkg.SizeNodeKey:
 		case k[0] == histKind && len(k) == storepkg.SizeHistKey: // no key starts with 0, so histKind 0 matches none
+			if refused = tally.History(1); refused != nil {
+				return false
+			}
 		default:
-			return
+			return true
+		}
+		// The overlay retains a logical key/writeOp slot and owns the value copy.
+		if refused = tally.Buffer(72 + len(op.value)); refused != nil {
+			return false
 		}
 		op.value = append([]byte(nil), op.value...)
+		notePropertyMemberBytesCopied(len(op.value))
 		overlay[k] = op // flushing first, then pending: the newer op wins
+		return true
 	})
+	if refused != nil {
+		return refused
+	}
 	histKey := func(id snowflake.ID, version uint64) string {
 		if histKind == storepkg.KeyHistNode {
 			return string(storepkg.HistNodeKey(id, version))
@@ -680,12 +798,54 @@ func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.
 	return bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
+		anchorFor := func(id snowflake.ID, cached map[uint64][]byte) propertyAnchorFunc {
+			return func(av uint64) ([]byte, error) {
+				if err := tally.History(1); err != nil {
+					return nil, err
+				}
+				ak := histKey(id, av)
+				if op, ok := overlay[ak]; ok {
+					if op.opType == writeOpDelete {
+						return nil, ErrVersionNotFound
+					}
+					return op.value, nil
+				}
+				if raw, ok := cached[av]; ok {
+					return raw, nil
+				}
+				if err := tally.Candidates(1); err != nil {
+					return nil, err
+				}
+				item, err := txn.Get([]byte(ak))
+				if err == badgerv4.ErrKeyNotFound {
+					return nil, ErrVersionNotFound
+				}
+				if err != nil {
+					return nil, err
+				}
+				var raw []byte
+				err = item.Value(func(val []byte) error {
+					if err := tally.Buffer(len(val)); err != nil {
+						return err
+					}
+					raw = append([]byte(nil), val...)
+					notePropertyMemberBytesCopied(len(val))
+					return nil
+				})
+				return raw, err
+			}
+		}
 
 		// Committed current rows the overlay does not resolve.
 		prefix := []byte{curKind}
 		opts.Prefix = prefix
 		it := txn.NewIterator(opts)
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			if err := tally.Candidates(1); err != nil {
+				it.Close()
+				return err
+			}
+			noteIndexEntryVisited()
 			item := it.Item()
 			k := item.Key()
 			if len(k) != storepkg.SizeNodeKey {
@@ -707,19 +867,19 @@ func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.
 		if histKind != 0 {
 			var groupID snowflake.ID
 			anchors := make(map[uint64][]byte)
-			committedLocal := func(id snowflake.ID) localAnchorFunc {
-				return func(av uint64) ([]byte, bool) {
-					if op, ok := overlay[histKey(id, av)]; ok {
-						return op.value, op.opType != writeOpDelete
-					}
-					b, ok := anchors[av]
-					return b, ok
-				}
-			}
 			prefix = []byte{histKind}
 			opts.Prefix = prefix
 			it = txn.NewIterator(opts)
 			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+				if err := tally.Candidates(1); err != nil {
+					it.Close()
+					return err
+				}
+				if err := tally.History(1); err != nil {
+					it.Close()
+					return err
+				}
+				noteIndexEntryVisited()
 				item := it.Item()
 				k := item.Key()
 				if len(k) != storepkg.SizeHistKey {
@@ -736,9 +896,13 @@ func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.
 				version := historyVersionFromKey(k)
 				if err := item.Value(func(val []byte) error {
 					if storepkg.IsAnchorVersion(version, bs.historyAnchorInterval) && storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
+						if err := tally.Buffer(32 + len(val)); err != nil {
+							return err
+						}
 						anchors[version] = append([]byte(nil), val...)
+						notePropertyMemberBytesCopied(len(val))
 					}
-					return visit(id, true, version, val, committedLocal(id))
+					return visit(id, true, version, val, anchorFor(id, anchors))
 				}); err != nil {
 					it.Close()
 					return err
@@ -749,6 +913,14 @@ func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.
 
 		// Buffered rows (strictly newer than anything committed).
 		for k, op := range overlay {
+			if err := tally.Candidates(1); err != nil {
+				return err
+			}
+			if k[0] == histKind {
+				if err := tally.History(1); err != nil {
+					return err
+				}
+			}
 			if op.opType == writeOpDelete || len(op.value) == 0 {
 				continue
 			}
@@ -760,19 +932,7 @@ func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.
 				}
 				continue
 			}
-			local := func(av uint64) ([]byte, bool) {
-				ak := histKey(id, av)
-				if aop, ok := overlay[ak]; ok {
-					return aop.value, aop.opType != writeOpDelete
-				}
-				item, err := txn.Get([]byte(ak))
-				if err != nil {
-					return nil, false
-				}
-				b, err := item.ValueCopy(nil)
-				return b, err == nil
-			}
-			if err := visit(id, true, historyVersionFromKey(kb), op.value, local); err != nil {
+			if err := visit(id, true, historyVersionFromKey(kb), op.value, anchorFor(id, nil)); err != nil {
 				return err
 			}
 		}

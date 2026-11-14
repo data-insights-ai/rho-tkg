@@ -2,6 +2,7 @@ package badger
 
 import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -63,13 +64,25 @@ func (bs *Store) typeHasLocked(tok uint16, rid types.RelID) bool {
 
 // typeIDsLocked is a snapshot of tok's members, ascending. Caller holds idxMu.
 func (bs *Store) typeIDsLocked(tok uint16) []types.RelID {
+	ids, _ := bs.typeIDsTalliedLocked(tok, nil)
+	return ids
+}
+
+func (bs *Store) typeIDsTalliedLocked(tok uint16, t *storecontract.ReadTally) ([]types.RelID, error) {
 	set := bs.typeIdx[tok]
 	if set == nil {
-		return nil
+		return nil, nil
+	}
+	if err := t.Candidates(set.Len()); err != nil {
+		return nil, err
+	}
+	if err := t.Buffer(8 * set.Len()); err != nil {
+		return nil, err
 	}
 	ids := make([]types.RelID, 0, set.Len())
 	for id := range set.All() {
+		noteCurrentMemberCopied()
 		ids = append(ids, types.RelID(id))
 	}
-	return ids
+	return ids, nil
 }

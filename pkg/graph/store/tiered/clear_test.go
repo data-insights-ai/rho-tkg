@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -371,6 +373,250 @@ func TestTieredStoreClear_FailedCloseDetachesAndFences(t *testing.T) {
 				t.Fatalf("GetNode after the reopen = %v, want ErrNodeNotFound (the open finishes the Clear)", err)
 			}
 		})
+	}
+}
+
+// manifestFault breaks a shard open through the shard open hook: when arm
+// says so for an open's config, the hook overwrites the shard's MANIFEST with
+// garbage before badger reads it (badger refuses it, errBadMagic, and the
+// recovery probe returns that as it is: not a truncation). It keeps the
+// original; restore writes it back.
+type manifestFault struct {
+	mu       sync.Mutex
+	path     string
+	original []byte
+}
+
+func (m *manifestFault) breakAt(t *testing.T, dir string) {
+	t.Helper()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.path != "" {
+		return
+	}
+	path := filepath.Join(dir, "MANIFEST")
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Errorf("read MANIFEST: %v", err)
+		return
+	}
+	if err := os.WriteFile(path, []byte("not a badger manifest, broken by the test"), 0o600); err != nil {
+		t.Errorf("break MANIFEST: %v", err)
+		return
+	}
+	m.path, m.original = path, original
+}
+
+func (m *manifestFault) broken() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.path != ""
+}
+
+func (m *manifestFault) restore(t *testing.T) {
+	t.Helper()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.path == "" {
+		t.Fatal("the MANIFEST was never broken: the fault did not fire")
+	}
+	if err := os.WriteFile(m.path, m.original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m.path = ""
+}
+
+// clearExitFix is a disk store with two warm shards rotated out (w1, w2),
+// one row in each (a1, b1) and an unwritten ID in each window (a2, b2); the
+// hot shard holds no row.
+type clearExitFix struct {
+	ts             *Store
+	cfg            Config
+	tok            uint16
+	w1, w2         string
+	a1, b1         *types.Node
+	a2, b2         types.NodeID
+	clearOpenOrder []string // the shards Clear opened, in order (the hook's record)
+}
+
+func newClearExitFix(t *testing.T) *clearExitFix {
+	t.Helper()
+	f := &clearExitFix{cfg: Config{DataDir: t.TempDir(), RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}}
+	ts, err := New(f.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ts = ts
+	t.Cleanup(func() { _ = f.ts.Close() })
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	f.tok, _ = reg.GetOrCreate("Signal")
+	gen := tieredNodeGen(t)
+	f.a1, f.a2 = types.NewNode(types.NodeID(gen.Generate()), f.tok, nil), types.NodeID(gen.Generate())
+	if err := ts.PutNode(f.a1); err != nil {
+		t.Fatal(err)
+	}
+	f.w1 = ts.HotShardForTest().Name()
+	forceRotation(t, ts)
+	f.b1, f.b2 = types.NewNode(types.NodeID(gen.Generate()), f.tok, nil), types.NodeID(gen.Generate())
+	if err := ts.PutNode(f.b1); err != nil {
+		t.Fatal(err)
+	}
+	f.w2 = ts.HotShardForTest().Name()
+	forceRotation(t, ts)
+	ts.SweepHandlesForTest()
+	for _, name := range []string{f.w1, f.w2} {
+		if es := ts.EventShardsForTest()[name]; es.Tier() != TierWarm {
+			t.Fatalf("fixture: shard %s is %s, want warm", name, es.Tier())
+		}
+	}
+	return f
+}
+
+// clearBreaking runs Clear with the second warm shard Clear opens broken at
+// its first open that pick selects; it returns Clear's error and the broken
+// shard's name.
+func (f *clearExitFix) clearBreaking(t *testing.T, m *manifestFault, pick func(BadgerStoreConfig) bool) (string, error) {
+	t.Helper()
+	var mu sync.Mutex
+	var broken string
+	f.ts.SetShardOpenHookForTest(func(cfg BadgerStoreConfig) {
+		name := filepath.Base(cfg.Dir)
+		if name != f.w1 && name != f.w2 {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if !slices.Contains(f.clearOpenOrder, name) {
+			f.clearOpenOrder = append(f.clearOpenOrder, name)
+		}
+		if broken == "" && len(f.clearOpenOrder) == 2 && name == f.clearOpenOrder[1] && pick(cfg) {
+			broken = name
+			m.breakAt(t, cfg.Dir)
+		}
+	})
+	err := f.ts.Clear()
+	f.ts.SetShardOpenHookForTest(nil)
+	return broken, err
+}
+
+func (f *clearExitFix) marker(t *testing.T, ts *Store) bool {
+	t.Helper()
+	v, err := ts.refShard.MetaGet(clearPendingKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v != nil
+}
+
+// TestTieredStoreClear_TemporaryOpenFailure (CLOSEFAULT, L1): Clear closes a
+// warm shard and its temporary open of that shard fails (clearEventShard's
+// exit after the close). Clear errors and records no background error; the
+// shard is cold in memory without a handle, its catalog entry warm, its row
+// kept; the shard cleared before it reads not-found; the durable pending
+// marker stays. With the MANIFEST restored a row written now reads back,
+// and after Close and New the open finishes the Clear: every row reads
+// not-found, the new one too, and the marker is gone. Catches the exit
+// leaving a warm shard without a handle (its next access a nil store).
+func TestTieredStoreClear_TemporaryOpenFailure(t *testing.T) {
+	t.Parallel()
+	testClearExit(t, func(cfg BadgerStoreConfig) bool { return !cfg.ReadOnly }, false)
+}
+
+// TestTieredStoreClear_ReopenFailure (CLOSEFAULT, L1): as
+// TestTieredStoreClear_TemporaryOpenFailure, but the shard's clear succeeds
+// and the reopen of the cleared warm shard fails (its recovery probe): the
+// shard is cold in memory without a handle, its catalog entry warm, its row
+// cleared.
+func TestTieredStoreClear_ReopenFailure(t *testing.T) {
+	t.Parallel()
+	testClearExit(t, func(cfg BadgerStoreConfig) bool { return cfg.ReadOnly }, true)
+}
+
+func testClearExit(t *testing.T, pick func(BadgerStoreConfig) bool, faultedCleared bool) {
+	f := newClearExitFix(t)
+	var m manifestFault
+	broken, err := f.clearBreaking(t, &m, pick)
+	t.Logf("Clear with %s broken: %v (opens %v)", broken, err, f.clearOpenOrder)
+	if err == nil || broken == "" {
+		t.Fatalf("Clear = %v with %q broken, want an error from the broken shard", err, broken)
+	}
+	if bg := f.ts.backgroundError(); bg != nil {
+		t.Fatalf("background error %v, want none (no close failed)", bg)
+	}
+	es := f.ts.EventShardsForTest()[broken]
+	wantColdInMemory(t, f.ts, es)
+	if s, _ := es.StoreStateForTest(); s != nil {
+		t.Fatal("the broken shard has a handle")
+	}
+	if !f.marker(t, f.ts) {
+		t.Fatal("the pending marker is gone after the failed Clear")
+	}
+	before, faulted, faultedLater := f.a1, f.b1, f.b2
+	if broken == f.w1 {
+		before, faulted, faultedLater = f.b1, f.a1, f.a2
+	}
+	if _, err := f.ts.GetNode(before.ID()); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("the row of the shard cleared before: %v, want ErrNodeNotFound", err)
+	}
+	m.restore(t)
+	if _, err := f.ts.GetNode(faulted.ID()); faultedCleared != errors.Is(err, ErrNodeNotFound) || (!faultedCleared && err != nil) {
+		t.Fatalf("the broken shard's row: %v, want cleared %v", err, faultedCleared)
+	}
+	late := types.NewNode(faultedLater, f.tok, nil)
+	if err := f.ts.PutNode(late); err != nil {
+		t.Fatalf("a write into the broken shard after the restore: %v", err)
+	}
+	if _, err := f.ts.GetNode(late.ID()); err != nil {
+		t.Fatalf("the row written after the failed Clear: %v", err)
+	}
+	if err := f.ts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	re, err := New(f.cfg)
+	if err != nil {
+		t.Fatalf("New after the failed Clear: %v", err)
+	}
+	f.ts = re
+	for _, id := range []types.NodeID{f.a1.ID(), f.b1.ID(), late.ID()} {
+		if _, err := re.GetNode(id); !errors.Is(err, ErrNodeNotFound) {
+			t.Fatalf("GetNode %d after the reopen = %v, want ErrNodeNotFound (the open finishes the Clear)", id, err)
+		}
+	}
+	if f.marker(t, re) {
+		t.Fatal("the pending marker is still set after the reopen")
+	}
+}
+
+// TestTieredStoreClear_SucceededLeavesNoMarker is the control of the two
+// Clear exit tests: an unfaulted Clear leaves no marker, and a row written
+// after it survives the reopen.
+func TestTieredStoreClear_SucceededLeavesNoMarker(t *testing.T) {
+	t.Parallel()
+	f := newClearExitFix(t)
+	if err := f.ts.Clear(); err != nil {
+		t.Fatal(err)
+	}
+	if f.marker(t, f.ts) {
+		t.Fatal("the pending marker is set after a Clear that succeeded")
+	}
+	for _, id := range []types.NodeID{f.a1.ID(), f.b1.ID()} {
+		if _, err := f.ts.GetNode(id); !errors.Is(err, ErrNodeNotFound) {
+			t.Fatalf("GetNode %d after Clear = %v, want ErrNodeNotFound", id, err)
+		}
+	}
+	late := types.NewNode(f.b2, f.tok, nil)
+	if err := f.ts.PutNode(late); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.ts.Close()
+	re, err := New(f.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ts = re
+	if _, err := re.GetNode(late.ID()); err != nil {
+		t.Fatalf("the row written after Clear, after the reopen: %v", err)
 	}
 }
 

@@ -85,6 +85,7 @@ func TestValidEndAttribution_WalksFormerSetsNotEntities(t *testing.T) {
 				}
 				bs := open()
 				before := bs.validEndAttribLookups.Load()
+				stepsBefore := bs.ValidEndIteratorStepsForTest()
 				control, got, err := vaCall(bs, 9, storecontract.ReadBudget{})
 				lookups := bs.validEndAttribLookups.Load() - before
 				if err != nil || !slices.Equal(got, want) {
@@ -93,9 +94,13 @@ func TestValidEndAttribution_WalksFormerSetsNotEntities(t *testing.T) {
 				listing := uint64(0)
 				if m.disk {
 					listing = 50
+					if !flushed {
+						listing += 2 // the two pending label removals are examined too
+					}
 				}
 				const walk, rejected = 2 + 2 + 2 + 2, 2 + 2 + 2
-				count := listing + 52 + rejected
+				count := listing + 4*52 + rejected + uint64(bs.ValidEndIteratorStepsForTest()-stepsBefore)
+				refusalCount := count - 52
 				if c := control.Work().Candidates; lookups != walk || c != count {
 					t.Fatalf("label 9's first call made %d attribution lookups and counted %d candidates; want %d and %d (%d listed, 52 entities, %d rejected former entries)", lookups, c, walk, count, listing, rejected)
 				}
@@ -103,9 +108,9 @@ func TestValidEndAttribution_WalksFormerSetsNotEntities(t *testing.T) {
 				bs = open()
 				before = bs.validEndAttribLookups.Load()
 				_, nodesBefore := bs.ValidEndStats()
-				refused, got, err := vaCall(bs, 9, storecontract.ReadBudget{Candidates: count - 1})
-				if !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 || refused.Work().Candidates != count {
-					t.Fatalf("one under the control = %d candidates, %v, %d counted; want ErrReadBudget counting %d", len(got), err, refused.Work().Candidates, count)
+				refused, got, err := vaCall(bs, 9, storecontract.ReadBudget{Candidates: refusalCount - 1})
+				if !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 || refused.Work().Candidates != refusalCount {
+					t.Fatalf("one under attribution = %d candidates, %v, %d counted; want ErrReadBudget counting %d", len(got), err, refused.Work().Candidates, refusalCount)
 				}
 				if l := bs.validEndAttribLookups.Load() - before; l != rejected {
 					t.Fatalf("the refused call made %d lookups; want %d (refused at the last rejected entry, label 9's walk not made)", l, rejected)

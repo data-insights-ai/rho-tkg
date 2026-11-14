@@ -84,6 +84,7 @@ func TestTieredClearCrashChild(t *testing.T) {
 }
 
 func TestTieredClearCrashAtEveryStage(t *testing.T) {
+	t.Parallel()
 	for _, stage := range tcStages {
 		t.Run("crash after "+stage, func(t *testing.T) {
 			dir := t.TempDir()

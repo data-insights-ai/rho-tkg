@@ -269,18 +269,45 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 	if node {
 		current, history = storepkg.KeyNode, storepkg.KeyHistNode
 	}
+	// Probe only requested IDs. The prefix lists tell whether their history
+	// has buffered writes without walking unrelated pending operations.
 	buffered := make(map[int64]struct{})
-	bs.rangePending(func(k string, _ writeOp) {
-		if len(k) > 0 && (k[0] == current && len(k) == storepkg.SizeRelKey || k[0] == history && len(k) == storepkg.SizeHistKey) {
-			buffered[int64(storepkg.ParseIDFromKey([]byte(k), 1))] = struct{}{}
+	if err := func() error {
+		bs.wbMu.Lock()
+		defer bs.wbMu.Unlock()
+		var key [1 + 8]byte
+		for _, id := range ids {
+			if err := t.Candidates(1); err != nil {
+				return err
+			}
+			key[0] = current
+			storepkg.PutUint64(key[:], 1, id)
+			_, pending := bs.pending[string(key[:])]
+			_, flushing := bs.flushing[string(key[:])]
+			key[0] = history
+			if pending || flushing || len(bs.pendingByPrefix[string(key[:])]) != 0 || len(bs.flushingByPrefix[string(key[:])]) != 0 {
+				if err := t.Buffer(24); err != nil {
+					return err
+				}
+				buffered[id] = struct{}{}
+			}
 		}
-	})
+		return nil
+	}(); err != nil {
+		return nil, err
+	}
 	if bs.historyScanTestHook != nil {
 		bs.historyScanTestHook()
 	}
 	slices.Sort(ids)
+	if err := t.Buffer(32 * len(ids)); err != nil {
+		return nil, err
+	}
 	out := make(map[int64][]indexpkg.ValidEndRow, len(ids))
 	decode := func(id int64, hist bool, version uint32, raw []byte) error {
+		if err := t.Buffer(64); err != nil {
+			return err
+		}
 		bs.validEndRowDecodes.Add(1)
 		var (
 			tm   *types.TemporalMetadata
@@ -326,9 +353,11 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
+		opts.Prefix = []byte{history}
 		hit := txn.NewIterator(opts)
 		defer hit.Close()
 		hit.Seek([]byte{history})
+		opts.Prefix = []byte{current}
 		cit := txn.NewIterator(opts)
 		defer cit.Close()
 		cit.Seek([]byte{current})
@@ -337,12 +366,11 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 			if _, ok := buffered[id]; ok {
 				continue
 			}
-			if err := t.Candidates(1); err != nil {
-				return err
-			}
 			prefix[0] = history
 			storepkg.PutUint64(prefix, 1, id)
-			advanceTo(hit, prefix)
+			if err := bs.advanceTo(hit, prefix, t); err != nil {
+				return err
+			}
 			for ; hit.ValidForPrefix(prefix); hit.Next() {
 				key := hit.Item().Key()
 				if len(key) != storepkg.SizeHistKey {
@@ -354,7 +382,9 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 				}
 			}
 			prefix[0] = current
-			advanceTo(cit, prefix)
+			if err := bs.advanceTo(cit, prefix, t); err != nil {
+				return err
+			}
 			if cit.Valid() && bytes.Equal(cit.Item().Key(), prefix) {
 				if err := add(id, false, 0, cit.Item()); err != nil {
 					return err
@@ -369,9 +399,6 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 	for id := range buffered {
 		if _, wanted := slices.BinarySearch(ids, id); !wanted {
 			continue
-		}
-		if err := t.Candidates(1); err != nil {
-			return nil, err
 		}
 		// An entity with a buffered write is read from the write buffer and the
 		// committed rows together, each history row counted before its decode
@@ -470,14 +497,19 @@ func (bs *Store) attributeFormer(ix *indexpkg.ValidEndIndex, former func(tok uin
 // target is a few keys ahead (members of a type are usually dense in the ID
 // order, so the walk is sequential), else by Seek. it only moves forward;
 // targets come in ascending order.
-func advanceTo(it *badgerv4.Iterator, target []byte) {
+func (bs *Store) advanceTo(it *badgerv4.Iterator, target []byte, t *storecontract.ReadTally) error {
 	for steps := 0; it.Valid() && bytes.Compare(it.Item().Key(), target) < 0; steps++ {
+		if err := t.Candidates(1); err != nil {
+			return err
+		}
+		bs.validEndIteratorSteps.Add(1)
 		if steps == 16 {
 			it.Seek(target)
-			return
+			return nil
 		}
 		it.Next()
 	}
+	return nil
 }
 
 // validEndOverlayRows reads one entity with buffered writes: its history
@@ -535,6 +567,9 @@ func (bs *Store) validEndOverlayRows(id int64, node bool, t *storecontract.ReadT
 	}
 	metas, err := bs.historyTemporalMetaByPrefixTallied(prefix, node, t)
 	if err != nil {
+		return nil, err
+	}
+	if err := t.Buffer(64 * (len(metas) + 1)); err != nil {
 		return nil, err
 	}
 	rows := make([]indexpkg.ValidEndRow, 0, len(metas)+1)
@@ -609,7 +644,7 @@ func (bs *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom t
 		return nil, err
 	}
 	toks := []uint16{typeToken}
-	if err := bs.trackValidEnds(&bs.relValidEnds, toks, bs.ensureRelTypeTxMembersBuilt, bs.relTokenMembersLocked, t); err != nil {
+	if err := bs.trackValidEnds(&bs.relValidEnds, toks, func() error { return bs.ensureRelTypeTxMembersBuiltUnder(t) }, bs.relTokenMembersLocked, t); err != nil {
 		return nil, err
 	}
 	if err := bs.relValidEnds.ResolveUnknownBulkUnder(t, func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
@@ -617,7 +652,7 @@ func (bs *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom t
 	}); err != nil {
 		return nil, err
 	}
-	return bs.relValidEnds.Candidates(toks, pin, validFrom), nil
+	return bs.relValidEnds.CandidatesUnder(toks, pin, validFrom, t)
 }
 
 // RefineRelValidEnd implements store.RelValidEndCapability.
@@ -637,7 +672,7 @@ func (bs *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 		return nil, err
 	}
 	members := func(tok uint16) (tokenMembers, error) { return bs.nodeTokenMembersTalliedLocked(tok, t) } // a label map read from its keys counts its walk (a lazy map, a label index on disk)
-	if err := bs.trackValidEnds(&bs.nodeValidEnds, labelTokens, bs.ensureLabelTxMembersBuilt, members, t); err != nil {
+	if err := bs.trackValidEnds(&bs.nodeValidEnds, labelTokens, func() error { return bs.ensureLabelTxMembersBuiltUnder(t) }, members, t); err != nil {
 		return nil, err
 	}
 	if err := bs.nodeValidEnds.ResolveUnknownBulkUnder(t, func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
@@ -648,7 +683,7 @@ func (bs *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validF
 	}); err != nil {
 		return nil, err
 	}
-	return bs.nodeValidEnds.Candidates(labelTokens, pin, validFrom), nil
+	return bs.nodeValidEnds.CandidatesUnder(labelTokens, pin, validFrom, t)
 }
 
 // RefineNodeValidEnd implements store.NodeValidEndCapability.

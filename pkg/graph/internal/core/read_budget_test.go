@@ -128,8 +128,11 @@ func TestReadBudget_LendByIDsCountsCandidates(t *testing.T) {
 // ByLabelAndPropertyValues and ByLabelAndProperties count the entities they
 // examine. An indexed lookup counts its matches; a key without an index falls
 // back to the label's every node, and under a budget that fallback is counted
-// (and refused) before the scan reads a row; so is a temporal read's fold
-// over every history ID. Without a budget the answers are unchanged.
+// (and refused) before the scan reads a row; temporal reads use the admitted
+// label membership gather. Without a budget the answers are unchanged.
+// Cross-backend door fixtures assert the core's minimum candidate and buffer
+// contribution. Native snapshot copies and iterator steps add backend-specific
+// work; helper tests assert those exact costs with independent native counters.
 func TestReadBudget_NodePropertyDoors(t *testing.T) {
 	t.Parallel()
 	for _, be := range txbBackends() {
@@ -178,16 +181,29 @@ func TestReadBudget_NodePropertyDoors(t *testing.T) {
 					r, err := g.Nodes.ByLabelAndPropertiesCtx(c, "D", map[string]any{"u": int64(7), "v": int64(1)}, storepkg.QueryOpts{})
 					return len(r), err
 				}, 1, nodes},
-				// Temporal, no index on u: the current lookup scans the label (30),
-				// then the fold resolves every history ID but the current match (29).
+				// Temporal, no index on u: the native gather admits every current
+				// label member, then resolves its value at the requested time.
 				{"ByLabelAndProperty", func(c context.Context) (int, error) {
 					r, err := g.Nodes.ByLabelAndPropertyCtx(c, "D", "u", int64(7), storepkg.QueryOpts{TxAt: tx})
 					return len(r), err
-				}, 1, 2*nodes - 1},
+				}, 1, nodes},
 			}
 			for i, d := range doors {
 				if n, err := d.call(ctx); err != nil || n != d.want {
 					t.Fatalf("door %d %s without budget = %d, %v; want %d", i, d.name, n, err, d.want)
+				}
+				if i == 4 {
+					// Isolate the admitted label gather from its separately tested
+					// first membership build. Memory copies current IDs again in
+					// its ever-member snapshot; Badger stores only former members.
+					warm, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
+					if n, err := d.call(warm); err != nil || n != d.want {
+						t.Fatalf("warm temporal gather = %d, %v", n, err)
+					}
+					d.cand = nodes
+					if be.name == "memory" {
+						d.cand += nodes
+					}
 				}
 				bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: d.cand})
 				if n, err := d.call(bctx); err != nil || n != d.want || meter.Work().Candidates != d.cand {

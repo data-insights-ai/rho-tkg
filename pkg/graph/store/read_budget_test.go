@@ -35,8 +35,13 @@ func TestReadMeter_CumulativeNestedNamed(t *testing.T) {
 	if !errors.As(err, &be) || be.Door != "d" || be.Budget.Candidates != 10 || be.Work.Candidates != 11 {
 		t.Fatalf("outer limit through a sibling: %v (%+v)", err, be)
 	}
-	// Shard opens are a field of their own.
-	if err := ReadMeterFrom(outerCtx).AddShardOpens("lend", 4); !errors.As(err, &be) || be.Limit != "shard opens" {
+	// An existing refusal also stops a different dimension without work.
+	if got := ReadMeterFrom(outerCtx).AddShardOpens("lend", 4); got != err || outer.Work().ShardOpens != 0 {
+		t.Fatalf("shard opens after refusal: %v, work %+v", got, outer.Work())
+	}
+	// A fresh read can reach its independent shard-open limit.
+	_, fresh := WithReadBudget(context.Background(), ReadBudget{ShardOpens: 3})
+	if err := fresh.AddShardOpens("lend", 4); !errors.As(err, &be) || be.Limit != "shard opens" {
 		t.Fatalf("shard opens: %v", err)
 	}
 	// No budget: nothing counted, nothing refused.
@@ -66,12 +71,13 @@ func TestReadMeter_DecodedBytes(t *testing.T) {
 	if !errors.Is(err, ErrReadBudget) || !errors.As(err, &be) || be.Door != "door-a" || be.Limit != "decoded bytes" || be.Budget.DecodedBytes != 100 || be.Work.DecodedBytes != 101 {
 		t.Fatalf("past the limit: %v (%+v)", err, be)
 	}
-	// Nested: the tighter inner limit stops first, the outer meter adds up.
+	// A fresh read: the tighter inner limit stops first, the outer adds up.
+	ctx, meter = WithReadBudget(context.Background(), ReadBudget{DecodedBytes: 100})
 	inner, innerMeter := WithReadBudget(ctx, ReadBudget{DecodedBytes: 5})
 	if err := ReadMeterFrom(inner).AddDecodedBytes("c", 6); !errors.As(err, &be) || be.Budget.DecodedBytes != 5 {
 		t.Fatalf("inner limit: %v", err)
 	}
-	if innerMeter.Work().DecodedBytes != 6 || meter.Work().DecodedBytes != 107 {
+	if innerMeter.Work().DecodedBytes != 6 || meter.Work().DecodedBytes != 6 {
 		t.Fatalf("inner %+v outer %+v", innerMeter.Work(), meter.Work())
 	}
 	// No budget: a nil meter makes a nil tally, which counts and refuses nothing.
@@ -80,8 +86,9 @@ func TestReadMeter_DecodedBytes(t *testing.T) {
 		t.Fatal("no meter, yet counted")
 	}
 	// QueryOpts carries the tally of its meter.
-	opts := QueryOpts{}.WithReadMeter(meter, "opts-door")
-	if err := opts.ReadTally().Decoded(1); !errors.As(err, &be) || be.Door != "opts-door" {
+	_, optsMeter := WithReadBudget(context.Background(), ReadBudget{DecodedBytes: 1})
+	opts := QueryOpts{}.WithReadMeter(optsMeter, "opts-door")
+	if err := opts.ReadTally().Decoded(2); !errors.As(err, &be) || be.Door != "opts-door" {
 		t.Fatalf("opts tally: %v", err)
 	}
 	if (QueryOpts{}).ReadTally() != nil {

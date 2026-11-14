@@ -378,7 +378,7 @@ func (ts *Store) forEachExAdjacentRelIDCharged(nid types.NodeID, incoming bool, 
 	}
 	if refSide {
 		if err := ts.forEachMintShardCharged(depth, opens, func(s *BadgerStore) error {
-			return s.ForEachExAdjacentRelID(nid, incoming, func(id types.RelID) bool { ids = append(ids, id); return true })
+			return appendExAdjacentIDs(s, nid, incoming, opens, &ids)
 		}); err != nil {
 			return err
 		}

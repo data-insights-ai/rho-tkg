@@ -1,6 +1,7 @@
 package tiered
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // --- Rotation and depth helpers ---
@@ -83,9 +85,19 @@ func (ts *Store) rotateHotShardLocked() error {
 		newName, windowStart, windowEnd = shardWindowName(now, ts.shardWindow), shardWindowStart(now, ts.shardWindow), shardWindowEnd(now, ts.shardWindow)
 		boundary = oldHot.timeEnd
 		if promote = ts.eventShards[newName]; promote != nil && promote.currentTier() != TierWarm {
-			return fmt.Errorf("graph: rotation to window %s: its shard is %v, not warm", newName, promote.currentTier())
+			entry, ok := ts.catalog.GetShard(newName)
+			if !ok || entry.Tier != TierWarm || promote.currentTier() != TierCold {
+				return fmt.Errorf("graph: rotation to window %s: its shard is %v, not warm", newName, promote.currentTier())
+			}
+			promote.shardMu.Lock()
+			promote.waitMoveLocked()
+			err := promote.rewarmLocked(ts)
+			promote.shardMu.Unlock()
+			if err != nil {
+				return err
+			}
 		}
-	} else if _, exists := ts.eventShards[newName]; exists {
+	} else if ts.eventShardNameTakenLocked(newName) {
 		newName = fmt.Sprintf("%s-%d", newName, now.UnixNano())
 	}
 	newDir := newName
@@ -228,6 +240,15 @@ func (ts *Store) rotateHotShardLocked() error {
 // it removes what it made; the catalog is not touched. tier is the shard's
 // tier at the open, which sizes its memtable (nonHotCfg).
 func (ts *Store) openNewEventShard(name, dir string, tier ShardTier) (*BadgerStore, error) {
+	if !ts.inMemory {
+		// A failed drop or an interrupted creation can leave an uncataloged
+		// directory. Never adopt its rows as a newly created shard.
+		if _, err := os.Lstat(ts.shardDir(dir)); err == nil {
+			return nil, fmt.Errorf("graph: new event shard %s directory already exists: %w", name, os.ErrExist)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("graph: inspect new event shard %s: %w", name, err)
+		}
+	}
 	var store *BadgerStore
 	var err error
 	if tier == TierHot {
@@ -316,6 +337,13 @@ func (ts *Store) checkRotation() error {
 	}
 	defer releaseLifecycle()
 
+	// The idle mover may already have placed a future warm window on the
+	// warm volume. Return it through the normal move protocol before making
+	// it hot, while readers can still acquire ts.mu to release their pins.
+	if err := ts.restorePromotionVolume(); err != nil {
+		return err
+	}
+
 	// Slow path: acquire write lock and rotate.
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
@@ -332,6 +360,28 @@ func (ts *Store) checkRotation() error {
 		return err
 	}
 	return ts.backgroundError()
+}
+
+// restorePromotionVolume brings an existing calendar target back to the hot
+// volume before rotation. Caller owns the sequential lifecycle operation.
+func (ts *Store) restorePromotionVolume() error {
+	if !ts.calendar || ts.inMemory {
+		return nil
+	}
+	ts.mu.RLock()
+	now := ts.clock().In(ts.shardLoc)
+	name := shardWindowName(now, ts.shardWindow)
+	es := ts.eventShards[name]
+	needed := !now.Before(ts.hotShard.timeEnd) && es != nil && es != ts.hotShard
+	ts.mu.RUnlock()
+	if !needed {
+		return nil
+	}
+	entry, ok := ts.catalog.GetShard(name)
+	if !ok || entry.Volume == "" { // the catalog's hot volume
+		return nil
+	}
+	return ts.moveShard(context.Background(), name, "", ts.dataDir)
 }
 
 // --- Registry file integration ---
@@ -463,25 +513,42 @@ func (ts *Store) SetLabelRegistry(reg *registrypkg.LabelRegistry) {
 
 // openRefArchive lazily opens the reference archive. Caller holds
 // ts.archiveMu.Lock (serializes openers only, not field access).
-func (ts *Store) openRefArchive() error {
+func (ts *Store) openRefArchive(tally *storecontract.ReadTally) error {
 	if ts.refArchive.Load() != nil {
 		return nil
 	}
-	openArchive := ts.openBadgerStore // writable: archive needs writes
-	if ts.hasArchiveShard() {
-		openArchive = ts.openExistingBadgerStore // cataloged: its directory must be there
+	if tally != nil {
+		if err := ts.checkArchiveReadOpen(tally); err != nil {
+			return err
+		}
 	}
-	store, err := openArchive("archive")
+	if ts.hasArchiveShard() {
+		if err := ts.requireShardDir("archive"); err != nil {
+			return err
+		}
+	}
+	if err := tally.ShardOpen(); err != nil {
+		return err
+	}
+	store, err := ts.openBadgerStoreMetered("archive", tally) // writable: archive needs writes
 	if err != nil {
 		return fmt.Errorf("graph: open ref archive: %w", err)
 	}
-	if err := ts.applyTrackedTemporalIndexes(store); err != nil {
-		_ = store.Close()
-		return fmt.Errorf("graph: initialise ref archive indexes: %w", err)
-	}
-	if err := ts.syncAnchoredIndexes(store, false); err != nil {
-		_ = store.Close()
-		return fmt.Errorf("graph: initialise ref archive indexes: %w", err)
+	if tally != nil {
+		// Recheck after the open in case definitions changed during the probe.
+		// No metered read runs maintenance, even after a healthy preflight.
+		if match, err := ts.archiveIndexesMatch(store); err != nil || !match {
+			return errors.Join(tally.RefuseUnsupported(), err, store.Close())
+		}
+	} else {
+		if err := ts.applyTrackedTemporalIndexes(store); err != nil {
+			_ = store.Close()
+			return fmt.Errorf("graph: initialise ref archive indexes: %w", err)
+		}
+		if err := ts.syncAnchoredIndexes(store, false); err != nil {
+			_ = store.Close()
+			return fmt.Errorf("graph: initialise ref archive indexes: %w", err)
+		}
 	}
 
 	// Register archive shard in catalog if new.
@@ -519,16 +586,99 @@ func (ts *Store) openRefArchive() error {
 // ErrStoreClosed after Close: `closed` is set under archiveMu, so a loser of
 // the lock race never opens an archive that would never be closed.
 func (ts *Store) ensureRefArchive() error {
+	return ts.ensureRefArchiveMetered(nil)
+}
+
+func (ts *Store) ensureRefArchiveMetered(tally *storecontract.ReadTally) error {
 	ts.archiveMu.Lock()
 	defer ts.archiveMu.Unlock()
 	if ts.closed.Load() {
 		return ErrStoreClosed
 	}
-	return ts.openRefArchive()
+	return ts.openRefArchive(tally)
+}
+
+// checkArchiveReadOpen checks the existing archive without a writable open.
+// Repair and writable recovery cannot be charged, so they refuse before that
+// work. The read-only probe is a real open, separate from the writable handle
+// the existing archive lifecycle installs; both are charged before opening.
+// Caller holds archiveMu, so no second archive opener can race the probe.
+func (ts *Store) checkArchiveReadOpen(tally *storecontract.ReadTally) error {
+	if !ts.hasArchiveShard() || ts.inMemory {
+		return tally.RefuseUnsupported()
+	}
+	if err := ts.requireVolume("archive"); err != nil {
+		return err
+	}
+	if err := ts.requireShardDir("archive"); err != nil {
+		return err
+	}
+	if err := tally.ShardOpen(); err != nil {
+		return err
+	}
+	cfg := ts.coldReadCfg("archive", false)
+	cfg.OpenReadTally = tally
+	probe, err := ts.newShardStore(cfg)
+	if err != nil {
+		return fmt.Errorf("graph: archive needs writable recovery: %w", errors.Join(err, tally.RefuseUnsupported()))
+	}
+	match, err := ts.archiveIndexesMatch(probe)
+	closed := probe.Close()
+	if err != nil || !match {
+		return errors.Join(tally.RefuseUnsupported(), err, closed)
+	}
+	return closed
+}
+
+// archiveIndexesMatch reports whether the archive's tracked temporal and
+// anchored index maintenance would do no work. Extra relationship temporal
+// indexes would be dropped by syncAnchoredIndexes(store, false).
+func (ts *Store) archiveIndexesMatch(store *BadgerStore) (bool, error) {
+	if match, err := ts.anchoredIndexesMatch(store); err != nil || !match {
+		return match, err
+	}
+	if rels, err := store.RelTemporalIndexTypes(); err != nil || len(rels) != 0 {
+		return false, err
+	}
+	ts.tempIdxMu.Lock()
+	defer ts.tempIdxMu.Unlock()
+	for _, tok := range ts.tempIdxLabels {
+		temporal, hf, _, err := store.TemporalIndexState(tok)
+		if err != nil || !temporal || hf {
+			return false, err
+		}
+	}
+	for tok, want := range ts.hfIdxBuckets {
+		temporal, hf, bucket, err := store.TemporalIndexState(tok)
+		if err != nil || temporal || !hf || bucket != want {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 // hasArchiveShard returns true if the catalog has an archive shard entry.
 func (ts *Store) hasArchiveShard() bool {
 	_, ok := ts.catalog.GetShard("archive")
 	return ok
+}
+
+// eventShardNameTakenLocked includes a drop in progress and uncataloged
+// directories left by failed cleanup, even after restart. Caller holds ts.mu.
+// At most the three configured volumes are probed; no directory is walked.
+func (ts *Store) eventShardNameTakenLocked(name string) bool {
+	_, exists := ts.eventShards[name]
+	_, dropping := ts.droppingShards[name]
+	if exists || dropping || ts.inMemory {
+		return exists || dropping
+	}
+	for _, root := range []string{ts.dataDir, ts.warmDir, ts.coldDir} {
+		if root == "" {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(root, "events", name)); !errors.Is(err, os.ErrNotExist) {
+			return true
+		}
+	}
+	return false
 }

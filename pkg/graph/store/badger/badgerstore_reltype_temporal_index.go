@@ -501,12 +501,20 @@ func (bs *Store) loadRelTypeTemporalIndexes(img *openImage) error {
 		}
 		bs.idxMu.RLock()
 		_, done := bs.relTypeTemporalIndexes[tok]
-		rids := bs.relTypeRelIDsSnapshotLocked(tok)
 		bs.idxMu.RUnlock()
 		if done {
 			continue
 		}
-		if entries, ok := img.takeRelTemporal(tok); ok {
+		entries, fromImage := img.takeRelTemporal(tok)
+		if !fromImage {
+			if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+				return err
+			}
+		}
+		bs.idxMu.RLock()
+		rids := bs.relTypeRelIDsSnapshotLocked(tok)
+		bs.idxMu.RUnlock()
+		if fromImage {
 			// The runtime envelope keeps deleted rels (append-only, see deleteRelByInfo); the
 			// open keeps the type's current members, as buildRelTypeTemporalIndex would.
 			members := make(map[types.RelID]struct{}, len(rids))
@@ -526,6 +534,9 @@ func (bs *Store) loadRelTypeTemporalIndexes(img *openImage) error {
 				}
 			}
 			if len(touched) > 0 {
+				if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+					return err
+				}
 				// From their rows and history, as the rebuild below builds them.
 				built, err := bs.buildRelTypeTemporalIndex(touched)
 				if err != nil {
@@ -554,6 +565,15 @@ func (bs *Store) loadRelTypeTemporalIndexes(img *openImage) error {
 func (bs *Store) discardRelTypeTemporalIndexDefs() error {
 	if bs.readOnly {
 		return nil
+	}
+	if bs.openReadTally != nil {
+		return bs.view(func(txn *badgerv4.Txn) error {
+			_, err := txn.Get(storepkg.RelTypeTemporalIndexDefsKey)
+			if errors.Is(err, badgerv4.ErrKeyNotFound) {
+				return nil
+			}
+			return errors.Join(err, bs.openReadTally.RefuseUnsupported())
+		})
 	}
 	if err := bs.update(func(txn *badgerv4.Txn) error {
 		return txn.Delete(storepkg.RelTypeTemporalIndexDefsKey)

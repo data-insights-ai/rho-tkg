@@ -96,9 +96,9 @@ func (ts *Store) NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error) {
 }
 
 // NodeIDsByLabelMetered implements store.MemberGatherMeteredCapability:
-// NodeIDsByLabel with the open of each closed shard of the fan-out charged to
-// t before it (allShardsBut); a shard sealed with none of the label is skipped
-// and opens nothing.
+// Each shard admits its native snapshot, and the fan-out admits its merge
+// before allocation. Closed shard opens are charged before opening; a shard
+// sealed with none of the label is skipped.
 func (ts *Store) NodeIDsByLabelMetered(labelToken uint16, t *storecontract.ReadTally) ([]types.NodeID, error) {
 	ts.noteTypeScan("NodeIDsByLabel")
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
@@ -106,12 +106,12 @@ func (ts *Store) NodeIDsByLabelMetered(labelToken uint16, t *storecontract.ReadT
 	}
 	skip := func(es *EventShard) bool { return es.sealedWithoutLabel(labelToken) }
 	ref, others, err := allShardsBut(ts, skip, t, func(bs *BadgerStore, _ bool) ([]types.NodeID, error) {
-		return bs.NodeIDsByLabel(labelToken)
+		return bs.NodeIDsByLabelMetered(labelToken, t)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return slices.Compact(mergeNodeIDSlices(append(others, ref))), nil
+	return mergeCurrentMemberIDs(append(others, ref), t, mergeNodeIDSlices)
 }
 
 // RelIDsByType implements store.MemberIDsCapability: the type's current
@@ -129,10 +129,33 @@ func (ts *Store) RelIDsByTypeMetered(typeToken uint16, t *storecontract.ReadTall
 	}
 	skip := func(es *EventShard) bool { return es.sealedWithoutRelType(typeToken) }
 	ref, others, err := allShardsBut(ts, skip, t, func(bs *BadgerStore, _ bool) ([]types.RelID, error) {
-		return bs.RelIDsByType(typeToken)
+		return bs.RelIDsByTypeMetered(typeToken, t)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return slices.Compact(mergeRelIDSlices(append(others, ref))), nil
+	return mergeCurrentMemberIDs(append(others, ref), t, mergeRelIDSlices)
+}
+
+// mergeCurrentMemberIDs admits the new ID slice and heap before the merge;
+// a single nonempty shard is returned directly and allocates neither.
+func mergeCurrentMemberIDs[ID ~int64](lists [][]ID, t *storecontract.ReadTally, merge func([][]ID) []ID) ([]ID, error) {
+	n, parts := 0, 0
+	for _, ids := range lists {
+		if len(ids) > 0 {
+			n += len(ids)
+			parts++
+		}
+	}
+	if parts > 1 {
+		if err := t.Buffer(8 * n); err != nil {
+			return nil, err
+		}
+	}
+	if parts > 2 {
+		if err := t.Buffer(24 * parts); err != nil {
+			return nil, err
+		}
+	}
+	return slices.Compact(merge(lists)), nil
 }

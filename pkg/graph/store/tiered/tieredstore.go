@@ -581,6 +581,10 @@ type Store struct {
 	// shardOpenHook, tests only, sees the config of every shard open
 	// (newShardStore).
 	shardOpenHook atomic.Pointer[func(BadgerStoreConfig)]
+
+	// coldGrowBytesForTest, tests only, lowers coldGrowBytes for this store
+	// (coldGrowLimit); 0 is the constant.
+	coldGrowBytesForTest atomic.Int64
 }
 
 // maxShardOpenParallelism bounds how many event shards are opened at once.
@@ -1550,6 +1554,8 @@ func (ts *Store) backgroundError() error {
 // successful probe the recorded error is cleared and the store is usable
 // again WITHOUT a close/re-open cycle; on a failed probe the original error
 // is retained (with the probe failure joined in) and returned.
+// It does not cancel an interrupted Clear: the pending marker remains, and
+// the next open finishes clearing, including writes made after recovery.
 //
 // Recovery clears the lifecycle gate only — it does not re-verify shard
 // data. After close failures on cold shards, run VerifyShard / RunRepair
@@ -1902,10 +1908,16 @@ func (ts *Store) resetCatalogAfterClear() error {
 // The shard is always opened writable; read-only opens go through badgerCfg
 // (the recovery probe).
 func (ts *Store) openBadgerStore(name string) (*BadgerStore, error) {
+	return ts.openBadgerStoreMetered(name, nil)
+}
+
+func (ts *Store) openBadgerStoreMetered(name string, tally *storecontract.ReadTally) (*BadgerStore, error) {
 	if err := ts.requireVolume(name); err != nil {
 		return nil, err
 	}
-	return ts.newShardStore(ts.badgerCfg(name, false))
+	cfg := ts.badgerCfg(name, false)
+	cfg.OpenReadTally = tally
+	return ts.newShardStore(cfg)
 }
 
 // shardDir is the directory of the shard at catalog path rel on its volume

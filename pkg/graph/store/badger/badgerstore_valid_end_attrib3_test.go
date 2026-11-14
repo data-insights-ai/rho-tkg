@@ -23,7 +23,7 @@ import (
 // its lock holds, and the valid-end read's DecodedBytes charged before each
 // value is fetched.
 
-var vaRamDisk = []vaMode{{name: "ram"}, {name: "disk", disk: true}}
+var vaRAMDisk = []vaMode{{name: "ram"}, {name: "disk", disk: true}}
 
 func vaFlushedName(flushed bool) string {
 	return map[bool]string{true: "flushed", false: "pending"}[flushed]
@@ -56,29 +56,28 @@ func vaIDs(from, to int64) []int64 {
 
 // vaCounters is the native counts of one call: attribution lookups, lock holds
 // and row decodes (the bulk read's and the history overlay's).
-type vaCounters struct{ lookups, holds, decodes, metaDecodes int64 }
+type vaCounters struct{ lookups, holds, decodes, metaDecodes, steps int64 }
 
 func vaCount(bs *Store) vaCounters {
-	return vaCounters{bs.validEndAttribLookups.Load(), bs.validEndAttribHolds.Load(), bs.validEndRowDecodes.Load(), bs.historyMetaDecodes.Load()}
+	return vaCounters{bs.validEndAttribLookups.Load(), bs.validEndAttribHolds.Load(), bs.validEndRowDecodes.Load(), bs.historyMetaDecodes.Load(), bs.validEndIteratorSteps.Load()}
 }
 
 func (c vaCounters) since(b vaCounters) vaCounters {
-	return vaCounters{c.lookups - b.lookups, c.holds - b.holds, c.decodes - b.decodes, c.metaDecodes - b.metaDecodes}
+	return vaCounters{c.lookups - b.lookups, c.holds - b.holds, c.decodes - b.decodes, c.metaDecodes - b.metaDecodes, c.steps - b.steps}
 }
 
 // TestValidEndAttribution_OwnFormerMembersCountOnce (D1): label 9 has 6
 // current members and 2 former ones (deleted). Its first call reads the 8
-// ever-members, one candidate each; the attribution walks label 9's former set
+// ever-members; the attribution walks label 9's former set
 // (2 < 8 entities: the former side), 2 lookups, both entities of this call,
-// already counted: no candidate more. The control counts the listing (6 with
-// the label index on disk, none from a RAM map) and the 8 entities, in one lock
-// hold; before, the walk counted its 2 lookups again (16 in the public test,
-// TestReadBudgetPublicValidEndFirstCall, which wants 14). One candidate under
-// the control is refused at the enlistment: no lookup, nothing installed.
+// already counted: no candidate more. The control counts the label listing,
+// enlistment, pending capture, entity reads, iterator steps and result copies,
+// with one attribution lock hold. A tight candidate limit refuses enlistment:
+// no attribution lookup and nothing installed.
 func TestValidEndAttribution_OwnFormerMembersCountOnce(t *testing.T) {
 	t.Parallel()
 	want := vaIDs(1, 8)
-	for _, m := range vaRamDisk {
+	for _, m := range vaRAMDisk {
 		for _, flushed := range []bool{true, false} {
 			t.Run(m.name+"/"+vaFlushedName(flushed), func(t *testing.T) {
 				t.Parallel()
@@ -94,6 +93,9 @@ func TestValidEndAttribution_OwnFormerMembersCountOnce(t *testing.T) {
 				listing := uint64(0)
 				if m.disk {
 					listing = 6
+					if !flushed {
+						listing += 2 // the two pending label deletes are examined too
+					}
 				}
 				bs := open()
 				b := vaCount(bs)
@@ -102,8 +104,8 @@ func TestValidEndAttribution_OwnFormerMembersCountOnce(t *testing.T) {
 				if err != nil || !slices.Equal(got, want) {
 					t.Fatalf("control = %v, %v; want %v", got, err, want)
 				}
-				if c := control.Work().Candidates; c != listing+8 || d.lookups != 2 || d.holds != 1 {
-					t.Fatalf("control: %d candidates, %d lookups, %d holds; want %d (%d listed, 8 entities, the 2 former members not again), 2, 1", c, d.lookups, d.holds, listing+8, listing)
+				if c := control.Work().Candidates; c != listing+4*8+uint64(d.steps) || d.lookups != 2 || d.holds != 1 {
+					t.Fatalf("control: %d candidates, %d lookups, %d holds; want %d (%d listed, 8 entities, the 2 former members not again), 2, 1", c, d.lookups, d.holds, listing+4*8+uint64(d.steps), listing)
 				}
 				bs = open()
 				b = vaCount(bs)
@@ -124,18 +126,18 @@ func TestValidEndAttribution_OwnFormerMembersCountOnce(t *testing.T) {
 //
 // (a) Steady state: label 3 (20 former members, deleted) and label 9 (5
 // nodes) tracked; 3 of label 3's members are made unknown (their tombstone
-// history row written again). Label 3's call reads the 3: 3 candidates; token
+// history row written again). Label 3's call reads the 3; token
 // 3's walk: 20 > 3, the entity side, 3 lookups; token 9's former set is empty
 // (the former side, 0 lookups). It lists the 20, nothing unknown after. Under 2
 // candidates it is refused before any read: no lookup, no row decoded, 3
 // unknown.
 //
 // (b) First call: label 3 with 60 former members tracked, label 9 with 50
-// nodes: token 3 is walked on the entity side, 50 lookups; candidates are the
-// listing (50 on disk) and the 50 entities.
+// nodes: token 3 is walked on the entity side, 50 lookups. Candidate admission
+// includes each native listing, copy, row read and forward step.
 func TestValidEndAttribution_EntitySide(t *testing.T) {
 	t.Parallel()
-	for _, m := range vaRamDisk {
+	for _, m := range vaRAMDisk {
 		for _, flushed := range []bool{true, false} {
 			t.Run(m.name+"/"+vaFlushedName(flushed), func(t *testing.T) {
 				t.Parallel()
@@ -170,8 +172,8 @@ func TestValidEndAttribution_EntitySide(t *testing.T) {
 					if err != nil || !slices.Equal(got, want3) {
 						t.Fatalf("control = %v, %v; want %v", got, err, want3)
 					}
-					if c := control.Work().Candidates; c != 3 || d.lookups != 3+0 {
-						t.Fatalf("control: %d candidates, %d lookups; want 3 (the 3 entities read) and 3 (token 3's entity side) + 0 (token 9's empty former set)", c, d.lookups)
+					if c := control.Work().Candidates; c != 2*3+20+uint64(d.steps) || d.lookups != 3+0 {
+						t.Fatalf("control: %d candidates, %d lookups; want %d native admissions and 3 attribution lookups", c, d.lookups, 2*3+20+uint64(d.steps))
 					}
 					if _, nodes := bs.ValidEndStats(); nodes.Unknown != 0 {
 						t.Fatalf("after the control: %+v; want nothing unknown", nodes)
@@ -199,8 +201,8 @@ func TestValidEndAttribution_EntitySide(t *testing.T) {
 					if err != nil || !slices.Equal(got, vaIDs(9001, 9050)) {
 						t.Fatalf("control = %d candidates, %v; want label 9's 50", len(got), err)
 					}
-					if c := control.Work().Candidates; c != listing+50 || d.lookups != 50 {
-						t.Fatalf("control: %d candidates, %d lookups; want %d (%d listed, 50 entities) and 50 (token 3's entity side)", c, d.lookups, listing+50, listing)
+					if c := control.Work().Candidates; c != listing+4*50+uint64(d.steps) || d.lookups != 50 {
+						t.Fatalf("control: %d candidates, %d lookups; want %d (%d listed, 50 entities) and 50 (token 3's entity side)", c, d.lookups, listing+4*50+uint64(d.steps), listing)
 					}
 					bs = open()
 					b = vaCount(bs)
@@ -246,7 +248,7 @@ func vaEntitySideOpen(t *testing.T, m vaMode, flushed bool, former int64) *Store
 // counted.
 func TestValidEndAttribution_HoldsBounded(t *testing.T) {
 	t.Parallel()
-	for _, m := range vaRamDisk {
+	for _, m := range vaRAMDisk {
 		for _, flushed := range []bool{true, false} {
 			t.Run(m.name+"/"+vaFlushedName(flushed), func(t *testing.T) {
 				t.Parallel()
@@ -295,8 +297,8 @@ func TestValidEndAttribution_HoldsBounded(t *testing.T) {
 						b := vaCount(ctl)
 						cm, want, err := vaCall(ctl, 9, storecontract.ReadBudget{})
 						d := vaCount(ctl).since(b)
-						if err != nil || !slices.Equal(want, vaIDs(9001, 9050)) || cm.Work().Candidates != listing+50+c.ctlExtra || d.holds != c.ctlHolds || d.lookups != c.ctlLookups {
-							t.Fatalf("default hold: %d candidates, %v, %d counted, %+v; want 50, %d, %d holds, %d lookups", len(want), err, cm.Work().Candidates, d, listing+50+c.ctlExtra, c.ctlHolds, c.ctlLookups)
+						if err != nil || !slices.Equal(want, vaIDs(9001, 9050)) || cm.Work().Candidates != listing+4*50+c.ctlExtra+uint64(d.steps) || d.holds != c.ctlHolds || d.lookups != c.ctlLookups {
+							t.Fatalf("default hold: %d candidates, %v, %d counted, %+v; want 50, %d, %d holds, %d lookups", len(want), err, cm.Work().Candidates, d, listing+4*50+c.ctlExtra+uint64(d.steps), c.ctlHolds, c.ctlLookups)
 						}
 						bs := vaEntitySideOpen(t, m, flushed, c.former)
 						bs.validEndAttribHoldMax = 4
@@ -306,8 +308,8 @@ func TestValidEndAttribution_HoldsBounded(t *testing.T) {
 						if err != nil || !slices.Equal(got, want) {
 							t.Fatalf("hold 4 = %v, %v; want the default's %v", got, err, want)
 						}
-						if cand := bm.Work().Candidates; cand != listing+50+c.extra || d.holds != c.holds || d.lookups != c.lookups {
-							t.Fatalf("hold 4: %d candidates, %d holds, %d lookups; want %d, %d, %d", cand, d.holds, d.lookups, listing+50+c.extra, c.holds, c.lookups)
+						if cand := bm.Work().Candidates; cand != listing+4*50+c.extra+uint64(d.steps) || d.holds != c.holds || d.lookups != c.lookups {
+							t.Fatalf("hold 4: %d candidates, %d holds, %d lookups; want %d, %d, %d", cand, d.holds, d.lookups, listing+4*50+c.extra+uint64(d.steps), c.holds, c.lookups)
 						}
 					})
 				}
@@ -417,6 +419,8 @@ func vaN5(t *testing.T, node bool) (*Store, []int) {
 	if !found {
 		t.Fatal("entity 3's history row of version 1 is not buffered")
 	}
+	vaMust(t, bs.ensureLabelTxMembersBuilt())
+	vaMust(t, bs.ensureRelTypeTxMembersBuilt())
 	return bs, append(sizes, len(op.value))
 }
 
@@ -428,7 +432,8 @@ func vaN5(t *testing.T, node bool) (*Store, []int) {
 // already in RAM, is charged its length before its decode. The native counters
 // are the values fetched from badger and their bytes, which the meter does not
 // keep. The control counts the fetched bytes and the buffered row's, 6 fetches,
-// 4 history versions, one committed current row read; a DecodedBytes limit one
+// 4 history versions plus one pending capture, one committed current row read;
+// a DecodedBytes limit one
 // under the first k rows' sizes refuses at the k-th row with k-1 values
 // fetched (k = 7, the buffered row: 6 fetched, one history row less decoded).
 // Nodes and relationships.
@@ -458,8 +463,9 @@ func TestValidEndRows_ChargeEachValueBeforeItsFetch(t *testing.T) {
 			}
 			fetches, fetched, reads, metas = bs.validEndValueFetches.Load()-fetches, bs.validEndFetchedBytes.Load()-fetched, bs.validEndCommittedReads.Load()-reads, bs.historyMetaDecodes.Load()-metas
 			w := control.Work()
-			if w.DecodedBytes != uint64(fetched)+uint64(sizes[6]) || fetches != 6 || w.HistoryExamined != 4 || reads != 1 {
-				t.Fatalf("control: %+v, %d values fetched (%d bytes), %d committed current rows read; want DecodedBytes %d (fetched + the buffered row's %d), 6 fetched, 4 history versions, 1 committed read", w, fetches, fetched, reads, uint64(fetched)+uint64(sizes[6]), sizes[6])
+			// The pending row is examined when captured and again when decoded.
+			if w.DecodedBytes != uint64(fetched)+uint64(sizes[6]) || fetches != 6 || w.HistoryExamined != 5 || reads != 1 {
+				t.Fatalf("control: %+v, %d values fetched (%d bytes), %d committed current rows read; want DecodedBytes %d (fetched + the buffered row's %d), 6 fetched, 5 history examinations, 1 committed read", w, fetches, fetched, reads, uint64(fetched)+uint64(sizes[6]), sizes[6])
 			}
 			sum := 0
 			for k := 1; k <= 7; k++ {
@@ -501,7 +507,7 @@ func TestValidEndRows_ChargeEachValueBeforeItsFetch(t *testing.T) {
 // Relationship 2 (type 9, flushed) is read on the bulk path.
 func TestValidEndOverlay_CommittedRowTypeOnCacheMiss(t *testing.T) {
 	t.Parallel()
-	for _, m := range vaRamDisk {
+	for _, m := range vaRAMDisk {
 		t.Run(m.name, func(t *testing.T) {
 			t.Parallel()
 			bs := vaOpen(t, m, false, func(bs *Store) {
@@ -531,14 +537,15 @@ func TestValidEndOverlay_CommittedRowTypeOnCacheMiss(t *testing.T) {
 
 // TestValidEndAttribution_RelFormerWalkCounts (D8): type 1 has 22
 // relationships, 2 of them deleted (its former set); type 9 53, 3 deleted.
-// Type 1 is tracked first. Type 9's first call reads its 53 relationships (53
-// candidates); the attribution walks type 1's former set (2, neither read: 2
+// Type 1 is tracked first. Type 9's first call reads its 53 relationships;
+// the attribution walks type 1's former set (2, neither read: 2
 // rejected entries, 2 candidates) and type 9's (3, all read: none): 5 lookups,
-// 55 candidates, 75 relationships held. Under 54 the call is refused at type
+// 75 relationships held. Admission includes enlistment, capture, row reads,
+// iterator steps and result copies. A limit inside attribution refuses type
 // 1's second entry: 2 lookups, nothing installed.
 func TestValidEndAttribution_RelFormerWalkCounts(t *testing.T) {
 	t.Parallel()
-	for _, m := range vaRamDisk {
+	for _, m := range vaRAMDisk {
 		for _, flushed := range []bool{true, false} {
 			t.Run(m.name+"/"+vaFlushedName(flushed), func(t *testing.T) {
 				t.Parallel()
@@ -569,14 +576,15 @@ func TestValidEndAttribution_RelFormerWalkCounts(t *testing.T) {
 					t.Fatalf("control = %d candidates, %v; want type 9's 53", len(got), err)
 				}
 				rels, _ := bs.ValidEndStats()
-				if c := control.Work().Candidates; c != 55 || d.lookups != 2+3 || rels.Entities != 75 {
-					t.Fatalf("control: %d candidates, %d lookups, %d held; want 55 (53 entities, type 1's 2 rejected), 5, 75", c, d.lookups, rels.Entities)
+				if c := control.Work().Candidates; c != 4*53+2+uint64(d.steps) || d.lookups != 2+3 || rels.Entities != 75 {
+					t.Fatalf("control: %d candidates, %d lookups, %d held; want %d native admissions, 5 lookups, 75 held", c, d.lookups, rels.Entities, 4*53+2+uint64(d.steps))
 				}
+				beforeAttribution := uint64(3*53) + uint64(d.steps)
 				bs = open()
 				b = vaCount(bs)
 				before, _ := bs.ValidEndStats()
-				if _, got, err := vaRelCall(bs, 9, storecontract.ReadBudget{Candidates: 54}); !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 {
-					t.Fatalf("under 54 = %v, %v; want ErrReadBudget", got, err)
+				if _, got, err := vaRelCall(bs, 9, storecontract.ReadBudget{Candidates: beforeAttribution + 1}); !errors.Is(err, storecontract.ErrReadBudget) || len(got) != 0 {
+					t.Fatalf("inside attribution = %v, %v; want ErrReadBudget", got, err)
 				}
 				if after, _ := bs.ValidEndStats(); vaCount(bs).since(b).lookups != 2 || after.Entities != before.Entities {
 					t.Fatalf("the refused call: %d lookups, %+v held; want 2 (refused at type 1's second entry), %+v", vaCount(bs).since(b).lookups, after, before)

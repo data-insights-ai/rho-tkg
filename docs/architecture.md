@@ -269,7 +269,12 @@ ADR-0012.
   pass, the check-in close, the writable upgrade, this close, the handle sweep, `MoveShard` and the idle mover, the
   retention drop and `Clear`; `Close` alone does not fence, it refuses everything after). A warm shard whose close
   failed in a move, a drop or a `Clear` is cold in memory, its catalog entry warm, and opens on its next access; the
-  drop links the shard back with its directory and entry, and nothing is moved or cleared. Here the write that
+  failed move leaves its source in place, and a failed close during drop links the shard back with its directory and
+  entry. A failed `Clear` can be partial: earlier shards stay cleared. Its durable marker remains, and the next open
+  finishes clearing every shard, including rows written after the failure or `RecoverBackgroundError`; a successful
+  repeat `Clear` removes that marker. Calendar promotion restores a catalog-warm shard's writable warm-size handle
+  and indexes first; an active cold-handle pin refuses that attempt. A future warm shard already moved off the hot
+  volume returns through the shared move protocol before promotion. Here the write that
   triggered the rotation is refused with that fault: it commits nothing (no row, no change-log record, no shard made
   for it), the committed rotation stays, and
   every row committed before stays readable after a reopen or `RecoverBackgroundError` (R1). A uniqueness claim the
@@ -310,10 +315,13 @@ ADR-0012.
   (R3, `tasks/evidence/R3/measure.txt`). `WarmMemTableSize` sizes the memtable of a shard opened writable in a non-hot
   role (a warm shard at `New`, a window shard made on demand, a cold shard a late write opens, a shard reopened after a
   move or `Clear`; 8 MiB against 64 MiB: a restart over two warm shards 345.7 to 200.3 MiB of live heap, a window shard
-  made on demand 86.2 to 13.4 MiB of allocation). Without it a shard cold at the open still opens writable at 8 MiB
-  (R3-3 LATEWRITE, `nonHotCfg`): a rotation promotes only a warm shard, so such a handle never becomes the hot shard's.
+  made on demand 86.2 to 13.4 MiB of allocation). Without it a disk shard cold at the open still opens writable at
+  8 MiB (R3-3 LATEWRITE, `nonHotCfg`); in memory it keeps `MemTableSize`, since no sweep can grow it. A rotation
+  restores a catalog-warm shard's warm-size handle before promoting it; it never promotes a small cold handle.
   Such a handle that has committed 32 MiB is closed by the handle sweep and the shard's next writable open takes
-  `MemTableSize` (`coldGrowOwedLocked`, `EventShard.growNext`). `WarmMemTableSize` equal to `MemTableSize` keeps
+  `MemTableSize` (`coldGrowOwedLocked`, `EventShard.growNext`). Every writable cold checkout checks for this growth,
+  including updates, deletes, labels and history writes. With `MaxOpenColdShards` 0, a by-ID write closes its handle
+  at check-in, so committed bytes do not accumulate across writes and it does not grow. `WarmMemTableSize` equal to `MemTableSize` keeps
   `MemTableSize` on every writable open and owes no swap; one below it is kept as set.
 - **The handle sweep** (R3, `handle_sweep.go`) shrinks the handles a rotation leaves: a goroutine started by `New`,
   kicked at the end of each rotation and on the idle tick. It visits only the shards that owe work, a pending set that
@@ -601,6 +609,12 @@ that test.
     on that day's shard, with no cold write. Its event-class start count is 0 by construction. Widening
     `RelsByMint` to event-class starts is therefore not pursued. For such a host the event shards hold edges
     only, so step 3's on-demand window shard serves the `RelsByMint` write first.
+  - *Aborted retention drops.* One exit restores routing and releases the name after any failure before the
+    catalog removal commits; a failed rollback reopen leaves the shard cold in memory so its next read retries
+    opening it. After commit the result includes the purged IDs even if directory removal fails; that error is
+    logged and the name stays reserved. New names also check the three volume paths, so an uncataloged directory
+    left across restart is never adopted as new data. Creation refuses an existing chosen directory before opening
+    badger. Cross-shard residue already swept on a failed attempt remains swept; a retry finishes the purge.
   - *Retention (watermark designed, not built: step 3).* With the option, `ByAge` purges by valid day: the ID's time is the valid day, by design the
     same immutable field it reads today. The design: the catalog keeps a watermark, the largest `before` of any `ByAge` run
     (shard drops and row purges alike), set in memory and saved before a drop unlinks its shard; a write whose ID

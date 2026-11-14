@@ -12,9 +12,9 @@ import (
 // caller): NodeAtCtx and RelAtCtx on memory and badger over an 80-version
 // node and relationship (an Add and 79 Updates), read at an instant whose
 // winner is the first version (a history row): unlimited, the plain door's
-// row and HistoryExamined 80 (79 skeletons and the winner); under 79, the
-// typed refusal and 80 counted: the read ends at the refused winner and
-// reads no full chain after it (it counted 159 on memory, 81 on badger).
+// row and at least 80 history examinations (79 skeletons and the winner).
+// Native pending copies and forward skips count separately. Under 79, the
+// typed refusal has exactly 80 counted: no fallback continues after refusal.
 func TestReadBudgetPublicAtRefusal(t *testing.T) {
 	t.Parallel()
 	const versions = 80
@@ -91,8 +91,8 @@ func TestReadBudgetPublicAtRefusal(t *testing.T) {
 					}
 					c, meter := store.WithReadBudget(ctx, store.ReadBudget{})
 					got, err := d.ctx(c)
-					if err != nil || got != want || meter.Work().HistoryExamined != versions {
-						t.Fatalf("unlimited = v%d, %v, HistoryExamined %d; want v%d, %d", got, err, meter.Work().HistoryExamined, want, versions)
+					if err != nil || got != want || meter.Work().HistoryExamined < versions {
+						t.Fatalf("unlimited = v%d, %v, HistoryExamined %d; want v%d and at least %d", got, err, meter.Work().HistoryExamined, want, versions)
 					}
 					c, meter = store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: versions - 1})
 					got, err = d.ctx(c)

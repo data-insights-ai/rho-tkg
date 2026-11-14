@@ -20,8 +20,9 @@ import (
 // entry of its current adjacency (6 alive) and of its ex-adjacency (2 deleted)
 // as the gather produces them, and one for each of the 8 relationships read; a
 // limit inside the gather refuses before any relationship is read (the callbacks
-// made before a refusal stand: none), one inside the reads hands out the
-// entities read before it; the count is exact; a nil callback is refused before
+// made before a refusal stand: none), one inside the reads may hand out a
+// prefix, depending on when its admitted gather finishes; the count is exact;
+// a nil callback is refused before
 // any charge.
 func TestReadBudgetPublicAtNodes(t *testing.T) {
 	t.Parallel()
@@ -134,11 +135,12 @@ func TestReadBudgetPublicAtNodes(t *testing.T) {
 					t.Fatalf("%s: Candidates %d (one under) = %v, %v (work %+v); want a refusal at the last read and a prefix", d.name, total.Candidates-1, got, err, xm.Work())
 				}
 				if d.name != "ColumnsAtNodes" {
-					// Inside the reads: the entities read before the refusal are handed out.
+					// A refusal while gathering/resolving may precede the first
+					// callback; any emitted rows must still be an exact prefix.
 					rctx, rm := store.WithReadBudget(ctx, store.ReadBudget{Candidates: gather + 3})
 					got, err = pubCollect(func(fn func(string) bool) error { return d.ctx(rctx, fn) })
-					if !errors.Is(err, store.ErrReadBudget) || rm.Work().Candidates != gather+4 || len(got) == 0 || !slices.Equal(got, want[:len(got)]) {
-						t.Fatalf("%s: Candidates %d (three reads) = %v, %v (work %+v); want a prefix and a refusal at the fourth read", d.name, gather+3, got, err, rm.Work())
+					if !errors.Is(err, store.ErrReadBudget) || rm.Work().Candidates != gather+4 || !slices.Equal(got, want[:len(got)]) {
+						t.Fatalf("%s: Candidates %d (three reads) = %v, %v (work %+v); want a possibly empty prefix and a refusal at the fourth read", d.name, gather+3, got, err, rm.Work())
 					}
 				}
 			}

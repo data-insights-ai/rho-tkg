@@ -7,10 +7,16 @@ import (
 )
 
 var _ storecontract.MemberIDsCapability = (*Store)(nil)
+var _ storecontract.CurrentMemberIDsMeteredCapability = (*Store)(nil)
 
 // NodeIDsByLabel returns the label's members from the label index NodesByLabel
 // reads (store.MemberIDsCapability), ascending, without reading a row.
 func (bs *Store) NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error) {
+	return bs.NodeIDsByLabelMetered(labelToken, nil)
+}
+
+// NodeIDsByLabelMetered admits the native snapshot before copying its IDs.
+func (bs *Store) NodeIDsByLabelMetered(labelToken uint16, t *storecontract.ReadTally) ([]types.NodeID, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -18,7 +24,7 @@ func (bs *Store) NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error) {
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	ids, err := bs.labelNodeIDsSnapshotLocked(labelToken)
+	ids, err := bs.labelNodeIDsSnapshotTalliedLocked(labelToken, t)
 	bs.idxMu.RUnlock()
 	if err != nil {
 		return nil, err
@@ -31,6 +37,11 @@ func (bs *Store) NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error) {
 // RelationshipsByType reads (store.MemberIDsCapability), ascending, without
 // reading a row.
 func (bs *Store) RelIDsByType(typeToken uint16) ([]types.RelID, error) {
+	return bs.RelIDsByTypeMetered(typeToken, nil)
+}
+
+// RelIDsByTypeMetered is NodeIDsByLabelMetered for a relationship type.
+func (bs *Store) RelIDsByTypeMetered(typeToken uint16, t *storecontract.ReadTally) ([]types.RelID, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -38,7 +49,7 @@ func (bs *Store) RelIDsByType(typeToken uint16) ([]types.RelID, error) {
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	ids := bs.typeIDsLocked(typeToken) // ascending
+	ids, err := bs.typeIDsTalliedLocked(typeToken, t) // ascending
 	bs.idxMu.RUnlock()
-	return ids, nil
+	return ids, err
 }

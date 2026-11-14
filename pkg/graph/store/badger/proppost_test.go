@@ -30,7 +30,7 @@ func propPostCandidates(t *testing.T, bs *Store, values []any) (ids []int64, see
 	propertyDiskVisitTestHook = func() { visits++ }
 	defer func() { propertyDiskSeekTestHook, propertyDiskVisitTestHook = nil, nil }()
 	bs.idxMu.RLock()
-	nids, err := bs.propertyIndexDiskKeysCandidatesLocked("k", keys, nil)
+	nids, err := bs.propertyIndexDiskKeysCandidatesTalliedLocked("k", keys, nil, nil)
 	bs.idxMu.RUnlock()
 	if err != nil {
 		t.Fatal(err)

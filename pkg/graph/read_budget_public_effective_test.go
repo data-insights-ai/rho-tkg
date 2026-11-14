@@ -87,9 +87,9 @@ func pubCollect(run func(fn func(string) bool) error) ([]string, error) {
 
 // TestReadBudgetPublicScans: Temporal().ForEach...Ctx stream the plain
 // scan's segments in its order without a budget and under an unlimited one
-// (one candidate counted per entity, one segment per segment), refuse at a
-// Candidates limit after streaming the entities read before it, and stop at a
-// history limit of 1 within two entities, on every backend.
+// (native member walks and entity resolution counted, one segment per
+// segment), refuse at a Candidates limit with a prefix that may be empty,
+// and stop at a history limit of 1 within the first entity, on every backend.
 func TestReadBudgetPublicScans(t *testing.T) {
 	t.Parallel()
 	const n = 8
@@ -154,26 +154,46 @@ func TestReadBudgetPublicScans(t *testing.T) {
 				if d.bounded && b.name != "sharded" {
 					entities = n - 2
 				}
-				if w := all.Work(); w.Candidates != entities || w.Segments != uint64(len(want)) || w.HistoryExamined == 0 {
-					t.Fatalf("%s: unlimited work %+v; want %d candidates, %d segments and history examined", d.name, w, entities, len(want))
+				wantCandidates := entities
+				if d.bounded && b.name != "sharded" {
+					// The native valid-end list and the entity resolutions are
+					// distinct walks, both admitted before their work.
+					wantCandidates += entities
+				} else if b.name == "memory" && !d.bounded {
+					wantCandidates += n - 2
+				}
+				if w := all.Work(); w.Candidates != wantCandidates || w.Segments != uint64(len(want)) || w.HistoryExamined == 0 {
+					t.Fatalf("%s: unlimited work %+v; want %d candidates, %d segments and history examined", d.name, w, wantCandidates, len(want))
 				}
 
 				cctx, cm := store.WithReadBudget(ctx, store.ReadBudget{Candidates: 3})
 				got, err := pubCollect(func(fn func(string) bool) error { return d.ctx(cctx, fn) })
-				if gathered := !d.bounded || b.name == "sharded"; gathered {
+				gathered := !d.bounded || b.name == "sharded"
+				if gathered {
 					// The gather of the label's (type's) candidates refuses before it
 					// lists a member (R2 late counts): the live members, which pass the
 					// room, are counted as work done and nothing is streamed.
 					if !errors.Is(err, store.ErrReadBudget) || cm.Work().Candidates != n-2 || len(got) != 0 {
 						t.Fatalf("%s: Candidates 3 = %v, %v (work %+v); want a refusal in the gather: none streamed and the %d live members counted", d.name, got, err, cm.Work(), n-2)
 					}
-				} else if !errors.Is(err, store.ErrReadBudget) || cm.Work().Candidates != 4 || len(got) == 0 || !slices.Equal(got, want[:len(got)]) {
-					t.Fatalf("%s: Candidates 3 = %v, %v (work %+v); want a prefix of the plain stream and a refusal at the fourth candidate", d.name, got, err, cm.Work())
+				} else if !errors.Is(err, store.ErrReadBudget) || cm.Work().Candidates != 4 || !slices.Equal(got, want[:len(got)]) {
+					t.Fatalf("%s: Candidates 3 = %v, %v (work %+v); want a possibly empty prefix and a refusal at the fourth native candidate", d.name, got, err, cm.Work())
 				}
+				// HistoryExamined 1: the first entity read has two history
+				// versions, so its read refuses at the second and ends the scan:
+				// no callback and exactly 2 versions examined (a scan that read on
+				// past the refusal would examine more; the native count of reads
+				// is the core test's, TestReadBudget_SigmaB_Scans). A gathered
+				// door counted its whole gather before that read; a valid-end
+				// indexed door counted its native list and the first resolution.
 				hctx, hm := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: 1})
 				got, err = pubCollect(func(fn func(string) bool) error { return d.ctx(hctx, fn) })
-				if !errors.Is(err, store.ErrReadBudget) || hm.Work().Candidates > 2 || !slices.Equal(got, want[:len(got)]) {
-					t.Fatalf("%s: HistoryExamined 1 = %v, %v (work %+v); want a refusal within two entities", d.name, got, err, hm.Work())
+				wantCand := entities + 1
+				if gathered {
+					wantCand = all.Work().Candidates
+				}
+				if !errors.Is(err, store.ErrReadBudget) || len(got) != 0 || hm.Work().HistoryExamined != 2 || hm.Work().Candidates != wantCand {
+					t.Fatalf("%s: HistoryExamined 1 = %v, %v (work %+v); want the refusal at the first entity's read: no callback, 2 versions examined, %d candidates", d.name, got, err, hm.Work(), wantCand)
 				}
 			}
 		})
@@ -443,13 +463,13 @@ func TestReadBudgetPublicValidEndFirstCall(t *testing.T) {
 				// Every store installs nothing of a refused first call (the memory store
 				// too since R2 late counts: the refusal comes before the enlistment, not
 				// at the sixth entity read): it reads every ever-member again.
-				if first, wantFirst := um.Work().Candidates, uint64(n+(n-2)); c.fresh {
+				if first, wantFirst := um.Work().Candidates, uint64(3*n+2*(n-2)); c.fresh {
 					if first != wantFirst {
 						t.Fatalf("%s: the unlimited first call counted %d candidates; want %d (the ever-members it read, then the %d listed)", d.name, first, wantFirst, n-2)
 					}
 				}
 				sctx, sm := store.WithReadBudget(ctx, store.ReadBudget{})
-				if got, err := pubCollect(func(fn func(string) bool) error { return d.ctx(sctx, fn) }); err != nil || !slices.Equal(got, want) || sm.Work().Candidates != n-2 {
+				if got, err := pubCollect(func(fn func(string) bool) error { return d.ctx(sctx, fn) }); err != nil || !slices.Equal(got, want) || sm.Work().Candidates != 2*(n-2) {
 					t.Fatalf("%s: second call = %v, %v, %d candidates; want the stream and the %d entities the index lists", d.name, got, err, sm.Work().Candidates, n-2)
 				}
 			}

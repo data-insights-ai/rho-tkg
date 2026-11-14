@@ -43,14 +43,10 @@ func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error
 // walk that built a lazy label map (Config.TransientRead) was counted by that
 // walk (labelMembersTalliedLocked: a cold read counts the members once, as the
 // walk, a warm one as the list); one kept on disk counts each committed entry as the walk
-// produces it and each pending add, so a read past a candidate limit stops at
-// the member that passes it, before it collects the rest of the label. A nil t
-// is the plain snapshot.
+// produces it and every pending operation, including deletes and overridden
+// entries. The prefix walk stops at a refusal, and overlay entries and output
+// IDs pay for their buffers before allocation. A nil t is the plain snapshot.
 func (bs *Store) labelNodeIDsSnapshotTalliedLocked(token uint16, t *storecontract.ReadTally) ([]types.NodeID, error) {
-	admit := func(n int) error { return t.Candidates(n) }
-	if t == nil {
-		admit = nil
-	}
 	if !bs.labelOnDisk {
 		set, built, err := bs.labelMembersTalliedLocked(token, t)
 		if err != nil {
@@ -64,8 +60,12 @@ func (bs *Store) labelNodeIDsSnapshotTalliedLocked(token uint16, t *storecontrac
 				return nil, err
 			}
 		}
+		if err := t.Buffer(8 * len(set)); err != nil {
+			return nil, err
+		}
 		nids := make([]types.NodeID, 0, len(set))
 		for id := range set {
+			noteCurrentMemberCopied()
 			nids = append(nids, id)
 		}
 		return nids, nil
@@ -74,16 +74,20 @@ func (bs *Store) labelNodeIDsSnapshotTalliedLocked(token uint16, t *storecontrac
 	// Pending overlay: unflushed label-index ops must be visible (adds)
 	// and authoritative (deletes) over the committed keyspace.
 	var adds, dels map[types.NodeID]struct{}
-	// rangePending = flushing ++ pending, so a label add/remove a concurrent flush
+	// Visit flushing before pending, so a label add/remove a concurrent flush
 	// is mid-committing is visible. Set/delete are kept symmetric (each removes the
 	// node from the other set) so a node that appears in BOTH buffers during the
 	// requeue window resolves to the newer (pending-visited-last) op.
-	bs.rangePending(func(k string, op writeOp) {
-		if len(k) != storepkg.SizeLabelIdx || k[0] != storepkg.KeyLabel {
-			return
+	var pendingErr error
+	bs.walkPendingPrefixes([][]byte{labelIndexPrefix(token)}, func(k string, op writeOp) bool {
+		if pendingErr = t.Candidates(1); pendingErr != nil {
+			return false
 		}
-		if binary.BigEndian.Uint16([]byte(k[1:3])) != token {
-			return
+		if len(k) != storepkg.SizeLabelIdx {
+			return true
+		}
+		if pendingErr = t.Buffer(24); pendingErr != nil {
+			return false
 		}
 		nid := types.NodeID(storepkg.ParseIDFromKey([]byte(k), 3))
 		if op.opType == writeOpSet {
@@ -99,7 +103,11 @@ func (bs *Store) labelNodeIDsSnapshotTalliedLocked(token uint16, t *storecontrac
 			dels[nid] = struct{}{}
 			delete(adds, nid)
 		}
+		return true
 	})
+	if pendingErr != nil {
+		return nil, pendingErr
+	}
 
 	var nids []types.NodeID
 	err := bs.view(func(txn *badgerv4.Txn) error {
@@ -111,6 +119,9 @@ func (bs *Store) labelNodeIDsSnapshotTalliedLocked(token uint16, t *storecontrac
 		defer it.Close()
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			noteIndexEntryVisited()
+			if err := t.Candidates(1); err != nil {
+				return err
+			}
 			key := it.Item().Key()
 			if len(key) != storepkg.SizeLabelIdx {
 				continue
@@ -120,11 +131,10 @@ func (bs *Store) labelNodeIDsSnapshotTalliedLocked(token uint16, t *storecontrac
 				continue
 			}
 			delete(adds, nid) // already committed; don't double-count
-			if admit != nil {
-				if err := admit(1); err != nil {
-					return err
-				}
+			if err := t.Buffer(8); err != nil {
+				return err
 			}
+			noteCurrentMemberCopied()
 			nids = append(nids, nid)
 		}
 		return nil
@@ -133,11 +143,10 @@ func (bs *Store) labelNodeIDsSnapshotTalliedLocked(token uint16, t *storecontrac
 		return nil, walkError("label index scan", err)
 	}
 	for nid := range adds {
-		if admit != nil {
-			if err := admit(1); err != nil {
-				return nil, err
-			}
+		if err := t.Buffer(8); err != nil {
+			return nil, err
 		}
+		noteCurrentMemberCopied()
 		nids = append(nids, nid)
 	}
 	return nids, nil

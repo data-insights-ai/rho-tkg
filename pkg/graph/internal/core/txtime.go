@@ -107,9 +107,9 @@ func (c *Core) nodeAsOfLockedRd(rd entityReads, id types.NodeID, txTime types.In
 	c.afterCurrentRead(int64(id))
 	if current != nil {
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
-			// Fast path: no history row above the current version (versions
-			// are dense, version_alloc.go), so nothing can outrank it.
-			above, err := c.nodeHasHistoryAbove(id, current.Version())
+			// The shortcut needs proof that no history row can outrank current.
+			// A metered read uses only admitted presence probes for that proof.
+			above, err := rd.nodeMayHaveHistoryAbove(id, current.Version())
 			if err != nil {
 				return nil, err
 			}
@@ -273,7 +273,7 @@ func (c *Core) relAsOfLockedRd(rd entityReads, id types.RelID, txTime types.Inst
 	c.afterCurrentRead(int64(id))
 	if current != nil {
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
-			above, err := c.relHasHistoryAbove(id, current.Version())
+			above, err := rd.relMayHaveHistoryAbove(id, current.Version())
 			if err != nil {
 				return nil, err
 			}

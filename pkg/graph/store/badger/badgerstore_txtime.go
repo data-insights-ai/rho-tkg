@@ -24,12 +24,12 @@ import (
 // nativeTransactionTimeQuery (core.go).
 //
 // Selection semantics are storeutil.SelectAsOfWithCurrent's (shared with the
-// memory backend and the core fallback; see selectAsOfScan). Temporal
+// memory backend and the core fallback; see selectAsOfScanTallied). Temporal
 // "rewinding" (TxTo / DeletedAt that post-date txTime) is applied by the core
 // layer, which also deep-copies the returned entity (txTimeQueryCopy is true
 // for non-memory natives), so these methods return the raw selected version.
 
-// reverseScanHistoryVersion walks one entity's version history newest-first and
+// reverseScanHistoryVersionTallied walks one entity's version history newest-first and
 // invokes consider(version, valueBytes) for each version in DESCENDING version
 // order until consider returns stop=true (or the history is exhausted). It
 // merges the badger reverse iterator with the pending write overlay: a pending
@@ -38,11 +38,11 @@ import (
 // CONTRACT: val is only valid for the DURATION of the consider call (for
 // persisted rows it is badger's internal buffer, surfaced inside an
 // Item().Value closure) — a callback that retains bytes past its return MUST
-// copy them. This is what lets the tail-peek classification walk versions
-// with zero per-version allocations.
+// copy them. Classification can inspect an unretained row without copying
+// its full value; the selector admits values that must outlive the callback.
 //
 // prefix is the 9-byte per-entity history prefix (HistNodePrefix / HistRelPrefix).
-func (bs *Store) reverseScanHistoryVersion(prefix []byte, consider func(version uint64, val []byte) (stop bool, err error)) error {
+func (bs *Store) reverseScanHistoryVersionTallied(prefix []byte, consider func(version uint64, val []byte) (stop bool, err error), t *storecontract.ReadTally) error {
 	// Overlay BEFORE the View — the commit-window ordering. Capturing
 	// the overlay INSIDE the View callback, i.e. AFTER badger assigned the
 	// transaction's snapshot instant, would let a concurrent flush() that
@@ -51,9 +51,12 @@ func (bs *Store) reverseScanHistoryVersion(prefix []byte, consider func(version 
 	// first makes it structural: a row committed after the capture was still in
 	// `flushing` at capture time (flush clears strictly after commit) and is in
 	// the overlay; a row committed before the View is in the snapshot.
-	pendingSets, pendingDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
+	pendingSets, pendingDeletes, err := bs.pendingHistoryVersionOverlayTallied(prefix, 0, t)
+	if err != nil {
+		return err
+	}
 	return bs.view(func(txn *badgerv4.Txn) error {
-		return bs.reverseScanHistoryVersionInTxnOverlay(txn, prefix, pendingSets, pendingDeletes, consider)
+		return bs.reverseScanHistoryVersionInTxnOverlay(txn, prefix, pendingSets, pendingDeletes, consider, t)
 	})
 }
 
@@ -138,14 +141,18 @@ func (s historyOverlaySnapshot) forPrefix(prefix []byte, startVersion uint32) (m
 // buffer, closing the commit-window gap documented on historyOverlaySnapshot.
 func (bs *Store) reverseScanHistoryVersionInTxnSnapshot(txn *badgerv4.Txn, prefix []byte, snap historyOverlaySnapshot, consider func(version uint64, val []byte) (stop bool, err error)) error {
 	pendingSets, pendingDeletes := snap.forPrefix(prefix, 0)
-	return bs.reverseScanHistoryVersionInTxnOverlay(txn, prefix, pendingSets, pendingDeletes, consider)
+	return bs.reverseScanHistoryVersionInTxnOverlay(txn, prefix, pendingSets, pendingDeletes, consider, nil)
 }
 
 // reverseScanHistoryVersionInTxnOverlay is the shared scan body: reverse-walks
 // prefix's badger history keys through txn, merged with the caller-supplied
 // pending overlay (either a live per-call read or a frozen bulk-scan
 // snapshot — see the two callers above).
-func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix []byte, pendingSets map[string][]byte, pendingDeletes map[string]struct{}, consider func(version uint64, val []byte) (stop bool, err error)) error {
+func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix []byte, pendingSets map[string][]byte, pendingDeletes map[string]struct{}, consider func(version uint64, val []byte) (stop bool, err error), t *storecontract.ReadTally) error {
+	// Logical key-list slots and the reverse seek key, before allocation.
+	if err := t.Buffer(16*len(pendingSets) + storepkg.SizeHistKey); err != nil {
+		return err
+	}
 	pendKeys := make([]string, 0, len(pendingSets))
 	for k := range pendingSets {
 		pendKeys = append(pendKeys, k)
@@ -176,19 +183,29 @@ func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix
 
 	// nextBadgerKey advances to the next well-formed badger history key for
 	// this prefix and returns it (descending).
-	nextBadgerKey := func() (string, bool) {
+	nextBadgerKey := func() (string, bool, error) {
 		for it.ValidForPrefix(prefix) {
+			if err := t.History(1); err != nil {
+				return "", false, err
+			}
+			noteIndexEntryVisited()
 			k := it.Item().Key()
 			if len(k) != storepkg.SizeHistKey {
 				it.Next()
 				continue
 			}
-			return string(k), true
+			if err := t.Buffer(len(k)); err != nil {
+				return "", false, err
+			}
+			return string(k), true, nil
 		}
-		return "", false
+		return "", false, nil
 	}
 
-	bKey, bValid := nextBadgerKey()
+	bKey, bValid, err := nextBadgerKey()
+	if err != nil {
+		return err
+	}
 	pi := 0
 	for {
 		pValid := pi < len(pendKeys)
@@ -215,18 +232,22 @@ func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix
 			chooseKey, consumeBadger = bKey, true
 		}
 
-		advance := func() {
+		advance := func() error {
 			if usePending {
 				pi++
 			}
 			if consumeBadger {
 				it.Next()
-				bKey, bValid = nextBadgerKey()
+				bKey, bValid, err = nextBadgerKey()
+				return err
 			}
+			return nil
 		}
 
 		if _, deleted := pendingDeletes[chooseKey]; deleted {
-			advance()
+			if err := advance(); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -239,6 +260,9 @@ func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix
 		version := historyVersionFromKey([]byte(chooseKey))
 		var stop bool
 		if usePending {
+			if err := t.History(1); err != nil {
+				return err
+			}
 			var err error
 			stop, err = consider(version, pendingSets[chooseKey])
 			if err != nil {
@@ -253,9 +277,11 @@ func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix
 				return err
 			}
 		}
-		advance()
 		if stop {
 			return nil
+		}
+		if err := advance(); err != nil {
+			return err
 		}
 	}
 }
@@ -270,23 +296,36 @@ type asOfPick struct {
 	raw         []byte
 }
 
-// historyTxWindow returns a history row's TxFrom/TxTo, peeking the fixed v2
-// temporal tail when it can (no decode) and decoding the temporal block
-// otherwise (delta rows, legacy v1 rows).
+// historyTxWindow returns a history row's TxFrom/TxTo, decoding the fixed v2
+// tail when it can and the temporal block otherwise (delta and legacy rows).
 type historyTxWindow func(version uint64, val []byte) (txFrom, txTo int64, err error)
 
 // historyTemporal decodes a history row's temporal block (only for the rows
 // the write-run and tombstone rules inspect); nil when the row has none.
 type historyTemporal func(version uint64, val []byte) (*types.TemporalMetadata, error)
 
-func (bs *Store) nodeTxWindow(id snowflake.ID) historyTxWindow {
+// asOfTxTail admits a full-row tail decode attempt before reading its stored
+// scalar values. A legacy row falls back to a separately admitted decoder.
+func (bs *Store) asOfTxTail(val []byte, t *storecontract.ReadTally) (int64, int64, bool, error) {
+	if storepkg.HistoryValueKindOf(val) != storepkg.HistoryFull {
+		return 0, 0, false, nil
+	}
+	if err := t.DecodedHistory(len(val)); err != nil {
+		return 0, 0, false, err
+	}
+	tf, tt, ok := storepkg.PeekWireTemporalTail(val)
+	if ok {
+		bs.historyMetaDecodes.Add(1)
+	}
+	return tf, tt, ok, nil
+}
+
+func (bs *Store) nodeTxWindow(id snowflake.ID, t *storecontract.ReadTally) historyTxWindow {
 	return func(version uint64, val []byte) (int64, int64, error) {
-		if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
-			if tf, tt, ok := storepkg.PeekWireTemporalTail(val); ok {
-				return tf, tt, nil
-			}
+		if tf, tt, ok, err := bs.asOfTxTail(val, t); ok || err != nil {
+			return tf, tt, err
 		}
-		n, err := bs.historyNodeTemporal(id, version, val)
+		n, err := bs.historyNodeTemporalTallied(id, version, val, t)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -298,14 +337,12 @@ func (bs *Store) nodeTxWindow(id snowflake.ID) historyTxWindow {
 	}
 }
 
-func (bs *Store) relTxWindow(id snowflake.ID) historyTxWindow {
+func (bs *Store) relTxWindow(id snowflake.ID, t *storecontract.ReadTally) historyTxWindow {
 	return func(version uint64, val []byte) (int64, int64, error) {
-		if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
-			if tf, tt, ok := storepkg.PeekWireTemporalTail(val); ok {
-				return tf, tt, nil
-			}
+		if tf, tt, ok, err := bs.asOfTxTail(val, t); ok || err != nil {
+			return tf, tt, err
 		}
-		r, err := bs.historyRelTemporal(id, version, val)
+		r, err := bs.historyRelTemporalTallied(id, version, val, t)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -317,9 +354,9 @@ func (bs *Store) relTxWindow(id snowflake.ID) historyTxWindow {
 	}
 }
 
-func (bs *Store) nodeRowTemporal(id snowflake.ID) historyTemporal {
+func (bs *Store) nodeRowTemporal(id snowflake.ID, t *storecontract.ReadTally) historyTemporal {
 	return func(version uint64, val []byte) (*types.TemporalMetadata, error) {
-		n, err := bs.historyNodeTemporal(id, version, val)
+		n, err := bs.historyNodeTemporalTallied(id, version, val, t)
 		if err != nil {
 			return nil, err
 		}
@@ -327,9 +364,9 @@ func (bs *Store) nodeRowTemporal(id snowflake.ID) historyTemporal {
 	}
 }
 
-func (bs *Store) relRowTemporal(id snowflake.ID) historyTemporal {
+func (bs *Store) relRowTemporal(id snowflake.ID, t *storecontract.ReadTally) historyTemporal {
 	return func(version uint64, val []byte) (*types.TemporalMetadata, error) {
-		r, err := bs.historyRelTemporal(id, version, val)
+		r, err := bs.historyRelTemporalTallied(id, version, val, t)
 		if err != nil {
 			return nil, err
 		}
@@ -341,7 +378,10 @@ func (bs *Store) relRowTemporal(id snowflake.ID) historyTemporal {
 // write (pending, or flushing mid-commit) decides, else a badger point read of
 // the key (no value read). Same commit-window ordering as GetNodeVersion: the
 // buffer is consulted before the read transaction opens.
-func (bs *Store) liveHistoryKeyExists(key []byte) (bool, error) {
+func (bs *Store) liveHistoryKeyExists(key []byte, t *storecontract.ReadTally) (bool, error) {
+	if err := t.Candidates(1); err != nil {
+		return false, err
+	}
 	if op, ok := bs.lookupPending(string(key)); ok {
 		return op.opType != writeOpDelete, nil
 	}
@@ -363,7 +403,7 @@ func (bs *Store) liveHistoryKeyExists(key []byte) (bool, error) {
 // bounded corrections lie directly above the current row; this is the
 // rule of the graph's nodeHasHistoryAbove). key returns the history key of a
 // version.
-func (bs *Store) liveHistoryAbove(p *historyPresence, id snowflake.ID, has bool, err error, key func(version uint64) []byte) func(v uint64) (bool, error) {
+func (bs *Store) liveHistoryAbove(p *historyPresence, id snowflake.ID, has bool, err error, key func(version uint64) []byte, t *storecontract.ReadTally) func(v uint64) (bool, error) {
 	return func(v uint64) (bool, error) {
 		if err != nil || !has {
 			return false, err
@@ -371,7 +411,7 @@ func (bs *Store) liveHistoryAbove(p *historyPresence, id snowflake.ID, has bool,
 		if top, ok := bs.historyTopBound(p, id); ok {
 			return uint64(top) > v, nil
 		}
-		if ok, err := bs.liveHistoryKeyExists(key(v + 1)); err != nil || ok {
+		if ok, err := bs.liveHistoryKeyExists(key(v+1), t); err != nil || ok {
 			return ok, err
 		}
 		return true, nil
@@ -413,7 +453,7 @@ func (bs *Store) snapshotHistoryAbove(txn *badgerv4.Txn, overlay historyOverlayS
 	}
 }
 
-// asOfRow is one visited history row of selectAsOfScan (raw copied: the scan's
+// asOfRow is one visited history row of selectAsOfScanTallied (raw copied: the scan's
 // value is only valid inside its callback).
 type asOfRow struct {
 	version uint64
@@ -421,9 +461,9 @@ type asOfRow struct {
 	raw     []byte
 }
 
-// selectAsOfScan applies storeutil.SelectAsOfWithCurrent's rule to one
+// selectAsOfScanTallied applies storeutil.SelectAsOfWithCurrent's rule to one
 // entity's history, visited newest-version-first by scan (the
-// reverseScanHistoryVersion contract), and the live current row (cur, nil
+// reverseScanHistoryVersionTallied contract), and the live current row (cur, nil
 // when none). It stops as soon as the rule is decided:
 //
 //   - current arm (cur recorded by txTime, TxTo == 0): above(curVersion)
@@ -443,7 +483,18 @@ type asOfRow struct {
 // txTime (decoded per row, newest first), else its newest row. Equivalence
 // with SelectAsOfWithCurrent is pinned by the badger as-of equivalence tests
 // over generated chains.
-func selectAsOfScan(a types.ValidAxis, scan func(consider func(version uint64, val []byte) (bool, error)) error, cur *types.TemporalMetadata, curVersion uint32, txTime types.Instant, window historyTxWindow, temporal historyTemporal, above func(v uint64) (bool, error)) (asOfPick, error) {
+func selectAsOfScanTallied(a types.ValidAxis, scan func(consider func(version uint64, val []byte) (bool, error)) error, cur *types.TemporalMetadata, curVersion uint32, txTime types.Instant, window historyTxWindow, temporal historyTemporal, above func(v uint64) (bool, error), t *storecontract.ReadTally) (asOfPick, error) {
+	retain := func(run []asOfRow, version uint64, tf, tt int64, val []byte) ([]asOfRow, error) {
+		// A row's logical run slot (three scalars and a byte-slice header), plus
+		// its raw value: admit both before append copies either.
+		if err := t.Buffer(48 + len(val)); err != nil {
+			return nil, err
+		}
+		raw := append([]byte(nil), val...)
+		noteHistoryBytesCopied(len(raw))
+		return append(run, asOfRow{version: version, tf: tf, tt: tt, raw: raw}), nil
+	}
+
 	// answer picks within a run (newest first); withCur appends the current
 	// row as the run's last member.
 	answer := func(run []asOfRow, withCur bool) (asOfPick, *types.TemporalMetadata, error) {
@@ -509,10 +560,16 @@ func selectAsOfScan(a types.ValidAxis, scan func(consider func(version uint64, v
 			switch {
 			case len(run) == 0:
 				if tf >= int64(cur.TxFrom) && types.Instant(tf) <= txTime {
-					run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
+					run, err = retain(run, version, tf, tt, val)
+					if err != nil {
+						return false, err
+					}
 				}
 			case !broken && tf == run[0].tf:
-				run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
+				run, err = retain(run, version, tf, tt, val)
+				if err != nil {
+					return false, err
+				}
 			default:
 				broken = true
 			}
@@ -553,7 +610,10 @@ func selectAsOfScan(a types.ValidAxis, scan func(consider func(version uint64, v
 			if v, err := void(version, val, tt); err != nil || v {
 				return false, err
 			}
-			run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
+			run, err = retain(run, version, tf, tt, val)
+			if err != nil {
+				return false, err
+			}
 			newestTxFrom = tf
 			return false, nil
 		}
@@ -563,7 +623,10 @@ func selectAsOfScan(a types.ValidAxis, scan func(consider func(version uint64, v
 			} else if v {
 				return false, nil
 			}
-			run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
+			run, err = retain(run, version, tf, tt, val)
+			if err != nil {
+				return false, err
+			}
 		} else {
 			inRun = false
 		}
@@ -605,12 +668,10 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 
 var _ storecontract.TransactionTimeQueryMeteredCapability = (*Store)(nil)
 
-// NodeAsOfMetered is NodeAsOf under a read budget (RH list R2,
-// store.TransactionTimeQueryMeteredCapability): the current row read on a
-// cache miss and the winning history row (with a delta's anchor) count their
-// stored bytes in t before they are decoded, and a read past the budget
-// returns the *store.ReadBudgetError instead of the row. The rule and the
-// answer are NodeAsOf's; a nil t is NodeAsOf.
+// NodeAsOfMetered admits the current and history probes, overlay captures,
+// reverse walk, metadata/winner decodes and retained raw buffers before the
+// native work. A delta's anchor has its own admitted point read and copy.
+// Refusal returns a *store.ReadBudgetError and no row; nil t is NodeAsOf.
 func (bs *Store) NodeAsOfMetered(nid types.NodeID, txTime types.Instant, t *storecontract.ReadTally) (*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -632,10 +693,13 @@ func (bs *Store) NodeAsOfMetered(nid types.NodeID, txTime types.Instant, t *stor
 	id := nid.SnowflakeID()
 	prefix := storepkg.HistNodePrefix(id)
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
-		return bs.reverseScanHistoryVersion(prefix, talliedConsider(t, consider))
+		return bs.reverseScanHistoryVersionTallied(prefix, consider, t)
 	}
-	has, err := bs.HasNodeHistory(nid)
-	above := bs.liveHistoryAbove(&bs.histNodePresence, id, has, err, func(v uint64) []byte { return storepkg.HistNodeKey(id, v) })
+	has, err := bs.asOfHistoryPresence(&bs.histNodePresence, storepkg.KeyHistNode, id, t)
+	if t != nil && err != nil {
+		return nil, err
+	}
+	above := bs.liveHistoryAbove(&bs.histNodePresence, id, has, err, func(v uint64) []byte { return storepkg.HistNodeKey(id, v) }, t)
 	return bs.nodeAsOfPickTallied(id, current, txTime, scan, above, t)
 }
 
@@ -646,8 +710,14 @@ func (bs *Store) asOfCurrentNode(nid types.NodeID, t *storecontract.ReadTally) (
 	if t == nil {
 		return bs.GetNode(nid)
 	}
+	if err := t.Candidates(1); err != nil {
+		return nil, err
+	}
 	n, err := bs.prefetchNodeTallied(nid, t)
 	if err != nil || n == nil {
+		return nil, err
+	}
+	if err := t.Buffer(8); err != nil {
 		return nil, err
 	}
 	return n.DeepCopy(), nil
@@ -658,8 +728,14 @@ func (bs *Store) asOfCurrentRel(rid types.RelID, t *storecontract.ReadTally) (*t
 	if t == nil {
 		return bs.GetRelationship(rid)
 	}
+	if err := t.Candidates(1); err != nil {
+		return nil, err
+	}
 	r, err := bs.prefetchRelTallied(rid, t)
 	if err != nil || r == nil {
+		return nil, err
+	}
+	if err := t.Buffer(8); err != nil {
 		return nil, err
 	}
 	return r.DeepCopy(), nil
@@ -689,7 +765,7 @@ func (bs *Store) nodeAsOfPickTallied(id snowflake.ID, current *types.Node, txTim
 	if current != nil {
 		cur, curVersion = current.Temporal(), current.Version()
 	}
-	pick, err := selectAsOfScan(bs.validAxis.Get(), scan, cur, curVersion, txTime, bs.nodeTxWindow(id), bs.nodeRowTemporal(id), above)
+	pick, err := selectAsOfScanTallied(bs.validAxis.Get(), scan, cur, curVersion, txTime, bs.nodeTxWindow(id, t), bs.nodeRowTemporal(id, t), above, t)
 	if err != nil {
 		return nil, err
 	}
@@ -724,10 +800,13 @@ func (bs *Store) RelAsOfMetered(rid types.RelID, txTime types.Instant, t *storec
 	id := rid.SnowflakeID()
 	prefix := storepkg.HistRelPrefix(id)
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
-		return bs.reverseScanHistoryVersion(prefix, talliedConsider(t, consider))
+		return bs.reverseScanHistoryVersionTallied(prefix, consider, t)
 	}
-	has, err := bs.HasRelHistory(rid)
-	above := bs.liveHistoryAbove(&bs.histRelPresence, id, has, err, func(v uint64) []byte { return storepkg.HistRelKey(id, v) })
+	has, err := bs.asOfHistoryPresence(&bs.histRelPresence, storepkg.KeyHistRel, id, t)
+	if t != nil && err != nil {
+		return nil, err
+	}
+	above := bs.liveHistoryAbove(&bs.histRelPresence, id, has, err, func(v uint64) []byte { return storepkg.HistRelKey(id, v) }, t)
 	return bs.relAsOfPickTallied(id, current, txTime, scan, above, t)
 }
 
@@ -743,7 +822,7 @@ func (bs *Store) relAsOfPickTallied(id snowflake.ID, current *types.Relationship
 	if current != nil {
 		cur, curVersion = current.Temporal(), current.Version()
 	}
-	pick, err := selectAsOfScan(bs.validAxis.Get(), scan, cur, curVersion, txTime, bs.relTxWindow(id), bs.relRowTemporal(id), above)
+	pick, err := selectAsOfScanTallied(bs.validAxis.Get(), scan, cur, curVersion, txTime, bs.relTxWindow(id, t), bs.relRowTemporal(id, t), above, t)
 	if err != nil {
 		return nil, err
 	}
@@ -993,16 +1072,13 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	return result, nil
 }
 
-// talliedConsider counts each history version an as-of walk looks at in t
-// (HistoryExamined, before the look; RH list R2). A nil t is consider.
-func talliedConsider(t *storecontract.ReadTally, consider func(version uint64, val []byte) (bool, error)) func(version uint64, val []byte) (bool, error) {
+// asOfHistoryPresence uses the same entity-scoped admitted probe as an
+// effective scan. An unmetered call retains the presence cache's usual build.
+func (bs *Store) asOfHistoryPresence(p *historyPresence, kind byte, id snowflake.ID, t *storecontract.ReadTally) (bool, error) {
 	if t == nil {
-		return consider
+		return bs.hasHistory(p, kind, id, bs.probeHistoryPresence)
 	}
-	return func(version uint64, val []byte) (bool, error) {
-		if err := t.History(1); err != nil {
-			return true, err
-		}
-		return consider(version, val)
-	}
+	s := &readSnapshot{bs: bs, tally: t}
+	defer s.Close()
+	return bs.hasHistoryTallied(p, kind, id, s.probe, t)
 }

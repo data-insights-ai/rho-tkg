@@ -112,17 +112,13 @@ func hr3AtDoors(g *Core, node types.NodeID, rel types.RelID, at types.Instant) [
 // reads the chain whole), rows pending and flushed, an 80-version node and
 // relationship (N = 79 history rows) read at a valid instant whose winner is
 // a history row:
-//   - unlimited: the plain door's row; HistoryExamined N + 1 = 80; natively
-//     79 skeletons and 1 row;
-//   - HistoryExamined 79: refused at the winner, no row; 80 counted (the
-//     refused winner's charge); natively the 79 skeletons and no row: no
-//     full-chain fallback runs past the refusal (it copied the 79 rows, and on
-//     memory counted them again: 159);
-//   - two such nodes through NodesAtTxByIDsCtx under 81 (each fits at 80, the
-//     two do not): refused, nothing returned; the second node is refused in its
-//     skeleton list (badger family: at its second skeleton, 82 counted, 80
-//     decoded; memory: its list counted whole after it was listed, 159 and
-//     158: the chain copy before the charge, "Not yet bounded").
+//   - unlimited: the plain door's row, with 79 native skeletons and one winner;
+//     pending disk rows also count their 79-entry capture;
+//   - one below that cost: refusal at the winner, with 79 native skeletons and
+//     no winner or full-chain fallback;
+//   - two nodes under one more than one node's cost: each fits alone, their
+//     sum refuses. Memory admits a whole list before copying; pending disk
+//     reads stop in the second capture, and settled reads in its metadata walk.
 func TestBudgetedAt_RefusalEndsTheRead(t *testing.T) {
 	t.Parallel()
 	type world struct {
@@ -141,6 +137,7 @@ func TestBudgetedAt_RefusalEndsTheRead(t *testing.T) {
 			t.Skip("no skeleton list: the at-doors read the chain whole")
 		}
 		w := wa.(*world)
+		singleHistory := hr2MissCost(be, 80, flushed) - 1 // skeleton/capture plus one winner
 		evict := func() {
 			if flushed {
 				rbdEvict(t, g, w.nodes, w.rels)
@@ -153,40 +150,50 @@ func TestBudgetedAt_RefusalEndsTheRead(t *testing.T) {
 				if err != nil || want == "" {
 					t.Fatalf("plain = %q, %v", want, err)
 				}
-				run := func(b storepkg.ReadBudget) (string, error, storepkg.ReadWork, hr3Native) {
+				run := func(b storepkg.ReadBudget) (string, storepkg.ReadWork, hr3Native, error) {
 					evict()
 					ctx, meter := storepkg.WithReadBudget(context.Background(), b)
 					n0 := native()
 					got, err := d.ctx(ctx)
-					return got, err, meter.Work(), native().sub(n0)
+					return got, meter.Work(), native().sub(n0), err
 				}
-				got, err, work, nat := run(storepkg.ReadBudget{})
+				got, work, nat, err := run(storepkg.ReadBudget{})
 				t.Logf("unlimited: HistoryExamined %d, DecodedBytes %d, native %+v", work.HistoryExamined, work.DecodedBytes, nat)
-				if err != nil || got != want || work.HistoryExamined != 80 || nat != (hr3Native{79, 1}) {
-					t.Fatalf("unlimited = %q, %v, HistoryExamined %d, native %+v; want the plain row %q, 80, {79 1}", got, err, work.HistoryExamined, nat, want)
+				if err != nil || got != want || work.HistoryExamined != singleHistory || nat != (hr3Native{79, 1}) {
+					t.Fatalf("unlimited = %q, %v, HistoryExamined %d, native %+v; want the plain row %q, %d, {79 1}", got, err, work.HistoryExamined, nat, want, singleHistory)
 				}
-				got, err, work, nat = run(storepkg.ReadBudget{HistoryExamined: 79})
-				t.Logf("limit 79: %v; HistoryExamined %d, native %+v", err, work.HistoryExamined, nat)
-				if !isBudget(err, "history examined") || got != "" || work.HistoryExamined != 80 || nat != (hr3Native{79, 0}) {
-					t.Fatalf("limit 79 = %q, %v, HistoryExamined %d, native %+v; want a refusal at the winner: 80 counted, {79 0} read", got, err, work.HistoryExamined, nat)
+				got, work, nat, err = run(storepkg.ReadBudget{HistoryExamined: singleHistory - 1})
+				t.Logf("limit %d: %v; HistoryExamined %d, native %+v", singleHistory-1, err, work.HistoryExamined, nat)
+				if !isBudget(err, "history examined") || got != "" || work.HistoryExamined != singleHistory || nat != (hr3Native{79, 0}) {
+					t.Fatalf("limit %d = %q, %v, HistoryExamined %d, native %+v; want a refusal at the winner: %d counted, {79 0} read", singleHistory-1, got, err, work.HistoryExamined, nat, singleHistory)
 				}
 			})
 		}
 		t.Run("NodesAtTxByIDs", func(t *testing.T) {
 			pin := g.peekNow()
 			evict()
-			ctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{HistoryExamined: 81})
+			uctx, unlimited := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
 			n0 := native()
+			control, err := g.Temporal.NodesAtTxByIDsCtx(uctx, w.nodes, 3500, pin)
+			if err != nil || len(control) != 2 || control[0].ID() != w.nodes[0] || control[1].ID() != w.nodes[1] || control[0].Version() != 79 || control[1].Version() != 79 || unlimited.Work().HistoryExamined != 2*singleHistory || native().sub(n0) != (hr3Native{158, 2}) {
+				t.Fatalf("two-node control: rows %v, work %+v, native %+v, err %v", control, unlimited.Work(), native().sub(n0), err)
+			}
+			evict()
+			limit := singleHistory + 1
+			ctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{HistoryExamined: limit})
+			n0 = native()
 			got, err := g.Temporal.NodesAtTxByIDsCtx(ctx, w.nodes, 3500, pin)
 			work, nat := meter.Work(), native().sub(n0)
-			t.Logf("two nodes under 81: %v; HistoryExamined %d, native %+v", err, work.HistoryExamined, nat)
-			wantWork, wantNat := uint64(82), hr3Native{80, 1}
+			t.Logf("two nodes under %d: %v; HistoryExamined %d, native %+v", limit, err, work.HistoryExamined, nat)
+			wantWork, wantNat := limit+1, hr3Native{79, 1}
 			if be.name == "memory" {
-				wantWork, wantNat = 159, hr3Native{158, 1}
+				wantWork = 159 // the second list is admitted as a whole, before any copy
+			} else if flushed {
+				wantNat.metas++ // the first second-entity skeleton fits
 			}
 			if !isBudget(err, "history examined") || got != nil || work.HistoryExamined != wantWork || nat != wantNat {
-				t.Fatalf("two nodes under 81 = %v, %v, HistoryExamined %d, native %+v; want a refusal, nothing returned, %d and %+v",
-					got, err, work.HistoryExamined, nat, wantWork, wantNat)
+				t.Fatalf("two nodes under %d = %v, %v, HistoryExamined %d, native %+v; want a refusal, nothing returned, %d and %+v",
+					limit, got, err, work.HistoryExamined, nat, wantWork, wantNat)
 			}
 		})
 	})
@@ -208,7 +215,8 @@ func TestBudgetedAt_HelperReturnsRefusal(t *testing.T) {
 			defer shut()
 			node, rel := hrNode(t, g, 10), hrRel(t, g, 10)
 			_ = g.readUnderRLock(func() error {
-				_, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{HistoryExamined: 9})
+				beforeWinner := hr2MissCost(be, 10, false) - 2
+				_, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{HistoryExamined: beforeWinner})
 				rd, release := g.meteredEntityReads(meter.Tally("helper"))
 				defer release()
 				cur, err := rd.currentNode(node)
@@ -219,7 +227,7 @@ func TestBudgetedAt_HelperReturnsRefusal(t *testing.T) {
 				if n != nil || !handled || !isBudget(err, "history examined") {
 					t.Errorf("nodeAtViaTemporalMeta = %v, handled %v, %v; want nil, true and the refusal", n, handled, err)
 				}
-				_, meter2 := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{HistoryExamined: 9})
+				_, meter2 := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{HistoryExamined: beforeWinner})
 				rd2, release2 := g.meteredEntityReads(meter2.Tally("helper"))
 				defer release2()
 				rcur, err := rd2.currentRel(rel)
@@ -353,7 +361,7 @@ func TestBudgetedAt_TieredRefusalOpensNoMore(t *testing.T) {
 }
 
 // hr3Door is one door of the M2 table: plain and under ctx, rendered, with
-// the HistoryExamined and native figures memory and badger both give.
+// the listed/decoded version counts. Pending capture is added separately.
 type hr3Door struct {
 	name   string
 	plain  func() (string, error)
@@ -486,31 +494,35 @@ func TestBudgetedMemory_CountsEachVersion(t *testing.T) {
 				w := wa.(*world)
 				for _, d := range hr3M2Doors(g, w.nodes, w.rels, versions, w.pin) {
 					t.Run(d.name, func(t *testing.T) {
+						wantWork := d.work
+						if be.name == "badger" && !flushed {
+							wantWork += uint64(d.native.metas) // #nosec G115 -- nonnegative fixture count; pending capture precedes each decode
+						}
 						want, err := d.plain()
 						if err != nil || want == "" {
 							t.Fatalf("plain = %q, %v", want, err)
 						}
-						run := func(b storepkg.ReadBudget) (string, error, uint64, hr3Native) {
+						run := func(b storepkg.ReadBudget) (string, uint64, hr3Native, error) {
 							if flushed {
 								rbdEvict(t, g, w.nodes, w.rels)
 							}
 							ctx, meter := storepkg.WithReadBudget(context.Background(), b)
 							n0 := hr3Count(t, g, w.nodes, w.rels)
 							got, err := d.ctx(ctx)
-							return got, err, meter.Work().HistoryExamined, hr3Count(t, g, w.nodes, w.rels).sub(n0)
+							return got, meter.Work().HistoryExamined, hr3Count(t, g, w.nodes, w.rels).sub(n0), err
 						}
-						got, err, he, nat := run(storepkg.ReadBudget{})
+						got, he, nat, err := run(storepkg.ReadBudget{})
 						t.Logf("unlimited: HistoryExamined %d, native %+v", he, nat)
-						if err != nil || got != want || he != d.work || nat != d.native {
-							t.Fatalf("unlimited = %q, %v, HistoryExamined %d, native %+v; want the plain answer %q, %d, %+v", got, err, he, nat, want, d.work, d.native)
+						if err != nil || got != want || he != wantWork || nat != d.native {
+							t.Fatalf("unlimited = %q, %v, HistoryExamined %d, native %+v; want the plain answer %q, %d, %+v", got, err, he, nat, want, wantWork, d.native)
 						}
-						if d.work == 0 {
+						if wantWork == 0 {
 							return
 						}
-						got, err, he, nat = run(storepkg.ReadBudget{HistoryExamined: d.work - 1})
-						t.Logf("limit %d: %v; HistoryExamined %d, native %+v", d.work-1, err, he, nat)
+						got, he, nat, err = run(storepkg.ReadBudget{HistoryExamined: wantWork - 1})
+						t.Logf("limit %d: %v; HistoryExamined %d, native %+v", wantWork-1, err, he, nat)
 						if !isBudget(err, "history examined") {
-							t.Fatalf("limit %d = %q, %v; want the refusal", d.work-1, got, err)
+							t.Fatalf("limit %d = %q, %v; want the refusal", wantWork-1, got, err)
 						}
 					})
 				}
@@ -677,8 +689,8 @@ func hr3StoreOf(t *testing.T, g *Core, d hrDoor, node types.NodeID, rel types.Re
 // sharded slot and a tiered shard, node and rel head doors, rows pending:
 // the answer equals the head-cache-off oracle's, the entry kept equals the
 // one a plain fold keeps (generations aside; the live token included), the
-// next plain read is a head hit with the oracle's answer, and the native
-// count equals HistoryExamined (the skeletons and the 2 winners). The fill is
+// next plain read is a head hit with the oracle's answer. Exact native decode
+// counts stay separate from captured and merged entries. The fill is
 // exact because store.ReadSnapshot answers each read as the store does at
 // that moment and the entity lock holds for the whole read
 // (entityReads.readsHead).
@@ -743,9 +755,22 @@ func TestBudgetedTimeline_FillInCommitWindow(t *testing.T) {
 							if !fired {
 								t.Fatal("the window never opened: no history read between the overlay capture and the Badger read")
 							}
-							if r.err != nil || r.answer != want || r.hits != 0 || r.native != int64(r.work.HistoryExamined) { // #nosec G115 -- a test size
-								t.Fatalf("budgeted miss = %q, %v, %d hits, native %d, HistoryExamined %d; want the oracle %q, a miss, native = HistoryExamined",
-									r.answer, r.err, r.hits, r.native, r.work.HistoryExamined, want)
+							// Ten rows: capture, committed metadata, merge, overlay
+							// metadata, then two winners. Only metadata/winners decode.
+							wantWork, wantNative := uint64(42), int64(22)
+							if window == "after the overlay cleared" {
+								wantWork, wantNative = 13, 13 // Eleven committed metadata decodes, two winners.
+							}
+							if !hr2Skeletons(be) {
+								// Two ten-row captures, twenty merge entries, ten decodes.
+								wantWork, wantNative = 50, 10
+								if window == "after the overlay cleared" {
+									wantWork, wantNative = 22, 11
+								}
+							}
+							if r.err != nil || r.answer != want || r.hits != 0 || r.native != wantNative || r.work.HistoryExamined != wantWork {
+								t.Fatalf("budgeted miss = %q, %v, %d hits, native %d, HistoryExamined %d; want the oracle %q, a miss, native %d and history work %d",
+									r.answer, r.err, r.hits, r.native, r.work.HistoryExamined, want, wantNative, wantWork)
 							}
 							kept := g.heads.get(k)
 							if kept == nil {

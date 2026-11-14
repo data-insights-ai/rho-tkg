@@ -355,18 +355,22 @@ func (bs *Store) entityIndexWalkCore(kind byte, prefixes [][]byte, fn func(key, 
 	prefixes = slices.CompactFunc(prefixes, bytes.Equal)
 	tail := storepkg.EntityIndexTailLen(kind)
 	ov := pendingKeyOverlay[[]byte]{}
-	bs.rangePendingPrefixes(prefixes, func(k string, op writeOp) {
+	bs.walkPendingPrefixes(prefixes, func(k string, op writeOp) bool {
 		if work != nil {
 			work.OverlayOpsInspected++
 		}
 		if budget.entry() != nil { // a buffered op is an entry examined: charged before it is kept
-			return
+			return false
 		}
 		var val []byte
 		if values && op.opType == writeOpSet {
+			if !budget.buffer(len(op.value)) {
+				return false
+			}
 			val = slices.Clone(op.value)
 		}
 		noteMemberOverlay(&ov, k, op, val, work)
+		return true
 	})
 	if err := budget.refusal(); err != nil {
 		return err
@@ -1400,7 +1404,7 @@ func (bs *Store) planEntityIndexOpen(txn *badgerv4.Txn) (*entityIndexOpen, error
 // a read-only open only, which records it (memberLegacy) and reads it as it
 // is; a writable open builds it again as the span layout. Without a marker a
 // writable open with a registry builds it.
-func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey string, elements bool) bool {
+func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey string, elements bool) (bool, error) {
 	kind := storepkg.EntityIndexNodeMember
 	if rel {
 		kind = storepkg.EntityIndexRelMember
@@ -1409,7 +1413,7 @@ func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey s
 	if layout, ok := p.marked[string(k)]; ok {
 		if layout == storepkg.EntityIndexBuiltSpan {
 			p.keep[string(k)] = struct{}{}
-			return true
+			return true, nil
 		}
 		if bs.readOnly {
 			p.keep[string(k)] = struct{}{}
@@ -1417,40 +1421,46 @@ func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey s
 				bs.memberLegacy = make(map[memberDef]struct{})
 			}
 			bs.memberLegacy[memberDef{rel, scope, propertyKey}] = struct{}{}
-			return true
+			return true, nil
 		}
 	}
 	if !p.canBuild {
-		return false
+		return false, nil
+	}
+	if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+		return false, err
 	}
 	p.stale = append(p.stale, bs.entityIndexHeads(rel, scope, propertyKey)...)
 	p.targets = append(p.targets, entityBuildTarget{rel: rel, scope: scope, propertyKey: propertyKey, elements: elements})
 	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{storepkg.EntityIndexBuiltSpan}})
 	p.level = max(p.level, storepkg.MemberSpanStoreFormatVersion)
-	return true
+	return true, nil
 }
 
 // placeComposite is place for a composite node definition of a label kept on
 // disk (COMPDISK): true when its entries answer from 0x0C this open, never
 // without a property-key registry (no head).
-func (p *entityIndexOpen) placeComposite(bs *Store, key indexpkg.CompositeIndexKey, keys []string) bool {
+func (p *entityIndexOpen) placeComposite(bs *Store, key indexpkg.CompositeIndexKey, keys []string) (bool, error) {
 	head, ok := bs.compositeDiskHead(key.LabelToken, keys)
 	if !ok {
-		return false
+		return false, nil
 	}
 	k := compositeDiskBuiltKey(key)
 	if _, ok := p.marked[string(k)]; ok {
 		p.keep[string(k)] = struct{}{}
-		return true
+		return true, nil
 	}
 	if !p.canBuild {
-		return false
+		return false, nil
+	}
+	if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+		return false, err
 	}
 	p.stale = append(p.stale, head)
 	p.targets = append(p.targets, entityBuildTarget{scope: key.LabelToken, composite: keys, head: head})
 	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{1}})
 	p.level = max(p.level, storepkg.CompositeDiskStoreFormatVersion)
-	return true
+	return true, nil
 }
 
 // entityIndexOpenCommitHook, set only by tests, runs as commitEntityIndexOpen
@@ -1479,6 +1489,9 @@ func (bs *Store) commitEntityIndexOpen(p *entityIndexOpen) error {
 	}
 	if len(p.targets) == 0 && len(unmark) == 0 {
 		return nil
+	}
+	if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+		return err
 	}
 	if entityIndexOpenCommitHook != nil {
 		entityIndexOpenCommitHook()

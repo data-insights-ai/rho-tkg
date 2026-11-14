@@ -1,6 +1,7 @@
 package tiered
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -55,13 +56,8 @@ func (es *EventShard) countColdStoreLocked(ts *Store) {
 // saved catalog (label and type doors skip a shard by them). Caller holds
 // es.shardMu.
 func (es *EventShard) openColdLocked(ts *Store) error {
-	if err := es.wakeNoRowsLocked(ts); err != nil {
+	if err := es.unsealForWriteLocked(ts); err != nil {
 		return err
-	}
-	if es.dropCachedCounts(ts) {
-		if err := ts.catalog.Save(); err != nil {
-			return fmt.Errorf("graph: save catalog before opening sealed shard %s: %w", es.name, err)
-		}
 	}
 	// A shard whose small handle the sweep closed for its writes opens at
 	// MemTableSize once (coldGrowOwedLocked).
@@ -80,12 +76,27 @@ func (es *EventShard) openColdLocked(ts *Store) error {
 	return nil
 }
 
+// unsealForWriteLocked removes the no-rows mark and sealed counts before a
+// writable open. Caller holds es.shardMu; readers must not skip new writes.
+func (es *EventShard) unsealForWriteLocked(ts *Store) error {
+	if err := es.wakeNoRowsLocked(ts); err != nil {
+		return err
+	}
+	if es.dropCachedCounts(ts) {
+		if err := ts.catalog.Save(); err != nil {
+			return fmt.Errorf("graph: save catalog before opening sealed shard %s: %w", es.name, err)
+		}
+	}
+	return nil
+}
+
 // openColdReadOnlyLocked lazily opens the closed cold shard es read-only for
 // a reader (COLDRO): about 1 ms and 3 MB of heap where a writable open costs
 // about 28 ms and 94 MB (tasks/evidence/COLDRO). It opens writable instead
 // when the read-only open fails (an unclean WAL needs a writable recovery) or
 // when the shard's index definitions differ from the anchor's, which only a
-// writable open syncs. Caller holds es.shardMu.
+// writable open syncs. A read tally refuses before that recovery or repair,
+// whose maintenance work cannot be charged. Caller holds es.shardMu.
 //
 // The open picks the handle's form and the form binds its fate (R3-1 OVERCAP,
 // tasks/evidence/R3/design-overcap.txt). With room under MaxOpenColdShards
@@ -98,15 +109,26 @@ func (es *EventShard) openColdLocked(ts *Store) error {
 // while a transient handle is in flight leaves it to close, and the shard's
 // next read opens full. The writable fallback is counted as every writable
 // cold handle is.
-func (es *EventShard) openColdReadOnlyLocked(ts *Store) error {
+func (es *EventShard) openColdReadOnlyLocked(ts *Store, tally *storecontract.ReadTally) error {
 	full := ts.maxOpenColdShards > 0 && ts.openColdShards.Load() < int64(ts.maxOpenColdShards)
-	store, err := ts.newShardStore(ts.coldReadCfg(es.path, full))
+	cfg := ts.coldReadCfg(es.path, full)
+	cfg.OpenReadTally = tally
+	store, err := ts.newShardStore(cfg)
 	if err != nil {
+		if tally != nil {
+			return fmt.Errorf("graph: cold shard %s needs writable recovery: %w", es.name, errors.Join(err, tally.RefuseUnsupported()))
+		}
 		return es.openColdLocked(ts)
 	}
 	if match, merr := ts.anchoredIndexesMatch(store); merr != nil || !match {
 		if cerr := store.Close(); cerr != nil {
 			return fmt.Errorf("graph: close read-only cold shard %s: %w", es.name, cerr)
+		}
+		// Repairing index definitions scans rows and writes new indexes. It
+		// has no read tally, so a budgeted read must stop before the repair's
+		// writable open. A plain read can heal the shard before a retry.
+		if tally != nil {
+			return tally.RefuseUnsupported()
 		}
 		return es.openColdLocked(ts)
 	}
@@ -150,6 +172,26 @@ func (es *EventShard) openColdWritableLocked(ts *Store, own int64) error {
 	return es.openColdLocked(ts)
 }
 
+// writableColdLocked prepares every writable cold checkout: charge and open
+// or upgrade if needed, wake a no-rows mark, and schedule growth of a small
+// handle. own is the caller's pin count. Caller holds es.shardMu.
+func (es *EventShard) writableColdLocked(ts *Store, own int64, opens *storecontract.ReadTally) (bool, error) {
+	opened := es.store == nil || es.storeRO
+	if opened {
+		if err := opens.ShardOpen(); err != nil {
+			return false, err
+		}
+		if err := es.openColdWritableLocked(ts, own); err != nil {
+			return false, err
+		}
+	}
+	if err := es.wakeNoRowsLocked(ts); err != nil {
+		return opened, err
+	}
+	ts.pendColdGrowLocked(es)
+	return opened, nil
+}
+
 // closeStoreLocked closes es's installed store and detaches it whatever Close
 // says (Close may have closed the DB despite its error); a failed Close is the
 // store's sticky fault (the fence: every checkout refuses it until
@@ -180,6 +222,38 @@ func (es *EventShard) coldInMemoryLocked() {
 	if es.currentTier() == TierWarm {
 		es.setTier(TierCold)
 	}
+}
+
+// rewarmLocked restores a catalog-warm shard after a failed close or reopen
+// made it cold in memory. It runs before rotation commits. Caller holds
+// ts.mu and es.shardMu after waitMoveLocked; it must not wait for pins while
+// holding ts.mu, since their owners may need it to finish.
+func (es *EventShard) rewarmLocked(ts *Store) error {
+	if es.activeReqs.Load() != 0 {
+		return fmt.Errorf("graph: rotation to window %s: its shard is in use", es.name)
+	}
+	if es.store != nil {
+		if err := es.closeStoreLocked(ts, "rotation: close cold handle"); err != nil {
+			return err
+		}
+	}
+	if err := es.unsealForWriteLocked(ts); err != nil {
+		return err
+	}
+	store, err := ts.openBadgerStoreWithRecovery(es.path)
+	if err != nil {
+		return fmt.Errorf("graph: rewarm shard %s: %w", es.name, err)
+	}
+	if err := ts.syncAnchoredIndexes(store, true); err != nil {
+		return fmt.Errorf("graph: restore warm indexes on %s: %w", es.name, errors.Join(err, store.Close()))
+	}
+	es.growNext = false
+	// Install before publishing the warm tier: its fast path reads the
+	// handle without shardMu. Uncounted because the shard is becoming warm.
+	es.installStoreLocked(ts, store, false)
+	es.setTier(TierWarm)
+	ts.handNewShardToLogScope(store, es.name)
+	return nil
 }
 
 // clearStoreLocked drops es's store (the caller closed it) and uncounts it.
@@ -244,19 +318,11 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		if es.currentTier() == TierCold {
 			es.shardMu.Lock()
 			es.waitMoveLocked()
-			if es.store == nil || es.storeRO {
-				if err := es.openColdWritableLocked(ts, 1); err != nil {
-					es.activeReqs.Add(-1)
-					es.shardMu.Unlock()
-					return nil, err
-				}
-			}
-			if err := es.wakeNoRowsLocked(ts); err != nil {
+			if _, err := es.writableColdLocked(ts, 1, nil); err != nil {
 				es.activeReqs.Add(-1)
 				es.shardMu.Unlock()
 				return nil, err
 			}
-			ts.pendColdGrowLocked(es)
 			es.readTransientOpen = false
 			store := es.store
 			es.shardMu.Unlock()
@@ -277,19 +343,10 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		es.shardMu.Unlock()
 		return nil, ErrStoreClosed
 	}
-	if es.store == nil || es.storeRO {
-		if err := es.openColdWritableLocked(ts, 0); err != nil {
-			es.shardMu.Unlock()
-			return nil, err
-		}
-	}
-	// A handle installed past the cold open (the retention drop's rollback)
-	// may still carry the no-rows mark: a write wakes it first (EMPTYBYID).
-	if err := es.wakeNoRowsLocked(ts); err != nil {
+	if _, err := es.writableColdLocked(ts, 0, nil); err != nil {
 		es.shardMu.Unlock()
 		return nil, err
 	}
-	ts.pendColdGrowLocked(es)
 	es.readTransientOpen = false
 	es.activeReqs.Add(1)
 	if ts.closed.Load() {
@@ -403,37 +460,27 @@ func (es *EventShard) pinForRead(ts *Store, readOnly bool, opens *storecontract.
 		es.shardMu.Unlock()
 		return nil, noop, ErrStoreClosed
 	}
-	if es.store == nil || es.storeRO && !readOnly {
-		// Every open below (a closed shard, or a read-only handle reopened
-		// writable) is charged first; a refusal leaves the shard as it is.
+	if !readOnly {
+		opened, err := es.writableColdLocked(ts, 0, opens)
+		if err != nil {
+			es.shardMu.Unlock()
+			return nil, noop, err
+		}
+		if opened {
+			es.readTransientOpen = true
+		}
+	} else if es.store == nil {
+		// A refusal leaves the shard closed.
 		if err := opens.ShardOpen(); err != nil {
 			es.shardMu.Unlock()
 			return nil, noop, err
 		}
-	}
-	if es.store != nil && es.storeRO && !readOnly {
-		// A caller that may write: the read-only handle gives way to a
-		// writable one, which stays as a read's transient open would.
-		if err := es.openColdWritableLocked(ts, 0); err != nil {
+		if err := es.openColdReadOnlyLocked(ts, opens); err != nil {
 			es.shardMu.Unlock()
 			return nil, noop, err
 		}
 		es.readTransientOpen = true
-	}
-	if es.store == nil {
-		open := es.openColdLocked
-		if readOnly {
-			open = es.openColdReadOnlyLocked
-		}
-		if err := open(ts); err != nil {
-			es.shardMu.Unlock()
-			return nil, noop, err
-		}
-		es.readTransientOpen = true
-		// A read-only open leaves the sealed catalog entry alone (the shard
-		// cannot change through it); a writable one unsealed it in
-		// openColdLocked. The in-memory copy goes either way: while the store
-		// is open it is the more direct answer.
+		// The saved seal stays; the open handle is the direct answer in memory.
 		es.counts.Store(nil)
 	}
 	es.activeReqs.Add(1)
@@ -593,10 +640,9 @@ func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 
 // checkoutArchiveCharged is checkoutArchive for a read under a budget (RH list
 // R2, READBUDGET step 6): when the catalog has an archive not yet opened, the
-// open is charged to opens before it, and a refusal returns the budget error
-// with the archive left closed. An archive opened by another read in between
-// is charged all the same (the count errs high, never low). A nil opens
-// charges nothing.
+// read-only preflight and writable open are each charged under archiveMu
+// before they happen; a refusal leaves the archive closed. A nil opens
+// charges nothing and allows plain maintenance on open.
 func (ts *Store) checkoutArchiveCharged(opens *storecontract.ReadTally) (*BadgerStore, func(), error) {
 	return ts.checkoutArchiveFor(routeRead, opens)
 }
@@ -623,10 +669,7 @@ func (ts *Store) checkoutArchiveFor(mode routeMode, opens *storecontract.ReadTal
 		if mode == routeIfOpen {
 			return nil, noop, errShardNotOpen
 		}
-		if err := opens.ShardOpen(); err != nil {
-			return nil, noop, err
-		}
-		if err := ts.ensureRefArchive(); err != nil {
+		if err := ts.ensureRefArchiveMetered(opens); err != nil {
 			return nil, noop, err
 		}
 		archive = ts.refArchive.Load()

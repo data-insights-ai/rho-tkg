@@ -290,6 +290,9 @@ func (bs *Store) purgeUndefinedTemporalDiskRows() error {
 				it.Seek(storepkg.TemporalIndexTokenPrefix(tok + 1))
 				continue
 			}
+			if err := bs.openReadTally.RefuseUnsupported(); err != nil {
+				return err
+			}
 			dels = append(dels, it.Item().KeyCopy(nil))
 			it.Next()
 		}

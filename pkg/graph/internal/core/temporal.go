@@ -8,7 +8,6 @@ import (
 
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -1241,36 +1240,28 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 	// and on the fold each candidate before it is resolved.
 	metered, _ := opts.ReadMeter()
 	fold := func() error {
-		// The fold walks the history IDs of every shard, opening closed tiered
-		// shards it does not count: under a ShardOpens budget it refuses
-		// before the walk (READBUDGET).
-		if _, opensShards := c.store.(*tiered.Store); opensShards && metered != nil && metered.BoundsShardOpens() {
-			_, door := opts.ReadMeter()
-			return &storepkg.ReadBudgetError{Door: door, Limit: "unsupported", Work: metered.Work()}
+		if metered != nil && c.relTypeTxMembers != nil && c.txMembersMetered() != nil && c.membershipSidecarUsable(opts.Depth) {
+			// The type gather already admits its copies and cold opens. Resolve
+			// those members directly instead of probing every history ID first.
+			ids, err := c.relTypeCandidateIDsKind(tok, opts, gatherScan)
+			if err != nil {
+				return err
+			}
+			for _, id := range ids {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if metered != nil {
+			return opts.ReadTally().RefuseUnsupported()
 		}
 		currentIDs, err := current()
 		if err != nil {
 			return err
 		}
-		resolve := fn
-		if metered != nil {
-			counted := make(map[types.RelID]struct{}, len(currentIDs)) // the lookup counted them (currentOpts)
-			for _, id := range currentIDs {
-				counted[id] = struct{}{}
-			}
-			resolve = func(id types.RelID) error {
-				if _, ok := counted[id]; !ok {
-					if err := opts.AddCandidates(1); err != nil {
-						return err
-					}
-				}
-				if err := opts.AddBufferBytes(bufSetEntry); err != nil { // the fold's seen entry
-					return err
-				}
-				return fn(id)
-			}
-		}
-		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, resolve)
+		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
 	}
 	if c.relPropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
 		return fold()
@@ -1511,36 +1502,28 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 	// resolved.
 	metered, _ := opts.ReadMeter()
 	fold := func() error {
-		// The fold walks the label's history IDs and members over every
-		// shard, opening closed tiered shards it does not count: under a
-		// ShardOpens budget it refuses before the walk (READBUDGET).
-		if _, opensShards := c.store.(*tiered.Store); opensShards && metered != nil && metered.BoundsShardOpens() {
-			_, door := opts.ReadMeter()
-			return &storepkg.ReadBudgetError{Door: door, Limit: "unsupported", Work: metered.Work()}
+		if metered != nil && c.labelTxMembers != nil && c.txMembersMetered() != nil && c.membershipSidecarUsable(opts.Depth) {
+			// The label gather already admits its copies and cold opens. Resolve
+			// those members directly instead of probing every history ID first.
+			ids, err := c.nodeLabelCandidateIDsKind(tok, opts, gatherScan)
+			if err != nil {
+				return err
+			}
+			for _, id := range ids {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if metered != nil {
+			return opts.ReadTally().RefuseUnsupported()
 		}
 		currentIDs, err := current()
 		if err != nil {
 			return err
 		}
-		resolve := fn
-		if metered != nil {
-			counted := make(map[types.NodeID]struct{}, len(currentIDs)) // the lookup counted them (currentOpts)
-			for _, id := range currentIDs {
-				counted[id] = struct{}{}
-			}
-			resolve = func(id types.NodeID) error {
-				if _, ok := counted[id]; !ok {
-					if err := opts.AddCandidates(1); err != nil {
-						return err
-					}
-				}
-				if err := opts.AddBufferBytes(bufSetEntry); err != nil { // the fold's seen entry
-					return err
-				}
-				return fn(id)
-			}
-		}
-		return c.forEachNodeHistoryCandidateOfLabel(tok, currentIDs, opts, resolve)
+		return c.forEachNodeHistoryCandidateOfLabel(tok, currentIDs, opts, fn)
 	}
 	if c.nodePropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
 		return fold()

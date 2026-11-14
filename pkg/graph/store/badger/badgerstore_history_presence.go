@@ -196,6 +196,16 @@ func (bs *Store) historyTopBound(p *historyPresence, id snowflake.ID) (uint32, b
 // probe answers an ID the set does not decide (probeHistoryPresence, or a read
 // snapshot's equivalent).
 func (bs *Store) hasHistory(p *historyPresence, kind byte, id snowflake.ID, probe func(kind byte, id snowflake.ID, wantTop bool) (bool, uint32, error)) (bool, error) {
+	return bs.hasHistoryTallied(p, kind, id, probe, nil)
+}
+
+func (bs *Store) hasHistoryTallied(p *historyPresence, kind byte, id snowflake.ID, probe func(kind byte, id snowflake.ID, wantTop bool) (bool, uint32, error), tally *storecontract.ReadTally) (bool, error) {
+	// A selective metered read must not build a store-wide presence map.
+	// The entity probe is exact and shares the caller's allowance.
+	if tally != nil && !p.built.Load() {
+		present, _, err := probe(kind, id, false)
+		return present, err
+	}
 	if bs.historyPresenceProbeOnly {
 		present, _, err := probe(kind, id, false)
 		return present, err

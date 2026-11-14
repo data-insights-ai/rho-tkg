@@ -23,7 +23,7 @@ import (
 //     is refused before it when the value's members pass the room, and the
 //     view stays unopened (the native counter: MembersDuring answers not-ok);
 //     the view is a persistent structure, so its build is not BufferBytes, and
-//     the first budgeted reader of a value pays the refusal, later ones do not;
+//     the first budgeted reader pays for every member copied into the view;
 //   - the view's walk counts every entry it examines before it looks at it,
 //     and charges the members it adds and the map of decided members as
 //     BufferBytes, and stops at the entry that refuses.
@@ -98,8 +98,8 @@ func TestMeteredRAMSidecarWalkIsCharged(t *testing.T) {
 	// and the map of decided members (24 bytes an entry) do.
 	const examined, bytes = n + 1, txMemberBytes + n*foldEntryBytes
 	m, tally = cumulativeTally(storecontract.ReadBudget{Candidates: 1 << 20, BufferBytes: 1 << 20})
-	if got, err := read(window, tally); err != nil || got != 1 || !viewOpen() || m.Work().Candidates != examined || m.Work().BufferBytes != bytes {
-		t.Fatalf("window control: %d members, %v, work %+v, view open %v; want the 1 member, %d entries counted, %d bytes", got, err, m.Work(), viewOpen(), examined, bytes)
+	if got, err := read(window, tally); err != nil || got != 1 || !viewOpen() || m.Work().Candidates != n+examined || m.Work().BufferBytes != bytes {
+		t.Fatalf("window control: %d members, %v, work %+v, view open %v; want the 1 member, %d build and walk entries counted, %d bytes", got, err, m.Work(), viewOpen(), n+examined, bytes)
 	}
 
 	// The view is open: the walk is charged entry by entry and stops at the refusal.

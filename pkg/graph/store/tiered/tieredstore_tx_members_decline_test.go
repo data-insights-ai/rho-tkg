@@ -6,7 +6,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -142,6 +144,89 @@ func TestTieredMemberDeclineAsksEveryShardFirst(t *testing.T) {
 	}
 }
 
+// TestTieredMemberDeclineAsksAnOpenColdShard: the question before any walk
+// goes to every event shard whose store is open now, a cold one included, and
+// opens no closed shard for it. On disk (a closed cold shard reopens with its
+// data): three event shards of 4 members, the two older demoted to cold (their
+// handles stay open), the oldest's handle then closed. The control, with every
+// shard carrying the index, reopens the closed shard once (one ShardOpens, one
+// native ColdOpens) and answers the 12 members. Then the oldest is closed again
+// and the open cold shard loses the index: the read declines before any walk,
+// with nothing counted, no index entry visited, no shard opened (ColdOpens and
+// the closed handle unchanged) and no member handed on. Skipping cold shards in
+// the question would leave the open cold shard to the walk: the closed one
+// opened, it and the hot shard walked, 8 members counted, then the decline.
+func TestTieredMemberDeclineAsksAnOpenColdShard(t *testing.T) {
+	ts, err := New(Config{
+		DataDir:             t.TempDir(),
+		RefLabels:           []string{"Case", "User"},
+		ShardWindow:         7 * 24 * time.Hour,
+		FlushInterval:       1<<63 - 1,
+		PropertyIndexOnDisk: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+	ts.SetPropertyKeyRegistry(registrypkg.NewPropertyKeyRegistry())
+	installDefaultTestLabelRegistry(t, ts)
+	read := spreadMembers(t, ts, "node", declinePer, declineShards)
+	hot := ts.HotShardForTest().Name()
+	var older []string
+	for name := range ts.EventShardsForTest() {
+		if name != hot {
+			older = append(older, name)
+		}
+	}
+	if len(older) != declineShards-1 {
+		t.Fatalf("fixture: %d older event shards, want %d", len(older), declineShards-1)
+	}
+	closed, open := older[0], older[1]
+	demoteToCold(ts, closed)
+	demoteToCold(ts, open)
+	closeEventShardStore(t, ts, closed)
+	visited, stop := badger.CountIndexEntriesVisitedForTest()
+	defer stop()
+	vk := types.IndexablePropertyValueKey(int64(1))
+	coldOpens := func() uint64 { return ts.ShardAccessStats().ColdOpens }
+	closedOpen := func() bool {
+		es := ts.EventShardsForTest()[closed]
+		es.LockShardMuForTest()
+		defer es.UnlockShardMuForTest()
+		return es.Store() != nil
+	}
+
+	m, tally := declineBudget(storecontract.ReadBudget{Candidates: 1 << 20, BufferBytes: 1 << 20})
+	members := 0
+	before, opened := visited(), coldOpens()
+	if err := read(vk, nil, tally, func() { members++ }); err != nil || members != declineTotal || m.Work().Candidates != declineTotal ||
+		m.Work().ShardOpens != 1 || coldOpens()-opened != 1 || visited()-before < declineTotal {
+		t.Fatalf("control: %d members, %v, work %+v, %d cold opens, %d entries visited; want the %d members counted and walked, the closed shard opened once",
+			members, err, m.Work(), coldOpens()-opened, visited()-before, declineTotal)
+	}
+
+	closeEventShardStore(t, ts, closed)
+	es := ts.EventShardsForTest()[open]
+	es.LockShardMuForTest()
+	openStore := es.Store()
+	es.UnlockShardMuForTest()
+	if openStore == nil {
+		t.Fatal("fixture: the open cold shard has no store")
+	}
+	if err := openStore.DropPropertyIndex(declineSignal, declineKey); err != nil {
+		t.Fatal(err)
+	}
+	m, tally = declineBudget(storecontract.ReadBudget{Candidates: 1 << 20, BufferBytes: 1 << 20})
+	members = 0
+	before, opened = visited(), coldOpens()
+	err = read(vk, nil, tally, func() { members++ })
+	if !errors.Is(err, storecontract.ErrIndexNotFound) || members != 0 || m.Work() != (storecontract.ReadWork{}) || visited() != before ||
+		coldOpens() != opened || closedOpen() {
+		t.Fatalf("decline (open cold shard without the index): %d members, %v, work %+v, %d entries visited, %d cold opens, closed shard open %v; want ErrIndexNotFound before any walk: nothing counted, visited or opened",
+			members, err, m.Work(), visited()-before, coldOpens()-opened, closedOpen())
+	}
+}
+
 // TestTieredMemberDeclineKeepsItsWork (D1, replaces
 // TestTieredMemberDeclineCostsNothing): a read that declines after its shards
 // walked (a shard found still building mid-walk; here the reference shard's
@@ -193,7 +278,7 @@ func TestTieredMemberDeclineKeepsItsWork(t *testing.T) {
 func TestTieredMemberFanoutBesideAnotherRead(t *testing.T) {
 	p := newDeclineProbe(t, false)
 	p.declineOn = p.ts.refShard
-	run := func(b storecontract.ReadBudget) (errA, errB error, m *storecontract.ReadMeter) {
+	run := func(b storecontract.ReadBudget) (m *storecontract.ReadMeter, errA, errB error) {
 		m, tally := declineBudget(b)
 		var once sync.Once
 		p.afterYield = func(n int64) {
@@ -208,16 +293,16 @@ func TestTieredMemberFanoutBesideAnotherRead(t *testing.T) {
 		}
 		defer func() { p.afterYield = nil }()
 		_, errA = p.read(tally)
-		return errA, errB, m
+		return m, errA, errB
 	}
 
-	errA, errB, m := run(storecontract.ReadBudget{Segments: 1 << 20})
+	m, errA, errB := run(storecontract.ReadBudget{Segments: 1 << 20})
 	want := storecontract.ReadWork{Candidates: declineTotal + 3, BufferBytes: declineTotal*declineMemberBytes + 48}
 	if !errors.Is(errA, storecontract.ErrIndexNotFound) || errB != nil || m.Work() != want || p.yielded.Load() != declineTotal {
 		t.Fatalf("unlimited control: A %v, B %v, %d yielded, work %+v; want A's decline, B answered, work %+v", errA, errB, p.yielded.Load(), m.Work(), want)
 	}
 
-	errA, errB, m = run(storecontract.ReadBudget{Candidates: 6})
+	m, errA, errB = run(storecontract.ReadBudget{Candidates: 6})
 	var rb *storecontract.ReadBudgetError
 	if !errors.As(errB, &rb) || rb.Door != "b" || rb.Limit != "candidates" || rb.Work.Candidates < 7 || rb.Work.Candidates > m.Work().Candidates {
 		t.Fatalf("Candidates 6: B %v, meter %+v; want B refused at 7 or more, its Work at most the meter's", errB, m.Work())

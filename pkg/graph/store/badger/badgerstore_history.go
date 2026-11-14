@@ -320,42 +320,92 @@ func historyIDMaxSeekKey(prefix byte) []byte {
 }
 
 func (bs *Store) pendingHistoryVersionOverlay(prefix []byte, startVersion uint32) (map[string][]byte, map[string]struct{}) {
+	entries, deletes, _ := bs.pendingHistoryVersionOverlayTallied(prefix, startVersion, nil)
+	return entries, deletes
+}
+
+func (bs *Store) pendingHistoryVersionOverlayTallied(prefix []byte, startVersion uint32, tally *storecontract.ReadTally) (map[string][]byte, map[string]struct{}, error) {
 	// The maps are made on the first buffered row of the entity: callers only
 	// read them, and nil reads as empty (R37: two empty maps per history read).
-	prefixStr := string(prefix)
 	var entries map[string][]byte
 	var deletes map[string]struct{}
-
-	note := func(k string, op writeOp) {
-		if len(k) != storepkg.SizeHistKey || k[:len(prefixStr)] != prefixStr {
-			return
-		}
+	err := bs.walkPendingHistory(prefix, func() error { return tally.History(1) }, func(k string, op writeOp) error {
 		if historyVersionFromKey([]byte(k)) < uint64(startVersion) {
-			return
+			return nil
 		}
 		if op.opType == writeOpDelete {
+			if _, exists := deletes[k]; !exists {
+				if err := tally.Buffer(16); err != nil {
+					return err
+				}
+			}
 			delete(entries, k)
 			if deletes == nil {
 				deletes = make(map[string]struct{})
 			}
 			deletes[k] = struct{}{}
-			return
+			return nil
+		}
+		n := len(op.value)
+		if _, exists := entries[k]; !exists {
+			n += 40 // string key and raw-value slice
+		}
+		if err := tally.Buffer(n); err != nil {
+			return err
 		}
 		cp := make([]byte, len(op.value))
 		copy(cp, op.value)
+		noteHistoryBytesCopied(len(cp))
 		if entries == nil {
 			entries = make(map[string][]byte)
 		}
 		entries[k] = cp
 		delete(deletes, k)
+		return nil
+	})
+	return entries, deletes, err
+}
+
+// walkPendingHistory admits every examined buffered entry and stops the
+// native walk on refusal. Entity prefixes use the write buffer's prefix index.
+func (bs *Store) walkPendingHistory(prefix []byte, admit func() error, fn func(string, writeOp) error) error {
+	prefixStr := string(prefix)
+	var refused error
+	note := func(k string, op writeOp) bool {
+		if refused = admit(); refused != nil {
+			return false
+		}
+		if len(k) != storepkg.SizeHistKey || len(prefixStr) > len(k) || k[:len(prefixStr)] != prefixStr {
+			return true
+		}
+		refused = fn(k, op)
+		return refused == nil
 	}
 	if len(prefix) == storepkg.SizeHistKey-8 {
-		bs.rangePendingPrefixes([][]byte{prefix}, note) // one entity's rows (HISTPEND)
+		bs.walkPendingPrefixes([][]byte{prefix}, note)
 	} else {
-		bs.rangePending(note) // a whole keyspace (exact erasure)
+		bs.walkPending(note)
 	}
+	return refused
+}
 
-	return entries, deletes
+// pendingHistoryKeys captures only the latest operation per key. Presence
+// probes need no row values, so they allocate no raw-value copies or decodes.
+func (bs *Store) pendingHistoryKeys(prefix []byte, tally *storecontract.ReadTally) (map[string]writeOpType, error) {
+	var keys map[string]writeOpType
+	err := bs.walkPendingHistory(prefix, func() error { return tally.Candidates(1) }, func(k string, op writeOp) error {
+		if _, exists := keys[k]; !exists {
+			if err := tally.Buffer(24); err != nil {
+				return err
+			}
+		}
+		if keys == nil {
+			keys = make(map[string]writeOpType)
+		}
+		keys[k] = op.opType
+		return nil
+	})
+	return keys, err
 }
 
 // decodeHistoryChain reads one entity's whole history chain (prefix: keyspace
@@ -606,13 +656,27 @@ func (bs *Store) pendingHistoryIDOverlay(prefix byte, after snowflake.ID) (map[s
 // same key wins under each reader's last-write-wins overlay logic. Held under
 // wbMu for the call; fn must not re-enter the write buffer.
 func (bs *Store) rangePending(fn func(k string, op writeOp)) {
+	bs.walkPending(func(k string, op writeOp) bool {
+		fn(k, op)
+		return true
+	})
+}
+
+// walkPending is rangePending with immediate termination on a false callback.
+func (bs *Store) walkPending(fn func(k string, op writeOp) bool) {
 	bs.wbMu.Lock()
 	defer bs.wbMu.Unlock()
 	for k, op := range bs.flushing {
-		fn(k, op)
+		notePendingKeyVisited()
+		if !fn(k, op) {
+			return
+		}
 	}
 	for k, op := range bs.pending {
-		fn(k, op)
+		notePendingKeyVisited()
+		if !fn(k, op) {
+			return
+		}
 	}
 }
 
@@ -622,16 +686,32 @@ func (bs *Store) rangePending(fn func(k string, op writeOp)) {
 // last, as rangePending does for those keys; it visits no other buffered key
 // (PENDSEEK, HISTPEND).
 func (bs *Store) rangePendingPrefixes(prefixes [][]byte, fn func(k string, op writeOp)) {
+	bs.walkPendingPrefixes(prefixes, func(k string, op writeOp) bool {
+		fn(k, op)
+		return true
+	})
+}
+
+// walkPendingPrefixes visits only the selected prefixes, oldest buffer first.
+// A false callback ends the native walk before another key is visited. Caller
+// callbacks run under wbMu and must not re-enter the write buffer.
+func (bs *Store) walkPendingPrefixes(prefixes [][]byte, fn func(k string, op writeOp) bool) {
 	bs.wbMu.Lock()
 	defer bs.wbMu.Unlock()
 	for _, p := range prefixes {
 		for _, k := range bs.flushingByPrefix[string(p)] {
-			fn(k, bs.flushing[k])
+			notePendingKeyVisited()
+			if !fn(k, bs.flushing[k]) {
+				return
+			}
 		}
 	}
 	for _, p := range prefixes {
 		for _, k := range bs.pendingByPrefix[string(p)] {
-			fn(k, bs.pending[k])
+			notePendingKeyVisited()
+			if !fn(k, bs.pending[k]) {
+				return
+			}
 		}
 	}
 }

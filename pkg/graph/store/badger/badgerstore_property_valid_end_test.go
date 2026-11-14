@@ -17,7 +17,7 @@ func entryIDs(t *testing.T, bs *Store, key string, value any) []types.NodeID {
 	t.Helper()
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
-	nids, err := bs.propertyIndexDiskKeysCandidatesLocked(key, []string{types.IndexablePropertyValueKey(value)}, nil)
+	nids, err := bs.propertyIndexDiskKeysCandidatesTalliedLocked(key, []string{types.IndexablePropertyValueKey(value)}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

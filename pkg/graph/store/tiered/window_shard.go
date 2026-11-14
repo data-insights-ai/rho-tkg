@@ -66,8 +66,7 @@ func (ts *Store) makeWindowShardLocked(t time.Time) error {
 		}
 	}
 	name := shardWindowName(t, ts.shardWindow)
-	_, exists := ts.eventShards[name]
-	if _, dropping := ts.droppingShards[name]; exists || dropping {
+	if ts.eventShardNameTakenLocked(name) {
 		name = fmt.Sprintf("%s-%d", name, start.UnixMilli())
 	}
 	dir := name

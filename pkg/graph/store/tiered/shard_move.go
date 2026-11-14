@@ -52,6 +52,13 @@ func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
 	}
 	defer release()
 
+	return ts.moveShard(ctx, name, vol, dstRoot)
+}
+
+// moveShard is the shared move path for MoveShard and a calendar promotion.
+// The caller owns the sequential lifecycle operation, but no ts.mu lock:
+// pinned readers must be able to finish while the move drains them.
+func (ts *Store) moveShard(ctx context.Context, name, vol, dstRoot string) error {
 	ts.mu.RLock()
 	es := ts.eventShards[name]
 	hot := es != nil && es == ts.hotShard
@@ -91,7 +98,7 @@ func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
 		return err
 	}
 	ts.openMoveRead(es)
-	err = ts.moveClosedShard(ctx, es.name, es.path, vol, dstRoot, func() { ts.endMoveRead(es) })
+	err := ts.moveClosedShard(ctx, es.name, es.path, vol, dstRoot, func() { ts.endMoveRead(es) })
 	ts.endMoveRead(es) // a move that stopped before its source removal
 	if es.currentTier() != TierCold {
 		if !ts.closing.Load() {

@@ -14,7 +14,8 @@ import (
 // reopen the archive is closed until a read needs it; a metered read
 // snapshot routing a node there charges the open before it, so a spent
 // ShardOpens budget refuses with the archive still closed, the meter reports
-// the refusal (Exceeded), and with room the open counts once.
+// the refusal (Exceeded), and with room both the read-only preflight and
+// installed writable handle count as opens.
 func TestReadBudget_SnapshotChargesClosedArchiveOpen(t *testing.T) {
 	t.Parallel()
 	cfg := volumeCfg(t.TempDir(), "", "")
@@ -67,13 +68,13 @@ func TestReadBudget_SnapshotChargesClosedArchiveOpen(t *testing.T) {
 		t.Fatalf("Exceeded = %v after the refusal", spent.Exceeded())
 	}
 
-	_, meter := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{ShardOpens: 1})
+	_, meter := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{ShardOpens: 2})
 	for range 2 { // the second read finds the archive open: no charge
 		if got, err := read(meter); err != nil || got == nil || got.ID() != n.ID() {
 			t.Fatalf("read = %v, %v", got, err)
 		}
 	}
-	if w := meter.Work(); w.ShardOpens != 1 || meter.Exceeded() != nil {
-		t.Fatalf("work %+v, Exceeded %v; want 1 open, no refusal", w, meter.Exceeded())
+	if w := meter.Work(); w.ShardOpens != 2 || meter.Exceeded() != nil {
+		t.Fatalf("work %+v, Exceeded %v; want 2 opens, no refusal", w, meter.Exceeded())
 	}
 }
