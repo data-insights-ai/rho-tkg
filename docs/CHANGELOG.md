@@ -41,6 +41,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `tasks/evidence/R2TWINS/red.txt`; tests `TestIterateForEach_NilContextYieldsErrNilContext`, `TestCtxErr`,
   `TestAPIIter_NilContextYieldsErrNilContext` (nodes, rels), `TestCtxWrappersNilContext` (nodes, rels, temporal),
   `TestIteratorsNilContext` (every backend).
+- **R2-SCANS: the remaining scans run under a read budget**: `Temporal().ForEachNodeEffectiveByLabelsWindowCtx`,
+  `ForEachRelEffectiveByTypeWindowCtx`, `ForEachRelEffectiveAtNodesCtx`, `ForEachRelEffectiveAtNodesWindowCtx` and
+  `ScanRelEffectiveColumnsAtNodesCtx` stream the plain doors' segments under `ctx`'s budget (the callbacks before a
+  refusal stand; the column scan is exact or refused, 24 buffer bytes per segment it holds). Each of the five open items
+  of the R2 list is verified against dev, and each step has its red output in `tasks/evidence/R2SCANS/red.txt`:
+  (1) the Window scans and the paged scans (`NodesEffectivePage`, `RelsEffectivePage`,
+  `ForEachNodeEffectiveByLabelAndProperties`, `...PropertyValues`, which took a `ctx` and ignored a budget in it): a
+  candidate per entity before its read, history, decoded bytes, shard opens and segments counted, a listing asks for no
+  more candidates than the budget has room for plus the one that passes it, so a page of 5 under `Candidates` 5 reads 5
+  (red: every counter 0 under a budget, a page of 5 answered with no count); a page door is exact or refused;
+  (2) `ForEachRelEffectiveAtNodes` and its Window and column forms count their gather as it walks, before each step: the
+  seeds, each current adjacency entry before it is collected, each ex-adjacency entry as it is produced, on tiered each
+  closed shard the gather opens (new `store.ExAdjacencyMeteredCapability`, tiered), and a store without a complete
+  ex-adjacency counts the history-ID fold (refused before it under a `ShardOpens` budget on tiered); 1 seed + 9 current
+  + 3 ex-adjacent + 12 reads = 25 candidates in the test, 36 segments, exact at every limit on badger, sharded and tiered;
+  (3) the From and Window scans use the valid-end index under a budget and its first call, which re-read every
+  ever-member's temporal fields unbounded, is counted before it is done (new `store.RelValidEndMeteredCapability` and
+  `NodeValidEndMeteredCapability`, memory, badger, tiered): a candidate per entity, history rows, decoded bytes and, on
+  tiered, shard opens, so a refusal stops inside it and leaves the index exact; a resolved index lists 9 of 12 entities
+  where the budgeted scan read all 12;
+  (4) checked: `LatestStampsCtx` was already bounded on every native store (tiered charges each closed shard through its
+  metered stamp doors) and refuses an uncountable budget on a wrapper; what dropped the meter was the history-fold
+  fallback of a store that hides its capabilities, in `HasHistoryCtx` and `LatestStampsCtx`: it now counts the versions
+  it reads as `HistoryExamined` (red: 0 counted of 6);
+  (5) `Nodes().ByLabelCtx` at a time coordinate was refused (`Limit` `"unsupported"`) under any budget; it is counted now
+  (the label's current members, a candidate for each other node that ever carried it, every candidate resolved through the
+  metered read snapshot), and the two tests that pinned the refusal pin the counted read. Plain doors are unchanged. Still
+  not bounded: the membership sidecar's one-time build, the RAM walk of the valid-end index, the label and type
+  enumerations the gathers build (counted after they are built) and a tiered ex-adjacency's per-seed collection. The
+  sigma-side half of the RH review's finding 3 (`sessions/session_stamps.go` discarding its context) is sigma's.
 - **Label membership reads skip sealed shards without the label (Sigma RH-S7 image restore)**: on tiered, a closed
   cold shard's sealed counts now also carry the label tokens it holds former members of (`BadgerStore.FormerLabelTokens`,
   from the membership sidecar when it was built while the shard was open; saved in the catalog, dropped before a write
