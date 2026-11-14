@@ -1,0 +1,8 @@
+--- FAIL: TestGatherHold_RefusesBeforeTheCopy (0.26s)
+    --- FAIL: TestGatherHold_RefusesBeforeTheCopy/badger (0.07s)
+        read_budget_gather_hold_test.go:70: Candidates 8: the stores copied 35 ever-members before the refusal; want 0 (the set of 35 passes the room)
+    --- FAIL: TestGatherHold_RefusesBeforeTheCopy/tiered (0.19s)
+        read_budget_gather_hold_test.go:70: Candidates 8: the stores copied 35 ever-members before the refusal; want 0 (the set of 35 passes the room)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.277s
+FAIL

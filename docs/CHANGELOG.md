@@ -31,6 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **R3 measured on ai-soc's setup** (ai-soc review of 14 Nov, §7; `tasks/evidence/R3/measure.txt` section H, local
+  runs, NoCompression as ai-soc runs): the startup floor is 2 handles, 168.9 MiB live (171.9 at the default; 98 % is
+  the two write arenas); a cap-2 day rotation holds 4 handles at 343.9 MiB flat, 108.8 MiB allocated and 2 catalog
+  saves a day; a late write into a closed day costs a writable open of 86.3 MiB plus a 7.4 MiB close, a read of it
+  1.5 MiB. Tests (tag `measure`, measurement only): `TestAsocStartupFloor`, `TestAsocDayRotation`,
+  `TestAsocReopenPerDay` in `pkg/graph/store/tiered/shard_asoc_measure_test.go`.
 - **R2-TWINS, the last two node doors under a read budget**: `Temporal().NodesAtOptsByIDsCtx` counts as
   `NodesAtTxByIDsCtx` (one candidate and 8 buffer bytes per ID before any ID is read, then the reads' decodes, history
   and shard opens through one metered snapshot) after `NodesAtOptsByIDs`' own checks. `NodesAtTxCtx` reads every node ever
@@ -395,6 +401,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestTieredMemberCollectionCumulativeAcrossShards`, `TestTieredMemberDeclineCostsNothing`,
   `TestTieredMemberFanoutChargesItsBuffers`, `TestReadBudget_MemberLimitHoldsAcrossKeysAndShards`, each pairing the exact
   unlimited control with a native counter (iterator steps, entries read, clones, the list allocated, entries visited).
+- **R2-1 GATHERHOLD: a label or type gather is refused before the stores copy its ever-members** (review of the R2
+  cumulative merge, finding 1): under a `Candidates` limit the effective scans by label and type
+  (`ForEachNodeEffectiveByLabelCtx`, `ForEachRelEffectiveByTypeCtx` and the doors on that gather) took the label's whole
+  ever-member set out of the store (badger and memory copy the sidecar set; tiered copies every shard's set and builds
+  the union) before the core saw a member and refused at the room: a label of 40 nodes, 35 deleted, under `Candidates`
+  8 copied the 35 (red: `tasks/evidence/R2CUMUL/gatherhold-red.txt`). The core now hands the stores a
+  `store.GatherHold` sized to the room (the room for a scan, room plus the current members already listed for a listed
+  gather); a store reserves a set's size in it, and charges 16 buffer bytes a member (`store.TxMemberCopyBytes`),
+  before it copies the set, and the tiered union charges its entries (32 each) before it adds them. A set past the
+  room is refused in O(1) with the typed error and nothing copied. The capability is
+  `store.TxMemberGatherMeteredCapability` (`ForEachLabelTxMemberMetered`, `ForEachRelTypeTxMemberMetered`; unreleased,
+  part of `MemberGatherMeteredCapability`). Counts that change: such a gather refuses when the raw ever-member set
+  passes the room, members the pin, `After` or the prune would drop included (badger and tiered, a room of 8 over 5
+  current and 15 former members lists 5 and counts 15, was 9 and 9; sharded keeps no sidecar and is unchanged);
+  `BufferBytes` grows by 16 a former member (badger, memory) and 64 (tiered: the shard copy, its list and the union).
+  Test: `TestGatherHold_RefusesBeforeTheCopy` (badger, tiered; the unlimited control and the stores' own copy
+  counter, `badger.CountTxMembersCopiedForTest`).
+- **R3: a cold read past the cap opens the cheap transient form** (ai-soc review of 14 Nov, §7, found by the R3
+  measure on ai-soc's setup): with `MaxOpenColdShards` > 0 a read that finds the cap full closes its handle at
+  check-in, yet `coldReadCfg` gave it the full configuration, so at cap 2 the third cold day of a scan paid the full
+  open (2.0 MiB at ai-soc's configuration, 7.06 at the default) on every read. Such a handle now opens as a cap-0
+  read does (16 MiB block cache, lazy label maps, encoded ID sets); a handle the cap keeps opens as before. Red and
+  green: `tasks/evidence/R3/overcap-red.txt`, `overcap-green.txt`; test: `TestColdOpen_OverCapHandleOpensTransient`.
 - **A budgeted ex-adjacency read charges the archive's open (R2-SCANS review)**: on tiered with relationships placed by
   mint, `ForEachExAdjacentRelIDMetered` (behind `ForEachRelEffectiveAtNodesCtx`) asked whether the node lives on the
   reference side through the archive, opening a closed archive uncharged, so the later charged checkout found it open

@@ -91,7 +91,11 @@ func TestR2Scans_ByLabelCtxAtATime(t *testing.T) {
 						if listedAll != int(live+gone) { // #nosec G115 -- a count
 							t.Fatalf("unlimited: the gather listed %d IDs, want %d (%d live, %d that ended)", listedAll, live+gone, live, gone)
 						}
-						wantBuf := 8*(live+gone) + 8*uint64(len(want)) // #nosec G115 -- a count
+						// R2-1 GATHERHOLD: and the stores' copies of the former members the
+						// gather reads from the ever-member sidecar (badger 16 a member;
+						// tiered 16 + its list 16 + its union 32; sharded keeps none).
+						copyBytes := map[string]uint64{"badger": 16, "tiered": 64}[be.name] * gone
+						wantBuf := 8*(live+gone) + 8*uint64(len(want)) + copyBytes // #nosec G115 -- a count
 						if total.Candidates != live+gone || total.BufferBytes != wantBuf {
 							t.Fatalf("unlimited work %+v; want %d candidates (%d live, %d that ended) and %d buffer bytes", total, live+gone, live, gone, wantBuf)
 						}
@@ -118,11 +122,13 @@ func TestR2Scans_ByLabelCtxAtATime(t *testing.T) {
 						// The gather holds the candidates past the listing to the room as it
 						// lists them (R2 late counts): the first member that ended is refused
 						// before the candidate list is built or a live member resolved, so
-						// nothing is buffered. The native count of IDs listed (the live
-						// members, then that one) is the unlimited read's live + gone cut short.
+						// only the stores' copy of the former members is buffered (R2-1: it
+						// fits the hold, the live members left out, and is charged before it
+						// is made). The native count of IDs listed (the live members, then
+						// that one) is the unlimited read's live + gone cut short.
 						listed = 0
-						if work := refused(storepkg.ReadBudget{Candidates: live}, "candidates"); work.Candidates != live+1 || work.BufferBytes != 0 || listed != int(live)+1 { // #nosec G115 -- a count
-							t.Fatalf("Candidates %d: work %+v, %d IDs listed; want the first member that ended refused (%d candidates) in the gather: nothing buffered, %d IDs listed (the unlimited read lists %d)", live, work, listed, live+1, live+1, listedAll)
+						if work := refused(storepkg.ReadBudget{Candidates: live}, "candidates"); work.Candidates != live+1 || work.BufferBytes != copyBytes || listed != int(live)+1 { // #nosec G115 -- a count
+							t.Fatalf("Candidates %d: work %+v, %d IDs listed; want the first member that ended refused (%d candidates) in the gather: %d bytes buffered (the stores' copy), %d IDs listed (the unlimited read lists %d)", live, work, listed, live+1, copyBytes, live+1, listedAll)
 						}
 						cold()
 						ectx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: total.Candidates})

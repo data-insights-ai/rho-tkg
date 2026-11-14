@@ -211,8 +211,18 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 						// (a tracked index: the first call is TestR2Scans_ValidEndFirstCallMetered's).
 						entities := w.entities(d)
 						nEnt := uint64(len(entities))
-						if total.Candidates != nEnt || total.Segments != uint64(len(want)) || total.BufferBytes != 8*nEnt { // #nosec G115 -- a count
-							t.Fatalf("unlimited work %+v; want %d candidates, %d segments, %d buffer bytes", total, nEnt, len(want), 8*nEnt)
+						// BufferBytes: 8 per listed candidate, and (R2-1 GATHERHOLD) the
+						// stores' copies of the former members a gather reads from the
+						// ever-member sidecar: badger's copy (16 a member), and on tiered
+						// also its per-shard list (16) and union entry (32); sharded keeps
+						// no sidecar.
+						former := uint64(len(w.deletedNodes))
+						copyBytes := map[string]uint64{"badger": 16, "tiered": 64}[be.name] * former
+						if !gathered {
+							copyBytes = 0
+						}
+						if total.Candidates != nEnt || total.Segments != uint64(len(want)) || total.BufferBytes != 8*nEnt+copyBytes { // #nosec G115 -- a count
+							t.Fatalf("unlimited work %+v; want %d candidates, %d segments, %d buffer bytes", total, nEnt, len(want), 8*nEnt+copyBytes)
 						}
 						if flushed && (total.DecodedBytes == 0 || total.HistoryExamined == 0) {
 							t.Fatalf("flushed scan counted %+v; want decoded bytes and history examined", total)
@@ -424,12 +434,12 @@ func TestReadBudget_SigmaB_MemberGatherMeteredOpens(t *testing.T) {
 		}},
 		{"ForEachLabelTxMember", func(tl *storepkg.ReadTally) (int, error) {
 			n := 0
-			err := w.ts.ForEachLabelTxMemberMetered(ltok, tl, func(types.NodeID, types.Instant) bool { n++; return true })
+			err := w.ts.ForEachLabelTxMemberMetered(ltok, tl, nil, func(types.NodeID, types.Instant) bool { n++; return true })
 			return n, err
 		}},
 		{"ForEachRelTypeTxMember", func(tl *storepkg.ReadTally) (int, error) {
 			n := 0
-			err := w.ts.ForEachRelTypeTxMemberMetered(rtok, tl, func(types.RelID, types.Instant) bool { n++; return true })
+			err := w.ts.ForEachRelTypeTxMemberMetered(rtok, tl, nil, func(types.RelID, types.Instant) bool { n++; return true })
 			return n, err
 		}},
 	}

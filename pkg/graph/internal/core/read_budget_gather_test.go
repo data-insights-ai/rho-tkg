@@ -91,7 +91,16 @@ func TestReadBudget_GatherStopsAtTheRoom(t *testing.T) {
 						counted uint64 // candidates counted at the refusal
 					}{
 						{kept - 1, 0, kept},
-						{kept + 3, kept + 4, kept + 4},
+						// R2-1 GATHERHOLD: the 15 former members are reserved whole
+						// before the stores copy them, so a room of 8 refuses with the
+						// 5 current members listed and 15 counted (what the copy needed);
+						// sharded keeps no sidecar and its history fold stops at the 4th
+						// member past the 5.
+						map[bool]struct {
+							limit   uint64
+							listed  int
+							counted uint64
+						}{true: {kept + 3, kept + 4, kept + 4}, false: {kept + 3, kept, members - kept}}[be.name == "sharded"],
 					} {
 						listed = 0
 						pctx, m := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: c.limit})
