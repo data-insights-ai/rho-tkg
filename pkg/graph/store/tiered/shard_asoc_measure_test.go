@@ -19,6 +19,9 @@
 //
 //	go test -tags measure -v -run TestAsocStartupFloor ./pkg/graph/store/tiered/
 //	R3_PER_DAY=5000 go test -tags measure -v -run 'TestAsocDayRotation|TestAsocReopenPerDay' ./pkg/graph/store/tiered/
+//
+// R3_WARM_MEMTABLE_MIB sets WarmMemTableSize on ai-soc's config (asocCfg):
+// 64 reruns the late-write rows at the hot size, as before R3-3 LATEWRITE.
 
 package tiered
 
@@ -55,7 +58,20 @@ func asocCfg(dir string, clock *tierClock) Config {
 	cfg.OpenImageInterval = 5 * time.Minute
 	cfg.RelsByMint = true
 	cfg.NoCompression = true
+	cfg.WarmMemTableSize = warmMemTableEnv()
 	return cfg
+}
+
+// warmMemTableEnv is the switch for section H's late-write rows on ai-soc's
+// config: R3_WARM_MEMTABLE_MIB sets WarmMemTableSize in MiB. Unset (ai-soc's
+// setting, 0) a cold shard's writable open takes 8 MiB (R3-3 LATEWRITE); 8 is
+// the design's L0 (every non-hot writable open at 8 MiB, the sweep's warm
+// reopen on); 64 is the hot size everywhere, the measurement before R3-3.
+func warmMemTableEnv() int64 {
+	if v, err := strconv.Atoi(os.Getenv("R3_WARM_MEMTABLE_MIB")); err == nil {
+		return int64(v) * mib
+	}
+	return 0
 }
 
 // defaultCfg is the "default" configuration of the section E/G fixtures:
@@ -825,7 +841,8 @@ func asocReopenPerDay(t *testing.T, perDay int, rels bool) {
 		r.ts = nil
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\nallocation of a day step with and without closing and reopening handles (ai-soc config, cap 2, %d rows a day, rels on the day shards %v):\n", perDay, rels)
+	fmt.Fprintf(&b, "\nallocation of a day step with and without closing and reopening handles (ai-soc config, cap 2, WarmMemTableSize %d MiB, %d rows a day, rels on the day shards %v):\n",
+		warmMemTableEnv()/mib, perDay, rels)
 	fmt.Fprintf(&b, "%-34s | %8s %8s %8s | %10s %10s | %6s %6s | %3s %3s %9s\n",
 		"variant", "day4 MiB", "day5 MiB", "day6 MiB", "extra d4-6", "extra d5-6", "opens", "saves", "rw", "ro", "live MiB")
 	var base []float64

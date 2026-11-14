@@ -299,7 +299,8 @@ ADR-0012.
   (R3, `tasks/evidence/R3/measure.txt`). `WarmMemTableSize` sizes the memtable of a shard opened writable in a non-hot
   role (a warm shard at `New`, a window shard made on demand, a cold shard a late write opens, a shard reopened after a
   move or `Clear`; 8 MB against 64 MB: a restart over two warm shards 346 to 200 MB of live heap, a window shard made on
-  demand 86 to 13 MB of allocation).
+  demand 86 to 13 MB of allocation). Without it a shard cold at the open still opens writable at 8 MB (R3-3 LATEWRITE,
+  `nonHotCfg`): a rotation promotes only a warm shard, so such a handle never becomes the hot shard's.
 - **The handle sweep** (R3, `handle_sweep.go`) shrinks the handles a rotation leaves: a goroutine started by `New`,
   kicked at the end of each rotation and on the idle tick. It visits only the shards that owe work, a pending set that
   a rotation fills with the old hot shard and the shards it demotes (a cold window shard made open joins it too) and

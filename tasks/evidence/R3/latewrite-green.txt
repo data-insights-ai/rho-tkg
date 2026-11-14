@@ -1,0 +1,123 @@
+R3-3 LATEWRITE green (L1: nonHotCfg gives a shard cold at the open min(MemTableSize, 8 MiB) when WarmMemTableSize is 0)
+
+$ go test -run 'TestLateWriteColdShardOpensAtSmallMemtable' -v ./pkg/graph/
+=== RUN   TestLateWriteColdShardOpensAtSmallMemtable
+    tiered_late_write_memtable_test.go:181: WAL of day 22's writable opens: [16777216 16777216 16777216] (control [134217728 134217728 134217728])
+    tiered_late_write_memtable_test.go:182: answers:
+        current v3 map[k:v4 late:true] valid[0,0)
+        history v0 map[k:v1] valid[1784721600000,0) | as of its tx v0 map[k:v1] valid[1784721600000,0)
+        history v1 map[k:v2] valid[0,0) | as of its tx v1 map[k:v2] valid[0,0)
+        history v2 map[k:v3] valid[0,0) | as of its tx v2 map[k:v3] valid[0,0)
+        chain true <nil>
+--- PASS: TestLateWriteColdShardOpensAtSmallMemtable (2.38s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.399s
+
+$ go test -run 'TestLateWriteMemtable_OnlyColdAtTheOpen' -v ./pkg/graph/store/tiered/
+=== RUN   TestLateWriteMemtable_OnlyColdAtTheOpen
+--- PASS: TestLateWriteMemtable_OnlyColdAtTheOpen (0.74s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	(cached)
+
+=== Measurement: R3_PER_DAY=5000 go test -tags measure -v -run TestAsocReopenPerDay ./pkg/graph/store/tiered/ (ai-soc config, cap 2, WarmMemTableSize 0, one run, loaded host; allocation = TotalAlloc, live = HeapAlloc after two GCs, not RSS) ===
+Against the design (tasks/evidence/R3/design-latewrite-floor.txt sections 0 and 3; before = measure.txt H.3/H.4, after = derived):
+                                   before (H)   design derived   measured now (event nodes / rels)
+  late-write open (late column)        86.3          13.5             13.4-13.5 / 13.6
+  live of the late-write handle       +84.5         +11.7             +11.8 / +11.7 (day 6: 355.6 vs 343.8; rels 357.8 vs 346.1)
+  close (idle column, next day)         7.3           7.3              7.3-7.4 / 7.3-7.4
+  daily late write (extra d5-6)        93.4          20.6             +20.8 / +20.9 (extra d4-6 +18.3 / +18.5)
+  day 6 live, 5 writable handles      428.4        ~355.6             355.6 / 357.8
+  opens / saves days 4-6               3 / 11        unchanged        3 / 11
+
+Full output:
+=== RUN   TestAsocReopenPerDay
+=== RUN   TestAsocReopenPerDay/event_nodes_on_the_day_shards
+late work variant "no late work", 5000 rows a day
+day     rw  ro |  live MiB  goal MiB | alloc MiB      rot     sweep      idle      rows      late |  saves  opens |  step ms
+day 1    2   0 |     174.0     348.3 |      10.6      0.0       0.0       0.0      10.5       0.0 |      0      0 |     89.1
+day 2    3   0 |     258.9     518.1 |     101.3     90.8       0.0       0.0      10.5       0.0 |      1      0 |    218.2
+day 3    4   0 |     343.8     687.9 |     101.3     90.8       0.0       0.0      10.5       0.0 |      1      0 |    235.6
+day 4    4   0 |     343.8     687.9 |     108.9     90.8       7.6       0.0      10.5       0.0 |      2      0 |    353.3
+day 5    4   0 |     343.8     688.0 |     108.7     90.6       7.6       0.0      10.5       0.0 |      2      0 |    338.6
+day 6    4   0 |     343.8     688.0 |     108.9     90.8       7.5       0.0      10.5       0.0 |      2      0 |    348.8
+late work variant "late write into day 1 each day", 5000 rows a day
+day     rw  ro |  live MiB  goal MiB | alloc MiB      rot     sweep      idle      rows      late |  saves  opens |  step ms
+day 1    2   0 |     174.1     348.5 |      10.5      0.0       0.0       0.0      10.5       0.0 |      0      0 |     96.7
+day 2    3   0 |     259.0     518.3 |     101.3     90.8       0.0       0.0      10.5       0.0 |      1      0 |    196.3
+day 3    4   0 |     343.8     688.1 |     101.3     90.8       0.0       0.0      10.5       0.0 |      1      0 |    207.2
+day 4    5   0 |     355.6     711.5 |     122.3     90.8       7.6       0.0      10.5      13.4 |      3      1 |    393.0
+day 5    5   0 |     355.6     711.5 |     129.5     90.7       7.5       7.3      10.5      13.4 |      4      1 |    583.2
+day 6    5   0 |     355.6     711.5 |     129.7     90.8       7.6       7.3      10.5      13.5 |      4      1 |    581.3
+late work variant "read of each cold day each day", 5000 rows a day
+day     rw  ro |  live MiB  goal MiB | alloc MiB      rot     sweep      idle      rows      late |  saves  opens |  step ms
+day 1    2   0 |     174.1     348.6 |      10.5      0.0       0.0       0.0      10.5       0.0 |      0      0 |     86.2
+day 2    3   0 |     259.0     518.4 |     101.3     90.8       0.0       0.0      10.5       0.0 |      1      0 |    179.8
+day 3    4   0 |     343.9     688.1 |     101.3     90.7       0.0       0.0      10.5       0.0 |      1      0 |    177.3
+day 4    4   1 |     345.2     690.7 |     110.3     90.8       7.5       0.0      10.5       1.5 |      2      1 |    329.5
+day 5    4   2 |     346.5     693.3 |     111.7     90.7       7.6       0.1      10.5       2.9 |      2      2 |    384.1
+day 6    4   2 |     346.5     693.3 |     112.7     90.8       7.5       0.1      10.5       3.7 |      2      3 |    398.8
+late work variant "late write and reads each day", 5000 rows a day
+day     rw  ro |  live MiB  goal MiB | alloc MiB      rot     sweep      idle      rows      late |  saves  opens |  step ms
+day 1    2   0 |     174.2     348.7 |      10.5      0.0       0.0       0.0      10.5       0.0 |      0      0 |     83.4
+day 2    3   0 |     259.1     518.4 |     101.3     90.7       0.0       0.0      10.5       0.0 |      1      0 |    190.2
+day 3    4   0 |     343.9     688.2 |     101.3     90.7       0.0       0.0      10.5       0.0 |      1      0 |    199.0
+day 4    5   0 |     355.6     711.6 |     122.2     90.8       7.5       0.0      10.5      13.4 |      3      1 |    343.2
+day 5    5   1 |     356.9     714.2 |     130.9     90.6       7.6       7.3      10.5      14.9 |      4      2 |    502.4
+day 6    5   1 |     356.9     714.2 |     131.9     90.7       7.6       7.4      10.5      15.8 |      4      3 |    515.6
+allocation of a day step with and without closing and reopening handles (ai-soc config, cap 2, WarmMemTableSize 0 MiB, 5000 rows a day, rels on the day shards false):
+variant                            | day4 MiB day5 MiB day6 MiB | extra d4-6 extra d5-6 |  opens  saves |  rw  ro  live MiB
+no late work                       |    108.9    108.7    108.9 |       +0.0       +0.0 |      0      6 |   4   0     343.8
+late write into day 1 each day     |    122.3    129.5    129.7 |      +18.3      +20.8 |      3     11 |   5   0     355.6
+read of each cold day each day     |    110.3    111.7    112.7 |       +2.7       +3.4 |      6      6 |   4   2     346.5
+late write and reads each day      |    122.2    130.9    131.9 |      +19.5      +22.6 |      6     11 |   5   1     356.9
+=== RUN   TestAsocReopenPerDay/rels_on_the_day_shards
+late work variant "no late work", 5000 rows a day
+day     rw  ro |  live MiB  goal MiB | alloc MiB      rot     sweep      idle      rows      late |  saves  opens |  step ms
+day 1    2   0 |     176.2     352.8 |      14.2      0.0       0.0       0.0      14.2       0.0 |      0      0 |     89.5
+day 2    3   0 |     261.1     522.6 |     110.4     96.0       0.0       0.0      14.3       0.0 |      1      0 |    227.6
+day 3    4   0 |     346.0     692.4 |     110.6     96.0       0.0       0.0      14.6       0.0 |      1      0 |    231.7
+day 4    4   0 |     346.0     692.4 |     118.6     96.0       8.0       0.0      14.6       0.0 |      2      0 |    357.9
+day 5    4   0 |     346.1     692.5 |     118.8     95.9       8.0       0.0      14.9       0.0 |      2      0 |    380.2
+day 6    4   0 |     346.1     692.5 |     118.9     96.0       8.0       0.0      14.9       0.0 |      2      0 |    345.7
+late work variant "late write into day 1 each day", 5000 rows a day
+day     rw  ro |  live MiB  goal MiB | alloc MiB      rot     sweep      idle      rows      late |  saves  opens |  step ms
+day 1    2   0 |     176.3     352.8 |      14.2      0.0       0.0       0.0      14.2       0.0 |      0      0 |     94.0
+day 2    3   0 |     261.2     522.6 |     110.4     96.0       0.0       0.0      14.3       0.0 |      1      0 |    231.0
+day 3    4   0 |     346.1     692.5 |     110.6     96.0       0.0       0.0      14.6       0.0 |      1      0 |    215.0
+day 4    5   0 |     357.8     716.0 |     132.1     96.0       8.0       0.0      14.6      13.6 |      3      1 |    433.0
+day 5    5   0 |     357.8     716.1 |     139.6     95.9       7.9       7.3      14.9      13.6 |      4      1 |    560.3
+day 6    5   0 |     357.8     716.0 |     139.8     96.0       8.0       7.4      14.9      13.6 |      4      1 |    548.5
+late work variant "read of each cold day each day", 5000 rows a day
+day     rw  ro |  live MiB  goal MiB | alloc MiB      rot     sweep      idle      rows      late |  saves  opens |  step ms
+day 1    2   0 |     176.3     352.9 |      14.2      0.0       0.0       0.0      14.2       0.0 |      0      0 |     87.3
+day 2    3   0 |     261.2     522.7 |     110.3     96.0       0.0       0.0      14.3       0.0 |      1      0 |    216.2
+day 3    4   0 |     346.1     692.5 |     110.6     96.0       0.0       0.0      14.6       0.0 |      1      0 |    219.8
+day 4    4   1 |     347.4     695.2 |     120.0     96.0       7.9       0.0      14.6       1.5 |      2      1 |    326.2
+day 5    4   2 |     348.7     697.9 |     121.8     95.9       7.9       0.1      14.9       3.0 |      2      2 |    406.3
+day 6    4   2 |     348.8     697.9 |     122.9     96.1       8.0       0.1      14.9       3.9 |      2      3 |    445.3
+late work variant "late write and reads each day", 5000 rows a day
+day     rw  ro |  live MiB  goal MiB | alloc MiB      rot     sweep      idle      rows      late |  saves  opens |  step ms
+day 1    2   0 |     176.3     352.9 |      14.2      0.0       0.0       0.0      14.2       0.0 |      0      0 |     93.9
+day 2    3   0 |     261.2     522.9 |     110.4     96.0       0.0       0.0      14.3       0.0 |      1      0 |    232.1
+day 3    4   0 |     346.1     692.6 |     110.6     96.0       0.0       0.0      14.6       0.0 |      1      0 |    223.1
+day 4    5   0 |     357.9     716.1 |     132.1     96.0       8.0       0.0      14.6      13.6 |      3      1 |    459.5
+day 5    5   1 |     359.2     718.8 |     141.2     96.0       8.0       7.3      14.9      15.1 |      4      2 |    652.3
+day 6    5   1 |     359.2     718.8 |     142.3     96.0       8.0       7.4      14.9      16.0 |      4      3 |    673.3
+allocation of a day step with and without closing and reopening handles (ai-soc config, cap 2, WarmMemTableSize 0 MiB, 5000 rows a day, rels on the day shards true):
+variant                            | day4 MiB day5 MiB day6 MiB | extra d4-6 extra d5-6 |  opens  saves |  rw  ro  live MiB
+no late work                       |    118.6    118.8    118.9 |       +0.0       +0.0 |      0      6 |   4   0     346.1
+late write into day 1 each day     |    132.1    139.6    139.8 |      +18.5      +20.9 |      3     11 |   5   0     357.8
+read of each cold day each day     |    120.0    121.8    122.9 |       +2.8       +3.5 |      6      6 |   4   2     348.8
+late write and reads each day      |    132.1    141.2    142.3 |      +19.8      +22.9 |      6     11 |   5   1     359.2
+--- PASS: TestAsocReopenPerDay (21.08s)
+    --- PASS: TestAsocReopenPerDay/event_nodes_on_the_day_shards (10.05s)
+    --- PASS: TestAsocReopenPerDay/rels_on_the_day_shards (11.02s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	21.093s
+
+Checks (after L1):
+  go test -run 'Warm|LateWrite|ColdShard|ColdOpen|Reopen|WAL|Recovery|Crash' ./pkg/graph/store/tiered/ ./pkg/graph/store/badger/: ok 143.2 s, ok 78.7 s
+  go test ./pkg/graph/store/tiered/ (long tier): ok 195.6 s; go test ./pkg/graph/store/badger/ (long tier): ok 114.6 s; go test -short ./pkg/graph/: ok 50.4 s
+  go test -race: TestLateWriteColdShardOpensAtSmallMemtable ok; TestWALReplay (tiered, badger) ok
+  The first keep-green run failed TestTieredStore_ColdShard_WALCorruptionRecovery (WALTruncations 0, want 1): the pre-probe migration ran at the cold 8 MiB target, so the P0 floor flushed the corrupt WAL before the probe could count it. Fixed: openShardStoreWithRecovery migrates at the probe's (hot) size; the smaller writable open's own migration in badger.New applies the floor after the probe.
+  Mutation: openNewEventShard passes cold for every non-hot window shard -> TestLateWriteMemtable_OnlyColdAtTheOpen FAIL (warm day 21 and future day 23 at 16 MiB WAL, hot shard after the rotation on a small handle); reverted.

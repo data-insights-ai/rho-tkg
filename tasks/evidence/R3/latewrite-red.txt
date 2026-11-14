@@ -1,0 +1,19 @@
+R3-3 LATEWRITE red (before L1: 0a871982 plus pkg/graph/tiered_late_write_memtable_test.go)
+MemTableSize 64 MiB, WarmMemTableSize 0: day 22 is cold at each writable open (window shard made on demand, late write into the closed day, late write beside its read-only handle); the WAL is 2 x the open's MemTableSize (badger memtable.go:117).
+$ go test -run 'TestLateWriteColdShardOpensAtSmallMemtable' -v ./pkg/graph/
+
+=== RUN   TestLateWriteColdShardOpensAtSmallMemtable
+    tiered_late_write_memtable_test.go:181: WAL of day 22's writable opens: [134217728 134217728 134217728] (control [134217728 134217728 134217728])
+    tiered_late_write_memtable_test.go:182: answers:
+        current v3 map[k:v4 late:true] valid[0,0)
+        history v0 map[k:v1] valid[1784721600000,0) | as of its tx v0 map[k:v1] valid[1784721600000,0)
+        history v1 map[k:v2] valid[0,0) | as of its tx v1 map[k:v2] valid[0,0)
+        history v2 map[k:v3] valid[0,0) | as of its tx v2 map[k:v3] valid[0,0)
+        chain true <nil>
+    tiered_late_write_memtable_test.go:185: writable open 0 of the cold day: WAL 134217728, want 2 x 8388608 (an 8 MB memtable)
+    tiered_late_write_memtable_test.go:185: writable open 1 of the cold day: WAL 134217728, want 2 x 8388608 (an 8 MB memtable)
+    tiered_late_write_memtable_test.go:185: writable open 2 of the cold day: WAL 134217728, want 2 x 8388608 (an 8 MB memtable)
+--- FAIL: TestLateWriteColdShardOpensAtSmallMemtable (1.29s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.319s
+FAIL

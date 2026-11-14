@@ -49,21 +49,39 @@ func hotMemTableSize(memTableSize int64) int64 {
 	return memTableSize
 }
 
-// nonHotCfg sizes the memtable of a writable open in a non-hot role. A
-// read-only open allocates no memtable and keeps the hot size (see
-// validateWarmMemTableSize).
-func (ts *Store) nonHotCfg(cfg BadgerStoreConfig) BadgerStoreConfig {
-	if !cfg.ReadOnly && ts.warmMemTableSize > 0 {
+// coldMemTableSize is the memtable of a writable open of a shard that is cold
+// at the open when WarmMemTableSize is 0 (R3-3 LATEWRITE, L1): an arena of
+// 10.4 MB instead of 83 MB at 64 MB, for a late write into a closed day or a
+// cold window shard made on demand. badger's floor at its 1 MB ValueThreshold
+// (badgerstore_options.go minMemTableSize).
+const coldMemTableSize = 8 << 20
+
+// nonHotCfg sizes the memtable of a writable open in a non-hot role:
+// WarmMemTableSize when set; else, when the shard is cold at this open, at
+// most coldMemTableSize; else MemTableSize. Only a shard cold at the open: a
+// rotation promotes a warm shard only (rotateHotShardLocked refuses another
+// tier), so a small cold handle never becomes the hot shard's, and the
+// handle stays until IdleTimeout or the store's close as today (coldOpened;
+// no new state). A read-only open allocates no memtable and keeps the hot
+// size (see validateWarmMemTableSize), so every WAL a smaller handle leaves
+// fits the read-only recovery probe.
+func (ts *Store) nonHotCfg(cfg BadgerStoreConfig, cold bool) BadgerStoreConfig {
+	switch {
+	case cfg.ReadOnly:
+	case ts.warmMemTableSize > 0:
 		cfg.MemTableSize = ts.warmMemTableSize
+	case cold:
+		cfg.MemTableSize = min(hotMemTableSize(cfg.MemTableSize), coldMemTableSize)
 	}
 	return cfg
 }
 
 // openNonHotBadgerStore is openBadgerStore for a shard made in a non-hot role
-// (a window shard made on demand, window_shard.go).
-func (ts *Store) openNonHotBadgerStore(name string) (*BadgerStore, error) {
+// (a window shard made on demand, window_shard.go); cold: the shard is cold
+// at this open.
+func (ts *Store) openNonHotBadgerStore(name string, cold bool) (*BadgerStore, error) {
 	if err := ts.requireVolume(name); err != nil {
 		return nil, err
 	}
-	return ts.newShardStore(ts.nonHotCfg(ts.badgerCfg(name, false)))
+	return ts.newShardStore(ts.nonHotCfg(ts.badgerCfg(name, false), cold))
 }

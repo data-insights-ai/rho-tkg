@@ -78,7 +78,7 @@ func (ts *Store) makeWindowShardLocked(t time.Time) error {
 	if ts.coldAfter > 0 && end.Before(ts.clock().Add(-ts.coldAfter)) {
 		tier = TierCold
 	}
-	store, err := ts.openNewEventShard(name, dir, false)
+	store, err := ts.openNewEventShard(name, dir, tier)
 	if err != nil {
 		return err
 	}
