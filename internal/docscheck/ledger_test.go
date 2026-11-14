@@ -9,18 +9,15 @@ import (
 	"testing"
 )
 
-// TestLedger (lesson 80): tasks/todo.md and HANDOVER.md do not lag behind
-// the repo. The tag is the version, no doc names it: docs/CHANGELOG.md's
-// newest version heading is the latest tag or a newer release written before
-// `make release` tags it; tasks/todo.md has its sections and holds current
-// work only (shipped, later and parked work is docs/CHANGELOG.md's); a todo item cites only a
-// backlog number still listed in HANDOVER.md § Backlog. Cached like the other
-// docs tests: it reads the three files, so an edit to one reruns it.
+// TestLedger (lesson 80): tasks/todo.md does not lag behind the repo. The tag is
+// the version, no doc names it: docs/CHANGELOG.md's newest version heading is
+// the latest tag or a newer release written before `make release` tags it;
+// tasks/todo.md has its sections and holds current work only (shipped, later
+// and parked work is docs/CHANGELOG.md's).
 func TestLedger(t *testing.T) {
 	t.Parallel()
 	changelog := readRepo(t, "docs/CHANGELOG.md")
 	todo := readRepo(t, "tasks/todo.md")
-	handover := readRepo(t, "HANDOVER.md")
 
 	top := regexp.MustCompile(`(?m)^## \[([0-9]+\.[0-9]+\.[0-9]+)\]`).FindStringSubmatch(changelog)
 	if top == nil {
@@ -38,29 +35,9 @@ func TestLedger(t *testing.T) {
 
 	// A ticked step "N. [x]" of a plan in progress stays until the plan is finished.
 	done := regexp.MustCompile(`(?i)✅|^- +\*\*[A-Z0-9-]+\*\* +— +(done|shipped|answered)\b|\b(done|shipped|answered)[.)]*$`)
-	backlogLine := regexp.MustCompile(`(?m)^- ([0-9]+[a-z]?) — `)
-	open := map[string]bool{}
-	if _, rest, ok := strings.Cut(handover, "\n## Backlog"); ok {
-		section, _, _ := strings.Cut(rest, "\n## ")
-		for _, m := range backlogLine.FindAllStringSubmatch(section, -1) {
-			open[m[1]] = true
-		}
-	}
-	if len(open) == 0 {
-		t.Error("HANDOVER.md § Backlog lists no item ('- N — problem' lines)")
-	}
-	cites := regexp.MustCompile(`(?i)backlog [0-9]+[a-z]?(( \([a-z]+\))?(, | and |-)[0-9]+[a-z]?)*`)
-	number := regexp.MustCompile(`[0-9]+[a-z]?`)
 	for _, line := range strings.Split(todo, "\n") {
 		if done.MatchString(line) {
 			t.Errorf("done item left in tasks/todo.md: %.90s", line)
-		}
-		for _, cite := range cites.FindAllString(line, -1) {
-			for _, n := range number.FindAllString(cite, -1) {
-				if !open[n] {
-					t.Errorf("tasks/todo.md cites closed backlog %s (not in HANDOVER.md § Backlog): %.80s", n, line)
-				}
-			}
 		}
 	}
 }
@@ -117,15 +94,15 @@ func TestVersionLessOrdersNumerically(t *testing.T) {
 	}
 }
 
-// TestDocSizes (René 2026-11-07): tasks/todo.md and HANDOVER.md stay short. The
-// caps are the 7 Nov line counts plus 10 %; a row longer than 400 characters is
-// split or moved to the file that owns the detail.
+// TestDocSizes (René 2026-11-07): tasks/todo.md stays short. The cap is the 7 Nov
+// line count plus 10 %; a row longer than 400 characters is split or moved to
+// the file that owns the detail. HANDOVER.md is gitignored local state.
 func TestDocSizes(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
 		path     string
 		maxLines int
-	}{{"tasks/todo.md", 175}, {"HANDOVER.md", 140}} {
+	}{{"tasks/todo.md", 175}} {
 		lines := strings.Split(strings.TrimRight(readRepo(t, c.path), "\n"), "\n")
 		if len(lines) > c.maxLines {
 			t.Errorf("%s has %d lines, cap %d: consolidate", c.path, len(lines), c.maxLines)

@@ -1,7 +1,7 @@
 // Command release holds the release mechanics make and go cannot do (René,
 // 4 Nov: "just a makefile and just go test and release mechanisms"). The
 // checks themselves are Makefile targets; the gates run them at once
-// (`make gate`, a major scripts/gate-major.sh).
+// (`make gate`, a major `make gate-major`).
 //
 //	go run ./scripts/release <patch|minor|major> [-dry-run]
 //	go run ./scripts/release kind
@@ -9,18 +9,17 @@
 // A release: preconditions (on dev, clean, the remote's main an ancestor of
 // HEAD, a push dry-run passes, the next tag absent), the diff's kind is at
 // most the requested one (kind.go), docs/CHANGELOG.md's newest section is the
-// next version and [Unreleased] is empty, `make gate` (a major: scripts/gate-major.sh), git tag -a
+// next version and [Unreleased] is empty, `make gate` (a major: make gate-major), git tag -a
 // (message: that section), git push --atomic of dev as main and dev, and the
 // tag; local main then moves to the tag (dev is merged into main). The tag is
 // the version: it edits no file. -dry-run: everything but the tag and the
-// push. After a patch or minor push it starts `scripts/race` detached (log
+// push. After a patch or minor push it starts `make race` detached (log
 // .git/race.out): -race runs after the tag, nobody waits on it, and a red
 // race run is fixed in the next patch.
 //
 // kind prints the diff's kind since the last tag and why.
 //
-// Presubmit (make presubmit) and race (make race) live in scripts/presubmit and
-// scripts/race; this command is release and kind only.
+// Presubmit is `release presubmit` (make presubmit). Race is make race. Kind and tag push live here.
 package main
 
 import (
@@ -53,6 +52,8 @@ func main() {
 		for _, w := range why {
 			fmt.Println("  " + w)
 		}
+	case "presubmit":
+		os.Exit(presubmitRun())
 	default:
 		k := parseKind(args[0])
 		dry := len(args) == 2 && args[1] == "-dry-run"
@@ -64,7 +65,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release <patch|minor|major> [-dry-run] | release kind")
+	fmt.Fprintln(os.Stderr, "usage: release <patch|minor|major> [-dry-run] | release kind | release presubmit")
 	os.Exit(2)
 }
 
@@ -257,7 +258,7 @@ func release(k int, dry bool) {
 	gateStart := time.Now()
 	gate := exec.Command("make", "gate") // #nosec G204 -- a fixed target
 	if k == major {
-		gate = exec.Command("scripts/gate-major.sh") // #nosec G204 -- a fixed script
+		gate = exec.Command("make", "gate-major") // #nosec G204 -- make gate-major
 	}
 	gate.Stdout, gate.Stderr = os.Stdout, os.Stderr
 	if err := gate.Run(); err != nil {
@@ -303,7 +304,7 @@ func startRace(tag string) {
 	if err == nil {
 		_, _ = fmt.Fprintf(f, "race at %s, started %s\n", tag, time.Now().Format(time.RFC3339))
 	}
-	c := exec.Command("go", "run", "./scripts/race") // #nosec G204 -- fixed subcommand
+	c := exec.Command("make", "race") // #nosec G204 -- make race under flock
 	c.Env = append(os.Environ(), "GOFLAGS=-trimpath")
 	c.Stdout, c.Stderr = f, f
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

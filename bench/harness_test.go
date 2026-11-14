@@ -10,9 +10,8 @@
 // one-time setup cost is never re-paid across the framework's iteration
 // calibration passes — see https://pkg.go.dev/testing#B.Loop.
 //
-// Run: `make bench` (informal, -benchtime=0.3s) or the mandatory gate
-// `go test -bench=. -benchtime=1x ./bench` (every benchmark at least once).
-// See docs/CONTRIBUTING.md "Benchmarks" for the regression-check workflow.
+// Run: `make bench-smoke`, `make bench`, or `make bench-check` (needs a baseline).
+// See docs/CONTRIBUTING.md § Benchmarks.
 package bench
 
 import (

@@ -327,15 +327,16 @@ This list is the complete documentation set; there are no other `.md` files. Put
 | [`docs/persistence.md`](docs/persistence.md) | Storage formats, wire format and key layout, durability, change-log, backups, upgrading a store |
 | [`docs/badger.md`](docs/badger.md) | badger v4.9.2, read from its source: how it stores, writes and reads data, its costs (measured), its options, the rules rho follows when it uses it, its complete API (every exported symbol, section 8) and the badger features rho should integrate (section 9). Read it before changing any code that reads or writes badger |
 | [`docs/query-planners.md`](docs/query-planners.md) | Planner statistics (cardinality, HyperLogLog NDV, bounds, timelines), index usability, staleness |
-| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Rules digest (read every session), gates and release checklist, testing and review rules, benchmarks, the lesson index ("lesson N") |
+| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Operating manual: standing rules (Rules digest), Makefile gates and release, review and doc-edit rules, fuzz/bench by hand, lesson index ("lesson N") |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security policy and reporting |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Every release, dated: what shipped and why |
-| `HANDOVER.md` | State only: releases, branches, consumers and their agents, glossary, the numbered backlog, user-only actions |
 | `tasks/todo.md` | Current work only, in order: Now, Next, Waiting; René's open decisions are the items waiting for him, each with a default. Later, parked and closed items are folded into the changelog (§ Folded from tasks/todo.md) |
-| `AGENTS.md` | Entry point for agents: the documentation rule and the development loop. It sends an agent to the badger file above before any badger work |
+| `AGENTS.md` | Agent entry: documentation rule, repo/branch/check/code hierarchies, short dev loop. Full rules and release detail live in CONTRIBUTING; design in architecture.md |
 
 Measurement data (`.txt`, `.json`) lives under `tasks/evidence/`, explained by the todo row or changelog entry that cites it.
 Removed files (old lessons, backlog, ADRs, evidence notes) stay readable in git: `git show 6e20157c:<path>`. `TestNoMDFileOutsideTheDocumentation` fails on any `.md` file this table does not name.
+
+Optional gitignored HANDOVER at the repo root holds local operator state (releases, consumers, glossary); it is not in git or this documentation set.
 
 ## Tutorials
 
@@ -353,17 +354,18 @@ Run any tutorial: `go run ./tutorials/001_basic_graph/`
 
 ## Building & testing
 
+Daily work: targeted `go test -run '…' ./pkg/…`, then `make old`. Before push: `make gate`.
+René calls `make release` for a tag.
+
 ```bash
-make test            # the short tier, cached
-make presubmit       # vet and short tests for packages this change reaches (dev loop)
-make gate            # build, lint and test one after another, incremental through Go's test cache
-make release         # the patch release: the gate, the tag, the push (René calls one)
-make                 # lists every target
+make old             # two integration tests (dev)
+make gate            # build, lint, short test ./... (pre-push)
+make release         # patch release: gate, tag, push (René only)
+make                 # target list (see CONTRIBUTING for presubmit, race, bench, dry-*, release-*)
 ```
 
-Every check is a plain `go` command or the pinned tool in Docker, one Makefile line each; the release
-mechanics (kind, CHANGELOG, tag, push) are `scripts/release`. The gates and the release checklist:
-[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) § Gates.
+Commands, CI and the release checklist: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) § Gates and release.
+Agent entry: [AGENTS.md](AGENTS.md).
 
 ## Version history
 

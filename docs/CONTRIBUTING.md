@@ -1,8 +1,19 @@
 # Contributing to tkg/v4
 
-The developer guide for humans and agents. Read the **Rules digest** every session; read the rest when you gate, test,
-review or meet a "lesson N" cite. How rho is built and which invariants hold: [architecture.md](architecture.md). Which file
-owns which fact: [README.md § Documentation](../README.md#documentation).
+**What this file is.** The **operating manual** for rho-tkg: standing rules, how to test and release, review and
+documentation edits, and the lesson index. It is not the product overview ([README.md](../README.md)), not how the code
+is layered ([architecture.md](architecture.md)), not the API ([api.md](api.md)), and not current work ([tasks/todo.md](../tasks/todo.md)).
+
+**Who reads what.**
+
+| Reader | Start here | Then |
+|---|---|---|
+| Agent | [AGENTS.md](../AGENTS.md) (hierarchies, dev loop) | Rules digest below every session; this file § Gates when you gate or release |
+| Human contributor | Rules digest below | Gates § before push; architecture / badger when you touch that code |
+| "Lesson N" in code or a review | § Lessons below | The test or doc the index points at |
+
+Read **Rules digest** every session. Read **Gates**, **Review** and **Release checklist** before a gate or tag. One fact,
+one place: [README.md § Documentation](../README.md#documentation).
 
 ## Rules digest
 
@@ -22,7 +33,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Release authority (René 13 Nov): a green `make gate` does not push. Push `dev` by hand (`git fetch origin`, then
   `git push origin dev`; no tag, `main` untouched). `make release` only when René calls one: it gates, tags and pushes
   `dev` as `main` and `dev` (a major: `go run ./scripts/release major`; checklist below). Then one line to sigma-tkgd
-  and ai-soc (their agents: HANDOVER § State).
+  and ai-soc (their agents; each repo's todo and local handover if used).
   Never force-push, never push `origin/v5`. Release budget (René 2026-11-07): gate warm ≤ 60 s, cold after a Go or
   dependency bump ≤ 5 min, the whole release warm ≤ 2 min; the per-tag line to the peers carries the release time; over
   budget is a todo row the same day naming the slow step. Race, long and fuzz never run on a patch tag's path.
@@ -30,11 +41,12 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Commit with explicit paths, never `git commit -a`: a docs commit swept unreviewed step code onto main (2026-10-23).
 - Work order (René 2026-10-23): (1) the request's `tasks/todo.md` item first, before any other action; (2) the red test;
   (3) the implementation; (4) the tests green; (5) the review; (6) when finished, the item leaves `tasks/todo.md` and its
-  `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` and the HANDOVER brief get one commit on dev per item end (René 2026-10-31: 298 of 545 commits in 7 days
-  were todo commits), in the item's branch so it reaches main with the item; a fact with no branch to ride on goes on
-  main in `rho-tkg`, the only checkout (the second worktree was removed, René 2026-10-31);
-  `go test ./internal/docscheck/` (`TestLedger`) before every such commit. A todo- or HANDOVER-only commit only at a
-  session handover (René 2026-11-07: 95 of 291 commits since 1 Nov were todo-only); `TestDocSizes` caps both files.
+  `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` gets one commit on dev per item end when the todo moves
+  (René 2026-10-31: 298 of 545 commits in 7 days were todo commits), in the item's branch so it reaches main with the
+  item; a fact with no branch to ride on goes on main in `rho-tkg`, the only checkout (the second worktree was removed,
+  René 2026-10-31); `go test ./internal/docscheck/` (`TestLedger`) before every such commit. `HANDOVER.md` is local,
+  gitignored state (releases, consumers, backlog list); update it by hand, never commit it. A todo-only commit only at a
+  session handover (René 2026-11-07: 95 of 291 commits since 1 Nov were todo-only); `TestDocSizes` caps `tasks/todo.md`.
 - Peers (René 2026-10-31): one message per item each way to sigma-tkgd and ai-soc, about 1,500 characters at most, detail
   in a file; status goes in the todo. A status line is `item | state | next | waits for`, checked against the repo before
   it is stated.
@@ -48,7 +60,8 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - Who works (René 2026-10-23, 2026-11-03): the main session does the work itself, analysis and code alike, and runs every
   test, lint and gate. Each finished branch gets one read-only Fable review before merge (René 3 Nov); builders and
   designers run only on René's word for that task, with one spec frozen at launch. One session per checkout (the
-  SessionStart hook names a live sibling); at an item end after about 3 compactions: HANDOVER, tell René, fresh session.
+  SessionStart hook names a live sibling); at an item end after about 3 compactions: update local `HANDOVER.md` if used,
+  tell René, fresh session.
 - Process changes remove (René 2026-11-05): a change answering "too slow" or "too hard" deletes a step or a script, or
   turns on a Go facility (test cache, `-trimpath`, `go list -deps`), with wall time before and after. It adds no hook,
   script or workflow without René's word. A correction from René changes the rule it corrects; it never adds a second one.
@@ -72,7 +85,7 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
   Process-wide `runtime.MemStats` (allocations, bytes, heap) and wall time count every goroutine, badger's flushes and
   compactions included, so they are logged as evidence, never a pass/fail bound in the suite (4 Nov: `TestCascadeMetaCost`
   read 3.9x under ci-docker's load against a 4.0x bar, 5.8x alone). Allocation and time claims live in benchmarks or at
-  the measurement level (`//go:build measure`, `scripts/measure.sh`, run by hand).
+  the measurement level (`//go:build measure`, `make measure`, run by hand).
 - Validate before any side effect: IDs, decoded bytes and property values at every entry, before an ID is minted, a token
   interned, a snapshot taken or an op queued. Decode untrusted bytes only through `storeutil.SafeUnmarshal`; allocate by bytes
   delivered, never by a declared count; verify imported hashes.
@@ -108,28 +121,36 @@ owns which fact: [README.md § Documentation](../README.md#documentation).
 - An accelerator (index, cache, sidecar, pre-encode) is tested against the slow path it replaces.
 - A contract change greps every test pinning the old outcome and runs those by name with `-race` before the branch is done.
 
-## Gates
+## Gates and release
 
-| Command | Use |
-|---|---|
-| `make presubmit` | **Dev presubmit**: `go vet` and `go test -short -p 4` of the packages this change reaches since `origin/main` (`scripts/presubmit`; a testdata file counts for its package, `go.mod`/`go.sum` mean all) |
-| `make test` | **Full short tier**: `go test -short ./...` (same tests as gate; use while editing only when you need the whole tree) |
-| `make gate` | **Patch gate**: `make -k` of `build` (+ the 32-bit `CROSS_GOOS`/`CROSS_GOARCH`, default linux/arm), one after another, `lint` (golangci-lint: gofmt, goimports, go vet, the linters; `go mod tidy -diff`, `verify`) and `test` (`go test -short ./...`, the docs and ledger tests of `internal/docscheck` included) at once; no race, no `-failfast`: a red run lists every red step and failing test. Incremental through Go's test cache: only the packages a change reaches rerun, so no `-count=1` (warm, 4 Nov, load 45-55 with a race run beside it: 23 s for a docs or comment change, 65 s for a line in core, 178 s for a line in `pkg/types` that reruns 31 packages) |
-| `scripts/gate-major.sh` | **Major gate** (only `make release-major` runs it), comprehensive and cold: build, lint, gosec, `test-major` (`go test -race -count=1 -shuffle=on ./...` under the race lock, with the coverage floor of 80 % on `./pkg/...` from the same run), `fuzz` (`scripts/fuzz.sh`, each harness for `FUZZTIME`), `vuln` (govulncheck) |
-| `make release` / `make release-minor` / `make release-major` | **Release** (below): `scripts/release` holds only git/tag/changelog/kind checks and the atomic push; it runs `make gate` (or `gate-major.sh` for major) then tags; `make kind` prints the diff's kind |
-| `make dry-patch` / `make dry-minor` | Release preflight: same checks as release without tag or push |
-| `make race` | **The race run** (René, 4 Nov, as sigma's): `go test -race -short ./...` under `~/.cache/race-gate.lock` (shared with sigma; `scripts/race`). Not in the patch gate; a patch or minor release starts it detached after its push (log `.git/race.out`); by hand on an idle host when wanted. A red race run is fixed in the next patch |
-| `go test ./...` | **The long tier**, by hand, never before a tag: `go test ./...` without `-short` and without race |
-| `scripts/measure.sh` | **Measurement level, by hand, never in a gate**: the tests behind the `measure` build tag (`//go:build measure`), bounds on process-wide heap or allocations that load moves; each file's tests in their own process |
-| `go test -run 'TestA|TestB' ./pkg/x`, `make presubmit`, `make old` | **The development loop** (AGENTS.md): the new code's few tests, then presubmit or two old ones (the public API surface, a tiered clean reopen against a full rebuild; 5.4 s first, 0.7 s cached). Go's test cache, no `-count=1` |
-| `make help` lists the targets; `make test`, `build`, `lint` | one check alone. golangci-lint, gosec and govulncheck are pinned and run in the go.mod toolchain image: Docker is always available, so the gate is never "un-runnable"; named volumes keep their caches (lint: 1.4 s warm) |
-| `go test -run TestFoo ./pkg/...` | one test |
+**DEV vs PROD** (commit, tag, push on `dev` vs release tag+push): [AGENTS.md](../AGENTS.md) § Git: DEV vs PROD.
+**Check ladder** (which `make` targets while editing): AGENTS.md § Check hierarchy. rho has no git hook that runs
+presubmit or gate.
 
-GitHub CI (`ci.yml`) runs when a `v*` tag is pushed, or by hand on a branch before its tag (`gh workflow run ci.yml --ref
-<branch>`), and only builds, vets and runs `go test -short ./...`; a push to main without a tag runs nothing. CodeQL runs
-weekly from `codeql.yml` (it fails while the org's CodeQL default setup is on: todo CIGATES).
-Everything else runs locally in the gates above. Fuzzing and benchmarks run on
-GitHub only when started by hand (`fuzz.yml`, `bench.yml`). `#nosec` is allowed only with a reason at the call site.
+**Makefile commands** (`make help`; compound targets may list only the first name on the line):
+
+| Tier | Command | What it does |
+|---|---|---|
+| — | `make` / `make help` | Default goal: full target menu (safe first command for agents) |
+| Fresh tree | `make setup` | `go mod download` and `verify` once per clone or worktree |
+| Dev | `make test-one PKG=./pkg/… RUN=…` | One package or test; errors without `PKG` |
+| Dev | `make old` | Two integration tests (`OLD_*` in the Makefile); default after new tests |
+| Optional | `make presubmit` | `go run ./scripts/release presubmit`: `go vet` and `go test -short -p 4` on packages reached since `origin/main`. Not in gate or release; often minutes on a long `dev` |
+| By hand | `make build` | `go build ./...` plus `CROSS_GOOS`/`CROSS_GOARCH` (default linux/arm) |
+| By hand | `make lint` | `go mod tidy -diff`, `verify`, golangci-lint in the go.mod toolchain Docker image (named volumes; warm often ~seconds) |
+| By hand | `make test` | `go test -short ./...` — the gate's test step without build or lint |
+| Patch gate | `make gate` | `make -k build lint test`; every red step is reported; no race, no `-failfast`. One step alone: `make build`, `make lint`, or `make test`. Warm incremental cache (example, 4 Nov: ~23 s docs-only, ~65 s one core line, ~178 s one `pkg/types` line rerunning 31 packages) |
+| By hand | `gofmt -w`, `go vet` | Not Makefile targets; use when formatting or vetting without Docker lint |
+| By hand | `make race` | `go test -race -short ./...` under `flock` (`RACE_LOCK`; shared with sigma). Patch/minor release starts `make race` detached after push (`.git/race.out`) |
+| By hand | `go test ./...` | Long tier: no `-short`, no race — never the routine before a patch tag |
+| By hand | `make measure` | `//go:build measure` tests; never in a gate |
+| By hand | `make fuzz` | Trust-boundary fuzz harnesses (`FUZZTIME`); part of `make gate-major` |
+| Release | `make kind` | `scripts/release kind` — patch, minor or major from the diff |
+| Release | `make dry-patch` / `make dry-minor` | Preflight: same checks as release, no tag or push |
+| Release | `make release` / `make release-minor` / `make release-major` | `scripts/release`: preconditions, gate (or major gate), tag, atomic push — René calls one |
+| Major only | `make gate-major` | Cold comprehensive gate (`-count=1`, race, fuzz, vuln, coverage floor); only `make release-major` |
+
+**GitHub:** `ci.yml` on a `v*` tag push, or `gh workflow run ci.yml --ref <branch>` by hand — build, vet, `go test -short ./...` only; push to `main` without a tag runs nothing. CodeQL weekly (`codeql.yml`; todo CIGATES while org default setup is on). Fuzz and bench workflows manual only (`fuzz.yml`, `bench.yml`). `#nosec` needs a reason at the call site.
 
 ### Release checklist
 
@@ -158,7 +179,7 @@ gate runs again.
    same way, then `bash ~/cleanup.sh` again.
 
 Not part of a release: the consumers' build and vet (each consumer's own pin commit builds and vets against the tag;
-for diagnosing a consumer's report: `git show 904fd063:HANDOVER.md`, Appendix B), the scale probe (only when it is the item's own measurement),
+for diagnosing a consumer's report: ask the consumer's agent for pin and reopen evidence), the scale probe (only when it is the item's own measurement),
 a separate freeze message (the tag names the version; a consumer's tag names its rho), the measurement level (`make
 measure`), and data runs or examples (on René's word only).
 
@@ -179,7 +200,7 @@ walks the directories, so an edit reruns them.
 
 ## Fuzzing
 
-The trust-boundary fuzz harnesses (`scripts/fuzz.sh` runs them briefly in the major gate and by hand; `.github/workflows/fuzz.yml` on demand) are listed in
+The trust-boundary fuzz harnesses (`make fuzz` runs them briefly in the major gate and by hand; `.github/workflows/fuzz.yml` on demand) are listed in
 [SECURITY.md](SECURITY.md) ("Fuzz harnesses"). Run a deep session when you change a decode or import surface and commit any new
 crasher (under the package's `testdata/fuzz/`) with the fix:
 
@@ -194,11 +215,11 @@ tiered or sharded. Read-only scenarios build their fixture once with `for b.Loop
 with a fresh graph per iteration.
 
 ```bash
-go test -bench=. -benchtime=1x -run '^$' ./bench   # smoke: every benchmark once
-go test -bench=. -benchmem -benchtime=0.3s ./bench # local suite
-bench/bench-baseline.sh                            # per-machine baseline -> bench/local-baseline.txt
-bench/bench-check.sh                               # fail on >15 % time or >10 % allocs regression
-bench/bench-compare-revisions.sh                   # compare revisions
+make bench-smoke      # every benchmark once
+make bench            # informal local suite (-benchtime=0.3s)
+make bench-baseline   # this machine -> bench/local-baseline.txt (gitignored; was bench-baseline.sh)
+make bench-check      # fail on >15 % time or >10 % allocs vs baseline
+bench/bench-compare-revisions.sh  # two tags or commits on a quiet machine
 ```
 
 Baselines are per machine and gitignored; never compare across machines. `.github/workflows/bench.yml` runs only by hand: it
@@ -293,7 +314,7 @@ Index (`→` names where the rule lives now):
 77. → 78
 78. Red break-the-code test first; mutation sweep for crash safety → digest (Code); `tasks/evidence/FLUSHPART/mutations.txt`
 79. Every non-major release is a patch, format markers included (René, 13 Nov) → digest (Process); `scripts/release` (kind.go)
-80. One todo and HANDOVER commit on dev per item end → digest (Process); `TestLedger` (`internal/docscheck`)
+80. One todo commit on dev per item end → digest (Process); `TestLedger` (`internal/docscheck`); `HANDOVER.md` local only
 81. Act, do not offer → digest (Process)
 82. → Release checklist (the release script's gate decides; a red tag CI is fixed by the next tag)
 83. → 78
