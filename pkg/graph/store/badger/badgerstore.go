@@ -877,9 +877,10 @@ type Store struct {
 	// the point and scan reads (RelRowDecodesForTest, RH list R2).
 	relRowDecodes atomic.Int64
 	// historyMetaDecodes counts history rows decoded to their temporal skeleton
-	// by historyTemporalMetaByPrefixTallied (HistoryMetaDecodesForTest, R2 late
-	// counts); validEndRowDecodes the rows validEndRowsBulk decodes for the
-	// valid-end index (ValidEndRowDecodesForTest).
+	// by historyTemporalMetaByPrefixTallied and the read snapshot's skeleton
+	// reads (HistoryMetaDecodesForTest, R2 late counts, R2-5 HEADREAD);
+	// validEndRowDecodes the rows validEndRowsBulk decodes for the valid-end
+	// index (ValidEndRowDecodesForTest).
 	historyMetaDecodes atomic.Int64
 	validEndRowDecodes atomic.Int64
 	// validEndAttribLookups counts the RAM membership lookups of the valid-end
@@ -897,6 +898,14 @@ type Store struct {
 	validEndValueFetches  atomic.Int64
 	validEndFetchedBytes  atomic.Int64
 	validEndAttribHoldMax int
+	// historyRowDecodes counts history rows (node and relationship versions,
+	// delta anchors among them) decoded in full by any read
+	// (HistoryRowDecodesForTest, R2-5 HEADREAD).
+	historyRowDecodes atomic.Int64
+	// historyRowCopies counts the committed history rows a read snapshot
+	// copies out of Badger for a whole-chain read (committedHistory;
+	// HistoryRowCopiesForTest, R2-5 HEADREAD).
+	historyRowCopies atomic.Int64
 	// nodeRowPointReads counts the node rows among them read by a read
 	// transaction and point Get of their own (NodeRowPointReadsForTest,
 	// LISTREAD: a page reads through one forward scan).

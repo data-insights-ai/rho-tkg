@@ -427,6 +427,7 @@ func (ms *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 	if !ok {
 		return nil, ErrVersionNotFound
 	}
+	ms.historyRowsRead.Add(1)
 	return n.DeepCopy(), nil
 }
 
@@ -457,6 +458,7 @@ func (ms *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	}
 	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
 
+	ms.historyRowsRead.Add(int64(len(versions)))
 	result := make([]*types.Node, len(versions))
 	for i, v := range versions {
 		result[i] = inner[v].DeepCopy()
@@ -505,6 +507,7 @@ func (ms *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 		versions = versions[:limit]
 	}
 
+	ms.historyRowsRead.Add(int64(len(versions)))
 	result := make([]*types.Node, len(versions))
 	for i, v := range versions {
 		result[i] = inner[v].DeepCopy()
@@ -644,6 +647,7 @@ func (ms *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 	if !ok {
 		return nil, ErrVersionNotFound
 	}
+	ms.historyRowsRead.Add(1)
 	return r.DeepCopy(), nil
 }
 
@@ -674,6 +678,7 @@ func (ms *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
 	}
 	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
 
+	ms.historyRowsRead.Add(int64(len(versions)))
 	result := make([]*types.Relationship, len(versions))
 	for i, v := range versions {
 		result[i] = inner[v].DeepCopy()
@@ -722,6 +727,7 @@ func (ms *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 		versions = versions[:limit]
 	}
 
+	ms.historyRowsRead.Add(int64(len(versions)))
 	result := make([]*types.Relationship, len(versions))
 	for i, v := range versions {
 		result[i] = inner[v].DeepCopy()

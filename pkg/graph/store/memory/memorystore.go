@@ -64,10 +64,19 @@ type Store struct {
 
 	initOnce    sync.Once
 	initialized atomic.Bool
-	mu          sync.RWMutex
-	closed      bool
-	nodes       map[types.NodeID]*types.Node
-	rels        map[types.RelID]*types.Relationship
+	// historyRowsRead counts the history rows the read methods hand out
+	// (GetNodeHistory, GetRelHistory and their version pages: each row;
+	// GetNodeVersion, GetRelVersion, LendNodeVersion, LendRelVersion: one);
+	// historyMetasListed the skeletons NodeHistoryTemporalMeta and
+	// RelHistoryTemporalMeta hand out. Test counters the read meter does not
+	// keep (HistoryRowsReadForTest, HistoryMetasListedForTest; R2-5 HEADREAD).
+	historyRowsRead    atomic.Int64
+	historyMetasListed atomic.Int64
+
+	mu     sync.RWMutex
+	closed bool
+	nodes  map[types.NodeID]*types.Node
+	rels   map[types.RelID]*types.Relationship
 
 	// Label index: labelToken → set of node IDs.
 	labelIdx map[uint16]map[types.NodeID]struct{}

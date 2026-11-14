@@ -75,6 +75,7 @@ func (ms *Store) LendNodeVersion(nid types.NodeID, version uint32) (*types.Node,
 	if !ok {
 		return nil, ErrVersionNotFound
 	}
+	ms.historyRowsRead.Add(1)
 	return n, nil
 }
 
@@ -95,5 +96,6 @@ func (ms *Store) LendRelVersion(rid types.RelID, version uint32) (*types.Relatio
 	if !ok {
 		return nil, ErrVersionNotFound
 	}
+	ms.historyRowsRead.Add(1)
 	return r, nil
 }

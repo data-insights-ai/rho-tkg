@@ -221,6 +221,7 @@ func (s *readSnapshot) committedHistory(i int, prefix []byte) (map[string][]byte
 		return s.memo.rows, nil
 	}
 	rows := map[string][]byte{}
+	defer func() { s.bs.historyRowCopies.Add(int64(len(rows))) }() // one count per list (R6)
 	for it := s.seek(i, prefix); it.ValidForPrefix(prefix); it.Next() {
 		item := it.Item()
 		if len(item.Key()) != storepkg.SizeHistKey {
@@ -248,11 +249,14 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 	}
 	node := i == snapNodeHist
 	metas := []keyedMeta{}
+	decoded := 0
+	defer func() { s.bs.historyMetaDecodes.Add(int64(decoded)) }() // one count per list (R6)
 	if s.memo.rows != nil && s.memo.prefix == string(prefix) {
 		for _, k := range sortedKeys(s.memo.rows) {
 			if err := s.tally.DecodedHistory(len(s.memo.rows[k])); err != nil {
 				return nil, err
 			}
+			decoded++
 			m, err := historyTemporalMetaOf(s.memo.rows[k], node)
 			if err != nil {
 				return nil, err
@@ -270,6 +274,7 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 				if err := s.tally.DecodedHistory(len(val)); err != nil {
 					return err
 				}
+				decoded++
 				var err error
 				m, err = historyTemporalMetaOf(val, node)
 				return err
@@ -306,10 +311,13 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 			entries[e.key] = e.meta
 		}
 	}
+	decoded := 0
+	defer func() { s.bs.historyMetaDecodes.Add(int64(decoded)) }() // one count per list (R6)
 	for k, raw := range overlay {
 		if err := s.tally.DecodedHistory(len(raw)); err != nil {
 			return nil, err
 		}
+		decoded++
 		m, err := historyTemporalMetaOf(raw, i == snapNodeHist)
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode pending history temporal meta: %w", err)
@@ -598,11 +606,18 @@ func (s *readSnapshot) HasRelHistory(rid types.RelID) (bool, error) {
 
 // probe is probeHistoryPresence through the snapshot: whether id has a
 // history row (write buffer first, a buffered delete masking its committed
-// key) and the highest version, clamped.
-func (s *readSnapshot) probe(kind byte, id snowflake.ID, _ bool) (bool, uint32, error) {
+// key) and, with wantTop, the highest version, clamped. Without wantTop (a
+// HistoryPresenceProbeOnly store) it reads keys only, no value: nothing is
+// decoded or charged (R2-5 HEADREAD). With wantTop (an ID a trim left
+// unresolved) it reads the skeleton, charged, and the skeleton read after it
+// is served from the memo.
+func (s *readSnapshot) probe(kind byte, id snowflake.ID, wantTop bool) (bool, uint32, error) {
 	i, prefix := snapRelHist, storepkg.HistRelPrefix(id)
 	if kind == storepkg.KeyHistNode {
 		i, prefix = snapNodeHist, storepkg.HistNodePrefix(id)
+	}
+	if !wantTop {
+		return s.probeKeys(i, prefix), 0, nil
 	}
 	entries, err := s.historyMetas(i, prefix)
 	if err != nil {
@@ -612,6 +627,33 @@ func (s *readSnapshot) probe(kind byte, id snowflake.ID, _ bool) (bool, uint32, 
 		return false, 0, nil
 	}
 	return true, clampTop(historyVersionFromKey([]byte(entries[len(entries)-1].key))), nil
+}
+
+// probeKeys reports whether a history row lives under prefix (keyspace i),
+// from keys alone: a buffered row first (the overlay captured before the
+// transaction is pinned, lesson 64), then the first committed key no
+// buffered delete masks.
+func (s *readSnapshot) probeKeys(i int, prefix []byte) bool {
+	overlay, deletes := s.bs.pendingHistoryVersionOverlay(prefix, 0)
+	if len(overlay) > 0 {
+		return true
+	}
+	if h := s.bs.historyScanTestHook; h != nil {
+		h() // tests only: the commit window between the overlay capture and the read
+	}
+	for it := s.seek(i, prefix); it.ValidForPrefix(prefix); it.Next() {
+		key := it.Item().Key()
+		if len(key) != storepkg.SizeHistKey {
+			continue
+		}
+		if _, deleted := deletes[string(key)]; deleted {
+			continue
+		}
+		s.its[i].last = append(s.its[i].last[:0], key...) // the iterator stands at key
+		return true
+	}
+	s.its[i].pastPrefix(prefix)
+	return false
 }
 
 // nodeHistoryRaw returns nid's history rows (key → raw) through the snapshot.

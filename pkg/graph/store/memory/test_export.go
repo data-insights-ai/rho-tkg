@@ -6,6 +6,14 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+// HistoryRowsReadForTest returns how many history rows the read methods
+// handed out (a counter the read meter does not keep).
+func (ms *Store) HistoryRowsReadForTest() int64 { return ms.historyRowsRead.Load() }
+
+// HistoryMetasListedForTest returns how many history skeletons the
+// TemporalMeta lists handed out (a counter the read meter does not keep).
+func (ms *Store) HistoryMetasListedForTest() int64 { return ms.historyMetasListed.Load() }
+
 // GetNodeHistoryEntry returns a deep copy of the stored history entry for the
 // given node ID and version. Returns nil if no entry exists. Acquires the
 // Store read lock for the duration of the lookup.

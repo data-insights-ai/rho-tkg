@@ -174,7 +174,8 @@ type Core struct {
 	// historyEpochs — per-entity history tokens: the head-pin
 	// effective timeline is kept per entity while its token holds
 	// (effective_head.go). nil = store declines: every head read folds.
-	historyEpochs    storepkg.HistoryEpochCapability
+	historyEpochs storepkg.HistoryEpochCapability
+
 	heads            headCache
 	headCacheOff     bool            // tests: fold every read (the differential oracle)
 	headHits         atomic.Uint64   // head reads answered from an entry

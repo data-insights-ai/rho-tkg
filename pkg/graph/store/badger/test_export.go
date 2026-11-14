@@ -327,6 +327,16 @@ func (bs *Store) SetMoveTestHookForTest(fn func()) { bs.moveTestHook = fn }
 // the Store field). Exported solely for tests; not for production use.
 func (bs *Store) SetAsOfAfterCurrentTestHookForTest(fn func()) { bs.asOfAfterCurrentTestHook = fn }
 
+// SetHistoryScanTestHookForTest installs historyScanTestHook (see the Store
+// field): fn runs between a history read's overlay capture and its Badger
+// read. Exported solely for tests; not for production use.
+func (bs *Store) SetHistoryScanTestHookForTest(fn func()) { bs.historyScanTestHook = fn }
+
+// SetFlushClearedTestHookForTest installs flushClearedTestHook (see the Store
+// field): fn runs inside flush right after the committed rows left the
+// overlay. Exported solely for tests; not for production use.
+func (bs *Store) SetFlushClearedTestHookForTest(fn func()) { bs.flushClearedTestHook = fn }
+
 // ReadTxnsTotalForTest reports the badger read transactions the read paths of
 // every store in this process have opened. Not for
 // production use.
@@ -357,6 +367,16 @@ func (bs *Store) RelRowDecodesForTest() int64 { return bs.relRowDecodes.Load() }
 // HistoryMetaDecodesForTest returns how many history rows were decoded to their
 // temporal skeleton (a counter the read meter does not keep).
 func (bs *Store) HistoryMetaDecodesForTest() int64 { return bs.historyMetaDecodes.Load() }
+
+// HistoryRowDecodesForTest returns how many history rows (node and
+// relationship versions) were decoded in full (a counter the read meter does
+// not keep).
+func (bs *Store) HistoryRowDecodesForTest() int64 { return bs.historyRowDecodes.Load() }
+
+// HistoryRowCopiesForTest returns how many committed history rows a read
+// snapshot copied out of Badger for a whole-chain read (a counter the read
+// meter does not keep).
+func (bs *Store) HistoryRowCopiesForTest() int64 { return bs.historyRowCopies.Load() }
 
 // ValidEndRowDecodesForTest returns how many rows the valid-end index's bulk
 // read decoded (a counter the read meter does not keep).

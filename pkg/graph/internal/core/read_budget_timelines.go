@@ -15,11 +15,17 @@ import (
 // *store.ReadBudgetError and no segments. ctx is checked first, then a budget
 // the store cannot count is refused; the call's own checks (open, ID, pins) run
 // before anything is counted. Counted: one candidate (the ID), before the read;
-// through the metered read snapshot (memory: the versions of the chain it reads)
+// through the metered read snapshot (memory: the versions it reads)
 // the history versions looked at, the rows and skeletons decoded and, on
 // tiered, each closed shard about to be opened; and each returned segment
 // (Segments, and its struct size as BufferBytes) after the read and before the
-// answer is returned. Without a budget each is its plain door.
+// answer is returned. Without a budget each is its plain door. A read the
+// effective head entry answers (effective_head.go) reads, and is charged, only
+// its winners' versions, as the plain door reads them (R2-5 HEADREAD); a miss
+// walks the chain, charged as above, and fills the entry as the plain door
+// does. The history token that validates the entry opens no shard and costs
+// nothing (store.HistoryEpochCapability: on tiered a closed shard on the
+// entity's walk answers 0, no token, and the read folds).
 
 // beginTimeline is the shared start of a timeline Ctx door: ctx, then the
 // store's ability to count the budget. A nil meter is a context without a

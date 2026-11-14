@@ -78,8 +78,14 @@ func orPresence(a, b bool) bool { return a || b }
 // (nil: none) is charged each closed shard's open before it (READBUDGET step
 // 6).
 func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, opens *storecontract.ReadTally, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+	return walkNodeHistoryShardsMode(ts, nid, routeRead, opens, ask, merge)
+}
+
+// walkNodeHistoryShardsMode is walkNodeHistoryShards routing in mode (routeRead
+// or routeIfOpen: a shard it would have to open ends it with errShardNotOpen).
+func walkNodeHistoryShardsMode[T any](ts *Store, nid types.NodeID, mode routeMode, opens *storecontract.ReadTally, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
-	store, checkin, isArchive, err := ts.shardForNodeIDReadCharged(nid, opens)
+	store, checkin, isArchive, err := ts.routeNodeShard(nid, mode, opens)
 	if err != nil {
 		return zero, err
 	}
@@ -95,21 +101,26 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, opens *storecontr
 	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if store == ts.refShard {
-			return historyWalkWithArchive(ts, store, opens, acc, ask, merge)
+			return historyWalkWithArchive(ts, store, mode, opens, acc, ask, merge)
 		}
 		return acc, nil
 	}
 	if isArchive {
 		return historyWalkWithReference(ts, store, acc, ask, merge)
 	}
-	return historyWalkAnywhere(ts, store, opens, nil, acc, ask, merge)
+	return historyWalkAnywhere(ts, store, mode, opens, nil, acc, ask, merge)
 }
 
 // walkRelHistoryShards is walkNodeHistoryShards for relationships. No moveMu
 // (TestRefArchiveReadersSeeMovedEntityOnce).
 func walkRelHistoryShards[T any](ts *Store, rid types.RelID, opens *storecontract.ReadTally, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+	return walkRelHistoryShardsMode(ts, rid, routeRead, opens, ask, merge)
+}
+
+// walkRelHistoryShardsMode is walkNodeHistoryShardsMode for relationships.
+func walkRelHistoryShardsMode[T any](ts *Store, rid types.RelID, mode routeMode, opens *storecontract.ReadTally, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
-	shard, checkin, isArchive, probe, err := ts.routeRelShardFor(rid, routeRead, opens)
+	shard, checkin, isArchive, probe, err := ts.routeRelShardFor(rid, mode, opens)
 	if err != nil {
 		return zero, err
 	}
@@ -125,22 +136,22 @@ func walkRelHistoryShards[T any](ts *Store, rid types.RelID, opens *storecontrac
 	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
-			return historyWalkWithArchive(ts, shard, opens, acc, ask, merge)
+			return historyWalkWithArchive(ts, shard, mode, opens, acc, ask, merge)
 		}
 		return acc, nil
 	}
 	if isArchive {
 		return historyWalkWithReference(ts, shard, acc, ask, merge)
 	}
-	return historyWalkAnywhere(ts, shard, opens, relHistoryKeep(rid), acc, ask, merge)
+	return historyWalkAnywhere(ts, shard, mode, opens, relHistoryKeep(rid), acc, ask, merge)
 }
 
 // historyWalkWithArchive mirrors nodeHistoryWithArchive /
 // relHistoryWithArchive: the owner's answer merged with the archive's.
-func historyWalkWithArchive[T any](ts *Store, skip *BadgerStore, opens *storecontract.ReadTally, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+func historyWalkWithArchive[T any](ts *Store, skip *BadgerStore, mode routeMode, opens *storecontract.ReadTally, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
 	ts.refArchiveGapHook()
-	archive, archiveCheckin, err := ts.checkoutArchiveCharged(opens)
+	archive, archiveCheckin, err := ts.checkoutArchiveFor(mode, opens)
 	if err != nil {
 		return zero, err
 	}
@@ -181,9 +192,9 @@ func historyWalkWithReference[T any](ts *Store, skip *BadgerStore, acc T, ask fu
 // historyWalkAnywhere mirrors the deleted-entity fan-out of GetNodeHistory /
 // GetRelHistory: every shard is asked, no early stop, so errors surface as in
 // History.
-func historyWalkAnywhere[T any](ts *Store, skip *BadgerStore, opens *storecontract.ReadTally, keep func(*EventShard) bool, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+func historyWalkAnywhere[T any](ts *Store, skip *BadgerStore, mode routeMode, opens *storecontract.ReadTally, keep func(*EventShard) bool, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
-	err := ts.forEachHistoryShardKeep(skip, nil, opens, keep, func(candidate *BadgerStore) (bool, error) {
+	err := ts.forEachHistoryShardMode(skip, nil, mode, opens, keep, func(candidate *BadgerStore) (bool, error) {
 		other, err := ask(candidate)
 		if err != nil {
 			return false, err

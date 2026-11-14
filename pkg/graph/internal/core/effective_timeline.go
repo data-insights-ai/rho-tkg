@@ -503,16 +503,19 @@ func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validF
 		}
 	}
 	// The head answer: kept per entity while the store's history
-	// token and the current row hold (effective_head.go). Only the plain
-	// point read uses it; scans (rd.scan) never read or fill it.
+	// token and the current row hold (effective_head.go). Point reads use it,
+	// a budgeted one too (charged the winners it reads, R2-5 HEADREAD); scans
+	// (rd.scan) never read or fill it.
 	var epoch uint64
 	reason := headMissScan
-	if rd.snap == nil && !rd.scan && rd.tally == nil { // a budgeted read (a tally) counts the chain it reads: the head entry would skip it
+	if rd.readsHead() {
 		reason = headMissNotQualifying // no current row: the chain ends in a delete
 		if current != nil {
 			epoch = c.nodeHistoryEpoch(id)
 			var segs []temporal.NodeSegment
-			if segs, reason = c.nodeHeadSegments(rd, id, current, validFrom, pin, epoch); reason == headHit {
+			if segs, reason, err = c.nodeHeadSegments(rd, id, current, validFrom, pin, epoch); err != nil {
+				return nil, err
+			} else if reason == headHit {
 				c.noteHeadRead(headDoorOne, headHit, nil)
 				return segs, nil
 			}
@@ -593,12 +596,15 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 		}
 	}
 	// The head answer: kept per entity while the store's history
-	// token and the current row hold (effective_head.go). Only the plain
-	// point read uses it; scans (rd.scan) never read or fill it.
+	// token and the current row hold (effective_head.go). Point reads use it,
+	// a budgeted one too (R2-5 HEADREAD); scans (rd.scan) never read or fill
+	// it.
 	var epoch uint64
-	if rd.snap == nil && !rd.scan && rd.tally == nil && current != nil {
+	if rd.readsHead() && current != nil {
 		epoch = c.relHistoryEpoch(id)
-		if segs, ok := c.relHeadSegments(rd, id, current, pin, epoch); ok {
+		if segs, ok, err := c.relHeadSegments(rd, id, current, pin, epoch); err != nil {
+			return nil, err
+		} else if ok {
 			return segs, nil
 		}
 	}
@@ -672,8 +678,8 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 		}
 		full, err := rd.lentNodeVersion(id, metas[p.src].Version)
 		if err != nil {
-			if errors.Is(err, storepkg.ErrReadBudget) {
-				budget = err
+			if b := budgetRefusal(err); b != nil {
+				budget = b
 			}
 			return nil, false
 		}
@@ -741,8 +747,8 @@ func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, curre
 		}
 		full, err := rd.lentRelVersion(id, metas[p.src].Version)
 		if err != nil {
-			if errors.Is(err, storepkg.ErrReadBudget) {
-				budget = err
+			if b := budgetRefusal(err); b != nil {
+				budget = b
 			}
 			return nil, false
 		}

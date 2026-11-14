@@ -788,8 +788,11 @@ type TemporalMetaHistoryCapability interface {
 // calls on one open store return the same token only if no history row of the
 // ID was written, overwritten or removed between them. Tokens are never
 // reused within a process (a reopened store or another shard hands out new
-// ones). 0 means "no token": the caller must not reuse a derived value. The
-// current row is not covered.
+// ones). 0 means "no token now": the caller must not reuse a derived value
+// and keeps none. A store whose token read would have to open a shard (tiered:
+// a closed cold shard or an archive not yet opened on the entity's walk)
+// answers 0 instead of opening it: a token is good only while the handle that
+// issued it stays open (R2-5 HEADREAD). The current row is not covered.
 type HistoryEpochCapability interface {
 	NodeHistoryEpoch(id types.NodeID) (uint64, error)
 	RelHistoryEpoch(id types.RelID) (uint64, error)
